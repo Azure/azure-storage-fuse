@@ -806,6 +806,16 @@ void rpc_task::send_readdirplus_response(std::vector<directory_entry*>& readdire
         current_buf += entsize;
         rem -= entsize;
         num_of_entries_returned++;
+
+        /*
+         * Fuse expects lookupcnt of every entry returned by readdirplus(),
+         * except "." and "..", to be incremented.
+         *
+         * TODO: If fuse_reply_buf() below fails we must drop these refcnts.
+         */
+        if (!it->is_dot_or_dotdot()) {
+            it->nfs_ino->incref();
+        }
     }
 
     AZLogDebug("Num of entries sent in readdirplus response is {}", num_of_entries_returned);

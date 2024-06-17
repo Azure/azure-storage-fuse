@@ -31,6 +31,7 @@ nfs_inode::nfs_inode(const struct nfs_fh3 *filehandle,
 
 nfs_inode::~nfs_inode()
 {
+    assert(lookupcnt == 0);
     assert(fh.data.data_len > 50 && fh.data.data_len <= 64);
     assert((ino == (fuse_ino_t) this) || (ino == FUSE_ROOT_ID));
     assert(client != nullptr);

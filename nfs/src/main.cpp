@@ -386,8 +386,13 @@ static void aznfsc_ll_forget(fuse_req_t req,
 
     struct nfs_client *client = get_nfs_client_from_fuse_req(req);
 
-    // Delete the nfs inode that was allocated.
-    delete client->get_nfs_inode_from_ino(ino);
+    /*
+     * Decrement refcnt of the inode and free the inode if refcnt becomes 0.
+     */
+    assert(nlookup > 0);
+    while (nlookup--) {
+        client->get_nfs_inode_from_ino(ino)->decref();
+    }
 }
 
 static void aznfsc_ll_getattr(fuse_req_t req,
@@ -798,7 +803,10 @@ void aznfsc_ll_forget_multi(fuse_req_t req,
                             struct fuse_forget_data *forgets)
 {
     /*
-     * TODO: Fill me.
+     * TODO: See if we need it for better perf.
+     *       For now, returning ENOSYS from here causes fuse to call the
+     *       non-batch version aznfsc_ll_forget(). It's functionally
+     *       correct, but maybe little less efficient.
      */
     fuse_reply_err(req, ENOSYS);
 }

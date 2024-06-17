@@ -526,7 +526,28 @@ public:
 
     void reply_entry(const struct fuse_entry_param *e)
     {
-        fuse_reply_entry(req, e);
+        struct nfs_inode *inode = nullptr;
+
+        /*
+         * On a successful call to fuse_reply_entry() the inode's lookup
+         * count must be incremented.
+         * "ino == 0" implies a failed lookup call, so we don't have a valid
+         * inode number to return.
+         * We increment the inode lookup count before calling
+         * fuse_reply_entry() to avoid any races. Later if it fails, we
+         * decrement the lookup count for correctness.
+         */
+        if (e->ino != 0) {
+            inode = client->get_nfs_inode_from_ino(e->ino);
+            inode->incref();
+        }
+
+        if (fuse_reply_entry(req, e) < 0) {
+            if (inode) {
+                inode->decref();
+            }
+        }
+
         free_rpc_task();
     }
 
@@ -534,7 +555,24 @@ public:
         const struct fuse_entry_param *entry,
         const struct fuse_file_info *file)
     {
-        fuse_reply_create(req, entry, file);
+        // inode number cannot be 0 in a create response().
+        assert(entry->ino != 0);
+
+
+        /*
+         * On a successful call to fuse_reply_create() the inode's lookup
+         * count must be incremented.
+         * We increment the inode lookup count before calling
+         * fuse_reply_create() to avoid any races. Later if it fails, we
+         * decrement the lookup count for correctness.
+         */
+        struct nfs_inode *inode = client->get_nfs_inode_from_ino(entry->ino);
+        inode->incref();
+
+        if (fuse_reply_create(req, entry, file) < 0) {
+            inode->decref();
+        }
+
         free_rpc_task();
     }
 

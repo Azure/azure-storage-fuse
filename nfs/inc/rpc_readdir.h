@@ -43,6 +43,14 @@ struct directory_entry
             return (strlen(name) + offsetof(struct directory_entry, name));
         }
     }
+
+    bool is_dot_or_dotdot() const
+    {
+        return (name != nullptr) &&
+               ((name[0] == '.') &&
+                ((name[1] == '\0') ||
+                 ((name[1] == '.') && (name[2] == '\0'))));
+    }
 };
 
 #define DIR_MTIME_REFRESH_INTERVAL_SEC 30

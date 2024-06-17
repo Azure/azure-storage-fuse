@@ -117,7 +117,10 @@ public:
      */
     struct nfs_inode *get_nfs_inode_from_ino(fuse_ino_t ino)
     {
-        if (ino == 1 /* FUSE_ROOT_ID */)
+        // 0 is not a valid inode number.
+        assert(ino != 0);
+
+        if (ino == FUSE_ROOT_ID)
         {
             // root_fh must have been created by now.
             assert(root_fh != nullptr);
@@ -125,7 +128,8 @@ public:
             return root_fh;
         }
 
-        struct nfs_inode *const nfsi = reinterpret_cast<struct nfs_inode *>(ino);
+        struct nfs_inode *const nfsi =
+            reinterpret_cast<struct nfs_inode *>(ino);
 
         // Dangerous cast, deserves validation.
         assert(nfsi->magic == NFS_INODE_MAGIC);

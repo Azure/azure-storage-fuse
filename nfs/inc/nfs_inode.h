@@ -1,6 +1,7 @@
 #ifndef __NFS_INODE_H__
 #define __NFS_INODE_H__
 
+#include <atomic>
 #include "aznfsc.h"
 #include "rpc_readdir.h"
 
@@ -22,6 +23,34 @@ struct nfs_inode
      * have the correct pointer.
      */
     const uint32_t magic = NFS_INODE_MAGIC;
+
+    /*
+     * Ref count of this inode.
+     * Whenever we make one of the following calls, we must increment the
+     * lookupcnt of the inode:
+     * - fuse_reply_entry()
+     * - fuse_reply_create()
+     * - Lookup count of every entry returned by readdirplus(), except "."
+     *   and "..", is incremented by one. Note that readdir() does not
+     *   affect the lookup count of any of the entries returned.
+     *
+     * Note that the lookupcnt is set to 0 when the nfs_inode is created
+     * and only when we are able to successfully convey creation of the inode
+     * to fuse, we increment it to 1. This is important as unless fuse
+     * knows about an inode it'll never call forget() for it and we will
+     * leak the inode.
+     *
+     * forget() causes lookupcnt for an inode to be reduced by the "nlookup"
+     * parameter count. forget_multi() does the same for multiple inodes in
+     * a single call.
+     * On umount the lookupcnt for all inodes implicitly drops to zero, and
+     * fuse may not call forget() for the affected inodes.
+     *
+     * Till the lookupcnt of an inode drops to zero, we MUST not free the
+     * nfs_inode structure, as kernel may send requests for files with
+     * non-zero lookupcnt, even after calls to unlink(), rmdir() or rename().
+     */
+    mutable std::atomic<uint64_t> lookupcnt = 0;
 
     /*
      * NFSv3 filehandle returned by the server.
@@ -49,6 +78,35 @@ struct nfs_inode
               fuse_ino_t _ino = 0);
 
     ~nfs_inode();
+
+    /**
+     * Increment lookupcnt of the inode.
+     */
+    void incref() const
+    {
+        lookupcnt++;
+
+        AZLogDebug("ino {} lookupcnt incremented to {}",
+                   ino, lookupcnt.load());
+    }
+
+    /**
+     * Decrement lookupcnt of the inode and delete it if lookupcnt
+     * reaches 0.
+     */
+    void decref()
+    {
+        assert(lookupcnt > 0);
+
+        if (--lookupcnt == 0) {
+            AZLogDebug("ino {} lookupcnt decremented to 0, freeing inode",
+                       ino, lookupcnt.load());
+            delete this;
+        } else {
+            AZLogDebug("ino {} lookupcnt decremented to {}",
+                       ino, lookupcnt.load());
+        }
+    }
 
     nfs_client *get_client() const
     {
