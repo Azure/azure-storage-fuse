@@ -6,6 +6,8 @@ parameters:
     default: "null"
 
 steps:
+  # Create directory structure and prepare to mount
+  - ${{ parameters.installStep }}
   - checkout: none
 
   # Get the host details on which these test are running
@@ -14,8 +16,6 @@ steps:
       hostnamectl
     displayName: 'Print Agent Info'
 
-  # Create directory structure and prepare to mount
-  - ${{ parameters.installStep }}
   - script: |
       sudo rm -rf $(ROOT_DIR)
       sudo mkdir -p $(ROOT_DIR)
