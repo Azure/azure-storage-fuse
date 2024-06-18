@@ -337,9 +337,47 @@ static void aznfsc_ll_init(void *userdata,
      *       of those limits.
      *       We can at least log from here so that we know the limits.
      */
+
     /*
-     * fuse_session_new() no longer accepts arguments
-     * command line options can only be set using fuse_apply_conn_info_opts().
+     * XXX Disable readdir temporarily while I work on fixing readdirplus.
+     *     Once readdirplus is audited/fixed, enable readdir and audit/fix
+     *     that.
+     */
+    conn->want |= FUSE_CAP_READDIRPLUS;
+    conn->want &= ~FUSE_CAP_READDIRPLUS_AUTO;
+
+    conn->want |= FUSE_CAP_ASYNC_READ;
+
+    // Blob NFS doesn't support locking.
+    conn->want &= ~FUSE_CAP_POSIX_LOCKS;
+    conn->want &= ~FUSE_CAP_FLOCK_LOCKS;
+
+    // See if we can support O_TRUNC.
+    conn->want &= ~FUSE_CAP_ATOMIC_O_TRUNC;
+
+    // Test splice read/write performance before enabling.
+    //conn->want |= FUSE_CAP_SPLICE_WRITE;
+    //conn->want |= FUSE_CAP_SPLICE_MOVE;
+    //conn->want |= FUSE_CAP_SPLICE_READ;
+
+    conn->want |= FUSE_CAP_AUTO_INVAL_DATA;
+    conn->want |= FUSE_CAP_ASYNC_DIO;
+
+    conn->want &= ~FUSE_CAP_WRITEBACK_CACHE;
+    conn->want |= FUSE_CAP_PARALLEL_DIROPS;
+    conn->want &= ~FUSE_CAP_POSIX_ACL;
+    conn->want &= ~FUSE_CAP_CACHE_SYMLINKS;
+    conn->want &= ~FUSE_CAP_SETXATTR_EXT;
+
+    /*
+     * Now apply the user passed options (-o). This must be done after
+     * whatever default flags we set above, so that user can override
+     * them. If there's some flag that we want to force irrespective of
+     * user argument, that should be set after this.
+     *
+     * Note: fuse_session_new() no longer accepts arguments
+     *       command line options can only be set using
+     *       fuse_apply_conn_info_opts().
      */
     fuse_apply_conn_info_opts(fuse_conn_info_opts_ptr, conn);
 
@@ -628,6 +666,9 @@ static void aznfsc_ll_readdir(fuse_req_t req,
 {
     AZLogDebug("aznfsc_ll_readdir(req={}, ino={}, size={}, off={}, fi={})",
                fmt::ptr(req), ino, size, off, fmt::ptr(fi));
+
+    // Till we have readdir disabled in aznfsc_ll_init().
+    assert(0);
 
     struct nfs_client *client = get_nfs_client_from_fuse_req(req);
     client->readdir(req, ino, size, off, fi);
