@@ -96,7 +96,13 @@ func (azspn *azAuthBlobSPN) getServiceClient(stConfig *AzStorageConfig) (interfa
 		return nil, err
 	}
 
-	svcClient, err := service.NewClient(azspn.config.Endpoint, cred, getAzBlobServiceClientOptions(stConfig))
+	opts, err := getAzBlobServiceClientOptions(stConfig)
+	if err != nil {
+		log.Err("azAuthBlobSPN::getServiceClient : Failed to create client options [%s]", err.Error())
+		return nil, err
+	}
+
+	svcClient, err := service.NewClient(azspn.config.Endpoint, cred, opts)
 	if err != nil {
 		log.Err("azAuthBlobSPN::getServiceClient : Failed to create service client [%s]", err.Error())
 	}
@@ -116,7 +122,13 @@ func (azspn *azAuthDatalakeSPN) getServiceClient(stConfig *AzStorageConfig) (int
 		return nil, err
 	}
 
-	svcClient, err := serviceBfs.NewClient(azspn.config.Endpoint, cred, getAzDatalakeServiceClientOptions(stConfig))
+	opts, err := getAzDatalakeServiceClientOptions(stConfig)
+	if err != nil {
+		log.Err("azAuthDatalakeSPN::getServiceClient : Failed to create client options [%s]", err.Error())
+		return nil, err
+	}
+
+	svcClient, err := serviceBfs.NewClient(azspn.config.Endpoint, cred, opts)
 	if err != nil {
 		log.Err("azAuthDatalakeSPN::getServiceClient : Failed to create service client [%s]", err.Error())
 	}
