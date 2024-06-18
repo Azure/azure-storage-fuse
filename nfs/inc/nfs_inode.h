@@ -175,6 +175,19 @@ struct nfs_inode
     int get_actimeo_max() const;
 
     /**
+     * Get current attribute cache timeout value (in secs) for this inode.
+     * Note that the attribute cache timeout moves between the min and max
+     * values returned by the above methods, depending on whether the last
+     * revalidation attempt was a success or not.
+     */
+    int get_actimeo() const
+    {
+        // If not set, return the min configured value.
+        return (attr_timeout_secs != -1) ? attr_timeout_secs
+                                         : get_actimeo_min();
+    }
+
+    /**
      * Revalidate the inode.
      * Revalidation is done by querying the inode attributes from the server
      * and comparing them against the saved attributes. If the freshly fetched

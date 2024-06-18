@@ -97,15 +97,24 @@ static void getattr_callback(
 {
     auto task = (rpc_task*)private_data;
     auto res = (GETATTR3res*)data;
+    const fuse_ino_t ino =
+        task->rpc_api.getattr_task.get_ino();
+    const struct nfs_inode *inode =
+        task->get_client()->get_nfs_inode_from_ino(ino);
 
     if (task->succeeded(rpc_status, RSTATUS(res)))
     {
         struct stat st;
+
         task->get_client()->stat_from_fattr3(
             &st, &res->GETATTR3res_u.resok.obj_attributes);
 
-        // TODO: Set the Attr timeout to a better value.
-        task->reply_attr(&st, 60/*getAttrTimeout()*/);
+        /*
+         * Set fuse kernel attribute cache timeout to the current attribute
+         * cache timeout for this inode, as per the recent revalidation
+         * experience.
+         */
+        task->reply_attr(&st, inode->get_actimeo());
     }
     else
     {
@@ -196,15 +205,25 @@ static void setattr_callback(
 {
     auto task = (rpc_task*)private_data;
     auto res = (SETATTR3res*)data;
+    const fuse_ino_t ino =
+        task->rpc_api.setattr_task.get_ino();
+    const struct nfs_inode *inode =
+        task->get_client()->get_nfs_inode_from_ino(ino);
 
     if (task->succeeded(rpc_status, RSTATUS(res)))
     {
         assert(res->SETATTR3res_u.resok.obj_wcc.after.attributes_follow);
 
         struct stat st;
+
         task->get_client()->stat_from_fattr3(
             &st, &res->SETATTR3res_u.resok.obj_wcc.after.post_op_attr_u.attributes);
-        task->reply_attr(&st, 60 /* TODO: Set reasonable value nfs_client::getAttrTimeout() */);
+        /*
+         * Set fuse kernel attribute cache timeout to the current attribute
+         * cache timeout for this inode, as per the recent revalidation
+         * experience.
+         */
+        task->reply_attr(&st, inode->get_actimeo());
     }
     else
     {
@@ -266,12 +285,12 @@ void rpc_task::run_lookup()
 void rpc_task::run_getattr()
 {
     bool rpc_retry = false;
-    auto inode = rpc_api.getattr_task.get_ino();
+    auto ino = rpc_api.getattr_task.get_ino();
 
     do {
         struct GETATTR3args args;
         ::memset(&args, 0, sizeof(args));
-        args.object = get_client()->get_nfs_inode_from_ino(inode)->get_fh();
+        args.object = get_client()->get_nfs_inode_from_ino(ino)->get_fh();
 
         if (rpc_nfs3_getattr_task(get_rpc_ctx(), getattr_callback, &args, this) == NULL)
         {
@@ -335,7 +354,7 @@ void rpc_task::run_mkdir()
 
 void rpc_task::run_setattr()
 {
-    auto inode = rpc_api.setattr_task.get_ino();
+    auto ino = rpc_api.setattr_task.get_ino();
     auto attr = rpc_api.setattr_task.get_attr();
     const int valid = rpc_api.setattr_task.get_attr_flags_to_set();
     bool rpc_retry = false;
@@ -343,7 +362,7 @@ void rpc_task::run_setattr()
     do {
         SETATTR3args args;
         ::memset(&args, 0, sizeof(args));
-        args.object = get_client()->get_nfs_inode_from_ino(inode)->get_fh();
+        args.object = get_client()->get_nfs_inode_from_ino(ino)->get_fh();
 
         if (valid & FUSE_SET_ATTR_SIZE) {
             AZLogInfo("Setting size to {}", attr->st_size);
@@ -413,7 +432,6 @@ void rpc_task::run_setattr()
     } while (rpc_retry);
 }
 
-#if 1
 void rpc_task::free_rpc_task()
 {
     switch(get_op_type()) {
@@ -431,7 +449,6 @@ void rpc_task::free_rpc_task()
     }
     client->get_rpc_task_helper()->free_rpc_task(this);
 }
-#endif
 
 struct nfs_context* rpc_task::get_nfs_context() const
 {
@@ -465,25 +482,25 @@ static void readdirplus_callback(
     auto task = (rpc_task*)private_data;
     auto res = (READDIRPLUS3res*)data;
     bool is_readdirplus_call = false;
-    fuse_ino_t inode;
+    fuse_ino_t ino;
     std::vector<directory_entry*> readdirentries;
     int num_of_ele = 0;
     size_t rem_size = 0;
-    
+
     // Check if the application asked for readdir or readdirplus call.
     if (task->get_op_type() == FUSE_READDIRPLUS)
     {
-        inode = task->rpc_api.readdirplus_task.get_inode();
+        ino = task->rpc_api.readdirplus_task.get_inode();
         is_readdirplus_call = true;
         rem_size = task->rpc_api.readdirplus_task.get_size();
     }
     else
     {
-        inode = task->rpc_api.readdir_task.get_inode();
+        ino = task->rpc_api.readdir_task.get_inode();
         rem_size = task->rpc_api.readdir_task.get_size();
     }
 
-    struct nfs_inode *nfs_ino = task->get_client()->get_nfs_inode_from_ino(inode);
+    struct nfs_inode *nfs_ino = task->get_client()->get_nfs_inode_from_ino(ino);
     assert (nfs_ino != nullptr);
 
     if (task->succeeded(rpc_status, RSTATUS(res)))
@@ -651,27 +668,27 @@ void rpc_task::get_readdirplus_entries_from_cache()
 void rpc_task::fetch_readdir_entries_from_server()
 {
     bool rpc_retry = false;
-    fuse_ino_t inode;
+    fuse_ino_t ino;
 
     cookie3 cookie = 0;
 
     if (get_op_type() == FUSE_READDIR)
     {
-        inode = rpc_api.readdir_task.get_inode();
+        ino = rpc_api.readdir_task.get_inode();
         cookie = rpc_api.readdir_task.get_offset();
     }
     else
     {
-        inode = rpc_api.readdirplus_task.get_inode();
+        ino = rpc_api.readdirplus_task.get_inode();
         cookie = rpc_api.readdirplus_task.get_offset();
     }
 
     do {
         struct READDIRPLUS3args args;
         ::memset(&args, 0, sizeof(args));
-        args.dir = get_client()->get_nfs_inode_from_ino(inode)->get_fh();
+        args.dir = get_client()->get_nfs_inode_from_ino(ino)->get_fh();
         args.cookie = cookie;
-        ::memcpy(&args.cookieverf, get_client()->get_nfs_inode_from_ino(inode)->dircache_handle->get_cookieverf(), sizeof(args.cookieverf));
+        ::memcpy(&args.cookieverf, get_client()->get_nfs_inode_from_ino(ino)->dircache_handle->get_cookieverf(), sizeof(args.cookieverf));
         // smb
         args.dircount = 524288; // TODO: Set this to user passed value.
         args.maxcount = 524288;
