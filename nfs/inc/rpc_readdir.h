@@ -17,15 +17,15 @@ struct directory_entry
 {
     const cookie3 cookie;
     const struct stat attributes;
-    const struct nfs_inode* const nfs_ino;
+    struct nfs_inode* const nfs_ino;
     const char* const name;
 
-    directory_entry(const char* name_, cookie3 cookie_, struct stat attr, nfs_inode* nfs_ino_):
-        cookie(cookie_),
-        attributes(attr),
-        nfs_ino(nfs_ino_),
-        name(name_)
-    {}
+    directory_entry(const char* name_,
+                    cookie3 cookie_,
+                    const struct stat& attr,
+                    nfs_inode* nfs_ino_);
+
+    ~directory_entry();
 
     /*
      * Returns size of the directory_entry.
