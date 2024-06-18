@@ -258,11 +258,11 @@ rename_files() {
   # List files and capture the time related details
   work_dir=`pwd`
   cd ${mount_dir}
-  python3 ${work_dir}/perf_testing/scripts/rename.py > ${output}/rename.json
+  python3 ${work_dir}/perf_testing/scripts/rename.py > ${work_dir}/rename.json
   cd ${work_dir}
-  cat ${output}/rename.json
+  cat rename.json
 
-  jq '{"name": .name, "time": .rename_time, "unit": .unit}' ${output}/rename.json | jq -s '.' | tee ./${output}/rename_latency.json
+  jq '{"name": .name, "time": .rename_time, "unit": .unit}' ${work_dir}/rename.json | jq -s '.' | tee ./${output}/rename_latency.json
 }
 
 # --------------------------------------------------------------------------------------------------
