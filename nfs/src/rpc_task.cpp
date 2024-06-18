@@ -517,9 +517,13 @@ static void readdirplus_callback(
 
             /*
              * Create the directory entries here.
-             * Note: This will be freed in the destructor ~readdirectory_cache().
+             * Note: This will be freed in the destructor
+             *       ~readdirectory_cache().
+             * TODO: Try to steal entry->name to avoid the strdup().
              */
-            struct directory_entry* dir_entry = new directory_entry(entry->name, entry->cookie, st, nfs_ino);
+            struct directory_entry* dir_entry =
+                new directory_entry(strdup(entry->name),
+                                    entry->cookie, st, nfs_ino);
 
             /*
              * Add it to the directory_entry vector ONLY if it does not cross the max

@@ -92,6 +92,10 @@ struct nfs_inode
      */
     std::shared_ptr<readdirectory_cache> dircache_handle;
     
+    /**
+     * TODO: Initialize attr with postop attributes received in the RPC
+     *       response.
+     */
     nfs_inode(const struct nfs_fh3 *filehandle,
               struct nfs_client *_client,
               fuse_ino_t _ino = 0);
@@ -106,7 +110,7 @@ struct nfs_inode
         lookupcnt++;
 
         AZLogDebug("ino {} lookupcnt incremented to {}",
-                   ino, lookupcnt.load());
+                   ino, (int) lookupcnt.load());
     }
 
     /**
@@ -136,6 +140,14 @@ struct nfs_inode
     const struct nfs_fh3& get_fh() const
     {
         return fh;
+    }
+
+    /**
+     * TODO: Fill this.
+     */
+    bool is_dir() const
+    {
+        return false;
     }
 
     /**
@@ -205,8 +217,6 @@ struct nfs_inode
      * directory, this will invalidate the appropriate cache.
      */
     void invalidate_cache();
-
-    bool purge_readdircache_if_required();
 
     void purge();
 

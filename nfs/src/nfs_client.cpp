@@ -58,12 +58,12 @@ void nfs_client::lookup(fuse_req_t req, fuse_ino_t parent_ino, const char* name)
 
 void nfs_client::getattr(
     fuse_req_t req,
-    fuse_ino_t inode,
+    fuse_ino_t ino,
     struct fuse_file_info* file)
 {
     struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task();
 
-    tsk->init_getattr(req, inode);
+    tsk->init_getattr(req, ino);
     tsk->run_getattr();
 }
 
@@ -94,40 +94,48 @@ void nfs_client::mkdir(
 
 void nfs_client::setattr(
     fuse_req_t req,
-    fuse_ino_t inode,
+    fuse_ino_t ino,
     struct stat* attr,
     int to_set,
     struct fuse_file_info* file)
 {
     struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task();
 
-    tsk->init_setattr(req, inode, attr, to_set, file);
+    tsk->init_setattr(req, ino, attr, to_set, file);
     tsk->run_setattr();
 }
 
 void nfs_client::readdir(
     fuse_req_t req,
-    fuse_ino_t inode,
+    fuse_ino_t ino,
     size_t size,
     off_t offset,
     struct fuse_file_info* file)
 {
     struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task();
+    struct nfs_inode *inode = get_nfs_inode_from_ino(ino);
 
-    tsk->init_readdir(req, inode, size, offset, file);
+    // Force revalidate for offset==0 to ensure cto consistency.
+    inode->revalidate(offset == 0);
+
+    tsk->init_readdir(req, ino, size, offset, file);
     tsk->run_readdir();
 }
 
 void nfs_client::readdirplus(
     fuse_req_t req,
-    fuse_ino_t inode,
+    fuse_ino_t ino,
     size_t size,
     off_t offset,
     struct fuse_file_info* file)
 {
     struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task();
+    struct nfs_inode *inode = get_nfs_inode_from_ino(ino);
 
-    tsk->init_readdirplus(req, inode, size, offset, file);
+    // Force revalidate for offset==0 to ensure cto consistency.
+    inode->revalidate(offset == 0);
+
+    tsk->init_readdirplus(req, ino, size, offset, file);
     tsk->run_readdirplus();
 }
 

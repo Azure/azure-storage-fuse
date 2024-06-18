@@ -146,7 +146,7 @@ public:
 
     void getattr(
         fuse_req_t req,
-        fuse_ino_t inode,
+        fuse_ino_t ino,
         struct fuse_file_info* file);
 
     void create(
@@ -164,7 +164,7 @@ public:
 
     void setattr(
         fuse_req_t req,
-        fuse_ino_t inode,
+        fuse_ino_t ino,
         struct stat* attr,
         int to_set,
         struct fuse_file_info* file);
@@ -176,14 +176,14 @@ public:
 
     void readdir(
         fuse_req_t req,
-        fuse_ino_t inode,
+        fuse_ino_t ino,
         size_t size,
         off_t off,
         struct fuse_file_info* file);
 
     void readdirplus(
         fuse_req_t req,
-        fuse_ino_t inode,
+        fuse_ino_t ino,
         size_t size,
         off_t off,
         struct fuse_file_info* file);
