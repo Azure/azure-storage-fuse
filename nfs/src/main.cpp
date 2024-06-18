@@ -1022,7 +1022,10 @@ int main(int argc, char *argv[])
         goto err_out1;
     }
 
-    // If -d or "-o debug" cmdline option was passed, reset log level to debug.
+    /*
+     * If -d or "-o debug" cmdline option was passed, reset log level to
+     * debug.
+     */
     if (opts.debug) {
         spdlog::set_level(spdlog::level::debug);
     }

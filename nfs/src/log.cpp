@@ -14,5 +14,11 @@ void init_log()
      */
     spdlog::set_level(spdlog::level::info);
 
+    /*
+     * Add thread id in the log pattern, helps to debug when multiple
+     * processes are accessing the mounted filesystem.
+     */
+    spdlog::set_pattern("[%t]%+");
+
     AZLogDebug("Logger initialized");
 }
