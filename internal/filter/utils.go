@@ -165,6 +165,10 @@ func (fv *FileValidator) CheckFileWithFilters(fileInf *internal.ObjAttr) bool {
 func (fv *FileValidator) ChkFile() {
 	// defer fv.wgi.Done()
 	for fileInf := range fv.fileInpQueue {
+		if fileInf.IsDir() {
+			fv.outputChan <- (&opdata{filels: fileInf, ispassed: true})
+			continue
+		}
 		// fmt.Println("sending for check: ", fileInf.Name)
 		Passed := fv.CheckFileWithFilters(fileInf)
 		if Passed { //if a file passes add it to output channel with true
