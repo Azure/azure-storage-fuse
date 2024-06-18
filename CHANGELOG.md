@@ -1,6 +1,6 @@
 ## 2.3.1 (Unreleased)
 **Bug Fixes**
-- Fixed the case where file creation using sas on HNS accounts was returning back wrong error code.
+- Fixed the case where file creation using SAS on HNS accounts was returning back wrong error code.
 - [#1402](https://github.com/Azure/azure-storage-fuse/issues/1402) Fixed proxy URL parsing.
 
 **Features**
