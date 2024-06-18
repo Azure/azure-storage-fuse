@@ -83,7 +83,9 @@ void nfs_inode::revalidate(bool force)
      * has changed that what we have cached, and if so update the cached
      * attributes and invalidate the cache as appropriate.
      */
-    if (update(fattr)) {
+    std::unique_lock<std::shared_mutex> lock(ilock);
+
+    if (update_nolock(fattr)) {
         // File changed.
         attr_timeout_secs = get_actimeo_min();
     } else {
@@ -95,7 +97,10 @@ void nfs_inode::revalidate(bool force)
     attr_timeout_timestamp = now_msecs + attr_timeout_secs*1000;
 }
 
-bool nfs_inode::update(const struct fattr3& fattr)
+/**
+ * Caller must hold exclusive inode lock.
+ */
+bool nfs_inode::update_nolock(const struct fattr3& fattr)
 {
     const bool fattr_is_newer =
         (compare_timespec_and_nfstime(attr.st_ctim, fattr.ctime) == -1);
@@ -123,13 +128,16 @@ bool nfs_inode::update(const struct fattr3& fattr)
 
     // Invalidate cache iff file data has changed.
     if (file_data_changed) {
-        invalidate_cache();
+        invalidate_cache_nolock();
     }
 
     return true;
 }
 
-void nfs_inode::invalidate_cache()
+/**
+ * Caller must hold exclusive inode lock.
+ */
+void nfs_inode::invalidate_cache_nolock()
 {
     /*
      * TODO: Right now we just purge the readdir cache.

@@ -25,6 +25,12 @@ struct nfs_inode
     const uint32_t magic = NFS_INODE_MAGIC;
 
     /*
+     * Inode lock.
+     * Inode must be updated only with this lock held.
+     */
+    std::shared_mutex ilock;
+
+    /*
      * Ref count of this inode.
      * Whenever we make one of the following calls, we must increment the
      * lookupcnt of the inode:
@@ -190,6 +196,8 @@ struct nfs_inode
      * when a file/dir is opened (for close-to-open consistency reasons).
      * Other reasons for force invalidating the caches could be if file/dir
      * was updated by calls to write()/create()/rename().
+     *
+     * This holds the inode lock.
      */
     void revalidate(bool force = false);
 
@@ -208,16 +216,43 @@ struct nfs_inode
      *   and we update nfs_inode::attr from the received attributes.
      *
      * Returns true if 'fattr' is newer than the cached attributes.
+     *
+     * Caller must hold the inode lock.
      */
-    bool update(const struct fattr3& fattr);
+    bool update_nolock(const struct fattr3& fattr);
+
+    /**
+     * Convenience function that calls update_nolock() after holding the
+     * inode lock.
+     */
+    bool update(const struct fattr3& fattr)
+    {
+        std::unique_lock<std::shared_mutex> lock(ilock);
+        return update_nolock(fattr);
+    }
 
     /**
      * Invalidate/zap the cached data.
      * Depending on whether this inode corresponds to a regular file or a
      * directory, this will invalidate the appropriate cache.
+     *
+     * Caller must hold the inode lock.
      */
-    void invalidate_cache();
+    void invalidate_cache_nolock();
 
+    /**
+     * Convenience function that calls invalidate_cache_nolock() after
+     * holding the inode lock.
+     */
+    void invalidate_cache()
+    {
+        std::unique_lock<std::shared_mutex> lock(ilock);
+        invalidate_cache_nolock();
+    }
+
+    /**
+     * Caller must hold the inode lock.
+     */
     void purge();
 
     /*
