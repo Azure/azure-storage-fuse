@@ -8,6 +8,9 @@
  * This represents one connection to the NFS server.
  * For achieving higher throughput we can have more than one connections to the
  * NFS server, as many as the nconnect config/mount option.
+ *
+ * TODO: Reserve this while one RPC is being transmitted, we don't want to
+ *       mix data from multiple senders.
  */
 class nfs_connection
 {

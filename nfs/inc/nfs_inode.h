@@ -80,7 +80,9 @@ struct nfs_inode
      * Cached attributes for this inode and the current value of attribute
      * cache timeout. attr_timeout_secs will be have a value between
      * [acregmin, acregmax] or [acdirmin, acdirmax], depending on the
-     * filetype.
+     * filetype, and holds the current attribute cache timeout value for
+     * this inode, adjusted by exponential backoff and capped by the max
+     * limit.
      * These cached attributes are valid till the absolute milliseconds value
      * attr_timeout_timestamp. On expiry of this we will revalidate the inode
      * by querying the attributes from the server. If the revalidation is
@@ -168,9 +170,9 @@ struct nfs_inode
     {
         switch (file_type) {
             case S_IFDIR:
-                return aznfsc_cfg.acdirmin;
+                return client->mnt_options.acdirmin;
             default:
-                return aznfsc_cfg.acregmin;
+                return client->mnt_options.acregmin;
         }
     }
 
@@ -182,9 +184,9 @@ struct nfs_inode
     {
         switch (file_type) {
             case S_IFDIR:
-                return aznfsc_cfg.acdirmax;
+                return client->mnt_options.acdirmax;
             default:
-                return aznfsc_cfg.acregmax;
+                return client->mnt_options.acregmax;
         }
     }
 

@@ -43,6 +43,13 @@ struct mount_options
     // Deci-seconds to timeout.
     const int timeo;
 
+    // Attribute cache timeout related options.
+    const int acregmin;
+    const int acregmax;
+    const int acdirmin;
+    const int acdirmax;
+    const int actimeo;
+
     // Maximum number of readdir entries that can be requested.
     const uint32_t readdir_maxcount;
 
@@ -59,6 +66,11 @@ struct mount_options
         wsize(aznfsc_cfg.wsize),
         retrans(aznfsc_cfg.retrans),
         timeo(aznfsc_cfg.timeo),
+        acregmin(aznfsc_cfg.acregmin),
+        acregmax(aznfsc_cfg.acregmax),
+        acdirmin(aznfsc_cfg.acdirmin),
+        acdirmax(aznfsc_cfg.acdirmax),
+        actimeo(aznfsc_cfg.actimeo),
         readdir_maxcount(aznfsc_cfg.readdir_maxcount)
     {
     }
@@ -72,6 +84,11 @@ struct mount_options
         wsize(opt->wsize),
         retrans(opt->retrans),
         timeo(opt->timeo),
+        acregmin(opt->acregmin),
+        acregmax(opt->acregmax),
+        acdirmin(opt->acdirmin),
+        acdirmax(opt->acdirmax),
+        actimeo(opt->actimeo),
         readdir_maxcount(opt->readdir_maxcount)
     {
     }
