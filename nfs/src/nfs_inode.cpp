@@ -53,6 +53,26 @@ nfs_inode::~nfs_inode()
     fh.data.data_len = 0;
 }
 
+int nfs_inode::get_actimeo_min() const
+{
+    switch (file_type) {
+        case S_IFDIR:
+            return client->mnt_options.acdirmin;
+        default:
+            return client->mnt_options.acregmin;
+    }
+}
+
+int nfs_inode::get_actimeo_max() const
+{
+    switch (file_type) {
+        case S_IFDIR:
+            return client->mnt_options.acdirmax;
+        default:
+            return client->mnt_options.acregmax;
+    }
+}
+
 void nfs_inode::revalidate(bool force)
 {
     const int64_t now_msecs = get_current_msecs();

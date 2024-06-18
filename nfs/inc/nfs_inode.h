@@ -166,29 +166,13 @@ struct nfs_inode
      * Get the minimum attribute cache timeout value in seconds, to be used
      * for this file.
      */
-    int get_actimeo_min() const
-    {
-        switch (file_type) {
-            case S_IFDIR:
-                return client->mnt_options.acdirmin;
-            default:
-                return client->mnt_options.acregmin;
-        }
-    }
+    int get_actimeo_min() const;
 
     /**
      * Get the maximum attribute cache timeout value in seconds, to be used
      * for this file.
      */
-    int get_actimeo_max() const
-    {
-        switch (file_type) {
-            case S_IFDIR:
-                return client->mnt_options.acdirmax;
-            default:
-                return client->mnt_options.acregmax;
-        }
-    }
+    int get_actimeo_max() const;
 
     /**
      * Revalidate the inode.
