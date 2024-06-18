@@ -394,6 +394,7 @@ func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 		Ctime:  *prop.LastModified,
 		Crtime: *prop.LastModified,
 		Flags:  internal.NewFileBitMap(),
+		Tier:   *prop.AccessTier,
 	}
 	parseMetadata(attr, prop.Metadata)
 
@@ -471,7 +472,7 @@ func (dl *Datalake) List(prefix string, marker *string, count int32) ([]*interna
 	for _, pathInfo := range listPath.Paths {
 		var attr *internal.ObjAttr
 		var lastModifiedTime time.Time
-		if dl.Config.disableSymlink {
+		if (dl.Config.disableSymlink && dl.Config.filters == nil) || (dl.Config.disableSymlink && !dl.Config.filters.TierChk) {
 			var mode fs.FileMode
 			if pathInfo.Permissions != nil {
 				mode, err = getFileMode(*pathInfo.Permissions)

@@ -45,12 +45,13 @@ func getFilterName(str *string) string {
 // it will store the fliters, outer array splitted by ||, inner array splitted by &&
 type UserInputFilters struct {
 	FilterArr [][]Filter
+	TierChk   bool
 }
 
 // this function parses the input string and stores filter in UserInputFilters
 func (fl *UserInputFilters) ParseInp(str *string) error {
 	splitOr := strings.Split((*str), "||") //splitted string on basis of OR
-
+	fl.TierChk = false
 	for _, andFilters := range splitOr { //going over each part splitted by OR
 		var individualFilter []Filter               //this array will store all filters seperated by && at each index
 		splitAnd := strings.Split(andFilters, "&&") //splitted by &&
@@ -68,6 +69,11 @@ func (fl *UserInputFilters) ParseInp(str *string) error {
 				obj, erro = giveRegexFilterObj(&singleFilter)
 			} else if thisFilter == "modtime" {
 				obj, erro = giveModtimeFilterObj(&singleFilter)
+			} else if thisFilter == "tier" {
+				if !fl.TierChk {
+					fl.TierChk = true
+				}
+				obj, erro = giveAccessTierFilterObj(&singleFilter)
 			} else { // if no name matched , means it is not a valid filter , thus return a false
 				return errors.New("invalid filter, no files passed")
 			}
