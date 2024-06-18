@@ -68,7 +68,13 @@ struct nfs_inode
      * Fuse inode number.
      * This is how fuse identifies this file/directory to us.
      */
-    fuse_ino_t ino;
+    const fuse_ino_t ino;
+
+    /*
+     * S_IFREG, S_IFDIR, etc.
+     * 0 is not a valid file type.
+     */
+    const uint32_t file_type = 0;
 
     /*
      * Cached attributes for this inode and the current value of attribute
@@ -104,6 +110,7 @@ struct nfs_inode
      */
     nfs_inode(const struct nfs_fh3 *filehandle,
               struct nfs_client *_client,
+              uint32_t _file_type,
               fuse_ino_t _ino = 0);
 
     ~nfs_inode();
@@ -148,12 +155,9 @@ struct nfs_inode
         return fh;
     }
 
-    /**
-     * TODO: Fill this.
-     */
     bool is_dir() const
     {
-        return false;
+        return (file_type == S_IFDIR);
     }
 
     /**
@@ -162,7 +166,7 @@ struct nfs_inode
      */
     int get_actimeo_min() const
     {
-        switch (attr.st_mode & S_IFMT) {
+        switch (file_type) {
             case S_IFDIR:
                 return aznfsc_cfg.acdirmin;
             default:
@@ -176,7 +180,7 @@ struct nfs_inode
      */
     int get_actimeo_max() const
     {
-        switch (attr.st_mode & S_IFMT) {
+        switch (file_type) {
             case S_IFDIR:
                 return aznfsc_cfg.acdirmax;
             default:
@@ -224,6 +228,9 @@ struct nfs_inode
     /**
      * Convenience function that calls update_nolock() after holding the
      * inode lock.
+     *
+     * XXX This MUST be called whenever we get fresh attributes for a file,
+     *     most commonly as post-op attributes along with some RPC response.
      */
     bool update(const struct fattr3& fattr)
     {
@@ -253,7 +260,7 @@ struct nfs_inode
     /**
      * Caller must hold the inode lock.
      */
-    void purge();
+    void purge_dircache();
 
     /*
      * This function populates the \p results vector by fetching the entries from

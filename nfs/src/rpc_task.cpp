@@ -499,20 +499,34 @@ static void readdirplus_callback(
         {
             // Structure to hold the attributes.
             struct stat st;
+            uint32_t file_type = 0;
+
             if (entry->name_attributes.attributes_follow)
             {
-                task->get_client()->stat_from_fattr3(
-                    &st, &entry->name_attributes.post_op_attr_u.attributes);
+                const fattr3& fattr =
+                    entry->name_attributes.post_op_attr_u.attributes;
+                task->get_client()->stat_from_fattr3(&st, &fattr);
+
+                // Blob NFS supports only these file types.
+                assert((fattr.type == NF3REG) ||
+                       (fattr.type == NF3DIR) ||
+                       (fattr.type == NF3LNK));
+
+                file_type = (fattr.type == NF3DIR) ? S_IFDIR :
+                             ((fattr.type == NF3LNK) ? S_IFLNK : S_IFREG);
             }
             else
             {
+                // Server should always send entry attributes.
+                assert(0);
                 ::memset(&st, 0, sizeof(st));
             }
 
             // Create a new nfs inode for the entry
             nfs_inode* nfs_ino;
             nfs_ino = new nfs_inode(&entry->name_handle.post_op_fh3_u.handle,
-                                    task->get_client());
+                                    task->get_client(),
+                                    file_type);
             //nfs_ino->set_inode((fuse_ino_t)nfs_ino);
 
             /*
@@ -658,8 +672,9 @@ void rpc_task::fetch_readdir_entries_from_server()
         args.dir = get_client()->get_nfs_inode_from_ino(inode)->get_fh();
         args.cookie = cookie;
         ::memcpy(&args.cookieverf, get_client()->get_nfs_inode_from_ino(inode)->dircache_handle->get_cookieverf(), sizeof(args.cookieverf));
-        args.dircount = 1048576; // TODO: Set this to user passed value.
-        args.maxcount = 1048576;
+        // smb
+        args.dircount = 524288; // TODO: Set this to user passed value.
+        args.maxcount = 524288;
 
         if (rpc_nfs3_readdirplus_task(get_rpc_ctx(), readdirplus_callback, &args, this) == NULL)
         {

@@ -10,8 +10,10 @@
  */
 nfs_inode::nfs_inode(const struct nfs_fh3 *filehandle,
                      struct nfs_client *_client,
+                     uint32_t _file_type,
                      fuse_ino_t _ino) :
     ino(_ino == 0 ? (fuse_ino_t) this : _ino),
+    file_type(_file_type),
     client(_client)
 {
     // Sanity assert.
@@ -21,6 +23,11 @@ nfs_inode::nfs_inode(const struct nfs_fh3 *filehandle,
             filehandle->data.data_len <= 64);
     // ino is either set to FUSE_ROOT_ID or set to address of nfs_inode.
     assert((ino == (fuse_ino_t) this) || (ino == FUSE_ROOT_ID));
+
+    // Blob NFS supports only these file types.
+    assert((file_type == S_IFREG) ||
+           (file_type == S_IFDIR) ||
+           (file_type == S_IFLNK));
 
     fh.data.data_len = filehandle->data.data_len;
     fh.data.data_val = new char[fh.data.data_len];
@@ -110,7 +117,10 @@ bool nfs_inode::update_nolock(const struct fattr3& fattr)
         return false;
     }
 
-    // We consider file data as changed when either the mtime or the size changes.
+    /*
+     * We consider file data as changed when either the mtime or the size
+     * changes.
+     */
     const bool file_data_changed =
         ((compare_timespec_and_nfstime(attr.st_mtim, fattr.mtime) != 0) ||
          (attr.st_size != (off_t) fattr.size));
@@ -125,6 +135,9 @@ bool nfs_inode::update_nolock(const struct fattr3& fattr)
 
     // Update cached attributes.
     get_client()->stat_from_fattr3(&attr, &fattr);
+
+    // file type should not change.
+    assert((attr.st_mode & S_IFMT) == file_type);
 
     // Invalidate cache iff file data has changed.
     if (file_data_changed) {
@@ -143,7 +156,9 @@ void nfs_inode::invalidate_cache_nolock()
      * TODO: Right now we just purge the readdir cache.
      *       Once we have the file cache too, we need to purge that for files.
      */
-    purge();
+    if (is_dir()) {
+        purge_dircache();
+    }
 }
 
 /*
@@ -151,7 +166,7 @@ void nfs_inode::invalidate_cache_nolock()
  *  TODO: For now we purge the entire cache. This can be later changed to purge
  *        parts of cache.
  */
-void nfs_inode::purge()
+void nfs_inode::purge_dircache()
 {
     dircache_handle->clear();
 }

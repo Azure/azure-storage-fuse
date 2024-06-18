@@ -34,6 +34,7 @@ bool nfs_client::init()
     root_fh = new nfs_inode(
                 nfs_get_rootfh(transport.get_nfs_context()),
                 this,
+                S_IFDIR,
                 FUSE_ROOT_ID);
     //AZLogInfo("Obtained root fh is {}", root_fh->get_fh());
 
@@ -154,8 +155,18 @@ void nfs_client::reply_entry(
 
     if (fh)
     {
+        // Blob NFS supports only these file types.
+        assert((attr->type == NF3REG) ||
+               (attr->type == NF3DIR) ||
+               (attr->type == NF3LNK));
+
+        const uint32_t file_type =
+            (attr->type == NF3DIR) ? S_IFDIR
+                                   : ((attr->type == NF3LNK) ? S_IFLNK
+                                                             : S_IFREG);
+
         // This will be freed from fuse forget callback.
-        nfs_ino = new nfs_inode(fh, this);
+        nfs_ino = new nfs_inode(fh, this, file_type);
     }
     else
     {
