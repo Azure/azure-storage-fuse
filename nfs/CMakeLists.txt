@@ -104,6 +104,7 @@ add_executable(${CMAKE_PROJECT_NAME}
                src/nfs_client.cpp
                src/rpc_transport.cpp
                src/rpc_task.cpp
+               src/rpc_readdir.cpp
                src/connection.cpp
                src/nfs_inode.cpp
                src/log.cpp
