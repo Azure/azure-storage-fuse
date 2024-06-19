@@ -298,7 +298,7 @@ struct nfs_inode
         size_t max_size,
         std::vector<const directory_entry*>& results,
         bool& eof,
-        bool readdirplus = false);
+        bool readdirplus);
 
     bool make_getattr_call(struct fattr3& attr);
 };

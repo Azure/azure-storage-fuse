@@ -539,8 +539,6 @@ public:
 
     void get_readdir_entries_from_cache();
 
-    void get_readdirplus_entries_from_cache();
-
     void fetch_readdir_entries_from_server();
 };
 

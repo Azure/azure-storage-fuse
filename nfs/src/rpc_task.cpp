@@ -457,7 +457,7 @@ void rpc_task::run_readdir()
 
 void rpc_task::run_readdirplus()
 {
-    get_readdirplus_entries_from_cache();
+    get_readdir_entries_from_cache();
 }
 
 /*
@@ -599,65 +599,36 @@ static void readdirplus_callback(
 
 void rpc_task::get_readdir_entries_from_cache()
 {
-    assert(get_op_type() == FUSE_READDIR);
-
-    bool is_eof = false;
-
+    //const bool readdirplus = (get_op_type() == FUSE_READDIRPLUS);
     struct nfs_inode *nfs_ino = get_client()->get_nfs_inode_from_ino(rpc_api.readdir_task.get_inode());
-    assert (nfs_ino != nullptr);
+    bool is_eof = false;
 
     std::vector<const directory_entry*> readdirentries;
 
-    nfs_ino->lookup_dircache(
-        rpc_api.readdir_task.get_offset() + 1, // +1 to return the next entry from where the client requested.
-        rpc_api.readdir_task.get_size(),
-        readdirentries,
-        is_eof,
-        true /* skip_attr_size */);
+    /*
+     * Query requested directory entries from the readdir cache.
+     * Requested directory entries are the ones with cookie after the one
+     * requested by the client.
+     * Note that Blob NFS uses cookie values that increase by 1 for every file.
+     */
+    nfs_ino->lookup_dircache(rpc_api.readdir_task.get_offset() + 1,
+                             rpc_api.readdir_task.get_size(),
+                             readdirentries,
+                             is_eof,
+                             /*readdirplus*/false);
 
-    // TODO: Send response if eof is set.
-    if (readdirentries.empty())
-    {
+    /*
+     * If eof is already received don't ask any more entries from the server.
+     */
+    if (readdirentries.empty() && !is_eof) {
         /*
-         * Read from the backend only if there is no entry present in the cache.
-         * Note : It is okay to send less number of entries than requested since
-         *        the Fuse layer will request for more num of entries later.
+         * Read from the backend only if there is no entry present in the
+         * cache.
+         * Note: It is okay to send less number of entries than requested since
+         *       the Fuse layer will request for more num of entries later.
          */
         fetch_readdir_entries_from_server();
-    }
-    else
-    {
-        // We are done fetching the entries, send the response now.
-        send_readdir_response(readdirentries);
-    }
-}
-
-void rpc_task::get_readdirplus_entries_from_cache()
-{
-    bool is_eof = false;
-    assert(get_op_type() == FUSE_READDIRPLUS);
-    struct nfs_inode *nfs_ino = get_client()->get_nfs_inode_from_ino(rpc_api.readdir_task.get_inode());
-    assert (nfs_ino != nullptr);
-
-    std::vector<const directory_entry*> readdirentries;
-
-    nfs_ino->lookup_dircache( rpc_api.readdir_task.get_offset()+1,
-                                  rpc_api.readdir_task.get_size(),
-                                  readdirentries,
-                                  is_eof);
-
-    // TODO: Send response if eof is set.
-    if (readdirentries.empty() && !is_eof)
-    {
-        /*
-         * Read from the backend only if there is no entry present in the cache.
-         * Note : It is okay to send less number of entries than requested since
-         *        the Fuse layer will request for more num of entries later.
-         */
-        fetch_readdir_entries_from_server();
-    }
-    else
-    {
+    } else {
         // We are done fetching the entries, send the response now.
         send_readdir_response(readdirentries);
     }
