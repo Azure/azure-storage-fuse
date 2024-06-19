@@ -79,6 +79,8 @@ jobs:
           sudo chmod 777 /mnt/blob_mnt
           sudo chmod 777 /mnt/tempcache
 
+      # ---------------------------------------------------------------------------------------
+      # Run the basic tests using FIO
       # Run the Write tests
       - name: "Read Test"
         uses: "./.github/template/generate_page"
@@ -89,7 +91,7 @@ jobs:
           AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
           AZURE_STORAGE_ACCESS_KEY: ${{ secrets.BLOB_STORAGE_KEY }}
 
-      # Run the Write tests
+      # Run the Write tests with high number of threads
       - name: "High threads Test"
         uses: "./.github/template/generate_page"
         with:
@@ -118,10 +120,13 @@ jobs:
           AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
           AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
           AZURE_STORAGE_ACCESS_KEY: ${{ secrets.BLOB_STORAGE_KEY }}  
-
       # ---------------------------------------------------------------------------------------
+
+
+      # Below tests needs to run seperatly as output is different
+      # ---------------------------------------------------------------------------------------------------
       # Run the List tests
-      # This needs to run seperatly as output is different, and shall always runs after create tests
+      # this shall always runs after create tests
       - name: "List File Test"
         run: |
           rm -rf /mnt/blob_mnt/*
@@ -173,19 +178,19 @@ jobs:
           gh-pages-branch: benchmarks
           benchmark-data-dir-path: bandwidth/app
         
-      - name: "Update Local Bandwidth Results : App"
-        uses: benchmark-action/github-action-benchmark@v1
-        with:
-          output-file-path: app/app_local_bandwidth.json
-          tool: 'customBiggerIsBetter'
-          alert-threshold: "160%"
-          max-items-in-chart: 100
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          fail-on-alert: true
-          auto-push: true
-          comment-on-alert: true
-          gh-pages-branch: benchmarks
-          benchmark-data-dir-path: bandwidth/applocal
+      # - name: "Update Local Bandwidth Results : App"
+      #   uses: benchmark-action/github-action-benchmark@v1
+      #   with:
+      #     output-file-path: app/app_local_bandwidth.json
+      #     tool: 'customBiggerIsBetter'
+      #     alert-threshold: "160%"
+      #     max-items-in-chart: 100
+      #     github-token: ${{ secrets.GITHUB_TOKEN }}
+      #     fail-on-alert: true
+      #     auto-push: true
+      #     comment-on-alert: true
+      #     gh-pages-branch: benchmarks
+      #     benchmark-data-dir-path: bandwidth/applocal
 
       - name: "Update Latency Results : App"
         uses: benchmark-action/github-action-benchmark@v1
@@ -217,7 +222,7 @@ jobs:
       - name: "Update Latency Results : Rename"
         uses: benchmark-action/github-action-benchmark@v1
         with:
-          output-file-path: rename/rename_latency.json
+          output-file-path: rename/rename_time.json
           tool: 'customSmallerIsBetter'
           alert-threshold: "160%"
           max-items-in-chart: 100
@@ -226,6 +231,6 @@ jobs:
           auto-push: true
           comment-on-alert: true
           gh-pages-branch: benchmarks
-          benchmark-data-dir-path: time/app  
+          benchmark-data-dir-path: time/rename  
                          
       # ---------------------------------------------------------------------------------------        

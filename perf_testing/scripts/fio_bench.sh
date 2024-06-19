@@ -210,13 +210,13 @@ read_write_using_app() {
   cat ${output}/app_read_*.json
 
   # Local SSD Writing just for comparison
-  echo `date` ' : Starting Local write tests'
-  for i in {1,10,40,100} 
-  do
-    echo `date` ' : Write test for ${i} GB file'
-    python3 ./perf_testing/scripts/write.py ${mount_dir} ${i} > ${output}/app_local_write_${i}.json
-  done
-  rm -rf ${mount_dir}/*
+  # echo `date` ' : Starting Local write tests'
+  # for i in {1,10,40,100} 
+  # do
+  #   echo `date` ' : Write test for ${i} GB file'
+  #   python3 ./perf_testing/scripts/write.py ${mount_dir} ${i} > ${output}/app_local_write_${i}.json
+  # done
+  # rm -rf ${mount_dir}/*
 
 
   # ----- HighSpeed tests -----------
@@ -226,7 +226,7 @@ read_write_using_app() {
 
   # Run the python script to read files
   echo `date` ' : Starting highspeed tests'
-  python3 ./perf_testing/scripts/highspeed_create.py ${mount_dir} 10 > ${output}/app_write_highcreate.json
+  python3 ./perf_testing/scripts/highspeed_create.py ${mount_dir} 10 > ${output}/app_write_highspeed.json
   
   blobfuse2 unmount all
   sleep 3
@@ -243,7 +243,7 @@ read_write_using_app() {
   jq '{"name": .name, "value": .speed, "unit": .unit}' ${output}/app_write_*.json ${output}/app_read_*.json | jq -s '.' | tee ./${output}/app_bandwidth.json
   jq '{"name": .name, "value": .total_time, "unit": "seconds"}' ${output}/app_write_*.json ${output}/app_read_*.json | jq -s '.' | tee ./${output}/app_time.json
 
-  jq '{"name": .name, "value": .speed, "unit": .unit}' ${output}/app_local_write_*.json | jq -s '.' | tee ./${output}/app_local_bandwidth.json
+  # jq '{"name": .name, "value": .speed, "unit": .unit}' ${output}/app_local_write_*.json | jq -s '.' | tee ./${output}/app_local_bandwidth.json
 }
 
 # --------------------------------------------------------------------------------------------------
@@ -262,7 +262,7 @@ rename_files() {
   cd ${work_dir}
   cat rename.json
 
-  jq '{"name": .name, "time": .rename_time, "unit": .unit}' ${work_dir}/rename.json | jq -s '.' | tee ./${output}/rename_latency.json
+  jq '{"name": .name, "time": .rename_time, "unit": .unit}' ${work_dir}/rename.json | jq -s '.' | tee ./${output}/rename_time.json
 }
 
 # --------------------------------------------------------------------------------------------------
