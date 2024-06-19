@@ -26,22 +26,20 @@ Master test script that simulates this benchmarking test suite is located [here]
 - Install `fio` and `jq` before you execute the script
 - Allowed `test-name` are: read / write / create / list / app / rename
 
-Below table provides latency/time and bandwidth results for above mentioned test names:
+Below table provides latency/time and bandwidth results for various tests. Each test has a linked section describing details of that test case.
 
 
 | Test Name | Latency/Time | Bandwdith |
 |-----------|--------------|-----------|
-| [Create](https://azure.github.io/azure-storage-fuse/#create)    |  [Latency](https://azure.github.io/azure-storage-fuse/latency/create/) |  [Bandwidth](https://azure.github.io/azure-storage-fuse/bandwidth/create/)  | 
-| [Write](https://azure.github.io/azure-storage-fuse/#write)     |  [Latency](https://azure.github.io/azure-storage-fuse/latency/write/)  |  [Bandwidth](https://azure.github.io/azure-storage-fuse/bandwidth/write/)   |
-| [Read](https://azure.github.io/azure-storage-fuse/#read)     |  [Latency](https://azure.github.io/azure-storage-fuse/latency/read/)   |  [Bandwidth](https://azure.github.io/azure-storage-fuse/bandwidth/read/)    |
-| List](https://azure.github.io/azure-storage-fuse/#list)      |  [Time](https://azure.github.io/azure-storage-fuse/time/list/)         |   --  |
-| [Rename](https://azure.github.io/azure-storage-fuse/#rename)    |  [Time](https://azure.github.io/azure-storage-fuse/time/rename/)       |   --  |
-| [Highly parallel](https://azure.github.io/azure-storage-fuse/#high-threads) |  [Latency](https://azure.github.io/azure-storage-fuse/latency/highlyparallel/)  | [Bandwidth](https://azure.github.io/azure-storage-fuse/bandwidth/highlyparallel/)  |
-| [App](https://azure.github.io/azure-storage-fuse/#application-test)       |  [Time](https://azure.github.io/azure-storage-fuse/time/app/) |  [Bandwidth](https://azure.github.io/azure-storage-fuse/bandwidth/app/) |
+| [Create](https://azure.github.io/azure-storage-fuse/#create)    |  [Create Latency](https://azure.github.io/azure-storage-fuse/latency/create/) |  [Create Bandwidth](https://azure.github.io/azure-storage-fuse/bandwidth/create/)  | 
+| [Write](https://azure.github.io/azure-storage-fuse/#write)     |  [Write Latency](https://azure.github.io/azure-storage-fuse/latency/write/)  |  [Write Bandwidth](https://azure.github.io/azure-storage-fuse/bandwidth/write/)   |
+| [Read](https://azure.github.io/azure-storage-fuse/#read)     |  [Read Latency](https://azure.github.io/azure-storage-fuse/latency/read/)   |  [Read Bandwidth](https://azure.github.io/azure-storage-fuse/bandwidth/read/)    |
+| [List](https://azure.github.io/azure-storage-fuse/#list)      |  [List Time](https://azure.github.io/azure-storage-fuse/time/list/)         |   --  |
+| [Rename](https://azure.github.io/azure-storage-fuse/#rename)    |  [Rename Time](https://azure.github.io/azure-storage-fuse/time/rename/)       |   --  |
+| [Highly parallel](https://azure.github.io/azure-storage-fuse/#high-threads) |  [Parallel Latency](https://azure.github.io/azure-storage-fuse/latency/highlyparallel/)  | [Parallel Bandwidth](https://azure.github.io/azure-storage-fuse/bandwidth/highlyparallel/)  |
+| [Application](https://azure.github.io/azure-storage-fuse/#application-test)       |  [Application Time](https://azure.github.io/azure-storage-fuse/time/app/) |  [Application Bandwidth](https://azure.github.io/azure-storage-fuse/bandwidth/app/) |
 
 
-
-Details about each of the test case follows:
 
 ### Create
 In this test `fio` command is used to create large number of small files in parallel. As part of the test `bandwidth` and `latency` are measured. Following cases are performed as part of this test:
