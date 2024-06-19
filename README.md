@@ -26,6 +26,27 @@ Master test script that simulates this benchmarking test suite is located [here]
 - Install `fio` and `jq` before you execute the script
 - Allowed `test-name` are: read / write / create / list / app / rename
 
+Below table provides latency/time and bandwidth results for above mentioned test names:
+| Test Name | Latency/Time | Bandwdith |
+|-----------|--------------|-----------|
+| Create    |  [Latency](https://azure.github.io/azure-storage-fuse/latency/create/) |  [Bandwidth](https://azure.github.io/azure-storage-fuse/bandwidth/create/)  | 
+| Write     |  [Latency](https://azure.github.io/azure-storage-fuse/latency/write/)  |  [Bandwidth](https://azure.github.io/azure-storage-fuse/bandwidth/write/)   |
+| Read      |  [Latency](https://azure.github.io/azure-storage-fuse/latency/read/)   |  [Bandwidth](https://azure.github.io/azure-storage-fuse/bandwidth/read/)    |
+| List      |  [Time](https://azure.github.io/azure-storage-fuse/time/list/)         |   --  |
+| Rename    |  [Time](https://azure.github.io/azure-storage-fuse/time/rename/)       |   --  |
+| Highly parallel |  [Latency](https://azure.github.io/azure-storage-fuse/latency/highlyparallel/)  | [Bandwidth](https://azure.github.io/azure-storage-fuse/bandwidth/highlyparallel/)  |
+| App       |  [Time](https://azure.github.io/azure-storage-fuse/time/app/) |  [Bandwidth](https://azure.github.io/azure-storage-fuse/bandwidth/app/) |
+
+Details about each of the test case follows:
+
+### Create
+In this test `fio` command is used to create large number of small files in parallel. As part of the test `bandwidth` and `latency` are measured. Following cases are performed as part of this test:
+```
+    - Create 1000 files of 1M each in 10 parallel threads
+    - Create 1000 files of 1M each in 100 parallel threads
+    - Create 100,000 files of 1K each in 20 parallel threads
+```
+All fio config files used during these tests are located [here](https://github.com/Azure/azure-storage-fuse/tree/vibhansa/perftestrunner/perf_testing/config/create).
 
 ### Write
 In this test `fio` command is used to run various write workflows. As part of the test `bandwidth` and `latency` are measured. Each test is run for 30 seconds and average of 3 such iteration is taken. Both `bandwidth` and `latency` are taken from `fio` output directly and projected in the charts. To simulate different write work-flows following cases are performed:
@@ -36,10 +57,6 @@ In this test `fio` command is used to run various write workflows. As part of th
     - Sequential write by 16 parallel threads on 16 different files of 100G size.
 ```
 All fio config files used during these tests are located [here](https://github.com/Azure/azure-storage-fuse/tree/vibhansa/perftestrunner/perf_testing/config/write).
-
-Results for `bandwidth` of these tests are located [here](https://azure.github.io/azure-storage-fuse/bandwidth/write/).
-
-Results for `latency` of these tests are located [here](https://azure.github.io/azure-storage-fuse/latency/write/).
 
 ### Read
 In this test `fio` command is used to run various read workflows. As part of the test `bandwidth` and `latency` are measured. Each test is run for 30 seconds and average of 3 such iteration is taken. Both `bandwidth` and `latency` are taken from `fio` output directly and projected in the charts. To simulate different read work-flows following cases are performed:
@@ -56,10 +73,12 @@ In this test `fio` command is used to run various read workflows. As part of the
 ```
 All fio config files used during these tests are located [here](https://github.com/Azure/azure-storage-fuse/tree/vibhansa/perftestrunner/perf_testing/config/read).
 
-Results for `bandwidth` of these tests are located [here](https://azure.github.io/azure-storage-fuse/bandwidth/read/).
+### List
+In this test standard linux `ls -U --color=never` command is used to list all files on the mount path. Graphs are plotted based on total time taken by this operation. Post listing this test case also execute a delete operation to delete all files on the container and measures total time take to delete these files.
+For the benchmarking purpose this test is executed after `Create` tests so that storage container has 100K+ files.
 
-Results for `latency` of these tests are located [here](https://azure.github.io/azure-storage-fuse/latency/read/).
-
+### Rename
+In this test 5000 files of 1MB size each are created using a python script and then each file is renamed using os.rename() method. Total time to rename all 5000 files is measured. 
 
 ### High Threads
 In this test `fio` command is used to run various read/write workflows with high number of parallel threads. As part of the test `bandwidth` and `latency` are measured. Each test is run for 60 seconds and average of 3 such iteration is taken. Both `bandwidth` and `latency` are taken from `fio` output directly and projected in the charts. To simulate different read/write work-flows following cases are performed:
@@ -70,32 +89,10 @@ In this test `fio` command is used to run various read/write workflows with high
 ```
 All fio config files used during these tests are located [here](https://github.com/Azure/azure-storage-fuse/tree/vibhansa/perftestrunner/perf_testing/config/high_threads).
 
-Results for `bandwidth` of these tests are located [here](https://azure.github.io/azure-storage-fuse/bandwidth/highlyparallel/).
-
-Results for `latency` of these tests are located [here](https://azure.github.io/azure-storage-fuse/latency/highlyparallel/).
-
-### Create
-In this test `fio` command is used to create large number of small files in parallel. As part of the test `bandwidth` and `latency` are measured. Following cases are performed as part of this test:
-```
-    - Create 1000 files of 1M each in 10 parallel threads
-    - Create 1000 files of 1M each in 100 parallel threads
-    - Create 100,000 files of 1K each in 20 parallel threads
-```
-All fio config files used during these tests are located [here](https://github.com/Azure/azure-storage-fuse/tree/vibhansa/perftestrunner/perf_testing/config/create).
-
-Results for `bandwidth` of these tests are located [here](https://azure.github.io/azure-storage-fuse/bandwidth/create/).
-
-Results for `latency` of these tests are located [here](https://azure.github.io/azure-storage-fuse/latency/create/).
-
-### List
-In this test standard linux `ls -U --color=never` command is used to list all files on the mount path. Graphs are plotted based on total time taken by this operation. Post listing this test case also execute a delete operation to delete all files on the container and measures total time take to delete these files.
-For the benchmarking purpose this test is executed after `Create` tests so that storage container has 100K+ files.
-
-Results for `time taken` by this test are located [here](https://azure.github.io/azure-storage-fuse/time/list/).
-
 ### Application Test
 We have observed that `fio` and `dd` commands have certain overhead of their own and they are not able to utilize our fuse solution to its full potential. With such tools you will observe tool itself consuming 100% CPU and performance of Blobfuse2 being blocked by the tool itself. To overcome this we created custom python applications to simulate sequential red/write of a large file. 
 
-These applications are located [here](https://github.com/Azure/azure-storage-fuse/tree/vibhansa/perftestrunner/perf_testing/scripts/). Read/Write application is executed once and based on the time taken to read/write given amount of data bandwidth is computed. Final results are published [here](https://azure.github.io/azure-storage-fuse/bandwidth/app/).
+These applications are located [here](https://github.com/Azure/azure-storage-fuse/tree/vibhansa/perftestrunner/perf_testing/scripts/). 
+Read/Write application is executed once and based on the time taken to read/write given amount of data bandwidth is computed. 
 
 
