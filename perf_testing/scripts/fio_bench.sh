@@ -262,7 +262,7 @@ rename_files() {
   cd ${work_dir}
   cat rename.json
 
-  jq '{"name": .name, "time": .rename_time, "unit": .unit}' ${work_dir}/rename.json | jq -s '.' | tee ./${output}/rename_time.json
+  jq '{"name": .name, "value": .rename_time, "unit": .unit}' ${work_dir}/rename.json | jq -s '.' | tee ./${output}/rename_time.json
 }
 
 # --------------------------------------------------------------------------------------------------
