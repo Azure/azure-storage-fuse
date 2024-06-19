@@ -38,7 +38,7 @@ Below table provides latency/time and bandwidth results for various tests. Each 
 | [Rename](https://azure.github.io/azure-storage-fuse/#rename)    |  [Rename Time](https://azure.github.io/azure-storage-fuse/time/rename/)       |   --  |
 | [Highly Parallel](https://azure.github.io/azure-storage-fuse/#high-parallel) |  [Parallel Latency](https://azure.github.io/azure-storage-fuse/latency/highlyparallel/)  | [Parallel Bandwidth](https://azure.github.io/azure-storage-fuse/bandwidth/highlyparallel/)  |
 | [Application](https://azure.github.io/azure-storage-fuse/#application-test)       |  [Application Time](https://azure.github.io/azure-storage-fuse/time/app/) |  [Application Bandwidth](https://azure.github.io/azure-storage-fuse/bandwidth/app/) |
-| [Max Out](https://azure.github.io/azure-storage-fuse/#max-out)       |  [Application Time](https://azure.github.io/azure-storage-fuse/time/highapp/) |  [Application Bandwidth](https://azure.github.io/azure-storage-fuse/bandwidth/highapp/) |
+| [Max Out](https://azure.github.io/azure-storage-fuse/#max-out)       |  [Max Time](https://azure.github.io/azure-storage-fuse/time/highapp/) |  [Max Bandwidth](https://azure.github.io/azure-storage-fuse/bandwidth/highapp/) |
 
 
 
