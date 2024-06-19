@@ -10,6 +10,14 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
+// declaring all filters here
+const size = "size"
+const format = "format"
+const regex = "regex"
+const modtime = "modtime"
+const tier = "tier"
+const tag = "tag"
+
 // struct used for storing files with bool (passed or !passed) in output channel
 type opdata struct {
 	filels   *internal.ObjAttr
@@ -42,16 +50,18 @@ func getFilterName(str *string) string {
 	return "error" //if no substring is returned inside loop this means the filter name was not valid or does not exists
 }
 
-// it will store the fliters, outer array splitted by ||, inner array splitted by &&
+// it will store the fliters, outer array splitted by ||, inner array splitted by &&, tier filter presence and tag filter presence
 type UserInputFilters struct {
 	FilterArr [][]Filter
 	TierChk   bool
+	TagChk    bool
 }
 
-// this function parses the input string and stores filter in UserInputFilters
+// this function parses the input string and stores filters, tierchk and tagchk in UserInputFilters
 func (fl *UserInputFilters) ParseInp(str *string) error {
 	splitOr := strings.Split((*str), "||") //splitted string on basis of OR
 	fl.TierChk = false
+	fl.TagChk = false
 	for _, andFilters := range splitOr { //going over each part splitted by OR
 		var individualFilter []Filter               //this array will store all filters seperated by && at each index
 		splitAnd := strings.Split(andFilters, "&&") //splitted by &&
@@ -61,20 +71,25 @@ func (fl *UserInputFilters) ParseInp(str *string) error {
 			thisFilter = strings.ToLower(thisFilter) //converted to lowercase
 			var obj Filter
 			var erro error
-			if thisFilter == "size" {
+			if thisFilter == size {
 				obj, erro = giveSizeFilterObj(&singleFilter)
-			} else if thisFilter == "format" {
+			} else if thisFilter == format {
 				obj, erro = giveFormatFilterObj(&singleFilter)
-			} else if thisFilter == "regex" {
+			} else if thisFilter == regex {
 				obj, erro = giveRegexFilterObj(&singleFilter)
-			} else if thisFilter == "modtime" {
+			} else if thisFilter == modtime {
 				obj, erro = giveModtimeFilterObj(&singleFilter)
-			} else if thisFilter == "tier" {
-				if !fl.TierChk {
+			} else if thisFilter == tier {
+				if !fl.TierChk { //if tier filter is present , set tierchk to true
 					fl.TierChk = true
 				}
 				obj, erro = giveAccessTierFilterObj(&singleFilter)
-			} else { // if no name matched , means it is not a valid filter , thus return a false
+			} else if thisFilter == tag {
+				if !fl.TagChk { //if tag filter is present , set tagchk to true
+					fl.TagChk = true
+				}
+				obj, erro = giveBlobTagFilterObj(&singleFilter)
+			} else { // if no name matched , means it is not a valid filter , thus return an error
 				return errors.New("invalid filter, no files passed")
 			}
 			if erro != nil { //if any filter provided error while parsing return error
@@ -88,11 +103,9 @@ func (fl *UserInputFilters) ParseInp(str *string) error {
 }
 
 type FileValidator struct {
-	workers int //no of threads analysing file
-	// atomicflag int32 //used to close output channel along with fileCnt
-	fileCnt int64
-	wgo     sync.WaitGroup //to wait until all files from output channel are processed
-	// wgi          sync.WaitGroup
+	workers      int                    //no of threads analysing file
+	fileCnt      int64                  //total number of files that will be checked against filters
+	wgo          sync.WaitGroup         //to wait until all files from output channel are processed
 	fileInpQueue chan *internal.ObjAttr //file input channel
 	outputChan   chan *opdata           //file output channel (containing both passed and !passed files)
 	FilterArr    [][]Filter             //stores filters
@@ -102,15 +115,13 @@ type FileValidator struct {
 // read output channel
 func (fv *FileValidator) RecieveOutput() {
 	defer fv.wgo.Done()
-	var counter int64 = 0
+	var counter int64 = 0 //keeps count of number of files recieved in output channel
 	for data := range fv.outputChan {
 		counter++
 		// fmt.Println("OutPut Channel: ", data.filels.Name, " ", data.ispassed)  DEBUG PRINT
 		if data.ispassed { //if files passed filter , append it to list of final files
-			// fmt.Println("In finalFiles : ", data.filels.Name)
 			fv.finalFiles = append(fv.finalFiles, data.filels)
 		}
-		// Check if the atomic variable is true :No longer needed, was creating an issue
 		if counter == fv.fileCnt { //indicates that all files are processed and read from output channel , close channel now
 			close(fv.outputChan)
 			break
@@ -163,21 +174,17 @@ func (fv *FileValidator) CheckFileWithFilters(fileInf *internal.ObjAttr) bool {
 
 // this is thread pool , where 16 threads are running
 func (fv *FileValidator) ChkFile() {
-	// defer fv.wgi.Done()
 	for fileInf := range fv.fileInpQueue {
-		if fileInf.IsDir() {
+		if fileInf.IsDir() { //pass all directories as it is without applying filter on them
 			fv.outputChan <- (&opdata{filels: fileInf, ispassed: true})
 			continue
 		}
 		// fmt.Println("sending for check: ", fileInf.Name)
 		Passed := fv.CheckFileWithFilters(fileInf)
 		if Passed { //if a file passes add it to output channel with true
-			// fmt.Println("Final Output: ", fileInf.Name)
 			fv.outputChan <- (&opdata{filels: fileInf, ispassed: true})
 		} else { //if a file passes add it to output channel with false
-			// fmt.Println("Not Output: ", fileInf.Name, " passing ", Passed)
 			fv.outputChan <- (&opdata{filels: fileInf, ispassed: false})
 		}
 	}
-	// fmt.Println("worker ", id, " stopped")
 }

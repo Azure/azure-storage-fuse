@@ -44,31 +44,46 @@ func newModTimeFilter(args ...interface{}) Filter {
 }
 
 func giveModtimeFilterObj(singleFilter *string) (Filter, error) {
-	erro := errors.New("invalid filter, no files passed")
+	erro := errors.New("invalid Modtime filter, no files passed")
 	if strings.Contains((*singleFilter), "<=") {
 		splitedParts := strings.Split((*singleFilter), "<=")
 		timeRFC1123str := strings.TrimSpace(splitedParts[1])
-		timeRFC1123, _ := time.Parse(time.RFC1123, timeRFC1123str)
+		timeRFC1123, err := time.Parse(time.RFC1123, timeRFC1123str)
+		if err != nil {
+			return nil, erro
+		}
 		return newModTimeFilter("<=", timeRFC1123), nil
 	} else if strings.Contains((*singleFilter), ">=") {
 		splitedParts := strings.Split((*singleFilter), ">=")
 		timeRFC1123str := strings.TrimSpace(splitedParts[1])
-		timeRFC1123, _ := time.Parse(time.RFC1123, timeRFC1123str)
+		timeRFC1123, err := time.Parse(time.RFC1123, timeRFC1123str)
+		if err != nil {
+			return nil, erro
+		}
 		return newModTimeFilter(">=", timeRFC1123), nil
 	} else if strings.Contains((*singleFilter), "<") {
 		splitedParts := strings.Split((*singleFilter), "<")
 		timeRFC1123str := strings.TrimSpace(splitedParts[1])
-		timeRFC1123, _ := time.Parse(time.RFC1123, timeRFC1123str)
+		timeRFC1123, err := time.Parse(time.RFC1123, timeRFC1123str)
+		if err != nil {
+			return nil, erro
+		}
 		return newModTimeFilter("<", timeRFC1123), nil
 	} else if strings.Contains((*singleFilter), ">") {
 		splitedParts := strings.Split((*singleFilter), ">")
 		timeRFC1123str := strings.TrimSpace(splitedParts[1])
-		timeRFC1123, _ := time.Parse(time.RFC1123, timeRFC1123str)
+		timeRFC1123, err := time.Parse(time.RFC1123, timeRFC1123str)
+		if err != nil {
+			return nil, erro
+		}
 		return newModTimeFilter(">", timeRFC1123), nil
 	} else if strings.Contains((*singleFilter), "=") {
 		splitedParts := strings.Split((*singleFilter), "=")
 		timeRFC1123str := strings.TrimSpace(splitedParts[1])
-		timeRFC1123, _ := time.Parse(time.RFC1123, timeRFC1123str)
+		timeRFC1123, err := time.Parse(time.RFC1123, timeRFC1123str)
+		if err != nil {
+			return nil, erro
+		}
 		return newModTimeFilter("=", timeRFC1123), nil
 	} else {
 		return nil, erro

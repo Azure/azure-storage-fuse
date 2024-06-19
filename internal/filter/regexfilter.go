@@ -8,6 +8,8 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
+const lenregex = len(regex)
+
 // RegexFilter and its attributes
 type regexFilter struct {
 	regex_inp *regexp.Regexp
@@ -28,11 +30,11 @@ func newRegexFilter(args ...interface{}) Filter {
 
 func giveRegexFilterObj(singleFilter *string) (Filter, error) {
 	(*singleFilter) = strings.Map(StringConv, (*singleFilter))
-	erro := errors.New("invalid filter, no files passed")
-	if (len((*singleFilter)) <= 6) || ((*singleFilter)[5] != '=') { //since len(regex) = 5, at next position (ie index 5) there should be "=" pnly
+	erro := errors.New("invalid regex filter, no files passed")
+	if (len((*singleFilter)) <= lenregex+1) || ((*singleFilter)[lenregex] != '=') { //since len(regex) = 5, at next position (ie index 5) there should be "=" pnly
 		return nil, erro
 	}
-	value := (*singleFilter)[6:] //6 is used because len(regex) = 5 + 1
+	value := (*singleFilter)[lenregex+1:] //len(regex)+1 = 5 + 1
 	pattern, err := regexp.Compile(value)
 	if err != nil {
 		return nil, erro

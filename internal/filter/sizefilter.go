@@ -8,6 +8,8 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
+const lensize = len(size)
+
 // SizeFilter and its attributes
 type SizeFilter struct {
 	opr   string
@@ -42,26 +44,26 @@ func newSizeFilter(args ...interface{}) Filter {
 
 func giveSizeFilterObj(singleFilter *string) (Filter, error) {
 	(*singleFilter) = strings.Map(StringConv, (*singleFilter)) //remove all spaces and make all upperCase to lowerCase
-	sinChk := (*singleFilter)[4:5]                             //single char after size (ex- size=7888 , here sinChk will be "=")
-	doubChk := (*singleFilter)[4:6]                            //2 chars after size (ex- size>=8908 , here doubChk will be ">=")
-	erro := errors.New("invalid filter, no files passed")
+	sinChk := (*singleFilter)[lensize : lensize+1]             //single char after size (ex- size=7888 , here sinChk will be "=")
+	doubChk := (*singleFilter)[lensize : lensize+2]            //2 chars after size (ex- size>=8908 , here doubChk will be ">=")
+	erro := errors.New("invalid size filter, no files passed")
 	if !((sinChk == "=") || (sinChk == ">") || (sinChk == "<") || (doubChk == ">=") || (doubChk == "<=")) {
 		return nil, erro
 	}
-	value := (*singleFilter)[5:] // 5 is used since len(size) = 4 and + 1
+	value := (*singleFilter)[lensize+1:] // len(size)+1 = 4 and + 1
 	floatVal, err := strconv.ParseFloat(value, 64)
 	if err != nil {
-		if (*singleFilter)[5] != '=' {
+		if (*singleFilter)[lensize+1] != '=' {
 			return nil, erro
 		} else {
-			value := (*singleFilter)[6:] // 5 is used since len(size) = 4 and + 2
+			value := (*singleFilter)[lensize+2:] // len(size)+2 = 4 and + 2
 			floatVal, err = strconv.ParseFloat(value, 64)
 			if err != nil {
 				return nil, erro
 			}
-			return newSizeFilter((*singleFilter)[4:6], floatVal), nil // 4 to 6 will give operator ex "<="
+			return newSizeFilter((*singleFilter)[lensize:lensize+2], floatVal), nil // it will give operator ex "<="
 		}
 	} else {
-		return newSizeFilter((*singleFilter)[4:5], floatVal), nil
+		return newSizeFilter((*singleFilter)[lensize:lensize+1], floatVal), nil
 	}
 }

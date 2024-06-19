@@ -82,6 +82,7 @@ type ObjAttr struct {
 	MD5      []byte
 	Metadata map[string]*string // extra information to preserve
 	Tier     string             //access tier of blob
+	Tags     map[string]string  //blobtags (key value pair)
 }
 
 // IsDir : Test blob is a directory or not

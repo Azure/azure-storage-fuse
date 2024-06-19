@@ -106,6 +106,10 @@ func (bb *BlockBlob) Configure(cfg AzStorageConfig) error {
 		Snapshots: false,
 	}
 
+	//if filter is provided, and blobtag filter is also present then we need the details about blobtags
+	if bb.AzStorageConnection.Config.filters != nil && bb.AzStorageConnection.Config.filters.TagChk {
+		bb.listDetails.Tags = true
+	}
 	return nil
 }
 
@@ -599,6 +603,9 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 			parseMetadata(attr, blobInfo.Metadata)
 			attr.Flags.Set(internal.PropFlagMetadataRetrieved)
 			attr.Flags.Set(internal.PropFlagModeDefault)
+		}
+		if bb.listDetails.Tags { //if we need blobtags
+			attr.Tags = parseBlobTags(blobInfo.BlobTags)
 		}
 		blobList = append(blobList, attr)
 

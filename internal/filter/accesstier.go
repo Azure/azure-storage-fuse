@@ -2,50 +2,45 @@ package filter
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
+const lenTier = len(tier)
+
 type AccessTierFilter struct {
-	opr  string
+	opr  bool // true means equal to , false means not equal to
 	tier string
 }
 
 func (filter AccessTierFilter) Apply(fileInfo *internal.ObjAttr) bool {
 	// fmt.Println("AccessTier filter ", filter, " file name ", (*fileInfo).Name)  DEBUG PRINT
-	fmt.Println("inside filter tier ", filter, " with given tier ", filter.tier, " and file tier ", fileInfo.Tier)
-	if (filter.opr == "=") && (filter.tier == strings.ToLower(fileInfo.Tier)) {
-		return true
-	} else if (filter.opr == "!=") && (filter.tier != strings.ToLower(fileInfo.Tier)) {
-		return true
-	}
-	return false
+	return (filter.opr == (filter.tier == strings.ToLower(fileInfo.Tier))) //if both are same then return true
 }
 
 // used for dynamic creation of AccessTierFilter
 func newAccessTierFilter(args ...interface{}) Filter {
 	return AccessTierFilter{
-		opr:  args[0].(string),
+		opr:  args[0].(bool),
 		tier: args[1].(string),
 	}
 }
 
 func giveAccessTierFilterObj(singleFilter *string) (Filter, error) {
 	(*singleFilter) = strings.Map(StringConv, (*singleFilter)) //remove all spaces and make all upperCase to lowerCase
-	sinChk := (*singleFilter)[4:5]                             //single char after tier (ex- tier=hot , here sinChk will be "=")
-	doubChk := (*singleFilter)[4:6]                            //2 chars after tier (ex- tier != cold , here doubChk will be "!=")
-	erro := errors.New("invalid filter, no files passed")
+	sinChk := (*singleFilter)[lenTier : lenTier+1]             //single char after tier (ex- tier=hot , here sinChk will be "=")
+	doubChk := (*singleFilter)[lenTier : lenTier+2]            //2 chars after tier (ex- tier != cold , here doubChk will be "!=")
+	erro := errors.New("invalid accesstier filter, no files passed")
 	if !((sinChk == "=") || (doubChk == "!=")) {
 		return nil, erro
 	}
-	if (doubChk == "!=") && (len(*singleFilter) > 6) {
-		value := (*singleFilter)[6:] // 5 is used since len(tier) = 4 and + 1
-		return newAccessTierFilter(doubChk, value), nil
-	} else if (sinChk == "=") && (len(*singleFilter) > 5) {
-		value := (*singleFilter)[5:] // 5 is used since len(tier) = 4 and + 1
-		return newAccessTierFilter(sinChk, value), nil
+	if (doubChk == "!=") && (len(*singleFilter) > lenTier+2) {
+		value := (*singleFilter)[lenTier+2:] // len(tier) + 2 = 4 and + 2
+		return newAccessTierFilter(false, value), nil
+	} else if (sinChk == "=") && (len(*singleFilter) > lenTier+1) {
+		value := (*singleFilter)[lenTier+1:] // len(tier) + 1 = 4 and + 1
+		return newAccessTierFilter(true, value), nil
 	} else {
 		return nil, erro
 	}

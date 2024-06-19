@@ -538,10 +538,10 @@ func (az *AzStorage) GetAttr(options internal.GetAttrOptions) (attr *internal.Ob
 		fileValidatorObj := &filter.FileValidator{
 			FilterArr: az.stConfig.filters.FilterArr,
 		}
-		if fileValidatorObj.CheckFileWithFilters(resp) {
+		if fileValidatorObj.CheckFileWithFilters(resp) { //if this particular file passes all filters, return it
 			return resp, nil
 		} else {
-			return nil, errors.New("the file does not pass the provided filters") //debug
+			return nil, errors.New("the file does not pass the provided filters")
 		}
 	}
 	return resp, err
