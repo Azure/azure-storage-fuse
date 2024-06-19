@@ -1,4 +1,14 @@
-## 2.3.0 (Unreleased)
+## 2.3.1 (Unreleased)
+**Bug Fixes**
+- Fixed the case where file creation using SAS on HNS accounts was returning back wrong error code.
+- [#1402](https://github.com/Azure/azure-storage-fuse/issues/1402) Fixed proxy URL parsing.
+
+**Features**
+
+**Other Changes**
+- LFU policy in file cache has been deprecated.
+
+## 2.3.0 (2024-05-16)
 **Bug Fixes**
 - For fuse minor version check rely on the fusermount3 command output rather then one exposed from fuse_common.
 - Fixed large number of threads from TLRU causing crash during disk eviction in block-cache.
@@ -6,6 +16,14 @@
 
 **Features**
 - Added support for authentication using Azure CLI.
+
+**Other Changes**
+- Added support in
+    - Ubuntu 24.04 (x86_64 and ARM64)
+    - Rocky Linux 8 and 9
+    - Alma Linux 8 and 9
+- Added support for FIPS based Linux systems.
+- Updated dependencies to address security vulnerabilities.
 
 ## 2.3.0~preview.1 (2024-04-04)
 **Bug Fixes**

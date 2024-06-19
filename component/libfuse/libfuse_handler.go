@@ -645,6 +645,8 @@ func libfuse_create(path *C.char, mode C.mode_t, fi *C.fuse_file_info_t) C.int {
 		log.Err("Libfuse::libfuse_create : Failed to create %s [%s]", name, err.Error())
 		if os.IsExist(err) {
 			return -C.EEXIST
+		} else if os.IsPermission(err) {
+			return -C.EACCES
 		} else {
 			return -C.EIO
 		}
