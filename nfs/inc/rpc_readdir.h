@@ -29,18 +29,33 @@ struct directory_entry
 
     /*
      * Returns size of the directory_entry.
-     * If \p skip_attr_size is set to true, then it does not consider the attributes
-     * size for calculating the size.
+     * This is used to find the cache space taken by this directory_entry.
      */
-    size_t get_size(bool skip_attr_size = false) const
+    size_t get_cache_size() const
     {
-        if (skip_attr_size)
-        {
-            return (strlen(name) + offsetof(struct directory_entry, name) - sizeof(struct stat));
-        }
-        else
-        {
-            return (strlen(name) + offsetof(struct directory_entry, name));
+        /*
+         * Since we store this directory_entry in a map, it will have two
+         * pointers and a key and value, all 8 bytes each, so we add those
+         * to get a closer estimate.
+         *
+         * Note: It may take slightly more than this.
+         */
+        return sizeof(*this) + strlen(name) + 4*sizeof(uint64_t);
+    }
+
+    /**
+     * Return size of fuse buffer required to hold this directory_entry.
+     * If readdirplus is true, the size returned is for containing the
+     * entry along with the attributes, else it's w/o the attributes.
+     */
+    size_t get_fuse_buf_size(bool readdirplus) const
+    {
+        if (readdirplus) {
+            return fuse_add_direntry_plus(
+                    nullptr, nullptr, 0, name, nullptr, 0);
+        } else {
+            return fuse_add_direntry(
+                    nullptr, nullptr, 0, name, nullptr, 0);
         }
     }
 
@@ -137,7 +152,6 @@ public:
     {
         assert(entry != nullptr);
         
-        const size_t entry_size = entry->get_size();
         {
             // Get exclusive lock on the map to add the entry to the map.
             std::unique_lock<std::shared_mutex> lock(readdircache_lock);
@@ -149,7 +163,7 @@ public:
             }
 
             const auto& it = dir_entries.insert({entry->cookie, entry});
-            cache_size += entry_size;
+            cache_size += entry->get_cache_size();
             return it.second;
         }
 

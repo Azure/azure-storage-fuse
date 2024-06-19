@@ -479,12 +479,11 @@ static void readdirplus_callback(
     fuse_ino_t ino;
     std::vector<const directory_entry*> readdirentries;
     int num_of_ele = 0;
-    size_t rem_size = 0;
+    ssize_t rem_size = task->rpc_api.readdir_task.get_size();
     // Check if the application asked for readdir or readdirplus call.
     const bool is_readdirplus_call = (task->get_op_type() == FUSE_READDIRPLUS);
 
     ino = task->rpc_api.readdir_task.get_inode();
-    rem_size = task->rpc_api.readdir_task.get_size();
 
     struct nfs_inode *nfs_ino = task->get_client()->get_nfs_inode_from_ino(ino);
     assert (nfs_ino != nullptr);
@@ -555,11 +554,12 @@ static void readdirplus_callback(
              * Add it to the directory_entry vector ONLY if it does not cross the max
              * size limit requested by the client.
              */
-            const size_t curr_entry_size = dir_entry->get_size();
-            if (rem_size >= curr_entry_size)
-            {
-                readdirentries.push_back(dir_entry);
-                rem_size -= curr_entry_size;
+            if (rem_size >= 0) {
+                rem_size -= dir_entry->get_fuse_buf_size(is_readdirplus_call);
+                if (rem_size >= 0)
+                {
+                    readdirentries.push_back(dir_entry);
+                }
             }
 
             // Add this to the readdirectory_cache.

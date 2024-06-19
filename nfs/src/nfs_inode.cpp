@@ -212,7 +212,7 @@ void nfs_inode::lookup_dircache(
         const struct directory_entry* entry = dircache_handle->lookup(cookie);
 
         if (entry) {
-            rem_size -= entry->get_size(readdirplus);
+            rem_size -= entry->get_fuse_buf_size(readdirplus);
 
             if (rem_size >= 0) {
                 num_cache_entries++;
