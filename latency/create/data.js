@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1718785862181,
+  "lastUpdate": 1718792571901,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -725,6 +725,45 @@ window.BENCHMARK_DATA = {
           "url": "https://github.com/Azure/azure-storage-fuse/commit/e9d900e661f239e88aca4ebf68735f7c625a23bd"
         },
         "date": 1718785861797,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "create_1000_files_in_10_threads",
+            "value": 0,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "create_1000_files_in_100_threads",
+            "value": 0,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "create_1l_files_in_20_threads",
+            "value": 0,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "vibhansa@microsoft.com",
+            "name": "vibhansa",
+            "username": "vibhansa-msft"
+          },
+          "committer": {
+            "email": "vibhansa@microsoft.com",
+            "name": "vibhansa",
+            "username": "vibhansa-msft"
+          },
+          "distinct": true,
+          "id": "0f894c71375cad64d5681d7d97b8880cac141919",
+          "message": "Updating rename results",
+          "timestamp": "2024-06-19T01:12:36-07:00",
+          "tree_id": "6fca09c905e96f82b6aa174f5fbfdcc464ea2569",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/0f894c71375cad64d5681d7d97b8880cac141919"
+        },
+        "date": 1718792571583,
         "tool": "customSmallerIsBetter",
         "benches": [
           {
