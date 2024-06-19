@@ -118,6 +118,15 @@ struct nfs_inode
     ~nfs_inode();
 
     /**
+     * Return inode number for this inode.
+     */
+    fuse_ino_t get_ino() const
+    {
+        assert(ino != 0);
+        return ino;
+    }
+
+    /**
      * Increment lookupcnt of the inode.
      */
     void incref() const

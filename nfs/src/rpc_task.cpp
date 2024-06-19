@@ -134,22 +134,10 @@ static void lookup_callback(
 
     if (rpc_status == RPC_STATUS_SUCCESS && RSTATUS(res) == NFS3ERR_NOENT)
     {
-        /*
-         * Special case for fuse: A "negative entry" refers to an entry that doesn't exist
-         * in the file system. If we want negative cache, we must not return ENOENT,
-         * instead we should return success with zero inode.
-         * When the FUSE kernel module receives a negative entry response, it may cache this
-         * information for a certain duration specified by the entry_timeout parameter.
-         * This caching helps to improve performance by avoiding repeated lookup requests
-         * for entries that are known not to exist.
-         */
-        struct fattr3 dummyAttr;
-        ::memset(&dummyAttr, 0, sizeof(dummyAttr));
-
         task->get_client()->reply_entry(
             task,
             nullptr /* fh */,
-            &dummyAttr,
+            nullptr /* fattr */,
             nullptr);
     }
     else if(task->succeeded(rpc_status, RSTATUS(res)))

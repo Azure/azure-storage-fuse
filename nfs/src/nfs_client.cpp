@@ -146,44 +146,55 @@ void nfs_client::readdirplus(
 // like lookup, create etc.
 //
 void nfs_client::reply_entry(
-    struct rpc_task* ctx,
-    const nfs_fh3* fh,
-    const struct fattr3* attr,
-    const struct fuse_file_info* file)
+    struct rpc_task *ctx,
+    const nfs_fh3 *fh,
+    const struct fattr3 *fattr,
+    const struct fuse_file_info *file)
 {
-    nfs_inode* nfs_ino;
+    static struct fattr3 zero_fattr;
+    nfs_inode *nfs_ino = nullptr;
+    fuse_entry_param entry;
+
+    memset(&entry, 0, sizeof(entry));
 
     if (fh)
     {
         // Blob NFS supports only these file types.
-        assert((attr->type == NF3REG) ||
-               (attr->type == NF3DIR) ||
-               (attr->type == NF3LNK));
+        assert((fattr->type == NF3REG) ||
+               (fattr->type == NF3DIR) ||
+               (fattr->type == NF3LNK));
 
         const uint32_t file_type =
-            (attr->type == NF3DIR) ? S_IFDIR
-                                   : ((attr->type == NF3LNK) ? S_IFLNK
+            (fattr->type == NF3DIR) ? S_IFDIR
+                                   : ((fattr->type == NF3LNK) ? S_IFLNK
                                                              : S_IFREG);
 
         // This will be freed from fuse forget callback.
         nfs_ino = new nfs_inode(fh, this, file_type);
+
+        entry.ino = nfs_ino->get_ino();
+        stat_from_fattr3(&entry.attr, fattr);
+        entry.attr_timeout = nfs_ino->get_actimeo();
+        entry.entry_timeout = nfs_ino->get_actimeo();
     }
     else
     {
-        nfs_ino = nullptr;
+        /*
+         * The only valid case where reply_entry() is called with null fh
+         * is the case where lookup yielded "not found". We are using the
+         * fuse support for negative dentry where we should respond with
+         * success but ino set to 0 to convey to fuse that it must cache
+         * the negative dentry for entry_timeout period.
+         * This caching helps to improve performance by avoiding repeated
+         * lookup requests for entries that are known not to exist.
+         *
+         * TODO: See if negative dentry timeout of 30 secs is good.
+         */
+        assert(!fattr);
+        stat_from_fattr3(&entry.attr, &zero_fattr);
+        entry.attr_timeout = 30;
+        entry.entry_timeout = 30;
     }
-
-    fuse_entry_param entry;
-    memset(&entry, 0, sizeof(entry));
-
-    stat_from_fattr3(&entry.attr, attr);
-    entry.ino = (fuse_ino_t)(uintptr_t)nfs_ino;
-
-    /*
-     * TODO: Set the timeout to better value.
-     */
-    entry.attr_timeout = 60; //attrTimeout;
-    entry.entry_timeout = 60; //attrTimeout;
 
     if (file)
     {
