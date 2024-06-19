@@ -178,6 +178,8 @@ void nfs_inode::invalidate_cache_nolock()
      */
     if (is_dir()) {
         purge_dircache();
+    } else {
+        purge_filecache();
     }
 }
 
@@ -191,50 +193,67 @@ void nfs_inode::purge_dircache()
     dircache_handle->clear();
 }
 
-void nfs_inode::lookup_readdircache(
-    cookie3 cookie_,
+void nfs_inode::lookup_dircache(
+    cookie3 cookie,
     size_t max_size,
-    std::vector<directory_entry* >& results,
+    std::vector<const directory_entry*>& results,
     bool& eof,
-    bool skip_attr_size)
+    bool readdirplus)
 {
-    int num_of_entries_found_in_cache = 0;
+    int num_cache_entries = 0;
+    ssize_t rem_size = max_size;
+    // Have we seen eof from the server?
+    const bool dir_eof_seen = dircache_handle->get_eof();
 
-    size_t rem_size = max_size;
-    while (rem_size > 0)
-    {
-        struct directory_entry* entry;
-        bool found = dircache_handle->lookup(cookie_, &entry);
-        if (found)
-        {
-            const size_t curr_entry_size = entry->get_size(skip_attr_size);
-            if (rem_size >= curr_entry_size)
-            {
-                num_of_entries_found_in_cache++;
+    // We should have non-zero space to fill in entries.
+    assert(rem_size > 0);
 
+    while (rem_size > 0) {
+        const struct directory_entry* entry = dircache_handle->lookup(cookie);
+
+        if (entry) {
+            rem_size -= entry->get_size(readdirplus);
+
+            if (rem_size >= 0) {
+                num_cache_entries++;
                 results.push_back(entry);
-            }
-            else
-            {
-                // We have populated the maximum entries requested, hence break.
+
+                /*
+                 * We must convey eof to caller only after we successfully copy
+                 * the directory entry with eof_cookie.
+                 */
+                if (dir_eof_seen &&
+                    (entry->cookie == dircache_handle->get_eof_cookie())) {
+                    eof = true;
+                }
+            } else {
+                // No space left to add more entries.
+                AZLogDebug("lookup_dircache: Returning {} entries, as {} bytes "
+                           "of output buffer exhausted (eof={})",
+                           num_cache_entries, max_size, eof);
                 break;
             }
-            rem_size -= curr_entry_size;
-            cookie_++;
-        }
-        else
-        {
-            AZLogDebug("Traversed map: Num of entries returned from cache {}", num_of_entries_found_in_cache);
+
+            cookie++;
+        } else {
+            /*
+             * Call after we return the last cookie, comes here.
+             */
+            if (dir_eof_seen && (cookie >= dircache_handle->get_eof_cookie())) {
+                eof = true;
+            }
+
+            AZLogDebug("lookup_dircache: Returning {} entries, as next cookie {} "
+                       "not found in cache (eof={})",
+                       num_cache_entries, cookie, eof);
 
             /*
-             * If we don't find the current cookie, then we will not find the next
-             * ones as well since they are stored sequentially.
+             * If we don't find the current cookie, then we will not find the
+             * next ones as well since they are stored sequentially.
              */
-            return;
+            break;
         }
     }
-    eof = dircache_handle->get_eof();
-    AZLogDebug("Buffer exhaust: Num of entries returned from cache {}", num_of_entries_found_in_cache);
 }
 
 // TODO: Add comments.

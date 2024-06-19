@@ -32,7 +32,7 @@ struct directory_entry
      * If \p skip_attr_size is set to true, then it does not consider the attributes
      * size for calculating the size.
      */
-    size_t get_size(bool skip_attr_size = false)
+    size_t get_size(bool skip_attr_size = false) const
     {
         if (skip_attr_size)
         {
@@ -63,6 +63,12 @@ private:
      * from the backend.
      */
     bool eof;
+
+    /*
+     * last cookie.
+     * Only valid if eof is true.
+     */
+    uint64_t eof_cookie = (uint64_t) -1;
 
     // Size of the cache.
     size_t cache_size;
@@ -164,6 +170,11 @@ public:
         return eof;
     }
 
+    uint64_t get_eof_cookie() const
+    {
+        return eof_cookie;
+    }
+
     void set_cookieverf(const cookieverf3* cokieverf)
     {
         assert(cokieverf != nullptr);
@@ -173,27 +184,23 @@ public:
         ::memcpy(&cookie_verifier, cokieverf, sizeof(cookie_verifier));
     }
 
-    void set_eof()
+    void set_eof(uint64_t eof_cookie)
     {
+        // Every directory will at least have "." and "..".
+        assert(eof_cookie >= 2);
+
         eof = true;
+        this->eof_cookie = eof_cookie;
     }
 
-    bool lookup(cookie3 cookie_, struct directory_entry** entry)
+    struct directory_entry *lookup(cookie3 cookie)
     {
-        *entry = nullptr;
-
         // Take shared look to see if the entry exist in the cache.
         std::shared_lock<std::shared_mutex> lock(readdircache_lock);
 
-        auto it = dir_entries.find(cookie_);
+        const auto it = dir_entries.find(cookie);
 
-        if (it != dir_entries.end())
-        {
-            *entry = it->second;
-            return true;
-        }
-
-        return false;
+        return (it != dir_entries.end()) ? it->second : nullptr;
     }
 
     void clear()

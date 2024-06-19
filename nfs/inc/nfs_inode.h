@@ -270,16 +270,35 @@ struct nfs_inode
      */
     void purge_dircache();
 
-    /*
-     * This function populates the \p results vector by fetching the entries from
-     * readdirectory cache starting at offset \p cookie upto size \p max_size.
+    /**
+     * Caller must hold the inode lock.
+     * TODO: Implement this when we add read/write support.
      */
-    void lookup_readdircache(
-        cookie3 cookie /* offset in the directory from which the directory should be listed*/,
-        size_t max_size /* maximum size of entries to be returned*/,
-        std::vector<directory_entry* >& results /* dir entries listed*/,
+    void purge_filecache()
+    {
+        // TBD
+    }
+
+    /**
+     * Directory cache lookup method.
+     *
+     * cookie: offset in the directory from which the entries should be listed.
+     * max_size: do not return entries more than these many bytes.
+     * results: returned entries are populated in this vector.
+     * eof: will be set if there are no more entries in the directory, after
+     *      the last entry returned.
+     * readdirplus: consumer of the returned directory entries is readdirplus.
+     *              This will affect how the size of entries is added while
+     *              comparing with max_size. If readdirplus is true, then we
+     *              account for attribute size too, since readdirplus would
+     *              be sending attributes too.
+     */
+    void lookup_dircache(
+        cookie3 cookie,
+        size_t max_size,
+        std::vector<const directory_entry*>& results,
         bool& eof,
-        bool skip_attr_size = false);
+        bool readdirplus = false);
 
     bool make_getattr_call(struct fattr3& attr);
 };
