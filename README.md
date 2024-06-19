@@ -24,7 +24,7 @@ Master test script that simulates this benchmarking test suite is located [here]
 - Script expects Blobfuse2 is already install on the system.
 - Script expects the config file is present in current directory with name `config.yaml`
 - Install `fio` and `jq` before you execute the script
-- Allowed `test-name` are: read / write / create / list / app
+- Allowed `test-name` are: read / write / create / list / app / rename
 
 
 ### Write
