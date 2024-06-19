@@ -36,8 +36,9 @@ Below table provides latency/time and bandwidth results for various tests. Each 
 | [Read](https://azure.github.io/azure-storage-fuse/#read)     |  [Read Latency](https://azure.github.io/azure-storage-fuse/latency/read/)   |  [Read Bandwidth](https://azure.github.io/azure-storage-fuse/bandwidth/read/)    |
 | [List](https://azure.github.io/azure-storage-fuse/#list)      |  [List Time](https://azure.github.io/azure-storage-fuse/time/list/)         |   --  |
 | [Rename](https://azure.github.io/azure-storage-fuse/#rename)    |  [Rename Time](https://azure.github.io/azure-storage-fuse/time/rename/)       |   --  |
-| [Highly parallel](https://azure.github.io/azure-storage-fuse/#high-threads) |  [Parallel Latency](https://azure.github.io/azure-storage-fuse/latency/highlyparallel/)  | [Parallel Bandwidth](https://azure.github.io/azure-storage-fuse/bandwidth/highlyparallel/)  |
+| [Highly Parallel](https://azure.github.io/azure-storage-fuse/#high-parallel) |  [Parallel Latency](https://azure.github.io/azure-storage-fuse/latency/highlyparallel/)  | [Parallel Bandwidth](https://azure.github.io/azure-storage-fuse/bandwidth/highlyparallel/)  |
 | [Application](https://azure.github.io/azure-storage-fuse/#application-test)       |  [Application Time](https://azure.github.io/azure-storage-fuse/time/app/) |  [Application Bandwidth](https://azure.github.io/azure-storage-fuse/bandwidth/app/) |
+| [Max Out](https://azure.github.io/azure-storage-fuse/#max-out)       |  [Application Time](https://azure.github.io/azure-storage-fuse/time/highapp/) |  [Application Bandwidth](https://azure.github.io/azure-storage-fuse/bandwidth/highapp/) |
 
 
 
@@ -82,7 +83,7 @@ For the benchmarking purpose this test is executed after `Create` tests so that 
 ### Rename
 In this test 5000 files of 1MB size each are created using a python script and then each file is renamed using os.rename() method. Total time to rename all 5000 files is measured. 
 
-### High Threads
+### Highly Parallel
 In this test `fio` command is used to run various read/write workflows with high number of parallel threads. As part of the test `bandwidth` and `latency` are measured. Each test is run for 60 seconds and average of 3 such iteration is taken. Both `bandwidth` and `latency` are taken from `fio` output directly and projected in the charts. To simulate different read/write work-flows following cases are performed:
 ```
     - Sequential write of 1G file each by 112 thread
@@ -97,4 +98,17 @@ We have observed that `fio` and `dd` commands have certain overhead of their own
 These applications are located [here](https://github.com/Azure/azure-storage-fuse/tree/vibhansa/perftestrunner/perf_testing/scripts/). 
 Read/Write application is executed once and based on the time taken to read/write given amount of data bandwidth is computed. 
 
+### Max Out
+Objective of this test case is to observe the max throughput that Blobfuse2 can generate. To achieve this two tests are run:
+```
+    - Create 10 20GB files
+    - Read 10 20GB files
+```
 
+In case test 10 threads are run in parallel. Each thread is bound to a CPU core so that it gets max CPU for operation. 'dd' command is used to execute the test.
+
+For write operation, data is read from '/dev/zero' in 16MB chunks and written to file on mounted path with 'direct io'. 
+
+For read operations, data is read from mount path in 4MB chunks and sent to '/dev/null' with 'dd' set to not report any status. 
+
+Test Scripts are located [here](https://github.com/Azure/azure-storage-fuse/tree/vibhansa/perftestrunner/perf_testing/scripts/) with name "highspeed_".
