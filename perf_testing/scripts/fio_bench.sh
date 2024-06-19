@@ -226,12 +226,12 @@ read_write_using_app() {
 
   # Run the python script to read files
   echo `date` ' : Starting highspeed tests'
-  python3 ./perf_testing/scripts/highspeed_create.py ${mount_dir} 10 > ${output}/app_write_highspeed.json
+  python3 ./perf_testing/scripts/highspeed_create.py ${mount_dir} 10 > ${output}/highspeed_app_write.json
   
   blobfuse2 unmount all
   sleep 3
   mount_blobfuse
-  python3 ./perf_testing/scripts/highspeed_read.py ${mount_dir}/20GFile* > ${output}/app_read_highspeed.json
+  python3 ./perf_testing/scripts/highspeed_read.py ${mount_dir}/20GFile* > ${output}/highspeed_app_read.json
   rm -rf ${mount_dir}/20GFile*
 
   # Unmount and cleanup now
@@ -242,6 +242,9 @@ read_write_using_app() {
   # Generate output
   jq '{"name": .name, "value": .speed, "unit": .unit}' ${output}/app_write_*.json ${output}/app_read_*.json | jq -s '.' | tee ./${output}/app_bandwidth.json
   jq '{"name": .name, "value": .total_time, "unit": "seconds"}' ${output}/app_write_*.json ${output}/app_read_*.json | jq -s '.' | tee ./${output}/app_time.json
+
+  jq '{"name": .name, "value": .speed, "unit": .unit}' ${output}/highspeed_app*.json | jq -s '.' | tee ./${output}/highapp_bandwidth.json
+  jq '{"name": .name, "value": .total_time, "unit": "seconds"}' ${output}/highspeed_app*.json | jq -s '.' | tee ./${output}/highapp_time.json
 
   # jq '{"name": .name, "value": .speed, "unit": .unit}' ${output}/app_local_write_*.json | jq -s '.' | tee ./${output}/app_local_bandwidth.json
 }

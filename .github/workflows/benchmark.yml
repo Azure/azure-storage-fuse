@@ -205,7 +205,34 @@ jobs:
           comment-on-alert: true
           gh-pages-branch: benchmarks
           benchmark-data-dir-path: time/app    
-          
+
+      - name: "Update Bandwidth Results : High Speed App"
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          output-file-path: app/highapp_bandwidth.json
+          tool: 'customBiggerIsBetter'
+          alert-threshold: "160%"
+          max-items-in-chart: 100
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          fail-on-alert: true
+          auto-push: true
+          comment-on-alert: true
+          gh-pages-branch: benchmarks
+          benchmark-data-dir-path: bandwidth/highapp   
+
+      - name: "Update Latency Results : High Speed App"
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          output-file-path: app/highapp_time.json
+          tool: 'customSmallerIsBetter'
+          alert-threshold: "160%"
+          max-items-in-chart: 100
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          fail-on-alert: true
+          auto-push: true
+          comment-on-alert: true
+          gh-pages-branch: benchmarks
+          benchmark-data-dir-path: time/highapp           
       # ---------------------------------------------------------------------------------------
       # Run Rename tests
       # This needs to run seperatly as output is different
