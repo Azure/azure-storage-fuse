@@ -31,13 +31,13 @@ Below table provides latency/time and bandwidth results for above mentioned test
 
 | Test Name | Latency/Time | Bandwdith |
 |-----------|--------------|-----------|
-| Create    |  [Latency](https://azure.github.io/azure-storage-fuse/latency/create/) |  [Bandwidth](https://azure.github.io/azure-storage-fuse/bandwidth/create/)  | 
-| Write     |  [Latency](https://azure.github.io/azure-storage-fuse/latency/write/)  |  [Bandwidth](https://azure.github.io/azure-storage-fuse/bandwidth/write/)   |
-| Read      |  [Latency](https://azure.github.io/azure-storage-fuse/latency/read/)   |  [Bandwidth](https://azure.github.io/azure-storage-fuse/bandwidth/read/)    |
-| List      |  [Time](https://azure.github.io/azure-storage-fuse/time/list/)         |   --  |
-| Rename    |  [Time](https://azure.github.io/azure-storage-fuse/time/rename/)       |   --  |
-| Highly parallel |  [Latency](https://azure.github.io/azure-storage-fuse/latency/highlyparallel/)  | [Bandwidth](https://azure.github.io/azure-storage-fuse/bandwidth/highlyparallel/)  |
-| App       |  [Time](https://azure.github.io/azure-storage-fuse/time/app/) |  [Bandwidth](https://azure.github.io/azure-storage-fuse/bandwidth/app/) |
+| [Create](https://azure.github.io/azure-storage-fuse/#create)    |  [Latency](https://azure.github.io/azure-storage-fuse/latency/create/) |  [Bandwidth](https://azure.github.io/azure-storage-fuse/bandwidth/create/)  | 
+| [Write](https://azure.github.io/azure-storage-fuse/#write)     |  [Latency](https://azure.github.io/azure-storage-fuse/latency/write/)  |  [Bandwidth](https://azure.github.io/azure-storage-fuse/bandwidth/write/)   |
+| [Read](https://azure.github.io/azure-storage-fuse/#read)     |  [Latency](https://azure.github.io/azure-storage-fuse/latency/read/)   |  [Bandwidth](https://azure.github.io/azure-storage-fuse/bandwidth/read/)    |
+| List](https://azure.github.io/azure-storage-fuse/#list)      |  [Time](https://azure.github.io/azure-storage-fuse/time/list/)         |   --  |
+| [Rename](https://azure.github.io/azure-storage-fuse/#rename)    |  [Time](https://azure.github.io/azure-storage-fuse/time/rename/)       |   --  |
+| [Highly parallel](https://azure.github.io/azure-storage-fuse/#high-threads) |  [Latency](https://azure.github.io/azure-storage-fuse/latency/highlyparallel/)  | [Bandwidth](https://azure.github.io/azure-storage-fuse/bandwidth/highlyparallel/)  |
+| [App](https://azure.github.io/azure-storage-fuse/#application-test)       |  [Time](https://azure.github.io/azure-storage-fuse/time/app/) |  [Bandwidth](https://azure.github.io/azure-storage-fuse/bandwidth/app/) |
 
 
 
