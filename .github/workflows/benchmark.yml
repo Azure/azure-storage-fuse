@@ -217,7 +217,7 @@ jobs:
       - name: "Update Latency Results : Rename"
         uses: benchmark-action/github-action-benchmark@v1
         with:
-          output-file-path: app/rename_latency.json
+          output-file-path: rename/rename_latency.json
           tool: 'customSmallerIsBetter'
           alert-threshold: "160%"
           max-items-in-chart: 100
