@@ -461,12 +461,12 @@ void rpc_task::run_readdirplus()
 }
 
 /*
- * For both client issued readdir and readdirplus calls, this callback will be invoked since we always
- * issue readdirplus calls to the backend. This is done to populate the readdir cache.
- * Once this callback is called, it will first populate the readdir cache with the newly fetched entries.
- * Then, it will check for the optype of the rpc_task.
- * If the optype is FUSE_READDIRPLUS then it will populate the results vector and call send_readdirplus_response.
- * If the optype is FUSE_READDIR  then it will populate the results vector and call send_readdir_response.
+ * For both client issued readdir and readdirplus calls, this callback will be
+ * invoked since we always issue readdirplus calls to the backend. This is done
+ * to populate the readdir cache. Once this callback is called, it will first
+ * populate the readdir cache with the newly fetched entries. Additionally it
+ * will populate the readdirentries vector and call send_readdir_response() to
+ * respond to the fuse readdir/readdirplus call.
  */
 static void readdirplus_callback(
     struct rpc_context* /* rpc */,
@@ -588,14 +588,7 @@ static void readdirplus_callback(
             }
         }
 
-        if (is_readdirplus_call)
-        {
-            task->send_readdirplus_response(readdirentries);
-        }
-        else
-        {
-            task->send_readdir_response(readdirentries);
-        }
+        task->send_readdir_response(readdirentries);
     }
     else
     {
@@ -666,7 +659,7 @@ void rpc_task::get_readdirplus_entries_from_cache()
     else
     {
         // We are done fetching the entries, send the response now.
-        send_readdirplus_response(readdirentries);
+        send_readdir_response(readdirentries);
     }
 }
 
@@ -701,162 +694,121 @@ void rpc_task::fetch_readdir_entries_from_server()
     } while (rpc_retry);
 }
 
-void rpc_task::send_readdir_response(std::vector<const directory_entry*>& readdirentries)
+void rpc_task::send_readdir_response(
+        const std::vector<const directory_entry*>& readdirentries)
 {
-    assert(get_op_type() == FUSE_READDIR);
-
+    const bool readdirplus = (get_op_type() == FUSE_READDIRPLUS);
+    /*
+     * Max size the fuse buf is allowed to take.
+     * We will allocate this much and then fill as many directory entries can
+     * fit in this. Since the caller would have also considered this same size
+     * while filling entries in readdirentries, we will usually be able to
+     * consume all the entries in readdirentries.
+     */
     const size_t size = rpc_api.readdir_task.get_size();
 
-// Allocate buffer
-    char *buf1 = (char *)malloc(size);
-    if (!buf1)
-    {
+    // Fuse always requests 4096 bytes.
+    assert(size >= 4096);
+
+    // Allocate fuse response buffer.
+    char *buf1 = (char *) malloc(size);
+    if (!buf1) {
         reply_error(ENOMEM);
         return;
     }
 
     char *current_buf = buf1;
     size_t rem = size;
-    int  num_of_entries_returned = 0;
-    AZLogInfo("Size of readdir result vector is {}", readdirentries.size());
+    int num_entries_added = 0;
 
-    for (const auto& it : readdirentries)
-    {
-        if ((int)it->cookie <= (int)rpc_api.readdir_task.get_offset())
-        {
-            /*
-             * Skip entries until the offset
-             * TODO: See if we need this. Can't we control this thorugh the cookie?
-             */
-            //AZLogDebug("skipping cookie {}", it->cookie);
-            continue;
-        }
+    AZLogDebug("send_readdir_response: Number of directory entries to send {}",
+               readdirentries.size());
 
+    for (const auto& it : readdirentries) {
         /*
-         * Insert the entry into the buffer.
-         * If the buffer space is less, fuse_add_direntry will not add entry to
-         * the buffer but will still return the space needed to add this entry.
+         * Caller should make sure that it adds only directory entries after
+         * what was requested in the READDIR{PLUS} call to readdirentries.
          */
-        struct stat st;
-        ::memset(&st, 0, sizeof(st));
-        size_t entsize = fuse_add_direntry(get_req(),
-                                           current_buf,
-                                           rem, /* size left in the buffer */
-                                           it->name,
-                                           &st,
-                                           it->cookie);
+        assert((uint64_t) it->cookie > (uint64_t) rpc_api.readdir_task.get_offset());
+        size_t entsize;
+
+        if (readdirplus) {
+            struct fuse_entry_param fuseentry;
+
+            // We don't need the memset as we are setting all members.
+            //memset(&fuseentry, 0, sizeof(fuseentry));
+            fuseentry.attr = it->attributes;
+            fuseentry.ino = it->nfs_ino->ino;
+
+            // XXX: Do we need to worry about generation?
+            fuseentry.generation = 0;
+
+            fuseentry.attr_timeout = it->nfs_ino->get_actimeo();
+            fuseentry.entry_timeout = it->nfs_ino->get_actimeo();
+
+            /*
+             * Insert the entry into the buffer.
+             * If the buffer space is less, fuse_add_direntry_plus will not
+             * add entry to the buffer but will still return the space needed
+             * to add this entry.
+             */
+            entsize = fuse_add_direntry_plus(get_req(),
+                    current_buf,
+                    rem, /* size left in the buffer */
+                    it->name,
+                    &fuseentry,
+                    it->cookie);
+        } else {
+            /*
+             * Insert the entry into the buffer.
+             * If the buffer space is less, fuse_add_direntry will not add
+             * entry to the buffer but will still return the space needed to
+             * add this entry.
+             */
+            entsize = fuse_add_direntry(get_req(),
+                    current_buf,
+                    rem, /* size left in the buffer */
+                    it->name,
+                    &it->attributes,
+                    it->cookie);
+        }
 
         /*
          * Our buffer size was small and hence we can't add any more entries,
-         * so just break the loop. This also means that we have not inserted the
-         * current entry to the direent buffer.
-         */
-        if (entsize > rem)
-        {
-            break;
-        }
-
-        // Increment the buffer pointer to point to the next free space.
-        current_buf += entsize;
-        rem -= entsize;
-        num_of_entries_returned++;
-    }
-
-    AZLogDebug("Num of entries sent in readdir response is {}", num_of_entries_returned);
-
-    fuse_reply_buf(get_req(),
-                   buf1,
-                   size - rem);
-
-    free(buf1);
-    free_rpc_task();
-}
-
-void rpc_task::send_readdirplus_response(std::vector<const directory_entry*>& readdirentries)
-{
-    size_t sz = rpc_api.readdir_task.get_size();
-    assert(get_op_type() == FUSE_READDIRPLUS);
-
-    char *buf1 = (char *)malloc(sz);
-    if (!buf1)
-    {
-        reply_error(ENOMEM);
-        return;
-    }
-
-    char *current_buf = buf1;
-    size_t rem = sz;
-    int num_of_entries_returned = 0;
-
-    AZLogDebug("Size of readdirplus result vector is {}", readdirentries.size());
-
-    for (const auto& it : readdirentries)
-    {
-        if ((int)it->cookie <= (int)rpc_api.readdir_task.get_offset())
-        {
-            /*
-             * Skip entries until the offset
-             * TODO: See if we need this. Can't we control this thorugh the cookie?
-             */
-            // AZLogDebug("skipping cookie {}", it->cookie);
-            continue;
-        }
-
-        struct fuse_entry_param fuseentry;
-        memset(&fuseentry, 0, sizeof(fuseentry));
-        fuseentry.attr = it->attributes;
-        fuseentry.ino = it->nfs_ino->ino;
-
-        /*
-         * TODO: Set the timeout to better value.
-         */
-        fuseentry.attr_timeout = 60;
-        fuseentry.entry_timeout = 60;
-
-        /*
-         * Insert the entry into the buffer.
-         * If the buffer space is less, fuse_add_direntry_plus will not add entry to
-         * the buffer but will still return the space needed to add this entry.
-         */
-        size_t entsize = fuse_add_direntry_plus(get_req(),
-                                                current_buf,
-                                                rem, /* size left in the buffer */
-                                                it->name,
-                                                &fuseentry,
-                                                it->cookie);
-
-        /*
-         * Our buffer size was small and hence we can't add any more entries, so just break the loop.
-         * This also means that we have not inserted the current entry to the direent buffer.
-         */
-        if (entsize > rem)
-        {
-            AZLogDebug("Can't add anymore entries to buffer, space exhausted.");
-            break;
-        }
-
-        // Increment the buffer pointer to point to the next free space.
-        current_buf += entsize;
-        rem -= entsize;
-        num_of_entries_returned++;
-
-        /*
-         * Fuse expects lookupcnt of every entry returned by readdirplus(),
-         * except "." and "..", to be incremented.
+         * so just break the loop. This also means that we have not inserted
+         * the current entry to the dirent buffer.
          *
-         * TODO: If fuse_reply_buf() below fails we must drop these refcnts.
+         * Note: This should not happen since the caller would have filled
+         *       just enough entries in readdirentries.
          */
-        if (!it->is_dot_or_dotdot()) {
-            it->nfs_ino->incref();
+        if (entsize > rem) {
+            break;
+        }
+
+        // Increment the buffer pointer to point to the next free space.
+        current_buf += entsize;
+        rem -= entsize;
+        num_entries_added++;
+
+        if (readdirplus) {
+            /*
+             * Fuse expects lookupcnt of every entry returned by readdirplus(),
+             * except "." and "..", to be incremented.
+             *
+             * TODO: If fuse_reply_buf() below fails we must drop these refcnts.
+             */
+            if (!it->is_dot_or_dotdot()) {
+                it->nfs_ino->incref();
+            }
         }
     }
 
-    AZLogDebug("Num of entries sent in readdirplus response is {}", num_of_entries_returned);
-    fuse_reply_buf(get_req(),
-                   buf1,
-                   sz - rem);
+    AZLogDebug("Num of entries sent in readdir response is {}", num_entries_added);
 
-    // Free the buffer.
+    if (fuse_reply_buf(get_req(), buf1, size - rem) != 0) {
+        AZLogError("fuse_reply_buf failed!");
+    }
+
     free(buf1);
     free_rpc_task();
 }

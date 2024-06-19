@@ -534,9 +534,8 @@ public:
         return req;
     }
 
-    void send_readdir_response(std::vector<const directory_entry*>& readdirentries);
-
-    void send_readdirplus_response(std::vector<const directory_entry*>& readdirentries);
+    void send_readdir_response(
+            const std::vector<const directory_entry*>& readdirentries);
 
     void get_readdir_entries_from_cache();
 
