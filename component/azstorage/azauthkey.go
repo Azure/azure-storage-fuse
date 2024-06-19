@@ -68,7 +68,13 @@ func (azkey *azAuthBlobKey) getServiceClient(stConfig *AzStorageConfig) (interfa
 		return nil, err
 	}
 
-	svcClient, err := service.NewClientWithSharedKeyCredential(azkey.config.Endpoint, cred, getAzBlobServiceClientOptions(stConfig))
+	opts, err := getAzBlobServiceClientOptions(stConfig)
+	if err != nil {
+		log.Err("azAuthBlobKey::getServiceClient : Failed to create client options [%s]", err.Error())
+		return nil, err
+	}
+
+	svcClient, err := service.NewClientWithSharedKeyCredential(azkey.config.Endpoint, cred, opts)
 	if err != nil {
 		log.Err("azAuthBlobKey::getServiceClient : Failed to create service client [%s]", err.Error())
 	}
@@ -93,7 +99,13 @@ func (azkey *azAuthDatalakeKey) getServiceClient(stConfig *AzStorageConfig) (int
 		return nil, err
 	}
 
-	svcClient, err := serviceBfs.NewClientWithSharedKeyCredential(azkey.config.Endpoint, cred, getAzDatalakeServiceClientOptions(stConfig))
+	opts, err := getAzDatalakeServiceClientOptions(stConfig)
+	if err != nil {
+		log.Err("azAuthDatalakeKey::getServiceClient : Failed to create client options [%s]", err.Error())
+		return nil, err
+	}
+
+	svcClient, err := serviceBfs.NewClientWithSharedKeyCredential(azkey.config.Endpoint, cred, opts)
 	if err != nil {
 		log.Err("azAuthDatalakeKey::getServiceClient : Failed to create service client [%s]", err.Error())
 	}
