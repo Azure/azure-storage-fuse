@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1718733880646,
+  "lastUpdate": 1718779866810,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -509,6 +509,40 @@ window.BENCHMARK_DATA = {
           {
             "name": "delete_100k_files",
             "value": "393.81000",
+            "unit": "seconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "vibhansa@microsoft.com",
+            "name": "vibhansa",
+            "username": "vibhansa-msft"
+          },
+          "committer": {
+            "email": "vibhansa@microsoft.com",
+            "name": "vibhansa",
+            "username": "vibhansa-msft"
+          },
+          "distinct": true,
+          "id": "760c3d4cf0c310292f2f6fea2d71acdc6fdc9e24",
+          "message": "Updated",
+          "timestamp": "2024-06-18T22:35:50-07:00",
+          "tree_id": "e6fc3a7e6e9fff003a7232db5e44fd70b3a23a8b",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/760c3d4cf0c310292f2f6fea2d71acdc6fdc9e24"
+        },
+        "date": 1718779866495,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "list_100k_files",
+            "value": "14.66000",
+            "unit": "seconds"
+          },
+          {
+            "name": "delete_100k_files",
+            "value": "389.70000",
             "unit": "seconds"
           }
         ]
