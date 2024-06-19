@@ -303,62 +303,6 @@ private:
     fuse_file_info* file_ptr;
 };
 
-struct readdirplus_rpc_task
-{
-public:
-    void set_size(size_t sz)
-    {
-        size = sz;
-    }
-
-    void set_offset(off_t off)
-    {
-        offset = off;
-    }
-
-    void set_inode(fuse_ino_t ino)
-    {
-        inode = ino;
-    }
-
-    void set_fuse_file(fuse_file_info* fileinfo)
-    {
-        // The fuse can pass this as nullptr.
-        if (fileinfo == nullptr)
-            return;
-        ::memcpy(&file, fileinfo, sizeof(file));
-        file_ptr = &file;
-    }
-
-    fuse_ino_t get_inode() const
-    {
-        return inode;
-    }
-
-    off_t get_offset() const
-    {
-        return offset;
-    }
-
-    size_t get_size() const
-    {
-        return size;
-    }
-
-private:
-    // Inode of the directory.
-    fuse_ino_t inode;
-
-    // Maximum size of entries requested by the caller.
-    size_t size;
-
-    off_t offset;
-
-    // File info passed by the fuse layer.
-    fuse_file_info file;
-    fuse_file_info* file_ptr;
-};
-
 struct rpc_task
 {
     /*
@@ -402,7 +346,6 @@ public:
         struct create_file_rpc_task create_task;
         struct mkdir_rpc_task mkdir_task;
         struct readdir_rpc_task readdir_task;
-        struct readdirplus_rpc_task readdirplus_task;
     } rpc_api;
 
     // TODO: Add valid flag here for APIs?

@@ -83,11 +83,18 @@ void rpc_task::init_readdirplus(fuse_req *request,
 {
     req = request;
     optype = FUSE_READDIRPLUS;
-    rpc_api.readdirplus_task.set_inode(ino);
-    rpc_api.readdirplus_task.set_size(size);
-    rpc_api.readdirplus_task.set_offset(offset);
-    rpc_api.readdirplus_task.set_fuse_file(file);
+    rpc_api.readdir_task.set_inode(ino);
+    rpc_api.readdir_task.set_size(size);
+    rpc_api.readdir_task.set_offset(offset);
+    rpc_api.readdir_task.set_fuse_file(file);
 }
+
+/*
+ * TODO: All the RPC callbacks where we receive post-op attributes or receive
+ *       attributes o/w, we must call nfs_inode::update() to update the
+ *       currently cached attributes. That will invalidate the cache if newly
+ *       received attributes indicate file data has changed.
+ */
 
 static void getattr_callback(
     struct rpc_context* /* rpc */,
@@ -469,24 +476,15 @@ static void readdirplus_callback(
 {
     auto task = (rpc_task*)private_data;
     auto res = (READDIRPLUS3res*)data;
-    bool is_readdirplus_call = false;
     fuse_ino_t ino;
     std::vector<directory_entry*> readdirentries;
     int num_of_ele = 0;
     size_t rem_size = 0;
-
     // Check if the application asked for readdir or readdirplus call.
-    if (task->get_op_type() == FUSE_READDIRPLUS)
-    {
-        ino = task->rpc_api.readdirplus_task.get_inode();
-        is_readdirplus_call = true;
-        rem_size = task->rpc_api.readdirplus_task.get_size();
-    }
-    else
-    {
-        ino = task->rpc_api.readdir_task.get_inode();
-        rem_size = task->rpc_api.readdir_task.get_size();
-    }
+    const bool is_readdirplus_call = (task->get_op_type() == FUSE_READDIRPLUS);
+
+    ino = task->rpc_api.readdir_task.get_inode();
+    rem_size = task->rpc_api.readdir_task.get_size();
 
     struct nfs_inode *nfs_ino = task->get_client()->get_nfs_inode_from_ino(ino);
     assert (nfs_ino != nullptr);
@@ -593,7 +591,7 @@ void rpc_task::get_readdir_entries_from_cache()
 
     bool is_eof = false;
 
-    struct nfs_inode *nfs_ino = get_client()->get_nfs_inode_from_ino(rpc_api.readdirplus_task.get_inode());
+    struct nfs_inode *nfs_ino = get_client()->get_nfs_inode_from_ino(rpc_api.readdir_task.get_inode());
     assert (nfs_ino != nullptr);
 
     std::vector<directory_entry*> readdirentries;
@@ -626,13 +624,13 @@ void rpc_task::get_readdirplus_entries_from_cache()
 {
     bool is_eof = false;
     assert(get_op_type() == FUSE_READDIRPLUS);
-    struct nfs_inode *nfs_ino = get_client()->get_nfs_inode_from_ino(rpc_api.readdirplus_task.get_inode());
+    struct nfs_inode *nfs_ino = get_client()->get_nfs_inode_from_ino(rpc_api.readdir_task.get_inode());
     assert (nfs_ino != nullptr);
 
     std::vector<directory_entry*> readdirentries;
 
-    nfs_ino->lookup_readdircache( rpc_api.readdirplus_task.get_offset()+1,
-                                  rpc_api.readdirplus_task.get_size(),
+    nfs_ino->lookup_readdircache( rpc_api.readdir_task.get_offset()+1,
+                                  rpc_api.readdir_task.get_size(),
                                   readdirentries,
                                   is_eof);
 
@@ -660,16 +658,8 @@ void rpc_task::fetch_readdir_entries_from_server()
 
     cookie3 cookie = 0;
 
-    if (get_op_type() == FUSE_READDIR)
-    {
-        ino = rpc_api.readdir_task.get_inode();
-        cookie = rpc_api.readdir_task.get_offset();
-    }
-    else
-    {
-        ino = rpc_api.readdirplus_task.get_inode();
-        cookie = rpc_api.readdirplus_task.get_offset();
-    }
+    ino = rpc_api.readdir_task.get_inode();
+    cookie = rpc_api.readdir_task.get_offset();
 
     do {
         struct READDIRPLUS3args args;
@@ -765,7 +755,7 @@ void rpc_task::send_readdir_response(std::vector<directory_entry*>& readdirentri
 
 void rpc_task::send_readdirplus_response(std::vector<directory_entry*>& readdirentries)
 {
-    size_t sz = rpc_api.readdirplus_task.get_size();
+    size_t sz = rpc_api.readdir_task.get_size();
     assert(get_op_type() == FUSE_READDIRPLUS);
 
     char *buf1 = (char *)malloc(sz);
@@ -783,7 +773,7 @@ void rpc_task::send_readdirplus_response(std::vector<directory_entry*>& readdire
 
     for (const auto& it : readdirentries)
     {
-        if ((int)it->cookie <= (int)rpc_api.readdirplus_task.get_offset())
+        if ((int)it->cookie <= (int)rpc_api.readdir_task.get_offset())
         {
             /*
              * Skip entries until the offset
