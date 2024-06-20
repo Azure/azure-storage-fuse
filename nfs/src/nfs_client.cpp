@@ -29,23 +29,61 @@ bool nfs_client::init()
     }
 
     /*
-     * Initialiaze the root file handle for this client.
-     * Note that we don't know the root directory attributes yet.
-     * First GETATTR call would fetch those and then we will save it
-     * in nfs_inode::attr.
+     * Also query the attributes for the root fh.
+     * XXX: Though libnfs makes getattr call as part of mount but there
+     *      is no way for us to use those attributes, so we need to query
+     *      again.
      */
-    root_fh = new nfs_inode(
-                nfs_get_rootfh(transport.get_nfs_context()),
-                nullptr, /* fattr3 */
-                this,
-                S_IFDIR,
-                FUSE_ROOT_ID);
+    struct fattr3 fattr;
+    const bool ret =
+        getattr_sync(*(nfs_get_rootfh(transport.get_nfs_context())), fattr);
+
+    /*
+     * If we fail to successfully issue GETATTR RPC to the root fh,
+     * then there's something wrong, fail client init.
+     */
+    if (!ret) {
+        AZLogError("First GETATTR ro rootfh failed!");
+        return false;
+    }
+
+    /*
+     * Initialiaze the root file handle for this client.
+     */
+    root_fh = get_nfs_inode(nfs_get_rootfh(transport.get_nfs_context()),
+                            &fattr,
+                            FUSE_ROOT_ID);
     //AZLogInfo("Obtained root fh is {}", root_fh->get_fh());
 
     // Initialize the RPC task list.
     rpc_task_helper = rpc_task_helper::get_instance(this);
 
     return true;
+}
+
+/**
+ * Given a filehandle and fattr (oontaining fileid defining a file/dir),
+ * get the nfs_inode for that file/dir. It searches in the global list of
+ * all inodes and returns from there if found, else creates a new nfs_inode.
+ */
+struct nfs_inode *nfs_client::get_nfs_inode(const nfs_fh3 *fh,
+                                            const struct fattr3 *fattr,
+                                            fuse_ino_t ino)
+{
+    /*
+     * TODO: Search in the global inode list first and only if not
+     *       found, create a new one. This way we don't return multiple
+     *       nfs_inode for the same file.
+     */
+
+    // Blob NFS supports only these file types.
+    assert((fattr->type == NF3REG) ||
+           (fattr->type == NF3DIR) ||
+           (fattr->type == NF3LNK));
+
+    const uint32_t file_type = (fattr->type == NF3DIR) ? S_IFDIR :
+                                ((fattr->type == NF3LNK) ? S_IFLNK : S_IFREG);
+    return new nfs_inode(fh, fattr, this, file_type, ino);
 }
 
 struct nfs_context* nfs_client::get_nfs_context() const
@@ -162,18 +200,8 @@ void nfs_client::reply_entry(
     memset(&entry, 0, sizeof(entry));
 
     if (fh) {
-        // Blob NFS supports only these file types.
-        assert((fattr->type == NF3REG) ||
-               (fattr->type == NF3DIR) ||
-               (fattr->type == NF3LNK));
-
-        const uint32_t file_type =
-            (fattr->type == NF3DIR) ? S_IFDIR
-                                   : ((fattr->type == NF3LNK) ? S_IFLNK
-                                                             : S_IFREG);
-
         // This will be freed from fuse forget callback.
-        nfs_ino = new nfs_inode(fh, fattr, this, file_type);
+        nfs_ino = get_nfs_inode(fh, fattr);
 
         entry.ino = nfs_ino->get_fuse_ino();
         entry.attr = nfs_ino->attr;

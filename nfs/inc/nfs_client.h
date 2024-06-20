@@ -143,6 +143,24 @@ public:
         return nfsi;
     }
 
+    /**
+     * Given a filehandle and fattr (oontaining fileid defining a file/dir),
+     * get the nfs_inode for that file/dir. It searches in the global list of
+     * all inodes and returns from there if found, else creates a new nfs_inode.
+     * Note that we don't want to return multiple fuse inodes for the same
+     * file (represented by the filehandle). If fuse guarantees that it'll
+     * never make a lookup or any other call that gets a new inode, until
+     * it calls forget for that inode, then we can probably use different
+     * inodes for the same file but not at the same time. Since fuse doesn't
+     * guarantee we play safe and make sure for a given file we use the
+     * same nfs_inode as long one is cached with us. New incarnation of
+     * fuse driver will give a different fuse ino for the same file, but
+     * that should be ok.
+     */
+    struct nfs_inode *get_nfs_inode(const nfs_fh3 *fh,
+                                    const struct fattr3 *fattr,
+                                    fuse_ino_t ino = 0);
+
     /*
      *
      * Define Nfsv3 API specific functions and helpers after this point.
