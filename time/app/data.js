@@ -110,11 +110,6 @@ window.BENCHMARK_DATA = {
             "unit": "seconds"
           },
           {
-            "name": "create_10_20GB_file",
-            "value": 52.26066303253174,
-            "unit": "seconds"
-          },
-          {
             "name": "read_1GB",
             "value": 0.8186459541320801,
             "unit": "seconds"
@@ -132,11 +127,6 @@ window.BENCHMARK_DATA = {
           {
             "name": "read_40GB",
             "value": 16.70928382873535,
-            "unit": "seconds"
-          },
-          {
-            "name": "read_10_20GB_file",
-            "value": 63.48664426803589,
             "unit": "seconds"
           }
         ]
@@ -184,11 +174,6 @@ window.BENCHMARK_DATA = {
             "unit": "seconds"
           },
           {
-            "name": "create_10_20GB_file",
-            "value": 52.25787663459778,
-            "unit": "seconds"
-          },
-          {
             "name": "read_1GB",
             "value": 0.721104621887207,
             "unit": "seconds"
@@ -206,11 +191,6 @@ window.BENCHMARK_DATA = {
           {
             "name": "read_40GB",
             "value": 19.14751100540161,
-            "unit": "seconds"
-          },
-          {
-            "name": "read_10_20GB_file",
-            "value": 75.16449022293091,
             "unit": "seconds"
           }
         ]
@@ -258,11 +238,6 @@ window.BENCHMARK_DATA = {
             "unit": "seconds"
           },
           {
-            "name": "create_10_20GB_file",
-            "value": 52.441892862319946,
-            "unit": "seconds"
-          },
-          {
             "name": "read_1GB",
             "value": 0.9579412937164307,
             "unit": "seconds"
@@ -280,11 +255,6 @@ window.BENCHMARK_DATA = {
           {
             "name": "read_40GB",
             "value": 20.605828762054443,
-            "unit": "seconds"
-          },
-          {
-            "name": "read_10_20GB_file",
-            "value": 78.04896593093872,
             "unit": "seconds"
           }
         ]
@@ -332,11 +302,6 @@ window.BENCHMARK_DATA = {
             "unit": "seconds"
           },
           {
-            "name": "create_10_20GB_file",
-            "value": 52.48719763755798,
-            "unit": "seconds"
-          },
-          {
             "name": "read_1GB",
             "value": 0.8460342884063721,
             "unit": "seconds"
@@ -354,11 +319,6 @@ window.BENCHMARK_DATA = {
           {
             "name": "read_40GB",
             "value": 17.27281403541565,
-            "unit": "seconds"
-          },
-          {
-            "name": "read_10_20GB_file",
-            "value": 74.40884327888489,
             "unit": "seconds"
           }
         ]
@@ -434,11 +394,6 @@ window.BENCHMARK_DATA = {
             "unit": "seconds"
           },
           {
-            "name": "create_10_20GB_file",
-            "value": 52.2913818359375,
-            "unit": "seconds"
-          },
-          {
             "name": "read_1GB",
             "value": 0.8704817295074463,
             "unit": "seconds"
@@ -456,11 +411,6 @@ window.BENCHMARK_DATA = {
           {
             "name": "read_40GB",
             "value": 15.613285779953003,
-            "unit": "seconds"
-          },
-          {
-            "name": "read_10_20GB_file",
-            "value": 67.73845434188843,
             "unit": "seconds"
           }
         ]
