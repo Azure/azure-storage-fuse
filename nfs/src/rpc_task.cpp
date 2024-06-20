@@ -587,7 +587,6 @@ static void readdirplus_callback(
 
         while (entry) {
             const struct fattr3 *fattr = nullptr;
-            uint32_t file_type = 0;
 
             /*
              * Keep updating eof_cookie, when we exit the loop we will have
@@ -602,14 +601,6 @@ static void readdirplus_callback(
 
                 // Blob NFS will never send these two different.
                 assert(fattr->fileid == entry->fileid);
-
-                // Blob NFS supports only these file types.
-                assert((fattr->type == NF3REG) ||
-                       (fattr->type == NF3DIR) ||
-                       (fattr->type == NF3LNK));
-
-                file_type = (fattr->type == NF3DIR) ? S_IFDIR :
-                             ((fattr->type == NF3LNK) ? S_IFLNK : S_IFREG);
             }
 
             /*
@@ -619,10 +610,8 @@ static void readdirplus_callback(
              *       MUST check if this inode exists and if yes, use that.
              */
             struct nfs_inode *const nfs_inode =
-                new struct nfs_inode(&entry->name_handle.post_op_fh3_u.handle,
-                                     fattr,
-                                     task->get_client(),
-                                     file_type);
+                task->get_client()->get_nfs_inode(
+                    &entry->name_handle.post_op_fh3_u.handle, fattr);
 
             if (!fattr) {
                 /*
