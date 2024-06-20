@@ -16,14 +16,36 @@
 struct directory_entry
 {
     const cookie3 cookie;
-    const struct stat attributes;
-    struct nfs_inode* const nfs_ino;
+    struct stat attributes;
+    /*
+     * whether 'attributes' holds valid attributes?
+     * directory_entry which are made as a result of READDIR call, would
+     * not have the attributes. Those can only be used by subsequent
+     * readdir calls made by fuse. If fuse makes readdirplus call and
+     * we don't have the attributes, we treat it as "entry not found"
+     * and reach out to server with a READDIRPLUS call and on receipt
+     * of response update the directory_entry cache, this time with
+     * attributes.
+     */
+    bool has_attributes;
+
+    /*
+     * Again, for READDIR fetched entries, we won't know the filehandle
+     * (and the fileid), hence we won't have the inode set.
+     */
+    struct nfs_inode* const nfs_inode;
     const char* const name;
 
+    // Constructor for adding a readdirplus returned entry.
     directory_entry(const char* name_,
                     cookie3 cookie_,
                     const struct stat& attr,
-                    nfs_inode* nfs_ino_);
+                    struct nfs_inode* nfs_inode_);
+
+    // Constructor for adding a readdir returned entry.
+    directory_entry(const char* name_,
+                    cookie3 cookie_,
+                    uint64_t fileid_);
 
     ~directory_entry();
 
@@ -88,12 +110,6 @@ private:
     // Size of the cache.
     size_t cache_size;
 
-    /*
-     * The time at which the directory mtime was last checked.
-     * The directory mtime should be refreshed every DIR_MTIME_REFRESH_INTERVAL_SEC.
-     */
-    std::atomic<std::time_t> last_mtimecheck;
-
     cookieverf3 cookie_verifier;
 
     std::map<cookie3, struct directory_entry*> dir_entries;
@@ -104,10 +120,10 @@ private:
 public:
     readdirectory_cache():
         eof(false),
-        cache_size(0),
-        last_mtimecheck(std::time(nullptr))
+        cache_size(0)
     {
         assert(dir_entries.empty());
+        // Initial cookie_verifier must be 0.
         ::memset(&cookie_verifier, 0, sizeof(cookie_verifier));
     }
 
@@ -133,19 +149,6 @@ public:
         }
 
         return false;
-    }
-
-    /*
-     * Updates the last_mtimecheck to now.
-     */
-    void set_mtime()
-    {
-        last_mtimecheck.store(std::time(nullptr));
-    }
-
-    std::time_t get_lastmtime()
-    {
-        return last_mtimecheck.load();
     }
 
     bool add(struct directory_entry* entry)
@@ -223,7 +226,6 @@ public:
 
         eof = false;
         cache_size = 0;
-        last_mtimecheck = std::time(nullptr);
         ::memset(&cookie_verifier, 0, sizeof(cookie_verifier));
 
         for (auto it = dir_entries.begin(); it != dir_entries.end(); ++it)

@@ -540,6 +540,7 @@ public:
     void get_readdir_entries_from_cache();
 
     void fetch_readdir_entries_from_server();
+    void fetch_readdirplus_entries_from_server();
 };
 
 class rpc_task_helper
