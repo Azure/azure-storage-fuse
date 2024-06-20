@@ -106,6 +106,12 @@ public:
      */
     struct nfs_context* get_nfs_context() const;
 
+    /**
+     * Issue a sync GETATTR RPC call to filehandle 'fh' and save the received
+     * attributes in 'fattr'.
+     */
+    bool getattr_sync(const struct nfs_fh3& fh, struct fattr3& attr);
+
     /*
      * Given an inode number, return the nfs_inode structure.
      * For efficient access we use the address of the nfs_inode structure as

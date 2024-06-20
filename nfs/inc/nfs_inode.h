@@ -310,7 +310,5 @@ struct nfs_inode
         std::vector<const directory_entry*>& results,
         bool& eof,
         bool readdirplus);
-
-    bool make_getattr_call(struct fattr3& attr);
 };
 #endif /* __NFS_INODE_H__ */

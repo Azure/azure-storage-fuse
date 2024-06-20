@@ -255,3 +255,75 @@ void nfs_client::stat_from_fattr3(struct stat* st, const struct fattr3* attr)
         break;
     }
 }
+
+/*
+ * TODO: Once we add sync getattr API in libnfs, we can get rid of this
+ *       code. Till then use getattr_sync() to get attributes from the server.
+ */
+#if 1
+struct getattr_context
+{
+    struct fattr3 *fattr;
+    bool callback_called;
+    bool is_callback_success;
+    std::mutex ctx_mutex;
+    std::condition_variable cv;
+
+    getattr_context(struct fattr3 *fattr_):
+        fattr(fattr_),
+        callback_called(false),
+        is_callback_success(false)
+    {}
+};
+
+static void getattr_callback(
+    struct rpc_context* /* rpc */,
+    int rpc_status,
+    void *data,
+    void *private_data)
+{
+    auto ctx = (struct getattr_context*) private_data;
+    auto res = (GETATTR3res*) data;
+
+    if (res && (rpc_status == RPC_STATUS_SUCCESS) && (res->status == NFS3_OK)) {
+        *(ctx->fattr) = res->GETATTR3res_u.resok.obj_attributes;
+        ctx->is_callback_success = true;
+    }
+    ctx->callback_called = true;
+    ctx->cv.notify_one();
+}
+
+/**
+ * Issue a sync GETATTR RPC call to filehandle 'fh' and save the received
+ * attributes in 'fattr'.
+ */
+bool nfs_client::getattr_sync(const struct nfs_fh3& fh, struct fattr3& fattr)
+{
+    // TODO:Make sync getattr call once libnfs adds support.
+
+    bool rpc_retry = false;
+    struct getattr_context *ctx = new getattr_context(&fattr);
+
+    do {
+        struct GETATTR3args args;
+        args.object = fh;
+
+        if (rpc_nfs3_getattr_task(nfs_get_rpc_context(get_nfs_context()),
+                                  getattr_callback, &args, ctx) == NULL) {
+            /*
+             * This call fails due to internal issues like OOM etc
+             * and not due to an actual error, hence retry.
+             */
+            rpc_retry = true;
+        }
+    } while (rpc_retry);
+
+    std::unique_lock<std::mutex> lock(ctx->ctx_mutex);
+    ctx->cv.wait(lock, [&ctx] { return ctx->callback_called; } );
+
+    const bool success = ctx->is_callback_success;
+    delete ctx;
+
+    return success;
+}
+#endif

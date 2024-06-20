@@ -112,7 +112,7 @@ void nfs_inode::revalidate(bool force)
      * the file has changed and we need to invalidate the cached data.
      */
     struct fattr3 fattr;
-    const bool ret = make_getattr_call(fattr);
+    const bool ret = client->getattr_sync(get_fh(), fattr);
 
     /*
      * If we fail to query fresh attributes then we can't do much.
@@ -278,68 +278,4 @@ void nfs_inode::lookup_dircache(
             break;
         }
     }
-}
-
-// TODO: Add comments.
-struct getattr_context
-{
-    struct fattr3 *fattr;
-    bool callback_called;
-    bool is_callback_success;
-    std::mutex ctx_mutex;
-    std::condition_variable cv;
-
-    getattr_context(struct fattr3 *fattr_):
-        fattr(fattr_),
-        callback_called(false),
-        is_callback_success(false)
-    {}
-};
-
-static void getattr_callback(
-    struct rpc_context* /* rpc */,
-    int rpc_status,
-    void *data,
-    void *private_data)
-{
-    auto ctx = (struct getattr_context*) private_data;
-    auto res = (GETATTR3res*) data;
-
-    if (res && (rpc_status == RPC_STATUS_SUCCESS) && (res->status == NFS3_OK)) {
-        *(ctx->fattr) = res->GETATTR3res_u.resok.obj_attributes;
-        ctx->is_callback_success = true;
-    }
-    ctx->callback_called = true;
-    ctx->cv.notify_one();
-}
-
-bool nfs_inode::make_getattr_call(struct fattr3& fattr)
-{
-    // TODO:Make sync getattr call once libnfs adds support.
-
-    bool rpc_retry = false;
-    struct getattr_context *ctx = new getattr_context(&fattr);
-
-    do {
-        struct GETATTR3args args;
-        args.object = get_client()->get_nfs_inode_from_ino(ino)->get_fh();
-
-        if (rpc_nfs3_getattr_task(
-                    nfs_get_rpc_context(client->get_nfs_context()),
-                    getattr_callback, &args, ctx) == NULL) {
-            /*
-             * This call fails due to internal issues like OOM etc
-             * and not due to an actual error, hence retry.
-             */
-            rpc_retry = true;
-        }
-    } while (rpc_retry);
-
-    std::unique_lock<std::mutex> lock(ctx->ctx_mutex);
-    ctx->cv.wait(lock, [&ctx] { return ctx->callback_called; } );
-
-    const bool success = ctx->is_callback_success;
-    delete ctx;
-
-    return success;
 }
