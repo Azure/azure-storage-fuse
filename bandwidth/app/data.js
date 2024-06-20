@@ -110,11 +110,6 @@ window.BENCHMARK_DATA = {
             "unit": "MiB/s"
           },
           {
-            "name": "create_10_20GB_file",
-            "value": 30.61576159116114,
-            "unit": "GiB/s"
-          },
-          {
             "name": "read_1GB",
             "value": 10084.945706172732,
             "unit": "MiB/s"
@@ -133,11 +128,6 @@ window.BENCHMARK_DATA = {
             "name": "read_40GB",
             "value": 19614.485178375562,
             "unit": "MiB/s"
-          },
-          {
-            "name": "read_10_20GB_file",
-            "value": 27.06060366250872,
-            "unit": "GiB/s"
           }
         ]
       },
@@ -184,11 +174,6 @@ window.BENCHMARK_DATA = {
             "unit": "MiB/s"
           },
           {
-            "name": "create_10_20GB_file",
-            "value": 30.617394028227817,
-            "unit": "GiB/s"
-          },
-          {
             "name": "read_1GB",
             "value": 11449.101488759252,
             "unit": "MiB/s"
@@ -207,11 +192,6 @@ window.BENCHMARK_DATA = {
             "name": "read_40GB",
             "value": 17116.793922068602,
             "unit": "MiB/s"
-          },
-          {
-            "name": "read_10_20GB_file",
-            "value": 22.856363600745645,
-            "unit": "GiB/s"
           }
         ]
       },
@@ -258,11 +238,6 @@ window.BENCHMARK_DATA = {
             "unit": "MiB/s"
           },
           {
-            "name": "create_10_20GB_file",
-            "value": 30.509958978799883,
-            "unit": "GiB/s"
-          },
-          {
             "name": "read_1GB",
             "value": 8618.482211963124,
             "unit": "MiB/s"
@@ -281,11 +256,6 @@ window.BENCHMARK_DATA = {
             "name": "read_40GB",
             "value": 15905.402485123013,
             "unit": "MiB/s"
-          },
-          {
-            "name": "read_10_20GB_file",
-            "value": 22.01165509252426,
-            "unit": "GiB/s"
           }
         ]
       },
@@ -332,11 +302,6 @@ window.BENCHMARK_DATA = {
             "unit": "MiB/s"
           },
           {
-            "name": "create_10_20GB_file",
-            "value": 30.48362404578248,
-            "unit": "GiB/s"
-          },
-          {
             "name": "read_1GB",
             "value": 9758.469737144307,
             "unit": "MiB/s"
@@ -355,11 +320,6 @@ window.BENCHMARK_DATA = {
             "name": "read_40GB",
             "value": 18974.557320422933,
             "unit": "MiB/s"
-          },
-          {
-            "name": "read_10_20GB_file",
-            "value": 23.088477695600943,
-            "unit": "GiB/s"
           }
         ]
       },
@@ -406,11 +366,6 @@ window.BENCHMARK_DATA = {
             "unit": "MiB/s"
           },
           {
-            "name": "create_10_20GB_file",
-            "value": 30.59777622668201,
-            "unit": "GiB/s"
-          },
-          {
             "name": "read_1GB",
             "value": 9484.403543623574,
             "unit": "MiB/s"
@@ -429,11 +384,6 @@ window.BENCHMARK_DATA = {
             "name": "read_40GB",
             "value": 20991.35342932194,
             "unit": "MiB/s"
-          },
-          {
-            "name": "read_10_20GB_file",
-            "value": 25.362062584555062,
-            "unit": "GiB/s"
           }
         ]
       },
