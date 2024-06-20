@@ -336,34 +336,6 @@ window.BENCHMARK_DATA = {
             "username": "vibhansa-msft"
           },
           "distinct": true,
-          "id": "760c3d4cf0c310292f2f6fea2d71acdc6fdc9e24",
-          "message": "Updated",
-          "timestamp": "2024-06-18T22:35:50-07:00",
-          "tree_id": "e6fc3a7e6e9fff003a7232db5e44fd70b3a23a8b",
-          "url": "https://github.com/Azure/azure-storage-fuse/commit/760c3d4cf0c310292f2f6fea2d71acdc6fdc9e24"
-        },
-        "date": 1718780642004,
-        "tool": "customSmallerIsBetter",
-        "benches": [
-          {
-            "name": "rename_5000_1MB_files",
-            "unit": "seconds"
-          }
-        ]
-      },
-      {
-        "commit": {
-          "author": {
-            "email": "vibhansa@microsoft.com",
-            "name": "vibhansa",
-            "username": "vibhansa-msft"
-          },
-          "committer": {
-            "email": "vibhansa@microsoft.com",
-            "name": "vibhansa",
-            "username": "vibhansa-msft"
-          },
-          "distinct": true,
           "id": "e9d900e661f239e88aca4ebf68735f7c625a23bd",
           "message": "Updating script",
           "timestamp": "2024-06-19T00:25:31-07:00",
