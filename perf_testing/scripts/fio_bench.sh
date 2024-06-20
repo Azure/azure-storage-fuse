@@ -237,7 +237,7 @@ read_write_using_app() {
   # Unmount and cleanup now
   blobfuse2 unmount all
 
-  cat ${output}/app_*highspeed.json
+  cat ${output}/highspeed_app_*.json
 
   # Generate output
   jq '{"name": .name, "value": .speed, "unit": .unit}' ${output}/app_write_*.json ${output}/app_read_*.json | jq -s '.' | tee ./${output}/app_bandwidth.json
