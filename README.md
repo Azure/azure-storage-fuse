@@ -145,6 +145,12 @@ To learn about a specific command, just include the name of the command (For exa
     * `--block-cache-prefetch=<Number of blocks>`: Number of blocks to prefetch at max when sequential reads are in progress.
     * `--block-cache-parallelism=<count>`: Number of parallel threads doing upload/download operation.
     * `--block-cache-prefetch-on-open=true`: Start prefetching on open system call instead of waiting for first read. Enhances perf if file is read sequentially from offset 0.
+    Default values, if not assigned in config, for the following parameters in block-cache are calculated as follows:
+        * Memory preallocated for Block-Cache is 80% of free memory available
+        * Disk Cache size is 80% of free disk space
+        * Prefetch is 2 times number of CPU cores
+        * Parallelism is 3 times the number of CPU cores
+
 - Fuse options
     * `--attr-timeout=<TIMEOUT IN SECONDS>`: Time the kernel can cache inode attributes.
     * `--entry-timeout=<TIMEOUT IN SECONDS>`: Time the kernel can cache directory listing.
