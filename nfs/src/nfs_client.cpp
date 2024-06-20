@@ -30,9 +30,13 @@ bool nfs_client::init()
 
     /*
      * Initialiaze the root file handle for this client.
+     * Note that we don't know the root directory attributes yet.
+     * First GETATTR call would fetch those and then we will save it
+     * in nfs_inode::attr.
      */
     root_fh = new nfs_inode(
                 nfs_get_rootfh(transport.get_nfs_context()),
+                nullptr, /* fattr3 */
                 this,
                 S_IFDIR,
                 FUSE_ROOT_ID);
@@ -152,13 +156,12 @@ void nfs_client::reply_entry(
     const struct fuse_file_info *file)
 {
     static struct fattr3 zero_fattr;
-    nfs_inode *nfs_ino = nullptr;
+    struct nfs_inode *nfs_ino = nullptr;
     fuse_entry_param entry;
 
     memset(&entry, 0, sizeof(entry));
 
-    if (fh)
-    {
+    if (fh) {
         // Blob NFS supports only these file types.
         assert((fattr->type == NF3REG) ||
                (fattr->type == NF3DIR) ||
@@ -170,10 +173,10 @@ void nfs_client::reply_entry(
                                                              : S_IFREG);
 
         // This will be freed from fuse forget callback.
-        nfs_ino = new nfs_inode(fh, this, file_type);
+        nfs_ino = new nfs_inode(fh, fattr, this, file_type);
 
-        entry.ino = nfs_ino->get_ino();
-        stat_from_fattr3(&entry.attr, fattr);
+        entry.ino = nfs_ino->get_fuse_ino();
+        entry.attr = nfs_ino->attr;
         entry.attr_timeout = nfs_ino->get_actimeo();
         entry.entry_timeout = nfs_ino->get_actimeo();
     }
@@ -207,6 +210,7 @@ void nfs_client::reply_entry(
 }
 
 // Translate a NFS fattr3 into struct stat.
+/* static */
 void nfs_client::stat_from_fattr3(struct stat* st, const struct fattr3* attr)
 {
     ::memset(st, 0, sizeof(*st));

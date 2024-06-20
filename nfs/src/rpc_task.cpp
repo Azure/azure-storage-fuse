@@ -102,26 +102,23 @@ static void getattr_callback(
     void *data,
     void *private_data)
 {
-    auto task = (rpc_task*)private_data;
+    rpc_task *task = (rpc_task*) private_data;
     auto res = (GETATTR3res*)data;
     const fuse_ino_t ino =
         task->rpc_api.getattr_task.get_ino();
-    const struct nfs_inode *inode =
+    struct nfs_inode *inode =
         task->get_client()->get_nfs_inode_from_ino(ino);
 
-    if (task->succeeded(rpc_status, RSTATUS(res)))
-    {
-        struct stat st;
-
-        task->get_client()->stat_from_fattr3(
-            &st, &res->GETATTR3res_u.resok.obj_attributes);
+    if (task->succeeded(rpc_status, RSTATUS(res))) {
+        // Got fresh attributes, update the attributes cached in the inode.
+        inode->update(res->GETATTR3res_u.resok.obj_attributes);
 
         /*
          * Set fuse kernel attribute cache timeout to the current attribute
          * cache timeout for this inode, as per the recent revalidation
          * experience.
          */
-        task->reply_attr(&st, inode->get_actimeo());
+        task->reply_attr(&inode->attr, inode->get_actimeo());
     }
     else
     {
@@ -136,19 +133,19 @@ static void lookup_callback(
     void *data,
     void *private_data)
 {
-    auto task = (rpc_task*)private_data;
+    rpc_task *task = (rpc_task*) private_data;
     auto res = (LOOKUP3res*)data;
 
-    if (rpc_status == RPC_STATUS_SUCCESS && RSTATUS(res) == NFS3ERR_NOENT)
-    {
+    if (rpc_status == RPC_STATUS_SUCCESS && RSTATUS(res) == NFS3ERR_NOENT) {
+        /*
+         * Special case for creating negative dentry.
+         */
         task->get_client()->reply_entry(
             task,
             nullptr /* fh */,
             nullptr /* fattr */,
             nullptr);
-    }
-    else if(task->succeeded(rpc_status, RSTATUS(res)))
-    {
+    } else if(task->succeeded(rpc_status, RSTATUS(res))) {
         assert(res->LOOKUP3res_u.resok.obj_attributes.attributes_follow);
 
         task->get_client()->reply_entry(
@@ -170,7 +167,7 @@ static void createfile_callback(
     void *data,
     void *private_data)
 {
-    auto task = (rpc_task*)private_data;
+    rpc_task *task = (rpc_task*) private_data;
     auto res = (CREATE3res*)data;
 
     if (task->succeeded(rpc_status, RSTATUS(res)))
@@ -198,7 +195,7 @@ static void setattr_callback(
     void *data,
     void *private_data)
 {
-    auto task = (rpc_task*)private_data;
+    rpc_task *task = (rpc_task*) private_data;
     auto res = (SETATTR3res*)data;
     const fuse_ino_t ino =
         task->rpc_api.setattr_task.get_ino();
@@ -233,7 +230,7 @@ void mkdir_callback(
     void *data,
     void *private_data)
 {
-    auto task = (rpc_task*)private_data;
+    rpc_task *task = (rpc_task*) private_data;
     auto res = (MKDIR3res*)data;
 
     if (task->succeeded(rpc_status, RSTATUS(res)))
@@ -257,17 +254,16 @@ void mkdir_callback(
 
 void rpc_task::run_lookup()
 {
+    fuse_ino_t parent_ino = rpc_api.lookup_task.get_parent_ino();
     bool rpc_retry = false;
-    auto parent_ino = rpc_api.lookup_task.get_parent_ino();
 
     do {
         LOOKUP3args args;
-        ::memset(&args, 0, sizeof(args));
-        args.what.dir = get_client()->get_nfs_inode_from_ino(parent_ino)->get_fh();
-        args.what.name = (char*)rpc_api.lookup_task.get_file_name();
 
-        if (rpc_nfs3_lookup_task(get_rpc_ctx(), lookup_callback, &args, this) == NULL)
-        {
+        args.what.dir = get_client()->get_nfs_inode_from_ino(parent_ino)->get_fh();
+        args.what.name = (char*) rpc_api.lookup_task.get_file_name();
+
+        if (rpc_nfs3_lookup_task(get_rpc_ctx(), lookup_callback, &args, this) == NULL) {
             /*
              * This call fails due to internal issues like OOM etc
              * and not due to an actual error, hence retry.
@@ -590,8 +586,7 @@ static void readdirplus_callback(
         assert(readdircache_handle != nullptr);
 
         while (entry) {
-            // Structure to hold the attributes.
-            struct stat st;
+            const struct fattr3 *fattr = nullptr;
             uint32_t file_type = 0;
 
             /*
@@ -603,32 +598,18 @@ static void readdirplus_callback(
             }
 
             if (entry->name_attributes.attributes_follow) {
-                const fattr3& fattr =
-                    entry->name_attributes.post_op_attr_u.attributes;
+                fattr = &(entry->name_attributes.post_op_attr_u.attributes);
+
                 // Blob NFS will never send these two different.
-                assert(fattr.fileid == entry->fileid);
+                assert(fattr->fileid == entry->fileid);
 
                 // Blob NFS supports only these file types.
-                assert((fattr.type == NF3REG) ||
-                       (fattr.type == NF3DIR) ||
-                       (fattr.type == NF3LNK));
+                assert((fattr->type == NF3REG) ||
+                       (fattr->type == NF3DIR) ||
+                       (fattr->type == NF3LNK));
 
-                task->get_client()->stat_from_fattr3(&st, &fattr);
-
-                file_type = (fattr.type == NF3DIR) ? S_IFDIR :
-                             ((fattr.type == NF3LNK) ? S_IFLNK : S_IFREG);
-            } else {
-                /*
-                 * If readdirplus entry doesn't carry attributes, then we
-                 * just save the inode number and filetype as DT_UNKNOWN.
-                 *
-                 * Blob NFS though must always send attributes in a readdirplus
-                 * response.
-                 */
-                assert(0);
-                ::memset(&st, 0, sizeof(st));
-                st.st_ino = entry->fileid;
-                st.st_mode = 0;
+                file_type = (fattr->type == NF3DIR) ? S_IFDIR :
+                             ((fattr->type == NF3LNK) ? S_IFLNK : S_IFREG);
             }
 
             /*
@@ -639,8 +620,21 @@ static void readdirplus_callback(
              */
             struct nfs_inode *const nfs_inode =
                 new struct nfs_inode(&entry->name_handle.post_op_fh3_u.handle,
-                              task->get_client(),
-                              file_type);
+                                     fattr,
+                                     task->get_client(),
+                                     file_type);
+
+            if (!fattr) {
+                /*
+                 * If readdirplus entry doesn't carry attributes, then we
+                 * just save the inode number and filetype as DT_UNKNOWN.
+                 *
+                 * Blob NFS though must always send attributes in a readdirplus
+                 * response.
+                 */
+                nfs_inode->attr.st_ino = entry->fileid;
+                nfs_inode->attr.st_mode = 0;
+            }
 
             /*
              * Create the directory entries here.
@@ -653,7 +647,7 @@ static void readdirplus_callback(
             struct directory_entry* dir_entry =
                 new struct directory_entry(strdup(entry->name),
                                     entry->cookie,
-                                    st,
+                                    nfs_inode->attr,
                                     nfs_inode);
 
             // Add to readdirectory_cache for future use.

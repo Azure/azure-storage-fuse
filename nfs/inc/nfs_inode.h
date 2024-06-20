@@ -111,6 +111,7 @@ struct nfs_inode
      *       response.
      */
     nfs_inode(const struct nfs_fh3 *filehandle,
+              const struct fattr3 *fattr,
               struct nfs_client *_client,
               uint32_t _file_type,
               fuse_ino_t _ino = 0);
@@ -118,12 +119,22 @@ struct nfs_inode
     ~nfs_inode();
 
     /**
-     * Return inode number for this inode.
+     * Return the fuse inode number for this inode.
      */
-    fuse_ino_t get_ino() const
+    fuse_ino_t get_fuse_ino() const
     {
         assert(ino != 0);
         return ino;
+    }
+
+    /**
+     * Return the NFS fileid. This is also the inode number returned by
+     * stat(2).
+     */
+    uint64_t get_fileid() const
+    {
+        assert(attr.st_ino != 0);
+        return attr.st_ino;
     }
 
     /**
@@ -302,4 +313,5 @@ struct nfs_inode
 
     bool make_getattr_call(struct fattr3& attr);
 };
+
 #endif /* __NFS_INODE_H__ */

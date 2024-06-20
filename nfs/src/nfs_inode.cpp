@@ -9,6 +9,7 @@
  * for the root inode.
  */
 nfs_inode::nfs_inode(const struct nfs_fh3 *filehandle,
+                     const struct fattr3 *fattr,
                      struct nfs_client *_client,
                      uint32_t _file_type,
                      fuse_ino_t _ino) :
@@ -33,9 +34,24 @@ nfs_inode::nfs_inode(const struct nfs_fh3 *filehandle,
     fh.data.data_val = new char[fh.data.data_len];
     ::memcpy(fh.data.data_val, filehandle->data.data_val, fh.data.data_len);
 
-    // Just init enough to treat cached attributes as invalid.
-    attr.st_ctim = {0, 0};
-    attr.st_mtim = {0, 0};
+    /*
+     * Most common case is we are creating nfs_inode when we got a fh (and
+     * attributes) for a file, f.e., LOOKUP, CREATE, READDIRPLUS, etc.
+     */
+    if (fattr) {
+        client->stat_from_fattr3(&attr, fattr);
+
+        attr_timeout_secs = get_actimeo_min();
+        attr_timeout_timestamp = get_current_msecs() + attr_timeout_secs*1000;
+    } else {
+        /*
+         * Just init enough to treat cached attributes as invalid.
+         * This is still not usable, as the least we need from attributes
+         * is st_ino (for inode) and st_mode (for filetype).
+         */
+        attr.st_ctim = {0, 0};
+        attr.st_mtim = {0, 0};
+    }
 
     dircache_handle = std::make_shared<readdirectory_cache>();
 }
@@ -112,16 +128,16 @@ void nfs_inode::revalidate(bool force)
      */
     std::unique_lock<std::shared_mutex> lock(ilock);
 
-    if (update_nolock(fattr)) {
-        // File changed.
-        attr_timeout_secs = get_actimeo_min();
-    } else {
-        // File not changed.
+    if (!update_nolock(fattr)) {
+        /*
+         * File not changed, exponentially increase attr_timeout_secs.
+         * File changed case is handled inside update_nolock() as that's
+         * needed by other callsites of update_nolock().
+         */
         attr_timeout_secs =
             std::min((int) attr_timeout_secs*2, get_actimeo_max());
+        attr_timeout_timestamp = now_msecs + attr_timeout_secs*1000;
     }
-
-    attr_timeout_timestamp = now_msecs + attr_timeout_secs*1000;
 }
 
 /**
@@ -132,7 +148,7 @@ bool nfs_inode::update_nolock(const struct fattr3& fattr)
     const bool fattr_is_newer =
         (compare_timespec_and_nfstime(attr.st_ctim, fattr.ctime) == -1);
 
-    // ctime has not increased, i.e., cached attributes are newer, skip update.
+    // ctime has not increased, i.e., cached attributes are valid, skip update.
     if (!fattr_is_newer) {
         return false;
     }
@@ -153,8 +169,13 @@ bool nfs_inode::update_nolock(const struct fattr3& fattr)
                fattr.mtime.seconds, fattr.mtime.nseconds,
                attr.st_size, fattr.size);
 
-    // Update cached attributes.
+    /*
+     * Update cached attributes and also reset the attr_timeout_secs and
+     * attr_timeout_timestamp since the attributes have changed.
+     */
     get_client()->stat_from_fattr3(&attr, &fattr);
+    attr_timeout_secs = get_actimeo_min();
+    attr_timeout_timestamp = get_current_msecs() + attr_timeout_secs*1000;
 
     // file type should not change.
     assert((attr.st_mode & S_IFMT) == file_type);
@@ -303,7 +324,6 @@ bool nfs_inode::make_getattr_call(struct fattr3& attr)
 
     do {
         struct GETATTR3args args;
-        ::memset(&args, 0, sizeof(args));
         args.object = get_client()->get_nfs_inode_from_ino(ino)->get_fh();
 
         if (rpc_nfs3_getattr_task(nfs_get_rpc_context(client->get_nfs_context()), getattr_callback, &args, ctx) == NULL)

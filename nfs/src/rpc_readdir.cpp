@@ -1,7 +1,7 @@
 #include "rpc_readdir.h"
 #include "nfs_inode.h"
 
-directory_entry::directory_entry(const char* name_,
+directory_entry::directory_entry(const char *name_,
                                  cookie3 cookie_,
                                  const struct stat& attr,
                                  struct nfs_inode* nfs_inode_) :
@@ -26,7 +26,7 @@ directory_entry::directory_entry(const char* name_,
     nfs_inode->incref();
 }
 
-directory_entry::directory_entry(const char* name_,
+directory_entry::directory_entry(const char *name_,
                                  cookie3 cookie_,
                                  uint64_t fileid_) :
     cookie(cookie_),
