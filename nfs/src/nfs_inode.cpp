@@ -17,11 +17,13 @@ nfs_inode::nfs_inode(const struct nfs_fh3 *filehandle,
     file_type(_file_type),
     client(_client)
 {
-    // Sanity assert.
+    // Sanity asserts.
+    assert(filehandle != nullptr);
+    assert(fattr != nullptr);
     assert(client != nullptr);
     assert(client->magic == NFS_CLIENT_MAGIC);
     assert(filehandle->data.data_len > 50 &&
-            filehandle->data.data_len <= 64);
+           filehandle->data.data_len <= 64);
     // ino is either set to FUSE_ROOT_ID or set to address of nfs_inode.
     assert((ino == (fuse_ino_t) this) || (ino == FUSE_ROOT_ID));
 
@@ -38,23 +40,13 @@ nfs_inode::nfs_inode(const struct nfs_fh3 *filehandle,
      * Most common case is we are creating nfs_inode when we got a fh (and
      * attributes) for a file, f.e., LOOKUP, CREATE, READDIRPLUS, etc.
      */
-    if (fattr) {
-        client->stat_from_fattr3(&attr, fattr);
+    client->stat_from_fattr3(&attr, fattr);
 
-        // file type as per fattr should match the one passed explicitly..
-        assert((attr.st_mode & S_IFMT) == file_type);
+    // file type as per fattr should match the one passed explicitly..
+    assert((attr.st_mode & S_IFMT) == file_type);
 
-        attr_timeout_secs = get_actimeo_min();
-        attr_timeout_timestamp = get_current_msecs() + attr_timeout_secs*1000;
-    } else {
-        /*
-         * Just init enough to treat cached attributes as invalid.
-         * This is still not usable, as the least we need from attributes
-         * is st_ino (for inode) and st_mode (for filetype).
-         */
-        attr.st_ctim = {0, 0};
-        attr.st_mtim = {0, 0};
-    }
+    attr_timeout_secs = get_actimeo_min();
+    attr_timeout_timestamp = get_current_msecs() + attr_timeout_secs*1000;
 
     dircache_handle = std::make_shared<readdirectory_cache>();
 }
