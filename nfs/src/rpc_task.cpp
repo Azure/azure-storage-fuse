@@ -632,6 +632,7 @@ static void readdirplus_callback(
                  * Blob NFS though must always send attributes in a readdirplus
                  * response.
                  */
+                assert(0);
                 nfs_inode->attr.st_ino = entry->fileid;
                 nfs_inode->attr.st_mode = 0;
             }

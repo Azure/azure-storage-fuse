@@ -313,5 +313,4 @@ struct nfs_inode
 
     bool make_getattr_call(struct fattr3& attr);
 };
-
 #endif /* __NFS_INODE_H__ */
