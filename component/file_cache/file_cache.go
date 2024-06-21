@@ -284,7 +284,7 @@ func (c *FileCache) Configure(_ bool) error {
 		c.maxCacheSize = 0.8 * float64(stat.Bavail) * float64(stat.Bsize)
 	}
 
-	if config.IsSet(compName + ".max-size-mb") {
+	if config.IsSet(compName+".max-size-mb") && conf.MaxSizeMB != 0 {
 		c.maxCacheSize = conf.MaxSizeMB
 	}
 

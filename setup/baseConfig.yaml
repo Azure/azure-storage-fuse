@@ -70,7 +70,7 @@ file_cache:
 
   # Optional 
   timeout-sec: <default cache eviction timeout (in sec). Default - 120 sec>
-  max-size-mb: <maximum cache size allowed. Value given as 0 will mean unlimited space. Default - 80% of free disk space>
+  max-size-mb: <maximum cache size allowed. Default - 80% of free disk space>
   sync-to-flush: true|false <sync call to a file will force upload of the contents to storage account>
   refresh-sec: <number of seconds after which compare lmt of file in local cache and container and refresh file if container has the latest copy>
   ignore-sync: true|false <sync call will be ignored and locally cached file will not be deleted>
