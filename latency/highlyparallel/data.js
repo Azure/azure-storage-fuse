@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1718863773800,
+  "lastUpdate": 1718952020491,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -896,6 +896,45 @@ window.BENCHMARK_DATA = {
           {
             "name": "rand_read_128_thread",
             "value": 1261.3851442941343,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "vibhansa@microsoft.com",
+            "name": "vibhansa",
+            "username": "vibhansa-msft"
+          },
+          "committer": {
+            "email": "vibhansa@microsoft.com",
+            "name": "vibhansa",
+            "username": "vibhansa-msft"
+          },
+          "distinct": true,
+          "id": "cf65fd86fb159a9e7232c4420c63bcc9318f876e",
+          "message": "Merge remote-tracking branch 'origin/main' into vibhansa/perftestrunner",
+          "timestamp": "2024-06-20T22:59:46-07:00",
+          "tree_id": "8132c55336cdf1dde4ed6875eeb8dcf1472e55ed",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/cf65fd86fb159a9e7232c4420c63bcc9318f876e"
+        },
+        "date": 1718952020164,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "seq_write_112_thread",
+            "value": 216.91393958066797,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "seq_read_128_thread",
+            "value": 385.95810304436895,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "rand_read_128_thread",
+            "value": 1375.498738873748,
             "unit": "milliseconds"
           }
         ]
