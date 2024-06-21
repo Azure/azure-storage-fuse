@@ -7,6 +7,11 @@
 
 **Other Changes**
 - LFU policy in file cache has been deprecated.
+- Default values, if not assigned in config, for the following parameters in block-cache are calculated as follows:
+    - Memory preallocated for Block-Cache is 80% of free memory
+    - Disk Cache size is 80% of free disk space
+    - Prefetch is 2 times number of CPU cores
+    - Parallelism is 3 times the number of CPU cores
 
 ## 2.3.0 (2024-05-16)
 **Bug Fixes**
