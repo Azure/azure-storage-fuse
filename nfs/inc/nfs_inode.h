@@ -7,6 +7,13 @@
 
 #define NFS_INODE_MAGIC *((const uint32_t *)"NFSI")
 
+// Compare two nfs_fh3 filehandles.
+#define FH_EQUAL(fh1, fh2) \
+    (((fh1)->data.data_len == (fh2)->data.data_len) && \
+     (!memcmp((fh1)->data.data_val, \
+              (fh2)->data.data_val, \
+              (fh1)->data.data_len)))
+
 /**
  * This is the NFS inode structure. There is one of these per file/directory
  * and contains any global information about the file/directory., f.e.,
@@ -32,20 +39,19 @@ struct nfs_inode
 
     /*
      * Ref count of this inode.
-     * Whenever we make one of the following calls, we must increment the
-     * lookupcnt of the inode:
+     * Fuse expects that whenever we make one of the following calls, we
+     * must increment the lookupcnt of the inode:
      * - fuse_reply_entry()
      * - fuse_reply_create()
      * - Lookup count of every entry returned by readdirplus(), except "."
      *   and "..", is incremented by one. Note that readdir() does not
      *   affect the lookup count of any of the entries returned.
      *
-     * Note that the lookupcnt is set to 0 when the nfs_inode is created
-     * and only when we are able to successfully convey creation of the inode
-     * to fuse, we increment it to 1. This is important as unless fuse
-     * knows about an inode it'll never call forget() for it and we will
-     * leak the inode.
-     *
+     * Since an nfs_inode is created only in response to one of the above,
+     * we set the lookupcnt to 1 when the nfs_inode is created. Later if
+     * we are not able to successfully convey creation of the inode to fuse
+     * we drop the ref. This is important as unless fuse knows about an
+     * inode it'll never call forget() for it and we will leak the inode.
      * forget() causes lookupcnt for an inode to be reduced by the "nlookup"
      * parameter count. forget_multi() does the same for multiple inodes in
      * a single call.
@@ -55,8 +61,17 @@ struct nfs_inode
      * Till the lookupcnt of an inode drops to zero, we MUST not free the
      * nfs_inode structure, as kernel may send requests for files with
      * non-zero lookupcnt, even after calls to unlink(), rmdir() or rename().
+     *
+     * dircachecnt is another refcnt which is the number of readdirplus
+     * directory_entry,s that refer to the nfs_inode. An inode can only be
+     * deleted when both lookupcnt and dircachecnt become 0, i.e., fuse
+     * vfs does not have a reference to the inode and it's not cached in
+     * any of our readdirectory_cache,s.
+     *
+     * See comment above inode_map.
      */
     mutable std::atomic<uint64_t> lookupcnt = 0;
+    mutable std::atomic<uint64_t> dircachecnt = 0;
 
     /*
      * NFSv3 filehandle returned by the server.
@@ -105,7 +120,7 @@ struct nfs_inode
      * Only valid for a directory, this will be nullptr for a non-directory.
      */
     std::shared_ptr<readdirectory_cache> dircache_handle;
-    
+
     /**
      * TODO: Initialize attr with postop attributes received in the RPC
      *       response.
@@ -144,26 +159,45 @@ struct nfs_inode
     {
         lookupcnt++;
 
-        AZLogDebug("ino {} lookupcnt incremented to {}",
-                   ino, (int) lookupcnt.load());
+        AZLogDebug("[{}] lookupcnt incremented to {}",
+                   ino, lookupcnt.load());
     }
 
     /**
      * Decrement lookupcnt of the inode and delete it if lookupcnt
      * reaches 0.
+     * 'cnt' is the amount by which the lookupcnt must be decremented.
+     * This is usually the nlookup parameter passed by fuse FORGET, when
+     * decref() is called from fuse FORGET, else it's 1.
+     * 'from_forget' should be set to true when calling decref() for
+     * handling fuse FORGET. Note that fuse FORGET is special as it
+     * conveys important information about the inode. Since FORGET may
+     * mean that fuse VFS does not have any reference to the inode, we can
+     * use that to perform some imp tasks like, purging the readdir cache
+     * for directory inodes. This is imp as it makes the client behave
+     * like the kernel NFS client where flushing the cache causes the
+     * directory cache to be flushed, and this can be a useful technique
+     * in cases where NFS client is not being consistent with the server.
      */
-    void decref()
-    {
-        assert(lookupcnt > 0);
+    void decref(size_t cnt = 1, bool from_forget = false);
 
-        if (--lookupcnt == 0) {
-            AZLogDebug("ino {} lookupcnt decremented to 0, freeing inode",
-                       ino, lookupcnt.load());
-            delete this;
-        } else {
-            AZLogDebug("ino {} lookupcnt decremented to {}",
-                       ino, lookupcnt.load());
-        }
+    /**
+     * Returns true if inode is FORGOTten by fuse.
+     * Forgotten inodes will not be referred by fuse in any api call.
+     * Note that forgotten inodes may still hang around if they are
+     * referenced by at least one directory_entry cache.
+     */
+    bool is_forgotten() const
+    {
+        return (lookupcnt == 0);
+    }
+
+    /**
+     * Is this inode cached by any readdirectory_cache?
+     */
+    bool is_dircached() const
+    {
+        return (dircachecnt > 0);
     }
 
     nfs_client *get_client() const
@@ -277,9 +311,15 @@ struct nfs_inode
     }
 
     /**
-     * Caller must hold the inode lock.
+     * Caller must hold inode->ilock.
      */
-    void purge_dircache();
+    void purge_dircache_nolock();
+
+    void purge_dircache()
+    {
+        std::unique_lock<std::shared_mutex> lock(ilock);
+        purge_dircache_nolock();
+    }
 
     /**
      * Caller must hold the inode lock.

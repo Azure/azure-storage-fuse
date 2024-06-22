@@ -440,7 +440,7 @@ public:
         return client;
     }
 
-    bool get_index() const
+    int get_index() const
     {
         return index;
     }
@@ -472,22 +472,26 @@ public:
         struct nfs_inode *inode = nullptr;
 
         /*
-         * On a successful call to fuse_reply_entry() the inode's lookup
-         * count must be incremented.
+         * As per fuse on a successful call to fuse_reply_create() the
+         * inode's lookup count must be incremented. We increment the
+         * inode's lookupcnt in get_nfs_inode(), this lookup count will
+         * be transferred to fuse on successful fuse_reply_create() call,
+         * but if that fails then we need to drop the ref.
          * "ino == 0" implies a failed lookup call, so we don't have a valid
          * inode number to return.
-         * We increment the inode lookup count before calling
-         * fuse_reply_entry() to avoid any races. Later if it fails, we
-         * decrement the lookup count for correctness.
          */
         if (e->ino != 0) {
             inode = client->get_nfs_inode_from_ino(e->ino);
-            inode->incref();
+            assert(inode->lookupcnt >= 1);
         }
 
         if (fuse_reply_entry(req, e) < 0) {
             if (inode) {
-                inode->decref();
+                /*
+                 * Not able to convey to fuse should invoke FORGET
+                 * workflow.
+                 */
+                inode->decref(1, true /* from_forget */);
             }
         }
 
@@ -502,17 +506,21 @@ public:
         assert(entry->ino != 0);
 
         /*
-         * On a successful call to fuse_reply_create() the inode's lookup
-         * count must be incremented.
-         * We increment the inode lookup count before calling
-         * fuse_reply_create() to avoid any races. Later if it fails, we
-         * decrement the lookup count for correctness.
+         * As per fuse on a successful call to fuse_reply_create() the
+         * inode's lookup count must be incremented. We increment the
+         * inode's lookupcnt in get_nfs_inode(), this lookup count will
+         * be transferred to fuse on successful fuse_reply_create() call,
+         * but if that fails then we need to drop the ref.
          */
         struct nfs_inode *inode = client->get_nfs_inode_from_ino(entry->ino);
-        inode->incref();
+        assert(inode->lookupcnt >= 1);
 
         if (fuse_reply_create(req, entry, file) < 0) {
-            inode->decref();
+            /*
+             * Not able to convey to fuse should invoke FORGET
+             * workflow.
+             */
+            inode->decref(1, true /* from_forget */);
         }
 
         free_rpc_task();

@@ -47,6 +47,26 @@ private:
     struct nfs_inode *root_fh = nullptr;
 
     /*
+     * Map of all inodes returned to fuse and which are not FORGET'ed
+     * by fuse. The idea behind this map is to make sure we never return
+     * two different fuse_ino_t inode number for the same file, lest it'll
+     * confuse the VFS layer. This is achieved by adding any inode we
+     * return to fuse, to this map.
+     * An inode will be removed from the map only when all the following
+     * conditions are met:
+     * 1. inode->lookupcnt becomes 0.
+     *    This confirms that fuse vfs does not have this inode and hence
+     *    it cannnot make any call on this inode.
+     * 2. inode->dircachecnt becomes 0.
+     *    Whenever we cache directory_entry for readdirplus, the
+     *    directory_entry also refers to the inode and hence we need to
+     *    make sure that the inode is not freed till any directory_entry
+     *    is referring to it.
+     */
+    std::multimap<uint64_t /* fileid */, struct nfs_inode*> inode_map;
+    std::shared_mutex inode_map_lock;
+
+    /*
      * Every RPC request is represented by an rpc_task which is created when
      * the fuse request is received and remains till the NFS server sends a
      * response. rpc_task_helper class allows efficient allocation of RPC
@@ -64,6 +84,14 @@ private:
      */
     struct nfs_server_stat server_stat;
 
+    /*
+     * Since we use the address of nfs_inode as the inode number we
+     * return to fuse, this is a small sanity check we do to check if
+     * fuse is passing us valid inode numbers.
+     */
+    uint64_t min_ino = UINT64_MAX;
+    uint64_t max_ino = 0;
+
     nfs_client() :
     	transport(this)
     {
@@ -71,8 +99,13 @@ private:
 
     ~nfs_client()
     {
-        delete root_fh;
-        root_fh = nullptr;
+        /*
+         * Drop the initial ref held in nfs_client::init().
+         */
+        if (root_fh) {
+            root_fh->decref();
+            root_fh = nullptr;
+        }
     }
 
 public:
@@ -94,6 +127,11 @@ public:
     struct rpc_task_helper *get_rpc_task_helper()
     {
         return rpc_task_helper;
+    }
+
+    std::shared_mutex& get_inode_map_lock()
+    {
+        return inode_map_lock;
     }
 
     /*
@@ -134,6 +172,9 @@ public:
             return root_fh;
         }
 
+        assert(ino >= min_ino);
+        assert(ino <= max_ino);
+
         struct nfs_inode *const nfsi =
             reinterpret_cast<struct nfs_inode *>(ino);
 
@@ -156,10 +197,53 @@ public:
      * same nfs_inode as long one is cached with us. New incarnation of
      * fuse driver will give a different fuse ino for the same file, but
      * that should be ok.
+     * It'll grab a refcnt on the inode before returning. Caller must ensure
+     * that the ref is duly dropped at an appropriate time. Most commonly
+     * this refcnt held by get_nfs_inode() is trasferred to fuse and is
+     * dropped when fuse FORGETs the inode.
+     * 'is_root_inode' must be set when the inode being requested is the
+     * root inode. Root inode is special in that it has the special fuse inode
+     * number of 1, rest other inodes have inode number as the address of
+     * the nfs_inode structure, which allows fast ino->inode mapping.
      */
     struct nfs_inode *get_nfs_inode(const nfs_fh3 *fh,
                                     const struct fattr3 *fattr,
-                                    fuse_ino_t ino = 0);
+                                    bool is_root_inode = false);
+
+    /**
+     * Release the given inode, called when fuse FORGET call causes the
+     * inode lookupcnt to drop to 0, i.e., the inode is no longer in use
+     * by fuse VFS. Note that it takes a dropcnt parameter which is the
+     * nlookup parameter passed by fuse FORGET. Instead of the caller
+     * reducing lookupcnt and then calling put_nfs_inode(), the caller
+     * passes the amount by which the lookupcnt must be dropped. This is
+     * important as we need to drop the lookupcnt inside the inode_map_lock,
+     * else if we drop before the lock and lookupcnt becomes 0, some other
+     * thread can delete the inode while we still don't have the lock, and
+     * then when we proceed to delete the inode, we would be accessing the
+     * already deleted inode.
+     *
+     * If the inode lookupcnt (after reducing by dropcnt), becomes 0 and it's
+     * not referenced by any readdirectory_cache (inode->dircachecnt is 0)
+     * then the inode is removed from the inode_map and freed.
+     *
+     * This nolock version does not hold the inode_map_lock so the caller
+     * must hold the lock before calling this. Usually you will call one of
+     * the other variants which hold the lock.
+     */
+    void put_nfs_inode_nolock(struct nfs_inode *inode, size_t dropcnt);
+
+    void put_nfs_inode(struct nfs_inode *inode, size_t dropcnt)
+    {
+        AZLogDebug("[{}] put_nfs_inode(dropcnt={}) called",
+                   inode->get_fuse_ino(), dropcnt);
+        /*
+         * We need to hold the inode_map_lock while we check the inode for
+         * eligibility to remove (and finally remove) from the inode_map.
+         */
+        std::unique_lock<std::shared_mutex> lock(inode_map_lock);
+        put_nfs_inode_nolock(inode, dropcnt);
+    }
 
     /*
      *

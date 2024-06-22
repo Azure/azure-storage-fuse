@@ -22,17 +22,16 @@ bool nfs_client::init()
      * those, setting up libnfs nfs_context for each connection.
      * Once this is done the connections are ready to carry RPC req/resp.
      */
-    if (!transport.start())
-    {
+    if (!transport.start()) {
         AZLogError("Failed to start the RPC transport.");
         return false;
     }
 
     /*
      * Also query the attributes for the root fh.
-     * XXX: Though libnfs makes getattr call as part of mount but there
-     *      is no way for us to use those attributes, so we need to query
-     *      again.
+     * XXX: Though libnfs makes getattr call as part of mount but there is no
+     *      way for us to fetch those attributes from libnfs, so we need to
+     *      query again.
      */
     struct fattr3 fattr;
     const bool ret =
@@ -40,10 +39,10 @@ bool nfs_client::init()
 
     /*
      * If we fail to successfully issue GETATTR RPC to the root fh,
-     * then there's something wrong, fail client init.
+     * then there's something non-trivially wrong, fail client init.
      */
     if (!ret) {
-        AZLogError("First GETATTR ro rootfh failed!");
+        AZLogError("First GETATTR to rootfh failed!");
         return false;
     }
 
@@ -52,8 +51,7 @@ bool nfs_client::init()
      */
     root_fh = get_nfs_inode(nfs_get_rootfh(transport.get_nfs_context()),
                             &fattr,
-                            FUSE_ROOT_ID);
-    //AZLogInfo("Obtained root fh is {}", root_fh->get_fh());
+                            true /* is_root_inode */);
 
     // Initialize the RPC task list.
     rpc_task_helper = rpc_task_helper::get_instance(this);
@@ -62,28 +60,178 @@ bool nfs_client::init()
 }
 
 /**
- * Given a filehandle and fattr (oontaining fileid defining a file/dir),
+ * Given a filehandle and fattr (containing fileid defining a file/dir),
  * get the nfs_inode for that file/dir. It searches in the global list of
  * all inodes and returns from there if found, else creates a new nfs_inode.
+ * The returned inode has it refcnt incremented by 1.
  */
 struct nfs_inode *nfs_client::get_nfs_inode(const nfs_fh3 *fh,
                                             const struct fattr3 *fattr,
-                                            fuse_ino_t ino)
+                                            bool is_root_inode)
 {
-    /*
-     * TODO: Search in the global inode list first and only if not
-     *       found, create a new one. This way we don't return multiple
-     *       nfs_inode for the same file.
-     */
-
+#ifndef ENABLE_NON_AZURE_NFS
     // Blob NFS supports only these file types.
     assert((fattr->type == NF3REG) ||
            (fattr->type == NF3DIR) ||
            (fattr->type == NF3LNK));
+#endif
 
     const uint32_t file_type = (fattr->type == NF3DIR) ? S_IFDIR :
                                 ((fattr->type == NF3LNK) ? S_IFLNK : S_IFREG);
-    return new nfs_inode(fh, fattr, this, file_type, ino);
+
+    /*
+     * Search in the global inode list first and only if not found, create a
+     * new one. This is very important as returning multiple inodes for the
+     * same file is recipe for disaster.
+     */
+    {
+        std::shared_lock<std::shared_mutex> lock(inode_map_lock);
+
+        /*
+         * Search by fileid in the multimap. Since fileid is not guaranteed to
+         * be unique, we need to check for FH match in the matched inode(s)
+         * list.
+         */
+        const auto range = inode_map.equal_range(fattr->fileid);
+
+        for (auto i = range.first; i != range.second; ++i) {
+            assert(i->first == fattr->fileid);
+            assert(i->second->magic == NFS_INODE_MAGIC);
+
+            if (FH_EQUAL(&(i->second->get_fh()), fh)) {
+                // File type must not change for an inode.
+                assert(i->second->file_type == file_type);
+
+                if (i->second->is_forgotten()) {
+                    AZLogDebug("[{}] Reusing forgotten inode",
+                               i->second->get_fuse_ino());
+                }
+
+                i->second->incref();
+                return i->second;
+            }
+        }
+    }
+
+    struct nfs_inode *inode = new nfs_inode(fh, fattr, this, file_type,
+                                            is_root_inode ? FUSE_ROOT_ID : 0);
+
+    {
+        std::unique_lock<std::shared_mutex> lock(inode_map_lock);
+
+        AZLogWarn("[{}] Allocated new inode ({})",
+                  inode->get_fuse_ino(), inode_map.size());
+
+        /*
+         * With the exclusive lock held, check once more if some other thread
+         * added this inode before we could get the lock. If so, then delete
+         * the inode created above, grab a refcnt on the inode created by the
+         * other thread and return that.
+         */
+        const auto range = inode_map.equal_range(fattr->fileid);
+
+        for (auto i = range.first; i != range.second; ++i) {
+            assert(i->first == fattr->fileid);
+            assert(i->second->magic == NFS_INODE_MAGIC);
+
+            if (FH_EQUAL(&(i->second->get_fh()), fh)) {
+                AZLogWarn("[{}] Another thread added inode, deleting ours",
+                          inode->get_fuse_ino());
+                delete inode;
+
+                i->second->incref();
+                return i->second;
+            }
+        }
+
+        min_ino = std::min(min_ino, (fuse_ino_t) inode);
+        max_ino = std::max(max_ino, (fuse_ino_t) inode);
+
+        inode->incref();
+
+        // Ok, insert the newly allocated inode in the global map.
+        inode_map.insert({fattr->fileid, inode});
+    }
+
+    return inode;
+}
+
+// Caller must hold the inode_map_lock.
+void nfs_client::put_nfs_inode_nolock(struct nfs_inode *inode,
+                                      size_t dropcnt)
+{
+    assert(inode->magic == NFS_INODE_MAGIC);
+    assert(inode->lookupcnt >= dropcnt);
+
+    /*
+     * We have to reduce the lookupcnt by dropcnt regardless of whether we
+     * free the inode or not. After dropping the lookupcnt if it becomes 0
+     * then we proceed to perform the other checks for deciding whether the
+     * inode can be safely removed from inode_map and freed.
+     */
+    inode->lookupcnt -= dropcnt;
+
+    /*
+     * Caller should call us only for forgotten inodes but it's possible that
+     * after we held the inode_map_lock some other thread got a reference on
+     * this inode.
+     */
+    if (inode->lookupcnt > 0) {
+        AZLogWarn("[{}] Inode no longer forgotten", inode->get_fuse_ino());
+        return;
+    }
+
+    /*
+     * Directory inodes cannot be deleted while the directory cache is not
+     * purged. Note that we purge directory cache from decref() when the
+     * refcnt reaches 0, i.e., fuse is no longer referencing the directory.
+     * So, a non-zero directory cache count means that some other thread
+     * started enumerating the directory before we could delete the directory
+     * inode. Fuse will call FORGET on the directory and then we can free this
+     * inode.
+     */
+    if (inode->is_dir() && (inode->dircache_handle->get_num_entries() != 0)) {
+        AZLogWarn("[{}] Inode still has {} entries in dircache, skipping",
+                  inode->get_fuse_ino(), inode->dircache_handle->get_num_entries());
+        return;
+    }
+
+
+    /*
+     * If this inode is referenced by some directory_entry then we cannot free
+     * it. We will attempt to free it later when the parent directory is purged
+     * and the inode loses its last dircachecnt reference.
+     */
+    if (inode->dircachecnt) {
+        AZLogVerbose("[{}] Inode is cached by readdir ({})",
+                     inode->get_fuse_ino(), inode->dircachecnt.load());
+        return;
+    }
+
+    /*
+     * Ok, inode is not referenced by fuse VFS and it's not referenced by
+     * any readdir cache, let's remove it from the inode_map. Once removed
+     * from inode_map, any subsequent get_nfs_inode() calls for this file
+     * (fh and fileid) will allocate a new nfs_inode, which will most likely
+     * result in a new fuse inode number.
+     */
+    auto range = inode_map.equal_range(inode->get_fileid());
+
+    for (auto i = range.first; i != range.second; ++i) {
+        assert(i->first == inode->get_fileid());
+        assert(i->second->magic == NFS_INODE_MAGIC);
+
+        if (i->second == inode) {
+            AZLogWarn("[{}] Deleting inode (inode_map size: {})",
+                      inode->get_fuse_ino(), inode_map.size()-1);
+            inode_map.erase(i);
+            delete inode;
+            return;
+        }
+    }
+
+    // We must find the inode in inode_map.
+    assert(0);
 }
 
 struct nfs_context* nfs_client::get_nfs_context() const
@@ -182,11 +330,11 @@ void nfs_client::readdirplus(
     tsk->run_readdirplus();
 }
 
-//
-// Creates a new inode for the given fh and passes it to fuse layer.
-// This will be called by the APIs which must return a filehandle back to the client
-// like lookup, create etc.
-//
+/*
+ * Creates a new inode for the given fh and passes it to fuse layer.
+ * This will be called by the APIs which must return a filehandle back to the
+ * client like lookup, create etc.
+ */
 void nfs_client::reply_entry(
     struct rpc_task *ctx,
     const nfs_fh3 *fh,
@@ -194,22 +342,20 @@ void nfs_client::reply_entry(
     const struct fuse_file_info *file)
 {
     static struct fattr3 zero_fattr;
-    struct nfs_inode *nfs_ino = nullptr;
+    struct nfs_inode *inode = nullptr;
     fuse_entry_param entry;
 
     memset(&entry, 0, sizeof(entry));
 
     if (fh) {
         // This will be freed from fuse forget callback.
-        nfs_ino = get_nfs_inode(fh, fattr);
+        inode = get_nfs_inode(fh, fattr);
 
-        entry.ino = nfs_ino->get_fuse_ino();
-        entry.attr = nfs_ino->attr;
-        entry.attr_timeout = nfs_ino->get_actimeo();
-        entry.entry_timeout = nfs_ino->get_actimeo();
-    }
-    else
-    {
+        entry.ino = inode->get_fuse_ino();
+        entry.attr = inode->attr;
+        entry.attr_timeout = inode->get_actimeo();
+        entry.entry_timeout = inode->get_actimeo();
+    } else {
         /*
          * The only valid case where reply_entry() is called with null fh
          * is the case where lookup yielded "not found". We are using the
@@ -219,27 +365,24 @@ void nfs_client::reply_entry(
          * This caching helps to improve performance by avoiding repeated
          * lookup requests for entries that are known not to exist.
          *
-         * TODO: See if negative dentry timeout of 30 secs is good.
+         * TODO: See if negative dentry timeout of 5 secs is ok.
          */
         assert(!fattr);
         stat_from_fattr3(&entry.attr, &zero_fattr);
-        entry.attr_timeout = 30;
-        entry.entry_timeout = 30;
+        entry.attr_timeout = 5;
+        entry.entry_timeout = 5;
     }
 
-    if (file)
-    {
+    if (file) {
         ctx->reply_create(&entry, file);
-    }
-    else
-    {
+    } else {
         ctx->reply_entry(&entry);
     }
 }
 
 // Translate a NFS fattr3 into struct stat.
 /* static */
-void nfs_client::stat_from_fattr3(struct stat* st, const struct fattr3* attr)
+void nfs_client::stat_from_fattr3(struct stat *st, const struct fattr3 *attr)
 {
     ::memset(st, 0, sizeof(*st));
     st->st_dev = attr->fsid;
@@ -259,6 +402,7 @@ void nfs_client::stat_from_fattr3(struct stat* st, const struct fattr3* attr)
     st->st_mtim.tv_nsec = attr->mtime.nseconds;
     st->st_ctim.tv_sec = attr->ctime.seconds;
     st->st_ctim.tv_nsec = attr->ctime.nseconds;
+
     switch (attr->type) {
     case NF3REG:
         st->st_mode |= S_IFREG;
@@ -292,8 +436,8 @@ void nfs_client::stat_from_fattr3(struct stat* st, const struct fattr3* attr)
 struct getattr_context
 {
     struct fattr3 *fattr;
-    bool callback_called;
-    bool is_callback_success;
+    std::atomic<bool> callback_called;
+    std::atomic<bool> is_callback_success;
     std::mutex ctx_mutex;
     std::condition_variable cv;
 
@@ -332,6 +476,7 @@ bool nfs_client::getattr_sync(const struct nfs_fh3& fh, struct fattr3& fattr)
     bool rpc_retry = false;
     struct getattr_context *ctx = new getattr_context(&fattr);
 
+try_again:
     do {
         struct GETATTR3args args;
         args.object = fh;
@@ -347,7 +492,11 @@ bool nfs_client::getattr_sync(const struct nfs_fh3& fh, struct fattr3& fattr)
     } while (rpc_retry);
 
     std::unique_lock<std::mutex> lock(ctx->ctx_mutex);
-    ctx->cv.wait(lock, [&ctx] { return ctx->callback_called; } );
+    if (!ctx->cv.wait_for(lock, std::chrono::seconds(120),
+                          [&ctx] { return (ctx->callback_called == true); })) {
+        AZLogWarn("Timed out waiting for getattr response, re-issuing getattr!");
+        goto try_again;
+    }
 
     const bool success = ctx->is_callback_success;
     delete ctx;

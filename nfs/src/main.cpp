@@ -424,15 +424,12 @@ static void aznfsc_ll_forget(fuse_req_t req,
                fmt::ptr(req), ino, nlookup);
 
     struct nfs_client *client = get_nfs_client_from_fuse_req(req);
+    struct nfs_inode *inode = client->get_nfs_inode_from_ino(ino);
 
     /*
      * Decrement refcnt of the inode and free the inode if refcnt becomes 0.
      */
-    assert(nlookup > 0);
-    while (nlookup--) {
-        client->get_nfs_inode_from_ino(ino)->decref();
-    }
-
+    inode->decref(nlookup, true /* from_forget */);
     fuse_reply_none(req);
 }
 
@@ -637,7 +634,7 @@ static void aznfsc_ll_opendir(fuse_req_t req,
                               fuse_ino_t ino,
                               struct fuse_file_info *fi)
 {
-    AZLogInfo("aznfsc_ll_opendir(req={}, ino={}, fi={})",
+    AZLogDebug("aznfsc_ll_opendir(req={}, ino={}, fi={})",
                fmt::ptr(req), ino, fmt::ptr(fi));
 
     /*
@@ -678,7 +675,7 @@ static void aznfsc_ll_releasedir(fuse_req_t req,
                                  fuse_ino_t ino,
                                  struct fuse_file_info *fi)
 {
-    AZLogInfo("aznfsc_ll_releasedir(req={}, ino={}, fi={})",
+    AZLogDebug("aznfsc_ll_releasedir(req={}, ino={}, fi={})",
                fmt::ptr(req), ino, fmt::ptr(fi));
 
     /*
@@ -895,17 +892,16 @@ void aznfsc_ll_forget_multi(fuse_req_t req,
     struct nfs_client *client = get_nfs_client_from_fuse_req(req);
 
     for (size_t i = 0; i < count; i++) {
-        uint64_t nlookup = forgets[i].nlookup;
+        const uint64_t nlookup = forgets[i].nlookup;
         const fuse_ino_t ino = forgets[i].ino;
+        struct nfs_inode *inode = client->get_nfs_inode_from_ino(ino);
 
         AZLogDebug("forget(ino={}, nlookup={})", ino, nlookup);
         /*
          * Decrement refcnt of the inode and free the inode if refcnt
          * becomes 0.
          */
-        while (nlookup--) {
-            client->get_nfs_inode_from_ino(ino)->decref();
-        }
+        inode->decref(nlookup, true /* from_forget */);
     }
 
     fuse_reply_none(req);
@@ -1034,7 +1030,7 @@ int main(int argc, char *argv[])
               AZNFSCLIENT_VERSION_PATCH);
 
     struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
-    struct fuse_session *se;
+    struct fuse_session *se = NULL;
     struct fuse_cmdline_opts opts;
     struct fuse_loop_config loop_config;
     int ret = -1;

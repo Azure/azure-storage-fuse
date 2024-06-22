@@ -102,6 +102,12 @@ struct mount_options
         std::string url(1024, '\0');
         // TODO: Take it from aznfsc_cfg.
         const int debug = 0;
+
+        /*
+         * For Blob NFS force nfsport and mountport to avoid portmapper
+         * calls.
+         */
+#ifndef ENABLE_NON_AZURE_NFS
         const int size = std::snprintf(
                             const_cast<char*>(url.data()),
                             url.size(),
@@ -113,6 +119,18 @@ struct mount_options
                             mount_port,
                             timeo,
                             retrans);
+#else
+        const int size = std::snprintf(
+                            const_cast<char*>(url.data()),
+                            url.size(),
+                            "nfs://%s%s/?version=3&debug=%d&xprtsec=none&timeo=%d&retrans=%d",
+                            server.c_str(),
+                            export_path.c_str(),
+                            debug,
+                            timeo,
+                            retrans);
+#endif
+
         assert(size < (int) url.size());
         url.resize(size);
         return url;

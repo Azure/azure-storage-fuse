@@ -2,3 +2,9 @@ For building:
 - mkdir build && cd build
 - cmake -DCMAKE_BUILD_TYPE=Debug ..
 - make
+
+# If you want to support non-Azure NFS server add the following to cmake.
+- -DENABLE_NON_AZURE_NFS=ON ..
+
+# For enabling AZLogVerbose()
+- -DENABLE_CHATTY=ON ..

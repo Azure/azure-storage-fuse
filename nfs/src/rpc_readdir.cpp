@@ -1,5 +1,6 @@
 #include "rpc_readdir.h"
 #include "nfs_inode.h"
+#include "nfs_client.h"
 
 directory_entry::directory_entry(const char *name_,
                                  cookie3 cookie_,
@@ -17,13 +18,16 @@ directory_entry::directory_entry(const char *name_,
            ((attr.st_mode & S_IFMT) == S_IFLNK));
 
     /*
-     * While this directory_entry is allocated (and present in
-     * readdirectory_cache) , we will return this inode to fuse,
-     * so keep it allocated.
-     * Note that fuse can call forget() for the inode, even though
-     * we might have it in our cache.
+     * inode must have a refcnt held before adding to directory_entry.
+     * Every inode referenced from a directory_entry has a dircachecnt
+     * reference held. We need the lookupcnt ref to ensure the inode is
+     * not freed before we grab the dircachecnt ref.
+     * Once dircachecnt ref is held, the caller may choose to drop the
+     * lookupcnt ref and dircachecnt ref will correctly prevent the inode
+     * from being freed while it's referenced by the directory_entry.
      */
-    nfs_inode->incref();
+    assert(!nfs_inode->is_forgotten());
+    nfs_inode->dircachecnt++;
 }
 
 directory_entry::directory_entry(const char *name_,
@@ -45,8 +49,165 @@ directory_entry::directory_entry(const char *name_,
 
 directory_entry::~directory_entry()
 {
-    // Drop the ref we held in the constructor.
     if (nfs_inode) {
-        nfs_inode->decref();
+        assert(nfs_inode->dircachecnt > 0);
+        nfs_inode->dircachecnt--;
+    }
+}
+
+bool readdirectory_cache::add(struct directory_entry* entry)
+{
+    assert(entry != nullptr);
+
+    {
+        // Get exclusive lock on the map to add the entry to the map.
+        std::unique_lock<std::shared_mutex> lock(readdircache_lock);
+
+        // TODO: Fix this.
+        if (cache_size >= MAX_CACHE_SIZE_LIMIT) {
+            AZLogWarn("Exceeding cache max size. No more entries will "
+                      "be added to the cache! curent size: {}", cache_size);
+            return false;
+        }
+
+        if (entry->nfs_inode) {
+            /*
+             * directory_entry constructor must have grabbed the
+             * dircachecnt ref.
+             */
+            assert(entry->nfs_inode->dircachecnt > 0);
+
+            AZLogDebug("Adding {} fuse ino {} to readdir cache (ref {})",
+                       entry->name,
+                       entry->nfs_inode->get_fuse_ino(),
+                       entry->nfs_inode->dircachecnt.load());
+        }
+
+        const auto& it = dir_entries.insert({entry->cookie, entry});
+        cache_size += entry->get_cache_size();
+        return it.second;
+    }
+
+    /*
+     * TODO: Prune the map for space constraint.
+     * For now we will just not add entry into the cache if it is full.
+     */
+    return false;
+}
+
+struct directory_entry *readdirectory_cache::lookup(cookie3 cookie) const
+{
+    // Take shared look to see if the entry exist in the cache.
+    std::shared_lock<std::shared_mutex> lock(readdircache_lock);
+
+    const auto it = dir_entries.find(cookie);
+
+    struct directory_entry *dirent =
+        (it != dir_entries.end()) ? it->second : nullptr;
+
+    if (dirent) {
+        /*
+         * When a directory_entry is added to to readdirectory_cache we
+         * hold a ref, so while it's in the cache dircachecnt must be non-zero.
+         */
+        assert(dirent->nfs_inode->dircachecnt > 0);
+
+        /*
+         * Grab a ref on behalf of the caller so that the inode doesn't
+         * get freed while the directory_entry is referring to it.
+         * Once they are done using this directory_entry, they must drop
+         * this ref, mostly done in send_readdir_response().
+         */
+        dirent->nfs_inode->dircachecnt++;
+    }
+
+    return dirent;
+}
+
+/*
+ * inode_map_lock must be held by the caller.
+ */
+void readdirectory_cache::clear()
+{
+    /*
+     * TODO: Later when we implement readdirectory_cache purging due to
+     *       memory pressure, we need to ensure that any directory which
+     *       is currently being enumerated by nfs_inode::lookup_dircache(),
+     *       should not be purged, as that may cause those inodes to be
+     *       orphanned (they will have lookupcnt and dircachecnt of 0 and
+     *       still lying aroung in the inode_map.
+     */
+    std::vector<struct nfs_inode*> tofree_vec;
+
+    {
+        std::unique_lock<std::shared_mutex> lock(readdircache_lock);
+
+        eof = false;
+        cache_size = 0;
+        ::memset(&cookie_verifier, 0, sizeof(cookie_verifier));
+
+        for (auto it = dir_entries.begin(); it != dir_entries.end(); ++it) {
+            struct nfs_inode *inode = it->second->nfs_inode;
+            if (inode) {
+                assert(inode->magic == NFS_INODE_MAGIC);
+                /*
+                 * Any inode referenced by a directory_entry added to
+                 * a readdirectory_cache must have one reference held,
+                 * by readdirectory_cache::add().
+                 */
+                assert(inode->dircachecnt > 0);
+
+                AZLogDebug("Removing {} fuse ino {} from readdir cache "
+                           "(ref {})",
+                           it->second->name,
+                           inode->get_fuse_ino(),
+                           inode->dircachecnt.load());
+            }
+
+            /*
+             * If this is the last dircachecnt on this inode, it means
+             * there are no more readdirectory_cache,s referencing this
+             * inode. If it's not a "." or ".." dirent, we need to free
+             * the inode now. "." and ".." are aliases and their inodes
+             * will be freed when the actual directory_entry referring to
+             * that directory is released.
+             */
+            if (inode && (inode->dircachecnt == 1) &&
+                    !it->second->is_dot_or_dotdot()) {
+                tofree_vec.emplace_back(inode);
+                assert(inode->magic == NFS_INODE_MAGIC);
+
+                /*
+                 * Grab inode ref so that the inode is not removed from
+                 * inode_map and delete after we drop the dircachecnt
+                 * and gran the inode_map_lock. This ref will be dropped
+                 * by put_nfs_inode_nolock() safely with the lock held.
+                 */
+                inode->incref();
+            }
+
+            /*
+             * This will call ~directory_entry(), which will drop the
+             * dircachecnt. Note that we grabbed a lookupcnt ref on the
+             * inode before this to prevent another threads from freeing
+             * the inode before we grab the inode_map_lock below.
+             */
+            delete it->second;
+        }
+
+        dir_entries.clear();
+    }
+
+    if (!tofree_vec.empty()) {
+        std::unique_lock<std::shared_mutex> lock1(client->get_inode_map_lock());
+
+        AZLogDebug("{} inodes to be freed, after readdir cache purge",
+                   tofree_vec.size());
+
+        for (struct nfs_inode *inode : tofree_vec) {
+            assert(inode->magic == NFS_INODE_MAGIC);
+            // Drop the extra ref we held above.
+            client->put_nfs_inode_nolock(inode, 1 /* dropcnt */);
+        }
     }
 }

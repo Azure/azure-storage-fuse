@@ -81,20 +81,28 @@ struct directory_entry
         }
     }
 
-    bool is_dot_or_dotdot() const
+    static bool is_dot_or_dotdot(const char *name)
     {
         return (name != nullptr) &&
                ((name[0] == '.') &&
                 ((name[1] == '\0') ||
                  ((name[1] == '.') && (name[2] == '\0'))));
     }
-};
 
-#define DIR_MTIME_REFRESH_INTERVAL_SEC 30
+    bool is_dot_or_dotdot() const
+    {
+        return is_dot_or_dotdot(name);
+    }
+};
 
 struct readdirectory_cache
 {
 private:
+    /*
+     * The singleton nfs_client, for convenience.
+     */
+    struct nfs_client *client;
+
     /*
      * This will be set if we have read all the entries of the directory
      * from the backend.
@@ -114,14 +122,19 @@ private:
 
     std::map<cookie3, struct directory_entry*> dir_entries;
 
-    // This lock protects all the memberf of this readdirectory_cache.
-    std::shared_mutex readdircache_lock;
+    /*
+     * This lock protects all the members of this readdirectory_cache.
+     * XXX We should use inode->ilock to protect this too?
+     */
+    mutable std::shared_mutex readdircache_lock;
 
 public:
-    readdirectory_cache():
+    readdirectory_cache(struct nfs_client *_client):
+        client(_client),
         eof(false),
         cache_size(0)
     {
+        assert(client);
         assert(dir_entries.empty());
         // Initial cookie_verifier must be 0.
         ::memset(&cookie_verifier, 0, sizeof(cookie_verifier));
@@ -132,8 +145,15 @@ public:
         return readdircache_lock;
     }
 
+    // This is helpul for asserting.
+    size_t get_num_entries() const
+    {
+        return dir_entries.size();
+    }
+
     /*
-     * Return true and populates the \p dirent if the entry corresponding to \p cookie exists.
+     * Return true and populates the \p dirent if the entry corresponding
+     * to \p cookie exists.
      * Returns false otherwise.
      */
     bool get_entry_at(cookie3 cookie, struct directory_entry** dirent)
@@ -151,31 +171,7 @@ public:
         return false;
     }
 
-    bool add(struct directory_entry* entry)
-    {
-        assert(entry != nullptr);
-        
-        {
-            // Get exclusive lock on the map to add the entry to the map.
-            std::unique_lock<std::shared_mutex> lock(readdircache_lock);
-        
-            if (cache_size >= MAX_CACHE_SIZE_LIMIT)
-            {
-                AZLogWarn("Exceeding cache max size. No more entries will be added to the cache! cuurent size: {}", cache_size);
-                return false;
-            }
-
-            const auto& it = dir_entries.insert({entry->cookie, entry});
-            cache_size += entry->get_cache_size();
-            return it.second;
-        }
-
-        /*
-         * TODO: Prune the map for space constraint.
-         * For now we will just not add entry into the cache if it is full.
-         */
-        return false;
-    }
+    bool add(struct directory_entry* entry);
 
     const cookieverf3* get_cookieverf() const
     {
@@ -210,55 +206,18 @@ public:
         this->eof_cookie = eof_cookie;
     }
 
-    struct directory_entry *lookup(cookie3 cookie)
-    {
-        // Take shared look to see if the entry exist in the cache.
-        std::shared_lock<std::shared_mutex> lock(readdircache_lock);
+    struct directory_entry *lookup(cookie3 cookie) const;
 
-        const auto it = dir_entries.find(cookie);
-
-        return (it != dir_entries.end()) ? it->second : nullptr;
-    }
-
-    void clear()
-    {
-        std::unique_lock<std::shared_mutex> lock(readdircache_lock);
-
-        eof = false;
-        cache_size = 0;
-        ::memset(&cookie_verifier, 0, sizeof(cookie_verifier));
-
-        for (auto it = dir_entries.begin(); it != dir_entries.end(); ++it)
-        {
-            free(it->second);
-        }
-
-        dir_entries.clear();
-    }
+    void clear();
 
     ~readdirectory_cache()
     {
-        AZLogInfo(" ~readdirectory_cache() called");
-        // This cache has now become invalid. clean it up.
-        std::unique_lock<std::shared_mutex> lock(readdircache_lock);
+        AZLogInfo("~readdirectory_cache() called");
 
-        for (auto it = dir_entries.begin(); it != dir_entries.end(); ++it)
-        {
-            free(it->second);
-        }
-
-        dir_entries.clear();
-    }
-
-    // Various helper methods added below.
-    static bool are_mtimes_equal(const struct stat* attr1, const struct stat* attr2)
-    {
-        if (attr1 == nullptr || attr2 == nullptr) {
-            //        std::cerr << "One of the attributes is null." << std::endl;
-            return false;
-        }
-        return (attr1->st_mtim.tv_sec == attr2->st_mtim.tv_sec) &&
-               (attr1->st_mtim.tv_nsec == attr2->st_mtim.tv_nsec);
+        /*
+         * The cache must have been purged before deleting.
+         */
+        assert(dir_entries.empty());
     }
 };
 #endif /* __READDIR_RPC_TASK___ */

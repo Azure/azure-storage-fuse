@@ -553,10 +553,16 @@ allocate_only_chunk:
              * chunkvec will be destroyed and it'll release its reference,
              * so the chunkmap reference will be the only reference left.
              */
+#ifndef NDEBUG
             auto p = chunkmap.try_emplace(chunk.offset, chunk.offset,
                                           chunk.length, chunk.buffer,
                                           chunk.alloc_buffer);
             assert(p.second == true);
+#else
+            chunkmap.try_emplace(chunk.offset, chunk.offset,
+                                 chunk.length, chunk.buffer,
+                                 chunk.alloc_buffer);
+#endif
 
             if ((chunk.offset + chunk.length) > _extent_right) {
                 _extent_right = (chunk.offset + chunk.length);
@@ -598,12 +604,20 @@ allocate_only_chunk:
             AZLogDebug("(chunk after insert) [{},{})",
                        chunk_after->offset,
                        chunk_after->offset + chunk_after->length);
+#ifndef NDEBUG
             const auto p = chunkmap.try_emplace(chunk_after->offset,
                                                 chunk_after->offset,
                                                 chunk_after->length,
                                                 chunk_after->buffer,
                                                 chunk_after->alloc_buffer);
             assert(p.second == true);
+#else
+            chunkmap.try_emplace(chunk_after->offset,
+                                 chunk_after->offset,
+                                 chunk_after->length,
+                                 chunk_after->buffer,
+                                 chunk_after->alloc_buffer);
+#endif
 
             delete chunk_after;
     }

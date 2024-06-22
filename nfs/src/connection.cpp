@@ -26,8 +26,6 @@ bool nfs_connection::open()
     assert(mo.server == url->server);
     assert(mo.export_path == url->path);
 
-    nfs_set_mountport(nfs_context, mo.get_mount_port());
-    nfs_set_nfsport(nfs_context, mo.get_port());
     nfs_set_writemax(nfs_context, mo.wsize);
     nfs_set_readmax(nfs_context, mo.rsize);
 

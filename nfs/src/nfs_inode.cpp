@@ -18,25 +18,34 @@ nfs_inode::nfs_inode(const struct nfs_fh3 *filehandle,
     client(_client)
 {
     // Sanity asserts.
+    assert(magic == NFS_INODE_MAGIC);
     assert(filehandle != nullptr);
     assert(fattr != nullptr);
     assert(client != nullptr);
     assert(client->magic == NFS_CLIENT_MAGIC);
+
+#ifndef ENABLE_NON_AZURE_NFS
+    // Blob NFS FH is at least 50 bytes.
     assert(filehandle->data.data_len > 50 &&
            filehandle->data.data_len <= 64);
-    // ino is either set to FUSE_ROOT_ID or set to address of nfs_inode.
-    assert((ino == (fuse_ino_t) this) || (ino == FUSE_ROOT_ID));
-
     // Blob NFS supports only these file types.
     assert((file_type == S_IFREG) ||
            (file_type == S_IFDIR) ||
            (file_type == S_IFLNK));
+
+#else
+    assert(filehandle->data.data_len <= 64);
+#endif
+
+    // ino is either set to FUSE_ROOT_ID or set to address of nfs_inode.
+    assert((ino == (fuse_ino_t) this) || (ino == FUSE_ROOT_ID));
 
     fh.data.data_len = filehandle->data.data_len;
     fh.data.data_val = new char[fh.data.data_len];
     ::memcpy(fh.data.data_val, filehandle->data.data_val, fh.data.data_len);
 
     /*
+     * We always have fattr when creating nfs_inode.
      * Most common case is we are creating nfs_inode when we got a fh (and
      * attributes) for a file, f.e., LOOKUP, CREATE, READDIRPLUS, etc.
      */
@@ -48,20 +57,105 @@ nfs_inode::nfs_inode(const struct nfs_fh3 *filehandle,
     attr_timeout_secs = get_actimeo_min();
     attr_timeout_timestamp = get_current_msecs() + attr_timeout_secs*1000;
 
-    dircache_handle = std::make_shared<readdirectory_cache>();
+    dircache_handle = std::make_shared<readdirectory_cache>(client);
 }
 
 nfs_inode::~nfs_inode()
 {
+    assert(magic == NFS_INODE_MAGIC);
+    // We should never delete an inode which fuse still has a reference on.
+    assert(is_forgotten());
     assert(lookupcnt == 0);
+    /*
+     * We should never delete an inode while it is still referred by parent
+     * dir cache.
+     */
+    assert(dircachecnt == 0);
+    /*
+     * Directory inodes must not be freed while they have a non-empty dir
+     * cache.
+     */
+    assert(dircache_handle->get_num_entries() == 0);
+#ifndef ENABLE_NON_AZURE_NFS
     assert(fh.data.data_len > 50 && fh.data.data_len <= 64);
+#else
+    assert(fh.data.data_len <= 64);
+#endif
     assert((ino == (fuse_ino_t) this) || (ino == FUSE_ROOT_ID));
     assert(client != nullptr);
     assert(client->magic == NFS_CLIENT_MAGIC);
 
+    assert(fh.data.data_val != nullptr);
     delete fh.data.data_val;
     fh.data.data_val = nullptr;
     fh.data.data_len = 0;
+}
+
+void nfs_inode::decref(size_t cnt, bool from_forget)
+{
+    AZLogDebug("[{}] decref(cnt={}, from_forget={}) called",
+               ino, cnt, from_forget);
+
+    /*
+     * We only decrement lookupcnt in forget and once lookupcnt drops to
+     * 0 we mark the inode as forgotten, so decref() should not be called
+     * for forgotten inode.
+     */
+    assert(!is_forgotten());
+    assert(cnt > 0);
+    assert(lookupcnt >= cnt);
+
+    /*
+     * Grab an extra ref so that the lookupcnt-=cnt does not cause the refcnt
+     * to drop to 0, else some other thread can delete the inode before we get
+     * to call put_nfs_inode().
+     */
+    ++lookupcnt;
+    const bool forget_now = ((lookupcnt -= cnt) == 1);
+
+    if (forget_now) {
+        /*
+         * For directory inodes it's a good time to purge the dircach, since
+         * fuse VFS has lost all references on the directory. Note that we
+         * can purge the directory cache at a later point also, but doing it
+         * here causes the fuse client to behave like the Linux kernel NFS
+         * client where we can purge the directory cache by writing to
+         * drop_caches.
+         */
+        if (from_forget && is_dir()) {
+            purge_dircache();
+        }
+
+        /*
+         * Reduce the extra refcnt and revert the cnt.
+         * After this the inode will have 'cnt' references that need to be
+         * dropped by put_nfs_inode(), with inode_map_lock held.
+         */
+        lookupcnt += (cnt - 1);
+
+        AZLogDebug("[{}] lookupcnt dropping({}) to 0, forgetting inode",
+                   ino, cnt);
+
+        /*
+         * This FORGET would drops the lookupcnt to 0, fuse vfs should not send
+         * any more forgets, delete the inode. Note that before we grab the
+         * inode_map_lock in put_nfs_inode() some other thread can reuse the
+         * forgotten inode, in which case put_nfs_inode() will just skip it.
+         *
+         * TODO: In order to avoid taking the inode_map_lock for every forget,
+         *       see if we should batch them in a threadlocal vector and call
+         *       put_nfs_inodes() for a batch.
+         */
+        client->put_nfs_inode(this, cnt);
+    } else {
+        if (--lookupcnt == 0) {
+            // XXX Want to see if this happens in practice.
+            assert(0);
+        }
+
+        AZLogDebug("[{}] lookupcnt decremented({}) to {}",
+                   ino, cnt, lookupcnt.load());
+    }
 }
 
 int nfs_inode::get_actimeo_min() const
@@ -193,7 +287,7 @@ void nfs_inode::invalidate_cache_nolock()
      *       Once we have the file cache too, we need to purge that for files.
      */
     if (is_dir()) {
-        purge_dircache();
+        purge_dircache_nolock();
     } else {
         purge_filecache();
     }
@@ -201,11 +295,13 @@ void nfs_inode::invalidate_cache_nolock()
 
 /*
  * Purge the readdir cache.
- *  TODO: For now we purge the entire cache. This can be later changed to purge
- *        parts of cache.
+ * TODO: For now we purge the entire cache. This can be later changed to purge
+ *       parts of cache.
  */
-void nfs_inode::purge_dircache()
+void nfs_inode::purge_dircache_nolock()
 {
+    AZLogWarn("[{}] Purging dircache", get_fuse_ino());
+
     dircache_handle->clear();
 }
 
@@ -216,21 +312,46 @@ void nfs_inode::lookup_dircache(
     bool& eof,
     bool readdirplus)
 {
+    // Sanity check.
+    assert(max_size > 0 && max_size <= (64*1024*1024));
+    assert(results.empty());
+
+#ifndef ENABLE_NON_AZURE_NFS
+    // Blob NFS uses cookie as a counter, so 4B is a practical check.
+    assert(cookie < UINT32_MAX);
+#endif
+
     int num_cache_entries = 0;
     ssize_t rem_size = max_size;
     // Have we seen eof from the server?
     const bool dir_eof_seen = dircache_handle->get_eof();
 
-    // We should have non-zero space to fill in entries.
-    assert(rem_size > 0);
+    eof = false;
 
     while (rem_size > 0) {
-        const struct directory_entry* entry = dircache_handle->lookup(cookie);
+        const struct directory_entry *entry = dircache_handle->lookup(cookie);
 
         if (entry) {
+            /*
+             * Get the size this entry will take when copied to fuse buffer.
+             * The size is more for readdirplus, which copies the attributes
+             * too. This way we make sure we don't return more than what fuse
+             * readdir/readdirplus call requested.
+             */
             rem_size -= entry->get_fuse_buf_size(readdirplus);
 
             if (rem_size >= 0) {
+                /*
+                 * This entry can fit in the fuse buffer.
+                 * We have to increment the lookupcnt for non "." and ".."
+                 * entries. Note that we took a dircachecnt reference inside
+                 * readdirectory_cache::lookup() call above, to make sure that
+                 * till we increase this refcnt, the inode is not freed.
+                 */
+                if (!entry->is_dot_or_dotdot()) {
+                    entry->nfs_inode->incref();
+                }
+
                 num_cache_entries++;
                 results.push_back(entry);
 
@@ -243,6 +364,21 @@ void nfs_inode::lookup_dircache(
                     eof = true;
                 }
             } else {
+                /*
+                 * Drop the ref taken inside readdirectory_cache::lookup().
+                 * Note that we should have 2 or more dircachecnt references,
+                 * one taken by lookup() for the directory_entry copy returned
+                 * to us and one already taken as the directory_entry is added
+                 * to readdirectory_cache::dir_entries.
+                 * Also note that this readdirectory_cache won't be purged,
+                 * after lookup() releases the readdircache_lock since this dir
+                 * is being enumerate by the current thread and hence it must
+                 * have the directory open which should prevent fuse vfs from
+                 * calling forget on the directory inode.
+                 */
+                assert(entry->nfs_inode->dircachecnt >= 2);
+                entry->nfs_inode->dircachecnt--;
+
                 // No space left to add more entries.
                 AZLogDebug("lookup_dircache: Returning {} entries, as {} bytes "
                            "of output buffer exhausted (eof={})",

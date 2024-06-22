@@ -13,10 +13,19 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 #
 option(ENABLE_TESTS "Build and run test programs" OFF)
 option(ENABLE_DOCUMENTATION "Build Documentation" OFF)
+option(ENABLE_NON_AZURE_NFS "Enable support for general NFS servers" ON)
+option(ENABLE_CHATTY "Enable super verbose logs" OFF)
+
+if(ENABLE_NON_AZURE_NFS)
+  add_definitions(-DENABLE_NON_AZURE_NFS)
+endif()
+
+if(ENABLE_CHATTY)
+  add_definitions(-DENABLE_CHATTY)
+endif()
 
 set(INSTALL_BIN_DIR "${CMAKE_INSTALL_PREFIX}/bin" CACHE PATH "Installation directory for binaries")
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/CMake" ${CMAKE_MODULE_PATH})
-
 
 #
 # We add the following submodule(s), update them as needed, before starting.

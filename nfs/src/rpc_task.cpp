@@ -587,6 +587,7 @@ static void readdirplus_callback(
 
         while (entry) {
             const struct fattr3 *fattr = nullptr;
+            const bool is_dot_or_dotdot = directory_entry::is_dot_or_dotdot(entry->name);
 
             /*
              * Keep updating eof_cookie, when we exit the loop we will have
@@ -634,11 +635,18 @@ static void readdirplus_callback(
              *       changes).
              * TODO: Try to steal entry->name to avoid the strdup().
              */
-            struct directory_entry* dir_entry =
+            struct directory_entry *dir_entry =
                 new struct directory_entry(strdup(entry->name),
                                     entry->cookie,
                                     nfs_inode->attr,
                                     nfs_inode);
+
+            /*
+             * dir_entry must have one ref on the inode.
+             * This ref will protect the inode while this directory_entry is
+             * present in the readdirectory_cache (added below).
+             */
+            assert(nfs_inode->dircachecnt >= 1);
 
             // Add to readdirectory_cache for future use.
             readdircache_handle->add(dir_entry);
@@ -650,12 +658,45 @@ static void readdirplus_callback(
             if (rem_size >= 0) {
                 rem_size -= dir_entry->get_fuse_buf_size(true /* readdirplus */);
                 if (rem_size >= 0) {
+                    /*
+                     * send_readdir_response() will drop this ref after adding
+                     * to fuse buf, after which the lookupcnt ref will protect
+                     * it.
+                     */
+                    nfs_inode->dircachecnt++;
                     readdirentries.push_back(dir_entry);
+
+                    /*
+                     * Fuse promises to call FORGET for each readdirplus
+                     * returned entry that is not "." or "..". Note that
+                     * get_nfs_inode() above would have grabbed a lookupcnt
+                     * ref for all entries, here we drop ref on "." and "..",
+                     * so we are only left with ref on non "." and "..".
+                     */
+                    if (is_dot_or_dotdot) {
+                        nfs_inode->decref();
+                    }
+                } else {
+                    /*
+                     * We are unable to add this entry to the fuse response
+                     * buffer, so we won't notify fuse of this entry.
+                     * Drop the ref held by get_nfs_inode().
+                     */
+                    AZLogDebug("[{}] {}: Dropping ref since couldn't fit in "
+                               "fuse response buffer",
+                               nfs_inode->get_fuse_ino(),
+                               entry->name);
+                    nfs_inode->decref();
                 }
+            } else {
+                AZLogDebug("[{}] {}: Dropping ref since couldn't fit in "
+                           "fuse response buffer",
+                           nfs_inode->get_fuse_ino(),
+                           entry->name);
+                nfs_inode->decref();
             }
 
             entry = entry->nextentry;
-
             ++num_dirents;
         }
 
@@ -679,9 +720,7 @@ static void readdirplus_callback(
         }
 
         task->send_readdir_response(readdirentries);
-    }
-    else
-    {
+    } else {
         // Since the api failed and can no longer be retried, return error reply.
         task->reply_error(-nfsstat3_to_errno(RSTATUS(res)));
     }
@@ -832,6 +871,11 @@ void rpc_task::send_readdir_response(
         if (readdirplus) {
             struct fuse_entry_param fuseentry;
 
+            /*
+             * Drop the ref held inside lookup() or readdirplus_callback().
+             */
+            it->nfs_inode->dircachecnt--;
+
             // We don't need the memset as we are setting all members.
             //memset(&fuseentry, 0, sizeof(fuseentry));
             fuseentry.attr = it->attributes;
@@ -890,12 +934,13 @@ void rpc_task::send_readdir_response(
         if (readdirplus) {
             /*
              * Fuse expects lookupcnt of every entry returned by readdirplus(),
-             * except "." and "..", to be incremented.
+             * except "." and "..", to be incremented. Make sure get_nfs_inode()
+             * has duly taken the refs.
              *
              * TODO: If fuse_reply_buf() below fails we must drop these refcnts.
              */
             if (!it->is_dot_or_dotdot()) {
-                it->nfs_inode->incref();
+                assert(it->nfs_inode->lookupcnt > 0);
             }
         }
     }
