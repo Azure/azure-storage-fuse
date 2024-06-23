@@ -344,7 +344,7 @@ static void aznfsc_ll_init(void *userdata,
      *     that.
      */
     conn->want |= FUSE_CAP_READDIRPLUS;
-    conn->want &= ~FUSE_CAP_READDIRPLUS_AUTO;
+    //conn->want &= ~FUSE_CAP_READDIRPLUS_AUTO;
 
     conn->want |= FUSE_CAP_ASYNC_READ;
 
@@ -664,9 +664,6 @@ static void aznfsc_ll_readdir(fuse_req_t req,
 {
     AZLogDebug("aznfsc_ll_readdir(req={}, ino={}, size={}, off={}, fi={})",
                fmt::ptr(req), ino, size, off, fmt::ptr(fi));
-
-    // Till we have readdir disabled in aznfsc_ll_init().
-    assert(0);
 
     struct nfs_client *client = get_nfs_client_from_fuse_req(req);
     client->readdir(req, ino, size, off, fi);

@@ -105,10 +105,11 @@ struct directory_entry *readdirectory_cache::lookup(cookie3 cookie) const
     struct directory_entry *dirent =
         (it != dir_entries.end()) ? it->second : nullptr;
 
-    if (dirent) {
+    if (dirent && dirent->nfs_inode) {
         /*
          * When a directory_entry is added to to readdirectory_cache we
-         * hold a ref, so while it's in the cache dircachecnt must be non-zero.
+         * hold a ref on the inode, so while it's in the cache dircachecnt
+         * must be non-zero.
          */
         assert(dirent->nfs_inode->dircachecnt > 0);
 

@@ -331,6 +331,15 @@ void nfs_inode::lookup_dircache(
     while (rem_size > 0) {
         const struct directory_entry *entry = dircache_handle->lookup(cookie);
 
+        /*
+         * Cached entries stored by a prior READDIR call are not usable
+         * for READDIRPLUS as they won't have the attributes saved, treat
+         * them as not present.
+         */
+        if (entry && readdirplus && !entry->nfs_inode) {
+            entry = nullptr;
+        }
+
         if (entry) {
             /*
              * Get the size this entry will take when copied to fuse buffer.
@@ -348,7 +357,7 @@ void nfs_inode::lookup_dircache(
                  * readdirectory_cache::lookup() call above, to make sure that
                  * till we increase this refcnt, the inode is not freed.
                  */
-                if (!entry->is_dot_or_dotdot()) {
+                if (readdirplus && !entry->is_dot_or_dotdot()) {
                     entry->nfs_inode->incref();
                 }
 
@@ -376,8 +385,10 @@ void nfs_inode::lookup_dircache(
                  * have the directory open which should prevent fuse vfs from
                  * calling forget on the directory inode.
                  */
-                assert(entry->nfs_inode->dircachecnt >= 2);
-                entry->nfs_inode->dircachecnt--;
+                if (readdirplus) {
+                    assert(entry->nfs_inode->dircachecnt >= 2);
+                    entry->nfs_inode->dircachecnt--;
+                }
 
                 // No space left to add more entries.
                 AZLogDebug("lookup_dircache: Returning {} entries, as {} bytes "

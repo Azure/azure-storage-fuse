@@ -577,7 +577,9 @@ static void readdir_callback(
         }
 
         AZLogDebug("readdir_callback: Num of entries returned by server is {}, "
-                   "returned to fuse: {}", num_dirents, readdirentries.size());
+                   "returned to fuse: {}, eof: {}, eof_cookie: {}",
+                   num_dirents, readdirentries.size(),
+                   eof, eof_cookie);
 
         readdircache_handle->set_cookieverf(&res->READDIR3res_u.resok.cookieverf);
 
@@ -749,7 +751,9 @@ static void readdirplus_callback(
         }
 
         AZLogDebug("readdir_callback: Num of entries returned by server is {}, "
-                   "returned to fuse: {}", num_dirents, readdirentries.size());
+                   "returned to fuse: {}, eof: {}, eof_cookie: {}",
+                   num_dirents, readdirentries.size(),
+                   eof, eof_cookie);
 
         readdircache_handle->set_cookieverf(&res->READDIRPLUS3res_u.resok.cookieverf);
 
@@ -831,7 +835,7 @@ void rpc_task::fetch_readdir_entries_from_server()
         ::memcpy(&args.cookieverf,
                  dir_inode->dircache_handle->get_cookieverf(),
                  sizeof(args.cookieverf));
-        args.count = 1048576; // TODO: Set this to user passed value.
+        args.count = 131072; // TODO: Set this to user passed value.
 
         if (rpc_nfs3_readdir_task(get_rpc_ctx(),
                                   readdir_callback,
