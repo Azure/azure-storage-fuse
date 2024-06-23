@@ -436,8 +436,8 @@ void nfs_client::stat_from_fattr3(struct stat *st, const struct fattr3 *attr)
 struct getattr_context
 {
     struct fattr3 *fattr;
-    std::atomic<bool> callback_called;
-    std::atomic<bool> is_callback_success;
+    bool callback_called;
+    bool is_callback_success;
     std::mutex ctx_mutex;
     std::condition_variable cv;
 
@@ -456,12 +456,16 @@ static void getattr_callback(
 {
     auto ctx = (struct getattr_context*) private_data;
     auto res = (GETATTR3res*) data;
+    {
+        std::unique_lock<std::mutex> lock(ctx->ctx_mutex);
 
-    if (res && (rpc_status == RPC_STATUS_SUCCESS) && (res->status == NFS3_OK)) {
-        *(ctx->fattr) = res->GETATTR3res_u.resok.obj_attributes;
-        ctx->is_callback_success = true;
+        if (res && (rpc_status == RPC_STATUS_SUCCESS) && (res->status == NFS3_OK)) {
+            *(ctx->fattr) = res->GETATTR3res_u.resok.obj_attributes;
+            ctx->is_callback_success = true;
+        }
+        ctx->callback_called = true;
     }
-    ctx->callback_called = true;
+
     ctx->cv.notify_one();
 }
 
