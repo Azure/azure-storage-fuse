@@ -270,6 +270,11 @@ public:
         const char* name,
         mode_t mode);
 
+    void rmdir(
+        fuse_req_t req,
+        fuse_ino_t parent_ino,
+        const char* name);
+
     void setattr(
         fuse_req_t req,
         fuse_ino_t ino,

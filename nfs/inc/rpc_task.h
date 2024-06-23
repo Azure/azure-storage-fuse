@@ -242,6 +242,38 @@ private:
     bool is_used;
 };
 
+struct rmdir_rpc_task
+{
+    fuse_ino_t get_parent_ino() const
+    {
+        return parent_ino;
+    }
+
+    const char *get_dir_name() const
+    {
+        return dir_name;
+    }
+
+    void set_parent_ino(fuse_ino_t parent)
+    {
+        parent_ino = parent;
+    }
+
+    void set_dir_name(const char *name)
+    {
+        dir_name = ::strdup(name);
+    }
+
+    void release()
+    {
+        ::free(dir_name);
+    }
+
+private:
+    fuse_ino_t parent_ino;
+    char *dir_name;
+};
+
 /**
  * This describes an RPC task which is created to handle a fuse request.
  * The RPC task tracks the progress of the RPC request sent to the server and
@@ -345,6 +377,7 @@ public:
         struct setatt_rpc_task setattr_task;
         struct create_file_rpc_task create_task;
         struct mkdir_rpc_task mkdir_task;
+        struct rmdir_rpc_task rmdir_task;
         struct readdir_rpc_task readdir_task;
     } rpc_api;
 
@@ -393,6 +426,15 @@ public:
                     const char *name,
                     mode_t mode);
     void run_mkdir();
+
+    /*
+     * init/run methods for the RMDIR RPC.
+     */
+    void init_rmdir(fuse_req *request,
+                    fuse_ino_t parent_ino,
+                    const char *name);
+
+    void run_rmdir();
 
     // This function is responsible for setting up the members of readdir_task.
     void init_readdir(fuse_req *request,

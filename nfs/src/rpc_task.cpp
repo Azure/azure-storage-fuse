@@ -48,6 +48,16 @@ void rpc_task::init_mkdir(fuse_req* request,
 
 }
 
+void rpc_task::init_rmdir(fuse_req* request,
+                          fuse_ino_t parent_ino,
+                          const char* name)
+{
+    req = request;
+    optype = FUSE_RMDIR;
+    rpc_api.rmdir_task.set_parent_ino(parent_ino);
+    rpc_api.rmdir_task.set_dir_name(name);
+}
+
 void rpc_task::init_setattr(fuse_req* request,
                             fuse_ino_t ino,
                             struct stat* attr,
@@ -252,6 +262,22 @@ void mkdir_callback(
     }
 }
 
+void rmdir_callback(
+    struct rpc_context* /* rpc */,
+    int rpc_status,
+    void *data,
+    void *private_data)
+{
+    rpc_task *task = (rpc_task*) private_data;
+    auto res = (RMDIR3res*) data;
+
+    if (task->succeeded(rpc_status, RSTATUS(res))) {
+         task->reply_error(0);
+    } else {
+        task->reply_error(-nfsstat3_to_errno(RSTATUS(res)));
+    }
+}
+
 void rpc_task::run_lookup()
 {
     fuse_ino_t parent_ino = rpc_api.lookup_task.get_parent_ino();
@@ -334,6 +360,28 @@ void rpc_task::run_mkdir()
 
         if (rpc_nfs3_mkdir_task(get_rpc_ctx(), mkdir_callback, &args, this) == NULL)
         {
+            /*
+             * This call fails due to internal issues like OOM etc
+             * and not due to an actual error, hence retry.
+             */
+            rpc_retry = true;
+        }
+    } while (rpc_retry);
+}
+
+void rpc_task::run_rmdir()
+{
+    bool rpc_retry = false;
+    auto parent_ino = rpc_api.rmdir_task.get_parent_ino();
+
+    do {
+        RMDIR3args args;
+        ::memset(&args, 0, sizeof(args));
+        args.object.dir = get_client()->get_nfs_inode_from_ino(parent_ino)->get_fh();
+        args.object.name = (char*) rpc_api.rmdir_task.get_dir_name();
+
+        if (rpc_nfs3_rmdir_task(get_rpc_ctx(),
+                                rmdir_callback, &args, this) == NULL) {
             /*
              * This call fails due to internal issues like OOM etc
              * and not due to an actual error, hence retry.

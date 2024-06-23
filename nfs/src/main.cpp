@@ -505,10 +505,11 @@ static void aznfsc_ll_rmdir(fuse_req_t req,
                             fuse_ino_t parent_ino,
                             const char *name)
 {
-    /*
-     * TODO: Fill me.
-     */
-    fuse_reply_err(req, ENOSYS);
+    AZLogDebug("aznfsc_ll_rmdir(req={}, parent_ino={}, name={})",
+               fmt::ptr(req), parent_ino, name);
+
+    struct nfs_client *client = get_nfs_client_from_fuse_req(req);
+    client->rmdir(req, parent_ino, name);
 }
 
 static void aznfsc_ll_symlink(fuse_req_t req,
