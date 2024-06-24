@@ -107,6 +107,7 @@ void nfs_inode::decref(size_t cnt, bool from_forget)
     assert(cnt > 0);
     assert(lookupcnt >= cnt);
 
+try_again:
     /*
      * Grab an extra ref so that the lookupcnt-=cnt does not cause the refcnt
      * to drop to 0, else some other thread can delete the inode before we get
@@ -117,12 +118,12 @@ void nfs_inode::decref(size_t cnt, bool from_forget)
 
     if (forget_now) {
         /*
-         * For directory inodes it's a good time to purge the dircach, since
+         * For directory inodes it's a good time to purge the dircache, since
          * fuse VFS has lost all references on the directory. Note that we
          * can purge the directory cache at a later point also, but doing it
          * here causes the fuse client to behave like the Linux kernel NFS
          * client where we can purge the directory cache by writing to
-         * drop_caches.
+         * /proc/sys/vm/drop_caches.
          */
         if (from_forget && is_dir()) {
             purge_dircache();
@@ -131,7 +132,7 @@ void nfs_inode::decref(size_t cnt, bool from_forget)
         /*
          * Reduce the extra refcnt and revert the cnt.
          * After this the inode will have 'cnt' references that need to be
-         * dropped by put_nfs_inode(), with inode_map_lock held.
+         * dropped by put_nfs_inode() call below, with inode_map_lock held.
          */
         lookupcnt += (cnt - 1);
 
@@ -139,7 +140,7 @@ void nfs_inode::decref(size_t cnt, bool from_forget)
                    ino, cnt);
 
         /*
-         * This FORGET would drops the lookupcnt to 0, fuse vfs should not send
+         * This FORGET would drop the lookupcnt to 0, fuse vfs should not send
          * any more forgets, delete the inode. Note that before we grab the
          * inode_map_lock in put_nfs_inode() some other thread can reuse the
          * forgotten inode, in which case put_nfs_inode() will just skip it.
@@ -151,8 +152,14 @@ void nfs_inode::decref(size_t cnt, bool from_forget)
         client->put_nfs_inode(this, cnt);
     } else {
         if (--lookupcnt == 0) {
-            // XXX Want to see if this happens in practice.
-            assert(0);
+            /*
+             * This means that there was some thread holding a lookupcnt
+             * ref on the inode but it just now released it (after we checked
+             * above and before the --lookupcnt here) and now this forget
+             * makes this inode's lookupcnt 0.
+             */
+            lookupcnt += cnt;
+            goto try_again;
         }
 
         AZLogDebug("[{}] lookupcnt decremented({}) to {}",
