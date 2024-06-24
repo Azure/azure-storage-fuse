@@ -10,7 +10,7 @@ To keep track of performance regression introduced by any commit in the main bra
 All tests are performed on `Standard D96ds_v5` (96 vcpus, 384 GiB memory) Azure VM running in `eastus2` region. Specifications of this VM is listed [here](https://learn.microsoft.com/en-us/azure/virtual-machines/ddv5-ddsv5-series#ddsv5-series). 
 
 ### Storage
-A `Permium Blob Storage Account` in `eastus2` region was used to conduct all tests. HNS was disabled on this account 
+A `Premium Blob Storage Account` and a `Standard Blob Storage Account` in `eastus2` region were used to conduct all tests. HNS was disabled on both these accounts.
 
 ### Blobfuse2 configuration
 Blobfuse2 is configured with block-cache for all tests. Other than `Large Threads` case persistance of blocks on the disk was disabled. Configuration file used in this test is available [here](https://github.com/Azure/azure-storage-fuse/blob/vibhansa/perftestrunner/testdata/config/azure_block_bench.yaml) for reference.
@@ -26,7 +26,7 @@ Master test script that simulates this benchmarking test suite is located [here]
 - Install `fio` and `jq` before you execute the script
 - Allowed `test-name` are: read / write / create / list / app / rename
 
-Below table provides latency/time and bandwidth results for various tests. Each test has a linked section describing details of that test case.
+Below table provides `latency/time` and `bandwidth` results for various tests on respective account types. Each test has a linked section describing details of that test case.
 
 
 | Test Name | Premium Storage Account | Standard Storage Account |
