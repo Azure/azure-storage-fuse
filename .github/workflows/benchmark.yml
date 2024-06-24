@@ -66,12 +66,6 @@ jobs:
           blobfuse2 --version
 
       # Create the config file for testing
-      - name: "Create config file"
-        run: |
-          blobfuse2 gen-test-config --config-file=azure_block_bench.yaml --container-name=${{ secrets.BLOB_STORAGE_CONTAINER }}  --output-file=./config.yaml
-          cat ./config.yaml
-
-      # Create the config file for testing
       - name: "Create mount path"
         run: |
           sudo mkdir -p /mnt/blob_mnt
@@ -79,185 +73,38 @@ jobs:
           sudo chmod 777 /mnt/blob_mnt
           sudo chmod 777 /mnt/tempcache
 
-      # ---------------------------------------------------------------------------------------
-      # Run the basic tests using FIO
-      # Run the Write tests
-      - name: "Read Test"
-        uses: "./.github/template/generate_page"
-        with:
-          TEST: "read"
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
-          AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
-          AZURE_STORAGE_ACCESS_KEY: ${{ secrets.BLOB_STORAGE_KEY }}
+      # ---------------------------------------------------------------------------------------------------------------------------------------------------
+      # Premium blob storage tests
+      # Create the config file for testing
+      - name: "Create config file : Premium"
+        run: |
+          blobfuse2 gen-test-config --config-file=azure_block_bench.yaml --container-name=${{ secrets.BLOB_STORAGE_CONTAINER }}  --output-file=./config.yaml
+          cat ./config.yaml
 
       # Run the Write tests with high number of threads
-      - name: "High threads Test"
-        uses: "./.github/template/generate_page"
+      - name: "Premium blob storage tests"
+        uses: "./.github/template/benchmark_test"
         with:
-          TEST: "highlyparallel"
+          TYPE: "premium"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
           AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
           AZURE_STORAGE_ACCESS_KEY: ${{ secrets.BLOB_STORAGE_KEY }}
-    
-      # Run the Write tests
-      - name: "Write Test"
-        uses: "./.github/template/generate_page"
+
+      # ---------------------------------------------------------------------------------------------------------------------------------------------------
+      # Standard blob storage tests
+      # Create the config file for testing
+      - name: "Create config file : Standard"
+        run: |
+          blobfuse2 gen-test-config --config-file=azure_block_bench.yaml --container-name=${{ secrets.BLOB_STORAGE_CONTAINER }}  --output-file=./config.yaml
+          cat ./config.yaml
+
+      # Run the Write tests with high number of threads
+      - name: "Standard blob storage tests"
+        uses: "./.github/template/benchmark_test"
         with:
-          TEST: "write"
+          TYPE: "standard"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
+          AZURE_STORAGE_ACCOUNT:  ${{ secrets.STD_BLOB_STORAGE_ACCOUNT }}
           AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
-          AZURE_STORAGE_ACCESS_KEY: ${{ secrets.BLOB_STORAGE_KEY }}
-           
-      # Run the Create tests
-      - name: "Create File Test"
-        uses: "./.github/template/generate_page"
-        with:
-          TEST: "create"
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
-          AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
-          AZURE_STORAGE_ACCESS_KEY: ${{ secrets.BLOB_STORAGE_KEY }}  
-      # ---------------------------------------------------------------------------------------
-
-
-      # Below tests needs to run seperatly as output is different
-      # ---------------------------------------------------------------------------------------------------
-      # Run the List tests
-      # this shall always runs after create tests
-      - name: "List File Test"
-        run: |
-          rm -rf /mnt/blob_mnt/*
-          rm -rf /mnt/tempcache/*
-          ./perf_testing/scripts/fio_bench.sh /mnt/blob_mnt list
-        env:
-          AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
-          AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
-          AZURE_STORAGE_ACCESS_KEY: ${{ secrets.BLOB_STORAGE_KEY }} 
-        
-      - name: "Update Benchmark Results : List"
-        uses: benchmark-action/github-action-benchmark@v1
-        with:
-          output-file-path: list/list_results.json
-          tool: 'customSmallerIsBetter'
-          alert-threshold: "160%"
-          max-items-in-chart: 100
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          fail-on-alert: true
-          auto-push: true
-          comment-on-alert: true
-          gh-pages-branch: benchmarks
-          benchmark-data-dir-path: time/list
-
-      # ---------------------------------------------------------------------------------------
-      # Run App baseed tests
-      # This needs to run seperatly as output is different
-      - name: "App based Test"
-        run: |
-          rm -rf /mnt/blob_mnt/*
-          rm -rf /mnt/tempcache/*
-          ./perf_testing/scripts/fio_bench.sh /mnt/blob_mnt app
-        env:
-          AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
-          AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
-          AZURE_STORAGE_ACCESS_KEY: ${{ secrets.BLOB_STORAGE_KEY }} 
-        
-      - name: "Update Bandwidth Results : App"
-        uses: benchmark-action/github-action-benchmark@v1
-        with:
-          output-file-path: app/app_bandwidth.json
-          tool: 'customBiggerIsBetter'
-          alert-threshold: "160%"
-          max-items-in-chart: 100
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          fail-on-alert: true
-          auto-push: true
-          comment-on-alert: true
-          gh-pages-branch: benchmarks
-          benchmark-data-dir-path: bandwidth/app
-        
-      # - name: "Update Local Bandwidth Results : App"
-      #   uses: benchmark-action/github-action-benchmark@v1
-      #   with:
-      #     output-file-path: app/app_local_bandwidth.json
-      #     tool: 'customBiggerIsBetter'
-      #     alert-threshold: "160%"
-      #     max-items-in-chart: 100
-      #     github-token: ${{ secrets.GITHUB_TOKEN }}
-      #     fail-on-alert: true
-      #     auto-push: true
-      #     comment-on-alert: true
-      #     gh-pages-branch: benchmarks
-      #     benchmark-data-dir-path: bandwidth/applocal
-
-      - name: "Update Latency Results : App"
-        uses: benchmark-action/github-action-benchmark@v1
-        with:
-          output-file-path: app/app_time.json
-          tool: 'customSmallerIsBetter'
-          alert-threshold: "160%"
-          max-items-in-chart: 100
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          fail-on-alert: true
-          auto-push: true
-          comment-on-alert: true
-          gh-pages-branch: benchmarks
-          benchmark-data-dir-path: time/app    
-
-      - name: "Update Bandwidth Results : High Speed App"
-        uses: benchmark-action/github-action-benchmark@v1
-        with:
-          output-file-path: app/highapp_bandwidth.json
-          tool: 'customBiggerIsBetter'
-          alert-threshold: "160%"
-          max-items-in-chart: 100
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          fail-on-alert: true
-          auto-push: true
-          comment-on-alert: true
-          gh-pages-branch: benchmarks
-          benchmark-data-dir-path: bandwidth/highapp   
-
-      - name: "Update Latency Results : High Speed App"
-        uses: benchmark-action/github-action-benchmark@v1
-        with:
-          output-file-path: app/highapp_time.json
-          tool: 'customSmallerIsBetter'
-          alert-threshold: "160%"
-          max-items-in-chart: 100
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          fail-on-alert: true
-          auto-push: true
-          comment-on-alert: true
-          gh-pages-branch: benchmarks
-          benchmark-data-dir-path: time/highapp           
-      # ---------------------------------------------------------------------------------------
-      # Run Rename tests
-      # This needs to run seperatly as output is different
-      - name: "Rename Test"
-        run: |
-          rm -rf /mnt/blob_mnt/*
-          rm -rf /mnt/tempcache/*
-          ./perf_testing/scripts/fio_bench.sh /mnt/blob_mnt rename
-        env:
-          AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
-          AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
-          AZURE_STORAGE_ACCESS_KEY: ${{ secrets.BLOB_STORAGE_KEY }}   
-
-      - name: "Update Latency Results : Rename"
-        uses: benchmark-action/github-action-benchmark@v1
-        with:
-          output-file-path: rename/rename_time.json
-          tool: 'customSmallerIsBetter'
-          alert-threshold: "160%"
-          max-items-in-chart: 100
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          fail-on-alert: true
-          auto-push: true
-          comment-on-alert: true
-          gh-pages-branch: benchmarks
-          benchmark-data-dir-path: time/rename  
-                         
-      # ---------------------------------------------------------------------------------------        
+          AZURE_STORAGE_ACCESS_KEY: ${{ secrets.STD_BLOB_STORAGE_KEY }}          

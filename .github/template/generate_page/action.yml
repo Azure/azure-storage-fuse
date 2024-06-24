@@ -1,10 +1,13 @@
 name: generate_page
-description: "Run perf-test and generate github pages"
+description: "Generate github page for performance benchmark"
 
 inputs:
   TEST: 
     required: true
     description: "Test to run"
+  TYPE: 
+    required: true
+    description: "Type of storage account"     
   GITHUB_TOKEN: 
     required: true
     description: "Token for github check-in"
@@ -38,11 +41,6 @@ runs:
         AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ inputs.AZURE_STORAGE_ACCOUNT_CONTAINER }}
         AZURE_STORAGE_ACCESS_KEY: ${{ inputs.AZURE_STORAGE_ACCESS_KEY }}
     
-    # Print blobfuse2 logs
-    # - name: "Print logs : ${{ inputs.TEST }}"
-    #   shell: bash
-    #   run: cat ./blobfuse2.log
-
     # Push the bandwidth results and publish the graphs
     - name: "Update Bandwidth Results : ${{ inputs.TEST }}"
       uses: benchmark-action/github-action-benchmark@v1
@@ -56,7 +54,7 @@ runs:
         auto-push: true
         comment-on-alert: true
         gh-pages-branch: benchmarks
-        benchmark-data-dir-path: bandwidth/${{ inputs.TEST }}
+        benchmark-data-dir-path: ${{ inputs.TYPE }}/bandwidth/${{ inputs.TEST }}
 
     # Push the latency results and publish the graphs
     - name: "Update Latency Results : ${{ inputs.TEST }}"
@@ -71,7 +69,7 @@ runs:
         auto-push: true
         comment-on-alert: true
         gh-pages-branch: benchmarks
-        benchmark-data-dir-path: latency/${{ inputs.TEST }}  
+        benchmark-data-dir-path: ${{ inputs.TYPE }}/latency/${{ inputs.TEST }}  
     
  
         
