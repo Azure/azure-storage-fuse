@@ -174,13 +174,10 @@ void readdirectory_cache::clear()
             /*
              * If this is the last dircachecnt on this inode, it means
              * there are no more readdirectory_cache,s referencing this
-             * inode. If it's not a "." or ".." dirent, we need to free
-             * the inode now. "." and ".." are aliases and their inodes
-             * will be freed when the actual directory_entry referring to
-             * that directory is released.
+             * inode. If there are no lookupcnt refs then we can free it.
+             * Call put_nfs_inode() to safely free the inode.
              */
-            if (inode && (inode->dircachecnt == 1) &&
-                    !it->second->is_dot_or_dotdot()) {
+            if (inode && (inode->dircachecnt == 1)) {
                 tofree_vec.emplace_back(inode);
                 assert(inode->magic == NFS_INODE_MAGIC);
 
