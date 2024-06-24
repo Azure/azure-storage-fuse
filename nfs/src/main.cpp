@@ -342,9 +342,13 @@ static void aznfsc_ll_init(void *userdata,
      * XXX Disable readdir temporarily while I work on fixing readdirplus.
      *     Once readdirplus is audited/fixed, enable readdir and audit/fix
      *     that.
+     * TODO: Readdir works fine but just that for readdir fuse kernel
+     *       will not send FORGET and thus we currently don't delete those
+     *       entries and the inodes. Need to add memory pressure based
+     *       deletion for those.
      */
     conn->want |= FUSE_CAP_READDIRPLUS;
-    conn->want &= ~FUSE_CAP_READDIRPLUS_AUTO;
+    //conn->want &= ~FUSE_CAP_READDIRPLUS_AUTO;
 
     conn->want |= FUSE_CAP_ASYNC_READ;
 

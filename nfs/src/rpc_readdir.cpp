@@ -129,6 +129,96 @@ struct directory_entry *readdirectory_cache::lookup(cookie3 cookie) const
     return dirent;
 }
 
+bool readdirectory_cache::remove(cookie3 cookie)
+{
+    struct nfs_inode *inode = nullptr;
+
+    {
+        std::unique_lock<std::shared_mutex> lock(readdircache_lock);
+
+        const auto it = dir_entries.find(cookie);
+        struct directory_entry *dirent =
+            (it != dir_entries.end()) ? it->second : nullptr;
+
+        /*
+         * Given cookie not found in the cache.
+         * It should not happpen though since the caller would call remove()
+         * only after checking.
+         */
+        if (!dirent) {
+            return false;
+        }
+
+        assert(dirent->cookie == cookie);
+
+        /*
+         * This just removes it from the cache, no destructor is called at
+         * this point.
+         */
+        dir_entries.erase(it);
+
+        inode = dirent->nfs_inode;
+
+        // READDIR created cache entry, nothing more to do.
+        if (!inode) {
+            delete dirent;
+            return true;
+        }
+
+        assert(inode->magic == NFS_INODE_MAGIC);
+
+        /*
+         * Any inode referenced by a directory_entry added to a
+         * readdirectory_cache must have one reference held, by
+         * readdirectory_cache::add().
+         */
+        assert(inode->dircachecnt > 0);
+
+        AZLogDebug("[{}] Removing {} fuse ino {}, cookie {}, from "
+                   "readdir cache (dircachecnt {})",
+                   this->inode->get_fuse_ino(),
+                   dirent->name,
+                   inode->get_fuse_ino(),
+                   dirent->cookie,
+                   inode->dircachecnt.load());
+
+        /*
+         * If this is the last dircachecnt on this inode, it means
+         * there are no more readdirectory_cache,s referencing this
+         * inode. If there are no lookupcnt refs then we can free it.
+         * Call put_nfs_inode() to safely free the inode.
+         */
+        if (inode->dircachecnt == 1) {
+            /*
+             * Grab inode ref so that the inode is not removed from
+             * inode_map and deleted after we drop the dircachecnt
+             * and before we grab the inode_map_lock below. This ref
+             * will be dropped by put_nfs_inode_nolock() safely with
+             * the lock held.
+             */
+            inode->incref();
+
+            /*
+             * This will call ~directory_entry() which will drop the
+             * inode's original dircachecnt.
+             */
+            delete dirent;
+        } else {
+            delete dirent;
+            return true;
+        }
+    }
+
+    AZLogDebug("[{}] inode {} to be freed, after readdir cache remove",
+               this->inode->get_fuse_ino(),
+               inode->get_fuse_ino());
+
+    // Drop the extra ref we held above.
+    client->put_nfs_inode(inode, 1 /* dropcnt */);
+
+    return true;
+}
+
 /*
  * inode_map_lock must be held by the caller.
  */
@@ -163,7 +253,7 @@ void readdirectory_cache::clear()
                 assert(inode->dircachecnt > 0);
 
                 AZLogDebug("[{}] Removing {} fuse ino {}, cookie {}, from "
-                           "readdir cache (ref {})",
+                           "readdir cache (dircachecnt {})",
                            this->inode->get_fuse_ino(),
                            it->second->name,
                            inode->get_fuse_ino(),
@@ -183,9 +273,10 @@ void readdirectory_cache::clear()
 
                 /*
                  * Grab inode ref so that the inode is not removed from
-                 * inode_map and delete after we drop the dircachecnt
-                 * and gran the inode_map_lock. This ref will be dropped
-                 * by put_nfs_inode_nolock() safely with the lock held.
+                 * inode_map and deleted after we drop the dircachecnt
+                 * and before we grab the inode_map_lock below. This ref
+                 * will be dropped by put_nfs_inode_nolock() safely with
+                 * the lock held.
                  */
                 inode->incref();
             }

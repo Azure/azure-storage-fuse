@@ -406,6 +406,15 @@ void nfs_inode::lookup_dircache(
                 break;
             }
 
+            /*
+             * TODO: ENABLE_NON_AZURE_NFS alert!!
+             *       Note that we assume sequentially increasing cookies.
+             *       This is only true for Azure NFS. Linux NFS server
+             *       also has sequentially increasing cookies but it
+             *       sometimes have gaps in between which causes us to
+             *       believe that we don't have the cookie and re-fetch
+             *       it from the server.
+             */
             cookie++;
         } else {
             /*

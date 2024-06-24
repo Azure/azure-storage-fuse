@@ -516,11 +516,12 @@ static void readdir_callback(
     void *data,
     void *private_data)
 {
-    rpc_task *task = (rpc_task*) private_data;
+    rpc_task *const task = (rpc_task*) private_data;
     assert(task->get_op_type() == FUSE_READDIR);
-    READDIR3res *res = (READDIR3res*) data;
+    READDIR3res *const res = (READDIR3res*) data;
     const fuse_ino_t dir_ino = task->rpc_api.readdir_task.get_inode();
-    struct nfs_inode *const dir_inode = task->get_client()->get_nfs_inode_from_ino(dir_ino);
+    struct nfs_inode *const dir_inode =
+        task->get_client()->get_nfs_inode_from_ino(dir_ino);
     // How many max bytes worth of entries data does the caller want?
     ssize_t rem_size = task->rpc_api.readdir_task.get_size();
     std::vector<const directory_entry*> readdirentries;
@@ -532,8 +533,9 @@ static void readdir_callback(
         int64_t eof_cookie = -1;
 
         // Get handle to the readdirectory cache.
-        std::shared_ptr<readdirectory_cache> readdircache_handle = dir_inode->dircache_handle;
-        assert(readdircache_handle != nullptr);
+        std::shared_ptr<readdirectory_cache>& dircache_handle =
+            dir_inode->dircache_handle;
+        assert(dircache_handle != nullptr);
 
         // Process all dirents received.
         while (entry) {
@@ -546,20 +548,45 @@ static void readdir_callback(
             }
 
             /*
-             * Create the directory entries here.
-             * Note: This will be freed in the destructor
-             *       ~readdirectory_cache(), or when we purge the readdir
-             *       cache as a result of inode invalidate (when file
-             *       changes).
+             * See if we have the directory_entry corresponding to this
+             * cookie already present in the readdirectory_cache.
+             * If so, we need to first remove the existing entry and add
+             * this new entry.
+             *
+             * Then create the new directory entry which will be added to
+             * readdirectory_cache, and also conveyed to fuse as part of
+             * readdir response. The directory_entry added to the
+             * readdirectory_cache will be freed when the directory cache
+             * is purged (when fuse forgets the directory or under memory
+             * pressure).
+             *
              * TODO: Try to steal entry->name to avoid the strdup().
              */
-            struct directory_entry* dir_entry =
-                new directory_entry(strdup(entry->name),
+            struct directory_entry *dir_entry =
+                dircache_handle->lookup(entry->cookie);
+
+            if (dir_entry ) {
+                assert(dir_entry->cookie == entry->cookie);
+                if (dir_entry->nfs_inode) {
+                    /*
+                     * Drop the extra ref held by lookup().
+                     * Original ref held by readdirectory_cache::add()
+                     * must also be present, remove() will drop that.
+                     */
+                    assert(dir_entry->nfs_inode->dircachecnt >= 2);
+                    dir_entry->nfs_inode->dircachecnt--;
+                }
+
+                // This will drop the original dircachecnt on the inode.
+                dircache_handle->remove(entry->cookie);
+            }
+
+            dir_entry = new directory_entry(strdup(entry->name),
                                     entry->cookie,
                                     entry->fileid);
 
             // Add to readdirectory_cache for future use.
-            readdircache_handle->add(dir_entry);
+            dircache_handle->add(dir_entry);
 
             /*
              * Add it to the directory_entry vector but ONLY upto the byte
@@ -581,7 +608,7 @@ static void readdir_callback(
                    num_dirents, readdirentries.size(),
                    eof, eof_cookie);
 
-        readdircache_handle->set_cookieverf(&res->READDIR3res_u.resok.cookieverf);
+        dircache_handle->set_cookieverf(&res->READDIR3res_u.resok.cookieverf);
 
         if (eof) {
             /*
@@ -590,10 +617,10 @@ static void readdir_callback(
              * In such case, we must already have set eof and eof_cookie.
              */
             if (eof_cookie != -1) {
-                readdircache_handle->set_eof(eof_cookie);
+                dircache_handle->set_eof(eof_cookie);
             } else {
-                assert(readdircache_handle->get_eof() == true);
-                assert((int64_t) readdircache_handle->get_eof_cookie() != -1);
+                assert(dircache_handle->get_eof() == true);
+                assert((int64_t) dircache_handle->get_eof_cookie() != -1);
             }
         }
 
@@ -616,28 +643,33 @@ static void readdirplus_callback(
     void *data,
     void *private_data)
 {
-    rpc_task *task = (rpc_task*) private_data;
+    rpc_task *const task = (rpc_task*) private_data;
     assert(task->get_op_type() == FUSE_READDIRPLUS);
-    READDIRPLUS3res *res = (READDIRPLUS3res*) data;
+    READDIRPLUS3res *const res = (READDIRPLUS3res*) data;
     const fuse_ino_t dir_ino = task->rpc_api.readdir_task.get_inode();
-    struct nfs_inode *dir_inode = task->get_client()->get_nfs_inode_from_ino(dir_ino);
+    struct nfs_inode *const dir_inode =
+        task->get_client()->get_nfs_inode_from_ino(dir_ino);
     // How many max bytes worth of entries data does the caller want?
     ssize_t rem_size = task->rpc_api.readdir_task.get_size();
     std::vector<const directory_entry*> readdirentries;
     int num_dirents = 0;
 
     if (task->succeeded(rpc_status, RSTATUS(res))) {
-        const struct entryplus3 *entry = res->READDIRPLUS3res_u.resok.reply.entries;
+        const struct entryplus3 *entry =
+            res->READDIRPLUS3res_u.resok.reply.entries;
         const bool eof = res->READDIRPLUS3res_u.resok.reply.eof;
         int64_t eof_cookie = -1;
 
         // Get handle to the readdirectory cache.
-        std::shared_ptr<readdirectory_cache> readdircache_handle = dir_inode->dircache_handle;
-        assert(readdircache_handle != nullptr);
+        std::shared_ptr<readdirectory_cache>& dircache_handle =
+            dir_inode->dircache_handle;
+        assert(dircache_handle != nullptr);
 
+        // Process all dirents received.
         while (entry) {
             const struct fattr3 *fattr = nullptr;
-            const bool is_dot_or_dotdot = directory_entry::is_dot_or_dotdot(entry->name);
+            const bool is_dot_or_dotdot =
+                directory_entry::is_dot_or_dotdot(entry->name);
 
             /*
              * Keep updating eof_cookie, when we exit the loop we will have
@@ -655,10 +687,14 @@ static void readdirplus_callback(
             }
 
             /*
-             * Create a new nfs inode for the entry.
-             *
-             * TODO: We should not blindly create a new nfs_inode, instead we
-             *       MUST check if this inode exists and if yes, use that.
+             * Get the nfs inode for the entry.
+             * Note that we first check if this inode exists (i.e., we have
+             * conveyed it to fuse in the past and fuse has not FORGOTten it)
+             * and if so use that, else create a new nfs_inode.
+             * This will grab a lookupcnt ref on this inode. We will transfer
+             * this same ref to fuse if we are able to successfully convey
+             * this directory_entry to fuse. Since fuse doesn't want us to
+             * grab a ref for "." and "..", we drop ref for those later below.
              */
             struct nfs_inode *const nfs_inode =
                 task->get_client()->get_nfs_inode(
@@ -678,15 +714,47 @@ static void readdirplus_callback(
             }
 
             /*
-             * Create the directory entries here.
-             * Note: This will be freed in the destructor
-             *       ~readdirectory_cache(), or when we purge the readdir
-             *       cache as a result of inode invalidate (when file
-             *       changes).
+             * See if we have the directory_entry corresponding to this
+             * cookie already present in the readdirectory_cache.
+             * If so, we need to first remove the existing entry and add
+             * this new entry. The existing entry may be created by readdir
+             * in which case it won't have attributes stored or it could be
+             * a readdirplus created entry in which case it will have inode
+             * and attributes stored. If this is the last dircachecnt ref
+             * on this inode remove() will also try to delete the inode.
+             *
+             * Then create the new directory entry which will be added to
+             * readdirectory_cache, and also conveyed to fuse as part of
+             * readdirplus response. The directory_entry added to the
+             * readdirectory_cache will be freed when the directory cache
+             * is purged (when fuse FORGETs the directory or under memory
+             * pressure).
+             *
              * TODO: Try to steal entry->name to avoid the strdup().
              */
             struct directory_entry *dir_entry =
-                new struct directory_entry(strdup(entry->name),
+                dircache_handle->lookup(entry->cookie);
+
+            if (dir_entry ) {
+                assert(dir_entry->cookie == entry->cookie);
+                if (dir_entry->nfs_inode) {
+                    /*
+                     * Drop the extra ref held by lookup().
+                     * Original ref held by readdirectory_cache::add()
+                     * must also be present, remove() will drop that.
+                     */
+                    assert(dir_entry->nfs_inode->dircachecnt >= 2);
+                    dir_entry->nfs_inode->dircachecnt--;
+                }
+
+                /*
+                 * This will drop the original dircachecnt on the inode and
+                 * also delete the inode if the lookupcnt ref is also 0.
+                 */
+                dircache_handle->remove(entry->cookie);
+            }
+
+            dir_entry = new struct directory_entry(strdup(entry->name),
                                     entry->cookie,
                                     nfs_inode->attr,
                                     nfs_inode);
@@ -699,7 +767,7 @@ static void readdirplus_callback(
             assert(nfs_inode->dircachecnt >= 1);
 
             // Add to readdirectory_cache for future use.
-            readdircache_handle->add(dir_entry);
+            dircache_handle->add(dir_entry);
 
             /*
              * Add it to the directory_entry vector but ONLY upto the byte
@@ -750,12 +818,12 @@ static void readdirplus_callback(
             ++num_dirents;
         }
 
-        AZLogDebug("readdir_callback: Num of entries returned by server is {}, "
-                   "returned to fuse: {}, eof: {}, eof_cookie: {}",
+        AZLogDebug("readdirplus_callback: Num of entries returned by server "
+                   "is {}, returned to fuse: {}, eof: {}, eof_cookie: {}",
                    num_dirents, readdirentries.size(),
                    eof, eof_cookie);
 
-        readdircache_handle->set_cookieverf(&res->READDIRPLUS3res_u.resok.cookieverf);
+        dircache_handle->set_cookieverf(&res->READDIRPLUS3res_u.resok.cookieverf);
 
         if (eof) {
             /*
@@ -764,10 +832,10 @@ static void readdirplus_callback(
              * In such case, we must already have set eof and eof_cookie.
              */
             if (eof_cookie != -1) {
-                readdircache_handle->set_eof(eof_cookie);
+                dircache_handle->set_eof(eof_cookie);
             } else {
-                assert(readdircache_handle->get_eof() == true);
-                assert((int64_t) readdircache_handle->get_eof_cookie() != -1);
+                assert(dircache_handle->get_eof() == true);
+                assert((int64_t) dircache_handle->get_eof_cookie() != -1);
             }
         }
 

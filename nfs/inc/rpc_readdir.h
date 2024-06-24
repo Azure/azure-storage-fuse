@@ -214,8 +214,25 @@ public:
         this->eof_cookie = eof_cookie;
     }
 
+    /**
+     * Lookup and return the directory_entry corresponding to the
+     * given cookie.
+     */
     struct directory_entry *lookup(cookie3 cookie) const;
 
+    /**
+     * Remove the given cookie from readdirectory_cache.
+     * Returns false if the cookie was not found, else it delete the cookie
+     * and returns true. It also deletes the inode if this was the last ref
+     * on the inode.
+     */
+    bool remove(cookie3 cookie);
+
+    /**
+     * Remove all entries from the cache.
+     * Also delete the inodes for those entries for which this was the last
+     * ref.
+     */
     void clear();
 
     ~readdirectory_cache()
