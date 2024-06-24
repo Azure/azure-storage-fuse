@@ -5,6 +5,8 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
+var ProvidedFilter string // it will store the input provided by the user while mounting
+
 func (fl *UserInputFilters) ApplyFilterOnBlobs(fileInfos []*internal.ObjAttr) []*internal.ObjAttr { //function called from azstorage.go streamDir func
 	log.Debug("came inside filter")
 	if len(fileInfos) == 0 {

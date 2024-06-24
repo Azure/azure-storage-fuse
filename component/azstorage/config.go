@@ -187,7 +187,7 @@ type AzStorageOptions struct {
 	CPKEnabled              bool   `config:"cpk-enabled" yaml:"cpk-enabled"`
 	CPKEncryptionKey        string `config:"cpk-encryption-key" yaml:"cpk-encryption-key"`
 	CPKEncryptionKeySha256  string `config:"cpk-encryption-key-sha256" yaml:"cpk-encryption-key-sha256"`
-	BlobFilter              string `config:"blobFilter" yaml:"blobFilter"`
+	// BlobFilter              string `config:"blobFilter" yaml:"blobFilter"`
 
 	// v1 support
 	UseAdls        bool   `config:"use-adls" yaml:"-"`
@@ -389,10 +389,10 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	az.stConfig.telemetry = opt.Telemetry
 
 	//if blobFilter is provided, parse string and setup filters
-	if len(opt.BlobFilter) > 0 {
-		log.Info("ParseAndValidateConfig : provided filter is %s", opt.BlobFilter)
+	if len(filter.ProvidedFilter) > 0 {
+		log.Info("ParseAndValidateConfig : provided filter is %s", filter.ProvidedFilter)
 		az.stConfig.filters = &filter.UserInputFilters{}
-		erro := az.stConfig.filters.ParseInp(&opt.BlobFilter)
+		erro := az.stConfig.filters.ParseInp(&filter.ProvidedFilter)
 		log.Info("ParseAndValidateConfig : number of OR seperated filters are %d", len(az.stConfig.filters.FilterArr))
 		if erro != nil {
 			log.Err("ParseAndValidateConfig : mount failed due to an error encountered while parsing")

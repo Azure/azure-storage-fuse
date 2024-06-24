@@ -55,6 +55,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/filter"
 
 	"github.com/sevlyar/go-daemon"
 	"github.com/spf13/cobra"
@@ -88,6 +89,7 @@ type mountOptions struct {
 	MonitorOpt        monitorOptions `config:"health_monitor"`
 	WaitForMount      time.Duration  `config:"wait-for-mount"`
 	LazyWrite         bool           `config:"lazy-write"`
+	blobFilter        string         `config:"blobFilter"`
 
 	// v1 support
 	Streaming      bool     `config:"streaming"`
@@ -241,6 +243,13 @@ var mountCmd = &cobra.Command{
 		common.MountPath = options.MountPath
 
 		configFileExists := true
+
+		if config.IsSet("blobFilter") {
+			if len(options.blobFilter) > 0 {
+				filter.ProvidedFilter = options.blobFilter
+				config.Set("read-only", "true") //set read-only mode if filter is provided
+			}
+		}
 
 		if options.ConfigFile == "" {
 			// Config file is not set in cli parameters
@@ -706,6 +715,10 @@ func init() {
 	mountCmd.Flags().Bool("pre-mount-validate", true, "Validate blobfuse2 is mounted.")
 	config.BindPFlag("pre-mount-validate", mountCmd.Flags().Lookup("pre-mount-validate"))
 	mountCmd.Flags().Lookup("pre-mount-validate").Hidden = true
+
+	//accessing blobFilter
+	mountCmd.PersistentFlags().StringVar(&options.blobFilter, "blobFilter", "", "Filter string for blob filtering.")
+	config.BindPFlag("blobFilter", mountCmd.PersistentFlags().Lookup("blobFilter"))
 
 	mountCmd.Flags().Bool("basic-remount-check", true, "Validate blobfuse2 is mounted by reading /etc/mtab.")
 	config.BindPFlag("basic-remount-check", mountCmd.Flags().Lookup("basic-remount-check"))

@@ -677,9 +677,6 @@ func init() {
 	telemetry := config.AddStringFlag("telemetry", "", "Additional telemetry information.")
 	config.BindPFlag(compName+".telemetry", telemetry)
 	telemetry.Hidden = true
-	//filter
-	blobFilter := config.AddStringFlag("blobFilter", "", "Filter to apply on blobs.")
-	config.BindPFlag(compName+".blobFilter", blobFilter)
 
 	honourACL := config.AddBoolFlag("honour-acl", false, "Match ObjectID in ACL against the one used for authentication.")
 	config.BindPFlag(compName+".honour-acl", honourACL)
