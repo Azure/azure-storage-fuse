@@ -106,6 +106,10 @@ func (bb *BlockBlob) Configure(cfg AzStorageConfig) error {
 		Snapshots: false,
 	}
 
+	//if filter is provided, and blobtag filter is also present then we need the details about blobtags
+	if bb.AzStorageConnection.Config.filters != nil && bb.AzStorageConnection.Config.filters.TagChk {
+		bb.listDetails.Tags = true
+	}
 	return nil
 }
 
@@ -446,6 +450,7 @@ func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err 
 		Crtime: *prop.CreationTime,
 		Flags:  internal.NewFileBitMap(),
 		MD5:    prop.ContentMD5,
+		Tier:   *prop.AccessTier,
 	}
 
 	parseMetadata(attr, prop.Metadata)
@@ -593,10 +598,14 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 				Crtime: dereferenceTime(blobInfo.Properties.CreationTime, *blobInfo.Properties.LastModified),
 				Flags:  internal.NewFileBitMap(),
 				MD5:    blobInfo.Properties.ContentMD5,
+				Tier:   string(*blobInfo.Properties.AccessTier),
 			}
 			parseMetadata(attr, blobInfo.Metadata)
 			attr.Flags.Set(internal.PropFlagMetadataRetrieved)
 			attr.Flags.Set(internal.PropFlagModeDefault)
+		}
+		if bb.listDetails.Tags { //if we need blobtags
+			attr.Tags = parseBlobTags(blobInfo.BlobTags)
 		}
 		blobList = append(blobList, attr)
 
@@ -636,6 +645,10 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 				attr.Ctime = attr.Mtime
 				attr.Flags.Set(internal.PropFlagMetadataRetrieved)
 				attr.Flags.Set(internal.PropFlagModeDefault)
+				attr.Tier = ""
+				if bb.Config.defaultTier != nil { //if any defualt value of access tier is provided ,set it
+					attr.Tier = string(*bb.Config.defaultTier)
+				}
 				blobList = append(blobList, attr)
 			}
 		}

@@ -53,6 +53,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/bloberror"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/service"
 	serviceBfs "github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake/service"
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -302,6 +303,24 @@ func parseMetadata(attr *internal.ObjAttr, metadata map[string]*string) {
 			}
 		}
 	}
+}
+
+// ----------- BlobTags handling  ---------------
+func parseBlobTags(tags *container.BlobTags) map[string]string {
+	blobtags := make(map[string]string) //pushing blobtags in map for fast execution during filtering
+	if tags != nil {
+		for _, tag := range tags.BlobTagSet {
+			if tag != nil {
+				if tag.Key != nil {
+					blobtags[*tag.Key] = ""
+				}
+				if tag.Value != nil {
+					blobtags[*tag.Key] = *tag.Value
+				}
+			}
+		}
+	}
+	return blobtags
 }
 
 //    ----------- Content-type handling  ---------------
