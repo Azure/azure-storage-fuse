@@ -220,7 +220,7 @@ func (suite *blockCacheTestSuite) TestFreeDiskSpace() {
 	actual := tobj.blockCache.diskSize
 	difference := math.Abs(float64(actual) - float64(expected))
 	tolerance := 0.10 * float64(math.Max(float64(actual), float64(expected)))
-	suite.assert.LessOrEqual(difference, tolerance, "mssg:", actual, expected)
+	suite.assert.LessOrEqual(difference, tolerance)
 }
 
 func (suite *blockCacheTestSuite) TestInvalidPrefetchCount() {

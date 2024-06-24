@@ -92,7 +92,7 @@ file_cache:
 
   # Optional 
   timeout-sec: <default cache eviction timeout (in sec). Default - 120 sec>
-  max-size-mb: <maximum cache size allowed. Default - 0 (unlimited)>
+  max-size-mb: <maximum cache size allowed. Default - 80% of free disk space>
   allow-non-empty-temp: true|false <allow non empty temp directory at startup>
   cleanup-on-start: true|false <cleanup the temp directory on startup, if its not empty>
   sync-to-flush: true|false <sync call to a file will force upload of the contents to storage account>
