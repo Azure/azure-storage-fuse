@@ -103,8 +103,9 @@ struct nfs_inode *nfs_client::get_nfs_inode(const nfs_fh3 *fh,
                 assert(i->second->file_type == file_type);
 
                 if (i->second->is_forgotten()) {
-                    AZLogDebug("[{}] Reusing forgotten inode",
-                               i->second->get_fuse_ino());
+                    AZLogDebug("[{}] Reusing forgotten inode (dircachecnt={})",
+                               i->second->get_fuse_ino(),
+                               i->second->dircachecnt.load());
                 }
 
                 i->second->incref();

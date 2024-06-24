@@ -104,6 +104,11 @@ private:
     struct nfs_client *client;
 
     /*
+     * Directory inode, whose contents are cached by this readdirectory_cache.
+     */
+    struct nfs_inode *inode;
+
+    /*
      * This will be set if we have read all the entries of the directory
      * from the backend.
      */
@@ -129,12 +134,15 @@ private:
     mutable std::shared_mutex readdircache_lock;
 
 public:
-    readdirectory_cache(struct nfs_client *_client):
+    readdirectory_cache(struct nfs_client *_client,
+                        struct nfs_inode *_inode):
         client(_client),
+        inode(_inode),
         eof(false),
         cache_size(0)
     {
         assert(client);
+        assert(inode);
         assert(dir_entries.empty());
         // Initial cookie_verifier must be 0.
         ::memset(&cookie_verifier, 0, sizeof(cookie_verifier));

@@ -65,8 +65,9 @@ bool readdirectory_cache::add(struct directory_entry* entry)
 
         // TODO: Fix this.
         if (cache_size >= MAX_CACHE_SIZE_LIMIT) {
-            AZLogWarn("Exceeding cache max size. No more entries will "
-                      "be added to the cache! curent size: {}", cache_size);
+            AZLogWarn("[{}] Exceeding cache max size. No more entries will "
+                      "be added to the cache! curent size: {}",
+                      this->inode->get_fuse_ino(), cache_size);
             return false;
         }
 
@@ -77,9 +78,12 @@ bool readdirectory_cache::add(struct directory_entry* entry)
              */
             assert(entry->nfs_inode->dircachecnt > 0);
 
-            AZLogDebug("Adding {} fuse ino {} to readdir cache (ref {})",
+            AZLogDebug("[{}] Adding {} fuse ino {}, cookie {}, to readdir "
+                       "cache (dircachecnt {})",
+                       this->inode->get_fuse_ino(),
                        entry->name,
                        entry->nfs_inode->get_fuse_ino(),
+                       entry->cookie,
                        entry->nfs_inode->dircachecnt.load());
         }
 
@@ -158,10 +162,12 @@ void readdirectory_cache::clear()
                  */
                 assert(inode->dircachecnt > 0);
 
-                AZLogDebug("Removing {} fuse ino {} from readdir cache "
-                           "(ref {})",
+                AZLogDebug("[{}] Removing {} fuse ino {}, cookie {}, from "
+                           "readdir cache (ref {})",
+                           this->inode->get_fuse_ino(),
                            it->second->name,
                            inode->get_fuse_ino(),
+                           it->second->cookie,
                            inode->dircachecnt.load());
             }
 
@@ -202,7 +208,8 @@ void readdirectory_cache::clear()
     if (!tofree_vec.empty()) {
         std::unique_lock<std::shared_mutex> lock1(client->get_inode_map_lock());
 
-        AZLogDebug("{} inodes to be freed, after readdir cache purge",
+        AZLogDebug("[{}] {} inodes to be freed, after readdir cache purge",
+                   this->inode->get_fuse_ino(),
                    tofree_vec.size());
 
         for (struct nfs_inode *inode : tofree_vec) {

@@ -344,7 +344,7 @@ static void aznfsc_ll_init(void *userdata,
      *     that.
      */
     conn->want |= FUSE_CAP_READDIRPLUS;
-    //conn->want &= ~FUSE_CAP_READDIRPLUS_AUTO;
+    conn->want &= ~FUSE_CAP_READDIRPLUS_AUTO;
 
     conn->want |= FUSE_CAP_ASYNC_READ;
 
@@ -416,12 +416,17 @@ static void aznfsc_ll_lookup(fuse_req_t req,
     client->lookup(req, parent_ino, name);
 }
 
+static std::atomic<uint64_t> total_forgotten = 0;
+
 static void aznfsc_ll_forget(fuse_req_t req,
                              fuse_ino_t ino,
                              uint64_t nlookup)
 {
-    AZLogDebug("aznfsc_ll_forget(req={}, ino={}, nlookup={})",
-               fmt::ptr(req), ino, nlookup);
+    total_forgotten++;
+
+    AZLogDebug("aznfsc_ll_forget(req={}, ino={}, nlookup={}) "
+               "total_forgotten={}",
+               fmt::ptr(req), ino, nlookup, total_forgotten.load());
 
     struct nfs_client *client = get_nfs_client_from_fuse_req(req);
     struct nfs_inode *inode = client->get_nfs_inode_from_ino(ino);
@@ -884,8 +889,10 @@ void aznfsc_ll_forget_multi(fuse_req_t req,
                             size_t count,
                             struct fuse_forget_data *forgets)
 {
-    AZLogDebug("aznfsc_ll_forget_multi(req={}, count={})",
-               fmt::ptr(req), count);
+    total_forgotten += count;
+
+    AZLogDebug("aznfsc_ll_forget_multi(req={}, count={}) total_forgotten={}",
+               fmt::ptr(req), count, total_forgotten.load());
 
     struct nfs_client *client = get_nfs_client_from_fuse_req(req);
 
