@@ -120,7 +120,8 @@ struct nfs_inode *nfs_client::get_nfs_inode(const nfs_fh3 *fh,
     {
         std::unique_lock<std::shared_mutex> lock(inode_map_lock);
 
-        AZLogWarn("[{}] Allocated new inode ({})",
+        AZLogWarn("[{}:{}] Allocated new inode ({})",
+                  inode->get_filetype_coding(),
                   inode->get_fuse_ino(), inode_map.size());
 
         /*
@@ -193,7 +194,8 @@ void nfs_client::put_nfs_inode_nolock(struct nfs_inode *inode,
      */
     if (inode->is_dir() && (inode->dircache_handle->get_num_entries() != 0)) {
         AZLogWarn("[{}] Inode still has {} entries in dircache, skipping",
-                  inode->get_fuse_ino(), inode->dircache_handle->get_num_entries());
+                  inode->get_fuse_ino(),
+                  inode->dircache_handle->get_num_entries());
         return;
     }
 
@@ -223,8 +225,10 @@ void nfs_client::put_nfs_inode_nolock(struct nfs_inode *inode,
         assert(i->second->magic == NFS_INODE_MAGIC);
 
         if (i->second == inode) {
-            AZLogWarn("[{}] Deleting inode (inode_map size: {})",
-                      inode->get_fuse_ino(), inode_map.size()-1);
+            AZLogWarn("[{}:{}] Deleting inode (inode_map size: {})",
+                      inode->get_filetype_coding(),
+                      inode->get_fuse_ino(),
+                      inode_map.size()-1);
             inode_map.erase(i);
             delete inode;
             return;

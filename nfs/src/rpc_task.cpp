@@ -509,6 +509,8 @@ void rpc_task::run_readdirplus()
  * populate the readdir cache with the newly fetched entries (minus the
  * attributes). Additionally it will populate the readdirentries vector and
  * call send_readdir_response() to respond to the fuse readdir call.
+ *
+ * TODO: Restart directory enumeration on getting NFS3ERR_BAD_COOKIE.
  */
 static void readdir_callback(
     struct rpc_context* /* rpc */,
@@ -636,6 +638,8 @@ static void readdir_callback(
  * populate the readdir cache with the newly fetched entries (with the
  * attributes). Additionally it will populate the readdirentries vector and
  * call send_readdir_response() to respond to the fuse readdir call.
+ *
+ * TODO: Restart directory enumeration on getting NFS3ERR_BAD_COOKIE.
  */
 static void readdirplus_callback(
     struct rpc_context* /* rpc */,

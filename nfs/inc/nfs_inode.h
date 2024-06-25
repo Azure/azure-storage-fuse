@@ -217,6 +217,21 @@ struct nfs_inode
     }
 
     /**
+     * Short character code for file_type, useful for logs.
+     */
+    char get_filetype_coding() const
+    {
+#ifndef ENABLE_NON_AZURE_NFS
+        assert(file_type == S_IFDIR ||
+               file_type == S_IFREG ||
+               file_type == S_IFLNK);
+#endif
+        return (file_type == S_IFDIR) ? 'D' :
+               ((file_type == S_IFLNK) ? 'S' :
+                ((file_type == S_IFREG) ? 'R' : 'U'));
+    }
+
+    /**
      * Get the minimum attribute cache timeout value in seconds, to be used
      * for this file.
      */
