@@ -29,7 +29,7 @@ Master test script that simulates this benchmarking test suite is located [here]
 Below table provides `latency/time` and `bandwidth` results for various tests on respective account types. Each test has a linked section describing details of that test case.
 
 
-| Test Name | Premium Storage Account | Standard Storage Account |
+| Test Name | Premium Blob Storage Account | Standard Blob Storage Account |
 | ----------- | -------------- | ----------- |
 | [Create](https://azure.github.io/azure-storage-fuse/#create)    |  [Latency](https://azure.github.io/azure-storage-fuse/latency/create/) : [Bandwidth](https://azure.github.io/azure-storage-fuse/bandwidth/create/)  |  |
 | [Write](https://azure.github.io/azure-storage-fuse/#write)     |  [Latency](https://azure.github.io/azure-storage-fuse/latency/write/) : [Bandwidth](https://azure.github.io/azure-storage-fuse/bandwidth/write/)   | |
