@@ -69,6 +69,23 @@ jobs:
           which blobfuse2
           blobfuse2 --version
 
+      - name: "Export environment variable"
+        run: |
+          echo "export AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}" >> $GITHUB_ENV
+          if [ "${{ matrix.TestType }}" == "premium" ]; then
+            echo "export AZURE_STORAGE_ACCOUNT=${{ secrets.BLOB_STORAGE_ACCOUNT }}" >> $GITHUB_ENV
+            echo "export AZURE_STORAGE_ACCESS_KEY=${{ secrets.BLOB_STORAGE_KEY }}" >> $GITHUB_ENV
+          else
+            echo "export AZURE_STORAGE_ACCOUNT=${{ secrets.STD_BLOB_STORAGE_ACCOUNT }}" >> $GITHUB_ENV
+            echo "export AZURE_STORAGE_ACCESS_KEY=${{ secrets.STD_BLOB_STORAGE_KEY }}" >> $GITHUB_ENV
+          fi
+
+      # Create the config file for testing
+      - name: "Create config file"
+        run: |
+          blobfuse2 gen-test-config --config-file=azure_block_bench.yaml --container-name=${{ secrets.BLOB_STORAGE_CONTAINER }}  --output-file=./config.yaml
+          cat ./config.yaml
+
       # Create the config file for testing
       - name: "Create mount path"
         run: |
@@ -77,25 +94,7 @@ jobs:
           sudo chmod 777 /mnt/blob_mnt
           sudo chmod 777 /mnt/tempcache
 
-      - name: "Export environment variable"
-        run: |
-          echo "export AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}" >> $GITHUB_ENV
-          if [ "${{ matrix.TestType }}" == "premium" ]; then
-            echo "export AZURE_STORAGE_ACCOUNT=${{ secrets.BLOB_STORAGE_ACCOUNT }}" >> $GITHUB_ENV
-            echo "export AZURE_STORAGE_ACCESS_KEY: ${{ secrets.BLOB_STORAGE_KEY }}" >> $GITHUB_ENV
-          else
-            echo "export AZURE_STORAGE_ACCOUNT=${{ secrets.STD_BLOB_STORAGE_ACCOUNT }}" >> $GITHUB_ENV
-            echo "export AZURE_STORAGE_ACCESS_KEY: ${{ secrets.STD_BLOB_STORAGE_KEY }}" >> $GITHUB_ENV
-          fi
-
       # ---------------------------------------------------------------------------------------------------------------------------------------------------
-      # Premium blob storage tests
-      # Create the config file for testing
-      - name: "Create config file : Premium"
-        run: |
-          blobfuse2 gen-test-config --config-file=azure_block_bench.yaml --container-name=${{ secrets.BLOB_STORAGE_CONTAINER }}  --output-file=./config.yaml
-          cat ./config.yaml
-
       # Run the basic tests using FIO
 
       # Run the Write tests
@@ -217,7 +216,8 @@ jobs:
           auto-push: true
           comment-on-alert: true
           gh-pages-branch: benchmarks
-          benchmark-data-dir-path: ${{ matrix.TestType }}/time/highapp           
+          benchmark-data-dir-path: ${{ matrix.TestType }}/time/highapp  
+
       # ---------------------------------------------------------------------------------------
       # Run Rename tests
       # This needs to run seperatly as output is different
@@ -241,4 +241,5 @@ jobs:
           comment-on-alert: true
           gh-pages-branch: benchmarks
           benchmark-data-dir-path: ${{ matrix.TestType }}/time/rename  
+      # ---------------------------------------------------------------------------------------          
                           
