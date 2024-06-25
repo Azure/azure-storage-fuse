@@ -103,6 +103,7 @@ jobs:
         with:
           TEST: "read"
           TYPE: ${{ matrix.TestType }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # Run the Write tests with high number of threads
       - name: "High threads Test"
@@ -110,6 +111,7 @@ jobs:
         with:
           TEST: "highlyparallel"
           TYPE: ${{ matrix.TestType }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
     
       # Run the Write tests
       - name: "Write Test"
@@ -117,6 +119,7 @@ jobs:
         with:
           TEST: "write"
           TYPE: ${{ matrix.TestType }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
             
       # Run the Create tests
       - name: "Create File Test"
@@ -124,6 +127,7 @@ jobs:
         with:
           TEST: "create"
           TYPE: ${{ matrix.TestType }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # ---------------------------------------------------------------------------------------
 
 

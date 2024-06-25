@@ -7,10 +7,14 @@ inputs:
     description: "Test to run"
   TYPE: 
     required: true
-    description: "Type of storage account"     
+    description: "Type of storage account"  
+  TOKEN:   
+    required: true
+    description: "Token for checkin"  
 
 runs:
   using: "composite"
+
   steps:
     # Pre-run cleanup
     - name: "Cleanup before test"
@@ -33,7 +37,7 @@ runs:
         tool: 'customBiggerIsBetter'
         alert-threshold: "160%"
         max-items-in-chart: 100
-        github-token: ${{ secrets.GITHUB_TOKEN }}
+        github-token: ${{ inputs.TOKEN }}
         fail-on-alert: true
         auto-push: true
         comment-on-alert: true
@@ -48,7 +52,7 @@ runs:
         tool: 'customSmallerIsBetter'
         alert-threshold: "160%"
         max-items-in-chart: 100
-        github-token: ${{ secrets.GITHUB_TOKEN }}
+        github-token: ${{ inputs.TOKEN }}
         fail-on-alert: true
         auto-push: true
         comment-on-alert: true
