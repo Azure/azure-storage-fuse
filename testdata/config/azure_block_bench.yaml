@@ -29,4 +29,6 @@ attr_cache:
   
 azstorage:
   mode: msi
+  container: { 0 }
+  account-name: { STO_ACC_NAME }
   
