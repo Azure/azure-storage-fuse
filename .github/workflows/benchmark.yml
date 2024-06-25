@@ -71,13 +71,11 @@ jobs:
 
       - name: "Export environment variable"
         run: |
-          echo "export AZURE_STORAGE_ACCOUNT_CONTAINER=${{ secrets.BLOB_STORAGE_CONTAINER }}" >> $GITHUB_ENV
+          echo "export AZURE_STORAGE_ACCOUNT_CONTAINER=benchmark" >> $GITHUB_ENV
           if [ "${{ matrix.TestType }}" == "premium" ]; then
-            echo "export AZURE_STORAGE_ACCOUNT=${{ secrets.BLOB_STORAGE_ACCOUNT }}" >> $GITHUB_ENV
-            echo "export AZURE_STORAGE_ACCESS_KEY=${{ secrets.BLOB_STORAGE_KEY }}" >> $GITHUB_ENV
+            echo "export AZURE_STORAGE_ACCOUNT=blobfuse2benchmark" >> $GITHUB_ENV
           else
-            echo "export AZURE_STORAGE_ACCOUNT=${{ secrets.STD_BLOB_STORAGE_ACCOUNT }}" >> $GITHUB_ENV
-            echo "export AZURE_STORAGE_ACCESS_KEY=${{ secrets.STD_BLOB_STORAGE_KEY }}" >> $GITHUB_ENV
+            echo "export AZURE_STORAGE_ACCOUNT=stdblobfuse2benchmark" >> $GITHUB_ENV
           fi
 
       # Create the config file for testing
