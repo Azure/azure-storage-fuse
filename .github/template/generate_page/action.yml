@@ -11,6 +11,9 @@ inputs:
   TOKEN:   
     required: true
     description: "Token for checkin"  
+  ACCOUNT:
+    required: true
+    description: "Storage account name"
 
 runs:
   using: "composite"
@@ -28,6 +31,8 @@ runs:
       shell: bash
       run: |
         ./perf_testing/scripts/fio_bench.sh /mnt/blob_mnt ${{ inputs.TEST }}
+      env:
+        AZURE_STORAGE_ACCOUNT: ${{ inputs.ACCOUNT }}
     
     # Push the bandwidth results and publish the graphs
     - name: "Update Bandwidth Results : ${{ inputs.TEST }}"
