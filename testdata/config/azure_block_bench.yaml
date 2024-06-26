@@ -28,6 +28,6 @@ attr_cache:
   timeout-sec: 7200
   
 azstorage:
-  mode: msi
+  mode: key
   container: { 0 }
   

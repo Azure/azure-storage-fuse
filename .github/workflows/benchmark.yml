@@ -73,7 +73,7 @@ jobs:
       - name: "Create config file"
         run: |
           echo $AZURE_STORAGE_ACCOUNT
-          blobfuse2 gen-test-config --config-file=azure_block_bench.yaml --container-name=benchmark  --output-file=./config.yaml
+          blobfuse2 gen-test-config --config-file=azure_block_bench.yaml --container-name=${{ secrets.BENCH_CONTAINER }}  --output-file=./config.yaml
           cat ./config.yaml
 
       # Create the config file for testing
@@ -95,6 +95,7 @@ jobs:
           TYPE: ${{ matrix.TestType }}
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ACCOUNT: $ {{ secrets.${{ matrix.TestType }}_ACCOUNT }
+          AUTH_KEY: $ {{ secrets.${{ matrix.TestType }}_KEY }
 
       # Run the Write tests with high number of threads
       - name: "High threads Test"
@@ -104,6 +105,7 @@ jobs:
           TYPE: ${{ matrix.TestType }}
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ACCOUNT: $ {{ secrets.${{ matrix.TestType }}_ACCOUNT }
+          AUTH_KEY: $ {{ secrets.${{ matrix.TestType }}_KEY }
     
       # Run the Write tests
       - name: "Write Test"
@@ -113,6 +115,7 @@ jobs:
           TYPE: ${{ matrix.TestType }}
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ACCOUNT: $ {{ secrets.${{ matrix.TestType }}_ACCOUNT }
+          AUTH_KEY: $ {{ secrets.${{ matrix.TestType }}_KEY }
             
       # Run the Create tests
       - name: "Create File Test"
@@ -122,6 +125,7 @@ jobs:
           TYPE: ${{ matrix.TestType }}
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ACCOUNT: $ {{ secrets.${{ matrix.TestType }}_ACCOUNT }
+          AUTH_KEY: $ {{ secrets.${{ matrix.TestType }}_KEY }
       # ---------------------------------------------------------------------------------------
 
 
@@ -137,6 +141,7 @@ jobs:
           ./perf_testing/scripts/fio_bench.sh /mnt/blob_mnt list
         env:
           AZURE_STORAGE_ACCOUNT: $ {{ secrets.${{ matrix.TestType }}_ACCOUNT }}
+          AZURE_STORAGE_ACCESS_KEY: $ {{ secrets.${{ matrix.TestType }}_KEY }
         
       - name: "Update Benchmark Results : List"
         uses: benchmark-action/github-action-benchmark@v1
@@ -163,6 +168,8 @@ jobs:
           ./perf_testing/scripts/fio_bench.sh /mnt/blob_mnt app
         env:
           AZURE_STORAGE_ACCOUNT: $ {{ secrets.${{ matrix.TestType }}_ACCOUNT }}
+          AZURE_STORAGE_ACCESS_KEY: $ {{ secrets.${{ matrix.TestType }}_KEY }
+
         
       - name: "Update Bandwidth Results : App"
         uses: benchmark-action/github-action-benchmark@v1
@@ -231,6 +238,7 @@ jobs:
           ./perf_testing/scripts/fio_bench.sh /mnt/blob_mnt rename
         env:
           AZURE_STORAGE_ACCOUNT: $ {{ secrets.${{ matrix.TestType }}_ACCOUNT }}
+          AZURE_STORAGE_ACCESS_KEY: $ {{ secrets.${{ matrix.TestType }}_KEY }
 
       - name: "Update Latency Results : Rename"
         uses: benchmark-action/github-action-benchmark@v1

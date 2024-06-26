@@ -14,6 +14,9 @@ inputs:
   ACCOUNT:
     required: true
     description: "Storage account name"
+  AUTH_KEY:
+    required: true
+    description: "Storage account key"
 
 runs:
   using: "composite"
@@ -33,6 +36,7 @@ runs:
         ./perf_testing/scripts/fio_bench.sh /mnt/blob_mnt ${{ inputs.TEST }}
       env:
         AZURE_STORAGE_ACCOUNT: ${{ inputs.ACCOUNT }}
+        AZURE_STORAGE_ACCESS_KEY: ${{ inputs.AUTH_KEY }}
     
     # Push the bandwidth results and publish the graphs
     - name: "Update Bandwidth Results : ${{ inputs.TEST }}"
