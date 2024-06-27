@@ -54,17 +54,9 @@ jobs:
         run: |
           ./build.sh
 
-      # Check the paths
-      - name: "Check paths"
-        run: |
-          pwd
-          df -h
-
       # Run binary and validate the version
       - name: "Validate Version"
         run: |
-          ./blobfuse2 --version
-          pwd
           sudo cp ./blobfuse2 /usr/bin/
           which blobfuse2
           blobfuse2 --version
@@ -72,11 +64,11 @@ jobs:
       - name: "Create Env variables for account name and key"
         run: |
           if [ "${{ matrix.TestType }}" == "standard" ]; then
-            echo "Create standard accoutn env"
+            echo "Create standard account env"
             echo "AZURE_STORAGE_ACCOUNT=${{ secrets.STANDARD_ACCOUNT }}" >> $GITHUB_ENV
             echo "AZURE_STORAGE_ACCESS_KEY=${{ secrets.STANDARD_KEY }}" >> $GITHUB_ENV
           else
-            echo "Create premium accoutn env"
+            echo "Create premium account env"
             echo "AZURE_STORAGE_ACCOUNT=${{ secrets.PREMIUM_ACCOUNT }}" >> $GITHUB_ENV
             echo "AZURE_STORAGE_ACCESS_KEY=${{ secrets.PREMIUM_KEY }}" >> $GITHUB_ENV
           fi
@@ -84,7 +76,6 @@ jobs:
       # Create the config file for testing
       - name: "Create config file for account type: ${{ matrix.TestType }}"
         run: |
-          echo "Storage account is: " $AZURE_STORAGE_ACCOUNT
           blobfuse2 gen-test-config --config-file=azure_block_bench.yaml --container-name=${{ secrets.BENCH_CONTAINER }}  --output-file=./config.yaml
           cat ./config.yaml
 
@@ -96,7 +87,7 @@ jobs:
           sudo chmod 777 /mnt/blob_mnt
           sudo chmod 777 /mnt/tempcache
 
-    # ---------------------------------------------------------------------------------------------------------------------------------------------------
+      # ---------------------------------------------------------------------------------------------------------------------------------------------------
       # Run the basic tests using FIO
 
       # Run the Write tests
