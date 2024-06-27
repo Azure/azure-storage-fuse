@@ -74,6 +74,9 @@ jobs:
         run: |
           blobfuse2 gen-test-config --config-file=azure_block_bench.yaml --container-name=${{ secrets.BENCH_CONTAINER }}  --output-file=./config.yaml
           cat ./config.yaml
+        env:
+          STORAGE_ACCOUNT: $ {{ secrets.${{ matrix.TestType }}_ACCOUNT }
+          STORAGE_KEY: $ {{ secrets.${{ matrix.TestType }}_KEY }
 
       # Create the config file for testing
       - name: "Create mount path"

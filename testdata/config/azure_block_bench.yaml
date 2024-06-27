@@ -28,6 +28,8 @@ attr_cache:
   timeout-sec: 7200
   
 azstorage:
-  mode: msi
+  mode: key
   container: { 0 }
+  account-name: { STORAGE_ACCOUNT }
+  account-key: { STORAGE_KEY }
   
