@@ -30,4 +30,6 @@ attr_cache:
 azstorage:
   mode: key
   container: { 0 }
+  account-name: { AZURE_STORAGE_ACCOUNT }
+  account-key: { AZURE_STORAGE_ACCESS_KEY }
   
