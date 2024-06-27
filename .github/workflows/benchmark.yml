@@ -84,6 +84,7 @@ jobs:
       # Create the config file for testing
       - name: "Create config file for account type: ${{ matrix.TestType }}"
         run: |
+          echo "Storage account is: " $STG_ACCOUNT
           blobfuse2 gen-test-config --config-file=azure_block_bench.yaml --container-name=${{ secrets.BENCH_CONTAINER }}  --output-file=./config.yaml
           cat ./config.yaml
 
