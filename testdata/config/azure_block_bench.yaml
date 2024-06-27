@@ -30,6 +30,4 @@ attr_cache:
 azstorage:
   mode: key
   container: { 0 }
-  account-name: { STORAGE_ACCOUNT }
-  account-key: { STORAGE_KEY }
   
