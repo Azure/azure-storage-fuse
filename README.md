@@ -31,14 +31,14 @@ Below table provides `latency/time` and `bandwidth` results for various tests on
 
 | Test Name | Premium Blob Storage Account | Standard Blob Storage Account |
 | ----------- | -------------- | ----------- |
-| [Create](https://azure.github.io/azure-storage-fuse/#create)    |  [Latency](https://azure.github.io/azure-storage-fuse/latency/create/) : [Bandwidth](https://azure.github.io/azure-storage-fuse/bandwidth/create/)  |  |
-| [Write](https://azure.github.io/azure-storage-fuse/#write)     |  [Latency](https://azure.github.io/azure-storage-fuse/latency/write/) : [Bandwidth](https://azure.github.io/azure-storage-fuse/bandwidth/write/)   | |
-| [Read](https://azure.github.io/azure-storage-fuse/#read)     |  [Latency](https://azure.github.io/azure-storage-fuse/latency/read/) : [Bandwidth](https://azure.github.io/azure-storage-fuse/bandwidth/read/)    | |
-| [List](https://azure.github.io/azure-storage-fuse/#list)      |  [Time](https://azure.github.io/azure-storage-fuse/time/list/)         |     |
-| [Rename](https://azure.github.io/azure-storage-fuse/#rename)    |  [Time](https://azure.github.io/azure-storage-fuse/time/rename/)       |     |
-| [Highly Parallel](https://azure.github.io/azure-storage-fuse/#high-parallel) |  [Latency](https://azure.github.io/azure-storage-fuse/latency/highlyparallel/) : [Bandwidth](https://azure.github.io/azure-storage-fuse/bandwidth/highlyparallel/)  | |
-| [Application](https://azure.github.io/azure-storage-fuse/#application-test)       |  [Time](https://azure.github.io/azure-storage-fuse/time/app/) : [Bandwidth](https://azure.github.io/azure-storage-fuse/bandwidth/app/) | |
-| [Max Out](https://azure.github.io/azure-storage-fuse/#max-out)       |  [Time](https://azure.github.io/azure-storage-fuse/time/highapp/) : [Bandwidth](https://azure.github.io/azure-storage-fuse/bandwidth/highapp/) | |
+| [Create](https://azure.github.io/azure-storage-fuse/premium/#create)    |  [Latency](https://azure.github.io/azure-storage-fuse/premium/latency/create/) : [Bandwidth](https://azure.github.io/azure-storage-fuse/premium/bandwidth/create/)  |  |
+| [Write](https://azure.github.io/azure-storage-fuse/premium/#write)     |  [Latency](https://azure.github.io/azure-storage-fuse/premium/latency/write/) : [Bandwidth](https://azure.github.io/azure-storage-fuse/premium/bandwidth/write/)   | |
+| [Read](https://azure.github.io/azure-storage-fuse/premium/#read)     |  [Latency](https://azure.github.io/azure-storage-fuse/premium/latency/read/) : [Bandwidth](https://azure.github.io/azure-storage-fuse/premium/bandwidth/read/)    | |
+| [List](https://azure.github.io/azure-storage-fuse/premium/#list)      |  [Time](https://azure.github.io/azure-storage-fuse/premium/time/list/)         |     |
+| [Rename](https://azure.github.io/azure-storage-fuse/premium/#rename)    |  [Time](https://azure.github.io/azure-storage-fuse/premium/time/rename/)       |     |
+| [Highly Parallel](https://azure.github.io/azure-storage-fuse/premium/#high-parallel) |  [Latency](https://azure.github.io/azure-storage-fuse/premium/latency/highlyparallel/) : [Bandwidth](https://azure.github.io/azure-storage-fuse/premium/bandwidth/highlyparallel/)  | |
+| [Application](https://azure.github.io/azure-storage-fuse/premium/#application-test)       |  [Time](https://azure.github.io/azure-storage-fuse/premium/time/app/) : [Bandwidth](https://azure.github.io/azure-storage-fuse/premium/bandwidth/app/) | |
+| [Max Out](https://azure.github.io/azure-storage-fuse/premium/#max-out)       |  [Time](https://azure.github.io/azure-storage-fuse/premium/time/highapp/) : [Bandwidth](https://azure.github.io/azure-storage-fuse/premium/bandwidth/highapp/) | |
 
 
 
