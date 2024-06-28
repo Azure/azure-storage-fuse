@@ -1,7 +1,7 @@
 name: Benchmark
 on:
   schedule:
-    - cron: '5 1,3,5,7,9,11,13,15,17,19,21,23 * * *'
+    - cron: '0 0,3,6,9,12,15,18,21 * * *'
   push:
     branches:
       - main
@@ -11,7 +11,7 @@ jobs:
   PerfTesting:
     strategy:
       matrix:
-        TestType: ["premium", "standard"]
+        TestType: ["premium", "standard", "premium_hns", "standard_hns"]
             
     runs-on: [self-hosted, 1ES.Pool=blobfuse2-benchmark]
     timeout-minutes: 360
@@ -67,10 +67,18 @@ jobs:
             echo "Create standard account env"
             echo "AZURE_STORAGE_ACCOUNT=${{ secrets.STANDARD_ACCOUNT }}" >> $GITHUB_ENV
             echo "AZURE_STORAGE_ACCESS_KEY=${{ secrets.STANDARD_KEY }}" >> $GITHUB_ENV
-          else
+          elif [ "${{ matrix.TestType }}" == "premium" ]; then
             echo "Create premium account env"
             echo "AZURE_STORAGE_ACCOUNT=${{ secrets.PREMIUM_ACCOUNT }}" >> $GITHUB_ENV
             echo "AZURE_STORAGE_ACCESS_KEY=${{ secrets.PREMIUM_KEY }}" >> $GITHUB_ENV
+          elif [ "${{ matrix.TestType }}" == "standard_hns" ]; then
+            echo "Create standard hns account env"
+            echo "AZURE_STORAGE_ACCOUNT=${{ secrets.STANDARD_HNS_ACCOUNT }}" >> $GITHUB_ENV
+            echo "AZURE_STORAGE_ACCESS_KEY=${{ secrets.STANDARD_HNS_KEY }}" >> $GITHUB_ENV
+          elif [ "${{ matrix.TestType }}" == "premium_hns" ]; then
+            echo "Create premium hns account env"
+            echo "AZURE_STORAGE_ACCOUNT=${{ secrets.PREMIUM_HNS_ACCOUNT }}" >> $GITHUB_ENV
+            echo "AZURE_STORAGE_ACCESS_KEY=${{ secrets.PREMIUM_HNS_KEY }}" >> $GITHUB_ENV
           fi
 
       # Create the config file for testing
