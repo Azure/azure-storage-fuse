@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1719811849989,
+  "lastUpdate": 1719824208868,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -413,6 +413,75 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 121.64732507179501,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "vibhansa@microsoft.com",
+            "name": "vibhansa",
+            "username": "vibhansa-msft"
+          },
+          "committer": {
+            "email": "vibhansa@microsoft.com",
+            "name": "vibhansa",
+            "username": "vibhansa-msft"
+          },
+          "distinct": true,
+          "id": "9ebc7c73787a28f4f4e364671050acfbfb11a3ef",
+          "message": "Run tests in serial",
+          "timestamp": "2024-07-01T00:14:40-07:00",
+          "tree_id": "239c6d4ad9690d7fd90d7704fbed8e1e721aba2f",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/9ebc7c73787a28f4f4e364671050acfbfb11a3ef"
+        },
+        "date": 1719824208637,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read",
+            "value": 0.12002078680366667,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read",
+            "value": 155.50062663969368,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_small_file",
+            "value": 0.08963309902933332,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 0.19849055400133334,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_direct_io",
+            "value": 0.09979939725466667,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_direct_io",
+            "value": 148.10368441764635,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 0.17683146312066667,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 1.0929893272276665,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 151.32985025352332,
             "unit": "milliseconds"
           }
         ]
