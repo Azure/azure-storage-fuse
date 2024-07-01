@@ -475,7 +475,9 @@ public:
     rpc_task(struct nfs_client *_client, int _index) :
         client(_client),
         req(nullptr),
-        index(_index)
+        index(_index),
+        num_of_reads_issued_to_backend(0),
+        readfile_completed(false)
     {
     }
 
@@ -699,16 +701,6 @@ public:
         free_rpc_task();
     }
 
-#if 0
-    void reply_buf(const void* buf, size_t size)
-    {
-        fuse_reply_buf(req, (const char*)buf, size);
-        readfile_completed = false;
-        bytes_vector.clear();
-        free_rpc_task();
-    }
-#endif
-
     void reply_entry(const struct fuse_entry_param *e)
     {
         struct nfs_inode *inode = nullptr;
@@ -823,6 +815,9 @@ public:
 
     void fetch_readdir_entries_from_server();
     void fetch_readdirplus_entries_from_server();
+
+    void send_readfile_response(int status);
+    void readfile_from_server(struct bytes_chunk &bc);
 };
 
 class rpc_task_helper

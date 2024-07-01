@@ -93,7 +93,7 @@ private:
     uint64_t max_ino = 0;
 
     nfs_client() :
-    	transport(this)
+        transport(this)
     {
     }
 
@@ -120,7 +120,7 @@ public:
      */
     static nfs_client& get_instance()
     {
-    	static nfs_client client;
+        static nfs_client client;
         return client;
     }
 
@@ -181,7 +181,7 @@ public:
         assert(ino <= max_ino);
 
         struct nfs_inode *const nfsi =
-            reinterpret_cast<struct nfs_inode *>(ino);
+                reinterpret_cast<struct nfs_inode *>(ino);
 
         // Dangerous cast, deserves validation.
         assert(nfsi->magic == NFS_INODE_MAGIC);
@@ -306,6 +306,13 @@ public:
         off_t off,
         struct fuse_file_info* file);
 
+    void read(
+        fuse_req_t req,
+        fuse_ino_t ino,
+        size_t size,
+        off_t off,
+        struct fuse_file_info *fi);
+
     static void stat_from_fattr3(struct stat* st, const struct fattr3* attr);
 
     void reply_entry(
@@ -323,7 +330,7 @@ static inline
 struct nfs_client *get_nfs_client_from_fuse_req(const fuse_req_t req)
 {
     struct nfs_client *const client =
-        reinterpret_cast<struct nfs_client*>(fuse_req_userdata(req));
+            reinterpret_cast<struct nfs_client*>(fuse_req_userdata(req));
 
     // Dangerous cast, make sure we got a correct pointer.
     assert(client->magic == NFS_CLIENT_MAGIC);

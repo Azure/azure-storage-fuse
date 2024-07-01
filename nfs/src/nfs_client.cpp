@@ -344,6 +344,19 @@ void nfs_client::readdirplus(
     tsk->run_readdirplus();
 }
 
+void nfs_client::read(
+    fuse_req_t req,
+    fuse_ino_t ino,
+    size_t size,
+    off_t off,
+    struct fuse_file_info *fi)
+{
+    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task();
+
+    tsk->init_readfile(req, ino, size, off, fi);
+    tsk->run_readfile();
+}
+
 /*
  * Creates a new inode for the given fh and passes it to fuse layer.
  * This will be called by the APIs which must return a filehandle back to the

@@ -1235,7 +1235,7 @@ void rpc_task::fetch_readdirplus_entries_from_server()
 }
 
 void rpc_task::send_readdir_response(
-        const std::vector<const directory_entry*>& readdirentries)
+    const std::vector<const directory_entry*>& readdirentries)
 {
     const bool readdirplus = (get_op_type() == FUSE_READDIRPLUS);
     /*
@@ -1298,11 +1298,11 @@ void rpc_task::send_readdir_response(
              * to add this entry.
              */
             entsize = fuse_add_direntry_plus(get_req(),
-                    current_buf,
-                    rem, /* size left in the buffer */
-                    it->name,
-                    &fuseentry,
-                    it->cookie);
+                                             current_buf,
+                                             rem, /* size left in the buffer */
+                                             it->name,
+                                             &fuseentry,
+                                             it->cookie);
         } else {
             /*
              * Insert the entry into the buffer.
@@ -1311,11 +1311,11 @@ void rpc_task::send_readdir_response(
              * add this entry.
              */
             entsize = fuse_add_direntry(get_req(),
-                    current_buf,
-                    rem, /* size left in the buffer */
-                    it->name,
-                    &it->attributes,
-                    it->cookie);
+                                        current_buf,
+                                        rem, /* size left in the buffer */
+                                        it->name,
+                                        &it->attributes,
+                                        it->cookie);
         }
 
         /*
