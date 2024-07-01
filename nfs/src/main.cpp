@@ -586,10 +586,13 @@ static void aznfsc_ll_read(fuse_req_t req,
                            off_t off,
                            struct fuse_file_info *fi)
 {
-    /*
-     * TODO: Fill me.
-     */
-    fuse_reply_err(req, ENOSYS);
+    AZLogInfo("aznfsc_ll_read( ino={}, size={}, offset={}",
+                ino, size, off);
+    //AZLogInfo("aznfsc_ll_read(req={}, ino={}, size={}, offset={}",
+      //         fmt::ptr(req), ino, size, off);
+
+    struct nfs_client *client = get_nfs_client_from_fuse_req(req);
+    client->read(req, ino, size, off, fi);
 }
 
 static void aznfsc_ll_write(fuse_req_t req,

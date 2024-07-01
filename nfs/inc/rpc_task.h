@@ -335,6 +335,79 @@ private:
     fuse_file_info* file_ptr;
 };
 
+struct readfile_rpc_task
+{
+public:
+    void set_size(size_t sz)
+    {
+
+        size = sz;
+
+        // Also allocate the buffer to read this data.
+        buffer = (char*)malloc(sizeof(char) * size);
+    }
+
+    void set_offset(off_t off)
+    {
+        offset = off;
+    }
+
+    void set_inode(fuse_ino_t ino)
+    {
+        inode = ino;
+    }
+
+    void set_fuse_file(fuse_file_info* fileinfo)
+    {
+        // The fuse can pass this as nullptr.
+        if (fileinfo == nullptr)
+            return;
+        ::memcpy(&file, fileinfo, sizeof(file));
+        file_ptr = &file;
+    }
+
+    fuse_ino_t get_inode() const
+    {
+        return inode;
+    }
+
+    off_t get_offset() const
+    {
+        return offset;
+    }
+
+    size_t get_size() const
+    {
+        return size;
+    }
+
+    char* get_buffer()
+    {
+        assert(buffer != nullptr);
+        return buffer;
+    }
+
+
+    uint64_t extent_left;
+    uint64_t extent_right;
+
+private:
+    // Inode of the file.
+    fuse_ino_t inode;
+
+    // Size of data to be read.
+    size_t size;
+
+    // Offset from which the file data should be read.
+    off_t offset;
+
+    char *buffer;
+
+    // File info passed by the fuse layer.
+    fuse_file_info file;
+    fuse_file_info* file_ptr;
+};
+
 struct rpc_task
 {
     /*
@@ -355,6 +428,11 @@ struct rpc_task
     // This is the index of the object in the rpc_task_list vector.
     const int index;
 
+    // vector of byte chunks into which the data will be read.
+    std::vector<bytes_chunk> bytes_vector;
+
+   int num_of_reads_issued_to_backend;
+    bool readfile_completed;
 protected:
     /*
      * Operation type.
@@ -366,7 +444,9 @@ public:
     rpc_task(struct nfs_client *_client, int _index) :
         client(_client),
         req(nullptr),
-        index(_index)
+        index(_index),
+        num_of_reads_issued_to_backend(0),
+        readfile_completed(false)
     {
     }
 
@@ -379,6 +459,7 @@ public:
         struct mkdir_rpc_task mkdir_task;
         struct rmdir_rpc_task rmdir_task;
         struct readdir_rpc_task readdir_task;
+        struct readfile_rpc_task readfile_task;
     } rpc_api;
 
     // TODO: Add valid flag here for APIs?
@@ -454,7 +535,16 @@ public:
 
     void run_readdirplus();
 
-    void set_fuse_req(fuse_req *request)
+    // This function is responsible for setting up the members of read_file_task.
+    void init_readfile(fuse_req *request,
+                         fuse_ino_t inode,
+                         size_t size,
+                         off_t offset,
+                         struct fuse_file_info *file);
+
+    void run_readfile();
+
+void set_fuse_req(fuse_req *request)
     {
         req = request;
     }
@@ -506,6 +596,22 @@ public:
     void reply_write(size_t count)
     {
         fuse_reply_write(req, count);
+        free_rpc_task();
+    }
+
+    void reply_iov(struct iovec* iov, int count)
+    {
+        fuse_reply_iov(req, iov, count);
+        readfile_completed = false;
+        bytes_vector.clear();
+        free_rpc_task();
+    }
+
+    void reply_buf(const void* buf, size_t size)
+    {
+        fuse_reply_buf(req, (const char*)buf, size);
+        readfile_completed = false;
+        bytes_vector.clear();
         free_rpc_task();
     }
 
@@ -591,6 +697,9 @@ public:
 
     void fetch_readdir_entries_from_server();
     void fetch_readdirplus_entries_from_server();
+
+    void send_readfile_response(int status);
+    void readfile_from_server(struct bytes_chunk &bc);
 };
 
 class rpc_task_helper

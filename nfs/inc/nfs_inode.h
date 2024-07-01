@@ -4,7 +4,7 @@
 #include <atomic>
 #include "aznfsc.h"
 #include "rpc_readdir.h"
-
+#include "file_cache.h"
 #define NFS_INODE_MAGIC *((const uint32_t *)"NFSI")
 
 // Compare two nfs_fh3 filehandles.
@@ -120,6 +120,11 @@ struct nfs_inode
      * Only valid for a directory, this will be nullptr for a non-directory.
      */
     std::shared_ptr<readdirectory_cache> dircache_handle;
+
+    /*
+     * Valid only for regualr file.
+     */
+    std::shared_ptr<bytes_chunk_cache> filecache_handle;
 
     /**
      * TODO: Initialize attr with postop attributes received in the RPC
