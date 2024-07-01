@@ -10,7 +10,9 @@ on:
 jobs:
   PerfTesting:
     runs-on: [self-hosted, 1ES.Pool=blobfuse2-benchmark]
-    timeout-minutes: 360
+    
+    # Each account type roughly takes 1.5 hours and there are 4 such accounts
+    timeout-minutes: 480
 
     permissions:
       id-token: write
@@ -56,31 +58,7 @@ jobs:
           sudo cp ./blobfuse2 /usr/bin/
           which blobfuse2
           blobfuse2 --version
-
-      - name: "Create Env variables for account name and key"
-        run: |
-          if [ "${{ matrix.TestType }}" == "standard" ]; then
-            echo "Create standard account env"
-            echo "AZURE_STORAGE_ACCOUNT=${{ secrets.STANDARD_ACCOUNT }}" >> $GITHUB_ENV
-            echo "AZURE_STORAGE_ACCESS_KEY=${{ secrets.STANDARD_KEY }}" >> $GITHUB_ENV
-            echo "AZURE_STORAGE_ACCOUNT_TYPE=block" >> $GITHUB_ENV
-          elif [ "${{ matrix.TestType }}" == "premium" ]; then
-            echo "Create premium account env"
-            echo "AZURE_STORAGE_ACCOUNT=${{ secrets.PREMIUM_ACCOUNT }}" >> $GITHUB_ENV
-            echo "AZURE_STORAGE_ACCESS_KEY=${{ secrets.PREMIUM_KEY }}" >> $GITHUB_ENV
-            echo "AZURE_STORAGE_ACCOUNT_TYPE=block" >> $GITHUB_ENV
-          elif [ "${{ matrix.TestType }}" == "standard_hns" ]; then
-            echo "Create standard hns account env"
-            echo "AZURE_STORAGE_ACCOUNT=${{ secrets.STANDARD_HNS_ACCOUNT }}" >> $GITHUB_ENV
-            echo "AZURE_STORAGE_ACCESS_KEY=${{ secrets.STANDARD_HNS_KEY }}" >> $GITHUB_ENV
-            echo "AZURE_STORAGE_ACCOUNT_TYPE=adls" >> $GITHUB_ENV
-          elif [ "${{ matrix.TestType }}" == "premium_hns" ]; then
-            echo "Create premium hns account env"
-            echo "AZURE_STORAGE_ACCOUNT=${{ secrets.PREMIUM_HNS_ACCOUNT }}" >> $GITHUB_ENV
-            echo "AZURE_STORAGE_ACCESS_KEY=${{ secrets.PREMIUM_HNS_KEY }}" >> $GITHUB_ENV
-            echo "AZURE_STORAGE_ACCOUNT_TYPE=adls" >> $GITHUB_ENV
-          fi
-
+     
       # Create the config file for testing
       - name: "Create config file for account type"
         run: |
