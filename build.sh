@@ -1,5 +1,5 @@
 #!/bin/bash
-
+echo "Using Go - $(go version)"
 if [ "$1" == "fuse2" ]
 then
     # Build blobfuse2 with fuse2

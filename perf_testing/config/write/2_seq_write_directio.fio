@@ -1,0 +1,16 @@
+[global]
+name=blobfuse_benchmark
+bs=256k
+runtime=30s
+time_based
+filename=write_fio.data
+group_reporting
+
+[sequential_write_directio]
+size=100G
+rw=write
+ioengine=sync
+fallocate=none
+create_on_open=1
+unlink=1
+direct=1

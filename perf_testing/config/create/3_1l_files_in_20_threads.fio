@@ -1,0 +1,14 @@
+[global]
+create_on_open=1
+ioengine=filecreate
+fallocate=none
+filesize=1K
+bs=1k
+filename_format=$jobname.$jobnum.$filenum
+openfiles=500
+nrfiles=5000
+group_reporting
+
+[create_1l_files_in_20_threads]
+numjobs=20
+rw=write

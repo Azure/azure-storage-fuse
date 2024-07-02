@@ -496,7 +496,7 @@ func (bb *BlockBlob) getAttrUsingList(name string) (attr *internal.ObjAttr, err 
 	}
 
 	if err == nil {
-		log.Err("BlockBlob::getAttrUsingList : blob %s does not exist", name)
+		log.Warn("BlockBlob::getAttrUsingList : blob %s does not exist", name)
 		return nil, syscall.ENOENT
 	}
 
