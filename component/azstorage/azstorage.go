@@ -48,16 +48,25 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
 
+	"github.com/patrickmn/go-cache"
 	"github.com/spf13/cobra"
 )
+
+// CacheEntry represents a single cache entry for the directory listing
+type CacheEntry struct {
+	data      []*internal.ObjAttr
+	marker    string
+	timestamp time.Time
+}
 
 // AzStorage Wrapper type around azure go-sdk (track-1)
 type AzStorage struct {
 	internal.BaseComponent
-	storage     AzConnection
-	stConfig    AzStorageConfig
-	startTime   time.Time
-	listBlocked bool
+	storage        AzConnection
+	stConfig       AzStorageConfig
+	startTime      time.Time
+	listBlocked    bool
+	streamDirCache *cache.Cache
 }
 
 const compName = "azstorage"
@@ -82,6 +91,9 @@ func (az *AzStorage) SetNextComponent(c internal.Component) {
 // Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
 func (az *AzStorage) Configure(isParent bool) error {
 	log.Trace("AzStorage::Configure : %s", az.Name())
+
+	// Initialize the cache with a default expiration time of 5 minutes and cleanup interval of 10 minutes
+	az.streamDirCache = cache.New(5*time.Minute, 10*time.Minute)
 
 	conf := AzStorageOptions{}
 	err := config.UnmarshalKey(az.Name(), &conf)
@@ -297,6 +309,19 @@ func (az *AzStorage) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 
 	path := formatListDirName(options.Name)
 
+	// Create cache key
+	cacheKey := fmt.Sprintf("%s|%s|%d", path, options.Token, options.Count)
+
+	// Check if the result is in the cache
+	if cachedResult, found := az.streamDirCache.Get(cacheKey); found {
+		result := cachedResult.([]interface{})
+		objAttrs := result[0].([]*internal.ObjAttr)
+		newMarker := result[1].(string)
+		log.Debug("AzStorage::StreamDir : Cache hit for Path %s", path)
+		return objAttrs, newMarker, nil
+	}
+
+	// If not in cache, proceed with the listing
 	new_list, new_marker, err := az.storage.List(path, &options.Token, options.Count)
 	if err != nil {
 		log.Err("AzStorage::StreamDir : Failed to read dir [%s]", err)
@@ -310,17 +335,14 @@ func (az *AzStorage) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 	} else if *new_marker != "" {
 		log.Debug("AzStorage::StreamDir : next-marker %s for Path %s", *new_marker, path)
 		if len(new_list) == 0 {
-			/* In some customer scenario we have seen that new_list is empty but marker is not empty
-			   which means backend has not returned any items this time but there are more left.
-			   If we return back this empty list to libfuse layer it will assume listing has completed
-			   and will terminate the readdir call. As there are more items left on the server side we
-			   need to retry getting a list here.
-			*/
 			log.Warn("AzStorage::StreamDir : next-marker %s but current list is empty. Need to retry listing", *new_marker)
 			options.Token = *new_marker
 			return az.StreamDir(options)
 		}
 	}
+
+	// Store the result in the cache
+	az.streamDirCache.Set(cacheKey, []interface{}{new_list, *new_marker}, cache.DefaultExpiration)
 
 	// if path is empty, it means it is the root, relative to the mounted directory
 	if len(path) == 0 {
@@ -328,7 +350,6 @@ func (az *AzStorage) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 	}
 	azStatsCollector.PushEvents(streamDir, path, map[string]interface{}{count: len(new_list)})
 
-	// increment streamdir call count
 	azStatsCollector.UpdateStats(stats_manager.Increment, streamDir, (int64)(1))
 
 	return new_list, *new_marker, nil

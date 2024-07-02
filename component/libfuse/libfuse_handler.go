@@ -515,6 +515,7 @@ func libfuse_readdir(_ *C.char, buf unsafe.Pointer, filler C.fuse_fill_dir_t, of
 	cacheInfo := val.(*dirChildCache)
 	if off_64 == 0 ||
 		(off_64 >= cacheInfo.eIndex && cacheInfo.token != "") {
+		log.Info("Reading directory %s, offset %d, token %s, count %d", handle.Path, off_64, cacheInfo.token, common.MaxDirListCount)
 		attrs, token, err := fuseFS.NextComponent().StreamDir(internal.StreamDirOptions{
 			Name:   handle.Path,
 			Offset: off_64,
