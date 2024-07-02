@@ -60,6 +60,7 @@ type Xload struct {
 
 // Structure defining your config parameters
 type XloadOptions struct {
+	// TODO: this should take the vaule from block cache or file cache config
 	BlockSize float64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
 	Mode      string  `config:"mode" yaml:"mode,omitempty"`
 	Path      string  `config:"path" yaml:"path,omitempty"`
