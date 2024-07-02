@@ -56,12 +56,12 @@ libfuse:
 # Block cache related configuration
 block_cache:
   block-size-mb: <size of each block to be cached in memory (in MB). Default - 16 MB>
-  mem-size-mb: <total amount of memory to be preallocated for block cache (in MB). Default - 4192 MB>
+  mem-size-mb: <total amount of memory to be preallocated for block cache (in MB). Default - 80% of free memory>
   path: <path to local disk cache where downloaded blocked will be stored>
-  disk-size-mb: <maximum disk cache size allowed. Default - 4192 MB>
+  disk-size-mb: <maximum disk cache size allowed. Default - 80% of free disk space>
   disk-timeout-sec: <default disk cache eviction timeout (in sec). Default - 120 sec>
-  prefetch: <number of blocks to be prefetched in serial read case. Min - 11>
-  parallelism: <number of parallel threads downloading the data and writing to disk cache. Default - 128> 
+  prefetch: <number of blocks to be prefetched in serial read case. Min - 11, Default - 2 times number of CPU cores>
+  parallelism: <number of parallel threads downloading the data and writing to disk cache. Default - 3 times number of CPU cores> 
 
 # Disk cache related configuration
 file_cache:
@@ -70,7 +70,7 @@ file_cache:
 
   # Optional 
   timeout-sec: <default cache eviction timeout (in sec). Default - 120 sec>
-  max-size-mb: <maximum cache size allowed. Default - 0 (unlimited)>
+  max-size-mb: <maximum cache size allowed. Default - 80% of free disk space>
   sync-to-flush: true|false <sync call to a file will force upload of the contents to storage account>
   refresh-sec: <number of seconds after which compare lmt of file in local cache and container and refresh file if container has the latest copy>
   ignore-sync: true|false <sync call will be ignored and locally cached file will not be deleted>

@@ -130,7 +130,7 @@ To learn about a specific command, just include the name of the command (For exa
 - File cache options
     * `--file-cache-timeout=<TIMEOUT IN SECONDS>`: Timeout for which file is cached on local system.
     * `--tmp-path=<PATH>`: The path to the file cache.
-    * `--cache-size-mb=<SIZE IN MB>`: Amount of disk cache that can be used by blobfuse.
+    * `--cache-size-mb=<SIZE IN MB>`: Amount of disk cache that can be used by blobfuse. Default - 80% of free disk space.
     * `--high-disk-threshold=<PERCENTAGE>`: If local cache usage exceeds this, start early eviction of files from cache.
     * `--low-disk-threshold=<PERCENTAGE>`: If local cache usage comes below this threshold then stop early eviction.
     * `--sync-to-flush=false` : Sync call will force upload a file to storage container if this is set to true, otherwise it just evicts file from local cache.
@@ -138,12 +138,12 @@ To learn about a specific command, just include the name of the command (For exa
     * `--block-size-mb=<SIZE IN MB>`: Size of a block to be downloaded during streaming.
 - Block-Cache options
     * `--block-cache-block-size=<SIZE IN MB>`: Size of a block to be downloaded as a unit.
-    * `--block-cache-pool-size=<SIZE IN MB>`: Size of pool to be used for caching. This limits total memory used by block-cache.
+    * `--block-cache-pool-size=<SIZE IN MB>`: Size of pool to be used for caching. This limits total memory used by block-cache. Default - 80% of free memory available.
     * `--block-cache-path=<PATH>`: Path where downloaded blocks will be persisted. Not providing this parameter will disable the disk caching.
-    * `--block-cache-disk-size=<SIZE IN MB>`: Disk space to be used for caching.
+    * `--block-cache-disk-size=<SIZE IN MB>`: Disk space to be used for caching. Default - 80% of free disk space.
     * `--block-cache-disk-timeout=<seconds>`: Timeout for which disk cache is valid.
-    * `--block-cache-prefetch=<Number of blocks>`: Number of blocks to prefetch at max when sequential reads are in progress.
-    * `--block-cache-parallelism=<count>`: Number of parallel threads doing upload/download operation.
+    * `--block-cache-prefetch=<Number of blocks>`: Number of blocks to prefetch at max when sequential reads are in progress. Default - 2 times number of CPU cores.
+    * `--block-cache-parallelism=<count>`: Number of parallel threads doing upload/download operation. Default - 3 times number of CPU cores.
     * `--block-cache-prefetch-on-open=true`: Start prefetching on open system call instead of waiting for first read. Enhances perf if file is read sequentially from offset 0.
 - Fuse options
     * `--attr-timeout=<TIMEOUT IN SECONDS>`: Time the kernel can cache inode attributes.

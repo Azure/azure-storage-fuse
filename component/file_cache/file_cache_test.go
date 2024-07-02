@@ -34,11 +34,15 @@
 package file_cache
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"math"
 	"math/rand"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -187,6 +191,26 @@ func (suite *fileCacheTestSuite) TestConfig() {
 	suite.assert.Equal(suite.fileCache.allowNonEmpty, allowNonEmptyTemp)
 	suite.assert.EqualValues(suite.fileCache.cacheTimeout, cacheTimeout)
 	suite.assert.Equal(suite.fileCache.cleanupOnStart, cleanupOnStart)
+}
+
+func (suite *fileCacheTestSuite) TestDefaultCacheSize() {
+	defer suite.cleanupTest()
+	// Setup
+	config := fmt.Sprintf("file_cache:\n  path: %s\n", suite.cache_path)
+	suite.setupTestHelper(config) // setup a new file cache with a custom config (teardown will occur after the test as usual)
+
+	cmd := exec.Command("bash", "-c", fmt.Sprintf("df -B1 %s | awk 'NR==2{print $4}'", suite.cache_path))
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	err := cmd.Run()
+	suite.assert.Nil(err)
+	freeDisk, err := strconv.Atoi(strings.TrimSpace(out.String()))
+	suite.assert.Nil(err)
+	expected := uint64(0.8 * float64(freeDisk))
+	actual := suite.fileCache.maxCacheSize
+	difference := math.Abs(float64(actual) - float64(expected))
+	tolerance := 0.10 * float64(math.Max(float64(actual), float64(expected)))
+	suite.assert.LessOrEqual(difference, tolerance, "mssg:", actual, expected)
 }
 
 func (suite *fileCacheTestSuite) TestConfigPolicyTimeout() {
