@@ -85,6 +85,50 @@ func IsDirectoryMounted(path string) bool {
 	return false
 }
 
+func IsMountActive(path string) (bool, error) {
+	// Get the process details for this path using ps -aux
+	var out bytes.Buffer
+	cmd := exec.Command("pidof", "blobfuse2")
+	cmd.Stdout = &out
+
+	err := cmd.Run()
+	if err != nil {
+		if err.Error() == "exit status 1" {
+			return false, nil
+		} else {
+			return true, fmt.Errorf("failed to get pid of blobfuse2")
+		}
+	}
+
+	// out contains the list of pids of the processes that are running
+	pidString := strings.Replace(out.String(), "\n", " ", -1)
+	pids := strings.Split(pidString, " ")
+	for _, pid := range pids {
+		// Get the mount path for this pid
+		// For this we need to check the command line arguments given to this command
+		// If the path is same then we need to return true
+
+		if pid == "" {
+			continue
+		}
+
+		cmd = exec.Command("ps", "-o", "args=", "-p", pid)
+		out.Reset()
+		cmd.Stdout = &out
+
+		err := cmd.Run()
+		if err != nil {
+			return true, fmt.Errorf("failed to get command line arguments for pid %s", pid)
+		}
+
+		if strings.Contains(out.String(), path) {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 // IsDirectoryEmpty is a utility function that returns true if the directory at that path is empty or not
 func IsDirectoryEmpty(path string) bool {
 	f, _ := os.Open(path)

@@ -106,7 +106,19 @@ func (opt *mountOptions) validate(skipNonEmptyMount bool) error {
 	if _, err := os.Stat(opt.MountPath); os.IsNotExist(err) {
 		return fmt.Errorf("mount directory does not exists")
 	} else if common.IsDirectoryMounted(opt.MountPath) {
-		return fmt.Errorf("directory is already mounted")
+		// Try to cleanup the stale mount
+		log.Info("Mount::validate : Mount directory is already mounted, trying to cleanup")
+		active, err := common.IsMountActive(opt.MountPath)
+		if active || err != nil {
+			// Previous mount is still active so we need to fail this mount
+			return fmt.Errorf("directory is already mounted")
+		} else {
+			// Previous mount is in stale state so lets cleanup the state
+			log.Info("Mount::validate : Cleaning up stale mount")
+			if err = unmountBlobfuse2(opt.MountPath); err != nil {
+				return fmt.Errorf("directory is already mounted, unmount it manually")
+			}
+		}
 	} else if !skipNonEmptyMount && !common.IsDirectoryEmpty(opt.MountPath) {
 		return fmt.Errorf("mount directory is not empty")
 	}
