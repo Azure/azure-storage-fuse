@@ -73,6 +73,7 @@ jobs:
           sudo chmod 777 /mnt/blob_mnt
           sudo chmod 777 /mnt/tempcache
 
+          
       # ---------------------------------------------------------------------------------------
       # Run test for Premium storage account
       - name: "Create Env variables for premium account"
