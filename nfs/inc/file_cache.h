@@ -85,6 +85,13 @@ public:
      * need not read file data as they already have data read from the file.
      * Obviously, the caller has to make sure that cache data is valid, i.e.,
      * file mtime has not changed since the last time it was cached.
+     *
+     * Note: Once get() returns a chunk, subsequent calls will return the
+     *       chunk with is_empty=false. This may confuse new callers to think
+     *       the chunk has valid data. The onus is on the caller to synchronize
+     *       the callers such that new callers don't get the chunk till the
+     *       current one filling the chunk is not done. Typically the file
+     *       inode lock will be used for this.
      */
     bool is_empty;
 
