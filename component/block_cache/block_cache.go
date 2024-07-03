@@ -39,6 +39,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -227,7 +228,7 @@ func (bc *BlockCache) Configure(_ bool) error {
 	}
 
 	bc.prefetchOnOpen = conf.PrefetchOnOpen
-	bc.prefetch = uint32(2 * runtime.NumCPU())
+	bc.prefetch = uint32(math.Max((MIN_PREFETCH*2)+1, (float64)(2*runtime.NumCPU())))
 	bc.noPrefetch = false
 
 	err = config.UnmarshalKey("lazy-write", &bc.lazyWrite)
