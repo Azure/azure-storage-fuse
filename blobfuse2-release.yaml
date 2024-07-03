@@ -860,7 +860,7 @@ stages:
 
           - script: |
               if [ $(agentName) == "blobfuse-rhel7_5" ]; then
-                yum --disablerepo=centos-extras
+                 yum-config-manager --disable centos-extras
               fi
               sudo yum update -y
               sudo yum install git -y
