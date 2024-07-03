@@ -2,7 +2,10 @@
 #include "log.h"
 #include <random>
 
-// This enables debug logs and also runs the self tests.
+/*
+ * This enables debug logs and also runs the self tests.
+ * Must enable once after adding a new self-test.
+ */
 //#define DEBUG_FILE_CACHE
 
 #ifndef DEBUG_FILE_CACHE
@@ -11,7 +14,10 @@
 #define AZLogInfo(fmt, ...)     /* nothing */
 #define AZLogDebug(fmt, ...)    /* nothing */
 #else
-// Debug is not enabled early on when self-tests run, so use Info.
+/*
+ * Debug is not enabled early on when self-tests run, so use Info.
+ * Uncomment these if you want to see debug logs from cache self-test.
+ */
 //#undef AZLogDebug
 //#define AZLogDebug AZLogInfo
 #endif
@@ -1046,6 +1052,83 @@ do { \
 
     ASSERT_EXTENT(349, 350);
     ASSERT_EXISTING(v[0], 349, 350);
+
+    for (auto e : v) {
+        PRINT_CHUNK(e);
+    }
+
+    /*
+     * Release data range [349, 350).
+     * This should release the last chunk remaining and cache should be empty
+     * after this.
+     */
+    AZLogInfo("========== [Release] --> (349, 1) ==========");
+    cache.release(349, 1);
+
+    /*
+     * Get cache chunks covering range [0, 131072).
+     * This should return following chunks:
+     * 1. Newly allocated chunk [0, 131072).
+     *
+     * The largest contiguous block containing the requested chunk is
+     * [0, 131072).
+     */
+    AZLogInfo("========== [Get] --> (0, 131072) ==========");
+    v = cache.get(0, 131072, &l, &r);
+    assert(v.size() == 1);
+
+    ASSERT_EXTENT(0, 131072);
+    ASSERT_NEW(v[0], 0, 131072);
+
+    for (auto e : v) {
+        PRINT_CHUNK(e);
+    }
+
+    /*
+     * Release data range [6, 131072), emulating eof after short read.
+     * This should not release any buffer but should just reduce the length
+     * of the chunk.
+     */
+    AZLogInfo("========== [Release] --> (6, 131066) ==========");
+    cache.release(6, 131066);
+
+    /*
+     * Get cache chunks covering range [6, 20).
+     * This should return following chunks:
+     * 1. Newly allocated chunk [6, 20).
+     *
+     * The largest contiguous block containing the requested chunk is
+     * [0, 20).
+     */
+    AZLogInfo("========== [Get] --> (6, 14) ==========");
+    v = cache.get(6, 14, &l, &r);
+    assert(v.size() == 1);
+
+    ASSERT_EXTENT(0, 20);
+    ASSERT_NEW(v[0], 6, 20);
+
+    for (auto e : v) {
+        PRINT_CHUNK(e);
+    }
+
+    /*
+     * Get cache chunks covering range [5, 30).
+     * This should return following chunks:
+     * 1. Existing chunk [5, 6).
+     * 2. Existing chunk [6, 20).
+     * 3. Newly allocated chunk [20, 30).
+     *
+     * The largest contiguous block containing the requested chunk is
+     * [0, 30).
+     */
+    AZLogInfo("========== [Get] --> (5, 25) ==========");
+    v = cache.get(5, 25, &l, &r);
+    assert(v.size() == 3);
+
+    ASSERT_EXTENT(0, 30);
+    ASSERT_EXISTING(v[0], 5, 6);
+    ASSERT_EXISTING(v[1], 6, 20);
+    ASSERT_NEW(v[2], 20, 30);
 
     for (auto e : v) {
         PRINT_CHUNK(e);
