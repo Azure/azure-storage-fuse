@@ -859,6 +859,9 @@ stages:
             displayName: "Update OS mirrors"
 
           - script: |
+              if [ $(agentName) == "blobfuse-rhel7_5" ]; then
+                yum --disablerepo=centos-extras
+              fi
               sudo yum update -y
               sudo yum install git -y
             displayName: 'Install Git'
