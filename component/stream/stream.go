@@ -38,6 +38,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
@@ -132,6 +133,9 @@ func (st *Stream) Configure(_ bool) error {
 	log.Info("Stream::Configure : Buffer size %v, Block size %v, Handle limit %v, FileCaching %v, Read-only %v, StreamCacheMb %v, MaxBlocksPerFile %v",
 		conf.BufferSize, conf.BlockSize, conf.CachedObjLimit, conf.FileCaching, conf.readOnly, conf.StreamCacheMb, conf.MaxBlocksPerFile)
 
+	common.IsStream = true
+	common.StreamBlockSize = conf.BlockSize * mb
+	common.StreamMemSize = conf.BufferSize * conf.CachedObjLimit * mb
 	return nil
 }
 

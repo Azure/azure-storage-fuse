@@ -195,7 +195,6 @@ func (bc *BlockCache) TempCacheCleanup() error {
 //	Return failure if any config is not valid to exit the process
 func (bc *BlockCache) Configure(_ bool) error {
 	log.Trace("BlockCache::Configure : %s", bc.Name())
-
 	conf := BlockCacheOptions{}
 	err := config.UnmarshalKey(bc.Name(), &conf)
 	if err != nil {
@@ -284,6 +283,15 @@ func (bc *BlockCache) Configure(_ bool) error {
 	if (uint64(bc.prefetch) * uint64(bc.blockSize)) > bc.memSize {
 		log.Err("BlockCache::Configure : config error [memory limit too low for configured prefetch]")
 		return fmt.Errorf("config error in %s [memory limit too low for configured prefetch]", bc.Name())
+	}
+
+	if common.IsStream {
+		if common.StreamBlockSize > 0 {
+			bc.blockSize = common.StreamBlockSize
+		}
+		if common.StreamMemSize > 0 {
+			bc.memSize = common.StreamMemSize
+		}
 	}
 
 	log.Info("BlockCache::Configure : block size %v, mem size %v, worker %v, prefetch %v, disk path %v, max size %v, disk timeout %v, prefetch-on-open %t, maxDiskUsageHit %v, noPrefetch %v",
