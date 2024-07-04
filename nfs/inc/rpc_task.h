@@ -340,11 +340,12 @@ struct readfile_rpc_task
 public:
     void set_size(size_t sz)
     {
-
         size = sz;
+    }
 
-        // Also allocate the buffer to read this data.
-        buffer = (char*)malloc(sizeof(char) * size);
+    void set_readahead(size_t ra)
+    {
+        read_ahead = ra;
     }
 
     void set_offset(off_t off)
@@ -381,15 +382,10 @@ public:
         return size;
     }
 
-    char* get_buffer()
+    size_t get_size_with_readahead() const
     {
-        assert(buffer != nullptr);
-        return buffer;
+        return size + read_ahead;
     }
-
-
-    uint64_t extent_left;
-    uint64_t extent_right;
 
 private:
     // Inode of the file.
@@ -398,10 +394,11 @@ private:
     // Size of data to be read.
     size_t size;
 
+    // Readahead size.
+    size_t read_ahead;
+
     // Offset from which the file data should be read.
     off_t offset;
-
-    char *buffer;
 
     // File info passed by the fuse layer.
     fuse_file_info file;
@@ -428,11 +425,33 @@ struct rpc_task
     // This is the index of the object in the rpc_task_list vector.
     const int index;
 
-    // vector of byte chunks into which the data will be read.
+    /*
+     * This is currently valid only for reads.
+     * This contains vector of byte chunks which will be returned by making
+     * a call to bytes_chunk_cache::get().
+     */
     std::vector<bytes_chunk> bytes_vector;
 
-   int num_of_reads_issued_to_backend;
+    /*
+     * Total number of parallel reads issued to backend.
+     * A single RPC read task can result in issuing multiple read calls to the
+     * backend server to decrease the processing time, hence this wlll be used
+     * to keep track of these issued reads.
+     * This is valid only for reads.
+     * TODO: This should be accessed with a lock.
+     */
+    int num_of_reads_issued_to_backend;
+
+    /*
+     * A single RPC read task can result in issuing multiple read calls to the
+     * backend server and hence we should wait till we complete all these reads
+     * before returning response to the caller.
+     * One this is set to True, the response can be safely returned to the caller.
+     * This is valid only for reads.
+     * TODO: This should be accessed with a lock.
+     */
     bool readfile_completed;
+
 protected:
     /*
      * Operation type.
@@ -544,7 +563,7 @@ public:
 
     void run_readfile();
 
-void set_fuse_req(fuse_req *request)
+    void set_fuse_req(fuse_req *request)
     {
         req = request;
     }
@@ -602,11 +621,12 @@ void set_fuse_req(fuse_req *request)
     void reply_iov(struct iovec* iov, int count)
     {
         fuse_reply_iov(req, iov, count);
-        readfile_completed = false;
-        bytes_vector.clear();
+        //readfile_completed = false;
+        //bytes_vector.clear();
         free_rpc_task();
     }
 
+#if 0
     void reply_buf(const void* buf, size_t size)
     {
         fuse_reply_buf(req, (const char*)buf, size);
@@ -614,6 +634,7 @@ void set_fuse_req(fuse_req *request)
         bytes_vector.clear();
         free_rpc_task();
     }
+#endif
 
     void reply_entry(const struct fuse_entry_param *e)
     {

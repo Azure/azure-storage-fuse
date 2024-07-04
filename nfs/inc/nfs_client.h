@@ -176,7 +176,7 @@ public:
         assert(ino <= max_ino);
 
         struct nfs_inode *const nfsi =
-                reinterpret_cast<struct nfs_inode *>(ino);
+            reinterpret_cast<struct nfs_inode *>(ino);
 
         // Dangerous cast, deserves validation.
         assert(nfsi->magic == NFS_INODE_MAGIC);
@@ -325,7 +325,7 @@ static inline
 struct nfs_client *get_nfs_client_from_fuse_req(const fuse_req_t req)
 {
     struct nfs_client *const client =
-            reinterpret_cast<struct nfs_client*>(fuse_req_userdata(req));
+        reinterpret_cast<struct nfs_client*>(fuse_req_userdata(req));
 
     // Dangerous cast, make sure we got a correct pointer.
     assert(client->magic == NFS_CLIENT_MAGIC);

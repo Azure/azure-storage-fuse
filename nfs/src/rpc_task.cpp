@@ -109,6 +109,10 @@ void rpc_task::init_readfile(fuse_req *request,
     optype = FUSE_READ;
     rpc_api.readfile_task.set_inode(ino);
     rpc_api.readfile_task.set_size(size);
+
+    // TODO: Read this readahead from the config. Setting to 1MB for now.
+    rpc_api.readfile_task.set_readahead(1048576);
+
     rpc_api.readfile_task.set_offset(offset);
     rpc_api.readfile_task.set_fuse_file(file);
 }
@@ -485,159 +489,119 @@ void rpc_task::run_setattr()
     } while (rpc_retry);
 }
 
-#if 0
-
-Readfile
-=====
-
-    readfile()
-{
-    bool ris = false;
-
-    // This should be member of read task.
-    vector<bc> &bc = readhandle->get(offset, length, left_ptr, right_ptr);
-    for (int i=0; i< bc.size(), bc++)
-    {
-        if (bc[i].is_empty)
-        {
-            ris = true;
-            issueRead(bc[i]);
-        }
-    }
-
-    if (!ris)
-    {
-        // This means we don't need to issue any reads to backend, so just send the response.
-        send_respone(success);
-    }
-}
-
-void issueRead(bc & b)
-{
-    issued_read++;
-    Read3Args(b.offset, b.length, b.buffer, read_callback, this);
-}
-
-void read_callback()
-{
-    issued_read--;
-    if (status = failed)
-    {
-        // Just send fail response to fuse, we don't care about other issued reads.
-        send_respone(failed);
-        return;
-    }
-
-    if (issued_read == 0)
-    {
-        task->send_respone(success);
-    }
-}
-
-send_response(bool status)
-{
-    if (status == false)
-    {
-        fuse_reply_err;
-        return;
-    }
-
-    vector<bc> b = task->get_vector_ch();
-    for (i =0; i< b.size; i++)
-    {
-        char* chunk_buf = b.get_buf();
-        size = b.size();
-
-        assert (!b.is_empty());
-        if (i == 0)
-        {
-            memcpy(chunk_buf+ leftedge, buf, size-left_edge);
-            buf = buf + size-left_edge;
-        }
-        else if (i == b.size - 1)
-        {
-            memcpy(chunk_buf, buf, size-rigth_edge);
-            buf = buf + size- right_edge;
-        }
-        else
-        {
-            memcpy(chunk_buf, buf, size);
-            buf = buf + size;
-        }
-    }
-
-    reply_buf(buf);
-}
-#endif
-
-
 void rpc_task::run_readfile()
 {
-    // Try to fetch the data from cache if it exists.
     auto ino = rpc_api.readfile_task.get_inode();
 
     auto readfile_handle = get_client()->get_nfs_inode_from_ino(ino)->filecache_handle;
 
     bytes_vector = readfile_handle->get(
-        rpc_api.readfile_task.get_offset(),
-        rpc_api.readfile_task.get_size(), // TODO: Implement readahead.
-        &rpc_api.readfile_task.extent_left,
-        &rpc_api.readfile_task.extent_left);
+                       rpc_api.readfile_task.get_offset(),
+                       rpc_api.readfile_task.get_size_with_readahead());
+                       //rpc_api.readfile_task.get_size());
 
     /*
      * Now go through the byte chunk vector to see if the buffers are populated.
      * If the chunks are empty, we will issue parallel read calls to fetch the data.
      */
-     const size_t size = bytes_vector.size();
-     bool reads_issued = false;
+    const size_t size = bytes_vector.size();
+    bool reads_issued = false;
 
-     for (size_t i = 0; i< size; i++)
-     {
+    /*
+     * First check if the requested data is present in the cache excluding the
+     * readahead data. If yes, send response to caller and do not try to issue reads
+     * for remaining chunks.
+     */
+    size_t idx = 0;
+    size_t data_length_in_cache = 0;
+    for (size_t i = 0; i < size; i++)
+    {
+        if (!bytes_vector[i].is_empty)
+        {
+            data_length_in_cache += bytes_vector[i].length;
+            if (data_length_in_cache >= rpc_api.readfile_task.get_size())
+            {
+                idx = i;
+                // This means all the data is present in the cache.
+                goto send_response;
+            }
+        }
+        else
+        {
+            // This indicates that some data is missing in the cache.
+            break;
+        }
+    }
+
+    for (size_t i = 0; i < size; i++)
+    {
         if (bytes_vector[i].is_empty)
         {
             reads_issued = true;
             readfile_from_server(bytes_vector[i]);
         }
-     }
-     
-     /*
-      * If no reads were issued to the server, it means all the data is present in
-      * the cache. So directly send the response back to the caller.
-      * Otherwise we wait for all the reads to complete and fill the bytes chunk cache
-      * and then send the response to caller.
-      */
-     if (!reads_issued)
-     {
-        send_readfile_response(true /* status */);
-     }
+    }
+    assert (reads_issued == true);
+
+send_response:
+    /*
+     * If no reads were issued to the server, it means all the data is present in
+     * the cache. So directly send the response back to the caller.
+     * Otherwise we wait for all the reads to complete and fill the bytes chunk cache
+     * and then send the response to caller.
+     */
+    if (!reads_issued)
+    {
+        // Free the chunks if any was allocated for readahead since we don't plan on filling those.
+        for (size_t i = idx+1; i < size; i++)
+        {
+            if (bytes_vector[i].is_empty)
+            {
+                bytes_vector.erase(bytes_vector.begin() + i);
+                readfile_handle->release(bytes_vector[i].offset, bytes_vector[i].length);
+            }
+        }
+        AZLogDebug("*************All data read from cache********");
+        send_readfile_response(0 /* success status */);
+    }
 }
 
 void rpc_task::send_readfile_response(int status)
 {
     if (status)
     {
+        // Non-zero status indicates failure, reply with error in such cases.
         reply_error(status);
         return;
     }
 
-    // Go through the chunked cache and copy them to the buffer.
-   // char* temp = rpc_api.readfile_task.get_buffer();
-    const size_t size = bytes_vector.size();
+    const size_t count = bytes_vector.size();
 
-    // create an array of iovec struct
-    struct iovec iov[size];
+    // Create an array of iovec struct
+    struct iovec iov[count];
+
+    // Fetch the caller requested size.
     const size_t req_size = rpc_api.readfile_task.get_size();
     size_t remaining_size = req_size;
 
-     for (size_t i = 0; i< size; i++)
-     {
+    for (size_t i = 0; (i < count && remaining_size > 0); i++)
+    {
         // At this point we do not expect the chunked buffers to be empty.
-        assert(!bytes_vector[i].is_empty);
+        // assert(!bytes_vector[i].is_empty);
+        #if 0
         if ((int)bytes_vector[i].offset + (int)bytes_vector[i].length < (int)rpc_api.readfile_task.get_offset())
         {
+            AZLogWarn("Skipping byte chunk at index {} offset {} length: {}, requested offset: {}",
+                i,
+                bytes_vector[i].offset,
+                bytes_vector[i].length,
+                rpc_api.readfile_task.get_offset());
+
             // This should never heppen : TODO: check if it does.
+            assert(1);
             continue;
         }
+        #endif
 
         if (remaining_size >= bytes_vector[i].length)
         {
@@ -652,39 +616,17 @@ void rpc_task::send_readfile_response(int status)
         {
             iov[i].iov_base = (void*)bytes_vector[i].buffer;
             iov[i].iov_len = remaining_size;
-           // memcpy(temp, bytes_vector[i].buffer, remaining_size);
+            // memcpy(temp, bytes_vector[i].buffer, remaining_size);
             remaining_size = 0;
             //temp += remaining_size;
             break;
         }
-     #if 0   
-        if (i ==0)
-        {
-             //memcpy(temp, (char*)rpc_api.readfile_task.extent_left, bytes_vector[i].length -  (char*)rpc_api.readfile_task.extent_left);
-             //temp += bytes_vector[i].length -  (char*)rpc_api.readfile_task.extent_left;
-        }
-        else if(i == size -1)
-        {
-             //memcpy(temp, bytes_vector[i].buffer, rpc_api.readfile_task.extent_right - bytes_vector[i].buffer);
-             //temp += rpc_api.readfile_task.extent_right - bytes_vector[i].buffer; 
-        }
-        else
-        {
-            memcpy(temp, bytes_vector[i].buffer, bytes_vector[i].length);
-            temp += bytes_vector[i].length;
-        }
-       #endif
-     }
+    }
 
-     /*
-      * All the data is now copied to the buffer, send the response now.
-      * TODO: See if we can avoid copying the data here.
-      */
-     //reply_buf(rpc_api.readfile_task.get_buffer(), (temp - rpc_api.readfile_task.get_buffer()));
-     reply_iov(iov, size);
+    //reply_buf(rpc_api.readfile_task.get_buffer(), (temp - rpc_api.readfile_task.get_buffer()));
+    // Send response to caller.
+    reply_iov(iov, count);
 }
-
-//char buf[100];
 
 struct readfile_context
 {
@@ -692,20 +634,14 @@ struct readfile_context
     struct bytes_chunk* bc;
 
     readfile_context(
-         rpc_task *task_,
-         struct bytes_chunk& bc_):
-         task(task_),
-         bc(&bc_)
-         {}
-    ~readfile_context()
-    {
-        AZLogInfo("---------------------- ~readfile_context");
-    }
+        rpc_task *task_,
+        struct bytes_chunk* bc_):
+        task(task_),
+        bc(bc_)
+    {}
 
-    readfile_context():task(nullptr), bc(nullptr){}
+//    readfile_context():task(nullptr), bc(nullptr) {}
 };
-
-//struct readfile_context *rctx = new readfile_context;
 
 static void readfile_callback(
     struct rpc_context* /* rpc */,
@@ -714,37 +650,41 @@ static void readfile_callback(
     void *private_data)
 {
     struct readfile_context *ctx = (readfile_context*) private_data;
-    rpc_task *task = (ctx)->task;
-    assert (task->num_of_reads_issued_to_backend > 0);
 
-    auto res = (READ3res*)data;
-    //struct bytes_chunk &bc = (*ctx)->bc;
-    struct bytes_chunk *bc = (ctx)->bc;
+    rpc_task *task = ctx->task;
+    assert (task->num_of_reads_issued_to_backend > 0);
+    assert (task->num_of_reads_issued_to_backend == 1);
+
+    struct bytes_chunk *bc = ctx->bc;
     assert(bc != nullptr);
 
     // Free the context.
     delete ctx;
 
-    AZLogInfo("readfile_callback:: Bytes read: {} eof: {}", res->READ3res_u.resok.count, res->READ3res_u.resok.eof);
-    printf("------------buffer %s", bc->buffer);
+    auto res = (READ3res*)data;
 
-     if (task->succeeded(rpc_status, RSTATUS(res)))
-     {
+    AZLogDebug("readfile_callback:: Bytes read: {} eof: {}", res->READ3res_u.resok.count, res->READ3res_u.resok.eof);
+
+    const int status = (task->succeeded(rpc_status, RSTATUS(res))) ? 0 : -nfsstat3_to_errno(RSTATUS(res));
+
+    if (status == 0)
+    {
         if (bc->length > res->READ3res_u.resok.count)
         {
             auto ino = task->rpc_api.readfile_task.get_inode();
-
             auto readfile_handle = task->get_client()->get_nfs_inode_from_ino(ino)->filecache_handle;
-            // If the chunk buffer size is larger than the recieved response, truncat it.
+            
+            // If the chunk buffer size is larger than the recieved response, truncate it.
             readfile_handle->release(res->READ3res_u.resok.count, bc->length-res->READ3res_u.resok.count);
         }
-        
-        // Update the byte chunk fields.
+
+        // Update the byte chunk fields. TODO: This is mostly not needed, verify.
         bc->length = res->READ3res_u.resok.count;
         bc->is_empty = false;
-
-     }
-    const int status = (task->succeeded(rpc_status, RSTATUS(res))) ? 0 : -nfsstat3_to_errno(RSTATUS(res));
+    }
+    
+    // TODO: Put a lock around this. All the operations after this should be behind the lock?
+    task->num_of_reads_issued_to_backend--;
 
     // TODO: Lock around readfile_completed
     if (task->readfile_completed)
@@ -757,34 +697,9 @@ static void readfile_callback(
         return;
     }
 
-    // TODO: Put a lock around this.
-    task->num_of_reads_issued_to_backend--;
-
-    if (!task->succeeded(rpc_status, RSTATUS(res)) ||
-        (task->num_of_reads_issued_to_backend == 0))
+    if (status || (task->num_of_reads_issued_to_backend == 0))
     {
         task->readfile_completed = true;
-    }
-
-#if 0
-    if (task->succeeded(rpc_status, RSTATUS(res)))
-    {
-        AZLogInfo("read {} bytes, data from buff is {}", res->READ3res_u.resok.count, bc->buffer);
-        status = 0;
-  //      task->reply_buf(
-//            testbufamn, res->READ3res_u.resok.count);
-    }
-    else
-    {
-        status = -nfsstat3_to_errno(RSTATUS(res));
-        // Since the api failed and can no longer be retried, return error reply.
-        //task->reply_error(-nfsstat3_to_errno(RSTATUS(res)));
-    }
-#endif
-
-    if (task->readfile_completed)
-    {
-        // Send the response now.
         task->send_readfile_response(status);
     }
 }
@@ -798,9 +713,7 @@ void rpc_task::readfile_from_server(struct bytes_chunk &bc)
     num_of_reads_issued_to_backend++;
 
     // This will be freed in readfile_callback.
-    struct readfile_context *ctx = new readfile_context(this, bc);
-    //rctx->task = this;
-    //rctx->bc = &bc;
+    struct readfile_context *ctx = new readfile_context(this, &bc);
 
     do {
         READ3args args;
@@ -808,17 +721,18 @@ void rpc_task::readfile_from_server(struct bytes_chunk &bc)
         args.file = get_client()->get_nfs_inode_from_ino(ino)->get_fh();
         args.offset = bc.offset;
         args.count = bc.length;
-        //args.offset = rpc_api.readfile_task.get_offset();
-        //args.count = rpc_api.readfile_task.get_size();
-        AZLogInfo("off: {} count: {}",args.offset, args.count);
+
+        //assert(args.offset == rpc_api.readfile_task.get_offset());
+        
+        AZLogDebug("Issuing read to backend at offset: {} length: {}",args.offset, args.count);
 
         if (rpc_nfs3_read_task(
-                get_rpc_ctx(), /* This will round robin request across connections */
-                readfile_callback,
-                bc.buffer,
-                bc.length,
-                &args,
-                ctx) == NULL)
+                    get_rpc_ctx(), /* This will round robin request across connections */
+                    readfile_callback,
+                    bc.buffer,
+                    bc.length,
+                    &args,
+                    ctx) == NULL)
         {
             /*
              * This call fails due to internal issues like OOM etc
@@ -828,7 +742,6 @@ void rpc_task::readfile_from_server(struct bytes_chunk &bc)
         }
     } while (rpc_retry);
 }
-
 
 void rpc_task::free_rpc_task()
 {
@@ -842,6 +755,9 @@ void rpc_task::free_rpc_task()
     case FUSE_MKDIR:
         rpc_api.mkdir_task.release();
         break;
+    case FUSE_READ:
+        readfile_completed = false;
+        bytes_vector.clear();
     default :
         break;
     }
@@ -943,8 +859,8 @@ static void readdir_callback(
             }
 
             dir_entry = new directory_entry(strdup(entry->name),
-                                    entry->cookie,
-                                    entry->fileid);
+                                            entry->cookie,
+                                            entry->fileid);
 
             // Add to readdirectory_cache for future use.
             dircache_handle->add(dir_entry);
@@ -1019,7 +935,7 @@ static void readdirplus_callback(
 
     if (task->succeeded(rpc_status, RSTATUS(res))) {
         const struct entryplus3 *entry =
-            res->READDIRPLUS3res_u.resok.reply.entries;
+                res->READDIRPLUS3res_u.resok.reply.entries;
         const bool eof = res->READDIRPLUS3res_u.resok.reply.eof;
         int64_t eof_cookie = -1;
 
@@ -1118,9 +1034,9 @@ static void readdirplus_callback(
             }
 
             dir_entry = new struct directory_entry(strdup(entry->name),
-                                    entry->cookie,
-                                    nfs_inode->attr,
-                                    nfs_inode);
+                                                   entry->cookie,
+                                                   nfs_inode->attr,
+                                                   nfs_inode);
 
             /*
              * dir_entry must have one ref on the inode.

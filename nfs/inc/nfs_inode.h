@@ -5,6 +5,7 @@
 #include "aznfsc.h"
 #include "rpc_readdir.h"
 #include "file_cache.h"
+
 #define NFS_INODE_MAGIC *((const uint32_t *)"NFSI")
 
 // Compare two nfs_fh3 filehandles.
@@ -122,7 +123,8 @@ struct nfs_inode
     std::shared_ptr<readdirectory_cache> dircache_handle;
 
     /*
-     * Valid only for regualr file.
+     * Valid only for regular file.
+     * This is a handle to the chunk cache which cache data for this file.
      */
     std::shared_ptr<bytes_chunk_cache> filecache_handle;
 
