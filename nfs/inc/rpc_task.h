@@ -437,6 +437,33 @@ private:
 
     // Put a cap on how many async tasks we can start.
     static std::atomic<int> async_slots;
+    
+    /*
+     * This is currently valid only for reads.
+     * This contains vector of byte chunks which will be returned by making
+     * a call to bytes_chunk_cache::get().
+     */
+    std::vector<bytes_chunk> bytes_vector;
+
+    /*
+     * Total number of parallel reads issued to backend.
+     * A single RPC read task can result in issuing multiple read calls to the
+     * backend server to decrease the processing time, hence this wlll be used
+     * to keep track of these issued reads.
+     * This is valid only for reads.
+     * TODO: This should be accessed with a lock.
+     */
+    int num_of_reads_issued_to_backend;
+
+    /*
+     * A single RPC read task can result in issuing multiple read calls to the
+     * backend server and hence we should wait till we complete all these reads
+     * before returning response to the caller.
+     * One this is set to True, the response can be safely returned to the caller.
+     * This is valid only for reads.
+     * TODO: This should be accessed with a lock.
+     */
+    bool readfile_completed;
 protected:
     /*
      * Operation type.
@@ -663,6 +690,24 @@ public:
         fuse_reply_write(req, count);
         free_rpc_task();
     }
+
+    void reply_iov(struct iovec* iov, int count)
+    {
+        fuse_reply_iov(req, iov, count);
+        //readfile_completed = false;
+        //bytes_vector.clear();
+        free_rpc_task();
+    }
+
+#if 0
+    void reply_buf(const void* buf, size_t size)
+    {
+        fuse_reply_buf(req, (const char*)buf, size);
+        readfile_completed = false;
+        bytes_vector.clear();
+        free_rpc_task();
+    }
+#endif
 
     void reply_entry(const struct fuse_entry_param *e)
     {
