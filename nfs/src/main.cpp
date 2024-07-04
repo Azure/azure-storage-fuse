@@ -350,7 +350,12 @@ static void aznfsc_ll_init(void *userdata,
     conn->want |= FUSE_CAP_READDIRPLUS;
     //conn->want &= ~FUSE_CAP_READDIRPLUS_AUTO;
 
-    conn->want |= FUSE_CAP_ASYNC_READ;
+    /*
+     * TODO: No parallel reads for now.
+     *       So we don't need to worry about locking the inode.
+     */
+    //conn->want |= FUSE_CAP_ASYNC_READ;
+    conn->want &= ~FUSE_CAP_ASYNC_READ;
 
     // Blob NFS doesn't support locking.
     conn->want &= ~FUSE_CAP_POSIX_LOCKS;
