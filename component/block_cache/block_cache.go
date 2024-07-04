@@ -82,9 +82,9 @@ type BlockCache struct {
 	maxDiskUsageHit bool            // Flag to indicate if we have hit max disk usage
 	noPrefetch      bool            // Flag to indicate if prefetch is disabled
 	prefetchOnOpen  bool            // Start prefetching on file open call instead of waiting for first read
-
-	lazyWrite    bool           // Flag to indicate if lazy write is enabled
-	fileCloseOpt sync.WaitGroup // Wait group to wait for all async close operations to complete
+	stream          *Stream2
+	lazyWrite       bool           // Flag to indicate if lazy write is enabled
+	fileCloseOpt    sync.WaitGroup // Wait group to wait for all async close operations to complete
 }
 
 // Structure defining your config parameters
@@ -195,6 +195,9 @@ func (bc *BlockCache) TempCacheCleanup() error {
 //	Return failure if any config is not valid to exit the process
 func (bc *BlockCache) Configure(_ bool) error {
 	log.Trace("BlockCache::Configure : %s", bc.Name())
+	if common.IsStream {
+		bc.stream.Configure(true)
+	}
 	conf := BlockCacheOptions{}
 	err := config.UnmarshalKey(bc.Name(), &conf)
 	if err != nil {
@@ -283,15 +286,6 @@ func (bc *BlockCache) Configure(_ bool) error {
 	if (uint64(bc.prefetch) * uint64(bc.blockSize)) > bc.memSize {
 		log.Err("BlockCache::Configure : config error [memory limit too low for configured prefetch]")
 		return fmt.Errorf("config error in %s [memory limit too low for configured prefetch]", bc.Name())
-	}
-
-	if common.IsStream {
-		if common.StreamBlockSize > 0 {
-			bc.blockSize = common.StreamBlockSize
-		}
-		if common.StreamMemSize > 0 {
-			bc.memSize = common.StreamMemSize
-		}
 	}
 
 	log.Info("BlockCache::Configure : block size %v, mem size %v, worker %v, prefetch %v, disk path %v, max size %v, disk timeout %v, prefetch-on-open %t, maxDiskUsageHit %v, noPrefetch %v",

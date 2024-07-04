@@ -37,6 +37,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
@@ -57,6 +58,10 @@ func NewPipeline(components []string, isParent bool) (*Pipeline, error) {
 	comps := make([]Component, 0)
 	lastPriority := EComponentPriority.Producer()
 	for _, name := range components {
+		if name == "stream" {
+			common.IsStream = true
+			name = "block_cache"
+		}
 		//  Search component exists in our registered map or not
 		compInit, ok := registeredComponents[name]
 		if ok {
@@ -77,23 +82,8 @@ func NewPipeline(components []string, isParent bool) (*Pipeline, error) {
 				lastPriority = comp.Priority()
 			}
 
-			if name == "stream" {
-				compInit = registeredComponents["block_cache"]
-				comp = compInit()
-
-				// request component to parse and validate config of its interest
-				err := comp.Configure(isParent)
-				if err != nil {
-					log.Err("Pipeline: error creating pipeline component %s [%s]", comp.Name(), err)
-					return nil, err
-				}
-
-				// store the configured object in list of components
-				comps = append(comps, comp)
-			} else {
-				// store the configured object in list of components
-				comps = append(comps, comp)
-			}
+			// store the configured object in list of components
+			comps = append(comps, comp)
 		} else {
 			log.Err("Pipeline: error [component %s not registered]", name)
 			return nil, fmt.Errorf("config error in Pipeline [component %s not registered]", name)
