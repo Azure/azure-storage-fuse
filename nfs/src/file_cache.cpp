@@ -6,7 +6,7 @@
  * This enables debug logs and also runs the self tests.
  * Must enable once after adding a new self-test.
  */
-//#define DEBUG_FILE_CACHE
+#define DEBUG_FILE_CACHE
 
 #ifndef DEBUG_FILE_CACHE
 #undef AZLogInfo
@@ -1129,6 +1129,31 @@ do { \
     ASSERT_EXISTING(v[0], 5, 6);
     ASSERT_EXISTING(v[1], 6, 20);
     ASSERT_NEW(v[2], 20, 30);
+
+    for (auto e : v) {
+        PRINT_CHUNK(e);
+    }
+
+    /*
+     * Release entire cache.
+     */
+    AZLogInfo("========== [ReleaseAll] ==========");
+    cache.releaseall();
+
+    /*
+     * Get cache chunks covering range [5, 30).
+     * This should return following chunks:
+     * 1. Newly allocated chunk [5, 30).
+     *
+     * The largest contiguous block containing the requested chunk is
+     * [5, 30).
+     */
+    AZLogInfo("========== [Get] --> (5, 25) ==========");
+    v = cache.get(5, 25, &l, &r);
+    assert(v.size() == 1);
+
+    ASSERT_EXTENT(5, 30);
+    ASSERT_NEW(v[0], 5, 30);
 
     for (auto e : v) {
         PRINT_CHUNK(e);

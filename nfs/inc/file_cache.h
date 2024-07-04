@@ -214,6 +214,14 @@ public:
      *   file. Chunks with is_empty set to true indicate that we don't have
      *   cached data for that chunk and the caller must arrange to read that
      *   data from the file.
+     *
+     * TODO: Reuse buffer from prev/adjacent chunk if it has space. Currently
+     *       we will allocate a new buffer, this works but is wasteful.
+     *       e.g.,
+     *       get(0, 4096)
+     *       release(10, 4086) <-- this will just update length but the buffer
+     *                             will remain.
+     *       get(10, 4086)  <-- this get() should reuse the existing buffer.
      */
     std::vector<bytes_chunk> get(uint64_t offset,
                                  uint64_t length,
@@ -230,10 +238,34 @@ public:
      * while chunks which lie partially in the range are trimmed (by updating
      * the buffer, length and offset members). These will be freed later when
      * a release() call causes them to contain no valid data
+     *
+     * Note: All bytes in range [offset, offset+length) MUST be present in the
+     *       cache, else it'll cause assertion failure. There is no usecase
+     *       for releasing arbitrary portions of the cache and hence we don't
+     *       implement that. The only known valid usecases for release() are:
+     *       1. After a write completes release the chunks written. This can be
+     *          done to make sure we only have dirty data (not yet written to
+     *          the backing blob) in the cache.
+     *       2. We do a get() to allocate 4K bytes in the cache but the file
+     *          read() returned eof after 100 bytes, then [100, 4096) must be
+     *          release()d, and this is fine since we know that the cache has
+     *          that range.
+     *       If you want to release an arbitrary range, first do a get() of that
+     *       range and then release() each chunk separately.
+     *
+     * For releasing all chunks use releaseall().
      */
     void release(uint64_t offset, uint64_t length)
     {
         scan(offset, length, scan_action::SCAN_ACTION_RELEASE);
+    }
+
+    /**
+     * Release all chunks from the cache.
+     */
+    void releaseall()
+    {
+        chunkmap.clear();
     }
 
     /**
