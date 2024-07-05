@@ -35,6 +35,7 @@ package azstorage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync/atomic"
 	"syscall"
@@ -45,9 +46,9 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/filter"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
-
 	"github.com/spf13/cobra"
 )
 
@@ -298,6 +299,7 @@ func (az *AzStorage) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 	path := formatListDirName(options.Name)
 
 	new_list, new_marker, err := az.storage.List(path, &options.Token, options.Count)
+
 	if err != nil {
 		log.Err("AzStorage::StreamDir : Failed to read dir [%s]", err)
 		return new_list, "", err
@@ -331,6 +333,11 @@ func (az *AzStorage) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 	// increment streamdir call count
 	azStatsCollector.UpdateStats(stats_manager.Increment, streamDir, (int64)(1))
 
+	//check for filters provided
+	if az.stConfig.filters != nil { //only apply if user has given filter
+		filtered_list := az.stConfig.filters.ApplyFilterOnBlobs(new_list)
+		return filtered_list, *new_marker, nil
+	}
 	return new_list, *new_marker, nil
 }
 
@@ -521,7 +528,23 @@ func (az *AzStorage) ReadLink(options internal.ReadLinkOptions) (string, error) 
 // Attribute operations
 func (az *AzStorage) GetAttr(options internal.GetAttrOptions) (attr *internal.ObjAttr, err error) {
 	//log.Trace("AzStorage::GetAttr : Get attributes of file %s", name)
-	return az.storage.GetAttr(options.Name)
+	// return az.storage.GetAttr(options.Name)
+	resp, err := az.storage.GetAttr(options.Name)
+	if err != nil {
+		return resp, err
+	}
+
+	if az.stConfig.filters != nil {
+		fileValidatorObj := &filter.FileValidator{
+			FilterArr: az.stConfig.filters.FilterArr,
+		}
+		if fileValidatorObj.CheckFileWithFilters(resp) { //if this particular file passes all filters, return it
+			return resp, nil
+		} else {
+			return nil, errors.New("the file does not pass the provided filters")
+		}
+	}
+	return resp, err
 }
 
 func (az *AzStorage) Chmod(options internal.ChmodOptions) error {
