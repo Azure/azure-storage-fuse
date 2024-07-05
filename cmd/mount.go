@@ -89,7 +89,7 @@ type mountOptions struct {
 	MonitorOpt        monitorOptions `config:"health_monitor"`
 	WaitForMount      time.Duration  `config:"wait-for-mount"`
 	LazyWrite         bool           `config:"lazy-write"`
-	blobFilter        string         `config:"blobFilter"`
+	blobFilter        string         `config:"blob-filter"`
 
 	// v1 support
 	Streaming      bool     `config:"streaming"`
@@ -244,7 +244,7 @@ var mountCmd = &cobra.Command{
 
 		configFileExists := true
 
-		if config.IsSet("blobFilter") {
+		if config.IsSet("blob-filter") {
 			if len(options.blobFilter) > 0 {
 				filter.ProvidedFilter = options.blobFilter
 				config.Set("read-only", "true") //set read-only mode if filter is provided
@@ -717,8 +717,8 @@ func init() {
 	mountCmd.Flags().Lookup("pre-mount-validate").Hidden = true
 
 	//accessing blobFilter
-	mountCmd.PersistentFlags().StringVar(&options.blobFilter, "blobFilter", "", "Filter string for blob filtering.")
-	config.BindPFlag("blobFilter", mountCmd.PersistentFlags().Lookup("blobFilter"))
+	mountCmd.PersistentFlags().StringVar(&options.blobFilter, "blob-filter", "", "Filter string for blob filtering.")
+	config.BindPFlag("blob-filter", mountCmd.PersistentFlags().Lookup("blob-filter"))
 
 	mountCmd.Flags().Bool("basic-remount-check", true, "Validate blobfuse2 is mounted by reading /etc/mtab.")
 	config.BindPFlag("basic-remount-check", mountCmd.Flags().Lookup("basic-remount-check"))
