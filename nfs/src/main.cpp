@@ -1,6 +1,7 @@
 #include "aznfsc.h"
 #include "nfs_client.h"
 #include "nfs_internal.h"
+#include "file_cache.h"
 #include "yaml-cpp/yaml.h"
 
 using namespace std;
@@ -339,6 +340,17 @@ static void aznfsc_ll_init(void *userdata,
      */
 
     /*
+     * Apply the user passed options (-o). This must be done before
+     * the overrides we have below. This is because those overrides are
+     * our limitation and we cannot let user bypass them.
+     *
+     * Note: fuse_session_new() no longer accepts arguments
+     *       command line options can only be set using
+     *       fuse_apply_conn_info_opts().
+     */
+    fuse_apply_conn_info_opts(fuse_conn_info_opts_ptr, conn);
+
+    /*
      * XXX Disable readdir temporarily while I work on fixing readdirplus.
      *     Once readdirplus is audited/fixed, enable readdir and audit/fix
      *     that.
@@ -378,17 +390,31 @@ static void aznfsc_ll_init(void *userdata,
     conn->want &= ~FUSE_CAP_CACHE_SYMLINKS;
     conn->want &= ~FUSE_CAP_SETXATTR_EXT;
 
+#if 0
     /*
-     * Now apply the user passed options (-o). This must be done after
-     * whatever default flags we set above, so that user can override
-     * them. If there's some flag that we want to force irrespective of
-     * user argument, that should be set after this.
-     *
-     * Note: fuse_session_new() no longer accepts arguments
-     *       command line options can only be set using
-     *       fuse_apply_conn_info_opts().
+     * Fuse wants max_read set here to match the mount option passed
+     * -o max_read=<n>
      */
-    fuse_apply_conn_info_opts(fuse_conn_info_opts_ptr, conn);
+    if (conn->max_read) {
+        conn->max_read =
+            std::min<unsigned int>(conn->max_read, AZNFSC_MAX_CHUNK_SIZE);
+    } else {
+        conn->max_read = AZNFSC_MAX_CHUNK_SIZE;
+    }
+
+    if (conn->max_readahead) {
+        conn->max_readahead =
+            std::min<unsigned int>(conn->max_readahead, AZNFSC_MAX_CHUNK_SIZE);
+    } else {
+        conn->max_readahead = AZNFSC_MAX_CHUNK_SIZE;
+    }
+    if (conn->max_write) {
+        conn->max_write =
+            std::min<unsigned int>(conn->max_write, AZNFSC_MAX_CHUNK_SIZE);
+    } else {
+        conn->max_write = AZNFSC_MAX_CHUNK_SIZE;
+    }
+#endif
 
     AZLogDebug("===== fuse_conn_info fields start =====");
     AZLogDebug("proto_major = {}", conn->proto_major);
@@ -1122,7 +1148,8 @@ int main(int argc, char *argv[])
         goto err_out4;
     }
 
-    se = fuse_session_new(&args, &aznfsc_ll_ops, sizeof(aznfsc_ll_ops), &nfs_client::get_instance());
+    se = fuse_session_new(&args, &aznfsc_ll_ops, sizeof(aznfsc_ll_ops),
+                          &nfs_client::get_instance());
     if (se == NULL) {
         goto err_out1;
     }

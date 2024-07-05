@@ -6,7 +6,7 @@
  * This enables debug logs and also runs the self tests.
  * Must enable once after adding a new self-test.
  */
-#define DEBUG_FILE_CACHE
+//#define DEBUG_FILE_CACHE
 
 #ifndef DEBUG_FILE_CACHE
 #undef AZLogInfo
