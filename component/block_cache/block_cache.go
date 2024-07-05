@@ -197,6 +197,7 @@ func (bc *BlockCache) TempCacheCleanup() error {
 func (bc *BlockCache) Configure(_ bool) error {
 	log.Trace("BlockCache::Configure : %s", bc.Name())
 
+	defaultMemSize := false
 	conf := BlockCacheOptions{}
 	err := config.UnmarshalKey(bc.Name(), &conf)
 	if err != nil {
@@ -219,6 +220,7 @@ func (bc *BlockCache) Configure(_ bool) error {
 			bc.memSize = uint64(4192) * _1MB
 		} else {
 			bc.memSize = uint64(0.8 * (float64)(sysinfo.Freeram) * float64(sysinfo.Unit))
+			defaultMemSize = true
 		}
 	}
 
@@ -230,6 +232,10 @@ func (bc *BlockCache) Configure(_ bool) error {
 	bc.prefetchOnOpen = conf.PrefetchOnOpen
 	bc.prefetch = uint32(math.Max((MIN_PREFETCH*2)+1, (float64)(2*runtime.NumCPU())))
 	bc.noPrefetch = false
+
+	if defaultMemSize && (uint64(bc.prefetch)*uint64(bc.blockSize)) > bc.memSize {
+		bc.prefetch = (MIN_PREFETCH * 2) + 1
+	}
 
 	err = config.UnmarshalKey("lazy-write", &bc.lazyWrite)
 	if err != nil {
