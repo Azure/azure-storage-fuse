@@ -54,6 +54,9 @@ private:
      */
     std::shared_ptr<uint8_t> alloc_buffer;
 
+    // Length allocated.
+    const uint64_t alloc_buffer_len = 0;
+
 public:
     // Offset from the start of file this chunk represents.
     uint64_t offset;
@@ -117,7 +120,8 @@ public:
         bytes_chunk(_offset,
                     _length,
                     true /* is_empty */,
-                    std::shared_ptr<uint8_t>(new uint8_t[_length]))
+                    std::shared_ptr<uint8_t>(new uint8_t[_length]),
+                    _length)
     {
     }
 
@@ -131,11 +135,14 @@ public:
     bytes_chunk(uint64_t _offset,
                 uint64_t _length,
                 uint8_t *_buffer,
-                const std::shared_ptr<uint8_t>& _alloc_buffer) :
+                const std::shared_ptr<uint8_t>& _alloc_buffer,
+                uint64_t _alloc_buffer_len,
+                bool _is_empty = false) :
         bytes_chunk(_offset,
                     _length,
-                    false /* is_empty */,
-                    _alloc_buffer)
+                    _is_empty,
+                    _alloc_buffer,
+                    _alloc_buffer_len)
     {
         // Update buffer as requested.
         buffer = _buffer;
@@ -143,8 +150,9 @@ public:
         // Make sure buffer points inside the allocate buffer.
         assert(buffer != nullptr);
         assert(alloc_buffer != nullptr);
+        assert(alloc_buffer_len == _alloc_buffer_len);
         assert((buffer - alloc_buffer.get()) >= 0);
-        assert((buffer - alloc_buffer.get()) <= AZNFSC_MAX_CHUNK_SIZE);
+        assert((buffer - alloc_buffer.get()) <= (long) alloc_buffer_len);
     }
 
     /**
@@ -153,8 +161,10 @@ public:
     bytes_chunk(uint64_t _offset,
                 uint64_t _length,
                 bool _is_empty,
-                const std::shared_ptr<uint8_t>& _alloc_buffer) :
+                const std::shared_ptr<uint8_t>& _alloc_buffer,
+                uint64_t _alloc_buffer_len) :
         alloc_buffer(_alloc_buffer),
+        alloc_buffer_len(_alloc_buffer_len),
         offset(_offset),
         length(_length),
         buffer(alloc_buffer.get()),
@@ -163,11 +173,28 @@ public:
         assert(offset < AZNFSC_MAX_FILE_SIZE);
         // 0-sized chunks don't exist.
         assert(length > 0);
-        assert(length <= AZNFSC_MAX_CHUNK_SIZE);
+        assert(length <= alloc_buffer_len);
+        assert(alloc_buffer_len <= AZNFSC_MAX_CHUNK_SIZE);
         assert((offset + length) <= AZNFSC_MAX_FILE_SIZE);
         assert(buffer != nullptr);
         assert(alloc_buffer != nullptr);
         assert(alloc_buffer.use_count() > 1);
+    }
+
+    /**
+     * Return available space at the end of buffer.
+     * This is usually helpful when a prev read() was short and could not fill
+     * the entire buffer and then a subsequent read() is issued to fill
+     * subsequent data.
+     */
+    uint64_t tailroom() const
+    {
+        const int64_t tailroom =
+            (alloc_buffer_len - (buffer + length - alloc_buffer.get()));
+        assert(tailroom >= 0);
+        assert(tailroom <= AZNFSC_MAX_CHUNK_SIZE);
+
+        return tailroom;
     }
 };
 
@@ -222,6 +249,11 @@ public:
      *       release(10, 4086) <-- this will just update length but the buffer
      *                             will remain.
      *       get(10, 4086)  <-- this get() should reuse the existing buffer.
+     *
+     *       Update: This is now done, but we still haven't generalized the
+     *               solution to reuse buffer for all cases, but the most
+     *               common case is now addressed! Leaving the TODO for
+     *               tracking the generalized case.
      */
     std::vector<bytes_chunk> get(uint64_t offset,
                                  uint64_t length,

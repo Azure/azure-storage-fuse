@@ -55,6 +55,9 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
     // Convenience variable to access the current chunk in the map.
     bytes_chunk *bc;
 
+    // Last chunk (when we are getting byte range right after the last chunk).
+    bytes_chunk *last_bc = nullptr;
+
     // Temp variables to hold chunk details for newly added chunk.
     uint64_t chunk_offset, chunk_length;
     uint8_t *chunk_buffer;
@@ -158,6 +161,7 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
                     AZLogDebug("lookback_it: [{},{})",
                                bc->offset, bc->offset + bc->length);
                     lookback_it = it;
+                    last_bc = bc;
                 }
 
                 _extent_right = next_offset + remaining_length;
@@ -353,7 +357,8 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
 
             if (action == scan_action::SCAN_ACTION_GET) {
                 chunkvec.emplace_back(chunk_offset, chunk_length,
-                                      chunk_buffer, bc->alloc_buffer);
+                                      chunk_buffer, bc->alloc_buffer,
+                                      bc->alloc_buffer_len);
                 AZLogDebug("(existing chunk) [{},{}) b:{} a:{}",
                            chunk_offset, chunk_offset + chunk_length,
                            fmt::ptr(chunk_buffer),
@@ -408,7 +413,8 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
                      */
                     auto p = chunkmap.try_emplace(bc->offset, bc->offset,
                                                   bc->length, bc->buffer,
-                                                  bc->alloc_buffer);
+                                                  bc->alloc_buffer,
+                                                  bc->alloc_buffer_len);
                     assert(p.second);
                     /*
                      * Now that the older chunk is going and is being replaced
@@ -448,7 +454,8 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
 
             if (action == scan_action::SCAN_ACTION_GET) {
                 chunkvec.emplace_back(chunk_offset, chunk_length,
-                                      chunk_buffer, bc->alloc_buffer);
+                                      chunk_buffer, bc->alloc_buffer,
+                                      bc->alloc_buffer_len);
                 AZLogDebug("(existing chunk) [{},{}) b:{} a:{}",
                            chunk_offset, chunk_offset + chunk_length,
                            fmt::ptr(chunk_buffer),
@@ -531,9 +538,39 @@ allocate_only_chunk:
          */
         assert(action == scan_action::SCAN_ACTION_GET);
 
-        chunkvec.emplace_back(next_offset, remaining_length);
         AZLogDebug("(only/last chunk) [{},{})",
                    next_offset, next_offset + remaining_length);
+
+        if (last_bc && (last_bc->tailroom() > 0)) {
+            chunk_length = std::min(last_bc->tailroom(), remaining_length);
+
+            AZLogDebug("(sharing last chunk's alloc_buffer) [{},{})",
+                       next_offset, next_offset + chunk_length);
+
+            /*
+             * Though this new chunk is sharing alloc_buffer with the last
+             * chunk, it's nevertheless a new chunk and hence is_empty must
+             * be true.
+             */
+            chunkvec.emplace_back(next_offset,
+                                  chunk_length,
+                                  last_bc->buffer + last_bc->length,
+                                  last_bc->alloc_buffer,
+                                  last_bc->alloc_buffer_len,
+                                  true /* is_empty */);
+
+            // last chunk and this new chunk are sharing the same alloc_buffer.
+            assert(last_bc->alloc_buffer.use_count() >= 2);
+
+            remaining_length -= chunk_length;
+            next_offset += chunk_length;
+        }
+
+        if (remaining_length) {
+            AZLogDebug("(new last chunk) [{},{})",
+                       next_offset, next_offset + remaining_length);
+            chunkvec.emplace_back(next_offset, remaining_length);
+        }
 
         remaining_length = 0;
     }
@@ -562,12 +599,14 @@ allocate_only_chunk:
 #ifndef NDEBUG
             auto p = chunkmap.try_emplace(chunk.offset, chunk.offset,
                                           chunk.length, chunk.buffer,
-                                          chunk.alloc_buffer);
+                                          chunk.alloc_buffer,
+                                          chunk.alloc_buffer_len);
             assert(p.second == true);
 #else
             chunkmap.try_emplace(chunk.offset, chunk.offset,
                                  chunk.length, chunk.buffer,
-                                 chunk.alloc_buffer);
+                                 chunk.alloc_buffer,
+                                 chunk.alloc_buffer_len);
 #endif
 
             if ((chunk.offset + chunk.length) > _extent_right) {
@@ -615,14 +654,16 @@ allocate_only_chunk:
                                                 chunk_after->offset,
                                                 chunk_after->length,
                                                 chunk_after->buffer,
-                                                chunk_after->alloc_buffer);
+                                                chunk_after->alloc_buffer,
+                                                chunk_after->alloc_buffer_len);
             assert(p.second == true);
 #else
             chunkmap.try_emplace(chunk_after->offset,
                                  chunk_after->offset,
                                  chunk_after->length,
                                  chunk_after->buffer,
-                                 chunk_after->alloc_buffer);
+                                 chunk_after->alloc_buffer,
+                                 chunk_after->alloc_buffer_len);
 #endif
 
             delete chunk_after;
@@ -779,6 +820,8 @@ int bytes_chunk_cache::unit_test()
     std::vector<bytes_chunk> v;
     bytes_chunk_cache cache;
     uint64_t l, r;
+    // Temp buffers used for asserting.
+    uint8_t *buffer, *buffer1, *buffer2, *buffer3;
 
 #define ASSERT_NEW(chunk, start, end) \
 do { \
@@ -818,6 +861,7 @@ do { \
 
     ASSERT_EXTENT(0, 300);
     ASSERT_NEW(v[0], 0, 300);
+    buffer = v[0].buffer;
 
     for (auto e : v) {
         PRINT_CHUNK(e);
@@ -849,6 +893,7 @@ do { \
 
     ASSERT_EXTENT(100, 200);
     ASSERT_EXISTING(v[0], 100, 200);
+    assert(v[0].buffer == (buffer + 100));
 
     for (auto e : v) {
         PRINT_CHUNK(e);
@@ -869,6 +914,7 @@ do { \
     ASSERT_EXTENT(50, 200);
     ASSERT_NEW(v[0], 50, 100);
     ASSERT_EXISTING(v[1], 100, 150);
+    assert(v[1].buffer == (buffer + 100));
 
     for (auto e : v) {
         PRINT_CHUNK(e);
@@ -887,6 +933,7 @@ do { \
 
     ASSERT_EXTENT(250, 300);
     ASSERT_NEW(v[0], 250, 300);
+    buffer = v[0].buffer;
 
     for (auto e : v) {
         PRINT_CHUNK(e);
@@ -927,6 +974,9 @@ do { \
     ASSERT_EXISTING(v[0], 150, 200);
     ASSERT_NEW(v[1], 200, 250);
     ASSERT_EXISTING(v[2], 250, 275);
+    assert(v[2].buffer == buffer);
+    buffer1 = v[0].buffer;
+    buffer2 = v[1].buffer;
 
     for (auto e : v) {
         PRINT_CHUNK(e);
@@ -959,8 +1009,12 @@ do { \
     ASSERT_EXTENT(100, 300);
     ASSERT_NEW(v[0], 100, 175);
     ASSERT_EXISTING(v[1], 175, 200);
+    assert(v[1].buffer == (buffer1 + 25));
     ASSERT_EXISTING(v[2], 200, 250);
+    assert(v[2].buffer == buffer2);
     ASSERT_EXISTING(v[3], 250, 280);
+    assert(v[3].buffer == buffer);
+    buffer3 = v[0].buffer;
 
     for (auto e : v) {
         PRINT_CHUNK(e);
@@ -985,10 +1039,16 @@ do { \
     ASSERT_EXTENT(0, 350);
     ASSERT_NEW(v[0], 0, 100);
     ASSERT_EXISTING(v[1], 100, 175);
+    assert(v[1].buffer == buffer3);
     ASSERT_EXISTING(v[2], 175, 200);
+    assert(v[2].buffer == (buffer1 + 25));
     ASSERT_EXISTING(v[3], 200, 250);
+    assert(v[3].buffer == buffer2);
     ASSERT_EXISTING(v[4], 250, 300);
+    assert(v[4].buffer == buffer);
     ASSERT_NEW(v[5], 300, 350);
+    buffer1 = v[0].buffer;
+    buffer3 = v[5].buffer;
 
     for (auto e : v) {
         PRINT_CHUNK(e);
@@ -1022,10 +1082,14 @@ do { \
 
     ASSERT_EXTENT(0, 350);
     ASSERT_EXISTING(v[0], 0, 50);
+    assert(v[0].buffer == buffer1);
     ASSERT_NEW(v[1], 50, 225);
     ASSERT_EXISTING(v[2], 225, 250);
+    assert(v[2].buffer == (buffer2 + 25));
     ASSERT_EXISTING(v[3], 250, 300);
+    assert(v[3].buffer == buffer);
     ASSERT_EXISTING(v[4], 300, 325);
+    assert(v[4].buffer == buffer3);
 
     for (auto e : v) {
         PRINT_CHUNK(e);
@@ -1052,6 +1116,7 @@ do { \
 
     ASSERT_EXTENT(349, 350);
     ASSERT_EXISTING(v[0], 349, 350);
+    assert(v[0].buffer == (buffer3 + 49));
 
     for (auto e : v) {
         PRINT_CHUNK(e);
@@ -1079,6 +1144,7 @@ do { \
 
     ASSERT_EXTENT(0, 131072);
     ASSERT_NEW(v[0], 0, 131072);
+    buffer = v[0].buffer;
 
     for (auto e : v) {
         PRINT_CHUNK(e);
@@ -1106,6 +1172,8 @@ do { \
 
     ASSERT_EXTENT(0, 20);
     ASSERT_NEW(v[0], 6, 20);
+    // Must use the alloc_buffer from last chunk.
+    assert(v[0].buffer == (buffer + 6));
 
     for (auto e : v) {
         PRINT_CHUNK(e);
@@ -1127,7 +1195,9 @@ do { \
 
     ASSERT_EXTENT(0, 30);
     ASSERT_EXISTING(v[0], 5, 6);
+    assert(v[0].buffer == (buffer + 5));
     ASSERT_EXISTING(v[1], 6, 20);
+    assert(v[1].buffer == (buffer + 6));
     ASSERT_NEW(v[2], 20, 30);
 
     for (auto e : v) {
