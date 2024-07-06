@@ -27,12 +27,18 @@ namespace aznfsc {
 #define AZNFSC_MAX_FILE_SIZE    (100 * 1024 * 1024 * 50'000ULL)
 
 /*
- * We should set fuse max_write and max_read option to 16MB.
- * With that application read/writes will be limited to 16MB and hence the
+ * Each chunk can be max 1GB. Such large chunk size is for convenience
+ * where all client IOs map to one chunk, but it doesn't necessarily mean
+ * that every chunk will be issued as a single backend IO. Infact typically
+ * one large chunk will be filled by multiple parallel backend IO for better
+ * perf.
+ * We should set fuse max_write and max_read option to 1GB.
+ * With that application read/writes will be limited to 1GB and hence the
  * chunk size. Note that single readahead size is also limited by this, but
- * user can always issue multiple readahead reads.
+ * user can always issue multiple readahead reads if we need larger, but this
+ * should be sufficient.
  */
-#define AZNFSC_MAX_CHUNK_SIZE (16 * 1024 * 1024)
+#define AZNFSC_MAX_CHUNK_SIZE (1ULL * 1024 * 1024 * 1024)
 
 #define AZNFSC_BAD_OFFSET (~0ull)
 
@@ -304,7 +310,7 @@ public:
     {
         const int64_t tailroom = (alloc_buffer_len - (buffer_offset + length));
         assert(tailroom >= 0);
-        assert(tailroom <= AZNFSC_MAX_CHUNK_SIZE);
+        assert(tailroom <= (int64_t) AZNFSC_MAX_CHUNK_SIZE);
 
         return tailroom;
     }
