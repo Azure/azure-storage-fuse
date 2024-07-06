@@ -4,10 +4,22 @@
 #include <map>
 #include <mutex>
 #include <memory>
+#include <vector>
 
+#include <cstring>
 #include <cstdint>
 #include <cassert>
-#include <vector>
+#include <unistd.h>
+
+#include "log.h"
+
+/*
+ * Reminder to audit use of asserts to ensure we don't depend on assert
+ * for error handling.
+ */
+#ifdef NDEBUG
+#error "Need to audit use of asserts in file_cache"
+#endif
 
 namespace aznfsc {
 
@@ -24,8 +36,121 @@ namespace aznfsc {
 
 #define AZNFSC_BAD_OFFSET (~0ull)
 
+#define PAGE_SIZE (4096ULL)
+
 // Forward declaration.
 class bytes_chunk_cache;
+
+/**
+ * Memory buffer, used for caching chunks in memory.
+ * For file-backed bytes_chunk_cache membufs are realized by mmap()ed memory,
+ * while for non file-backed bytes_chunk_cache membufs are realized by memory
+ * allocated on the heap.
+ */
+struct membuf
+{
+    /**
+     * Three things define a membuf:
+     * 1. What offset inside the file it's caching.
+     * 2. Count of bytes it's caching.
+     * 3. Backing file fd (in case of file-backed caches).
+     */
+    membuf(uint64_t _offset,
+           uint64_t _length,
+           int _backing_file_fd = -1);
+
+    /**
+     * membuf destructor, frees the memory used by membuf.
+     * This frees heap allocated memory for non file-backed membufs, while
+     * for file-backed membufs the mmap()ed memory is munmap()ed.
+     * Since membuf is used as a shared_ptr, this will be called when the
+     * last ref to the shared_ptr is dropped, typically when the bytes_chunk
+     * referring to the membuf is discarded.
+     */
+    ~membuf()
+    {
+        if (is_file_backed()) {
+            if (allocated_buffer) {
+                /*
+                 * allocated_buffer must be page aligned, and buffer must point
+                 * inside the page starting at allocated_buffer.
+                 */
+                assert(((uint64_t) allocated_buffer & (PAGE_SIZE - 1)) == 0);
+                assert(buffer < (allocated_buffer + PAGE_SIZE));
+
+                drop();
+            }
+        } else {
+            // Non file-backes membufs must always have a valid buffer.
+            assert(allocated_buffer != nullptr);
+            assert(buffer == allocated_buffer);
+
+            delete [] allocated_buffer;
+            allocated_buffer = buffer = nullptr;
+        }
+
+        assert(!allocated_buffer);
+    }
+
+    // This membuf caches file data in the range [offset, offset+length).
+    const uint64_t offset;
+    const uint64_t length;
+
+    // Backing file fd (-1 for non file-backed caches).
+    const int backing_file_fd = -1;
+
+    /*
+     * Data buffer used for cacheing. This will be mmap()ed memory for
+     * file-backed caches and heap buffer for non file-backed ones. For non
+     * file-backed caches, these will never be nullptr, but for file-backed
+     * caches, nullptr means that the cache is dropped and we need to load the
+     * data from the backing file.
+     *
+     * Since mmap() can only be done for page aligned file offsets, we need
+     * allocated_buffer to track the page aligned mmap()ed address, while
+     * buffer is the actual buffer address to use for storing cached data.
+     * For non file-backed membufs, both will be same.
+     */
+    uint8_t *buffer = nullptr;
+    uint8_t *allocated_buffer = nullptr;
+
+    /*
+     * If is_file_backed() is true then 'allocated_buffer' is the mmap()ed
+     * address o/w it's the heap allocation address.
+     */
+    bool is_file_backed() const
+    {
+        return (backing_file_fd != -1);
+    }
+
+    // Returns buffer address for storing the data.
+    uint8_t *get() const
+    {
+        return buffer;
+    }
+
+    /**
+     * Drop data cached in memory.
+     * This is a no-op for non file-backed membufs since for them memory
+     * is the only place where data is stored. For file-backed membufs this
+     * drops data from the memory while the data is still present in the file.
+     * load() can be used to reload data in memory cache.
+     */
+    bool drop();
+
+    /**
+     * Load data from file backend into memory.
+     * This is a no-op for non file-backed membufs since for them the data
+     * is always in memory.
+     * load() assumes that the backing file is present and has a size at least
+     * equal to offset+length, so that it can map valid data. The backing file
+     * obviously will need to be invalidated if the file's data has changed
+     * (conveyed by mtime/size change) and anytime the backing file is
+     * invalidated all membufs referring to data inside the file MUST be
+     * destroyed first.
+     */
+    bool load();
+};
 
 /**
  * This represents one contiguous chunk of bytes in bytes_chunk_cache.
@@ -35,7 +160,7 @@ class bytes_chunk_cache;
  * the application writes data to the file.
  * A contiguous file range cached by a series of bytes_chunk is called an
  * "extent". Extents are important as they decide if/when we can issue full
- * block-sized write.
+ * block-sized write to the Blob.
  */
 struct bytes_chunk
 {
@@ -43,42 +168,58 @@ struct bytes_chunk
     friend bytes_chunk_cache;
 
 private:
+    // bytes_chunk_cache to which this chunk belongs.
+    bytes_chunk_cache *bcc = nullptr;
+
     /*
-     * This is the actual allocated buffer. The 'buffer' member will point
-     * inside this allocated buffer. It typically points to the beginning of
-     * the buffer (aka alloc_buffer.get()) but with cache trimming, buffer can
-     * be updated and point anywhere inside the allocated buffer. Any chunk
-     * that refers to the same allocated buffer will hold a ref to alloc_buffer,
-     * so alloc_buffer will be freed when the last ref is dropped. This should
-     * typically happen when the chunk is freed.
+     * This is the allocated buffer. The actual buffer where data is stored
+     * can be found by adding buffer_offset to this, and can be retrieved using
+     * the convenience function get_buffer(). buffer_offset is typically 0 but
+     * it can be non-zero when multiple chunks are referring to the same buffer
+     * but at different offsets (e.g., cache trimming).
+     * Any chunk that refers to the same allocated buffer will hold a ref to
+     * alloc_buffer, so alloc_buffer will be freed when the last ref is dropped.
+     * This should typically happen when the chunk is freed.
      */
-    std::shared_ptr<uint8_t> alloc_buffer;
+    std::shared_ptr<membuf> alloc_buffer;
 
     // Length allocated.
     const uint64_t alloc_buffer_len = 0;
 
 public:
     // Offset from the start of file this chunk represents.
-    uint64_t offset;
+    uint64_t offset = 0;
 
     /*
      * Length of this chunk.
      * User can safely access [buffer, buffer+length).
      */
-    uint64_t length;
+    uint64_t length = 0;
 
-    /*
+    /**
      * Start of valid cached data corresponding to this chunk.
-     * This will typically have the value alloc_buffer.get(), i.e., it points
+     * This will typically have the value alloc_buffer->get(), i.e., it points
      * to the start of the data buffer represented by the shared pointer
      * alloc_buffer, but if some cached data is deleted from the beginning of a
      * chunk, causing the buffer to be "trimmed" from the beginning, this can
      * point anywhere inside the buffer.
      */
-    uint8_t *buffer;
+    uint8_t *get_buffer() const
+    {
+        // Should not call on a dropped cache.
+        assert(alloc_buffer->get() != nullptr);
+        assert(buffer_offset < alloc_buffer_len);
+
+        return alloc_buffer->get() + buffer_offset;
+    }
+
+    // Offset of buffer from alloc_buffer->get().
+    uint64_t buffer_offset = 0;
 
     /*
-     * is_empty indicates whether buffer contains valid data.
+     * is_empty indicates whether buffer contains valid data. It's meaningful
+     * when bytes_chunk are returned by a call to bytes_chunk_cache::get(),
+     * and not for bytes_chunk stored in bytes_chunk_cache::chunkmap.
      * It is used by the caller differently, depending on whether it wants to
      * write/read to/from the file. For a writer it's not very significant,
      * it simply means that this data is not currently cached. For a reader,
@@ -96,15 +237,14 @@ public:
      *       current one filling the chunk is not done. Typically the file
      *       inode lock will be used for this.
      */
-    bool is_empty;
+    bool is_empty = true;
 
     /**
      * Constructor to create a brand new chunk with newly allocated buffer.
-     * This chunk is the sole owner of alloc_buffer and 'buffer' points to the
-     * start of allocated buffer, alloc_buffer.get(). Later as this chunk is
-     * split or returned to the caller through get(), alloc_buffer may have
-     * more owners. When the last owner releases claim alloc_buffer will be
-     * freed. This should happen when the chunk is freed.
+     * This chunk is the sole owner of alloc_buffer and 'buffer_offset' is 0.
+     * Later as this chunk is split or returned to the caller through get(),
+     * alloc_buffer may have more owners. When the last owner releases claim
+     * alloc_buffer will be freed. This should happen when the chunk is freed.
      *
      * XXX: If we need to gracefully handle allocation failure, the buffer
      *      allocation must be done by the caller.
@@ -115,71 +255,44 @@ public:
      *     to the system, which causes zero'ing overhead as kernel has to
      *     zero pages.
      */
-    bytes_chunk(uint64_t _offset,
-                uint64_t _length) :
-        bytes_chunk(_offset,
-                    _length,
-                    true /* is_empty */,
-                    std::shared_ptr<uint8_t>(new uint8_t[_length]),
-                    _length)
-    {
-    }
+    bytes_chunk(bytes_chunk_cache *_bcc,
+                uint64_t _offset,
+                uint64_t _length);
 
     /**
      * Constructor to create a chunk that refers to alloc_buffer from another
-     * existing chunk. The additional _buffer parameter allows flexibility of
-     * making buffer point anywhere inside alloc_buffer.
+     * existing chunk. The additional _buffer_offset allows flexibility to
+     * each chunk to point anywhere inside alloc_buffer.
      * This is useful for chunks created due to splitting or when returning
      * bytes_chunk from bytes_chunk_cache::get().
      */
-    bytes_chunk(uint64_t _offset,
+    bytes_chunk(bytes_chunk_cache *_bcc,
+                uint64_t _offset,
                 uint64_t _length,
-                uint8_t *_buffer,
-                const std::shared_ptr<uint8_t>& _alloc_buffer,
+                uint64_t _buffer_offset,
+                const std::shared_ptr<membuf>& _alloc_buffer,
                 uint64_t _alloc_buffer_len,
-                bool _is_empty = false) :
-        bytes_chunk(_offset,
-                    _length,
-                    _is_empty,
-                    _alloc_buffer,
-                    _alloc_buffer_len)
-    {
-        // Update buffer as requested.
-        buffer = _buffer;
+                bool _is_empty = false);
 
-        // Make sure buffer points inside the allocate buffer.
-        assert(buffer != nullptr);
-        assert(alloc_buffer != nullptr);
-        assert(alloc_buffer_len == _alloc_buffer_len);
-        assert((buffer - alloc_buffer.get()) >= 0);
-        assert((buffer - alloc_buffer.get()) <= (long) alloc_buffer_len);
+    /**
+     * Copy constructor, mainly for used by test code.
+     */
+    bytes_chunk(const bytes_chunk& rhs) :
+        bytes_chunk(rhs.bcc,
+                    rhs.offset,
+                    rhs.length,
+                    rhs.buffer_offset,
+                    rhs.alloc_buffer,
+                    rhs.alloc_buffer_len,
+                    rhs.is_empty)
+
+    {
     }
 
     /**
-     * The actual constructor called by all the overloads.
+     * Default constructor, mainly for used by test code.
      */
-    bytes_chunk(uint64_t _offset,
-                uint64_t _length,
-                bool _is_empty,
-                const std::shared_ptr<uint8_t>& _alloc_buffer,
-                uint64_t _alloc_buffer_len) :
-        alloc_buffer(_alloc_buffer),
-        alloc_buffer_len(_alloc_buffer_len),
-        offset(_offset),
-        length(_length),
-        buffer(alloc_buffer.get()),
-        is_empty(_is_empty)
-    {
-        assert(offset < AZNFSC_MAX_FILE_SIZE);
-        // 0-sized chunks don't exist.
-        assert(length > 0);
-        assert(length <= alloc_buffer_len);
-        assert(alloc_buffer_len <= AZNFSC_MAX_CHUNK_SIZE);
-        assert((offset + length) <= AZNFSC_MAX_FILE_SIZE);
-        assert(buffer != nullptr);
-        assert(alloc_buffer != nullptr);
-        assert(alloc_buffer.use_count() > 1);
-    }
+    bytes_chunk() = default;
 
     /**
      * Return available space at the end of buffer.
@@ -189,12 +302,29 @@ public:
      */
     uint64_t tailroom() const
     {
-        const int64_t tailroom =
-            (alloc_buffer_len - (buffer + length - alloc_buffer.get()));
+        const int64_t tailroom = (alloc_buffer_len - (buffer_offset + length));
         assert(tailroom >= 0);
         assert(tailroom <= AZNFSC_MAX_CHUNK_SIZE);
 
         return tailroom;
+    }
+
+    /**
+     * Drop data cached in memory, for this bytes_chunk.
+     */
+    void drop()
+    {
+        const bool ret = alloc_buffer->drop();
+        assert(ret);
+    }
+
+    /**
+     * Load data from file backend into memory, for this bytes_chunk.
+     */
+    void load()
+    {
+        const bool ret = alloc_buffer->load();
+        assert(ret);
     }
 };
 
@@ -212,10 +342,44 @@ enum class scan_action
 /**
  * This is the per-file cache that caches variable sized extents and is
  * indexed using byte offset and length.
+ *
+ * Note on read/write performance using bytes_chunk_cache
+ * ======================================================
+ * If you use file-backed bytes_chunk_cache then the performance of that
+ * will be limited by the backing file read/write performance as the data
+ * read from the NFS server is placed into the read buffers which are actually
+ * the mmap()ed buffers, hence the steady state write performance will be
+ * limited by the file write throughput. Having said that, if you have large
+ * amount of RAM and the file being read can fit completely in RAM, then the
+ * read will happen very fast and then the data can be flushed to the backing
+ * file later.
+ * OTOH, if you use non file-backed cache, and make sure you release the
+ * chunks as they are read from the server, then the read performance is only
+ * limited by the memory write speed.
+ * Similar log applies to write.
  */
 class bytes_chunk_cache
 {
+    friend membuf;
+    friend bytes_chunk;
+
 public:
+    bytes_chunk_cache(const char *_backing_file_name = nullptr) :
+        backing_file_name(_backing_file_name ? _backing_file_name : "")
+    {
+        // File will be opened on first access.
+        assert(backing_file_fd == -1);
+        assert((int) backing_file_len == 0);
+    }
+
+    ~bytes_chunk_cache()
+    {
+        if (backing_file_fd != -1) {
+            ::close(backing_file_fd);
+            backing_file_fd = -1;
+        }
+    }
+
     /**
      * Return a vector of bytes_chunk cacheing the byte range [offset, offset+length).
      * Parts of the range that correspond to chunks already present in the
@@ -269,7 +433,9 @@ public:
      * Only chunks which are completely contained inside the range are freed,
      * while chunks which lie partially in the range are trimmed (by updating
      * the buffer, length and offset members). These will be freed later when
-     * a release() call causes them to contain no valid data
+     * a release() call causes them to contain no valid data.
+     * After a successful call to release(offset, length), there won't be any
+     * chunk covering byte range [offset, offset+length) in chunkmap.
      *
      * Note: All bytes in range [offset, offset+length) MUST be present in the
      *       cache, else it'll cause assertion failure. There is no usecase
@@ -285,7 +451,7 @@ public:
      *       If you want to release an arbitrary range, first do a get() of that
      *       range and then release() each chunk separately.
      *
-     * For releasing all chunks use releaseall().
+     * For releasing all chunks and effectively nuking the cache, use clear().
      */
     void release(uint64_t offset, uint64_t length)
     {
@@ -293,11 +459,51 @@ public:
     }
 
     /**
-     * Release all chunks from the cache.
+     * Drop cached data in the given range.
+     * This must be called only for file-backed caches. For non file-backed
+     * caches this is a no-op.
+     *
+     * Note: It might make sense to not call drop() at all and leave all chunks
+     *       mmap()ed at all times, and depend on kernel to manage the buffer
+     *       cache. If kernel drops some part of the buffer cache, subsequent
+     *       users of that byte range would cause a page fault and kernel will
+     *       silently load data from the backing file.
+     *       Another approach would be to use mlock() to lock buffer cache data
+     *       that we want and let drop() munlock() it so that kernel can choose
+     *       to free it. This needs to be tested.
      */
-    void releaseall()
+    void drop(uint64_t offset, uint64_t length);
+
+    /**
+     * Clear the cache by releasing all chunks from the cache.
+     * For file-backed cache, this also releases all the file blocks.
+     */
+    void clear()
     {
+        const std::unique_lock<std::mutex> _lock(lock);
+
         chunkmap.clear();
+
+        if (backing_file_fd != -1) {
+            const int ret = ::ftruncate(backing_file_fd, 0);
+            assert(ret == 0);
+        }
+    }
+
+    /**
+     * Drop memory cache for all chunks in this bytes_chunk_cache.
+     * Chunks will be loaded as user calls get().
+     *
+     * See discussion in drop().
+     */
+    void dropall()
+    {
+        drop(0, UINT64_MAX);
+    }
+
+    bool is_file_backed() const
+    {
+        return !backing_file_name.empty();
     }
 
     /**
@@ -323,6 +529,36 @@ private:
                                   uint64_t *extent_left = nullptr,
                                   uint64_t *extent_right = nullptr);
 
+    /**
+     * This must be called with bytes_chunk_cache lock held.
+     */
+    bool extend_backing_file(uint64_t newlen)
+    {
+        // No-op for non file-backed caches.
+        if (backing_file_fd == -1) {
+            assert(backing_file_len == 0);
+            return true;
+        }
+
+        assert(newlen > 0);
+        assert(newlen <= AZNFSC_MAX_FILE_SIZE);
+        assert(backing_file_fd > 0);
+
+        if (backing_file_len < newlen) {
+            const int ret = ::ftruncate(backing_file_fd, newlen);
+            if (ret != 0) {
+                AZLogError("ftruncate(fd={}, length={}) failed: {}",
+                           backing_file_fd, newlen, strerror(errno));
+                assert(0);
+                return false;
+            }
+
+            backing_file_len = newlen;
+        }
+
+        return true;
+    }
+
     /*
      * std::map of bytes_chunk, indexed by the starting offset of the chunk.
      */
@@ -330,6 +566,10 @@ private:
 
     // Lock to protect chunkmap.
     std::mutex lock;
+
+    std::string backing_file_name;
+    int backing_file_fd = -1;
+    std::atomic<uint64_t> backing_file_len = 0;
 };
 
 }

@@ -1,6 +1,10 @@
-#include "file_cache.h"
-#include "log.h"
 #include <random>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+
+#include "file_cache.h"
 
 /*
  * This enables debug logs and also runs the self tests.
@@ -23,6 +27,165 @@
 #endif
 
 namespace aznfsc {
+
+membuf::membuf(uint64_t _offset,
+               uint64_t _length,
+               int _backing_file_fd) :
+               offset(_offset),
+               length(_length),
+               backing_file_fd(_backing_file_fd)
+{
+    if (is_file_backed()) {
+        const bool ret = load();
+        assert(ret);
+    } else {
+        // TODO: Handle memory alloc failures gracefully.
+        allocated_buffer = buffer = new uint8_t[_length];
+    }
+}
+
+bool membuf::drop()
+{
+    /*
+     * Dropping memcache for non file-backed chunks doesn't make sense, and
+     * is a no-op.
+     */
+    if (!is_file_backed()) {
+        return true;
+    }
+
+    // If data is not loaded, it's a no-op.
+    if (!allocated_buffer) {
+        return true;
+    }
+
+    assert(length > 0);
+
+    AZLogDebug("munmap(buffer={}, length={})",
+               fmt::ptr(allocated_buffer), length);
+
+    const int ret = ::munmap(allocated_buffer, length);
+    if (ret != 0) {
+        AZLogError("munmap(buffer={}, length={}) failed: {}",
+                   fmt::ptr(allocated_buffer), length, strerror(errno));
+        assert(0);
+        return false;
+    }
+
+    allocated_buffer = buffer = nullptr;
+
+    return true;
+}
+
+bool membuf::load()
+{
+    // Loading memcache for non file-backed chunks doesn't make sense.
+    if (!is_file_backed()) {
+        // Non file-backed chunks must have a valid buffer at all times.
+        assert(allocated_buffer);
+        return true;
+    }
+
+    // If data is already loaded, it's a no-op.
+    if (allocated_buffer) {
+        return true;
+    }
+
+    // allocated_buffer and buffer must agree.
+    assert(buffer == nullptr);
+
+#if 0
+    // Caller must have ensured this.
+    assert(bcc->backing_file_len >= (offset + length));
+#endif
+
+    // mmap() allows only 4k aligned offsets.
+    const uint64_t adjusted_offset = offset & ~(PAGE_SIZE - 1);
+
+    AZLogDebug("mmap(fd={}, length={}, offset={})",
+               backing_file_fd, length, adjusted_offset);
+
+    /*
+     * Default value of /proc/sys/vm/max_map_count may not be sufficient
+     * for large files. Need to increase it.
+     */
+    assert(adjusted_offset <= offset);
+    allocated_buffer =
+        (uint8_t *) ::mmap(nullptr,
+                           length + (offset - adjusted_offset),
+                           PROT_READ | PROT_WRITE,
+                           MAP_SHARED,
+                           backing_file_fd,
+                           adjusted_offset);
+
+    if (allocated_buffer == MAP_FAILED) {
+        AZLogError("mmap(fd={}, length={}, offset={}) failed: {}",
+                   backing_file_fd, length, adjusted_offset,
+                   strerror(errno));
+        assert(0);
+        return false;
+    }
+
+    buffer = allocated_buffer + (offset - adjusted_offset);
+
+    return true;
+}
+
+bytes_chunk::bytes_chunk(bytes_chunk_cache *_bcc,
+                         uint64_t _offset,
+                         uint64_t _length) :
+             bytes_chunk(_bcc,
+                         _offset,
+                         _length,
+                         0 /* buffer_offset */,
+                         std::make_shared<membuf>(_offset,
+                                                  _length,
+                                                  _bcc->backing_file_fd),
+                         _length,
+                         true /* is_empty */)
+{
+}
+
+bytes_chunk::bytes_chunk(bytes_chunk_cache *_bcc,
+                         uint64_t _offset,
+                         uint64_t _length,
+                         uint64_t _buffer_offset,
+                         const std::shared_ptr<membuf>& _alloc_buffer,
+                         uint64_t _alloc_buffer_len,
+                         bool _is_empty) :
+             bcc(_bcc),
+             alloc_buffer(_alloc_buffer),
+             alloc_buffer_len(_alloc_buffer_len),
+             offset(_offset),
+             length(_length),
+             buffer_offset(_buffer_offset),
+             is_empty(_is_empty)
+{
+    assert(bcc != nullptr);
+    /*
+     * By the time bytes_chunk constructor is called
+     * bytes_chunk_cache::scan() MUST have opened the backing file.
+     */
+    assert(bcc->backing_file_name.empty() == (bcc->backing_file_fd == -1));
+    assert(offset < AZNFSC_MAX_FILE_SIZE);
+    // 0-sized chunks don't exist.
+    assert(length > 0);
+    assert(length <= alloc_buffer_len);
+    assert((buffer_offset + length) <= alloc_buffer_len);
+    assert(alloc_buffer_len <= AZNFSC_MAX_CHUNK_SIZE);
+    assert((offset + length) <= AZNFSC_MAX_FILE_SIZE);
+    assert(alloc_buffer != nullptr);
+    assert(alloc_buffer.use_count() > 1);
+
+    /*
+     * Since we are allocating this chunk most likely user is going to
+     * use it, load data from file, if not already loaded.
+     *
+     * XXX This load() failure is fatal.
+     */
+    load();
+    assert(get_buffer() != nullptr);
+}
 
 std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
                                                  uint64_t length,
@@ -60,7 +223,6 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
 
     // Temp variables to hold chunk details for newly added chunk.
     uint64_t chunk_offset, chunk_length;
-    uint8_t *chunk_buffer;
 
     /*
      * Temp variables to hold details for releasing a range.
@@ -97,6 +259,35 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
      *       update chunkmap.
      */
     const std::unique_lock<std::mutex> _lock(lock);
+
+    /*
+     * First things first, if file-backed cache and backing file not yet open,
+     * open it.
+     */
+    if ((backing_file_fd == -1) && !backing_file_name.empty()) {
+        backing_file_fd = ::open(backing_file_name.c_str(),
+                                 O_CREAT|O_TRUNC|O_RDWR, 0755);
+
+        if (backing_file_fd == -1) {
+            AZLogError("Failed to open backing_file: {}", strerror(errno));
+            assert(0);
+            return chunkvec;
+        }
+    }
+
+    /*
+     * Extend backing_file as the very first thing.
+     * It is important that when membuf::load() is called, the backing file
+     * has size >= (offset + length).
+     */
+    if (action == scan_action::SCAN_ACTION_GET) {
+        if (!extend_backing_file(offset + length)) {
+            AZLogError("Failed to extend backing_file to {} bytes: {}",
+                       offset+length, strerror(errno));
+            assert(0);
+            return chunkvec;
+        }
+    }
 
     /*
      * Find chunk with offset >= next_offset.
@@ -246,7 +437,7 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
                 AZLogDebug("_extent_left: {}", _extent_left);
                 AZLogDebug("(tentative) _extent_right: {}", _extent_right);
 
-                chunkvec.emplace_back(chunk_offset, chunk_length);
+                chunkvec.emplace_back(this, chunk_offset, chunk_length);
                 AZLogDebug("(new chunk) [{},{})",
                            chunk_offset, chunk_offset + chunk_length);
             } else {
@@ -312,7 +503,7 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
                     // Search for more chunks should start from the next chunk.
                     it = itn;
 
-                    chunkvec.emplace_back(chunk_offset, chunk_length);
+                    chunkvec.emplace_back(this, chunk_offset, chunk_length);
                     AZLogDebug("(new chunk) [{},{})",
                                chunk_offset, chunk_offset + chunk_length);
                 } else {
@@ -343,6 +534,8 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
     for (; remaining_length != 0 && it != chunkmap.end(); ) {
         bc = &(it->second);
 
+        bc->load();
+
         /*
          * next_offset must lie before the end of current chunk, else we should
          * not be inside the for loop.
@@ -353,23 +546,22 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
 
         if (next_offset == bc->offset) {
             chunk_length = std::min(bc->length, remaining_length);
-            chunk_buffer = bc->buffer;
 
             if (action == scan_action::SCAN_ACTION_GET) {
-                chunkvec.emplace_back(chunk_offset, chunk_length,
-                                      chunk_buffer, bc->alloc_buffer,
+                chunkvec.emplace_back(this, chunk_offset, chunk_length,
+                                      bc->buffer_offset, bc->alloc_buffer,
                                       bc->alloc_buffer_len);
                 AZLogDebug("(existing chunk) [{},{}) b:{} a:{}",
                            chunk_offset, chunk_offset + chunk_length,
-                           fmt::ptr(chunk_buffer),
-                           fmt::ptr(bc->alloc_buffer.get()));
+                           fmt::ptr(chunkvec.back().get_buffer()),
+                           fmt::ptr(bc->alloc_buffer->get()));
             } else {
                 assert (action == scan_action::SCAN_ACTION_RELEASE);
                 if (chunk_length == bc->length) {
                     AZLogDebug("(releasing chunk) [{},{}) b:{} a:{}",
                                chunk_offset, chunk_offset + chunk_length,
-                               fmt::ptr(chunk_buffer),
-                               fmt::ptr(bc->alloc_buffer.get()));
+                               fmt::ptr(bc->get_buffer()),
+                               fmt::ptr(bc->alloc_buffer->get()));
                     /*
                      * Queue the chunk for deletion, since the entire chunk is
                      * released.
@@ -395,7 +587,7 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
                                bc->offset + bc->length);
 
                     bc->offset += chunk_length;
-                    bc->buffer += chunk_length;
+                    bc->buffer_offset += chunk_length;
                     bc->length -= chunk_length;
 
                     /*
@@ -411,8 +603,8 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
                      * hence it's ok to update the chunkmap. We should exit the
                      * for loop here.
                      */
-                    auto p = chunkmap.try_emplace(bc->offset, bc->offset,
-                                                  bc->length, bc->buffer,
+                    auto p = chunkmap.try_emplace(bc->offset, this, bc->offset,
+                                                  bc->length, bc->buffer_offset,
                                                   bc->alloc_buffer,
                                                   bc->alloc_buffer_len);
                     assert(p.second);
@@ -435,11 +627,12 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
             // This chunk is fully consumed, move to the next chunk.
             ++it;
         } else if (next_offset < bc->offset) {
+            // Starts before the next chunk.
             assert(action != scan_action::SCAN_ACTION_RELEASE);
             chunk_length = std::min(bc->offset - next_offset,
                                     remaining_length);
 
-            chunkvec.emplace_back(chunk_offset, chunk_length);
+            chunkvec.emplace_back(this, chunk_offset, chunk_length);
             AZLogDebug("(new chunk) [{},{})",
                        chunk_offset, chunk_offset+chunk_length);
 
@@ -450,16 +643,16 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
         } else /* (next_offset > bc->offset) */ {
             chunk_length = std::min(bc->offset + bc->length - next_offset,
                                     remaining_length);
-            chunk_buffer = bc->buffer + (next_offset - bc->offset);
 
             if (action == scan_action::SCAN_ACTION_GET) {
-                chunkvec.emplace_back(chunk_offset, chunk_length,
-                                      chunk_buffer, bc->alloc_buffer,
+                chunkvec.emplace_back(this, chunk_offset, chunk_length,
+                                      bc->buffer_offset + (next_offset - bc->offset),
+                                      bc->alloc_buffer,
                                       bc->alloc_buffer_len);
                 AZLogDebug("(existing chunk) [{},{}) b:{} a:{}",
                            chunk_offset, chunk_offset + chunk_length,
-                           fmt::ptr(chunk_buffer),
-                           fmt::ptr(bc->alloc_buffer.get()));
+                           fmt::ptr(chunkvec.back().get_buffer()),
+                           fmt::ptr(bc->alloc_buffer->get()));
             } else {
                 assert(action == scan_action::SCAN_ACTION_RELEASE);
                 if (chunk_length == remaining_length) {
@@ -476,7 +669,8 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
 
                     if (chunk_after_length > 0) {
                         assert(chunk_after == nullptr);
-                        chunk_after = new bytes_chunk(chunk_after_offset,
+                        chunk_after = new bytes_chunk(this,
+                                                      chunk_after_offset,
                                                       chunk_after_length);
 
                         AZLogDebug("(chunk after) [{},{})",
@@ -552,9 +746,9 @@ allocate_only_chunk:
              * chunk, it's nevertheless a new chunk and hence is_empty must
              * be true.
              */
-            chunkvec.emplace_back(next_offset,
+            chunkvec.emplace_back(this, next_offset,
                                   chunk_length,
-                                  last_bc->buffer + last_bc->length,
+                                  last_bc->buffer_offset + last_bc->length,
                                   last_bc->alloc_buffer,
                                   last_bc->alloc_buffer_len,
                                   true /* is_empty */);
@@ -569,7 +763,7 @@ allocate_only_chunk:
         if (remaining_length) {
             AZLogDebug("(new last chunk) [{},{})",
                        next_offset, next_offset + remaining_length);
-            chunkvec.emplace_back(next_offset, remaining_length);
+            chunkvec.emplace_back(this, next_offset, remaining_length);
         }
 
         remaining_length = 0;
@@ -597,14 +791,14 @@ allocate_only_chunk:
              * so the chunkmap reference will be the only reference left.
              */
 #ifndef NDEBUG
-            auto p = chunkmap.try_emplace(chunk.offset, chunk.offset,
-                                          chunk.length, chunk.buffer,
+            auto p = chunkmap.try_emplace(chunk.offset, chunk.bcc, chunk.offset,
+                                          chunk.length, chunk.buffer_offset,
                                           chunk.alloc_buffer,
                                           chunk.alloc_buffer_len);
             assert(p.second == true);
 #else
-            chunkmap.try_emplace(chunk.offset, chunk.offset,
-                                 chunk.length, chunk.buffer,
+            chunkmap.try_emplace(chunk.offset, chunk.bcc, chunk.offset,
+                                 chunk.length, chunk.buffer_offset,
                                  chunk.alloc_buffer,
                                  chunk.alloc_buffer_len);
 #endif
@@ -625,8 +819,8 @@ allocate_only_chunk:
                 bc = &(_it->second);
                 AZLogDebug("(freeing chunk) [{},{}) b:{} a:{}",
                            bc->offset, bc->offset + bc->length,
-                           fmt::ptr(bc->buffer),
-                           fmt::ptr(bc->alloc_buffer.get()));
+                           fmt::ptr(bc->get_buffer()),
+                           fmt::ptr(bc->alloc_buffer->get()));
             }
 
             // Delete the entire range.
@@ -651,17 +845,19 @@ allocate_only_chunk:
                        chunk_after->offset + chunk_after->length);
 #ifndef NDEBUG
             const auto p = chunkmap.try_emplace(chunk_after->offset,
+                                                this,
                                                 chunk_after->offset,
                                                 chunk_after->length,
-                                                chunk_after->buffer,
+                                                chunk_after->buffer_offset,
                                                 chunk_after->alloc_buffer,
                                                 chunk_after->alloc_buffer_len);
             assert(p.second == true);
 #else
             chunkmap.try_emplace(chunk_after->offset,
+                                 this,
                                  chunk_after->offset,
                                  chunk_after->length,
-                                 chunk_after->buffer,
+                                 chunk_after->buffer_offset,
                                  chunk_after->alloc_buffer,
                                  chunk_after->alloc_buffer_len);
 #endif
@@ -719,6 +915,47 @@ allocate_only_chunk:
 
     return (action == scan_action::SCAN_ACTION_GET)
                 ? chunkvec : std::vector<bytes_chunk>();
+}
+
+void bytes_chunk_cache::drop(uint64_t offset, uint64_t length)
+{
+    if (backing_file_name.empty()) {
+        // No-op for non file-backed caches.
+        return;
+    }
+
+    const std::unique_lock<std::mutex> _lock(lock);
+
+    /*
+     * Find chunk with offset >= next_offset. Note that we only drop caches
+     * for chunks which completely lie in the range, i.e., partial chunks are
+     * skipped. This is ok as dropping caches is only for saving memory and
+     * not doing it doesn't cause correctness isssues.
+     */
+    auto it = chunkmap.lower_bound(offset);
+
+    // No full chunk lies in the given range.
+    if (it == chunkmap.end()) {
+        return;
+    }
+
+    uint64_t remaining_length = length;
+
+    /*
+     * Iterate over all chunks and drop chunks that completely lie in the
+     * requested range.
+     */
+    for (; remaining_length != 0 && it != chunkmap.end(); ++it) {
+        bytes_chunk *bc = &(it->second);
+
+        if (remaining_length < bc->length) {
+            break;
+        }
+
+        bc->drop();
+
+        remaining_length -= bc->length;
+    }
 }
 
 /**
@@ -817,11 +1054,29 @@ static void cache_write(bytes_chunk_cache& cache,
 /* static */
 int bytes_chunk_cache::unit_test()
 {
-    std::vector<bytes_chunk> v;
+    assert(::sysconf(_SC_PAGESIZE) == PAGE_SIZE);
+
+    /*
+     * Choose file-backed or non file-backed cache for testing.
+     * For file-backed cache, make sure /tmp as sufficient space.
+     */
+#if 0
     bytes_chunk_cache cache;
+#else
+    bytes_chunk_cache cache("/tmp/bytes_chunk_cache");
+#endif
+
+    std::vector<bytes_chunk> v;
     uint64_t l, r;
-    // Temp buffers used for asserting.
-    uint8_t *buffer, *buffer1, *buffer2, *buffer3;
+    /*
+     * Sometimes we want to validate that a bytes_chunk returned at a later
+     * point refers to a chunk allocated earlier. We use these temp bytes_chunk
+     * for that. Note that bytes_chunk can be deleted by calls to release(),
+     * and calls to dropall() may drop the buffer mappings, so might need to
+     * load() before we can use the buffers.
+     */
+    bytes_chunk bc, bc1, bc2, bc3;
+    uint8_t *buffer;
 
 #define ASSERT_NEW(chunk, start, end) \
 do { \
@@ -847,7 +1102,7 @@ do { \
         AZLogInfo("[{},{}){} <{}>", chunk.offset,\
                   chunk.offset + chunk.length,\
                   chunk.is_empty ? " [Empty]" : "", \
-                  fmt::ptr(chunk.buffer))
+                  fmt::ptr(chunk.get_buffer()))
 
     /*
      * Get cache chunks covering range [0, 300).
@@ -861,7 +1116,11 @@ do { \
 
     ASSERT_EXTENT(0, 300);
     ASSERT_NEW(v[0], 0, 300);
-    buffer = v[0].buffer;
+    /*
+     * This bytes_chunk later gets deleted by the call to release(200,100),
+     * so we store the buffer.
+     */
+    buffer = v[0].get_buffer();
 
     for (auto e : v) {
         PRINT_CHUNK(e);
@@ -893,7 +1152,7 @@ do { \
 
     ASSERT_EXTENT(100, 200);
     ASSERT_EXISTING(v[0], 100, 200);
-    assert(v[0].buffer == (buffer + 100));
+    assert(v[0].get_buffer() == (buffer + 100));
 
     for (auto e : v) {
         PRINT_CHUNK(e);
@@ -914,11 +1173,14 @@ do { \
     ASSERT_EXTENT(50, 200);
     ASSERT_NEW(v[0], 50, 100);
     ASSERT_EXISTING(v[1], 100, 150);
-    assert(v[1].buffer == (buffer + 100));
+    assert(v[1].get_buffer() == (buffer + 100));
 
     for (auto e : v) {
         PRINT_CHUNK(e);
     }
+
+    AZLogInfo("========== [Dropall] ==========");
+    cache.dropall();
 
     /*
      * Get cache chunks covering range [250, 300).
@@ -933,7 +1195,7 @@ do { \
 
     ASSERT_EXTENT(250, 300);
     ASSERT_NEW(v[0], 250, 300);
-    buffer = v[0].buffer;
+    new (&bc) bytes_chunk(v[0]);
 
     for (auto e : v) {
         PRINT_CHUNK(e);
@@ -974,13 +1236,21 @@ do { \
     ASSERT_EXISTING(v[0], 150, 200);
     ASSERT_NEW(v[1], 200, 250);
     ASSERT_EXISTING(v[2], 250, 275);
-    assert(v[2].buffer == buffer);
-    buffer1 = v[0].buffer;
-    buffer2 = v[1].buffer;
+    assert(v[2].get_buffer() == bc.get_buffer());
+    new (&bc1) bytes_chunk(v[0]);
+    new (&bc2) bytes_chunk(v[1]);
 
     for (auto e : v) {
         PRINT_CHUNK(e);
     }
+
+    AZLogInfo("========== [Dropall] ==========");
+    cache.dropall();
+
+    // Reload all bytes_chunk, after dropall().
+    bc.load();
+    bc1.load();
+    bc2.load();
 
     /*
      * Release data range [0, 175).
@@ -1009,12 +1279,12 @@ do { \
     ASSERT_EXTENT(100, 300);
     ASSERT_NEW(v[0], 100, 175);
     ASSERT_EXISTING(v[1], 175, 200);
-    assert(v[1].buffer == (buffer1 + 25));
+    assert(v[1].get_buffer() == (bc1.get_buffer() + 25));
     ASSERT_EXISTING(v[2], 200, 250);
-    assert(v[2].buffer == buffer2);
+    assert(v[2].get_buffer() == bc2.get_buffer());
     ASSERT_EXISTING(v[3], 250, 280);
-    assert(v[3].buffer == buffer);
-    buffer3 = v[0].buffer;
+    assert(v[3].get_buffer() == bc.get_buffer());
+    new (&bc3) bytes_chunk(v[0]);
 
     for (auto e : v) {
         PRINT_CHUNK(e);
@@ -1039,16 +1309,16 @@ do { \
     ASSERT_EXTENT(0, 350);
     ASSERT_NEW(v[0], 0, 100);
     ASSERT_EXISTING(v[1], 100, 175);
-    assert(v[1].buffer == buffer3);
+    assert(v[1].get_buffer() == bc3.get_buffer());
     ASSERT_EXISTING(v[2], 175, 200);
-    assert(v[2].buffer == (buffer1 + 25));
+    assert(v[2].get_buffer() == (bc1.get_buffer() + 25));
     ASSERT_EXISTING(v[3], 200, 250);
-    assert(v[3].buffer == buffer2);
+    assert(v[3].get_buffer() == bc2.get_buffer());
     ASSERT_EXISTING(v[4], 250, 300);
-    assert(v[4].buffer == buffer);
+    assert(v[4].get_buffer() == bc.get_buffer());
     ASSERT_NEW(v[5], 300, 350);
-    buffer1 = v[0].buffer;
-    buffer3 = v[5].buffer;
+    new (&bc1) bytes_chunk(v[0]);
+    new (&bc3) bytes_chunk(v[5]);
 
     for (auto e : v) {
         PRINT_CHUNK(e);
@@ -1082,14 +1352,14 @@ do { \
 
     ASSERT_EXTENT(0, 350);
     ASSERT_EXISTING(v[0], 0, 50);
-    assert(v[0].buffer == buffer1);
+    assert(v[0].get_buffer() == bc1.get_buffer());
     ASSERT_NEW(v[1], 50, 225);
     ASSERT_EXISTING(v[2], 225, 250);
-    assert(v[2].buffer == (buffer2 + 25));
+    assert(v[2].get_buffer() == (bc2.get_buffer() + 25));
     ASSERT_EXISTING(v[3], 250, 300);
-    assert(v[3].buffer == buffer);
+    assert(v[3].get_buffer() == bc.get_buffer());
     ASSERT_EXISTING(v[4], 300, 325);
-    assert(v[4].buffer == buffer3);
+    assert(v[4].get_buffer() == bc3.get_buffer());
 
     for (auto e : v) {
         PRINT_CHUNK(e);
@@ -1116,7 +1386,7 @@ do { \
 
     ASSERT_EXTENT(349, 350);
     ASSERT_EXISTING(v[0], 349, 350);
-    assert(v[0].buffer == (buffer3 + 49));
+    assert(v[0].get_buffer() == (bc3.get_buffer() + 49));
 
     for (auto e : v) {
         PRINT_CHUNK(e);
@@ -1129,6 +1399,15 @@ do { \
      */
     AZLogInfo("========== [Release] --> (349, 1) ==========");
     cache.release(349, 1);
+
+    AZLogInfo("========== [Dropall] ==========");
+    cache.dropall();
+
+    // Reload all bytes_chunk, after dropall().
+    bc.load();
+    bc1.load();
+    bc2.load();
+    bc3.load();
 
     /*
      * Get cache chunks covering range [0, 131072).
@@ -1144,7 +1423,7 @@ do { \
 
     ASSERT_EXTENT(0, 131072);
     ASSERT_NEW(v[0], 0, 131072);
-    buffer = v[0].buffer;
+    new (&bc) bytes_chunk(v[0]);
 
     for (auto e : v) {
         PRINT_CHUNK(e);
@@ -1173,7 +1452,7 @@ do { \
     ASSERT_EXTENT(0, 20);
     ASSERT_NEW(v[0], 6, 20);
     // Must use the alloc_buffer from last chunk.
-    assert(v[0].buffer == (buffer + 6));
+    assert(v[0].get_buffer() == (bc.get_buffer() + 6));
 
     for (auto e : v) {
         PRINT_CHUNK(e);
@@ -1195,9 +1474,9 @@ do { \
 
     ASSERT_EXTENT(0, 30);
     ASSERT_EXISTING(v[0], 5, 6);
-    assert(v[0].buffer == (buffer + 5));
+    assert(v[0].get_buffer() == (bc.get_buffer() + 5));
     ASSERT_EXISTING(v[1], 6, 20);
-    assert(v[1].buffer == (buffer + 6));
+    assert(v[1].get_buffer() == (bc.get_buffer() + 6));
     ASSERT_NEW(v[2], 20, 30);
 
     for (auto e : v) {
@@ -1205,10 +1484,10 @@ do { \
     }
 
     /*
-     * Release entire cache.
+     * Clear entire cache.
      */
-    AZLogInfo("========== [ReleaseAll] ==========");
-    cache.releaseall();
+    AZLogInfo("========== [Clear] ==========");
+    cache.clear();
 
     /*
      * Get cache chunks covering range [5, 30).
@@ -1239,6 +1518,12 @@ do { \
 
         const uint64_t offset = random_number(0, 100'000'000);
         const uint64_t length = random_number(1, AZNFSC_MAX_CHUNK_SIZE);
+        const bool should_drop_all = random_number(0, 100) <= 1;
+
+        // Randomly drop caches for testing.
+        if (should_drop_all) {
+            cache.dropall();
+        }
 
         if (is_read()) {
             cache_read(cache, offset, length);
