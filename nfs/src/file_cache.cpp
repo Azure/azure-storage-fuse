@@ -179,7 +179,7 @@ bytes_chunk::bytes_chunk(bytes_chunk_cache *_bcc,
 
     /*
      * Since we are allocating this chunk most likely user is going to
-     * use it, load data from file, if not already loaded.
+     * use it, load data from backing file, if not already loaded.
      *
      * XXX This load() failure is fatal.
      */
@@ -807,6 +807,14 @@ allocate_only_chunk:
                 _extent_right = (chunk.offset + chunk.length);
                 AZLogDebug("_extent_right: {}", _extent_right);
             }
+
+            /*
+             * An empty membuf will be updated by the caller, set it locked
+             * to avoid any races due to multiple threads reading different
+             * parts of the membuf.
+             * Caller must unlock this once the membuf is populated with data.
+             */
+            chunk.alloc_buffer->set_locked();
         }
     }
 
@@ -1083,6 +1091,9 @@ do { \
     assert(chunk.offset == start); \
     assert(chunk.length == end-start); \
     assert(chunk.is_empty); \
+    /* empty membufs MUST be returned with lock held */ \
+    assert(chunk.get_membuf()->is_locked()); \
+    chunk.get_membuf()->set_unlocked(); \
 } while (0)
 
 #define ASSERT_EXISTING(chunk, start, end) \

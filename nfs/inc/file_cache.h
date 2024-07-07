@@ -191,6 +191,9 @@ struct membuf
     void set_uptodate()
     {
         flag |= MB_Flag::Uptodate;
+
+        AZLogDebug("Set uptodate membuf [{}, {}), fd={}",
+                   offset, offset+length, backing_file_fd);
     }
 
     /**
@@ -199,6 +202,9 @@ struct membuf
     void clear_uptodate()
     {
         flag &= ~MB_Flag::Uptodate;
+
+        AZLogDebug("Clear uptodate membuf [{}, {}), fd={}",
+                   offset, offset+length, backing_file_fd);
     }
 
     bool is_locked()
@@ -215,6 +221,9 @@ struct membuf
      */
     void set_locked()
     {
+        AZLogDebug("Locking membuf [{}, {}), fd={}",
+                   offset, offset+length, backing_file_fd);
+
         // Common case, not locked, lock w/o waiting.
         while (flag.fetch_or(MB_Flag::Locked) & MB_Flag::Locked) {
             std::unique_lock<std::mutex> _lock(lock);
@@ -230,6 +239,9 @@ struct membuf
             }
         }
 
+        AZLogDebug("Successfully locked membuf [{}, {}), fd={}",
+                   offset, offset+length, backing_file_fd);
+
         // Must never return w/o locking the membuf.
         assert(is_locked());
 
@@ -244,6 +256,9 @@ struct membuf
         {
             std::unique_lock<std::mutex> _lock(lock);
             flag &= ~MB_Flag::Locked;
+
+            AZLogDebug("Unlocked membuf [{}, {}), fd={}",
+                       offset, offset+length, backing_file_fd);
         }
 
         // Wakeup one waiter.
@@ -262,11 +277,17 @@ struct membuf
     void set_dirty()
     {
         flag |= MB_Flag::Dirty;
+
+        AZLogDebug("Set dirty membuf [{}, {}), fd={}",
+                   offset, offset+length, backing_file_fd);
     }
 
     void clear_dirty()
     {
         flag &= ~MB_Flag::Dirty;
+
+        AZLogDebug("Clear dirty membuf [{}, {}), fd={}",
+                   offset, offset+length, backing_file_fd);
     }
 
 private:
@@ -294,6 +315,11 @@ private:
      *    cases:
      *     i) A writer writes user passed data to the membuf.
      *    ii) A reader reads data from the Blob and writes it into the membuf.
+     *
+     *    IMPORTANT: All empty membufs returned by bytes_chunk_cache::get()
+     *               are already lock by bytes_chunk_cache::get(), on behalf
+     *               of the caller. This avoids some races due to parallel
+     *               readers trying to read different parts of the membuf.
      * 3. A newly created membuf does not have valid data and hence a reader
      *    should not read from it. Such an membuf is "not uptodate" and a
      *    reader must first read the corresponding file data into the membuf,
@@ -389,23 +415,6 @@ public:
      */
     uint64_t length = 0;
 
-    /**
-     * Start of valid cached data corresponding to this chunk.
-     * This will typically have the value alloc_buffer->get(), i.e., it points
-     * to the start of the data buffer represented by the shared pointer
-     * alloc_buffer, but if some cached data is deleted from the beginning of a
-     * chunk, causing the buffer to be "trimmed" from the beginning, this can
-     * point anywhere inside the buffer.
-     */
-    uint8_t *get_buffer() const
-    {
-        // Should not call on a dropped cache.
-        assert(alloc_buffer->get() != nullptr);
-        assert(buffer_offset < alloc_buffer_len);
-
-        return alloc_buffer->get() + buffer_offset;
-    }
-
     // Offset of buffer from alloc_buffer->get().
     uint64_t buffer_offset = 0;
 
@@ -431,6 +440,33 @@ public:
      *       inode lock will be used for this.
      */
     bool is_empty = true;
+
+    /**
+     * Return membuf corresponding to this bytes_chunk.
+     * This will be used by caller to synchronize operations on the membuf.
+     * See membuf::flag and various operations that can be done on them.
+     */
+    struct membuf *get_membuf() const
+    {
+        return alloc_buffer.get();
+    }
+
+    /**
+     * Start of valid cached data corresponding to this chunk.
+     * This will typically have the value alloc_buffer->get(), i.e., it points
+     * to the start of the data buffer represented by the shared pointer
+     * alloc_buffer, but if some cached data is deleted from the beginning of a
+     * chunk, causing the buffer to be "trimmed" from the beginning, this can
+     * point anywhere inside the buffer.
+     */
+    uint8_t *get_buffer() const
+    {
+        // Should not call on a dropped cache.
+        assert(alloc_buffer->get() != nullptr);
+        assert(buffer_offset < alloc_buffer_len);
+
+        return alloc_buffer->get() + buffer_offset;
+    }
 
     /**
      * Constructor to create a brand new chunk with newly allocated buffer.
@@ -468,7 +504,7 @@ public:
                 bool _is_empty = false);
 
     /**
-     * Copy constructor, mainly for used by test code.
+     * Copy constructor, only for use by test code.
      */
     bytes_chunk(const bytes_chunk& rhs) :
         bytes_chunk(rhs.bcc,
@@ -483,7 +519,7 @@ public:
     }
 
     /**
-     * Default constructor, mainly for used by test code.
+     * Default constructor, only for use by test code.
      */
     bytes_chunk() = default;
 
@@ -598,6 +634,10 @@ public:
      *   file. Chunks with is_empty set to true indicate that we don't have
      *   cached data for that chunk and the caller must arrange to read that
      *   data from the file.
+     *
+     * Note: All empty membufs returned by get() will have the membuf lock
+     *       held. Caller must arrange to fill it with reqd data and then
+     *       unlock.
      *
      * TODO: Reuse buffer from prev/adjacent chunk if it has space. Currently
      *       we will allocate a new buffer, this works but is wasteful.
