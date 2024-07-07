@@ -603,10 +603,7 @@ public:
 
     ~bytes_chunk_cache()
     {
-        if (backing_file_fd != -1) {
-            ::close(backing_file_fd);
-            backing_file_fd = -1;
-        }
+        clear();
     }
 
     /**
@@ -715,11 +712,50 @@ public:
     {
         const std::unique_lock<std::mutex> _lock(lock);
 
+        /*
+         * Release all the chunks.
+         * This will release all membufs (munmap() them in case of file-backed
+         * caches and delete them for heap backed caches). Membufs which are
+         * referred by other users will be freed when the last ref is dropped,
+         * but any IO they perform cannot affect the new incarnation of this
+         * cache as we delete the file (below), new incarnation of cache will
+         * have new file created.
+         */
         chunkmap.clear();
 
         if (backing_file_fd != -1) {
-            const int ret = ::ftruncate(backing_file_fd, 0);
-            assert(ret == 0);
+            const int ret = ::close(backing_file_fd);
+            if (ret != 0) {
+                AZLogError("close(fd={}) failed: {}",
+                           backing_file_fd, strerror(errno));
+                assert(0);
+            } else {
+                AZLogInfo("Backing file {} closed, fd={}",
+                           backing_file_name, backing_file_fd);
+            }
+            backing_file_fd = -1;
+            backing_file_len = 0;
+        }
+
+        assert(backing_file_len == 0);
+
+        /*
+         * Delete the backing file for file-backed caches.
+         * This is important as any existing users who have membufs mmap()ed
+         * to this existing file and still performing IOs, they cannot affect
+         * the new incarnation of the cache. The old file blocks will be freed
+         * when all the existing mappings are unmapped by the membufs when they
+         * get destroyed.
+         */
+        if (!backing_file_name.empty()) {
+            const int ret = ::unlink(backing_file_name.c_str());
+            if ((ret != 0) && (errno != ENOENT)) {
+                AZLogError("unlink({}) failed: {}",
+                           backing_file_name, strerror(errno));
+                assert(0);
+            } else {
+                AZLogInfo("Backing file {} deleted", backing_file_name);
+            }
         }
     }
 

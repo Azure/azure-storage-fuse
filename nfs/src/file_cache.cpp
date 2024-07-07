@@ -267,11 +267,14 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
     if ((backing_file_fd == -1) && !backing_file_name.empty()) {
         backing_file_fd = ::open(backing_file_name.c_str(),
                                  O_CREAT|O_TRUNC|O_RDWR, 0755);
-
         if (backing_file_fd == -1) {
-            AZLogError("Failed to open backing_file: {}", strerror(errno));
+            AZLogError("Failed to open backing_file {}: {}",
+                       backing_file_name, strerror(errno));
             assert(0);
             return chunkvec;
+        } else {
+            AZLogInfo("Opened backing_file {}: fd={}",
+                      backing_file_name, backing_file_fd);
         }
     }
 
