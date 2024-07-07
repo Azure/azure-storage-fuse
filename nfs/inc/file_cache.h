@@ -5,6 +5,8 @@
 #include <mutex>
 #include <memory>
 #include <vector>
+#include <atomic>
+#include <chrono>
 
 #include <cstring>
 #include <cstdint>
@@ -37,6 +39,8 @@ namespace aznfsc {
  * chunk size. Note that single readahead size is also limited by this, but
  * user can always issue multiple readahead reads if we need larger, but this
  * should be sufficient.
+ *
+ * See comment above membuf::flag.
  */
 #define AZNFSC_MAX_CHUNK_SIZE (1ULL * 1024 * 1024 * 1024)
 
@@ -46,6 +50,18 @@ namespace aznfsc {
 
 // Forward declaration.
 class bytes_chunk_cache;
+
+/**
+ * membuf::flag bits.
+ */
+namespace MB_Flag {
+    enum : uint32_t
+    {
+       Uptodate = (1 << 0), // Fit for reading.
+       Locked   = (1 << 1), // Exclusive access for updating membuf data.
+       Dirty    = (1 << 2), // Data in membuf is newer than the Blob.
+    };
+}
 
 /**
  * Memory buffer, used for caching chunks in memory.
@@ -156,6 +172,177 @@ struct membuf
      * destroyed first.
      */
     bool load();
+
+    /**
+     * Is membuf uptodate?
+     * Only uptodate membufs are fit for reading.
+     * A newly created membuf is not uptodate and must be set uptodate
+     * after reading the required data from the Blob.
+     */
+    bool is_uptodate() const
+    {
+        return (flag & MB_Flag::Uptodate);
+    }
+
+    /**
+     * Must be called to set membuf update only after successfully reading
+     * all the data that this membuf refers to.
+     */
+    void set_uptodate()
+    {
+        flag |= MB_Flag::Uptodate;
+    }
+
+    /**
+     * Must be called when a read from Blob fails.
+     */
+    void clear_uptodate()
+    {
+        flag &= ~MB_Flag::Uptodate;
+    }
+
+    bool is_locked()
+    {
+        return (flag & MB_Flag::Locked);
+    }
+
+    /**
+     * A membuf must be locked for getting exclusive access whenever any
+     * thread wants to update the membuf data. This can be done by reader
+     * threads when they read data from the Blob into a newly created membuf,
+     * or by writer threads when they are copying application data into the
+     * membuf.
+     */
+    void set_locked()
+    {
+        // Common case, not locked, lock w/o waiting.
+        while (flag.fetch_or(MB_Flag::Locked) & MB_Flag::Locked) {
+            std::unique_lock<std::mutex> _lock(lock);
+
+            /*
+             * When reading data from the Blob, NFS read may take some time,
+             * we wait for 120 secs and log an error message, to catch any
+             * deadlocks.
+             */
+            if (!cv.wait_for(_lock, std::chrono::seconds(120),
+                             [this]{ return !this->is_locked(); })) {
+                AZLogError("Timed out waiting for membuf lock, re-trying!");
+            }
+        }
+
+        // Must never return w/o locking the membuf.
+        assert(is_locked());
+
+        return;
+    }
+
+    /**
+     * Unlock after a prior successful call to set_locked().
+     */
+    void set_unlocked()
+    {
+        {
+            std::unique_lock<std::mutex> _lock(lock);
+            flag &= ~MB_Flag::Locked;
+        }
+
+        // Wakeup one waiter.
+        cv.notify_one();
+    }
+
+    /**
+     * A  membuf is marked dirty when the membuf data is updated, making it
+     * out of sync with the Blob contents for the range.
+     */
+    bool is_dirty() const
+    {
+        return (flag & MB_Flag::Dirty);
+    }
+
+    void set_dirty()
+    {
+        flag |= MB_Flag::Dirty;
+    }
+
+    void clear_dirty()
+    {
+        flag &= ~MB_Flag::Dirty;
+    }
+
+private:
+    /*
+     * Lock to correctly read and update the membuf state.
+     *
+     * Note on safely accessing membuf
+     * ===============================
+     * Since multiple threads may be trying to read and write to the same file
+     * or part of the file we need to define some rules for ensuring consistent
+     * access. Here are the rules:
+     *
+     * 1. Any reader or writer gets access to membuf by a call to
+     *    bytes_chunk_cache::get(). membufs are managed by shared_ptr, hence
+     *    the reader/writer is guaranteed that as long as it does not destroy
+     *    the returned bytes_chunk, the membuf will not be freed. Note that
+     *    consistent read/write access needs some more synchronization, read
+     *    along.
+     * 2. A thread trying to write to the membuf must get exclusive access to
+     *    the membuf. It can get that by calling set_locked(). set_locked()
+     *    will block if the lock is already held by some other thread and will
+     *    return after acquiring the lock. Blocking threads will wait on the
+     *    condition_variable 'cv' and will be woken up when the current locking
+     *    thread unlocks. Note that membuf may be written under the following
+     *    cases:
+     *     i) A writer writes user passed data to the membuf.
+     *    ii) A reader reads data from the Blob and writes it into the membuf.
+     * 3. A newly created membuf does not have valid data and hence a reader
+     *    should not read from it. Such an membuf is "not uptodate" and a
+     *    reader must first read the corresponding file data into the membuf,
+     *    and mark the membuf "uptodate" after successfully reading the data
+     *    into it. It can do that after getting exclusive access to membuf
+     *    by calling set_locked(). Any other reader which accesses the membuf
+     *    in the meantime will find it "not update" and it'll try to update
+     *    the membuf itself but it'll find the membuf locked, so set_locked()
+     *    will cause the thread to wait on 'cv'. Once the current reader
+     *    updates the membuf, it marks it "uptodate" by calling set_uptodate()
+     *    and then unlock it by calling set_unlocked(). Other readers waiting
+     *    for the lock will get woken up and they will discover that the
+     *    membuf is uptodate by checking is_uptodate() and they can then read
+     *    that data into their application data buffers.
+     * 4. If a reader finds that an membuf is uptodate (by is_uptodate()), it
+     *    can return the membuf data to the application. Note that some writer
+     *    may be writing to the data simultaneously and reader may get a mix
+     *    of old and new data. This is fine as per POSIX.
+     * 5. Once an membuf is marked uptodate it remains uptodate for the life
+     *    of the membuf, unless one of the following happens:
+     *     i) We detect via file mtime change that our cached copy is no longer
+     *        valid. In this case the entire cache for that file ic clear()ed
+     *        which causes all bytes_chunk and hence all membuf to be freed.
+     *    ii) An NFS write to the Blob fails.
+     * 6. A writer must mark the membuf dirty by calling set_dirty(), after it
+     *    updates the membuf data. Dirty membufs must be synced with the Blob
+     *    at some later time and once those writes to Blob succeed, the membuf
+     *    dirty flag must be cleared by calling clear_dirty().
+     */
+    std::mutex lock;
+
+    /*
+     * Flag bitmap for correctly defining the state of this membuf.
+     * This is a bitwise or of zero or more MB_Flag values.
+     *
+     * Note: membuf::flag represents the state of the entire membuf,
+     *       irrespective of the offset within the membuf a particular
+     *       bytes_chunk represents. This means even if one thread has to
+     *       read say 1 byte but the actual bytes_chunk created by another
+     *       thread is of size 1GB, the former thread has to wait till the
+     *       entire 1GB data is read by the other thread and the membuf is
+     *       marked MB_Flag::Uptodate.
+     *       This means very large membufs will cause unnecessary waits.
+     *       Test out and find a good value for AZNFSC_MAX_CHUNK_SIZE.
+     */
+    std::atomic<uint32_t> flag = 0;
+
+    // For managing threads waiting on MB_Flag::Locked.
+    std::condition_variable cv;
 };
 
 /**
