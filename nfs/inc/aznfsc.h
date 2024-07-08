@@ -71,7 +71,7 @@ using namespace aznfsc;
 typedef struct aznfsc_cfg
 {
     // config.yaml file path specified using --config-file= cmdline option.
-    const char* config_yaml = nullptr;
+    const char *config_yaml = nullptr;
 
     /*************************************************
      **                Mount path                   **
@@ -83,9 +83,16 @@ typedef struct aznfsc_cfg
      * The share path mounted is:
      * <account>.<cloud_suffix>:/<account>/<container>
      */
-    const char* account = nullptr;
-    const char* container = nullptr;
-    const char* cloud_suffix = nullptr;
+    const char *account = nullptr;
+    const char *container = nullptr;
+    const char *cloud_suffix = nullptr;
+
+    /*************************************************
+     **                   Misc                      **
+     *************************************************/
+
+    // Directory where file caches will be persisted.
+    const char *cachedir = nullptr;
 
     /**********************************************************************
      **                          Mount options                           **

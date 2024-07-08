@@ -4,10 +4,14 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <errno.h>
+#include <string.h>
 
 #include <string>
 #include <regex>
 #include <chrono>
+
+#include "log.h"
 
 using namespace std::chrono;
 
@@ -32,6 +36,43 @@ bool is_valid_cloud_suffix(const std::string& cloud_suffix)
 {
     const std::regex rexpr("^(z[0-9]+.)?(privatelink.)?blob(.preprod)?.core.(windows.net|usgovcloudapi.net|chinacloudapi.cn)$");
     return std::regex_match(cloud_suffix, rexpr);
+}
+
+static inline
+bool is_valid_cachedir(const std::string& cachedir)
+{
+    struct stat statbuf;
+
+    if (cachedir.empty()) {
+        AZLogDebug("cachedir is empty");
+        return false;
+    }
+
+    if (::stat(cachedir.c_str(), &statbuf) != 0) {
+        AZLogWarn("stat() failed for cachedir {}: {}",
+                  cachedir, strerror(errno));
+        return false;
+    }
+
+    if (!S_ISDIR(statbuf.st_mode)) {
+        AZLogWarn("cachedir {} is not a directory", cachedir);
+        return false;
+    }
+
+    /*
+     * Creating a probe file with the same mode as the actual backing
+     * files is the best way to test.
+     */
+    const std::string probe_file = cachedir + "/.probe";
+    const int fd = ::open(probe_file.c_str(), O_CREAT|O_TRUNC|O_RDWR, 0600);
+
+    if (fd < 0) {
+        AZLogWarn("Failed to create probe file {}, cannot use cachedir {}: {}",
+                  probe_file, cachedir, strerror(errno));
+        return false;
+    }
+
+    return true;
 }
 
 /**

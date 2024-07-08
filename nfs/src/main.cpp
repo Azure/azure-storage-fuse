@@ -245,6 +245,20 @@ bool aznfsc_cfg::parse_config_yaml()
             }
         }
 
+        if ((cachedir == nullptr) && config["cachedir"]) {
+            // Empty key is returned as "null".
+            if (config["cachedir"].as<std::string>() != "null") {
+                cachedir =
+                    ::strdup(config["cachedir"].as<std::string>().c_str());
+                if (!is_valid_cachedir(cachedir)) {
+                    throw YAML::Exception(
+                        config["cachedir"].Mark(),
+                        std::string("Invalid cachedir: ") +
+                        std::string(cachedir));
+                }
+            }
+        }
+
         if ((readdir_maxcount == -1) && config["readdir_maxcount"]) {
             readdir_maxcount = config["readdir_maxcount"].as<int>();
         }
@@ -325,6 +339,7 @@ void aznfsc_cfg::set_defaults_and_sanitize()
     AZLogDebug("account = {}", account);
     AZLogDebug("container = {}", container);
     AZLogDebug("cloud_suffix = {}", cloud_suffix);
+    AZLogDebug("cachedir = {}", cachedir ? cachedir : "");
     AZLogDebug("===== config end =====");
 }
 
