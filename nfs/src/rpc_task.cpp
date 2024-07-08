@@ -487,6 +487,7 @@ void rpc_task::run_readfile()
                        //rpc_api.readfile_task.get_size_with_readahead());
                        rpc_api.readfile_task.get_size());
 
+
     /*
      * Now go through the byte chunk vector to see if the buffers are populated.
      * If the chunks are empty, we will issue parallel read calls to fetch the data.
@@ -494,12 +495,19 @@ void rpc_task::run_readfile()
     const size_t size = bytes_vector.size();
     bool reads_issued = false;
 
+    // Set the in_use flag of the mebuf that we obtained for the above byte chunks.
+#if 0
+    for (size_t i = 0; i < size; i++)
+    {
+	 bytes_vector[i].get_membuf()->set_inuse();
+    }
+#endif
     /*
      * First check if the requested data is present in the cache excluding the
      * readahead data. If yes, send response to caller and do not try to issue reads
      * for remaining chunks.
      */
-    size_t idx = 0;
+//    size_t idx = 0;
     size_t data_length_in_cache = 0;
     for (size_t i = 0; i < size; i++)
     {
@@ -508,7 +516,7 @@ void rpc_task::run_readfile()
             data_length_in_cache += bytes_vector[i].length;
             if (data_length_in_cache >= rpc_api.readfile_task.get_size())
             {
-                idx = i;
+  //              idx = i;
                 // This means all the data is present in the cache.
                 goto send_response;
             }
@@ -539,6 +547,7 @@ send_response:
      */
     if (!reads_issued)
     {
+	#if 0
         // Free the chunks if any was allocated for readahead since we don't plan on filling those.
         for (size_t i = idx+1; i < size; i++)
         {
@@ -548,6 +557,7 @@ send_response:
                 readfile_handle->release(bytes_vector[i].offset, bytes_vector[i].length);
             }
         }
+	#endif
         AZLogDebug("*************All data read from cache********");
         send_readfile_response(0 /* success status */);
     }
@@ -598,7 +608,8 @@ void rpc_task::send_readfile_response(int status)
 		   return;
 	   }
 
-            iov[i].iov_base = (void*)bytes_vector[i].buffer;
+            //iov[i].iov_base = (void*)bytes_vector[i].buffer;
+            iov[i].iov_base = (void*)bytes_vector[i].get_buffer();
             iov[i].iov_len = bytes_vector[i].length;
 
             //memcpy(temp, bytes_vector[i].buffer, bytes_vector[i].length);
@@ -607,7 +618,8 @@ void rpc_task::send_readfile_response(int status)
         }
         else
         {
-            iov[i].iov_base = (void*)bytes_vector[i].buffer;
+            //iov[i].iov_base = (void*)bytes_vector[i].buffer;
+            iov[i].iov_base = (void*)bytes_vector[i].get_buffer();
             iov[i].iov_len = remaining_size;
             // memcpy(temp, bytes_vector[i].buffer, remaining_size);
             remaining_size = 0;
@@ -632,8 +644,6 @@ struct readfile_context
         task(task_),
         bc(bc_)
     {}
-
-//    readfile_context():task(nullptr), bc(nullptr) {}
 };
 
 static void readfile_callback(
@@ -716,13 +726,20 @@ void rpc_task::readfile_from_server(struct bytes_chunk &bc)
         args.count = bc.length;
 
         //assert(args.offset == rpc_api.readfile_task.get_offset());
-        
+        /*
+	 * Now we are going to use the buffer of the bytes_chunk object, hence get a lock
+         * on it so that other reads can't modify it.
+	 * This will block till the lock is obtained.
+	 * This will be freed when the response is sent back to the caller.
+	 */
+        bc.get_membuf()->set_locked();
         AZLogDebug("Issuing read to backend at offset: {} length: {}",args.offset, args.count);
 
         if (rpc_nfs3_read_task(
                     get_rpc_ctx(), /* This will round robin request across connections */
                     readfile_callback,
-                    bc.buffer,
+                    //bc.buffer,
+                    bc.get_buffer(),
                     bc.length,
                     &args,
                     ctx) == NULL)
@@ -752,6 +769,16 @@ void rpc_task::free_rpc_task()
         break;
     case FUSE_READ:
         readfile_completed = false;
+    // Decrement the in_use flag of the mebuf that we incremented.
+    for (size_t i = 0; i <  bytes_vector.size(); i++)
+    {
+            auto ino = rpc_api.readfile_task.get_inode();
+            auto readfile_handle = get_client()->get_nfs_inode_from_ino(ino)->filecache_handle;
+	    // TODO: This chunk should not be released, just doing for perf test..
+	    readfile_handle->release(bytes_vector[i].offset, bytes_vector[i].length);
+	    bytes_vector[i].get_membuf()->clear_locked();
+	    bytes_vector[i].get_membuf()->clear_inuse();
+    }
         bytes_vector.clear();
     default :
         break;
