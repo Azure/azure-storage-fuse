@@ -45,7 +45,7 @@ import (
 	"github.com/pbnjay/memory"
 )
 
-type Stream2 struct {
+type Stream struct {
 	internal.BaseComponent
 	BlockSize      int64
 	BufferSize     uint64 // maximum number of blocks allowed to be stored for a file
@@ -54,7 +54,7 @@ type Stream2 struct {
 	StreamOnly     bool // parameter used to check if its pure streaming
 }
 
-type StreamOptions2 struct {
+type StreamOptions struct {
 	BlockSize      uint64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
 	BufferSize     uint64 `config:"buffer-size-mb" yaml:"buffer-size-mb,omitempty"`
 	CachedObjLimit uint64 `config:"max-buffers" yaml:"max-buffers,omitempty"`
@@ -71,32 +71,32 @@ const (
 	mb         = 1024 * 1024
 )
 
-var _ internal.Component = &Stream2{}
+var _ internal.Component = &Stream{}
 
-func (st *Stream2) Name() string {
+func (st *Stream) Name() string {
 	return compStream
 }
 
-func (st *Stream2) SetName(name string) {
+func (st *Stream) SetName(name string) {
 	st.BaseComponent.SetName(name)
 }
 
-func (st *Stream2) SetNextComponent(nc internal.Component) {
+func (st *Stream) SetNextComponent(nc internal.Component) {
 	st.BaseComponent.SetNextComponent(nc)
 }
 
-func (st *Stream2) Priority() internal.ComponentPriority {
+func (st *Stream) Priority() internal.ComponentPriority {
 	return internal.EComponentPriority.LevelMid()
 }
 
-func (st *Stream2) Start(ctx context.Context) error {
+func (st *Stream) Start(ctx context.Context) error {
 	log.Trace("Starting component : %s", st.Name())
 	return nil
 }
 
-func (st *Stream2) Configure(_ bool) error {
+func (st *Stream) Configure(_ bool) error {
 	log.Trace("Stream::Configure : %s", st.Name())
-	conf := StreamOptions2{}
+	conf := StreamOptions{}
 
 	err := config.UnmarshalKey(compStream, &conf)
 	if err != nil {

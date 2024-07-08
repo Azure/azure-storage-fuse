@@ -82,7 +82,7 @@ type BlockCache struct {
 	maxDiskUsageHit bool            // Flag to indicate if we have hit max disk usage
 	noPrefetch      bool            // Flag to indicate if prefetch is disabled
 	prefetchOnOpen  bool            // Start prefetching on file open call instead of waiting for first read
-	stream          *Stream2
+	stream          *Stream
 	lazyWrite       bool           // Flag to indicate if lazy write is enabled
 	fileCloseOpt    sync.WaitGroup // Wait group to wait for all async close operations to complete
 }
