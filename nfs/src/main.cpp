@@ -435,7 +435,7 @@ static void aznfsc_ll_init(void *userdata,
     AZLogDebug("proto_major = {}", conn->proto_major);
     AZLogDebug("proto_minor = {}", conn->proto_minor);
     AZLogDebug("max_write = {}", conn->max_write);
-    AZLogDebug("max_read = {}", conn->max_write);
+    AZLogDebug("max_read = {}", conn->max_read);
     AZLogDebug("max_readahead = {}", conn->max_readahead);
     AZLogDebug("capable = 0x{:x}", conn->capable);
     AZLogDebug("want = 0x{:x}", conn->want);
