@@ -778,6 +778,19 @@ allocate_only_chunk:
      * while we are traversing it.
      */
     for (const auto& chunk : chunkvec) {
+
+        /*
+         * All the membufs that we return to the caller, we increment the
+         * inuse count for each of them. Once the caller is done using those
+         * (writing application data by writers and reading blob data into it
+         * by readers) they must decrease the inuse count by clear_inuse().
+         * This is done to make sure a membuf is skipped by clear() if it has
+         * ongoing IOs.
+         */
+        if (action == scan_action::SCAN_ACTION_GET) {
+            chunk.alloc_buffer->set_inuse();
+        }
+
         if (chunk.is_empty) {
             /*
              * Other than when we are adding cache chunks, we should never come
@@ -810,14 +823,6 @@ allocate_only_chunk:
                 _extent_right = (chunk.offset + chunk.length);
                 AZLogDebug("_extent_right: {}", _extent_right);
             }
-
-            /*
-             * An empty membuf will be updated by the caller, set it locked
-             * to avoid any races due to multiple threads reading different
-             * parts of the membuf.
-             * Caller must unlock this once the membuf is populated with data.
-             */
-            chunk.alloc_buffer->set_locked();
         }
     }
 
@@ -969,6 +974,120 @@ void bytes_chunk_cache::drop(uint64_t offset, uint64_t length)
     }
 }
 
+void bytes_chunk_cache::clear()
+{
+    AZLogInfo("[{}] clear() called, backing_file_name={}",
+              fmt::ptr(this), backing_file_name);
+
+    /*
+     * We hold the bytes_chunk_cache lock and go over all the bytes_chunk to
+     * see if they can be freed. Following bytes_chunk cannot be freed:
+     * 1. If it's marked dirty, i.e., it has data which needs to be sync'ed to
+     *    the Blob. This is application data which need to be written to the
+     *    Blob and freeing the bytes_chunk w/o that will cause data consistency
+     *    issues as we have already completed these writes to the application.
+     * 2. If it's locked, i.e., it currently has some IO ongoing. If the
+     *    ongoing IO is reading data from Blob into the cache, we actually
+     *    do not care, but if the lock is held for writing application data
+     *    into the membuf then we cannot free it.
+     *
+     * Since bytes_chunk_cache::get() increases the inuse count of all membufs
+     * returned, and it does that while holding the bytes_chunk_cache::lock, we
+     * can safely remove from chunkmap if inuse/dirty/locked are not set.
+     */
+    const std::unique_lock<std::mutex> _lock(lock);
+
+    for (auto it = chunkmap.cbegin(), next_it = it;
+         it != chunkmap.cend();
+         it = next_it) {
+        ++next_it;
+        const struct bytes_chunk *bc = &(it->second);
+        const struct membuf *mb = bc->get_membuf();
+
+        /*
+         * Possibly under IO.
+         * It could be writer writing application data into the membuf, or
+         * reader reading Blob data into the membuf. For the read case we don't
+         * really care but we cannot distinguish between the two.
+         *
+         * TODO: Currently this means we also don't invalidate membufs which
+         *       may be fetched for read. Technically these shouldn't be
+         *       skipped.
+         */
+        if (mb->is_inuse()) {
+            AZLogInfo("[{}] skipping as membuf(offset={}, length={}) is inuse",
+                      fmt::ptr(this), mb->offset, mb->length);
+            continue;
+        }
+
+        /*
+         * Not under use, cannot be locked.
+         * Note that users are supposed to drop the inuse count only after
+         * grabbing the membuf lock.
+         */
+        assert(!mb->is_locked());
+
+        /*
+         * Has data to be written to Blob.
+         * Cannot safely drop this from the cache.
+         */
+        if (mb->is_dirty()) {
+            AZLogInfo("[{}] skipping as membuf(offset={}, length={}) is dirty",
+                      fmt::ptr(this), mb->offset, mb->length);
+            continue;
+        }
+
+        AZLogDebug("[{}] deleting membuf(offset={}, length={})",
+                   fmt::ptr(this), mb->offset, mb->length);
+
+        /*
+         * Release the chunk.
+         * This will release the membuf (munmap() it in case of file-backed
+         * cache and delete it for heap backed cache). At this point the membuf
+         * is guaranteed to be not in use since we checked the inuse count
+         * above.
+         */
+        chunkmap.erase(it);
+    }
+
+    if (!chunkmap.empty()) {
+        AZLogInfo("[{}] Skipping delete for backing_file_name={}, as chunkmap "
+                  "not empty", fmt::ptr(this), backing_file_name);
+        return;
+    }
+
+    /*
+     * If all chunks are released, delete the backing file in case of
+     * file-backed caches.
+     */
+    if (backing_file_fd != -1) {
+        const int ret = ::close(backing_file_fd);
+        if (ret != 0) {
+            AZLogError("close(fd={}) failed: {}",
+                    backing_file_fd, strerror(errno));
+            assert(0);
+        } else {
+            AZLogInfo("Backing file {} closed, fd={}",
+                    backing_file_name, backing_file_fd);
+        }
+        backing_file_fd = -1;
+        backing_file_len = 0;
+    }
+
+    assert(backing_file_len == 0);
+
+    if (!backing_file_name.empty()) {
+        const int ret = ::unlink(backing_file_name.c_str());
+        if ((ret != 0) && (errno != ENOENT)) {
+            AZLogError("unlink({}) failed: {}",
+                    backing_file_name, strerror(errno));
+            assert(0);
+        } else {
+            AZLogInfo("Backing file {} deleted", backing_file_name);
+        }
+    }
+}
+
 /**
  * Generate a random number in the range [min, max].
  */
@@ -1014,6 +1133,12 @@ static void cache_read(bytes_chunk_cache& cache,
         }
         prev_chunk_right_edge = e.offset + e.length;
         assert(r >= prev_chunk_right_edge);
+
+        /*
+         * All membufs MUST be returned with inuse incremented.
+         */
+        assert(e.get_membuf()->is_inuse());
+        e.get_membuf()->clear_inuse();
     }
 
     assert(total_length == length);
@@ -1052,6 +1177,12 @@ static void cache_write(bytes_chunk_cache& cache,
         }
         prev_chunk_right_edge = e.offset + e.length;
         assert(r >= prev_chunk_right_edge);
+
+        /*
+         * All membufs MUST be returned with inuse incremented.
+         */
+        assert(e.get_membuf()->is_inuse());
+        e.get_membuf()->clear_inuse();
     }
 
     assert(total_length == length);
@@ -1094,9 +1225,9 @@ do { \
     assert(chunk.offset == start); \
     assert(chunk.length == end-start); \
     assert(chunk.is_empty); \
-    /* empty membufs MUST be returned with lock held */ \
-    assert(chunk.get_membuf()->is_locked()); \
-    chunk.get_membuf()->set_unlocked(); \
+    /* All membufs MUST be returned with inuse incremented */ \
+    assert(chunk.get_membuf()->is_inuse()); \
+    chunk.get_membuf()->clear_inuse(); \
 } while (0)
 
 #define ASSERT_EXISTING(chunk, start, end) \
@@ -1104,6 +1235,9 @@ do { \
     assert(chunk.offset == start); \
     assert(chunk.length == end-start); \
     assert(!(chunk.is_empty)); \
+    /* All membufs MUST be returned with inuse incremented */ \
+    assert(chunk.get_membuf()->is_inuse()); \
+    chunk.get_membuf()->clear_inuse(); \
 } while (0)
 
 #define ASSERT_EXTENT(left, right) \

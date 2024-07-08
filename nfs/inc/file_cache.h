@@ -91,6 +91,15 @@ struct membuf
      */
     ~membuf()
     {
+        // inuse membuf must never be destroyed.
+        assert(!is_inuse());
+
+        // dirty membuf must never be destroyed.
+        assert(!is_dirty());
+
+        // locked membuf must never be destroyed.
+        assert(!is_locked());
+
         if (is_file_backed()) {
             if (allocated_buffer) {
                 /*
@@ -207,9 +216,19 @@ struct membuf
                    offset, offset+length, backing_file_fd);
     }
 
-    bool is_locked()
+    bool is_locked() const
     {
         return (flag & MB_Flag::Locked);
+    }
+
+    /**
+     * Try to lock the membuf and return whether we were able to lock it.
+     * If membuf was already locked, this will return false and caller doesn't
+     * have the lock, else caller will have the lock and it'll return true.
+     */
+    bool try_lock()
+    {
+        return !(flag.fetch_or(MB_Flag::Locked) & MB_Flag::Locked);
     }
 
     /**
@@ -225,7 +244,7 @@ struct membuf
                    offset, offset+length, backing_file_fd);
 
         // Common case, not locked, lock w/o waiting.
-        while (flag.fetch_or(MB_Flag::Locked) & MB_Flag::Locked) {
+        while (!try_lock()) {
             std::unique_lock<std::mutex> _lock(lock);
 
             /*
@@ -251,7 +270,7 @@ struct membuf
     /**
      * Unlock after a prior successful call to set_locked().
      */
-    void set_unlocked()
+    void clear_locked()
     {
         {
             std::unique_lock<std::mutex> _lock(lock);
@@ -266,8 +285,11 @@ struct membuf
     }
 
     /**
-     * A  membuf is marked dirty when the membuf data is updated, making it
-     * out of sync with the Blob contents for the range.
+     * A membuf is marked dirty when the membuf data is updated, making it
+     * out of sync with the Blob contents for the range. This should be done
+     * by writer threads which write application data into membuf. A dirty
+     * membuf must be written to the Blob before it can be freed. Once written,
+     * it should be marked not-dirty by calling clear_dirty().
      */
     bool is_dirty() const
     {
@@ -288,6 +310,22 @@ struct membuf
 
         AZLogDebug("Clear dirty membuf [{}, {}), fd={}",
                    offset, offset+length, backing_file_fd);
+    }
+
+    void set_inuse()
+    {
+        inuse++;
+    }
+
+    void clear_inuse()
+    {
+        assert(inuse > 0);
+        inuse--;
+    }
+
+    bool is_inuse() const
+    {
+        return (inuse > 0);
     }
 
 private:
@@ -330,7 +368,7 @@ private:
      *    the membuf itself but it'll find the membuf locked, so set_locked()
      *    will cause the thread to wait on 'cv'. Once the current reader
      *    updates the membuf, it marks it "uptodate" by calling set_uptodate()
-     *    and then unlock it by calling set_unlocked(). Other readers waiting
+     *    and then unlock it by calling clear_locked(). Other readers waiting
      *    for the lock will get woken up and they will discover that the
      *    membuf is uptodate by checking is_uptodate() and they can then read
      *    that data into their application data buffers.
@@ -369,6 +407,13 @@ private:
 
     // For managing threads waiting on MB_Flag::Locked.
     std::condition_variable cv;
+
+    /*
+     * Incremented by bytes_chunk_cache::get() before returning a membuf to
+     * the caller. Caller must decrement it once they are done reading or
+     * writing the membuf.
+     */
+    std::atomic<uint32_t> inuse = 0;
 };
 
 /**
@@ -448,7 +493,12 @@ public:
      */
     struct membuf *get_membuf() const
     {
-        return alloc_buffer.get();
+        struct membuf *mb = alloc_buffer.get();
+
+        // membuf must have valid alloc_buffer at all times.
+        assert(mb != nullptr);
+
+        return mb;
     }
 
     /**
@@ -632,10 +682,6 @@ public:
      *   cached data for that chunk and the caller must arrange to read that
      *   data from the file.
      *
-     * Note: All empty membufs returned by get() will have the membuf lock
-     *       held. Caller must arrange to fill it with reqd data and then
-     *       unlock.
-     *
      * TODO: Reuse buffer from prev/adjacent chunk if it has space. Currently
      *       we will allocate a new buffer, this works but is wasteful.
      *       e.g.,
@@ -648,6 +694,26 @@ public:
      *               solution to reuse buffer for all cases, but the most
      *               common case is now addressed! Leaving the TODO for
      *               tracking the generalized case.
+     *
+     * Note: Caller must do the following for correctly using the returned
+     *       bytes_chunks:
+     *
+     *       1. Since get() increments the inuse count for each membuf it
+     *          returns, caller must call clear_inuse() once it's done
+     *          performing IO on the membuf. For writers it'll be after they
+     *          are done copying application data to the membuf and marking
+     *          it dirty, and for readers it'll be after they are done reading
+     *          data from the Blob into the membuf. Since membufs for which
+     *          is_empty is not true, are not read, for them the inuse count
+     *          can be dropped right after return. Once the caller drops inuse
+     *          count bytes_chunk_cache::clear() can potentially remove the
+     *          membuf from the cache, so the caller must make sure that it
+     *          drops inuse count only after correctly setting the state,
+     *          i.e., call set_dirty() after writing to the membuf.
+     *       2. IOs can be performed to the membuf only after locking it using
+     *          set_locked(). This must be done before calling clear_inuse().
+     *          Once the IO completes, call clear_locked() followed by
+     *          clear_inuse().
      */
     std::vector<bytes_chunk> get(uint64_t offset,
                                  uint64_t length,
@@ -707,57 +773,11 @@ public:
     /**
      * Clear the cache by releasing all chunks from the cache.
      * For file-backed cache, this also releases all the file blocks.
+     * This will be called for invalidating the cache for a file, typically
+     * when we detect that file has changed (through getattr or preop attrs
+     * telling that mtime is different than what we have cached).
      */
-    void clear()
-    {
-        const std::unique_lock<std::mutex> _lock(lock);
-
-        /*
-         * Release all the chunks.
-         * This will release all membufs (munmap() them in case of file-backed
-         * caches and delete them for heap backed caches). Membufs which are
-         * referred by other users will be freed when the last ref is dropped,
-         * but any IO they perform cannot affect the new incarnation of this
-         * cache as we delete the file (below), new incarnation of cache will
-         * have new file created.
-         */
-        chunkmap.clear();
-
-        if (backing_file_fd != -1) {
-            const int ret = ::close(backing_file_fd);
-            if (ret != 0) {
-                AZLogError("close(fd={}) failed: {}",
-                           backing_file_fd, strerror(errno));
-                assert(0);
-            } else {
-                AZLogInfo("Backing file {} closed, fd={}",
-                           backing_file_name, backing_file_fd);
-            }
-            backing_file_fd = -1;
-            backing_file_len = 0;
-        }
-
-        assert(backing_file_len == 0);
-
-        /*
-         * Delete the backing file for file-backed caches.
-         * This is important as any existing users who have membufs mmap()ed
-         * to this existing file and still performing IOs, they cannot affect
-         * the new incarnation of the cache. The old file blocks will be freed
-         * when all the existing mappings are unmapped by the membufs when they
-         * get destroyed.
-         */
-        if (!backing_file_name.empty()) {
-            const int ret = ::unlink(backing_file_name.c_str());
-            if ((ret != 0) && (errno != ENOENT)) {
-                AZLogError("unlink({}) failed: {}",
-                           backing_file_name, strerror(errno));
-                assert(0);
-            } else {
-                AZLogInfo("Backing file {} deleted", backing_file_name);
-            }
-        }
-    }
+    void clear();
 
     /**
      * Drop memory cache for all chunks in this bytes_chunk_cache.
