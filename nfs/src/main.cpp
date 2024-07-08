@@ -32,7 +32,6 @@ static const struct fuse_opt aznfsc_opts[] =
     AZNFSC_OPT("--cloud-suffix=%s", cloud_suffix),
     AZNFSC_OPT("--port=%u", port),
     AZNFSC_OPT("--nconnect=%u", nconnect),
-    AZNFSC_OPT("--rsize=%u", rsize),
     FUSE_OPT_END
 };
 
@@ -317,7 +316,7 @@ void aznfsc_cfg::set_defaults_and_sanitize()
     if (rsize == -1)
         rsize = 1048576;
     if (wsize == -1)
-        wsize = 5242880;//wsize = 1048576;
+    	wsize = 1048576;
     if (retrans == -1)
         retrans = 3;
     if (timeo == -1)
@@ -375,9 +374,6 @@ void aznfsc_cfg::set_defaults_and_sanitize()
 static void aznfsc_ll_init(void *userdata,
                            struct fuse_conn_info *conn)
 {
-	AZLogDebug("aznfsc_ll_init");
-        //conn->max_read = 5242880;
-        conn->max_read = 2097152;
     /*
      * TODO: Kernel conveys us the various filesystem limits by passing the
      *       fuse_conn_info pointer. If we need to reduce any of the limits
@@ -654,8 +650,6 @@ static void aznfsc_ll_open(fuse_req_t req,
     fi->nonseekable = 0;
     //fi->parallel_direct_writes = 1;
     //fi->noflush = 0;
-	AZLogInfo("Setting max read to 5mb");
-   // fi->max_read = 5242880;
 
     fuse_reply_open(req, fi);
 }
@@ -666,10 +660,8 @@ static void aznfsc_ll_read(fuse_req_t req,
                            off_t off,
                            struct fuse_file_info *fi)
 {
-    AZLogInfo("aznfsc_ll_read( ino={}, size={}, offset={}",
-                ino, size, off);
-    //AZLogInfo("aznfsc_ll_read(req={}, ino={}, size={}, offset={}",
-      //         fmt::ptr(req), ino, size, off);
+    AZLogDebug("aznfsc_ll_read(req={}, ino={}, size={}, offset={}",
+                fmt::ptr(req), ino, size, off);
 
     struct nfs_client *client = get_nfs_client_from_fuse_req(req);
     client->read(req, ino, size, off, fi);
@@ -1199,7 +1191,6 @@ int main(int argc, char *argv[])
     se = fuse_session_new(&args, &aznfsc_ll_ops, sizeof(aznfsc_ll_ops),
                           &nfs_client::get_instance());
 
-//	fuse_session_set_max_read(se,5242880);
     if (se == NULL) {
         goto err_out1;
     }

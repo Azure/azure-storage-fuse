@@ -454,7 +454,7 @@ private:
      * TODO: This should be accessed with a lock.
      */
     int num_of_reads_issued_to_backend;
-
+    
     /*
      * A single RPC read task can result in issuing multiple read calls to the
      * backend server and hence we should wait till we complete all these reads
@@ -631,12 +631,14 @@ public:
 
     void run_readdirplus();
 
-    // This function is responsible for setting up the members of read_task.
+    // This function is responsible for setting up the members of readtask.
     void init_read(fuse_req *request,
                    fuse_ino_t inode,
                    size_t size,
                    off_t offset,
                    struct fuse_file_info *file);
+
+    void run_readfile();
 
     void set_fuse_req(fuse_req *request)
     {
@@ -696,8 +698,6 @@ public:
     void reply_iov(struct iovec* iov, int count)
     {
         fuse_reply_iov(req, iov, count);
-        //readfile_completed = false;
-        //bytes_vector.clear();
         free_rpc_task();
     }
 

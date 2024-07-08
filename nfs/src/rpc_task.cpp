@@ -495,19 +495,10 @@ void rpc_task::run_readfile()
     const size_t size = bytes_vector.size();
     bool reads_issued = false;
 
-    // Set the in_use flag of the mebuf that we obtained for the above byte chunks.
-#if 0
-    for (size_t i = 0; i < size; i++)
-    {
-	 bytes_vector[i].get_membuf()->set_inuse();
-    }
-#endif
     /*
      * First check if the requested data is present in the cache excluding the
-     * readahead data. If yes, send response to caller and do not try to issue reads
-     * for remaining chunks.
+     * readahead data. If yes, send response to caller.
      */
-//    size_t idx = 0;
     size_t data_length_in_cache = 0;
     for (size_t i = 0; i < size; i++)
     {
@@ -516,8 +507,6 @@ void rpc_task::run_readfile()
             data_length_in_cache += bytes_vector[i].length;
             if (data_length_in_cache >= rpc_api.readfile_task.get_size())
             {
-  //              idx = i;
-                // This means all the data is present in the cache.
                 goto send_response;
             }
         }
@@ -547,17 +536,6 @@ send_response:
      */
     if (!reads_issued)
     {
-	#if 0
-        // Free the chunks if any was allocated for readahead since we don't plan on filling those.
-        for (size_t i = idx+1; i < size; i++)
-        {
-            if (bytes_vector[i].is_empty)
-            {
-                bytes_vector.erase(bytes_vector.begin() + i);
-                readfile_handle->release(bytes_vector[i].offset, bytes_vector[i].length);
-            }
-        }
-	#endif
         AZLogDebug("*************All data read from cache********");
         send_readfile_response(0 /* success status */);
     }
@@ -602,33 +580,30 @@ void rpc_task::send_readfile_response(int status)
 
         if (remaining_size >= bytes_vector[i].length)
         {
-	    if ( (i==0) && (bytes_vector[i].length == 0))
-	   {
-		   reply_iov(nullptr, 0);
-		   return;
-	   }
+	   /*
+	    * If the first chunk itself is empty, then there is no need to
+	    * look further, so just send empty response as we reach here only
+	    * in the case of success.
+	    */
+	    if ((i==0) && (bytes_vector[i].length == 0))
+	    {
+		reply_iov(nullptr, 0);
+		return;
+	    }
 
-            //iov[i].iov_base = (void*)bytes_vector[i].buffer;
             iov[i].iov_base = (void*)bytes_vector[i].get_buffer();
             iov[i].iov_len = bytes_vector[i].length;
-
-            //memcpy(temp, bytes_vector[i].buffer, bytes_vector[i].length);
-            //temp += bytes_vector[i].length;
             remaining_size -= bytes_vector[i].length;
         }
         else
         {
-            //iov[i].iov_base = (void*)bytes_vector[i].buffer;
             iov[i].iov_base = (void*)bytes_vector[i].get_buffer();
             iov[i].iov_len = remaining_size;
-            // memcpy(temp, bytes_vector[i].buffer, remaining_size);
             remaining_size = 0;
-            //temp += remaining_size;
             break;
         }
     }
 
-    //reply_buf(rpc_api.readfile_task.get_buffer(), (temp - rpc_api.readfile_task.get_buffer()));
     // Send response to caller.
     reply_iov(iov, count);
 }
@@ -656,7 +631,6 @@ static void readfile_callback(
 
     rpc_task *task = ctx->task;
     assert (task->num_of_reads_issued_to_backend > 0);
-    //assert (task->num_of_reads_issued_to_backend == 1);
 
     struct bytes_chunk *bc = ctx->bc;
     assert(bc != nullptr);
@@ -769,16 +743,16 @@ void rpc_task::free_rpc_task()
         break;
     case FUSE_READ:
         readfile_completed = false;
-    // Decrement the in_use flag of the mebuf that we incremented.
-    for (size_t i = 0; i <  bytes_vector.size(); i++)
-    {
+    	// Decrement the in_use flag of the mebuf that we incremented.
+    	for (size_t i = 0; i <  bytes_vector.size(); i++)
+    	{
             auto ino = rpc_api.readfile_task.get_inode();
             auto readfile_handle = get_client()->get_nfs_inode_from_ino(ino)->filecache_handle;
 	    // TODO: This chunk should not be released, just doing for perf test..
 	    readfile_handle->release(bytes_vector[i].offset, bytes_vector[i].length);
 	    bytes_vector[i].get_membuf()->clear_locked();
 	    bytes_vector[i].get_membuf()->clear_inuse();
-    }
+    	}
         bytes_vector.clear();
     default :
         break;
@@ -958,7 +932,7 @@ static void readdirplus_callback(
 
     if (status == 0) {
         const struct entryplus3 *entry =
-                res->READDIRPLUS3res_u.resok.reply.entries;
+            res->READDIRPLUS3res_u.resok.reply.entries;
         const bool eof = res->READDIRPLUS3res_u.resok.reply.eof;
         int64_t eof_cookie = -1;
 
