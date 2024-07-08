@@ -660,10 +660,12 @@ static void readfile_callback(
         bc->is_empty = false;
     }
     
-    // TODO: Put a lock around this. All the operations after this should be behind the lock?
+    // Take a lock here since multiple readfile's issued can try modifying the below members.
+
+    std::unique_lock<std::shared_mutex> lock(task->readfile_task_lock);
+    {
     task->num_of_reads_issued_to_backend--;
 
-    // TODO: Lock around readfile_completed
     if (task->readfile_completed)
     {
         /*
@@ -677,8 +679,12 @@ static void readfile_callback(
     if (status || (task->num_of_reads_issued_to_backend == 0))
     {
         task->readfile_completed = true;
-        task->send_readfile_response(status);
+	goto send_response;
     }
+    } // End of lock
+
+send_response:
+    task->send_readfile_response(status);
 }
 
 void rpc_task::readfile_from_server(struct bytes_chunk &bc)
@@ -749,7 +755,7 @@ void rpc_task::free_rpc_task()
             auto ino = rpc_api.readfile_task.get_inode();
             auto readfile_handle = get_client()->get_nfs_inode_from_ino(ino)->filecache_handle;
 	    // TODO: This chunk should not be released, just doing for perf test..
-	    readfile_handle->release(bytes_vector[i].offset, bytes_vector[i].length);
+	    //readfile_handle->release(bytes_vector[i].offset, bytes_vector[i].length);
 	    bytes_vector[i].get_membuf()->clear_locked();
 	    bytes_vector[i].get_membuf()->clear_inuse();
     	}

@@ -445,6 +445,8 @@ private:
      */
     std::vector<bytes_chunk> bytes_vector;
 
+    std::shared_mutex readfile_task_lock;
+
     /*
      * Total number of parallel reads issued to backend.
      * A single RPC read task can result in issuing multiple read calls to the
@@ -452,6 +454,7 @@ private:
      * to keep track of these issued reads.
      * This is valid only for reads.
      * TODO: This should be accessed with a lock.
+     * This should be updated after taking the lock readfile_task_lock.
      */
     int num_of_reads_issued_to_backend;
     
@@ -462,8 +465,10 @@ private:
      * One this is set to True, the response can be safely returned to the caller.
      * This is valid only for reads.
      * TODO: This should be accessed with a lock.
+     * This should be updated after taking the lock readfile_task_lock.
      */
     bool readfile_completed;
+    
 protected:
     /*
      * Operation type.
@@ -478,6 +483,20 @@ public:
         index(_index),
         num_of_reads_issued_to_backend(0),
         readfile_completed(false)
+    {
+    }
+
+    /*
+     * Move constructor.
+     * Need since we have defined the mutext here.
+     */
+    rpc_task(rpc_task&& tsk) :
+	   client(tsk.client),
+	   req(tsk.req),
+	   index(tsk.index),
+	   num_of_reads_issued_to_backend(tsk.num_of_reads_issued_to_backend),
+	   readfile_completed(tsk.readfile_completed),
+       	   rpc_api(tsk.rpc_api)
     {
     }
 
