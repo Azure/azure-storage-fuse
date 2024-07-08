@@ -811,13 +811,13 @@ stages:
         timeoutInMinutes: 120
         strategy:
           matrix:
-            RHEL-7.5:
-              agentName: "blobfuse-rhel7_5"
-              vmImage: 'RHEL-7.5'
-              fuselib: 'fuse3-devel'
-              fuse-version: 'fuse3'
-              tags: 'fuse3'
-              container: 'test-cnt-rhel-75'
+            # RHEL-7.5:
+            #   agentName: "blobfuse-rhel7_5"
+            #   vmImage: 'RHEL-7.5'
+            #   fuselib: 'fuse3-devel'
+            #   fuse-version: 'fuse3'
+            #   tags: 'fuse3'
+            #   container: 'test-cnt-rhel-75'
             RHEL-8.6:
               agentName: "blobfuse-rhel8_6"
               vmImage: 'RHEL-8.6'
