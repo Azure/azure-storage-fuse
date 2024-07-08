@@ -422,10 +422,13 @@ func (bc *BlockCache) FlushFile(options internal.FlushFileOptions) error {
 	options.Handle.Lock()
 	defer options.Handle.Unlock()
 
-	err := bc.commitBlocks(options.Handle)
-	if err != nil {
-		log.Err("BlockCache::FlushFile : Failed to commit blocks for %s [%s]", options.Handle.Path, err.Error())
-		return err
+	// call commit blocks only if the handle is dirty
+	if options.Handle.Flags.IsSet(handlemap.HandleFlagDirty) {
+		err := bc.commitBlocks(options.Handle)
+		if err != nil {
+			log.Err("BlockCache::FlushFile : Failed to commit blocks for %s [%s]", options.Handle.Path, err.Error())
+			return err
+		}
 	}
 
 	return nil
@@ -916,6 +919,7 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 	options.Handle.Lock()
 	defer options.Handle.Unlock()
 
+	log.Debug("BlockCache::WriteFile : Writing: offset %v, %v bytes from %s", options.Offset, len(options.Data), options.Handle.Path)
 	// Keep getting next blocks until you read the request amount of data
 	dataWritten := int(0)
 	for dataWritten < len(options.Data) {
@@ -926,6 +930,7 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 			return dataWritten, err
 		}
 
+		log.Debug("BlockCache::WriteFile : writing to block %v, offset %v", block.id, options.Offset)
 		// Copy the incoming data to block
 		writeOffset := uint64(options.Offset) - block.offset
 		bytesWritten := copy(block.data[writeOffset:], options.Data[dataWritten:])
@@ -1016,6 +1021,19 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 			<-block.state
 			block.flags.Clear(BlockFlagDownloading)
 			block.Unblock()
+		} else if block.flags.IsSet(BlockFlagUploading) {
+			// If the block is being staged, then wait till it is uploaded,
+			// and then write to the same block and move it back to cooking queue
+			log.Debug("BlockCache::getOrCreateBlock : Waiting for the block %v to upload", block.id)
+			<-block.state
+			block.flags.Clear(BlockFlagUploading)
+			block.flags.Clear(BlockFlagSynced) //clearing the BlockFlagSynced flag since the block has been staged and will be used for write again
+			block.Unblock()
+
+			if block.node != nil {
+				_ = handle.Buffers.Cooked.Remove(block.node)
+			}
+			block.node = handle.Buffers.Cooking.PushBack(block)
 		}
 	}
 
@@ -1037,6 +1055,7 @@ func (bc *BlockCache) stageBlocks(handle *handlemap.Handle, cnt int) error {
 		block := node.Value.(*Block)
 
 		if block.IsDirty() {
+			log.Debug("BlockCache::stageBlocks : Sending block %v for upload", block.id)
 			bc.lineupUpload(handle, block, listMap)
 			cnt--
 		}
