@@ -196,7 +196,11 @@ func (bc *BlockCache) TempCacheCleanup() error {
 func (bc *BlockCache) Configure(_ bool) error {
 	log.Trace("BlockCache::Configure : %s", bc.Name())
 	if common.IsStream {
-		bc.stream.Configure(true)
+		err := bc.stream.Configure(true)
+		if err != nil {
+			log.Err("BlockCache:Stream::Configure : config error [invalid config attributes]")
+			return fmt.Errorf("config error in %s [%s]", bc.Name(), err.Error())
+		}
 	}
 	conf := BlockCacheOptions{}
 	err := config.UnmarshalKey(bc.Name(), &conf)
