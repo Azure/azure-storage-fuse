@@ -522,6 +522,10 @@ private:
      */
     std::shared_ptr<membuf> alloc_buffer;
 
+    // Length allocated.
+    //const uint64_t alloc_buffer_len = 0;
+    uint64_t alloc_buffer_len;
+
 public:
     // Offset from the start of file this chunk represents.
     uint64_t offset = 0;

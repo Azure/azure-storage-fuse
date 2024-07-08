@@ -484,8 +484,8 @@ void rpc_task::run_readfile()
 
     bytes_vector = readfile_handle->get(
                        rpc_api.readfile_task.get_offset(),
-                       rpc_api.readfile_task.get_size_with_readahead());
-                       //rpc_api.readfile_task.get_size());
+                       //rpc_api.readfile_task.get_size_with_readahead());
+                       rpc_api.readfile_task.get_size());
 
     /*
      * Now go through the byte chunk vector to see if the buffers are populated.
@@ -592,6 +592,12 @@ void rpc_task::send_readfile_response(int status)
 
         if (remaining_size >= bytes_vector[i].length)
         {
+	    if ( (i==0) && (bytes_vector[i].length == 0))
+	   {
+		   reply_iov(nullptr, 0);
+		   return;
+	   }
+
             iov[i].iov_base = (void*)bytes_vector[i].buffer;
             iov[i].iov_len = bytes_vector[i].length;
 
@@ -640,7 +646,7 @@ static void readfile_callback(
 
     rpc_task *task = ctx->task;
     assert (task->num_of_reads_issued_to_backend > 0);
-    assert (task->num_of_reads_issued_to_backend == 1);
+    //assert (task->num_of_reads_issued_to_backend == 1);
 
     struct bytes_chunk *bc = ctx->bc;
     assert(bc != nullptr);
@@ -662,7 +668,7 @@ static void readfile_callback(
             auto readfile_handle = task->get_client()->get_nfs_inode_from_ino(ino)->filecache_handle;
             
             // If the chunk buffer size is larger than the recieved response, truncate it.
-            readfile_handle->release(res->READ3res_u.resok.count, bc->length-res->READ3res_u.resok.count);
+            readfile_handle->release(bc->offset + res->READ3res_u.resok.count, bc->length-res->READ3res_u.resok.count);
         }
 
         // Update the byte chunk fields. TODO: This is mostly not needed, verify.
