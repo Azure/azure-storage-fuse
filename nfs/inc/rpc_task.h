@@ -366,14 +366,13 @@ struct rpc_task
 
 private:
     /*
-     * std::thread that will run this async rpc task.
-     * This will be nullptr for sync rpc tasks.
+     * Flag to identify async tasks.
      * All rpc_tasks start sync, but the caller can make an rpc_task
      * async by calling set_async_function(). The std::function object
      * passed to set_async_function() will be run asynchronously by the
-     * rpc_task. This should call the run*() method at the least.
+     * rpc_task. That should call the run*() method at the least.
      */
-    std::thread *thread = nullptr;
+    std::atomic<bool> is_async_task = false;
 
     // Put a cap on how many async tasks we can start.
     static std::atomic<int> async_slots;
@@ -415,7 +414,8 @@ public:
     bool set_async_function(
             std::function<void(struct rpc_task*)> func)
     {
-        assert(!thread);
+        // Must not already be async.
+        assert(!is_async());
         assert(func);
 
         if (--async_slots < 0) {
@@ -430,7 +430,14 @@ public:
             return false;
         }
 
-        thread = new std::thread([this, func]()
+        /*
+         * Mark this task async.
+         * This has to be done before calling func() as it may check it
+         * for the rpc_task.
+         */
+        is_async_task = true;
+
+        std::thread thread([this, func]()
         {
             func(this);
             /*
@@ -441,15 +448,15 @@ public:
         });
 
         /*
-         * We detach from this thread to avoid having to join for it, as
+         * We detach from this thread to avoid having to join it, as
          * that causes problems with some caller calling free_rpc_task()
          * from inside func(). Moreover this is more like the sync tasks
          * where the completion context doesn't worry whether the issuing
          * thread has completed.
          * Since we don't have a graceful exit scenario, waiting for the
-         * async threads may not be necessary.
+         * async threads is not really necessary.
          */
-        thread->detach();
+        thread.detach();
 
         return true;
     }
@@ -459,7 +466,7 @@ public:
      */
     bool is_async() const
     {
-        return (thread != nullptr);
+        return is_async_task;
     }
 
     /*
@@ -681,8 +688,15 @@ private:
     // Stack containing index into the rpc_task_list vector.
     std::stack<int> free_task_index;
 
-    // List of RPC tasks which is used to run the task.
-    std::vector<struct rpc_task> rpc_task_list;
+    /*
+     * List of RPC tasks which is used to run the task.
+     * Making this a vector of rpc_task* instead of rpc_task saves any
+     * restrictions on the members of rpc_task. With rpc_task being the
+     * element type, it needs to be move constructible, so we cannot have
+     * atomic members f.e.
+     * Anyway these rpc_task once allocated live for the life of the program.
+     */
+    std::vector<struct rpc_task*> rpc_task_list;
 
     // Condition variable to wait for free task index availability.
     std::condition_variable_any cv;
@@ -699,7 +713,7 @@ private:
         for (int i = 0; i < MAX_OUTSTANDING_RPC_TASKS; i++)
         {
             free_task_index.push(i);
-            rpc_task_list.emplace_back(client, i);
+            rpc_task_list.emplace_back(new rpc_task(client, i));
         }
 
         // There should be MAX_OUTSTANDING_RPC_TASKS index available.
@@ -722,7 +736,7 @@ public:
     struct rpc_task *alloc_rpc_task()
     {
         const int free_index = get_free_idx();
-        struct rpc_task *task = &rpc_task_list[free_index];
+        struct rpc_task *task = rpc_task_list[free_index];
 
         assert(task->client != nullptr);
         assert(task->index == free_index);
@@ -768,17 +782,7 @@ public:
 
     void free_rpc_task(struct rpc_task *task)
     {
-        /*
-         * For async tasks we need to reap the thread and free the std::thread
-         * object. Note that by the time free_rpc_task() is called the async
-         * thread must have completed execution, so the join() won't block.
-         */
-        if (task->thread) {
-            // Async threads should run detached.
-            assert(!task->thread->joinable());
-            delete task->thread;
-            task->thread = nullptr;
-        }
+        task->is_async_task = false;
 
         release_free_index(task->get_index());
     }
