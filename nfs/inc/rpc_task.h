@@ -375,15 +375,6 @@ private:
      */
     std::thread *thread = nullptr;
 
-    /*
-     * This can be used to find out if thread above has completed execution.
-     * This is mostly useful for asserting.
-     *
-     * XXX: I want this to be std::atomic<bool> but since it's not movable
-     *      we cannot make a vector of rpc_tasks.
-     */
-    volatile bool is_thread_completed = false;
-
     // Put a cap on how many async tasks we can start.
     static std::atomic<int> async_slots;
 protected:
@@ -441,16 +432,24 @@ public:
 
         thread = new std::thread([this, func]()
         {
-            assert(!is_thread_completed);
             func(this);
-            is_thread_completed = true;
-
             /*
              * We increase the async_slots here and not in free_rpc_task()
              * as the task is technically done, it just needs to be reaped.
              */
             async_slots++;
         });
+
+        /*
+         * We detach from this thread to avoid having to join for it, as
+         * that causes problems with some caller calling free_rpc_task()
+         * from inside func(). Moreover this is more like the sync tasks
+         * where the completion context doesn't worry whether the issuing
+         * thread has completed.
+         * Since we don't have a graceful exit scenario, waiting for the
+         * async threads may not be necessary.
+         */
+        thread->detach();
 
         return true;
     }
@@ -775,25 +774,10 @@ public:
          * thread must have completed execution, so the join() won't block.
          */
         if (task->thread) {
-            assert(task->is_thread_completed);
-            assert(task->thread->joinable());
-
-            const uint64_t startmsec = get_current_msecs();
-            task->thread->join();
-            const uint64_t endmsec = get_current_msecs();
-
-            /*
-             * Crude assert to verify that thread was indeed not running.
-             * 100msec should be fair check. If it fails, we need to check
-             * if the thread was indeed running and if not, need to relax
-             * this slightly more.
-             */
-            assert((endmsec - startmsec) < 100);
-
+            // Async threads should run detached.
+            assert(!task->thread->joinable());
             delete task->thread;
             task->thread = nullptr;
-
-            task->is_thread_completed = false;
         }
 
         release_free_index(task->get_index());
