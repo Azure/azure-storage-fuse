@@ -7,9 +7,16 @@
 #include <stack>
 #include <shared_mutex>
 #include <vector>
-#include "nfs_client.h"
+#include <thread>
 
+#include "nfs_client.h"
+#include "log.h"
+
+// Maximum number of simultaneous rpc tasks (sync + async).
 #define MAX_OUTSTANDING_RPC_TASKS 65536
+
+// Maximum number of simultaneous async rpc tasks.
+#define MAX_ASYNC_RPC_TASKS 1024
 
 /**
  * LOOKUP RPC task definition.
@@ -337,6 +344,8 @@ private:
 
 struct rpc_task
 {
+    friend class rpc_task_helper;
+
     /*
      * The client for which the context is created.
      * This is initialized when the rpc_task is added to the free tasks list
@@ -355,6 +364,28 @@ struct rpc_task
     // This is the index of the object in the rpc_task_list vector.
     const int index;
 
+private:
+    /*
+     * std::thread that will run this async rpc task.
+     * This will be nullptr for sync rpc tasks.
+     * All rpc_tasks start sync, but the caller can make an rpc_task
+     * async by calling set_async_function(). The std::function object
+     * passed to set_async_function() will be run asynchronously by the
+     * rpc_task. This should call the run*() method at the least.
+     */
+    std::thread *thread = nullptr;
+
+    /*
+     * This can be used to find out if thread above has completed execution.
+     * This is mostly useful for asserting.
+     *
+     * XXX: I want this to be std::atomic<bool> but since it's not movable
+     *      we cannot make a vector of rpc_tasks.
+     */
+    volatile bool is_thread_completed = false;
+
+    // Put a cap on how many async tasks we can start.
+    static std::atomic<int> async_slots;
 protected:
     /*
      * Operation type.
@@ -382,6 +413,56 @@ public:
     } rpc_api;
 
     // TODO: Add valid flag here for APIs?
+
+    /**
+     * Set a function to be run by this rpc_task asynchronously.
+     * Calling set_async_function() makes an rpc_task async.
+     * The callback function takes two parameters:
+     * 1. rpc_task pointer.
+     * 2. Optional arbitrary data that caller may want to pass.
+     */
+    bool set_async_function(
+            std::function<void(struct rpc_task*, void*)> func,
+                          void *arg = nullptr)
+    {
+        assert(!thread);
+        assert(func);
+
+        if (--async_slots < 0) {
+            ++async_slots;
+            AZLogError("Too many async rpc tasks: {}", async_slots.load());
+            assert(0);
+            /*
+             * TODO: Add a condition_variable where caller can wait and
+             *       will be woken up once it can create an async task.
+             *       Till then caller can wait for try again.
+             */
+            return false;
+        }
+
+        thread = new std::thread([this, func, arg]()
+        {
+            assert(!is_thread_completed);
+            func(this, arg);
+            is_thread_completed = true;
+
+            /*
+             * We increase the async_slots here and not in free_rpc_task()
+             * as the task is technically done, it just needs to be reaped.
+             */
+            async_slots++;
+        });
+
+        return true;
+    }
+
+    /**
+     * Check if this rpc_task is an async task.
+     */
+    bool is_async() const
+    {
+        return (thread != nullptr);
+    }
 
     /*
      * init/run methods for the LOOKUP RPC.
@@ -647,6 +728,8 @@ public:
 
         assert(task->client != nullptr);
         assert(task->index == free_index);
+        // Every rpc_task starts as sync.
+        assert(!task->is_async());
 
         task->req = nullptr;
 
@@ -687,6 +770,31 @@ public:
 
     void free_rpc_task(struct rpc_task *task)
     {
+        /*
+         * For async tasks we need to reap the thread and free the std::thread
+         * object. Note that by the time free_rpc_task() is called the async
+         * thread must have completed execution, so the join() won't block.
+         */
+        if (task->thread) {
+            assert(task->is_thread_completed);
+            assert(task->thread->joinable());
+
+            const uint64_t startmsec = get_current_msecs();
+            task->thread->join();
+            const uint64_t endmsec = get_current_msecs();
+
+            /*
+             * Crude assert to verify that thread was indeed not running.
+             * 100msec should be fair check. If it fails, we need to check
+             * if the thread was indeed running and if not, need to relax
+             * this slightly more.
+             */
+            assert((endmsec - startmsec) < 100);
+
+            delete task->thread;
+            task->thread = nullptr;
+        }
+
         release_free_index(task->get_index());
     }
 };

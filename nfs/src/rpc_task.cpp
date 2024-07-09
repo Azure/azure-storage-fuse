@@ -3,6 +3,9 @@
 
 #define RSTATUS(r) ((r) ? (r)->status : NFS3ERR_SERVERFAULT)
 
+/* static */
+std::atomic<int> rpc_task::async_slots = MAX_ASYNC_RPC_TASKS;
+
 void rpc_task::init_lookup(fuse_req* request,
                            const char* name,
                            fuse_ino_t parent_ino)
