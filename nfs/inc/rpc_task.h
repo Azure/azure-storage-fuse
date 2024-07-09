@@ -422,8 +422,7 @@ public:
      * 2. Optional arbitrary data that caller may want to pass.
      */
     bool set_async_function(
-            std::function<void(struct rpc_task*, void*)> func,
-                          void *arg = nullptr)
+            std::function<void(struct rpc_task*)> func)
     {
         assert(!thread);
         assert(func);
@@ -440,10 +439,10 @@ public:
             return false;
         }
 
-        thread = new std::thread([this, func, arg]()
+        thread = new std::thread([this, func]()
         {
             assert(!is_thread_completed);
-            func(this, arg);
+            func(this);
             is_thread_completed = true;
 
             /*
