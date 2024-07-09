@@ -788,12 +788,12 @@ stages:
             timeoutInMinutes: 60
             strategy:
               matrix:
-                RHEL-7.5:
-                  DistroVer: "RHEL-7.5"
-                  Description: "Red Hat Enterprise Linux 7.5"
-                  AgentName: "blobfuse-rhel7_5"
-                  ContainerName: "test-cnt-rhel-75"
-                  tags: 'fuse3'
+                # RHEL-7.5:
+                #   DistroVer: "RHEL-7.5"
+                #   Description: "Red Hat Enterprise Linux 7.5"
+                #   AgentName: "blobfuse-rhel7_5"
+                #   ContainerName: "test-cnt-rhel-75"
+                #   tags: 'fuse3'
                 RHEL-8.6:
                   DistroVer: "RHEL-8.6"
                   Description: "Red Hat Enterprise Linux 8.6"
