@@ -792,6 +792,8 @@ public:
 
             delete task->thread;
             task->thread = nullptr;
+
+            task->is_thread_completed = false;
         }
 
         release_free_index(task->get_index());
