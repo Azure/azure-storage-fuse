@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1720596587471,
+  "lastUpdate": 1720607189057,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -567,6 +567,68 @@ window.BENCHMARK_DATA = {
           {
             "name": "read_40GB",
             "value": 15.980463981628418,
+            "unit": "seconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Vikas Bhansali",
+            "username": "vibhansa-msft",
+            "email": "64532198+vibhansa-msft@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "8f767d0251fc23bddb7dc73f3a2a8e792f39412d",
+          "message": "Remove RHEL 7.5 from nightly and artifacts. (#1448)\n\n* Remove RHLE7.5 from nightly and artifact tests.",
+          "timestamp": "2024-07-10T07:11:56Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/8f767d0251fc23bddb7dc73f3a2a8e792f39412d"
+        },
+        "date": 1720607188830,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "write_1GB",
+            "value": 1.3766791820526123,
+            "unit": "seconds"
+          },
+          {
+            "name": "write_10GB",
+            "value": 5.21386456489563,
+            "unit": "seconds"
+          },
+          {
+            "name": "write_100GB",
+            "value": 50.57881689071655,
+            "unit": "seconds"
+          },
+          {
+            "name": "write_40GB",
+            "value": 21.18743872642517,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_1GB",
+            "value": 0.8525791168212891,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_10GB",
+            "value": 4.442208290100098,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_100GB",
+            "value": 45.432809352874756,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_40GB",
+            "value": 17.23154091835022,
             "unit": "seconds"
           }
         ]
