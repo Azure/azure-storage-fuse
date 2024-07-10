@@ -48,9 +48,6 @@ components:
 # Libfuse configuration
 libfuse:
   default-permission: 0777|0666|0644|0444 <default permissions to be presented for block blobs>
-  attribute-expiration-sec: <time kernel can cache inode attributes (in sec). Default - 120 sec>
-  entry-expiration-sec: <time kernel can cache directory listing attributes (in sec). Default - 120 sec>
-  negative-entry-expiration-sec: <time kernel can cache attributes of non existent paths (in sec). Default - 120 sec>
   direct-io: true|false <enable to bypass the kernel cache>
  
 # Block cache related configuration
@@ -67,19 +64,13 @@ block_cache:
 file_cache:
   # Required
   path: <path to local disk cache>
-
   # Optional 
   timeout-sec: <default cache eviction timeout (in sec). Default - 120 sec>
   max-size-mb: <maximum cache size allowed. Default - 80% of free disk space>
-  sync-to-flush: true|false <sync call to a file will force upload of the contents to storage account>
-  refresh-sec: <number of seconds after which compare lmt of file in local cache and container and refresh file if container has the latest copy>
-  ignore-sync: true|false <sync call will be ignored and locally cached file will not be deleted>
-  hard-limit: true|false <if set to true, file-cache will not allow read/writes to file which exceed the configured limits>
   
 # Attribute cache related configuration
 attr_cache:
   timeout-sec: <time attributes can be cached (in sec). Default - 120 sec>
-  no-symlinks: true|false <to improve performance disable symlink support. symlinks will be treated like regular files.>
   
 # Azure storage configuration
 azstorage:
@@ -95,7 +86,6 @@ azstorage:
   # OR
   appid: <storage account app id / client id for MSI>
   resid: <storage account resource id for MSI>
-  objid: <object id for MSI>
   # OR
   tenantid: <storage account tenant id for SPN>
   clientid: <storage account client id for SPN>

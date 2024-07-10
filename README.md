@@ -167,7 +167,6 @@ To learn about a specific command, just include the name of the command (For exa
     * `AZURE_STORAGE_SAS_TOKEN`: Specifies the SAS token to use for authentication.
 - Managed Identity auth:
     * `AZURE_STORAGE_IDENTITY_CLIENT_ID`: Only one of these three parameters are needed if multiple identities are present on the system.
-    * `AZURE_STORAGE_IDENTITY_OBJECT_ID`: Only one of these three parameters are needed if multiple identities are present on the system.
     * `AZURE_STORAGE_IDENTITY_RESOURCE_ID`: Only one of these three parameters are needed if multiple identities are present on the system.
     * `MSI_ENDPOINT`: Specifies a custom managed identity endpoint, as IMDS may not be available under some scenarios. Uses the `MSI_SECRET` parameter as the `Secret` header.
     * `MSI_SECRET`: Specifies a custom secret for an alternate managed identity endpoint.
