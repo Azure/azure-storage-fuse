@@ -807,7 +807,7 @@ stages:
               artifactName: 'blobfuse2'
             displayName: 'Publish Artifacts'
             
-      - job: Set_4.1
+      - job: Set_4_1
         timeoutInMinutes: 120
         strategy:
           matrix:
@@ -879,7 +879,7 @@ stages:
               artifactName: 'blobfuse2'
             displayName: 'Publish Artifacts'
 
-      - job: Set_4.2
+      - job: Set_4_2
         timeoutInMinutes: 120
         strategy:
           matrix:
