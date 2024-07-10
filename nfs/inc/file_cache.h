@@ -23,6 +23,36 @@
 #error "Need to audit use of asserts in file_cache"
 #endif
 
+/*
+ * Uncomment this if you want to use the tailroom from last chunk for
+ * new get() requests asking for data right after the last chunk.
+ * f.e., let's say application made following sequence of get() requests:
+ * 1. get(0, 131072) - due to 128K read request.
+ * 2. Now it reads from the backend and backend returned eof after say
+ *    10 bytes. Caller will call release(10, 131062) to trim the last
+ *    chunk for correctly representing the file size. This will not free
+ *    the membuf but just reduce the bytes_chunk's length.
+ * 3. Now caller makes the call get(10, 131062).
+ *
+ * With UTILIZE_TAILROOM_FROM_LAST_MEMBUF defined, the bytes_chunk that
+ * we return will still point to the existing membuf. Without the define
+ * this new bytes_chunk will get its own membuf of 131062 bytes.
+ *
+ * Though it saves space but it complicates things wrt setting of uptodate
+ * MB_Flag. Since the uptodate flag is a property of the membuf the 2nd
+ * caller who gets [10, 1310272) should not treat it as uptodat as it's
+ * not (only first 10 bytes are uptodate).
+ * Since this will not happen much in practice, for now keep it disabled
+ * so that we don't have to worry about this complexity.
+ *
+ * IMPORTANT: If this is enabled we no longer have the simple rule that all
+ *            bytes_chunk with is_empty true refer to "full membuf". If we
+ *            ever enable this define we need to think about that too.
+ *
+ */
+//#define UTILIZE_TAILROOM_FROM_LAST_MEMBUF
+
+
 namespace aznfsc {
 
 // W/o jumbo blocks, 5TB is the max file size we can support.
@@ -343,7 +373,7 @@ private:
      *    the reader/writer is guaranteed that as long as it does not destroy
      *    the returned bytes_chunk, the membuf will not be freed. Note that
      *    consistent read/write access needs some more synchronization, read
-     *    along.
+     *    on.
      * 2. A thread trying to write to the membuf must get exclusive access to
      *    the membuf. It can get that by calling set_locked(). set_locked()
      *    will block if the lock is already held by some other thread and will
@@ -353,12 +383,18 @@ private:
      *    cases:
      *     i) A writer writes user passed data to the membuf.
      *    ii) A reader reads data from the Blob and writes it into the membuf.
-     *
-     *    IMPORTANT: All empty membufs returned by bytes_chunk_cache::get()
-     *               are already lock by bytes_chunk_cache::get(), on behalf
-     *               of the caller. This avoids some races due to parallel
-     *               readers trying to read different parts of the membuf.
-     * 3. A newly created membuf does not have valid data and hence a reader
+     * 3. Membufs also have an inuse count which indicates if there could be
+     *    an ongoing IO (whether there is actually an ongoing IO can be
+     *    found by using at the locked bit). The purpose of inuse count is to
+     *    just mark the membuf such that clear() doesn't clear membufs which
+     *    might soon afterwards have IOs issued.
+     *    bytes_chunk_cache::get() will bump the inuse count of all membufs
+     *    it returns since the caller most likely might perform IO on the
+     *    membuf. It's caller's responsibility to clear the inuse by calling
+     *    clear_inuse() once they are done performing the IO. This should be
+     *    done after performing the IO, and releasing the lock taken for the
+     *    IO.
+     * 4. A newly created membuf does not have valid data and hence a reader
      *    should not read from it. Such an membuf is "not uptodate" and a
      *    reader must first read the corresponding file data into the membuf,
      *    and mark the membuf "uptodate" after successfully reading the data
@@ -372,20 +408,44 @@ private:
      *    for the lock will get woken up and they will discover that the
      *    membuf is uptodate by checking is_uptodate() and they can then read
      *    that data into their application data buffers.
-     * 4. If a reader finds that an membuf is uptodate (by is_uptodate()), it
+     *
+     *    IMPORTANT RULES FOR UPDATING THE "UPTODATE" BIT
+     *    ===============================================
+     *    - Any reader that gets a bytes_chunk whose membuf is not uptodate,
+     *      must try to read data from the Blob, but only mark it uptodate if
+     *      is_empty was also true for the bytes_chunk. This is because
+     *      is_empty will be true for bytes_chunk representing "full membuf"
+     *      (see UTILIZE_TAILROOM_FROM_LAST_MEMBUF) and hence they only can
+     *      correctly mark the membuf as uptodate. Other readers, if they get
+     *      the lock first, they can issue the Blob read but they cannot mark
+     *      the membuf as uptodate. Note that the first caller to read a byte
+     *      range will always get an is_empty bytes_chunk and it should read
+     *      into the membuf but some other caller might get the lock first and
+     *      hence they may read partial data into the membuf, which will be
+     *      overwritten by the caller with is_empty true.
+     *      So, only if maps_full_membuf() returns true for a bytes_chunk, the
+     *      reader can mark the membuf uptodate.
+     *
+     *    - Writers must set the uptodate bit only if they write the entire
+     *      membuf (maps_full_membuf() returns true), else they should not
+     *      change the uptodate bit.
+     *
+     * 5. If a reader finds that a membuf is uptodate (by is_uptodate()), it
      *    can return the membuf data to the application. Note that some writer
      *    may be writing to the data simultaneously and reader may get a mix
      *    of old and new data. This is fine as per POSIX.
-     * 5. Once an membuf is marked uptodate it remains uptodate for the life
+     * 6. Once an membuf is marked uptodate it remains uptodate for the life
      *    of the membuf, unless one of the following happens:
      *     i) We detect via file mtime change that our cached copy is no longer
-     *        valid. In this case the entire cache for that file ic clear()ed
-     *        which causes all bytes_chunk and hence all membuf to be freed.
-     *    ii) An NFS write to the Blob fails.
-     * 6. A writer must mark the membuf dirty by calling set_dirty(), after it
+     *        valid. In this case the entire cache for that file is clear()ed
+     *        which causes all bytes_chunk and hence all membufs to be freed.
+     *    ii) An NFS read from the given portion of Blob fails.
+     * 7. A writer must mark the membuf dirty by calling set_dirty(), after it
      *    updates the membuf data. Dirty membufs must be synced with the Blob
      *    at some later time and once those writes to Blob succeed, the membuf
-     *    dirty flag must be cleared by calling clear_dirty().
+     *    dirty flag must be cleared by calling clear_dirty(). Note that a
+     *    dirty membuf is still uptodate since it has the latest content for
+     *    the reader.
      */
     std::mutex lock;
 
@@ -519,6 +579,16 @@ public:
     }
 
     /**
+     * Does this bytes_chunk cover the "full membuf"?,
+     * i.e., following is true:
+     * (buffer_offset == 0 && length == alloc_buffer_len)
+     */
+    bool maps_full_membuf() const
+    {
+        return ((buffer_offset == 0) && (length == alloc_buffer_len));
+    }
+
+    /**
      * Constructor to create a brand new chunk with newly allocated buffer.
      * This chunk is the sole owner of alloc_buffer and 'buffer_offset' is 0.
      * Later as this chunk is split or returned to the caller through get(),
@@ -573,6 +643,8 @@ public:
      */
     bytes_chunk() = default;
 
+
+#ifdef UTILIZE_TAILROOM_FROM_LAST_MEMBUF
     /**
      * Return available space at the end of buffer.
      * This is usually helpful when a prev read() was short and could not fill
@@ -587,6 +659,7 @@ public:
 
         return tailroom;
     }
+#endif
 
     /**
      * Drop data cached in memory, for this bytes_chunk.

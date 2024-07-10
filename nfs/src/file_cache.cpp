@@ -218,8 +218,10 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
     // Convenience variable to access the current chunk in the map.
     bytes_chunk *bc;
 
+#ifdef UTILIZE_TAILROOM_FROM_LAST_MEMBUF
     // Last chunk (when we are getting byte range right after the last chunk).
     bytes_chunk *last_bc = nullptr;
+#endif
 
     // Temp variables to hold chunk details for newly added chunk.
     uint64_t chunk_offset, chunk_length;
@@ -355,7 +357,9 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
                     AZLogDebug("lookback_it: [{},{})",
                                bc->offset, bc->offset + bc->length);
                     lookback_it = it;
+#ifdef UTILIZE_TAILROOM_FROM_LAST_MEMBUF
                     last_bc = bc;
+#endif
                 }
 
                 _extent_right = next_offset + remaining_length;
@@ -738,6 +742,7 @@ allocate_only_chunk:
         AZLogDebug("(only/last chunk) [{},{})",
                    next_offset, next_offset + remaining_length);
 
+#ifdef UTILIZE_TAILROOM_FROM_LAST_MEMBUF
         if (last_bc && (last_bc->tailroom() > 0)) {
             chunk_length = std::min(last_bc->tailroom(), remaining_length);
 
@@ -762,6 +767,7 @@ allocate_only_chunk:
             remaining_length -= chunk_length;
             next_offset += chunk_length;
         }
+#endif
 
         if (remaining_length) {
             AZLogDebug("(new last chunk) [{},{})",
@@ -792,6 +798,17 @@ allocate_only_chunk:
         }
 
         if (chunk.is_empty) {
+#ifndef UTILIZE_TAILROOM_FROM_LAST_MEMBUF
+            /*
+             * Empty bytes_chunk should only correspond to full membufs, but
+             * not if we use tailroom from previous chunks to provide space
+             * for new chunks added at the end.
+             */
+            assert(chunk.maps_full_membuf());
+            assert(chunk.buffer_offset == 0);
+            assert(chunk.length == chunk.alloc_buffer->length);
+#endif
+
             /*
              * Other than when we are adding cache chunks, we should never come
              * here for allocating new chunk buffer.
@@ -1599,8 +1616,12 @@ do { \
 
     ASSERT_EXTENT(0, 20);
     ASSERT_NEW(v[0], 6, 20);
+#ifdef UTILIZE_TAILROOM_FROM_LAST_MEMBUF
     // Must use the alloc_buffer from last chunk.
     assert(v[0].get_buffer() == (bc.get_buffer() + 6));
+#else
+    assert(v[0].buffer_offset == 0);
+#endif
 
     for (auto e : v) {
         PRINT_CHUNK(e);
@@ -1624,7 +1645,11 @@ do { \
     ASSERT_EXISTING(v[0], 5, 6);
     assert(v[0].get_buffer() == (bc.get_buffer() + 5));
     ASSERT_EXISTING(v[1], 6, 20);
+#ifdef UTILIZE_TAILROOM_FROM_LAST_MEMBUF
     assert(v[1].get_buffer() == (bc.get_buffer() + 6));
+#else
+    assert(v[1].buffer_offset == 0);
+#endif
     ASSERT_NEW(v[2], 20, 30);
 
     for (auto e : v) {
