@@ -27,10 +27,6 @@
 #  10. 'sdk-trace' has been removed with v2.3.0 release and setting log level to log_debug will auto enable these logs.
 # -----------------------------------------------------------------------------------------------------------------------
 
-# Common configurations
-allow-other: true|false <allow other users to access the mounted directory - used for FUSE and File Cache>
-nonempty: true|false <allow mounting on non-empty directory>
-
 # Logger configuration
 logging:
   type: syslog|silent|base <type of logger to be used by the system. silent = no logger, base = file based logger. Default - syslog>
@@ -44,11 +40,6 @@ components:
   - file_cache
   - attr_cache
   - azstorage
-
-# Libfuse configuration
-libfuse:
-  default-permission: 0777|0666|0644|0444 <default permissions to be presented for block blobs>
-  direct-io: true|false <enable to bypass the kernel cache>
  
 # Block cache related configuration
 block_cache:
@@ -67,10 +58,6 @@ file_cache:
   # Optional 
   timeout-sec: <default cache eviction timeout (in sec). Default - 120 sec>
   max-size-mb: <maximum cache size allowed. Default - 80% of free disk space>
-  
-# Attribute cache related configuration
-attr_cache:
-  timeout-sec: <time attributes can be cached (in sec). Default - 120 sec>
   
 # Azure storage configuration
 azstorage:
