@@ -256,7 +256,10 @@ struct membuf
      */
     bool try_lock()
     {
-        return !(flag.fetch_or(MB_Flag::Locked) & MB_Flag::Locked);
+	bool ret = !(flag.fetch_or(MB_Flag::Locked) & MB_Flag::Locked);
+	    AZLogDebug("try_lock::flag: {:x}", flag.load());
+	return ret;
+        //return !(flag.fetch_or(MB_Flag::Locked) & MB_Flag::Locked);
     }
 
     /**
@@ -284,8 +287,10 @@ struct membuf
                              [this]{ return !this->is_locked(); })) {
                 AZLogError("Timed out waiting for membuf lock, re-trying!");
             }
+	    AZLogDebug("set_locked::flag: {:x}", flag.load());
         }
 
+	    AZLogDebug("AFter while: flag: {:x}", flag.load());
         AZLogDebug("Successfully locked membuf [{}, {}), fd={}",
                    offset, offset+length, backing_file_fd);
 
@@ -302,7 +307,10 @@ struct membuf
     {
         {
             std::unique_lock<std::mutex> _lock(lock);
-            flag &= ~MB_Flag::Locked;
+         	
+            AZLogDebug("clear_locked:: Unlocking membuf [{}, {}), fd={}, flag {:x}",
+                       offset, offset+length, backing_file_fd, flag.load());
+	    flag &= ~MB_Flag::Locked;
 
             AZLogDebug("Unlocked membuf [{}, {}), fd={}",
                        offset, offset+length, backing_file_fd);

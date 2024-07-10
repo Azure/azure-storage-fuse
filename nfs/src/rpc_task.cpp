@@ -484,9 +484,7 @@ void rpc_task::run_readfile()
 
     bytes_vector = readfile_handle->get(
                        rpc_api.readfile_task.get_offset(),
-                       //rpc_api.readfile_task.get_size_with_readahead());
                        rpc_api.readfile_task.get_size());
-
 
     /*
      * Now go through the byte chunk vector to see if the buffers are populated.
@@ -495,6 +493,8 @@ void rpc_task::run_readfile()
     const size_t size = bytes_vector.size();
     bool reads_issued = false;
 
+    AZLogDebug("is_async: {}, size: {}, offset {}, num_of_chunks: {}",
+			    is_async(), rpc_api.readfile_task.get_size(), rpc_api.readfile_task.get_offset(), size);
     /*
      * First check if the requested data is present in the cache excluding the
      * readahead data. If yes, send response to caller.
@@ -543,6 +543,16 @@ send_response:
 
 void rpc_task::send_readfile_response(int status)
 {
+    // Do not send any response to fuse if this is an sync call since that will be issued only for readahead.
+    if (is_async())
+    {
+	    AZLogDebug(" This is a readahead task, no reply will be sent");
+	    // Free the task since we won't call the response.
+	    free_rpc_task();
+	    return;
+    }
+	
+    assert(!is_async());
     if (status)
     {
         // Non-zero status indicates failure, reply with error in such cases.
@@ -640,24 +650,34 @@ static void readfile_callback(
 
     auto res = (READ3res*)data;
 
-    AZLogDebug("readfile_callback:: Bytes read: {} eof: {}", res->READ3res_u.resok.count, res->READ3res_u.resok.eof);
+    AZLogDebug("readfile_callback:: is_async:{} Bytes read: {} eof: {}, requested_bytes: {} off: {}",
+		   task->is_async(),
+		   res->READ3res_u.resok.count, res->READ3res_u.resok.eof,
+		   bc->length,
+		   bc->offset);
 
     const int status = (task->succeeded(rpc_status, RSTATUS(res))) ? 0 : -nfsstat3_to_errno(RSTATUS(res));
 
+            auto ino = task->rpc_api.readfile_task.get_inode();
+            auto readfile_handle = task->get_client()->get_nfs_inode_from_ino(ino)->filecache_handle;
+            
     if (status == 0)
     {
         if (bc->length > res->READ3res_u.resok.count)
         {
-            auto ino = task->rpc_api.readfile_task.get_inode();
-            auto readfile_handle = task->get_client()->get_nfs_inode_from_ino(ino)->filecache_handle;
-            
             // If the chunk buffer size is larger than the recieved response, truncate it.
-            readfile_handle->release(bc->offset + res->READ3res_u.resok.count, bc->length-res->READ3res_u.resok.count);
+            readfile_handle->release(bc->offset + res->READ3res_u.resok.count, bc->length - res->READ3res_u.resok.count);
         }
 
         // Update the byte chunk fields. TODO: This is mostly not needed, verify.
         bc->length = res->READ3res_u.resok.count;
         bc->is_empty = false;
+    }
+    else
+    {
+	    assert(res->READ3res_u.resok.count == 0);
+	    // Release the buffer since we did not fill it.
+    	readfile_handle->release(bc->offset, bc->length);
     }
     
     // Take a lock here since multiple readfile's issued can try modifying the below members.
@@ -713,7 +733,7 @@ void rpc_task::readfile_from_server(struct bytes_chunk &bc)
 	 * This will be freed when the response is sent back to the caller.
 	 */
         bc.get_membuf()->set_locked();
-        AZLogDebug("Issuing read to backend at offset: {} length: {}",args.offset, args.count);
+        AZLogDebug("is_async: {} Issuing read to backend at offset: {} length: {}",is_async(), args.offset, args.count);
 
         if (rpc_nfs3_read_task(
                     get_rpc_ctx(), /* This will round robin request across connections */
@@ -749,6 +769,11 @@ void rpc_task::free_rpc_task()
         break;
     case FUSE_READ:
         readfile_completed = false;
+	 AZLogDebug("free_rpc_task:: id{} is_async: {} off: {}, bytes_vector size: {}",
+			 get_index(),
+		 is_async(),
+		 rpc_api.readfile_task.get_offset(),
+		 bytes_vector.size());
     	// Decrement the in_use flag of the mebuf that we incremented.
     	for (size_t i = 0; i <  bytes_vector.size(); i++)
     	{

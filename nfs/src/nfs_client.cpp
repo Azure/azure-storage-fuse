@@ -351,10 +351,23 @@ void nfs_client::read(
     off_t off,
     struct fuse_file_info *fi)
 {
-    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task();
+    struct rpc_task *tsk1 = rpc_task_helper->alloc_rpc_task();
 
-    tsk->init_readfile(req, ino, size, off, fi);
-    tsk->run_readfile();
+    tsk1->init_readfile(req, ino, size, off, fi);
+    tsk1->run_readfile();
+
+    // Now issue read ahead for this file.
+    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task();
+    auto readahead = 10485760; // 100MB
+    tsk->init_readfile(req, ino, readahead /* size */, size+off /* offset */, fi);
+
+
+    // This will call the task->run_readfile() in a seperate thread.
+    tsk->set_async_function([] (rpc_task *task) {
+        task->run_readfile();
+    });
+
+    //tsk->run_readfile();
 }
 
 /*
