@@ -131,19 +131,40 @@ func IsMountActive(path string) (bool, error) {
 
 // IsDirectoryEmpty is a utility function that returns true if the directory at that path is empty or not
 func IsDirectoryEmpty(path string) bool {
+	if !DirectoryExists(path) {
+		// Directory does not exists so safe to assume its empty
+		return true
+	}
+
 	f, _ := os.Open(path)
 	defer f.Close()
 
 	_, err := f.Readdirnames(1)
 	if err == io.EOF {
+		// There are no items in the directory
 		return true
 	}
 
-	if err != nil && err.Error() == "invalid argument" {
-		fmt.Println("Broken Mount : First Unmount ", path)
+	// There are some items in the directory
+	return false
+}
+
+func TempCacheCleanup(path string) error {
+	if !IsDirectoryEmpty(path) {
+		// List the first level children of the directory
+		dirents, err := os.ReadDir(path)
+		if err != nil {
+			// Failed to list, return back error
+			return err
+		}
+
+		// Delete all first level children with their hierarchy
+		for _, entry := range dirents {
+			os.RemoveAll(filepath.Join(path, entry.Name()))
+		}
 	}
 
-	return false
+	return nil
 }
 
 // DirectoryExists is a utility function that returns true if the directory at that path exists and returns false if it does not exist.

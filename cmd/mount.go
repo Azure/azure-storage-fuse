@@ -116,7 +116,20 @@ func (opt *mountOptions) validate(skipNonEmptyMount bool) error {
 			// Previous mount is in stale state so lets cleanup the state
 			log.Info("Mount::validate : Cleaning up stale mount")
 			if err = unmountBlobfuse2(opt.MountPath); err != nil {
-				return fmt.Errorf("directory is already mounted, unmount it manually")
+				return fmt.Errorf("directory is already mounted, unmount manually before remount.")
+			}
+
+			// Clean up the file-cache temp directory if any
+			var tempCachePath string
+			_ = config.UnmarshalKey("file_cache.path", &tempCachePath)
+
+			var cleanupOnStart bool
+			_ = config.UnmarshalKey("file_cache.cleanup-on-start", &cleanupOnStart)
+
+			if tempCachePath != "" && !cleanupOnStart {
+				if err = common.TempCacheCleanup(tempCachePath); err != nil {
+					return fmt.Errorf("failed to cleanup file cache [%s]", err.Error())
+				}
 			}
 		}
 	} else if !skipNonEmptyMount && !common.IsDirectoryEmpty(opt.MountPath) {
