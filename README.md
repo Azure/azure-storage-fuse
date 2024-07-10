@@ -10,7 +10,7 @@ Blobfuse2 is stable, and is ***supported by Microsoft*** provided that it is use
 ##  NOTICE
 - We have seen some customer issues around files getting corrupted when `streaming` is used in write mode. Kindly avoid using this feature for write while we investigate and resolve it.
 - You can now use block-cache instead of streaming for both read and write workflows, which offers much better performance compared to streaming. To enable `block-cache` instead of `streaming`, use `--block-cache` in CLI param or `block-cache` as component in config file instead of `streaming`.
-- Following the release of version 2.3.0, blobfuse no longer supports object-ID based OAuth for Managed Identity. Users requiring this feature must utilize CLI-based login and ensure the Azure CLI is installed on their system.
+- As of version 2.3.0, blobfuse has updated its authentication methods. For Managed Identity, Object-ID based OAuth is solely accessible via CLI-based login, requiring Azure CLI on the system. For a dependency-free option, users may utilize Application/Client-ID based authentication.
 ## Supported Platforms
 Visit [this](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2-Supported-Platforms) page to see list of supported linux distros.
 
