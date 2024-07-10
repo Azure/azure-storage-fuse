@@ -491,7 +491,8 @@ void rpc_task::run_readfile()
      * If the chunks are empty, we will issue parallel read calls to fetch the data.
      */
     const size_t size = bytes_vector.size();
-    bool reads_issued = false;
+    //bool reads_issued = false;
+    assert (num_of_reads_issued_to_backend == 0);
 
     AZLogDebug("is_async: {}, size: {}, offset {}, num_of_chunks: {}",
 			    is_async(), rpc_api.readfile_task.get_size(), rpc_api.readfile_task.get_offset(), size);
@@ -502,8 +503,9 @@ void rpc_task::run_readfile()
     size_t data_length_in_cache = 0;
     for (size_t i = 0; i < size; i++)
     {
-        if (!bytes_vector[i].is_empty)
+        if (bytes_vector[i].get_membuf()->is_uptodate())
         {
+	    // Data exists in the cache, we need not issue backend read.
             data_length_in_cache += bytes_vector[i].length;
             if (data_length_in_cache >= rpc_api.readfile_task.get_size())
             {
@@ -517,28 +519,64 @@ void rpc_task::run_readfile()
         }
     }
 
+    /*
+     * Hold an extra ref since we do not want to send the response
+     * before all the reads complete.
+     * It is ok to access this without a lock since this is the only thread
+     * at this point which will access this.
+     */
+    num_of_reads_issued_to_backend = 1;
+
     for (size_t i = 0; i < size; i++)
     {
-        if (bytes_vector[i].is_empty)
+	// One or more chunks don't have the requested data, issue read for those.
+        if (!bytes_vector[i].get_membuf()->is_uptodate())
         {
-            reads_issued = true;
             readfile_from_server(bytes_vector[i]);
+#if 0
+	    if (issued)
+	    {
+	    	reads_issued = issued;
+	    }
+	    else
+	    {
+		 //   num_of_reads_issued_to_backend--;
+	    }
+#endif
         }
     }
-    assert (reads_issued == true);
-
+   
+    // Drop the extra ref that we held under the lock.
+    {   
+    std::unique_lock<std::shared_mutex> lock(readfile_task_lock);
+    --num_of_reads_issued_to_backend;
+    if (num_of_reads_issued_to_backend == 0)
+    {
+        AZLogDebug("*************All data read from cache********");
+	    goto send_response;
+    }
+    else
+    {
+	    return;
+    }
+    }// End of lock
 send_response:
-    /*
+	assert (num_of_reads_issued_to_backend == 0);
+	send_readfile_response(0 /* success status */);
+#if 0
+   /*
      * If no reads were issued to the server, it means all the data is present in
      * the cache. So directly send the response back to the caller.
      * Otherwise we wait for all the reads to complete and fill the bytes chunk cache
      * and then send the response to caller.
      */
-    if (!reads_issued)
+    if (!reads_issued || (num_of_reads_issued_to_backend == 0))
     {
+	assert (num_of_reads_issued_to_backend == 0);
         AZLogDebug("*************All data read from cache********");
         send_readfile_response(0 /* success status */);
     }
+#endif
 }
 
 void rpc_task::send_readfile_response(int status)
@@ -553,6 +591,7 @@ void rpc_task::send_readfile_response(int status)
     }
 	
     assert(!is_async());
+    assert(num_of_reads_issued_to_backend == 0);
     if (status)
     {
         // Non-zero status indicates failure, reply with error in such cases.
@@ -671,7 +710,11 @@ static void readfile_callback(
 
         // Update the byte chunk fields. TODO: This is mostly not needed, verify.
         bc->length = res->READ3res_u.resok.count;
-        bc->is_empty = false;
+
+	if (bc->is_empty)
+	{
+		bc->get_membuf()->set_uptodate();
+	}
     }
     else
     {
@@ -679,11 +722,16 @@ static void readfile_callback(
 	    // Release the buffer since we did not fill it.
     	readfile_handle->release(bc->offset, bc->length);
     }
-    
-    // Take a lock here since multiple readfile's issued can try modifying the below members.
+   
+    /*
+     * Release the lock that we held on the membuf since the data is now written to it.
+     * The lock is needed only to write the data and not to just read it.
+     */
+    bc->get_membuf()->clear_locked();
 
-    std::unique_lock<std::shared_mutex> lock(task->readfile_task_lock);
+    // Take a lock here since multiple readfile's issued can try modifying the below members.
     {
+    std::unique_lock<std::shared_mutex> lock(task->readfile_task_lock);
     task->num_of_reads_issued_to_backend--;
 
     if (task->readfile_completed)
@@ -701,19 +749,22 @@ static void readfile_callback(
         task->readfile_completed = true;
 	goto send_response;
     }
+    else
+    {
+	AZLogDebug("readfile_callback:: No response sent, num_of_reads_issued_to_backend: {}",task->num_of_reads_issued_to_backend);
+	    return;
+    }
     } // End of lock
 
 send_response:
     task->send_readfile_response(status);
 }
 
+// Returns true only if read call was issued to backend.
 void rpc_task::readfile_from_server(struct bytes_chunk &bc)
 {
     bool rpc_retry = false;
     auto ino = rpc_api.readfile_task.get_inode();
-
-    // Increment the number of reads issued.
-    num_of_reads_issued_to_backend++;
 
     // This will be freed in readfile_callback.
     struct readfile_context *ctx = new readfile_context(this, &bc);
@@ -725,14 +776,31 @@ void rpc_task::readfile_from_server(struct bytes_chunk &bc)
         args.offset = bc.offset;
         args.count = bc.length;
 
-        //assert(args.offset == rpc_api.readfile_task.get_offset());
         /*
 	 * Now we are going to use the buffer of the bytes_chunk object, hence get a lock
          * on it so that other reads can't modify it.
+	 * This lock should be held only when writing to the buffer, not when reading it.
+	 * Hence this will be freed in the readfile_callback after the buffer is populated.
 	 * This will block till the lock is obtained.
-	 * This will be freed when the response is sent back to the caller.
 	 */
         bc.get_membuf()->set_locked();
+
+	// Check if the buffer got updated by the time we got the lock.
+	if (bc.get_membuf()->is_uptodate())
+	{
+		// Release the lock since we no longer intend on writing to this buffer.
+		bc.get_membuf()->clear_locked();
+
+		AZLogDebug("readfile_from_server:: Skip issuing read as the buffer"
+			   " is now uptodate. offset: {} length: {}",
+			   bc.offset,
+			   bc.length);
+		return;
+	}
+
+    // Increment the number of reads issued. TODO: Put it behind lock or make it atomic.
+    num_of_reads_issued_to_backend++;
+
         AZLogDebug("is_async: {} Issuing read to backend at offset: {} length: {}",is_async(), args.offset, args.count);
 
         if (rpc_nfs3_read_task(
@@ -781,7 +849,6 @@ void rpc_task::free_rpc_task()
             auto readfile_handle = get_client()->get_nfs_inode_from_ino(ino)->filecache_handle;
 	    // TODO: This chunk should not be released, just doing for perf test..
 	    //readfile_handle->release(bytes_vector[i].offset, bytes_vector[i].length);
-	    bytes_vector[i].get_membuf()->clear_locked();
 	    bytes_vector[i].get_membuf()->clear_inuse();
     	}
         bytes_vector.clear();
