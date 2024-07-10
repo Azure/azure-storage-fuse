@@ -807,17 +807,82 @@ stages:
               artifactName: 'blobfuse2'
             displayName: 'Publish Artifacts'
             
-      - job: Set_4
+      - job: Set_4.1
         timeoutInMinutes: 120
         strategy:
           matrix:
-            # RHEL-7.5:
-            #   agentName: "blobfuse-rhel7_5"
-            #   vmImage: 'RHEL-7.5'
-            #   fuselib: 'fuse3-devel'
-            #   fuse-version: 'fuse3'
-            #   tags: 'fuse3'
-            #   container: 'test-cnt-rhel-75'
+            RHEL-7.5:
+              agentName: "blobfuse-rhel7_5"
+              vmImage: 'RHEL-7.5'
+              fuselib: 'fuse3-devel'
+              fuse-version: 'fuse3'
+              tags: 'fuse3'
+              container: 'test-cnt-rhel-75'
+
+        pool:
+          name: "blobfuse-rhel-pool"
+          demands:
+            - ImageOverride -equals $(agentName)
+
+        variables:
+          - group: NightlyBlobFuse
+          - name: root_dir
+            value: '$(System.DefaultWorkingDirectory)'
+          - name: work_dir
+            value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
+          - name: mount_dir
+            value: '$(System.DefaultWorkingDirectory)/fusetmp'
+          - name: temp_dir
+            value: '$(System.DefaultWorkingDirectory)/fusetmpcache'
+
+        steps:
+          - checkout: none
+
+          - script: |
+              sudo yum update -y
+              sudo yum install git -y
+            displayName: 'Install Git'
+
+          - task: DownloadBuildArtifacts@0
+            displayName: 'Download Build Artifacts'
+            inputs:
+              artifactName: 'blobfuse2-signed'
+              downloadPath: $(root_dir)
+              itemPattern: blobfuse2-signed/blobfuse2*$(tags)*x86_64.rpm
+
+          - script: |
+              ls -l
+              result=$(ls -1 | wc -l)
+              if [ $result -ne 1 ]; then
+                exit 1
+              fi
+            displayName: 'List Downloaded Package'
+            workingDirectory: $(root_dir)/blobfuse2-signed
+
+          - script: |
+              for f in ./blobfuse2*$(tags)*.rpm; do mv -v "$f" "${f/-$(tags)./-$(vmImage).}"; done;
+              cp ./blobfuse2*$(vmImage)*.rpm $(Build.ArtifactStagingDirectory)
+              f=`ls ./blobfuse2*$(vmImage)*.rpm`
+              cp "$f" $(sed 's:RHEL-7.5:RHEL-7.8:' <<< "$f")
+              cp "$f" $(sed 's:RHEL-7.5:RHEL-8.1:' <<< "$f")
+              cp "$f" $(sed 's:RHEL-7.5:RHEL-8.2:' <<< "$f")
+              cp ./blobfuse2*RHEL-7.8*.rpm $(Build.ArtifactStagingDirectory)
+              cp ./blobfuse2*RHEL-8*.rpm $(Build.ArtifactStagingDirectory)
+              rm -rf ./blobfuse2*RHEL-7.8*.rpm
+              rm -rf ./blobfuse2*RHEL-8*.rpm
+            displayName: 'Rename Package'
+            workingDirectory: $(root_dir)/blobfuse2-signed
+
+          # publishing the artifacts generated
+          - task: PublishBuildArtifacts@1
+            inputs:
+              artifactName: 'blobfuse2'
+            displayName: 'Publish Artifacts'
+
+      - job: Set_4.2
+        timeoutInMinutes: 120
+        strategy:
+          matrix:
             RHEL-8.6:
               agentName: "blobfuse-rhel8_6"
               vmImage: 'RHEL-8.6'
@@ -851,12 +916,6 @@ stages:
 
         steps:
           - checkout: none
-
-          - script: |
-              sudo touch /etc/yum.repos.d/centos.repo
-              sudo sh -c 'echo -e "[centos-extras]\nname=Centos extras - $basearch\nbaseurl=http://mirror.centos.org/centos/7/extras/x86_64\nenabled=1\ngpgcheck=1\ngpgkey=http://centos.org/keys/RPM-GPG-KEY-CentOS-7" > /etc/yum.repos.d/centos.repo'
-            condition: or(eq(variables['AgentName'], 'blobfuse-rhel7_5'),eq(variables['AgentName'], 'blobfuse-rhel7_8'))
-            displayName: "Update OS mirrors"
 
           - script: |
               sudo yum update -y
@@ -904,16 +963,6 @@ stages:
           - script: |
               for f in ./blobfuse2*$(tags)*.rpm; do mv -v "$f" "${f/-$(tags)./-$(vmImage).}"; done;
               cp ./blobfuse2*$(vmImage)*.rpm $(Build.ArtifactStagingDirectory)
-              if [ $(agentName) == "blobfuse-rhel7_5" ]; then
-                f=`ls ./blobfuse2*$(vmImage)*.rpm`
-                cp "$f" $(sed 's:RHEL-7.5:RHEL-7.8:' <<< "$f")
-                cp "$f" $(sed 's:RHEL-7.5:RHEL-8.1:' <<< "$f")
-                cp "$f" $(sed 's:RHEL-7.5:RHEL-8.2:' <<< "$f")
-                cp ./blobfuse2*RHEL-7.8*.rpm $(Build.ArtifactStagingDirectory)
-                cp ./blobfuse2*RHEL-8*.rpm $(Build.ArtifactStagingDirectory)
-                rm -rf ./blobfuse2*RHEL-7.8*.rpm
-                rm -rf ./blobfuse2*RHEL-8*.rpm
-              fi
             displayName: 'Rename Package'
             workingDirectory: $(root_dir)/blobfuse2-signed
 
@@ -921,11 +970,7 @@ stages:
               sudo sed -i '/^failovermethod=/d' /etc/yum.repos.d/*.repo
               sudo rpm -qip blobfuse2*$(vmImage)*.rpm
               sudo yum groupinstall "Development Tools" -y              
-              if [[ $(agentName) == "blobfuse-rhel7_5" || $(agentName) == "blobfuse-rhel7_8" ]]; then
-                sudo yum install fuse fuse3-libs fuse3-devel fuse3 -y
-              else
-                sudo yum install fuse fuse3-libs fuse3-devel fuse3 -y --nobest --allowerasing
-              fi
+              sudo yum install fuse fuse3-libs fuse3-devel fuse3 -y --nobest --allowerasing
               sudo rpm -i blobfuse2*$(vmImage)*.rpm
             displayName: 'Install Package'
             workingDirectory: $(Build.ArtifactStagingDirectory)
@@ -1393,12 +1438,6 @@ stages:
 
         steps:
           - checkout: none
-
-          - script: |
-              sudo touch /etc/yum.repos.d/centos.repo
-              sudo sh -c 'echo -e "[centos-extras]\nname=Centos extras - $basearch\nbaseurl=http://mirror.centos.org/centos/7/extras/x86_64\nenabled=1\ngpgcheck=1\ngpgkey=http://centos.org/keys/RPM-GPG-KEY-CentOS-7" > /etc/yum.repos.d/centos.repo'
-            condition: or(eq(variables['AgentName'], 'blobfuse-rhel7_5'),eq(variables['AgentName'], 'blobfuse-rhel7_8'))
-            displayName: "Update OS mirrors"
 
           - script: |
               sudo yum update -y
