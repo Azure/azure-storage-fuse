@@ -59,20 +59,21 @@ namespace aznfsc {
 #define AZNFSC_MAX_FILE_SIZE    (100 * 1024 * 1024 * 50'000ULL)
 
 /*
- * Each chunk can be max 1GB. Such large chunk size is for convenience
- * where all client IOs map to one chunk, but it doesn't necessarily mean
- * that every chunk will be issued as a single backend IO. Infact typically
- * one large chunk will be filled by multiple parallel backend IO for better
- * perf.
- * We should set fuse max_write and max_read option to 1GB.
- * With that application read/writes will be limited to 1GB and hence the
- * chunk size. Note that single readahead size is also limited by this, but
- * user can always issue multiple readahead reads if we need larger, but this
- * should be sufficient.
+ * This is the maximum chunk size we allow. This is like our page size, but
+ * unlike the usual page cache where every page is fixed size, our chunk cache
+ * may have chunks of different sizes, though for the perfect case where
+ * applications are doing sequential reads/writes all/most chunks would have
+ * the max size. Infact, we want large chunks to reduce maintenance overhead.
+ * Currently fuse kernel driver never sends any read/write IO larger than 1MB,
+ * so that will end up being the chunk size, but for background IOs that we
+ * initiate (readahead IOs) we will use the max chunk size.
+ * A chunk need not map 1:1 to an NFS READ/WRITE RPC, though typically we will
+ * issue one NFS RPC for one chunk but we can have 1:m or m:1 mappings where
+ * multiple chunks are populated by one NFS RPC and vice versa.
  *
  * See comment above membuf::flag.
  */
-#define AZNFSC_MAX_CHUNK_SIZE (1ULL * 1024 * 1024 * 1024)
+#define AZNFSC_MAX_CHUNK_SIZE (4ULL * 1024 * 1024)
 
 #define AZNFSC_BAD_OFFSET (~0ull)
 
