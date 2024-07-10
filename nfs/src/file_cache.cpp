@@ -141,7 +141,6 @@ bytes_chunk::bytes_chunk(bytes_chunk_cache *_bcc,
                          std::make_shared<membuf>(_offset,
                                                   _length,
                                                   _bcc->backing_file_fd),
-                         _length,
                          true /* is_empty */)
 {
 }
@@ -151,17 +150,18 @@ bytes_chunk::bytes_chunk(bytes_chunk_cache *_bcc,
                          uint64_t _length,
                          uint64_t _buffer_offset,
                          const std::shared_ptr<membuf>& _alloc_buffer,
-                         uint64_t _alloc_buffer_len,
                          bool _is_empty) :
              bcc(_bcc),
              alloc_buffer(_alloc_buffer),
-             alloc_buffer_len(_alloc_buffer_len),
              offset(_offset),
              length(_length),
              buffer_offset(_buffer_offset),
              is_empty(_is_empty)
 {
     assert(bcc != nullptr);
+    // alloc_buffer must always be valid.
+    assert(alloc_buffer != nullptr);
+    assert(alloc_buffer.use_count() > 1);
     /*
      * By the time bytes_chunk constructor is called
      * bytes_chunk_cache::scan() MUST have opened the backing file.
@@ -170,12 +170,10 @@ bytes_chunk::bytes_chunk(bytes_chunk_cache *_bcc,
     assert(offset < AZNFSC_MAX_FILE_SIZE);
     // 0-sized chunks don't exist.
     assert(length > 0);
-    assert(length <= alloc_buffer_len);
-    assert((buffer_offset + length) <= alloc_buffer_len);
-    assert(alloc_buffer_len <= AZNFSC_MAX_CHUNK_SIZE);
+    assert(length <= alloc_buffer->length);
+    assert((buffer_offset + length) <= alloc_buffer->length);
+    assert(alloc_buffer->length <= AZNFSC_MAX_CHUNK_SIZE);
     assert((offset + length) <= AZNFSC_MAX_FILE_SIZE);
-    assert(alloc_buffer != nullptr);
-    assert(alloc_buffer.use_count() > 1);
 
     /*
      * Since we are allocating this chunk most likely user is going to
@@ -556,8 +554,7 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
 
             if (action == scan_action::SCAN_ACTION_GET) {
                 chunkvec.emplace_back(this, chunk_offset, chunk_length,
-                                      bc->buffer_offset, bc->alloc_buffer,
-                                      bc->alloc_buffer_len);
+                                      bc->buffer_offset, bc->alloc_buffer);
                 AZLogDebug("(existing chunk) [{},{}) b:{} a:{}",
                            chunk_offset, chunk_offset + chunk_length,
                            fmt::ptr(chunkvec.back().get_buffer()),
@@ -612,8 +609,7 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
                      */
                     auto p = chunkmap.try_emplace(bc->offset, this, bc->offset,
                                                   bc->length, bc->buffer_offset,
-                                                  bc->alloc_buffer,
-                                                  bc->alloc_buffer_len);
+                                                  bc->alloc_buffer);
                     assert(p.second);
                     /*
                      * Now that the older chunk is going and is being replaced
@@ -654,8 +650,7 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
             if (action == scan_action::SCAN_ACTION_GET) {
                 chunkvec.emplace_back(this, chunk_offset, chunk_length,
                                       bc->buffer_offset + (next_offset - bc->offset),
-                                      bc->alloc_buffer,
-                                      bc->alloc_buffer_len);
+                                      bc->alloc_buffer);
                 AZLogDebug("(existing chunk) [{},{}) b:{} a:{}",
                            chunk_offset, chunk_offset + chunk_length,
                            fmt::ptr(chunkvec.back().get_buffer()),
@@ -758,7 +753,6 @@ allocate_only_chunk:
                                   chunk_length,
                                   last_bc->buffer_offset + last_bc->length,
                                   last_bc->alloc_buffer,
-                                  last_bc->alloc_buffer_len,
                                   true /* is_empty */);
 
             // last chunk and this new chunk are sharing the same alloc_buffer.
@@ -826,14 +820,12 @@ allocate_only_chunk:
 #ifndef NDEBUG
             auto p = chunkmap.try_emplace(chunk.offset, chunk.bcc, chunk.offset,
                                           chunk.length, chunk.buffer_offset,
-                                          chunk.alloc_buffer,
-                                          chunk.alloc_buffer_len);
+                                          chunk.alloc_buffer);
             assert(p.second == true);
 #else
             chunkmap.try_emplace(chunk.offset, chunk.bcc, chunk.offset,
                                  chunk.length, chunk.buffer_offset,
-                                 chunk.alloc_buffer,
-                                 chunk.alloc_buffer_len);
+                                 chunk.alloc_buffer);
 #endif
 
             if ((chunk.offset + chunk.length) > _extent_right) {
@@ -882,8 +874,7 @@ allocate_only_chunk:
                                                 chunk_after->offset,
                                                 chunk_after->length,
                                                 chunk_after->buffer_offset,
-                                                chunk_after->alloc_buffer,
-                                                chunk_after->alloc_buffer_len);
+                                                chunk_after->alloc_buffer);
             assert(p.second == true);
 #else
             chunkmap.try_emplace(chunk_after->offset,
@@ -891,8 +882,7 @@ allocate_only_chunk:
                                  chunk_after->offset,
                                  chunk_after->length,
                                  chunk_after->buffer_offset,
-                                 chunk_after->alloc_buffer,
-                                 chunk_after->alloc_buffer_len);
+                                 chunk_after->alloc_buffer);
 #endif
 
             delete chunk_after;

@@ -504,11 +504,10 @@ private:
      * Any chunk that refers to the same allocated buffer will hold a ref to
      * alloc_buffer, so alloc_buffer will be freed when the last ref is dropped.
      * This should typically happen when the chunk is freed.
+     *
+     * To find the length of the allocated buffer, use alloc_buffer->length.
      */
     std::shared_ptr<membuf> alloc_buffer;
-
-    // Length allocated.
-    const uint64_t alloc_buffer_len = 0;
 
 public:
     // Offset from the start of file this chunk represents.
@@ -573,7 +572,7 @@ public:
     {
         // Should not call on a dropped cache.
         assert(alloc_buffer->get() != nullptr);
-        assert(buffer_offset < alloc_buffer_len);
+        assert(buffer_offset < alloc_buffer->length);
 
         return alloc_buffer->get() + buffer_offset;
     }
@@ -581,11 +580,11 @@ public:
     /**
      * Does this bytes_chunk cover the "full membuf"?,
      * i.e., following is true:
-     * (buffer_offset == 0 && length == alloc_buffer_len)
+     * (buffer_offset == 0 && length == alloc_buffer->length)
      */
     bool maps_full_membuf() const
     {
-        return ((buffer_offset == 0) && (length == alloc_buffer_len));
+        return ((buffer_offset == 0) && (length == alloc_buffer->length));
     }
 
     /**
@@ -620,7 +619,6 @@ public:
                 uint64_t _length,
                 uint64_t _buffer_offset,
                 const std::shared_ptr<membuf>& _alloc_buffer,
-                uint64_t _alloc_buffer_len,
                 bool _is_empty = false);
 
     /**
@@ -632,7 +630,6 @@ public:
                     rhs.length,
                     rhs.buffer_offset,
                     rhs.alloc_buffer,
-                    rhs.alloc_buffer_len,
                     rhs.is_empty)
 
     {
@@ -653,7 +650,8 @@ public:
      */
     uint64_t tailroom() const
     {
-        const int64_t tailroom = (alloc_buffer_len - (buffer_offset + length));
+        const int64_t tailroom =
+            (alloc_buffer->length - (buffer_offset + length));
         assert(tailroom >= 0);
         assert(tailroom <= (int64_t) AZNFSC_MAX_CHUNK_SIZE);
 
