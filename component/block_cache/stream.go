@@ -34,7 +34,6 @@
 package block_cache
 
 import (
-	"context"
 	"errors"
 	"fmt"
 
@@ -50,8 +49,6 @@ type Stream struct {
 	BlockSize      int64
 	BufferSize     uint64 // maximum number of blocks allowed to be stored for a file
 	CachedObjLimit int32
-	CachedObjects  int32
-	StreamOnly     bool // parameter used to check if its pure streaming
 }
 
 type StreamOptions struct {
@@ -75,23 +72,6 @@ var _ internal.Component = &Stream{}
 
 func (st *Stream) Name() string {
 	return compStream
-}
-
-func (st *Stream) SetName(name string) {
-	st.BaseComponent.SetName(name)
-}
-
-func (st *Stream) SetNextComponent(nc internal.Component) {
-	st.BaseComponent.SetNextComponent(nc)
-}
-
-func (st *Stream) Priority() internal.ComponentPriority {
-	return internal.EComponentPriority.LevelMid()
-}
-
-func (st *Stream) Start(ctx context.Context) error {
-	log.Trace("Starting component : %s", st.Name())
-	return nil
 }
 
 func (st *Stream) Configure(_ bool) error {
@@ -143,7 +123,6 @@ func (st *Stream) Configure(_ bool) error {
 
 // On init register this component to pipeline and supply your constructor
 func init() {
-	internal.AddComponent(compName, NewBlockCacheComponent)
 	blockSizeMb := config.AddUint64Flag("block-size-mb", 0, "Size (in MB) of a block to be downloaded during streaming.")
 	config.BindPFlag(compStream+".block-size-mb", blockSizeMb)
 
