@@ -410,8 +410,13 @@ var mountCmd = &cobra.Command{
 		log.Debug("Mount allowed on nonempty path : %v", options.NonEmpty)
 		pipeline, err = internal.NewPipeline(options.Components, !daemon.WasReborn())
 		if err != nil {
-			log.Err("mount : failed to initialize new pipeline [%v]", err)
-			return Destroy(fmt.Sprintf("failed to initialize new pipeline [%s]", err.Error()))
+			if err.Error() == "Azure CLI not found on path" {
+				log.Err("mount : failed to initialize new pipeline :: To authenticate using MSI with object-ID, ensure Azure CLI is installed. Alternatively, use app/client ID for authentication. [%v]", err)
+				return Destroy(fmt.Sprintf("failed to initialize new pipeline :: To authenticate using MSI with object-ID, ensure Azure CLI is installed. Alternatively, use app/client ID for authentication. [%s]", err.Error()))
+			} else {
+				log.Err("mount : failed to initialize new pipeline [%v]", err)
+				return Destroy(fmt.Sprintf("failed to initialize new pipeline [%s]", err.Error()))
+			}
 		}
 
 		common.ForegroundMount = options.Foreground
