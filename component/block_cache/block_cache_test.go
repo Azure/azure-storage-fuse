@@ -928,7 +928,7 @@ func (suite *blockCacheTestSuite) TestTempCacheCleanup() {
 
 	items, _ := os.ReadDir(tobj.disk_cache_path)
 	suite.assert.Equal(len(items), 0)
-	_ = tobj.blockCache.TempCacheCleanup()
+	_ = common.TempCacheCleanup(tobj.blockCache.tmpPath)
 
 	for i := 0; i < 5; i++ {
 		_ = os.Mkdir(filepath.Join(tobj.disk_cache_path, fmt.Sprintf("temp_%d", i)), 0777)
@@ -940,15 +940,15 @@ func (suite *blockCacheTestSuite) TestTempCacheCleanup() {
 	items, _ = os.ReadDir(tobj.disk_cache_path)
 	suite.assert.Equal(len(items), 5)
 
-	_ = tobj.blockCache.TempCacheCleanup()
+	_ = common.TempCacheCleanup(tobj.blockCache.tmpPath)
 	items, _ = os.ReadDir(tobj.disk_cache_path)
 	suite.assert.Equal(len(items), 0)
 
 	tobj.blockCache.tmpPath = ""
-	_ = tobj.blockCache.TempCacheCleanup()
+	_ = common.TempCacheCleanup(tobj.blockCache.tmpPath)
 
 	tobj.blockCache.tmpPath = "~/ABCD"
-	err := tobj.blockCache.TempCacheCleanup()
+	err := common.TempCacheCleanup(tobj.blockCache.tmpPath)
 	suite.assert.NotNil(err)
 	suite.assert.Contains(err.Error(), "failed to list directory")
 }
