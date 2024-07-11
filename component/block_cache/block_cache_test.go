@@ -173,7 +173,7 @@ func (suite *blockCacheTestSuite) TestEmpty() {
 	cores, err := strconv.Atoi(coresStr)
 	suite.assert.Nil(err)
 	suite.assert.EqualValues(tobj.blockCache.workers, uint32(3*cores))
-	suite.assert.EqualValues(tobj.blockCache.prefetch, uint32(2*cores))
+	suite.assert.EqualValues(tobj.blockCache.prefetch, math.Max((MIN_PREFETCH*2)+1, float64(2*cores)))
 	suite.assert.EqualValues(tobj.blockCache.noPrefetch, false)
 	suite.assert.NotNil(tobj.blockCache.blockPool)
 	suite.assert.NotNil(tobj.blockCache.threadPool)
