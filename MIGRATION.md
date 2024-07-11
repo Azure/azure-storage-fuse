@@ -146,6 +146,7 @@ Blobfuse2 reads all the environment variables that Blobfuse does, so no changes 
 | accountKey                     |                                            | azstorage.account-key             |
 | sasToken                       |                                            | azstorage.sas                     |
 | identityClientId               |                                            | azstorage.appid                   |
+| identityObjectId               |                                            | azstorage.objid                   |
 | identityResourceId             |                                            | azstorage.resid                   |
 | msiEndpoint                    | MSI_ENDPOINT                               |                                   |
 | servicePrincipalClientId       |                                            | azstorage.clientid                |

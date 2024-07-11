@@ -73,24 +73,9 @@ azstorage:
   # OR
   appid: <storage account app id / client id for MSI>
   resid: <storage account resource id for MSI>
+  objid: <object id for MSI - needs Azure CLI on system>
   # OR
   tenantid: <storage account tenant id for SPN>
   clientid: <storage account client id for SPN>
   clientsecret: <storage account client secret for SPN>
   oauth-token-path: <path to file containing the OAuth token>
-  # Optional
-  use-http: true|false <use http instead of https for storage connection>
-  aadendpoint: <storage account custom aad endpoint>
-  subdirectory: <name of subdirectory to be mounted instead of whole container>
-  block-size-mb: <size of each block (in MB). Default - 16 MB>
-  max-concurrency: <number of parallel upload/download threads. Default - 32>
-  tier: hot|cool|cold|premium|archive|none <blob-tier to be set while uploading a blob. Default - none>
-  block-list-on-mount-sec: <time list api to be blocked after mount (in sec). Default - 0 sec>
-  auth-resource: <resource string to be used during OAuth token retrieval>
-  update-md5: true|false <set md5 sum on upload. Impacts performance. works only when file-cache component is part of the pipeline>
-  validate-md5: true|false <validate md5 on download. Impacts performance. works only when file-cache component is part of the pipeline>
-  disable-compression: true|false <disable transport layer content encoding like gzip, set this flag to true if blobs have content-encoding set in container>
-  honour-acl: true|false <honour ACLs on files and directories when mounted using MSI Auth and object-ID is provided in config>
-  cpk-enabled: true|false <enable client provided key encryption>
-  cpk-encryption-key: <customer provided base64-encoded AES-256 encryption key value>
-  cpk-encryption-key-sha256:  <customer provided base64-encoded sha256 of the encryption key>
