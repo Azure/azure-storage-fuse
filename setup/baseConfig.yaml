@@ -1,32 +1,3 @@
-# MUST READ : 
-#   If you are creating a blobfuse2 config file using this kindly take care of below points 
-#   1. All boolean configs (true|false config) (except ignore-open-flags, virtual-directory) are set to 'false' by default. 
-#      No need to mention them in your config file unless you are setting them to true.
-#   2. 'loopbackfs' is purely for testing and shall not be used in production configuration.
-#   3. 'stream' and 'file_cache' can not co-exist and config file shall have only one of them based on your use case.
-#   4. By default log level is set to 'log_warning' level and are redirected to syslog. 
-#      Either use 'base' logging or syslog filters to redirect logs to separate file.
-#      To install syslog filter follow below steps:        
-#         sudo cp setup/11-blobfuse2.conf /etc/rsyslog.d/
-#         sudo cp setup/blobfuse2-logrotate /etc/logrotate.d/
-#         sudo service rsyslog restart
-#   5. For non-HNS (flat namespace) accounts blobfuse expects special directory marker files to 
-#      exists in container to identify a directory. 
-#      If these files do not exist in container, then 'virtual-directory: true' in 'azstorage' section is required
-#   6. By default 'writeback-cache' is enabled for libfuse3 and this may result in append/write operations to fail.
-#      Either you can disable 'writeback-cache', which might hurt the performance
-#      or you can configure blobfuse2 to ignore open flags given by user and make it work with ''writeback-cache'.
-#      'libfuse' sectoin below has both the configurations.
-#   7. If are you using 'allow-other: true' config then make sure user_allow_other is enabled in /etc/fuse.conf file as 
-#      well otherwise mount will fail. By default /etc/fuse.conf will have this option disabled we just need to 
-#      enable it and save the file.
-#   8. If data in your storage account (non-HNS) is created using Blobfuse or AzCopy then there are marker files present
-#      in your container to mark a directory. In such cases you can optimize your listing by setting 'virtual-directory'
-#      flag to false in mount command.
-#   9. If you are using 'file_cache' component then make sure you have enough disk space available for cache.
-#  10. 'sdk-trace' has been removed with v2.3.0 release and setting log level to log_debug will auto enable these logs.
-# -----------------------------------------------------------------------------------------------------------------------
-
 # Logger configuration
 logging:
   type: syslog|silent|base <type of logger to be used by the system. silent = no logger, base = file based logger. Default - syslog>
