@@ -107,7 +107,6 @@ func IsMountActive(path string) (bool, error) {
 		// Get the mount path for this pid
 		// For this we need to check the command line arguments given to this command
 		// If the path is same then we need to return true
-
 		if pid == "" {
 			continue
 		}
