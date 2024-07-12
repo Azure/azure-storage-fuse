@@ -140,13 +140,8 @@ func IsDirectoryEmpty(path string) bool {
 	defer f.Close()
 
 	_, err := f.Readdirnames(1)
-	if err == io.EOF {
-		// There are no items in the directory
-		return true
-	}
-
-	// There are some items in the directory
-	return false
+	// If there is nothing in the directory then it is empty
+	return err == io.EOF
 }
 
 func TempCacheCleanup(path string) error {
