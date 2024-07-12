@@ -186,6 +186,8 @@ type AzStorageOptions struct {
 	CPKEnabled              bool   `config:"cpk-enabled" yaml:"cpk-enabled"`
 	CPKEncryptionKey        string `config:"cpk-encryption-key" yaml:"cpk-encryption-key"`
 	CPKEncryptionKeySha256  string `config:"cpk-encryption-key-sha256" yaml:"cpk-encryption-key-sha256"`
+	DirListCache            bool   `config:"dir-list-cache" yaml:"dir-list-cache"`
+	DirListCacheTimeout     uint32 `config:"dir-list-cache-timeout" yaml:"dir-list-cache-timeout"`
 
 	// v1 support
 	UseAdls        bool   `config:"use-adls" yaml:"-"`
@@ -334,6 +336,19 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 			return errors.New("block size is too large")
 		}
 		az.stConfig.blockSize = opt.BlockSize * 1024 * 1024
+	}
+
+	// read dir list cache options
+	if config.IsSet(compName + ".dir-list-cache") {
+		az.stConfig.dirListCache = opt.DirListCache
+	} else {
+		az.stConfig.dirListCache = false
+	}
+	if config.IsSet(compName + ".dir-list-cache-timeout") {
+		az.stConfig.dirListCacheTimeout = opt.DirListCacheTimeout
+	} else {
+		// default of 5 minutes
+		az.stConfig.dirListCacheTimeout = 300
 	}
 
 	// Validate container name is present or not
@@ -509,8 +524,8 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	log.Info("ParseAndValidateConfig : use-HTTP %t, block-size %d, max-concurrency %d, default-tier %s, fail-unsupported-op %t, mount-all-containers %t", az.stConfig.authConfig.UseHTTP, az.stConfig.blockSize, az.stConfig.maxConcurrency, az.stConfig.defaultTier, az.stConfig.ignoreAccessModifiers, az.stConfig.mountAllContainers)
 	log.Info("ParseAndValidateConfig : Retry Config: retry-count %d, max-timeout %d, backoff-time %d, max-delay %d",
 		az.stConfig.maxRetries, az.stConfig.maxTimeout, az.stConfig.backoffTime, az.stConfig.maxRetryDelay)
-
 	log.Info("ParseAndValidateConfig : Telemetry : %s, honour-ACL %v, disable-symlink %v", az.stConfig.telemetry, az.stConfig.honourACL, az.stConfig.disableSymlink)
+	log.Info("ParseAndValidateConfig : dir-list-cache %t, dir-list-cache-timeout %d", az.stConfig.dirListCache, az.stConfig.dirListCacheTimeout)
 
 	return nil
 }

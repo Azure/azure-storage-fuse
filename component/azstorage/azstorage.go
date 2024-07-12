@@ -92,9 +92,6 @@ func (az *AzStorage) SetNextComponent(c internal.Component) {
 func (az *AzStorage) Configure(isParent bool) error {
 	log.Trace("AzStorage::Configure : %s", az.Name())
 
-	// Initialize the cache with a default expiration time of 5 minutes and cleanup interval of 10 minutes
-	az.streamDirCache = cache.New(5*time.Minute, 10*time.Minute)
-
 	conf := AzStorageOptions{}
 	err := config.UnmarshalKey(az.Name(), &conf)
 	if err != nil {
@@ -187,6 +184,11 @@ func (az *AzStorage) Start(ctx context.Context) error {
 
 	// create stats collector for azstorage
 	azStatsCollector = stats_manager.NewStatsCollector(az.Name())
+
+	// Initialize the dir list cache
+	timeout := time.Duration(az.stConfig.dirListCacheTimeout) * time.Second
+	interval := 2 * timeout
+	az.streamDirCache = cache.New(timeout, interval)
 
 	return nil
 }
@@ -311,17 +313,18 @@ func (az *AzStorage) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 
 	// Create cache key
 	cacheKey := fmt.Sprintf("%s|%d|%d", path, options.Offset, options.Count)
-
-	// Check if the result is in the cache
-	if cachedResult, found := az.streamDirCache.Get(cacheKey); found {
-		result := cachedResult.([]interface{})
-		objAttrs := result[0].([]*internal.ObjAttr)
-		newMarker := result[1].(string)
-		log.Debug("AzStorage::StreamDir : Cache hit for Path %s", path)
-		return objAttrs, newMarker, nil
+	// check dir list cache if the option is set
+	if az.stConfig.dirListCache {
+		// Check if the result is in the cache
+		if cachedResult, found := az.streamDirCache.Get(cacheKey); found {
+			result := cachedResult.([]interface{})
+			objAttrs := result[0].([]*internal.ObjAttr)
+			newMarker := result[1].(string)
+			log.Debug("AzStorage::StreamDir : Cache hit for Path %s", path)
+			return objAttrs, newMarker, nil
+		}
 	}
 
-	// If not in cache, proceed with the listing
 	new_list, new_marker, err := az.storage.List(path, &options.Token, options.Count)
 	if err != nil {
 		log.Err("AzStorage::StreamDir : Failed to read dir [%s]", err)
@@ -341,8 +344,10 @@ func (az *AzStorage) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 		}
 	}
 
-	// Store the result in the cache
-	az.streamDirCache.Set(cacheKey, []interface{}{new_list, *new_marker}, cache.DefaultExpiration)
+	if az.stConfig.dirListCache {
+		// Store the result in the cache
+		az.streamDirCache.Set(cacheKey, []interface{}{new_list, *new_marker}, cache.DefaultExpiration)
+	}
 
 	// if path is empty, it means it is the root, relative to the mounted directory
 	if len(path) == 0 {

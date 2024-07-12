@@ -52,6 +52,9 @@ type AzStorageConfig struct {
 	blockSize      int64
 	maxConcurrency uint16
 
+	dirListCache        bool
+	dirListCacheTimeout uint32
+
 	// tier to be set on every upload
 	defaultTier *blob.AccessTier
 
