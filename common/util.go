@@ -150,7 +150,7 @@ func TempCacheCleanup(path string) error {
 		dirents, err := os.ReadDir(path)
 		if err != nil {
 			// Failed to list, return back error
-			return err
+			return fmt.Errorf("failed to list directory contents : %s", err.Error())
 		}
 
 		// Delete all first level children with their hierarchy

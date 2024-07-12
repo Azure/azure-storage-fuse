@@ -116,7 +116,7 @@ func (opt *mountOptions) validate(skipNonEmptyMount bool) error {
 			// Previous mount is in stale state so lets cleanup the state
 			log.Info("Mount::validate : Cleaning up stale mount")
 			if err = unmountBlobfuse2(opt.MountPath); err != nil {
-				return fmt.Errorf("directory is already mounted, unmount manually before remount.")
+				return fmt.Errorf("directory is already mounted, unmount manually before remount [%v]", err.Error())
 			}
 
 			// Clean up the file-cache temp directory if any
