@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1720773272259,
+  "lastUpdate": 1720780177271,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -499,6 +499,33 @@ window.BENCHMARK_DATA = {
           {
             "name": "rename_5000_1MB_files",
             "value": 101.93881487846375,
+            "unit": "seconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Vikas Bhansali",
+            "username": "vibhansa-msft",
+            "email": "64532198+vibhansa-msft@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "30b4cfff983f65c1d9a2e438386e0ae5120d4eda",
+          "message": "Update benchmark.yml",
+          "timestamp": "2024-07-12T07:13:58Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/30b4cfff983f65c1d9a2e438386e0ae5120d4eda"
+        },
+        "date": 1720780176980,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "rename_5000_1MB_files",
+            "value": 98.67819213867188,
             "unit": "seconds"
           }
         ]
