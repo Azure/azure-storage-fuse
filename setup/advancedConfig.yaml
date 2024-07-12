@@ -123,7 +123,7 @@ azstorage:
   # OR
   appid: <storage account app id / client id for MSI>
   resid: <storage account resource id for MSI>
-  objid: <object id for MSI>
+  objid: <object id for MSI - needs Azure CLI on system>
   # OR
   tenantid: <storage account tenant id for SPN>
   clientid: <storage account client id for SPN>
