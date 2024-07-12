@@ -688,6 +688,14 @@ func init() {
 	cpkEnabled := config.AddBoolFlag("cpk-enabled", false, "Enable client provided key.")
 	config.BindPFlag(compName+".cpk-enabled", cpkEnabled)
 
+	dirListCache := config.AddBoolFlag("dir-list-cache", false, "Enables client to cache directory listing (WARNING: in a RW filesystem you will not see new files appear until after the timeout).")
+	config.BindPFlag(compName+".dir-list-cache", dirListCache)
+	dirListCache.Hidden = true
+
+	dirListCacheTimeout := config.AddUint32Flag("dir-list-cache-timeout", 60, "Time in seconds to cache directory listing.")
+	config.BindPFlag(compName+".dir-list-cache-timeout", dirListCacheTimeout)
+	dirListCacheTimeout.Hidden = true
+
 	config.RegisterFlagCompletionFunc("container-name", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	})

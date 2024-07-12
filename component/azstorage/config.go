@@ -339,16 +339,18 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	}
 
 	// read dir list cache options
+	az.stConfig.dirListCache = opt.DirListCache // default will be false
+	az.stConfig.dirListCacheTimeout = 300       // default 5 minutes
+
 	if config.IsSet(compName + ".dir-list-cache") {
 		az.stConfig.dirListCache = opt.DirListCache
-	} else {
-		az.stConfig.dirListCache = false
 	}
 	if config.IsSet(compName + ".dir-list-cache-timeout") {
 		az.stConfig.dirListCacheTimeout = opt.DirListCacheTimeout
 	} else {
-		// default of 5 minutes
-		az.stConfig.dirListCacheTimeout = 300
+		if opt.DirListCacheTimeout > 0 {
+			az.stConfig.dirListCacheTimeout = opt.DirListCacheTimeout
+		}
 	}
 
 	// Validate container name is present or not
