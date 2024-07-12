@@ -312,7 +312,7 @@ func (az *AzStorage) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 	path := formatListDirName(options.Name)
 
 	// Create cache key
-	cacheKey := fmt.Sprintf("%s|%d|%d", path, options.Offset, options.Count)
+	cacheKey := fmt.Sprintf("%s|%d|%d|%s", path, options.Offset, options.Count, options.Token)
 	// check dir list cache if the option is set
 	if az.stConfig.dirListCache {
 		// Check if the result is in the cache
