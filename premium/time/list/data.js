@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1720779539385,
+  "lastUpdate": 1720785340558,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -909,6 +909,40 @@ window.BENCHMARK_DATA = {
           {
             "name": "delete_100k_files",
             "value": "362.47000",
+            "unit": "seconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "137055338+ashruti-msft@users.noreply.github.com",
+            "name": "ashruti-msft",
+            "username": "ashruti-msft"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "7f395591dbea6264df3160b99c37fbaf4baea1dd",
+          "message": "ObjectID info updated and simplified base config (#1452)",
+          "timestamp": "2024-07-12T16:11:38+05:30",
+          "tree_id": "69aa243fa590be261f16a9dae2e51e612b563b64",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/7f395591dbea6264df3160b99c37fbaf4baea1dd"
+        },
+        "date": 1720785340306,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "list_100k_files",
+            "value": "33.95000",
+            "unit": "seconds"
+          },
+          {
+            "name": "delete_100k_files",
+            "value": "380.83000",
             "unit": "seconds"
           }
         ]
