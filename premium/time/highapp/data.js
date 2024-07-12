@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1720772958277,
+  "lastUpdate": 1720779876411,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -717,6 +717,38 @@ window.BENCHMARK_DATA = {
           {
             "name": "create_10_20GB_file",
             "value": 56.787171602249146,
+            "unit": "seconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Vikas Bhansali",
+            "username": "vibhansa-msft",
+            "email": "64532198+vibhansa-msft@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "30b4cfff983f65c1d9a2e438386e0ae5120d4eda",
+          "message": "Update benchmark.yml",
+          "timestamp": "2024-07-12T07:13:58Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/30b4cfff983f65c1d9a2e438386e0ae5120d4eda"
+        },
+        "date": 1720779876160,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "read_10_20GB_file",
+            "value": 70.16521143913269,
+            "unit": "seconds"
+          },
+          {
+            "name": "create_10_20GB_file",
+            "value": 52.49862194061279,
             "unit": "seconds"
           }
         ]
