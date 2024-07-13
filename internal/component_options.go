@@ -167,6 +167,7 @@ type CreateLinkOptions struct {
 
 type ReadLinkOptions struct {
 	Name string
+	Size int64
 }
 
 type GetAttrOptions struct {

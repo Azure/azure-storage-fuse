@@ -153,6 +153,7 @@ func (c *EntryCache) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 
 	pathEntry, found := c.pathMap.Load(pathKey)
 	if !found {
+		log.Debug("EntryCache::StreamDir : Cache not valid, fetch new list for path: %s, token %s", options.Name, options.Token)
 		pathList, token, err := c.NextComponent().StreamDir(options)
 		if err == nil && len(pathList) > 0 {
 			item := pathCacheItem{
@@ -164,6 +165,7 @@ func (c *EntryCache) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 		}
 		return pathList, token, err
 	} else {
+		log.Debug("EntryCache::StreamDir : Serving list from cache for path: %s, token %s", options.Name, options.Token)
 		item := pathEntry.(pathCacheItem)
 		return item.children, item.nextToken, nil
 	}
@@ -177,6 +179,7 @@ func (c *EntryCache) pathEvict(node *list.Element) {
 	flock.Lock()
 	defer flock.Unlock()
 
+	log.Debug("EntryCache::pathEvict : Expiry for path %s", pathKey)
 	c.pathMap.Delete(pathKey)
 }
 
