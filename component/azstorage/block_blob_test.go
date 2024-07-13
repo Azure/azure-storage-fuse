@@ -3457,7 +3457,7 @@ func (suite *blockBlobTestSuite) UtilityFunctionTruncateFileToLarger(size int, t
 	suite.assert.NotNil(resp.ContentLength)
 	suite.assert.EqualValues(truncatedLength, *resp.ContentLength)
 	output, _ := io.ReadAll(resp.Body)
-	suite.assert.EqualValues(data[:], output[:size])
+	suite.assert.EqualValues(data, output[:size])
 
 }
 
