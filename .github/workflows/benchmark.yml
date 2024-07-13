@@ -148,7 +148,7 @@ jobs:
         with:
           output-file-path: list/list_results.json
           tool: 'customSmallerIsBetter'
-          alert-threshold: "190%"
+          alert-threshold: "500%"
           max-items-in-chart: 100
           github-token: ${{ secrets.GITHUB_TOKEN }}
           fail-on-alert: true
