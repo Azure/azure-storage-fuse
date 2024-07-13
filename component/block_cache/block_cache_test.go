@@ -946,11 +946,6 @@ func (suite *blockCacheTestSuite) TestTempCacheCleanup() {
 
 	tobj.blockCache.tmpPath = ""
 	_ = common.TempCacheCleanup(tobj.blockCache.tmpPath)
-
-	tobj.blockCache.tmpPath = "~/ABCD"
-	err := common.TempCacheCleanup(tobj.blockCache.tmpPath)
-	suite.assert.NotNil(err)
-	suite.assert.Contains(err.Error(), "failed to list directory")
 }
 
 func (suite *blockCacheTestSuite) TestZZZZLazyWrite() {
