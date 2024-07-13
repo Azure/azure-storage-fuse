@@ -4,6 +4,8 @@
 - [#1402](https://github.com/Azure/azure-storage-fuse/issues/1402) Fixed proxy URL parsing.
 
 **Features**
+- Entry cache to hold directory listing results in cache for a given timeout. This will reduce REST calls going to storage while listing the blobs in parallel.
+
 
 **Other Changes**
 - LFU policy in file cache has been deprecated.
