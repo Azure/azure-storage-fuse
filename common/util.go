@@ -96,7 +96,7 @@ func IsMountActive(path string) (bool, error) {
 		if err.Error() == "exit status 1" {
 			return false, nil
 		} else {
-			return true, fmt.Errorf("failed to get pid of blobfuse2")
+			return true, fmt.Errorf("failed to get pid of blobfuse2 [%v]", err.Error())
 		}
 	}
 
@@ -117,7 +117,7 @@ func IsMountActive(path string) (bool, error) {
 
 		err := cmd.Run()
 		if err != nil {
-			return true, fmt.Errorf("failed to get command line arguments for pid %s", pid)
+			return true, fmt.Errorf("failed to get command line arguments for pid %s [%v]", pid, err.Error())
 		}
 
 		if strings.Contains(out.String(), path) {
