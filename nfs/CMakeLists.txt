@@ -117,7 +117,8 @@ add_executable(${CMAKE_PROJECT_NAME}
                src/connection.cpp
                src/nfs_inode.cpp
                src/log.cpp
-               src/file_cache.cpp)
+               src/file_cache.cpp
+               src/readahead.cpp)
 
 # All include directories.
 target_include_directories(${CMAKE_PROJECT_NAME}
