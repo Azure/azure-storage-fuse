@@ -1,9 +1,9 @@
-#include <random>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/mman.h>
 
+#include "aznfsc.h"
 #include "file_cache.h"
 
 /*
@@ -1093,15 +1093,6 @@ void bytes_chunk_cache::clear()
             AZLogInfo("Backing file {} deleted", backing_file_name);
         }
     }
-}
-
-/**
- * Generate a random number in the range [min, max].
- */
-static uint64_t random_number(uint64_t min, uint64_t max)
-{
-    static std::mt19937 gen((uint64_t) std::chrono::system_clock::now().time_since_epoch().count());
-    return min + (gen() % (max - min + 1));
 }
 
 static bool is_read()

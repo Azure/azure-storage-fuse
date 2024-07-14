@@ -10,12 +10,23 @@
 #include <string>
 #include <regex>
 #include <chrono>
+#include <random>
 
 #include "log.h"
 
 using namespace std::chrono;
 
 namespace aznfsc {
+
+/**
+ * Generate a random number in the range [min, max].
+ */
+static inline
+uint64_t random_number(uint64_t min, uint64_t max)
+{
+    static std::mt19937 gen((uint64_t) std::chrono::system_clock::now().time_since_epoch().count());
+    return min + (gen() % (max - min + 1));
+}
 
 static inline
 bool is_valid_storageaccount(const std::string& account)

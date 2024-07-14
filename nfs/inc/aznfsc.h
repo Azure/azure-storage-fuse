@@ -41,6 +41,9 @@ using namespace aznfsc;
 #define AZNFSCFG_ACTIMEO_MIN    1
 #define AZNFSCFG_ACTIMEO_MAX    3600
 
+// W/o jumbo blocks, 5TiB is the max file size we can support.
+#define AZNFSC_MAX_FILE_SIZE    (100 * 1024 * 1024 * 50'000ULL)
+
 /**
  * This structure holds the entire aznfsclient configuration that controls the
  * behaviour of the aznfsclient fuse program. These config variables can be

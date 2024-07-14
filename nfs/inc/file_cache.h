@@ -13,7 +13,7 @@
 #include <cassert>
 #include <unistd.h>
 
-#include "log.h"
+#include "aznfsc.h"
 
 /*
  * Reminder to audit use of asserts to ensure we don't depend on assert
@@ -54,9 +54,6 @@
 
 
 namespace aznfsc {
-
-// W/o jumbo blocks, 5TB is the max file size we can support.
-#define AZNFSC_MAX_FILE_SIZE    (100 * 1024 * 1024 * 50'000ULL)
 
 /*
  * This is the maximum chunk size we allow. This is like our page size, but
