@@ -488,7 +488,7 @@ func testReadLink(suite *libfuseTestSuite) {
 	name := "path"
 	path := C.CString("/" + name)
 	defer C.free(unsafe.Pointer(path))
-	options := internal.ReadLinkOptions{Name: name}
+	// options := internal.ReadLinkOptions{Name: name}
 	// suite.mock.EXPECT().ReadLink(options).Return("target", nil)
 
 	// https://stackoverflow.com/questions/41953619/how-to-initialise-empty-c-cstring-in-cgo
@@ -503,7 +503,7 @@ func testReadLinkNotExists(suite *libfuseTestSuite) {
 	name := "path"
 	path := C.CString("/" + name)
 	defer C.free(unsafe.Pointer(path))
-	options := internal.ReadLinkOptions{Name: name}
+	// options := internal.ReadLinkOptions{Name: name}
 	// suite.mock.EXPECT().ReadLink(options).Return("", syscall.ENOENT)
 
 	buf := C.CString("")
@@ -517,7 +517,7 @@ func testReadLinkError(suite *libfuseTestSuite) {
 	name := "path"
 	path := C.CString("/" + name)
 	defer C.free(unsafe.Pointer(path))
-	options := internal.ReadLinkOptions{Name: name}
+	// options := internal.ReadLinkOptions{Name: name}
 	// suite.mock.EXPECT().ReadLink(options).Return("", errors.New("failed to read link"))
 
 	buf := C.CString("")
