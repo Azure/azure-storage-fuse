@@ -80,9 +80,6 @@ func newTestAttrCache(next internal.Component, configuration string) *AttrCache 
 
 func getPathAttr(path string, size int64, mode os.FileMode, metadata bool) *internal.ObjAttr {
 	flags := internal.NewFileBitMap()
-	if metadata {
-		flags.Set(internal.PropFlagMetadataRetrieved)
-	}
 	return &internal.ObjAttr{
 		Path:     path,
 		Name:     filepath.Base(path),
