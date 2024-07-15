@@ -144,8 +144,12 @@ func (ac *AttrCache) Configure(_ bool) error {
 		ac.maxFiles = defaultMaxFiles
 	}
 
-	log.Info("AttrCache::Configure : cache-timeout %d, max-files %d",
-		ac.cacheTimeout, ac.maxFiles)
+	if config.IsSet(compName + ".no-symlinks") {
+		ac.noSymlinks = conf.NoSymlinks
+	}
+
+	log.Info("AttrCache::Configure : cache-timeout %d, symlink %t, max-files %d",
+		ac.cacheTimeout, ac.noSymlinks, ac.maxFiles)
 
 	return nil
 }
