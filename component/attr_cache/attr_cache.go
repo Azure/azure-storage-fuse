@@ -144,13 +144,8 @@ func (ac *AttrCache) Configure(_ bool) error {
 		ac.maxFiles = defaultMaxFiles
 	}
 
-	ac.noSymlinks = true
-	if config.IsSet(compName + ".no-symlinks") {
-		ac.noSymlinks = conf.NoSymlinks
-	}
-
-	log.Info("AttrCache::Configure : cache-timeout %d, symlink %t, max-files %d",
-		ac.cacheTimeout, ac.noSymlinks, ac.maxFiles)
+	log.Info("AttrCache::Configure : cache-timeout %d, max-files %d",
+		ac.cacheTimeout, ac.maxFiles)
 
 	return nil
 }
@@ -589,7 +584,7 @@ func init() {
 	attrCacheTimeout := config.AddUint32Flag("attr-cache-timeout", defaultAttrCacheTimeout, "attribute cache timeout")
 	config.BindPFlag(compName+".timeout-sec", attrCacheTimeout)
 
-	noSymlinks := config.AddBoolFlag("no-symlinks", true, "whether or not symlinks should be supported")
+	noSymlinks := config.AddBoolFlag("no-symlinks", false, "whether or not symlinks should be supported")
 	config.BindPFlag(compName+".no-symlinks", noSymlinks)
 
 	cacheOnList := config.AddBoolFlag("cache-on-list", true, "Cache attributes on listing.")
