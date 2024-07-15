@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1721050050017,
+  "lastUpdate": 1721060855574,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -2743,6 +2743,68 @@ window.BENCHMARK_DATA = {
           {
             "name": "read_40GB",
             "value": 18.200529098510742,
+            "unit": "seconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "vibhansa",
+            "username": "vibhansa-msft",
+            "email": "vibhansa@microsoft.com"
+          },
+          "committer": {
+            "name": "vibhansa",
+            "username": "vibhansa-msft",
+            "email": "vibhansa@microsoft.com"
+          },
+          "id": "e7d3b56c65469bba5cde2d669fbf1ead5927bd5b",
+          "message": "Correcting tet",
+          "timestamp": "2024-07-13T07:34:35Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/e7d3b56c65469bba5cde2d669fbf1ead5927bd5b"
+        },
+        "date": 1721060855339,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "write_1GB",
+            "value": 1.2808005809783936,
+            "unit": "seconds"
+          },
+          {
+            "name": "write_10GB",
+            "value": 5.974352598190308,
+            "unit": "seconds"
+          },
+          {
+            "name": "write_100GB",
+            "value": 53.892176151275635,
+            "unit": "seconds"
+          },
+          {
+            "name": "write_40GB",
+            "value": 21.574663162231445,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_1GB",
+            "value": 0.775428056716919,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_10GB",
+            "value": 4.8545310497283936,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_100GB",
+            "value": 49.6933274269104,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_40GB",
+            "value": 16.16542100906372,
             "unit": "seconds"
           }
         ]
