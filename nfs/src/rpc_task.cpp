@@ -479,6 +479,9 @@ void rpc_task::run_setattr()
 void rpc_task::run_readfile()
 {
     auto ino = rpc_api.readfile_task.get_inode();
+    // Grab a ref on this inode so that it is not freed during the operation.
+    // This should be decremented in the free task
+    get_client()->get_nfs_inode_from_ino(ino)->incref();
 
     auto readfile_handle = get_client()->get_nfs_inode_from_ino(ino)->filecache_handle;
 
@@ -694,7 +697,14 @@ static void readfile_callback(
 		   res->READ3res_u.resok.count, res->READ3res_u.resok.eof,
 		   bc->length,
 		   bc->offset);
-
+    if (!task->is_async())
+    {
+	    AZLogInfo("readfile_callback:: is_async:{} Bytes read: {} eof: {}, requested_bytes: {} off: {}",
+                   task->is_async(),
+                   res->READ3res_u.resok.count, res->READ3res_u.resok.eof,
+                   bc->length,
+                   bc->offset);
+    }
     const int status = (task->succeeded(rpc_status, RSTATUS(res))) ? 0 : -nfsstat3_to_errno(RSTATUS(res));
 
             auto ino = task->rpc_api.readfile_task.get_inode();
@@ -843,15 +853,18 @@ void rpc_task::free_rpc_task()
 		 rpc_api.readfile_task.get_offset(),
 		 bytes_vector.size());
     	// Decrement the in_use flag of the mebuf that we incremented.
+	 {   
+	 auto ino = rpc_api.readfile_task.get_inode();
     	for (size_t i = 0; i <  bytes_vector.size(); i++)
     	{
-            auto ino = rpc_api.readfile_task.get_inode();
-            auto readfile_handle = get_client()->get_nfs_inode_from_ino(ino)->filecache_handle;
+            //auto readfile_handle = get_client()->get_nfs_inode_from_ino(ino)->filecache_handle;
 	    // TODO: This chunk should not be released, just doing for perf test..
 	    //readfile_handle->release(bytes_vector[i].offset, bytes_vector[i].length);
 	    bytes_vector[i].get_membuf()->clear_inuse();
     	}
         bytes_vector.clear();
+	get_client()->get_nfs_inode_from_ino(ino)->decref();
+	 }
     default :
         break;
     }

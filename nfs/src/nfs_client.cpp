@@ -355,28 +355,32 @@ void nfs_client::read(
 
     tsk1->init_readfile(req, ino, size, off, fi);
     tsk1->run_readfile();
-    
-    // Now issue read ahead for this file.
+// Now issue read ahead for this file.
 //    auto readahead = 10 * 1024* 1024; // 100MB
     // Break this into smaller 4MB chunks.
 
-const int CHUNK_SIZE = 4 * 1024 * 1024; // 4MB
-const int TOTAL_SIZE = 16 * 1024 * 1024; // 100MB
+	const int CHUNK_SIZE = 4 * 1024 * 1024; // 4MB
+	const int TOTAL_SIZE = 100 * 1024 * 1024; // 100MB
+	static off_t prev_readahead_offset_upto = 0;
 
-for (int i = 0; i < TOTAL_SIZE; i += CHUNK_SIZE) {
-    int chunk_size = (i + CHUNK_SIZE <= TOTAL_SIZE) ? CHUNK_SIZE : (TOTAL_SIZE - i);
+	if (off > prev_readahead_offset_upto)
+	{
+		prev_readahead_offset_upto = off+size+TOTAL_SIZE;
+
+    			AZLogInfo("Issuing readahead at off: {} len: {}", size + off, TOTAL_SIZE);
+		for (int i = 0; i < TOTAL_SIZE; i += CHUNK_SIZE) {
+    			int chunk_size = (i + CHUNK_SIZE <= TOTAL_SIZE) ? CHUNK_SIZE : (TOTAL_SIZE - i);
 	
-    AZLogDebug("*****Creating task at off: {} len: {}", size + off + i, chunk_size);
-    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task();
+    			struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task();
    
-    tsk->init_readfile(req, ino, chunk_size /* size */, size + off + i /* offset */, fi);
+    			tsk->init_readfile(req, ino, chunk_size /* size */, size + off + i /* offset */, fi);
 
-    // This will call the task->run_readfile() in a separate thread.
-    tsk->set_async_function([](rpc_task *task) {
-        task->run_readfile();
-    });
-}
-
+    			// This will call the task->run_readfile() in a separate thread.
+    			tsk->set_async_function([](rpc_task *task) {
+        		task->run_readfile();
+    			});
+		}
+	}
 #if 0
     struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task();
     tsk->init_readfile(req, ino, readahead /* size */, size+off /* offset */, fi);
