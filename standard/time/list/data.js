@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1721104164385,
+  "lastUpdate": 1721117966544,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1839,6 +1839,40 @@ window.BENCHMARK_DATA = {
           {
             "name": "delete_100k_files",
             "value": "549.72000",
+            "unit": "seconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "64532198+vibhansa-msft@users.noreply.github.com",
+            "name": "Vikas Bhansali",
+            "username": "vibhansa-msft"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "672ae586c12ba9bd7d06013d616e59fd6a541375",
+          "message": "Update benchmark.yml",
+          "timestamp": "2024-07-16T10:59:23+05:30",
+          "tree_id": "f2b7f39d32857ca6646f89cdb8d428771c61150b",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/672ae586c12ba9bd7d06013d616e59fd6a541375"
+        },
+        "date": 1721117966271,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "list_100k_files",
+            "value": "62.16000",
+            "unit": "seconds"
+          },
+          {
+            "name": "delete_100k_files",
+            "value": "497.96000",
             "unit": "seconds"
           }
         ]
