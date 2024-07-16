@@ -40,7 +40,7 @@ namespace aznfsc {
  * How does pattern detection work?
  * ================================
  * File is divided into 1GB logical sections. Everytime access moves to a new
- * section, pattern tracking variables are reset (this is is skipped for an
+ * section, pattern tracking variables are reset (this is skipped for an
  * ongoing sequential access). This is done to make sure we use the most recent
  * accesses to correctly detect the pattern and older accesses do not muddle the
  * pattern detection. Following pattern tracking variables are maintained:
@@ -53,11 +53,13 @@ namespace aznfsc {
  * - num_reads and num_bytes_read is the total number of reads and number of
  *   bytes read in the current section, respectively.
  * - If num_reads >= 3 and num_bytes_read/access_range > 0.7, the pattern is
- *   considered sequential. Note that this allows for some reordered reads due
- *   to multiple async reads handled by multiple threads, but at the same time
- *   it marks the pattern sequential only when application is indeed reading
- *   sequentially. Note that random reads or "jumping reads" after a fixed gap
- *   will not qualify for sequential reads.
+ *   considered sequential. ((num_bytes_read * 100) / access_range) is called
+ *   access_density as it represents how densely the reads are issued over a
+ *   file range. Note that this allows for some reordered reads due to multiple
+ *   async reads handled by multiple threads, but at the same time it marks the
+ *   pattern sequential only when application is indeed reading sequentially.
+ *   Note that random reads or "jumping reads" after a fixed gap will not meet
+ *   the access_density threshold and hence will not qualify as sequential.
  * - Readahead windows starts from max_byte_read+1 and is ra_bytes wide.
  * - ra_ongoing is the number of readahead bytes which are still ongoing.
  * - last_byte_readahead is the last byte of readahead read issued, which means
