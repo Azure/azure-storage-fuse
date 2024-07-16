@@ -1495,7 +1495,6 @@ stages:
               quick_test: false
               verbose_log: ${{ parameters.verbose_log }}
               clone: true
-              test_conf_file: azure_stream.yaml
               # TODO: These can be removed one day and replace all instances of ${{ parameters.temp_dir }} with $(TEMP_DIR) since it is a global variable
               temp_dir: $(TEMP_DIR)
               mount_dir: $(MOUNT_DIR)
