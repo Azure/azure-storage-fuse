@@ -363,27 +363,27 @@ private:
      * Note on safely accessing membuf
      * ===============================
      * Since multiple threads may be trying to read and write to the same file
-     * or part of the file we need to define some rules for ensuring consistent
+     * or part of the file, we need to define some rules for ensuring consistent
      * access. Here are the rules:
      *
      * 1. Any reader or writer gets access to membuf by a call to
      *    bytes_chunk_cache::get(). membufs are managed by shared_ptr, hence
      *    the reader/writer is guaranteed that as long as it does not destroy
-     *    the returned bytes_chunk, the membuf will not be freed. Note that
-     *    consistent read/write access needs some more synchronization, read
-     *    on.
+     *    the returned bytes_chunk, the underlying membuf will not be freed.
+     *    Note that consistent read/write access though needs synchronization
+     *    among the various reader/writer threads, read on.
      * 2. A thread trying to write to the membuf must get exclusive access to
      *    the membuf. It can get that by calling set_locked(). set_locked()
      *    will block if the lock is already held by some other thread and will
      *    return after acquiring the lock. Blocking threads will wait on the
      *    condition_variable 'cv' and will be woken up when the current locking
-     *    thread unlocks. Note that membuf may be written under the following
+     *    thread unlocks. Note that membuf will be written under the following
      *    cases:
      *     i) A writer writes user passed data to the membuf.
-     *    ii) A reader reads data from the Blob and writes it into the membuf.
+     *    ii) A reader reads data from the Blob into the membuf.
      * 3. Membufs also have an inuse count which indicates if there could be
      *    an ongoing IO (whether there is actually an ongoing IO can be
-     *    found by using at the locked bit). The purpose of inuse count is to
+     *    found by using the locked bit). The purpose of inuse count is to
      *    just mark the membuf such that clear() doesn't clear membufs which
      *    might soon afterwards have IOs issued.
      *    bytes_chunk_cache::get() will bump the inuse count of all membufs
@@ -421,23 +421,38 @@ private:
      *      into the membuf but some other caller might get the lock first and
      *      hence they may read partial data into the membuf, which will be
      *      overwritten by the caller with is_empty true.
-     *      So, only if maps_full_membuf() returns true for a bytes_chunk, the
-     *      reader can mark the membuf uptodate.
+     *      So, ONLY IF maps_full_membuf() returns true for a bytes_chunk, the
+     *      reader MUST mark the membuf uptodate.
      *
      *    - Writers must set the uptodate bit only if they write the entire
      *      membuf (maps_full_membuf() returns true), else they should not
      *      change the uptodate bit.
      *
-     * 5. If a reader finds that a membuf is uptodate (by is_uptodate()), it
+     * 5. If a reader finds that a membuf is uptodate (as per is_uptodate()), it
      *    can return the membuf data to the application. Note that some writer
      *    may be writing to the data simultaneously and reader may get a mix
-     *    of old and new data. This is fine as per POSIX.
+     *    of old and new data. This is fine as per POSIX. Users who care about
+     *    this must synchronize access to the file.
      * 6. Once an membuf is marked uptodate it remains uptodate for the life
      *    of the membuf, unless one of the following happens:
      *     i) We detect via file mtime change that our cached copy is no longer
      *        valid. In this case the entire cache for that file is clear()ed
      *        which causes all bytes_chunk and hence all membufs to be freed.
-     *    ii) An NFS read from the given portion of Blob fails.
+     *    ii) An NFS read from the given portion of Blob fails. We will need to
+     *        understand the effects of this better, since we normally never
+     *        fail an NFS IO (think hard mount).
+     * 7. A writer MUST observe the following rules:
+     *     i) If writer is writing to a part of the membuf, it MUST ensure
+     *        that membuf is uptodate before it can modify part of the membuf.
+     *        It must do that by reading the *entire* membuf from the Blob,
+     *        and marking the membuf as uptodate. Then it must update the part
+     *        it wants to. After writing it must mark the membuf as dirty.
+     *        All of this must be done while holding the lock on the membuf as
+     *        we want the membuf update to be atomic.
+     *    ii) If writer is writing to the entire membuf (maps_full_membuf()
+     *        returns true), it can directly write to the membuf even if it's
+     *        not already uptodate, and after writing it must mark the membuf
+     *        as uptodate and dirty.
      * 7. A writer must mark the membuf dirty by calling set_dirty(), after it
      *    updates the membuf data. Dirty membufs must be synced with the Blob
      *    at some later time and once those writes to Blob succeed, the membuf
