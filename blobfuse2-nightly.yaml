@@ -1429,7 +1429,7 @@ stages:
               mount_dir: $(MOUNT_DIR)
 
   - stage: StreamDataValidation
-    jobs:
+    jobs: /home/anubhuti/Downloads/azure-storage-fuse/testdata/config/azure_stream.yaml
       # Ubuntu Tests
       - job: Set_1
         timeoutInMinutes: 300
@@ -1495,6 +1495,7 @@ stages:
               quick_test: false
               verbose_log: ${{ parameters.verbose_log }}
               clone: true
+              test_conf_file: azure_stream.yaml
               # TODO: These can be removed one day and replace all instances of ${{ parameters.temp_dir }} with $(TEMP_DIR) since it is a global variable
               temp_dir: $(TEMP_DIR)
               mount_dir: $(MOUNT_DIR)
