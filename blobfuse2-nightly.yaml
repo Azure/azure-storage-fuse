@@ -1429,7 +1429,7 @@ stages:
               mount_dir: $(MOUNT_DIR)
 
   - stage: StreamDataValidation
-    jobs: /home/anubhuti/Downloads/azure-storage-fuse/testdata/config/azure_stream.yaml
+    jobs:
       # Ubuntu Tests
       - job: Set_1
         timeoutInMinutes: 300
