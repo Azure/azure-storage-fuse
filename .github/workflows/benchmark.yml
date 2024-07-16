@@ -1,7 +1,7 @@
 name: Benchmark
 on:
   schedule:
-    - cron: '0 0,3,6,9,12,15,18,21 * * *'
+    - cron: '0 4 * * SUN'
   push:
     branches:
       - main
@@ -9,6 +9,7 @@ on:
 jobs:
   PerfTesting:
     strategy:
+      max-parallel: 1
       matrix:
         TestType: ["premium", "standard"]
         # TestType: ["premium", "standard", "premium_hns", "standard_hns"]
