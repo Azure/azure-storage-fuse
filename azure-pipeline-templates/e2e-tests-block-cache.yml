@@ -72,7 +72,7 @@ steps:
     displayName: 'Unmount RW mount'
 
   - script: |
-      if [[ "${{ parameters.idstring }}" == "stream" ]]; then
+      if [[ "${{ parameters.idstring }}" == "Stream" ]]; then
         $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/azure_stream.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.config_file }}
       else
         $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/azure_key_bc.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.config_file }}
