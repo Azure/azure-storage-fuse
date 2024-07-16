@@ -31,9 +31,6 @@ parameters:
   - name: clone
     type: boolean
     default: false
-  - name: test_conf_file
-    type: string
-    default: 'azure_key_bc.yaml'
 
 steps:    
   - script: |
@@ -75,7 +72,11 @@ steps:
     displayName: 'Unmount RW mount'
 
   - script: |
-      $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/${{ parameters.test_conf_file }} --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.config_file }}
+      if [[ "${{ parameters.idstring }}" == "stream" ]]; then
+        $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/azure_stream.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.config_file }}
+      else
+        $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/azure_key_bc.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.config_file }}
+      fi
     displayName: 'Create Config File for RO mount'
     env:
       NIGHTLY_STO_ACC_NAME: ${{ parameters.account_name }}
