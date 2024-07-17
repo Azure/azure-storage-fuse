@@ -527,6 +527,10 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 		// Move offset forward in case we need to copy more data
 		options.Offset += int64(bytesRead)
 		dataRead += bytesRead
+
+		if (block.endIndex - block.offset) < uint64(len(block.data)) {
+			return 0, io.EOF
+		}
 	}
 
 	return dataRead, nil
