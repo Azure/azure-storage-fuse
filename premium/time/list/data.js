@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1721112325112,
+  "lastUpdate": 1721188877467,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1939,6 +1939,40 @@ window.BENCHMARK_DATA = {
           {
             "name": "delete_100k_files",
             "value": "397.80000",
+            "unit": "seconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "64532198+vibhansa-msft@users.noreply.github.com",
+            "name": "Vikas Bhansali",
+            "username": "vibhansa-msft"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "3d46ca9e8a5a564d42ae5aee560bd1dd28c2da66",
+          "message": "Cleanup stale mount in remount case (#1453)\n\n* Cleanup in case of mount failure for broken blobfuse mounts",
+          "timestamp": "2024-07-17T08:16:58+05:30",
+          "tree_id": "29a66a5a93d78532c57947a3754fd31723bee6a9",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/3d46ca9e8a5a564d42ae5aee560bd1dd28c2da66"
+        },
+        "date": 1721188877198,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "list_100k_files",
+            "value": "48.46000",
+            "unit": "seconds"
+          },
+          {
+            "name": "delete_100k_files",
+            "value": "385.22000",
             "unit": "seconds"
           }
         ]
