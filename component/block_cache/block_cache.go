@@ -164,28 +164,7 @@ func (bc *BlockCache) Stop() error {
 	// Clear the disk cache on exit
 	if bc.tmpPath != "" {
 		_ = bc.diskPolicy.Stop()
-		_ = bc.TempCacheCleanup()
-	}
-
-	return nil
-}
-
-// TempCacheCleanup cleans up the local cached contents
-func (bc *BlockCache) TempCacheCleanup() error {
-	if bc.tmpPath == "" {
-		return nil
-	}
-
-	log.Info("BlockCache::TempCacheCleanup : Cleaning up temp directory %s", bc.tmpPath)
-
-	dirents, err := os.ReadDir(bc.tmpPath)
-	if err != nil {
-		log.Err("BlockCache::TempCacheCleanup : Failed to list directory %s [%v]", bc.tmpPath, err.Error())
-		return fmt.Errorf("failed to list directory %s", bc.tmpPath)
-	}
-
-	for _, entry := range dirents {
-		os.RemoveAll(filepath.Join(bc.tmpPath, entry.Name()))
+		_ = common.TempCacheCleanup(bc.tmpPath)
 	}
 
 	return nil

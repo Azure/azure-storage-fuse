@@ -2,6 +2,7 @@
 **Bug Fixes**
 - Fixed the case where file creation using SAS on HNS accounts was returning back wrong error code.
 - [#1402](https://github.com/Azure/azure-storage-fuse/issues/1402) Fixed proxy URL parsing.
+- If earlier instance of Blobfuse2 crashed and mount is unstable then next mount to same path will automatically cleanup the system.
 
 **Features**
 - Entry cache to hold directory listing results in cache for a given timeout. This will reduce REST calls going to storage while listing the blobs in parallel.
