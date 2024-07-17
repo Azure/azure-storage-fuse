@@ -230,6 +230,39 @@ func (suite *utilTestSuite) TestGetDiskUsage() {
 	_ = os.RemoveAll(filepath.Join(pwd, "util_test"))
 }
 
+func (suite *utilTestSuite) TestDirectoryCleanup() {
+	dirName := "./TestDirectoryCleanup"
+
+	// Directory does not exists
+	exists := DirectoryExists(dirName)
+	suite.assert.False(exists)
+
+	err := TempCacheCleanup(dirName)
+	suite.assert.Nil(err)
+
+	// Directory exists but is empty
+	_ = os.MkdirAll(dirName, 0777)
+	exists = DirectoryExists(dirName)
+	suite.assert.True(exists)
+
+	empty := IsDirectoryEmpty(dirName)
+	suite.assert.True(empty)
+
+	err = TempCacheCleanup(dirName)
+	suite.assert.Nil(err)
+
+	// Directory exists and is not empty
+	_ = os.MkdirAll(dirName+"/A", 0777)
+	exists = DirectoryExists(dirName)
+	suite.assert.True(exists)
+
+	empty = IsDirectoryEmpty(dirName)
+	suite.assert.False(empty)
+
+	err = TempCacheCleanup(dirName)
+	suite.assert.Nil(err)
+}
+
 func (suite *utilTestSuite) TestGetFuseMinorVersion() {
 	i := GetFuseMinorVersion()
 	suite.assert.GreaterOrEqual(i, 0)
