@@ -522,7 +522,7 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 
 		// Copy data from this block to user buffer
 		readOffset := uint64(options.Offset) - block.offset
-		bytesRead := copy(options.Data[dataRead:], block.data[readOffset:])
+		bytesRead := copy(options.Data[dataRead:], block.data[readOffset:(block.endIndex-block.offset)])
 
 		// Move offset forward in case we need to copy more data
 		options.Offset += int64(bytesRead)
