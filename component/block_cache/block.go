@@ -39,6 +39,7 @@ import (
 	"syscall"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
 // Various flags denoting state of a block
@@ -60,6 +61,11 @@ type Block struct {
 	flags    common.BitMap16 // Various states of the block
 	data     []byte          // Data read from blob
 	node     *list.Element   // node representation of this block in the list inside handle
+}
+
+type blockInfo struct {
+	id        string
+	committed bool
 }
 
 // AllocateBlock creates a new memory mapped buffer for the given size
@@ -132,7 +138,9 @@ func (b *Block) Ready() {
 
 // Unblock marks this Block is ready to be read in parllel now
 func (b *Block) Unblock() {
+	log.Debug("Block::Unblock : closing state channel for %v", b.id)
 	close(b.state)
+	log.Debug("Block::Unblock : closing state channel for %v", b.id)
 }
 
 // Mark this block as dirty as it has been modified

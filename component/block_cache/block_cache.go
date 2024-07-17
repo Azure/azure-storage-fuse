@@ -364,11 +364,14 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 		}
 
 		lst, _ := handle.GetValue("blockList")
-		listMap := lst.(map[int64]string)
+		listMap := lst.(map[int64]*blockInfo)
 
 		listLen := len(*blockList)
 		for idx, block := range *blockList {
-			listMap[int64(idx)] = block.Id
+			listMap[int64(idx)] = &blockInfo{
+				id:        block.Id,
+				committed: true,
+			}
 			// All blocks shall of same size otherwise fail the open call
 			// Last block is allowed to be of smaller size as it can be partial block
 			if block.Size != bc.blockSize && idx != (listLen-1) {
@@ -401,7 +404,7 @@ func (bc *BlockCache) prepareHandleForBlockCache(handle *handlemap.Handle) {
 	}
 
 	// Create map to hold the block-ids for this file
-	listMap := make(map[int64]string, 0)
+	listMap := make(map[int64]*blockInfo, 0)
 	handle.SetValue("blockList", listMap)
 
 	// Set next offset to download as 0
@@ -423,7 +426,7 @@ func (bc *BlockCache) FlushFile(options internal.FlushFileOptions) error {
 	defer options.Handle.Unlock()
 
 	// call commit blocks only if the handle is dirty
-	if options.Handle.Flags.IsSet(handlemap.HandleFlagDirty) {
+	if options.Handle.Dirty() {
 		err := bc.commitBlocks(options.Handle)
 		if err != nil {
 			log.Err("BlockCache::FlushFile : Failed to commit blocks for %s [%s]", options.Handle.Path, err.Error())
@@ -773,14 +776,14 @@ func (bc *BlockCache) refreshBlock(handle *handlemap.Handle, index uint64, prefe
 		handle.SetValue(fmt.Sprintf("%v", index), block)
 		handle.SetValue("#", (index + 1))
 
-		bc.lineupDownload(handle, block, prefetch)
+		bc.lineupDownload(handle, block, prefetch, true)
 	}
 
 	return nil
 }
 
 // lineupDownload : Create a work item and schedule the download
-func (bc *BlockCache) lineupDownload(handle *handlemap.Handle, block *Block, prefetch bool) {
+func (bc *BlockCache) lineupDownload(handle *handlemap.Handle, block *Block, prefetch bool, pushFront bool) {
 	item := &workItem{
 		handle:   handle,
 		block:    block,
@@ -794,7 +797,12 @@ func (bc *BlockCache) lineupDownload(handle *handlemap.Handle, block *Block, pre
 		_ = handle.Buffers.Cooked.Remove(block.node)
 	}
 
-	block.node = handle.Buffers.Cooking.PushFront(block)
+	if pushFront {
+		block.node = handle.Buffers.Cooking.PushFront(block)
+	} else {
+		// push back to cooking list in case of write scenario where a block is downloaded before it is updated
+		block.node = handle.Buffers.Cooking.PushBack(block)
+	}
 	block.flags.Set(BlockFlagDownloading)
 
 	// Send the work item to worker pool to schedule download
@@ -914,7 +922,7 @@ func (bc *BlockCache) download(item *workItem) {
 
 // WriteFile: Write to the local file
 func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) {
-	//log.Debug("BlockCache::WriteFile : Writing %v bytes from %s", len(options.Data), options.Handle.Path)
+	// log.Debug("BlockCache::WriteFile : Writing %v bytes from %s", len(options.Data), options.Handle.Path)
 
 	options.Handle.Lock()
 	defer options.Handle.Unlock()
@@ -957,10 +965,10 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 	index := bc.getBlockIndex(offset)
 	if index >= MAX_BLOCKS {
 		log.Err("BlockCache::getOrCreateBlock : Failed to get Block %v=>%s offset %v", handle.ID, handle.Path, offset)
-		return nil, fmt.Errorf("block index out of range. Increase your block size.")
+		return nil, fmt.Errorf("block index out of range. Increase your block size")
 	}
 
-	//log.Debug("FilBlockCacheCache::getOrCreateBlock : Get block for %s, index %v", handle.Path, index)
+	log.Debug("FilBlockCacheCache::getOrCreateBlock : Get block for %s, index %v", handle.Path, index)
 
 	var block *Block
 	var err error
@@ -984,8 +992,19 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 		block.offset = index * bc.blockSize
 
 		if block.offset < uint64(handle.Size) {
+			// commit the dirty blocks and download the given block
+			if shouldCommit(block.id, handle) && handle.Dirty() {
+				log.Debug("BlockCache::getOrCreateBlock : Fetching an uncommitted block %v, so committing all the staged blocks", block.id)
+				err := bc.commitBlocks(handle)
+				if err != nil {
+					log.Err("BlockCache::getOrCreateBlock : Failed to commit blocks for %s [%s]", handle.Path, err.Error())
+					return nil, err
+				}
+			}
+
 			// We are writing somewhere in between so just fetch this block
-			bc.lineupDownload(handle, block, false)
+			log.Debug("BlockCache::getOrCreateBlock : Downloading block %v", block.id)
+			bc.lineupDownload(handle, block, false, false)
 
 			// Now wait for download to complete
 			<-block.state
@@ -1040,20 +1059,41 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 	return block, nil
 }
 
+// shouldCommit is used to check if we should commit the existing blocks.
+// There can be a case where a block has been partially written, staged and cleaned from the buffer list.
+// If write call comes for that block, we cannot get the previous staged data
+// since the block is not yet committed. So, we have to commit it.
+// Return true if the block has been partially written, staged and cleaned from the buffer list.
+func shouldCommit(blockID int64, handle *handlemap.Handle) bool {
+	lst, ok := handle.GetValue("blockList")
+	if !ok {
+		return false
+	}
+
+	listMap := lst.(map[int64]*blockInfo)
+	val, ok := listMap[blockID]
+	if ok {
+		return !val.committed
+	} else {
+		return false
+	}
+}
+
 // Stage the given number of blocks from this handle
 func (bc *BlockCache) stageBlocks(handle *handlemap.Handle, cnt int) error {
-	//log.Debug("BlockCache::stageBlocks : Staging blocks for %s, cnt %v", handle.Path, cnt)
+	// log.Debug("BlockCache::stageBlocks : Staging blocks for %s, cnt %v", handle.Path, cnt)
 
 	nodeList := handle.Buffers.Cooking
 	node := nodeList.Front()
 
 	lst, _ := handle.GetValue("blockList")
-	listMap := lst.(map[int64]string)
+	listMap := lst.(map[int64]*blockInfo)
 
 	for node != nil && cnt > 0 {
 		nextNode := node.Next()
 		block := node.Value.(*Block)
 
+		// TODO: fill the block (not last block) with null values if it not full
 		if block.IsDirty() {
 			log.Debug("BlockCache::stageBlocks : Sending block %v for upload", block.id)
 			bc.lineupUpload(handle, block, listMap)
@@ -1067,11 +1107,14 @@ func (bc *BlockCache) stageBlocks(handle *handlemap.Handle, cnt int) error {
 }
 
 // lineupUpload : Create a work item and schedule the upload
-func (bc *BlockCache) lineupUpload(handle *handlemap.Handle, block *Block, listMap map[int64]string) {
+func (bc *BlockCache) lineupUpload(handle *handlemap.Handle, block *Block, listMap map[int64]*blockInfo) {
 	// id := listMap[block.id]
 	// if id == "" {
 	id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
-	listMap[block.id] = id
+	listMap[block.id] = &blockInfo{
+		id:        id,
+		committed: false,
+	}
 	//}
 
 	item := &workItem{
@@ -1119,6 +1162,7 @@ func (bc *BlockCache) waitAndFreeUploadedBlocks(handle *handlemap.Handle, cnt in
 			block.flags.Clear(BlockFlagUploading)
 		}
 
+		log.Debug("BlockCache::waitAndFreeUploadedBlocks : closing state channel for %v", block.id)
 		block.Unblock()
 
 		if block.IsFailed() {
@@ -1243,7 +1287,7 @@ func (bc *BlockCache) commitBlocks(handle *handlemap.Handle) error {
 
 	// Generate the block id list order now
 	list, _ := handle.GetValue("blockList")
-	listMap := list.(map[int64]string)
+	listMap := list.(map[int64]*blockInfo)
 
 	offsets := make([]int64, 0)
 	blockIdList := make([]string, 0)
@@ -1254,8 +1298,8 @@ func (bc *BlockCache) commitBlocks(handle *handlemap.Handle) error {
 	sort.Slice(offsets, func(i, j int) bool { return offsets[i] < offsets[j] })
 
 	for i := 0; i < len(offsets); i++ {
-		blockIdList = append(blockIdList, listMap[offsets[i]])
-		log.Debug("BlockCache::commitBlocks : Preparing blocklist for %v=>%s (%v :  %v)", handle.ID, handle.Path, i, listMap[offsets[i]])
+		blockIdList = append(blockIdList, listMap[offsets[i]].id)
+		log.Debug("BlockCache::commitBlocks : Preparing blocklist for %v=>%s (%v : %v :  %v)", handle.ID, handle.Path, i, offsets[i], listMap[offsets[i]].id)
 	}
 
 	log.Debug("BlockCache::commitBlocks : Committing blocks for %s", handle.Path)
@@ -1265,6 +1309,10 @@ func (bc *BlockCache) commitBlocks(handle *handlemap.Handle) error {
 	if err != nil {
 		log.Err("BlockCache::commitBlocks : Failed to commit blocks for %s [%s]", handle.Path, err.Error())
 		return err
+	}
+
+	for i := 0; i < len(offsets); i++ {
+		listMap[offsets[i]].committed = true
 	}
 
 	handle.Flags.Clear(handlemap.HandleFlagDirty)
