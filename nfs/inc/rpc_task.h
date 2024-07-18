@@ -57,6 +57,77 @@ private:
 };
 
 /**
+ * WRITE RPC task definition.
+ */
+struct write_rpc_task
+{
+    void set_buffer(const char *buf)
+    {
+        buffer = buf;
+    }
+
+    void set_ino(fuse_ino_t ino)
+    {
+        ino = ino;
+    }
+
+    void set_offset(off_t off)
+    {
+        offset = off;
+    }
+
+    void set_size(size_t size)
+    {
+        size = size;
+    }
+
+    void set_count(size_t count)
+    {
+        count = count;
+    }
+
+    fuse_ino_t get_ino() const
+    {
+        return ino;
+    }
+
+    off_t get_offset()
+    {
+        return offset;
+    }
+
+    size_t get_size()
+    {
+        return size;
+    }
+
+    size_t get_count()
+    {
+        return count;
+    }
+
+    const char * get_buf()
+    {
+        return buffer;
+    }
+
+    /**
+     * Release any resources used up by this task.
+     */
+    void release()
+    {
+    }
+
+private:
+    fuse_ino_t ino;
+    size_t size;
+    size_t count;
+    off_t  offset;
+    const char*  buffer;
+};
+
+
+/**
  * GETATTR RPC task definition.
  */
 struct getattr_rpc_task
@@ -483,6 +554,7 @@ public:
     union
     {
         struct lookup_rpc_task lookup_task;
+        struct write_rpc_task write_task;
         struct getattr_rpc_task getattr_task;
         struct setatt_rpc_task setattr_task;
         struct create_file_rpc_task create_task;
@@ -566,6 +638,19 @@ public:
                      const char *name,
                      fuse_ino_t parent_ino);
     void run_lookup();
+
+
+    /*
+     * init/run methods for the LOOKUP RPC.
+     */
+    void init_write(fuse_req *request,
+                     fuse_ino_t ino,
+                     const char *buf,
+                     size_t size,
+                     off_t offset);
+
+    void run_write();
+
 
     /*
      * init/run methods for the GETATTR RPC.
