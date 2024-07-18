@@ -992,8 +992,10 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 		block.offset = index * bc.blockSize
 
 		if block.offset < uint64(handle.Size) {
+			shouldCommit, shouldDownload := shouldCommitAndDownload(block.id, handle)
+
 			// commit the dirty blocks and download the given block
-			if shouldCommit(block.id, handle) && handle.Dirty() {
+			if shouldCommit && handle.Dirty() {
 				log.Debug("BlockCache::getOrCreateBlock : Fetching an uncommitted block %v, so committing all the staged blocks", block.id)
 				err := bc.commitBlocks(handle)
 				if err != nil {
@@ -1002,12 +1004,20 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 				}
 			}
 
-			// We are writing somewhere in between so just fetch this block
-			log.Debug("BlockCache::getOrCreateBlock : Downloading block %v", block.id)
-			bc.lineupDownload(handle, block, false, false)
+			// download the block if,
+			//    - it was already committed, or
+			//    - it was committed by the above commit blocks operation
+			if shouldDownload || shouldCommit {
+				// We are writing somewhere in between so just fetch this block
+				log.Debug("BlockCache::getOrCreateBlock : Downloading block %v", block.id)
+				bc.lineupDownload(handle, block, false, false)
 
-			// Now wait for download to complete
-			<-block.state
+				// Now wait for download to complete
+				<-block.state
+			} else {
+				log.Debug("BlockCache::getOrCreateBlock : push block %v to the cooking list", block.id)
+				block.node = handle.Buffers.Cooking.PushBack(block)
+			}
 		} else {
 			block.node = handle.Buffers.Cooking.PushBack(block)
 		}
@@ -1059,23 +1069,27 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 	return block, nil
 }
 
-// shouldCommit is used to check if we should commit the existing blocks.
-// There can be a case where a block has been partially written, staged and cleaned from the buffer list.
+// shouldCommit is used to check if we should commit the existing blocks and download the given block.
+// There can be a case where a block has been partially written, staged and cleared from the buffer list.
 // If write call comes for that block, we cannot get the previous staged data
 // since the block is not yet committed. So, we have to commit it.
-// Return true if the block has been partially written, staged and cleaned from the buffer list.
-func shouldCommit(blockID int64, handle *handlemap.Handle) bool {
+// If the block is staged and cleared from the buffer list, return true for commit and false for downloading.
+// if the block is already committed, return false for commit and true for downloading.
+func shouldCommitAndDownload(blockID int64, handle *handlemap.Handle) (bool, bool) {
 	lst, ok := handle.GetValue("blockList")
 	if !ok {
-		return false
+		return false, false
 	}
 
 	listMap := lst.(map[int64]*blockInfo)
 	val, ok := listMap[blockID]
 	if ok {
-		return !val.committed
+		// block id exists
+		// If block is staged, return true for commit and false for downloading
+		// If block is committed, return false for commit and true for downloading
+		return !val.committed, val.committed
 	} else {
-		return false
+		return false, false
 	}
 }
 
