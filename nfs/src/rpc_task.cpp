@@ -479,8 +479,11 @@ void rpc_task::run_setattr()
 void rpc_task::run_readfile()
 {
     auto ino = rpc_api.readfile_task.get_inode();
-    // Grab a ref on this inode so that it is not freed during the operation.
-    // This should be decremented in the free task
+
+    /*
+     * Grab a ref on this inode so that it is not freed during the operation.
+     * This should be decremented in the free task
+     */
     get_client()->get_nfs_inode_from_ino(ino)->incref();
 
     auto readfile_handle = get_client()->get_nfs_inode_from_ino(ino)->filecache_handle;
@@ -555,7 +558,7 @@ void rpc_task::run_readfile()
     --num_of_reads_issued_to_backend;
     if (num_of_reads_issued_to_backend == 0)
     {
-        AZLogDebug("*************All data read from cache********");
+        AZLogInfo("*************All data read from cache********");
 	    goto send_response;
     }
     else
@@ -565,6 +568,20 @@ void rpc_task::run_readfile()
     }// End of lock
 send_response:
 	assert (num_of_reads_issued_to_backend == 0);
+#if 0
+	assert (!is_async());
+
+	if (is_async())
+	{
+		// Ideally readaheads should never be in the cache, handling just in case.
+		get_client()->get_nfs_inode_from_ino(ino)->readahead_state->on_readahead_complete(
+ 			rpc_api.readfile_task.get_offset(),
+                       rpc_api.readfile_task.get_size());
+		
+		// No response should be sent since this is a readahead request.
+		return;
+	}
+#endif
 	send_readfile_response(0 /* success status */);
 #if 0
    /*
@@ -588,6 +605,12 @@ void rpc_task::send_readfile_response(int status)
     if (is_async())
     {
 	    AZLogDebug(" This is a readahead task, no reply will be sent");
+
+	// Mark the readahead as complete.
+	get_client()->get_nfs_inode_from_ino(rpc_api.readfile_task.get_inode())->readahead_state->on_readahead_complete(
+                        rpc_api.readfile_task.get_offset(),
+                       rpc_api.readfile_task.get_size());
+
 	    // Free the task since we won't call the response.
 	    free_rpc_task();
 	    return;
@@ -705,11 +728,13 @@ static void readfile_callback(
                    bc->length,
                    bc->offset);
     }
+
     const int status = (task->succeeded(rpc_status, RSTATUS(res))) ? 0 : -nfsstat3_to_errno(RSTATUS(res));
 
-            auto ino = task->rpc_api.readfile_task.get_inode();
-            auto readfile_handle = task->get_client()->get_nfs_inode_from_ino(ino)->filecache_handle;
-            
+    auto ino = task->rpc_api.readfile_task.get_inode();
+    auto readfile_handle = task->get_client()->get_nfs_inode_from_ino(ino)->filecache_handle;
+   
+
     if (status == 0)
     {
         if (bc->length > res->READ3res_u.resok.count)

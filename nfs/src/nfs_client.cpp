@@ -355,6 +355,67 @@ void nfs_client::read(
 
     tsk1->init_readfile(req, ino, size, off, fi);
     tsk1->run_readfile();
+    auto rastate = get_nfs_inode_from_ino(ino)->readahead_state;
+    rastate->on_application_read(off, size);
+
+const size_t CHUNK_SIZE = 4 * 1024 * 1024; // 4MB
+const size_t TOTAL_SIZE = 10 * 1024 * 1024; // 100MB
+
+for (size_t i = 0; i < TOTAL_SIZE; i += CHUNK_SIZE)
+{
+	const size_t chnk_size = CHUNK_SIZE;
+	off_t ra_offset = rastate->get_next_ra(chnk_size);
+	 
+	if (ra_offset > 0)
+    {
+    AZLogDebug("Issuing readahead at off: {} len: {}", ra_offset, chnk_size);
+		struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task();
+		tsk->init_readfile(req,
+			ino,
+			chnk_size /* size */,
+			ra_offset /* offset */,
+			fi);
+
+        // This will call the task->run_readfile() in a separate thread.
+        tsk->set_async_function([](rpc_task *task) {
+            task->run_readfile();
+            });
+    }
+	else
+	{
+		AZLogInfo("Not issuing readahead!");
+	}
+}
+
+#if 0
+    // Now issue read ahead for this file.
+    auto readahead_length = 4 * 1024* 1024; // 100MB
+    auto rastate = get_nfs_inode_from_ino(ino)->readahead_state;
+
+    off_t ra_offset = rastate->get_next_ra(readahead_length);
+    AZLogInfo("Issuing readahead at off: {} len: {}", ra_offset, readahead_length);
+
+    if (ra_offset > 0)
+    {
+    	struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task();
+    	tsk->init_readfile(req /* TODO: See if it is safe to pass this as req meybe freed*/,
+		    ino,
+		    readahead_length/* size */,
+		    ra_offset /* offset */,
+		    fi);
+    
+
+	// This will call the task->run_readfile() in a separate thread.
+	tsk->set_async_function([](rpc_task *task) {
+		task->run_readfile();
+		 });
+    }
+    else
+    {
+	AZLogInfo("Not issuing readahead!");
+    }
+#endif
+#if 0
 // Now issue read ahead for this file.
 //    auto readahead = 10 * 1024* 1024; // 100MB
     // Break this into smaller 4MB chunks.
@@ -391,6 +452,7 @@ void nfs_client::read(
         task->run_readfile();
     });
     //tsk->run_readfile();
+#endif
 #endif
 }
 
