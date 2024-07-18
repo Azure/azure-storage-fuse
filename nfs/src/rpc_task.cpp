@@ -13,6 +13,20 @@ void rpc_task::init_lookup(fuse_req* request,
     rpc_api.lookup_task.set_parent_ino(parent_ino);
 }
 
+void rpc_task::init_write(fuse_req* request,
+                           fuse_ino_t ino,
+                           const char *buf,
+                           size_t size,
+                           off_t offset)
+{
+    req = request;
+    optype = FUSE_WRITE;
+    rpc_api.write_task.set_size(size);
+    rpc_api.write_task.set_offset(offset);
+    rpc_api.write_task.set_ino(ino);
+    rpc_api.write_task.set_buffer(buf);
+}
+
 void rpc_task::init_getattr(fuse_req* request,
                             fuse_ino_t ino)
 {
@@ -171,6 +185,59 @@ static void lookup_callback(
     }
 }
 
+static void write_callback(
+    struct rpc_context* /* rpc */,
+    int rpc_status,
+    void *data,
+    void *private_data)
+{
+    rpc_task *task = (rpc_task*) private_data;
+    auto res = (WRITE3res *)data;
+
+    // Positive case
+    if (task->succeeded(rpc_status, RSTATUS(res))) {
+        size_t count = res->WRITE3res_u.resok.count;
+        count += task->rpc_api.write_task.get_count();
+        size_t size = task->rpc_api.write_task.get_size();
+
+        if (res->WRITE3res_u.resok.count == 0)
+        {
+            task->reply_write(count);
+        } else if (count < size) {
+            /*
+             * Special case where we wrote less data, we retry to write rest of data.
+             */
+            WRITE3args args;
+            bool rpc_retry = false;
+            off_t off = task->rpc_api.write_task.get_offset();
+            char *buf = (char *)task->rpc_api.write_task.get_buf();
+            fuse_ino_t file_ino = task->rpc_api.write_task.get_ino();
+            args.file = task->get_client()->get_nfs_inode_from_ino(file_ino)->get_fh();
+	        args.offset = off + count;
+	        args.count  = size - count;
+	        args.stable = FILE_SYNC;
+	        args.data.data_len = size - count;
+            args.data.data_val = &buf[count];
+            task->rpc_api.write_task.set_count(count);
+            do {
+                if(rpc_nfs3_write_task(task->get_rpc_ctx(), write_callback, &args, task) == NULL)
+                {
+                    /*
+                    * This call fails due to internal issues like OOM etc
+                    * and not due to an actual error, hence retry.
+                    */
+                    rpc_retry = true;
+                }
+            } while (rpc_retry == false);
+        } else {
+                task->reply_write(count);
+        }
+    } else {
+        // Since the api failed and can no longer be retried, return error reply.
+        task->reply_error(-nfsstat3_to_errno(RSTATUS(res)));
+    }
+}
+
 static void createfile_callback(
     struct rpc_context* /* rpc */,
     int rpc_status,
@@ -298,6 +365,37 @@ void rpc_task::run_lookup()
         }
     } while (rpc_retry);
 }
+
+void rpc_task::run_write()
+{
+    bool rpc_retry = false;
+    fuse_ino_t file_ino = rpc_api.write_task.get_ino();
+    const char * buf = rpc_api.write_task.get_buf();
+    size_t size = rpc_api.write_task.get_size();
+    off_t off = rpc_api.write_task.get_offset();
+
+    do {
+        WRITE3args args;
+
+	    args.file = get_client()->get_nfs_inode_from_ino(file_ino)->get_fh();
+	    args.offset = off;
+	    args.count  = size;
+	    args.stable = FILE_SYNC;
+	    args.data.data_len = size;
+	    args.data.data_val = (char *)buf;
+
+        if(rpc_nfs3_write_task(get_rpc_ctx(), write_callback, &args, this) == NULL)
+        {
+            /*
+             * This call fails due to internal issues like OOM etc
+             * and not due to an actual error, hence retry.
+             */
+            rpc_retry = true;
+        }
+    } while (rpc_retry);
+}
+
+
 
 void rpc_task::run_getattr()
 {
