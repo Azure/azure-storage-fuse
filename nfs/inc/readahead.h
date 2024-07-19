@@ -360,7 +360,7 @@ private:
         assert(access_range > 0);
 
         const int access_density = (num_bytes_read * 100) / access_range;
-        assert(access_density <= 1000);
+        assert(access_density <= 100);
 
         return (access_density > ACCESS_DENSITY_MIN);
     }
