@@ -497,21 +497,24 @@ void rpc_task::run_readfile()
      * If the chunks are empty, we will issue parallel read calls to fetch the data.
      */
     const size_t size = bytes_vector.size();
-    //bool reads_issued = false;
+
+    // There should not be any reads running for this RPC task initially.
     assert (num_of_reads_issued_to_backend == 0);
 
-    AZLogInfo("run_readfile:: is_async: {}, size: {}, offset {}, num_of_chunks: {}",
-			    is_async(), rpc_api.readfile_task.get_size(), rpc_api.readfile_task.get_offset(), size);
+    AZLogDebug("run_readfile:: is_async: {}, size: {}, offset {}, num_of_chunks: {}",
+              is_async(), rpc_api.readfile_task.get_size(), rpc_api.readfile_task.get_offset(), size);
+
     /*
-     * First check if the requested data is present in the cache excluding the
-     * readahead data. If yes, send response to caller.
+     * Check if the requested data is present in the cache.
+     * If yes, send response to caller by reading data from cache.
      */
     size_t data_length_in_cache = 0;
     for (size_t i = 0; i < size; i++)
     {
+        // If the data is present in cache, membuf should be marked uptodate.
         if (bytes_vector[i].get_membuf()->is_uptodate())
         {
-	    // Data exists in the cache, we need not issue backend read.
+            // Data exists in the cache, we need not issue backend read.
             data_length_in_cache += bytes_vector[i].length;
             if (data_length_in_cache >= rpc_api.readfile_task.get_size())
             {
@@ -535,90 +538,69 @@ void rpc_task::run_readfile()
 
     for (size_t i = 0; i < size; i++)
     {
-	// One or more chunks don't have the requested data, issue read for those.
+        // One or more chunks don't have the requested data, issue read for those.
         if (!bytes_vector[i].get_membuf()->is_uptodate())
         {
             readfile_from_server(bytes_vector[i]);
-#if 0
-	    if (issued)
-	    {
-	    	reads_issued = issued;
-	    }
-	    else
-	    {
-		 //   num_of_reads_issued_to_backend--;
-	    }
-#endif
         }
     }
-   
-    // Drop the extra ref that we held under the lock.
-    {   
-    std::unique_lock<std::shared_mutex> lock(readfile_task_lock);
-    --num_of_reads_issued_to_backend;
-    if (num_of_reads_issued_to_backend == 0)
-    {
-        AZLogInfo("*************All data read from cache********size: {}, offset: {}", rpc_api.readfile_task.get_size(), rpc_api.readfile_task.get_offset());
-	    goto send_response;
-    }
-    else
-    {
-	    return;
-    }
-    }// End of lock
-send_response:
-	assert (num_of_reads_issued_to_backend == 0);
-        AZLogInfo("*************All data read from cache********size: {}, offset: {}", rpc_api.readfile_task.get_size(), rpc_api.readfile_task.get_offset());
-#if 0
-	assert (!is_async());
 
-	if (is_async())
-	{
-		// Ideally readaheads should never be in the cache, handling just in case.
-		get_client()->get_nfs_inode_from_ino(ino)->readahead_state->on_readahead_complete(
- 			rpc_api.readfile_task.get_offset(),
-                       rpc_api.readfile_task.get_size());
-		
-		// No response should be sent since this is a readahead request.
-		return;
-	}
-#endif
-	send_readfile_response(0 /* success status */);
-#if 0
-   /*
-     * If no reads were issued to the server, it means all the data is present in
-     * the cache. So directly send the response back to the caller.
-     * Otherwise we wait for all the reads to complete and fill the bytes chunk cache
-     * and then send the response to caller.
-     */
-    if (!reads_issued || (num_of_reads_issued_to_backend == 0))
+    // Drop the extra ref that we held under the lock.
     {
-	assert (num_of_reads_issued_to_backend == 0);
-        AZLogDebug("*************All data read from cache********");
-        send_readfile_response(0 /* success status */);
-    }
-#endif
+        std::unique_lock<std::shared_mutex> lock(readfile_task_lock);
+        --num_of_reads_issued_to_backend;
+
+        if (num_of_reads_issued_to_backend == 0)
+        {
+            goto send_response;
+        }
+        else
+        {
+            return;
+        }
+    }// End of lock
+
+send_response:
+    assert (num_of_reads_issued_to_backend == 0);
+
+    AZLogDebug("Data read from cache. size: {}, offset: {}",
+        rpc_api.readfile_task.get_size(),
+        rpc_api.readfile_task.get_offset());
+
+    // Send the response.
+    send_readfile_response(0 /* success status */);
 }
 
 void rpc_task::send_readfile_response(int status)
 {
-    // Do not send any response to fuse if this is an sync call since that will be issued only for readahead.
+    /*
+     * Do not send any response to application if this is an sync call
+     * since that will be issued only for readahead.
+     */
     if (is_async())
     {
-	    AZLogDebug(" This is a readahead task, no reply will be sent");
+        AZLogDebug("This is a readahead task, no reply will be sent. offset: {}, size: {}",
+            rpc_api.readfile_task.get_offset(),
+            rpc_api.readfile_task.get_size());
 
-	// Mark the readahead as complete.
-	get_client()->get_nfs_inode_from_ino(rpc_api.readfile_task.get_inode())->readahead_state->on_readahead_complete(
-                        rpc_api.readfile_task.get_offset(),
-                       rpc_api.readfile_task.get_size());
+        // Mark the readahead as complete.
+        get_client()->get_nfs_inode_from_ino(rpc_api.readfile_task.get_inode())->readahead_state->on_readahead_complete(
+            rpc_api.readfile_task.get_offset(),
+            rpc_api.readfile_task.get_size());
 
-	    // Free the task since we won't call the response.
-	    free_rpc_task();
-	    return;
+        /*
+         * Free the task since we won't send the response.
+         * For sync rpc task, this will be freed when the response is sent.
+         */
+        free_rpc_task();
+        return;
     }
-	
+
     assert(!is_async());
+
+    // We should have completed all the reads before sending the response to caller.
     assert(num_of_reads_issued_to_backend == 0);
+
     if (status)
     {
         // Non-zero status indicates failure, reply with error in such cases.
@@ -637,35 +619,19 @@ void rpc_task::send_readfile_response(int status)
 
     for (size_t i = 0; (i < count && remaining_size > 0); i++)
     {
-        // At this point we do not expect the chunked buffers to be empty.
-        // assert(!bytes_vector[i].is_empty);
-        #if 0
-        if ((int)bytes_vector[i].offset + (int)bytes_vector[i].length < (int)rpc_api.readfile_task.get_offset())
-        {
-            AZLogWarn("Skipping byte chunk at index {} offset {} length: {}, requested offset: {}",
-                i,
-                bytes_vector[i].offset,
-                bytes_vector[i].length,
-                rpc_api.readfile_task.get_offset());
-
-            // This should never heppen : TODO: check if it does.
-            assert(1);
-            continue;
-        }
-        #endif
-
         if (remaining_size >= bytes_vector[i].length)
         {
-	   /*
-	    * If the first chunk itself is empty, then there is no need to
-	    * look further, so just send empty response as we reach here only
-	    * in the case of success.
-	    */
-	    if ((i==0) && (bytes_vector[i].length == 0))
-	    {
-		reply_iov(nullptr, 0);
-		return;
-	    }
+            /*
+             * If the first chunk itself is empty, then there is no need to
+             * look further, so just send empty response as we reach here only
+             * in the case of success.
+             * TODO: Check what will happen if the length of inbetween vectors is 0.
+             */
+            if ((i==0) && (bytes_vector[i].length == 0))
+            {
+                reply_iov(nullptr, 0);
+                return;
+            }
 
             iov[i].iov_base = (void*)bytes_vector[i].get_buffer();
             iov[i].iov_len = bytes_vector[i].length;
@@ -717,154 +683,157 @@ static void readfile_callback(
     auto res = (READ3res*)data;
 
     AZLogDebug("readfile_callback:: is_async:{} Bytes read: {} eof: {}, requested_bytes: {} off: {}",
-		   task->is_async(),
-		   res->READ3res_u.resok.count, res->READ3res_u.resok.eof,
-		   bc->length,
-		   bc->offset);
- //   if (!task->is_async())
-   // {
-	    AZLogInfo("readfile_callback:: is_async:{} Bytes read: {} eof: {}, requested_bytes: {} off: {}",
-                   task->is_async(),
-                   res->READ3res_u.resok.count, res->READ3res_u.resok.eof,
-                   bc->length,
-		   bc->offset);
-    //}
-#if 0
-    if(task->is_async())
-    {
-	    auto rastate = task->get_client()->get_nfs_inode_from_ino(task->rpc_api.readfile_task.get_inode())->readahead_state;
-	    rastate->on_readahead_complete(task->rpc_api.readfile_task.get_offset(),
-			    task->rpc_api.readfile_task.get_size());
-    }
-#endif
-
+               task->is_async(),
+               res->READ3res_u.resok.count, res->READ3res_u.resok.eof,
+               bc->length,
+               bc->offset);
 
     const int status = (task->succeeded(rpc_status, RSTATUS(res))) ? 0 : -nfsstat3_to_errno(RSTATUS(res));
-
     auto ino = task->rpc_api.readfile_task.get_inode();
     auto readfile_handle = task->get_client()->get_nfs_inode_from_ino(ino)->filecache_handle;
 
-
     if (status == 0)
     {
-	    if (bc->length > res->READ3res_u.resok.count)
-	    {
-		    // If the chunk buffer size is larger than the recieved response, truncate it.
-		    readfile_handle->release(bc->offset + res->READ3res_u.resok.count, bc->length - res->READ3res_u.resok.count);
-	    }
+        if (bc->length > res->READ3res_u.resok.count)
+        {
+            // If the chunk buffer size is larger than the recieved response, truncate it.
+            readfile_handle->release(bc->offset + res->READ3res_u.resok.count, bc->length - res->READ3res_u.resok.count);
+        }
 
-	    // Update the byte chunk fields. TODO: This is mostly not needed, verify.
-	    bc->length = res->READ3res_u.resok.count;
+        // Update the byte chunk fields. TODO: This is mostly not needed, verify.
+        //bc->length = res->READ3res_u.resok.count;
 
-	    if (bc->is_empty)
-	    {
-	    	AZLogInfo("is_async: {} Done updating uptodate. offset: {}, length: {}",
-			task->is_async(),
-			task->rpc_api.readfile_task.get_offset(),
-		        task->rpc_api.readfile_task.get_size());
-		    bc->get_membuf()->set_uptodate();
-	    }
-	    else
-	    {
-	    	AZLogInfo("async: {} Not updating uptodate. offset: {}, length: {}",
-			task->is_async(),
-			task->rpc_api.readfile_task.get_offset(),
-		        task->rpc_api.readfile_task.get_size());
-	    }
+        if (bc->is_empty)
+        {
+            /*
+             * Only the first read which got hold of the complete membuf will have this byte_chunk
+             * set to empty. Only such reads should set the uptodate flag.
+             */
+            AZLogDebug("Setting uptodate flag. is_async: {} offset: {}, length: {}",
+                      task->is_async(),
+                      task->rpc_api.readfile_task.get_offset(),
+                      task->rpc_api.readfile_task.get_size());
+
+            bc->get_membuf()->set_uptodate();
+        }
+        else
+        {
+            AZLogDebug("Not updating uptodate flag. is_async: {} offset: {}, length: {}",
+                      task->is_async(),
+                      task->rpc_api.readfile_task.get_offset(),
+                      task->rpc_api.readfile_task.get_size());
+        }
     }
     else
     {
-	    assert(res->READ3res_u.resok.count == 0);
-	    // Release the buffer since we did not fill it.
-	    readfile_handle->release(bc->offset, bc->length);
+        assert(res->READ3res_u.resok.count == 0);
+
+        // Release the buffer since we did not fill it.
+        readfile_handle->release(bc->offset, bc->length);
     }
 
     /*
      * Release the lock that we held on the membuf since the data is now written to it.
      * The lock is needed only to write the data and not to just read it.
+     * Hence it is safe to read this membuf even beyond this point.
      */
     bc->get_membuf()->clear_locked();
 
-    // Take a lock here since multiple readfile's issued can try modifying the below members.
+    // Take a lock here since multiple readfiles issued can try modifying the below members.
     {
-	    std::unique_lock<std::shared_mutex> lock(task->readfile_task_lock);
-	    task->num_of_reads_issued_to_backend--;
+        std::unique_lock<std::shared_mutex> lock(task->readfile_task_lock);
 
-	    if (task->readfile_completed)
-	    {
-		    /*
-		     * If readfile_completed is set, it means that there was a previous failure encountered
-		     * as a result of which we have already sent the failure response to the caller.
-		     * Hence do not do anything here and just exit.
-		     */
-		    return;
-	    }
+        // Decrement the number of reads issued.
+        task->num_of_reads_issued_to_backend--;
 
-	    if (status || (task->num_of_reads_issued_to_backend == 0))
-	    {
-		    task->readfile_completed = true;
-		    goto send_response;
-	    }
-	    else
-	    {
-		    AZLogDebug("readfile_callback:: No response sent, num_of_reads_issued_to_backend: {}",task->num_of_reads_issued_to_backend);
-		    return;
-	    }
+        if (task->readfile_completed)
+        {
+            /*
+             * If readfile_completed is set, it means that there was a previous failure encountered
+             * as a result of which we have already sent the failure response to the caller.
+             * Hence do not do anything here and just exit.
+             */
+            return;
+        }
+
+        if (status || (task->num_of_reads_issued_to_backend == 0))
+        {
+            /*
+             * The current read has failed or all the reads issued to backend has completed.
+             * Send the response to the caller.
+             */
+            task->readfile_completed = true;
+            goto send_response;
+        }
+        else
+        {
+            AZLogDebug("No response sent, waiting for more reads to complete. num_of_reads_issued_to_backend: {}",
+                task->num_of_reads_issued_to_backend);
+            return;
+        }
     } // End of lock
 
 send_response:
     task->send_readfile_response(status);
 }
 
-// Returns true only if read call was issued to backend.
 void rpc_task::readfile_from_server(struct bytes_chunk &bc)
 {
-	bool rpc_retry = false;
-	auto ino = rpc_api.readfile_task.get_inode();
+    bool rpc_retry = false;
+    auto ino = rpc_api.readfile_task.get_inode();
 
-	// This will be freed in readfile_callback.
-	struct readfile_context *ctx = new readfile_context(this, &bc);
+    // This will be freed in readfile_callback.
+    struct readfile_context *ctx = new readfile_context(this, &bc);
 
-	do {
-		READ3args args;
-		::memset(&args, 0, sizeof(args));
-		args.file = get_client()->get_nfs_inode_from_ino(ino)->get_fh();
-		args.offset = bc.offset;
-		args.count = bc.length;
+    do {
+        READ3args args;
+        ::memset(&args, 0, sizeof(args));
+        args.file = get_client()->get_nfs_inode_from_ino(ino)->get_fh();
+        args.offset = bc.offset;
+        args.count = bc.length;
 
-		/*
-		 * Now we are going to use the buffer of the bytes_chunk object, hence get a lock
-		 * on it so that other reads can't modify it.
-		 * This lock should be held only when writing to the buffer, not when reading it.
-		 * Hence this will be freed in the readfile_callback after the buffer is populated.
-		 * This will block till the lock is obtained.
-	 */
+        /*
+         * Now we are going to use the buffer of the bytes_chunk object, hence get a lock
+         * on it so that other reads can't modify it.
+         * This lock should be held only when writing to the buffer, not when reading it.
+         * Hence this will be freed in the readfile_callback after the buffer is populated.
+         * This will block till the lock is obtained.
+        */
         bc.get_membuf()->set_locked();
 
-	// Check if the buffer got updated by the time we got the lock.
-	if (bc.get_membuf()->is_uptodate())
-	{
-		// Release the lock since we no longer intend on writing to this buffer.
-		bc.get_membuf()->clear_locked();
+        // Check if the buffer got updated by the time we got the lock.
+        if (bc.get_membuf()->is_uptodate())
+        {
+            // Release the lock since we no longer intend on writing to this buffer.
+            bc.get_membuf()->clear_locked();
 
-		AZLogDebug("readfile_from_server:: Skip issuing read as the buffer"
-			   " is now uptodate. offset: {} length: {}",
-			   bc.offset,
-			   bc.length);
+            AZLogDebug("readfile_from_server:: Skip issuing read as the buffer"
+                       " is now uptodate. offset: {} length: {}",
+                       bc.offset,
+                       bc.length);
 
-        	AZLogInfo("************* data read from cache********size: {}, offset: {}", rpc_api.readfile_task.get_size(), rpc_api.readfile_task.get_offset());
-		return;
-	}
+            AZLogDebug("Data read from cache. size: {}, offset: {}",
+                rpc_api.readfile_task.get_size(),
+                rpc_api.readfile_task.get_offset());
+        
+            return;
+        }
 
-    // Increment the number of reads issued. TODO: Put it behind lock or make it atomic.
-    num_of_reads_issued_to_backend++;
+        {
+            std::unique_lock<std::shared_mutex> lock(readfile_task_lock);
 
-        AZLogInfo("is_async: {} Issuing read to backend at offset: {} length: {}",is_async(), args.offset, args.count);
+            // Increment the number of reads issued.
+            num_of_reads_issued_to_backend++;
+        }
+
+        AZLogDebug("Issuing read to backend at offset: {} length: {} is_async: {}",
+            is_async(),
+            args.offset,
+            args.count);
 
         if (rpc_nfs3_read_task(
                     get_rpc_ctx(), /* This will round robin request across connections */
                     readfile_callback,
-                    //bc.buffer,
                     bc.get_buffer(),
                     bc.length,
                     &args,
@@ -895,24 +864,23 @@ void rpc_task::free_rpc_task()
         break;
     case FUSE_READ:
         readfile_completed = false;
-	 AZLogDebug("free_rpc_task:: id{} is_async: {} off: {}, bytes_vector size: {}",
-			 get_index(),
-		 is_async(),
-		 rpc_api.readfile_task.get_offset(),
-		 bytes_vector.size());
-    	// Decrement the in_use flag of the mebuf that we incremented.
-	 {   
-	 auto ino = rpc_api.readfile_task.get_inode();
-    	for (size_t i = 0; i <  bytes_vector.size(); i++)
-    	{
-            //auto readfile_handle = get_client()->get_nfs_inode_from_ino(ino)->filecache_handle;
-	    // TODO: This chunk should not be released, just doing for perf test..
-	    //readfile_handle->release(bytes_vector[i].offset, bytes_vector[i].length);
-	    bytes_vector[i].get_membuf()->clear_inuse();
-    	}
-        bytes_vector.clear();
-	get_client()->get_nfs_inode_from_ino(ino)->decref();
-	 }
+        AZLogDebug("free_rpc_task:: id{} is_async: {} off: {}, bytes_vector size: {}",
+                   get_index(),
+                   is_async(),
+                   rpc_api.readfile_task.get_offset(),
+                   bytes_vector.size());
+
+        // Decrement the in_use flag of the mebuf that we incremented.
+        {
+            auto ino = rpc_api.readfile_task.get_inode();
+            for (size_t i = 0; i <  bytes_vector.size(); i++)
+            {
+                bytes_vector[i].get_membuf()->clear_inuse();
+            }
+            bytes_vector.clear();
+            get_client()->get_nfs_inode_from_ino(ino)->decref();
+        }
+        break;
     default :
         break;
     }
@@ -1091,7 +1059,7 @@ static void readdirplus_callback(
 
     if (status == 0) {
         const struct entryplus3 *entry =
-            res->READDIRPLUS3res_u.resok.reply.entries;
+                res->READDIRPLUS3res_u.resok.reply.entries;
         const bool eof = res->READDIRPLUS3res_u.resok.reply.eof;
         int64_t eof_cookie = -1;
 
