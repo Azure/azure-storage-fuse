@@ -518,6 +518,20 @@ void rpc_task::run_readfile()
             data_length_in_cache += bytes_vector[i].length;
             if (data_length_in_cache >= rpc_api.readfile_task.get_size())
             {
+                /*
+                 * Since the data is read from the cache, the chances of reading it
+                 * again from cache is negligible since this is a sequential read pattern.
+                 * Free such chunks to reduce the memory utilization.
+                 * TODO: Is this a safe place to release? What will happen when we read the buffer to send response.
+                 *       Check if this is protected by the bytes_vector.
+                 */
+                for (size_t j = 0; j <= i; j++)
+                {
+                    readfile_handle->release(
+                        bytes_vector[j].offset,
+                        bytes_vector[j].length);
+                }
+
                 goto send_response;
             }
         }
@@ -563,9 +577,10 @@ void rpc_task::run_readfile()
 send_response:
     assert (num_of_reads_issued_to_backend == 0);
 
-    AZLogDebug("Data read from cache. size: {}, offset: {}",
-        rpc_api.readfile_task.get_size(),
-        rpc_api.readfile_task.get_offset());
+    AZLogDebug("Data read from cache, also releasing buffer. offset: {}, size {}",
+        rpc_api.readfile_task.get_offset(),
+        rpc_api.readfile_task.get_size());
+
 
     // Send the response.
     send_readfile_response(0 /* success status */);
@@ -694,14 +709,15 @@ static void readfile_callback(
 
     if (status == 0)
     {
+        // TODO: release buffer for sync reads since we will not use that anymore.
         if (bc->length > res->READ3res_u.resok.count)
         {
             // If the chunk buffer size is larger than the recieved response, truncate it.
             readfile_handle->release(bc->offset + res->READ3res_u.resok.count, bc->length - res->READ3res_u.resok.count);
         }
 
-        // Update the byte chunk fields. TODO: This is mostly not needed, verify.
-        //bc->length = res->READ3res_u.resok.count;
+        // Update the byte chunk fields.
+        bc->length = res->READ3res_u.resok.count;
 
         if (bc->is_empty)
         {
@@ -807,15 +823,21 @@ void rpc_task::readfile_from_server(struct bytes_chunk &bc)
             // Release the lock since we no longer intend on writing to this buffer.
             bc.get_membuf()->clear_locked();
 
-            AZLogDebug("readfile_from_server:: Skip issuing read as the buffer"
-                       " is now uptodate. offset: {} length: {}",
-                       bc.offset,
-                       bc.length);
-
             AZLogDebug("Data read from cache. size: {}, offset: {}",
                 rpc_api.readfile_task.get_size(),
                 rpc_api.readfile_task.get_offset());
-        
+
+            /*
+             * Since the data is read from the cache, the chances of reading it
+             * again from cache is negligible since this is a sequential read pattern.
+             * Free such chunks to reduce the memory utilization.
+             * TODO: Is this a safe place to release? What will happen when we read the buffer to send response.
+             *       Check if this is protected by the bytes_vector.
+             */
+            get_client()->get_nfs_inode_from_ino(ino)->filecache_handle->release(
+                bc.offset,
+                bc.length);
+
             return;
         }
 
