@@ -351,6 +351,7 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 
 	if options.Flags&os.O_TRUNC != 0 || options.Flags&os.O_WRONLY != 0 {
 		// If file is opened in truncate or wronly mode then we need to wipe out the data consider current file size as 0
+		log.Debug("BlockCache::OpenFile : Truncate %v to 0", options.Name)
 		handle.Size = 0
 		handle.Flags.Set(handlemap.HandleFlagDirty)
 	} else if options.Flags&os.O_RDWR != 0 && handle.Size != 0 {
@@ -371,6 +372,7 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 			listMap[int64(idx)] = &blockInfo{
 				id:        block.Id,
 				committed: true,
+				size:      block.Size,
 			}
 			// All blocks shall of same size otherwise fail the open call
 			// Last block is allowed to be of smaller size as it can be partial block
@@ -1128,6 +1130,7 @@ func (bc *BlockCache) lineupUpload(handle *handlemap.Handle, block *Block, listM
 	listMap[block.id] = &blockInfo{
 		id:        id,
 		committed: false,
+		size:      block.endIndex - block.offset,
 	}
 	//}
 
@@ -1206,10 +1209,20 @@ func (bc *BlockCache) upload(item *workItem) {
 	flock.Lock()
 	defer flock.Unlock()
 
+	endIndex := item.block.endIndex
+	// if a block has data less than block size and is not the last block,
+	// add null at the end and upload the full block
+	if item.block.endIndex-item.block.offset < bc.blockSize && item.block.endIndex < uint64(item.handle.Size) {
+		endIndex = item.block.offset + bc.blockSize
+		log.Debug("BlockCache::upload : Appending null for block %v", item.block.id)
+	} else if item.block.endIndex == uint64(item.handle.Size) {
+		log.Debug("BlockCache::upload : Last block %v", item.block.id)
+	}
+
 	// This block is updated so we need to stage it now
 	err := bc.NextComponent().StageData(internal.StageDataOptions{
 		Name:   item.handle.Path,
-		Data:   item.block.data[0 : item.block.endIndex-item.block.offset],
+		Data:   item.block.data[0 : endIndex-item.block.offset],
 		Offset: uint64(item.block.id),
 		Id:     item.blockId})
 	if err != nil {
@@ -1241,7 +1254,7 @@ func (bc *BlockCache) upload(item *workItem) {
 		// Dump this block to local disk cache
 		f, err := os.Create(localPath)
 		if err == nil {
-			_, err := f.Write(item.block.data[0 : item.block.endIndex-item.block.offset])
+			_, err := f.Write(item.block.data[0 : endIndex-item.block.offset])
 			if err != nil {
 				log.Err("BlockCache::upload : Failed to write %s to disk [%v]", localPath, err.Error())
 				_ = os.Remove(localPath)
@@ -1313,7 +1326,7 @@ func (bc *BlockCache) commitBlocks(handle *handlemap.Handle) error {
 
 	for i := 0; i < len(offsets); i++ {
 		blockIdList = append(blockIdList, listMap[offsets[i]].id)
-		log.Debug("BlockCache::commitBlocks : Preparing blocklist for %v=>%s (%v : %v :  %v)", handle.ID, handle.Path, i, offsets[i], listMap[offsets[i]].id)
+		log.Debug("BlockCache::commitBlocks : Preparing blocklist for %v=>%s (%v : %v :  %v, size %v)", handle.ID, handle.Path, i, offsets[i], listMap[offsets[i]].id, listMap[offsets[i]].size)
 	}
 
 	log.Debug("BlockCache::commitBlocks : Committing blocks for %s", handle.Path)

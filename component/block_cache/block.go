@@ -66,6 +66,7 @@ type Block struct {
 type blockInfo struct {
 	id        string
 	committed bool
+	size      uint64
 }
 
 // AllocateBlock creates a new memory mapped buffer for the given size
