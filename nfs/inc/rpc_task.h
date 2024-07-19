@@ -8,8 +8,9 @@
 #include <shared_mutex>
 #include <vector>
 #include <thread>
-
 #include "nfs_client.h"
+#include "file_cache.h"
+
 #include "log.h"
 
 // Maximum number of simultaneous rpc tasks (sync + async).
@@ -61,9 +62,47 @@ private:
  */
 struct write_rpc_task
 {
-    void set_buffer(const char *buf)
+    void set_buffer_cache(struct nfs_client *const client,
+        fuse_ino_t ino, const char *buf, off_t offset, size_t length)
     {
-        buffer = buf;
+        struct nfs_inode *inode = nullptr;
+        size_t dirty_count = 0;
+        assert(ino != 0);
+
+        inode = client->get_nfs_inode_from_ino(ino);
+        auto chunkvec = inode->filecache_handle->get(offset, length);
+
+        for (auto &chunk : chunkvec)
+        {
+            auto membuf = chunk.get_membuf();
+
+            // Lock the membuf to do the operation.
+            membuf->set_locked();
+
+            // Chunk is empty and owned by us.
+            if (chunk.is_empty)
+            {
+                memcpy(chunk.get_buffer(), buf, chunk.length);
+                membuf->set_dirty();
+                membuf->set_uptodate();
+            } else {
+
+                if (membuf->is_uptodate())
+                {
+                    memcpy(chunk.get_buffer(), buf, chunk.length);
+                    membuf->set_dirty();
+                } else {
+                    // Need to issue read.
+                }
+            }
+            membuf->clear_locked();
+
+            buf += chunk.length;
+            length -= chunk.length;
+            dirty_count = chunk.length;
+        }
+        assert (length == 0);
+        inode->set_dirty_bytes(dirty_count);
     }
 
     void set_ino(fuse_ino_t ino)
@@ -84,6 +123,11 @@ struct write_rpc_task
     void set_count(size_t count)
     {
         count = count;
+    }
+
+    void set_buffer(const char * buffer)
+    {
+        buffer = buffer;
     }
 
     fuse_ino_t get_ino() const
@@ -126,6 +170,94 @@ private:
     const char*  buffer;
 };
 
+/**
+ * WRITE flush RPC task definition.
+ */
+struct write_flush_rpc_task
+{
+    void set_ino(fuse_ino_t ino)
+    {
+        ino = ino;
+    }
+
+    void set_offset(off_t off)
+    {
+        offset = off;
+    }
+
+    void set_size(size_t size)
+    {
+        size = size;
+    }
+
+    void set_count(size_t count)
+    {
+        count = count;
+    }
+
+    fuse_ino_t get_ino() const
+    {
+        return ino;
+    }
+
+    off_t get_offset()
+    {
+        return offset;
+    }
+
+    size_t get_size()
+    {
+        return size;
+    }
+
+    size_t get_count()
+    {
+        return count;
+    }
+
+    struct membuf* get_membuf()
+    {
+        return membuf_ptr;
+    }
+
+    struct rpc_task* get_task()
+    {
+        return task;
+    }
+
+    /**
+     * Release any resources used up by this task.
+     */
+    void release()
+    {
+    }
+
+    write_flush_rpc_task(
+        fuse_ino_t ino,
+        struct rpc_task* task,
+        size_t size,
+        size_t count,
+        off_t  offset,
+        struct membuf *membuf_ptr
+    ):ino(ino),
+      task(task),
+      size(size),
+      count(count),
+      offset(offset),
+      membuf_ptr(membuf_ptr)
+      {
+
+      }
+
+private:
+    fuse_ino_t ino;
+    struct rpc_task* task;
+    size_t size;
+    size_t count;
+    off_t  offset;
+    struct membuf *membuf_ptr;
+
+};
 
 /**
  * GETATTR RPC task definition.
@@ -643,6 +775,8 @@ public:
     /*
      * init/run methods for the LOOKUP RPC.
      */
+
+    // Direct write
     void init_write(fuse_req *request,
                      fuse_ino_t ino,
                      const char *buf,
@@ -651,6 +785,15 @@ public:
 
     void run_write();
 
+    // Buffer write.
+    void init_cache_write(fuse_req *request,
+                     fuse_ino_t ino,
+                     const char *buf,
+                     size_t size,
+                     off_t offset);
+
+    // Buffer write.
+    void run_cache_write();
 
     /*
      * init/run methods for the GETATTR RPC.

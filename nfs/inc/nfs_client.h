@@ -292,6 +292,13 @@ public:
         fuse_ino_t parent_ino,
         const char* name);
 
+    void direct_write(
+        fuse_req_t req,
+        fuse_ino_t ino,
+        const char* buf,
+        size_t size,
+        off_t off);
+
     void write(
         fuse_req_t req,
         fuse_ino_t ino,

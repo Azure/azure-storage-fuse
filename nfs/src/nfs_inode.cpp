@@ -1,5 +1,6 @@
 #include "nfs_inode.h"
 #include "nfs_client.h"
+#include "file_cache.h"
 
 /**
  * Constructor.
