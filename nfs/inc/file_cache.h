@@ -303,7 +303,7 @@ struct membuf
         {
             std::unique_lock<std::mutex> _lock(lock);
          	
-	        flag &= ~MB_Flag::Locked;
+	    flag &= ~MB_Flag::Locked;
 
             AZLogDebug("Unlocked membuf [{}, {}), fd={}",
                        offset, offset+length, backing_file_fd);
@@ -522,9 +522,6 @@ private:
      * To find the length of the allocated buffer, use alloc_buffer->length.
      */
     std::shared_ptr<membuf> alloc_buffer;
-
-    // Length allocated.
-    const uint64_t alloc_buffer_len = 0;
 
 public:
     // Offset from the start of file this chunk represents.

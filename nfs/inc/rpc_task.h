@@ -499,7 +499,7 @@ public:
 
     /*
      * Move constructor.
-     * Need since we have defined the mutext here.
+     * Need since we have defined the mutex here.
      */
     rpc_task(rpc_task&& tsk) :
 	   client(tsk.client),

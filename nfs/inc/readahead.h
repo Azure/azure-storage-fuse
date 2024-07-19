@@ -254,8 +254,6 @@ public:
         }
 
         // ra_ongoing is atomic, don't need the lock.
-//	AZLogInfo("Enter: on_readahead_complete:: ra_ongoing: {}, length{}", ra_ongoing.load(), length);
-
         assert(ra_ongoing >= length);
         ra_ongoing -= length;
     }
