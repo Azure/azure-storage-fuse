@@ -254,6 +254,8 @@ public:
         }
 
         // ra_ongoing is atomic, don't need the lock.
+//	AZLogInfo("Enter: on_readahead_complete:: ra_ongoing: {}, length{}", ra_ongoing.load(), length);
+
         assert(ra_ongoing >= length);
         ra_ongoing -= length;
     }
@@ -342,6 +344,7 @@ private:
         const uint64_t next_ra =
             std::atomic_exchange(&last_byte_readahead, last_byte_readahead + length) + 1;
 
+//	AZLogInfo("get_next_ra exit: ra_ongoing: {}, length: {}", ra_ongoing.load(), length);
         return next_ra;
     }
 

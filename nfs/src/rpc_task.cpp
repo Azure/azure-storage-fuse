@@ -500,7 +500,7 @@ void rpc_task::run_readfile()
     //bool reads_issued = false;
     assert (num_of_reads_issued_to_backend == 0);
 
-    AZLogDebug("is_async: {}, size: {}, offset {}, num_of_chunks: {}",
+    AZLogInfo("run_readfile:: is_async: {}, size: {}, offset {}, num_of_chunks: {}",
 			    is_async(), rpc_api.readfile_task.get_size(), rpc_api.readfile_task.get_offset(), size);
     /*
      * First check if the requested data is present in the cache excluding the
@@ -558,7 +558,7 @@ void rpc_task::run_readfile()
     --num_of_reads_issued_to_backend;
     if (num_of_reads_issued_to_backend == 0)
     {
-        AZLogInfo("*************All data read from cache********");
+        AZLogInfo("*************All data read from cache********size: {}, offset: {}", rpc_api.readfile_task.get_size(), rpc_api.readfile_task.get_offset());
 	    goto send_response;
     }
     else
@@ -568,6 +568,7 @@ void rpc_task::run_readfile()
     }// End of lock
 send_response:
 	assert (num_of_reads_issued_to_backend == 0);
+        AZLogInfo("*************All data read from cache********size: {}, offset: {}", rpc_api.readfile_task.get_size(), rpc_api.readfile_task.get_offset());
 #if 0
 	assert (!is_async());
 
@@ -720,44 +721,64 @@ static void readfile_callback(
 		   res->READ3res_u.resok.count, res->READ3res_u.resok.eof,
 		   bc->length,
 		   bc->offset);
-    if (!task->is_async())
-    {
+ //   if (!task->is_async())
+   // {
 	    AZLogInfo("readfile_callback:: is_async:{} Bytes read: {} eof: {}, requested_bytes: {} off: {}",
                    task->is_async(),
                    res->READ3res_u.resok.count, res->READ3res_u.resok.eof,
                    bc->length,
-                   bc->offset);
+		   bc->offset);
+    //}
+#if 0
+    if(task->is_async())
+    {
+	    auto rastate = task->get_client()->get_nfs_inode_from_ino(task->rpc_api.readfile_task.get_inode())->readahead_state;
+	    rastate->on_readahead_complete(task->rpc_api.readfile_task.get_offset(),
+			    task->rpc_api.readfile_task.get_size());
     }
+#endif
+
 
     const int status = (task->succeeded(rpc_status, RSTATUS(res))) ? 0 : -nfsstat3_to_errno(RSTATUS(res));
 
     auto ino = task->rpc_api.readfile_task.get_inode();
     auto readfile_handle = task->get_client()->get_nfs_inode_from_ino(ino)->filecache_handle;
-   
+
 
     if (status == 0)
     {
-        if (bc->length > res->READ3res_u.resok.count)
-        {
-            // If the chunk buffer size is larger than the recieved response, truncate it.
-            readfile_handle->release(bc->offset + res->READ3res_u.resok.count, bc->length - res->READ3res_u.resok.count);
-        }
+	    if (bc->length > res->READ3res_u.resok.count)
+	    {
+		    // If the chunk buffer size is larger than the recieved response, truncate it.
+		    readfile_handle->release(bc->offset + res->READ3res_u.resok.count, bc->length - res->READ3res_u.resok.count);
+	    }
 
-        // Update the byte chunk fields. TODO: This is mostly not needed, verify.
-        bc->length = res->READ3res_u.resok.count;
+	    // Update the byte chunk fields. TODO: This is mostly not needed, verify.
+	    bc->length = res->READ3res_u.resok.count;
 
-	if (bc->is_empty)
-	{
-		bc->get_membuf()->set_uptodate();
-	}
+	    if (bc->is_empty)
+	    {
+	    	AZLogInfo("is_async: {} Done updating uptodate. offset: {}, length: {}",
+			task->is_async(),
+			task->rpc_api.readfile_task.get_offset(),
+		        task->rpc_api.readfile_task.get_size());
+		    bc->get_membuf()->set_uptodate();
+	    }
+	    else
+	    {
+	    	AZLogInfo("async: {} Not updating uptodate. offset: {}, length: {}",
+			task->is_async(),
+			task->rpc_api.readfile_task.get_offset(),
+		        task->rpc_api.readfile_task.get_size());
+	    }
     }
     else
     {
 	    assert(res->READ3res_u.resok.count == 0);
 	    // Release the buffer since we did not fill it.
-    	readfile_handle->release(bc->offset, bc->length);
+	    readfile_handle->release(bc->offset, bc->length);
     }
-   
+
     /*
      * Release the lock that we held on the membuf since the data is now written to it.
      * The lock is needed only to write the data and not to just read it.
@@ -766,29 +787,29 @@ static void readfile_callback(
 
     // Take a lock here since multiple readfile's issued can try modifying the below members.
     {
-    std::unique_lock<std::shared_mutex> lock(task->readfile_task_lock);
-    task->num_of_reads_issued_to_backend--;
+	    std::unique_lock<std::shared_mutex> lock(task->readfile_task_lock);
+	    task->num_of_reads_issued_to_backend--;
 
-    if (task->readfile_completed)
-    {
-        /*
-         * If readfile_completed is set, it means that there was a previous failure encountered
-         * as a result of which we have already sent the failure response to the caller.
-         * Hence do not do anything here and just exit.
-         */
-        return;
-    }
+	    if (task->readfile_completed)
+	    {
+		    /*
+		     * If readfile_completed is set, it means that there was a previous failure encountered
+		     * as a result of which we have already sent the failure response to the caller.
+		     * Hence do not do anything here and just exit.
+		     */
+		    return;
+	    }
 
-    if (status || (task->num_of_reads_issued_to_backend == 0))
-    {
-        task->readfile_completed = true;
-	goto send_response;
-    }
-    else
-    {
-	AZLogDebug("readfile_callback:: No response sent, num_of_reads_issued_to_backend: {}",task->num_of_reads_issued_to_backend);
-	    return;
-    }
+	    if (status || (task->num_of_reads_issued_to_backend == 0))
+	    {
+		    task->readfile_completed = true;
+		    goto send_response;
+	    }
+	    else
+	    {
+		    AZLogDebug("readfile_callback:: No response sent, num_of_reads_issued_to_backend: {}",task->num_of_reads_issued_to_backend);
+		    return;
+	    }
     } // End of lock
 
 send_response:
@@ -798,25 +819,25 @@ send_response:
 // Returns true only if read call was issued to backend.
 void rpc_task::readfile_from_server(struct bytes_chunk &bc)
 {
-    bool rpc_retry = false;
-    auto ino = rpc_api.readfile_task.get_inode();
+	bool rpc_retry = false;
+	auto ino = rpc_api.readfile_task.get_inode();
 
-    // This will be freed in readfile_callback.
-    struct readfile_context *ctx = new readfile_context(this, &bc);
+	// This will be freed in readfile_callback.
+	struct readfile_context *ctx = new readfile_context(this, &bc);
 
-    do {
-        READ3args args;
-        ::memset(&args, 0, sizeof(args));
-        args.file = get_client()->get_nfs_inode_from_ino(ino)->get_fh();
-        args.offset = bc.offset;
-        args.count = bc.length;
+	do {
+		READ3args args;
+		::memset(&args, 0, sizeof(args));
+		args.file = get_client()->get_nfs_inode_from_ino(ino)->get_fh();
+		args.offset = bc.offset;
+		args.count = bc.length;
 
-        /*
-	 * Now we are going to use the buffer of the bytes_chunk object, hence get a lock
-         * on it so that other reads can't modify it.
-	 * This lock should be held only when writing to the buffer, not when reading it.
-	 * Hence this will be freed in the readfile_callback after the buffer is populated.
-	 * This will block till the lock is obtained.
+		/*
+		 * Now we are going to use the buffer of the bytes_chunk object, hence get a lock
+		 * on it so that other reads can't modify it.
+		 * This lock should be held only when writing to the buffer, not when reading it.
+		 * Hence this will be freed in the readfile_callback after the buffer is populated.
+		 * This will block till the lock is obtained.
 	 */
         bc.get_membuf()->set_locked();
 
@@ -830,13 +851,15 @@ void rpc_task::readfile_from_server(struct bytes_chunk &bc)
 			   " is now uptodate. offset: {} length: {}",
 			   bc.offset,
 			   bc.length);
+
+        	AZLogInfo("************* data read from cache********size: {}, offset: {}", rpc_api.readfile_task.get_size(), rpc_api.readfile_task.get_offset());
 		return;
 	}
 
     // Increment the number of reads issued. TODO: Put it behind lock or make it atomic.
     num_of_reads_issued_to_backend++;
 
-        AZLogDebug("is_async: {} Issuing read to backend at offset: {} length: {}",is_async(), args.offset, args.count);
+        AZLogInfo("is_async: {} Issuing read to backend at offset: {} length: {}",is_async(), args.offset, args.count);
 
         if (rpc_nfs3_read_task(
                     get_rpc_ctx(), /* This will round robin request across connections */
