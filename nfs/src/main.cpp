@@ -1157,12 +1157,6 @@ int main(int argc, char *argv[])
     // Set default values for config variables not set using the above.
     aznfsc_cfg.set_defaults_and_sanitize();
 
-    // Initialize nfs_client singleton.
-    if (!nfs_client::get_instance().init()) {
-        AZLogError("Failed to init the NFS client");
-        goto err_out4;
-    }
-
     se = fuse_session_new(&args, &aznfsc_ll_ops, sizeof(aznfsc_ll_ops),
                           &nfs_client::get_instance());
     if (se == NULL) {
@@ -1177,11 +1171,17 @@ int main(int argc, char *argv[])
         goto err_out3;
     }
 
-    opts.foreground = 1;
     fuse_daemonize(opts.foreground);
 
-    /* Block until ctrl+c or fusermount -u */
-    printf("singlethread: %d\n", opts.singlethread);
+    /*
+     * Initialize nfs_client singleton.
+     * This creates the libnfs polling thread(s) and hence it MUST be called
+     * after fuse_daemonize(), else those threads will get killed.
+     */
+    if (!nfs_client::get_instance().init()) {
+        AZLogError("Failed to init the NFS client");
+        goto err_out4;
+    }
 
     if (opts.singlethread) {
         ret = fuse_session_loop(se);
