@@ -261,7 +261,18 @@ bool aznfsc_cfg::parse_config_yaml()
 
         if ((readdir_maxcount == -1) && config["readdir_maxcount"]) {
             readdir_maxcount = config["readdir_maxcount"].as<int>();
+            if (readdir_maxcount < AZNFSCFG_READDIR_MIN ||
+                readdir_maxcount > AZNFSCFG_READDIR_MAX) {
+                throw YAML::Exception(
+                    config["readdir_maxcount"].Mark(),
+                    std::string("Invalid readdir_maxcount value: ") +
+                    std::to_string(readdir_maxcount) +
+                    std::string(" (valid range [") +
+                    std::to_string(AZNFSCFG_READDIR_MIN) +
+                    ", " + std::to_string(AZNFSCFG_READDIR_MAX) + "])");
+            }
         }
+
     } catch (const YAML::BadFile& e) {
         AZLogError("Error loading config file {}: {}", config_yaml, e.what());
         return false;
@@ -311,7 +322,7 @@ void aznfsc_cfg::set_defaults_and_sanitize()
     if (acdirmin > acdirmax)
         acdirmin = acdirmax;
     if (readdir_maxcount == -1)
-        readdir_maxcount = INT_MAX;
+        readdir_maxcount = 1048576;
     if (cloud_suffix == nullptr)
         cloud_suffix = ::strdup("blob.core.windows.net");
 

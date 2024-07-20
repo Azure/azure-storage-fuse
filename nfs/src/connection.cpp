@@ -45,10 +45,14 @@ bool nfs_connection::open()
         goto destroy_context;
     }
 
-    AZLogInfo("[{}] Successfully mounted nfs share ({}:{})!",
+    AZLogInfo("[{}] Successfully mounted nfs share ({}:{}). "
+              "Negotiated values: readmax={}, writemax={}, readdirmax={}",
               (void *) nfs_context,
               mo.server,
-              mo.export_path);
+              mo.export_path,
+              nfs_get_readmax(nfs_context),
+              nfs_get_writemax(nfs_context),
+              nfs_get_readdir_maxcount(nfs_context));
 
     /*
      * We use libnfs in multithreading mode as we want 1 thread to do the IOs

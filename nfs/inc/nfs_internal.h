@@ -35,8 +35,8 @@ struct mount_options
     const int num_connections;
 
     // Max read and write sizes.
-    const size_t rsize;
-    const size_t wsize;
+    const int rsize;
+    const int wsize;
 
     // How many RPC retransmits before major recovery.
     const int retrans;
@@ -51,7 +51,7 @@ struct mount_options
     const int actimeo;
 
     // Maximum number of readdir entries that can be requested.
-    const uint32_t readdir_maxcount;
+    const int readdir_maxcount;
 
     // Add any other options as needed.
 
@@ -111,24 +111,30 @@ struct mount_options
         const int size = std::snprintf(
                             const_cast<char*>(url.data()),
                             url.size(),
-                            "nfs://%s%s/?version=3&debug=%d&xprtsec=none&nfsport=%d&mountport=%d&timeo=%d&retrans=%d",
+                            "nfs://%s%s/?version=3&debug=%d&xprtsec=none&nfsport=%d&mountport=%d&timeo=%d&retrans=%d&rsize=%d&wsize=%d&readdir-buffer=%d",
                             server.c_str(),
                             export_path.c_str(),
                             debug,
                             nfs_port,
                             mount_port,
                             timeo,
-                            retrans);
+                            retrans,
+                            rsize,
+                            wsize,
+                            readdir_maxcount);
 #else
         const int size = std::snprintf(
                             const_cast<char*>(url.data()),
                             url.size(),
-                            "nfs://%s%s/?version=3&debug=%d&xprtsec=none&timeo=%d&retrans=%d",
+                            "nfs://%s%s/?version=3&debug=%d&xprtsec=none&timeo=%d&retrans=%d&rsize=%d&wsize=%d&readdir-buffer=%d",
                             server.c_str(),
                             export_path.c_str(),
                             debug,
                             timeo,
-                            retrans);
+                            retrans,
+                            rsize,
+                            wsize,
+                            readdir_maxcount);
 #endif
 
         assert(size < (int) url.size());
