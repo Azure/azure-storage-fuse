@@ -30,7 +30,7 @@ namespace aznfsc {
 /* static */
 int ra_state::unit_test()
 {
-    ra_state ras{0, 128 * 1024};
+    ra_state ras{0, 128 * 1024, 4 * 1024};
     uint64_t next_ra;
     uint64_t next_read;
     uint64_t complete_ra;
@@ -66,15 +66,24 @@ int ra_state::unit_test()
      */
     for (int i = 0; i < 31; i++) {
         next_ra += 4*_MiB;
-        assert(ras.get_next_ra(4*_MiB) == next_ra);
+        /*
+         * We don't pass the length parameter to get_next_ra(), it should
+         * use the default ra size set in the constructor. We set that to
+         * 4MiB.
+         */
+        assert(ras.get_next_ra() == next_ra);
     }
 
     // No more readahead reads after full ra window is issued.
     assert(ras.get_next_ra(4*_MiB) == 0);
 
-    // Complete one readahead.
+    /*
+     * Complete one readahead.
+     * We don't pass the length parameter to on_readahead_complete(), it should
+     * use the default ra size set in the constructor. We set that to 4MiB.
+     */
     complete_ra = 3*_MiB;
-    ras.on_readahead_complete(complete_ra, 4*_MiB);
+    ras.on_readahead_complete(complete_ra);
 
     // One more readahead should be allowed.
     next_ra += 4*_MiB;

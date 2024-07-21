@@ -109,20 +109,28 @@ public:
      * read it from from some user configured value. Fuse inode number is to
      * help in logging.
      *
+     * Note: Correct value to pass for _def_ra_size_kib is the maximum read
+     *       size supported by libnfs, which can be queried using
+     *       nfs_get_readmax().
+     *
      * TODO: If we can pass the filename add it too for better logging.
      */
-    ra_state(uint64_t ino, int _ra_kib) :
+    ra_state(uint64_t ino, int _ra_kib, int _def_ra_size_kib) :
         fuse_ino(ino),
-        ra_bytes(_ra_kib * 1024)
+        ra_bytes(_ra_kib * 1024),
+        def_ra_size(std::min<uint64_t>(_def_ra_size_kib * 1024ULL, ra_bytes))
     {
         /*
          * Some sanity asserts
          * Readahead less than 128KB are not effective and more than 1GB is
          * unnecessary.
+         * Readahead reads also must have a reasonable size.
          */
         assert(_ra_kib >= 128 && _ra_kib <= 1024*1024);
+        assert(_def_ra_size_kib >= 8 && _def_ra_size_kib <= 16*1024);
 
-        AZLogInfo("[{}] Readahead set to {} KiB", ino, _ra_kib);
+        AZLogInfo("[{}] Readahead set to {} KiB with default RA size {} KiB",
+                  ino, _ra_kib, _def_ra_size_kib);
     }
 
     /**
@@ -140,13 +148,19 @@ public:
      * Note that the argument to on_readahead_complete() MUST be 'length' even
      * if the readahead read ends up reading less.
      *
+     * Note: If you don't pass the length parameter, it uses the def_ra_size
+     *       set in the constructor. This is the recommended usage.
+     *
      * Note: It doesn't track the file size, so it may recommend readahead
      *       offsets beyond eof. It's the caller's responsibility to handle
      *       that.
      */
-    uint64_t get_next_ra(uint64_t length)
+    uint64_t get_next_ra(uint64_t length = 0)
     {
-        assert(length > 0);
+        if (length == 0) {
+            length = def_ra_size;
+            assert(length > 0);
+        }
 
         if ((last_byte_readahead + 1 + length) > AZNFSC_MAX_FILE_SIZE) {
             return 0;
@@ -266,9 +280,19 @@ public:
      * and the length parameter MUST match what was passed to get_next_ra().
      * This must be called before the readahead read completes, successful or
      * not.
+     *
+     * Note: If you don't pass the length parameter, it uses the def_ra_size
+     *       set in the constructor. This is the recommended usage, but if you
+     *       pass length parameter to get_next_ra() then you MUST pass the
+     *       same length to on_readahead_complete().
      */
-    void on_readahead_complete(uint64_t offset, uint64_t length)
+    void on_readahead_complete(uint64_t offset, uint64_t length = 0)
     {
+        if (length == 0) {
+            length = def_ra_size;
+            assert(length > 0);
+        }
+
         // ra_ongoing is atomic, don't need the lock.
         assert(ra_ongoing >= length);
         ra_ongoing -= length;
@@ -321,6 +345,13 @@ private:
      * "max_byte_read + ra_bytes".
      */
     const uint64_t ra_bytes;
+
+    /*
+     * Default size of a readahead IO returned by get_next_ra() if length is
+     * not passed explicitly. This is initialized in the constructor and later
+     * used.
+     */
+    const uint64_t def_ra_size;
 
     /*
      * Last byte of readahead read recommended by most recent call to
