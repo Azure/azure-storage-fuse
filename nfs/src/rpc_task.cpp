@@ -692,6 +692,13 @@ static void readfile_callback(
     struct bytes_chunk *bc = ctx->bc;
     assert(bc != nullptr);
 
+    /*
+     * Release the lock that we held on the membuf since the data is now written to it.
+     * The lock is needed only to write the data and not to just read it.
+     * Hence it is safe to read this membuf even beyond this point.
+     */
+    bc->get_membuf()->clear_locked();
+
     // Free the context.
     delete ctx;
 
@@ -739,6 +746,17 @@ static void readfile_callback(
                       task->rpc_api.readfile_task.get_offset(),
                       task->rpc_api.readfile_task.get_size());
         }
+
+	if (!task->is_async() && bc->length > 0)
+	{
+            AZLogDebug("Application read, no need to cache, hence releasing. size: {}, offset: {}",
+                bc->offset,
+		bc->length);
+
+	    // Since this is an application read, there is no use of caching it.
+            readfile_handle->release(bc->offset, bc->length);
+	}
+
     }
     else
     {
@@ -748,12 +766,6 @@ static void readfile_callback(
         readfile_handle->release(bc->offset, bc->length);
     }
 
-    /*
-     * Release the lock that we held on the membuf since the data is now written to it.
-     * The lock is needed only to write the data and not to just read it.
-     * Hence it is safe to read this membuf even beyond this point.
-     */
-    bc->get_membuf()->clear_locked();
 
     // Take a lock here since multiple readfiles issued can try modifying the below members.
     {
