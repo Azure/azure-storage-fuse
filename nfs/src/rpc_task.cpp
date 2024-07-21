@@ -910,7 +910,19 @@ void rpc_task::fetch_readdir_entries_from_server()
         ::memcpy(&args.cookieverf,
                  dir_inode->dircache_handle->get_cookieverf(),
                  sizeof(args.cookieverf));
-        args.count = 131072; // TODO: Set this to user passed value.
+
+        args.count = nfs_get_readdir_maxcount(get_nfs_context());
+
+        /*
+         * XXX
+         * Remove this code after extensive validation with large directories
+         * enumeration using READDIR.
+         */
+        if (args.count > 131072) {
+            AZLogWarn("*** Reducing READDIR count ({} -> {}) ***",
+                      args.count, 131072);
+            args.count = 131072;
+        }
 
         if (rpc_nfs3_readdir_task(get_rpc_ctx(),
                                   readdir_callback,
@@ -941,8 +953,12 @@ void rpc_task::fetch_readdirplus_entries_from_server()
                  dir_inode->dircache_handle->get_cookieverf(),
                  sizeof(args.cookieverf));
 
-        args.dircount = 1048576; // TODO: Set this to user passed value.
-        args.maxcount = 1048576;
+        /*
+         * Use dircount/maxcount according to the user configured and
+         * the server advertised value.
+         */
+        args.maxcount = nfs_get_readdir_maxcount(get_nfs_context());
+        args.dircount = args.maxcount;
 
         if (rpc_nfs3_readdirplus_task(get_rpc_ctx(),
                                       readdirplus_callback,
