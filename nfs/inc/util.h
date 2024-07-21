@@ -98,6 +98,17 @@ int64_t get_current_msecs()
 }
 
 /**
+ * Return microseconds since epoch.
+ * Use this for accurate stats.
+ */
+static inline
+int64_t get_current_usecs()
+{
+    return duration_cast<microseconds>(
+            system_clock::now().time_since_epoch()).count();
+}
+
+/**
  * Compares a timespec time ts with nfstime3 time nt and returns
  * 0 if both represent the same time
  * -1 if ts < nt

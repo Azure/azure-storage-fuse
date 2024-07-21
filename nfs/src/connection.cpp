@@ -12,7 +12,7 @@ bool nfs_connection::open()
         return false;
     }
 
-    const struct mount_options& mo = client->mnt_options;
+    struct mount_options& mo = client->mnt_options;
     const std::string url_str = mo.get_url_str();
 
     AZLogDebug("Parsing NFS URL string: {}", url_str);
@@ -25,9 +25,6 @@ bool nfs_connection::open()
 
     assert(mo.server == url->server);
     assert(mo.export_path == url->path);
-
-    nfs_set_writemax(nfs_context, mo.wsize);
-    nfs_set_readmax(nfs_context, mo.rsize);
 
     /*
      * Call libnfs for mounting the share.
@@ -43,6 +40,43 @@ bool nfs_connection::open()
                    mo.export_path,
                    nfs_get_error(nfs_context));
         goto destroy_context;
+    }
+
+    /*
+     * A successful mount must have negotiated valid values for these.
+     */
+    assert(nfs_get_readmax(nfs_context) >= AZNFSCFG_RSIZE_MIN);
+    assert(nfs_get_readmax(nfs_context) <= AZNFSCFG_RSIZE_MAX);
+
+    assert(nfs_get_writemax(nfs_context) >= AZNFSCFG_WSIZE_MIN);
+    assert(nfs_get_writemax(nfs_context) <= AZNFSCFG_WSIZE_MAX);
+
+    assert(nfs_get_readdir_maxcount(nfs_context) >= AZNFSCFG_READDIR_MIN);
+    assert(nfs_get_readdir_maxcount(nfs_context) <= AZNFSCFG_READDIR_MAX);
+
+    /*
+     * Save the final negotiated value in mount_options for future ref.
+     */
+    if (mo.rsize_adj == 0) {
+        mo.rsize_adj = nfs_get_readmax(nfs_context);
+    } else {
+        // All connections must have the same negotiated value.
+        assert(mo.rsize_adj == (int) nfs_get_readmax(nfs_context));
+    }
+
+    if (mo.wsize_adj == 0) {
+        mo.wsize_adj = nfs_get_writemax(nfs_context);
+    } else {
+        // All connections must have the same negotiated value.
+        assert(mo.wsize_adj == (int) nfs_get_readmax(nfs_context));
+    }
+
+    if (mo.readdir_maxcount_adj == 0) {
+        mo.readdir_maxcount_adj = nfs_get_readdir_maxcount(nfs_context);
+    } else {
+        // All connections must have the same negotiated value.
+        assert(mo.readdir_maxcount_adj ==
+               (int) nfs_get_readdir_maxcount(nfs_context));
     }
 
     AZLogInfo("[{}] Successfully mounted nfs share ({}:{}). "

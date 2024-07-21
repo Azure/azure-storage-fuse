@@ -476,6 +476,8 @@ void rpc_task::run_setattr()
 
 void rpc_task::free_rpc_task()
 {
+    assert(get_op_type() <= FUSE_OPCODE_MAX);
+
     switch(get_op_type()) {
     case FUSE_LOOKUP:
         rpc_api.lookup_task.release();

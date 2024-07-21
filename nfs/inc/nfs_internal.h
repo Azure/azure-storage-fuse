@@ -19,6 +19,9 @@ struct mount_options
     // Path to be exported. /account/container
     const std::string export_path;
 
+    // Local mount directory.
+    const std::string mountpoint;
+
     // Defaults to version 3
     const int nfs_version;
 
@@ -34,9 +37,16 @@ struct mount_options
      */
     const int num_connections;
 
+    // ro or rw mount?
+    const bool readonly;
+
     // Max read and write sizes.
     const int rsize;
     const int wsize;
+
+    // rsize and wsize adjusted as per server advertised values.
+    int rsize_adj = 0;
+    int wsize_adj = 0;
 
     // How many RPC retransmits before major recovery.
     const int retrans;
@@ -53,15 +63,23 @@ struct mount_options
     // Maximum number of readdir entries that can be requested.
     const int readdir_maxcount;
 
+    // readdir_maxcount adjusted as per server advertised value.
+    int readdir_maxcount_adj = 0;
+
     // Add any other options as needed.
 
+    /*
+     * TODO: Add support for readonly mount.
+     */
     mount_options():
         server(aznfsc_cfg.server),
         export_path(aznfsc_cfg.export_path),
+        mountpoint(aznfsc_cfg.mountpoint),
         nfs_version(3),
         mount_port(aznfsc_cfg.port),
         nfs_port(aznfsc_cfg.port),
         num_connections(aznfsc_cfg.nconnect),
+        readonly(false),
         rsize(aznfsc_cfg.rsize),
         wsize(aznfsc_cfg.wsize),
         retrans(aznfsc_cfg.retrans),
@@ -73,24 +91,9 @@ struct mount_options
         actimeo(aznfsc_cfg.actimeo),
         readdir_maxcount(aznfsc_cfg.readdir_maxcount)
     {
-    }
-
-    mount_options(const mount_options* opt):
-        nfs_version(opt->nfs_version),
-        mount_port(opt->mount_port),
-        nfs_port(opt->nfs_port),
-        num_connections(opt->num_connections),
-        rsize(opt->rsize),
-        wsize(opt->wsize),
-        retrans(opt->retrans),
-        timeo(opt->timeo),
-        acregmin(opt->acregmin),
-        acregmax(opt->acregmax),
-        acdirmin(opt->acdirmin),
-        acdirmax(opt->acdirmax),
-        actimeo(opt->actimeo),
-        readdir_maxcount(opt->readdir_maxcount)
-    {
+        assert(!server.empty());
+        assert(!export_path.empty());
+        assert(!mountpoint.empty());
     }
 
     /**

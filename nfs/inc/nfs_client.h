@@ -124,6 +124,11 @@ public:
         return client;
     }
 
+    const struct rpc_transport& get_transport() const
+    {
+        return transport;
+    }
+
     struct rpc_task_helper *get_rpc_task_helper()
     {
         return rpc_task_helper;

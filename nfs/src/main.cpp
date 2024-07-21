@@ -1165,6 +1165,8 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    aznfsc_cfg.mountpoint = opts.mountpoint;
+
     // Set default values for config variables not set using the above.
     aznfsc_cfg.set_defaults_and_sanitize();
 

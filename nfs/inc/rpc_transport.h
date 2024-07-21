@@ -13,8 +13,14 @@
  * If the mount is done with nconnect=x, then this layer will take care of round
  * robining the requests over x connections.
  */
-class rpc_transport
+
+#define RPC_TRANSPORT_MAGIC *((const uint32_t *)"RPCT")
+
+struct rpc_transport
 {
+    const uint32_t magic = RPC_TRANSPORT_MAGIC;
+
+private:
     /*
      * nfs_client that this transport belongs to.
      */
@@ -63,15 +69,19 @@ public:
     void close();
 
     /*
-     *
      * This is used to get the connection on which the nfs_client associated
      * with this transport can send the NFS request.
-     * For now, this just returns the connection on which the client can send
-     * the request.
+     * For now, this just returns the next connection on which the client can
+     * send the request.
      * This can be further enhanced to support a good scheduling of the requests
      * over multiple connection.
      */
     struct nfs_context *get_nfs_context() const;
+
+    const std::vector<struct nfs_connection*>& get_all_connections() const
+    {
+        return nfs_connections;
+    }
 };
 
 #endif /* __RPC_TRANSPORT_H__ */

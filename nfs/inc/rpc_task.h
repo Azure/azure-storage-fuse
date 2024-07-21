@@ -754,7 +754,10 @@ public:
 
         // Wait until a free rpc task is available.
         while (free_task_index.empty()) {
-            cv.wait(lock, [this] { return !free_task_index.empty(); });
+            if (!cv.wait_for(lock, std::chrono::seconds(30),
+                             [this] { return !free_task_index.empty(); })) {
+                AZLogError("Timed out waiting for free rpc_task, re-trying!");
+            }
         }
 
         const int free_index = free_task_index.top();

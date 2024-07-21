@@ -46,6 +46,14 @@ using namespace aznfsc;
 // W/o jumbo blocks, 5TiB is the max file size we can support.
 #define AZNFSC_MAX_FILE_SIZE    (100 * 1024 * 1024 * 50'000ULL)
 
+/*
+ * Max fuse_opcode enum value.
+ * This keeps increasing with newer fuse versions, but we don't want it
+ * to be the exact maximum, we just want it to be more than all the opcodes
+ * that we support.
+ */
+#define FUSE_OPCODE_MAX         FUSE_LSEEK
+
 /**
  * This structure holds the entire aznfsclient configuration that controls the
  * behaviour of the aznfsclient fuse program. These config variables can be
@@ -172,6 +180,13 @@ typedef struct aznfsc_cfg
      **************************************************************************/
     std::string server;
     std::string export_path;
+
+    /**
+     * Local mountpoint.
+     * This is not present in the config file, but is taken from the
+     * cmdline.
+     */
+    std::string mountpoint;
 
     /**
      * Parse config_yaml if set by cmdline --config-file=
