@@ -1,0 +1,16 @@
+timeo: 600
+retrans: 2
+port: 2047
+nconnect: 1
+account: sjc22prdste06hnfsv3acc1
+container: nfsv3test
+cloud_suffix: blob.preprod.core.windows.net
+acregmin: 3
+acregmax: 60
+acdirmin: 30
+acdirmax: 60
+actimeo: 300
+rsize: 1048576
+wsize: 1048576
+readdir_maxcount: 1048576
+cachedir: 

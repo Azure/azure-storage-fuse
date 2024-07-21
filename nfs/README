@@ -1,4 +1,5 @@
-For building:
+Building
+========
 - mkdir build && cd build
 - cmake -DCMAKE_BUILD_TYPE=Debug ..
 - make
@@ -8,3 +9,20 @@ For building:
 
 # For enabling AZLogVerbose()
 - -DENABLE_CHATTY=ON ..
+
+Running
+=======
+Copy sample-config.yaml as path/to/your/config.yaml and edit it according
+to your requirement. Then run as
+
+#./aznfsclient --config-file=path/to/your/config.yaml  /mnt/your/path -d
+
+-d option indicates debug run which would mean:
+* It'll run in the foreground.
+* Debug logs will be enabled.
+
+If you don't want debug logs but still want to run in the foreground, use -f
+#./aznfsclient --config-file=path/to/your/config.yaml  /mnt/your/path -f
+
+else, if you want to run in the background, use
+#./aznfsclient --config-file=path/to/your/config.yaml  /mnt/your/path
