@@ -435,6 +435,9 @@ private:
      */
     std::atomic<bool> is_async_task = false;
 
+    // Put a cap on how many async tasks we can start.
+    static std::atomic<int> async_slots;
+
 public:    
     /*
      * Total number of parallel reads issued to backend.
@@ -466,19 +469,6 @@ public:
     std::vector<bytes_chunk> bytes_vector;
 
     std::shared_mutex readfile_task_lock;
-private:
-    /*
-     * std::thread that will run this async rpc task.
-     * This will be nullptr for sync rpc tasks.
-     * All rpc_tasks start sync, but the caller can make an rpc_task
-     * async by calling set_async_function(). The std::function object
-     * passed to set_async_function() will be run asynchronously by the
-     * rpc_task. This should call the run*() method at the least.
-     */
-    std::thread *thread = nullptr;
-
-    // Put a cap on how many async tasks we can start.
-    static std::atomic<int> async_slots;
 
 protected:
     /*
@@ -961,19 +951,7 @@ public:
         assert(task->magic == RPC_TASK_MAGIC);
         task->is_async_task = false;
 
-        /*
-         * For async tasks we need to reap the thread and free the std::thread
-         * object. Note that by the time free_rpc_task() is called the async
-         * thread must have completed execution, so the join() won't block.
-         */
-        if (task->thread) {
-            // Async threads should run detached.
-            assert(!task->thread->joinable());
-            delete task->thread;
-            task->thread = nullptr;
-        }
-	assert(task->thread == nullptr);
-        release_free_index(task->get_index());
+	release_free_index(task->get_index());
     }
 };
 
