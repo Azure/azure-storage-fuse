@@ -760,7 +760,8 @@ static void aznfsc_ll_flush(fuse_req_t req,
     /*
      * TODO: Fill me.
      */
-    fuse_reply_err(req, ENOSYS);
+    struct nfs_client *client = get_nfs_client_from_fuse_req(req);
+    client->flush(req, ino);
 }
 
 static void aznfsc_ll_release(fuse_req_t req,
@@ -772,7 +773,8 @@ static void aznfsc_ll_release(fuse_req_t req,
     /*
      * TODO: Fill me.
      */
-    fuse_reply_err(req, ENOSYS);
+    struct nfs_client *client = get_nfs_client_from_fuse_req(req);
+    client->flush(req, ino);
 }
 
 static void aznfsc_ll_fsync(fuse_req_t req,
@@ -1021,7 +1023,7 @@ static void aznfsc_ll_write_buf(fuse_req_t req,
     AZLogInfo("aznfsc_ll_write_buf(req={}, ino={}, off={}, fi={}",
                fmt::ptr(req), ino, off, fmt::ptr(fi));
 
-    assert(fi->direct_io == 1);
+   // assert(fi->direct_io == 1);
 
     struct nfs_client *client = get_nfs_client_from_fuse_req(req);
     assert(bufv->idx <= bufv->count);

@@ -306,6 +306,10 @@ public:
         size_t size,
         off_t off);
 
+    void flush(
+        fuse_req_t req,
+        fuse_ino_t ino);
+
     void readdir(
         fuse_req_t req,
         fuse_ino_t ino,

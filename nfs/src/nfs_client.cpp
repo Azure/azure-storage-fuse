@@ -250,6 +250,15 @@ void nfs_client::lookup(fuse_req_t req, fuse_ino_t parent_ino, const char* name)
     tsk->run_lookup();
 }
 
+void nfs_client::flush(fuse_req_t req, fuse_ino_t ino)
+{
+    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task();
+
+    tsk->init_flush(req, ino);
+    tsk->run_flush();
+}
+
+
 void nfs_client::direct_write(fuse_req_t req, fuse_ino_t ino, const char* buf, size_t size, off_t off)
 {
     struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task();

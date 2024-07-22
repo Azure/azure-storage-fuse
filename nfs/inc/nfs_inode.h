@@ -360,7 +360,14 @@ struct nfs_inode
 
     void set_dirty_bytes(size_t dirty_count)
     {
+        std::unique_lock<std::shared_mutex> lock(ilock);
         dirty_bytes += dirty_count;
+    }
+
+    uint64_t get_dirty_bytes()
+    {
+        std::unique_lock<std::shared_mutex> lock(ilock);
+        return dirty_bytes;
     }
 
     /**
