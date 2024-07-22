@@ -42,6 +42,12 @@ type BlockPool struct {
 	// Channel holding free blocks
 	blocksCh chan *Block
 
+	// block having null data
+	zeroBlock *Block
+
+	// channel to reset the data in a block
+	resetBlockCh chan *Block
+
 	// Size of each block this pool holds
 	blockSize uint64
 
@@ -61,26 +67,37 @@ func NewBlockPool(blockSize uint64, memSize uint64) *BlockPool {
 	blockCount := uint32(memSize / blockSize)
 
 	pool := &BlockPool{
-		blocksCh:  make(chan *Block, blockCount),
-		maxBlocks: uint32(blockCount),
-		blockSize: blockSize,
+		blocksCh:     make(chan *Block, blockCount-1),
+		resetBlockCh: make(chan *Block, blockCount-1),
+		maxBlocks:    uint32(blockCount),
+		blockSize:    blockSize,
 	}
 
 	// Preallocate all blocks so that during runtime we do not spend CPU cycles on this
 	for i := (uint32)(0); i < blockCount; i++ {
 		b, err := AllocateBlock(blockSize)
 		if err != nil {
+			log.Err("BlockPool::NewBlockPool : Failed to allocate block [%v]", err.Error())
 			return nil
 		}
 
-		pool.blocksCh <- b
+		if i == blockCount-1 {
+			pool.zeroBlock = b
+		} else {
+			pool.blocksCh <- b
+		}
 	}
+
+	// run a thread to reset the data in a block
+	go pool.resetBlock()
 
 	return pool
 }
 
 // Terminate ends the block pool life
 func (pool *BlockPool) Terminate() {
+	// TODO: close blocksCh after the resetBlock() thread completes
+	close(pool.resetBlockCh)
 	close(pool.blocksCh)
 
 	// Release back the memory allocated to each block
@@ -142,9 +159,24 @@ func (pool *BlockPool) TryGet() *Block {
 // Release back the Block to the pool
 func (pool *BlockPool) Release(b *Block) {
 	select {
-	case pool.blocksCh <- b:
+	case pool.resetBlockCh <- b:
 		break
 	default:
 		_ = b.Delete()
+	}
+}
+
+// reset the data in a block before its next use
+func (pool *BlockPool) resetBlock() {
+	for b := range pool.resetBlockCh {
+		// reset the data with null entries
+		copy(b.data, pool.zeroBlock.data)
+
+		select {
+		case pool.blocksCh <- b:
+			continue
+		default:
+			_ = b.Delete()
+		}
 	}
 }
