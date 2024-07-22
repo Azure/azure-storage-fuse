@@ -707,19 +707,32 @@ static void readfile_callback(
     auto ino = task->rpc_api.readfile_task.get_inode();
     auto readfile_handle = task->get_client()->get_nfs_inode_from_ino(ino)->filecache_handle;
 
+    // We should never get more data than what we requested.
+    assert (bc->length >= res->READ3res_u.resok.count);
+
     if (status == 0)
     {
-        // TODO: release buffer for sync reads since we will not use that anymore.
         if (bc->length > res->READ3res_u.resok.count)
         {
             // If the chunk buffer size is larger than the recieved response, truncate it.
             readfile_handle->release(bc->offset + res->READ3res_u.resok.count, bc->length - res->READ3res_u.resok.count);
+
+	    // Update the byte chunk fields.
+            bc->length = res->READ3res_u.resok.count;
+
+	    /*
+	     * In this case we should not mark the uptodate flag as we have not read the entire chunk
+	     * and this might lead to other request incorrectly interpreting that the entire chunk is updated.
+	     * Note that we are still good to use this data to respond to the application read.
+	     */
+
+	    AZLogDebug("Not updating uptodate flag. Received data is less than requested."
+		       " is_async: {} offset: {}, length: {}",
+                       task->is_async(),
+                       task->rpc_api.readfile_task.get_offset(),
+                       task->rpc_api.readfile_task.get_size());
         }
-
-        // Update the byte chunk fields.
-        bc->length = res->READ3res_u.resok.count;
-
-        if (bc->is_empty)
+	else if (bc->is_empty)
         {
             /*
              * Only the first read which got hold of the complete membuf will have this byte_chunk
@@ -734,7 +747,7 @@ static void readfile_callback(
         }
         else
         {
-            AZLogDebug("Not updating uptodate flag. is_async: {} offset: {}, length: {}",
+            AZLogDebug("Not updating uptodate flag. is_empty: false, is_async: {} offset: {}, length: {}",
                       task->is_async(),
                       task->rpc_api.readfile_task.get_offset(),
                       task->rpc_api.readfile_task.get_size());
@@ -746,18 +759,26 @@ static void readfile_callback(
                 bc->offset,
 		bc->length);
 
-	    // Since this is an application read, there is no use of caching it.
+	    /*
+	     * Since this is an application read, there is no use of caching it.
+	     * Note: It is safe to access the buffer even beyond releasing it as our bytes_vector will still
+	     * 	     hold a ref to it and that will be dropped when this task is freed in free_rpc_task().
+	     */
             readfile_handle->release(bc->offset, bc->length);
 	}
-
     }
     else
     {
         assert(res->READ3res_u.resok.count == 0);
 
+	// Update the byte chunk fields.
+	bc->length = res->READ3res_u.resok.count;
+
         // Release the buffer since we did not fill it.
         readfile_handle->release(bc->offset, bc->length);
     }
+
+    assert(res->READ3res_u.resok.count == bc->length);
 
     /*
      * Release the lock that we held on the membuf since the data is now written to it.
