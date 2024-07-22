@@ -1,7 +1,7 @@
 #include "nfs_internal.h"
 #include "rpc_task.h"
 
-#define RSTATUS(r) ((r) ? (r)->status : NFS3ERR_SERVERFAULT)
+#define NFS_STATUS(r) ((r) ? (r)->status : NFS3ERR_SERVERFAULT)
 
 /* static */
 std::atomic<int> rpc_task::async_slots = MAX_ASYNC_RPC_TASKS;
@@ -121,7 +121,7 @@ static void getattr_callback(
         task->rpc_api.getattr_task.get_ino();
     struct nfs_inode *inode =
         task->get_client()->get_nfs_inode_from_ino(ino);
-    const int status = task->status(rpc_status, RSTATUS(res));
+    const int status = task->status(rpc_status, NFS_STATUS(res));
 
     if (status == 0) {
         // Got fresh attributes, update the attributes cached in the inode.
@@ -146,9 +146,9 @@ static void lookup_callback(
 {
     rpc_task *task = (rpc_task*) private_data;
     auto res = (LOOKUP3res*)data;
-    const int status = task->status(rpc_status, RSTATUS(res));
+    const int status = task->status(rpc_status, NFS_STATUS(res));
 
-    if (rpc_status == RPC_STATUS_SUCCESS && RSTATUS(res) == NFS3ERR_NOENT) {
+    if (rpc_status == RPC_STATUS_SUCCESS && NFS_STATUS(res) == NFS3ERR_NOENT) {
         /*
          * Special case for creating negative dentry.
          */
@@ -178,7 +178,7 @@ static void createfile_callback(
 {
     rpc_task *task = (rpc_task*) private_data;
     auto res = (CREATE3res*)data;
-    const int status = task->status(rpc_status, RSTATUS(res));
+    const int status = task->status(rpc_status, NFS_STATUS(res));
 
     if (status == 0) {
         assert(
@@ -207,7 +207,7 @@ static void setattr_callback(
         task->rpc_api.setattr_task.get_ino();
     const struct nfs_inode *inode =
         task->get_client()->get_nfs_inode_from_ino(ino);
-    const int status = task->status(rpc_status, RSTATUS(res));
+    const int status = task->status(rpc_status, NFS_STATUS(res));
 
     if (status == 0) {
         assert(res->SETATTR3res_u.resok.obj_wcc.after.attributes_follow);
@@ -235,7 +235,7 @@ void mkdir_callback(
 {
     rpc_task *task = (rpc_task*) private_data;
     auto res = (MKDIR3res*)data;
-    const int status = task->status(rpc_status, RSTATUS(res));
+    const int status = task->status(rpc_status, NFS_STATUS(res));
 
     if (status == 0) {
         assert(
@@ -260,7 +260,7 @@ void rmdir_callback(
 {
     rpc_task *task = (rpc_task*) private_data;
     auto res = (RMDIR3res*) data;
-    const int status = task->status(rpc_status, RSTATUS(res));
+    const int status = task->status(rpc_status, NFS_STATUS(res));
 
     if (status == 0) {
          task->reply_error(0);
@@ -521,7 +521,7 @@ static void readdir_callback(
     ssize_t rem_size = task->rpc_api.readdir_task.get_size();
     std::vector<const directory_entry*> readdirentries;
     int num_dirents = 0;
-    const int status = task->status(rpc_status, RSTATUS(res));
+    const int status = task->status(rpc_status, NFS_STATUS(res));
 
     if (status == 0) {
         const struct entry3 *entry = res->READDIR3res_u.resok.reply.entries;
@@ -650,7 +650,7 @@ static void readdirplus_callback(
     ssize_t rem_size = task->rpc_api.readdir_task.get_size();
     std::vector<const directory_entry*> readdirentries;
     int num_dirents = 0;
-    const int status = task->status(rpc_status, RSTATUS(res));
+    const int status = task->status(rpc_status, NFS_STATUS(res));
 
     if (status == 0) {
         const struct entryplus3 *entry =
