@@ -33,7 +33,11 @@
 
 package block_cache
 
-import "github.com/Azure/azure-storage-fuse/v2/common/log"
+import (
+	"sync"
+
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
+)
 
 const _1MB uint64 = (1024 * 1024)
 
@@ -47,6 +51,9 @@ type BlockPool struct {
 
 	// channel to reset the data in a block
 	resetBlockCh chan *Block
+
+	// Wait group to wait for resetBlock() thread to finish
+	wg sync.WaitGroup
 
 	// Size of each block this pool holds
 	blockSize uint64
@@ -89,6 +96,7 @@ func NewBlockPool(blockSize uint64, memSize uint64) *BlockPool {
 	}
 
 	// run a thread to reset the data in a block
+	pool.wg.Add(1)
 	go pool.resetBlock()
 
 	return pool
@@ -96,9 +104,13 @@ func NewBlockPool(blockSize uint64, memSize uint64) *BlockPool {
 
 // Terminate ends the block pool life
 func (pool *BlockPool) Terminate() {
-	// TODO: close blocksCh after the resetBlock() thread completes
+	// TODO: call terminate after all the threads have completed
 	close(pool.resetBlockCh)
+	pool.wg.Wait()
+
 	close(pool.blocksCh)
+
+	_ = pool.zeroBlock.Delete()
 
 	// Release back the memory allocated to each block
 	for {
@@ -112,7 +124,7 @@ func (pool *BlockPool) Terminate() {
 
 // Usage provides % usage of this block pool
 func (pool *BlockPool) Usage() uint32 {
-	return ((pool.maxBlocks - (uint32)(len(pool.blocksCh))) * 100) / pool.maxBlocks
+	return ((pool.maxBlocks - (uint32)(len(pool.blocksCh)+len(pool.resetBlockCh))) * 100) / pool.maxBlocks
 }
 
 // MustGet a Block from the pool, wait until something is free
@@ -168,6 +180,8 @@ func (pool *BlockPool) Release(b *Block) {
 
 // reset the data in a block before its next use
 func (pool *BlockPool) resetBlock() {
+	defer pool.wg.Done()
+
 	for b := range pool.resetBlockCh {
 		// reset the data with null entries
 		copy(b.data, pool.zeroBlock.data)
