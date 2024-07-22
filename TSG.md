@@ -104,17 +104,17 @@ To create a private-endpoint for DFS in Azure portal: Go to your storage account
 
 Make sure the configuration file has `azstorage` section in your config file.
 
-The [BlobFuse2 base configuration file](https://github.com/Azure/azure-storage-fuse/blob/main/setup/baseConfig.yaml) contains a list of all settings and a brief explanation of each setting. Use the [sample file cache configuration file](https://github.com/Azure/azure-storage-fuse/blob/main/sampleFileCacheConfig.yaml) or the [sample block cache configuration file](https://github.com/Azure/azure-storage-fuse/blob/main/sampleBlockCacheConfig.yaml) to get started quickly by using some basic settings for each of those scenarios.
+The [Blobfuse2 base configuration file](https://github.com/Azure/azure-storage-fuse/blob/main/setup/baseConfig.yaml) contains a list of all settings and a brief explanation of each setting. Use the [sample file cache configuration file](https://github.com/Azure/azure-storage-fuse/blob/main/sampleFileCacheConfig.yaml) or the [sample block cache configuration file](https://github.com/Azure/azure-storage-fuse/blob/main/sampleBlockCacheConfig.yaml) to get started quickly by using some basic settings for each of those scenarios.
 
 **12. Failed to mount in proxy setup [proxyconnect tcp: dial tcp: lookup : no such host]**
 
-Make sure to set the proxy URL in the environment variable `https_proxy` or `http_proxy` and that it is accessible to Blobfuse2 process. If using private endpoint, make sure that 
+Make sure to set the proxy URL in the environment variable `https_proxy` or `http_proxy` and that it is accessible to Blobfuse2 process. If using private endpoint make sure that,
 - It is pointing to the `endpoint` in `azstorage` section in config.
 - Or, have a DNS resolution where `account.blob.core.windows.net` can be resolved back to the private endpoint. In case of HNS account, make sure to have the private endpoint configured for both blob and dfs accounts.
 
-# BlobFuse2 Health Monitor
+# Blobfuse2 Health Monitor
 
-One of the BlobFuse2 features is health monitor. It allows customers gain more insight into how their BlobFuse2 instance is behaving with the rest of their machine. Visit [here](https://github.com/Azure/azure-storage-fuse/blob/main/tools/health-monitor/README.md) to set it up. Please note that this feature is currently in preview.
+One of the Blobfuse2 features is health monitor. It allows customers gain more insight into how their Blobfuse2 instance is behaving with the rest of their machine. Visit [here](https://github.com/Azure/azure-storage-fuse/blob/main/tools/health-monitor/README.md) to set it up. Please note that this feature is currently in preview.
 
 # Common Problems after a Successful Mount
 **1. Errno 24: Failed to open file /mnt/tmp/root/filex in file cache.  errno = 24 OR Too many files Open error**
