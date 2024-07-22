@@ -1483,7 +1483,7 @@ stages:
           - template: 'azure-pipeline-templates/e2e-tests-block-cache.yml'
             parameters:
               conf_template: azure_stream.yaml
-              config_file: azure_stream.yaml
+              config_file: $(BLOBFUSE2_CFG)
               container: $(containerName)
               idstring: Stream
               adls: false
