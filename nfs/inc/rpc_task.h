@@ -342,9 +342,13 @@ private:
     fuse_file_info* file_ptr;
 };
 
+#define RPC_TASK_MAGIC *((const uint32_t *)"RTSK")
+
 struct rpc_task
 {
     friend class rpc_task_helper;
+
+    const uint32_t magic = RPC_TASK_MAGIC;
 
     /*
      * The client for which the context is created.
@@ -654,15 +658,47 @@ public:
         free_rpc_task();
     }
 
-    /*
-     * Check RPC completion for success.
-     * Returns true if rpc_task succeeded execution at the server, else
-     * returns false.
-     * Note that an rpc_task can fail with either an RPC or NFS error.
+    /**
+     * Check RPC and NFS status to find completion status of the RPC task.
+     * Returns 0 if rpc_task succeeded execution at the server, else returns
+     * a +ve errno value.
+     * If user has passed the last argument errstr as non-null, then it'll
+     * additionally store an error strig there.
      */
-    bool succeeded(int rpc_status, int nfs_status)
+    static int status(int rpc_status,
+                      int nfs_status,
+                      const char **errstr = nullptr)
     {
-        return (rpc_status == RPC_STATUS_SUCCESS && nfs_status == NFS3_OK);
+        if (rpc_status != RPC_STATUS_SUCCESS) {
+            if (errstr) {
+                *errstr = "RPC error";
+            }
+
+            /*
+             * TODO: libnfs only returns the following RPC errors
+             *       RPC status can indicate access denied error too,
+             *       need to support that.
+             */
+            assert(rpc_status == RPC_STATUS_ERROR ||
+                   rpc_status == RPC_STATUS_TIMEOUT ||
+                   rpc_status == RPC_STATUS_CANCEL);
+
+            // For now just EIO.
+            return EIO;
+        }
+
+        if (nfs_status == NFS3_OK) {
+            if (errstr) {
+                *errstr = "Success";
+            }
+            return 0;
+        }
+
+        if (errstr) {
+            *errstr = nfsstat3_to_str(nfs_status);
+        }
+
+        return -nfsstat3_to_errno(nfs_status);
     }
 
     struct fuse_req *get_req() const
@@ -738,6 +774,7 @@ public:
         const int free_index = get_free_idx();
         struct rpc_task *task = rpc_task_list[free_index];
 
+        assert(task->magic == RPC_TASK_MAGIC);
         assert(task->client != nullptr);
         assert(task->index == free_index);
         // Every rpc_task starts as sync.
@@ -785,6 +822,7 @@ public:
 
     void free_rpc_task(struct rpc_task *task)
     {
+        assert(task->magic == RPC_TASK_MAGIC);
         task->is_async_task = false;
 
         release_free_index(task->get_index());

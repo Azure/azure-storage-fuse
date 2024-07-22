@@ -121,8 +121,9 @@ static void getattr_callback(
         task->rpc_api.getattr_task.get_ino();
     struct nfs_inode *inode =
         task->get_client()->get_nfs_inode_from_ino(ino);
+    const int status = task->status(rpc_status, RSTATUS(res));
 
-    if (task->succeeded(rpc_status, RSTATUS(res))) {
+    if (status == 0) {
         // Got fresh attributes, update the attributes cached in the inode.
         inode->update(res->GETATTR3res_u.resok.obj_attributes);
 
@@ -132,11 +133,8 @@ static void getattr_callback(
          * experience.
          */
         task->reply_attr(&inode->attr, inode->get_actimeo());
-    }
-    else
-    {
-        // Since the api failed and can no longer be retried, return error reply.
-        task->reply_error(-nfsstat3_to_errno(RSTATUS(res)));
+    } else {
+        task->reply_error(status);
     }
 }
 
@@ -148,6 +146,7 @@ static void lookup_callback(
 {
     rpc_task *task = (rpc_task*) private_data;
     auto res = (LOOKUP3res*)data;
+    const int status = task->status(rpc_status, RSTATUS(res));
 
     if (rpc_status == RPC_STATUS_SUCCESS && RSTATUS(res) == NFS3ERR_NOENT) {
         /*
@@ -158,7 +157,7 @@ static void lookup_callback(
             nullptr /* fh */,
             nullptr /* fattr */,
             nullptr);
-    } else if(task->succeeded(rpc_status, RSTATUS(res))) {
+    } else if (status == 0) {
         assert(res->LOOKUP3res_u.resok.obj_attributes.attributes_follow);
 
         task->get_client()->reply_entry(
@@ -166,11 +165,8 @@ static void lookup_callback(
             &res->LOOKUP3res_u.resok.object,
             &res->LOOKUP3res_u.resok.obj_attributes.post_op_attr_u.attributes,
             nullptr);
-    }
-    else
-    {
-        // Since the api failed and can no longer be retried, return error reply.
-        task->reply_error(-nfsstat3_to_errno(RSTATUS(res)));
+    } else {
+        task->reply_error(status);
     }
 }
 
@@ -182,9 +178,9 @@ static void createfile_callback(
 {
     rpc_task *task = (rpc_task*) private_data;
     auto res = (CREATE3res*)data;
+    const int status = task->status(rpc_status, RSTATUS(res));
 
-    if (task->succeeded(rpc_status, RSTATUS(res)))
-    {
+    if (status == 0) {
         assert(
             res->CREATE3res_u.resok.obj.handle_follows &&
             res->CREATE3res_u.resok.obj_attributes.attributes_follow);
@@ -194,11 +190,8 @@ static void createfile_callback(
             &res->CREATE3res_u.resok.obj.post_op_fh3_u.handle,
             &res->CREATE3res_u.resok.obj_attributes.post_op_attr_u.attributes,
             task->rpc_api.create_task.get_file());
-    }
-    else
-    {
-        // Since the api failed and can no longer be retried, return error reply.
-        task->reply_error(-nfsstat3_to_errno(RSTATUS(res)));
+    } else {
+        task->reply_error(status);
     }
 }
 
@@ -214,9 +207,9 @@ static void setattr_callback(
         task->rpc_api.setattr_task.get_ino();
     const struct nfs_inode *inode =
         task->get_client()->get_nfs_inode_from_ino(ino);
+    const int status = task->status(rpc_status, RSTATUS(res));
 
-    if (task->succeeded(rpc_status, RSTATUS(res)))
-    {
+    if (status == 0) {
         assert(res->SETATTR3res_u.resok.obj_wcc.after.attributes_follow);
 
         struct stat st;
@@ -229,11 +222,8 @@ static void setattr_callback(
          * experience.
          */
         task->reply_attr(&st, inode->get_actimeo());
-    }
-    else
-    {
-        // Since the api failed and can no longer be retried, return error reply.
-        task->reply_error(-nfsstat3_to_errno(RSTATUS(res)));
+    } else {
+        task->reply_error(status);
     }
 }
 
@@ -245,9 +235,9 @@ void mkdir_callback(
 {
     rpc_task *task = (rpc_task*) private_data;
     auto res = (MKDIR3res*)data;
+    const int status = task->status(rpc_status, RSTATUS(res));
 
-    if (task->succeeded(rpc_status, RSTATUS(res)))
-    {
+    if (status == 0) {
         assert(
             res->MKDIR3res_u.resok.obj.handle_follows &&
             res->MKDIR3res_u.resok.obj_attributes.attributes_follow);
@@ -257,11 +247,8 @@ void mkdir_callback(
             &res->MKDIR3res_u.resok.obj.post_op_fh3_u.handle,
             &res->MKDIR3res_u.resok.obj_attributes.post_op_attr_u.attributes,
             nullptr);
-    }
-    else
-    {
-        // Since the api failed and can no longer be retried, return error reply.
-        task->reply_error(-nfsstat3_to_errno(RSTATUS(res)));
+    } else {
+        task->reply_error(status);
     }
 }
 
@@ -273,11 +260,12 @@ void rmdir_callback(
 {
     rpc_task *task = (rpc_task*) private_data;
     auto res = (RMDIR3res*) data;
+    const int status = task->status(rpc_status, RSTATUS(res));
 
-    if (task->succeeded(rpc_status, RSTATUS(res))) {
+    if (status == 0) {
          task->reply_error(0);
     } else {
-        task->reply_error(-nfsstat3_to_errno(RSTATUS(res)));
+        task->reply_error(status);
     }
 }
 
@@ -533,8 +521,9 @@ static void readdir_callback(
     ssize_t rem_size = task->rpc_api.readdir_task.get_size();
     std::vector<const directory_entry*> readdirentries;
     int num_dirents = 0;
+    const int status = task->status(rpc_status, RSTATUS(res));
 
-    if (task->succeeded(rpc_status, RSTATUS(res))) {
+    if (status == 0) {
         const struct entry3 *entry = res->READDIR3res_u.resok.reply.entries;
         const bool eof = res->READDIR3res_u.resok.reply.eof;
         int64_t eof_cookie = -1;
@@ -633,8 +622,7 @@ static void readdir_callback(
 
         task->send_readdir_response(readdirentries);
     } else {
-        // Since the api failed and can no longer be retried, return error reply.
-        task->reply_error(-nfsstat3_to_errno(RSTATUS(res)));
+        task->reply_error(status);
     }
 }
 
@@ -662,8 +650,9 @@ static void readdirplus_callback(
     ssize_t rem_size = task->rpc_api.readdir_task.get_size();
     std::vector<const directory_entry*> readdirentries;
     int num_dirents = 0;
+    const int status = task->status(rpc_status, RSTATUS(res));
 
-    if (task->succeeded(rpc_status, RSTATUS(res))) {
+    if (status == 0) {
         const struct entryplus3 *entry =
             res->READDIRPLUS3res_u.resok.reply.entries;
         const bool eof = res->READDIRPLUS3res_u.resok.reply.eof;
@@ -850,8 +839,7 @@ static void readdirplus_callback(
 
         task->send_readdir_response(readdirentries);
     } else {
-        // Since the api failed and can no longer be retried, return error reply.
-        task->reply_error(-nfsstat3_to_errno(RSTATUS(res)));
+        task->reply_error(status);
     }
 }
 
