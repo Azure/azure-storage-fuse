@@ -692,13 +692,6 @@ static void readfile_callback(
     struct bytes_chunk *bc = ctx->bc;
     assert(bc != nullptr);
 
-    /*
-     * Release the lock that we held on the membuf since the data is now written to it.
-     * The lock is needed only to write the data and not to just read it.
-     * Hence it is safe to read this membuf even beyond this point.
-     */
-    bc->get_membuf()->clear_locked();
-
     // Free the context.
     delete ctx;
 
@@ -765,6 +758,13 @@ static void readfile_callback(
         // Release the buffer since we did not fill it.
         readfile_handle->release(bc->offset, bc->length);
     }
+
+    /*
+     * Release the lock that we held on the membuf since the data is now written to it.
+     * The lock is needed only to write the data and not to just read it.
+     * Hence it is safe to read this membuf even beyond this point.
+     */
+    bc->get_membuf()->clear_locked();
 
 
     // Take a lock here since multiple readfiles issued can try modifying the below members.
