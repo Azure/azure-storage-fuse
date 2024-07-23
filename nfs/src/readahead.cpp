@@ -347,6 +347,9 @@ int ra_state::issue_readaheads()
                 bc.get_membuf()->clear_locked();
                 bc.get_membuf()->clear_inuse();
 
+                // Release the buffer since we did not fill it.
+                read_cache->release(bc.offset, bc.length);
+
                 delete ctx;
             }
 
