@@ -242,6 +242,9 @@ func (suite *blockpoolTestSuite) TestBlockReset() {
 
 	releaseBlocks(suite, bp, blocks)
 
+	// adding wait for the blocks to be reset and pushed back to the blocks channel
+	time.Sleep(2 * time.Second)
+
 	blocks = getBlocks(suite, bp, 4)
 
 	releaseBlocks(suite, bp, blocks)
