@@ -58,6 +58,11 @@ nfs_inode::nfs_inode(const struct nfs_fh3 *filehandle,
     attr_timeout_timestamp = get_current_msecs() + attr_timeout_secs*1000;
 
     dircache_handle = std::make_shared<readdirectory_cache>(client, this);
+
+    if (file_type == S_IFREG) {
+        filecache_handle = std::make_shared<bytes_chunk_cache>();
+        readahead_state = std::make_shared<ra_state>(client, this);
+    }
 }
 
 nfs_inode::~nfs_inode()

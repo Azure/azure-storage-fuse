@@ -4,6 +4,8 @@
 #include <atomic>
 #include "aznfsc.h"
 #include "rpc_readdir.h"
+#include "file_cache.h"
+#include "readahead.h"
 
 #define NFS_INODE_MAGIC *((const uint32_t *)"NFSI")
 
@@ -120,6 +122,18 @@ struct nfs_inode
      * Only valid for a directory, this will be nullptr for a non-directory.
      */
     std::shared_ptr<readdirectory_cache> dircache_handle;
+
+    /*
+     * This is a handle to the chunk cache which caches data for this file.
+     * Valid only for regular files.
+     */
+    std::shared_ptr<bytes_chunk_cache> filecache_handle;
+
+    /*
+     * For maintaining readahead state.
+     * Valid only for regular files.
+     */
+    std::shared_ptr<ra_state> readahead_state;
 
     /**
      * TODO: Initialize attr with postop attributes received in the RPC

@@ -4,8 +4,6 @@
 #include "rpc_task.h"
 #include "rpc_readdir.h"
 
-#define RSTATUS(r) ((r) ? (r)->status : NFS3ERR_SERVERFAULT)
-
 // The user should first init the client class before using it.
 bool nfs_client::init()
 {

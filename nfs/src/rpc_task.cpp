@@ -102,6 +102,20 @@ void rpc_task::init_readdirplus(fuse_req *request,
     rpc_api.readdir_task.set_fuse_file(file);
 }
 
+void rpc_task::init_read(fuse_req *request,
+                         fuse_ino_t ino,
+                         size_t size,
+                         off_t offset,
+                         struct fuse_file_info *file)
+{
+    req = request;
+    optype = FUSE_READ;
+    rpc_api.read_task.set_inode(ino);
+    rpc_api.read_task.set_size(size);
+    rpc_api.read_task.set_offset(offset);
+    rpc_api.read_task.set_fuse_file(file);
+}
+
 /*
  * TODO: All the RPC callbacks where we receive post-op attributes or receive
  *       attributes o/w, we must call nfs_inode::update() to update the
