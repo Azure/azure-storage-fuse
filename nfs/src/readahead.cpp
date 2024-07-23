@@ -201,9 +201,6 @@ static void readahead_callback (
                   task->rpc_api.read_task.get_size());
     }
 
-    // Free the readahead RPC task.
-    task->free_rpc_task();
-
     /*
      * Release the lock that we held on the membuf since the data is now
      * written and ready to be read.
@@ -212,6 +209,9 @@ static void readahead_callback (
     bc->get_membuf()->clear_inuse();
 
 delete_ctx:
+    // Free the readahead RPC task.
+    task->free_rpc_task();
+
     // Free the context.
     delete ctx;
 }
@@ -349,7 +349,7 @@ int ra_state::issue_readaheads()
 
                 // Release the buffer since we did not fill it.
                 read_cache->release(bc.offset, bc.length);
-
+                tsk->free_rpc_task();
                 delete ctx;
             }
 
