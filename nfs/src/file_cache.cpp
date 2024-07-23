@@ -1000,7 +1000,7 @@ void bytes_chunk_cache::clear()
      *
      * Since bytes_chunk_cache::get() increases the inuse count of all membufs
      * returned, and it does that while holding the bytes_chunk_cache::lock, we
-     * can safely remove from chunkmap if inuse/dirty/locked are not set.
+     * can safely remove from chunkmap iff inuse/dirty/locked are not set.
      */
     const std::unique_lock<std::mutex> _lock(lock);
 
@@ -1030,7 +1030,7 @@ void bytes_chunk_cache::clear()
         /*
          * Not under use, cannot be locked.
          * Note that users are supposed to drop the inuse count only after
-         * grabbing the membuf lock.
+         * releasing the membuf lock.
          */
         assert(!mb->is_locked());
 
