@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1721536968008,
+  "lastUpdate": 1721715573698,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -2430,6 +2430,45 @@ window.BENCHMARK_DATA = {
           {
             "name": "rand_read_128_thread",
             "value": 1368.6136814730896,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "98318303+souravgupta-msft@users.noreply.github.com",
+            "name": "Sourav Gupta",
+            "username": "souravgupta-msft"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "73ff84985ac6e6008be4710a4df7c09b405f6d45",
+          "message": "Updating TSG for proxy environment (#1464)\n\n* adding tsg for proxy env",
+          "timestamp": "2024-07-23T11:09:28+05:30",
+          "tree_id": "0fb8febcadbaa4a76e84fa495dcb1d52b5bdee54",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/73ff84985ac6e6008be4710a4df7c09b405f6d45"
+        },
+        "date": 1721715573455,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "seq_write_112_thread",
+            "value": 225.44972207234733,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "seq_read_128_thread",
+            "value": 446.7686822235084,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "rand_read_128_thread",
+            "value": 1293.2566751332133,
             "unit": "milliseconds"
           }
         ]
