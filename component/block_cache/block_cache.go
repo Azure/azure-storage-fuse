@@ -39,6 +39,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -163,28 +164,7 @@ func (bc *BlockCache) Stop() error {
 	// Clear the disk cache on exit
 	if bc.tmpPath != "" {
 		_ = bc.diskPolicy.Stop()
-		_ = bc.TempCacheCleanup()
-	}
-
-	return nil
-}
-
-// TempCacheCleanup cleans up the local cached contents
-func (bc *BlockCache) TempCacheCleanup() error {
-	if bc.tmpPath == "" {
-		return nil
-	}
-
-	log.Info("BlockCache::TempCacheCleanup : Cleaning up temp directory %s", bc.tmpPath)
-
-	dirents, err := os.ReadDir(bc.tmpPath)
-	if err != nil {
-		log.Err("BlockCache::TempCacheCleanup : Failed to list directory %s [%v]", bc.tmpPath, err.Error())
-		return fmt.Errorf("failed to list directory %s", bc.tmpPath)
-	}
-
-	for _, entry := range dirents {
-		os.RemoveAll(filepath.Join(bc.tmpPath, entry.Name()))
+		_ = common.TempCacheCleanup(bc.tmpPath)
 	}
 
 	return nil
@@ -202,6 +182,7 @@ func (bc *BlockCache) Configure(_ bool) error {
 			return fmt.Errorf("config error in %s [%s]", bc.Name(), err.Error())
 		}
 	}
+	defaultMemSize := false
 	conf := BlockCacheOptions{}
 	err := config.UnmarshalKey(bc.Name(), &conf)
 	if err != nil {
@@ -224,6 +205,7 @@ func (bc *BlockCache) Configure(_ bool) error {
 			bc.memSize = uint64(4192) * _1MB
 		} else {
 			bc.memSize = uint64(0.8 * (float64)(sysinfo.Freeram) * float64(sysinfo.Unit))
+			defaultMemSize = true
 		}
 	}
 
@@ -233,8 +215,12 @@ func (bc *BlockCache) Configure(_ bool) error {
 	}
 
 	bc.prefetchOnOpen = conf.PrefetchOnOpen
-	bc.prefetch = uint32(2 * runtime.NumCPU())
+	bc.prefetch = uint32(math.Max((MIN_PREFETCH*2)+1, (float64)(2*runtime.NumCPU())))
 	bc.noPrefetch = false
+
+	if defaultMemSize && (uint64(bc.prefetch)*uint64(bc.blockSize)) > bc.memSize {
+		bc.prefetch = (MIN_PREFETCH * 2) + 1
+	}
 
 	err = config.UnmarshalKey("lazy-write", &bc.lazyWrite)
 	if err != nil {

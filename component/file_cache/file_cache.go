@@ -155,7 +155,7 @@ func (c *FileCache) Start(ctx context.Context) error {
 	log.Trace("Starting component : %s", c.Name())
 
 	if c.cleanupOnStart {
-		err := c.TempCacheCleanup()
+		err := common.TempCacheCleanup(c.tmpPath)
 		if err != nil {
 			return fmt.Errorf("error in %s error [fail to cleanup temp cache]", c.Name())
 		}
@@ -187,27 +187,9 @@ func (c *FileCache) Stop() error {
 	}
 
 	_ = c.policy.ShutdownPolicy()
-	_ = c.TempCacheCleanup()
+	_ = common.TempCacheCleanup(c.tmpPath)
 
 	fileCacheStatsCollector.Destroy()
-
-	return nil
-}
-
-func (c *FileCache) TempCacheCleanup() error {
-	// TODO : Cleanup temp cache dir before exit
-	if !isLocalDirEmpty(c.tmpPath) {
-		log.Err("FileCache::TempCacheCleanup : Cleaning up temp directory %s", c.tmpPath)
-
-		dirents, err := os.ReadDir(c.tmpPath)
-		if err != nil {
-			return nil
-		}
-
-		for _, entry := range dirents {
-			os.RemoveAll(filepath.Join(c.tmpPath, entry.Name()))
-		}
-	}
 
 	return nil
 }

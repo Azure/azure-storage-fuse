@@ -173,7 +173,7 @@ func (suite *blockCacheTestSuite) TestEmpty() {
 	cores, err := strconv.Atoi(coresStr)
 	suite.assert.Nil(err)
 	suite.assert.EqualValues(tobj.blockCache.workers, uint32(3*cores))
-	suite.assert.EqualValues(tobj.blockCache.prefetch, uint32(2*cores))
+	suite.assert.EqualValues(tobj.blockCache.prefetch, math.Max((MIN_PREFETCH*2)+1, float64(2*cores)))
 	suite.assert.EqualValues(tobj.blockCache.noPrefetch, false)
 	suite.assert.NotNil(tobj.blockCache.blockPool)
 	suite.assert.NotNil(tobj.blockCache.threadPool)
@@ -928,7 +928,7 @@ func (suite *blockCacheTestSuite) TestTempCacheCleanup() {
 
 	items, _ := os.ReadDir(tobj.disk_cache_path)
 	suite.assert.Equal(len(items), 0)
-	_ = tobj.blockCache.TempCacheCleanup()
+	_ = common.TempCacheCleanup(tobj.blockCache.tmpPath)
 
 	for i := 0; i < 5; i++ {
 		_ = os.Mkdir(filepath.Join(tobj.disk_cache_path, fmt.Sprintf("temp_%d", i)), 0777)
@@ -940,17 +940,12 @@ func (suite *blockCacheTestSuite) TestTempCacheCleanup() {
 	items, _ = os.ReadDir(tobj.disk_cache_path)
 	suite.assert.Equal(len(items), 5)
 
-	_ = tobj.blockCache.TempCacheCleanup()
+	_ = common.TempCacheCleanup(tobj.blockCache.tmpPath)
 	items, _ = os.ReadDir(tobj.disk_cache_path)
 	suite.assert.Equal(len(items), 0)
 
 	tobj.blockCache.tmpPath = ""
-	_ = tobj.blockCache.TempCacheCleanup()
-
-	tobj.blockCache.tmpPath = "~/ABCD"
-	err := tobj.blockCache.TempCacheCleanup()
-	suite.assert.NotNil(err)
-	suite.assert.Contains(err.Error(), "failed to list directory")
+	_ = common.TempCacheCleanup(tobj.blockCache.tmpPath)
 }
 
 func (suite *blockCacheTestSuite) TestZZZZLazyWrite() {

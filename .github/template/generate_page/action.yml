@@ -1,0 +1,63 @@
+name: generate_page
+description: "Generate github page for performance benchmark"
+
+inputs:
+  TEST: 
+    required: true
+    description: "Test to run"
+  TYPE: 
+    required: true
+    description: "Type of storage account"  
+  TOKEN:   
+    required: true
+    description: "Token for checkin"  
+
+runs:
+  using: "composite"
+
+  steps:
+    # Pre-run cleanup
+    - name: "Cleanup before test"
+      shell: bash
+      run: |
+        rm -rf /mnt/blob_mnt/*
+        rm -rf /mnt/tempcache/*
+
+    # Run the benchmark script 
+    - name: "Run Benchmark Script : ${{ inputs.TEST }}"
+      shell: bash
+      run: |
+        ./perf_testing/scripts/fio_bench.sh /mnt/blob_mnt ${{ inputs.TEST }}
+    
+    # Push the bandwidth results and publish the graphs
+    - name: "Update Bandwidth Results : ${{ inputs.TEST }}"
+      uses: benchmark-action/github-action-benchmark@v1
+      with:
+        output-file-path: ${{ inputs.TEST }}/bandwidth_results.json
+        tool: 'customBiggerIsBetter'
+        alert-threshold: "160%"
+        max-items-in-chart: 100
+        github-token: ${{ inputs.TOKEN }}
+        fail-on-alert: true
+        auto-push: true
+        comment-on-alert: true
+        gh-pages-branch: benchmarks
+        benchmark-data-dir-path: ${{ inputs.TYPE }}/bandwidth/${{ inputs.TEST }}
+
+    # Push the latency results and publish the graphs
+    - name: "Update Latency Results : ${{ inputs.TEST }}"
+      uses: benchmark-action/github-action-benchmark@v1
+      with:
+        output-file-path: ${{ inputs.TEST }}/latency_results.json
+        tool: 'customSmallerIsBetter'
+        alert-threshold: "160%"
+        max-items-in-chart: 100
+        github-token: ${{ inputs.TOKEN }}
+        fail-on-alert: true
+        auto-push: true
+        comment-on-alert: true
+        gh-pages-branch: benchmarks
+        benchmark-data-dir-path: ${{ inputs.TYPE }}/latency/${{ inputs.TEST }}  
+    
+ 
+        

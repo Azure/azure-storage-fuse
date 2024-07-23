@@ -1,36 +1,3 @@
-# MUST READ : 
-#   If you are creating a blobfuse2 config file using this kindly take care of below points 
-#   1. All boolean configs (true|false config) (except ignore-open-flags, virtual-directory) are set to 'false' by default. 
-#      No need to mention them in your config file unless you are setting them to true.
-#   2. 'loopbackfs' is purely for testing and shall not be used in production configuration.
-#   3. 'stream' and 'file_cache' can not co-exist and config file shall have only one of them based on your use case.
-#   4. By default log level is set to 'log_warning' level and are redirected to syslog. 
-#      Either use 'base' logging or syslog filters to redirect logs to separate file.
-#      To install syslog filter follow below steps:        
-#         sudo cp setup/11-blobfuse2.conf /etc/rsyslog.d/
-#         sudo cp setup/blobfuse2-logrotate /etc/logrotate.d/
-#         sudo service rsyslog restart
-#   5. For non-HNS (flat namespace) accounts blobfuse expects special directory marker files to 
-#      exists in container to identify a directory. 
-#      If these files do not exist in container, then 'virtual-directory: true' in 'azstorage' section is required
-#   6. By default 'writeback-cache' is enabled for libfuse3 and this may result in append/write operations to fail.
-#      Either you can disable 'writeback-cache', which might hurt the performance
-#      or you can configure blobfuse2 to ignore open flags given by user and make it work with ''writeback-cache'.
-#      'libfuse' sectoin below has both the configurations.
-#   7. If are you using 'allow-other: true' config then make sure user_allow_other is enabled in /etc/fuse.conf file as 
-#      well otherwise mount will fail. By default /etc/fuse.conf will have this option disabled we just need to 
-#      enable it and save the file.
-#   8. If data in your storage account (non-HNS) is created using Blobfuse or AzCopy then there are marker files present
-#      in your container to mark a directory. In such cases you can optimize your listing by setting 'virtual-directory'
-#      flag to false in mount command.
-#   9. If you are using 'file_cache' component then make sure you have enough disk space available for cache.
-#  10. 'sdk-trace' has been removed with v2.3.0 release and setting log level to log_debug will auto enable these logs.
-# -----------------------------------------------------------------------------------------------------------------------
-
-# Common configurations
-allow-other: true|false <allow other users to access the mounted directory - used for FUSE and File Cache>
-nonempty: true|false <allow mounting on non-empty directory>
-
 # Logger configuration
 logging:
   type: syslog|silent|base <type of logger to be used by the system. silent = no logger, base = file based logger. Default - syslog>
@@ -44,14 +11,6 @@ components:
   - file_cache
   - attr_cache
   - azstorage
-
-# Libfuse configuration
-libfuse:
-  default-permission: 0777|0666|0644|0444 <default permissions to be presented for block blobs>
-  attribute-expiration-sec: <time kernel can cache inode attributes (in sec). Default - 120 sec>
-  entry-expiration-sec: <time kernel can cache directory listing attributes (in sec). Default - 120 sec>
-  negative-entry-expiration-sec: <time kernel can cache attributes of non existent paths (in sec). Default - 120 sec>
-  direct-io: true|false <enable to bypass the kernel cache>
  
 # Block cache related configuration
 block_cache:
@@ -67,19 +26,9 @@ block_cache:
 file_cache:
   # Required
   path: <path to local disk cache>
-
   # Optional 
   timeout-sec: <default cache eviction timeout (in sec). Default - 120 sec>
   max-size-mb: <maximum cache size allowed. Default - 80% of free disk space>
-  sync-to-flush: true|false <sync call to a file will force upload of the contents to storage account>
-  refresh-sec: <number of seconds after which compare lmt of file in local cache and container and refresh file if container has the latest copy>
-  ignore-sync: true|false <sync call will be ignored and locally cached file will not be deleted>
-  hard-limit: true|false <if set to true, file-cache will not allow read/writes to file which exceed the configured limits>
-  
-# Attribute cache related configuration
-attr_cache:
-  timeout-sec: <time attributes can be cached (in sec). Default - 120 sec>
-  no-symlinks: true|false <to improve performance disable symlink support. symlinks will be treated like regular files.>
   
 # Azure storage configuration
 azstorage:
@@ -95,25 +44,9 @@ azstorage:
   # OR
   appid: <storage account app id / client id for MSI>
   resid: <storage account resource id for MSI>
-  objid: <object id for MSI>
+  objid: <object id for MSI - needs Azure CLI on system>
   # OR
   tenantid: <storage account tenant id for SPN>
   clientid: <storage account client id for SPN>
   clientsecret: <storage account client secret for SPN>
   oauth-token-path: <path to file containing the OAuth token>
-  # Optional
-  use-http: true|false <use http instead of https for storage connection>
-  aadendpoint: <storage account custom aad endpoint>
-  subdirectory: <name of subdirectory to be mounted instead of whole container>
-  block-size-mb: <size of each block (in MB). Default - 16 MB>
-  max-concurrency: <number of parallel upload/download threads. Default - 32>
-  tier: hot|cool|cold|premium|archive|none <blob-tier to be set while uploading a blob. Default - none>
-  block-list-on-mount-sec: <time list api to be blocked after mount (in sec). Default - 0 sec>
-  auth-resource: <resource string to be used during OAuth token retrieval>
-  update-md5: true|false <set md5 sum on upload. Impacts performance. works only when file-cache component is part of the pipeline>
-  validate-md5: true|false <validate md5 on download. Impacts performance. works only when file-cache component is part of the pipeline>
-  disable-compression: true|false <disable transport layer content encoding like gzip, set this flag to true if blobs have content-encoding set in container>
-  honour-acl: true|false <honour ACLs on files and directories when mounted using MSI Auth and object-ID is provided in config>
-  cpk-enabled: true|false <enable client provided key encryption>
-  cpk-encryption-key: <customer provided base64-encoded AES-256 encryption key value>
-  cpk-encryption-key-sha256:  <customer provided base64-encoded sha256 of the encryption key>

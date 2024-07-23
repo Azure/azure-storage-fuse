@@ -788,12 +788,6 @@ stages:
             timeoutInMinutes: 60
             strategy:
               matrix:
-                RHEL-7.5:
-                  DistroVer: "RHEL-7.5"
-                  Description: "Red Hat Enterprise Linux 7.5"
-                  AgentName: "blobfuse-rhel7_5"
-                  ContainerName: "test-cnt-rhel-75"
-                  tags: 'fuse3'
                 RHEL-8.6:
                   DistroVer: "RHEL-8.6"
                   Description: "Red Hat Enterprise Linux 8.6"
@@ -831,12 +825,6 @@ stages:
                 value: "/usr/pipeline/workv2/go"
 
             steps:
-              - script: |
-                  sudo touch /etc/yum.repos.d/centos.repo
-                  sudo sh -c 'echo -e "[centos-extras]\nname=Centos extras - $basearch\nbaseurl=http://mirror.centos.org/centos/7/extras/x86_64\nenabled=1\ngpgcheck=1\ngpgkey=http://centos.org/keys/RPM-GPG-KEY-CentOS-7" > /etc/yum.repos.d/centos.repo'
-                condition: eq(variables['AgentName'], 'blobfuse-rhel7_5')
-                displayName: "Update OS mirrors"
-
               - template: 'azure-pipeline-templates/distro-tests.yml'
                 parameters:
                   working_dir: $(WORK_DIR)
@@ -857,10 +845,7 @@ stages:
                       sudo sed -i '/^failovermethod=/d' /etc/yum.repos.d/*.repo
                       sudo yum update -y
                       sudo yum groupinstall "Development Tools" -y
-                      if [ $(AgentName) == "blobfuse-rhel7_5" ]; then
-                        sudo yum-config-manager --save --setopt=rhui-rhel-7-server-dotnet-rhui-rpms.skip_if_unavailable=true
-                        sudo yum install git fuse fuse3-libs fuse3-devel fuse3 rh-python36 -y
-                      elif [ $(AgentName) == "blobfuse-rhel9" ]; then
+                      if [ $(AgentName) == "blobfuse-rhel9" ]; then
                         sudo yum install git fuse fuse3-libs fuse3-devel fuse3 python3 -y --nobest --allowerasing
                       else
                         sudo yum install git fuse fuse3-libs fuse3-devel fuse3 python36 -y --nobest --allowerasing
@@ -1039,12 +1024,6 @@ stages:
                 value: "/usr/pipeline/workv2/go"
 
             steps:
-              - script: |
-                  sudo touch /etc/yum.repos.d/centos.repo
-                  sudo sh -c 'echo -e "[centos-extras]\nname=Centos extras - $basearch\nbaseurl=http://mirror.centos.org/centos/7/extras/x86_64\nenabled=1\ngpgcheck=1\ngpgkey=http://centos.org/keys/RPM-GPG-KEY-CentOS-7" > /etc/yum.repos.d/centos.repo'
-                condition: eq(variables['AgentName'], 'blobfuse-rhel7_5')
-                displayName: "Update OS mirrors"
-
               - template: 'azure-pipeline-templates/distro-tests.yml'
                 parameters:
                   working_dir: $(WORK_DIR)
