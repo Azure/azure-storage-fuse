@@ -457,6 +457,7 @@ static void aznfsc_ll_init(void *userdata,
     //conn->want |= FUSE_CAP_SPLICE_WRITE;
     //conn->want |= FUSE_CAP_SPLICE_MOVE;
     //conn->want |= FUSE_CAP_SPLICE_READ;
+    conn->want &= ~FUSE_CAP_SPLICE_WRITE;
 
     conn->want |= FUSE_CAP_AUTO_INVAL_DATA;
     conn->want |= FUSE_CAP_ASYNC_DIO;
@@ -1031,7 +1032,7 @@ static void aznfsc_ll_write_buf(fuse_req_t req,
     size_t length = bufv->buf[bufv->idx].size - bufv->off;
     const char * buf = (char *)bufv->buf[bufv->idx].mem + bufv->off;
 
-    client->direct_write(req, ino, buf, length, off);
+    client->write(req, ino, buf, length, off);
 }
 
 static void aznfsc_ll_retrieve_reply(fuse_req_t req,

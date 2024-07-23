@@ -863,23 +863,6 @@ public:
         return is_async_task;
     }
 
-
-    void inc_child_task()
-    {
-        child_task++;
-    }
-
-    void dec_child_task()
-    {
-        assert(child_task > 0);
-        child_task--;
-    }
-
-    bool is_child_task_exist()
-    {
-        return child_task == 0;
-    }
-
     /*
      * init/run methods for the LOOKUP RPC.
      */
