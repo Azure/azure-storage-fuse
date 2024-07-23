@@ -13,5 +13,5 @@ actimeo: 300
 rsize: 1048576
 wsize: 1048576
 readdir_maxcount: 1048576
-readaheadkb: 16384
+readahead_kb: 16384
 cachedir: 
