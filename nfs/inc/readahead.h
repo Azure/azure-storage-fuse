@@ -6,24 +6,38 @@
 
 #include "aznfsc.h"
 
+// Forward declarations.
+class nfs_inode;
+class nfs_client;
+
 namespace aznfsc {
 
 /**
  * Readahead state for a Blob.
- * This maintains state to track application read pattern and suggests if
- * readahead needs to be performed. Following are some of its properties:
+ * This maintains state to track application read pattern and based on that
+ * can decide if readahead will help. If so, it can also perform the readahead
+ * read IOs for the given file updating the cache appropriately. User can call
+ * the issue_readaheads() method to issue all permitted readaheads at the time
+ * of called. Only the READ RPCs are queued at libnfs in the calling thread
+ * context. The actual send will be performed by the libnfs service thread of
+ * the selected nfs context, and the callback will also be called in the
+ * context of the same libnfs service thread.
+ * Following are some of its properties:
  *
- * 1. Caller can call the get_next_ra() method to find the offset of the next
- *    readahead read it should issue. It'll return 0 if readahead should not be
- *    performed. This it can do by tracking the read IO pattern and turning off
- *    readahead if read pattern observed is not sequential. It can also return
- *    0 when there are already enough ongoing readaheads.
- * 2. It should *never* suggest readahead for the same offset more than once
+ * 1. User must call issue_readaheads() usually right after application read,
+ *    in the same context. This will issue the required readahead read
+ *    requests after the application read.
+ * 2. issue_readaheads() will call the private method get_next_ra() method to
+ *    find the offset of the next readahead read it should issue, and it'll
+ *    issue all the suggested reads. Obviously it'll not issue any readahead
+ *    read for random read pattern and also if there are already enough ongoing
+ *    readahead reads.
+ * 3. It should *never* suggest readahead for the same offset more than once
  *    if the reads are issued at monotonically increasing offsets.
- * 3. It should *never* suggest readahead for the same offset for which a read
+ * 4. It should *never* suggest readahead for the same offset for which a read
  *    has been recently issued, if the reads are issued at monotonically
  *    increasing offsets.
- * 4. Since it tracks read IO pattern, it should be made aware of *all* reads
+ * 5. Since it tracks read IO pattern, it should be made aware of *all* reads
  *    issued by the application. Also, it should be told when a readahead
  *    completes.
  *
@@ -105,94 +119,14 @@ public:
 
     /**
      * Initialize readahead state.
-     * Most important data is amount of readahead allowed. Caller will typically
-     * read it from from some user configured value. Fuse inode number is to
-     * help in logging.
-     *
-     * Note: Correct value to pass for _def_ra_size_kib is the maximum read
-     *       size supported by libnfs, which can be queried using
-     *       nfs_get_readmax().
+     * nfs_client is for convenience, nfs_inode identifies the target file.
+     * It'll query the readaheadkb config from the mount options and use that
+     * for deciding the readahead size.
      *
      * TODO: If we can pass the filename add it too for better logging.
      */
-    ra_state(uint64_t ino, int _ra_kib, int _def_ra_size_kib) :
-        fuse_ino(ino),
-        ra_bytes(_ra_kib * 1024),
-        def_ra_size(std::min<uint64_t>(_def_ra_size_kib * 1024ULL, ra_bytes))
-    {
-        /*
-         * Some sanity asserts
-         * Readahead less than 128KB are not effective and more than 1GB is
-         * unnecessary.
-         * Readahead reads also must have a reasonable size.
-         */
-        assert(_ra_kib >= 128 && _ra_kib <= 1024*1024);
-        assert(_def_ra_size_kib >= 8 && _def_ra_size_kib <= 16*1024);
-
-        AZLogInfo("[{}] Readahead set to {} KiB with default RA size {} KiB",
-                  ino, _ra_kib, _def_ra_size_kib);
-    }
-
-    /**
-     * Returns the offset of the next readahead to issue. Caller must pass the
-     * length of the readahead it wants to issue.
-     * Return value of 0 would indicate "don't issue readahead read", this would
-     * mostly be caused by recent application read pattern which has been
-     * indentifed as non-sequential, or if the current ongoing readaheads are
-     * already ra_bytes.
-     *
-     * If this function returns a non-zero value, then caller MUST issue a
-     * readahead read at the returned offset and 'length' (or less) and MUST
-     * call on_readahead_complete(length) when this readahead read completes,
-     * to let ra_state know.
-     * Note that the argument to on_readahead_complete() MUST be 'length' even
-     * if the readahead read ends up reading less.
-     *
-     * Note: If you don't pass the length parameter, it uses the def_ra_size
-     *       set in the constructor. This is the recommended usage.
-     *
-     * Note: It doesn't track the file size, so it may recommend readahead
-     *       offsets beyond eof. It's the caller's responsibility to handle
-     *       that.
-     */
-    uint64_t get_next_ra(uint64_t length = 0)
-    {
-        if (length == 0) {
-            length = def_ra_size;
-            assert(length > 0);
-        }
-
-        if ((last_byte_readahead + 1 + length) > AZNFSC_MAX_FILE_SIZE) {
-            return 0;
-        }
-
-        /*
-         * Application read pattern is known to be non-sequential?
-         */
-        if (!is_sequential()) {
-            return 0;
-        }
-
-        /*
-         * Keep readahead bytes issued always less than ra_bytes.
-         */
-        if ((ra_ongoing += length) > ra_bytes) {
-            assert(ra_ongoing >= length);
-            ra_ongoing -= length;
-            return 0;
-        }
-
-        std::unique_lock<std::shared_mutex> _lock(lock);
-
-        /*
-         * Atomically update last_byte_readahead, as we don't want to return
-         * duplicate readahead offset to multiple calls.
-         */
-        const uint64_t next_ra =
-            std::atomic_exchange(&last_byte_readahead, last_byte_readahead + length) + 1;
-
-        return next_ra;
-    }
+    ra_state(struct nfs_client *_client,
+             struct nfs_inode *_inode);
 
     /**
      * Hook for reporting an application read to ra_state.
@@ -275,6 +209,29 @@ public:
     }
 
     /**
+     * Returns the currently observed access pattern.
+     */
+    bool is_sequential() const
+    {
+        std::shared_lock<std::shared_mutex> _lock(lock);
+
+        return is_sequential_nolock();
+    }
+
+    /**
+     * This will issue all readaheads as permitted by get_next_ra(). As these
+     * readahead reads complete it'll cause the corresponding membuf(s) to be
+     * marked uptodate so subsequent application reads will return data from
+     * the cache. If already enough readahead reads are dispatched or the
+     * application read pattern is seen to not benefit from readahead, then
+     * issue_readaheads() will be a no-op.
+     * It'll call on_readahead_complete() as readahead callbacks are called.
+     *
+     * It returns the number of readahead read RPCs dispatched.
+     */
+    int issue_readaheads();
+
+    /**
      * Hook for reporting completion of a readahead read.
      * This MUST be called for every readahead that get_next_ra() suggested
      * and the length parameter MUST match what was passed to get_next_ra().
@@ -285,6 +242,9 @@ public:
      *       set in the constructor. This is the recommended usage, but if you
      *       pass length parameter to get_next_ra() then you MUST pass the
      *       same length to on_readahead_complete().
+     *
+     * Note: This is not meant to be called by user. This is made public method
+     *       as it's called from the global readahead callback method.
      */
     void on_readahead_complete(uint64_t offset, uint64_t length = 0)
     {
@@ -299,21 +259,92 @@ public:
     }
 
     /**
-     * Returns the currently observed access pattern.
-     */
-    bool is_sequential() const
-    {
-        std::shared_lock<std::shared_mutex> _lock(lock);
-
-        return is_sequential_nolock();
-    }
-
-    /**
      * This will run self tests to test the correctness of this class.
      */
     static int unit_test();
 
 private:
+    /**
+     * This private constructor is only to be called from unit_test().
+     */
+    ra_state(int _ra_kib, int _def_ra_size_kib) :
+        ra_bytes(_ra_kib * 1024),
+        def_ra_size(std::min<uint64_t>(_def_ra_size_kib * 1024ULL, ra_bytes))
+    {
+        /*
+         * Some sanity asserts
+         * Readahead less than 128KB are not effective and more than 1GB is
+         * unnecessary.
+         * Readahead reads also must have a reasonable size.
+         */
+        assert(_ra_kib >= 128 && _ra_kib <= 1024*1024);
+        assert(_def_ra_size_kib >= 8 && _def_ra_size_kib <= 16*1024);
+
+        AZLogInfo("[TEST] Readahead set to {} KiB with default RA size {} KiB",
+                  _ra_kib, _def_ra_size_kib);
+    }
+
+    /**
+     * Returns the offset of the next readahead to issue. Caller must pass the
+     * length of the readahead it wants to issue.
+     * Return value of 0 would indicate "don't issue readahead read", this would
+     * mostly be caused by recent application read pattern which has been
+     * indentifed as non-sequential, or if the current ongoing readaheads are
+     * already ra_bytes.
+     *
+     * If this function returns a non-zero value, then caller MUST issue a
+     * readahead read at the returned offset and 'length' (or less) and MUST
+     * call on_readahead_complete(length) when this readahead read completes,
+     * to let ra_state know.
+     * Note that the argument to on_readahead_complete() MUST be 'length' even
+     * if the readahead read ends up reading less.
+     *
+     * Note: If you don't pass the length parameter, it uses the def_ra_size
+     *       set in the constructor. This is the recommended usage.
+     *
+     * Note: It doesn't track the file size, so it may recommend readahead
+     *       offsets beyond eof. It's the caller's responsibility to handle
+     *       that.
+     */
+    uint64_t get_next_ra(uint64_t length = 0)
+    {
+        if (length == 0) {
+            length = def_ra_size;
+            assert(length > 0);
+        }
+
+        if ((last_byte_readahead + 1 + length) > AZNFSC_MAX_FILE_SIZE) {
+            return 0;
+        }
+
+        /*
+         * Application read pattern is known to be non-sequential?
+         */
+        if (!is_sequential()) {
+            return 0;
+        }
+
+        /*
+         * Keep readahead bytes issued always less than ra_bytes.
+         */
+        if ((ra_ongoing += length) > ra_bytes) {
+            assert(ra_ongoing >= length);
+            ra_ongoing -= length;
+            return 0;
+        }
+
+        std::unique_lock<std::shared_mutex> _lock(lock);
+
+        /*
+         * Atomically update last_byte_readahead, as we don't want to return
+         * duplicate readahead offset to multiple calls.
+         */
+        const uint64_t next_ra =
+            std::atomic_exchange(&last_byte_readahead, last_byte_readahead + length) + 1;
+
+        return next_ra;
+    }
+
     bool is_sequential_nolock() const
     {
         /*
@@ -334,10 +365,14 @@ private:
     }
 
     /*
-     * Fuse inode for the file this readahead state corresponds to.
-     * This is for logging.
+     * The singleton nfs_client, for convenience.
      */
-    const uint64_t fuse_ino;
+    struct nfs_client *client;
+
+    /*
+     * File inode we are tracking the readaheads for.
+     */
+    struct nfs_inode *inode;
 
     /*
      * Total readahead size in bytes, aka the "readahead window".
