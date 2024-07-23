@@ -273,6 +273,20 @@ bool aznfsc_cfg::parse_config_yaml()
             }
         }
 
+        if ((readahead_kb == -1) && config["readahead_kb"]) {
+            readahead_kb = config["readahead_kb"].as<int>();
+            if (readahead_kb < AZNFSCFG_READAHEAD_KB_MIN ||
+                readahead_kb > AZNFSCFG_READAHEAD_KB_MAX) {
+                throw YAML::Exception(
+                    config["readahead_kb"].Mark(),
+                    std::string("Invalid readahead_kb value: ") +
+                    std::to_string(readahead_kb) +
+                    std::string(" (valid range [") +
+                    std::to_string(AZNFSCFG_READAHEAD_KB_MIN) +
+                    ", " + std::to_string(AZNFSCFG_READAHEAD_KB_MAX) + "])");
+            }
+        }
+
     } catch (const YAML::BadFile& e) {
         AZLogError("Error loading config file {}: {}", config_yaml, e.what());
         return false;
@@ -323,6 +337,8 @@ void aznfsc_cfg::set_defaults_and_sanitize()
         acdirmin = acdirmax;
     if (readdir_maxcount == -1)
         readdir_maxcount = 1048576;
+    if (readahead_kb == -1)
+        readahead_kb = 16384;
     if (cloud_suffix == nullptr)
         cloud_suffix = ::strdup("blob.core.windows.net");
 
@@ -347,6 +363,7 @@ void aznfsc_cfg::set_defaults_and_sanitize()
     AZLogDebug("acdirmax = {}", acdirmax);
     AZLogDebug("actimeo = {}", actimeo);
     AZLogDebug("readdir_maxcount = {}", readdir_maxcount);
+    AZLogDebug("readahead_kb = {}", readahead_kb);
     AZLogDebug("account = {}", account);
     AZLogDebug("container = {}", container);
     AZLogDebug("cloud_suffix = {}", cloud_suffix);

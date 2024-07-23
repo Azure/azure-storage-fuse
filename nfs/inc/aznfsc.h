@@ -38,6 +38,8 @@ using namespace aznfsc;
 #define AZNFSCFG_WSIZE_MAX      104857600
 #define AZNFSCFG_READDIR_MIN    8192
 #define AZNFSCFG_READDIR_MAX    4194304
+#define AZNFSCFG_READAHEAD_KB_MIN 128
+#define AZNFSCFG_READAHEAD_KB_MAX 1048576
 #define AZNFSCFG_RETRANS_MIN    1
 #define AZNFSCFG_RETRANS_MAX    100
 #define AZNFSCFG_ACTIMEO_MIN    1
@@ -162,6 +164,9 @@ typedef struct aznfsc_cfg
 
     // Maximum number of readdir entries that can be requested in a single call.
     int readdir_maxcount = -1;
+
+    // Readahead size in KB.
+    int readahead_kb = -1;
 
     /*
      * TODO:

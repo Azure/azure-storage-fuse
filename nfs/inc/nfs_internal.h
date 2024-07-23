@@ -63,6 +63,9 @@ struct mount_options
     // Maximum number of readdir entries that can be requested.
     const int readdir_maxcount;
 
+    // Readahead size in KB.
+    const int readahead_kb;
+
     // readdir_maxcount adjusted as per server advertised value.
     int readdir_maxcount_adj = 0;
 
@@ -89,7 +92,8 @@ struct mount_options
         acdirmin(aznfsc_cfg.acdirmin),
         acdirmax(aznfsc_cfg.acdirmax),
         actimeo(aznfsc_cfg.actimeo),
-        readdir_maxcount(aznfsc_cfg.readdir_maxcount)
+        readdir_maxcount(aznfsc_cfg.readdir_maxcount),
+        readahead_kb(aznfsc_cfg.readahead_kb)
     {
         assert(!server.empty());
         assert(!export_path.empty());
