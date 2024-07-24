@@ -128,7 +128,9 @@ private:
     struct fuse_bufvec *write_bufv;
 };
 
-
+/**
+ * FLUSH RPC task definition.
+ */
 struct flush_rpc_task
 {
     void set_ino(fuse_ino_t ino)
@@ -152,66 +154,8 @@ private:
     fuse_ino_t file_ino;
 };
 
-
 /**
- * WRITE flush RPC task definition.
- */
-struct flush_cb_data
-{
-    fuse_ino_t get_ino() const
-    {
-        return ino;
-    }
-
-    void set_count(size_t count)
-    {
-        this->count = count;
-    }
-
-    size_t get_count()
-    {
-        return this->count;
-    }
-
-    struct membuf* get_membuf()
-    {
-        return membuf_ptr;
-    }
-
-    struct rpc_task* get_task()
-    {
-        return task;
-    }
-
-    /**
-     * Release any resources used up by this task.
-     */
-    void release()
-    {
-    }
-
-    flush_cb_data(
-        fuse_ino_t ino,
-        struct rpc_task* task,
-        struct membuf *membuf_ptr
-    ):ino(ino),
-      task(task),
-      membuf_ptr(membuf_ptr),
-      count(0)
-      {
-
-      }
-
-private:
-    fuse_ino_t ino;
-    struct rpc_task* task;
-    struct membuf *membuf_ptr;
-    size_t count;
-};
-
-
-/**
- * WRITE flush RPC task definition.
+ * Write callback context.
  */
 struct write_flush_context
 {
@@ -631,9 +575,6 @@ struct rpc_task
 
     // This is the index of the object in the rpc_task_list vector.
     const int index;
-
-    // Error code returned from first non-succesful rpc.
-    int error_code;
 private:
     /*
      * Flag to identify async tasks.
@@ -686,19 +627,8 @@ public:
     rpc_task(struct nfs_client *_client, int _index):
         client(_client),
         req(nullptr),
-        index(_index),
-        error_code(0)
+        index(_index)
     {
-    }
-
-    void set_error(int error)
-    {
-        error_code = error_code ? error_code : error;
-    }
-
-    int get_error()
-    {
-        return error_code;
     }
 
     union
