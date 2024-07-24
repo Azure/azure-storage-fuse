@@ -337,6 +337,7 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 
 	if options.Flags&os.O_TRUNC != 0 || options.Flags&os.O_WRONLY != 0 {
 		// If file is opened in truncate or wronly mode then we need to wipe out the data consider current file size as 0
+		log.Debug("BlockCache::OpenFile : Truncate %v to 0", options.Name)
 		handle.Size = 0
 		handle.Flags.Set(handlemap.HandleFlagDirty)
 	} else if options.Flags&os.O_RDWR != 0 && handle.Size != 0 {
@@ -408,10 +409,13 @@ func (bc *BlockCache) FlushFile(options internal.FlushFileOptions) error {
 	options.Handle.Lock()
 	defer options.Handle.Unlock()
 
-	err := bc.commitBlocks(options.Handle)
-	if err != nil {
-		log.Err("BlockCache::FlushFile : Failed to commit blocks for %s [%s]", options.Handle.Path, err.Error())
-		return err
+	// call commit blocks only if the handle is dirty
+	if options.Handle.Dirty() {
+		err := bc.commitBlocks(options.Handle)
+		if err != nil {
+			log.Err("BlockCache::FlushFile : Failed to commit blocks for %s [%s]", options.Handle.Path, err.Error())
+			return err
+		}
 	}
 
 	return nil
@@ -897,7 +901,7 @@ func (bc *BlockCache) download(item *workItem) {
 
 // WriteFile: Write to the local file
 func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) {
-	//log.Debug("BlockCache::WriteFile : Writing %v bytes from %s", len(options.Data), options.Handle.Path)
+	// log.Debug("BlockCache::WriteFile : Writing %v bytes from %s", len(options.Data), options.Handle.Path)
 
 	options.Handle.Lock()
 	defer options.Handle.Unlock()
@@ -938,7 +942,7 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 	index := bc.getBlockIndex(offset)
 	if index >= MAX_BLOCKS {
 		log.Err("BlockCache::getOrCreateBlock : Failed to get Block %v=>%s offset %v", handle.ID, handle.Path, offset)
-		return nil, fmt.Errorf("block index out of range. Increase your block size.")
+		return nil, fmt.Errorf("block index out of range. Increase your block size")
 	}
 
 	//log.Debug("FilBlockCacheCache::getOrCreateBlock : Get block for %s, index %v", handle.Path, index)
