@@ -62,50 +62,6 @@ private:
  */
 struct write_rpc_task
 {
-#if 0
-    void set_buffer_cache(struct nfs_client *const client,
-        fuse_ino_t ino, const char *buf, off_t offset, size_t length)
-    {
-        struct nfs_inode *inode = nullptr;
-        size_t dirty_count = 0;
-        assert(ino != 0);
-
-        inode = client->get_nfs_inode_from_ino(ino);
-        auto chunkvec = inode->filecache_handle->get(offset, length);
-
-        for (auto &chunk : chunkvec)
-        {
-            auto membuf = chunk.get_membuf();
-
-            // Lock the membuf to do the operation.
-            membuf->set_locked();
-
-            // Chunk is empty and owned by us.
-            if (chunk.is_empty)
-            {
-                memcpy(chunk.get_buffer(), buf, chunk.length);
-                membuf->set_dirty();
-                membuf->set_uptodate();
-            } else {
-                if (membuf->is_uptodate())
-                {
-                    memcpy(chunk.get_buffer(), buf, chunk.length);
-                    membuf->set_dirty();
-                } else {
-                    // Need to issue read.
-                }
-            }
-            membuf->clear_locked();
-
-            buf += chunk.length;
-            length -= chunk.length;
-            dirty_count = chunk.length;
-        }
-        assert (length == 0);
-        inode->set_dirty_bytes(dirty_count);
-    }
-#endif
-
     void set_ino(fuse_ino_t ino)
     {
         file_ino = ino;
@@ -838,15 +794,6 @@ public:
     /*
      * init/run methods for the LOOKUP RPC.
      */
-
-    // Direct write
-    void init_write(fuse_req *request,
-                     fuse_ino_t ino,
-                     struct fuse_bufvec *buf,
-                     size_t size,
-                     off_t offset);
-
-    void run_write();
 
     // Buffer write.
     void init_cache_write(fuse_req *request,

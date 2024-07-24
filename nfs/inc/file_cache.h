@@ -930,14 +930,6 @@ public:
         return !backing_file_name.empty();
     }
 
-    std::map<uint64_t, struct bytes_chunk>& get_chunkmap()
-    {
-        return chunkmap;
-    }
-
-    // Lock to protect chunkmap.
-    std::mutex lock;
-
     /**
      * get_prune_goals() looks at the following information and returns prune
      * goals for this cache:
@@ -1148,6 +1140,9 @@ private:
      * std::map of bytes_chunk, indexed by the starting offset of the chunk.
      */
     std::map<uint64_t, struct bytes_chunk> chunkmap;
+
+    // Lock to protect chunkmap.
+    std::mutex lock;
 
     std::string backing_file_name;
     int backing_file_fd = -1;

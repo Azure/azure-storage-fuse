@@ -39,20 +39,6 @@ void rpc_task::init_flush(fuse_req* request,
     rpc_api.flush_task.set_ino(ino);
 }
 
-void rpc_task::init_write(fuse_req* request,
-                           fuse_ino_t ino,
-                           struct fuse_bufvec *bufv,
-                           size_t size,
-                           off_t offset)
-{
-    req = request;
-    optype = FUSE_WRITE;
-    rpc_api.write_task.set_size(size);
-    rpc_api.write_task.set_offset(offset);
-    rpc_api.write_task.set_ino(ino);
-    rpc_api.write_task.set_buffer(bufv);
-}
-
 void rpc_task::init_cache_write(fuse_req* request,
                            fuse_ino_t ino,
                            struct fuse_bufvec *bufv,
@@ -65,7 +51,6 @@ void rpc_task::init_cache_write(fuse_req* request,
     rpc_api.write_task.set_offset(offset);
     rpc_api.write_task.set_ino(ino);
     rpc_api.write_task.set_buffer(bufv);
-   // rpc_api.write_task.set_buffer_cache(client, ino, buf, offset, size);
 }
 
 
@@ -406,77 +391,6 @@ static void write_flush_callback(
 
     // Release the task.
     task->free_rpc_task();
-}
-
-static void write_callback(
-    struct rpc_context* /* rpc */,
-    int rpc_status,
-    void *data,
-    void *private_data)
-{
-    rpc_task *task = (rpc_task*) private_data;
-    auto res = (WRITE3res *)data;
-    const int status = task->status(rpc_status, RSTATUS(res));
-    auto nfs_inode = task->get_client()->get_nfs_inode_from_ino(task->rpc_api.write_task.get_ino());
-    off_t off = task->rpc_api.write_task.get_offset();
-    size_t size = task->rpc_api.write_task.get_size();
-
-    auto filecache_handle = nfs_inode->filecache_handle;
-    assert(filecache_handle != nullptr);
-
-    // Positive case
-    if (status == 0) {
-        size_t count = res->WRITE3res_u.resok.count;
-        count += task->rpc_api.write_task.get_count();  
-
-        if (res->WRITE3res_u.resok.count == 0)
-        {
-            task->reply_write(count);
-        } else if (count < size) {
-            /*
-             * Special case where we wrote less data, we retry to write rest of data.
-             */
-            WRITE3args args;
-            const std::unique_lock<std::mutex> _lock(filecache_handle->lock);
-            auto chunkmap = filecache_handle->get_chunkmap();
-
-            auto it = chunkmap.lower_bound(off);
-            if (it == chunkmap.end() && (it->first != (uint64_t) off))
-            {
-                assert(0);
-            }
-
-            bool rpc_retry = false;
-            char *buf = (char *)it->second.get_buffer();
-            fuse_ino_t file_ino = task->rpc_api.write_task.get_ino();
-            args.file = task->get_client()->get_nfs_inode_from_ino(file_ino)->get_fh();
-	        args.offset = off + count;
-	        args.count  = size - count;
-	        args.stable = FILE_SYNC;
-	        args.data.data_len = size - count;
-            args.data.data_val = &buf[count];
-            task->rpc_api.write_task.set_count(count);
-            do {
-                if(rpc_nfs3_write_task(task->get_rpc_ctx(), write_callback, &args, task) == NULL)
-                {
-                    /*
-                    * This call fails due to internal issues like OOM etc
-                    * and not due to an actual error, hence retry.
-                    */
-                    rpc_retry = true;
-                }
-            } while (rpc_retry == false);
-            return;
-        } else {
-
-                task->reply_write(count);
-        }
-    } else {
-        // Since the api failed and can no longer be retried, return error reply.
-        task->reply_error(-nfsstat3_to_errno(RSTATUS(res)));
-    }
-
-    filecache_handle->release(off, size);
 }
 
 static void createfile_callback(
@@ -867,61 +781,6 @@ void rpc_task::run_flush()
     }
 
     reply_error(nfs_inode->get_write_error());
-}
-
-void rpc_task::run_write()
-{
-    bool rpc_retry = false;
-    fuse_ino_t file_ino = rpc_api.write_task.get_ino();
-    struct fuse_bufvec* bufv = rpc_api.write_task.get_buf();
-    size_t length = rpc_api.write_task.get_size();
-    off_t offset = rpc_api.write_task.get_offset();
-    auto nfs_inode = get_client()->get_nfs_inode_from_ino(file_ino);
-    auto filecache_handle = nfs_inode->filecache_handle;
-    int error_code = nfs_inode->get_write_error();
-
-    if (error_code == 0)
-    {
-        auto chunkvec = copy_to_cache(get_client(), file_ino, bufv, offset, length, error_code);
-    }
-
-    if (error_code <= 0) {
-        // Need to drop chunkmap.
-
-        reply_error(error_code);
-        return;
-    }
-
-    const std::unique_lock<std::mutex> _lock(filecache_handle->lock);
-    auto chunkmap = filecache_handle->get_chunkmap();
-
-    auto it = chunkmap.lower_bound(offset);
-    if (it == chunkmap.end() && (it->first != (uint64_t) offset))
-    {
-        assert(0);
-    }
-
-    do {
-
-        WRITE3args args;
-
-	    args.file = get_client()->get_nfs_inode_from_ino(file_ino)->get_fh();
-	    args.offset = offset;
-	    args.count  = length;
-	    args.stable = FILE_SYNC;
-	    args.data.data_len = length;
-
-	    args.data.data_val = (char *)it->second.get_buffer();
-
-        if(rpc_nfs3_write_task(get_rpc_ctx(), write_callback, &args, this) == NULL)
-        {
-            /*
-             * This call fails due to internal issues like OOM etc
-             * and not due to an actual error, hence retry.
-             */
-            rpc_retry = true;
-        }
-    } while (rpc_retry);
 }
 
 void rpc_task::run_getattr()
