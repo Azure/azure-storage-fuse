@@ -480,15 +480,17 @@ void rpc_task::run_read()
 {
     auto ino = rpc_api.read_task.get_inode();
 
-    auto readfile_handle = get_client()->get_nfs_inode_from_ino(ino)->filecache_handle;
+    auto readfile_handle =
+        get_client()->get_nfs_inode_from_ino(ino)->filecache_handle;
 
     bytes_vector = readfile_handle->get(
                        rpc_api.read_task.get_offset(),
                        rpc_api.read_task.get_size());
 
     /*
-     * Now go through the byte chunk vector to see if the buffers are populated.
-     * If the chunks are empty, we will issue parallel read calls to fetch the data.
+     * Now go through the byte chunk vector to see if the buffers are
+     * populated. If the chunks are empty, we will issue parallel read
+     * calls to fetch the data.
      */
     const size_t size = bytes_vector.size();
 
@@ -514,8 +516,9 @@ void rpc_task::run_read()
             if (data_length_in_cache >= rpc_api.read_task.get_size())
             {
                 /*
-                 * Since the data is read from the cache, the chances of reading it
-                 * again from cache is negligible since this is a sequential read pattern.
+                 * Since the data is read from the cache, the chances of
+                 * reading it again from cache is negligible since this is a
+                 * sequential read pattern.
                  * Free such chunks to reduce the memory utilization.
                  */
                 for (size_t j = 0; j <= i; j++) {
@@ -543,7 +546,10 @@ void rpc_task::run_read()
     num_of_reads_issued_to_backend = 1;
 
     for (size_t i = 0; i < size; i++) {
-        // One or more chunks don't have the requested data, issue read for those.
+        /*
+         * One or more chunks don't have the requested data, issue read
+         * for those.
+         */
         if (!bytes_vector[i].get_membuf()->is_uptodate())
         {
             readfile_from_server(bytes_vector[i]);
@@ -565,7 +571,8 @@ void rpc_task::run_read()
     }// End of lock
 
 read_from_cache:
-    AZLogDebug("Data read from cache, also releasing buffer. offset: {}, size {}",
+    AZLogDebug("Data read from cache, also releasing buffer."
+               " offset: {}, size {}",
                rpc_api.read_task.get_offset(),
                rpc_api.read_task.get_size());
 
@@ -578,7 +585,10 @@ send_response:
 
 void rpc_task::send_readfile_response(int status)
 {
-    // We should have completed all the reads before sending the response to caller.
+    /*
+     * We should have completed all the reads before sending the response
+     * to caller.
+     */
     assert(num_of_reads_issued_to_backend == 0);
 
     if (status != 0) {
@@ -660,9 +670,11 @@ static void readfile_callback(
     auto res = (READ3res*)data;
     const int status = (task->status(rpc_status, NFS_STATUS(res), &errstr));
     auto ino = task->rpc_api.read_task.get_inode();
-    auto readfile_handle = task->get_client()->get_nfs_inode_from_ino(ino)->filecache_handle;
+    auto readfile_handle =
+        task->get_client()->get_nfs_inode_from_ino(ino)->filecache_handle;
 
-    AZLogDebug("readfile_callback:: Bytes read: {} eof: {}, requested_bytes: {} off: {}",
+    AZLogDebug("readfile_callback:: Bytes read: {} eof: {}, "
+               "requested_bytes: {} off: {}",
                res->READ3res_u.resok.count, res->READ3res_u.resok.eof,
                bc->length,
                bc->offset);
@@ -674,9 +686,11 @@ static void readfile_callback(
         if (bc->is_empty && (bc->length == res->READ3res_u.resok.count))
         {
             /*
-             * Only the first read which got hold of the complete membuf will have this byte_chunk
-             * set to empty. Only such reads should set the uptodate flag.
-             * Also the uptodate flag should be set only if we have read the entire membuf.
+             * Only the first read which got hold of the complete membuf
+             * will have this byte_chunk set to empty.
+             * Only such reads should set the uptodate flag.
+             * Also the uptodate flag should be set only if we have read
+             * the entire membuf.
              */
             AZLogDebug("Setting uptodate flag. offset: {}, length: {}",
                        task->rpc_api.read_task.get_offset(),
@@ -696,7 +710,8 @@ static void readfile_callback(
     }
 
     /*
-     * Release the lock that we held on the membuf since the data is now written to it.
+     * Release the lock that we held on the membuf since the data is now
+     * written to it.
      * The lock is needed only to write the data and not to just read it.
      * Hence it is safe to read this membuf even beyond this point.
      */
@@ -712,7 +727,10 @@ static void readfile_callback(
     // Update the byte chunk length.
     bc->length = res->READ3res_u.resok.count;
 
-    // Take a lock here since multiple readfiles issued can try modifying the below members.
+    /*
+     * Take a lock here since multiple readfiles issued can try
+     * modifying the below members.
+     */
     {
         std::unique_lock<std::shared_mutex> lock(task->read_task_lock);
 
@@ -721,8 +739,9 @@ static void readfile_callback(
 
         if (task->readfile_completed) {
             /*
-             * If readfile_completed is set, it means that there was a previous failure encountered
-             * as a result of which we have already sent the failure response to the caller.
+             * If readfile_completed is set, it means that there was a previous
+             * failure encountered as a result of which we have already sent
+             * failure response to the caller.
              * Hence do not do anything here and just exit.
              */
             return;
@@ -731,15 +750,16 @@ static void readfile_callback(
         if (status || (task->num_of_reads_issued_to_backend == 0))
         {
             /*
-             * The current read has failed or all the reads issued to backend has completed.
-             * Send the response to the caller.
+             * The current read has failed or all the reads issued to backend
+             * has completed. Send the response to the caller.
              */
             task->readfile_completed = true;
             goto send_response;
         }
         else
         {
-            AZLogDebug("No response sent, waiting for more reads to complete. num_of_reads_issued_to_backend: {}",
+            AZLogDebug("No response sent, waiting for more reads to complete."
+                       " num_of_reads_issued_to_backend: {}",
                        task->num_of_reads_issued_to_backend);
             return;
         }
@@ -765,18 +785,22 @@ void rpc_task::readfile_from_server(struct bytes_chunk &bc)
         args.count = bc.length;
 
         /*
-         * Now we are going to use the buffer of the bytes_chunk object, hence get a lock
-         * on it so that other reads can't modify it.
-         * This lock should be held only when writing to the buffer, not when reading it.
-         * Hence this will be freed in the readfile_callback after the buffer is populated.
-         * This will block till the lock is obtained.
+         * Now we are going to use the buffer of the bytes_chunk object,
+         * hence get a lock on it so that other reads can't modify it.
+         * This lock should be held only when writing to the buffer, not when
+         * reading it. Hence this will be freed in the readfile_callback after
+         * the buffer is populated.
+         * Note: This will block till the lock is obtained.
         */
         bc.get_membuf()->set_locked();
 
         // Check if the buffer got updated by the time we got the lock.
         if (bc.get_membuf()->is_uptodate())
         {
-            // Release the lock since we no longer intend on writing to this buffer.
+            /*
+             * Release the lock since we no longer intend on writing
+             * to this buffer.
+             */
             bc.get_membuf()->clear_locked();
 
             AZLogDebug("Data read from cache. size: {}, offset: {}",
@@ -785,10 +809,8 @@ void rpc_task::readfile_from_server(struct bytes_chunk &bc)
 
             /*
              * Since the data is read from the cache, the chances of reading it
-             * again from cache is negligible since this is a sequential read pattern.
-             * Free such chunks to reduce the memory utilization.
-             * TODO: Is this a safe place to release? What will happen when we read the buffer to send response.
-             *       Check if this is protected by the bytes_vector.
+             * again from cache is negligible since this is a sequential read
+             * pattern. Free such chunks to reduce the memory utilization.
              */
             get_client()->get_nfs_inode_from_ino(ino)->filecache_handle->release(
                 bc.offset,
@@ -809,7 +831,7 @@ void rpc_task::readfile_from_server(struct bytes_chunk &bc)
                    args.count);
 
         if (rpc_nfs3_read_task(
-                get_rpc_ctx(), /* This will round robin request across connections */
+                get_rpc_ctx(), /* This round robins request across connections */
                 readfile_callback,
                 bc.get_buffer(),
                 bc.length,
