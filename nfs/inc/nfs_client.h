@@ -295,14 +295,14 @@ public:
     void direct_write(
         fuse_req_t req,
         fuse_ino_t ino,
-        const char* buf,
+        struct fuse_bufvec *bufv,
         size_t size,
         off_t off);
 
     void write(
         fuse_req_t req,
         fuse_ino_t ino,
-        const char* buf,
+        struct fuse_bufvec *bufv,
         size_t size,
         off_t off);
 

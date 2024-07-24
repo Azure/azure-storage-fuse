@@ -1633,6 +1633,32 @@ static bool is_read()
     return random_number(0, 100) <= 60;
 }
 
+std::vector<bytes_chunk> bytes_chunk_cache::get_dirty_bc()
+{
+    std::vector<bytes_chunk> chunk_vec;
+    std::map <uint64_t,
+              struct bytes_chunk>::iterator it = chunkmap.begin();
+
+    /*
+     * TODO: See if we can hold shared lock for cases where we don't have to
+     *       update chunkmap.
+     */
+    const std::unique_lock<std::mutex> _lock(lock);
+
+    while (it != chunkmap.end())
+    {
+        auto chunk = it->second;
+        if (chunk.get_membuf()->is_dirty())
+        {
+            chunk.get_membuf()->set_inuse();
+            chunk_vec.push_back(chunk);
+        }
+        it = std::next(it);
+    }
+
+    return chunk_vec;
+}
+
 static void cache_read(bytes_chunk_cache& cache,
                        uint64_t offset,
                        uint64_t length)

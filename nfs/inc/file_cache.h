@@ -265,16 +265,16 @@ struct membuf
     {
         flag |= MB_Flag::Flushing;
 
-        AZLogDebug("Set flushing membuf [{}, {}), fd={}",
-                   offset, offset+length, backing_file_fd);
+       //  AZLogDebug("Set flushing membuf [{}, {}), fd={}",
+          //         offset, offset+length, backing_file_fd);
     }
 
     void clear_flushing()
     {
         flag &= ~MB_Flag::Flushing;
 
-        AZLogDebug("Clear flushing membuf [{}, {}), fd={}",
-                   offset, offset+length, backing_file_fd);
+        // AZLogDebug("Clear flushing membuf [{}, {}), fd={}",
+           //        offset, offset+length, backing_file_fd);
     }
 
     bool is_inuse() const
@@ -868,6 +868,10 @@ public:
 
         scan(offset, length, scan_action::SCAN_ACTION_RELEASE);
     }
+
+
+    std::vector<bytes_chunk> get_dirty_bc();
+    
 
     /**
      * Drop cached data in the given range.

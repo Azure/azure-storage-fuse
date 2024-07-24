@@ -358,10 +358,29 @@ struct nfs_inode
         purge_dircache_nolock();
     }
 
+    void set_write_error(int error)
+    {
+        if (this->last_write_error == 0)
+        {
+            this->last_write_error = error;
+        }
+    }
+
+    int get_write_error()
+    {
+        return last_write_error;
+    }
+
+    void dec_dirty_bytes(size_t dirty_count)
+    {
+        std::unique_lock<std::shared_mutex> lock(ilock);
+        this->dirty_bytes -= dirty_count;
+    }
+
     void set_dirty_bytes(size_t dirty_count)
     {
         std::unique_lock<std::shared_mutex> lock(ilock);
-        dirty_bytes += dirty_count;
+        this->dirty_bytes += dirty_count;
     }
 
     uint64_t get_dirty_bytes()

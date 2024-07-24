@@ -746,10 +746,7 @@ static void aznfsc_ll_write(fuse_req_t req,
     AZLogInfo("aznfsc_ll_write(req={}, ino={}, size={}, off={}, fi={}",
                fmt::ptr(req), ino, size, off, fmt::ptr(fi));
 
-    assert(fi->direct_io == 1);
-
-    struct nfs_client *client = get_nfs_client_from_fuse_req(req);
-    client->write(req, ino, buf, size, off);
+    fuse_reply_err(req, ENOSYS);
 }
 
 static void aznfsc_ll_flush(fuse_req_t req,
@@ -1030,9 +1027,9 @@ static void aznfsc_ll_write_buf(fuse_req_t req,
     assert(bufv->idx <= bufv->count);
 
     size_t length = bufv->buf[bufv->idx].size - bufv->off;
-    const char * buf = (char *)bufv->buf[bufv->idx].mem + bufv->off;
+   // const char * buf = (char *)bufv->buf[bufv->idx].mem + bufv->off;
 
-    client->write(req, ino, buf, length, off);
+    client->write(req, ino, bufv, length, off);
 }
 
 static void aznfsc_ll_retrieve_reply(fuse_req_t req,

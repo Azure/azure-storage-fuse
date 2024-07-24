@@ -127,9 +127,9 @@ struct write_rpc_task
         write_count = count;
     }
 
-    void set_buffer(const char * buffer)
+    void set_buffer(struct fuse_bufvec *bufv)
     {
-        write_buffer = buffer;
+        write_bufv = bufv;
     }
 
     fuse_ino_t get_ino() const
@@ -152,9 +152,9 @@ struct write_rpc_task
         return write_count;
     }
 
-    const char * get_buf()
+    struct fuse_bufvec* get_buf()
     {
-        return write_buffer;
+        return write_bufv;
     }
 
     /**
@@ -169,7 +169,7 @@ private:
     size_t length;
     size_t write_count;
     off_t  offset;
-    const char*  write_buffer;
+    struct fuse_bufvec *write_bufv;
 };
 
 
@@ -257,41 +257,11 @@ private:
 /**
  * WRITE flush RPC task definition.
  */
-struct write_flush_rpc_task
+struct write_flush_context
 {
-    void set_ino(fuse_ino_t ino)
-    {
-        this->ino = ino;
-    }
-
-    void set_offset(off_t off)
-    {
-        this->bc_offset = off;
-    }
-
-    void set_size(size_t size)
-    {
-        this->bc_length = size;
-    }
-
     void set_count(size_t count)
     {
         this->count = count;
-    }
-
-    fuse_ino_t get_ino() const
-    {
-        return ino;
-    }
-
-    off_t get_offset()
-    {
-        return bc_offset;
-    }
-
-    size_t get_size()
-    {
-        return bc_length;
     }
 
     size_t get_count()
@@ -299,14 +269,19 @@ struct write_flush_rpc_task
         return count;
     }
 
-    struct membuf* get_membuf()
-    {
-        return membuf_ptr;
-    }
-
     struct rpc_task* get_task()
     {
         return task;
+    }
+
+    const struct bytes_chunk& get_bytes_chunk()
+    {
+        return bc;
+    }
+
+    fuse_ino_t get_ino() const
+    {
+        return ino;
     }
 
     /**
@@ -316,28 +291,19 @@ struct write_flush_rpc_task
     {
     }
 
-    write_flush_rpc_task(
-        fuse_ino_t ino,
-        struct rpc_task* task,
-        size_t length,
-        off_t  offset,
-        struct membuf *membuf_ptr
-    ):ino(ino),
-      task(task),
-      bc_length(length),
-      bc_offset(offset),
-      membuf_ptr(membuf_ptr),
-      count(0)
+    write_flush_context(const struct bytes_chunk &_bc, rpc_task *_task, fuse_ino_t _ino) :
+        bc(_bc),
+        task(_task),
+        ino(_ino),
+        count(0)
       {
 
       }
 
 private:
-    fuse_ino_t ino;
+    const struct bytes_chunk bc;
     struct rpc_task* task;
-    size_t bc_length;
-    off_t  bc_offset;
-    struct membuf *membuf_ptr;
+    fuse_ino_t ino;
     size_t count;
 };
 
@@ -712,8 +678,6 @@ struct rpc_task
 
     // Error code returned from first non-succesful rpc.
     int error_code;
-
-    std::atomic<int> child_task;
 private:
     /*
      * Flag to identify async tasks.
@@ -767,8 +731,7 @@ public:
         client(_client),
         req(nullptr),
         index(_index),
-        error_code(0),
-        child_task(0)
+        error_code(0)
     {
     }
 
@@ -879,7 +842,7 @@ public:
     // Direct write
     void init_write(fuse_req *request,
                      fuse_ino_t ino,
-                     const char *buf,
+                     struct fuse_bufvec *buf,
                      size_t size,
                      off_t offset);
 
@@ -888,7 +851,7 @@ public:
     // Buffer write.
     void init_cache_write(fuse_req *request,
                      fuse_ino_t ino,
-                     const char *buf,
+                     struct fuse_bufvec *buf,
                      size_t size,
                      off_t offset);
 
@@ -1237,9 +1200,6 @@ public:
         // Every rpc_task starts as sync.
         assert(!task->is_async());
 
-        task->child_task = 0;
-
-        task->child_task++;
         task->req = nullptr;
 
         return task;
