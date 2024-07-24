@@ -319,20 +319,6 @@ func (bb *BlockBlob) RenameFile(source string, target string) error {
 	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, source))
 	newBlobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, target))
 
-	_, err := blobClient.GetProperties(context.Background(), &blob.GetPropertiesOptions{
-		CPKInfo: bb.blobCPKOpt,
-	})
-	if err != nil {
-		serr := storeBlobErrToErr(err)
-		if serr == ErrFileNotFound {
-			log.Err("BlockBlob::RenameFile : %s does not exist", source)
-			return syscall.ENOENT
-		} else {
-			log.Err("BlockBlob::RenameFile : Failed to get blob properties for %s [%s]", source, err.Error())
-			return err
-		}
-	}
-
 	// not specifying source blob metadata, since passing empty metadata headers copies
 	// the source blob metadata to destination blob
 	startCopy, err := newBlobClient.StartCopyFromURL(context.Background(), blobClient.URL(), &blob.StartCopyFromURLOptions{
