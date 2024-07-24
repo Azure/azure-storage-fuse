@@ -352,62 +352,23 @@ void nfs_client::read(
     struct fuse_file_info *fi)
 {
     struct rpc_task *tsk1 = rpc_task_helper->alloc_rpc_task();
-    tsk1->init_readfile(req, ino, size, off, fi);
-  
-    // Get the readahead state for this inode.
-    auto rastate = get_nfs_inode_from_ino(ino)->readahead_state;
+    auto nfs_inod = get_nfs_inode_from_ino(ino);
+
+    tsk1->init_read(req, ino, size, off, fi);
 
     // Update the ra state about the application read request received.
-    rastate->on_application_read(off, size);
+    nfs_inod->readahead_state->on_application_read(off, size);
 
-    // Issue the readfile task.
+    // Issue the application readfile task.
     tsk1->run_readfile();
 
-    /*
-     * Once we are done issuing the application read, issue the reads for
-     * readahead. This is done with the help of async rpc task and the response of
-     * the actual read request can be returned back to the caller without having to
-     * wait for readahead reads.
-     */
+    // Issue readahead.
+    const int num_ra = nfs_inod->readahead_state->issue_readaheads();
 
-    /*
-     * The max bytes that can be read from the server is 3MB currently, hence issue
-     * readaheads with this length to get best performance.
-     * TODO: This can be changed later when the blob server supports bigger size RPCs.
-     */
-    const size_t ra_buffer_length = 3 * 1024 * 1024;
-    
-    /*
-     * Total number of readahead bytes to be issued.
-     * TODO: This should be finally set to an optimal value after rigourous testing.
-     */
-    const size_t total_ra_size = 15 * 1024 * 1024;
-
-    for (size_t i = 0; i <= total_ra_size; i += ra_buffer_length)
-    {
-	    off_t ra_offset = rastate->get_next_ra(ra_buffer_length);
-
-	    if (ra_offset > 0)
-	    {
-		    AZLogInfo("Issuing readahead at off: {} len: {}", ra_offset, ra_buffer_length);
-		    
-		    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task();
-		    tsk->init_readfile(req,
-				    ino,
-				    ra_buffer_length /* size */,
-				    ra_offset /* offset */,
-				    fi);
-
-		    // This will call the task->run_readfile() in a separate thread.
-		    tsk->set_async_function([](rpc_task *task) {
-				    task->run_readfile();
-				    });
-	    }
-	    else
-	    {
-		    AZLogInfo("Not issuing readahead!");
-	    }
-    }
+    AZLogDebug("{} readaheads issued for client read offset: {} size: {}",
+        num_ra,
+        off,
+        size);
 }
 
 /*

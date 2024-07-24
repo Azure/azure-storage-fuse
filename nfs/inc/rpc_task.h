@@ -446,7 +446,7 @@ public:
      * to keep track of these issued reads.
      * This is valid only for reads.
      * TODO: This should be accessed with a lock.
-     * This should be updated after taking the lock readfile_task_lock.
+     * This should be updated after taking the lock read_task_lock.
      */
     int num_of_reads_issued_to_backend;
     
@@ -457,7 +457,7 @@ public:
      * One this is set to True, the response can be safely returned to the caller.
      * This is valid only for reads.
      * TODO: This should be accessed with a lock.
-     * This should be updated after taking the lock readfile_task_lock.
+     * This should be updated after taking the lock read_task_lock.
      */
     bool readfile_completed;
     
@@ -468,7 +468,7 @@ public:
      */
     std::vector<bytes_chunk> bytes_vector;
 
-    std::shared_mutex readfile_task_lock;
+    std::shared_mutex read_task_lock;
 
 protected:
     /*
