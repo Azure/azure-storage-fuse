@@ -298,6 +298,40 @@ func (bc *BlockCache) Configure(_ bool) error {
 	return nil
 }
 
+func (bc *BlockCache) StatFs() (*syscall.Statfs_t, bool, error) {
+	// cache_size = f_blocks * f_frsize/1024
+	// cache_size - used = f_frsize * f_bavail/1024
+	// cache_size - used = vfs.f_bfree * vfs.f_frsize / 1024
+	// if cache size is set to 0 then we have the root mount usage
+
+	var maxCacheSize uint64
+	if bc.diskSize > 0 {
+		maxCacheSize = bc.diskSize
+	} else {
+		maxCacheSize = bc.memSize
+	}
+
+	if maxCacheSize == 0 {
+		return nil, false, nil
+	}
+
+	usage, _ := common.GetUsage(bc.tmpPath)
+	usage = usage * float64(_1MB)
+
+	available := (float64)(maxCacheSize) - usage
+	statfs := &syscall.Statfs_t{}
+	err := syscall.Statfs("/", statfs)
+	if err != nil {
+		log.Debug("BlockCache::StatFs : statfs err [%s].", err.Error())
+		return nil, false, err
+	}
+	statfs.Blocks = uint64(maxCacheSize) / uint64(statfs.Frsize)
+	statfs.Bavail = uint64(math.Max(0, available)) / uint64(statfs.Frsize)
+	statfs.Bfree = statfs.Bavail
+
+	return statfs, true, nil
+}
+
 // CreateFile: Create a new file
 func (bc *BlockCache) CreateFile(options internal.CreateFileOptions) (*handlemap.Handle, error) {
 	log.Trace("BlockCache::CreateFile : name=%s, mode=%d", options.Name, options.Mode)
