@@ -1018,8 +1018,8 @@ static void aznfsc_ll_write_buf(fuse_req_t req,
                                 struct fuse_file_info *fi)
 {
 
-    AZLogInfo("aznfsc_ll_write_buf(req={}, ino={}, off={}, fi={}",
-               fmt::ptr(req), ino, off, fmt::ptr(fi));
+  //  AZLogInfo("aznfsc_ll_write_buf(req={}, ino={}, off={}, fi={}",
+    //           fmt::ptr(req), ino, off, fmt::ptr(fi));
 
    // assert(fi->direct_io == 1);
 
