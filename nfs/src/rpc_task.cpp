@@ -329,7 +329,7 @@ static void write_flush_callback(
     assert(membuf->is_flushing() && membuf->is_dirty());
 
     auto res = (WRITE3res *)data;
-    const int status = task->status(rpc_status, RSTATUS(res));
+    const int status = task->status(rpc_status, NFS_STATUS(res));
 
     // Positive case
     if (status == 0) {
@@ -385,8 +385,8 @@ static void write_flush_callback(
     }
 
     membuf->clear_flushing();
-    membuf->clear_inuse();
     membuf->clear_locked();  
+    membuf->clear_inuse();
 
     delete cb_data;
     nfs_inode->filecache_handle->release(chunk->offset, chunk->length);
@@ -782,12 +782,13 @@ void rpc_task::run_flush()
 
             this->child_task++;
         #endif
-            membuf->clear_inuse();
+
             membuf->clear_locked();
+            membuf->clear_inuse();
         } else {
             // Clear the inuse as we are not flushing this membuf.
-            membuf->clear_inuse();
             membuf->clear_locked();
+            membuf->clear_inuse();
 
             // AZLogDebug("membuf not dirty offset {}, Length {}", membuf->offset, membuf->length);
         }
