@@ -114,6 +114,12 @@ void rpc_task::init_read(fuse_req *request,
     rpc_api.read_task.set_size(size);
     rpc_api.read_task.set_offset(offset);
     rpc_api.read_task.set_fuse_file(file);
+
+    /*
+     * Grab a ref on this inode so that it is not freed during the operation.
+     * This should be decremented in the free task.
+     */
+    get_client()->get_nfs_inode_from_ino(ino)->incref();
 }
 
 /*
@@ -480,12 +486,6 @@ void rpc_task::run_readfile()
 {
     auto ino = rpc_api.read_task.get_inode();
 
-    /*
-     * Grab a ref on this inode so that it is not freed during the operation.
-     * This should be decremented in the free task
-     */
-    get_client()->get_nfs_inode_from_ino(ino)->incref();
-
     auto readfile_handle = get_client()->get_nfs_inode_from_ino(ino)->filecache_handle;
 
     bytes_vector = readfile_handle->get(
@@ -524,8 +524,6 @@ void rpc_task::run_readfile()
                  * Since the data is read from the cache, the chances of reading it
                  * again from cache is negligible since this is a sequential read pattern.
                  * Free such chunks to reduce the memory utilization.
-                 * TODO: Is this a safe place to release? What will happen when we read the buffer to send response.
-                 *       Check if this is protected by the bytes_vector.
                  */
                 for (size_t j = 0; j <= i; j++)
                 {
