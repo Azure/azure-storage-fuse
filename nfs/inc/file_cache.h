@@ -344,8 +344,7 @@ struct membuf
 
         {
             std::unique_lock<std::mutex> _lock(lock);
-         	
-	    flag &= ~MB_Flag::Locked;
+            flag &= ~MB_Flag::Locked;
 
             AZLogDebug("Unlocked membuf [{}, {}), fd={}",
                        offset, offset+length, backing_file_fd);

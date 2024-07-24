@@ -445,7 +445,6 @@ public:
      * backend server to decrease the processing time, hence this wlll be used
      * to keep track of these issued reads.
      * This is valid only for reads.
-     * TODO: This should be accessed with a lock.
      * This should be updated after taking the lock read_task_lock.
      */
     int num_of_reads_issued_to_backend;
@@ -456,7 +455,6 @@ public:
      * before returning response to the caller.
      * One this is set to True, the response can be safely returned to the caller.
      * This is valid only for reads.
-     * TODO: This should be accessed with a lock.
      * This should be updated after taking the lock read_task_lock.
      */
     bool readfile_completed;
@@ -651,14 +649,14 @@ public:
 
     void run_readdirplus();
 
-    // This function is responsible for setting up the members of readtask.
+    // This function is responsible for setting up the members of read task.
     void init_read(fuse_req *request,
                    fuse_ino_t inode,
                    size_t size,
                    off_t offset,
                    struct fuse_file_info *file);
 
-    void run_readfile();
+    void run_read();
 
     void set_fuse_req(fuse_req *request)
     {
@@ -717,7 +715,6 @@ public:
 
     void reply_iov(struct iovec* iov, int count)
     {
-	assert(!is_async());
         fuse_reply_iov(req, iov, count);
         free_rpc_task();
     }
@@ -951,7 +948,7 @@ public:
         assert(task->magic == RPC_TASK_MAGIC);
         task->is_async_task = false;
 
-	release_free_index(task->get_index());
+        release_free_index(task->get_index());
     }
 };
 

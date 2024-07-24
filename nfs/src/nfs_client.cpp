@@ -359,8 +359,8 @@ void nfs_client::read(
     // Update the ra state about the application read request received.
     nfs_inod->readahead_state->on_application_read(off, size);
 
-    // Issue the application readfile task.
-    tsk1->run_readfile();
+    // Issue the application read task.
+    tsk1->run_read();
 
     // Issue readahead.
     const int num_ra = nfs_inod->readahead_state->issue_readaheads();

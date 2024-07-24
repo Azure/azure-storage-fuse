@@ -316,7 +316,7 @@ void aznfsc_cfg::set_defaults_and_sanitize()
     if (rsize == -1)
         rsize = 1048576;
     if (wsize == -1)
-    	wsize = 1048576;
+        wsize = 1048576;
     if (retrans == -1)
         retrans = 3;
     if (timeo == -1)
@@ -1190,7 +1190,6 @@ int main(int argc, char *argv[])
 
     se = fuse_session_new(&args, &aznfsc_ll_ops, sizeof(aznfsc_ll_ops),
                           &nfs_client::get_instance());
-
     if (se == NULL) {
         goto err_out1;
     }
