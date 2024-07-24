@@ -142,7 +142,6 @@ struct membuf
     // This membuf caches file data in the range [offset, offset+length).
     const uint64_t offset;
     const uint64_t length;
-    uint64_t flushed_length;
 
     /*
      * Actual allocated length. This can be greater than length for
@@ -265,16 +264,16 @@ struct membuf
     {
         flag |= MB_Flag::Flushing;
 
-       //  AZLogDebug("Set flushing membuf [{}, {}), fd={}",
-          //         offset, offset+length, backing_file_fd);
+        AZLogDebug("Set flushing membuf [{}, {}), fd={}",
+                    offset, offset+length, backing_file_fd);
     }
 
     void clear_flushing()
     {
         flag &= ~MB_Flag::Flushing;
 
-        // AZLogDebug("Clear flushing membuf [{}, {}), fd={}",
-           //        offset, offset+length, backing_file_fd);
+        AZLogDebug("Clear flushing membuf [{}, {}), fd={}",
+                   offset, offset+length, backing_file_fd);
     }
 
     bool is_inuse() const
@@ -869,7 +868,11 @@ public:
         scan(offset, length, scan_action::SCAN_ACTION_RELEASE);
     }
 
-
+    /*
+     * get_dirty_bc returns all dirty chunks in chunkmap.
+     * Before returning it increase the inuse of underlying membuf.
+     * After the use, call clear_inuse().
+     */
     std::vector<bytes_chunk> get_dirty_bc();
     
 

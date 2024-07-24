@@ -39,7 +39,7 @@ void rpc_task::init_flush(fuse_req* request,
     rpc_api.flush_task.set_ino(ino);
 }
 
-void rpc_task::init_cache_write(fuse_req* request,
+void rpc_task::init_write(fuse_req* request,
                            fuse_ino_t ino,
                            struct fuse_bufvec *bufv,
                            size_t size,
@@ -50,7 +50,7 @@ void rpc_task::init_cache_write(fuse_req* request,
     rpc_api.write_task.set_size(size);
     rpc_api.write_task.set_offset(offset);
     rpc_api.write_task.set_ino(ino);
-    rpc_api.write_task.set_buffer(bufv);
+    rpc_api.write_task.set_buffer_vector(bufv);
 }
 
 
@@ -340,8 +340,10 @@ static void write_flush_callback(
 
         if (res->WRITE3res_u.resok.count == 0)
         {
-            // Need to check what error need to set.
-            // When this happens ?
+            /*
+             * TODO: Need to check what error need to set.
+             * When this happens ?
+             */
         } else if (count < size) {
             /*
              * Special case where we wrote less data, we retry to write rest of data.
@@ -362,7 +364,7 @@ static void write_flush_callback(
             do {
                 if(rpc_nfs3_write_task(task->get_rpc_ctx(), write_flush_callback, &args, cb_data) == NULL)
                 {
-                    /*
+                   /*
                     * This call fails due to internal issues like OOM etc
                     * and not due to an actual error, hence retry.
                     */
@@ -373,7 +375,7 @@ static void write_flush_callback(
             return;
         } else {
             // Data writen to blob.
-            // AZLogDebug("membuf flushed offset {}, Length {}", membuf->offset, membuf->length);
+            AZLogDebug("membuf flushed offset {}, Length {}", membuf->offset, membuf->length);
 
             membuf->clear_dirty();
         }
@@ -513,7 +515,6 @@ void rpc_task::run_lookup()
     } while (rpc_retry);
 }
 
-
 std::vector<bytes_chunk>
 copy_to_cache(struct nfs_client *const client,
         fuse_ino_t ino, struct fuse_bufvec* bufv, off_t offset, size_t length, int &error)
@@ -638,12 +639,12 @@ copy_to_cache(struct nfs_client *const client,
     return chunkvec;
 }
 
-void rpc_task::run_cache_write()
+void rpc_task::run_write()
 {
     fuse_ino_t file_ino = rpc_api.write_task.get_ino();
     auto nfs_inode = get_client()->get_nfs_inode_from_ino(file_ino);
     size_t length = rpc_api.write_task.get_size();
-    struct fuse_bufvec* bufv = rpc_api.write_task.get_buf();
+    struct fuse_bufvec* bufv = rpc_api.write_task.get_buffer_vector();
     off_t offset = rpc_api.write_task.get_offset();
     auto client = get_client();
     std::vector<bytes_chunk> chunkvec;
@@ -730,6 +731,17 @@ void rpc_task::run_flush()
         membuf->set_locked();
         assert(membuf->is_inuse());
 
+        /*
+         * As of now, whenever write comes we get byte_chunk for corresponding
+         * offset and length. Copy the buffer from fuse to that, mark the buffer dirty.
+         * After that we issue write rpc to blob and complete the write command.
+         * Ideally all the chunks marked dirty in chunkmap, already issued to blob.
+         * We just need to wait for them to complete. That's what flush will do.
+         *
+         * Note: There is race condition to that, where we marked the buffer dirty, before
+         *       flushing it to blob, flush command come.
+         *
+         */
         if (membuf->is_dirty())
         {
             assert(!membuf->is_flushing());
@@ -739,6 +751,7 @@ void rpc_task::run_flush()
             if (nfs_inode->get_write_error() == 0)
             {
                 AZLogDebug("membuf dirty and no error set offset {}, Length {}", membuf->offset, membuf->length);
+                assert(0);
             }
         #if 0
             WRITE3args args;

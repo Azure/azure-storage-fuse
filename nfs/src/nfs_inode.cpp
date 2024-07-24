@@ -71,6 +71,8 @@ nfs_inode::nfs_inode(const struct nfs_fh3 *filehandle,
     } else if (is_dir()) {
         dircache_handle = std::make_shared<readdirectory_cache>(client, this);
     }
+
+    write_error = 0;
 }
 
 nfs_inode::~nfs_inode()

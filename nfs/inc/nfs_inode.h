@@ -136,6 +136,11 @@ struct nfs_inode
      * Valid only for regular files.
      */
     std::shared_ptr<ra_state> readahead_state;
+    
+    /*
+     * Stores the write error.
+     */
+    int write_error = 0;
 
     /**
      * TODO: Initialize attr with postop attributes received in the RPC
@@ -358,35 +363,25 @@ struct nfs_inode
         purge_dircache_nolock();
     }
 
+    /**
+     * Store the first error encounter while writing.
+     * This error can happen while reading from fuse fd or
+     * while writing to blob.
+     */
     void set_write_error(int error)
     {
-        if (this->last_write_error == 0)
+        if (this->write_error == 0)
         {
-            this->last_write_error = error;
+            this->write_error = error;
         }
     }
 
+    /**
+     * Return the error, if encounter while writing.
+     */
     int get_write_error()
     {
-        return last_write_error;
-    }
-
-    void dec_dirty_bytes(size_t dirty_count)
-    {
-        std::unique_lock<std::shared_mutex> lock(ilock);
-        this->dirty_bytes -= dirty_count;
-    }
-
-    void set_dirty_bytes(size_t dirty_count)
-    {
-        std::unique_lock<std::shared_mutex> lock(ilock);
-        this->dirty_bytes += dirty_count;
-    }
-
-    uint64_t get_dirty_bytes()
-    {
-        std::unique_lock<std::shared_mutex> lock(ilock);
-        return dirty_bytes;
+        return write_error;
     }
 
     /**

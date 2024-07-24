@@ -83,7 +83,7 @@ struct write_rpc_task
         write_count = count;
     }
 
-    void set_buffer(struct fuse_bufvec *bufv)
+    void set_buffer_vector(struct fuse_bufvec *bufv)
     {
         write_bufv = bufv;
     }
@@ -108,7 +108,7 @@ struct write_rpc_task
         return write_count;
     }
 
-    struct fuse_bufvec* get_buf()
+    struct fuse_bufvec* get_buffer_vector()
     {
         return write_bufv;
     }
@@ -623,7 +623,6 @@ protected:
     enum fuse_opcode optype;
 
 public:
-
     rpc_task(struct nfs_client *_client, int _index):
         client(_client),
         req(nullptr),
@@ -722,24 +721,20 @@ public:
 
 
     /*
-     * init/run methods for the LOOKUP RPC.
+     * init/run methods for the WRITE RPC.
      */
-
-    // Buffer write.
-    void init_cache_write(fuse_req *request,
+    void init_write(fuse_req *request,
                      fuse_ino_t ino,
                      struct fuse_bufvec *buf,
                      size_t size,
                      off_t offset);
+    void run_write();
 
-    // Buffer write.
-    void run_cache_write();
-
-    // flush.
+    /*
+     * init/run methods for the FLUSH/RELEASE RPC.
+     */
     void init_flush(fuse_req *request,
                      fuse_ino_t ino);
-
-    // Buffer write.
     void run_flush();
 
     /*

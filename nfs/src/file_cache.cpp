@@ -1639,10 +1639,6 @@ std::vector<bytes_chunk> bytes_chunk_cache::get_dirty_bc()
     std::map <uint64_t,
               struct bytes_chunk>::iterator it = chunkmap.begin();
 
-    /*
-     * TODO: See if we can hold shared lock for cases where we don't have to
-     *       update chunkmap.
-     */
     const std::unique_lock<std::mutex> _lock(lock);
 
     while (it != chunkmap.end())
