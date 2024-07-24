@@ -264,26 +264,26 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
      * First things first, if file-backed cache and backing file not yet open,
      * open it.
      */
-    if ((backing_file_fd == -1) && !backing_file_name.empty()) {
-        backing_file_fd = ::open(backing_file_name.c_str(),
-                                 O_CREAT|O_TRUNC|O_RDWR, 0755);
-        if (backing_file_fd == -1) {
-            AZLogError("Failed to open backing_file {}: {}",
-                       backing_file_name, strerror(errno));
-            assert(0);
-            return chunkvec;
-        } else {
-            AZLogInfo("Opened backing_file {}: fd={}",
-                      backing_file_name, backing_file_fd);
-        }
-    }
-
-    /*
-     * Extend backing_file as the very first thing.
-     * It is important that when membuf::load() is called, the backing file
-     * has size >= (offset + length).
-     */
     if (action == scan_action::SCAN_ACTION_GET) {
+        if ((backing_file_fd == -1) && !backing_file_name.empty()) {
+            backing_file_fd = ::open(backing_file_name.c_str(),
+                                     O_CREAT|O_TRUNC|O_RDWR, 0755);
+            if (backing_file_fd == -1) {
+                AZLogError("Failed to open backing_file {}: {}",
+                           backing_file_name, strerror(errno));
+                assert(0);
+                return chunkvec;
+            } else {
+                AZLogInfo("Opened backing_file {}: fd={}",
+                           backing_file_name, backing_file_fd);
+            }
+        }
+
+        /*
+         * Extend backing_file as the very first thing.
+         * It is important that when membuf::load() is called, the backing file
+         * has size >= (offset + length).
+         */
         if (!extend_backing_file(offset + length)) {
             AZLogError("Failed to extend backing_file to {} bytes: {}",
                        offset+length, strerror(errno));
@@ -309,12 +309,14 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
          * of the requested range.
          */
         if (chunkmap.empty()) {
-            /*
-             * Cache-release is called only after cache-get which would have
-             * allocated the requested range, so we should not find non-existent
-             * chunks in the requested range.
-             */
-            assert(action != scan_action::SCAN_ACTION_RELEASE);
+            if (action == scan_action::SCAN_ACTION_RELEASE) {
+                /*
+                 * Empty cache, nothing to release.
+                 */
+                AZLogDebug("<Release [{}, {})> Empty cache, nothing to release",
+                           offset, offset + length);
+                goto end;
+            }
 
             /*
              * Only chunk being added, so left and right edge of that are also
@@ -334,11 +336,18 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
 
             if ((bc->offset + bc->length) <= next_offset) {
                 /*
-                 * Requested range lies after the end of last chunk, we will need
-                 * to allocate a new chunk and this will be the only chunk needed
-                 * to cover the requested range.
+                 * Requested range lies after the end of last chunk. This means
+                 * for SCAN_ACTION_RELEASE we have nothing to do.
+                 * For SCAN_ACTION_GET we will need to allocate a new chunk and
+                 * this will be the only chunk needed to cover the requested range.
                  */
-                assert(action != scan_action::SCAN_ACTION_RELEASE);
+                if (action == scan_action::SCAN_ACTION_RELEASE) {
+                    AZLogDebug("<Release [{}, {})> First byte to release "
+                               "lies after the last chunk [{}, {})",
+                               offset, offset + length,
+                               bc->offset, bc->offset + bc->length);
+                    goto end;
+                }
 
                 /*
                  * If this new chunk starts right after the last chunk, then
@@ -363,6 +372,7 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
                 _extent_right = next_offset + remaining_length;
                 AZLogDebug("_extent_right: {}", _extent_right);
 
+                assert(remaining_length > 0);
                 goto allocate_only_chunk;
             } else {
                 /*
@@ -416,14 +426,18 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
                 /*
                  * If this is the first chunk then part or whole of the
                  * requested range lies before this chunk and we need to
-                 * create a new chunk for that.
+                 * create a new chunk for that. For SCAN_ACTION_RELEASE
+                 * we just ignore the part before this chunk.
                  */
-                assert(action != scan_action::SCAN_ACTION_RELEASE);
-
                 bc = &(it->second);
                 assert(bc->offset > next_offset);
 
-                // Newly created chunk's offset and length.
+                /*
+                 * Newly created chunk's offset and length.
+                 * For the release case chunk_offset and chunk_length are not
+                 * used but we must update remaining_length and next_offset to
+                 * correctly track the "to-be-released" range.
+                 */
                 chunk_offset = next_offset;
                 chunk_length = std::min(bc->offset - next_offset,
                                         remaining_length);
@@ -431,20 +445,27 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
                 remaining_length -= chunk_length;
                 next_offset += chunk_length;
 
-                /*
-                 * This is the first chunk, so its offset is the left edge.
-                 * We mark the right edge tentatively, it'll be confirmed after
-                 * we look forward.
-                 */
-                _extent_left = chunk_offset;
-                _extent_right = chunk_offset + chunk_length;
+                if (action == scan_action::SCAN_ACTION_GET) {
+                    /*
+                     * This is the first chunk, so its offset is the left edge.
+                     * We mark the right edge tentatively, it'll be confirmed after
+                     * we look forward.
+                     */
+                    _extent_left = chunk_offset;
+                    _extent_right = chunk_offset + chunk_length;
 
-                AZLogDebug("_extent_left: {}", _extent_left);
-                AZLogDebug("(tentative) _extent_right: {}", _extent_right);
+                    AZLogDebug("_extent_left: {}", _extent_left);
+                    AZLogDebug("(tentative) _extent_right: {}", _extent_right);
 
-                chunkvec.emplace_back(this, chunk_offset, chunk_length);
-                AZLogDebug("(new chunk) [{},{})",
-                           chunk_offset, chunk_offset + chunk_length);
+                    chunkvec.emplace_back(this, chunk_offset, chunk_length);
+                    AZLogDebug("(new chunk) [{},{})",
+                               chunk_offset, chunk_offset + chunk_length);
+                } else {
+                    AZLogDebug("<Release [{}, {})> (non-existent chunk) "
+                               "[{},{})",
+                               offset, offset + length,
+                               chunk_offset, chunk_offset + chunk_length);
+                }
             } else {
                 /*
                  * Requested range starts before this chunk and we have a
@@ -467,9 +488,11 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
                      * prev chunk. The new chunk size will be from next_offset
                      * till the start offset of the next chunk (bcn) or
                      * remaining_length whichever is smaller.
+                     *
+                     * For the release case chunk_offset and chunk_length are not
+                     * used but we must update remaining_length and next_offset to
+                     * correctly track the "to-be-released" range.
                      */
-                    assert(action != scan_action::SCAN_ACTION_RELEASE);
-
                     chunk_offset = next_offset;
                     chunk_length = std::min(bcn->offset - next_offset,
                                             remaining_length);
@@ -477,40 +500,47 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
                     remaining_length -= chunk_length;
                     next_offset += chunk_length;
 
-                    /*
-                     * If this new chunk starts right after the prev chunk, then
-                     * we don't know the actual value of _extent_left unless we
-                     * scan left and check. In that case we set lookback_it to
-                     * the prev chunk, so that we can later "look back" and find
-                     * the left edge.
-                     * If it doesn't start right after, then chunk_offset becomes
-                     * _extent_left.
-                     */
-                    if ((bc->offset + bc->length) < next_offset) {
+                    if (action == scan_action::SCAN_ACTION_GET) {
                         /*
-                         * New chunk does not touch the prev chunk, so the new
-                         * chunk offset is the _extent_left.
+                         * If this new chunk starts right after the prev chunk, then
+                         * we don't know the actual value of _extent_left unless we
+                         * scan left and check. In that case we set lookback_it to
+                         * the prev chunk, so that we can later "look back" and find
+                         * the left edge.
+                         * If it doesn't start right after, then chunk_offset becomes
+                         * _extent_left.
                          */
-                        _extent_left = chunk_offset;
-                        AZLogDebug("_extent_left: {}", _extent_left);
+                        if ((bc->offset + bc->length) < next_offset) {
+                            /*
+                             * New chunk does not touch the prev chunk, so the new
+                             * chunk offset is the _extent_left.
+                             */
+                            _extent_left = chunk_offset;
+                            AZLogDebug("_extent_left: {}", _extent_left);
+                        } else {
+                            /*
+                             * Else, new chunk touches the prev chunk, so we need
+                             * to "look back" for finding the left edge.
+                             */
+                            AZLogDebug("lookback_it: [{},{})",
+                                       bc->offset, bc->offset + bc->length);
+                            lookback_it = it;
+                        }
+                        _extent_right = chunk_offset + chunk_length;
+                        AZLogDebug("(tentative) _extent_right: {}", _extent_right);
+
+                        // Search for more chunks should start from the next chunk.
+                        it = itn;
+
+                        chunkvec.emplace_back(this, chunk_offset, chunk_length);
+                        AZLogDebug("(new chunk) [{},{})",
+                                chunk_offset, chunk_offset + chunk_length);
                     } else {
-                        /*
-                         * Else, new chunk touches the prev chunk, so we need
-                         * to "look back" for finding the left edge.
-                         */
-                        AZLogDebug("lookback_it: [{},{})",
-                                   bc->offset, bc->offset + bc->length);
-                        lookback_it = it;
+                        AZLogDebug("<Release [{}, {})> (non-existent chunk) "
+                                   "[{},{})",
+                                   offset, offset + length,
+                                   chunk_offset, chunk_offset + chunk_length);
                     }
-                    _extent_right = chunk_offset + chunk_length;
-                    AZLogDebug("(tentative) _extent_right: {}", _extent_right);
-
-                    // Search for more chunks should start from the next chunk.
-                    it = itn;
-
-                    chunkvec.emplace_back(this, chunk_offset, chunk_length);
-                    AZLogDebug("(new chunk) [{},{})",
-                               chunk_offset, chunk_offset + chunk_length);
                 } else {
                     /*
                      * Prev chunk contains some bytes from initial part of the
@@ -529,17 +559,26 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
      * Either we should know the left edge or we should have set the lookback_it
      * to the chunk from where we start "looking back".
      */
-    assert((_extent_left == AZNFSC_BAD_OFFSET) ==
-           (lookback_it != chunkmap.end()));
+    assert(((_extent_left == AZNFSC_BAD_OFFSET) ==
+            (lookback_it != chunkmap.end())) ||
+           (action != scan_action::SCAN_ACTION_GET));
 
     /*
      * Now sequentially go over the remaining chunks till we cover the entire
-     * requested range. If some chunk doesn't exist, it'll be allocated.
+     * requested range. For SCAN_ACTION_GET if some chunk doesn't exist, it'll
+     * be allocated, while for SCAN_ACTION_GET non-existent chunks are ignored.
      */
     for (; remaining_length != 0 && it != chunkmap.end(); ) {
         bc = &(it->second);
 
-        bc->load();
+        /*
+         * For the GET and file-backed cache, make sure the requested chunk is
+         * duly mmapped so that any IO that caller performs on the returned
+         * bytes_chunk is served from the backing file.
+         */
+        if (action == scan_action::SCAN_ACTION_GET) {
+            bc->load();
+        }
 
         /*
          * next_offset must lie before the end of current chunk, else we should
@@ -550,6 +589,10 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
         chunk_offset = next_offset;
 
         if (next_offset == bc->offset) {
+            /*
+             * Our next offset of interest (next_offset) lies exactly at the
+             * start of this chunk.
+             */
             chunk_length = std::min(bc->length, remaining_length);
 
             if (action == scan_action::SCAN_ACTION_GET) {
@@ -559,12 +602,20 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
                            chunk_offset, chunk_offset + chunk_length,
                            fmt::ptr(chunkvec.back().get_buffer()),
                            fmt::ptr(bc->alloc_buffer->get()));
-            } else {
+            } else if (bc->safe_to_release()) {
                 assert (action == scan_action::SCAN_ACTION_RELEASE);
                 if (chunk_length == bc->length) {
-                    AZLogDebug("(releasing chunk) [{},{}) b:{} a:{}",
+                    /*
+                     * File-backed cache may not have the membuf allocated in
+                     * case the cache is dropped. bc->get_buffer() will assert
+                     * so avoid calling it.
+                     */
+                    AZLogDebug("<Release [{}, {})> (releasing chunk) [{},{}) "
+                               "b:{} a:{}",
+                               offset, offset + length,
                                chunk_offset, chunk_offset + chunk_length,
-                               fmt::ptr(bc->get_buffer()),
+                               bc->alloc_buffer->get() ?
+                                    fmt::ptr(bc->get_buffer()) : nullptr,
                                fmt::ptr(bc->alloc_buffer->get()));
                     /*
                      * Queue the chunk for deletion, since the entire chunk is
@@ -585,7 +636,9 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
                     /*
                      * Else trim the chunk (from the left).
                      */
-                    AZLogDebug("(trimming chunk from left) [{},{}) -> [{},{})",
+                    AZLogDebug("<Release [{}, {})> (trimming chunk from left) "
+                               "[{},{}) -> [{},{})",
+                               offset, offset + length,
                                bc->offset, bc->offset + bc->length,
                                bc->offset + chunk_length,
                                bc->offset + bc->length);
@@ -630,22 +683,38 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
             // This chunk is fully consumed, move to the next chunk.
             ++it;
         } else if (next_offset < bc->offset) {
-            // Starts before the next chunk.
-            assert(action != scan_action::SCAN_ACTION_RELEASE);
+            /*
+             * Our next offset of interest (next_offset) lies before the
+             * next chunk. For SCAN_ACTION_GET we need to allocate a new
+             * chunk, for SCAN_ACTION_RELEASE ignore this non-existent byte
+             * range. We set chunk_length so that remaining_length and
+             * next_offset are correctly updated at the end of the loop.
+             */
             chunk_length = std::min(bc->offset - next_offset,
                                     remaining_length);
 
-            chunkvec.emplace_back(this, chunk_offset, chunk_length);
-            AZLogDebug("(new chunk) [{},{})",
-                       chunk_offset, chunk_offset+chunk_length);
+            if (action == scan_action::SCAN_ACTION_GET) {
+                chunkvec.emplace_back(this, chunk_offset, chunk_length);
+                AZLogDebug("(new chunk) [{},{})",
+                           chunk_offset, chunk_offset+chunk_length);
+            } else {
+                AZLogDebug("<Release [{}, {})> (non-existent chunk) [{},{})",
+                           offset, offset + length,
+                           next_offset, next_offset + chunk_length);
+            }
 
             /*
              * In the next iteration we need to look at the current chunk, so
              * don't increment the iterator.
              */
         } else /* (next_offset > bc->offset) */ {
+            /*
+             * Our next offset of interest (next_offset) lies within this
+             * chunk.
+             */
             chunk_length = std::min(bc->offset + bc->length - next_offset,
                                     remaining_length);
+            assert(chunk_length > 0);
 
             if (action == scan_action::SCAN_ACTION_GET) {
                 chunkvec.emplace_back(this, chunk_offset, chunk_length,
@@ -655,8 +724,10 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
                            chunk_offset, chunk_offset + chunk_length,
                            fmt::ptr(chunkvec.back().get_buffer()),
                            fmt::ptr(bc->alloc_buffer->get()));
-            } else {
+            } else if (bc->safe_to_release()) {
                 assert(action == scan_action::SCAN_ACTION_RELEASE);
+                assert(chunk_length <= remaining_length);
+
                 if (chunk_length == remaining_length) {
                     /*
                      * Part of the chunk is released in the middle.
@@ -667,7 +738,7 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
                     const uint64_t chunk_after_offset =
                         next_offset + chunk_length;
                     const uint64_t chunk_after_length =
-                        bc->offset + bc->length - next_offset - chunk_length;
+                        bc->offset + bc->length - chunk_after_offset;
 
                     if (chunk_after_length > 0) {
                         assert(chunk_after == nullptr);
@@ -680,9 +751,11 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
                                    chunk_after_offset + chunk_after_length);
                     }
 
-                    AZLogDebug("(trimming chunk from right) [{},{}) -> [{},{})",
-                            bc->offset, bc->offset + bc->length,
-                            bc->offset, next_offset);
+                    AZLogDebug("<Release [{}, {})> (trimming chunk from right) "
+                               "[{},{}) -> [{},{})",
+                               offset, offset + length,
+                               bc->offset, bc->offset + bc->length,
+                               bc->offset, next_offset);
                     bc->length = next_offset - bc->offset;
                     assert((int64_t) bc->length > 0);
                 } else {
@@ -691,10 +764,12 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
                     assert(chunk_length < remaining_length);
 
                     /*
-                     * Entire chunk after next_offset is released, trim the
+                     * All chunk data after next_offset is released, trim the
                      * chunk.
                      */
-                    AZLogDebug("(trimming chunk from right) [{},{}) -> [{},{})",
+                    AZLogDebug("<Release [{}, {})> (trimming chunk from right) "
+                               "[{},{}) -> [{},{})",
+                               offset, offset + length,
                                bc->offset, bc->offset + bc->length,
                                bc->offset, next_offset);
 
@@ -724,16 +799,11 @@ done:
 
     /*
      * Allocate the only or the last chunk beyond the highest chunk we have
-     * in our cache.
+     * in our cache. For the SCAN_ACTION_RELEASE case we simply ignore whatever
+     * to-be-released byte range remains after the last chunk.
      */
 allocate_only_chunk:
-    if (remaining_length != 0) {
-        /*
-         * Other than when we are adding cache chunks, we should never come
-         * here for allocating new chunk buffer.
-         */
-        assert(action == scan_action::SCAN_ACTION_GET);
-
+    if ((remaining_length != 0) && (action == scan_action::SCAN_ACTION_GET)) {
         AZLogDebug("(only/last chunk) [{},{})",
                    next_offset, next_offset + remaining_length);
 
@@ -769,6 +839,11 @@ allocate_only_chunk:
             chunkvec.emplace_back(this, next_offset, remaining_length);
         }
 
+        remaining_length = 0;
+    } else {
+        AZLogDebug("<Release [{}, {})> (non-existent chunk after end) [{},{})",
+                offset, offset + length,
+                next_offset, next_offset + remaining_length);
         remaining_length = 0;
     }
 
@@ -840,16 +915,25 @@ allocate_only_chunk:
      */
     if (action == scan_action::SCAN_ACTION_RELEASE) {
         if (begin_delete != chunkmap.end()) {
-            for (auto _it = begin_delete; _it != end_delete; ++_it) {
+            for (auto _it = begin_delete, next_it = _it;
+                 _it != end_delete; _it = next_it) {
+                ++next_it;
                 bc = &(_it->second);
-                AZLogDebug("(freeing chunk) [{},{}) b:{} a:{}",
-                           bc->offset, bc->offset + bc->length,
-                           fmt::ptr(bc->get_buffer()),
-                           fmt::ptr(bc->alloc_buffer->get()));
+                /*
+                 * Not all chunks from begin_delete to end_delete are
+                 * guaranteed safe-to-delete, so check before deleting.
+                 */
+                if (bc->safe_to_release()) {
+                    AZLogDebug("<Release [{}, {})> (freeing chunk) [{},{}) "
+                               "b:{} a:{}",
+                               offset, offset + length,
+                               bc->offset, bc->offset + bc->length,
+                               bc->alloc_buffer->get() ?
+                                    fmt::ptr(bc->get_buffer()) : nullptr,
+                               fmt::ptr(bc->alloc_buffer->get()));
+                    chunkmap.erase(_it);
+                }
             }
-
-            // Delete the entire range.
-            chunkmap.erase(begin_delete, end_delete);
         }
     } else {
         assert((begin_delete == chunkmap.end()) &&
@@ -936,6 +1020,7 @@ allocate_only_chunk:
 
     }
 
+end:
     return (action == scan_action::SCAN_ACTION_GET)
                 ? chunkvec : std::vector<bytes_chunk>();
 }
@@ -1661,6 +1746,117 @@ do { \
     for (auto e : v) {
         PRINT_CHUNK(e);
     }
+
+    /*
+     * Get cache chunks covering range [5, 50).
+     * This should return following chunks:
+     * 1. Existing chunk [5, 30).
+     * 2. Newly allocated chunk [30, 50).
+     *
+     * The largest contiguous block containing the requested chunk is
+     * [5, 50).
+     */
+    AZLogInfo("========== [Get] --> (5, 45) ==========");
+    v = cache.get(5, 45, &l, &r);
+    assert(v.size() == 2);
+
+    ASSERT_EXTENT(5, 50);
+    ASSERT_EXISTING(v[0], 5, 30);
+    ASSERT_NEW(v[1], 30, 50);
+
+    for (auto e : v) {
+        PRINT_CHUNK(e);
+    }
+
+    /*
+     * Get cache chunks covering range [5, 100).
+     * This should return following chunks:
+     * 1. Existing chunk [5, 30).
+     * 2. Existing chunk [30, 50).
+     * 3. Newly allocated chunk [50, 50).
+     *
+     * The largest contiguous block containing the requested chunk is
+     * [5, 100).
+     */
+    AZLogInfo("========== [Get] --> (5, 95) ==========");
+    v = cache.get(5, 95, &l, &r);
+    assert(v.size() == 3);
+
+    ASSERT_EXTENT(5, 100);
+    ASSERT_EXISTING(v[0], 5, 30);
+    ASSERT_EXISTING(v[1], 30, 50);
+    ASSERT_NEW(v[2], 50, 100);
+
+    for (auto e : v) {
+        PRINT_CHUNK(e);
+    }
+
+    /*
+     * Release byte range [0, 200), but after setting the following:
+     * - [5, 30) as dirty, and
+     * - [50, 100) as inuse
+     * If we call release for the range [0, 200), it covers the entire
+     * cache, so it'll try to release all the chunks but it cannot release
+     * chunks v[0] and v[2] as they are dirty and inuse respectively, both
+     * of which are not safe_to_release().
+     */
+    AZLogInfo("========== [Release] --> (0, 200) ==========");
+    v[0].get_membuf()->set_inuse();
+    v[0].get_membuf()->set_locked();
+    v[0].get_membuf()->set_dirty();
+    v[0].get_membuf()->clear_locked();
+    assert(!v[0].safe_to_release());
+    assert(v[1].safe_to_release());
+    v[2].get_membuf()->set_inuse();
+    // hold the lock at the time of release() to ensure this works.
+    v[2].get_membuf()->set_locked();
+    assert(!v[2].safe_to_release());
+
+    cache.release(0, 200);
+
+    v[0].get_membuf()->set_locked();
+    v[0].get_membuf()->clear_dirty();
+    v[0].get_membuf()->clear_locked();
+    v[0].get_membuf()->clear_inuse();
+
+    v[2].get_membuf()->clear_locked();
+    v[2].get_membuf()->clear_inuse();
+
+    /*
+     * Get cache chunks covering range [5, 200).
+     * This should return following chunks:
+     * 1. Existing chunk [5, 30).
+     * 2. New chunk [30, 50).
+     * 3. Existing chunk [50, 100).
+     * 4. Newly allocated chunk [100, 200).
+     *
+     * The largest contiguous block containing the requested chunk is
+     * [5, 200).
+     */
+    AZLogInfo("========== [Get] --> (5, 195) ==========");
+    v = cache.get(5, 195, &l, &r);
+    assert(v.size() == 4);
+
+    ASSERT_EXTENT(5, 200);
+    ASSERT_EXISTING(v[0], 5, 30);
+    ASSERT_NEW(v[1], 30, 50);
+    ASSERT_EXISTING(v[2], 50, 100);
+    ASSERT_NEW(v[3], 100, 200);
+
+    for (auto e : v) {
+        PRINT_CHUNK(e);
+    }
+
+    /*
+     * Release [0, 500) should cover the entire cache and release everything.
+     */
+    AZLogInfo("========== [Release] --> (0, 500) ==========");
+    cache.release(0, 500);
+    assert(cache.chunkmap.empty());
+
+    cache.release(0, 1);
+    cache.release(10, 20);
+    cache.release(2, 2000);
 
     /*
      * Now run some random cache get/release to stress test the cache.

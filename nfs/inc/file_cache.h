@@ -661,6 +661,17 @@ public:
     }
 
     /**
+     * Is it safe to release (remove from chunkmap) this bytes_chunk?
+     * bytes_chunk whose underlying membuf is either inuse or dirty are not
+     * safe to release.
+     */
+    bool safe_to_release() const
+    {
+        const struct membuf *mb = get_membuf();
+        return !mb->is_inuse() && !mb->is_dirty();
+    }
+
+    /**
      * Constructor to create a brand new chunk with newly allocated buffer.
      * This chunk is the sole owner of alloc_buffer and 'buffer_offset' is 0.
      * Later as this chunk is split or returned to the caller through get(),
@@ -793,6 +804,13 @@ public:
         // File will be opened on first access.
         assert(backing_file_fd == -1);
         assert((int) backing_file_len == 0);
+
+        if (!backing_file_name.empty()) {
+            AZLogDebug("File-backed bytes_chunk_cache created with backing "
+                       "file {}", backing_file_name);
+        } else {
+            AZLogDebug("Memory-backed bytes_chunk_cache created");
+        }
     }
 
     ~bytes_chunk_cache()
@@ -877,29 +895,33 @@ public:
     }
 
     /**
-     * Release chunks in the range [offset, offset+length) from chunkmap.
-     * Only chunks which are fully contained inside the range are released,
-     * while chunks which lie partially in the range are trimmed (by updating
-     * the buffer, length and offset members). These will be released later when
-     * a release() call causes them to contain no valid data.
-     * After a successful call to release(offset, length), there won't be any
-     * chunk covering byte range [offset, offset+length) in chunkmap.
+     * Try and release chunks in the range [offset, offset+length) from
+     * chunkmap. Only chunks which are fully contained inside the range would
+     * be released, while chunks which lie partially in the range are trimmed
+     * (by updating the buffer, length and offset members). These will be
+     * released later when a future release() call causes them to contain no
+     * valid data. release() will skip/ignore any byte range that's not
+     * currently cached.
      *
-     * Note: All bytes in range [offset, offset+length) MUST be present in the
-     *       cache, else it'll cause assertion failure. There is no usecase
-     *       for releasing arbitrary portions of the cache and hence we don't
-     *       implement that. The only known valid usecases for release() are:
-     *       1. After a write completes release the chunks written. This can be
-     *          done to make sure we only have dirty data (not yet written to
-     *          the backing blob) in the cache.
-     *       2. We do a get() to allocate 4K bytes in the cache but the file
-     *          read() returned eof after 100 bytes, then [100, 4096) must be
-     *          release()d, and this is fine since we know that the cache has
-     *          that range.
-     *       If you want to release an arbitrary range, first do a get() of that
-     *       range and then release() each chunk separately.
+     * Note that a release() call is an advice and not an order. Only those
+     * chunks will be released which are not actively being used. Following
+     * chunks won't be released:
+     * - Which are inuse.
+     *   These may have ongoing IOs, so not safe to release.
+     * - Which are dirty.
+     *   These need to be flushed to the Blob, else we lose data.
      *
-     * For releasing all chunks and effectively nuking the cache, use clear().
+     * If release() successfully releases one or more chunks, a subsequent
+     * call to get() won't find them in the chunkmap and hence will allocate
+     * fresh chunk (with is_empty true).
+     *
+     * Note that release() removes the chunks from chunkmap and drops the
+     * original ref on the membufs. The membuf itself won't be freed till the
+     * last ref on it is dropped, i.e., users can safely access membuf(s)
+     * returned by get() even if some other thread calls release().
+     *
+     * Note: For releasing all chunks and effectively nuking the cache, use
+     *       clear().
      */
     void release(uint64_t offset, uint64_t length)
     {
@@ -933,7 +955,7 @@ public:
      * - Which are inuse.
      *   These may have ongoing IOs, so not safe to release.
      * - Which are dirty.
-     *   These need to be flushed to the Blob.
+     *   These need to be flushed to the Blob, else we lose data.
      */
     void clear();
 
