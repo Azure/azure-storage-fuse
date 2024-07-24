@@ -791,7 +791,7 @@ void rpc_task::readfile_from_server(struct bytes_chunk &bc)
          * reading it. Hence this will be freed in the readfile_callback after
          * the buffer is populated.
          * Note: This will block till the lock is obtained.
-        */
+         */
         bc.get_membuf()->set_locked();
 
         // Check if the buffer got updated by the time we got the lock.
@@ -1048,7 +1048,7 @@ static void readdirplus_callback(
 
     if (status == 0) {
         const struct entryplus3 *entry =
-                res->READDIRPLUS3res_u.resok.reply.entries;
+            res->READDIRPLUS3res_u.resok.reply.entries;
         const bool eof = res->READDIRPLUS3res_u.resok.reply.eof;
         int64_t eof_cookie = -1;
 

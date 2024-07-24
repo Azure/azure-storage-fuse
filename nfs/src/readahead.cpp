@@ -319,10 +319,12 @@ int ra_state::issue_readaheads()
             args.count = bc.length;
 
             /*
-             * Grab a ref on this inode so that it is not freed when the readahead reads are going on.
-             * Since the fuse layer does not know of this readahead operation, it is possible that the fuse may
-             * release this inode soon after the application read returns.
-             * We do not want to be in that state and hence grab an extra ref on this inode.
+             * Grab a ref on this inode so that it is not freed when the
+             * readahead reads are going on. Since the fuse layer does not
+             * know of this readahead operation, it is possible that the fuse
+             * may release this inode soon after the application read returns.
+             * We do not want to be in that state and hence grab an extra ref
+             * on this inode.
              * This should be decremented in readahead_callback()
              */
             inode->incref();

@@ -430,8 +430,8 @@ static void aznfsc_ll_init(void *userdata,
     conn->want &= ~FUSE_CAP_WRITEBACK_CACHE;
     conn->want |= FUSE_CAP_PARALLEL_DIROPS;
     conn->want &= ~FUSE_CAP_POSIX_ACL;
-    //conn->want &= ~FUSE_CAP_CACHE_SYMLINKS;
-    //conn->want &= ~FUSE_CAP_SETXATTR_EXT;
+    conn->want &= ~FUSE_CAP_CACHE_SYMLINKS;
+    conn->want &= ~FUSE_CAP_SETXATTR_EXT;
 
 #if 0
     /*
@@ -648,8 +648,8 @@ static void aznfsc_ll_open(fuse_req_t req,
     fi->direct_io = 1;
     fi->keep_cache = 0;
     fi->nonseekable = 0;
-    //fi->parallel_direct_writes = 1;
-    //fi->noflush = 0;
+    fi->parallel_direct_writes = 1;
+    fi->noflush = 0;
 
     fuse_reply_open(req, fi);
 }
@@ -735,7 +735,7 @@ static void aznfsc_ll_opendir(fuse_req_t req,
     fi->keep_cache = 0;
     fi->nonseekable = 0;
     fi->cache_readdir = 0;
-    //fi->noflush = 0;
+    fi->noflush = 0;
 
     fuse_reply_open(req, fi);
 }
