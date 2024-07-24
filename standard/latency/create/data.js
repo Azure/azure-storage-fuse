@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1721722386403,
+  "lastUpdate": 1721815788451,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -2341,6 +2341,45 @@ window.BENCHMARK_DATA = {
           "url": "https://github.com/Azure/azure-storage-fuse/commit/73ff84985ac6e6008be4710a4df7c09b405f6d45"
         },
         "date": 1721722386148,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "create_1000_files_in_10_threads",
+            "value": 0,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "create_1000_files_in_100_threads",
+            "value": 0,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "create_1l_files_in_20_threads",
+            "value": 0,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "98318303+souravgupta-msft@users.noreply.github.com",
+            "name": "Sourav Gupta",
+            "username": "souravgupta-msft"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "f2e14e63aedc25674fb8d8a368d93b85e8cf957a",
+          "message": "Reset block when released (#1467)",
+          "timestamp": "2024-07-24T13:05:43+05:30",
+          "tree_id": "52c713d80b62df1e08c91b4068aeefdc8e362ed1",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/f2e14e63aedc25674fb8d8a368d93b85e8cf957a"
+        },
+        "date": 1721815788201,
         "tool": "customSmallerIsBetter",
         "benches": [
           {
