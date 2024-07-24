@@ -227,6 +227,20 @@ struct membuf
      */
     void set_uptodate()
     {
+        /*
+         * Must be locked and inuse.
+         * Note that following is the correct sequence of operations.
+         *
+         * get()
+         * set_locked()
+         * << read data from blob into the above membuf(s) >>
+         * set_uptodate()
+         * clear_locked()
+         * clear_inuse()
+         */
+        assert(is_locked());
+        assert(is_inuse());
+
         flag |= MB_Flag::Uptodate;
 
         AZLogDebug("Set uptodate membuf [{}, {}), fd={}",
@@ -238,6 +252,10 @@ struct membuf
      */
     void clear_uptodate()
     {
+        // See comment in set_uptodate() above.
+        assert(is_locked());
+        assert(is_inuse());
+
         flag &= ~MB_Flag::Uptodate;
 
         AZLogDebug("Clear uptodate membuf [{}, {}), fd={}",
@@ -246,7 +264,10 @@ struct membuf
 
     bool is_locked() const
     {
-        return (flag & MB_Flag::Locked);
+        const bool locked = (flag & MB_Flag::Locked);
+        // If locked, must be inuse.
+        assert(is_inuse() || !locked);
+        return locked;
     }
 
     /**
@@ -256,6 +277,7 @@ struct membuf
      */
     bool try_lock()
     {
+        assert(is_inuse());
         return !(flag.fetch_or(MB_Flag::Locked) & MB_Flag::Locked);
     }
 
@@ -270,6 +292,19 @@ struct membuf
     {
         AZLogDebug("Locking membuf [{}, {}), fd={}",
                    offset, offset+length, backing_file_fd);
+
+        /*
+         * get() returns with inuse set on the returned membufs.
+         * Caller should drop the inuse count only after the IO is fully done.
+         * i.e. following is the valid sequence of calls.
+         *
+         * get()
+         * set_locked()
+         * << perform IO >>
+         * clear_locked()
+         * clear_inuse()
+         */
+        assert(is_inuse());
 
         // Common case, not locked, lock w/o waiting.
         while (!try_lock()) {
@@ -291,6 +326,7 @@ struct membuf
 
         // Must never return w/o locking the membuf.
         assert(is_locked());
+        assert(is_inuse());
 
         return;
     }
@@ -300,6 +336,12 @@ struct membuf
      */
     void clear_locked()
     {
+        // Must be locked, catch bad callers.
+        assert(is_locked());
+
+        // inuse must be set. See comment in set_locked().
+        assert(is_inuse());
+
         {
             std::unique_lock<std::mutex> _lock(lock);
          	
@@ -327,6 +369,20 @@ struct membuf
 
     void set_dirty()
     {
+        /*
+         * Must be locked and inuse.
+         * Note that following is the correct sequence of operations.
+         *
+         * get()
+         * set_locked()
+         * << write application data into the above membuf(s) >>
+         * set_dirty()
+         * clear_locked()
+         * clear_inuse()
+         */
+        assert(is_locked());
+        assert(is_inuse());
+
         flag |= MB_Flag::Dirty;
 
         AZLogDebug("Set dirty membuf [{}, {}), fd={}",
@@ -335,6 +391,10 @@ struct membuf
 
     void clear_dirty()
     {
+        // See comment in set_dirty().
+        assert(is_locked());
+        assert(is_inuse());
+
         flag &= ~MB_Flag::Dirty;
 
         AZLogDebug("Clear dirty membuf [{}, {}), fd={}",
@@ -779,6 +839,8 @@ public:
      *               solution to reuse buffer for all cases, but the most
      *               common case is now addressed! Leaving the TODO for
      *               tracking the generalized case.
+     *       Update2: This introduces challenges, so it's turned off for now.
+     *                see UTILIZE_TAILROOM_FROM_LAST_MEMBUF.
      *
      * Note: Caller must do the following for correctly using the returned
      *       bytes_chunks:
@@ -796,9 +858,15 @@ public:
      *          drops inuse count only after correctly setting the state,
      *          i.e., call set_dirty() after writing to the membuf.
      *       2. IOs can be performed to the membuf only after locking it using
-     *          set_locked(). This must be done before calling clear_inuse().
-     *          Once the IO completes, call clear_locked() followed by
-     *          clear_inuse().
+     *          set_locked(). Once the IO completes release the lock using
+     *          clear_locked(). This must be done before calling clear_inuse().
+     *          So the logical seq of operations are:
+     *          >> get()
+     *          >> for each bytes_chunk returned
+     *          >>      set_locked()
+     *          >>      perform IO
+     *          >>      clear_locked()
+     *          >>      clear_inuse()
      */
     std::vector<bytes_chunk> get(uint64_t offset,
                                  uint64_t length,
@@ -810,10 +878,10 @@ public:
     }
 
     /**
-     * Free chunks in the range [offset, offset+length).
-     * Only chunks which are completely contained inside the range are freed,
+     * Release chunks in the range [offset, offset+length) from chunkmap.
+     * Only chunks which are fully contained inside the range are released,
      * while chunks which lie partially in the range are trimmed (by updating
-     * the buffer, length and offset members). These will be freed later when
+     * the buffer, length and offset members). These will be released later when
      * a release() call causes them to contain no valid data.
      * After a successful call to release(offset, length), there won't be any
      * chunk covering byte range [offset, offset+length) in chunkmap.
@@ -861,6 +929,12 @@ public:
      * This will be called for invalidating the cache for a file, typically
      * when we detect that file has changed (through getattr or preop attrs
      * telling that mtime is different than what we have cached).
+     *
+     * Following chunks won't be released.
+     * - Which are inuse.
+     *   These may have ongoing IOs, so not safe to release.
+     * - Which are dirty.
+     *   These need to be flushed to the Blob.
      */
     void clear();
 
