@@ -869,8 +869,7 @@ private:
         assert(free_task_index.empty());
 
         // Initialize the index stack.
-        for (int i = 0; i < MAX_OUTSTANDING_RPC_TASKS; i++)
-        {
+        for (int i = 0; i < MAX_OUTSTANDING_RPC_TASKS; i++) {
             free_task_index.push(i);
             rpc_task_list.emplace_back(new rpc_task(client, i));
         }

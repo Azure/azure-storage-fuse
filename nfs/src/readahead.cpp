@@ -351,7 +351,7 @@ int ra_state::issue_readaheads()
                  * This call failed due to internal issues like OOM etc
                  * and not due to an actual RPC/NFS error, anyways pretend
                  * as if we never issued this.
-                 */  
+                 */
                 AZLogWarn("[{}] Skipping readahead at off: {} len: {}. "
                           "rpc_nfs3_read_task() failed!",
                           inode->get_fuse_ino(), args.offset, args.count);

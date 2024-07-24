@@ -505,8 +505,7 @@ void rpc_task::run_read()
      * If yes, send response to caller by reading data from cache.
      */
     size_t data_length_in_cache = 0;
-    for (size_t i = 0; i < size; i++)
-    {
+    for (size_t i = 0; i < size; i++) {
         // If the data is present in cache, membuf should be marked uptodate.
         if (bytes_vector[i].get_membuf()->is_uptodate())
         {
@@ -519,8 +518,7 @@ void rpc_task::run_read()
                  * again from cache is negligible since this is a sequential read pattern.
                  * Free such chunks to reduce the memory utilization.
                  */
-                for (size_t j = 0; j <= i; j++)
-                {
+                for (size_t j = 0; j <= i; j++) {
                     readfile_handle->release(
                         bytes_vector[j].offset,
                         bytes_vector[j].length);
@@ -544,8 +542,7 @@ void rpc_task::run_read()
      */
     num_of_reads_issued_to_backend = 1;
 
-    for (size_t i = 0; i < size; i++)
-    {
+    for (size_t i = 0; i < size; i++) {
         // One or more chunks don't have the requested data, issue read for those.
         if (!bytes_vector[i].get_membuf()->is_uptodate())
         {
@@ -558,8 +555,7 @@ void rpc_task::run_read()
         std::unique_lock<std::shared_mutex> lock(read_task_lock);
         --num_of_reads_issued_to_backend;
 
-        if (num_of_reads_issued_to_backend == 0)
-        {
+        if (num_of_reads_issued_to_backend == 0) {
             goto send_response;
         }
         else
@@ -585,8 +581,7 @@ void rpc_task::send_readfile_response(int status)
     // We should have completed all the reads before sending the response to caller.
     assert(num_of_reads_issued_to_backend == 0);
 
-    if (status != 0)
-    {
+    if (status != 0) {
         // Non-zero status indicates failure, reply with error in such cases.
         reply_error(status);
         return;
@@ -603,8 +598,7 @@ void rpc_task::send_readfile_response(int status)
 
     for (size_t i = 0; (i < count && remaining_size > 0); i++)
     {
-        if (remaining_size >= bytes_vector[i].length)
-        {
+        if (remaining_size >= bytes_vector[i].length) {
             /*
              * If the first chunk itself is empty, then there is no need to
              * look further, so just send empty response as we reach here only
@@ -676,8 +670,7 @@ static void readfile_callback(
     // We should never get more data than what we requested.
     assert (bc->length >= res->READ3res_u.resok.count);
 
-    if (status == 0)
-    {
+    if (status == 0) {
         if (bc->is_empty && (bc->length == res->READ3res_u.resok.count))
         {
             /*
@@ -726,8 +719,7 @@ static void readfile_callback(
         // Decrement the number of reads issued.
         task->num_of_reads_issued_to_backend--;
 
-        if (task->readfile_completed)
-        {
+        if (task->readfile_completed) {
             /*
              * If readfile_completed is set, it means that there was a previous failure encountered
              * as a result of which we have already sent the failure response to the caller.
