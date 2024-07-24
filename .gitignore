@@ -10,7 +10,7 @@ blobfuse2
 adlsgen1fuse
 venv/
 *.backup
-__debug_bin
+__debug_bin*
 .env
 *.prof
 cpplite/
