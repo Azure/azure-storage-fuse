@@ -351,11 +351,15 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 		}
 
 		lst, _ := handle.GetValue("blockList")
-		listMap := lst.(map[int64]string)
+		listMap := lst.(map[int64]*blockInfo)
 
 		listLen := len(*blockList)
 		for idx, block := range *blockList {
-			listMap[int64(idx)] = block.Id
+			listMap[int64(idx)] = &blockInfo{
+				id:        block.Id,
+				committed: true,
+				size:      block.Size,
+			}
 			// All blocks shall of same size otherwise fail the open call
 			// Last block is allowed to be of smaller size as it can be partial block
 			if block.Size != bc.blockSize && idx != (listLen-1) {
@@ -388,7 +392,7 @@ func (bc *BlockCache) prepareHandleForBlockCache(handle *handlemap.Handle) {
 	}
 
 	// Create map to hold the block-ids for this file
-	listMap := make(map[int64]string, 0)
+	listMap := make(map[int64]*blockInfo, 0)
 	handle.SetValue("blockList", listMap)
 
 	// Set next offset to download as 0
@@ -760,14 +764,14 @@ func (bc *BlockCache) refreshBlock(handle *handlemap.Handle, index uint64, prefe
 		handle.SetValue(fmt.Sprintf("%v", index), block)
 		handle.SetValue("#", (index + 1))
 
-		bc.lineupDownload(handle, block, prefetch)
+		bc.lineupDownload(handle, block, prefetch, true)
 	}
 
 	return nil
 }
 
 // lineupDownload : Create a work item and schedule the download
-func (bc *BlockCache) lineupDownload(handle *handlemap.Handle, block *Block, prefetch bool) {
+func (bc *BlockCache) lineupDownload(handle *handlemap.Handle, block *Block, prefetch bool, pushFront bool) {
 	item := &workItem{
 		handle:   handle,
 		block:    block,
@@ -781,7 +785,12 @@ func (bc *BlockCache) lineupDownload(handle *handlemap.Handle, block *Block, pre
 		_ = handle.Buffers.Cooked.Remove(block.node)
 	}
 
-	block.node = handle.Buffers.Cooking.PushFront(block)
+	if pushFront {
+		block.node = handle.Buffers.Cooking.PushFront(block)
+	} else {
+		// push back to cooking list in case of write scenario where a block is downloaded before it is updated
+		block.node = handle.Buffers.Cooking.PushBack(block)
+	}
 	block.flags.Set(BlockFlagDownloading)
 
 	// Send the work item to worker pool to schedule download
@@ -906,6 +915,8 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 	options.Handle.Lock()
 	defer options.Handle.Unlock()
 
+	log.Debug("BlockCache::WriteFile : Writing handle %v=>%v: offset %v, %v bytes", options.Handle.ID, options.Handle.Path, options.Offset, len(options.Data))
+
 	// Keep getting next blocks until you read the request amount of data
 	dataWritten := int(0)
 	for dataWritten < len(options.Data) {
@@ -915,6 +926,8 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 			log.Err("BlockCache::WriteFile : Unable to allocate block for %s [%s]", options.Handle.Path, err.Error())
 			return dataWritten, err
 		}
+
+		log.Debug("BlockCache::WriteFile : Writing to block %v, offset %v for handle %v=>%v", block.id, options.Offset, options.Handle.ID, options.Handle.Path)
 
 		// Copy the incoming data to block
 		writeOffset := uint64(options.Offset) - block.offset
@@ -945,7 +958,7 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 		return nil, fmt.Errorf("block index out of range. Increase your block size")
 	}
 
-	//log.Debug("FilBlockCacheCache::getOrCreateBlock : Get block for %s, index %v", handle.Path, index)
+	log.Debug("FilBlockCacheCache::getOrCreateBlock : Get block for %s, index %v", handle.Path, index)
 
 	var block *Block
 	var err error
@@ -970,7 +983,7 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 
 		if block.offset < uint64(handle.Size) {
 			// We are writing somewhere in between so just fetch this block
-			bc.lineupDownload(handle, block, false)
+			bc.lineupDownload(handle, block, false, false)
 
 			// Now wait for download to complete
 			<-block.state
@@ -1020,13 +1033,14 @@ func (bc *BlockCache) stageBlocks(handle *handlemap.Handle, cnt int) error {
 	node := nodeList.Front()
 
 	lst, _ := handle.GetValue("blockList")
-	listMap := lst.(map[int64]string)
+	listMap := lst.(map[int64]*blockInfo)
 
 	for node != nil && cnt > 0 {
 		nextNode := node.Next()
 		block := node.Value.(*Block)
 
 		if block.IsDirty() {
+			log.Debug("BlockCache::stageBlocks : Sending block %v for upload", block.id)
 			bc.lineupUpload(handle, block, listMap)
 			cnt--
 		}
@@ -1038,11 +1052,15 @@ func (bc *BlockCache) stageBlocks(handle *handlemap.Handle, cnt int) error {
 }
 
 // lineupUpload : Create a work item and schedule the upload
-func (bc *BlockCache) lineupUpload(handle *handlemap.Handle, block *Block, listMap map[int64]string) {
+func (bc *BlockCache) lineupUpload(handle *handlemap.Handle, block *Block, listMap map[int64]*blockInfo) {
 	// id := listMap[block.id]
 	// if id == "" {
 	id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
-	listMap[block.id] = id
+	listMap[block.id] = &blockInfo{
+		id:        id,
+		committed: false,
+		size:      block.endIndex - block.offset,
+	}
 	//}
 
 	item := &workItem{
@@ -1119,10 +1137,20 @@ func (bc *BlockCache) upload(item *workItem) {
 	flock.Lock()
 	defer flock.Unlock()
 
+	endIndex := item.block.endIndex
+	// if a block has data less than block size and is not the last block,
+	// add null at the end and upload the full block
+	if item.block.endIndex-item.block.offset < bc.blockSize && item.block.endIndex < uint64(item.handle.Size) {
+		endIndex = item.block.offset + bc.blockSize
+		log.Debug("BlockCache::upload : Appending null for block %v", item.block.id)
+	} else if item.block.endIndex == uint64(item.handle.Size) {
+		log.Debug("BlockCache::upload : Last block %v", item.block.id)
+	}
+
 	// This block is updated so we need to stage it now
 	err := bc.NextComponent().StageData(internal.StageDataOptions{
 		Name:   item.handle.Path,
-		Data:   item.block.data[0 : item.block.endIndex-item.block.offset],
+		Data:   item.block.data[0 : endIndex-item.block.offset],
 		Offset: uint64(item.block.id),
 		Id:     item.blockId})
 	if err != nil {
@@ -1154,7 +1182,7 @@ func (bc *BlockCache) upload(item *workItem) {
 		// Dump this block to local disk cache
 		f, err := os.Create(localPath)
 		if err == nil {
-			_, err := f.Write(item.block.data[0 : item.block.endIndex-item.block.offset])
+			_, err := f.Write(item.block.data[0 : endIndex-item.block.offset])
 			if err != nil {
 				log.Err("BlockCache::upload : Failed to write %s to disk [%v]", localPath, err.Error())
 				_ = os.Remove(localPath)
@@ -1227,6 +1255,13 @@ func (bc *BlockCache) commitBlocks(handle *handlemap.Handle) error {
 		return err
 	}
 
+	// set all the blocks as committed
+	list, _ := handle.GetValue("blockList")
+	listMap := list.(map[int64]*blockInfo)
+	for k := range listMap {
+		listMap[k].committed = true
+	}
+
 	handle.Flags.Clear(handlemap.HandleFlagDirty)
 	return nil
 }
@@ -1234,7 +1269,7 @@ func (bc *BlockCache) commitBlocks(handle *handlemap.Handle) error {
 func (bc *BlockCache) getBlockIDList(handle *handlemap.Handle) ([]string, error) {
 	// generate the block id list order
 	list, _ := handle.GetValue("blockList")
-	listMap := list.(map[int64]string)
+	listMap := list.(map[int64]*blockInfo)
 
 	offsets := make([]int64, 0)
 	blockIDList := make([]string, 0)
@@ -1251,8 +1286,8 @@ func (bc *BlockCache) getBlockIDList(handle *handlemap.Handle) ([]string, error)
 
 	for i < len(offsets) {
 		if index == offsets[i] {
-			blockIDList = append(blockIDList, listMap[offsets[i]])
-			log.Debug("BlockCache::getBlockIDList : Preparing blocklist for %v=>%s (%v :  %v)", handle.ID, handle.Path, offsets[i], listMap[offsets[i]])
+			blockIDList = append(blockIDList, listMap[offsets[i]].id)
+			log.Debug("BlockCache::getBlockIDList : Preparing blocklist for %v=>%s (%v :  %v, data length %v)", handle.ID, handle.Path, offsets[i], listMap[offsets[i]].id, listMap[offsets[i]].size)
 			index++
 			i++
 		} else {
@@ -1268,9 +1303,13 @@ func (bc *BlockCache) getBlockIDList(handle *handlemap.Handle) ([]string, error)
 				}
 
 				blockIDList = append(blockIDList, zeroBlockID)
-				listMap[index] = zeroBlockID
+				listMap[index] = &blockInfo{
+					id:        zeroBlockID,
+					committed: false,
+					size:      bc.blockPool.blockSize,
+				}
 				log.Debug("BlockCache::getBlockIDList : Adding zero block for %v=>%s, index %v", handle.ID, handle.Path, index)
-				log.Debug("BlockCache::getBlockIDList : Preparing blocklist for %v=>%s (%v :  %v)", handle.ID, handle.Path, index, zeroBlockID)
+				log.Debug("BlockCache::getBlockIDList : Preparing blocklist for %v=>%s (%v :  %v, zero block size %v)", handle.ID, handle.Path, index, zeroBlockID, bc.blockPool.blockSize)
 				index++
 			}
 		}
