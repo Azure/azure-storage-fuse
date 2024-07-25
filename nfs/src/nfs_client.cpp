@@ -344,6 +344,33 @@ void nfs_client::readdirplus(
     tsk->run_readdirplus();
 }
 
+void nfs_client::read(
+    fuse_req_t req,
+    fuse_ino_t ino,
+    size_t size,
+    off_t off,
+    struct fuse_file_info *fi)
+{
+    struct rpc_task *tsk1 = rpc_task_helper->alloc_rpc_task();
+    auto nfs_inod = get_nfs_inode_from_ino(ino);
+
+    tsk1->init_read(req, ino, size, off, fi);
+
+    // Update the ra state about the application read request received.
+    nfs_inod->readahead_state->on_application_read(off, size);
+
+    // Issue the application read task.
+    tsk1->run_read();
+
+    // Issue readahead.
+    const int num_ra = nfs_inod->readahead_state->issue_readaheads();
+
+    AZLogDebug("{} readaheads issued for client read offset: {} size: {}",
+        num_ra,
+        off,
+        size);
+}
+
 /*
  * Creates a new inode for the given fh and passes it to fuse layer.
  * This will be called by the APIs which must return a filehandle back to the

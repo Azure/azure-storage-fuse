@@ -214,6 +214,9 @@ delete_ctx:
 
     // Free the context.
     delete ctx;
+
+    // Decrement the extra ref taken on inode at the time read was issued.
+    inode->decref();
 }
 
 int ra_state::issue_readaheads()
@@ -315,6 +318,17 @@ int ra_state::issue_readaheads()
             args.offset = bc.offset;
             args.count = bc.length;
 
+            /*
+             * Grab a ref on this inode so that it is not freed when the
+             * readahead reads are going on. Since the fuse layer does not
+             * know of this readahead operation, it is possible that the fuse
+             * may release this inode soon after the application read returns.
+             * We do not want to be in that state and hence grab an extra ref
+             * on this inode.
+             * This should be decremented in readahead_callback()
+             */
+            inode->incref();
+
             AZLogInfo("[{}] Issuing readahead read to backend at "
                        "off: {} len: {}",
                        inode->get_fuse_ino(),
@@ -351,6 +365,11 @@ int ra_state::issue_readaheads()
                 read_cache->release(bc.offset, bc.length);
                 tsk->free_rpc_task();
                 delete ctx;
+
+                // Decrement the extra ref that was taken.
+                inode->decref();
+
+                continue;
             }
 
             ra_issued++;

@@ -93,7 +93,7 @@ private:
     uint64_t max_ino = 0;
 
     nfs_client() :
-    	transport(this)
+        transport(this)
     {
     }
 
@@ -120,7 +120,7 @@ public:
      */
     static nfs_client& get_instance()
     {
-    	static nfs_client client;
+        static nfs_client client;
         return client;
     }
 
@@ -305,6 +305,13 @@ public:
         size_t size,
         off_t off,
         struct fuse_file_info* file);
+
+    void read(
+        fuse_req_t req,
+        fuse_ino_t ino,
+        size_t size,
+        off_t off,
+        struct fuse_file_info *fi);
 
     static void stat_from_fattr3(struct stat* st, const struct fattr3* attr);
 

@@ -68,7 +68,7 @@ bool nfs_connection::open()
         mo.wsize_adj = nfs_get_writemax(nfs_context);
     } else {
         // All connections must have the same negotiated value.
-        assert(mo.wsize_adj == (int) nfs_get_readmax(nfs_context));
+        assert(mo.wsize_adj == (int) nfs_get_writemax(nfs_context));
     }
 
     if (mo.readdir_maxcount_adj == 0) {

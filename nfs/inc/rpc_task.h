@@ -437,6 +437,37 @@ private:
 
     // Put a cap on how many async tasks we can start.
     static std::atomic<int> async_slots;
+
+public:    
+    /*
+     * Total number of parallel reads issued to backend.
+     * A single RPC read task can result in issuing multiple read calls to the
+     * backend server to decrease the processing time, hence this wlll be used
+     * to keep track of these issued reads.
+     * This is valid only for reads.
+     * This should be updated after taking the lock read_task_lock.
+     */
+    int num_of_reads_issued_to_backend;
+    
+    /*
+     * A single RPC read task can result in issuing multiple read calls to the
+     * backend server and hence we should wait till we complete all these reads
+     * before returning response to the caller.
+     * One this is set to True, the response can be safely returned to the caller.
+     * This is valid only for reads.
+     * This should be updated after taking the lock read_task_lock.
+     */
+    bool readfile_completed;
+    
+    /*
+     * This is currently valid only for reads.
+     * This contains vector of byte chunks which will be returned by making
+     * a call to bytes_chunk_cache::get().
+     */
+    std::vector<bytes_chunk> bytes_vector;
+
+    std::shared_mutex read_task_lock;
+
 protected:
     /*
      * Operation type.
@@ -448,7 +479,23 @@ public:
     rpc_task(struct nfs_client *_client, int _index) :
         client(_client),
         req(nullptr),
-        index(_index)
+        index(_index),
+        num_of_reads_issued_to_backend(0),
+        readfile_completed(false)
+    {
+    }
+
+    /*
+     * Move constructor.
+     * Need since we have defined the mutex here.
+     */
+    rpc_task(rpc_task&& tsk) :
+	   client(tsk.client),
+	   req(tsk.req),
+	   index(tsk.index),
+	   num_of_reads_issued_to_backend(tsk.num_of_reads_issued_to_backend),
+	   readfile_completed(tsk.readfile_completed),
+       	   rpc_api(tsk.rpc_api)
     {
     }
 
@@ -602,12 +649,14 @@ public:
 
     void run_readdirplus();
 
-    // This function is responsible for setting up the members of read_task.
+    // This function is responsible for setting up the members of read task.
     void init_read(fuse_req *request,
                    fuse_ino_t inode,
                    size_t size,
                    off_t offset,
                    struct fuse_file_info *file);
+
+    void run_read();
 
     void set_fuse_req(fuse_req *request)
     {
@@ -661,6 +710,12 @@ public:
     void reply_write(size_t count)
     {
         fuse_reply_write(req, count);
+        free_rpc_task();
+    }
+
+    void reply_iov(struct iovec* iov, int count)
+    {
+        fuse_reply_iov(req, iov, count);
         free_rpc_task();
     }
 
@@ -778,6 +833,9 @@ public:
 
     void fetch_readdir_entries_from_server();
     void fetch_readdirplus_entries_from_server();
+
+    void send_readfile_response(int status);
+    void readfile_from_server(struct bytes_chunk &bc);
 };
 
 class rpc_task_helper
@@ -811,8 +869,7 @@ private:
         assert(free_task_index.empty());
 
         // Initialize the index stack.
-        for (int i = 0; i < MAX_OUTSTANDING_RPC_TASKS; i++)
-        {
+        for (int i = 0; i < MAX_OUTSTANDING_RPC_TASKS; i++) {
             free_task_index.push(i);
             rpc_task_list.emplace_back(new rpc_task(client, i));
         }
