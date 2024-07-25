@@ -1212,27 +1212,16 @@ func (bc *BlockCache) commitBlocks(handle *handlemap.Handle) error {
 		}
 	}
 
-	// Generate the block id list order now
-	list, _ := handle.GetValue("blockList")
-	listMap := list.(map[int64]string)
-
-	offsets := make([]int64, 0)
-	blockIdList := make([]string, 0)
-
-	for k := range listMap {
-		offsets = append(offsets, k)
-	}
-	sort.Slice(offsets, func(i, j int) bool { return offsets[i] < offsets[j] })
-
-	for i := 0; i < len(offsets); i++ {
-		blockIdList = append(blockIdList, listMap[offsets[i]])
-		log.Debug("BlockCache::commitBlocks : Preparing blocklist for %v=>%s (%v :  %v)", handle.ID, handle.Path, i, listMap[offsets[i]])
+	blockIDList, err := bc.getBlockIDList(handle)
+	if err != nil {
+		log.Err("BlockCache::commitBlocks : Failed to get block id list for %v [%v]", handle.Path, err.Error())
+		return err
 	}
 
 	log.Debug("BlockCache::commitBlocks : Committing blocks for %s", handle.Path)
 
 	// Commit the block list now
-	err := bc.NextComponent().CommitData(internal.CommitDataOptions{Name: handle.Path, List: blockIdList, BlockSize: bc.blockSize})
+	err = bc.NextComponent().CommitData(internal.CommitDataOptions{Name: handle.Path, List: blockIDList, BlockSize: bc.blockSize})
 	if err != nil {
 		log.Err("BlockCache::commitBlocks : Failed to commit blocks for %s [%s]", handle.Path, err.Error())
 		return err
@@ -1240,6 +1229,79 @@ func (bc *BlockCache) commitBlocks(handle *handlemap.Handle) error {
 
 	handle.Flags.Clear(handlemap.HandleFlagDirty)
 	return nil
+}
+
+func (bc *BlockCache) getBlockIDList(handle *handlemap.Handle) ([]string, error) {
+	// generate the block id list order
+	list, _ := handle.GetValue("blockList")
+	listMap := list.(map[int64]string)
+
+	offsets := make([]int64, 0)
+	blockIDList := make([]string, 0)
+
+	for k := range listMap {
+		offsets = append(offsets, k)
+	}
+	sort.Slice(offsets, func(i, j int) bool { return offsets[i] < offsets[j] })
+
+	zeroBlockStaged := false
+	zeroBlockID := ""
+	index := int64(0)
+	i := 0
+
+	for i < len(offsets) {
+		if index == offsets[i] {
+			blockIDList = append(blockIDList, listMap[offsets[i]])
+			log.Debug("BlockCache::getBlockIDList : Preparing blocklist for %v=>%s (%v :  %v)", handle.ID, handle.Path, offsets[i], listMap[offsets[i]])
+			index++
+			i++
+		} else {
+			for index < offsets[i] {
+				if !zeroBlockStaged {
+					id, err := bc.stageZeroBlock(handle, 1)
+					if err != nil {
+						return nil, err
+					}
+
+					zeroBlockStaged = true
+					zeroBlockID = id
+				}
+
+				blockIDList = append(blockIDList, zeroBlockID)
+				listMap[index] = zeroBlockID
+				log.Debug("BlockCache::getBlockIDList : Adding zero block for %v=>%s, index %v", handle.ID, handle.Path, index)
+				log.Debug("BlockCache::getBlockIDList : Preparing blocklist for %v=>%s (%v :  %v)", handle.ID, handle.Path, index, zeroBlockID)
+				index++
+			}
+		}
+	}
+
+	return blockIDList, nil
+}
+
+func (bc *BlockCache) stageZeroBlock(handle *handlemap.Handle, tryCnt int) (string, error) {
+	if tryCnt > MAX_FAIL_CNT {
+		// If we failed to write the data 3 times then just give up
+		log.Err("BlockCache::stageZeroBlock : 3 attempts to upload zero block have failed %v=>%v", handle.ID, handle.Path)
+		return "", fmt.Errorf("3 attempts to upload zero block have failed for %v=>%v", handle.ID, handle.Path)
+	}
+
+	id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
+
+	log.Debug("BlockCache::stageZeroBlock : Staging zero block for %v=>%v, try = %v", handle.ID, handle.Path, tryCnt)
+	err := bc.NextComponent().StageData(internal.StageDataOptions{
+		Name: handle.Path,
+		Data: bc.blockPool.zeroBlock.data[:],
+		Id:   id,
+	})
+
+	if err != nil {
+		log.Err("BlockCache::stageZeroBlock : Failed to write zero block for %v=>%v, try %v [%v]", handle.ID, handle.Path, tryCnt, err.Error())
+		return bc.stageZeroBlock(handle, tryCnt+1)
+	}
+
+	log.Debug("BlockCache::stageZeroBlock : Zero block id for %v=>%v = %v", handle.ID, handle.Path, id)
+	return id, nil
 }
 
 // diskEvict : Callback when a node from disk expires
