@@ -313,6 +313,7 @@ func (bb *BlockBlob) DeleteDirectory(name string) (err error) {
 }
 
 // RenameFile : Rename the file
+// Source file must exist in storage account before calling this method.
 func (bb *BlockBlob) RenameFile(source string, target string) error {
 	log.Trace("BlockBlob::RenameFile : %s -> %s", source, target)
 
@@ -390,13 +391,25 @@ func (bb *BlockBlob) RenameDirectory(source string, target string) error {
 		}
 	}
 
-	err := bb.RenameFile(source, target)
-	// check if the marker blob for source directory does not exist but
-	// blobs were present in it, which were renamed earlier
-	if err == syscall.ENOENT && srcDirPresent {
-		err = nil
+	// To rename source marker blob check its properties before calling rename on it.
+	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, source))
+	_, err := blobClient.GetProperties(context.Background(), &blob.GetPropertiesOptions{
+		CPKInfo: bb.blobCPKOpt,
+	})
+	if err != nil {
+		serr := storeBlobErrToErr(err)
+		if serr == ErrFileNotFound && srcDirPresent {
+			return nil
+		} else if serr == ErrFileNotFound {
+			log.Err("BlockBlob::RenameDirectory : %s marker blob does not exist and Src Directory doesn't Exist", source)
+			return syscall.ENOENT
+		} else {
+			log.Err("BlockBlob::RenameDirectory : Failed to get source directory marker blob properties for %s [%s]", source, err.Error())
+			return err
+		}
 	}
-	return err
+
+	return bb.RenameFile(source, target)
 }
 
 func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err error) {
