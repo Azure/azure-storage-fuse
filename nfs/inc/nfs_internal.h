@@ -112,37 +112,40 @@ struct mount_options
 
         /*
          * For Blob NFS force nfsport and mountport to avoid portmapper
-         * calls.
+         * calls. We assume Blob NFS if port is set to 2048 or 2047.
+         * For using non Blob NFS servers set port to 2049 in config.yaml.
          */
-#ifndef ENABLE_NON_AZURE_NFS
-        const int size = std::snprintf(
-                            const_cast<char*>(url.data()),
-                            url.size(),
-                            "nfs://%s%s/?version=3&debug=%d&xprtsec=none&nfsport=%d&mountport=%d&timeo=%d&retrans=%d&rsize=%d&wsize=%d&readdir-buffer=%d",
-                            server.c_str(),
-                            export_path.c_str(),
-                            debug,
-                            nfs_port,
-                            mount_port,
-                            timeo,
-                            retrans,
-                            rsize,
-                            wsize,
-                            readdir_maxcount);
-#else
-        const int size = std::snprintf(
-                            const_cast<char*>(url.data()),
-                            url.size(),
-                            "nfs://%s%s/?version=3&debug=%d&xprtsec=none&timeo=%d&retrans=%d&rsize=%d&wsize=%d&readdir-buffer=%d",
-                            server.c_str(),
-                            export_path.c_str(),
-                            debug,
-                            timeo,
-                            retrans,
-                            rsize,
-                            wsize,
-                            readdir_maxcount);
-#endif
+        int size;
+
+        if (nfs_port == 2048 || nfs_port == 2047) {
+            size = std::snprintf(
+                                const_cast<char*>(url.data()),
+                                url.size(),
+                                "nfs://%s%s/?version=3&debug=%d&xprtsec=none&nfsport=%d&mountport=%d&timeo=%d&retrans=%d&rsize=%d&wsize=%d&readdir-buffer=%d",
+                                server.c_str(),
+                                export_path.c_str(),
+                                debug,
+                                nfs_port,
+                                mount_port,
+                                timeo,
+                                retrans,
+                                rsize,
+                                wsize,
+                                readdir_maxcount);
+        } else {
+            size = std::snprintf(
+                                const_cast<char*>(url.data()),
+                                url.size(),
+                                "nfs://%s%s/?version=3&debug=%d&xprtsec=none&timeo=%d&retrans=%d&rsize=%d&wsize=%d&readdir-buffer=%d",
+                                server.c_str(),
+                                export_path.c_str(),
+                                debug,
+                                timeo,
+                                retrans,
+                                rsize,
+                                wsize,
+                                readdir_maxcount);
+        }
 
         assert(size < (int) url.size());
         url.resize(size);

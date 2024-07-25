@@ -99,6 +99,7 @@ bool aznfsc_cfg::parse_config_yaml()
 
         if ((port == -1) && config["port"]) {
             port = config["port"].as<int>();
+#ifndef ENABLE_NON_AZURE_NFS
             if (port != 2048 && port != 2047) {
                 throw YAML::Exception(
                     config["port"].Mark(),
@@ -106,6 +107,7 @@ bool aznfsc_cfg::parse_config_yaml()
                     std::to_string(port) +
                     std::string(" (can be 2048 or 2047)"));
             }
+#endif
         }
 
         if ((nconnect == -1) && config["nconnect"]) {
