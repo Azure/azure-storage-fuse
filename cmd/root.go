@@ -151,6 +151,16 @@ func beginDetectNewVersion() chan interface{} {
 			return
 		}
 
+		blockedVersions := common.Blobfuse2ListContainerURL + "/blockedversions/" + common.Blobfuse2Version
+		isBlocked := checkVersionExists(blockedVersions)
+
+		if isBlocked {
+			blockedPage := common.BlobFuse2BlockingURL + "#" + strings.ReplaceAll(strings.ReplaceAll(common.Blobfuse2Version, ".", ""), "~", "")
+			fmt.Fprintf(stderr, "Visit %s to see the list of vulnerabilities blocking your current version [%s]\n", blockedPage, common.Blobfuse2Version)
+			log.Warn("Visit %s to see the list of vulnerabilities blocking your current version [%s]\n", blockedPage, common.Blobfuse2Version)
+			os.Exit(1)
+		}
+
 		warningsUrl := common.Blobfuse2ListContainerURL + "/securitywarnings/" + common.Blobfuse2Version
 		hasWarnings := checkVersionExists(warningsUrl)
 
