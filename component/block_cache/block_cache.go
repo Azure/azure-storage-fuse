@@ -1144,6 +1144,7 @@ func (bc *BlockCache) upload(item *workItem) {
 		endIndex = item.block.offset + bc.blockSize
 		log.Debug("BlockCache::upload : Appending null for block %v", item.block.id)
 	} else if item.block.endIndex == uint64(item.handle.Size) {
+		// TODO: random write scenario where this block is not the last block
 		log.Debug("BlockCache::upload : Last block %v", item.block.id)
 	}
 
