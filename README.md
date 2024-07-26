@@ -9,7 +9,7 @@ Blobfuse2 is stable, and is ***supported by Microsoft*** provided that it is use
 
 ##  NOTICE
 - Do not use versions 2.2.0, 2.2.1 and 2.3.0 for performing random writes using Block-cache mode. We have identified potential data integrity issues that are being investigated and fixed.
-- `streaming` mode is being depricated. You can now use block-cache instead of streaming, which offers much better performance compared to streaming. To enable `block-cache` instead of `streaming`, use `--block-cache` in CLI param or `block-cache` as component in config file instead of `streaming`.
+- `streaming` mode is being deprecated. You can now use block-cache instead of streaming, which offers much better performance compared to streaming. To enable `block-cache` instead of `streaming`, use `--block-cache` in CLI param or `block-cache` as component in config file instead of `streaming`.
 - As of version 2.3.0, blobfuse has updated its authentication methods. For Managed Identity, Object-ID based OAuth is solely accessible via CLI-based login, requiring Azure CLI on the system. For a dependency-free option, users may utilize Application/Client-ID or Resource ID based authentication.
 
 ## Blobfuse2 Benchmarks
