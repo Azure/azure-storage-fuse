@@ -8,7 +8,7 @@ Blobfuse2 is stable, and is ***supported by Microsoft*** provided that it is use
 [This](https://github.com/Azure/azure-storage-fuse/tree/main?tab=readme-ov-file#config-guide) section will help you choose the correct config for Blobfuse2.
 
 ##  NOTICE
-- If you are using versions 2.2.0, 2.2.1 and 2.3.0, refrain from using Block-cache mode and switch to file-cache mode till below issues are fixed.
+- If you are using versions 2.2.0, 2.2.1 and 2.3.0, refrain from using Block-cache mode and switch to `file-cache` mode till below issues are fixed.
 - As of version 2.3.0, blobfuse has updated its authentication methods. For Managed Identity, Object-ID based OAuth is solely accessible via CLI-based login, requiring Azure CLI on the system. For a dependency-free option, users may utilize Application/Client-ID or Resource ID based authentication.
 - `streaming` mode is being deprecated.
   
