@@ -3,7 +3,9 @@
 - Fixed the case where file creation using SAS on HNS accounts was returning back wrong error code.
 - [#1402](https://github.com/Azure/azure-storage-fuse/issues/1402) Fixed proxy URL parsing.
 - If earlier instance of Blobfuse2 crashed and mount is unstable then next mount to same path will automatically cleanup the system.
-- Reset block data to null before reuse to avoid corruption
+- In flush operation, the blocks will be committed only if the handle is dirty.
+- Reset block data to null before reuse.
+- Sparse file data integrity issues fixed.
 
 **Features**
 

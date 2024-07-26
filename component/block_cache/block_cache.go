@@ -915,7 +915,7 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 	options.Handle.Lock()
 	defer options.Handle.Unlock()
 
-	log.Debug("BlockCache::WriteFile : Writing handle %v=>%v: offset %v, %v bytes", options.Handle.ID, options.Handle.Path, options.Offset, len(options.Data))
+	// log.Debug("BlockCache::WriteFile : Writing handle %v=>%v: offset %v, %v bytes", options.Handle.ID, options.Handle.Path, options.Offset, len(options.Data))
 
 	// Keep getting next blocks until you read the request amount of data
 	dataWritten := int(0)
@@ -927,7 +927,7 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 			return dataWritten, err
 		}
 
-		log.Debug("BlockCache::WriteFile : Writing to block %v, offset %v for handle %v=>%v", block.id, options.Offset, options.Handle.ID, options.Handle.Path)
+		// log.Debug("BlockCache::WriteFile : Writing to block %v, offset %v for handle %v=>%v", block.id, options.Offset, options.Handle.ID, options.Handle.Path)
 
 		// Copy the incoming data to block
 		writeOffset := uint64(options.Offset) - block.offset
@@ -958,7 +958,7 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 		return nil, fmt.Errorf("block index out of range. Increase your block size")
 	}
 
-	log.Debug("FilBlockCacheCache::getOrCreateBlock : Get block for %s, index %v", handle.Path, index)
+	// log.Debug("FilBlockCacheCache::getOrCreateBlock : Get block for %s, index %v", handle.Path, index)
 
 	var block *Block
 	var err error
@@ -1040,7 +1040,6 @@ func (bc *BlockCache) stageBlocks(handle *handlemap.Handle, cnt int) error {
 		block := node.Value.(*Block)
 
 		if block.IsDirty() {
-			log.Debug("BlockCache::stageBlocks : Sending block %v for upload", block.id)
 			bc.lineupUpload(handle, block, listMap)
 			cnt--
 		}
