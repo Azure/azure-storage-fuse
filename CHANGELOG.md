@@ -6,6 +6,7 @@
 - Reset block data to null before reuse to avoid corruption
 
 **Features**
+- Added support for `no_proxy` environment variable.
 
 **Other Changes**
 - LFU policy in file cache has been deprecated.
