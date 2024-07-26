@@ -358,7 +358,7 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 			listMap[int64(idx)] = block.Id
 			// All blocks shall of same size otherwise fail the open call
 			// Last block is allowed to be of smaller size as it can be partial block
-			if block.Size != bc.blockSize && idx != (listLen-1) {
+			if (idx < (listLen-1) && block.Size != bc.blockSize) || (idx == (listLen-1) && block.Size > bc.blockSize) {
 				log.Err("BlockCache::OpenFile : Block size mismatch for %s [block: %v, size: %v]", options.Name, block.Id, block.Size)
 				return nil, fmt.Errorf("block size mismatch for %s", options.Name)
 			}
