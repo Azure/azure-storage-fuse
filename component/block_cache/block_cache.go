@@ -528,7 +528,8 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 		options.Offset += int64(bytesRead)
 		dataRead += bytesRead
 
-		if (block.endIndex - block.offset) < uint64(len(block.data)) {
+		if options.Offset >= options.Handle.Size {
+			// EOF reached so early exit
 			return 0, io.EOF
 		}
 	}
