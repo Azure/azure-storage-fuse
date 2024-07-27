@@ -72,7 +72,7 @@ steps:
   - script: |
         cp $(WORK_DIR)/myfile_* ${{ parameters.mount_dir }}
         cp $(WORK_DIR)/mixedfiles_* ${{ parameters.mount_dir }}
-      displayName: 'Copy files with Block-Cache'
+    displayName: 'Copy files with Block-Cache'
 
   - script: |
       md5sum ${{ parameters.mount_dir }}/myfile_* > $(WORK_DIR)/md5sum_block_cache.txt
