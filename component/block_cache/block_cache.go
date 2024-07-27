@@ -530,7 +530,7 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 
 		if options.Offset >= options.Handle.Size {
 			// EOF reached so early exit
-			return 0, io.EOF
+			return dataRead, io.EOF
 		}
 	}
 
