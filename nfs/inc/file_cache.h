@@ -104,8 +104,12 @@ struct membuf
      * 1. What offset inside the file it's caching.
      * 2. Count of bytes it's caching.
      * 3. Backing file fd (in case of file-backed caches).
+     *
+     * We also have the bytes_chunk_cache backlink. This is strictly for
+     * updating various cache metrics as membuf flags are updated.
      */
-    membuf(uint64_t _offset,
+    membuf(bytes_chunk_cache *_bcc,
+           uint64_t _offset,
            uint64_t _length,
            int _backing_file_fd = -1);
 
@@ -117,43 +121,28 @@ struct membuf
      * last ref to the shared_ptr is dropped, typically when the bytes_chunk
      * referring to the membuf is discarded.
      */
-    ~membuf()
-    {
-        // inuse membuf must never be destroyed.
-        assert(!is_inuse());
+    ~membuf();
 
-        // dirty membuf must never be destroyed.
-        assert(!is_dirty());
-
-        // locked membuf must never be destroyed.
-        assert(!is_locked());
-
-        if (is_file_backed()) {
-            if (allocated_buffer) {
-                /*
-                 * allocated_buffer must be page aligned, and buffer must point
-                 * inside the page starting at allocated_buffer.
-                 */
-                assert(((uint64_t) allocated_buffer & (PAGE_SIZE - 1)) == 0);
-                assert(buffer < (allocated_buffer + PAGE_SIZE));
-
-                drop();
-            }
-        } else {
-            // Non file-backes membufs must always have a valid buffer.
-            assert(allocated_buffer != nullptr);
-            assert(buffer == allocated_buffer);
-
-            delete [] allocated_buffer;
-            allocated_buffer = buffer = nullptr;
-        }
-
-        assert(!allocated_buffer);
-    }
+    /*
+     * bytes_chunk_cache to which this membuf belongs.
+     * This is strictly for updating various cache metrics as membuf flags are
+     * updated.
+     * Those are atomic, hence it's ok to access w/o serializing access to
+     * the cache.
+     */
+    bytes_chunk_cache *bcc = nullptr;
 
     // This membuf caches file data in the range [offset, offset+length).
     const uint64_t offset;
     const uint64_t length;
+
+    /*
+     * Actual allocated length. This can be greater than length for
+     * file-backed membufs. See comments above allocated_buffer.
+     * Once set this will not change, even when the membuf is drop'ed and
+     * allocated_buffer becomes nullptr.
+     */
+    uint64_t allocated_length = 0;
 
     // Backing file fd (-1 for non file-backed caches).
     const int backing_file_fd = -1;
@@ -169,6 +158,11 @@ struct membuf
      * allocated_buffer to track the page aligned mmap()ed address, while
      * buffer is the actual buffer address to use for storing cached data.
      * For non file-backed membufs, both will be same.
+     * This also means that for file-backed caches the actual allocated bytes
+     * is "length + (buffer - allocated_buffer)". See allocated_length.
+     *
+     * Once set allocated_buffer should not change. For file-backed caches
+     * drop() will munmap() and set allocated_buffer to nullptr.
      */
     uint8_t *buffer = nullptr;
     uint8_t *allocated_buffer = nullptr;
@@ -194,8 +188,11 @@ struct membuf
      * is the only place where data is stored. For file-backed membufs this
      * drops data from the memory while the data is still present in the file.
      * load() can be used to reload data in memory cache.
+     *
+     * Returns the number of bytes reclaimed by dropping the cache. A -ve
+     * return indicates error in munmap().
      */
-    bool drop();
+    int64_t drop();
 
     /**
      * Load data from file backend into memory.
@@ -221,46 +218,8 @@ struct membuf
         return (flag & MB_Flag::Uptodate);
     }
 
-    /**
-     * Must be called to set membuf update only after successfully reading
-     * all the data that this membuf refers to.
-     */
-    void set_uptodate()
-    {
-        /*
-         * Must be locked and inuse.
-         * Note that following is the correct sequence of operations.
-         *
-         * get()
-         * set_locked()
-         * << read data from blob into the above membuf(s) >>
-         * set_uptodate()
-         * clear_locked()
-         * clear_inuse()
-         */
-        assert(is_locked());
-        assert(is_inuse());
-
-        flag |= MB_Flag::Uptodate;
-
-        AZLogDebug("Set uptodate membuf [{}, {}), fd={}",
-                   offset, offset+length, backing_file_fd);
-    }
-
-    /**
-     * Must be called when a read from Blob fails.
-     */
-    void clear_uptodate()
-    {
-        // See comment in set_uptodate() above.
-        assert(is_locked());
-        assert(is_inuse());
-
-        flag &= ~MB_Flag::Uptodate;
-
-        AZLogDebug("Clear uptodate membuf [{}, {}), fd={}",
-                   offset, offset+length, backing_file_fd);
-    }
+    void set_uptodate();
+    void clear_uptodate();
 
     bool is_locked() const
     {
@@ -270,89 +229,9 @@ struct membuf
         return locked;
     }
 
-    /**
-     * Try to lock the membuf and return whether we were able to lock it.
-     * If membuf was already locked, this will return false and caller doesn't
-     * have the lock, else caller will have the lock and it'll return true.
-     */
-    bool try_lock()
-    {
-        assert(is_inuse());
-        return !(flag.fetch_or(MB_Flag::Locked) & MB_Flag::Locked);
-    }
-
-    /**
-     * A membuf must be locked for getting exclusive access whenever any
-     * thread wants to update the membuf data. This can be done by reader
-     * threads when they read data from the Blob into a newly created membuf,
-     * or by writer threads when they are copying application data into the
-     * membuf.
-     */
-    void set_locked()
-    {
-        AZLogDebug("Locking membuf [{}, {}), fd={}",
-                   offset, offset+length, backing_file_fd);
-
-        /*
-         * get() returns with inuse set on the returned membufs.
-         * Caller should drop the inuse count only after the IO is fully done.
-         * i.e. following is the valid sequence of calls.
-         *
-         * get()
-         * set_locked()
-         * << perform IO >>
-         * clear_locked()
-         * clear_inuse()
-         */
-        assert(is_inuse());
-
-        // Common case, not locked, lock w/o waiting.
-        while (!try_lock()) {
-            std::unique_lock<std::mutex> _lock(lock);
-
-            /*
-             * When reading data from the Blob, NFS read may take some time,
-             * we wait for 120 secs and log an error message, to catch any
-             * deadlocks.
-             */
-            if (!cv.wait_for(_lock, std::chrono::seconds(120),
-                             [this]{ return !this->is_locked(); })) {
-                AZLogError("Timed out waiting for membuf lock, re-trying!");
-            }
-        }
-
-        AZLogDebug("Successfully locked membuf [{}, {}), fd={}",
-                   offset, offset+length, backing_file_fd);
-
-        // Must never return w/o locking the membuf.
-        assert(is_locked());
-        assert(is_inuse());
-
-        return;
-    }
-
-    /**
-     * Unlock after a prior successful call to set_locked().
-     */
-    void clear_locked()
-    {
-        // Must be locked, catch bad callers.
-        assert(is_locked());
-
-        // inuse must be set. See comment in set_locked().
-        assert(is_inuse());
-
-        {
-            std::unique_lock<std::mutex> _lock(lock);
-            flag &= ~MB_Flag::Locked;
-
-            AZLogDebug("Unlocked membuf [{}, {}), fd={}",
-                       offset, offset+length, backing_file_fd);
-        }
-
-        // Wakeup one waiter.
-        cv.notify_one();
-    }
+    void set_locked();
+    void clear_locked();
+    bool try_lock();
 
     /**
      * A membuf is marked dirty when the membuf data is updated, making it
@@ -366,55 +245,16 @@ struct membuf
         return (flag & MB_Flag::Dirty);
     }
 
-    void set_dirty()
-    {
-        /*
-         * Must be locked and inuse.
-         * Note that following is the correct sequence of operations.
-         *
-         * get()
-         * set_locked()
-         * << write application data into the above membuf(s) >>
-         * set_dirty()
-         * clear_locked()
-         * clear_inuse()
-         */
-        assert(is_locked());
-        assert(is_inuse());
-
-        flag |= MB_Flag::Dirty;
-
-        AZLogDebug("Set dirty membuf [{}, {}), fd={}",
-                   offset, offset+length, backing_file_fd);
-    }
-
-    void clear_dirty()
-    {
-        // See comment in set_dirty().
-        assert(is_locked());
-        assert(is_inuse());
-
-        flag &= ~MB_Flag::Dirty;
-
-        AZLogDebug("Clear dirty membuf [{}, {}), fd={}",
-                   offset, offset+length, backing_file_fd);
-    }
-
-    void set_inuse()
-    {
-        inuse++;
-    }
-
-    void clear_inuse()
-    {
-        assert(inuse > 0);
-        inuse--;
-    }
+    void set_dirty();
+    void clear_dirty();
 
     bool is_inuse() const
     {
         return (inuse > 0);
     }
+
+    void set_inuse();
+    void clear_inuse();
 
 private:
     /*
@@ -634,6 +474,17 @@ public:
     }
 
     /**
+     * Returns usecount for the underlying membuf.
+     * A bytes_chunk added only to bytes_chunk_cache::chunkmap has a usecount
+     * of 1 and every user that calls get() will get one usecount on the
+     * respective membuf.
+     */
+    int get_membuf_usecount() const
+    {
+        return alloc_buffer.use_count();
+    }
+
+    /**
      * Start of valid cached data corresponding to this chunk.
      * This will typically have the value alloc_buffer->get(), i.e., it points
      * to the start of the data buffer represented by the shared pointer
@@ -745,11 +596,23 @@ public:
 
     /**
      * Drop data cached in memory, for this bytes_chunk.
+     *
+     * Returns the number of bytes reclaimed by dropping the cache. A -ve
+     * return indicates error in munmap().
      */
-    void drop()
+    int64_t drop()
     {
-        const bool ret = alloc_buffer->drop();
-        assert(ret);
+        assert(get_membuf_usecount() > 0);
+
+        /*
+         * If the membuf is being used by someone else, we cannot drop/munmap
+         * it, o/w users accessing the data will start getting errors.
+         */
+        if (get_membuf_usecount() == 1) {
+            return alloc_buffer->drop();
+        }
+
+        return 0;
     }
 
     /**
@@ -890,6 +753,11 @@ public:
                                  uint64_t *extent_left = nullptr,
                                  uint64_t *extent_right = nullptr)
     {
+        num_get++;
+        num_get_g++;
+        bytes_get += length;
+        bytes_get_g += length;
+
         return scan(offset, length, scan_action::SCAN_ACTION_GET,
                     extent_left, extent_right);
     }
@@ -925,6 +793,11 @@ public:
      */
     void release(uint64_t offset, uint64_t length)
     {
+        num_release++;
+        num_release_g++;
+        bytes_release += length;
+        bytes_release_g += length;
+
         scan(offset, length, scan_action::SCAN_ACTION_RELEASE);
     }
 
@@ -932,6 +805,9 @@ public:
      * Drop cached data in the given range.
      * This must be called only for file-backed caches. For non file-backed
      * caches this is a no-op.
+     *
+     * Returns the number of bytes reclaimed by dropping the cache. A -ve
+     * return indicates error in munmap().
      *
      * Note: It might make sense to not call drop() at all and leave all chunks
      *       mmap()ed at all times, and depend on kernel to manage the buffer
@@ -941,8 +817,12 @@ public:
      *       Another approach would be to use mlock() to lock buffer cache data
      *       that we want and let drop() munlock() it so that kernel can choose
      *       to free it. This needs to be tested.
+     *       The advantage of having drop support is that we can choose to
+     *       drop specific file caches, which are less/not used, and leave the
+     *       more actively used caches mapped. Kernel won't have this knowledge
+     *       and it can flush any of the file caches under memory pressure.
      */
-    void drop(uint64_t offset, uint64_t length);
+    int64_t drop(uint64_t offset, uint64_t length);
 
     /**
      * Clear the cache by releasing all chunks from the cache.
@@ -963,11 +843,14 @@ public:
      * Drop memory cache for all chunks in this bytes_chunk_cache.
      * Chunks will be loaded as user calls get().
      *
+     * Returns the number of bytes reclaimed by dropping the cache. A -ve
+     * return indicates error in munmap().
+     *
      * See discussion in drop().
      */
-    void dropall()
+    int64_t dropall()
     {
-        drop(0, UINT64_MAX);
+        return drop(0, UINT64_MAX);
     }
 
     bool is_file_backed() const
@@ -979,6 +862,54 @@ public:
      * This will run self tests to test the correctness of this class.
      */
     static int unit_test();
+
+    /*
+     * Stats for this cache.
+     * These have been made public for easy access, w/o needing whole bunch
+     * of accessor methods. Don't update them from outside!
+     *
+     * bytes_allocated is the total number of memmory bytes allocated for all
+     * the bytes_chunk in this cache. Note that all of that memory may not be
+     * used for cacheing and bytes_cached is the total bytes actually used for
+     * cacheing. Following are the cases where allocated would be larger than
+     * used:
+     * - release() may release parts of the cache, though membuf cannot be
+     *   freed till the entire membuf is unused.
+     * - For file-backed cache we have to mmap() on a 4k granularity but the
+     *   actual bytes_chunk may not be 4k granular.
+     *
+     * bytes_cached tracks the total number of bytes cached, not necessarily
+     * in memory. For file-backed cache, bytes_cached may refer to memory bytes
+     * or file bytes. Note that bytes_cached is not reduced when membuf is
+     * drop()ped. This is because the data is still cached, albeit in the
+     * backing file.
+     */
+    std::atomic<uint64_t> num_chunks = 0;
+    std::atomic<uint64_t> num_get = 0;
+    std::atomic<uint64_t> bytes_get = 0;
+    std::atomic<uint64_t> num_release = 0;
+    std::atomic<uint64_t> bytes_release = 0;
+    std::atomic<uint64_t> bytes_allocated = 0;
+    std::atomic<uint64_t> bytes_cached = 0;
+    std::atomic<uint64_t> bytes_dirty = 0;
+    std::atomic<uint64_t> bytes_uptodate = 0;
+    std::atomic<uint64_t> bytes_inuse = 0;
+    std::atomic<uint64_t> bytes_locked = 0;
+
+    /*
+     * Global stats for all caches.
+     */
+    static std::atomic<uint64_t> num_chunks_g;
+    static std::atomic<uint64_t> num_get_g;
+    static std::atomic<uint64_t> bytes_get_g;
+    static std::atomic<uint64_t> num_release_g;
+    static std::atomic<uint64_t> bytes_release_g;
+    static std::atomic<uint64_t> bytes_allocated_g;
+    static std::atomic<uint64_t> bytes_cached_g;
+    static std::atomic<uint64_t> bytes_dirty_g;
+    static std::atomic<uint64_t> bytes_uptodate_g;
+    static std::atomic<uint64_t> bytes_inuse_g;
+    static std::atomic<uint64_t> bytes_locked_g;
 
 private:
     /**

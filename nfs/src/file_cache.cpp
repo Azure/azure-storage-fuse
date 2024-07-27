@@ -28,53 +28,133 @@
 
 namespace aznfsc {
 
-membuf::membuf(uint64_t _offset,
+/* static */ std::atomic<uint64_t> bytes_chunk_cache::num_chunks_g = 0;
+/* static */ std::atomic<uint64_t> bytes_chunk_cache::num_get_g = 0;
+/* static */ std::atomic<uint64_t> bytes_chunk_cache::bytes_get_g = 0;
+/* static */ std::atomic<uint64_t> bytes_chunk_cache::num_release_g = 0;
+/* static */ std::atomic<uint64_t> bytes_chunk_cache::bytes_release_g = 0;
+/* static */ std::atomic<uint64_t> bytes_chunk_cache::bytes_allocated_g = 0;
+/* static */ std::atomic<uint64_t> bytes_chunk_cache::bytes_cached_g = 0;
+/* static */ std::atomic<uint64_t> bytes_chunk_cache::bytes_dirty_g = 0;
+/* static */ std::atomic<uint64_t> bytes_chunk_cache::bytes_uptodate_g = 0;
+/* static */ std::atomic<uint64_t> bytes_chunk_cache::bytes_inuse_g = 0;
+/* static */ std::atomic<uint64_t> bytes_chunk_cache::bytes_locked_g = 0;
+
+membuf::membuf(bytes_chunk_cache *_bcc,
+               uint64_t _offset,
                uint64_t _length,
                int _backing_file_fd) :
+               bcc(_bcc),
                offset(_offset),
                length(_length),
                backing_file_fd(_backing_file_fd)
 {
     if (is_file_backed()) {
+        assert(allocated_length == 0);
+
         const bool ret = load();
         assert(ret);
+
+        // load() must have updated these.
+        assert(allocated_length >= length);
+        assert(bcc->bytes_allocated >= allocated_length);
+        assert(bcc->bytes_allocated_g >= allocated_length);
     } else {
         // TODO: Handle memory alloc failures gracefully.
-        allocated_buffer = buffer = new uint8_t[_length];
+        allocated_buffer = buffer = new uint8_t[length];
+        allocated_length = length;
+
+        bcc->bytes_allocated_g += allocated_length;
+        bcc->bytes_allocated += allocated_length;
     }
 }
 
-bool membuf::drop()
+membuf::~membuf()
+{
+    // bytes_chunk_cache backlink must be set.
+    assert(bcc);
+
+    // inuse membuf must never be destroyed.
+    assert(!is_inuse());
+
+    // dirty membuf must never be destroyed.
+    assert(!is_dirty());
+
+    // locked membuf must never be destroyed.
+    assert(!is_locked());
+
+    if (is_file_backed()) {
+        if (allocated_buffer) {
+            /*
+             * allocated_buffer must be page aligned, and buffer must point
+             * inside the page starting at allocated_buffer.
+             */
+            assert(((uint64_t) allocated_buffer & (PAGE_SIZE - 1)) == 0);
+            assert(buffer < (allocated_buffer + PAGE_SIZE));
+            assert(allocated_length >= length);
+
+            drop();
+
+            // drop() would update metrics.
+        }
+    } else {
+        // Non file-backed membufs must always have a valid buffer.
+        assert(allocated_buffer != nullptr);
+        assert(buffer == allocated_buffer);
+        assert(length == allocated_length);
+
+        assert(bcc->bytes_allocated >= allocated_length);
+        assert(bcc->bytes_allocated_g >= allocated_length);
+        bcc->bytes_allocated -= allocated_length;
+        bcc->bytes_allocated_g -= allocated_length;
+
+        delete [] allocated_buffer;
+        allocated_buffer = buffer = nullptr;
+    }
+
+    assert(!allocated_buffer);
+}
+
+int64_t membuf::drop()
 {
     /*
-     * Dropping memcache for non file-backed chunks doesn't make sense, and
-     * is a no-op.
+     * Dropping cache for non file-backed chunks doesn't make sense, since for
+     * non file-backed caches memory holds the only copy and hence we cannot
+     * drop that. For file-backed caches we can drop the memory but the backing
+     * file will still contain the cached data and can be loaded when needed.
      */
     if (!is_file_backed()) {
-        return true;
+        return 0;
     }
 
     // If data is not loaded, it's a no-op.
     if (!allocated_buffer) {
-        return true;
+        return 0;
     }
 
     assert(length > 0);
+    assert(allocated_length >= length);
 
     AZLogDebug("munmap(buffer={}, length={})",
-               fmt::ptr(allocated_buffer), length);
+               fmt::ptr(allocated_buffer), allocated_length);
 
-    const int ret = ::munmap(allocated_buffer, length);
+    const int ret = ::munmap(allocated_buffer, allocated_length);
     if (ret != 0) {
         AZLogError("munmap(buffer={}, length={}) failed: {}",
-                   fmt::ptr(allocated_buffer), length, strerror(errno));
+                   fmt::ptr(allocated_buffer), allocated_length,
+                   strerror(errno));
         assert(0);
-        return false;
+        return -1;
     }
 
     allocated_buffer = buffer = nullptr;
 
-    return true;
+    assert(bcc->bytes_allocated >= allocated_length);
+    assert(bcc->bytes_allocated_g >= allocated_length);
+    bcc->bytes_allocated -= allocated_length;
+    bcc->bytes_allocated_g -= allocated_length;
+
+    return allocated_length;
 }
 
 bool membuf::load()
@@ -102,8 +182,17 @@ bool membuf::load()
     // mmap() allows only 4k aligned offsets.
     const uint64_t adjusted_offset = offset & ~(PAGE_SIZE - 1);
 
+    /*
+     * First time around allocated_length would be 0, after that it must be
+     * set to correct value.
+     */
+    assert((allocated_length == 0) ||
+           (allocated_length == (length + (offset - adjusted_offset))));
+
+    allocated_length = length + (offset - adjusted_offset);
+
     AZLogDebug("mmap(fd={}, length={}, offset={})",
-               backing_file_fd, length, adjusted_offset);
+               backing_file_fd, allocated_length, adjusted_offset);
 
     /*
      * Default value of /proc/sys/vm/max_map_count may not be sufficient
@@ -112,7 +201,7 @@ bool membuf::load()
     assert(adjusted_offset <= offset);
     allocated_buffer =
         (uint8_t *) ::mmap(nullptr,
-                           length + (offset - adjusted_offset),
+                           allocated_length,
                            PROT_READ | PROT_WRITE,
                            MAP_SHARED,
                            backing_file_fd,
@@ -128,7 +217,216 @@ bool membuf::load()
 
     buffer = allocated_buffer + (offset - adjusted_offset);
 
+    bcc->bytes_allocated_g += allocated_length;
+    bcc->bytes_allocated += allocated_length;
+
     return true;
+}
+
+/**
+ * Must be called to set membuf update only after successfully reading
+ * all the data that this membuf refers to.
+ */
+void membuf::set_uptodate()
+{
+    /*
+     * Must be locked and inuse.
+     * Note that following is the correct sequence of operations.
+     *
+     * get()
+     * set_locked()
+     * << read data from blob into the above membuf(s) >>
+     * set_uptodate()
+     * clear_locked()
+     * clear_inuse()
+     */
+    assert(is_locked());
+    assert(is_inuse());
+
+    flag |= MB_Flag::Uptodate;
+
+    bcc->bytes_uptodate_g += length;
+    bcc->bytes_uptodate += length;
+
+    AZLogDebug("Set uptodate membuf [{}, {}), fd={}",
+               offset, offset+length, backing_file_fd);
+}
+
+/**
+ * Must be called when a read from Blob fails.
+ */
+void membuf::clear_uptodate()
+{
+    // See comment in set_uptodate() above.
+    assert(is_locked());
+    assert(is_inuse());
+
+    flag &= ~MB_Flag::Uptodate;
+
+    assert(bcc->bytes_uptodate >= length);
+    assert(bcc->bytes_uptodate_g >= length);
+    bcc->bytes_uptodate -= length;
+    bcc->bytes_uptodate_g -= length;
+
+    AZLogDebug("Clear uptodate membuf [{}, {}), fd={}",
+               offset, offset+length, backing_file_fd);
+}
+
+/**
+ * Try to lock the membuf and return whether we were able to lock it.
+ * If membuf was already locked, this will return false and caller doesn't
+ * have the lock, else caller will have the lock and it'll return true.
+ */
+bool membuf::try_lock()
+{
+    assert(is_inuse());
+    const bool locked = !(flag.fetch_or(MB_Flag::Locked) & MB_Flag::Locked);
+
+    if (locked) {
+        bcc->bytes_locked_g += length;
+        bcc->bytes_locked += length;
+    }
+
+    return locked;
+}
+
+/**
+ * A membuf must be locked for getting exclusive access whenever any
+ * thread wants to update the membuf data. This can be done by reader
+ * threads when they read data from the Blob into a newly created membuf,
+ * or by writer threads when they are copying application data into the
+ * membuf.
+ */
+void membuf::set_locked()
+{
+    AZLogDebug("Locking membuf [{}, {}), fd={}",
+               offset, offset+length, backing_file_fd);
+
+    /*
+     * get() returns with inuse set on the returned membufs.
+     * Caller should drop the inuse count only after the IO is fully done.
+     * i.e. following is the valid sequence of calls.
+     *
+     * get()
+     * set_locked()
+     * << perform IO >>
+     * clear_locked()
+     * clear_inuse()
+     */
+    assert(is_inuse());
+
+    // Common case, not locked, lock w/o waiting.
+    while (!try_lock()) {
+        std::unique_lock<std::mutex> _lock(lock);
+
+        /*
+         * When reading data from the Blob, NFS read may take some time,
+         * we wait for 120 secs and log an error message, to catch any
+         * deadlocks.
+         */
+        if (!cv.wait_for(_lock, std::chrono::seconds(120),
+                         [this]{ return !this->is_locked(); })) {
+            AZLogError("Timed out waiting for membuf lock, re-trying!");
+        }
+    }
+
+    AZLogDebug("Successfully locked membuf [{}, {}), fd={}",
+               offset, offset+length, backing_file_fd);
+
+    // Must never return w/o locking the membuf.
+    assert(is_locked());
+    assert(is_inuse());
+
+    return;
+}
+
+/**
+ * Unlock after a prior successful call to set_locked().
+ */
+void membuf::clear_locked()
+{
+    // Must be locked, catch bad callers.
+    assert(is_locked());
+
+    // inuse must be set. See comment in set_locked().
+    assert(is_inuse());
+
+    {
+        std::unique_lock<std::mutex> _lock(lock);
+        flag &= ~MB_Flag::Locked;
+
+        AZLogDebug("Unlocked membuf [{}, {}), fd={}",
+                   offset, offset+length, backing_file_fd);
+    }
+
+    assert(bcc->bytes_locked >= length);
+    assert(bcc->bytes_locked_g >= length);
+    bcc->bytes_locked -= length;
+    bcc->bytes_locked_g -= length;
+
+    // Wakeup one waiter.
+    cv.notify_one();
+}
+
+void membuf::set_dirty()
+{
+    /*
+     * Must be locked and inuse.
+     * Note that following is the correct sequence of operations.
+     *
+     * get()
+     * set_locked()
+     * << write application data into the above membuf(s) >>
+     * set_dirty()
+     * clear_locked()
+     * clear_inuse()
+     */
+    assert(is_locked());
+    assert(is_inuse());
+
+    flag |= MB_Flag::Dirty;
+
+    bcc->bytes_dirty_g += length;
+    bcc->bytes_dirty += length;
+
+    AZLogDebug("Set dirty membuf [{}, {}), fd={}",
+               offset, offset+length, backing_file_fd);
+}
+
+void membuf::clear_dirty()
+{
+    // See comment in set_dirty().
+    assert(is_locked());
+    assert(is_inuse());
+
+    flag &= ~MB_Flag::Dirty;
+
+    assert(bcc->bytes_dirty >= length);
+    assert(bcc->bytes_dirty_g >= length);
+    bcc->bytes_dirty -= length;
+    bcc->bytes_dirty_g -= length;
+
+    AZLogDebug("Clear dirty membuf [{}, {}), fd={}",
+               offset, offset+length, backing_file_fd);
+}
+
+void membuf::set_inuse()
+{
+    bcc->bytes_inuse_g += length;
+    bcc->bytes_inuse += length;
+
+    inuse++;
+}
+
+void membuf::clear_inuse()
+{
+    assert(bcc->bytes_inuse >= length);
+    assert(bcc->bytes_inuse_g >= length);
+    bcc->bytes_inuse -= length;
+    bcc->bytes_inuse_g -= length;
+
+    assert(inuse > 0);
+    inuse--;
 }
 
 bytes_chunk::bytes_chunk(bytes_chunk_cache *_bcc,
@@ -138,7 +436,8 @@ bytes_chunk::bytes_chunk(bytes_chunk_cache *_bcc,
                          _offset,
                          _length,
                          0 /* buffer_offset */,
-                         std::make_shared<membuf>(_offset,
+                         std::make_shared<membuf>(_bcc,
+                                                  _offset,
                                                   _length,
                                                   _bcc->backing_file_fd),
                          true /* is_empty */)
@@ -225,6 +524,12 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
     uint64_t chunk_offset, chunk_length;
 
     /*
+     * TODO: See if we can hold shared lock for cases where we don't have to
+     *       update chunkmap.
+     */
+    const std::unique_lock<std::mutex> _lock(lock);
+
+    /*
      * Temp variables to hold details for releasing a range.
      * All chunks in the range [begin_delete, end_delete) will be freed as
      * they fall completely inside the released range.
@@ -253,12 +558,6 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
     uint64_t _extent_right = AZNFSC_BAD_OFFSET;
     std::map <uint64_t,
               struct bytes_chunk>::iterator lookback_it = chunkmap.end();
-
-    /*
-     * TODO: See if we can hold shared lock for cases where we don't have to
-     *       update chunkmap.
-     */
-    const std::unique_lock<std::mutex> _lock(lock);
 
     /*
      * First things first, if file-backed cache and backing file not yet open,
@@ -647,6 +946,11 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
                     bc->buffer_offset += chunk_length;
                     bc->length -= chunk_length;
 
+                    assert(bytes_cached >= chunk_length);
+                    assert(bytes_cached_g >= chunk_length);
+                    bytes_cached -= chunk_length;
+                    bytes_cached_g -= chunk_length;
+
                     /*
                      * Since the key (offset) for this chunk changed, we need
                      * to remove and re-insert into the map (with the updated
@@ -739,6 +1043,8 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
                         next_offset + chunk_length;
                     const uint64_t chunk_after_length =
                         bc->offset + bc->length - chunk_after_offset;
+                    const uint64_t trim_bytes =
+                        chunk_length + chunk_after_length;
 
                     if (chunk_after_length > 0) {
                         assert(chunk_after == nullptr);
@@ -758,10 +1064,17 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
                                bc->offset, next_offset);
                     bc->length = next_offset - bc->offset;
                     assert((int64_t) bc->length > 0);
+
+                    assert(bytes_cached >= trim_bytes);
+                    assert(bytes_cached_g >= trim_bytes);
+                    bytes_cached -= trim_bytes;
+                    bytes_cached_g -= trim_bytes;
                 } else {
                     assert(chunk_length ==
                            (bc->offset + bc->length - next_offset));
                     assert(chunk_length < remaining_length);
+
+                    const uint64_t trim_bytes = chunk_length;
 
                     /*
                      * All chunk data after next_offset is released, trim the
@@ -775,6 +1088,11 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
 
                     bc->length = next_offset - bc->offset;
                     assert((int64_t) bc->length > 0);
+
+                    assert(bytes_cached >= trim_bytes);
+                    assert(bytes_cached_g >= trim_bytes);
+                    bytes_cached -= trim_bytes;
+                    bytes_cached_g -= trim_bytes;
                 }
             }
 
@@ -867,6 +1185,13 @@ allocate_only_chunk:
         }
 
         if (chunk.is_empty) {
+            assert(chunk.alloc_buffer->allocated_buffer != nullptr);
+            assert(chunk.alloc_buffer->buffer >=
+                   chunk.alloc_buffer->allocated_buffer);
+            assert(chunk.alloc_buffer->length > 0);
+            assert(chunk.alloc_buffer->allocated_length >=
+                   chunk.alloc_buffer->length);
+
 #ifndef UTILIZE_TAILROOM_FROM_LAST_MEMBUF
             /*
              * Empty bytes_chunk should only correspond to full membufs, but
@@ -902,6 +1227,11 @@ allocate_only_chunk:
                                  chunk.length, chunk.buffer_offset,
                                  chunk.alloc_buffer);
 #endif
+            // One more chunk added to chunkmap.
+            num_chunks++;
+            num_chunks_g++;
+            bytes_cached_g += chunk.length;
+            bytes_cached += chunk.length;
 
             if ((chunk.offset + chunk.length) > _extent_right) {
                 _extent_right = (chunk.offset + chunk.length);
@@ -931,6 +1261,17 @@ allocate_only_chunk:
                                bc->alloc_buffer->get() ?
                                     fmt::ptr(bc->get_buffer()) : nullptr,
                                fmt::ptr(bc->alloc_buffer->get()));
+
+                    assert(num_chunks > 0);
+                    num_chunks--;
+                    assert(num_chunks_g > 0);
+                    num_chunks_g--;
+
+                    assert(bytes_cached >= bc->length);
+                    assert(bytes_cached_g >= bc->length);
+                    bytes_cached -= bc->length;
+                    bytes_cached_g -= bc->length;
+
                     chunkmap.erase(_it);
                 }
             }
@@ -968,6 +1309,11 @@ allocate_only_chunk:
                                  chunk_after->buffer_offset,
                                  chunk_after->alloc_buffer);
 #endif
+
+            num_chunks++;
+            num_chunks_g++;
+            bytes_cached_g += chunk_after->length;
+            bytes_cached += chunk_after->length;
 
             delete chunk_after;
     }
@@ -1025,11 +1371,11 @@ end:
                 ? chunkvec : std::vector<bytes_chunk>();
 }
 
-void bytes_chunk_cache::drop(uint64_t offset, uint64_t length)
+int64_t bytes_chunk_cache::drop(uint64_t offset, uint64_t length)
 {
     if (backing_file_name.empty()) {
         // No-op for non file-backed caches.
-        return;
+        return 0;
     }
 
     const std::unique_lock<std::mutex> _lock(lock);
@@ -1044,10 +1390,11 @@ void bytes_chunk_cache::drop(uint64_t offset, uint64_t length)
 
     // No full chunk lies in the given range.
     if (it == chunkmap.end()) {
-        return;
+        return 0;
     }
 
     uint64_t remaining_length = length;
+    int64_t total_dropped_bytes = 0;
 
     /*
      * Iterate over all chunks and drop chunks that completely lie in the
@@ -1060,10 +1407,19 @@ void bytes_chunk_cache::drop(uint64_t offset, uint64_t length)
             break;
         }
 
-        bc->drop();
+        /*
+         * This will not drop the cache if the membuf is being referenced
+         * by some other user (other than the original chunkmap reference).
+         */
+        const int64_t dropped_bytes = bc->drop();
+        if (dropped_bytes > 0) {
+            total_dropped_bytes += dropped_bytes;
+        }
 
         remaining_length -= bc->length;
     }
+
+    return total_dropped_bytes;
 }
 
 void bytes_chunk_cache::clear()
@@ -1204,7 +1560,7 @@ static void cache_read(bytes_chunk_cache& cache,
     uint64_t prev_chunk_right_edge = AZNFSC_BAD_OFFSET;
     uint64_t total_length = 0;
 
-    for (auto e : v) {
+    for (const auto& e : v) {
         assert(e.length > 0);
         assert(e.length <= AZNFSC_MAX_CHUNK_SIZE);
 
@@ -1248,7 +1604,7 @@ static void cache_write(bytes_chunk_cache& cache,
     uint64_t prev_chunk_right_edge = AZNFSC_BAD_OFFSET;
     uint64_t total_length = 0;
 
-    for (auto e : v) {
+    for (const auto& e : v) {
         assert(e.length > 0);
         assert(e.length <= AZNFSC_MAX_CHUNK_SIZE);
 
@@ -1308,6 +1664,23 @@ do { \
     assert(chunk.offset == start); \
     assert(chunk.length == end-start); \
     assert(chunk.is_empty); \
+    if (cache.is_file_backed()) { \
+        assert(chunk.get_membuf()->buffer >= \
+               chunk.get_membuf()->allocated_buffer); \
+        assert(chunk.get_membuf()->allocated_length >= \
+               chunk.get_membuf()->length); \
+    } else { \
+        assert(chunk.get_membuf()->allocated_buffer == \
+               chunk.get_membuf()->buffer); \
+        assert(chunk.get_membuf()->allocated_length == \
+               chunk.get_membuf()->length); \
+    } \
+    assert((uint64_t) (chunk.get_membuf()->buffer - \
+                chunk.get_membuf()->allocated_buffer) == \
+           (chunk.get_membuf()->allocated_length - \
+                chunk.get_membuf()->length)); \
+    assert(chunk.bcc->bytes_cached >= chunk.length); \
+    assert(chunk.bcc->bytes_cached_g >= chunk.bcc->bytes_cached); \
     /* All membufs MUST be returned with inuse incremented */ \
     assert(chunk.get_membuf()->is_inuse()); \
     chunk.get_membuf()->clear_inuse(); \
@@ -1318,6 +1691,23 @@ do { \
     assert(chunk.offset == start); \
     assert(chunk.length == end-start); \
     assert(!(chunk.is_empty)); \
+    if (cache.is_file_backed()) { \
+        assert(chunk.get_membuf()->buffer >= \
+               chunk.get_membuf()->allocated_buffer); \
+        assert(chunk.get_membuf()->allocated_length >= \
+               chunk.get_membuf()->length); \
+    } else { \
+        assert(chunk.get_membuf()->allocated_buffer == \
+               chunk.get_membuf()->buffer); \
+        assert(chunk.get_membuf()->allocated_length == \
+               chunk.get_membuf()->length); \
+    } \
+    assert((uint64_t) (chunk.get_membuf()->buffer - \
+                chunk.get_membuf()->allocated_buffer) == \
+           (chunk.get_membuf()->allocated_length - \
+                chunk.get_membuf()->length)); \
+    assert(chunk.bcc->bytes_cached >= chunk.length); \
+    assert(chunk.bcc->bytes_cached_g >= chunk.bcc->bytes_cached); \
     /* All membufs MUST be returned with inuse incremented */ \
     assert(chunk.get_membuf()->is_inuse()); \
     chunk.get_membuf()->clear_inuse(); \
@@ -1329,11 +1719,62 @@ do { \
     assert(r == right); \
 } while (0)
 
+#define ASSERT_DROPALL() \
+do { \
+    /* get all chunks and calculate total allocated bytes */ \
+    uint64_t total_allocated_bytes = 0; \
+    uint64_t total_bytes = 0; \
+    for (const auto& e : cache.chunkmap) { \
+        total_allocated_bytes += e.second.get_membuf()->allocated_length; \
+        total_bytes += e.second.get_membuf()->length; \
+    } \
+    const uint64_t total_dropped_bytes = cache.dropall(); \
+    if (cache.is_file_backed()) { \
+        /* For file-backed caches all allocated bytes must be dropped */ \
+        assert(total_dropped_bytes == total_allocated_bytes); \
+    } else { \
+        /* For memory-backed caches drop should be a no-op */ \
+        assert(total_dropped_bytes == 0); \
+    } \
+    /* \
+     * drop() should not change length and allocated_length, but it should
+     * set allocated_buffer and buffer to nullptr.
+     */ \
+    uint64_t total_allocated_bytes1 = 0; \
+    uint64_t total_bytes1 = 0; \
+    for (const auto& e : cache.chunkmap) { \
+        if (cache.is_file_backed()) { \
+            assert(e.second.get_membuf()->allocated_buffer == nullptr); \
+            assert(e.second.get_membuf()->buffer == nullptr); \
+        } else { \
+            assert(e.second.get_membuf()->allocated_buffer != nullptr); \
+            assert(e.second.get_membuf()->buffer != nullptr); \
+        } \
+        total_allocated_bytes1 += e.second.get_membuf()->allocated_length; \
+        total_bytes1 += e.second.get_membuf()->length; \
+    } \
+    assert(total_bytes1 == total_bytes); \
+    assert(total_allocated_bytes1 == total_allocated_bytes); \
+} while (0);
+
 #define PRINT_CHUNK(chunk) \
-        AZLogInfo("[{},{}){} <{}>", chunk.offset,\
-                  chunk.offset + chunk.length,\
-                  chunk.is_empty ? " [Empty]" : "", \
-                  fmt::ptr(chunk.get_buffer()))
+do { \
+    assert(chunk.length > 0); \
+    AZLogInfo("[{},{}){} <{}> use_count={}", chunk.offset,\
+              chunk.offset + chunk.length,\
+              chunk.is_empty ? " [Empty]" : "", \
+              fmt::ptr(chunk.get_buffer()), chunk.get_membuf_usecount()); \
+} while (0)
+
+#define PRINT_CHUNKMAP() \
+    AZLogInfo("==== [{}] chunkmap start [a:{} c:{}] ====", \
+              __LINE__, cache.bytes_allocated.load(), cache.bytes_cached.load()); \
+    for (auto& e : cache.chunkmap) { \
+        /* mmap() just in case drop was called prior to this */ \
+        e.second.load(); \
+        PRINT_CHUNK(e.second); \
+    } \
+    AZLogInfo("==== chunkmap end ====");
 
     /*
      * Get cache chunks covering range [0, 300).
@@ -1353,9 +1794,10 @@ do { \
      */
     buffer = v[0].get_buffer();
 
-    for (auto e : v) {
+    for (const auto& e : v) {
         PRINT_CHUNK(e);
     }
+    PRINT_CHUNKMAP();
 
     /*
      * Release data range [0, 100).
@@ -1385,9 +1827,10 @@ do { \
     ASSERT_EXISTING(v[0], 100, 200);
     assert(v[0].get_buffer() == (buffer + 100));
 
-    for (auto e : v) {
+    for (const auto& e : v) {
         PRINT_CHUNK(e);
     }
+    PRINT_CHUNKMAP();
 
     /*
      * Get cache chunks covering range [50, 150).
@@ -1406,12 +1849,18 @@ do { \
     ASSERT_EXISTING(v[1], 100, 150);
     assert(v[1].get_buffer() == (buffer + 100));
 
-    for (auto e : v) {
+    for (const auto& e : v) {
         PRINT_CHUNK(e);
     }
+    PRINT_CHUNKMAP();
 
+    /*
+     * Need to clear the vector before dropall, else drop won't drop as
+     * bytes_chunk will have more than 1 use_count.
+     */
     AZLogInfo("========== [Dropall] ==========");
-    cache.dropall();
+    v.clear();
+    ASSERT_DROPALL();
 
     /*
      * Get cache chunks covering range [250, 300).
@@ -1428,9 +1877,10 @@ do { \
     ASSERT_NEW(v[0], 250, 300);
     new (&bc) bytes_chunk(v[0]);
 
-    for (auto e : v) {
+    for (const auto& e : v) {
         PRINT_CHUNK(e);
     }
+    PRINT_CHUNKMAP();
 
     /*
      * Get cache chunks covering range [0, 50).
@@ -1446,9 +1896,10 @@ do { \
     ASSERT_EXTENT(0, 200);
     ASSERT_NEW(v[0], 0, 50);
 
-    for (auto e : v) {
+    for (const auto& e : v) {
         PRINT_CHUNK(e);
     }
+    PRINT_CHUNKMAP();
 
     /*
      * Get cache chunks covering range [150, 275).
@@ -1471,11 +1922,17 @@ do { \
     new (&bc1) bytes_chunk(v[0]);
     new (&bc2) bytes_chunk(v[1]);
 
-    for (auto e : v) {
+    for (const auto& e : v) {
         PRINT_CHUNK(e);
     }
+    PRINT_CHUNKMAP();
 
+    /*
+     * Cannot call ASSERT_DROPALL() here as that asserts that we drop all
+     * chunks, but since we hold extra refs to chunks we won't drop all.
+     */
     AZLogInfo("========== [Dropall] ==========");
+    v.clear();
     cache.dropall();
 
     // Reload all bytes_chunk, after dropall().
@@ -1517,9 +1974,10 @@ do { \
     assert(v[3].get_buffer() == bc.get_buffer());
     new (&bc3) bytes_chunk(v[0]);
 
-    for (auto e : v) {
+    for (const auto& e : v) {
         PRINT_CHUNK(e);
     }
+    PRINT_CHUNKMAP();
 
     /*
      * Get cache chunks covering range [0, 350).
@@ -1551,9 +2009,10 @@ do { \
     new (&bc1) bytes_chunk(v[0]);
     new (&bc3) bytes_chunk(v[5]);
 
-    for (auto e : v) {
+    for (const auto& e : v) {
         PRINT_CHUNK(e);
     }
+    PRINT_CHUNKMAP();
 
     /*
      * Release data range [50, 225).
@@ -1592,9 +2051,10 @@ do { \
     ASSERT_EXISTING(v[4], 300, 325);
     assert(v[4].get_buffer() == bc3.get_buffer());
 
-    for (auto e : v) {
+    for (const auto& e : v) {
         PRINT_CHUNK(e);
     }
+    PRINT_CHUNKMAP();
 
     /*
      * Release data range [0, 349).
@@ -1619,9 +2079,10 @@ do { \
     ASSERT_EXISTING(v[0], 349, 350);
     assert(v[0].get_buffer() == (bc3.get_buffer() + 49));
 
-    for (auto e : v) {
+    for (const auto& e : v) {
         PRINT_CHUNK(e);
     }
+    PRINT_CHUNKMAP();
 
     /*
      * Release data range [349, 350).
@@ -1656,9 +2117,10 @@ do { \
     ASSERT_NEW(v[0], 0, 131072);
     new (&bc) bytes_chunk(v[0]);
 
-    for (auto e : v) {
+    for (const auto& e : v) {
         PRINT_CHUNK(e);
     }
+    PRINT_CHUNKMAP();
 
     /*
      * Release data range [6, 131072), emulating eof after short read.
@@ -1689,9 +2151,10 @@ do { \
     assert(v[0].buffer_offset == 0);
 #endif
 
-    for (auto e : v) {
+    for (const auto& e : v) {
         PRINT_CHUNK(e);
     }
+    PRINT_CHUNKMAP();
 
     /*
      * Get cache chunks covering range [5, 30).
@@ -1718,15 +2181,17 @@ do { \
 #endif
     ASSERT_NEW(v[2], 20, 30);
 
-    for (auto e : v) {
+    for (const auto& e : v) {
         PRINT_CHUNK(e);
     }
+    PRINT_CHUNKMAP();
 
     /*
      * Clear entire cache.
      */
     AZLogInfo("========== [Clear] ==========");
     cache.clear();
+    PRINT_CHUNKMAP();
 
     /*
      * Get cache chunks covering range [5, 30).
@@ -1743,9 +2208,10 @@ do { \
     ASSERT_EXTENT(5, 30);
     ASSERT_NEW(v[0], 5, 30);
 
-    for (auto e : v) {
+    for (const auto& e : v) {
         PRINT_CHUNK(e);
     }
+    PRINT_CHUNKMAP();
 
     /*
      * Get cache chunks covering range [5, 50).
@@ -1764,9 +2230,10 @@ do { \
     ASSERT_EXISTING(v[0], 5, 30);
     ASSERT_NEW(v[1], 30, 50);
 
-    for (auto e : v) {
+    for (const auto& e : v) {
         PRINT_CHUNK(e);
     }
+    PRINT_CHUNKMAP();
 
     /*
      * Get cache chunks covering range [5, 100).
@@ -1787,9 +2254,10 @@ do { \
     ASSERT_EXISTING(v[1], 30, 50);
     ASSERT_NEW(v[2], 50, 100);
 
-    for (auto e : v) {
+    for (const auto& e : v) {
         PRINT_CHUNK(e);
     }
+    PRINT_CHUNKMAP();
 
     /*
      * Release byte range [0, 200), but after setting the following:
@@ -1843,9 +2311,10 @@ do { \
     ASSERT_EXISTING(v[2], 50, 100);
     ASSERT_NEW(v[3], 100, 200);
 
-    for (auto e : v) {
+    for (const auto& e : v) {
         PRINT_CHUNK(e);
     }
+    PRINT_CHUNKMAP();
 
     /*
      * Release [0, 500) should cover the entire cache and release everything.
