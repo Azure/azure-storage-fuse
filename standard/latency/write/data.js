@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1721814509946,
+  "lastUpdate": 1722064040535,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -2757,6 +2757,50 @@ window.BENCHMARK_DATA = {
           {
             "name": "sequential_write_16_threads",
             "value": 0.12894813881533332,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "33023344+tjvishnu@users.noreply.github.com",
+            "name": "Vishnu Charan TJ",
+            "username": "tjvishnu"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "487ed2288038ddadf79e7311c93c57577ee6ede1",
+          "message": "Update README.md (#1477)\n\n* Update README.md",
+          "timestamp": "2024-07-27T10:23:35+05:30",
+          "tree_id": "12a9104a51fb4f9f2477c6dc3e3c1e73637ace73",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/487ed2288038ddadf79e7311c93c57577ee6ede1"
+        },
+        "date": 1722064040311,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_write",
+            "value": 0.12838110730666666,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_write_directio",
+            "value": 0.13748282786633334,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_write_4_threads",
+            "value": 0.134645167249,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_write_16_threads",
+            "value": 0.126265310721,
             "unit": "milliseconds"
           }
         ]
