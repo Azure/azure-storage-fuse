@@ -60,7 +60,14 @@ nfs_inode::nfs_inode(const struct nfs_fh3 *filehandle,
     dircache_handle = std::make_shared<readdirectory_cache>(client, this);
 
     if (file_type == S_IFREG) {
-        filecache_handle = std::make_shared<bytes_chunk_cache>();
+        if (aznfsc_cfg.cachedir != nullptr) {
+            const std::string backing_file_name =
+                std::string(aznfsc_cfg.cachedir) + "/" + std::to_string(ino);
+            filecache_handle =
+                std::make_shared<bytes_chunk_cache>(backing_file_name.c_str());
+        } else {
+            filecache_handle = std::make_shared<bytes_chunk_cache>();
+        }
         readahead_state = std::make_shared<ra_state>(client, this);
     }
 }
