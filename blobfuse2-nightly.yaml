@@ -1481,7 +1481,7 @@ stages:
           - script: |
               sudo pip3 install pandas numpy pyarrow fastparquet
             displayName: 'Install Python Packages'
-            
+
           - template: 'azure-pipeline-templates/e2e-tests-block-cache-data-integrity.yml'
             parameters:
               conf_template: azure_key.yaml
