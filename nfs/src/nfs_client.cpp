@@ -363,7 +363,8 @@ void nfs_client::read(
     tsk1->run_read();
 
     // Issue readahead.
-    const int num_ra = nfs_inod->readahead_state->issue_readaheads();
+    [[maybe_unused]] const int num_ra =
+        nfs_inod->readahead_state->issue_readaheads();
 
     AZLogDebug("{} readaheads issued for client read offset: {} size: {}",
         num_ra,
