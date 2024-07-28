@@ -57,9 +57,7 @@ nfs_inode::nfs_inode(const struct nfs_fh3 *filehandle,
     attr_timeout_secs = get_actimeo_min();
     attr_timeout_timestamp = get_current_msecs() + attr_timeout_secs*1000;
 
-    dircache_handle = std::make_shared<readdirectory_cache>(client, this);
-
-    if (file_type == S_IFREG) {
+    if (is_regfile()) {
         if (aznfsc_cfg.cachedir != nullptr) {
             const std::string backing_file_name =
                 std::string(aznfsc_cfg.cachedir) + "/" + std::to_string(ino);
@@ -69,6 +67,8 @@ nfs_inode::nfs_inode(const struct nfs_fh3 *filehandle,
             filecache_handle = std::make_shared<bytes_chunk_cache>();
         }
         readahead_state = std::make_shared<ra_state>(client, this);
+    } else if (is_dir()) {
+        dircache_handle = std::make_shared<readdirectory_cache>(client, this);
     }
 }
 
@@ -87,7 +87,14 @@ nfs_inode::~nfs_inode()
      * Directory inodes must not be freed while they have a non-empty dir
      * cache.
      */
-    assert(dircache_handle->get_num_entries() == 0);
+    if (is_dir()) {
+        assert(dircache_handle);
+        assert(dircache_handle->get_num_entries() == 0);
+    } else if (is_regfile()) {
+        assert(filecache_handle);
+        assert(filecache_handle->is_empty());
+    }
+
 #ifndef ENABLE_NON_AZURE_NFS
     assert(fh.data.data_len > 50 && fh.data.data_len <= 64);
 #else
@@ -137,8 +144,12 @@ try_again:
          * client where we can purge the directory cache by writing to
          * /proc/sys/vm/drop_caches.
          */
-        if (from_forget && is_dir()) {
-            purge_dircache();
+        if (from_forget) {
+            if (is_dir()) {
+                purge_dircache();
+            } else if (is_regfile()) {
+                purge_filecache();
+            }
         }
 
         /*
@@ -324,6 +335,18 @@ void nfs_inode::purge_dircache_nolock()
     AZLogWarn("[{}] Purging dircache", get_fuse_ino());
 
     dircache_handle->clear();
+}
+
+/*
+ * Purge the file cache.
+ * TODO: For now we purge the entire cache. This can be later changed to purge
+ *       parts of cache.
+ */
+void nfs_inode::purge_filecache_nolock()
+{
+    AZLogWarn("[{}] Purging filecache", get_fuse_ino());
+
+    filecache_handle->clear();
 }
 
 void nfs_inode::lookup_dircache(

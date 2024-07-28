@@ -36,6 +36,8 @@ struct nfs_inode
     /*
      * Inode lock.
      * Inode must be updated only with this lock held.
+     *
+     * TODO: See if we need this lock or fuse vfs will cover for this.
      */
     std::shared_mutex ilock;
 
@@ -230,6 +232,12 @@ struct nfs_inode
         return (file_type == S_IFDIR);
     }
 
+    // Is regular file?
+    bool is_regfile() const
+    {
+        return (file_type == S_IFREG);
+    }
+
     /**
      * Short character code for file_type, useful for logs.
      */
@@ -351,12 +359,18 @@ struct nfs_inode
     }
 
     /**
+     * Caller must hold inode->ilock.
+     */
+    void purge_filecache_nolock();
+
+    /**
      * Caller must hold the inode lock.
      * TODO: Implement this when we add read/write support.
      */
     void purge_filecache()
     {
-        // TBD
+        std::unique_lock<std::shared_mutex> lock(ilock);
+        purge_filecache_nolock();
     }
 
     /**
