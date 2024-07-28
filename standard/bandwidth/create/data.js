@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1722148876051,
+  "lastUpdate": 1722159336495,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -2471,6 +2471,45 @@ window.BENCHMARK_DATA = {
           {
             "name": "create_1l_files_in_20_threads",
             "value": 0.087890625,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "33023344+tjvishnu@users.noreply.github.com",
+            "name": "Vishnu Charan TJ",
+            "username": "tjvishnu"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "13f5d24be3d63a1ee25fa73953bde300dea7d627",
+          "message": "Update README.md (#1480)\n\nAdded link to Known issues",
+          "timestamp": "2024-07-28T11:12:31+05:30",
+          "tree_id": "dcae62529025eb596da68a37f7e806135edf120f",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/13f5d24be3d63a1ee25fa73953bde300dea7d627"
+        },
+        "date": 1722159336208,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "create_1000_files_in_10_threads",
+            "value": 91.7255859375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "create_1000_files_in_100_threads",
+            "value": 95.5380859375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "create_1l_files_in_20_threads",
+            "value": 0.0947265625,
             "unit": "MiB/s"
           }
         ]
