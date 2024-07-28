@@ -682,6 +682,14 @@ public:
     }
 
     /**
+     * Call this to check if the cache is empty.
+     */
+    bool is_empty() const
+    {
+        return chunkmap.empty();
+    }
+
+    /**
      * Return a vector of bytes_chunk cacheing the byte range [offset, offset+length).
      * Parts of the range that correspond to chunks already present in the
      * cache will refer to those existing chunks, for such chunks is_empty will

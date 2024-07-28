@@ -946,6 +946,10 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
                     bc->buffer_offset += chunk_length;
                     bc->length -= chunk_length;
 
+                    /*
+                     * Don't update num_chunks/num_chunks_g as we remove one
+                     * and add one chunk.
+                     */
                     assert(bytes_cached >= chunk_length);
                     assert(bytes_cached_g >= chunk_length);
                     bytes_cached -= chunk_length;
@@ -1495,14 +1499,29 @@ void bytes_chunk_cache::clear()
          * is guaranteed to be not in use since we checked the inuse count
          * above.
          */
+        assert(num_chunks > 0);
+        num_chunks--;
+        assert(num_chunks_g > 0);
+        num_chunks_g--;
+
+        assert(bytes_cached >= bc->length);
+        assert(bytes_cached_g >= bc->length);
+        bytes_cached -= bc->length;
+        bytes_cached_g -= bc->length;
+
         chunkmap.erase(it);
     }
 
     if (!chunkmap.empty()) {
         AZLogInfo("[{}] Skipping delete for backing_file_name={}, as chunkmap "
                   "not empty", fmt::ptr(this), backing_file_name);
+        assert(bytes_allocated > 0);
         return;
     }
+
+    // Entire cache is purged, bytes_cached and bytes_allocated must drop to 0.
+    assert(bytes_cached == 0);
+    assert(bytes_allocated == 0);
 
     /*
      * If all chunks are released, delete the backing file in case of
