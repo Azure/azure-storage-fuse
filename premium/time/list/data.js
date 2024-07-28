@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1722060288012,
+  "lastUpdate": 1722143779669,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -2141,6 +2141,38 @@ window.BENCHMARK_DATA = {
           {
             "name": "delete_100k_files",
             "value": "353.05000",
+            "unit": "seconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Vishnu Charan TJ",
+            "username": "tjvishnu",
+            "email": "33023344+tjvishnu@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "487ed2288038ddadf79e7311c93c57577ee6ede1",
+          "message": "Update README.md (#1477)\n\n* Update README.md",
+          "timestamp": "2024-07-27T04:53:35Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/487ed2288038ddadf79e7311c93c57577ee6ede1"
+        },
+        "date": 1722143779423,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "list_100k_files",
+            "value": "13.74000",
+            "unit": "seconds"
+          },
+          {
+            "name": "delete_100k_files",
+            "value": "335.12000",
             "unit": "seconds"
           }
         ]
