@@ -1118,7 +1118,7 @@ int main(int argc, char *argv[])
     struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
     struct fuse_session *se = NULL;
     struct fuse_cmdline_opts opts;
-    struct fuse_loop_config loop_config;
+    struct fuse_loop_config *loop_config = fuse_loop_cfg_create();
     int ret = -1;
 
     /* Don't mask creation mode, kernel already did that */
@@ -1219,9 +1219,11 @@ int main(int argc, char *argv[])
     if (opts.singlethread) {
         ret = fuse_session_loop(se);
     } else {
-        loop_config.clone_fd = opts.clone_fd;
-        loop_config.max_idle_threads = opts.max_idle_threads;
-        ret = fuse_session_loop_mt(se, &loop_config);
+        fuse_loop_cfg_set_clone_fd(loop_config, opts.clone_fd);
+        fuse_loop_cfg_set_max_threads(loop_config, opts.max_threads);
+        fuse_loop_cfg_set_idle_threads(loop_config, opts.max_idle_threads);
+
+        ret = fuse_session_loop_mt(se, loop_config);
     }
 
 err_out4:
