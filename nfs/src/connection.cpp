@@ -1,8 +1,14 @@
 #include "connection.h"
 #include "nfs_client.h"
 
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+
 bool nfs_connection::open()
 {
+    const int nodelay = 1;
+
     // open() must be called only for a closed connection.
     assert(nfs_context == nullptr);
 
@@ -87,6 +93,27 @@ bool nfs_connection::open()
               nfs_get_readmax(nfs_context),
               nfs_get_writemax(nfs_context),
               nfs_get_readdir_maxcount(nfs_context));
+
+    /*
+     * We must send requests promptly w/o waiting for nagle delay.
+     *
+     * TODO: Once this is moved to libnfs, it can be removed from here.
+     */
+    if (::setsockopt(nfs_get_fd(nfs_context), IPPROTO_TCP, TCP_NODELAY,
+                     &nodelay, sizeof(nodelay)) != 0) {
+        AZLogError("Cannot enable TCP_NODELAY for fd {}: {}",
+                   nfs_get_fd(nfs_context), strerror(errno));
+        // Let's assert in debug builds and continue o/w.
+        assert(0);
+    }
+
+    /*
+     * libnfs service loop wakes up every poll_timeout msecs to see if there
+     * is any request pdu to send. Though lone request pdus are sent in the
+     * requester's context, but in some cases it helps for libnfs to check
+     * more promptly.
+     */
+    nfs_set_poll_timeout(nfs_context, 1);
 
     /*
      * We use libnfs in multithreading mode as we want 1 thread to do the IOs
