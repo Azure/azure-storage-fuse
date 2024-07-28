@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1722144399561,
+  "lastUpdate": 1722155032609,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1348,6 +1348,35 @@ window.BENCHMARK_DATA = {
           {
             "name": "rename_5000_1MB_files",
             "value": 96.59094834327698,
+            "unit": "seconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "33023344+tjvishnu@users.noreply.github.com",
+            "name": "Vishnu Charan TJ",
+            "username": "tjvishnu"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "13f5d24be3d63a1ee25fa73953bde300dea7d627",
+          "message": "Update README.md (#1480)\n\nAdded link to Known issues",
+          "timestamp": "2024-07-28T11:12:31+05:30",
+          "tree_id": "dcae62529025eb596da68a37f7e806135edf120f",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/13f5d24be3d63a1ee25fa73953bde300dea7d627"
+        },
+        "date": 1722155032337,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "rename_5000_1MB_files",
+            "value": 90.22666072845459,
             "unit": "seconds"
           }
         ]
