@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1722060643064,
+  "lastUpdate": 1722144108071,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1721,6 +1721,38 @@ window.BENCHMARK_DATA = {
           {
             "name": "create_10_20GB_file",
             "value": 30.52523316662617,
+            "unit": "GiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Vishnu Charan TJ",
+            "username": "tjvishnu",
+            "email": "33023344+tjvishnu@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "487ed2288038ddadf79e7311c93c57577ee6ede1",
+          "message": "Update README.md (#1477)\n\n* Update README.md",
+          "timestamp": "2024-07-27T04:53:35Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/487ed2288038ddadf79e7311c93c57577ee6ede1"
+        },
+        "date": 1722144107842,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "read_10_20GB_file",
+            "value": 25.81619909085966,
+            "unit": "GiB/s"
+          },
+          {
+            "name": "create_10_20GB_file",
+            "value": 30.550979280394852,
             "unit": "GiB/s"
           }
         ]
