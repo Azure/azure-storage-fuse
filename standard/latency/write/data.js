@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1722157936308,
+  "lastUpdate": 1722254225851,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -2887,6 +2887,50 @@ window.BENCHMARK_DATA = {
           {
             "name": "sequential_write_16_threads",
             "value": 0.12889270250499998,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "64532198+vibhansa-msft@users.noreply.github.com",
+            "name": "Vikas Bhansali",
+            "username": "vibhansa-msft"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "db7dec95e4a3a801f94ba8ad8d655b9cfd082886",
+          "message": "Blocker and Vulnerability update (#1473)\n\n* Make vulnerability scan a common code",
+          "timestamp": "2024-07-29T15:13:48+05:30",
+          "tree_id": "8b74e09bd10c1d2c2eaabeba456ecf17545f6c15",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/db7dec95e4a3a801f94ba8ad8d655b9cfd082886"
+        },
+        "date": 1722254225598,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_write",
+            "value": 0.12725301360566668,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_write_directio",
+            "value": 0.13501954421533333,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_write_4_threads",
+            "value": 0.133489282395,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_write_16_threads",
+            "value": 0.131388175189,
             "unit": "milliseconds"
           }
         ]
