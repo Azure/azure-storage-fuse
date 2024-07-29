@@ -411,8 +411,8 @@ static void aznfsc_ll_init(void *userdata,
      * TODO: No parallel reads for now.
      *       So we don't need to worry about locking the inode.
      */
-    //conn->want |= FUSE_CAP_ASYNC_READ;
-    conn->want &= ~FUSE_CAP_ASYNC_READ;
+    conn->want |= FUSE_CAP_ASYNC_READ;
+    //conn->want &= ~FUSE_CAP_ASYNC_READ;
 
     // Blob NFS doesn't support locking.
     conn->want &= ~FUSE_CAP_POSIX_LOCKS;
@@ -662,8 +662,8 @@ static void aznfsc_ll_read(fuse_req_t req,
                            off_t off,
                            struct fuse_file_info *fi)
 {
-    AZLogDebug("aznfsc_ll_read(req={}, ino={}, size={}, offset={}",
-                fmt::ptr(req), ino, size, off);
+    AZLogDebug("aznfsc_ll_read(req={}, ino={}, size={}, offset={} fi={}",
+                fmt::ptr(req), ino, size, off, fmt::ptr(fi));
 
     struct nfs_client *client = get_nfs_client_from_fuse_req(req);
     client->read(req, ino, size, off, fi);

@@ -351,25 +351,28 @@ void nfs_client::read(
     off_t off,
     struct fuse_file_info *fi)
 {
-    struct rpc_task *tsk1 = rpc_task_helper->alloc_rpc_task();
-    auto nfs_inod = get_nfs_inode_from_ino(ino);
+    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task();
+    struct nfs_inode *inode = get_nfs_inode_from_ino(ino);
 
-    tsk1->init_read(req, ino, size, off, fi);
+    // Revalidate if attribute cache timeout expired.
+    inode->revalidate();
 
-    // Update the ra state about the application read request received.
-    nfs_inod->readahead_state->on_application_read(off, size);
+    tsk->init_read(req, ino, size, off, fi);
 
-    // Issue the application read task.
-    tsk1->run_read();
-
-    // Issue readahead.
+    /*
+     * Issue readaheads (if any) before application read.
+     * Note that application read can block on membuf lock while readahead
+     * read skips locked membufs. This way we can have readahead reads sent
+     * to the server even while application read causes us to block.
+     */
     [[maybe_unused]] const int num_ra =
-        nfs_inod->readahead_state->issue_readaheads();
+        inode->readahead_state->issue_readaheads();
 
-    AZLogDebug("{} readaheads issued for client read offset: {} size: {}",
-        num_ra,
-        off,
-        size);
+    AZLogDebug("[{}] {} readaheads issued for client read offset: {} size: {}",
+               ino, num_ra, off, size);
+
+    inode->readahead_state->on_application_read(off, size);
+    tsk->run_read();
 }
 
 /*

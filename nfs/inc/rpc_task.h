@@ -440,33 +440,30 @@ private:
 
 public:    
     /*
-     * Total number of parallel reads issued to backend.
-     * A single RPC read task can result in issuing multiple read calls to the
-     * backend server to decrease the processing time, hence this wlll be used
-     * to keep track of these issued reads.
-     * This is valid only for reads.
-     * This should be updated after taking the lock read_task_lock.
+     * Valid only for read RPC tasks.
+     * To serve single client read call we may issue multiple NFS reads
+     * depending on the chunks returned by bytes_chunk_cache::get().
+     *
+     * num_ongoing_backend_reads tracks how many of the backend reads are
+     * currently pending. We cannot complete the application read until all
+     * reads complete (either success or failure).
+     *
+     * read_status is the final read status we need to send to fuse.
+     * This is set when we get an error, so that even if later reads complete
+     * successfully we fail the fuse read.
      */
-    int num_of_reads_issued_to_backend;
-    
-    /*
-     * A single RPC read task can result in issuing multiple read calls to the
-     * backend server and hence we should wait till we complete all these reads
-     * before returning response to the caller.
-     * One this is set to True, the response can be safely returned to the caller.
-     * This is valid only for reads.
-     * This should be updated after taking the lock read_task_lock.
-     */
-    bool readfile_completed;
+    std::atomic<int> num_ongoing_backend_reads = 0;
+    std::atomic<int> read_status = 0;
     
     /*
      * This is currently valid only for reads.
-     * This contains vector of byte chunks which will be returned by making
-     * a call to bytes_chunk_cache::get().
+     * This contains vector of byte chunks which is returned by making a call
+     * to bytes_chunk_cache::get().
+     * This is populated by only one thread that calls run_read() for this
+     * task, once populated multiple parallel threads may read it, so we
+     * don't need to synchronize access to this with a lock.
      */
-    std::vector<bytes_chunk> bytes_vector;
-
-    std::shared_mutex read_task_lock;
+    std::vector<bytes_chunk> bc_vec;
 
 protected:
     /*
@@ -479,23 +476,7 @@ public:
     rpc_task(struct nfs_client *_client, int _index) :
         client(_client),
         req(nullptr),
-        index(_index),
-        num_of_reads_issued_to_backend(0),
-        readfile_completed(false)
-    {
-    }
-
-    /*
-     * Move constructor.
-     * Need since we have defined the mutex here.
-     */
-    rpc_task(rpc_task&& tsk) :
-	   client(tsk.client),
-	   req(tsk.req),
-	   index(tsk.index),
-	   num_of_reads_issued_to_backend(tsk.num_of_reads_issued_to_backend),
-	   readfile_completed(tsk.readfile_completed),
-       	   rpc_api(tsk.rpc_api)
+        index(_index)
     {
     }
 
@@ -709,12 +690,31 @@ public:
 
     void reply_write(size_t count)
     {
+        /*
+         * Currently fuse sends max 1MiB write requests, so we should never
+         * be responding more than that.
+         * This is a sanity assert for catching unintended bugs, update if
+         * fuse max write size changes.
+         */
+        assert(count <= 1048576);
+
         fuse_reply_write(req, count);
         free_rpc_task();
     }
 
-    void reply_iov(struct iovec* iov, int count)
+    void reply_iov(struct iovec *iov, size_t count)
     {
+        // If count is non-zero iov must be valid and v.v.
+        assert((iov == nullptr) == (count == 0));
+
+        /*
+         * Currently fuse sends max 1MiB read requests, so we should never
+         * be responding more than that.
+         * This is a sanity assert for catching unintended bugs, update if
+         * fuse max read size changes.
+         */
+        assert(count <= 1048576);
+
         fuse_reply_iov(req, iov, count);
         free_rpc_task();
     }
@@ -834,8 +834,8 @@ public:
     void fetch_readdir_entries_from_server();
     void fetch_readdirplus_entries_from_server();
 
-    void send_readfile_response(int status);
-    void readfile_from_server(struct bytes_chunk &bc);
+    void send_read_response();
+    void read_from_server(struct bytes_chunk &bc);
 };
 
 class rpc_task_helper
