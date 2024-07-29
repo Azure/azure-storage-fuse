@@ -108,7 +108,7 @@ steps:
       fi
     displayName: 'Compare md5Sum'
 
-- script: |
+  - script: |
       echo "----------------------------------------------"
       cat $(WORK_DIR)/stat_original_files.txt
       echo "----------------------------------------------"
