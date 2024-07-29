@@ -337,6 +337,99 @@ func (suite *blockCacheTestSuite) TestFileOpenClose() {
 	suite.assert.Nil(h.Buffers.Cooking)
 }
 
+func (suite *blockCacheTestSuite) TestValidateBlockList() {
+	config := "read-only: true\n\nblock_cache:\n  block-size-mb: 20"
+	tobj, err := setupPipeline(config)
+	defer tobj.cleanupPipeline()
+	suite.assert.Nil(err)
+	suite.assert.NotNil(tobj.blockCache)
+	suite.assert.Equal(tobj.blockCache.blockSize, 20*_1MB)
+
+	fileName := "testFile"
+	stroagePath := filepath.Join(tobj.fake_storage_path, fileName)
+	os.WriteFile(stroagePath, []byte("Hello, World!"), 0777)
+	options := internal.OpenFileOptions{Name: fileName}
+	h, err := tobj.blockCache.OpenFile(options)
+	suite.assert.Nil(err)
+	suite.assert.NotNil(h)
+
+	//Test for Valid BlockList
+	var blockLst internal.CommittedBlockList
+	noOfBlocks := 20
+	var startOffset int64
+
+	//Generate blocklist, blocks with size equal to configured block size
+	blockLst = nil
+	startOffset = 0
+	for i := 0; i < noOfBlocks; i++ {
+		blockSize := tobj.blockCache.blockSize
+		blk := internal.CommittedBlock{
+			Id:     base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(32)),
+			Offset: startOffset,
+			Size:   uint64(blockSize),
+		}
+		startOffset += int64(blockSize)
+		blockLst = append(blockLst, blk)
+	}
+	valid := tobj.blockCache.validateBlockList(h, options, &blockLst)
+	suite.assert.True(valid)
+
+	//Generate blocklist, blocks with size equal to configured block size and last block size <= config's block size
+	blockLst = nil
+	startOffset = 0
+	for i := 0; i < noOfBlocks; i++ {
+		blockSize := tobj.blockCache.blockSize
+		if i == noOfBlocks-1 {
+			blockSize = uint64(rand.Intn(int(tobj.blockCache.blockSize)))
+		}
+		blk := internal.CommittedBlock{
+			Id:     base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(32)),
+			Offset: startOffset,
+			Size:   uint64(blockSize),
+		}
+		startOffset += int64(blockSize)
+		blockLst = append(blockLst, blk)
+	}
+	valid = tobj.blockCache.validateBlockList(h, options, &blockLst)
+	suite.assert.True(valid)
+
+	//Generate Blocklist, blocks with size equal to configured block size and last block size > config's block size
+	blockLst = nil
+	startOffset = 0
+	for i := 0; i < noOfBlocks; i++ {
+		blockSize := tobj.blockCache.blockSize
+		if i == noOfBlocks-1 {
+			blockSize = tobj.blockCache.blockSize + uint64(rand.Intn(100)) + 1
+		}
+		blk := internal.CommittedBlock{
+			Id:     base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(32)),
+			Offset: startOffset,
+			Size:   uint64(blockSize),
+		}
+		startOffset += int64(blockSize)
+		blockLst = append(blockLst, blk)
+	}
+	valid = tobj.blockCache.validateBlockList(h, options, &blockLst)
+	suite.assert.False(valid)
+
+	//Generate Blocklist, blocks with random size
+	blockLst = nil
+	startOffset = 0
+	for i := 0; i < noOfBlocks; i++ {
+		blockSize := uint64(rand.Intn(int(tobj.blockCache.blockSize + 1)))
+		blk := internal.CommittedBlock{
+			Id:     base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(32)),
+			Offset: startOffset,
+			Size:   uint64(blockSize),
+		}
+		startOffset += int64(blockSize)
+		blockLst = append(blockLst, blk)
+	}
+	valid = tobj.blockCache.validateBlockList(h, options, &blockLst)
+	suite.assert.False(valid)
+
+}
+
 func (suite *blockCacheTestSuite) TestFileRead() {
 	tobj, err := setupPipeline("")
 	defer tobj.cleanupPipeline()
@@ -970,92 +1063,6 @@ func (suite *blockCacheTestSuite) TestZZZZLazyWrite() {
 
 	// As lazy write is enabled flush shall not upload the file
 	suite.assert.False(handle.Dirty())
-}
-
-func (suite *blockCacheTestSuite) TestValidateBlockList() {
-	config := "read-only: true\n\nblock_cache:\n  block-size-mb: 20"
-	tobj, err := setupPipeline(config)
-	defer tobj.cleanupPipeline()
-	suite.assert.Nil(err)
-	suite.assert.Equal(tobj.blockCache.Name(), "block_cache")
-	suite.assert.Equal(tobj.blockCache.blockSize, 20*_1MB)
-
-	file := "file101"
-	//Test for Valid BlockList
-	var blockLst internal.CommittedBlockList
-	noOfBlocks := 20
-	var startOffset int64
-
-	//Generate blocklist, blocks with size equal to configured block size
-	blockLst = nil
-	startOffset = 0
-	for i := 0; i < noOfBlocks; i++ {
-		blockSize := tobj.blockCache.blockSize
-		blk := internal.CommittedBlock{
-			Id:     base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(32)),
-			Offset: startOffset,
-			Size:   uint64(blockSize),
-		}
-		startOffset += int64(blockSize)
-		blockLst = append(blockLst, blk)
-	}
-	valid := tobj.blockCache.validateBlockList(file, tobj.blockCache.blockSize, &blockLst)
-	suite.assert.True(valid)
-
-	//Generate blocklist, blocks with size equal to configured block size and last block size <= config's block size
-	blockLst = nil
-	startOffset = 0
-	for i := 0; i < noOfBlocks; i++ {
-		blockSize := tobj.blockCache.blockSize
-		if i == noOfBlocks-1 {
-			blockSize = uint64(rand.Intn(int(tobj.blockCache.blockSize)))
-		}
-		blk := internal.CommittedBlock{
-			Id:     base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(32)),
-			Offset: startOffset,
-			Size:   uint64(blockSize),
-		}
-		startOffset += int64(blockSize)
-		blockLst = append(blockLst, blk)
-	}
-	valid = tobj.blockCache.validateBlockList(file, tobj.blockCache.blockSize, &blockLst)
-	suite.assert.True(valid)
-
-	//Generate Blocklist, blocks with size equal to configured block size and last block size > config's block size
-	blockLst = nil
-	startOffset = 0
-	for i := 0; i < noOfBlocks; i++ {
-		blockSize := tobj.blockCache.blockSize
-		if i == noOfBlocks-1 {
-			blockSize = tobj.blockCache.blockSize + uint64(rand.Intn(100)) + 1
-		}
-		blk := internal.CommittedBlock{
-			Id:     base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(32)),
-			Offset: startOffset,
-			Size:   uint64(blockSize),
-		}
-		startOffset += int64(blockSize)
-		blockLst = append(blockLst, blk)
-	}
-	valid = tobj.blockCache.validateBlockList(file, tobj.blockCache.blockSize, &blockLst)
-	suite.assert.False(valid)
-
-	//Generate Blocklist, blocks with random size
-	blockLst = nil
-	startOffset = 0
-	for i := 0; i < noOfBlocks; i++ {
-		blockSize := uint64(rand.Intn(int(tobj.blockCache.blockSize + 1)))
-		blk := internal.CommittedBlock{
-			Id:     base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(32)),
-			Offset: startOffset,
-			Size:   uint64(blockSize),
-		}
-		startOffset += int64(blockSize)
-		blockLst = append(blockLst, blk)
-	}
-	valid = tobj.blockCache.validateBlockList(file, tobj.blockCache.blockSize, &blockLst)
-	suite.assert.False(valid)
-
 }
 
 // In order for 'go test' to run this suite, we need to create

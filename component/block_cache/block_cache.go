@@ -350,17 +350,9 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 			return nil, fmt.Errorf("failed to retrieve block list for %s", options.Name)
 		}
 
-		valid := bc.validateBlockList(options.Name, bc.blockSize, blockList)
+		valid := bc.validateBlockList(handle, options, blockList)
 		if !valid {
 			return nil, fmt.Errorf("block size mismatch for %s", options.Name)
-		}
-
-		// blockList is valid, Copy the blockList to the handle
-		lst, _ := handle.GetValue("blockList")
-		listMap := lst.(map[int64]string)
-
-		for idx, block := range *blockList {
-			listMap[int64(idx)] = block.Id
 		}
 	}
 
@@ -378,16 +370,21 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 	return handle, nil
 }
 
-// validateBlockList: Validates the blockList.
+// validateBlockList: Validates the blockList and populates the blocklist inside the handle for a file.
+// This method is only called when the file is opened in O_RDWR mode.
 // Each Block's size must equal to blockSize set in config and last block size <= config's blockSize
 // returns true, if blockList is valid
-func (bc *BlockCache) validateBlockList(fileName string, blockSize uint64, blockList *internal.CommittedBlockList) bool {
+func (bc *BlockCache) validateBlockList(handle *handlemap.Handle, options internal.OpenFileOptions, blockList *internal.CommittedBlockList) bool {
+	lst, _ := handle.GetValue("blockList")
+	listMap := lst.(map[int64]string)
 	listLen := len(*blockList)
+
 	for idx, block := range *blockList {
-		if (idx < (listLen-1) && block.Size != blockSize) || (idx == (listLen-1) && block.Size > blockSize) {
-			log.Err("BlockCache::OpenFile : Block size mismatch for %s [block: %v, size: %v]", fileName, block.Id, block.Size)
+		if (idx < (listLen-1) && block.Size != bc.blockSize) || (idx == (listLen-1) && block.Size > bc.blockSize) {
+			log.Err("BlockCache::validateBlockList : Block size mismatch for %s [block: %v, size: %v]", options.Name, block.Id, block.Size)
 			return false
 		}
+		listMap[int64(idx)] = block.Id
 	}
 	return true
 }
