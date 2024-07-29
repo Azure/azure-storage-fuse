@@ -1052,6 +1052,16 @@ func (bc *BlockCache) stageBlocks(handle *handlemap.Handle, cnt int) error {
 
 // lineupUpload : Create a work item and schedule the upload
 func (bc *BlockCache) lineupUpload(handle *handlemap.Handle, block *Block, listMap map[int64]*blockInfo) {
+	// if a block has data less than block size and is not the last block,
+	// add null at the end and upload the full block
+	if block.endIndex < uint64(handle.Size) {
+		block.endIndex = block.offset + bc.blockSize
+		log.Debug("BlockCache::lineupUpload : Appending null for block %v", block.id)
+	} else if block.endIndex == uint64(handle.Size) {
+		// TODO: random write scenario where this block is not the last block
+		log.Debug("BlockCache::lineupUpload : Last block %v", block.id)
+	}
+
 	// id := listMap[block.id]
 	// if id == "" {
 	id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
@@ -1072,10 +1082,6 @@ func (bc *BlockCache) lineupUpload(handle *handlemap.Handle, block *Block, listM
 	}
 
 	log.Debug("BlockCache::lineupUpload : Upload block %v=>%s (index %v, offset %v, data %v)", handle.ID, handle.Path, block.id, block.offset, (block.endIndex - block.offset))
-
-	if (block.endIndex - block.offset) == 0 {
-		log.Err("BlockCache::lineupUpload : Upload block %v=>%s (index %v, offset %v, data %v) 0 byte block formed", handle.ID, handle.Path, block.id, block.offset, (block.endIndex - block.offset))
-	}
 
 	// Remove this block from free block list and add to in-process list
 	if block.node != nil {
@@ -1136,21 +1142,10 @@ func (bc *BlockCache) upload(item *workItem) {
 	flock.Lock()
 	defer flock.Unlock()
 
-	endIndex := item.block.endIndex
-	// if a block has data less than block size and is not the last block,
-	// add null at the end and upload the full block
-	if item.block.endIndex-item.block.offset < bc.blockSize && item.block.endIndex < uint64(item.handle.Size) {
-		endIndex = item.block.offset + bc.blockSize
-		log.Debug("BlockCache::upload : Appending null for block %v", item.block.id)
-	} else if item.block.endIndex == uint64(item.handle.Size) {
-		// TODO: random write scenario where this block is not the last block
-		log.Debug("BlockCache::upload : Last block %v", item.block.id)
-	}
-
 	// This block is updated so we need to stage it now
 	err := bc.NextComponent().StageData(internal.StageDataOptions{
 		Name: item.handle.Path,
-		Data: item.block.data[0 : endIndex-item.block.offset],
+		Data: item.block.data[0 : item.block.endIndex-item.block.offset],
 		Id:   item.blockId})
 	if err != nil {
 		// Fail to write the data so just reschedule this request
@@ -1181,7 +1176,7 @@ func (bc *BlockCache) upload(item *workItem) {
 		// Dump this block to local disk cache
 		f, err := os.Create(localPath)
 		if err == nil {
-			_, err := f.Write(item.block.data[0 : endIndex-item.block.offset])
+			_, err := f.Write(item.block.data[0 : item.block.endIndex-item.block.offset])
 			if err != nil {
 				log.Err("BlockCache::upload : Failed to write %s to disk [%v]", localPath, err.Error())
 				_ = os.Remove(localPath)
@@ -1286,7 +1281,7 @@ func (bc *BlockCache) getBlockIDList(handle *handlemap.Handle) ([]string, error)
 	for i < len(offsets) {
 		if index == offsets[i] {
 			blockIDList = append(blockIDList, listMap[offsets[i]].id)
-			log.Debug("BlockCache::getBlockIDList : Preparing blocklist for %v=>%s (%v :  %v, data length %v)", handle.ID, handle.Path, offsets[i], listMap[offsets[i]].id, listMap[offsets[i]].size)
+			log.Debug("BlockCache::getBlockIDList : Preparing blocklist for %v=>%s (%v :  %v, size %v)", handle.ID, handle.Path, offsets[i], listMap[offsets[i]].id, listMap[offsets[i]].size)
 			index++
 			i++
 		} else {
