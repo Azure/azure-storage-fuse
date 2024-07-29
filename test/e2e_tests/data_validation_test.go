@@ -437,15 +437,15 @@ func (suite *dataValidationTestSuite) TestSparseFileRandomWrite() {
 	}(rfh)
 
 	// write to local file
-	writeSparseData(suite, lfh, []int64{0, 100 * int64(_1MB), 65 * int64(_1MB)})
+	writeSparseData(suite, lfh, []int64{0, 164 * int64(_1MB), 100 * int64(_1MB), 65 * int64(_1MB), 129 * int64(_1MB)})
 
 	// write to remote file
-	writeSparseData(suite, rfh, []int64{0, 100 * int64(_1MB), 65 * int64(_1MB)})
+	writeSparseData(suite, rfh, []int64{0, 164 * int64(_1MB), 100 * int64(_1MB), 65 * int64(_1MB), 129 * int64(_1MB)})
 
 	// check size of blob uploaded
 	fi, err := os.Stat(remoteFilePath)
 	suite.Nil(err)
-	suite.Equal(fi.Size(), 101*int64(_1MB))
+	suite.Equal(fi.Size(), 165*int64(_1MB))
 
 	localMD5, err := computeMD5(localFilePath)
 	suite.Nil(err)
@@ -482,15 +482,15 @@ func (suite *dataValidationTestSuite) TestSparseFileRandomWriteBlockOverlap() {
 	}(rfh)
 
 	// write to local file
-	writeSparseData(suite, lfh, []int64{0, 100 * int64(_1MB), 63*int64(_1MB) + 1024*512})
+	writeSparseData(suite, lfh, []int64{0, 170 * int64(_1MB), 63*int64(_1MB) + 1024*512, 129 * int64(_1MB), 100 * int64(_1MB)})
 
 	// write to remote file
-	writeSparseData(suite, rfh, []int64{0, 100 * int64(_1MB), 63*int64(_1MB) + 1024*512})
+	writeSparseData(suite, rfh, []int64{0, 170 * int64(_1MB), 63*int64(_1MB) + 1024*512, 129 * int64(_1MB), 100 * int64(_1MB)})
 
 	// check size of blob uploaded
 	fi, err := os.Stat(remoteFilePath)
 	suite.Nil(err)
-	suite.Equal(fi.Size(), 101*int64(_1MB))
+	suite.Equal(fi.Size(), 171*int64(_1MB))
 
 	localMD5, err := computeMD5(localFilePath)
 	suite.Nil(err)
