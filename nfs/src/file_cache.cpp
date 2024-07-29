@@ -52,7 +52,7 @@ membuf::membuf(bytes_chunk_cache *_bcc,
     if (is_file_backed()) {
         assert(allocated_length == 0);
 
-        const bool ret = load();
+        [[maybe_unused]] const bool ret = load();
         assert(ret);
 
         // load() must have updated these.
@@ -1585,7 +1585,7 @@ static void cache_read(bytes_chunk_cache& cache,
     uint64_t prev_chunk_right_edge = AZNFSC_BAD_OFFSET;
     uint64_t total_length = 0;
 
-    for (const auto& e : v) {
+    for ([[maybe_unused]] const auto& e : v) {
         assert(e.length > 0);
         assert(e.length <= AZNFSC_MAX_CHUNK_SIZE);
 
@@ -1629,7 +1629,7 @@ static void cache_write(bytes_chunk_cache& cache,
     uint64_t prev_chunk_right_edge = AZNFSC_BAD_OFFSET;
     uint64_t total_length = 0;
 
-    for (const auto& e : v) {
+    for ([[maybe_unused]] const auto& e : v) {
         assert(e.length > 0);
         assert(e.length <= AZNFSC_MAX_CHUNK_SIZE);
 
@@ -1682,7 +1682,7 @@ int bytes_chunk_cache::unit_test()
      * load() before we can use the buffers.
      */
     bytes_chunk bc, bc1, bc2, bc3;
-    uint8_t *buffer;
+    [[maybe_unused]] uint8_t *buffer;
 
 #define ASSERT_NEW(chunk, start, end) \
 do { \
@@ -1749,11 +1749,11 @@ do { \
     /* get all chunks and calculate total allocated bytes */ \
     uint64_t total_allocated_bytes = 0; \
     uint64_t total_bytes = 0; \
-    for (const auto& e : cache.chunkmap) { \
+    for ([[maybe_unused]] const auto& e : cache.chunkmap) { \
         total_allocated_bytes += e.second.get_membuf()->allocated_length; \
         total_bytes += e.second.get_membuf()->length; \
     } \
-    const uint64_t total_dropped_bytes = cache.dropall(); \
+    [[maybe_unused]] const uint64_t total_dropped_bytes = cache.dropall(); \
     if (cache.is_file_backed()) { \
         /* For file-backed caches all allocated bytes must be dropped */ \
         assert(total_dropped_bytes == total_allocated_bytes); \
@@ -1767,7 +1767,7 @@ do { \
      */ \
     uint64_t total_allocated_bytes1 = 0; \
     uint64_t total_bytes1 = 0; \
-    for (const auto& e : cache.chunkmap) { \
+    for ([[maybe_unused]] const auto& e : cache.chunkmap) { \
         if (cache.is_file_backed()) { \
             assert(e.second.get_membuf()->allocated_buffer == nullptr); \
             assert(e.second.get_membuf()->buffer == nullptr); \
@@ -1819,7 +1819,7 @@ do { \
      */
     buffer = v[0].get_buffer();
 
-    for (const auto& e : v) {
+    for ([[maybe_unused]] const auto& e : v) {
         PRINT_CHUNK(e);
     }
     PRINT_CHUNKMAP();
@@ -1852,7 +1852,7 @@ do { \
     ASSERT_EXISTING(v[0], 100, 200);
     assert(v[0].get_buffer() == (buffer + 100));
 
-    for (const auto& e : v) {
+    for ([[maybe_unused]] const auto& e : v) {
         PRINT_CHUNK(e);
     }
     PRINT_CHUNKMAP();
@@ -1874,7 +1874,7 @@ do { \
     ASSERT_EXISTING(v[1], 100, 150);
     assert(v[1].get_buffer() == (buffer + 100));
 
-    for (const auto& e : v) {
+    for ([[maybe_unused]] const auto& e : v) {
         PRINT_CHUNK(e);
     }
     PRINT_CHUNKMAP();
@@ -1902,7 +1902,7 @@ do { \
     ASSERT_NEW(v[0], 250, 300);
     new (&bc) bytes_chunk(v[0]);
 
-    for (const auto& e : v) {
+    for ([[maybe_unused]] const auto& e : v) {
         PRINT_CHUNK(e);
     }
     PRINT_CHUNKMAP();
@@ -1921,7 +1921,7 @@ do { \
     ASSERT_EXTENT(0, 200);
     ASSERT_NEW(v[0], 0, 50);
 
-    for (const auto& e : v) {
+    for ([[maybe_unused]] const auto& e : v) {
         PRINT_CHUNK(e);
     }
     PRINT_CHUNKMAP();
@@ -1947,7 +1947,7 @@ do { \
     new (&bc1) bytes_chunk(v[0]);
     new (&bc2) bytes_chunk(v[1]);
 
-    for (const auto& e : v) {
+    for ([[maybe_unused]] const auto& e : v) {
         PRINT_CHUNK(e);
     }
     PRINT_CHUNKMAP();
@@ -1999,7 +1999,7 @@ do { \
     assert(v[3].get_buffer() == bc.get_buffer());
     new (&bc3) bytes_chunk(v[0]);
 
-    for (const auto& e : v) {
+    for ([[maybe_unused]] const auto& e : v) {
         PRINT_CHUNK(e);
     }
     PRINT_CHUNKMAP();
@@ -2034,7 +2034,7 @@ do { \
     new (&bc1) bytes_chunk(v[0]);
     new (&bc3) bytes_chunk(v[5]);
 
-    for (const auto& e : v) {
+    for ([[maybe_unused]] const auto& e : v) {
         PRINT_CHUNK(e);
     }
     PRINT_CHUNKMAP();
@@ -2076,7 +2076,7 @@ do { \
     ASSERT_EXISTING(v[4], 300, 325);
     assert(v[4].get_buffer() == bc3.get_buffer());
 
-    for (const auto& e : v) {
+    for ([[maybe_unused]] const auto& e : v) {
         PRINT_CHUNK(e);
     }
     PRINT_CHUNKMAP();
@@ -2104,7 +2104,7 @@ do { \
     ASSERT_EXISTING(v[0], 349, 350);
     assert(v[0].get_buffer() == (bc3.get_buffer() + 49));
 
-    for (const auto& e : v) {
+    for ([[maybe_unused]] const auto& e : v) {
         PRINT_CHUNK(e);
     }
     PRINT_CHUNKMAP();
@@ -2142,7 +2142,7 @@ do { \
     ASSERT_NEW(v[0], 0, 131072);
     new (&bc) bytes_chunk(v[0]);
 
-    for (const auto& e : v) {
+    for ([[maybe_unused]] const auto& e : v) {
         PRINT_CHUNK(e);
     }
     PRINT_CHUNKMAP();
@@ -2176,7 +2176,7 @@ do { \
     assert(v[0].buffer_offset == 0);
 #endif
 
-    for (const auto& e : v) {
+    for ([[maybe_unused]] const auto& e : v) {
         PRINT_CHUNK(e);
     }
     PRINT_CHUNKMAP();
@@ -2206,7 +2206,7 @@ do { \
 #endif
     ASSERT_NEW(v[2], 20, 30);
 
-    for (const auto& e : v) {
+    for ([[maybe_unused]] const auto& e : v) {
         PRINT_CHUNK(e);
     }
     PRINT_CHUNKMAP();
@@ -2233,7 +2233,7 @@ do { \
     ASSERT_EXTENT(5, 30);
     ASSERT_NEW(v[0], 5, 30);
 
-    for (const auto& e : v) {
+    for ([[maybe_unused]] const auto& e : v) {
         PRINT_CHUNK(e);
     }
     PRINT_CHUNKMAP();
@@ -2255,7 +2255,7 @@ do { \
     ASSERT_EXISTING(v[0], 5, 30);
     ASSERT_NEW(v[1], 30, 50);
 
-    for (const auto& e : v) {
+    for ([[maybe_unused]] const auto& e : v) {
         PRINT_CHUNK(e);
     }
     PRINT_CHUNKMAP();
@@ -2279,7 +2279,7 @@ do { \
     ASSERT_EXISTING(v[1], 30, 50);
     ASSERT_NEW(v[2], 50, 100);
 
-    for (const auto& e : v) {
+    for ([[maybe_unused]] const auto& e : v) {
         PRINT_CHUNK(e);
     }
     PRINT_CHUNKMAP();
@@ -2336,7 +2336,7 @@ do { \
     ASSERT_EXISTING(v[2], 50, 100);
     ASSERT_NEW(v[3], 100, 200);
 
-    for (const auto& e : v) {
+    for ([[maybe_unused]] const auto& e : v) {
         PRINT_CHUNK(e);
     }
     PRINT_CHUNKMAP();

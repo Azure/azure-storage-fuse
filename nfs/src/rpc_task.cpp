@@ -597,7 +597,7 @@ void rpc_task::run_read()
 
 void rpc_task::send_read_response()
 {
-    const fuse_ino_t ino = rpc_api.read_task.get_inode();
+    [[maybe_unused]] const fuse_ino_t ino = rpc_api.read_task.get_inode();
 
     /*
      * We must send response only after all component reads complete, they may
@@ -622,7 +622,7 @@ void rpc_task::send_read_response()
     // Create an array of iovec struct
     struct iovec iov[count];
     uint64_t bytes_read = 0;
-    bool partial_read = false;
+    [[maybe_unused]] bool partial_read = false;
 
     for (size_t i = 0; i < count; i++) {
         assert(bc_vec[i].pvt <= bc_vec[i].length);

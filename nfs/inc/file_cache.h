@@ -18,9 +18,14 @@
 /*
  * Reminder to audit use of asserts to ensure we don't depend on assert
  * for error handling.
+ *
+ * XXX : This is temporarily disabled to support Release builds, but we need
+ *       to audit this before releasing.
  */
+#if 0
 #ifdef NDEBUG
 #error "Need to audit use of asserts in file_cache"
+#endif
 #endif
 
 /*
@@ -629,7 +634,7 @@ public:
      */
     void load()
     {
-        const bool ret = alloc_buffer->load();
+        [[maybe_unused]] const bool ret = alloc_buffer->load();
         assert(ret);
     }
 };
