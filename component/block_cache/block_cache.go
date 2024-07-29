@@ -1149,10 +1149,9 @@ func (bc *BlockCache) upload(item *workItem) {
 
 	// This block is updated so we need to stage it now
 	err := bc.NextComponent().StageData(internal.StageDataOptions{
-		Name:   item.handle.Path,
-		Data:   item.block.data[0 : endIndex-item.block.offset],
-		Offset: uint64(item.block.id),
-		Id:     item.blockId})
+		Name: item.handle.Path,
+		Data: item.block.data[0 : endIndex-item.block.offset],
+		Id:   item.blockId})
 	if err != nil {
 		// Fail to write the data so just reschedule this request
 		log.Err("BlockCache::upload : Failed to write %v=>%s from offset %v [%s]", item.handle.ID, item.handle.Path, item.block.id, err.Error())
