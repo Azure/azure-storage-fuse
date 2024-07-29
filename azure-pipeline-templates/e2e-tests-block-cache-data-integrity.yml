@@ -46,7 +46,12 @@ steps:
   - script: |
       md5sum $(WORK_DIR)/myfile_* > $(WORK_DIR)/md5sum_original_files.txt
       md5sum $(WORK_DIR)/mixedfiles_* >> $(WORK_DIR)/md5sum_original_files.txt
-    displayName: 'Generate md5Sum on Local'
+    displayName: 'Generate md5Sum on Local' 
+
+  - script: |
+      stat -c%s $(WORK_DIR)/myfile_* > $(WORK_DIR)/stat_original_files.txt
+      stat -c%s $(WORK_DIR)/mixedfiles_* >> $(WORK_DIR)/stat_original_files.txt
+    displayName: 'Storing file size on Local'
 
   - script: |
       $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/azure_key_bc.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.config_file }}
@@ -81,20 +86,39 @@ steps:
     displayName: 'Generate md5Sum with Block-Cache'
 
   - script: |
+      stat -c%s ${{ parameters.mount_dir }}/myfile_* > $(WORK_DIR)/stat_block_cache.txt
+      stat -c%s ${{ parameters.mount_dir }}/mixedfiles_* >> $(WORK_DIR)/stat_block_cache.txt
+    displayName: 'Generating file size with Block-Cache'
+
+  - script: |
       $(WORK_DIR)/blobfuse2 unmount all
     displayName: 'Unmount RW mount'
 
   - script: |
       echo "----------------------------------------------"
-      cat $(WORK_DIR)/md5sum_block_cache.txt
-      echo "----------------------------------------------"
       cat $(WORK_DIR)/md5sum_original_files.txt
+      cat $(WORK_DIR)/md5sum_original_files.txt | cut -d " " -f1 > $(WORK_DIR)/md5sum_original_files.txt
       echo "----------------------------------------------"
-      diff $(WORK_DIR)/md5sum_block_cache.txt $(WORK_DIR)/md5sum_original_files.txt
+      cat $(WORK_DIR)/md5sum_block_cache.txt
+      cat $(WORK_DIR)/md5sum_block_cache.txt | cut -d " " -f1 > $(WORK_DIR)/md5sum_block_cache.txt
+      echo "----------------------------------------------"
+      diff $(WORK_DIR)/md5sum_original_files.txt $(WORK_DIR)/md5sum_block_cache.txt
       if [ $? -ne 0 ]; then
         exit 1
       fi
     displayName: 'Compare md5Sum'
+
+- script: |
+      echo "----------------------------------------------"
+      cat $(WORK_DIR)/stat_original_files.txt
+      echo "----------------------------------------------"
+      cat $(WORK_DIR)/stat_block_cache.txt      
+      echo "----------------------------------------------"
+      diff $(WORK_DIR)/stat_original_files.txt $(WORK_DIR)/stat_block_cache.txt
+      if [ $? -ne 0 ]; then
+        exit 1
+      fi
+    displayName: 'Validate file size'
 
   - template: 'cleanup.yml'
     parameters:
