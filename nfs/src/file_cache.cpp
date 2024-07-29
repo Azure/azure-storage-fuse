@@ -275,6 +275,53 @@ void membuf::clear_uptodate()
 }
 
 /**
+ * Must be called to set membuf flushing only after successfully writing
+ * all the data that this membuf refers to.
+ */
+void membuf::set_flushing()
+{
+    /*
+     * Must be locked and inuse.
+     * Note that following is the correct sequence of operations.
+     *
+     * get()
+     * set_locked()
+     * << write application data to the above membuf(s) >>
+     * set_dirty()
+     * set_uptodate()
+     * set_flushing()
+     * << write membuf data to the blob >>
+     * clear_dirty()
+     * clear_flushing()
+     * clear_locked()
+     * clear_inuse()
+     */
+    assert(is_locked());
+    assert(is_inuse());
+    assert(is_dirty() && is_uptodate());
+
+    flag |= MB_Flag::Flushing;
+
+    AZLogDebug("Set flushing membuf [{}, {}), fd={}",
+               offset, offset+length, backing_file_fd);
+}
+
+/**
+ * Must be called after flushing data to blob.
+ */
+void membuf::clear_flushing()
+{
+    // See comment in set_uptodate() above.
+    assert(is_locked());
+    assert(is_inuse());
+
+    flag &= ~MB_Flag::Flushing;
+
+    AZLogDebug("Clear flushing membuf [{}, {}), fd={}",
+               offset, offset+length, backing_file_fd);
+}
+
+/**
  * Try to lock the membuf and return whether we were able to lock it.
  * If membuf was already locked, this will return false and caller doesn't
  * have the lock, else caller will have the lock and it'll return true.

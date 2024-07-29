@@ -260,21 +260,8 @@ struct membuf
         return (flag & MB_Flag::Flushing);
     }
 
-    void set_flushing()
-    {
-        flag |= MB_Flag::Flushing;
-
-        AZLogDebug("Set flushing membuf [{}, {}), fd={}",
-                    offset, offset+length, backing_file_fd);
-    }
-
-    void clear_flushing()
-    {
-        flag &= ~MB_Flag::Flushing;
-
-        AZLogDebug("Clear flushing membuf [{}, {}), fd={}",
-                   offset, offset+length, backing_file_fd);
-    }
+    void set_flushing();
+    void clear_flushing();
 
     bool is_inuse() const
     {
