@@ -1484,6 +1484,22 @@ stages:
               sudo pip3 install pandas numpy pyarrow fastparquet
             displayName: 'Install Python Packages'
 
+          - script: |
+              cd $(WORK_DIR)
+              $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/azure_key_bc.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
+              sed -i 's/block-size-mb: [0-9]*/block-size-mb: 1/' $(BLOBFUSE2_CFG)
+            displayName: 'Create Config File for RW mount'
+            env:
+              NIGHTLY_STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
+              NIGHTLY_STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
+              ACCOUNT_TYPE: block
+              ACCOUNT_ENDPOINT: https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net
+              VERBOSE_LOG: ${{ parameters.verbose_log }}
+            continueOnError: false
+
+          - script: cat $(BLOBFUSE2_CFG)
+            displayName: Print config file
+
           - template: 'azure-pipeline-templates/e2e-tests-block-cache-data-integrity.yml'
             parameters:
               conf_template: azure_key.yaml
@@ -1491,10 +1507,6 @@ stages:
               container: $(containerName)
               idstring: Block_Blob
               adls: false
-              account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
-              account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
-              account_type: block
-              account_endpoint: https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net
               distro_name: $(AgentName)
               quick_test: false
               verbose_log: ${{ parameters.verbose_log }}
@@ -1502,6 +1514,36 @@ stages:
               # TODO: These can be removed one day and replace all instances of ${{ parameters.temp_dir }} with $(TEMP_DIR) since it is a global variable
               temp_dir: $(TEMP_DIR)
               mount_dir: $(MOUNT_DIR)
+
+          - script: |
+              cd $(WORK_DIR)
+              $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/azure_key_bc.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
+            displayName: 'Create Config File for RW mount'
+            env:
+              NIGHTLY_STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
+              NIGHTLY_STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
+              ACCOUNT_TYPE: block
+              ACCOUNT_ENDPOINT: https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net
+              VERBOSE_LOG: ${{ parameters.verbose_log }}
+            continueOnError: false
+
+          - script: cat $(BLOBFUSE2_CFG)
+            displayName: Print config file
+
+          - template: 'azure-pipeline-templates/e2e-tests-block-cache-data-integrity.yml'
+                parameters:
+                  conf_template: azure_key.yaml
+                  config_file: $(BLOBFUSE2_CFG)
+                  container: $(containerName)
+                  idstring: Block_Blob
+                  adls: false
+                  distro_name: $(AgentName)
+                  quick_test: false
+                  verbose_log: ${{ parameters.verbose_log }}
+                  clone: true
+                  # TODO: These can be removed one day and replace all instances of ${{ parameters.temp_dir }} with $(TEMP_DIR) since it is a global variable
+                  temp_dir: $(TEMP_DIR)
+                  mount_dir: $(MOUNT_DIR)
 
   - stage: FNSDataValidation
     jobs:
