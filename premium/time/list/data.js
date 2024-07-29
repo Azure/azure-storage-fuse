@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1722154419828,
+  "lastUpdate": 1722250608736,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -2207,6 +2207,40 @@ window.BENCHMARK_DATA = {
           {
             "name": "delete_100k_files",
             "value": "320.64000",
+            "unit": "seconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "64532198+vibhansa-msft@users.noreply.github.com",
+            "name": "Vikas Bhansali",
+            "username": "vibhansa-msft"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "db7dec95e4a3a801f94ba8ad8d655b9cfd082886",
+          "message": "Blocker and Vulnerability update (#1473)\n\n* Make vulnerability scan a common code",
+          "timestamp": "2024-07-29T15:13:48+05:30",
+          "tree_id": "8b74e09bd10c1d2c2eaabeba456ecf17545f6c15",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/db7dec95e4a3a801f94ba8ad8d655b9cfd082886"
+        },
+        "date": 1722250608475,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "list_100k_files",
+            "value": "14.88000",
+            "unit": "seconds"
+          },
+          {
+            "name": "delete_100k_files",
+            "value": "352.64000",
             "unit": "seconds"
           }
         ]
