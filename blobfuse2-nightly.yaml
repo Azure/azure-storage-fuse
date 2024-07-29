@@ -1502,7 +1502,7 @@ stages:
 
           - template: 'azure-pipeline-templates/e2e-tests-block-cache-data-integrity.yml'
             parameters:
-              conf_template: azure_key.yaml
+              conf_template: azure_key_bc.yaml
               config_file: $(BLOBFUSE2_CFG)
               container: $(containerName)
               idstring: Block_Blob
@@ -1532,7 +1532,7 @@ stages:
 
           - template: 'azure-pipeline-templates/e2e-tests-block-cache-data-integrity.yml'
             parameters:
-              conf_template: azure_key.yaml
+              conf_template: azure_key_bc.yaml
               config_file: $(BLOBFUSE2_CFG)
               container: $(containerName)
               idstring: Block_Blob

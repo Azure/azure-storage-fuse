@@ -27,12 +27,11 @@ parameters:
 
 steps:    
   - script: |
-      df -h $(WORK_DIR)
       for i in $(seq 1 10); do echo $(shuf -i 0-4294967296 -n 1); done | parallel --will-cite -j 5 'head -c {} < /dev/urandom > $(WORK_DIR)/datafiles_{}'
       for i in {1,2,3,4,5,6,7,8,9,10,20,30,50,100,200}; do echo $i; done | parallel --will-cite -j 5 'head -c {}M < /dev/urandom > $(WORK_DIR)/mixedfiles_{}.txt'
       for i in {1,2,3,4,5,6,7,8,9,10,20,30,50,100,200}; do echo $i; done | parallel --will-cite -j 5 'head -c {}M < /dev/urandom > $(WORK_DIR)/mixedfiles_{}.png'
       cd $(WORK_DIR)
-      python3 $(WORK_DIR)/azure-pipeline-templates/generate-parquet-files.py
+      python3 $(WORK_DIR)/testdata/scripts/generate-parquet-files.py
       ls -lh $(WORK_DIR)/mixedfiles_*
       ls -lh $(WORK_DIR)/datafiles_*
     displayName: 'Generate data on Local'
@@ -108,10 +107,6 @@ steps:
         exit 1
       fi
     displayName: 'Validate file size'
-
-  - script: |
-      cat $(WORK_DIR)/ls_block_cache.txt
-    displayName: 'Print contents of Block-Cache'
 
   - template: 'cleanup.yml'
     parameters:
