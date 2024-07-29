@@ -90,6 +90,10 @@ steps:
       fi
     displayName: 'Compare md5Sum'
 
+  - script: |
+      rm $(WORK_DIR)/datafiles_* $(WORK_DIR)/mixedfiles_*
+    displayName: 'Clear files on Local'
+
   - template: 'cleanup.yml'
     parameters:
       working_dir: $(WORK_DIR)
