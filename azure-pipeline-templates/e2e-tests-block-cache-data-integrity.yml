@@ -34,16 +34,16 @@ steps:
       cd $(WORK_DIR)
       python3 $(WORK_DIR)/azure-pipeline-templates/generate-parquet-files.py
       ls -lh $(WORK_DIR)/mixedfiles_*
-      ls -lh $(WORK_DIR)/myfile_*
+      ls -lh $(WORK_DIR)/datafiles_*
     displayName: 'Generate data on Local'
 
   - script: |
-      md5sum $(WORK_DIR)/myfile_* > $(WORK_DIR)/md5sum_original_files.txt
+      md5sum $(WORK_DIR)/datafiles_* > $(WORK_DIR)/md5sum_original_files.txt
       md5sum $(WORK_DIR)/mixedfiles_* >> $(WORK_DIR)/md5sum_original_files.txt
     displayName: 'Generate md5Sum on Local' 
 
   - script: |
-      stat -c '%s %n' $(WORK_DIR)/myfile_* > $(WORK_DIR)/stat_original_files.txt
+      stat -c '%s %n' $(WORK_DIR)/datafiles_* > $(WORK_DIR)/stat_original_files.txt
       stat -c '%s %n' $(WORK_DIR)/mixedfiles_* >> $(WORK_DIR)/stat_original_files.txt
     displayName: 'Storing file size on Local'
 
@@ -59,7 +59,7 @@ steps:
           $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR)
 
   - script: |
-      cp $(WORK_DIR)/myfile_* ${{ parameters.mount_dir }}
+      cp $(WORK_DIR)/datafiles_* ${{ parameters.mount_dir }}
       cp $(WORK_DIR)/mixedfiles_* ${{ parameters.mount_dir }}
       ls -lh ${{ parameters.mount_dir }} > $(WORK_DIR)/ls_block_cache.txt
     displayName: 'Copy files with Block-Cache'
@@ -70,12 +70,12 @@ steps:
     displayName: 'Print contents of Block-Cache'
 
   - script: |
-      md5sum ${{ parameters.mount_dir }}/myfile_* > $(WORK_DIR)/md5sum_block_cache.txt
+      md5sum ${{ parameters.mount_dir }}/datafiles_* > $(WORK_DIR)/md5sum_block_cache.txt
       md5sum ${{ parameters.mount_dir }}/mixedfiles_* >> $(WORK_DIR)/md5sum_block_cache.txt
     displayName: 'Generate md5Sum with Block-Cache'
 
   - script: |
-      stat -c '%s %n' ${{ parameters.mount_dir }}/myfile_* > $(WORK_DIR)/stat_block_cache.txt
+      stat -c '%s %n' ${{ parameters.mount_dir }}/datafiles_* > $(WORK_DIR)/stat_block_cache.txt
       stat -c '%s %n' ${{ parameters.mount_dir }}/mixedfiles_* >> $(WORK_DIR)/stat_block_cache.txt
     displayName: 'Generating file size with Block-Cache'
 
