@@ -861,7 +861,6 @@ public:
      * After the use, call clear_inuse().
      */
     std::vector<bytes_chunk> get_dirty_bc();
-    
 
     /**
      * Drop cached data in the given range.

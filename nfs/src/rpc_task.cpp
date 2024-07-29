@@ -53,7 +53,6 @@ void rpc_task::init_write(fuse_req* request,
     rpc_api.write_task.set_buffer_vector(bufv);
 }
 
-
 void rpc_task::init_getattr(fuse_req* request,
                             fuse_ino_t ino)
 {
@@ -221,6 +220,7 @@ static void lookup_callback(
         task->reply_error(status);
     }
 }
+
 #if 0
 static void flush_callback(
     struct rpc_context* /* rpc */,
@@ -656,7 +656,6 @@ void rpc_task::run_write()
     std::vector<bytes_chunk> chunkvec;
 
     int error_code = nfs_inode->get_write_error();
-
     if (error_code == 0)
     {
         chunkvec = copy_to_cache(get_client(), file_ino, bufv, offset, length, error_code);
@@ -673,7 +672,6 @@ void rpc_task::run_write()
     assert(chunkvec.size() > 0);
 
     for (auto &chunk : chunkvec) {
-        
         WRITE3args args;
         bool rpc_retry = false;
 

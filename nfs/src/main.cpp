@@ -741,7 +741,6 @@ static void aznfsc_ll_write(fuse_req_t req,
                             off_t off,
                             struct fuse_file_info *fi)
 {
-
     AZLogInfo("aznfsc_ll_write(req={}, ino={}, size={}, off={}, fi={}",
                fmt::ptr(req), ino, size, off, fmt::ptr(fi));
 
@@ -1012,7 +1011,6 @@ static void aznfsc_ll_write_buf(fuse_req_t req,
                                 off_t off,
                                 struct fuse_file_info *fi)
 {
-
     AZLogInfo("aznfsc_ll_write_buf(req={}, ino={}, off={}, fi={}",
                fmt::ptr(req), ino, off, fmt::ptr(fi));
 
@@ -1020,7 +1018,6 @@ static void aznfsc_ll_write_buf(fuse_req_t req,
     assert(bufv->idx <= bufv->count);
 
     size_t length = bufv->buf[bufv->idx].size - bufv->off;
-
     client->write(req, ino, bufv, length, off);
 }
 

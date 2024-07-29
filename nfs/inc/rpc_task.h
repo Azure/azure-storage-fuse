@@ -10,7 +10,6 @@
 #include <thread>
 #include "nfs_client.h"
 #include "file_cache.h"
-
 #include "log.h"
 
 // Maximum number of simultaneous rpc tasks (sync + async).
@@ -718,7 +717,6 @@ public:
                      const char *name,
                      fuse_ino_t parent_ino);
     void run_lookup();
-
 
     /*
      * init/run methods for the WRITE RPC.
