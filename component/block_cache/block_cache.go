@@ -380,6 +380,7 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 
 // validateBlockList: Validates the blockList.
 // Each Block's size must equal to blockSize set in config and last block size <= config's blockSize
+// returns true, if blockList is valid
 func (bc *BlockCache) validateBlockList(fileName string, blockSize uint64, blockList *internal.CommittedBlockList) bool {
 	listLen := len(*blockList)
 	for idx, block := range *blockList {

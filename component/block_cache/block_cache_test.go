@@ -986,7 +986,7 @@ func (suite *blockCacheTestSuite) TestValidateBlockList() {
 	noOfBlocks := 20
 	var startOffset int64
 
-	//Generate Equal Size blocks
+	//Generate blocklist, blocks with size equal to configured block size
 	blockLst = nil
 	startOffset = 0
 	for i := 0; i < noOfBlocks; i++ {
@@ -1002,7 +1002,7 @@ func (suite *blockCacheTestSuite) TestValidateBlockList() {
 	valid := tobj.blockCache.validateBlockList(file, tobj.blockCache.blockSize, &blockLst)
 	suite.assert.True(valid)
 
-	//Generate Equal Size blocks and last block size <= config's block size
+	//Generate blocklist, blocks with size equal to configured block size and last block size <= config's block size
 	blockLst = nil
 	startOffset = 0
 	for i := 0; i < noOfBlocks; i++ {
@@ -1021,7 +1021,7 @@ func (suite *blockCacheTestSuite) TestValidateBlockList() {
 	valid = tobj.blockCache.validateBlockList(file, tobj.blockCache.blockSize, &blockLst)
 	suite.assert.True(valid)
 
-	//Generate EqualSize blocks and last block size > config's block size
+	//Generate Blocklist, blocks with size equal to configured block size and last block size > config's block size
 	blockLst = nil
 	startOffset = 0
 	for i := 0; i < noOfBlocks; i++ {
@@ -1040,7 +1040,7 @@ func (suite *blockCacheTestSuite) TestValidateBlockList() {
 	valid = tobj.blockCache.validateBlockList(file, tobj.blockCache.blockSize, &blockLst)
 	suite.assert.False(valid)
 
-	//Generate UnEqualSize Blocks
+	//Generate Blocklist, blocks with random size
 	blockLst = nil
 	startOffset = 0
 	for i := 0; i < noOfBlocks; i++ {
