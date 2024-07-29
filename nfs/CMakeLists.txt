@@ -15,6 +15,7 @@ option(ENABLE_TESTS "Build and run test programs" OFF)
 option(ENABLE_DOCUMENTATION "Build Documentation" OFF)
 option(ENABLE_NON_AZURE_NFS "Enable support for general NFS servers" ON)
 option(ENABLE_CHATTY "Enable super verbose logs" OFF)
+option(ENABLE_TCMALLOC "Use tcmalloc for malloc/free/new/delete" ON)
 
 if(ENABLE_NON_AZURE_NFS)
   add_definitions(-DENABLE_NON_AZURE_NFS)
@@ -94,6 +95,28 @@ if(NOT GNUTLS_FOUND)
     endif()
 endif()
 
+#
+# Find tcmalloc and if not found try to install.
+#
+if(ENABLE_TCMALLOC)
+find_package(tcmalloc QUIET)
+if(NOT tcmalloc_FOUND)
+    message(STATUS "tcmalloc not found, trying to install libgoogle-perftools-dev!")
+    execute_process(COMMAND sudo apt install -y libgoogle-perftools-dev
+            RESULT_VARIABLE tcmalloc_INSTALL_RESULT)
+    if(NOT tcmalloc_INSTALL_RESULT EQUAL "0")
+        message(FATAL_ERROR "apt install libgoogle-perftools-dev failed with ${tcmalloc_INSTALL_RESULT}, try installing libgoogle-perftools-dev manually and then run cmake again")
+    else()
+        # Call once more to ensure above install completed fine and also
+        # will set tcmalloc_INCLUDE_DIR and tcmalloc_LIBRARY variables.
+        find_package(tcmalloc REQUIRED)
+    endif()
+else()
+    message(STATUS "Using tcmalloc lib ${tcmalloc_LIBRARY}")
+    message(STATUS "Using tcmalloc include dir ${tcmalloc_INCLUDE_DIR}")
+endif()
+endif()
+
 # Build libnfs (with multithreading enabled).
 set(ENABLE_MULTITHREADING ON)
 set(ENABLE_EXAMPLES ON)
@@ -142,5 +165,10 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
                       nfs
                       yaml-cpp
                       spdlog)
+
+if(ENABLE_TCMALLOC)
+target_link_libraries(${CMAKE_PROJECT_NAME}
+                      ${tcmalloc_LIBRARY})
+endif()
 
 install(TARGETS ${CMAKE_PROJECT_NAME})

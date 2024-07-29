@@ -10,6 +10,9 @@ Building
 # For enabling AZLogVerbose()
 - -DENABLE_CHATTY=ON ..
 
+# For using TCMalloc
+- -DENABLE_TCMALLOC=ON ..
+
 Running
 =======
 Copy sample-config.yaml as path/to/your/config.yaml and edit it according
