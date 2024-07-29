@@ -388,11 +388,11 @@ static void write_flush_callback(
     membuf->clear_locked();  
     membuf->clear_inuse();
 
-    delete cb_data;
     nfs_inode->filecache_handle->release(chunk->offset, chunk->length);
 
     // Release the task.
     task->free_rpc_task();
+    delete cb_data;
 }
 
 static void createfile_callback(
@@ -535,7 +535,7 @@ copy_to_cache(struct nfs_client *const client,
     
     // If fd is set then no buffer available.
     if (fd_set) {
-        assert(bufv->buf[bufv->idx].mem == 0x0);
+        // assert(bufv->buf[bufv->idx].mem == 0x0);
     } else {
         buf = (char *) bufv->buf[bufv->idx].mem  + bufv->off;
     }
@@ -694,6 +694,7 @@ void rpc_task::run_write()
 
         // Allocate new rpc task.
         auto flush_task = client->get_rpc_task_helper()->alloc_rpc_task();
+        flush_task->optype = FUSE_FLUSH;
 
         struct write_flush_context *cb_context = new write_flush_context(chunk, flush_task, file_ino);
 
