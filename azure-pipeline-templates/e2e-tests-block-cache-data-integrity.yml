@@ -77,9 +77,15 @@ steps:
           $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR)
 
   - script: |
-        cp $(WORK_DIR)/myfile_* ${{ parameters.mount_dir }}
-        cp $(WORK_DIR)/mixedfiles_* ${{ parameters.mount_dir }}
+      cp $(WORK_DIR)/myfile_* ${{ parameters.mount_dir }}
+      cp $(WORK_DIR)/mixedfiles_* ${{ parameters.mount_dir }}
+      ls -lh ${{ parameters.mount_dir }} > $(WORK_DIR)/ls_block_cache.txt
     displayName: 'Copy files with Block-Cache'
+
+  - script: |
+      echo "----------------------------------------------"
+      cat $(WORK_DIR)/ls_block_cache.txt
+    displayName: 'Print contents of Block-Cache'
 
   - script: |
       md5sum ${{ parameters.mount_dir }}/myfile_* > $(WORK_DIR)/md5sum_block_cache.txt
@@ -87,7 +93,6 @@ steps:
     displayName: 'Generate md5Sum with Block-Cache'
 
   - script: |
-      ls -lh ${{ parameters.mount_dir }} > $(WORK_DIR)/ls_block_cache.txt
       stat -c '%s %n' ${{ parameters.mount_dir }}/myfile_* > $(WORK_DIR)/stat_block_cache.txt
       stat -c '%s %n' ${{ parameters.mount_dir }}/mixedfiles_* >> $(WORK_DIR)/stat_block_cache.txt
     displayName: 'Generating file size with Block-Cache'
