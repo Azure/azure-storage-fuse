@@ -37,8 +37,10 @@
 package e2e_tests
 
 import (
+	"crypto/md5"
 	"flag"
 	"fmt"
+	"io"
 	"math/rand"
 	"os"
 	"os/exec"
@@ -59,6 +61,8 @@ var streamDirectTest string
 var distro string
 
 var minBuff, medBuff, largeBuff, hugeBuff []byte
+
+const _1MB uint64 = (1024 * 1024)
 
 type dataValidationTestSuite struct {
 	suite.Suite
@@ -126,12 +130,6 @@ func (suite *dataValidationTestSuite) validateData(localFilePath string, remoteF
 
 // Test correct overwrite of file using echo command
 func (suite *dataValidationTestSuite) TestFileOverwriteWithEchoCommand() {
-
-	if strings.Contains(strings.ToUpper(distro), "UBUNTU-20.04") {
-		fmt.Println("Skipping this test case for UBUNTU-20.04")
-		return
-	}
-
 	remoteFilePath := filepath.Join(suite.testMntPath, "TESTFORECHO.txt")
 	text := "Hello, this is a test."
 	command := "echo \"" + text + "\" > " + remoteFilePath
@@ -347,10 +345,6 @@ func (suite *dataValidationTestSuite) TestMultipleMediumFiles() {
 		fmt.Println("Skipping this test case for stream direct")
 		return
 	}
-	if strings.Contains(strings.ToUpper(distro), "RHEL") {
-		fmt.Println("Skipping this test case for RHEL")
-		return
-	}
 
 	noOfFiles := 8
 	noOfWorkers := 4
@@ -360,10 +354,6 @@ func (suite *dataValidationTestSuite) TestMultipleMediumFiles() {
 func (suite *dataValidationTestSuite) TestMultipleLargeFiles() {
 	if strings.ToLower(streamDirectTest) == "true" {
 		fmt.Println("Skipping this test case for stream direct")
-		return
-	}
-	if strings.Contains(strings.ToUpper(distro), "RHEL") {
-		fmt.Println("Skipping this test case for RHEL")
 		return
 	}
 
@@ -387,13 +377,141 @@ func (suite *dataValidationTestSuite) TestMultipleHugeFiles() {
 	createThreadPool(noOfFiles, noOfWorkers, "huge", suite)
 }
 
+func computeMD5(filePath string) ([]byte, error) {
+	fh, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+
+	fi, err := fh.Stat()
+	fi.Size()
+
+	hash := md5.New()
+	if _, err := io.Copy(hash, fh); err != nil {
+		return nil, err
+	}
+
+	err = fh.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	return hash.Sum(nil), nil
+}
+
+func writeSparseData(suite *dataValidationTestSuite, fh *os.File, offsets []int64) {
+	ind := uint64(0)
+	for _, o := range offsets {
+		// write 1MB data at offset o
+		n, err := fh.WriteAt(medBuff[ind*_1MB:(ind+1)*_1MB], o)
+		suite.Nil(err)
+		suite.Equal(n, int(_1MB))
+
+		ind = (ind + 1) % 10
+	}
+
+	// close the file handle
+	err := fh.Close()
+	suite.Nil(err)
+}
+
+func (suite *dataValidationTestSuite) TestSparseFileRandomWrite() {
+	fileName := "sparseFile"
+	localFilePath := suite.testLocalPath + "/" + fileName
+	remoteFilePath := suite.testMntPath + "/" + fileName
+
+	// create local file
+	lfh, err := os.Create(localFilePath)
+	suite.Nil(err)
+
+	defer func(fh *os.File) {
+		_ = fh.Close()
+	}(lfh)
+
+	// create remote file
+	rfh, err := os.Create(remoteFilePath)
+	suite.Nil(err)
+
+	defer func(fh *os.File) {
+		_ = fh.Close()
+	}(rfh)
+
+	// write to local file
+	writeSparseData(suite, lfh, []int64{0, 100 * int64(_1MB), 65 * int64(_1MB)})
+
+	// write to remote file
+	writeSparseData(suite, rfh, []int64{0, 100 * int64(_1MB), 65 * int64(_1MB)})
+
+	// check size of blob uploaded
+	fi, err := os.Stat(remoteFilePath)
+	suite.Nil(err)
+	suite.Equal(fi.Size(), 101*int64(_1MB))
+
+	localMD5, err := computeMD5(localFilePath)
+	suite.Nil(err)
+	suite.NotNil(localMD5)
+
+	remoteMD5, err := computeMD5(remoteFilePath)
+	suite.Nil(err)
+	suite.NotNil(remoteMD5)
+
+	suite.Equal(localMD5, remoteMD5)
+
+	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, suite.testCachePath})
+}
+
+func (suite *dataValidationTestSuite) TestSparseFileRandomWriteBlockOverlap() {
+	fileName := "sparseFileBlockOverlap"
+	localFilePath := suite.testLocalPath + "/" + fileName
+	remoteFilePath := suite.testMntPath + "/" + fileName
+
+	// create local file
+	lfh, err := os.Create(localFilePath)
+	suite.Nil(err)
+
+	defer func(fh *os.File) {
+		_ = fh.Close()
+	}(lfh)
+
+	// create remote file
+	rfh, err := os.Create(remoteFilePath)
+	suite.Nil(err)
+
+	defer func(fh *os.File) {
+		_ = fh.Close()
+	}(rfh)
+
+	// write to local file
+	writeSparseData(suite, lfh, []int64{0, 100 * int64(_1MB), 63*int64(_1MB) + 1024*512})
+
+	// write to remote file
+	writeSparseData(suite, rfh, []int64{0, 100 * int64(_1MB), 63*int64(_1MB) + 1024*512})
+
+	// check size of blob uploaded
+	fi, err := os.Stat(remoteFilePath)
+	suite.Nil(err)
+	suite.Equal(fi.Size(), 101*int64(_1MB))
+
+	localMD5, err := computeMD5(localFilePath)
+	suite.Nil(err)
+	suite.NotNil(localMD5)
+
+	remoteMD5, err := computeMD5(remoteFilePath)
+	suite.Nil(err)
+	suite.NotNil(remoteMD5)
+
+	suite.Equal(localMD5, remoteMD5)
+
+	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, suite.testCachePath})
+}
+
 // -------------- Main Method -------------------
 func TestDataValidationTestSuite(t *testing.T) {
 	initDataValidationFlags()
 	fmt.Println("Distro Name: " + distro)
 
 	// Ignore data validation test on all distros other than UBN
-	if strings.ToLower(quickTest) == "true" {
+	if strings.ToLower(quickTest) == "true" || !strings.Contains(strings.ToUpper(distro), "UBUNTU") {
 		fmt.Println("Skipping Data Validation test suite...")
 		return
 	}
@@ -401,12 +519,12 @@ func TestDataValidationTestSuite(t *testing.T) {
 	dataValidationTest := dataValidationTestSuite{}
 
 	minBuff = make([]byte, 1024)
-	medBuff = make([]byte, (10 * 1024 * 1024))
-	largeBuff = make([]byte, (500 * 1024 * 1024))
+	medBuff = make([]byte, (10 * _1MB))
+	largeBuff = make([]byte, (500 * _1MB))
 	if strings.ToLower(quickTest) == "true" {
-		hugeBuff = make([]byte, (100 * 1024 * 1024))
+		hugeBuff = make([]byte, (100 * _1MB))
 	} else {
-		hugeBuff = make([]byte, (750 * 1024 * 1024))
+		hugeBuff = make([]byte, (750 * _1MB))
 	}
 
 	// Generate random test dir name where our End to End test run is contained
