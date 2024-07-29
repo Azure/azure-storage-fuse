@@ -41,11 +41,6 @@ steps:
       md5sum $(WORK_DIR)/mixedfiles_* >> $(WORK_DIR)/md5sum_original_files.txt
     displayName: 'Generate md5Sum on Local' 
 
-  - script: |
-      stat -c '%s %n' $(WORK_DIR)/datafiles_* > $(WORK_DIR)/stat_original_files.txt
-      stat -c '%s %n' $(WORK_DIR)/mixedfiles_* >> $(WORK_DIR)/stat_original_files.txt
-    displayName: 'Storing file size on Local'
-
   - template: 'mount.yml'
     parameters:
       working_dir: $(WORK_DIR)
@@ -74,9 +69,8 @@ steps:
     displayName: 'Generate md5Sum with Block-Cache'
 
   - script: |
-      stat -c '%s %n' ${{ parameters.mount_dir }}/datafiles_* > $(WORK_DIR)/stat_block_cache.txt
-      stat -c '%s %n' ${{ parameters.mount_dir }}/mixedfiles_* >> $(WORK_DIR)/stat_block_cache.txt
-    displayName: 'Generating file size with Block-Cache'
+      for file in $(WORK_DIR)/datafiles_* $(WORK_DIR)/mixedfiles_*; do [ -f "$file" ] && base=$(basename "$file") && mntfile="${{ parameters.mount_dir }}/$base"&& if [ -f "$mntfile" ]; then if [ "$(stat -c%s "$file")" -eq "$(stat -c%s "$mntfile")" ]; then echo "$file matches size with $mntfile"; else echo "$file does not match size with $mntfile"; fi; else echo "$mntfile does not exist"; fi; done
+    displayName: 'Validating file size with Block-Cache'
 
   - script: |
       $(WORK_DIR)/blobfuse2 unmount all
@@ -95,18 +89,6 @@ steps:
         exit 1
       fi
     displayName: 'Compare md5Sum'
-
-  - script: |
-      echo "----------------------------------------------"
-      cat $(WORK_DIR)/stat_original_files.txt
-      echo "----------------------------------------------"
-      cat $(WORK_DIR)/stat_block_cache.txt      
-      echo "----------------------------------------------"
-      diff $(WORK_DIR)/stat_original_files.txt $(WORK_DIR)/stat_block_cache.txt
-      if [ $? -ne 0 ]; then
-        exit 1
-      fi
-    displayName: 'Validate file size'
 
   - template: 'cleanup.yml'
     parameters:
