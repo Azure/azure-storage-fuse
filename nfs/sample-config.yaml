@@ -14,4 +14,6 @@ rsize: 1048576
 wsize: 1048576
 readdir_maxcount: 1048576
 readahead_kb: 16384
+fuse_max_background: 4096
+cache_max_mb: 4096
 cachedir: 

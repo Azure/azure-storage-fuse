@@ -289,6 +289,34 @@ bool aznfsc_cfg::parse_config_yaml()
             }
         }
 
+        if ((fuse_max_background == -1) && config["fuse_max_background"]) {
+            fuse_max_background = config["fuse_max_background"].as<int>();
+            if (fuse_max_background < AZNFSCFG_FUSE_MAX_BG_MIN ||
+                fuse_max_background > AZNFSCFG_FUSE_MAX_BG_MAX) {
+                throw YAML::Exception(
+                    config["fuse_max_background"].Mark(),
+                    std::string("Invalid fuse_max_background value: ") +
+                    std::to_string(fuse_max_background) +
+                    std::string(" (valid range [") +
+                    std::to_string(AZNFSCFG_FUSE_MAX_BG_MIN) +
+                    ", " + std::to_string(AZNFSCFG_FUSE_MAX_BG_MAX) + "])");
+            }
+        }
+
+        if ((cache_max_mb == -1) && config["cache_max_mb"]) {
+            cache_max_mb = config["cache_max_mb"].as<int>();
+            if (cache_max_mb < AZNFSCFG_CACHE_MAX_MB_MIN ||
+                cache_max_mb > AZNFSCFG_CACHE_MAX_MB_MAX) {
+                throw YAML::Exception(
+                    config["cache_max_mb"].Mark(),
+                    std::string("Invalid cache_max_mb value: ") +
+                    std::to_string(cache_max_mb) +
+                    std::string(" (valid range [") +
+                    std::to_string(AZNFSCFG_CACHE_MAX_MB_MIN) +
+                    ", " + std::to_string(AZNFSCFG_CACHE_MAX_MB_MAX) + "])");
+            }
+        }
+
     } catch (const YAML::BadFile& e) {
         AZLogError("Error loading config file {}: {}", config_yaml, e.what());
         return false;
@@ -460,6 +488,19 @@ static void aznfsc_ll_init(void *userdata,
         conn->max_write = AZNFSC_MAX_CHUNK_SIZE;
     }
 #endif
+
+    /*
+     * If user has explicitly specified "-o max_background=", honour that,
+     * else if he has specified fuse_max_background config, use that, else
+     * pick a good default.
+     */
+    if (conn->max_background == 0) {
+        if (aznfsc_cfg.fuse_max_background != -1) {
+            conn->max_background = aznfsc_cfg.fuse_max_background;
+        } else {
+            conn->max_background = AZNFSCFG_FUSE_MAX_BG_DEF;
+        }
+    }
 
     AZLogDebug("===== fuse_conn_info fields start =====");
     AZLogDebug("proto_major = {}", conn->proto_major);

@@ -40,6 +40,12 @@ using namespace aznfsc;
 #define AZNFSCFG_READDIR_MAX    4194304
 #define AZNFSCFG_READAHEAD_KB_MIN 128
 #define AZNFSCFG_READAHEAD_KB_MAX 1048576
+#define AZNFSCFG_FUSE_MAX_BG_MIN 1
+#define AZNFSCFG_FUSE_MAX_BG_MAX 65536
+#define AZNFSCFG_FUSE_MAX_BG_DEF 4096
+#define AZNFSCFG_CACHE_MAX_MB_MIN 512
+#define AZNFSCFG_CACHE_MAX_MB_MAX (1024 * 1024)
+#define AZNFSCFG_CACHE_MAX_MB_DEF (4 * 1024)
 #define AZNFSCFG_RETRANS_MIN    1
 #define AZNFSCFG_RETRANS_MAX    100
 #define AZNFSCFG_ACTIMEO_MIN    1
@@ -167,6 +173,12 @@ typedef struct aznfsc_cfg
 
     // Readahead size in KB.
     int readahead_kb = -1;
+
+    // Fuse max_background config value.
+    int fuse_max_background = -1;
+
+    // Maximum filecache size in MB.
+    int cache_max_mb = -1;
 
     /*
      * TODO:
