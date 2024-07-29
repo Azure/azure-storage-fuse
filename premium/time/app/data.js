@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1722154749152,
+  "lastUpdate": 1722250954660,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -3437,6 +3437,70 @@ window.BENCHMARK_DATA = {
           {
             "name": "read_40GB",
             "value": 20.055099487304688,
+            "unit": "seconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "64532198+vibhansa-msft@users.noreply.github.com",
+            "name": "Vikas Bhansali",
+            "username": "vibhansa-msft"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "db7dec95e4a3a801f94ba8ad8d655b9cfd082886",
+          "message": "Blocker and Vulnerability update (#1473)\n\n* Make vulnerability scan a common code",
+          "timestamp": "2024-07-29T15:13:48+05:30",
+          "tree_id": "8b74e09bd10c1d2c2eaabeba456ecf17545f6c15",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/db7dec95e4a3a801f94ba8ad8d655b9cfd082886"
+        },
+        "date": 1722250954422,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "write_1GB",
+            "value": 1.6010315418243408,
+            "unit": "seconds"
+          },
+          {
+            "name": "write_10GB",
+            "value": 5.205944538116455,
+            "unit": "seconds"
+          },
+          {
+            "name": "write_100GB",
+            "value": 51.414751291275024,
+            "unit": "seconds"
+          },
+          {
+            "name": "write_40GB",
+            "value": 20.325551986694336,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_1GB",
+            "value": 0.7780489921569824,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_10GB",
+            "value": 5.366190433502197,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_100GB",
+            "value": 56.199639558792114,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_40GB",
+            "value": 20.21855354309082,
             "unit": "seconds"
           }
         ]
