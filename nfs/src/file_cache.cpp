@@ -1125,48 +1125,54 @@ done:
      * to-be-released byte range remains after the last chunk.
      */
 allocate_only_chunk:
-    if ((remaining_length != 0) && (action == scan_action::SCAN_ACTION_GET)) {
-        AZLogDebug("(only/last chunk) [{},{})",
-                   next_offset, next_offset + remaining_length);
-
-#ifdef UTILIZE_TAILROOM_FROM_LAST_MEMBUF
-        if (last_bc && (last_bc->tailroom() > 0)) {
-            chunk_length = std::min(last_bc->tailroom(), remaining_length);
-
-            AZLogDebug("(sharing last chunk's alloc_buffer) [{},{})",
-                       next_offset, next_offset + chunk_length);
-
-            /*
-             * Though this new chunk is sharing alloc_buffer with the last
-             * chunk, it's nevertheless a new chunk and hence is_empty must
-             * be true.
-             */
-            chunkvec.emplace_back(this, next_offset,
-                                  chunk_length,
-                                  last_bc->buffer_offset + last_bc->length,
-                                  last_bc->alloc_buffer,
-                                  true /* is_empty */);
-
-            // last chunk and this new chunk are sharing the same alloc_buffer.
-            assert(last_bc->alloc_buffer.use_count() >= 2);
-
-            remaining_length -= chunk_length;
-            next_offset += chunk_length;
-        }
-#endif
-
-        if (remaining_length) {
-            AZLogDebug("(new last chunk) [{},{})",
+    if (remaining_length != 0) {
+        if (action == scan_action::SCAN_ACTION_GET) {
+            AZLogDebug("(only/last chunk) [{},{})",
                        next_offset, next_offset + remaining_length);
-            chunkvec.emplace_back(this, next_offset, remaining_length);
-        }
 
-        remaining_length = 0;
-    } else {
-        AZLogDebug("<Release [{}, {})> (non-existent chunk after end) [{},{})",
-                offset, offset + length,
-                next_offset, next_offset + remaining_length);
-        remaining_length = 0;
+    #ifdef UTILIZE_TAILROOM_FROM_LAST_MEMBUF
+            if (last_bc && (last_bc->tailroom() > 0)) {
+                chunk_length = std::min(last_bc->tailroom(), remaining_length);
+
+                AZLogDebug("(sharing last chunk's alloc_buffer) [{},{})",
+                           next_offset, next_offset + chunk_length);
+
+                /*
+                 * Though this new chunk is sharing alloc_buffer with the last
+                 * chunk, it's nevertheless a new chunk and hence is_empty must
+                 * be true.
+                 */
+                chunkvec.emplace_back(this, next_offset,
+                                      chunk_length,
+                                      last_bc->buffer_offset + last_bc->length,
+                                      last_bc->alloc_buffer,
+                                      true /* is_empty */);
+
+                /*
+                 * last chunk and this new chunk are sharing the same
+                 * alloc_buffer.
+                 */
+                assert(last_bc->alloc_buffer.use_count() >= 2);
+
+                remaining_length -= chunk_length;
+                next_offset += chunk_length;
+            }
+    #endif
+
+            if (remaining_length) {
+                AZLogDebug("(new last chunk) [{},{})",
+                           next_offset, next_offset + remaining_length);
+                chunkvec.emplace_back(this, next_offset, remaining_length);
+            }
+
+            remaining_length = 0;
+        } else {
+            AZLogDebug("<Release [{}, {})> (non-existent chunk after end) "
+                       "[{},{})",
+                       offset, offset + length,
+                       next_offset, next_offset + remaining_length);
+            remaining_length = 0;
+        }
     }
 
     /*
