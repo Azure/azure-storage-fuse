@@ -151,23 +151,27 @@ func beginDetectNewVersion() chan interface{} {
 			return
 		}
 
-		blockedVersions := common.Blobfuse2ListContainerURL + "/blockedversions/" + common.Blobfuse2Version
-		isBlocked := checkVersionExists(blockedVersions)
-
-		if isBlocked {
-			blockedPage := common.BlobFuse2BlockingURL + "#" + strings.ReplaceAll(strings.ReplaceAll(common.Blobfuse2Version, ".", ""), "~", "")
-			fmt.Fprintf(stderr, "Visit %s to see the list of known issues blocking your current version [%s]\n", blockedPage, common.Blobfuse2Version)
-			log.Warn("Visit %s to see the list of known issues blocking your current version [%s]\n", blockedPage, common.Blobfuse2Version)
-			os.Exit(1)
-		}
-
 		warningsUrl := common.Blobfuse2ListContainerURL + "/securitywarnings/" + common.Blobfuse2Version
 		hasWarnings := checkVersionExists(warningsUrl)
 
 		if hasWarnings {
-			warningsPage := common.BlobFuse2WarningsURL + "#" + strings.ReplaceAll(strings.ReplaceAll(common.Blobfuse2Version, ".", ""), "~", "")
-			fmt.Fprintf(stderr, "Visit %s to see the list of known issues associated with your current version [%s]\n", warningsPage, common.Blobfuse2Version)
-			log.Warn("Visit %s to see the list of known issues associated with your current version [%s]\n", warningsPage, common.Blobfuse2Version)
+			// This version has known issues associated with it
+			// Check whether the version has been blocked by the dev team or not.
+			blockedVersions := common.Blobfuse2ListContainerURL + "/blockedversions/" + common.Blobfuse2Version
+			isBlocked := checkVersionExists(blockedVersions)
+
+			if isBlocked {
+				// This version is blocked and customer shall not be allowed to use this.
+				blockedPage := common.BlobFuse2BlockingURL + "#" + strings.ReplaceAll(strings.ReplaceAll(common.Blobfuse2Version, ".", ""), "~", "")
+				fmt.Fprintf(stderr, "PANIC: Visit %s to see the list of known issues blocking your current version [%s]\n", blockedPage, common.Blobfuse2Version)
+				log.Warn("PANIC: Visit %s to see the list of known issues blocking your current version [%s]\n", blockedPage, common.Blobfuse2Version)
+				os.Exit(1)
+			} else {
+				// This version is not blocked but has know issues list which customer shall visit.
+				warningsPage := common.BlobFuse2WarningsURL + "#" + strings.ReplaceAll(strings.ReplaceAll(common.Blobfuse2Version, ".", ""), "~", "")
+				fmt.Fprintf(stderr, "WARNING: Visit %s to see the list of known issues associated with your current version [%s]\n", warningsPage, common.Blobfuse2Version)
+				log.Warn("WARNING: Visit %s to see the list of known issues associated with your current version [%s]\n", warningsPage, common.Blobfuse2Version)
+			}
 		}
 
 		if local.OlderThan(*remote) {
