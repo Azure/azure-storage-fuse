@@ -1150,6 +1150,7 @@ int main(int argc, char *argv[])
      * debug.
      */
     if (opts.debug) {
+        enable_debug_logs = true;
         spdlog::set_level(spdlog::level::debug);
     }
 

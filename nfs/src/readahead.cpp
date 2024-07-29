@@ -177,7 +177,7 @@ static void readahead_callback (
     }
 
     // Common case.
-    AZLogInfo("[{}] readahead_callback: off: {}, len: {}, eof: {}",
+    AZLogDebug("[{}] readahead_callback: off: {}, len: {}, eof: {}",
                ino,
                bc->offset,
                bc->length,
@@ -330,7 +330,7 @@ int ra_state::issue_readaheads()
              */
             inode->incref();
 
-            AZLogInfo("[{}] Issuing readahead read to backend at "
+            AZLogDebug("[{}] Issuing readahead read to backend at "
                        "off: {} len: {}",
                        inode->get_fuse_ino(),
                        args.offset,

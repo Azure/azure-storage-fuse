@@ -22,7 +22,7 @@
 #define AZLogDebug(...)    /* nothing */
 #else
 #define AZLogInfo(...)     spdlog::info(__VA_ARGS__)
-#define AZLogDebug(...)    spdlog::debug(__VA_ARGS__)
+#define AZLogDebug(...)    if (enable_debug_logs) spdlog::debug(__VA_ARGS__)
 #endif
 
 /*
@@ -36,5 +36,7 @@
 #endif
 
 void init_log();
+
+extern bool enable_debug_logs;
 
 #endif /* __AZNFSC_LOG_H__ */

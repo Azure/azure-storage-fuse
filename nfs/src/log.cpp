@@ -1,5 +1,7 @@
 #include "log.h"
 
+bool enable_debug_logs = false;
+
 void init_log()
 {
     /*
