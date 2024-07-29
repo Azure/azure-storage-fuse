@@ -511,7 +511,7 @@ func TestDataValidationTestSuite(t *testing.T) {
 	fmt.Println("Distro Name: " + distro)
 
 	// Ignore data validation test on all distros other than UBN
-	if strings.ToLower(quickTest) == "true" || !strings.Contains(strings.ToUpper(distro), "UBUNTU") {
+	if strings.ToLower(quickTest) == "true" || !(strings.Contains(strings.ToUpper(distro), "UBUNTU") || strings.Contains(strings.ToUpper(distro), "UBN")) {
 		fmt.Println("Skipping Data Validation test suite...")
 		return
 	}
