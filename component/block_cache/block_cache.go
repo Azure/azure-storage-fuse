@@ -164,28 +164,7 @@ func (bc *BlockCache) Stop() error {
 	// Clear the disk cache on exit
 	if bc.tmpPath != "" {
 		_ = bc.diskPolicy.Stop()
-		_ = bc.TempCacheCleanup()
-	}
-
-	return nil
-}
-
-// TempCacheCleanup cleans up the local cached contents
-func (bc *BlockCache) TempCacheCleanup() error {
-	if bc.tmpPath == "" {
-		return nil
-	}
-
-	log.Info("BlockCache::TempCacheCleanup : Cleaning up temp directory %s", bc.tmpPath)
-
-	dirents, err := os.ReadDir(bc.tmpPath)
-	if err != nil {
-		log.Err("BlockCache::TempCacheCleanup : Failed to list directory %s [%v]", bc.tmpPath, err.Error())
-		return fmt.Errorf("failed to list directory %s", bc.tmpPath)
-	}
-
-	for _, entry := range dirents {
-		os.RemoveAll(filepath.Join(bc.tmpPath, entry.Name()))
+		_ = common.TempCacheCleanup(bc.tmpPath)
 	}
 
 	return nil
@@ -358,6 +337,7 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 
 	if options.Flags&os.O_TRUNC != 0 || options.Flags&os.O_WRONLY != 0 {
 		// If file is opened in truncate or wronly mode then we need to wipe out the data consider current file size as 0
+		log.Debug("BlockCache::OpenFile : Truncate %v to 0", options.Name)
 		handle.Size = 0
 		handle.Flags.Set(handlemap.HandleFlagDirty)
 	} else if options.Flags&os.O_RDWR != 0 && handle.Size != 0 {
@@ -370,18 +350,9 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 			return nil, fmt.Errorf("failed to retrieve block list for %s", options.Name)
 		}
 
-		lst, _ := handle.GetValue("blockList")
-		listMap := lst.(map[int64]string)
-
-		listLen := len(*blockList)
-		for idx, block := range *blockList {
-			listMap[int64(idx)] = block.Id
-			// All blocks shall of same size otherwise fail the open call
-			// Last block is allowed to be of smaller size as it can be partial block
-			if block.Size != bc.blockSize && idx != (listLen-1) {
-				log.Err("BlockCache::OpenFile : Block size mismatch for %s [block: %v, size: %v]", options.Name, block.Id, block.Size)
-				return nil, fmt.Errorf("block size mismatch for %s", options.Name)
-			}
+		valid := bc.validateBlockList(handle, options, blockList)
+		if !valid {
+			return nil, fmt.Errorf("block size mismatch for %s", options.Name)
 		}
 	}
 
@@ -397,6 +368,25 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 	}
 
 	return handle, nil
+}
+
+// validateBlockList: Validates the blockList and populates the blocklist inside the handle for a file.
+// This method is only called when the file is opened in O_RDWR mode.
+// Each Block's size must equal to blockSize set in config and last block size <= config's blockSize
+// returns true, if blockList is valid
+func (bc *BlockCache) validateBlockList(handle *handlemap.Handle, options internal.OpenFileOptions, blockList *internal.CommittedBlockList) bool {
+	lst, _ := handle.GetValue("blockList")
+	listMap := lst.(map[int64]string)
+	listLen := len(*blockList)
+
+	for idx, block := range *blockList {
+		if (idx < (listLen-1) && block.Size != bc.blockSize) || (idx == (listLen-1) && block.Size > bc.blockSize) {
+			log.Err("BlockCache::validateBlockList : Block size mismatch for %s [block: %v, size: %v]", options.Name, block.Id, block.Size)
+			return false
+		}
+		listMap[int64(idx)] = block.Id
+	}
+	return true
 }
 
 func (bc *BlockCache) prepareHandleForBlockCache(handle *handlemap.Handle) {
@@ -429,10 +419,13 @@ func (bc *BlockCache) FlushFile(options internal.FlushFileOptions) error {
 	options.Handle.Lock()
 	defer options.Handle.Unlock()
 
-	err := bc.commitBlocks(options.Handle)
-	if err != nil {
-		log.Err("BlockCache::FlushFile : Failed to commit blocks for %s [%s]", options.Handle.Path, err.Error())
-		return err
+	// call commit blocks only if the handle is dirty
+	if options.Handle.Dirty() {
+		err := bc.commitBlocks(options.Handle)
+		if err != nil {
+			log.Err("BlockCache::FlushFile : Failed to commit blocks for %s [%s]", options.Handle.Path, err.Error())
+			return err
+		}
 	}
 
 	return nil
@@ -923,7 +916,7 @@ func (bc *BlockCache) download(item *workItem) {
 
 // WriteFile: Write to the local file
 func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) {
-	//log.Debug("BlockCache::WriteFile : Writing %v bytes from %s", len(options.Data), options.Handle.Path)
+	// log.Debug("BlockCache::WriteFile : Writing %v bytes from %s", len(options.Data), options.Handle.Path)
 
 	options.Handle.Lock()
 	defer options.Handle.Unlock()
@@ -964,7 +957,7 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 	index := bc.getBlockIndex(offset)
 	if index >= MAX_BLOCKS {
 		log.Err("BlockCache::getOrCreateBlock : Failed to get Block %v=>%s offset %v", handle.ID, handle.Path, offset)
-		return nil, fmt.Errorf("block index out of range. Increase your block size.")
+		return nil, fmt.Errorf("block index out of range. Increase your block size")
 	}
 
 	//log.Debug("FilBlockCacheCache::getOrCreateBlock : Get block for %s, index %v", handle.Path, index)
