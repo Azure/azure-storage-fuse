@@ -819,7 +819,8 @@ func (suite *blockCacheTestSuite) TestWriteFileMultiBlock() {
 }
 
 func (suite *blockCacheTestSuite) TestWriteFileMultiBlockWithOverwrite() {
-	tobj, err := setupPipeline("")
+	cfg := "block_cache:\n  block-size-mb: 1\n  mem-size-mb: 20\n  prefetch: 12\n  parallelism: 10\n  enable-random-write: true"
+	tobj, err := setupPipeline(cfg)
 	defer tobj.cleanupPipeline()
 
 	suite.assert.Nil(err)
@@ -870,7 +871,8 @@ func (suite *blockCacheTestSuite) TestWriteFileMultiBlockWithOverwrite() {
 }
 
 func (suite *blockCacheTestSuite) TestWritefileWithAppend() {
-	tobj, err := setupPipeline("")
+	cfg := "block_cache:\n  block-size-mb: 1\n  mem-size-mb: 20\n  prefetch: 12\n  parallelism: 10\n  enable-random-write: true"
+	tobj, err := setupPipeline(cfg)
 	defer tobj.cleanupPipeline()
 
 	suite.assert.Nil(err)
