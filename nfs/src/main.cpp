@@ -394,6 +394,8 @@ void aznfsc_cfg::set_defaults_and_sanitize()
     AZLogDebug("actimeo = {}", actimeo);
     AZLogDebug("readdir_maxcount = {}", readdir_maxcount);
     AZLogDebug("readahead_kb = {}", readahead_kb);
+    AZLogDebug("fuse_max_background = {}", fuse_max_background);
+    AZLogDebug("cache_max_mb = {}", cache_max_mb);
     AZLogDebug("account = {}", account);
     AZLogDebug("container = {}", container);
     AZLogDebug("cloud_suffix = {}", cloud_suffix);
@@ -693,6 +695,25 @@ static void aznfsc_ll_open(fuse_req_t req,
     fi->nonseekable = 0;
     fi->parallel_direct_writes = 1;
     fi->noflush = 0;
+
+    struct nfs_client *client = get_nfs_client_from_fuse_req(req);
+    struct nfs_inode *inode = client->get_nfs_inode_from_ino(ino);
+
+    /*
+     * TODO: See comments in readahead.h, ideally readahead state should be
+     *       per file pointer (per open handle) but since fuse doesn't let
+     *       us know the file pointer we maintain readahead state per inode.
+     *       We must reset the readahead state so that this file handle can
+     *       correctly perform readaheads and not confuse this as an access
+     *       using the prev handle. This means if we open more than one handle
+     *       simultaneously it will cause the readahead state to be reset.
+     *
+     *       This is a hack and needs to be properly addressed!
+     */
+    if (inode->is_regfile()) {
+        inode->readahead_state->reset();
+        inode->filecache_handle->clear();
+    }
 
     fuse_reply_open(req, fi);
 }

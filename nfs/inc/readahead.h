@@ -51,6 +51,13 @@ namespace aznfsc {
  *       is to associate the ra_state with the issuing process' (pid returned
  *       by fuse_get_context()) and not with the file inode.
  *
+ *       Note that it would be ideal if fuse provided us info on the file
+ *       pointer on whose behalf a specific IO is being issued. This would
+ *       help us associate readahead state with a file pointer and not with
+ *       the inode as the readahead (like read offset) is a property of the
+ *       file pointer and not of the inode. In absence of this, above pid
+ *       based readahead state maintenance is the next best thing we can do.
+ *
  * How does pattern detection work?
  * ================================
  * File is divided into 1GB logical sections. Everytime access moves to a new
@@ -256,6 +263,21 @@ public:
         // ra_ongoing is atomic, don't need the lock.
         assert(ra_ongoing >= length);
         ra_ongoing -= length;
+    }
+
+    /**
+     * XXX This is provided as a quick hack to reset readahead state on
+     *     file open so that the access to the file using the new handle
+     *     does not confuse ra_state from access using the older handle.
+     *     New handle means new access pattern so we cannot continue using
+     *     the readahead state from older handle.
+     */
+    void reset()
+    {
+        num_reads = 0;
+        num_bytes_read = 0;
+        min_byte_read = 0;
+        max_byte_read = UINT64_MAX;
     }
 
     /**
