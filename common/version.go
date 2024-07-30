@@ -41,6 +41,7 @@ import (
 
 const Blobfuse2ListContainerURL = "https://blobfuse2.blob.core.windows.net/release"
 const BlobFuse2WarningsURL = "https://aka.ms/blobfuse2warnings"
+const BlobFuse2BlockingURL = "https://aka.ms/blobfuse2blockers"
 
 type Version struct {
 	segments []int64
