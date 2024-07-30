@@ -84,7 +84,7 @@ steps:
     displayName: 'Generate md5Sum with Block-Cache'
 
   - script: |
-      for file in $(WORK_DIR)/datafiles_* $(WORK_DIR)/mixedfiles_*; do [ -f "$file" ] && base=$(basename "$file") && mntfile="${{ parameters.mount_dir }}/$base"&& if [ -f "$mntfile" ]; then if [ "$(stat -c%s "$file")" -eq "$(stat -c%s "$mntfile")" ]; then echo "$file matches size with $mntfile"; else exit 1 ; fi; else exit 1; fi; done
+      for file in $(WORK_DIR)/datafiles_* $(WORK_DIR)/mixedfiles_*; do [ -f "$file" ] && base=$(basename "$file") && mntfile="${{ parameters.mount_dir }}/$base"&& if [ -f "$mntfile" ]; then if [ "$(stat -c%s "$file")" -eq "$(stat -c%s "$mntfile")" ]; then echo "$file matches size with $mntfile"; else echo "$file does not match size with $mntfile" ; fi; else echo "$mntfile does not exist" exit 1; fi; done
     displayName: 'Validating file size with Block-Cache'
 
   - script: |
