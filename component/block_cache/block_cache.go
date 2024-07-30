@@ -350,22 +350,9 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 			return nil, fmt.Errorf("failed to retrieve block list for %s", options.Name)
 		}
 
-		lst, _ := handle.GetValue("blockList")
-		listMap := lst.(map[int64]*blockInfo)
-
-		listLen := len(*blockList)
-		for idx, block := range *blockList {
-			listMap[int64(idx)] = &blockInfo{
-				id:        block.Id,
-				committed: true,
-				size:      block.Size,
-			}
-			// All blocks shall of same size otherwise fail the open call
-			// Last block is allowed to be of smaller size as it can be partial block
-			if block.Size != bc.blockSize && idx != (listLen-1) {
-				log.Err("BlockCache::OpenFile : Block size mismatch for %s [block: %v, size: %v]", options.Name, block.Id, block.Size)
-				return nil, fmt.Errorf("block size mismatch for %s", options.Name)
-			}
+		valid := bc.validateBlockList(handle, options, blockList)
+		if !valid {
+			return nil, fmt.Errorf("block size mismatch for %s", options.Name)
 		}
 	}
 
@@ -381,6 +368,29 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 	}
 
 	return handle, nil
+}
+
+// validateBlockList: Validates the blockList and populates the blocklist inside the handle for a file.
+// This method is only called when the file is opened in O_RDWR mode.
+// Each Block's size must equal to blockSize set in config and last block size <= config's blockSize
+// returns true, if blockList is valid
+func (bc *BlockCache) validateBlockList(handle *handlemap.Handle, options internal.OpenFileOptions, blockList *internal.CommittedBlockList) bool {
+	lst, _ := handle.GetValue("blockList")
+	listMap := lst.(map[int64]*blockInfo)
+	listLen := len(*blockList)
+
+	for idx, block := range *blockList {
+		if (idx < (listLen-1) && block.Size != bc.blockSize) || (idx == (listLen-1) && block.Size > bc.blockSize) {
+			log.Err("BlockCache::validateBlockList : Block size mismatch for %s [block: %v, size: %v]", options.Name, block.Id, block.Size)
+			return false
+		}
+		listMap[int64(idx)] = &blockInfo{
+			id:        block.Id,
+			committed: true,
+			size:      block.Size,
+		}
+	}
+	return true
 }
 
 func (bc *BlockCache) prepareHandleForBlockCache(handle *handlemap.Handle) {
