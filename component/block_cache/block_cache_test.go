@@ -352,8 +352,8 @@ func (suite *blockCacheTestSuite) TestFileReadTotalBytes() {
 	suite.assert.Equal(h.Size, int64(0))
 	suite.assert.False(h.Dirty())
 
-	stroagePath := filepath.Join(tobj.fake_storage_path, path)
-	fs, err := os.Stat(stroagePath)
+	storagePath := filepath.Join(tobj.fake_storage_path, path)
+	fs, err := os.Stat(storagePath)
 	suite.assert.Nil(err)
 	suite.assert.Equal(fs.Size(), int64(0))
 	//Generate random size of file in bytes less than 2MB
