@@ -64,6 +64,10 @@ steps:
     displayName: 'Print contents of Block-Cache'
 
   - script: |
+      for file in $(WORK_DIR)/datafiles_* $(WORK_DIR)/mixedfiles_*; do [ -f "$file" ] && base=$(basename "$file") && mntfile="${{ parameters.mount_dir }}/$base"&& if [ -f "$mntfile" ]; then if [ "$(stat -c%s "$file")" -eq "$(stat -c%s "$mntfile")" ]; then echo "$file matches size with $mntfile: $(stat -c%s "$file") , $(stat -c%s "$mntfile")"; else echo "$file does not match size with $mntfile: $(stat -c%s "$file") , $(stat -c%s "$mntfile")" ; fi; else echo "$mntfile does not exist" exit 1; fi; done
+    displayName: 'Validating file size with Block-Cache'
+
+  - script: |
       $(WORK_DIR)/blobfuse2 unmount all
     displayName: 'Unmount RW mount'
 
@@ -77,6 +81,15 @@ steps:
       mountStep: 
         script: |
           $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR)
+
+  - script: |
+      echo "----------------------------------------------"
+      cat $(WORK_DIR)/ls_block_cache.txt
+    displayName: 'Print contents of Block-Cache'
+
+  - script: |
+      for file in $(WORK_DIR)/datafiles_* $(WORK_DIR)/mixedfiles_*; do [ -f "$file" ] && base=$(basename "$file") && mntfile="${{ parameters.mount_dir }}/$base"&& if [ -f "$mntfile" ]; then if [ "$(stat -c%s "$file")" -eq "$(stat -c%s "$mntfile")" ]; then echo "$file matches size with $mntfile : $(stat -c%s "$file") , $(stat -c%s "$mntfile")"; else echo "$file does not match size with $mntfile: $(stat -c%s "$file") , $(stat -c%s "$mntfile")" ; fi; else echo "$mntfile does not exist" exit 1; fi; done
+    displayName: 'Validating file size with Block-Cache'
 
   - script: |
       md5sum ${{ parameters.mount_dir }}/datafiles_* > $(WORK_DIR)/md5sum_block_cache.txt
