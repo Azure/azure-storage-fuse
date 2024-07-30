@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1722319642065,
+  "lastUpdate": 1722339413270,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -2701,6 +2701,45 @@ window.BENCHMARK_DATA = {
           {
             "name": "rand_read_128_thread",
             "value": 5299.569986979167,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "98318303+souravgupta-msft@users.noreply.github.com",
+            "name": "Sourav Gupta",
+            "username": "souravgupta-msft"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "ee19eff0729a65b10aa53f8231803d53a0f13e91",
+          "message": "Block cache random write in sparse files (#1475)",
+          "timestamp": "2024-07-30T16:27:20+05:30",
+          "tree_id": "758c81fc793eb2aa990f4990d5dd13c599609dd7",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/ee19eff0729a65b10aa53f8231803d53a0f13e91"
+        },
+        "date": 1722339412954,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "seq_write_112_thread",
+            "value": 31547.9794921875,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "seq_read_128_thread",
+            "value": 19916.5595703125,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "rand_read_128_thread",
+            "value": 4759.554361979167,
             "unit": "MiB/s"
           }
         ]
