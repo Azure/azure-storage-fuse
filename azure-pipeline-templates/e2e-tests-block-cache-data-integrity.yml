@@ -32,8 +32,8 @@ steps:
       for i in {1,2,3,4,5,6,7,8,9,10,20,30,50,100,200}; do echo $i; done | parallel --will-cite -j 5 'head -c {}M < /dev/urandom > $(WORK_DIR)/mixedfiles_{}.png'
       cd $(WORK_DIR)
       python3 $(WORK_DIR)/testdata/scripts/generate-parquet-files.py
-      ls -lh $(WORK_DIR)/mixedfiles_*
-      ls -lh $(WORK_DIR)/datafiles_*
+      ls -l $(WORK_DIR)/mixedfiles_*
+      ls -l $(WORK_DIR)/datafiles_*
     displayName: 'Generate data on Local'
 
   - script: |
@@ -55,7 +55,7 @@ steps:
   - script: |
       cp $(WORK_DIR)/datafiles_* ${{ parameters.mount_dir }}
       cp $(WORK_DIR)/mixedfiles_* ${{ parameters.mount_dir }}
-      ls -lh ${{ parameters.mount_dir }} > $(WORK_DIR)/ls_block_cache.txt
+      ls -l ${{ parameters.mount_dir }} > $(WORK_DIR)/ls_block_cache.txt
     displayName: 'Copy files with Block-Cache'
 
   - script: |
@@ -84,7 +84,7 @@ steps:
     displayName: 'Generate md5Sum with Block-Cache'
 
   - script: |
-      for file in $(WORK_DIR)/datafiles_* $(WORK_DIR)/mixedfiles_*; do [ -f "$file" ] && base=$(basename "$file") && mntfile="${{ parameters.mount_dir }}/$base"&& if [ -f "$mntfile" ]; then if [ "$(stat -c%s "$file")" -eq "$(stat -c%s "$mntfile")" ]; then echo "$file matches size with $mntfile"; else echo "$file does not match size with $mntfile"; fi; else echo "$mntfile does not exist"; fi; done
+      for file in $(WORK_DIR)/datafiles_* $(WORK_DIR)/mixedfiles_*; do [ -f "$file" ] && base=$(basename "$file") && mntfile="${{ parameters.mount_dir }}/$base"&& if [ -f "$mntfile" ]; then if [ "$(stat -c%s "$file")" -eq "$(stat -c%s "$mntfile")" ]; then echo "$file matches size with $mntfile"; else exit 1 ; fi; else exit 1; fi; done
     displayName: 'Validating file size with Block-Cache'
 
   - script: |
