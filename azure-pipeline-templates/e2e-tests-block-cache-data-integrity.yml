@@ -51,13 +51,13 @@ steps:
   - script: |
       $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/azure_key.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.config_file }}
     displayName: 'Create Config File for RW mount'
-      env:
-        NIGHTLY_STO_ACC_NAME: ${{ parameters.account_name }}
-        NIGHTLY_STO_ACC_KEY: ${{ parameters.account_key }}
-        ACCOUNT_TYPE: ${{ parameters.account_type }}
-        ACCOUNT_ENDPOINT: ${{ parameters.account_endpoint }}
-        VERBOSE_LOG: ${{ parameters.verbose_log }}
-      continueOnError: false
+    env:
+      NIGHTLY_STO_ACC_NAME: ${{ parameters.account_name }}
+      NIGHTLY_STO_ACC_KEY: ${{ parameters.account_key }}
+      ACCOUNT_TYPE: ${{ parameters.account_type }}
+      ACCOUNT_ENDPOINT: ${{ parameters.account_endpoint }}
+      VERBOSE_LOG: ${{ parameters.verbose_log }}
+    continueOnError: false
 
   - script: |
       cat ${{ parameters.config_file }}
