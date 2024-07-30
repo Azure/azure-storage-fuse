@@ -62,6 +62,7 @@ import (
 )
 
 var home_dir, _ = os.UserHomeDir()
+var dataBuff []byte
 
 type blockCacheTestSuite struct {
 	suite.Suite
@@ -1080,7 +1081,7 @@ func computeMD5(fh *os.File) ([]byte, error) {
 }
 
 func (suite *blockCacheTestSuite) TestRandomWriteSparseFile() {
-	cfg := "block_cache:\n  block-size-mb: 1\n  mem-size-mb: 20\n  prefetch: 12\n  parallelism: 10"
+	cfg := "block_cache:\n  block-size-mb: 1\n  mem-size-mb: 20\n  prefetch: 12\n  parallelism: 10\n  enable-random-write: true"
 	tobj, err := setupPipeline(cfg)
 	defer tobj.cleanupPipeline()
 
@@ -1090,9 +1091,6 @@ func (suite *blockCacheTestSuite) TestRandomWriteSparseFile() {
 	path := "testSparseWrite"
 	storagePath := filepath.Join(tobj.fake_storage_path, path)
 	localPath := filepath.Join(tobj.disk_cache_path, path)
-
-	data := make([]byte, 5*_1MB)
-	_, _ = rand.Read(data)
 
 	// ------------------------------------------------------------------
 	// write to local file
@@ -1105,17 +1103,17 @@ func (suite *blockCacheTestSuite) TestRandomWriteSparseFile() {
 	}(fh)
 
 	// write 1MB data at offset 0
-	n, err := fh.WriteAt(data[0:_1MB], 0)
+	n, err := fh.WriteAt(dataBuff[0:_1MB], 0)
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(_1MB))
 
 	// write 1MB data at offset 9*_1MB
-	n, err = fh.WriteAt(data[4*_1MB:], int64(9*_1MB))
+	n, err = fh.WriteAt(dataBuff[4*_1MB:], int64(9*_1MB))
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(_1MB))
 
 	// write 1MB data at offset 5*_1MB
-	n, err = fh.WriteAt(data[2*_1MB:3*_1MB], int64(5*_1MB))
+	n, err = fh.WriteAt(dataBuff[2*_1MB:3*_1MB], int64(5*_1MB))
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(_1MB))
 
@@ -1132,18 +1130,18 @@ func (suite *blockCacheTestSuite) TestRandomWriteSparseFile() {
 	suite.assert.False(h.Dirty())
 
 	// write 1MB data at offset 0
-	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data[0:_1MB]})
+	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: dataBuff[0:_1MB]})
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(_1MB))
 	suite.assert.True(h.Dirty())
 
 	// write 1MB data at offset 9*_1MB
-	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: int64(9 * _1MB), Data: data[4*_1MB:]})
+	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: int64(9 * _1MB), Data: dataBuff[4*_1MB:]})
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(_1MB))
 
 	// write 1MB data at offset 5*_1MB
-	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: int64(5 * _1MB), Data: data[2*_1MB : 3*_1MB]})
+	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: int64(5 * _1MB), Data: dataBuff[2*_1MB : 3*_1MB]})
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(_1MB))
 
@@ -1170,7 +1168,7 @@ func (suite *blockCacheTestSuite) TestRandomWriteSparseFile() {
 }
 
 func (suite *blockCacheTestSuite) TestRandomWriteSparseFileWithPartialBlock() {
-	cfg := "block_cache:\n  block-size-mb: 4\n  mem-size-mb: 100\n  prefetch: 12\n  parallelism: 10"
+	cfg := "block_cache:\n  block-size-mb: 4\n  mem-size-mb: 100\n  prefetch: 12\n  parallelism: 10\n  enable-random-write: true"
 	tobj, err := setupPipeline(cfg)
 	defer tobj.cleanupPipeline()
 
@@ -1180,9 +1178,6 @@ func (suite *blockCacheTestSuite) TestRandomWriteSparseFileWithPartialBlock() {
 	path := "testSparseWrite"
 	storagePath := filepath.Join(tobj.fake_storage_path, path)
 	localPath := filepath.Join(tobj.disk_cache_path, path)
-
-	data := make([]byte, 5*_1MB)
-	_, _ = rand.Read(data)
 
 	// ------------------------------------------------------------------
 	// write to local file
@@ -1195,17 +1190,17 @@ func (suite *blockCacheTestSuite) TestRandomWriteSparseFileWithPartialBlock() {
 	}(fh)
 
 	// write 1MB data at offset 0
-	n, err := fh.WriteAt(data[0:_1MB], 0)
+	n, err := fh.WriteAt(dataBuff[0:_1MB], 0)
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(_1MB))
 
 	// write 1MB data at offset 18*_1MB
-	n, err = fh.WriteAt(data[4*_1MB:], int64(18*_1MB))
+	n, err = fh.WriteAt(dataBuff[4*_1MB:], int64(18*_1MB))
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(_1MB))
 
 	// write 1MB data at offset 9*_1MB
-	n, err = fh.WriteAt(data[2*_1MB:3*_1MB], int64(9*_1MB))
+	n, err = fh.WriteAt(dataBuff[2*_1MB:3*_1MB], int64(9*_1MB))
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(_1MB))
 
@@ -1223,18 +1218,18 @@ func (suite *blockCacheTestSuite) TestRandomWriteSparseFileWithPartialBlock() {
 
 	// write 1MB data at offset 0
 	// partial block where it has data only from 0 to 1MB
-	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data[0:_1MB]})
+	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: dataBuff[0:_1MB]})
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(_1MB))
 	suite.assert.True(h.Dirty())
 
 	// write 1MB data at offset 9*_1MB
-	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: int64(9 * _1MB), Data: data[2*_1MB : 3*_1MB]})
+	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: int64(9 * _1MB), Data: dataBuff[2*_1MB : 3*_1MB]})
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(_1MB))
 
 	// write 1MB data at offset 18*_1MB
-	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: int64(18 * _1MB), Data: data[4*_1MB:]})
+	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: int64(18 * _1MB), Data: dataBuff[4*_1MB:]})
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(_1MB))
 
@@ -1261,7 +1256,7 @@ func (suite *blockCacheTestSuite) TestRandomWriteSparseFileWithPartialBlock() {
 }
 
 func (suite *blockCacheTestSuite) TestRandomWriteSparseFileWithBlockOverlap() {
-	cfg := "block_cache:\n  block-size-mb: 1\n  mem-size-mb: 20\n  prefetch: 12\n  parallelism: 10"
+	cfg := "block_cache:\n  block-size-mb: 1\n  mem-size-mb: 20\n  prefetch: 12\n  parallelism: 10\n  enable-random-write: true"
 	tobj, err := setupPipeline(cfg)
 	defer tobj.cleanupPipeline()
 
@@ -1271,9 +1266,6 @@ func (suite *blockCacheTestSuite) TestRandomWriteSparseFileWithBlockOverlap() {
 	path := "testSparseWrite"
 	storagePath := filepath.Join(tobj.fake_storage_path, path)
 	localPath := filepath.Join(tobj.disk_cache_path, path)
-
-	data := make([]byte, 5*_1MB)
-	_, _ = rand.Read(data)
 
 	// ------------------------------------------------------------------
 	// write to local file
@@ -1286,17 +1278,17 @@ func (suite *blockCacheTestSuite) TestRandomWriteSparseFileWithBlockOverlap() {
 	}(fh)
 
 	// write 1MB data at offset 0
-	n, err := fh.WriteAt(data[0:_1MB], 0)
+	n, err := fh.WriteAt(dataBuff[0:_1MB], 0)
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(_1MB))
 
 	// write 1MB data at offset 9*_1MB
-	n, err = fh.WriteAt(data[4*_1MB:], int64(9*_1MB))
+	n, err = fh.WriteAt(dataBuff[4*_1MB:], int64(9*_1MB))
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(_1MB))
 
 	// write 1MB data at offset 5.5*_1MB
-	n, err = fh.WriteAt(data[2*_1MB:3*_1MB], int64(5*_1MB+1024*512))
+	n, err = fh.WriteAt(dataBuff[2*_1MB:3*_1MB], int64(5*_1MB+1024*512))
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(_1MB))
 
@@ -1313,19 +1305,19 @@ func (suite *blockCacheTestSuite) TestRandomWriteSparseFileWithBlockOverlap() {
 	suite.assert.False(h.Dirty())
 
 	// write 1MB data at offset 0
-	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data[0:_1MB]})
+	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: dataBuff[0:_1MB]})
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(_1MB))
 	suite.assert.True(h.Dirty())
 
 	// write 1MB data at offset 9*_1MB
-	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: int64(9 * _1MB), Data: data[4*_1MB:]})
+	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: int64(9 * _1MB), Data: dataBuff[4*_1MB:]})
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(_1MB))
 
 	// write 1MB data at offset 5*_1MB
 	// data is written to last 0.5MB of block 5 and first 0.5MB of block 6
-	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: int64(5*_1MB + 1024*512), Data: data[2*_1MB : 3*_1MB]})
+	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: int64(5*_1MB + 1024*512), Data: dataBuff[2*_1MB : 3*_1MB]})
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(_1MB))
 
@@ -1363,9 +1355,6 @@ func (suite *blockCacheTestSuite) TestRandomWriteFileOneBlock() {
 	storagePath := filepath.Join(tobj.fake_storage_path, path)
 	localPath := filepath.Join(tobj.disk_cache_path, path)
 
-	data := make([]byte, 5*_1MB)
-	_, _ = rand.Read(data)
-
 	// ------------------------------------------------------------------
 	// write to local file
 	fh, err := os.Create(localPath)
@@ -1377,12 +1366,12 @@ func (suite *blockCacheTestSuite) TestRandomWriteFileOneBlock() {
 	}(fh)
 
 	// write 2MB data at offset 4*1_MB
-	n, err := fh.WriteAt(data[3*_1MB:], int64(4*_1MB))
+	n, err := fh.WriteAt(dataBuff[3*_1MB:], int64(4*_1MB))
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(2*_1MB))
 
 	// write 1MB data at offset 2*_1MB
-	n, err = fh.WriteAt(data[2*_1MB:3*_1MB], int64(2*_1MB))
+	n, err = fh.WriteAt(dataBuff[2*_1MB:3*_1MB], int64(2*_1MB))
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(_1MB))
 
@@ -1399,13 +1388,13 @@ func (suite *blockCacheTestSuite) TestRandomWriteFileOneBlock() {
 	suite.assert.False(h.Dirty())
 
 	// write 2MB data at offset 4*1_MB
-	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: int64(4 * _1MB), Data: data[3*_1MB:]})
+	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: int64(4 * _1MB), Data: dataBuff[3*_1MB:]})
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(2*_1MB))
 	suite.assert.True(h.Dirty())
 
 	// write 1MB data at offset 2*_1MB
-	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: int64(2 * _1MB), Data: data[2*_1MB : 3*_1MB]})
+	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: int64(2 * _1MB), Data: dataBuff[2*_1MB : 3*_1MB]})
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(_1MB))
 
@@ -1432,7 +1421,7 @@ func (suite *blockCacheTestSuite) TestRandomWriteFileOneBlock() {
 }
 
 func (suite *blockCacheTestSuite) TestRandomWriteFlushAndOverwrite() {
-	cfg := "block_cache:\n  block-size-mb: 1\n  mem-size-mb: 20\n  prefetch: 12\n  parallelism: 10"
+	cfg := "block_cache:\n  block-size-mb: 1\n  mem-size-mb: 20\n  prefetch: 12\n  parallelism: 10\n  enable-random-write: true"
 	tobj, err := setupPipeline(cfg)
 	defer tobj.cleanupPipeline()
 
@@ -1442,9 +1431,6 @@ func (suite *blockCacheTestSuite) TestRandomWriteFlushAndOverwrite() {
 	path := "testSparseWrite"
 	storagePath := filepath.Join(tobj.fake_storage_path, path)
 	localPath := filepath.Join(tobj.disk_cache_path, path)
-
-	data := make([]byte, 5*_1MB)
-	_, _ = rand.Read(data)
 
 	// ------------------------------------------------------------------
 	// write to local file
@@ -1457,22 +1443,22 @@ func (suite *blockCacheTestSuite) TestRandomWriteFlushAndOverwrite() {
 	}(fh)
 
 	// write 1MB data at offset 0
-	n, err := fh.WriteAt(data[0:_1MB], 0)
+	n, err := fh.WriteAt(dataBuff[0:_1MB], 0)
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(_1MB))
 
 	// write 1MB data at offset 9*_1MB
-	n, err = fh.WriteAt(data[4*_1MB:], int64(9*_1MB))
+	n, err = fh.WriteAt(dataBuff[4*_1MB:], int64(9*_1MB))
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(_1MB))
 
 	// write 1MB data at offset 5.5*_1MB
-	n, err = fh.WriteAt(data[2*_1MB:3*_1MB], int64(5*_1MB+1024*512))
+	n, err = fh.WriteAt(dataBuff[2*_1MB:3*_1MB], int64(5*_1MB+1024*512))
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(_1MB))
 
 	// write 1MB data at offset 18*_1MB
-	n, err = fh.WriteAt(data[4*_1MB:], int64(18*_1MB))
+	n, err = fh.WriteAt(dataBuff[4*_1MB:], int64(18*_1MB))
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(_1MB))
 
@@ -1489,13 +1475,13 @@ func (suite *blockCacheTestSuite) TestRandomWriteFlushAndOverwrite() {
 	suite.assert.False(h.Dirty())
 
 	// write 1MB data at offset 0
-	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data[0:_1MB]})
+	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: dataBuff[0:_1MB]})
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(_1MB))
 	suite.assert.True(h.Dirty())
 
 	// write 1MB data at offset 9*_1MB
-	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: int64(9 * _1MB), Data: data[4*_1MB:]})
+	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: int64(9 * _1MB), Data: dataBuff[4*_1MB:]})
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(_1MB))
 
@@ -1505,12 +1491,12 @@ func (suite *blockCacheTestSuite) TestRandomWriteFlushAndOverwrite() {
 
 	// write 1MB data at offset 5.5*_1MB
 	// overwriting last 0.5MB of block 5 and first 0.5MB of block 6 after flush
-	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: int64(5*_1MB + 1024*512), Data: data[2*_1MB : 3*_1MB]})
+	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: int64(5*_1MB + 1024*512), Data: dataBuff[2*_1MB : 3*_1MB]})
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(_1MB))
 
 	// write 1MB data at offset 18*_1MB
-	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: int64(18 * _1MB), Data: data[4*_1MB:]})
+	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: int64(18 * _1MB), Data: dataBuff[4*_1MB:]})
 	suite.assert.Nil(err)
 	suite.assert.Equal(n, int(_1MB))
 
@@ -1536,8 +1522,119 @@ func (suite *blockCacheTestSuite) TestRandomWriteFlushAndOverwrite() {
 	suite.assert.Equal(l, r)
 }
 
+func (suite *blockCacheTestSuite) TestDisableRandomWrite() {
+	// random write is disabled by default
+	cfg := "block_cache:\n  block-size-mb: 1\n  mem-size-mb: 20\n  prefetch: 12\n  parallelism: 10"
+	tobj, err := setupPipeline(cfg)
+	defer tobj.cleanupPipeline()
+
+	suite.assert.Nil(err)
+	suite.assert.NotNil(tobj.blockCache)
+
+	path := "testDisableRandomWrite"
+	storagePath := filepath.Join(tobj.fake_storage_path, path)
+
+	// write using block cache
+	options := internal.CreateFileOptions{Name: path, Mode: 0777}
+	h, err := tobj.blockCache.CreateFile(options)
+	suite.assert.Nil(err)
+	suite.assert.NotNil(h)
+	suite.assert.Equal(h.Size, int64(0))
+	suite.assert.False(h.Dirty())
+
+	// write 1MB data at offset 0
+	n, err := tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: dataBuff[0:_1MB]})
+	suite.assert.Nil(err)
+	suite.assert.Equal(n, int(_1MB))
+	suite.assert.True(h.Dirty())
+
+	// write 1MB data at offset 9*_1MB
+	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: int64(9 * _1MB), Data: dataBuff[4*_1MB:]})
+	suite.assert.Nil(err)
+	suite.assert.Equal(n, int(_1MB))
+
+	// write 1MB data at offset 5*_1MB
+	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: int64(5 * _1MB), Data: dataBuff[2*_1MB : 3*_1MB]})
+	suite.assert.NotNil(err)
+	suite.assert.Equal(n, 0)
+
+	fs, err := os.Stat(storagePath)
+	suite.assert.Nil(err)
+	suite.assert.Equal(fs.Size(), int64(0))
+}
+
+func (suite *blockCacheTestSuite) TestPreventRaceCondition() {
+	cfg := "block_cache:\n  block-size-mb: 1\n  mem-size-mb: 20\n  prefetch: 12\n  parallelism: 10"
+	tobj, err := setupPipeline(cfg)
+	defer tobj.cleanupPipeline()
+
+	suite.assert.Nil(err)
+	suite.assert.NotNil(tobj.blockCache)
+
+	path := "testRandomWrite"
+	storagePath := filepath.Join(tobj.fake_storage_path, path)
+
+	data := make([]byte, _1MB)
+	_, _ = rand.Read(data)
+
+	// write using block cache
+	options := internal.CreateFileOptions{Name: path, Mode: 0777}
+	h, err := tobj.blockCache.CreateFile(options)
+	suite.assert.Nil(err)
+	suite.assert.NotNil(h)
+	suite.assert.Equal(h.Size, int64(0))
+	suite.assert.False(h.Dirty())
+
+	// writing at offset 0 in block 0
+	n, err := tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data[0:10]})
+	suite.assert.Nil(err)
+	suite.assert.Equal(n, 10)
+	suite.assert.True(h.Dirty())
+	suite.assert.Equal(1, h.Buffers.Cooking.Len())
+	suite.assert.Equal(0, h.Buffers.Cooked.Len())
+
+	// writing at offset 1MB in block 1
+	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: int64(_1MB), Data: data[:]})
+	suite.assert.Nil(err)
+	suite.assert.Equal(n, int(_1MB))
+	suite.assert.True(h.Dirty())
+	suite.assert.Equal(2, h.Buffers.Cooking.Len())
+	suite.assert.Equal(0, h.Buffers.Cooked.Len())
+
+	// writing at offset 2MB in block 2
+	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: int64(2 * _1MB), Data: data[:]})
+	suite.assert.Nil(err)
+	suite.assert.Equal(n, int(_1MB))
+	suite.assert.True(h.Dirty())
+	suite.assert.Equal(3, h.Buffers.Cooking.Len())
+	suite.assert.Equal(0, h.Buffers.Cooked.Len())
+
+	// writing at offset 3MB in block 3
+	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: int64(3 * _1MB), Data: data[0:1]})
+	suite.assert.Nil(err)
+	suite.assert.Equal(n, 1)
+	suite.assert.True(h.Dirty())
+	suite.assert.Equal(3, h.Buffers.Cooking.Len())
+	suite.assert.Equal(1, h.Buffers.Cooked.Len())
+
+	// writing at offset 10 in block 0
+	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 10, Data: data[10:]})
+	suite.assert.NotNil(err)
+	suite.assert.Equal(n, 0)
+	suite.assert.True(h.Dirty())
+	suite.assert.Equal(3, h.Buffers.Cooking.Len())
+	suite.assert.Equal(1, h.Buffers.Cooked.Len())
+
+	fs, err := os.Stat(storagePath)
+	suite.assert.Nil(err)
+	suite.assert.Equal(fs.Size(), int64(0))
+}
+
 // In order for 'go test' to run this suite, we need to create
 // a normal test function and pass our suite to suite.Run
 func TestBlockCacheTestSuite(t *testing.T) {
+	dataBuff = make([]byte, 5*_1MB)
+	_, _ = rand.Read(dataBuff)
+
 	suite.Run(t, new(blockCacheTestSuite))
 }

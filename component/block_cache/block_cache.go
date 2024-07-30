@@ -931,11 +931,12 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 	// log.Debug("BlockCache::WriteFile : Writing handle %v=>%v: offset %v, %v bytes", options.Handle.ID, options.Handle.Path, options.Offset, len(options.Data))
 
 	// check for possible random write scenario and block the write request
-	if options.Offset < options.Handle.Size-int64(MIN_WRITE_BLOCK*bc.blockSize) {
-		log.Debug("BlockCache::WriteFile : Random write detection for write offset %v where handle size is %v", options.Offset, options.Handle.Size)
+	blockIndex := bc.getBlockIndex(uint64(options.Offset))
+	if int64(blockIndex*bc.blockSize) < options.Handle.Size-int64(MIN_WRITE_BLOCK*bc.blockSize) {
+		log.Debug("BlockCache::WriteFile : Random write detection for write offset %v and block %v, where handle size is %v", options.Offset, blockIndex, options.Handle.Size)
 		if !bc.enableRandomWrite {
 			log.Err("BlockCache::WriteFile : Blocking random write")
-			return 0, fmt.Errorf("blocking random write for write offset %v where handle size is %v", options.Offset, options.Handle.Size)
+			return 0, fmt.Errorf("blocking random write for write offset %v and block %v where handle size is %v", options.Offset, blockIndex, options.Handle.Size)
 		}
 	}
 
