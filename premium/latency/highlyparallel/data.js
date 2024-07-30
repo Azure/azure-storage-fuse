@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1722248612774,
+  "lastUpdate": 1722319643200,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -2662,6 +2662,45 @@ window.BENCHMARK_DATA = {
           {
             "name": "rand_read_128_thread",
             "value": 1618.0634886290875,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "syeleti@microsoft.com",
+            "name": "syeleti-msft",
+            "username": "syeleti-msft"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "c0afb6025c561c0d68ae791376d1dba96619612d",
+          "message": "Block cache openFile if condition bug (#1472)\n\n* Correct the Condition check that prevents last block to be size greater that block size",
+          "timestamp": "2024-07-30T10:56:33+05:30",
+          "tree_id": "5c33270c72fa6f8d2a5a2a1521596c718099b557",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/c0afb6025c561c0d68ae791376d1dba96619612d"
+        },
+        "date": 1722319642967,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "seq_write_112_thread",
+            "value": 218.83977774418466,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "seq_read_128_thread",
+            "value": 400.29941022124035,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "rand_read_128_thread",
+            "value": 1590.7232202822051,
             "unit": "milliseconds"
           }
         ]
