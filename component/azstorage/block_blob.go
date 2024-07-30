@@ -450,7 +450,6 @@ func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err 
 
 	parseMetadata(attr, prop.Metadata)
 
-	attr.Flags.Set(internal.PropFlagMetadataRetrieved)
 	attr.Flags.Set(internal.PropFlagModeDefault)
 
 	return attr, nil
@@ -595,7 +594,6 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 				MD5:    blobInfo.Properties.ContentMD5,
 			}
 			parseMetadata(attr, blobInfo.Metadata)
-			attr.Flags.Set(internal.PropFlagMetadataRetrieved)
 			attr.Flags.Set(internal.PropFlagModeDefault)
 		}
 		blobList = append(blobList, attr)
@@ -634,7 +632,6 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 				attr.Atime = attr.Mtime
 				attr.Crtime = attr.Mtime
 				attr.Ctime = attr.Mtime
-				attr.Flags.Set(internal.PropFlagMetadataRetrieved)
 				attr.Flags.Set(internal.PropFlagModeDefault)
 				blobList = append(blobList, attr)
 			}

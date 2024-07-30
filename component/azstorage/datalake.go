@@ -402,8 +402,6 @@ func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 		attr.Mode = attr.Mode | os.ModeDir
 	}
 
-	attr.Flags.Set(internal.PropFlagMetadataRetrieved)
-
 	if dl.Config.honourACL && dl.Config.authConfig.ObjectID != "" {
 		acl, err := fileClient.GetAccessControl(context.Background(), nil)
 		if err != nil {

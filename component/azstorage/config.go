@@ -562,15 +562,14 @@ func ParseAndReadDynamicConfig(az *AzStorage, opt AzStorageOptions, reload bool)
 		az.stConfig.honourACL = false
 	}
 
+	// by default symlink will be disabled
+	az.stConfig.disableSymlink = true
+
 	if config.IsSet("attr_cache.no-symlinks") {
 		err := config.UnmarshalKey("attr_cache.no-symlinks", &az.stConfig.disableSymlink)
 		if err != nil {
-			az.stConfig.disableSymlink = true
 			log.Err("ParseAndReadDynamicConfig : Failed to unmarshal attr_cache.no-symlinks")
 		}
-	} else {
-		// by default symlink will be disabled
-		az.stConfig.disableSymlink = true
 	}
 
 	// Auth related reconfig
