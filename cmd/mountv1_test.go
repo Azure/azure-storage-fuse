@@ -46,8 +46,8 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/component/attr_cache"
 	"github.com/Azure/azure-storage-fuse/v2/component/azstorage"
+	"github.com/Azure/azure-storage-fuse/v2/component/block_cache"
 	"github.com/Azure/azure-storage-fuse/v2/component/file_cache"
-	"github.com/Azure/azure-storage-fuse/v2/component/stream"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -607,7 +607,7 @@ func (suite *generateConfigTestSuite) TestCLIParamStreaming() {
 	suite.assert.Nil(err)
 
 	// Read the generated v2 config file
-	options := stream.StreamOptions{}
+	options := block_cache.StreamOptions{}
 
 	viper.SetConfigType("yaml")
 	config.ReadFromConfigFile(v2ConfigFile.Name())
