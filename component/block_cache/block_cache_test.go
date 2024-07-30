@@ -371,6 +371,7 @@ func (suite *blockCacheTestSuite) TestFileReadTotalBytes() {
 		n, err := tobj.blockCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: int64(totaldata), Data: data})
 		totaldata += uint64(n)
 		if err != nil {
+			suite.assert.Contains(err.Error(), "EOF")
 			break
 		}
 		suite.assert.LessOrEqual(n, 1000)
