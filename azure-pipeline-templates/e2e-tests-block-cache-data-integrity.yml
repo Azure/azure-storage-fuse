@@ -13,6 +13,13 @@ parameters:
     type: string
   - name: adls
     type: boolean
+  - name: account_name
+    type: string
+  - name: account_key
+    type: string
+  - name: account_type
+    type: string
+  - name: account_endpoint
   - name: distro_name
     type: string
   - name: quick_test
@@ -41,36 +48,62 @@ steps:
       md5sum $(WORK_DIR)/mixedfiles_* >> $(WORK_DIR)/md5sum_original_files.txt
     displayName: 'Generate md5Sum on Local' 
 
+  - script: |
+      $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/azure_key.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.config_file }}
+      displayName: 'Create Config File for RW mount'
+      env:
+        NIGHTLY_STO_ACC_NAME: ${{ parameters.account_name }}
+        NIGHTLY_STO_ACC_KEY: ${{ parameters.account_key }}
+        ACCOUNT_TYPE: ${{ parameters.account_type }}
+        ACCOUNT_ENDPOINT: ${{ parameters.account_endpoint }}
+        VERBOSE_LOG: ${{ parameters.verbose_log }}
+      continueOnError: false
+
+  - script: |
+      cat ${{ parameters.config_file }}
+    displayName: 'Print config file'
+
   - template: 'mount.yml'
     parameters:
       working_dir: $(WORK_DIR)
       mount_dir: ${{ parameters.mount_dir }}
       temp_dir: ${{ parameters.temp_dir }}
       prefix: ${{ parameters.idstring }}
-      ro_mount: true
       mountStep: 
         script: |
-          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR)
+          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) --file-cache-timeout=3200
 
   - script: |
       cp $(WORK_DIR)/datafiles_* ${{ parameters.mount_dir }}
       cp $(WORK_DIR)/mixedfiles_* ${{ parameters.mount_dir }}
-      ls -l ${{ parameters.mount_dir }} > $(WORK_DIR)/ls_block_cache.txt
-    displayName: 'Copy files with Block-Cache'
+    displayName: 'Copy files with File-Cache'
 
   - script: |
       echo "----------------------------------------------"
       cat $(WORK_DIR)/ls_block_cache.txt
-    displayName: 'Print contents of Block-Cache'
-
-  - script: |
-      for file in $(WORK_DIR)/datafiles_* $(WORK_DIR)/mixedfiles_*; do [ -f "$file" ] && base=$(basename "$file") && mntfile="${{ parameters.mount_dir }}/$base"&& if [ -f "$mntfile" ]; then if [ "$(stat -c%s "$file")" -eq "$(stat -c%s "$mntfile")" ]; then echo "$file matches size with $mntfile: $(stat -c%s "$file") , $(stat -c%s "$mntfile")"; else echo "$file does not match size with $mntfile: $(stat -c%s "$file") , $(stat -c%s "$mntfile")" ; fi; else echo "$mntfile does not exist" exit 1; fi; done
-    displayName: 'Validating file size with Block-Cache'
+    displayName: 'Print contents of File-Cache'
 
   - script: |
       $(WORK_DIR)/blobfuse2 unmount all
     displayName: 'Unmount RW mount'
 
+  - script: |
+        cd $(WORK_DIR)
+        $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/azure_key_bc.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.config_file }}
+        sed -i 's/block-size-mb: [0-9]*/block-size-mb: 1/' ${{ parameters.config_file }}
+    displayName: 'Create Config File for RO mount'
+    env:
+      NIGHTLY_STO_ACC_NAME: ${{ parameters.account_name }}
+      NIGHTLY_STO_ACC_KEY: ${{ parameters.account_key }}
+      ACCOUNT_TYPE: ${{ parameters.account_type }}
+      ACCOUNT_ENDPOINT: ${{ parameters.account_endpoint }}
+      VERBOSE_LOG: ${{ parameters.verbose_log }}
+    continueOnError: false
+
+  - script:
+      cat ${{ parameters.config_file }}
+    displayName: 'Print config file'
+
   - template: 'mount.yml'
     parameters:
       working_dir: $(WORK_DIR)
@@ -80,9 +113,10 @@ steps:
       ro_mount: true
       mountStep: 
         script: |
-          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR)
+          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) -o ro
 
   - script: |
+      ls -l ${{ parameters.mount_dir }} > $(WORK_DIR)/ls_block_cache.txt
       echo "----------------------------------------------"
       cat $(WORK_DIR)/ls_block_cache.txt
     displayName: 'Print contents of Block-Cache'
@@ -95,10 +129,6 @@ steps:
       md5sum ${{ parameters.mount_dir }}/datafiles_* > $(WORK_DIR)/md5sum_block_cache.txt
       md5sum ${{ parameters.mount_dir }}/mixedfiles_* >> $(WORK_DIR)/md5sum_block_cache.txt
     displayName: 'Generate md5Sum with Block-Cache'
-
-  - script: |
-      for file in $(WORK_DIR)/datafiles_* $(WORK_DIR)/mixedfiles_*; do [ -f "$file" ] && base=$(basename "$file") && mntfile="${{ parameters.mount_dir }}/$base"&& if [ -f "$mntfile" ]; then if [ "$(stat -c%s "$file")" -eq "$(stat -c%s "$mntfile")" ]; then echo "$file matches size with $mntfile"; else echo "$file does not match size with $mntfile" ; fi; else echo "$mntfile does not exist" exit 1; fi; done
-    displayName: 'Validating file size with Block-Cache'
 
   - script: |
       $(WORK_DIR)/blobfuse2 unmount all
