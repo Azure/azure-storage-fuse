@@ -240,6 +240,17 @@ steps:
       $(WORK_DIR)/blobfuse2 unmount all
     displayName: 'Unmount RW mount'
 
+  - task: PublishBuildArtifacts@1
+    inputs:
+      pathToPublish: blobfuse2-logs.txt
+      artifactName: 'blobfuse_block_cache.txt'
+    condition: always()
+    
+  - script: |
+      tail -n 200 blobfuse2-logs.txt
+    displayName: 'View Logs'
+    condition: failed()
+
   - template: 'cleanup.yml'
     parameters:
       working_dir: $(WORK_DIR)
