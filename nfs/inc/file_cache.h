@@ -5,6 +5,7 @@
 #include <mutex>
 #include <memory>
 #include <vector>
+#include <list>
 #include <atomic>
 #include <chrono>
 
@@ -688,11 +689,21 @@ public:
         } else {
             AZLogDebug("Memory-backed bytes_chunk_cache created");
         }
+
+        bcc_all_it = bcc_all.insert(bcc_all.begin(), this);
+
+        AZLogDebug("Added new file cache {}, total file caches now: {}",
+                   fmt::ptr(this),
+                   bcc_all.size());
     }
 
     ~bytes_chunk_cache()
     {
         clear();
+        bcc_all.erase(bcc_all_it);
+        AZLogDebug("Deleted file cache {}, total file caches now: {}",
+                   fmt::ptr(this),
+                   bcc_all.size());
     }
 
     /**
@@ -779,6 +790,13 @@ public:
         num_get_g++;
         bytes_get += length;
         bytes_get_g += length;
+
+        /*
+         * Perform inline pruning if needed.
+         * We do inline pruning when we are "extremely" high on memory usage
+         * and hence cannot proceed w/o making space for the new request.
+         */
+         inline_prune();
 
         return scan(offset, length, scan_action::SCAN_ACTION_GET,
                     extent_left, extent_right);
@@ -879,6 +897,111 @@ public:
     {
         return !backing_file_name.empty();
     }
+
+    /**
+     * get_prune_goals() looks at the following information and returns prune
+     * goals for this cache:
+     * - Total memory consumed by all caches.
+     * - aznfsc_cfg.cache_max_mb (maximum total cache size allowed).
+     * - Memory consumed by this particular cache.
+     *
+     * It returns two types of prune goals:
+     * - Inline.
+     *   This tells how much memory to free inline.
+     *   This will be non-zero only under extreme memory pressure where we
+     *   cannot let writers continue w/o making space.
+     * - Periodic.
+     *   This tells how much memory to free by the periodic sync thread.
+     *   In most common cases this is how memory will be reclaimed.
+     */
+    void get_prune_goals(uint64_t *inline_bytes, uint64_t *periodic_bytes) const
+    {
+        // Maximum cache size allowed in bytes.
+        static const uint64_t max_total = (aznfsc_cfg.cache_max_mb * 1024 * 1024ULL);
+        assert(max_total != 0);
+
+        /*
+         * If cache usage grows to 80% of max, we enforce inline pruning for
+         * writers. When cache usage grows more than 60% we recommend periodic
+         * pruning. If the cache size is sufficient, hopefully we will not need
+         * inline pruning too often, as it hurts application write performance.
+         * Once curr_bytes_total exceeds inline_threshold we need to perform
+         * inline pruning. We prune all the way upto inline_target to avoid
+         * hysteresis. Similarly for periodic pruning we prune all the way
+         * upto periodic_target.
+         *
+         * Following also means that at any time, half of the cache_max_mb
+         * can be safely present in the cache.
+         */
+        static const uint64_t inline_threshold = (max_total * 0.8);
+        static const uint64_t inline_target = (max_total * 0.7);
+        static const uint64_t periodic_threshold = (max_total * 0.6);
+        static const uint64_t periodic_target = (max_total * 0.5);
+
+        /*
+         * Current total cache size in bytes. Save it once to avoid issues
+         * with bytes_allocated* changing midway in these calculations.
+         */
+        const uint64_t curr_bytes_total = bytes_allocated_g;
+        const uint64_t curr_bytes = bytes_allocated;
+
+        if (inline_bytes) {
+            *inline_bytes = 0;
+        }
+
+        if (periodic_bytes) {
+            *periodic_bytes = 0;
+        }
+
+        /*
+         * If current cache usage is more than the inline_threshold limit, we
+         * need to recommend inline pruning. We calculate how much %age of
+         * total caches we need to prune and then divide it proportionately
+         * among various caches (bigger caches need to prune more). We prune
+         * upto inline_target;
+         */
+        if (inline_bytes && (curr_bytes_total > inline_threshold)) {
+            assert(inline_threshold > inline_target);
+
+            // How much to prune?
+            const uint64_t total_inline_goal =
+                (curr_bytes_total - inline_target);
+            const double percent_inline_goal =
+                (total_inline_goal * 100.0 ) / curr_bytes_total;
+
+            *inline_bytes = (curr_bytes * percent_inline_goal) / 100;
+
+            // Prune at least 1MB.
+            if (*inline_bytes < 1048576) {
+                *inline_bytes = 1048576;
+            }
+        }
+
+        if (periodic_bytes && (curr_bytes_total > periodic_threshold)) {
+            assert(periodic_threshold > periodic_target);
+
+            const uint64_t total_periodic_goal =
+                (curr_bytes_total - periodic_target);
+            const double percent_periodic_goal =
+                (total_periodic_goal * 100.0 ) / curr_bytes_total;
+
+            *periodic_bytes = (curr_bytes * percent_periodic_goal) / 100;
+
+            if (*periodic_bytes < 1048576) {
+                *periodic_bytes = 1048576;
+            }
+        }
+    }
+
+    /**
+     * Check and perform inline pruning if needed.
+     * We do inline pruning when we are "extremely" high on memory usage and
+     * hence cannot proceed w/o making space for this new request. This must be
+     * called from get() which may need more memory.
+     *
+     * TODO: Also add periodic pruning support.
+     */
+    void inline_prune();
 
     /**
      * This will run self tests to test the correctness of this class.
@@ -992,6 +1115,14 @@ private:
     std::string backing_file_name;
     int backing_file_fd = -1;
     std::atomic<uint64_t> backing_file_len = 0;
+
+    /*
+     * Static list of all bytes_chunk_cache created.
+     * bytes_chunk_cache constructor adds to this list while the destructor
+     * removes from this list.
+     */
+    static std::list<bytes_chunk_cache*> bcc_all;
+    std::list<bytes_chunk_cache*>::iterator bcc_all_it;
 };
 
 }

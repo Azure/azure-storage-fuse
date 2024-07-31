@@ -711,6 +711,7 @@ static void aznfsc_ll_open(fuse_req_t req,
      *       This is a hack and needs to be properly addressed!
      */
     if (inode->is_regfile()) {
+        AZLogInfo("[{}] Clearing cache and resetting readahead state", ino);
         inode->readahead_state->reset();
         inode->filecache_handle->clear();
     }

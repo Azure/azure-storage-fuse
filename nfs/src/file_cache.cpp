@@ -13,10 +13,10 @@
 //#define DEBUG_FILE_CACHE
 
 #ifndef DEBUG_FILE_CACHE
-#undef AZLogInfo
 #undef AZLogDebug
-#define AZLogInfo(fmt, ...)     /* nothing */
 #define AZLogDebug(fmt, ...)    /* nothing */
+//#undef AZLogInfo
+//#define AZLogInfo(fmt, ...)     /* nothing */
 #else
 /*
  * Debug is not enabled early on when self-tests run, so use Info.
@@ -27,6 +27,8 @@
 #endif
 
 namespace aznfsc {
+
+/* static */ std::list<bytes_chunk_cache*> bytes_chunk_cache::bcc_all;
 
 /* static */ std::atomic<uint64_t> bytes_chunk_cache::num_chunks_g = 0;
 /* static */ std::atomic<uint64_t> bytes_chunk_cache::num_get_g = 0;
@@ -1381,6 +1383,91 @@ end:
                 ? chunkvec : std::vector<bytes_chunk>();
 }
 
+void bytes_chunk_cache::inline_prune()
+{
+    uint64_t inline_bytes = 0;
+    uint64_t pruned_bytes = 0;
+
+    get_prune_goals(&inline_bytes, nullptr);
+
+    // Inline pruning not needed.
+    if (inline_bytes == 0) {
+        return;
+    }
+
+    AZLogInfo("[{}] inline_prune(): Inline prune goal of {:0.2f} MB",
+              fmt::ptr(this), inline_bytes / (1024 * 1024.0));
+
+    const std::unique_lock<std::mutex> _lock(lock);
+
+    for (auto it = chunkmap.cbegin(), next_it = it;
+         (it != chunkmap.cend()) && (pruned_bytes < inline_bytes);
+         it = next_it) {
+        ++next_it;
+        const struct bytes_chunk *bc = &(it->second);
+        const struct membuf *mb = bc->get_membuf();
+
+        /*
+         * Possibly under IO.
+         */
+        if (mb->is_inuse()) {
+            AZLogInfo("[{}] inline_prune(): skipping as membuf(offset={}, "
+                      "length={}) is inuse",
+                      fmt::ptr(this), mb->offset, mb->length);
+            continue;
+        }
+
+        /*
+         * Not under use, cannot be locked.
+         * Note that users are supposed to drop the inuse count only after
+         * releasing the membuf lock.
+         */
+        assert(!mb->is_locked());
+
+        /*
+         * Has data to be written to Blob.
+         * Cannot safely drop this from the cache.
+         */
+        if (mb->is_dirty()) {
+            AZLogInfo("[{}] inline_prune(): skipping as membuf(offset={}, "
+                      "length={}) is dirty",
+                      fmt::ptr(this), mb->offset, mb->length);
+            continue;
+        }
+
+        AZLogInfo("[{}] inline_prune(): deleting membuf(offset={}, length={})",
+                  fmt::ptr(this), mb->offset, mb->length);
+
+        /*
+         * Release the chunk.
+         * This will release the membuf (munmap() it in case of file-backed
+         * cache and delete it for heap backed cache). At this point the membuf
+         * is guaranteed to be not in use since we checked the inuse count
+         * above.
+         */
+        assert(num_chunks > 0);
+        num_chunks--;
+        assert(num_chunks_g > 0);
+        num_chunks_g--;
+
+        assert(bytes_cached >= bc->length);
+        assert(bytes_cached_g >= bc->length);
+        bytes_cached -= bc->length;
+        bytes_cached_g -= bc->length;
+
+        pruned_bytes += mb->allocated_length;
+
+        chunkmap.erase(it);
+    }
+
+    if (pruned_bytes < inline_bytes) {
+        AZLogWarn("Could not meet inline prune goal, pruned {} of {} bytes",
+                  pruned_bytes, inline_bytes);
+    } else {
+        AZLogInfo("Successfully pruned {} bytes", pruned_bytes);
+    }
+}
+
 int64_t bytes_chunk_cache::drop(uint64_t offset, uint64_t length)
 {
     if (backing_file_name.empty()) {
@@ -1495,8 +1582,10 @@ void bytes_chunk_cache::clear()
             continue;
         }
 
-        AZLogDebug("[{}] deleting membuf(offset={}, length={})",
-                   fmt::ptr(this), mb->offset, mb->length);
+        AZLogInfo("[{}] deleting membuf(offset={}, length={}): "
+                  "bytes_allocated={}",
+                  fmt::ptr(this), mb->offset, mb->length,
+                  bytes_allocated.load());
 
         /*
          * Release the chunk.
