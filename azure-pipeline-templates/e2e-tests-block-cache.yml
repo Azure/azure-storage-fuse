@@ -244,7 +244,7 @@ steps:
     inputs:
       pathToPublish: blobfuse2-logs.txt
       artifactName: 'blobfuse_block_cache.txt'
-    condition: always()
+    condition: failed()
     
   - script: |
       tail -n 200 blobfuse2-logs.txt
