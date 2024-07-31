@@ -190,7 +190,7 @@ struct write_flush_context
     {
     }
 
-    write_flush_context(const struct bytes_chunk &_bc, rpc_task *_task, fuse_ino_t _ino) :
+    write_flush_context(const struct bytes_chunk& _bc, rpc_task *_task, fuse_ino_t _ino) :
         bc(_bc),
         task(_task),
         ino(_ino),
@@ -622,7 +622,7 @@ protected:
     enum fuse_opcode optype;
 
 public:
-    rpc_task(struct nfs_client *_client, int _index):
+    rpc_task(struct nfs_client *_client, int _index) :
         client(_client),
         req(nullptr),
         index(_index)

@@ -1691,9 +1691,10 @@ std::vector<bytes_chunk> bytes_chunk_cache::get_dirty_bc()
     while (it != chunkmap.end())
     {
         auto chunk = it->second;
-        if (chunk.get_membuf()->is_dirty())
+        auto membuf = chunk.get_membuf();
+        if (membuf->is_dirty() && membuf->is_uptodate())
         {
-            chunk.get_membuf()->set_inuse();
+            membuf->set_inuse();
             chunk_vec.push_back(chunk);
         }
         it = std::next(it);

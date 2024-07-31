@@ -221,93 +221,6 @@ static void lookup_callback(
     }
 }
 
-#if 0
-static void flush_callback(
-    struct rpc_context* /* rpc */,
-    int rpc_status,
-    void *data,
-    void *private_data)
-{
-    struct write_flush_context *cb_data = (write_flush_context*) private_data;
-    
-    // Get the task and bytes_chunk.
-    auto task = cb_data->get_task();
-    auto chunk = &cb_data->get_bytes_chunk();
-    auto membuf = chunk->get_membuf();
-
-    auto nfs_inode = task->get_client()->get_nfs_inode_from_ino(cb_data->get_ino());
-
-    // No need to lock the membuf while issuing write, it's locked.
-    assert(membuf != nullptr);
-    assert(membuf->is_inuse() && membuf->is_locked());
-    assert(membuf->is_flushing() && membuf->is_dirty());
-
-    auto res = (WRITE3res *)data;
-    const int status = task->status(rpc_status, RSTATUS(res));
-
-    // Positive case
-    if (status == 0) {
-        size_t count = res->WRITE3res_u.resok.count;
-        count += cb_data->get_count();
-
-        size_t size = membuf->length;
-
-        if (res->WRITE3res_u.resok.count == 0)
-        {
-            // Need to check what error need to set.
-            // When this happens ?
-        } else if (count < size) {
-            /*
-             * Special case where we wrote less data, we retry to write rest of data.
-             */
-            WRITE3args args;
-            bool rpc_retry = false;
-            off_t off = membuf->offset;
-            char *buf = (char *)membuf->buffer;
-            fuse_ino_t file_ino = cb_data->get_ino();
-            args.file = task->get_client()->get_nfs_inode_from_ino(file_ino)->get_fh();
-	        args.offset = off + count;
-	        args.count  = size - count;
-	        args.stable = FILE_SYNC;
-	        args.data.data_len = size - count;
-            args.data.data_val = &buf[count];
-            cb_data->set_count(count);
-
-            do {
-                if(rpc_nfs3_write_task(task->get_rpc_ctx(), write_flush_callback, &args, cb_data) == NULL)
-                {
-                    /*
-                    * This call fails due to internal issues like OOM etc
-                    * and not due to an actual error, hence retry.
-                    */
-                    rpc_retry = true;
-                }
-            } while (rpc_retry == false);
-
-            return;
-        } else {
-            // Data writen to blob.
-            AZLogDebug("membuf flushed offset {}, Length {}", membuf->offset, membuf->length);
-
-            membuf->clear_dirty();
-        }
-    } else {
-        // Since the api failed and can no longer be retried, set error.
-        nfs_inode->set_write_error(status);
-    }
-
-    membuf->clear_flushing();
-    membuf->clear_inuse();
-    membuf->clear_locked();  
-
-    delete cb_data;
-    nfs_inode->filecache_handle->release(chunk->offset, chunk->length);
-
-    // Release the task.
-    task->free_rpc_task();
-}
-#endif
-
 static void write_flush_callback(
     struct rpc_context* /* rpc */,
     int rpc_status,
@@ -645,6 +558,73 @@ copy_to_cache(struct nfs_client *const client,
     return chunkvec;
 }
 
+/*
+ * sync_membuf do the following:-
+ * 1. It creates new flush_task.
+ * 2. Flush the membuf to backend asynchronously, while membuf is locked.
+ * 3. On completion write_flush_callback() called.
+ * 4. write_flush_callback() clear the dirty bit, release lock and release this chunk from chunkmap.
+ * 5. Free the flush_task.
+ *
+ * Note:- By creating new task, back pressure can be put on incoming writes. Otherwise
+ *        application keep issuing new writes and it can cause memory pressure on system.
+ *
+ * Note:- Write call don't need to wait for completion of this async task.
+ *        After starting async task, we can complete the write request, as write buffer
+ *        already copied to membuf.
+ *
+ * Note:- Flush can wait for this calls to finish by waiting on membuf lock.
+ *
+ */
+void sync_membuf(struct bytes_chunk& chunk, struct nfs_client *client, fuse_ino_t file_ino)
+{
+    WRITE3args args;
+    bool rpc_retry = false;
+    auto membuf = chunk.get_membuf();
+
+    // Verify the membuf.
+    assert(membuf != nullptr);
+    assert(membuf->is_inuse());
+
+    // Get the membuf which need to flush.
+    membuf->set_locked();
+    if (membuf->is_dirty())
+    {
+        assert(membuf->is_uptodate());
+
+        // Fill the Write RPC arguments.
+        args.file = client->get_nfs_inode_from_ino(file_ino)->get_fh();
+        args.offset = membuf->offset;
+        args.count  = membuf->length;
+        args.stable = FILE_SYNC;
+        args.data.data_len = membuf->length;
+        args.data.data_val = (char *) membuf->buffer;
+
+        // Allocate new rpc task.
+        auto flush_task = client->get_rpc_task_helper()->alloc_rpc_task();
+        flush_task->set_op_type(FUSE_FLUSH);
+
+        struct write_flush_context *cb_context = new write_flush_context(chunk, flush_task, file_ino);
+
+        // Keep the inuse and set flag to flushing.
+        membuf->set_flushing();
+
+        do 
+        {
+            if(rpc_nfs3_write_task(flush_task->get_rpc_ctx(), write_flush_callback, &args, cb_context) == NULL)
+            {
+                /*
+                * This call fails due to internal issues like OOM etc
+                * and not due to an actual error, hence retry.
+                */
+                rpc_retry = true;
+            }
+        } while (rpc_retry);
+    } else {
+        membuf->clear_locked();
+    }
+}
+
 void rpc_task::run_write()
 {
     fuse_ino_t file_ino = rpc_api.write_task.get_ino();
@@ -671,50 +651,13 @@ void rpc_task::run_write()
 
     assert(chunkvec.size() > 0);
 
+    // Iterate over all the chunks this write allocated.
     for (auto &chunk : chunkvec) {
-        WRITE3args args;
-        bool rpc_retry = false;
-
-        // Get the membuf which need to flush.
-        auto membuf = chunk.get_membuf();
-        membuf->set_locked();
-
-        assert(membuf->is_dirty());
-        assert(membuf->is_uptodate());
-
-        // Fill the Write RPC arguments.
-        args.file = client->get_nfs_inode_from_ino(file_ino)->get_fh();
-        args.offset = membuf->offset;
-        args.count  = membuf->length;
-        args.stable = FILE_SYNC;
-        args.data.data_len = membuf->length;
-        args.data.data_val = (char *) membuf->buffer;
-
-        // Allocate new rpc task.
-        auto flush_task = client->get_rpc_task_helper()->alloc_rpc_task();
-        flush_task->optype = FUSE_FLUSH;
-
-        struct write_flush_context *cb_context = new write_flush_context(chunk, flush_task, file_ino);
-
-        // Keep the inuse and set flag to flushing.
-        membuf->set_flushing();
-
-        do 
-        {
-            if(rpc_nfs3_write_task(flush_task->get_rpc_ctx(), write_flush_callback, &args, cb_context) == NULL)
-            {
-                /*
-                * This call fails due to internal issues like OOM etc
-                * and not due to an actual error, hence retry.
-                */
-                rpc_retry = true;
-            }
-        } while (rpc_retry);
-
-       // AZLogDebug("membuf flushing offset {}, Length {}", membuf->offset, membuf->length);
+        // Flush the membuf to backend.
+        sync_membuf(chunk, client, file_ino);
     }
 
-    // Send reply to original request.
+    // Send reply to original request without waiting for the backend write to complete.
     reply_write(length);
 } 
 
@@ -722,82 +665,44 @@ void rpc_task::run_flush()
 {
     fuse_ino_t file_ino = rpc_api.write_task.get_ino();
     auto nfs_inode = get_client()->get_nfs_inode_from_ino(file_ino);
-    auto filecache_handle = nfs_inode->filecache_handle;
 
+    // Get the filecache_handle from the inode.
+    auto filecache_handle = nfs_inode->filecache_handle;
     assert(filecache_handle != nullptr);
+
+    // Check if any write error set, If set send the response immediately.
+    int error_code = nfs_inode->get_write_error();
+    if (error_code != 0) {
+        reply_error(nfs_inode->get_write_error());
+        return;
+    }
 
     // Get the dirty bytes_chunk from the filecache handle.
     auto chunk_vec = filecache_handle->get_dirty_bc();
 
+    // Flush dirty membuf to backend.
     for (auto &chunk: chunk_vec)
-    {        
+    {
+        // Flush the membuf to backend.
+        sync_membuf(chunk, client, file_ino);
+    }
+
+    // Wait for membuf to flush and get result back.
+    for (auto &chunk: chunk_vec)
+    {
         auto membuf = chunk.get_membuf();
         assert(membuf != nullptr);
 
         membuf->set_locked();
         assert(membuf->is_inuse());
 
-        /*
-         * As of now, whenever write comes we get byte_chunk for corresponding
-         * offset and length. Copy the buffer from fuse to that, mark the buffer dirty.
-         * After that we issue write rpc to blob and complete the write command.
-         * Ideally all the chunks marked dirty in chunkmap, already issued to blob.
-         * We just need to wait for them to complete. That's what flush will do.
-         *
-         * Note: There is race condition to that, where we marked the buffer dirty, before
-         *       flushing it to blob, flush command come.
-         *
-         */
-        if (membuf->is_dirty())
-        {
-            assert(!membuf->is_flushing());
-            assert(membuf->buffer != nullptr);
-            assert(membuf->length != 0);
-
-            if (nfs_inode->get_write_error() == 0)
-            {
-                AZLogDebug("membuf dirty and no error set offset {}, Length {}", membuf->offset, membuf->length);
-                assert(0);
-            }
-        #if 0
-            WRITE3args args;
-            bool rpc_retry = false;
-            args.file = get_client()->get_nfs_inode_from_ino(file_ino)->get_fh();
-            args.offset = membuf->offset;
-            args.count  = membuf->length;
-            args.stable = FILE_SYNC;
-            args.data.data_len = membuf->length;
-            args.data.data_val = (char *) membuf->buffer;
-
-            struct write_flush_context *callback_data = new write_flush_context(chunk, this, file_ino);
-                                                            
-            do {
-                if(rpc_nfs3_write_task(get_rpc_ctx(), flush_callback, &args, callback_data) == NULL)
-                {
-                    /*
-                    * This call fails due to internal issues like OOM etc
-                    * and not due to an actual error, hence retry.
-                    */
-                    rpc_retry = true;
-                }
-            } while (rpc_retry);
-
-            // Keep the inuse and set flag to flushing.
-            AZLogDebug("membuf flushing offset {}, Length {}", membuf->offset, membuf->length);
-            membuf->set_flushing();
-
-            this->child_task++;
-        #endif
-
-            membuf->clear_locked();
-            membuf->clear_inuse();
-        } else {
-            // Clear the inuse as we are not flushing this membuf.
-            membuf->clear_locked();
-            membuf->clear_inuse();
-
-            // AZLogDebug("membuf not dirty offset {}, Length {}", membuf->offset, membuf->length);
+        if (membuf->is_dirty()) {
+            assert(nfs_inode->get_write_error() != 0);
+            AZLogDebug ("Writes failed with error: {}", nfs_inode->get_write_error());
         }
+
+        membuf->clear_locked();
+        membuf->clear_inuse();
     }
 
     reply_error(nfs_inode->get_write_error());
