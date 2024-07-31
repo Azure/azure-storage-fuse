@@ -79,6 +79,15 @@ steps:
     displayName: 'Store file-size with File-Cache' 
 
   - script: |
+      for file in ${{ parameters.mount_dir }}/datafiles_*; do
+          hexdump -v -e '/1 "%_ad\n"' "$file" | wc -l >> $(WORK_DIR)/byte_count_file_cache.txt
+      done
+      for file in ${{ parameters.mount_dir }}/mixedfiles_*; do
+          hexdump -v -e '/1 "%_ad\n"' "$file" | wc -l >> $(WORK_DIR)/byte_count_file_cache.txt
+      done
+    displayName: 'Store total bytes with File-Cache'     
+
+  - script: |
       echo "----------------------------------------------"
       ls -l ${{ parameters.mount_dir }}/datafiles_* > $(WORK_DIR)/ls_file_cache.txt
       ls -l ${{ parameters.mount_dir }}/mixedfiles_* >> $(WORK_DIR)/ls_file_cache.txt
@@ -134,6 +143,15 @@ steps:
     displayName: 'Store file-size with Block-Cache' 
 
   - script: |
+      for file in ${{ parameters.mount_dir }}/datafiles_*; do
+          hexdump -v -e '/1 "%_ad\n"' "$file" | wc -l >> $(WORK_DIR)/byte_count_block_cache.txt
+      done
+      for file in ${{ parameters.mount_dir }}/mixedfiles_*; do
+          hexdump -v -e '/1 "%_ad\n"' "$file" | wc -l >> $(WORK_DIR)/byte_count_block_cache.txt
+      done
+    displayName: 'Store total bytes with Block-Cache' 
+
+  - script: |
       $(WORK_DIR)/blobfuse2 unmount all
     displayName: 'Unmount RW mount'
 
@@ -150,6 +168,20 @@ steps:
         exit 1
       fi
     displayName: 'Validate File-Size'
+
+  - script: |
+      echo "----------------------------------------------"
+      cat $(WORK_DIR)/byte_count_file_cache.txt
+      cat $(WORK_DIR)/byte_count_file_cache.txt | cut -d " " -f1 > $(WORK_DIR)/byte_count_file_cache.txt
+      echo "----------------------------------------------"
+      cat $(WORK_DIR)/byte_count_block_cache.txt
+      cat $(WORK_DIR)/byte_count_block_cache.txt | cut -d " " -f1 > $(WORK_DIR)/byte_count_block_cache.txt
+      echo "----------------------------------------------"
+      diff $(WORK_DIR)/byte_count_file_cache.txt $(WORK_DIR)/byte_count_block_cache.txt
+      if [ $? -ne 0 ]; then
+        exit 1
+      fi
+    displayName: 'Validate total bytes'
 
   - script: |
       echo "----------------------------------------------"
