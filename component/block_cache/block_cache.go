@@ -935,17 +935,6 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 
 	// log.Debug("BlockCache::WriteFile : Writing handle %v=>%v: offset %v, %v bytes", options.Handle.ID, options.Handle.Path, options.Offset, len(options.Data))
 
-	// check for possible random write scenario and block the write request
-	blockIndex := bc.getBlockIndex(uint64(options.Offset))
-	lastBlockIndex := bc.getBlockIndex(uint64(options.Handle.Size))
-	if (blockIndex < lastBlockIndex) && ((lastBlockIndex+1)-blockIndex > uint64(bc.prefetch)) {
-		log.Debug("BlockCache::WriteFile : Random write detection for write offset %v and block %v, where handle size is %v", options.Offset, blockIndex, options.Handle.Size)
-		if !bc.enableRandomWrite {
-			log.Err("BlockCache::WriteFile : Blocking random write")
-			return 0, fmt.Errorf("blocking random write for write offset %v and block %v where handle size is %v", options.Offset, blockIndex, options.Handle.Size)
-		}
-	}
-
 	// Keep getting next blocks until you read the request amount of data
 	dataWritten := int(0)
 	for dataWritten < len(options.Data) {
@@ -982,6 +971,21 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 	return dataWritten, nil
 }
 
+// block random write if,
+//   - random write is disabled
+//   - block index of write offset is less than than the block index of the handle size
+//   - block index is present in the blockList map which indicates that it has been staged earlier
+func (bc *BlockCache) blockRandomWrite(handle *handlemap.Handle, index uint64) bool {
+	if !bc.enableRandomWrite && index < bc.getBlockIndex(uint64(handle.Size)) {
+		shouldCommit, shouldDownload := shouldCommitAndDownload(int64(index), handle)
+		if !shouldCommit && !shouldDownload {
+			return false
+		}
+		return true
+	}
+	return false
+}
+
 func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) (*Block, error) {
 	// Check the given block index is already available or not
 	index := bc.getBlockIndex(offset)
@@ -997,6 +1001,13 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 
 	node, found := handle.GetValue(fmt.Sprintf("%v", index))
 	if !found {
+		// block not present in the buffer list
+		// check if it is a random write case and should be blocked
+		if bc.blockRandomWrite(handle, index) {
+			log.Err("BlockCache::WriteFile : Random write detection for write offset %v and block %v, where handle size is %v", offset, index, handle.Size)
+			return nil, fmt.Errorf("blocking random write for write offset %v and block %v where handle size is %v", offset, index, handle.Size)
+		}
+
 		// If too many buffers are piled up for this file then try to evict some of those which are already uploaded
 		if handle.Buffers.Cooked.Len()+handle.Buffers.Cooking.Len() >= int(bc.prefetch) {
 			bc.waitAndFreeUploadedBlocks(handle, 1)
@@ -1104,7 +1115,7 @@ func (bc *BlockCache) stageBlocks(handle *handlemap.Handle, cnt int) error {
 	return nil
 }
 
-// shouldCommit is used to check if we should commit the existing blocks and download the given block.
+// shouldCommitAndDownload is used to check if we should commit the existing blocks and download the given block.
 // There can be a case where a block has been partially written, staged and cleared from the buffer list.
 // If write call comes for that block, we cannot get the previous staged data
 // since the block is not yet committed. So, we have to commit it.
