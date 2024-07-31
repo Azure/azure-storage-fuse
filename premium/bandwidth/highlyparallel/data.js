@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1722339413270,
+  "lastUpdate": 1722406209886,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -2740,6 +2740,45 @@ window.BENCHMARK_DATA = {
           {
             "name": "rand_read_128_thread",
             "value": 4759.554361979167,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "137055338+ashruti-msft@users.noreply.github.com",
+            "name": "ashruti-msft",
+            "username": "ashruti-msft"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "da781335200793f51bbd626f5dfd553009f91cd7",
+          "message": "Block Cache Read correction  (#1483)\n\nFixed: We copied the entire block regardless of whether it was fully used, leading to copying over garbage data.\r\nFixed: Error in read when disk cache was enabled",
+          "timestamp": "2024-07-31T11:00:28+05:30",
+          "tree_id": "504b3aca1f21642ba9f35299b2e1474afdb4fc8e",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/da781335200793f51bbd626f5dfd553009f91cd7"
+        },
+        "date": 1722406209575,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "seq_write_112_thread",
+            "value": 31778.071614583332,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "seq_read_128_thread",
+            "value": 19570.2861328125,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "rand_read_128_thread",
+            "value": 5155.162434895833,
             "unit": "MiB/s"
           }
         ]
