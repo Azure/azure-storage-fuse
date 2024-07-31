@@ -6,6 +6,7 @@
 - In flush operation, the blocks will be committed only if the handle is dirty.
 - Reset block data to null before reuse.
 - Sparse file data integrity issues fixed.
+- Fixed block-cache read of small files where file size is not multiple of kernel buffer size. 
 
 **Features**
 
