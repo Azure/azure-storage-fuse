@@ -505,6 +505,164 @@ func (suite *dataValidationTestSuite) TestSparseFileRandomWriteBlockOverlap() {
 	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, suite.testCachePath})
 }
 
+func (suite *dataValidationTestSuite) TestFileReadBytesMultipleBlocks() {
+	fileName := "bytesReadMultipleBlock"
+	localFilePath := suite.testLocalPath + "/" + fileName
+	remoteFilePath := suite.testMntPath + "/" + fileName
+
+	// create local file
+	lfh, err := os.Create(localFilePath)
+	suite.Nil(err)
+
+	defer func(fh *os.File) {
+		_ = fh.Close()
+	}(lfh)
+
+	// create remote file
+	rfh, err := os.Create(remoteFilePath)
+	suite.Nil(err)
+
+	defer func(fh *os.File) {
+		_ = fh.Close()
+	}(rfh)
+
+	// write 65MB data
+	n, err := lfh.WriteAt(largeBuff[0:65*_1MB], 0)
+	suite.Nil(err)
+	suite.Equal(n, int(65*_1MB))
+
+	// write 7 bytes at offset 65MB
+	n, err = lfh.WriteAt(largeBuff[0:7], int64(65*_1MB))
+	suite.Nil(err)
+	suite.Equal(n, 7)
+
+	err = lfh.Close()
+	suite.Nil(err)
+
+	// write 65MB data
+	n, err = rfh.WriteAt(largeBuff[0:65*_1MB], 0)
+	suite.Nil(err)
+	suite.Equal(n, int(65*_1MB))
+
+	// write 7 bytes at offset 65MB
+	n, err = rfh.WriteAt(largeBuff[0:7], int64(65*_1MB))
+	suite.Nil(err)
+	suite.Equal(n, 7)
+
+	err = rfh.Close()
+	suite.Nil(err)
+
+	// check size of blob uploaded using os.Stat()
+	fi, err := os.Stat(remoteFilePath)
+	suite.Nil(err)
+	suite.Equal(fi.Size(), 65*int64(_1MB)+7)
+
+	// count the total bytes uploaded
+	fh, err := os.Open(remoteFilePath)
+	suite.Nil(err)
+
+	totalBytesread := int64(0)
+	dataBuff := make([]byte, int(_1MB))
+	for {
+		bytesRead, err := fh.Read(dataBuff)
+		totalBytesread += int64(bytesRead)
+		if err != nil {
+			suite.Contains(err.Error(), "EOF")
+			break
+		}
+	}
+	suite.Equal(totalBytesread, 65*int64(_1MB)+7)
+
+	err = fh.Close()
+	suite.Nil(err)
+
+	localMD5, err := computeMD5(localFilePath)
+	suite.Nil(err)
+	suite.NotNil(localMD5)
+
+	remoteMD5, err := computeMD5(remoteFilePath)
+	suite.Nil(err)
+	suite.NotNil(remoteMD5)
+
+	suite.Equal(localMD5, remoteMD5)
+
+	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, suite.testCachePath})
+}
+
+func (suite *dataValidationTestSuite) TestFileReadBytesOneBlock() {
+	fileName := "bytesReadOneBlock"
+	localFilePath := suite.testLocalPath + "/" + fileName
+	remoteFilePath := suite.testMntPath + "/" + fileName
+
+	// create local file
+	lfh, err := os.Create(localFilePath)
+	suite.Nil(err)
+
+	defer func(fh *os.File) {
+		_ = fh.Close()
+	}(lfh)
+
+	// create remote file
+	rfh, err := os.Create(remoteFilePath)
+	suite.Nil(err)
+
+	defer func(fh *os.File) {
+		_ = fh.Close()
+	}(rfh)
+
+	// write 13 bytes data to local file
+	n, err := lfh.WriteAt(largeBuff[0:13], 0)
+	suite.Nil(err)
+	suite.Equal(n, 13)
+
+	err = lfh.Close()
+	suite.Nil(err)
+
+	// write 13 bytes data to remote file
+	n, err = rfh.WriteAt(largeBuff[0:13], 0)
+	suite.Nil(err)
+	suite.Equal(n, 13)
+
+	err = rfh.Close()
+	suite.Nil(err)
+
+	// check size of blob uploaded using os.Stat()
+	fi, err := os.Stat(remoteFilePath)
+	suite.Nil(err)
+	suite.Equal(fi.Size(), int64(13))
+
+	// count the total bytes uploaded
+	fh, err := os.Open(remoteFilePath)
+	suite.Nil(err)
+
+	totalBytesread := int64(0)
+	dataBuff := make([]byte, 1000)
+	for {
+		bytesRead, err := fh.Read(dataBuff)
+		totalBytesread += int64(bytesRead)
+		if err != nil {
+			suite.Contains(err.Error(), "EOF")
+			break
+		}
+	}
+	suite.Equal(totalBytesread, int64(13))
+
+	err = fh.Close()
+	suite.Nil(err)
+
+	localMD5, err := computeMD5(localFilePath)
+	suite.Nil(err)
+	suite.NotNil(localMD5)
+
+	remoteMD5, err := computeMD5(remoteFilePath)
+	suite.Nil(err)
+	suite.NotNil(remoteMD5)
+
+	suite.Equal(localMD5, remoteMD5)
+
+	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, suite.testCachePath})
+}
+
 // -------------- Main Method -------------------
 func TestDataValidationTestSuite(t *testing.T) {
 	initDataValidationFlags()

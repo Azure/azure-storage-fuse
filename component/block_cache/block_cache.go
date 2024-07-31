@@ -522,11 +522,16 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 
 		// Copy data from this block to user buffer
 		readOffset := uint64(options.Offset) - block.offset
-		bytesRead := copy(options.Data[dataRead:], block.data[readOffset:])
+		bytesRead := copy(options.Data[dataRead:], block.data[readOffset:(block.endIndex-block.offset)])
 
 		// Move offset forward in case we need to copy more data
 		options.Offset += int64(bytesRead)
 		dataRead += bytesRead
+
+		if options.Offset >= options.Handle.Size {
+			// EOF reached so early exit
+			return dataRead, io.EOF
+		}
 	}
 
 	return dataRead, nil
@@ -906,7 +911,7 @@ func (bc *BlockCache) download(item *workItem) {
 		// Dump this block to local disk cache
 		f, err := os.Create(localPath)
 		if err == nil {
-			_, err := f.Write(item.block.data)
+			_, err := f.Write(item.block.data[:n])
 			if err != nil {
 				log.Err("BlockCache::download : Failed to write %s to disk [%v]", localPath, err.Error())
 				_ = os.Remove(localPath)
