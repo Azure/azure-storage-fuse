@@ -1,69 +1,82 @@
-
-# To create ramdisk
-# sudo mkdir -p /mnt/ramdisk
-# sudo chmod 777 /mnt/ramdisk
-# sudo mount -t tmpfs -o rw,size=4G tmpfs /mnt/ramdisk
-
-
 SERVICE="blobfuse2"
 SCRIPT="longhaul.sh"
+WORKDIR="/home/blobfuse/azure-storage-fuse"
 
-# To create ramdisk
-# sudo mount -t tmpfs -o rw,size=4G tmpfs /mnt/ramdisk
-
-cd /home/vibhansa/go/src/azure-storage-fuse/
-
+echo "Staring script"
 if pgrep -x "$SERVICE" > /dev/null
 then
-	if pgrep -x "$SCRIPT" > /dev/null
-	then
-		echo "`date` :: Already running" >> ./longhaul2.log
-	else
-		if [ `stat -c %s ./longhaul2.log` -gt 10485760 ]
-		then 
-			echo "`date` :: Trimmed " > ./longhaul2.log
-		fi
+        echo "Check existing run"
+        #count=`ps -aux | grep $SCRIPT | wc -l`
+        #echo "Existing run count  : $count"
 
-		echo "`whoami` : `date` :: `./blobfuse2 --version` Starting stress test " >> ./longhaul2.log
+        if [ -e "longhaul.lock" ]
+        then
+                echo "Script already running"
+                echo "`date` :: Already running" >> $WORKDIR/longhaul.log
+        else
+                touch longhaul.lock
+                echo "New script start"
+                if [ `stat -c %s $WORKDIR/longhaul.log` -gt 10485760 ]
+                then
+                        echo "`date` :: Trimmed " > $WORKDIR/longhaul.log
+                fi
 
-		mem=$(top -b -n 1 -p `pgrep -x blobfuse2` | tail -1)
-		elap=$( ps -p `pgrep -x blobfuse2` -o etime | tail -1)
-		echo $mem " :: " $elap >> ./longhaul2.log
-	
-		rm -rf /home/vibhansa/blob_mnt2/stress	
-		rm -rf /home/vibhansa/blob_mnt2/myfile*
-		
-		#go test -timeout 120m -v ./test/stress_test/stress_test.go -args -mnt-path=/home/vibhansa/blob_mnt2 -quick=false 2&> ./stress.log
-		./test/longhaul/stresstest.sh
-		echo "`whoami` : `date` :: Ending stress test " >> ./longhaul2.log
-		cp  ./longhaul2.log  /home/vibhansa/blob_mnt2/
-		cp ./stress.log /home/vibhansa/blob_mnt2/
-		
-		sleep 30
+                echo "`whoami` : `date` :: `$WORKDIR/blobfuse2 --version` Starting test " >> $WORKDIR/longhaul.log
 
-		rm -rf /mnt/ramdisk/*
-		rm -rf /home/vibhansa/blob_mnt2/stress	
-		sudo rm -rf /var/log/blob*.gz
-	fi
+                mem=$(top -b -n 1 -p `pgrep -x blobfuse2` | tail -1)
+                elap=$( ps -p `pgrep -x blobfuse2` -o etime | tail -1)
+                echo $mem " :: " $elap >> $WORKDIR/longhaul.log
+
+                echo "Delete old data"
+                echo "`date` : Cleanup old test data" >> $WORKDIR/longhaul.log
+                rm -rf /blob_mnt/kernel
+
+                echo "Start test"
+                echo "`date` : Building Kernel"  >> $WORKDIR/longhaul.log
+                mkdir /blob_mnt/kernel
+                $WORKDIR/build_kernel.sh /blob_mnt/kernel/ 6.10.2
+
+                if [ $? -ne 0 ]; then
+                  echo "`date` : Make Failed" >> $WORKDIR/longhaul.log
+                fi
+                echo "End test"
+                echo "`date` : Kernel Build complete"  >> $WORKDIR/longhaul.log
+
+                sleep 30
+                echo "Cleanup post test"
+                rm -rf /blob_mnt/test/*
+                rm -rf /blob_mnt/kernel
+
+                cp  $WORKDIR/longhaul.log  /blob_mnt/
+                rm -rf longhaul.lock
+        fi
 else
-	echo "`date` :: Re-Starting blobfuse2 *******************" >> ./longhaul2.log
-	rm -rf /home/vibhansa/blob_mnt2/*
-	rm -rf /mnt/ramdisk/*
-	sudo fusermount -u ~/blob_mnt2
-	rm -rf /mnt/ramdisk/*
-	./blobfuse2 mount ~/blob_mnt2 --config-file=./config.yaml
-	sleep 2
+        echo "Blobfuse not running"
+        echo "`date` :: Re-Starting blobfuse2 *******************" >> $WORKDIR/longhaul.log
+        $WORKDIR/blobfuse2 unmount all
 
-	if [ `stat -c %s ./restart2.log` -gt 10485760 ]
-	then 
-		echo "`date` Trimmed " > ./restart2.log
-	fi
-	echo "`date`: Restart : `./blobfuse2 --version`" >> ./restart2.log
+        rm -rf /blob_mnt/*
 
-	# Send email that blobfuse2 has crashed
-	echo "Blobfuse2 Failure" | mail -s "Blobfuse2 Restart" -A ./restart2.log -a "From: longhaul@blobfuse.com" vibhansa@microsoft.com
-	
-	cp /var/log/blobfuse2.log /home/vibhansa/blob_mnt2/
-	cp ./longhaul2.log  /home/vibhansa/blob_mnt2/
-	cp ./restart2.log /home/vibhansa/blob_mnt2/
-fi	
+        export AZURE_STORAGE_ACCOUNT=vikasfuseblob
+        export AZURE_STORAGE_AUTH_TYPE=msi
+        export AZURE_STORAGE_IDENTITY_CLIENT_ID=1f1551d2-2db2-4d4d-a6f5-d7edbe75d98e
+
+        echo "Start blobfuse"
+        $WORKDIR/blobfuse2 mount /blob_mnt --log-level=log_debug --log-file-path=$WORKDIR/blobfuse2.log --log-type=base --block-cache --container-name=longhaul
+
+        sleep 2
+
+        if [ `stat -c %s $WORKDIR/restart.log` -gt 10485760 ]
+        then
+                echo "`date` Trimmed " > $WORKDIR/restart.log
+        fi
+        echo "`date`: Restart : `$WORKDIR/blobfuse2 --version`" >> $WORKDIR/restart.log
+
+        echo "Send mail"
+        # Send email that blobfuse2 has crashed
+        echo "Blobfuse2 Failure" | mail -s "Blobfuse2 Restart" -A $WORKDIR/restart.log -a "From: longhaul@blobfuse.com" vibhansa@microsoft.com
+
+        cp $WORKDIR/blobfuse2.log /blob_mnt/
+        cp $WORKDIR/longhaul.log  /blob_mnt/
+        cp $WORKDIR/restart.log /blob_mnt/
+fi
