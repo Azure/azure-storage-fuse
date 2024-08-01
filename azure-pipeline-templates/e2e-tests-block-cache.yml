@@ -82,6 +82,10 @@ steps:
       VERBOSE_LOG: ${{ parameters.verbose_log }}
     continueOnError: false
 
+  - script:
+      cat ${{ parameters.config_file }}
+    displayName: 'Print block cache config file'
+
   - template: 'mount.yml'
     parameters:
       working_dir: $(WORK_DIR)
