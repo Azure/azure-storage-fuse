@@ -153,6 +153,9 @@ func (suite *blockpoolTestSuite) TestUsage() {
 		bp.Release(blk)
 	}
 
+	// adding wait for the blocks to be reset and pushed back to the blocks channel
+	time.Sleep(2 * time.Second)
+
 	usage = bp.Usage()
 	suite.assert.Equal(usage, uint32(20)) // because of zeroBlock
 
