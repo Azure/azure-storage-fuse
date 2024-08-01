@@ -1070,6 +1070,7 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 
 		// If the block was staged earlier then we are overwriting it here so move it back to cooking queue
 		if block.flags.IsSet(BlockFlagSynced) {
+			log.Debug("BlockCache::getOrCreateBlock : Overwriting back to staged block %v for %v=>%s", block.id, handle.ID, handle.Path)
 			if block.node != nil {
 				_ = handle.Buffers.Cooked.Remove(block.node)
 			}
@@ -1077,6 +1078,7 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 			block.node = handle.Buffers.Cooking.PushBack(block)
 			block.flags.Clear(BlockFlagSynced)
 		} else if block.flags.IsSet(BlockFlagDownloading) {
+			log.Debug("BlockCache::getOrCreateBlock : Waiting for download to finish for committed block %v for %v=>%s", block.id, handle.ID, handle.Path)
 			<-block.state
 			block.flags.Clear(BlockFlagDownloading)
 			block.Unblock()
@@ -1144,11 +1146,11 @@ func (bc *BlockCache) lineupUpload(handle *handlemap.Handle, block *Block, listM
 	// if a block has data less than block size and is not the last block,
 	// add null at the end and upload the full block
 	if block.endIndex < uint64(handle.Size) {
+		log.Debug("BlockCache::lineupUpload : Appending null for block %v, size %v for %v=>%s", block.id, (block.endIndex - block.offset), handle.ID, handle.Path)
 		block.endIndex = block.offset + bc.blockSize
-		log.Debug("BlockCache::lineupUpload : Appending null for block %v", block.id)
 	} else if block.endIndex == uint64(handle.Size) {
 		// TODO: random write scenario where this block is not the last block
-		log.Debug("BlockCache::lineupUpload : Last block %v", block.id)
+		log.Debug("BlockCache::lineupUpload : Last block %v, size %v for %v=>%s", block.id, (block.endIndex - block.offset), handle.ID, handle.Path)
 	}
 
 	// id := listMap[block.id]
