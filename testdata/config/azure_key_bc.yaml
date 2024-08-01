@@ -25,7 +25,7 @@ block_cache:
 
   prefetch: 120
   parallelism: 128
-  enable-random-write: true
+  # enable-random-write: true
 
 attr_cache:
   timeout-sec: 3600
