@@ -535,17 +535,12 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
      * Temp variables to hold details for releasing a range.
      * All chunks in the range [begin_delete, end_delete) will be freed as
      * they fall completely inside the released range.
-     * When we release a range that completely lies within a chunk, then we need
-     * to allocate a new chunk to hold the data after the released range, while
-     * the existing chunk is trimmed to hold the data before the range.
-     * chunk_after is the new chunk thus created.
      * Used only for SCAN_ACTION_RELEASE.
      */
     std::map <uint64_t,
               struct bytes_chunk>::iterator begin_delete = chunkmap.end();
     std::map <uint64_t,
               struct bytes_chunk>::iterator end_delete = chunkmap.end();
-    struct bytes_chunk *chunk_after = nullptr;
 
     /*
      * Variables to track the extent this write is part of.
@@ -1038,47 +1033,34 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
                 assert(action == scan_action::SCAN_ACTION_RELEASE);
                 assert(chunk_length <= remaining_length);
 
-                if (chunk_length == remaining_length) {
-                    /*
-                     * Part of the chunk is released in the middle.
-                     * We need to trim the original chunk to contain data before
-                     * the released data and create a new chunk to hold the data
-                     * after the released data.
-                     */
-                    const uint64_t chunk_after_offset =
-                        next_offset + chunk_length;
-                    const uint64_t chunk_after_length =
-                        bc->offset + bc->length - chunk_after_offset;
-                    const uint64_t trim_bytes =
-                        chunk_length + chunk_after_length;
+                /*
+                 * We have two cases:
+                 * 1. The released part lies at the end of the chunk, so we
+                 *    can safely release by trimming this chunk from the right.
+                 * 2. The release part lies in the middle with un-released
+                 *    ranges before and after the released chunk. To duly
+                 *    release it we need to trim the original chunk to contain
+                 *    data before the released data and create a new chunk to
+                 *    hold the data after the released data, and copy data from
+                 *    the existing membuf into this new membuf. This ends up
+                 *    being expensive and not practically useful. Note that the
+                 *    reason for caller doing release() is that it wants the
+                 *    membuf memory to be released, but in this case we are not
+                 *    releasing data but instead allocating more data and
+                 *    copying it. This becomes worse when caller makes small
+                 *    small release() calls from middle of the membuf.
+                 *    We choose to ignore such release() calls and not release
+                 *    any range in this case.
+                 */
 
-                    if (chunk_after_length > 0) {
-                        assert(chunk_after == nullptr);
-                        chunk_after = new bytes_chunk(this,
-                                                      chunk_after_offset,
-                                                      chunk_after_length);
+                const uint64_t chunk_after_offset =
+                    next_offset + chunk_length;
+                const uint64_t chunk_after_length =
+                    bc->offset + bc->length - chunk_after_offset;
 
-                        AZLogDebug("(chunk after) [{},{})",
-                                   chunk_after_offset,
-                                   chunk_after_offset + chunk_after_length);
-                    }
-
-                    AZLogDebug("<Release [{}, {})> (trimming chunk from right) "
-                               "[{},{}) -> [{},{})",
-                               offset, offset + length,
-                               bc->offset, bc->offset + bc->length,
-                               bc->offset, next_offset);
-                    bc->length = next_offset - bc->offset;
-                    assert((int64_t) bc->length > 0);
-
-                    assert(bytes_cached >= trim_bytes);
-                    assert(bytes_cached_g >= trim_bytes);
-                    bytes_cached -= trim_bytes;
-                    bytes_cached_g -= trim_bytes;
-                } else {
+                if (chunk_after_length == 0) {
                     assert(chunk_length ==
                            (bc->offset + bc->length - next_offset));
-                    assert(chunk_length < remaining_length);
 
                     const uint64_t trim_bytes = chunk_length;
 
@@ -1099,6 +1081,18 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
                     assert(bytes_cached_g >= trim_bytes);
                     bytes_cached -= trim_bytes;
                     bytes_cached_g -= trim_bytes;
+                } else {
+                    /*
+                     * The to-be-released range must lie entirely within this
+                     * chunk.
+                     */
+                    assert(offset == next_offset);
+                    assert(length == remaining_length);
+
+                    AZLogDebug("<Release [{}, {})> skipping as it lies in the "
+                               "middle of the chunk [{},{})",
+                               offset, offset + length,
+                               bc->offset, bc->offset + bc->length);
                 }
             }
 
@@ -1291,43 +1285,6 @@ allocate_only_chunk:
     } else {
         assert((begin_delete == chunkmap.end()) &&
                (end_delete == chunkmap.end()));
-    }
-
-    /*
-     * If we have a chunk_after create it now?
-     * chunk_after is the chunk created when some part from within a chunk
-     * is deleted (not touching either edge).
-     */
-    if (chunk_after) {
-            // Only possible when we release a byte range within a chunk.
-            assert(action == scan_action::SCAN_ACTION_RELEASE);
-
-            AZLogDebug("(chunk after insert) [{},{})",
-                       chunk_after->offset,
-                       chunk_after->offset + chunk_after->length);
-#ifndef NDEBUG
-            const auto p = chunkmap.try_emplace(chunk_after->offset,
-                                                this,
-                                                chunk_after->offset,
-                                                chunk_after->length,
-                                                chunk_after->buffer_offset,
-                                                chunk_after->alloc_buffer);
-            assert(p.second == true);
-#else
-            chunkmap.try_emplace(chunk_after->offset,
-                                 this,
-                                 chunk_after->offset,
-                                 chunk_after->length,
-                                 chunk_after->buffer_offset,
-                                 chunk_after->alloc_buffer);
-#endif
-
-            num_chunks++;
-            num_chunks_g++;
-            bytes_cached_g += chunk_after->length;
-            bytes_cached += chunk_after->length;
-
-            delete chunk_after;
     }
 
     if (action == scan_action::SCAN_ACTION_GET) {
@@ -1582,10 +1539,12 @@ void bytes_chunk_cache::clear()
             continue;
         }
 
-        AZLogInfo("[{}] deleting membuf(offset={}, length={}): "
-                  "bytes_allocated={}",
-                  fmt::ptr(this), mb->offset, mb->length,
-                  bytes_allocated.load());
+        AZLogDebug("[{}] deleting membuf(offset={}, length={}), use_count={}",
+                   fmt::ptr(this), mb->offset, mb->length,
+                   bc->get_membuf_usecount());
+
+        // Make sure the compound check also passes.
+        assert(bc->safe_to_release());
 
         /*
          * Release the chunk.
@@ -1614,7 +1573,14 @@ void bytes_chunk_cache::clear()
         return;
     }
 
-    // Entire cache is purged, bytes_cached and bytes_allocated must drop to 0.
+    /*
+     * Entire cache is purged, bytes_cached and bytes_allocated must drop to 0.
+     *
+     * Note: If some caller is still holding a bytes_chunk reference, the
+     *       membuf will not be freed and hence bytes_allocated won't drop to 0.
+     *       But, since we allow clear() only when inuse is 0, technically we
+     *       shouldn't have any such user.
+     */
     assert(bytes_cached == 0);
     assert(bytes_allocated == 0);
 
@@ -1989,7 +1955,7 @@ do { \
 
     ASSERT_EXTENT(250, 300);
     ASSERT_NEW(v[0], 250, 300);
-    new (&bc) bytes_chunk(v[0]);
+    bc = v[0];
 
     for ([[maybe_unused]] const auto& e : v) {
         PRINT_CHUNK(e);
@@ -2033,8 +1999,8 @@ do { \
     ASSERT_NEW(v[1], 200, 250);
     ASSERT_EXISTING(v[2], 250, 275);
     assert(v[2].get_buffer() == bc.get_buffer());
-    new (&bc1) bytes_chunk(v[0]);
-    new (&bc2) bytes_chunk(v[1]);
+    bc1 = v[0];
+    bc2 = v[1];
 
     for ([[maybe_unused]] const auto& e : v) {
         PRINT_CHUNK(e);
@@ -2086,7 +2052,7 @@ do { \
     assert(v[2].get_buffer() == bc2.get_buffer());
     ASSERT_EXISTING(v[3], 250, 280);
     assert(v[3].get_buffer() == bc.get_buffer());
-    new (&bc3) bytes_chunk(v[0]);
+    bc3 = v[0];
 
     for ([[maybe_unused]] const auto& e : v) {
         PRINT_CHUNK(e);
@@ -2120,8 +2086,8 @@ do { \
     ASSERT_EXISTING(v[4], 250, 300);
     assert(v[4].get_buffer() == bc.get_buffer());
     ASSERT_NEW(v[5], 300, 350);
-    new (&bc1) bytes_chunk(v[0]);
-    new (&bc3) bytes_chunk(v[5]);
+    bc1 = v[0];
+    bc3 = v[5];
 
     for ([[maybe_unused]] const auto& e : v) {
         PRINT_CHUNK(e);
@@ -2229,7 +2195,7 @@ do { \
 
     ASSERT_EXTENT(0, 131072);
     ASSERT_NEW(v[0], 0, 131072);
-    new (&bc) bytes_chunk(v[0]);
+    bc = v[0];
 
     for ([[maybe_unused]] const auto& e : v) {
         PRINT_CHUNK(e);
@@ -2302,8 +2268,18 @@ do { \
 
     /*
      * Clear entire cache.
+     * cache.clear() asserts that bytes_allocated must drop to 0 if all chunks
+     * are deleted. That will fail if we have some references to membuf(s),
+     * hence we need to destruct all bytes_chunk references that we have
+     * accumulated till now.
      */
     AZLogInfo("========== [Clear] ==========");
+    v.clear();
+    bc.~bytes_chunk();
+    bc1.~bytes_chunk();
+    bc2.~bytes_chunk();
+    bc3.~bytes_chunk();
+
     cache.clear();
     PRINT_CHUNKMAP();
 

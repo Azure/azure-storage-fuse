@@ -819,6 +819,10 @@ public:
      * - Which are dirty.
      *   These need to be flushed to the Blob, else we lose data.
      *
+     * Additionally, release() will *not* trim chunks unless the release()d
+     * range aligns with either the left or the right edge, i.e., for ranges
+     * falling in the middle of a chunk will be skipped.
+     *
      * If release() successfully releases one or more chunks, a subsequent
      * call to get() won't find them in the chunkmap and hence will allocate
      * fresh chunk (with is_empty true).
@@ -829,7 +833,8 @@ public:
      * returned by get() even if some other thread calls release().
      *
      * Note: For releasing all chunks and effectively nuking the cache, use
-     *       clear().
+     *       clear(), but note that clear() also won't release above chunks,
+     *       for which safe_to_release() returns false.
      */
     void release(uint64_t offset, uint64_t length)
     {
