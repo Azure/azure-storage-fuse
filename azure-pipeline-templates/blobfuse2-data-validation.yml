@@ -7,6 +7,8 @@ parameters:
     type: string
   - name: kversion
     type: string
+  - name: config_file
+    type: string   
 
 steps:    
   - template: 'mount.yml'

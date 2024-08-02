@@ -74,6 +74,7 @@ stages:
               temp_dir: $(TEMP_DIR)
               kversion: "6.10.2"
               idstring: 'Block-Cache'
+              config_file: $(BLOBFUSE2_CFG)
 
           
 
