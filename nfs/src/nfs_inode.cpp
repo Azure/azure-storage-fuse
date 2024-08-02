@@ -47,6 +47,14 @@ nfs_inode::nfs_inode(const struct nfs_fh3 *filehandle,
     ::memcpy(fh.data.data_val, filehandle->data.data_val, fh.data.data_len);
 
     /*
+     * Calculate and store the CRC32 hash of the filehandle.
+     * This serves multiple purposes, most importantly it can be used to print
+     * filehandle hashes in a way that can be used to match with wireshark.
+     */
+    crc = calculate_crc32((const unsigned char*) fh.data.data_val,
+                          fh.data.data_len);
+
+    /*
      * We always have fattr when creating nfs_inode.
      * Most common case is we are creating nfs_inode when we got a fh (and
      * attributes) for a file, f.e., LOOKUP, CREATE, READDIRPLUS, etc.

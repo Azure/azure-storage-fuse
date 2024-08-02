@@ -117,6 +117,26 @@ else()
 endif()
 endif()
 
+#
+# Install zlib for crc32.
+#
+find_package(ZLIB QUIET)
+if(NOT ZLIB_FOUND)
+    message(STATUS "zlib not found, trying to install zlib1g-dev!")
+    execute_process(COMMAND sudo apt install -y zlib1g-dev
+		    RESULT_VARIABLE ZLIB_INSTALL_RESULT)
+    if(NOT ZLIB_INSTALL_RESULT EQUAL "0")
+        message(FATAL_ERROR "apt install zlib1g-dev failed with ${ZLIB_INSTALL_RESULT}, try installing zlib1g-dev manually and then run cmake again")
+    else()
+        # Call once more to ensure above install completed fine and also
+        # will set ZLIB_INCLUDE_DIR and ZLIB_LIBRARY variables.
+        find_package(ZLIB REQUIRED)
+    endif()
+else()
+    message(STATUS "Using zlib lib ${ZLIB_LIBRARIES}")
+    message(STATUS "Using zlib include dir ${ZLIB_INCLUDE_DIRS}")
+endif()
+
 # Build libnfs (with multithreading enabled).
 set(ENABLE_MULTITHREADING ON)
 set(ENABLE_EXAMPLES ON)
@@ -148,6 +168,7 @@ target_include_directories(${CMAKE_PROJECT_NAME}
                            PRIVATE "${PROJECT_SOURCE_DIR}/inc"
                            PRIVATE "${PROJECT_BINARY_DIR}/inc"
                            PRIVATE "${fuse3_INCLUDE_DIR}"
+                           PRIVATE "${ZLIB_INCLUDE_DIRS}"
                            PRIVATE "${PROJECT_SOURCE_DIR}/extern/libnfs/nfs"
                            PRIVATE "${PROJECT_SOURCE_DIR}/extern/libnfs/include"
                            PRIVATE "${PROJECT_SOURCE_DIR}/extern/libnfs/include/nfsc"
@@ -161,6 +182,7 @@ target_compile_options(${CMAKE_PROJECT_NAME}
 # All libraries.
 target_link_libraries(${CMAKE_PROJECT_NAME}
                       ${fuse3_LIBRARY}
+                      ${ZLIB_LIBRARIES}
                       pthread
                       nfs
                       yaml-cpp

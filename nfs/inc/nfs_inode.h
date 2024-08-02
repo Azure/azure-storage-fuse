@@ -84,6 +84,11 @@ struct nfs_inode
     nfs_fh3 fh;
 
     /*
+     * CRC32 hash of fh.
+     */
+    uint32_t crc = 0;
+
+    /*
      * Fuse inode number.
      * This is how fuse identifies this file/directory to us.
      */
@@ -231,6 +236,11 @@ struct nfs_inode
     const struct nfs_fh3& get_fh() const
     {
         return fh;
+    }
+
+    uint32_t get_crc() const
+    {
+        return crc;
     }
 
     bool is_dir() const

@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <string.h>
+#include <zlib.h>
 
 #include <string>
 #include <regex>
@@ -127,6 +128,12 @@ int compare_timespec_and_nfstime(const struct timespec& ts,
         return -1;
     else
         return 1;
+}
+
+static inline
+uint32_t calculate_crc32(const unsigned char *buf, int len)
+{
+    return ::crc32(::crc32(0L, Z_NULL, 0), buf, len);
 }
 
 }
