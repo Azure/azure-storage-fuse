@@ -478,6 +478,7 @@ func (bc *BlockCache) closeFileInternal(options internal.CloseFileOptions) error
 
 		// Wait for download to complete and then free up this block
 		<-block.state
+		block.node = nil
 		block.ReUse()
 		bc.blockPool.Release(block)
 	}
@@ -488,6 +489,8 @@ func (bc *BlockCache) closeFileInternal(options internal.CloseFileOptions) error
 	node = blockList.Front()
 	for ; node != nil; node = blockList.Front() {
 		block := blockList.Remove(node).(*Block)
+		// block.Unblock()
+		block.node = nil
 		block.ReUse()
 		bc.blockPool.Release(block)
 	}
@@ -1083,9 +1086,19 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 			block.flags.Clear(BlockFlagDownloading)
 			block.Unblock()
 		} else if block.flags.IsSet(BlockFlagUploading) {
+			<-block.state
+			block.Unblock()
+			block.flags.Clear(BlockFlagUploading)
+			block.flags.Clear(BlockFlagSynced)
+			if block.node != nil {
+				_ = handle.Buffers.Cooked.Remove(block.node)
+			}
+
+			block.node = handle.Buffers.Cooking.PushBack(block)
+
 			// TODO: wait till a block is uploaded and then write to it
-			log.Err("BlockCache::getOrCreateBlock : Race condition where block %v is being uploaded and written to in parallel for %v=>%s", block.id, handle.ID, handle.Path)
-			return nil, fmt.Errorf("race condition where block %v is being uploaded and written to in parallel for %v=>%s", block.id, handle.ID, handle.Path)
+			// log.Err("BlockCache::getOrCreateBlock : Race condition where block %v is being uploaded and written to in parallel for %v=>%s", block.id, handle.ID, handle.Path)
+			// return nil, fmt.Errorf("race condition where block %v is being uploaded and written to in parallel for %v=>%s", block.id, handle.ID, handle.Path)
 		}
 	}
 
@@ -1193,18 +1206,22 @@ func (bc *BlockCache) waitAndFreeUploadedBlocks(handle *handlemap.Handle, cnt in
 	node := nodeList.Front()
 	nextNode := node
 
+	wipeoutBlock := false
+	if cnt == 1 {
+		wipeoutBlock = true
+	}
+
 	for nextNode != nil && cnt > 0 {
 		node = nextNode
 		nextNode = node.Next()
 
 		block := node.Value.(*Block)
-		if block.id != -1 {
-			// Wait for upload of this block to complete
-			<-block.state
-			block.flags.Clear(BlockFlagUploading)
-		}
 
-		block.Unblock()
+		_, ok := <-block.state
+		if ok {
+			block.Unblock()
+		}
+		block.flags.Clear(BlockFlagUploading)
 
 		if block.IsFailed() {
 			log.Err("BlockCache::waitAndFreeUploadedBlocks : Failed to upload block, posting back to cooking list %v=>%s (index %v, offset %v)", handle.ID, handle.Path, block.id, block.offset)
@@ -1215,11 +1232,14 @@ func (bc *BlockCache) waitAndFreeUploadedBlocks(handle *handlemap.Handle, cnt in
 		cnt--
 
 		log.Debug("BlockCache::waitAndFreeUploadedBlocks : Block cleanup for block %v=>%s (index %v, offset %v)", handle.ID, handle.Path, block.id, block.offset)
-		handle.RemoveValue(fmt.Sprintf("%v", block.id))
-		nodeList.Remove(node)
-		block.node = nil
-		block.ReUse()
-		bc.blockPool.Release(block)
+
+		if wipeoutBlock {
+			handle.RemoveValue(fmt.Sprintf("%v", block.id))
+			nodeList.Remove(node)
+			block.node = nil
+			block.ReUse()
+			bc.blockPool.Release(block)
+		}
 	}
 }
 
