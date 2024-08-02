@@ -1352,10 +1352,21 @@ void bytes_chunk_cache::inline_prune()
         return;
     }
 
+    const std::unique_lock<std::mutex> _lock(lock);
+
+    /*
+     * Multiple fuse threads may get the prune goals and then all of them
+     * will prune that much resulting in too much pruning, so fetch the prune
+     * goals once after acquiring the lock.
+     */
+    get_prune_goals(&inline_bytes, nullptr);
+
+    if (inline_bytes == 0) {
+        return;
+    }
+
     AZLogInfo("[{}] inline_prune(): Inline prune goal of {:0.2f} MB",
               fmt::ptr(this), inline_bytes / (1024 * 1024.0));
-
-    const std::unique_lock<std::mutex> _lock(lock);
 
     for (auto it = chunkmap.cbegin(), next_it = it;
          (it != chunkmap.cend()) && (pruned_bytes < inline_bytes);
