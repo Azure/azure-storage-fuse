@@ -27,11 +27,11 @@ steps:
     displayName: 'Get kernel tarfile'
 
   - script: |
-      tar -xvf {{ parameters.mount_dir }}/linux-${{ parameters.kversion }}.tar.xz
+      tar -xvf ${{ parameters.mount_dir }}/linux-${{ parameters.kversion }}.tar.xz
     displayName: 'Untar kernel'
 
   - script: |
-      cd {{ parameters.mount_dir }}/linux-${{ parameters.kversion }}
+      cd ${{ parameters.mount_dir }}/linux-${{ parameters.kversion }}
       make defconfig
       make
     displayName: 'Run MAKE on the kernel'
