@@ -1,6 +1,20 @@
 #include "nfs_internal.h"
 #include "rpc_task.h"
 
+/*
+ * If this is defined we will call release() for the byte chunk which is read
+ * by the application. This helps free the cache as soon as the reader reads
+ * it. The idea is to not keep cached data hanging around for any longer than
+ * it's needed. Most common access pattern that we need to support is seq read
+ * where readahead fills the cache and helps future application read calls.
+ * Once application has read the data, we don't want it to linger in the cache
+ * for any longer. This means future reads won't get it, but the idea is that
+ * if future reads are also sequential, they will get it by readahead.
+ *
+ * If this is disabled, then pruning is the only way to reclaim cache memory.
+ */
+#define RELEASE_CHUNK_AFTER_APPLICATION_READ
+
 #define NFS_STATUS(r) ((r) ? (r)->status : NFS3ERR_SERVERFAULT)
 
 /* static */
@@ -561,6 +575,18 @@ void rpc_task::run_read()
             read_from_server(bc_vec[i]);
         } else {
             bc_vec[i].get_membuf()->clear_inuse();
+
+#ifdef RELEASE_CHUNK_AFTER_APPLICATION_READ
+            /*
+             * Data read from cache. For the most common sequential read
+             * pattern this cached data won't be needed again, release
+             * ir promptly to ease memory pressure.
+             * Note that this is just a suggestion to release the buffer.
+             * The buffer may not be released if it's in use by any other
+             * user.
+             */
+            filecache_handle->release(bc_vec[i].offset, bc_vec[i].length);
+#endif
         }
     }
 
@@ -758,12 +784,17 @@ static void read_callback(
     bc->get_membuf()->clear_locked();
     bc->get_membuf()->clear_inuse();
 
+#ifdef RELEASE_CHUNK_AFTER_APPLICATION_READ
     /*
      * Since we come here only for client reads, we will not cache the data,
      * hence release the chunk.
      * This can safely be done for both success and failure case.
      */
     filecache_handle->release(bc->offset, bc->length);
+#endif
+
+    // For failed status we must never mark the buffer uptodate.
+    assert(!status || !bc->get_membuf()->is_uptodate());
 
     // Once failed, read_status remains at failed.
     int expected = 0;
@@ -823,12 +854,14 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
                        rpc_api.read_task.get_size(),
                        rpc_api.read_task.get_offset());
 
+#ifdef RELEASE_CHUNK_AFTER_APPLICATION_READ
             /*
              * Since the data is read from the cache, the chances of reading it
              * again from cache is negligible since this is a sequential read
              * pattern. Free such chunks to reduce the memory utilization.
              */
             inode->filecache_handle->release(bc.offset, bc.length);
+#endif
 
             return;
         }

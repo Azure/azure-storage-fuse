@@ -369,6 +369,8 @@ void aznfsc_cfg::set_defaults_and_sanitize()
         readdir_maxcount = 1048576;
     if (readahead_kb == -1)
         readahead_kb = 16384;
+    if (cache_max_mb == -1)
+        cache_max_mb = AZNFSCFG_CACHE_MAX_MB_DEF;
     if (cloud_suffix == nullptr)
         cloud_suffix = ::strdup("blob.core.windows.net");
 
