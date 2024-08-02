@@ -136,6 +136,12 @@ struct nfs_inode
      * Valid only for regular files.
      */
     std::shared_ptr<ra_state> readahead_state;
+    
+    /*
+     * Stores the write error observed when performing backend write to this Blob.
+     * This is helps us duly fail close() call, if one or more IO failed for the Blob.
+     */
+    int write_error = 0;
 
     /**
      * TODO: Initialize attr with postop attributes received in the RPC
@@ -356,6 +362,27 @@ struct nfs_inode
     {
         std::unique_lock<std::shared_mutex> lock(ilock);
         purge_dircache_nolock();
+    }
+
+    /**
+     * Store the first error encountered while writing dirty
+     * membuf to Blob.
+     */
+    void set_write_error(int error)
+    {
+        assert(error != 0);
+        if (this->write_error == 0)
+        {
+            this->write_error = error;
+        }
+    }
+
+    /**
+     * Returns the error, saved by prior call to set_write_error().
+     */
+    int get_write_error() const
+    {
+        return write_error;
     }
 
     /**

@@ -275,6 +275,59 @@ void membuf::clear_uptodate()
 }
 
 /**
+ * Must be called to mark membuf as "currently flushing dirty data to Blob"
+ * caller so that any thread want ss to flush can note this aand doesn't wait for membuf lock.all the data that this membuf refers to.
+ */
+void membuf::set_flushing()
+{
+    /*
+     * Must be locked and inuse.
+     * Note that following is the correct sequence of operations.
+     *
+     * get()
+     * if (is_dirty() && !is_flushing())
+     * {
+     *  set_locked()
+     *  set_flushing()
+     *  << write membuf data to the blob >>
+     *  clear_dirty()
+     *  clear_flushing()
+     *  clear_locked()
+     *  clear_inuse()
+     * }
+     */
+    assert(is_locked());
+    assert(is_inuse());
+    assert(is_dirty() && is_uptodate());
+
+    flag |= MB_Flag::Flushing;
+
+    AZLogDebug("Set flushing membuf [{}, {}), fd={}",
+               offset, offset+length, backing_file_fd);
+}
+
+/**
+ * Must be called after flushing dirty membuf to Blob.
+ */
+void membuf::clear_flushing()
+{
+    // See comment in set_flushing() above.
+    assert(is_locked());
+    assert(is_inuse());
+
+    /*
+     * In case rpc fails, we didn't clear dirty flag, in that case this assert hit.
+     * The chance of hitting is minimal as we do hard mount and write never fails.
+     */
+    assert(is_dirty() && is_flushing());
+
+    flag &= ~MB_Flag::Flushing;
+
+    AZLogDebug("Clear flushing membuf [{}, {}), fd={}",
+               offset, offset+length, backing_file_fd);
+}
+
+/**
  * Try to lock the membuf and return whether we were able to lock it.
  * If membuf was already locked, this will return false and caller doesn't
  * have the lock, else caller will have the lock and it'll return true.
@@ -1631,6 +1684,31 @@ static bool is_read()
 {
     // 60:40 R:W.
     return random_number(0, 100) <= 60;
+}
+
+std::vector<bytes_chunk> bytes_chunk_cache::get_dirty_bc()
+{
+    std::vector<bytes_chunk> chunk_vec;
+    std::map <uint64_t,
+              struct bytes_chunk>::iterator it = chunkmap.begin();
+
+    const std::unique_lock<std::mutex> _lock(lock);
+
+    while (it != chunkmap.end())
+    {
+        auto chunk = it->second;
+        auto membuf = chunk.get_membuf();
+
+        if (membuf->is_dirty())
+        {
+            membuf->set_inuse();
+            chunk_vec.push_back(chunk);
+        }
+
+        ++it;
+    }
+
+    return chunk_vec;
 }
 
 static void cache_read(bytes_chunk_cache& cache,

@@ -10,6 +10,7 @@
 #include <thread>
 
 #include "nfs_client.h"
+#include "file_cache.h"
 #include "log.h"
 
 // Maximum number of simultaneous rpc tasks (sync + async).
@@ -54,6 +55,160 @@ struct lookup_rpc_task
 private:
     fuse_ino_t parent_ino;
     char *file_name;
+};
+
+/**
+ * WRITE RPC task definition.
+ */
+struct write_rpc_task
+{
+    void set_ino(fuse_ino_t ino)
+    {
+        file_ino = ino;
+    }
+
+    void set_offset(off_t off)
+    {
+        offset = off;
+    }
+
+    void set_size(size_t size)
+    {
+        length = size;
+        write_count = 0;
+    }
+
+    void set_count(size_t count)
+    {
+        write_count = count;
+    }
+
+    void set_buffer_vector(struct fuse_bufvec *bufv)
+    {
+        write_bufv = bufv;
+    }
+
+    fuse_ino_t get_ino() const
+    {
+        return file_ino;
+    }
+
+    off_t get_offset() const
+    {
+        return offset;
+    }
+
+    size_t get_size() const
+    {
+        return length;
+    }
+
+    size_t get_count() const
+    {
+        return write_count;
+    }
+
+    struct fuse_bufvec* get_buffer_vector() const
+    {
+        return write_bufv;
+    }
+
+    /**
+     * Release any resources used up by this task.
+     */
+    void release()
+    {
+    }
+
+private:
+    fuse_ino_t file_ino;
+    size_t length;
+    size_t write_count;
+    off_t  offset;
+    struct fuse_bufvec *write_bufv;
+};
+
+/**
+ * FLUSH RPC task definition.
+ */
+struct flush_rpc_task
+{
+    void set_ino(fuse_ino_t ino)
+    {
+        file_ino = ino;
+    }
+
+    fuse_ino_t get_ino() const
+    {
+        return file_ino;
+    }
+
+    /**
+     * Release any resources used up by this task.
+     */
+    void release()
+    {
+    }
+
+private:
+    fuse_ino_t file_ino;
+};
+
+/**
+ * Write callback context.
+ * This context created as result of following calls
+ * - Write
+ * - Flush
+ * - Fsync
+ */
+struct write_context
+{
+    void set_count(size_t count)
+    {
+        this->count = count;
+    }
+
+    size_t get_count() const
+    {
+        return count;
+    }
+
+    struct rpc_task* get_task() const
+    {
+        return task;
+    }
+
+    const struct bytes_chunk& get_bytes_chunk() const
+    {
+        return bc;
+    }
+
+    fuse_ino_t get_ino() const
+    {
+        return ino;
+    }
+
+    /**
+     * Release any resources used up by this task.
+     */
+    void release()
+    {
+    }
+
+    write_context(const struct bytes_chunk& _bc, rpc_task *_task, fuse_ino_t _ino) :
+        bc(_bc),
+        task(_task),
+        ino(_ino),
+        count(0)
+      {
+
+      }
+
+private:
+    const struct bytes_chunk bc;
+    struct rpc_task* task;
+    fuse_ino_t ino;
+    size_t count;
 };
 
 /**
@@ -424,7 +579,6 @@ struct rpc_task
 
     // This is the index of the object in the rpc_task_list vector.
     const int index;
-
 private:
     /*
      * Flag to identify async tasks.
@@ -483,6 +637,8 @@ public:
     union
     {
         struct lookup_rpc_task lookup_task;
+        struct write_rpc_task write_task;
+        struct flush_rpc_task flush_task;
         struct getattr_rpc_task getattr_task;
         struct setatt_rpc_task setattr_task;
         struct create_file_rpc_task create_task;
@@ -566,6 +722,23 @@ public:
                      const char *name,
                      fuse_ino_t parent_ino);
     void run_lookup();
+
+    /*
+     * init/run methods for the WRITE RPC.
+     */
+    void init_write(fuse_req *request,
+                    fuse_ino_t ino,
+                    struct fuse_bufvec *buf,
+                    size_t size,
+                    off_t offset);
+    void run_write();
+
+    /*
+     * init/run methods for the FLUSH/RELEASE RPC.
+     */
+    void init_flush(fuse_req *request,
+                    fuse_ino_t ino);
+    void run_flush();
 
     /*
      * init/run methods for the GETATTR RPC.

@@ -292,6 +292,17 @@ public:
         fuse_ino_t parent_ino,
         const char* name);
 
+    void write(
+        fuse_req_t req,
+        fuse_ino_t ino,
+        struct fuse_bufvec *bufv,
+        size_t size,
+        off_t off);
+
+    void flush(
+        fuse_req_t req,
+        fuse_ino_t ino);
+
     void readdir(
         fuse_req_t req,
         fuse_ino_t ino,
