@@ -1,7 +1,3 @@
-## 2.3.2 (Unreleased)
-**Bug Fixes**
-- Fixed race condition in random write where a block is being uploaded and written to in parallel.
-
 ## 2.3.1 (Unreleased)
 **NOTICE**
 - Due to data integrity issues, random write operations has been disabled in block cache. Refer [#1484](https://github.com/Azure/azure-storage-fuse/pull/1484) for blocked scenarios.
@@ -14,6 +10,7 @@
 - Reset block data to null before reuse.
 - Sparse file data integrity issues fixed.
 - Fixed block-cache read of small files where file size is not multiple of kernel buffer size.
+- Fixed race condition in random write where a block is being uploaded and written to in parallel.
 
 **Other Changes**
 - LFU policy in file cache has been deprecated.

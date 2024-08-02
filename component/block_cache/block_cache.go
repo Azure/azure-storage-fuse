@@ -1078,6 +1078,7 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 			block.node = handle.Buffers.Cooking.PushBack(block)
 			block.flags.Clear(BlockFlagSynced)
 		} else if block.flags.IsSet(BlockFlagDownloading) {
+			log.Debug("BlockCache::getOrCreateBlock : Waiting for download to finish for committed block %v for %v=>%s", block.id, handle.ID, handle.Path)
 			<-block.state
 			block.flags.Clear(BlockFlagDownloading)
 			block.Unblock()
