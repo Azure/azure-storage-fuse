@@ -1,3 +1,10 @@
+parameters:
+  - name: verbose_log
+    displayName: 'Verbose Log'
+    type: boolean
+    default: false
+
+    
 stages:
   - stage: KernelBuild 
     jobs:
