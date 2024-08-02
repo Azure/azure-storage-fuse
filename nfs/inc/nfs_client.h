@@ -146,8 +146,16 @@ public:
 
     /*
      * Get the libnfs context on which the libnfs API calls can be made.
+     *
+     * csched:  The connection scheduling type to be used when selecting the
+     *          NFS context/connection.
+     * fh_hash: Filehandle hash, used only when CONN_SCHED_FH_HASH scheduling
+     *          mode is used. This provides a unique hash for the file/dir
+     *          that is the target for this request. All requests to the same
+     *          file/dir are sent over the same connection.
      */
-    struct nfs_context* get_nfs_context() const;
+    struct nfs_context* get_nfs_context(conn_sched_t csched,
+                                        uint32_t fh_hash) const;
 
     /**
      * Issue a sync GETATTR RPC call to filehandle 'fh' and save the received
