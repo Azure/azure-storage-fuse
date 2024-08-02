@@ -275,8 +275,8 @@ void membuf::clear_uptodate()
 }
 
 /**
- * Must be called to set membuf flushing only after successfully writing
- * all the data that this membuf refers to.
+ * Must be called to mark membuf as "currently flushing dirty data to Blob"
+ * caller so that any thread want ss to flush can note this aand doesn't wait for membuf lock.all the data that this membuf refers to.
  */
 void membuf::set_flushing()
 {
@@ -285,16 +285,16 @@ void membuf::set_flushing()
      * Note that following is the correct sequence of operations.
      *
      * get()
-     * set_locked()
-     * << write application data to the above membuf(s) >>
-     * set_dirty()
-     * set_uptodate()
-     * set_flushing()
-     * << write membuf data to the blob >>
-     * clear_dirty()
-     * clear_flushing()
-     * clear_locked()
-     * clear_inuse()
+     * if (is_dirty() && !is_flushing())
+     * {
+     *  set_locked()
+     *  set_flushing()
+     *  << write membuf data to the blob >>
+     *  clear_dirty()
+     *  clear_flushing()
+     *  clear_locked()
+     *  clear_inuse()
+     * }
      */
     assert(is_locked());
     assert(is_inuse());
@@ -307,13 +307,19 @@ void membuf::set_flushing()
 }
 
 /**
- * Must be called after flushing data to blob.
+ * Must be called after flushing dirty membuf to Blob.
  */
 void membuf::clear_flushing()
 {
-    // See comment in set_uptodate() above.
+    // See comment in set_flushing() above.
     assert(is_locked());
     assert(is_inuse());
+
+    /*
+     * In case rpc fails, we didn't clear dirty flag, in that case this assert hit.
+     * The chance of hitting is minimal as we do hard mount and write never fails.
+     */
+    assert(is_dirty() && is_flushing());
 
     flag &= ~MB_Flag::Flushing;
 
@@ -1692,12 +1698,14 @@ std::vector<bytes_chunk> bytes_chunk_cache::get_dirty_bc()
     {
         auto chunk = it->second;
         auto membuf = chunk.get_membuf();
-        if (membuf->is_dirty() && membuf->is_uptodate())
+
+        if (membuf->is_dirty())
         {
             membuf->set_inuse();
             chunk_vec.push_back(chunk);
         }
-        it = std::next(it);
+
+        ++it;
     }
 
     return chunk_vec;

@@ -454,9 +454,9 @@ static void aznfsc_ll_init(void *userdata,
     conn->want &= ~FUSE_CAP_ATOMIC_O_TRUNC;
 
     // Test splice read/write performance before enabling.
-    //conn->want |= FUSE_CAP_SPLICE_WRITE;
-    //conn->want |= FUSE_CAP_SPLICE_MOVE;
-    //conn->want |= FUSE_CAP_SPLICE_READ;
+    conn->want &= ~FUSE_CAP_SPLICE_WRITE;
+    conn->want &= ~FUSE_CAP_SPLICE_MOVE;
+    conn->want &= ~FUSE_CAP_SPLICE_READ;
 
     conn->want |= FUSE_CAP_AUTO_INVAL_DATA;
     conn->want |= FUSE_CAP_ASYNC_DIO;
@@ -741,7 +741,10 @@ static void aznfsc_ll_write(fuse_req_t req,
                             off_t off,
                             struct fuse_file_info *fi)
 {
-    AZLogInfo("aznfsc_ll_write(req={}, ino={}, size={}, off={}, fi={}",
+    /*
+     * XXX: write will be never called as we implement write_buf.
+     */
+    AZLogDebug("aznfsc_ll_write(req={}, ino={}, size={}, off={}, fi={}",
                fmt::ptr(req), ino, size, off, fmt::ptr(fi));
 
     fuse_reply_err(req, ENOSYS);
@@ -751,7 +754,7 @@ static void aznfsc_ll_flush(fuse_req_t req,
                             fuse_ino_t ino,
                             struct fuse_file_info *fi)
 {
-    AZLogInfo("aznfsc_ll_flush(req={}, ino={}, fi={})",
+    AZLogDebug("aznfsc_ll_flush(req={}, ino={}, fi={})",
                fmt::ptr(req), ino, fmt::ptr(fi));
 
     struct nfs_client *client = get_nfs_client_from_fuse_req(req);
@@ -762,7 +765,7 @@ static void aznfsc_ll_release(fuse_req_t req,
                               fuse_ino_t ino,
                               struct fuse_file_info *fi)
 {
-    AZLogInfo("aznfsc_ll_release(req={}, ino={}, fi={})",
+    AZLogDebug("aznfsc_ll_release(req={}, ino={}, fi={})",
                fmt::ptr(req), ino, fmt::ptr(fi));
 
     struct nfs_client *client = get_nfs_client_from_fuse_req(req);
@@ -1011,13 +1014,15 @@ static void aznfsc_ll_write_buf(fuse_req_t req,
                                 off_t off,
                                 struct fuse_file_info *fi)
 {
-    AZLogInfo("aznfsc_ll_write_buf(req={}, ino={}, off={}, fi={}",
+    AZLogDebug("aznfsc_ll_write_buf(req={}, ino={}, off={}, fi={}",
                fmt::ptr(req), ino, off, fmt::ptr(fi));
 
     struct nfs_client *client = get_nfs_client_from_fuse_req(req);
-    assert(bufv->idx <= bufv->count);
+    assert(bufv->idx < bufv->count);
 
-    size_t length = bufv->buf[bufv->idx].size - bufv->off;
+    const size_t length = bufv->buf[bufv->idx].size - bufv->off;
+    assert(length >= 0);
+
     client->write(req, ino, bufv, length, off);
 }
 

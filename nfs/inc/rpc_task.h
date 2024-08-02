@@ -8,6 +8,7 @@
 #include <shared_mutex>
 #include <vector>
 #include <thread>
+
 #include "nfs_client.h"
 #include "file_cache.h"
 #include "log.h"
@@ -92,22 +93,22 @@ struct write_rpc_task
         return file_ino;
     }
 
-    off_t get_offset()
+    off_t get_offset() const
     {
         return offset;
     }
 
-    size_t get_size()
+    size_t get_size() const
     {
         return length;
     }
 
-    size_t get_count()
+    size_t get_count() const
     {
         return write_count;
     }
 
-    struct fuse_bufvec* get_buffer_vector()
+    struct fuse_bufvec* get_buffer_vector() const
     {
         return write_bufv;
     }
@@ -155,25 +156,29 @@ private:
 
 /**
  * Write callback context.
+ * This context created as result of following calls
+ * - Write
+ * - Flush
+ * - Fsync
  */
-struct write_flush_context
+struct write_context
 {
     void set_count(size_t count)
     {
         this->count = count;
     }
 
-    size_t get_count()
+    size_t get_count() const
     {
         return count;
     }
 
-    struct rpc_task* get_task()
+    struct rpc_task* get_task() const
     {
         return task;
     }
 
-    const struct bytes_chunk& get_bytes_chunk()
+    const struct bytes_chunk& get_bytes_chunk() const
     {
         return bc;
     }
@@ -190,7 +195,7 @@ struct write_flush_context
     {
     }
 
-    write_flush_context(const struct bytes_chunk& _bc, rpc_task *_task, fuse_ino_t _ino) :
+    write_context(const struct bytes_chunk& _bc, rpc_task *_task, fuse_ino_t _ino) :
         bc(_bc),
         task(_task),
         ino(_ino),
@@ -722,17 +727,17 @@ public:
      * init/run methods for the WRITE RPC.
      */
     void init_write(fuse_req *request,
-                     fuse_ino_t ino,
-                     struct fuse_bufvec *buf,
-                     size_t size,
-                     off_t offset);
+                    fuse_ino_t ino,
+                    struct fuse_bufvec *buf,
+                    size_t size,
+                    off_t offset);
     void run_write();
 
     /*
      * init/run methods for the FLUSH/RELEASE RPC.
      */
     void init_flush(fuse_req *request,
-                     fuse_ino_t ino);
+                    fuse_ino_t ino);
     void run_flush();
 
     /*

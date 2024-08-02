@@ -24,6 +24,7 @@ nfs_inode::nfs_inode(const struct nfs_fh3 *filehandle,
     assert(fattr != nullptr);
     assert(client != nullptr);
     assert(client->magic == NFS_CLIENT_MAGIC);
+    assert(write_error == 0);
 
 #ifndef ENABLE_NON_AZURE_NFS
     // Blob NFS FH is at least 50 bytes.
@@ -72,7 +73,6 @@ nfs_inode::nfs_inode(const struct nfs_fh3 *filehandle,
         dircache_handle = std::make_shared<readdirectory_cache>(client, this);
     }
 
-    write_error = 0;
 }
 
 nfs_inode::~nfs_inode()

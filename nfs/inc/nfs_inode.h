@@ -138,7 +138,8 @@ struct nfs_inode
     std::shared_ptr<ra_state> readahead_state;
     
     /*
-     * Stores the write error.
+     * Stores the write error observed when performing backend write to this Blob.
+     * This is helps us duly fail close() call, if one or more IO failed for the Blob.
      */
     int write_error = 0;
 
@@ -364,12 +365,12 @@ struct nfs_inode
     }
 
     /**
-     * Store the first error encounter while writing.
-     * This error can happen while reading from fuse fd or
-     * while writing to blob.
+     * Store the first error encountered while writing dirty
+     * membuf to Blob.
      */
     void set_write_error(int error)
     {
+        assert(error != 0);
         if (this->write_error == 0)
         {
             this->write_error = error;
@@ -377,9 +378,9 @@ struct nfs_inode
     }
 
     /**
-     * Return the error, if encounter while writing.
+     * Returns the error, saved by prior call to set_write_error().
      */
-    int get_write_error()
+    int get_write_error() const
     {
         return write_error;
     }

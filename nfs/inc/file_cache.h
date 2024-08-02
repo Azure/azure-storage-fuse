@@ -94,7 +94,7 @@ namespace MB_Flag {
        Uptodate = (1 << 0), // Fit for reading.
        Locked   = (1 << 1), // Exclusive access for updating membuf data.
        Dirty    = (1 << 2), // Data in membuf is newer than the Blob.
-       Flushing = (1 << 3), // Data in membuf writing to blob.
+       Flushing = (1 << 3), // Data from dirty membuf synced to Blob.
     };
 }
 
@@ -249,7 +249,12 @@ struct membuf
      */
     bool is_dirty() const
     {
-        return (flag & MB_Flag::Dirty);
+        const bool dirty  = (flag & MB_Flag::Dirty);
+
+        // Make sure is_dirty returns true for is_update() true otherwise we write garbage data to Blob.
+        assert(!dirty || is_uptodate());
+
+        return dirty;
     }
 
     void set_dirty();
@@ -856,9 +861,9 @@ public:
     }
 
     /*
-     * get_dirty_bc returns all dirty chunks in chunkmap.
-     * Before returning it increase the inuse of underlying membuf.
-     * After the use, call clear_inuse().
+     * Returns all dirty chunks in chunkmap.
+     * Before returning it increases the inuse count of underlying membuf(s).
+     * Caller will typical sync dirty membuf to Blob and once done call clear_inuse().
      */
     std::vector<bytes_chunk> get_dirty_bc();
 
