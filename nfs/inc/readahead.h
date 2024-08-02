@@ -355,6 +355,14 @@ private:
             return 0;
         }
 
+        /*
+         * If we already have ra_bytes readahead bytes read, don't readahead
+         * more.
+         */
+        if (last_byte_readahead > (max_byte_read + length + ra_bytes)) {
+            return 0;
+        }
+
         std::unique_lock<std::shared_mutex> _lock(lock);
 
         /*
