@@ -32,6 +32,7 @@ steps:
 
   - script: |
       cd ${{ parameters.mount_dir }}/linux-${{ parameters.kversion }}
+      cp -v /boot/config-$(uname -r) .config
       make defconfig
       make
     displayName: 'Run MAKE on the kernel'
