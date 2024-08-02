@@ -271,6 +271,7 @@ int ra_state::issue_readaheads()
                           "Could not get membuf lock!",
                           inode->get_fuse_ino(), bc.offset, bc.length);
 
+                on_readahead_complete(bc.offset, bc.length);
                 bc.get_membuf()->clear_inuse();
                 continue;
             }
@@ -283,6 +284,7 @@ int ra_state::issue_readaheads()
                           "Membuf already uptodate!",
                           inode->get_fuse_ino(), bc.offset, bc.length);
 
+                on_readahead_complete(bc.offset, bc.length);
                 bc.get_membuf()->clear_locked();
                 bc.get_membuf()->clear_inuse();
                 continue;
@@ -359,6 +361,7 @@ int ra_state::issue_readaheads()
                           "rpc_nfs3_read_task() failed!",
                           inode->get_fuse_ino(), args.offset, args.count);
 
+                on_readahead_complete(bc.offset, bc.length);
                 bc.get_membuf()->clear_locked();
                 bc.get_membuf()->clear_inuse();
 

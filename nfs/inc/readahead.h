@@ -314,7 +314,7 @@ private:
      * indentifed as non-sequential, or if the current ongoing readaheads are
      * already ra_bytes.
      *
-     * If this function returns a non-zero value, then caller MUST issue a
+     * If this function returns a non-zero value, then caller SHOULD issue a
      * readahead read at the returned offset and 'length' (or less) and MUST
      * call on_readahead_complete(length) when this readahead read completes,
      * to let ra_state know.
@@ -347,19 +347,19 @@ private:
         }
 
         /*
+         * If we already have ra_bytes readahead bytes read, don't readahead
+         * more.
+         */
+        if (last_byte_readahead > (max_byte_read + length + ra_bytes)) {
+            return 0;
+        }
+
+        /*
          * Keep readahead bytes issued always less than ra_bytes.
          */
         if ((ra_ongoing += length) > ra_bytes) {
             assert(ra_ongoing >= length);
             ra_ongoing -= length;
-            return 0;
-        }
-
-        /*
-         * If we already have ra_bytes readahead bytes read, don't readahead
-         * more.
-         */
-        if (last_byte_readahead > (max_byte_read + length + ra_bytes)) {
             return 0;
         }
 
@@ -389,7 +389,14 @@ private:
         assert(access_range > 0);
 
         const int access_density = (num_bytes_read * 100) / access_range;
-        assert(access_density <= 100);
+
+        /*
+         * This can happen in case of duplicate reads, which is not a case of
+         * sequential reads.
+         */
+        if (access_density > 100) {
+            return false;
+        }
 
         return (access_density > ACCESS_DENSITY_MIN);
     }
