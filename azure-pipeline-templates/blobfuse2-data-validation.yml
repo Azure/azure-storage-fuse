@@ -1,36 +1,10 @@
 parameters:
-  - name: conf_template
-    type: string
-  - name: config_file
-    type: string
-  - name: container
-    type: string
   - name: temp_dir
     type: string
   - name: mount_dir
     type: string    
   - name: idstring
     type: string
-  - name: adls
-    type: boolean
-  - name: account_name
-    type: string
-  - name: account_key
-    type: string
-  - name: account_type
-    type: string
-  - name: account_endpoint
-  - name: distro_name
-    type: string
-  - name: quick_test
-    type: boolean
-    default: true
-  - name: verbose_log
-    type: boolean
-    default: false
-  - name: clone
-    type: boolean
-    default: false
   - name: kversion
     type: string
 

@@ -4,7 +4,7 @@ parameters:
     type: boolean
     default: false
 
-    
+
 stages:
   - stage: KernelBuild 
     jobs:
@@ -70,11 +70,10 @@ stages:
 
           - template: 'azure-pipeline-templates/blobfuse2-data-validation.yml'
             parameters:
-              working_dir: $(WORK_DIR)
               mount_dir: $(MOUNT_DIR)
               temp_dir: $(TEMP_DIR)
-              prefix: 'ubn-22'
               kversion: "6.10.2"
+              idstring: 'Block-Cache'
 
           
 
