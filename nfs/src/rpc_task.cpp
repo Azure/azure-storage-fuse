@@ -29,6 +29,8 @@ void rpc_task::init_lookup(fuse_req* request,
     optype = FUSE_LOOKUP;
     rpc_api.lookup_task.set_file_name(name);
     rpc_api.lookup_task.set_parent_ino(parent_ino);
+
+    fh_hash = get_client()->get_nfs_inode_from_ino(parent_ino)->get_crc();
 }
 
 void rpc_task::init_flush(fuse_req* request,
@@ -37,6 +39,8 @@ void rpc_task::init_flush(fuse_req* request,
     req = request;
     optype = FUSE_RELEASE;
     rpc_api.flush_task.set_ino(ino);
+
+    fh_hash = get_client()->get_nfs_inode_from_ino(ino)->get_crc();
 }
 
 void rpc_task::init_write(fuse_req* request,
@@ -51,6 +55,8 @@ void rpc_task::init_write(fuse_req* request,
     rpc_api.write_task.set_offset(offset);
     rpc_api.write_task.set_ino(ino);
     rpc_api.write_task.set_buffer_vector(bufv);
+
+    fh_hash = get_client()->get_nfs_inode_from_ino(ino)->get_crc();
 }
 
 void rpc_task::init_getattr(fuse_req* request,
@@ -59,6 +65,8 @@ void rpc_task::init_getattr(fuse_req* request,
     req = request;
     optype = FUSE_GETATTR;
     rpc_api.getattr_task.set_ino(ino);
+
+    fh_hash = get_client()->get_nfs_inode_from_ino(ino)->get_crc();
 }
 
 void rpc_task::init_create_file(fuse_req* request,
@@ -73,6 +81,8 @@ void rpc_task::init_create_file(fuse_req* request,
     rpc_api.create_task.set_file_name(name);
     rpc_api.create_task.set_mode(mode);
     rpc_api.create_task.set_fuse_file(file);
+
+    fh_hash = get_client()->get_nfs_inode_from_ino(parent_ino)->get_crc();
 }
 
 void rpc_task::init_mkdir(fuse_req* request,
@@ -86,6 +96,7 @@ void rpc_task::init_mkdir(fuse_req* request,
     rpc_api.mkdir_task.set_dir_name(name);
     rpc_api.mkdir_task.set_mode(mode);
 
+    fh_hash = get_client()->get_nfs_inode_from_ino(parent_ino)->get_crc();
 }
 
 void rpc_task::init_rmdir(fuse_req* request,
@@ -96,6 +107,8 @@ void rpc_task::init_rmdir(fuse_req* request,
     optype = FUSE_RMDIR;
     rpc_api.rmdir_task.set_parent_ino(parent_ino);
     rpc_api.rmdir_task.set_dir_name(name);
+
+    fh_hash = get_client()->get_nfs_inode_from_ino(parent_ino)->get_crc();
 }
 
 void rpc_task::init_setattr(fuse_req* request,
@@ -109,6 +122,8 @@ void rpc_task::init_setattr(fuse_req* request,
     rpc_api.setattr_task.set_ino(ino);
     rpc_api.setattr_task.set_fuse_file(file);
     rpc_api.setattr_task.set_attribute_and_mask(attr, to_set);
+
+    fh_hash = get_client()->get_nfs_inode_from_ino(ino)->get_crc();
 }
 
 void rpc_task::init_readdir(fuse_req *request,
@@ -123,6 +138,8 @@ void rpc_task::init_readdir(fuse_req *request,
     rpc_api.readdir_task.set_size(size);
     rpc_api.readdir_task.set_offset(offset);
     rpc_api.readdir_task.set_fuse_file(file);
+
+    fh_hash = get_client()->get_nfs_inode_from_ino(ino)->get_crc();
 }
 
 void rpc_task::init_readdirplus(fuse_req *request,
@@ -137,6 +154,8 @@ void rpc_task::init_readdirplus(fuse_req *request,
     rpc_api.readdir_task.set_size(size);
     rpc_api.readdir_task.set_offset(offset);
     rpc_api.readdir_task.set_fuse_file(file);
+
+    fh_hash = get_client()->get_nfs_inode_from_ino(ino)->get_crc();
 }
 
 void rpc_task::init_read(fuse_req *request,
@@ -151,6 +170,15 @@ void rpc_task::init_read(fuse_req *request,
     rpc_api.read_task.set_size(size);
     rpc_api.read_task.set_offset(offset);
     rpc_api.read_task.set_fuse_file(file);
+
+    fh_hash = get_client()->get_nfs_inode_from_ino(ino)->get_crc();
+
+    /*
+     * We can perform round-robin for reads even for port 2048.
+     *
+     * TODO: Control this with a config.
+     */
+    set_csched(CONN_SCHED_RR);
 }
 
 /*
@@ -1232,7 +1260,7 @@ void rpc_task::free_rpc_task()
 
 struct nfs_context* rpc_task::get_nfs_context() const
 {
-    return client->get_nfs_context();
+    return client->get_nfs_context(csched, fh_hash);
 }
 
 void rpc_task::run_readdir()

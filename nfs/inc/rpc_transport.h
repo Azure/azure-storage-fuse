@@ -4,6 +4,33 @@
 #include "aznfsc.h"
 #include "connection.h"
 
+/**
+ * Connection scheduling types supported when sending RPCs over multiple
+ * nconnect connections. This decides which connection is picked for a given
+ * RPC request.
+ */
+typedef enum
+{
+    CONN_SCHED_INVALID  = 0,
+
+    /*
+     * Always send over the first connection.
+     */
+    CONN_SCHED_FIRST    = 1,
+
+    /*
+     * Round robin requests over all connections.
+     */
+    CONN_SCHED_RR       = 2,
+
+    /*
+     * Every file is affined to one connection based on the FH hash, so all
+     * requests to one file go over the same connection while different files
+     * will use different connections.
+     */
+    CONN_SCHED_FH_HASH  = 3,
+} conn_sched_t;
+
 /*
  * This represents an RPC transport.
  * An RPC transport is comprised of one or more nfs_connection and uses those
@@ -75,8 +102,16 @@ public:
      * send the request.
      * This can be further enhanced to support a good scheduling of the requests
      * over multiple connection.
+     *
+     * csched:  The connection scheduling type to be used when selecting the
+     *          NFS context/connection.
+     * fh_hash: Filehandle hash, used only when CONN_SCHED_FH_HASH scheduling
+     *          mode is used. This provides a unique hash for the file/dir
+     *          that is the target for this request. All requests to the same
+     *          file/dir are sent over the same connection.
      */
-    struct nfs_context *get_nfs_context() const;
+    struct nfs_context *get_nfs_context(conn_sched_t csched = CONN_SCHED_FIRST,
+                                        uint32_t fh_hash = 0) const;
 
     const std::vector<struct nfs_connection*>& get_all_connections() const
     {

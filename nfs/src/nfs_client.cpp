@@ -237,9 +237,10 @@ void nfs_client::put_nfs_inode_nolock(struct nfs_inode *inode,
     assert(0);
 }
 
-struct nfs_context* nfs_client::get_nfs_context() const
+struct nfs_context* nfs_client::get_nfs_context(conn_sched_t csched,
+                                                uint32_t fh_hash) const
 {
-    return transport.get_nfs_context();
+    return transport.get_nfs_context(csched, fh_hash);
 }
 
 void nfs_client::lookup(fuse_req_t req, fuse_ino_t parent_ino, const char* name)
@@ -540,13 +541,16 @@ bool nfs_client::getattr_sync(const struct nfs_fh3& fh, struct fattr3& fattr)
 
     bool rpc_retry = false;
     struct getattr_context *ctx = new getattr_context(&fattr);
+    const uint32_t fh_hash = calculate_crc32(
+            (const unsigned char *) fh.data.data_val, fh.data.data_len);
+    struct nfs_context *nfs_context = get_nfs_context(CONN_SCHED_FH_HASH, fh_hash);
 
 try_again:
     do {
         struct GETATTR3args args;
         args.object = fh;
 
-        if (rpc_nfs3_getattr_task(nfs_get_rpc_context(get_nfs_context()),
+        if (rpc_nfs3_getattr_task(nfs_get_rpc_context(nfs_context),
                                   getattr_callback, &args, ctx) == NULL) {
             /*
              * This call fails due to internal issues like OOM etc

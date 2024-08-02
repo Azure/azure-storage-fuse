@@ -592,6 +592,18 @@ private:
     // Put a cap on how many async tasks we can start.
     static std::atomic<int> async_slots;
 
+    /*
+     * Connection scheduling type to be used for this RPC.
+     * Issuer of the RPC will know what connection scheduling type is most
+     * optimal for the RPC, it must set it and RPC layer will then honor that.
+     */
+    conn_sched_t csched = CONN_SCHED_INVALID;
+
+    /*
+     * FH hash to be used for connection scheduling if/for CONN_SCHED_FH_HASH.
+     */
+    uint32_t fh_hash = 0;
+
 public:    
     /*
      * Valid only for read RPC tasks.
@@ -811,6 +823,27 @@ public:
                    struct fuse_file_info *file);
 
     void run_read();
+
+    void set_csched(conn_sched_t _csched)
+    {
+        assert(_csched > CONN_SCHED_INVALID &&
+               _csched <= CONN_SCHED_FH_HASH);
+        csched = _csched;
+    }
+
+    conn_sched_t get_csched() const
+    {
+        assert(csched > CONN_SCHED_INVALID &&
+               csched <= CONN_SCHED_FH_HASH);
+        return csched;
+    }
+
+    uint32_t get_fh_hash() const
+    {
+        // When get_fh_hash() is called, fh_hash must be set.
+        assert(fh_hash != 0);
+        return fh_hash;
+    }
 
     void set_fuse_req(fuse_req *request)
     {
@@ -1076,6 +1109,17 @@ public:
         assert(!task->is_async());
 
         task->req = nullptr;
+
+#ifndef ENABLE_NON_AZURE_NFS
+        assert(task->client->mnt_options.nfs_port == 2047 ||
+               task->client->mnt_options.nfs_port == 2048);
+#endif
+        /*
+         * Set the default connection scheduling type based on the NFS port
+         * used. Later init_*() method can set it to a more appropriate value.
+         */
+        task->csched = (task->client->mnt_options.nfs_port == 2047) ?
+                        CONN_SCHED_RR : CONN_SCHED_FH_HASH;
 
         return task;
     }

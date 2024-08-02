@@ -64,7 +64,25 @@ void rpc_transport::close()
  * the current request.
  * TODO: This is round-robined for now, should be modified later.
  */
-struct nfs_context *rpc_transport::get_nfs_context() const
+struct nfs_context *rpc_transport::get_nfs_context(conn_sched_t csched,
+                                                   uint32_t fh_hash) const
 {
-    return nfs_connections[(last_context++)%(client->mnt_options.num_connections)]->get_nfs_context();
+    int idx = 0;
+
+    switch (csched) {
+        case CONN_SCHED_FIRST:
+            idx = 0;
+            break;
+        case CONN_SCHED_RR:
+            idx = (last_context++ % client->mnt_options.num_connections);
+            break;
+        case CONN_SCHED_FH_HASH:
+            assert(fh_hash != 0);
+            idx = fh_hash % client->mnt_options.num_connections;
+            break;
+        default:
+            assert(0);
+    }
+
+    return nfs_connections[idx]->get_nfs_context();
 }
