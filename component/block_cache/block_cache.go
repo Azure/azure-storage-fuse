@@ -630,6 +630,10 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 		_ = handle.Buffers.Cooking.Remove(block.node)
 		block.node = handle.Buffers.Cooked.PushBack(block)
 
+		// mark this block as synced so that if it can used for write later
+		// which will move it back to cooking list as per the synced flag
+		block.flags.Set(BlockFlagSynced)
+
 		// Mark this block is now open for everyone to read and process
 		// Once unblocked and moved to original queue, any instance can delete this block to reuse as well
 		block.Unblock()
