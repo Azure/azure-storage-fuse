@@ -630,6 +630,10 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 		_ = handle.Buffers.Cooking.Remove(block.node)
 		block.node = handle.Buffers.Cooked.PushBack(block)
 
+		// mark this block as synced so that if it can used for write later
+		// which will move it back to cooking list as per the synced flag
+		block.flags.Set(BlockFlagSynced)
+
 		// Mark this block is now open for everyone to read and process
 		// Once unblocked and moved to original queue, any instance can delete this block to reuse as well
 		block.Unblock()
@@ -1083,9 +1087,18 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 			block.flags.Clear(BlockFlagDownloading)
 			block.Unblock()
 		} else if block.flags.IsSet(BlockFlagUploading) {
-			// TODO: wait till a block is uploaded and then write to it
-			log.Err("BlockCache::getOrCreateBlock : Race condition where block %v is being uploaded and written to in parallel for %v=>%s", block.id, handle.ID, handle.Path)
-			return nil, fmt.Errorf("race condition where block %v is being uploaded and written to in parallel for %v=>%s", block.id, handle.ID, handle.Path)
+			// If the block is being staged, then wait till it is uploaded,
+			// and then write to the same block and move it back to cooking queue
+			log.Debug("BlockCache::getOrCreateBlock : Waiting for the block %v to upload for %v=>%s", block.id, handle.ID, handle.Path)
+			<-block.state
+			block.flags.Clear(BlockFlagUploading)
+			block.flags.Clear(BlockFlagSynced) //clearing the BlockFlagSynced flag since the block has been staged and will be used again for write
+			block.Unblock()
+
+			if block.node != nil {
+				_ = handle.Buffers.Cooked.Remove(block.node)
+			}
+			block.node = handle.Buffers.Cooking.PushBack(block)
 		}
 	}
 
