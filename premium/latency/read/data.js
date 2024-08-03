@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1722598201420,
+  "lastUpdate": 1722667899358,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -5342,6 +5342,75 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 65.407045481922,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "98318303+souravgupta-msft@users.noreply.github.com",
+            "name": "Sourav Gupta",
+            "username": "souravgupta-msft"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "891d0032e458d8fc15495cd2ce097ea546c5892c",
+          "message": "Race condition in random write between uploading and writing to a same block (#1481)\n\n* Block upload and write race condition",
+          "timestamp": "2024-08-03T12:02:36+05:30",
+          "tree_id": "635db5395ae06fc1d37b77d5b7dd74c3e8e21bed",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/891d0032e458d8fc15495cd2ce097ea546c5892c"
+        },
+        "date": 1722667899097,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read",
+            "value": 0.08364802116233334,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read",
+            "value": 58.69093845652532,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_small_file",
+            "value": 0.07633458536400001,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 0.13977298468966667,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_direct_io",
+            "value": 0.10049880015666668,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_direct_io",
+            "value": 59.86662828782867,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 0.16362276956500002,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 0.9946922462279999,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 64.32306925683268,
             "unit": "milliseconds"
           }
         ]
