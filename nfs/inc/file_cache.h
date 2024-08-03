@@ -94,7 +94,7 @@ namespace MB_Flag {
        Uptodate = (1 << 0), // Fit for reading.
        Locked   = (1 << 1), // Exclusive access for updating membuf data.
        Dirty    = (1 << 2), // Data in membuf is newer than the Blob.
-       Flushing = (1 << 3), // Data from dirty membuf synced to Blob.
+       Flushing = (1 << 3), // Data from dirty membuf is being synced to Blob.
     };
 }
 
@@ -249,9 +249,12 @@ struct membuf
      */
     bool is_dirty() const
     {
-        const bool dirty  = (flag & MB_Flag::Dirty);
+        const bool dirty = (flag & MB_Flag::Dirty);
 
-        // Make sure is_dirty returns true for is_update() true otherwise we write garbage data to Blob.
+        /*
+         * Make sure is_dirty returns true only when is_uptodate() is true
+         * otherwise we may write garbage data to Blob.
+         */
         assert(!dirty || is_uptodate());
 
         return dirty;
@@ -863,9 +866,10 @@ public:
     /*
      * Returns all dirty chunks in chunkmap.
      * Before returning it increases the inuse count of underlying membuf(s).
-     * Caller will typical sync dirty membuf to Blob and once done call clear_inuse().
+     * Caller will typically sync dirty membuf to Blob and once done must call
+     * clear_inuse().
      */
-    std::vector<bytes_chunk> get_dirty_bc();
+    std::vector<bytes_chunk> get_dirty_bc() const;
 
     /**
      * Drop cached data in the given range.
@@ -1136,7 +1140,7 @@ private:
     std::map<uint64_t, struct bytes_chunk> chunkmap;
 
     // Lock to protect chunkmap.
-    std::mutex lock;
+    mutable std::mutex lock;
 
     std::string backing_file_name;
     int backing_file_fd = -1;

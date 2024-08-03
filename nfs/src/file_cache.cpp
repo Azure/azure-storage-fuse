@@ -275,8 +275,9 @@ void membuf::clear_uptodate()
 }
 
 /**
- * Must be called to mark membuf as "currently flushing dirty data to Blob"
- * caller so that any thread want ss to flush can note this aand doesn't wait for membuf lock.all the data that this membuf refers to.
+ * Must be called to mark membuf as "currently flushing dirty data to Blob".
+ * so that any thread wanting to flush a membuf can note this and doesn't wait
+ * for membuf lock (for issuing the flush).
  */
 void membuf::set_flushing()
 {
@@ -298,6 +299,7 @@ void membuf::set_flushing()
      */
     assert(is_locked());
     assert(is_inuse());
+    // Dirty MUST be uptodate.
     assert(is_dirty() && is_uptodate());
 
     flag |= MB_Flag::Flushing;
@@ -315,11 +317,19 @@ void membuf::clear_flushing()
     assert(is_locked());
     assert(is_inuse());
 
+    // No spurious calls to clear_flushing().
+    assert(is_flushing());
+
     /*
-     * In case rpc fails, we didn't clear dirty flag, in that case this assert hit.
-     * The chance of hitting is minimal as we do hard mount and write never fails.
+     * clear_flushing() must be called after clear_dirty().
+     * In case WRITE RRPC fails, we don't clear dirty flag, in that case this
+     * assert will fail. We still leave it as it helps catch workflow bugs and
+     * we mostly do hard mount where write never fails.
+     *
+     * TODO: Remove me once we have enough testing.
+     *       Don't release it to production.
      */
-    assert(is_dirty() && is_flushing());
+    assert(!is_dirty());
 
     flag &= ~MB_Flag::Flushing;
 
@@ -406,6 +416,9 @@ void membuf::clear_locked()
     // inuse must be set. See comment in set_locked().
     assert(is_inuse());
 
+    // Flushing musy be done with lock held for the entire duration.
+    assert(!is_flushing());
+
     {
         std::unique_lock<std::mutex> _lock(lock);
         flag &= ~MB_Flag::Locked;
@@ -453,6 +466,9 @@ void membuf::clear_dirty()
     // See comment in set_dirty().
     assert(is_locked());
     assert(is_inuse());
+
+    // We completed writing dirty data, flushing must have been set.
+    assert(is_flushing());
 
     flag &= ~MB_Flag::Dirty;
 
@@ -1421,6 +1437,9 @@ void bytes_chunk_cache::inline_prune()
     AZLogInfo("[{}] inline_prune(): Inline prune goal of {:0.2f} MB",
               fmt::ptr(this), inline_bytes / (1024 * 1024.0));
 
+    uint32_t inuse = 0, dirty = 0;
+    uint64_t inuse_bytes = 0, dirty_bytes = 0;
+
     for (auto it = chunkmap.cbegin(), next_it = it;
          (it != chunkmap.cend()) && (pruned_bytes < inline_bytes);
          it = next_it) {
@@ -1432,9 +1451,18 @@ void bytes_chunk_cache::inline_prune()
          * Possibly under IO.
          */
         if (mb->is_inuse()) {
-            AZLogInfo("[{}] inline_prune(): skipping as membuf(offset={}, "
-                      "length={}) is inuse",
-                      fmt::ptr(this), mb->offset, mb->length);
+#if 0
+            AZLogDebug("[{}] inline_prune(): skipping as membuf(offset={}, "
+                       "length={}) is inuse (locked={}, dirty={}, flushing={}, "
+                       "uptodate={})",
+                       fmt::ptr(this), mb->offset, mb->length,
+                       mb->is_locked() ? "yes" : "no",
+                       mb->is_dirty() ? "yes" : "no",
+                       mb->is_flushing() ? "yes" : "no",
+                       mb->is_uptodate() ? "yes" : "no");
+#endif
+            inuse++;
+            inuse_bytes += mb->allocated_length;
             continue;
         }
 
@@ -1450,9 +1478,15 @@ void bytes_chunk_cache::inline_prune()
          * Cannot safely drop this from the cache.
          */
         if (mb->is_dirty()) {
-            AZLogInfo("[{}] inline_prune(): skipping as membuf(offset={}, "
-                      "length={}) is dirty",
-                      fmt::ptr(this), mb->offset, mb->length);
+#if 0
+            AZLogDebug("[{}] inline_prune(): skipping as membuf(offset={}, "
+                       "length={}) is dirty (flushing={}, uptodate={})",
+                       fmt::ptr(this), mb->offset, mb->length,
+                       mb->is_flushing() ? "yes" : "no",
+                       mb->is_uptodate() ? "yes" : "no");
+#endif
+            dirty++;
+            dirty_bytes += mb->allocated_length;
             continue;
         }
 
@@ -1482,10 +1516,16 @@ void bytes_chunk_cache::inline_prune()
     }
 
     if (pruned_bytes < inline_bytes) {
-        AZLogWarn("Could not meet inline prune goal, pruned {} of {} bytes",
-                  pruned_bytes, inline_bytes);
+        AZLogWarn("Could not meet inline prune goal, pruned {} of {} bytes "
+                  "[inuse={}/{}, dirty={}/{}]",
+                  pruned_bytes, inline_bytes,
+                  inuse, inuse_bytes,
+                  dirty, dirty_bytes);
     } else {
-        AZLogInfo("Successfully pruned {} bytes", pruned_bytes);
+        AZLogInfo("Successfully pruned {} bytes [inuse={}/{}, dirty={}/{}]",
+                  pruned_bytes,
+                  inuse, inuse_bytes,
+                  dirty, dirty_bytes);
     }
 }
 
@@ -1686,29 +1726,28 @@ static bool is_read()
     return random_number(0, 100) <= 60;
 }
 
-std::vector<bytes_chunk> bytes_chunk_cache::get_dirty_bc()
+std::vector<bytes_chunk> bytes_chunk_cache::get_dirty_bc() const
 {
-    std::vector<bytes_chunk> chunk_vec;
+    std::vector<bytes_chunk> bc_vec;
     std::map <uint64_t,
-              struct bytes_chunk>::iterator it = chunkmap.begin();
+              struct bytes_chunk>::const_iterator it = chunkmap.cbegin();
 
+    // TODO: Make it shared lock.
     const std::unique_lock<std::mutex> _lock(lock);
 
-    while (it != chunkmap.end())
-    {
-        auto chunk = it->second;
-        auto membuf = chunk.get_membuf();
+    while (it != chunkmap.cend()) {
+        const struct bytes_chunk& bc = it->second;
+        struct membuf *mb = bc.get_membuf();
 
-        if (membuf->is_dirty())
-        {
-            membuf->set_inuse();
-            chunk_vec.push_back(chunk);
+        if (mb->is_dirty()) {
+            mb->set_inuse();
+            bc_vec.emplace_back(bc);
         }
 
         ++it;
     }
 
-    return chunk_vec;
+    return bc_vec;
 }
 
 static void cache_read(bytes_chunk_cache& cache,

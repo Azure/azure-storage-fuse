@@ -143,8 +143,12 @@ struct nfs_inode
     std::shared_ptr<ra_state> readahead_state;
     
     /*
-     * Stores the write error observed when performing backend write to this Blob.
-     * This is helps us duly fail close() call, if one or more IO failed for the Blob.
+     * Stores the write error observed when performing backend writes to this
+     * Blob. This helps us duly fail close(), if one or more IOs have failed
+     * for the Blob. Note that the application read may complete immediately
+     * after copying the data to the cache but later when sync'ing dirty
+     * membufs with the Blob we might encounter write failures. These failures
+     * MUST be conveyed to the application via close(), else it'll never know.
      */
     int write_error = 0;
 
@@ -381,8 +385,8 @@ struct nfs_inode
     void set_write_error(int error)
     {
         assert(error != 0);
-        if (this->write_error == 0)
-        {
+
+        if (this->write_error == 0) {
             this->write_error = error;
         }
     }

@@ -453,7 +453,12 @@ static void aznfsc_ll_init(void *userdata,
     // See if we can support O_TRUNC.
     conn->want &= ~FUSE_CAP_ATOMIC_O_TRUNC;
 
-    // Test splice read/write performance before enabling.
+    /*
+     * For availing perf advantage of splice() we must add splice()/sendfile()
+     * support to libnfs. Till then just disable splicing so fuse never sends
+     * us fd+offset but just a plain buffer.
+     * Test splice read/write performance before enabling.
+     */
     conn->want &= ~FUSE_CAP_SPLICE_WRITE;
     conn->want &= ~FUSE_CAP_SPLICE_MOVE;
     conn->want &= ~FUSE_CAP_SPLICE_READ;
@@ -730,6 +735,14 @@ static void aznfsc_ll_read(fuse_req_t req,
     AZLogDebug("aznfsc_ll_read(req={}, ino={}, size={}, offset={} fi={}",
                 fmt::ptr(req), ino, size, off, fmt::ptr(fi));
 
+    /*
+     * Sanity assert. 1MiB is the max read size fuse will ever issue.
+     * If fuse sends more we'd like to know.
+     *
+     * TODO: Remove this before going to production.
+     */
+    assert(size <= 1048576);
+
     struct nfs_client *client = get_nfs_client_from_fuse_req(req);
     client->read(req, ino, size, off, fi);
 }
@@ -744,7 +757,7 @@ static void aznfsc_ll_write(fuse_req_t req,
     /*
      * XXX: write will be never called as we implement write_buf.
      */
-    AZLogDebug("aznfsc_ll_write(req={}, ino={}, size={}, off={}, fi={}",
+    AZLogError("aznfsc_ll_write(req={}, ino={}, size={}, off={}, fi={}",
                fmt::ptr(req), ino, size, off, fmt::ptr(fi));
 
     fuse_reply_err(req, ENOSYS);
@@ -765,6 +778,12 @@ static void aznfsc_ll_release(fuse_req_t req,
                               fuse_ino_t ino,
                               struct fuse_file_info *fi)
 {
+    /*
+     * Fuse calls flush() for every fd closed and release() once per file,
+     * when the last fd to that file is closed.
+     * Though we shouldn't need the flush here but for safety we put it
+     * here as fuse doc says flush()) may not be called.
+     */
     AZLogDebug("aznfsc_ll_release(req={}, ino={}, fi={})",
                fmt::ptr(req), ino, fmt::ptr(fi));
 
@@ -1021,7 +1040,15 @@ static void aznfsc_ll_write_buf(fuse_req_t req,
     assert(bufv->idx < bufv->count);
 
     const size_t length = bufv->buf[bufv->idx].size - bufv->off;
-    assert(length >= 0);
+    assert((int) length >= 0);
+
+    /*
+     * Sanity assert. 1MiB is the max write size fuse will ever issue.
+     * If fuse sends more we'd like to know.
+     *
+     * TODO: Remove this before going to production.
+     */
+    assert(length <= 1048576);
 
     client->write(req, ino, bufv, length, off);
 }

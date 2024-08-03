@@ -74,12 +74,19 @@ struct write_rpc_task
 
     void set_size(size_t size)
     {
+        /*
+         * length is how much this WRITE RPC wants to write and write_count
+         * is how much it has written so far. Note that WRITE RPC may write
+         * partial data so we need to track write_count.
+         */
         length = size;
         write_count = 0;
     }
 
     void set_count(size_t count)
     {
+        // Must not write more than requested.
+        assert(count <= length);
         write_count = count;
     }
 
@@ -108,7 +115,7 @@ struct write_rpc_task
         return write_count;
     }
 
-    struct fuse_bufvec* get_buffer_vector() const
+    struct fuse_bufvec *get_buffer_vector() const
     {
         return write_bufv;
     }
@@ -155,17 +162,16 @@ private:
 };
 
 /**
- * Write callback context.
- * This context created as result of following calls
+ * Write callback context, used by following calls:
  * - Write
  * - Flush
  * - Fsync
  */
 struct write_context
 {
-    void set_count(size_t count)
+    void set_count(size_t _count)
     {
-        this->count = count;
+        count = _count;
     }
 
     size_t get_count() const
@@ -173,7 +179,7 @@ struct write_context
         return count;
     }
 
-    struct rpc_task* get_task() const
+    struct rpc_task *get_task() const
     {
         return task;
     }
@@ -195,7 +201,9 @@ struct write_context
     {
     }
 
-    write_context(const struct bytes_chunk& _bc, rpc_task *_task, fuse_ino_t _ino) :
+    write_context(const struct bytes_chunk& _bc,
+                  rpc_task *_task,
+                  fuse_ino_t _ino) :
         bc(_bc),
         task(_task),
         ino(_ino),
@@ -206,7 +214,7 @@ struct write_context
 
 private:
     const struct bytes_chunk bc;
-    struct rpc_task* task;
+    struct rpc_task *task;
     fuse_ino_t ino;
     size_t count;
 };
