@@ -10,7 +10,7 @@ stages:
     jobs:
       # Ubuntu Tests
       - job: Set_1
-        timeoutInMinutes: 360
+        timeoutInMinutes: 900
         strategy:
           matrix:
             Ubuntu-22:
