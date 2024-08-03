@@ -350,7 +350,7 @@ private:
          * If we already have ra_bytes readahead bytes read, don't readahead
          * more.
          */
-        if (last_byte_readahead > (max_byte_read + length + ra_bytes)) {
+        if ((last_byte_readahead + length) > (max_byte_read + ra_bytes)) {
             return 0;
         }
 
