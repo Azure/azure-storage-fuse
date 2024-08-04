@@ -294,7 +294,7 @@ int ra_state::issue_readaheads()
              * Ok, now issue READ RPCs to read this byte range.
              */
             struct rpc_task *tsk =
-                client->get_rpc_task_helper()->alloc_rpc_task();
+                client->get_rpc_task_helper()->alloc_rpc_task(FUSE_READ);
 
             /*
              * fuse_req is needed to send the fuse response, since we don't

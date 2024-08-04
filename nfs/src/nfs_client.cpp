@@ -33,7 +33,8 @@ bool nfs_client::init()
      */
     struct fattr3 fattr;
     const bool ret =
-        getattr_sync(*(nfs_get_rootfh(transport.get_nfs_context())), fattr);
+        getattr_sync(*(nfs_get_rootfh(transport.get_nfs_context())),
+                     FUSE_ROOT_ID, fattr);
 
     /*
      * If we fail to successfully issue GETATTR RPC to the root fh,
@@ -245,7 +246,7 @@ struct nfs_context* nfs_client::get_nfs_context(conn_sched_t csched,
 
 void nfs_client::lookup(fuse_req_t req, fuse_ino_t parent_ino, const char* name)
 {
-    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task();
+    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_LOOKUP);
 
     tsk->init_lookup(req, name, parent_ino);
     tsk->run_lookup();
@@ -253,7 +254,7 @@ void nfs_client::lookup(fuse_req_t req, fuse_ino_t parent_ino, const char* name)
 
 void nfs_client::flush(fuse_req_t req, fuse_ino_t ino)
 {
-    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task();
+    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_FLUSH);
 
     tsk->init_flush(req, ino);
     tsk->run_flush();
@@ -261,7 +262,7 @@ void nfs_client::flush(fuse_req_t req, fuse_ino_t ino)
 
 void nfs_client::write(fuse_req_t req, fuse_ino_t ino, struct fuse_bufvec *bufv, size_t size, off_t off)
 {
-    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task();
+    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_WRITE);
 
     tsk->init_write(req, ino, bufv, size, off);
     tsk->run_write();
@@ -272,7 +273,7 @@ void nfs_client::getattr(
     fuse_ino_t ino,
     struct fuse_file_info* file)
 {
-    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task();
+    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_GETATTR);
 
     tsk->init_getattr(req, ino);
     tsk->run_getattr();
@@ -285,7 +286,7 @@ void nfs_client::create(
     mode_t mode,
     struct fuse_file_info* file)
 {
-    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task();
+    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_CREATE);
 
     tsk->init_create_file(req, parent_ino, name, mode, file);
     tsk->run_create_file();
@@ -297,7 +298,7 @@ void nfs_client::mkdir(
     const char* name,
     mode_t mode)
 {
-    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task();
+    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_MKDIR);
 
     tsk->init_mkdir(req, parent_ino, name, mode);
     tsk->run_mkdir();
@@ -308,7 +309,7 @@ void nfs_client::rmdir(
     fuse_ino_t parent_ino,
     const char* name)
 {
-    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task();
+    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_RMDIR);
 
     tsk->init_rmdir(req, parent_ino, name);
     tsk->run_rmdir();
@@ -321,7 +322,7 @@ void nfs_client::setattr(
     int to_set,
     struct fuse_file_info* file)
 {
-    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task();
+    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_SETATTR);
 
     tsk->init_setattr(req, ino, attr, to_set, file);
     tsk->run_setattr();
@@ -334,7 +335,7 @@ void nfs_client::readdir(
     off_t offset,
     struct fuse_file_info* file)
 {
-    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task();
+    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_READDIR);
     struct nfs_inode *inode = get_nfs_inode_from_ino(ino);
 
     // Force revalidate for offset==0 to ensure cto consistency.
@@ -351,7 +352,7 @@ void nfs_client::readdirplus(
     off_t offset,
     struct fuse_file_info* file)
 {
-    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task();
+    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_READDIRPLUS);
     struct nfs_inode *inode = get_nfs_inode_from_ino(ino);
 
     // Force revalidate for offset==0 to ensure cto consistency.
@@ -368,7 +369,7 @@ void nfs_client::read(
     off_t off,
     struct fuse_file_info *fi)
 {
-    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task();
+    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_READ);
     struct nfs_inode *inode = get_nfs_inode_from_ino(ino);
 
     // Revalidate if attribute cache timeout expired.
@@ -502,11 +503,13 @@ struct getattr_context
     bool is_callback_success;
     std::mutex ctx_mutex;
     std::condition_variable cv;
+    struct rpc_task *task;
 
-    getattr_context(struct fattr3 *fattr_):
-        fattr(fattr_),
+    getattr_context(struct fattr3 *_fattr, struct rpc_task *_task):
+        fattr(_fattr),
         callback_called(false),
-        is_callback_success(false)
+        is_callback_success(false),
+        task(_task)
     {}
 };
 
@@ -518,6 +521,11 @@ static void getattr_callback(
 {
     auto ctx = (struct getattr_context*) private_data;
     auto res = (GETATTR3res*) data;
+
+    if (ctx->task) {
+        ctx->task->get_stats().on_rpc_complete(sizeof(*res));
+    }
+
     {
         std::unique_lock<std::mutex> lock(ctx->ctx_mutex);
 
@@ -528,6 +536,9 @@ static void getattr_callback(
         ctx->callback_called = true;
     }
 
+    if (ctx->task) {
+        ctx->task->free_rpc_task();
+    }
     ctx->cv.notify_one();
 }
 
@@ -535,20 +546,46 @@ static void getattr_callback(
  * Issue a sync GETATTR RPC call to filehandle 'fh' and save the received
  * attributes in 'fattr'.
  */
-bool nfs_client::getattr_sync(const struct nfs_fh3& fh, struct fattr3& fattr)
+bool nfs_client::getattr_sync(const struct nfs_fh3& fh,
+                              fuse_ino_t ino,
+                              struct fattr3& fattr)
 {
     // TODO:Make sync getattr call once libnfs adds support.
 
     bool rpc_retry = false;
-    struct getattr_context *ctx = new getattr_context(&fattr);
     const uint32_t fh_hash = calculate_crc32(
             (const unsigned char *) fh.data.data_val, fh.data.data_len);
     struct nfs_context *nfs_context = get_nfs_context(CONN_SCHED_FH_HASH, fh_hash);
+    struct rpc_task *task = nullptr;
+    struct getattr_context *ctx = nullptr;
 
 try_again:
     do {
         struct GETATTR3args args;
         args.object = fh;
+
+        /*
+         * Very first call to getattr_sync(), called from nfs_client::init(), for
+         * getting the root filehandle attributes won't have the rpc_task_helper
+         * set, so that single GETATTR RPC won't be accounted in rpc stats.
+         */
+        if (get_rpc_task_helper() != nullptr) {
+            if (task) {
+                task->free_rpc_task();
+            }
+            task = get_rpc_task_helper()->alloc_rpc_task(FUSE_GETATTR);
+            task->init_getattr(nullptr /* fuse_req */, ino);
+            task->get_stats().on_rpc_dispatch(
+                    sizeof(args) + args.object.data.data_len);
+        } else {
+            assert(ino == FUSE_ROOT_ID);
+        }
+
+        if (ctx) {
+            delete ctx;
+        }
+
+        ctx = new getattr_context(&fattr, task);
 
         if (rpc_nfs3_getattr_task(nfs_get_rpc_context(nfs_context),
                                   getattr_callback, &args, ctx) == NULL) {
@@ -560,6 +597,11 @@ try_again:
         }
     } while (rpc_retry);
 
+    /*
+     * TODO: If the GETATTR response doesn't come for 2 minutes we
+     *       give up and send a new one. If the old one now comes, the ctx
+     *       pointer won't be valid and we will crash accessing it.
+     */
     std::unique_lock<std::mutex> lock(ctx->ctx_mutex);
     if (!ctx->cv.wait_for(lock, std::chrono::seconds(120),
                           [&ctx] { return (ctx->callback_called == true); })) {

@@ -240,7 +240,7 @@ void nfs_inode::revalidate(bool force)
      * the file has changed and we need to invalidate the cached data.
      */
     struct fattr3 fattr;
-    const bool ret = client->getattr_sync(get_fh(), fattr);
+    const bool ret = client->getattr_sync(get_fh(), get_fuse_ino(), fattr);
 
     /*
      * If we fail to query fresh attributes then we can't do much.

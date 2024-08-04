@@ -11,6 +11,7 @@
 
 #include "nfs_client.h"
 #include "file_cache.h"
+#include "rpc_stats.h"
 #include "log.h"
 
 // Maximum number of simultaneous rpc tasks (sync + async).
@@ -646,6 +647,13 @@ protected:
      */
     enum fuse_opcode optype;
 
+    /*
+     * RPC stats. This has both stats specific to this RPC as well as
+     * aggregated RPC stats for all RPCs of this type and also global stats
+     * for all RPCs.
+     */
+    rpc_stats_az stats;
+
 public:
     rpc_task(struct nfs_client *_client, int _index) :
         client(_client),
@@ -726,6 +734,11 @@ public:
 
         return true;
     }
+
+    /**
+     * Return a string representation of opcode for logging.
+     */
+    static const std::string fuse_opcode_to_string(fuse_opcode opcode);
 
     /**
      * Check if this rpc_task is an async task.
@@ -866,6 +879,11 @@ public:
     enum fuse_opcode get_op_type()
     {
         return optype;
+    }
+
+    rpc_stats_az& get_stats()
+    {
+        return stats;
     }
 
     struct nfs_context *get_nfs_context() const;
@@ -1105,8 +1123,10 @@ public:
      * This returns a free rpc task instance from the pool of rpc tasks.
      * This call will block till a free rpc task is available.
      */
-    struct rpc_task *alloc_rpc_task()
+    struct rpc_task *alloc_rpc_task(fuse_opcode optype)
     {
+        // get_free_idx() can block, collect start time before that.
+        const uint64_t start_usec = get_current_usecs();
         const int free_index = get_free_idx();
         struct rpc_task *task = rpc_task_list[free_index];
 
@@ -1116,6 +1136,8 @@ public:
         // Every rpc_task starts as sync.
         assert(!task->is_async());
 
+        task->optype = optype;
+        task->stats.on_rpc_create(optype, start_usec);
         task->req = nullptr;
 
 #ifndef ENABLE_NON_AZURE_NFS

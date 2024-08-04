@@ -1,8 +1,11 @@
 #include "aznfsc.h"
 #include "nfs_client.h"
 #include "nfs_internal.h"
+#include "rpc_stats.h"
 #include "file_cache.h"
 #include "yaml-cpp/yaml.h"
+
+#include <signal.h>
 
 using namespace std;
 
@@ -1204,6 +1207,27 @@ static struct fuse_lowlevel_ops aznfsc_ll_ops = {
     .lseek              = aznfsc_ll_lseek,
 };
 
+/*
+ * Setup signal handler for the given signal.
+ */
+static int set_signal_handler(int signum, void (*handler)(int))
+{
+    struct sigaction sa;
+
+    memset(&sa, 0, sizeof(struct sigaction));
+    sa.sa_handler = handler;
+    sigemptyset(&(sa.sa_mask));
+    sa.sa_flags = 0;
+
+    return sigaction(signum, &sa, NULL);
+}
+
+static void handle_usr1([[maybe_unused]] int signum)
+{
+    assert(signum == SIGUSR1);
+    rpc_stats_az::dump_stats();
+}
+
 int main(int argc, char *argv[])
 {
     // Initialize logger first thing.
@@ -1293,18 +1317,32 @@ int main(int argc, char *argv[])
     se = fuse_session_new(&args, &aznfsc_ll_ops, sizeof(aznfsc_ll_ops),
                           &nfs_client::get_instance());
     if (se == NULL) {
+        AZLogError("fuse_session_new failed");
         goto err_out1;
     }
 
     if (fuse_set_signal_handlers(se) != 0) {
+        AZLogError("fuse_set_signal_handlers failed");
         goto err_out2;
     }
 
-    if (fuse_session_mount(se, opts.mountpoint) != 0) {
+    /*
+     * Setup SIGUSR1 handler for dumping RPC stats.
+     */
+    if (set_signal_handler(SIGUSR1, handle_usr1) != 0) {
+        AZLogError("set_signal_handler(SIGUSR1) failed: {}", ::strerror(errno));
         goto err_out3;
     }
 
-    fuse_daemonize(opts.foreground);
+    if (fuse_session_mount(se, opts.mountpoint) != 0) {
+        AZLogError("fuse_session_mount failed");
+        goto err_out3;
+    }
+
+    if (fuse_daemonize(opts.foreground) != 0) {
+        AZLogError("fuse_daemonize failed");
+        goto err_out4;
+    }
 
     /*
      * Initialize nfs_client singleton.

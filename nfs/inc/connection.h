@@ -52,7 +52,7 @@ public:
     /*
      * Returns the libnfs context pointer used by all libnfs APIs.
      */
-    struct nfs_context* get_nfs_context()
+    struct nfs_context* get_nfs_context() const
     {
         return nfs_context;
     }

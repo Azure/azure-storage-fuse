@@ -161,7 +161,9 @@ public:
      * Issue a sync GETATTR RPC call to filehandle 'fh' and save the received
      * attributes in 'fattr'.
      */
-    bool getattr_sync(const struct nfs_fh3& fh, struct fattr3& attr);
+    bool getattr_sync(const struct nfs_fh3& fh,
+                      fuse_ino_t ino,
+                      struct fattr3& attr);
 
     /*
      * Given an inode number, return the nfs_inode structure.
