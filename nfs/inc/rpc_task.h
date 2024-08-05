@@ -171,16 +171,6 @@ private:
  */
 struct write_context
 {
-    void set_count(size_t _count)
-    {
-        count = _count;
-    }
-
-    size_t get_count() const
-    {
-        return count;
-    }
-
     struct rpc_task *get_task() const
     {
         return task;
@@ -191,7 +181,7 @@ struct write_context
         task = _task;
     }
 
-    const struct bytes_chunk& get_bytes_chunk() const
+    struct bytes_chunk& get_bytes_chunk()
     {
         return bc;
     }
@@ -208,13 +198,12 @@ struct write_context
     {
     }
 
-    write_context(const struct bytes_chunk& _bc,
+    write_context(struct bytes_chunk& _bc,
                   rpc_task *_task,
                   fuse_ino_t _ino) :
         bc(_bc),
         task(_task),
-        ino(_ino),
-        count(0)
+        ino(_ino)
       {
 
       }
@@ -224,10 +213,9 @@ private:
      * Note: We always write the full underlying membuf and not just the
      *       portion represented by bc.
      */
-    const struct bytes_chunk bc;
+    struct bytes_chunk bc;
     struct rpc_task *task;
     fuse_ino_t ino;
-    size_t count;
 };
 
 /**
@@ -801,6 +789,11 @@ struct api_task_info
      * the chunks in rpc_task::bc_vec[]. This points to one of those chunks.
      */
     struct bytes_chunk *bc = nullptr;
+
+    /*
+     * Private variable to store the write_context, so that bc valid for whole life time.
+     */
+    void *pvt = nullptr;
 
     /*
      * Operation type.
@@ -1406,6 +1399,8 @@ public:
 
     void send_read_response();
     void read_from_server(struct bytes_chunk &bc);
+    void read_modified_write(struct bytes_chunk &bc);
+    void sync_membuf(struct bytes_chunk &bc, fuse_ino_t ino);
 };
 
 class rpc_task_helper
