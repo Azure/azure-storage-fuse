@@ -2151,6 +2151,53 @@ func (suite *blockCacheTestSuite) TestBlockOverwriteValidation() {
 	suite.assert.Equal(l, r)
 }
 
+func (suite *blockCacheTestSuite) TestBlockFailOverwrite() {
+	cfg := "block_cache:\n  block-size-mb: 1\n  mem-size-mb: 20\n  prefetch: 12\n  parallelism: 10\n  enable-random-write: true"
+	tobj, err := setupPipeline(cfg)
+	defer tobj.cleanupPipeline()
+
+	suite.assert.Nil(err)
+	suite.assert.NotNil(tobj.blockCache)
+
+	path := "testBlockUploadValidation"
+	storagePath := filepath.Join(tobj.fake_storage_path, path)
+
+	// write using block cache
+	options := internal.CreateFileOptions{Name: path, Mode: 0777}
+	h, err := tobj.blockCache.CreateFile(options)
+	suite.assert.Nil(err)
+	suite.assert.NotNil(h)
+	suite.assert.Equal(h.Size, int64(0))
+	suite.assert.False(h.Dirty())
+
+	h, err = tobj.blockCache.OpenFile(internal.OpenFileOptions{Name: path, Flags: os.O_RDWR})
+	suite.assert.Nil(err)
+	suite.assert.NotNil(h)
+	suite.assert.Equal(h.Size, int64(0))
+	suite.assert.False(h.Dirty())
+
+	// updating the size and adding entry in block list map to replicate the download failure of the first block
+	h.Size = int64(_1MB)
+	lst, _ := h.GetValue("blockList")
+	listMap := lst.(map[int64]*blockInfo)
+	listMap[0] = &blockInfo{
+		id:        "AAAAAAAA",
+		committed: true,
+		size:      _1MB,
+	}
+
+	// write offset 0 where block 0 download will fail
+	n, err := tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: dataBuff[:1*_1MB]})
+	suite.assert.NotNil(err)
+	suite.assert.Contains(err.Error(), "failed to download block")
+	suite.assert.Equal(n, 0)
+	suite.assert.False(h.Dirty())
+
+	fs, err := os.Stat(storagePath)
+	suite.assert.Nil(err)
+	suite.assert.Equal(fs.Size(), int64(0))
+}
+
 // In order for 'go test' to run this suite, we need to create
 // a normal test function and pass our suite to suite.Run
 func TestBlockCacheTestSuite(t *testing.T) {
