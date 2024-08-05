@@ -27,10 +27,8 @@ steps:
       temp_dir: ${{ parameters.temp_dir }}
       
   # Mount the container
-  - ${{ if eq(parameters.direct_io, true) }}:
-      - ${{ parameters.mountStep }} -o direct_io
-    else:
-      - ${{ parameters.mountStep }}
+  - ${{ parameters.mountStep }}
+    condition: eq (parameters.direct_io, true)
 
   # Wait for some time to let the container come up
   - script: |
