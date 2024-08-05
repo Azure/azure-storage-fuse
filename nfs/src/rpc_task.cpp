@@ -1252,8 +1252,7 @@ static void read_callback(
     auto filecache_handle = inode->filecache_handle;
 
     struct partial_read *pr = ctx->pr;
-    if (pr == nullptr)
-    {
+    if (pr == nullptr) {
         AZLogDebug("[{}] read_callback: Bytes read: {} eof: {}, "
                 "requested_bytes: {} off: {}",
                 ino,
@@ -1264,8 +1263,7 @@ static void read_callback(
         // For a fresh read, there should be no data read.
         assert(bc->pvt == 0);
     }
-    else
-    {
+    else {
         AZLogDebug("[{}] read_callback: Partial read. Bytes read: {} eof: {}, "
                 "requested_bytes: {} off: {}, partial_requested_bytes {} partial off: {}",
                 ino,
@@ -1292,8 +1290,7 @@ static void read_callback(
     bc->pvt += res->READ3res_u.resok.count;
 
     if (status == 0) {
-        if ((bc->length > bc->pvt) && !res->READ3res_u.resok.eof)
-        {
+        if ((bc->length > bc->pvt) && !res->READ3res_u.resok.eof) {
             // Partial read case.
             const off_t new_offset = bc->offset + bc->pvt;
             const size_t new_size = bc->length - bc->pvt;
