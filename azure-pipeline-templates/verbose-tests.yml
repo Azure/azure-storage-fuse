@@ -220,10 +220,10 @@ steps:
   - ${{ if eq(parameters.test_azurite, true) }}:
     - bash: |
         sudo apt-get install azure-cli npm -y
-        sudo npm install -g azurite
+        sudo npm install -g azurite@3.29.0
         sudo mkdir azurite
         sudo azurite --silent --location azurite --debug azurite\debug.log &
-        az storage container create -n ${{ parameters.container }} --connection-string "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;"
+        az storage container create -n ${{ parameters.container }} --connection-string "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;"
       displayName: 'Install and Run Azurite'
 
     - template: e2e-tests.yml
