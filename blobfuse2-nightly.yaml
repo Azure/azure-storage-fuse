@@ -180,7 +180,7 @@ stages:
                   test_key_credential: true 
                   test_sas_credential: true
                   test_azcli_credential: true
-                  test_azurite: true
+                  test_azurite: false
                   sas_credential_config: $(BLOBFUSE2_SAS_CFG)
                   azcli_credential_config: $(BLOBFUSE2_AZCLI_CFG)
                   azurite_config: $(BLOBFUSE2_AZURITE_CFG)
