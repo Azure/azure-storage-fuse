@@ -45,7 +45,8 @@ steps:
 
   - script: |
       cd ${{ parameters.mount_dir }}
-      tar -zcvf linux-${{ parameters.kversion }}.tar.gz linux-${{ parameters.kversion }}
+      # tar -zcvf linux-${{ parameters.kversion }}.tar.gz linux-${{ parameters.kversion }}
+      dd if=/dev/zero of=new bs=1M count=100
     displayName: 'Tar kernel'
 
   - script: |
