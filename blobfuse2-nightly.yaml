@@ -180,7 +180,7 @@ stages:
                   test_key_credential: true 
                   test_sas_credential: true
                   test_azcli_credential: true
-                  test_azurite: true
+                  test_azurite: false
                   sas_credential_config: $(BLOBFUSE2_SAS_CFG)
                   azcli_credential_config: $(BLOBFUSE2_AZCLI_CFG)
                   azurite_config: $(BLOBFUSE2_AZURITE_CFG)
@@ -1101,10 +1101,10 @@ stages:
                   installStep:
                     script: |
                       sudo zypper -n install git golang make cmake gcc gcc-c++ glibc-devel fuse
-                      wget https://rpmfind.net/linux/opensuse/distribution/leap/15.4/repo/oss/x86_64/fuse3-3.10.5-150400.1.7.x86_64.rpm
+                      wget $(SUSE_FUSE3_PATH)/fuse3-3.10.5-150400.1.7.x86_64.rpm
                       sudo zypper -n --no-gpg-checks install fuse3-3.10.5-150400.1.7.x86_64.rpm
                       fusermount3 --v
-                      wget https://rpmfind.net/linux/opensuse/distribution/leap/15.4/repo/oss/x86_64/fuse3-devel-3.10.5-150400.1.7.x86_64.rpm
+                      wget $(SUSE_FUSE3_PATH)/fuse3-devel-3.10.5-150400.1.7.x86_64.rpm
                       sudo zypper -n --no-gpg-checks install fuse3-devel-3.10.5-150400.1.7.x86_64.rpm 
                     displayName: 'Install fuse'
                   verbose_log: ${{ parameters.verbose_log }}

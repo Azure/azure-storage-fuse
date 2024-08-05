@@ -66,11 +66,16 @@ const _1MB uint64 = (1024 * 1024)
 
 type dataValidationTestSuite struct {
 	suite.Suite
+}
+
+type testObj struct {
 	testMntPath   string
 	testLocalPath string
 	testCachePath string
 	adlsTest      bool
 }
+
+var tObj testObj
 
 func regDataValidationTestFlag(p *string, name string, value string, usage string) {
 	if flag.Lookup(name) == nil {
@@ -130,7 +135,7 @@ func (suite *dataValidationTestSuite) validateData(localFilePath string, remoteF
 
 // Test correct overwrite of file using echo command
 func (suite *dataValidationTestSuite) TestFileOverwriteWithEchoCommand() {
-	remoteFilePath := filepath.Join(suite.testMntPath, "TESTFORECHO.txt")
+	remoteFilePath := filepath.Join(tObj.testMntPath, "TESTFORECHO.txt")
 	text := "Hello, this is a test."
 	command := "echo \"" + text + "\" > " + remoteFilePath
 	cmd := exec.Command("/bin/bash", "-c", command)
@@ -155,8 +160,8 @@ func (suite *dataValidationTestSuite) TestFileOverwriteWithEchoCommand() {
 // data validation for small sized files
 func (suite *dataValidationTestSuite) TestSmallFileData() {
 	fileName := "small_data.txt"
-	localFilePath := suite.testLocalPath + "/" + fileName
-	remoteFilePath := suite.testMntPath + "/" + fileName
+	localFilePath := tObj.testLocalPath + "/" + fileName
+	remoteFilePath := tObj.testMntPath + "/" + fileName
 
 	// create the file in local directory
 	srcFile, err := os.OpenFile(localFilePath, os.O_CREATE, 0777)
@@ -170,11 +175,11 @@ func (suite *dataValidationTestSuite) TestSmallFileData() {
 	suite.copyToMountDir(localFilePath, remoteFilePath)
 
 	// delete the cache directory
-	suite.dataValidationTestCleanup([]string{suite.testCachePath})
+	suite.dataValidationTestCleanup([]string{tObj.testCachePath})
 
 	suite.validateData(localFilePath, remoteFilePath)
 
-	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, suite.testCachePath})
+	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, tObj.testCachePath})
 }
 
 // data validation for medium sized files
@@ -184,8 +189,8 @@ func (suite *dataValidationTestSuite) TestMediumFileData() {
 		return
 	}
 	fileName := "medium_data.txt"
-	localFilePath := suite.testLocalPath + "/" + fileName
-	remoteFilePath := suite.testMntPath + "/" + fileName
+	localFilePath := tObj.testLocalPath + "/" + fileName
+	remoteFilePath := tObj.testMntPath + "/" + fileName
 
 	// create the file in local directory
 	srcFile, err := os.OpenFile(localFilePath, os.O_CREATE, 0777)
@@ -199,11 +204,11 @@ func (suite *dataValidationTestSuite) TestMediumFileData() {
 	suite.copyToMountDir(localFilePath, remoteFilePath)
 
 	// delete the cache directory
-	suite.dataValidationTestCleanup([]string{suite.testCachePath})
+	suite.dataValidationTestCleanup([]string{tObj.testCachePath})
 
 	suite.validateData(localFilePath, remoteFilePath)
 
-	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, suite.testCachePath})
+	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, tObj.testCachePath})
 }
 
 // data validation for large sized files
@@ -213,8 +218,8 @@ func (suite *dataValidationTestSuite) TestLargeFileData() {
 		return
 	}
 	fileName := "large_data.txt"
-	localFilePath := suite.testLocalPath + "/" + fileName
-	remoteFilePath := suite.testMntPath + "/" + fileName
+	localFilePath := tObj.testLocalPath + "/" + fileName
+	remoteFilePath := tObj.testMntPath + "/" + fileName
 
 	// create the file in local directory
 	srcFile, err := os.OpenFile(localFilePath, os.O_CREATE, 0777)
@@ -228,18 +233,18 @@ func (suite *dataValidationTestSuite) TestLargeFileData() {
 	suite.copyToMountDir(localFilePath, remoteFilePath)
 
 	// delete the cache directory
-	suite.dataValidationTestCleanup([]string{suite.testCachePath})
+	suite.dataValidationTestCleanup([]string{tObj.testCachePath})
 
 	suite.validateData(localFilePath, remoteFilePath)
 
-	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, suite.testCachePath})
+	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, tObj.testCachePath})
 }
 
 // negative test case for data validation where the local file is updated
 func (suite *dataValidationTestSuite) TestDataValidationNegative() {
 	fileName := "updated_data.txt"
-	localFilePath := suite.testLocalPath + "/" + fileName
-	remoteFilePath := suite.testMntPath + "/" + fileName
+	localFilePath := tObj.testLocalPath + "/" + fileName
+	remoteFilePath := tObj.testMntPath + "/" + fileName
 
 	// create the file in local directory
 	srcFile, err := os.OpenFile(localFilePath, os.O_CREATE, 0777)
@@ -254,7 +259,7 @@ func (suite *dataValidationTestSuite) TestDataValidationNegative() {
 	suite.copyToMountDir(localFilePath, remoteFilePath)
 
 	// delete the cache directory
-	suite.dataValidationTestCleanup([]string{suite.testCachePath})
+	suite.dataValidationTestCleanup([]string{tObj.testCachePath})
 
 	// update local file
 	srcFile, err = os.OpenFile(localFilePath, os.O_APPEND|os.O_WRONLY, 0777)
@@ -271,14 +276,14 @@ func (suite *dataValidationTestSuite) TestDataValidationNegative() {
 	suite.NotEqual(0, len(cliOut))
 	suite.NotEqual(nil, err)
 
-	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, suite.testCachePath})
+	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, tObj.testCachePath})
 }
 
 func validateMultipleFilesData(jobs <-chan int, results chan<- string, fileSize string, suite *dataValidationTestSuite) {
 	for i := range jobs {
 		fileName := fileSize + strconv.Itoa(i) + ".txt"
-		localFilePath := suite.testLocalPath + "/" + fileName
-		remoteFilePath := suite.testMntPath + "/" + fileName
+		localFilePath := tObj.testLocalPath + "/" + fileName
+		remoteFilePath := tObj.testMntPath + "/" + fileName
 		fmt.Println("Local file path: " + localFilePath)
 
 		// create the file in local directory
@@ -303,10 +308,10 @@ func validateMultipleFilesData(jobs <-chan int, results chan<- string, fileSize 
 		suite.Equal(nil, err)
 
 		suite.copyToMountDir(localFilePath, remoteFilePath)
-		suite.dataValidationTestCleanup([]string{suite.testCachePath + "/" + fileName})
+		suite.dataValidationTestCleanup([]string{tObj.testCachePath + "/" + fileName})
 		suite.validateData(localFilePath, remoteFilePath)
 
-		suite.dataValidationTestCleanup([]string{localFilePath, suite.testCachePath + "/" + fileName})
+		suite.dataValidationTestCleanup([]string{localFilePath, tObj.testCachePath + "/" + fileName})
 
 		results <- remoteFilePath
 	}
@@ -331,7 +336,7 @@ func createThreadPool(noOfFiles int, noOfWorkers int, fileSize string, suite *da
 	}
 	close(results)
 
-	suite.dataValidationTestCleanup([]string{suite.testCachePath})
+	suite.dataValidationTestCleanup([]string{tObj.testCachePath})
 }
 
 func (suite *dataValidationTestSuite) TestMultipleSmallFiles() {
@@ -417,8 +422,8 @@ func writeSparseData(suite *dataValidationTestSuite, fh *os.File, offsets []int6
 
 func (suite *dataValidationTestSuite) TestSparseFileRandomWrite() {
 	fileName := "sparseFile"
-	localFilePath := suite.testLocalPath + "/" + fileName
-	remoteFilePath := suite.testMntPath + "/" + fileName
+	localFilePath := tObj.testLocalPath + "/" + fileName
+	remoteFilePath := tObj.testMntPath + "/" + fileName
 
 	// create local file
 	lfh, err := os.Create(localFilePath)
@@ -457,13 +462,13 @@ func (suite *dataValidationTestSuite) TestSparseFileRandomWrite() {
 
 	suite.Equal(localMD5, remoteMD5)
 
-	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, suite.testCachePath})
+	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, tObj.testCachePath})
 }
 
 func (suite *dataValidationTestSuite) TestSparseFileRandomWriteBlockOverlap() {
 	fileName := "sparseFileBlockOverlap"
-	localFilePath := suite.testLocalPath + "/" + fileName
-	remoteFilePath := suite.testMntPath + "/" + fileName
+	localFilePath := tObj.testLocalPath + "/" + fileName
+	remoteFilePath := tObj.testMntPath + "/" + fileName
 
 	// create local file
 	lfh, err := os.Create(localFilePath)
@@ -502,13 +507,13 @@ func (suite *dataValidationTestSuite) TestSparseFileRandomWriteBlockOverlap() {
 
 	suite.Equal(localMD5, remoteMD5)
 
-	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, suite.testCachePath})
+	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, tObj.testCachePath})
 }
 
 func (suite *dataValidationTestSuite) TestFileReadBytesMultipleBlocks() {
 	fileName := "bytesReadMultipleBlock"
-	localFilePath := suite.testLocalPath + "/" + fileName
-	remoteFilePath := suite.testMntPath + "/" + fileName
+	localFilePath := tObj.testLocalPath + "/" + fileName
+	remoteFilePath := tObj.testMntPath + "/" + fileName
 
 	// create local file
 	lfh, err := os.Create(localFilePath)
@@ -586,13 +591,13 @@ func (suite *dataValidationTestSuite) TestFileReadBytesMultipleBlocks() {
 
 	suite.Equal(localMD5, remoteMD5)
 
-	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, suite.testCachePath})
+	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, tObj.testCachePath})
 }
 
 func (suite *dataValidationTestSuite) TestFileReadBytesOneBlock() {
 	fileName := "bytesReadOneBlock"
-	localFilePath := suite.testLocalPath + "/" + fileName
-	remoteFilePath := suite.testMntPath + "/" + fileName
+	localFilePath := tObj.testLocalPath + "/" + fileName
+	remoteFilePath := tObj.testMntPath + "/" + fileName
 
 	// create local file
 	lfh, err := os.Create(localFilePath)
@@ -660,7 +665,59 @@ func (suite *dataValidationTestSuite) TestFileReadBytesOneBlock() {
 
 	suite.Equal(localMD5, remoteMD5)
 
-	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, suite.testCachePath})
+	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, tObj.testCachePath})
+}
+
+func (suite *dataValidationTestSuite) TestRandomWriteRaceCondition() {
+	fileName := "randomWriteRaceCondition"
+	localFilePath := tObj.testLocalPath + "/" + fileName
+	remoteFilePath := tObj.testMntPath + "/" + fileName
+
+	// create local file
+	lfh, err := os.Create(localFilePath)
+	suite.Nil(err)
+
+	defer func(fh *os.File) {
+		_ = fh.Close()
+	}(lfh)
+
+	// create remote file
+	rfh, err := os.Create(remoteFilePath)
+	suite.Nil(err)
+
+	defer func(fh *os.File) {
+		_ = fh.Close()
+	}(rfh)
+
+	offsetList := []int64{}
+	for i := 0; i < 10; i++ {
+		offsetList = append(offsetList, int64(i*16*int(_1MB)))
+	}
+	// at the end write back at block 0 at offset 1MB
+	offsetList = append(offsetList, int64(_1MB))
+
+	// write to local file
+	writeSparseData(suite, lfh, offsetList)
+
+	// write to remote file
+	writeSparseData(suite, rfh, offsetList)
+
+	// check size of blob uploaded
+	fi, err := os.Stat(remoteFilePath)
+	suite.Nil(err)
+	suite.Equal(fi.Size(), 145*int64(_1MB))
+
+	localMD5, err := computeMD5(localFilePath)
+	suite.Nil(err)
+	suite.NotNil(localMD5)
+
+	remoteMD5, err := computeMD5(remoteFilePath)
+	suite.Nil(err)
+	suite.NotNil(remoteMD5)
+
+	suite.Equal(localMD5, remoteMD5)
+
+	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, tObj.testCachePath})
 }
 
 // -------------- Main Method -------------------
@@ -674,7 +731,7 @@ func TestDataValidationTestSuite(t *testing.T) {
 		return
 	}
 
-	dataValidationTest := dataValidationTestSuite{}
+	tObj = testObj{}
 
 	minBuff = make([]byte, 1024)
 	medBuff = make([]byte, (10 * _1MB))
@@ -689,33 +746,33 @@ func TestDataValidationTestSuite(t *testing.T) {
 	testDirName := getDataValidationTestDirName(10)
 
 	// Create directory for testing the End to End test on mount path
-	dataValidationTest.testMntPath = dataValidationMntPathPtr + "/" + testDirName
-	fmt.Println(dataValidationTest.testMntPath)
+	tObj.testMntPath = dataValidationMntPathPtr + "/" + testDirName
+	fmt.Println(tObj.testMntPath)
 
-	dataValidationTest.testLocalPath, _ = filepath.Abs(dataValidationMntPathPtr + "/..")
-	fmt.Println(dataValidationTest.testLocalPath)
+	tObj.testLocalPath, _ = filepath.Abs(dataValidationMntPathPtr + "/..")
+	fmt.Println(tObj.testLocalPath)
 
-	dataValidationTest.testCachePath = dataValidationTempPathPtr + "/" + testDirName
-	fmt.Println(dataValidationTest.testCachePath)
+	tObj.testCachePath = dataValidationTempPathPtr + "/" + testDirName
+	fmt.Println(tObj.testCachePath)
 
 	if dataValidationAdlsPtr == "true" || dataValidationAdlsPtr == "True" {
 		fmt.Println("ADLS Testing...")
-		dataValidationTest.adlsTest = true
+		tObj.adlsTest = true
 	} else {
 		fmt.Println("BLOCK Blob Testing...")
 	}
 
 	// Sanity check in the off chance the same random name was generated twice and was still around somehow
-	err := os.RemoveAll(dataValidationTest.testMntPath)
+	err := os.RemoveAll(tObj.testMntPath)
 	if err != nil {
 		fmt.Println("Could not cleanup feature dir before testing")
 	}
-	err = os.RemoveAll(dataValidationTest.testCachePath)
+	err = os.RemoveAll(tObj.testCachePath)
 	if err != nil {
 		fmt.Println("Could not cleanup cache dir before testing")
 	}
 
-	err = os.Mkdir(dataValidationTest.testMntPath, 0777)
+	err = os.Mkdir(tObj.testMntPath, 0777)
 	if err != nil {
 		t.Error("Failed to create test directory")
 	}
@@ -725,10 +782,10 @@ func TestDataValidationTestSuite(t *testing.T) {
 	rand.Read(hugeBuff)
 
 	// Run the actual End to End test
-	suite.Run(t, &dataValidationTest)
+	suite.Run(t, new(dataValidationTestSuite))
 
 	//  Wipe out the test directory created for End to End test
-	os.RemoveAll(dataValidationTest.testMntPath)
+	os.RemoveAll(tObj.testMntPath)
 }
 
 func init() {
