@@ -177,7 +177,7 @@ steps:
       distro_name: ${{ parameters.distro_name }}
       quick_test: false
       verbose_log: ${{ parameters.verbose_log }}
-      clone: true
+      clone: false
 
   - ${{ if eq(parameters.test_sas_credential, true) }}:
     - template: e2e-tests.yml
