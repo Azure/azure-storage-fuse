@@ -57,21 +57,10 @@ steps:
       mount_dir: ${{ parameters.mount_dir }}
       temp_dir: ${{ parameters.temp_dir }}
       prefix: ${{ parameters.idstring }}
+      direct_io: ${{ parameters.direct_io }}
       mountStep: 
         script: |
           $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) --file-cache-timeout=3200 
-    condition: ne( ${{ parameters.direct_io }}, true )
-    
-  - template: 'mount.yml'
-    parameters:
-      working_dir: $(WORK_DIR)
-      mount_dir: ${{ parameters.mount_dir }}
-      temp_dir: ${{ parameters.temp_dir }}
-      prefix: ${{ parameters.idstring }}
-      mountStep: 
-        script: |
-          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) --file-cache-timeout=3200 -o direct_io
-    condition: eq( ${{ parameters.direct_io }}, true )
 
   - script: |
       for i in {1,2,3,4,5,6,7,8,9,10,20,30,50,100,200,1024,2048,4096}; do echo $i; done | parallel --will-cite -j 5 'head -c {}M < /dev/urandom > ${{ parameters.mount_dir }}/myfile_{}'
@@ -109,22 +98,10 @@ steps:
       temp_dir: ${{ parameters.temp_dir }}
       prefix: ${{ parameters.idstring }}
       ro_mount: true
+      direct_io: ${{ parameters.direct_io }}
       mountStep: 
         script: |
           $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) -o ro
-    condition: ne( ${{ parameters.direct_io }}, true )
-
-  - template: 'mount.yml'
-    parameters:
-      working_dir: $(WORK_DIR)
-      mount_dir: ${{ parameters.mount_dir }}
-      temp_dir: ${{ parameters.temp_dir }}
-      prefix: ${{ parameters.idstring }}
-      ro_mount: true
-      mountStep: 
-        script: |
-          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) -o ro -o direct_io
-    condition: eq( ${{ parameters.direct_io }}, true )
 
   - script: |
       md5sum ${{ parameters.mount_dir }}/myfile_* > $(WORK_DIR)/md5sum_block_cache.txt
@@ -153,22 +130,10 @@ steps:
       temp_dir: ${{ parameters.temp_dir }}
       prefix: ${{ parameters.idstring }}
       ro_mount: true
+      direct_io: ${{ parameters.direct_io }}      
       mountStep: 
         script: |
           $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR)
-    condition: ne( ${{ parameters.direct_io }}, true )
-
-  - template: 'mount.yml'
-    parameters:
-      working_dir: $(WORK_DIR)
-      mount_dir: ${{ parameters.mount_dir }}
-      temp_dir: ${{ parameters.temp_dir }}
-      prefix: ${{ parameters.idstring }}
-      ro_mount: true
-      mountStep: 
-        script: |
-          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) -o direct_io
-    condition: eq( ${{ parameters.direct_io }}, true )
 
   - script: |
       for i in {1,2,3,4,5,6,7,8,9,10,20,30,50,100,200,1024,2048,4096}; do echo $i; done | parallel --will-cite -j 5 'cp ${{ parameters.mount_dir }}/myfile_{} ${{ parameters.mount_dir }}/myfileCopy_{}'
@@ -205,22 +170,10 @@ steps:
       temp_dir: ${{ parameters.temp_dir }}
       prefix: ${{ parameters.idstring }}
       ro_mount: true
+      direct_io: ${{ parameters.direct_io }}      
       mountStep: 
         script: |
           $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR)
-    condition: ne( ${{ parameters.direct_io }}, true )
-
-  - template: 'mount.yml'
-    parameters:
-      working_dir: $(WORK_DIR)
-      mount_dir: ${{ parameters.mount_dir }}
-      temp_dir: ${{ parameters.temp_dir }}
-      prefix: ${{ parameters.idstring }}
-      ro_mount: true
-      mountStep: 
-        script: |
-          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) -o direct_io
-    condition: eq( ${{ parameters.direct_io }}, true )
 
   - script: |
       rm -rf $(WORK_DIR)/localfile*
@@ -270,22 +223,10 @@ steps:
       temp_dir: ${{ parameters.temp_dir }}
       prefix: ${{ parameters.idstring }}
       ro_mount: true
+      direct_io: ${{ parameters.direct_io }}      
       mountStep: 
         script: |
           $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR)
-    condition: ne( ${{ parameters.direct_io }}, true )
-
-  - template: 'mount.yml'
-    parameters:
-      working_dir: $(WORK_DIR)
-      mount_dir: ${{ parameters.mount_dir }}
-      temp_dir: ${{ parameters.temp_dir }}
-      prefix: ${{ parameters.idstring }}
-      ro_mount: true
-      mountStep: 
-        script: |
-          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) -o direct_io
-    condition: eq( ${{ parameters.direct_io }}, true )
 
   - script: |
       md5sum $(WORK_DIR)/localfile* > $(WORK_DIR)/md5sum_local_modified.txt

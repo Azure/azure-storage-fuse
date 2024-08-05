@@ -12,7 +12,10 @@ parameters:
     default: 'Test'
   - name: ro_mount
     type: boolean
-    default: false    
+    default: false   
+  - name: direct_io
+    type: boolean
+    default: false     
 
 steps:
 
@@ -25,6 +28,10 @@ steps:
       
   # Mount the container
   - ${{ parameters.mountStep }}
+    condition: ne( ${{ parameters.direct_io }}, true )
+
+  - ${{ parameters.mountStep }} -o direct_io
+    condition: eq( ${{ parameters.direct_io }}, true )
 
   # Wait for some time to let the container come up
   - script: |
