@@ -51,16 +51,18 @@ steps:
       cat ${{ parameters.config_file }}
     displayName: 'Print config file'
 
-  - template: 'mount.yml'
-    parameters:
-      working_dir: $(WORK_DIR)
-      mount_dir: ${{ parameters.mount_dir }}
-      temp_dir: ${{ parameters.temp_dir }}
-      prefix: ${{ parameters.idstring }}
-      direct_io: ${{ parameters.direct_io }}
-      mountStep: 
-        script: |
-          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) --file-cache-timeout=3200 
+  # run below step only if direct_io is false
+  - if: eq(parameters.direct_io, false)
+     - template: 'mount.yml'
+        parameters:
+          working_dir: $(WORK_DIR)
+          mount_dir: ${{ parameters.mount_dir }}
+          temp_dir: ${{ parameters.temp_dir }}
+          prefix: ${{ parameters.idstring }}
+          direct_io: ${{ parameters.direct_io }}
+          mountStep: 
+            script: |
+              $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) --file-cache-timeout=3200 
 
   - script: |
       for i in {1,2,3,4,5,6,7,8,9,10,20,30,50,100,200,1024,2048,4096}; do echo $i; done | parallel --will-cite -j 5 'head -c {}M < /dev/urandom > ${{ parameters.mount_dir }}/myfile_{}'

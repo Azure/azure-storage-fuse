@@ -28,7 +28,6 @@ steps:
       
   # Mount the container
   - ${{ parameters.mountStep }}
-    condition: eq (parameters.direct_io, true)
 
   # Wait for some time to let the container come up
   - script: |
