@@ -10,6 +10,7 @@
 - Reset block data to null before reuse.
 - Sparse file data integrity issues fixed.
 - Fixed block-cache read of small files where file size is not multiple of kernel buffer size.
+- Fixed race condition in random write where a block is being uploaded and written to in parallel.
 
 **Other Changes**
 - LFU policy in file cache has been deprecated.
