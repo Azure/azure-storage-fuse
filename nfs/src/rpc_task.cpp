@@ -1184,16 +1184,36 @@ void rpc_task::send_read_response()
     }
 }
 
+/*
+ * This structure is used for the partial read case when
+ * the server returns fewer bytes than requested even when
+ * eof is false.
+ * TODO: This is mostly used for asserts. See if this is needed.
+ */
+struct partial_read
+{
+    const uint64_t offset;
+    const uint64_t length;
+
+    partial_read(const uint64_t _offset, const uint64_t _length):
+        offset(_offset),
+        length(_length)
+    {}
+};
+
 struct read_context
 {
     rpc_task *task;
     struct bytes_chunk *bc;
+    struct partial_read *pr;
 
     read_context(
         rpc_task *_task,
-        struct bytes_chunk *_bc):
+        struct bytes_chunk *_bc,
+        struct partial_read *_pr = nullptr):
         task(_task),
-        bc(_bc)
+        bc(_bc),
+        pr(_pr)
     {
         assert(task->magic == RPC_TASK_MAGIC);
         assert(bc->length > 0 && bc->length <= AZNFSC_MAX_CHUNK_SIZE);
@@ -1228,31 +1248,107 @@ static void read_callback(
     auto res = (READ3res*)data;
     const int status = (task->status(rpc_status, NFS_STATUS(res), &errstr));
     auto ino = task->rpc_api.read_task.get_inode();
-    auto filecache_handle =
-        task->get_client()->get_nfs_inode_from_ino(ino)->filecache_handle;
+    struct nfs_inode *inode = task->get_client()->get_nfs_inode_from_ino(ino);
+    auto filecache_handle = inode->filecache_handle;
 
-    AZLogDebug("[{}] read_callback: Bytes read: {} eof: {}, "
-               "requested_bytes: {} off: {}",
-               ino,
-               res->READ3res_u.resok.count, res->READ3res_u.resok.eof,
-               bc->length,
-               bc->offset);
+    struct partial_read *pr = ctx->pr;
+    if (pr == nullptr)
+    {
+        AZLogDebug("[{}] read_callback: Bytes read: {} eof: {}, "
+                "requested_bytes: {} off: {}",
+                ino,
+                res->READ3res_u.resok.count, res->READ3res_u.resok.eof,
+                bc->length,
+                bc->offset);
+
+        // For a fresh read, there should be no data read.
+        assert(bc->pvt == 0);
+    }
+    else
+    {
+        AZLogDebug("[{}] read_callback: Partial read. Bytes read: {} eof: {}, "
+                "requested_bytes: {} off: {}, partial_requested_bytes {} partial off: {}",
+                ino,
+                res->READ3res_u.resok.count,
+                res->READ3res_u.resok.eof,
+                bc->length,
+                bc->offset,
+                pr->length,
+                pr->offset);
+
+        // We should never get more data than what we requested.
+        assert(res->READ3res_u.resok.count <= pr->length);
+
+        assert(pr->length <= bc->length);
+        assert(pr->offset >= bc->offset);
+
+        delete pr;
+    }
 
     // We should never get more data than what we requested.
     assert(res->READ3res_u.resok.count <= bc->length);
 
     // Save actual bytes read in pvt.
-    bc->pvt = res->READ3res_u.resok.count;
+    bc->pvt += res->READ3res_u.resok.count;
 
     if (status == 0) {
+        if ((bc->length > bc->pvt) && !res->READ3res_u.resok.eof)
+        {
+            // Partial read case.
+            const off_t new_offset = bc->offset + bc->pvt;
+            const size_t new_size = bc->length - bc->pvt;
+            bool rpc_retry = false;
+
+            READ3args new_args;
+            new_args.file = inode->get_fh();
+            new_args.offset = new_offset;
+            new_args.count = new_size;
+
+            // This will be freed in the read_callback.
+            struct partial_read *part_read =
+                new partial_read(new_offset, new_size);
+
+            struct read_context *newctx =
+                new read_context(task, bc, part_read);
+
+            do {
+                /*
+                 * We have identified partial read case where the
+                 * server has returned fewer bytes than requested.
+                 * Fuse cannot accept fewer bytes than requested,
+                 * unless it's an eof or error.
+                 * Hence we will issue read for the remaining.
+                 *
+                 * Note: It is okay to issue a read call directly here
+                 *       as we are holding all the needed locks and refs.
+                 */
+                if (rpc_nfs3_read_task(
+                        task->get_rpc_ctx(),
+                        read_callback,
+                        bc->get_buffer() + new_offset,
+                        new_size,
+                        &new_args,
+                        (void *) newctx) == NULL) {
+                    /*
+                     * This call fails due to internal issues like OOM
+                     * etc and not due to an actual error, hence retry.
+                     */
+                    rpc_retry = true;
+                    }
+                } while (rpc_retry);
+
+            /*
+             * Return from the callback here. The rest of the callback
+             * will be processed once this partial read completes.
+             */
+            return;
+        }
+
         /*
-         * TODO: Handle the case where server returns fewer bytes than
-         *       requested. Fuse cannot accept fewer bytes than requested,
-         *       unless it's an eof or error.
-         *       We will need to issue read for the remaining.
-         *       For now assert so that we know.
+         * We should never return lesser bytes to the fuse than requested,
+         * unless error or eof is encountered after this point.
          */
-        assert((bc->length == res->READ3res_u.resok.count) ||
+        assert((bc->length == bc->pvt) ||
                res->READ3res_u.resok.eof);
 
         if (bc->is_empty && (bc->length == res->READ3res_u.resok.count)) {
@@ -1370,6 +1466,12 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
 
             return;
         }
+
+        /*
+         * Reset this to 0 as the read_callback will set this value
+         * correctly to the bytes read.
+         */
+        bc.pvt = 0;
 
         // Increment the number of reads issued.
         num_ongoing_backend_reads++;
