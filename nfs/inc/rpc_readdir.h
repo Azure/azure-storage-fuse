@@ -153,6 +153,14 @@ public:
         return readdircache_lock;
     }
 
+    /**
+     * Call this to check if the cache is empty.
+     */
+    bool is_empty() const
+    {
+        return dir_entries.empty();
+    }
+
     // This is helpul for asserting.
     size_t get_num_entries() const
     {

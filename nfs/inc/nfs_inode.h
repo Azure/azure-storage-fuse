@@ -102,7 +102,7 @@ struct nfs_inode
 
     /*
      * Cached attributes for this inode and the current value of attribute
-     * cache timeout. attr_timeout_secs will be have a value between
+     * cache timeout. attr_timeout_secs will have a value between
      * [acregmin, acregmax] or [acdirmin, acdirmax], depending on the
      * filetype, and holds the current attribute cache timeout value for
      * this inode, adjusted by exponential backoff and capped by the max
@@ -296,6 +296,20 @@ struct nfs_inode
         // If not set, return the min configured value.
         return (attr_timeout_secs != -1) ? attr_timeout_secs
                                          : get_actimeo_min();
+    }
+
+    /**
+     * Is the inode cache (filecache_handle or dircache_handle) empty?
+     */
+    bool is_cache_empty() const
+    {
+        if (is_regfile()) {
+            return filecache_handle->is_empty();
+        } else if (is_dir()) {
+            return dircache_handle->is_empty();
+        } else {
+            return true;
+        }
     }
 
     /**

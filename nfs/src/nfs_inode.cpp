@@ -222,16 +222,29 @@ int nfs_inode::get_actimeo_max() const
 
 void nfs_inode::revalidate(bool force)
 {
-    const int64_t now_msecs = get_current_msecs();
     /*
-     * If attributes are currently not cached in nfs_inode::attr then
-     * attr_timeout_timestamp will be -1 which will force revalidation.
+     * This is set in the constructor as a newly created nfs_inode always has
+     * attributes cached in nfs_inode::attr.
      */
+    assert(attr_timeout_timestamp != -1);
+
+    const int64_t now_msecs = get_current_msecs();
     const bool revalidate_now = force || (attr_timeout_timestamp < now_msecs);
 
     // Nothing to do, return.
     if (!revalidate_now) {
         AZLogDebug("revalidate_now is false");
+        return;
+    }
+
+    /*
+     * If the cache is empty we can save the GETATTR call below, as we have
+     * nothing to invalidate even if GETATTR response suggests us to. This is
+     * useful for fresh directory enumerations (common when running "find"
+     * command) where these GETATTR RPCs add unwanted delay.
+     */
+    if (is_cache_empty()) {
+        AZLogDebug("revalidate: Skipping as cache is empty!");
         return;
     }
 
