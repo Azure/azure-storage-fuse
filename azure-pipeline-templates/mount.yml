@@ -13,9 +13,6 @@ parameters:
   - name: ro_mount
     type: boolean
     default: false   
-  - name: direct_io
-    type: boolean
-    default: false     
 
 steps:
 

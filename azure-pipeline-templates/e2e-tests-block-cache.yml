@@ -52,14 +52,13 @@ steps:
     displayName: 'Print config file'
 
   # run below step only if direct_io is false
-  - if: eq(parameters.direct_io, false)
+  - ${{ if contains(parameters.direct_io, false) }}:
      - template: 'mount.yml'
         parameters:
           working_dir: $(WORK_DIR)
           mount_dir: ${{ parameters.mount_dir }}
           temp_dir: ${{ parameters.temp_dir }}
           prefix: ${{ parameters.idstring }}
-          direct_io: ${{ parameters.direct_io }}
           mountStep: 
             script: |
               $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) --file-cache-timeout=3200 
@@ -100,7 +99,6 @@ steps:
       temp_dir: ${{ parameters.temp_dir }}
       prefix: ${{ parameters.idstring }}
       ro_mount: true
-      direct_io: ${{ parameters.direct_io }}
       mountStep: 
         script: |
           $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) -o ro
@@ -132,7 +130,6 @@ steps:
       temp_dir: ${{ parameters.temp_dir }}
       prefix: ${{ parameters.idstring }}
       ro_mount: true
-      direct_io: ${{ parameters.direct_io }}      
       mountStep: 
         script: |
           $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR)
@@ -172,7 +169,6 @@ steps:
       temp_dir: ${{ parameters.temp_dir }}
       prefix: ${{ parameters.idstring }}
       ro_mount: true
-      direct_io: ${{ parameters.direct_io }}      
       mountStep: 
         script: |
           $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR)
@@ -225,7 +221,6 @@ steps:
       temp_dir: ${{ parameters.temp_dir }}
       prefix: ${{ parameters.idstring }}
       ro_mount: true
-      direct_io: ${{ parameters.direct_io }}      
       mountStep: 
         script: |
           $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR)
