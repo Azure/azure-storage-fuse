@@ -115,7 +115,8 @@ steps:
 
   - script: |
       echo "----------------------------------------------"
-      ls -l ${{ parameters.mount_dir }}      
+      ls -l ${{ parameters.mount_dir }}/mixedfiles*
+      ls -l ${{ parameters.mount_dir }}/datafiles*
     displayName: 'Print contents of Block-Cache'
 
   - script: |
@@ -189,8 +190,8 @@ steps:
       cat $(WORK_DIR)/md5sum_original_files.txt
       cat $(WORK_DIR)/md5sum_original_files.txt | cut -d " " -f1 > $(WORK_DIR)/md5sum_original_files.txt
       echo "----------------------------------------------"
-      cat $(WORK_DIR)/md5sum_block_cache.txt
-      cat $(WORK_DIR)/md5sum_block_cache.txt | cut -d " " -f1 > $(WORK_DIR)/md5sum_block_cache_direct_io.txt
+      cat $(WORK_DIR)/md5sum_block_cache_direct_io.txt
+      cat $(WORK_DIR)/md5sum_block_cache_direct_io.txt | cut -d " " -f1 > $(WORK_DIR)/md5sum_block_cache_direct_io.txt
       echo "----------------------------------------------"
       diff $(WORK_DIR)/md5sum_original_files.txt $(WORK_DIR)/md5sum_block_cache_direct_io.txt
       if [ $? -ne 0 ]; then
