@@ -325,8 +325,8 @@ func (bc *BlockCache) StatFs() (*syscall.Statfs_t, bool, error) {
 		log.Debug("BlockCache::StatFs : statfs err [%s].", err.Error())
 		return nil, false, err
 	}
-	statfs.Blocks = uint64(maxCacheSize) / uint64(statfs.Frsize)
-	statfs.Bavail = uint64(math.Max(0, available)) / uint64(statfs.Frsize)
+	statfs.Blocks = uint64(maxCacheSize) / uint64(bc.blockSize)
+	statfs.Bavail = uint64(math.Max(0, available)) / uint64(bc.blockSize)
 	statfs.Bfree = statfs.Bavail
 
 	return statfs, true, nil

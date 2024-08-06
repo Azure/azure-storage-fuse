@@ -261,13 +261,13 @@ func (c *FileCache) Configure(_ bool) error {
 	err = syscall.Statfs(c.tmpPath, &stat)
 	if err != nil {
 		log.Err("FileCache::Configure : config error %s [%s]. Assigning a default value of 4GB or if any value is assigned to .disk-size-mb in config.", c.Name(), err.Error())
-		c.maxCacheSize = 4192 * MB
+		c.maxCacheSize = 4192
 	} else {
-		c.maxCacheSize = 0.8 * float64(stat.Bavail) * float64(stat.Bsize)
+		c.maxCacheSize = (0.8 * float64(stat.Bavail) * float64(stat.Bsize)) / (MB)
 	}
 
 	if config.IsSet(compName+".max-size-mb") && conf.MaxSizeMB != 0 {
-		c.maxCacheSize = conf.MaxSizeMB * MB
+		c.maxCacheSize = conf.MaxSizeMB
 	}
 
 	if !isLocalDirEmpty(c.tmpPath) && !c.allowNonEmpty {
@@ -333,7 +333,7 @@ func (c *FileCache) OnConfigChange() {
 	c.cacheTimeout = float64(conf.Timeout)
 	c.policyTrace = conf.EnablePolicyTrace
 	c.offloadIO = conf.OffloadIO
-	c.maxCacheSize = conf.MaxSizeMB * MB
+	c.maxCacheSize = conf.MaxSizeMB
 	c.syncToFlush = conf.SyncToFlush
 	c.syncToDelete = !conf.SyncNoOp
 	_ = c.policy.UpdateConfig(c.GetPolicyConfig(conf))
@@ -344,7 +344,7 @@ func (c *FileCache) StatFs() (*syscall.Statfs_t, bool, error) {
 	// cache_size - used = f_frsize * f_bavail/1024
 	// cache_size - used = vfs.f_bfree * vfs.f_frsize / 1024
 	// if cache size is set to 0 then we have the root mount usage
-	maxCacheSize := c.maxCacheSize
+	maxCacheSize := c.maxCacheSize * MB
 	if maxCacheSize == 0 {
 		return nil, false, nil
 	}

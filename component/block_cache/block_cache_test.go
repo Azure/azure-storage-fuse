@@ -45,12 +45,12 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
-	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/component/loopback"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 
@@ -200,6 +200,31 @@ func (suite *blockCacheTestSuite) TestMemory() {
 	suite.assert.LessOrEqual(difference, tolerance)
 }
 
+func (suite *blockCacheTestSuite) TestStatfsMemory() {
+	emptyConfig := "read-only: true\n\nblock_cache:\n  block-size-mb: 16\n"
+	tobj, err := setupPipeline(emptyConfig)
+	defer tobj.cleanupPipeline()
+
+	suite.assert.Nil(err)
+	suite.assert.Equal(tobj.blockCache.Name(), "block_cache")
+	cmd := exec.Command("bash", "-c", "free -b | grep Mem | awk '{print $4}'")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	err = cmd.Run()
+	suite.assert.Nil(err)
+	free, err := strconv.Atoi(strings.TrimSpace(out.String()))
+	suite.assert.Nil(err)
+	expected := uint64(0.8 * float64(free))
+	stat, ret, err := tobj.blockCache.StatFs()
+	suite.assert.Equal(ret, true)
+	suite.assert.Equal(err, nil)
+	suite.assert.NotEqual(stat, &syscall.Statfs_t{})
+	actual := stat.Bfree
+	difference := math.Abs(float64(actual) - float64(expected))
+	tolerance := 0.10 * float64(math.Max(float64(actual), float64(expected)))
+	suite.assert.LessOrEqual(difference, tolerance)
+}
+
 func (suite *blockCacheTestSuite) TestFreeDiskSpace() {
 	disk_cache_path := getFakeStoragePath("fake_storage")
 	config := fmt.Sprintf("read-only: true\n\nblock_cache:\n  block-size-mb: 1\n  path: %s", disk_cache_path)
@@ -221,6 +246,18 @@ func (suite *blockCacheTestSuite) TestFreeDiskSpace() {
 	difference := math.Abs(float64(actual) - float64(expected))
 	tolerance := 0.10 * float64(math.Max(float64(actual), float64(expected)))
 	suite.assert.LessOrEqual(difference, tolerance)
+}
+
+func (suite *blockCacheTestSuite) TestStatfsDisk() {
+	disk_cache_path := getFakeStoragePath("fake_storage")
+	config := fmt.Sprintf("read-only: true\n\nblock_cache:\n  block-size-mb: 1\n  path: %s", disk_cache_path)
+	tobj, err := setupPipeline(config)
+	defer tobj.cleanupPipeline()
+
+	stat, ret, err := tobj.blockCache.StatFs()
+	suite.assert.Equal(ret, true)
+	suite.assert.Equal(err, nil)
+	suite.assert.NotEqual(stat, &syscall.Statfs_t{})
 }
 
 func (suite *blockCacheTestSuite) TestInvalidPrefetchCount() {
@@ -974,11 +1011,5 @@ func (suite *blockCacheTestSuite) TestZZZZLazyWrite() {
 // In order for 'go test' to run this suite, we need to create
 // a normal test function and pass our suite to suite.Run
 func TestBlockCacheTestSuite(t *testing.T) {
-	bcsuite := new(blockCacheTestSuite)
-	err := log.SetDefaultLogger("silent", common.LogConfig{Level: common.ELogLevel.LOG_DEBUG()})
-	if err != nil {
-		panic("Unable to set silent logger as default.")
-	}
-
-	suite.Run(t, bcsuite)
+	suite.Run(t, new(blockCacheTestSuite))
 }
