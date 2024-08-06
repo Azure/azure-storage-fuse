@@ -1616,6 +1616,8 @@ static void read_callback(
                    bc->offset + bc->length,
                    bc->num_backend_calls_issued,
                    errstr);
+
+        task->get_stats().on_rpc_complete(resp_size);
     }
 
     // Free the context.
@@ -1710,6 +1712,8 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
         args.file = inode->get_fh();
         args.offset = bc.offset;
         args.count = bc.length;
+
+        int req_size = sizeof(args);
 
         /*
          * Now we are going to issue an NFS read that will read the data from
