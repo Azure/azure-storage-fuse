@@ -91,6 +91,7 @@ static void readahead_callback (
     struct rpc_task *task = ctx->task;
     const struct bytes_chunk *bc = &ctx->bc;
     auto res = (READ3res*) data;
+    int resp_size = sizeof(*res);
     const char *errstr = nullptr;
 
     assert(task->magic == RPC_TASK_MAGIC);
@@ -123,6 +124,8 @@ static void readahead_callback (
         // Release the buffer since we did not fill it.
         read_cache->release(bc->offset, bc->length);
 
+        task->get_stats().on_rpc_complete(resp_size);
+
         AZLogWarn("[{}] readahead_callback [FAILED]: "
                   "Requested (off: {}, len: {}): rpc_status={}, "
                   "nfs_status={}, error={}",
@@ -134,6 +137,9 @@ static void readahead_callback (
                   errstr);
         goto delete_ctx;
     }
+
+    resp_size += res->READ3res_u.resok.count;
+    task->get_stats().on_rpc_complete(resp_size);
 
     if (res->READ3res_u.resok.count != bc->length) {
         /*
@@ -338,6 +344,9 @@ int ra_state::issue_readaheads()
                        inode->get_fuse_ino(),
                        args.offset,
                        args.count);
+
+            int req_size = sizeof(args) + args.file.data.data_len;
+            tsk->get_stats().on_rpc_dispatch(req_size);
 
             /*
              * tsk->get_rpc_ctx() call below will round robin readahead

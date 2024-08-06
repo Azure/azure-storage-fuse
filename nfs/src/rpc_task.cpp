@@ -1713,7 +1713,7 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
         args.offset = bc.offset;
         args.count = bc.length;
 
-        int req_size = sizeof(args);
+        int req_size = sizeof(args) + args.file.data.data_len;
 
         /*
          * Now we are going to issue an NFS read that will read the data from
