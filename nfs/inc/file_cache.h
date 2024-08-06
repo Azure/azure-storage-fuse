@@ -467,6 +467,14 @@ public:
     uint64_t pvt = 0;
 
     /*
+     * In case of read(), if the server returns less number of bytes than
+     * requested and eof is not set, we should issue read() again to fetch
+     * the remaining data till we either encounter an error or eof.
+     * This keeps track of number of such partial read calls issued.
+     */
+    int num_of_partial_reads_issued = 0;
+
+    /*
      * is_empty indicates whether buffer contains valid data. It's meaningful
      * when bytes_chunk are returned by a call to bytes_chunk_cache::get(),
      * and not for bytes_chunk stored in bytes_chunk_cache::chunkmap.

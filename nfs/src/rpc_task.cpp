@@ -1184,36 +1184,16 @@ void rpc_task::send_read_response()
     }
 }
 
-/*
- * This structure is used for the partial read case when
- * the server returns fewer bytes than requested even when
- * eof is false.
- * TODO: This is mostly used for asserts. See if this is needed.
- */
-struct partial_read
-{
-    const uint64_t offset;
-    const uint64_t length;
-
-    partial_read(const uint64_t _offset, const uint64_t _length):
-        offset(_offset),
-        length(_length)
-    {}
-};
-
 struct read_context
 {
     rpc_task *task;
     struct bytes_chunk *bc;
-    struct partial_read *pr;
 
     read_context(
         rpc_task *_task,
-        struct bytes_chunk *_bc,
-        struct partial_read *_pr = nullptr):
+        struct bytes_chunk *_bc):
         task(_task),
-        bc(_bc),
-        pr(_pr)
+        bc(_bc)
     {
         assert(task->magic == RPC_TASK_MAGIC);
         assert(bc->length > 0 && bc->length <= AZNFSC_MAX_CHUNK_SIZE);
@@ -1251,36 +1231,34 @@ static void read_callback(
     struct nfs_inode *inode = task->get_client()->get_nfs_inode_from_ino(ino);
     auto filecache_handle = inode->filecache_handle;
 
-    struct partial_read *pr = ctx->pr;
-    if (pr == nullptr) {
+    if (bc->num_of_partial_reads_issued > 0)
+    {
+        AZLogDebug("[{}] read_callback: Partial read at offset: {} size: {}"
+            " Bytes read: {} eof: {}, requested_offset: {} requested_size: {}"
+            " num_of_partial_reads_issued: {}",
+            ino,
+            bc->offset + bc->pvt,
+            bc->length - bc->pvt,
+            res->READ3res_u.resok.count,
+            res->READ3res_u.resok.eof,
+            bc->offset,
+            bc->length,
+            bc->num_of_partial_reads_issued);
+
+        // We should never get more data than what we requested.
+        assert(res->READ3res_u.resok.count <= (bc->length - bc->pvt));
+    }
+    else
+    {
         AZLogDebug("[{}] read_callback: Bytes read: {} eof: {}, "
-                "requested_bytes: {} off: {}",
-                ino,
-                res->READ3res_u.resok.count, res->READ3res_u.resok.eof,
-                bc->length,
-                bc->offset);
+            "requested_bytes: {} off: {}",
+            ino,
+            res->READ3res_u.resok.count, res->READ3res_u.resok.eof,
+            bc->length,
+            bc->offset);
 
         // For a fresh read, there should be no data read.
         assert(bc->pvt == 0);
-    }
-    else {
-        AZLogDebug("[{}] read_callback: Partial read. Bytes read: {} eof: {}, "
-                "requested_bytes: {} off: {}, partial_requested_bytes {} partial off: {}",
-                ino,
-                res->READ3res_u.resok.count,
-                res->READ3res_u.resok.eof,
-                bc->length,
-                bc->offset,
-                pr->length,
-                pr->offset);
-
-        // We should never get more data than what we requested.
-        assert(res->READ3res_u.resok.count <= pr->length);
-
-        assert(pr->length <= bc->length);
-        assert(pr->offset >= bc->offset);
-
-        delete pr;
     }
 
     // We should never get more data than what we requested.
@@ -1290,8 +1268,10 @@ static void read_callback(
     bc->pvt += res->READ3res_u.resok.count;
 
     if (status == 0) {
-        if ((bc->length > bc->pvt) && !res->READ3res_u.resok.eof) {
-            // Partial read case.
+        const bool is_partial_read = (bc->length > bc->pvt) &&
+            !res->READ3res_u.resok.eof;
+
+        if (is_partial_read) {
             const off_t new_offset = bc->offset + bc->pvt;
             const size_t new_size = bc->length - bc->pvt;
             bool rpc_retry = false;
@@ -1301,12 +1281,16 @@ static void read_callback(
             new_args.offset = new_offset;
             new_args.count = new_size;
 
-            // This will be freed in the read_callback.
-            struct partial_read *part_read =
-                new partial_read(new_offset, new_size);
+            struct read_context *newctx =new read_context(task, bc);
+            bc->num_of_partial_reads_issued++;
 
-            struct read_context *newctx =
-                new read_context(task, bc, part_read);
+            AZLogDebug("[{}] Issuing partial read at offset: {} size: {}"
+                " requested_offset: {} requested_size: {}",
+                ino,
+                new_offset,
+                new_size,
+                bc->offset,
+                bc->length);
 
             do {
                 /*
