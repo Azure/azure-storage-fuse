@@ -670,15 +670,18 @@ func (bc *BlockCache) startPrefetch(handle *handlemap.Handle, index uint64, pref
 				block := handle.Buffers.Cooking.Remove(node).(*Block)
 				block.node = nil
 				i++
-
+				//This list may contain dirty blocks which are yet to be committed.
 				select {
-				case <-block.state:
+				case _, ok := <-block.state:
 					// As we are first reader of this block here its important to unblock any future readers on this block
-					block.flags.Clear(BlockFlagDownloading)
-					block.Unblock()
-
-					// Block is downloaded so it's safe to ready it for reuse
-					block.node = handle.Buffers.Cooked.PushBack(block)
+					if ok {
+						block.flags.Clear(BlockFlagDownloading)
+						block.Unblock()
+						// Block is downloaded so it's safe to ready it for reuse
+						block.node = handle.Buffers.Cooked.PushBack(block)
+					} else {
+						block.node = handle.Buffers.Cooking.PushBack(block)
+					}
 
 				default:
 					// Block is still under download so can not reuse this
@@ -1218,6 +1221,8 @@ func (bc *BlockCache) waitAndFreeUploadedBlocks(handle *handlemap.Handle, cnt in
 				block.Unblock()
 			}
 			block.flags.Clear(BlockFlagUploading)
+		} else {
+			block.Unblock()
 		}
 
 		if block.IsFailed() {
