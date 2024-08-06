@@ -1029,18 +1029,22 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 		block.offset = index * bc.blockSize
 
 		if block.offset < uint64(handle.Size) {
-			// TODO: add case for committing the dirty blocks and download the given block
 			shouldCommit, shouldDownload := shouldCommitAndDownload(block.id, handle)
 
 			// if a block has been staged and deleted from the buffer list, then we should commit the existing blocks
-			// TODO: commit the dirty blocks and download the given block
+			// commit the dirty blocks and download the given block
 			if shouldCommit {
-				log.Err("BlockCache::getOrCreateBlock : Fetching an uncommitted block %v for %v=>%s", block.id, handle.ID, handle.Path)
-				return nil, fmt.Errorf("fetching an uncommitted block %v for %v=>%s", block.id, handle.ID, handle.Path)
+				log.Debug("BlockCache::getOrCreateBlock : Fetching an uncommitted block %v, so committing all the staged blocks for %v=>%s", block.id, handle.ID, handle.Path)
+				err = bc.commitBlocks(handle)
+				if err != nil {
+					log.Err("BlockCache::getOrCreateBlock : Failed to commit blocks for %v=>%s [%s]", handle.ID, handle.Path, err.Error())
+					return nil, err
+				}
 			}
 
 			// download the block if,
-			//    - it was already committed
+			//    - it was already committed, or
+			//    - it was committed by the above commit blocks operation
 			if shouldDownload {
 				// We are writing somewhere in between so just fetch this block
 				log.Debug("BlockCache::getOrCreateBlock : Downloading block %v for %v=>%v", block.id, handle.ID, handle.Path)
