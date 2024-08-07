@@ -467,12 +467,12 @@ public:
     uint64_t pvt = 0;
 
     /*
-     * In case of read(), if the server returns less number of bytes than
-     * requested and eof is not set, we should issue read() again to fetch
-     * the remaining data till we either encounter an error or eof.
-     * This keeps track of number of such partial read calls issued.
+     * Number of backend calls issued to sync this bhyte chunk with the backing blob.
+     * It could be a read call to read data from the blob or it could be a write call
+     * to sync the dirty byte chunk to the blob.
+     * Note: Value greater than 1 singnifies a partial read/write call.
      */
-    int num_of_partial_reads_issued = 0;
+    int num_backend_calls_issued = 0;
 
     /*
      * is_empty indicates whether buffer contains valid data. It's meaningful

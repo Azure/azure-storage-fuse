@@ -1221,55 +1221,40 @@ static void read_callback(
     struct bytes_chunk *bc = ctx->bc;
     assert(bc->length > 0);
 
-    // Free the context.
-    delete ctx;
-
     const char* errstr;
     auto res = (READ3res*)data;
     const int status = (task->status(rpc_status, NFS_STATUS(res), &errstr));
     auto ino = task->rpc_api.read_task.get_inode();
     struct nfs_inode *inode = task->get_client()->get_nfs_inode_from_ino(ino);
     auto filecache_handle = inode->filecache_handle;
-
-    if (bc->num_of_partial_reads_issued > 0)
-    {
-        AZLogDebug("[{}] read_callback: Partial read at offset: {} size: {}"
-            " Bytes read: {} eof: {}, requested_offset: {} requested_size: {}"
-            " num_of_partial_reads_issued: {}",
-            ino,
-            bc->offset + bc->pvt,
-            bc->length - bc->pvt,
-            res->READ3res_u.resok.count,
-            res->READ3res_u.resok.eof,
-            bc->offset,
-            bc->length,
-            bc->num_of_partial_reads_issued);
-
-        // We should never get more data than what we requested.
-        assert(res->READ3res_u.resok.count <= (bc->length - bc->pvt));
-    }
-    else
-    {
-        AZLogDebug("[{}] read_callback: Bytes read: {} eof: {}, "
-            "requested_bytes: {} off: {}",
-            ino,
-            res->READ3res_u.resok.count, res->READ3res_u.resok.eof,
-            bc->length,
-            bc->offset);
-
-        // For a fresh read, there should be no data read.
-        assert(bc->pvt == 0);
-    }
-
-    // We should never get more data than what we requested.
-    assert(res->READ3res_u.resok.count <= bc->length);
-
-    // Save actual bytes read in pvt.
-    bc->pvt += res->READ3res_u.resok.count;
+    const uint64_t issued_offset = bc->offset + bc->pvt;
+    const uint64_t issued_length = bc->length - bc->pvt;
 
     if (status == 0) {
-        const bool is_partial_read = (bc->length > bc->pvt) &&
-            !res->READ3res_u.resok.eof;
+        assert((bc->pvt == 0) || (bc->num_backend_calls_issued > 1));
+
+        // We should never get more data than what we requested.
+        assert(res->READ3res_u.resok.count <= issued_length);
+
+        const bool is_partial_read = !res->READ3res_u.resok.eof &&
+            (res->READ3res_u.resok.count < issued_length);
+
+        // Save actual bytes read in pvt.
+        bc->pvt += res->READ3res_u.resok.count;
+
+        AZLogDebug("[{}] read_callback: {}Read completed for offset: {} size: {}"
+            " Bytes read: {} eof: {}, total bytes read till now: {} of [{}, {})"
+            " num_backend_calls_issued: {}",
+            ino,
+            is_partial_read ? "Partial " : "",
+            issued_offset,
+            issued_length,
+            res->READ3res_u.resok.count,
+            res->READ3res_u.resok.eof,
+            bc->pvt,
+            bc->offset,
+            bc->offset + bc->length,
+            bc->num_backend_calls_issued);
 
         if (is_partial_read) {
             const off_t new_offset = bc->offset + bc->pvt;
@@ -1281,16 +1266,15 @@ static void read_callback(
             new_args.offset = new_offset;
             new_args.count = new_size;
 
-            struct read_context *newctx =new read_context(task, bc);
-            bc->num_of_partial_reads_issued++;
+            bc->num_backend_calls_issued++;
 
             AZLogDebug("[{}] Issuing partial read at offset: {} size: {}"
-                " requested_offset: {} requested_size: {}",
+                " of [{}, {})",
                 ino,
                 new_offset,
                 new_size,
                 bc->offset,
-                bc->length);
+                bc->offset + bc->length);
 
             do {
                 /*
@@ -1309,7 +1293,7 @@ static void read_callback(
                         bc->get_buffer() + new_offset,
                         new_size,
                         &new_args,
-                        (void *) newctx) == NULL) {
+                        (void *) ctx) == NULL) {
                     /*
                      * This call fails due to internal issues like OOM
                      * etc and not due to an actual error, hence retry.
@@ -1329,10 +1313,9 @@ static void read_callback(
          * We should never return lesser bytes to the fuse than requested,
          * unless error or eof is encountered after this point.
          */
-        assert((bc->length == bc->pvt) ||
-               res->READ3res_u.resok.eof);
+        assert((bc->length == bc->pvt) || res->READ3res_u.resok.eof);
 
-        if (bc->is_empty && (bc->length == res->READ3res_u.resok.count)) {
+        if (bc->is_empty && (bc->length == bc->pvt)) {
             /*
              * Only the first read which got hold of the complete membuf
              * will have this byte_chunk set to empty.
@@ -1346,16 +1329,27 @@ static void read_callback(
                        task->rpc_api.read_task.get_size());
 
             bc->get_membuf()->set_uptodate();
+        } else {
+            if (bc->is_empty && (bc->length > bc->pvt) && res->READ3res_u.resok.eof) {
+                filecache_handle->release(bc->pvt, (bc->length - bc->pvt));
+            }
         }
     } else {
-        assert(res->READ3res_u.resok.count == 0);
-
-        AZLogError("[{}] Read failed. offset: {} size: {}: {}",
-                   ino,
-                   bc->offset,
-                   bc->length,
-                   errstr);
+        AZLogError("[{}] Read failed for offset: {} size: {} "
+            "total bytes read till now: {} of [{}, {}) num_backend_calls_issued: {} "
+            "error: {}",
+            ino,
+            issued_offset,
+            issued_length,
+            bc->pvt,
+            bc->offset,
+            bc->offset + bc->length,
+            bc->num_backend_calls_issued,
+            errstr);
     }
+
+    // Free the context.
+    delete ctx;
 
     /*
      * Release the lock that we held on the membuf since the data is now
@@ -1456,6 +1450,9 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
 
         // Increment the number of reads issued.
         num_ongoing_backend_reads++;
+
+        assert(bc.num_backend_calls_issued == 0);
+        bc.num_backend_calls_issued++;
 
         AZLogDebug("Issuing read to backend at offset: {} length: {}",
                    args.offset,
