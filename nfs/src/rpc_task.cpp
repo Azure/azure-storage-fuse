@@ -1221,41 +1221,101 @@ static void read_callback(
     struct bytes_chunk *bc = ctx->bc;
     assert(bc->length > 0);
 
-    // Free the context.
-    delete ctx;
-
     const char* errstr;
     auto res = (READ3res*)data;
     const int status = (task->status(rpc_status, NFS_STATUS(res), &errstr));
     auto ino = task->rpc_api.read_task.get_inode();
-    auto filecache_handle =
-        task->get_client()->get_nfs_inode_from_ino(ino)->filecache_handle;
-
-    AZLogDebug("[{}] read_callback: Bytes read: {} eof: {}, "
-               "requested_bytes: {} off: {}",
-               ino,
-               res->READ3res_u.resok.count, res->READ3res_u.resok.eof,
-               bc->length,
-               bc->offset);
-
-    // We should never get more data than what we requested.
-    assert(res->READ3res_u.resok.count <= bc->length);
-
-    // Save actual bytes read in pvt.
-    bc->pvt = res->READ3res_u.resok.count;
+    struct nfs_inode *inode = task->get_client()->get_nfs_inode_from_ino(ino);
+    auto filecache_handle = inode->filecache_handle;
+    const uint64_t issued_offset = bc->offset + bc->pvt;
+    const uint64_t issued_length = bc->length - bc->pvt;
 
     if (status == 0) {
-        /*
-         * TODO: Handle the case where server returns fewer bytes than
-         *       requested. Fuse cannot accept fewer bytes than requested,
-         *       unless it's an eof or error.
-         *       We will need to issue read for the remaining.
-         *       For now assert so that we know.
-         */
-        assert((bc->length == res->READ3res_u.resok.count) ||
-               res->READ3res_u.resok.eof);
+        assert((bc->pvt == 0) || (bc->num_backend_calls_issued > 1));
 
-        if (bc->is_empty && (bc->length == res->READ3res_u.resok.count)) {
+        // We should never get more data than what we requested.
+        assert(res->READ3res_u.resok.count <= issued_length);
+
+        const bool is_partial_read = !res->READ3res_u.resok.eof &&
+            (res->READ3res_u.resok.count < issued_length);
+
+        // Save actual bytes read in pvt.
+        bc->pvt += res->READ3res_u.resok.count;
+
+        AZLogDebug("[{}] read_callback: {}Read completed for offset: {} size: {}"
+            " Bytes read: {} eof: {}, total bytes read till now: {} of [{}, {})"
+            " num_backend_calls_issued: {}",
+            ino,
+            is_partial_read ? "Partial " : "",
+            issued_offset,
+            issued_length,
+            res->READ3res_u.resok.count,
+            res->READ3res_u.resok.eof,
+            bc->pvt,
+            bc->offset,
+            bc->offset + bc->length,
+            bc->num_backend_calls_issued);
+
+        if (is_partial_read) {
+            const off_t new_offset = bc->offset + bc->pvt;
+            const size_t new_size = bc->length - bc->pvt;
+            bool rpc_retry = false;
+
+            READ3args new_args;
+            new_args.file = inode->get_fh();
+            new_args.offset = new_offset;
+            new_args.count = new_size;
+
+            bc->num_backend_calls_issued++;
+
+            AZLogDebug("[{}] Issuing partial read at offset: {} size: {}"
+                " of [{}, {})",
+                ino,
+                new_offset,
+                new_size,
+                bc->offset,
+                bc->offset + bc->length);
+
+            do {
+                /*
+                 * We have identified partial read case where the
+                 * server has returned fewer bytes than requested.
+                 * Fuse cannot accept fewer bytes than requested,
+                 * unless it's an eof or error.
+                 * Hence we will issue read for the remaining.
+                 *
+                 * Note: It is okay to issue a read call directly here
+                 *       as we are holding all the needed locks and refs.
+                 */
+                if (rpc_nfs3_read_task(
+                        task->get_rpc_ctx(),
+                        read_callback,
+                        bc->get_buffer() + new_offset,
+                        new_size,
+                        &new_args,
+                        (void *) ctx) == NULL) {
+                    /*
+                     * This call fails due to internal issues like OOM
+                     * etc and not due to an actual error, hence retry.
+                     */
+                    rpc_retry = true;
+                    }
+                } while (rpc_retry);
+
+            /*
+             * Return from the callback here. The rest of the callback
+             * will be processed once this partial read completes.
+             */
+            return;
+        }
+
+        /*
+         * We should never return lesser bytes to the fuse than requested,
+         * unless error or eof is encountered after this point.
+         */
+        assert((bc->length == bc->pvt) || res->READ3res_u.resok.eof);
+
+        if (bc->is_empty && (bc->length == bc->pvt)) {
             /*
              * Only the first read which got hold of the complete membuf
              * will have this byte_chunk set to empty.
@@ -1269,16 +1329,27 @@ static void read_callback(
                        task->rpc_api.read_task.get_size());
 
             bc->get_membuf()->set_uptodate();
+        } else {
+            if (bc->is_empty && (bc->length > bc->pvt) && res->READ3res_u.resok.eof) {
+                filecache_handle->release(bc->pvt, (bc->length - bc->pvt));
+            }
         }
     } else {
-        assert(res->READ3res_u.resok.count == 0);
-
-        AZLogError("[{}] Read failed. offset: {} size: {}: {}",
-                   ino,
-                   bc->offset,
-                   bc->length,
-                   errstr);
+        AZLogError("[{}] Read failed for offset: {} size: {} "
+            "total bytes read till now: {} of [{}, {}) num_backend_calls_issued: {} "
+            "error: {}",
+            ino,
+            issued_offset,
+            issued_length,
+            bc->pvt,
+            bc->offset,
+            bc->offset + bc->length,
+            bc->num_backend_calls_issued,
+            errstr);
     }
+
+    // Free the context.
+    delete ctx;
 
     /*
      * Release the lock that we held on the membuf since the data is now
@@ -1371,8 +1442,17 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
             return;
         }
 
+        /*
+         * Reset this to 0 as the read_callback will set this value
+         * correctly to the bytes read.
+         */
+        bc.pvt = 0;
+
         // Increment the number of reads issued.
         num_ongoing_backend_reads++;
+
+        assert(bc.num_backend_calls_issued == 0);
+        bc.num_backend_calls_issued++;
 
         AZLogDebug("Issuing read to backend at offset: {} length: {}",
                    args.offset,

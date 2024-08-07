@@ -467,6 +467,14 @@ public:
     uint64_t pvt = 0;
 
     /*
+     * Number of backend calls issued to sync this bhyte chunk with the backing blob.
+     * It could be a read call to read data from the blob or it could be a write call
+     * to sync the dirty byte chunk to the blob.
+     * Note: Value greater than 1 singnifies a partial read/write call.
+     */
+    int num_backend_calls_issued = 0;
+
+    /*
      * is_empty indicates whether buffer contains valid data. It's meaningful
      * when bytes_chunk are returned by a call to bytes_chunk_cache::get(),
      * and not for bytes_chunk stored in bytes_chunk_cache::chunkmap.
