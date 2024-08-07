@@ -467,10 +467,11 @@ public:
     uint64_t pvt = 0;
 
     /*
-     * Number of backend calls issued to sync this bhyte chunk with the backing blob.
-     * It could be a read call to read data from the blob or it could be a write call
-     * to sync the dirty byte chunk to the blob.
-     * Note: Value greater than 1 singnifies a partial read/write call.
+     * Number of backend calls issued to sync this byte chunk with the backing
+     * blob. It could be read call(s) to read data from the blob or it could be
+     * write call(s) to sync dirty byte chunk.
+     *
+     * Note: Values greater than 1 signify partial read/write calls.
      */
     int num_backend_calls_issued = 0;
 

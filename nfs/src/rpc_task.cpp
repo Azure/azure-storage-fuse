@@ -1216,15 +1216,21 @@ static void read_callback(
     rpc_task *task = ctx->task;
 
     assert(task->magic == RPC_TASK_MAGIC);
-    assert (task->num_ongoing_backend_reads > 0);
+    assert(task->num_ongoing_backend_reads > 0);
 
     struct bytes_chunk *bc = ctx->bc;
     assert(bc->length > 0);
 
+    /*
+     * If we have already finished reading the entire bytes_chunk, why are we
+     * here.
+     */
+    assert(bc->pvt < bc->length);
+
     const char* errstr;
     auto res = (READ3res*)data;
     const int status = (task->status(rpc_status, NFS_STATUS(res), &errstr));
-    auto ino = task->rpc_api.read_task.get_inode();
+    fuse_ino_t ino = task->rpc_api.read_task.get_inode();
     struct nfs_inode *inode = task->get_client()->get_nfs_inode_from_ino(ino);
     auto filecache_handle = inode->filecache_handle;
     const uint64_t issued_offset = bc->offset + bc->pvt;
@@ -1239,23 +1245,28 @@ static void read_callback(
         const bool is_partial_read = !res->READ3res_u.resok.eof &&
             (res->READ3res_u.resok.count < issued_length);
 
-        // Save actual bytes read in pvt.
+        // Update bc->pvt with fresh bytes read in this call.
         bc->pvt += res->READ3res_u.resok.count;
+        assert(bc->pvt <= bc->length);
 
-        AZLogDebug("[{}] read_callback: {}Read completed for offset: {} size: {}"
-            " Bytes read: {} eof: {}, total bytes read till now: {} of [{}, {})"
-            " num_backend_calls_issued: {}",
-            ino,
-            is_partial_read ? "Partial " : "",
-            issued_offset,
-            issued_length,
-            res->READ3res_u.resok.count,
-            res->READ3res_u.resok.eof,
-            bc->pvt,
-            bc->offset,
-            bc->offset + bc->length,
-            bc->num_backend_calls_issued);
+        AZLogDebug("[{}] read_callback: {}Read completed for offset: {} "
+                   " size: {} Bytes read: {} eof: {}, total bytes read till "
+                   "now: {} of {} for [{}, {}) num_backend_calls_issued: {}",
+                   ino,
+                   is_partial_read ? "Partial " : "",
+                   issued_offset,
+                   issued_length,
+                   res->READ3res_u.resok.count,
+                   res->READ3res_u.resok.eof,
+                   bc->pvt,
+                   bc->length,
+                   bc->offset,
+                   bc->offset + bc->length,
+                   bc->num_backend_calls_issued);
 
+        /*
+         * In case of partial read, issue read for the remaining.
+         */
         if (is_partial_read) {
             const off_t new_offset = bc->offset + bc->pvt;
             const size_t new_size = bc->length - bc->pvt;
@@ -1269,12 +1280,12 @@ static void read_callback(
             bc->num_backend_calls_issued++;
 
             AZLogDebug("[{}] Issuing partial read at offset: {} size: {}"
-                " of [{}, {})",
-                ino,
-                new_offset,
-                new_size,
-                bc->offset,
-                bc->offset + bc->length);
+                       " for [{}, {})",
+                       ino,
+                       new_offset,
+                       new_size,
+                       bc->offset,
+                       bc->offset + bc->length);
 
             do {
                 /*
@@ -1299,8 +1310,8 @@ static void read_callback(
                      * etc and not due to an actual error, hence retry.
                      */
                     rpc_retry = true;
-                    }
-                } while (rpc_retry);
+                }
+            } while (rpc_retry);
 
             /*
              * Return from the callback here. The rest of the callback
@@ -1330,22 +1341,29 @@ static void read_callback(
 
             bc->get_membuf()->set_uptodate();
         } else {
-            if (bc->is_empty && (bc->length > bc->pvt) && res->READ3res_u.resok.eof) {
-                filecache_handle->release(bc->pvt, (bc->length - bc->pvt));
+            /*
+             * If we got eof in a partial read, release the non-existent
+             * portion of the chunk.
+             */
+            if (bc->is_empty && (bc->length > bc->pvt) &&
+                res->READ3res_u.resok.eof) {
+                filecache_handle->release(bc->offset + bc->pvt,
+                                          bc->length - bc->pvt);
             }
         }
     } else {
         AZLogError("[{}] Read failed for offset: {} size: {} "
-            "total bytes read till now: {} of [{}, {}) num_backend_calls_issued: {} "
-            "error: {}",
-            ino,
-            issued_offset,
-            issued_length,
-            bc->pvt,
-            bc->offset,
-            bc->offset + bc->length,
-            bc->num_backend_calls_issued,
-            errstr);
+                   "total bytes read till now: {} of {} for [{}, {}) "
+                   "num_backend_calls_issued: {} error: {}",
+                   ino,
+                   issued_offset,
+                   issued_length,
+                   bc->pvt,
+                   bc->length,
+                   bc->offset,
+                   bc->offset + bc->length,
+                   bc->num_backend_calls_issued,
+                   errstr);
     }
 
     // Free the context.
