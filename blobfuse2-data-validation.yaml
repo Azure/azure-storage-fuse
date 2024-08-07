@@ -76,6 +76,70 @@ stages:
               idstring: 'Block-Cache'
               config_file: $(BLOBFUSE2_CFG)
 
+  - stage: VScodeBuild
+    jobs:
+      # Ubuntu Tests
+      - job: Set_1
+        timeoutInMinutes: 900
+        strategy:
+          matrix:
+            Ubuntu-22:
+              AgentName: 'blobfuse-benchmark-ubn22'
+              containerName: 'test-cnt-ubn-22'
+        pool:
+          name: "blobfuse-perf-pool"
+          demands:
+            - ImageOverride -equals $(AgentName)
+
+        variables:
+          - group: NightlyBlobFuse
+          - name: ROOT_DIR
+            value: "/usr/pipeline/workv2"
+          - name: WORK_DIR
+            value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
+          - name: MOUNT_DIR
+            value: "/usr/pipeline/workv2/blob_mnt"
+          - name: TEMP_DIR
+            value: "/usr/pipeline/workv2/temp"
+          - name: BLOBFUSE2_CFG
+            value: "/usr/pipeline/workv2/blobfuse2.yaml"
+          - name: GOPATH
+            value: "/usr/pipeline/workv2/go"
+
+        steps:
+          - template: 'azure-pipeline-templates/setup.yml'
+            parameters:
+              tags: $(tags)
+              installStep:
+                script: |
+                  sudo apt-get update --fix-missing
+                  sudo apt update
+                  sudo apt-get install cmake gcc libfuse3-dev git parallel -y
+                  sudo apt-get install fuse3 -y
+                displayName: 'Install fuse'
+
+          - script: |
+              git clone https://github.com/microsoft/vscode.git
+            displayName: 'Clone VScode'
+
+          - script: |
+              cd vscode
+              curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+              sudo apt install npm -y
+              sudo apt-get install -y nodejs
+            displayName: 'Install dependencies'
+
+          - script: |
+              npm install -g yarn
+            displayName: 'Install yarn'
+
+          - script: |
+              sudo yarn 
+            displayName: 'Build VScode'
+
+          - script: |
+              yarn compile
+            displayName: 'Compile VScode'
           
 
         
