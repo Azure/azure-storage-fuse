@@ -14,7 +14,7 @@ namespace aznfsc {
  * Since we do not have access to the actual rpc packet at this layer
  * all we can do is to estimate it to the closest value possible based
  * on the defination of the related structures.
- * Note : The size of a pointer is estimated to 8.
+ * Note : The size of a pointer is estimated to 8 bytes.
  */
 const uint64_t rpc_header_request_size_in_bytes = 
     4 /* xid */
@@ -117,7 +117,7 @@ public:
     void on_rpc_dispatch(uint64_t _req_size)
     {
         assert(_req_size > 0);
-        req_size = _req_size  + rpc_header_request_size_in_bytes;
+        req_size = _req_size + rpc_header_request_size_in_bytes;
         stamp.dispatch = get_current_usecs();
         assert(stamp.dispatch >= stamp.create);
     }
