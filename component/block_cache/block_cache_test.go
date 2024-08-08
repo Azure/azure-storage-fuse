@@ -910,8 +910,7 @@ func (suite *blockCacheTestSuite) TestWriteFileMultiBlock() {
 }
 
 func (suite *blockCacheTestSuite) TestWriteFileMultiBlockWithOverwrite() {
-	cfg := "block_cache:\n  block-size-mb: 1\n  mem-size-mb: 20\n  prefetch: 12\n  parallelism: 10\n  enable-random-write: true"
-	tobj, err := setupPipeline(cfg)
+	tobj, err := setupPipeline("")
 	defer tobj.cleanupPipeline()
 
 	suite.assert.Nil(err)
@@ -962,8 +961,7 @@ func (suite *blockCacheTestSuite) TestWriteFileMultiBlockWithOverwrite() {
 }
 
 func (suite *blockCacheTestSuite) TestWritefileWithAppend() {
-	cfg := "block_cache:\n  block-size-mb: 1\n  mem-size-mb: 20\n  prefetch: 12\n  parallelism: 10\n  enable-random-write: true"
-	tobj, err := setupPipeline(cfg)
+	tobj, err := setupPipeline("")
 	defer tobj.cleanupPipeline()
 
 	suite.assert.Nil(err)
@@ -1514,7 +1512,7 @@ func (suite *blockCacheTestSuite) TestRandomWriteFileOneBlock() {
 }
 
 func (suite *blockCacheTestSuite) TestRandomWriteFlushAndOverwrite() {
-	cfg := "block_cache:\n  block-size-mb: 1\n  mem-size-mb: 20\n  prefetch: 12\n  parallelism: 10\n  enable-random-write: true"
+	cfg := "block_cache:\n  block-size-mb: 1\n  mem-size-mb: 20\n  prefetch: 12\n  parallelism: 10"
 	tobj, err := setupPipeline(cfg)
 	defer tobj.cleanupPipeline()
 
@@ -2055,7 +2053,7 @@ func (suite *blockCacheTestSuite) TestBlockParallelReadAndWriteValidation() {
 }
 
 func (suite *blockCacheTestSuite) TestBlockOverwriteValidation() {
-	cfg := "block_cache:\n  block-size-mb: 1\n  mem-size-mb: 20\n  prefetch: 12\n  parallelism: 10\n  enable-random-write: true"
+	cfg := "block_cache:\n  block-size-mb: 1\n  mem-size-mb: 20\n  prefetch: 12\n  parallelism: 10"
 	tobj, err := setupPipeline(cfg)
 	defer tobj.cleanupPipeline()
 
@@ -2152,7 +2150,7 @@ func (suite *blockCacheTestSuite) TestBlockOverwriteValidation() {
 }
 
 func (suite *blockCacheTestSuite) TestBlockFailOverwrite() {
-	cfg := "block_cache:\n  block-size-mb: 1\n  mem-size-mb: 20\n  prefetch: 12\n  parallelism: 10\n  enable-random-write: true"
+	cfg := "block_cache:\n  block-size-mb: 1\n  mem-size-mb: 20\n  prefetch: 12\n  parallelism: 10"
 	tobj, err := setupPipeline(cfg)
 	defer tobj.cleanupPipeline()
 

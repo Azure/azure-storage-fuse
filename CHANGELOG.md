@@ -1,3 +1,8 @@
+## 2.3.2 (Unreleased)
+
+**Bug Fixes**
+- Random write has been re-enabled in block cache.
+
 ## 2.3.1 (Unreleased)
 **NOTICE**
 - Due to data integrity issues, random write operations has been disabled in block cache. Refer [#1484](https://github.com/Azure/azure-storage-fuse/pull/1484) for blocked scenarios.
