@@ -70,6 +70,8 @@ const (
 	FuseAllowedFlags = "invalid FUSE options. Allowed FUSE configurations are: `-o attr_timeout=TIMEOUT`, `-o negative_timeout=TIMEOUT`, `-o entry_timeout=TIMEOUT` `-o allow_other`, `-o allow_root`, `-o umask=PERMISSIONS -o default_permissions`, `-o ro`"
 
 	UserAgentHeader = "User-Agent"
+
+	BlockCacheRWErrMsg = "Due to data integrity issues, your random write flow using block cache is blocked. Please reach out to blobfusedev@microsoft.com or create a GitHub issue if you hit this issue. We are working on fixing this and enabling it back. For more details, refer https://aka.ms/blobfuse2warnings."
 )
 
 func FuseIgnoredFlags() []string {

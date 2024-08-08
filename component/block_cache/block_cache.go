@@ -1008,8 +1008,8 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 		// block not present in the buffer list
 		// check if it is a random write case and should be blocked
 		if bc.blockRandomWrite(handle, index) {
-			log.Err("BlockCache::WriteFile : Random write detection for write offset %v and block %v, where handle size is %v", offset, index, handle.Size)
-			return nil, fmt.Errorf("blocking random write for write offset %v and block %v where handle size is %v", offset, index, handle.Size)
+			log.Err("BlockCache::WriteFile : Random write detection for write offset %v and block %v, where handle size is %v\n%v", offset, index, handle.Size, common.BlockCacheRWErrMsg)
+			return nil, fmt.Errorf("blocking random write for write offset %v and block %v where handle size is %v\n%v", offset, index, handle.Size, common.BlockCacheRWErrMsg)
 		}
 
 		// If too many buffers are piled up for this file then try to evict some of those which are already uploaded
@@ -1035,8 +1035,8 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 			// if a block has been staged and deleted from the buffer list, then we should commit the existing blocks
 			// TODO: commit the dirty blocks and download the given block
 			if shouldCommit {
-				log.Err("BlockCache::getOrCreateBlock : Fetching an uncommitted block %v for %v=>%s", block.id, handle.ID, handle.Path)
-				return nil, fmt.Errorf("fetching an uncommitted block %v for %v=>%s", block.id, handle.ID, handle.Path)
+				log.Err("BlockCache::getOrCreateBlock : Fetching an uncommitted block %v for %v=>%s\n%v", block.id, handle.ID, handle.Path, common.BlockCacheRWErrMsg)
+				return nil, fmt.Errorf("fetching an uncommitted block %v for %v=>%s\n%v", block.id, handle.ID, handle.Path, common.BlockCacheRWErrMsg)
 			}
 
 			// download the block if,
@@ -1411,8 +1411,8 @@ func (bc *BlockCache) getBlockIDList(handle *handlemap.Handle) ([]string, error)
 		if index == offsets[i] {
 			// TODO: when a staged block (not last block) has data less than block size
 			if i != len(offsets)-1 && listMap[offsets[i]].size != bc.blockSize {
-				log.Err("BlockCache::getBlockIDList : Staged block %v has less data %v for %v=>%s", offsets[i], listMap[offsets[i]].size, handle.ID, handle.Path)
-				return nil, fmt.Errorf("staged block %v has less data %v for %v=>%s", offsets[i], listMap[offsets[i]].size, handle.ID, handle.Path)
+				log.Err("BlockCache::getBlockIDList : Staged block %v has less data %v for %v=>%s\n%v", offsets[i], listMap[offsets[i]].size, handle.ID, handle.Path, common.BlockCacheRWErrMsg)
+				return nil, fmt.Errorf("staged block %v has less data %v for %v=>%s\n%v", offsets[i], listMap[offsets[i]].size, handle.ID, handle.Path, common.BlockCacheRWErrMsg)
 			}
 
 			blockIDList = append(blockIDList, listMap[offsets[i]].id)
