@@ -1102,22 +1102,20 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 		} else if block.flags.IsSet(BlockFlagDownloading) {
 			log.Debug("BlockCache::getOrCreateBlock : Waiting for download to finish for committed block %v for %v=>%s", block.id, handle.ID, handle.Path)
 			_, ok := <-block.state
+			block.flags.Clear(BlockFlagDownloading)
 			if ok {
 				block.Unblock()
 			}
-			block.flags.Clear(BlockFlagDownloading)
-
 		} else if block.flags.IsSet(BlockFlagUploading) {
 			// If the block is being staged, then wait till it is uploaded,
 			// and then write to the same block and move it back to cooking queue
 			log.Debug("BlockCache::getOrCreateBlock : Waiting for the block %v to upload for %v=>%s", block.id, handle.ID, handle.Path)
 			_, ok := <-block.state
+			block.flags.Clear(BlockFlagUploading)
+			block.flags.Clear(BlockFlagSynced) //clearing the BlockFlagSynced flag since the block has been staged and will be used again for write
 			if ok {
 				block.Unblock()
 			}
-			block.flags.Clear(BlockFlagUploading)
-			block.flags.Clear(BlockFlagSynced) //clearing the BlockFlagSynced flag since the block has been staged and will be used again for write
-
 			if block.node != nil {
 				_ = handle.Buffers.Cooked.Remove(block.node)
 			}
@@ -1242,10 +1240,10 @@ func (bc *BlockCache) waitAndFreeUploadedBlocks(handle *handlemap.Handle, cnt in
 		if block.id != -1 {
 			// Wait for upload of this block to complete
 			_, ok := <-block.state
+			block.flags.Clear(BlockFlagUploading)
 			if ok {
 				block.Unblock()
 			}
-			block.flags.Clear(BlockFlagUploading)
 		} else {
 			block.Unblock()
 		}
