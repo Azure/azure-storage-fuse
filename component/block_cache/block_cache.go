@@ -1250,9 +1250,8 @@ func (bc *BlockCache) waitAndFreeUploadedBlocks(handle *handlemap.Handle, cnt in
 		}
 		cnt--
 
-		log.Debug("BlockCache::waitAndFreeUploadedBlocks : Block cleanup for block %v=>%s (index %v, offset %v)", handle.ID, handle.Path, block.id, block.offset)
-
 		if wipeoutBlock || block.id == -1 {
+			log.Debug("BlockCache::waitAndFreeUploadedBlocks : Block cleanup for block %v=>%s (index %v, offset %v)", handle.ID, handle.Path, block.id, block.offset)
 			handle.RemoveValue(fmt.Sprintf("%v", block.id))
 			nodeList.Remove(node)
 			block.node = nil
