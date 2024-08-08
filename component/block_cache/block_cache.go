@@ -1051,6 +1051,18 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 
 				// Now wait for download to complete
 				<-block.state
+
+				// if the block failed to download, it can't be used for overwriting
+				if block.IsFailed() {
+					log.Err("BlockCache::getOrCreateBlock : Failed to download block %v for %v=>%s", block.id, handle.ID, handle.Path)
+
+					// Remove this node from handle so that next read retries to download the block again
+					_ = handle.Buffers.Cooking.Remove(block.node)
+					handle.RemoveValue(fmt.Sprintf("%v", block.id))
+					block.ReUse()
+					bc.blockPool.Release(block)
+					return nil, fmt.Errorf("failed to download block")
+				}
 			} else {
 				log.Debug("BlockCache::getOrCreateBlock : push block %v to the cooking list for %v=>%v", block.id, handle.ID, handle.Path)
 				block.node = handle.Buffers.Cooking.PushBack(block)
