@@ -319,7 +319,17 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 	// While reading a file let kernel do readahed for better perf
 	conn.max_readahead = (4 * 1024 * 1024)
 	conn.max_read = (1 * 1024 * 1024)
-	conn.max_write = (1 * 1024 * 1024)
+
+	// RHEL still has 3.3 fuse version and it does not allow max_write beyond 128K
+	// Setting this value to 1 MB will fail the mount.
+	fuse_minor := common.GetFuseMinorVersion()
+	if fuse_minor > 4 {
+		log.Info("Libfuse::libfuse_init : Setting 1MB max_write for fuse minor %v", fuse_minor)
+		conn.max_write = (1 * 1024 * 1024)
+	} else {
+		log.Info("Libfuse::libfuse_init : Ignoring max_write for fuse minor %v", fuse_minor)
+		conn.max_write = (128 * 1024)
+	}
 
 	// direct_io option is used to bypass the kernel cache. It disables the use of
 	// page cache (file content cache) in the kernel for the filesystem.
@@ -635,6 +645,8 @@ func libfuse_create(path *C.char, mode C.mode_t, fi *C.fuse_file_info_t) C.int {
 		log.Err("Libfuse::libfuse_create : Failed to create %s [%s]", name, err.Error())
 		if os.IsExist(err) {
 			return -C.EEXIST
+		} else if os.IsPermission(err) {
+			return -C.EACCES
 		} else {
 			return -C.EIO
 		}
@@ -767,6 +779,7 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.
 
 	offset := uint64(off)
 	data := (*[1 << 30]byte)(unsafe.Pointer(buf))
+	// log.Debug("Libfuse::libfuse_write : Offset %v, Data %v", offset, size)
 	bytesWritten, err := fuseFS.NextComponent().WriteFile(
 		internal.WriteFileOptions{
 			Handle:   handle,

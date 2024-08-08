@@ -47,7 +47,7 @@ import (
 
 // Standard config default values
 const (
-	blobfuse2Version_ = "2.2.1"
+	blobfuse2Version_ = "2.3.1"
 
 	DefaultMaxLogFileSize = 512
 	DefaultLogFileCount   = 10
@@ -68,6 +68,8 @@ const (
 	BfuseStats = "blobfuse_stats"
 
 	FuseAllowedFlags = "invalid FUSE options. Allowed FUSE configurations are: `-o attr_timeout=TIMEOUT`, `-o negative_timeout=TIMEOUT`, `-o entry_timeout=TIMEOUT` `-o allow_other`, `-o allow_root`, `-o umask=PERMISSIONS -o default_permissions`, `-o ro`"
+
+	UserAgentHeader = "User-Agent"
 )
 
 func FuseIgnoredFlags() []string {
@@ -88,6 +90,8 @@ var EnableMonitoring = false
 var BfsDisabled = false
 var TransferPipe = "/tmp/transferPipe"
 var PollingPipe = "/tmp/pollPipe"
+
+var MountPath string
 
 // LogLevel enum
 type LogLevel int

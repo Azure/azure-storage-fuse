@@ -39,10 +39,10 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 
-	"github.com/Azure/azure-storage-blob-go/azblob"
 	"github.com/JeffreyRichter/enum/enum"
 )
 
@@ -69,6 +69,10 @@ func (AuthType) SPN() AuthType {
 
 func (AuthType) MSI() AuthType {
 	return AuthType(4)
+}
+
+func (AuthType) AZCLI() AuthType {
+	return AuthType(5)
 }
 
 func (a AuthType) String() string {
@@ -170,7 +174,6 @@ type AzStorageOptions struct {
 	MaxRetryDelay           int32  `config:"max-retry-delay-sec" yaml:"max-retry-delay-sec,omitempty"`
 	HttpProxyAddress        string `config:"http-proxy" yaml:"http-proxy,omitempty"`
 	HttpsProxyAddress       string `config:"https-proxy" yaml:"https-proxy,omitempty"`
-	SdkTrace                bool   `config:"sdk-trace" yaml:"sdk-trace,omitempty"`
 	FailUnsupportedOp       bool   `config:"fail-unsupported-op" yaml:"fail-unsupported-op,omitempty"`
 	AuthResourceString      string `config:"auth-resource" yaml:"auth-resource,omitempty"`
 	UpdateMD5               bool   `config:"update-md5" yaml:"update-md5"`
@@ -326,8 +329,8 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	}
 
 	if opt.BlockSize != 0 {
-		if opt.BlockSize > azblob.BlockBlobMaxStageBlockBytes {
-			log.Err("ParseAndValidateConfig : Block size is too large. Block size has to be smaller than %s Bytes", azblob.BlockBlobMaxStageBlockBytes)
+		if opt.BlockSize > blockblob.MaxStageBlockBytes {
+			log.Err("ParseAndValidateConfig : Block size is too large. Block size has to be smaller than %s Bytes", blockblob.MaxStageBlockBytes)
 			return errors.New("block size is too large")
 		}
 		az.stConfig.blockSize = opt.BlockSize * 1024 * 1024
@@ -404,11 +407,8 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 			}
 		}
 	}
+	az.stConfig.proxyAddress = formatEndpointProtocol(az.stConfig.proxyAddress, opt.UseHTTP)
 	log.Info("ParseAndValidateConfig : using the following proxy address from the config file: %s", az.stConfig.proxyAddress)
-
-	az.stConfig.sdkTrace = opt.SdkTrace
-
-	log.Info("ParseAndValidateConfig : sdk logging from the config file: %t", az.stConfig.sdkTrace)
 
 	err = ParseAndReadDynamicConfig(az, opt, false)
 	if err != nil {
@@ -463,6 +463,8 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		az.stConfig.authConfig.ClientSecret = opt.ClientSecret
 		az.stConfig.authConfig.TenantID = opt.TenantID
 		az.stConfig.authConfig.OAuthTokenFilePath = opt.OAuthTokenFilePath
+	case EAuthType.AZCLI():
+		az.stConfig.authConfig.AuthMode = EAuthType.AZCLI()
 
 	default:
 		log.Err("ParseAndValidateConfig : Invalid auth mode %s", opt.AuthMode)
@@ -585,9 +587,9 @@ func ParseAndReadDynamicConfig(az *AzStorage, opt AzStorageOptions, reload bool)
 		if reload {
 			log.Info("ParseAndReadDynamicConfig : SAS Key updated")
 
-			if err := az.storage.NewCredentialKey("saskey", az.stConfig.authConfig.SASKey); err != nil {
+			if err := az.storage.UpdateServiceClient("saskey", az.stConfig.authConfig.SASKey); err != nil {
 				az.stConfig.authConfig.SASKey = oldSas
-				_ = az.storage.NewCredentialKey("saskey", az.stConfig.authConfig.SASKey)
+				_ = az.storage.UpdateServiceClient("saskey", az.stConfig.authConfig.SASKey)
 				return errors.New("SAS key update failure")
 			}
 		}

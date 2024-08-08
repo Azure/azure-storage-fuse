@@ -19,9 +19,6 @@ parameters:
   - name: quick_test
     type: boolean
     default: true
-  - name: stream_direct_test
-    type: boolean
-    default: false
   - name: enable_symlink_adls
     type: boolean
     default: false
@@ -69,7 +66,7 @@ steps:
   - task: Go@0
     inputs:
       command: 'test'
-      arguments: '-v -timeout=2h ./... -args -mnt-path=${{ parameters.mount_dir }} -adls=${{parameters.adls}} -clone=${{parameters.clone}} -tmp-path=${{parameters.temp_dir}} -quick-test=${{parameters.quick_test}} -stream-direct-test=${{parameters.stream_direct_test}} -enable-symlink-adls=${{parameters.enable_symlink_adls}} -distro-name="${{parameters.distro_name}}"'
+      arguments: '-v -timeout=2h ./... -args -mnt-path=${{ parameters.mount_dir }} -adls=${{parameters.adls}} -clone=${{parameters.clone}} -tmp-path=${{parameters.temp_dir}} -quick-test=${{parameters.quick_test}} -enable-symlink-adls=${{parameters.enable_symlink_adls}} -distro-name="${{parameters.distro_name}}"'
       workingDirectory: ${{ parameters.working_dir }}/test/e2e_tests
     displayName: 'E2E Test: ${{ parameters.idstring }}'
     timeoutInMinutes: 120

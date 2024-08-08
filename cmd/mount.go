@@ -87,6 +87,7 @@ type mountOptions struct {
 	ProfilerIP        string         `config:"profiler-ip"`
 	MonitorOpt        monitorOptions `config:"health_monitor"`
 	WaitForMount      time.Duration  `config:"wait-for-mount"`
+	LazyWrite         bool           `config:"lazy-write"`
 
 	// v1 support
 	Streaming      bool     `config:"streaming"`
@@ -105,7 +106,32 @@ func (opt *mountOptions) validate(skipNonEmptyMount bool) error {
 	if _, err := os.Stat(opt.MountPath); os.IsNotExist(err) {
 		return fmt.Errorf("mount directory does not exists")
 	} else if common.IsDirectoryMounted(opt.MountPath) {
-		return fmt.Errorf("directory is already mounted")
+		// Try to cleanup the stale mount
+		log.Info("Mount::validate : Mount directory is already mounted, trying to cleanup")
+		active, err := common.IsMountActive(opt.MountPath)
+		if active || err != nil {
+			// Previous mount is still active so we need to fail this mount
+			return fmt.Errorf("directory is already mounted")
+		} else {
+			// Previous mount is in stale state so lets cleanup the state
+			log.Info("Mount::validate : Cleaning up stale mount")
+			if err = unmountBlobfuse2(opt.MountPath); err != nil {
+				return fmt.Errorf("directory is already mounted, unmount manually before remount [%v]", err.Error())
+			}
+
+			// Clean up the file-cache temp directory if any
+			var tempCachePath string
+			_ = config.UnmarshalKey("file_cache.path", &tempCachePath)
+
+			var cleanupOnStart bool
+			_ = config.UnmarshalKey("file_cache.cleanup-on-start", &cleanupOnStart)
+
+			if tempCachePath != "" && !cleanupOnStart {
+				if err = common.TempCacheCleanup(tempCachePath); err != nil {
+					return fmt.Errorf("failed to cleanup file cache [%s]", err.Error())
+				}
+			}
+		}
 	} else if !skipNonEmptyMount && !common.IsDirectoryEmpty(opt.MountPath) {
 		return fmt.Errorf("mount directory is not empty")
 	}
@@ -237,6 +263,8 @@ var mountCmd = &cobra.Command{
 	FlagErrorHandling: cobra.ExitOnError,
 	RunE: func(_ *cobra.Command, args []string) error {
 		options.MountPath = common.ExpandPath(args[0])
+		common.MountPath = options.MountPath
+
 		configFileExists := true
 
 		if options.ConfigFile == "" {
@@ -402,12 +430,18 @@ var mountCmd = &cobra.Command{
 		var pipeline *internal.Pipeline
 
 		log.Crit("Starting Blobfuse2 Mount : %s on [%s]", common.Blobfuse2Version, common.GetCurrentDistro())
+		log.Info("Mount Command: %s", os.Args)
 		log.Crit("Logging level set to : %s", logLevel.String())
 		log.Debug("Mount allowed on nonempty path : %v", options.NonEmpty)
 		pipeline, err = internal.NewPipeline(options.Components, !daemon.WasReborn())
 		if err != nil {
-			log.Err("mount : failed to initialize new pipeline [%v]", err)
-			return Destroy(fmt.Sprintf("failed to initialize new pipeline [%s]", err.Error()))
+			if err.Error() == "Azure CLI not found on path" {
+				log.Err("mount : failed to initialize new pipeline :: To authenticate using MSI with object-ID, ensure Azure CLI is installed. Alternatively, use app/client ID or resource ID for authentication. [%v]", err)
+				return Destroy(fmt.Sprintf("failed to initialize new pipeline :: To authenticate using MSI with object-ID, ensure Azure CLI is installed. Alternatively, use app/client ID or resource ID for authentication. [%s]", err.Error()))
+			} else {
+				log.Err("mount : failed to initialize new pipeline [%v]", err)
+				return Destroy(fmt.Sprintf("failed to initialize new pipeline [%s]", err.Error()))
+			}
 		}
 
 		common.ForegroundMount = options.Foreground
@@ -674,6 +708,9 @@ func init() {
 
 	mountCmd.PersistentFlags().Bool("read-only", false, "Mount the system in read only mode. Default value false.")
 	config.BindPFlag("read-only", mountCmd.PersistentFlags().Lookup("read-only"))
+
+	mountCmd.PersistentFlags().Bool("lazy-write", false, "Async write to storage container after file handle is closed.")
+	config.BindPFlag("lazy-write", mountCmd.PersistentFlags().Lookup("lazy-write"))
 
 	mountCmd.PersistentFlags().String("default-working-dir", "", "Default working directory for storing log files and other blobfuse2 information")
 	mountCmd.PersistentFlags().Lookup("default-working-dir").Hidden = true

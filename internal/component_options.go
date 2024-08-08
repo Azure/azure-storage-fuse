@@ -114,7 +114,7 @@ type WriteFileOptions struct {
 	Handle   *handlemap.Handle
 	Offset   int64
 	Data     []byte
-	Metadata map[string]string
+	Metadata map[string]*string
 }
 
 type GetFileBlockOffsetsOptions struct {
@@ -136,11 +136,12 @@ type CopyToFileOptions struct {
 type CopyFromFileOptions struct {
 	Name     string
 	File     *os.File
-	Metadata map[string]string
+	Metadata map[string]*string
 }
 
 type FlushFileOptions struct {
-	Handle *handlemap.Handle
+	Handle          *handlemap.Handle
+	CloseInProgress bool
 }
 
 type SyncFileOptions struct {
@@ -190,10 +191,9 @@ type ChownOptions struct {
 }
 
 type StageDataOptions struct {
-	Name   string
-	Id     string
-	Offset uint64
-	Data   []byte
+	Name string
+	Id   string
+	Data []byte
 }
 
 type CommitDataOptions struct {

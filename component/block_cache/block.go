@@ -62,6 +62,12 @@ type Block struct {
 	node     *list.Element   // node representation of this block in the list inside handle
 }
 
+type blockInfo struct {
+	id        string // blockID of the block
+	committed bool   // flag to determine if the block has been committed or not
+	size      uint64 // length of data in block
+}
+
 // AllocateBlock creates a new memory mapped buffer for the given size
 func AllocateBlock(size uint64) (*Block, error) {
 	if size == 0 {

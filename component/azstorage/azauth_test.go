@@ -74,6 +74,7 @@ type storageTestConfiguration struct {
 	SpnTenantId     string `json:"spn-tenant"`
 	SpnClientSecret string `json:"spn-secret"`
 	SkipMsi         bool   `json:"skip-msi"`
+	SkipAzCLI       bool   `json:"skip-azcli"`
 	ProxyAddress    string `json:"proxy-address"`
 }
 
@@ -458,7 +459,7 @@ func (suite *authTestSuite) TestBlockSasKeySetOption() {
 		assert.Fail("TestBlockSasKeySetOption : Failed to create Storage object")
 	}
 	stg.SetupPipeline()
-	stg.NewCredentialKey("saskey", storageTestConfigurationParameters.BlockSas)
+	stg.UpdateServiceClient("saskey", storageTestConfigurationParameters.BlockSas)
 	if err := stg.SetupPipeline(); err != nil {
 		assert.Fail("TestBlockSasKeySetOption : Failed to setup pipeline")
 	}
@@ -591,7 +592,7 @@ func (suite *authTestSuite) TestAdlsSasKeySetOption() {
 		assert.Fail("TestBlockSasKeySetOption : Failed to create Storage object")
 	}
 	stg.SetupPipeline()
-	stg.NewCredentialKey("saskey", storageTestConfigurationParameters.AdlsSas)
+	stg.UpdateServiceClient("saskey", storageTestConfigurationParameters.AdlsSas)
 	if err := stg.SetupPipeline(); err != nil {
 		assert.Fail("TestBlockSasKeySetOption : Failed to setup pipeline")
 	}
@@ -686,113 +687,60 @@ func (suite *authTestSuite) TestAdlskMsiResId() {
 	}
 }
 
-func (suite *authTestSuite) TestBlockInvalidSpn() {
+func (suite *authTestSuite) TestBlockAzCLI() {
 	defer suite.cleanupTest()
 	stgConfig := AzStorageConfig{
 		container: storageTestConfigurationParameters.BlockContainer,
 		authConfig: azAuthConfig{
-			AuthMode:     EAuthType.SPN(),
-			AccountType:  EAccountType.BLOCK(),
-			AccountName:  storageTestConfigurationParameters.BlockAccount,
-			ClientID:     storageTestConfigurationParameters.SpnClientId,
-			TenantID:     storageTestConfigurationParameters.SpnTenantId,
-			ClientSecret: "",
-			Endpoint:     generateEndpoint(false, storageTestConfigurationParameters.BlockAccount, EAccountType.BLOCK()),
+			AuthMode:    EAuthType.AZCLI(),
+			AccountType: EAccountType.BLOCK(),
+			AccountName: storageTestConfigurationParameters.BlockAccount,
+			Endpoint:    generateEndpoint(false, storageTestConfigurationParameters.BlockAccount, EAccountType.BLOCK()),
 		},
 	}
+
 	assert := assert.New(suite.T())
 	stg := NewAzStorageConnection(stgConfig)
-	if stg == nil {
-		assert.Fail("TestBlockInvalidSpn : Failed to create Storage object")
-	}
-	if err := stg.SetupPipeline(); err == nil {
-		assert.Fail("TestBlockInvalidSpn : Setup pipeline even though spn is invalid")
+	assert.NotNil(stg)
+
+	err := stg.SetupPipeline()
+	assert.Nil(err)
+
+	err = stg.TestPipeline()
+	if storageTestConfigurationParameters.SkipAzCLI {
+		// error is returned when azcli is not installed or logged out
+		assert.NotNil(err)
+	} else {
+		assert.Nil(err)
 	}
 }
 
-func (suite *authTestSuite) TestBlockInvalidTokenPathSpn() {
-	defer suite.cleanupTest()
-
-	_ = os.WriteFile("newtoken.txt", []byte("abcdef"), 0777)
-	defer os.Remove("newtoken.txt")
-
-	stgConfig := AzStorageConfig{
-		container: storageTestConfigurationParameters.BlockContainer,
-		authConfig: azAuthConfig{
-			AuthMode:           EAuthType.SPN(),
-			AccountType:        EAccountType.BLOCK(),
-			AccountName:        storageTestConfigurationParameters.BlockAccount,
-			ClientID:           storageTestConfigurationParameters.SpnClientId,
-			TenantID:           storageTestConfigurationParameters.SpnTenantId,
-			ClientSecret:       "",
-			Endpoint:           generateEndpoint(false, storageTestConfigurationParameters.BlockAccount, EAccountType.BLOCK()),
-			OAuthTokenFilePath: "newtoken.txt",
-		},
-	}
-	assert := assert.New(suite.T())
-	stg := NewAzStorageConnection(stgConfig)
-	if stg == nil {
-		assert.Fail("TestBlockInvalidSpn : Failed to create Storage object")
-	}
-	_ = stg.SetupPipeline()
-}
-
-func (suite *authTestSuite) TestBlockSpn() {
-	defer suite.cleanupTest()
-	stgConfig := AzStorageConfig{
-		container: storageTestConfigurationParameters.BlockContainer,
-		authConfig: azAuthConfig{
-			AuthMode:     EAuthType.SPN(),
-			AccountType:  EAccountType.BLOCK(),
-			AccountName:  storageTestConfigurationParameters.BlockAccount,
-			ClientID:     storageTestConfigurationParameters.SpnClientId,
-			TenantID:     storageTestConfigurationParameters.SpnTenantId,
-			ClientSecret: storageTestConfigurationParameters.SpnClientSecret,
-			Endpoint:     generateEndpoint(false, storageTestConfigurationParameters.BlockAccount, EAccountType.BLOCK()),
-		},
-	}
-	suite.validateStorageTest("TestBlockSpn", stgConfig)
-}
-
-func (suite *authTestSuite) TestAdlsInvalidSpn() {
+func (suite *authTestSuite) TestAdlsAzCLI() {
 	defer suite.cleanupTest()
 	stgConfig := AzStorageConfig{
 		container: storageTestConfigurationParameters.AdlsContainer,
 		authConfig: azAuthConfig{
-			AuthMode:     EAuthType.SPN(),
-			AccountType:  EAccountType.ADLS(),
-			AccountName:  storageTestConfigurationParameters.AdlsAccount,
-			ClientID:     storageTestConfigurationParameters.SpnClientId,
-			TenantID:     storageTestConfigurationParameters.SpnTenantId,
-			ClientSecret: "",
-			Endpoint:     generateEndpoint(false, storageTestConfigurationParameters.AdlsAccount, EAccountType.ADLS()),
+			AuthMode:    EAuthType.AZCLI(),
+			AccountType: EAccountType.ADLS(),
+			AccountName: storageTestConfigurationParameters.AdlsAccount,
+			Endpoint:    generateEndpoint(false, storageTestConfigurationParameters.AdlsAccount, EAccountType.ADLS()),
 		},
 	}
+
 	assert := assert.New(suite.T())
 	stg := NewAzStorageConnection(stgConfig)
-	if stg == nil {
-		assert.Fail("TestAdlsInvalidSpn : Failed to create Storage object")
-	}
-	if err := stg.SetupPipeline(); err == nil {
-		assert.Fail("TestAdlsInvalidSpn : Setup pipeline even though spn is invalid")
-	}
-}
+	assert.NotNil(stg)
 
-func (suite *authTestSuite) TestAdlsSpn() {
-	defer suite.cleanupTest()
-	stgConfig := AzStorageConfig{
-		container: storageTestConfigurationParameters.AdlsContainer,
-		authConfig: azAuthConfig{
-			AuthMode:     EAuthType.SPN(),
-			AccountType:  EAccountType.ADLS(),
-			AccountName:  storageTestConfigurationParameters.AdlsAccount,
-			ClientID:     storageTestConfigurationParameters.SpnClientId,
-			TenantID:     storageTestConfigurationParameters.SpnTenantId,
-			ClientSecret: storageTestConfigurationParameters.SpnClientSecret,
-			Endpoint:     generateEndpoint(false, storageTestConfigurationParameters.AdlsAccount, EAccountType.ADLS()),
-		},
+	err := stg.SetupPipeline()
+	assert.Nil(err)
+
+	err = stg.TestPipeline()
+	if storageTestConfigurationParameters.SkipAzCLI {
+		// error is returned when azcli is not installed or logged out
+		assert.NotNil(err)
+	} else {
+		assert.Nil(err)
 	}
-	suite.validateStorageTest("TestAdlsSpn", stgConfig)
 }
 
 func (suite *authTestSuite) cleanupTest() {

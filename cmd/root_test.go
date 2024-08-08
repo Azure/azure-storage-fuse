@@ -104,6 +104,27 @@ func (suite *rootCmdSuite) TestNoSecurityWarnings() {
 	suite.assert.False(found)
 }
 
+func (suite *rootCmdSuite) TestSecurityWarnings() {
+	defer suite.cleanupTest()
+	warningsUrl := common.Blobfuse2ListContainerURL + "/securitywarnings/" + "1.1.1"
+	found := checkVersionExists(warningsUrl)
+	suite.assert.True(found)
+}
+
+func (suite *rootCmdSuite) TestBlockedVersion() {
+	defer suite.cleanupTest()
+	warningsUrl := common.Blobfuse2ListContainerURL + "/blockedversions/" + "1.1.1"
+	isBlocked := checkVersionExists(warningsUrl)
+	suite.assert.True(isBlocked)
+}
+
+func (suite *rootCmdSuite) TestNonBlockedVersion() {
+	defer suite.cleanupTest()
+	warningsUrl := common.Blobfuse2ListContainerURL + "/blockedversions/" + common.Blobfuse2Version
+	found := checkVersionExists(warningsUrl)
+	suite.assert.False(found)
+}
+
 func (suite *rootCmdSuite) TestGetRemoteVersionInvalidURL() {
 	defer suite.cleanupTest()
 	out, err := getRemoteVersion("abcd")

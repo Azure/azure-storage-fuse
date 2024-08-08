@@ -36,4 +36,3 @@ azstorage:
   clientsecret: { NIGHTLY_SPN_CLIENT_SECRET }
   container: { 0 }
   tier: hot
-  sdk-trace: { VERBOSE_LOG }

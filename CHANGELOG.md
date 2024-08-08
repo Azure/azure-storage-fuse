@@ -1,11 +1,63 @@
-## 2.2.1 (Unreleased)
+## 2.3.1 (Unreleased)
+**NOTICE**
+- Due to data integrity issues, random write operations has been disabled in block cache. Refer [#1484](https://github.com/Azure/azure-storage-fuse/pull/1484) for blocked scenarios.
+
+**Bug Fixes**
+- Fixed the case where file creation using SAS on HNS accounts was returning back wrong error code.
+- [#1402](https://github.com/Azure/azure-storage-fuse/issues/1402) Fixed proxy URL parsing.
+- If earlier instance of Blobfuse2 crashed and mount is unstable then next mount to same path will automatically cleanup the system.
+- In flush operation, the blocks will be committed only if the handle is dirty.
+- Reset block data to null before reuse.
+- Sparse file data integrity issues fixed.
+- Fixed block-cache read of small files where file size is not multiple of kernel buffer size.
+- Fixed race condition in random write where a block is being uploaded and written to in parallel.
+
+**Other Changes**
+- LFU policy in file cache has been deprecated.
+- Default values, if not assigned in config, for the following parameters in block-cache are calculated as follows:
+    - Memory preallocated for Block-Cache is 80% of free memory
+    - Disk Cache Size is 80% of free disk space
+    - Prefetch is 2 times number of CPU cores
+    - Parallelism is 3 times the number of CPU cores
+- Default value of Disk Cache Size in File Cache is 80% of free disk space
+
+## 2.3.0 (2024-05-16)
+**Bug Fixes**
+- For fuse minor version check rely on the fusermount3 command output rather then one exposed from fuse_common.
+- Fixed large number of threads from TLRU causing crash during disk eviction in block-cache.
+- Fixed issue where get attributes was failing for directories in blob accounts when CPK flag was enabled.
+
+**Features**
+- Added support for authentication using Azure CLI.
+
+**Other Changes**
+- Added support in
+    - Ubuntu 24.04 (x86_64 and ARM64)
+    - Rocky Linux 8 and 9
+    - Alma Linux 8 and 9
+- Added support for FIPS based Linux systems.
+- Updated dependencies to address security vulnerabilities.
+
+## 2.3.0~preview.1 (2024-04-04)
+**Bug Fixes**
+- [#1057](https://github.com/Azure/azure-storage-fuse/issues/1057) Fixed the issue where user-assigned identity is not used to authenticate when system-assigned identity is enabled.
+- Listing blobs is now supported for blob names that contain characters that aren't valid in XML (U+FFFE or U+FFFF).
+- [#1359](https://github.com/Azure/azure-storage-fuse/issues/1359), [#1368](https://github.com/Azure/azure-storage-fuse/issues/1368) Fixed RHEL 8.6 mount failure
+
+**Features**
+- Migrated to the latest [azblob SDK](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/storage/azblob).
+- Migrated to the latest [azdatalake SDK](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake).
+- Migrated from deprecated ADAL to MSAL through the latest [azidentity SDK](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity).
+- Added support for uploading blobs in cold and premium tier.
+- Support CPK for adls storage accounts.
+- Lazy-write support for async flush and close file call. Actual upload will be scheduled in background when this feature is enabled.
+
+## 2.2.1 (2024-02-28)
 **Bug Fixes**
 - Fixed panic while truncating a file to a very large size.
 - Fixed block-cache panic on flush of a file which has no active changeset
 - Fixed block-cache panic on renaming a file and then flushing older handle
 - Fixed block-cache flush resulting in invalid-block-list error
- 
-**Features**
 
 ## 2.2.0 (2024-01-24)
 **Bug Fixes**
