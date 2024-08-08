@@ -37,10 +37,8 @@
 package e2e_tests
 
 import (
-	"crypto/md5"
 	"flag"
 	"fmt"
-	"io"
 	"math/rand"
 	"os"
 	"os/exec"
@@ -123,15 +121,18 @@ func (suite *dataValidationTestSuite) copyToMountDir(localFilePath string, remot
 	suite.Equal(nil, err)
 }
 
+// Computes MD5 and returns the 32byte slice which represents the hash value
+func (suite *dataValidationTestSuite) computeMD5(filePath string) []byte {
+	e := exec.Command("md5sum", filePath)
+	stdOut, err := e.Output()
+	suite.Nil(err)
+	return stdOut[0:32]
+}
+
 func (suite *dataValidationTestSuite) validateData(localFilePath string, remoteFilePath string) {
-	// compare the local and mounted files
-	diffCmd := exec.Command("diff", localFilePath, remoteFilePath)
-	cliOut, err := diffCmd.Output()
-	if len(cliOut) != 0 {
-		fmt.Println(string(cliOut))
-	}
-	suite.Equal(0, len(cliOut))
-	suite.Equal(nil, err)
+	localMD5sum := suite.computeMD5(localFilePath)
+	remoteMD5sum := suite.computeMD5(remoteFilePath)
+	suite.Equal(localMD5sum, remoteMD5sum)
 }
 
 //----------------Utility Functions-----------------------
@@ -154,36 +155,12 @@ func createFileHandleInLocalAndRemote(suite *dataValidationTestSuite, localFileP
 	return lfh, rfh
 }
 
-// closes the file handles, This ensures that data is flushed to disk and Azure Storage from the cache
+// closes the file handles, This ensures that data is flushed to disk/Azure Storage from the cache
 func closeFileHandles(suite *dataValidationTestSuite, handles ...*os.File) {
 	for _, h := range handles {
 		err := h.Close()
 		suite.Nil(err)
 	}
-}
-
-// Computes MD5, It is very important to close the file handle, because when using the block cache there might be some blocks which
-// might be in the cache so better flush them before computing the hash
-func computeMD5(filePath string) ([]byte, error) {
-	fh, err := os.Open(filePath)
-	if err != nil {
-		return nil, err
-	}
-
-	fi, err := fh.Stat()
-	fi.Size()
-
-	hash := md5.New()
-	if _, err := io.Copy(hash, fh); err != nil {
-		return nil, err
-	}
-
-	err = fh.Close()
-	if err != nil {
-		return nil, err
-	}
-
-	return hash.Sum(nil), nil
 }
 
 // Writes the data at the given Offsets for the given file
@@ -224,7 +201,7 @@ func generateFileWithRandomData(suite *dataValidationTestSuite, filePath string,
 	closeFileHandles(suite, fh)
 }
 
-// // -------------- Data Validation Tests -------------------
+// -------------- Data Validation Tests -------------------
 
 // Test correct overwrite of file using echo command
 func (suite *dataValidationTestSuite) TestFileOverwriteWithEchoCommand() {
@@ -492,15 +469,7 @@ func (suite *dataValidationTestSuite) TestSparseFileRandomWrite() {
 	suite.Nil(err)
 	suite.Equal(fi.Size(), 165*int64(_1MB))
 
-	localMD5, err := computeMD5(localFilePath)
-	suite.Nil(err)
-	suite.NotNil(localMD5)
-
-	remoteMD5, err := computeMD5(remoteFilePath)
-	suite.Nil(err)
-	suite.NotNil(remoteMD5)
-
-	suite.Equal(localMD5, remoteMD5)
+	suite.validateData(localFilePath, remoteFilePath)
 
 	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, tObj.testCachePath})
 }
@@ -523,15 +492,7 @@ func (suite *dataValidationTestSuite) TestSparseFileRandomWriteBlockOverlap() {
 	suite.Nil(err)
 	suite.Equal(fi.Size(), 171*int64(_1MB))
 
-	localMD5, err := computeMD5(localFilePath)
-	suite.Nil(err)
-	suite.NotNil(localMD5)
-
-	remoteMD5, err := computeMD5(remoteFilePath)
-	suite.Nil(err)
-	suite.NotNil(remoteMD5)
-
-	suite.Equal(localMD5, remoteMD5)
+	suite.validateData(localFilePath, remoteFilePath)
 
 	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, tObj.testCachePath})
 }
@@ -586,15 +547,7 @@ func (suite *dataValidationTestSuite) TestFileReadBytesMultipleBlocks() {
 
 	closeFileHandles(suite, fh)
 
-	localMD5, err := computeMD5(localFilePath)
-	suite.Nil(err)
-	suite.NotNil(localMD5)
-
-	remoteMD5, err := computeMD5(remoteFilePath)
-	suite.Nil(err)
-	suite.NotNil(remoteMD5)
-
-	suite.Equal(localMD5, remoteMD5)
+	suite.validateData(localFilePath, remoteFilePath)
 
 	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, tObj.testCachePath})
 }
@@ -639,15 +592,7 @@ func (suite *dataValidationTestSuite) TestFileReadBytesOneBlock() {
 
 	closeFileHandles(suite, fh)
 
-	localMD5, err := computeMD5(localFilePath)
-	suite.Nil(err)
-	suite.NotNil(localMD5)
-
-	remoteMD5, err := computeMD5(remoteFilePath)
-	suite.Nil(err)
-	suite.NotNil(remoteMD5)
-
-	suite.Equal(localMD5, remoteMD5)
+	suite.validateData(localFilePath, remoteFilePath)
 
 	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, tObj.testCachePath})
 }
@@ -677,15 +622,7 @@ func (suite *dataValidationTestSuite) TestRandomWriteRaceCondition() {
 	suite.Nil(err)
 	suite.Equal(fi.Size(), 145*int64(_1MB))
 
-	localMD5, err := computeMD5(localFilePath)
-	suite.Nil(err)
-	suite.NotNil(localMD5)
-
-	remoteMD5, err := computeMD5(remoteFilePath)
-	suite.Nil(err)
-	suite.NotNil(remoteMD5)
-
-	suite.Equal(localMD5, remoteMD5)
+	suite.validateData(localFilePath, remoteFilePath)
 
 	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, tObj.testCachePath})
 }
