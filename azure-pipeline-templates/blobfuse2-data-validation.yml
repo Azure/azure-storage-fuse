@@ -1,0 +1,67 @@
+parameters:
+  - name: conf_template
+    type: string
+  - name: config_file
+    type: string
+  - name: container
+    type: string
+  - name: temp_dir
+    type: string
+  - name: mount_dir
+    type: string    
+  - name: idstring
+    type: string
+  - name: adls
+    type: boolean
+  - name: account_name
+    type: string
+  - name: account_key
+    type: string
+  - name: account_type
+    type: string
+  - name: account_endpoint
+  - name: distro_name
+    type: string
+  - name: quick_test
+    type: boolean
+    default: true
+  - name: verbose_log
+    type: boolean
+    default: false
+  - name: clone
+    type: boolean
+    default: false
+  - name: kversion
+    type: string
+
+steps:    
+  - template: 'mount.yml'
+    parameters:
+      working_dir: $(WORK_DIR)
+      mount_dir: ${{ parameters.mount_dir }}
+      temp_dir: ${{ parameters.temp_dir }}
+      prefix: ${{ parameters.idstring }}
+      mountStep: 
+        script: |
+          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) 
+
+  - script: |
+      cd ${{ parameters.mount_dir }}
+      wget https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-${{ parameters.kversion }}.tar.xz  
+    displayName: 'Get kernel tarfile'
+
+  - script: |
+      tar -xvf {{ parameters.mount_dir }}/linux-${{ parameters.kversion }}.tar.xz
+    displayName: 'Untar kernel'
+
+  - script: |
+      cd {{ parameters.mount_dir }}/linux-${{ parameters.kversion }}
+      make defconfig
+      make
+    displayName: 'Run MAKE on the kernel'
+
+  - template: 'cleanup.yml'
+    parameters:
+      working_dir: $(WORK_DIR)
+      mount_dir: ${{ parameters.mount_dir }}
+      temp_dir: ${{ parameters.temp_dir }}
