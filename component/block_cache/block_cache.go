@@ -478,6 +478,7 @@ func (bc *BlockCache) closeFileInternal(options internal.CloseFileOptions) error
 
 		// Wait for download to complete and then free up this block
 		<-block.state
+		block.node = nil
 		block.ReUse()
 		bc.blockPool.Release(block)
 	}
@@ -488,6 +489,8 @@ func (bc *BlockCache) closeFileInternal(options internal.CloseFileOptions) error
 	node = blockList.Front()
 	for ; node != nil; node = blockList.Front() {
 		block := blockList.Remove(node).(*Block)
+		// block.Unblock()
+		block.node = nil
 		block.ReUse()
 		bc.blockPool.Release(block)
 	}
@@ -1218,6 +1221,11 @@ func (bc *BlockCache) waitAndFreeUploadedBlocks(handle *handlemap.Handle, cnt in
 	node := nodeList.Front()
 	nextNode := node
 
+	wipeoutBlock := false
+	if cnt == 1 {
+		wipeoutBlock = true
+	}
+
 	for nextNode != nil && cnt > 0 {
 		node = nextNode
 		nextNode = node.Next()
@@ -1225,11 +1233,14 @@ func (bc *BlockCache) waitAndFreeUploadedBlocks(handle *handlemap.Handle, cnt in
 		block := node.Value.(*Block)
 		if block.id != -1 {
 			// Wait for upload of this block to complete
-			<-block.state
+			_, ok := <-block.state
 			block.flags.Clear(BlockFlagUploading)
+			if ok {
+				block.Unblock()
+			}
+		} else {
+			block.Unblock()
 		}
-
-		block.Unblock()
 
 		if block.IsFailed() {
 			log.Err("BlockCache::waitAndFreeUploadedBlocks : Failed to upload block, posting back to cooking list %v=>%s (index %v, offset %v)", handle.ID, handle.Path, block.id, block.offset)
@@ -1239,12 +1250,14 @@ func (bc *BlockCache) waitAndFreeUploadedBlocks(handle *handlemap.Handle, cnt in
 		}
 		cnt--
 
-		log.Debug("BlockCache::waitAndFreeUploadedBlocks : Block cleanup for block %v=>%s (index %v, offset %v)", handle.ID, handle.Path, block.id, block.offset)
-		handle.RemoveValue(fmt.Sprintf("%v", block.id))
-		nodeList.Remove(node)
-		block.node = nil
-		block.ReUse()
-		bc.blockPool.Release(block)
+		if wipeoutBlock || block.id == -1 {
+			log.Debug("BlockCache::waitAndFreeUploadedBlocks : Block cleanup for block %v=>%s (index %v, offset %v)", handle.ID, handle.Path, block.id, block.offset)
+			handle.RemoveValue(fmt.Sprintf("%v", block.id))
+			nodeList.Remove(node)
+			block.node = nil
+			block.ReUse()
+			bc.blockPool.Release(block)
+		}
 	}
 }
 

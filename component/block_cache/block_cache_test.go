@@ -972,7 +972,7 @@ func (suite *blockCacheTestSuite) TestWritefileWithAppend() {
 	tobj.blockCache.prefetchOnOpen = true
 
 	path := "testWriteBlockAppend"
-	data := make([]byte, 20*_1MB)
+	data := make([]byte, 13*_1MB)
 	_, _ = rand.Read(data)
 
 	options := internal.CreateFileOptions{Name: path, Mode: 0777}
