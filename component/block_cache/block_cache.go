@@ -478,6 +478,7 @@ func (bc *BlockCache) closeFileInternal(options internal.CloseFileOptions) error
 
 		// Wait for download to complete and then free up this block
 		<-block.state
+		block.node = nil
 		block.ReUse()
 		bc.blockPool.Release(block)
 	}
@@ -488,6 +489,8 @@ func (bc *BlockCache) closeFileInternal(options internal.CloseFileOptions) error
 	node = blockList.Front()
 	for ; node != nil; node = blockList.Front() {
 		block := blockList.Remove(node).(*Block)
+		// block.Unblock()
+		block.node = nil
 		block.ReUse()
 		bc.blockPool.Release(block)
 	}
@@ -1051,6 +1054,18 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 
 				// Now wait for download to complete
 				<-block.state
+
+				// if the block failed to download, it can't be used for overwriting
+				if block.IsFailed() {
+					log.Err("BlockCache::getOrCreateBlock : Failed to download block %v for %v=>%s", block.id, handle.ID, handle.Path)
+
+					// Remove this node from handle so that next read retries to download the block again
+					_ = handle.Buffers.Cooking.Remove(block.node)
+					handle.RemoveValue(fmt.Sprintf("%v", block.id))
+					block.ReUse()
+					bc.blockPool.Release(block)
+					return nil, fmt.Errorf("failed to download block")
+				}
 			} else {
 				log.Debug("BlockCache::getOrCreateBlock : push block %v to the cooking list for %v=>%v", block.id, handle.ID, handle.Path)
 				block.node = handle.Buffers.Cooking.PushBack(block)
@@ -1214,6 +1229,11 @@ func (bc *BlockCache) waitAndFreeUploadedBlocks(handle *handlemap.Handle, cnt in
 	node := nodeList.Front()
 	nextNode := node
 
+	wipeoutBlock := false
+	if cnt == 1 {
+		wipeoutBlock = true
+	}
+
 	for nextNode != nil && cnt > 0 {
 		node = nextNode
 		nextNode = node.Next()
@@ -1238,12 +1258,14 @@ func (bc *BlockCache) waitAndFreeUploadedBlocks(handle *handlemap.Handle, cnt in
 		}
 		cnt--
 
-		log.Debug("BlockCache::waitAndFreeUploadedBlocks : Block cleanup for block %v=>%s (index %v, offset %v)", handle.ID, handle.Path, block.id, block.offset)
-		handle.RemoveValue(fmt.Sprintf("%v", block.id))
-		nodeList.Remove(node)
-		block.node = nil
-		block.ReUse()
-		bc.blockPool.Release(block)
+		if wipeoutBlock || block.id == -1 {
+			log.Debug("BlockCache::waitAndFreeUploadedBlocks : Block cleanup for block %v=>%s (index %v, offset %v)", handle.ID, handle.Path, block.id, block.offset)
+			handle.RemoveValue(fmt.Sprintf("%v", block.id))
+			nodeList.Remove(node)
+			block.node = nil
+			block.ReUse()
+			bc.blockPool.Release(block)
+		}
 	}
 }
 
