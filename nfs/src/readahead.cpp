@@ -42,8 +42,9 @@ ra_state::ra_state(struct nfs_client *_client,
     assert(client->mnt_options.rsize_adj >= AZNFSCFG_RSIZE_MIN &&
            client->mnt_options.rsize_adj <= AZNFSCFG_RSIZE_MAX);
 
-    assert(client->mnt_options.readahead_kb >= AZNFSCFG_READAHEAD_KB_MIN &&
-           client->mnt_options.readahead_kb <= AZNFSCFG_READAHEAD_KB_MAX);
+    assert((client->mnt_options.readahead_kb >= AZNFSCFG_READAHEAD_KB_MIN &&
+            client->mnt_options.readahead_kb <= AZNFSCFG_READAHEAD_KB_MAX) ||
+           (client->mnt_options.readahead_kb == 0));
 
     AZLogInfo("[{}] Readahead set to {} bytes with default RA size {} bytes",
               inode->get_fuse_ino(), ra_bytes, def_ra_size);
