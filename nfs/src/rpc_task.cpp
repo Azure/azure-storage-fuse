@@ -1147,8 +1147,10 @@ void rpc_task::send_read_response()
     /*
      * No go over all the chunks and send a vectored read response to fuse.
      * Note that only the last chunk can be partial.
+     * XXX No, in case of multiple chunks and short read, multiple can be
+     *     partial.
      */
-    const size_t count = bc_vec.size();
+    size_t count = bc_vec.size();
 
     // Create an array of iovec struct
     struct iovec iov[count];
@@ -1164,8 +1166,11 @@ void rpc_task::send_read_response()
         bytes_read += bc_vec[i].pvt;
 
         if (bc_vec[i].pvt < bc_vec[i].length) {
+#if 0
             assert((i == count-1) || (bc_vec[i+1].length == 0));
+#endif
             partial_read = true;
+            count = i + 1;
             break;
         }
     }

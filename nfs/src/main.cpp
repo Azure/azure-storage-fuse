@@ -280,8 +280,13 @@ bool aznfsc_cfg::parse_config_yaml()
 
         if ((readahead_kb == -1) && config["readahead_kb"]) {
             readahead_kb = config["readahead_kb"].as<int>();
-            if (readahead_kb < AZNFSCFG_READAHEAD_KB_MIN ||
-                readahead_kb > AZNFSCFG_READAHEAD_KB_MAX) {
+            /*
+             * Allow special value of 0 to disable readahead.
+             * Mostly useful for testing.
+             */
+            if ((readahead_kb < AZNFSCFG_READAHEAD_KB_MIN ||
+                 readahead_kb > AZNFSCFG_READAHEAD_KB_MAX) &&
+                (readahead_kb != 0)) {
                 throw YAML::Exception(
                     config["readahead_kb"].Mark(),
                     std::string("Invalid readahead_kb value: ") +

@@ -332,7 +332,13 @@ private:
     {
         if (length == 0) {
             length = def_ra_size;
-            assert(length > 0);
+        }
+
+        /*
+         * RA is disabled?
+         */
+        if (length == 0) {
+                return 0;
         }
 
         if ((last_byte_readahead + 1 + length) > AZNFSC_MAX_FILE_SIZE) {
