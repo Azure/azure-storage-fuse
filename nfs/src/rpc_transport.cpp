@@ -1,6 +1,9 @@
 #include "rpc_transport.h"
 #include "nfs_client.h"
 
+#include <thread>
+#include <vector>
+
 bool rpc_transport::start()
 {
     // constructor must have resized the connection vector correctly.
@@ -13,34 +16,75 @@ bool rpc_transport::start()
      * Note: Currently we create all the connections upfront for simplicity.
      *       We might consider setting up connections when needed and then
      *       destroying them if idle for some time.
+     * Note: We perform all the mounts in parallel else it takes a long time
+     *       to startup.
      */
+    std::vector<std::thread> vt;
+    std::atomic<int> successful_connections = 0;
+
     for (int i = 0; i < client->mnt_options.num_connections; i++) {
-        struct nfs_connection *connection = new nfs_connection(client, i);
+        vt.emplace_back(std::thread([&, i]() {
+            AZLogDebug("Starting thread for creating connection #{}", i);
 
-        if (!connection->open()) {
+            struct nfs_connection *connection = new nfs_connection(client, i);
+
+            if (!connection->open()) {
+                AZLogError("Failed to setup connection #{}", i);
+
+                /*
+                 * Failed to establish this connection.
+                 * Convey failure to the main thread by storing a nullptr for
+                 * this connection. It'll then perform the cleanup.
+                 */
+                delete connection;
+
+                assert(nfs_connections[i] == nullptr);
+                nfs_connections[i] = nullptr;
+
+                return;
+            }
+
             /*
-             * Failed to establish this connection.
-             * Destroy all connections created till now, and this connection.
+             * TODO: assert that rootfh received over each connection is same.
              */
-            close();
-            delete connection;
-            return false;
-        }
 
-        /*
-         * TODO: assert that rootfh received over each connection is same.
-         */
+            /*
+             * Ok, connection setup properly, add it to the list of connections
+             * for this transport and update number of successful connections,
+             * so that caller knows whether all connections were successfully
+             * created.
+             */
+            assert(nfs_connections[i] == nullptr);
+            nfs_connections[i] = connection;
+            successful_connections++;
 
-        /*
-         * Ok, connection setup properly, add it to the list of connections
-         * for this transport.
-         */
-        assert(nfs_connections[i] == nullptr);
-        nfs_connections[i] = connection;
+            return;
+        }));
+    }
+
+    /*
+     * Now wait for all connections to mount and setup correctly..
+     */
+    AZLogDebug("Waiting for {} nconnect connection(s) to setup",
+               client->mnt_options.num_connections);
+
+    for (auto& t : vt) {
+        t.join();
+    }
+
+    /*
+     * TODO: Continue if we have minimum number of connections?
+     */
+    if (successful_connections != client->mnt_options.num_connections) {
+        AZLogError("One or more connection setup failed, cleaning up!");
+        close();
+        return false;
     }
 
     assert((int) nfs_connections.size() == client->mnt_options.num_connections);
 
+    AZLogDebug("Successfully created all {} nconnect connection(s)",
+               client->mnt_options.num_connections);
     return true;
 }
 
