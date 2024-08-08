@@ -1414,6 +1414,12 @@ stages:
         timeoutInMinutes: 300
         strategy:
           matrix:
+            Ubuntu-20:
+              AgentName: 'blobfuse-ubuntu20'
+              containerName: 'test-cnt-ubn-20'
+              adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
+              fuselib: 'libfuse-dev'
+              tags: 'fuse2'          
             Ubuntu-22:
               AgentName: 'blobfuse-ubuntu22'
               containerName: 'test-cnt-ubn-22'
