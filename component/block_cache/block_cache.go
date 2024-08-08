@@ -1099,7 +1099,6 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 		block.flags.Clear(BlockFlagUploading)
 		block.flags.Clear(BlockFlagDownloading)
 		block.flags.Clear(BlockFlagSynced)
-		// block.flags.Clear(BlockFlagFailed)
 	}
 
 	return block, nil
@@ -1210,7 +1209,7 @@ func (bc *BlockCache) lineupUpload(handle *handlemap.Handle, block *Block, listM
 		blockId:  id,
 	}
 
-	log.Debug("BlockCache::lineupUpload : Upload block %v=>%s (index %v, offset %v, data %v)", handle.ID, handle.Path, block.id, block.offset, (block.endIndex - block.offset))
+	// log.Debug("BlockCache::lineupUpload : Upload block %v=>%s (index %v, offset %v, data %v)", handle.ID, handle.Path, block.id, block.offset, (block.endIndex - block.offset))
 
 	// Remove this block from free block list and add to in-process list
 	if block.node != nil {
@@ -1270,7 +1269,7 @@ func (bc *BlockCache) upload(item *workItem) {
 	flock := bc.fileLocks.Get(fileName)
 	flock.Lock()
 	defer flock.Unlock()
-	log.Debug("BlockCache::Upload : block %v, size %v for %v=>%s, blockId %v", item.block.id, (item.block.endIndex - item.block.offset), item.handle.ID, item.handle.Path, item.blockId)
+	// log.Debug("BlockCache::Upload : block %v, size %v for %v=>%s, blockId %v", item.block.id, (item.block.endIndex - item.block.offset), item.handle.ID, item.handle.Path, item.blockId)
 
 	// This block is updated so we need to stage it now
 	err := bc.NextComponent().StageData(internal.StageDataOptions{
