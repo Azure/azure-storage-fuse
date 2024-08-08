@@ -1086,14 +1086,20 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 			block.flags.Clear(BlockFlagSynced)
 		} else if block.flags.IsSet(BlockFlagDownloading) {
 			log.Debug("BlockCache::getOrCreateBlock : Waiting for download to finish for committed block %v for %v=>%s", block.id, handle.ID, handle.Path)
-			<-block.state
+			_, ok := <-block.state
+			if ok {
+				block.Unblock()
+			}
 			block.flags.Clear(BlockFlagDownloading)
-			block.Unblock()
+
 		} else if block.flags.IsSet(BlockFlagUploading) {
 			// If the block is being staged, then wait till it is uploaded,
 			// and then write to the same block and move it back to cooking queue
 			log.Debug("BlockCache::getOrCreateBlock : Waiting for the block %v to upload for %v=>%s", block.id, handle.ID, handle.Path)
-			<-block.state
+			_, ok := <-block.state
+			if ok {
+				block.Unblock()
+			}
 			block.flags.Clear(BlockFlagUploading)
 			block.flags.Clear(BlockFlagSynced) //clearing the BlockFlagSynced flag since the block has been staged and will be used again for write
 			block.Unblock()

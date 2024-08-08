@@ -47,6 +47,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -59,6 +60,7 @@ var dataValidationAdlsPtr string
 var quickTest string
 var streamDirectTest string
 var distro string
+var blockSizeMB int = 16
 
 var minBuff, medBuff, largeBuff, hugeBuff []byte
 
@@ -94,6 +96,7 @@ func initDataValidationFlags() {
 	quickTest = getDataValidationTestFlag("quick-test")
 	streamDirectTest = getDataValidationTestFlag("stream-direct-test")
 	distro = getDataValidationTestFlag("distro-name")
+	blockSizeMB = flag.Lookup("block-size-mb").Value.(flag.Getter).Get().(int)
 }
 
 func getDataValidationTestDirName(n int) string {
@@ -131,7 +134,97 @@ func (suite *dataValidationTestSuite) validateData(localFilePath string, remoteF
 	suite.Equal(nil, err)
 }
 
-// -------------- Data Validation Tests -------------------
+//----------------Utility Functions-----------------------
+
+// pass the file name and the function returns the LocalFilePath and MountedFilePath
+func convertFileNameToFilePath(fileName string) (localFilePath string, remoteFilePath string) {
+	localFilePath = tObj.testLocalPath + "/" + fileName
+	remoteFilePath = tObj.testMntPath + "/" + fileName
+	return localFilePath, remoteFilePath
+}
+
+// creates File in Local and Mounted Directories and returns there file handles the assosiated fd has O_RDWR mode
+func createFileHandleInLocalAndRemote(suite *dataValidationTestSuite, localFilePath, remoteFilePath string) (lfh *os.File, rfh *os.File) {
+	lfh, err := os.Create(localFilePath)
+	suite.Nil(err)
+
+	rfh, err = os.Create(remoteFilePath)
+	suite.Nil(err)
+
+	return lfh, rfh
+}
+
+// closes the file handles, This ensures that data is flushed to disk and Azure Storage from the cache
+func closeFileHandles(suite *dataValidationTestSuite, handles ...*os.File) {
+	for _, h := range handles {
+		err := h.Close()
+		suite.Nil(err)
+	}
+}
+
+// Computes MD5, It is very important to close the file handle, because when using the block cache there might be some blocks which
+// might be in the cache so better flush them before computing the hash
+func computeMD5(filePath string) ([]byte, error) {
+	fh, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+
+	fi, err := fh.Stat()
+	fi.Size()
+
+	hash := md5.New()
+	if _, err := io.Copy(hash, fh); err != nil {
+		return nil, err
+	}
+
+	err = fh.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	return hash.Sum(nil), nil
+}
+
+// Writes the data at the given Offsets for the given file
+func writeSparseData(suite *dataValidationTestSuite, fh *os.File, offsets []int64) {
+	ind := uint64(0)
+	for _, o := range offsets {
+		// write 1MB data at offset o
+		n, err := fh.WriteAt(medBuff[ind*_1MB:(ind+1)*_1MB], o)
+		suite.Nil(err)
+		suite.Equal(n, int(_1MB))
+
+		ind = (ind + 1) % 10
+	}
+}
+
+func min(x, y int) int {
+	if x < y {
+		return x
+	}
+	return y
+}
+
+// Creates the file with filePath and puts random data of size bytes
+func generateFileWithRandomData(suite *dataValidationTestSuite, filePath string, size int) {
+	fh, err := os.Create(filePath)
+	suite.Nil(err)
+	bufferSize := 4 * 1024
+	buffer := make([]byte, 4*1024)
+	rand.Read(buffer)
+	blocks := size / bufferSize
+	for i := 0; i < blocks; i++ {
+		bytesToWrite := min(bufferSize, size)
+		bytesWritten, err := fh.Write(buffer[0:bytesToWrite])
+		suite.Nil(err)
+		suite.Equal(bytesToWrite, bytesWritten)
+		size -= bytesWritten
+	}
+	closeFileHandles(suite, fh)
+}
+
+// // -------------- Data Validation Tests -------------------
 
 // Test correct overwrite of file using echo command
 func (suite *dataValidationTestSuite) TestFileOverwriteWithEchoCommand() {
@@ -382,64 +475,10 @@ func (suite *dataValidationTestSuite) TestMultipleHugeFiles() {
 	createThreadPool(noOfFiles, noOfWorkers, "huge", suite)
 }
 
-func computeMD5(filePath string) ([]byte, error) {
-	fh, err := os.Open(filePath)
-	if err != nil {
-		return nil, err
-	}
-
-	fi, err := fh.Stat()
-	fi.Size()
-
-	hash := md5.New()
-	if _, err := io.Copy(hash, fh); err != nil {
-		return nil, err
-	}
-
-	err = fh.Close()
-	if err != nil {
-		return nil, err
-	}
-
-	return hash.Sum(nil), nil
-}
-
-func writeSparseData(suite *dataValidationTestSuite, fh *os.File, offsets []int64) {
-	ind := uint64(0)
-	for _, o := range offsets {
-		// write 1MB data at offset o
-		n, err := fh.WriteAt(medBuff[ind*_1MB:(ind+1)*_1MB], o)
-		suite.Nil(err)
-		suite.Equal(n, int(_1MB))
-
-		ind = (ind + 1) % 10
-	}
-
-	// close the file handle
-	err := fh.Close()
-	suite.Nil(err)
-}
-
 func (suite *dataValidationTestSuite) TestSparseFileRandomWrite() {
 	fileName := "sparseFile"
-	localFilePath := tObj.testLocalPath + "/" + fileName
-	remoteFilePath := tObj.testMntPath + "/" + fileName
-
-	// create local file
-	lfh, err := os.Create(localFilePath)
-	suite.Nil(err)
-
-	defer func(fh *os.File) {
-		_ = fh.Close()
-	}(lfh)
-
-	// create remote file
-	rfh, err := os.Create(remoteFilePath)
-	suite.Nil(err)
-
-	defer func(fh *os.File) {
-		_ = fh.Close()
-	}(rfh)
+	localFilePath, remoteFilePath := convertFileNameToFilePath(fileName)
+	lfh, rfh := createFileHandleInLocalAndRemote(suite, localFilePath, remoteFilePath)
 
 	// write to local file
 	writeSparseData(suite, lfh, []int64{0, 164 * int64(_1MB), 100 * int64(_1MB), 65 * int64(_1MB), 129 * int64(_1MB)})
@@ -447,6 +486,7 @@ func (suite *dataValidationTestSuite) TestSparseFileRandomWrite() {
 	// write to remote file
 	writeSparseData(suite, rfh, []int64{0, 164 * int64(_1MB), 100 * int64(_1MB), 65 * int64(_1MB), 129 * int64(_1MB)})
 
+	closeFileHandles(suite, lfh, rfh)
 	// check size of blob uploaded
 	fi, err := os.Stat(remoteFilePath)
 	suite.Nil(err)
@@ -467,30 +507,16 @@ func (suite *dataValidationTestSuite) TestSparseFileRandomWrite() {
 
 func (suite *dataValidationTestSuite) TestSparseFileRandomWriteBlockOverlap() {
 	fileName := "sparseFileBlockOverlap"
-	localFilePath := tObj.testLocalPath + "/" + fileName
-	remoteFilePath := tObj.testMntPath + "/" + fileName
-
-	// create local file
-	lfh, err := os.Create(localFilePath)
-	suite.Nil(err)
-
-	defer func(fh *os.File) {
-		_ = fh.Close()
-	}(lfh)
-
-	// create remote file
-	rfh, err := os.Create(remoteFilePath)
-	suite.Nil(err)
-
-	defer func(fh *os.File) {
-		_ = fh.Close()
-	}(rfh)
+	localFilePath, remoteFilePath := convertFileNameToFilePath(fileName)
+	lfh, rfh := createFileHandleInLocalAndRemote(suite, localFilePath, remoteFilePath)
 
 	// write to local file
 	writeSparseData(suite, lfh, []int64{0, 170 * int64(_1MB), 63*int64(_1MB) + 1024*512, 129 * int64(_1MB), 100 * int64(_1MB)})
 
 	// write to remote file
 	writeSparseData(suite, rfh, []int64{0, 170 * int64(_1MB), 63*int64(_1MB) + 1024*512, 129 * int64(_1MB), 100 * int64(_1MB)})
+
+	closeFileHandles(suite, lfh, rfh)
 
 	// check size of blob uploaded
 	fi, err := os.Stat(remoteFilePath)
@@ -512,24 +538,8 @@ func (suite *dataValidationTestSuite) TestSparseFileRandomWriteBlockOverlap() {
 
 func (suite *dataValidationTestSuite) TestFileReadBytesMultipleBlocks() {
 	fileName := "bytesReadMultipleBlock"
-	localFilePath := tObj.testLocalPath + "/" + fileName
-	remoteFilePath := tObj.testMntPath + "/" + fileName
-
-	// create local file
-	lfh, err := os.Create(localFilePath)
-	suite.Nil(err)
-
-	defer func(fh *os.File) {
-		_ = fh.Close()
-	}(lfh)
-
-	// create remote file
-	rfh, err := os.Create(remoteFilePath)
-	suite.Nil(err)
-
-	defer func(fh *os.File) {
-		_ = fh.Close()
-	}(rfh)
+	localFilePath, remoteFilePath := convertFileNameToFilePath(fileName)
+	lfh, rfh := createFileHandleInLocalAndRemote(suite, localFilePath, remoteFilePath)
 
 	// write 65MB data
 	n, err := lfh.WriteAt(largeBuff[0:65*_1MB], 0)
@@ -541,9 +551,6 @@ func (suite *dataValidationTestSuite) TestFileReadBytesMultipleBlocks() {
 	suite.Nil(err)
 	suite.Equal(n, 7)
 
-	err = lfh.Close()
-	suite.Nil(err)
-
 	// write 65MB data
 	n, err = rfh.WriteAt(largeBuff[0:65*_1MB], 0)
 	suite.Nil(err)
@@ -554,8 +561,7 @@ func (suite *dataValidationTestSuite) TestFileReadBytesMultipleBlocks() {
 	suite.Nil(err)
 	suite.Equal(n, 7)
 
-	err = rfh.Close()
-	suite.Nil(err)
+	closeFileHandles(suite, lfh, rfh)
 
 	// check size of blob uploaded using os.Stat()
 	fi, err := os.Stat(remoteFilePath)
@@ -578,8 +584,7 @@ func (suite *dataValidationTestSuite) TestFileReadBytesMultipleBlocks() {
 	}
 	suite.Equal(totalBytesread, 65*int64(_1MB)+7)
 
-	err = fh.Close()
-	suite.Nil(err)
+	closeFileHandles(suite, fh)
 
 	localMD5, err := computeMD5(localFilePath)
 	suite.Nil(err)
@@ -596,40 +601,20 @@ func (suite *dataValidationTestSuite) TestFileReadBytesMultipleBlocks() {
 
 func (suite *dataValidationTestSuite) TestFileReadBytesOneBlock() {
 	fileName := "bytesReadOneBlock"
-	localFilePath := tObj.testLocalPath + "/" + fileName
-	remoteFilePath := tObj.testMntPath + "/" + fileName
-
-	// create local file
-	lfh, err := os.Create(localFilePath)
-	suite.Nil(err)
-
-	defer func(fh *os.File) {
-		_ = fh.Close()
-	}(lfh)
-
-	// create remote file
-	rfh, err := os.Create(remoteFilePath)
-	suite.Nil(err)
-
-	defer func(fh *os.File) {
-		_ = fh.Close()
-	}(rfh)
+	localFilePath, remoteFilePath := convertFileNameToFilePath(fileName)
+	lfh, rfh := createFileHandleInLocalAndRemote(suite, localFilePath, remoteFilePath)
 
 	// write 13 bytes data to local file
 	n, err := lfh.WriteAt(largeBuff[0:13], 0)
 	suite.Nil(err)
 	suite.Equal(n, 13)
 
-	err = lfh.Close()
-	suite.Nil(err)
-
 	// write 13 bytes data to remote file
 	n, err = rfh.WriteAt(largeBuff[0:13], 0)
 	suite.Nil(err)
 	suite.Equal(n, 13)
 
-	err = rfh.Close()
-	suite.Nil(err)
+	closeFileHandles(suite, lfh, rfh)
 
 	// check size of blob uploaded using os.Stat()
 	fi, err := os.Stat(remoteFilePath)
@@ -652,8 +637,7 @@ func (suite *dataValidationTestSuite) TestFileReadBytesOneBlock() {
 	}
 	suite.Equal(totalBytesread, int64(13))
 
-	err = fh.Close()
-	suite.Nil(err)
+	closeFileHandles(suite, fh)
 
 	localMD5, err := computeMD5(localFilePath)
 	suite.Nil(err)
@@ -670,24 +654,8 @@ func (suite *dataValidationTestSuite) TestFileReadBytesOneBlock() {
 
 func (suite *dataValidationTestSuite) TestRandomWriteRaceCondition() {
 	fileName := "randomWriteRaceCondition"
-	localFilePath := tObj.testLocalPath + "/" + fileName
-	remoteFilePath := tObj.testMntPath + "/" + fileName
-
-	// create local file
-	lfh, err := os.Create(localFilePath)
-	suite.Nil(err)
-
-	defer func(fh *os.File) {
-		_ = fh.Close()
-	}(lfh)
-
-	// create remote file
-	rfh, err := os.Create(remoteFilePath)
-	suite.Nil(err)
-
-	defer func(fh *os.File) {
-		_ = fh.Close()
-	}(rfh)
+	localFilePath, remoteFilePath := convertFileNameToFilePath(fileName)
+	lfh, rfh := createFileHandleInLocalAndRemote(suite, localFilePath, remoteFilePath)
 
 	offsetList := []int64{}
 	for i := 0; i < 10; i++ {
@@ -701,6 +669,8 @@ func (suite *dataValidationTestSuite) TestRandomWriteRaceCondition() {
 
 	// write to remote file
 	writeSparseData(suite, rfh, offsetList)
+
+	closeFileHandles(suite, lfh, rfh)
 
 	// check size of blob uploaded
 	fi, err := os.Stat(remoteFilePath)
@@ -718,6 +688,84 @@ func (suite *dataValidationTestSuite) TestRandomWriteRaceCondition() {
 	suite.Equal(localMD5, remoteMD5)
 
 	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, tObj.testCachePath})
+}
+
+func (suite *dataValidationTestSuite) TestPanicOnClosingFile() {
+	fileName := "panicOnClosingFile"
+	_, remoteFilePath := convertFileNameToFilePath(fileName)
+	blockSizeBytes := blockSizeMB * int(_1MB)
+	buffer := make([]byte, blockSizeBytes)
+	generateFileWithRandomData(suite, remoteFilePath, blockSizeBytes*10)
+
+	rfh, err := os.OpenFile(remoteFilePath, syscall.O_RDWR, 0666)
+	suite.Nil(err)
+
+	//Read 1st block
+	bytes_read, err := rfh.Read(buffer)
+	suite.Nil(err)
+	suite.Equal(bytes_read, blockSizeBytes)
+
+	//Write to 2nd block
+	bytes_written, err := rfh.Write(buffer)
+	suite.Equal(bytes_written, blockSizeBytes)
+	suite.Nil(err)
+
+	closeFileHandles(suite, rfh)
+}
+
+// This tests takes default 1MB blockSize as other blockSizes could cause the test to take some time.
+func (suite *dataValidationTestSuite) TestPanicOnWritingToFile() {
+	fileName := "panicOnWritingToFile"
+	_, remoteFilePath := convertFileNameToFilePath(fileName)
+	blockSizeBytes := blockSizeMB * int(_1MB)
+	buffer := make([]byte, blockSizeBytes)
+	generateFileWithRandomData(suite, remoteFilePath, blockSizeBytes*20)
+
+	rfh, err := os.OpenFile(remoteFilePath, syscall.O_RDWR, 0666)
+	suite.Nil(err)
+
+	//Make the cooking+cooked=prefetchCount
+	for i := 0; i < 3; i++ {
+		offset := 4 * int64(i) * int64(_1MB)
+		bytes_read, err := rfh.ReadAt(buffer, offset)
+		suite.Nil(err)
+		suite.Equal(bytes_read, blockSizeBytes)
+	}
+
+	for i := 18; i < 20; i++ {
+		bytes_written, err := rfh.WriteAt(buffer, 18*int64(blockSizeBytes))
+		suite.Equal(bytes_written, blockSizeBytes)
+		suite.Nil(err)
+	}
+
+	closeFileHandles(suite, rfh)
+}
+
+// This tests takes default 1MB blockSize as other blockSizes could cause the test to take some time.
+func (suite *dataValidationTestSuite) TestPanicOnReadingFileInRandReadMode() {
+	fileName := "panicOnReadingFileInRandReadMode"
+	_, remoteFilePath := convertFileNameToFilePath(fileName)
+	blockSizeBytes := int(_1MB)
+	buffer := make([]byte, blockSizeBytes)
+	generateFileWithRandomData(suite, remoteFilePath, blockSizeBytes*84)
+
+	rfh, err := os.OpenFile(remoteFilePath, syscall.O_RDWR, 0666)
+	suite.Nil(err)
+
+	//Write at some offset
+	bytes_written, err := rfh.WriteAt(buffer, 0)
+	suite.Equal(bytes_written, blockSizeBytes)
+	suite.Nil(err)
+
+	//Make the file handle goto random read mode in block cache(This is causing panic)
+	for i := 0; i < 14; i++ {
+		offset := int64(_1MB) * 6 * int64(i)
+		bytes_read, err := rfh.ReadAt(buffer, offset)
+		suite.Nil(err)
+		suite.Equal(bytes_read, blockSizeBytes)
+	}
+
+	closeFileHandles(suite, rfh)
 }
 
 // -------------- Main Method -------------------
@@ -762,6 +810,8 @@ func TestDataValidationTestSuite(t *testing.T) {
 		fmt.Println("BLOCK Blob Testing...")
 	}
 
+	fmt.Println("Block Size MB Used for the tests ", blockSizeMB)
+
 	// Sanity check in the off chance the same random name was generated twice and was still around somehow
 	err := os.RemoveAll(tObj.testMntPath)
 	if err != nil {
@@ -795,4 +845,5 @@ func init() {
 	regDataValidationTestFlag(&quickTest, "quick-test", "true", "Run quick tests")
 	regDataValidationTestFlag(&streamDirectTest, "stream-direct-test", "false", "Run stream direct tests")
 	regDataValidationTestFlag(&distro, "distro-name", "", "Name of the distro")
+	flag.IntVar(&blockSizeMB, "block-size-mb", 16, "Block size MB in block cache")
 }
