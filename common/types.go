@@ -71,7 +71,7 @@ const (
 
 	UserAgentHeader = "User-Agent"
 
-	BlockCacheRWErrMsg = "Due to data integrity issues, your random write flow using block cache is blocked. Please reach out to blobfusedev@microsoft.com or create a GitHub issue if you hit this issue. We are working on fixing this and enabling it back. For more details, refer https://aka.ms/blobfuse2warnings."
+	BlockCacheRWErrMsg = "Notice: The random write flow using block cache is temporarily blocked due to potential data integrity issues. This is a precautionary measure. If you see this message, contact blobfusedev@microsoft.com or create a GitHub issue. We're working on a fix. More details: https://aka.ms/blobfuse2warnings."
 )
 
 func FuseIgnoredFlags() []string {
