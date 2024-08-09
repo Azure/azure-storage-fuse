@@ -267,7 +267,7 @@ func (c *FileCache) Configure(_ bool) error {
 	}
 
 	if config.IsSet(compName+".max-size-mb") && conf.MaxSizeMB != 0 {
-		c.maxCacheSize = conf.MaxSizeMB
+		c.maxCacheSize = conf.MaxSizeMB * MB
 	}
 
 	if !isLocalDirEmpty(c.tmpPath) && !c.allowNonEmpty {
@@ -333,7 +333,7 @@ func (c *FileCache) OnConfigChange() {
 	c.cacheTimeout = float64(conf.Timeout)
 	c.policyTrace = conf.EnablePolicyTrace
 	c.offloadIO = conf.OffloadIO
-	c.maxCacheSize = conf.MaxSizeMB
+	c.maxCacheSize = conf.MaxSizeMB * MB
 	c.syncToFlush = conf.SyncToFlush
 	c.syncToDelete = !conf.SyncNoOp
 	_ = c.policy.UpdateConfig(c.GetPolicyConfig(conf))
@@ -344,7 +344,7 @@ func (c *FileCache) StatFs() (*syscall.Statfs_t, bool, error) {
 	// cache_size - used = f_frsize * f_bavail/1024
 	// cache_size - used = vfs.f_bfree * vfs.f_frsize / 1024
 	// if cache size is set to 0 then we have the root mount usage
-	maxCacheSize := c.maxCacheSize * MB
+	maxCacheSize := c.maxCacheSize
 	if maxCacheSize == 0 {
 		return nil, false, nil
 	}
