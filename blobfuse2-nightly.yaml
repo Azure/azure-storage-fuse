@@ -1349,6 +1349,12 @@ stages:
               adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
               fuselib: 'libfuse3-dev'
               tags: 'fuse3'
+            Ubuntu-20:
+              AgentName: 'blobfuse-ubuntu20'
+              containerName: 'test-cnt-ubn-20'
+              adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
+              fuselib: 'libfuse-dev'
+              tags: 'fuse2'
 
         pool:
           name: "blobfuse-ubuntu-pool"
@@ -1406,6 +1412,189 @@ stages:
               # TODO: These can be removed one day and replace all instances of ${{ parameters.temp_dir }} with $(TEMP_DIR) since it is a global variable
               temp_dir: $(TEMP_DIR)
               mount_dir: $(MOUNT_DIR)
+  
+  - stage: BlockCacheDataDirectIOValidation
+    jobs:
+      # Ubuntu Tests
+      - job: Set_1
+        timeoutInMinutes: 300
+        strategy:
+          matrix:
+            Ubuntu-20:
+              AgentName: 'blobfuse-ubuntu20'
+              containerName: 'test-cnt-ubn-20'
+              adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
+              fuselib: 'libfuse-dev'
+              tags: 'fuse2'          
+            Ubuntu-22:
+              AgentName: 'blobfuse-ubuntu22'
+              containerName: 'test-cnt-ubn-22'
+              adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
+              fuselib: 'libfuse3-dev'
+              tags: 'fuse3'
+
+        pool:
+          name: "blobfuse-ubuntu-pool"
+          demands:
+            - ImageOverride -equals $(AgentName)
+
+        variables:
+          - group: NightlyBlobFuse
+          - name: ROOT_DIR
+            value: "/usr/pipeline/workv2"
+          - name: WORK_DIR
+            value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
+          - name: skipComponentGovernanceDetection
+            value: true
+          - name: MOUNT_DIR
+            value: "/usr/pipeline/workv2/blob_mnt"
+          - name: TEMP_DIR
+            value: "/usr/pipeline/workv2/temp"
+          - name: BLOBFUSE2_CFG
+            value: "/usr/pipeline/workv2/blobfuse2.yaml"
+          - name: GOPATH
+            value: "/usr/pipeline/workv2/go"
+
+        steps:
+          - template: 'azure-pipeline-templates/setup.yml'
+            parameters:
+              tags: $(tags)
+              installStep:
+                script: |
+                  sudo apt-get update --fix-missing
+                  sudo apt update
+                  sudo apt-get install cmake gcc $(fuselib) git parallel -y
+                  if [ $(tags) == "fuse2" ]; then
+                    sudo apt-get install fuse -y
+                  else
+                    sudo apt-get install fuse3 -y
+                  fi
+                displayName: 'Install fuse'
+
+          - template: 'azure-pipeline-templates/e2e-tests-block-cache.yml'
+            parameters:
+              conf_template: azure_key.yaml
+              config_file: $(BLOBFUSE2_CFG)
+              container: $(containerName)
+              idstring: Block_Blob
+              adls: false
+              account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
+              account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
+              account_type: block
+              account_endpoint: https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net
+              distro_name: $(AgentName)
+              quick_test: false
+              verbose_log: ${{ parameters.verbose_log }}
+              clone: true
+              # TODO: These can be removed one day and replace all instances of ${{ parameters.temp_dir }} with $(TEMP_DIR) since it is a global variable
+              temp_dir: $(TEMP_DIR)
+              mount_dir: $(MOUNT_DIR)
+              mnt_flags: "-o direct_io"
+
+
+  - stage: BlockCacheDataIntegrityValidation
+    jobs:
+      # Ubuntu Tests
+      - job: Set_1
+        timeoutInMinutes: 300
+        strategy:
+          matrix:
+            Ubuntu-20:
+              AgentName: 'blobfuse-ubuntu20'
+              containerName: 'test-cnt-ubn-20'
+              adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
+              fuselib: 'libfuse-dev'
+              tags: 'fuse2'          
+            Ubuntu-22:
+              AgentName: 'blobfuse-ubuntu22'
+              containerName: 'test-cnt-ubn-22'
+              adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
+              fuselib: 'libfuse3-dev'
+              tags: 'fuse3'
+
+        pool:
+          name: "blobfuse-ubuntu-pool"
+          demands:
+            - ImageOverride -equals $(AgentName)
+
+        variables:
+          - group: NightlyBlobFuse
+          - name: ROOT_DIR
+            value: "/usr/pipeline/workv2"
+          - name: WORK_DIR
+            value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
+          - name: skipComponentGovernanceDetection
+            value: true
+          - name: MOUNT_DIR
+            value: "/usr/pipeline/workv2/blob_mnt"
+          - name: TEMP_DIR
+            value: "/usr/pipeline/workv2/temp"
+          - name: BLOBFUSE2_CFG
+            value: "/usr/pipeline/workv2/blobfuse2.yaml"
+          - name: GOPATH
+            value: "/usr/pipeline/workv2/go"
+
+        steps:
+          - template: 'azure-pipeline-templates/setup.yml'
+            parameters:
+              tags: $(tags)
+              installStep:
+                script: |
+                  sudo apt-get update --fix-missing
+                  sudo apt update
+                  sudo apt-get install cmake gcc $(fuselib) git parallel -y
+                  if [ $(tags) == "fuse2" ]; then
+                    sudo apt-get install fuse -y
+                  else
+                    sudo apt-get install fuse3 -y
+                  fi
+                displayName: 'Install fuse'
+
+          - script: |
+              sudo apt-get install python3-setuptools -y
+              sudo apt install python3-pip -y
+              sudo pip3 install pandas numpy pyarrow fastparquet
+            displayName: 'Install Python Packages'
+
+          - template: 'azure-pipeline-templates/e2e-tests-block-cache-data-integrity.yml'
+            parameters:
+              conf_template: azure_key.yaml
+              config_file: $(BLOBFUSE2_CFG)
+              container: $(containerName)
+              idstring: Block_Blob
+              adls: false
+              account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
+              account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
+              account_type: block
+              account_endpoint: https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net
+              distro_name: $(AgentName)
+              quick_test: false
+              verbose_log: ${{ parameters.verbose_log }}
+              clone: true
+              # TODO: These can be removed one day and replace all instances of ${{ parameters.temp_dir }} with $(TEMP_DIR) since it is a global variable
+              temp_dir: $(TEMP_DIR)
+              mount_dir: $(MOUNT_DIR)
+              block_size_mb: "1"
+
+          - template: 'azure-pipeline-templates/e2e-tests-block-cache-data-integrity.yml'
+            parameters:
+              conf_template: azure_key.yaml
+              config_file: $(BLOBFUSE2_CFG)
+              container: $(containerName)
+              idstring: Block_Blob
+              adls: false
+              account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
+              account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
+              account_type: block
+              account_endpoint: https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net
+              distro_name: $(AgentName)
+              quick_test: false
+              verbose_log: ${{ parameters.verbose_log }}
+              clone: true
+              # TODO: These can be removed one day and replace all instances of ${{ parameters.temp_dir }} with $(TEMP_DIR) since it is a global variable
+              temp_dir: $(TEMP_DIR)
+              mount_dir: $(MOUNT_DIR)
+              block_size_mb: "8"
 
   - stage: FNSDataValidation
     jobs:
