@@ -110,7 +110,7 @@ steps:
 
   - script: |
       echo "----------------------------------------------"
-      ls -l ${{ parameters.mount_dir }}/mixedfiles*
+      ls -l ${{ parameters.mount_dir }}/datafiles*
       ls -l ${{ parameters.mount_dir }}/mixedfiles*
     displayName: 'Print contents of Block-Cache'
 
@@ -182,10 +182,9 @@ steps:
   - script: |
       echo "----------------------------------------------"
       cat $(WORK_DIR)/md5sum_original_files.txt
-      cat $(WORK_DIR)/md5sum_original_files.txt | cut -d " " -f1 > $(WORK_DIR)/temp.txt && mv $(WORK_DIR)/temp.txt $(WORK_DIR)/md5sum_original_files.txt
       echo "----------------------------------------------"
-      cat $(WORK_DIR)/md5sum_block_cache_direct_io.txt
       cat $(WORK_DIR)/md5sum_block_cache_direct_io.txt | cut -d " " -f1 > $(WORK_DIR)/temp.txt && mv $(WORK_DIR)/temp.txt $(WORK_DIR)/md5sum_block_cache_direct_io.txt
+      cat $(WORK_DIR)/md5sum_block_cache_direct_io.txt
       echo "----------------------------------------------"
       diff $(WORK_DIR)/md5sum_original_files.txt $(WORK_DIR)/md5sum_block_cache_direct_io.txt
       if [ $? -ne 0 ]; then
@@ -196,10 +195,9 @@ steps:
   - script: |
       echo "----------------------------------------------"
       cat $(WORK_DIR)/md5sum_original_files.txt
-      cat $(WORK_DIR)/md5sum_original_files.txt | cut -d " " -f1 > $(WORK_DIR)/temp.txt && mv $(WORK_DIR)/temp.txt $(WORK_DIR)/md5sum_original_files.txt
       echo "----------------------------------------------"
-      cat $(WORK_DIR)/md5sum_block_cache_disk_cache.txt
       cat $(WORK_DIR)/md5sum_block_cache_disk_cache.txt | cut -d " " -f1 > $(WORK_DIR)/temp.txt && mv $(WORK_DIR)/temp.txt $(WORK_DIR)/md5sum_block_cache_disk_cache.txt
+      cat $(WORK_DIR)/md5sum_block_cache_disk_cache.txt
       echo "----------------------------------------------"
       diff $(WORK_DIR)/md5sum_original_files.txt $(WORK_DIR)/md5sum_block_cache_disk_cache.txt
       if [ $? -ne 0 ]; then
