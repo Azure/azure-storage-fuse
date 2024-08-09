@@ -1645,6 +1645,7 @@ func (suite *blockCacheTestSuite) TestDisableRandomWrite() {
 	// write 1MB data back at offset 0
 	n, err := tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: dataBuff[0:_1MB]})
 	suite.assert.NotNil(err)
+	suite.ErrorContains(err, common.BlockCacheRWErrMsg)
 	suite.assert.Equal(n, 0)
 
 	fs, err := os.Stat(storagePath)
@@ -1694,6 +1695,7 @@ func (suite *blockCacheTestSuite) TestDisableRandomWriteExistingFile() {
 	// write randomly in new handle at offset 2MB
 	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: nh, Offset: int64(2 * _1MB), Data: dataBuff[0:10]})
 	suite.assert.NotNil(err)
+	suite.ErrorContains(err, common.BlockCacheRWErrMsg)
 	suite.assert.Equal(n, 0)
 }
 
