@@ -68,22 +68,21 @@ import (
 type BlockCache struct {
 	internal.BaseComponent
 
-	blockSize         uint64          // Size of each block to be cached
-	memSize           uint64          // Mem size to be used for caching at the startup
-	tmpPath           string          // Disk path where these blocks will be cached
-	diskSize          uint64          // Size of disk space allocated for the caching
-	diskTimeout       uint32          // Timeout for which disk blocks will be cached
-	workers           uint32          // Number of threads working to fetch the blocks
-	prefetch          uint32          // Number of blocks to be prefetched
-	diskPolicy        *tlru.TLRU      // Disk cache eviction policy
-	blockPool         *BlockPool      // Pool of blocks
-	threadPool        *ThreadPool     // Pool of threads
-	fileLocks         *common.LockMap // Locks for each file_blockid to avoid multiple threads to fetch same block
-	fileNodeMap       sync.Map        // Map holding files that are there in our cache
-	maxDiskUsageHit   bool            // Flag to indicate if we have hit max disk usage
-	noPrefetch        bool            // Flag to indicate if prefetch is disabled
-	prefetchOnOpen    bool            // Start prefetching on file open call instead of waiting for first read
-	enableRandomWrite bool            // Enable random write in block cache
+	blockSize       uint64          // Size of each block to be cached
+	memSize         uint64          // Mem size to be used for caching at the startup
+	tmpPath         string          // Disk path where these blocks will be cached
+	diskSize        uint64          // Size of disk space allocated for the caching
+	diskTimeout     uint32          // Timeout for which disk blocks will be cached
+	workers         uint32          // Number of threads working to fetch the blocks
+	prefetch        uint32          // Number of blocks to be prefetched
+	diskPolicy      *tlru.TLRU      // Disk cache eviction policy
+	blockPool       *BlockPool      // Pool of blocks
+	threadPool      *ThreadPool     // Pool of threads
+	fileLocks       *common.LockMap // Locks for each file_blockid to avoid multiple threads to fetch same block
+	fileNodeMap     sync.Map        // Map holding files that are there in our cache
+	maxDiskUsageHit bool            // Flag to indicate if we have hit max disk usage
+	noPrefetch      bool            // Flag to indicate if prefetch is disabled
+	prefetchOnOpen  bool            // Start prefetching on file open call instead of waiting for first read
 
 	lazyWrite    bool           // Flag to indicate if lazy write is enabled
 	fileCloseOpt sync.WaitGroup // Wait group to wait for all async close operations to complete
@@ -91,15 +90,14 @@ type BlockCache struct {
 
 // Structure defining your config parameters
 type BlockCacheOptions struct {
-	BlockSize         float64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
-	MemSize           uint64  `config:"mem-size-mb" yaml:"mem-size-mb,omitempty"`
-	TmpPath           string  `config:"path" yaml:"path,omitempty"`
-	DiskSize          uint64  `config:"disk-size-mb" yaml:"disk-size-mb,omitempty"`
-	DiskTimeout       uint32  `config:"disk-timeout-sec" yaml:"timeout-sec,omitempty"`
-	PrefetchCount     uint32  `config:"prefetch" yaml:"prefetch,omitempty"`
-	Workers           uint32  `config:"parallelism" yaml:"parallelism,omitempty"`
-	PrefetchOnOpen    bool    `config:"prefetch-on-open" yaml:"prefetch-on-open,omitempty"`
-	EnableRandomWrite bool    `config:"enable-random-write" yaml:"enable-random-write,omitempty"`
+	BlockSize      float64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
+	MemSize        uint64  `config:"mem-size-mb" yaml:"mem-size-mb,omitempty"`
+	TmpPath        string  `config:"path" yaml:"path,omitempty"`
+	DiskSize       uint64  `config:"disk-size-mb" yaml:"disk-size-mb,omitempty"`
+	DiskTimeout    uint32  `config:"disk-timeout-sec" yaml:"timeout-sec,omitempty"`
+	PrefetchCount  uint32  `config:"prefetch" yaml:"prefetch,omitempty"`
+	Workers        uint32  `config:"parallelism" yaml:"parallelism,omitempty"`
+	PrefetchOnOpen bool    `config:"prefetch-on-open" yaml:"prefetch-on-open,omitempty"`
 }
 
 const (
@@ -213,7 +211,6 @@ func (bc *BlockCache) Configure(_ bool) error {
 	bc.prefetchOnOpen = conf.PrefetchOnOpen
 	bc.prefetch = uint32(math.Max((MIN_PREFETCH*2)+1, (float64)(2*runtime.NumCPU())))
 	bc.noPrefetch = false
-	bc.enableRandomWrite = conf.EnableRandomWrite
 
 	if defaultMemSize && (uint64(bc.prefetch)*uint64(bc.blockSize)) > bc.memSize {
 		bc.prefetch = (MIN_PREFETCH * 2) + 1
@@ -275,8 +272,8 @@ func (bc *BlockCache) Configure(_ bool) error {
 		return fmt.Errorf("config error in %s [memory limit too low for configured prefetch]", bc.Name())
 	}
 
-	log.Info("BlockCache::Configure : block size %v, mem size %v, worker %v, prefetch %v, disk path %v, max size %v, disk timeout %v, prefetch-on-open %t, maxDiskUsageHit %v, noPrefetch %v, enable-random-write %v",
-		bc.blockSize, bc.memSize, bc.workers, bc.prefetch, bc.tmpPath, bc.diskSize, bc.diskTimeout, bc.prefetchOnOpen, bc.maxDiskUsageHit, bc.noPrefetch, bc.enableRandomWrite)
+	log.Info("BlockCache::Configure : block size %v, mem size %v, worker %v, prefetch %v, disk path %v, max size %v, disk timeout %v, prefetch-on-open %t, maxDiskUsageHit %v, noPrefetch %v",
+		bc.blockSize, bc.memSize, bc.workers, bc.prefetch, bc.tmpPath, bc.diskSize, bc.diskTimeout, bc.prefetchOnOpen, bc.maxDiskUsageHit, bc.noPrefetch)
 
 	bc.blockPool = NewBlockPool(bc.blockSize, bc.memSize)
 	if bc.blockPool == nil {
@@ -981,21 +978,6 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 	return dataWritten, nil
 }
 
-// block random write if,
-//   - random write is disabled
-//   - block index of write offset is less than than the block index of the handle size
-//   - block index is present in the blockList map which indicates that it has been staged earlier
-func (bc *BlockCache) blockRandomWrite(handle *handlemap.Handle, index uint64) bool {
-	if !bc.enableRandomWrite && index < bc.getBlockIndex(uint64(handle.Size)) {
-		shouldCommit, shouldDownload := shouldCommitAndDownload(int64(index), handle)
-		if !shouldCommit && !shouldDownload {
-			return false
-		}
-		return true
-	}
-	return false
-}
-
 func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) (*Block, error) {
 	// Check the given block index is already available or not
 	index := bc.getBlockIndex(offset)
@@ -1011,13 +993,6 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 
 	node, found := handle.GetValue(fmt.Sprintf("%v", index))
 	if !found {
-		// block not present in the buffer list
-		// check if it is a random write case and should be blocked
-		if bc.blockRandomWrite(handle, index) {
-			log.Err("BlockCache::WriteFile : Random write detection for write offset %v and block %v, where handle size is %v", offset, index, handle.Size)
-			return nil, fmt.Errorf("blocking random write for write offset %v and block %v where handle size is %v", offset, index, handle.Size)
-		}
-
 		// If too many buffers are piled up for this file then try to evict some of those which are already uploaded
 		if handle.Buffers.Cooked.Len()+handle.Buffers.Cooking.Len() >= int(bc.prefetch) {
 			bc.waitAndFreeUploadedBlocks(handle, 1)
@@ -1041,8 +1016,8 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 			// if a block has been staged and deleted from the buffer list, then we should commit the existing blocks
 			// TODO: commit the dirty blocks and download the given block
 			if shouldCommit {
-				log.Err("BlockCache::getOrCreateBlock : Fetching an uncommitted block %v for %v=>%s", block.id, handle.ID, handle.Path)
-				return nil, fmt.Errorf("fetching an uncommitted block %v for %v=>%s", block.id, handle.ID, handle.Path)
+				log.Err("BlockCache::getOrCreateBlock : Fetching an uncommitted block %v for %v=>%s\n%v", block.id, handle.ID, handle.Path, common.BlockCacheRWErrMsg)
+				return nil, fmt.Errorf("fetching an uncommitted block %v for %v=>%s\n%v", block.id, handle.ID, handle.Path, common.BlockCacheRWErrMsg)
 			}
 
 			// download the block if,
@@ -1098,11 +1073,9 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 			}
 
 			block.node = handle.Buffers.Cooking.PushBack(block)
-			block.flags.Clear(BlockFlagSynced)
 		} else if block.flags.IsSet(BlockFlagDownloading) {
 			log.Debug("BlockCache::getOrCreateBlock : Waiting for download to finish for committed block %v for %v=>%s", block.id, handle.ID, handle.Path)
 			_, ok := <-block.state
-			block.flags.Clear(BlockFlagDownloading)
 			if ok {
 				block.Unblock()
 			}
@@ -1111,8 +1084,6 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 			// and then write to the same block and move it back to cooking queue
 			log.Debug("BlockCache::getOrCreateBlock : Waiting for the block %v to upload for %v=>%s", block.id, handle.ID, handle.Path)
 			_, ok := <-block.state
-			block.flags.Clear(BlockFlagUploading)
-			block.flags.Clear(BlockFlagSynced) //clearing the BlockFlagSynced flag since the block has been staged and will be used again for write
 			if ok {
 				block.Unblock()
 			}
@@ -1121,6 +1092,9 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 			}
 			block.node = handle.Buffers.Cooking.PushBack(block)
 		}
+		block.flags.Clear(BlockFlagUploading)
+		block.flags.Clear(BlockFlagDownloading)
+		block.flags.Clear(BlockFlagSynced)
 	}
 
 	return block, nil
@@ -1151,6 +1125,29 @@ func (bc *BlockCache) stageBlocks(handle *handlemap.Handle, cnt int) error {
 	return nil
 }
 
+func (bc *BlockCache) printCooking(handle *handlemap.Handle) { //nolint
+	nodeList := handle.Buffers.Cooking
+	node := nodeList.Front()
+	cookedId := []int64{}
+	cookingId := []int64{}
+	for node != nil {
+		nextNode := node.Next()
+		block := node.Value.(*Block)
+		cookingId = append(cookingId, block.id)
+		node = nextNode
+	}
+	nodeList = handle.Buffers.Cooked
+	node = nodeList.Front()
+	for node != nil {
+		nextNode := node.Next()
+		block := node.Value.(*Block)
+		cookedId = append(cookedId, block.id)
+		node = nextNode
+	}
+	log.Debug("BlockCache::printCookingnCooked : %v=>%s \n Cooking: [%v] \n Cooked: [%v]", handle.ID, handle.Path, cookingId, cookedId)
+
+}
+
 // shouldCommitAndDownload is used to check if we should commit the existing blocks and download the given block.
 // There can be a case where a block has been partially written, staged and cleared from the buffer list.
 // If write call comes for that block, we cannot get the previous staged data
@@ -1179,6 +1176,7 @@ func shouldCommitAndDownload(blockID int64, handle *handlemap.Handle) (bool, boo
 func (bc *BlockCache) lineupUpload(handle *handlemap.Handle, block *Block, listMap map[int64]*blockInfo) {
 	// if a block has data less than block size and is not the last block,
 	// add null at the end and upload the full block
+	// bc.printCooking(handle)
 	if block.endIndex < uint64(handle.Size) {
 		log.Debug("BlockCache::lineupUpload : Appending null for block %v, size %v for %v=>%s", block.id, (block.endIndex - block.offset), handle.ID, handle.Path)
 		block.endIndex = block.offset + bc.blockSize
@@ -1197,6 +1195,7 @@ func (bc *BlockCache) lineupUpload(handle *handlemap.Handle, block *Block, listM
 	}
 	//}
 
+	log.Debug("BlockCache::lineupUpload : block %v, size %v for %v=>%s, blockId %v", block.id, (block.endIndex - block.offset), handle.ID, handle.Path, id)
 	item := &workItem{
 		handle:   handle,
 		block:    block,
@@ -1206,7 +1205,7 @@ func (bc *BlockCache) lineupUpload(handle *handlemap.Handle, block *Block, listM
 		blockId:  id,
 	}
 
-	log.Debug("BlockCache::lineupUpload : Upload block %v=>%s (index %v, offset %v, data %v)", handle.ID, handle.Path, block.id, block.offset, (block.endIndex - block.offset))
+	// log.Debug("BlockCache::lineupUpload : Upload block %v=>%s (index %v, offset %v, data %v)", handle.ID, handle.Path, block.id, block.offset, (block.endIndex - block.offset))
 
 	// Remove this block from free block list and add to in-process list
 	if block.node != nil {
@@ -1276,6 +1275,7 @@ func (bc *BlockCache) upload(item *workItem) {
 	flock := bc.fileLocks.Get(fileName)
 	flock.Lock()
 	defer flock.Unlock()
+	// log.Debug("BlockCache::Upload : block %v, size %v for %v=>%s, blockId %v", item.block.id, (item.block.endIndex - item.block.offset), item.handle.ID, item.handle.Path, item.blockId)
 
 	// This block is updated so we need to stage it now
 	err := bc.NextComponent().StageData(internal.StageDataOptions{
@@ -1417,8 +1417,8 @@ func (bc *BlockCache) getBlockIDList(handle *handlemap.Handle) ([]string, error)
 		if index == offsets[i] {
 			// TODO: when a staged block (not last block) has data less than block size
 			if i != len(offsets)-1 && listMap[offsets[i]].size != bc.blockSize {
-				log.Err("BlockCache::getBlockIDList : Staged block %v has less data %v for %v=>%s", offsets[i], listMap[offsets[i]].size, handle.ID, handle.Path)
-				return nil, fmt.Errorf("staged block %v has less data %v for %v=>%s", offsets[i], listMap[offsets[i]].size, handle.ID, handle.Path)
+				log.Err("BlockCache::getBlockIDList : Staged block %v has less data %v for %v=>%s\n%v", offsets[i], listMap[offsets[i]].size, handle.ID, handle.Path, common.BlockCacheRWErrMsg)
+				return nil, fmt.Errorf("staged block %v has less data %v for %v=>%s\n%v", offsets[i], listMap[offsets[i]].size, handle.ID, handle.Path, common.BlockCacheRWErrMsg)
 			}
 
 			blockIDList = append(blockIDList, listMap[offsets[i]].id)
@@ -1672,10 +1672,4 @@ func init() {
 
 	blockCachePrefetchOnOpen := config.AddBoolFlag("block-cache-prefetch-on-open", false, "Start prefetching on open or wait for first read.")
 	config.BindPFlag(compName+".prefetch-on-open", blockCachePrefetchOnOpen)
-
-	// flag is hidden and its default value is false.
-	// It will block the random write cases where data-integrity issues have been observed.
-	blockCacheEnableRandomWrite := config.AddBoolFlag("block-cache-enable-random-write", false, "Enable random write in block cache")
-	config.BindPFlag(compName+".enable-random-write", blockCacheEnableRandomWrite)
-	blockCacheEnableRandomWrite.Hidden = true
 }

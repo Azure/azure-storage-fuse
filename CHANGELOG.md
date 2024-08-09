@@ -2,11 +2,11 @@
 
 **Bug Fixes**
 - Flush shall only sync the blocks to storage and not delete them from local cache.
-
+- Random write has been re-enabled in block cache.
 
 ## 2.3.1 (Unreleased)
 **NOTICE**
-- Due to data integrity issues, random write operations has been disabled in block cache. Refer [#1484](https://github.com/Azure/azure-storage-fuse/pull/1484) for blocked scenarios.
+- Due to data integrity issues, random write has been disabled in block-cache. Refer [#1484](https://github.com/Azure/azure-storage-fuse/pull/1484) for blocked scenarios.
 
 **Bug Fixes**
 - Fixed the case where file creation using SAS on HNS accounts was returning back wrong error code.
