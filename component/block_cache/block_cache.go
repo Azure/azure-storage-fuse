@@ -1074,19 +1074,15 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 			}
 
 			block.node = handle.Buffers.Cooking.PushBack(block)
-			block.flags.Clear(BlockFlagSynced)
 		} else if block.flags.IsSet(BlockFlagDownloading) {
 			log.Debug("BlockCache::getOrCreateBlock : Waiting for download to finish for committed block %v for %v=>%s", block.id, handle.ID, handle.Path)
 			<-block.state
-			block.flags.Clear(BlockFlagDownloading)
 			block.Unblock()
 		} else if block.flags.IsSet(BlockFlagUploading) {
 			// If the block is being staged, then wait till it is uploaded,
 			// and then write to the same block and move it back to cooking queue
 			log.Debug("BlockCache::getOrCreateBlock : Waiting for the block %v to upload for %v=>%s", block.id, handle.ID, handle.Path)
 			<-block.state
-			block.flags.Clear(BlockFlagUploading)
-			block.flags.Clear(BlockFlagSynced) //clearing the BlockFlagSynced flag since the block has been staged and will be used again for write
 			block.Unblock()
 
 			if block.node != nil {
@@ -1094,6 +1090,9 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 			}
 			block.node = handle.Buffers.Cooking.PushBack(block)
 		}
+		block.flags.Clear(BlockFlagUploading)
+		block.flags.Clear(BlockFlagDownloading)
+		block.flags.Clear(BlockFlagSynced)
 	}
 
 	return block, nil
@@ -1124,6 +1123,29 @@ func (bc *BlockCache) stageBlocks(handle *handlemap.Handle, cnt int) error {
 	return nil
 }
 
+func (bc *BlockCache) printCooking(handle *handlemap.Handle) { //nolint
+	nodeList := handle.Buffers.Cooking
+	node := nodeList.Front()
+	cookedId := []int64{}
+	cookingId := []int64{}
+	for node != nil {
+		nextNode := node.Next()
+		block := node.Value.(*Block)
+		cookingId = append(cookingId, block.id)
+		node = nextNode
+	}
+	nodeList = handle.Buffers.Cooked
+	node = nodeList.Front()
+	for node != nil {
+		nextNode := node.Next()
+		block := node.Value.(*Block)
+		cookedId = append(cookedId, block.id)
+		node = nextNode
+	}
+	log.Debug("BlockCache::printCookingnCooked : %v=>%s \n Cooking: [%v] \n Cooked: [%v]", handle.ID, handle.Path, cookingId, cookedId)
+
+}
+
 // shouldCommitAndDownload is used to check if we should commit the existing blocks and download the given block.
 // There can be a case where a block has been partially written, staged and cleared from the buffer list.
 // If write call comes for that block, we cannot get the previous staged data
@@ -1152,6 +1174,7 @@ func shouldCommitAndDownload(blockID int64, handle *handlemap.Handle) (bool, boo
 func (bc *BlockCache) lineupUpload(handle *handlemap.Handle, block *Block, listMap map[int64]*blockInfo) {
 	// if a block has data less than block size and is not the last block,
 	// add null at the end and upload the full block
+	// bc.printCooking(handle)
 	if block.endIndex < uint64(handle.Size) {
 		log.Debug("BlockCache::lineupUpload : Appending null for block %v, size %v for %v=>%s", block.id, (block.endIndex - block.offset), handle.ID, handle.Path)
 		block.endIndex = block.offset + bc.blockSize
@@ -1170,6 +1193,7 @@ func (bc *BlockCache) lineupUpload(handle *handlemap.Handle, block *Block, listM
 	}
 	//}
 
+	log.Debug("BlockCache::lineupUpload : block %v, size %v for %v=>%s, blockId %v", block.id, (block.endIndex - block.offset), handle.ID, handle.Path, id)
 	item := &workItem{
 		handle:   handle,
 		block:    block,
@@ -1179,7 +1203,7 @@ func (bc *BlockCache) lineupUpload(handle *handlemap.Handle, block *Block, listM
 		blockId:  id,
 	}
 
-	log.Debug("BlockCache::lineupUpload : Upload block %v=>%s (index %v, offset %v, data %v)", handle.ID, handle.Path, block.id, block.offset, (block.endIndex - block.offset))
+	// log.Debug("BlockCache::lineupUpload : Upload block %v=>%s (index %v, offset %v, data %v)", handle.ID, handle.Path, block.id, block.offset, (block.endIndex - block.offset))
 
 	// Remove this block from free block list and add to in-process list
 	if block.node != nil {
@@ -1249,6 +1273,7 @@ func (bc *BlockCache) upload(item *workItem) {
 	flock := bc.fileLocks.Get(fileName)
 	flock.Lock()
 	defer flock.Unlock()
+	// log.Debug("BlockCache::Upload : block %v, size %v for %v=>%s, blockId %v", item.block.id, (item.block.endIndex - item.block.offset), item.handle.ID, item.handle.Path, item.blockId)
 
 	// This block is updated so we need to stage it now
 	err := bc.NextComponent().StageData(internal.StageDataOptions{
@@ -1390,8 +1415,8 @@ func (bc *BlockCache) getBlockIDList(handle *handlemap.Handle) ([]string, error)
 		if index == offsets[i] {
 			// TODO: when a staged block (not last block) has data less than block size
 			if i != len(offsets)-1 && listMap[offsets[i]].size != bc.blockSize {
-				log.Err("BlockCache::getBlockIDList : Staged block %v has less data %v for %v=>%s", offsets[i], listMap[offsets[i]].size, handle.ID, handle.Path)
-				return nil, fmt.Errorf("staged block %v has less data %v for %v=>%s", offsets[i], listMap[offsets[i]].size, handle.ID, handle.Path)
+				log.Err("BlockCache::getBlockIDList : Staged block %v has less data %v for %v=>%s\n%v", offsets[i], listMap[offsets[i]].size, handle.ID, handle.Path, common.BlockCacheRWErrMsg)
+				return nil, fmt.Errorf("staged block %v has less data %v for %v=>%s\n%v", offsets[i], listMap[offsets[i]].size, handle.ID, handle.Path, common.BlockCacheRWErrMsg)
 			}
 
 			blockIDList = append(blockIDList, listMap[offsets[i]].id)
