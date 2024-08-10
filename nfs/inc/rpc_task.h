@@ -7,6 +7,7 @@
 #include <stack>
 #include <shared_mutex>
 #include <vector>
+#include <set>
 #include <thread>
 
 #include "nfs_client.h"
@@ -243,7 +244,7 @@ private:
 /**
  * SETATTR RPC task definition.
  */
-struct setatt_rpc_task
+struct setattr_rpc_task
 {
     void set_ino(fuse_ino_t ino)
     {
@@ -445,11 +446,6 @@ private:
     char *dir_name;
 };
 
-/**
- * This describes an RPC task which is created to handle a fuse request.
- * The RPC task tracks the progress of the RPC request sent to the server and
- * remains valid till the RPC request completes.
- */
 struct readdir_rpc_task
 {
 public:
@@ -565,6 +561,11 @@ private:
 
 #define RPC_TASK_MAGIC *((const uint32_t *)"RTSK")
 
+/**
+ * This describes an RPC task which is created to handle a fuse request.
+ * The RPC task tracks the progress of the RPC request sent to the server and
+ * remains valid till the RPC request completes.
+ */
 struct rpc_task
 {
     friend class rpc_task_helper;
@@ -668,7 +669,7 @@ public:
         struct write_rpc_task write_task;
         struct flush_rpc_task flush_task;
         struct getattr_rpc_task getattr_task;
-        struct setatt_rpc_task setattr_task;
+        struct setattr_rpc_task setattr_task;
         struct create_file_rpc_task create_task;
         struct mkdir_rpc_task mkdir_task;
         struct rmdir_rpc_task rmdir_task;
@@ -1079,6 +1080,11 @@ private:
     // Stack containing index into the rpc_task_list vector.
     std::stack<int> free_task_index;
 
+#ifdef ENABLE_PARANOID
+    // Set for catching double free.
+    std::set<int> free_task_index_set;
+#endif
+
     /*
      * List of RPC tasks which is used to run the task.
      * Making this a vector of rpc_task* instead of rpc_task saves any
@@ -1103,6 +1109,12 @@ private:
         // Initialize the index stack.
         for (int i = 0; i < MAX_OUTSTANDING_RPC_TASKS; i++) {
             free_task_index.push(i);
+
+#ifdef ENABLE_PARANOID
+            const auto p = free_task_index_set.insert(i);
+            assert(p.second);
+            assert(free_task_index_set.size() == free_task_index.size());
+#endif
             rpc_task_list.emplace_back(new rpc_task(client, i));
         }
 
@@ -1160,6 +1172,9 @@ public:
 
         // Wait until a free rpc task is available.
         while (free_task_index.empty()) {
+#ifdef ENABLE_PARANOID
+            assert(free_task_index_set.empty());
+#endif
             if (!cv.wait_for(lock, std::chrono::seconds(30),
                              [this] { return !free_task_index.empty(); })) {
                 AZLogError("Timed out waiting for free rpc_task, re-trying!");
@@ -1168,6 +1183,13 @@ public:
 
         const int free_index = free_task_index.top();
         free_task_index.pop();
+
+#ifdef ENABLE_PARANOID
+        // Must also be free as per free_task_index_set.
+        const size_t cnt = free_task_index_set.erase(free_index);
+        assert(cnt == 1);
+        assert(free_task_index_set.size() == free_task_index.size());
+#endif
 
         // Must be a valid index.
         assert(free_index >= 0 && free_index < MAX_OUTSTANDING_RPC_TASKS);
@@ -1182,6 +1204,14 @@ public:
 
         {
             std::unique_lock<std::shared_mutex> lock(task_index_lock);
+
+#ifdef ENABLE_PARANOID
+            // Must not already be free.
+            const auto p = free_task_index_set.insert(index);
+            assert(p.second);
+            assert(free_task_index_set.size() == free_task_index.size());
+#endif
+
             free_task_index.push(index);
         }
 

@@ -13,6 +13,9 @@ Building
 # For using TCMalloc
 - -DENABLE_TCMALLOC=ON ..
 
+# For disabling paranoid checks.
+- -DENABLE_PARANOID=OFF
+
 Running
 =======
 Copy sample-config.yaml as path/to/your/config.yaml and edit it according

@@ -13,9 +13,19 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 #
 option(ENABLE_TESTS "Build and run test programs" OFF)
 option(ENABLE_DOCUMENTATION "Build Documentation" OFF)
+option(ENABLE_PARANOID "Enable paranoid checking in the code" ON)
 option(ENABLE_NON_AZURE_NFS "Enable support for general NFS servers" ON)
 option(ENABLE_CHATTY "Enable super verbose logs" OFF)
 option(ENABLE_TCMALLOC "Use tcmalloc for malloc/free/new/delete" ON)
+
+#
+# Enable paranoid checks only in debug builds.
+#
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+if(ENABLE_PARANOID)
+  add_definitions(-DENABLE_PARANOID)
+endif()
+endif()
 
 if(ENABLE_NON_AZURE_NFS)
   add_definitions(-DENABLE_NON_AZURE_NFS)
