@@ -47,6 +47,14 @@ struct lookup_rpc_task
     }
 
     /**
+     * args used for making the libnfs call.
+     */
+    LOOKUP3args& nfsargs()
+    {
+        return args;
+    }
+
+    /**
      * Release any resources used up by this task.
      */
     void release()
@@ -57,6 +65,7 @@ struct lookup_rpc_task
 private:
     fuse_ino_t parent_ino;
     char *file_name;
+    LOOKUP3args args;
 };
 
 /**
@@ -123,6 +132,14 @@ struct write_rpc_task
     }
 
     /**
+     * args used for making the libnfs call.
+     */
+    WRITE3args& nfsargs()
+    {
+        return args;
+    }
+
+    /**
      * Release any resources used up by this task.
      */
     void release()
@@ -135,6 +152,7 @@ private:
     size_t write_count;
     off_t  offset;
     struct fuse_bufvec *write_bufv;
+    WRITE3args args;
 };
 
 /**
@@ -153,6 +171,14 @@ struct flush_rpc_task
     }
 
     /**
+     * args used for making the libnfs call.
+     */
+    WRITE3args& nfsargs()
+    {
+        return args;
+    }
+
+    /**
      * Release any resources used up by this task.
      */
     void release()
@@ -161,6 +187,7 @@ struct flush_rpc_task
 
 private:
     fuse_ino_t file_ino;
+    WRITE3args args;
 };
 
 /**
@@ -236,8 +263,17 @@ struct getattr_rpc_task
         return ino;
     }
 
+    /**
+     * args used for making the libnfs call.
+     */
+    GETATTR3args& nfsargs()
+    {
+        return args;
+    }
+
 private:
     fuse_ino_t ino;
+    GETATTR3args args;
 };
 
 
@@ -293,6 +329,14 @@ struct setattr_rpc_task
         return ino;
     }
 
+    /**
+     * args used for making the libnfs call.
+     */
+    SETATTR3args& nfsargs()
+    {
+        return args;
+    }
+
 private:
     // Inode of the file for which attributes have to be set.
     fuse_ino_t ino;
@@ -310,6 +354,7 @@ private:
 
     // Valid attribute mask to be set.
     int to_set;
+    SETATTR3args args;
 };
 
 struct create_file_rpc_task
@@ -356,6 +401,14 @@ struct create_file_rpc_task
         file_ptr = &file;
     }
 
+    /**
+     * args used for making the libnfs call.
+     */
+    CREATE3args& nfsargs()
+    {
+        return args;
+    }
+
     void release()
     {
         ::free(file_name);
@@ -368,6 +421,7 @@ private:
     struct fuse_file_info file;
     struct fuse_file_info *file_ptr;
     bool is_used;
+    CREATE3args args;
 };
 
 struct mkdir_rpc_task
@@ -402,6 +456,14 @@ struct mkdir_rpc_task
         mode = mod;
     }
 
+    /**
+     * args used for making the libnfs call.
+     */
+    MKDIR3args& nfsargs()
+    {
+        return args;
+    }
+
     void release()
     {
         ::free(dir_name);
@@ -412,6 +474,7 @@ private:
     char *dir_name;
     mode_t mode;
     bool is_used;
+    MKDIR3args args;
 };
 
 struct rmdir_rpc_task
@@ -436,6 +499,14 @@ struct rmdir_rpc_task
         dir_name = ::strdup(name);
     }
 
+    /**
+     * args used for making the libnfs call.
+     */
+    RMDIR3args& nfsargs()
+    {
+        return args;
+    }
+
     void release()
     {
         ::free(dir_name);
@@ -444,6 +515,7 @@ struct rmdir_rpc_task
 private:
     fuse_ino_t parent_ino;
     char *dir_name;
+    RMDIR3args args;
 };
 
 struct readdir_rpc_task
@@ -488,6 +560,21 @@ public:
         return size;
     }
 
+    /**
+     * args used for making the libnfs call.
+     * readdir_rpc_task is used for making both READDIR and READDIRPLUS
+     * RPC calls.
+     */
+    READDIR3args& nfsargs()
+    {
+        return args;
+    }
+
+    READDIRPLUS3args& nfsargsplus()
+    {
+        return argsplus;
+    }
+
 private:
     // Inode of the directory.
     fuse_ino_t inode;
@@ -500,6 +587,17 @@ private:
     // File info passed by the fuse layer.
     fuse_file_info file;
     fuse_file_info* file_ptr;
+
+    /*
+     * READDIR and READDIRPLUS tasks have similar fuse arguments and there
+     * are many common processing functions, hence we use a single task struct,
+     * but NFS RPC args are different. A task can be only used for READDIR or
+     * READDIRPLUS, so we keep a union.
+     */
+    union {
+        READDIR3args args;
+        READDIRPLUS3args argsplus;
+    };
 };
 
 struct read_rpc_task
@@ -544,6 +642,14 @@ public:
         return size;
     }
 
+    /**
+     * args used for making the libnfs call.
+     */
+    READ3args& nfsargs()
+    {
+        return args;
+    }
+
 private:
     // Inode of the file.
     fuse_ino_t inode;
@@ -557,6 +663,7 @@ private:
     // File info passed by the fuse layer.
     fuse_file_info file;
     fuse_file_info *file_ptr;
+    READ3args args;
 };
 
 #define RPC_TASK_MAGIC *((const uint32_t *)"RTSK")

@@ -374,7 +374,7 @@ static void write_callback(
              * Written less than intended, unlikely but possible.
              * Arrange to write rest of the data.
              */
-            WRITE3args args;
+            WRITE3args& args = task->rpc_api.write_task.nfsargs();
             off_t off = mb->offset;
             char *buf = (char *)mb->buffer;
             fuse_ino_t ino = ctx->get_ino();
@@ -548,7 +548,7 @@ void rpc_task::run_lookup()
     bool rpc_retry = false;
 
     do {
-        LOOKUP3args args;
+        LOOKUP3args& args = rpc_api.lookup_task.nfsargs();
         int req_size = sizeof(args);
 
         args.what.dir = get_client()->get_nfs_inode_from_ino(parent_ino)->get_fh();
@@ -649,7 +649,6 @@ static void sync_membuf(const struct bytes_chunk& bc,
                         struct nfs_client *client,
                         fuse_ino_t ino)
 {
-    WRITE3args args;
     struct membuf *mb = bc.get_membuf();
     struct rpc_task *flush_task = nullptr;
 
@@ -680,6 +679,7 @@ static void sync_membuf(const struct bytes_chunk& bc,
     mb->set_locked();
 
     if (mb->is_dirty() && !mb->is_flushing()) {
+        WRITE3args& args = flush_task->rpc_api.write_task.nfsargs();
         // Never ever write non-uptodate membufs.
         assert(mb->is_uptodate());
 
@@ -827,8 +827,8 @@ void rpc_task::run_getattr()
     auto ino = rpc_api.getattr_task.get_ino();
 
     do {
-        struct GETATTR3args args;
-        ::memset(&args, 0, sizeof(args));
+        GETATTR3args& args = rpc_api.getattr_task.nfsargs();
+
         args.object = get_client()->get_nfs_inode_from_ino(ino)->get_fh();
 
         stats.on_rpc_dispatch(sizeof(args) + args.object.data.data_len);
@@ -850,8 +850,8 @@ void rpc_task::run_create_file()
     auto parent_ino = rpc_api.create_task.get_parent_ino();
 
     do {
-        CREATE3args args;
-        ::memset(&args, 0, sizeof(args));
+        CREATE3args& args = rpc_api.create_task.nfsargs();
+
         args.where.dir = get_client()->get_nfs_inode_from_ino(parent_ino)->get_fh();
         args.where.name = (char*)rpc_api.create_task.get_file_name();
         args.how.mode = (rpc_api.create_task.get_file()->flags & O_EXCL) ? GUARDED : UNCHECKED;
@@ -875,15 +875,16 @@ void rpc_task::run_mkdir()
     auto parent_ino = rpc_api.mkdir_task.get_parent_ino();
 
     do {
-        MKDIR3args args;
+        MKDIR3args& args = rpc_api.mkdir_task.nfsargs();
+
         ::memset(&args, 0, sizeof(args));
         args.where.dir = get_client()->get_nfs_inode_from_ino(parent_ino)->get_fh();
         args.where.name = (char*)rpc_api.mkdir_task.get_file_name();
         args.attributes.mode.set_it = 1;
         args.attributes.mode.set_mode3_u.mode = rpc_api.mkdir_task.get_mode();
 
-        if (rpc_nfs3_mkdir_task(get_rpc_ctx(), mkdir_callback, &args, this) == NULL)
-        {
+        if (rpc_nfs3_mkdir_task(get_rpc_ctx(), mkdir_callback, &args,
+                                this) == NULL) {
             /*
              * This call fails due to internal issues like OOM etc
              * and not due to an actual error, hence retry.
@@ -899,8 +900,8 @@ void rpc_task::run_rmdir()
     auto parent_ino = rpc_api.rmdir_task.get_parent_ino();
 
     do {
-        RMDIR3args args;
-        ::memset(&args, 0, sizeof(args));
+        RMDIR3args& args = rpc_api.rmdir_task.nfsargs();
+
         args.object.dir = get_client()->get_nfs_inode_from_ino(parent_ino)->get_fh();
         args.object.name = (char*) rpc_api.rmdir_task.get_dir_name();
 
@@ -923,7 +924,8 @@ void rpc_task::run_setattr()
     bool rpc_retry = false;
 
     do {
-        SETATTR3args args;
+        SETATTR3args& args = rpc_api.setattr_task.nfsargs();
+
         ::memset(&args, 0, sizeof(args));
         args.object = get_client()->get_nfs_inode_from_ino(ino)->get_fh();
 
@@ -984,8 +986,8 @@ void rpc_task::run_setattr()
             args.new_attributes.mtime.set_it = SET_TO_SERVER_TIME;
         }
 
-        if (rpc_nfs3_setattr_task(get_rpc_ctx(), setattr_callback, &args, this) == NULL)
-        {
+        if (rpc_nfs3_setattr_task(get_rpc_ctx(), setattr_callback, &args,
+                                  this) == NULL) {
             /*
              * This call fails due to internal issues like OOM etc
              * and not due to an actual error, hence retry.
@@ -1276,8 +1278,8 @@ static void read_callback(
             const off_t new_offset = bc->offset + bc->pvt;
             const size_t new_size = bc->length - bc->pvt;
             bool rpc_retry = false;
+            READ3args& new_args = task->rpc_api.read_task.nfsargs();
 
-            READ3args new_args;
             new_args.file = inode->get_fh();
             new_args.offset = new_offset;
             new_args.count = new_size;
@@ -1424,7 +1426,7 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
     struct read_context *ctx = new read_context(this, &bc);
 
     do {
-        READ3args args;
+        READ3args& args = rpc_api.read_task.nfsargs();
 
         args.file = inode->get_fh();
         args.offset = bc.offset;
@@ -1946,7 +1948,7 @@ void rpc_task::fetch_readdir_entries_from_server()
     const cookie3 cookie = rpc_api.readdir_task.get_offset();
 
     do {
-        struct READDIR3args args;
+        READDIR3args& args = rpc_api.readdir_task.nfsargs();
 
         args.dir = dir_inode->get_fh();
         args.cookie = cookie;
@@ -1990,7 +1992,7 @@ void rpc_task::fetch_readdirplus_entries_from_server()
     const cookie3 cookie = rpc_api.readdir_task.get_offset();
 
     do {
-        struct READDIRPLUS3args args;
+        READDIRPLUS3args& args = rpc_api.readdir_task.nfsargsplus();
 
         args.dir = dir_inode->get_fh();
         args.cookie = cookie;
