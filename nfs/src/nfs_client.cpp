@@ -405,6 +405,17 @@ void nfs_client::mkdir(
     tsk->run_mkdir();
 }
 
+void nfs_client::unlink(
+    fuse_req_t req,
+    fuse_ino_t parent_ino,
+    const char* name)
+{
+    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_UNLINK);
+
+    tsk->init_unlink(req, parent_ino, name);
+    tsk->run_unlink();
+}
+
 void nfs_client::rmdir(
     fuse_req_t req,
     fuse_ino_t parent_ino,
