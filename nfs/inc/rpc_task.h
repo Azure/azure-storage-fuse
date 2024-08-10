@@ -1313,10 +1313,10 @@ public:
             std::unique_lock<std::shared_mutex> lock(task_index_lock);
 
 #ifdef ENABLE_PARANOID
+            assert(free_task_index_set.size() == free_task_index.size());
             // Must not already be free.
             const auto p = free_task_index_set.insert(index);
             assert(p.second);
-            assert(free_task_index_set.size() == free_task_index.size());
 #endif
 
             free_task_index.push(index);
