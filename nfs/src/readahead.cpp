@@ -157,22 +157,12 @@ static void readahead_callback (
         // We should never get more data than what we requested.
         assert(res->READ3res_u.resok.count <= issued_length);
 
-       /* const */bool is_partial_read = !res->READ3res_u.resok.eof &&
+        const bool is_partial_read = !res->READ3res_u.resok.eof &&
             (res->READ3res_u.resok.count < issued_length);
 
         // Update bc->pvt with fresh bytes read in this call.
         bc->pvt += res->READ3res_u.resok.count;
         assert(bc->pvt <= bc->length);
-
-        // TODO: This is added for testing, remove it.
-        static int x = 0;
-        if (x % 10 == 1)
-        {
-            is_partial_read = true;
-            bc->pvt = bc->pvt - 10;
-            AZLogError("Injecting partial read for off: {} len: {}", bc->offset, bc->length);
-        }
-        x++;	
 
         AZLogDebug("[{}] readahead_callback: {}Read completed for offset: {} "
                    " size: {} Bytes read: {} eof: {}, total bytes read till "
@@ -203,8 +193,9 @@ static void readahead_callback (
             new_args.count = new_size;
 
             bc->num_backend_calls_issued++;
+            assert(bc->num_backend_calls_issued > 1);
 
-            AZLogError("[{}] Issuing partial read at offset: {} size: {}"
+            AZLogDebug("[{}] Issuing partial read at offset: {} size: {}"
                        " for [{}, {})",
                        ino,
                        new_offset,
@@ -224,7 +215,7 @@ static void readahead_callback (
                 if (rpc_nfs3_read_task(
                         task->get_rpc_ctx(),
                         readahead_callback,
-                        bc->get_buffer() + new_offset,
+                        bc->get_buffer() + bc->pvt,
                         new_size,
                         &new_args,
                         (void *) ctx) == NULL) {
@@ -243,11 +234,12 @@ static void readahead_callback (
             return;
         }
     }
-        /*
-         * We should never return lesser bytes than requested,
-         * unless error or eof is encountered after this point.
-         */
-        assert((bc->length == bc->pvt) || res->READ3res_u.resok.eof);
+
+    /*
+     * We should never return lesser bytes than requested,
+     * unless error or eof is encountered after this point.
+     */
+    assert((bc->length == bc->pvt) || res->READ3res_u.resok.eof);
 
     if (bc->is_empty && (bc->length == bc->pvt)) {
         /*
