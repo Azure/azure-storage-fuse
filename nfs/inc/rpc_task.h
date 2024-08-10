@@ -47,14 +47,6 @@ struct lookup_rpc_task
     }
 
     /**
-     * args used for making the libnfs call.
-     */
-    LOOKUP3args& nfsargs()
-    {
-        return args;
-    }
-
-    /**
      * Release any resources used up by this task.
      */
     void release()
@@ -65,7 +57,6 @@ struct lookup_rpc_task
 private:
     fuse_ino_t parent_ino;
     char *file_name;
-    LOOKUP3args args;
 };
 
 /**
@@ -132,14 +123,6 @@ struct write_rpc_task
     }
 
     /**
-     * args used for making the libnfs call.
-     */
-    WRITE3args& nfsargs()
-    {
-        return args;
-    }
-
-    /**
      * Release any resources used up by this task.
      */
     void release()
@@ -152,7 +135,6 @@ private:
     size_t write_count;
     off_t  offset;
     struct fuse_bufvec *write_bufv;
-    WRITE3args args;
 };
 
 /**
@@ -171,14 +153,6 @@ struct flush_rpc_task
     }
 
     /**
-     * args used for making the libnfs call.
-     */
-    WRITE3args& nfsargs()
-    {
-        return args;
-    }
-
-    /**
      * Release any resources used up by this task.
      */
     void release()
@@ -187,7 +161,6 @@ struct flush_rpc_task
 
 private:
     fuse_ino_t file_ino;
-    WRITE3args args;
 };
 
 /**
@@ -263,17 +236,8 @@ struct getattr_rpc_task
         return ino;
     }
 
-    /**
-     * args used for making the libnfs call.
-     */
-    GETATTR3args& nfsargs()
-    {
-        return args;
-    }
-
 private:
     fuse_ino_t ino;
-    GETATTR3args args;
 };
 
 
@@ -329,14 +293,6 @@ struct setattr_rpc_task
         return ino;
     }
 
-    /**
-     * args used for making the libnfs call.
-     */
-    SETATTR3args& nfsargs()
-    {
-        return args;
-    }
-
 private:
     // Inode of the file for which attributes have to be set.
     fuse_ino_t ino;
@@ -354,7 +310,6 @@ private:
 
     // Valid attribute mask to be set.
     int to_set;
-    SETATTR3args args;
 };
 
 struct create_file_rpc_task
@@ -401,14 +356,6 @@ struct create_file_rpc_task
         file_ptr = &file;
     }
 
-    /**
-     * args used for making the libnfs call.
-     */
-    CREATE3args& nfsargs()
-    {
-        return args;
-    }
-
     void release()
     {
         ::free(file_name);
@@ -421,7 +368,6 @@ private:
     struct fuse_file_info file;
     struct fuse_file_info *file_ptr;
     bool is_used;
-    CREATE3args args;
 };
 
 struct mkdir_rpc_task
@@ -456,14 +402,6 @@ struct mkdir_rpc_task
         mode = mod;
     }
 
-    /**
-     * args used for making the libnfs call.
-     */
-    MKDIR3args& nfsargs()
-    {
-        return args;
-    }
-
     void release()
     {
         ::free(dir_name);
@@ -474,7 +412,6 @@ private:
     char *dir_name;
     mode_t mode;
     bool is_used;
-    MKDIR3args args;
 };
 
 struct rmdir_rpc_task
@@ -499,14 +436,6 @@ struct rmdir_rpc_task
         dir_name = ::strdup(name);
     }
 
-    /**
-     * args used for making the libnfs call.
-     */
-    RMDIR3args& nfsargs()
-    {
-        return args;
-    }
-
     void release()
     {
         ::free(dir_name);
@@ -515,7 +444,6 @@ struct rmdir_rpc_task
 private:
     fuse_ino_t parent_ino;
     char *dir_name;
-    RMDIR3args args;
 };
 
 struct readdir_rpc_task
@@ -560,21 +488,6 @@ public:
         return size;
     }
 
-    /**
-     * args used for making the libnfs call.
-     * readdir_rpc_task is used for making both READDIR and READDIRPLUS
-     * RPC calls.
-     */
-    READDIR3args& nfsargs()
-    {
-        return args;
-    }
-
-    READDIRPLUS3args& nfsargsplus()
-    {
-        return argsplus;
-    }
-
 private:
     // Inode of the directory.
     fuse_ino_t inode;
@@ -587,17 +500,6 @@ private:
     // File info passed by the fuse layer.
     fuse_file_info file;
     fuse_file_info* file_ptr;
-
-    /*
-     * READDIR and READDIRPLUS tasks have similar fuse arguments and there
-     * are many common processing functions, hence we use a single task struct,
-     * but NFS RPC args are different. A task can be only used for READDIR or
-     * READDIRPLUS, so we keep a union.
-     */
-    union {
-        READDIR3args args;
-        READDIRPLUS3args argsplus;
-    };
 };
 
 struct read_rpc_task
@@ -642,14 +544,6 @@ public:
         return size;
     }
 
-    /**
-     * args used for making the libnfs call.
-     */
-    READ3args& nfsargs()
-    {
-        return args;
-    }
-
 private:
     // Inode of the file.
     fuse_ino_t inode;
@@ -663,7 +557,45 @@ private:
     // File info passed by the fuse layer.
     fuse_file_info file;
     fuse_file_info *file_ptr;
-    READ3args args;
+};
+
+/**
+ * RPC API specific task info.
+ * This must be sufficient information needed to retry the task in case of
+ * JUKEBOX failures.
+ */
+struct api_task_info
+{
+    /*
+     * Fuse request structure.
+     * This is the request structure passed from the fuse layer, on behalf of
+     * which this RPC task is run.
+     */
+    fuse_req *req = nullptr;
+
+    /*
+     * Operation type.
+     * Used to access the following union.
+     * Note that 0 is an invalid fuse opcode.
+     */
+    enum fuse_opcode optype = (fuse_opcode) 0;
+
+    /*
+     * Unnamed union for easy access.
+     */
+    union
+    {
+        struct lookup_rpc_task lookup_task;
+        struct write_rpc_task write_task;
+        struct flush_rpc_task flush_task;
+        struct getattr_rpc_task getattr_task;
+        struct setattr_rpc_task setattr_task;
+        struct create_file_rpc_task create_task;
+        struct mkdir_rpc_task mkdir_task;
+        struct rmdir_rpc_task rmdir_task;
+        struct readdir_rpc_task readdir_task;
+        struct read_rpc_task read_task;
+    };
 };
 
 #define RPC_TASK_MAGIC *((const uint32_t *)"RTSK")
@@ -686,13 +618,6 @@ struct rpc_task
      * all rpc tasks.
      */
     struct nfs_client *const client;
-
-    /*
-     * Fuse request structure.
-     * This is the request structure passed from the fuse layer, on behalf of
-     * which this RPC task is run.
-     */
-    fuse_req *req;
 
     // This is the index of the object in the rpc_task_list vector.
     const int index;
@@ -750,12 +675,6 @@ public:
 
 protected:
     /*
-     * Operation type.
-     * Used to access the rpc_api union.
-     */
-    enum fuse_opcode optype;
-
-    /*
      * RPC stats. This has both stats specific to this RPC as well as
      * aggregated RPC stats for all RPCs of this type and also global stats
      * for all RPCs.
@@ -765,24 +684,12 @@ protected:
 public:
     rpc_task(struct nfs_client *_client, int _index) :
         client(_client),
-        req(nullptr),
         index(_index)
     {
     }
 
-    union
-    {
-        struct lookup_rpc_task lookup_task;
-        struct write_rpc_task write_task;
-        struct flush_rpc_task flush_task;
-        struct getattr_rpc_task getattr_task;
-        struct setattr_rpc_task setattr_task;
-        struct create_file_rpc_task create_task;
-        struct mkdir_rpc_task mkdir_task;
-        struct rmdir_rpc_task rmdir_task;
-        struct readdir_rpc_task readdir_task;
-        struct read_rpc_task read_task;
-    } rpc_api;
+    // RPC API specific task info.
+    api_task_info rpc_api;
 
     // TODO: Add valid flag here for APIs?
 
@@ -976,17 +883,22 @@ public:
 
     void set_fuse_req(fuse_req *request)
     {
-        req = request;
+        rpc_api.req = request;
+    }
+
+    struct fuse_req *get_fuse_req() const
+    {
+        return rpc_api.req;
     }
 
     void set_op_type(enum fuse_opcode optype)
     {
-        this->optype = optype;
+        rpc_api.optype = optype;
     }
 
     enum fuse_opcode get_op_type()
     {
-        return optype;
+        return rpc_api.optype;
     }
 
     rpc_stats_az& get_stats()
@@ -1018,13 +930,13 @@ public:
     // This method will reply with error and free the rpc task.
     void reply_error(int rc)
     {
-        fuse_reply_err(req, rc);
+        fuse_reply_err(get_fuse_req(), rc);
         free_rpc_task();
     }
 
     void reply_attr(const struct stat *attr, double attr_timeout)
     {
-        fuse_reply_attr(req, attr, attr_timeout);
+        fuse_reply_attr(get_fuse_req(), attr, attr_timeout);
         free_rpc_task();
     }
 
@@ -1038,7 +950,7 @@ public:
          */
         assert(count <= 1048576);
 
-        fuse_reply_write(req, count);
+        fuse_reply_write(get_fuse_req(), count);
         free_rpc_task();
     }
 
@@ -1055,7 +967,7 @@ public:
          */
         assert(count <= 1048576);
 
-        fuse_reply_iov(req, iov, count);
+        fuse_reply_iov(get_fuse_req(), iov, count);
         free_rpc_task();
     }
 
@@ -1077,7 +989,7 @@ public:
             assert(inode->lookupcnt >= 1);
         }
 
-        if (fuse_reply_entry(req, e) < 0) {
+        if (fuse_reply_entry(get_fuse_req(), e) < 0) {
             if (inode) {
                 /*
                  * Not able to convey to fuse should invoke FORGET
@@ -1107,7 +1019,7 @@ public:
         struct nfs_inode *inode = client->get_nfs_inode_from_ino(entry->ino);
         assert(inode->lookupcnt >= 1);
 
-        if (fuse_reply_create(req, entry, file) < 0) {
+        if (fuse_reply_create(get_fuse_req(), entry, file) < 0) {
             /*
              * Not able to convey to fuse should invoke FORGET
              * workflow.
@@ -1159,11 +1071,6 @@ public:
         }
 
         return -nfsstat3_to_errno(nfs_status);
-    }
-
-    struct fuse_req *get_req() const
-    {
-        return req;
     }
 
     void send_readdir_response(
@@ -1255,9 +1162,9 @@ public:
         // Every rpc_task starts as sync.
         assert(!task->is_async());
 
-        task->optype = optype;
+        task->set_op_type(optype);
         task->stats.on_rpc_create(optype, start_usec);
-        task->req = nullptr;
+        task->rpc_api.req = nullptr;
 
 #ifndef ENABLE_NON_AZURE_NFS
         assert(task->client->mnt_options.nfs_port == 2047 ||
