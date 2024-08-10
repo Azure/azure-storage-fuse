@@ -523,11 +523,15 @@ static void getattr_callback(
     auto res = (GETATTR3res*) data;
 
     if (ctx->task) {
+        assert(ctx->task->magic == RPC_TASK_MAGIC);
         ctx->task->get_stats().on_rpc_complete(sizeof(*res));
     }
 
     {
         std::unique_lock<std::mutex> lock(ctx->ctx_mutex);
+
+        // Must be called only once.
+        assert(!ctx->callback_called);
 
         if (res && (rpc_status == RPC_STATUS_SUCCESS) && (res->status == NFS3_OK)) {
             *(ctx->fattr) = res->GETATTR3res_u.resok.obj_attributes;
@@ -558,6 +562,8 @@ bool nfs_client::getattr_sync(const struct nfs_fh3& fh,
     struct nfs_context *nfs_context = get_nfs_context(CONN_SCHED_FH_HASH, fh_hash);
     struct rpc_task *task = nullptr;
     struct getattr_context *ctx = nullptr;
+    struct rpc_pdu *pdu;
+    struct rpc_context *rpc;
 
 try_again:
     do {
@@ -587,8 +593,9 @@ try_again:
 
         ctx = new getattr_context(&fattr, task);
 
-        if (rpc_nfs3_getattr_task(nfs_get_rpc_context(nfs_context),
-                                  getattr_callback, &args, ctx) == NULL) {
+        rpc = nfs_get_rpc_context(nfs_context);
+        if ((pdu = rpc_nfs3_getattr_task(rpc, getattr_callback,
+                                         &args, ctx)) == NULL) {
             /*
              * This call fails due to internal issues like OOM etc
              * and not due to an actual error, hence retry.
@@ -598,15 +605,29 @@ try_again:
     } while (rpc_retry);
 
     /*
-     * TODO: If the GETATTR response doesn't come for 2 minutes we
-     *       give up and send a new one. If the old one now comes, the ctx
-     *       pointer won't be valid and we will crash accessing it.
+     * If the GETATTR response doesn't come for 2 minutes we give up and send
+     * a new one. We must cancel the old one.
      */
     std::unique_lock<std::mutex> lock(ctx->ctx_mutex);
-    if (!ctx->cv.wait_for(lock, std::chrono::seconds(120),
+wait_more:
+    if (!ctx->cv.wait_for(lock, std::chrono::seconds(1),
                           [&ctx] { return (ctx->callback_called == true); })) {
-        AZLogWarn("Timed out waiting for getattr response, re-issuing getattr!");
-        goto try_again;
+        if (rpc_cancel_pdu(rpc, pdu) == 0) {
+            AZLogWarn("Timed out waiting for getattr response, re-issuing "
+                      "getattr!");
+            // This goto will cause the above lock to unlock.
+            goto try_again;
+        } else {
+            /*
+             * If rpc_cancel_pdu() fails it most likely means we got the RPC
+             * response right after we timed out waiting. It's best to wait
+             * for the callback to be called.
+             */
+            AZLogWarn("Timed out waiting for getattr response, couldn't "
+                      "cancel existing pdu, waiting some more!");
+            // This goto will *not* cause the above lock to unlock.
+            goto wait_more;
+        }
     }
 
     const bool success = ctx->is_callback_success;
