@@ -609,6 +609,7 @@ public:
 
     {
         pvt = rhs.pvt;
+        num_backend_calls_issued = rhs.num_backend_calls_issued;
     }
 
     /**

@@ -99,6 +99,8 @@ static void readahead_callback (
     // Cannot have read more than requested.
     assert(res->READ3res_u.resok.count <= bc->length);
 
+    assert(bc->num_backend_calls_issued >= 1);
+
     /*
      * If we have already finished reading the entire bytes_chunk, why are we
      * here.
@@ -155,12 +157,22 @@ static void readahead_callback (
         // We should never get more data than what we requested.
         assert(res->READ3res_u.resok.count <= issued_length);
 
-        const bool is_partial_read = !res->READ3res_u.resok.eof &&
+       /* const */bool is_partial_read = !res->READ3res_u.resok.eof &&
             (res->READ3res_u.resok.count < issued_length);
 
         // Update bc->pvt with fresh bytes read in this call.
         bc->pvt += res->READ3res_u.resok.count;
         assert(bc->pvt <= bc->length);
+
+        // TODO: This is added for testing, remove it.
+        static int x = 0;
+        if (x % 10 == 1)
+        {
+            is_partial_read = true;
+            bc->pvt = bc->pvt - 10;
+            AZLogError("Injecting partial read for off: {} len: {}", bc->offset, bc->length);
+        }
+        x++;	
 
         AZLogDebug("[{}] readahead_callback: {}Read completed for offset: {} "
                    " size: {} Bytes read: {} eof: {}, total bytes read till "
@@ -192,7 +204,7 @@ static void readahead_callback (
 
             bc->num_backend_calls_issued++;
 
-            AZLogDebug("[{}] Issuing partial read at offset: {} size: {}"
+            AZLogError("[{}] Issuing partial read at offset: {} size: {}"
                        " for [{}, {})",
                        ino,
                        new_offset,
@@ -373,6 +385,12 @@ int ra_state::issue_readaheads()
                            bc.offset,              /* offset */
                            nullptr);               /* fuse_file_info */
 
+            // No reads should be issued to backend at this point.
+            assert(bc.num_backend_calls_issued == 0);
+            bc.num_backend_calls_issued++;
+
+            assert(bc.pvt == 0);
+
             /*
              * bc holds a ref on the membuf so we can safely access membuf
              * only till we have bc in the scope. In readahead_callback() we
@@ -380,6 +398,7 @@ int ra_state::issue_readaheads()
              * object allocated below.
              */
             struct ra_context *ctx = new ra_context(tsk, bc);
+            assert(ctx->bc.num_backend_calls_issued == 1);
 
             READ3args args;
             ::memset(&args, 0, sizeof(args));
@@ -397,12 +416,6 @@ int ra_state::issue_readaheads()
              * This should be decremented in readahead_callback()
              */
             inode->incref();
-
-            // No reads should be issued to backend at this point.
-            assert(bc.num_backend_calls_issued == 0);
-            bc.num_backend_calls_issued++;
-
-            assert(bc.pvt == 0);
 
             AZLogDebug("[{}] Issuing readahead read to backend at "
                        "off: {} len: {}",
