@@ -959,6 +959,7 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
              * start of this chunk.
              */
             chunk_length = std::min(bc->length, remaining_length);
+            assert(chunk_length > 0);
 
             if (action == scan_action::SCAN_ACTION_GET) {
                 chunkvec.emplace_back(this, chunk_offset, chunk_length,
@@ -1180,8 +1181,10 @@ done:
          * that we want to check. Note that we search for _extent_right only
          * for SCAN_ACTION_GET.
          */
-        _extent_right = bc->offset + bc->length;
-        AZLogDebug("_extent_right: {}", _extent_right);
+        if (action == scan_action::SCAN_ACTION_GET) {
+            _extent_right = bc->offset + bc->length;
+            AZLogDebug("_extent_right: {}", _extent_right);
+        }
     }
 
     /*
