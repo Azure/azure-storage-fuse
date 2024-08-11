@@ -1,6 +1,8 @@
 #ifndef __NFS_CLIENT_H__
 #define __NFS_CLIENT_H__
 
+#include <queue>
+
 #include "nfs_inode.h"
 #include "rpc_transport.h"
 #include "nfs_internal.h"
@@ -27,6 +29,12 @@ extern "C" {
  * The returned instance can then be used to call the APIs like getattr, write etc.
  */
 #define NFS_CLIENT_MAGIC *((const uint32_t *)"NFSC")
+
+/**
+ * RPC requests that fail with JUKEBOX error are retried after these many secs.
+ * We try after 5 seconds similar to Linux NFS client.
+ */
+#define JUKEBOX_DELAY_SECS 5
 
 struct nfs_client
 {
@@ -75,6 +83,19 @@ private:
     struct rpc_task_helper *rpc_task_helper = nullptr;
 
     /*
+     * JUKEBOX errors are handled by re-running the nfs_client handler for the
+     * given request, f.e., for a READDIRPLUS request failing with JUKEBOX error
+     * we will call nfs_client::readdirplus() again after JUKEBOX_DELAY_SECS
+     * seconds. For this we need to save enough information needed to run the
+     * nfs_client handler. jukebox_seedinfo stores that information and we
+     * queue that in jukebox_seeds.
+     */
+    const std::thread jukebox_thread;
+    void jukebox_runner();
+    std::queue<struct jukebox_seedinfo*> jukebox_seeds;
+    mutable std::mutex jukebox_seeds_lock;
+
+    /*
      * Holds info about the server, queried by FSINFO.
      */
     struct nfs_server_info server_info;
@@ -93,7 +114,8 @@ private:
     uint64_t max_ino = 0;
 
     nfs_client() :
-        transport(this)
+        transport(this),
+        jukebox_thread(std::thread(&nfs_client::jukebox_runner, this))
     {
     }
 
@@ -341,6 +363,14 @@ public:
         const nfs_fh3* fh,
         const struct fattr3* attr,
         const struct fuse_file_info* file);
+
+    /**
+     * Call this to handle NFS3ERR_JUKEBOX error received for rpc_task.
+     * This will save information needed to re-issue the call and queue
+     * it in jukebox_seeds from where jukebox_runner will issue the call
+     * after JUKEBOX_DELAY_SECS seconds.
+     */
+    void jukebox_retry(struct rpc_task *task);
 };
 
 /**

@@ -58,6 +58,66 @@ bool nfs_client::init()
     return true;
 }
 
+void nfs_client::jukebox_runner()
+{
+    AZLogDebug("Started jukebox_runner");
+
+    do {
+        ::sleep(5);
+
+        {
+            std::unique_lock<std::mutex> lock(jukebox_seeds_lock);
+            if (jukebox_seeds.empty()) {
+                continue;
+            }
+        }
+
+        AZLogDebug("jukebox_runner woken up ({} requests in queue)",
+                   jukebox_seeds.size());
+
+        /*
+         * Go over all queued requests and issue those which are ready to be
+         * issued, i.e., they have been queued for more than JUKEBOX_DELAY_SECS
+         * seconds. We issue the requests after releasing jukebox_seeds_lock.
+         */
+        std::vector<jukebox_seedinfo *> jsv;
+        {
+            std::unique_lock<std::mutex> lock(jukebox_seeds_lock);
+            while (!jukebox_seeds.empty()) {
+                struct jukebox_seedinfo *js = jukebox_seeds.front();
+
+                if (js->run_at_msecs > get_current_msecs()) {
+                    break;
+                }
+
+                jukebox_seeds.pop();
+
+                jsv.push_back(js);
+            }
+        }
+
+        for (struct jukebox_seedinfo *js : jsv) {
+            switch (js->rpc_api.optype) {
+                case FUSE_LOOKUP:
+                    AZLogDebug("[JUKEBOX REISSUE] lookup(req={}, "
+                               "parent_ino={}, name={}",
+                               fmt::ptr(js->rpc_api.req),
+                               js->rpc_api.lookup_task.get_parent_ino(),
+                               js->rpc_api.lookup_task.get_file_name());
+                    lookup(js->rpc_api.req,
+                           js->rpc_api.lookup_task.get_parent_ino(),
+                           js->rpc_api.lookup_task.get_file_name());
+                    break;
+                /* TODO: Add other request types */
+                default:
+                    break;
+            }
+
+            delete js;
+        }
+    } while (1);
+}
+
 /**
  * Given a filehandle and fattr (containing fileid defining a file/dir),
  * get the nfs_inode for that file/dir. It searches in the global list of
@@ -441,6 +501,22 @@ void nfs_client::reply_entry(
     } else {
         ctx->reply_entry(&entry);
     }
+}
+
+void nfs_client::jukebox_retry(struct rpc_task *task)
+{
+    {
+        AZLogDebug("Queueing rpc_task {} for jukebox retry", fmt::ptr(task));
+        std::unique_lock<std::mutex> lock(jukebox_seeds_lock);
+        jukebox_seeds.emplace(new jukebox_seedinfo(task->rpc_api));
+    }
+
+    /*
+     * Free the current task that failed with JUKEBOX error.
+     * The retried task will use a new rpc_task structure (and new XID).
+     * Note that we don't callback into fuse as yet.
+     */
+    task->free_rpc_task();
 }
 
 // Translate a NFS fattr3 into struct stat.

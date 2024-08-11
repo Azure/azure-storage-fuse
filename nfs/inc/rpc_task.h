@@ -1242,4 +1242,26 @@ public:
     }
 };
 
+/**
+ * Seed info needed to re-run a task that had failed with JUKEBOX error.
+ */
+struct jukebox_seedinfo
+{
+    /*
+     * Information needed to restart the task.
+     */
+    api_task_info rpc_api;
+
+    /*
+     * When to rerun the task.
+     */
+    int64_t run_at_msecs;
+
+    jukebox_seedinfo(const api_task_info& _rpc_api) :
+        rpc_api(_rpc_api),
+        run_at_msecs(get_current_msecs() + JUKEBOX_DELAY_SECS*1000)
+    {
+    }
+};
+
 #endif /*__RPC_TASK_H__*/

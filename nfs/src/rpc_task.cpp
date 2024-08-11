@@ -318,6 +318,9 @@ static void lookup_callback(
             &res->LOOKUP3res_u.resok.object,
             &res->LOOKUP3res_u.resok.obj_attributes.post_op_attr_u.attributes,
             nullptr);
+    } else if (status == NFS3ERR_JUKEBOX) {
+        task->get_stats().on_rpc_complete(resp_size);
+        task->get_client()->jukebox_retry(task);
     } else {
         task->get_stats().on_rpc_complete(resp_size);
         task->reply_error(status);
