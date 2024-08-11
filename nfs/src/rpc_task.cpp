@@ -201,7 +201,7 @@ void rpc_task::init_readdir(fuse_req *request,
 {
     assert(get_op_type() == FUSE_READDIR);
     set_fuse_req(request);
-    rpc_api.readdir_task.set_inode(ino);
+    rpc_api.readdir_task.set_ino(ino);
     rpc_api.readdir_task.set_size(size);
     rpc_api.readdir_task.set_offset(offset);
     rpc_api.readdir_task.set_fuse_file(file);
@@ -217,7 +217,7 @@ void rpc_task::init_readdirplus(fuse_req *request,
 {
     assert(get_op_type() == FUSE_READDIRPLUS);
     set_fuse_req(request);
-    rpc_api.readdir_task.set_inode(ino);
+    rpc_api.readdir_task.set_ino(ino);
     rpc_api.readdir_task.set_size(size);
     rpc_api.readdir_task.set_offset(offset);
     rpc_api.readdir_task.set_fuse_file(file);
@@ -233,7 +233,7 @@ void rpc_task::init_read(fuse_req *request,
 {
     assert(get_op_type() == FUSE_READ);
     set_fuse_req(request);
-    rpc_api.read_task.set_inode(ino);
+    rpc_api.read_task.set_ino(ino);
     rpc_api.read_task.set_size(size);
     rpc_api.read_task.set_offset(offset);
     rpc_api.read_task.set_fuse_file(file);
@@ -281,6 +281,8 @@ static void getattr_callback(
          * experience.
          */
         task->reply_attr(&inode->attr, inode->get_actimeo());
+    } else if (status == EAGAIN) {
+        task->get_client()->jukebox_retry(task);
     } else {
         task->reply_error(status);
     }
@@ -318,7 +320,7 @@ static void lookup_callback(
             &res->LOOKUP3res_u.resok.object,
             &res->LOOKUP3res_u.resok.obj_attributes.post_op_attr_u.attributes,
             nullptr);
-    } else if (status == NFS3ERR_JUKEBOX) {
+    } else if (status == EAGAIN) {
         task->get_stats().on_rpc_complete(resp_size);
         task->get_client()->jukebox_retry(task);
     } else {
@@ -465,7 +467,7 @@ static void createfile_callback(
             task,
             &res->CREATE3res_u.resok.obj.post_op_fh3_u.handle,
             &res->CREATE3res_u.resok.obj_attributes.post_op_attr_u.attributes,
-            task->rpc_api.create_task.get_file());
+            task->rpc_api.create_task.get_fuse_file());
     } else {
         task->reply_error(status);
     }
@@ -857,7 +859,7 @@ void rpc_task::run_create_file()
 
         args.where.dir = get_client()->get_nfs_inode_from_ino(parent_ino)->get_fh();
         args.where.name = (char*)rpc_api.create_task.get_file_name();
-        args.how.mode = (rpc_api.create_task.get_file()->flags & O_EXCL) ? GUARDED : UNCHECKED;
+        args.how.mode = (rpc_api.create_task.get_fuse_file()->flags & O_EXCL) ? GUARDED : UNCHECKED;
         args.how.createhow3_u.obj_attributes.mode.set_it = 1;
         args.how.createhow3_u.obj_attributes.mode.set_mode3_u.mode = rpc_api.create_task.get_mode();
 
@@ -1002,7 +1004,7 @@ void rpc_task::run_setattr()
 
 void rpc_task::run_read()
 {
-    const fuse_ino_t ino = rpc_api.read_task.get_inode();
+    const fuse_ino_t ino = rpc_api.read_task.get_ino();
     struct nfs_inode *inode = get_client()->get_nfs_inode_from_ino(ino);
     auto filecache_handle = inode->filecache_handle;
 
@@ -1133,7 +1135,7 @@ void rpc_task::run_read()
 
 void rpc_task::send_read_response()
 {
-    [[maybe_unused]] const fuse_ino_t ino = rpc_api.read_task.get_inode();
+    [[maybe_unused]] const fuse_ino_t ino = rpc_api.read_task.get_ino();
 
     /*
      * We must send response only after all component reads complete, they may
@@ -1240,7 +1242,7 @@ static void read_callback(
     const char* errstr;
     auto res = (READ3res*)data;
     const int status = (task->status(rpc_status, NFS_STATUS(res), &errstr));
-    fuse_ino_t ino = task->rpc_api.read_task.get_inode();
+    fuse_ino_t ino = task->rpc_api.read_task.get_ino();
     struct nfs_inode *inode = task->get_client()->get_nfs_inode_from_ino(ino);
     auto filecache_handle = inode->filecache_handle;
     const uint64_t issued_offset = bc->offset + bc->pvt;
@@ -1422,7 +1424,7 @@ static void read_callback(
 void rpc_task::read_from_server(struct bytes_chunk &bc)
 {
     bool rpc_retry = false;
-    const auto ino = rpc_api.read_task.get_inode();
+    const auto ino = rpc_api.read_task.get_ino();
     struct nfs_inode *inode = get_client()->get_nfs_inode_from_ino(ino);
 
     // This will be freed in read_callback().
@@ -1559,7 +1561,7 @@ static void readdir_callback(
     rpc_task *const task = (rpc_task*) private_data;
     assert(task->get_op_type() == FUSE_READDIR);
     READDIR3res *const res = (READDIR3res*) data;
-    const fuse_ino_t dir_ino = task->rpc_api.readdir_task.get_inode();
+    const fuse_ino_t dir_ino = task->rpc_api.readdir_task.get_ino();
     struct nfs_inode *const dir_inode =
         task->get_client()->get_nfs_inode_from_ino(dir_ino);
     // How many max bytes worth of entries data does the caller want?
@@ -1671,6 +1673,9 @@ static void readdir_callback(
 
         task->get_stats().on_rpc_complete(resp_size);
         task->send_readdir_response(readdirentries);
+    } else if (status == EAGAIN) {
+        task->get_stats().on_rpc_complete(resp_size);
+        task->get_client()->jukebox_retry(task);
     } else {
         task->get_stats().on_rpc_complete(resp_size);
         task->reply_error(status);
@@ -1694,7 +1699,7 @@ static void readdirplus_callback(
     rpc_task *const task = (rpc_task*) private_data;
     assert(task->get_op_type() == FUSE_READDIRPLUS);
     READDIRPLUS3res *const res = (READDIRPLUS3res*) data;
-    const fuse_ino_t dir_ino = task->rpc_api.readdir_task.get_inode();
+    const fuse_ino_t dir_ino = task->rpc_api.readdir_task.get_ino();
     struct nfs_inode *const dir_inode =
         task->get_client()->get_nfs_inode_from_ino(dir_ino);
     // How many max bytes worth of entries data does the caller want?
@@ -1894,6 +1899,9 @@ static void readdirplus_callback(
 
         task->get_stats().on_rpc_complete(resp_size);
         task->send_readdir_response(readdirentries);
+    } else if (status == EAGAIN) {
+        task->get_stats().on_rpc_complete(resp_size);
+        task->get_client()->jukebox_retry(task);
     } else {
         task->get_stats().on_rpc_complete(resp_size);
         task->reply_error(status);
@@ -1904,7 +1912,7 @@ void rpc_task::get_readdir_entries_from_cache()
 {
     const bool readdirplus = (get_op_type() == FUSE_READDIRPLUS);
     struct nfs_inode *nfs_inode =
-        get_client()->get_nfs_inode_from_ino(rpc_api.readdir_task.get_inode());
+        get_client()->get_nfs_inode_from_ino(rpc_api.readdir_task.get_ino());
     bool is_eof = false;
     std::vector<const directory_entry*> readdirentries;
 
@@ -1946,7 +1954,7 @@ void rpc_task::get_readdir_entries_from_cache()
 void rpc_task::fetch_readdir_entries_from_server()
 {
     bool rpc_retry = false;
-    const fuse_ino_t dir_ino = rpc_api.readdir_task.get_inode();
+    const fuse_ino_t dir_ino = rpc_api.readdir_task.get_ino();
     struct nfs_inode *dir_inode = get_client()->get_nfs_inode_from_ino(dir_ino);
     const cookie3 cookie = rpc_api.readdir_task.get_offset();
 
@@ -1990,7 +1998,7 @@ void rpc_task::fetch_readdir_entries_from_server()
 void rpc_task::fetch_readdirplus_entries_from_server()
 {
     bool rpc_retry = false;
-    const fuse_ino_t dir_ino = rpc_api.readdir_task.get_inode();
+    const fuse_ino_t dir_ino = rpc_api.readdir_task.get_ino();
     struct nfs_inode *dir_inode = get_client()->get_nfs_inode_from_ino(dir_ino);
     const cookie3 cookie = rpc_api.readdir_task.get_offset();
 

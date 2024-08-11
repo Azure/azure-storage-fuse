@@ -283,7 +283,7 @@ struct setattr_rpc_task
         return to_set;
     }
 
-    struct fuse_file_info *get_file() const
+    struct fuse_file_info *get_fuse_file() const
     {
         return file_ptr;
     }
@@ -329,7 +329,7 @@ struct create_file_rpc_task
         return mode;
     }
 
-    struct fuse_file_info *get_file() const
+    struct fuse_file_info *get_fuse_file() const
     {
         return file_ptr;
     }
@@ -459,7 +459,7 @@ public:
         offset = off;
     }
 
-    void set_inode(fuse_ino_t ino)
+    void set_ino(fuse_ino_t ino)
     {
         inode = ino;
     }
@@ -467,13 +467,15 @@ public:
     void set_fuse_file(fuse_file_info* fileinfo)
     {
         // The fuse can pass this as nullptr.
-        if (fileinfo == nullptr)
-            return;
-        ::memcpy(&file, fileinfo, sizeof(file));
-        file_ptr = &file;
+        if (fileinfo != nullptr) {
+            file = *fileinfo;
+            file_ptr = &file;
+        } else {
+            file_ptr = nullptr;
+        }
     }
 
-    fuse_ino_t get_inode() const
+    fuse_ino_t get_ino() const
     {
         return inode;
     }
@@ -486,6 +488,11 @@ public:
     size_t get_size() const
     {
         return size;
+    }
+
+    struct fuse_file_info *get_fuse_file() const
+    {
+        return file_ptr;
     }
 
 private:
@@ -515,7 +522,7 @@ public:
         offset = off;
     }
 
-    void set_inode(fuse_ino_t ino)
+    void set_ino(fuse_ino_t ino)
     {
         inode = ino;
     }
@@ -523,13 +530,15 @@ public:
     void set_fuse_file(fuse_file_info* fileinfo)
     {
         // The fuse can pass this as nullptr.
-        if (fileinfo == nullptr)
-            return;
-        ::memcpy(&file, fileinfo, sizeof(file));
-        file_ptr = &file;
+        if (fileinfo != nullptr) {
+            file = *fileinfo;
+            file_ptr = &file;
+        } else {
+            file_ptr = nullptr;
+        }
     }
 
-    fuse_ino_t get_inode() const
+    fuse_ino_t get_ino() const
     {
         return inode;
     }

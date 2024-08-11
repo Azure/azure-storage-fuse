@@ -765,8 +765,8 @@ static void aznfsc_ll_write(fuse_req_t req,
     /*
      * XXX: write will be never called as we implement write_buf.
      */
-    AZLogError("aznfsc_ll_write(req={}, ino={}, size={}, off={}, fi={}",
-               fmt::ptr(req), ino, size, off, fmt::ptr(fi));
+    AZLogError("aznfsc_ll_write(req={}, ino={}, buf={}, size={}, off={}, fi={})",
+               fmt::ptr(req), ino, fmt::ptr(buf), size, off, fmt::ptr(fi));
 
     fuse_reply_err(req, ENOSYS);
 }
@@ -1041,8 +1041,8 @@ static void aznfsc_ll_write_buf(fuse_req_t req,
                                 off_t off,
                                 struct fuse_file_info *fi)
 {
-    AZLogDebug("aznfsc_ll_write_buf(req={}, ino={}, off={}, fi={}",
-               fmt::ptr(req), ino, off, fmt::ptr(fi));
+    AZLogDebug("aznfsc_ll_write_buf(req={}, ino={}, bufv={}, off={}, fi={}",
+               fmt::ptr(req), ino, fmt::ptr(bufv), off, fmt::ptr(fi));
 
     struct nfs_client *client = get_nfs_client_from_fuse_req(req);
     assert(bufv->idx < bufv->count);

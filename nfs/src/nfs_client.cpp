@@ -99,14 +99,51 @@ void nfs_client::jukebox_runner()
         for (struct jukebox_seedinfo *js : jsv) {
             switch (js->rpc_api.optype) {
                 case FUSE_LOOKUP:
-                    AZLogDebug("[JUKEBOX REISSUE] lookup(req={}, "
-                               "parent_ino={}, name={}",
+                    AZLogWarn("[JUKEBOX REISSUE] lookup(req={}, "
+                               "parent_ino={}, name={})",
                                fmt::ptr(js->rpc_api.req),
                                js->rpc_api.lookup_task.get_parent_ino(),
                                js->rpc_api.lookup_task.get_file_name());
                     lookup(js->rpc_api.req,
                            js->rpc_api.lookup_task.get_parent_ino(),
                            js->rpc_api.lookup_task.get_file_name());
+                    break;
+                case FUSE_GETATTR:
+                    AZLogWarn("[JUKEBOX REISSUE] getattr(req={}, ino={}, "
+                               "fi=null)",
+                               fmt::ptr(js->rpc_api.req),
+                               js->rpc_api.getattr_task.get_ino());
+                    getattr(js->rpc_api.req,
+                            js->rpc_api.getattr_task.get_ino(),
+                            nullptr);
+                    break;
+                case FUSE_READDIR:
+                    AZLogWarn("([JUKEBOX REISSUE] readdir(req={}, ino={}, "
+                               "size={}, off={}, fi={})",
+                               fmt::ptr(js->rpc_api.req),
+                               js->rpc_api.readdir_task.get_ino(),
+                               js->rpc_api.readdir_task.get_size(),
+                               js->rpc_api.readdir_task.get_offset(),
+                               fmt::ptr(js->rpc_api.readdir_task.get_fuse_file()));
+                    readdir(js->rpc_api.req,
+                            js->rpc_api.readdir_task.get_ino(),
+                            js->rpc_api.readdir_task.get_size(),
+                            js->rpc_api.readdir_task.get_offset(),
+                            js->rpc_api.readdir_task.get_fuse_file());
+                    break;
+                case FUSE_READDIRPLUS:
+                    AZLogWarn("([JUKEBOX REISSUE] readdirplus(req={}, ino={}, "
+                               "size={}, off={}, fi={})",
+                               fmt::ptr(js->rpc_api.req),
+                               js->rpc_api.readdir_task.get_ino(),
+                               js->rpc_api.readdir_task.get_size(),
+                               js->rpc_api.readdir_task.get_offset(),
+                               fmt::ptr(js->rpc_api.readdir_task.get_fuse_file()));
+                    readdirplus(js->rpc_api.req,
+                                js->rpc_api.readdir_task.get_ino(),
+                                js->rpc_api.readdir_task.get_size(),
+                                js->rpc_api.readdir_task.get_offset(),
+                                js->rpc_api.readdir_task.get_fuse_file());
                     break;
                 /* TODO: Add other request types */
                 default:
