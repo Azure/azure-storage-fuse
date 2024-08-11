@@ -25,6 +25,8 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
 if(ENABLE_PARANOID)
   add_definitions(-DENABLE_PARANOID)
 endif()
+add_compile_options(-fsanitize=address)
+add_link_options(-fsanitize=address)
 endif()
 
 if(ENABLE_NON_AZURE_NFS)
