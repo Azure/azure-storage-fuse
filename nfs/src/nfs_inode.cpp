@@ -115,7 +115,7 @@ nfs_inode::~nfs_inode()
     assert(client->magic == NFS_CLIENT_MAGIC);
 
     assert(fh.data.data_val != nullptr);
-    delete fh.data.data_val;
+    delete[] fh.data.data_val;
     fh.data.data_val = nullptr;
     fh.data.data_len = 0;
 }
