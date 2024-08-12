@@ -886,6 +886,7 @@ void rpc_task::run_create_file()
 
     do {
         CREATE3args args;
+        ::memset(&args, 0, sizeof(args));
 
         args.where.dir = get_client()->get_nfs_inode_from_ino(parent_ino)->get_fh();
         args.where.name = (char*)rpc_api->create_task.get_file_name();
@@ -919,6 +920,7 @@ void rpc_task::run_mkdir()
 
     do {
         MKDIR3args args;
+        ::memset(&args, 0, sizeof(args));
 
         ::memset(&args, 0, sizeof(args));
         args.where.dir = get_client()->get_nfs_inode_from_ino(parent_ino)->get_fh();
@@ -984,6 +986,7 @@ void rpc_task::run_setattr()
 
     do {
         SETATTR3args args;
+        ::memset(&args, 0, sizeof(args));
 
         ::memset(&args, 0, sizeof(args));
         args.object = get_client()->get_nfs_inode_from_ino(ino)->get_fh();
