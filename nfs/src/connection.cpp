@@ -32,10 +32,15 @@ bool nfs_connection::open()
     assert(mo.server == url->server);
     assert(mo.export_path == url->path);
 
+    nfs_destroy_url(url);
+
     /*
      * Call libnfs for mounting the share.
      * This will create a connection to the NFS server and perform mount.
      * After this the nfs_context can be used for sending NFS requests.
+     *
+     * TODO: Need to add JUKEBOX handling to libnfs for mount and all requests
+     *       issued during mount.
      */
     if (nfs_mount(nfs_context,
                   mo.server.c_str(),

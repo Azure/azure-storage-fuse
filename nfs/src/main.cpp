@@ -1370,6 +1370,7 @@ int main(int argc, char *argv[])
     }
 
 err_out4:
+    fuse_loop_cfg_destroy(loop_config);
     fuse_session_unmount(se);
 err_out3:
     fuse_remove_signal_handlers(se);
