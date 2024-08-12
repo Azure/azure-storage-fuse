@@ -63,7 +63,11 @@ void nfs_client::jukebox_runner()
     AZLogDebug("Started jukebox_runner");
 
     do {
-        ::sleep(5);
+        if (jukebox_seeds.empty()) {
+            ::sleep(5);
+        } else {
+            ::sleep(1);
+        }
 
         {
             std::unique_lock<std::mutex> lock(jukebox_seeds_lock);
@@ -656,6 +660,11 @@ static void getattr_callback(
             *(ctx->fattr) = res->GETATTR3res_u.resok.obj_attributes;
             ctx->is_callback_success = true;
         }
+
+        /*
+         * TODO: Add JUKEBOX handling.
+         */
+
         ctx->callback_called = true;
     }
 
