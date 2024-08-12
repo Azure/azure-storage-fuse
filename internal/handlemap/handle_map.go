@@ -80,7 +80,7 @@ type Handle struct {
 	Size     int64    // Size of the file being handled here
 	Mtime    time.Time
 	UnixFD   uint64                 // Unix FD created by create/open syscall
-	OptCnt   uint64                 // Number of operations done on this file
+	OptCnt   uint32                 // Number of operations done on this file
 	Flags    common.BitMap16        // Various states of the file
 	Path     string                 // Always holds path relative to mount dir
 	values   map[string]interface{} // Map to hold other info if application wants to store

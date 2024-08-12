@@ -41,6 +41,14 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 )
 
+const (
+	BlockStatusUnknown        int = iota
+	BlockStatusDownloaded         // Download of this block is complete
+	BlockStatusUploaded           // Upload of this block is complete
+	BlockStatusDownloadFailed     // Download of this block has failed
+	BlockStatusUploadFailed       // Upload of this block has failed
+)
+
 // Various flags denoting state of a block
 const (
 	BlockFlagFresh       uint16 = iota
@@ -127,9 +135,9 @@ func (b *Block) Uploading() {
 }
 
 // Ready marks this Block is now ready for reading by its first reader (data download completed)
-func (b *Block) Ready() {
+func (b *Block) Ready(val int) {
 	select {
-	case b.state <- 1:
+	case b.state <- val:
 		break
 	default:
 		break

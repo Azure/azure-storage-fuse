@@ -107,7 +107,6 @@ const (
 	MIN_POOL_USAGE  uint32 = 50
 	MIN_PREFETCH           = 5
 	MIN_WRITE_BLOCK        = 3
-	MIN_RANDREAD           = 10
 	MAX_FAIL_CNT           = 3
 	MAX_BLOCKS             = 50000
 )
@@ -384,6 +383,7 @@ func (bc *BlockCache) validateBlockList(handle *handlemap.Handle, options intern
 			log.Err("BlockCache::validateBlockList : Block size mismatch for %s [block: %v, size: %v]", options.Name, block.Id, block.Size)
 			return false
 		}
+
 		listMap[int64(idx)] = &blockInfo{
 			id:        block.Id,
 			committed: true,
@@ -537,6 +537,22 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 	return dataRead, nil
 }
 
+func (bc *BlockCache) addToCooked(handle *handlemap.Handle, block *Block) {
+	if block.node != nil {
+		_ = handle.Buffers.Cooked.Remove(block.node)
+		_ = handle.Buffers.Cooking.Remove(block.node)
+	}
+	block.node = handle.Buffers.Cooked.PushBack(block)
+}
+
+func (bc *BlockCache) addToCooking(handle *handlemap.Handle, block *Block) {
+	if block.node != nil {
+		_ = handle.Buffers.Cooked.Remove(block.node)
+		_ = handle.Buffers.Cooking.Remove(block.node)
+	}
+	block.node = handle.Buffers.Cooking.PushBack(block)
+}
+
 // getBlock: From offset generate the Block index and get the Block corresponding to it
 /* Base logic of getBlock:
 Check if the given block is already available or not
@@ -563,9 +579,14 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 	index := bc.getBlockIndex(readoffset)
 	node, found := handle.GetValue(fmt.Sprintf("%v", index))
 	if !found {
+		// If too many buffers are piled up for this file then try to evict some of those which are already consumed
+		if handle.Buffers.Cooked.Len()+handle.Buffers.Cooking.Len() >= int(bc.prefetch) {
+			bc.waitAndFreeUploadedBlocks(handle, 1)
+		}
+
 		// If this is the first read request then prefetch all required nodes
 		val, _ := handle.GetValue("#")
-		if !bc.noPrefetch && val.(uint64) == 0 {
+		if val.(uint64) == 0 {
 			log.Debug("BlockCache::getBlock : Starting the prefetch %v=>%s (offset %v, index %v)", handle.ID, handle.Path, readoffset, index)
 
 			// This is the first read for this file handle so start prefetching all the nodes
@@ -600,43 +621,53 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 	block := node.(*Block)
 
 	// Wait for this block to complete the download
-	t := int(0)
-	t = <-block.state
+	t, ok := <-block.state
 
-	if t == 1 {
-		block.flags.Clear(BlockFlagDownloading)
+	if ok {
+		switch t {
+		case BlockStatusDownloaded, BlockStatusUploaded:
+			block.flags.Clear(BlockFlagDownloading)
+			block.flags.Clear(BlockFlagUploading)
 
-		if block.IsFailed() {
+			// Download complete and you are first reader of this block
+			if !bc.noPrefetch && handle.OptCnt <= bc.prefetch {
+				// So far this file has been read sequentially so prefetch more
+				val, _ := handle.GetValue("#")
+				if int64(val.(uint64)*bc.blockSize) < handle.Size {
+					_ = bc.startPrefetch(handle, val.(uint64), true)
+				}
+			}
+
+			// Mark this block is now open for everyone to read and process
+			// Once unblocked and moved to original queue, any instance can delete this block to reuse as well
+			block.Unblock()
+
+		case BlockStatusDownloadFailed:
 			log.Err("BlockCache::getBlock : Failed to download block %v=>%s (offset %v, index %v)", handle.ID, handle.Path, readoffset, index)
 
 			// Remove this node from handle so that next read retries to download the block again
-			_ = handle.Buffers.Cooking.Remove(block.node)
+			if block.node != nil {
+				_ = handle.Buffers.Cooked.Remove(block.node)
+				_ = handle.Buffers.Cooking.Remove(block.node)
+			}
+
 			handle.RemoveValue(fmt.Sprintf("%v", block.id))
+
 			block.ReUse()
 			bc.blockPool.Release(block)
+
 			return nil, fmt.Errorf("failed to download block")
+
+		case BlockStatusUploadFailed:
+			block.flags.Clear(BlockFlagDownloading)
+			block.flags.Clear(BlockFlagUploading)
+
+			// Move this block to end of queue as this is still modified and un-staged
+			bc.addToCooked(handle, block)
+
+			// Local data is still valid so continue using this buffer
+			log.Err("BlockCache::getBlock : Failed to upload block %v=>%s (offset %v, index %v)", handle.ID, handle.Path, readoffset, index)
 		}
-
-		// Download complete and you are first reader of this block
-		if handle.OptCnt <= MIN_RANDREAD {
-			// So far this file has been read sequentially so prefetch more
-			val, _ := handle.GetValue("#")
-			if int64(val.(uint64)*bc.blockSize) < handle.Size {
-				_ = bc.startPrefetch(handle, val.(uint64), true)
-			}
-		}
-
-		// This block was moved to in-process queue as download is complete lets move it back to normal queue
-		_ = handle.Buffers.Cooking.Remove(block.node)
-		block.node = handle.Buffers.Cooked.PushBack(block)
-
-		// mark this block as synced so that if it can used for write later
-		// which will move it back to cooking list as per the synced flag
-		block.flags.Set(BlockFlagSynced)
-
-		// Mark this block is now open for everyone to read and process
-		// Once unblocked and moved to original queue, any instance can delete this block to reuse as well
-		block.Unblock()
 	}
 
 	return block, nil
@@ -647,91 +678,41 @@ func (bc *BlockCache) getBlockIndex(offset uint64) uint64 {
 	return offset / bc.blockSize
 }
 
-// startPrefetch: Start prefetchign the blocks from given offset. Same method is used to download currently required block as well
+// startPrefetch: Start prefetching the blocks from given offset. Same method is used to download currently required block as well
 func (bc *BlockCache) startPrefetch(handle *handlemap.Handle, index uint64, prefetch bool) error {
-	// Calculate how many buffers we have in free and in-process queue
-	currentCnt := handle.Buffers.Cooked.Len() + handle.Buffers.Cooking.Len()
-	cnt := uint32(0)
+	cnt := uint32(1)
 
-	if handle.OptCnt > MIN_RANDREAD {
-		// This handle has been read randomly and we have reached the threshold to declare a random read case
-
-		if currentCnt > MIN_PREFETCH {
-			// As this file is in random read mode now, release the excess buffers. Just keep 5 buffers for it to work
-			log.Info("BlockCache::startPrefetch : Cleanup excessive blocks  %v=>%s index %v", handle.ID, handle.Path, index)
-
-			// As this is random read move all in process blocks to free list
-			nodeList := handle.Buffers.Cooking
-			currentCnt = nodeList.Len()
-			node := nodeList.Front()
-
-			for i := 0; node != nil && i < currentCnt; node = nodeList.Front() {
-				// Test whether this block is already downloaded or still under download
-				block := handle.Buffers.Cooking.Remove(node).(*Block)
-				block.node = nil
-				i++
-
-				select {
-				case <-block.state:
-					// As we are first reader of this block here its important to unblock any future readers on this block
-					block.flags.Clear(BlockFlagDownloading)
-					block.Unblock()
-
-					// Block is downloaded so it's safe to ready it for reuse
-					block.node = handle.Buffers.Cooked.PushBack(block)
-
-				default:
-					// Block is still under download so can not reuse this
-					block.node = handle.Buffers.Cooking.PushBack(block)
-				}
-			}
-
-			// Now remove excess blocks from cooked list
-			nodeList = handle.Buffers.Cooked
-			currentCnt = nodeList.Len()
-			node = nodeList.Front()
-
-			for ; node != nil && currentCnt > MIN_PREFETCH; node = nodeList.Front() {
-				block := node.Value.(*Block)
-				_ = nodeList.Remove(node)
-
-				// Remove entry of this block from map so that no one can find it
-				handle.RemoveValue(fmt.Sprintf("%v", block.id))
-				block.node = nil
-
-				// Submit this block back to pool for reuse
-				block.ReUse()
-				bc.blockPool.Release(block)
-
-				currentCnt--
-			}
-		}
-		// As we were asked to download a block, for random read case download only the requested block
-		// This is where prefetching is blocked now as we download just the block which is requested
-		cnt = 1
-	} else {
-		// This handle is having sequential reads so far
-		// Allocate more buffers if required until we hit the prefetch count limit
-		for ; currentCnt < int(bc.prefetch) && cnt < MIN_PREFETCH; currentCnt++ {
-			block := bc.blockPool.TryGet()
-			if block != nil {
-				block.node = handle.Buffers.Cooked.PushFront(block)
-				cnt++
-			}
-		}
-
-		// If no new buffers were allocated then we have all buffers allocated to this handle already
-		// time to switch to a sliding window where we remove one block and lineup a new block for download
-		if cnt == 0 {
+	// Only 1 block can be prefetched if the random RW is going on
+	// For sequential case determine how much to prefetch
+	if !bc.noPrefetch && handle.OptCnt < bc.prefetch {
+		// Compute how many blocks can be prefetched now
+		// min(min_prefetch, max_blocks - current_blocks)
+		currentCnt := handle.Buffers.Cooked.Len() + handle.Buffers.Cooking.Len()
+		cnt = uint32(math.Min(float64(MIN_PREFETCH), float64(bc.prefetch-uint32(currentCnt))))
+		if cnt <= 0 {
 			cnt = 1
 		}
 	}
 
 	for i := uint32(0); i < cnt; i++ {
-		// Revalidate this node does not exists in the block map
+		// Check if the block exists in the local cache or not
+		// If not, download the block from storage
 		_, found := handle.GetValue(fmt.Sprintf("%v", index))
+
 		if !found {
-			// Block not found so lets push it for download
+			// Check the block is an uncommitted block or not
+			// For uncommitted block we need to commit the block first
+			shouldCommit, _ := shouldCommitAndDownload(int64(index), handle)
+			if shouldCommit {
+				// This shall happen only for the first uncommitted block and shall flush all the uncommitted blocks to storage
+				log.Debug("BlockCache::startPrefetch : Fetching an uncommitted block %v, so committing all the staged blocks for %v=>%s", index, handle.ID, handle.Path)
+				err := bc.commitBlocks(handle)
+				if err != nil {
+					log.Err("BlockCache::startPrefetch : Failed to commit blocks for %v=>%s [%s]", handle.ID, handle.Path, err.Error())
+					return err
+				}
+			}
+
 			err := bc.refreshBlock(handle, index, prefetch || i > 0)
 			if err != nil {
 				return err
@@ -754,46 +735,35 @@ func (bc *BlockCache) refreshBlock(handle *handlemap.Handle, index uint64, prefe
 		return io.EOF
 	}
 
-	nodeList := handle.Buffers.Cooked
-	if nodeList.Len() == 0 && !prefetch {
+	var block *Block
+	if !prefetch {
 		// User needs a block now but there is no free block available right now
 		// this might happen when all blocks are under download and no first reader is hit for any of them
-		block := bc.blockPool.MustGet()
-		if block == nil {
-			log.Err("BlockCache::refreshBlock : Unable to allocate block %v=>%s (index %v, prefetch %v)", handle.ID, handle.Path, index, prefetch)
-			return fmt.Errorf("unable to allocate block")
-		}
-
-		block.node = handle.Buffers.Cooked.PushFront(block)
+		block = bc.blockPool.MustGet()
+	} else {
+		block = bc.blockPool.TryGet()
 	}
 
-	node := nodeList.Front()
-	if node != nil {
-		// Now there is at least one free block available in the list
-		block := node.Value.(*Block)
-
-		if block.id != -1 {
-			// This is a reuse of a block case so we need to remove old entry from the map
-			handle.RemoveValue(fmt.Sprintf("%v", block.id))
-		}
-
-		// Reuse this block and lineup for download
-		block.ReUse()
-		block.id = int64(index)
-		block.offset = offset
-
-		// Add this entry to handle map so that others can refer to the same block if required
-		handle.SetValue(fmt.Sprintf("%v", index), block)
-		handle.SetValue("#", (index + 1))
-
-		bc.lineupDownload(handle, block, prefetch, true)
+	if block == nil {
+		log.Err("BlockCache::refreshBlock : Unable to allocate block %v=>%s (index %v, prefetch %v)", handle.ID, handle.Path, index, prefetch)
+		return fmt.Errorf("unable to allocate block")
 	}
+
+	block.id = int64(index)
+	block.offset = offset
+	block.node = nil
+
+	// Add this entry to handle map so that others can refer to the same block if required
+	handle.SetValue(fmt.Sprintf("%v", index), block)
+	handle.SetValue("#", (index + 1))
+
+	bc.lineupDownload(handle, block, prefetch)
 
 	return nil
 }
 
 // lineupDownload : Create a work item and schedule the download
-func (bc *BlockCache) lineupDownload(handle *handlemap.Handle, block *Block, prefetch bool, pushFront bool) {
+func (bc *BlockCache) lineupDownload(handle *handlemap.Handle, block *Block, prefetch bool) {
 	item := &workItem{
 		handle:   handle,
 		block:    block,
@@ -802,17 +772,7 @@ func (bc *BlockCache) lineupDownload(handle *handlemap.Handle, block *Block, pre
 		upload:   false,
 	}
 
-	// Remove this block from free block list and add to in-process list
-	if block.node != nil {
-		_ = handle.Buffers.Cooked.Remove(block.node)
-	}
-
-	if pushFront {
-		block.node = handle.Buffers.Cooking.PushFront(block)
-	} else {
-		// push back to cooking list in case of write scenario where a block is downloaded before it is updated
-		block.node = handle.Buffers.Cooking.PushBack(block)
-	}
+	bc.addToCooked(handle, block)
 	block.flags.Set(BlockFlagDownloading)
 
 	// Send the work item to worker pool to schedule download
@@ -867,7 +827,7 @@ func (bc *BlockCache) download(item *workItem) {
 				// Just mark the block that download is complete
 
 				item.block.endIndex = item.block.offset + uint64(n)
-				item.block.Ready()
+				item.block.Ready(BlockStatusDownloaded)
 				return
 			}
 		}
@@ -885,7 +845,7 @@ func (bc *BlockCache) download(item *workItem) {
 		// If we failed to read the data 3 times then just give up
 		log.Err("BlockCache::download : 3 attempts to download a block have failed %v=>%s (index %v, offset %v)", item.handle.ID, item.handle.Path, item.block.id, item.block.offset)
 		item.block.Failed()
-		item.block.Ready()
+		item.block.Ready(BlockStatusDownloadFailed)
 		return
 	}
 
@@ -927,7 +887,9 @@ func (bc *BlockCache) download(item *workItem) {
 	}
 
 	// Just mark the block that download is complete
-	item.block.Ready()
+	item.block.flags.Set(BlockFlagSynced)
+	item.block.Ready(BlockStatusDownloaded)
+
 }
 
 // WriteFile: Write to the local file
@@ -1026,7 +988,7 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 			if shouldDownload || shouldCommit {
 				// We are writing somewhere in between so just fetch this block
 				log.Debug("BlockCache::getOrCreateBlock : Downloading block %v for %v=>%v", block.id, handle.ID, handle.Path)
-				bc.lineupDownload(handle, block, false, false)
+				bc.lineupDownload(handle, block, false)
 
 				// Now wait for download to complete
 				<-block.state
@@ -1237,7 +1199,11 @@ func (bc *BlockCache) waitAndFreeUploadedBlocks(handle *handlemap.Handle, cnt in
 		if block.id != -1 {
 			// Wait for upload of this block to complete
 			_, ok := <-block.state
+
+			block.flags.Clear(BlockFlagDownloading)
 			block.flags.Clear(BlockFlagUploading)
+			block.flags.Clear(BlockFlagSynced)
+
 			if ok {
 				block.Unblock()
 			}
@@ -1289,7 +1255,7 @@ func (bc *BlockCache) upload(item *workItem) {
 			// If we failed to write the data 3 times then just give up
 			log.Err("BlockCache::upload : 3 attempts to upload a block have failed %v=>%s (index %v, offset %v)", item.handle.ID, item.handle.Path, item.block.id, item.block.offset)
 			item.block.Failed()
-			item.block.Ready()
+			item.block.Ready(BlockStatusUploadFailed)
 			return
 		}
 
@@ -1330,7 +1296,7 @@ func (bc *BlockCache) upload(item *workItem) {
 return_safe:
 	item.block.flags.Set(BlockFlagSynced)
 	item.block.NoMoreDirty()
-	item.block.Ready()
+	item.block.Ready(BlockStatusUploaded)
 }
 
 // Stage the given number of blocks from this handle
