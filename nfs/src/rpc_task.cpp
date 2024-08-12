@@ -398,19 +398,25 @@ static void write_callback(
                        mb->offset + ctx->get_count(), mb->offset + count,
                        mb->offset, mb->offset + mb->length);
 
-            bool rpc_retry = false;
+            bool rpc_retry;
             do {
+                rpc_retry = false;
                 if (rpc_nfs3_write_task(task->get_rpc_ctx(), write_callback,
                                         &args, ctx) == NULL) {
                    /*
-                    * This call fails due to internal issues like OOM etc
-                    * and not due to an actual error, hence retry.
+                    * Most common reason for this is memory allocation failure,
+                    * hence wait for some time before retrying. Also block the
+                    * current thread as we really want to slow down things.
+                    *
+                    * TODO: For soft mount should we fail this?
                     */
                     rpc_retry = true;
+
+                    AZLogWarn("rpc_nfs3_write_task failed to issue, retrying "
+                              "after 5 secs!");
+                    ::sleep(5);
                 }
-                AZLogError("rpc_nfs3_write_task failed due to internal error, "
-                           "retrying!");
-            } while (rpc_retry == false);
+            } while (rpc_retry);
 
             return;
         } else {
@@ -550,7 +556,7 @@ void rmdir_callback(
 void rpc_task::run_lookup()
 {
     fuse_ino_t parent_ino = rpc_api->lookup_task.get_parent_ino();
-    bool rpc_retry = false;
+    bool rpc_retry;
 
     do {
         LOOKUP3args args;
@@ -563,13 +569,21 @@ void rpc_task::run_lookup()
         req_size += ::strlen(args.what.name);
         stats.on_rpc_dispatch(req_size);
 
+        rpc_retry = false;
         if (rpc_nfs3_lookup_task(get_rpc_ctx(), lookup_callback, &args,
                                  this) == NULL) {
             /*
-             * This call fails due to internal issues like OOM etc
-             * and not due to an actual error, hence retry.
+             * Most common reason for this is memory allocation failure,
+             * hence wait for some time before retrying. Also block the
+             * current thread as we really want to slow down things.
+             *
+             * TODO: For soft mount should we fail this?
              */
             rpc_retry = true;
+
+            AZLogWarn("rpc_nfs3_lookup_task failed to issue, retrying "
+                      "after 5 secs!");
+            ::sleep(5);
         }
     } while (rpc_retry);
 }
@@ -702,16 +716,24 @@ static void sync_membuf(const struct bytes_chunk& bc,
         // Set flag to flushing.
         mb->set_flushing();
 
-        bool rpc_retry = false;
+        bool rpc_retry;
         do {
+            rpc_retry = false;
             if (rpc_nfs3_write_task(flush_task->get_rpc_ctx(),
                                     write_callback, &args,
                                     cb_context) == NULL) {
                 /*
-                * This call fails due to internal issues like OOM etc
-                * and not due to an actual error, hence retry.
-                */
+                 * Most common reason for this is memory allocation failure,
+                 * hence wait for some time before retrying. Also block the
+                 * current thread as we really want to slow down things.
+                 *
+                 * TODO: For soft mount should we fail this?
+                 */
                 rpc_retry = true;
+
+                AZLogWarn("rpc_nfs3_write_task failed to issue, retrying "
+                          "after 5 secs!");
+                ::sleep(5);
             }
         } while (rpc_retry);
     } else {
@@ -828,7 +850,7 @@ void rpc_task::run_flush()
 
 void rpc_task::run_getattr()
 {
-    bool rpc_retry = false;
+    bool rpc_retry;
     auto ino = rpc_api->getattr_task.get_ino();
 
     do {
@@ -838,20 +860,28 @@ void rpc_task::run_getattr()
 
         stats.on_rpc_dispatch(sizeof(args) + args.object.data.data_len);
 
+        rpc_retry = false;
         if (rpc_nfs3_getattr_task(get_rpc_ctx(), getattr_callback, &args,
                                   this) == NULL) {
             /*
-             * This call fails due to internal issues like OOM etc
-             * and not due to an actual error, hence retry.
+             * Most common reason for this is memory allocation failure,
+             * hence wait for some time before retrying. Also block the
+             * current thread as we really want to slow down things.
+             *
+             * TODO: For soft mount should we fail this?
              */
             rpc_retry = true;
+
+            AZLogWarn("rpc_nfs3_getattr_task failed to issue, retrying "
+                      "after 5 secs!");
+            ::sleep(5);
         }
     } while (rpc_retry);
 }
 
 void rpc_task::run_create_file()
 {
-    bool rpc_retry = false;
+    bool rpc_retry;
     auto parent_ino = rpc_api->create_task.get_parent_ino();
 
     do {
@@ -863,20 +893,28 @@ void rpc_task::run_create_file()
         args.how.createhow3_u.obj_attributes.mode.set_it = 1;
         args.how.createhow3_u.obj_attributes.mode.set_mode3_u.mode = rpc_api->create_task.get_mode();
 
-        if (rpc_nfs3_create_task(get_rpc_ctx(), createfile_callback, &args, this) == NULL)
-        {
+        rpc_retry = false;
+        if (rpc_nfs3_create_task(get_rpc_ctx(), createfile_callback, &args,
+                                 this) == NULL) {
             /*
-             * This call fails due to internal issues like OOM etc
-             * and not due to an actual error, hence retry.
+             * Most common reason for this is memory allocation failure,
+             * hence wait for some time before retrying. Also block the
+             * current thread as we really want to slow down things.
+             *
+             * TODO: For soft mount should we fail this?
              */
             rpc_retry = true;
+
+            AZLogWarn("rpc_nfs3_create_task failed to issue, retrying "
+                      "after 5 secs!");
+            ::sleep(5);
         }
     }  while (rpc_retry);
 }
 
 void rpc_task::run_mkdir()
 {
-    bool rpc_retry = false;
+    bool rpc_retry;
     auto parent_ino = rpc_api->mkdir_task.get_parent_ino();
 
     do {
@@ -888,20 +926,28 @@ void rpc_task::run_mkdir()
         args.attributes.mode.set_it = 1;
         args.attributes.mode.set_mode3_u.mode = rpc_api->mkdir_task.get_mode();
 
+        rpc_retry = false;
         if (rpc_nfs3_mkdir_task(get_rpc_ctx(), mkdir_callback, &args,
                                 this) == NULL) {
             /*
-             * This call fails due to internal issues like OOM etc
-             * and not due to an actual error, hence retry.
+             * Most common reason for this is memory allocation failure,
+             * hence wait for some time before retrying. Also block the
+             * current thread as we really want to slow down things.
+             *
+             * TODO: For soft mount should we fail this?
              */
             rpc_retry = true;
+
+            AZLogWarn("rpc_nfs3_mkdir_task failed to issue, retrying "
+                      "after 5 secs!");
+            ::sleep(5);
         }
     } while (rpc_retry);
 }
 
 void rpc_task::run_rmdir()
 {
-    bool rpc_retry = false;
+    bool rpc_retry;
     auto parent_ino = rpc_api->rmdir_task.get_parent_ino();
 
     do {
@@ -910,13 +956,21 @@ void rpc_task::run_rmdir()
         args.object.dir = get_client()->get_nfs_inode_from_ino(parent_ino)->get_fh();
         args.object.name = (char*) rpc_api->rmdir_task.get_dir_name();
 
+        rpc_retry = false;
         if (rpc_nfs3_rmdir_task(get_rpc_ctx(),
                                 rmdir_callback, &args, this) == NULL) {
             /*
-             * This call fails due to internal issues like OOM etc
-             * and not due to an actual error, hence retry.
+             * Most common reason for this is memory allocation failure,
+             * hence wait for some time before retrying. Also block the
+             * current thread as we really want to slow down things.
+             *
+             * TODO: For soft mount should we fail this?
              */
             rpc_retry = true;
+
+            AZLogWarn("rpc_nfs3_rmdir_task failed to issue, retrying "
+                      "after 5 secs!");
+            ::sleep(5);
         }
     } while (rpc_retry);
 }
@@ -926,7 +980,7 @@ void rpc_task::run_setattr()
     auto ino = rpc_api->setattr_task.get_ino();
     auto attr = rpc_api->setattr_task.get_attr();
     const int valid = rpc_api->setattr_task.get_attr_flags_to_set();
-    bool rpc_retry = false;
+    bool rpc_retry;
 
     do {
         SETATTR3args args;
@@ -991,13 +1045,21 @@ void rpc_task::run_setattr()
             args.new_attributes.mtime.set_it = SET_TO_SERVER_TIME;
         }
 
+        rpc_retry = false;
         if (rpc_nfs3_setattr_task(get_rpc_ctx(), setattr_callback, &args,
                                   this) == NULL) {
             /*
-             * This call fails due to internal issues like OOM etc
-             * and not due to an actual error, hence retry.
+             * Most common reason for this is memory allocation failure,
+             * hence wait for some time before retrying. Also block the
+             * current thread as we really want to slow down things.
+             *
+             * TODO: For soft mount should we fail this?
              */
             rpc_retry = true;
+
+            AZLogWarn("rpc_nfs3_setattr_task failed to issue, retrying "
+                      "after 5 secs!");
+            ::sleep(5);
         }
     } while (rpc_retry);
 }
@@ -1282,7 +1344,7 @@ static void read_callback(
         if (is_partial_read) {
             const off_t new_offset = bc->offset + bc->pvt;
             const size_t new_size = bc->length - bc->pvt;
-            bool rpc_retry = false;
+            bool rpc_retry;
             READ3args new_args;
 
             new_args.file = inode->get_fh();
@@ -1310,6 +1372,7 @@ static void read_callback(
                  * Note: It is okay to issue a read call directly here
                  *       as we are holding all the needed locks and refs.
                  */
+                rpc_retry = false;
                 if (rpc_nfs3_read_task(
                         task->get_rpc_ctx(),
                         read_callback,
@@ -1318,10 +1381,17 @@ static void read_callback(
                         &new_args,
                         (void *) ctx) == NULL) {
                     /*
-                     * This call fails due to internal issues like OOM
-                     * etc and not due to an actual error, hence retry.
+                     * Most common reason for this is memory allocation failure,
+                     * hence wait for some time before retrying. Also block the
+                     * current thread as we really want to slow down things.
+                     *
+                     * TODO: For soft mount should we fail this?
                      */
                     rpc_retry = true;
+
+                    AZLogWarn("rpc_nfs3_read_task failed to issue, retrying "
+                              "after 5 secs!");
+                    ::sleep(5);
                 }
             } while (rpc_retry);
 
@@ -1423,7 +1493,7 @@ static void read_callback(
 
 void rpc_task::read_from_server(struct bytes_chunk &bc)
 {
-    bool rpc_retry = false;
+    bool rpc_retry;
     const auto ino = rpc_api->read_task.get_ino();
     struct nfs_inode *inode = get_client()->get_nfs_inode_from_ino(ino);
 
@@ -1488,6 +1558,7 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
                    args.offset,
                    args.count);
 
+        rpc_retry = false;
         if (rpc_nfs3_read_task(
                 get_rpc_ctx(), /* This round robins request across connections */
                 read_callback,
@@ -1496,10 +1567,17 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
                 &args,
                 (void *) ctx) == NULL) {
             /*
-             * This call fails due to internal issues like OOM etc
-             * and not due to an actual error, hence retry.
+             * Most common reason for this is memory allocation failure,
+             * hence wait for some time before retrying. Also block the
+             * current thread as we really want to slow down things.
+             *
+             * TODO: For soft mount should we fail this?
              */
             rpc_retry = true;
+
+            AZLogWarn("rpc_nfs3_read_task failed to issue, retrying "
+                      "after 5 secs!");
+            ::sleep(5);
         }
     } while (rpc_retry);
 }
@@ -1958,7 +2036,7 @@ void rpc_task::get_readdir_entries_from_cache()
 
 void rpc_task::fetch_readdir_entries_from_server()
 {
-    bool rpc_retry = false;
+    bool rpc_retry;
     const fuse_ino_t dir_ino = rpc_api->readdir_task.get_ino();
     struct nfs_inode *dir_inode = get_client()->get_nfs_inode_from_ino(dir_ino);
     const cookie3 cookie = rpc_api->readdir_task.get_offset();
@@ -1987,22 +2065,30 @@ void rpc_task::fetch_readdir_entries_from_server()
 
         stats.on_rpc_dispatch(sizeof(args));
 
+        rpc_retry = false;
         if (rpc_nfs3_readdir_task(get_rpc_ctx(),
                                   readdir_callback,
                                   &args,
                                   this) == NULL) {
             /*
-             * This call fails due to internal issues like OOM etc
-             * and not due to an actual error, hence retry.
+             * Most common reason for this is memory allocation failure,
+             * hence wait for some time before retrying. Also block the
+             * current thread as we really want to slow down things.
+             *
+             * TODO: For soft mount should we fail this?
              */
             rpc_retry = true;
+
+            AZLogWarn("rpc_nfs3_readdir_task failed to issue, retrying "
+                      "after 5 secs!");
+            ::sleep(5);
         }
     } while (rpc_retry);
 }
 
 void rpc_task::fetch_readdirplus_entries_from_server()
 {
-    bool rpc_retry = false;
+    bool rpc_retry;
     const fuse_ino_t dir_ino = rpc_api->readdir_task.get_ino();
     struct nfs_inode *dir_inode = get_client()->get_nfs_inode_from_ino(dir_ino);
     const cookie3 cookie = rpc_api->readdir_task.get_offset();
@@ -2025,15 +2111,23 @@ void rpc_task::fetch_readdirplus_entries_from_server()
 
         stats.on_rpc_dispatch(sizeof(args));
 
+        rpc_retry = false;
         if (rpc_nfs3_readdirplus_task(get_rpc_ctx(),
                                       readdirplus_callback,
                                       &args,
                                       this) == NULL) {
             /*
-             * This call fails due to internal issues like OOM etc
-             * and not due to an actual error, hence retry.
+             * Most common reason for this is memory allocation failure,
+             * hence wait for some time before retrying. Also block the
+             * current thread as we really want to slow down things.
+             *
+             * TODO: For soft mount should we fail this?
              */
             rpc_retry = true;
+
+            AZLogWarn("rpc_nfs3_readdirplus_task failed to issue, retrying "
+                      "after 5 secs!");
+            ::sleep(5);
         }
     } while (rpc_retry);
 }
