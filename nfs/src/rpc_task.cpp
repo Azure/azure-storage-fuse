@@ -281,7 +281,7 @@ static void getattr_callback(
          * experience.
          */
         task->reply_attr(&inode->attr, inode->get_actimeo());
-    } else if (status == EAGAIN) {
+    } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
         task->get_client()->jukebox_retry(task);
     } else {
         task->reply_error(status);
@@ -320,7 +320,7 @@ static void lookup_callback(
             &res->LOOKUP3res_u.resok.object,
             &res->LOOKUP3res_u.resok.obj_attributes.post_op_attr_u.attributes,
             nullptr);
-    } else if (status == EAGAIN) {
+    } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
         task->get_stats().on_rpc_complete(resp_size);
         task->get_client()->jukebox_retry(task);
     } else {
@@ -1678,7 +1678,7 @@ static void readdir_callback(
 
         task->get_stats().on_rpc_complete(resp_size);
         task->send_readdir_response(readdirentries);
-    } else if (status == EAGAIN) {
+    } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
         task->get_stats().on_rpc_complete(resp_size);
         task->get_client()->jukebox_retry(task);
     } else {
@@ -1904,7 +1904,7 @@ static void readdirplus_callback(
 
         task->get_stats().on_rpc_complete(resp_size);
         task->send_readdir_response(readdirentries);
-    } else if (status == EAGAIN) {
+    } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
         task->get_stats().on_rpc_complete(resp_size);
         task->get_client()->jukebox_retry(task);
     } else {
