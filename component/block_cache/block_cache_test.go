@@ -2255,12 +2255,67 @@ func (suite *blockCacheTestSuite) TestBlockFailOverwrite() {
 		size:      _1MB,
 	}
 
-	// write offset 0 where block 0 download will fail
+	// write at offset 0 where block 0 download will fail
 	n, err := tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: dataBuff[:1*_1MB]})
 	suite.assert.NotNil(err)
 	suite.assert.Contains(err.Error(), "failed to download block")
 	suite.assert.Equal(n, 0)
 	suite.assert.False(h.Dirty())
+
+	err = tobj.blockCache.CloseFile(internal.CloseFileOptions{Handle: h})
+	suite.assert.Nil(err)
+
+	fs, err := os.Stat(storagePath)
+	suite.assert.Nil(err)
+	suite.assert.Equal(fs.Size(), int64(0))
+}
+
+func (suite *blockCacheTestSuite) TestBlockDownloadFailed() {
+	cfg := "block_cache:\n  block-size-mb: 1\n  mem-size-mb: 20\n  prefetch: 12\n  parallelism: 10"
+	tobj, err := setupPipeline(cfg)
+	defer tobj.cleanupPipeline()
+
+	suite.assert.Nil(err)
+	suite.assert.NotNil(tobj.blockCache)
+
+	path := getTestFileName(suite.T().Name())
+	storagePath := filepath.Join(tobj.fake_storage_path, path)
+
+	// write using block cache
+	options := internal.CreateFileOptions{Name: path, Mode: 0777}
+	h, err := tobj.blockCache.CreateFile(options)
+	suite.assert.Nil(err)
+	suite.assert.NotNil(h)
+	suite.assert.Equal(h.Size, int64(0))
+	suite.assert.False(h.Dirty())
+
+	h, err = tobj.blockCache.OpenFile(internal.OpenFileOptions{Name: path, Flags: os.O_RDWR})
+	suite.assert.Nil(err)
+	suite.assert.NotNil(h)
+	suite.assert.Equal(h.Size, int64(0))
+	suite.assert.False(h.Dirty())
+
+	// updating the size to replicate the download failure
+	h.Size = int64(4 * _1MB)
+
+	data := make([]byte, _1MB)
+	n, err := tobj.blockCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: data})
+	suite.assert.NotNil(err)
+	suite.assert.Contains(err.Error(), "failed to download block")
+	suite.assert.Equal(n, 0)
+
+	// 1-4MB data being prefetched in blocks 1-3
+	suite.assert.Equal(h.Buffers.Cooking.Len(), 3)
+
+	// write at offset 1MB where block 1 download will fail
+	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: int64(_1MB), Data: dataBuff[:1*_1MB]})
+	suite.assert.NotNil(err)
+	suite.assert.Contains(err.Error(), "failed to download block")
+	suite.assert.Equal(n, 0)
+	suite.assert.False(h.Dirty())
+
+	err = tobj.blockCache.CloseFile(internal.CloseFileOptions{Handle: h})
+	suite.assert.Nil(err)
 
 	fs, err := os.Stat(storagePath)
 	suite.assert.Nil(err)

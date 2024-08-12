@@ -610,10 +610,7 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 			log.Err("BlockCache::getBlock : Failed to download block %v=>%s (offset %v, index %v)", handle.ID, handle.Path, readoffset, index)
 
 			// Remove this node from handle so that next read retries to download the block again
-			_ = handle.Buffers.Cooking.Remove(block.node)
-			handle.RemoveValue(fmt.Sprintf("%v", block.id))
-			block.ReUse()
-			bc.blockPool.Release(block)
+			bc.releaseFailedBlock(handle, block)
 			return nil, fmt.Errorf("failed to download block")
 		}
 
@@ -1036,10 +1033,7 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 					log.Err("BlockCache::getOrCreateBlock : Failed to download block %v for %v=>%s", block.id, handle.ID, handle.Path)
 
 					// Remove this node from handle so that next read retries to download the block again
-					_ = handle.Buffers.Cooking.Remove(block.node)
-					handle.RemoveValue(fmt.Sprintf("%v", block.id))
-					block.ReUse()
-					bc.blockPool.Release(block)
+					bc.releaseFailedBlock(handle, block)
 					return nil, fmt.Errorf("failed to download block")
 				}
 			} else {
@@ -1078,6 +1072,15 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 			log.Debug("BlockCache::getOrCreateBlock : Waiting for download to finish for committed block %v for %v=>%s", block.id, handle.ID, handle.Path)
 			<-block.state
 			block.Unblock()
+
+			// if the block failed to download, it can't be used for overwriting
+			if block.IsFailed() {
+				log.Err("BlockCache::getOrCreateBlock : Failed to download block %v for %v=>%s", block.id, handle.ID, handle.Path)
+
+				// Remove this node from handle so that next read retries to download the block again
+				bc.releaseFailedBlock(handle, block)
+				return nil, fmt.Errorf("failed to download block")
+			}
 		} else if block.flags.IsSet(BlockFlagUploading) {
 			// If the block is being staged, then wait till it is uploaded,
 			// and then write to the same block and move it back to cooking queue
@@ -1090,6 +1093,7 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 			}
 			block.node = handle.Buffers.Cooking.PushBack(block)
 		}
+
 		block.flags.Clear(BlockFlagUploading)
 		block.flags.Clear(BlockFlagDownloading)
 		block.flags.Clear(BlockFlagSynced)
@@ -1121,6 +1125,14 @@ func (bc *BlockCache) stageBlocks(handle *handlemap.Handle, cnt int) error {
 	}
 
 	return nil
+}
+
+// remove the block which failed to download so that it can be used again
+func (bc *BlockCache) releaseFailedBlock(handle *handlemap.Handle, block *Block) {
+	_ = handle.Buffers.Cooking.Remove(block.node)
+	handle.RemoveValue(fmt.Sprintf("%v", block.id))
+	block.ReUse()
+	bc.blockPool.Release(block)
 }
 
 func (bc *BlockCache) printCooking(handle *handlemap.Handle) { //nolint
