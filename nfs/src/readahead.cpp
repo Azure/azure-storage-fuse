@@ -124,7 +124,7 @@ static void readahead_callback (
         // Release the buffer since we did not fill it.
         read_cache->release(bc->offset, bc->length);
 
-        task->get_stats().on_rpc_complete(resp_size);
+        task->get_stats().on_rpc_complete(resp_size, status);
 
         AZLogWarn("[{}] readahead_callback [FAILED]: "
                   "Requested (off: {}, len: {}): rpc_status={}, "
@@ -139,7 +139,7 @@ static void readahead_callback (
     }
 
     resp_size += res->READ3res_u.resok.count;
-    task->get_stats().on_rpc_complete(resp_size);
+    task->get_stats().on_rpc_complete(resp_size, status);
 
     if (res->READ3res_u.resok.count != bc->length) {
         /*

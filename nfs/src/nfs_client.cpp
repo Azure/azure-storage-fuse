@@ -658,7 +658,7 @@ static void getattr_callback(
 
     if (ctx->task) {
         assert(ctx->task->magic == RPC_TASK_MAGIC);
-        ctx->task->get_stats().on_rpc_complete(sizeof(*res));
+        ctx->task->get_stats().on_rpc_complete(sizeof(*res), res->status);
     }
 
     {

@@ -281,7 +281,7 @@ static void getattr_callback(
         task->get_client()->get_nfs_inode_from_ino(ino);
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
-    task->get_stats().on_rpc_complete(sizeof(*res));
+    task->get_stats().on_rpc_complete(sizeof(*res), status);
 
     if (status == 0) {
         // Got fresh attributes, update the attributes cached in the inode.
@@ -315,7 +315,7 @@ static void lookup_callback(
         /*
          * Special case for creating negative dentry.
          */
-        task->get_stats().on_rpc_complete(resp_size);
+        task->get_stats().on_rpc_complete(resp_size, NFS_STATUS(res));
         task->get_client()->reply_entry(
             task,
             nullptr /* fh */,
@@ -325,7 +325,7 @@ static void lookup_callback(
         assert(res->LOOKUP3res_u.resok.obj_attributes.attributes_follow);
 
         resp_size += res->LOOKUP3res_u.resok.object.data.data_len;
-        task->get_stats().on_rpc_complete(resp_size);
+        task->get_stats().on_rpc_complete(resp_size, status);
 
         task->get_client()->reply_entry(
             task,
@@ -336,7 +336,7 @@ static void lookup_callback(
         task->get_stats().on_rpc_complete(resp_size);
         task->get_client()->jukebox_retry(task);
     } else {
-        task->get_stats().on_rpc_complete(resp_size);
+        task->get_stats().on_rpc_complete(resp_size, status);
         task->reply_error(status);
     }
 }
@@ -514,7 +514,7 @@ static void createfile_callback(
             res->CREATE3res_u.resok.obj_attributes.attributes_follow);
 
         resp_size += res->CREATE3res_u.resok.obj.post_op_fh3_u.handle.data.data_len;
-        task->get_stats().on_rpc_complete(resp_size);
+        task->get_stats().on_rpc_complete(resp_size, status);
 
         task->get_client()->reply_entry(
             task,
@@ -522,7 +522,7 @@ static void createfile_callback(
             &res->CREATE3res_u.resok.obj_attributes.post_op_attr_u.attributes,
             task->rpc_api->create_task.get_fuse_file());
     } else {
-        task->get_stats().on_rpc_complete(resp_size);
+        task->get_stats().on_rpc_complete(resp_size, status);
         task->reply_error(status);
     }
 }
@@ -550,7 +550,7 @@ static void setattr_callback(
         task->get_client()->stat_from_fattr3(
             &st, &res->SETATTR3res_u.resok.obj_wcc.after.post_op_attr_u.attributes);
 
-        task->get_stats().on_rpc_complete(resp_size);
+        task->get_stats().on_rpc_complete(resp_size, status);
 
         /*
          * Set fuse kernel attribute cache timeout to the current attribute
@@ -559,7 +559,7 @@ static void setattr_callback(
          */
         task->reply_attr(&st, inode->get_actimeo());
     } else {
-        task->get_stats().on_rpc_complete(resp_size);
+        task->get_stats().on_rpc_complete(resp_size, status);
         task->reply_error(status);
     }
 }
@@ -581,7 +581,7 @@ void mkdir_callback(
             res->MKDIR3res_u.resok.obj_attributes.attributes_follow);
 
         resp_size += res->MKDIR3res_u.resok.obj.post_op_fh3_u.handle.data.data_len;
-        task->get_stats().on_rpc_complete(resp_size);
+        task->get_stats().on_rpc_complete(resp_size, status);
 
         task->get_client()->reply_entry(
             task,
@@ -589,7 +589,7 @@ void mkdir_callback(
             &res->MKDIR3res_u.resok.obj_attributes.post_op_attr_u.attributes,
             nullptr);
     } else {
-        task->get_stats().on_rpc_complete(resp_size);
+        task->get_stats().on_rpc_complete(resp_size, status);
         task->reply_error(status);
     }
 }
@@ -1619,6 +1619,8 @@ static void read_callback(
          */
         assert((bc->length == bc->pvt) || res->READ3res_u.resok.eof);
 
+        task->get_stats().on_rpc_complete(resp_size, status);
+
         if (bc->is_empty && (bc->length == bc->pvt)) {
             /*
              * Only the first read which got hold of the complete membuf
@@ -1658,7 +1660,7 @@ static void read_callback(
                    bc->num_backend_calls_issued,
                    errstr);
 
-        task->get_stats().on_rpc_complete(resp_size);
+        task->get_stats().on_rpc_complete(resp_size, status);
     }
 
     // Free the context.
@@ -2020,13 +2022,13 @@ static void readdir_callback(
             }
         }
 
-        task->get_stats().on_rpc_complete(resp_size);
+        task->get_stats().on_rpc_complete(resp_size, status);
         task->send_readdir_response(readdirentries);
     } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
         task->get_stats().on_rpc_complete(resp_size);
         task->get_client()->jukebox_retry(task);
     } else {
-        task->get_stats().on_rpc_complete(resp_size);
+        task->get_stats().on_rpc_complete(resp_size, status);
         task->reply_error(status);
     }
 }
@@ -2246,13 +2248,13 @@ static void readdirplus_callback(
             }
         }
 
-        task->get_stats().on_rpc_complete(resp_size);
+        task->get_stats().on_rpc_complete(resp_size, status);
         task->send_readdir_response(readdirentries);
     } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
         task->get_stats().on_rpc_complete(resp_size);
         task->get_client()->jukebox_retry(task);
     } else {
-        task->get_stats().on_rpc_complete(resp_size);
+        task->get_stats().on_rpc_complete(resp_size, status);
         task->reply_error(status);
     }
 }
