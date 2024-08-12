@@ -575,6 +575,11 @@ private:
  */
 struct api_task_info
 {
+    ~api_task_info()
+    {
+        release();
+    }
+
     /*
      * Fuse request structure.
      * This is the request structure passed from the fuse layer, on behalf of
@@ -605,6 +610,30 @@ struct api_task_info
         struct readdir_rpc_task readdir_task;
         struct read_rpc_task read_task;
     };
+
+    /**
+     * We cannot specify destructors for the <api>_rpc_task structures, since
+     * they are part of a C union. Use release() method for performing any
+     * cleanup.
+     */
+    void release()
+    {
+        assert(optype > 0 && optype <= FUSE_OPCODE_MAX);
+
+        switch(optype) {
+            case FUSE_LOOKUP:
+                lookup_task.release();
+                break;
+            case FUSE_CREATE:
+                create_task.release();
+                break;
+            case FUSE_MKDIR:
+                mkdir_task.release();
+                break;
+            default :
+                break;
+        }
+    }
 };
 
 #define RPC_TASK_MAGIC *((const uint32_t *)"RTSK")
@@ -682,6 +711,8 @@ public:
      */
     std::vector<bytes_chunk> bc_vec;
 
+    enum fuse_opcode optype = (fuse_opcode) 0;
+
 protected:
     /*
      * RPC stats. This has both stats specific to this RPC as well as
@@ -697,8 +728,11 @@ public:
     {
     }
 
-    // RPC API specific task info.
-    api_task_info rpc_api;
+    /*
+     * RPC API specific task info.
+     * This is a pointer so that it can be quickly xferred to jukebox_seedinfo.
+     */
+    api_task_info *rpc_api = nullptr;
 
     // TODO: Add valid flag here for APIs?
 
@@ -892,22 +926,22 @@ public:
 
     void set_fuse_req(fuse_req *request)
     {
-        rpc_api.req = request;
+        rpc_api->req = request;
     }
 
     struct fuse_req *get_fuse_req() const
     {
-        return rpc_api.req;
+        return rpc_api->req;
     }
 
-    void set_op_type(enum fuse_opcode optype)
+    void set_op_type(enum fuse_opcode _optype)
     {
-        rpc_api.optype = optype;
+        optype = rpc_api->optype = _optype;
     }
 
-    enum fuse_opcode get_op_type()
+    enum fuse_opcode get_op_type() const
     {
-        return rpc_api.optype;
+        return optype;
     }
 
     rpc_stats_az& get_stats()
@@ -1171,9 +1205,19 @@ public:
         // Every rpc_task starts as sync.
         assert(!task->is_async());
 
+        /*
+         * Only first time around rpc_api will be null for a rpc_task, after
+         * that it can be null only if the task failed with a JUKEBOX error in
+         * which case the rpc_api would have been xferred to jukebox_seedinfo
+         * by nfs_client::jukebox_retry().
+         */
+        if (!task->rpc_api) {
+            task->rpc_api = new api_task_info();
+        }
+
+        task->rpc_api->req = nullptr;
         task->set_op_type(optype);
         task->stats.on_rpc_create(optype, start_usec);
-        task->rpc_api.req = nullptr;
 
 #ifndef ENABLE_NON_AZURE_NFS
         assert(task->client->mnt_options.nfs_port == 2047 ||
@@ -1256,17 +1300,25 @@ public:
  */
 struct jukebox_seedinfo
 {
+    ~jukebox_seedinfo()
+    {
+        /*
+         * This will also call api_task_info::release().
+         */
+        delete rpc_api;
+    }
+
     /*
      * Information needed to restart the task.
      */
-    api_task_info rpc_api;
+    api_task_info *rpc_api;
 
     /*
      * When to rerun the task.
      */
     int64_t run_at_msecs;
 
-    jukebox_seedinfo(const api_task_info& _rpc_api) :
+    jukebox_seedinfo(api_task_info *_rpc_api) :
         rpc_api(_rpc_api),
         run_at_msecs(get_current_msecs() + JUKEBOX_DELAY_SECS*1000)
     {

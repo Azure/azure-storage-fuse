@@ -100,7 +100,7 @@ static void readahead_callback (
     assert(res->READ3res_u.resok.count <= bc->length);
 
     const int status = task->status(rpc_status, NFS_STATUS(res), &errstr);
-    const fuse_ino_t ino = task->rpc_api.read_task.get_ino();
+    const fuse_ino_t ino = task->rpc_api->read_task.get_ino();
     struct nfs_inode *inode = task->get_client()->get_nfs_inode_from_ino(ino);
     const auto read_cache = inode->filecache_handle;
 
@@ -191,15 +191,15 @@ static void readahead_callback (
          * flag.
          */
         AZLogDebug("Setting uptodate flag. off: {}, len: {}",
-                  task->rpc_api.read_task.get_offset(),
-                  task->rpc_api.read_task.get_size());
+                  task->rpc_api->read_task.get_offset(),
+                  task->rpc_api->read_task.get_size());
 
         assert(bc->maps_full_membuf());
         bc->get_membuf()->set_uptodate();
     } else {
         AZLogDebug("Not updating uptodate flag. off: {}, len: {}",
-                  task->rpc_api.read_task.get_offset(),
-                  task->rpc_api.read_task.get_size());
+                  task->rpc_api->read_task.get_offset(),
+                  task->rpc_api->read_task.get_size());
     }
 
     /*
