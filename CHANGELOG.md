@@ -4,6 +4,7 @@
 - Flush shall only sync the blocks to storage and not delete them from local cache.
 - Random write has been re-enabled in block cache.
 - Writing to an uncommitted block which has been deleted from the in-memory cache.
+- Return failure if download of a block failed which is to be updated.
 
 ## 2.3.1 (Unreleased)
 **NOTICE**
