@@ -38,20 +38,29 @@ bool nfs_connection::open()
      * Call libnfs for mounting the share.
      * This will create a connection to the NFS server and perform mount.
      * After this the nfs_context can be used for sending NFS requests.
-     *
-     * TODO: Need to add JUKEBOX handling to libnfs for mount and all requests
-     *       issued during mount.
      */
-    if (nfs_mount(nfs_context,
-                  mo.server.c_str(),
-                  mo.export_path.c_str()) != 0) {
-        AZLogError("[{}] Failed to mount nfs share ({}:{}): {}",
-                   (void *) nfs_context,
-                   mo.server,
-                   mo.export_path,
-                   nfs_get_error(nfs_context));
-        goto destroy_context;
-    }
+    int status;
+    do {
+        status = nfs_mount(nfs_context, mo.server.c_str(),
+                           mo.export_path.c_str());
+        if (status == -EAGAIN) {
+            AZLogWarn("[{}] JUKEBOX error mounting nfs share ({}:{}): {}, "
+                      "retrying in 5 secs!",
+                      (void *) nfs_context,
+                      mo.server,
+                      mo.export_path,
+                      nfs_get_error(nfs_context));
+            ::sleep(5);
+            continue;
+        } else if (status != 0) {
+            AZLogError("[{}] Failed to mount nfs share ({}:{}): {}",
+                       (void *) nfs_context,
+                       mo.server,
+                       mo.export_path,
+                       nfs_get_error(nfs_context));
+            goto destroy_context;
+        }
+    } while (status == -EAGAIN);
 
     /*
      * A successful mount must have negotiated valid values for these.
