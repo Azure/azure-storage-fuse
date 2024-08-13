@@ -356,6 +356,8 @@ static void write_callback(
     struct membuf *mb = bc->get_membuf();
     struct nfs_inode *inode =
         task->get_client()->get_nfs_inode_from_ino(ctx->get_ino());
+    struct nfs_client *client = task->get_client();
+    int req_size = 0;
 
     /*
      * Sanity check.
@@ -392,11 +394,12 @@ static void write_callback(
              * Arrange to write rest of the data.
              */
             WRITE3args args;
+            struct rpc_pdu *pdu;
             off_t off = mb->offset;
             char *buf = (char *)mb->buffer;
             fuse_ino_t ino = ctx->get_ino();
 
-            args.file = task->get_client()->get_nfs_inode_from_ino(ino)->get_fh();
+            args.file = client->get_nfs_inode_from_ino(ino)->get_fh();
 	        args.offset = off + count;
 	        args.count  = size - count;
 	        args.stable = FILE_SYNC;
@@ -404,6 +407,14 @@ static void write_callback(
             args.data.data_val = buf + count;
 
             ctx->set_count(count);
+
+            /*
+             * Create new flush task to write remaining buffer.
+             * New task help us to account stats accurately.
+             */
+            struct rpc_task *flush_task = client->get_rpc_task_helper()->alloc_rpc_task(FUSE_FLUSH);
+            flush_task->init_flush(nullptr /* fuse_req */, ino);
+            flush_task->set_op_type(FUSE_FLUSH);
 
             // TODO: Make this AZLogDebug after some time.
             AZLogInfo("[{}] Partial write: [{}, {}) of [{}, {})",
@@ -413,8 +424,8 @@ static void write_callback(
             bool rpc_retry;
             do {
                 rpc_retry = false;
-                if (rpc_nfs3_write_task(task->get_rpc_ctx(), write_callback,
-                                        &args, ctx) == NULL) {
+                if ((pdu = rpc_nfs3_write_task(flush_task->get_rpc_ctx(), write_callback,
+                                        &args, ctx)) == NULL) {
                    /*
                     * Most common reason for this is memory allocation failure,
                     * hence wait for some time before retrying. Also block the
@@ -429,6 +440,21 @@ static void write_callback(
                     ::sleep(5);
                 }
             } while (rpc_retry);
+
+            /*
+             * Update the new task stats.
+             */
+            req_size += rpc_pdu_get_req_size(pdu);
+            flush_task->get_stats().on_rpc_dispatch(req_size);
+
+            /*
+             * Update the stats for the original task.
+             */
+            pdu = rpc_get_pdu(task->get_rpc_ctx());
+            task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu));
+
+            // Release the task.
+            task->free_rpc_task();
 
             return;
         } else {
@@ -459,6 +485,10 @@ static void write_callback(
 
     // We don't want to cache the data after the write completes.
     inode->filecache_handle->release(bc->offset, bc->length);
+
+    // Update the stats.
+    struct rpc_pdu *pdu = rpc_get_pdu(task->get_rpc_ctx());
+    task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu));
 
     // Release the task.
     task->free_rpc_task();
@@ -691,6 +721,7 @@ static void sync_membuf(const struct bytes_chunk& bc,
 {
     struct membuf *mb = bc.get_membuf();
     struct rpc_task *flush_task = nullptr;
+    int req_size = 0;
 
     // Verify the mb.
     assert(mb != nullptr);
@@ -720,6 +751,8 @@ static void sync_membuf(const struct bytes_chunk& bc,
 
     if (mb->is_dirty() && !mb->is_flushing()) {
         WRITE3args args;
+        struct rpc_pdu *pdu;
+
         // Never ever write non-uptodate membufs.
         assert(mb->is_uptodate());
 
@@ -736,13 +769,13 @@ static void sync_membuf(const struct bytes_chunk& bc,
 
         // Set flag to flushing.
         mb->set_flushing();
-
+        
         bool rpc_retry;
         do {
             rpc_retry = false;
-            if (rpc_nfs3_write_task(flush_task->get_rpc_ctx(),
+            if ((pdu = rpc_nfs3_write_task(flush_task->get_rpc_ctx(),
                                     write_callback, &args,
-                                    cb_context) == NULL) {
+                                    cb_context)) == NULL) {
                 /*
                  * Most common reason for this is memory allocation failure,
                  * hence wait for some time before retrying. Also block the
@@ -757,10 +790,16 @@ static void sync_membuf(const struct bytes_chunk& bc,
                 ::sleep(5);
             }
         } while (rpc_retry);
+
+        // Update the req_size with on-wire pdu size.
+        req_size += rpc_pdu_get_req_size(pdu);
     } else {
         mb->clear_locked();
         flush_task->free_rpc_task();
+        return;
     }
+
+    flush_task->get_stats().on_rpc_dispatch(req_size);
 }
 
 void rpc_task::run_write()
