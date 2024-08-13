@@ -268,7 +268,7 @@ void rpc_task::init_read(fuse_req *request,
  */
 
 static void getattr_callback(
-    struct rpc_context* /* rpc */,
+    struct rpc_context *rpc,
     int rpc_status,
     void *data,
     void *private_data)
@@ -281,7 +281,8 @@ static void getattr_callback(
         task->get_client()->get_nfs_inode_from_ino(ino);
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
-    task->get_stats().on_rpc_complete(sizeof(*res), status);
+    struct rpc_pdu *pdu = rpc_get_pdu(rpc);
+    task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
 
     if (status == 0) {
         // Got fresh attributes, update the attributes cached in the inode.
@@ -301,7 +302,7 @@ static void getattr_callback(
 }
 
 static void lookup_callback(
-    struct rpc_context* /* rpc */,
+    struct rpc_context *rpc,
     int rpc_status,
     void *data,
     void *private_data)
@@ -309,13 +310,14 @@ static void lookup_callback(
     rpc_task *task = (rpc_task*) private_data;
     auto res = (LOOKUP3res*)data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
-    int resp_size = sizeof(*res);
+    struct rpc_pdu *pdu = rpc_get_pdu(rpc);
 
     if (rpc_status == RPC_STATUS_SUCCESS && NFS_STATUS(res) == NFS3ERR_NOENT) {
         /*
          * Special case for creating negative dentry.
          */
-        task->get_stats().on_rpc_complete(resp_size, NFS_STATUS(res));
+
+        task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
         task->get_client()->reply_entry(
             task,
             nullptr /* fh */,
@@ -324,19 +326,17 @@ static void lookup_callback(
     } else if (status == 0) {
         assert(res->LOOKUP3res_u.resok.obj_attributes.attributes_follow);
 
-        resp_size += res->LOOKUP3res_u.resok.object.data.data_len;
-        task->get_stats().on_rpc_complete(resp_size, status);
-
+        task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
         task->get_client()->reply_entry(
             task,
             &res->LOOKUP3res_u.resok.object,
             &res->LOOKUP3res_u.resok.obj_attributes.post_op_attr_u.attributes,
             nullptr);
     } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
-        task->get_stats().on_rpc_complete(resp_size, status);
+        task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
         task->get_client()->jukebox_retry(task);
     } else {
-        task->get_stats().on_rpc_complete(resp_size, status);
+        task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
         task->reply_error(status);
     }
 }
@@ -498,7 +498,7 @@ static void write_callback(
 }
 
 static void createfile_callback(
-    struct rpc_context* /* rpc */,
+    struct rpc_context *rpc,
     int rpc_status,
     void *data,
     void *private_data)
@@ -506,16 +506,14 @@ static void createfile_callback(
     rpc_task *task = (rpc_task*) private_data;
     auto res = (CREATE3res*)data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
-    int resp_size = sizeof(*res);
-
+    struct rpc_pdu *pdu = rpc_get_pdu(rpc);
 
     if (status == 0) {
         assert(
             res->CREATE3res_u.resok.obj.handle_follows &&
             res->CREATE3res_u.resok.obj_attributes.attributes_follow);
 
-        resp_size += res->CREATE3res_u.resok.obj.post_op_fh3_u.handle.data.data_len;
-        task->get_stats().on_rpc_complete(resp_size, status);
+        task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
 
         task->get_client()->reply_entry(
             task,
@@ -523,13 +521,13 @@ static void createfile_callback(
             &res->CREATE3res_u.resok.obj_attributes.post_op_attr_u.attributes,
             task->rpc_api->create_task.get_fuse_file());
     } else {
-        task->get_stats().on_rpc_complete(resp_size, status);
+        task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
         task->reply_error(status);
     }
 }
 
 static void setattr_callback(
-    struct rpc_context* /* rpc */,
+    struct rpc_context *rpc,
     int rpc_status,
     void *data,
     void *private_data)
@@ -541,17 +539,15 @@ static void setattr_callback(
     const struct nfs_inode *inode =
         task->get_client()->get_nfs_inode_from_ino(ino);
     const int status = task->status(rpc_status, NFS_STATUS(res));
-    int resp_size = sizeof(*res);
+    struct rpc_pdu *pdu = rpc_get_pdu(rpc);
 
     if (status == 0) {
         assert(res->SETATTR3res_u.resok.obj_wcc.after.attributes_follow);
 
         struct stat st;
-
         task->get_client()->stat_from_fattr3(
             &st, &res->SETATTR3res_u.resok.obj_wcc.after.post_op_attr_u.attributes);
-
-        task->get_stats().on_rpc_complete(resp_size, status);
+        task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
 
         /*
          * Set fuse kernel attribute cache timeout to the current attribute
@@ -560,13 +556,13 @@ static void setattr_callback(
          */
         task->reply_attr(&st, inode->get_actimeo());
     } else {
-        task->get_stats().on_rpc_complete(resp_size, status);
+        task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
         task->reply_error(status);
     }
 }
 
 void mkdir_callback(
-    struct rpc_context* /* rpc */,
+    struct rpc_context *rpc,
     int rpc_status,
     void *data,
     void *private_data)
@@ -574,23 +570,21 @@ void mkdir_callback(
     rpc_task *task = (rpc_task*) private_data;
     auto res = (MKDIR3res*)data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
-    int resp_size = sizeof(*res);
+    struct rpc_pdu *pdu = rpc_get_pdu(rpc);
 
     if (status == 0) {
         assert(
             res->MKDIR3res_u.resok.obj.handle_follows &&
             res->MKDIR3res_u.resok.obj_attributes.attributes_follow);
 
-        resp_size += res->MKDIR3res_u.resok.obj.post_op_fh3_u.handle.data.data_len;
-        task->get_stats().on_rpc_complete(resp_size, status);
-
+        task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
         task->get_client()->reply_entry(
             task,
             &res->MKDIR3res_u.resok.obj.post_op_fh3_u.handle,
             &res->MKDIR3res_u.resok.obj_attributes.post_op_attr_u.attributes,
             nullptr);
     } else {
-        task->get_stats().on_rpc_complete(resp_size, status);
+        task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
         task->reply_error(status);
     }
 }
@@ -609,7 +603,7 @@ void unlink_callback(
 }
 
 void rmdir_callback(
-    struct rpc_context* /* rpc */,
+    struct rpc_context *rpc,
     int rpc_status,
     void *data,
     void *private_data)
@@ -617,13 +611,13 @@ void rmdir_callback(
     rpc_task *task = (rpc_task*) private_data;
     auto res = (RMDIR3res*) data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
-    int resp_size = sizeof(*res);
-
+    struct rpc_pdu *pdu = rpc_get_pdu(rpc);
+ 
     if (status == 0) {
-        task->get_stats().on_rpc_complete(resp_size, status);
-         task->reply_error(0);
+        task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
+        task->reply_error(0);
     } else {
-        task->get_stats().on_rpc_complete(resp_size, status);
+        task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
         task->reply_error(status);
     }
 }
@@ -632,21 +626,16 @@ void rpc_task::run_lookup()
 {
     fuse_ino_t parent_ino = rpc_api->lookup_task.get_parent_ino();
     bool rpc_retry;
+    rpc_pdu *pdu = nullptr;
 
     do {
         LOOKUP3args args;
-        int req_size = sizeof(args);
-
         args.what.dir = get_client()->get_nfs_inode_from_ino(parent_ino)->get_fh();
         args.what.name = (char*) rpc_api->lookup_task.get_file_name();
-
-        req_size += args.what.dir.data.data_len;
-        req_size += ::strlen(args.what.name);
-        stats.on_rpc_dispatch(req_size);
-
         rpc_retry = false;
-        if (rpc_nfs3_lookup_task(get_rpc_ctx(), lookup_callback, &args,
-                                 this) == NULL) {
+
+        if ((pdu = rpc_nfs3_lookup_task(get_rpc_ctx(), lookup_callback, &args,
+                                 this)) == NULL) {
             /*
              * Most common reason for this is memory allocation failure,
              * hence wait for some time before retrying. Also block the
@@ -659,6 +648,8 @@ void rpc_task::run_lookup()
             AZLogWarn("rpc_nfs3_lookup_task failed to issue, retrying "
                       "after 5 secs!");
             ::sleep(5);
+        } else {
+            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
         }
     } while (rpc_retry);
 }
@@ -932,17 +923,16 @@ void rpc_task::run_getattr()
 {
     bool rpc_retry;
     auto ino = rpc_api->getattr_task.get_ino();
+    rpc_pdu *pdu = nullptr;
 
     do {
         GETATTR3args args;
 
         args.object = get_client()->get_nfs_inode_from_ino(ino)->get_fh();
 
-        stats.on_rpc_dispatch(sizeof(args) + args.object.data.data_len);
-
         rpc_retry = false;
-        if (rpc_nfs3_getattr_task(get_rpc_ctx(), getattr_callback, &args,
-                                  this) == NULL) {
+        if ((pdu = rpc_nfs3_getattr_task(get_rpc_ctx(), getattr_callback, &args,
+                                  this)) == NULL) {
             /*
              * Most common reason for this is memory allocation failure,
              * hence wait for some time before retrying. Also block the
@@ -955,6 +945,8 @@ void rpc_task::run_getattr()
             AZLogWarn("rpc_nfs3_getattr_task failed to issue, retrying "
                       "after 5 secs!");
             ::sleep(5);
+        } else {
+            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
         }
     } while (rpc_retry);
 }
@@ -963,6 +955,7 @@ void rpc_task::run_create_file()
 {
     bool rpc_retry;
     auto parent_ino = rpc_api->create_task.get_parent_ino();
+    rpc_pdu *pdu = nullptr;
 
     do {
         CREATE3args args;
@@ -974,14 +967,9 @@ void rpc_task::run_create_file()
         args.how.createhow3_u.obj_attributes.mode.set_it = 1;
         args.how.createhow3_u.obj_attributes.mode.set_mode3_u.mode = rpc_api->create_task.get_mode();
 
-        int req_size = sizeof(args);
-        req_size += args.where.dir.data.data_len;
-        req_size += ::strlen(args.where.name);
-        stats.on_rpc_dispatch(req_size);
-
         rpc_retry = false;
-        if (rpc_nfs3_create_task(get_rpc_ctx(), createfile_callback, &args,
-                                 this) == NULL) {
+        if ((pdu = rpc_nfs3_create_task(get_rpc_ctx(), createfile_callback, &args,
+                                 this)) == NULL) {
             /*
              * Most common reason for this is memory allocation failure,
              * hence wait for some time before retrying. Also block the
@@ -994,6 +982,8 @@ void rpc_task::run_create_file()
             AZLogWarn("rpc_nfs3_create_task failed to issue, retrying "
                       "after 5 secs!");
             ::sleep(5);
+        } else {
+            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
         }
     }  while (rpc_retry);
 }
@@ -1002,6 +992,7 @@ void rpc_task::run_mkdir()
 {
     bool rpc_retry;
     auto parent_ino = rpc_api->mkdir_task.get_parent_ino();
+    rpc_pdu *pdu = nullptr;
 
     do {
         MKDIR3args args;
@@ -1013,14 +1004,9 @@ void rpc_task::run_mkdir()
         args.attributes.mode.set_it = 1;
         args.attributes.mode.set_mode3_u.mode = rpc_api->mkdir_task.get_mode();
 
-        int req_size = sizeof(args);
-        req_size += args.where.dir.data.data_len;
-        req_size += ::strlen(args.where.name);
-        stats.on_rpc_dispatch(req_size);
-
         rpc_retry = false;
-        if (rpc_nfs3_mkdir_task(get_rpc_ctx(), mkdir_callback, &args,
-                                this) == NULL) {
+        if ((pdu = rpc_nfs3_mkdir_task(get_rpc_ctx(), mkdir_callback, &args,
+                                this)) == NULL) {
             /*
              * Most common reason for this is memory allocation failure,
              * hence wait for some time before retrying. Also block the
@@ -1033,6 +1019,8 @@ void rpc_task::run_mkdir()
             AZLogWarn("rpc_nfs3_mkdir_task failed to issue, retrying "
                       "after 5 secs!");
             ::sleep(5);
+        } else {
+            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
         }
     } while (rpc_retry);
 }
@@ -1070,6 +1058,7 @@ void rpc_task::run_rmdir()
 {
     bool rpc_retry;
     auto parent_ino = rpc_api->rmdir_task.get_parent_ino();
+    rpc_pdu *pdu = nullptr;
 
     do {
         RMDIR3args args;
@@ -1077,14 +1066,9 @@ void rpc_task::run_rmdir()
         args.object.dir = get_client()->get_nfs_inode_from_ino(parent_ino)->get_fh();
         args.object.name = (char*) rpc_api->rmdir_task.get_dir_name();
 
-        int req_size = sizeof(args);
-        req_size += args.object.dir.data.data_len;
-        req_size += ::strlen(args.object.name);
-        stats.on_rpc_dispatch(req_size);
-
         rpc_retry = false;
-        if (rpc_nfs3_rmdir_task(get_rpc_ctx(),
-                                rmdir_callback, &args, this) == NULL) {
+        if ((pdu = rpc_nfs3_rmdir_task(get_rpc_ctx(),
+                                rmdir_callback, &args, this)) == NULL) {
             /*
              * Most common reason for this is memory allocation failure,
              * hence wait for some time before retrying. Also block the
@@ -1097,6 +1081,8 @@ void rpc_task::run_rmdir()
             AZLogWarn("rpc_nfs3_rmdir_task failed to issue, retrying "
                       "after 5 secs!");
             ::sleep(5);
+        } else {
+            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
         }
     } while (rpc_retry);
 }
@@ -1107,6 +1093,7 @@ void rpc_task::run_setattr()
     auto attr = rpc_api->setattr_task.get_attr();
     const int valid = rpc_api->setattr_task.get_attr_flags_to_set();
     bool rpc_retry;
+    rpc_pdu *pdu = nullptr;
 
     do {
         SETATTR3args args;
@@ -1114,10 +1101,6 @@ void rpc_task::run_setattr()
 
         ::memset(&args, 0, sizeof(args));
         args.object = get_client()->get_nfs_inode_from_ino(ino)->get_fh();
-
-        int req_size = sizeof(args);
-        req_size += args.object.data.data_len;
-        stats.on_rpc_dispatch(req_size);
 
         if (valid & FUSE_SET_ATTR_SIZE) {
             AZLogInfo("Setting size to {}", attr->st_size);
@@ -1177,8 +1160,8 @@ void rpc_task::run_setattr()
         }
 
         rpc_retry = false;
-        if (rpc_nfs3_setattr_task(get_rpc_ctx(), setattr_callback, &args,
-                                  this) == NULL) {
+        if ((pdu = rpc_nfs3_setattr_task(get_rpc_ctx(), setattr_callback, &args,
+                                  this)) == NULL) {
             /*
              * Most common reason for this is memory allocation failure,
              * hence wait for some time before retrying. Also block the
@@ -1191,6 +1174,8 @@ void rpc_task::run_setattr()
             AZLogWarn("rpc_nfs3_setattr_task failed to issue, retrying "
                       "after 5 secs!");
             ::sleep(5);
+        } else {
+            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
         }
     } while (rpc_retry);
 }
@@ -1454,7 +1439,7 @@ struct read_context
 };
 
 static void read_callback(
-    struct rpc_context* /* rpc */,
+    struct rpc_context *rpc,
     int rpc_status,
     void *data,
     void *private_data)
@@ -1729,6 +1714,7 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
     bool rpc_retry;
     const auto ino = rpc_api->read_task.get_ino();
     struct nfs_inode *inode = get_client()->get_nfs_inode_from_ino(ino);
+    rpc_pdu *pdu = nullptr;
 
     /*
      * This should always be called from the child task as we will issue read
@@ -1756,8 +1742,6 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
         args.file = inode->get_fh();
         args.offset = bc.offset;
         args.count = bc.length;
-
-        //int req_size = sizeof(args) + args.file.data.data_len;
 
         /*
          * Now we are going to issue an NFS read that will read the data from
@@ -1816,13 +1800,13 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
                    args.count);
 
         rpc_retry = false;
-        if (rpc_nfs3_read_task(
+        if ((pdu = rpc_nfs3_read_task(
                 get_rpc_ctx(), /* This round robins request across connections */
                 read_callback,
                 bc.get_buffer(),
                 bc.length,
                 &args,
-                (void *) ctx) == NULL) {
+                (void *) ctx)) == NULL) {
             /*
              * Most common reason for this is memory allocation failure,
              * hence wait for some time before retrying. Also block the
@@ -1835,6 +1819,8 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
             AZLogWarn("rpc_nfs3_read_task failed to issue, retrying "
                       "after 5 secs!");
             ::sleep(5);
+        } else {
+            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
         }
     } while (rpc_retry);
 }
@@ -1905,7 +1891,7 @@ void rpc_task::run_readdirplus()
  * TODO: Restart directory enumeration on getting NFS3ERR_BAD_COOKIE.
  */
 static void readdir_callback(
-    struct rpc_context* /* rpc */,
+    struct rpc_context *rpc,
     int rpc_status,
     void *data,
     void *private_data)
@@ -1921,14 +1907,12 @@ static void readdir_callback(
     std::vector<const directory_entry*> readdirentries;
     int num_dirents = 0;
     const int status = task->status(rpc_status, NFS_STATUS(res));
-    int resp_size = sizeof(READDIR3res);
+    struct rpc_pdu *pdu = rpc_get_pdu(rpc);
 
     if (status == 0) {
         const struct entry3 *entry = res->READDIR3res_u.resok.reply.entries;
         const bool eof = res->READDIR3res_u.resok.reply.eof;
         int64_t eof_cookie = -1;
-
-        resp_size += sizeof(*entry);
 
         // Get handle to the readdirectory cache.
         std::shared_ptr<readdirectory_cache>& dircache_handle =
@@ -1979,7 +1963,6 @@ static void readdir_callback(
                 dircache_handle->remove(entry->cookie);
             }
 
-            resp_size += ::strlen(entry->name);
             dir_entry = new directory_entry(strdup(entry->name),
                                             entry->cookie,
                                             entry->fileid);
@@ -2023,13 +2006,13 @@ static void readdir_callback(
             }
         }
 
-        task->get_stats().on_rpc_complete(resp_size, status);
+        task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
         task->send_readdir_response(readdirentries);
     } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
-        task->get_stats().on_rpc_complete(resp_size, status);
+        task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
         task->get_client()->jukebox_retry(task);
     } else {
-        task->get_stats().on_rpc_complete(resp_size, status);
+        task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
         task->reply_error(status);
     }
 }
@@ -2043,7 +2026,7 @@ static void readdir_callback(
  * TODO: Restart directory enumeration on getting NFS3ERR_BAD_COOKIE.
  */
 static void readdirplus_callback(
-    struct rpc_context* /* rpc */,
+    struct rpc_context *rpc,
     int rpc_status,
     void *data,
     void *private_data)
@@ -2059,15 +2042,13 @@ static void readdirplus_callback(
     std::vector<const directory_entry*> readdirentries;
     int num_dirents = 0;
     const int status = task->status(rpc_status, NFS_STATUS(res));
-    int resp_size = sizeof(READDIR3res);
+    struct rpc_pdu *pdu = rpc_get_pdu(rpc);
 
     if (status == 0) {
         const struct entryplus3 *entry =
             res->READDIRPLUS3res_u.resok.reply.entries;
         const bool eof = res->READDIRPLUS3res_u.resok.reply.eof;
         int64_t eof_cookie = -1;
-
-        resp_size += sizeof(*entry);
 
         // Get handle to the readdirectory cache.
         std::shared_ptr<readdirectory_cache>& dircache_handle =
@@ -2163,7 +2144,6 @@ static void readdirplus_callback(
                 dircache_handle->remove(entry->cookie);
             }
 
-            resp_size += ::strlen(entry->name);
             dir_entry = new struct directory_entry(strdup(entry->name),
                                                    entry->cookie,
                                                    nfs_inode->attr,
@@ -2249,13 +2229,13 @@ static void readdirplus_callback(
             }
         }
 
-        task->get_stats().on_rpc_complete(resp_size, status);
+        task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
         task->send_readdir_response(readdirentries);
     } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
-        task->get_stats().on_rpc_complete(resp_size, status);
+        task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
         task->get_client()->jukebox_retry(task);
     } else {
-        task->get_stats().on_rpc_complete(resp_size, status);
+        task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
         task->reply_error(status);
     }
 }
@@ -2309,6 +2289,7 @@ void rpc_task::fetch_readdir_entries_from_server()
     const fuse_ino_t dir_ino = rpc_api->readdir_task.get_ino();
     struct nfs_inode *dir_inode = get_client()->get_nfs_inode_from_ino(dir_ino);
     const cookie3 cookie = rpc_api->readdir_task.get_offset();
+    rpc_pdu *pdu = nullptr;
 
     do {
         READDIR3args args;
@@ -2335,10 +2316,10 @@ void rpc_task::fetch_readdir_entries_from_server()
         stats.on_rpc_dispatch(sizeof(args));
 
         rpc_retry = false;
-        if (rpc_nfs3_readdir_task(get_rpc_ctx(),
+        if ((pdu = rpc_nfs3_readdir_task(get_rpc_ctx(),
                                   readdir_callback,
                                   &args,
-                                  this) == NULL) {
+                                  this)) == NULL) {
             /*
              * Most common reason for this is memory allocation failure,
              * hence wait for some time before retrying. Also block the
@@ -2351,6 +2332,8 @@ void rpc_task::fetch_readdir_entries_from_server()
             AZLogWarn("rpc_nfs3_readdir_task failed to issue, retrying "
                       "after 5 secs!");
             ::sleep(5);
+        } else {
+            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
         }
     } while (rpc_retry);
 }
@@ -2361,6 +2344,7 @@ void rpc_task::fetch_readdirplus_entries_from_server()
     const fuse_ino_t dir_ino = rpc_api->readdir_task.get_ino();
     struct nfs_inode *dir_inode = get_client()->get_nfs_inode_from_ino(dir_ino);
     const cookie3 cookie = rpc_api->readdir_task.get_offset();
+    rpc_pdu *pdu = nullptr;
 
     do {
         READDIRPLUS3args args;
@@ -2381,10 +2365,10 @@ void rpc_task::fetch_readdirplus_entries_from_server()
         stats.on_rpc_dispatch(sizeof(args));
 
         rpc_retry = false;
-        if (rpc_nfs3_readdirplus_task(get_rpc_ctx(),
+        if ((pdu = rpc_nfs3_readdirplus_task(get_rpc_ctx(),
                                       readdirplus_callback,
                                       &args,
-                                      this) == NULL) {
+                                      this)) == NULL) {
             /*
              * Most common reason for this is memory allocation failure,
              * hence wait for some time before retrying. Also block the
@@ -2397,6 +2381,8 @@ void rpc_task::fetch_readdirplus_entries_from_server()
             AZLogWarn("rpc_nfs3_readdirplus_task failed to issue, retrying "
                       "after 5 secs!");
             ::sleep(5);
+        } else {
+            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
         }
     } while (rpc_retry);
 }

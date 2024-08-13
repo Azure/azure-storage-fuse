@@ -123,7 +123,7 @@ public:
     void on_rpc_dispatch(uint64_t _req_size)
     {
         assert(_req_size > 0);
-        req_size = _req_size + rpc_header_request_size_in_bytes;
+        req_size = _req_size;
         stamp.dispatch = get_current_usecs();
         assert(stamp.dispatch >= stamp.create);
     }
