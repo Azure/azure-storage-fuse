@@ -1373,6 +1373,25 @@ static void read_callback(
         if (is_partial_read) {
             const off_t new_offset = bc->offset + bc->pvt;
             const size_t new_size = bc->length - bc->pvt;
+
+            // Create a new child task to carry out this request.
+            struct rpc_task *child_tsk =
+                task->get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_READ);
+
+            child_tsk->init_read(
+                task->rpc_api->req,
+                task->rpc_api->read_task.get_ino(),
+                task->rpc_api->read_task.get_size(),
+                task->rpc_api->read_task.get_offset(),
+                nullptr /* fileinfo */);
+
+            /*
+             * Set the parent task of the child to the parent of the
+             * current RPC task.
+             */
+            child_tsk->parent_task = task->parent_task;
+
+            struct read_context *new_ctx = new read_context(child_tsk, bc);
             bool rpc_retry;
             READ3args new_args;
 
@@ -1403,12 +1422,12 @@ static void read_callback(
                  */
                 rpc_retry = false;
                 if (rpc_nfs3_read_task(
-                        task->get_rpc_ctx(),
+                        child_tsk->get_rpc_ctx(),
                         read_callback,
-                        bc->get_buffer() + new_offset,
+                        bc->get_buffer() + bc->pvt,
                         new_size,
                         &new_args,
-                        (void *) ctx) == NULL) {
+                        (void *) new_ctx) == NULL) {
                     /*
                      * Most common reason for this is memory allocation failure,
                      * hence wait for some time before retrying. Also block the
@@ -1423,6 +1442,10 @@ static void read_callback(
                     ::sleep(5);
                 }
             } while (rpc_retry);
+
+            delete ctx;
+            // Free the current RPC task as we no longer need it.
+            task->free_rpc_task();
 
             /*
              * Return from the callback here. The rest of the callback
