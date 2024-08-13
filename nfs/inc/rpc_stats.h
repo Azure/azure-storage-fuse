@@ -124,7 +124,7 @@ public:
     {
         assert(_req_size > 0);
         req_size = _req_size;
-        stamp.dispatch = get_current_usecs();
+        stamp.dispatch = get_current_usecs(); // TODO: pass the start dispatch time
         assert(stamp.dispatch >= stamp.create);
     }
 
@@ -135,7 +135,7 @@ public:
     void on_rpc_complete(uint64_t _resp_size, int status)
     {
         assert(_resp_size > 0);
-        resp_size = _resp_size + rpc_header_reply_size_in_bytes;
+        resp_size = _resp_size;
         stamp.complete = get_current_usecs();
         assert(stamp.complete > stamp.dispatch);
 
