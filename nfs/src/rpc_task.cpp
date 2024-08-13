@@ -1149,7 +1149,29 @@ void rpc_task::run_read()
              * after it acquires the lock.
              */
             found_in_cache = false;
-            read_from_server(bc_vec[i]);
+
+            /*
+             * TODO: If we have just 1 bytes chunk to fill, which is the most common case,
+             *       avoid creating child task and process evrything in this same task.
+             */
+
+            /*
+             * Create a child rpc task to issue the read RPC to the backend.
+             */
+            struct rpc_task *child_tsk =
+                get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_READ);
+
+            child_tsk->init_read(
+                rpc_api->req,
+                rpc_api->read_task.get_ino(),
+                rpc_api->read_task.get_offset(),
+                rpc_api->read_task.get_size(),
+                nullptr /* fileinfo */);
+
+            // Set the parent task of the child to the current RPC task.
+            child_tsk->parent_task = this;
+
+            child_tsk->read_from_server(bc_vec[i]);
         } else {
             bc_vec[i].get_membuf()->clear_inuse();
 
@@ -1201,6 +1223,9 @@ void rpc_task::run_read()
 void rpc_task::send_read_response()
 {
     [[maybe_unused]] const fuse_ino_t ino = rpc_api->read_task.get_ino();
+
+    // This should always be called on the parent task.
+    assert(parent_task == nullptr);
 
     /*
      * We must send response only after all component reads complete, they may
@@ -1285,15 +1310,16 @@ static void read_callback(
     void *private_data)
 {
     struct read_context *ctx = (read_context*) private_data;
-    /*
-     * Since we may issue multiple parallel reads, read_callback() may
-     * be called simultaneously from multiple threads, exercise caution while
-     * accessing task.
-     */
     rpc_task *task = ctx->task;
 
+    /*
+     * Only child tasks can issue the read RPC, hence the callback should
+     * be called only for them.
+     */
+    assert(task->parent_task != nullptr);
+
     assert(task->magic == RPC_TASK_MAGIC);
-    assert(task->num_ongoing_backend_reads > 0);
+    assert(task->parent_task->num_ongoing_backend_reads > 0);
 
     struct bytes_chunk *bc = ctx->bc;
     assert(bc->length > 0);
@@ -1347,6 +1373,25 @@ static void read_callback(
         if (is_partial_read) {
             const off_t new_offset = bc->offset + bc->pvt;
             const size_t new_size = bc->length - bc->pvt;
+
+            // Create a new child task to carry out this request.
+            struct rpc_task *child_tsk =
+                task->get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_READ);
+
+            child_tsk->init_read(
+                task->rpc_api->req,
+                task->rpc_api->read_task.get_ino(),
+                task->rpc_api->read_task.get_size(),
+                task->rpc_api->read_task.get_offset(),
+                nullptr /* fileinfo */);
+
+            /*
+             * Set the parent task of the child to the parent of the
+             * current RPC task.
+             */
+            child_tsk->parent_task = task->parent_task;
+
+            struct read_context *new_ctx = new read_context(child_tsk, bc);
             bool rpc_retry;
             READ3args new_args;
 
@@ -1377,12 +1422,12 @@ static void read_callback(
                  */
                 rpc_retry = false;
                 if (rpc_nfs3_read_task(
-                        task->get_rpc_ctx(),
+                        child_tsk->get_rpc_ctx(),
                         read_callback,
-                        bc->get_buffer() + new_offset,
+                        bc->get_buffer() + bc->pvt,
                         new_size,
                         &new_args,
-                        (void *) ctx) == NULL) {
+                        (void *) new_ctx) == NULL) {
                     /*
                      * Most common reason for this is memory allocation failure,
                      * hence wait for some time before retrying. Also block the
@@ -1397,6 +1442,10 @@ static void read_callback(
                     ::sleep(5);
                 }
             } while (rpc_retry);
+
+            delete ctx;
+            // Free the current RPC task as we no longer need it.
+            task->free_rpc_task();
 
             /*
              * Return from the callback here. The rest of the callback
@@ -1477,21 +1526,30 @@ static void read_callback(
 
     // Once failed, read_status remains at failed.
     int expected = 0;
-    task->read_status.compare_exchange_weak(expected, status);
+    task->parent_task->read_status.compare_exchange_weak(expected, status);
 
     /*
      * Decrement the number of reads issued atomically and if it becomes zero
      * it means this is the last read completing. We send the response if all
      * the reads have completed or the read failed.
      */
-    if (--task->num_ongoing_backend_reads == 0) {
-        task->send_read_response();
+    if (--task->parent_task->num_ongoing_backend_reads == 0) {
+        task->parent_task->send_read_response();
+        // Free the task after sending the response.
+        task->free_rpc_task();
     } else {
         AZLogDebug("No response sent, waiting for more reads to complete."
                    " num_ongoing_backend_reads: {}",
                    task->num_ongoing_backend_reads.load());
+
+        // Free the task here.
+        task->free_rpc_task();
         return;
     }
+
+    /*
+     * Do not access task after this point as we have freed it.
+     */
 }
 
 void rpc_task::read_from_server(struct bytes_chunk &bc)
@@ -1499,6 +1557,12 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
     bool rpc_retry;
     const auto ino = rpc_api->read_task.get_ino();
     struct nfs_inode *inode = get_client()->get_nfs_inode_from_ino(ino);
+
+    /*
+     * This should always be called from the child task as we may issue read RPC
+     * to the backend.
+     */
+    assert(parent_task != nullptr);
 
     // This will be freed in read_callback().
     struct read_context *ctx = new read_context(this, &bc);
@@ -1542,6 +1606,9 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
             inode->filecache_handle->release(bc.offset, bc.length);
 #endif
 
+            // Free the current child task as we will not issue read RPC.
+            free_rpc_task();
+
             return;
         }
 
@@ -1551,8 +1618,8 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
          */
         bc.pvt = 0;
 
-        // Increment the number of reads issued.
-        num_ongoing_backend_reads++;
+        // Increment the number of reads issued for the paarent task.
+        parent_task->num_ongoing_backend_reads++;
 
         assert(bc.num_backend_calls_issued == 0);
         bc.num_backend_calls_issued++;
@@ -1606,6 +1673,7 @@ void rpc_task::free_rpc_task()
     case FUSE_READ:
         read_status = 0;
         bc_vec.clear();
+        parent_task = nullptr;
         break;
     default :
         break;

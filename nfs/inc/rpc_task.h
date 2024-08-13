@@ -711,6 +711,12 @@ public:
      */
     std::vector<bytes_chunk> bc_vec;
 
+    /*
+     * This will refer to the parent task for a child task.
+     * This will be nullptr for parent task.
+     */
+    rpc_task *parent_task = nullptr;
+
     enum fuse_opcode optype = (fuse_opcode) 0;
 
 protected:
