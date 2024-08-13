@@ -186,6 +186,11 @@ struct write_context
         return task;
     }
 
+    void set_task(struct rpc_task *_task)
+    {
+        task = _task;
+    }
+
     const struct bytes_chunk& get_bytes_chunk() const
     {
         return bc;

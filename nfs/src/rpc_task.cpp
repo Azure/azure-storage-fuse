@@ -383,6 +383,7 @@ static void write_callback(
 
         // How much this WRITE RPC wants to write.
         const size_t size = mb->length;
+
         // How much has been written till now (including this WRITE).
         const size_t count = ctx->get_count() + res->WRITE3res_u.resok.count;
 
@@ -405,7 +406,6 @@ static void write_callback(
 	        args.stable = FILE_SYNC;
 	        args.data.data_len = size - count;
             args.data.data_val = buf + count;
-
             ctx->set_count(count);
 
             /*
@@ -416,8 +416,11 @@ static void write_callback(
             flush_task->init_flush(nullptr /* fuse_req */, ino);
             flush_task->set_op_type(FUSE_FLUSH);
 
+            // Update the ctx with new task.
+            ctx->set_task(flush_task);
+
             // TODO: Make this AZLogDebug after some time.
-            AZLogInfo("[{}] Partial write: [{}, {}) of [{}, {})",
+            AZLogInfo("[{}] Partial write: [{}, {}) of [{}, {})", ctx->get_ino(),
                        mb->offset + ctx->get_count(), mb->offset + count,
                        mb->offset, mb->offset + mb->length);
 
@@ -442,7 +445,7 @@ static void write_callback(
             } while (rpc_retry);
 
             /*
-             * Update the new task stats.
+             * Update the stats for the new task.
              */
             req_size += rpc_pdu_get_req_size(pdu);
             flush_task->get_stats().on_rpc_dispatch(req_size);
@@ -769,8 +772,8 @@ static void sync_membuf(const struct bytes_chunk& bc,
 
         // Set flag to flushing.
         mb->set_flushing();
-        
         bool rpc_retry;
+
         do {
             rpc_retry = false;
             if ((pdu = rpc_nfs3_write_task(flush_task->get_rpc_ctx(),
@@ -793,13 +796,11 @@ static void sync_membuf(const struct bytes_chunk& bc,
 
         // Update the req_size with on-wire pdu size.
         req_size += rpc_pdu_get_req_size(pdu);
+        flush_task->get_stats().on_rpc_dispatch(req_size);
     } else {
         mb->clear_locked();
         flush_task->free_rpc_task();
-        return;
     }
-
-    flush_task->get_stats().on_rpc_dispatch(req_size);
 }
 
 void rpc_task::run_write()
