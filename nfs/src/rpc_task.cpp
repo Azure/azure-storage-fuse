@@ -333,7 +333,7 @@ static void lookup_callback(
             &res->LOOKUP3res_u.resok.obj_attributes.post_op_attr_u.attributes,
             nullptr);
     } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
-        task->get_stats().on_rpc_complete(resp_size);
+        task->get_stats().on_rpc_complete(resp_size, status);
         task->get_client()->jukebox_retry(task);
     } else {
         task->get_stats().on_rpc_complete(resp_size, status);
@@ -507,6 +507,7 @@ static void createfile_callback(
     auto res = (CREATE3res*)data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
     int resp_size = sizeof(*res);
+
 
     if (status == 0) {
         assert(
@@ -971,7 +972,7 @@ void rpc_task::run_create_file()
         args.where.name = (char*)rpc_api->create_task.get_file_name();
         args.how.mode = (rpc_api->create_task.get_fuse_file()->flags & O_EXCL) ? GUARDED : UNCHECKED;
         args.how.createhow3_u.obj_attributes.mode.set_it = 1;
-        args.how.createhow3_u.obj_attributes.mode.set_mode3_u.mode = rpc_api.create_task.get_mode();
+        args.how.createhow3_u.obj_attributes.mode.set_mode3_u.mode = rpc_api->create_task.get_mode();
 
         int req_size = sizeof(args);
         req_size += args.where.dir.data.data_len;
@@ -1010,7 +1011,7 @@ void rpc_task::run_mkdir()
         args.where.dir = get_client()->get_nfs_inode_from_ino(parent_ino)->get_fh();
         args.where.name = (char*)rpc_api->mkdir_task.get_file_name();
         args.attributes.mode.set_it = 1;
-        args.attributes.mode.set_mode3_u.mode = rpc_api.mkdir_task.get_mode();
+        args.attributes.mode.set_mode3_u.mode = rpc_api->mkdir_task.get_mode();
 
         int req_size = sizeof(args);
         req_size += args.where.dir.data.data_len;
@@ -1074,7 +1075,7 @@ void rpc_task::run_rmdir()
         RMDIR3args args;
 
         args.object.dir = get_client()->get_nfs_inode_from_ino(parent_ino)->get_fh();
-        args.object.name = (char*) rpc_api.rmdir_task.get_dir_name();
+        args.object.name = (char*) rpc_api->rmdir_task.get_dir_name();
 
         int req_size = sizeof(args);
         req_size += args.object.dir.data.data_len;
@@ -1619,7 +1620,7 @@ static void read_callback(
          */
         assert((bc->length == bc->pvt) || res->READ3res_u.resok.eof);
 
-        task->get_stats().on_rpc_complete(resp_size, status);
+        task->get_stats().on_rpc_complete(0 /*resp_size*/, status);
 
         if (bc->is_empty && (bc->length == bc->pvt)) {
             /*
@@ -1660,7 +1661,7 @@ static void read_callback(
                    bc->num_backend_calls_issued,
                    errstr);
 
-        task->get_stats().on_rpc_complete(resp_size, status);
+        task->get_stats().on_rpc_complete(0 /*resp_size*/, status);
     }
 
     // Free the context.
@@ -1756,7 +1757,7 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
         args.offset = bc.offset;
         args.count = bc.length;
 
-        int req_size = sizeof(args) + args.file.data.data_len;
+        //int req_size = sizeof(args) + args.file.data.data_len;
 
         /*
          * Now we are going to issue an NFS read that will read the data from
@@ -2025,7 +2026,7 @@ static void readdir_callback(
         task->get_stats().on_rpc_complete(resp_size, status);
         task->send_readdir_response(readdirentries);
     } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
-        task->get_stats().on_rpc_complete(resp_size);
+        task->get_stats().on_rpc_complete(resp_size, status);
         task->get_client()->jukebox_retry(task);
     } else {
         task->get_stats().on_rpc_complete(resp_size, status);
@@ -2251,7 +2252,7 @@ static void readdirplus_callback(
         task->get_stats().on_rpc_complete(resp_size, status);
         task->send_readdir_response(readdirentries);
     } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
-        task->get_stats().on_rpc_complete(resp_size);
+        task->get_stats().on_rpc_complete(resp_size, status);
         task->get_client()->jukebox_retry(task);
     } else {
         task->get_stats().on_rpc_complete(resp_size, status);
