@@ -283,7 +283,7 @@ static void getattr_callback(
 
     task->get_stats().on_rpc_complete(
         rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
-        status);
+        NFS_STATUS(res));
 
     if (status == 0) {
         // Got fresh attributes, update the attributes cached in the inode.
@@ -314,7 +314,7 @@ static void lookup_callback(
 
     task->get_stats().on_rpc_complete(
         rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
-        status);
+        NFS_STATUS(res));
 
     if (rpc_status == RPC_STATUS_SUCCESS && NFS_STATUS(res) == NFS3ERR_NOENT) {
         /*
@@ -382,7 +382,7 @@ static void write_callback(
      */
     task->get_stats().on_rpc_complete(
         rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
-        status);
+        NFS_STATUS(res));
 
     // Success case.
     if (status == 0) {
@@ -510,7 +510,7 @@ static void createfile_callback(
 
     task->get_stats().on_rpc_complete(
         rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
-        status);
+        NFS_STATUS(res));
 
     if (status == 0) {
         assert(
@@ -543,7 +543,7 @@ static void setattr_callback(
 
     task->get_stats().on_rpc_complete(
         rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
-        status);
+        NFS_STATUS(res));
 
     if (status == 0) {
         assert(res->SETATTR3res_u.resok.obj_wcc.after.attributes_follow);
@@ -575,7 +575,7 @@ void mkdir_callback(
 
     task->get_stats().on_rpc_complete(
         rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
-        status);
+        NFS_STATUS(res));
 
     if (status == 0) {
         assert(
@@ -604,7 +604,7 @@ void unlink_callback(
 
     task->get_stats().on_rpc_complete(
         rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
-        status);
+        NFS_STATUS(res));
 
     task->reply_error(status);
 }
@@ -621,7 +621,7 @@ void rmdir_callback(
 
     task->get_stats().on_rpc_complete(
         rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
-        status);
+        NFS_STATUS(res));
 
     task->reply_error(status);
 }
@@ -1487,7 +1487,7 @@ static void read_callback(
 
     task->get_stats().on_rpc_complete(
         rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
-        status);
+        NFS_STATUS(res));
 
     if (status == 0) {
         assert((bc->pvt == 0) || (bc->num_backend_calls_issued > 1));
@@ -1921,7 +1921,7 @@ static void readdir_callback(
 
     task->get_stats().on_rpc_complete(
         rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
-        status);
+        NFS_STATUS(res));
 
     if (status == 0) {
         const struct entry3 *entry = res->READDIR3res_u.resok.reply.entries;
@@ -2056,7 +2056,7 @@ static void readdirplus_callback(
 
     task->get_stats().on_rpc_complete(
         rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
-        status);
+        NFS_STATUS(res));
 
     if (status == 0) {
         const struct entryplus3 *entry =

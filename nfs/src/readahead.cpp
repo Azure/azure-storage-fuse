@@ -109,7 +109,7 @@ static void readahead_callback (
 
     task->get_stats().on_rpc_complete(
         rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
-        status);
+        NFS_STATUS(res));
 
     // Success or failure, report readahead completion.
     inode->readahead_state->on_readahead_complete(bc->offset, bc->length);

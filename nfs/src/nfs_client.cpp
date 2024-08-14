@@ -4,6 +4,8 @@
 #include "rpc_task.h"
 #include "rpc_readdir.h"
 
+#define NFS_STATUS(r) ((r) ? (r)->status : NFS3ERR_SERVERFAULT)
+
 // The user should first init the client class before using it.
 bool nfs_client::init()
 {
@@ -660,7 +662,7 @@ static void getattr_callback(
         assert(ctx->task->magic == RPC_TASK_MAGIC);
         ctx->task->get_stats().on_rpc_complete(
             rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
-            res->status);
+            NFS_STATUS(res));
     }
 
     {

@@ -116,7 +116,7 @@ do { \
                         std::string(nfsstat3_to_str(entry.first)) +  ": " + \
                         std::to_string(entry.second) + "\n"; \
             } \
-		} \
+        } \
     } \
 } while (0)
 
