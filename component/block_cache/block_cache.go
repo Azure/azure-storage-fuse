@@ -632,6 +632,9 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 	// Wait for this block to complete the download
 	t, ok := <-block.state
 	if ok {
+		// this block is now open to read and process
+		block.Unblock()
+
 		switch t {
 		case BlockStatusDownloaded:
 			log.Debug("BlockCache::getBlock : Downloaded block %v for %v=>%s (read offset %v)", index, handle.ID, handle.Path, readoffset)
@@ -653,10 +656,6 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 			// mark this block as synced so that if it can used for write later
 			// which will move it back to cooking list as per the synced flag
 			block.flags.Set(BlockFlagSynced)
-
-			// Mark this block is now open for everyone to read and process
-			// Once unblocked and moved to original queue, any instance can delete this block to reuse as well
-			block.Unblock()
 
 		case BlockStatusUploaded:
 			log.Debug("BlockCache::getBlock : Staged block %v for %v=>%s (read offset %v)", index, handle.ID, handle.Path, readoffset)
