@@ -352,19 +352,20 @@ static void write_callback(
 {
     struct write_context *ctx = (write_context*) private_data;
     struct rpc_task *task = ctx->get_task();
+    assert(task->magic == RPC_TASK_MAGIC);
+
     const struct bytes_chunk *bc = &ctx->get_bytes_chunk();
     struct membuf *mb = bc->get_membuf();
-    struct nfs_inode *inode =
-        task->get_client()->get_nfs_inode_from_ino(ctx->get_ino());
     struct nfs_client *client = task->get_client();
+    assert(client->magic == NFS_CLIENT_MAGIC);
+
+    struct nfs_inode *inode =
+            client->get_nfs_inode_from_ino(ctx->get_ino());
 
     /*
      * Sanity check.
      */
-    assert(client != nullptr);
-    assert(client->magic == NFS_CLIENT_MAGIC);
     assert(rpc != nullptr);
-    assert(task->magic == RPC_TASK_MAGIC);
     assert(task->get_op_type() == FUSE_WRITE ||
            task->get_op_type() == FUSE_FLUSH ||
            task->get_op_type() == FUSE_RELEASE);
@@ -435,7 +436,7 @@ static void write_callback(
             do {
                 rpc_retry = false;
                 if ((pdu = rpc_nfs3_write_task(flush_task->get_rpc_ctx(), write_callback,
-                                               &args, ctx)) == NULL) {
+                                                &args, ctx)) == NULL) {
                    /*
                     * Most common reason for this is memory allocation failure,
                     * hence wait for some time before retrying. Also block the
