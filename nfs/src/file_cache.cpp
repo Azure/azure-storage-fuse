@@ -1732,11 +1732,11 @@ static bool is_read()
 std::vector<bytes_chunk> bytes_chunk_cache::get_dirty_bc() const
 {
     std::vector<bytes_chunk> bc_vec;
-    std::map <uint64_t,
-              struct bytes_chunk>::const_iterator it = chunkmap.cbegin();
-
     // TODO: Make it shared lock.
     const std::unique_lock<std::mutex> _lock(lock);
+
+    std::map <uint64_t,
+              struct bytes_chunk>::const_iterator it = chunkmap.cbegin();
 
     while (it != chunkmap.cend()) {
         const struct bytes_chunk& bc = it->second;
