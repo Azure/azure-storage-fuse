@@ -107,8 +107,13 @@ static void readahead_callback (
     assert(read_cache != nullptr);
     assert(ino == inode->get_fuse_ino());
 
+    /*
+     * Now that the request has completed, we can query libnfs for the
+     * dispatch time.
+     */
     task->get_stats().on_rpc_complete(
         rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
+        rpc_pdu_get_dispatch_usecs(rpc_get_pdu(rpc)),
         NFS_STATUS(res));
 
     // Success or failure, report readahead completion.
@@ -382,7 +387,7 @@ int ra_state::issue_readaheads()
 
                 continue;
             } else {
-                tsk->get_stats().on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
+                tsk->get_stats().on_rpc_issue(rpc_pdu_get_req_size(pdu));
             }
 
             ra_issued++;

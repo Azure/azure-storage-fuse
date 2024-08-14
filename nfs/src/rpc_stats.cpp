@@ -106,6 +106,9 @@ do { \
         str += "        Avg RTT: " + \
                         std::to_string(ops.rtt_usec / (ops.count * 1000.0)) + \
                         " msec\n"; \
+        str += "        Avg dispatch wait: " + \
+                        std::to_string(ops.dispatch_usec / (ops.count * 1000.0)) + \
+                        " msec\n"; \
         str += "        Avg Total execute time: " + \
                         std::to_string(ops.total_usec / (ops.count * 1000.0)) + \
                         " msec\n"; \

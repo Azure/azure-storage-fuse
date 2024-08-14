@@ -660,8 +660,13 @@ static void getattr_callback(
 
     if (ctx->task) {
         assert(ctx->task->magic == RPC_TASK_MAGIC);
+        /*
+         * Now that the request has completed, we can query libnfs for the
+         * dispatch time.
+         */
         ctx->task->get_stats().on_rpc_complete(
             rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
+            rpc_pdu_get_dispatch_usecs(rpc_get_pdu(rpc)),
             NFS_STATUS(res));
     }
 
@@ -744,7 +749,7 @@ try_again:
             rpc_retry = true;
         } else {
             if (task != nullptr) {
-                task->get_stats().on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
+                task->get_stats().on_rpc_issue(rpc_pdu_get_req_size(pdu));
             }
         }
     } while (rpc_retry);

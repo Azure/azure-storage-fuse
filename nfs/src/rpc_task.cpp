@@ -281,8 +281,13 @@ static void getattr_callback(
         task->get_client()->get_nfs_inode_from_ino(ino);
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
+    /*
+     * Now that the request has completed, we can query libnfs for the
+     * dispatch time.
+     */
     task->get_stats().on_rpc_complete(
         rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
+        rpc_pdu_get_dispatch_usecs(rpc_get_pdu(rpc)),
         NFS_STATUS(res));
 
     if (status == 0) {
@@ -312,8 +317,13 @@ static void lookup_callback(
     auto res = (LOOKUP3res*)data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
+    /*
+     * Now that the request has completed, we can query libnfs for the
+     * dispatch time.
+     */
     task->get_stats().on_rpc_complete(
         rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
+        rpc_pdu_get_dispatch_usecs(rpc_get_pdu(rpc)),
         NFS_STATUS(res));
 
     if (rpc_status == RPC_STATUS_SUCCESS && NFS_STATUS(res) == NFS3ERR_NOENT) {
@@ -378,10 +388,12 @@ static void write_callback(
     const int status = task->status(rpc_status, NFS_STATUS(res), &errstr);
 
     /*
-     * Update completion time for the task.
+     * Now that the request has completed, we can query libnfs for the
+     * dispatch time.
      */
     task->get_stats().on_rpc_complete(
         rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
+        rpc_pdu_get_dispatch_usecs(rpc_get_pdu(rpc)),
         NFS_STATUS(res));
 
     // Success case.
@@ -454,7 +466,7 @@ static void write_callback(
                      * Update the stats for the new task.
                      * It is dispatched just now.
                      */
-                    flush_task->get_stats().on_rpc_dispatch(
+                    flush_task->get_stats().on_rpc_issue(
                         rpc_pdu_get_req_size(pdu));
                 }
             } while (rpc_retry);
@@ -508,8 +520,13 @@ static void createfile_callback(
     auto res = (CREATE3res*)data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
+    /*
+     * Now that the request has completed, we can query libnfs for the
+     * dispatch time.
+     */
     task->get_stats().on_rpc_complete(
         rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
+        rpc_pdu_get_dispatch_usecs(rpc_get_pdu(rpc)),
         NFS_STATUS(res));
 
     if (status == 0) {
@@ -541,8 +558,13 @@ static void setattr_callback(
         task->get_client()->get_nfs_inode_from_ino(ino);
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
+    /*
+     * Now that the request has completed, we can query libnfs for the
+     * dispatch time.
+     */
     task->get_stats().on_rpc_complete(
         rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
+        rpc_pdu_get_dispatch_usecs(rpc_get_pdu(rpc)),
         NFS_STATUS(res));
 
     if (status == 0) {
@@ -574,8 +596,13 @@ void mkdir_callback(
     auto res = (MKDIR3res*)data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
+    /*
+     * Now that the request has completed, we can query libnfs for the
+     * dispatch time.
+     */
     task->get_stats().on_rpc_complete(
         rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
+        rpc_pdu_get_dispatch_usecs(rpc_get_pdu(rpc)),
         NFS_STATUS(res));
 
     if (status == 0) {
@@ -603,8 +630,13 @@ void unlink_callback(
     auto res = (REMOVE3res*)data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
+    /*
+     * Now that the request has completed, we can query libnfs for the
+     * dispatch time.
+     */
     task->get_stats().on_rpc_complete(
         rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
+        rpc_pdu_get_dispatch_usecs(rpc_get_pdu(rpc)),
         NFS_STATUS(res));
 
     task->reply_error(status);
@@ -620,8 +652,13 @@ void rmdir_callback(
     auto res = (RMDIR3res*) data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
+    /*
+     * Now that the request has completed, we can query libnfs for the
+     * dispatch time.
+     */
     task->get_stats().on_rpc_complete(
         rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
+        rpc_pdu_get_dispatch_usecs(rpc_get_pdu(rpc)),
         NFS_STATUS(res));
 
     task->reply_error(status);
@@ -654,7 +691,7 @@ void rpc_task::run_lookup()
                       "after 5 secs!");
             ::sleep(5);
         } else {
-            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
+            stats.on_rpc_issue(rpc_pdu_get_req_size(pdu));
         }
     } while (rpc_retry);
 }
@@ -808,7 +845,7 @@ static void sync_membuf(const struct bytes_chunk& bc,
                           "after 5 secs!");
                 ::sleep(5);
             } else {
-                flush_task->get_stats().on_rpc_dispatch(
+                flush_task->get_stats().on_rpc_issue(
                     rpc_pdu_get_req_size(pdu));
             }
         } while (rpc_retry);
@@ -951,7 +988,7 @@ void rpc_task::run_getattr()
                       "after 5 secs!");
             ::sleep(5);
         } else {
-            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
+            stats.on_rpc_issue(rpc_pdu_get_req_size(pdu));
         }
     } while (rpc_retry);
 }
@@ -988,7 +1025,7 @@ void rpc_task::run_create_file()
                       "after 5 secs!");
             ::sleep(5);
         } else {
-            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
+            stats.on_rpc_issue(rpc_pdu_get_req_size(pdu));
         }
     }  while (rpc_retry);
 }
@@ -1025,7 +1062,7 @@ void rpc_task::run_mkdir()
                       "after 5 secs!");
             ::sleep(5);
         } else {
-            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
+            stats.on_rpc_issue(rpc_pdu_get_req_size(pdu));
         }
     } while (rpc_retry);
 }
@@ -1057,7 +1094,7 @@ void rpc_task::run_unlink()
                       "after 5 secs!");
             ::sleep(5);
         } else {
-            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
+            stats.on_rpc_issue(rpc_pdu_get_req_size(pdu));
         }
     } while (rpc_retry);
 }
@@ -1090,7 +1127,7 @@ void rpc_task::run_rmdir()
                       "after 5 secs!");
             ::sleep(5);
         } else {
-            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
+            stats.on_rpc_issue(rpc_pdu_get_req_size(pdu));
         }
     } while (rpc_retry);
 }
@@ -1183,7 +1220,7 @@ void rpc_task::run_setattr()
                       "after 5 secs!");
             ::sleep(5);
         } else {
-            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
+            stats.on_rpc_issue(rpc_pdu_get_req_size(pdu));
         }
     } while (rpc_retry);
 }
@@ -1486,8 +1523,13 @@ static void read_callback(
     const uint64_t issued_offset = bc->offset + bc->pvt;
     const uint64_t issued_length = bc->length - bc->pvt;
 
+    /*
+     * Now that the request has completed, we can query libnfs for the
+     * dispatch time.
+     */
     task->get_stats().on_rpc_complete(
         rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
+        rpc_pdu_get_dispatch_usecs(rpc_get_pdu(rpc)),
         NFS_STATUS(res));
 
     if (status == 0) {
@@ -1598,7 +1640,7 @@ static void read_callback(
                               "after 5 secs!");
                     ::sleep(5);
                 } else {
-                    child_tsk->get_stats().on_rpc_dispatch(
+                    child_tsk->get_stats().on_rpc_issue(
                         rpc_pdu_get_req_size(pdu));
                 }
             } while (rpc_retry);
@@ -1832,7 +1874,7 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
                       "after 5 secs!");
             ::sleep(5);
         } else {
-            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
+            stats.on_rpc_issue(rpc_pdu_get_req_size(pdu));
         }
     } while (rpc_retry);
 }
@@ -1920,8 +1962,13 @@ static void readdir_callback(
     int num_dirents = 0;
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
+    /*
+     * Now that the request has completed, we can query libnfs for the
+     * dispatch time.
+     */
     task->get_stats().on_rpc_complete(
         rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
+        rpc_pdu_get_dispatch_usecs(rpc_get_pdu(rpc)),
         NFS_STATUS(res));
 
     if (status == 0) {
@@ -2055,8 +2102,13 @@ static void readdirplus_callback(
     int num_dirents = 0;
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
+    /*
+     * Now that the request has completed, we can query libnfs for the
+     * dispatch time.
+     */
     task->get_stats().on_rpc_complete(
         rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
+        rpc_pdu_get_dispatch_usecs(rpc_get_pdu(rpc)),
         NFS_STATUS(res));
 
     if (status == 0) {
@@ -2343,7 +2395,7 @@ void rpc_task::fetch_readdir_entries_from_server()
                       "after 5 secs!");
             ::sleep(5);
         } else {
-            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
+            stats.on_rpc_issue(rpc_pdu_get_req_size(pdu));
         }
     } while (rpc_retry);
 }
@@ -2390,7 +2442,7 @@ void rpc_task::fetch_readdirplus_entries_from_server()
                       "after 5 secs!");
             ::sleep(5);
         } else {
-            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
+            stats.on_rpc_issue(rpc_pdu_get_req_size(pdu));
         }
     } while (rpc_retry);
 }
