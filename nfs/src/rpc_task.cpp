@@ -166,6 +166,18 @@ void rpc_task::init_mkdir(fuse_req *request,
     fh_hash = get_client()->get_nfs_inode_from_ino(parent_ino)->get_crc();
 }
 
+void rpc_task::init_unlink(fuse_req *request,
+                           fuse_ino_t parent_ino,
+                           const char *name)
+{
+    assert(get_op_type() == FUSE_UNLINK);
+    set_fuse_req(request);
+    rpc_api->unlink_task.set_parent_ino(parent_ino);
+    rpc_api->unlink_task.set_file_name(name);
+
+    fh_hash = get_client()->get_nfs_inode_from_ino(parent_ino)->get_crc();
+}
+
 void rpc_task::init_rmdir(fuse_req *request,
                           fuse_ino_t parent_ino,
                           const char *name)
@@ -536,6 +548,19 @@ void mkdir_callback(
     }
 }
 
+void unlink_callback(
+    struct rpc_context* /* rpc */,
+    int rpc_status,
+    void *data,
+    void *private_data)
+{
+    rpc_task *task = (rpc_task*) private_data;
+    auto res = (REMOVE3res*)data;
+    const int status = task->status(rpc_status, NFS_STATUS(res));
+
+    task->reply_error(status);
+}
+
 void rmdir_callback(
     struct rpc_context* /* rpc */,
     int rpc_status,
@@ -546,11 +571,7 @@ void rmdir_callback(
     auto res = (RMDIR3res*) data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
-    if (status == 0) {
-         task->reply_error(0);
-    } else {
-        task->reply_error(status);
-    }
+    task->reply_error(status);
 }
 
 void rpc_task::run_lookup()
@@ -941,6 +962,35 @@ void rpc_task::run_mkdir()
             rpc_retry = true;
 
             AZLogWarn("rpc_nfs3_mkdir_task failed to issue, retrying "
+                      "after 5 secs!");
+            ::sleep(5);
+        }
+    } while (rpc_retry);
+}
+
+void rpc_task::run_unlink()
+{
+    bool rpc_retry;
+    auto parent_ino = rpc_api->unlink_task.get_parent_ino();
+
+    do {
+        REMOVE3args args;
+        args.object.dir = get_client()->get_nfs_inode_from_ino(parent_ino)->get_fh();
+        args.object.name = (char*) rpc_api->unlink_task.get_file_name();
+
+        rpc_retry = false;
+        if (rpc_nfs3_remove_task(get_rpc_ctx(),
+                                 unlink_callback, &args, this) == NULL) {
+            /*
+             * Most common reason for this is memory allocation failure,
+             * hence wait for some time before retrying. Also block the
+             * current thread as we really want to slow down things.
+             *
+             * TODO: For soft mount should we fail this?
+             */
+            rpc_retry = true;
+
+            AZLogWarn("rpc_nfs3_remove_task failed to issue, retrying "
                       "after 5 secs!");
             ::sleep(5);
         }

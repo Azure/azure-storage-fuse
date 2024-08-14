@@ -414,6 +414,38 @@ private:
     bool is_used;
 };
 
+struct unlink_rpc_task
+{
+    fuse_ino_t get_parent_ino() const
+    {
+        return parent_ino;
+    }
+
+    const char *get_file_name() const
+    {
+        return file_name;
+    }
+
+    void set_parent_ino(fuse_ino_t parent)
+    {
+        parent_ino = parent;
+    }
+
+    void set_file_name(const char *name)
+    {
+        file_name = ::strdup(name);
+    }
+
+    void release()
+    {
+        ::free(file_name);
+    }
+
+private:
+    fuse_ino_t parent_ino;
+    char *file_name;
+};
+
 struct rmdir_rpc_task
 {
     fuse_ino_t get_parent_ino() const
@@ -611,6 +643,7 @@ struct api_task_info
         struct setattr_rpc_task setattr_task;
         struct create_file_rpc_task create_task;
         struct mkdir_rpc_task mkdir_task;
+        struct unlink_rpc_task unlink_task;
         struct rmdir_rpc_task rmdir_task;
         struct readdir_rpc_task readdir_task;
         struct read_rpc_task read_task;
@@ -899,6 +932,15 @@ public:
                     const char *name,
                     mode_t mode);
     void run_mkdir();
+
+    /*
+     * init/run methods for the REMOVE RPC.
+     */
+    void init_unlink(fuse_req *request,
+                     fuse_ino_t parent_ino,
+                     const char *name);
+
+    void run_unlink();
 
     /*
      * init/run methods for the RMDIR RPC.
