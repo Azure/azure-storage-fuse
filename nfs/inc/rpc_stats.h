@@ -5,6 +5,7 @@
 #include <mutex>
 
 #include "aznfsc.h"
+#include "libnfs-raw.h"
 
 namespace aznfsc {
 
@@ -44,6 +45,12 @@ struct rpc_opstat
      *   the response.
      */
     std::atomic<uint64_t> total_usec = 0;
+
+    /*
+     * Error map to store all the errors encountered by the given api.
+     * This is guarded by rpc_stats_az::lock.
+     */
+    std::map<int /*error status*/, uint64_t /*error count*/> error_map;	
 };
 
 /**
@@ -108,12 +115,28 @@ public:
      * Event handler method to be called when the RPC completes, i.e., when
      * the libnfs callback is called.
      */
-    void on_rpc_complete(uint64_t _resp_size)
+    void on_rpc_complete(uint64_t _resp_size, nfsstat3 status)
     {
         assert(_resp_size > 0);
         resp_size = _resp_size;
         stamp.complete = get_current_usecs();
         assert(stamp.complete > stamp.dispatch);
+        assert(nfsstat3_to_errno(status) != -ERANGE);
+
+        if (status != NFS3_OK) {
+            /*
+             * This thread will block till it obtains the lock.
+             * This can result in delayed response to the fuse as
+             * on_rpc_complete will be called before sending response to fuse.
+             * This should be okay as this will happen only in error state.
+             */
+            std::unique_lock<std::mutex> _lock(lock);
+            auto result = opstats[optype].error_map.emplace(status, 1);
+            if (!result.second) {
+                // If the key already exists, increment the error count.
+                ++(result.first->second);
+            }
+        }
     }
 
     /**
@@ -205,7 +228,7 @@ private:
     static struct rpc_opstat opstats[FUSE_OPCODE_MAX + 1];
 
     /*
-     * Lock for synchronizing dumping stats.
+     * Lock for synchronizing dumping stats and for inserting into error_map.
      */
     static std::mutex lock;
 };

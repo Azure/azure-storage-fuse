@@ -109,6 +109,14 @@ do { \
         str += "        Avg Total execute time: " + \
                         std::to_string(ops.total_usec / (ops.count * 1000.0)) + \
                         " msec\n"; \
+        if (!ops.error_map.empty()) { \
+            str += "        Errors encountered: \n"; \
+            for (const auto& entry : ops.error_map) { \
+                str += "            " + \
+                        std::string(nfsstat3_to_str(entry.first)) +  ": " + \
+                        std::to_string(entry.second) + "\n"; \
+            } \
+        } \
     } \
 } while (0)
 

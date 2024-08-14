@@ -82,7 +82,7 @@ struct ra_context
 };
 
 static void readahead_callback (
-    struct rpc_context* /* rpc */,
+    struct rpc_context *rpc,
     int rpc_status,
     void *data,
     void *private_data)
@@ -106,6 +106,10 @@ static void readahead_callback (
 
     assert(read_cache != nullptr);
     assert(ino == inode->get_fuse_ino());
+
+    task->get_stats().on_rpc_complete(
+        rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
+        NFS_STATUS(res));
 
     // Success or failure, report readahead completion.
     inode->readahead_state->on_readahead_complete(bc->offset, bc->length);
@@ -339,6 +343,8 @@ int ra_state::issue_readaheads()
                        args.offset,
                        args.count);
 
+            rpc_pdu *pdu = nullptr;
+
             /*
              * tsk->get_rpc_ctx() call below will round robin readahead
              * requests across all available connections.
@@ -346,13 +352,13 @@ int ra_state::issue_readaheads()
              * TODO: See if issuing a batch of reads over one connection
              *       before moving to the other connection helps.
              */
-            if (rpc_nfs3_read_task(
+            if ((pdu = rpc_nfs3_read_task(
                         tsk->get_rpc_ctx(),
                         readahead_callback,
                         bc.get_buffer(),
                         bc.length,
                         &args,
-                        ctx) == NULL) {
+                        ctx)) == NULL) {
                 /*
                  * This call failed due to internal issues like OOM etc
                  * and not due to an actual RPC/NFS error, anyways pretend
@@ -375,6 +381,8 @@ int ra_state::issue_readaheads()
                 inode->decref();
 
                 continue;
+            } else {
+                tsk->get_stats().on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
             }
 
             ra_issued++;
