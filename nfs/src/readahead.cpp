@@ -344,7 +344,6 @@ int ra_state::issue_readaheads()
                        args.count);
 
             rpc_pdu *pdu = nullptr;
-            const uint64_t dispatch_usec = get_current_usecs();
 
             /*
              * tsk->get_rpc_ctx() call below will round robin readahead
@@ -383,9 +382,7 @@ int ra_state::issue_readaheads()
 
                 continue;
             } else {
-                tsk->get_stats().on_rpc_dispatch(
-                    rpc_pdu_get_req_size(pdu),
-                    dispatch_usec);
+                tsk->get_stats().on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
             }
 
             ra_issued++;

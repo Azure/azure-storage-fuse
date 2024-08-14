@@ -102,11 +102,11 @@ public:
      *
      * Note: The request size should be close estimate of the number of bytes
      */
-    void on_rpc_dispatch(uint64_t _req_size, uint64_t dispatch_usec)
+    void on_rpc_dispatch(uint64_t _req_size)
     {
         assert(_req_size > 0);
         req_size = _req_size;
-        stamp.dispatch = dispatch_usec;
+        stamp.dispatch = get_current_usecs();
         assert(stamp.dispatch >= stamp.create);
     }
 

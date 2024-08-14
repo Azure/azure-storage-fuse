@@ -435,8 +435,6 @@ static void write_callback(
             bool rpc_retry;
             do {
                 rpc_retry = false;
-                const uint64_t dispatch_usec = get_current_usecs();
-
                 if ((pdu = rpc_nfs3_write_task(flush_task->get_rpc_ctx(), write_callback,
                                                 &args, ctx)) == NULL) {
                    /*
@@ -457,8 +455,7 @@ static void write_callback(
                      * It is dispatched just now.
                      */
                     flush_task->get_stats().on_rpc_dispatch(
-                        rpc_pdu_get_req_size(pdu),
-                        dispatch_usec);
+                        rpc_pdu_get_req_size(pdu));
                 }
             } while (rpc_retry);
 
@@ -639,9 +636,8 @@ void rpc_task::run_lookup()
         LOOKUP3args args;
         args.what.dir = get_client()->get_nfs_inode_from_ino(parent_ino)->get_fh();
         args.what.name = (char*) rpc_api->lookup_task.get_file_name();
-        rpc_retry = false;
-        const uint64_t dispatch_usec = get_current_usecs();
 
+        rpc_retry = false;
         if ((pdu = rpc_nfs3_lookup_task(get_rpc_ctx(), lookup_callback, &args,
                                  this)) == NULL) {
             /*
@@ -657,7 +653,7 @@ void rpc_task::run_lookup()
                       "after 5 secs!");
             ::sleep(5);
         } else {
-            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu), dispatch_usec);
+            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
         }
     } while (rpc_retry);
 }
@@ -795,8 +791,6 @@ static void sync_membuf(const struct bytes_chunk& bc,
         bool rpc_retry;
         do {
             rpc_retry = false;
-            const uint64_t dispatch_usec = get_current_usecs();
-
             if ((pdu = rpc_nfs3_write_task(flush_task->get_rpc_ctx(),
                                     write_callback, &args,
                                     cb_context)) == NULL) {
@@ -813,7 +807,8 @@ static void sync_membuf(const struct bytes_chunk& bc,
                           "after 5 secs!");
                 ::sleep(5);
             } else {
-                flush_task->get_stats().on_rpc_dispatch(rpc_pdu_get_req_size(pdu), dispatch_usec);
+                flush_task->get_stats().on_rpc_dispatch(
+                    rpc_pdu_get_req_size(pdu));
             }
         } while (rpc_retry);
     } else {
@@ -940,8 +935,6 @@ void rpc_task::run_getattr()
         args.object = get_client()->get_nfs_inode_from_ino(ino)->get_fh();
 
         rpc_retry = false;
-        const uint64_t dispatch_usec = get_current_usecs();
-
         if ((pdu = rpc_nfs3_getattr_task(get_rpc_ctx(), getattr_callback, &args,
                                   this)) == NULL) {
             /*
@@ -957,7 +950,7 @@ void rpc_task::run_getattr()
                       "after 5 secs!");
             ::sleep(5);
         } else {
-            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu), dispatch_usec);
+            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
         }
     } while (rpc_retry);
 }
@@ -979,8 +972,6 @@ void rpc_task::run_create_file()
         args.how.createhow3_u.obj_attributes.mode.set_mode3_u.mode = rpc_api->create_task.get_mode();
 
         rpc_retry = false;
-        const uint64_t dispatch_usec = get_current_usecs();
-
         if ((pdu = rpc_nfs3_create_task(get_rpc_ctx(), createfile_callback, &args,
                                  this)) == NULL) {
             /*
@@ -996,7 +987,7 @@ void rpc_task::run_create_file()
                       "after 5 secs!");
             ::sleep(5);
         } else {
-            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu), dispatch_usec);
+            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
         }
     }  while (rpc_retry);
 }
@@ -1018,8 +1009,6 @@ void rpc_task::run_mkdir()
         args.attributes.mode.set_mode3_u.mode = rpc_api->mkdir_task.get_mode();
 
         rpc_retry = false;
-        const uint64_t dispatch_usec = get_current_usecs();
-
         if ((pdu = rpc_nfs3_mkdir_task(get_rpc_ctx(), mkdir_callback, &args,
                                 this)) == NULL) {
             /*
@@ -1035,7 +1024,7 @@ void rpc_task::run_mkdir()
                       "after 5 secs!");
             ::sleep(5);
         } else {
-            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu), dispatch_usec);
+            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
         }
     } while (rpc_retry);
 }
@@ -1052,8 +1041,6 @@ void rpc_task::run_unlink()
         args.object.name = (char*) rpc_api->unlink_task.get_file_name();
 
         rpc_retry = false;
-        const uint64_t dispatch_usec = get_current_usecs();
-
         if ((pdu = rpc_nfs3_remove_task(get_rpc_ctx(),
                                  unlink_callback, &args, this)) == NULL) {
             /*
@@ -1069,7 +1056,7 @@ void rpc_task::run_unlink()
                       "after 5 secs!");
             ::sleep(5);
         } else {
-            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu), dispatch_usec);
+            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
         }
     } while (rpc_retry);
 }
@@ -1087,8 +1074,6 @@ void rpc_task::run_rmdir()
         args.object.name = (char*) rpc_api->rmdir_task.get_dir_name();
 
         rpc_retry = false;
-        const uint64_t dispatch_usec = get_current_usecs();
-
         if ((pdu = rpc_nfs3_rmdir_task(get_rpc_ctx(),
                                 rmdir_callback, &args, this)) == NULL) {
             /*
@@ -1104,7 +1089,7 @@ void rpc_task::run_rmdir()
                       "after 5 secs!");
             ::sleep(5);
         } else {
-            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu), dispatch_usec);
+            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
         }
     } while (rpc_retry);
 }
@@ -1182,8 +1167,6 @@ void rpc_task::run_setattr()
         }
 
         rpc_retry = false;
-        const uint64_t dispatch_usec = get_current_usecs();
-
         if ((pdu = rpc_nfs3_setattr_task(get_rpc_ctx(), setattr_callback, &args,
                                   this)) == NULL) {
             /*
@@ -1199,7 +1182,7 @@ void rpc_task::run_setattr()
                       "after 5 secs!");
             ::sleep(5);
         } else {
-            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu), dispatch_usec);
+            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
         }
     } while (rpc_retry);
 }
@@ -1594,8 +1577,6 @@ static void read_callback(
                  */
                 rpc_pdu *pdu = nullptr;
                 rpc_retry = false;
-                const uint64_t dispatch_usec = get_current_usecs();
-
                 if ((pdu = rpc_nfs3_read_task(
                         child_tsk->get_rpc_ctx(),
                         read_callback,
@@ -1617,8 +1598,7 @@ static void read_callback(
                     ::sleep(5);
                 } else {
                     child_tsk->get_stats().on_rpc_dispatch(
-                        rpc_pdu_get_req_size(pdu),
-                        dispatch_usec);
+                        rpc_pdu_get_req_size(pdu));
                 }
             } while (rpc_retry);
 
@@ -1831,8 +1811,6 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
 
         rpc_pdu *pdu = nullptr;
         rpc_retry = false;
-        const uint64_t dispatch_usec = get_current_usecs();
-
         if ((pdu = rpc_nfs3_read_task(
                 get_rpc_ctx(), /* This round robins request across connections */
                 read_callback,
@@ -1853,7 +1831,7 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
                       "after 5 secs!");
             ::sleep(5);
         } else {
-            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu), dispatch_usec);
+            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
         }
     } while (rpc_retry);
 }
@@ -2347,8 +2325,6 @@ void rpc_task::fetch_readdir_entries_from_server()
         }
 
         rpc_retry = false;
-        const uint64_t dispatch_usec = get_current_usecs();
-
         if ((pdu = rpc_nfs3_readdir_task(get_rpc_ctx(),
                                   readdir_callback,
                                   &args,
@@ -2366,7 +2342,7 @@ void rpc_task::fetch_readdir_entries_from_server()
                       "after 5 secs!");
             ::sleep(5);
         } else {
-            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu), dispatch_usec);
+            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
         }
     } while (rpc_retry);
 }
@@ -2396,8 +2372,6 @@ void rpc_task::fetch_readdirplus_entries_from_server()
         args.dircount = args.maxcount;
 
         rpc_retry = false;
-        const uint64_t dispatch_usec = get_current_usecs();
-
         if ((pdu = rpc_nfs3_readdirplus_task(get_rpc_ctx(),
                                       readdirplus_callback,
                                       &args,
@@ -2415,7 +2389,7 @@ void rpc_task::fetch_readdirplus_entries_from_server()
                       "after 5 secs!");
             ::sleep(5);
         } else {
-            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu), dispatch_usec);
+            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
         }
     } while (rpc_retry);
 }

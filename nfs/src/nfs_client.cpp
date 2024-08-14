@@ -732,7 +732,6 @@ try_again:
 
         ctx = new getattr_context(&fattr, task);
         rpc = nfs_get_rpc_context(nfs_context);
-        const uint64_t dispatch_usec = get_current_usecs();
 
         if ((pdu = rpc_nfs3_getattr_task(rpc, getattr_callback,
                                          &args, ctx)) == NULL) {
@@ -742,11 +741,8 @@ try_again:
              */
             rpc_retry = true;
         } else {
-            if (task != nullptr)
-            {
-                task->get_stats().on_rpc_dispatch(
-                    rpc_pdu_get_req_size(pdu),
-                    dispatch_usec);
+            if (task != nullptr) {
+                task->get_stats().on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
             }
         }
     } while (rpc_retry);
