@@ -377,7 +377,9 @@ static void write_callback(
     /*
      * Update completion time for the task.
      */
-    task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(rpc_get_pdu(rpc)));
+    task->get_stats().on_rpc_complete(
+        rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
+        status);
 
     // Success case.
     if (status == 0) {
@@ -430,6 +432,8 @@ static void write_callback(
             bool rpc_retry;
             do {
                 rpc_retry = false;
+                const uint64_t dispatch_usec = get_current_usecs();
+
                 if ((pdu = rpc_nfs3_write_task(flush_task->get_rpc_ctx(), write_callback,
                                                 &args, ctx)) == NULL) {
                    /*
@@ -444,14 +448,16 @@ static void write_callback(
                     AZLogWarn("rpc_nfs3_write_task failed to issue, retrying "
                               "after 5 secs!");
                     ::sleep(5);
+                } else {
+                    /*
+                     * Update the stats for the new task.
+                     * It is dispatched just now.
+                     */
+                    flush_task->get_stats().on_rpc_dispatch(
+                        rpc_pdu_get_req_size(pdu),
+                        dispatch_usec);
                 }
             } while (rpc_retry);
-
-            /*
-             * Update the stats for the new task.
-             * It is dispatched just now.
-             */
-            flush_task->get_stats().on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
 
             // Release the task.
             task->free_rpc_task();
@@ -776,6 +782,8 @@ static void sync_membuf(const struct bytes_chunk& bc,
         bool rpc_retry;
         do {
             rpc_retry = false;
+            const uint64_t dispatch_usec = get_current_usecs();
+
             if ((pdu = rpc_nfs3_write_task(flush_task->get_rpc_ctx(),
                                     write_callback, &args,
                                     cb_context)) == NULL) {
@@ -791,11 +799,10 @@ static void sync_membuf(const struct bytes_chunk& bc,
                 AZLogWarn("rpc_nfs3_write_task failed to issue, retrying "
                           "after 5 secs!");
                 ::sleep(5);
+            } else {
+                flush_task->get_stats().on_rpc_dispatch(rpc_pdu_get_req_size(pdu), dispatch_usec);
             }
         } while (rpc_retry);
-
-        // Update the req_size with on-wire pdu size.
-        flush_task->get_stats().on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
     } else {
         mb->clear_locked();
         flush_task->free_rpc_task();
