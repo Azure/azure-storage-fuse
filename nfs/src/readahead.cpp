@@ -192,6 +192,19 @@ static void readahead_callback (
             new_args.offset = new_offset;
             new_args.count = new_size;
 
+            // Create a new child task to carry out this request.
+            struct rpc_task *partial_read_tsk =
+                task->get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_READ);
+
+            partial_read_tsk->init_read(
+                task->rpc_api->req,
+                task->rpc_api->read_task.get_ino(),
+                new_size,
+                new_offset,
+                task->rpc_api->read_task.get_fuse_file());
+
+            ctx->task = partial_read_tsk;
+
             bc->num_backend_calls_issued++;
             assert(bc->num_backend_calls_issued > 1);
 
@@ -203,7 +216,10 @@ static void readahead_callback (
                        bc->offset,
                        bc->offset + bc->length);
 
+            rpc_pdu *pdu = nullptr;
+
             do {
+                rpc_retry = false;
                 /*
                  * We have identified partial read case where the
                  * server has returned fewer bytes than requested.
@@ -212,20 +228,30 @@ static void readahead_callback (
                  * Note: It is okay to issue a read call directly here
                  *       as we are holding all the needed locks and refs.
                  */
-                if (rpc_nfs3_read_task(
-                        task->get_rpc_ctx(),
+                if ((pdu = rpc_nfs3_read_task(
+                        partial_read_tsk->get_rpc_ctx(),
                         readahead_callback,
                         bc->get_buffer() + bc->pvt,
                         new_size,
                         &new_args,
-                        (void *) ctx) == NULL) {
+                        (void *) ctx)) == NULL) {
                     /*
                      * This call fails due to internal issues like OOM
                      * etc and not due to an actual error, hence retry.
                      */
+                    AZLogWarn("rpc_nfs3_read_task failed to issue, retrying "
+                              "after 5 secs!");
+                    ::sleep(5);
+
                     rpc_retry = true;
+                } else {
+                    partial_read_tsk->get_stats().on_rpc_dispatch(
+                        rpc_pdu_get_req_size(pdu));
                 }
             } while (rpc_retry);
+
+            // Free the current RPC task as it has done its bit.
+            task->free_rpc_task();
 
             /*
              * Return from the callback here. The rest of the callback
