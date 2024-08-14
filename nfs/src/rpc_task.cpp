@@ -1076,6 +1076,12 @@ void rpc_task::run_read()
     assert(inode->is_regfile());
 
     /*
+     * run_read() is called once for a fuse read request which must not be
+     * called for a child task.
+     */
+    assert(parent_task == nullptr);
+
+    /*
      * Get bytes_chunks covering the region caller wants to read.
      * The bytes_chunks returned could be any mix of old (already cached) or
      * new (cache allocated but yet to be read from blob). Note that reads
@@ -1136,7 +1142,7 @@ void rpc_task::run_read()
         total_length += bc_vec[i].length;
 
         /*
-         * Set"bytes read" to "bytes requested". This will be true for chunks
+         * Set "bytes read" to "bytes requested". This will be true for chunks
          * served from cache. For chunks that need to be read from the server,
          * read_callback() will set it appropriately based on the server return
          * status.
@@ -1151,8 +1157,10 @@ void rpc_task::run_read()
             found_in_cache = false;
 
             /*
-             * TODO: If we have just 1 bytes chunk to fill, which is the most common case,
-             *       avoid creating child task and process evrything in this same task.
+             * TODO: If we have just 1 bytes_chunk to fill, which is the most
+             *       common case, avoid creating child task and process
+             *       everything in this same task.
+             *       Also for contiguous reads use the libnfs vectored read API.
              */
 
             /*
@@ -1164,12 +1172,20 @@ void rpc_task::run_read()
             child_tsk->init_read(
                 rpc_api->req,
                 rpc_api->read_task.get_ino(),
-                rpc_api->read_task.get_offset(),
-                rpc_api->read_task.get_size(),
-                nullptr /* fileinfo */);
+                bc_vec[i].offset,
+                bc_vec[i].length,
+                rpc_api->read_task.get_fuse_file());
 
             // Set the parent task of the child to the current RPC task.
             child_tsk->parent_task = this;
+
+            /*
+             * Child task should always read a subset of the parent task.
+             */
+            assert(child_tsk->rpc_api->read_task.get_offset() <=
+                   rpc_api->read_task.get_offset());
+            assert(child_tsk->rpc_api->read_task.get_size() <=
+                   rpc_api->read_task.get_size());
 
             child_tsk->read_from_server(bc_vec[i]);
         } else {
@@ -1192,7 +1208,11 @@ void rpc_task::run_read()
     // get() must return bytes_chunks exactly covering the requested range.
     assert(total_length == rpc_api->read_task.get_size());
 
-    // Decrement the read ref incremented above.
+    /*
+     * Decrement the read ref incremented above.
+     * Each completing child task will also update the parent task's
+     * num_ongoing_backend_reads, so we check for that.
+     */
     assert(num_ongoing_backend_reads >= 1);
     if (--num_ongoing_backend_reads != 0) {
         assert(!found_in_cache);
@@ -1200,6 +1220,8 @@ void rpc_task::run_read()
          * Not all backend reads have completed yet. When the last backend
          * read completes read_callback() will arrange to send the read
          * response to fuse.
+         * This is the more common case as backend READs will take time to
+         * complete.
          */
         return;
     }
@@ -1257,7 +1279,7 @@ void rpc_task::send_read_response()
     for (size_t i = 0; i < count; i++) {
         assert(bc_vec[i].pvt <= bc_vec[i].length);
 
-        iov[i].iov_base = (void*)bc_vec[i].get_buffer();
+        iov[i].iov_base = (void *) bc_vec[i].get_buffer();
         iov[i].iov_len = bc_vec[i].pvt;
 
         bytes_read += bc_vec[i].pvt;
@@ -1311,15 +1333,19 @@ static void read_callback(
 {
     struct read_context *ctx = (read_context*) private_data;
     rpc_task *task = ctx->task;
+    assert(task->magic == RPC_TASK_MAGIC);
+
+    rpc_task *parent_task = task->parent_task;
 
     /*
      * Only child tasks can issue the read RPC, hence the callback should
      * be called only for them.
      */
-    assert(task->parent_task != nullptr);
+    assert(parent_task != nullptr);
+    assert(parent_task->magic == RPC_TASK_MAGIC);
 
-    assert(task->magic == RPC_TASK_MAGIC);
-    assert(task->parent_task->num_ongoing_backend_reads > 0);
+    assert(parent_task->num_ongoing_backend_reads > 0);
+    assert(task->num_ongoing_backend_reads == 0);
 
     struct bytes_chunk *bc = ctx->bc;
     assert(bc->length > 0);
@@ -1381,16 +1407,21 @@ static void read_callback(
             child_tsk->init_read(
                 task->rpc_api->req,
                 task->rpc_api->read_task.get_ino(),
-                task->rpc_api->read_task.get_size(),
-                task->rpc_api->read_task.get_offset(),
-                nullptr /* fileinfo */);
+                new_offset,
+                new_size,
+                task->rpc_api->read_task.get_fuse_file());
 
             /*
              * Set the parent task of the child to the parent of the
-             * current RPC task.
+             * current RPC task. This is required if the current task itself
+             * if one of the child tasks running part of the fuse read request.
              */
-            child_tsk->parent_task = task->parent_task;
+            child_tsk->parent_task = parent_task;
 
+            /*
+             * TODO: To avoid allocating a new read_context we can reuse the
+             *       existing contest but we have to update the task member.
+             */
             struct read_context *new_ctx = new read_context(child_tsk, bc);
             bool rpc_retry;
             READ3args new_args;
@@ -1444,7 +1475,8 @@ static void read_callback(
             } while (rpc_retry);
 
             delete ctx;
-            // Free the current RPC task as we no longer need it.
+
+            // Free the current RPC task as it has done its bit.
             task->free_rpc_task();
 
             /*
@@ -1526,23 +1558,31 @@ static void read_callback(
 
     // Once failed, read_status remains at failed.
     int expected = 0;
-    task->parent_task->read_status.compare_exchange_weak(expected, status);
+    parent_task->read_status.compare_exchange_weak(expected, status);
 
     /*
      * Decrement the number of reads issued atomically and if it becomes zero
      * it means this is the last read completing. We send the response if all
      * the reads have completed or the read failed.
      */
-    if (--task->parent_task->num_ongoing_backend_reads == 0) {
-        task->parent_task->send_read_response();
+    if (--parent_task->num_ongoing_backend_reads == 0) {
+        /*
+         * Parent task must send the read response to fuse.
+         * This will also free parent_task.
+         */
+        parent_task->send_read_response();
+
         // Free the task after sending the response.
         task->free_rpc_task();
     } else {
         AZLogDebug("No response sent, waiting for more reads to complete."
                    " num_ongoing_backend_reads: {}",
-                   task->num_ongoing_backend_reads.load());
+                   parent_task->num_ongoing_backend_reads.load());
 
-        // Free the task here.
+        /*
+         * This task has completed its part of the read, free it here.
+         * When all reads complete, the parent task will be completed.
+         */
         task->free_rpc_task();
         return;
     }
@@ -1559,12 +1599,23 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
     struct nfs_inode *inode = get_client()->get_nfs_inode_from_ino(ino);
 
     /*
-     * This should always be called from the child task as we may issue read RPC
-     * to the backend.
+     * This should always be called from the child task as we will issue read
+     * RPC to the backend.
      */
     assert(parent_task != nullptr);
 
-    // This will be freed in read_callback().
+    /*
+     * We should be reading the entire data that the task needs.
+     */
+    assert(rpc_api->read_task.get_offset() == (off_t) bc.offset);
+    assert(rpc_api->read_task.get_size() == bc.length);
+
+    /*
+     * This will be freed in read_callback().
+     * Note that the read_context doesn't grab an extra ref on the membuf.
+     * Parent rpc_task has bc_vec[] which holds a ref till the entire read
+     * (possibly issued as multiple child reads) completes.
+     */
     struct read_context *ctx = new read_context(this, &bc);
 
     do {
@@ -1608,6 +1659,8 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
 
             // Free the current child task as we will not issue read RPC.
             free_rpc_task();
+
+            delete ctx;
 
             return;
         }
@@ -1671,6 +1724,17 @@ void rpc_task::free_rpc_task()
      */
     switch(get_op_type()) {
     case FUSE_READ:
+        /*
+         * parent_task will be nullptr for a parent task.
+         * Only parent tasks run the fuse request so only they can have
+         * bc_vec[] non-empty. Also only they can have read_status as
+         * non-zero as the overall status of the fuse read is tracked by the
+         * parent task.
+         */
+        assert(bc_vec.empty() || (parent_task == nullptr));
+        assert((read_status == 0) || (parent_task == nullptr));
+        assert(num_ongoing_backend_reads == 0);
+
         read_status = 0;
         bc_vec.clear();
         parent_task = nullptr;
