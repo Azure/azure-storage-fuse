@@ -1172,8 +1172,8 @@ void rpc_task::run_read()
             child_tsk->init_read(
                 rpc_api->req,
                 rpc_api->read_task.get_ino(),
-                bc_vec[i].offset,
                 bc_vec[i].length,
+                bc_vec[i].offset,
                 rpc_api->read_task.get_fuse_file());
 
             // Set the parent task of the child to the current RPC task.
@@ -1182,7 +1182,7 @@ void rpc_task::run_read()
             /*
              * Child task should always read a subset of the parent task.
              */
-            assert(child_tsk->rpc_api->read_task.get_offset() <=
+            assert(child_tsk->rpc_api->read_task.get_offset() >=
                    rpc_api->read_task.get_offset());
             assert(child_tsk->rpc_api->read_task.get_size() <=
                    rpc_api->read_task.get_size());
@@ -1407,8 +1407,8 @@ static void read_callback(
             child_tsk->init_read(
                 task->rpc_api->req,
                 task->rpc_api->read_task.get_ino(),
-                new_offset,
                 new_size,
+                new_offset,
                 task->rpc_api->read_task.get_fuse_file());
 
             /*
