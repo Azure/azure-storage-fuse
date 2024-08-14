@@ -188,8 +188,6 @@ struct write_context
 
     void set_task(struct rpc_task *_task)
     {
-        // We have no child task in write.
-        assert(_task->parent_task == nullptr);
         task = _task;
     }
 
