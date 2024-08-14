@@ -123,16 +123,12 @@ public:
         assert(stamp.complete > stamp.dispatch);
         assert(nfsstat3_to_errno(status) != -ERANGE);
 
-        if (status != 0)
-        {
-            assert(status != NFS3_OK);
-
+        if (status != NFS3_OK) {
             /*
              * This thread will block till it obtains the lock.
              * This can result in delayed response to the fuse as
              * on_rpc_complete will be called before sending response to fuse.
              * This should be okay as this will happen only in error state.
-             * TODO: Discuss this in review.
              */
             std::unique_lock<std::mutex> _lock(lock);
             auto result = opstats[optype].error_map.emplace(status, 1);
