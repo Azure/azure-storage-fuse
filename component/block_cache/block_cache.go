@@ -1111,7 +1111,6 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 		// If the block was staged earlier then we are overwriting it here so move it back to cooking queue
 		if block.flags.IsSet(BlockFlagSynced) {
 			log.Debug("BlockCache::getOrCreateBlock : Overwriting back to staged block %v for %v=>%s", block.id, handle.ID, handle.Path)
-			bc.addToCooking(handle, block)
 
 		} else if block.flags.IsSet(BlockFlagDownloading) {
 			log.Debug("BlockCache::getOrCreateBlock : Waiting for download to finish for committed block %v for %v=>%s", block.id, handle.ID, handle.Path)
@@ -1132,9 +1131,9 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 			log.Debug("BlockCache::getOrCreateBlock : Waiting for the block %v to upload for %v=>%s", block.id, handle.ID, handle.Path)
 			<-block.state
 			block.Unblock()
-
-			bc.addToCooking(handle, block)
 		}
+
+		bc.addToCooking(handle, block)
 
 		block.flags.Clear(BlockFlagUploading)
 		block.flags.Clear(BlockFlagDownloading)
@@ -1295,7 +1294,6 @@ func (bc *BlockCache) waitAndFreeUploadedBlocks(handle *handlemap.Handle, cnt in
 			_, ok := <-block.state
 			block.flags.Clear(BlockFlagDownloading)
 			block.flags.Clear(BlockFlagUploading)
-			block.flags.Clear(BlockFlagSynced)
 
 			if ok {
 				block.Unblock()
