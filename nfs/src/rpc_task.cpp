@@ -281,8 +281,9 @@ static void getattr_callback(
         task->get_client()->get_nfs_inode_from_ino(ino);
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
-    struct rpc_pdu *pdu = rpc_get_pdu(rpc);
-    task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
+    task->get_stats().on_rpc_complete(
+        rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
+        status);
 
     if (status == 0) {
         // Got fresh attributes, update the attributes cached in the inode.
@@ -310,8 +311,10 @@ static void lookup_callback(
     rpc_task *task = (rpc_task*) private_data;
     auto res = (LOOKUP3res*)data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
-    struct rpc_pdu *pdu = rpc_get_pdu(rpc);
-    task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
+
+    task->get_stats().on_rpc_complete(
+        rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
+        status);
 
     if (rpc_status == RPC_STATUS_SUCCESS && NFS_STATUS(res) == NFS3ERR_NOENT) {
         /*
@@ -507,8 +510,10 @@ static void createfile_callback(
     rpc_task *task = (rpc_task*) private_data;
     auto res = (CREATE3res*)data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
-    struct rpc_pdu *pdu = rpc_get_pdu(rpc);
-    task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
+
+    task->get_stats().on_rpc_complete(
+        rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
+        status);
 
     if (status == 0) {
         assert(
@@ -538,8 +543,10 @@ static void setattr_callback(
     const struct nfs_inode *inode =
         task->get_client()->get_nfs_inode_from_ino(ino);
     const int status = task->status(rpc_status, NFS_STATUS(res));
-    struct rpc_pdu *pdu = rpc_get_pdu(rpc);
-    task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
+
+    task->get_stats().on_rpc_complete(
+        rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
+        status);
 
     if (status == 0) {
         assert(res->SETATTR3res_u.resok.obj_wcc.after.attributes_follow);
@@ -568,8 +575,10 @@ void mkdir_callback(
     rpc_task *task = (rpc_task*) private_data;
     auto res = (MKDIR3res*)data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
-    struct rpc_pdu *pdu = rpc_get_pdu(rpc);
-    task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
+
+    task->get_stats().on_rpc_complete(
+        rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
+        status);
 
     if (status == 0) {
         assert(
@@ -595,8 +604,10 @@ void unlink_callback(
     rpc_task *task = (rpc_task*) private_data;
     auto res = (REMOVE3res*)data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
-    struct rpc_pdu *pdu = rpc_get_pdu(rpc);
-    task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
+
+    task->get_stats().on_rpc_complete(
+        rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
+        status);
 
     task->reply_error(status);
 }
@@ -610,8 +621,10 @@ void rmdir_callback(
     rpc_task *task = (rpc_task*) private_data;
     auto res = (RMDIR3res*) data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
-    struct rpc_pdu *pdu = rpc_get_pdu(rpc);
-    task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
+
+    task->get_stats().on_rpc_complete(
+        rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
+        status);
 
     task->reply_error(status);
 }
@@ -1489,8 +1502,9 @@ static void read_callback(
     const uint64_t issued_offset = bc->offset + bc->pvt;
     const uint64_t issued_length = bc->length - bc->pvt;
 
-    struct rpc_pdu *pdu = rpc_get_pdu(rpc);
-    task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
+    task->get_stats().on_rpc_complete(
+        rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
+        status);
 
     if (status == 0) {
         assert((bc->pvt == 0) || (bc->num_backend_calls_issued > 1));
@@ -1927,8 +1941,9 @@ static void readdir_callback(
     int num_dirents = 0;
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
-    struct rpc_pdu *pdu = rpc_get_pdu(rpc);
-    task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
+    task->get_stats().on_rpc_complete(
+        rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
+        status);
 
     if (status == 0) {
         const struct entry3 *entry = res->READDIR3res_u.resok.reply.entries;
@@ -2061,8 +2076,9 @@ static void readdirplus_callback(
     int num_dirents = 0;
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
-    struct rpc_pdu *pdu = rpc_get_pdu(rpc);
-    task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
+    task->get_stats().on_rpc_complete(
+        rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
+        status);
 
     if (status == 0) {
         const struct entryplus3 *entry =

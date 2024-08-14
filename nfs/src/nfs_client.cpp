@@ -655,12 +655,11 @@ static void getattr_callback(
 {
     auto ctx = (struct getattr_context*) private_data;
     auto res = (GETATTR3res*) data;
-    struct rpc_pdu *pdu = rpc_get_pdu(rpc);
 
     if (ctx->task) {
         assert(ctx->task->magic == RPC_TASK_MAGIC);
         ctx->task->get_stats().on_rpc_complete(
-            rpc_pdu_get_resp_size(pdu),
+            rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
             res->status);
     }
 

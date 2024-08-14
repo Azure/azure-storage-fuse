@@ -107,8 +107,9 @@ static void readahead_callback (
     assert(read_cache != nullptr);
     assert(ino == inode->get_fuse_ino());
 
-    struct rpc_pdu *pdu = rpc_get_pdu(rpc);
-    task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
+    task->get_stats().on_rpc_complete(
+        rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
+        status);
 
     // Success or failure, report readahead completion.
     inode->readahead_state->on_readahead_complete(bc->offset, bc->length);

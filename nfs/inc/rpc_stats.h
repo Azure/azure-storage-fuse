@@ -47,9 +47,9 @@ struct rpc_opstat
 
     /*
      * Error map to store all the errors encountered by the given api.
-     * This is guarded by std::mutex lock.
+     * This is guarded by rpc_stats_az::lock.
      */
-    std::map<int /*error status*/, std::atomic<uint64_t> /*error count*/> error_map;	
+    std::map<int /*error status*/, uint64_t /*error count*/> error_map;	
 };
 
 /**
