@@ -255,8 +255,8 @@ static void readahead_callback (
         bc->get_membuf()->set_uptodate();
     } else {
         AZLogDebug("Not updating uptodate flag. off: {}, len: {}",
-                  task->rpc_api.read_task.get_offset(),
-                  task->rpc_api.read_task.get_size());
+                  task->rpc_api->read_task.get_offset(),
+                  task->rpc_api->read_task.get_size());
         /*
          * If we got eof in a partial read, release the non-existent
          * portion of the chunk.
