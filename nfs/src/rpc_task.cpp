@@ -311,13 +311,12 @@ static void lookup_callback(
     auto res = (LOOKUP3res*)data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
     struct rpc_pdu *pdu = rpc_get_pdu(rpc);
+    task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
 
     if (rpc_status == RPC_STATUS_SUCCESS && NFS_STATUS(res) == NFS3ERR_NOENT) {
         /*
          * Special case for creating negative dentry.
          */
-
-        task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
         task->get_client()->reply_entry(
             task,
             nullptr /* fh */,
@@ -325,18 +324,14 @@ static void lookup_callback(
             nullptr);
     } else if (status == 0) {
         assert(res->LOOKUP3res_u.resok.obj_attributes.attributes_follow);
-
-        task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
         task->get_client()->reply_entry(
             task,
             &res->LOOKUP3res_u.resok.object,
             &res->LOOKUP3res_u.resok.obj_attributes.post_op_attr_u.attributes,
             nullptr);
     } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
-        task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
         task->get_client()->jukebox_retry(task);
     } else {
-        task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
         task->reply_error(status);
     }
 }
@@ -507,13 +502,12 @@ static void createfile_callback(
     auto res = (CREATE3res*)data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
     struct rpc_pdu *pdu = rpc_get_pdu(rpc);
+    task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
 
     if (status == 0) {
         assert(
             res->CREATE3res_u.resok.obj.handle_follows &&
             res->CREATE3res_u.resok.obj_attributes.attributes_follow);
-
-        task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
 
         task->get_client()->reply_entry(
             task,
@@ -521,7 +515,6 @@ static void createfile_callback(
             &res->CREATE3res_u.resok.obj_attributes.post_op_attr_u.attributes,
             task->rpc_api->create_task.get_fuse_file());
     } else {
-        task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
         task->reply_error(status);
     }
 }
@@ -540,6 +533,7 @@ static void setattr_callback(
         task->get_client()->get_nfs_inode_from_ino(ino);
     const int status = task->status(rpc_status, NFS_STATUS(res));
     struct rpc_pdu *pdu = rpc_get_pdu(rpc);
+    task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
 
     if (status == 0) {
         assert(res->SETATTR3res_u.resok.obj_wcc.after.attributes_follow);
@@ -547,7 +541,6 @@ static void setattr_callback(
         struct stat st;
         task->get_client()->stat_from_fattr3(
             &st, &res->SETATTR3res_u.resok.obj_wcc.after.post_op_attr_u.attributes);
-        task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
 
         /*
          * Set fuse kernel attribute cache timeout to the current attribute
@@ -556,7 +549,6 @@ static void setattr_callback(
          */
         task->reply_attr(&st, inode->get_actimeo());
     } else {
-        task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
         task->reply_error(status);
     }
 }
@@ -571,26 +563,25 @@ void mkdir_callback(
     auto res = (MKDIR3res*)data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
     struct rpc_pdu *pdu = rpc_get_pdu(rpc);
+    task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
 
     if (status == 0) {
         assert(
             res->MKDIR3res_u.resok.obj.handle_follows &&
             res->MKDIR3res_u.resok.obj_attributes.attributes_follow);
 
-        task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
         task->get_client()->reply_entry(
             task,
             &res->MKDIR3res_u.resok.obj.post_op_fh3_u.handle,
             &res->MKDIR3res_u.resok.obj_attributes.post_op_attr_u.attributes,
             nullptr);
     } else {
-        task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
         task->reply_error(status);
     }
 }
 
 void unlink_callback(
-    struct rpc_context* /* rpc */,
+    struct rpc_context *rpc,
     int rpc_status,
     void *data,
     void *private_data)
@@ -598,6 +589,8 @@ void unlink_callback(
     rpc_task *task = (rpc_task*) private_data;
     auto res = (REMOVE3res*)data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
+    struct rpc_pdu *pdu = rpc_get_pdu(rpc);
+    task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
 
     task->reply_error(status);
 }
@@ -612,14 +605,9 @@ void rmdir_callback(
     auto res = (RMDIR3res*) data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
     struct rpc_pdu *pdu = rpc_get_pdu(rpc);
- 
-    if (status == 0) {
-        task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
-        task->reply_error(0);
-    } else {
-        task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
-        task->reply_error(status);
-    }
+    task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
+
+    task->reply_error(status);
 }
 
 void rpc_task::run_lookup()
@@ -633,6 +621,7 @@ void rpc_task::run_lookup()
         args.what.dir = get_client()->get_nfs_inode_from_ino(parent_ino)->get_fh();
         args.what.name = (char*) rpc_api->lookup_task.get_file_name();
         rpc_retry = false;
+        const uint64_t dispatch_usec = get_current_usecs();
 
         if ((pdu = rpc_nfs3_lookup_task(get_rpc_ctx(), lookup_callback, &args,
                                  this)) == NULL) {
@@ -649,7 +638,7 @@ void rpc_task::run_lookup()
                       "after 5 secs!");
             ::sleep(5);
         } else {
-            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
+            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu), dispatch_usec);
         }
     } while (rpc_retry);
 }
@@ -931,6 +920,8 @@ void rpc_task::run_getattr()
         args.object = get_client()->get_nfs_inode_from_ino(ino)->get_fh();
 
         rpc_retry = false;
+        const uint64_t dispatch_usec = get_current_usecs();
+
         if ((pdu = rpc_nfs3_getattr_task(get_rpc_ctx(), getattr_callback, &args,
                                   this)) == NULL) {
             /*
@@ -946,7 +937,7 @@ void rpc_task::run_getattr()
                       "after 5 secs!");
             ::sleep(5);
         } else {
-            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
+            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu), dispatch_usec);
         }
     } while (rpc_retry);
 }
@@ -968,6 +959,8 @@ void rpc_task::run_create_file()
         args.how.createhow3_u.obj_attributes.mode.set_mode3_u.mode = rpc_api->create_task.get_mode();
 
         rpc_retry = false;
+        const uint64_t dispatch_usec = get_current_usecs();
+
         if ((pdu = rpc_nfs3_create_task(get_rpc_ctx(), createfile_callback, &args,
                                  this)) == NULL) {
             /*
@@ -983,7 +976,7 @@ void rpc_task::run_create_file()
                       "after 5 secs!");
             ::sleep(5);
         } else {
-            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
+            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu), dispatch_usec);
         }
     }  while (rpc_retry);
 }
@@ -1005,6 +998,8 @@ void rpc_task::run_mkdir()
         args.attributes.mode.set_mode3_u.mode = rpc_api->mkdir_task.get_mode();
 
         rpc_retry = false;
+        const uint64_t dispatch_usec = get_current_usecs();
+
         if ((pdu = rpc_nfs3_mkdir_task(get_rpc_ctx(), mkdir_callback, &args,
                                 this)) == NULL) {
             /*
@@ -1020,7 +1015,7 @@ void rpc_task::run_mkdir()
                       "after 5 secs!");
             ::sleep(5);
         } else {
-            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
+            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu), dispatch_usec);
         }
     } while (rpc_retry);
 }
@@ -1029,6 +1024,7 @@ void rpc_task::run_unlink()
 {
     bool rpc_retry;
     auto parent_ino = rpc_api->unlink_task.get_parent_ino();
+    rpc_pdu *pdu = nullptr;
 
     do {
         REMOVE3args args;
@@ -1036,8 +1032,10 @@ void rpc_task::run_unlink()
         args.object.name = (char*) rpc_api->unlink_task.get_file_name();
 
         rpc_retry = false;
-        if (rpc_nfs3_remove_task(get_rpc_ctx(),
-                                 unlink_callback, &args, this) == NULL) {
+        const uint64_t dispatch_usec = get_current_usecs();
+
+        if ((pdu = rpc_nfs3_remove_task(get_rpc_ctx(),
+                                 unlink_callback, &args, this)) == NULL) {
             /*
              * Most common reason for this is memory allocation failure,
              * hence wait for some time before retrying. Also block the
@@ -1050,6 +1048,8 @@ void rpc_task::run_unlink()
             AZLogWarn("rpc_nfs3_remove_task failed to issue, retrying "
                       "after 5 secs!");
             ::sleep(5);
+        } else {
+            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu), dispatch_usec);
         }
     } while (rpc_retry);
 }
@@ -1067,6 +1067,8 @@ void rpc_task::run_rmdir()
         args.object.name = (char*) rpc_api->rmdir_task.get_dir_name();
 
         rpc_retry = false;
+        const uint64_t dispatch_usec = get_current_usecs();
+
         if ((pdu = rpc_nfs3_rmdir_task(get_rpc_ctx(),
                                 rmdir_callback, &args, this)) == NULL) {
             /*
@@ -1082,7 +1084,7 @@ void rpc_task::run_rmdir()
                       "after 5 secs!");
             ::sleep(5);
         } else {
-            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
+            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu), dispatch_usec);
         }
     } while (rpc_retry);
 }
@@ -1160,6 +1162,8 @@ void rpc_task::run_setattr()
         }
 
         rpc_retry = false;
+        const uint64_t dispatch_usec = get_current_usecs();
+
         if ((pdu = rpc_nfs3_setattr_task(get_rpc_ctx(), setattr_callback, &args,
                                   this)) == NULL) {
             /*
@@ -1175,7 +1179,7 @@ void rpc_task::run_setattr()
                       "after 5 secs!");
             ::sleep(5);
         } else {
-            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
+            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu), dispatch_usec);
         }
     } while (rpc_retry);
 }
@@ -1478,6 +1482,9 @@ static void read_callback(
     const uint64_t issued_offset = bc->offset + bc->pvt;
     const uint64_t issued_length = bc->length - bc->pvt;
 
+    struct rpc_pdu *pdu = rpc_get_pdu(rpc);
+    task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
+
     if (status == 0) {
         assert((bc->pvt == 0) || (bc->num_backend_calls_issued > 1));
 
@@ -1564,14 +1571,17 @@ static void read_callback(
                  * Note: It is okay to issue a read call directly here
                  *       as we are holding all the needed locks and refs.
                  */
+                rpc_pdu *pdu = nullptr;
                 rpc_retry = false;
-                if (rpc_nfs3_read_task(
+                const uint64_t dispatch_usec = get_current_usecs();
+
+                if ((pdu = rpc_nfs3_read_task(
                         child_tsk->get_rpc_ctx(),
                         read_callback,
                         bc->get_buffer() + bc->pvt,
                         new_size,
                         &new_args,
-                        (void *) new_ctx) == NULL) {
+                        (void *) new_ctx)) == NULL) {
                     /*
                      * Most common reason for this is memory allocation failure,
                      * hence wait for some time before retrying. Also block the
@@ -1584,6 +1594,10 @@ static void read_callback(
                     AZLogWarn("rpc_nfs3_read_task failed to issue, retrying "
                               "after 5 secs!");
                     ::sleep(5);
+                } else {
+                    child_tsk->get_stats().on_rpc_dispatch(
+                        rpc_pdu_get_req_size(pdu),
+                        dispatch_usec);
                 }
             } while (rpc_retry);
 
@@ -1604,8 +1618,6 @@ static void read_callback(
          * unless error or eof is encountered after this point.
          */
         assert((bc->length == bc->pvt) || res->READ3res_u.resok.eof);
-
-        task->get_stats().on_rpc_complete(0 /*resp_size*/, status);
 
         if (bc->is_empty && (bc->length == bc->pvt)) {
             /*
@@ -1645,8 +1657,6 @@ static void read_callback(
                    bc->offset + bc->length,
                    bc->num_backend_calls_issued,
                    errstr);
-
-        task->get_stats().on_rpc_complete(0 /*resp_size*/, status);
     }
 
     // Free the context.
@@ -1714,7 +1724,6 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
     bool rpc_retry;
     const auto ino = rpc_api->read_task.get_ino();
     struct nfs_inode *inode = get_client()->get_nfs_inode_from_ino(ino);
-    rpc_pdu *pdu = nullptr;
 
     /*
      * This should always be called from the child task as we will issue read
@@ -1799,7 +1808,10 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
                    args.offset,
                    args.count);
 
+        rpc_pdu *pdu = nullptr;
         rpc_retry = false;
+        const uint64_t dispatch_usec = get_current_usecs();
+
         if ((pdu = rpc_nfs3_read_task(
                 get_rpc_ctx(), /* This round robins request across connections */
                 read_callback,
@@ -1820,7 +1832,7 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
                       "after 5 secs!");
             ::sleep(5);
         } else {
-            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
+            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu), dispatch_usec);
         }
     } while (rpc_retry);
 }
@@ -1907,7 +1919,9 @@ static void readdir_callback(
     std::vector<const directory_entry*> readdirentries;
     int num_dirents = 0;
     const int status = task->status(rpc_status, NFS_STATUS(res));
+
     struct rpc_pdu *pdu = rpc_get_pdu(rpc);
+    task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
 
     if (status == 0) {
         const struct entry3 *entry = res->READDIR3res_u.resok.reply.entries;
@@ -2006,13 +2020,10 @@ static void readdir_callback(
             }
         }
 
-        task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
         task->send_readdir_response(readdirentries);
     } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
-        task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
         task->get_client()->jukebox_retry(task);
     } else {
-        task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
         task->reply_error(status);
     }
 }
@@ -2042,7 +2053,9 @@ static void readdirplus_callback(
     std::vector<const directory_entry*> readdirentries;
     int num_dirents = 0;
     const int status = task->status(rpc_status, NFS_STATUS(res));
+
     struct rpc_pdu *pdu = rpc_get_pdu(rpc);
+    task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
 
     if (status == 0) {
         const struct entryplus3 *entry =
@@ -2229,13 +2242,10 @@ static void readdirplus_callback(
             }
         }
 
-        task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
         task->send_readdir_response(readdirentries);
     } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
-        task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
         task->get_client()->jukebox_retry(task);
     } else {
-        task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
         task->reply_error(status);
     }
 }
@@ -2313,9 +2323,9 @@ void rpc_task::fetch_readdir_entries_from_server()
             args.count = 131072;
         }
 
-        stats.on_rpc_dispatch(sizeof(args));
-
         rpc_retry = false;
+        const uint64_t dispatch_usec = get_current_usecs();
+
         if ((pdu = rpc_nfs3_readdir_task(get_rpc_ctx(),
                                   readdir_callback,
                                   &args,
@@ -2333,7 +2343,7 @@ void rpc_task::fetch_readdir_entries_from_server()
                       "after 5 secs!");
             ::sleep(5);
         } else {
-            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
+            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu), dispatch_usec);
         }
     } while (rpc_retry);
 }
@@ -2362,9 +2372,9 @@ void rpc_task::fetch_readdirplus_entries_from_server()
         args.maxcount = nfs_get_readdir_maxcount(get_nfs_context());
         args.dircount = args.maxcount;
 
-        stats.on_rpc_dispatch(sizeof(args));
-
         rpc_retry = false;
+        const uint64_t dispatch_usec = get_current_usecs();
+
         if ((pdu = rpc_nfs3_readdirplus_task(get_rpc_ctx(),
                                       readdirplus_callback,
                                       &args,
@@ -2382,7 +2392,7 @@ void rpc_task::fetch_readdirplus_entries_from_server()
                       "after 5 secs!");
             ::sleep(5);
         } else {
-            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
+            stats.on_rpc_dispatch(rpc_pdu_get_req_size(pdu), dispatch_usec);
         }
     } while (rpc_retry);
 }

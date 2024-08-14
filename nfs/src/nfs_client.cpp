@@ -648,17 +648,20 @@ struct getattr_context
 };
 
 static void getattr_callback(
-    struct rpc_context* /* rpc */,
+    struct rpc_context *rpc,
     int rpc_status,
     void *data,
     void *private_data)
 {
     auto ctx = (struct getattr_context*) private_data;
     auto res = (GETATTR3res*) data;
+    struct rpc_pdu *pdu = rpc_get_pdu(rpc);
 
     if (ctx->task) {
         assert(ctx->task->magic == RPC_TASK_MAGIC);
-        ctx->task->get_stats().on_rpc_complete(sizeof(*res), res->status);
+        ctx->task->get_stats().on_rpc_complete(
+            rpc_pdu_get_resp_size(pdu),
+            res->status);
     }
 
     {
@@ -701,7 +704,7 @@ bool nfs_client::getattr_sync(const struct nfs_fh3& fh,
     struct nfs_context *nfs_context = get_nfs_context(CONN_SCHED_FH_HASH, fh_hash);
     struct rpc_task *task = nullptr;
     struct getattr_context *ctx = nullptr;
-    struct rpc_pdu *pdu;
+    struct rpc_pdu *pdu = nullptr;
     struct rpc_context *rpc;
 
 try_again:
@@ -720,8 +723,6 @@ try_again:
             }
             task = get_rpc_task_helper()->alloc_rpc_task(FUSE_GETATTR);
             task->init_getattr(nullptr /* fuse_req */, ino);
-            task->get_stats().on_rpc_dispatch(
-                    sizeof(args) + args.object.data.data_len);
         } else {
             assert(ino == FUSE_ROOT_ID);
         }
@@ -731,8 +732,9 @@ try_again:
         }
 
         ctx = new getattr_context(&fattr, task);
-
         rpc = nfs_get_rpc_context(nfs_context);
+        const uint64_t dispatch_usec = get_current_usecs();
+
         if ((pdu = rpc_nfs3_getattr_task(rpc, getattr_callback,
                                          &args, ctx)) == NULL) {
             /*
@@ -740,6 +742,13 @@ try_again:
              * and not due to an actual error, hence retry.
              */
             rpc_retry = true;
+        } else {
+            if (task != nullptr)
+            {
+                task->get_stats().on_rpc_dispatch(
+                    rpc_pdu_get_req_size(pdu),
+                    dispatch_usec);
+            }
         }
     } while (rpc_retry);
 

@@ -8,24 +8,6 @@
 
 namespace aznfsc {
 
-/*
- * Estimated size of the rpc header for request and reply.
- * This can be different than the actual size sent on the wire.
- * Since we do not have access to the actual rpc packet at this layer
- * all we can do is to estimate it to the closest value possible based
- * on the defination of the related structures.
- * Note : The size of a pointer is estimated to 8 bytes.
- */
-const uint64_t rpc_header_request_size_in_bytes = 
-    4 /* xid */
-    + 4 /* direction */
-    + 64 /* struct call_body (rpcvers(4) + prog(4) + vers(4) + proc(4) + cred(16) + verf(24) + args(8)) */;
-
-const uint64_t rpc_header_reply_size_in_bytes = 
-    4 /* xid */
-    + 4 /* direction */
-    + 68 /* struct reply_body */;
-
 /**
  * Stats for a specific RPC type.
  */
@@ -120,11 +102,11 @@ public:
      *
      * Note: The request size should be close estimate of the number of bytes
      */
-    void on_rpc_dispatch(uint64_t _req_size)
+    void on_rpc_dispatch(uint64_t _req_size, uint64_t dispatch_usec)
     {
         assert(_req_size > 0);
         req_size = _req_size;
-        stamp.dispatch = get_current_usecs(); // TODO: pass the start dispatch time
+        stamp.dispatch = dispatch_usec;
         assert(stamp.dispatch >= stamp.create);
     }
 

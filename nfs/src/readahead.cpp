@@ -82,7 +82,7 @@ struct ra_context
 };
 
 static void readahead_callback (
-    struct rpc_context* /* rpc */,
+    struct rpc_context *rpc,
     int rpc_status,
     void *data,
     void *private_data)
@@ -91,7 +91,6 @@ static void readahead_callback (
     struct rpc_task *task = ctx->task;
     const struct bytes_chunk *bc = &ctx->bc;
     auto res = (READ3res*) data;
-    int resp_size = sizeof(*res);
     const char *errstr = nullptr;
 
     assert(task->magic == RPC_TASK_MAGIC);
@@ -107,6 +106,9 @@ static void readahead_callback (
 
     assert(read_cache != nullptr);
     assert(ino == inode->get_fuse_ino());
+
+    struct rpc_pdu *pdu = rpc_get_pdu(rpc);
+    task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu), status);
 
     // Success or failure, report readahead completion.
     inode->readahead_state->on_readahead_complete(bc->offset, bc->length);
@@ -124,8 +126,6 @@ static void readahead_callback (
         // Release the buffer since we did not fill it.
         read_cache->release(bc->offset, bc->length);
 
-        task->get_stats().on_rpc_complete(resp_size, status);
-
         AZLogWarn("[{}] readahead_callback [FAILED]: "
                   "Requested (off: {}, len: {}): rpc_status={}, "
                   "nfs_status={}, error={}",
@@ -137,9 +137,6 @@ static void readahead_callback (
                   errstr);
         goto delete_ctx;
     }
-
-    resp_size += res->READ3res_u.resok.count;
-    task->get_stats().on_rpc_complete(resp_size, status);
 
     if (res->READ3res_u.resok.count != bc->length) {
         /*
@@ -345,8 +342,8 @@ int ra_state::issue_readaheads()
                        args.offset,
                        args.count);
 
-            int req_size = sizeof(args) + args.file.data.data_len;
-            tsk->get_stats().on_rpc_dispatch(req_size);
+            rpc_pdu *pdu = nullptr;
+            const uint64_t dispatch_usec = get_current_usecs();
 
             /*
              * tsk->get_rpc_ctx() call below will round robin readahead
@@ -355,13 +352,13 @@ int ra_state::issue_readaheads()
              * TODO: See if issuing a batch of reads over one connection
              *       before moving to the other connection helps.
              */
-            if (rpc_nfs3_read_task(
+            if ((pdu = rpc_nfs3_read_task(
                         tsk->get_rpc_ctx(),
                         readahead_callback,
                         bc.get_buffer(),
                         bc.length,
                         &args,
-                        ctx) == NULL) {
+                        ctx)) == NULL) {
                 /*
                  * This call failed due to internal issues like OOM etc
                  * and not due to an actual RPC/NFS error, anyways pretend
@@ -384,6 +381,10 @@ int ra_state::issue_readaheads()
                 inode->decref();
 
                 continue;
+            } else {
+                tsk->get_stats().on_rpc_dispatch(
+                    rpc_pdu_get_req_size(pdu),
+                    dispatch_usec);
             }
 
             ra_issued++;
