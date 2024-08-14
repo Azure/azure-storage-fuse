@@ -5,6 +5,7 @@
 #include <mutex>
 
 #include "aznfsc.h"
+#include "libnfs-raw.h"
 
 namespace aznfsc {
 
@@ -114,15 +115,18 @@ public:
      * Event handler method to be called when the RPC completes, i.e., when
      * the libnfs callback is called.
      */
-    void on_rpc_complete(uint64_t _resp_size, int status)
+    void on_rpc_complete(uint64_t _resp_size, nfsstat3 status)
     {
         assert(_resp_size > 0);
         resp_size = _resp_size;
         stamp.complete = get_current_usecs();
         assert(stamp.complete > stamp.dispatch);
+        assert(nfsstat3_to_errno(status) != -ERANGE);
 
         if (status != 0)
         {
+            assert(status != NFS3_OK);
+
             /*
              * This thread will block till it obtains the lock.
              * This can result in delayed response to the fuse as

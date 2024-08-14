@@ -549,6 +549,7 @@ static void setattr_callback(
         assert(res->SETATTR3res_u.resok.obj_wcc.after.attributes_follow);
 
         struct stat st;
+
         task->get_client()->stat_from_fattr3(
             &st, &res->SETATTR3res_u.resok.obj_wcc.after.post_op_attr_u.attributes);
 
