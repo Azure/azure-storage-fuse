@@ -170,7 +170,7 @@ void rpc_task::init_unlink(fuse_req *request,
                            fuse_ino_t parent_ino,
                            const char *name)
 {
-    assert(optype == FUSE_UNLINK);
+    assert(get_op_type() == FUSE_UNLINK);
     set_fuse_req(request);
     rpc_api->unlink_task.set_parent_ino(parent_ino);
     rpc_api->unlink_task.set_file_name(name);
@@ -970,22 +970,29 @@ void rpc_task::run_mkdir()
 
 void rpc_task::run_unlink()
 {
-    bool rpc_retry = false;
+    bool rpc_retry;
     auto parent_ino = rpc_api->unlink_task.get_parent_ino();
 
     do {
         REMOVE3args args;
-        ::memset(&args, 0, sizeof(args));
         args.object.dir = get_client()->get_nfs_inode_from_ino(parent_ino)->get_fh();
         args.object.name = (char*) rpc_api->unlink_task.get_file_name();
 
+        rpc_retry = false;
         if (rpc_nfs3_remove_task(get_rpc_ctx(),
                                  unlink_callback, &args, this) == NULL) {
             /*
-             * This call fails due to internal issues like OOM etc
-             * and not due to an actual error, hence retry.
+             * Most common reason for this is memory allocation failure,
+             * hence wait for some time before retrying. Also block the
+             * current thread as we really want to slow down things.
+             *
+             * TODO: For soft mount should we fail this?
              */
             rpc_retry = true;
+
+            AZLogWarn("rpc_nfs3_remove_task failed to issue, retrying "
+                      "after 5 secs!");
+            ::sleep(5);
         }
     } while (rpc_retry);
 }
