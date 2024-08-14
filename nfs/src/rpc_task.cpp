@@ -345,7 +345,7 @@ static void lookup_callback(
  * Called when libnfs completes a WRITE RPC.
  */
 static void write_callback(
-    struct rpc_context* /* rpc */,
+    struct rpc_context *rpc,
     int rpc_status,
     void *data,
     void *private_data)
@@ -362,6 +362,9 @@ static void write_callback(
     /*
      * Sanity check.
      */
+    assert(client != nullptr);
+    assert(client->magic == NFS_CLIENT_MAGIC);
+    assert(rpc != nullptr);
     assert(task->magic == RPC_TASK_MAGIC);
     assert(task->get_op_type() == FUSE_WRITE ||
            task->get_op_type() == FUSE_FLUSH ||
@@ -453,8 +456,7 @@ static void write_callback(
             /*
              * Update the stats for the original task.
              */
-            pdu = rpc_get_pdu(task->get_rpc_ctx());
-            task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu));
+            task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(rpc_get_pdu(rpc)));
 
             // Release the task.
             task->free_rpc_task();
