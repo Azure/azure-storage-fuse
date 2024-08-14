@@ -357,7 +357,6 @@ static void write_callback(
     struct nfs_inode *inode =
         task->get_client()->get_nfs_inode_from_ino(ctx->get_ino());
     struct nfs_client *client = task->get_client();
-    int req_size = 0;
 
     /*
      * Sanity check.
@@ -379,6 +378,11 @@ static void write_callback(
     const char* errstr;
     const int status = task->status(rpc_status, NFS_STATUS(res), &errstr);
 
+    /*
+     * Update completion time for the task.
+     */
+    task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(rpc_get_pdu(rpc)));
+
     // Success case.
     if (status == 0) {
         // Successful Blob write must not return 0.
@@ -392,6 +396,7 @@ static void write_callback(
 
         assert(count <= size);
 
+        // TODO: Use bc->pvt for tracking progressing in case of partial writes.
         if (count < size) {
             /*
              * Written less than intended, unlikely but possible.
@@ -417,7 +422,6 @@ static void write_callback(
              */
             struct rpc_task *flush_task = client->get_rpc_task_helper()->alloc_rpc_task(FUSE_FLUSH);
             flush_task->init_flush(nullptr /* fuse_req */, ino);
-            flush_task->set_op_type(FUSE_FLUSH);
 
             // Update the ctx with new task.
             ctx->set_task(flush_task);
@@ -431,7 +435,7 @@ static void write_callback(
             do {
                 rpc_retry = false;
                 if ((pdu = rpc_nfs3_write_task(flush_task->get_rpc_ctx(), write_callback,
-                                        &args, ctx)) == NULL) {
+                                               &args, ctx)) == NULL) {
                    /*
                     * Most common reason for this is memory allocation failure,
                     * hence wait for some time before retrying. Also block the
@@ -449,14 +453,9 @@ static void write_callback(
 
             /*
              * Update the stats for the new task.
+             * It is dispatched just now.
              */
-            req_size += rpc_pdu_get_req_size(pdu);
-            flush_task->get_stats().on_rpc_dispatch(req_size);
-
-            /*
-             * Update the stats for the original task.
-             */
-            task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(rpc_get_pdu(rpc)));
+            flush_task->get_stats().on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
 
             // Release the task.
             task->free_rpc_task();
@@ -490,10 +489,6 @@ static void write_callback(
 
     // We don't want to cache the data after the write completes.
     inode->filecache_handle->release(bc->offset, bc->length);
-
-    // Update the stats.
-    struct rpc_pdu *pdu = rpc_get_pdu(task->get_rpc_ctx());
-    task->get_stats().on_rpc_complete(rpc_pdu_get_resp_size(pdu));
 
     // Release the task.
     task->free_rpc_task();
@@ -726,7 +721,6 @@ static void sync_membuf(const struct bytes_chunk& bc,
 {
     struct membuf *mb = bc.get_membuf();
     struct rpc_task *flush_task = nullptr;
-    int req_size = 0;
 
     // Verify the mb.
     assert(mb != nullptr);
@@ -774,8 +768,8 @@ static void sync_membuf(const struct bytes_chunk& bc,
 
         // Set flag to flushing.
         mb->set_flushing();
-        bool rpc_retry;
 
+        bool rpc_retry;
         do {
             rpc_retry = false;
             if ((pdu = rpc_nfs3_write_task(flush_task->get_rpc_ctx(),
@@ -797,8 +791,7 @@ static void sync_membuf(const struct bytes_chunk& bc,
         } while (rpc_retry);
 
         // Update the req_size with on-wire pdu size.
-        req_size += rpc_pdu_get_req_size(pdu);
-        flush_task->get_stats().on_rpc_dispatch(req_size);
+        flush_task->get_stats().on_rpc_dispatch(rpc_pdu_get_req_size(pdu));
     } else {
         mb->clear_locked();
         flush_task->free_rpc_task();
