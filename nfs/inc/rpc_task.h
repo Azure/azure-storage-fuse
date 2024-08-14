@@ -186,6 +186,13 @@ struct write_context
         return task;
     }
 
+    void set_task(struct rpc_task *_task)
+    {
+        // We have no child task in write.
+        assert(_task->parent_task == nullptr);
+        task = _task;
+    }
+
     const struct bytes_chunk& get_bytes_chunk() const
     {
         return bc;
