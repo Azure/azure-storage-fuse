@@ -37,6 +37,7 @@
 package azstorage
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
@@ -133,10 +134,11 @@ func (s *blockBlobTruncateSuite) cleanupTest() {
 	_ = log.Destroy()
 }
 
-const maxSize = 300 * 1024 * 1024 // 300MB
+const maxSize = 500 // Max size in MB
+
 func generateRandomSize() int64 {
 	size, _ := rand.Int(rand.Reader, big.NewInt(maxSize+1))
-	return size.Int64()
+	return size.Int64() * MB
 }
 
 type FileSize struct {
@@ -165,22 +167,25 @@ func (suite *blockBlobTruncateSuite) TestFileTruncate() {
 	fileSizes = append(fileSizes, FileSize{10, (16 * MB * 3) + 50})
 
 	// Create random numbers for file sizes and truncate sizes
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 256; i++ {
 		fileSizes = append(fileSizes, FileSize{generateRandomSize(), generateRandomSize()})
 	}
 
 	for idx, fs := range fileSizes {
 		filename := fmt.Sprintf("testfile_%d", idx)
-		h, err := suite.az.CreateFile(internal.CreateFileOptions{Name: filename, Mode: 0777})
+
+		data := bytes.Repeat([]byte{'a'}, int(fs.OriginalSize))
+
+		err := os.WriteFile(filename, data, 0777)
+		suite.assert.Nil(err)
+
+		h, err := os.Open(filename)
 		suite.assert.Nil(err)
 		suite.assert.NotNil(h)
 
-		data := make([]byte, fs.OriginalSize)
-		len, err := suite.az.WriteFile(internal.WriteFileOptions{Handle: h, Data: data, Offset: 0})
-		suite.assert.Nil(err)
-		suite.assert.Equal(fs.OriginalSize, len)
-
-		_ = suite.az.CloseFile(internal.CloseFileOptions{Handle: h})
+		suite.az.CopyFromFile(internal.CopyFromFileOptions{Name: filename, File: h, Metadata: nil})
+		_ = h.Close()
+		os.Remove(filename)
 
 		err = suite.az.TruncateFile(internal.TruncateFileOptions{Name: filename, Size: fs.TruncatedSize})
 		suite.assert.Nil(err)

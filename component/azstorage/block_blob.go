@@ -1073,6 +1073,7 @@ func (bb *BlockBlob) TruncateFile(name string, size int64, blockSize int64) erro
 		return err
 	}
 
+	// Get the committed block list from the source file
 	committedBlockList, err := bb.GetCommittedBlockList(name)
 	if err != nil {
 		log.Err("BlockBlob::TruncateFile : Failed to get block list of file %s [%s]", name, err.Error())
@@ -1225,59 +1226,41 @@ func (bb *BlockBlob) convertFileToBlocks(name string, size int64, blockSize int6
 	oldDataLen := int64(len(data))
 	blkList := make([]string, 0)
 
-	if size < blockSize {
-		// Entire data can fit into one block so just upload the data and commit the list
-		id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
-		_, err := blobClient.StageBlock(context.Background(),
-			id,
-			streaming.NopCloser(bytes.NewReader(data)),
-			&blockblob.StageBlockOptions{
-				CPKInfo: bb.blobCPKOpt,
-			})
-		if err != nil {
-			log.Err("BlockBlob::convertFileToBlocks : Failed to stage block for %s [%s]", name, err.Error())
-			return err
+	offset := int64(0)
+	createBlock := true
+	id := ""
+
+	for i := 0; size > 0; i++ {
+		if size < blockSize {
+			blockSize = size
+			createBlock = true
 		}
+
+		if createBlock {
+			newData := make([]byte, blockSize)
+			id = base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
+
+			if offset < oldDataLen {
+				copy(newData, data[offset:])
+			} else {
+				createBlock = false
+			}
+
+			_, err := blobClient.StageBlock(context.Background(),
+				id,
+				streaming.NopCloser(bytes.NewReader(newData)),
+				&blockblob.StageBlockOptions{
+					CPKInfo: bb.blobCPKOpt,
+				})
+			if err != nil {
+				log.Err("BlockBlob::convertFileToBlocks : Failed to stage block for %s [%s]", name, err.Error())
+				return err
+			}
+		}
+
+		size -= blockSize
+		offset += blockSize
 		blkList = append(blkList, id)
-
-	} else {
-		// Data can not fit in one block so we need to split it up in multiple blocks now
-		offset := int64(0)
-		createBlock := true
-		id := ""
-
-		for i := 0; size > 0; i++ {
-			if size < blockSize {
-				blockSize = size
-				createBlock = true
-			}
-
-			if createBlock {
-				newData := make([]byte, blockSize)
-				id = base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
-
-				if offset < oldDataLen {
-					copy(newData, data[offset:])
-				} else {
-					createBlock = false
-				}
-
-				_, err := blobClient.StageBlock(context.Background(),
-					id,
-					streaming.NopCloser(bytes.NewReader(newData)),
-					&blockblob.StageBlockOptions{
-						CPKInfo: bb.blobCPKOpt,
-					})
-				if err != nil {
-					log.Err("BlockBlob::convertFileToBlocks : Failed to stage block for %s [%s]", name, err.Error())
-					return err
-				}
-			}
-
-			size -= blockSize
-			offset += blockSize
-			blkList = append(blkList, id)
-		}
 	}
 
 	err := bb.CommitBlocks(blobName, blkList)
