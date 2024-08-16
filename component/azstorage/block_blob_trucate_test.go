@@ -136,6 +136,10 @@ func (s *blockBlobTruncateSuite) cleanupTest() {
 
 const maxSize = 500 // Max size in MB
 
+func getMaxSize() int64 {
+	return maxSize * MB
+}
+
 func generateRandomSize() int64 {
 	size, _ := rand.Int(rand.Reader, big.NewInt(maxSize+1))
 	return size.Int64() * MB
@@ -159,8 +163,8 @@ func (suite *blockBlobTruncateSuite) TestFileTruncate() {
 	fileSizes = append(fileSizes, FileSize{5, 20})
 
 	// Truncate file to max size to 0 and reverse
-	fileSizes = append(fileSizes, FileSize{0, maxSize - 5})
-	fileSizes = append(fileSizes, FileSize{maxSize - 5, 0})
+	fileSizes = append(fileSizes, FileSize{0, getMaxSize() - 5})
+	fileSizes = append(fileSizes, FileSize{getMaxSize() - 5, 0})
 
 	// Truncate file from very low size to big size and reverse
 	fileSizes = append(fileSizes, FileSize{(16 * MB * 3) + 50, 10})
