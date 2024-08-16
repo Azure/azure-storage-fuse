@@ -826,6 +826,16 @@ func (bc *BlockCache) refreshBlock(handle *handlemap.Handle, index uint64, prefe
 		block := node.Value.(*Block)
 
 		if block.id != -1 {
+			// If the block is being staged, then wait till it is uploaded
+			// and then use it for read
+			if block.flags.IsSet(BlockFlagUploading) {
+				log.Debug("BlockCache::refreshBlock : Waiting for the block %v to upload before using it for block %v read for %v=>%s", block.id, index, handle.ID, handle.Path)
+				_, ok := <-block.state
+				if ok {
+					block.Unblock()
+				}
+			}
+
 			// This is a reuse of a block case so we need to remove old entry from the map
 			handle.RemoveValue(fmt.Sprintf("%v", block.id))
 		}
