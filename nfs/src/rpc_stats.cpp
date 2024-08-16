@@ -98,7 +98,11 @@ do { \
         const int pcent_ops = (ops.count * 100) / cum_stats.num_req_sent; \
         str += opstr + ":\n"; \
         str += "        " + std::to_string(ops.count) + \
-                        " ops (" + std::to_string(pcent_ops) + ")\n"; \
+                        " ops (" + std::to_string(pcent_ops) + "%)\n"; \
+        if (ops.pending > 0) { \
+            str += "        " + std::to_string(ops.pending) + \
+                            " pending\n"; \
+        } \
         str += "        Avg bytes sent per op: " + \
                         std::to_string(ops.bytes_sent / ops.count) + "\n"; \
         str += "        Avg bytes received per op: " + \
@@ -124,15 +128,16 @@ do { \
 } while (0)
 
     DUMP_OP(FUSE_LOOKUP);
-    DUMP_OP(FUSE_GETATTR);
-    DUMP_OP(FUSE_SETATTR);
-    DUMP_OP(FUSE_READ);
-    DUMP_OP(FUSE_READDIR);
-    DUMP_OP(FUSE_READDIRPLUS);
-    DUMP_OP(FUSE_WRITE);
     DUMP_OP(FUSE_CREATE);
     DUMP_OP(FUSE_MKDIR);
+    DUMP_OP(FUSE_GETATTR);
+    DUMP_OP(FUSE_SETATTR);
     DUMP_OP(FUSE_RMDIR);
+    DUMP_OP(FUSE_UNLINK);
+    DUMP_OP(FUSE_READ);
+    DUMP_OP(FUSE_WRITE);
+    DUMP_OP(FUSE_READDIR);
+    DUMP_OP(FUSE_READDIRPLUS);
 
     /*
      * TODO: Add more ops.

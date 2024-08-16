@@ -15,9 +15,15 @@ namespace aznfsc {
 struct rpc_opstat
 {
     /*
-     * How many RPCs of this type.
+     * How many RPCs of this type completed?
      */
     std::atomic<uint64_t> count = 0;
+
+    /*
+     * How many RPCs of this type are issued to libnfs and awaiting completion
+     * callback.
+     */
+    std::atomic<uint64_t> pending = 0;
 
     /*
      * Cumulative request bytes.
@@ -125,6 +131,9 @@ public:
          * time we override this.
          */
         stamp.dispatch = stamp.issue;
+
+        assert(optype > 0 && optype <= FUSE_OPCODE_MAX);
+        opstats[optype].pending++;
     }
 
     /**
@@ -147,6 +156,10 @@ public:
 
         stamp.complete = get_current_usecs();
         assert(stamp.complete > stamp.dispatch);
+
+        assert(optype > 0 && optype <= FUSE_OPCODE_MAX);
+        assert(opstats[optype].pending > 0);
+        opstats[optype].pending--;
 
         if (status != NFS3_OK) {
             /*
