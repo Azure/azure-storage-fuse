@@ -317,6 +317,16 @@ public:
         fuse_ino_t parent_ino,
         const char* name);
 
+    void symlink(
+        fuse_req_t req,
+        const char *link,
+        fuse_ino_t parent_ino,
+        const char *name);
+
+    void readlink(
+        fuse_req_t req,
+        fuse_ino_t ino);
+
     void setattr(
         fuse_req_t req,
         fuse_ino_t ino,

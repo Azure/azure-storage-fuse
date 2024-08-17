@@ -483,6 +483,66 @@ private:
     char *dir_name;
 };
 
+struct symlink_rpc_task
+{
+    fuse_ino_t get_parent_ino() const
+    {
+        return parent_ino;
+    }
+
+    const char *get_name() const
+    {
+        return name;
+    }
+
+    const char *get_link() const
+    {
+        return link;
+    }
+
+    void set_parent_ino(fuse_ino_t parent)
+    {
+        parent_ino = parent;
+    }
+
+    void set_name(const char *_name)
+    {
+        name = ::strdup(_name);
+    }
+
+    void set_link(const char *_link)
+    {
+        link = ::strdup(_link);
+    }
+
+    void release()
+    {
+        ::free(name);
+        ::free(link);
+    }
+
+private:
+    fuse_ino_t parent_ino;
+    char *name;
+    char *link;
+};
+
+struct readlink_rpc_task
+{
+    void set_ino(fuse_ino_t ino)
+    {
+        this->ino = ino;
+    }
+
+    fuse_ino_t get_ino() const
+    {
+        return ino;
+    }
+
+private:
+    fuse_ino_t ino;
+};
+
 struct readdir_rpc_task
 {
 public:
@@ -650,6 +710,8 @@ struct api_task_info
         struct mkdir_rpc_task mkdir_task;
         struct unlink_rpc_task unlink_task;
         struct rmdir_rpc_task rmdir_task;
+        struct symlink_rpc_task symlink_task;
+        struct readlink_rpc_task readlink_task;
         struct readdir_rpc_task readdir_task;
         struct read_rpc_task read_task;
     };
@@ -956,6 +1018,24 @@ public:
 
     void run_rmdir();
 
+    /*
+     * init/run methods for the SYMLINK RPC.
+     */
+    void init_symlink(fuse_req *request,
+                      const char *link,
+                      fuse_ino_t parent_ino,
+                      const char *name);
+
+    void run_symlink();
+
+    /*
+     * init/run methods for the READLINK RPC.
+     */
+    void init_readlink(fuse_req *request,
+                       fuse_ino_t ino);
+
+    void run_readlink();
+
     // This function is responsible for setting up the members of readdir_task.
     void init_readdir(fuse_req *request,
                      fuse_ino_t inode,
@@ -1054,6 +1134,12 @@ public:
     void reply_error(int rc)
     {
         fuse_reply_err(get_fuse_req(), rc);
+        free_rpc_task();
+    }
+
+    void reply_readlink(const char* linkname)
+    {
+        fuse_reply_readlink(get_fuse_req(), linkname);
         free_rpc_task();
     }
 

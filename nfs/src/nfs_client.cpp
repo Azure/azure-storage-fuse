@@ -429,6 +429,28 @@ void nfs_client::rmdir(
     tsk->run_rmdir();
 }
 
+void nfs_client::symlink(
+    fuse_req_t req,
+    const char* link,
+    fuse_ino_t parent_ino,
+    const char* name)
+{
+    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_SYMLINK);
+
+    tsk->init_symlink(req, link, parent_ino, name);
+    tsk->run_symlink();
+}
+
+void nfs_client::readlink(
+    fuse_req_t req,
+    fuse_ino_t ino)
+{
+    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_READLINK);
+
+    tsk->init_readlink(req, ino);
+    tsk->run_readlink();
+}
+
 void nfs_client::setattr(
     fuse_req_t req,
     fuse_ino_t ino,
