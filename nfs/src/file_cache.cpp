@@ -1437,8 +1437,8 @@ void bytes_chunk_cache::inline_prune()
         return;
     }
 
-    AZLogInfo("[{}] inline_prune(): Inline prune goal of {:0.2f} MB",
-              fmt::ptr(this), inline_bytes / (1024 * 1024.0));
+    AZLogDebug("[{}] inline_prune(): Inline prune goal of {:0.2f} MB",
+               fmt::ptr(this), inline_bytes / (1024 * 1024.0));
 
     uint32_t inuse = 0, dirty = 0;
     uint64_t inuse_bytes = 0, dirty_bytes = 0;
@@ -1454,7 +1454,6 @@ void bytes_chunk_cache::inline_prune()
          * Possibly under IO.
          */
         if (mb->is_inuse()) {
-#if 0
             AZLogDebug("[{}] inline_prune(): skipping as membuf(offset={}, "
                        "length={}) is inuse (locked={}, dirty={}, flushing={}, "
                        "uptodate={})",
@@ -1463,7 +1462,6 @@ void bytes_chunk_cache::inline_prune()
                        mb->is_dirty() ? "yes" : "no",
                        mb->is_flushing() ? "yes" : "no",
                        mb->is_uptodate() ? "yes" : "no");
-#endif
             inuse++;
             inuse_bytes += mb->allocated_length;
             continue;
@@ -1481,13 +1479,11 @@ void bytes_chunk_cache::inline_prune()
          * Cannot safely drop this from the cache.
          */
         if (mb->is_dirty()) {
-#if 0
             AZLogDebug("[{}] inline_prune(): skipping as membuf(offset={}, "
                        "length={}) is dirty (flushing={}, uptodate={})",
                        fmt::ptr(this), mb->offset, mb->length,
                        mb->is_flushing() ? "yes" : "no",
                        mb->is_uptodate() ? "yes" : "no");
-#endif
             dirty++;
             dirty_bytes += mb->allocated_length;
             continue;
@@ -1519,16 +1515,16 @@ void bytes_chunk_cache::inline_prune()
     }
 
     if (pruned_bytes < inline_bytes) {
-        AZLogWarn("Could not meet inline prune goal, pruned {} of {} bytes "
-                  "[inuse={}/{}, dirty={}/{}]",
-                  pruned_bytes, inline_bytes,
-                  inuse, inuse_bytes,
-                  dirty, dirty_bytes);
+        AZLogDebug("Could not meet inline prune goal, pruned {} of {} bytes "
+                   "[inuse={}/{}, dirty={}/{}]",
+                   pruned_bytes, inline_bytes,
+                   inuse, inuse_bytes,
+                   dirty, dirty_bytes);
     } else {
-        AZLogInfo("Successfully pruned {} bytes [inuse={}/{}, dirty={}/{}]",
-                  pruned_bytes,
-                  inuse, inuse_bytes,
-                  dirty, dirty_bytes);
+        AZLogDebug("Successfully pruned {} bytes [inuse={}/{}, dirty={}/{}]",
+                   pruned_bytes,
+                   inuse, inuse_bytes,
+                   dirty, dirty_bytes);
     }
 }
 
