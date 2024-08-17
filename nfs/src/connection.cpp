@@ -53,11 +53,12 @@ bool nfs_connection::open()
             ::sleep(5);
             continue;
         } else if (status != 0) {
-            AZLogError("[{}] Failed to mount nfs share ({}:{}): {}",
+            AZLogError("[{}] Failed to mount nfs share ({}:{}): {} ({})",
                        (void *) nfs_context,
                        mo.server,
                        mo.export_path,
-                       nfs_get_error(nfs_context));
+                       nfs_get_error(nfs_context),
+                       status);
             goto destroy_context;
         }
     } while (status == -EAGAIN);

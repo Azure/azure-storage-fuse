@@ -50,12 +50,17 @@ void rpc_stats_az::dump_stats()
 
         rpc_get_stats(rpc, &stats);
 
-        cum_stats.num_req_sent       += stats.num_req_sent;
-        cum_stats.num_resp_rcvd      += stats.num_resp_rcvd;
-        cum_stats.num_timedout       += stats.num_timedout;
-        cum_stats.num_major_timedout += stats.num_major_timedout;
-        cum_stats.num_retransmitted  += stats.num_retransmitted;
-        cum_stats.num_reconnects     += stats.num_reconnects;
+#define _CUM(s) cum_stats.s += stats.s
+        _CUM(num_req_sent);
+        _CUM(num_resp_rcvd);
+        _CUM(num_timedout);
+        _CUM(num_timedout_in_outqueue);
+        _CUM(num_major_timedout);
+        _CUM(num_retransmitted);
+        _CUM(num_reconnects);
+        _CUM(outqueue_len);
+        _CUM(waitpdu_len);
+#undef _CUM
     }
 
     str += "---[RPC stats]----------\n";
@@ -83,12 +88,24 @@ void rpc_stats_az::dump_stats()
            std::string(",mountproto=tcp\n");
 
     str += "RPC statistics:\n";
-    str += "  " + std::to_string(cum_stats.num_req_sent) + " RPC requests sent\n";
-    str += "  " + std::to_string(cum_stats.num_resp_rcvd) + " RPC replies received\n";
-    str += "  " + std::to_string(cum_stats.num_timedout) + " RPC requests time out\n";
-    str += "  " + std::to_string(cum_stats.num_major_timedout) + " RPC requests major time out\n";
-    str += "  " + std::to_string(cum_stats.num_retransmitted) + " RPC requests retransmitted\n";
-    str += "  " + std::to_string(cum_stats.num_reconnects) + " Reconnect attempts\n";
+    str += "  " + std::to_string(cum_stats.num_req_sent) +
+                  " RPC requests sent\n";
+    str += "  " + std::to_string(cum_stats.num_resp_rcvd) +
+                  " RPC replies received\n";
+    str += "  " + std::to_string(cum_stats.outqueue_len) +
+                  " RPC requests in libnfs outqueue\n";
+    str += "  " + std::to_string(cum_stats.waitpdu_len) +
+                  " RPC requests in libnfs waitpdu queue\n";
+    str += "  " + std::to_string(cum_stats.num_timedout_in_outqueue) +
+                  " RPC requests timed out in outqueue\n";
+    str += "  " + std::to_string(cum_stats.num_timedout) +
+                  " RPC requests timed out waiting for response\n";
+    str += "  " + std::to_string(cum_stats.num_major_timedout) +
+                  " RPC requests major timed out\n";
+    str += "  " + std::to_string(cum_stats.num_retransmitted) +
+                  " RPC requests retransmitted\n";
+    str += "  " + std::to_string(cum_stats.num_reconnects) +
+                  " Reconnect attempts\n";
 
 #define DUMP_OP(opcode) \
 do { \
