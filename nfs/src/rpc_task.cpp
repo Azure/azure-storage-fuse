@@ -1219,7 +1219,7 @@ void rpc_task::run_rmdir()
 void rpc_task::run_symlink()
 {
     bool rpc_retry;
-    auto parent_ino = rpc_api->symlink_task.get_parent_ino();
+    const fuse_ino_t parent_ino = rpc_api->symlink_task.get_parent_ino();
     rpc_pdu *pdu = nullptr;
 
     do {
@@ -1255,7 +1255,7 @@ void rpc_task::run_symlink()
 void rpc_task::run_readlink()
 {
     bool rpc_retry;
-    auto ino = rpc_api->readlink_task.get_ino();
+    const fuse_ino_t ino = rpc_api->readlink_task.get_ino();
     rpc_pdu *pdu = nullptr;  
 
     do {

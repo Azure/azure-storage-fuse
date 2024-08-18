@@ -529,9 +529,9 @@ private:
 
 struct readlink_rpc_task
 {
-    void set_ino(fuse_ino_t ino)
+    void set_ino(fuse_ino_t _ino)
     {
-        this->ino = ino;
+        ino = _ino;
     }
 
     fuse_ino_t get_ino() const
