@@ -604,10 +604,11 @@ static void aznfsc_ll_setattr(fuse_req_t req,
 static void aznfsc_ll_readlink(fuse_req_t req,
                                fuse_ino_t ino)
 {
-    /*
-     * TODO: Fill me.
-     */
-    fuse_reply_err(req, ENOSYS);
+    AZLogDebug("aznfsc_ll_readlink(req={}, ino={})",
+               fmt::ptr(req), ino);
+
+    struct nfs_client *client = get_nfs_client_from_fuse_req(req);
+    client->readlink(req, ino);
 }
 
 static void aznfsc_ll_mknod(fuse_req_t req,
@@ -661,10 +662,11 @@ static void aznfsc_ll_symlink(fuse_req_t req,
                               fuse_ino_t parent_ino,
                               const char *name)
 {
-    /*
-     * TODO: Fill me.
-     */
-    fuse_reply_err(req, ENOSYS);
+    AZLogDebug("aznfsc_ll_symlink(req={}, link={}, parent_ino={}, name={})",
+               fmt::ptr(req), link, parent_ino, name);
+
+    struct nfs_client *client = get_nfs_client_from_fuse_req(req);
+    client->symlink(req, link, parent_ino, name);
 }
 
 static void aznfsc_ll_rename(fuse_req_t req,

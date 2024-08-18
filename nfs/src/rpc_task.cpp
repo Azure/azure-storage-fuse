@@ -190,6 +190,30 @@ void rpc_task::init_rmdir(fuse_req *request,
     fh_hash = get_client()->get_nfs_inode_from_ino(parent_ino)->get_crc();
 }
 
+void rpc_task::init_symlink(fuse_req *request,
+                            const char *link,
+                            fuse_ino_t parent_ino,
+                            const char *name)
+{
+    assert(get_op_type() == FUSE_SYMLINK);
+    set_fuse_req(request);
+    rpc_api->symlink_task.set_link(link);
+    rpc_api->symlink_task.set_parent_ino(parent_ino);
+    rpc_api->symlink_task.set_name(name);
+
+    fh_hash = get_client()->get_nfs_inode_from_ino(parent_ino)->get_crc();
+}
+
+void rpc_task::init_readlink(fuse_req *request,
+                            fuse_ino_t ino)
+{
+    assert(get_op_type() == FUSE_READLINK);
+    set_fuse_req(request);
+    rpc_api->readlink_task.set_ino(ino);
+
+    fh_hash = get_client()->get_nfs_inode_from_ino(ino)->get_crc();
+}
+
 void rpc_task::init_setattr(fuse_req *request,
                             fuse_ino_t ino,
                             struct stat *attr,
@@ -664,6 +688,66 @@ void rmdir_callback(
     task->reply_error(status);
 }
 
+void symlink_callback(
+    struct rpc_context *rpc,
+    int rpc_status,
+    void *data,
+    void *private_data)
+{
+    rpc_task *task = (rpc_task*) private_data;
+    auto res = (SYMLINK3res*) data;
+    const int status = task->status(rpc_status, NFS_STATUS(res));
+
+    /*
+     * Now that the request has completed, we can query libnfs for the
+     * dispatch time.
+     */
+    task->get_stats().on_rpc_complete(
+        rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
+        rpc_pdu_get_dispatch_usecs(rpc_get_pdu(rpc)),
+        NFS_STATUS(res));
+
+    if (status == 0) {
+        assert(
+            res->SYMLINK3res_u.resok.obj.handle_follows &&
+            res->SYMLINK3res_u.resok.obj_attributes.attributes_follow);
+
+        task->get_client()->reply_entry(
+            task,
+            &res->SYMLINK3res_u.resok.obj.post_op_fh3_u.handle,
+            &res->SYMLINK3res_u.resok.obj_attributes.post_op_attr_u.attributes,
+            nullptr);
+    } else {
+        task->reply_error(status);
+    }
+}
+
+void readlink_callback(
+    struct rpc_context *rpc,
+    int rpc_status,
+    void *data,
+    void *private_data)
+{
+    rpc_task *task = (rpc_task*) private_data;
+    auto res = (READLINK3res*) data;
+    const int status = task->status(rpc_status, NFS_STATUS(res));
+
+    /*
+     * Now that the request has completed, we can query libnfs for the
+     * dispatch time.
+     */
+    task->get_stats().on_rpc_complete(
+        rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
+        rpc_pdu_get_dispatch_usecs(rpc_get_pdu(rpc)),
+        NFS_STATUS(res));
+
+    if (status == 0) {
+        task->reply_readlink(res->READLINK3res_u.resok.data);
+    } else {
+        task->reply_error(status);
+    }
+}
+
 void rpc_task::run_lookup()
 {
     fuse_ino_t parent_ino = rpc_api->lookup_task.get_parent_ino();
@@ -1124,6 +1208,75 @@ void rpc_task::run_rmdir()
             rpc_retry = true;
 
             AZLogWarn("rpc_nfs3_rmdir_task failed to issue, retrying "
+                      "after 5 secs!");
+            ::sleep(5);
+        } else {
+            stats.on_rpc_issue(rpc_pdu_get_req_size(pdu));
+        }
+    } while (rpc_retry);
+}
+
+void rpc_task::run_symlink()
+{
+    bool rpc_retry;
+    auto parent_ino = rpc_api->symlink_task.get_parent_ino();
+    rpc_pdu *pdu = nullptr;
+
+    do {
+        SYMLINK3args args;
+        ::memset(&args, 0, sizeof(args));
+        args.where.dir = get_client()->get_nfs_inode_from_ino(parent_ino)->get_fh();
+        args.where.name = (char*) rpc_api->symlink_task.get_name();
+        args.symlink.symlink_data = (char*) rpc_api->symlink_task.get_link();
+
+        rpc_retry = false;
+        if ((pdu = rpc_nfs3_symlink_task(get_rpc_ctx(),
+                                         symlink_callback,
+                                         &args,
+                                         this)) == NULL) {
+            /*
+             * Most common reason for this is memory allocation failure,
+             * hence wait for some time before retrying. Also block the
+             * current thread as we really want to slow down things.
+             *
+             * TODO: For soft mount should we fail this?
+             */
+            rpc_retry = true;
+
+            AZLogWarn("rpc_nfs3_symlink_task failed to issue, retrying "
+                      "after 5 secs!");
+            ::sleep(5);
+        } else {
+            stats.on_rpc_issue(rpc_pdu_get_req_size(pdu));
+        }
+    } while (rpc_retry);
+}
+
+void rpc_task::run_readlink()
+{
+    bool rpc_retry;
+    auto ino = rpc_api->readlink_task.get_ino();
+    rpc_pdu *pdu = nullptr;  
+
+    do {
+        READLINK3args args;
+        args.symlink = get_client()->get_nfs_inode_from_ino(ino)->get_fh();
+
+        rpc_retry = false;
+        if ((pdu = rpc_nfs3_readlink_task(get_rpc_ctx(),
+                                          readlink_callback,
+                                          &args,
+                                          this)) == NULL) {
+            /*
+             * Most common reason for this is memory allocation failure,
+             * hence wait for some time before retrying. Also block the
+             * current thread as we really want to slow down things.
+             *
+             * TODO: For soft mount should we fail this?
+             */
+            rpc_retry = true;
+
+            AZLogWarn("rpc_nfs3_readlink_task failed to issue, retrying "
                       "after 5 secs!");
             ::sleep(5);
         } else {
