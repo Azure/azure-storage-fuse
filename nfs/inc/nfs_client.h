@@ -323,6 +323,14 @@ public:
         fuse_ino_t parent_ino,
         const char *name);
 
+    void rename(
+        fuse_req_t req,
+        fuse_ino_t parent_ino,
+        const char *name,
+        fuse_ino_t newparent_ino,
+        const char *new_name,
+        unsigned int flags);
+
     void readlink(
         fuse_req_t req,
         fuse_ino_t ino);

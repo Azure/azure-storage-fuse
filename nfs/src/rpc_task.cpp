@@ -204,6 +204,30 @@ void rpc_task::init_symlink(fuse_req *request,
     fh_hash = get_client()->get_nfs_inode_from_ino(parent_ino)->get_crc();
 }
 
+void rpc_task::init_rename(fuse_req *request,
+                           fuse_ino_t parent_ino,
+                           const char *name,
+                           fuse_ino_t newparent_ino,
+                           const char *newname,
+                           unsigned int flags)
+{
+    assert(get_op_type() == FUSE_RENAME);
+    set_fuse_req(request);
+    rpc_api->rename_task.set_parent_ino(parent_ino);
+    rpc_api->rename_task.set_name(name);
+    rpc_api->rename_task.set_newparent_ino(newparent_ino);
+    rpc_api->rename_task.set_newname(newname);
+    rpc_api->rename_task.set_flags(flags);
+
+    /*
+     * In case of cross-dir rename, we have to choose between
+     * old and new dir to have the updated cache. We prefer
+     * new_dir as that's where the user expects the file to
+     * show up.
+     */
+    fh_hash = get_client()->get_nfs_inode_from_ino(newparent_ino)->get_crc();
+}
+
 void rpc_task::init_readlink(fuse_req *request,
                             fuse_ino_t ino)
 {
@@ -720,6 +744,28 @@ void symlink_callback(
     } else {
         task->reply_error(status);
     }
+}
+
+void rename_callback(
+    struct rpc_context *rpc,
+    int rpc_status,
+    void *data,
+    void *private_data)
+{
+    rpc_task *task = (rpc_task*) private_data;
+    auto res = (RENAME3res*) data;
+    const int status = task->status(rpc_status, NFS_STATUS(res));
+
+    /*
+     * Now that the request has completed, we can query libnfs for the
+     * dispatch time.
+     */
+    task->get_stats().on_rpc_complete(
+        rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
+        rpc_pdu_get_dispatch_usecs(rpc_get_pdu(rpc)),
+        NFS_STATUS(res));
+
+    task->reply_error(status);
 }
 
 void readlink_callback(
@@ -1244,6 +1290,44 @@ void rpc_task::run_symlink()
             rpc_retry = true;
 
             AZLogWarn("rpc_nfs3_symlink_task failed to issue, retrying "
+                      "after 5 secs!");
+            ::sleep(5);
+        } else {
+            stats.on_rpc_issue(rpc_pdu_get_req_size(pdu));
+        }
+    } while (rpc_retry);
+}
+
+void rpc_task::run_rename()
+{
+    bool rpc_retry;
+    const fuse_ino_t parent_ino = rpc_api->rename_task.get_parent_ino();
+    const fuse_ino_t newparent_ino = rpc_api->rename_task.get_newparent_ino();
+
+    rpc_pdu *pdu = nullptr;
+
+    do {
+        RENAME3args args;
+        args.from.dir = get_client()->get_nfs_inode_from_ino(parent_ino)->get_fh();
+        args.from.name = (char*) rpc_api->rename_task.get_name();
+        args.to.dir = get_client()->get_nfs_inode_from_ino(newparent_ino)->get_fh();
+        args.to.name = (char*) rpc_api->rename_task.get_newname();
+
+        rpc_retry = false;
+        if ((pdu = rpc_nfs3_rename_task(get_rpc_ctx(),
+                                        rename_callback,
+                                        &args,
+                                        this)) == NULL) {
+            /*
+             * Most common reason for this is memory allocation failure,
+             * hence wait for some time before retrying. Also block the
+             * current thread as we really want to slow down things.
+             *
+             * TODO: For soft mount should we fail this?
+             */
+            rpc_retry = true;
+
+            AZLogWarn("rpc_nfs3_rename_task failed to issue, retrying "
                       "after 5 secs!");
             ::sleep(5);
         } else {

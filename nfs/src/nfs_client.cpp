@@ -441,6 +441,20 @@ void nfs_client::symlink(
     tsk->run_symlink();
 }
 
+void nfs_client::rename(
+    fuse_req_t req,
+    fuse_ino_t parent_ino,
+    const char *name,
+    fuse_ino_t newparent_ino,
+    const char *new_name,
+    unsigned int flags)
+{
+    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_RENAME);
+
+    tsk->init_rename(req, parent_ino, name, newparent_ino, new_name, flags);
+    tsk->run_rename();
+}
+
 void nfs_client::readlink(
     fuse_req_t req,
     fuse_ino_t ino)
