@@ -948,6 +948,8 @@ static void aznfsc_ll_access(fuse_req_t req,
     /*
      * TODO: Fill me.
      */
+    AZLogInfo("aznfsc_ll_access(req={}, ino={}, mask={:x}",
+              fmt::ptr(req), ino, mask);
     fuse_reply_err(req, ENOSYS);
 }
 
@@ -1050,14 +1052,20 @@ static void aznfsc_ll_write_buf(fuse_req_t req,
                                 off_t off,
                                 struct fuse_file_info *fi)
 {
-    AZLogDebug("aznfsc_ll_write_buf(req={}, ino={}, bufv={}, off={}, fi={}",
-               fmt::ptr(req), ino, fmt::ptr(bufv), off, fmt::ptr(fi));
-
-    struct nfs_client *client = get_nfs_client_from_fuse_req(req);
     assert(bufv->idx < bufv->count);
-
     const size_t length = bufv->buf[bufv->idx].size - bufv->off;
     assert((int) length >= 0);
+
+    /*
+     * XXX We are only handling count=1, assert to know if kernel sends more,
+     *     we would want to handle that.
+     */
+    assert(bufv->count == 1);
+
+    AZLogDebug("aznfsc_ll_write_buf(req={}, ino={}, bufv={}, off={}, len={}, fi={}",
+               fmt::ptr(req), ino, fmt::ptr(bufv), off, length, fmt::ptr(fi));
+
+    struct nfs_client *client = get_nfs_client_from_fuse_req(req);
 
     /*
      * Sanity assert. 1MiB is the max write size fuse will ever issue.
