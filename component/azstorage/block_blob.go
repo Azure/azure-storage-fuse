@@ -1064,6 +1064,11 @@ func (bb *BlockBlob) TruncateFile(name string, size int64, blockSize int64) erro
 		blockSize = bb.Config.blockSize
 	}
 
+	if blockSize == 0 {
+		// Nothing is configured then assume 16MB as default size
+		blockSize = 16 * 1024 * 1024
+	}
+
 	if attr.Size == 0 {
 		// File does not have any data yet so we just need to fill this with 0's
 		err = bb.createSparseFile(name, size, blockSize, make([]string, 0))
