@@ -527,6 +527,72 @@ private:
     char *link;
 };
 
+struct rename_rpc_task
+{
+    fuse_ino_t get_parent_ino() const
+    {
+        return parent_ino;
+    }
+
+    fuse_ino_t get_newparent_ino() const
+    {
+        return newparent_ino;
+    }
+
+    const char *get_name() const
+    {
+        return name;
+    }
+
+    const char *get_newname() const
+    {
+        return newname;
+    }
+
+    unsigned int get_flags() const
+    {
+        return flags;
+    }
+
+    void set_parent_ino(fuse_ino_t parent)
+    {
+        parent_ino = parent;
+    }
+
+    void set_newparent_ino(fuse_ino_t parent)
+    {
+        newparent_ino = parent;
+    }
+
+    void set_name(const char *_name)
+    {
+        name = ::strdup(_name);
+    }
+
+    void set_newname(const char *name)
+    {
+        newname = ::strdup(name);
+    }
+
+    void set_flags(unsigned int _flags)
+    {
+        flags = _flags;
+    }
+
+    void release()
+    {
+        ::free(name);
+        ::free(newname);
+    }
+
+private:
+    fuse_ino_t parent_ino;
+    fuse_ino_t newparent_ino;
+    char *name;
+    char *newname;
+    unsigned int flags;
+};
+
 struct readlink_rpc_task
 {
     void set_ino(fuse_ino_t _ino)
@@ -711,6 +777,7 @@ struct api_task_info
         struct unlink_rpc_task unlink_task;
         struct rmdir_rpc_task rmdir_task;
         struct symlink_rpc_task symlink_task;
+        struct rename_rpc_task rename_task;
         struct readlink_rpc_task readlink_task;
         struct readdir_rpc_task readdir_task;
         struct read_rpc_task read_task;
@@ -1027,6 +1094,18 @@ public:
                       const char *name);
 
     void run_symlink();
+
+    /*
+     * init/run methods for the RENAME RPC.
+     */
+    void init_rename(fuse_req *request,
+                     fuse_ino_t parent_ino,
+                     const char *name,
+                     fuse_ino_t newparent_ino,
+                     const char *newname,
+                     unsigned int flags);
+
+    void run_rename();
 
     /*
      * init/run methods for the READLINK RPC.

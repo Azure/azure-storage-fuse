@@ -676,10 +676,16 @@ static void aznfsc_ll_rename(fuse_req_t req,
                              const char *newname,
                              unsigned int flags)
 {
-    /*
-     * TODO: Fill me.
-     */
-    fuse_reply_err(req, ENOSYS);
+    AZLogDebug("aznfsc_ll_rename(req={}, parent_ino={}, name={},"
+               " newparent_ino={}, newname={}, flags={})",
+               fmt::ptr(req), parent_ino, name,
+               newparent_ino, newname, flags);
+
+    // We don't support `RENAME_EXCHANGE` or `RENAME_NOREPLACE` flags for now.
+    assert(flags == 0);
+
+    struct nfs_client *client = get_nfs_client_from_fuse_req(req);
+    client->rename(req, parent_ino, name, newparent_ino, newname, flags);
 }
 
 static void aznfsc_ll_link(fuse_req_t req,
