@@ -119,33 +119,71 @@ stages:
                 displayName: 'Install fuse'
 
           - script: |
+              cd $(WORK_DIR)
+              $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key_bc.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
+            displayName: Create Key Config File
+            env:
+              ACCOUNT_TYPE: 'block'
+              NIGHTLY_STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
+              NIGHTLY_STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
+              ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
+              VERBOSE_LOG: false
+            continueOnError: false
+
+          - script: cat $(BLOBFUSE2_CFG)
+            displayName: Print config file
+
+          - script:
+              mkdir -p $(MOUNT_DIR)
+              mkdir -p $(TEMP_DIR)
+            displayName: "Create directory structure"
+
+          - template: 'mount.yml'
+            parameters:
+              working_dir: $(WORK_DIR)
+              mount_dir: $(MOUNT_DIR)
+              temp_dir: $(TEMP_DIR)
+              ro_mount: false
+              mountStep: 
+                script: |
+                  $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --default-working-dir=$(WORK_DIR)
+          
+          - script: |
+              cd $(MOUNT_DIR)
               git clone https://github.com/microsoft/vscode.git
             displayName: 'Clone VScode'
 
           - script: |
-              cd vscode
+              cd $(MOUNT_DIR)/vscode
               curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
               sudo apt install npm -y
               sudo apt-get install -y nodejs
             displayName: 'Install dependencies'
 
           - script: |
+              cd $(MOUNT_DIR)/vscode
               npm install -g yarn
             displayName: 'Install yarn'
 
           - script: | 
+              cd $(MOUNT_DIR)/vscode
               yarn add ternary-stream json-stable-stringify-without-jsonify
             displayName: 'Add modules'
 
           - script: |
+              cd $(MOUNT_DIR)/vscode
               sudo yarn 
             displayName: 'Build VScode'
 
           - script: |
+              cd $(MOUNT_DIR)/vscode
               yarn compile
             displayName: 'Compile VScode'
 
-  
-          
+          - template: 'azure-pipeline-templates/cleanup.yml'
+            parameters:
+              working_dir: $(WORK_DIR)
+              mount_dir: $(MOUNT_DIR)
+              temp_dir: $(TEMP_DIR)
 
-        
+ 
