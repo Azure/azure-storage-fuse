@@ -277,9 +277,15 @@ void nfs_inode::revalidate(bool force)
          * File not changed, exponentially increase attr_timeout_secs.
          * File changed case is handled inside update_nolock() as that's
          * needed by other callsites of update_nolock().
+         * We don't increase the attribute cache timeout for the forced
+         * case as that can result in quick getattr calls and doesn't
+         * necessarily mean that the attributes have not changed for the
+         * entire attribute cache timeout period.
          */
-        attr_timeout_secs =
-            std::min((int) attr_timeout_secs*2, get_actimeo_max());
+        if (!force) {
+            attr_timeout_secs =
+                std::min((int) attr_timeout_secs*2, get_actimeo_max());
+        }
         attr_timeout_timestamp = now_msecs + attr_timeout_secs*1000;
     }
 }
