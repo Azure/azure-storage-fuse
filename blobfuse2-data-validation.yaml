@@ -133,6 +133,10 @@ stages:
               npm install -g yarn
             displayName: 'Install yarn'
 
+          - script: | 
+              yarn add ternary-stream json-stable-stringify-without-jsonify
+            displayName: 'Add modules'
+
           - script: |
               sudo yarn 
             displayName: 'Build VScode'
@@ -140,6 +144,8 @@ stages:
           - script: |
               yarn compile
             displayName: 'Compile VScode'
+
+  
           
 
         
