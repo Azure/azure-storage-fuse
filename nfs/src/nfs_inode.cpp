@@ -343,7 +343,7 @@ void nfs_inode::invalidate_cache_nolock()
      */
     if (is_dir()) {
         purge_dircache_nolock();
-    } else {
+    } else if (is_regfile()) {
         purge_filecache_nolock();
     }
 }
