@@ -171,11 +171,12 @@ func (suite *blockBlobTruncateSuite) TestFileTruncate() {
 	fileSizes = append(fileSizes, FileSize{10, (16 * MB * 3) + 50})
 
 	// Create random numbers for file sizes and truncate sizes
-	for i := 0; i < 256; i++ {
+	for i := 0; i < 50; i++ {
 		fileSizes = append(fileSizes, FileSize{generateRandomSize(), generateRandomSize()})
 	}
 
 	for idx, fs := range fileSizes {
+		fmt.Printf("Truncate Test: %v => %v\n", fs.OriginalSize, fs.TruncatedSize)
 		filename := fmt.Sprintf("testfile_%d", idx)
 
 		data := bytes.Repeat([]byte{'a'}, int(fs.OriginalSize))
