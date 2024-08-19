@@ -55,6 +55,57 @@ void aznfsc_help(const char *argv0)
  */
 bool aznfsc_cfg::parse_config_yaml()
 {
+
+#define __CHECK_INT(var, min, max, zeroisvalid) \
+do { \
+    if (((var) == -1) && config[#var]) { \
+        (var) = config[#var].as<int>(); \
+        if ((var) < min || (var) > max) { \
+            if ((zeroisvalid) && ((var) == 0)) { \
+                break; \
+            } \
+            throw YAML::Exception( \
+                    config[#var].Mark(), \
+                    std::string("Invalid "#var" value: ") + \
+                    std::to_string(var) + \
+                    std::string(" (valid range [") + \
+                    std::to_string(min) + ", " + std::to_string(max) + "])"); \
+        }\
+    } \
+} while (0);
+
+/*
+ * Macro to check validity of config var of integer type.
+ */
+#define _CHECK_INT(var, min, max) __CHECK_INT(var, min, max, false)
+
+/*
+ * Macro to check validity of config var of integer type with 0 being a
+ * valid value.
+ */
+#define _CHECK_INTZ(var, min, max) __CHECK_INT(var, min, max, true)
+
+/*
+ * Macro to check validity of config var of string type.
+ */
+#define _CHECK_STR(var, ignore_empty) \
+do { \
+    if (((var) == nullptr) && config[#var]) { \
+        /* Empty key is returned as "null" by the yaml parser */ \
+        if ((ignore_empty) && config[#var].as<std::string>() == "null") { \
+            break; \
+        } \
+        (var) = ::strdup(config[#var].as<std::string>().c_str()); \
+        if (!is_valid_##var(var)) { \
+            throw YAML::Exception( \
+                    config[#var].Mark(), \
+                    std::string("Invalid "#var": ") + \
+                    std::string(var)); \
+        } \
+    } \
+} while (0);
+
+
     if (config_yaml == nullptr) {
         return true;
     }
@@ -69,36 +120,9 @@ bool aznfsc_cfg::parse_config_yaml()
     try {
         YAML::Node config = YAML::LoadFile(config_yaml);
 
-        if ((account == nullptr) && config["account"]) {
-            account = ::strdup(config["account"].as<std::string>().c_str());
-            if (!is_valid_storageaccount(account)) {
-                throw YAML::Exception(
-                    config["account"].Mark(),
-                    std::string("Invalid storage account name: ") +
-                    std::string(account));
-            }
-        }
-
-        if ((container == nullptr) && config["container"]) {
-            container = ::strdup(config["container"].as<std::string>().c_str());
-            if (!is_valid_container(container)) {
-                throw YAML::Exception(
-                    config["container"].Mark(),
-                    std::string("Invalid container name: ") +
-                    std::string(container));
-            }
-        }
-
-        if ((cloud_suffix == nullptr) && config["cloud_suffix"]) {
-            cloud_suffix =
-                ::strdup(config["cloud_suffix"].as<std::string>().c_str());
-            if (!is_valid_cloud_suffix(cloud_suffix)) {
-                throw YAML::Exception(
-                    config["cloud_suffix"].Mark(),
-                    std::string("Invalid cloud_suffix: ") +
-                    std::string(cloud_suffix));
-            }
-        }
+        _CHECK_STR(account, false);
+        _CHECK_STR(container, false);
+        _CHECK_STR(cloud_suffix, false);
 
         if ((port == -1) && config["port"]) {
             port = config["port"].as<int>();
@@ -113,217 +137,26 @@ bool aznfsc_cfg::parse_config_yaml()
 #endif
         }
 
-        if ((nconnect == -1) && config["nconnect"]) {
-            nconnect = config["nconnect"].as<int>();
-            if (nconnect < AZNFSCFG_NCONNECT_MIN ||
-                nconnect > AZNFSCFG_NCONNECT_MAX) {
-                throw YAML::Exception(
-                    config["nconnect"].Mark(),
-                    std::string("Invalid nconnect value: ") +
-                    std::to_string(nconnect) +
-                    std::string(" (valid range [") +
-                    std::to_string(AZNFSCFG_NCONNECT_MIN) +
-                    ", " + std::to_string(AZNFSCFG_NCONNECT_MAX) + "])");
-            }
-        }
+        _CHECK_INT(nconnect, AZNFSCFG_NCONNECT_MIN, AZNFSCFG_NCONNECT_MAX);
+        _CHECK_INT(timeo, AZNFSCFG_TIMEO_MIN, AZNFSCFG_TIMEO_MAX);
+        _CHECK_INT(acregmin, AZNFSCFG_ACTIMEO_MIN, AZNFSCFG_ACTIMEO_MAX);
+        _CHECK_INT(acregmax, AZNFSCFG_ACTIMEO_MIN, AZNFSCFG_ACTIMEO_MAX);
+        _CHECK_INT(acdirmin, AZNFSCFG_ACTIMEO_MIN, AZNFSCFG_ACTIMEO_MAX);
+        _CHECK_INT(acdirmax, AZNFSCFG_ACTIMEO_MIN, AZNFSCFG_ACTIMEO_MAX);
+        _CHECK_INT(actimeo, AZNFSCFG_ACTIMEO_MIN, AZNFSCFG_ACTIMEO_MAX);
+        _CHECK_INT(rsize, AZNFSCFG_RSIZE_MIN, AZNFSCFG_RSIZE_MAX);
+        _CHECK_INT(wsize, AZNFSCFG_WSIZE_MIN, AZNFSCFG_WSIZE_MAX);
+        _CHECK_INT(retrans, AZNFSCFG_RETRANS_MIN, AZNFSCFG_RETRANS_MAX);
+        _CHECK_INT(readdir_maxcount, AZNFSCFG_READDIR_MIN, AZNFSCFG_READDIR_MAX);
+        /*
+         * Allow special value of 0 to disable readahead.
+         * Mostly useful for testing.
+         */
+        _CHECK_INTZ(readahead_kb, AZNFSCFG_READAHEAD_KB_MIN, AZNFSCFG_READAHEAD_KB_MAX);
+        _CHECK_INT(fuse_max_background, AZNFSCFG_FUSE_MAX_BG_MIN, AZNFSCFG_FUSE_MAX_BG_MAX);
+        _CHECK_INT(cache_max_mb, AZNFSCFG_CACHE_MAX_MB_MIN, AZNFSCFG_CACHE_MAX_MB_MAX);
 
-        if ((timeo == -1) && config["timeo"]) {
-            timeo = config["timeo"].as<int>();
-            if (timeo < AZNFSCFG_TIMEO_MIN || timeo > AZNFSCFG_TIMEO_MAX) {
-                throw YAML::Exception(
-                    config["timeo"].Mark(),
-                    std::string("Invalid timeo value: ") +
-                    std::to_string(timeo) +
-                    std::string(" (valid range [") +
-                    std::to_string(AZNFSCFG_TIMEO_MIN) +
-                    ", " + std::to_string(AZNFSCFG_TIMEO_MAX) + "])");
-            }
-        }
-
-        if ((acregmin == -1) && config["acregmin"]) {
-            acregmin = config["acregmin"].as<int>();
-            if (acregmin < AZNFSCFG_ACTIMEO_MIN ||
-                acregmin > AZNFSCFG_ACTIMEO_MAX) {
-                throw YAML::Exception(
-                    config["acregmin"].Mark(),
-                    std::string("Invalid acregmin value: ") +
-                    std::to_string(acregmin) +
-                    std::string(" (valid range [") +
-                    std::to_string(AZNFSCFG_ACTIMEO_MIN) +
-                    ", " + std::to_string(AZNFSCFG_ACTIMEO_MAX) + "])");
-            }
-        }
-
-        if ((acregmax == -1) && config["acregmax"]) {
-            acregmax = config["acregmax"].as<int>();
-            if (acregmax < AZNFSCFG_ACTIMEO_MIN ||
-                acregmax > AZNFSCFG_ACTIMEO_MAX) {
-                throw YAML::Exception(
-                    config["acregmax"].Mark(),
-                    std::string("Invalid acregmax value: ") +
-                    std::to_string(acregmax) +
-                    std::string(" (valid range [") +
-                    std::to_string(AZNFSCFG_ACTIMEO_MIN) +
-                    ", " + std::to_string(AZNFSCFG_ACTIMEO_MAX) + "])");
-            }
-        }
-
-        if ((acdirmin == -1) && config["acdirmin"]) {
-            acdirmin = config["acdirmin"].as<int>();
-            if (acdirmin < AZNFSCFG_ACTIMEO_MIN ||
-                acdirmin > AZNFSCFG_ACTIMEO_MAX) {
-                throw YAML::Exception(
-                    config["acdirmin"].Mark(),
-                    std::string("Invalid acdirmin value: ") +
-                    std::to_string(acdirmin) +
-                    std::string(" (valid range [") +
-                    std::to_string(AZNFSCFG_ACTIMEO_MIN) +
-                    ", " + std::to_string(AZNFSCFG_ACTIMEO_MAX) + "])");
-            }
-        }
-
-        if ((acdirmax == -1) && config["acdirmax"]) {
-            acdirmax = config["acdirmax"].as<int>();
-            if (acdirmax < AZNFSCFG_ACTIMEO_MIN ||
-                acdirmax > AZNFSCFG_ACTIMEO_MAX) {
-                throw YAML::Exception(
-                    config["acdirmax"].Mark(),
-                    std::string("Invalid acdirmax value: ") +
-                    std::to_string(acdirmax) +
-                    std::string(" (valid range [") +
-                    std::to_string(AZNFSCFG_ACTIMEO_MIN) +
-                    ", " + std::to_string(AZNFSCFG_ACTIMEO_MAX) + "])");
-            }
-        }
-
-        if ((actimeo == -1) && config["actimeo"]) {
-            actimeo = config["actimeo"].as<int>();
-            if (actimeo < AZNFSCFG_ACTIMEO_MIN ||
-                actimeo > AZNFSCFG_ACTIMEO_MAX) {
-                throw YAML::Exception(
-                    config["actimeo"].Mark(),
-                    std::string("Invalid actimeo value: ") +
-                    std::to_string(actimeo) +
-                    std::string(" (valid range [") +
-                    std::to_string(AZNFSCFG_ACTIMEO_MIN) +
-                    ", " + std::to_string(AZNFSCFG_ACTIMEO_MAX) + "])");
-            }
-        }
-
-        if ((rsize == -1) && config["rsize"]) {
-            rsize = config["rsize"].as<int>();
-            if (rsize < AZNFSCFG_RSIZE_MIN || rsize > AZNFSCFG_RSIZE_MAX) {
-                throw YAML::Exception(
-                    config["rsize"].Mark(),
-                    std::string("Invalid rsize value: ") +
-                    std::to_string(rsize) +
-                    std::string(" (valid range [") +
-                    std::to_string(AZNFSCFG_RSIZE_MIN) +
-                    ", " + std::to_string(AZNFSCFG_RSIZE_MAX) + "])");
-            }
-        }
-
-        if ((wsize == -1) && config["wsize"]) {
-            wsize = config["wsize"].as<int>();
-            if (wsize < AZNFSCFG_WSIZE_MIN || wsize > AZNFSCFG_WSIZE_MAX) {
-                throw YAML::Exception(
-                    config["wsize"].Mark(),
-                    std::string("Invalid wsize value: ") +
-                    std::to_string(wsize) +
-                    std::string(" (valid range [") +
-                    std::to_string(AZNFSCFG_WSIZE_MIN) +
-                    ", " + std::to_string(AZNFSCFG_WSIZE_MAX) + "])");
-            }
-        }
-
-        if ((retrans == -1) && config["retrans"]) {
-            retrans = config["retrans"].as<int>();
-            if (retrans < AZNFSCFG_RETRANS_MIN ||
-                retrans > AZNFSCFG_RETRANS_MAX) {
-                throw YAML::Exception(
-                    config["retrans"].Mark(),
-                    std::string("Invalid retrans value: ") +
-                    std::to_string(retrans) +
-                    std::string(" (valid range [") +
-                    std::to_string(AZNFSCFG_RETRANS_MIN) +
-                    ", " + std::to_string(AZNFSCFG_RETRANS_MAX) + "])");
-            }
-        }
-
-        if ((cachedir == nullptr) && config["cachedir"]) {
-            // Empty key is returned as "null".
-            if (config["cachedir"].as<std::string>() != "null") {
-                cachedir =
-                    ::strdup(config["cachedir"].as<std::string>().c_str());
-                if (!is_valid_cachedir(cachedir)) {
-                    throw YAML::Exception(
-                        config["cachedir"].Mark(),
-                        std::string("Invalid cachedir: ") +
-                        std::string(cachedir));
-                }
-            }
-        }
-
-        if ((readdir_maxcount == -1) && config["readdir_maxcount"]) {
-            readdir_maxcount = config["readdir_maxcount"].as<int>();
-            if (readdir_maxcount < AZNFSCFG_READDIR_MIN ||
-                readdir_maxcount > AZNFSCFG_READDIR_MAX) {
-                throw YAML::Exception(
-                    config["readdir_maxcount"].Mark(),
-                    std::string("Invalid readdir_maxcount value: ") +
-                    std::to_string(readdir_maxcount) +
-                    std::string(" (valid range [") +
-                    std::to_string(AZNFSCFG_READDIR_MIN) +
-                    ", " + std::to_string(AZNFSCFG_READDIR_MAX) + "])");
-            }
-        }
-
-        if ((readahead_kb == -1) && config["readahead_kb"]) {
-            readahead_kb = config["readahead_kb"].as<int>();
-            /*
-             * Allow special value of 0 to disable readahead.
-             * Mostly useful for testing.
-             */
-            if ((readahead_kb < AZNFSCFG_READAHEAD_KB_MIN ||
-                 readahead_kb > AZNFSCFG_READAHEAD_KB_MAX) &&
-                (readahead_kb != 0)) {
-                throw YAML::Exception(
-                    config["readahead_kb"].Mark(),
-                    std::string("Invalid readahead_kb value: ") +
-                    std::to_string(readahead_kb) +
-                    std::string(" (valid range [") +
-                    std::to_string(AZNFSCFG_READAHEAD_KB_MIN) +
-                    ", " + std::to_string(AZNFSCFG_READAHEAD_KB_MAX) + "])");
-            }
-        }
-
-        if ((fuse_max_background == -1) && config["fuse_max_background"]) {
-            fuse_max_background = config["fuse_max_background"].as<int>();
-            if (fuse_max_background < AZNFSCFG_FUSE_MAX_BG_MIN ||
-                fuse_max_background > AZNFSCFG_FUSE_MAX_BG_MAX) {
-                throw YAML::Exception(
-                    config["fuse_max_background"].Mark(),
-                    std::string("Invalid fuse_max_background value: ") +
-                    std::to_string(fuse_max_background) +
-                    std::string(" (valid range [") +
-                    std::to_string(AZNFSCFG_FUSE_MAX_BG_MIN) +
-                    ", " + std::to_string(AZNFSCFG_FUSE_MAX_BG_MAX) + "])");
-            }
-        }
-
-        if ((cache_max_mb == -1) && config["cache_max_mb"]) {
-            cache_max_mb = config["cache_max_mb"].as<int>();
-            if (cache_max_mb < AZNFSCFG_CACHE_MAX_MB_MIN ||
-                cache_max_mb > AZNFSCFG_CACHE_MAX_MB_MAX) {
-                throw YAML::Exception(
-                    config["cache_max_mb"].Mark(),
-                    std::string("Invalid cache_max_mb value: ") +
-                    std::to_string(cache_max_mb) +
-                    std::string(" (valid range [") +
-                    std::to_string(AZNFSCFG_CACHE_MAX_MB_MIN) +
-                    ", " + std::to_string(AZNFSCFG_CACHE_MAX_MB_MAX) + "])");
-            }
-        }
+        _CHECK_STR(cachedir, true);
 
     } catch (const YAML::BadFile& e) {
         AZLogError("Error loading config file {}: {}", config_yaml, e.what());
