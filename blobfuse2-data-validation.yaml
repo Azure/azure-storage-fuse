@@ -156,13 +156,12 @@ stages:
           - script: |
               cd $(MOUNT_DIR)/vscode
               curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-              sudo apt install npm -y
               sudo apt-get install -y nodejs
             displayName: 'Install dependencies'
 
           - script: |
               cd $(MOUNT_DIR)/vscode
-              npm install -g yarn
+              sudo npm install -g yarn
             displayName: 'Install yarn'
 
           - script: | 
@@ -180,10 +179,105 @@ stages:
               yarn compile
             displayName: 'Compile VScode'
 
+          # Cleanup
           - template: 'azure-pipeline-templates/cleanup.yml'
             parameters:
               working_dir: $(WORK_DIR)
               mount_dir: $(MOUNT_DIR)
               temp_dir: $(TEMP_DIR)
 
+  - stage: FineTuningTests
+    jobs:
+      # Ubuntu Tests
+      - job: Set_1
+        timeoutInMinutes: 900
+        strategy:
+          matrix:
+            Ubuntu-22:
+              AgentName: 'blobfuse-benchmark-ubn22'
+              containerName: 'vishnu-fine-tuning-test1'
+        pool:
+          name: "blobfuse-perf-pool"
+          demands:
+            - ImageOverride -equals $(AgentName)
+
+        variables:
+          - group: NightlyBlobFuse
+          - name: ROOT_DIR
+            value: "/usr/pipeline/workv2"
+          - name: WORK_DIR
+            value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
+          - name: MOUNT_DIR
+            value: "/mnt/blobfusemount"
+          - name: TEMP_DIR
+            value: "/usr/pipeline/workv2/temp"
+          - name: BLOBFUSE2_CFG
+            value: "/usr/pipeline/workv2/blobfuse2.yaml"
+          - name: GOPATH
+            value: "/usr/pipeline/workv2/go"
+
+        steps:
+          - template: 'azure-pipeline-templates/setup.yml'
+            parameters:
+              tags: $(tags)
+              installStep:
+                script: |
+                  sudo apt-get update --fix-missing
+                  sudo apt update
+                  sudo apt-get install cmake gcc libfuse3-dev git parallel -y
+                  sudo apt-get install fuse3 -y
+                displayName: 'Install fuse'
+
+          - script: |
+              sudo apt-get install python3 -y
+              python3 --version
+            displayName: 'Installing Python'
+
+          - script: |
+              cd $(WORK_DIR)
+              $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key_bc.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
+            displayName: Create Key Config File
+            env:
+              ACCOUNT_TYPE: 'block'
+              NIGHTLY_STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
+              NIGHTLY_STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
+              ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
+              VERBOSE_LOG: false
+            continueOnError: false
+
+          - script: cat $(BLOBFUSE2_CFG)
+            displayName: Print config file
+
+          - script:
+              mkdir -p $(MOUNT_DIR)
+              mkdir -p $(TEMP_DIR)
+            displayName: "Create directory structure"
+
+          - template: 'mount.yml'
+            parameters:
+              working_dir: $(WORK_DIR)
+              mount_dir: $(MOUNT_DIR)
+              temp_dir: $(TEMP_DIR)
+              ro_mount: false
+              mountStep: 
+                script: |
+                  $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --default-working-dir=$(WORK_DIR)
+          
+          - script: |
+              cd $(MOUNT_DIR)
+              python3 finetuning/finetuning.py
+            displayName: 'Run FineTuning Tests'
+
+          - script: |
+              cd $(MOUNT_DIR)
+              python3 finetuning/loadcheckpoint.py
+              expect -c 'spawn python3 loadcheckpoint.py; send "3\r"; interact'
+            displayName: 'Load checkpoints'
+
+          # Cleanup
+          - template: 'azure-pipeline-templates/cleanup.yml'
+            parameters:
+              working_dir: $(WORK_DIR)
+              mount_dir: $(MOUNT_DIR)
+              temp_dir: $(TEMP_DIR)
  
