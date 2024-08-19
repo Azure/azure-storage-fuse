@@ -192,7 +192,7 @@ func (suite *blockBlobTruncateSuite) TestFileTruncate() {
 		_ = h.Close()
 		os.Remove(filename)
 
-		err = suite.az.TruncateFile(internal.TruncateFileOptions{Name: filename, Size: fs.TruncatedSize})
+		err = suite.az.TruncateFile(internal.TruncateFileOptions{Name: filename, Size: fs.TruncatedSize, BlockSize: 16 * MB})
 		suite.assert.Nil(err)
 
 		attr, err := suite.az.GetAttr(internal.GetAttrOptions{Name: filename})
