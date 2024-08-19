@@ -1301,27 +1301,27 @@ void rpc_task::run_setattr()
         args.object = get_client()->get_nfs_inode_from_ino(ino)->get_fh();
 
         if (valid & FUSE_SET_ATTR_SIZE) {
-            AZLogInfo("Setting size to {}", attr->st_size);
+            AZLogDebug("Setting size to {}", attr->st_size);
 
             args.new_attributes.size.set_it = 1;
             args.new_attributes.size.set_size3_u.size = attr->st_size;
         }
 
         if (valid & FUSE_SET_ATTR_MODE) {
-            AZLogInfo("Setting mode to {}", attr->st_mode);
+            AZLogDebug("Setting mode to 0{:o}", attr->st_mode);
 
             args.new_attributes.mode.set_it = 1;
             args.new_attributes.mode.set_mode3_u.mode = attr->st_mode;
         }
 
         if (valid & FUSE_SET_ATTR_UID) {
-            AZLogInfo("Setting uid to {}", attr->st_uid);
+            AZLogDebug("Setting uid to {}", attr->st_uid);
             args.new_attributes.uid.set_it = 1;
             args.new_attributes.uid.set_uid3_u.uid = attr->st_uid;
         }
 
         if (valid & FUSE_SET_ATTR_GID) {
-            AZLogInfo("Setting gid to {}", attr->st_gid);
+            AZLogDebug("Setting gid to {}", attr->st_gid);
 
             args.new_attributes.gid.set_it = 1;
             args.new_attributes.gid.set_gid3_u.gid = attr->st_gid;
@@ -1329,7 +1329,7 @@ void rpc_task::run_setattr()
 
         if (valid & FUSE_SET_ATTR_ATIME) {
             // TODO: These log are causing crash, look at it later.
-            // AZLogInfo("Setting atime to {}", attr->st_atim.tv_sec);
+            // AZLogDebug("Setting atime to {}", attr->st_atim.tv_sec);
 
             args.new_attributes.atime.set_it = SET_TO_CLIENT_TIME;
             args.new_attributes.atime.set_atime_u.atime.seconds =
@@ -1340,7 +1340,7 @@ void rpc_task::run_setattr()
 
         if (valid & FUSE_SET_ATTR_MTIME) {
             // TODO: These log are causing crash, look at it later.
-            // AZLogInfo("Setting mtime to {}", attr->st_mtim.tv_sec);
+            // AZLogDebug("Setting mtime to {}", attr->st_mtim.tv_sec);
 
             args.new_attributes.mtime.set_it = SET_TO_CLIENT_TIME;
             args.new_attributes.mtime.set_mtime_u.mtime.seconds =

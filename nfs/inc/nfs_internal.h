@@ -121,7 +121,7 @@ struct mount_options
             size = std::snprintf(
                                 const_cast<char*>(url.data()),
                                 url.size(),
-                                "nfs://%s%s/?version=3&debug=%d&xprtsec=none&nfsport=%d&mountport=%d&timeo=%d&retrans=%d&rsize=%d&wsize=%d&readdir-buffer=%d",
+                                "nfs://%s%s/?version=3&debug=%d&dircache=0&xprtsec=none&nfsport=%d&mountport=%d&timeo=%d&retrans=%d&rsize=%d&wsize=%d&readdir-buffer=%d",
                                 server.c_str(),
                                 export_path.c_str(),
                                 debug,
@@ -136,7 +136,7 @@ struct mount_options
             size = std::snprintf(
                                 const_cast<char*>(url.data()),
                                 url.size(),
-                                "nfs://%s%s/?version=3&debug=%d&xprtsec=none&timeo=%d&retrans=%d&rsize=%d&wsize=%d&readdir-buffer=%d",
+                                "nfs://%s%s/?version=3&debug=%d&dircache=0&xprtsec=none&timeo=%d&retrans=%d&rsize=%d&wsize=%d&readdir-buffer=%d",
                                 server.c_str(),
                                 export_path.c_str(),
                                 debug,

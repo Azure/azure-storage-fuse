@@ -222,9 +222,9 @@ struct nfs_inode *nfs_client::get_nfs_inode(const nfs_fh3 *fh,
     {
         std::unique_lock<std::shared_mutex> lock(inode_map_lock);
 
-        AZLogWarn("[{}:{} / 0x{:08x}] Allocated new inode ({})",
-                  inode->get_filetype_coding(),
-                  inode->get_fuse_ino(), inode->get_crc(), inode_map.size());
+        AZLogDebug("[{}:{} / 0x{:08x}] Allocated new inode ({})",
+                   inode->get_filetype_coding(),
+                   inode->get_fuse_ino(), inode->get_crc(), inode_map.size());
 
         /*
          * With the exclusive lock held, check once more if some other thread
