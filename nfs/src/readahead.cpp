@@ -95,10 +95,16 @@ static void readahead_callback (
 
     assert(task->magic == RPC_TASK_MAGIC);
     assert(bc->length > 0);
+    assert(task->rpc_api->read_task.get_offset() >= (off_t) bc->offset);
+    assert(task->rpc_api->read_task.get_size() <= bc->length);
 
     // Cannot have read more than requested.
     assert(res->READ3res_u.resok.count <= bc->length);
 
+    /*
+     * This callback would be called for some backend call that we must have
+     * issued.
+     */
     assert(bc->num_backend_calls_issued >= 1);
 
     /*
@@ -124,6 +130,11 @@ static void readahead_callback (
         rpc_pdu_get_dispatch_usecs(rpc_get_pdu(rpc)),
         NFS_STATUS(res));
 
+    /*
+     * Offset and length for the actual read request for which this callback
+     * is called. Note that the entire read may not be satisfied, it may be
+     * a partial read response.
+     */
     const uint64_t issued_offset = bc->offset + bc->pvt;
     const uint64_t issued_length = bc->length - bc->pvt;
 
@@ -131,6 +142,11 @@ static void readahead_callback (
         /*
          * Readahead read failed? Nothing to do, unlock the membuf, release
          * the byte range and pretend as if we never issued this read.
+         * We may have successfully read some part of it, as some prior read
+         * calls may have completed partially, but we cannot mark the membuf
+         * uptodate unless we read it fully, so we have to just drop it.
+         * Note that those prio successful reads would have caused the RPC
+         * stats to be updated, but that's fine.
          */
 
         bc->get_membuf()->clear_locked();
@@ -157,6 +173,10 @@ static void readahead_callback (
 
         goto delete_ctx;
     } else {
+        /*
+         * Only first read call would have bc->pvt == 0, for subsequent calls
+         * we will have num_backend_calls_issued > 1.
+         */
         assert((bc->pvt == 0) || (bc->num_backend_calls_issued > 1));
 
         // We should never get more data than what we requested.
@@ -188,6 +208,8 @@ static void readahead_callback (
          * In case of partial read, issue read for the remaining.
          */
         if (is_partial_read) {
+            assert(bc->pvt < bc->length);
+
             const off_t new_offset = bc->offset + bc->pvt;
             const size_t new_size = bc->length - bc->pvt;
             bool rpc_retry = false;
@@ -250,7 +272,7 @@ static void readahead_callback (
 
                     rpc_retry = true;
                 } else {
-                    partial_read_tsk->get_stats().on_rpc_dispatch(
+                    partial_read_tsk->get_stats().on_rpc_issue(
                         rpc_pdu_get_req_size(pdu));
                 }
             } while (rpc_retry);
@@ -267,9 +289,12 @@ static void readahead_callback (
     }
 
     /*
-     * We should never return lesser bytes than requested,
-     * unless error or eof is encountered after this point.
+     * We come here only after the complete readahead read has successfully
+     * completed.
+     * We should never return lesser bytes than requested, unless eof is
+     * encountered.
      */
+    assert(status == 0);
     assert((bc->length == bc->pvt) || res->READ3res_u.resok.eof);
 
     if (bc->is_empty && (bc->length == bc->pvt)) {
@@ -279,15 +304,13 @@ static void readahead_callback (
          * flag.
          */
         AZLogDebug("Setting uptodate flag. off: {}, len: {}",
-                  task->rpc_api->read_task.get_offset(),
-                  task->rpc_api->read_task.get_size());
+                   bc->offset, bc->length);
 
         assert(bc->maps_full_membuf());
         bc->get_membuf()->set_uptodate();
     } else {
         AZLogDebug("Not updating uptodate flag. off: {}, len: {}",
-                  task->rpc_api->read_task.get_offset(),
-                  task->rpc_api->read_task.get_size());
+                   bc->offset, bc->length);
         /*
          * If we got eof in a partial read, release the non-existent
          * portion of the chunk.
