@@ -1274,6 +1274,8 @@ int main(int argc, char *argv[])
         goto err_out4;
     }
 
+    AZLogInfo("==> Aznfsclient fuse driver ready to serve requests!");
+
     if (opts.singlethread) {
         ret = fuse_session_loop(se);
     } else {
