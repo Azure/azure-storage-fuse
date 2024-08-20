@@ -59,7 +59,7 @@ struct ra_context
     /*
      * bytes_chunk which this readahead is reading from the file.
      */
-    const struct bytes_chunk bc;
+    struct bytes_chunk bc;
 
     /*
      * rpc_task tracking this readahead.
@@ -71,7 +71,7 @@ struct ra_context
      */
     struct rpc_task *task;
 
-    ra_context(rpc_task *_task, const struct bytes_chunk& _bc) :
+    ra_context(rpc_task *_task, struct bytes_chunk& _bc) :
         bc(_bc),
         task(_task)
     {
@@ -89,7 +89,7 @@ static void readahead_callback (
 {
     struct ra_context *ctx = (struct ra_context*) private_data;
     struct rpc_task *task = ctx->task;
-    const struct bytes_chunk *bc = &ctx->bc;
+    struct bytes_chunk *bc = &ctx->bc;
     auto res = (READ3res*) data;
     const char *errstr = nullptr;
 
@@ -98,6 +98,14 @@ static void readahead_callback (
 
     // Cannot have read more than requested.
     assert(res->READ3res_u.resok.count <= bc->length);
+
+    assert(bc->num_backend_calls_issued >= 1);
+
+    /*
+     * If we have already finished reading the entire bytes_chunk, why are we
+     * here.
+     */
+    assert(bc->pvt < bc->length);
 
     const int status = task->status(rpc_status, NFS_STATUS(res), &errstr);
     const fuse_ino_t ino = task->rpc_api->read_task.get_ino();
@@ -116,15 +124,14 @@ static void readahead_callback (
         rpc_pdu_get_dispatch_usecs(rpc_get_pdu(rpc)),
         NFS_STATUS(res));
 
-    // Success or failure, report readahead completion.
-    inode->readahead_state->on_readahead_complete(bc->offset, bc->length);
+    const uint64_t issued_offset = bc->offset + bc->pvt;
+    const uint64_t issued_length = bc->length - bc->pvt;
 
     if (status != 0) {
         /*
          * Readahead read failed? Nothing to do, unlock the membuf, release
          * the byte range and pretend as if we never issued this read.
          */
-        assert(res->READ3res_u.resok.count == 0);
 
         bc->get_membuf()->clear_locked();
         bc->get_membuf()->clear_inuse();
@@ -132,68 +139,140 @@ static void readahead_callback (
         // Release the buffer since we did not fill it.
         read_cache->release(bc->offset, bc->length);
 
-        AZLogWarn("[{}] readahead_callback [FAILED]: "
-                  "Requested (off: {}, len: {}): rpc_status={}, "
-                  "nfs_status={}, error={}",
+        AZLogWarn("[{}] readahead_callback [FAILED] for offset: {} size: {} "
+                  "total bytes read till now: {} of {} for [{}, {}) "
+                  "num_backend_calls_issued: {}, rpc_status: {}, nfs_status: {}, "
+                  "error: {}",
                   ino,
-                  bc->offset,
+                  issued_offset,
+                  issued_length,
+                  bc->pvt,
                   bc->length,
+                  bc->offset,
+                  bc->offset + bc->length,
+                  bc->num_backend_calls_issued,
                   rpc_status,
                   (int) NFS_STATUS(res),
                   errstr);
-        goto delete_ctx;
-    }
 
-    if (res->READ3res_u.resok.count != bc->length) {
+        goto delete_ctx;
+    } else {
+        assert((bc->pvt == 0) || (bc->num_backend_calls_issued > 1));
+
+        // We should never get more data than what we requested.
+        assert(res->READ3res_u.resok.count <= issued_length);
+
+        const bool is_partial_read = !res->READ3res_u.resok.eof &&
+            (res->READ3res_u.resok.count < issued_length);
+
+        // Update bc->pvt with fresh bytes read in this call.
+        bc->pvt += res->READ3res_u.resok.count;
+        assert(bc->pvt <= bc->length);
+
+        AZLogDebug("[{}] readahead_callback: {}Read completed for offset: {} "
+                   " size: {} Bytes read: {} eof: {}, total bytes read till "
+                   "now: {} of {} for [{}, {}) num_backend_calls_issued: {}",
+                   ino,
+                   is_partial_read ? "Partial " : "",
+                   issued_offset,
+                   issued_length,
+                   res->READ3res_u.resok.count,
+                   res->READ3res_u.resok.eof,
+                   bc->pvt,
+                   bc->length,
+                   bc->offset,
+                   bc->offset + bc->length,
+                   bc->num_backend_calls_issued);
+
         /*
-         * Most common reason of partial read would be readahead beyond eof,
-         * but server may return partial reads even for reads within the file.
-         *
-         * XXX Making it a warning log for now so that we analyze these reads.
-         *     Later make it an info log.
+         * In case of partial read, issue read for the remaining.
          */
-        if (res->READ3res_u.resok.eof) {
-            AZLogDebug("[{}] readahead_callback [PARTIAL READ (EOF)]: "
-                       "Requested (off: {}, len: {}), Read (len: {} eof: {})",
+        if (is_partial_read) {
+            const off_t new_offset = bc->offset + bc->pvt;
+            const size_t new_size = bc->length - bc->pvt;
+            bool rpc_retry = false;
+
+            READ3args new_args;
+            new_args.file = inode->get_fh();
+            new_args.offset = new_offset;
+            new_args.count = new_size;
+
+            // Create a new child task to carry out this request.
+            struct rpc_task *partial_read_tsk =
+                task->get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_READ);
+
+            partial_read_tsk->init_read(
+                task->rpc_api->req,
+                task->rpc_api->read_task.get_ino(),
+                new_size,
+                new_offset,
+                task->rpc_api->read_task.get_fuse_file());
+
+            ctx->task = partial_read_tsk;
+
+            bc->num_backend_calls_issued++;
+            assert(bc->num_backend_calls_issued > 1);
+
+            AZLogDebug("[{}] Issuing partial read at offset: {} size: {}"
+                       " for [{}, {})",
                        ino,
+                       new_offset,
+                       new_size,
                        bc->offset,
-                       bc->length,
-                       res->READ3res_u.resok.count,
-                       res->READ3res_u.resok.eof);
-        } else {
-            AZLogWarn("[{}] readahead_callback [PARTIAL READ (NOT EOF)]: "
-                      "Requested (off: {}, len: {}), Read (len: {} eof: {})",
-                      ino,
-                      bc->offset,
-                      bc->length,
-                      res->READ3res_u.resok.count,
-                      res->READ3res_u.resok.eof);
+                       bc->offset + bc->length);
+
+            rpc_pdu *pdu = nullptr;
+
+            do {
+                rpc_retry = false;
+                /*
+                 * We have identified partial read case where the
+                 * server has returned fewer bytes than requested.
+                 * Hence we will issue read for the remaining.
+                 *
+                 * Note: It is okay to issue a read call directly here
+                 *       as we are holding all the needed locks and refs.
+                 */
+                if ((pdu = rpc_nfs3_read_task(
+                        partial_read_tsk->get_rpc_ctx(),
+                        readahead_callback,
+                        bc->get_buffer() + bc->pvt,
+                        new_size,
+                        &new_args,
+                        (void *) ctx)) == NULL) {
+                    /*
+                     * This call fails due to internal issues like OOM
+                     * etc and not due to an actual error, hence retry.
+                     */
+                    AZLogWarn("rpc_nfs3_read_task failed to issue, retrying "
+                              "after 5 secs!");
+                    ::sleep(5);
+
+                    rpc_retry = true;
+                } else {
+                    partial_read_tsk->get_stats().on_rpc_dispatch(
+                        rpc_pdu_get_req_size(pdu));
+                }
+            } while (rpc_retry);
+
+            // Free the current RPC task as it has done its bit.
+            task->free_rpc_task();
+
+            /*
+             * Return from the callback here. The rest of the callback
+             * will be processed once this partial read completes.
+             */
+            return;
         }
-
-        bc->get_membuf()->clear_locked();
-        bc->get_membuf()->clear_inuse();
-
-        /*
-         * In case of short read we cannot safely mark the membuf as uptodate
-         * as we risk some other thread reading one or more bytes from the
-         * released part of the membuf and incorrectly treating them as
-         * uptodate. Note that we have not written those bytes so that other
-         * reader will get garbage data.
-         */
-        read_cache->release(bc->offset + res->READ3res_u.resok.count,
-                            bc->length - res->READ3res_u.resok.count);
-
-        goto delete_ctx;
     }
 
-    // Common case.
-    AZLogDebug("[{}] readahead_callback: off: {}, len: {}, eof: {}",
-               ino,
-               bc->offset,
-               bc->length,
-               res->READ3res_u.resok.eof);
+    /*
+     * We should never return lesser bytes than requested,
+     * unless error or eof is encountered after this point.
+     */
+    assert((bc->length == bc->pvt) || res->READ3res_u.resok.eof);
 
-    if (bc->is_empty) {
+    if (bc->is_empty && (bc->length == bc->pvt)) {
         /*
          * Only the first read which got hold of the complete membuf will have
          * this byte_chunk set to empty. Only such reads should set the uptodate
@@ -209,6 +288,15 @@ static void readahead_callback (
         AZLogDebug("Not updating uptodate flag. off: {}, len: {}",
                   task->rpc_api->read_task.get_offset(),
                   task->rpc_api->read_task.get_size());
+        /*
+         * If we got eof in a partial read, release the non-existent
+         * portion of the chunk.
+         */
+        if (bc->is_empty && (bc->length > bc->pvt) &&
+            res->READ3res_u.resok.eof) {
+            read_cache->release(bc->offset + bc->pvt,
+                                bc->length - bc->pvt);
+        }
     }
 
     /*
@@ -219,6 +307,9 @@ static void readahead_callback (
     bc->get_membuf()->clear_inuse();
 
 delete_ctx:
+    // Success or failure, report readahead completion.
+    inode->readahead_state->on_readahead_complete(bc->offset, bc->length);
+
     // Free the readahead RPC task.
     task->free_rpc_task();
 
@@ -263,7 +354,7 @@ int ra_state::issue_readaheads()
          */
         std::vector<bytes_chunk> bcv = read_cache->get(ra_offset, def_ra_size);
 
-        for (const bytes_chunk& bc : bcv) {
+        for (bytes_chunk& bc : bcv) {
 
             // Every bytes_chunk must lie within the readahead.
             assert(bc.offset >= ra_offset);
@@ -324,6 +415,12 @@ int ra_state::issue_readaheads()
                            bc.offset,              /* offset */
                            nullptr);               /* fuse_file_info */
 
+            // No reads should be issued to backend at this point.
+            assert(bc.num_backend_calls_issued == 0);
+            bc.num_backend_calls_issued++;
+
+            assert(bc.pvt == 0);
+
             /*
              * bc holds a ref on the membuf so we can safely access membuf
              * only till we have bc in the scope. In readahead_callback() we
@@ -331,6 +428,7 @@ int ra_state::issue_readaheads()
              * object allocated below.
              */
             struct ra_context *ctx = new ra_context(tsk, bc);
+            assert(ctx->bc.num_backend_calls_issued == 1);
 
             READ3args args;
             ::memset(&args, 0, sizeof(args));

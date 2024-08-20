@@ -1920,6 +1920,7 @@ static void read_callback(
                        task->rpc_api->read_task.get_offset(),
                        task->rpc_api->read_task.get_size());
 
+            assert(bc->maps_full_membuf());
             bc->get_membuf()->set_uptodate();
         } else {
             /*
