@@ -37,6 +37,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io/fs"
 	"math"
 	"math/rand"
 	"os"
@@ -635,6 +636,50 @@ func (suite *fileCacheTestSuite) TestCreateFile() {
 	// Path should not be in fake storage
 	_, err = os.Stat(suite.fake_storage_path + "/" + path)
 	suite.assert.True(os.IsNotExist(err))
+}
+
+func (suite *fileCacheTestSuite) TestCreateFileWithNoPerm() {
+	defer suite.cleanupTest()
+	// Default is to not create empty files on create file to support immutable storage.
+	path := "file1"
+	options := internal.CreateFileOptions{Name: path, Mode: 0000}
+	f, err := suite.fileCache.CreateFile(options)
+	suite.assert.Nil(err)
+	suite.assert.True(f.Dirty()) // Handle should be dirty since it was not created in storage
+
+	// Path should be added to the file cache
+	_, err = os.Stat(suite.cache_path + "/" + path)
+	suite.assert.True(err == nil || os.IsExist(err))
+	// Path should not be in fake storage
+	_, err = os.Stat(suite.fake_storage_path + "/" + path)
+	suite.assert.True(os.IsNotExist(err))
+	err = suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: f})
+	suite.assert.Nil(err)
+	info, _ := os.Stat(suite.cache_path + "/" + path)
+	suite.assert.Equal(info.Mode(), os.FileMode(0000))
+}
+
+func (suite *fileCacheTestSuite) TestCreateFileWithWritePerm() {
+	defer suite.cleanupTest()
+	// Default is to not create empty files on create file to support immutable storage.
+	path := "file1"
+	options := internal.CreateFileOptions{Name: path, Mode: 0222}
+	f, err := suite.fileCache.CreateFile(options)
+	suite.assert.Nil(err)
+	suite.assert.True(f.Dirty()) // Handle should be dirty since it was not created in storage
+
+	os.Chmod(suite.cache_path+"/"+path, 0762)
+
+	// Path should be added to the file cache
+	_, err = os.Stat(suite.cache_path + "/" + path)
+	suite.assert.True(err == nil || os.IsExist(err))
+	// Path should not be in fake storage
+	_, err = os.Stat(suite.fake_storage_path + "/" + path)
+	suite.assert.True(os.IsNotExist(err))
+	err = suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: f})
+	suite.assert.Nil(err)
+	info, _ := os.Stat(suite.cache_path + "/" + path)
+	suite.assert.Equal(info.Mode(), fs.FileMode(0762))
 }
 
 func (suite *fileCacheTestSuite) TestCreateFileInDir() {
