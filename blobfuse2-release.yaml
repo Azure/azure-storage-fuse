@@ -1662,23 +1662,23 @@ stages:
               workingDirectory: $(Build.ArtifactStagingDirectory)/
 
             - script: |
-                fuse3AmdDeb=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse3.x86_64.deb`
-                echo "Fuse3 AMD DEB ID: $fuse3AmdDeb"
+                # fuse3AmdDeb=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse3.x86_64.deb`
+                # echo "Fuse3 AMD DEB ID: $fuse3AmdDeb"
 
-                fuse3ArmDeb=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse3.arm64.deb`
-                echo "Fuse3 ARM DEB ID: $fuse3ArmDeb"
+                # fuse3ArmDeb=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse3.arm64.deb`
+                # echo "Fuse3 ARM DEB ID: $fuse3ArmDeb"
 
-                fuse3AmdRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse3.x86_64.rpm`
-                echo "Fuse3 AMD RPM ID: $fuse3AmdRpm"
+                # fuse3AmdRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse3.x86_64.rpm`
+                # echo "Fuse3 AMD RPM ID: $fuse3AmdRpm"
 
-                fuse3ArmRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse3.aarch64.rpm`
-                echo "Fuse3 ARM RPM ID: $fuse3ArmRpm"
+                # fuse3ArmRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse3.aarch64.rpm`
+                # echo "Fuse3 ARM RPM ID: $fuse3ArmRpm"
 
-                fuse2AmdDeb=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse2.x86_64.deb`
-                echo "Fuse2 AMD DEB ID: $fuse2AmdDeb"
+                # fuse2AmdDeb=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse2.x86_64.deb`
+                # echo "Fuse2 AMD DEB ID: $fuse2AmdDeb"
 
-                fuse2AmdRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse2.x86_64.rpm`
-                echo "Fuse2 AMD RPM ID: $fuse2AmdRpm"
+                # fuse2AmdRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse2.x86_64.rpm`
+                # echo "Fuse2 AMD RPM ID: $fuse2AmdRpm"
 
                 marinerFuse3AmdRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*cm2.x86_64.rpm`
                 echo "Mariner fuse3 AMD RPM ID: $marinerFuse3AmdRpm"

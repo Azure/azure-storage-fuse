@@ -1,4 +1,4 @@
 # Do not remove these comments
 # Format of the file : <Distro Name>,<Fuse Version, Architecture, File Type>,<Repo Name>,<Release Name(for deb repos only)>
-Mariner-3.0-x86_64,marinerAmdRpm,azurelinux-3.0-prod-ms-oss-x86_64-yum,
-Mariner-3.0-aarch64,marinerAarchRpm,azurelinux-3.0-prod-ms-oss-aarch64-yum,
+Mariner-3.0-x86_64,marinerFuse3AmdRpm,azurelinux-3.0-prod-ms-oss-x86_64-yum,
+Mariner-3.0-aarch64,marinerFuse3AarchRpm,azurelinux-3.0-prod-ms-oss-aarch64-yum,
