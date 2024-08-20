@@ -1164,6 +1164,9 @@ func (bb *BlockBlob) updateBlocks(name string, newSize int64, blockSize int64, b
 	removeBlocks := false
 	blkList := make([]string, 0)
 
+	blobName := filepath.Join(bb.Config.prefixPath, name)
+	blobClient := bb.Container.NewBlockBlobClient(blobName)
+
 	var block internal.CommittedBlock
 	lastIdx := 0
 
@@ -1176,11 +1179,8 @@ func (bb *BlockBlob) updateBlocks(name string, newSize int64, blockSize int64, b
 		blkList = append(blkList, block.Id)
 	}
 
-	blobName := filepath.Join(bb.Config.prefixPath, name)
-	blobClient := bb.Container.NewBlockBlobClient(blobName)
-
 	if newSize == 0 {
-		// New Size exactly aligns to the last block boundary
+		// New Size exactly aligns to the block boundary
 		// Commit the current list and no need to upload any data here
 		err := bb.CommitBlocks(blobName, blkList)
 		if err != nil {
@@ -1189,36 +1189,31 @@ func (bb *BlockBlob) updateBlocks(name string, newSize int64, blockSize int64, b
 		return err
 	}
 
-	data := make([]byte, blockSize)
-	err := bb.ReadInBuffer(name, (*blockList)[lastIdx].Offset, int64((*blockList)[lastIdx].Size), data)
-	if err != nil {
-		log.Err("BlockBlob::updateBlocks : Failed to read buffer for %s [%s]", name, err.Error())
-		return err
-	}
+	if removeBlocks {
+		// Last block in file needs truncation
+		data := make([]byte, newSize)
 
-	if newSize > 0 {
-		// New Size is not exactly aligned to the boundary of existing block
-		// We need to update the last block
 		id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
-		uploadLen := int64(math.Min(float64(blockSize), float64(newSize)))
-
-		if removeBlocks {
-			// Last block needs truncation so size shall be the left over newSize
-			uploadLen = newSize
+		err := bb.ReadInBuffer(name, (*blockList)[lastIdx].Offset, newSize, data)
+		if err != nil {
+			log.Err("BlockBlob::updateBlocks : Failed to read buffer for %s [%s]", name, err.Error())
+			return err
 		}
 
 		_, err = blobClient.StageBlock(context.Background(),
 			id,
-			streaming.NopCloser(bytes.NewReader(data[:uploadLen])),
+			streaming.NopCloser(bytes.NewReader(data)),
 			&blockblob.StageBlockOptions{
 				CPKInfo: bb.blobCPKOpt,
 			})
-		newSize -= uploadLen
 
 		if err != nil {
 			log.Err("BlockBlob::updateBlocks : Failed to stage block for %s [%s]", name, err.Error())
 			return err
 		}
+
+		blkList = append(blkList, id)
+		newSize = 0
 	}
 
 	return bb.createSparseFile(name, newSize, blockSize, blkList)
