@@ -1679,16 +1679,20 @@ stages:
 
                 # fuse2AmdRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse2.x86_64.rpm`
                 # echo "Fuse2 AMD RPM ID: $fuse2AmdRpm"
-
+                
+                marinerAmdRpmFile=$(ls blobfuse2* | grep 'cm2\.x86_64\.rpm')
                 marinerFuse3AmdRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*cm2.x86_64.rpm`
                 echo "Mariner fuse3 AMD RPM ID: $marinerFuse3AmdRpm"
+                echo "Azcopy mariner AMD RPM $marinerAmdRpmFile"
 
+                marinerAarchRpmFile=$(ls blobfuse2* | grep 'cm2\.aarch64\.rpm')
                 marinerFuse3AarchRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*cm2.aarch64.rpm`
                 echo "Mariner fuse3 ARM RPM ID: $marinerFuse3AarchRpm"
+                echo "Azcopy mariner ARM RPM: $marinerAarchRpmFile"
 
                 is_preview="false"
                 echo "##vso[task.setvariable variable=is_preview]$is_preview"
-                if [[ $marinerFuse3AmdRpm == *"preview"* ]]; then
+                if [[ $marinerAmdRpmFile == *"preview"* ]]; then
                   is_preview="true"
                   echo "##vso[task.setvariable variable=is_preview]$is_preview"
                 fi
