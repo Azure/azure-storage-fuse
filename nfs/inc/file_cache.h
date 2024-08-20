@@ -956,7 +956,7 @@ public:
     void get_prune_goals(uint64_t *inline_bytes, uint64_t *periodic_bytes) const
     {
         // Maximum cache size allowed in bytes.
-        static const uint64_t max_total = (aznfsc_cfg.cache_max_mb * 1024 * 1024ULL);
+        static const uint64_t max_total = (aznfsc_cfg.cache.data.user.max_size_mb * 1024 * 1024ULL);
         assert(max_total != 0);
 
         /*

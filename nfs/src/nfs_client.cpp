@@ -557,6 +557,12 @@ void nfs_client::reply_entry(
     static struct fattr3 zero_fattr;
     struct nfs_inode *inode = nullptr;
     fuse_entry_param entry;
+    /*
+     * Kernel must cache lookup result.
+     */
+    const bool cache_positive =
+        (aznfsc_cfg.lookupcache_int == AZNFSCFG_LOOKUPCACHE_ALL ||
+         aznfsc_cfg.lookupcache_int == AZNFSCFG_LOOKUPCACHE_POS);
 
     memset(&entry, 0, sizeof(entry));
 
@@ -566,8 +572,13 @@ void nfs_client::reply_entry(
 
         entry.ino = inode->get_fuse_ino();
         entry.attr = inode->attr;
-        entry.attr_timeout = inode->get_actimeo();
-        entry.entry_timeout = inode->get_actimeo();
+        if (cache_positive) {
+            entry.attr_timeout = inode->get_actimeo();
+            entry.entry_timeout = inode->get_actimeo();
+        } else {
+            entry.attr_timeout = 0;
+            entry.entry_timeout = 0;
+        }
     } else {
         /*
          * The only valid case where reply_entry() is called with null fh
@@ -578,12 +589,14 @@ void nfs_client::reply_entry(
          * This caching helps to improve performance by avoiding repeated
          * lookup requests for entries that are known not to exist.
          *
-         * TODO: See if negative dentry timeout of 5 secs is ok.
+         * TODO: See if negative entries must be cached for lesser time.
          */
+        assert(aznfsc_cfg.lookupcache_int == AZNFSCFG_LOOKUPCACHE_ALL);
         assert(!fattr);
         stat_from_fattr3(&entry.attr, &zero_fattr);
-        entry.attr_timeout = 5;
-        entry.entry_timeout = 5;
+
+        entry.attr_timeout = aznfsc_cfg.actimeo;
+        entry.entry_timeout = aznfsc_cfg.actimeo;
     }
 
     if (file) {

@@ -46,10 +46,17 @@ using namespace aznfsc;
 #define AZNFSCFG_CACHE_MAX_MB_MIN 512
 #define AZNFSCFG_CACHE_MAX_MB_MAX (1024 * 1024)
 #define AZNFSCFG_CACHE_MAX_MB_DEF (4 * 1024)
+#define AZNFSCFG_FILECACHE_MAX_GB_MIN 1
+#define AZNFSCFG_FILECACHE_MAX_GB_MAX (1024 * 1024)
+#define AZNFSCFG_FILECACHE_MAX_GB_DEF (1024)
 #define AZNFSCFG_RETRANS_MIN    1
 #define AZNFSCFG_RETRANS_MAX    100
 #define AZNFSCFG_ACTIMEO_MIN    1
 #define AZNFSCFG_ACTIMEO_MAX    3600
+#define AZNFSCFG_LOOKUPCACHE_NONE   1
+#define AZNFSCFG_LOOKUPCACHE_POS    2
+#define AZNFSCFG_LOOKUPCACHE_ALL    3
+#define AZNFSCFG_LOOKUPCACHE_DEF    AZNFSCFG_LOOKUPCACHE_ALL
 
 // W/o jumbo blocks, 5TiB is the max file size we can support.
 #define AZNFSC_MAX_FILE_SIZE    (100 * 1024 * 1024 * 50'000ULL)
@@ -112,9 +119,6 @@ typedef struct aznfsc_cfg
      **                   Misc                      **
      *************************************************/
 
-    // Directory where file caches will be persisted.
-    const char *cachedir = nullptr;
-
     /**********************************************************************
      **                          Mount options                           **
      ** These are deliberately named after the popular NFS mount options **
@@ -168,6 +172,10 @@ typedef struct aznfsc_cfg
     int acdirmax = -1;
     int actimeo = -1;
 
+    // Whether to cache positive/negative lookup responses.
+    const char *lookupcache = nullptr;
+    int lookupcache_int = AZNFSCFG_LOOKUPCACHE_DEF;
+
     // Maximum number of readdir entries that can be requested in a single call.
     int readdir_maxcount = -1;
 
@@ -177,9 +185,56 @@ typedef struct aznfsc_cfg
     // Fuse max_background config value.
     int fuse_max_background = -1;
 
-    // Maximum filecache size in MB.
-    int cache_max_mb = -1;
+    /*************************************************
+     **                 Cache config                **
+     *************************************************/
 
+    struct {
+        struct {
+            /*
+             * Kernel readdir cache.
+             */
+            struct {
+                bool enable = true;
+            } kernel;
+
+            /*
+             * Userspace readdir cache.
+             */
+            struct {
+                bool enable = false;
+            } user;
+        } readdir;
+
+        struct {
+            /*
+             * Kernel data/page cache.
+             */
+            struct {
+                bool enable = true;
+            } kernel;
+
+            /*
+             * Userspace data cache.
+             */
+            struct {
+                bool enable = false;
+
+                // Max iserspace data cache size in MB.
+                int max_size_mb = -1;
+            } user;
+        } data;
+    } cache;
+
+    struct {
+        bool enable = false;
+
+        // Directory where file caches will be persisted.
+        const char *cachedir = nullptr;
+
+        // Max filecache size in GB.
+        int max_size_gb = -1;
+    } filecache;
     /*
      * TODO:
      * - Add auth related config.

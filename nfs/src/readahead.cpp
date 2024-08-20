@@ -243,6 +243,13 @@ int ra_state::issue_readaheads()
     }
 
     /*
+     * If userspace data cache is disabled, don't do readaheads.
+     */
+    if (!aznfsc_cfg.cache.data.user.enable) {
+        return 0;
+    }
+
+    /*
      * Issue all readaheads allowed by this ra_state.
      */
     while ((ra_offset = get_next_ra()) != 0) {

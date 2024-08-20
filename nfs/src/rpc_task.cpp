@@ -366,6 +366,12 @@ static void lookup_callback(
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
     /*
+     * Kernel must cache -ve entries.
+     */
+    const bool cache_negative =
+        (aznfsc_cfg.lookupcache_int == AZNFSCFG_LOOKUPCACHE_ALL);
+
+    /*
      * Now that the request has completed, we can query libnfs for the
      * dispatch time.
      */
@@ -374,7 +380,8 @@ static void lookup_callback(
         rpc_pdu_get_dispatch_usecs(rpc_get_pdu(rpc)),
         NFS_STATUS(res));
 
-    if (rpc_status == RPC_STATUS_SUCCESS && NFS_STATUS(res) == NFS3ERR_NOENT) {
+    if (((rpc_status == RPC_STATUS_SUCCESS) &&
+         (NFS_STATUS(res) == NFS3ERR_NOENT)) && cache_negative) {
         /*
          * Special case for creating negative dentry.
          */

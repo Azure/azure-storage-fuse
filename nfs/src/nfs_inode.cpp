@@ -68,9 +68,9 @@ nfs_inode::nfs_inode(const struct nfs_fh3 *filehandle,
     attr_timeout_timestamp = get_current_msecs() + attr_timeout_secs*1000;
 
     if (is_regfile()) {
-        if (aznfsc_cfg.cachedir != nullptr) {
+        if (aznfsc_cfg.filecache.enable && aznfsc_cfg.filecache.cachedir) {
             const std::string backing_file_name =
-                std::string(aznfsc_cfg.cachedir) + "/" + std::to_string(ino);
+                std::string(aznfsc_cfg.filecache.cachedir) + "/" + std::to_string(ino);
             filecache_handle =
                 std::make_shared<bytes_chunk_cache>(backing_file_name.c_str());
         } else {

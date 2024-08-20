@@ -66,7 +66,7 @@ do { \
             } \
             throw YAML::Exception( \
                     config[#var].Mark(), \
-                    std::string("Invalid "#var" value: ") + \
+                    std::string("Invalid value for config "#var": ") + \
                     std::to_string(var) + \
                     std::string(" (valid range [") + \
                     std::to_string(min) + ", " + std::to_string(max) + "])"); \
@@ -86,9 +86,20 @@ do { \
 #define _CHECK_INTZ(var, min, max) __CHECK_INT(var, min, max, true)
 
 /*
+ * Macro to check validity of config var of boolean type.
+ */
+#define _CHECK_BOOL(var) \
+do { \
+    if (config[#var]) { \
+        (var) = config[#var].as<bool>(); \
+    } \
+} while (0);
+
+
+/*
  * Macro to check validity of config var of string type.
  */
-#define _CHECK_STR(var, ignore_empty) \
+#define __CHECK_STR(var, is_valid, ignore_empty) \
 do { \
     if (((var) == nullptr) && config[#var]) { \
         /* Empty key is returned as "null" by the yaml parser */ \
@@ -96,15 +107,17 @@ do { \
             break; \
         } \
         (var) = ::strdup(config[#var].as<std::string>().c_str()); \
-        if (!is_valid_##var(var)) { \
+        if (!is_valid(var)) { \
             throw YAML::Exception( \
                     config[#var].Mark(), \
-                    std::string("Invalid "#var": ") + \
+                    std::string("Invalid value for config "#var": ") + \
                     std::string(var)); \
         } \
     } \
 } while (0);
 
+#define _CHECK_STR(var) __CHECK_STR(var, is_valid_##var, false)
+#define _CHECK_STR2(var, is_valid) __CHECK_STR(var, is_valid, false)
 
     if (config_yaml == nullptr) {
         return true;
@@ -120,9 +133,9 @@ do { \
     try {
         YAML::Node config = YAML::LoadFile(config_yaml);
 
-        _CHECK_STR(account, false);
-        _CHECK_STR(container, false);
-        _CHECK_STR(cloud_suffix, false);
+        _CHECK_STR(account);
+        _CHECK_STR(container);
+        _CHECK_STR(cloud_suffix);
 
         if ((port == -1) && config["port"]) {
             port = config["port"].as<int>();
@@ -144,6 +157,7 @@ do { \
         _CHECK_INT(acdirmin, AZNFSCFG_ACTIMEO_MIN, AZNFSCFG_ACTIMEO_MAX);
         _CHECK_INT(acdirmax, AZNFSCFG_ACTIMEO_MIN, AZNFSCFG_ACTIMEO_MAX);
         _CHECK_INT(actimeo, AZNFSCFG_ACTIMEO_MIN, AZNFSCFG_ACTIMEO_MAX);
+        _CHECK_STR(lookupcache);
         _CHECK_INT(rsize, AZNFSCFG_RSIZE_MIN, AZNFSCFG_RSIZE_MAX);
         _CHECK_INT(wsize, AZNFSCFG_WSIZE_MIN, AZNFSCFG_WSIZE_MAX);
         _CHECK_INT(retrans, AZNFSCFG_RETRANS_MIN, AZNFSCFG_RETRANS_MAX);
@@ -154,9 +168,22 @@ do { \
          */
         _CHECK_INTZ(readahead_kb, AZNFSCFG_READAHEAD_KB_MIN, AZNFSCFG_READAHEAD_KB_MAX);
         _CHECK_INT(fuse_max_background, AZNFSCFG_FUSE_MAX_BG_MIN, AZNFSCFG_FUSE_MAX_BG_MAX);
-        _CHECK_INT(cache_max_mb, AZNFSCFG_CACHE_MAX_MB_MIN, AZNFSCFG_CACHE_MAX_MB_MAX);
 
-        _CHECK_STR(cachedir, true);
+        _CHECK_BOOL(cache.readdir.kernel.enable);
+        _CHECK_BOOL(cache.readdir.user.enable);
+        _CHECK_BOOL(cache.data.kernel.enable);
+
+        _CHECK_BOOL(cache.data.user.enable);
+        if (cache.data.user.enable) {
+            _CHECK_INT(cache.data.user.max_size_mb,
+                       AZNFSCFG_CACHE_MAX_MB_MIN, AZNFSCFG_CACHE_MAX_MB_MAX);
+        }
+
+        _CHECK_BOOL(filecache.enable);
+        if (filecache.enable) {
+            _CHECK_STR2(filecache.cachedir, is_valid_cachedir);
+            _CHECK_INT(filecache.max_size_gb, AZNFSCFG_FILECACHE_MAX_GB_MIN, AZNFSCFG_FILECACHE_MAX_GB_MAX);
+        }
 
     } catch (const YAML::BadFile& e) {
         AZLogError("Error loading config file {}: {}", config_yaml, e.what());
@@ -200,18 +227,44 @@ void aznfsc_cfg::set_defaults_and_sanitize()
         acdirmin = 30;
     if (acdirmax == -1)
         acdirmax = 60;
-    if (actimeo != -1)
+    if (actimeo != -1) {
         acregmin = acregmax = acdirmin = acdirmax = actimeo;
+    } else {
+        /*
+         * This is used only by nfs_client::reply_entry() for setting the
+         * timeout of negative lookup result.
+         * Rest everywhere we will use ac{reg|dir}{min|max}.
+         */
+        actimeo = AZNFSCFG_ACTIMEO_MIN;
+    }
     if (acregmin > acregmax)
         acregmin = acregmax;
     if (acdirmin > acdirmax)
         acdirmin = acdirmax;
+
+    if (std::string(lookupcache) == "all") {
+        lookupcache_int = AZNFSCFG_LOOKUPCACHE_ALL;
+    } else if (std::string(lookupcache) == "none") {
+        lookupcache_int = AZNFSCFG_LOOKUPCACHE_NONE;
+    } else if (std::string(lookupcache) == "pos" ||
+            std::string(lookupcache) == "positive") {
+        lookupcache_int = AZNFSCFG_LOOKUPCACHE_POS;
+    } else {
+        lookupcache_int = AZNFSCFG_LOOKUPCACHE_DEF;
+    }
+
     if (readdir_maxcount == -1)
         readdir_maxcount = 1048576;
     if (readahead_kb == -1)
         readahead_kb = 16384;
-    if (cache_max_mb == -1)
-        cache_max_mb = AZNFSCFG_CACHE_MAX_MB_DEF;
+    if (cache.data.user.enable) {
+        if (cache.data.user.max_size_mb == -1)
+            cache.data.user.max_size_mb = AZNFSCFG_CACHE_MAX_MB_DEF;
+    }
+    if (filecache.enable) {
+        if (filecache.max_size_gb == -1)
+            filecache.max_size_gb = AZNFSCFG_FILECACHE_MAX_GB_DEF;
+    }
     if (cloud_suffix == nullptr)
         cloud_suffix = ::strdup("blob.core.windows.net");
 
@@ -235,14 +288,21 @@ void aznfsc_cfg::set_defaults_and_sanitize()
     AZLogDebug("acdirmin = {}", acdirmin);
     AZLogDebug("acdirmax = {}", acdirmax);
     AZLogDebug("actimeo = {}", actimeo);
+    AZLogDebug("lookupcache = {}", lookupcache);
     AZLogDebug("readdir_maxcount = {}", readdir_maxcount);
     AZLogDebug("readahead_kb = {}", readahead_kb);
     AZLogDebug("fuse_max_background = {}", fuse_max_background);
-    AZLogDebug("cache_max_mb = {}", cache_max_mb);
+    AZLogDebug("cache.readdir.kernel.enable = {}", cache.readdir.kernel.enable);
+    AZLogDebug("cache.readdir.user.enable = {}", cache.readdir.user.enable);
+    AZLogDebug("cache.data.kernel.enable = {}", cache.data.kernel.enable);
+    AZLogDebug("cache.data.user.enable = {}", cache.data.user.enable);
+    AZLogDebug("cache.data.user.max_size_mb = {}", cache.data.user.max_size_mb);
+    AZLogDebug("filecache.enable = {}", filecache.enable);
+    AZLogDebug("filecache.cachedir = {}", filecache.cachedir ? filecache.cachedir : "");
+    AZLogDebug("filecache.max_size_gb = {}", filecache.max_size_gb);
     AZLogDebug("account = {}", account);
     AZLogDebug("container = {}", container);
     AZLogDebug("cloud_suffix = {}", cloud_suffix);
-    AZLogDebug("cachedir = {}", cachedir ? cachedir : "");
     AZLogDebug("===== config end =====");
 }
 
@@ -278,20 +338,18 @@ static void aznfsc_ll_init(void *userdata,
      *       deletion for those.
      */
     conn->want |= FUSE_CAP_READDIRPLUS;
-    //conn->want &= ~FUSE_CAP_READDIRPLUS_AUTO;
+    conn->want |= FUSE_CAP_READDIRPLUS_AUTO;
 
     /*
-     * TODO: No parallel reads for now.
-     *       So we don't need to worry about locking the inode.
+     * Fuse kernel driver must issue parallel readahead requests.
      */
     conn->want |= FUSE_CAP_ASYNC_READ;
-    //conn->want &= ~FUSE_CAP_ASYNC_READ;
 
     // Blob NFS doesn't support locking.
     conn->want &= ~FUSE_CAP_POSIX_LOCKS;
     conn->want &= ~FUSE_CAP_FLOCK_LOCKS;
 
-    // See if we can support O_TRUNC.
+    // TODO: See if we can support O_TRUNC.
     conn->want &= ~FUSE_CAP_ATOMIC_O_TRUNC;
 
     /*
@@ -307,9 +365,16 @@ static void aznfsc_ll_init(void *userdata,
     conn->want |= FUSE_CAP_AUTO_INVAL_DATA;
     conn->want |= FUSE_CAP_ASYNC_DIO;
 
-    conn->want &= ~FUSE_CAP_WRITEBACK_CACHE;
+    if (aznfsc_cfg.cache.data.kernel.enable) {
+        conn->want |= FUSE_CAP_WRITEBACK_CACHE;
+    } else {
+        conn->want &= ~FUSE_CAP_WRITEBACK_CACHE;
+    }
+
     conn->want |= FUSE_CAP_PARALLEL_DIROPS;
     conn->want &= ~FUSE_CAP_POSIX_ACL;
+
+    // TODO: See if we should enable this.
     conn->want &= ~FUSE_CAP_CACHE_SYMLINKS;
     conn->want &= ~FUSE_CAP_SETXATTR_EXT;
 
@@ -547,8 +612,8 @@ static void aznfsc_ll_open(fuse_req_t req,
      *
      * TODO: Explore kernel caching, its benefits and side-effects.
      */
-    fi->direct_io = 1;
-    fi->keep_cache = 0;
+    fi->direct_io = !aznfsc_cfg.cache.data.kernel.enable;
+    fi->keep_cache = aznfsc_cfg.cache.data.kernel.enable;
     fi->nonseekable = 0;
     fi->parallel_direct_writes = 1;
     fi->noflush = 0;
@@ -668,10 +733,10 @@ static void aznfsc_ll_opendir(fuse_req_t req,
      * TODO: Later explore if kernel cacheing directory content is beneficial
      *       and what are the side effects, if any.
      */
-    fi->direct_io = 0;
-    fi->keep_cache = 0;
+    fi->direct_io = !aznfsc_cfg.cache.readdir.kernel.enable;
+    fi->keep_cache = 1;
     fi->nonseekable = 0;
-    fi->cache_readdir = 0;
+    fi->cache_readdir = aznfsc_cfg.cache.readdir.kernel.enable;
     fi->noflush = 0;
 
     fuse_reply_open(req, fi);
