@@ -335,12 +335,12 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 
 	bc.prepareHandleForBlockCache(handle)
 
-	if options.Flags&os.O_TRUNC != 0 || options.Flags&os.O_WRONLY != 0 {
+	if options.Flags&os.O_TRUNC != 0 || (options.Flags&os.O_WRONLY != 0 && options.Flags&os.O_APPEND == 0) {
 		// If file is opened in truncate or wronly mode then we need to wipe out the data consider current file size as 0
 		log.Debug("BlockCache::OpenFile : Truncate %v to 0", options.Name)
 		handle.Size = 0
 		handle.Flags.Set(handlemap.HandleFlagDirty)
-	} else if options.Flags&os.O_RDWR != 0 && handle.Size != 0 {
+	} else if handle.Size != 0 && (options.Flags&os.O_RDWR != 0 || options.Flags&os.O_APPEND != 0) {
 		// File is not opened in read-only mode so we need to get the list of blocks and validate the size
 		// As there can be a potential write on this file, currently configured block size and block size of the file in container
 		// has to match otherwise it will corrupt the file. Fail the open call if this is not the case.
