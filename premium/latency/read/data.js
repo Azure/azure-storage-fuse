@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1723955001846,
+  "lastUpdate": 1724217652207,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -5888,6 +5888,75 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 69.83762968139733,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "166800991+dphulkar-msft@users.noreply.github.com",
+            "name": "dphulkar-msft",
+            "username": "dphulkar-msft"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "25489b8f2895d132d1bf362af40b0059521c66d1",
+          "message": "Merge pull request #1506 from Azure/dphulkar/fuse-mariner3\n\nAdded support for mariner preview package release.",
+          "timestamp": "2024-08-21T10:31:12+05:30",
+          "tree_id": "a4ca3e187ab8ac83d565c137f52f69be0c5a1bd1",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/25489b8f2895d132d1bf362af40b0059521c66d1"
+        },
+        "date": 1724217651978,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read",
+            "value": 0.09747532944966665,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read",
+            "value": 61.768797780639666,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_small_file",
+            "value": 0.09017019297066665,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 0.15916733804066668,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_direct_io",
+            "value": 0.09664908162500001,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_direct_io",
+            "value": 64.51273099403633,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 0.17951366482800002,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 1.0390479718116667,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 70.23116138871866,
             "unit": "milliseconds"
           }
         ]
