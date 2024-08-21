@@ -153,6 +153,8 @@ type FileSize struct {
 func (suite *blockBlobTruncateSuite) TestFileTruncate() {
 	fileSizes := make([]FileSize, 0)
 
+	fileSizes = append(fileSizes, FileSize{288358400, 269484032})
+
 	// Truncate a new (empty) file to 0
 	fileSizes = append(fileSizes, FileSize{0, 0})
 

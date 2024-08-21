@@ -1034,6 +1034,8 @@ func (bb *BlockBlob) createNewBlocks(blockList *common.BlockOffsetList, offset, 
 }
 
 func (bb *BlockBlob) TruncateFile(name string, size int64, blockSize int64) error {
+	// TODO : Truncate is sequential wirte now, we can upload multiple blocks in parallel
+
 	// log.Trace("BlockBlob::TruncateFile : name=%s, size=%d", name, size)
 	attr, err := bb.GetAttr(name)
 	if err != nil {
@@ -1071,7 +1073,7 @@ func (bb *BlockBlob) TruncateFile(name string, size int64, blockSize int64) erro
 
 	if attr.Size == 0 {
 		// File does not have any data yet so we just need to fill this with 0's
-		err = bb.createSparseFile(name, size, blockSize, make([]string, 0))
+		err = bb.createSparseFile(name, size, blockSize, make([]string, 0), 16)
 		if err != nil {
 			log.Err("BlockBlob::TruncateFile : Failed to expand file %s [%s]", name, err.Error())
 		}
@@ -1120,17 +1122,17 @@ func (bb *BlockBlob) readFileData(name string, truncateSize int64, fileSize int6
 	return data, err
 }
 
-func (bb *BlockBlob) createSparseFile(name string, size int64, blockSize int64, blkList []string) error {
+func (bb *BlockBlob) createSparseFile(name string, size int64, blockSize int64, blkList []string, idLen int64) error {
 	blobName := filepath.Join(bb.Config.prefixPath, name)
 	blobClient := bb.Container.NewBlockBlobClient(blobName)
 
-	id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
+	id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(idLen))
 	for i := 0; size > 0; i++ {
 		if i == 0 || size < blockSize {
 			// Only first and last block we upload and rest all we replicate with the first block itself
 			if size < blockSize {
 				blockSize = size
-				id = base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
+				id = base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(idLen))
 			}
 			data := make([]byte, blockSize)
 
@@ -1170,6 +1172,18 @@ func (bb *BlockBlob) updateBlocks(name string, newSize int64, blockSize int64, b
 	var block internal.CommittedBlock
 	lastIdx := 0
 
+	// Extract the block-id length and size of block so that we create new blocks accordingly
+	idLen := int64(16)
+	orgId, err := base64.StdEncoding.DecodeString((*blockList)[0].Id)
+	if err == nil {
+		idLen = int64(len(orgId))
+	}
+	oldBlockSize := int64((*blockList)[0].Size)
+
+	if oldBlockSize != 0 {
+		blockSize = oldBlockSize
+	}
+
 	for lastIdx, block = range *blockList {
 		if newSize < int64(block.Size) {
 			removeBlocks = true
@@ -1193,7 +1207,7 @@ func (bb *BlockBlob) updateBlocks(name string, newSize int64, blockSize int64, b
 		// Last block in file needs truncation
 		data := make([]byte, newSize)
 
-		id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
+		id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(idLen))
 		err := bb.ReadInBuffer(name, (*blockList)[lastIdx].Offset, newSize, data)
 		if err != nil {
 			log.Err("BlockBlob::updateBlocks : Failed to read buffer for %s [%s]", name, err.Error())
@@ -1216,7 +1230,7 @@ func (bb *BlockBlob) updateBlocks(name string, newSize int64, blockSize int64, b
 		newSize = 0
 	}
 
-	return bb.createSparseFile(name, newSize, blockSize, blkList)
+	return bb.createSparseFile(name, newSize, blockSize, blkList, idLen)
 }
 
 func (bb *BlockBlob) convertFileToBlocks(name string, size int64, blockSize int64, data []byte) error {
