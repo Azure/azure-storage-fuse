@@ -1412,6 +1412,9 @@ end:
                 ? chunkvec : std::vector<bytes_chunk>();
 }
 
+/*
+ * TODO: Add pruning stats.
+ */
 void bytes_chunk_cache::inline_prune()
 {
     uint64_t inline_bytes = 0;
@@ -1489,8 +1492,8 @@ void bytes_chunk_cache::inline_prune()
             continue;
         }
 
-        AZLogInfo("[{}] inline_prune(): deleting membuf(offset={}, length={})",
-                  fmt::ptr(this), mb->offset, mb->length);
+        AZLogDebug("[{}] inline_prune(): deleting membuf(offset={}, length={})",
+                   fmt::ptr(this), mb->offset, mb->length);
 
         /*
          * Release the chunk.

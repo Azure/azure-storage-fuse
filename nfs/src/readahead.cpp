@@ -343,6 +343,9 @@ delete_ctx:
     inode->decref();
 }
 
+/*
+ * TODO: Add readahead stats.
+ */
 int ra_state::issue_readaheads()
 {
     uint64_t ra_offset;
