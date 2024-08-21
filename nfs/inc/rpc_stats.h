@@ -207,13 +207,16 @@ public:
         } else if (stamp.issue == 0) {
             /*
              * Requests not issued.
+             * See skip_mtime_update() for how we can come here for
+             * FUSE_SETATTR.
              */
             assert(stamp.dispatch == 0);
             assert(stamp.complete == 0);
             assert(optype == FUSE_READDIR ||
                    optype == FUSE_READDIRPLUS ||
                    optype == FUSE_READ ||
-                   optype == FUSE_WRITE);
+                   optype == FUSE_WRITE ||
+                   optype == FUSE_SETATTR);
         } else {
             /*
              * Requests issued but not completed.

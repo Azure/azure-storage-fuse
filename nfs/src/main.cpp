@@ -960,8 +960,10 @@ static void aznfsc_ll_write_buf(fuse_req_t req,
      */
     assert(bufv->count == 1);
 
-    AZLogDebug("aznfsc_ll_write_buf(req={}, ino={}, bufv={}, off={}, len={}, fi={}",
-               fmt::ptr(req), ino, fmt::ptr(bufv), off, length, fmt::ptr(fi));
+    AZLogDebug("aznfsc_ll_write_buf(req={}, ino={}, bufv={}, off={}, len={}, "
+               "fi={} [writepage: {}, flush: {}]",
+               fmt::ptr(req), ino, fmt::ptr(bufv), off, length, fmt::ptr(fi),
+               fi->writepage ? 1 : 0, fi->flush ? 1 : 0);
 
     struct nfs_client *client = get_nfs_client_from_fuse_req(req);
 

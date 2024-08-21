@@ -121,6 +121,12 @@ struct nfs_inode
     int64_t attr_timeout_secs = -1;
     int64_t attr_timeout_timestamp = -1;
 
+    /*
+     * Time in usecs we received the last cached write for this inode.
+     * See discussion in stamp_cached_write() for details.
+     */
+    int64_t last_cached_write = 0;
+
     // nfs_client owning this inode.
     struct nfs_client *const client;
 
@@ -182,6 +188,51 @@ struct nfs_inode
         assert(attr.st_ino != 0);
         return attr.st_ino;
     }
+
+    /**
+     * Note usecs when the last cached write was received for this inode.
+     * A cached write is not a direct application write but writes cached
+     * by fuse kernel driver and then dispatched later as possibly bigger
+     * writes. These have fi->writepage set.
+     * We use this to decide if we need to no-op a setattr(mtime) call.
+     * Note that fuse does not provide filesystems a way to convey "nocmtime",
+     * i.e. fuse should not call setattr(mtime) to set file mtime during
+     * cached write calls. Fuse will not call setattr(mtime) if we are not
+     * using kernel cache as it expects the filesystem to manage mtime itself,
+     * but if kernel cache is used fuse calls setattr(mtime) very often which
+     * slows down the writes. Since our backing filesystem is NFS it'll take
+     * care of updating mtime and hence we can ignore such setattr(mtime)
+     * calls. To distinguish setattr(mtime) done as a result of writes from
+     * ones that are done as a result of explicit utime() call by application,
+     * we check if we have seen cached write recently.
+     */
+     void stamp_cached_write()
+     {
+         if (aznfsc_cfg.cache.data.kernel.enable) {
+             last_cached_write = get_current_usecs();
+         }
+     }
+
+     /**
+      * Should we skip setattr(mtime) call for this inode?
+      * See discussion above stamp_cached_write().
+      */
+     bool skip_mtime_update() const
+     {
+        static const int64_t one_sec = 1000 * 1000ULL;
+        const int64_t now_usecs = get_current_usecs();
+        const int64_t now_msecs = now_usecs / 1000ULL;
+        const bool attrs_valid = (attr_timeout_timestamp >= now_msecs);
+
+        assert(now_usecs >= last_cached_write);
+
+        /*
+         * We skip setattr(mtime) if we have seen a cached write in the last
+         * one sec and if we have valid cached attributes for this inode.
+         * Note that we need to return updated attributes in setattr response.
+         */
+        return ((now_usecs - last_cached_write) < one_sec) && attrs_valid;
+     }
 
     /**
      * Increment lookupcnt of the inode.

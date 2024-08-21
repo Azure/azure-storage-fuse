@@ -275,7 +275,10 @@ struct setattr_rpc_task
     void set_attribute_and_mask(struct stat *attr, int mask)
     {
         attribute = attr;
-        to_set = mask;
+        /*
+         * We don't make use of FUSE_SET_ATTR_CTIME, ignore it.
+         */
+        to_set = mask & ~FUSE_SET_ATTR_CTIME;
     }
 
     const struct stat *get_attr() const

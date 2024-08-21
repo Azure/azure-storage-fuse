@@ -609,7 +609,7 @@ static void setattr_callback(
     auto res = (SETATTR3res*)data;
     const fuse_ino_t ino =
         task->rpc_api->setattr_task.get_ino();
-    const struct nfs_inode *inode =
+    struct nfs_inode *inode =
         task->get_client()->get_nfs_inode_from_ino(ino);
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
@@ -624,6 +624,12 @@ static void setattr_callback(
 
     if (status == 0) {
         assert(res->SETATTR3res_u.resok.obj_wcc.after.attributes_follow);
+
+        /*
+         * Update the cached inode attributes from the postop attributes
+         * received in this response.
+         */
+        inode->update(res->SETATTR3res_u.resok.obj_wcc.after.post_op_attr_u.attributes);
 
         struct stat st;
 
@@ -999,6 +1005,9 @@ void rpc_task::run_write()
     size_t length = rpc_api->write_task.get_size();
     struct fuse_bufvec *bufv = rpc_api->write_task.get_buffer_vector();
     off_t offset = rpc_api->write_task.get_offset();
+
+    // Update cached write timestamp, if needed.
+    inode->stamp_cached_write();
 
     /*
      * Don't issue new writes if some previous write had failed with error.
@@ -1379,17 +1388,37 @@ void rpc_task::run_readlink()
 void rpc_task::run_setattr()
 {
     auto ino = rpc_api->setattr_task.get_ino();
+    struct nfs_inode *inode = get_client()->get_nfs_inode_from_ino(ino);
     auto attr = rpc_api->setattr_task.get_attr();
     const int valid = rpc_api->setattr_task.get_attr_flags_to_set();
     bool rpc_retry;
     rpc_pdu *pdu = nullptr;
+
+    /*
+     * If this is a setattr(mtime) call called for updating mtime of a file
+     * under write in writeback mode, skip the call and return cached
+     * attributes. Note that write requests sent to NSF server will correctly
+     * update the mtime so we don't need to do that.
+     * Since fuse doesn't provide us a way to turn off these setattr(mtime)
+     * calls, we have this hack.
+     */
+    if ((valid && !(valid & ~FUSE_SET_ATTR_MTIME)) && inode->skip_mtime_update()) {
+        /*
+         * Set fuse kernel attribute cache timeout to the current attribute
+         * cache timeout for this inode, as per the recent revalidation
+         * experience.
+         */
+        AZLogDebug("[{}] Skipping mtime update", ino);
+        reply_attr(&inode->attr, inode->get_actimeo());
+        return;
+    }
 
     do {
         SETATTR3args args;
         ::memset(&args, 0, sizeof(args));
 
         ::memset(&args, 0, sizeof(args));
-        args.object = get_client()->get_nfs_inode_from_ino(ino)->get_fh();
+        args.object = inode->get_fh();
 
         if (valid & FUSE_SET_ATTR_SIZE) {
             AZLogDebug("Setting size to {}", attr->st_size);
