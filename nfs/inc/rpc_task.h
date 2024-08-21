@@ -220,6 +220,10 @@ struct write_context
       }
 
 private:
+    /*
+     * Note: We always write the full underlying membuf and not just the
+     *       portion represented by bc.
+     */
     const struct bytes_chunk bc;
     struct rpc_task *task;
     fuse_ino_t ino;

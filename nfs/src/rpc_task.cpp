@@ -435,8 +435,15 @@ static void write_callback(
     assert(mb != nullptr);
     assert(mb->is_inuse() && mb->is_locked());
     assert(mb->is_flushing() && mb->is_dirty() && mb->is_uptodate());
-    // We should only ever write full membufs.
+
+#if 0
+    /*
+     * We should only ever write full membufs.
+     * Note: bc may be referring to a smaller window but we write the entire
+     *       membuf. Leaving this assert commented to highlight that.
+     */
     assert(bc->maps_full_membuf());
+#endif
 
     auto res = (WRITE3res *)data;
     const char* errstr;
@@ -854,6 +861,12 @@ copy_to_cache(struct nfs_client *const client,
     // Check the valid ino.
     assert(ino != 0);
 
+    /*
+     * XXX We are only handling count=1, assert to know if kernel sends more,
+     *     we would want to handle that.
+     */
+    assert(bufv->count == 1);
+
     const char *buf = (char *) bufv->buf[bufv->idx].mem + bufv->off;
     struct nfs_inode *inode = client->get_nfs_inode_from_ino(ino);
     std::vector<bytes_chunk> bc_vec =
@@ -919,6 +932,11 @@ static void sync_membuf(const struct bytes_chunk& bc,
                         struct nfs_client *client,
                         fuse_ino_t ino)
 {
+    /*
+     * Get the underlying membuf for bc.
+     * Note that we write the entire membuf, even though bc may be referring
+     * to a smaller window.
+     */
     struct membuf *mb = bc.get_membuf();
     struct rpc_task *flush_task = nullptr;
 
