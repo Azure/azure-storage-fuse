@@ -1234,7 +1234,8 @@ func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 			if os.IsPermission(err) {
 				info, _ := os.Stat(localPath)
 				orgMode = info.Mode()
-				err = os.Chmod(localPath, os.FileMode(0666))
+				newMode := orgMode | 0444
+				err = os.Chmod(localPath, newMode)
 				if err == nil {
 					modeChanged = true
 					uploadHandle, err = os.Open(localPath)

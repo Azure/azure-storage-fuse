@@ -668,7 +668,7 @@ func (suite *fileCacheTestSuite) TestCreateFileWithWritePerm() {
 	suite.assert.Nil(err)
 	suite.assert.True(f.Dirty()) // Handle should be dirty since it was not created in storage
 
-	os.Chmod(suite.cache_path+"/"+path, 0762)
+	os.Chmod(suite.cache_path+"/"+path, 0331)
 
 	// Path should be added to the file cache
 	_, err = os.Stat(suite.cache_path + "/" + path)
@@ -679,7 +679,7 @@ func (suite *fileCacheTestSuite) TestCreateFileWithWritePerm() {
 	err = suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: f})
 	suite.assert.Nil(err)
 	info, _ := os.Stat(suite.cache_path + "/" + path)
-	suite.assert.Equal(info.Mode(), fs.FileMode(0762))
+	suite.assert.Equal(info.Mode(), fs.FileMode(0331))
 }
 
 func (suite *fileCacheTestSuite) TestCreateFileInDir() {
