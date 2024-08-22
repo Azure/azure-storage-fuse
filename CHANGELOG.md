@@ -1,28 +1,17 @@
 ## 2.3.2 (Unreleased)
 
 **Bug Fixes**
-- Flush shall only sync the blocks to storage and not delete them from local cache.
-- Random write has been re-enabled in block cache.
-- Reading or writing to an uncommitted block which has been deleted from the in-memory cache.
-- Check download status of a block before updating and return error if it failed to download.
-- Fixed an issue in File-Cache that caused upload to fail due to insufficient permissions.
-
-## 2.3.1 (Unreleased)
-**NOTICE**
-- Due to data integrity issues, random write has been disabled in block-cache. Refer [#1484](https://github.com/Azure/azure-storage-fuse/pull/1484) for blocked scenarios.
-
-**Bug Fixes**
 - Fixed the case where file creation using SAS on HNS accounts was returning back wrong error code.
 - [#1402](https://github.com/Azure/azure-storage-fuse/issues/1402) Fixed proxy URL parsing.
-- If earlier instance of Blobfuse2 crashed and mount is unstable then next mount to same path will automatically cleanup the system.
 - In flush operation, the blocks will be committed only if the handle is dirty.
-- Reset block data to null before reuse.
+- Fixed an issue in File-Cache that caused upload to fail due to insufficient permissions.
 - Sparse file data integrity issues fixed.
-- Fixed block-cache read of small files where file size is not multiple of kernel buffer size.
-- Fixed race condition in random write where a block is being uploaded and written to in parallel.
+- Fixed block-cache read of small files in direct-io mode, where file size is not multiple of kernel buffer size.
+- Fixed race condition in random write flow where a block is being uploaded and written to in parallel.
+- Fixed race condition in random read/write flow where a uncommitted block, which is deleted from local cache is reused.
 
 **Other Changes**
-- LFU policy in file cache has been deprecated.
+- LFU policy in file cache has been removed.
 - Default values, if not assigned in config, for the following parameters in block-cache are calculated as follows:
     - Memory preallocated for Block-Cache is 80% of free memory
     - Disk Cache Size is 80% of free disk space

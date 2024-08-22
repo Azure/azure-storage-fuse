@@ -1255,13 +1255,19 @@ func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 			})
 
 		uploadHandle.Close()
+
+		if modeChanged {
+			err1 := os.Chmod(localPath, orgMode)
+			if err1 != nil {
+				log.Err("FileCache::FlushFile : Failed to remove read mode from file %s [%s]", options.Handle.Path, err1.Error())
+			}
+		}
+
 		if err != nil {
 			log.Err("FileCache::FlushFile : %s upload failed [%s]", options.Handle.Path, err.Error())
 			return err
 		}
-		if modeChanged {
-			_ = os.Chmod(localPath, orgMode)
-		}
+
 		options.Handle.Flags.Clear(handlemap.HandleFlagDirty)
 
 		// If chmod was done on the file before it was uploaded to container then setting up mode would have been missed
