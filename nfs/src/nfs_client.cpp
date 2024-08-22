@@ -217,6 +217,16 @@ void nfs_client::jukebox_runner()
                            js->rpc_api->rename_task.get_newname(),
                            js->rpc_api->rename_task.get_flags());
                     break;
+                case FUSE_READ:
+                    AZLogWarn("[JUKEBOX REISSUE] read(req={}, ino={})"
+                              " size={}, offset={} fi={}",
+                              fmt::ptr(js->rpc_api->req),
+                              js->rpc_api->read_task.get_ino(),
+                              js->rpc_api->read_task.get_size(),
+                              js->rpc_api->read_task.get_offset(),
+                              fmt::ptr(js->rpc_api->read_task.get_fuse_file()));
+                    jukebox_read(js->rpc_api);
+                    break;                  
                 case FUSE_READDIR:
                     AZLogWarn("([JUKEBOX REISSUE] readdir(req={}, ino={}, "
                                "size={}, off={}, fi={})",
@@ -636,6 +646,58 @@ void nfs_client::read(
 
     inode->readahead_state->on_application_read(off, size);
     tsk->run_read();
+}
+
+/*
+ * This function will be called only for read requests that failed
+ * with JUKEBOX error.
+ */
+void nfs_client::jukebox_read(struct api_task_info *rpc_api)
+{
+    struct rpc_task *child_tsk =
+        get_rpc_task_helper()->alloc_rpc_task(FUSE_READ);
+
+    child_tsk->init_read(
+        rpc_api->req,
+        rpc_api->read_task.get_ino(),
+        rpc_api->read_task.get_size(),
+        rpc_api->read_task.get_offset(),
+        rpc_api->read_task.get_fuse_file());
+
+    // Any new task should start fresh as a parent task.
+    assert(child_tsk->rpc_api->parent_task == nullptr);
+
+    /*
+     * Read API calls will be issued only for child tasks, hence
+     * copy the parent info from the original task to this retry task.
+     */
+    assert(rpc_api->parent_task != nullptr);
+    child_tsk->rpc_api->parent_task = rpc_api->parent_task;
+
+    /*
+     * Since we are retrying this child task, the parent read task should have
+     * atleast 1 ongoing read.
+     */
+    assert(child_tsk->rpc_api->parent_task->num_ongoing_backend_reads > 0);
+
+    /*
+     * Child task should always read a subset of the parent task.
+     */
+    assert(child_tsk->rpc_api->read_task.get_offset() >=
+            child_tsk->rpc_api->parent_task->rpc_api->read_task.get_offset());
+    assert(child_tsk->rpc_api->read_task.get_size() <=
+            child_tsk->rpc_api->parent_task->rpc_api->read_task.get_size());
+
+    /*
+     * The bytes_chunk held by this task must have its inuse count
+     * bumped as the get() call made to obtain this chunk initially would
+     * have set it.
+     */
+    assert(rpc_api->bc != nullptr);
+    assert(rpc_api->bc->get_membuf()->is_inuse());
+
+    // Issue the read to the server
+    child_tsk->read_from_server(*(rpc_api->bc));
 }
 
 /*

@@ -762,6 +762,42 @@ struct api_task_info
      */
     fuse_req *req = nullptr;
 
+
+    /*
+     * This will refer to the parent task for a child task.
+     * This will be nullptr for parent task.
+     *
+     * When do we need parent tasks?
+     * Note that one fuse request is tracked using one rpc_task, so if we
+     * have to issue multiple backend RPCs to serve a single fuse read, then
+     * each of those multiple backend RPCs become a new (child) rpc_task and
+     * the rpc_task tracking the fuse request becomes the parent task.
+     * We do this for a couple of reasons, most importantly it helps RPC
+     * accounting/stats (which needs to track every RPC issued to the backend)
+     * and secondly it helps to use the RPC pool size for limiting the max
+     * outstanding RPCs to the backend.
+     *
+     * When do we need multiple backend RPCs to serve a single fuse RPC?
+     * The only known case is of fuse read when bytes_chunk_cache::get()
+     * returns more than one bytes_chunk for a given fuse read. Note that each
+     * of these bytes_chunk is issued as an individual RPC READ to the NFS
+     * server. We allocate child rpc_task structures for each of these READs
+     * and the fuse read is tracked by the parent rpc_task.
+     * Note that we can make use of rpc_nfs3_readv_task() API to issue a
+     * single RPC READ, but if the to-be-read data is not contiguous inside
+     * the file (this can happen if some data in the middle is already in the
+     * cache) we may still need multiple RPC READs.
+     * This should not be very common though.
+     */
+    rpc_task *parent_task = nullptr;
+
+    /*
+     * The byte chunk for the read task.
+     * For a child read task, this will be the byte chunk to which it will
+     * read the data.
+     */
+    struct bytes_chunk *bc = nullptr;
+
     /*
      * Operation type.
      * Used to access the following union.
@@ -889,34 +925,6 @@ public:
      * don't need to synchronize access to this with a lock.
      */
     std::vector<bytes_chunk> bc_vec;
-
-    /*
-     * This will refer to the parent task for a child task.
-     * This will be nullptr for parent task.
-     *
-     * When do we need parent tasks?
-     * Note that one fuse request is tracked using one rpc_task, so if we
-     * have to issue multiple backend RPCs to serve a single fuse read, then
-     * each of those multiple backend RPCs become a new (child) rpc_task and
-     * the rpc_task tracking the fuse request becomes the parent task.
-     * We do this for a couple of reasons, most importantly it helps RPC
-     * accounting/stats (which needs to track every RPC issued to the backend)
-     * and secondly it helps to use the RPC pool size for limiting the max
-     * outstanding RPCs to the backend.
-     *
-     * When do we need multiple backend RPCs to serve a single fuse RPC?
-     * The only known case is of fuse read when bytes_chunk_cache::get()
-     * returns more than one bytes_chunk for a given fuse read. Note that each
-     * of these bytes_chunk is issued as an individual RPC READ to the NFS
-     * server. We allocate child rpc_task structures for each of these READs
-     * and the fuse read is tracked by the parent rpc_task.
-     * Note that we can make use of rpc_nfs3_readv_task() API to issue a
-     * single RPC READ, but if the to-be-read data is not contiguous inside
-     * the file (this can happen if some data in the middle is already in the
-     * cache) we may still need multiple RPC READs.
-     * This should not be very common though.
-     */
-    rpc_task *parent_task = nullptr;
 
     enum fuse_opcode optype = (fuse_opcode) 0;
 
@@ -1472,8 +1480,6 @@ public:
         assert(task->index == free_index);
         // Every rpc_task starts as sync.
         assert(!task->is_async());
-        // No task starts as a child task.
-        assert(task->parent_task == nullptr);
 
         /*
          * Only first time around rpc_api will be null for a rpc_task, after
@@ -1488,6 +1494,9 @@ public:
         task->rpc_api->req = nullptr;
         task->set_op_type(optype);
         task->stats.on_rpc_create(optype, start_usec);
+
+        // No task starts as a child task.
+        assert(task->rpc_api->parent_task == nullptr);
 
 #ifndef ENABLE_NON_AZURE_NFS
         assert(task->client->mnt_options.nfs_port == 2047 ||

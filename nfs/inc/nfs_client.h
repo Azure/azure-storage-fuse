@@ -399,6 +399,8 @@ public:
         off_t off,
         struct fuse_file_info *fi);
 
+    void jukebox_read(struct api_task_info *rpc_api);
+
     static void stat_from_fattr3(struct stat* st, const struct fattr3* attr);
 
     void reply_entry(
