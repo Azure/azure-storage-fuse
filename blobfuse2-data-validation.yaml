@@ -250,7 +250,7 @@ stages:
               mkdir -p $(TEMP_DIR)
             displayName: "Create directory structure"
 
-          - template: 'mount.yml'
+          - template: 'azure-pipeline-templates/mount.yml'
             parameters:
               working_dir: $(WORK_DIR)
               mount_dir: $(MOUNT_DIR)
