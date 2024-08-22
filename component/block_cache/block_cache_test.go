@@ -2503,7 +2503,7 @@ func (suite *blockCacheTestSuite) TestReadUncommittedPrefetchedBlock() {
 
 	suite.assert.Equal(h.Buffers.Cooking.Len()+h.Buffers.Cooked.Len(), prefetch)
 
-	// read blocks 0, 1 and 2 where prefetched blocks 1 and 2 are uncommmitted
+	// read blocks 0, 1 and 2 where prefetched blocks 1 and 2 are uncommitted
 	data := make([]byte, 2*_1MB)
 	n, err = tobj.blockCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 512, Data: data})
 	suite.assert.Nil(err)
