@@ -5,6 +5,7 @@
 - Random write has been re-enabled in block cache.
 - Reading or writing to an uncommitted block which has been deleted from the in-memory cache.
 - Check download status of a block before updating and return error if it failed to download.
+- Fixed an issue in File-Cache that caused upload to fail due to insufficient permissions.
 
 ## 2.3.1 (Unreleased)
 **NOTICE**
