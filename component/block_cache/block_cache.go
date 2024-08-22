@@ -709,15 +709,18 @@ func (bc *BlockCache) startPrefetch(handle *handlemap.Handle, index uint64, pref
 				block := handle.Buffers.Cooking.Remove(node).(*Block)
 				block.node = nil
 				i++
-
+				//This list may contain dirty blocks which are yet to be committed.
 				select {
-				case <-block.state:
+				case _, ok := <-block.state:
 					// As we are first reader of this block here its important to unblock any future readers on this block
-					block.flags.Clear(BlockFlagDownloading)
-					block.Unblock()
-
-					// Block is downloaded so it's safe to ready it for reuse
-					block.node = handle.Buffers.Cooked.PushBack(block)
+					if ok {
+						block.flags.Clear(BlockFlagDownloading)
+						block.Unblock()
+						// Block is downloaded so it's safe to ready it for reuse
+						block.node = handle.Buffers.Cooked.PushBack(block)
+					} else {
+						block.node = handle.Buffers.Cooking.PushBack(block)
+					}
 
 				default:
 					// Block is still under download so can not reuse this
@@ -1124,8 +1127,10 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 
 		} else if block.flags.IsSet(BlockFlagDownloading) {
 			log.Debug("BlockCache::getOrCreateBlock : Waiting for download to finish for committed block %v for %v=>%s", block.id, handle.ID, handle.Path)
-			<-block.state
-			block.Unblock()
+			_, ok := <-block.state
+			if ok {
+				block.Unblock()
+			}
 
 			// if the block failed to download, it can't be used for overwriting
 			if block.IsFailed() {
@@ -1139,8 +1144,10 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 			// If the block is being staged, then wait till it is uploaded,
 			// and then write to the same block and move it back to cooking queue
 			log.Debug("BlockCache::getOrCreateBlock : Waiting for the block %v to upload for %v=>%s", block.id, handle.ID, handle.Path)
-			<-block.state
-			block.Unblock()
+			_, ok := <-block.state
+			if ok {
+				block.Unblock()
+			}
 		}
 
 		bc.addToCooking(handle, block)
