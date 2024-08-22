@@ -158,7 +158,7 @@ func convertFileNameToFilePath(fileName string) (localFilePath string, remoteFil
 	return localFilePath, remoteFilePath
 }
 
-// creates File in Local and Mounted Directories and returns there file handles the assosiated fd has O_RDWR mode
+// creates File in Local and Mounted Directories and returns there file handles the associated fd has O_RDWR mode
 func createFileHandleInLocalAndRemote(suite *dataValidationTestSuite, localFilePath, remoteFilePath string) (lfh *os.File, rfh *os.File) {
 	lfh, err := os.Create(localFilePath)
 	suite.Nil(err)
