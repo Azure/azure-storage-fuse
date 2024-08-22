@@ -1,0 +1,32 @@
+logging:
+  level: log_debug
+  file-path: "blobfuse2-logs.txt"
+  type: base
+
+components:
+  - libfuse
+  - file_cache
+  - attr_cache
+  - azstorage
+
+libfuse:
+  attribute-expiration-sec: 120
+  entry-expiration-sec: 120
+  negative-entry-expiration-sec: 240
+  fuse-trace: false
+  ignore-open-flags: true
+
+file_cache:
+  path: { 1 }
+
+attr_cache:
+  timeout-sec: 7200
+  
+azstorage:
+  type: { ACCOUNT_TYPE }
+  endpoint: { ACCOUNT_ENDPOINT }
+  use-http: false
+  account-name: { NIGHTLY_STO_ACC_NAME }
+  account-key: { NIGHTLY_STO_ACC_KEY }
+  mode: key
+  container: { 0 }
