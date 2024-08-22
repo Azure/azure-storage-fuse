@@ -620,7 +620,7 @@ static void aznfsc_ll_mkdir(fuse_req_t req,
                             const char *name,
                             mode_t mode)
 {
-    AZLogDebug("aznfsc_ll_mkdir(req={}, parent_ino={}, name={}, mode=0{:03o}",
+    AZLogDebug("aznfsc_ll_mkdir(req={}, parent_ino={}, name={}, mode=0{:03o})",
                fmt::ptr(req), parent_ino, name, mode);
 
     struct nfs_client *client = get_nfs_client_from_fuse_req(req);

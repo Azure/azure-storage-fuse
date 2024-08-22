@@ -106,30 +106,30 @@ void nfs_client::jukebox_runner()
             switch (js->rpc_api->optype) {
                 case FUSE_LOOKUP:
                     AZLogWarn("[JUKEBOX REISSUE] lookup(req={}, "
-                               "parent_ino={}, name={})",
-                               fmt::ptr(js->rpc_api->req),
-                               js->rpc_api->lookup_task.get_parent_ino(),
-                               js->rpc_api->lookup_task.get_file_name());
+                              "parent_ino={}, name={})",
+                              fmt::ptr(js->rpc_api->req),
+                              js->rpc_api->lookup_task.get_parent_ino(),
+                              js->rpc_api->lookup_task.get_file_name());
                     lookup(js->rpc_api->req,
                            js->rpc_api->lookup_task.get_parent_ino(),
                            js->rpc_api->lookup_task.get_file_name());
                     break;
                 case FUSE_GETATTR:
                     AZLogWarn("[JUKEBOX REISSUE] getattr(req={}, ino={}, "
-                               "fi=null)",
-                               fmt::ptr(js->rpc_api->req),
-                               js->rpc_api->getattr_task.get_ino());
+                              "fi=null)",
+                              fmt::ptr(js->rpc_api->req),
+                              js->rpc_api->getattr_task.get_ino());
                     getattr(js->rpc_api->req,
                             js->rpc_api->getattr_task.get_ino(),
                             nullptr);
                     break;
                 case FUSE_SETATTR:
                     AZLogWarn("[JUKEBOX REISSUE] setattr(req={}, ino={}, "
-                               "to_set=0x{:x}, fi={})",
-                               fmt::ptr(js->rpc_api->req),
-                               js->rpc_api->setattr_task.get_ino(),
-                               js->rpc_api->setattr_task.get_attr_flags_to_set(),
-                               fmt::ptr(js->rpc_api->setattr_task.get_fuse_file()));
+                              "to_set=0x{:x}, fi={})",
+                              fmt::ptr(js->rpc_api->req),
+                              js->rpc_api->setattr_task.get_ino(),
+                              js->rpc_api->setattr_task.get_attr_flags_to_set(),
+                              fmt::ptr(js->rpc_api->setattr_task.get_fuse_file()));
                     setattr(js->rpc_api->req,
                             js->rpc_api->setattr_task.get_ino(),
                             js->rpc_api->setattr_task.get_attr(),
@@ -138,12 +138,12 @@ void nfs_client::jukebox_runner()
                     break;
                 case FUSE_CREATE:
                     AZLogWarn("[JUKEBOX REISSUE] create(req={}, parent_ino={},"
-                               " name={}, mode=0{:03o}, fi={})",
-                               fmt::ptr(js->rpc_api->req),
-                               js->rpc_api->create_task.get_parent_ino(),
-                               js->rpc_api->create_task.get_file_name(),
-                               js->rpc_api->create_task.get_mode(),
-                               fmt::ptr(js->rpc_api->create_task.get_fuse_file()));
+                              " name={}, mode=0{:03o}, fi={})",
+                              fmt::ptr(js->rpc_api->req),
+                              js->rpc_api->create_task.get_parent_ino(),
+                              js->rpc_api->create_task.get_file_name(),
+                              js->rpc_api->create_task.get_mode(),
+                              fmt::ptr(js->rpc_api->create_task.get_fuse_file()));
                     create(js->rpc_api->req,
                            js->rpc_api->create_task.get_parent_ino(),
                            js->rpc_api->create_task.get_file_name(),
@@ -151,20 +151,20 @@ void nfs_client::jukebox_runner()
                            js->rpc_api->create_task.get_fuse_file());
                     break;
                 case FUSE_MKDIR:
-                    AZLogWarn("[JUKEBOX REISSUE] mkdir(req={}, parent_ino={},"
-                               " name={}, mode=0{:03o}, fi={})",
-                               fmt::ptr(js->rpc_api->req),
-                               js->rpc_api->mkdir_task.get_parent_ino(),
-                               js->rpc_api->mkdir_task.get_dir_name(),
-                               js->rpc_api->mkdir_task.get_mode());
+                    AZLogWarn("[JUKEBOX REISSUE] mkdir(req={}, parent_ino={}, "
+                              "name={}, mode=0{:03o})",
+                              fmt::ptr(js->rpc_api->req),
+                              js->rpc_api->mkdir_task.get_parent_ino(),
+                              js->rpc_api->mkdir_task.get_dir_name(),
+                              js->rpc_api->mkdir_task.get_mode());
                     mkdir(js->rpc_api->req,
                           js->rpc_api->mkdir_task.get_parent_ino(),
                           js->rpc_api->mkdir_task.get_dir_name(),
                           js->rpc_api->mkdir_task.get_mode());
                     break;
                 case FUSE_RMDIR:
-                    AZLogWarn("[JUKEBOX REISSUE] rmdir(req={}, parent_ino={},"
-                              " name={})",
+                    AZLogWarn("[JUKEBOX REISSUE] rmdir(req={}, parent_ino={}, "
+                              "name={})",
                               fmt::ptr(js->rpc_api->req),
                               js->rpc_api->rmdir_task.get_parent_ino(),
                               js->rpc_api->rmdir_task.get_dir_name());
@@ -173,18 +173,18 @@ void nfs_client::jukebox_runner()
                           js->rpc_api->rmdir_task.get_dir_name());
                     break;
                 case FUSE_UNLINK:
-                    AZLogWarn("[JUKEBOX REISSUE] unlink(req={}, parent_ino={},"
-                              " name={})",
+                    AZLogWarn("[JUKEBOX REISSUE] unlink(req={}, parent_ino={}, "
+                              "name={})",
                               fmt::ptr(js->rpc_api->req),
                               js->rpc_api->unlink_task.get_parent_ino(),
                               js->rpc_api->unlink_task.get_file_name());
                     unlink(js->rpc_api->req,
-                          js->rpc_api->unlink_task.get_parent_ino(),
-                          js->rpc_api->unlink_task.get_file_name());
+                           js->rpc_api->unlink_task.get_parent_ino(),
+                           js->rpc_api->unlink_task.get_file_name());
                     break;
                 case FUSE_SYMLINK:
-                    AZLogWarn("[JUKEBOX REISSUE] symlink(req={}, link={},"
-                              " parent_ino={}, name={})",
+                    AZLogWarn("[JUKEBOX REISSUE] symlink(req={}, link={}, "
+                              "parent_ino={}, name={})",
                               fmt::ptr(js->rpc_api->req),
                               js->rpc_api->symlink_task.get_link(),
                               js->rpc_api->symlink_task.get_parent_ino(),
@@ -218,8 +218,8 @@ void nfs_client::jukebox_runner()
                            js->rpc_api->rename_task.get_flags());
                     break;
                 case FUSE_READ:
-                    AZLogWarn("[JUKEBOX REISSUE] read(req={}, ino={})"
-                              " size={}, offset={} fi={}",
+                    AZLogWarn("[JUKEBOX REISSUE] read(req={}, ino={}, "
+                              "size={}, offset={} fi={})",
                               fmt::ptr(js->rpc_api->req),
                               js->rpc_api->read_task.get_ino(),
                               js->rpc_api->read_task.get_size(),
@@ -229,12 +229,12 @@ void nfs_client::jukebox_runner()
                     break;                  
                 case FUSE_READDIR:
                     AZLogWarn("([JUKEBOX REISSUE] readdir(req={}, ino={}, "
-                               "size={}, off={}, fi={})",
-                               fmt::ptr(js->rpc_api->req),
-                               js->rpc_api->readdir_task.get_ino(),
-                               js->rpc_api->readdir_task.get_size(),
-                               js->rpc_api->readdir_task.get_offset(),
-                               fmt::ptr(js->rpc_api->readdir_task.get_fuse_file()));
+                              "size={}, off={}, fi={})",
+                              fmt::ptr(js->rpc_api->req),
+                              js->rpc_api->readdir_task.get_ino(),
+                              js->rpc_api->readdir_task.get_size(),
+                              js->rpc_api->readdir_task.get_offset(),
+                              fmt::ptr(js->rpc_api->readdir_task.get_fuse_file()));
                     readdir(js->rpc_api->req,
                             js->rpc_api->readdir_task.get_ino(),
                             js->rpc_api->readdir_task.get_size(),
@@ -243,12 +243,12 @@ void nfs_client::jukebox_runner()
                     break;
                 case FUSE_READDIRPLUS:
                     AZLogWarn("([JUKEBOX REISSUE] readdirplus(req={}, ino={}, "
-                               "size={}, off={}, fi={})",
-                               fmt::ptr(js->rpc_api->req),
-                               js->rpc_api->readdir_task.get_ino(),
-                               js->rpc_api->readdir_task.get_size(),
-                               js->rpc_api->readdir_task.get_offset(),
-                               fmt::ptr(js->rpc_api->readdir_task.get_fuse_file()));
+                              "size={}, off={}, fi={})",
+                              fmt::ptr(js->rpc_api->req),
+                              js->rpc_api->readdir_task.get_ino(),
+                              js->rpc_api->readdir_task.get_size(),
+                              js->rpc_api->readdir_task.get_offset(),
+                              fmt::ptr(js->rpc_api->readdir_task.get_fuse_file()));
                     readdirplus(js->rpc_api->req,
                                 js->rpc_api->readdir_task.get_ino(),
                                 js->rpc_api->readdir_task.get_size(),
@@ -257,6 +257,8 @@ void nfs_client::jukebox_runner()
                     break;
                 /* TODO: Add other request types */
                 default:
+                    AZLogError("Unknown jukebox seed type: {}", (int) js->rpc_api->optype);
+                    assert(0);
                     break;
             }
 
@@ -664,9 +666,6 @@ void nfs_client::jukebox_read(struct api_task_info *rpc_api)
         rpc_api->read_task.get_offset(),
         rpc_api->read_task.get_fuse_file());
 
-    // Any new task should start fresh as a parent task.
-    assert(child_tsk->rpc_api->parent_task == nullptr);
-
     /*
      * Read API calls will be issued only for child tasks, hence
      * copy the parent info from the original task to this retry task.
@@ -674,26 +673,45 @@ void nfs_client::jukebox_read(struct api_task_info *rpc_api)
     assert(rpc_api->parent_task != nullptr);
     child_tsk->rpc_api->parent_task = rpc_api->parent_task;
 
+    const struct rpc_task *const parent_task = child_tsk->rpc_api->parent_task;
+
     /*
      * Since we are retrying this child task, the parent read task should have
      * atleast 1 ongoing read.
      */
-    assert(child_tsk->rpc_api->parent_task->num_ongoing_backend_reads > 0);
+    assert(parent_task->num_ongoing_backend_reads > 0);
 
     /*
      * Child task should always read a subset of the parent task.
      */
     assert(child_tsk->rpc_api->read_task.get_offset() >=
-            child_tsk->rpc_api->parent_task->rpc_api->read_task.get_offset());
+            parent_task->rpc_api->read_task.get_offset());
     assert(child_tsk->rpc_api->read_task.get_size() <=
-            child_tsk->rpc_api->parent_task->rpc_api->read_task.get_size());
+            parent_task->rpc_api->read_task.get_size());
+
+    assert(rpc_api->bc != nullptr);
+
+#ifdef ENABLE_PARANOID
+    {
+        unsigned int i;
+        for (i = 0; i < parent_task->bc_vec.size(); i++) {
+            if (rpc_api->bc == &parent_task->bc_vec[i])
+                break;
+        }
+
+        /*
+         * rpc_api->bc MUST refer to one of the elements in
+         * parent_task->bc_vec.
+         */
+        assert(i != parent_task->bc_vec.size());
+    }
+#endif
 
     /*
      * The bytes_chunk held by this task must have its inuse count
      * bumped as the get() call made to obtain this chunk initially would
      * have set it.
      */
-    assert(rpc_api->bc != nullptr);
     assert(rpc_api->bc->get_membuf()->is_inuse());
 
     // Issue the read to the server

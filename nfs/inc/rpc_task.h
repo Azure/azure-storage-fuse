@@ -764,12 +764,14 @@ struct api_task_info
 
 
     /*
+     * Only valid for FUSE_READ.
+     *
      * This will refer to the parent task for a child task.
      * This will be nullptr for parent task.
      *
      * When do we need parent tasks?
      * Note that one fuse request is tracked using one rpc_task, so if we
-     * have to issue multiple backend RPCs to serve a single fuse read, then
+     * have to issue multiple backend RPCs to serve a single fuse req, then
      * each of those multiple backend RPCs become a new (child) rpc_task and
      * the rpc_task tracking the fuse request becomes the parent task.
      * We do this for a couple of reasons, most importantly it helps RPC
@@ -792,9 +794,11 @@ struct api_task_info
     rpc_task *parent_task = nullptr;
 
     /*
-     * The byte chunk for the read task.
-     * For a child read task, this will be the byte chunk to which it will
-     * read the data.
+     * Only valid for FUSE_READ.
+     *
+     * This is the byte chunk where the data has to be read by this READ RPC.
+     * Note that the parent task calls bytes_chunk_cache::get() and populates
+     * the chunks in rpc_task::bc_vec[]. This points to one of those chunks.
      */
     struct bytes_chunk *bc = nullptr;
 
