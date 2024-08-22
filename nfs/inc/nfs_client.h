@@ -358,7 +358,7 @@ public:
     void setattr(
         fuse_req_t req,
         fuse_ino_t ino,
-        struct stat* attr,
+        const struct stat* attr,
         int to_set,
         struct fuse_file_info* file);
 
@@ -398,6 +398,8 @@ public:
         size_t size,
         off_t off,
         struct fuse_file_info *fi);
+
+    void jukebox_read(struct api_task_info *rpc_api);
 
     static void stat_from_fattr3(struct stat* st, const struct fattr3* attr);
 

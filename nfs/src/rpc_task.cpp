@@ -240,7 +240,7 @@ void rpc_task::init_readlink(fuse_req *request,
 
 void rpc_task::init_setattr(fuse_req *request,
                             fuse_ino_t ino,
-                            struct stat *attr,
+                            const struct stat *attr,
                             int to_set,
                             struct fuse_file_info *file)
 {
@@ -601,6 +601,8 @@ static void createfile_callback(
             &res->CREATE3res_u.resok.obj.post_op_fh3_u.handle,
             &res->CREATE3res_u.resok.obj_attributes.post_op_attr_u.attributes,
             task->rpc_api->create_task.get_fuse_file());
+    } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
+        task->get_client()->jukebox_retry(task);
     } else {
         task->reply_error(status);
     }
@@ -649,6 +651,8 @@ static void setattr_callback(
          * experience.
          */
         task->reply_attr(&st, inode->get_actimeo());
+    } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
+        task->get_client()->jukebox_retry(task);
     } else {
         task->reply_error(status);
     }
@@ -683,6 +687,8 @@ void mkdir_callback(
             &res->MKDIR3res_u.resok.obj.post_op_fh3_u.handle,
             &res->MKDIR3res_u.resok.obj_attributes.post_op_attr_u.attributes,
             nullptr);
+    } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
+        task->get_client()->jukebox_retry(task);
     } else {
         task->reply_error(status);
     }
@@ -707,7 +713,11 @@ void unlink_callback(
         rpc_pdu_get_dispatch_usecs(rpc_get_pdu(rpc)),
         NFS_STATUS(res));
 
-    task->reply_error(status);
+    if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
+        task->get_client()->jukebox_retry(task);
+    } else {
+        task->reply_error(status);
+    }
 }
 
 void rmdir_callback(
@@ -729,7 +739,11 @@ void rmdir_callback(
         rpc_pdu_get_dispatch_usecs(rpc_get_pdu(rpc)),
         NFS_STATUS(res));
 
-    task->reply_error(status);
+    if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
+        task->get_client()->jukebox_retry(task);
+    } else {
+        task->reply_error(status);
+    }
 }
 
 void symlink_callback(
@@ -761,6 +775,8 @@ void symlink_callback(
             &res->SYMLINK3res_u.resok.obj.post_op_fh3_u.handle,
             &res->SYMLINK3res_u.resok.obj_attributes.post_op_attr_u.attributes,
             nullptr);
+    } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
+        task->get_client()->jukebox_retry(task);
     } else {
         task->reply_error(status);
     }
@@ -809,6 +825,8 @@ void readlink_callback(
 
     if (status == 0) {
         task->reply_readlink(res->READLINK3res_u.resok.data);
+    } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
+        task->get_client()->jukebox_retry(task);
     } else {
         task->reply_error(status);
     }
@@ -1210,7 +1228,7 @@ void rpc_task::run_mkdir()
 
         ::memset(&args, 0, sizeof(args));
         args.where.dir = get_client()->get_nfs_inode_from_ino(parent_ino)->get_fh();
-        args.where.name = (char*)rpc_api->mkdir_task.get_file_name();
+        args.where.name = (char*)rpc_api->mkdir_task.get_dir_name();
         args.attributes.mode.set_it = 1;
         args.attributes.mode.set_mode3_u.mode = rpc_api->mkdir_task.get_mode();
 
@@ -1532,7 +1550,7 @@ void rpc_task::run_read()
      * run_read() is called once for a fuse read request which must not be
      * called for a child task.
      */
-    assert(parent_task == nullptr);
+    assert(rpc_api->parent_task == nullptr);
 
     /*
      * Get bytes_chunks covering the region caller wants to read.
@@ -1630,7 +1648,8 @@ void rpc_task::run_read()
                 rpc_api->read_task.get_fuse_file());
 
             // Set the parent task of the child to the current RPC task.
-            child_tsk->parent_task = this;
+            child_tsk->rpc_api->parent_task = this;
+            child_tsk->rpc_api->bc = &bc_vec[i];
 
             /*
              * Child task should always read a subset of the parent task.
@@ -1700,7 +1719,7 @@ void rpc_task::send_read_response()
     [[maybe_unused]] const fuse_ino_t ino = rpc_api->read_task.get_ino();
 
     // This should always be called on the parent task.
-    assert(parent_task == nullptr);
+    assert(rpc_api->parent_task == nullptr);
 
     /*
      * We must send response only after all component reads complete, they may
@@ -1788,7 +1807,7 @@ static void read_callback(
     rpc_task *task = ctx->task;
     assert(task->magic == RPC_TASK_MAGIC);
 
-    rpc_task *parent_task = task->parent_task;
+    rpc_task *parent_task = task->rpc_api->parent_task;
 
     /*
      * Only child tasks can issue the read RPC, hence the callback should
@@ -1878,7 +1897,7 @@ static void read_callback(
              * current RPC task. This is required if the current task itself
              * if one of the child tasks running part of the fuse read request.
              */
-            child_tsk->parent_task = parent_task;
+            child_tsk->rpc_api->parent_task = parent_task;
 
             /*
              * TODO: To avoid allocating a new read_context we can reuse the
@@ -1984,19 +2003,6 @@ static void read_callback(
                                           bc->length - bc->pvt);
             }
         }
-    } else {
-        AZLogError("[{}] Read failed for offset: {} size: {} "
-                   "total bytes read till now: {} of {} for [{}, {}) "
-                   "num_backend_calls_issued: {} error: {}",
-                   ino,
-                   issued_offset,
-                   issued_length,
-                   bc->pvt,
-                   bc->length,
-                   bc->offset,
-                   bc->offset + bc->length,
-                   bc->num_backend_calls_issued,
-                   errstr);
     }
 
     // Free the context.
@@ -2022,6 +2028,28 @@ static void read_callback(
 
     // For failed status we must never mark the buffer uptodate.
     assert(!status || !bc->get_membuf()->is_uptodate());
+
+
+    if (status != 0) {
+        if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
+            task->get_client()->jukebox_retry(task);
+            return;
+        }
+        else {
+            AZLogError("[{}] Read failed for offset: {} size: {} "
+                    "total bytes read till now: {} of {} for [{}, {}) "
+                    "num_backend_calls_issued: {} error: {}",
+                    ino,
+                    issued_offset,
+                    issued_length,
+                    bc->pvt,
+                    bc->length,
+                    bc->offset,
+                    bc->offset + bc->length,
+                    bc->num_backend_calls_issued,
+                    errstr);
+        }
+    }
 
     // Once failed, read_status remains at failed.
     int expected = 0;
@@ -2069,7 +2097,7 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
      * This should always be called from the child task as we will issue read
      * RPC to the backend.
      */
-    assert(parent_task != nullptr);
+    assert(rpc_api->parent_task != nullptr);
 
     /*
      * We should be reading the entire data that the task needs.
@@ -2139,7 +2167,7 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
         bc.pvt = 0;
 
         // Increment the number of reads issued for the paarent task.
-        parent_task->num_ongoing_backend_reads++;
+        rpc_api->parent_task->num_ongoing_backend_reads++;
 
         assert(bc.num_backend_calls_issued == 0);
         bc.num_backend_calls_issued++;
@@ -2195,19 +2223,19 @@ void rpc_task::free_rpc_task()
     switch(get_op_type()) {
     case FUSE_READ:
         /*
-         * parent_task will be nullptr for a parent task.
+         * rpc_api->parent_task will be nullptr for a parent task.
          * Only parent tasks run the fuse request so only they can have
          * bc_vec[] non-empty. Also only they can have read_status as
          * non-zero as the overall status of the fuse read is tracked by the
          * parent task.
          */
-        assert(bc_vec.empty() || (parent_task == nullptr));
-        assert((read_status == 0) || (parent_task == nullptr));
+        assert(bc_vec.empty() || (rpc_api->parent_task == nullptr));
+        assert((read_status == 0) || (rpc_api->parent_task == nullptr));
         assert(num_ongoing_backend_reads == 0);
 
         read_status = 0;
         bc_vec.clear();
-        parent_task = nullptr;
+        rpc_api->parent_task = nullptr;
         break;
     default :
         break;
