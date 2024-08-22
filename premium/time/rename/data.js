@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1722408757306,
+  "lastUpdate": 1724335863895,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1493,6 +1493,35 @@ window.BENCHMARK_DATA = {
           {
             "name": "rename_5000_1MB_files",
             "value": 92.33080172538757,
+            "unit": "seconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "98318303+souravgupta-msft@users.noreply.github.com",
+            "name": "Sourav Gupta",
+            "username": "souravgupta-msft"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "0aa064f0666ab135316608a6973930a514966710",
+          "message": "Data integrity issues in block cache (#1508)\n\n* Data Integrity fixes",
+          "timestamp": "2024-08-22T18:18:42+05:30",
+          "tree_id": "ebb743dc69a1f68a468e060db098ebca06806328",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/0aa064f0666ab135316608a6973930a514966710"
+        },
+        "date": 1724335863644,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "rename_5000_1MB_files",
+            "value": 99.28820872306824,
             "unit": "seconds"
           }
         ]
