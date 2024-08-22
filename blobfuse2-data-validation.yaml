@@ -54,7 +54,7 @@ stages:
 
           - script: |
               cd $(WORK_DIR)
-              $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key_fc.yaml --container-name=$(containerName) --output-file=$(BLOBFUSE2_CFG)
+              $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key_fc.yaml --container-name=$(containerName) --output-file=$(BLOBFUSE2_CFG) --temp-path=$(TEMP_DIR)
             displayName: "Create Config File"
             env:
                 NIGHTLY_STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
