@@ -1,14 +1,15 @@
 ## 2.3.2 (Unreleased)
-
 **Bug Fixes**
 - Fixed the case where file creation using SAS on HNS accounts was returning back wrong error code.
 - [#1402](https://github.com/Azure/azure-storage-fuse/issues/1402) Fixed proxy URL parsing.
 - In flush operation, the blocks will be committed only if the handle is dirty.
 - Fixed an issue in File-Cache that caused upload to fail due to insufficient permissions.
-- Sparse file data integrity issues fixed.
+
+**Data Integrity Fixes**
 - Fixed block-cache read of small files in direct-io mode, where file size is not multiple of kernel buffer size.
-- Fixed race condition in random write flow where a block is being uploaded and written to in parallel.
-- Fixed race condition in random read/write flow where a uncommitted block, which is deleted from local cache is reused.
+- Fixed race condition in block-cache random write flow where a block is being uploaded and written to in parallel.
+- Fixed issue in block-cache random read/write flow where a uncommitted block, which is deleted from local cache, is reused.
+- Sparse file data integrity issues fixed.
 
 **Other Changes**
 - LFU policy in file cache has been removed.
