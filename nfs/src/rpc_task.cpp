@@ -240,7 +240,7 @@ void rpc_task::init_readlink(fuse_req *request,
 
 void rpc_task::init_setattr(fuse_req *request,
                             fuse_ino_t ino,
-                            struct stat *attr,
+                            const struct stat *attr,
                             int to_set,
                             struct fuse_file_info *file)
 {
@@ -601,6 +601,8 @@ static void createfile_callback(
             &res->CREATE3res_u.resok.obj.post_op_fh3_u.handle,
             &res->CREATE3res_u.resok.obj_attributes.post_op_attr_u.attributes,
             task->rpc_api->create_task.get_fuse_file());
+    } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
+        task->get_client()->jukebox_retry(task);
     } else {
         task->reply_error(status);
     }
@@ -649,6 +651,8 @@ static void setattr_callback(
          * experience.
          */
         task->reply_attr(&st, inode->get_actimeo());
+    } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
+        task->get_client()->jukebox_retry(task);
     } else {
         task->reply_error(status);
     }
@@ -683,6 +687,8 @@ void mkdir_callback(
             &res->MKDIR3res_u.resok.obj.post_op_fh3_u.handle,
             &res->MKDIR3res_u.resok.obj_attributes.post_op_attr_u.attributes,
             nullptr);
+    } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
+        task->get_client()->jukebox_retry(task);
     } else {
         task->reply_error(status);
     }
@@ -707,7 +713,11 @@ void unlink_callback(
         rpc_pdu_get_dispatch_usecs(rpc_get_pdu(rpc)),
         NFS_STATUS(res));
 
-    task->reply_error(status);
+    if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
+        task->get_client()->jukebox_retry(task);
+    } else {
+        task->reply_error(status);
+    }
 }
 
 void rmdir_callback(
@@ -729,7 +739,11 @@ void rmdir_callback(
         rpc_pdu_get_dispatch_usecs(rpc_get_pdu(rpc)),
         NFS_STATUS(res));
 
-    task->reply_error(status);
+    if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
+        task->get_client()->jukebox_retry(task);
+    } else {
+        task->reply_error(status);
+    }
 }
 
 void symlink_callback(
@@ -761,6 +775,8 @@ void symlink_callback(
             &res->SYMLINK3res_u.resok.obj.post_op_fh3_u.handle,
             &res->SYMLINK3res_u.resok.obj_attributes.post_op_attr_u.attributes,
             nullptr);
+    } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
+        task->get_client()->jukebox_retry(task);
     } else {
         task->reply_error(status);
     }
@@ -809,6 +825,8 @@ void readlink_callback(
 
     if (status == 0) {
         task->reply_readlink(res->READLINK3res_u.resok.data);
+    } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
+        task->get_client()->jukebox_retry(task);
     } else {
         task->reply_error(status);
     }
@@ -1210,7 +1228,7 @@ void rpc_task::run_mkdir()
 
         ::memset(&args, 0, sizeof(args));
         args.where.dir = get_client()->get_nfs_inode_from_ino(parent_ino)->get_fh();
-        args.where.name = (char*)rpc_api->mkdir_task.get_file_name();
+        args.where.name = (char*)rpc_api->mkdir_task.get_dir_name();
         args.attributes.mode.set_it = 1;
         args.attributes.mode.set_mode3_u.mode = rpc_api->mkdir_task.get_mode();
 

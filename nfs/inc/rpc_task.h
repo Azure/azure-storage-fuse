@@ -276,7 +276,7 @@ struct setattr_rpc_task
         }
     }
 
-    void set_attribute_and_mask(struct stat *attr, int mask)
+    void set_attribute_and_mask(const struct stat *attr, int mask)
     {
         attribute = attr;
         /*
@@ -389,7 +389,7 @@ struct mkdir_rpc_task
         return parent_ino;
     }
 
-    const char *get_file_name() const
+    const char *get_dir_name() const
     {
         return dir_name;
     }
@@ -1050,7 +1050,7 @@ public:
      */
     void init_setattr(fuse_req *request,
                       fuse_ino_t ino,
-                      struct stat *attr,
+                      const struct stat *attr,
                       int to_set,
                       struct fuse_file_info *file);
     void run_setattr();

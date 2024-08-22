@@ -358,7 +358,7 @@ public:
     void setattr(
         fuse_req_t req,
         fuse_ino_t ino,
-        struct stat* attr,
+        const struct stat* attr,
         int to_set,
         struct fuse_file_info* file);
 

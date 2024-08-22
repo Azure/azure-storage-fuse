@@ -123,6 +123,100 @@ void nfs_client::jukebox_runner()
                             js->rpc_api->getattr_task.get_ino(),
                             nullptr);
                     break;
+                case FUSE_SETATTR:
+                    AZLogWarn("[JUKEBOX REISSUE] setattr(req={}, ino={}, "
+                               "to_set=0x{:x}, fi={})",
+                               fmt::ptr(js->rpc_api->req),
+                               js->rpc_api->setattr_task.get_ino(),
+                               js->rpc_api->setattr_task.get_attr_flags_to_set(),
+                               fmt::ptr(js->rpc_api->setattr_task.get_fuse_file()));
+                    setattr(js->rpc_api->req,
+                            js->rpc_api->setattr_task.get_ino(),
+                            js->rpc_api->setattr_task.get_attr(),
+                            js->rpc_api->setattr_task.get_attr_flags_to_set(),
+                            js->rpc_api->setattr_task.get_fuse_file());
+                    break;
+                case FUSE_CREATE:
+                    AZLogWarn("[JUKEBOX REISSUE] create(req={}, parent_ino={},"
+                               " name={}, mode=0{:03o}, fi={})",
+                               fmt::ptr(js->rpc_api->req),
+                               js->rpc_api->create_task.get_parent_ino(),
+                               js->rpc_api->create_task.get_file_name(),
+                               js->rpc_api->create_task.get_mode(),
+                               fmt::ptr(js->rpc_api->create_task.get_fuse_file()));
+                    create(js->rpc_api->req,
+                           js->rpc_api->create_task.get_parent_ino(),
+                           js->rpc_api->create_task.get_file_name(),
+                           js->rpc_api->create_task.get_mode(),
+                           js->rpc_api->create_task.get_fuse_file());
+                    break;
+                case FUSE_MKDIR:
+                    AZLogWarn("[JUKEBOX REISSUE] mkdir(req={}, parent_ino={},"
+                               " name={}, mode=0{:03o}, fi={})",
+                               fmt::ptr(js->rpc_api->req),
+                               js->rpc_api->mkdir_task.get_parent_ino(),
+                               js->rpc_api->mkdir_task.get_dir_name(),
+                               js->rpc_api->mkdir_task.get_mode());
+                    mkdir(js->rpc_api->req,
+                          js->rpc_api->mkdir_task.get_parent_ino(),
+                          js->rpc_api->mkdir_task.get_dir_name(),
+                          js->rpc_api->mkdir_task.get_mode());
+                    break;
+                case FUSE_RMDIR:
+                    AZLogWarn("[JUKEBOX REISSUE] rmdir(req={}, parent_ino={},"
+                              " name={})",
+                              fmt::ptr(js->rpc_api->req),
+                              js->rpc_api->rmdir_task.get_parent_ino(),
+                              js->rpc_api->rmdir_task.get_dir_name());
+                    rmdir(js->rpc_api->req,
+                          js->rpc_api->rmdir_task.get_parent_ino(),
+                          js->rpc_api->rmdir_task.get_dir_name());
+                    break;
+                case FUSE_UNLINK:
+                    AZLogWarn("[JUKEBOX REISSUE] unlink(req={}, parent_ino={},"
+                              " name={})",
+                              fmt::ptr(js->rpc_api->req),
+                              js->rpc_api->unlink_task.get_parent_ino(),
+                              js->rpc_api->unlink_task.get_file_name());
+                    unlink(js->rpc_api->req,
+                          js->rpc_api->unlink_task.get_parent_ino(),
+                          js->rpc_api->unlink_task.get_file_name());
+                    break;
+                case FUSE_SYMLINK:
+                    AZLogWarn("[JUKEBOX REISSUE] symlink(req={}, link={},"
+                              " parent_ino={}, name={})",
+                              fmt::ptr(js->rpc_api->req),
+                              js->rpc_api->symlink_task.get_link(),
+                              js->rpc_api->symlink_task.get_parent_ino(),
+                              js->rpc_api->symlink_task.get_name());
+                    symlink(js->rpc_api->req,
+                            js->rpc_api->symlink_task.get_link(),
+                            js->rpc_api->symlink_task.get_parent_ino(),
+                            js->rpc_api->symlink_task.get_name());
+                    break;
+                case FUSE_READLINK:
+                    AZLogWarn("[JUKEBOX REISSUE] readlink(req={}, ino={})",
+                              fmt::ptr(js->rpc_api->req),
+                              js->rpc_api->readlink_task.get_ino());
+                    readlink(js->rpc_api->req,
+                             js->rpc_api->readlink_task.get_ino());
+                    break;
+                case FUSE_RENAME:
+                    AZLogWarn("[JUKEBOX REISSUE] rename(req={}, parent_ino={}, "
+                              "name={}, newparent_ino={}, newname={}, flags={})",
+                              fmt::ptr(js->rpc_api->req),
+                              js->rpc_api->rename_task.get_parent_ino(),
+                              js->rpc_api->rename_task.get_name(),
+                              js->rpc_api->rename_task.get_newparent_ino(),
+                              js->rpc_api->rename_task.get_newname(),
+                              js->rpc_api->rename_task.get_flags());
+                    rename(js->rpc_api->req,
+                           js->rpc_api->rename_task.get_parent_ino(),
+                           js->rpc_api->rename_task.get_name(),
+                           js->rpc_api->rename_task.get_newparent_ino(),
+                           js->rpc_api->rename_task.get_newname(),
+                           js->rpc_api->rename_task.get_flags());
+                    break;
                 case FUSE_READDIR:
                     AZLogWarn("([JUKEBOX REISSUE] readdir(req={}, ino={}, "
                                "size={}, off={}, fi={})",
@@ -469,7 +563,7 @@ void nfs_client::readlink(
 void nfs_client::setattr(
     fuse_req_t req,
     fuse_ino_t ino,
-    struct stat* attr,
+    const struct stat* attr,
     int to_set,
     struct fuse_file_info* file)
 {
