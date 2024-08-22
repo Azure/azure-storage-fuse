@@ -7,8 +7,8 @@ parameters:
     type: string
   - name: kversion
     type: string
-  - name: config_file
-    type: string   
+  - name: container
+    type: string
 
 steps:    
   - template: 'mount.yml'
@@ -19,7 +19,7 @@ steps:
       prefix: ${{ parameters.idstring }}
       mountStep: 
         script: |
-          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) 
+          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --tmp-path=${{ parameters.temp_dir }} --container-name=${{ parameters.container }} --default-working-dir=$(WORK_DIR) 
 
   - script: |
       cd ${{ parameters.mount_dir }}

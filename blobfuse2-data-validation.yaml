@@ -15,7 +15,7 @@ stages:
           matrix:
             Ubuntu-22:
               AgentName: 'blobfuse-benchmark-ubn22'
-              containerName: 'test-cnt-ubn-22'
+              containerName: 'test-cnt-ubn-22-kernel'
         pool:
           name: "blobfuse-perf-pool"
           demands:
@@ -53,20 +53,17 @@ stages:
             displayName: 'Install kernel build dependencies'
 
           - script: |
-              cd $(WORK_DIR)
-              $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_block_perf.yaml --container-name=$(containerName) --output-file=$(BLOBFUSE2_CFG)
-            displayName: "Create Config File"
-            env:
-                NIGHTLY_STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
-                NIGHTLY_STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
-                ACCOUNT_TYPE: 'block'
-                ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
-                VERBOSE_LOG: ${{ parameters.verbose_log }}
-            continueOnError: false
-              
+                echo "Setting environment variables..."
+                echo "export AZURE_STORAGE_ACCOUNT=$(NIGHTLY_STO_BLOB_ACC_NAME)" | sudo tee -a /etc/environment
+                echo "export AZURE_STORAGE_KEY=$(NIGHTLY_STO_BLOB_ACC_KEY)" | sudo tee -a /etc/environment
+                echo "export AZURE_STORAGE_AUTH_TYPE=KEY" | sudo tee -a /etc/environment
+                echo "Environment variables set."
+            displayName: 'Set environment variables'
+
           - script: |
-              cat $(BLOBFUSE2_CFG)
-            displayName: 'Print config file'
+                echo " AZURE_STORAGE_ACCOUNT: $AZURE_STORAGE_ACCOUNT"
+                echo " AZURE_STORAGE_AUTH_TYPE: $AZURE_STORAGE_AUTH_TYPE"
+            displayName: 'Display account name'
 
           - template: 'azure-pipeline-templates/blobfuse2-data-validation.yml'
             parameters:
@@ -74,7 +71,7 @@ stages:
               temp_dir: $(TEMP_DIR)
               kversion: "6.10.2"
               idstring: 'Block-Cache'
-              config_file: $(BLOBFUSE2_CFG)
+              container: $(containerName)
 
   - stage: VScodeBuild
     jobs:
