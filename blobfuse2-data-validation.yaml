@@ -65,7 +65,7 @@ stages:
                 echo " AZURE_STORAGE_AUTH_TYPE: $AZURE_STORAGE_AUTH_TYPE"
             displayName: 'Display account name'
 
-          - template: 'azure-pipeline-templates/blobfuse2-data-validation.yml'
+          - template: 'azure-pipeline-templates/blobfuse2-kernel-test.yml'
             parameters:
               mount_dir: $(MOUNT_DIR)
               temp_dir: $(TEMP_DIR)
@@ -135,7 +135,7 @@ stages:
               mkdir -p $(TEMP_DIR)
             displayName: "Create directory structure"
 
-          - template: 'mount.yml'
+          - template: 'azure-pipeline-templates/mount.yml'
             parameters:
               working_dir: $(WORK_DIR)
               mount_dir: $(MOUNT_DIR)
