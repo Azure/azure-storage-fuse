@@ -68,6 +68,20 @@ stages:
                 echo " AZURE_STORAGE_AUTH_TYPE: $AZURE_STORAGE_AUTH_TYPE"
             displayName: 'Display account name'
 
+          - script: |
+                echo "Setting environment variables..."
+                export AZURE_STORAGE_ACCOUNT=${NIGHTLY_STO_BLOB_ACC_NAME}
+                export AZURE_STORAGE_KEY=$(NIGHTLY_STO_BLOB_ACC_KEY)
+                export AZURE_STORAGE_AUTH_TYPE=KEY
+                source ~/.bashrc
+                echo "Environment variables set."
+            displayName: 'Set environment variables'
+
+          - script: |
+                echo " AZURE_STORAGE_ACCOUNT: $AZURE_STORAGE_ACCOUNT"
+                echo " AZURE_STORAGE_AUTH_TYPE: $AZURE_STORAGE_AUTH_TYPE"
+            displayName: 'Display account name'
+
           - template: 'azure-pipeline-templates/blobfuse2-kernel-test.yml'
             parameters:
               mount_dir: $(MOUNT_DIR)
