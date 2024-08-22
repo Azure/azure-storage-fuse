@@ -54,8 +54,8 @@ stages:
 
           - script: |
                 echo "Setting environment variables..."
-                echo "export AZURE_STORAGE_ACCOUNT=$(NIGHTLY_STO_BLOB_ACC_NAME)" | sudo tee -a /etc/environment
-                export AZURE_STORAGE_ACCOUNT=$(NIGHTLY_STO_BLOB_ACC_NAME)
+                echo "export AZURE_STORAGE_ACCOUNT=${NIGHTLY_STO_BLOB_ACC_NAME}" | sudo tee -a /etc/environment
+                export AZURE_STORAGE_ACCOUNT=${NIGHTLY_STO_BLOB_ACC_NAME}
                 echo "export AZURE_STORAGE_KEY=$(NIGHTLY_STO_BLOB_ACC_KEY)" | sudo tee -a /etc/environment
                 export AZURE_STORAGE_KEY=$(NIGHTLY_STO_BLOB_ACC_KEY)
                 echo "export AZURE_STORAGE_AUTH_TYPE=KEY" | sudo tee -a /etc/environment
