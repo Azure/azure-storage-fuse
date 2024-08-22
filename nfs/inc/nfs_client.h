@@ -90,7 +90,7 @@ private:
      * nfs_client handler. jukebox_seedinfo stores that information and we
      * queue that in jukebox_seeds.
      */
-    const std::thread jukebox_thread;
+    std::thread jukebox_thread;
     void jukebox_runner();
     std::queue<struct jukebox_seedinfo*> jukebox_seeds;
     mutable std::mutex jukebox_seeds_lock;
@@ -112,6 +112,13 @@ private:
      */
     uint64_t min_ino = UINT64_MAX;
     uint64_t max_ino = 0;
+
+    /*
+     * Set in shutdown() to let others know that nfs_client is shutting
+     * down. They can use this to quit what they are doing and plan for
+     * graceful shutdown.
+     */
+    std::atomic<bool> shutting_down = false;
 
     nfs_client() :
         transport(this),
@@ -144,6 +151,19 @@ public:
     {
         static nfs_client client;
         return client;
+    }
+
+    /**
+     * Must be called on fuse unmount.
+     * TODO: Audit this to make sure we perform cleanup for all components.
+     */
+    void shutdown()
+    {
+        assert(!shutting_down);
+        shutting_down = true;
+
+        transport.close();
+        jukebox_thread.join();
     }
 
     const struct rpc_transport& get_transport() const

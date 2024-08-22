@@ -1382,6 +1382,13 @@ int main(int argc, char *argv[])
         ret = fuse_session_loop_mt(se, loop_config);
     }
 
+    /*
+     * We come here when user unmounts the fuse filesystem.
+     */
+    AZLogInfo("Shutting down!");
+
+    nfs_client::get_instance().shutdown();
+
 err_out4:
     fuse_loop_cfg_destroy(loop_config);
     fuse_session_unmount(se);

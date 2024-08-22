@@ -1432,7 +1432,23 @@ private:
     }
 
 public:
-    ~rpc_task_helper() = default;
+    ~rpc_task_helper()
+    {
+        /*
+         * We should be called when there are no outstanding tasks.
+         */
+        assert(free_task_index.size() == MAX_OUTSTANDING_RPC_TASKS);
+
+        while (!free_task_index.empty()) {
+            free_task_index.pop();
+        }
+
+        for (int i = 0; i < MAX_OUTSTANDING_RPC_TASKS; i++) {
+            assert(rpc_task_list[i]);
+            delete rpc_task_list[i];
+        }
+        rpc_task_list.clear();
+    }
 
     static rpc_task_helper *get_instance(struct nfs_client *client = nullptr)
     {

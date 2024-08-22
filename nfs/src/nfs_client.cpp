@@ -158,7 +158,7 @@ void nfs_client::jukebox_runner()
 
             delete js;
         }
-    } while (1);
+    } while (!shutting_down);
 }
 
 /**
@@ -281,7 +281,8 @@ void nfs_client::put_nfs_inode_nolock(struct nfs_inode *inode,
      * this inode.
      */
     if (inode->lookupcnt > 0) {
-        AZLogWarn("[{}] Inode no longer forgotten", inode->get_fuse_ino());
+        AZLogWarn("[{}] Inode no longer forgotten: lookupcnt={}",
+                  inode->get_fuse_ino(), inode->lookupcnt.load());
         return;
     }
 
