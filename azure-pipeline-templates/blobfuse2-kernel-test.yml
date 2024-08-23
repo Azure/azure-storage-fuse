@@ -23,6 +23,11 @@ steps:
 
   - script: |
       cd ${{ parameters.mount_dir }}
+      rm -rf *
+    displayName: 'Cleanup mount directory'
+
+  - script: |
+      cd ${{ parameters.mount_dir }}
       wget https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-${{ parameters.kversion }}.tar.xz  
     displayName: 'Get kernel tarfile'
 
