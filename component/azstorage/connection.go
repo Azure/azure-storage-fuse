@@ -125,7 +125,7 @@ type AzConnection interface {
 
 	ChangeMod(string, os.FileMode) error
 	ChangeOwner(string, int, int) error
-	TruncateFile(string, int64) error
+	TruncateFile(string, int64, int64) error
 	StageAndCommit(name string, bol *common.BlockOffsetList) error
 
 	GetCommittedBlockList(string) (*internal.CommittedBlockList, error)

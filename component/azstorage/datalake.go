@@ -574,8 +574,8 @@ func (dl *Datalake) GetFileBlockOffsets(name string) (*common.BlockOffsetList, e
 	return dl.BlockBlob.GetFileBlockOffsets(name)
 }
 
-func (dl *Datalake) TruncateFile(name string, size int64) error {
-	return dl.BlockBlob.TruncateFile(name, size)
+func (dl *Datalake) TruncateFile(name string, size int64, blockSize int64) error {
+	return dl.BlockBlob.TruncateFile(name, size, blockSize)
 }
 
 // ChangeMod : Change mode of a path
