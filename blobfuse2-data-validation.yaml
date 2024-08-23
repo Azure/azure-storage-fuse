@@ -14,12 +14,9 @@ stages:
         strategy:
           matrix:
             Ubuntu-22:
-              AgentName: 'blobfuse-benchmark-ubn22'
-              containerName: 'test-cnt-ubn-22-kernel'
+              containerName: 'validation'
         pool:
-          name: "blobfuse-perf-pool"
-          demands:
-            - ImageOverride -equals $(AgentName)
+          name: "blobfuse-validation-pool"
 
         variables:
           - group: NightlyBlobFuse
@@ -57,11 +54,10 @@ stages:
               $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key_fc.yaml --container-name=$(containerName) --output-file=$(BLOBFUSE2_CFG) --temp-path=$(TEMP_DIR)
             displayName: "Create Config File"
             env:
-                NIGHTLY_STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
-                NIGHTLY_STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
-                ACCOUNT_TYPE: 'block'
-                ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
-                VERBOSE_LOG: ${{ parameters.verbose_log }}
+                NIGHTLY_STO_ACC_NAME: $(BLOBFUSE_BENCHMARK_ACCOUNT)
+                NIGHTLY_STO_ACC_KEY: $(BLOBFUSE_BENCHMARK_ACC_KEY)
+                ACCOUNT_TYPE: "block"
+                ACCOUNT_ENDPOINT: https://$(BLOBFUSE_BENCHMARK_ACCOUNT).blob.core.windows.net
             continueOnError: false
               
           - script: |
@@ -84,12 +80,9 @@ stages:
         strategy:
           matrix:
             Ubuntu-22:
-              AgentName: 'blobfuse-benchmark-ubn22'
-              containerName: 'test-cnt-ubn-22'
+              containerName: 'validation'
         pool:
-          name: "blobfuse-perf-pool"
-          demands:
-            - ImageOverride -equals $(AgentName)
+          name: "blobfuse-validation-pool"
 
         variables:
           - group: NightlyBlobFuse
@@ -120,15 +113,12 @@ stages:
 
           - script: |
               cd $(WORK_DIR)
-              $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key_bc.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
+              $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_block_bench.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
             displayName: Create Key Config File
             env:
-              ACCOUNT_TYPE: 'block'
-              NIGHTLY_STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
-              NIGHTLY_STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
-              ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
-              VERBOSE_LOG: false
-            continueOnError: false
+              AZURE_STORAGE_ACCOUNT: $(BLOBFUSE_BENCHMARK_ACCOUNT)
+              AZURE_STORAGE_ACCESS_KEY: $(BLOBFUSE_BENCHMARK_ACC_KEY)
+x            continueOnError: false
 
           - script: cat $(BLOBFUSE2_CFG)
             displayName: Print config file
@@ -194,12 +184,9 @@ stages:
         strategy:
           matrix:
             Ubuntu-22:
-              AgentName: 'blobfuse-benchmark-ubn22'
-              containerName: 'vishnu-fine-tuning-test1'
+              containerName: 'validation'
         pool:
-          name: "blobfuse-perf-pool"
-          demands:
-            - ImageOverride -equals $(AgentName)
+          name: "blobfuse-validation-pool"
 
         variables:
           - group: NightlyBlobFuse
@@ -235,14 +222,11 @@ stages:
 
           - script: |
               cd $(WORK_DIR)
-              $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key_bc.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
+              $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_block_bench.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
             displayName: Create Key Config File
             env:
-              ACCOUNT_TYPE: 'block'
-              NIGHTLY_STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
-              NIGHTLY_STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
-              ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
-              VERBOSE_LOG: false
+              AZURE_STORAGE_ACCOUNT: $(BLOBFUSE_BENCHMARK_ACCOUNT)
+              AZURE_STORAGE_ACCESS_KEY: $(BLOBFUSE_BENCHMARK_ACC_KEY)
             continueOnError: false
 
           - script: cat $(BLOBFUSE2_CFG)
