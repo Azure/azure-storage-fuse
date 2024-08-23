@@ -28,7 +28,9 @@ steps:
 
   - script: |
       cd ${{ parameters.mount_dir }}
+      pwd
       wget https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-${{ parameters.kversion }}.tar.xz  
+      ls -l 
     displayName: 'Get kernel tarfile'
 
   - script: |
@@ -46,6 +48,7 @@ steps:
   - script: |
       cd ${{ parameters.mount_dir }}
       tar -zcvf linux-${{ parameters.kversion }}.tar.gz linux-${{ parameters.kversion }}
+      ls -l 
     displayName: 'Tar kernel'
 
   - script: |
@@ -56,6 +59,7 @@ steps:
   - script: |
       cd ${{ parameters.mount_dir }}
       rm -rf linux-${{ parameters.kversion }}
+      rm -rf *tar*
     displayName: 'Cleanup kernel'
 
   - template: 'cleanup.yml'

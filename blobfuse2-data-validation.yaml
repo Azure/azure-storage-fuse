@@ -51,7 +51,7 @@ stages:
 
           - script: |
               cd $(WORK_DIR)
-              $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key_fc.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
+              $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_block_bench.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
             displayName: "Create Config File"
             env:
                 NIGHTLY_STO_ACC_NAME: $(BLOBFUSE_BENCHMARK_ACCOUNT)
@@ -71,6 +71,90 @@ stages:
               kversion: "6.10.2"
               idstring: 'File-Cache'
               config_file: $(BLOBFUSE2_CFG)
+
+  - stage: StripedWrite
+    jobs:
+      # Ubuntu Tests
+      - job: Set_1
+        timeoutInMinutes: 900
+        strategy:
+          matrix:
+            Ubuntu-22:
+              containerName: 'validation'
+        pool:
+          name: "blobfuse-validation-pool"
+
+        variables:
+          - group: NightlyBlobFuse
+          - name: ROOT_DIR
+            value: "/usr/pipeline/workv2"
+          - name: WORK_DIR
+            value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
+          - name: MOUNT_DIR
+            value: "/usr/pipeline/workv2/blob_mnt"
+          - name: TEMP_DIR
+            value: "/usr/pipeline/workv2/temp"
+          - name: BLOBFUSE2_CFG
+            value: "/usr/pipeline/workv2/blobfuse2.yaml"
+          - name: GOPATH
+            value: "/usr/pipeline/workv2/go"
+
+        steps:
+          - template: 'azure-pipeline-templates/setup.yml'
+            parameters:
+              tags: $(tags)
+              installStep:
+                script: |
+                  sudo apt-get update --fix-missing
+                  sudo apt update
+                  sudo apt-get install cmake gcc libfuse3-dev git parallel -y
+                  sudo apt-get install fuse3 -y
+                displayName: 'Install fuse'
+
+          - script: |
+              cd $(WORK_DIR)
+              $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_block_bench.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
+            displayName: Create Key Config File
+            env:
+              AZURE_STORAGE_ACCOUNT: $(BLOBFUSE_BENCHMARK_ACCOUNT)
+              AZURE_STORAGE_ACCESS_KEY: $(BLOBFUSE_BENCHMARK_ACC_KEY)
+              continueOnError: false
+
+          - script: cat $(BLOBFUSE2_CFG)
+            displayName: Print config file
+
+          - script:
+              mkdir -p $(MOUNT_DIR)
+              mkdir -p $(TEMP_DIR)
+            displayName: "Create directory structure"
+
+          - template: 'azure-pipeline-templates/mount.yml'
+            parameters:
+              working_dir: $(WORK_DIR)
+              mount_dir: $(MOUNT_DIR)
+              temp_dir: $(TEMP_DIR)
+              ro_mount: false
+              mountStep: 
+                script: |
+                  $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --default-working-dir=$(WORK_DIR)
+          
+          - script: |
+              rm -rf $(MOUNT_DIR)/striped
+              mkdir -p $(MOUNT_DIR)/striped
+              cd $(MOUNT_DIR)/striped
+              $(WORK_DIR)/test/scripts/striped_write.sh
+            displayName: 'Run striped write script'  
+
+          - script: |
+              rm -rf $(MOUNT_DIR)/striped
+            displayName: 'Cleanup data' 
+
+          # Cleanup
+          - template: 'azure-pipeline-templates/cleanup.yml'
+            parameters:
+              working_dir: $(WORK_DIR)
+              mount_dir: $(MOUNT_DIR)
+              temp_dir: $(TEMP_DIR)
 
   - stage: VScodeBuild
     jobs:
@@ -168,6 +252,13 @@ stages:
               cd $(MOUNT_DIR)/vscode
               yarn compile
             displayName: 'Compile VScode'
+          
+          - script: |
+              cd $(MOUNT_DIR)/
+              rm -rf vscode
+              rm -rf vscode
+              rm -rf vscode
+            displayName: 'Cleanup Mount'
 
           # Cleanup
           - template: 'azure-pipeline-templates/cleanup.yml'
