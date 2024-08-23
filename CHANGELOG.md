@@ -1,4 +1,7 @@
 ## 2.4.0 (Unreleased)
+**Features**
+- Entry cache to hold directory listing results in cache for a given timeout. This will reduce REST calls going to storage while listing the blobs in parallel.
+
 **Bug Fixes**
 - Fix file truncation bug with block-cache 
 
