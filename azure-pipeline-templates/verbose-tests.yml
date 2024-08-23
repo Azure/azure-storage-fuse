@@ -158,7 +158,9 @@ steps:
           displayName: 'E2E Test: Mount with Key Credential Configuration'
           timeoutInMinutes: 3
           continueOnError: false
+
   #--------------------------------------- Tests: End to end tests with Block Cache configurations ------------------------------------------
+  
   - template: e2e-tests-spcl.yml
     parameters:
       conf_template: azure_block_perf.yaml
@@ -173,7 +175,7 @@ steps:
       account_endpoint: ${{ parameters.account_endpoint }}
       idstring: "${{ parameters.service }} with Block-cache"
       distro_name: ${{ parameters.distro_name }}
-      quick_test: ${{ parameters.quick_test }}
+      quick_test: false
       verbose_log: ${{ parameters.verbose_log }}
       clone: false
 
