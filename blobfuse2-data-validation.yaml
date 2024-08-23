@@ -275,7 +275,7 @@ stages:
         strategy:
           matrix:
             Ubuntu-22:
-              containerName: 'validation'
+              containerName: 'finetuning'
         pool:
           name: "blobfuse-validation-pool"
 
