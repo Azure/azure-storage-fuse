@@ -226,7 +226,7 @@ void nfs_client::jukebox_runner()
                               js->rpc_api->read_task.get_offset(),
                               fmt::ptr(js->rpc_api->read_task.get_fuse_file()));
                     jukebox_read(js->rpc_api);
-                    break;                  
+                    break;
                 case FUSE_READDIR:
                     AZLogWarn("([JUKEBOX REISSUE] readdir(req={}, ino={}, "
                               "size={}, off={}, fi={})",

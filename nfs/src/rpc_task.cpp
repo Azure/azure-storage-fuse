@@ -1612,14 +1612,6 @@ void rpc_task::run_read()
 
         total_length += bc_vec[i].length;
 
-        /*
-         * Set "bytes read" to "bytes requested". This will be true for chunks
-         * served from cache. For chunks that need to be read from the server,
-         * read_callback() will set it appropriately based on the server return
-         * status.
-         */
-        bc_vec[i].pvt = bc_vec[i].length;
-
         if (!bc_vec[i].get_membuf()->is_uptodate()) {
             /*
              * Now we are going to call read_from_server() which will issue
@@ -1641,6 +1633,12 @@ void rpc_task::run_read()
                 bc_vec[i].get_membuf()->clear_locked();
                 bc_vec[i].get_membuf()->clear_inuse();
 
+                /*
+                 * Set "bytes read" to "bytes requested" since the data is read
+                 * from the cache.
+                 */
+                bc_vec[i].pvt = bc_vec[i].length;
+
                 AZLogDebug("Data read from cache. size: {}, offset: {}",
                         bc_vec[i].offset,
                         bc_vec[i].length);
@@ -1651,7 +1649,7 @@ void rpc_task::run_read()
                 * again from cache is negligible since this is a sequential read
                 * pattern. Free such chunks to reduce the memory utilization.
                 */
-                inode->filecache_handle->release(
+                filecache_handle->release(
                     bc_vec[i].offset,
                     bc_vec[i].length);
 #endif
@@ -1684,6 +1682,12 @@ void rpc_task::run_read()
             // Set the parent task of the child to the current RPC task.
             child_tsk->rpc_api->parent_task = this;
 
+            /*
+             * Set "bytes read" to 0 and this will be set to the bytes read
+             * on the read_callback.
+             */
+            bc_vec[i].pvt = 0;
+
             // Set the byte chunk that this child task is incharge of updating.
             child_tsk->rpc_api->bc = &bc_vec[i];
 
@@ -1699,6 +1703,12 @@ void rpc_task::run_read()
         } else {
             bc_vec[i].get_membuf()->clear_inuse();
 
+            /*
+             * Set "bytes read" to "bytes requested" since the data is read
+             * from the cache.
+             */
+            bc_vec[i].pvt = bc_vec[i].length;
+        
 #ifdef RELEASE_CHUNK_AFTER_APPLICATION_READ
             /*
              * Data read from cache. For the most common sequential read
@@ -2143,15 +2153,12 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
      */
     assert(rpc_api->parent_task != nullptr);
 
-#if 0
     /*
      * We should be reading the entire data that the task needs.
-     * Note: This does not apply to partial reads which gets retried
-     *       due to jukebox error.
      */
-    assert(rpc_api->read_task.get_offset() == (off_t) bc.offset);
-    assert(rpc_api->read_task.get_size() == bc.length);
-#endif
+    assert(rpc_api->read_task.get_offset() == ((off_t) bc.offset + (off_t)bc.pvt));
+    assert(rpc_api->read_task.get_size() == (bc.length - bc.pvt));
+
     /*
      * This will be freed in read_callback().
      * Note that the read_context doesn't grab an extra ref on the membuf.
@@ -2164,14 +2171,14 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
         READ3args args;
 
         args.file = inode->get_fh();
-        args.offset = bc.offset;
-        args.count = bc.length;
+        args.offset = bc.offset + bc.pvt;
+        args.count = bc.length - bc.pvt;
 
         /*
          * Reset this to 0 as the read_callback will set this value
          * correctly to the bytes read.
          */
-        bc.pvt = 0;
+        // bc.pvt = 0;
 
         /*
          * Increment the number of reads issued for the parent task.
@@ -2194,8 +2201,8 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
         if ((pdu = rpc_nfs3_read_task(
                 get_rpc_ctx(), /* This round robins request across connections */
                 read_callback,
-                bc.get_buffer(),
-                bc.length,
+                bc.get_buffer() + bc.pvt,
+                args.count,
                 &args,
                 (void *) ctx)) == NULL) {
             /*
@@ -2248,10 +2255,6 @@ void rpc_task::free_rpc_task()
 
         read_status = 0;
         bc_vec.clear();
-        if (rpc_api != nullptr)
-        {
-            rpc_api->parent_task = nullptr;
-        }
         break;
     default :
         break;
