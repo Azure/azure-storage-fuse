@@ -916,37 +916,17 @@ copy_to_cache(struct rpc_task *task,
             mb->set_dirty();
             mb->set_uptodate();
         } else {
+            /*
+             * TODO: Need to issue read.
+             */
             assert(0);
-            #if 0
-            task->read_modified_write(bc);
-            assert(mb->is_uptodate() || task->read_status != 0);
-            if (task->read_status != 0) {
-                error = task->read_status;
-            } else {
-                // buffer copy case.
-                ::memcpy(bc.get_buffer(), buf, bc.length);
-                mb->set_dirty();
-            }
-            #endif
         }
 
         mb->clear_locked();
-        if (error != 0) {
-            break;
-        }
-
         buf += bc.length;
         remaining -= bc.length;
 
         assert((int) remaining >= 0);
-    }
-
-    if (error != 0) {
-        for (auto &bc : bc_vec) {
-            struct membuf *mb = bc.get_membuf();
-            mb->clear_inuse();
-            inode->filecache_handle->release(bc.offset, bc.length);
-        }
     }
 
     assert(remaining == 0);
@@ -1885,26 +1865,6 @@ void rpc_task::send_read_response()
     }
 }
 
-struct read_modified_write_context
-{
-    rpc_task *task;
-    struct bytes_chunk *bc;
-    size_t offset;
-
-    read_modified_write_context(
-        rpc_task *_task,
-        struct bytes_chunk *_bc,
-        size_t _off):
-        task(_task),
-        bc(_bc),
-        offset(_off)
-    {
-        assert(task->magic == RPC_TASK_MAGIC);
-        assert(bc->length > 0 && bc->length <= AZNFSC_MAX_CHUNK_SIZE);
-        assert(bc->offset < AZNFSC_MAX_FILE_SIZE);
-    }
-};
-
 struct read_context
 {
     rpc_task *task;
@@ -2367,13 +2327,6 @@ void rpc_task::free_rpc_task()
 
         read_status = 0;
         bc_vec.clear();
-        break;
-    case FUSE_WRITE:
-    case FUSE_FLUSH:
-        if (rpc_api) {
-            delete rpc_api;
-            this->rpc_api = nullptr;
-        }
         break;
     default :
         break;
