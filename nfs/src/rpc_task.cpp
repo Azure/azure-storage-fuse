@@ -1622,6 +1622,44 @@ void rpc_task::run_read()
 
         if (!bc_vec[i].get_membuf()->is_uptodate()) {
             /*
+             * Now we are going to call read_from_server() which will issue
+             * an NFS read that will read the data from the NFS server and
+             * update the buffer. Grab the membuf lock, this will be
+             * unlocked in read_callback() once the data has been
+             * written to the buffer and it's marked uptodate.
+             *
+             * Note: This will block till the lock is obtained.
+             */
+            bc_vec[i].get_membuf()->set_locked();
+
+            // Check if the buffer got updated by the time we got the lock.
+            if (bc_vec[i].get_membuf()->is_uptodate()) {
+                /*
+                * Release the lock since we no longer intend on writing
+                * to this buffer.
+                */
+                bc_vec[i].get_membuf()->clear_locked();
+                bc_vec[i].get_membuf()->clear_inuse();
+
+                AZLogDebug("Data read from cache. size: {}, offset: {}",
+                        bc_vec[i].offset,
+                        bc_vec[i].length);
+
+#ifdef RELEASE_CHUNK_AFTER_APPLICATION_READ
+                /*
+                * Since the data is read from the cache, the chances of reading it
+                * again from cache is negligible since this is a sequential read
+                * pattern. Free such chunks to reduce the memory utilization.
+                */
+                inode->filecache_handle->release(
+                    bc_vec[i].offset,
+                    bc_vec[i].length);
+#endif
+
+                continue;
+            }
+
+            /*
              * Note that read_from_server() can still find the cache uptodate
              * after it acquires the lock.
              */
@@ -1658,17 +1696,6 @@ void rpc_task::run_read()
                    rpc_api->read_task.get_offset());
             assert(child_tsk->rpc_api->read_task.get_size() <=
                    rpc_api->read_task.get_size());
-
-            /*
-             * Now we are going to call read_from_server() which will issue
-             * an NFS read that will read the data from the NFS server and
-             * update the buffer. Grab the membuf lock, this will be
-             * unlocked in read_callback() once the data has been
-             * written to the buffer and it's marked uptodate.
-             *
-             * Note: This will block till the lock is obtained.
-             */
-            bc_vec[i].get_membuf()->set_locked();
 
             child_tsk->read_from_server(bc_vec[i]);
         } else {
