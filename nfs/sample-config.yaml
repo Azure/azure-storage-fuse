@@ -1,12 +1,10 @@
 #
 # Share details
 #
-#account: 0lrxscnams20py01ex
 account: sjc22prdste06hnfsv3acc1
 container: nfsv3test
-#container: mycont
 cloud_suffix: blob.preprod.core.windows.net
-port: 2048
+port: 2047
 
 #
 # NFS mount options

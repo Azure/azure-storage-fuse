@@ -1659,10 +1659,6 @@ void rpc_task::run_read()
                 continue;
             }
 
-            /*
-             * Note that read_from_server() can still find the cache uptodate
-             * after it acquires the lock.
-             */
             found_in_cache = false;
 
             /*
@@ -1687,6 +1683,8 @@ void rpc_task::run_read()
 
             // Set the parent task of the child to the current RPC task.
             child_tsk->rpc_api->parent_task = this;
+
+            // Set the byte chunk that this child task is incharge of updating.
             child_tsk->rpc_api->bc = &bc_vec[i];
 
             /*
@@ -1876,6 +1874,12 @@ static void read_callback(
     const uint64_t issued_length = bc->length - bc->pvt;
 
     /*
+     * It is okay to free the context here as we do not access it after this
+     * point.
+     */
+    delete ctx;
+
+    /*
      * Now that the request has completed, we can query libnfs for the
      * dispatch time.
      */
@@ -1998,8 +2002,6 @@ static void read_callback(
                 }
             } while (rpc_retry);
 
-            delete ctx;
-
             // Free the current RPC task as it has done its bit.
             task->free_rpc_task();
 
@@ -2043,12 +2045,14 @@ static void read_callback(
             }
         }
     } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
-            task->get_client()->jukebox_retry(task);
+        task->get_client()->jukebox_retry(task);
 
-        // Free the context.
-        delete ctx;
-
-            return;
+        /*
+         * Note: The lock on the membuf will be held till the task is retried.
+         *       This lock will be released only if the retry passes or fails with
+         *       error other than NFS3ERR_JUKEBOX.
+         */
+        return;
     } else {
         AZLogError("[{}] Read failed for offset: {} size: {} "
                    "total bytes read till now: {} of {} for [{}, {}) "
@@ -2063,10 +2067,6 @@ static void read_callback(
                    bc->num_backend_calls_issued,
                    errstr);
     }
-
-
-    // Free the context.
-    delete ctx;
 
     /*
      * Release the lock that we held on the membuf since the data is now
@@ -2144,10 +2144,10 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
     assert(rpc_api->parent_task != nullptr);
 
 #if 0
-    // This does not apply to partial reads which gets retried
-    // due to jukebox error.
     /*
      * We should be reading the entire data that the task needs.
+     * Note: This does not apply to partial reads which gets retried
+     *       due to jukebox error.
      */
     assert(rpc_api->read_task.get_offset() == (off_t) bc.offset);
     assert(rpc_api->read_task.get_size() == bc.length);
