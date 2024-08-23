@@ -1705,6 +1705,11 @@ func (bc *BlockCache) SyncFile(options internal.SyncFileOptions) error {
 	return nil
 }
 
+func (bc *BlockCache) TruncateFile(options internal.TruncateFileOptions) error {
+	options.BlockSize = int64(bc.blockSize)
+	return bc.NextComponent().TruncateFile(options)
+}
+
 // ------------------------- Factory -------------------------------------------
 // Pipeline will call this method to create your object, initialize your variables here
 // << DO NOT DELETE ANY AUTO GENERATED CODE HERE >>

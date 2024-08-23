@@ -1,3 +1,7 @@
+## 2.4.0 (Unreleased)
+**Bug Fixes**
+- Fix file truncation bug with block-cache 
+
 ## 2.3.2 (Unreleased)
 **Bug Fixes**
 - Fixed the case where file creation using SAS on HNS accounts was returning back wrong error code.
