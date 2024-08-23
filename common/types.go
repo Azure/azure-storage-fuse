@@ -47,7 +47,7 @@ import (
 
 // Standard config default values
 const (
-	blobfuse2Version_ = "2.3.1~preview.1"
+	blobfuse2Version_ = "2.4.0"
 
 	DefaultMaxLogFileSize = 512
 	DefaultLogFileCount   = 10
@@ -70,6 +70,8 @@ const (
 	FuseAllowedFlags = "invalid FUSE options. Allowed FUSE configurations are: `-o attr_timeout=TIMEOUT`, `-o negative_timeout=TIMEOUT`, `-o entry_timeout=TIMEOUT` `-o allow_other`, `-o allow_root`, `-o umask=PERMISSIONS -o default_permissions`, `-o ro`"
 
 	UserAgentHeader = "User-Agent"
+
+	BlockCacheRWErrMsg = "Notice: The random write flow using block cache is temporarily blocked due to potential data integrity issues. This is a precautionary measure. \nIf you see this message, contact blobfusedev@microsoft.com or create a GitHub issue. We're working on a fix. More details: https://aka.ms/blobfuse2warnings."
 )
 
 func FuseIgnoredFlags() []string {

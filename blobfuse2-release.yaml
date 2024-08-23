@@ -1679,12 +1679,23 @@ stages:
 
                 fuse2AmdRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse2.x86_64.rpm`
                 echo "Fuse2 AMD RPM ID: $fuse2AmdRpm"
-
+                
+                marinerAmdRpmFile=$(ls blobfuse2* | grep 'cm2\.x86_64\.rpm')
                 marinerFuse3AmdRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*cm2.x86_64.rpm`
                 echo "Mariner fuse3 AMD RPM ID: $marinerFuse3AmdRpm"
+                echo "Mariner fuse3 AMD RPM $marinerAmdRpmFile"
 
+                marinerAarchRpmFile=$(ls blobfuse2* | grep 'cm2\.aarch64\.rpm')
                 marinerFuse3AarchRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*cm2.aarch64.rpm`
                 echo "Mariner fuse3 ARM RPM ID: $marinerFuse3AarchRpm"
+                echo "Mariner fuse3 ARM RPM: $marinerAarchRpmFile"
+
+                is_preview="false"
+                echo "##vso[task.setvariable variable=is_preview]$is_preview"
+                if [[ $marinerAmdRpmFile == *"preview"* ]]; then
+                  is_preview="true"
+                  echo "##vso[task.setvariable variable=is_preview]$is_preview"
+                fi
 
                 is_preview="false"
                 echo "##vso[task.setvariable variable=is_preview]$is_preview"
@@ -1694,11 +1705,10 @@ stages:
                 fi
 
                 while IFS=, read -r distro fuseArchType repoName releaseName; do
-                  
+
                   # If the package is preview, publish to mariner preview package
-                  if [[ $distro == *"Mariner"* ]]; then
+                  if [[ $distro == *"Mariner-"* ]]; then
                     if [ $is_preview = "true" ]; then
-                      echo "Uploading packages for Mariner preview path"
                       repoName=$(echo $repoName | sed 's/prod/preview/')
                     fi
                   fi
@@ -1715,6 +1725,13 @@ stages:
                   then
                     echo "Skipping for ARM type on $distro"
                   else
+                    if [[ $distro == *"Mariner-"* ]]; then
+                        if [ "$(is_preview)" = "true" ]; then
+                          repoName=$(echo $repoName | sed 's/prod/preview/')
+                        fi
+                    fi
+                    echo "Repository Name: $repoName"
+
                     echo "Publishing for $distro"
                     pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) repo publish $repoName
                   fi

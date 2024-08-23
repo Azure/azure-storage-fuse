@@ -1,15 +1,22 @@
-## 2.3.1 (Unreleased)
-**Bug Fixes**
-- Fixed the case where file creation using SAS on HNS accounts was returning back wrong error code.
-- [#1402](https://github.com/Azure/azure-storage-fuse/issues/1402) Fixed proxy URL parsing.
-- If earlier instance of Blobfuse2 crashed and mount is unstable then next mount to same path will automatically cleanup the system.
-
+## 2.4.0 (Unreleased)
 **Features**
 - Entry cache to hold directory listing results in cache for a given timeout. This will reduce REST calls going to storage while listing the blobs in parallel.
 
+## 2.3.2 (Unreleased)
+**Bug Fixes**
+- Fixed the case where file creation using SAS on HNS accounts was returning back wrong error code.
+- [#1402](https://github.com/Azure/azure-storage-fuse/issues/1402) Fixed proxy URL parsing.
+- In flush operation, the blocks will be committed only if the handle is dirty.
+- Fixed an issue in File-Cache that caused upload to fail due to insufficient permissions.
+
+**Data Integrity Fixes**
+- Fixed block-cache read of small files in direct-io mode, where file size is not multiple of kernel buffer size.
+- Fixed race condition in block-cache random write flow where a block is being uploaded and written to in parallel.
+- Fixed issue in block-cache random read/write flow where a uncommitted block, which is deleted from local cache, is reused.
+- Sparse file data integrity issues fixed.
 
 **Other Changes**
-- LFU policy in file cache has been deprecated.
+- LFU policy in file cache has been removed.
 - Default values, if not assigned in config, for the following parameters in block-cache are calculated as follows:
     - Memory preallocated for Block-Cache is 80% of free memory
     - Disk Cache Size is 80% of free disk space
