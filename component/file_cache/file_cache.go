@@ -363,8 +363,6 @@ func (c *FileCache) StatFs() (*syscall.Statfs_t, bool, error) {
 	statfs.Bavail = uint64(math.Max(0, available)) / uint64(statfs.Frsize)
 	statfs.Bfree = statfs.Bavail
 
-	log.Debug("BlockCache::StatFs : Blocks [%d], Bavail [%d], Bfree [%d]", statfs.Blocks, statfs.Bavail, statfs.Bfree)
-
 	return statfs, true, nil
 }
 
