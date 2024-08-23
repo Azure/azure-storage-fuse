@@ -1226,12 +1226,28 @@ func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 		// Write to storage
 		// Create a new handle for the SDK to use to upload (read local file)
 		// The local handle can still be used for read and write.
+		var orgMode fs.FileMode
+		modeChanged := false
+
 		uploadHandle, err := os.Open(localPath)
 		if err != nil {
-			log.Err("FileCache::FlushFile : error [unable to open upload handle] %s [%s]", options.Handle.Path, err.Error())
-			return nil
-		}
+			if os.IsPermission(err) {
+				info, _ := os.Stat(localPath)
+				orgMode = info.Mode()
+				newMode := orgMode | 0444
+				err = os.Chmod(localPath, newMode)
+				if err == nil {
+					modeChanged = true
+					uploadHandle, err = os.Open(localPath)
+					log.Info("FileCache::FlushFile : read mode added to file %s", options.Handle.Path)
+				}
+			}
 
+			if err != nil {
+				log.Err("FileCache::FlushFile : error [unable to open upload handle] %s [%s]", options.Handle.Path, err.Error())
+				return err
+			}
+		}
 		err = fc.NextComponent().CopyFromFile(
 			internal.CopyFromFileOptions{
 				Name: options.Handle.Path,
@@ -1239,6 +1255,14 @@ func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 			})
 
 		uploadHandle.Close()
+
+		if modeChanged {
+			err1 := os.Chmod(localPath, orgMode)
+			if err1 != nil {
+				log.Err("FileCache::FlushFile : Failed to remove read mode from file %s [%s]", options.Handle.Path, err1.Error())
+			}
+		}
+
 		if err != nil {
 			log.Err("FileCache::FlushFile : %s upload failed [%s]", options.Handle.Path, err.Error())
 			return err

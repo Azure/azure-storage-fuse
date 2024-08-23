@@ -12,7 +12,7 @@ parameters:
     default: 'Test'
   - name: ro_mount
     type: boolean
-    default: false    
+    default: false   
 
 steps:
 
