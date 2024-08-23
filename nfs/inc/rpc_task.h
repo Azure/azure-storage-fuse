@@ -839,6 +839,9 @@ struct api_task_info
     {
         assert(optype > 0 && optype <= FUSE_OPCODE_MAX);
 
+        parent_task = nullptr;
+        bc = nullptr;
+
         switch(optype) {
             case FUSE_LOOKUP:
                 lookup_task.release();
@@ -848,6 +851,18 @@ struct api_task_info
                 break;
             case FUSE_MKDIR:
                 mkdir_task.release();
+                break;
+            case FUSE_UNLINK:
+                unlink_task.release();
+                break;
+            case FUSE_RMDIR:
+                rmdir_task.release();
+                break;
+            case FUSE_SYMLINK:
+                symlink_task.release();
+                break;
+            case FUSE_RENAME:
+                rename_task.release();
                 break;
             default :
                 break;

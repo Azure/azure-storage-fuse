@@ -1612,19 +1612,51 @@ void rpc_task::run_read()
 
         total_length += bc_vec[i].length;
 
-        /*
-         * Set "bytes read" to "bytes requested". This will be true for chunks
-         * served from cache. For chunks that need to be read from the server,
-         * read_callback() will set it appropriately based on the server return
-         * status.
-         */
-        bc_vec[i].pvt = bc_vec[i].length;
-
         if (!bc_vec[i].get_membuf()->is_uptodate()) {
             /*
-             * Note that read_from_server() can still find the cache uptodate
-             * after it acquires the lock.
+             * Now we are going to call read_from_server() which will issue
+             * an NFS read that will read the data from the NFS server and
+             * update the buffer. Grab the membuf lock, this will be
+             * unlocked in read_callback() once the data has been
+             * written to the buffer and it's marked uptodate.
+             *
+             * Note: This will block till the lock is obtained.
              */
+            bc_vec[i].get_membuf()->set_locked();
+
+            // Check if the buffer got updated by the time we got the lock.
+            if (bc_vec[i].get_membuf()->is_uptodate()) {
+                /*
+                * Release the lock since we no longer intend on writing
+                * to this buffer.
+                */
+                bc_vec[i].get_membuf()->clear_locked();
+                bc_vec[i].get_membuf()->clear_inuse();
+
+                /*
+                 * Set "bytes read" to "bytes requested" since the data is read
+                 * from the cache.
+                 */
+                bc_vec[i].pvt = bc_vec[i].length;
+
+                AZLogDebug("Data read from cache. size: {}, offset: {}",
+                        bc_vec[i].offset,
+                        bc_vec[i].length);
+
+#ifdef RELEASE_CHUNK_AFTER_APPLICATION_READ
+                /*
+                * Since the data is read from the cache, the chances of reading it
+                * again from cache is negligible since this is a sequential read
+                * pattern. Free such chunks to reduce the memory utilization.
+                */
+                filecache_handle->release(
+                    bc_vec[i].offset,
+                    bc_vec[i].length);
+#endif
+
+                continue;
+            }
+
             found_in_cache = false;
 
             /*
@@ -1649,6 +1681,14 @@ void rpc_task::run_read()
 
             // Set the parent task of the child to the current RPC task.
             child_tsk->rpc_api->parent_task = this;
+
+            /*
+             * Set "bytes read" to 0 and this will be set to the bytes read
+             * on the read_callback.
+             */
+            bc_vec[i].pvt = 0;
+
+            // Set the byte chunk that this child task is incharge of updating.
             child_tsk->rpc_api->bc = &bc_vec[i];
 
             /*
@@ -1663,6 +1703,12 @@ void rpc_task::run_read()
         } else {
             bc_vec[i].get_membuf()->clear_inuse();
 
+            /*
+             * Set "bytes read" to "bytes requested" since the data is read
+             * from the cache.
+             */
+            bc_vec[i].pvt = bc_vec[i].length;
+        
 #ifdef RELEASE_CHUNK_AFTER_APPLICATION_READ
             /*
              * Data read from cache. For the most common sequential read
@@ -1838,6 +1884,12 @@ static void read_callback(
     const uint64_t issued_length = bc->length - bc->pvt;
 
     /*
+     * It is okay to free the context here as we do not access it after this
+     * point.
+     */
+    delete ctx;
+
+    /*
      * Now that the request has completed, we can query libnfs for the
      * dispatch time.
      */
@@ -1898,6 +1950,7 @@ static void read_callback(
              * if one of the child tasks running part of the fuse read request.
              */
             child_tsk->rpc_api->parent_task = parent_task;
+            child_tsk->rpc_api->bc = bc;
 
             /*
              * TODO: To avoid allocating a new read_context we can reuse the
@@ -1959,8 +2012,6 @@ static void read_callback(
                 }
             } while (rpc_retry);
 
-            delete ctx;
-
             // Free the current RPC task as it has done its bit.
             task->free_rpc_task();
 
@@ -2003,10 +2054,29 @@ static void read_callback(
                                           bc->length - bc->pvt);
             }
         }
-    }
+    } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
+        task->get_client()->jukebox_retry(task);
 
-    // Free the context.
-    delete ctx;
+        /*
+         * Note: The lock on the membuf will be held till the task is retried.
+         *       This lock will be released only if the retry passes or fails with
+         *       error other than NFS3ERR_JUKEBOX.
+         */
+        return;
+    } else {
+        AZLogError("[{}] Read failed for offset: {} size: {} "
+                   "total bytes read till now: {} of {} for [{}, {}) "
+                   "num_backend_calls_issued: {} error: {}",
+                   ino,
+                   issued_offset,
+                   issued_length,
+                   bc->pvt,
+                   bc->length,
+                   bc->offset,
+                   bc->offset + bc->length,
+                   bc->num_backend_calls_issued,
+                   errstr);
+    }
 
     /*
      * Release the lock that we held on the membuf since the data is now
@@ -2028,28 +2098,6 @@ static void read_callback(
 
     // For failed status we must never mark the buffer uptodate.
     assert(!status || !bc->get_membuf()->is_uptodate());
-
-
-    if (status != 0) {
-        if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
-            task->get_client()->jukebox_retry(task);
-            return;
-        }
-        else {
-            AZLogError("[{}] Read failed for offset: {} size: {} "
-                    "total bytes read till now: {} of {} for [{}, {}) "
-                    "num_backend_calls_issued: {} error: {}",
-                    ino,
-                    issued_offset,
-                    issued_length,
-                    bc->pvt,
-                    bc->length,
-                    bc->offset,
-                    bc->offset + bc->length,
-                    bc->num_backend_calls_issued,
-                    errstr);
-        }
-    }
 
     // Once failed, read_status remains at failed.
     int expected = 0;
@@ -2087,6 +2135,12 @@ static void read_callback(
      */
 }
 
+/*
+ * This function issues READ rpc to the backend and populates
+ * the read data to the bc.get_buffer(). Hence the caller of this
+ * should hold a lock on the underlying membuf of this bc by calling
+ * bc.get_membuf()->set_locked().
+ */
 void rpc_task::read_from_server(struct bytes_chunk &bc)
 {
     bool rpc_retry;
@@ -2102,8 +2156,8 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
     /*
      * We should be reading the entire data that the task needs.
      */
-    assert(rpc_api->read_task.get_offset() == (off_t) bc.offset);
-    assert(rpc_api->read_task.get_size() == bc.length);
+    assert(rpc_api->read_task.get_offset() == ((off_t) bc.offset + (off_t)bc.pvt));
+    assert(rpc_api->read_task.get_size() == (bc.length - bc.pvt));
 
     /*
      * This will be freed in read_callback().
@@ -2117,59 +2171,25 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
         READ3args args;
 
         args.file = inode->get_fh();
-        args.offset = bc.offset;
-        args.count = bc.length;
-
-        /*
-         * Now we are going to issue an NFS read that will read the data from
-         * the NFS server and update the buffer. Grab the membuf lock, this
-         * will be unlocked in read_callback() once the data has been
-         * written to the buffer and it's marked uptodate.
-         *
-         * Note: This will block till the lock is obtained.
-         */
-        bc.get_membuf()->set_locked();
-
-        // Check if the buffer got updated by the time we got the lock.
-        if (bc.get_membuf()->is_uptodate()) {
-            /*
-             * Release the lock since we no longer intend on writing
-             * to this buffer.
-             */
-            bc.get_membuf()->clear_locked();
-            bc.get_membuf()->clear_inuse();
-
-            AZLogDebug("Data read from cache. size: {}, offset: {}",
-                       rpc_api->read_task.get_size(),
-                       rpc_api->read_task.get_offset());
-
-#ifdef RELEASE_CHUNK_AFTER_APPLICATION_READ
-            /*
-             * Since the data is read from the cache, the chances of reading it
-             * again from cache is negligible since this is a sequential read
-             * pattern. Free such chunks to reduce the memory utilization.
-             */
-            inode->filecache_handle->release(bc.offset, bc.length);
-#endif
-
-            // Free the current child task as we will not issue read RPC.
-            free_rpc_task();
-
-            delete ctx;
-
-            return;
-        }
+        args.offset = bc.offset + bc.pvt;
+        args.count = bc.length - bc.pvt;
 
         /*
          * Reset this to 0 as the read_callback will set this value
          * correctly to the bytes read.
          */
-        bc.pvt = 0;
+        // bc.pvt = 0;
 
-        // Increment the number of reads issued for the paarent task.
-        rpc_api->parent_task->num_ongoing_backend_reads++;
+        /*
+         * Increment the number of reads issued for the parent task.
+         * This should not be incremented for a jukebox retried read (this will
+         * have num_backend_calls_issued > 0) since the original read has
+         * already incremented the num_ongoing_backend_reads.
+         */
+        if (bc.num_backend_calls_issued == 0) {
+            rpc_api->parent_task->num_ongoing_backend_reads++;
+        }
 
-        assert(bc.num_backend_calls_issued == 0);
         bc.num_backend_calls_issued++;
 
         AZLogDebug("Issuing read to backend at offset: {} length: {}",
@@ -2181,8 +2201,8 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
         if ((pdu = rpc_nfs3_read_task(
                 get_rpc_ctx(), /* This round robins request across connections */
                 read_callback,
-                bc.get_buffer(),
-                bc.length,
+                bc.get_buffer() + bc.pvt,
+                args.count,
                 &args,
                 (void *) ctx)) == NULL) {
             /*
@@ -2235,7 +2255,6 @@ void rpc_task::free_rpc_task()
 
         read_status = 0;
         bc_vec.clear();
-        rpc_api->parent_task = nullptr;
         break;
     default :
         break;
