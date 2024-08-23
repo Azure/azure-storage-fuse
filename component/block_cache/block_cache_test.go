@@ -208,31 +208,6 @@ func (suite *blockCacheTestSuite) TestMemory() {
 	suite.assert.LessOrEqual(difference, tolerance)
 }
 
-func (suite *blockCacheTestSuite) TestStatfsMemory() {
-	emptyConfig := "read-only: true\n\nblock_cache:\n  block-size-mb: 16\n"
-	tobj, err := setupPipeline(emptyConfig)
-	defer tobj.cleanupPipeline()
-
-	suite.assert.Nil(err)
-	suite.assert.Equal(tobj.blockCache.Name(), "block_cache")
-	cmd := exec.Command("bash", "-c", "free -b | grep Mem | awk '{print $4}'")
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	err = cmd.Run()
-	suite.assert.Nil(err)
-	free, err := strconv.Atoi(strings.TrimSpace(out.String()))
-	suite.assert.Nil(err)
-	expected := uint64(0.8 * float64(free))
-	stat, ret, err := tobj.blockCache.StatFs()
-	suite.assert.Equal(ret, true)
-	suite.assert.Equal(err, nil)
-	suite.assert.NotEqual(stat, &syscall.Statfs_t{})
-	actual := stat.Bfree
-	difference := math.Abs(float64(actual) - float64(expected))
-	tolerance := 0.10 * float64(math.Max(float64(actual), float64(expected)))
-	suite.assert.LessOrEqual(difference, tolerance)
-}
-
 func (suite *blockCacheTestSuite) TestFreeDiskSpace() {
 	disk_cache_path := getFakeStoragePath("fake_storage")
 	config := fmt.Sprintf("read-only: true\n\nblock_cache:\n  block-size-mb: 1\n  path: %s", disk_cache_path)
@@ -256,16 +231,56 @@ func (suite *blockCacheTestSuite) TestFreeDiskSpace() {
 	suite.assert.LessOrEqual(difference, tolerance)
 }
 
+func (suite *blockCacheTestSuite) TestStatfsMemory() {
+	emptyConfig := "read-only: true\n\nblock_cache:\n  block-size-mb: 16\n"
+	tobj, err := setupPipeline(emptyConfig)
+	defer tobj.cleanupPipeline()
+
+	suite.assert.Nil(err)
+	suite.assert.Equal(tobj.blockCache.Name(), "block_cache")
+	cmd := exec.Command("bash", "-c", "free -b | grep Mem | awk '{print $4}'")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	err = cmd.Run()
+	suite.assert.Nil(err)
+	free, err := strconv.Atoi(strings.TrimSpace(out.String()))
+	suite.assert.Nil(err)
+	expected := uint64(0.8 * float64(free))
+	stat, ret, err := tobj.blockCache.StatFs()
+	suite.assert.Equal(ret, true)
+	suite.assert.Equal(err, nil)
+	suite.assert.NotEqual(stat, &syscall.Statfs_t{})
+	actual := tobj.blockCache.memSize
+	difference := math.Abs(float64(actual) - float64(expected))
+	tolerance := 0.10 * float64(math.Max(float64(actual), float64(expected)))
+	suite.assert.LessOrEqual(difference, tolerance)
+}
+
 func (suite *blockCacheTestSuite) TestStatfsDisk() {
 	disk_cache_path := getFakeStoragePath("fake_storage")
 	config := fmt.Sprintf("read-only: true\n\nblock_cache:\n  block-size-mb: 1\n  path: %s", disk_cache_path)
 	tobj, err := setupPipeline(config)
 	defer tobj.cleanupPipeline()
 
+	suite.assert.Nil(err)
+	suite.assert.Equal(tobj.blockCache.Name(), "block_cache")
+
+	cmd := exec.Command("bash", "-c", fmt.Sprintf("df -B1 %s | awk 'NR==2{print $4}'", disk_cache_path))
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	err = cmd.Run()
+	suite.assert.Nil(err)
+	freeDisk, err := strconv.Atoi(strings.TrimSpace(out.String()))
+	suite.assert.Nil(err)
+	expected := uint64(0.8 * float64(freeDisk))
 	stat, ret, err := tobj.blockCache.StatFs()
 	suite.assert.Equal(ret, true)
 	suite.assert.Equal(err, nil)
 	suite.assert.NotEqual(stat, &syscall.Statfs_t{})
+	actual := tobj.blockCache.diskSize
+	difference := math.Abs(float64(actual) - float64(expected))
+	tolerance := 0.10 * float64(math.Max(float64(actual), float64(expected)))
+	suite.assert.LessOrEqual(difference, tolerance)
 }
 
 func (suite *blockCacheTestSuite) TestInvalidPrefetchCount() {
