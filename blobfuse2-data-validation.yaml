@@ -54,10 +54,8 @@ stages:
               $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_block_bench.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
             displayName: "Create Config File"
             env:
-                NIGHTLY_STO_ACC_NAME: $(BLOBFUSE_BENCHMARK_ACCOUNT)
-                NIGHTLY_STO_ACC_KEY: $(BLOBFUSE_BENCHMARK_ACC_KEY)
-                ACCOUNT_TYPE: "block"
-                ACCOUNT_ENDPOINT: https://$(BLOBFUSE_BENCHMARK_ACCOUNT).blob.core.windows.net
+                AZURE_STORAGE_ACCOUNT: $(BLOBFUSE_BENCHMARK_ACCOUNT)
+                AZURE_STORAGE_ACCESS_KEY: $(BLOBFUSE_BENCHMARK_ACC_KEY)
             continueOnError: false
               
           - script: |
