@@ -1909,6 +1909,7 @@ static void read_callback(
              * if one of the child tasks running part of the fuse read request.
              */
             child_tsk->rpc_api->parent_task = parent_task;
+            child_tsk->rpc_api->bc = bc;
 
             /*
              * TODO: To avoid allocating a new read_context we can reuse the
@@ -2014,30 +2015,31 @@ static void read_callback(
                                           bc->length - bc->pvt);
             }
         }
+    } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
+            task->get_client()->jukebox_retry(task);
+
+        // Free the context.
+        delete ctx;
+
+            return;
+    } else {
+        AZLogError("[{}] Read failed for offset: {} size: {} "
+                   "total bytes read till now: {} of {} for [{}, {}) "
+                   "num_backend_calls_issued: {} error: {}",
+                   ino,
+                   issued_offset,
+                   issued_length,
+                   bc->pvt,
+                   bc->length,
+                   bc->offset,
+                   bc->offset + bc->length,
+                   bc->num_backend_calls_issued,
+                   errstr);
     }
+
 
     // Free the context.
     delete ctx;
-
-    if (status != 0) {
-        if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
-            task->get_client()->jukebox_retry(task);
-            return;
-        } else {
-            AZLogError("[{}] Read failed for offset: {} size: {} "
-                    "total bytes read till now: {} of {} for [{}, {}) "
-                    "num_backend_calls_issued: {} error: {}",
-                    ino,
-                    issued_offset,
-                    issued_length,
-                    bc->pvt,
-                    bc->length,
-                    bc->offset,
-                    bc->offset + bc->length,
-                    bc->num_backend_calls_issued,
-                    errstr);
-        }
-    }
 
     /*
      * Release the lock that we held on the membuf since the data is now
@@ -2114,12 +2116,15 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
      */
     assert(rpc_api->parent_task != nullptr);
 
+#if 0
+    // This does not apply to partial reads which gets retried
+    // due to jukebox error.
     /*
      * We should be reading the entire data that the task needs.
      */
     assert(rpc_api->read_task.get_offset() == (off_t) bc.offset);
     assert(rpc_api->read_task.get_size() == bc.length);
-
+#endif
     /*
      * This will be freed in read_callback().
      * Note that the read_context doesn't grab an extra ref on the membuf.
@@ -2141,10 +2146,16 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
          */
         bc.pvt = 0;
 
-        // Increment the number of reads issued for the paarent task.
-        rpc_api->parent_task->num_ongoing_backend_reads++;
+        /*
+         * Increment the number of reads issued for the parent task.
+         * This should not be incremented for a jukebox retried read (this will
+         * have num_backend_calls_issued > 0) since the original read has
+         * already incremented the num_ongoing_backend_reads.
+         */
+        if (bc.num_backend_calls_issued == 0) {
+            rpc_api->parent_task->num_ongoing_backend_reads++;
+        }
 
-        assert(bc.num_backend_calls_issued == 0);
         bc.num_backend_calls_issued++;
 
         AZLogDebug("Issuing read to backend at offset: {} length: {}",
@@ -2210,7 +2221,10 @@ void rpc_task::free_rpc_task()
 
         read_status = 0;
         bc_vec.clear();
-        rpc_api->parent_task = nullptr;
+        if (rpc_api != nullptr)
+        {
+            rpc_api->parent_task = nullptr;
+        }
         break;
     default :
         break;

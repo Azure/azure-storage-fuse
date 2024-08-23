@@ -1499,8 +1499,8 @@ public:
         task->set_op_type(optype);
         task->stats.on_rpc_create(optype, start_usec);
 
-        // No task starts as a child task.
-        assert(task->rpc_api->parent_task == nullptr);
+        // All new tasks should start as a parent task
+        task->rpc_api->parent_task = nullptr;
 
 #ifndef ENABLE_NON_AZURE_NFS
         assert(task->client->mnt_options.nfs_port == 2047 ||
