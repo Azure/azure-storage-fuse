@@ -459,10 +459,18 @@ public:
     uint64_t buffer_offset = 0;
 
     /*
-     * Private data. User can use this to store anything they want, f.e.,
-     * read callback may set this to actual bytes read in case it's less than
-     * length.
-     * This is opaque to the cache.
+     * Private data. User can use this to store anything they want. but
+     * most commonly it's used to update the progress as the bc can be read
+     * or written in parts. Hence "bc.offset + bc.pvt" is the next offset
+     * to read/write and "bc.length - bc.pvt" is the remaining length to
+     * read/write and "bc.get_buffer() + bc.pvt" is the address where the
+     * data must be read/written.
+     *
+     * This is opaque to the cache and cache doesn't use it. Hence for bcs
+     * stored in the chunkmap, pvt will be 0.
+     *
+     * TODO: Shall we designate pvt for this specific job and rename this to
+     *       something more specific like cursor.
      */
     uint64_t pvt = 0;
 

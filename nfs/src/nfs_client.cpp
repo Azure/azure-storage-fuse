@@ -691,6 +691,9 @@ void nfs_client::jukebox_read(struct api_task_info *rpc_api)
 
     assert(rpc_api->bc != nullptr);
 
+    // Jukebox retry is for an existing request issued to the backend.
+    assert(rpc_api->bc->num_backend_calls_issued > 0);
+
 #ifdef ENABLE_PARANOID
     {
         unsigned int i;

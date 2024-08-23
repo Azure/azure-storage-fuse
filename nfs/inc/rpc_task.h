@@ -839,6 +839,7 @@ struct api_task_info
     {
         assert(optype > 0 && optype <= FUSE_OPCODE_MAX);
 
+        req = nullptr;
         parent_task = nullptr;
         bc = nullptr;
 
@@ -1510,7 +1511,6 @@ public:
             task->rpc_api = new api_task_info();
         }
 
-        task->rpc_api->req = nullptr;
         task->set_op_type(optype);
         task->stats.on_rpc_create(optype, start_usec);
 
