@@ -118,7 +118,7 @@ stages:
             env:
               AZURE_STORAGE_ACCOUNT: $(BLOBFUSE_BENCHMARK_ACCOUNT)
               AZURE_STORAGE_ACCESS_KEY: $(BLOBFUSE_BENCHMARK_ACC_KEY)
-x            continueOnError: false
+              continueOnError: false
 
           - script: cat $(BLOBFUSE2_CFG)
             displayName: Print config file
