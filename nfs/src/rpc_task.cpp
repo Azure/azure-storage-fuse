@@ -2263,6 +2263,7 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
      */
     const bool is_jukebox_read = (bc.num_backend_calls_issued > 0);
 
+    assert(rpc_api->bc == &bc);
     assert(bc.get_membuf()->is_locked());
 
     /*

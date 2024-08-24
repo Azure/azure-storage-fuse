@@ -777,6 +777,11 @@ void nfs_client::jukebox_read(struct api_task_info *rpc_api)
 #endif
 
     /*
+     * The jukebox retry task also should read into the same bc.
+     */
+    child_tsk->rpc_api->bc = rpc_api->bc;
+
+    /*
      * The bytes_chunk held by this task must have its inuse count
      * bumped as the get() call made to obtain this chunk initially would
      * have set it.
