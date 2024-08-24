@@ -198,6 +198,93 @@ private:
  */
 #define WRITE_CONTEXT_MAGIC *((const uint32_t *)"WCTX")
 
+struct write_iov_context
+{
+    const uint32_t magic = WRITE_CONTEXT_MAGIC;
+
+    struct rpc_task *get_task() const
+    {
+        return task;
+    }
+
+    void set_task(struct rpc_task *_task)
+    {
+        task = _task;
+    }
+
+    off_t get_offset() const
+    {
+        return offset;
+    }
+
+    size_t get_length() const
+    {
+        return length;
+    }
+
+    fuse_ino_t get_ino() const
+    {
+        return ino;
+    }
+
+    std::vector<bytes_chunk>& get_bc_vec()
+    {
+        return bc_vec;
+    }
+
+    /**
+     * Release any resources used up by this task.
+     */
+    void release()
+    {
+    }
+
+    /**
+     * Note: We make a copy of bc. This will grab a fresh reference on the
+     *       membuf we can safely write to it as long as we have the
+     *       write_context.
+     *       A fuse write can take many RPC writes to complete, due to partial
+     *       writes or jukebox retries. We save the write_context inside
+     *       rpc_task.rpc_api.pvt do that it's accessible to all the child
+     *       tasks working to write the data corresponding to fuse request.
+     */
+    write_iov_context(std::vector<bytes_chunk>& _bc_vec,
+                  rpc_task *_task,
+                  fuse_ino_t _ino,
+                  off_t _off,
+                  size_t _size) :
+        bc_vec(_bc_vec),
+        task(_task),
+        ino(_ino),
+        offset(_off),
+        length(_size)
+    {
+    }
+
+private:
+    /*
+     * Note: We always write the full underlying membuf and not just the
+     *       portion represented by bc, but since writes can complete
+     *       partially, at any time the following define the data to be
+     *       written:
+     *       Offset: bc.offset + bc.pvt
+     *       Length: bc.length - bc.pvt
+     *       Address: bc.get_buffer() + bc.pvt
+     *       task is FUSE_FLUSH task and does not define offset and length.
+     */
+    std::vector<bytes_chunk> bc_vec;
+    struct rpc_task *task = nullptr;
+    fuse_ino_t ino;
+    off_t offset;
+    size_t length;
+};
+
+/**
+ * Write callback context, used by following calls:
+ * - Write
+ * - Flush
+ * - Fsync
+ */
 struct write_context
 {
     const uint32_t magic = WRITE_CONTEXT_MAGIC;
@@ -1696,6 +1783,14 @@ public:
     void read_from_server(struct bytes_chunk &bc);
     void sync_membuf(struct bytes_chunk &bc, fuse_ino_t ino);
 
+    void resissue_write_iovec(std::vector<bytes_chunk>& bc_vec,
+                              fuse_ino_t ino);
+    void issue_write_rpc(std::vector<bytes_chunk> &bc_vec,
+                         fuse_ino_t ino,
+                         const struct iovec *iov,
+                         int count,
+                         uint64_t offset,
+                         uint64_t length);
 #ifdef ENABLE_NO_FUSE
     /*
      * In nofuse mode we re-define these fuse_reply functions to copy the

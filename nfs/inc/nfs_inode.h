@@ -228,6 +228,12 @@ struct nfs_inode
      */
     int write_error = 0;
 
+    /*
+     * Count of the bytes which are in process of sync to Blob and
+     * on the network.
+     */
+    std::atomic<uint64_t> inflight_bytes = 0;
+
     /**
      * TODO: Initialize attr with postop attributes received in the RPC
      *       response.

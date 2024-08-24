@@ -335,32 +335,7 @@ int nfs_inode::flush_cache_and_wait()
     std::vector<bytes_chunk> bc_vec = filecache_handle->get_dirty_bc();
 
     // Flush dirty membufs to backend.
-    for (bytes_chunk& bc : bc_vec) {
-        /*
-         * Create the flush task to carry out the write.
-         */
-        struct rpc_task *flush_task =
-            get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_FLUSH);
-        flush_task->init_flush(nullptr /* fuse_req */, ino);
-
-        // sync_membuf() uses it to identify jukebox retries, so assert.
-        assert(flush_task->rpc_api->pvt == nullptr);
-
-        /*
-         * get_dirty_bc() must have held an inuse count.
-         * We hold an extra inuse count so that we can safely wait for the
-         * flush in the following loop.
-         * This is needed as sync_membuf() may drop the inuse count if membuf
-         * is already being flushed by another thread or it may drop when the
-         * write_callback() completes which can happen before we reach the
-         * waiting loop.
-         */
-        assert(bc.get_membuf()->is_inuse());
-        bc.get_membuf()->set_inuse();
-
-        // Flush the membuf to backend.
-        flush_task->sync_membuf(bc, ino);
-    }
+    create_write_iovec(bc_vec, client, ino);
 
     /*
      * Our caller expects us to return only after the flush completes.

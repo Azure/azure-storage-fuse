@@ -977,6 +977,14 @@ public:
      */
     std::vector<bytes_chunk> get_dirty_bc() const;
 
+    /*
+     * Returns all dirty chunks for a given range in chunkmap .
+     * Before returning it increases the inuse count of underlying membuf(s).
+     * Caller will typically sync dirty membuf to Blob and once done must call
+     * clear_inuse().
+     */
+    std::vector<bytes_chunk> get_dirty_bc_range(uint64_t st_off, uint64_t end_off) const;
+
     /**
      * Drop cached data in the given range.
      * This must be called only for file-backed caches. For non file-backed
