@@ -169,8 +169,12 @@ private:
  * - Flush
  * - Fsync
  */
+#define WRITE_CONTEXT_MAGIC *((const uint32_t *)"WCTX")
+
 struct write_context
 {
+    const uint32_t magic = WRITE_CONTEXT_MAGIC;
+
     struct rpc_task *get_task() const
     {
         return task;
@@ -198,23 +202,37 @@ struct write_context
     {
     }
 
+    /**
+     * Note: We make a copy of bc. This will grab a fresh reference on the
+     *       membuf we can safely write to it as long as we have the
+     *       write_context.
+     *       A fuse write can take many RPC writes to complete, due to partial
+     *       writes or jukebox retries. We save the write_context inside
+     *       rpc_task.rpc_api.pvt do that it's accessible to all the child
+     *       tasks working to write the data corresponding to fuse request.
+     */
     write_context(struct bytes_chunk& _bc,
                   rpc_task *_task,
                   fuse_ino_t _ino) :
         bc(_bc),
         task(_task),
         ino(_ino)
-      {
-
-      }
+    {
+    }
 
 private:
     /*
      * Note: We always write the full underlying membuf and not just the
-     *       portion represented by bc.
+     *       portion represented by bc, but since writes can complete
+     *       partially, at any time the following define the data to be
+     *       written:
+     *       Offset: bc.offset + bc.pvt
+     *       Length: bc.length - bc.pvt
+     *       Address: bc.get_buffer() + bc.pvt
+     *       task is FUSE_FLUSH task and does not define offset and length.
      */
     struct bytes_chunk bc;
-    struct rpc_task *task;
+    struct rpc_task *task = nullptr;
     fuse_ino_t ino;
 };
 
@@ -791,7 +809,11 @@ struct api_task_info
     struct bytes_chunk *bc = nullptr;
 
     /*
-     * Private variable to store the write_context, so that bc valid for whole life time.
+     * User can use this to store anything that they want to be available with
+     * the task.
+     * Writes use it to store a pointer to write_context, so that the write
+     * context (offset, length and address to write to) is available across
+     * partial writes, jukebox retries, etc.
      */
     void *pvt = nullptr;
 
@@ -835,6 +857,7 @@ struct api_task_info
         req = nullptr;
         parent_task = nullptr;
         bc = nullptr;
+        pvt = nullptr;
 
         switch(optype) {
             case FUSE_LOOKUP:
@@ -1399,7 +1422,6 @@ public:
 
     void send_read_response();
     void read_from_server(struct bytes_chunk &bc);
-    void read_modified_write(struct bytes_chunk &bc);
     void sync_membuf(struct bytes_chunk &bc, fuse_ino_t ino);
 };
 

@@ -418,6 +418,8 @@ static void write_callback(
     assert(task->magic == RPC_TASK_MAGIC);
 
     struct bytes_chunk *bc = &ctx->get_bytes_chunk();
+    // rpc_api->bc points to the bc inside write_context.
+    assert(task->rpc_api->bc == bc);
     struct membuf *mb = bc->get_membuf();
     struct nfs_client *client = task->get_client();
     assert(client->magic == NFS_CLIENT_MAGIC);
@@ -435,6 +437,9 @@ static void write_callback(
     assert(mb != nullptr);
     assert(mb->is_inuse() && mb->is_locked());
     assert(mb->is_flushing() && mb->is_dirty() && mb->is_uptodate());
+
+    // If we have already written everything, why are we here.
+    assert(bc->pvt < bc->length);
 
 #if 0
     /*
@@ -463,38 +468,42 @@ static void write_callback(
         // Successful Blob write must not return 0.
         assert(res->WRITE3res_u.resok.count > 0);
 
-        // How much this WRITE RPC wants to write.
-        const size_t size = mb->length;
+        /*
+         * How much has been written till now (including this WRITE).
+         */
+        bc->pvt += res->WRITE3res_u.resok.count;
+        assert(bc->pvt <= mb->length);
 
-        // How much has been written till now (including this WRITE).
-        const size_t count = bc->pvt + res->WRITE3res_u.resok.count;
+        /*
+         * Have we not yet written what we set out to write?
+         * Note that we sync the entire membuf and not just bc->length.
+         */
+        const bool is_partial_write = (bc->pvt < mb->length);
 
-        assert(count <= size);
-
-        if (count < size) {
+        if (is_partial_write) {
             /*
              * Written less than intended, unlikely but possible.
              * Arrange to write rest of the data.
              */
             WRITE3args args;
             struct rpc_pdu *pdu;
-            off_t off = mb->offset;
-            char *buf = (char *)mb->buffer;
             fuse_ino_t ino = ctx->get_ino();
 
             args.file = client->get_nfs_inode_from_ino(ino)->get_fh();
-	        args.offset = off + count;
-	        args.count  = size - count;
-	        args.stable = FILE_SYNC;
-	        args.data.data_len = size - count;
-            args.data.data_val = buf + count;
-            bc->pvt = count;
+            args.offset = mb->offset + bc->pvt;
+            args.count  = mb->length - bc->pvt;
+            args.stable = FILE_SYNC;
+            args.data.data_len = mb->length - bc->pvt;
+            args.data.data_val = (char *) mb->buffer + bc->pvt;
 
             /*
              * Create new flush task to write remaining buffer.
              * New task help us to account stats accurately.
+             * This flush task will be continuing the job of writing to the
+             * same bc, so set bc and ctx.
              */
-            struct rpc_task *flush_task = client->get_rpc_task_helper()->alloc_rpc_task(FUSE_FLUSH);
+            struct rpc_task *flush_task =
+                client->get_rpc_task_helper()->alloc_rpc_task(FUSE_FLUSH);
             flush_task->init_flush(nullptr /* fuse_req */, ino);
             flush_task->rpc_api->bc = bc;
             flush_task->rpc_api->pvt = (void *) ctx;
@@ -504,7 +513,7 @@ static void write_callback(
 
             // TODO: Make this AZLogDebug after some time.
             AZLogInfo("[{}] Partial write: [{}, {}) of [{}, {})", ctx->get_ino(),
-                       mb->offset + bc->pvt, mb->offset + count,
+                       mb->offset + bc->pvt, mb->offset + mb->length,
                        mb->offset, mb->offset + mb->length);
 
             bool rpc_retry;
@@ -534,7 +543,11 @@ static void write_callback(
                 }
             } while (rpc_retry);
 
-            // Release the task.
+            /*
+             * Release this task since it has done it's job.
+             * Now next the callback will be called when the above partial
+             * write completes.
+             */
             task->free_rpc_task();
 
             return;
@@ -546,26 +559,26 @@ static void write_callback(
             mb->clear_dirty();
             mb->clear_flushing();
         }
+    } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
+        AZLogDebug("[{}] JUKEBOX error write, off: {}, len: {}",
+                   ctx->get_ino(),
+                   mb->offset + bc->pvt,
+                   mb->length - bc->pvt);
+        task->get_client()->jukebox_retry(task);
+        return;
     } else {
-        if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
-            AZLogDebug("[{}] JUKEBOX error write, off: {}, len: {}",
-                       ctx->get_ino(), mb->offset, mb->length);
-            task->get_client()->jukebox_retry(task);
-            return;
-        } else {
-            /*
-            * Since the api failed and can no longer be retried, set write_error
-            * and do not clear dirty flag.
-            */
-            AZLogError("[{}] Write [{}, {}) failed with status {}: {}",
-                    ctx->get_ino(),
-                    mb->offset + bc->pvt, mb->offset + mb->length,
-                    status, errstr);
+        /*
+         * Since the api failed and can no longer be retried, set write_error
+         * and do not clear dirty flag.
+         */
+        AZLogError("[{}] Write [{}, {}) failed with status {}: {}",
+                   ctx->get_ino(),
+                   mb->offset + bc->pvt, mb->offset + mb->length,
+                   status, errstr);
 
-            assert(mb->is_dirty());
-            mb->clear_flushing();
-            inode->set_write_error(status);
-        }
+        assert(mb->is_dirty());
+        mb->clear_flushing();
+        inode->set_write_error(status);
     }
 
     mb->clear_locked();
@@ -909,14 +922,21 @@ copy_to_cache(struct rpc_task *task,
 
         assert(remaining >= bc.length);
 
-        // Chunk is owned by us or uptodate.
+        /*
+         * If we own the full membuf we can safely copy to it, also if the
+         * membuf is uptodate we can safely copy to it. In both cases the
+         * membuf remains uptodate after the copy.
+         */
         if (bc.is_empty || mb->is_uptodate()) {
-            // buffer copy case.
             ::memcpy(bc.get_buffer(), buf, bc.length);
             mb->set_dirty();
             mb->set_uptodate();
         } else {
             /*
+             * bc refers to part of the membuf and membuf is not uptodate.
+             * In this case we need to read back the entire membuf and then
+             * update the part that user wants to write to.
+             *
              * TODO: Need to issue read.
              */
             assert(0);
@@ -970,6 +990,12 @@ void rpc_task::sync_membuf(struct bytes_chunk& bc,
      */
     struct membuf *mb = bc.get_membuf();
 
+    /*
+     * For jukebox retries rpc_api->pvt must be pointing at the write_context.
+     * For others we allocate and set write_context here.
+     */
+    const bool is_jukebox_retry = (rpc_api->pvt != nullptr);
+
     // Verify the mb.
     assert(mb != nullptr);
     assert(mb->is_inuse());
@@ -985,17 +1011,25 @@ void rpc_task::sync_membuf(struct bytes_chunk& bc,
      * flushing". They can just skip.
      * Note that we allocate the rpc_task for flush before the lock as it may
      * block.
+     *
+     * Note: Jukebox retries will have mb->is_flushing set (when the original
+     *       task was issued), but we still want to issue the retry task.
      */
-    if (!mb->is_dirty() || (mb->is_flushing() && rpc_api->pvt == nullptr)) {
+    if (!mb->is_dirty() || (mb->is_flushing() && !is_jukebox_retry)) {
         free_rpc_task();
         return;
     }
 
-    if (rpc_api->pvt == nullptr) {
+    /*
+     * For jukebox retries lock would already be held, else hold it now.
+     */
+    if (!is_jukebox_retry) {
         mb->set_locked();
+    } else {
+        assert(mb->is_locked());
     }
 
-    if ((mb->is_dirty() && !mb->is_flushing()) || (rpc_api->pvt != nullptr)) {
+    if ((mb->is_dirty() && !mb->is_flushing()) || is_jukebox_retry) {
         WRITE3args args;
         struct rpc_pdu *pdu;
         struct write_context *ctx;
@@ -1006,18 +1040,23 @@ void rpc_task::sync_membuf(struct bytes_chunk& bc,
 
         // Fill the WRITE RPC arguments.
         args.file = client->get_nfs_inode_from_ino(ino)->get_fh();
-        args.offset = mb->offset;
-        args.count  = mb->length;
+        args.offset = mb->offset + bc.pvt;
+        args.count  = mb->length - bc.pvt;
         args.stable = FILE_SYNC;
-        args.data.data_len = mb->length;
-        args.data.data_val = (char *) mb->buffer;
+        args.data.data_len = mb->length - bc.pvt;
+        args.data.data_val = (char *) mb->buffer + bc.pvt;
 
         if (rpc_api->pvt == nullptr) {
+            assert(bc.pvt == 0);
             ctx = new write_context(bc, this, ino);
             rpc_api->pvt = (void *) ctx;
-            bc.pvt = 0;
         } else {
-            ctx = (write_context *)rpc_api->pvt;
+            /*
+             * For jukebox retries rpc_api->pvt must already be pointing to
+             * the write_context.
+             */
+            ctx = (write_context *) rpc_api->pvt;
+            assert(&bc == &ctx->get_bytes_chunk());
             ctx->set_task(this);
         }
 
@@ -1092,6 +1131,8 @@ void rpc_task::run_write()
     std::vector<bytes_chunk> bc_vec =
             copy_to_cache(this, ino, bufv, offset, length, error_code);
     if (error_code != 0) {
+        AZLogWarn("[{}] copy_to_cache failed with error={}, "
+                  "failing write!", ino, error_code);
         reply_error(error_code);
         return;
     }
@@ -1105,8 +1146,9 @@ void rpc_task::run_write()
         struct rpc_task *flush_task =
             get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_FLUSH);
         flush_task->init_flush(nullptr /* fuse_req */, rpc_api->flush_task.get_ino());
-        flush_task->rpc_api->pvt = nullptr;
 
+        // sync_membuf() uses it to identify jukebox retries, so assert.
+        assert(flush_task->rpc_api->pvt == nullptr);
         flush_task->sync_membuf(bc, ino);
     }
 
@@ -1147,7 +1189,9 @@ void rpc_task::run_flush()
         struct rpc_task *flush_task =
             get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_FLUSH);
         flush_task->init_flush(nullptr /* fuse_req */, rpc_api->flush_task.get_ino());
-        flush_task->rpc_api->pvt = nullptr;
+
+        // sync_membuf() uses it to identify jukebox retries, so assert.
+        assert(flush_task->rpc_api->pvt == nullptr);
 
         // Flush the membuf to backend.
         flush_task->sync_membuf(bc, ino);
