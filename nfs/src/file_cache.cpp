@@ -1584,8 +1584,8 @@ int64_t bytes_chunk_cache::drop(uint64_t offset, uint64_t length)
 
 void bytes_chunk_cache::clear()
 {
-    AZLogInfo("[{}] clear() called, backing_file_name={}",
-              fmt::ptr(this), backing_file_name);
+    AZLogInfo("[{}] Cache purge: chunkmap.size()={}, backing_file_name={}",
+              fmt::ptr(this), chunkmap.size(), backing_file_name);
 
     /*
      * We hold the bytes_chunk_cache lock and go over all the bytes_chunk to
@@ -1604,6 +1604,7 @@ void bytes_chunk_cache::clear()
      * can safely remove from chunkmap iff inuse/dirty/locked are not set.
      */
     const std::unique_lock<std::mutex> _lock(lock);
+    const uint64_t start_size = chunkmap.size();
 
     for (auto it = chunkmap.cbegin(), next_it = it;
          it != chunkmap.cend();
@@ -1623,8 +1624,10 @@ void bytes_chunk_cache::clear()
          *       skipped.
          */
         if (mb->is_inuse()) {
-            AZLogInfo("[{}] skipping as membuf(offset={}, length={}) is inuse",
-                      fmt::ptr(this), mb->offset, mb->length);
+            AZLogInfo("[{}] Cache purge: skipping inuse membuf(offset={}, "
+                      "length={}) (inuse count={}, dirty={})",
+                      fmt::ptr(this), mb->offset, mb->length,
+                      mb->get_inuse(), mb->is_dirty());
             continue;
         }
 
@@ -1640,14 +1643,17 @@ void bytes_chunk_cache::clear()
          * Cannot safely drop this from the cache.
          */
         if (mb->is_dirty()) {
-            AZLogInfo("[{}] skipping as membuf(offset={}, length={}) is dirty",
+            AZLogInfo("[{}] Cache purge: skipping dirty membuf(offset={}, "
+                      "length={})",
                       fmt::ptr(this), mb->offset, mb->length);
             continue;
         }
 
-        AZLogDebug("[{}] deleting membuf(offset={}, length={}), use_count={}",
+        AZLogDebug("[{}] Cache purge: deleting membuf(offset={}, length={}), "
+                   "use_count={}, deleted {} of {}",
                    fmt::ptr(this), mb->offset, mb->length,
-                   bc->get_membuf_usecount());
+                   bc->get_membuf_usecount(),
+                   start_size - chunkmap.size(), start_size);
 
         // Make sure the compound check also passes.
         assert(bc->safe_to_release());
@@ -1673,8 +1679,10 @@ void bytes_chunk_cache::clear()
     }
 
     if (!chunkmap.empty()) {
-        AZLogInfo("[{}] Skipping delete for backing_file_name={}, as chunkmap "
-                  "not empty", fmt::ptr(this), backing_file_name);
+        AZLogInfo("[{}] Cache purge: Skipping delete for backing_file_name={}, "
+                  "as chunkmap not empty (still present {} of {})",
+                  fmt::ptr(this), backing_file_name,
+                  chunkmap.size(), start_size);
         assert(bytes_allocated > 0);
         return;
     }
@@ -1697,11 +1705,11 @@ void bytes_chunk_cache::clear()
     if (backing_file_fd != -1) {
         const int ret = ::close(backing_file_fd);
         if (ret != 0) {
-            AZLogError("close(fd={}) failed: {}",
+            AZLogError("Cache purge: close(fd={}) failed: {}",
                     backing_file_fd, strerror(errno));
             assert(0);
         } else {
-            AZLogInfo("Backing file {} closed, fd={}",
+            AZLogInfo("Cache purge: Backing file {} closed, fd={}",
                     backing_file_name, backing_file_fd);
         }
         backing_file_fd = -1;
@@ -1713,7 +1721,7 @@ void bytes_chunk_cache::clear()
     if (!backing_file_name.empty()) {
         const int ret = ::unlink(backing_file_name.c_str());
         if ((ret != 0) && (errno != ENOENT)) {
-            AZLogError("unlink({}) failed: {}",
+            AZLogError("Cache purge: unlink({}) failed: {}",
                     backing_file_name, strerror(errno));
             assert(0);
         } else {

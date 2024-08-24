@@ -276,6 +276,11 @@ struct membuf
         return (inuse > 0);
     }
 
+    int get_inuse() const
+    {
+        return inuse;
+    }
+
     void set_inuse();
     void clear_inuse();
 

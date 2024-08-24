@@ -1479,6 +1479,7 @@ private:
 public:
     ~rpc_task_helper()
     {
+        AZLogInfo("~rpc_task_helper called");
         /*
          * We should be called when there are no outstanding tasks.
          */

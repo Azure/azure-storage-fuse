@@ -154,6 +154,14 @@ public:
     }
 
     /**
+     * Returns true if nfs_client is shutting down.
+     */
+    bool is_shutting_down() const
+    {
+        return shutting_down;
+    }
+
+    /**
      * Must be called on fuse unmount.
      * TODO: Audit this to make sure we perform cleanup for all components.
      */
