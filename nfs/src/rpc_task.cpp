@@ -417,7 +417,7 @@ static void write_callback(
     struct rpc_task *task = ctx->get_task();
     assert(task->magic == RPC_TASK_MAGIC);
 
-    const struct bytes_chunk *bc = &ctx->get_bytes_chunk();
+    struct bytes_chunk *bc = &ctx->get_bytes_chunk();
     struct membuf *mb = bc->get_membuf();
     struct nfs_client *client = task->get_client();
     assert(client->magic == NFS_CLIENT_MAGIC);
@@ -467,11 +467,10 @@ static void write_callback(
         const size_t size = mb->length;
 
         // How much has been written till now (including this WRITE).
-        const size_t count = ctx->get_count() + res->WRITE3res_u.resok.count;
+        const size_t count = bc->pvt + res->WRITE3res_u.resok.count;
 
         assert(count <= size);
 
-        // TODO: Use bc->pvt for tracking progressing in case of partial writes.
         if (count < size) {
             /*
              * Written less than intended, unlikely but possible.
@@ -489,7 +488,7 @@ static void write_callback(
 	        args.stable = FILE_SYNC;
 	        args.data.data_len = size - count;
             args.data.data_val = buf + count;
-            ctx->set_count(count);
+            bc->pvt = count;
 
             /*
              * Create new flush task to write remaining buffer.
@@ -497,13 +496,15 @@ static void write_callback(
              */
             struct rpc_task *flush_task = client->get_rpc_task_helper()->alloc_rpc_task(FUSE_FLUSH);
             flush_task->init_flush(nullptr /* fuse_req */, ino);
+            flush_task->rpc_api->bc = bc;
+            flush_task->rpc_api->pvt = (void *) ctx;
 
             // Update the ctx with new task.
             ctx->set_task(flush_task);
 
             // TODO: Make this AZLogDebug after some time.
             AZLogInfo("[{}] Partial write: [{}, {}) of [{}, {})", ctx->get_ino(),
-                       mb->offset + ctx->get_count(), mb->offset + count,
+                       mb->offset + bc->pvt, mb->offset + count,
                        mb->offset, mb->offset + mb->length);
 
             bool rpc_retry;
@@ -546,18 +547,25 @@ static void write_callback(
             mb->clear_flushing();
         }
     } else {
-        /*
-         * Since the api failed and can no longer be retried, set write_error
-         * and do not clear dirty flag.
-         */
-        AZLogError("[{}] Write [{}, {}) failed with status {}: {}",
-                   ctx->get_ino(),
-                   mb->offset + ctx->get_count(), mb->offset + mb->length,
-                   status, errstr);
+        if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
+            AZLogDebug("[{}] JUKEBOX error write, off: {}, len: {}",
+                       ctx->get_ino(), mb->offset, mb->length);
+            task->get_client()->jukebox_retry(task);
+            return;
+        } else {
+            /*
+            * Since the api failed and can no longer be retried, set write_error
+            * and do not clear dirty flag.
+            */
+            AZLogError("[{}] Write [{}, {}) failed with status {}: {}",
+                    ctx->get_ino(),
+                    mb->offset + bc->pvt, mb->offset + mb->length,
+                    status, errstr);
 
-        assert(mb->is_dirty());
-        mb->clear_flushing();
-        inode->set_write_error(status);
+            assert(mb->is_dirty());
+            mb->clear_flushing();
+            inode->set_write_error(status);
+        }
     }
 
     mb->clear_locked();
@@ -869,7 +877,7 @@ void rpc_task::run_lookup()
  * vector. Caller will then have to write these chunks to the Blob.
  */
 static std::vector<bytes_chunk>
-copy_to_cache(struct nfs_client *const client,
+copy_to_cache(struct rpc_task *task,
               fuse_ino_t ino,
               struct fuse_bufvec* bufv,
               off_t offset,
@@ -886,7 +894,7 @@ copy_to_cache(struct nfs_client *const client,
     assert(bufv->count == 1);
 
     const char *buf = (char *) bufv->buf[bufv->idx].mem + bufv->off;
-    struct nfs_inode *inode = client->get_nfs_inode_from_ino(ino);
+    struct nfs_inode *inode = task->get_client()->get_nfs_inode_from_ino(ino);
     std::vector<bytes_chunk> bc_vec =
         inode->filecache_handle->get(offset, length);
 
@@ -905,6 +913,8 @@ copy_to_cache(struct nfs_client *const client,
         if (bc.is_empty || mb->is_uptodate()) {
             // buffer copy case.
             ::memcpy(bc.get_buffer(), buf, bc.length);
+            mb->set_dirty();
+            mb->set_uptodate();
         } else {
             /*
              * TODO: Need to issue read.
@@ -912,12 +922,10 @@ copy_to_cache(struct nfs_client *const client,
             assert(0);
         }
 
-        mb->set_dirty();
-        mb->set_uptodate();
         mb->clear_locked();
-
         buf += bc.length;
         remaining -= bc.length;
+
         assert((int) remaining >= 0);
     }
 
@@ -925,6 +933,8 @@ copy_to_cache(struct nfs_client *const client,
 
     return bc_vec;
 }
+
+
 
 /**
  * Synchronize (aka flush) a membuf to backing Blob.
@@ -950,9 +960,8 @@ copy_to_cache(struct nfs_client *const client,
  *       Ideally we should put a cap on how many we keep outstanding with a
  *       single file.
  */
-static void sync_membuf(const struct bytes_chunk& bc,
-                        struct nfs_client *client,
-                        fuse_ino_t ino)
+void rpc_task::sync_membuf(struct bytes_chunk& bc,
+                           fuse_ino_t ino)
 {
     /*
      * Get the underlying membuf for bc.
@@ -960,7 +969,6 @@ static void sync_membuf(const struct bytes_chunk& bc,
      * to a smaller window.
      */
     struct membuf *mb = bc.get_membuf();
-    struct rpc_task *flush_task = nullptr;
 
     // Verify the mb.
     assert(mb != nullptr);
@@ -978,22 +986,23 @@ static void sync_membuf(const struct bytes_chunk& bc,
      * Note that we allocate the rpc_task for flush before the lock as it may
      * block.
      */
-    if (!mb->is_dirty() || mb->is_flushing()) {
+    if (!mb->is_dirty() || (mb->is_flushing() && rpc_api->pvt == nullptr)) {
+        free_rpc_task();
         return;
     }
 
-    flush_task = client->get_rpc_task_helper()->alloc_rpc_task(FUSE_FLUSH);
-    flush_task->init_flush(nullptr /* fuse_req */, ino);
-    flush_task->set_op_type(FUSE_FLUSH);
+    if (rpc_api->pvt == nullptr) {
+        mb->set_locked();
+    }
 
-    mb->set_locked();
-
-    if (mb->is_dirty() && !mb->is_flushing()) {
+    if ((mb->is_dirty() && !mb->is_flushing()) || (rpc_api->pvt != nullptr)) {
         WRITE3args args;
         struct rpc_pdu *pdu;
+        struct write_context *ctx;
 
         // Never ever write non-uptodate membufs.
         assert(mb->is_uptodate());
+        assert(mb->is_dirty());
 
         // Fill the WRITE RPC arguments.
         args.file = client->get_nfs_inode_from_ino(ino)->get_fh();
@@ -1003,8 +1012,16 @@ static void sync_membuf(const struct bytes_chunk& bc,
         args.data.data_len = mb->length;
         args.data.data_val = (char *) mb->buffer;
 
-        struct write_context *cb_context =
-            new write_context(bc, flush_task, ino);
+        if (rpc_api->pvt == nullptr) {
+            ctx = new write_context(bc, this, ino);
+            rpc_api->pvt = (void *) ctx;
+            bc.pvt = 0;
+        } else {
+            ctx = (write_context *)rpc_api->pvt;
+            ctx->set_task(this);
+        }
+
+        rpc_api->bc = &(ctx->get_bytes_chunk());
 
         // Set flag to flushing.
         mb->set_flushing();
@@ -1012,9 +1029,9 @@ static void sync_membuf(const struct bytes_chunk& bc,
         bool rpc_retry;
         do {
             rpc_retry = false;
-            if ((pdu = rpc_nfs3_write_task(flush_task->get_rpc_ctx(),
+            if ((pdu = rpc_nfs3_write_task(get_rpc_ctx(),
                                     write_callback, &args,
-                                    cb_context)) == NULL) {
+                                    ctx)) == NULL) {
                 /*
                  * Most common reason for this is memory allocation failure,
                  * hence wait for some time before retrying. Also block the
@@ -1028,13 +1045,13 @@ static void sync_membuf(const struct bytes_chunk& bc,
                           "after 5 secs!");
                 ::sleep(5);
             } else {
-                flush_task->get_stats().on_rpc_issue(
+                get_stats().on_rpc_issue(
                     rpc_pdu_get_req_size(pdu));
             }
         } while (rpc_retry);
     } else {
         mb->clear_locked();
-        flush_task->free_rpc_task();
+        free_rpc_task();
     }
 }
 
@@ -1072,13 +1089,25 @@ void rpc_task::run_write()
      * membufs. We don't wait for the writes to actually finish, which means
      * we support buffered writes.
      */
-    const std::vector<bytes_chunk> bc_vec =
-        copy_to_cache(get_client(), ino, bufv, offset, length, error_code);
+    std::vector<bytes_chunk> bc_vec =
+            copy_to_cache(this, ino, bufv, offset, length, error_code);
+    if (error_code != 0) {
+        reply_error(error_code);
+        return;
+    }
+
     assert(bc_vec.size() > 0);
 
-    for (const bytes_chunk& bc : bc_vec) {
-        // Flush the membuf to backend.
-        sync_membuf(bc, get_client(), ino);
+    for (bytes_chunk& bc : bc_vec) {
+        /*
+         * Create the flush task to carry out the write.
+         */
+        struct rpc_task *flush_task =
+            get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_FLUSH);
+        flush_task->init_flush(nullptr /* fuse_req */, rpc_api->flush_task.get_ino());
+        flush_task->rpc_api->pvt = nullptr;
+
+        flush_task->sync_membuf(bc, ino);
     }
 
     // Send reply to original request without waiting for the backend write to complete.
@@ -1108,19 +1137,27 @@ void rpc_task::run_flush()
     }
 
     // Get the dirty bytes_chunk from the filecache handle.
-    const std::vector<bytes_chunk> bc_vec = filecache_handle->get_dirty_bc();
+    std::vector<bytes_chunk> bc_vec = filecache_handle->get_dirty_bc();
 
     // Flush dirty membufs to backend.
-    for (const bytes_chunk& bc : bc_vec) {
+    for (bytes_chunk& bc : bc_vec) {
+        /*
+         * Create the flush task to carry out the write.
+         */
+        struct rpc_task *flush_task =
+            get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_FLUSH);
+        flush_task->init_flush(nullptr /* fuse_req */, rpc_api->flush_task.get_ino());
+        flush_task->rpc_api->pvt = nullptr;
+
         // Flush the membuf to backend.
-        sync_membuf(bc, client, ino);
+        flush_task->sync_membuf(bc, ino);
     }
 
     /*
      * Our caller expects us to return only after the flush completes.
      * Wait for all the membufs to flush and get result back.
      */
-    for (const bytes_chunk &bc : bc_vec) {
+    for (bytes_chunk &bc : bc_vec) {
         struct membuf *mb = bc.get_membuf();
         assert(mb != nullptr);
 
@@ -1845,6 +1882,7 @@ struct read_context
     }
 };
 
+
 static void read_callback(
     struct rpc_context *rpc,
     int rpc_status,
@@ -2098,20 +2136,20 @@ static void read_callback(
     }
 
     /*
-     * Release the lock that we held on the membuf since the data is now
-     * written to it.
-     * The lock is needed only to write the data and not to just read it.
-     * Hence it is safe to read this membuf even beyond this point.
-     */
+    * Release the lock that we held on the membuf since the data is now
+    * written to it.
+    * The lock is needed only to write the data and not to just read it.
+    * Hence it is safe to read this membuf even beyond this point.
+    */
     bc->get_membuf()->clear_locked();
     bc->get_membuf()->clear_inuse();
 
 #ifdef RELEASE_CHUNK_AFTER_APPLICATION_READ
     /*
-     * Since we come here only for client reads, we will not cache the data,
-     * hence release the chunk.
-     * This can safely be done for both success and failure case.
-     */
+    * Since we come here only for client reads, we will not cache the data,
+    * hence release the chunk.
+    * This can safely be done for both success and failure case.
+    */
     filecache_handle->release(bc->offset, bc->length);
 #endif
 
