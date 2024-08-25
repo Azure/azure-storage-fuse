@@ -147,7 +147,7 @@ struct nfs_inode
      * Valid only for regular files.
      */
     std::shared_ptr<ra_state> readahead_state;
-    
+
     /*
      * Stores the write error observed when performing backend writes to this
      * Blob. This helps us duly fail close(), if one or more IOs have failed
@@ -169,6 +169,59 @@ struct nfs_inode
               fuse_ino_t _ino = 0);
 
     ~nfs_inode();
+
+    /**
+     * Allocate file cache if not already allocated.
+     * This must be called from code that returns an inode after a regular
+     * file is opened or created.
+     */
+    std::shared_ptr<bytes_chunk_cache>& get_or_alloc_filecache()
+    {
+        assert(is_regfile());
+
+        if (!filecache_handle) {
+            if (aznfsc_cfg.filecache.enable && aznfsc_cfg.filecache.cachedir) {
+                const std::string backing_file_name =
+                    std::string(aznfsc_cfg.filecache.cachedir) + "/" + std::to_string(get_fuse_ino());
+                filecache_handle =
+                    std::make_shared<bytes_chunk_cache>(backing_file_name.c_str());
+            } else {
+                filecache_handle = std::make_shared<bytes_chunk_cache>();
+            }
+        }
+
+        return filecache_handle;
+    }
+
+    /**
+     * Allocate directory cache if not already allocated.
+     * This must be called from code that returns an inode after a directory
+     * is opened or created.
+     */
+    std::shared_ptr<readdirectory_cache>& get_or_alloc_dircache()
+    {
+        assert(is_dir());
+
+        if (!dircache_handle) {
+            dircache_handle = std::make_shared<readdirectory_cache>(client, this);
+        }
+
+        return dircache_handle;
+    }
+
+    /**
+     * Allocate readahead_state if not already allocated.
+     */
+    std::shared_ptr<ra_state>& get_or_alloc_rastate()
+    {
+        assert(is_regfile());
+
+        if (!readahead_state) {
+            readahead_state = std::make_shared<ra_state>(client, this);
+        }
+
+        return readahead_state;
+    }
 
     /**
      * Return the fuse inode number for this inode.
@@ -349,15 +402,16 @@ struct nfs_inode
                                          : get_actimeo_min();
     }
 
+
     /**
      * Is the inode cache (filecache_handle or dircache_handle) empty?
      */
     bool is_cache_empty() const
     {
         if (is_regfile()) {
-            return filecache_handle->is_empty();
+            return !filecache_handle || filecache_handle->is_empty();
         } else if (is_dir()) {
-            return dircache_handle->is_empty();
+            return !dircache_handle || dircache_handle->is_empty();
         } else {
             return true;
         }

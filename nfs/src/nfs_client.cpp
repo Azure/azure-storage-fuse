@@ -407,7 +407,7 @@ void nfs_client::put_nfs_inode_nolock(struct nfs_inode *inode,
      * inode. Fuse will call FORGET on the directory and then we can free this
      * inode.
      */
-    if (inode->is_dir() && (inode->dircache_handle->get_num_entries() != 0)) {
+    if (inode->is_dir() && !inode->is_cache_empty()) {
         AZLogWarn("[{}] Inode still has {} entries in dircache, skipping",
                   inode->get_fuse_ino(),
                   inode->dircache_handle->get_num_entries());
@@ -641,6 +641,11 @@ void nfs_client::read(
     tsk->init_read(req, ino, size, off, fi);
 
     /*
+     * Allocate readahead_state if not already done.
+     */
+    inode->get_or_alloc_rastate();
+
+    /*
      * Issue readaheads (if any) before application read.
      * Note that application read can block on membuf lock while readahead
      * read skips locked membufs. This way we can have readahead reads sent
@@ -827,6 +832,17 @@ void nfs_client::reply_entry(
         } else {
             entry.attr_timeout = 0;
             entry.entry_timeout = 0;
+        }
+
+        /*
+         * This is the common place where we return inode to fuse.
+         * After this fuse can call any of the functions that might need file
+         * or dir cache, so allocate them now.
+         */
+        if (inode->is_regfile()) {
+            inode->get_or_alloc_filecache();
+        } else if (inode->is_dir()) {
+            inode->get_or_alloc_dircache();
         }
     } else {
         /*

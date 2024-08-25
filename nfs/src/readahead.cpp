@@ -28,8 +28,8 @@ ra_state::ra_state(struct nfs_client *_client,
     assert(client->magic == NFS_CLIENT_MAGIC);
     assert(inode->magic == NFS_INODE_MAGIC);
 
-    // We shouldn't be called for directories.
-    assert(!inode->is_dir());
+    // We should be called only for regular files.
+    assert(inode->is_regfile());
 
     // Readahead needs filecache.
     assert(inode->filecache_handle != nullptr);

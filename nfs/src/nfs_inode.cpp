@@ -67,19 +67,14 @@ nfs_inode::nfs_inode(const struct nfs_fh3 *filehandle,
     attr_timeout_secs = get_actimeo_min();
     attr_timeout_timestamp = get_current_msecs() + attr_timeout_secs*1000;
 
-    if (is_regfile()) {
-        if (aznfsc_cfg.filecache.enable && aznfsc_cfg.filecache.cachedir) {
-            const std::string backing_file_name =
-                std::string(aznfsc_cfg.filecache.cachedir) + "/" + std::to_string(ino);
-            filecache_handle =
-                std::make_shared<bytes_chunk_cache>(backing_file_name.c_str());
-        } else {
-            filecache_handle = std::make_shared<bytes_chunk_cache>();
-        }
-        readahead_state = std::make_shared<ra_state>(client, this);
-    } else if (is_dir()) {
-        dircache_handle = std::make_shared<readdirectory_cache>(client, this);
-    }
+    /*
+     * These are later allocated in open() when we know for sure that they
+     * will be needed. f.e., we don't want to create file/dir cache for every
+     * file/dir that's enumerated.
+     */
+    assert(!filecache_handle);
+    assert(!dircache_handle);
+    assert(!readahead_state);
 }
 
 nfs_inode::~nfs_inode()
@@ -97,13 +92,7 @@ nfs_inode::~nfs_inode()
      * Directory inodes must not be freed while they have a non-empty dir
      * cache.
      */
-    if (is_dir()) {
-        assert(dircache_handle);
-        assert(dircache_handle->get_num_entries() == 0);
-    } else if (is_regfile()) {
-        assert(filecache_handle);
-        assert(filecache_handle->is_empty());
-    }
+    assert(is_cache_empty());
 
 #ifndef ENABLE_NON_AZURE_NFS
     assert(fh.data.data_len > 50 && fh.data.data_len <= 64);
@@ -361,9 +350,10 @@ void nfs_inode::invalidate_cache_nolock()
  */
 void nfs_inode::purge_dircache_nolock()
 {
-    AZLogWarn("[{}] Purging dircache", get_fuse_ino());
-
-    dircache_handle->clear();
+    if (dircache_handle) {
+        AZLogWarn("[{}] Purging dircache", get_fuse_ino());
+        dircache_handle->clear();
+    }
 }
 
 /*
@@ -373,9 +363,10 @@ void nfs_inode::purge_dircache_nolock()
  */
 void nfs_inode::purge_filecache_nolock()
 {
-    AZLogWarn("[{}] Purging filecache", get_fuse_ino());
-
-    filecache_handle->clear();
+    if (filecache_handle) {
+        AZLogWarn("[{}] Purging filecache", get_fuse_ino());
+        filecache_handle->clear();
+    }
 }
 
 void nfs_inode::lookup_dircache(
@@ -388,6 +379,8 @@ void nfs_inode::lookup_dircache(
     // Sanity check.
     assert(max_size > 0 && max_size <= (64*1024*1024));
     assert(results.empty());
+    // Must have been allocated in open()/opendir().
+    assert(dircache_handle);
 
 #ifndef ENABLE_NON_AZURE_NFS
     // Blob NFS uses cookie as a counter, so 4B is a practical check.

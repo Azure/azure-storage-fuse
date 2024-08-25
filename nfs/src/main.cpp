@@ -726,10 +726,24 @@ static void aznfsc_ll_open(fuse_req_t req,
      *
      *       This is a hack and needs to be properly addressed!
      */
-    if (inode->is_regfile()) {
-        AZLogInfo("[{}] Clearing cache and resetting readahead state", ino);
-        inode->readahead_state->reset();
+    if (inode->is_regfile() && !inode->is_cache_empty()) {
+        AZLogInfo("[{}] Clearing cache", ino);
         inode->filecache_handle->clear();
+    }
+
+    if (inode->is_regfile() && inode->readahead_state) {
+        AZLogInfo("[{}] Resetting readahead state", ino);
+        inode->readahead_state->reset();
+    }
+
+    /*
+     * If file cache is not allocated, allocate now.
+     * Mostly it'll be allocated in nfs_client::reply_entry().
+     */
+    if (inode->is_regfile()) {
+        inode->get_or_alloc_filecache();
+    } else if (inode->is_dir()) {
+        inode->get_or_alloc_dircache();
     }
 
     fuse_reply_open(req, fi);
@@ -833,6 +847,12 @@ static void aznfsc_ll_opendir(fuse_req_t req,
     fi->cache_readdir = aznfsc_cfg.cache.readdir.kernel.enable;
     fi->noflush = 0;
 
+    struct nfs_client *client = get_nfs_client_from_fuse_req(req);
+    struct nfs_inode *inode = client->get_nfs_inode_from_ino(ino);
+
+    assert(inode->is_dir());
+
+    inode->get_or_alloc_dircache();
     fuse_reply_open(req, fi);
 }
 

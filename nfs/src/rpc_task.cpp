@@ -441,6 +441,12 @@ static void write_callback(
     // If we have already written everything, why are we here.
     assert(bc->pvt < bc->length);
 
+    /*
+     * write_callback() must only be called after a write done from fuse,
+     * which means file cache must have been allocated.
+     */
+    assert(inode->filecache_handle);
+
 #if 0
     /*
      * We should only ever write full membufs.
@@ -908,6 +914,7 @@ copy_to_cache(struct rpc_task *task,
 
     const char *buf = (char *) bufv->buf[bufv->idx].mem + bufv->off;
     struct nfs_inode *inode = task->get_client()->get_nfs_inode_from_ino(ino);
+    assert(inode->filecache_handle);
     std::vector<bytes_chunk> bc_vec =
         inode->filecache_handle->get(offset, length);
 
@@ -1161,10 +1168,6 @@ void rpc_task::run_flush()
     fuse_ino_t ino = rpc_api->write_task.get_ino();
     struct nfs_inode *inode = get_client()->get_nfs_inode_from_ino(ino);
 
-    // Get the filecache_handle from the inode.
-    auto filecache_handle = inode->filecache_handle;
-    assert(filecache_handle != nullptr);
-
     /*
      * Check if any write error set, if set don't attempt the flush and fail
      * the flush operation.
@@ -1175,6 +1178,16 @@ void rpc_task::run_flush()
                   "skipping new flush!", ino, error_code);
 
         reply_error(error_code);
+        return;
+    }
+
+    /*
+     * Get the filecache_handle from the inode.
+     * If flush() is called w/o open(), there won't be any cache, skip.
+     */
+    auto filecache_handle = inode->filecache_handle;
+    if (!filecache_handle) {
+        reply_error(0);
         return;
     }
 
@@ -1623,9 +1636,12 @@ void rpc_task::run_read()
 {
     const fuse_ino_t ino = rpc_api->read_task.get_ino();
     struct nfs_inode *inode = get_client()->get_nfs_inode_from_ino(ino);
-    auto filecache_handle = inode->filecache_handle;
+    std::shared_ptr<bytes_chunk_cache>& filecache_handle =
+        inode->filecache_handle;
 
     assert(inode->is_regfile());
+    // Must have been allocated in open().
+    assert(filecache_handle);
 
     /*
      * run_read() is called once for a fuse read request and must not be
@@ -1976,6 +1992,11 @@ static void read_callback(
     fuse_ino_t ino = task->rpc_api->read_task.get_ino();
     struct nfs_inode *inode = task->get_client()->get_nfs_inode_from_ino(ino);
     auto filecache_handle = inode->filecache_handle;
+    /*
+     * read_callback() must only be called for read done from fuse for which
+     * we must have allocated the cache.
+     */
+    assert(filecache_handle);
     const uint64_t issued_offset = bc->offset + bc->pvt;
     const uint64_t issued_length = bc->length - bc->pvt;
 
@@ -2439,7 +2460,7 @@ static void readdir_callback(
         // Get handle to the readdirectory cache.
         std::shared_ptr<readdirectory_cache>& dircache_handle =
             dir_inode->dircache_handle;
-        assert(dircache_handle != nullptr);
+        assert(dircache_handle);
 
         // Process all dirents received.
         while (entry) {
@@ -2769,6 +2790,8 @@ void rpc_task::get_readdir_entries_from_cache()
     const bool readdirplus = (get_op_type() == FUSE_READDIRPLUS);
     struct nfs_inode *nfs_inode =
         get_client()->get_nfs_inode_from_ino(rpc_api->readdir_task.get_ino());
+    // Must have been allocated by opendir().
+    assert(nfs_inode->dircache_handle);
     bool is_eof = false;
     std::vector<const directory_entry*> readdirentries;
 
@@ -2812,6 +2835,7 @@ void rpc_task::fetch_readdir_entries_from_server()
     bool rpc_retry;
     const fuse_ino_t dir_ino = rpc_api->readdir_task.get_ino();
     struct nfs_inode *dir_inode = get_client()->get_nfs_inode_from_ino(dir_ino);
+    assert(dir_inode->dircache_handle);
     const cookie3 cookie = rpc_api->readdir_task.get_offset();
     rpc_pdu *pdu = nullptr;
 
@@ -2865,6 +2889,7 @@ void rpc_task::fetch_readdirplus_entries_from_server()
     bool rpc_retry;
     const fuse_ino_t dir_ino = rpc_api->readdir_task.get_ino();
     struct nfs_inode *dir_inode = get_client()->get_nfs_inode_from_ino(dir_ino);
+    assert(dir_inode->dircache_handle);
     const cookie3 cookie = rpc_api->readdir_task.get_offset();
     rpc_pdu *pdu = nullptr;
 
