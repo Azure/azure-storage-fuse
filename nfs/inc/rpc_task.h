@@ -1479,7 +1479,9 @@ private:
 public:
     ~rpc_task_helper()
     {
-        AZLogInfo("~rpc_task_helper called");
+        AZLogInfo("~rpc_task_helper() called");
+
+        assert(free_task_index_set.size() == free_task_index.size());
         /*
          * We should be called when there are no outstanding tasks.
          */
