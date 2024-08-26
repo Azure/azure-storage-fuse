@@ -67,7 +67,7 @@ struct nfs_inode
      * non-zero lookupcnt, even after calls to unlink(), rmdir() or rename().
      *
      * dircachecnt is another refcnt which is the number of readdirplus
-     * directory_entry,s that refer to the nfs_inode. An inode can only be
+     * directory_entry,s that refer to this nfs_inode. An inode can only be
      * deleted when both lookupcnt and dircachecnt become 0, i.e., fuse
      * vfs does not have a reference to the inode and it's not cached in
      * any of our readdirectory_cache,s.
