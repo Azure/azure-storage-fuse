@@ -825,6 +825,7 @@ void nfs_client::reply_entry(
         inode = get_nfs_inode(fh, fattr);
 
         entry.ino = inode->get_fuse_ino();
+        entry.generation = inode->get_generation();
         entry.attr = inode->attr;
         if (cache_positive) {
             entry.attr_timeout = inode->get_actimeo();

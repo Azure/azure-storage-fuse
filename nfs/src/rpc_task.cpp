@@ -2981,11 +2981,8 @@ void rpc_task::send_readdir_response(
             // We don't need the memset as we are setting all members.
             //memset(&fuseentry, 0, sizeof(fuseentry));
             fuseentry.attr = it->attributes;
-            fuseentry.ino = it->nfs_inode->ino;
-
-            // XXX: Do we need to worry about generation?
-            fuseentry.generation = 0;
-
+            fuseentry.ino = it->nfs_inode->get_fuse_ino();
+            fuseentry.generation = it->nfs_inode->get_generation();
             fuseentry.attr_timeout = it->nfs_inode->get_actimeo();
             fuseentry.entry_timeout = it->nfs_inode->get_actimeo();
 

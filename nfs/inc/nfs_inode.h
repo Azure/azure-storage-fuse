@@ -91,8 +91,22 @@ struct nfs_inode
     /*
      * Fuse inode number.
      * This is how fuse identifies this file/directory to us.
+     * Fuse expects us to ensure that if we reuse ino we must ensure that the
+     * ino/generation pair is unique for the life of the fuse filesystem (and
+     * not just unique for one mount). This is specially useful if this fuse
+     * filesystem is exported over NFS. Since NFS would issue filehandles
+     * based on the ino number and generation pair, if ino number and generation
+     * pair is not unique NFS server might issue the same FH to two different
+     * files if "fuse driver + NFS server" is restarted. To avoid that make
+     * sure generation id is unique. We use the current epoch in usecs to
+     * ensure uniqueness. Note that even if the time goes back, it's highly
+     * unlikely that we use the same ino number and usec combination, but
+     * it's technically possible.
+     *
+     * IMPORTANT: Need to ensure time is sync'ed and it doesn't go back.
      */
     const fuse_ino_t ino;
+    const uint64_t generation;
 
     /*
      * S_IFREG, S_IFDIR, etc.
@@ -230,6 +244,15 @@ struct nfs_inode
     {
         assert(ino != 0);
         return ino;
+    }
+
+    /**
+     * Return the generation number for this inode.
+     */
+    uint64_t get_generation() const
+    {
+        assert(generation != 0);
+        return generation;
     }
 
     /**

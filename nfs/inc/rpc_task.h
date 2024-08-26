@@ -1326,7 +1326,10 @@ public:
         if (e->ino != 0) {
             inode = client->get_nfs_inode_from_ino(e->ino);
             assert(inode->lookupcnt >= 1);
+            assert(e->generation == inode->get_generation());
         }
+
+        assert((int64_t) e->generation <= get_current_usecs());
 
         if (fuse_reply_entry(get_fuse_req(), e) < 0) {
             if (inode) {
@@ -1357,6 +1360,8 @@ public:
          */
         struct nfs_inode *inode = client->get_nfs_inode_from_ino(entry->ino);
         assert(inode->lookupcnt >= 1);
+        assert(entry->generation == inode->get_generation());
+        assert((int64_t) entry->generation <= get_current_usecs());
 
         if (fuse_reply_create(get_fuse_req(), entry, file) < 0) {
             /*

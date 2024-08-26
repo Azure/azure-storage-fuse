@@ -15,6 +15,7 @@ nfs_inode::nfs_inode(const struct nfs_fh3 *filehandle,
                      uint32_t _file_type,
                      fuse_ino_t _ino) :
     ino(_ino == 0 ? (fuse_ino_t) this : _ino),
+    generation(get_current_usecs()),
     file_type(_file_type),
     client(_client)
 {
