@@ -558,6 +558,7 @@ bytes_chunk::bytes_chunk(bytes_chunk_cache *_bcc,
 std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
                                                  uint64_t length,
                                                  scan_action action,
+                                                 uint64_t *bytes_released,
                                                  uint64_t *extent_left,
                                                  uint64_t *extent_right)
 {
@@ -576,12 +577,19 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
     // Doesn't make sense to query just one.
     assert((extent_left == nullptr) == (extent_right == nullptr));
 
+    // bytes_released MUST be passed for (and only for) SCAN_ACTION_RELEASE.
+    assert((action == scan_action::SCAN_ACTION_RELEASE) ==
+           (bytes_released != nullptr));
+
     // bytes_chunk vector that will be returned to the caller.
     std::vector<bytes_chunk> chunkvec;
 
     // offset and length cursor, updated as we add chunks to chunkvec.
     uint64_t next_offset = offset;
     uint64_t remaining_length = length;
+
+    if (bytes_released)
+        *bytes_released = 0;
 
     // Convenience variable to access the current chunk in the map.
     bytes_chunk *bc;
@@ -970,6 +978,12 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
                            fmt::ptr(bc->alloc_buffer->get()));
             } else if (bc->safe_to_release()) {
                 assert (action == scan_action::SCAN_ACTION_RELEASE);
+
+                /*
+                 * chunk_length bytes will be released.
+                 */
+                *bytes_released += chunk_length;
+
                 if (chunk_length == bc->length) {
                     /*
                      * File-backed cache may not have the membuf allocated in
@@ -1053,6 +1067,13 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
                     chunkmap.erase(it);
                     goto done;
                 }
+            } else {
+                AZLogDebug("<Release [{}, {})> skipping [{}, {}) as not safe "
+                           "to release: inuse={}, dirty={}",
+                           offset, offset + length,
+                           chunk_offset, chunk_offset + chunk_length,
+                           bc->get_membuf()->get_inuse(),
+                           bc->get_membuf()->is_dirty());
             }
 
             // This chunk is fully consumed, move to the next chunk.
@@ -1075,7 +1096,7 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
             } else {
                 AZLogDebug("<Release [{}, {})> (non-existent chunk) [{},{})",
                            offset, offset + length,
-                           next_offset, next_offset + chunk_length);
+                           chunk_offset, chunk_offset + chunk_length);
             }
 
             /*
@@ -1107,7 +1128,7 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
                  * We have two cases:
                  * 1. The released part lies at the end of the chunk, so we
                  *    can safely release by trimming this chunk from the right.
-                 * 2. The release part lies in the middle with un-released
+                 * 2. The released part lies in the middle with un-released
                  *    ranges before and after the released chunk. To duly
                  *    release it we need to trim the original chunk to contain
                  *    data before the released data and create a new chunk to
@@ -1151,6 +1172,11 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
                     assert(bytes_cached_g >= trim_bytes);
                     bytes_cached -= trim_bytes;
                     bytes_cached_g -= trim_bytes;
+
+                    /*
+                     * chunk_length bytes are now released.
+                     */
+                    *bytes_released += trim_bytes;
                 } else {
                     /*
                      * The to-be-released range must lie entirely within this
@@ -1164,6 +1190,13 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
                                offset, offset + length,
                                bc->offset, bc->offset + bc->length);
                 }
+            } else {
+                AZLogDebug("<Release [{}, {})> skipping [{}, {}) as not safe "
+                           "to release: inuse={}, dirty={}",
+                           offset, offset + length,
+                           chunk_offset, chunk_offset + chunk_length,
+                           bc->get_membuf()->get_inuse(),
+                           bc->get_membuf()->is_dirty());
             }
 
             // This chunk is fully consumed, move to the next chunk.
@@ -1322,6 +1355,8 @@ allocate_only_chunk:
      * Delete chunks in the range [begin_delete, end_delete).
      */
     if (action == scan_action::SCAN_ACTION_RELEASE) {
+        uint64_t bytes_released_tmp = 0;
+
         if (begin_delete != chunkmap.end()) {
             for (auto _it = begin_delete, next_it = _it;
                  _it != end_delete; _it = next_it) {
@@ -1350,10 +1385,14 @@ allocate_only_chunk:
                     bytes_cached -= bc->length;
                     bytes_cached_g -= bc->length;
 
+                    bytes_released_tmp += bc->length;
+
                     chunkmap.erase(_it);
                 }
             }
         }
+
+        assert(bytes_released_tmp <= *bytes_released);
     } else {
         assert((begin_delete == chunkmap.end()) &&
                (end_delete == chunkmap.end()));
@@ -1847,7 +1886,7 @@ static void cache_write(bytes_chunk_cache& cache,
     AZLogDebug("=====> cache_write({}, {}): l={} r={} vec={}",
                offset, offset+length, l, r, v.size());
     AZLogDebug("=====> cache_release({}, {})", offset, offset+length);
-    cache.release(offset, length);
+    assert(cache.release(offset, length) <= length);
 }
 
 /* static */
@@ -2022,14 +2061,14 @@ do { \
      * After this the cache should have chunk [100, 300).
      */
     AZLogInfo("========== [Release] --> (0, 100) ==========");
-    cache.release(0, 100);
+    assert(cache.release(0, 100) == 100);
 
     /*
      * Release data range [200, 300).
      * After this the cache should have chunk [100, 200).
      */
     AZLogInfo("========== [Release] --> (200, 100) ==========");
-    cache.release(200, 100);
+    assert(cache.release(200, 100) == 100);
 
     /*
      * Get cache chunks covering range [100, 200).
@@ -2166,7 +2205,7 @@ do { \
      * 3. [250, 300).
      */
     AZLogInfo("========== [Release] --> (0, 175) ==========");
-    cache.release(0, 175);
+    assert(cache.release(0, 175) == 175);
 
     /*
      * Get cache chunks covering range [100, 280).
@@ -2241,7 +2280,7 @@ do { \
      * 4. [300, 350).
      */
     AZLogInfo("========== [Release] --> (50, 175) ==========");
-    cache.release(50, 175);
+    assert(cache.release(50, 175) == 175);
 
     /*
      * Get cache chunks covering range [0, 325).
@@ -2280,7 +2319,7 @@ do { \
      * 1. [349, 350).
      */
     AZLogInfo("========== [Release] --> (0, 349) ==========");
-    cache.release(0, 349);
+    assert(cache.release(0, 349) == 349);
 
     /*
      * Get cache chunks covering range [349, 350).
@@ -2308,7 +2347,7 @@ do { \
      * after this.
      */
     AZLogInfo("========== [Release] --> (349, 1) ==========");
-    cache.release(349, 1);
+    assert(cache.release(349, 1) == 1);
 
     AZLogInfo("========== [Dropall] ==========");
     cache.dropall();
@@ -2346,7 +2385,7 @@ do { \
      * of the chunk.
      */
     AZLogInfo("========== [Release] --> (6, 131066) ==========");
-    cache.release(6, 131066);
+    assert(cache.release(6, 131066) == 131066);
 
     /*
      * Get cache chunks covering range [6, 20).
@@ -2500,6 +2539,7 @@ do { \
     v[0].get_membuf()->set_inuse();
     v[0].get_membuf()->set_locked();
     v[0].get_membuf()->set_dirty();
+    v[0].get_membuf()->set_uptodate();
     v[0].get_membuf()->clear_locked();
     assert(!v[0].safe_to_release());
     assert(v[1].safe_to_release());
@@ -2508,10 +2548,13 @@ do { \
     v[2].get_membuf()->set_locked();
     assert(!v[2].safe_to_release());
 
-    cache.release(0, 200);
+    // It should just release [30,50).
+    assert(cache.release(0, 200) == 20);
 
     v[0].get_membuf()->set_locked();
+    v[0].get_membuf()->set_flushing();
     v[0].get_membuf()->clear_dirty();
+    v[0].get_membuf()->clear_flushing();
     v[0].get_membuf()->clear_locked();
     v[0].get_membuf()->clear_inuse();
 
@@ -2545,15 +2588,20 @@ do { \
     PRINT_CHUNKMAP();
 
     /*
-     * Release [0, 500) should cover the entire cache and release everything.
+     * Release [0, 500) should cover the entire cache and release all 195
+     * bytes:
+     * [5, 30)
+     * [30, 50)
+     * [50, 100)
+     * [100, 200)
      */
     AZLogInfo("========== [Release] --> (0, 500) ==========");
-    cache.release(0, 500);
+    assert(cache.release(0, 500) == 195);
     assert(cache.chunkmap.empty());
 
-    cache.release(0, 1);
-    cache.release(10, 20);
-    cache.release(2, 2000);
+    assert(cache.release(0, 1) == 0);
+    assert(cache.release(10, 20) == 0);
+    assert(cache.release(2, 2000) == 0);
 
     /*
      * Now run some random cache get/release to stress test the cache.

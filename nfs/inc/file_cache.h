@@ -46,7 +46,7 @@
  *
  * Though it saves space but it complicates things wrt setting of uptodate
  * MB_Flag. Since the uptodate flag is a property of the membuf the 2nd
- * caller who gets [10, 1310272) should not treat it as uptodat as it's
+ * caller who gets [10, 1310272) should not treat it as uptodate as it's
  * not (only first 10 bytes are uptodate).
  * Since this will not happen much in practice, for now keep it disabled
  * so that we don't have to worry about this complexity.
@@ -839,7 +839,7 @@ public:
          inline_prune();
 
         return scan(offset, length, scan_action::SCAN_ACTION_GET,
-                    extent_left, extent_right);
+                    nullptr /* bytes_released */, extent_left, extent_right);
     }
 
     /**
@@ -872,18 +872,32 @@ public:
      * last ref on it is dropped, i.e., users can safely access membuf(s)
      * returned by get() even if some other thread calls release().
      *
+     * It returns the number of bytes actually released. These could be full
+     * chunks or partial chunks (both of which are not currently in use).
+     * Caller can use this to decide if he wants to update the membuf flags
+     * f.e., if a reader gets a bc of 100 bytes but when it read the backing
+     * file it got eof after 10 bytes, it should try to release [10, 100)
+     * byte range. If it's able to release successfully that would mean that
+     * he is the sole owner and hence it can mark it uptodate, else it cannot
+     * release and cannot mark uptodate.
+     *
      * Note: For releasing all chunks and effectively nuking the cache, use
      *       clear(), but note that clear() also won't release above chunks,
      *       for which safe_to_release() returns false.
      */
-    void release(uint64_t offset, uint64_t length)
+    uint64_t release(uint64_t offset, uint64_t length)
     {
+        uint64_t bytes_released;
+
         num_release++;
         num_release_g++;
         bytes_release += length;
         bytes_release_g += length;
 
-        scan(offset, length, scan_action::SCAN_ACTION_RELEASE);
+        scan(offset, length, scan_action::SCAN_ACTION_RELEASE, &bytes_released);
+
+        assert(bytes_released <= length);
+        return bytes_released;
     }
 
     /*
@@ -1120,10 +1134,15 @@ private:
      *                        null, they contain the left and right edge of the
      *                        contiguous extent that contains [offset, offset+length).
      * SCAN_ACTION_RELEASE -> Free chunks contained in the requested range.
+     *
+     * bytes_released will be set to the number of bytes actually released,
+     * i.e., either entire chunk was released (and membuf freed) or the chunk
+     * was trimmed.
      */
     std::vector<bytes_chunk> scan(uint64_t offset,
                                   uint64_t length,
                                   scan_action action,
+                                  uint64_t *bytes_released = nullptr,
                                   uint64_t *extent_left = nullptr,
                                   uint64_t *extent_right = nullptr);
 
