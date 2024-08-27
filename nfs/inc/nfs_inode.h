@@ -162,6 +162,17 @@ struct nfs_inode
      */
     std::shared_ptr<ra_state> readahead_state;
 
+#ifdef ENABLE_PARANOID
+    /*
+     * Has fuse called forget for this inode?
+     * Note that fuse may call forget but if the inode is in use (lookupcnt
+     * or dircachecnt non zero) then we don't free it. Use this for debugging
+     * any issues where inodes are kept lying around to find if it's because
+     * fuse has not called forget or we didn't delete it later.
+     */
+    bool forget_seen = false;
+#endif
+
     /*
      * Stores the write error observed when performing backend writes to this
      * Blob. This helps us duly fail close(), if one or more IOs have failed

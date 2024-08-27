@@ -170,6 +170,21 @@ public:
         assert(!shutting_down);
         shutting_down = true;
 
+#ifdef ENABLE_PARANOID
+        for (auto it : inode_map) {
+            const struct nfs_inode *inode = it.second;
+            AZLogDebug("[{}:{}] Inode still present at shutdown: "
+                       "lookupcnt={}, dircachecnt={}, forget_seen={}, "
+                       "is_cache_empty={}",
+                       inode->get_filetype_coding(),
+                       inode->get_fuse_ino(),
+                       inode->lookupcnt.load(),
+                       inode->dircachecnt.load(),
+                       inode->forget_seen,
+                       inode->is_cache_empty());
+        }
+#endif
+
         transport.close();
         jukebox_thread.join();
     }

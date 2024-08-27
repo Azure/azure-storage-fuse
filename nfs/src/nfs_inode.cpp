@@ -126,6 +126,14 @@ void nfs_inode::decref(size_t cnt, bool from_forget)
     assert(cnt > 0);
     assert(lookupcnt >= cnt);
 
+#ifdef ENABLE_PARANOID
+    if (from_forget) {
+        // Fuse should not call forget more than once.
+        assert(!forget_seen);
+        forget_seen = true;
+    }
+#endif
+
 try_again:
     /*
      * Grab an extra ref so that the lookupcnt-=cnt does not cause the refcnt
