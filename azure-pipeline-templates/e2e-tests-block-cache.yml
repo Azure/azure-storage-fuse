@@ -253,12 +253,12 @@ steps:
     inputs:
       pathToPublish: blobfuse2-logs.txt
       artifactName: 'blobfuse_block_cache.txt'
-    condition: failed()
+    condition: always()
     
   - script: |
       tail -n 200 blobfuse2-logs.txt
     displayName: 'View Logs'
-    condition: failed()
+    condition: always()
 
   - template: 'cleanup.yml'
     parameters:
