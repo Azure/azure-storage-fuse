@@ -222,14 +222,6 @@ public:
     struct nfs_context* get_nfs_context(conn_sched_t csched,
                                         uint32_t fh_hash) const;
 
-    /**
-     * Issue a sync GETATTR RPC call to filehandle 'fh' and save the received
-     * attributes in 'fattr'.
-     */
-    bool getattr_sync(const struct nfs_fh3& fh,
-                      fuse_ino_t ino,
-                      struct fattr3& attr);
-
     /*
      * Given an inode number, return the nfs_inode structure.
      * For efficient access we use the address of the nfs_inode structure as
@@ -337,6 +329,15 @@ public:
         fuse_ino_t ino,
         struct fuse_file_info* file);
 
+    /**
+     * Issue a sync GETATTR RPC call to filehandle 'fh' and save the received
+     * attributes in 'fattr'.
+     * This is to be used internally and not for serving fuse requests.
+     */
+    bool getattr_sync(const struct nfs_fh3& fh,
+                      fuse_ino_t ino,
+                      struct fattr3& attr);
+
     void create(
         fuse_req_t req,
         fuse_ino_t parent_ino,
@@ -390,6 +391,18 @@ public:
         fuse_ino_t parent_ino,
         const char* name);
 
+    /**
+     * Sync version of lookup().
+     * This is to be used internally and not for serving fuse requests.
+     * It returns true if we are able to get a success response for the
+     * LOOKUP RPC that we sent, in that case child_ino will contain the
+     * child's fuse inode number.
+     */
+    bool lookup_sync(
+        fuse_ino_t parent_ino,
+        const char *name,
+        fuse_ino_t& child_ino);
+
     void write(
         fuse_req_t req,
         fuse_ino_t ino,
@@ -441,6 +454,54 @@ public:
      * after JUKEBOX_DELAY_SECS seconds.
      */
     void jukebox_retry(struct rpc_task *task);
+};
+
+/**
+ * Sync RPC calls can use this context structure to communicate between
+ * issuer and the callback.
+ */
+#define SYNC_RPC_CTX_MAGIC *((const uint32_t *)"SRCX")
+
+struct sync_rpc_context
+{
+    const uint32_t magic = SYNC_RPC_CTX_MAGIC;
+    /*
+     * Set by the callback to convey that callback is indeed called.
+     * Issuer can find this to see if it timed out waiting for the callback.
+     */
+    bool callback_called = false;
+
+    /*
+     * RPC and NFS status, only valid if callback_called is true.
+     * Also, nfs_status is only valid if rpc_status is RPC_STATUS_SUCCESS.
+     */
+    int rpc_status = -1;
+    int nfs_status = -1;
+
+    /*
+     * Condition variable on which the issuer will wait for the callback to
+     * be called.
+     */
+    std::condition_variable cv;
+    std::mutex mutex;
+
+    /*
+     * The rpc_task tracking the actual RPC call.
+     */
+    struct rpc_task *const task;
+
+    /*
+     * Most NFS RPCs carry postop attributes. If this is not null, callback
+     * will fill this with the postop attributes received.
+     */
+    struct fattr3 *const fattr = nullptr;
+
+    sync_rpc_context(struct rpc_task *_task, struct fattr3 *_fattr):
+        task(_task),
+        fattr(_fattr)
+    {
+        assert(task != nullptr);
+    }
 };
 
 /**

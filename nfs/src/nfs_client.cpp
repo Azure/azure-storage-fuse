@@ -468,6 +468,169 @@ void nfs_client::lookup(fuse_req_t req, fuse_ino_t parent_ino, const char* name)
     tsk->run_lookup();
 }
 
+static void lookup_sync_callback(
+    struct rpc_context *rpc,
+    int rpc_status,
+    void *data,
+    void *private_data)
+{
+    struct sync_rpc_context *ctx = (struct sync_rpc_context *) private_data;
+    assert(ctx->magic == SYNC_RPC_CTX_MAGIC);
+
+    rpc_task *task = ctx->task;
+    assert(task->magic == RPC_TASK_MAGIC);
+    assert(task->rpc_api->optype == FUSE_LOOKUP);
+
+    fuse_ino_t *child_ino_p = (fuse_ino_t *) task->rpc_api->pvt;
+    assert(child_ino_p != nullptr);
+    *child_ino_p = 0;
+
+    auto res = (LOOKUP3res *) data;
+    const int status = task->status(rpc_status, NFS_STATUS(res));
+
+    /*
+     * Convey status to the issuer.
+     */
+    ctx->rpc_status = rpc_status;
+    ctx->nfs_status = NFS_STATUS(res);
+
+    /*
+     * Now that the request has completed, we can query libnfs for the
+     * dispatch time.
+     */
+    task->get_stats().on_rpc_complete(
+        rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
+        rpc_pdu_get_dispatch_usecs(rpc_get_pdu(rpc)),
+        NFS_STATUS(res));
+
+    {
+        std::unique_lock<std::mutex> lock(ctx->mutex);
+
+        // Must be called only once.
+        assert(!ctx->callback_called);
+        ctx->callback_called = true;
+
+        if (status == 0) {
+            assert(res->LOOKUP3res_u.resok.obj_attributes.attributes_follow);
+
+            const nfs_fh3 *fh = (const nfs_fh3 *) &res->LOOKUP3res_u.resok.object;
+            const struct fattr3 *fattr =
+                (const struct fattr3 *) &res->LOOKUP3res_u.resok.obj_attributes.post_op_attr_u.attributes;
+            const struct nfs_inode *inode = task->get_client()->get_nfs_inode(fh, fattr);
+            (*child_ino_p) = inode->get_fuse_ino();
+            if (ctx->fattr) {
+                *(ctx->fattr) = *fattr;
+            }
+        }
+    }
+
+    ctx->cv.notify_one();
+}
+
+bool nfs_client::lookup_sync(fuse_ino_t parent_ino,
+                             const char* name,
+                             fuse_ino_t& child_ino)
+{
+    assert(name != nullptr);
+
+    struct nfs_inode *parent_inode = get_nfs_inode_from_ino(parent_ino);
+    const uint32_t fh_hash = parent_inode->get_crc();
+    struct nfs_context *nfs_context =
+        get_nfs_context(CONN_SCHED_FH_HASH, fh_hash);
+    struct rpc_task *task = nullptr;
+    struct sync_rpc_context *ctx = nullptr;
+    struct rpc_pdu *pdu = nullptr;
+    struct rpc_context *rpc = nullptr;
+    bool rpc_retry = false;
+    bool success = false;
+
+try_again:
+    do {
+        LOOKUP3args args;
+        args.what.dir = parent_inode->get_fh();
+        args.what.name = (char *) name;
+
+        if (task) {
+            task->free_rpc_task();
+        }
+
+        task = get_rpc_task_helper()->alloc_rpc_task(FUSE_LOOKUP);
+        task->init_lookup(nullptr /* fuse_req */, name, parent_ino);
+        task->rpc_api->pvt = &child_ino;
+
+        if (ctx) {
+            delete ctx;
+        }
+
+        ctx = new sync_rpc_context(task, nullptr);
+        rpc = nfs_get_rpc_context(nfs_context);
+
+        rpc_retry = false;
+        if ((pdu = rpc_nfs3_lookup_task(rpc, lookup_sync_callback,
+                                        &args, ctx)) == NULL) {
+            /*
+             * This call fails due to internal issues like OOM etc
+             * and not due to an actual error, hence retry.
+             */
+            rpc_retry = true;
+        } else {
+            task->get_stats().on_rpc_issue(rpc_pdu_get_req_size(pdu));
+        }
+    } while (rpc_retry);
+
+    /*
+     * If the LOOKUP response doesn't come for 60 secs we give up and send
+     * a new one. We must cancel the old one.
+     */
+    {
+        std::unique_lock<std::mutex> lock(ctx->mutex);
+wait_more:
+        if (!ctx->cv.wait_for(lock, std::chrono::seconds(60),
+                              [&ctx] { return (ctx->callback_called == true); })) {
+            if (rpc_cancel_pdu(rpc, pdu) == 0) {
+                AZLogWarn("Timed out waiting for lookup response, re-issuing "
+                          "lookup!");
+                // This goto will cause the above lock to unlock.
+                goto try_again;
+            } else {
+                /*
+                 * If rpc_cancel_pdu() fails it most likely means we got the RPC
+                 * response right after we timed out waiting. It's best to wait
+                 * for the callback to be called.
+                 */
+                AZLogWarn("Timed out waiting for lookup response, couldn't "
+                          "cancel existing pdu, waiting some more!");
+                // This goto will *not* cause the above lock to unlock.
+                goto wait_more;
+            }
+        } else {
+            assert(ctx->callback_called);
+            assert(ctx->rpc_status != -1);
+            assert(ctx->nfs_status != -1);
+
+            const int status = task->status(ctx->rpc_status, ctx->nfs_status);
+            if (status == 0) {
+                success = true;
+            } else if (ctx->rpc_status == RPC_STATUS_SUCCESS &&
+                       ctx->nfs_status == NFS3ERR_JUKEBOX) {
+                AZLogInfo("Got NFS3ERR_JUKEBOX for LOOKUP, re-issuing "
+                          "lookup after 1 sec!");
+                ::usleep(1000 * 1000);
+                // This goto will cause the above lock to unlock.
+                goto try_again;
+            }
+        }
+    }
+
+    if (task) {
+        task->free_rpc_task();
+    }
+
+    delete ctx;
+
+    return success;
+}
+
 void nfs_client::flush(fuse_req_t req, fuse_ino_t ino)
 {
     struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_FLUSH);
@@ -821,7 +984,10 @@ void nfs_client::reply_entry(
     memset(&entry, 0, sizeof(entry));
 
     if (fh) {
-        // This will be freed from fuse forget callback.
+        /*
+         * This will grab a lookupcnt ref on the inode, which will be freed
+         * from fuse forget callback.
+         */
         inode = get_nfs_inode(fh, fattr);
 
         entry.ino = inode->get_fuse_ino();
@@ -1055,6 +1221,7 @@ try_again:
         ctx = new getattr_context(&fattr, task);
         rpc = nfs_get_rpc_context(nfs_context);
 
+        rpc_retry = false;
         if ((pdu = rpc_nfs3_getattr_task(rpc, getattr_callback,
                                          &args, ctx)) == NULL) {
             /*
@@ -1070,13 +1237,13 @@ try_again:
     } while (rpc_retry);
 
     /*
-     * If the GETATTR response doesn't come for 2 minutes we give up and send
+     * If the GETATTR response doesn't come for 60 secs we give up and send
      * a new one. We must cancel the old one.
      */
     {
         std::unique_lock<std::mutex> lock(ctx->ctx_mutex);
 wait_more:
-        if (!ctx->cv.wait_for(lock, std::chrono::seconds(1),
+        if (!ctx->cv.wait_for(lock, std::chrono::seconds(60),
                               [&ctx] { return (ctx->callback_called == true); })) {
             if (rpc_cancel_pdu(rpc, pdu) == 0) {
                 AZLogWarn("Timed out waiting for getattr response, re-issuing "
