@@ -614,7 +614,7 @@ wait_more:
             } else if (ctx->rpc_status == RPC_STATUS_SUCCESS &&
                        ctx->nfs_status == NFS3ERR_JUKEBOX) {
                 AZLogInfo("Got NFS3ERR_JUKEBOX for LOOKUP, re-issuing "
-                          "lookup after 1 sec!");
+                          "after 1 sec!");
                 ::usleep(1000 * 1000);
                 // This goto will cause the above lock to unlock.
                 goto try_again;
@@ -1113,65 +1113,48 @@ void nfs_client::stat_from_fattr3(struct stat *st, const struct fattr3 *attr)
  *       code. Till then use getattr_sync() to get attributes from the server.
  */
 #if 1
-struct getattr_context
-{
-    struct fattr3 *fattr;
-    bool callback_called;
-    bool is_callback_success;
-    std::mutex ctx_mutex;
-    std::condition_variable cv;
-    struct rpc_task *task;
-
-    getattr_context(struct fattr3 *_fattr, struct rpc_task *_task):
-        fattr(_fattr),
-        callback_called(false),
-        is_callback_success(false),
-        task(_task)
-    {}
-};
-
-static void getattr_callback(
+static void getattr_sync_callback(
     struct rpc_context *rpc,
     int rpc_status,
     void *data,
     void *private_data)
 {
-    auto ctx = (struct getattr_context*) private_data;
+    auto ctx = (struct sync_rpc_context*) private_data;
+    assert(ctx->magic == SYNC_RPC_CTX_MAGIC);
     auto res = (GETATTR3res*) data;
 
-    if (ctx->task) {
-        assert(ctx->task->magic == RPC_TASK_MAGIC);
+    rpc_task *task = ctx->task;
+
+    ctx->rpc_status = rpc_status;
+    ctx->nfs_status = NFS_STATUS(res);
+
+    if (task) {
+        assert(task->magic == RPC_TASK_MAGIC);
+        assert(task->rpc_api->optype == FUSE_GETATTR);
         /*
          * Now that the request has completed, we can query libnfs for the
          * dispatch time.
          */
-        ctx->task->get_stats().on_rpc_complete(
+        task->get_stats().on_rpc_complete(
             rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
             rpc_pdu_get_dispatch_usecs(rpc_get_pdu(rpc)),
             NFS_STATUS(res));
     }
 
     {
-        std::unique_lock<std::mutex> lock(ctx->ctx_mutex);
+        std::unique_lock<std::mutex> lock(ctx->mutex);
 
         // Must be called only once.
         assert(!ctx->callback_called);
-
-        if (res && (rpc_status == RPC_STATUS_SUCCESS) && (res->status == NFS3_OK)) {
-            *(ctx->fattr) = res->GETATTR3res_u.resok.obj_attributes;
-            ctx->is_callback_success = true;
-        }
-
-        /*
-         * TODO: Add JUKEBOX handling.
-         */
-
         ctx->callback_called = true;
+
+        if ((ctx->rpc_status == RPC_STATUS_SUCCESS) &&
+                (ctx->nfs_status == NFS3_OK)) {
+            assert(ctx->fattr);
+            *(ctx->fattr) = res->GETATTR3res_u.resok.obj_attributes;
+        }
     }
 
-    if (ctx->task) {
-        ctx->task->free_rpc_task();
-    }
     ctx->cv.notify_one();
 }
 
@@ -1183,16 +1166,15 @@ bool nfs_client::getattr_sync(const struct nfs_fh3& fh,
                               fuse_ino_t ino,
                               struct fattr3& fattr)
 {
-    // TODO:Make sync getattr call once libnfs adds support.
-
-    bool rpc_retry = false;
     const uint32_t fh_hash = calculate_crc32(
             (const unsigned char *) fh.data.data_val, fh.data.data_len);
     struct nfs_context *nfs_context = get_nfs_context(CONN_SCHED_FH_HASH, fh_hash);
     struct rpc_task *task = nullptr;
-    struct getattr_context *ctx = nullptr;
+    struct sync_rpc_context *ctx = nullptr;
     struct rpc_pdu *pdu = nullptr;
     struct rpc_context *rpc;
+    bool rpc_retry = false;
+    bool success = false;
 
 try_again:
     do {
@@ -1218,11 +1200,11 @@ try_again:
             delete ctx;
         }
 
-        ctx = new getattr_context(&fattr, task);
+        ctx = new sync_rpc_context(task, &fattr);
         rpc = nfs_get_rpc_context(nfs_context);
 
         rpc_retry = false;
-        if ((pdu = rpc_nfs3_getattr_task(rpc, getattr_callback,
+        if ((pdu = rpc_nfs3_getattr_task(rpc, getattr_sync_callback,
                                          &args, ctx)) == NULL) {
             /*
              * This call fails due to internal issues like OOM etc
@@ -1230,7 +1212,7 @@ try_again:
              */
             rpc_retry = true;
         } else {
-            if (task != nullptr) {
+            if (task) {
                 task->get_stats().on_rpc_issue(rpc_pdu_get_req_size(pdu));
             }
         }
@@ -1241,7 +1223,7 @@ try_again:
      * a new one. We must cancel the old one.
      */
     {
-        std::unique_lock<std::mutex> lock(ctx->ctx_mutex);
+        std::unique_lock<std::mutex> lock(ctx->mutex);
 wait_more:
         if (!ctx->cv.wait_for(lock, std::chrono::seconds(60),
                               [&ctx] { return (ctx->callback_called == true); })) {
@@ -1261,10 +1243,29 @@ wait_more:
                 // This goto will *not* cause the above lock to unlock.
                 goto wait_more;
             }
+        } else {
+            assert(ctx->callback_called);
+            assert(ctx->rpc_status != -1);
+            assert(ctx->nfs_status != -1);
+
+            if ((ctx->rpc_status == RPC_STATUS_SUCCESS) &&
+                    (ctx->nfs_status == NFS3_OK)) {
+                success = true;
+            } else if (ctx->rpc_status == RPC_STATUS_SUCCESS &&
+                       ctx->nfs_status == NFS3ERR_JUKEBOX) {
+                AZLogInfo("Got NFS3ERR_JUKEBOX for GETATTR, re-issuing "
+                          "after 1 sec!");
+                ::usleep(1000 * 1000);
+                // This goto will cause the above lock to unlock.
+                goto try_again;
+            }
         }
     }
 
-    const bool success = ctx->is_callback_success;
+    if (task) {
+        task->free_rpc_task();
+    }
+
     delete ctx;
 
     return success;

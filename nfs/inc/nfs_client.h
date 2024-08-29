@@ -500,7 +500,6 @@ struct sync_rpc_context
         task(_task),
         fattr(_fattr)
     {
-        assert(task != nullptr);
     }
 };
 
