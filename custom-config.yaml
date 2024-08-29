@@ -1,0 +1,32 @@
+allow-other: true
+
+logging:
+  type: base
+  level: log_debug
+
+components:
+  - libfuse
+  - block_cache
+  - test1
+  - test2
+
+libfuse:
+  attribute-expiration-sec: 120
+  entry-expiration-sec: 120
+  negative-entry-expiration-sec: 240
+
+file_cache:
+  # Required
+  path: /tmp1/cache
+  timeout-sec: 120
+
+
+attr_cache:
+  timeout-sec: 7200
+
+azstorage:
+  type: block
+  account-name: shimtestsa
+  endpoint: shimtestsa.blob.core.windows.net
+  mode: azcli
+  container: test-blobfuse
