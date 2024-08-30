@@ -351,6 +351,17 @@ public:
         const char* name,
         mode_t mode);
 
+    /*
+     * Try to perform silly rename of the given file and return true if silly
+     * rename was required (and done), else return false.
+     * Note that silly rename is required for a file that's open when unlink
+     * request is received for it.
+     */
+    bool silly_rename(
+        fuse_req_t req,
+        fuse_ino_t parent_ino,
+        const char *name);
+
     void unlink(
         fuse_req_t req,
         fuse_ino_t parent_ino,
@@ -367,12 +378,21 @@ public:
         fuse_ino_t parent_ino,
         const char *name);
 
+    /**
+     * silly_rename must be passed as true if this is a silly rename and not
+     * rename triggered by user. We silly rename a file that's being unlinked
+     * while it has a non-zero opencnt.
+     * In that case, silly_rename_ino is the ino of the file that's being
+     * unlinked.
+     */
     void rename(
         fuse_req_t req,
         fuse_ino_t parent_ino,
         const char *name,
         fuse_ino_t newparent_ino,
         const char *new_name,
+        bool silly_rename,
+        fuse_ino_t silly_rename_ino,
         unsigned int flags);
 
     void readlink(

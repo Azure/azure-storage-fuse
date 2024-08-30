@@ -567,6 +567,16 @@ struct rename_rpc_task
         return flags;
     }
 
+    bool get_silly_rename() const
+    {
+        return silly_rename;
+    }
+
+    fuse_ino_t get_silly_rename_ino() const
+    {
+        return silly_rename_ino;
+    }
+
     void set_parent_ino(fuse_ino_t parent)
     {
         parent_ino = parent;
@@ -592,6 +602,17 @@ struct rename_rpc_task
         flags = _flags;
     }
 
+    void set_silly_rename(bool is_silly)
+    {
+        silly_rename = is_silly;
+    }
+
+    void set_silly_rename_ino(fuse_ino_t _silly_rename_ino)
+    {
+        silly_rename_ino = _silly_rename_ino;
+        assert(silly_rename == (silly_rename_ino != 0));
+    }
+
     void release()
     {
         ::free(name);
@@ -604,6 +625,8 @@ private:
     char *name;
     char *newname;
     unsigned int flags;
+    bool silly_rename;
+    fuse_ino_t silly_rename_ino;
 };
 
 struct readlink_rpc_task
@@ -844,6 +867,56 @@ struct api_task_info
         struct readdir_rpc_task readdir_task;
         struct read_rpc_task read_task;
     };
+
+    /**
+     * For ops that take a parent directory and filename, this returns the
+     * parent directory inode.
+     */
+    fuse_ino_t get_parent_ino() const
+    {
+        switch(optype) {
+            case FUSE_LOOKUP:
+                return lookup_task.get_parent_ino();
+            case FUSE_CREATE:
+                return create_task.get_parent_ino();
+            case FUSE_MKDIR:
+                return mkdir_task.get_parent_ino();
+            case FUSE_SYMLINK:
+                return symlink_task.get_parent_ino();
+            case FUSE_UNLINK:
+                return unlink_task.get_parent_ino();
+            case FUSE_RMDIR:
+                return rmdir_task.get_parent_ino();
+            default:
+                assert(0);
+                return 0;
+        }
+    }
+
+    /**
+     * For ops that take a parent directory and filename, this returns the
+     * filename.
+     */
+    const char *get_file_name() const
+    {
+        switch(optype) {
+            case FUSE_LOOKUP:
+                return lookup_task.get_file_name();
+            case FUSE_CREATE:
+                return create_task.get_file_name();
+            case FUSE_MKDIR:
+                return mkdir_task.get_dir_name();
+            case FUSE_SYMLINK:
+                return symlink_task.get_name();
+            case FUSE_UNLINK:
+                return unlink_task.get_file_name();
+            case FUSE_RMDIR:
+                return rmdir_task.get_dir_name();
+            default:
+                assert(0);
+                return nullptr;
+        }
+    }
 
     /**
      * We cannot specify destructors for the <api>_rpc_task structures, since
@@ -1154,6 +1227,8 @@ public:
                      const char *name,
                      fuse_ino_t newparent_ino,
                      const char *newname,
+                     bool silly_rename,
+                     fuse_ino_t silly_rename_ino,
                      unsigned int flags);
 
     void run_rename();
@@ -1231,6 +1306,7 @@ public:
 
     enum fuse_opcode get_op_type() const
     {
+        assert(!rpc_api || optype == rpc_api->optype);
         return optype;
     }
 
@@ -1369,6 +1445,11 @@ public:
              * workflow.
              */
             inode->decref(1, true /* from_forget */);
+        } else {
+            /*
+             * Successful creat(), increase opencnt.
+             */
+            inode->opencnt++;
         }
 
         free_rpc_task();

@@ -635,6 +635,19 @@ static void aznfsc_ll_unlink(fuse_req_t req,
                fmt::ptr(req), parent_ino, name);
 
     struct nfs_client *client = get_nfs_client_from_fuse_req(req);
+
+    /*
+     * Call silly rename to see if it wants to silly rename instead of unlink.
+     * We will perform silly rename if the opencnt of the file is not 0, i.e.,
+     * some process has the file open. This is for POSIX compliance, where
+     * open files should be accessible till the last open handle is closed.
+     * Depending on the silly_rename status this will reply to the fuse unlink
+     * request.
+     */
+    if (client->silly_rename(req, parent_ino, name)) {
+        return;
+    }
+
     client->unlink(req, parent_ino, name);
 }
 
@@ -677,7 +690,8 @@ static void aznfsc_ll_rename(fuse_req_t req,
     assert(flags == 0);
 
     struct nfs_client *client = get_nfs_client_from_fuse_req(req);
-    client->rename(req, parent_ino, name, newparent_ino, newname, flags);
+    client->rename(req, parent_ino, name, newparent_ino, newname,
+                   false, 0, flags);
 }
 
 static void aznfsc_ll_link(fuse_req_t req,
@@ -715,6 +729,9 @@ static void aznfsc_ll_open(fuse_req_t req,
     struct nfs_client *client = get_nfs_client_from_fuse_req(req);
     struct nfs_inode *inode = client->get_nfs_inode_from_ino(ino);
 
+    // Make sure it's not called for directories.
+    assert(!inode->is_dir());
+
     /*
      * TODO: See comments in readahead.h, ideally readahead state should be
      *       per file pointer (per open handle) but since fuse doesn't let
@@ -745,6 +762,8 @@ static void aznfsc_ll_open(fuse_req_t req,
     } else if (inode->is_dir()) {
         inode->get_or_alloc_dircache();
     }
+
+    inode->opencnt++;
 
     fuse_reply_open(req, fi);
 }
@@ -811,7 +830,20 @@ static void aznfsc_ll_release(fuse_req_t req,
                fmt::ptr(req), ino, fmt::ptr(fi));
 
     struct nfs_client *client = get_nfs_client_from_fuse_req(req);
-    client->flush(req, ino);
+    struct nfs_inode *inode = client->get_nfs_inode_from_ino(ino);
+
+    // Must be called for an open file.
+    assert(inode->is_open());
+
+    /*
+     * inode release() will return true if the inode was silly renamed and it
+     * initiated an unlink of the inode. In that case fuse will be sent a
+     * response based on the unlink outcome. Also, we don't flush in that case
+     * as the file is going to be unlinked anyways.
+     */
+    if (!inode->release(req)) {
+        client->flush(req, ino);
+    }
 }
 
 static void aznfsc_ll_fsync(fuse_req_t req,

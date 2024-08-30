@@ -76,6 +76,10 @@ nfs_inode::nfs_inode(const struct nfs_fh3 *filehandle,
     assert(!filecache_handle);
     assert(!dircache_handle);
     assert(!readahead_state);
+
+    assert(!is_silly_renamed);
+    assert(silly_renamed_name.empty());
+    assert(parent_ino == 0);
 }
 
 nfs_inode::~nfs_inode()
@@ -84,6 +88,10 @@ nfs_inode::~nfs_inode()
     // We should never delete an inode which fuse still has a reference on.
     assert(is_forgotten());
     assert(lookupcnt == 0);
+
+    // We should never delete an inode which is still open()ed by user.
+    assert(opencnt == 0);
+
     /*
      * We should never delete an inode while it is still referred by parent
      * dir cache.
@@ -103,6 +111,16 @@ nfs_inode::~nfs_inode()
     assert((ino == (fuse_ino_t) this) || (ino == FUSE_ROOT_ID));
     assert(client != nullptr);
     assert(client->magic == NFS_CLIENT_MAGIC);
+
+#ifdef ENABLE_PARANOID
+    if (is_silly_renamed) {
+        assert(!silly_renamed_name.empty());
+        assert(parent_ino != 0);
+    } else {
+        assert(silly_renamed_name.empty());
+        assert(parent_ino == 0);
+    }
+#endif
 
     assert(fh.data.data_val != nullptr);
     delete[] fh.data.data_val;
@@ -198,6 +216,45 @@ try_again:
     }
 }
 
+struct nfs_inode *nfs_inode::lookup(const char *filename)
+{
+    // Must be called only for a directory inode.
+    assert(is_dir());
+
+    // Revalidate to ensure dnlc cache can be safely used.
+    revalidate();
+
+    struct nfs_client *client = get_client();
+    fuse_ino_t child_ino = 0;
+
+    /*
+     * First search in dnlc, if not found perform LOOKUP RPC.
+     */
+    {
+        std::unique_lock<std::shared_mutex> lock(ilock);
+        auto it = dnlc.find(filename);
+        if (it != dnlc.end()) {
+            child_ino = it->second;
+            assert(child_ino != 0);
+            AZLogDebug("{}/{} -> {}, found in DNLC!",
+                       get_fuse_ino(), filename, child_ino);
+        }
+    }
+
+    if (child_ino == 0) {
+       if (!client->lookup_sync(get_fuse_ino(), filename, child_ino)) {
+           AZLogDebug("{}/{}, sync LOOKUP failed!",
+                      get_fuse_ino(), filename);
+           return nullptr;
+       }
+       AZLogDebug("{}/{} -> {}, found via sync LOOKUP!",
+                  get_fuse_ino(), filename, child_ino);
+       assert(child_ino != 0);
+    }
+
+    return client->get_nfs_inode_from_ino(child_ino);
+}
+
 int nfs_inode::get_actimeo_min() const
 {
     switch (file_type) {
@@ -216,6 +273,28 @@ int nfs_inode::get_actimeo_max() const
         default:
             return client->mnt_options.acregmax;
     }
+}
+
+bool nfs_inode::release(fuse_req_t req)
+{
+    assert(opencnt > 0);
+    if (--opencnt != 0 || !is_silly_renamed) {
+        return false;
+    }
+
+    /*
+     * Delete the silly rename file.
+     * Note that we will now respond to fuse when the unlink completes.
+     * The caller MUST arrange to *not* respond to fuse.
+     */
+    assert(!silly_renamed_name.empty());
+    assert(parent_ino != 0);
+
+    AZLogInfo("Deleting silly renamed file, {}/{}",
+              parent_ino, silly_renamed_name);
+
+    client->unlink(req, parent_ino, silly_renamed_name.c_str());
+    return true;
 }
 
 void nfs_inode::revalidate(bool force)
@@ -241,7 +320,7 @@ void nfs_inode::revalidate(bool force)
      * useful for fresh directory enumerations (common when running "find"
      * command) where these GETATTR RPCs add unwanted delay.
      */
-    if (is_cache_empty()) {
+    if (is_cache_empty() && is_dnlc_empty()) {
         AZLogDebug("revalidate: Skipping as cache is empty!");
         return;
     }
@@ -347,7 +426,9 @@ void nfs_inode::invalidate_cache_nolock()
      */
     if (is_dir()) {
         purge_dircache_nolock();
+        purge_dnlc_nolock();
     } else if (is_regfile()) {
+        assert(is_dnlc_empty());
         purge_filecache_nolock();
     }
 }
@@ -362,6 +443,14 @@ void nfs_inode::purge_dircache_nolock()
     if (dircache_handle) {
         AZLogWarn("[{}] Purging dircache", get_fuse_ino());
         dircache_handle->clear();
+    }
+}
+
+void nfs_inode::purge_dnlc_nolock()
+{
+    if (!dnlc.empty()) {
+        AZLogWarn("[{}] Purging dnlc", get_fuse_ino());
+        dnlc.clear();
     }
 }
 

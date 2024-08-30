@@ -215,6 +215,8 @@ void nfs_client::jukebox_runner()
                            js->rpc_api->rename_task.get_name(),
                            js->rpc_api->rename_task.get_newparent_ino(),
                            js->rpc_api->rename_task.get_newname(),
+                           js->rpc_api->rename_task.get_silly_rename(),
+                           js->rpc_api->rename_task.get_silly_rename_ino(),
                            js->rpc_api->rename_task.get_flags());
                     break;
                 case FUSE_READ:
@@ -544,6 +546,8 @@ bool nfs_client::lookup_sync(fuse_ino_t parent_ino,
     bool rpc_retry = false;
     bool success = false;
 
+    AZLogDebug("lookup_sync({}/{})", parent_ino, name);
+
 try_again:
     do {
         LOOKUP3args args;
@@ -683,6 +687,53 @@ void nfs_client::mkdir(
     tsk->run_mkdir();
 }
 
+/*
+ * Returns:
+ *  true  - silly rename was needed and done.
+ *  false - silly rename not needed.
+ */
+bool nfs_client::silly_rename(
+    fuse_req_t req,
+    fuse_ino_t parent_ino,
+    const char* name)
+{
+    struct nfs_inode *parent_inode = get_nfs_inode_from_ino(parent_ino);
+    // Inode of the file being silly renamed.
+    struct nfs_inode *inode = parent_inode->lookup(name);
+
+    /*
+     * This is called from aznfsc_ll_unlink() for all unlinked files, so
+     * this is a good place to remove the entry from DNLC.
+     */
+    parent_inode->dnlc_remove(name);
+
+    /*
+     * Note: VFS will hold the inode lock for the target file, so it won't
+     *       go away till the rename_callback() is called (and we respond to
+     *       fuse).
+     */
+    if (inode && inode->is_open()) {
+        char newname[64];
+        ::snprintf(newname, sizeof(newname), ".nfs_%lu_%lu_%d",
+                   inode->get_fuse_ino(), inode->get_generation(),
+                   inode->get_silly_rename_level());
+
+        AZLogInfo("silly_rename: Renaming {}/{} -> {}, ino={}",
+                  parent_ino, name, newname, inode->get_fuse_ino());
+
+        rename(req, parent_ino, name, parent_ino, newname, true,
+               inode->get_fuse_ino(), 0);
+        return true;
+    } else if (!inode) {
+        AZLogError("silly_rename: Failed to get inode for file {}/{}. File "
+                   "will be deleted, any process having file open will get "
+                   "errors when accessing it!",
+                   parent_ino, name);
+    }
+
+    return false;
+}
+
 void nfs_client::unlink(
     fuse_req_t req,
     fuse_ino_t parent_ino,
@@ -700,7 +751,9 @@ void nfs_client::rmdir(
     const char* name)
 {
     struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_RMDIR);
+    struct nfs_inode *parent_inode = get_nfs_inode_from_ino(parent_ino);
 
+    parent_inode->dnlc_remove(name);
     tsk->init_rmdir(req, parent_ino, name);
     tsk->run_rmdir();
 }
@@ -723,11 +776,17 @@ void nfs_client::rename(
     const char *name,
     fuse_ino_t newparent_ino,
     const char *new_name,
+    bool silly_rename,
+    fuse_ino_t silly_rename_ino,
     unsigned int flags)
 {
     struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_RENAME);
+    struct nfs_inode *parent_inode = get_nfs_inode_from_ino(parent_ino);
 
-    tsk->init_rename(req, parent_ino, name, newparent_ino, new_name, flags);
+    parent_inode->dnlc_remove(name);
+
+    tsk->init_rename(req, parent_ino, name, newparent_ino, new_name,
+                     silly_rename, silly_rename_ino, flags);
     tsk->run_rename();
 }
 
@@ -984,6 +1043,10 @@ void nfs_client::reply_entry(
     memset(&entry, 0, sizeof(entry));
 
     if (fh) {
+        const fuse_ino_t parent_ino = ctx->rpc_api->get_parent_ino();
+        struct nfs_inode *parent_inode =
+            ctx->get_client()->get_nfs_inode_from_ino(parent_ino);
+
         /*
          * This will grab a lookupcnt ref on the inode, which will be freed
          * from fuse forget callback.
@@ -1000,6 +1063,9 @@ void nfs_client::reply_entry(
             entry.attr_timeout = 0;
             entry.entry_timeout = 0;
         }
+
+        parent_inode->dnlc_add(ctx->rpc_api->get_file_name(),
+                               inode->get_fuse_ino());
 
         /*
          * This is the common place where we return inode to fuse.

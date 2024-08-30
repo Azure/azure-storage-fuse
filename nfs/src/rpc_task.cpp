@@ -204,19 +204,29 @@ void rpc_task::init_symlink(fuse_req *request,
     fh_hash = get_client()->get_nfs_inode_from_ino(parent_ino)->get_crc();
 }
 
+/*
+ * silly_rename: Is this a silly rename (or user initiated rename)?
+ * silly_rename_ino: Fuse inode number of the file being silly renamed.
+ *                   Must be 0 if silly_rename is false.
+ */
 void rpc_task::init_rename(fuse_req *request,
                            fuse_ino_t parent_ino,
                            const char *name,
                            fuse_ino_t newparent_ino,
                            const char *newname,
+                           bool silly_rename,
+                           fuse_ino_t silly_rename_ino,
                            unsigned int flags)
 {
     assert(get_op_type() == FUSE_RENAME);
+    assert(silly_rename == (silly_rename_ino != 0));
     set_fuse_req(request);
     rpc_api->rename_task.set_parent_ino(parent_ino);
     rpc_api->rename_task.set_name(name);
     rpc_api->rename_task.set_newparent_ino(newparent_ino);
     rpc_api->rename_task.set_newname(newname);
+    rpc_api->rename_task.set_silly_rename(silly_rename);
+    rpc_api->rename_task.set_silly_rename_ino(silly_rename_ino);
     rpc_api->rename_task.set_flags(flags);
 
     /*
@@ -362,6 +372,7 @@ static void lookup_callback(
     void *private_data)
 {
     rpc_task *task = (rpc_task*) private_data;
+    assert(task->rpc_api->optype == FUSE_LOOKUP);
     auto res = (LOOKUP3res*)data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
@@ -816,6 +827,8 @@ void rename_callback(
     void *private_data)
 {
     rpc_task *task = (rpc_task*) private_data;
+    assert(task->rpc_api->optype == FUSE_RENAME);
+    const bool silly_rename = task->rpc_api->rename_task.get_silly_rename();
     auto res = (RENAME3res*) data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
@@ -827,6 +840,47 @@ void rename_callback(
         rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
         rpc_pdu_get_dispatch_usecs(rpc_get_pdu(rpc)),
         NFS_STATUS(res));
+
+    /*
+     * If this rename is a silly rename for an unlink operation, we need to
+     * store the directory inode and the renamed filename so that we can
+     * delete the silly renamed file when the last open count on this inode
+     * is dropped.
+     *
+     * Note: Silly rename is done in response to a user unlink call and VFS
+     *       holds the inode lock for the duration of the unlink, which means
+     *       we will not get any other call for this inode, so we can safely
+     *       access the inode w/o lock.
+     */
+    if (status == 0 && silly_rename) {
+        const fuse_ino_t silly_rename_ino =
+            task->rpc_api->rename_task.get_silly_rename_ino();
+        struct nfs_client *client = task->get_client();
+        assert(client->magic == NFS_CLIENT_MAGIC);
+        struct nfs_inode *silly_rename_inode =
+            client->get_nfs_inode_from_ino(silly_rename_ino);
+        assert(silly_rename_inode->magic == NFS_INODE_MAGIC);
+
+        // Silly rename has the same source and target dir.
+        assert(task->rpc_api->rename_task.get_parent_ino() ==
+               task->rpc_api->rename_task.get_newparent_ino());
+
+        silly_rename_inode->silly_renamed_name =
+            task->rpc_api->rename_task.get_newname();
+        silly_rename_inode->parent_ino =
+            task->rpc_api->rename_task.get_newparent_ino();
+        silly_rename_inode->is_silly_renamed = true;
+
+        AZLogInfo("[{}] Silly rename successfully completed! "
+                  "to-delete: {}/{}",
+                  silly_rename_ino,
+                  silly_rename_inode->parent_ino,
+                  silly_rename_inode->silly_renamed_name);
+
+#ifdef ENABLE_PARANOID
+        assert(silly_rename_inode->silly_renamed_name.find(".nfs") == 0);
+#endif
+    }
 
     task->reply_error(status);
 }
@@ -2544,8 +2598,22 @@ static void readdir_callback(
             if (eof_cookie != -1) {
                 dircache_handle->set_eof(eof_cookie);
             } else {
-                assert(dircache_handle->get_eof() == true);
-                assert((int64_t) dircache_handle->get_eof_cookie() != -1);
+                assert(num_dirents == 0);
+                assert(readdirentries.size() == 0);
+                if (dircache_handle->get_eof() != true) {
+                    /*
+                     * Server returned 0 entries and set eof to true, but the
+                     * previous READDIR call that we made, for that server
+                     * didn't return eof, this means the directory shrank in the
+                     * server. To be safe, invalidate the cache.
+                     */
+                    AZLogWarn("[{}] readdir_callback: Directory shrank in the "
+                              "server! cookie asked = {}. Purging cache!",
+                              dir_ino, task->rpc_api->readdir_task.get_offset());
+                    dir_inode->invalidate_cache();
+                } else {
+                    assert((int64_t) dircache_handle->get_eof_cookie() != -1);
+                }
             }
         }
 
@@ -2772,8 +2840,22 @@ static void readdirplus_callback(
             if (eof_cookie != -1) {
                 dircache_handle->set_eof(eof_cookie);
             } else {
-                assert(dircache_handle->get_eof() == true);
-                assert((int64_t) dircache_handle->get_eof_cookie() != -1);
+                assert(num_dirents == 0);
+                assert(readdirentries.size() == 0);
+                if (dircache_handle->get_eof() != true) {
+                    /*
+                     * Server returned 0 entries and set eof to true, but the
+                     * previous READDIR call that we made, for that server
+                     * didn't return eof, this means the directory shrank in the
+                     * server. To be safe, invalidate the cache.
+                     */
+                    AZLogWarn("[{}] readdirplus_callback: Directory shrank in "
+                              "the server! cookie asked = {}. Purging cache!",
+                              dir_ino, task->rpc_api->readdir_task.get_offset());
+                    dir_inode->invalidate_cache();
+                } else {
+                    assert((int64_t) dircache_handle->get_eof_cookie() != -1);
+                }
             }
         }
 
@@ -2944,6 +3026,9 @@ void rpc_task::send_readdir_response(
      * consume all the entries in readdirentries.
      */
     const size_t size = rpc_api->readdir_task.get_size();
+    const fuse_ino_t parent_ino = rpc_api->readdir_task.get_ino();
+    struct nfs_inode *parent_inode =
+        get_client()->get_nfs_inode_from_ino(parent_ino);
 
     // Fuse always requests 4096 bytes.
     assert(size >= 4096);
@@ -2985,6 +3070,13 @@ void rpc_task::send_readdir_response(
             fuseentry.generation = it->nfs_inode->get_generation();
             fuseentry.attr_timeout = it->nfs_inode->get_actimeo();
             fuseentry.entry_timeout = it->nfs_inode->get_actimeo();
+
+            /*
+             * Readdirplus returns inode for every file, so it's the
+             * equivalent of lookup (and fuse may skip lookup if this file
+             * is opened), so save in dnlc.
+             */
+            parent_inode->dnlc_add(it->name, fuseentry.ino);
 
             /*
              * Insert the entry into the buffer.

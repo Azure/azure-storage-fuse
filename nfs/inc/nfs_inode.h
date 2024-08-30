@@ -39,7 +39,7 @@ struct nfs_inode
      *
      * TODO: See if we need this lock or fuse vfs will cover for this.
      */
-    std::shared_mutex ilock;
+    mutable std::shared_mutex ilock;
 
     /*
      * Ref count of this inode.
@@ -76,6 +76,27 @@ struct nfs_inode
      */
     mutable std::atomic<uint64_t> lookupcnt = 0;
     mutable std::atomic<uint64_t> dircachecnt = 0;
+
+    /*
+     * How many open fds for this file are currently present in fuse.
+     * Incremented when fuse calls open()/creat().
+     */
+    std::atomic<uint64_t> opencnt = 0;
+
+    /*
+     * Silly rename related info.
+     * If this inode has been successfully silly renamed, is_silly_renamed will
+     * be set and silly_renamed_name will contain the silly renamed name and
+     * parent_ino is the parent directory ino. These will be needed for
+     * deleting ths silly renamed file once the last handle on the file is
+     * closed by user.
+     * silly_rename_level helps to get unique names in case the silly renamed
+     * file itself is deleted.
+     */
+    bool is_silly_renamed = false;
+    std::string silly_renamed_name;
+    fuse_ino_t parent_ino = 0;
+    int silly_rename_level = 0;
 
     /*
      * NFSv3 filehandle returned by the server.
@@ -143,6 +164,17 @@ struct nfs_inode
 
     // nfs_client owning this inode.
     struct nfs_client *const client;
+
+    /*
+     * Directory Name Lookup Cache.
+     * Everytime lookup() is called by fuse for finding inode for a
+     * parentdir+name pair, we add an entry to it. Entries are added to dnlc
+     * also when we respond to READDIRPLUS request.
+     * This does not have a TTL but it is revalidated from nfs_inode::lookup()
+     * and dropped if directory mtime has changed which could mean some files
+     * may have been deleted or renamed.
+     */
+    std::unordered_map<std::string, fuse_ino_t> dnlc;
 
     /*
      * Pointer to the readdirectory cache.
@@ -266,6 +298,11 @@ struct nfs_inode
         return generation;
     }
 
+    int get_silly_rename_level()
+    {
+        return silly_rename_level++;
+    }
+
     /**
      * Return the NFS fileid. This is also the inode number returned by
      * stat(2).
@@ -275,6 +312,37 @@ struct nfs_inode
         assert(attr.st_ino != 0);
         return attr.st_ino;
     }
+
+    /**
+     * Is this file currently open()ed by any application.
+     */
+    bool is_open() const
+    {
+        return opencnt > 0;
+    }
+
+    /**
+     * Add filename/ino to dnlc.
+     */
+    void dnlc_add(const std::string& filename, fuse_ino_t ino)
+    {
+        std::unique_lock<std::shared_mutex> lock(ilock);
+        dnlc[filename] = ino;
+    }
+
+    void dnlc_remove(const std::string& filename)
+    {
+        std::unique_lock<std::shared_mutex> lock(ilock);
+        dnlc.erase(filename);
+    }
+
+    /*
+     * Find nfs_inode for 'filename' in this directory.
+     * It first searches in dnlc and if not found there makes a sync LOOKUP
+     * call.
+     * This calls revalidate().
+     */
+    struct nfs_inode *lookup(const char *filename);
 
     /**
      * Note usecs when the last cached write was received for this inode.
@@ -457,6 +525,18 @@ struct nfs_inode
         }
     }
 
+    bool is_dnlc_empty() const
+    {
+        return dnlc.empty();
+    }
+
+    /**
+     * Called when last open fd is closed for a file.
+     * release() will return true if the inode was silly renamed and it
+     * initiated an unlink of the inode.
+     */
+    bool release(fuse_req_t req);
+
     /**
      * Revalidate the inode.
      * Revalidation is done by querying the inode attributes from the server
@@ -530,6 +610,7 @@ struct nfs_inode
      * Caller must hold inode->ilock.
      */
     void purge_dircache_nolock();
+    void purge_dnlc_nolock();
 
     void purge_dircache()
     {
