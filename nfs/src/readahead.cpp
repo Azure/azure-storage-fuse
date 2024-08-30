@@ -10,7 +10,7 @@
  */
 //#define DEBUG_READAHEAD
 
-#define _MiB (1024 * 1024ULL)
+#define _MiB (1024 * 1024LL)
 #define _GiB (_MiB * 1024)
 #define _TiB (_GiB * 1024)
 
@@ -348,9 +348,10 @@ delete_ctx:
  */
 int ra_state::issue_readaheads()
 {
-    uint64_t ra_offset;
+    int64_t ra_offset;
     auto read_cache = inode->filecache_handle;
     int ra_issued = 0;
+    static uint64_t num_no_readahead;
 
     /*
      * No cache, can't readahead.
@@ -369,7 +370,7 @@ int ra_state::issue_readaheads()
     /*
      * Issue all readaheads allowed by this ra_state.
      */
-    while ((ra_offset = get_next_ra()) != 0) {
+    while ((ra_offset = get_next_ra()) > 0) {
         AZLogDebug("[{}] Issuing readahead at off: {} len: {}: ongoing: {} ({})",
                    inode->get_fuse_ino(), ra_offset, def_ra_size,
                    ra_ongoing.load(), ra_bytes);
@@ -383,7 +384,7 @@ int ra_state::issue_readaheads()
         for (bytes_chunk& bc : bcv) {
 
             // Every bytes_chunk must lie within the readahead.
-            assert(bc.offset >= ra_offset);
+            assert(bc.offset >= (uint64_t) ra_offset);
             assert((bc.offset + bc.length) <= (ra_offset + def_ra_size));
 
             // get() must grab the inuse count.
@@ -532,6 +533,14 @@ int ra_state::issue_readaheads()
         }
     }
 
+    if (ra_issued == 0) {
+        // Log once every 1000 failed calls.
+        if ((++num_no_readahead % 1000) == 0) {
+            AZLogWarn("[{}] num_no_readahead={}, reason={}",
+                      inode->get_fuse_ino(), num_no_readahead, ra_offset);
+        }
+    }
+
     return ra_issued;
 }
 
@@ -539,9 +548,9 @@ int ra_state::issue_readaheads()
 int ra_state::unit_test()
 {
     ra_state ras{128 * 1024, 4 * 1024};
-    uint64_t next_ra;
-    uint64_t next_read;
-    uint64_t complete_ra;
+    int64_t next_ra;
+    int64_t next_read;
+    int64_t complete_ra;
 
     AZLogInfo("Unit testing ra_state, start");
 
