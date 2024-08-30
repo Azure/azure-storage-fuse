@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1724561446244,
+  "lastUpdate": 1725012699911,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -3235,6 +3235,50 @@ window.BENCHMARK_DATA = {
           {
             "name": "sequential_write_16_threads",
             "value": 0.1406427408983333,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "98318303+souravgupta-msft@users.noreply.github.com",
+            "name": "Sourav Gupta",
+            "username": "souravgupta-msft"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "d06331738096999b358a430fb339e11dcd4d7642",
+          "message": "Added block cache limitations (#1511)",
+          "timestamp": "2024-08-30T14:53:53+05:30",
+          "tree_id": "86cf1bbadf89cc6f72770aaf10a13fed62f9c3ac",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/d06331738096999b358a430fb339e11dcd4d7642"
+        },
+        "date": 1725012699653,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_write",
+            "value": 0.13803572313233334,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_write_directio",
+            "value": 0.13644056608599997,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_write_4_threads",
+            "value": 0.14679612094866668,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_write_16_threads",
+            "value": 0.14200337844433333,
             "unit": "milliseconds"
           }
         ]
