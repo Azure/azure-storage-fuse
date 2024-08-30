@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1724569198545,
+  "lastUpdate": 1725020311899,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -962,6 +962,35 @@ window.BENCHMARK_DATA = {
           {
             "name": "rename_5000_1MB_files",
             "value": 134.94088101387024,
+            "unit": "seconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "98318303+souravgupta-msft@users.noreply.github.com",
+            "name": "Sourav Gupta",
+            "username": "souravgupta-msft"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "d06331738096999b358a430fb339e11dcd4d7642",
+          "message": "Added block cache limitations (#1511)",
+          "timestamp": "2024-08-30T14:53:53+05:30",
+          "tree_id": "86cf1bbadf89cc6f72770aaf10a13fed62f9c3ac",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/d06331738096999b358a430fb339e11dcd4d7642"
+        },
+        "date": 1725020311640,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "rename_5000_1MB_files",
+            "value": 142.92158818244934,
             "unit": "seconds"
           }
         ]
