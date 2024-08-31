@@ -536,8 +536,8 @@ int ra_state::issue_readaheads()
     if (ra_issued == 0) {
         // Log once every 1000 failed calls.
         if ((++num_no_readahead % 1000) == 0) {
-            AZLogWarn("[{}] num_no_readahead={}, reason={}",
-                      inode->get_fuse_ino(), num_no_readahead, ra_offset);
+            AZLogDebug("[{}] num_no_readahead={}, reason={}",
+                       inode->get_fuse_ino(), num_no_readahead, ra_offset);
         }
     }
 
