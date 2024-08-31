@@ -16,6 +16,8 @@
 
 #include "aznfsc.h"
 
+struct nfs_inode;
+
 /*
  * Reminder to audit use of asserts to ensure we don't depend on assert
  * for error handling.
@@ -716,7 +718,9 @@ class bytes_chunk_cache
     friend bytes_chunk;
 
 public:
-    bytes_chunk_cache(const char *_backing_file_name = nullptr) :
+    bytes_chunk_cache(struct nfs_inode *_inode,
+                      const char *_backing_file_name = nullptr) :
+        inode(_inode),
         backing_file_name(_backing_file_name ? _backing_file_name : "")
     {
         // File will be opened on first access.
@@ -836,7 +840,7 @@ public:
          * We do inline pruning when we are "extremely" high on memory usage
          * and hence cannot proceed w/o making space for the new request.
          */
-         inline_prune();
+        inline_prune();
 
         return scan(offset, length, scan_action::SCAN_ACTION_GET,
                     nullptr /* bytes_released */, extent_left, extent_right);
@@ -1183,6 +1187,16 @@ private:
 
     // Lock to protect chunkmap.
     mutable std::mutex lock;
+
+    /*
+     * File whose data we are cacheing.
+     * Note that we don't hold a ref on this inode so it's only safe to use
+     * from inline_prune() where we know inode is active.
+     *
+     * XXX If you use it from some other place either make sure inode is
+     *     safe to use from there or hold a ref on the inode.
+     */
+    struct nfs_inode *const inode;
 
     std::string backing_file_name;
     int backing_file_fd = -1;

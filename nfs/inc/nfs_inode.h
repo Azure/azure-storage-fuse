@@ -241,9 +241,9 @@ struct nfs_inode
                 const std::string backing_file_name =
                     std::string(aznfsc_cfg.filecache.cachedir) + "/" + std::to_string(get_fuse_ino());
                 filecache_handle =
-                    std::make_shared<bytes_chunk_cache>(backing_file_name.c_str());
+                    std::make_shared<bytes_chunk_cache>(this, backing_file_name.c_str());
             } else {
-                filecache_handle = std::make_shared<bytes_chunk_cache>();
+                filecache_handle = std::make_shared<bytes_chunk_cache>(this);
             }
         }
 
@@ -312,6 +312,16 @@ struct nfs_inode
         assert(attr.st_ino != 0);
         return attr.st_ino;
     }
+
+    /**
+     * Check if [offset, offset+length) lies within the current RA window.
+     * bytes_chunk_cache would call this to find out if a particular membuf
+     * can be purged. Membufs in RA window would mostly be used soon and
+     * should not be purged.
+     * Note that it checks if there is any overlap and not whether it fits
+     * entirely within the RA window.
+     */
+    bool in_ra_window(uint64_t offset, uint64_t length) const;
 
     /**
      * Is this file currently open()ed by any application.

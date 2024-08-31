@@ -216,6 +216,15 @@ try_again:
     }
 }
 
+bool nfs_inode::in_ra_window(uint64_t offset, uint64_t length) const
+{
+    if (!readahead_state) {
+        return false;
+    }
+
+    return readahead_state->in_ra_window(offset, length);
+}
+
 struct nfs_inode *nfs_inode::lookup(const char *filename)
 {
     // Must be called only for a directory inode.
