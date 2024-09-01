@@ -323,7 +323,7 @@ void membuf::clear_flushing()
 
     /*
      * clear_flushing() must be called after clear_dirty().
-     * In case WRITE RRPC fails, we don't clear dirty flag, in that case this
+     * In case WRITE RPC fails, we don't clear dirty flag, in that case this
      * assert will fail. We still leave it as it helps catch workflow bugs and
      * we mostly do hard mount where write never fails.
      *
