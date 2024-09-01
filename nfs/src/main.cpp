@@ -989,12 +989,11 @@ static void aznfsc_ll_access(fuse_req_t req,
                              fuse_ino_t ino,
                              int mask)
 {
-    /*
-     * TODO: Fill me.
-     */
-    AZLogInfo("aznfsc_ll_access(req={}, ino={}, mask={:x}",
-              fmt::ptr(req), ino, mask);
-    fuse_reply_err(req, ENOSYS);
+    AZLogDebug("aznfsc_ll_access(req={}, ino={}, mask=0{:03o})",
+               fmt::ptr(req), ino, mask);
+
+    struct nfs_client *client = get_nfs_client_from_fuse_req(req);
+    client->access(req, ino, mask);
 }
 
 static void aznfsc_ll_create(fuse_req_t req,

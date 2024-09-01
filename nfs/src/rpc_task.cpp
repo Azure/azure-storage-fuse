@@ -100,6 +100,18 @@ void rpc_task::init_lookup(fuse_req *request,
     fh_hash = get_client()->get_nfs_inode_from_ino(parent_ino)->get_crc();
 }
 
+void rpc_task::init_access(fuse_req *request,
+                           fuse_ino_t ino,
+                           int mask)
+{
+    assert(get_op_type() == FUSE_ACCESS);
+    set_fuse_req(request);
+    rpc_api->access_task.set_ino(ino);
+    rpc_api->access_task.set_mask(mask);
+
+    fh_hash = get_client()->get_nfs_inode_from_ino(ino)->get_crc();
+}
+
 void rpc_task::init_flush(fuse_req *request,
                           fuse_ino_t ino)
 {
@@ -403,6 +415,29 @@ static void lookup_callback(
             &res->LOOKUP3res_u.resok.obj_attributes.post_op_attr_u.attributes,
             nullptr);
     } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
+        task->get_client()->jukebox_retry(task);
+    } else {
+        task->reply_error(status);
+    }
+}
+
+void access_callback(
+    struct rpc_context *rpc,
+    int rpc_status,
+    void *data,
+    void *private_data)
+{
+    rpc_task *task = (rpc_task*) private_data;
+    auto res = (ACCESS3res*) data;
+    const int status = task->status(rpc_status, NFS_STATUS(res));
+
+    /*
+     * Now that the request has completed, we can query libnfs for the
+     * dispatch time.
+     */
+    task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
+
+    if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
         task->get_client()->jukebox_retry(task);
     } else {
         task->reply_error(status);
@@ -847,7 +882,11 @@ void rename_callback(
 #endif
     }
 
-    task->reply_error(status);
+    if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
+        task->get_client()->jukebox_retry(task);
+    } else {
+        task->reply_error(status);
+    }
 }
 
 void readlink_callback(
@@ -907,6 +946,38 @@ void rpc_task::run_lookup()
             rpc_retry = true;
 
             AZLogWarn("rpc_nfs3_lookup_task failed to issue, retrying "
+                      "after 5 secs!");
+            ::sleep(5);
+        }
+    } while (rpc_retry);
+}
+
+void rpc_task::run_access()
+{
+    const fuse_ino_t ino = rpc_api->access_task.get_ino();
+    bool rpc_retry;
+    rpc_pdu *pdu = nullptr;
+
+    do {
+        ACCESS3args args;
+        args.object = get_client()->get_nfs_inode_from_ino(ino)->get_fh();
+        args.access = rpc_api->access_task.get_mask();
+
+        rpc_retry = false;
+        stats.on_rpc_issue();
+        if ((pdu = rpc_nfs3_access_task(get_rpc_ctx(), access_callback, &args,
+                                        this)) == NULL) {
+            stats.on_rpc_cancel();
+            /*
+             * Most common reason for this is memory allocation failure,
+             * hence wait for some time before retrying. Also block the
+             * current thread as we really want to slow down things.
+             *
+             * TODO: For soft mount should we fail this?
+             */
+            rpc_retry = true;
+
+            AZLogWarn("rpc_nfs3_access_task failed to issue, retrying "
                       "after 5 secs!");
             ::sleep(5);
         }

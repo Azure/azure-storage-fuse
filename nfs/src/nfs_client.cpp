@@ -114,6 +114,16 @@ void nfs_client::jukebox_runner()
                            js->rpc_api->lookup_task.get_parent_ino(),
                            js->rpc_api->lookup_task.get_file_name());
                     break;
+                case FUSE_ACCESS:
+                    AZLogWarn("[JUKEBOX REISSUE] access(req={}, "
+                              "ino={}, mask=0{:03o})",
+                              fmt::ptr(js->rpc_api->req),
+                              js->rpc_api->access_task.get_ino(),
+                              js->rpc_api->access_task.get_mask());
+                    access(js->rpc_api->req,
+                           js->rpc_api->access_task.get_ino(),
+                           js->rpc_api->access_task.get_mask());
+                    break;
                 case FUSE_GETATTR:
                     AZLogWarn("[JUKEBOX REISSUE] getattr(req={}, ino={}, "
                               "fi=null)",
@@ -636,6 +646,14 @@ wait_more:
     delete ctx;
 
     return success;
+}
+
+void nfs_client::access(fuse_req_t req, fuse_ino_t ino, int mask)
+{
+    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_ACCESS);
+
+    tsk->init_access(req, ino, mask);
+    tsk->run_access();
 }
 
 void nfs_client::flush(fuse_req_t req, fuse_ino_t ino)

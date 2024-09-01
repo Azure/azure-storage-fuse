@@ -423,6 +423,11 @@ public:
         const char *name,
         fuse_ino_t& child_ino);
 
+    void access(
+        fuse_req_t req,
+        fuse_ino_t ino,
+        int mask);
+
     void write(
         fuse_req_t req,
         fuse_ino_t ino,

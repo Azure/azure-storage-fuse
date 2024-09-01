@@ -59,6 +59,33 @@ private:
     char *file_name;
 };
 
+struct access_rpc_task
+{
+    void set_ino(fuse_ino_t _ino)
+    {
+        ino = _ino;
+    }
+
+    void set_mask(int _mask)
+    {
+        mask = _mask;
+    }
+
+    fuse_ino_t get_ino() const
+    {
+        return ino;
+    }
+
+    int get_mask() const
+    {
+        return mask;
+    }
+
+private:
+    fuse_ino_t ino;
+    int mask;
+};
+
 /**
  * WRITE RPC task definition.
  */
@@ -853,6 +880,7 @@ struct api_task_info
     union
     {
         struct lookup_rpc_task lookup_task;
+        struct access_rpc_task access_task;
         struct write_rpc_task write_task;
         struct flush_rpc_task flush_task;
         struct getattr_rpc_task getattr_task;
@@ -1137,6 +1165,14 @@ public:
                      const char *name,
                      fuse_ino_t parent_ino);
     void run_lookup();
+
+    /*
+     * init/run methods for the ACCESS RPC.
+     */
+    void init_access(fuse_req *request,
+                     fuse_ino_t ino,
+                     int mask);
+    void run_access();
 
     /*
      * init/run methods for the WRITE RPC.
