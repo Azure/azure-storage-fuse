@@ -113,45 +113,60 @@ public:
     /**
      * Event handler method to be called when the RPC request is issued, i.e.,
      * when the libnfs async method is called.
+     * Call it just before the libnfs async method. If the async method fails
+     * to issue, call on_rpc_cancel() to undo what this does.
      *
-     * Note: The request size should be close estimate of the number of bytes
+     * Note: Callback can get called before the async method returns to the
+     *       caller.
      */
-    void on_rpc_issue(uint64_t _req_size)
+    void on_rpc_issue()
     {
-        // 40 is the size of NFS NULL RPC request.
-        assert(_req_size >= 40);
-        req_size = _req_size;
+        assert(stamp.issue == 0);
         stamp.issue = get_current_usecs();
         assert(stamp.issue >= stamp.create);
-
-        /*
-         * If outqueue is empty then libnfs will write the request over the
-         * socket in the issue context, so we set dispatch time same as issue
-         * time. Later if on_rpc_complete() is called with a higher dispatch
-         * time we override this.
-         */
-        stamp.dispatch = stamp.issue;
 
         assert(optype > 0 && optype <= FUSE_OPCODE_MAX);
         opstats[optype].pending++;
     }
 
     /**
+     * Call this to undo the effects of on_rpc_issue() if the async request
+     * fails to issue for some reason.
+     */
+    void on_rpc_cancel()
+    {
+        assert(stamp.issue != 0);
+        assert((int64_t) stamp.issue <= get_current_usecs());
+        assert(stamp.dispatch == 0);
+        assert(stamp.complete == 0);
+        stamp.issue = 0;
+
+        assert(optype > 0 && optype <= FUSE_OPCODE_MAX);
+        assert(opstats[optype].pending > 0);
+        opstats[optype].pending--;
+    }
+
+    /**
      * Event handler method to be called when the RPC completes, i.e., when
      * the libnfs callback is called.
+     * This MUST be called *only* from the libnfs callback, since only there
+     * the pdu is valid and we can call the rpc_pdu_get_*() methods.
      */
-    void on_rpc_complete(uint64_t _resp_size,
-                         uint64_t dispatch_usecs,
-                         nfsstat3 status)
+    void on_rpc_complete(struct rpc_pdu *pdu, nfsstat3 status)
     {
-        // 24 is the size of NFS NULL RPC response.
-        assert(_resp_size >= 24);
         assert(nfsstat3_to_errno(status) != -ERANGE);
 
-        resp_size = _resp_size;
+        req_size = rpc_pdu_get_req_size(pdu);
+        // 40 is the size of NFS NULL RPC request.
+        assert(req_size >= 40);
 
-        assert(stamp.dispatch == stamp.issue);
-        stamp.dispatch = std::max(stamp.dispatch, dispatch_usecs);
+        resp_size = rpc_pdu_get_resp_size(pdu);
+        // 24 is the size of NFS NULL RPC response.
+        assert(resp_size >= 24);
+
+        assert(stamp.dispatch == 0);
+        assert(stamp.issue != 0);
+        stamp.dispatch = rpc_pdu_get_dispatch_usecs(pdu);
         assert(stamp.dispatch >= stamp.issue);
 
         stamp.complete = get_current_usecs();

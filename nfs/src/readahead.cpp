@@ -125,10 +125,7 @@ static void readahead_callback (
      * Now that the request has completed, we can query libnfs for the
      * dispatch time.
      */
-    task->get_stats().on_rpc_complete(
-        rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
-        rpc_pdu_get_dispatch_usecs(rpc_get_pdu(rpc)),
-        NFS_STATUS(res));
+    task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
 
     /*
      * Offset and length for the actual read request for which this callback
@@ -255,6 +252,7 @@ static void readahead_callback (
                  * Note: It is okay to issue a read call directly here
                  *       as we are holding all the needed locks and refs.
                  */
+                partial_read_tsk->get_stats().on_rpc_issue();
                 if ((pdu = rpc_nfs3_read_task(
                         partial_read_tsk->get_rpc_ctx(),
                         readahead_callback,
@@ -262,6 +260,7 @@ static void readahead_callback (
                         new_size,
                         &new_args,
                         (void *) ctx)) == NULL) {
+                    partial_read_tsk->get_stats().on_rpc_cancel();
                     /*
                      * This call fails due to internal issues like OOM
                      * etc and not due to an actual error, hence retry.
@@ -271,9 +270,6 @@ static void readahead_callback (
                     ::sleep(5);
 
                     rpc_retry = true;
-                } else {
-                    partial_read_tsk->get_stats().on_rpc_issue(
-                        rpc_pdu_get_req_size(pdu));
                 }
             } while (rpc_retry);
 
@@ -489,6 +485,7 @@ int ra_state::issue_readaheads()
              * TODO: See if issuing a batch of reads over one connection
              *       before moving to the other connection helps.
              */
+            tsk->get_stats().on_rpc_issue();
             if ((pdu = rpc_nfs3_read_task(
                         tsk->get_rpc_ctx(),
                         readahead_callback,
@@ -496,6 +493,7 @@ int ra_state::issue_readaheads()
                         bc.length,
                         &args,
                         ctx)) == NULL) {
+                tsk->get_stats().on_rpc_cancel();
                 /*
                  * This call failed due to internal issues like OOM etc
                  * and not due to an actual RPC/NFS error, anyways pretend
@@ -518,8 +516,6 @@ int ra_state::issue_readaheads()
                 inode->decref();
 
                 continue;
-            } else {
-                tsk->get_stats().on_rpc_issue(rpc_pdu_get_req_size(pdu));
             }
 
             ra_issued++;

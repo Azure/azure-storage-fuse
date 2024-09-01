@@ -468,6 +468,11 @@ void nfs_client::lookup(fuse_req_t req, fuse_ino_t parent_ino, const char* name)
 
     tsk->init_lookup(req, name, parent_ino);
     tsk->run_lookup();
+
+    /*
+     * Note: Don't access tsk after this as it may get freed anytime after
+     *       the run_lookup() call. This applies to all APIs.
+     */
 }
 
 static void lookup_sync_callback(
@@ -500,10 +505,7 @@ static void lookup_sync_callback(
      * Now that the request has completed, we can query libnfs for the
      * dispatch time.
      */
-    task->get_stats().on_rpc_complete(
-        rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
-        rpc_pdu_get_dispatch_usecs(rpc_get_pdu(rpc)),
-        NFS_STATUS(res));
+    task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
 
     {
         std::unique_lock<std::mutex> lock(ctx->mutex);
@@ -570,15 +572,15 @@ try_again:
         rpc = nfs_get_rpc_context(nfs_context);
 
         rpc_retry = false;
+        task->get_stats().on_rpc_issue();
         if ((pdu = rpc_nfs3_lookup_task(rpc, lookup_sync_callback,
                                         &args, ctx)) == NULL) {
+            task->get_stats().on_rpc_cancel();
             /*
              * This call fails due to internal issues like OOM etc
              * and not due to an actual error, hence retry.
              */
             rpc_retry = true;
-        } else {
-            task->get_stats().on_rpc_issue(rpc_pdu_get_req_size(pdu));
         }
     } while (rpc_retry);
 
@@ -592,6 +594,7 @@ wait_more:
         if (!ctx->cv.wait_for(lock, std::chrono::seconds(60),
                               [&ctx] { return (ctx->callback_called == true); })) {
             if (rpc_cancel_pdu(rpc, pdu) == 0) {
+                task->get_stats().on_rpc_cancel();
                 AZLogWarn("Timed out waiting for lookup response, re-issuing "
                           "lookup!");
                 // This goto will cause the above lock to unlock.
@@ -1201,10 +1204,7 @@ static void getattr_sync_callback(
          * Now that the request has completed, we can query libnfs for the
          * dispatch time.
          */
-        task->get_stats().on_rpc_complete(
-            rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
-            rpc_pdu_get_dispatch_usecs(rpc_get_pdu(rpc)),
-            NFS_STATUS(res));
+        task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
     }
 
     {
@@ -1270,17 +1270,19 @@ try_again:
         rpc = nfs_get_rpc_context(nfs_context);
 
         rpc_retry = false;
+        if (task) {
+            task->get_stats().on_rpc_issue();
+        }
         if ((pdu = rpc_nfs3_getattr_task(rpc, getattr_sync_callback,
                                          &args, ctx)) == NULL) {
+            if (task) {
+                task->get_stats().on_rpc_cancel();
+            }
             /*
              * This call fails due to internal issues like OOM etc
              * and not due to an actual error, hence retry.
              */
             rpc_retry = true;
-        } else {
-            if (task) {
-                task->get_stats().on_rpc_issue(rpc_pdu_get_req_size(pdu));
-            }
         }
     } while (rpc_retry);
 
@@ -1294,6 +1296,9 @@ wait_more:
         if (!ctx->cv.wait_for(lock, std::chrono::seconds(60),
                               [&ctx] { return (ctx->callback_called == true); })) {
             if (rpc_cancel_pdu(rpc, pdu) == 0) {
+                if (task) {
+                    task->get_stats().on_rpc_cancel();
+                }
                 AZLogWarn("Timed out waiting for getattr response, re-issuing "
                           "getattr!");
                 // This goto will cause the above lock to unlock.
