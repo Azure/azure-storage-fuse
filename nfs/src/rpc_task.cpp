@@ -940,6 +940,12 @@ void rpc_task::run_lookup()
                       "after 5 secs!");
             ::sleep(5);
         } else {
+            /*
+             * TODO: pdu can be safely accessed only till the callback is
+             *       called (and it returns). After that libnfs will free the
+             *       pdu. If the following is called after the callback, it
+             *       will cause a crash.
+             */
             stats.on_rpc_issue(rpc_pdu_get_req_size(pdu));
         }
     } while (rpc_retry);

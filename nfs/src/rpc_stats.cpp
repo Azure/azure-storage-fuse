@@ -117,7 +117,7 @@ do { \
         str += "        " + std::to_string(ops.count) + \
                         " ops (" + std::to_string(pcent_ops) + "%)\n"; \
         if (ops.pending > 0) { \
-            str += "        " + std::to_string(ops.pending) + \
+            str += "        " + std::to_string((int64_t) ops.pending) + \
                             " pending\n"; \
         } \
         str += "        Avg bytes sent per op: " + \
