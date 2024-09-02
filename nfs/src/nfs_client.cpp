@@ -5,7 +5,6 @@
 #include "rpc_readdir.h"
 
 #define NFS_STATUS(r) ((r) ? (r)->status : NFS3ERR_SERVERFAULT)
-#define WRITE_IOV_CHANGE
 
 // The user should first init the client class before using it.
 bool nfs_client::init()
@@ -960,7 +959,6 @@ void nfs_client::read(
     tsk->run_read();
 }
 
-#ifdef WRITE_IOV_CHANGE
 /*
  * This function will be called only to retry the write requests that failed
  * with JUKEBOX error.
@@ -969,7 +967,7 @@ void nfs_client::read(
 void nfs_client::jukebox_flush(struct api_task_info *rpc_api)
 {
     /*
-     * For write task pvt has write_context, which has copy of byte_chunk.
+     * For write task pvt has write_iov_context, which has copy of byte_chunk vector.
      * To proceed it should be valid.
      */
     assert(rpc_api->pvt != nullptr);
@@ -999,57 +997,7 @@ void nfs_client::jukebox_flush(struct api_task_info *rpc_api)
     flush_task->resissue_write_iovec(ctx->get_bc_vec(), ctx->get_ino());
     delete ctx;
 }
-#else
-void nfs_client::jukebox_flush(struct api_task_info *rpc_api)
-{
-    /*
-     * For write task pvt has write_context, which has copy of byte_chunk.
-     * To proceed it should be valid.
-     */
-    assert(rpc_api->pvt != nullptr);
-    assert(rpc_api->optype == FUSE_FLUSH);
 
-    struct rpc_task *flush_task =
-        get_rpc_task_helper()->alloc_rpc_task(FUSE_FLUSH);
-    flush_task->init_flush(nullptr /* fuse_req */,
-                           rpc_api->flush_task.get_ino());
-    // Any new task should start fresh as a parent task.
-    assert(flush_task->rpc_api->parent_task == nullptr);
-
-    /*
-     * Jukebox retry must operate on the same write_context as the original
-     * RPC request.
-     */
-    flush_task->rpc_api->pvt = rpc_api->pvt;
-
-    [[maybe_unused]] struct write_context *ctx =
-        (struct write_context *) rpc_api->pvt;
-    assert(ctx->magic == WRITE_CONTEXT_MAGIC);
-
-    /*
-     * We currently only support buffered writes where the original fuse write
-     * task completes after copying data to the bytes_chunk_cache and later
-     * we sync the dirty membuf using one or more flush rpc_tasks whose sole
-     * job is to ensure they sync the part of the blob they are assigned.
-     * They don't need a parent_task which is usually the fuse task that needs
-     * to be completed once the underlying tasks complete.
-     */
-    assert(rpc_api->parent_task == nullptr);
-
-    /*
-     * The bytes_chunk held by this task must have its inuse count
-     * bumped as the get() call made to obtain this chunk initially would
-     * have set it.
-     * Additionally, it must be pointing to ctx.bc.
-     */
-    assert(rpc_api->bc != nullptr);
-    assert(rpc_api->bc == &ctx->get_bytes_chunk());
-    assert(rpc_api->bc->pvt < rpc_api->bc->get_membuf()->length);
-    assert(rpc_api->bc->get_membuf()->is_inuse());
-
-    flush_task->sync_membuf(*(rpc_api->bc), rpc_api->flush_task.get_ino());
-}
-#endif
 /*
  * This function will be called only to retry the read requests that failed
  * with JUKEBOX error.

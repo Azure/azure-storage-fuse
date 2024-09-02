@@ -240,11 +240,11 @@ struct write_iov_context
     }
 
     /**
-     * Note: We make a copy of bc. This will grab a fresh reference on the
-     *       membuf we can safely write to it as long as we have the
-     *       write_context.
+     * Note: We make a copy of bc_vec. This will grab a fresh reference on the
+     *       membuf's we can safely write to it as long as we have the
+     *       write_iov_context.
      *       A fuse write can take many RPC writes to complete, due to partial
-     *       writes or jukebox retries. We save the write_context inside
+     *       writes or jukebox retries. We save the write_iov_context inside
      *       rpc_task.rpc_api.pvt do that it's accessible to all the child
      *       tasks working to write the data corresponding to fuse request.
      */
@@ -277,77 +277,6 @@ private:
     fuse_ino_t ino;
     off_t offset;
     size_t length;
-};
-
-/**
- * Write callback context, used by following calls:
- * - Write
- * - Flush
- * - Fsync
- */
-struct write_context
-{
-    const uint32_t magic = WRITE_CONTEXT_MAGIC;
-
-    struct rpc_task *get_task() const
-    {
-        return task;
-    }
-
-    void set_task(struct rpc_task *_task)
-    {
-        task = _task;
-    }
-
-    struct bytes_chunk& get_bytes_chunk()
-    {
-        return bc;
-    }
-
-    fuse_ino_t get_ino() const
-    {
-        return ino;
-    }
-
-    /**
-     * Release any resources used up by this task.
-     */
-    void release()
-    {
-    }
-
-    /**
-     * Note: We make a copy of bc. This will grab a fresh reference on the
-     *       membuf we can safely write to it as long as we have the
-     *       write_context.
-     *       A fuse write can take many RPC writes to complete, due to partial
-     *       writes or jukebox retries. We save the write_context inside
-     *       rpc_task.rpc_api.pvt do that it's accessible to all the child
-     *       tasks working to write the data corresponding to fuse request.
-     */
-    write_context(struct bytes_chunk& _bc,
-                  rpc_task *_task,
-                  fuse_ino_t _ino) :
-        bc(_bc),
-        task(_task),
-        ino(_ino)
-    {
-    }
-
-private:
-    /*
-     * Note: We always write the full underlying membuf and not just the
-     *       portion represented by bc, but since writes can complete
-     *       partially, at any time the following define the data to be
-     *       written:
-     *       Offset: bc.offset + bc.pvt
-     *       Length: bc.length - bc.pvt
-     *       Address: bc.get_buffer() + bc.pvt
-     *       task is FUSE_FLUSH task and does not define offset and length.
-     */
-    struct bytes_chunk bc;
-    struct rpc_task *task = nullptr;
-    fuse_ino_t ino;
 };
 
 /**
@@ -1054,7 +983,7 @@ struct api_task_info
     /*
      * User can use this to store anything that they want to be available with
      * the task.
-     * Writes use it to store a pointer to write_context, so that the write
+     * Writes use it to store a pointer to write_iov_context, so that the write
      * context (offset, length and address to write to) is available across
      * partial writes, jukebox retries, etc.
      */
