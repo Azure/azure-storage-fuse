@@ -2960,17 +2960,6 @@ void rpc_task::fetch_readdir_entries_from_server()
 
         args.count = nfs_get_readdir_maxcount(get_nfs_context());
 
-        /*
-         * XXX
-         * Remove this code after extensive validation with large directories
-         * enumeration using READDIR.
-         */
-        if (args.count > 131072) {
-            AZLogWarn("*** Reducing READDIR count ({} -> {}) ***",
-                      args.count, 131072);
-            args.count = 131072;
-        }
-
         rpc_retry = false;
         stats.on_rpc_issue();
         if ((pdu = rpc_nfs3_readdir_task(get_rpc_ctx(),
