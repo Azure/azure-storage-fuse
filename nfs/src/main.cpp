@@ -6,8 +6,6 @@
 #include "yaml-cpp/yaml.h"
 
 #include <sys/sysmacros.h>
-#include <sys/time.h>
-#include <sys/resource.h>
 #include <signal.h>
 #include <thread>
 
@@ -309,40 +307,6 @@ void aznfsc_cfg::set_defaults_and_sanitize()
     AZLogDebug("container = {}", container);
     AZLogDebug("cloud_suffix = {}", cloud_suffix);
     AZLogDebug("===== config end =====");
-}
-
-/**
- * Call this at the very beginning to force stack size for all threads.
- */
-static void set_stack_size(size_t stack_bytes)
-{
-    struct rlimit rl;
-
-    if (::getrlimit(RLIMIT_STACK, &rl) != 0) {
-        AZLogWarn("set_stack_size: Failed to get current stack size, "
-                  "force setting stack size to {} bytes: {}",
-                  stack_bytes, ::strerror(errno));
-        rl.rlim_cur = stack_bytes;
-        rl.rlim_max = stack_bytes;
-    } else {
-        if (rl.rlim_cur < stack_bytes) {
-            AZLogInfo("set_stack_size: Increasing stack size {} -> {}",
-                      rl.rlim_cur, stack_bytes);
-            rl.rlim_cur = stack_bytes;
-            rl.rlim_max = std::max(rl.rlim_max, stack_bytes);
-        } else {
-            AZLogInfo("set_stack_size: Current stack size {} >= "
-                      "requested {}, skipping!",
-                      rl.rlim_cur, stack_bytes);
-            return;
-        }
-    }
-
-    if(::setrlimit(RLIMIT_STACK, &rl) != 0) {
-        AZLogWarn("set_stack_size: Failed to set stack size to {}",
-                  stack_bytes, ::strerror(errno));
-        return;
-    }
 }
 
 /**
@@ -1336,12 +1300,6 @@ int main(int argc, char *argv[])
 {
     // Initialize logger first thing.
     init_log();
-
-    /*
-     * Default 8MB stack size is not sufficient for handling readdir size
-     * greater than 1MB/
-     */
-    set_stack_size(16UL * 1024 * 1024);
 
     AZLogInfo("aznfsclient version {}.{}.{}",
               AZNFSCLIENT_VERSION_MAJOR,

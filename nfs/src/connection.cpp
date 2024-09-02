@@ -136,9 +136,12 @@ bool nfs_connection::open()
      * send/recv data over the socket. Hence we must initialize and start the
      * service thread.
      *
-     * TODO: See if we should take care of the locking or should we use this multithreading model.
+     * Note: We set the stack size to 16MB as the default 8MB is not sufficient
+     *       for very large readdir/readdirplus responses as the zdr decoder
+     *       is recursive.
+     * TODO: See if we need to making this a config option.
      */
-    if (nfs_mt_service_thread_start(nfs_context)) {
+    if (nfs_mt_service_thread_start_ss(nfs_context, 16ULL * 1024 * 1024)) {
         AZLogError("[{}] Failed to start libnfs service thread.",
                    (void *) nfs_context);
         goto unmount_and_destroy_context;
