@@ -522,8 +522,7 @@ static void write_iov_callback(
      * dispatch time.
      */
     task->get_stats().on_rpc_complete(
-        rpc_pdu_get_resp_size(rpc_get_pdu(rpc)),
-        rpc_pdu_get_dispatch_usecs(rpc_get_pdu(rpc)),
+        rpc_get_pdu(rpc),
         NFS_STATUS(res));
 
     // Success case.
@@ -659,6 +658,7 @@ void rpc_task::issue_write_rpc(std::vector<bytes_chunk> &bc_vec,
 {
     WRITE3args args;
     struct rpc_pdu *pdu;
+    bool rpc_retry = false;
 
     assert (count > 0 && count <= 1000);
     assert(bc_vec.size() > 0);
@@ -676,11 +676,14 @@ void rpc_task::issue_write_rpc(std::vector<bytes_chunk> &bc_vec,
             new write_iov_context(bc_vec, this, ino, offset, length);
     rpc_api->pvt = (void *) cb_context;
 
-    bool rpc_retry = false;
     do {
+        rpc_retry = false;
+        stats.on_rpc_issue();
+
         if ((pdu = rpc_nfs3_writev_task(get_rpc_ctx(),
                                  write_iov_callback, &args, iov, count,
                                  cb_context)) == NULL) {
+            stats.on_rpc_cancel();
             /*
              * Most common reason for this is memory allocation failure,
              * hence wait for some time before retrying. Also block the
@@ -693,9 +696,6 @@ void rpc_task::issue_write_rpc(std::vector<bytes_chunk> &bc_vec,
             AZLogWarn("rpc_nfs3_write_task failed to issue, retrying "
                         "after 5 secs!");
             ::sleep(5);
-        } else {
-            get_stats().on_rpc_issue(
-                    rpc_pdu_get_req_size(pdu));
         }
     } while (rpc_retry);
 }
