@@ -14,7 +14,7 @@ Blobfuse2 is stable, and is ***supported by Microsoft*** provided that it is use
 
 ## Limitations in Block Cache
 - Concurrent write operations on the same file using multiple handles is not checked for data consistency and may lead to incorrect data being written.
-- Read operation on a file which is being written parallely via another handle will not return updated data.
+- Read operation on a file which is being written parallelly via another handle will not return updated data.
 - Copying sparse files using `cp` utility to mounted path must always use `--sparse=never` parameter. This flag ensures data integrity when working with sparse files. For example, `cp --sparse=never src dest`.
 - In write operations, data written is uploaded to Azure Storage only on close, sync or flush calls.
 - User applications must check the returned code (success/failure) for filesystem calls like read, write, close, flush, etc. If error is returned, the application must abort their respective operation.
