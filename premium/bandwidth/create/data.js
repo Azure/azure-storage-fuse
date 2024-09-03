@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1725371944379,
+  "lastUpdate": 1725376924855,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -2931,6 +2931,45 @@ window.BENCHMARK_DATA = {
           {
             "name": "create_1l_files_in_20_threads",
             "value": 0.119140625,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "64532198+vibhansa-msft@users.noreply.github.com",
+            "name": "Vikas Bhansali",
+            "username": "vibhansa-msft"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "fe4a91bfd143f61fa11d91137d0ccc2b68c03b53",
+          "message": "Update types.go",
+          "timestamp": "2024-09-03T18:22:17+05:30",
+          "tree_id": "58f29d3f7b10d3468d20d0381ffd792cc889064c",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/fe4a91bfd143f61fa11d91137d0ccc2b68c03b53"
+        },
+        "date": 1725376924594,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "create_1000_files_in_10_threads",
+            "value": 118.9765625,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "create_1000_files_in_100_threads",
+            "value": 130.94140625,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "create_1l_files_in_20_threads",
+            "value": 0.109375,
             "unit": "MiB/s"
           }
         ]
