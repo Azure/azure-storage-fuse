@@ -164,6 +164,20 @@ void rpc_task::init_create_file(fuse_req *request,
     fh_hash = get_client()->get_nfs_inode_from_ino(parent_ino)->get_crc();
 }
 
+void rpc_task::init_mknod(fuse_req *request,
+                          fuse_ino_t parent_ino,
+                          const char *name,
+                          mode_t mode)
+{
+    assert(get_op_type() == FUSE_MKNOD);
+    set_fuse_req(request);
+    rpc_api->mknod_task.set_parent_ino(parent_ino);
+    rpc_api->mknod_task.set_file_name(name);
+    rpc_api->mknod_task.set_mode(mode);
+
+    fh_hash = get_client()->get_nfs_inode_from_ino(parent_ino)->get_crc();
+}
+
 void rpc_task::init_mkdir(fuse_req *request,
                           fuse_ino_t parent_ino,
                           const char *name,
@@ -704,6 +718,39 @@ static void setattr_callback(
          * experience.
          */
         task->reply_attr(&st, inode->get_actimeo());
+    } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
+        task->get_client()->jukebox_retry(task);
+    } else {
+        task->reply_error(status);
+    }
+}
+
+void mknod_callback(
+    struct rpc_context *rpc,
+    int rpc_status,
+    void *data,
+    void *private_data)
+{
+    rpc_task *task = (rpc_task*) private_data;
+    auto res = (CREATE3res*)data;
+    const int status = task->status(rpc_status, NFS_STATUS(res));
+
+    /*
+     * Now that the request has completed, we can query libnfs for the
+     * dispatch time.
+     */
+    task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
+
+    if (status == 0) {
+        assert(
+            res->CREATE3res_u.resok.obj.handle_follows &&
+            res->CREATE3res_u.resok.obj_attributes.attributes_follow);
+
+        task->get_client()->reply_entry(
+            task,
+            &res->CREATE3res_u.resok.obj.post_op_fh3_u.handle,
+            &res->CREATE3res_u.resok.obj_attributes.post_op_attr_u.attributes,
+            nullptr);
     } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
         task->get_client()->jukebox_retry(task);
     } else {
@@ -1384,6 +1431,46 @@ void rpc_task::run_create_file()
         rpc_retry = false;
         stats.on_rpc_issue();
         if ((pdu = rpc_nfs3_create_task(get_rpc_ctx(), createfile_callback, &args,
+                                 this)) == NULL) {
+            stats.on_rpc_cancel();
+            /*
+             * Most common reason for this is memory allocation failure,
+             * hence wait for some time before retrying. Also block the
+             * current thread as we really want to slow down things.
+             *
+             * TODO: For soft mount should we fail this?
+             */
+            rpc_retry = true;
+
+            AZLogWarn("rpc_nfs3_create_task failed to issue, retrying "
+                      "after 5 secs!");
+            ::sleep(5);
+        }
+    }  while (rpc_retry);
+}
+
+void rpc_task::run_mknod()
+{
+    bool rpc_retry;
+    auto parent_ino = rpc_api->mknod_task.get_parent_ino();
+    rpc_pdu *pdu = nullptr;
+
+    // mknod is supported only for regular file.
+    assert(S_ISREG(rpc_api->mknod_task.get_mode()));
+
+    do {
+        CREATE3args args;
+        ::memset(&args, 0, sizeof(args));
+
+        args.where.dir = get_client()->get_nfs_inode_from_ino(parent_ino)->get_fh();
+        args.where.name = (char*)rpc_api->mknod_task.get_file_name();
+        args.how.createhow3_u.obj_attributes.mode.set_it = 1;
+        args.how.createhow3_u.obj_attributes.mode.set_mode3_u.mode =
+            rpc_api->mknod_task.get_mode();
+
+        rpc_retry = false;
+        stats.on_rpc_issue();
+        if ((pdu = rpc_nfs3_create_task(get_rpc_ctx(), mknod_callback, &args,
                                  this)) == NULL) {
             stats.on_rpc_cancel();
             /*

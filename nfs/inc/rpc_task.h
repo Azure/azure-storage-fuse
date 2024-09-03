@@ -412,7 +412,49 @@ private:
     mode_t mode;
     struct fuse_file_info file;
     struct fuse_file_info *file_ptr;
-    bool is_used;
+};
+
+struct mknod_rpc_task
+{
+    fuse_ino_t get_parent_ino() const
+    {
+        return parent_ino;
+    }
+
+    const char *get_file_name() const
+    {
+        return file_name;
+    }
+
+    mode_t get_mode() const
+    {
+        return mode;
+    }
+
+    void set_parent_ino(fuse_ino_t parent)
+    {
+        parent_ino = parent;
+    }
+
+    void set_file_name(const char *name)
+    {
+        file_name = ::strdup(name);
+    }
+
+    void set_mode(mode_t mode)
+    {
+        this->mode = mode;
+    }
+
+    void release()
+    {
+        ::free(file_name);
+    }
+
+private:
+    fuse_ino_t parent_ino;
+    char *file_name;
+    mode_t mode;
 };
 
 struct mkdir_rpc_task
@@ -456,7 +498,6 @@ private:
     fuse_ino_t parent_ino;
     char *dir_name;
     mode_t mode;
-    bool is_used;
 };
 
 struct unlink_rpc_task
@@ -886,6 +927,7 @@ struct api_task_info
         struct getattr_rpc_task getattr_task;
         struct setattr_rpc_task setattr_task;
         struct create_file_rpc_task create_task;
+        struct mknod_rpc_task mknod_task;
         struct mkdir_rpc_task mkdir_task;
         struct unlink_rpc_task unlink_task;
         struct rmdir_rpc_task rmdir_task;
@@ -907,6 +949,8 @@ struct api_task_info
                 return lookup_task.get_parent_ino();
             case FUSE_CREATE:
                 return create_task.get_parent_ino();
+            case FUSE_MKNOD:
+                return mknod_task.get_parent_ino();
             case FUSE_MKDIR:
                 return mkdir_task.get_parent_ino();
             case FUSE_SYMLINK:
@@ -932,6 +976,8 @@ struct api_task_info
                 return lookup_task.get_file_name();
             case FUSE_CREATE:
                 return create_task.get_file_name();
+            case FUSE_MKNOD:
+                return mknod_task.get_file_name();
             case FUSE_MKDIR:
                 return mkdir_task.get_dir_name();
             case FUSE_SYMLINK:
@@ -966,6 +1012,9 @@ struct api_task_info
                 break;
             case FUSE_CREATE:
                 create_task.release();
+                break;
+            case FUSE_MKNOD:
+                mknod_task.release();
                 break;
             case FUSE_MKDIR:
                 mkdir_task.release();
@@ -1217,6 +1266,15 @@ public:
                           mode_t mode,
                           struct fuse_file_info *file);
     void run_create_file();
+
+    /*
+     * init/run methods for the MKNOD RPC.
+     */
+    void init_mknod(fuse_req *request,
+                    fuse_ino_t parent_ino,
+                    const char *name,
+                    mode_t mode);
+    void run_mknod();
 
     /*
      * init/run methods for the MKDIR RPC.

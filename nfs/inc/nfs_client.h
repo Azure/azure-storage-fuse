@@ -351,6 +351,12 @@ public:
         mode_t mode,
         struct fuse_file_info* file);
 
+    void mknod(
+        fuse_req_t req,
+        fuse_ino_t parent_ino,
+        const char* name,
+        mode_t mode);
+
     void mkdir(
         fuse_req_t req,
         fuse_ino_t parent_ino,
