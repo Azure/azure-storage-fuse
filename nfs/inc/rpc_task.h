@@ -309,9 +309,10 @@ struct setattr_rpc_task
         }
     }
 
-    void set_attribute_and_mask(const struct stat *attr, int mask)
+    void set_attribute_and_mask(const struct stat *_attr, int mask)
     {
-        attribute = attr;
+        // TODO: Should we only copy the required fields?
+        attr = *_attr;
         /*
          * We don't make use of FUSE_SET_ATTR_CTIME, ignore it.
          */
@@ -320,7 +321,7 @@ struct setattr_rpc_task
 
     const struct stat *get_attr() const
     {
-        return attribute;
+        return &attr;
     }
 
     int get_attr_flags_to_set() const
@@ -348,10 +349,8 @@ private:
 
     /*
      * Attributes value to be set to.
-     * Note: This is only valid till the issue path call returns.
-     *       DO NOT ACCESS THIS IN THE COMPLETION PATH.
      */
-    const struct stat *attribute;
+    struct stat attr;
 
     // Valid attribute mask to be set.
     int to_set;

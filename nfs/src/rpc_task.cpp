@@ -1643,19 +1643,10 @@ void rpc_task::run_setattr()
         SETATTR3args args;
         ::memset(&args, 0, sizeof(args));
 
-        ::memset(&args, 0, sizeof(args));
         args.object = inode->get_fh();
-
-        if (valid & FUSE_SET_ATTR_SIZE) {
-            AZLogDebug("Setting size to {}", attr->st_size);
-
-            args.new_attributes.size.set_it = 1;
-            args.new_attributes.size.set_size3_u.size = attr->st_size;
-        }
 
         if (valid & FUSE_SET_ATTR_MODE) {
             AZLogDebug("Setting mode to 0{:o}", attr->st_mode);
-
             args.new_attributes.mode.set_it = 1;
             args.new_attributes.mode.set_mode3_u.mode = attr->st_mode;
         }
@@ -1668,9 +1659,14 @@ void rpc_task::run_setattr()
 
         if (valid & FUSE_SET_ATTR_GID) {
             AZLogDebug("Setting gid to {}", attr->st_gid);
-
             args.new_attributes.gid.set_it = 1;
             args.new_attributes.gid.set_gid3_u.gid = attr->st_gid;
+        }
+
+        if (valid & FUSE_SET_ATTR_SIZE) {
+            AZLogDebug("Setting size to {}", attr->st_size);
+            args.new_attributes.size.set_it = 1;
+            args.new_attributes.size.set_size3_u.size = attr->st_size;
         }
 
         if (valid & FUSE_SET_ATTR_ATIME) {
