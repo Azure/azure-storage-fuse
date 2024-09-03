@@ -302,13 +302,19 @@ public:
      * This nolock version does not hold the inode_map_lock so the caller
      * must hold the lock before calling this. Usually you will call one of
      * the other variants which hold the lock.
+     *
+     * Note: Call put_nfs_inode()/put_nfs_inode_nolock() only when you are
+     *       sure dropping dropcnt refs will cause the lookupcnt to become 0.
+     *       It's possible that before put_nfs_inode() acquires inode_map_lock,
+     *       someone may grab a fresh ref on the inode, but that's fine as
+     *       put_nfs_inode_nolock() handles that. Since it expects caller to
+     *       only call it when the inode lookupcnt is going to be 0, it logs
+     *       a "Inode no longer forgotten..." warning log in that case.
      */
     void put_nfs_inode_nolock(struct nfs_inode *inode, size_t dropcnt);
 
     void put_nfs_inode(struct nfs_inode *inode, size_t dropcnt)
     {
-        AZLogDebug("[{}] put_nfs_inode(dropcnt={}) called",
-                   inode->get_fuse_ino(), dropcnt);
         /*
          * We need to hold the inode_map_lock while we check the inode for
          * eligibility to remove (and finally remove) from the inode_map.

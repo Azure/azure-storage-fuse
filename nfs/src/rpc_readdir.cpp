@@ -213,8 +213,18 @@ bool readdirectory_cache::remove(cookie3 cookie)
                this->inode->get_fuse_ino(),
                inode->get_fuse_ino());
 
-    // Drop the extra ref we held above.
-    client->put_nfs_inode(inode, 1 /* dropcnt */);
+    /*
+     * Drop the extra ref we held above.
+     * Note that we must call put_nfs_inode_nolock() only when we are sure
+     * this is the last ref.
+     */
+    {
+        std::unique_lock<std::shared_mutex> lock1(client->get_inode_map_lock());
+        assert(inode->lookupcnt > 0);
+        if (--inode->lookupcnt == 0) {
+            client->put_nfs_inode_nolock(inode, 0 /* dropcnt */);
+        }
+    }
 
     return true;
 }
@@ -300,10 +310,17 @@ void readdirectory_cache::clear()
                    this->inode->get_fuse_ino(),
                    tofree_vec.size());
 
+        /*
+         * Drop the extra ref we held above, for all inodes in tofree_vec.
+         * Note that we must call put_nfs_inode_nolock() only when we are sure
+         * it is the last ref on the inode.
+         */
         for (struct nfs_inode *inode : tofree_vec) {
             assert(inode->magic == NFS_INODE_MAGIC);
-            // Drop the extra ref we held above.
-            client->put_nfs_inode_nolock(inode, 1 /* dropcnt */);
+            assert(inode->lookupcnt > 0);
+            if (--inode->lookupcnt == 0) {
+                client->put_nfs_inode_nolock(inode, 0 /* dropcnt */);
+            }
         }
     }
 }

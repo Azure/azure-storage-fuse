@@ -388,6 +388,9 @@ struct nfs_inode *nfs_client::get_nfs_inode(const nfs_fh3 *fh,
 void nfs_client::put_nfs_inode_nolock(struct nfs_inode *inode,
                                       size_t dropcnt)
 {
+    AZLogDebug("[{}] put_nfs_inode_nolock(dropcnt={}) called, lookupcnt={}",
+               inode->get_fuse_ino(), dropcnt, inode->lookupcnt.load());
+
     assert(inode->magic == NFS_INODE_MAGIC);
     assert(inode->lookupcnt >= dropcnt);
 
