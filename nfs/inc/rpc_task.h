@@ -441,9 +441,9 @@ struct mknod_rpc_task
         file_name = ::strdup(name);
     }
 
-    void set_mode(mode_t mode)
+    void set_mode(mode_t _mode)
     {
-        this->mode = mode;
+        mode = _mode;
     }
 
     void release()
