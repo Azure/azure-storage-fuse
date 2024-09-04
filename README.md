@@ -14,10 +14,15 @@ Blobfuse2 is stable, and is ***supported by Microsoft*** provided that it is use
 
 ## Limitations in Block Cache
 - Concurrent write operations on the same file using multiple handles is not checked for data consistency and may lead to incorrect data being written.
-- Read operation on a file which is being written parallelly via another handle will not return updated data.
-- Copying sparse files using `cp` utility to mounted path must always use `--sparse=never` parameter. This flag ensures data integrity when working with sparse files. For example, `cp --sparse=never src dest`.
-- In write operations, data written is uploaded to Azure Storage only on close, sync or flush calls.
+- A read operation on a file that is being written to simultaneously by another process or handle will not return the most up-to-date data.
+- When copying files with trailing null bytes using `cp` utility to a Blobfuse2 mounted path, use `--sparse=never` parameter to avoid data being trimmed. For example, `cp --sparse=never src dest`.
+- In write operations, data written is persisted (or committed) to the Azure Storage container only when close, sync or flush operations are called by user application.
+- Files cannot be modified if they were originally created with block-size different than the one configured.
+
+## Recommendations in Block Cache
 - User applications must check the returned code (success/failure) for filesystem calls like read, write, close, flush, etc. If error is returned, the application must abort their respective operation.
+- User applications must ensure that there is only one writer at a time for a given file.
+- When dealing with very large files (in TiB), the block-size must be configured accordingly. Azure Storage supports only [50,000 blocks](https://learn.microsoft.com/en-us/rest/api/storageservices/put-block-list?tabs=microsoft-entra-id#remarks) per blob.
   
 ## Blobfuse2 Benchmarks
 [This](https://azure.github.io/azure-storage-fuse/) page lists various benchmarking results for HNS and FNS Storage account.
