@@ -196,6 +196,19 @@ struct nfs_inode
 
 #ifdef ENABLE_PARANOID
     /*
+     * Has this inode been returned to fuse?
+     * It'll be set to true only when we are able to successfully call one of
+     * the following:
+     * - fuse_reply_create()
+     * - fuse_reply_entry()
+     * - fuse_reply_buf() (for readdirplus and not for readdir)
+     *
+     * Once returned_to_fuse is set, fuse must call forget on the inode and the
+     * inode can only be freed if forget_seen is set.
+     */
+    bool returned_to_fuse = false;
+
+    /*
      * Has fuse called forget for this inode?
      * Note that fuse may call forget but if the inode is in use (lookupcnt
      * or dircachecnt non zero) then we don't free it. Use this for debugging

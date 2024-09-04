@@ -3076,6 +3076,15 @@ void rpc_task::send_readdir_response(
              */
             it->nfs_inode->dircachecnt--;
 
+#ifdef ENABLE_PARANOID
+            /*
+             * We are going to return this inode to fuse.
+             * Set forget_seen (in case this is not a fresh inode but being
+             * recycled from inode_map) and clear returned_to_fuse.
+             */
+            it->nfs_inode->forget_seen = false;
+            it->nfs_inode->returned_to_fuse = true;
+#endif
             // We don't need the memset as we are setting all members.
             //memset(&fuseentry, 0, sizeof(fuseentry));
             fuseentry.attr = it->attributes;
@@ -3141,7 +3150,7 @@ void rpc_task::send_readdir_response(
              * except "." and "..", to be incremented. Make sure get_nfs_inode()
              * has duly taken the refs.
              *
-             * TODO: If fuse_reply_buf() below fails we must drop these refcnts.
+             * If fuse_reply_buf() below fails we drop these refcnts below.
              */
             if (!it->is_dot_or_dotdot()) {
                 assert(it->nfs_inode->lookupcnt > 0);
@@ -3153,6 +3162,18 @@ void rpc_task::send_readdir_response(
 
     if (fuse_reply_buf(get_fuse_req(), buf1, size - rem) != 0) {
         AZLogError("fuse_reply_buf failed!");
+
+        if (readdirplus) {
+            for (const auto& it : readdirentries) {
+                AZLogDebug("[{}] Dropping lookupcnt, now {}",
+                           it->nfs_inode->get_fuse_ino(),
+                           it->nfs_inode->lookupcnt.load());
+#ifdef ENABLE_PARANOID
+                it->nfs_inode->returned_to_fuse = false;
+#endif
+                it->nfs_inode->decref();
+            }
+        }
     }
 
     free(buf1);

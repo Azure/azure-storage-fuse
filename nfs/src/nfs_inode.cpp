@@ -146,7 +146,9 @@ void nfs_inode::decref(size_t cnt, bool from_forget)
 
 #ifdef ENABLE_PARANOID
     if (from_forget) {
-        // Fuse should not call forget more than once.
+        /*
+         * Fuse should not call forget more than once for an inode.
+         */
         assert(!forget_seen);
         forget_seen = true;
     }
@@ -170,12 +172,10 @@ try_again:
          * client where we can purge the directory cache by writing to
          * /proc/sys/vm/drop_caches.
          */
-        if (from_forget) {
-            if (is_dir()) {
-                purge_dircache();
-            } else if (is_regfile()) {
-                purge_filecache();
-            }
+        if (is_dir()) {
+            purge_dircache();
+        } else if (is_regfile()) {
+            purge_filecache();
         }
 
         /*
@@ -184,9 +184,22 @@ try_again:
          * dropped by put_nfs_inode() call below, with inode_map_lock held.
          */
         lookupcnt += (cnt - 1);
+        assert(lookupcnt >= cnt);
 
-        AZLogDebug("[{}] lookupcnt dropping({}) to 0, forgetting inode",
-                   ino, cnt);
+        /*
+         * It's possible that while we were purging the dir cache above,
+         * some other thread got a new ref on this inode (maybe it enumerated
+         * its parent dir). In that case put_nfs_inode() will not free the
+         * inode.
+         */
+        if (lookupcnt == cnt) {
+            AZLogDebug("[{}] lookupcnt dropping({}) to 0, forgetting inode",
+                       ino, cnt);
+        } else {
+            AZLogWarn("[{}] lookupcnt dropping({}) to {} "
+                      "(some other thread got a fresh ref)",
+                      ino, cnt, lookupcnt - cnt);
+        }
 
         /*
          * This FORGET would drop the lookupcnt to 0, fuse vfs should not send

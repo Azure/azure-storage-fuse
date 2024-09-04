@@ -1438,6 +1438,19 @@ public:
             inode = client->get_nfs_inode_from_ino(e->ino);
             assert(inode->lookupcnt >= 1);
             assert(e->generation == inode->get_generation());
+
+#ifdef ENABLE_PARANOID
+            /*
+             * This might be an existing inode from inode_map which we didn't
+             * free earlier as it was in use when fuse called forget and then
+             * some other thread looked up the inode. It could be a fresh inode
+             * too, in which case forget_seen will already be false and it's
+             * ok to clear it again.
+             * Clear forget_seen and set returned_to_fuse.
+             */
+            inode->forget_seen = false;
+            inode->returned_to_fuse = true;
+#endif
         }
 
         assert((int64_t) e->generation <= get_current_usecs());
@@ -1445,10 +1458,13 @@ public:
         if (fuse_reply_entry(get_fuse_req(), e) < 0) {
             if (inode) {
                 /*
-                 * Not able to convey to fuse should invoke FORGET
-                 * workflow.
+                 * Not able to convey to fuse, reset returned_to_fuse and
+                 * drop the lookupcnt we are holding.
                  */
-                inode->decref(1, true /* from_forget */);
+#ifdef ENABLE_PARANOID
+                inode->returned_to_fuse = false;
+#endif
+                inode->decref();
             }
         }
 
@@ -1474,12 +1490,23 @@ public:
         assert(entry->generation == inode->get_generation());
         assert((int64_t) entry->generation <= get_current_usecs());
 
+#ifdef ENABLE_PARANOID
+        /*
+         * See comment in reply_entry().
+         */
+        inode->forget_seen = false;
+        inode->returned_to_fuse = true;
+#endif
+
         if (fuse_reply_create(get_fuse_req(), entry, file) < 0) {
             /*
-             * Not able to convey to fuse should invoke FORGET
-             * workflow.
+             * Not able to convey to fuse, reset returned_to_fuse and
+             * drop the lookupcnt we are holding.
              */
-            inode->decref(1, true /* from_forget */);
+#ifdef ENABLE_PARANOID
+            inode->returned_to_fuse = false;
+#endif
+            inode->decref();
         } else {
             /*
              * Successful creat(), increase opencnt.

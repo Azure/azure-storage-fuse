@@ -414,6 +414,16 @@ void nfs_client::put_nfs_inode_nolock(struct nfs_inode *inode,
     }
 
     /*
+     * This inode is going to be freed, either we never conveyed the inode
+     * to fuse (we couldn't fit the directory entry in readdirplus buffer
+     * or we failed to call fuse_reply_entry(), fuse_reply_create() or
+     * fuse_reply_buf()), or fuse called forget for the inode.
+     */
+#ifdef ENABLE_PARANOID
+    assert(!inode->returned_to_fuse || inode->forget_seen);
+#endif
+
+    /*
      * Directory inodes cannot be deleted while the directory cache is not
      * purged. Note that we purge directory cache from decref() when the
      * refcnt reaches 0, i.e., fuse is no longer referencing the directory.
