@@ -3093,6 +3093,12 @@ void rpc_task::send_readdir_response(
             fuseentry.attr_timeout = it->nfs_inode->get_actimeo();
             fuseentry.entry_timeout = it->nfs_inode->get_actimeo();
 
+            AZLogDebug("[{}] <{}> Returning ino {} to fuse (filename {})",
+                       parent_ino,
+                       rpc_task::fuse_opcode_to_string(rpc_api->optype),
+                       fuseentry.ino,
+                       it->name);
+
             /*
              * Readdirplus returns inode for every file, so it's the
              * equivalent of lookup (and fuse may skip lookup if this file

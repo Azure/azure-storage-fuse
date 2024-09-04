@@ -175,11 +175,12 @@ bool readdirectory_cache::remove(cookie3 cookie)
         assert(inode->dircachecnt > 0);
 
         AZLogDebug("[{}] Removing {} fuse ino {}, cookie {}, from "
-                   "readdir cache (dircachecnt {})",
+                   "readdir cache (lookupcnt={}, dircachecnt={})",
                    this->inode->get_fuse_ino(),
                    dirent->name,
                    inode->get_fuse_ino(),
                    dirent->cookie,
+                   inode->lookupcnt.load(),
                    inode->dircachecnt.load());
 
         /*

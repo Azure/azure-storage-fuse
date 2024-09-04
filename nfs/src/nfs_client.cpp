@@ -1098,6 +1098,12 @@ void nfs_client::reply_entry(
             entry.entry_timeout = 0;
         }
 
+        AZLogDebug("[{}] <{}> Returning ino {} to fuse (filename {})",
+                   parent_ino,
+                   rpc_task::fuse_opcode_to_string(ctx->rpc_api->optype),
+                   inode->get_fuse_ino(),
+                   ctx->rpc_api->get_file_name());
+
         parent_inode->dnlc_add(ctx->rpc_api->get_file_name(),
                                inode->get_fuse_ino());
 
