@@ -610,10 +610,19 @@ static void aznfsc_ll_mknod(fuse_req_t req,
                             mode_t mode,
                             dev_t rdev)
 {
-    /*
-     * TODO: Fill me.
-     */
-    fuse_reply_err(req, ENOSYS);
+    AZLogDebug("aznfsc_ll_mknod(req={}, parent_ino={}, name={}, "
+               "mode=0{:03o})",
+               fmt::ptr(req), parent_ino, name, mode);
+
+    if (S_ISREG(mode)) {
+        struct nfs_client *client = get_nfs_client_from_fuse_req(req);
+        client->mknod(req, parent_ino, name, mode);
+    } else {
+        AZLogError("mknod(req={}, parent_ino={}, name={}, "
+                   "mode=0{:03o}) is unsupported for non-regular files.",
+                   fmt::ptr(req), parent_ino, name, mode);
+        fuse_reply_err(req, ENOSYS);
+    }
 }
 
 static void aznfsc_ll_mkdir(fuse_req_t req,

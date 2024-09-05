@@ -160,6 +160,18 @@ void nfs_client::jukebox_runner()
                            js->rpc_api->create_task.get_mode(),
                            js->rpc_api->create_task.get_fuse_file());
                     break;
+                case FUSE_MKNOD:
+                    AZLogWarn("[JUKEBOX REISSUE] mknod(req={}, parent_ino={},"
+                              " name={}, mode=0{:03o})",
+                              fmt::ptr(js->rpc_api->req),
+                              js->rpc_api->mknod_task.get_parent_ino(),
+                              js->rpc_api->mknod_task.get_file_name(),
+                              js->rpc_api->mknod_task.get_mode());
+                    mknod(js->rpc_api->req,
+                           js->rpc_api->mknod_task.get_parent_ino(),
+                           js->rpc_api->mknod_task.get_file_name(),
+                           js->rpc_api->mknod_task.get_mode());
+                    break;
                 case FUSE_MKDIR:
                     AZLogWarn("[JUKEBOX REISSUE] mkdir(req={}, parent_ino={}, "
                               "name={}, mode=0{:03o})",
@@ -707,6 +719,18 @@ void nfs_client::create(
 
     tsk->init_create_file(req, parent_ino, name, mode, file);
     tsk->run_create_file();
+}
+
+void nfs_client::mknod(
+    fuse_req_t req,
+    fuse_ino_t parent_ino,
+    const char* name,
+    mode_t mode)
+{
+    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_MKNOD);
+
+    tsk->init_mknod(req, parent_ino, name, mode);
+    tsk->run_mknod();
 }
 
 void nfs_client::mkdir(
