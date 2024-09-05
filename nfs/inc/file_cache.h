@@ -216,6 +216,11 @@ struct membuf
      */
     bool load();
 
+    uint32_t get_flag() const
+    {
+        return flag;
+    }
+
     /**
      * Is membuf uptodate?
      * Only uptodate membufs are fit for reading.
@@ -264,7 +269,7 @@ struct membuf
 
     void set_dirty();
     void clear_dirty();
- 
+
     bool is_flushing() const
     {
         return (flag & MB_Flag::Flushing);
@@ -578,6 +583,17 @@ public:
     }
 
     /**
+     * Does this bytes_chunk need to be flushed?
+     * bytes_chunk whose underlying membuf is dirty and not already being
+     * flushed, qualify for flushing.
+     */
+    bool needs_flush() const
+    {
+        const struct membuf *mb = get_membuf();
+        return mb->is_dirty() && !mb->is_flushing();
+    }
+
+    /**
      * Constructor to create a brand new chunk with newly allocated buffer.
      * This chunk is the sole owner of alloc_buffer and 'buffer_offset' is 0.
      * Later as this chunk is split or returned to the caller through get(),
@@ -751,7 +767,7 @@ public:
     }
 
     /**
-     * Call this to check if the cache is empty.
+     * Call this to check if the cache is empty, i.e., newly allocated.
      */
     bool is_empty() const
     {
@@ -759,21 +775,17 @@ public:
     }
 
     /**
-     * Return a vector of bytes_chunk cacheing the byte range [offset, offset+length).
-     * Parts of the range that correspond to chunks already present in the
-     * cache will refer to those existing chunks, for such chunks is_empty will
-     * be set to false, while those parts of the range for which there wasn't
-     * an already cached chunk found, new chunks will be allocated and inserted
-     * into the chunkmap. These new chunks will have is_empty set to true.
-     * This means after this function successfully returns there will be
-     * chunks present in the cache for the entire range [offset, offset+length).
+     * Return a vector of bytes_chunk that cache the byte range
+     * [offset, offset+length). Parts of the range that correspond to chunks
+     * already present in the cache will refer to those existing chunks, for
+     * such chunks is_empty will be set to false, while those parts of the
+     * range for which there wasn't an already cached chunk found, new chunks
+     * will be allocated and inserted into the chunkmap. These new chunks will
+     * have is_empty set to true. This means after this function successfully
+     * returns there will be chunks present in the cache for the entire range
+     * [offset, offset+length).
      *
-     * If extent_left and extent_right are non-null, on completion, they will
-     * hold the left and right edges of the extent containing the range
-     * [offset, offset+left). Note that an extent is a collection of one or
-     * more chunks which cache contiguous bytes.
-     *
-     * This will be called by both,
+     * This can be called by both,
      * - writers, who want to write to the specified range in the file.
      *   The returned chunks is a scatter list where the caller should write.
      *   bytes_chunk::buffer is the buffer corresponding to each chunk where
@@ -825,10 +837,60 @@ public:
      *          >>      clear_locked()
      *          >>      clear_inuse()
      */
-    std::vector<bytes_chunk> get(uint64_t offset,
-                                 uint64_t length,
-                                 uint64_t *extent_left = nullptr,
-                                 uint64_t *extent_right = nullptr)
+    std::vector<bytes_chunk> get(uint64_t offset, uint64_t length)
+    {
+        num_get++;
+        num_get_g++;
+        bytes_get += length;
+        bytes_get_g += length;
+
+        /*
+         * Perform inline pruning if needed.
+         * We do inline pruning when we are "extremely" high on memory usage
+         * and hence cannot proceed w/o making space for the new request.
+         */
+        inline_prune();
+
+        return scan(offset, length, scan_action::SCAN_ACTION_GET,
+                    nullptr /* bytes_released */,
+                    nullptr /* extent_left */,
+                    nullptr /* extent_right */);
+    }
+
+    /**
+     * Same as get() but to be used by writers who want to write to the given
+     * cache range but are also interested in knowing when enough dirty data is
+     * accumulated that they may want to flush/sync. Caller can pass two
+     * uint64_t pointers to find out the largest contiguous dirty byte range
+     * containing the requested byte range. Based on their wsize setting or some
+     * other criteria, caller can then decide if they want to flush the dirty
+     * data.
+     * If extent_left and extent_right are non-null, on completion they will
+     * hold the left and right edges of the extent containing the range
+     * [offset, offset+length). Note that an extent is a collection of one or
+     * more membufs which cache contiguous bytes.
+     *
+     * Note: [extent_left, extent_right) range contains one or more *full*
+     *       membufs, also those membufs are dirty and not already flushing.
+     *       If [offset, offset+length) falls on existing membuf(s) then we
+     *       include those in [extent_left, extent_right) irrespective of the
+     *       dirty/flushing flags since part of the membuf(s) is going to be
+     *       updated and membuf will become dirty and hence would need to be
+     *       flushed. BUT, as usual the caller must check the uptodate flag to
+     *       decide if it needs to do a Read-Modify-Write before flushing.
+     *
+     * Note: Once the getx() call returns the extent details, since it doesn't
+     *       hold membuf lock on any of the membufs in the extent range, some
+     *       other thread can potentially initiate sync/flush of the membuf(s).
+     *       Though this should not be common since the thread writing data
+     *       is the first one to know about it, but depending on whether you
+     *       have parallel writers or some periodic flusher thread, it can
+     *       happen.
+     */
+    std::vector<bytes_chunk> getx(uint64_t offset,
+                                  uint64_t length,
+                                  uint64_t *extent_left,
+                                  uint64_t *extent_right)
     {
         num_get++;
         num_get_g++;

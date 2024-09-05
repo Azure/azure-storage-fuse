@@ -595,6 +595,13 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
     if (bytes_released)
         *bytes_released = 0;
 
+    /*
+     * Do we need to find containing extent's left and right edges?
+     * We should need it only when the caller intends to write to the returned
+     * membufs.
+     */
+    const bool find_extent = (extent_left != nullptr);
+
     // Convenience variable to access the current chunk in the map.
     bytes_chunk *bc;
 
@@ -626,16 +633,30 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
     /*
      * Variables to track the extent this write is part of.
      * We will udpate these as the left and right edges of the extent are
-     * confirmed. Used only for SCAN_ACTION_GET.
+     * confirmed. Used only for SCAN_ACTION_GET when find_extent is true,
+     * which will be true for writers.
      * lookback_it is the iterator to the chunk starting which we should
      * "look back" for the left edge of the extent containing the just written
-     * chunk. We basically scan to the left till we find a gap or we hit the
-     * end.
+     * chunk. We basically scan to the left till we find a gap or we find a
+     * membuf that has needs_flush() false or we hit the end.
+     * Note that these will only ever point to a membuf edge.
      */
     uint64_t _extent_left = AZNFSC_BAD_OFFSET;
     uint64_t _extent_right = AZNFSC_BAD_OFFSET;
     std::map <uint64_t,
               struct bytes_chunk>::iterator lookback_it = chunkmap.end();
+
+#define SET_LOOKBACK_IT_TO_PREV() \
+do { \
+    if (it != chunkmap.begin()) { \
+        lookback_it = std::prev(it); \
+        bc = &(lookback_it->second); \
+        AZLogDebug("lookback_it: [{},{})", \
+                   bc->offset, bc->offset + bc->length); \
+    } else { \
+        assert(lookback_it == chunkmap.end()); \
+    } \
+} while (0)
 
     /*
      * First things first, if file-backed cache and backing file not yet open,
@@ -702,9 +723,10 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
             _extent_left = next_offset;
             _extent_right = next_offset + remaining_length;
 
-            AZLogDebug("(first chunk) _extent_left: {} _extent_right: {}",
+            AZLogDebug("(first/only chunk) _extent_left: {} _extent_right: {}",
                        _extent_left, _extent_right);
 
+            assert(lookback_it == chunkmap.end());
             goto allocate_only_chunk;
         } else {
             // Iterator to the last chunk.
@@ -726,18 +748,25 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
                     goto end;
                 }
 
-                /*
-                 * If this new chunk starts right after the last chunk, then
-                 * we don't know the actual value of _extent_left unless we
-                 * scan left and check. In that case we set lookback_it to 'it'
-                 * so that we can later "look back" and find the left edge.
-                 * If it doesn't start right after, then next_offset becomes
-                 * _extent_left.
-                 */
                 if ((bc->offset + bc->length) < next_offset) {
+                    /*
+                     * New chunk starts at a gap after the last chunk.
+                     * next_offset is the definitive _extent_left and we don't
+                     * need to look back.
+                     */
                     _extent_left = next_offset;
                     AZLogDebug("_extent_left: {}", _extent_left);
+                    assert(lookback_it == chunkmap.end());
                 } else {
+                    /*
+                     * New chunk starts right after the last chunk.
+                     * Set tentative left edge and set lookback_it to the last
+                     * chunk so that we can later "look back" and find the
+                     * actual left edge.
+                     */
+                    _extent_left = next_offset;
+                    AZLogDebug("(tentative) _extent_left: {}", _extent_left);
+
                     AZLogDebug("lookback_it: [{},{})",
                                bc->offset, bc->offset + bc->length);
                     lookback_it = it;
@@ -754,15 +783,15 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
             } else {
                 /*
                  * Part or whole of requested range lies in the last chunk.
-                 * The following for loop will correctly handle this.
-                 * We don't know the left most edge until we "look back" from
-                 * this chunk. Right edge is the right edge of the last chunk
-                 * unless the current chunk goes past that, in which case that
-                 * becomes the right edge. We don't set it here.
+                 * Set _extent_left tentatively, _extent_right will be set by
+                 * the for loop below. Also for finding the real left edge we
+                 * need to search backwards from the prev chunk, hence set
+                 * lookback_it to that.
                  */
-                AZLogDebug("lookback_it: [{},{})",
-                           bc->offset, bc->offset + bc->length);
-                lookback_it = it;
+                _extent_left = bc->offset;
+                AZLogDebug("(tentative) _extent_left: {}", _extent_left);
+
+                SET_LOOKBACK_IT_TO_PREV();
             }
         }
     } else {
@@ -785,14 +814,16 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
         if (it->first == next_offset) {
             bc = &(it->second);
             /*
-             * Requested range starts from this chunk.
-             * The following for loop will correctly handle this.
-             * Need to "look back" to find the left edge and look forward to
-             * find the right edge.
+             * Requested range starts from this chunk. Set _extent_left
+             * tentatively to this chunk's left edge and set lookback_it
+             * to the prev chunk for finding the true left edge later.
+             * _extent_right will be set by the for loop and later updated
+             * correctly.
              */
-            AZLogDebug("lookback_it: [{},{})",
-                       bc->offset, bc->offset + bc->length);
-            lookback_it = it;
+            _extent_left = it->first;
+            AZLogDebug("(tentative) _extent_left: {}", _extent_left);
+
+            SET_LOOKBACK_IT_TO_PREV();
         } else {
             /*
              * Requested range starts before this chunk.
@@ -824,12 +855,13 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
 
                 if (action == scan_action::SCAN_ACTION_GET) {
                     /*
-                     * This is the first chunk, so its offset is the left edge.
-                     * We mark the right edge tentatively, it'll be confirmed after
-                     * we look forward.
+                     * This newly added chunk is the first chunk, so its offset
+                     * is the left edge. We mark the right edge tentatively,
+                     * it'll be confirmed after we look forward.
                      */
                     _extent_left = chunk_offset;
                     _extent_right = chunk_offset + chunk_length;
+                    assert(lookback_it == chunkmap.end());
 
                     AZLogDebug("_extent_left: {}", _extent_left);
                     AZLogDebug("(tentative) _extent_right: {}", _extent_right);
@@ -894,7 +926,10 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
                              */
                             _extent_left = chunk_offset;
                             AZLogDebug("_extent_left: {}", _extent_left);
+                            assert(lookback_it == chunkmap.end());
                         } else {
+                            _extent_left = chunk_offset;
+                            AZLogDebug("(tentative) _extent_left: {}", _extent_left);
                             /*
                              * Else, new chunk touches the prev chunk, so we need
                              * to "look back" for finding the left edge.
@@ -903,6 +938,7 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
                                        bc->offset, bc->offset + bc->length);
                             lookback_it = it;
                         }
+
                         _extent_right = chunk_offset + chunk_length;
                         AZLogDebug("(tentative) _extent_right: {}", _extent_right);
 
@@ -921,24 +957,29 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
                 } else {
                     /*
                      * Prev chunk contains some bytes from initial part of the
-                     * requested range. The following for loop will correctly
-                     * handle this.
+                     * requested range. Set _extent_left tentative, the for loop
+                     * below will set _extent_right correctly.
+                     * Need to "look back" to find the true left edge and look
+                     * forward to find the true right edge.
                      */
-                    AZLogDebug("lookback_it: [{},{})",
-                               bc->offset, bc->offset + bc->length);
-                    lookback_it = it;
+                    _extent_left = bc->offset;
+                    AZLogDebug("(tentative) _extent_left: {}", _extent_left);
+
+                    SET_LOOKBACK_IT_TO_PREV();
                 }
             }
         }
     }
 
     /*
-     * Either we should know the left edge or we should have set the lookback_it
-     * to the chunk from where we start "looking back".
+     * _extent_left MUST be set for all cases that require us to traverse the
+     * chunkmap. lookback_it may or may not be set depending on whether
+     * _extent_left is tentative and we need to search backwards for the true
+     * left edge.
      */
-    assert(((_extent_left == AZNFSC_BAD_OFFSET) ==
-            (lookback_it != chunkmap.end())) ||
-           (action != scan_action::SCAN_ACTION_GET));
+    if (action == scan_action::SCAN_ACTION_GET) {
+        assert(_extent_left != AZNFSC_BAD_OFFSET);
+    }
 
     /*
      * Now sequentially go over the remaining chunks till we cover the entire
@@ -1106,7 +1147,18 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
             /*
              * In the next iteration we need to look at the current chunk, so
              * don't increment the iterator.
+             * We continue from here as we want to set _extent_right
+             * differently than what we do at end-of-loop.
              */
+            remaining_length -= chunk_length;
+            assert((int64_t) remaining_length >= 0);
+            next_offset += chunk_length;
+
+            if (action == scan_action::SCAN_ACTION_GET) {
+                _extent_right = next_offset;
+                AZLogDebug("(tentative) _extent_right: {}", _extent_right);
+            }
+            continue;
         } else /* (next_offset > bc->offset) */ {
             /*
              * Our next offset of interest (next_offset) lies within this
@@ -1220,7 +1272,7 @@ done:
          */
         if (action == scan_action::SCAN_ACTION_GET) {
             _extent_right = bc->offset + bc->length;
-            AZLogDebug("_extent_right: {}", _extent_right);
+            AZLogDebug("(tentative) _extent_right: {}", _extent_right);
         }
     }
 
@@ -1348,9 +1400,12 @@ allocate_only_chunk:
             bytes_cached_g += chunk.length;
             bytes_cached += chunk.length;
 
+            /*
+             * New chunks are always included in the extent range.
+             */
             if ((chunk.offset + chunk.length) > _extent_right) {
                 _extent_right = (chunk.offset + chunk.length);
-                AZLogDebug("_extent_right: {}", _extent_right);
+                AZLogDebug("(tentative) _extent_right: {}", _extent_right);
             }
         }
     }
@@ -1402,19 +1457,26 @@ allocate_only_chunk:
                (end_delete == chunkmap.end()));
     }
 
-    if (action == scan_action::SCAN_ACTION_GET) {
+    if (find_extent) {
         /*
-         * If left edge is not set, set it now.
+         * Set/update extent left edge.
          */
-        if (_extent_left == AZNFSC_BAD_OFFSET) {
-            assert(lookback_it != chunkmap.end());
+        if (lookback_it != chunkmap.end()) {
             do {
                 bc = &(lookback_it->second);
 
                 if ((_extent_left != AZNFSC_BAD_OFFSET) &&
                     ((bc->offset + bc->length) != _extent_left)) {
-                    AZLogDebug("(hit gap) _extent_left: {} rightedge: {}",
-                            _extent_left, (bc->offset + bc->length));
+                    AZLogDebug("(hit gap) _extent_left: {}, [{}, {})",
+                            _extent_left,
+                            bc->offset, (bc->offset + bc->length));
+                    break;
+                }
+
+                if (!bc->needs_flush()) {
+                    AZLogDebug("(hit noflush) _extent_left: {}, [{}, {})",
+                            _extent_left,
+                            bc->offset, (bc->offset + bc->length));
                     break;
                 }
 
@@ -1431,8 +1493,16 @@ allocate_only_chunk:
 
             if ((_extent_right != AZNFSC_BAD_OFFSET) &&
                 (bc->offset != _extent_right)) {
-                AZLogDebug("(hit gap) _extent_right: {} leftedge: {}",
-                        _extent_right, bc->offset);
+                AZLogDebug("(hit gap) _extent_right: {}, [{}, {})",
+                        _extent_right,
+                        bc->offset, (bc->offset + bc->length));
+                break;
+            }
+
+            if (!bc->needs_flush()) {
+                AZLogDebug("(hit noflush) _extent_right: {}, [{}, {})",
+                        _extent_right,
+                        bc->offset, (bc->offset + bc->length));
                 break;
             }
 
@@ -1440,14 +1510,8 @@ allocate_only_chunk:
             AZLogDebug("_extent_right: {}", _extent_right);
         }
 
-        if (extent_left) {
-            *extent_left = _extent_left;
-        }
-
-        if (extent_right) {
-            *extent_right = _extent_right;
-        }
-
+        *extent_left = _extent_left;
+        *extent_right = _extent_right;
     }
 
 end:
@@ -1824,14 +1888,12 @@ static void cache_read(bytes_chunk_cache& cache,
                        uint64_t length)
 {
     std::vector<bytes_chunk> v;
-    uint64_t l, r;
 
     AZLogDebug("=====> cache_read({}, {})", offset, offset+length);
-    v = cache.get(offset, length, &l, &r);
+    v = cache.get(offset, length);
     // At least one chunk.
     assert(v.size() >= 1);
     assert(v[0].offset == offset);
-    assert(l <= v[0].offset);
 
     // Sanitize the returned chunkvec.
     uint64_t prev_chunk_right_edge = AZNFSC_BAD_OFFSET;
@@ -1848,7 +1910,6 @@ static void cache_read(bytes_chunk_cache& cache,
             assert(e.offset == prev_chunk_right_edge);
         }
         prev_chunk_right_edge = e.offset + e.length;
-        assert(r >= prev_chunk_right_edge);
 
         /*
          * All membufs MUST be returned with inuse incremented.
@@ -1859,8 +1920,8 @@ static void cache_read(bytes_chunk_cache& cache,
 
     assert(total_length == length);
 
-    AZLogDebug("=====> cache_read({}, {}): l={} r={} vec={}",
-               offset, offset+length, l, r, v.size());
+    AZLogDebug("=====> cache_read({}, {}): vec={}",
+               offset, offset+length, v.size());
 }
 
 static void cache_write(bytes_chunk_cache& cache,
@@ -1871,7 +1932,7 @@ static void cache_write(bytes_chunk_cache& cache,
     uint64_t l, r;
 
     AZLogDebug("=====> cache_write({}, {})", offset, offset+length);
-    v = cache.get(offset, length, &l, &r);
+    v = cache.getx(offset, length, &l, &r);
     // At least one chunk.
     assert(v.size() >= 1);
     assert(v[0].offset == offset);
@@ -2037,10 +2098,12 @@ do { \
 #define PRINT_CHUNK(chunk) \
 do { \
     assert(chunk.length > 0); \
-    AZLogInfo("[{},{}){} <{}> use_count={}", chunk.offset,\
+    AZLogInfo("[{},{}){} <{}> use_count={}, flag=0x{:x}", chunk.offset,\
               chunk.offset + chunk.length,\
               chunk.is_empty ? " [Empty]" : "", \
-              fmt::ptr(chunk.get_buffer()), chunk.get_membuf_usecount()); \
+              fmt::ptr(chunk.get_buffer()), \
+              chunk.get_membuf_usecount(), \
+              chunk.get_membuf()->get_flag()); \
 } while (0)
 
 #define PRINT_CHUNKMAP() \
@@ -2060,7 +2123,7 @@ do { \
      * the chunk.
      */
     AZLogInfo("========== [Get] --> (0, 300) ==========");
-    v = cache.get(0, 300, &l, &r);
+    v = cache.getx(0, 300, &l, &r);
     assert(v.size() == 1);
 
     ASSERT_EXTENT(0, 300);
@@ -2097,7 +2160,7 @@ do { \
      * the chunk.
      */
     AZLogInfo("========== [Get] --> (100, 100) ==========");
-    v = cache.get(100, 100, &l, &r);
+    v = cache.getx(100, 100, &l, &r);
     assert(v.size() == 1);
 
     ASSERT_EXTENT(100, 200);
@@ -2118,7 +2181,7 @@ do { \
      * The largest contiguous block containing the requested chunk is [50, 200).
      */
     AZLogInfo("========== [Get] --> (50, 100) ==========");
-    v = cache.get(50, 100, &l, &r);
+    v = cache.getx(50, 100, &l, &r);
     assert(v.size() == 2);
 
     ASSERT_EXTENT(50, 200);
@@ -2147,7 +2210,7 @@ do { \
      * The largest contiguous block containing the requested chunk is [250, 300).
      */
     AZLogInfo("========== [Get] --> (250, 50) ==========");
-    v = cache.get(250, 50, &l, &r);
+    v = cache.getx(250, 50, &l, &r);
     assert(v.size() == 1);
 
     ASSERT_EXTENT(250, 300);
@@ -2160,17 +2223,48 @@ do { \
     PRINT_CHUNKMAP();
 
     /*
+     * Get cache chunks covering range [50, 200).
+     * This should return 1 chunk:
+     * 1. Existing chunk [50, 100).
+     * 2. Existing chunk [100, 200).
+     *
+     * The largest contiguous block containing the requested chunk is [50, 200).
+     */
+    AZLogInfo("========== [Get] --> (50, 150) ==========");
+    v = cache.getx(50, 150, &l, &r);
+    assert(v.size() == 2);
+
+    ASSERT_EXTENT(50, 200);
+    ASSERT_EXISTING(v[0], 50, 100);
+    ASSERT_EXISTING(v[1], 100, 200);
+    v[0].get_membuf()->set_inuse();
+    v[0].get_membuf()->set_locked();
+    v[0].get_membuf()->set_uptodate();
+    v[0].get_membuf()->set_dirty();
+    v[0].get_membuf()->clear_locked();
+    v[0].get_membuf()->clear_inuse();
+    assert(v[0].needs_flush());
+
+    PRINT_CHUNKMAP();
+
+    /*
      * Get cache chunks covering range [0, 50).
      * This should return 1 chunk:
      * 1. Newly allocated chunk [0, 50).
      *
-     * The largest contiguous block containing the requested chunk is [0, 200).
+     * The largest contiguous block containing the requested chunk is [0, 100).
+     * [0, 50) is included in the extent range since that contains the data
+     * just written by user.
+     * [50, 100) is included in the extent range as the membuf is dirty (marked
+     * above).
+     * [100, 200) though contiguous, it's not included in the extent range as
+     * needs_flush() is not true for it.
      */
     AZLogInfo("========== [Get] --> (0, 50) ==========");
-    v = cache.get(0, 50, &l, &r);
+    v = cache.getx(0, 50, &l, &r);
     assert(v.size() == 1);
 
-    ASSERT_EXTENT(0, 200);
+    ASSERT_EXTENT(0, 100);
     ASSERT_NEW(v[0], 0, 50);
 
     for ([[maybe_unused]] const auto& e : v) {
@@ -2185,13 +2279,21 @@ do { \
      * 2. Newly allocated chunk [200, 250).
      * 3. Existing chunk [250, 275).
      *
-     * The largest contiguous block containing the requested chunk is [0, 300).
+     * The largest contiguous block containing the requested chunk is [50, 300).
+     * [50, 100) is included in the extent range as the membuf is dirty (marked
+     * above).
+     * [100, 200) is included in the extent range since that partly contains the
+     * data just written by user.
+     * [200, 250) is included in the extent range since that fully contains the
+     * data just written by user.
+     * [250, 300) is included in the extent range since that partly contains the
+     * data just written by user.
      */
     AZLogInfo("========== [Get] --> (150, 125) ==========");
-    v = cache.get(150, 125, &l, &r);
+    v = cache.getx(150, 125, &l, &r);
     assert(v.size() == 3);
 
-    ASSERT_EXTENT(0, 300);
+    ASSERT_EXTENT(50, 300);
     ASSERT_EXISTING(v[0], 150, 200);
     ASSERT_NEW(v[1], 200, 250);
     ASSERT_EXISTING(v[2], 250, 275);
@@ -2218,6 +2320,39 @@ do { \
     bc2.load();
 
     /*
+     * Get cache chunks covering range [0, 300).
+     * This is all the chunks and should return following chunks:
+     * 1. Existing chunk [0, 50).
+     * 2. Existing chunk [50, 100).
+     * 3. Existing chunk [100, 200).
+     * 4. Existing chunk [200, 250).
+     * 5. Existing chunk [250, 300).
+     *
+     * Clear dirty flag from [50, 100) to allow the release() below to release
+     * it.
+     */
+    AZLogInfo("========== [Get] --> (0, 300) ==========");
+    v = cache.getx(0, 300, &l, &r);
+    assert(v.size() == 5);
+
+    ASSERT_EXTENT(0, 300);
+    ASSERT_EXISTING(v[0], 0, 50);
+    ASSERT_EXISTING(v[1], 50, 100);
+    ASSERT_EXISTING(v[2], 100, 200);
+    ASSERT_EXISTING(v[3], 200, 250);
+    ASSERT_EXISTING(v[4], 250, 300);
+    PRINT_CHUNKMAP();
+    // Clear dirty.
+    v[1].get_membuf()->set_inuse();
+    v[1].get_membuf()->set_locked();
+    v[1].get_membuf()->set_flushing();
+    v[1].get_membuf()->clear_dirty();
+    v[1].get_membuf()->clear_flushing();
+    v[1].get_membuf()->clear_locked();
+    v[1].get_membuf()->clear_inuse();
+    assert(!v[1].needs_flush());
+
+    /*
      * Release data range [0, 175).
      * After this the cache should have the following chunk:
      * 1. [175, 200).
@@ -2238,7 +2373,7 @@ do { \
      * The largest contiguous block containing the requested chunk is [100, 300).
      */
     AZLogInfo("========== [Get] --> (100, 180) ==========");
-    v = cache.get(100, 180, &l, &r);
+    v = cache.getx(100, 180, &l, &r);
     assert(v.size() == 4);
 
     ASSERT_EXTENT(100, 300);
@@ -2269,7 +2404,7 @@ do { \
      * The largest contiguous block containing the requested chunk is [0, 350).
      */
     AZLogInfo("========== [Get] --> (0, 350) ==========");
-    v = cache.get(0, 350, &l, &r);
+    v = cache.getx(0, 350, &l, &r);
     assert(v.size() == 6);
 
     ASSERT_EXTENT(0, 350);
@@ -2314,7 +2449,7 @@ do { \
      * The largest contiguous block containing the requested chunk is [0, 350).
      */
     AZLogInfo("========== [Get] --> (0, 325) ==========");
-    v = cache.get(0, 325, &l, &r);
+    v = cache.getx(0, 325, &l, &r);
     assert(v.size() == 5);
 
     ASSERT_EXTENT(0, 350);
@@ -2349,7 +2484,7 @@ do { \
      * The largest contiguous block containing the requested chunk is [349, 350).
      */
     AZLogInfo("========== [Get] --> (349, 1) ==========");
-    v = cache.get(349, 1, &l, &r);
+    v = cache.getx(349, 1, &l, &r);
     assert(v.size() == 1);
 
     ASSERT_EXTENT(349, 350);
@@ -2387,7 +2522,7 @@ do { \
      * [0, 131072).
      */
     AZLogInfo("========== [Get] --> (0, 131072) ==========");
-    v = cache.get(0, 131072, &l, &r);
+    v = cache.getx(0, 131072, &l, &r);
     assert(v.size() == 1);
 
     ASSERT_EXTENT(0, 131072);
@@ -2406,6 +2541,7 @@ do { \
      */
     AZLogInfo("========== [Release] --> (6, 131066) ==========");
     assert(cache.release(6, 131066) == 131066);
+    PRINT_CHUNKMAP();
 
     /*
      * Get cache chunks covering range [6, 20).
@@ -2416,10 +2552,10 @@ do { \
      * [0, 20).
      */
     AZLogInfo("========== [Get] --> (6, 14) ==========");
-    v = cache.get(6, 14, &l, &r);
+    v = cache.getx(6, 14, &l, &r);
     assert(v.size() == 1);
 
-    ASSERT_EXTENT(0, 20);
+    ASSERT_EXTENT(6, 20);
     ASSERT_NEW(v[0], 6, 20);
 #ifdef UTILIZE_TAILROOM_FROM_LAST_MEMBUF
     // Must use the alloc_buffer from last chunk.
@@ -2444,7 +2580,7 @@ do { \
      * [0, 30).
      */
     AZLogInfo("========== [Get] --> (5, 25) ==========");
-    v = cache.get(5, 25, &l, &r);
+    v = cache.getx(5, 25, &l, &r);
     assert(v.size() == 3);
 
     ASSERT_EXTENT(0, 30);
@@ -2489,7 +2625,7 @@ do { \
      * [5, 30).
      */
     AZLogInfo("========== [Get] --> (5, 25) ==========");
-    v = cache.get(5, 25, &l, &r);
+    v = cache.getx(5, 25, &l, &r);
     assert(v.size() == 1);
 
     ASSERT_EXTENT(5, 30);
@@ -2510,7 +2646,7 @@ do { \
      * [5, 50).
      */
     AZLogInfo("========== [Get] --> (5, 45) ==========");
-    v = cache.get(5, 45, &l, &r);
+    v = cache.getx(5, 45, &l, &r);
     assert(v.size() == 2);
 
     ASSERT_EXTENT(5, 50);
@@ -2533,7 +2669,7 @@ do { \
      * [5, 100).
      */
     AZLogInfo("========== [Get] --> (5, 95) ==========");
-    v = cache.get(5, 95, &l, &r);
+    v = cache.getx(5, 95, &l, &r);
     assert(v.size() == 3);
 
     ASSERT_EXTENT(5, 100);
@@ -2593,7 +2729,7 @@ do { \
      * [5, 200).
      */
     AZLogInfo("========== [Get] --> (5, 195) ==========");
-    v = cache.get(5, 195, &l, &r);
+    v = cache.getx(5, 195, &l, &r);
     assert(v.size() == 4);
 
     ASSERT_EXTENT(5, 200);
