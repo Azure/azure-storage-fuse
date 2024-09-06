@@ -2,7 +2,7 @@
 **Features**
 - Entry cache to hold directory listing results in cache for a given timeout. This will reduce REST calls going to storage while listing the blobs in parallel.
 
-## 2.3.2 (Unreleased)
+## 2.3.2 (2024-09-03)
 **Bug Fixes**
 - Fixed the case where file creation using SAS on HNS accounts was returning back wrong error code.
 - [#1402](https://github.com/Azure/azure-storage-fuse/issues/1402) Fixed proxy URL parsing.
