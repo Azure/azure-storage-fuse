@@ -8,6 +8,11 @@ parameters:
 
 steps:
   - script: |
+      ps -ef | grep blobfuse2
+      df -h
+    displayName: 'Check process info'
+
+  - script: |
       sudo fusermount -u ${mount_dir}
       sudo fusermount3 -u ${mount_dir}
       sudo kill -9 `pidof blobfuse2` || true

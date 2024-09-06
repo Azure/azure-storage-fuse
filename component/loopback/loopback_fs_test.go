@@ -295,13 +295,13 @@ func (suite *LoopbackFSTestSuite) TestStageAndCommitData() {
 	assert.Nil(err)
 	defer os.RemoveAll(lfs.path)
 
-	err = lfs.StageData(internal.StageDataOptions{Name: "testBlock", Data: []byte(loremText), Id: "123", Offset: 0})
+	err = lfs.StageData(internal.StageDataOptions{Name: "testBlock", Data: []byte(loremText), Id: "123"})
 	assert.Nil(err)
 
-	err = lfs.StageData(internal.StageDataOptions{Name: "testBlock", Data: []byte(loremText), Id: "456", Offset: 2})
+	err = lfs.StageData(internal.StageDataOptions{Name: "testBlock", Data: []byte(loremText), Id: "456"})
 	assert.Nil(err)
 
-	err = lfs.StageData(internal.StageDataOptions{Name: "testBlock", Data: []byte(loremText), Id: "789", Offset: 1})
+	err = lfs.StageData(internal.StageDataOptions{Name: "testBlock", Data: []byte(loremText), Id: "789"})
 	assert.Nil(err)
 
 	blockList := []string{"123", "789", "456"}

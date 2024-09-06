@@ -132,7 +132,7 @@ func validateHMonOptions() error {
 	}
 
 	if len(errMsg) != 0 {
-		return fmt.Errorf(errMsg)
+		return fmt.Errorf("%s", errMsg)
 	}
 
 	return nil

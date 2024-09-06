@@ -8,10 +8,17 @@ Blobfuse2 is stable, and is ***supported by Microsoft*** provided that it is use
 [This](https://github.com/Azure/azure-storage-fuse/tree/main?tab=readme-ov-file#config-guide) section will help you choose the correct config for Blobfuse2.
 
 ##  NOTICE
-- We have seen some customer issues around files getting corrupted when `streaming` is used in write mode. Kindly avoid using this feature for write while we investigate and resolve it.
-- You can now use block-cache instead of streaming for both read and write workflows, which offers much better performance compared to streaming. To enable `block-cache` instead of `streaming`, use `--block-cache` in CLI param or `block-cache` as component in config file instead of `streaming`.
+- If you are using versions 2.2.0, 2.2.1 and 2.3.0, refrain from using Block-cache mode and switch to `file-cache` mode. [Known issues](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2-Known-issues) in these versions are fixed in version **`2.3.2`**.
 - As of version 2.3.0, blobfuse has updated its authentication methods. For Managed Identity, Object-ID based OAuth is solely accessible via CLI-based login, requiring Azure CLI on the system. For a dependency-free option, users may utilize Application/Client-ID or Resource ID based authentication.
+- `streaming` mode is being deprecated.
 
+## Limitations in Block Cache
+- Parallel write operations using multiple handles on a same file is not supported and might lead to data inconsistency.
+- Read operation on a file which is being written via another handle will not return updated data.
+- When using `cp` utility on mounted path, always use `--sparse=never` parameter. For example, `cp --sparse=never src dest`
+- In write operations data is persisted in storage only on close, sync or flush calls.
+- User applications must check the returned code for write, close and flush operations.
+  
 ## Blobfuse2 Benchmarks
 [This](https://azure.github.io/azure-storage-fuse/) page lists various benchmarking results for HNS and FNS Storage account.
 
