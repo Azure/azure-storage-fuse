@@ -16,6 +16,9 @@ Building
 # For disabling paranoid checks.
 - -DENABLE_PARANOID=OFF
 
+# For building nofuse shared library.
+- -DENABLE_NO_FUSE=ON
+
 Running
 =======
 Copy sample-config.yaml as path/to/your/config.yaml and edit it according

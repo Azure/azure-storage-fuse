@@ -12,6 +12,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 # Add options here.
 #
 option(ENABLE_TESTS "Build and run test programs" OFF)
+option(ENABLE_NO_FUSE "Build nofuse shared library" OFF)
 option(ENABLE_DOCUMENTATION "Build Documentation" OFF)
 option(ENABLE_PARANOID "Enable paranoid checking in the code" ON)
 option(ENABLE_NON_AZURE_NFS "Enable support for general NFS servers" ON)
@@ -22,11 +23,24 @@ option(ENABLE_TCMALLOC "Use tcmalloc for malloc/free/new/delete" ON)
 # Enable paranoid checks only in debug builds.
 #
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-if(ENABLE_PARANOID)
-  add_definitions(-DENABLE_PARANOID)
+  if(ENABLE_PARANOID)
+    add_definitions(-DENABLE_PARANOID)
+  endif()
+  add_compile_options(-fsanitize=address)
+  add_link_options(-fsanitize=address)
 endif()
-add_compile_options(-fsanitize=address)
-add_link_options(-fsanitize=address)
+
+#
+# Enable shard library for all components when building nofuse shared lib.
+#
+if(ENABLE_NO_FUSE)
+  set(BUILD_SHARED_LIBS ON CACHE INTERNAL "Build shared libs" FORCE)
+  set(YAML_BUILD_SHARED_LIBS ON CACHE INTERNAL "Build yaml-cpp shared library" FORCE)
+  set(SPDLOG_BUILD_SHARED ON CACHE INTERNAL "Build spdlog shared library" FORCE)
+else()
+  set(BUILD_SHARED_LIBS OFF CACHE INTERNAL "Build shared libs" FORCE)
+  set(YAML_BUILD_SHARED_LIBS OFF CACHE INTERNAL "Build yaml-cpp shared library" FORCE)
+  set(SPDLOG_BUILD_SHARED OFF CACHE INTERNAL "Build spdlog shared library" FORCE)
 endif()
 
 if(ENABLE_NON_AZURE_NFS)
@@ -156,27 +170,34 @@ add_subdirectory(extern/libnfs)
 add_subdirectory(extern/yaml-cpp)
 
 # Build static library for spdlog.
-set(SPDLOG_BUILD_SHARED OFF CACHE INTERNAL "Build spdlog shared library" FORCE)
-set(BUILD_SHARED_LIBS OFF CACHE INTERNAL "Build shared library" FORCE)
 add_subdirectory(extern/spdlog)
 
 configure_file(inc/aznfsc_config.h.in inc/aznfsc_config.h)
 
+set(sources
+    src/config.cpp
+    src/util.cpp
+    src/log.cpp
+    src/nfs_client.cpp
+    src/rpc_transport.cpp
+    src/rpc_task.cpp
+    src/rpc_readdir.cpp
+    src/connection.cpp
+    src/nfs_inode.cpp
+    src/file_cache.cpp
+    src/readahead.cpp
+    src/rpc_stats.cpp)
+
+if(ENABLE_NO_FUSE)
+# libaznfsclient.so.
+add_library(${CMAKE_PROJECT_NAME} SHARED
+            ${sources})
+else()
 # aznfsclient executable.
+set(sources ${sources} src/main.cpp)
 add_executable(${CMAKE_PROJECT_NAME}
-               src/main.cpp
-               src/config.cpp
-               src/util.cpp
-               src/log.cpp
-               src/nfs_client.cpp
-               src/rpc_transport.cpp
-               src/rpc_task.cpp
-               src/rpc_readdir.cpp
-               src/connection.cpp
-               src/nfs_inode.cpp
-               src/file_cache.cpp
-               src/readahead.cpp
-               src/rpc_stats.cpp)
+               ${sources})
+endif()
 
 # All include directories.
 target_include_directories(${CMAKE_PROJECT_NAME}
