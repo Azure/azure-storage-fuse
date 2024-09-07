@@ -3,6 +3,7 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
 #include <string.h>
@@ -18,6 +19,14 @@
 using namespace std::chrono;
 
 namespace aznfsc {
+
+/**
+ * Set readahead_kb for kernel readahead.
+ * This sets the kernel readahead value of aznfsc_cfg.readahead_kb iff kernel
+ * data cache is enabled and user cache is not enabled. We don't want double
+ * readahead.
+ */
+void set_kernel_readahead();
 
 /**
  * Generate a random number in the range [min, max].
