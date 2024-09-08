@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1725627262855,
+  "lastUpdate": 1725778003910,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -33,6 +33,38 @@ window.BENCHMARK_DATA = {
           {
             "name": "create_10_20GB_file",
             "value": 52.41988468170166,
+            "unit": "seconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "syeleti-msft",
+            "username": "syeleti-msft",
+            "email": "syeleti@microsoft.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "a42da599c0d65e83577b4235ef0e581e68bd06b3",
+          "message": "Making pipeline consistent with the units (#1461)",
+          "timestamp": "2024-09-06T10:07:46Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/a42da599c0d65e83577b4235ef0e581e68bd06b3"
+        },
+        "date": 1725778003691,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "read_10_20GB_file",
+            "value": 63.79197835922241,
+            "unit": "seconds"
+          },
+          {
+            "name": "create_10_20GB_file",
+            "value": 52.21662902832031,
             "unit": "seconds"
           }
         ]
