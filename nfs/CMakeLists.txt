@@ -37,6 +37,7 @@ if(ENABLE_NO_FUSE)
   set(BUILD_SHARED_LIBS ON CACHE INTERNAL "Build shared libs" FORCE)
   set(YAML_BUILD_SHARED_LIBS ON CACHE INTERNAL "Build yaml-cpp shared library" FORCE)
   set(SPDLOG_BUILD_SHARED ON CACHE INTERNAL "Build spdlog shared library" FORCE)
+  add_definitions(-DENABLE_NO_FUSE)
 else()
   set(BUILD_SHARED_LIBS OFF CACHE INTERNAL "Build shared libs" FORCE)
   set(YAML_BUILD_SHARED_LIBS OFF CACHE INTERNAL "Build yaml-cpp shared library" FORCE)
@@ -89,6 +90,7 @@ endif()
 #
 # Find fuse3 and if not found try to install.
 #
+if(NOT ENABLE_NO_FUSE)
 find_package(fuse3 QUIET)
 if(NOT fuse3_FOUND)
     message(STATUS "fuse3 not found, trying to install libfuse3-dev!")
@@ -104,6 +106,7 @@ if(NOT fuse3_FOUND)
 else()
     message(STATUS "Using fuse3 lib ${fuse3_LIBRARY}")
     message(STATUS "Using fuse3 include dir ${fuse3_INCLUDE_DIR}")
+endif()
 endif()
 
 #
@@ -203,7 +206,6 @@ endif()
 target_include_directories(${CMAKE_PROJECT_NAME}
                            PRIVATE "${PROJECT_SOURCE_DIR}/inc"
                            PRIVATE "${PROJECT_BINARY_DIR}/inc"
-                           PRIVATE "${fuse3_INCLUDE_DIR}"
                            PRIVATE "${ZLIB_INCLUDE_DIRS}"
                            PRIVATE "${PROJECT_SOURCE_DIR}/extern/libnfs/nfs"
                            PRIVATE "${PROJECT_SOURCE_DIR}/extern/libnfs/include"
@@ -211,13 +213,19 @@ target_include_directories(${CMAKE_PROJECT_NAME}
                            PRIVATE "${PROJECT_SOURCE_DIR}/extern/libnfs/mount"
                            PRIVATE "${PROJECT_SOURCE_DIR}/extern/spdlog/include")
 
+if(NOT ENABLE_NO_FUSE)
+target_include_directories(${CMAKE_PROJECT_NAME}
+                           PRIVATE "${fuse3_INCLUDE_DIR}")
+target_link_libraries(${CMAKE_PROJECT_NAME}
+                      ${fuse3_LIBRARY})
+endif()
+
 target_compile_options(${CMAKE_PROJECT_NAME}
                        PRIVATE -Wall
                        PRIVATE -Werror)
 
 # All libraries.
 target_link_libraries(${CMAKE_PROJECT_NAME}
-                      ${fuse3_LIBRARY}
                       ${ZLIB_LIBRARIES}
                       pthread
                       nfs
