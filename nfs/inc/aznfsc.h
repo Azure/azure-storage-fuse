@@ -11,10 +11,14 @@
 #include <limits.h>
 #include <assert.h>
 
+#ifdef ENABLE_NO_FUSE
+#include "nofuse.h"
+#else
 #define FUSE_USE_VERSION 312
 #include <fuse3/fuse_lowlevel.h>
 #include <fuse3/fuse.h>
 #include <linux/fuse.h>
+#endif
 
 #include "libnfs.h"
 #include "libnfs-raw.h"

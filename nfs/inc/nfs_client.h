@@ -541,14 +541,24 @@ struct sync_rpc_context
 };
 
 /**
- * We store the nfs_client pointer inside the fuse req private pointer.
- * This allows us to retrieve it fast.
+ * nfs_client is a singleton, so this just returns the singleton instance
+ * pointer.
+ * We also store the nfs_client pointer inside the fuse req private pointer.
+ * We use that for asserting.
  */
 static inline
-struct nfs_client *get_nfs_client_from_fuse_req(const fuse_req_t req)
+struct nfs_client *get_nfs_client_from_fuse_req(
+        [[maybe_unused]] const fuse_req_t req = nullptr)
 {
-    struct nfs_client *const client =
-        reinterpret_cast<struct nfs_client*>(fuse_req_userdata(req));
+    struct nfs_client *const client = &nfs_client::get_instance();
+
+#ifndef ENABLE_NO_FUSE
+#ifdef ENABLE_PARANOID
+    assert(client == reinterpret_cast<struct nfs_client*>(fuse_req_userdata(req)));
+#endif
+#else
+    assert(req == nullptr);
+#endif
 
     // Dangerous cast, make sure we got a correct pointer.
     assert(client->magic == NFS_CLIENT_MAGIC);

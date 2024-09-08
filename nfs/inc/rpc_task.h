@@ -1629,6 +1629,34 @@ public:
     void send_read_response();
     void read_from_server(struct bytes_chunk &bc);
     void sync_membuf(struct bytes_chunk &bc, fuse_ino_t ino);
+
+#ifdef ENABLE_NO_FUSE
+    /*
+     * In nofuse mode we re-define these fuse_reply functions to copy the
+     * result into the response buffer (passed by the POSIX API) and notify
+     * the issuer thread.
+     */
+    int fuse_reply_none(fuse_req_t req);
+    int fuse_reply_iov(fuse_req_t req, const struct iovec *iov, int count);
+    int fuse_reply_err(fuse_req_t req, int err);
+    int fuse_reply_entry(fuse_req_t req, const struct fuse_entry_param *e);
+    int fuse_reply_create(fuse_req_t req, const struct fuse_entry_param *e,
+                          const struct fuse_file_info *f);
+    int fuse_reply_attr(fuse_req_t req, const struct stat *attr,
+                        double attr_timeout);
+    int fuse_reply_readlink(fuse_req_t req, const char *linkname);
+    int fuse_reply_open(fuse_req_t req, const struct fuse_file_info *f);
+    int fuse_reply_write(fuse_req_t req, size_t count);
+    int fuse_reply_buf(fuse_req_t req, const char *buf, size_t size);
+    int fuse_reply_data(fuse_req_t req, struct fuse_bufvec *bufv,
+                        enum fuse_buf_copy_flags flags);
+    size_t fuse_add_direntry_plus(fuse_req_t req, char *buf, size_t bufsize,
+                                  const char *name,
+                                  const struct fuse_entry_param *e, off_t off);
+    size_t fuse_add_direntry(fuse_req_t req, char *buf, size_t bufsize,
+                             const char *name, const struct stat *stbuf,
+                             off_t off);
+#endif
 };
 
 class rpc_task_helper

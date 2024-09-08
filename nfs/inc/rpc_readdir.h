@@ -6,6 +6,7 @@
 #include <shared_mutex>
 #include <vector>
 #include <ctime>
+#include <dirent.h>
 
 // 1GB
 #define MAX_CACHE_SIZE_LIMIT 1073741824
@@ -70,8 +71,9 @@ struct directory_entry
      * If readdirplus is true, the size returned is for containing the
      * entry along with the attributes, else it's w/o the attributes.
      */
-    size_t get_fuse_buf_size(bool readdirplus) const
+    size_t get_fuse_buf_size([[maybe_unused]] bool readdirplus) const
     {
+#ifndef ENABLE_NO_FUSE
         if (readdirplus) {
             return fuse_add_direntry_plus(
                     nullptr, nullptr, 0, name, nullptr, 0);
@@ -79,6 +81,12 @@ struct directory_entry
             return fuse_add_direntry(
                     nullptr, nullptr, 0, name, nullptr, 0);
         }
+#else
+        /*
+         * In nofuse mode we just add dirent objects to user buffer.
+         */
+        return sizeof(struct dirent) + ::strlen(name);
+#endif
     }
 
     static bool is_dot_or_dotdot(const char *name)
