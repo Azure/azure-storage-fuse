@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1725626921892,
+  "lastUpdate": 1725777680555,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -33,6 +33,38 @@ window.BENCHMARK_DATA = {
           {
             "name": "delete_100k_files",
             "value": "458.72000",
+            "unit": "seconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "syeleti-msft",
+            "username": "syeleti-msft",
+            "email": "syeleti@microsoft.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "a42da599c0d65e83577b4235ef0e581e68bd06b3",
+          "message": "Making pipeline consistent with the units (#1461)",
+          "timestamp": "2024-09-06T10:07:46Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/a42da599c0d65e83577b4235ef0e581e68bd06b3"
+        },
+        "date": 1725777680320,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "list_100k_files",
+            "value": "20.86000",
+            "unit": "seconds"
+          },
+          {
+            "name": "delete_100k_files",
+            "value": "444.62000",
             "unit": "seconds"
           }
         ]
