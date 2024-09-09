@@ -2849,7 +2849,7 @@ static void readdirplus_callback(
              *
              * TODO: Try to steal entry->name to avoid the strdup().
              */
-             struct directory_entry *dir_entry =
+            struct directory_entry *dir_entry =
                 dircache_handle->lookup(entry->cookie);
 
             if (dir_entry) {
