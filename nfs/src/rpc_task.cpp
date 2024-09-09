@@ -2853,9 +2853,30 @@ static void readdirplus_callback(
             /*
              * This will drop the original dircachecnt on the inode and
              * also delete the inode if the lookupcnt ref is also 0.
+             */            
+             struct directory_entry *dir_entry =
+                dircache_handle->lookup(entry->cookie);
+
+            if (dir_entry ) {
+                assert(dir_entry->cookie == entry->cookie);
+                if (dir_entry->nfs_inode) {
+                    /*
+                     * Drop the extra ref held by lookup().
+                     * Original ref held by readdirectory_cache::add()
+                     * must also be present, remove() will drop that.
+                     */
+                    assert(dir_entry->nfs_inode->dircachecnt >= 2);
+                    dir_entry->nfs_inode->dircachecnt--;
+                }
+            
+            /*
+             * This will drop the original dircachecnt on the inode and
+             * also delete the inode if the lookupcnt ref is also 0.
              */
             dircache_handle->remove(entry->cookie);
-            struct directory_entry* dir_entry = new struct directory_entry(strdup(entry->name),
+            }
+
+            dir_entry = new struct directory_entry(strdup(entry->name),
                                                    entry->cookie,
                                                    nfs_inode->attr,
                                                    nfs_inode);

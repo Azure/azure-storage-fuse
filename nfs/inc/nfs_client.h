@@ -129,12 +129,11 @@ private:
     ~nfs_client()
     {
         AZLogInfo("~nfs_client() called");
+
         /*
-         * Drop the initial ref held in nfs_client::init().
+         * Shutdown should have removed the root_fh.
          */
-        if(root_fh) {
-            root_fh = nullptr;
-        }
+        assert(root_fh == nullptr);
     }
 
 public:
@@ -173,22 +172,29 @@ public:
         for (auto it : inode_map) {
             struct nfs_inode *inode = it.second;
             AZLogDebug("[{}:{}] Inode still present at shutdown: "
-                    "lookupcnt={}, dircachecnt={}, forget_seen={}, "
-                    "is_cache_empty={}",
-                    inode->get_filetype_coding(),
-                    inode->get_fuse_ino(),
-                    inode->lookupcnt.load(),
-                    inode->dircachecnt.load(),
-                    inode->forget_seen,
-                    inode->is_cache_empty());
+                       "lookupcnt={}, dircachecnt={}, forget_seen={}, "
+                       "is_cache_empty={}",
+                       inode->get_filetype_coding(),
+                       inode->get_fuse_ino(),
+                       inode->lookupcnt.load(),
+                       inode->dircachecnt.load(),
+                       inode->forget_seen,
+                       inode->is_cache_empty());
             
             /*
-                * Fuse wants to treat an unmount as an implicit forget for 
-                * all inodes. Fuse does not gurantee that it will call forget
-                * for each inode, hence we have to implicity forget all inodes.
-                */
-            if(!inode->is_forgotten() && !inode->forget_seen) {
+             * Fuse wants to treat an unmount as an implicit forget for 
+             * all inodes. Fuse does not gurantee that it will call forget
+             * for each inode, hence we have to implicity forget all inodes.
+             */
+            if (!inode->is_forgotten() && !inode->forget_seen) {
                 inode->decref(1, true /* from_forget */);
+                
+                /*
+                 * root_fh is not valid anymore, clear it now.
+                 */
+                if (inode == root_fh) {
+                    root_fh = nullptr;
+                }
             }
         }
 
