@@ -26,7 +26,7 @@ directory_entry::directory_entry(const char *name_,
      * lookupcnt ref and dircachecnt ref will correctly prevent the inode
      * from being freed while it's referenced by the directory_entry.
      */
-    assert(!nfs_inode->is_forgotten());
+    assert(!nfs_inode->is_forgotten());     
     nfs_inode->dircachecnt++;
 }
 
@@ -49,6 +49,7 @@ directory_entry::directory_entry(const char *name_,
 
 directory_entry::~directory_entry()
 {
+    AZLogVerbose("~directory_entry called.");
     if (nfs_inode) {
         assert(nfs_inode->dircachecnt > 0);
         nfs_inode->dircachecnt--;
@@ -264,12 +265,12 @@ void readdirectory_cache::clear()
                 assert(inode->dircachecnt > 0);
 
                 AZLogDebug("[{}] Removing {} fuse ino {}, cookie {}, from "
-                           "readdir cache (dircachecnt {})",
+                           "readdir cache (dircachecnt {} lookupcnt {})",
                            this->inode->get_fuse_ino(),
                            it->second->name,
                            inode->get_fuse_ino(),
                            it->second->cookie,
-                           inode->dircachecnt.load());
+                           inode->dircachecnt.load(), inode->lookupcnt.load());
             }
 
             /*

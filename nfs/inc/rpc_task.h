@@ -1497,7 +1497,6 @@ public:
             assert(inode->lookupcnt >= 1);
             assert(e->generation == inode->get_generation());
 
-#ifdef ENABLE_PARANOID
             /*
              * This might be an existing inode from inode_map which we didn't
              * free earlier as it was in use when fuse called forget and then
@@ -1508,7 +1507,6 @@ public:
              */
             inode->forget_seen = false;
             inode->returned_to_fuse = true;
-#endif
         }
 
         assert((int64_t) e->generation <= get_current_usecs());
@@ -1548,13 +1546,11 @@ public:
         assert(entry->generation == inode->get_generation());
         assert((int64_t) entry->generation <= get_current_usecs());
 
-#ifdef ENABLE_PARANOID
         /*
          * See comment in reply_entry().
          */
         inode->forget_seen = false;
         inode->returned_to_fuse = true;
-#endif
 
         if (fuse_reply_create(get_fuse_req(), entry, file) < 0) {
             /*
@@ -1727,6 +1723,7 @@ public:
 
         for (int i = 0; i < MAX_OUTSTANDING_RPC_TASKS; i++) {
             assert(rpc_task_list[i]);
+            delete rpc_task_list[i]->rpc_api;
             delete rpc_task_list[i];
         }
         rpc_task_list.clear();

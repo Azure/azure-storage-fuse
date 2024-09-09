@@ -128,11 +128,11 @@ private:
 
     ~nfs_client()
     {
+        AZLogInfo("~nfs_client() called");
         /*
          * Drop the initial ref held in nfs_client::init().
          */
-        if (root_fh) {
-            root_fh->decref();
+        if(root_fh) {
             root_fh = nullptr;
         }
     }
@@ -170,20 +170,29 @@ public:
         assert(!shutting_down);
         shutting_down = true;
 
-#ifdef ENABLE_PARANOID
         for (auto it : inode_map) {
-            const struct nfs_inode *inode = it.second;
+            struct nfs_inode *inode = it.second;
             AZLogDebug("[{}:{}] Inode still present at shutdown: "
-                       "lookupcnt={}, dircachecnt={}, forget_seen={}, "
-                       "is_cache_empty={}",
-                       inode->get_filetype_coding(),
-                       inode->get_fuse_ino(),
-                       inode->lookupcnt.load(),
-                       inode->dircachecnt.load(),
-                       inode->forget_seen,
-                       inode->is_cache_empty());
+                    "lookupcnt={}, dircachecnt={}, forget_seen={}, "
+                    "is_cache_empty={}",
+                    inode->get_filetype_coding(),
+                    inode->get_fuse_ino(),
+                    inode->lookupcnt.load(),
+                    inode->dircachecnt.load(),
+                    inode->forget_seen,
+                    inode->is_cache_empty());
+            
+            /*
+                * Fuse wants to treat an unmount as an implicit forget for 
+                * all inodes. Fuse does not gurantee that it will call forget
+                * for each inode, hence we have to implicity forget all inodes.
+                */
+            if(!inode->is_forgotten() && !inode->forget_seen) {
+                inode->decref(1, true /* from_forget */);
+            }
         }
-#endif
+
+        assert(inode_map.size() == 0);
 
         transport.close();
         jukebox_thread.join();

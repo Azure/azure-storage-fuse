@@ -431,9 +431,7 @@ void nfs_client::put_nfs_inode_nolock(struct nfs_inode *inode,
      * or we failed to call fuse_reply_entry(), fuse_reply_create() or
      * fuse_reply_buf()), or fuse called forget for the inode.
      */
-#ifdef ENABLE_PARANOID
     assert(!inode->returned_to_fuse || inode->forget_seen);
-#endif
 
     /*
      * Directory inodes cannot be deleted while the directory cache is not

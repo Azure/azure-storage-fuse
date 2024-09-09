@@ -144,7 +144,6 @@ void nfs_inode::decref(size_t cnt, bool from_forget)
     assert(cnt > 0);
     assert(lookupcnt >= cnt);
 
-#ifdef ENABLE_PARANOID
     if (from_forget) {
         /*
          * Fuse should not call forget more than once for an inode.
@@ -152,7 +151,6 @@ void nfs_inode::decref(size_t cnt, bool from_forget)
         assert(!forget_seen);
         forget_seen = true;
     }
-#endif
 
 try_again:
     /*
@@ -571,7 +569,7 @@ void nfs_inode::lookup_dircache(
                  * have the directory open which should prevent fuse vfs from
                  * calling forget on the directory inode.
                  */
-                if (readdirplus) {
+                if(entry->nfs_inode) {
                     assert(entry->nfs_inode->dircachecnt >= 2);
                     entry->nfs_inode->dircachecnt--;
                 }

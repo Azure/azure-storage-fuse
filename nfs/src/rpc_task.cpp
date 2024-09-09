@@ -2849,29 +2849,13 @@ static void readdirplus_callback(
              *
              * TODO: Try to steal entry->name to avoid the strdup().
              */
-            struct directory_entry *dir_entry =
-                dircache_handle->lookup(entry->cookie);
-
-            if (dir_entry ) {
-                assert(dir_entry->cookie == entry->cookie);
-                if (dir_entry->nfs_inode) {
-                    /*
-                     * Drop the extra ref held by lookup().
-                     * Original ref held by readdirectory_cache::add()
-                     * must also be present, remove() will drop that.
-                     */
-                    assert(dir_entry->nfs_inode->dircachecnt >= 2);
-                    dir_entry->nfs_inode->dircachecnt--;
-                }
-
-                /*
-                 * This will drop the original dircachecnt on the inode and
-                 * also delete the inode if the lookupcnt ref is also 0.
-                 */
-                dircache_handle->remove(entry->cookie);
-            }
-
-            dir_entry = new struct directory_entry(strdup(entry->name),
+            
+            /*
+             * This will drop the original dircachecnt on the inode and
+             * also delete the inode if the lookupcnt ref is also 0.
+             */
+            dircache_handle->remove(entry->cookie);
+            struct directory_entry* dir_entry = new struct directory_entry(strdup(entry->name),
                                                    entry->cookie,
                                                    nfs_inode->attr,
                                                    nfs_inode);
@@ -3155,15 +3139,16 @@ void rpc_task::send_readdir_response(
         assert((uint64_t) it->cookie > (uint64_t) rpc_api->readdir_task.get_offset());
         size_t entsize;
 
+        /*
+         * Drop the ref held inside lookup() or readdirplus_callback().
+         */
+        if(it->nfs_inode) {
+            it->nfs_inode->dircachecnt--;
+        }
+
         if (readdirplus) {
             struct fuse_entry_param fuseentry;
 
-            /*
-             * Drop the ref held inside lookup() or readdirplus_callback().
-             */
-            it->nfs_inode->dircachecnt--;
-
-#ifdef ENABLE_PARANOID
             /*
              * We are going to return this inode to fuse.
              * Set forget_seen (in case this is not a fresh inode but being
@@ -3171,7 +3156,7 @@ void rpc_task::send_readdir_response(
              */
             it->nfs_inode->forget_seen = false;
             it->nfs_inode->returned_to_fuse = true;
-#endif
+
             // We don't need the memset as we are setting all members.
             //memset(&fuseentry, 0, sizeof(fuseentry));
             fuseentry.attr = it->attributes;

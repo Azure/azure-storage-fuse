@@ -194,7 +194,6 @@ struct nfs_inode
      */
     std::shared_ptr<ra_state> readahead_state;
 
-#ifdef ENABLE_PARANOID
     /*
      * Has this inode been returned to fuse?
      * It'll be set to true only when we are able to successfully call one of
@@ -216,7 +215,6 @@ struct nfs_inode
      * fuse has not called forget or we didn't delete it later.
      */
     bool forget_seen = false;
-#endif
 
     /*
      * Stores the write error observed when performing backend writes to this
