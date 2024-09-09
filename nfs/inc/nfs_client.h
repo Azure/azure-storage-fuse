@@ -131,7 +131,7 @@ private:
         AZLogInfo("~nfs_client() called");
 
         /*
-         * Shutdown should have removed the root_fh.
+         * shutdown() should have cleared the root_fh.
          */
         assert(root_fh == nullptr);
     }
@@ -168,9 +168,11 @@ public:
     {
         assert(!shutting_down);
         shutting_down = true;
-
-        for (auto it : inode_map) {
-            struct nfs_inode *inode = it.second;
+        
+        auto end_delete = inode_map.end();
+        for (auto it = inode_map.begin(), next_it = it; it != end_delete; it = next_it) {
+            ++next_it;
+            struct nfs_inode *inode = it->second;
             AZLogDebug("[{}:{}] Inode still present at shutdown: "
                        "lookupcnt={}, dircachecnt={}, forget_seen={}, "
                        "is_cache_empty={}",
