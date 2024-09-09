@@ -50,6 +50,7 @@ directory_entry::directory_entry(const char *name_,
 directory_entry::~directory_entry()
 {
     AZLogVerbose("~directory_entry called");
+
     if (nfs_inode) {
         assert(nfs_inode->dircachecnt > 0);
         nfs_inode->dircachecnt--;
