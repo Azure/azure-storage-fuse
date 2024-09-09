@@ -568,8 +568,12 @@ void nfs_inode::lookup_dircache(
                  * is being enumerate by the current thread and hence it must
                  * have the directory open which should prevent fuse vfs from
                  * calling forget on the directory inode.
+                 *
+                 * Note: entry->nfs_inode may be null for entries populated using
+                 *       only readdir however, it is guaranteed to be present for
+                 *       readdirplus.
                  */
-                if(entry->nfs_inode) {
+                if (entry->nfs_inode) {
                     assert(entry->nfs_inode->dircachecnt >= 2);
                     entry->nfs_inode->dircachecnt--;
                 }

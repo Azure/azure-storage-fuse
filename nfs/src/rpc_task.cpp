@@ -2848,16 +2848,11 @@ static void readdirplus_callback(
              * pressure).
              *
              * TODO: Try to steal entry->name to avoid the strdup().
-             */
-            
-            /*
-             * This will drop the original dircachecnt on the inode and
-             * also delete the inode if the lookupcnt ref is also 0.
              */            
              struct directory_entry *dir_entry =
                 dircache_handle->lookup(entry->cookie);
 
-            if (dir_entry ) {
+            if (dir_entry) {
                 assert(dir_entry->cookie == entry->cookie);
                 if (dir_entry->nfs_inode) {
                     /*
@@ -3162,8 +3157,14 @@ void rpc_task::send_readdir_response(
 
         /*
          * Drop the ref held inside lookup() or readdirplus_callback().
+         * 
+         *
+         * Note: entry->nfs_inode may be null for entries populated using
+         *       only readdir however, it is guaranteed to be present for
+         *       readdirplus.
          */
-        if(it->nfs_inode) {
+        if (it->nfs_inode) {
+            assert(it->nfs_inode->dircachecnt > 0);
             it->nfs_inode->dircachecnt--;
         }
 
