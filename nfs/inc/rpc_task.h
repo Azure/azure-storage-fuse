@@ -1711,7 +1711,10 @@ public:
     {
         AZLogInfo("~rpc_task_helper() called");
 
+#ifdef ENABLE_PARANOID
         assert(free_task_index_set.size() == free_task_index.size());
+#endif
+
         /*
          * We should be called when there are no outstanding tasks.
          */
