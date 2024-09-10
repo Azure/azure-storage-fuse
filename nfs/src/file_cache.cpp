@@ -949,6 +949,9 @@ do { \
                         AZLogDebug("(new chunk) [{},{})",
                                 chunk_offset, chunk_offset + chunk_length);
                     } else {
+                        // Search for more chunks should start from the next chunk.
+                        it = itn;
+
                         AZLogDebug("<Release [{}, {})> (non-existent chunk) "
                                    "[{},{})",
                                    offset, offset + length,
@@ -1710,6 +1713,9 @@ void bytes_chunk_cache::clear()
     AZLogInfo("[{}] Cache purge: chunkmap.size()={}, backing_file_name={}",
               fmt::ptr(this), chunkmap.size(), backing_file_name);
 
+    assert(bytes_allocated <= bytes_allocated_g);
+    assert(bytes_cached <= bytes_cached_g);
+
     /*
      * We hold the bytes_chunk_cache lock and go over all the bytes_chunk to
      * see if they can be freed. Following bytes_chunk cannot be freed:
@@ -1817,9 +1823,26 @@ void bytes_chunk_cache::clear()
      *       membuf will not be freed and hence bytes_allocated won't drop to 0.
      *       But, since we allow clear() only when inuse is 0, technically we
      *       shouldn't have any such user.
+     *
+     *       XXX Even though we allow clear() only when inuse is 0, it's
+     *           possible that the caller has dropped the inuse ref but is
+     *           still holding on to the bytes_chunk/membuf, which will cause
+     *           bytes_chunk to be removed from the chunkmap but the membuf
+     *           will still not be freed, causing bytes_allocated to not drop
+     *           to 0. f.e., rpc_task::bc_vec holds bytes_chunk references but
+     *           we may drop inuse when read completes.
      */
     assert(bytes_cached == 0);
-    assert(bytes_allocated == 0);
+
+    if (bytes_allocated != 0) {
+        AZLogWarn("[{}] Cache purge: bytes_allocated is still {}, some user "
+                  "is still holding on to the bytes_chunk/membuf even after "
+                  "dropping the inuse count: backing_file_name={}",
+                  fmt::ptr(this), bytes_allocated.load(), backing_file_name);
+#if 0
+        assert(0);
+#endif
+    }
 
     /*
      * If all chunks are released, delete the backing file in case of
