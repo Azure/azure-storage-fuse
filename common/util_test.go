@@ -34,9 +34,11 @@
 package common
 
 import (
+	"bytes"
 	"fmt"
 	"math/rand"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -65,6 +67,19 @@ func (suite *utilTestSuite) SetupTest() {
 
 func TestUtil(t *testing.T) {
 	suite.Run(t, new(utilTestSuite))
+}
+
+func (suite *typesTestSuite) TestIsMountActive() {
+	var out bytes.Buffer
+	cmd := exec.Command("pidof", "blobfuse2")
+	cmd.Stdout = &out
+
+	err := cmd.Run()
+	suite.assert.Equal("exit status 1", err.Error())
+
+	res, err := IsMountActive("/mnt/blobfuse")
+	suite.assert.Nil(err)
+	suite.assert.False(res)
 }
 
 func (suite *typesTestSuite) TestDirectoryExists() {
