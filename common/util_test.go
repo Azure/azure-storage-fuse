@@ -261,6 +261,9 @@ func (suite *utilTestSuite) TestDirectoryCleanup() {
 
 	err = TempCacheCleanup(dirName)
 	suite.assert.Nil(err)
+
+	_ = os.RemoveAll(dirName)
+
 }
 
 func (suite *utilTestSuite) TestGetFuseMinorVersion() {
