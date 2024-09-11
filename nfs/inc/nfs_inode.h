@@ -246,7 +246,13 @@ struct nfs_inode
     std::shared_ptr<bytes_chunk_cache>& get_or_alloc_filecache()
     {
         assert(is_regfile());
+        {
+            std::shared_lock<std::shared_mutex> lock(ilock);
+            if (filecache_handle)
+                return filecache_handle;
+        }
 
+        std::unique_lock<std::shared_mutex> lock(ilock);
         if (!filecache_handle) {
             if (aznfsc_cfg.filecache.enable && aznfsc_cfg.filecache.cachedir) {
                 const std::string backing_file_name =
@@ -269,7 +275,13 @@ struct nfs_inode
     std::shared_ptr<readdirectory_cache>& get_or_alloc_dircache()
     {
         assert(is_dir());
+        {
+            std::shared_lock<std::shared_mutex> lock(ilock);
+            if (dircache_handle)
+                return dircache_handle;
+        }
 
+        std::unique_lock<std::shared_mutex> lock(ilock);
         if (!dircache_handle) {
             dircache_handle = std::make_shared<readdirectory_cache>(client, this);
         }
@@ -283,7 +295,13 @@ struct nfs_inode
     std::shared_ptr<ra_state>& get_or_alloc_rastate()
     {
         assert(is_regfile());
+        {
+            std::shared_lock<std::shared_mutex> lock(ilock);
+            if (readahead_state)
+                return readahead_state;
+        }
 
+        std::unique_lock<std::shared_mutex> lock(ilock);
         if (!readahead_state) {
             readahead_state = std::make_shared<ra_state>(client, this);
         }
