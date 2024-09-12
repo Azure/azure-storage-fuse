@@ -1242,11 +1242,11 @@ void rpc_task::sync_membuf(struct bytes_chunk& bc,
 
 void rpc_task::run_write()
 {
-    fuse_ino_t ino = rpc_api->write_task.get_ino();
-    struct nfs_inode *inode = get_client()->get_nfs_inode_from_ino(ino);
-    size_t length = rpc_api->write_task.get_size();
-    struct fuse_bufvec *bufv = rpc_api->write_task.get_buffer_vector();
-    off_t offset = rpc_api->write_task.get_offset();
+    const fuse_ino_t ino = rpc_api->write_task.get_ino();
+    struct nfs_inode *const inode = get_client()->get_nfs_inode_from_ino(ino);
+    const size_t length = rpc_api->write_task.get_size();
+    struct fuse_bufvec *const bufv = rpc_api->write_task.get_buffer_vector();
+    const off_t offset = rpc_api->write_task.get_offset();
 
     // Update cached write timestamp, if needed.
     inode->stamp_cached_write();
@@ -1291,7 +1291,7 @@ void rpc_task::run_write()
          */
         struct rpc_task *flush_task =
             get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_FLUSH);
-        flush_task->init_flush(nullptr /* fuse_req */, rpc_api->flush_task.get_ino());
+        flush_task->init_flush(nullptr /* fuse_req */, ino);
 
         // sync_membuf() uses it to identify jukebox retries, so assert.
         assert(flush_task->rpc_api->pvt == nullptr);
@@ -1304,14 +1304,14 @@ void rpc_task::run_write()
 
 void rpc_task::run_flush()
 {
-    fuse_ino_t ino = rpc_api->write_task.get_ino();
-    struct nfs_inode *inode = get_client()->get_nfs_inode_from_ino(ino);
+    const fuse_ino_t ino = rpc_api->flush_task.get_ino();
+    struct nfs_inode *const inode = get_client()->get_nfs_inode_from_ino(ino);
 
     /*
      * Check if any write error set, if set don't attempt the flush and fail
      * the flush operation.
      */
-    int error_code = inode->get_write_error();
+    const int error_code = inode->get_write_error();
     if (error_code != 0) {
         AZLogWarn("[{}] Previous write to this Blob failed with error={}, "
                   "skipping new flush!", ino, error_code);
@@ -1340,7 +1340,7 @@ void rpc_task::run_flush()
          */
         struct rpc_task *flush_task =
             get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_FLUSH);
-        flush_task->init_flush(nullptr /* fuse_req */, rpc_api->flush_task.get_ino());
+        flush_task->init_flush(nullptr /* fuse_req */, ino);
 
         // sync_membuf() uses it to identify jukebox retries, so assert.
         assert(flush_task->rpc_api->pvt == nullptr);
