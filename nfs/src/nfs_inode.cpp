@@ -1,6 +1,7 @@
 #include "nfs_inode.h"
 #include "nfs_client.h"
 #include "file_cache.h"
+#include "rpc_task.h"
 
 /**
  * Constructor.
@@ -295,6 +296,86 @@ int nfs_inode::get_actimeo_max() const
     }
 }
 
+int nfs_inode::flush_cache_and_wait()
+{
+    /*
+     * MUST be called only for regular files.
+     * Leave the assert to catch if fuse ever calls flush() on non-reg files.
+     */
+    if (!is_regfile()) {
+        assert(0);
+        return 0;
+    }
+
+    /*
+     * Check if any write error set, if set don't attempt the flush and fail
+     * the flush operation.
+     */
+    const int error_code = get_write_error();
+    if (error_code != 0) {
+        AZLogWarn("[{}] Previous write to this Blob failed with error={}, "
+                  "skipping new flush!", ino, error_code);
+
+        return error_code;
+    }
+
+    /*
+     * If flush() is called w/o open(), there won't be any cache, skip.
+     */
+    if (!filecache_handle) {
+        return 0;
+    }
+
+    // Get the dirty bytes_chunk from the filecache handle.
+    std::vector<bytes_chunk> bc_vec = filecache_handle->get_dirty_bc();
+
+    // Flush dirty membufs to backend.
+    for (bytes_chunk& bc : bc_vec) {
+        /*
+         * Create the flush task to carry out the write.
+         */
+        struct rpc_task *flush_task =
+            get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_FLUSH);
+        flush_task->init_flush(nullptr /* fuse_req */, ino);
+
+        // sync_membuf() uses it to identify jukebox retries, so assert.
+        assert(flush_task->rpc_api->pvt == nullptr);
+
+        // Flush the membuf to backend.
+        flush_task->sync_membuf(bc, ino);
+    }
+
+    /*
+     * Our caller expects us to return only after the flush completes.
+     * Wait for all the membufs to flush and get result back.
+     */
+    for (bytes_chunk &bc : bc_vec) {
+        struct membuf *mb = bc.get_membuf();
+        assert(mb != nullptr);
+
+        mb->set_locked();
+        assert(mb->is_inuse());
+
+        /*
+         * If still dirty after we get the lock, it may mean two things:
+         * - Write failed.
+         * - Some other thread got the lock before us and it made the
+         *   membuf dirty again.
+         */
+        if (mb->is_dirty() && get_write_error()) {
+            AZLogError("[{}] Flush [{}, {}) failed with error: {}",
+                       ino,
+                       bc.offset, bc.offset + bc.length,
+                       get_write_error());
+        }
+
+        mb->clear_locked();
+        mb->clear_inuse();
+    }
+
+    return get_write_error();
+}
+
 bool nfs_inode::release(fuse_req_t req)
 {
     assert(opencnt > 0);
@@ -441,8 +522,10 @@ bool nfs_inode::update_nolock(const struct fattr3& fattr)
 void nfs_inode::invalidate_cache_nolock()
 {
     /*
-     * TODO: Right now we just purge the readdir cache.
-     *       Once we have the file cache too, we need to purge that for files.
+     * When directory mtime changes then we purge the readdir cache for that
+     * directory and also the DNLC cache for that directory. DNLC cache needs
+     * to be purged as directory contents changing could mean any existing
+     * file may have been deleted.
      */
     if (is_dir()) {
         purge_dircache_nolock();

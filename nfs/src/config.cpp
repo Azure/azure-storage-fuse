@@ -262,5 +262,6 @@ void aznfsc_cfg::set_defaults_and_sanitize()
     AZLogDebug("account = {}", account);
     AZLogDebug("container = {}", container);
     AZLogDebug("cloud_suffix = {}", cloud_suffix);
+    AZLogDebug("mountpoint = {}", mountpoint);
     AZLogDebug("===== config end =====");
 }

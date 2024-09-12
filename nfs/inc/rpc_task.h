@@ -1429,9 +1429,13 @@ public:
     // The task should not be accessed after this function is called.
     void free_rpc_task();
 
-    // This method will reply with error and free the rpc task.
+    /*
+     * This method will reply with error and free the rpc task.
+     * rc is either 0 for success, or a +ve errno value.
+     */
     void reply_error(int rc)
     {
+        assert(rc >= 0);
         fuse_reply_err(get_fuse_req(), rc);
         free_rpc_task();
     }
@@ -1576,7 +1580,7 @@ public:
      * Returns 0 if rpc_task succeeded execution at the server, else returns
      * a +ve errno value.
      * If user has passed the last argument errstr as non-null, then it'll
-     * additionally store an error strig there.
+     * additionally store an error string there.
      */
     static int status(int rpc_status,
                       int nfs_status,

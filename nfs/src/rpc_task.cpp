@@ -1307,77 +1307,7 @@ void rpc_task::run_flush()
     const fuse_ino_t ino = rpc_api->flush_task.get_ino();
     struct nfs_inode *const inode = get_client()->get_nfs_inode_from_ino(ino);
 
-    /*
-     * Check if any write error set, if set don't attempt the flush and fail
-     * the flush operation.
-     */
-    const int error_code = inode->get_write_error();
-    if (error_code != 0) {
-        AZLogWarn("[{}] Previous write to this Blob failed with error={}, "
-                  "skipping new flush!", ino, error_code);
-
-        reply_error(error_code);
-        return;
-    }
-
-    /*
-     * Get the filecache_handle from the inode.
-     * If flush() is called w/o open(), there won't be any cache, skip.
-     */
-    auto filecache_handle = inode->filecache_handle;
-    if (!filecache_handle) {
-        reply_error(0);
-        return;
-    }
-
-    // Get the dirty bytes_chunk from the filecache handle.
-    std::vector<bytes_chunk> bc_vec = filecache_handle->get_dirty_bc();
-
-    // Flush dirty membufs to backend.
-    for (bytes_chunk& bc : bc_vec) {
-        /*
-         * Create the flush task to carry out the write.
-         */
-        struct rpc_task *flush_task =
-            get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_FLUSH);
-        flush_task->init_flush(nullptr /* fuse_req */, ino);
-
-        // sync_membuf() uses it to identify jukebox retries, so assert.
-        assert(flush_task->rpc_api->pvt == nullptr);
-
-        // Flush the membuf to backend.
-        flush_task->sync_membuf(bc, ino);
-    }
-
-    /*
-     * Our caller expects us to return only after the flush completes.
-     * Wait for all the membufs to flush and get result back.
-     */
-    for (bytes_chunk &bc : bc_vec) {
-        struct membuf *mb = bc.get_membuf();
-        assert(mb != nullptr);
-
-        mb->set_locked();
-        assert(mb->is_inuse());
-
-        /*
-         * If still dirty after we get the lock, it may mean two things:
-         * - Write failed.
-         * - Some other thread got the lock before us and it made the
-         *   membuf dirty again.
-         */
-        if (mb->is_dirty() && inode->get_write_error()) {
-            AZLogError("[{}] Flush [{}, {}) failed with error: {}",
-                       ino,
-                       bc.offset, bc.offset + bc.length,
-                       inode->get_write_error());
-        }
-
-        mb->clear_locked();
-        mb->clear_inuse();
-    }
-
-    reply_error(inode->get_write_error());
+    reply_error(inode->flush_cache_and_wait());
 }
 
 void rpc_task::run_getattr()

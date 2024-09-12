@@ -223,6 +223,8 @@ struct nfs_inode
      * after copying the data to the cache but later when sync'ing dirty
      * membufs with the Blob we might encounter write failures. These failures
      * MUST be conveyed to the application via close(), else it'll never know.
+     *
+     * This is either 0 (no error) or a +ve errno value.
      */
     int write_error = 0;
 
@@ -570,6 +572,23 @@ struct nfs_inode
     }
 
     /**
+     * Flush the dirty file cache represented by filecache_handle and wait
+     * till all dirty data is sync'ed with the NFS server.
+     * Note that filecache_handle is the only writeback cache that we have
+     * and hence this only flushes that.
+     * For a non-reg file inode this will be a no-op.
+     * Returns 0 on success and a positive errno value on error.
+     *
+     * Note: This doesn't take the inode lock as it expects to be called from
+     *       fuse methods which are synchronized by fuse. Fuse will grab the
+     *       inode lock and call the aznfsc_ll_flush() method serially for a
+     *       file.
+     *       If this is called from some other workflow then we need to
+     *       grab the inode lock.
+     */
+    int flush_cache_and_wait();
+
+    /**
      * Called when last open fd is closed for a file.
      * release() will return true if the inode was silly renamed and it
      * initiated an unlink of the inode.
@@ -663,7 +682,7 @@ struct nfs_inode
      */
     void set_write_error(int error)
     {
-        assert(error != 0);
+        assert(error > 0);
 
         if (this->write_error == 0) {
             this->write_error = error;
