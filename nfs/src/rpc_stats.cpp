@@ -87,6 +87,32 @@ void rpc_stats_az::dump_stats()
            ",mountport=" + std::to_string(mo.mount_port) +
            std::string(",mountproto=tcp\n");
 
+    str += "File Cache statistics:\n";
+    str += "  " + std::to_string(bytes_chunk_cache::get_num_caches()) +
+                  " file caches\n";
+    str += "  " + std::to_string(bytes_chunk_cache::num_chunks_g) +
+                  " chunks in chunkmap\n";
+    str += "  " + std::to_string(bytes_chunk_cache::bytes_allocated_g) +
+                  " bytes allocated\n";
+    str += "  " + std::to_string(bytes_chunk_cache::bytes_cached_g) +
+                  " bytes cached\n";
+    str += "  " + std::to_string(bytes_chunk_cache::bytes_dirty_g) +
+                  " bytes dirty\n";
+    str += "  " + std::to_string(bytes_chunk_cache::bytes_uptodate_g) +
+                  " bytes uptodate\n";
+    str += "  " + std::to_string(bytes_chunk_cache::bytes_inuse_g) +
+                  " bytes inuse\n";
+    str += "  " + std::to_string(bytes_chunk_cache::bytes_locked_g) +
+                  " bytes locked\n";
+    str += "  " + std::to_string(bytes_chunk_cache::num_get_g) +
+                  " get calls\n";
+    str += "  " + std::to_string(bytes_chunk_cache::bytes_get_g) +
+                  " bytes mapped\n";
+    str += "  " + std::to_string(bytes_chunk_cache::num_release_g) +
+                  " release calls\n";
+    str += "  " + std::to_string(bytes_chunk_cache::bytes_release_g) +
+                  " bytes released\n";
+
     str += "RPC statistics:\n";
     str += "  " + std::to_string(cum_stats.num_req_sent) +
                   " RPC requests sent\n";

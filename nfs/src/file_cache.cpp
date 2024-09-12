@@ -29,7 +29,7 @@
 
 namespace aznfsc {
 
-/* static */ std::list<bytes_chunk_cache*> bytes_chunk_cache::bcc_all;
+/* static */ std::atomic<uint64_t> bytes_chunk_cache::num_caches = 0;
 
 /* static */ std::atomic<uint64_t> bytes_chunk_cache::num_chunks_g = 0;
 /* static */ std::atomic<uint64_t> bytes_chunk_cache::num_get_g = 0;

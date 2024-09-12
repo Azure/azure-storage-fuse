@@ -750,20 +750,22 @@ public:
             AZLogDebug("Memory-backed bytes_chunk_cache created");
         }
 
-        bcc_all_it = bcc_all.insert(bcc_all.begin(), this);
+        num_caches++;
 
         AZLogDebug("Added new file cache {}, total file caches now: {}",
                    fmt::ptr(this),
-                   bcc_all.size());
+                   get_num_caches());
     }
 
     ~bytes_chunk_cache()
     {
         clear();
-        bcc_all.erase(bcc_all_it);
+
+        assert(num_caches > 0);
+        num_caches--;
         AZLogDebug("Deleted file cache {}, total file caches now: {}",
                    fmt::ptr(this),
-                   bcc_all.size());
+                   get_num_caches());
     }
 
     /**
@@ -957,12 +959,13 @@ public:
 
         num_release++;
         num_release_g++;
-        bytes_release += length;
-        bytes_release_g += length;
 
         scan(offset, length, scan_action::SCAN_ACTION_RELEASE, &bytes_released);
-
         assert(bytes_released <= length);
+
+        bytes_release += bytes_released;
+        bytes_release_g += bytes_released;
+
         return bytes_released;
     }
 
@@ -1189,6 +1192,11 @@ public:
     static std::atomic<uint64_t> bytes_inuse_g;
     static std::atomic<uint64_t> bytes_locked_g;
 
+    static uint64_t get_num_caches()
+    {
+        return num_caches;
+    }
+
 private:
     /**
      * Scan all chunks lying in the range [offset, offset+length) and perform
@@ -1264,13 +1272,8 @@ private:
     int backing_file_fd = -1;
     std::atomic<uint64_t> backing_file_len = 0;
 
-    /*
-     * Static list of all bytes_chunk_cache created.
-     * bytes_chunk_cache constructor adds to this list while the destructor
-     * removes from this list.
-     */
-    static std::list<bytes_chunk_cache*> bcc_all;
-    std::list<bytes_chunk_cache*>::iterator bcc_all_it;
+    // Count of total active caches.
+    static std::atomic<uint64_t> num_caches;
 };
 
 }
