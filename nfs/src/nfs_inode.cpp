@@ -326,7 +326,12 @@ int nfs_inode::flush_cache_and_wait()
         return 0;
     }
 
-    // Get the dirty bytes_chunk from the filecache handle.
+    /*
+     * Get the dirty bytes_chunk from the filecache handle.
+     * This will grab an exclusive lock on the file cache and return the list
+     * of dirty bytes_chunks at that point. Note that we can have new dirty
+     * bytes_chunks created but we don't want to wait for those.
+     */
     std::vector<bytes_chunk> bc_vec = filecache_handle->get_dirty_bc();
 
     // Flush dirty membufs to backend.
@@ -508,7 +513,21 @@ bool nfs_inode::update_nolock(const struct fattr3& fattr)
     // file type should not change.
     assert((attr.st_mode & S_IFMT) == file_type);
 
-    // Invalidate cache iff file data has changed.
+    /*
+     * Invalidate cache iff file data has changed.
+     *
+     * Note: This does not flush the dirty membufs, those will be flushed
+     *       later when we decide to flush the cache. This means if some
+     *       other client has written to the same parts of the file as
+     *       this node, those will be overwritten when we flush our cache.
+     *       This is not something unexpected as multiple writers updating
+     *       a file w/o coordinating using file locks is expected to result
+     *       in undefined results.
+     *       This also means that if another client has truncated the file
+     *       we will reduce the file size in our saved nfs_inode::attr.
+     *       Later when we flush the dirty membufs the size will be updated
+     *       if some of those membufs write past the file.
+     */
     if (file_data_changed) {
         invalidate_cache_nolock();
     }

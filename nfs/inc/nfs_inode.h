@@ -579,12 +579,10 @@ struct nfs_inode
      * For a non-reg file inode this will be a no-op.
      * Returns 0 on success and a positive errno value on error.
      *
-     * Note: This doesn't take the inode lock as it expects to be called from
-     *       fuse methods which are synchronized by fuse. Fuse will grab the
-     *       inode lock and call the aznfsc_ll_flush() method serially for a
-     *       file.
-     *       If this is called from some other workflow then we need to
-     *       grab the inode lock.
+     * Note: This doesn't take the inode lock but instead it would grab the
+     *       filecache_handle lock and get the list of dirty membufs at this
+     *       instant and flush those. Any new dirty membufs added after it
+     *       queries the dirty membufs list, are not flushed.
      */
     int flush_cache_and_wait();
 
