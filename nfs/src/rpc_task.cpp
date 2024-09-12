@@ -1143,7 +1143,19 @@ void rpc_task::sync_membuf(struct bytes_chunk& bc,
      */
     const bool is_jukebox_retry = (rpc_api->pvt != nullptr);
 
-    // Verify the mb.
+    /*
+     * Verify the mb.
+     * Caller must hold an inuse count on the membuf.
+     * sync_membuf() takes ownership of that inuse count and will drop it.
+     * We have two cases:
+     * 1. We decide to issue the write IO.
+     *    In this case the inuse count will be dropped by write_callback().
+     *    This will be the only inuse count and hence the buffer will be
+     *    release()d in write_callback().
+     * 2. We found the membuf as flushing.
+     *    In this case we don't issue the write and return, but only after
+     *    dropping the inuse count.
+     */
     assert(mb != nullptr);
     assert(mb->is_inuse());
 
@@ -1163,6 +1175,7 @@ void rpc_task::sync_membuf(struct bytes_chunk& bc,
      *       task was issued), but we still want to issue the retry task.
      */
     if (!mb->is_dirty() || (mb->is_flushing() && !is_jukebox_retry)) {
+        mb->clear_inuse();
         free_rpc_task();
         return;
     }
@@ -1236,6 +1249,7 @@ void rpc_task::sync_membuf(struct bytes_chunk& bc,
         } while (rpc_retry);
     } else {
         mb->clear_locked();
+        mb->clear_inuse();
         free_rpc_task();
     }
 }

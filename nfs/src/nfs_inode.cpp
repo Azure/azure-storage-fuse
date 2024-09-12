@@ -346,6 +346,18 @@ int nfs_inode::flush_cache_and_wait()
         // sync_membuf() uses it to identify jukebox retries, so assert.
         assert(flush_task->rpc_api->pvt == nullptr);
 
+        /*
+         * get_dirty_bc() must have held an inuse count.
+         * We hold an extra inuse count so that we can safely wait for the
+         * flush in the following loop.
+         * This is needed as sync_membuf() may drop the inuse count if membuf
+         * is already being flushed by another thread or it may drop when the
+         * write_callback() completes which can happen before we reach the
+         * waiting loop.
+         */
+        assert(bc.get_membuf()->is_inuse());
+        bc.get_membuf()->set_inuse();
+
         // Flush the membuf to backend.
         flush_task->sync_membuf(bc, ino);
     }
@@ -356,10 +368,10 @@ int nfs_inode::flush_cache_and_wait()
      */
     for (bytes_chunk &bc : bc_vec) {
         struct membuf *mb = bc.get_membuf();
-        assert(mb != nullptr);
 
-        mb->set_locked();
+        assert(mb != nullptr);
         assert(mb->is_inuse());
+        mb->set_locked();
 
         /*
          * If still dirty after we get the lock, it may mean two things:
@@ -376,6 +388,20 @@ int nfs_inode::flush_cache_and_wait()
 
         mb->clear_locked();
         mb->clear_inuse();
+
+        /*
+         * Release the bytes_chunk back to the filecache.
+         * These bytes_chunks are not needed anymore as the flush is done.
+         *
+         * Note: We come here for bytes_chunks which were found dirty by the
+         *       above loop. These writes may or may not have been issued by
+         *       us (if not issued by us it was because some other thread,
+         *       mostly the writer issued the write so we found it flushing
+         *       and hence didn't issue). In any case since we have an inuse
+         *       count, release() called from write_callback() would not have
+         *       released it, so we need to release it now.
+         */
+        filecache_handle->release(bc.offset, bc.length);
     }
 
     return get_write_error();
