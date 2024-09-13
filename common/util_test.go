@@ -123,13 +123,7 @@ func (suite *typesTestSuite) TestIsMountActive() {
 		cmd = exec.Command("kill", "-9", pid)
 		cmd.Stdout = &out
 		err = cmd.Run()
-		if err != nil {
-			if exitErr, ok := err.(*exec.ExitError); ok {
-				suite.assert.Fail(fmt.Sprintf("Failed to kill process: %s", exitErr.Stderr))
-			} else {
-				suite.assert.Fail(fmt.Sprintf("Failed to kill process: %s", err.Error()))
-			}
-		}
+		suite.assert.Nil(err)
 	}
 
 	res, err = IsMountActive(mntdir1)
