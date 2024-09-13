@@ -542,6 +542,16 @@ done:
     return 0;
 }
 
+/*
+ * TODO: Make this return proper values.
+ */
+const struct fuse_ctx *rpc_task::fuse_req_ctx(fuse_req_t req)
+{
+    [[maybe_unused]] PXT *pxtask = _FR2PXT(req);
+    static struct fuse_ctx ctx = {0, 0, 100, 0};
+    return &ctx;
+}
+
 extern "C" {
 
 #define CHECK_AND_CALL_ORIG_FUNC_FOR_PATHNAME(pathname, func, force, ...) \

@@ -1722,6 +1722,7 @@ public:
     size_t fuse_add_direntry(fuse_req_t req, char *buf, size_t bufsize,
                              const char *name, const struct stat *stbuf,
                              off_t off);
+    const struct fuse_ctx *fuse_req_ctx(fuse_req_t req);
 #endif
 };
 
