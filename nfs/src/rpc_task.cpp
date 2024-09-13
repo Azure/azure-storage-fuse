@@ -156,9 +156,18 @@ void rpc_task::init_create_file(fuse_req *request,
 {
     assert(get_op_type() == FUSE_CREATE);
     set_fuse_req(request);
+
+    const fuse_ctx *ctx = fuse_req_ctx(request);
+    assert(ctx != nullptr);
+
     rpc_api->create_task.set_parent_ino(parent_ino);
     rpc_api->create_task.set_file_name(name);
-    rpc_api->create_task.set_mode(mode);
+    rpc_api->create_task.set_uid(ctx->uid);
+    rpc_api->create_task.set_gid(ctx->gid);
+
+    const mode_t effective_mode = (mode & (~ctx->umask));
+    rpc_api->create_task.set_mode(effective_mode);
+
     rpc_api->create_task.set_fuse_file(file);
 
     fh_hash = get_client()->get_nfs_inode_from_ino(parent_ino)->get_crc();
@@ -171,9 +180,17 @@ void rpc_task::init_mknod(fuse_req *request,
 {
     assert(get_op_type() == FUSE_MKNOD);
     set_fuse_req(request);
+
+    const fuse_ctx *ctx = fuse_req_ctx(request);
+    assert(ctx != nullptr);
+
     rpc_api->mknod_task.set_parent_ino(parent_ino);
     rpc_api->mknod_task.set_file_name(name);
-    rpc_api->mknod_task.set_mode(mode);
+    rpc_api->mknod_task.set_uid(ctx->uid);
+    rpc_api->mknod_task.set_gid(ctx->gid);
+
+    const mode_t effective_mode = (mode & (~ctx->umask));
+    rpc_api->mknod_task.set_mode(effective_mode);
 
     fh_hash = get_client()->get_nfs_inode_from_ino(parent_ino)->get_crc();
 }
@@ -185,9 +202,17 @@ void rpc_task::init_mkdir(fuse_req *request,
 {
     assert(get_op_type() == FUSE_MKDIR);
     set_fuse_req(request);
+
+    const fuse_ctx *ctx = fuse_req_ctx(request);
+    assert(ctx != nullptr);
+
     rpc_api->mkdir_task.set_parent_ino(parent_ino);
     rpc_api->mkdir_task.set_dir_name(name);
-    rpc_api->mkdir_task.set_mode(mode);
+    rpc_api->mkdir_task.set_uid(ctx->uid);
+    rpc_api->mkdir_task.set_gid(ctx->gid);
+
+    const mode_t effective_mode = (mode & (~ctx->umask));
+    rpc_api->mkdir_task.set_mode(effective_mode);
 
     fh_hash = get_client()->get_nfs_inode_from_ino(parent_ino)->get_crc();
 }
@@ -1370,7 +1395,14 @@ void rpc_task::run_create_file()
         args.where.name = (char*)rpc_api->create_task.get_file_name();
         args.how.mode = (rpc_api->create_task.get_fuse_file()->flags & O_EXCL) ? GUARDED : UNCHECKED;
         args.how.createhow3_u.obj_attributes.mode.set_it = 1;
-        args.how.createhow3_u.obj_attributes.mode.set_mode3_u.mode = rpc_api->create_task.get_mode();
+        args.how.createhow3_u.obj_attributes.mode.set_mode3_u.mode = 
+            rpc_api->create_task.get_mode();
+        args.how.createhow3_u.obj_attributes.uid.set_it = 1;
+        args.how.createhow3_u.obj_attributes.uid.set_uid3_u.uid =
+            rpc_api->create_task.get_uid();
+        args.how.createhow3_u.obj_attributes.gid.set_it = 1;
+        args.how.createhow3_u.obj_attributes.gid.set_gid3_u.gid =
+            rpc_api->create_task.get_gid();
 
         rpc_retry = false;
         stats.on_rpc_issue();
@@ -1411,6 +1443,12 @@ void rpc_task::run_mknod()
         args.how.createhow3_u.obj_attributes.mode.set_it = 1;
         args.how.createhow3_u.obj_attributes.mode.set_mode3_u.mode =
             rpc_api->mknod_task.get_mode();
+        args.how.createhow3_u.obj_attributes.uid.set_it = 1;
+        args.how.createhow3_u.obj_attributes.uid.set_uid3_u.uid =
+            rpc_api->mknod_task.get_uid();
+        args.how.createhow3_u.obj_attributes.gid.set_it = 1;
+        args.how.createhow3_u.obj_attributes.gid.set_gid3_u.gid =
+            rpc_api->mknod_task.get_gid();
 
         rpc_retry = false;
         stats.on_rpc_issue();
@@ -1443,11 +1481,14 @@ void rpc_task::run_mkdir()
         MKDIR3args args;
         ::memset(&args, 0, sizeof(args));
 
-        ::memset(&args, 0, sizeof(args));
         args.where.dir = get_client()->get_nfs_inode_from_ino(parent_ino)->get_fh();
         args.where.name = (char*)rpc_api->mkdir_task.get_dir_name();
         args.attributes.mode.set_it = 1;
         args.attributes.mode.set_mode3_u.mode = rpc_api->mkdir_task.get_mode();
+        args.attributes.uid.set_it = 1;
+        args.attributes.uid.set_uid3_u.uid = rpc_api->mkdir_task.get_uid();
+        args.attributes.gid.set_it = 1;
+        args.attributes.gid.set_gid3_u.gid = rpc_api->mkdir_task.get_gid();
 
         rpc_retry = false;
         stats.on_rpc_issue();
@@ -1544,6 +1585,7 @@ void rpc_task::run_symlink()
     do {
         SYMLINK3args args;
         ::memset(&args, 0, sizeof(args));
+
         args.where.dir = get_client()->get_nfs_inode_from_ino(parent_ino)->get_fh();
         args.where.name = (char*) rpc_api->symlink_task.get_name();
         args.symlink.symlink_data = (char*) rpc_api->symlink_task.get_link();
