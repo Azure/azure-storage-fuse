@@ -257,9 +257,15 @@ void rpc_task::init_symlink(fuse_req *request,
 {
     assert(get_op_type() == FUSE_SYMLINK);
     set_fuse_req(request);
+
+    const fuse_ctx *ctx = fuse_req_ctx(request);
+    assert(ctx != nullptr);
+
     rpc_api->symlink_task.set_link(link);
     rpc_api->symlink_task.set_parent_ino(parent_ino);
     rpc_api->symlink_task.set_name(name);
+    rpc_api->symlink_task.set_uid(ctx->uid);
+    rpc_api->symlink_task.set_gid(ctx->gid);
 
     fh_hash = get_client()->get_nfs_inode_from_ino(parent_ino)->get_crc();
 }
@@ -721,7 +727,6 @@ static void statfs_callback(
         struct statvfs st;
         ::memset(&st, 0, sizeof(st));
         st.f_bsize = NFS_BLKSIZE;
-        st.f_frsize = NFS_BLKSIZE;
         st.f_blocks = res->FSSTAT3res_u.resok.tbytes / NFS_BLKSIZE;
         st.f_bfree = res->FSSTAT3res_u.resok.fbytes / NFS_BLKSIZE;
         st.f_bavail = res->FSSTAT3res_u.resok.abytes / NFS_BLKSIZE;
@@ -1517,6 +1522,12 @@ void rpc_task::run_symlink()
         args.where.dir = get_client()->get_nfs_inode_from_ino(parent_ino)->get_fh();
         args.where.name = (char*) rpc_api->symlink_task.get_name();
         args.symlink.symlink_data = (char*) rpc_api->symlink_task.get_link();
+        args.symlink.symlink_attributes.uid.set_it = 1;
+        args.symlink.symlink_attributes.uid.set_uid3_u.uid =
+            rpc_api->symlink_task.get_uid();
+        args.symlink.symlink_attributes.gid.set_it = 1;
+        args.symlink.symlink_attributes.gid.set_gid3_u.gid =
+            rpc_api->symlink_task.get_gid();
 
         rpc_retry = false;
         stats.on_rpc_issue();

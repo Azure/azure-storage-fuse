@@ -942,6 +942,16 @@ struct symlink_rpc_task
         return link;
     }
 
+    uid_t get_uid() const
+    {
+        return uid;
+    }
+
+    gid_t get_gid() const
+    {
+        return gid;
+    }
+
     void set_parent_ino(fuse_ino_t parent)
     {
         parent_ino = parent;
@@ -957,6 +967,16 @@ struct symlink_rpc_task
         link = ::strdup(_link);
     }
 
+   void set_uid(uid_t _uid)
+    {
+        uid = _uid;
+    }
+
+    void set_gid(gid_t _gid)
+    {
+        gid = _gid;
+    }
+
     void release()
     {
         ::free(name);
@@ -967,6 +987,8 @@ private:
     fuse_ino_t parent_ino;
     char *name;
     char *link;
+    uid_t uid;
+    gid_t gid;
 };
 
 struct rename_rpc_task
