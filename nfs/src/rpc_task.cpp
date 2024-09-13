@@ -1373,7 +1373,8 @@ void rpc_task::run_create_file()
         args.where.name = (char*)rpc_api->create_task.get_file_name();
         args.how.mode = (rpc_api->create_task.get_fuse_file()->flags & O_EXCL) ? GUARDED : UNCHECKED;
         args.how.createhow3_u.obj_attributes.mode.set_it = 1;
-        args.how.createhow3_u.obj_attributes.mode.set_mode3_u.mode = rpc_api->create_task.get_mode();
+        const mode_t mod = (rpc_api->create_task.get_mode() & ~(ctx->umask));
+        args.how.createhow3_u.obj_attributes.mode.set_mode3_u.mode = mod;
         args.how.createhow3_u.obj_attributes.uid.set_it = 1;
         args.how.createhow3_u.obj_attributes.uid.set_uid3_u.uid = ctx->uid;
         args.how.createhow3_u.obj_attributes.gid.set_it = 1;
@@ -1418,9 +1419,10 @@ void rpc_task::run_mknod()
 
         args.where.dir = get_client()->get_nfs_inode_from_ino(parent_ino)->get_fh();
         args.where.name = (char*)rpc_api->mknod_task.get_file_name();
+        const mode_t mod = (rpc_api->mknod_task.get_mode() & ~(ctx->umask));
         args.how.createhow3_u.obj_attributes.mode.set_it = 1;
         args.how.createhow3_u.obj_attributes.mode.set_mode3_u.mode =
-            rpc_api->mknod_task.get_mode();
+            mod;
         args.how.createhow3_u.obj_attributes.uid.set_it = 1;
         args.how.createhow3_u.obj_attributes.uid.set_uid3_u.uid = ctx->uid;
         args.how.createhow3_u.obj_attributes.gid.set_it = 1;
@@ -1463,8 +1465,9 @@ void rpc_task::run_mkdir()
         ::memset(&args, 0, sizeof(args));
         args.where.dir = get_client()->get_nfs_inode_from_ino(parent_ino)->get_fh();
         args.where.name = (char*)rpc_api->mkdir_task.get_dir_name();
+        const mode_t mod = (rpc_api->mkdir_task.get_mode() & (~ctx->umask));
         args.attributes.mode.set_it = 1;
-        args.attributes.mode.set_mode3_u.mode = rpc_api->mkdir_task.get_mode();
+        args.attributes.mode.set_mode3_u.mode = mod;
         args.attributes.uid.set_it = 1;
         args.attributes.uid.set_uid3_u.uid = ctx->uid;
         args.attributes.gid.set_it = 1;
