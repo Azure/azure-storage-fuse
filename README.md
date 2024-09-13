@@ -3,12 +3,15 @@
 Blobfuse2 is an open source project developed to provide a virtual filesystem backed by the Azure Storage. It uses the libfuse open source library (fuse3) to communicate with the Linux FUSE kernel module, and implements the filesystem operations using the Azure Storage REST APIs.
 This is the next generation [blobfuse](https://github.com/Azure/azure-storage-fuse)
 
-Blobfuse2 is stable, and is ***supported by Microsoft*** provided that it is used within its limits documented here. Blobfuse2 supports both reads and writes however, it does not guarantee continuous sync of data written to storage using other APIs or other mounts of Blobfuse2. For data integrity it is recommended that multiple sources do not modify the same blob/file. Please submit an issue [here](https://github.com/azure/azure-storage-fuse/issues) for any issues/feature requests/questions.
+## About Data Consistency and Concurrency
+Blobfuse2 is stable and ***supported by Microsoft*** when used within its [documented limits](#un-supported-file-system-operations). Blobfuse2 supports high-performance reads and writes with strong consistency; however, it is recommended that multiple clients do not modify the same blob/file simultaneously to ensure data integrity. Blobfuse2 does not guarantee continuous synchronization of data written to the same blob/file using multiple clients or across multiple mounts of Blobfuse2 concurrently. If you modify an existing blob/file with another client while also reading that object, Blobfuse2 will not return the most up-to-date data. To ensure your reads see the newest blob/file data, disable all forms of caching at kernel (using `direct-io`) as well as at Blobfuse2 level, and you can re-open the blob/file.
+
+Please submit an issue [here](https://github.com/azure/azure-storage-fuse/issues) for any issues/feature requests/questions.
 
 [This](https://github.com/Azure/azure-storage-fuse/tree/main?tab=readme-ov-file#config-guide) section will help you choose the correct config for Blobfuse2.
 
 ##  NOTICE
-- To avoid encountering [known issues](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2-Known-issues) when using the `Block-cache` mode, users of Blobfuse versions 2.2.0, 2.2.1 and 2.3.0 are advised to promptly upgrade to version 2.3.2.
+- Due to known data consistency issues when using Blobfuse2 in `block-cache` mode,  it is strongly recommended that all Blobfuse2 installations be upgraded to version 2.3.2. For more information, see [this](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2-Known-issues).
 - As of version 2.3.0, blobfuse has updated its authentication methods. For Managed Identity, Object-ID based OAuth is solely accessible via CLI-based login, requiring Azure CLI on the system. For a dependency-free option, users may utilize Application/Client-ID or Resource ID based authentication.
 - `streaming` mode is being deprecated.
 
@@ -266,6 +269,7 @@ If your use-case involves updating/uploading file(s) through other means and you
     `docker run -it --rm --cap-add=SYS_ADMIN --device=/dev/fuse --security-opt apparmor:unconfined <environment variables> <docker image>`
 - In case of `mount all` system may limit on number of containers you can mount in parallel (when you go above 100 containers). To increase this system limit use below command
     `echo 256 | sudo tee /proc/sys/fs/inotify/max_user_instances`
+- Refer [this](#limitations-in-block-cache) for block-cache limitations.
 
 ### Syslog security warning
 By default, Blobfuse2 will log to syslog. The default settings will, in some cases, log relevant file paths to syslog. 
