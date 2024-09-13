@@ -40,7 +40,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -70,20 +69,36 @@ func TestUtil(t *testing.T) {
 	suite.Run(t, new(utilTestSuite))
 }
 
-func (suite *typesTestSuite) TestIsMountActive() {
+func (suite *typesTestSuite) TestIsMountActiveNoMount() {
+	var out bytes.Buffer
+	cmd := exec.Command("pidof", "blobfuse2")
+	cmd.Stdout = &out
+	err := cmd.Run()
+	suite.assert.Equal("exit status 1", err.Error())
+	res, err := IsMountActive("/mnt/blobfuse")
+	suite.assert.Nil(err)
+	suite.assert.False(res)
+}
+
+func (suite *typesTestSuite) TestIsMountActiveTwoMounts() {
 	var out bytes.Buffer
 
 	// Define the file name and the content you want to write
 	fileName := "config.yaml"
+
+	lbpath := filepath.Join(home_dir, "lbpath")
+	os.MkdirAll(lbpath, 0777)
+	defer os.RemoveAll(lbpath)
+
 	content := "components:\n" +
 		"  - libfuse\n" +
 		"  - loopbackfs\n\n" +
 		"loopbackfs:\n" +
-		"  path: /home/anubhuti/mnt\n\n"
+		"  path: " + lbpath + "\n\n"
 
-	mntdir1 := filepath.Join(home_dir, "mountdir")
-	os.MkdirAll(mntdir1, 0777)
-	defer os.RemoveAll(mntdir1)
+	mntdir := filepath.Join(home_dir, "mountdir")
+	os.MkdirAll(mntdir, 0777)
+	defer os.RemoveAll(mntdir)
 
 	dir, err := os.Getwd()
 	suite.assert.Nil(err)
@@ -103,34 +118,20 @@ func (suite *typesTestSuite) TestIsMountActive() {
 	dir, err = os.Getwd()
 	suite.assert.Nil(err)
 	binary := filepath.Join(dir, "blobfuse2")
-	cmd := exec.Command(binary, mntdir1, "--config-file", configFile)
+	cmd := exec.Command(binary, mntdir, "--config-file", configFile)
 	cmd.Stdout = &out
 	err = cmd.Run()
 	suite.assert.Nil(err)
 
-	res, err := IsMountActive(mntdir1)
+	res, err := IsMountActive(mntdir)
 	suite.assert.Nil(err)
 	suite.assert.True(res)
 
-	cmd = exec.Command("pidof", "blobfuse2")
-	cmd.Stdout = &out
-	err = cmd.Run()
-	suite.assert.Nil(err)
-
-	pid := strings.TrimSpace(out.String())
-	pid = strings.TrimSuffix(pid, "\n")
-	if pid != "" {
-		cmd = exec.Command("kill", "-9", pid)
-		cmd.Stdout = &out
-		err = cmd.Run()
-		suite.assert.Nil(err)
-	}
-
-	res, err = IsMountActive(mntdir1)
+	res, err = IsMountActive("/mnt/blobfuse")
 	suite.assert.Nil(err)
 	suite.assert.False(res)
 
-	cmd = exec.Command(binary, "unmount", "all")
+	cmd = exec.Command(binary, "unmount", mntdir)
 	cmd.Stdout = &out
 	err = cmd.Run()
 	suite.assert.Nil(err)
