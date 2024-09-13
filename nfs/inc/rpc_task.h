@@ -398,12 +398,12 @@ struct create_file_rpc_task
         file_name = ::strdup(name);
     }
 
-    void set_uid(mode_t _uid)
+    void set_uid(uid_t _uid)
     {
         uid = _uid;
     }
 
-    void set_gid(mode_t _gid)
+    void set_gid(gid_t _gid)
     {
         gid = _gid;
     }
@@ -472,12 +472,12 @@ struct mknod_rpc_task
         file_name = ::strdup(name);
     }
 
-    void set_uid(mode_t _uid)
+    void set_uid(uid_t _uid)
     {
         uid = _uid;
     }
 
-    void set_gid(mode_t _gid)
+    void set_gid(gid_t _gid)
     {
         gid = _gid;
     }
@@ -537,12 +537,12 @@ struct mkdir_rpc_task
         dir_name = ::strdup(name);
     }
 
-    void set_uid(mode_t _uid)
+    void set_uid(uid_t _uid)
     {
         uid = _uid;
     }
 
-    void set_gid(mode_t _gid)
+    void set_gid(gid_t _gid)
     {
         gid = _gid;
     }
