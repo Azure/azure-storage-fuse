@@ -1710,9 +1710,11 @@ public:
 
     void send_read_response();
     void read_from_server(struct bytes_chunk &bc);
-    void sync_membuf(struct bytes_chunk &bc, fuse_ino_t ino);
 
-    void resissue_write_iovec(std::vector<bytes_chunk>& bc_vec,
+    /*
+     * Write/Flush RPC related methods.
+     */
+    void reissue_write_iovec(std::vector<bytes_chunk>& bc_vec,
                               fuse_ino_t ino);
     void issue_write_rpc(std::vector<bytes_chunk> &bc_vec,
                          fuse_ino_t ino,
@@ -1720,6 +1722,8 @@ public:
                          int count,
                          uint64_t offset,
                          uint64_t length);
+    int flush_cache_and_wait(struct nfs_inode *inode);
+
 #ifdef ENABLE_NO_FUSE
     /*
      * In nofuse mode we re-define these fuse_reply functions to copy the

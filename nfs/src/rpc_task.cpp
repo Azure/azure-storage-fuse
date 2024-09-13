@@ -590,7 +590,7 @@ static void write_iov_callback(
             // Any new task should start fresh as a parent task.
             assert(flush_task->rpc_api->parent_task == nullptr);
 
-            flush_task->resissue_write_iovec(bc_vec, ctx->get_ino());
+            flush_task->reissue_write_iovec(bc_vec, ctx->get_ino());
 
             /*
              * Release this task since it has done it's job.
@@ -715,7 +715,10 @@ void issue_write_iovec(struct nfs_client *client,
     flush_task->issue_write_rpc(bc_vec, ino, iov, count, offset, length);
 }
 
-void rpc_task::resissue_write_iovec(std::vector<bytes_chunk>& bc_vec,
+/*
+ * Reissue the write RPC from last successful write offset.
+ */
+void rpc_task::reissue_write_iovec(std::vector<bytes_chunk>& bc_vec,
                                     fuse_ino_t ino)
 {
     struct iovec io_vec[MAX_RPC_IOVEC_COUNT];
@@ -740,6 +743,7 @@ void rpc_task::resissue_write_iovec(std::vector<bytes_chunk>& bc_vec,
         if (start_off == 0 && length == 0) {
             assert(bc.length > 0);
             assert(bc.pvt >= 0);
+            assert(bc.length > bc.pvt);
 
             start_off = bc.offset + bc.pvt;
             length = bc.length - bc.pvt;
@@ -748,9 +752,9 @@ void rpc_task::resissue_write_iovec(std::vector<bytes_chunk>& bc_vec,
             assert((start_off + length) == bc.offset);
             length += bc.length;
         }
+
         io_vec[idx].iov_base = bc.get_buffer() + bc.pvt;
         io_vec[idx].iov_len = bc.length - bc.pvt;
-
         idx++;
 
         assert(idx <= MAX_RPC_IOVEC_COUNT);
@@ -760,14 +764,13 @@ void rpc_task::resissue_write_iovec(std::vector<bytes_chunk>& bc_vec,
 }
 
 /*
- * TODO: Need to handle (MB) boundary aligned IOs.
- *       If IO's are not 1MB aligned, then we need
- *       bytes_chunk need to be part of two IOs so
- *       it's (MB) aligned.
+ * Create an iovec from the given bytes_chunk vector and issue a write RPC.
+ * It may happen that the membufs are not contiguous or already in flushing state,
+ * in that case we issue multiple write RPCs.
  */
 static void create_write_iovec(const std::vector<bytes_chunk>& bc_vec,
                                struct nfs_client *client,
-                               fuse_ino_t ino)
+                               fuse_ino_t ino, bool is_flush)
 {
     struct iovec io_vec[MAX_RPC_IOVEC_COUNT];
     struct nfs_inode *inode = client->get_nfs_inode_from_ino(ino);
@@ -776,6 +779,10 @@ static void create_write_iovec(const std::vector<bytes_chunk>& bc_vec,
     uint64_t start_off = 0;
     uint64_t length = 0;
     std::vector<bytes_chunk> write_bc_vec;
+    /*
+     * The wsize_adj is the maximum size of the write RPC that we can issue.
+     * This is the size negotiated with the server.
+     */
     const int wsize = client->mnt_options.wsize_adj;
 
     for (const bytes_chunk &bc : bc_vec)
@@ -786,6 +793,15 @@ static void create_write_iovec(const std::vector<bytes_chunk>& bc_vec,
         assert(mb != nullptr);
         assert(mb->is_inuse());
         assert(bc.maps_full_membuf());
+
+        /*
+         * Take the extra reference to the membuf, as we are going to use it
+         * in the callback. Other reference we need for flush to wait on these
+         * membufs
+         */
+        if (is_flush) {
+            mb->set_inuse();
+        }
 
         /*
          * Lock the membuf. If multiple writer threads want to flush the same
@@ -800,6 +816,8 @@ static void create_write_iovec(const std::vector<bytes_chunk>& bc_vec,
          * block.
          */
         if (mb->is_flushing() || !mb->is_dirty()) {
+            mb->clear_inuse();
+
             // Issue write if any.
             goto issue_write;
         }
@@ -807,6 +825,7 @@ static void create_write_iovec(const std::vector<bytes_chunk>& bc_vec,
         mb->set_locked();
         if (mb->is_flushing() || !mb->is_dirty()) {
             mb->clear_locked();
+            mb->clear_inuse();
 
             // Issue write if any.
             goto issue_write;
@@ -861,7 +880,6 @@ static void create_write_iovec(const std::vector<bytes_chunk>& bc_vec,
                 assert(write_bc_vec.size() > 0);
                 assert(length > 0);
 
-                AZLogDebug("issue_write_iovec write_bc_vec: {}", fmt::ptr(&write_bc_vec));
                 issue_write_iovec(client, ino, io_vec, write_bc_vec, idx, start_off, length);
             }
 
@@ -889,7 +907,6 @@ static void create_write_iovec(const std::vector<bytes_chunk>& bc_vec,
 
     issue_write:
         if (idx != 0) {
-            AZLogDebug("issue_write_iovec write_bc_vec: {}", fmt::ptr(&write_bc_vec));
             issue_write_iovec(client, ino, io_vec, write_bc_vec, idx, start_off, length);
         }
         idx = 0;
@@ -898,7 +915,6 @@ static void create_write_iovec(const std::vector<bytes_chunk>& bc_vec,
     }
 
     if (idx != 0) {
-        AZLogDebug("issue_write_iovec write_bc_vec: {}", fmt::ptr(&write_bc_vec));
         issue_write_iovec(client, ino, io_vec, write_bc_vec, idx, start_off, length);
     }
 }
@@ -1349,7 +1365,15 @@ copy_to_cache(struct rpc_task *task,
             assert(0);
         }
 
+        /*
+         * Clear the inuse flag and release the lock.
+         * When the cache reached the prune goals, the membuf will be flushed.
+         * At that time the membuf will be locked and inuse, so we need to clear
+         * these flags here.
+         */
         mb->clear_locked();
+        mb->clear_inuse();
+
         buf += bc.length;
         remaining -= bc.length;
 
@@ -1437,10 +1461,94 @@ void rpc_task::run_write()
         return;
     }
 
-    create_write_iovec(bc_vec, client, ino);
+    create_write_iovec(bc_vec, client, ino, false /* is_flush */);
 
     // Send reply to original request without waiting for the backend write to complete.
     reply_write(length);
+}
+
+int rpc_task::flush_cache_and_wait(struct nfs_inode *inode)
+{
+    fuse_ino_t ino = inode->get_fuse_ino();
+
+    /*
+     * MUST be called only for regular files.
+     * Leave the assert to catch if fuse ever calls flush() on non-reg files.
+     */
+    if (!inode->is_regfile()) {
+        assert(0);
+        return 0;
+    }
+
+    /*
+     * Check if any write error set, if set don't attempt the flush and fail
+     * the flush operation.
+     */
+    const int error_code = inode->get_write_error();
+    if (error_code != 0) {
+        AZLogWarn("[{}] Previous write to this Blob failed with error={}, "
+                  "skipping new flush!", ino, error_code);
+
+        return error_code;
+    }
+
+    /*
+     * If flush() is called w/o open(), there won't be any cache, skip.
+     */
+    if (!inode->filecache_handle) {
+        return 0;
+    }
+
+    /*
+     * Get the dirty bytes_chunk from the filecache handle.
+     * This will grab an exclusive lock on the file cache and return the list
+     * of dirty bytes_chunks at that point. Note that we can have new dirty
+     * bytes_chunks created but we don't want to wait for those.
+     */
+    std::vector<bytes_chunk> bc_vec = inode->filecache_handle->get_dirty_bc_range(0, UINT64_MAX);
+
+    // Flush dirty membufs to backend.
+    create_write_iovec(bc_vec, get_client(), inode->get_fuse_ino(), true /* is_flush */);
+
+    /*
+     * Our caller expects us to return only after the flush completes.
+     * Wait for all the membufs to flush and get result back.
+     */
+    for (bytes_chunk &bc : bc_vec) {
+        struct membuf *mb = bc.get_membuf();
+        assert(mb != nullptr);
+
+        mb->set_locked();
+        assert(mb->is_inuse());
+
+        /*
+         * If still dirty after we get the lock, it may mean two things:
+         * - Write failed.
+         * - Some other thread got the lock before us and it made the
+         *   membuf dirty again.
+         */
+        if (mb->is_dirty() && inode->get_write_error()) {
+            AZLogError("[{}] Flush [{}, {}) failed with error: {}",
+                       ino,
+                       bc.offset, bc.offset + bc.length,
+                       inode->get_write_error());
+        }
+
+        mb->clear_locked();
+        mb->clear_inuse();
+
+        /*
+         * Release the bytes_chunk back to the filecache handle.
+         * These bytes_chunks are not needed anymore as the flush is done.
+         *
+         * Note:- We need to call release() here as well as inuse count incremented
+         *        in get_dirty_bc(), so release fail in write_callback() as
+         *        in use count not zero.
+         */
+        inode->filecache_handle->release(bc.offset, bc.length);
+    }
+
+    return inode->get_write_error();
 }
 
 void rpc_task::run_flush()
@@ -1448,7 +1556,7 @@ void rpc_task::run_flush()
     const fuse_ino_t ino = rpc_api->flush_task.get_ino();
     struct nfs_inode *const inode = get_client()->get_nfs_inode_from_ino(ino);
 
-    reply_error(inode->flush_cache_and_wait());
+    reply_error(flush_cache_and_wait(inode));
 }
 
 void rpc_task::run_getattr()
@@ -1456,6 +1564,25 @@ void rpc_task::run_getattr()
     bool rpc_retry;
     auto ino = rpc_api->getattr_task.get_ino();
     rpc_pdu *pdu = nullptr;
+    struct nfs_inode *inode = get_client()->get_nfs_inode_from_ino(ino);
+
+    /*
+     * This is to satisfy a POSIX requirement which expects utime/stat to
+     * return updated attributes after sync'ing any pending writes.
+     * If there is lot of dirty data cached this might take very long, as
+     * it'll wait for the entire data to be written and acknowledged by the
+     * NFS server.
+     *
+     * TODO: If it turns out to cause bad user experience, we can explore
+     *       updating nfs_inode::attr during writes and then returning
+     *       attributes from that instead of making a getattr call here.
+     *       We need to think carefully though.
+     */
+    if (inode->is_regfile()) {
+        AZLogDebug("[{}] Flushing file data ahead of getattr",
+                   inode->get_fuse_ino());
+        flush_cache_and_wait(inode);
+    }
 
     do {
         GETATTR3args args;

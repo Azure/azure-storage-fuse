@@ -700,26 +700,6 @@ void nfs_client::getattr(
     fuse_ino_t ino,
     struct fuse_file_info* file)
 {
-    struct nfs_inode *inode = get_nfs_inode_from_ino(ino);
-
-    /*
-     * This is to satisfy a POSIX requirement which expects utime/stat to
-     * return updated attributes after sync'ing any pending writes.
-     * If there is lot of dirty data cached this might take very long, as
-     * it'll wait for the entire data to be written and acknowledged by the
-     * NFS server.
-     *
-     * TODO: If it turns out to cause bad user experience, we can explore
-     *       updating nfs_inode::attr during writes and then returning
-     *       attributes from that instead of making a getattr call here.
-     *       We need to think carefully though.
-     */
-    if (inode->is_regfile()) {
-        AZLogDebug("[{}] Flushing file data ahead of getattr",
-                   inode->get_fuse_ino());
-        inode->flush_cache_and_wait();
-    }
-
     struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_GETATTR);
 
     tsk->init_getattr(req, ino);
@@ -994,7 +974,7 @@ void nfs_client::jukebox_flush(struct api_task_info *rpc_api)
      */
     assert(rpc_api->parent_task == nullptr);
 
-    flush_task->resissue_write_iovec(ctx->get_bc_vec(), ctx->get_ino());
+    flush_task->reissue_write_iovec(ctx->get_bc_vec(), ctx->get_ino());
     delete ctx;
 }
 
