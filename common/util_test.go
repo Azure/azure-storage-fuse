@@ -40,6 +40,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -71,15 +72,74 @@ func TestUtil(t *testing.T) {
 
 func (suite *typesTestSuite) TestIsMountActive() {
 	var out bytes.Buffer
-	cmd := exec.Command("pidof", "blobfuse2")
+
+	// Define the file name and the content you want to write
+	fileName := "config.yaml"
+	content := "components:\n" +
+		"  - libfuse\n" +
+		"  - loopbackfs\n\n" +
+		"loopbackfs:\n" +
+		"  path: /home/anubhuti/mnt\n\n"
+
+	mntdir1 := filepath.Join(home_dir, "mountdir")
+	os.MkdirAll(mntdir1, 0777)
+	defer os.RemoveAll(mntdir1)
+
+	dir, err := os.Getwd()
+	suite.assert.Nil(err)
+	configFile := filepath.Join(dir, "config.yaml")
+	// Create or open the file. If it doesn't exist, it will be created.
+	file, err := os.Create(fileName)
+	suite.assert.Nil(err)
+	defer file.Close() // Ensure the file is closed after we're done
+
+	// Write the content to the file
+	_, err = file.WriteString(content)
+	suite.assert.Nil(err)
+
+	err = os.Chdir("..")
+	suite.assert.Nil(err)
+
+	dir, err = os.Getwd()
+	suite.assert.Nil(err)
+	binary := filepath.Join(dir, "blobfuse2")
+	cmd := exec.Command(binary, mntdir1, "--config-file", configFile)
 	cmd.Stdout = &out
+	err = cmd.Run()
+	suite.assert.Nil(err)
 
-	err := cmd.Run()
-	suite.assert.Equal("exit status 1", err.Error())
+	res, err := IsMountActive(mntdir1)
+	suite.assert.Nil(err)
+	suite.assert.True(res)
 
-	res, err := IsMountActive("/mnt/blobfuse")
+	cmd = exec.Command("pidof", "blobfuse2")
+	cmd.Stdout = &out
+	err = cmd.Run()
+	suite.assert.Nil(err)
+
+	pid := strings.TrimSpace(out.String())
+	pid = strings.TrimSuffix(pid, "\n")
+	if pid != "" {
+		cmd = exec.Command("kill", "-9", pid)
+		cmd.Stdout = &out
+		err = cmd.Run()
+		if err != nil {
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				suite.assert.Fail(fmt.Sprintf("Failed to kill process: %s", exitErr.Stderr))
+			} else {
+				suite.assert.Fail(fmt.Sprintf("Failed to kill process: %s", err.Error()))
+			}
+		}
+	}
+
+	res, err = IsMountActive(mntdir1)
 	suite.assert.Nil(err)
 	suite.assert.False(res)
+
+	cmd = exec.Command(binary, "unmount", "all")
+	cmd.Stdout = &out
+	err = cmd.Run()
+	suite.assert.Nil(err)
 }
 
 func (suite *typesTestSuite) TestDirectoryExists() {
