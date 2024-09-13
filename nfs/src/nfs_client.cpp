@@ -726,6 +726,16 @@ void nfs_client::getattr(
     tsk->run_getattr();
 }
 
+void nfs_client::statfs(
+    fuse_req_t req,
+    fuse_ino_t ino)
+{
+    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_STATFS);
+
+    tsk->init_statfs(req, ino);
+    tsk->run_statfs();
+}
+
 void nfs_client::create(
     fuse_req_t req,
     fuse_ino_t parent_ino,

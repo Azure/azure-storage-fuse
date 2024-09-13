@@ -361,6 +361,8 @@ public:
                       fuse_ino_t ino,
                       struct fattr3& attr);
 
+    void statfs(fuse_req_t req, fuse_ino_t ino);
+
     void create(
         fuse_req_t req,
         fuse_ino_t parent_ino,

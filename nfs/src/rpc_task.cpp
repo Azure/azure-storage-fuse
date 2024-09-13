@@ -148,6 +148,15 @@ void rpc_task::init_getattr(fuse_req *request,
     fh_hash = get_client()->get_nfs_inode_from_ino(ino)->get_crc();
 }
 
+void rpc_task::init_statfs(fuse_req *request,
+                           fuse_ino_t ino)
+{
+    assert(get_op_type() == FUSE_STATFS);
+    set_fuse_req(request);
+
+    rpc_api->statfs_task.set_ino(ino);
+}
+
 void rpc_task::init_create_file(fuse_req *request,
                                 fuse_ino_t parent_ino,
                                 const char *name,
@@ -692,6 +701,42 @@ void rpc_task::issue_write_rpc()
     } while (rpc_retry);
 }
 
+static void statfs_callback(
+    struct rpc_context *rpc,
+    int rpc_status,
+    void *data,
+    void *private_data)
+{
+    rpc_task *task = (rpc_task*) private_data;
+    auto res = (FSSTAT3res*)data;
+    const int status = task->status(rpc_status, NFS_STATUS(res));
+
+    /*
+     * Now that the request has completed, we can query libnfs for the
+     * dispatch time.
+     */
+    task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
+
+    if (status == 0) {
+        struct statvfs st;
+        ::memset(&st, 0, sizeof(st));
+        st.f_bsize = NFS_BLKSIZE;
+        st.f_frsize = NFS_BLKSIZE;
+        st.f_blocks = res->FSSTAT3res_u.resok.tbytes / NFS_BLKSIZE;
+        st.f_bfree = res->FSSTAT3res_u.resok.fbytes / NFS_BLKSIZE;
+        st.f_bavail = res->FSSTAT3res_u.resok.abytes / NFS_BLKSIZE;
+        st.f_files = res->FSSTAT3res_u.resok.tfiles;
+        st.f_ffree = res->FSSTAT3res_u.resok.ffiles;
+        st.f_favail = res->FSSTAT3res_u.resok.afiles;
+
+        task->reply_statfs(&st);
+    } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
+        task->get_client()->jukebox_retry(task);
+    } else {
+        task->reply_error(status);
+    }
+}
+
 static void createfile_callback(
     struct rpc_context *rpc,
     int rpc_status,
@@ -1231,6 +1276,37 @@ void rpc_task::run_getattr()
             ::sleep(5);
         }
     } while (rpc_retry);
+}
+
+void rpc_task::run_statfs()
+{
+    bool rpc_retry;
+    auto ino = rpc_api->statfs_task.get_ino();
+    rpc_pdu *pdu = nullptr;
+
+    do {
+        FSSTAT3args args;
+        args.fsroot = get_client()->get_nfs_inode_from_ino(ino)->get_fh();
+
+        rpc_retry = false;
+        stats.on_rpc_issue();
+        if ((pdu = rpc_nfs3_fsstat_task(get_rpc_ctx(), statfs_callback, &args,
+                                 this)) == NULL) {
+            stats.on_rpc_cancel();
+            /*
+             * Most common reason for this is memory allocation failure,
+             * hence wait for some time before retrying. Also block the
+             * current thread as we really want to slow down things.
+             *
+             * TODO: For soft mount should we fail this?
+             */
+            rpc_retry = true;
+
+            AZLogWarn("rpc_nfs3_fsstat_task failed to issue, retrying "
+                      "after 5 secs!");
+            ::sleep(5);
+        }
+    }  while (rpc_retry);
 }
 
 void rpc_task::run_create_file()
