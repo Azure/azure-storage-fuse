@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1725770999112,
+  "lastUpdate": 1726223835162,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -85,6 +85,50 @@ window.BENCHMARK_DATA = {
           {
             "name": "sequential_write_16_threads",
             "value": 0.12524096692266665,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "98318303+souravgupta-msft@users.noreply.github.com",
+            "name": "Sourav Gupta",
+            "username": "souravgupta-msft"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "7e61a85e6cdab572fe2b517fe7045781194807a4",
+          "message": "Updating codeowners (#1520)",
+          "timestamp": "2024-09-13T15:20:17+05:30",
+          "tree_id": "0159fe8edf54260d8f761a1e5227cc318060d19f",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/7e61a85e6cdab572fe2b517fe7045781194807a4"
+        },
+        "date": 1726223834889,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_write",
+            "value": 0.124141478899,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_write_directio",
+            "value": 0.139032030069,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_write_4_threads",
+            "value": 0.126537219744,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_write_16_threads",
+            "value": 0.12707181831466666,
             "unit": "milliseconds"
           }
         ]
