@@ -368,6 +368,21 @@ struct create_file_rpc_task
         return file_name;
     }
 
+    uid_t get_uid() const
+    {
+        return uid;
+    }
+
+    gid_t get_gid() const
+    {
+        return gid;
+    }
+
+    mode_t get_umask() const
+    {
+        return umask;
+    }
+
     mode_t get_mode() const
     {
         return mode;
@@ -388,9 +403,24 @@ struct create_file_rpc_task
         file_name = ::strdup(name);
     }
 
-    void set_mode(mode_t mode)
+    void set_uid(mode_t _uid)
     {
-        this->mode = mode;
+        uid = _uid;
+    }
+
+    void set_gid(mode_t _gid)
+    {
+        gid = _gid;
+    }
+
+    void set_umask(mode_t _umask)
+    {
+        umask = _umask;
+    }
+
+    void set_mode(mode_t _mode)
+    {
+        mode = _mode;
     }
 
     void set_fuse_file(fuse_file_info *fileinfo)
@@ -408,6 +438,9 @@ struct create_file_rpc_task
 private:
     fuse_ino_t parent_ino;
     char *file_name;
+    uid_t uid;
+    gid_t gid;
+    mode_t umask;
     mode_t mode;
     struct fuse_file_info file;
     struct fuse_file_info *file_ptr;
@@ -425,6 +458,21 @@ struct mknod_rpc_task
         return file_name;
     }
 
+    uid_t get_uid() const
+    {
+        return uid;
+    }
+
+    gid_t get_gid() const
+    {
+        return gid;
+    }
+
+    mode_t get_umask() const
+    {
+        return umask;
+    }
+
     mode_t get_mode() const
     {
         return mode;
@@ -440,6 +488,21 @@ struct mknod_rpc_task
         file_name = ::strdup(name);
     }
 
+    void set_uid(mode_t _uid)
+    {
+        uid = _uid;
+    }
+
+    void set_gid(mode_t _gid)
+    {
+        gid = _gid;
+    }
+
+    void set_umask(mode_t _umask)
+    {
+        umask = _umask;
+    }
+
     void set_mode(mode_t _mode)
     {
         mode = _mode;
@@ -453,6 +516,9 @@ struct mknod_rpc_task
 private:
     fuse_ino_t parent_ino;
     char *file_name;
+    uid_t uid;
+    gid_t gid;
+    mode_t umask;
     mode_t mode;
 };
 
@@ -466,6 +532,21 @@ struct mkdir_rpc_task
     const char *get_dir_name() const
     {
         return dir_name;
+    }
+
+    uid_t get_uid() const
+    {
+        return uid;
+    }
+
+    gid_t get_gid() const
+    {
+        return gid;
+    }
+
+    mode_t get_umask() const
+    {
+        return umask;
     }
 
     mode_t get_mode() const
@@ -483,9 +564,24 @@ struct mkdir_rpc_task
         dir_name = ::strdup(name);
     }
 
-    void set_mode(mode_t mod)
+    void set_uid(mode_t _uid)
     {
-        mode = mod;
+        uid = _uid;
+    }
+
+    void set_gid(mode_t _gid)
+    {
+        gid = _gid;
+    }
+
+    void set_umask(mode_t _umask)
+    {
+        umask = _umask;
+    }
+
+    void set_mode(mode_t _mode)
+    {
+        mode = _mode;
     }
 
     void release()
@@ -496,6 +592,9 @@ struct mkdir_rpc_task
 private:
     fuse_ino_t parent_ino;
     char *dir_name;
+    uid_t uid;
+    gid_t gid;
+    mode_t umask;
     mode_t mode;
 };
 
@@ -1262,6 +1361,9 @@ public:
     void init_create_file(fuse_req *request,
                           fuse_ino_t parent_ino,
                           const char *name,
+                          uid_t uid,
+                          gid_t gid,
+                          mode_t umask,
                           mode_t mode,
                           struct fuse_file_info *file);
     void run_create_file();
@@ -1272,6 +1374,9 @@ public:
     void init_mknod(fuse_req *request,
                     fuse_ino_t parent_ino,
                     const char *name,
+                    uid_t uid,
+                    gid_t gid,
+                    mode_t umask,
                     mode_t mode);
     void run_mknod();
 
@@ -1281,6 +1386,9 @@ public:
     void init_mkdir(fuse_req *request,
                     fuse_ino_t parent_ino,
                     const char *name,
+                    uid_t uid,
+                    gid_t gid,
+                    mode_t umask,
                     mode_t mode);
     void run_mkdir();
 
