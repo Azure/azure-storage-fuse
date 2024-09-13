@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1726231032348,
+  "lastUpdate": 1726271860484,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -99,6 +99,40 @@ window.BENCHMARK_DATA = {
           {
             "name": "create_10_20GB_file",
             "value": 3.828612314477916,
+            "unit": "GiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "137055338+ashruti-msft@users.noreply.github.com",
+            "name": "ashruti-msft",
+            "username": "ashruti-msft"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "820e00f8754bee762743d24d8d1ca79c5b6fd8f8",
+          "message": "Fix code coverage tests (#1518)",
+          "timestamp": "2024-09-14T02:40:46+05:30",
+          "tree_id": "bbfbc2009ef1cd20bb48ffab500f282ec07d640d",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/820e00f8754bee762743d24d8d1ca79c5b6fd8f8"
+        },
+        "date": 1726271860256,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "read_10_20GB_file",
+            "value": 3.0222115166604935,
+            "unit": "GiB/s"
+          },
+          {
+            "name": "create_10_20GB_file",
+            "value": 3.819961105159058,
             "unit": "GiB/s"
           }
         ]
