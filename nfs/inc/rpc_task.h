@@ -378,11 +378,6 @@ struct create_file_rpc_task
         return gid;
     }
 
-    mode_t get_umask() const
-    {
-        return umask;
-    }
-
     mode_t get_mode() const
     {
         return mode;
@@ -413,11 +408,6 @@ struct create_file_rpc_task
         gid = _gid;
     }
 
-    void set_umask(mode_t _umask)
-    {
-        umask = _umask;
-    }
-
     void set_mode(mode_t _mode)
     {
         mode = _mode;
@@ -440,7 +430,6 @@ private:
     char *file_name;
     uid_t uid;
     gid_t gid;
-    mode_t umask;
     mode_t mode;
     struct fuse_file_info file;
     struct fuse_file_info *file_ptr;
@@ -468,11 +457,6 @@ struct mknod_rpc_task
         return gid;
     }
 
-    mode_t get_umask() const
-    {
-        return umask;
-    }
-
     mode_t get_mode() const
     {
         return mode;
@@ -498,11 +482,6 @@ struct mknod_rpc_task
         gid = _gid;
     }
 
-    void set_umask(mode_t _umask)
-    {
-        umask = _umask;
-    }
-
     void set_mode(mode_t _mode)
     {
         mode = _mode;
@@ -518,7 +497,6 @@ private:
     char *file_name;
     uid_t uid;
     gid_t gid;
-    mode_t umask;
     mode_t mode;
 };
 
@@ -542,11 +520,6 @@ struct mkdir_rpc_task
     gid_t get_gid() const
     {
         return gid;
-    }
-
-    mode_t get_umask() const
-    {
-        return umask;
     }
 
     mode_t get_mode() const
@@ -574,11 +547,6 @@ struct mkdir_rpc_task
         gid = _gid;
     }
 
-    void set_umask(mode_t _umask)
-    {
-        umask = _umask;
-    }
-
     void set_mode(mode_t _mode)
     {
         mode = _mode;
@@ -594,7 +562,6 @@ private:
     char *dir_name;
     uid_t uid;
     gid_t gid;
-    mode_t umask;
     mode_t mode;
 };
 
@@ -1361,9 +1328,6 @@ public:
     void init_create_file(fuse_req *request,
                           fuse_ino_t parent_ino,
                           const char *name,
-                          uid_t uid,
-                          gid_t gid,
-                          mode_t umask,
                           mode_t mode,
                           struct fuse_file_info *file);
     void run_create_file();
@@ -1374,9 +1338,6 @@ public:
     void init_mknod(fuse_req *request,
                     fuse_ino_t parent_ino,
                     const char *name,
-                    uid_t uid,
-                    gid_t gid,
-                    mode_t umask,
                     mode_t mode);
     void run_mknod();
 
@@ -1386,9 +1347,6 @@ public:
     void init_mkdir(fuse_req *request,
                     fuse_ino_t parent_ino,
                     const char *name,
-                    uid_t uid,
-                    gid_t gid,
-                    mode_t umask,
                     mode_t mode);
     void run_mkdir();
 

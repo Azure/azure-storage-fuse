@@ -734,11 +734,8 @@ void nfs_client::create(
     struct fuse_file_info* file)
 {
     struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_CREATE);
-    const fuse_ctx *ctx = fuse_req_ctx(req);
-    assert(ctx != nullptr);
 
-    tsk->init_create_file(req, parent_ino, name, ctx->uid,
-        ctx->gid, ctx->umask, mode, file);
+    tsk->init_create_file(req, parent_ino, name, mode, file);
     tsk->run_create_file();
 }
 
@@ -749,11 +746,8 @@ void nfs_client::mknod(
     mode_t mode)
 {
     struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_MKNOD);
-    const fuse_ctx *ctx = fuse_req_ctx(req);
-    assert(ctx != nullptr);
 
-    tsk->init_mknod(req, parent_ino, name, ctx->uid,
-        ctx->gid, ctx->umask, mode);
+    tsk->init_mknod(req, parent_ino, name, mode);
     tsk->run_mknod();
 }
 
@@ -764,11 +758,8 @@ void nfs_client::mkdir(
     mode_t mode)
 {
     struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_MKDIR);
-    const fuse_ctx *ctx = fuse_req_ctx(req);
-    assert(ctx != nullptr);
 
-    tsk->init_mkdir(req, parent_ino, name, ctx->uid,
-        ctx->gid, ctx->umask, mode);
+    tsk->init_mkdir(req, parent_ino, name, mode);
     tsk->run_mkdir();
 }
 
