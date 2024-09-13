@@ -592,6 +592,8 @@ struct nfs_inode
      */
     int flush_cache_and_wait();
 
+    bool is_bc_flushable(const bytes_chunk &bc);
+
     /**
      * Called when last open fd is closed for a file.
      * release() will return true if the inode was silly renamed and it
