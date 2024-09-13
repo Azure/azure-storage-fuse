@@ -264,8 +264,10 @@ int posix_task::path_to_ino(const char *pathname,
         return 0;
     }
 
-    dirname = std::filesystem::path(pathname).parent_path();
-    filename = std::filesystem::path(pathname).filename();
+    std::filesystem::path dirname =
+        std::filesystem::path(pathname).parent_path();
+    std::filesystem::path filename =
+        std::filesystem::path(pathname).filename();
 
     AZLogDebug("[NOFUSE] path_to_ino: pathname={}, dirname={}, filename={}",
                 pathname, dirname.c_str(), filename.c_str());
@@ -273,13 +275,13 @@ int posix_task::path_to_ino(const char *pathname,
     /*
      * If parent_ino not already set for this posix_task, set it now.
      */
-    if (parent_ino == 0) {
-        ret = path_to_ino(dirname.c_str(), false, parent_ino);
-        if (ret != 0) {
-            AZLogError("[NOFUSE] path_to_ino: pathname={}, failed",
-                        dirname.c_str());
-            return ret;
-        }
+    fuse_ino_t parent_ino;
+
+    ret = path_to_ino(dirname.c_str(), false, parent_ino);
+    if (ret != 0) {
+        AZLogError("[NOFUSE] path_to_ino: pathname={}, failed",
+                dirname.c_str());
+        return ret;
     }
 
     /*

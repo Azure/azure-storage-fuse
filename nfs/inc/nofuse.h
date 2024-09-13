@@ -534,16 +534,6 @@ typedef struct posix_task
      */
     int fd_to_ino(int fd, fuse_ino_t& _ino, off_t *offset = nullptr);
 
-    const std::filesystem::path& get_dirname() const
-    {
-        return dirname;
-    }
-
-    const std::filesystem::path& get_filename() const
-    {
-        return filename;
-    }
-
     /*
      * Add new fd->ino mapping to fdmap.
      */
@@ -635,9 +625,6 @@ private:
      * fd:          fd passed to the POSIX call. Will not be set for calls
      *              that identify the target file/dir by a pathname.
      * ino:         Will be set if we have resolved the target file/dir inode.
-     * parent_ino:  Target file/dir's parent's inode, if resolved.
-     * dirname:     Parent directory path, if resolved.
-     * filename:    Last component of file/dir, if resolved.
      *
      * Note: Not all of these may be initialized, so check before using.
      * Note: rename(2) is the only call that identifies 2 files/dirs.
@@ -646,9 +633,6 @@ private:
      */
     int fd = -1;
     std::atomic<fuse_ino_t> ino = 0;
-    fuse_ino_t parent_ino = 0;
-    std::filesystem::path dirname;
-    std::filesystem::path filename;
 
     /*
      * Set by completion thread to indicate completion (successful or failed)
