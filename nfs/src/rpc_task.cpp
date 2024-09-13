@@ -469,6 +469,11 @@ void access_callback(
     rpc_task *task = (rpc_task*) private_data;
     auto res = (ACCESS3res*) data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
+
+    /*
+     * Now that the request has completed, we can query libnfs for the
+     * dispatch time.
+     */
     task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
 
     if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
@@ -495,6 +500,7 @@ static void write_iov_callback(
     AZLogDebug("write_iov_callback");
     struct write_iov_context *ctx = (write_iov_context*) private_data;
     assert(ctx != nullptr);
+    assert(ctx->magic == WRITE_CONTEXT_MAGIC);
 
     struct rpc_task *task = ctx->get_task();
     std::vector<bytes_chunk> bc_vec = ctx->get_bc_vec();
@@ -504,10 +510,10 @@ static void write_iov_callback(
      * Sanity check.
      */
     assert(rpc != nullptr);
+    assert(task->magic == RPC_TASK_MAGIC);
     assert(task->get_op_type() == FUSE_WRITE ||
            task->get_op_type() == FUSE_FLUSH ||
            task->get_op_type() == FUSE_RELEASE);
-    assert(task->magic == RPC_TASK_MAGIC);
     assert(bc_vec.size() > 0);
     assert(client->magic == NFS_CLIENT_MAGIC);
 
@@ -660,7 +666,7 @@ void rpc_task::issue_write_rpc(std::vector<bytes_chunk> &bc_vec,
     struct rpc_pdu *pdu;
     bool rpc_retry = false;
 
-    assert (count > 0 && count <= 1000);
+    assert (count > 0 && count <= MAX_RPC_IOVEC_COUNT);
     assert(bc_vec.size() > 0);
     assert(offset < AZNFSC_MAX_FILE_SIZE);
     assert((offset + length) < AZNFSC_MAX_FILE_SIZE);
@@ -708,10 +714,14 @@ void issue_write_iovec(struct nfs_client *client,
                        uint64_t offset,
                        uint64_t length)
 {
+    assert(client->magic == NFS_CLIENT_MAGIC);
+    assert(ino > 0);
+
+    /*
+     * Allocate the rpc_task for write.
+     */
     struct rpc_task *flush_task = client->get_rpc_task_helper()->alloc_rpc_task(FUSE_FLUSH);
     flush_task->init_flush(nullptr /* fuse_req */, ino);
-    flush_task->set_op_type(FUSE_FLUSH);
-
     flush_task->issue_write_rpc(bc_vec, ino, iov, count, offset, length);
 }
 

@@ -970,14 +970,6 @@ public:
     }
 
     /*
-     * Returns all dirty chunks in chunkmap.
-     * Before returning it increases the inuse count of underlying membuf(s).
-     * Caller will typically sync dirty membuf to Blob and once done must call
-     * clear_inuse().
-     */
-    std::vector<bytes_chunk> get_dirty_bc() const;
-
-    /*
      * Returns all dirty chunks for a given range in chunkmap .
      * Before returning it increases the inuse count of underlying membuf(s).
      * Caller will typically sync dirty membuf to Blob and once done must call
