@@ -193,6 +193,7 @@ set(sources
 
 if(ENABLE_NO_FUSE)
 # libaznfsclient.so.
+set(sources ${sources} src/nofuse.cpp)
 add_library(${CMAKE_PROJECT_NAME} SHARED
             ${sources})
 else()

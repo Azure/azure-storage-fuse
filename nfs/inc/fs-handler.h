@@ -3,6 +3,26 @@
 
 #include "nfs_client.h"
 
+#ifdef ENABLE_NO_FUSE
+static inline
+int fuse_reply_err(fuse_req_t req, int err)
+{
+    assert(err >= 0);
+
+    PXT *pxtask = _FR2PXT(req);
+    pxtask->res = -err;
+    return 0;
+}
+
+static inline
+int fuse_reply_open(fuse_req_t req, const struct fuse_file_info *f)
+{
+    PXT *pxtask = _FR2PXT(req);
+    pxtask->res = 0;
+    return 0;
+}
+#endif
+
 /*
  * These are FS handlers common between fuse and nofuse mode.
  * Keeping them common ensures that the exact same code works in fuse and
@@ -24,6 +44,7 @@ static void aznfsc_ll_lookup(fuse_req_t req,
     client->lookup(req, parent_ino, name);
 }
 
+[[maybe_unused]]
 static void aznfsc_ll_getattr(fuse_req_t req,
                               fuse_ino_t ino,
                               struct fuse_file_info *fi)
@@ -35,6 +56,7 @@ static void aznfsc_ll_getattr(fuse_req_t req,
     client->getattr(req, ino, fi);
 }
 
+[[maybe_unused]]
 static void aznfsc_ll_setattr(fuse_req_t req,
                               fuse_ino_t ino,
                               struct stat *attr,
@@ -49,6 +71,7 @@ static void aznfsc_ll_setattr(fuse_req_t req,
     client->setattr(req, ino, attr, to_set, fi);
 }
 
+[[maybe_unused]]
 static void aznfsc_ll_readlink(fuse_req_t req,
                                fuse_ino_t ino)
 {
@@ -59,6 +82,7 @@ static void aznfsc_ll_readlink(fuse_req_t req,
     client->readlink(req, ino);
 }
 
+[[maybe_unused]]
 static void aznfsc_ll_mknod(fuse_req_t req,
                             fuse_ino_t parent_ino,
                             const char *name,
@@ -80,6 +104,7 @@ static void aznfsc_ll_mknod(fuse_req_t req,
     }
 }
 
+[[maybe_unused]]
 static void aznfsc_ll_mkdir(fuse_req_t req,
                             fuse_ino_t parent_ino,
                             const char *name,
@@ -92,6 +117,7 @@ static void aznfsc_ll_mkdir(fuse_req_t req,
     client->mkdir(req, parent_ino, name, mode);
 }
 
+[[maybe_unused]]
 static void aznfsc_ll_unlink(fuse_req_t req,
                              fuse_ino_t parent_ino,
                              const char *name)
@@ -116,6 +142,7 @@ static void aznfsc_ll_unlink(fuse_req_t req,
     client->unlink(req, parent_ino, name);
 }
 
+[[maybe_unused]]
 static void aznfsc_ll_rmdir(fuse_req_t req,
                             fuse_ino_t parent_ino,
                             const char *name)
@@ -127,6 +154,7 @@ static void aznfsc_ll_rmdir(fuse_req_t req,
     client->rmdir(req, parent_ino, name);
 }
 
+[[maybe_unused]]
 static void aznfsc_ll_symlink(fuse_req_t req,
                               const char *link,
                               fuse_ino_t parent_ino,
@@ -139,6 +167,7 @@ static void aznfsc_ll_symlink(fuse_req_t req,
     client->symlink(req, link, parent_ino, name);
 }
 
+[[maybe_unused]]
 static void aznfsc_ll_rename(fuse_req_t req,
                              fuse_ino_t parent_ino,
                              const char *name,
@@ -159,6 +188,7 @@ static void aznfsc_ll_rename(fuse_req_t req,
                    false, 0, flags);
 }
 
+[[maybe_unused]]
 static void aznfsc_ll_link(fuse_req_t req,
                            fuse_ino_t ino,
                            fuse_ino_t newparent_ino,
@@ -170,6 +200,7 @@ static void aznfsc_ll_link(fuse_req_t req,
     fuse_reply_err(req, ENOSYS);
 }
 
+[[maybe_unused]]
 static void aznfsc_ll_open(fuse_req_t req,
                            fuse_ino_t ino,
                            struct fuse_file_info *fi)
@@ -233,6 +264,7 @@ static void aznfsc_ll_open(fuse_req_t req,
     fuse_reply_open(req, fi);
 }
 
+[[maybe_unused]]
 static void aznfsc_ll_read(fuse_req_t req,
                            fuse_ino_t ino,
                            size_t size,
@@ -254,6 +286,7 @@ static void aznfsc_ll_read(fuse_req_t req,
     client->read(req, ino, size, off, fi);
 }
 
+[[maybe_unused]]
 static void aznfsc_ll_write(fuse_req_t req,
                             fuse_ino_t ino,
                             const char *buf,
@@ -270,6 +303,7 @@ static void aznfsc_ll_write(fuse_req_t req,
     fuse_reply_err(req, ENOSYS);
 }
 
+[[maybe_unused]]
 static void aznfsc_ll_flush(fuse_req_t req,
                             fuse_ino_t ino,
                             struct fuse_file_info *fi)
@@ -281,6 +315,7 @@ static void aznfsc_ll_flush(fuse_req_t req,
     client->flush(req, ino);
 }
 
+[[maybe_unused]]
 static void aznfsc_ll_release(fuse_req_t req,
                               fuse_ino_t ino,
                               struct fuse_file_info *fi)
@@ -311,6 +346,7 @@ static void aznfsc_ll_release(fuse_req_t req,
     }
 }
 
+[[maybe_unused]]
 static void aznfsc_ll_fsync(fuse_req_t req,
                             fuse_ino_t ino,
                             int datasync,
@@ -322,6 +358,7 @@ static void aznfsc_ll_fsync(fuse_req_t req,
     fuse_reply_err(req, ENOSYS);
 }
 
+[[maybe_unused]]
 static void aznfsc_ll_opendir(fuse_req_t req,
                               fuse_ino_t ino,
                               struct fuse_file_info *fi)
@@ -353,6 +390,7 @@ static void aznfsc_ll_opendir(fuse_req_t req,
     fuse_reply_open(req, fi);
 }
 
+[[maybe_unused]]
 static void aznfsc_ll_readdir(fuse_req_t req,
                               fuse_ino_t ino,
                               size_t size,
@@ -366,6 +404,7 @@ static void aznfsc_ll_readdir(fuse_req_t req,
     client->readdir(req, ino, size, off, fi);
 }
 
+[[maybe_unused]]
 static void aznfsc_ll_releasedir(fuse_req_t req,
                                  fuse_ino_t ino,
                                  struct fuse_file_info *fi)
@@ -385,6 +424,7 @@ static void aznfsc_ll_releasedir(fuse_req_t req,
      fuse_reply_err(req, 0);
 }
 
+[[maybe_unused]]
 static void aznfsc_ll_fsyncdir(fuse_req_t req,
                                fuse_ino_t ino,
                                int datasync,
@@ -396,6 +436,7 @@ static void aznfsc_ll_fsyncdir(fuse_req_t req,
     fuse_reply_err(req, ENOSYS);
 }
 
+[[maybe_unused]]
 static void aznfsc_ll_statfs(fuse_req_t req,
                              fuse_ino_t ino)
 {
@@ -406,6 +447,7 @@ static void aznfsc_ll_statfs(fuse_req_t req,
     fuse_reply_err(req, ENOSYS);
 }
 
+[[maybe_unused]]
 static void aznfsc_ll_setxattr(fuse_req_t req,
                                fuse_ino_t ino,
                                const char *name,
@@ -419,6 +461,7 @@ static void aznfsc_ll_setxattr(fuse_req_t req,
     fuse_reply_err(req, ENOSYS);
 }
 
+[[maybe_unused]]
 static void aznfsc_ll_getxattr(fuse_req_t req,
                                fuse_ino_t ino,
                                const char *name,
@@ -430,6 +473,7 @@ static void aznfsc_ll_getxattr(fuse_req_t req,
     fuse_reply_err(req, ENOSYS);
 }
 
+[[maybe_unused]]
 static void aznfsc_ll_listxattr(fuse_req_t req,
                                 fuse_ino_t ino,
                                 size_t size)
@@ -440,6 +484,7 @@ static void aznfsc_ll_listxattr(fuse_req_t req,
     fuse_reply_err(req, ENOSYS);
 }
 
+[[maybe_unused]]
 static void aznfsc_ll_removexattr(fuse_req_t req,
                                   fuse_ino_t ino,
                                   const char *name)
@@ -450,6 +495,7 @@ static void aznfsc_ll_removexattr(fuse_req_t req,
     fuse_reply_err(req, ENOSYS);
 }
 
+[[maybe_unused]]
 static void aznfsc_ll_access(fuse_req_t req,
                              fuse_ino_t ino,
                              int mask)
@@ -461,6 +507,7 @@ static void aznfsc_ll_access(fuse_req_t req,
     client->access(req, ino, mask);
 }
 
+[[maybe_unused]]
 static void aznfsc_ll_create(fuse_req_t req,
                              fuse_ino_t parent_ino,
                              const char *name,
@@ -475,6 +522,7 @@ static void aznfsc_ll_create(fuse_req_t req,
     client->create(req, parent_ino, name, mode, fi);
 }
 
+[[maybe_unused]]
 static void aznfsc_ll_getlk(fuse_req_t req,
                             fuse_ino_t ino,
                             struct fuse_file_info *fi,
@@ -486,6 +534,7 @@ static void aznfsc_ll_getlk(fuse_req_t req,
     fuse_reply_err(req, ENOSYS);
 }
 
+[[maybe_unused]]
 static void aznfsc_ll_setlk(fuse_req_t req,
                             fuse_ino_t ino,
                             struct fuse_file_info *fi,
@@ -498,6 +547,7 @@ static void aznfsc_ll_setlk(fuse_req_t req,
     fuse_reply_err(req, ENOSYS);
 }
 
+[[maybe_unused]]
 static void aznfsc_ll_bmap(fuse_req_t req,
                            fuse_ino_t ino,
                            size_t blocksize,
@@ -510,6 +560,7 @@ static void aznfsc_ll_bmap(fuse_req_t req,
 }
 
 #if FUSE_USE_VERSION < 35
+[[maybe_unused]]
 static void aznfsc_ll_ioctl(fuse_req_t req,
                             fuse_ino_t ino,
                             int cmd,
@@ -526,6 +577,7 @@ static void aznfsc_ll_ioctl(fuse_req_t req,
     fuse_reply_err(req, ENOSYS);
 }
 #else
+[[maybe_unused]]
 static void aznfsc_ll_ioctl(fuse_req_t req,
                             fuse_ino_t ino,
                             unsigned int cmd,
@@ -543,6 +595,7 @@ static void aznfsc_ll_ioctl(fuse_req_t req,
 }
 #endif
 
+[[maybe_unused]]
 static void aznfsc_ll_poll(fuse_req_t req,
                            fuse_ino_t ino,
                            struct fuse_file_info *fi,
@@ -554,6 +607,7 @@ static void aznfsc_ll_poll(fuse_req_t req,
     fuse_reply_err(req, ENOSYS);
 }
 
+[[maybe_unused]]
 static void aznfsc_ll_write_buf(fuse_req_t req,
                                 fuse_ino_t ino,
                                 struct fuse_bufvec *bufv,
@@ -588,6 +642,7 @@ static void aznfsc_ll_write_buf(fuse_req_t req,
     client->write(req, ino, bufv, length, off);
 }
 
+[[maybe_unused]]
 static void aznfsc_ll_retrieve_reply(fuse_req_t req,
                                      void *cookie,
                                      fuse_ino_t ino,
@@ -600,6 +655,7 @@ static void aznfsc_ll_retrieve_reply(fuse_req_t req,
     fuse_reply_err(req, ENOSYS);
 }
 
+[[maybe_unused]]
 static void aznfsc_ll_flock(fuse_req_t req,
                             fuse_ino_t ino,
                             struct fuse_file_info *fi,
@@ -611,6 +667,7 @@ static void aznfsc_ll_flock(fuse_req_t req,
     fuse_reply_err(req, ENOSYS);
 }
 
+[[maybe_unused]]
 static void aznfsc_ll_fallocate(fuse_req_t req,
                                 fuse_ino_t ino,
                                 int mode,
@@ -624,6 +681,7 @@ static void aznfsc_ll_fallocate(fuse_req_t req,
     fuse_reply_err(req, ENOSYS);
 }
 
+[[maybe_unused]]
 static void aznfsc_ll_readdirplus(fuse_req_t req,
                                   fuse_ino_t ino,
                                   size_t size,
@@ -653,6 +711,7 @@ void aznfsc_ll_copy_file_range(fuse_req_t req,
     fuse_reply_err(req, ENOSYS);
 }
 
+[[maybe_unused]]
 static void aznfsc_ll_lseek(fuse_req_t req,
                             fuse_ino_t ino,
                             off_t off,

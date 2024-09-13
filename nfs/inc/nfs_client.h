@@ -574,7 +574,10 @@ struct nfs_client *get_nfs_client_from_fuse_req(
     assert(client == reinterpret_cast<struct nfs_client*>(fuse_req_userdata(req)));
 #endif
 #else
-    assert(req == nullptr);
+    /*
+     * In nofuse mode req must be a pointer to posix_task.
+     */
+    assert(_FR2PXT(req)->magic == POSIX_TASK_MAGIC);
 #endif
 
     // Dangerous cast, make sure we got a correct pointer.
