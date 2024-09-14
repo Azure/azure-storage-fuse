@@ -434,7 +434,12 @@ struct fdinfo
         fd(_fd),
         ino(_ino)
     {
+        /*
+         * XXX With dup2() we will have to install whatever fd caller asks.
+         */
+#if 0
         assert(fd > 2);
+#endif
         assert(ino != 0);
     }
 
@@ -455,7 +460,13 @@ struct fdinfo
      */
     static int get_next_fd()
     {
-        static std::atomic<int> gfd = 3;
+        /*
+         * XXX Since we don't implement fopen(), there could be some fds
+         *     opened via fopen(). If those are not our target file, we don't
+         *     really care. Use big enough starting fd so as not to interfere
+         *     with those.
+         */
+        static std::atomic<int> gfd = 1000;
         return gfd++;
     }
 };
@@ -538,6 +549,7 @@ typedef struct posix_task
      * Add new fd->ino mapping to fdmap.
      */
     void fd_add_to_map(int fd, fuse_ino_t ino);
+    void fd_remove_from_map(int fd);
 
     /*
      * Add 'pos' to the current fd offset.
@@ -603,6 +615,11 @@ typedef struct posix_task
     static ssize_t (*__open_orig)(const char *pathname,
                                   int flags,
                                   ...);
+    static FILE* (*__fopen_orig)(const char *pathname,
+                                 const char *mode);
+    static int (*__close_orig)(int fd);
+    static int (*__dup_orig)(int oldfd);
+    static int (*__dup2_orig)(int oldfd, int newfd);
     static ssize_t (*__read_orig)(int fd,
                                   void *buf,
                                   size_t count);

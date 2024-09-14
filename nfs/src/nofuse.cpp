@@ -21,6 +21,10 @@ decltype(PXT::__readlink_orig) posix_task::__readlink_orig = nullptr;
 decltype(PXT::____xstat_orig) posix_task::____xstat_orig = nullptr;
 decltype(PXT::____fxstat_orig) posix_task::____fxstat_orig = nullptr;
 decltype(PXT::__open_orig) posix_task::__open_orig = nullptr;
+decltype(PXT::__fopen_orig) posix_task::__fopen_orig = nullptr;
+decltype(PXT::__close_orig) posix_task::__close_orig = nullptr;
+decltype(PXT::__dup_orig) posix_task::__dup_orig = nullptr;
+decltype(PXT::__dup2_orig) posix_task::__dup2_orig = nullptr;
 decltype(PXT::__read_orig) posix_task::__read_orig = nullptr;
 decltype(PXT::client) posix_task::client = nullptr;
 std::unordered_map<int, struct fdinfo> posix_task::fdmap;
@@ -42,6 +46,11 @@ static void __nofuse_cleanup(void)
 
     nfs_client::get_instance().shutdown();
 }
+
+/*
+ * We don't want to intercept any calls made before we are correctly init'ed.
+ */
+static std::atomic<bool> init_done = false;
 
 __attribute__((constructor))
 static void __nofuse_init()
@@ -142,6 +151,8 @@ static void __nofuse_init()
     }
 
     AZLogInfo("[NOFUSE] Aznfsclient nofuse driver ready!");
+
+    init_done = true;
 }
 
 /**
@@ -195,7 +206,12 @@ bool posix_task::path_in_mountpoint(const char *pathname) const
      * TODO: For now we support only absolute and lexically normal paths.
      */
     assert(pathname);
-    assert(is_absolute_path(pathname));
+    if (!is_absolute_path(pathname)) {
+        AZLogDebug("[NOFUSE] path_in_mountpoint({}) called for relative path",
+                   pathname);
+        return false;
+    }
+
     assert(is_lexically_normal(pathname));
 
     static int mplen = ::strlen(aznfsc_cfg.mountpoint.c_str());
@@ -225,7 +241,14 @@ void posix_task::fd_add_to_map(int fd, fuse_ino_t ino)
     auto p = fdmap.try_emplace(fd, fd, ino);
     assert(p.second == true);
     AZLogDebug("fd [{}] -> ino [{}]", fd, ino);
+}
 
+void posix_task::fd_remove_from_map(int fd)
+{
+    std::unique_lock<std::mutex> lock(fdmap_mutex);
+    [[maybe_unused]] const int num_erased = fdmap.erase(fd);
+    assert(num_erased == 1);
+    AZLogDebug("Removed fd [{}]", fd);
 }
 
 void posix_task::fd_add_pos(int fd, off_t pos)
@@ -556,9 +579,9 @@ const struct fuse_ctx *rpc_task::fuse_req_ctx(fuse_req_t req)
 
 extern "C" {
 
-#define CHECK_AND_CALL_ORIG_FUNC_FOR_PATHNAME(pathname, func, force, ...) \
+#define CHECK_AND_CALL_ORIG_FUNC_FOR_PATHNAME(pathname, func, force, retonfail, ...) \
 do { \
-    if (force || !pxtask.path_in_mountpoint(pathname)) { \
+    if (!init_done || force || !pxtask.path_in_mountpoint(pathname)) { \
         /* \
          * If pathname is not in mountpoint then call the original function. \
          */ \
@@ -569,7 +592,7 @@ do { \
                 AZLogError("[NOFUSE] dlsym({}) failed: {}", \
                            #func, ::dlerror()); \
                 errno = ENOENT; \
-                return -1; \
+                return retonfail; \
             } \
         } \
         AZLogDebug("[NOFUSE] {}={}", #func, fmt::ptr(PXT::__##func##_orig)); \
@@ -579,7 +602,7 @@ do { \
 
 #define CHECK_AND_CALL_ORIG_FUNC_FOR_FD(fd, func, force, ...) \
 do { \
-    if (force || !pxtask.fd_in_mountpoint(fd)) { \
+    if (!init_done || force || !pxtask.fd_in_mountpoint(fd)) { \
         /* \
          * If fd is not in mountpoint then call the original function. \
          */ \
@@ -643,6 +666,7 @@ int __xstat(int ver, const char *pathname, struct stat *statbuf)
     CHECK_AND_CALL_ORIG_FUNC_FOR_PATHNAME(pathname,
                                           __xstat,
                                           force,
+                                          -1,
                                           ver, pathname, statbuf);
 
     /*
@@ -699,6 +723,7 @@ ssize_t readlink(const char *pathname, char *buf, size_t bufsiz)
     CHECK_AND_CALL_ORIG_FUNC_FOR_PATHNAME(pathname,
                                           readlink,
                                           force,
+                                          -1,
                                           pathname, buf, bufsiz);
 
     /*
@@ -737,6 +762,7 @@ int open(const char *pathname, int flags, ...)
     CHECK_AND_CALL_ORIG_FUNC_FOR_PATHNAME(pathname,
                                           open,
                                           force,
+                                          -1,
                                           pathname, flags, mode);
 
     const fuse_ino_t ino = PATH_TO_INO(pathname);
@@ -766,6 +792,78 @@ int openat(int dirfd, const char *pathname, int flags, ...)
 
     errno = ENOENT;
     return -1;
+}
+
+FILE *fopen(const char *pathname, const char *mode)
+{
+    AZLogWarn("[NOFUSE] INTERCEPT: fopen(pathname={}, mode={})",
+              pathname, mode);
+    AZLogWarn("[NOFUSE] fopen not supported, bypassing! If this is your "
+              "target file it won't work!");
+
+    /*
+     * TODO: We don't support fopen/fclose/fread/fwrite.
+     *       Bypass every call.
+     */
+    /*
+     * POSIX task for tracking this request.
+     */
+    PXT pxtask;
+
+    CHECK_AND_CALL_ORIG_FUNC_FOR_PATHNAME(pathname,
+                                          fopen,
+                                          true,
+                                          NULL,
+                                          pathname, mode);
+    assert(0);
+}
+
+int close(int fd)
+{
+    AZLogDebug("[NOFUSE] INTERCEPT: close(fd={})", fd);
+
+    PXT pxtask;
+
+    CHECK_AND_CALL_ORIG_FUNC_FOR_FD(fd, close, false, fd);
+
+    pxtask.fd_remove_from_map(fd);
+
+    return 0;
+}
+
+int dup(int oldfd)
+{
+    AZLogDebug("[NOFUSE] INTERCEPT: dup(oldfd={})", oldfd);
+
+    PXT pxtask;
+
+    CHECK_AND_CALL_ORIG_FUNC_FOR_FD(oldfd, dup, false, oldfd);
+
+    /*
+     * TODO: Right now we do a basic dup where we make the newfd also point
+     *       to the same ino, but both fds don't share the file pos.
+     *       This will work only for cases where application closes the oldfd
+     *       after the dup, which is the more common case.
+     */
+    const fuse_ino_t ino = FD_TO_INO(oldfd, nullptr);
+    const int newfd = fdinfo::get_next_fd();
+
+    pxtask.fd_add_to_map(newfd, ino);
+    return newfd;
+}
+
+int dup2(int oldfd, int newfd)
+{
+    AZLogDebug("[NOFUSE] INTERCEPT: dup2(oldfd={}, newfd={})",
+               oldfd, newfd);
+    PXT pxtask;
+
+    CHECK_AND_CALL_ORIG_FUNC_FOR_FD(oldfd, dup2, false, oldfd, newfd);
+
+    const fuse_ino_t ino = FD_TO_INO(oldfd, nullptr);
+
+    pxtask.fd_add_to_map(newfd, ino);
+    return newfd;
 }
 
 ssize_t read(int fd, void *buf, size_t count)
