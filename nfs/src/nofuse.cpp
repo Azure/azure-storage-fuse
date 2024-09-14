@@ -30,14 +30,19 @@ decltype(PXT::client) posix_task::client = nullptr;
 std::unordered_map<int, struct fdinfo> posix_task::fdmap;
 std::mutex posix_task::fdmap_mutex;
 
+/*
+ * We don't want to intercept any calls made before we are correctly init'ed
+ * or during cleanup.
+ */
+static std::atomic<bool> init_done = false;
+static std::atomic<bool> in_cleanup = false;
+
 static void __nofuse_cleanup(void)
 {
-    static std::atomic<bool> called = false;
-
     /*
      * If we call exit() from our cleanup code, don't re-start cleanup.
      */
-    if (called.exchange(true) == true) {
+    if (in_cleanup.exchange(true) == true) {
         AZLogWarn("[NOFUSE] Recursive call to __nofuse_cleanup, ignoring!");
         return;
     }
@@ -46,11 +51,6 @@ static void __nofuse_cleanup(void)
 
     nfs_client::get_instance().shutdown();
 }
-
-/*
- * We don't want to intercept any calls made before we are correctly init'ed.
- */
-static std::atomic<bool> init_done = false;
 
 __attribute__((constructor))
 static void __nofuse_init()
@@ -581,7 +581,7 @@ extern "C" {
 
 #define CHECK_AND_CALL_ORIG_FUNC_FOR_PATHNAME(pathname, func, force, retonfail, ...) \
 do { \
-    if (!init_done || force || !pxtask.path_in_mountpoint(pathname)) { \
+    if (!init_done || in_cleanup || force || !pxtask.path_in_mountpoint(pathname)) { \
         /* \
          * If pathname is not in mountpoint then call the original function. \
          */ \
@@ -602,7 +602,7 @@ do { \
 
 #define CHECK_AND_CALL_ORIG_FUNC_FOR_FD(fd, func, force, ...) \
 do { \
-    if (!init_done || force || !pxtask.fd_in_mountpoint(fd)) { \
+    if (!init_done || in_cleanup || force || !pxtask.fd_in_mountpoint(fd)) { \
         /* \
          * If fd is not in mountpoint then call the original function. \
          */ \
