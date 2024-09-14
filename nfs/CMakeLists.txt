@@ -21,13 +21,16 @@ option(ENABLE_TCMALLOC "Use tcmalloc for malloc/free/new/delete" ON)
 
 #
 # Enable paranoid checks only in debug builds.
+# Disable asan for nofuse as it doesn't work well with that.
 #
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
   if(ENABLE_PARANOID)
     add_definitions(-DENABLE_PARANOID)
   endif()
-  add_compile_options(-fsanitize=address)
-  add_link_options(-fsanitize=address)
+  if(NOT ENABLE_NO_FUSE)
+    add_compile_options(-fsanitize=address)
+    add_link_options(-fsanitize=address)
+  endif()
 endif()
 
 #
