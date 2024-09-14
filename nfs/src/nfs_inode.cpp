@@ -296,6 +296,117 @@ int nfs_inode::get_actimeo_max() const
     }
 }
 
+void nfs_inode::sync_membufs(std::vector<bytes_chunk> &bc_vec, bool is_flush)
+{
+    struct iovec io_vec[MAX_RPC_IOVEC_COUNT];
+    int idx = 0;
+    uint64_t start_off = 0;
+    uint64_t iov_length = 0;
+    std::vector<bytes_chunk> write_bc_vec;
+
+    /*
+     * Create the flush task to carry out the write.
+     */
+    struct rpc_task *flush_task = nullptr;
+
+    // Flush dirty membufs to backend.
+    for (bytes_chunk &bc : bc_vec) {
+        /*
+         * Get the underlying membuf for bc.
+         * Note that we write the entire membuf, even though bc may be referring
+         * to a smaller window.
+         */
+        struct membuf *mb = bc.get_membuf();
+        assert(mb != nullptr);
+
+        if (is_flush) {
+            /*
+             * get_dirty_bc_range() must have held an inuse count.
+             * We hold an extra inuse count so that we can safely wait for the
+             * flush in the following loop.
+             * This is needed as we drop inuse count if membuf is already being
+             * flushed by another thread or it may drop when the write_iov_callback()
+             * completes which can happen before we reach the waiting loop.
+             */
+            assert(mb->is_inuse());
+            mb->set_inuse();
+        }
+
+        /*
+         * Lock the membuf. If multiple writer threads want to flush the same
+         * membuf the first one will find it dirty and not flushing, that thread
+         * should initiate the Blob write. Others that come in while the 1st thread
+         * started flushing but the write has not completed, will find it "dirty
+         * and flushing" and they can avoid the write and optionally choose to wait
+         * for it to complete by waiting for the lock. Others who find it after the
+         * write is done and lock is released will find it not "dirty and not
+         * flushing". They can just skip.
+         * Note that we allocate the rpc_task for flush before the lock as it may
+         * block.
+         */
+        if (mb->is_flushing() || !mb->is_dirty()) {
+            mb->clear_inuse();
+
+            continue;
+        }
+
+        mb->set_locked();
+        if (mb->is_flushing() || !mb->is_dirty()) {
+            mb->clear_locked();
+            mb->clear_inuse();
+
+            continue;
+        }
+    
+        if (flush_task == nullptr) {
+            flush_task =
+                get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_FLUSH);
+            flush_task->init_flush(nullptr /* fuse_req */, ino);
+        }
+
+        if(flush_task->rpc_add_iovector(io_vec, start_off, iov_length, write_bc_vec, idx, bc)) {
+            inflight_bytes += bc.length;
+            continue;
+        } else {
+            assert(idx > 0);
+            assert(write_bc_vec.size() > 0);
+            assert(iov_length > 0);
+
+            struct rpc_iovec *rpc_iov = new rpc_iovec(io_vec, idx, start_off, iov_length);
+            flush_task->issue_write_rpc(write_bc_vec, ino, rpc_iov);
+
+            /*
+             * Reset the iovec.
+             * Add the new bc starting at zero position.
+             * It's guranteed that we can add the bc to the iovec as we have checked
+             * membuf is not flushing and dirty.
+             */
+            idx = 0;
+            start_off = iov_length = 0;
+            write_bc_vec.clear();
+
+            /*
+             * Create the new flush task to carry out the write for next bc.
+             */
+            flush_task =
+                get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_FLUSH);
+            flush_task->init_flush(nullptr /* fuse_req */, ino);
+
+            bool res = flush_task->rpc_add_iovector(io_vec, start_off, iov_length, write_bc_vec, idx, bc);
+            assert(res == true);
+            inflight_bytes += bc.length;
+        }
+    }
+
+    if (idx > 0) {
+        assert(write_bc_vec.size() > 0);
+        assert(iov_length > 0);
+
+        struct rpc_iovec *rpc_iov = new rpc_iovec(io_vec, idx, start_off, iov_length);
+        flush_task->issue_write_rpc(write_bc_vec, ino, rpc_iov);
+    }
+}
+
 int nfs_inode::flush_cache_and_wait()
 {
     /*
@@ -332,35 +443,13 @@ int nfs_inode::flush_cache_and_wait()
      * of dirty bytes_chunks at that point. Note that we can have new dirty
      * bytes_chunks created but we don't want to wait for those.
      */
-    std::vector<bytes_chunk> bc_vec = filecache_handle->get_dirty_bc();
+    std::vector<bytes_chunk> bc_vec = filecache_handle->get_dirty_bc_range(0, UINT64_MAX);
 
-    // Flush dirty membufs to backend.
-    for (bytes_chunk& bc : bc_vec) {
-        /*
-         * Create the flush task to carry out the write.
-         */
-        struct rpc_task *flush_task =
-            get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_FLUSH);
-        flush_task->init_flush(nullptr /* fuse_req */, ino);
-
-        // sync_membuf() uses it to identify jukebox retries, so assert.
-        assert(flush_task->rpc_api->pvt == nullptr);
-
-        /*
-         * get_dirty_bc() must have held an inuse count.
-         * We hold an extra inuse count so that we can safely wait for the
-         * flush in the following loop.
-         * This is needed as sync_membuf() may drop the inuse count if membuf
-         * is already being flushed by another thread or it may drop when the
-         * write_callback() completes which can happen before we reach the
-         * waiting loop.
-         */
-        assert(bc.get_membuf()->is_inuse());
-        bc.get_membuf()->set_inuse();
-
-        // Flush the membuf to backend.
-        flush_task->sync_membuf(bc, ino);
-    }
+    /*
+     * sync_membufs() iterate over the bc_vec and start flushing the dirty membufs.
+     * It batches the contigious dirty membufs and issues a single write RPC for them.
+     */
+    sync_membufs(bc_vec, true);
 
     /*
      * Our caller expects us to return only after the flush completes.

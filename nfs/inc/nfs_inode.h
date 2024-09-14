@@ -228,6 +228,12 @@ struct nfs_inode
      */
     int write_error = 0;
 
+    /*
+     * Count of the bytes which are in process of sync to Blob and
+     * on the network.
+     */
+    std::atomic<uint64_t> inflight_bytes = 0;
+
     /**
      * TODO: Initialize attr with postop attributes received in the RPC
      *       response.
@@ -585,6 +591,13 @@ struct nfs_inode
      *       queries the dirty membufs list, are not flushed.
      */
     int flush_cache_and_wait();
+
+    /**
+     * Sync the dirty membufs in the file cache to the NFS server.
+     * All contiguous dirty membufs are clubbed together and sent to the
+     * NFS server in a single write call.
+     */
+    void sync_membufs(std::vector<bytes_chunk> &bcs, bool is_flush);
 
     /**
      * Called when last open fd is closed for a file.

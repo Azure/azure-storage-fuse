@@ -190,6 +190,50 @@ private:
     fuse_ino_t file_ino;
 };
 
+/*
+ * Maximum number of iovec can be there in a single write RPC.
+ */
+#define MAX_RPC_IOVEC_COUNT 1000
+#define WRITE_RPC_IOVEC_MAGIC *((const uint32_t *)"WIOV")
+
+struct rpc_iovec {
+public:
+    const uint32_t magic = WRITE_RPC_IOVEC_MAGIC;
+    /*
+     * Fixed base of the allocated iovec array.
+     * Once allocated this doesn't change, and should be used for freeing
+     * the iovec array.
+     */
+    struct iovec *base = nullptr;
+
+    /*
+     * Current iovec we should be reading into, updated as we finish
+     * reading whole iovecs. iovcnt holds the count of iovecs remaining
+     * to be read into and is decremented as we read whole iovecs or if
+     * the cursor is shrinked. We also update the iov_base and iov_len as
+     * we read data into iov[], so at any point iov and iovcnt can be
+     * passed to readv() to read remaining data.
+     */
+    struct iovec *iov = nullptr;
+    int iovcnt = 0;
+
+    uint64_t offset = 0;
+    uint64_t length = 0;
+public:
+    rpc_iovec(const struct iovec *_base, int _iovcnt, uint64_t _offset, uint64_t _length) {
+        base = new struct iovec[_iovcnt];
+        ::memcpy(base, _base, _iovcnt * sizeof(struct iovec));
+        iov = base;
+        iovcnt = _iovcnt;
+        offset = _offset;
+        length = _length;
+    }
+
+    ~rpc_iovec() {
+        delete[] base;
+    }
+};
+
 /**
  * Write callback context, used by following calls:
  * - Write
@@ -198,7 +242,7 @@ private:
  */
 #define WRITE_CONTEXT_MAGIC *((const uint32_t *)"WCTX")
 
-struct write_context
+struct write_iov_context
 {
     const uint32_t magic = WRITE_CONTEXT_MAGIC;
 
@@ -212,14 +256,34 @@ struct write_context
         task = _task;
     }
 
-    struct bytes_chunk& get_bytes_chunk()
+    off_t get_offset() const
     {
-        return bc;
+        return offset;
+    }
+
+    size_t get_length() const
+    {
+        return length;
     }
 
     fuse_ino_t get_ino() const
     {
         return ino;
+    }
+
+    std::vector<bytes_chunk>& get_bc_vec()
+    {
+        return bc_vec;
+    }
+
+    void reset_rpc_iov()
+    {
+        iov = nullptr;
+    }
+
+    struct rpc_iovec *get_rpc_iov() const
+    {
+        return iov;
     }
 
     /**
@@ -230,21 +294,32 @@ struct write_context
     }
 
     /**
-     * Note: We make a copy of bc. This will grab a fresh reference on the
-     *       membuf we can safely write to it as long as we have the
-     *       write_context.
+     * Note: We make a copy of bc_vec. This will grab a fresh reference on the
+     *       membuf's we can safely write to it as long as we have the
+     *       write_iov_context.
      *       A fuse write can take many RPC writes to complete, due to partial
-     *       writes or jukebox retries. We save the write_context inside
+     *       writes or jukebox retries. We save the write_iov_context inside
      *       rpc_task.rpc_api.pvt do that it's accessible to all the child
      *       tasks working to write the data corresponding to fuse request.
      */
-    write_context(struct bytes_chunk& _bc,
+    write_iov_context(std::vector<bytes_chunk>& _bc_vec,
+                  struct rpc_iovec *_iov,
                   rpc_task *_task,
-                  fuse_ino_t _ino) :
-        bc(_bc),
+                  fuse_ino_t _ino,
+                  off_t _off,
+                  size_t _size) :
+        bc_vec(_bc_vec),
+        iov(_iov),
         task(_task),
-        ino(_ino)
+        ino(_ino),
+        offset(_off),
+        length(_size)
     {
+    }
+
+    ~write_iov_context()
+    {
+        delete iov;
     }
 
 private:
@@ -258,9 +333,12 @@ private:
      *       Address: bc.get_buffer() + bc.pvt
      *       task is FUSE_FLUSH task and does not define offset and length.
      */
-    struct bytes_chunk bc;
+    std::vector<bytes_chunk> bc_vec;
+    struct rpc_iovec *iov = nullptr;
     struct rpc_task *task = nullptr;
     fuse_ino_t ino;
+    off_t offset;
+    size_t length;
 };
 
 /**
@@ -967,7 +1045,7 @@ struct api_task_info
     /*
      * User can use this to store anything that they want to be available with
      * the task.
-     * Writes use it to store a pointer to write_context, so that the write
+     * Writes use it to store a pointer to write_iov_context, so that the write
      * context (offset, length and address to write to) is available across
      * partial writes, jukebox retries, etc.
      */
@@ -1694,7 +1772,23 @@ public:
 
     void send_read_response();
     void read_from_server(struct bytes_chunk &bc);
-    void sync_membuf(struct bytes_chunk &bc, fuse_ino_t ino);
+
+    /*
+     * Write/Flush RPC related methods.
+     */
+    bool rpc_add_iovector(struct iovec *io_vec,
+                          uint64_t &start_off,
+                          uint64_t &length,
+                          std::vector<bytes_chunk> &write_bc_vec,
+                          int &idx,
+                          bytes_chunk &bc);
+
+    void reissue_write_iovec(std::vector<bytes_chunk>& bc_vec,
+                              fuse_ino_t ino);
+    void issue_write_rpc(std::vector<bytes_chunk> &bc_vec,
+                         fuse_ino_t ino,
+                         struct rpc_iovec *rpc_iov);
+    int flush_cache_and_wait(struct nfs_inode *inode);
 
 #ifdef ENABLE_NO_FUSE
     /*

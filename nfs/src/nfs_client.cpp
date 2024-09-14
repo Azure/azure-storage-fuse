@@ -967,7 +967,7 @@ void nfs_client::read(
 void nfs_client::jukebox_flush(struct api_task_info *rpc_api)
 {
     /*
-     * For write task pvt has write_context, which has copy of byte_chunk.
+     * For write task pvt has write_iov_context, which has copy of byte_chunk vector.
      * To proceed it should be valid.
      */
     assert(rpc_api->pvt != nullptr);
@@ -980,14 +980,8 @@ void nfs_client::jukebox_flush(struct api_task_info *rpc_api)
     // Any new task should start fresh as a parent task.
     assert(flush_task->rpc_api->parent_task == nullptr);
 
-    /*
-     * Jukebox retry must operate on the same write_context as the original
-     * RPC request.
-     */
-    flush_task->rpc_api->pvt = rpc_api->pvt;
-
-    [[maybe_unused]] struct write_context *ctx =
-        (struct write_context *) rpc_api->pvt;
+    [[maybe_unused]] struct write_iov_context *ctx =
+        (struct write_iov_context *) rpc_api->pvt;
     assert(ctx->magic == WRITE_CONTEXT_MAGIC);
 
     /*
@@ -1000,18 +994,13 @@ void nfs_client::jukebox_flush(struct api_task_info *rpc_api)
      */
     assert(rpc_api->parent_task == nullptr);
 
-    /*
-     * The bytes_chunk held by this task must have its inuse count
-     * bumped as the get() call made to obtain this chunk initially would
-     * have set it.
-     * Additionally, it must be pointing to ctx.bc.
-     */
-    assert(rpc_api->bc != nullptr);
-    assert(rpc_api->bc == &ctx->get_bytes_chunk());
-    assert(rpc_api->bc->pvt < rpc_api->bc->get_membuf()->length);
-    assert(rpc_api->bc->get_membuf()->is_inuse());
+    flush_task->issue_write_rpc(ctx->get_bc_vec(), ctx->get_ino(), ctx->get_rpc_iov());
 
-    flush_task->sync_membuf(*(rpc_api->bc), rpc_api->flush_task.get_ino());
+    /*
+     * Set the rpc_iov to nullptr, to avoid double free in the destructor.
+     */
+    ctx->reset_rpc_iov();
+    delete ctx;
 }
 
 /*
