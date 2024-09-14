@@ -238,7 +238,7 @@ bool posix_task::fd_in_mountpoint(int fd) const
 void posix_task::fd_add_to_map(int fd, fuse_ino_t ino)
 {
     std::unique_lock<std::mutex> lock(fdmap_mutex);
-    auto p = fdmap.try_emplace(fd, fd, ino);
+    [[maybe_unused]] auto p = fdmap.try_emplace(fd, fd, ino);
     assert(p.second == true);
     AZLogDebug("fd [{}] -> ino [{}]", fd, ino);
 }
@@ -490,8 +490,7 @@ int rpc_task::fuse_reply_readlink(fuse_req_t req, const char *linkname)
     assert(pxtask->readlink.buf != nullptr);
     assert(pxtask->readlink.bufsiz != 0);
 
-    const size_t namelen = ::strlen(linkname);
-    const size_t copylen = std::min(namelen, pxtask->readlink.bufsiz-1);
+    const size_t copylen = ::strnlen(linkname, pxtask->readlink.bufsiz);
 
     /*
      * readlink(3) manpage says this about the return:
@@ -499,9 +498,10 @@ int rpc_task::fuse_reply_readlink(fuse_req_t req, const char *linkname)
      * (If  the  returned value equals bufsiz, then truncation may have
      * occurred.)  On error, -1 is returned and errno is set to indicate
      * the error.
+     * Also,
+     * readlink() does not append a null byte to buf.
      */
     ::strncpy(pxtask->readlink.buf, linkname, copylen);
-    pxtask->readlink.buf[copylen] = 0;
     pxtask->readlink.bufsiz = copylen;
 
     pxtask->res = pxtask->readlink.bufsiz;
@@ -816,6 +816,7 @@ FILE *fopen(const char *pathname, const char *mode)
                                           NULL,
                                           pathname, mode);
     assert(0);
+    return NULL;
 }
 
 int close(int fd)
