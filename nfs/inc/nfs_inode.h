@@ -592,7 +592,12 @@ struct nfs_inode
      */
     int flush_cache_and_wait();
 
-    bool is_bc_flushable(const bytes_chunk &bc);
+    /**
+     * Sync the dirty membufs in the file cache to the NFS server.
+     * All contiguous dirty membufs are clubbed together and sent to the
+     * NFS server in a single write call.
+     */
+    void sync_membufs(std::vector<bytes_chunk> &bcs, bool is_flush);
 
     /**
      * Called when last open fd is closed for a file.

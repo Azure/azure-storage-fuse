@@ -317,6 +317,11 @@ struct write_iov_context
     {
     }
 
+    ~write_iov_context()
+    {
+        delete iov;
+    }
+
 private:
     /*
      * Note: We always write the full underlying membuf and not just the

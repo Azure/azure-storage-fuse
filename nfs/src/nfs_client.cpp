@@ -995,6 +995,11 @@ void nfs_client::jukebox_flush(struct api_task_info *rpc_api)
     assert(rpc_api->parent_task == nullptr);
 
     flush_task->issue_write_rpc(ctx->get_bc_vec(), ctx->get_ino(), ctx->get_rpc_iov());
+
+    /*
+     * Set the rpc_iov to nullptr, to avoid double free in the destructor.
+     */
+    ctx->reset_rpc_iov();
     delete ctx;
 }
 

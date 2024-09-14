@@ -1314,73 +1314,7 @@ void rpc_task::run_write()
         return;
     }
 
-    struct iovec io_vec[MAX_RPC_IOVEC_COUNT];
-    int idx = 0;
-    uint64_t start_off = 0;
-    uint64_t iov_length = 0;
-    std::vector<bytes_chunk> write_bc_vec;
-
-    /*
-     * Create the flush task to carry out the write.
-     */
-    struct rpc_task *flush_task = nullptr;
-
-    // Flush dirty membufs to backend.
-    for (bytes_chunk &bc : bc_vec) {
-        // Skip the membuf which is not flushable.
-        if (inode->is_bc_flushable(bc) == false) {
-            AZLogDebug("[{}] Skipping flush for [{}, {}) as it's not flushable",
-                       ino, bc.offset, bc.length);
-            continue;
-        }
-
-        if (flush_task == nullptr) {
-            flush_task =
-                get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_FLUSH);
-            flush_task->init_flush(nullptr /* fuse_req */, ino);
-        }
-
-        if(flush_task->rpc_add_iovector(io_vec, start_off, iov_length, write_bc_vec, idx, bc)) {
-            inode->inflight_bytes += bc.length;
-            continue;
-        } else {
-            assert(idx > 0);
-            assert(write_bc_vec.size() > 0);
-            assert(iov_length > 0);
-
-            struct rpc_iovec *rpc_iov = new rpc_iovec(io_vec, idx, start_off, iov_length);
-            flush_task->issue_write_rpc(write_bc_vec, ino, rpc_iov);
-
-            /*
-             * Reset the iovec.
-             * Add the new bc starting at zero position.
-             * It's guranteed that we can add the bc to the iovec as we have checked
-             * membuf is not flushing and dirty.
-             */
-            idx = 0;
-            start_off = iov_length = 0;
-            write_bc_vec.clear();
-
-            /*
-             * Create the new flush task to carry out the write for next bc.
-             */
-            flush_task =
-                get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_FLUSH);
-            flush_task->init_flush(nullptr /* fuse_req */, ino);
-
-            bool res = flush_task->rpc_add_iovector(io_vec, start_off, iov_length, write_bc_vec, idx, bc);
-            assert(res == true);
-            inode->inflight_bytes += bc.length;
-        }
-    }
-
-    if (idx > 0) {
-        assert(write_bc_vec.size() > 0);
-        assert(iov_length > 0);
-
-        struct rpc_iovec *rpc_iov = new rpc_iovec(io_vec, idx, start_off, iov_length);
-        flush_task->issue_write_rpc(write_bc_vec, ino, rpc_iov);
-    }
+    inode->sync_membufs(bc_vec, false);
 
     // Send reply to original request without waiting for the backend write to complete.
     reply_write(length);
