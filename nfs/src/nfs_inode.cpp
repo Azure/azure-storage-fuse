@@ -407,6 +407,88 @@ void nfs_inode::sync_membufs(std::vector<bytes_chunk> &bc_vec, bool is_flush)
     }
 }
 
+int nfs_inode::copy_to_cache(const struct fuse_bufvec* bufv,
+                             off_t offset,
+                             uint64_t *extent_left,
+                             uint64_t *extent_right)
+{
+    /*
+     * XXX We currently only handle bufv with count=1.
+     *     Ref aznfsc_ll_w().
+     */
+    assert(bufv->count == 1);
+
+    /*
+     * copy_to_cache() must be called only for a regular file and it must have
+     * filecache initialized.
+     */
+    assert(is_regfile());
+    assert(filecache_handle);
+    assert(offset < (off_t) AZNFSC_MAX_FILE_SIZE);
+
+    assert(bufv->idx < bufv->count);
+    const size_t length = bufv->buf[bufv->idx].size - bufv->off;
+    assert((int) length >= 0);
+    assert((offset + length) <= AZNFSC_MAX_FILE_SIZE);
+    const char *buf = (char *) bufv->buf[bufv->idx].mem + bufv->off;
+
+    /*
+     * Get bytes_chunk(s) covering the range [offset, offset+length).
+     * We need to copy application data to those.
+     */
+    std::vector<bytes_chunk> bc_vec =
+        filecache_handle->getx(offset, length, extent_left, extent_right);
+
+    // Result of pread/read.
+    size_t remaining = length;
+
+    for (auto& bc : bc_vec) {
+        struct membuf *mb = bc.get_membuf();
+
+        /*
+         * Lock the membuf while we copy application data into it.
+         */
+        mb->set_locked();
+
+        /*
+         * If we own the full membuf we can safely copy to it, also if the
+         * membuf is uptodate we can safely copy to it. In both cases the
+         * membuf remains uptodate after the copy.
+         */
+        if (bc.is_empty || mb->is_uptodate()) {
+            ::memcpy(bc.get_buffer(), buf, bc.length);
+            mb->set_uptodate();
+            mb->set_dirty();
+        } else {
+            /*
+             * bc refers to part of the membuf and membuf is not uptodate.
+             * In this case we need to read back the entire membuf and then
+             * update the part that user wants to write to.
+             *
+             * TODO: Need to issue read.
+             */
+            assert(0);
+        }
+
+        /*
+         * Done with the copy, release the membuf lock and clear inuse.
+         * The membuf is marked dirty so it's safe against cache prune/release.
+         * When we decide to flush this dirty membuf that time it'll be duly
+         * locked.
+         */
+        mb->clear_locked();
+        mb->clear_inuse();
+
+        buf += bc.length;
+
+        assert(remaining >= bc.length);
+        remaining -= bc.length;
+    }
+
+    assert(remaining == 0);
+    return 0;
+}
+
 int nfs_inode::flush_cache_and_wait()
 {
     /*

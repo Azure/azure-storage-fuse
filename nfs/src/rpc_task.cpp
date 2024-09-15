@@ -1158,84 +1158,7 @@ void rpc_task::run_access()
     } while (rpc_retry);
 }
 
-/*
- * Copy application data to chunk cache and return the updated buffers'
- * vector. Caller will then have to write these chunks to the Blob.
- */
-static std::vector<bytes_chunk>
-copy_to_cache(struct rpc_task *task,
-              fuse_ino_t ino,
-              struct fuse_bufvec* bufv,
-              off_t offset,
-              size_t length,
-              int &error,
-              uint64_t *extent_left,
-              uint64_t *extent_right)
-{
-    // Check the valid ino.
-    assert(ino != 0);
 
-    /*
-     * XXX We are only handling count=1, assert to know if kernel sends more,
-     *     we would want to handle that.
-     */
-    assert(bufv->count == 1);
-
-    const char *buf = (char *) bufv->buf[bufv->idx].mem + bufv->off;
-    struct nfs_inode *inode = task->get_client()->get_nfs_inode_from_ino(ino);
-    assert(inode->filecache_handle);
-    std::vector<bytes_chunk> bc_vec =
-        inode->filecache_handle->getx(offset, length, extent_left, extent_right);
-
-    // Result of pread/read.
-    [[maybe_unused]] size_t remaining = length;
-
-    for (auto &bc : bc_vec) {
-        struct membuf *mb = bc.get_membuf();
-
-        // Lock the membuf to do the operation.
-        mb->set_locked();
-
-        assert(remaining >= bc.length);
-
-        /*
-         * If we own the full membuf we can safely copy to it, also if the
-         * membuf is uptodate we can safely copy to it. In both cases the
-         * membuf remains uptodate after the copy.
-         */
-        if (bc.is_empty || mb->is_uptodate()) {
-            ::memcpy(bc.get_buffer(), buf, bc.length);
-            mb->set_uptodate();
-            mb->set_dirty();
-        } else {
-            /*
-             * bc refers to part of the membuf and membuf is not uptodate.
-             * In this case we need to read back the entire membuf and then
-             * update the part that user wants to write to.
-             *
-             * TODO: Need to issue read.
-             */
-            assert(0);
-        }
-
-        /*
-         * Clear the inuse flag and release the lock.
-         * When the cache reached the prune goals, the membuf will be flushed.
-         * At that time the membuf will be locked and inuse, so we need to clear
-         * these flags here.
-         */
-        mb->clear_locked();
-        mb->clear_inuse();
-
-        buf += bc.length;
-        remaining -= bc.length;
-
-        assert((int) remaining >= 0);
-    }
-
-    assert(remaining == 0);
-    return bc_vec;
-}
 
 void rpc_task::run_write()
 {
@@ -1275,7 +1198,8 @@ void rpc_task::run_write()
      */
     uint64_t periodic_bytes = 0;
 
-    copy_to_cache(this, ino, bufv, offset, length, error_code, &extent_left, &extent_right);
+    error_code = inode->copy_to_cache(bufv, offset,
+                                      &extent_left, &extent_right);
     if (error_code != 0) {
         AZLogWarn("[{}] copy_to_cache failed with error={}, "
                   "failing write!", ino, error_code);
