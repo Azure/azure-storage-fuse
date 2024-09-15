@@ -1196,8 +1196,6 @@ void rpc_task::run_write()
      * membufs. We don't wait for the writes to actually finish, which means
      * we support buffered writes.
      */
-    uint64_t periodic_bytes = 0;
-
     error_code = inode->copy_to_cache(bufv, offset,
                                       &extent_left, &extent_right);
     if (error_code != 0) {
@@ -1207,29 +1205,56 @@ void rpc_task::run_write()
         return;
     }
 
-    assert(extent_right >= extent_left);
+    assert(extent_right >= (extent_left + length));
 
     /*
-     * Get the prune goals, if it's more than data already in-flight
-     * data to BLOB, then issue fresh flush.
+     * If the extent size exceeds the max allowed dirty size as returned by
+     * max_dirty_extent_bytes(), then it's time to flush the extent.
+     * Note that this will cause sequential writes to be flushed at just the
+     * right intervals to optimize fewer write calls and also allowing the
+     * server scheduler to merge better.
+     * See bytes_to_flush for how random writes are flushed.
+     *
+     * Note: max_dirty_extent is static as it doesn't change after it's
+     *       queried for the first time.
      */
-    inode->filecache_handle->get_prune_goals(nullptr, &periodic_bytes);
-    AZLogDebug("periodic_bytes: {}, extent_left{}, extent_right: {}",periodic_bytes, extent_left, extent_right);
+    static const uint64_t max_dirty_extent =
+        inode->filecache_handle->max_dirty_extent_bytes();
+    assert(max_dirty_extent > 0);
 
-    if (inode->inflight_bytes >= periodic_bytes) {
-        AZLogDebug("Reply write without syncing to Blob");
-        reply_write(length);
-        return;
+    /*
+     * How many bytes in the cache need to be flushed.
+     */
+    const uint64_t bytes_to_flush =
+        inode->filecache_handle->get_bytes_to_flush();
+
+    AZLogDebug("extent_left: {}, extent_right: {}, size: {}, "
+               "bytes_to_flush: {} (max_dirty_extent: {})",
+               extent_left, extent_right,
+               (extent_right - extent_left),
+               bytes_to_flush,
+               max_dirty_extent);
+
+    if ((extent_right - extent_left) < max_dirty_extent) {
+        /*
+         * Current extent is not big enough to be flushed, see if we have
+         * enough dirty data that needs to be flushed. This is to cause
+         * random writes to be periodically flushed.
+         */
+        if (bytes_to_flush < max_dirty_extent) {
+            AZLogDebug("Reply write without syncing to Blob");
+            reply_write(length);
+            return;
+        }
+
+        /*
+         * This is the case of non-sequential writes causing enough dirty
+         * data to be accumulated, need to flush all of that.
+         */
+        extent_left = 0;
+        extent_right = UINT64_MAX;
     }
 
-    /*
-     * TODO: It may happen extent_left and extent_right smaller than
-     *       periodic_bytes - inode->inflight, then we need to go beyond
-     *       that range or try find continous chunk larger/multiple chunk
-     *       which meet our prune goals. It should not be required for sequential
-     *       but for random we can use this to make it sequential (That will be the
-     *       benefit for cache).
-     */
     std::vector<bytes_chunk> bc_vec =
         inode->filecache_handle->get_dirty_bc_range(extent_left, extent_right);
 
@@ -1238,7 +1263,11 @@ void rpc_task::run_write()
         return;
     }
 
-    inode->sync_membufs(bc_vec, false);
+    /*
+     * Pass is_flush as false, since we don't want the writes to complete
+     * before returning.
+     */
+    inode->sync_membufs(bc_vec, false /* is_flush */);
 
     // Send reply to original request without waiting for the backend write to complete.
     reply_write(length);
@@ -1298,7 +1327,7 @@ void rpc_task::run_create_file()
         args.where.name = (char*)rpc_api->create_task.get_file_name();
         args.how.mode = (rpc_api->create_task.get_fuse_file()->flags & O_EXCL) ? GUARDED : UNCHECKED;
         args.how.createhow3_u.obj_attributes.mode.set_it = 1;
-        args.how.createhow3_u.obj_attributes.mode.set_mode3_u.mode = 
+        args.how.createhow3_u.obj_attributes.mode.set_mode3_u.mode =
             rpc_api->create_task.get_mode();
         args.how.createhow3_u.obj_attributes.uid.set_it = 1;
         args.how.createhow3_u.obj_attributes.uid.set_uid3_u.uid =
@@ -3046,7 +3075,7 @@ void rpc_task::send_readdir_response(
 
         /*
          * Drop the ref held inside lookup() or readdirplus_callback().
-         * 
+         *
          * Note: entry->nfs_inode may be null for entries populated using
          *       only readdir however, it is guaranteed to be present for
          *       readdirplus.
