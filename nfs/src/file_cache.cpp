@@ -161,6 +161,19 @@ int64_t membuf::drop()
     return allocated_length;
 }
 
+/**
+ * TODO: This is currently not used and not tested for various scenarios.
+ *       Whet it extensively once we enable file-backed cache.
+ *       Few things to consider:
+ *       - What will be the membuf flag after load?
+ *         If we set it as uptodate then we risk data consistency issues
+ *         unless we are certain through other means that the file-backed
+ *         data is indeed uptodate with the actual blob data.
+ *         OTOH if we set it to non-uptodate then it's not very useful to
+ *         load from the backing-file.
+ *         This means we need to compare the backing-file mtime with the
+ *         blob mtime and decide based on that.
+ */
 bool membuf::load()
 {
     // Loading memcache for non file-backed chunks doesn't make sense.
