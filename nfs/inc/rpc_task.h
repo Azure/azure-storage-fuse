@@ -407,6 +407,9 @@ struct bc_iovec
                 bytes_completed = 0;
             }
         } while (bytes_completed);
+
+        // After the above loop offset should be updated to the final value.
+        assert(offset == end_off);
     }
 
     /**
