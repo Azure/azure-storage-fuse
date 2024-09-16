@@ -182,8 +182,9 @@ private:
 
 /*
  * This must not be greater than libnfs RPC_MAX_VECTORS.
+ * We limit it to 1000 as libnfs adds some more iovecs for header, marker etc.
  */
-#define BC_IOVEC_MAX_VECTORS 1024
+#define BC_IOVEC_MAX_VECTORS 1000
 
 struct bc_iovec
 {
@@ -209,6 +210,11 @@ struct bc_iovec
         inode->incref();
 
         assert(max_iosize > 0);
+        /*
+         * TODO: Currently we don't support wsize smaller than 1MB.
+         *       See below.
+         */
+        assert(max_iosize >= 1048576);
         assert(max_iosize <= AZNFSCFG_WSIZE_MAX);
 
         assert(iovcnt == 0);
@@ -263,6 +269,9 @@ struct bc_iovec
         /*
          * We don't support single bytes_chunk having length greater than the
          * max_iosize.
+         *
+         * Note: This means we should not set wsize less than 1MB, since fuse
+         *       can send writes upto 1MB.
          */
         assert(bc.length <= max_iosize);
 
@@ -284,6 +293,12 @@ struct bc_iovec
             assert(offset == 0);
             assert(length == 0);
 
+            /*
+             * XXX This should be the entire bytes_chunk as stored in the
+             *     chunkmap, though because of trimming it may be smaller than
+             *     the underlying membuf. Unfortunately today we do not have a
+             *     safe way to assert for that.
+             */
             iov[0].iov_base = bc.get_buffer();
             iov[0].iov_len = bc.length;
             orig_offset = offset = bc.offset;
@@ -328,7 +343,15 @@ struct bc_iovec
         assert(iovcnt == (int) bcq.size());
         assert(iovcnt > 0);
 
+        /*
+         * bytes_chunk at the head and bc_iovec must agree on the offset.
+         * Also, server cannot read/write more than what we asked for.
+         */
+        assert((bcq.front().offset + bcq.front().pvt) == offset);
+        assert(bytes_completed <= length);
+
         do {
+            assert(!bcq.empty());
             struct bytes_chunk& bc = bcq.front();
 
             /*
@@ -370,15 +393,79 @@ struct bc_iovec
                 // Remove the bc from bcq.
                 bcq.pop();
             } else {
+                // bc partially written
                 bc.pvt += bytes_completed;
                 iov->iov_base = (uint8_t *)iov->iov_base + bytes_completed;
                 iov->iov_len -= bytes_completed;
+                /*
+                 * Since this is a partial bc write, we must still have space
+                 * left in the iovec.
+                 */
+                assert((int64_t) iov->iov_len > 0);
                 offset += bytes_completed;
                 length -= bytes_completed;
                 bytes_completed = 0;
-                break;
             }
         } while (bytes_completed);
+    }
+
+    /**
+     * Call on IO failure.
+     */
+    void on_io_fail()
+    {
+        /*
+         * There's one iov per bytes_chunk.
+         */
+        assert(iovcnt == (int) bcq.size());
+        assert(iovcnt > 0);
+
+        /*
+         * bytes_chunk at the head and bc_iovec must agree on the offset.
+         */
+        assert((bcq.front().offset + bcq.front().pvt) == offset);
+
+        do {
+            assert(!bcq.empty());
+            struct bytes_chunk& bc = bcq.front();
+
+            /*
+             * Absolute offset and length represented by this bytes_chunk.
+             * bc->pvt is adjusted as partial reads/writes complete part of
+             * the bc.
+             */
+            const uint64_t bc_off = bc.offset + bc.pvt;
+            const uint64_t bc_len = bc.length - bc.pvt;
+
+            // Part must be less than whole.
+            assert(bc_off >= offset);
+            assert(bc_len <= length);
+
+            /*
+             * Get the membuf and do the sanity check before setting
+             * uptodate flag.
+             * We don't clear the dirty flag for error case since the write
+             * didn't complete.
+             */
+            struct membuf *mb = bc.get_membuf();
+            assert(mb != nullptr);
+            assert(mb->is_inuse() && mb->is_locked());
+            assert(mb->is_flushing() && mb->is_dirty() && mb->is_uptodate());
+
+            mb->clear_flushing();
+            mb->clear_locked();
+            mb->clear_inuse();
+            iov++;
+            assert(iovcnt > 0);
+            iovcnt--;
+            offset += bc_len;
+            length -= bc_len;
+
+            // Remove the bc from bcq.
+            bcq.pop();
+        } while (!bcq.empty());
+
+        assert(iovcnt == 0);
     }
 
     /*

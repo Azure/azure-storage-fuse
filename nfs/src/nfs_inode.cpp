@@ -313,20 +313,40 @@ void nfs_inode::sync_membufs(std::vector<bytes_chunk> &bc_vec, bool is_flush)
          * Get the underlying membuf for bc.
          * Note that we write the entire membuf, even though bc may be referring
          * to a smaller window.
+         *
+         * Correction: We may not write the entire membuf in case the bytes_chunk
+         *             was trimmed. Since get_dirty_bc_range() returns full
+         *             bytes_chunks from the chunkmap, we should get full
+         *             (but potentially trimmed) bytes_chunks here.
          */
         struct membuf *mb = bc.get_membuf();
+
+        /*
+         * Verify the mb.
+         * Caller must hold an inuse count on the membufs.
+         * sync_membufs() takes ownership of that inuse count and will drop it.
+         * We have two cases:
+         * 1. We decide to issue the write IO.
+         *    In this case the inuse count will be dropped by
+         *    write_iov_callback().
+         *    This will be the only inuse count and the buffer will be
+         *    release()d after write_iov_callback() (in bc_iovec destructor).
+         * 2. We found the membuf as flushing.
+         *    In this case we don't issue the write and return, but only after
+         *    dropping the inuse count.
+         */
         assert(mb != nullptr);
+        assert(mb->is_inuse());
 
         if (is_flush) {
             /*
              * get_dirty_bc_range() must have held an inuse count.
              * We hold an extra inuse count so that we can safely wait for the
-             * flush in the following loop.
+             * flush in the "waiting loop" in nfs_inode::flush_cache_and_wait().
              * This is needed as we drop inuse count if membuf is already being
              * flushed by another thread or it may drop when the write_iov_callback()
              * completes which can happen before we reach the waiting loop.
              */
-            assert(mb->is_inuse());
             mb->set_inuse();
         }
 
@@ -339,8 +359,10 @@ void nfs_inode::sync_membufs(std::vector<bytes_chunk> &bc_vec, bool is_flush)
          * for it to complete by waiting for the lock. Others who find it after the
          * write is done and lock is released will find it not "dirty and not
          * flushing". They can just skip.
+         *
          * Note that we allocate the rpc_task for flush before the lock as it may
          * block.
+         * TODO: We don't do it currently, fix this!
          */
         if (mb->is_flushing() || !mb->is_dirty()) {
             mb->clear_inuse();
@@ -392,8 +414,10 @@ void nfs_inode::sync_membufs(std::vector<bytes_chunk> &bc_vec, bool is_flush)
         }
     }
 
-    // Dispatch the leftover bytes.
-    flush_task->issue_write_rpc();
+    // Dispatch the leftover bytes (or full write).
+    if (flush_task) {
+        flush_task->issue_write_rpc();
+    }
 }
 
 int nfs_inode::copy_to_cache(const struct fuse_bufvec* bufv,
@@ -403,7 +427,7 @@ int nfs_inode::copy_to_cache(const struct fuse_bufvec* bufv,
 {
     /*
      * XXX We currently only handle bufv with count=1.
-     *     Ref aznfsc_ll_w().
+     *     Ref aznfsc_ll_write_buf().
      */
     assert(bufv->count == 1);
 
@@ -419,6 +443,9 @@ int nfs_inode::copy_to_cache(const struct fuse_bufvec* bufv,
     const size_t length = bufv->buf[bufv->idx].size - bufv->off;
     assert((int) length >= 0);
     assert((offset + length) <= AZNFSC_MAX_FILE_SIZE);
+    /*
+     * TODO: Investigate using splice for zero copy.
+     */
     const char *buf = (char *) bufv->buf[bufv->idx].mem + bufv->off;
 
     /*
@@ -428,7 +455,6 @@ int nfs_inode::copy_to_cache(const struct fuse_bufvec* bufv,
     std::vector<bytes_chunk> bc_vec =
         filecache_handle->getx(offset, length, extent_left, extent_right);
 
-    // Result of pread/read.
     size_t remaining = length;
 
     for (auto& bc : bc_vec) {
@@ -445,6 +471,7 @@ int nfs_inode::copy_to_cache(const struct fuse_bufvec* bufv,
          * membuf remains uptodate after the copy.
          */
         if (bc.is_empty || mb->is_uptodate()) {
+            assert(bc.length <= remaining);
             ::memcpy(bc.get_buffer(), buf, bc.length);
             mb->set_uptodate();
             mb->set_dirty();
@@ -469,7 +496,6 @@ int nfs_inode::copy_to_cache(const struct fuse_bufvec* bufv,
         mb->clear_inuse();
 
         buf += bc.length;
-
         assert(remaining >= bc.length);
         remaining -= bc.length;
     }

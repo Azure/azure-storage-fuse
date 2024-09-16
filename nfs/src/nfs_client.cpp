@@ -983,6 +983,7 @@ void nfs_client::jukebox_flush(struct api_task_info *rpc_api)
     [[maybe_unused]] struct bc_iovec *bciov = (struct bc_iovec *) rpc_api->pvt;
     assert(bciov->magic == BC_IOVEC_MAGIC);
 
+    // TODO: Make this a unique_ptr?
     flush_task->rpc_api->pvt = rpc_api->pvt;
     rpc_api->pvt = nullptr;
 

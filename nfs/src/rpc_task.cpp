@@ -557,6 +557,7 @@ static void write_iov_callback(
             assert(flush_task->rpc_api->parent_task == nullptr);
 
             // Hand over the remaining bciov to the new flush_task.
+            assert(flush_task->rpc_api->pvt == nullptr);
             flush_task->rpc_api->pvt = task->rpc_api->pvt;
             task->rpc_api->pvt = nullptr;
 
@@ -572,6 +573,9 @@ static void write_iov_callback(
 
             return;
         } else {
+            // Complete bc_iovec IO completed.
+            bciov->on_io_complete(res->WRITE3res_u.resok.count);
+
             // Complete data writen to blob.
             AZLogDebug("[{}] Completed write, off: {}, len: {}",
                        ino, bciov->offset, bciov->length);
@@ -595,10 +599,12 @@ static void write_iov_callback(
                    status, errstr);
 
         inode->set_write_error(status);
-    }
 
-    // Complete bc_iovec IO completed.
-    bciov->on_io_complete(res->WRITE3res_u.resok.count);
+        /*
+         * on_io_fail() will clear flushing from all remaining membufs.
+         */
+        bciov->on_io_fail();
+    }
 
     delete bciov;
     task->rpc_api->pvt = nullptr;
@@ -623,6 +629,7 @@ void rpc_task::issue_write_rpc()
     assert(get_op_type() == FUSE_FLUSH);
 
     const fuse_ino_t ino = rpc_api->flush_task.get_ino();
+    struct nfs_inode *inode = get_client()->get_nfs_inode_from_ino(ino);
     struct bc_iovec *bciov = (struct bc_iovec *) rpc_api->pvt;
     assert(bciov->magic == BC_IOVEC_MAGIC);
 
@@ -630,16 +637,16 @@ void rpc_task::issue_write_rpc()
     ::memset(&args, 0, sizeof(args));
     struct rpc_pdu *pdu;
     bool rpc_retry = false;
-    uint64_t offset = bciov->offset;
-    uint64_t length = bciov->length;
+    const uint64_t offset = bciov->offset;
+    const uint64_t length = bciov->length;
 
-    assert (bciov->iovcnt > 0 && bciov->iovcnt <= BC_IOVEC_MAX_VECTORS);
+    assert(bciov->iovcnt > 0 && bciov->iovcnt <= BC_IOVEC_MAX_VECTORS);
     assert(offset < AZNFSC_MAX_FILE_SIZE);
     assert((offset + length) < AZNFSC_MAX_FILE_SIZE);
     assert(length > 0);
 
     AZLogDebug("issue_write_iovec offset:{}, length:{}", offset, length);
-    args.file = get_client()->get_nfs_inode_from_ino(ino)->get_fh();
+    args.file = inode->get_fh();
     args.offset = offset;
     args.count = length;
     args.stable = FILE_SYNC;
