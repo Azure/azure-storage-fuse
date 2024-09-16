@@ -92,4 +92,21 @@ void set_kernel_readahead()
     thr.detach();
 }
 
+#ifdef ENABLE_PRESSURE_POINTS
+bool inject_error(double pct_prob)
+{
+    if (pct_prob == 0) {
+        pct_prob = inject_err_prob_pct_def;
+    }
+    /*
+     * We multiply double pct_prob with 10000, this enables us to consider
+     * values as less as 0.0001% i.e., 1 in a million.
+     * Anything less will result in a 0% probability.
+     */
+    assert(pct_prob >= 0.0001);
+    const uint64_t rnd = random_number(0, 1000'000);
+    return rnd < (pct_prob * 10'000);
+}
+#endif
+
 }

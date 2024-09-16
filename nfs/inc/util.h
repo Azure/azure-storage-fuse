@@ -152,6 +152,18 @@ uint32_t calculate_crc32(const unsigned char *buf, int len)
     return ::crc32(::crc32(0L, Z_NULL, 0), buf, len);
 }
 
+/**
+ * Inject error with given probability percentage.
+ * f.e., pct_prob=0.1 would cause inject_error() to return true for 0.1% of
+ * the calls, i.e., 1 in 1000.
+ * Environment variable AZNFSC_INJECT_ERROR_PERCENT can be used to set the
+ * default value of pct_prob, if caller doesn't pass an explicit value.
+ *
+ * Note: Inject errors with caution. Only inject errors which can be fixed by
+ *       retries and do not result in application failures.
+ */
+bool inject_error(double pct_prob = 0);
+
 }
 
 #endif /* __AZNFSC_UTIL_H__ */

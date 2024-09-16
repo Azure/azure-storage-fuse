@@ -158,6 +158,14 @@ do { \
     return true;
 }
 
+#ifdef ENABLE_PRESSURE_POINTS
+/*
+ * Default percentage probability for error injection.
+ * Settable using env variable AZNFSC_INJECT_ERROR_PERCENT.
+ */
+double inject_err_prob_pct_def = 0.01;
+#endif
+
 /**
  * Set default values for options not yet assigned.
  * This must be called after fuse_opt_parse() and parse_config_yaml()
@@ -166,6 +174,21 @@ do { \
  */
 void aznfsc_cfg::set_defaults_and_sanitize()
 {
+#ifdef ENABLE_PRESSURE_POINTS
+    const char *err_prob = ::getenv("AZNFSC_INJECT_ERROR_PERCENT");
+    if (err_prob) {
+        inject_err_prob_pct_def = ::atof(err_prob);
+        if (inject_err_prob_pct_def < 0.0001) {
+            AZLogWarn("Capping AZNFSC_INJECT_ERROR_PERCENT ({}) to 0.0001",
+                      err_prob);
+            inject_err_prob_pct_def = 0.0001;
+        } else if (inject_err_prob_pct_def > 100) {
+            AZLogWarn("Capping AZNFSC_INJECT_ERROR_PERCENT ({}) to 100",
+                      err_prob);
+            inject_err_prob_pct_def = 100;
+        }
+    }
+#endif
     if (port == -1)
         port = 2048;
     if (nconnect == -1)
@@ -236,6 +259,9 @@ void aznfsc_cfg::set_defaults_and_sanitize()
 
     // Dump the final config values for debugging.
     AZLogDebug("===== config start =====");
+#ifdef ENABLE_PRESSURE_POINTS
+    AZLogDebug("inject_err_prob_pct_def = {}", inject_err_prob_pct_def);
+#endif
     AZLogDebug("port = {}", port);
     AZLogDebug("nconnect = {}", nconnect);
     AZLogDebug("rsize = {}", rsize);

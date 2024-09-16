@@ -74,6 +74,14 @@ static_assert(AZNFSCFG_WSIZE_MAX == AZNFSCFG_RSIZE_MAX);
  */
 #define FUSE_OPCODE_MAX         FUSE_LSEEK
 
+/*
+ * In paranoid builds, also enable pressure points (aka error injection).
+ */
+#ifdef ENABLE_PARANOID
+#define ENABLE_PRESSURE_POINTS
+extern double inject_err_prob_pct_def;
+#endif
+
 /**
  * This structure holds the entire aznfsclient configuration that controls the
  * behaviour of the aznfsclient fuse program. These config variables can be

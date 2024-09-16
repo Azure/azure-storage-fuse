@@ -524,6 +524,21 @@ static void write_iov_callback(
 
     // Success case.
     if (status == 0) {
+#ifdef ENABLE_PRESSURE_POINTS
+        /*
+         * Short write pressure point.
+         */
+        if (inject_error()) {
+            // Set write size to a random percent of the actual size.
+            const uint32_t pct = random_number(1, 100);
+            const uint32_t adj_size =
+                std::max((res->WRITE3res_u.resok.count * pct) / 100, 1U);
+            assert(adj_size <= res->WRITE3res_u.resok.count);
+            AZLogWarn("[{}] PP: short write {} -> {}",
+                      ino, res->WRITE3res_u.resok.count, adj_size);
+            res->WRITE3res_u.resok.count = adj_size;
+        }
+#endif
         // Successful Blob write must not return 0.
         assert(res->WRITE3res_u.resok.count > 0);
         assert(res->WRITE3res_u.resok.count <= bciov->length);
@@ -2011,6 +2026,22 @@ static void read_callback(
     task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
 
     if (status == 0) {
+#ifdef ENABLE_PRESSURE_POINTS
+        /*
+         * Short read pressure point, skip when eof received.
+         */
+        if (inject_error() && !res->READ3res_u.resok.eof) {
+            // Set read size to a random percent of the actual size.
+            const uint32_t pct = random_number(1, 100);
+            const uint32_t adj_size =
+                std::max((res->READ3res_u.resok.count * pct) / 100, 1U);
+            assert(adj_size <= res->READ3res_u.resok.count);
+            AZLogWarn("[{}] PP: short read {} -> {}",
+                      ino, res->READ3res_u.resok.count, adj_size);
+            res->READ3res_u.resok.count = adj_size;
+        }
+#endif
+
         assert((bc->pvt == 0) || (bc->num_backend_calls_issued > 1));
 
         // We should never get more data than what we requested.
@@ -2455,6 +2486,17 @@ static void readdir_callback(
 
         // Process all dirents received.
         while (entry) {
+#ifdef ENABLE_PRESSURE_POINTS
+            /*
+             * Short readdir pressure point, skip when eof received, return
+             * at least one entry.
+             */
+            if (inject_error() && !eof && num_dirents) {
+                AZLogWarn("[{}] PP: short readdir after {} entries",
+                          dir_ino, num_dirents);
+                break;
+            }
+#endif
             /*
              * Keep updating eof_cookie, when we exit the loop we will have
              * eof_cookie set correctly.
@@ -2607,6 +2649,17 @@ static void readdirplus_callback(
 
         // Process all dirents received.
         while (entry) {
+#ifdef ENABLE_PRESSURE_POINTS
+            /*
+             * Short readdir pressure point, skip when eof received, return
+             * at least one entry.
+             */
+            if (inject_error() && !eof && num_dirents) {
+                AZLogWarn("[{}] PP: short readdirplus after {} entries",
+                          dir_ino, num_dirents);
+                break;
+            }
+#endif
             const struct fattr3 *fattr = nullptr;
             const bool is_dot_or_dotdot =
                 directory_entry::is_dot_or_dotdot(entry->name);
