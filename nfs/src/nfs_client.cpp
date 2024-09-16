@@ -980,9 +980,11 @@ void nfs_client::jukebox_flush(struct api_task_info *rpc_api)
     // Any new task should start fresh as a parent task.
     assert(flush_task->rpc_api->parent_task == nullptr);
 
-    [[maybe_unused]] struct write_iov_context *ctx =
-        (struct write_iov_context *) rpc_api->pvt;
-    assert(ctx->magic == WRITE_CONTEXT_MAGIC);
+    [[maybe_unused]] struct bc_iovec *bciov = (struct bc_iovec *) rpc_api->pvt;
+    assert(bciov->magic == BC_IOVEC_MAGIC);
+
+    flush_task->rpc_api->pvt = rpc_api->pvt;
+    rpc_api->pvt = nullptr;
 
     /*
      * We currently only support buffered writes where the original fuse write
@@ -994,13 +996,7 @@ void nfs_client::jukebox_flush(struct api_task_info *rpc_api)
      */
     assert(rpc_api->parent_task == nullptr);
 
-    flush_task->issue_write_rpc(ctx->get_bc_vec(), ctx->get_ino(), ctx->get_rpc_iov());
-
-    /*
-     * Set the rpc_iov to nullptr, to avoid double free in the destructor.
-     */
-    ctx->reset_rpc_iov();
-    delete ctx;
+    flush_task->issue_write_rpc();
 }
 
 /*

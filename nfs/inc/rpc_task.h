@@ -165,6 +165,269 @@ private:
 };
 
 /**
+ * This is an io vector of bytes_chunks.
+ * Anyone trying to perform IOs to/from a vector of bytes_chunks should use
+ * this instead of the vanilla std::vector<bytes_chunk>. Apart from acting
+ * as the storage for bytes_chunks (which helps to grab reference on
+ * underlying membufs so that they are not freed) this also provides iovecs
+ * needed for performing vectored IO, with support for updating the iovecs
+ * as IOs complete (partially or fully), and the updated offset and length
+ * into the file where the IO is performed.
+ *
+ * Note: Currently it's used only for writing a vector of bytes_chunks, so
+ *       the code sets membuf flags accordingly. If we want to use it for
+ *       vectored reads also then we will have to make those conditional.
+ */
+#define BC_IOVEC_MAGIC *((const uint32_t *)"BIOV")
+
+/*
+ * This must not be greater than libnfs RPC_MAX_VECTORS.
+ */
+#define BC_IOVEC_MAX_VECTORS 1024
+
+struct bc_iovec
+{
+    const uint32_t magic = BC_IOVEC_MAGIC;
+
+    /**
+     * Constructor must initialize max_iosize, the maximum IO size that we
+     * will issue to the file using this bc_iovec.
+     * It takes nfs_inode for releasing the cache chunks as IOs get completed
+     * for the queued bytes_chunks.
+     */
+    bc_iovec(struct nfs_inode *_inode) :
+        inode(_inode),
+        max_iosize(inode->get_client()->mnt_options.wsize_adj)
+    {
+        assert(inode->magic == NFS_INODE_MAGIC);
+        assert(inode->is_regfile());
+
+        /*
+         * Grab a ref on the inode as we will need it for releasing cache
+         * chunks as IOs complete.
+         */
+        inode->incref();
+
+        assert(max_iosize > 0);
+        assert(max_iosize <= AZNFSCFG_WSIZE_MAX);
+
+        assert(iovcnt == 0);
+        assert(iov == base);
+    }
+
+    ~bc_iovec()
+    {
+        assert(bcq.empty());
+        assert(inode->magic == NFS_INODE_MAGIC);
+        /*
+         * We don't want to cache the data after the write completes.
+         * We do it here once for the entire bc_iovec and not in
+         * on_io_complete() as every bytes_chunk completes as scanning the
+         * bytes_chunk_cache is expensive.
+         */
+        inode->filecache_handle->release(orig_offset, orig_length);
+        inode->decref();
+    }
+
+    /**
+     * Add a new bytes_chunk to this bc_iovec.
+     * If added successfully it returns true else returns false.
+     * A bytes_chunk is added successfully if all the following conditions
+     * are met:
+     * - This is the first bytes_chunk to be added, or
+     *   this is contiguos to the last bytes_chunk.
+     * - After adding this bytes_chunk the total queued bytes does not
+     *   exceed max_iosize.
+     * - After adding this bytes_chunk the total number of iovecs don't exceed
+     *   BC_IOVEC_MAX_VECTORS.
+     *
+     * It sets flushing for a successfully added membuf.
+     * bc must be set locked and inuse by the caller.
+     *
+     * A false return signifies to the caller that no more bytes_chunks can be
+     * packed into this bc_iovec and it should dispatch it now. A true return
+     * otoh indicates that there is still space for more bytes_chunks and caller
+     * should wait.
+     */
+    bool add_bc(const struct bytes_chunk& bc)
+    {
+        /*
+         * All bytes_chunks must be added in the beginning before dispatching
+         * the first write, till then iov will be same as base.
+         */
+        assert(iov == base);
+
+        // There's one iov per bytes_chunk.
+        assert(iovcnt == (int) bcq.size());
+
+        /*
+         * We don't support single bytes_chunk having length greater than the
+         * max_iosize.
+         */
+        assert(bc.length <= max_iosize);
+
+        // pvt must start as 0.
+        assert(bc.pvt == 0);
+
+        struct membuf *const mb = bc.get_membuf();
+
+        /*
+         * Caller must have held the membuf inuse count and the lock.
+         * Also only uptodate membufs can be written.
+         */
+        assert(mb->is_inuse());
+        assert(mb->is_locked());
+        assert(mb->is_uptodate());
+
+        // First iovec being added.
+        if (iovcnt == 0) {
+            assert(offset == 0);
+            assert(length == 0);
+
+            iov[0].iov_base = bc.get_buffer();
+            iov[0].iov_len = bc.length;
+            orig_offset = offset = bc.offset;
+            orig_length = length = bc.length;
+            iovcnt++;
+            mb->set_flushing();
+            /*
+             * Add new bytes_chunk to the tail of the queue.
+             * This will now hold the reference on the underlying membuf till
+             * the bytes_chunk is removed from the queue.
+             */
+            bcq.emplace(bc);
+            return true;
+        } else if (((offset + length) == bc.offset) &&
+                   ((length + bc.length) <= max_iosize) &&
+                   (iovcnt + 1) <= BC_IOVEC_MAX_VECTORS) {
+            iov[iovcnt].iov_base = bc.get_buffer();
+            iov[iovcnt].iov_len = bc.length;
+            length += bc.length;
+            orig_length = length;
+            iovcnt++;
+            mb->set_flushing();
+            bcq.emplace(bc);
+            return true;
+        }
+
+        // Could not add this bc.
+        return false;
+    }
+
+    /**
+     * Must be called when bytes_completed bytes are successfully read/written.
+     */
+    void on_io_complete(uint64_t bytes_completed)
+    {
+        // (1+) Offset of the last byte successfully read/written.
+        const uint64_t end_off = offset + bytes_completed;
+
+        /*
+         * There's one iov per bytes_chunk.
+         */
+        assert(iovcnt == (int) bcq.size());
+        assert(iovcnt > 0);
+
+        do {
+            struct bytes_chunk& bc = bcq.front();
+
+            /*
+             * Absolute offset and length represented by this bytes_chunk.
+             * bc->pvt is adjusted as partial reads/writes complete part of
+             * the bc.
+             */
+            const uint64_t bc_off = bc.offset + bc.pvt;
+            const uint64_t bc_len = bc.length - bc.pvt;
+            const bool bc_done = ((bc_off + bc_len) <= end_off);
+
+            // Part must be less than whole.
+            assert(bc_off >= offset);
+            assert(bc_len <= length);
+
+            // This bc is written fully in this write.
+            if (bc_done) {
+                /*
+                 * Get the membuf and do the sanity check before setting
+                 * uptodate flag.
+                 */
+                struct membuf *mb = bc.get_membuf();
+                assert(mb != nullptr);
+                assert(mb->is_inuse() && mb->is_locked());
+                assert(mb->is_flushing() && mb->is_dirty() && mb->is_uptodate());
+
+                mb->clear_dirty();
+                mb->clear_flushing();
+                mb->clear_locked();
+                mb->clear_inuse();
+                iov++;
+                iovcnt--;
+                offset += bc_len;
+                length -= bc_len;
+
+                assert(bytes_completed >= bc_len);
+                bytes_completed -= bc_len;
+
+                // Remove the bc from bcq.
+                bcq.pop();
+            } else {
+                bc.pvt += bytes_completed;
+                iov->iov_base = (uint8_t *)iov->iov_base + bytes_completed;
+                iov->iov_len -= bytes_completed;
+                offset += bytes_completed;
+                length -= bytes_completed;
+                bytes_completed = 0;
+                break;
+            }
+        } while (bytes_completed);
+    }
+
+    /*
+     * Current iovec we should be performing IO to/from, updated as we finish
+     * reading/writing whole iovecs. iovcnt holds the count of iovecs remaining
+     * to be read/written and is decremented as we read whole iovecs. We also
+     * update the iov_base and iov_len as we read/write data from the current
+     * iov[], so at any point iov and iovcnt can be passed to any function
+     * that operates on iovecs.
+     */
+    struct iovec *iov = base;
+    int iovcnt = 0;
+
+    /*
+     * Offset and length in the file where the IO should be performed.
+     * These are updated as partial IOs complete.
+     * orig_offset and orig_length track the originally requested offset and
+     * length, used only for logging.
+     */
+    uint64_t offset = 0;
+    uint64_t length = 0;
+    uint64_t orig_offset = 0;
+    uint64_t orig_length = 0;
+
+    /*
+     * Hold refs to the bytes_chunks.
+     * add_bc() adds new bytes_chunk to the front of this and on_io_complete()
+     * removes from the tail (if the completed IO covers the entire bytes_chunk).
+     */
+    std::queue<bytes_chunk> bcq;
+
+private:
+    struct nfs_inode *const inode;
+    /*
+     * Fixed iovec array, iov points into it.
+     *
+     * TODO: See if we should allocate this as a variable sized vector
+     *       dynamically. That will be useful only when we know the size of
+     *       the vector in advance.
+     */
+    struct iovec base[BC_IOVEC_MAX_VECTORS];
+
+    /*
+     * Maximum IO size for performing IO to the backing file.
+     */
+    const uint64_t max_iosize;
+};
+
+/**
  * FLUSH RPC task definition.
  */
 struct flush_rpc_task
@@ -188,157 +451,6 @@ struct flush_rpc_task
 
 private:
     fuse_ino_t file_ino;
-};
-
-/*
- * Maximum number of iovec can be there in a single write RPC.
- */
-#define MAX_RPC_IOVEC_COUNT 1000
-#define WRITE_RPC_IOVEC_MAGIC *((const uint32_t *)"WIOV")
-
-struct rpc_iovec {
-public:
-    const uint32_t magic = WRITE_RPC_IOVEC_MAGIC;
-    /*
-     * Fixed base of the allocated iovec array.
-     * Once allocated this doesn't change, and should be used for freeing
-     * the iovec array.
-     */
-    struct iovec *base = nullptr;
-
-    /*
-     * Current iovec we should be reading into, updated as we finish
-     * reading whole iovecs. iovcnt holds the count of iovecs remaining
-     * to be read into and is decremented as we read whole iovecs or if
-     * the cursor is shrinked. We also update the iov_base and iov_len as
-     * we read data into iov[], so at any point iov and iovcnt can be
-     * passed to readv() to read remaining data.
-     */
-    struct iovec *iov = nullptr;
-    int iovcnt = 0;
-
-    uint64_t offset = 0;
-    uint64_t length = 0;
-public:
-    rpc_iovec(const struct iovec *_base, int _iovcnt, uint64_t _offset, uint64_t _length) {
-        base = new struct iovec[_iovcnt];
-        ::memcpy(base, _base, _iovcnt * sizeof(struct iovec));
-        iov = base;
-        iovcnt = _iovcnt;
-        offset = _offset;
-        length = _length;
-    }
-
-    ~rpc_iovec() {
-        delete[] base;
-    }
-};
-
-/**
- * Write callback context, used by following calls:
- * - Write
- * - Flush
- * - Fsync
- */
-#define WRITE_CONTEXT_MAGIC *((const uint32_t *)"WCTX")
-
-struct write_iov_context
-{
-    const uint32_t magic = WRITE_CONTEXT_MAGIC;
-
-    struct rpc_task *get_task() const
-    {
-        return task;
-    }
-
-    void set_task(struct rpc_task *_task)
-    {
-        task = _task;
-    }
-
-    off_t get_offset() const
-    {
-        return offset;
-    }
-
-    size_t get_length() const
-    {
-        return length;
-    }
-
-    fuse_ino_t get_ino() const
-    {
-        return ino;
-    }
-
-    std::vector<bytes_chunk>& get_bc_vec()
-    {
-        return bc_vec;
-    }
-
-    void reset_rpc_iov()
-    {
-        iov = nullptr;
-    }
-
-    struct rpc_iovec *get_rpc_iov() const
-    {
-        return iov;
-    }
-
-    /**
-     * Release any resources used up by this task.
-     */
-    void release()
-    {
-    }
-
-    /**
-     * Note: We make a copy of bc_vec. This will grab a fresh reference on the
-     *       membuf's we can safely write to it as long as we have the
-     *       write_iov_context.
-     *       A fuse write can take many RPC writes to complete, due to partial
-     *       writes or jukebox retries. We save the write_iov_context inside
-     *       rpc_task.rpc_api.pvt do that it's accessible to all the child
-     *       tasks working to write the data corresponding to fuse request.
-     */
-    write_iov_context(std::vector<bytes_chunk>& _bc_vec,
-                  struct rpc_iovec *_iov,
-                  rpc_task *_task,
-                  fuse_ino_t _ino,
-                  off_t _off,
-                  size_t _size) :
-        bc_vec(_bc_vec),
-        iov(_iov),
-        task(_task),
-        ino(_ino),
-        offset(_off),
-        length(_size)
-    {
-    }
-
-    ~write_iov_context()
-    {
-        delete iov;
-    }
-
-private:
-    /*
-     * Note: We always write the full underlying membuf and not just the
-     *       portion represented by bc, but since writes can complete
-     *       partially, at any time the following define the data to be
-     *       written:
-     *       Offset: bc.offset + bc.pvt
-     *       Length: bc.length - bc.pvt
-     *       Address: bc.get_buffer() + bc.pvt
-     *       task is FUSE_FLUSH task and does not define offset and length.
-     */
-    std::vector<bytes_chunk> bc_vec;
-    struct rpc_iovec *iov = nullptr;
-    struct rpc_task *task = nullptr;
-    fuse_ino_t ino;
-    off_t offset;
-    size_t length;
 };
 
 /**
@@ -1045,7 +1157,7 @@ struct api_task_info
     /*
      * User can use this to store anything that they want to be available with
      * the task.
-     * Writes use it to store a pointer to write_iov_context, so that the write
+     * Writes use it to store a pointer to bc_iovec, so that the write
      * context (offset, length and address to write to) is available across
      * partial writes, jukebox retries, etc.
      */
@@ -1774,21 +1886,17 @@ public:
     void read_from_server(struct bytes_chunk &bc);
 
     /*
-     * Write/Flush RPC related methods.
+     * Flush RPC related methods.
+     * Flush supports vectored writes so caller can use add_bc() to add
+     * bytes_chunk to the flush task till the supported wsize. If the bc can be
+     * safely added to the vector it's added to the bytes_chunk queue and
+     * add_bc() returns true, else bc is not added and it returns false. On a
+     * false return the caller must call issue_write_rpc() to dispatch all the
+     * queued bytes_chunks, and add the remaining bytes_chunks to a new flush
+     * task.
      */
-    bool rpc_add_iovector(struct iovec *io_vec,
-                          uint64_t &start_off,
-                          uint64_t &length,
-                          std::vector<bytes_chunk> &write_bc_vec,
-                          int &idx,
-                          bytes_chunk &bc);
-
-    void reissue_write_iovec(std::vector<bytes_chunk>& bc_vec,
-                              fuse_ino_t ino);
-    void issue_write_rpc(std::vector<bytes_chunk> &bc_vec,
-                         fuse_ino_t ino,
-                         struct rpc_iovec *rpc_iov);
-    int flush_cache_and_wait(struct nfs_inode *inode);
+    bool add_bc(const bytes_chunk& bc);
+    void issue_write_rpc();
 
 #ifdef ENABLE_NO_FUSE
     /*

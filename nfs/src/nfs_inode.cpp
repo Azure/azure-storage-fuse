@@ -298,11 +298,9 @@ int nfs_inode::get_actimeo_max() const
 
 void nfs_inode::sync_membufs(std::vector<bytes_chunk> &bc_vec, bool is_flush)
 {
-    struct iovec io_vec[MAX_RPC_IOVEC_COUNT];
-    int idx = 0;
-    uint64_t start_off = 0;
-    uint64_t iov_length = 0;
-    std::vector<bytes_chunk> write_bc_vec;
+    if (bc_vec.empty()) {
+        return;
+    }
 
     /*
      * Create the flush task to carry out the write.
@@ -362,49 +360,40 @@ void nfs_inode::sync_membufs(std::vector<bytes_chunk> &bc_vec, bool is_flush)
             flush_task =
                 get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_FLUSH);
             flush_task->init_flush(nullptr /* fuse_req */, ino);
+            assert(flush_task->rpc_api->pvt == nullptr);
+            flush_task->rpc_api->pvt = new bc_iovec(this);
         }
 
-        if(flush_task->rpc_add_iovector(io_vec, start_off, iov_length, write_bc_vec, idx, bc)) {
-            inflight_bytes += bc.length;
+        /*
+         * Add as many bytes_chunk to the flush_task as it allows.
+         * Once packed completely, then dispatch the write.
+         */
+        if (flush_task->add_bc(bc)) {
             continue;
         } else {
-            assert(idx > 0);
-            assert(write_bc_vec.size() > 0);
-            assert(iov_length > 0);
-
-            struct rpc_iovec *rpc_iov = new rpc_iovec(io_vec, idx, start_off, iov_length);
-            flush_task->issue_write_rpc(write_bc_vec, ino, rpc_iov);
-
             /*
-             * Reset the iovec.
-             * Add the new bc starting at zero position.
-             * It's guranteed that we can add the bc to the iovec as we have checked
-             * membuf is not flushing and dirty.
+             * This flush_task will orchestrate this write.
              */
-            idx = 0;
-            start_off = iov_length = 0;
-            write_bc_vec.clear();
+            flush_task->issue_write_rpc();
 
             /*
-             * Create the new flush task to carry out the write for next bc.
+             * Create the new flush task to carry out the write for next bc,
+             * which we failed to add to the existing flush_task.
              */
             flush_task =
                 get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_FLUSH);
             flush_task->init_flush(nullptr /* fuse_req */, ino);
+            assert(flush_task->rpc_api->pvt == nullptr);
+            flush_task->rpc_api->pvt = new bc_iovec(this);
 
-            bool res = flush_task->rpc_add_iovector(io_vec, start_off, iov_length, write_bc_vec, idx, bc);
+            // Single bc addition should not fail.
+            [[maybe_unused]] bool res = flush_task->add_bc(bc);
             assert(res == true);
-            inflight_bytes += bc.length;
         }
     }
 
-    if (idx > 0) {
-        assert(write_bc_vec.size() > 0);
-        assert(iov_length > 0);
-
-        struct rpc_iovec *rpc_iov = new rpc_iovec(io_vec, idx, start_off, iov_length);
-        flush_task->issue_write_rpc(write_bc_vec, ino, rpc_iov);
-    }
+    // Dispatch the leftover bytes.
+    flush_task->issue_write_rpc();
 }
 
 int nfs_inode::copy_to_cache(const struct fuse_bufvec* bufv,

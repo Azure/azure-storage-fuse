@@ -463,7 +463,7 @@ public:
 
     /*
      * Length of this chunk.
-     * User can safely access [buffer, buffer+length).
+     * User can safely access [get_buffer(), get_buffer()+length).
      */
     uint64_t length = 0;
 
