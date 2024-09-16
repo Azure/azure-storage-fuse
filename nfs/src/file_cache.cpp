@@ -173,6 +173,12 @@ int64_t membuf::drop()
  *         load from the backing-file.
  *         This means we need to compare the backing-file mtime with the
  *         blob mtime and decide based on that.
+ *      - How do we trim?
+ *        We cannot change just in-core data members as they will be lost
+ *        once a file-backed cache is dropped and later loaded.
+ *        Either we ignore release for file-backed caches or handle it
+ *        properly. Note that if we were to munmap() on release then we need
+ *        to worry about page boundaries etc.
  */
 bool membuf::load()
 {
