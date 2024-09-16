@@ -39,6 +39,7 @@ namespace aznfsc {
 /* static */ std::atomic<uint64_t> bytes_chunk_cache::bytes_allocated_g = 0;
 /* static */ std::atomic<uint64_t> bytes_chunk_cache::bytes_cached_g = 0;
 /* static */ std::atomic<uint64_t> bytes_chunk_cache::bytes_dirty_g = 0;
+/* static */ std::atomic<uint64_t> bytes_chunk_cache::bytes_flushing_g = 0;
 /* static */ std::atomic<uint64_t> bytes_chunk_cache::bytes_uptodate_g = 0;
 /* static */ std::atomic<uint64_t> bytes_chunk_cache::bytes_inuse_g = 0;
 /* static */ std::atomic<uint64_t> bytes_chunk_cache::bytes_locked_g = 0;
@@ -305,6 +306,9 @@ void membuf::set_flushing()
 
     flag |= MB_Flag::Flushing;
 
+    bcc->bytes_flushing_g += length;
+    bcc->bytes_flushing += length;
+
     AZLogDebug("Set flushing membuf [{}, {}), fd={}",
                offset, offset+length, backing_file_fd);
 }
@@ -333,6 +337,11 @@ void membuf::clear_flushing()
     assert(!is_dirty());
 
     flag &= ~MB_Flag::Flushing;
+
+    assert(bcc->bytes_flushing >= length);
+    assert(bcc->bytes_flushing_g >= length);
+    bcc->bytes_flushing -= length;
+    bcc->bytes_flushing_g -= length;
 
     AZLogDebug("Clear flushing membuf [{}, {}), fd={}",
                offset, offset+length, backing_file_fd);

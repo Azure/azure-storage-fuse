@@ -228,12 +228,6 @@ struct nfs_inode
      */
     int write_error = 0;
 
-    /*
-     * Count of the bytes which are in process of sync to Blob and
-     * on the network.
-     */
-    std::atomic<uint64_t> inflight_bytes = 0;
-
     /**
      * TODO: Initialize attr with postop attributes received in the RPC
      *       response.
@@ -576,6 +570,31 @@ struct nfs_inode
     {
         return dnlc.empty();
     }
+
+    /**
+     * Copy application data into the inode's file cache.
+     *
+     * bufv: fuse_bufvec containing application data, passed by fuse.
+     * offset: starting offset in file where the data should be written.
+     * extent_left: after this copy what's the left edge of the longest dirty
+     *              extent containing this latest write.
+     * extent_right: after this copy what's the right edge of the longest dirty
+     *               extent containing this latest write.
+     * Caller can use the extent length information to decide if it wants to
+     * dispatch an NFS write right now or wait and batch more, usually by
+     * comparing it with the wsize value.
+     *
+     * Returns 0 if copy was successful, else a +ve errno value indicating the
+     * error. This can be passed as-is to the rpc_task reply_error() method to
+     * convey the error to fuse.
+     *
+     * Note: The membufs to which the data is copied will be marked dirty and
+     *       uptodate once copy_to_cache() returns.
+     */
+    int copy_to_cache(const struct fuse_bufvec* bufv,
+                      off_t offset,
+                      uint64_t *extent_left,
+                      uint64_t *extent_right);
 
     /**
      * Flush the dirty file cache represented by filecache_handle and wait

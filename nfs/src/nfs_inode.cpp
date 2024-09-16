@@ -298,11 +298,9 @@ int nfs_inode::get_actimeo_max() const
 
 void nfs_inode::sync_membufs(std::vector<bytes_chunk> &bc_vec, bool is_flush)
 {
-    struct iovec io_vec[MAX_RPC_IOVEC_COUNT];
-    int idx = 0;
-    uint64_t start_off = 0;
-    uint64_t iov_length = 0;
-    std::vector<bytes_chunk> write_bc_vec;
+    if (bc_vec.empty()) {
+        return;
+    }
 
     /*
      * Create the flush task to carry out the write.
@@ -315,20 +313,40 @@ void nfs_inode::sync_membufs(std::vector<bytes_chunk> &bc_vec, bool is_flush)
          * Get the underlying membuf for bc.
          * Note that we write the entire membuf, even though bc may be referring
          * to a smaller window.
+         *
+         * Correction: We may not write the entire membuf in case the bytes_chunk
+         *             was trimmed. Since get_dirty_bc_range() returns full
+         *             bytes_chunks from the chunkmap, we should get full
+         *             (but potentially trimmed) bytes_chunks here.
          */
         struct membuf *mb = bc.get_membuf();
+
+        /*
+         * Verify the mb.
+         * Caller must hold an inuse count on the membufs.
+         * sync_membufs() takes ownership of that inuse count and will drop it.
+         * We have two cases:
+         * 1. We decide to issue the write IO.
+         *    In this case the inuse count will be dropped by
+         *    write_iov_callback().
+         *    This will be the only inuse count and the buffer will be
+         *    release()d after write_iov_callback() (in bc_iovec destructor).
+         * 2. We found the membuf as flushing.
+         *    In this case we don't issue the write and return, but only after
+         *    dropping the inuse count.
+         */
         assert(mb != nullptr);
+        assert(mb->is_inuse());
 
         if (is_flush) {
             /*
              * get_dirty_bc_range() must have held an inuse count.
              * We hold an extra inuse count so that we can safely wait for the
-             * flush in the following loop.
+             * flush in the "waiting loop" in nfs_inode::flush_cache_and_wait().
              * This is needed as we drop inuse count if membuf is already being
              * flushed by another thread or it may drop when the write_iov_callback()
              * completes which can happen before we reach the waiting loop.
              */
-            assert(mb->is_inuse());
             mb->set_inuse();
         }
 
@@ -341,8 +359,10 @@ void nfs_inode::sync_membufs(std::vector<bytes_chunk> &bc_vec, bool is_flush)
          * for it to complete by waiting for the lock. Others who find it after the
          * write is done and lock is released will find it not "dirty and not
          * flushing". They can just skip.
+         *
          * Note that we allocate the rpc_task for flush before the lock as it may
          * block.
+         * TODO: We don't do it currently, fix this!
          */
         if (mb->is_flushing() || !mb->is_dirty()) {
             mb->clear_inuse();
@@ -362,49 +382,126 @@ void nfs_inode::sync_membufs(std::vector<bytes_chunk> &bc_vec, bool is_flush)
             flush_task =
                 get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_FLUSH);
             flush_task->init_flush(nullptr /* fuse_req */, ino);
+            assert(flush_task->rpc_api->pvt == nullptr);
+            flush_task->rpc_api->pvt = new bc_iovec(this);
         }
 
-        if(flush_task->rpc_add_iovector(io_vec, start_off, iov_length, write_bc_vec, idx, bc)) {
-            inflight_bytes += bc.length;
+        /*
+         * Add as many bytes_chunk to the flush_task as it allows.
+         * Once packed completely, then dispatch the write.
+         */
+        if (flush_task->add_bc(bc)) {
             continue;
         } else {
-            assert(idx > 0);
-            assert(write_bc_vec.size() > 0);
-            assert(iov_length > 0);
-
-            struct rpc_iovec *rpc_iov = new rpc_iovec(io_vec, idx, start_off, iov_length);
-            flush_task->issue_write_rpc(write_bc_vec, ino, rpc_iov);
-
             /*
-             * Reset the iovec.
-             * Add the new bc starting at zero position.
-             * It's guranteed that we can add the bc to the iovec as we have checked
-             * membuf is not flushing and dirty.
+             * This flush_task will orchestrate this write.
              */
-            idx = 0;
-            start_off = iov_length = 0;
-            write_bc_vec.clear();
+            flush_task->issue_write_rpc();
 
             /*
-             * Create the new flush task to carry out the write for next bc.
+             * Create the new flush task to carry out the write for next bc,
+             * which we failed to add to the existing flush_task.
              */
             flush_task =
                 get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_FLUSH);
             flush_task->init_flush(nullptr /* fuse_req */, ino);
+            assert(flush_task->rpc_api->pvt == nullptr);
+            flush_task->rpc_api->pvt = new bc_iovec(this);
 
-            bool res = flush_task->rpc_add_iovector(io_vec, start_off, iov_length, write_bc_vec, idx, bc);
+            // Single bc addition should not fail.
+            [[maybe_unused]] bool res = flush_task->add_bc(bc);
             assert(res == true);
-            inflight_bytes += bc.length;
         }
     }
 
-    if (idx > 0) {
-        assert(write_bc_vec.size() > 0);
-        assert(iov_length > 0);
-
-        struct rpc_iovec *rpc_iov = new rpc_iovec(io_vec, idx, start_off, iov_length);
-        flush_task->issue_write_rpc(write_bc_vec, ino, rpc_iov);
+    // Dispatch the leftover bytes (or full write).
+    if (flush_task) {
+        flush_task->issue_write_rpc();
     }
+}
+
+int nfs_inode::copy_to_cache(const struct fuse_bufvec* bufv,
+                             off_t offset,
+                             uint64_t *extent_left,
+                             uint64_t *extent_right)
+{
+    /*
+     * XXX We currently only handle bufv with count=1.
+     *     Ref aznfsc_ll_write_buf().
+     */
+    assert(bufv->count == 1);
+
+    /*
+     * copy_to_cache() must be called only for a regular file and it must have
+     * filecache initialized.
+     */
+    assert(is_regfile());
+    assert(filecache_handle);
+    assert(offset < (off_t) AZNFSC_MAX_FILE_SIZE);
+
+    assert(bufv->idx < bufv->count);
+    const size_t length = bufv->buf[bufv->idx].size - bufv->off;
+    assert((int) length >= 0);
+    assert((offset + length) <= AZNFSC_MAX_FILE_SIZE);
+    /*
+     * TODO: Investigate using splice for zero copy.
+     */
+    const char *buf = (char *) bufv->buf[bufv->idx].mem + bufv->off;
+
+    /*
+     * Get bytes_chunk(s) covering the range [offset, offset+length).
+     * We need to copy application data to those.
+     */
+    std::vector<bytes_chunk> bc_vec =
+        filecache_handle->getx(offset, length, extent_left, extent_right);
+
+    size_t remaining = length;
+
+    for (auto& bc : bc_vec) {
+        struct membuf *mb = bc.get_membuf();
+
+        /*
+         * Lock the membuf while we copy application data into it.
+         */
+        mb->set_locked();
+
+        /*
+         * If we own the full membuf we can safely copy to it, also if the
+         * membuf is uptodate we can safely copy to it. In both cases the
+         * membuf remains uptodate after the copy.
+         */
+        if (bc.is_empty || mb->is_uptodate()) {
+            assert(bc.length <= remaining);
+            ::memcpy(bc.get_buffer(), buf, bc.length);
+            mb->set_uptodate();
+            mb->set_dirty();
+        } else {
+            /*
+             * bc refers to part of the membuf and membuf is not uptodate.
+             * In this case we need to read back the entire membuf and then
+             * update the part that user wants to write to.
+             *
+             * TODO: Need to issue read.
+             */
+            assert(0);
+        }
+
+        /*
+         * Done with the copy, release the membuf lock and clear inuse.
+         * The membuf is marked dirty so it's safe against cache prune/release.
+         * When we decide to flush this dirty membuf that time it'll be duly
+         * locked.
+         */
+        mb->clear_locked();
+        mb->clear_inuse();
+
+        buf += bc.length;
+        assert(remaining >= bc.length);
+        remaining -= bc.length;
+    }
+
+    assert(remaining == 0);
+    return 0;
 }
 
 int nfs_inode::flush_cache_and_wait()

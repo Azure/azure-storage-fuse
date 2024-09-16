@@ -463,7 +463,7 @@ public:
 
     /*
      * Length of this chunk.
-     * User can safely access [buffer, buffer+length).
+     * User can safely access [get_buffer(), get_buffer()+length).
      */
     uint64_t length = 0;
 
@@ -1035,6 +1035,42 @@ public:
     }
 
     /**
+     * Maximum size a dirty extent can grow before we should flush it.
+     * This is 60% of the allowed cache size or 1GB whichever is lower.
+     * The reason for limiting it to 1GB is because there's not much value in
+     * holding more data than the Blob NFS server's scheduler cache size.
+     * We want to send as prompt as possible to utilize the n/w b/w but slow
+     * enough to give the write scheduler an opportunity to merge better.
+     */
+    uint64_t max_dirty_extent_bytes() const
+    {
+        // Maximum cache size allowed in bytes.
+        static const uint64_t max_total =
+            (aznfsc_cfg.cache.data.user.max_size_mb * 1024 * 1024ULL);
+        assert(max_total != 0);
+        static const uint64_t max_dirty_extent = (max_total * 0.6);
+
+        return std::min(max_dirty_extent, uint64_t(1024 * 1024 * 1024ULL));
+    }
+
+    /**
+     * Get the amount of dirty data that needs to be flushed.
+     * This excludes the data which is already flushing.
+     * Note that once a thread starts flushing one or more membufs the dirty
+     * counter doesn't reduce till the writes complete but another thread
+     * looking to flush should not account for those as they are already
+     * being flushed.
+     */
+    uint64_t get_bytes_to_flush() const
+    {
+        /*
+         * Since we call clear_dirty() before clear_flushing(), we can have
+         * bytes_dirty < bytes_flushing, hence we need the protection.
+         */
+        return std::max((int64_t)(bytes_dirty - bytes_flushing), int64_t(0));
+    }
+
+    /**
      * get_prune_goals() looks at the following information and returns prune
      * goals for this cache:
      * - Total memory consumed by all caches.
@@ -1173,6 +1209,7 @@ public:
     std::atomic<uint64_t> bytes_allocated = 0;
     std::atomic<uint64_t> bytes_cached = 0;
     std::atomic<uint64_t> bytes_dirty = 0;
+    std::atomic<uint64_t> bytes_flushing = 0;
     std::atomic<uint64_t> bytes_uptodate = 0;
     std::atomic<uint64_t> bytes_inuse = 0;
     std::atomic<uint64_t> bytes_locked = 0;
@@ -1188,6 +1225,7 @@ public:
     static std::atomic<uint64_t> bytes_allocated_g;
     static std::atomic<uint64_t> bytes_cached_g;
     static std::atomic<uint64_t> bytes_dirty_g;
+    static std::atomic<uint64_t> bytes_flushing_g;
     static std::atomic<uint64_t> bytes_uptodate_g;
     static std::atomic<uint64_t> bytes_inuse_g;
     static std::atomic<uint64_t> bytes_locked_g;
