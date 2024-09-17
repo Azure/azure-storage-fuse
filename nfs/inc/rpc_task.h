@@ -1232,7 +1232,12 @@ struct api_task_info
 {
     ~api_task_info()
     {
-        release();
+        /*
+         * Don't call release() from here as it must have been called before
+         * we reach here. Duplicate release() call might cause double free of
+         * members in various *_rpc_task union members.
+         * See rpc_task::free_rpc_task() and ~jukebox_seedinfo().
+         */
     }
 
     /*
@@ -2269,6 +2274,7 @@ struct jukebox_seedinfo
         /*
          * This will also call api_task_info::release().
          */
+        rpc_api->release();
         delete rpc_api;
     }
 
@@ -2286,6 +2292,7 @@ struct jukebox_seedinfo
         rpc_api(_rpc_api),
         run_at_msecs(get_current_msecs() + JUKEBOX_DELAY_SECS*1000)
     {
+        assert(rpc_api != nullptr);
     }
 };
 
