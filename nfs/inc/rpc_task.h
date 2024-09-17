@@ -1328,6 +1328,57 @@ struct api_task_info
     };
 
     /**
+     * Is this a directory operation?
+     */
+    bool is_dirop() const
+    {
+        switch(optype) {
+            case FUSE_LOOKUP:
+            case FUSE_CREATE:
+            case FUSE_MKNOD:
+            case FUSE_MKDIR:
+            case FUSE_SYMLINK:
+            case FUSE_UNLINK:
+            case FUSE_RMDIR:
+            case FUSE_RENAME:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /**
+     * For ops that take an inode, this returns the inode number.
+     */
+    fuse_ino_t get_ino() const
+    {
+        switch(optype) {
+            case FUSE_ACCESS:
+                return access_task.get_ino();
+            case FUSE_WRITE:
+                return write_task.get_ino();
+            case FUSE_FLUSH:
+                return flush_task.get_ino();
+            case FUSE_GETATTR:
+                return getattr_task.get_ino();
+            case FUSE_SETATTR:
+                return setattr_task.get_ino();
+            case FUSE_STATFS:
+                return statfs_task.get_ino();
+            case FUSE_READLINK:
+                return readlink_task.get_ino();
+            case FUSE_READDIR:
+            case FUSE_READDIRPLUS:
+                return readdir_task.get_ino();
+            case FUSE_READ:
+                return read_task.get_ino();
+            default:
+                assert(0);
+                return 0;
+        }
+    }
+
+    /**
      * For ops that take a parent directory and filename, this returns the
      * parent directory inode.
      */
@@ -1348,6 +1399,8 @@ struct api_task_info
                 return unlink_task.get_parent_ino();
             case FUSE_RMDIR:
                 return rmdir_task.get_parent_ino();
+            case FUSE_RENAME:
+                return rename_task.get_parent_ino();
             default:
                 assert(0);
                 return 0;
@@ -1375,6 +1428,8 @@ struct api_task_info
                 return unlink_task.get_file_name();
             case FUSE_RMDIR:
                 return rmdir_task.get_dir_name();
+            case FUSE_RENAME:
+                return rename_task.get_name();
             default:
                 assert(0);
                 return nullptr;

@@ -19,6 +19,28 @@
 
 #define NFS_STATUS(r) ((r) ? (r)->status : NFS3ERR_SERVERFAULT)
 
+#ifdef ENABLE_PRESSURE_POINTS
+#define INJECT_JUKEBOX(res, task) \
+do { \
+    if (res && (NFS_STATUS(res) == NFS3_OK)) { \
+        if (inject_error()) { \
+            if (task->rpc_api->is_dirop()) { \
+                AZLogWarn("[{}/{}] PP: {} jukebox", \
+                          task->rpc_api->get_parent_ino(), \
+                          task->rpc_api->get_file_name(), \
+                          __FUNCTION__); \
+            } else { \
+                AZLogWarn("[{}] PP: {} jukebox", \
+                          task->rpc_api->get_ino(), __FUNCTION__); \
+            } \
+            (res)->status = NFS3ERR_JUKEBOX; \
+        } \
+    } \
+} while (0)
+#else
+#define INJECT_JUKEBOX(res, task) /* nothing */
+#endif
+
 /* static */
 std::atomic<int> rpc_task::async_slots = MAX_ASYNC_RPC_TASKS;
 
@@ -491,6 +513,9 @@ void access_callback(
     assert(task->magic == RPC_TASK_MAGIC);
 
     auto res = (ACCESS3res*) data;
+
+    INJECT_JUKEBOX(res, task);
+
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
     /*
@@ -532,6 +557,9 @@ static void write_iov_callback(
     assert(client->magic == NFS_CLIENT_MAGIC);
 
     auto res = (WRITE3res *)data;
+
+    INJECT_JUKEBOX(res, task);
+
     const char* errstr;
     const int status = task->status(rpc_status, NFS_STATUS(res), &errstr);
     const fuse_ino_t ino = task->rpc_api->flush_task.get_ino();
@@ -725,6 +753,9 @@ static void statfs_callback(
     assert(task->magic == RPC_TASK_MAGIC);
 
     auto res = (FSSTAT3res*)data;
+
+    INJECT_JUKEBOX(res, task);
+
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
     /*
@@ -762,6 +793,9 @@ static void createfile_callback(
     assert(task->magic == RPC_TASK_MAGIC);
 
     auto res = (CREATE3res*)data;
+
+    INJECT_JUKEBOX(res, task);
+
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
     /*
@@ -797,6 +831,9 @@ static void setattr_callback(
     assert(task->magic == RPC_TASK_MAGIC);
 
     auto res = (SETATTR3res*)data;
+
+    INJECT_JUKEBOX(res, task);
+
     const fuse_ino_t ino =
         task->rpc_api->setattr_task.get_ino();
     struct nfs_inode *inode =
@@ -846,6 +883,9 @@ void mknod_callback(
     assert(task->magic == RPC_TASK_MAGIC);
 
     auto res = (CREATE3res*)data;
+
+    INJECT_JUKEBOX(res, task);
+
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
     /*
@@ -881,6 +921,9 @@ void mkdir_callback(
     assert(task->magic == RPC_TASK_MAGIC);
 
     auto res = (MKDIR3res*)data;
+
+    INJECT_JUKEBOX(res, task);
+
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
     /*
@@ -916,6 +959,9 @@ void unlink_callback(
     assert(task->magic == RPC_TASK_MAGIC);
 
     auto res = (REMOVE3res*)data;
+
+    INJECT_JUKEBOX(res, task);
+
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
     /*
@@ -941,6 +987,9 @@ void rmdir_callback(
     assert(task->magic == RPC_TASK_MAGIC);
 
     auto res = (RMDIR3res*) data;
+
+    INJECT_JUKEBOX(res, task);
+
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
     /*
@@ -966,6 +1015,9 @@ void symlink_callback(
     assert(task->magic == RPC_TASK_MAGIC);
 
     auto res = (SYMLINK3res*) data;
+
+    INJECT_JUKEBOX(res, task);
+
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
     /*
@@ -1003,6 +1055,9 @@ void rename_callback(
     assert(task->rpc_api->optype == FUSE_RENAME);
     const bool silly_rename = task->rpc_api->rename_task.get_silly_rename();
     auto res = (RENAME3res*) data;
+
+    INJECT_JUKEBOX(res, task);
+
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
     /*
@@ -1069,6 +1124,9 @@ void readlink_callback(
     assert(task->magic == RPC_TASK_MAGIC);
 
     auto res = (READLINK3res*) data;
+
+    INJECT_JUKEBOX(res, task);
+
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
     /*
@@ -2581,6 +2639,9 @@ static void readdir_callback(
 
     assert(task->get_op_type() == FUSE_READDIR);
     READDIR3res *const res = (READDIR3res*) data;
+
+    INJECT_JUKEBOX(res, task);
+
     const fuse_ino_t dir_ino = task->rpc_api->readdir_task.get_ino();
     struct nfs_inode *const dir_inode =
         task->get_client()->get_nfs_inode_from_ino(dir_ino);
@@ -2745,6 +2806,9 @@ static void readdirplus_callback(
 
     assert(task->get_op_type() == FUSE_READDIRPLUS);
     READDIRPLUS3res *const res = (READDIRPLUS3res*) data;
+
+    INJECT_JUKEBOX(res, task);
+
     const fuse_ino_t dir_ino = task->rpc_api->readdir_task.get_ino();
     struct nfs_inode *const dir_inode =
         task->get_client()->get_nfs_inode_from_ino(dir_ino);
