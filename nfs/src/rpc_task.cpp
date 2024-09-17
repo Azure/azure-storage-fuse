@@ -399,6 +399,8 @@ static void getattr_callback(
     void *private_data)
 {
     rpc_task *task = (rpc_task*) private_data;
+    assert(task->magic == RPC_TASK_MAGIC);
+
     auto res = (GETATTR3res*)data;
     const fuse_ino_t ino =
         task->rpc_api->getattr_task.get_ino();
@@ -436,6 +438,8 @@ static void lookup_callback(
     void *private_data)
 {
     rpc_task *task = (rpc_task*) private_data;
+    assert(task->magic == RPC_TASK_MAGIC);
+
     assert(task->rpc_api->optype == FUSE_LOOKUP);
     auto res = (LOOKUP3res*)data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
@@ -483,6 +487,8 @@ void access_callback(
     void *private_data)
 {
     rpc_task *task = (rpc_task*) private_data;
+    assert(task->magic == RPC_TASK_MAGIC);
+
     auto res = (ACCESS3res*) data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
@@ -715,6 +721,8 @@ static void statfs_callback(
     void *private_data)
 {
     rpc_task *task = (rpc_task*) private_data;
+    assert(task->magic == RPC_TASK_MAGIC);
+
     auto res = (FSSTAT3res*)data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
@@ -750,6 +758,8 @@ static void createfile_callback(
     void *private_data)
 {
     rpc_task *task = (rpc_task*) private_data;
+    assert(task->magic == RPC_TASK_MAGIC);
+
     auto res = (CREATE3res*)data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
@@ -783,6 +793,8 @@ static void setattr_callback(
     void *private_data)
 {
     rpc_task *task = (rpc_task*) private_data;
+    assert(task->magic == RPC_TASK_MAGIC);
+
     auto res = (SETATTR3res*)data;
     const fuse_ino_t ino =
         task->rpc_api->setattr_task.get_ino();
@@ -830,6 +842,8 @@ void mknod_callback(
     void *private_data)
 {
     rpc_task *task = (rpc_task*) private_data;
+    assert(task->magic == RPC_TASK_MAGIC);
+
     auto res = (CREATE3res*)data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
@@ -863,6 +877,8 @@ void mkdir_callback(
     void *private_data)
 {
     rpc_task *task = (rpc_task*) private_data;
+    assert(task->magic == RPC_TASK_MAGIC);
+
     auto res = (MKDIR3res*)data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
@@ -896,6 +912,8 @@ void unlink_callback(
     void *private_data)
 {
     rpc_task *task = (rpc_task*) private_data;
+    assert(task->magic == RPC_TASK_MAGIC);
+
     auto res = (REMOVE3res*)data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
@@ -919,6 +937,8 @@ void rmdir_callback(
     void *private_data)
 {
     rpc_task *task = (rpc_task*) private_data;
+    assert(task->magic == RPC_TASK_MAGIC);
+
     auto res = (RMDIR3res*) data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
@@ -942,6 +962,8 @@ void symlink_callback(
     void *private_data)
 {
     rpc_task *task = (rpc_task*) private_data;
+    assert(task->magic == RPC_TASK_MAGIC);
+
     auto res = (SYMLINK3res*) data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
@@ -975,6 +997,8 @@ void rename_callback(
     void *private_data)
 {
     rpc_task *task = (rpc_task*) private_data;
+    assert(task->magic == RPC_TASK_MAGIC);
+
     assert(task->rpc_api->optype == FUSE_RENAME);
     const bool silly_rename = task->rpc_api->rename_task.get_silly_rename();
     auto res = (RENAME3res*) data;
@@ -1041,6 +1065,8 @@ void readlink_callback(
     void *private_data)
 {
     rpc_task *task = (rpc_task*) private_data;
+    assert(task->magic == RPC_TASK_MAGIC);
+
     auto res = (READLINK3res*) data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
@@ -2545,6 +2571,8 @@ static void readdir_callback(
     void *private_data)
 {
     rpc_task *const task = (rpc_task*) private_data;
+    assert(task->magic == RPC_TASK_MAGIC);
+
     assert(task->get_op_type() == FUSE_READDIR);
     READDIR3res *const res = (READDIR3res*) data;
     const fuse_ino_t dir_ino = task->rpc_api->readdir_task.get_ino();
@@ -2707,6 +2735,8 @@ static void readdirplus_callback(
     void *private_data)
 {
     rpc_task *const task = (rpc_task*) private_data;
+    assert(task->magic == RPC_TASK_MAGIC);
+
     assert(task->get_op_type() == FUSE_READDIRPLUS);
     READDIRPLUS3res *const res = (READDIRPLUS3res*) data;
     const fuse_ino_t dir_ino = task->rpc_api->readdir_task.get_ino();
