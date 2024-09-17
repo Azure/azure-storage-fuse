@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2023 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -43,10 +43,20 @@ import (
 
 // Various flags denoting state of a block
 const (
-	BlockFlagFresh  uint16 = iota
-	BlockFlagDirty         // Block has been written and data is not persisted yet
-	BlockFlagFailed        // Block upload/download has failed
-	BlockFlagSynced        // Block has been synced to the container
+	BlockFlagFresh       uint16 = iota
+	BlockFlagDownloading        // Block is being downloaded
+	BlockFlagUploading          // Block is being uploaded
+	BlockFlagDirty              // Block has been written and data is not persisted yet
+	BlockFlagSynced             // Block has been written and data is persisted
+	BlockFlagFailed             // Block upload/download has failed
+)
+
+// Flags to denote the status of upload/download of a block
+const (
+	BlockStatusDownloaded     int = iota + 1 // Download of this block is complete
+	BlockStatusUploaded                      // Upload of this block is complete
+	BlockStatusDownloadFailed                // Download of this block has failed
+	BlockStatusUploadFailed                  // Upload of this block has failed
 )
 
 // Block is a memory mapped buffer with its state to hold data
@@ -58,6 +68,12 @@ type Block struct {
 	flags    common.BitMap16 // Various states of the block
 	data     []byte          // Data read from blob
 	node     *list.Element   // node representation of this block in the list inside handle
+}
+
+type blockInfo struct {
+	id        string // blockID of the block
+	committed bool   // flag to determine if the block has been committed or not
+	size      uint64 // length of data in block
 }
 
 // AllocateBlock creates a new memory mapped buffer for the given size
@@ -119,9 +135,9 @@ func (b *Block) Uploading() {
 }
 
 // Ready marks this Block is now ready for reading by its first reader (data download completed)
-func (b *Block) Ready() {
+func (b *Block) Ready(val int) {
 	select {
-	case b.state <- 1:
+	case b.state <- val:
 		break
 	default:
 		break
@@ -156,19 +172,4 @@ func (b *Block) Failed() {
 // Check this block as failed
 func (b *Block) IsFailed() bool {
 	return b.flags.IsSet(BlockFlagFailed)
-}
-
-// Mark this block as synced to storage
-func (b *Block) Synced() {
-	b.flags.Set(BlockFlagSynced)
-}
-
-// Mark this block as not synced to storage
-func (b *Block) ClearSynced() {
-	b.flags.Clear(BlockFlagSynced)
-}
-
-// Check this block is synced to storage
-func (b *Block) IsSynced() bool {
-	return b.flags.IsSet(BlockFlagSynced)
 }

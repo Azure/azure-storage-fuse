@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2023 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -251,7 +251,6 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 //	Return failure if any config is not valid to exit the process
 func (lf *Libfuse) Configure(_ bool) error {
 	log.Trace("Libfuse::Configure : %s", lf.Name())
-
 	// >> If you do not need any config parameters remove below code and return nil
 	conf := LibfuseOptions{IgnoreOpenFlags: true}
 	err := config.UnmarshalKey(lf.Name(), &conf)
@@ -302,8 +301,8 @@ func (lf *Libfuse) Configure(_ bool) error {
 		return fmt.Errorf("%s config error %s", lf.Name(), err.Error())
 	}
 
-	log.Info("Libfuse::Configure : read-only %t, allow-other %t, allow-root %t, default-perm %d, entry-timeout %d, attr-time %d, negative-timeout %d, ignore-open-flags %t, nonempty %t, direct_io %t",
-		lf.readOnly, lf.allowOther, lf.allowRoot, lf.filePermission, lf.entryExpiration, lf.attributeExpiration, lf.negativeTimeout, lf.ignoreOpenFlags, lf.nonEmptyMount, lf.directIO)
+	log.Info("Libfuse::Configure : read-only %t, allow-other %t, allow-root %t, default-perm %d, entry-timeout %d, attr-time %d, negative-timeout %d, ignore-open-flags %t, nonempty %t, direct_io %t, max-fuse-threads %d, fuse-trace %t, extension %s, disable-writeback-cache %t, dirPermission %v, mountPath %v, umask %v",
+		lf.readOnly, lf.allowOther, lf.allowRoot, lf.filePermission, lf.entryExpiration, lf.attributeExpiration, lf.negativeTimeout, lf.ignoreOpenFlags, lf.nonEmptyMount, lf.directIO, lf.maxFuseThreads, lf.traceEnable, lf.extensionPath, lf.disableWritebackCache, lf.dirPermission, lf.mountPath, lf.umask)
 
 	return nil
 }

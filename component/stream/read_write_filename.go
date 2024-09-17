@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2023 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -179,7 +179,7 @@ func (rw *ReadWriteFilenameCache) RenameFile(options internal.RenameFileOptions)
 func (rw *ReadWriteFilenameCache) CloseFile(options internal.CloseFileOptions) error {
 	log.Trace("Stream::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
 	// try to flush again to make sure it's cleaned up
-	err := rw.FlushFile(internal.FlushFileOptions(options))
+	err := rw.FlushFile(internal.FlushFileOptions{Handle: options.Handle})
 	if err != nil {
 		log.Err("Stream::CloseFile : error flushing file %s [%s]", options.Handle.Path, err.Error())
 		return err
@@ -482,7 +482,7 @@ func (rw *ReadWriteFilenameCache) readWriteBlocks(handle *handlemap.Handle, offs
 func (rw *ReadWriteFilenameCache) SyncFile(options internal.SyncFileOptions) error {
 	log.Trace("ReadWriteFilenameCache::SyncFile : handle=%d, path=%s", options.Handle.ID, options.Handle.Path)
 
-	err := rw.FlushFile(internal.FlushFileOptions(options))
+	err := rw.FlushFile(internal.FlushFileOptions{Handle: options.Handle})
 	if err != nil {
 		log.Err("Stream::SyncFile : error flushing file %s [%s]", options.Handle.Path, err.Error())
 		return err

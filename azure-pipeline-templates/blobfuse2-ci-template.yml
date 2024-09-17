@@ -38,6 +38,17 @@ steps:
       sudo apt-get install ${{ parameters.fuselib }} gcc -y
     displayName: 'Install libfuse'
 
+  # Install azcli
+  - script: |
+      curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+      az --version
+    displayName: 'Install Azure CLI'
+
+  # azcli login
+  - script: |
+      az login --identity --username $(ACLI_BLOBFUSE_MSI_APP_ID)
+    displayName: 'Azure CLI login'
+
   - task: Go@0
     inputs:
       command: 'build'
@@ -63,10 +74,8 @@ steps:
       echo "\"msi-appid\"": "\"$(AZTEST_APP_ID)\"", >> $cnfFile
       echo "\"msi-resid\"": "\"$(AZTEST_RES_ID)\"", >> $cnfFile
       echo "\"msi-objid\"": "\"$(AZTEST_OBJ_ID)\"", >> $cnfFile
-      echo "\"spn-client\"": "\"$(AZTEST_CLIENT)\"", >> $cnfFile
-      echo "\"spn-tenant\"": "\"$(AZTEST_TENANT)\"", >> $cnfFile
-      echo "\"spn-secret\"": "\"$(AZTEST_SECRET)\"", >> $cnfFile
       echo "\"skip-msi\"": "${{ parameters.skip_msi }}", >> $cnfFile
+      echo "\"skip-azcli\"": "false", >> $cnfFile
       echo "\"proxy-address\"": "\"${{ parameters.proxy_address }}\"" >> $cnfFile
       echo "}" >> $cnfFile
       cat $cnfFile
@@ -78,7 +87,7 @@ steps:
   - script: |
       curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin
       $(go env GOPATH)/bin/golangci-lint --version
-      $(go env GOPATH)/bin/golangci-lint run --tests=false --build-tags ${{ parameters.tags }} --skip-dirs test,common/stats_collector,common/stats_monitor --max-issues-per-linter=0 --skip-files component/libfuse/libfuse2_handler_test_wrapper.go,component/libfuse/libfuse_handler_test_wrapper.go > lint.log
+      $(go env GOPATH)/bin/golangci-lint run --tests=false --build-tags ${{ parameters.tags }} --exclude-dirs test,common/stats_collector,common/stats_monitor --max-issues-per-linter=0 --exclude-files component/libfuse/libfuse2_handler_test_wrapper.go,component/libfuse/libfuse_handler_test_wrapper.go > lint.log
       result=$(cat lint.log | wc -l)
       if [ $result -ne 0 ]; then
         echo "-----------------------------------"

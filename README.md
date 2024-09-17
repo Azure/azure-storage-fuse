@@ -1,12 +1,34 @@
 # Blobfuse2 - A Microsoft supported Azure Storage FUSE driver
 ## About
 Blobfuse2 is an open source project developed to provide a virtual filesystem backed by the Azure Storage. It uses the libfuse open source library (fuse3) to communicate with the Linux FUSE kernel module, and implements the filesystem operations using the Azure Storage REST APIs.
-This is the next generation [blobfuse](https://github.com/Azure/azure-storage-fuse)
+This is the next generation [blobfuse](https://github.com/Azure/azure-storage-fuse).
 
-Blobfuse2 is stable, and is ***supported by Microsoft*** provided that it is used within its limits documented here. Blobfuse2 supports both reads and writes however, it does not guarantee continuous sync of data written to storage using other APIs or other mounts of Blobfuse2. For data integrity it is recommended that multiple sources do not modify the same blob/file. Please submit an issue [here](https://github.com/azure/azure-storage-fuse/issues) for any issues/feature requests/questions.
+## About Data Consistency and Concurrency
+Blobfuse2 is stable and ***supported by Microsoft*** when used within its [documented limits](#un-supported-file-system-operations). Blobfuse2 supports high-performance reads and writes with strong consistency; however, it is recommended that multiple clients do not modify the same blob/file simultaneously to ensure data integrity. Blobfuse2 does not guarantee continuous synchronization of data written to the same blob/file using multiple clients or across multiple mounts of Blobfuse2 concurrently. If you modify an existing blob/file with another client while also reading that object, Blobfuse2 will not return the most up-to-date data. To ensure your reads see the newest blob/file data, disable all forms of caching at kernel (using `direct-io`) as well as at Blobfuse2 level, and then re-open the blob/file.
+
+Please submit an issue [here](https://github.com/azure/azure-storage-fuse/issues) for any issues/feature requests/questions.
+
+[This](#config-guide) section will help you choose the correct config for Blobfuse2.
 
 ##  NOTICE
-- We have seen some customer issues around files getting corrupted when `streaming` is used in write mode. Kindly avoid using this feature for write while we investigate and resolve it.
+- Due to known data consistency issues when using Blobfuse2 in `block-cache` mode,  it is strongly recommended that all Blobfuse2 installations be upgraded to version 2.3.2. For more information, see [this](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2-Known-issues).
+- As of version 2.3.0, blobfuse has updated its authentication methods. For Managed Identity, Object-ID based OAuth is solely accessible via CLI-based login, requiring Azure CLI on the system. For a dependency-free option, users may utilize Application/Client-ID or Resource ID based authentication.
+- `streaming` mode is being deprecated.
+
+## Limitations in Block Cache
+- Concurrent write operations on the same file using multiple handles is not checked for data consistency and may lead to incorrect data being written.
+- A read operation on a file that is being written to simultaneously by another process or handle will not return the most up-to-date data.
+- When copying files with trailing null bytes using `cp` utility to a Blobfuse2 mounted path, use `--sparse=never` parameter to avoid data being trimmed. For example, `cp --sparse=never src dest`.
+- In write operations, data written is persisted (or committed) to the Azure Storage container only when close, sync or flush operations are called by user application.
+- Files cannot be modified if they were originally created with block-size different than the one configured.
+
+## Recommendations in Block Cache
+- User applications must check the returned code (success/failure) for filesystem calls like read, write, close, flush, etc. If error is returned, the application must abort their respective operation.
+- User applications must ensure that there is only one writer at a time for a given file.
+- When dealing with very large files (in TiB), the block-size must be configured accordingly. Azure Storage supports only [50,000 blocks](https://learn.microsoft.com/en-us/rest/api/storageservices/put-block-list?tabs=microsoft-entra-id#remarks) per blob.
+  
+## Blobfuse2 Benchmarks
+[This](https://azure.github.io/azure-storage-fuse/) page lists various benchmarking results for HNS and FNS Storage account.
 
 ## Supported Platforms
 Visit [this](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2-Supported-Platforms) page to see list of supported linux distros.
@@ -16,7 +38,7 @@ Visit [this](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2-Supporte
 - Basic file system operations such as mkdir, opendir, readdir, rmdir, open, 
    read, create, write, close, unlink, truncate, stat, rename
 - Local caching to improve subsequent access times
-- Streaming to support reading AND writing large files 
+- Streaming/Block-Cache to support reading AND writing large files 
 - Parallel downloads and uploads to improve access time for large files
 - Multiple mounts to the same container for read-only workloads
 
@@ -43,7 +65,7 @@ One of the biggest BlobFuse2 features is our brand new health monitor. It allows
 - CLI to check or update a parameter in the encrypted config
 - Set MD5 sum of a blob while uploading
 - Validate MD5 sum on download and fail file open on mismatch
-- Large file writing through write streaming
+- Large file writing through write streaming/Block-Cache
 
  ## Blobfuse2 performance compared to blobfuse(v1.x.x)
 - 'git clone' operation is 25% faster (tested with vscode repo cloning)
@@ -112,6 +134,8 @@ To learn about a specific command, just include the name of the command (For exa
     * `--secure-config=true` : Config file is encrypted suing 'blobfuse2 secure` command.
     * `--passphrase=<STRING>` : Passphrase used to encrypt/decrypt config file.
     * `--wait-for-mount=<TIMEOUT IN SECONDS>` : Let parent process wait for given timeout before exit to ensure child has started. 
+    * `--block-cache` : To enable block-cache instead of file-cache. This works only when mounted without any config file.
+    * `--lazy-write` : To enable async close file handle call and schedule the upload in background.
 - Attribute cache options
     * `--attr-cache-timeout=<TIMEOUT IN SECONDS>`: The timeout for the attribute cache entries.
     * `--no-symlinks=true`: To improve performance disable symlink support.
@@ -122,10 +146,11 @@ To learn about a specific command, just include the name of the command (For exa
     * `--subdirectory=<path>` : Subdirectory to mount instead of entire container.
     * `--disable-compression:false` : Disable content encoding negotiation with server. If blobs have 'content-encoding' set to 'gzip' then turn on this flag.
     * `--use-adls=false` : Specify configured storage account is HNS enabled or not. This must be turned on when HNS enabled account is mounted.
+    * `--cpk-enabled=true`: Allows mounting containers with cpk. Use config file or env variables to set cpk encryption key and cpk encryption key sha.
 - File cache options
     * `--file-cache-timeout=<TIMEOUT IN SECONDS>`: Timeout for which file is cached on local system.
     * `--tmp-path=<PATH>`: The path to the file cache.
-    * `--cache-size-mb=<SIZE IN MB>`: Amount of disk cache that can be used by blobfuse.
+    * `--cache-size-mb=<SIZE IN MB>`: Amount of disk cache that can be used by blobfuse. Default - 80% of free disk space.
     * `--high-disk-threshold=<PERCENTAGE>`: If local cache usage exceeds this, start early eviction of files from cache.
     * `--low-disk-threshold=<PERCENTAGE>`: If local cache usage comes below this threshold then stop early eviction.
     * `--sync-to-flush=false` : Sync call will force upload a file to storage container if this is set to true, otherwise it just evicts file from local cache.
@@ -133,10 +158,12 @@ To learn about a specific command, just include the name of the command (For exa
     * `--block-size-mb=<SIZE IN MB>`: Size of a block to be downloaded during streaming.
 - Block-Cache options
     * `--block-cache-block-size=<SIZE IN MB>`: Size of a block to be downloaded as a unit.
-    * `--block-cache-pool-size=<SIZE IN MB>`: Size of pool to be used for caching. This limits total memory used by block-cache.
+    * `--block-cache-pool-size=<SIZE IN MB>`: Size of pool to be used for caching. This limits total memory used by block-cache. Default - 80% of free memory available.
     * `--block-cache-path=<PATH>`: Path where downloaded blocks will be persisted. Not providing this parameter will disable the disk caching.
-    * `--block-cache-disk-size=<SIZE IN MB>`: Disk space to be used for caching.
-    * `--block-cache-prefetch=<Number of blocks>`: Number of blocks to prefetch at max when sequential reads are in progress.
+    * `--block-cache-disk-size=<SIZE IN MB>`: Disk space to be used for caching. Default - 80% of free disk space.
+    * `--block-cache-disk-timeout=<seconds>`: Timeout for which disk cache is valid.
+    * `--block-cache-prefetch=<Number of blocks>`: Number of blocks to prefetch at max when sequential reads are in progress. Default - 2 times number of CPU cores.
+    * `--block-cache-parallelism=<count>`: Number of parallel threads doing upload/download operation. Default - 3 times number of CPU cores.
     * `--block-cache-prefetch-on-open=true`: Start prefetching on open system call instead of waiting for first read. Enhances perf if file is read sequentially from offset 0.
 - Fuse options
     * `--attr-timeout=<TIMEOUT IN SECONDS>`: Time the kernel can cache inode attributes.
@@ -173,20 +200,39 @@ To learn about a specific command, just include the name of the command (For exa
 - Proxy Server:
     * `http_proxy`: The proxy server address. Example: `10.1.22.4:8080`.    
     * `https_proxy`: The proxy server address when https is turned off forcing http. Example: `10.1.22.4:8080`.
+- CPK options: 
+    * `AZURE_STORAGE_CPK_ENCRYPTION_KEY`: Customer provided base64-encoded AES-256 encryption key value.
+    * `AZURE_STORAGE_CPK_ENCRYPTION_KEY_SHA256`: Base64-encoded SHA256 of the cpk encryption key.
 
-## Config file
-- See [this](./sampleFileCacheConfig.yaml) sample config file.
-- See [this](./setup/baseConfig.yaml) config file for a list and description of all possible configurable options in blobfuse2. 
 
-***Please note: do not use quotations `""` for any of the config parameters***
+## Config Guide
+Below diagrams guide you to choose right configuration for your workloads.
 
-## Choosing Between File Cache and Stream Modes
-Please refer to this diagram to decide on whether to use the file cache or streaming. Sample config file URLs are below the diagram.
-
-![alt text](./config_decision_tree.png?raw=true "File Cache vs. Streaming")
-
+- Choose right Auth mode
+<br/><br/>
+![alt text](./guide/AuthModeHelper.png?raw=true "Auth Mode Selection Guide")
+<br/><br/>
+- Choose right caching for Read-Only workloads
+<br/><br/>
+![alt text](./guide/CacheModeForReadOnlyWorkloads.png?raw=true "Cache Mode Selection Guide For Read-Only Workloads")
+<br/><br/>
+- Choose right caching for Read-Write workloads
+<br/><br/>
+![alt text](./guide/CacheModeForReadWriteWorkloads.png?raw=true "Cache Mode Selection Guide For Read-Only Workloads")
+<br/><br/>
+- Choose right block-cache configuration
+<br/><br/>
+![alt text](./guide/BlockCacheConfig.png?raw=true "Block-Cache Configuration")
+<br/><br/>
+- Choose right file-cache configuration
+<br/><br/>
+![alt text](./guide/FileCacheConfig.png?raw=true "Block-Cache Configuration")
+<br/><br/>
 - [Sample File Cache Config](./sampleFileCacheConfig.yaml)
+- [Sample Block-Cache Config](./sampleBlockCacheConfig.yaml)
 - [Sample Stream Config](./sampleStreamingConfig.yaml)
+- [All Config options](./setup/baseConfig.yaml) 
+
 
 ## Frequently Asked Questions
 - How do I generate a SAS with permissions for rename?
@@ -221,7 +267,10 @@ If your use-case involves updating/uploading file(s) through other means and you
 - When Blobfuse2 is mounted on a container, SYS_ADMIN privileges are required for it to interact with the fuse driver. If container is created without the privilege, mount will fail. Sample command to spawn a docker container is 
 
     `docker run -it --rm --cap-add=SYS_ADMIN --device=/dev/fuse --security-opt apparmor:unconfined <environment variables> <docker image>`
-        
+- In case of `mount all` system may limit on number of containers you can mount in parallel (when you go above 100 containers). To increase this system limit use below command
+    `echo 256 | sudo tee /proc/sys/fs/inotify/max_user_instances`
+- Refer [this](#limitations-in-block-cache) for block-cache limitations.
+
 ### Syslog security warning
 By default, Blobfuse2 will log to syslog. The default settings will, in some cases, log relevant file paths to syslog. 
 If this is sensitive information, turn off logging or set log-level to LOG_ERR.  

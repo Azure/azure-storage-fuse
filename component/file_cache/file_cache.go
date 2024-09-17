@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2023 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -82,6 +82,9 @@ type FileCache struct {
 	refreshSec        uint32
 	hardLimit         bool
 	diskHighWaterMark float64
+
+	lazyWrite    bool
+	fileCloseOpt sync.WaitGroup
 }
 
 // Structure defining your config parameters
@@ -152,7 +155,7 @@ func (c *FileCache) Start(ctx context.Context) error {
 	log.Trace("Starting component : %s", c.Name())
 
 	if c.cleanupOnStart {
-		err := c.TempCacheCleanup()
+		err := common.TempCacheCleanup(c.tmpPath)
 		if err != nil {
 			return fmt.Errorf("error in %s error [fail to cleanup temp cache]", c.Name())
 		}
@@ -177,28 +180,16 @@ func (c *FileCache) Start(ctx context.Context) error {
 func (c *FileCache) Stop() error {
 	log.Trace("Stopping component : %s", c.Name())
 
+	// Wait for all async upload to complete if any
+	if c.lazyWrite {
+		log.Info("FileCache::Stop : Waiting for async close to complete")
+		c.fileCloseOpt.Wait()
+	}
+
 	_ = c.policy.ShutdownPolicy()
-	_ = c.TempCacheCleanup()
+	_ = common.TempCacheCleanup(c.tmpPath)
 
 	fileCacheStatsCollector.Destroy()
-
-	return nil
-}
-
-func (c *FileCache) TempCacheCleanup() error {
-	// TODO : Cleanup temp cache dir before exit
-	if !isLocalDirEmpty(c.tmpPath) {
-		log.Err("FileCache::TempCacheCleanup : Cleaning up temp directory %s", c.tmpPath)
-
-		dirents, err := os.ReadDir(c.tmpPath)
-		if err != nil {
-			return nil
-		}
-
-		for _, entry := range dirents {
-			os.RemoveAll(filepath.Join(c.tmpPath, entry.Name()))
-		}
-	}
 
 	return nil
 }
@@ -232,11 +223,16 @@ func (c *FileCache) Configure(_ bool) error {
 	c.cleanupOnStart = conf.CleanupOnStart
 	c.policyTrace = conf.EnablePolicyTrace
 	c.offloadIO = conf.OffloadIO
-	c.maxCacheSize = conf.MaxSizeMB
 	c.syncToFlush = conf.SyncToFlush
 	c.syncToDelete = !conf.SyncNoOp
 	c.refreshSec = conf.RefreshSec
 	c.hardLimit = conf.HardLimit
+
+	err = config.UnmarshalKey("lazy-write", &c.lazyWrite)
+	if err != nil {
+		log.Err("FileCache: config error [unable to obtain lazy-write]")
+		return fmt.Errorf("config error in %s [%s]", c.Name(), err.Error())
+	}
 
 	c.tmpPath = common.ExpandPath(conf.TmpPath)
 	if c.tmpPath == "" {
@@ -261,6 +257,19 @@ func (c *FileCache) Configure(_ bool) error {
 		}
 	}
 
+	var stat syscall.Statfs_t
+	err = syscall.Statfs(c.tmpPath, &stat)
+	if err != nil {
+		log.Err("FileCache::Configure : config error %s [%s]. Assigning a default value of 4GB or if any value is assigned to .disk-size-mb in config.", c.Name(), err.Error())
+		c.maxCacheSize = 4192 * MB
+	} else {
+		c.maxCacheSize = 0.8 * float64(stat.Bavail) * float64(stat.Bsize)
+	}
+
+	if config.IsSet(compName+".max-size-mb") && conf.MaxSizeMB != 0 {
+		c.maxCacheSize = conf.MaxSizeMB
+	}
+
 	if !isLocalDirEmpty(c.tmpPath) && !c.allowNonEmpty {
 		log.Err("FileCache: config error %s directory is not empty", c.tmpPath)
 		return fmt.Errorf("config error in %s [%s]", c.Name(), "temp directory not empty")
@@ -279,16 +288,7 @@ func (c *FileCache) Configure(_ bool) error {
 	}
 
 	cacheConfig := c.GetPolicyConfig(conf)
-
-	switch strings.ToLower(conf.Policy) {
-	case "lru":
-		c.policy = NewLRUPolicy(cacheConfig)
-	case "lfu":
-		c.policy = NewLFUPolicy(cacheConfig)
-	default:
-		log.Info("FileCache::Configure : Using default eviction policy")
-		c.policy = NewLRUPolicy(cacheConfig)
-	}
+	c.policy = NewLRUPolicy(cacheConfig)
 
 	if c.policy == nil {
 		log.Err("FileCache::Configure : failed to create cache eviction policy")
@@ -313,8 +313,8 @@ func (c *FileCache) Configure(_ bool) error {
 		c.diskHighWaterMark = (((conf.MaxSizeMB * MB) * float64(cacheConfig.highThreshold)) / 100)
 	}
 
-	log.Info("FileCache::Configure : create-empty %t, cache-timeout %d, tmp-path %s, max-size-mb %d, high-mark %d, low-mark %d, refresh-sec %v, max-eviction %v, hard-limit %v",
-		c.createEmptyFile, int(c.cacheTimeout), c.tmpPath, int(cacheConfig.maxSizeMB), int(cacheConfig.highThreshold), int(cacheConfig.lowThreshold), c.refreshSec, cacheConfig.maxEviction, c.hardLimit)
+	log.Info("FileCache::Configure : create-empty %t, cache-timeout %d, tmp-path %s, max-size-mb %d, high-mark %d, low-mark %d, refresh-sec %v, max-eviction %v, hard-limit %v, policy %s, allow-non-empty-temp %t, cleanup-on-start %t, policy-trace %t, offload-io %t, sync-to-flush %t, ignore-sync %t, defaultPermission %v, diskHighWaterMark %v, maxCacheSize %v, mountPath %v",
+		c.createEmptyFile, int(c.cacheTimeout), c.tmpPath, int(cacheConfig.maxSizeMB), int(cacheConfig.highThreshold), int(cacheConfig.lowThreshold), c.refreshSec, cacheConfig.maxEviction, c.hardLimit, conf.Policy, c.allowNonEmpty, c.cleanupOnStart, c.policyTrace, c.offloadIO, c.syncToFlush, c.syncToDelete, c.defaultPermission, c.diskHighWaterMark, c.maxCacheSize, c.mountPath)
 
 	return nil
 }
@@ -983,42 +983,60 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 
 // CloseFile: Flush the file and invalidate it from the cache.
 func (fc *FileCache) CloseFile(options internal.CloseFileOptions) error {
-	log.Trace("FileCache::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
+	// Lock the file so that while close is in progress no one can open the file again
+	flock := fc.fileLocks.Get(options.Handle.Path)
+	flock.Lock()
+
+	// Async close is called so schedule the upload and return here
+	fc.fileCloseOpt.Add(1)
+
+	if !fc.lazyWrite {
+		// Sync close is called so wait till the upload completes
+		return fc.closeFileInternal(options, flock)
+	}
+
+	go fc.closeFileInternal(options, flock) //nolint
+	return nil
+}
+
+// closeFileInternal: Actual handling of the close file goes here
+func (fc *FileCache) closeFileInternal(options internal.CloseFileOptions, flock *common.LockMapItem) error {
+	log.Trace("FileCache::closeFileInternal : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
+
+	// Lock is acquired by CloseFile, at end of this method we need to unlock
+	// If its async call file shall be locked till the upload completes.
+	defer flock.Unlock()
+	defer fc.fileCloseOpt.Done()
 
 	localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
 
-	err := fc.FlushFile(internal.FlushFileOptions{Handle: options.Handle}) //nolint
+	err := fc.FlushFile(internal.FlushFileOptions{Handle: options.Handle, CloseInProgress: true}) //nolint
 	if err != nil {
-		log.Err("FileCache::CloseFile : failed to flush file %s", options.Handle.Path)
+		log.Err("FileCache::closeFileInternal : failed to flush file %s", options.Handle.Path)
 		return err
 	}
 
 	f := options.Handle.GetFileObject()
 	if f == nil {
-		log.Err("FileCache::CloseFile : error [missing fd in handle object] %s", options.Handle.Path)
+		log.Err("FileCache::closeFileInternal : error [missing fd in handle object] %s", options.Handle.Path)
 		return syscall.EBADF
 	}
 
-	// Reduce the open handle counter here as file is being closed now
-	flock := fc.fileLocks.Get(options.Handle.Path)
-	flock.Lock()
-	defer flock.Unlock()
-
 	err = f.Close()
 	if err != nil {
-		log.Err("FileCache::CloseFile : error closing file %s(%d) [%s]", options.Handle.Path, int(f.Fd()), err.Error())
+		log.Err("FileCache::closeFileInternal : error closing file %s(%d) [%s]", options.Handle.Path, int(f.Fd()), err.Error())
 		return err
 	}
 	flock.Dec()
 
 	// If it is an fsync op then purge the file
 	if options.Handle.Fsynced() {
-		log.Trace("FileCache::CloseFile : fsync/sync op, purging %s", options.Handle.Path)
+		log.Trace("FileCache::closeFileInternal : fsync/sync op, purging %s", options.Handle.Path)
 		localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
 
 		err = deleteFile(localPath)
 		if err != nil && !os.IsNotExist(err) {
-			log.Err("FileCache::CloseFile : failed to delete local file %s [%s]", localPath, err.Error())
+			log.Err("FileCache::closeFileInternal : failed to delete local file %s [%s]", localPath, err.Error())
 		}
 
 		fc.policy.CachePurge(localPath)
@@ -1133,7 +1151,7 @@ func (fc *FileCache) WriteFile(options internal.WriteFileOptions) (int, error) {
 func (fc *FileCache) SyncFile(options internal.SyncFileOptions) error {
 	log.Trace("FileCache::SyncFile : handle=%d, path=%s", options.Handle.ID, options.Handle.Path)
 	if fc.syncToFlush {
-		err := fc.FlushFile(internal.FlushFileOptions{Handle: options.Handle}) //nolint
+		err := fc.FlushFile(internal.FlushFileOptions{Handle: options.Handle, CloseInProgress: true}) //nolint
 		if err != nil {
 			log.Err("FileCache::SyncFile : failed to flush file %s", options.Handle.Path)
 			return err
@@ -1177,6 +1195,12 @@ func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 	fc.policy.CacheValid(localPath)
 	// if our handle is dirty then that means we wrote to the file
 	if options.Handle.Dirty() {
+		if fc.lazyWrite && !options.CloseInProgress {
+			// As lazy-write is enable, upload will be scheduled when file is closed.
+			log.Info("FileCache::FlushFile : %s will be flushed when handle %d is closed", options.Handle.Path, options.Handle.ID)
+			return nil
+		}
+
 		f := options.Handle.GetFileObject()
 		if f == nil {
 			log.Err("FileCache::FlushFile : error [couldn't find fd in handle] %s", options.Handle.Path)
@@ -1202,12 +1226,28 @@ func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 		// Write to storage
 		// Create a new handle for the SDK to use to upload (read local file)
 		// The local handle can still be used for read and write.
+		var orgMode fs.FileMode
+		modeChanged := false
+
 		uploadHandle, err := os.Open(localPath)
 		if err != nil {
-			log.Err("FileCache::FlushFile : error [unable to open upload handle] %s [%s]", options.Handle.Path, err.Error())
-			return nil
-		}
+			if os.IsPermission(err) {
+				info, _ := os.Stat(localPath)
+				orgMode = info.Mode()
+				newMode := orgMode | 0444
+				err = os.Chmod(localPath, newMode)
+				if err == nil {
+					modeChanged = true
+					uploadHandle, err = os.Open(localPath)
+					log.Info("FileCache::FlushFile : read mode added to file %s", options.Handle.Path)
+				}
+			}
 
+			if err != nil {
+				log.Err("FileCache::FlushFile : error [unable to open upload handle] %s [%s]", options.Handle.Path, err.Error())
+				return err
+			}
+		}
 		err = fc.NextComponent().CopyFromFile(
 			internal.CopyFromFileOptions{
 				Name: options.Handle.Path,
@@ -1215,6 +1255,14 @@ func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 			})
 
 		uploadHandle.Close()
+
+		if modeChanged {
+			err1 := os.Chmod(localPath, orgMode)
+			if err1 != nil {
+				log.Err("FileCache::FlushFile : Failed to remove read mode from file %s [%s]", options.Handle.Path, err1.Error())
+			}
+		}
+
 		if err != nil {
 			log.Err("FileCache::FlushFile : %s upload failed [%s]", options.Handle.Path, err.Error())
 			return err

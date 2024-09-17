@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2023 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -114,7 +114,7 @@ type WriteFileOptions struct {
 	Handle   *handlemap.Handle
 	Offset   int64
 	Data     []byte
-	Metadata map[string]string
+	Metadata map[string]*string
 }
 
 type GetFileBlockOffsetsOptions struct {
@@ -136,11 +136,12 @@ type CopyToFileOptions struct {
 type CopyFromFileOptions struct {
 	Name     string
 	File     *os.File
-	Metadata map[string]string
+	Metadata map[string]*string
 }
 
 type FlushFileOptions struct {
-	Handle *handlemap.Handle
+	Handle          *handlemap.Handle
+	CloseInProgress bool
 }
 
 type SyncFileOptions struct {
@@ -190,10 +191,9 @@ type ChownOptions struct {
 }
 
 type StageDataOptions struct {
-	Name   string
-	Id     string
-	Offset uint64
-	Data   []byte
+	Name string
+	Id   string
+	Data []byte
 }
 
 type CommitDataOptions struct {
@@ -201,6 +201,13 @@ type CommitDataOptions struct {
 	List      []string
 	BlockSize uint64
 }
+
+type CommittedBlock struct {
+	Id     string
+	Offset int64
+	Size   uint64
+}
+type CommittedBlockList []CommittedBlock
 
 func TruncateDirName(name string) string {
 	if len(name) == 0 {

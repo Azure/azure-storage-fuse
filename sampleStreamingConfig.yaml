@@ -17,8 +17,8 @@ libfuse:
 
 stream:
   block-size-mb: 8
-  blocks-per-file: 3
-  cache-size-mb: 1024
+  max-buffers: 64
+  buffer-size-mb: 36
 
 attr_cache:
   timeout-sec: 7200

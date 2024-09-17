@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2023 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -120,7 +120,7 @@ func getSyslogLevel(lvl common.LogLevel) syslog.Priority {
 func (l *SysLogger) write(lvl string, format string, args ...interface{}) {
 	_, fn, ln, _ := runtime.Caller(3)
 	msg := fmt.Sprintf(format, args...)
-	l.logger.Print(lvl, " [", filepath.Base(fn), " (", ln, ")]: ", msg)
+	l.logger.Print("[", common.MountPath, "] ", lvl, " [", filepath.Base(fn), " (", ln, ")]: ", msg)
 }
 
 func (l *SysLogger) Debug(format string, args ...interface{}) {

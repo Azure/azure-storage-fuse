@@ -42,8 +42,6 @@ parameters:
     default: false
 
 steps:
-  - checkout: none
-
   # Get the host details on which these test are running
   - script: |
       echo $(Description)
@@ -52,6 +50,9 @@ steps:
 
   # Create directory structure and prepare to mount
   - ${{ parameters.installStep }}
+  
+  - checkout: none
+
   - script: |
       sudo rm -rf $(ROOT_DIR)
       sudo mkdir -p $(ROOT_DIR)
@@ -101,7 +102,6 @@ steps:
       quick_test: ${{ parameters.quick_test }}
       verbose_log: ${{ parameters.verbose_log }}
       clone: ${{ parameters.clone }}
-      stream_direct_test: false
       # TODO: These can be removed one day and replace all instances of ${{ parameters.temp_dir }} with $(TEMP_DIR) since it is a global variable
       temp_dir: $(TEMP_DIR)
       mount_dir: $(MOUNT_DIR)
@@ -122,7 +122,6 @@ steps:
       quick_test: ${{ parameters.quick_test }}
       verbose_log: ${{ parameters.verbose_log }}
       clone: ${{ parameters.clone }}
-      stream_direct_test: false
       # TODO: These can be removed one day and replace all instances of ${{ parameters.temp_dir }} with $(TEMP_DIR) since it is a global variable
       temp_dir: $(TEMP_DIR)
       mount_dir: $(MOUNT_DIR)

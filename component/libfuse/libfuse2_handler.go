@@ -12,7 +12,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2023 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -430,6 +430,8 @@ func libfuse_mkdir(path *C.char, mode C.mode_t) C.int {
 		log.Err("Libfuse::libfuse2_mkdir : Failed to create %s [%s]", name, err.Error())
 		if os.IsPermission(err) {
 			return -C.EACCES
+		} else if os.IsExist(err) {
+			return -C.EEXIST
 		} else {
 			return -C.EIO
 		}
@@ -599,6 +601,8 @@ func libfuse_create(path *C.char, mode C.mode_t, fi *C.fuse_file_info_t) C.int {
 		log.Err("Libfuse::libfuse2_create : Failed to create %s [%s]", name, err.Error())
 		if os.IsExist(err) {
 			return -C.EEXIST
+		} else if os.IsPermission(err) {
+			return -C.EACCES
 		} else {
 			return -C.EIO
 		}
@@ -630,7 +634,7 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 	// TODO: Should this sit behind a user option? What if we change something to support these in the future?
 	// Mask out SYNC and DIRECT flags since write operation will fail
 	if fi.flags&C.O_SYNC != 0 || fi.flags&C.__O_DIRECT != 0 {
-		log.Err("Libfuse::libfuse2_open : Reset flags for open %s, fi.flags %X", name, fi.flags)
+		log.Info("Libfuse::libfuse2_open : Reset flags for open %s, fi.flags %X", name, fi.flags)
 		// Blobfuse2 does not support the SYNC or DIRECT flag. If a user application passes this flag on to blobfuse2
 		// and we open the file with this flag, subsequent write operations wlil fail with "Invalid argument" error.
 		// Mask them out here in the open call so that write works.

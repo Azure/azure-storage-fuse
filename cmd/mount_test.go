@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2023 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -62,6 +62,7 @@ azstorage:
   mode: key
   endpoint: myEndpoint
   container: myContainer
+  max-retries: 1
 components:
   - libfuse
   - file_cache
@@ -71,20 +72,6 @@ health_monitor:
   monitor-disable-list:
     - network_profiler
     - blobfuse_stats
-`
-
-var configMountLoopback string = `
-logging:
-  type: syslog
-default-working-dir: /tmp/blobfuse2
-components:
-  - libfuse
-  - loopbackfs
-libfuse:
-  attribute-expiration-sec: 120
-  entry-expiration-sec: 60
-loopbackfs:
-  path: /tmp/bfuseloopback
 `
 
 var configPriorityTest string = `
@@ -164,8 +151,9 @@ func (suite *mountTestSuite) TestMountDirNotEmpty() {
 	suite.assert.NotNil(err)
 	suite.assert.Contains(op, "mount directory is not empty")
 
-	op, err = executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileMntTest), "-o", "nonempty", "--foreground")
+	op, err = executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileMntTest), "-o", "nonempty")
 	suite.assert.NotNil(err)
+	suite.assert.Contains(op, "failed to initialize new pipeline")
 }
 
 // mount failure test where the mount path is not provided

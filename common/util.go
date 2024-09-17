@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2023 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -85,21 +85,80 @@ func IsDirectoryMounted(path string) bool {
 	return false
 }
 
+func IsMountActive(path string) (bool, error) {
+	// Get the process details for this path using ps -aux
+	var out bytes.Buffer
+	cmd := exec.Command("pidof", "blobfuse2")
+	cmd.Stdout = &out
+
+	err := cmd.Run()
+	if err != nil {
+		if err.Error() == "exit status 1" {
+			return false, nil
+		} else {
+			return true, fmt.Errorf("failed to get pid of blobfuse2 [%v]", err.Error())
+		}
+	}
+
+	// out contains the list of pids of the processes that are running
+	pidString := strings.Replace(out.String(), "\n", " ", -1)
+	pids := strings.Split(pidString, " ")
+	for _, pid := range pids {
+		// Get the mount path for this pid
+		// For this we need to check the command line arguments given to this command
+		// If the path is same then we need to return true
+		if pid == "" {
+			continue
+		}
+
+		cmd = exec.Command("ps", "-o", "args=", "-p", pid)
+		out.Reset()
+		cmd.Stdout = &out
+
+		err := cmd.Run()
+		if err != nil {
+			return true, fmt.Errorf("failed to get command line arguments for pid %s [%v]", pid, err.Error())
+		}
+
+		if strings.Contains(out.String(), path) {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 // IsDirectoryEmpty is a utility function that returns true if the directory at that path is empty or not
 func IsDirectoryEmpty(path string) bool {
+	if !DirectoryExists(path) {
+		// Directory does not exists so safe to assume its empty
+		return true
+	}
+
 	f, _ := os.Open(path)
 	defer f.Close()
 
 	_, err := f.Readdirnames(1)
-	if err == io.EOF {
-		return true
+	// If there is nothing in the directory then it is empty
+	return err == io.EOF
+}
+
+func TempCacheCleanup(path string) error {
+	if !IsDirectoryEmpty(path) {
+		// List the first level children of the directory
+		dirents, err := os.ReadDir(path)
+		if err != nil {
+			// Failed to list, return back error
+			return fmt.Errorf("failed to list directory contents : %s", err.Error())
+		}
+
+		// Delete all first level children with their hierarchy
+		for _, entry := range dirents {
+			os.RemoveAll(filepath.Join(path, entry.Name()))
+		}
 	}
 
-	if err != nil && err.Error() == "invalid argument" {
-		fmt.Println("Broken Mount : First Unmount ", path)
-	}
-
-	return false
+	return nil
 }
 
 // DirectoryExists is a utility function that returns true if the directory at that path exists and returns false if it does not exist.
@@ -382,4 +441,37 @@ func GetDiskUsageFromStatfs(path string) (float64, float64, error) {
 	totalSpace := stat.Blocks * uint64(stat.Frsize)
 	usedSpace := float64(totalSpace - availableSpace)
 	return usedSpace, float64(usedSpace) / float64(totalSpace) * 100, nil
+}
+
+func GetFuseMinorVersion() int {
+	var out bytes.Buffer
+	cmd := exec.Command("fusermount3", "--version")
+	cmd.Stdout = &out
+
+	err := cmd.Run()
+	if err != nil {
+		return 0
+	}
+
+	output := strings.Split(out.String(), ":")
+	if len(output) < 2 {
+		return 0
+	}
+
+	version := strings.Trim(output[1], " ")
+	if version == "" {
+		return 0
+	}
+
+	output = strings.Split(version, ".")
+	if len(output) < 2 {
+		return 0
+	}
+
+	val, err := strconv.Atoi(output[1])
+	if err != nil {
+		return 0
+	}
+
+	return val
 }

@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2023 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -100,6 +100,27 @@ func (suite *rootCmdSuite) TestCheckVersionExistsInvalidURL() {
 func (suite *rootCmdSuite) TestNoSecurityWarnings() {
 	defer suite.cleanupTest()
 	warningsUrl := common.Blobfuse2ListContainerURL + "/securitywarnings/" + common.Blobfuse2Version
+	found := checkVersionExists(warningsUrl)
+	suite.assert.False(found)
+}
+
+func (suite *rootCmdSuite) TestSecurityWarnings() {
+	defer suite.cleanupTest()
+	warningsUrl := common.Blobfuse2ListContainerURL + "/securitywarnings/" + "1.1.1"
+	found := checkVersionExists(warningsUrl)
+	suite.assert.True(found)
+}
+
+func (suite *rootCmdSuite) TestBlockedVersion() {
+	defer suite.cleanupTest()
+	warningsUrl := common.Blobfuse2ListContainerURL + "/blockedversions/" + "1.1.1"
+	isBlocked := checkVersionExists(warningsUrl)
+	suite.assert.True(isBlocked)
+}
+
+func (suite *rootCmdSuite) TestNonBlockedVersion() {
+	defer suite.cleanupTest()
+	warningsUrl := common.Blobfuse2ListContainerURL + "/blockedversions/" + common.Blobfuse2Version
 	found := checkVersionExists(warningsUrl)
 	suite.assert.False(found)
 }

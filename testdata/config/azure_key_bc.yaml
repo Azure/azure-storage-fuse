@@ -17,14 +17,6 @@ libfuse:
 
 block_cache:
   block-size-mb: 8
-  mem-size-mb: 4192
-  
-  path: block_cache
-  disk-size-mb: 4192  
-  disk-timeout-sec: 30
-
-  prefetch: 120
-  parallelism: 128
 
 attr_cache:
   timeout-sec: 3600
@@ -38,4 +30,3 @@ azstorage:
   mode: key
   container: { 0 }
   tier: hot
-  sdk-trace: { VERBOSE_LOG }

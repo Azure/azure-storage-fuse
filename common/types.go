@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2023 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -47,7 +47,7 @@ import (
 
 // Standard config default values
 const (
-	blobfuse2Version_ = "2.2.0-preview.2"
+	blobfuse2Version_ = "2.3.3"
 
 	DefaultMaxLogFileSize = 512
 	DefaultLogFileCount   = 10
@@ -64,9 +64,14 @@ const (
 	DefaultAllowOtherPermissionBits os.FileMode = 0777
 
 	MbToBytes  = 1024 * 1024
+	GbToBytes  = 1024 * MbToBytes
 	BfuseStats = "blobfuse_stats"
 
 	FuseAllowedFlags = "invalid FUSE options. Allowed FUSE configurations are: `-o attr_timeout=TIMEOUT`, `-o negative_timeout=TIMEOUT`, `-o entry_timeout=TIMEOUT` `-o allow_other`, `-o allow_root`, `-o umask=PERMISSIONS -o default_permissions`, `-o ro`"
+
+	UserAgentHeader = "User-Agent"
+
+	BlockCacheRWErrMsg = "Notice: The random write flow using block cache is temporarily blocked due to potential data integrity issues. This is a precautionary measure. \nIf you see this message, contact blobfusedev@microsoft.com or create a GitHub issue. We're working on a fix. More details: https://aka.ms/blobfuse2warnings."
 )
 
 func FuseIgnoredFlags() []string {
@@ -87,6 +92,8 @@ var EnableMonitoring = false
 var BfsDisabled = false
 var TransferPipe = "/tmp/transferPipe"
 var PollingPipe = "/tmp/pollPipe"
+
+var MountPath string
 
 // LogLevel enum
 type LogLevel int
@@ -304,4 +311,14 @@ func NewUUID() (u uuid) {
 func GetIdLength(id string) int64 {
 	existingBlockId, _ := base64.StdEncoding.DecodeString(id)
 	return int64(len(existingBlockId))
+}
+
+func init() {
+	val, present := os.LookupEnv("HOME")
+	if !present {
+		val = "./"
+	}
+	DefaultWorkDir = filepath.Join(val, ".blobfuse2")
+	DefaultLogFilePath = filepath.Join(DefaultWorkDir, "blobfuse2.log")
+	StatsConfigFilePath = filepath.Join(DefaultWorkDir, "stats_monitor.cfg")
 }

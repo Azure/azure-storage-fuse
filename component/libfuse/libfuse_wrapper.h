@@ -175,5 +175,4 @@ static int fill_dir_entry(fuse_fill_dir_t filler, void *buf, char *name, stat_t 
     );
 }
 
-
 #endif //__LIBFUSE_H__

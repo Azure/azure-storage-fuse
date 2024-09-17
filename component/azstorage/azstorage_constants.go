@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2023 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -60,3 +60,18 @@ const (
 	size        = "Size"
 	target      = "Target"
 )
+
+// headers which should be logged and not redacted
+var allowedHeaders []string = []string{
+	"x-ms-version", "x-ms-date", "x-ms-range", "x-ms-delete-snapshots", "x-ms-delete-type-permanent", "x-ms-blob-content-type",
+	"x-ms-blob-type", "x-ms-copy-source", "x-ms-copy-id", "x-ms-copy-status", "x-ms-access-tier", "x-ms-creation-time", "x-ms-copy-progress",
+	"x-ms-access-tier-inferred", "x-ms-acl", "x-ms-group", "x-ms-lease-state", "x-ms-owner", "x-ms-permissions", "x-ms-resource-type", "x-ms-content-crc64",
+	"x-ms-rename-source", "accept-ranges", "x-ms-continuation",
+}
+
+// query parameters which should be logged and not redacted
+var allowedQueryParams []string = []string{
+	"comp", "delimiter", "include", "marker", "maxresults", "prefix", "restype", "blockid", "blocklisttype",
+	"directory", "recursive", "resource", "se", "sp", "spr", "srt", "ss", "st", "sv", "action", "continuation", "mode",
+	"client_id", "authorization_endpoint",
+}

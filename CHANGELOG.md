@@ -1,3 +1,78 @@
+## 2.3.3 (Unreleased)
+**Bug Fixes**
+
+## 2.3.2 (2024-09-03)
+**Bug Fixes**
+- Fixed the case where file creation using SAS on HNS accounts was returning back wrong error code.
+- [#1402](https://github.com/Azure/azure-storage-fuse/issues/1402) Fixed proxy URL parsing.
+- In flush operation, the blocks will be committed only if the handle is dirty.
+- Fixed an issue in File-Cache that caused upload to fail due to insufficient permissions.
+
+**Data Integrity Fixes**
+- Fixed block-cache read of small files in direct-io mode, where file size is not multiple of kernel buffer size.
+- Fixed race condition in block-cache random write flow where a block is being uploaded and written to in parallel.
+- Fixed issue in block-cache random read/write flow where a uncommitted block, which is deleted from local cache, is reused.
+- Sparse file data integrity issues fixed.
+
+**Other Changes**
+- LFU policy in file cache has been removed.
+- Default values, if not assigned in config, for the following parameters in block-cache are calculated as follows:
+    - Memory preallocated for Block-Cache is 80% of free memory
+    - Disk Cache Size is 80% of free disk space
+    - Prefetch is 2 times number of CPU cores
+    - Parallelism is 3 times the number of CPU cores
+- Default value of Disk Cache Size in File Cache is 80% of free disk space
+
+## 2.3.0 (2024-05-16)
+**Bug Fixes**
+- For fuse minor version check rely on the fusermount3 command output rather then one exposed from fuse_common.
+- Fixed large number of threads from TLRU causing crash during disk eviction in block-cache.
+- Fixed issue where get attributes was failing for directories in blob accounts when CPK flag was enabled.
+
+**Features**
+- Added support for authentication using Azure CLI.
+
+**Other Changes**
+- Added support in
+    - Ubuntu 24.04 (x86_64 and ARM64)
+    - Rocky Linux 8 and 9
+    - Alma Linux 8 and 9
+- Added support for FIPS based Linux systems.
+- Updated dependencies to address security vulnerabilities.
+
+## 2.3.0~preview.1 (2024-04-04)
+**Bug Fixes**
+- [#1057](https://github.com/Azure/azure-storage-fuse/issues/1057) Fixed the issue where user-assigned identity is not used to authenticate when system-assigned identity is enabled.
+- Listing blobs is now supported for blob names that contain characters that aren't valid in XML (U+FFFE or U+FFFF).
+- [#1359](https://github.com/Azure/azure-storage-fuse/issues/1359), [#1368](https://github.com/Azure/azure-storage-fuse/issues/1368) Fixed RHEL 8.6 mount failure
+
+**Features**
+- Migrated to the latest [azblob SDK](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/storage/azblob).
+- Migrated to the latest [azdatalake SDK](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake).
+- Migrated from deprecated ADAL to MSAL through the latest [azidentity SDK](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity).
+- Added support for uploading blobs in cold and premium tier.
+- Support CPK for adls storage accounts.
+- Lazy-write support for async flush and close file call. Actual upload will be scheduled in background when this feature is enabled.
+
+## 2.2.1 (2024-02-28)
+**Bug Fixes**
+- Fixed panic while truncating a file to a very large size.
+- Fixed block-cache panic on flush of a file which has no active changeset
+- Fixed block-cache panic on renaming a file and then flushing older handle
+- Fixed block-cache flush resulting in invalid-block-list error
+
+## 2.2.0 (2024-01-24)
+**Bug Fixes**
+- Invalidate attribute cache entry on `PathAlreadyExists` error in create directory operation.
+- When `$HOME` environment variable is not present, use the current directory.
+- Fixed mount failure on nonempty mount path for fuse3.
+
+**Features**
+- Support CPK for block storage accounts.
+- Added support to write files using block-cache
+    - Optimized for sequential writing
+    - Editing/Appending existing files works only if files were originally created using block-cache with the same block size
+
 ## 2.1.2 (2023-11-17)
 **Bug Fixes**
 - [#1243](https://github.com/Azure/azure-storage-fuse/issues/1243) Fixed issue where symlink was not working for ADLS accounts.
@@ -24,7 +99,7 @@
 
 **Features**
 - Sync in stream mode will force upload the file to storage container.
-- Fail `Open` and `Write` operations with file-cache if the file size exceeds the high threshold set with local cache limits. 
+- Fail `Open` and `Write` operations with file-cache if the file size exceeds the high threshold set with local cache limits.
 
 ## 2.1.0 (2023-08-31)
 **Features**

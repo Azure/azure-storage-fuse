@@ -17,6 +17,9 @@ parameters:
   - name: skip_msi
     type: string
     default: "true"
+  - name: skip_azcli
+    type: string
+    default: "true"
   - name: proxy_address
     type: string
     default: ""
@@ -35,6 +38,7 @@ steps:
   - script: |
       sudo apt-get update --fix-missing
       sudo apt-get install ${{ parameters.fuselib }} -y
+      fusermount -V
     displayName: 'Libfuse Setup'
     condition: eq('${{ parameters.hostedAgent }}', true)
 
@@ -120,10 +124,8 @@ steps:
       echo "\"msi-appid\"": "\"$(AZTEST_APP_ID)\"", >> $cnfFile
       echo "\"msi-resid\"": "\"$(AZTEST_RES_ID)\"", >> $cnfFile
       echo "\"msi-objid\"": "\"$(AZTEST_OBJ_ID)\"", >> $cnfFile
-      echo "\"spn-client\"": "\"$(AZTEST_CLIENT)\"", >> $cnfFile
-      echo "\"spn-tenant\"": "\"$(AZTEST_TENANT)\"", >> $cnfFile
-      echo "\"spn-secret\"": "\"$(AZTEST_SECRET)\"", >> $cnfFile
       echo "\"skip-msi\"": "${{ parameters.skip_msi }}", >> $cnfFile
+      echo "\"skip-azcli\"": "${{ parameters.skip_azcli }}", >> $cnfFile
       echo "\"proxy-address\"": "\"${{ parameters.proxy_address }}\"" >> $cnfFile
       
       echo "}" >> $cnfFile
@@ -131,6 +133,19 @@ steps:
     displayName: "Create AzureTest Config"
     continueOnError: false
     workingDirectory: ${{ parameters.working_directory }}
+
+  # Install azcli
+  - script: |
+      curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+      az --version
+    displayName: 'Install Azure CLI'
+    condition: eq('${{ parameters.skip_azcli }}', 'false')
+
+  # azcli login
+  - script: |
+      az login --identity --username $(ACLI_BLOBFUSE_MSI_APP_ID)
+    displayName: 'Azure CLI login'
+    condition: eq('${{ parameters.skip_azcli }}', 'false')
 
   # Running unit tests
   - task: Go@0

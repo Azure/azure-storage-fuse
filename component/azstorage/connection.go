@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2023 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -34,19 +34,16 @@
 package azstorage
 
 import (
-	"net/url"
 	"os"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
-
-	"github.com/Azure/azure-pipeline-go/pipeline"
-	"github.com/Azure/azure-storage-blob-go/azblob"
 )
 
-// Example for azblob usage : https://godoc.org/github.com/Azure/azure-storage-blob-go/azblob#pkg-examples
-// For methods help refer : https://godoc.org/github.com/Azure/azure-storage-blob-go/azblob#ContainerURL
+// Example for azblob usage : https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/storage/azblob#pkg-examples
+// For methods help refer : https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/storage/azblob#Client
 type AzStorageConfig struct {
 	authConfig azAuthConfig
 
@@ -56,7 +53,7 @@ type AzStorageConfig struct {
 	maxConcurrency uint16
 
 	// tier to be set on every upload
-	defaultTier azblob.AccessTierType
+	defaultTier *blob.AccessTier
 
 	// Return back readDir on mount for given amount of time
 	cancelListForSeconds uint16
@@ -67,7 +64,6 @@ type AzStorageConfig struct {
 	backoffTime           int32
 	maxRetryDelay         int32
 	proxyAddress          string
-	sdkTrace              bool
 	ignoreAccessModifiers bool
 	mountAllContainers    bool
 
@@ -80,14 +76,15 @@ type AzStorageConfig struct {
 	telemetry      string
 	honourACL      bool
 	disableSymlink bool
+
+	// CPK related config
+	cpkEnabled             bool
+	cpkEncryptionKey       string
+	cpkEncryptionKeySha256 string
 }
 
 type AzStorageConnection struct {
 	Config AzStorageConfig
-
-	Pipeline pipeline.Pipeline
-
-	Endpoint *url.URL
 }
 
 type AzConnection interface {
@@ -121,8 +118,8 @@ type AzConnection interface {
 	ReadBuffer(name string, offset int64, len int64) ([]byte, error)
 	ReadInBuffer(name string, offset int64, len int64, data []byte) error
 
-	WriteFromFile(name string, metadata map[string]string, fi *os.File) error
-	WriteFromBuffer(name string, metadata map[string]string, data []byte) error
+	WriteFromFile(name string, metadata map[string]*string, fi *os.File) error
+	WriteFromBuffer(name string, metadata map[string]*string, data []byte) error
 	Write(options internal.WriteFileOptions) error
 	GetFileBlockOffsets(name string) (*common.BlockOffsetList, error)
 
@@ -131,10 +128,11 @@ type AzConnection interface {
 	TruncateFile(string, int64) error
 	StageAndCommit(name string, bol *common.BlockOffsetList) error
 
+	GetCommittedBlockList(string) (*internal.CommittedBlockList, error)
 	StageBlock(string, []byte, string) error
 	CommitBlocks(string, []string) error
 
-	NewCredentialKey(_, _ string) error
+	UpdateServiceClient(_, _ string) error
 }
 
 // NewAzStorageConnection : Based on account type create respective AzConnection Object

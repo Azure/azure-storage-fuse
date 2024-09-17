@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2023 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -73,7 +73,7 @@ func (suite *keysTreeTestSuite) TestParseValue() {
 		{val: "65535", toType: reflect.Uint16, result: 65535},
 		{val: "4294967295", toType: reflect.Uint32, result: 4294967295},
 		{val: "18446744073709551615", toType: reflect.Uint64, result: uint64(18446744073709551615)},
-		{val: "6.24321908234", toType: reflect.Float32, result: 6.24321908234},
+		{val: "6.24321908234", toType: reflect.Float32, result: (float32)(6.24321908234)},
 		{val: "31247921747687123.123871293791263", toType: reflect.Float64, result: 31247921747687123.123871293791263},
 		{val: "6-8i", toType: reflect.Complex64, result: 6 - 8i},
 		{val: "2341241-910284i", toType: reflect.Complex128, result: 2341241 - 910284i},

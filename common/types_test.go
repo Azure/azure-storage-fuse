@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2023 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -34,6 +34,8 @@
 package common
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -94,4 +96,12 @@ func (suite *typesTestSuite) TestFindBlocksToModify() {
 	suite.assert.Equal(size, int64(0))
 	suite.assert.Equal(largerThanFile, true)
 	suite.assert.Equal(appendOnly, true)
+}
+
+func (suite *typesTestSuite) TestDefaultWorkDir() {
+	val, err := os.UserHomeDir()
+	suite.assert.Nil(err)
+	suite.assert.Equal(DefaultWorkDir, filepath.Join(val, ".blobfuse2"))
+	suite.assert.Equal(DefaultLogFilePath, filepath.Join(val, ".blobfuse2/blobfuse2.log"))
+	suite.assert.Equal(StatsConfigFilePath, filepath.Join(val, ".blobfuse2/stats_monitor.cfg"))
 }

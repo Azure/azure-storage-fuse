@@ -17,7 +17,7 @@ libfuse:
 
 file_cache:
   path: { 1 }
-  policy: lfu
+  timeout-sec: 30
   max-size-mb: 2048
   allow-non-empty-temp: true
   cleanup-on-start: true
@@ -29,9 +29,7 @@ azstorage:
   type: { ACCOUNT_TYPE }
   endpoint: { ACCOUNT_ENDPOINT }
   use-http: false
-  account-name: { NIGHTLY_STO_ACC_NAME }
-  account-key: { NIGHTLY_STO_ACC_KEY }
-  mode: key
+  account-name: { NIGHTLY_STO_BLOB_ACC_NAME }
+  mode: azcli
   container: { 0 }
   tier: hot
-  sdk-trace: { VERBOSE_LOG }

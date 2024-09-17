@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2023 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -33,7 +33,11 @@
 
 package block_cache
 
-import "github.com/Azure/azure-storage-fuse/v2/common/log"
+import (
+	"sync"
+
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
+)
 
 const _1MB uint64 = (1024 * 1024)
 
@@ -41,6 +45,15 @@ const _1MB uint64 = (1024 * 1024)
 type BlockPool struct {
 	// Channel holding free blocks
 	blocksCh chan *Block
+
+	// block having null data
+	zeroBlock *Block
+
+	// channel to reset the data in a block
+	resetBlockCh chan *Block
+
+	// Wait group to wait for resetBlock() thread to finish
+	wg sync.WaitGroup
 
 	// Size of each block this pool holds
 	blockSize uint64
@@ -61,27 +74,43 @@ func NewBlockPool(blockSize uint64, memSize uint64) *BlockPool {
 	blockCount := uint32(memSize / blockSize)
 
 	pool := &BlockPool{
-		blocksCh:  make(chan *Block, blockCount),
-		maxBlocks: uint32(blockCount),
-		blockSize: blockSize,
+		blocksCh:     make(chan *Block, blockCount-1),
+		resetBlockCh: make(chan *Block, blockCount-1),
+		maxBlocks:    uint32(blockCount),
+		blockSize:    blockSize,
 	}
 
 	// Preallocate all blocks so that during runtime we do not spend CPU cycles on this
 	for i := (uint32)(0); i < blockCount; i++ {
 		b, err := AllocateBlock(blockSize)
 		if err != nil {
+			log.Err("BlockPool::NewBlockPool : Failed to allocate block [%v]", err.Error())
 			return nil
 		}
 
-		pool.blocksCh <- b
+		if i == blockCount-1 {
+			pool.zeroBlock = b
+		} else {
+			pool.blocksCh <- b
+		}
 	}
+
+	// run a thread to reset the data in a block
+	pool.wg.Add(1)
+	go pool.resetBlock()
 
 	return pool
 }
 
 // Terminate ends the block pool life
 func (pool *BlockPool) Terminate() {
+	// TODO: call terminate after all the threads have completed
+	close(pool.resetBlockCh)
+	pool.wg.Wait()
+
 	close(pool.blocksCh)
+
+	_ = pool.zeroBlock.Delete()
 
 	// Release back the memory allocated to each block
 	for {
@@ -95,7 +124,7 @@ func (pool *BlockPool) Terminate() {
 
 // Usage provides % usage of this block pool
 func (pool *BlockPool) Usage() uint32 {
-	return ((pool.maxBlocks - (uint32)(len(pool.blocksCh))) * 100) / pool.maxBlocks
+	return ((pool.maxBlocks - (uint32)(len(pool.blocksCh)+len(pool.resetBlockCh))) * 100) / pool.maxBlocks
 }
 
 // MustGet a Block from the pool, wait until something is free
@@ -142,9 +171,26 @@ func (pool *BlockPool) TryGet() *Block {
 // Release back the Block to the pool
 func (pool *BlockPool) Release(b *Block) {
 	select {
-	case pool.blocksCh <- b:
+	case pool.resetBlockCh <- b:
 		break
 	default:
 		_ = b.Delete()
+	}
+}
+
+// reset the data in a block before its next use
+func (pool *BlockPool) resetBlock() {
+	defer pool.wg.Done()
+
+	for b := range pool.resetBlockCh {
+		// reset the data with null entries
+		copy(b.data, pool.zeroBlock.data)
+
+		select {
+		case pool.blocksCh <- b:
+			continue
+		default:
+			_ = b.Delete()
+		}
 	}
 }

@@ -12,7 +12,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2023 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -110,7 +110,6 @@ func (lf *Libfuse) convertConfig() *C.fuse_options_t {
 	fuse_opts.allow_other = C.bool(lf.allowOther)
 	fuse_opts.allow_root = C.bool(lf.allowRoot)
 	fuse_opts.trace_enable = C.bool(lf.traceEnable)
-	fuse_opts.non_empty = C.bool(lf.nonEmptyMount)
 	fuse_opts.umask = C.int(lf.umask)
 
 	return fuse_opts
@@ -208,10 +207,6 @@ func populateFuseArgs(opts *C.fuse_options_t, args *C.fuse_args_t) (*C.fuse_opti
 
 	if opts.allow_root {
 		options += ",allow_root"
-	}
-
-	if opts.non_empty {
-		options += ",nonempty"
 	}
 
 	if opts.readonly {
@@ -324,7 +319,17 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 	// While reading a file let kernel do readahed for better perf
 	conn.max_readahead = (4 * 1024 * 1024)
 	conn.max_read = (1 * 1024 * 1024)
-	conn.max_write = (1 * 1024 * 1024)
+
+	// RHEL still has 3.3 fuse version and it does not allow max_write beyond 128K
+	// Setting this value to 1 MB will fail the mount.
+	fuse_minor := common.GetFuseMinorVersion()
+	if fuse_minor > 4 {
+		log.Info("Libfuse::libfuse_init : Setting 1MB max_write for fuse minor %v", fuse_minor)
+		conn.max_write = (1 * 1024 * 1024)
+	} else {
+		log.Info("Libfuse::libfuse_init : Ignoring max_write for fuse minor %v", fuse_minor)
+		conn.max_write = (128 * 1024)
+	}
 
 	// direct_io option is used to bypass the kernel cache. It disables the use of
 	// page cache (file content cache) in the kernel for the filesystem.
@@ -436,6 +441,8 @@ func libfuse_mkdir(path *C.char, mode C.mode_t) C.int {
 		log.Err("Libfuse::libfuse_mkdir : Failed to create %s [%s]", name, err.Error())
 		if os.IsPermission(err) {
 			return -C.EACCES
+		} else if os.IsExist(err) {
+			return -C.EEXIST
 		} else {
 			return -C.EIO
 		}
@@ -638,6 +645,8 @@ func libfuse_create(path *C.char, mode C.mode_t, fi *C.fuse_file_info_t) C.int {
 		log.Err("Libfuse::libfuse_create : Failed to create %s [%s]", name, err.Error())
 		if os.IsExist(err) {
 			return -C.EEXIST
+		} else if os.IsPermission(err) {
+			return -C.EACCES
 		} else {
 			return -C.EIO
 		}
@@ -670,7 +679,7 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 	// TODO: Should this sit behind a user option? What if we change something to support these in the future?
 	// Mask out SYNC and DIRECT flags since write operation will fail
 	if fi.flags&C.O_SYNC != 0 || fi.flags&C.__O_DIRECT != 0 {
-		log.Err("Libfuse::libfuse_open : Reset flags for open %s, fi.flags %X", name, fi.flags)
+		log.Info("Libfuse::libfuse_open : Reset flags for open %s, fi.flags %X", name, fi.flags)
 		// Blobfuse2 does not support the SYNC or DIRECT flag. If a user application passes this flag on to blobfuse2
 		// and we open the file with this flag, subsequent write operations will fail with "Invalid argument" error.
 		// Mask them out here in the open call so that write works.
@@ -770,6 +779,7 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.
 
 	offset := uint64(off)
 	data := (*[1 << 30]byte)(unsafe.Pointer(buf))
+	// log.Debug("Libfuse::libfuse_write : Offset %v, Data %v", offset, size)
 	bytesWritten, err := fuseFS.NextComponent().WriteFile(
 		internal.WriteFileOptions{
 			Handle:   handle,

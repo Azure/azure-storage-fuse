@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2023 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -466,7 +466,7 @@ func (lfs *LoopbackFS) Chown(options internal.ChownOptions) error {
 
 func (lfs *LoopbackFS) StageData(options internal.StageDataOptions) error {
 	log.Trace("LoopbackFS::StageData : name=%s, id=%s", options.Name, options.Id)
-	path := fmt.Sprintf("%s_%d_%s", filepath.Join(lfs.path, options.Name), options.Offset, strings.ReplaceAll(options.Id, "/", "_"))
+	path := fmt.Sprintf("%s_%s", filepath.Join(lfs.path, options.Name), strings.ReplaceAll(options.Id, "/", "_"))
 	return os.WriteFile(path, options.Data, 0777)
 }
 
@@ -482,7 +482,7 @@ func (lfs *LoopbackFS) CommitData(options internal.CommitDataOptions) error {
 	}
 
 	for idx, id := range options.List {
-		path := fmt.Sprintf("%s_%d_%s", filepath.Join(lfs.path, options.Name), idx, strings.ReplaceAll(id, "/", "_"))
+		path := fmt.Sprintf("%s_%s", filepath.Join(lfs.path, options.Name), strings.ReplaceAll(id, "/", "_"))
 		info, err := os.Lstat(path)
 		if err == nil {
 			block, err := os.OpenFile(path, os.O_RDONLY, os.FileMode(0666))
@@ -510,15 +510,42 @@ func (lfs *LoopbackFS) CommitData(options internal.CommitDataOptions) error {
 			if err != nil {
 				return err
 			}
-
-			_ = os.Remove(path)
 		} else if !os.IsNotExist(err) {
 			return err
 		}
 	}
 
+	// delete the staged files
+	for _, id := range options.List {
+		path := fmt.Sprintf("%s_%s", filepath.Join(lfs.path, options.Name), strings.ReplaceAll(id, "/", "_"))
+		_ = os.Remove(path)
+	}
+
 	err = blob.Close()
 	return err
+}
+
+func (lfs *LoopbackFS) GetCommittedBlockList(name string) (*internal.CommittedBlockList, error) {
+	mainFilepath := filepath.Join(lfs.path, name)
+
+	info, err := os.Lstat(mainFilepath)
+	if err != nil {
+		return nil, err
+	}
+
+	blockSize := uint64(1 * 1024 * 1024)
+	blocks := info.Size() / (int64)(blockSize)
+	list := make(internal.CommittedBlockList, 0)
+
+	for i := int64(0); i < blocks; i++ {
+		list = append(list, internal.CommittedBlock{
+			Id:     fmt.Sprintf("%d", i),
+			Offset: i * (int64)(blockSize),
+			Size:   blockSize,
+		})
+	}
+
+	return &list, nil
 }
 
 func NewLoopbackFSComponent() internal.Component {
