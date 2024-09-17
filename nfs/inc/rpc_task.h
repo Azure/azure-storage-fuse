@@ -1965,6 +1965,9 @@ public:
              * Clear forget_seen and set returned_to_fuse.
              */
             inode->forget_seen = false;
+#ifdef ENABLE_PARANOID
+            inode->forget_seen_usecs = 0;
+#endif
             inode->returned_to_fuse = true;
         }
 
@@ -1976,9 +1979,7 @@ public:
                  * Not able to convey to fuse, reset returned_to_fuse and
                  * drop the lookupcnt we are holding.
                  */
-#ifdef ENABLE_PARANOID
                 inode->returned_to_fuse = false;
-#endif
                 inode->decref();
             }
         }
@@ -2009,6 +2010,9 @@ public:
          * See comment in reply_entry().
          */
         inode->forget_seen = false;
+#ifdef ENABLE_PARANOID
+        inode->forget_seen_usecs = 0;
+#endif
         inode->returned_to_fuse = true;
 
         if (fuse_reply_create(get_fuse_req(), entry, file) < 0) {
@@ -2016,9 +2020,7 @@ public:
              * Not able to convey to fuse, reset returned_to_fuse and
              * drop the lookupcnt we are holding.
              */
-#ifdef ENABLE_PARANOID
             inode->returned_to_fuse = false;
-#endif
             inode->decref();
         } else {
             /*

@@ -146,6 +146,19 @@ void nfs_inode::decref(size_t cnt, bool from_forget)
     assert(lookupcnt >= cnt);
 
     if (from_forget) {
+#ifdef ENABLE_PARANOID
+        if (forget_seen) {
+            AZLogError("[{}] Dup forget_seen @ {}, prev one seen @ {}, "
+                       "returned_to_fuse={}, cnt={}, lookupcnt={}, "
+                       "dircachecnt={}",
+                       ino, get_current_usecs(), forget_seen_usecs,
+                       returned_to_fuse, cnt, lookupcnt.load(),
+                       dircachecnt.load());
+            assert(0);
+        }
+        forget_seen_usecs = get_current_usecs();
+#endif
+
         /*
          * Fuse should not call forget more than once for an inode.
          */

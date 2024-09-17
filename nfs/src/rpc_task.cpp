@@ -3240,6 +3240,9 @@ void rpc_task::send_readdir_response(
              * recycled from inode_map) and clear returned_to_fuse.
              */
             it->nfs_inode->forget_seen = false;
+#ifdef ENABLE_PARANOID
+            it->nfs_inode->forget_seen_usecs = 0;
+#endif
             it->nfs_inode->returned_to_fuse = true;
 
             // We don't need the memset as we are setting all members.
@@ -3331,9 +3334,7 @@ void rpc_task::send_readdir_response(
                 AZLogDebug("[{}] Dropping lookupcnt, now {}",
                            it->nfs_inode->get_fuse_ino(),
                            it->nfs_inode->lookupcnt.load());
-#ifdef ENABLE_PARANOID
                 it->nfs_inode->returned_to_fuse = false;
-#endif
                 it->nfs_inode->decref();
             }
         }

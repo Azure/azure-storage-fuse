@@ -216,6 +216,10 @@ struct nfs_inode
      */
     bool forget_seen = false;
 
+#ifdef ENABLE_PARANOID
+    uint64_t forget_seen_usecs = 0;
+#endif
+
     /*
      * Stores the write error observed when performing backend writes to this
      * Blob. This helps us duly fail close(), if one or more IOs have failed
