@@ -298,7 +298,22 @@ private:
      * Lock for synchronizing dumping stats and for inserting into error_map.
      */
     static std::mutex lock;
+
+public:
+    /*
+     * Misc global stats.
+     * tot_bytes_read: Total bytes read by the application.
+     * bytes_read_from_cache: How many bytes were read from the cache.
+     *                        This will indicate our readahead effectiveness.
+     * bytes_read_ahead: How many bytes were read ahead.
+     */
+    static std::atomic<uint64_t> tot_bytes_read;
+    static std::atomic<uint64_t> bytes_read_from_cache;
+    static std::atomic<uint64_t> bytes_read_ahead;
 };
+
+#define INC_GBL_STATS(var, inc)  rpc_stats_az::var += (inc)
+#define GET_GBL_STATS(var)       rpc_stats_az::var
 
 }
 

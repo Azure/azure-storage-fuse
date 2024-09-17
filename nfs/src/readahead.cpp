@@ -186,6 +186,8 @@ static void readahead_callback (
         bc->pvt += res->READ3res_u.resok.count;
         assert(bc->pvt <= bc->length);
 
+        INC_GBL_STATS(bytes_read_ahead, res->READ3res_u.resok.count);
+
         AZLogDebug("[{}] readahead_callback: {}Read completed for offset: {} "
                    " size: {} Bytes read: {} eof: {}, total bytes read till "
                    "now: {} of {} for [{}, {}) num_backend_calls_issued: {}",

@@ -11,6 +11,9 @@ namespace aznfsc {
 
 /* static */ struct rpc_opstat rpc_stats_az::opstats[FUSE_OPCODE_MAX + 1];
 /* static */ std::mutex rpc_stats_az::lock;
+/* static */ std::atomic<uint64_t> rpc_stats_az::tot_bytes_read = 0;
+/* static */ std::atomic<uint64_t> rpc_stats_az::bytes_read_from_cache = 0;
+/* static */ std::atomic<uint64_t> rpc_stats_az::bytes_read_ahead = 0;
 
 /* static */
 void rpc_stats_az::dump_stats()
@@ -132,6 +135,19 @@ void rpc_stats_az::dump_stats()
                   " RPC requests retransmitted\n";
     str += "  " + std::to_string(cum_stats.num_reconnects) +
                   " Reconnect attempts\n";
+
+    str += "Application statistics:\n";
+    str += "  " + std::to_string(GET_GBL_STATS(tot_bytes_read)) +
+                  " bytes read by application(s)\n";
+    const double read_cache_pct =
+        tot_bytes_read ?
+        ((bytes_read_from_cache * 100) / tot_bytes_read) : 0;
+    str += "  " + std::to_string(GET_GBL_STATS(bytes_read_from_cache)) +
+                  " bytes served from read cache (" +
+                  std::to_string(read_cache_pct) + "%)\n";
+    assert(read_cache_pct <= 100);
+    str += "  " + std::to_string(GET_GBL_STATS(bytes_read_ahead)) +
+                  " bytes read by readahead\n";
 
 #define DUMP_OP(opcode) \
 do { \

@@ -1,6 +1,7 @@
 #include "nfs_internal.h"
 #include "rpc_task.h"
 #include "nfs_client.h"
+#include "rpc_stats.h"
 
 /*
  * If this is defined we will call release() for the byte chunk which is read
@@ -1752,7 +1753,9 @@ void rpc_task::run_read()
                  */
                 bc_vec[i].pvt = bc_vec[i].length;
 
-                AZLogDebug("Data read from cache. size: {}, offset: {}",
+                INC_GBL_STATS(bytes_read_from_cache, bc_vec[i].length);
+
+                AZLogDebug("Data read from cache. offset: {}, length: {}",
                         bc_vec[i].offset,
                         bc_vec[i].length);
 
@@ -1820,6 +1823,8 @@ void rpc_task::run_read()
              * from the cache.
              */
             bc_vec[i].pvt = bc_vec[i].length;
+
+            INC_GBL_STATS(bytes_read_from_cache, bc_vec[i].length);
 
 #ifdef RELEASE_CHUNK_AFTER_APPLICATION_READ
             /*
@@ -1934,6 +1939,7 @@ void rpc_task::send_read_response()
         AZLogDebug("[{}] Sending success read response, iovec={}, "
                    "bytes_read={}",
                    ino, count, bytes_read);
+        INC_GBL_STATS(tot_bytes_read, bytes_read);
         reply_iov(iov, count);
     }
 }
