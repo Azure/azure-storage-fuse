@@ -437,7 +437,7 @@ struct bc_iovec
              * bc->pvt is adjusted as partial reads/writes complete part of
              * the bc.
              */
-            const uint64_t bc_off = bc.offset + bc.pvt;
+            [[maybe_unused]] const uint64_t bc_off = bc.offset + bc.pvt;
             const uint64_t bc_len = bc.length - bc.pvt;
 
             // Part must be less than whole.
