@@ -643,9 +643,9 @@ struct statfs_rpc_task
         return ino;
     }
 
-    void set_ino(fuse_ino_t inode)
+    void set_ino(fuse_ino_t _ino)
     {
-        ino = inode;
+        ino = _ino;
     }
 
 private:

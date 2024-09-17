@@ -153,8 +153,9 @@ void rpc_task::init_statfs(fuse_req *request,
 {
     assert(get_op_type() == FUSE_STATFS);
     set_fuse_req(request);
-
     rpc_api->statfs_task.set_ino(ino);
+
+    fh_hash = get_client()->get_nfs_inode_from_ino(ino)->get_crc();
 }
 
 void rpc_task::init_create_file(fuse_req *request,
