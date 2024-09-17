@@ -149,6 +149,16 @@ void rpc_task::init_getattr(fuse_req *request,
     fh_hash = get_client()->get_nfs_inode_from_ino(ino)->get_crc();
 }
 
+void rpc_task::init_statfs(fuse_req *request,
+                           fuse_ino_t ino)
+{
+    assert(get_op_type() == FUSE_STATFS);
+    set_fuse_req(request);
+    rpc_api->statfs_task.set_ino(ino);
+
+    fh_hash = get_client()->get_nfs_inode_from_ino(ino)->get_crc();
+}
+
 void rpc_task::init_create_file(fuse_req *request,
                                 fuse_ino_t parent_ino,
                                 const char *name,
@@ -249,9 +259,15 @@ void rpc_task::init_symlink(fuse_req *request,
 {
     assert(get_op_type() == FUSE_SYMLINK);
     set_fuse_req(request);
+
+    const fuse_ctx *ctx = fuse_req_ctx(request);
+    assert(ctx != nullptr);
+
     rpc_api->symlink_task.set_link(link);
     rpc_api->symlink_task.set_parent_ino(parent_ino);
     rpc_api->symlink_task.set_name(name);
+    rpc_api->symlink_task.set_uid(ctx->uid);
+    rpc_api->symlink_task.set_gid(ctx->gid);
 
     fh_hash = get_client()->get_nfs_inode_from_ino(parent_ino)->get_crc();
 }
@@ -384,6 +400,8 @@ static void getattr_callback(
     void *private_data)
 {
     rpc_task *task = (rpc_task*) private_data;
+    assert(task->magic == RPC_TASK_MAGIC);
+
     auto res = (GETATTR3res*)data;
     const fuse_ino_t ino =
         task->rpc_api->getattr_task.get_ino();
@@ -421,6 +439,8 @@ static void lookup_callback(
     void *private_data)
 {
     rpc_task *task = (rpc_task*) private_data;
+    assert(task->magic == RPC_TASK_MAGIC);
+
     assert(task->rpc_api->optype == FUSE_LOOKUP);
     auto res = (LOOKUP3res*)data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
@@ -468,6 +488,8 @@ void access_callback(
     void *private_data)
 {
     rpc_task *task = (rpc_task*) private_data;
+    assert(task->magic == RPC_TASK_MAGIC);
+
     auto res = (ACCESS3res*) data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
@@ -693,6 +715,43 @@ void rpc_task::issue_write_rpc()
     } while (rpc_retry);
 }
 
+static void statfs_callback(
+    struct rpc_context *rpc,
+    int rpc_status,
+    void *data,
+    void *private_data)
+{
+    rpc_task *task = (rpc_task*) private_data;
+    assert(task->magic == RPC_TASK_MAGIC);
+
+    auto res = (FSSTAT3res*)data;
+    const int status = task->status(rpc_status, NFS_STATUS(res));
+
+    /*
+     * Now that the request has completed, we can query libnfs for the
+     * dispatch time.
+     */
+    task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
+
+    if (status == 0) {
+        struct statvfs st;
+        ::memset(&st, 0, sizeof(st));
+        st.f_bsize = NFS_BLKSIZE;
+        st.f_blocks = res->FSSTAT3res_u.resok.tbytes / NFS_BLKSIZE;
+        st.f_bfree = res->FSSTAT3res_u.resok.fbytes / NFS_BLKSIZE;
+        st.f_bavail = res->FSSTAT3res_u.resok.abytes / NFS_BLKSIZE;
+        st.f_files = res->FSSTAT3res_u.resok.tfiles;
+        st.f_ffree = res->FSSTAT3res_u.resok.ffiles;
+        st.f_favail = res->FSSTAT3res_u.resok.afiles;
+
+        task->reply_statfs(&st);
+    } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
+        task->get_client()->jukebox_retry(task);
+    } else {
+        task->reply_error(status);
+    }
+}
+
 static void createfile_callback(
     struct rpc_context *rpc,
     int rpc_status,
@@ -700,6 +759,8 @@ static void createfile_callback(
     void *private_data)
 {
     rpc_task *task = (rpc_task*) private_data;
+    assert(task->magic == RPC_TASK_MAGIC);
+
     auto res = (CREATE3res*)data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
@@ -733,6 +794,8 @@ static void setattr_callback(
     void *private_data)
 {
     rpc_task *task = (rpc_task*) private_data;
+    assert(task->magic == RPC_TASK_MAGIC);
+
     auto res = (SETATTR3res*)data;
     const fuse_ino_t ino =
         task->rpc_api->setattr_task.get_ino();
@@ -780,6 +843,8 @@ void mknod_callback(
     void *private_data)
 {
     rpc_task *task = (rpc_task*) private_data;
+    assert(task->magic == RPC_TASK_MAGIC);
+
     auto res = (CREATE3res*)data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
@@ -813,6 +878,8 @@ void mkdir_callback(
     void *private_data)
 {
     rpc_task *task = (rpc_task*) private_data;
+    assert(task->magic == RPC_TASK_MAGIC);
+
     auto res = (MKDIR3res*)data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
@@ -846,6 +913,8 @@ void unlink_callback(
     void *private_data)
 {
     rpc_task *task = (rpc_task*) private_data;
+    assert(task->magic == RPC_TASK_MAGIC);
+
     auto res = (REMOVE3res*)data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
@@ -869,6 +938,8 @@ void rmdir_callback(
     void *private_data)
 {
     rpc_task *task = (rpc_task*) private_data;
+    assert(task->magic == RPC_TASK_MAGIC);
+
     auto res = (RMDIR3res*) data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
@@ -892,6 +963,8 @@ void symlink_callback(
     void *private_data)
 {
     rpc_task *task = (rpc_task*) private_data;
+    assert(task->magic == RPC_TASK_MAGIC);
+
     auto res = (SYMLINK3res*) data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
@@ -925,6 +998,8 @@ void rename_callback(
     void *private_data)
 {
     rpc_task *task = (rpc_task*) private_data;
+    assert(task->magic == RPC_TASK_MAGIC);
+
     assert(task->rpc_api->optype == FUSE_RENAME);
     const bool silly_rename = task->rpc_api->rename_task.get_silly_rename();
     auto res = (RENAME3res*) data;
@@ -991,6 +1066,8 @@ void readlink_callback(
     void *private_data)
 {
     rpc_task *task = (rpc_task*) private_data;
+    assert(task->magic == RPC_TASK_MAGIC);
+
     auto res = (READLINK3res*) data;
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
@@ -1234,6 +1311,37 @@ void rpc_task::run_getattr()
     } while (rpc_retry);
 }
 
+void rpc_task::run_statfs()
+{
+    bool rpc_retry;
+    auto ino = rpc_api->statfs_task.get_ino();
+    rpc_pdu *pdu = nullptr;
+
+    do {
+        FSSTAT3args args;
+        args.fsroot = get_client()->get_nfs_inode_from_ino(ino)->get_fh();
+
+        rpc_retry = false;
+        stats.on_rpc_issue();
+        if ((pdu = rpc_nfs3_fsstat_task(get_rpc_ctx(), statfs_callback, &args,
+                                 this)) == NULL) {
+            stats.on_rpc_cancel();
+            /*
+             * Most common reason for this is memory allocation failure,
+             * hence wait for some time before retrying. Also block the
+             * current thread as we really want to slow down things.
+             *
+             * TODO: For soft mount should we fail this?
+             */
+            rpc_retry = true;
+
+            AZLogWarn("rpc_nfs3_fsstat_task failed to issue, retrying "
+                      "after 5 secs!");
+            ::sleep(5);
+        }
+    }  while (rpc_retry);
+}
+
 void rpc_task::run_create_file()
 {
     bool rpc_retry;
@@ -1442,6 +1550,12 @@ void rpc_task::run_symlink()
         args.where.dir = get_client()->get_nfs_inode_from_ino(parent_ino)->get_fh();
         args.where.name = (char*) rpc_api->symlink_task.get_name();
         args.symlink.symlink_data = (char*) rpc_api->symlink_task.get_link();
+        args.symlink.symlink_attributes.uid.set_it = 1;
+        args.symlink.symlink_attributes.uid.set_uid3_u.uid =
+            rpc_api->symlink_task.get_uid();
+        args.symlink.symlink_attributes.gid.set_it = 1;
+        args.symlink.symlink_attributes.gid.set_gid3_u.gid =
+            rpc_api->symlink_task.get_gid();
 
         rpc_retry = false;
         stats.on_rpc_issue();
@@ -2463,6 +2577,8 @@ static void readdir_callback(
     void *private_data)
 {
     rpc_task *const task = (rpc_task*) private_data;
+    assert(task->magic == RPC_TASK_MAGIC);
+
     assert(task->get_op_type() == FUSE_READDIR);
     READDIR3res *const res = (READDIR3res*) data;
     const fuse_ino_t dir_ino = task->rpc_api->readdir_task.get_ino();
@@ -2625,6 +2741,8 @@ static void readdirplus_callback(
     void *private_data)
 {
     rpc_task *const task = (rpc_task*) private_data;
+    assert(task->magic == RPC_TASK_MAGIC);
+
     assert(task->get_op_type() == FUSE_READDIRPLUS);
     READDIRPLUS3res *const res = (READDIRPLUS3res*) data;
     const fuse_ino_t dir_ino = task->rpc_api->readdir_task.get_ino();

@@ -146,6 +146,13 @@ void nfs_client::jukebox_runner()
                             js->rpc_api->setattr_task.get_attr_flags_to_set(),
                             js->rpc_api->setattr_task.get_fuse_file());
                     break;
+                case FUSE_STATFS:
+                    AZLogWarn("[JUKEBOX REISSUE] statfs(req={}, ino={})",
+                              fmt::ptr(js->rpc_api->req),
+                              js->rpc_api->statfs_task.get_ino());
+                    statfs(js->rpc_api->req,
+                           js->rpc_api->statfs_task.get_ino());
+                    break;
                 case FUSE_CREATE:
                     AZLogWarn("[JUKEBOX REISSUE] create(req={}, parent_ino={},"
                               " name={}, mode=0{:03o}, fi={})",
@@ -724,6 +731,16 @@ void nfs_client::getattr(
 
     tsk->init_getattr(req, ino);
     tsk->run_getattr();
+}
+
+void nfs_client::statfs(
+    fuse_req_t req,
+    fuse_ino_t ino)
+{
+    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_STATFS);
+
+    tsk->init_statfs(req, ino);
+    tsk->run_statfs();
 }
 
 void nfs_client::create(

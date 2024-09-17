@@ -440,11 +440,10 @@ static void aznfsc_ll_fsyncdir(fuse_req_t req,
 static void aznfsc_ll_statfs(fuse_req_t req,
                              fuse_ino_t ino)
 {
+    AZLogDebug("aznfsc_ll_statfs(req={}, ino={})", fmt::ptr(req), ino);
 
-    /*
-     * TODO: Fill me.
-     */
-    fuse_reply_err(req, ENOSYS);
+    struct nfs_client *client = get_nfs_client_from_fuse_req(req);
+    client->statfs(req, ino);
 }
 
 [[maybe_unused]]

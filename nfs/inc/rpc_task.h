@@ -636,6 +636,22 @@ private:
     int to_set;
 };
 
+struct statfs_rpc_task
+{
+    fuse_ino_t get_ino() const
+    {
+        return ino;
+    }
+
+    void set_ino(fuse_ino_t _ino)
+    {
+        ino = _ino;
+    }
+
+private:
+    fuse_ino_t ino;
+};
+
 struct create_file_rpc_task
 {
     fuse_ino_t get_parent_ino() const
@@ -926,6 +942,16 @@ struct symlink_rpc_task
         return link;
     }
 
+    uid_t get_uid() const
+    {
+        return uid;
+    }
+
+    gid_t get_gid() const
+    {
+        return gid;
+    }
+
     void set_parent_ino(fuse_ino_t parent)
     {
         parent_ino = parent;
@@ -941,6 +967,16 @@ struct symlink_rpc_task
         link = ::strdup(_link);
     }
 
+   void set_uid(uid_t _uid)
+    {
+        uid = _uid;
+    }
+
+    void set_gid(gid_t _gid)
+    {
+        gid = _gid;
+    }
+
     void release()
     {
         ::free(name);
@@ -951,6 +987,8 @@ private:
     fuse_ino_t parent_ino;
     char *name;
     char *link;
+    uid_t uid;
+    gid_t gid;
 };
 
 struct rename_rpc_task
@@ -1271,6 +1309,7 @@ struct api_task_info
         struct flush_rpc_task flush_task;
         struct getattr_rpc_task getattr_task;
         struct setattr_rpc_task setattr_task;
+        struct statfs_rpc_task statfs_task;
         struct create_file_rpc_task create_task;
         struct mknod_rpc_task mknod_task;
         struct mkdir_rpc_task mkdir_task;
@@ -1602,6 +1641,10 @@ public:
                       struct fuse_file_info *file);
     void run_setattr();
 
+    void init_statfs(fuse_req *request,
+                     fuse_ino_t ino);
+    void run_statfs();
+
     /*
      * init/run methods for the CREATE RPC.
      */
@@ -1786,7 +1829,13 @@ public:
         free_rpc_task();
     }
 
-    void reply_readlink(const char* linkname)
+    void reply_statfs(const struct statvfs *statbuf)
+    {
+        fuse_reply_statfs(get_fuse_req(), statbuf);
+        free_rpc_task();
+    }
+
+    void reply_readlink(const char *linkname)
     {
         fuse_reply_readlink(get_fuse_req(), linkname);
         free_rpc_task();

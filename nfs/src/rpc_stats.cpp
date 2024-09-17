@@ -186,6 +186,7 @@ do { \
     } \
 } while (0)
 
+    DUMP_OP(FUSE_STATFS);
     DUMP_OP(FUSE_LOOKUP);
     DUMP_OP(FUSE_ACCESS);
     DUMP_OP(FUSE_GETATTR);
