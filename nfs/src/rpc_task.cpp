@@ -425,6 +425,9 @@ static void getattr_callback(
     assert(task->magic == RPC_TASK_MAGIC);
 
     auto res = (GETATTR3res*)data;
+
+    INJECT_JUKEBOX(res, task);
+
     const fuse_ino_t ino =
         task->rpc_api->getattr_task.get_ino();
     struct nfs_inode *inode =
@@ -465,6 +468,9 @@ static void lookup_callback(
 
     assert(task->rpc_api->optype == FUSE_LOOKUP);
     auto res = (LOOKUP3res*)data;
+
+    INJECT_JUKEBOX(res, task);
+
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
     /*
@@ -2179,6 +2185,9 @@ static void read_callback(
 
     const char* errstr;
     auto res = (READ3res*)data;
+
+    INJECT_JUKEBOX(res, task);
+
     const int status = (task->status(rpc_status, NFS_STATUS(res), &errstr));
     fuse_ino_t ino = task->rpc_api->read_task.get_ino();
     struct nfs_inode *inode = task->get_client()->get_nfs_inode_from_ino(ino);
