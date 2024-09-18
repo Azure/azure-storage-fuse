@@ -2,7 +2,7 @@
 #include "nfs_inode.h"
 #include "nfs_client.h"
 
-directory_entry::directory_entry(const char *name_,
+directory_entry::directory_entry(char *name_,
                                  cookie3 cookie_,
                                  const struct stat& attr,
                                  struct nfs_inode* nfs_inode_) :
@@ -12,6 +12,7 @@ directory_entry::directory_entry(const char *name_,
     nfs_inode(nfs_inode_),
     name(name_)
 {
+    assert(name != nullptr);
     // Sanity check for attr. Blob NFS only supports these files.
     assert(((attr.st_mode & S_IFMT) == S_IFREG) ||
            ((attr.st_mode & S_IFMT) == S_IFDIR) ||
@@ -30,7 +31,7 @@ directory_entry::directory_entry(const char *name_,
     nfs_inode->dircachecnt++;
 }
 
-directory_entry::directory_entry(const char *name_,
+directory_entry::directory_entry(char *name_,
                                  cookie3 cookie_,
                                  uint64_t fileid_) :
     cookie(cookie_),
@@ -38,6 +39,7 @@ directory_entry::directory_entry(const char *name_,
     nfs_inode(nullptr),
     name(name_)
 {
+    assert(name != nullptr);
     // NFS recommends against this.
     assert(fileid_ != 0);
 
@@ -49,12 +51,15 @@ directory_entry::directory_entry(const char *name_,
 
 directory_entry::~directory_entry()
 {
-    AZLogVerbose("~directory_entry called");
+    AZLogVerbose("~directory_entry({}) called", name);
 
     if (nfs_inode) {
         assert(nfs_inode->dircachecnt > 0);
         nfs_inode->dircachecnt--;
     }
+
+    assert(name != nullptr);
+    ::free(name);
 }
 
 bool readdirectory_cache::add(struct directory_entry* entry)

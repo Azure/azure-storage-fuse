@@ -35,16 +35,16 @@ struct directory_entry
      * (and the fileid), hence we won't have the inode set.
      */
     struct nfs_inode* const nfs_inode;
-    const char* const name;
+    char* const name;
 
     // Constructor for adding a readdirplus returned entry.
-    directory_entry(const char* name_,
+    directory_entry(char* name_,
                     cookie3 cookie_,
                     const struct stat& attr,
                     struct nfs_inode* nfs_inode_);
 
     // Constructor for adding a readdir returned entry.
-    directory_entry(const char* name_,
+    directory_entry(char* name_,
                     cookie3 cookie_,
                     uint64_t fileid_);
 
