@@ -49,10 +49,14 @@ bool nfs_client::init()
 
     /*
      * Initialiaze the root file handle for this client.
+     * This will grab the first reference on the root inode. This will be
+     * dropped in nfs_client::shutdown().
      */
     root_fh = get_nfs_inode(nfs_get_rootfh(transport.get_nfs_context()),
                             &fattr,
                             true /* is_root_inode */);
+    assert(root_fh->lookupcnt == 1);
+    assert(root_fh->dircachecnt == 0);
 
     // Initialize the RPC task list.
     rpc_task_helper = rpc_task_helper::get_instance(this);
@@ -496,7 +500,7 @@ void nfs_client::put_nfs_inode_nolock(struct nfs_inode *inode,
      * or we failed to call fuse_reply_entry(), fuse_reply_create() or
      * fuse_reply_buf()), or fuse called forget for the inode.
      */
-    assert(!inode->returned_to_fuse || inode->forget_seen);
+    assert(!inode->forget_expected);
 
     /*
      * Directory inodes cannot be deleted while the directory cache is not
@@ -1201,11 +1205,20 @@ void nfs_client::reply_entry(
             entry.entry_timeout = 0;
         }
 
-        AZLogDebug("[{}] <{}> Returning ino {} to fuse (filename {})",
+        /*
+         * Note: reply_create()/reply_entry() below will increment
+         *       forget_expected just before replying to fuse, so we log the
+         *       updated count here.
+         */
+        AZLogDebug("[{}] <{}> Returning ino {} to fuse (filename: {}, "
+                   "lookupcnt: {}, dircachecnt: {}, forget_expected: {})",
                    parent_ino,
                    rpc_task::fuse_opcode_to_string(ctx->rpc_api->optype),
                    inode->get_fuse_ino(),
-                   ctx->rpc_api->get_file_name());
+                   ctx->rpc_api->get_file_name(),
+                   inode->lookupcnt.load(),
+                   inode->dircachecnt.load(),
+                   inode->forget_expected.load() + 1);
 
         parent_inode->dnlc_add(ctx->rpc_api->get_file_name(),
                                inode->get_fuse_ino());

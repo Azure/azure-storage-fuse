@@ -2971,9 +2971,14 @@ static void readdirplus_callback(
                      * get_nfs_inode() above would have grabbed a lookupcnt
                      * ref for all entries, here we drop ref on "." and "..",
                      * so we are only left with ref on non "." and "..".
+                     * Also since we are going to send this inode to fuse and
+                     * fuse promises to call forget for this, increment
+                     * forget_expected.
                      */
                     if (is_dot_or_dotdot) {
                         nfs_inode->decref();
+                    } else {
+                        nfs_inode->forget_expected++;
                     }
                 } else {
                     /*
@@ -3234,17 +3239,6 @@ void rpc_task::send_readdir_response(
         if (readdirplus) {
             struct fuse_entry_param fuseentry;
 
-            /*
-             * We are going to return this inode to fuse.
-             * Set forget_seen (in case this is not a fresh inode but being
-             * recycled from inode_map) and clear returned_to_fuse.
-             */
-            it->nfs_inode->forget_seen = false;
-#ifdef ENABLE_PARANOID
-            it->nfs_inode->forget_seen_usecs = 0;
-#endif
-            it->nfs_inode->returned_to_fuse = true;
-
             // We don't need the memset as we are setting all members.
             //memset(&fuseentry, 0, sizeof(fuseentry));
             fuseentry.attr = it->attributes;
@@ -3253,11 +3247,15 @@ void rpc_task::send_readdir_response(
             fuseentry.attr_timeout = it->nfs_inode->get_actimeo();
             fuseentry.entry_timeout = it->nfs_inode->get_actimeo();
 
-            AZLogDebug("[{}] <{}> Returning ino {} to fuse (filename {})",
+            AZLogDebug("[{}] <{}> Returning ino {} to fuse (filename: {}, "
+                       "lookupcnt: {}, dircachecnt: {}, forget_expected: {})",
                        parent_ino,
                        rpc_task::fuse_opcode_to_string(rpc_api->optype),
                        fuseentry.ino,
-                       it->name);
+                       it->name,
+                       it->nfs_inode->lookupcnt.load(),
+                       it->nfs_inode->dircachecnt.load(),
+                       it->nfs_inode->forget_expected.load());
 
             /*
              * Readdirplus returns inode for every file, so it's the
@@ -3331,11 +3329,15 @@ void rpc_task::send_readdir_response(
 
         if (readdirplus) {
             for (const auto& it : readdirentries) {
-                AZLogDebug("[{}] Dropping lookupcnt, now {}",
-                           it->nfs_inode->get_fuse_ino(),
-                           it->nfs_inode->lookupcnt.load());
-                it->nfs_inode->returned_to_fuse = false;
-                it->nfs_inode->decref();
+                if (!it->is_dot_or_dotdot()) {
+                    AZLogDebug("[{}] Dropping lookupcnt, now {}, "
+                               "forget_expected: {}",
+                               it->nfs_inode->get_fuse_ino(),
+                               it->nfs_inode->lookupcnt.load(),
+                               it->nfs_inode->forget_expected.load());
+                    it->nfs_inode->forget_expected--;
+                    it->nfs_inode->decref();
+                }
             }
         }
     }

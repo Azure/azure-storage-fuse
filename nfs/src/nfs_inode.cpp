@@ -89,6 +89,7 @@ nfs_inode::~nfs_inode()
     // We should never delete an inode which fuse still has a reference on.
     assert(is_forgotten());
     assert(lookupcnt == 0);
+    assert(forget_expected == 0);
 
     // We should never delete an inode which is still open()ed by user.
     assert(opencnt == 0);
@@ -147,23 +148,23 @@ void nfs_inode::decref(size_t cnt, bool from_forget)
 
     if (from_forget) {
 #ifdef ENABLE_PARANOID
-        if (forget_seen) {
-            AZLogError("[{}] Dup forget_seen @ {}, prev one seen @ {}, "
-                       "returned_to_fuse={}, cnt={}, lookupcnt={}, "
-                       "dircachecnt={}",
-                       ino, get_current_usecs(), forget_seen_usecs,
-                       returned_to_fuse, cnt, lookupcnt.load(),
+        /*
+         * Fuse should not call more forgets than how many times we returned
+         * the inode to fuse.
+         */
+        if ((int64_t) cnt > forget_expected) {
+            AZLogError("[{}] Extra forget from fuse @ {}, got {}, expected {}, "
+                       "last forget seen @ {}, lookupcnt={}, dircachecnt={}",
+                       ino, get_current_usecs(), cnt, forget_expected.load(),
+                       last_forget_seen_usecs, lookupcnt.load(),
                        dircachecnt.load());
             assert(0);
         }
-        forget_seen_usecs = get_current_usecs();
+        last_forget_seen_usecs = get_current_usecs();
 #endif
 
-        /*
-         * Fuse should not call forget more than once for an inode.
-         */
-        assert(!forget_seen);
-        forget_seen = true;
+        forget_expected -= cnt;
+        assert(forget_expected >= 0);
     }
 
 try_again:
@@ -867,8 +868,13 @@ void nfs_inode::lookup_dircache(
                  * entries. Note that we took a dircachecnt reference inside
                  * readdirectory_cache::lookup() call above, to make sure that
                  * till we increase this refcnt, the inode is not freed.
+                 *
+                 * Since send_readdir_response() will send this to fuse which
+                 * will later call forget for this we increment forget_expected
+                 * as well.
                  */
                 if (readdirplus && !entry->is_dot_or_dotdot()) {
+                    entry->nfs_inode->forget_expected++;
                     entry->nfs_inode->incref();
                 }
 

@@ -174,13 +174,13 @@ public:
             ++next_it;
             struct nfs_inode *inode = it->second;
             AZLogDebug("[{}:{}] Inode still present at shutdown: "
-                       "lookupcnt={}, dircachecnt={}, forget_seen={}, "
+                       "lookupcnt={}, dircachecnt={}, forget_expected={}, "
                        "is_cache_empty={}",
                        inode->get_filetype_coding(),
                        inode->get_fuse_ino(),
                        inode->lookupcnt.load(),
                        inode->dircachecnt.load(),
-                       inode->forget_seen,
+                       inode->forget_expected.load(),
                        inode->is_cache_empty());
             
             /*
@@ -188,16 +188,50 @@ public:
              * all inodes. Fuse does not gurantee that it will call forget
              * for each inode, hence we have to implicity forget all inodes.
              */
-            if (!inode->is_forgotten() && !inode->forget_seen) {
-                inode->decref(1, true /* from_forget */);
+            if (inode->forget_expected) {
+                assert(!inode->is_forgotten());
+                inode->decref(inode->forget_expected, true /* from_forget */);
                 
                 /*
                  * root_fh is not valid anymore, clear it now.
+                 * We do not expect forget_expected to be non-zero for root
+                 * inode, so we have the assert to confirm.
+                 * XXX If the assert hits, just remove it.
                  */
                 if (inode == root_fh) {
+                    assert(0);
                     root_fh = nullptr;
                 }
             }
+        }
+
+        /*
+         * At this point root inode will have just the original reference
+         * (acquired in nfs_client::init()), drop it now.
+         * This will also purge the readdir cache for the root directory
+         * dropping the last dircachecnt ref on all those entries and thus
+         * causing those inodes to be deleted.
+         */
+        if (root_fh) {
+            assert(root_fh->lookupcnt == 1);
+            root_fh->decref(1, false /* from_forget */);
+            root_fh = nullptr;
+        }
+
+        /*
+         * Now we shouldn't have any left.
+         */
+        for (auto it : inode_map) {
+            struct nfs_inode *inode = it.second;
+            AZLogWarn("[BUG] [{}:{}] Inode still present at shutdown: "
+                       "lookupcnt={}, dircachecnt={}, forget_expected={}, "
+                       "is_cache_empty={}",
+                       inode->get_filetype_coding(),
+                       inode->get_fuse_ino(),
+                       inode->lookupcnt.load(),
+                       inode->dircachecnt.load(),
+                       inode->forget_expected.load(),
+                       inode->is_cache_empty());
         }
 
         assert(inode_map.size() == 0);

@@ -200,29 +200,28 @@ struct nfs_inode
     std::shared_ptr<ra_state> readahead_state;
 
     /*
-     * Has this inode been returned to fuse?
-     * It'll be set to true only when we are able to successfully call one of
+     * How many forget count we expect from fuse.
+     * It'll be incremented whenever we are able to successfully call one of
      * the following:
      * - fuse_reply_create()
      * - fuse_reply_entry()
      * - fuse_reply_buf() (for readdirplus and not for readdir)
      *
-     * Once returned_to_fuse is set, fuse must call forget on the inode and the
-     * inode can only be freed if forget_seen is set.
+     * Fuse must call exactly these many forgets on this inode and the inode
+     * can only be freed when forget_expected becomes 0. Fuse must not call
+     * more forgets than forget_expected.
+     *
+     * Note: forget_expected may become 0 indicating that fuse doesn't know
+     *       about this inode but inode may still be in use (lookupcnt or
+     *       dircachecnt can be non-zero), then we don't free the inode.
+     *
+     * We use this for forgetting all inodes on unmount, and also for
+     * debugging to see if fuse forgets to call forget :-)
      */
-    bool returned_to_fuse = false;
-
-    /*
-     * Has fuse called forget for this inode?
-     * Note that fuse may call forget but if the inode is in use (lookupcnt
-     * or dircachecnt non zero) then we don't free it. Use this for debugging
-     * any issues where inodes are kept lying around to find if it's because
-     * fuse has not called forget or we didn't delete it later.
-     */
-    bool forget_seen = false;
+    std::atomic<int64_t> forget_expected = 0;
 
 #ifdef ENABLE_PARANOID
-    uint64_t forget_seen_usecs = 0;
+    uint64_t last_forget_seen_usecs = 0;
 #endif
 
     /*

@@ -1960,15 +1960,10 @@ public:
              * This might be an existing inode from inode_map which we didn't
              * free earlier as it was in use when fuse called forget and then
              * some other thread looked up the inode. It could be a fresh inode
-             * too, in which case forget_seen will already be false and it's
-             * ok to clear it again.
-             * Clear forget_seen and set returned_to_fuse.
+             * too. In any case increment forget_expected as we are now letting
+             * fuse know about this inode.
              */
-            inode->forget_seen = false;
-#ifdef ENABLE_PARANOID
-            inode->forget_seen_usecs = 0;
-#endif
-            inode->returned_to_fuse = true;
+            inode->forget_expected++;
         }
 
         assert((int64_t) e->generation <= get_current_usecs());
@@ -1976,10 +1971,11 @@ public:
         if (fuse_reply_entry(get_fuse_req(), e) < 0) {
             if (inode) {
                 /*
-                 * Not able to convey to fuse, reset returned_to_fuse and
-                 * drop the lookupcnt we are holding.
+                 * Not able to convey to fuse, drop forget_expected count
+                 * incremented above.
                  */
-                inode->returned_to_fuse = false;
+                assert(inode->forget_expected > 0);
+                inode->forget_expected--;
                 inode->decref();
             }
         }
@@ -2009,18 +2005,15 @@ public:
         /*
          * See comment in reply_entry().
          */
-        inode->forget_seen = false;
-#ifdef ENABLE_PARANOID
-        inode->forget_seen_usecs = 0;
-#endif
-        inode->returned_to_fuse = true;
+        inode->forget_expected++;
 
         if (fuse_reply_create(get_fuse_req(), entry, file) < 0) {
             /*
-             * Not able to convey to fuse, reset returned_to_fuse and
-             * drop the lookupcnt we are holding.
+             * Not able to convey to fuse, drop forget_expected count
+             * incremented above.
              */
-            inode->returned_to_fuse = false;
+            assert(inode->forget_expected > 0);
+            inode->forget_expected--;
             inode->decref();
         } else {
             /*
