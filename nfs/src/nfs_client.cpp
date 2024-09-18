@@ -314,6 +314,8 @@ struct nfs_inode *nfs_client::get_nfs_inode(const nfs_fh3 *fh,
                                             const struct fattr3 *fattr,
                                             bool is_root_inode)
 {
+    assert(fattr);
+
 #ifndef ENABLE_NON_AZURE_NFS
     // Blob NFS supports only these file types.
     assert((fattr->type == NF3REG) ||
@@ -348,10 +350,31 @@ struct nfs_inode *nfs_client::get_nfs_inode(const nfs_fh3 *fh,
                 assert(i->second->file_type == file_type);
 
                 if (i->second->is_forgotten()) {
-                    AZLogDebug("[{}] Reusing forgotten inode (dircachecnt={})",
+                    AZLogDebug("[{}:{} / 0x{:08x}] Reusing forgotten inode "
+                               "(dircachecnt={}), "
+                               "size {} -> {}, "
+                               "ctime {}.{} -> {}.{}, "
+                               "mtime {}.{} -> {}.{}",
+                               i->second->get_filetype_coding(),
                                i->second->get_fuse_ino(),
-                               i->second->dircachecnt.load());
+                               i->second->get_crc(),
+                               i->second->dircachecnt.load(),
+                               i->second->attr.st_size, fattr->size,
+                               i->second->attr.st_ctim.tv_sec,
+                               i->second->attr.st_ctim.tv_nsec,
+                               fattr->ctime.seconds,
+                               fattr->ctime.nseconds,
+                               i->second->attr.st_mtim.tv_sec,
+                               i->second->attr.st_mtim.tv_nsec,
+                               fattr->mtime.seconds,
+                               fattr->mtime.nseconds);
                 }
+
+                /*
+                 * Copy the attributes to the inode as they would be the most
+                 * recent ones.
+                 */
+                nfs_client::stat_from_fattr3(&i->second->attr, fattr);
 
                 i->second->incref();
                 return i->second;
@@ -382,8 +405,43 @@ struct nfs_inode *nfs_client::get_nfs_inode(const nfs_fh3 *fh,
             assert(i->second->magic == NFS_INODE_MAGIC);
 
             if (FH_EQUAL(&(i->second->get_fh()), fh)) {
+                // File type must be same.
+                assert(i->second->file_type == file_type);
+
                 AZLogWarn("[{}] Another thread added inode, deleting ours",
                           inode->get_fuse_ino());
+
+                /*
+                 * If fattr is newer, update inode attr.
+                 */
+                {
+                    std::unique_lock<std::shared_mutex> lock(i->second->ilock);
+
+                    const bool fattr_is_newer =
+                        (compare_timespec_and_nfstime(i->second->attr.st_ctim,
+                                                      fattr->ctime) == -1);
+                    if (fattr_is_newer) {
+                        AZLogWarn("[{}:{} / 0x{:08x}] Updating inode attr, "
+                                  "size {} -> {}, "
+                                  "ctime {}.{} -> {}.{}, "
+                                  "mtime {}.{} -> {}.{}",
+                                  i->second->get_filetype_coding(),
+                                  i->second->get_fuse_ino(),
+                                  i->second->get_crc(),
+                                  i->second->attr.st_size, fattr->size,
+                                  i->second->attr.st_ctim.tv_sec,
+                                  i->second->attr.st_ctim.tv_nsec,
+                                  fattr->ctime.seconds,
+                                  fattr->ctime.nseconds,
+                                  i->second->attr.st_mtim.tv_sec,
+                                  i->second->attr.st_mtim.tv_nsec,
+                                  fattr->mtime.seconds,
+                                  fattr->mtime.nseconds);
+
+                        nfs_client::stat_from_fattr3(&i->second->attr, fattr);
+                    }
+                }
+
                 delete inode;
 
                 i->second->incref();

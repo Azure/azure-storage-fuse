@@ -151,6 +151,11 @@ struct nfs_inode
      *
      * If attr_timeout_secs is -1 that implies that cached attributes are
      * not valid and we need to fetch the attributes from the server.
+     *
+     * See update_nolock() how these attributes are compared with freshly
+     * fetched attributes to see if inode has changed.
+     *
+     * Note: Update and access it under ilock.
      */
     struct stat attr;
     int64_t attr_timeout_secs = -1;
