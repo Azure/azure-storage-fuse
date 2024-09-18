@@ -133,9 +133,10 @@ nfs_inode::~nfs_inode()
 void nfs_inode::decref(size_t cnt, bool from_forget)
 {
     AZLogDebug("[{}] decref(cnt={}, from_forget={}) called "
-               " (lookupcnt={}, dircachecnt={})",
+               " (lookupcnt={}, dircachecnt={}, forget_expected={})",
                ino, cnt, from_forget,
-               lookupcnt.load(), dircachecnt.load());
+               lookupcnt.load(), dircachecnt.load(),
+               forget_expected.load());
 
     /*
      * We only decrement lookupcnt in forget and once lookupcnt drops to
@@ -747,9 +748,9 @@ bool nfs_inode::update_nolock(const struct fattr3& fattr)
         ((compare_timespec_and_nfstime(attr.st_mtim, fattr.mtime) != 0) ||
          (attr.st_size != (off_t) fattr.size));
 
-    AZLogDebug("Got attributes newer than cached attributes, "
+    AZLogDebug("[{}] Got attributes newer than cached attributes, "
                "ctime: {}.{} -> {}.{}, mtime: {}.{} -> {}.{}, size: {} -> {}",
-               attr.st_ctim.tv_sec, attr.st_ctim.tv_nsec,
+               ino, attr.st_ctim.tv_sec, attr.st_ctim.tv_nsec,
                fattr.ctime.seconds, fattr.ctime.nseconds,
                attr.st_mtim.tv_sec, attr.st_mtim.tv_nsec,
                fattr.mtime.seconds, fattr.mtime.nseconds,

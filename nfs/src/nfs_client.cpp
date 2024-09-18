@@ -627,6 +627,9 @@ static void lookup_sync_callback(
             if (ctx->fattr) {
                 *(ctx->fattr) = *fattr;
             }
+            AZLogDebug("lookup_sync_callback() got child_ino={}", *child_ino_p);
+        } else {
+            AZLogError("lookup_sync_callback() failed, status={}", status);
         }
     }
 
@@ -650,6 +653,7 @@ bool nfs_client::lookup_sync(fuse_ino_t parent_ino,
     bool rpc_retry = false;
     bool success = false;
 
+    child_ino = 0;
     AZLogDebug("lookup_sync({}/{})", parent_ino, name);
 
 try_again:
@@ -672,6 +676,7 @@ try_again:
 
         ctx = new sync_rpc_context(task, nullptr);
         rpc = nfs_get_rpc_context(nfs_context);
+        assert(!ctx->callback_called);
 
         rpc_retry = false;
         task->get_stats().on_rpc_issue();
@@ -720,6 +725,7 @@ wait_more:
             const int status = task->status(ctx->rpc_status, ctx->nfs_status);
             if (status == 0) {
                 success = true;
+                assert(child_ino != 0);
             } else if (ctx->rpc_status == RPC_STATUS_SUCCESS &&
                        ctx->nfs_status == NFS3ERR_JUKEBOX) {
                 AZLogInfo("Got NFS3ERR_JUKEBOX for LOOKUP, re-issuing "
@@ -727,6 +733,13 @@ wait_more:
                 ::usleep(1000 * 1000);
                 // This goto will cause the above lock to unlock.
                 goto try_again;
+            } else {
+                AZLogError("lookup_sync({}/{}) failed, status={}, "
+                           "rpc_status={}, nfs_status={}",
+                           parent_ino, name, status, ctx->rpc_status,
+                           ctx->nfs_status);
+                assert(!success);
+                assert(child_ino == 0);
             }
         }
     }
