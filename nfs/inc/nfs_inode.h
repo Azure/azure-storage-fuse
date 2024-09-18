@@ -178,6 +178,9 @@ struct nfs_inode
      * This does not have a TTL but it is revalidated from nfs_inode::lookup()
      * and dropped if directory mtime has changed which could mean some files
      * may have been deleted or renamed.
+     *
+     * Note: dnlc stores the inode number w/o holding a ref on the inode.
+     *       See comment above nfs_inode::lookup() to see why this is safe.
      */
     std::unordered_map<std::string, fuse_ino_t> dnlc;
 

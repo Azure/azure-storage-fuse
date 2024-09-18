@@ -251,6 +251,17 @@ bool nfs_inode::in_ra_window(uint64_t offset, uint64_t length) const
     return readahead_state->in_ra_window(offset, length);
 }
 
+/**
+ * Note: nfs_inode::lookup() method currently has limited usage.
+ *       It is only meant to be called from silly_rename() where we know
+ *       that kernel must be holding a lock on the to-be-deleted file's
+ *       inode and hence we can be certain that the corresponding nfs_inode
+ *       pointer is accessible. Note that we don't take ref on the nfs_inode
+ *       and depend on the kernel holding a use count on the inode.
+ *       Even if the parent dir mtime changes and we do a revalidate() and
+ *       lookup_sync(), the corresponding nfs_inode will still be present in
+ *       our inode_map since kernel wouldn't have called forget on the inode.
+ */
 struct nfs_inode *nfs_inode::lookup(const char *filename)
 {
     // Must be called only for a directory inode.
@@ -260,6 +271,7 @@ struct nfs_inode *nfs_inode::lookup(const char *filename)
     revalidate();
 
     struct nfs_client *client = get_client();
+    struct nfs_inode *inode = nullptr;
     fuse_ino_t child_ino = 0;
 
     /*
@@ -271,8 +283,13 @@ struct nfs_inode *nfs_inode::lookup(const char *filename)
         if (it != dnlc.end()) {
             child_ino = it->second;
             assert(child_ino != 0);
-            AZLogDebug("{}/{} -> {}, found in DNLC!",
-                       get_fuse_ino(), filename, child_ino);
+            inode = client->get_nfs_inode_from_ino(child_ino);
+            AZLogDebug("{}/{} -> {}, found in DNLC! (lookupcnt: {}, "
+                       "dircachecnt: {}, forget_expected: {})",
+                       get_fuse_ino(), filename, child_ino,
+                       inode->lookupcnt.load(),
+                       inode->dircachecnt.load(),
+                       inode->forget_expected.load());
         }
     }
 
@@ -282,12 +299,22 @@ struct nfs_inode *nfs_inode::lookup(const char *filename)
                       get_fuse_ino(), filename);
            return nullptr;
        }
-       AZLogDebug("{}/{} -> {}, found via sync LOOKUP!",
-                  get_fuse_ino(), filename, child_ino);
        assert(child_ino != 0);
+       inode = client->get_nfs_inode_from_ino(child_ino);
+       /*
+        * Caller doesn't expect a ref on the inode, drop the ref held by
+        * lookup_sync().
+        */
+       inode->decref();
+       AZLogDebug("{}/{} -> {}, found via sync LOOKUP! (lookupcnt: {}, "
+                  "dircachecnt: {}, forget_expected: {})",
+                  get_fuse_ino(), filename, child_ino,
+                  inode->lookupcnt.load(),
+                  inode->dircachecnt.load(),
+                  inode->forget_expected.load());
     }
 
-    return client->get_nfs_inode_from_ino(child_ino);
+    return inode;
 }
 
 int nfs_inode::get_actimeo_min() const
