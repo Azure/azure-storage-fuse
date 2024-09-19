@@ -1,5 +1,6 @@
-## 2.3.3 (Unreleased)
-**Bug Fixes**
+## 2.4.0 (Unreleased)
+**Features**
+- Entry cache to hold directory listing results in cache for a given timeout. This will reduce REST calls going to storage while listing the blobs in parallel.
 
 ## 2.3.2 (2024-09-03)
 **Bug Fixes**
