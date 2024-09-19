@@ -196,16 +196,13 @@ bool readdirectory_cache::remove(cookie3 cookie)
          * If this is the last dircachecnt on this inode, it means
          * there are no more readdirectory_cache,s referencing this
          * inode. If there are no lookupcnt refs then we can free it.
-         * Call put_nfs_inode() to safely free the inode.
+         * For safely freeing the inode against any races, we need to call
+         * decref() and for that we need to make sure we have at least one
+         * ref on the inode, so we call incref() before deleting the
+         * directory_entry. Later below we call decref() to drop the ref
+         * held and if that's the only ref, inode will be deleted.
          */
         if (inode->dircachecnt == 1) {
-            /*
-             * Grab inode ref so that the inode is not removed from
-             * inode_map and deleted after we drop the dircachecnt
-             * and before we grab the inode_map_lock below. This ref
-             * will be dropped by put_nfs_inode_nolock() safely with
-             * the lock held.
-             */
             inode->incref();
 
             /*
@@ -219,22 +216,16 @@ bool readdirectory_cache::remove(cookie3 cookie)
         }
     }
 
-    AZLogDebug("[{}] inode {} to be freed, after readdir cache remove",
+    AZLogDebug("[D:{}] inode {} to be freed, after readdir cache remove",
                this->inode->get_fuse_ino(),
                inode->get_fuse_ino());
 
     /*
-     * Drop the extra ref we held above.
-     * Note that we must call put_nfs_inode_nolock() only when we are sure
-     * this is the last ref.
+     * Drop the extra ref held above. If it's the last ref the inode will be
+     * freed.
      */
-    {
-        std::unique_lock<std::shared_mutex> lock1(client->get_inode_map_lock());
-        assert(inode->lookupcnt > 0);
-        if (--inode->lookupcnt == 0) {
-            client->put_nfs_inode_nolock(inode, 0 /* dropcnt */);
-        }
-    }
+    assert(inode->lookupcnt > 0);
+    inode->decref();
 
     return true;
 }
@@ -288,27 +279,22 @@ void readdirectory_cache::clear()
              * If this is the last dircachecnt on this inode, it means
              * there are no more readdirectory_cache,s referencing this
              * inode. If there are no lookupcnt refs then we can free it.
-             * Call put_nfs_inode() to safely free the inode.
+             * For safely freeing the inode against any races, we need to call
+             * decref() and for that we need to make sure we have at least one
+             * ref on the inode, so we call incref() before deleting the
+             * directory_entry, and add the inode to a vector which we later
+             * iterate over and call decref() for all the inodes.
              */
             if (inode && (inode->dircachecnt == 1)) {
                 tofree_vec.emplace_back(inode);
-                assert(inode->magic == NFS_INODE_MAGIC);
-
-                /*
-                 * Grab inode ref so that the inode is not removed from
-                 * inode_map and deleted after we drop the dircachecnt
-                 * and before we grab the inode_map_lock below. This ref
-                 * will be dropped by put_nfs_inode_nolock() safely with
-                 * the lock held.
-                 */
                 inode->incref();
             }
 
             /*
              * This will call ~directory_entry(), which will drop the
              * dircachecnt. Note that we grabbed a lookupcnt ref on the
-             * inode before this to prevent another threads from freeing
-             * the inode before we grab the inode_map_lock below.
+             * inode so the following decref() will free the inode if that
+             * was the only ref.
              */
             delete it->second;
         }
@@ -317,23 +303,17 @@ void readdirectory_cache::clear()
     }
 
     if (!tofree_vec.empty()) {
-        std::unique_lock<std::shared_mutex> lock1(client->get_inode_map_lock());
-
         AZLogDebug("[{}] {} inodes to be freed, after readdir cache purge",
                    this->inode->get_fuse_ino(),
                    tofree_vec.size());
-
         /*
          * Drop the extra ref we held above, for all inodes in tofree_vec.
-         * Note that we must call put_nfs_inode_nolock() only when we are sure
-         * it is the last ref on the inode.
          */
         for (struct nfs_inode *inode : tofree_vec) {
             assert(inode->magic == NFS_INODE_MAGIC);
             assert(inode->lookupcnt > 0);
-            if (--inode->lookupcnt == 0) {
-                client->put_nfs_inode_nolock(inode, 0 /* dropcnt */);
-            }
+
+            inode->decref();
         }
     }
 }
