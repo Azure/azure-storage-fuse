@@ -182,13 +182,15 @@ bool readdirectory_cache::remove(cookie3 cookie)
         assert(inode->dircachecnt > 0);
 
         AZLogDebug("[{}] Removing {} fuse ino {}, cookie {}, from "
-                   "readdir cache (lookupcnt={}, dircachecnt={})",
+                   "readdir cache (lookupcnt={}, dircachecnt={}, "
+                   "forget_expected={})",
                    this->inode->get_fuse_ino(),
                    dirent->name,
                    inode->get_fuse_ino(),
                    dirent->cookie,
                    inode->lookupcnt.load(),
-                   inode->dircachecnt.load());
+                   inode->dircachecnt.load(),
+                   inode->forget_expected.load());
 
         /*
          * If this is the last dircachecnt on this inode, it means
@@ -271,12 +273,15 @@ void readdirectory_cache::clear()
                 assert(inode->dircachecnt > 0);
 
                 AZLogDebug("[{}] Removing {} fuse ino {}, cookie {}, from "
-                           "readdir cache (dircachecnt {} lookupcnt {})",
+                           "readdir cache (dircachecnt {} lookupcnt {}, "
+                           "forget_expected {})",
                            this->inode->get_fuse_ino(),
                            it->second->name,
                            inode->get_fuse_ino(),
                            it->second->cookie,
-                           inode->dircachecnt.load(), inode->lookupcnt.load());
+                           inode->dircachecnt.load(),
+                           inode->lookupcnt.load(),
+                           inode->forget_expected.load());
             }
 
             /*

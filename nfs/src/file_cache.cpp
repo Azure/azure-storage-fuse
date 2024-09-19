@@ -189,6 +189,9 @@ bool membuf::load()
         return true;
     }
 
+    // XXX Fail here till we sort out the above TODOs.
+    assert(0);
+
     // If data is already loaded, it's a no-op.
     if (allocated_buffer) {
         return true;

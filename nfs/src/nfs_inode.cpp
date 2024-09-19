@@ -185,12 +185,10 @@ try_again:
          * here causes the fuse client to behave like the Linux kernel NFS
          * client where we can purge the directory cache by writing to
          * /proc/sys/vm/drop_caches.
+         * Also for files since the inode last ref is dropped, further accesses
+         * are unlikely, hence we can drop file caches too.
          */
-        if (is_dir()) {
-            purge_dircache();
-        } else if (is_regfile()) {
-            purge_filecache();
-        }
+        invalidate_cache();
 
         /*
          * Reduce the extra refcnt and revert the cnt.
