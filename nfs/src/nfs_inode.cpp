@@ -548,7 +548,7 @@ lock_and_copy:
              * be uptodate and then we can perform the simple copy.
              */
             AZLogWarn("[{}] Waiting for membuf [{}, {}) (bc [{}, {})) to "
-                      "be uptodate",
+                      "be uptodate", ino,
                       mb->offset, mb->offset+mb->length,
                       bc.offset, bc.offset+bc.length);
             mb->wait_uptodate_pre_unlock();
@@ -556,7 +556,7 @@ lock_and_copy:
             mb->wait_uptodate_post_unlock();
             assert(mb->is_uptodate());
             AZLogWarn("[{}] Membuf [{}, {}) (bc [{}, {})) is now uptodate, "
-                      "retrying copy",
+                      "retrying copy", ino,
                       mb->offset, mb->offset+mb->length,
                       bc.offset, bc.offset+bc.length);
             goto lock_and_copy;
