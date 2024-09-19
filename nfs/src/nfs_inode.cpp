@@ -499,10 +499,14 @@ int nfs_inode::copy_to_cache(const struct fuse_bufvec* bufv,
 
     for (auto& bc : bc_vec) {
         struct membuf *mb = bc.get_membuf();
+#ifdef ENABLE_PARANOID
+        bool found_not_uptodate = false;
+#endif
 
         /*
          * Lock the membuf while we copy application data into it.
          */
+lock_and_copy:
         mb->set_locked();
 
         /*
@@ -516,14 +520,46 @@ int nfs_inode::copy_to_cache(const struct fuse_bufvec* bufv,
             mb->set_uptodate();
             mb->set_dirty();
         } else {
+#ifdef ENABLE_PARANOID
+            /*
+             * wait_uptodate() must return only after the membuf is indeed
+             * uptodate, and once marked uptodate membuf should remain
+             * uptodate.
+             */
+            assert(!found_not_uptodate);
+            found_not_uptodate = true;
+#endif
+
             /*
              * bc refers to part of the membuf and membuf is not uptodate.
-             * In this case we need to read back the entire membuf and then
-             * update the part that user wants to write to.
-             *
-             * TODO: Need to issue read.
+             * This can happen if our bytes_chunk_cache::get() call raced with
+             * some other thread and they requested a bigger bytes_chunk than
+             * us. The original bytes_chunk was allocated per their request
+             * and our request was smaller one that fitted completely within
+             * their request and and hence we were given the same membuf,
+             * albeit a smaller bytes_chunk. Now both the threads would next
+             * try to lock the membuf to perform their corresponding IO, this
+             * time we won the race and hence when we look at the membuf it's
+             * a partial one and not uptodate. Since membuf is not uptodate
+             * we will need to do a read-modify-write operation to correctly
+             * update part of the membuf. Since we know that some other thread
+             * is waiting to perform IO on the entire membuf, we simply let
+             * that thread proceed with its IO. Once it's done the membuf will
+             * be uptodate and then we can perform the simple copy.
              */
-            assert(0);
+            AZLogWarn("[{}] Waiting for membuf [{}, {}) (bc [{}, {})) to "
+                      "be uptodate",
+                      mb->offset, mb->offset+mb->length,
+                      bc.offset, bc.offset+bc.length);
+            mb->wait_uptodate_pre_unlock();
+            mb->clear_locked();
+            mb->wait_uptodate_post_unlock();
+            assert(mb->is_uptodate());
+            AZLogWarn("[{}] Membuf [{}, {}) (bc [{}, {})) is now uptodate, "
+                      "retrying copy",
+                      mb->offset, mb->offset+mb->length,
+                      bc.offset, bc.offset+bc.length);
+            goto lock_and_copy;
         }
 
         /*

@@ -269,13 +269,38 @@ void membuf::set_uptodate()
     assert(is_locked());
     assert(is_inuse());
 
-    flag |= MB_Flag::Uptodate;
+    /*
+     * We set MB_Flag::Uptodate conditionally to keep the bytes_uptodate
+     * metrics sane. Also the debug log is helpful to understand when a
+     * membuf actually became uptodate for the first time.
+     */
+    if (!(flag & MB_Flag::Uptodate)) {
+        flag |= MB_Flag::Uptodate;
 
-    bcc->bytes_uptodate_g += length;
-    bcc->bytes_uptodate += length;
+        bcc->bytes_uptodate_g += length;
+        bcc->bytes_uptodate += length;
 
-    AZLogDebug("Set uptodate membuf [{}, {}), fd={}",
-               offset, offset+length, backing_file_fd);
+        AZLogDebug("Set uptodate membuf [{}, {}), fd={}",
+                   offset, offset+length, backing_file_fd);
+    }
+
+    /*
+     * If there are any thread(s) waiting for this membuf to become uptodate,
+     * wake them all up. This is not common case.
+     */
+    if (flag & MB_Flag::WaitingForUptodate) {
+        AZLogDebug("One or more threads waiting for membuf [{}, {}), to "
+                   "become uptodate, waking all waiters!",
+                   offset, offset+length);
+        /*
+         * The following lock is to synchronize set_uptodate(), this thread,
+         * and wait_uptodate(), the thread waiting for the membuf to become
+         * uptodate.
+         */
+        std::unique_lock<std::mutex> _lock(lock);
+        flag &= ~MB_Flag::WaitingForUptodate;
+        cvu.notify_all();
+    }
 }
 
 /**
@@ -296,6 +321,38 @@ void membuf::clear_uptodate()
 
     AZLogDebug("Clear uptodate membuf [{}, {}), fd={}",
                offset, offset+length, backing_file_fd);
+}
+
+void membuf::wait_uptodate_pre_unlock()
+{
+    // pre_unlock must be called with membuf lock held.
+    assert(is_locked());
+
+    std::unique_lock<std::mutex> _lock(lock);
+    flag |= MB_Flag::WaitingForUptodate;
+}
+
+void membuf::wait_uptodate_post_unlock()
+{
+    std::unique_lock<std::mutex> _lock(lock);
+    while (!is_uptodate()) {
+        /*
+         * When reading data from the Blob, NFS read may take some time,
+         * we wait for 120 secs and log an error message, to catch any
+         * deadlocks.
+         */
+        if (!cv.wait_for(_lock, std::chrono::seconds(120),
+                         [this]{ return this->is_uptodate(); })) {
+            AZLogError("Timed out waiting for membuf [{}, {}) to become "
+                       "uptodate, re-trying!", offset, offset+length);
+        }
+    }
+
+    AZLogDebug("Successfully waited for membuf [{}, {}), now uptodate!",
+               offset, offset+length);
+
+    // Must never return w/o an uptodate membuf.
+    assert(is_uptodate());
 }
 
 /**

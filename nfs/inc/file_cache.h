@@ -93,10 +93,14 @@ class bytes_chunk_cache;
 namespace MB_Flag {
     enum : uint32_t
     {
-       Uptodate = (1 << 0), // Fit for reading.
-       Locked   = (1 << 1), // Exclusive access for updating membuf data.
-       Dirty    = (1 << 2), // Data in membuf is newer than the Blob.
-       Flushing = (1 << 3), // Data from dirty membuf is being synced to Blob.
+       Uptodate           = (1 << 0), // Fit for reading.
+       Locked             = (1 << 1), // Exclusive access for updating membuf
+                                      // data.
+       Dirty              = (1 << 2), // Data in membuf is newer than the Blob.
+       Flushing           = (1 << 3), // Data from dirty membuf is being synced
+                                      // to Blob.
+       WaitingForUptodate = (1 << 4), // At least one thread is waiting for
+                                      // this membuf to become uptodate.
     };
 }
 
@@ -234,6 +238,15 @@ struct membuf
 
     void set_uptodate();
     void clear_uptodate();
+
+    /*
+     * wait-for-uptodate is a two step operation, the pre_unlock must be called
+     * with the membuf locked while the post_unlock must be called after
+     * releasing the membuf lock. post_unlock is the one that does the actual
+     * waiting, if needed.
+     */
+    void wait_uptodate_pre_unlock();
+    void wait_uptodate_post_unlock();
 
     bool is_locked() const
     {
@@ -415,6 +428,9 @@ private:
 
     // For managing threads waiting on MB_Flag::Locked.
     std::condition_variable cv;
+
+    // For managing threads waiting for MB_Flag::Uptodate.
+    std::condition_variable cvu;
 
     /*
      * Incremented by bytes_chunk_cache::get() before returning a membuf to
