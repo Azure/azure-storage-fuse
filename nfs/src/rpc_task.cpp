@@ -357,6 +357,7 @@ void rpc_task::init_readdir(fuse_req *request,
                             fuse_ino_t ino,
                             size_t size,
                             off_t offset,
+                            off_t target_offset,
                             struct fuse_file_info *file)
 {
     assert(get_op_type() == FUSE_READDIR);
@@ -364,6 +365,7 @@ void rpc_task::init_readdir(fuse_req *request,
     rpc_api->readdir_task.set_ino(ino);
     rpc_api->readdir_task.set_size(size);
     rpc_api->readdir_task.set_offset(offset);
+    rpc_api->readdir_task.set_target_offset(target_offset);
     rpc_api->readdir_task.set_fuse_file(file);
 
     fh_hash = get_client()->get_nfs_inode_from_ino(ino)->get_crc();
@@ -373,6 +375,7 @@ void rpc_task::init_readdirplus(fuse_req *request,
                                 fuse_ino_t ino,
                                 size_t size,
                                 off_t offset,
+                                off_t target_offset,
                                 struct fuse_file_info *file)
 {
     assert(get_op_type() == FUSE_READDIRPLUS);
@@ -380,6 +383,7 @@ void rpc_task::init_readdirplus(fuse_req *request,
     rpc_api->readdir_task.set_ino(ino);
     rpc_api->readdir_task.set_size(size);
     rpc_api->readdir_task.set_offset(offset);
+    rpc_api->readdir_task.set_target_offset(target_offset);
     rpc_api->readdir_task.set_fuse_file(file);
 
     fh_hash = get_client()->get_nfs_inode_from_ino(ino)->get_crc();
@@ -2660,6 +2664,12 @@ static void readdir_callback(
     int num_dirents = 0;
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
+    // Last valid offset seen by this callback.
+    off_t last_valid_offset = task->rpc_api->readdir_task.get_offset();
+    
+    // We only want to send to fuse when we see a new entry.
+    bool has_new_entry = false;
+    
     /*
      * Now that the request has completed, we can query libnfs for the
      * dispatch time.
@@ -2689,6 +2699,8 @@ static void readdir_callback(
                 break;
             }
 #endif
+            
+            last_valid_offset = entry->cookie;
             /*
              * Keep updating eof_cookie, when we exit the loop we will have
              * eof_cookie set correctly.
@@ -2739,10 +2751,29 @@ static void readdir_callback(
             dircache_handle->add(dir_entry);
 
             /*
-             * Add it to the directory_entry vector but ONLY upto the byte
+             * If this is a reenumeration callback, the target_offset would
+             * be set to the "bad cookie" otherwise target_offset is 0.
+             * If we see something new here, this means either this is a 
+             * fresh call or the server succeeded to cross the bad_cookie this
+             * time.In either case, we need to return to fuse.
+             */
+            has_new_entry = (((off_t)entry->cookie >= 
+                               task->rpc_api->readdir_task.get_target_offset()));
+
+            if (has_new_entry) {
+                /*
+                 * Reset the target offset as reenumeration has stopped after this.
+                 * We do this for sanity here.
+                 */ 
+                task->rpc_api->readdir_task.set_target_offset(0);
+            }
+
+            /*
+             * If we found an entry that has not been sent before, we need to
+             * add it to the directory_entry vector but ONLY upto the byte
              * limit requested by fuse readdir call.
              */
-            if (rem_size >= 0) {
+            if (has_new_entry && rem_size >= 0) {
                 rem_size -= dir_entry->get_fuse_buf_size(false /* readdirplus */);
                 if (rem_size >= 0) {
                     readdirentries.push_back(dir_entry);
@@ -2761,6 +2792,18 @@ static void readdir_callback(
         dircache_handle->set_cookieverf(&res->READDIR3res_u.resok.cookieverf);
 
         if (eof) {
+            if (!has_new_entry) {
+                /*
+                 * We have reached eof however, we have not seen any new
+                 * entries, this means we are reenumerating and the directory
+                 * has shrunk after we started. Since, we have to respond to the
+                 * original fuse call, we need to send an error here.
+                 */
+                
+                task->reply_error(EIO);
+                return;
+            }
+
             /*
              * If we pass the last cookie or beyond it, then server won't
              * return any directory entries, but it'll set eof to true.
@@ -2788,11 +2831,67 @@ static void readdir_callback(
             }
         }
 
-        task->send_readdir_response(readdirentries);
+        // Only send to fuse if we have seen new entries.
+        if(has_new_entry) {
+            task->send_readdir_response(readdirentries);
+        }
+
     } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
         task->get_client()->jukebox_retry(task);
+        return;
+    } else if (NFS_STATUS(res) == NFS3ERR_BAD_COOKIE) {
+        /*
+         * We have received a bad cookie error, we have to restart enumeration 
+         * until either the server returns a valid response or we reach eof. 
+         * If we keep getting bad cookie we will keep on reenumerating forever.
+         */
+        last_valid_offset = 0;
+        
+        /*
+         * We need to maintain the monotonocity of the target_offset
+         * because it represents the offsets already sent to fuse as part of 
+         * this enumeration. This protects us from sending duplicate entries
+         * to fuse if we receive bad_cookie before we reach the target during
+         * reenumeration. 
+         */
+        task->rpc_api->readdir_task.set_target_offset(
+                                    std::max(task->rpc_api->readdir_task.get_offset() + 1, 
+                                    task->rpc_api->readdir_task.get_target_offset()));
     } else {
         task->reply_error(status);
+        return;
+    }
+
+ 
+    /*
+     * We have not seen a new entry and the call has not failed hence, this is a
+     * reenumeration call and we have not reached the target_offset yet. We have to
+     * start another readdir call for the next batch. 
+     */
+    if (!has_new_entry) {
+        struct rpc_task *child_tsk =
+            task->get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_READDIR);
+        
+        child_tsk->init_readdir(
+            task->rpc_api->req,
+            task->rpc_api->readdir_task.get_ino(),
+            task->rpc_api->readdir_task.get_size(),
+            last_valid_offset,
+            task->rpc_api->readdir_task.get_target_offset(),
+            task->rpc_api->readdir_task.get_fuse_file());
+
+        /*
+         * Set the parent task of the child to the parent of the
+         * current RPC task. This is required if the current task itself
+         * is one of the child tasks running part of the request.
+         */
+        child_tsk->rpc_api->parent_task = task->rpc_api->parent_task;
+        
+        /*
+         * This will orchestrate a new readdir call and we will handle the response
+         * in the callback. We already ensure we do not send duplicate entries to fuse. 
+         */
+        child_tsk->fetch_readdir_entries_from_server();
     }
 }
 
@@ -2827,6 +2926,12 @@ static void readdirplus_callback(
     int num_dirents = 0;
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
+    // Last valid offset seen by this callback.
+    off_t last_valid_offset = task->rpc_api->readdir_task.get_offset();
+    
+    // We only want to send to fuse when we see a new entry.
+    bool has_new_entry = false;
+
     /*
      * Now that the request has completed, we can query libnfs for the
      * dispatch time.
@@ -2857,6 +2962,8 @@ static void readdirplus_callback(
                 break;
             }
 #endif
+            last_valid_offset = entry->cookie;
+
             const struct fattr3 *fattr = nullptr;
             const bool is_dot_or_dotdot =
                 directory_entry::is_dot_or_dotdot(entry->name);
@@ -2959,11 +3066,31 @@ static void readdirplus_callback(
             // Add to readdirectory_cache for future use.
             dircache_handle->add(dir_entry);
 
+            
             /*
-             * Add it to the directory_entry vector but ONLY upto the byte
+             * If this is a reenumeration callback, the target_offset would
+             * be set to the "bad cookie" otherwise target_offset is 0.
+             * If we see something new here, this means either this is a 
+             * fresh call or the server succeeded to cross the bad_cookie this
+             * time.In either case, we need to return to fuse.
+             */
+            has_new_entry = (((off_t)entry->cookie >= 
+                               task->rpc_api->readdir_task.get_target_offset()));
+
+            if (has_new_entry) {
+                /*
+                 * Reset the target offset as reenumeration has stopped after this.
+                 * We do this for sanity here.
+                 */ 
+                task->rpc_api->readdir_task.set_target_offset(0);
+            }
+
+            /*
+             * If we found an entry that has not been sent before, we need to
+             * add it to the directory_entry vector but ONLY upto the byte
              * limit requested by fuse readdirplus call.
              */
-            if (rem_size >= 0) {
+            if (is_new_entry && rem_size >= 0) {
                 rem_size -= dir_entry->get_fuse_buf_size(true /* readdirplus */);
                 if (rem_size >= 0) {
                     /*
@@ -3021,6 +3148,18 @@ static void readdirplus_callback(
         dircache_handle->set_cookieverf(&res->READDIRPLUS3res_u.resok.cookieverf);
 
         if (eof) {
+            if (!has_new_entry) {
+                /*
+                 * We have reached eof however, we have not seen any new
+                 * entries, this means we are reenumerating and the directory
+                 * has shrunk after we started. Since, we have to respond to the
+                 * original fuse call, we need to send an error here.
+                 */
+                
+                task->reply_error(EIO);
+                return;
+            }
+
             /*
              * If we pass the last cookie or beyond it, then server won't
              * return any directory entries, but it'll set eof to true.
@@ -3048,11 +3187,66 @@ static void readdirplus_callback(
             }
         }
 
-        task->send_readdir_response(readdirentries);
+        // Only send to fuse if we have seen new entries.
+        if(has_new_entry) {
+            task->send_readdir_response(readdirentries);
+        }
     } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
         task->get_client()->jukebox_retry(task);
+        return;
+    } else if (NFS_STATUS(res) == NFS3ERR_BAD_COOKIE) {
+        
+        /*
+         * We have received a bad cookie error, we have to restart enumeration 
+         * until either the server returns a valid response or we reach eof. 
+         * If we keep getting bad cookie we will keep on reenumerating forever.
+         */
+        last_valid_offset = 0;
+        
+        /*
+         * We need to maintain the monotonocity of the target_offset
+         * because it represents the offsets already sent to fuse as part of 
+         * this enumeration. This protects us from sending duplicate entries
+         * to fuse if we receive bad_cookie before we reach the target during
+         * reenumeration. 
+         */
+        task->rpc_api->readdir_task.set_target_offset(
+                                    std::max(task->rpc_api->readdir_task.get_offset() + 1, 
+                                    task->rpc_api->readdir_task.get_target_offset()));
     } else {
         task->reply_error(status);
+        return;
+    }
+
+    /*
+     * We have not seen a new entry and the call has not failed hence, this is a
+     * reenumeration call and we have not reached the target_offset yet. We have to
+     * start another readdir call for the next batch. 
+     */
+    if (!is_new_entry) {
+        // Create a new child task to carry out this request.
+        struct rpc_task *child_tsk =
+            task->get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_READDIRPLUS);
+        child_tsk->init_readdirplus(
+            task->rpc_api->req,
+            task->rpc_api->readdir_task.get_ino(),
+            task->rpc_api->readdir_task.get_size(),
+            last_valid_offset,
+            task->rpc_api->readdir_task.get_target_offset(),
+            task->rpc_api->readdir_task.get_fuse_file());
+
+        /*
+         * Set the parent task of the child to the parent of the
+         * current RPC task. This is required if the current task itself
+         * is one of the child tasks running part of the request.
+         */
+        child_tsk->rpc_api->parent_task = task->rpc_api->parent_task;
+
+        /*
+         * This will orchestrate a new readdir call and we will handle the response
+         * in the callback. We already ensure we do not send duplicate entries to fuse. 
+         */
+        child_tsk->fetch_readdirplus_entries_from_server();
     }
 }
 
