@@ -1,3 +1,4 @@
+# sample config to test the custom component
 allow-other: true
 
 logging:
@@ -10,23 +11,20 @@ components:
   - test1
   - test2
 
+test1:
+  block-size-mb: 16
+
+test2:
+  block-size-mb: 16
 libfuse:
   attribute-expiration-sec: 120
   entry-expiration-sec: 120
   negative-entry-expiration-sec: 240
 
-file_cache:
-  # Required
-  path: /tmp1/cache
-  timeout-sec: 120
-
+block_cache:
+  block-size-mb: 16
+  path: /tmp/cache
+  parallelism: 128
 
 attr_cache:
   timeout-sec: 7200
-
-azstorage:
-  type: block
-  account-name: shimtestsa
-  endpoint: shimtestsa.blob.core.windows.net
-  mode: azcli
-  container: test-blobfuse

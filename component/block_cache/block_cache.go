@@ -1350,9 +1350,10 @@ func (bc *BlockCache) upload(item *workItem) {
 
 	// This block is updated so we need to stage it now
 	err := bc.NextComponent().StageData(internal.StageDataOptions{
-		Name: item.handle.Path,
-		Data: item.block.data[0 : item.block.endIndex-item.block.offset],
-		Id:   item.blockId})
+		Name:   item.handle.Path,
+		Data:   item.block.data[0 : item.block.endIndex-item.block.offset],
+		Offset: uint64(item.block.id),
+		Id:     item.blockId})
 	if err != nil {
 		// Fail to write the data so just reschedule this request
 		log.Err("BlockCache::upload : Failed to write %v=>%s from offset %v [%s]", item.handle.ID, item.handle.Path, item.block.id, err.Error())
@@ -1535,9 +1536,10 @@ func (bc *BlockCache) stageZeroBlock(handle *handlemap.Handle, tryCnt int) (stri
 
 	log.Debug("BlockCache::stageZeroBlock : Staging zero block for %v=>%v, try = %v", handle.ID, handle.Path, tryCnt)
 	err := bc.NextComponent().StageData(internal.StageDataOptions{
-		Name: handle.Path,
-		Data: bc.blockPool.zeroBlock.data[:],
-		Id:   id,
+		Name:   handle.Path,
+		Data:   bc.blockPool.zeroBlock.data[:],
+		Offset: 0,
+		Id:     id,
 	})
 
 	if err != nil {

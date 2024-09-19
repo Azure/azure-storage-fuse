@@ -58,4 +58,6 @@ require (
 
 replace github.com/spf13/cobra => github.com/gapra-msft/cobra v1.4.1-0.20220411185530-5b83e8ba06dd
 
+// replace github.com/Azure/azure-storage-fuse/v2/component/custom => ../component/custom
+
 //replace github.com/Azure/azure-storage-azcopy/v10 v10.19.1-0.20230717101935-ab8ff0a85e48 => <local path>/azure-storage-azcopy
