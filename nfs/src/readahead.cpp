@@ -170,6 +170,8 @@ static void readahead_callback (
 
         goto delete_ctx;
     } else {
+        UPDATE_INODE_ATTR(inode, res->READ3res_u.resok.file_attributes);
+
         /*
          * Only first read call would have bc->pvt == 0, for subsequent calls
          * we will have num_backend_calls_issued > 1.
@@ -301,22 +303,48 @@ static void readahead_callback (
          * this byte_chunk set to empty. Only such reads should set the uptodate
          * flag.
          */
-        AZLogDebug("Setting uptodate flag. off: {}, len: {}",
-                   bc->offset, bc->length);
+        AZLogDebug("[{}] Setting uptodate flag for membuf [{}, {})",
+                   ino, bc->offset, bc->offset + bc->length);
 
         assert(bc->maps_full_membuf());
         bc->get_membuf()->set_uptodate();
     } else {
-        AZLogDebug("Not updating uptodate flag. off: {}, len: {}",
-                   bc->offset, bc->length);
+        bool set_uptodate = false;
         /*
          * If we got eof in a partial read, release the non-existent
          * portion of the chunk.
          */
         if (bc->is_empty && (bc->length > bc->pvt) &&
             res->READ3res_u.resok.eof) {
-            read_cache->release(bc->offset + bc->pvt,
-                                bc->length - bc->pvt);
+            assert(res->READ3res_u.resok.count < issued_length);
+
+            const uint64_t released_bytes =
+                read_cache->release(bc->offset + bc->pvt,
+                                    bc->length - bc->pvt);
+                /*
+                 * If we are able to successfully release all the extra bytes
+                 * from the bytes_chunk, that means there's no other thread
+                 * actively performing IOs to the underlying membuf, so we can
+                 * mark it uptodate.
+                 */
+                if (released_bytes == (bc->length - bc->pvt)) {
+                    AZLogWarn("[{}] Setting uptodate flag for membuf [{}, {}), "
+                              "after readahead hit eof, requested [{}, {}), "
+                              "got [{}, {})",
+                              ino,
+                              bc->offset, bc->offset + bc->length,
+                              issued_offset,
+                              issued_offset + issued_length,
+                              issued_offset,
+                              issued_offset + res->READ3res_u.resok.count);
+                    bc->get_membuf()->set_uptodate();
+                    set_uptodate = true;
+                }
+        }
+
+        if (!set_uptodate) {
+            AZLogDebug("[{}] Not updating uptodate flag for membuf [{}, {})",
+                       ino, bc->offset, bc->offset + bc->length);
         }
     }
 
@@ -341,6 +369,68 @@ delete_ctx:
     inode->decref();
 }
 
+int64_t ra_state::get_next_ra(uint64_t length)
+{
+    if (length == 0) {
+        length = def_ra_size;
+    }
+
+    /*
+     * RA is disabled?
+     */
+    if (length == 0) {
+        return -1;
+    }
+
+    /*
+     * Don't perform readahead beyond eof.
+     * If we don't have a file size estimate (probably the attr cache is too
+     * old) then also we play safe and do not perform readahead.
+     */
+    const int64_t filesize =
+        inode ? inode->get_file_size(): AZNFSC_MAX_FILE_SIZE;
+    assert(filesize >= 0 || filesize == -1);
+    if ((filesize == -1) ||
+        ((int64_t) (last_byte_readahead + 1 + length) > filesize)) {
+        return -2;
+    }
+
+    /*
+     * Application read pattern is known to be non-sequential?
+     */
+    if (!is_sequential()) {
+        return -3;
+    }
+
+    /*
+     * If we already have ra_bytes readahead bytes read, don't readahead
+     * more.
+     */
+    if ((last_byte_readahead + length) > (max_byte_read + ra_bytes)) {
+        return -4;
+    }
+
+    /*
+     * Keep readahead bytes issued always less than ra_bytes.
+     */
+    if ((ra_ongoing += length) > ra_bytes) {
+        assert(ra_ongoing >= length);
+        ra_ongoing -= length;
+        return -5;
+    }
+
+    std::unique_lock<std::shared_mutex> _lock(lock);
+
+    /*
+     * Atomically update last_byte_readahead, as we don't want to return
+     * duplicate readahead offset to multiple calls.
+     */
+    const uint64_t next_ra =
+        std::atomic_exchange(&last_byte_readahead, last_byte_readahead + length) + 1;
+
+    assert((int64_t) next_ra > 0);
+    return next_ra;
+}
 /*
  * TODO: Add readahead stats.
  */

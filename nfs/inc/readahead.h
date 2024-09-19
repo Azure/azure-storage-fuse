@@ -350,59 +350,7 @@ private:
      *       offsets beyond eof. It's the caller's responsibility to handle
      *       that.
      */
-    int64_t get_next_ra(uint64_t length = 0)
-    {
-        if (length == 0) {
-            length = def_ra_size;
-        }
-
-        /*
-         * RA is disabled?
-         */
-        if (length == 0) {
-                return -1;
-        }
-
-        if ((last_byte_readahead + 1 + length) > AZNFSC_MAX_FILE_SIZE) {
-            return -2;
-        }
-
-        /*
-         * Application read pattern is known to be non-sequential?
-         */
-        if (!is_sequential()) {
-            return -3;
-        }
-
-        /*
-         * If we already have ra_bytes readahead bytes read, don't readahead
-         * more.
-         */
-        if ((last_byte_readahead + length) > (max_byte_read + ra_bytes)) {
-            return -4;
-        }
-
-        /*
-         * Keep readahead bytes issued always less than ra_bytes.
-         */
-        if ((ra_ongoing += length) > ra_bytes) {
-            assert(ra_ongoing >= length);
-            ra_ongoing -= length;
-            return -5;
-        }
-
-        std::unique_lock<std::shared_mutex> _lock(lock);
-
-        /*
-         * Atomically update last_byte_readahead, as we don't want to return
-         * duplicate readahead offset to multiple calls.
-         */
-        const uint64_t next_ra =
-            std::atomic_exchange(&last_byte_readahead, last_byte_readahead + length) + 1;
-
-        assert((int64_t) next_ra > 0);
-        return next_ra;
-    }
+    int64_t get_next_ra(uint64_t length = 0);
 
     bool is_sequential_nolock() const
     {

@@ -356,6 +356,30 @@ struct nfs_inode
     }
 
     /**
+     * Get the estimated file size based on the cached attributes. Note that
+     * this is based on cached attributes which might be old and hence the
+     * size may not match the recent size, caller should use this just as an
+     * estimate and should not use it for any hard failures that may be in
+     * violation of the protocol.
+     * If cached attributes have expired (as per the configured actimeo) then
+     * it returns -1 and caller must handle it.
+     */
+    int64_t get_file_size() const
+    {
+        /*
+         * This is set in the constructor as a newly created nfs_inode always
+         * has attributes cached in nfs_inode::attr.
+         */
+        assert(attr_timeout_timestamp != -1);
+
+        const int64_t now_msecs = get_current_msecs();
+        const bool attr_stale = (attr_timeout_timestamp < now_msecs);
+        assert((size_t) attr.st_size <= AZNFSC_MAX_FILE_SIZE);
+
+        return attr_stale ? -1 : attr.st_size;
+    }
+
+    /**
      * Check if [offset, offset+length) lies within the current RA window.
      * bytes_chunk_cache would call this to find out if a particular membuf
      * can be purged. Membufs in RA window would mostly be used soon and
@@ -686,6 +710,20 @@ struct nfs_inode
     {
         std::unique_lock<std::shared_mutex> lock(ilock);
         return update_nolock(fattr);
+    }
+
+    /**
+     * Force update inode->attr with fattr.
+     * Unlike update_nolock() it doesn't invalidate the cache.
+     * Use it when you know that cache need not be invalidated, as it's
+     * already done.
+     */
+    void force_update_attr_nolock(const struct fattr3& fattr);
+
+    void force_update_attr(const struct fattr3& fattr)
+    {
+        std::unique_lock<std::shared_mutex> lock(ilock);
+        force_update_attr_nolock(fattr);
     }
 
     /**

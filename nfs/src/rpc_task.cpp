@@ -413,6 +413,8 @@ void rpc_task::init_read(fuse_req *request,
  *       attributes o/w, we must call nfs_inode::update() to update the
  *       currently cached attributes. That will invalidate the cache if newly
  *       received attributes indicate file data has changed.
+ * Update: This is done for success returns, but we need it for failed return
+ *       too.
  */
 
 static void getattr_callback(
@@ -471,6 +473,11 @@ static void lookup_callback(
 
     INJECT_JUKEBOX(res, task);
 
+    // Parent directory inode.
+    const fuse_ino_t ino =
+        task->rpc_api->lookup_task.get_parent_ino();
+    struct nfs_inode *inode =
+        task->get_client()->get_nfs_inode_from_ino(ino);
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
     /*
@@ -496,6 +503,12 @@ static void lookup_callback(
             nullptr /* fattr */,
             nullptr);
     } else if (status == 0) {
+        /*
+         * Update attributes of parent directory returned in postop
+         * attributes.
+         */
+        UPDATE_INODE_ATTR(inode, res->LOOKUP3res_u.resok.dir_attributes);
+
         assert(res->LOOKUP3res_u.resok.obj_attributes.attributes_follow);
         task->get_client()->reply_entry(
             task,
@@ -522,6 +535,10 @@ void access_callback(
 
     INJECT_JUKEBOX(res, task);
 
+    const fuse_ino_t ino =
+        task->rpc_api->access_task.get_ino();
+    struct nfs_inode *inode =
+        task->get_client()->get_nfs_inode_from_ino(ino);
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
     /*
@@ -533,6 +550,9 @@ void access_callback(
     if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
         task->get_client()->jukebox_retry(task);
     } else {
+        if (status == 0) {
+            UPDATE_INODE_ATTR(inode, res->ACCESS3res_u.resok.obj_attributes);
+        }
         task->reply_error(status);
     }
 }
@@ -581,6 +601,32 @@ static void write_iov_callback(
 
     // Success case.
     if (status == 0) {
+        /*
+         * WCC implementation.
+         * If pre-op attributes indicate that the file changed since we cached,
+         * it implies some other client updated the file. In this case the best
+         * course of action is to drop our cached data. Note that we drop only
+         * non-dirty data, anyways multiple client writing to the same file
+         * w/o locking would result in undefined data state.
+         *
+         * TODO: Complete this.
+         */
+#if 0
+        if (res->WRITE3res_u.resok.file_wcc.before.attributes_follow) {
+            const wcc_attr pre_attr =
+                res->WRITE3res_u.resok.file_wcc.before.pre_op_attr_u.attributes;
+            inode->update_on_preop(pre_attr);
+        }
+#endif
+
+        /*
+         * Simply update cached attributes per the post-op attributes.
+         */
+        if (res->WRITE3res_u.resok.file_wcc.after.attributes_follow) {
+            inode->force_update_attr(
+                    res->WRITE3res_u.resok.file_wcc.after.post_op_attr_u.attributes);
+        }
+
 #ifdef ENABLE_PRESSURE_POINTS
         /*
          * Short write pressure point.
@@ -762,6 +808,10 @@ static void statfs_callback(
 
     INJECT_JUKEBOX(res, task);
 
+    const fuse_ino_t ino =
+        task->rpc_api->statfs_task.get_ino();
+    struct nfs_inode *inode =
+        task->get_client()->get_nfs_inode_from_ino(ino);
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
     /*
@@ -771,6 +821,8 @@ static void statfs_callback(
     task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
 
     if (status == 0) {
+        UPDATE_INODE_ATTR(inode, res->FSSTAT3res_u.resok.obj_attributes);
+
         struct statvfs st;
         ::memset(&st, 0, sizeof(st));
         st.f_bsize = NFS_BLKSIZE;
@@ -802,6 +854,10 @@ static void createfile_callback(
 
     INJECT_JUKEBOX(res, task);
 
+    const fuse_ino_t ino =
+        task->rpc_api->create_task.get_parent_ino();
+    struct nfs_inode *inode =
+        task->get_client()->get_nfs_inode_from_ino(ino);
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
     /*
@@ -811,6 +867,8 @@ static void createfile_callback(
     task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
 
     if (status == 0) {
+        UPDATE_INODE_ATTR(inode, res->CREATE3res_u.resok.dir_wcc.after);
+
         assert(
             res->CREATE3res_u.resok.obj.handle_follows &&
             res->CREATE3res_u.resok.obj_attributes.attributes_follow);
@@ -853,13 +911,7 @@ static void setattr_callback(
     task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
 
     if (status == 0) {
-        assert(res->SETATTR3res_u.resok.obj_wcc.after.attributes_follow);
-
-        /*
-         * Update the cached inode attributes from the postop attributes
-         * received in this response.
-         */
-        inode->update(res->SETATTR3res_u.resok.obj_wcc.after.post_op_attr_u.attributes);
+        UPDATE_INODE_ATTR(inode, res->SETATTR3res_u.resok.obj_wcc.after);
 
         struct stat st;
 
@@ -892,6 +944,10 @@ void mknod_callback(
 
     INJECT_JUKEBOX(res, task);
 
+    const fuse_ino_t ino =
+        task->rpc_api->mknod_task.get_parent_ino();
+    struct nfs_inode *inode =
+        task->get_client()->get_nfs_inode_from_ino(ino);
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
     /*
@@ -901,6 +957,8 @@ void mknod_callback(
     task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
 
     if (status == 0) {
+        UPDATE_INODE_ATTR(inode, res->CREATE3res_u.resok.dir_wcc.after);
+
         assert(
             res->CREATE3res_u.resok.obj.handle_follows &&
             res->CREATE3res_u.resok.obj_attributes.attributes_follow);
@@ -930,6 +988,10 @@ void mkdir_callback(
 
     INJECT_JUKEBOX(res, task);
 
+    const fuse_ino_t ino =
+        task->rpc_api->mkdir_task.get_parent_ino();
+    struct nfs_inode *inode =
+        task->get_client()->get_nfs_inode_from_ino(ino);
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
     /*
@@ -939,6 +1001,8 @@ void mkdir_callback(
     task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
 
     if (status == 0) {
+        UPDATE_INODE_ATTR(inode, res->MKDIR3res_u.resok.dir_wcc.after);
+
         assert(
             res->MKDIR3res_u.resok.obj.handle_follows &&
             res->MKDIR3res_u.resok.obj_attributes.attributes_follow);
@@ -968,6 +1032,10 @@ void unlink_callback(
 
     INJECT_JUKEBOX(res, task);
 
+    const fuse_ino_t ino =
+        task->rpc_api->unlink_task.get_parent_ino();
+    struct nfs_inode *inode =
+        task->get_client()->get_nfs_inode_from_ino(ino);
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
     /*
@@ -979,6 +1047,10 @@ void unlink_callback(
     if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
         task->get_client()->jukebox_retry(task);
     } else {
+        if (status == 0) {
+            UPDATE_INODE_ATTR(inode, res->REMOVE3res_u.resok.dir_wcc.after);
+        }
+
         task->reply_error(status);
     }
 }
@@ -996,6 +1068,10 @@ void rmdir_callback(
 
     INJECT_JUKEBOX(res, task);
 
+    const fuse_ino_t ino =
+        task->rpc_api->rmdir_task.get_parent_ino();
+    struct nfs_inode *inode =
+        task->get_client()->get_nfs_inode_from_ino(ino);
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
     /*
@@ -1007,6 +1083,9 @@ void rmdir_callback(
     if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
         task->get_client()->jukebox_retry(task);
     } else {
+        if (status == 0) {
+            UPDATE_INODE_ATTR(inode, res->RMDIR3res_u.resok.dir_wcc.after);
+        }
         task->reply_error(status);
     }
 }
@@ -1024,6 +1103,10 @@ void symlink_callback(
 
     INJECT_JUKEBOX(res, task);
 
+    const fuse_ino_t ino =
+        task->rpc_api->symlink_task.get_parent_ino();
+    struct nfs_inode *inode =
+        task->get_client()->get_nfs_inode_from_ino(ino);
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
     /*
@@ -1033,6 +1116,8 @@ void symlink_callback(
     task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
 
     if (status == 0) {
+        UPDATE_INODE_ATTR(inode, res->SYMLINK3res_u.resok.dir_wcc.after);
+
         assert(
             res->SYMLINK3res_u.resok.obj.handle_follows &&
             res->SYMLINK3res_u.resok.obj_attributes.attributes_follow);
@@ -1049,6 +1134,9 @@ void symlink_callback(
     }
 }
 
+/*
+ * TODO: Add postop attr handling.
+ */
 void rename_callback(
     struct rpc_context *rpc,
     int rpc_status,
@@ -1131,6 +1219,10 @@ void readlink_callback(
 
     auto res = (READLINK3res*) data;
 
+    const fuse_ino_t ino =
+        task->rpc_api->readlink_task.get_ino();
+    struct nfs_inode *inode =
+        task->get_client()->get_nfs_inode_from_ino(ino);
     INJECT_JUKEBOX(res, task);
 
     const int status = task->status(rpc_status, NFS_STATUS(res));
@@ -1142,6 +1234,8 @@ void readlink_callback(
     task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
 
     if (status == 0) {
+        UPDATE_INODE_ATTR(inode, res->READLINK3res_u.resok.symlink_attributes);
+
         task->reply_readlink(res->READLINK3res_u.resok.data);
     } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
         task->get_client()->jukebox_retry(task);
@@ -2213,6 +2307,8 @@ static void read_callback(
     task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
 
     if (status == 0) {
+        UPDATE_INODE_ATTR(inode, res->READ3res_u.resok.file_attributes);
+
 #ifdef ENABLE_PRESSURE_POINTS
         /*
          * Short read pressure point, skip when eof received.
@@ -2241,13 +2337,13 @@ static void read_callback(
         bc->pvt += res->READ3res_u.resok.count;
         assert(bc->pvt <= bc->length);
 
-        AZLogDebug("[{}] read_callback: {}Read completed for offset: {} "
-                   " size: {} Bytes read: {} eof: {}, total bytes read till "
+        AZLogDebug("[{}] read_callback: {}Read completed for [{}, {}), "
+                   "Bytes read: {} eof: {}, total bytes read till "
                    "now: {} of {} for [{}, {}) num_backend_calls_issued: {}",
                    ino,
                    is_partial_read ? "Partial " : "",
                    issued_offset,
-                   issued_length,
+                   issued_offset + issued_length,
                    res->READ3res_u.resok.count,
                    res->READ3res_u.resok.eof,
                    bc->pvt,
@@ -2370,22 +2466,50 @@ static void read_callback(
              * Also the uptodate flag should be set only if we have read
              * the entire membuf.
              */
-            AZLogDebug("[{}] Setting uptodate flag. offset: {}, length: {}",
-                       ino,
-                       task->rpc_api->read_task.get_offset(),
-                       task->rpc_api->read_task.get_size());
+            AZLogDebug("[{}] Setting uptodate flag for membuf [{}, {})",
+                       ino, bc->offset, bc->offset + bc->length);
 
             assert(bc->maps_full_membuf());
             bc->get_membuf()->set_uptodate();
         } else {
+            bool set_uptodate = false;
+
             /*
              * If we got eof in a partial read, release the non-existent
              * portion of the chunk.
              */
             if (bc->is_empty && (bc->length > bc->pvt) &&
                 res->READ3res_u.resok.eof) {
-                filecache_handle->release(bc->offset + bc->pvt,
-                                          bc->length - bc->pvt);
+                assert(res->READ3res_u.resok.count < issued_length);
+
+                const uint64_t released_bytes =
+                    filecache_handle->release(bc->offset + bc->pvt,
+                                              bc->length - bc->pvt);
+                /*
+                 * If we are able to successfully release all the extra bytes
+                 * from the bytes_chunk, that means there's no other thread
+                 * actively performing IOs to the underlying membuf, so we can
+                 * mark it uptodate.
+                 */
+                assert(released_bytes <= (bc->length - bc->pvt));
+                if (released_bytes == (bc->length - bc->pvt)) {
+                    AZLogWarn("[{}] Setting uptodate flag for membuf [{}, {}) "
+                              "after read hit eof, requested [{}, {}), "
+                              "got [{}, {})",
+                              ino,
+                              bc->offset, bc->offset + bc->length,
+                              issued_offset,
+                              issued_offset + issued_length,
+                              issued_offset,
+                              issued_offset + res->READ3res_u.resok.count);
+                    bc->get_membuf()->set_uptodate();
+                    set_uptodate = true;
+                }
+            }
+
+            if (!set_uptodate) {
+                AZLogDebug("[{}] Not setting uptodate flag for membuf [{}, {})",
+                           ino, bc->offset, bc->offset + bc->length);
             }
         }
     } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {

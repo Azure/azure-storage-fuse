@@ -823,6 +823,21 @@ bool nfs_inode::update_nolock(const struct fattr3& fattr)
     return true;
 }
 
+void nfs_inode::force_update_attr_nolock(const struct fattr3& fattr)
+{
+    /*
+     * Update cached attributes and also reset the attr_timeout_secs and
+     * attr_timeout_timestamp since the attributes have changed.
+     */
+    get_client()->stat_from_fattr3(&attr, &fattr);
+    attr_timeout_secs = get_actimeo_min();
+    attr_timeout_timestamp = get_current_msecs() + attr_timeout_secs*1000;
+
+    // file type should not change.
+    assert((attr.st_mode & S_IFMT) == file_type);
+}
+
+
 /**
  * Caller must hold exclusive inode lock.
  */

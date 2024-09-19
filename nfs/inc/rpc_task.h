@@ -21,6 +21,20 @@
 // Maximum number of simultaneous async rpc tasks.
 #define MAX_ASYNC_RPC_TASKS 1024
 
+/*
+ * Update cached inode attributes from freshly received postop attributes.
+ * Blob NFS server must always returns postop attributes for success returns,
+ * hence assert to check.
+ */
+#define UPDATE_INODE_ATTR(inode, postop) \
+do { \
+    assert(inode->magic == NFS_INODE_MAGIC); \
+    assert(postop.attributes_follow); \
+    if (postop.attributes_follow) { \
+        inode->update(postop.post_op_attr_u.attributes); \
+    } \
+} while (0)
+
 /**
  * LOOKUP RPC task definition.
  */
