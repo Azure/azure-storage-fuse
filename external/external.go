@@ -12,21 +12,21 @@ const (
 	PropFlagEmptyDir
 	PropFlagSymlink
 	PropFlagMetadataRetrieved
-	PropFlagModeDefault // TODO: Does this sound better as ModeDefault or DefaultMode? The getter would be IsModeDefault or IsDefaultMode
+	PropFlagModeDefault
 )
 
-// // Type aliases for base component
+// Type aliases for base component
 type BaseComponent = internal.BaseComponent
 
-// // Type aliases for component
+// Type aliases for component
 type Component = internal.Component
 
 type ComponentPriority = internal.ComponentPriority
 
-// // Type aliases for attributes
+// Type aliases for attributes
 type ObjAttr = internal.ObjAttr
 
-// // Type aliases for component options
+// Type aliases for component options
 type CreateDirOptions = internal.CreateDirOptions
 type DeleteDirOptions = internal.DeleteDirOptions
 type IsDirEmptyOptions = internal.IsDirEmptyOptions
@@ -63,7 +63,7 @@ type CommitDataOptions = internal.CommitDataOptions
 type CommittedBlock = internal.CommittedBlock
 type CommittedBlockList = internal.CommittedBlockList
 
-// // Type aliases for pipeline
+// Type aliases for pipeline
 type Handle = handlemap.Handle
 
 // Wrapper function to expose AddComponent
