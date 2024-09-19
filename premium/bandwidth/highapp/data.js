@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1726556885350,
+  "lastUpdate": 1726744684700,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -199,6 +199,40 @@ window.BENCHMARK_DATA = {
           {
             "name": "create_10_20GB_file",
             "value": 3.8184541846498554,
+            "unit": "GiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "64532198+vibhansa-msft@users.noreply.github.com",
+            "name": "Vikas Bhansali",
+            "username": "vibhansa-msft"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "42b3b19b42dbe36e5b37e7b4d81115c6a319b277",
+          "message": "Upgrading go version to 1.23.1 (#1521)\n\n* Upgrading go version to 1.23.1:",
+          "timestamp": "2024-09-19T15:28:10+05:30",
+          "tree_id": "b1f7ff028645e4ea33f7431a9f815fa862d2445c",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/42b3b19b42dbe36e5b37e7b4d81115c6a319b277"
+        },
+        "date": 1726744684465,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "read_10_20GB_file",
+            "value": 3.5229349096070735,
+            "unit": "GiB/s"
+          },
+          {
+            "name": "create_10_20GB_file",
+            "value": 3.824956538615981,
             "unit": "GiB/s"
           }
         ]
