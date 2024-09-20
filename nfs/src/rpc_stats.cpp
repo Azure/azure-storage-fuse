@@ -90,6 +90,26 @@ void rpc_stats_az::dump_stats()
            ",mountport=" + std::to_string(mo.mount_port) +
            std::string(",mountproto=tcp\n");
 
+    str += "RPC statistics:\n";
+    str += "  " + std::to_string(cum_stats.num_req_sent) +
+                  " RPC requests sent\n";
+    str += "  " + std::to_string(cum_stats.num_resp_rcvd) +
+                  " RPC replies received\n";
+    str += "  " + std::to_string(cum_stats.outqueue_len) +
+                  " RPC requests in libnfs outqueue\n";
+    str += "  " + std::to_string(cum_stats.waitpdu_len) +
+                  " RPC requests in libnfs waitpdu queue\n";
+    str += "  " + std::to_string(cum_stats.num_timedout_in_outqueue) +
+                  " RPC requests timed out in outqueue\n";
+    str += "  " + std::to_string(cum_stats.num_timedout) +
+                  " RPC requests timed out waiting for response\n";
+    str += "  " + std::to_string(cum_stats.num_major_timedout) +
+                  " RPC requests major timed out\n";
+    str += "  " + std::to_string(cum_stats.num_retransmitted) +
+                  " RPC requests retransmitted\n";
+    str += "  " + std::to_string(cum_stats.num_reconnects) +
+                  " Reconnect attempts\n";
+
     str += "File Cache statistics:\n";
     str += "  " + std::to_string(bytes_chunk_cache::get_num_caches()) +
                   " file caches\n";
@@ -115,26 +135,6 @@ void rpc_stats_az::dump_stats()
                   " release calls\n";
     str += "  " + std::to_string(bytes_chunk_cache::bytes_release_g) +
                   " bytes released\n";
-
-    str += "RPC statistics:\n";
-    str += "  " + std::to_string(cum_stats.num_req_sent) +
-                  " RPC requests sent\n";
-    str += "  " + std::to_string(cum_stats.num_resp_rcvd) +
-                  " RPC replies received\n";
-    str += "  " + std::to_string(cum_stats.outqueue_len) +
-                  " RPC requests in libnfs outqueue\n";
-    str += "  " + std::to_string(cum_stats.waitpdu_len) +
-                  " RPC requests in libnfs waitpdu queue\n";
-    str += "  " + std::to_string(cum_stats.num_timedout_in_outqueue) +
-                  " RPC requests timed out in outqueue\n";
-    str += "  " + std::to_string(cum_stats.num_timedout) +
-                  " RPC requests timed out waiting for response\n";
-    str += "  " + std::to_string(cum_stats.num_major_timedout) +
-                  " RPC requests major timed out\n";
-    str += "  " + std::to_string(cum_stats.num_retransmitted) +
-                  " RPC requests retransmitted\n";
-    str += "  " + std::to_string(cum_stats.num_reconnects) +
-                  " Reconnect attempts\n";
 
     str += "Application statistics:\n";
     str += "  " + std::to_string(GET_GBL_STATS(tot_bytes_read)) +

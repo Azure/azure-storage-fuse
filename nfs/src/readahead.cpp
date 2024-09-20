@@ -343,8 +343,10 @@ static void readahead_callback (
         }
 
         if (!set_uptodate) {
-            AZLogDebug("[{}] Not updating uptodate flag for membuf [{}, {})",
-                       ino, bc->offset, bc->offset + bc->length);
+            AZLogDebug("[{}] Not setting uptodate flag for membuf "
+                       "[{}, {}), is_empty={}, bc->length={}, bc->pvt={}",
+                       ino, bc->offset, bc->offset + bc->length,
+                       bc->is_empty, bc->length, bc->pvt);
         }
     }
 
