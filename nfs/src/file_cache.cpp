@@ -293,9 +293,9 @@ void membuf::set_uptodate()
                    "become uptodate, waking all waiters!",
                    offset, offset+length);
         /*
-         * The following lock is to synchronize set_uptodate(), this thread,
-         * and wait_uptodate(), the thread waiting for the membuf to become
-         * uptodate.
+         * The following lock is to synchronize set_uptodate() (this thread),
+         * and wait_uptodate() (the thread waiting for the membuf to become
+         * uptodate).
          */
         std::unique_lock<std::mutex> _lock(lock);
         flag &= ~MB_Flag::WaitingForUptodate;
@@ -337,8 +337,8 @@ void membuf::wait_uptodate_post_unlock()
     std::unique_lock<std::mutex> _lock(lock);
     while (!is_uptodate()) {
         /*
-         * When reading data from the Blob, NFS read may take some time,
-         * we wait for 120 secs and log an error message, to catch any
+         * Give other thread ample time to perform the IO.
+         * We wait for 120 secs and log an error message, to catch any
          * deadlocks.
          */
         if (!cv.wait_for(_lock, std::chrono::seconds(120),
@@ -348,7 +348,7 @@ void membuf::wait_uptodate_post_unlock()
         }
     }
 
-    AZLogDebug("Successfully waited for membuf [{}, {}), now uptodate!",
+    AZLogInfo("Successfully waited for membuf [{}, {}), now uptodate!",
                offset, offset+length);
 
     // Must never return w/o an uptodate membuf.
