@@ -14,6 +14,8 @@ namespace aznfsc {
 /* static */ std::atomic<uint64_t> rpc_stats_az::tot_bytes_read = 0;
 /* static */ std::atomic<uint64_t> rpc_stats_az::bytes_read_from_cache = 0;
 /* static */ std::atomic<uint64_t> rpc_stats_az::bytes_read_ahead = 0;
+/* static */ std::atomic<uint64_t> rpc_stats_az::tot_getattr_reqs = 0;
+/* static */ std::atomic<uint64_t> rpc_stats_az::getattr_served_from_cache = 0;
 
 /* static */
 void rpc_stats_az::dump_stats()
@@ -148,6 +150,14 @@ void rpc_stats_az::dump_stats()
     assert(read_cache_pct <= 100);
     str += "  " + std::to_string(GET_GBL_STATS(bytes_read_ahead)) +
                   " bytes read by readahead\n";
+    const double getattr_cache_pct =
+        tot_getattr_reqs ?
+        ((getattr_served_from_cache * 100) / tot_getattr_reqs) : 0;
+    str += "  " + std::to_string(GET_GBL_STATS(tot_getattr_reqs)) +
+                  " getattr requests received\n";
+    str += "  " + std::to_string(GET_GBL_STATS(getattr_served_from_cache)) +
+                  " getattr served from cache (" +
+                  std::to_string(getattr_cache_pct) + "%)\n";
 
 #define DUMP_OP(opcode) \
 do { \

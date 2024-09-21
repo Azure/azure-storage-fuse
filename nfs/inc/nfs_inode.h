@@ -356,6 +356,23 @@ struct nfs_inode
     }
 
     /**
+     * Checks whether inode->attr is expired as per the current actimeo.
+     */
+    bool attr_cache_expired() const
+    {
+        /*
+         * This is set in the constructor as a newly created nfs_inode always
+         * has attributes cached in nfs_inode::attr.
+         */
+        assert(attr_timeout_timestamp != -1);
+
+        const int64_t now_msecs = get_current_msecs();
+        const bool attr_expired = (attr_timeout_timestamp < now_msecs);
+
+        return attr_expired;
+    }
+
+    /**
      * Get the estimated file size based on the cached attributes. Note that
      * this is based on cached attributes which might be old and hence the
      * size may not match the recent size, caller should use this just as an

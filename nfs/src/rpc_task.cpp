@@ -1441,12 +1441,25 @@ void rpc_task::run_getattr()
 {
     bool rpc_retry;
     auto ino = rpc_api->getattr_task.get_ino();
+    struct nfs_inode *inode = get_client()->get_nfs_inode_from_ino(ino);
     rpc_pdu *pdu = nullptr;
+
+    INC_GBL_STATS(tot_getattr_reqs, 1);
+
+    /*
+     * If inode's cached attribute is valid, use that.
+     */
+    if (!inode->attr_cache_expired()) {
+        INC_GBL_STATS(getattr_served_from_cache, 1);
+        AZLogDebug("[{}] Returning cached attributes", ino);
+        reply_attr(&inode->attr, inode->get_actimeo());
+        return;
+    }
 
     do {
         GETATTR3args args;
 
-        args.object = get_client()->get_nfs_inode_from_ino(ino)->get_fh();
+        args.object = inode->get_fh();
 
         rpc_retry = false;
         stats.on_rpc_issue();
