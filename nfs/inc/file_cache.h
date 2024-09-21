@@ -53,10 +53,13 @@ struct nfs_inode;
  * Since this will not happen much in practice, for now keep it disabled
  * so that we don't have to worry about this complexity.
  *
- * IMPORTANT: If this is enabled we no longer have the simple rule that all
- *            bytes_chunk with is_empty true refer to "full membuf". If we
- *            ever enable this define we need to think about that too.
- *
+ * IMPORTANT: With this is_whole will be set to false for all bytes_chunks
+ *            returned for this range. This makes the cache less effective
+ *            in most situations and unusable in some situations.
+ *            If we decide to enable this we need to also make changes to
+ *            merge the two bytes_chunks into a single bytes_chunk covering
+ *            the entire membuf as soon as all existing users drop their
+ *            inuse count and lock.
  */
 //#define UTILIZE_TAILROOM_FROM_LAST_MEMBUF
 
@@ -116,7 +119,8 @@ struct membuf
      * Three things define a membuf:
      * 1. What offset inside the file it's caching.
      * 2. Count of bytes it's caching.
-     * 3. Backing file fd (in case of file-backed caches).
+     * 3. Memory buffer address where the above data is stored.
+     * 4. Backing file fd (in case of file-backed caches).
      *
      * We also have the bytes_chunk_cache backlink. This is strictly for
      * updating various cache metrics as membuf flags are updated.
@@ -145,7 +149,15 @@ struct membuf
      */
     bytes_chunk_cache *bcc = nullptr;
 
-    // This membuf caches file data in the range [offset, offset+length).
+    /*
+     * This membuf caches file data in the range [offset, offset+length).
+     * These are initialized in the constructor and not changed thereafter.
+     * If user trims the cache, the corresponding chunkmap[]'s offset, length
+     * and buffer_offset are updated accordingly, but the underlying membuf
+     * fields are not changed. This is IMPORTANT as some other bytes_chunk
+     * that we may have returned in the past may be referring to those membufs
+     * and changing those will confuse those users.
+     */
     const uint64_t offset;
     const uint64_t length;
 
@@ -174,8 +186,8 @@ struct membuf
      * This also means that for file-backed caches the actual allocated bytes
      * is "length + (buffer - allocated_buffer)". See allocated_length.
      *
-     * Once set allocated_buffer should not change. For file-backed caches
-     * drop() will munmap() and set allocated_buffer to nullptr.
+     * Once set buffer and allocated_buffer should not change. For file-backed
+     * caches drop() will munmap() and set allocated_buffer to nullptr.
      */
     uint8_t *buffer = nullptr;
     uint8_t *allocated_buffer = nullptr;
@@ -359,16 +371,14 @@ private:
      *    ===============================================
      *    - Any reader that gets a bytes_chunk whose membuf is not uptodate,
      *      must try to read data from the Blob, but only mark it uptodate if
-     *      is_empty was also true for the bytes_chunk. This is because
-     *      is_empty will be true for bytes_chunk representing "full membuf"
+     *      is_whole was also true for the bytes_chunk. This is because
+     *      is_whole will be true for bytes_chunk representing "full membuf"
      *      (see UTILIZE_TAILROOM_FROM_LAST_MEMBUF) and hence they only can
      *      correctly mark the membuf as uptodate. Other readers, if they get
-     *      the lock first, they can issue the Blob read but they cannot mark
-     *      the membuf as uptodate. Note that the first caller to read a byte
-     *      range will always get an is_empty bytes_chunk and it should read
-     *      into the membuf but some other caller might get the lock first and
-     *      hence they may read partial data into the membuf, which will be
-     *      overwritten by the caller with is_empty true.
+     *      the lock first, they can issue the Blob read to update the part
+     *      of membuf referred by their bytes_chunk, and return that data to
+     *      fuse, but they cannot mark the membuf as uptodate, so future users
+     *      cannot benefit from their read.
      *      So, ONLY IF maps_full_membuf() returns true for a bytes_chunk, the
      *      reader MUST mark the membuf uptodate.
      *
@@ -460,7 +470,7 @@ private:
     bytes_chunk_cache *bcc = nullptr;
 
     /*
-     * This is the allocated buffer. The actual buffer where data is stored
+     * This is the underlying membuf. The actual buffer where data is stored
      * can be found by adding buffer_offset to this, and can be retrieved using
      * the convenience function get_buffer(). buffer_offset is typically 0 but
      * it can be non-zero when multiple chunks are referring to the same buffer
@@ -474,16 +484,26 @@ private:
     std::shared_ptr<membuf> alloc_buffer;
 
 public:
-    // Offset from the start of file this chunk represents.
+    /*
+     * Offset from the start of file this chunk represents.
+     * For bytes_chunks stored in chunkmap[] this will be incremented to trim
+     * a bytes_chunk from the left.
+     */
     uint64_t offset = 0;
 
     /*
      * Length of this chunk.
      * User can safely access [get_buffer(), get_buffer()+length).
+     * For bytes_chunks stored in chunkmap[] this will be reduced to trim
+     * a bytes_chunk from the right.
      */
     uint64_t length = 0;
 
-    // Offset of buffer from alloc_buffer->get().
+    /*
+     * Offset of buffer from alloc_buffer->get().
+     * For bytes_chunks stored in chunkmap[] this will be incremented to trim
+     * a bytes_chunk from the left.
+     */
     uint64_t buffer_offset = 0;
 
     /*
@@ -512,27 +532,38 @@ public:
     int num_backend_calls_issued = 0;
 
     /*
-     * is_empty indicates whether buffer contains valid data. It's meaningful
-     * when bytes_chunk are returned by a call to bytes_chunk_cache::get(),
-     * and not for bytes_chunk stored in bytes_chunk_cache::chunkmap.
-     * It is used by the caller differently, depending on whether it wants to
-     * write/read to/from the file. For a writer it's not very significant,
-     * it simply means that this data is not currently cached. For a reader,
-     * otoh, it's significant information as it means that the data in this
-     * chunk is not valid file data and caller must ensure that the actual
-     * file data is read into it before using it. Chunks with is_empty=false
-     * need not read file data as they already have data read from the file.
-     * Obviously, the caller has to make sure that cache data is valid, i.e.,
-     * file mtime has not changed since the last time it was cached.
+     * bytes_chunk is a window/view into the underlying membuf which holds the
+     * actual data. It can refer to the entire membuf or any contiguous part
+     * of it. This tells if a bytes_chunk refers to the full membuf or a part.
+     * This is useful for the caller to know as based on this they can decide
+     * how the membuf flags need to be updated when peforming IOs through this
+     * bytes_chunk. f.e., if a reader has a bytes_chunk refering to a partial
+     * membuf and they perform a successful read, they cannot mark the membuf
+     * uptodate as they have not read data for the entire membuf.
+     * OTOH if a write has a bytes_chunk refering to a partial membuf and they
+     * write data into the bytes_chunk they MUST mark the membuf dirty as
+     * updating even a single byte makes the membuf dirty. At the same time if
+     * the membuf is not uptodate, the writer cannot simply copy into the
+     * bytes_chunk, as only uptodate membufs can be partially updated.
      *
-     * Note: Once get() returns a chunk, subsequent calls will return the
-     *       chunk with is_empty=false. This may confuse new callers to think
-     *       the chunk has valid data. The onus is on the caller to synchronize
-     *       the callers such that new callers don't get the chunk till the
-     *       current one filling the chunk is not done. Typically the file
-     *       inode lock will be used for this.
+     * Note: Note that trimming doesn't make changes to the membuf but instead
+     *       it changes the corresponding bytes_chunk in the chunkmap[], so
+     *       is_whole indicates whether a bytes_chunk returned by get()
+     *       refers to the complete bytes_chunk in the chunkmap[] or part of it.
      */
-    bool is_empty = true;
+    bool is_whole = false;
+
+    /*
+     * is_new indicates whether a bytes_chunk returned by a call to
+     * bytes_chunk_cache::get() refers to a freshly allocated membuf or it
+     * refers to an existing membuf. is_new implies that membuf doesn't contain
+     * valid data and hence the uptodate membuf flag must be false. It only
+     * makes sense for bytes_chunk returned by bytes_chunk_cache::get(), and not
+     * for bytes_chunk which are stored in bytes_chunk_cache::chunkmap.
+     * Since membufs are allocated to fit caller's size req, bytes_chunk with
+     * is_new set MUST have is_whole also set.
+     */
+    bool is_new = false;
 
     /**
      * Return membuf corresponding to this bytes_chunk.
@@ -578,13 +609,13 @@ public:
     }
 
     /**
-     * Does this bytes_chunk cover the "full membuf"?,
-     * i.e., following is true:
-     * (buffer_offset == 0 && length == alloc_buffer->length)
+     * Does this bytes_chunk cover the "full membuf"?
+     * Note that "full membuf" refers to membuf after trimming if any.
      */
     bool maps_full_membuf() const
     {
-        return ((buffer_offset == 0) && (length == alloc_buffer->length));
+        assert(!is_new || is_whole);
+        return is_whole;
     }
 
     /**
@@ -641,7 +672,8 @@ public:
                 uint64_t _length,
                 uint64_t _buffer_offset,
                 const std::shared_ptr<membuf>& _alloc_buffer,
-                bool _is_empty = false);
+                bool _is_whole = true,
+                bool _is_new = false);
 
     /**
      * Copy constructor, only for use by test code.
@@ -652,9 +684,13 @@ public:
                     rhs.length,
                     rhs.buffer_offset,
                     rhs.alloc_buffer,
-                    rhs.is_empty)
+                    rhs.is_whole,
+                    rhs.is_new)
 
     {
+        // new bytes_chunk MUST cover whole membuf.
+        assert(!is_new || is_whole);
+
         pvt = rhs.pvt;
         num_backend_calls_issued = rhs.num_backend_calls_issued;
     }
@@ -796,10 +832,10 @@ public:
      * Return a vector of bytes_chunk that cache the byte range
      * [offset, offset+length). Parts of the range that correspond to chunks
      * already present in the cache will refer to those existing chunks, for
-     * such chunks is_empty will be set to false, while those parts of the
+     * such chunks is_new will be set to false, while those parts of the
      * range for which there wasn't an already cached chunk found, new chunks
      * will be allocated and inserted into the chunkmap. These new chunks will
-     * have is_empty set to true. This means after this function successfully
+     * have is_new set to true. This means after this function successfully
      * returns there will be chunks present in the cache for the entire range
      * [offset, offset+length).
      *
@@ -810,9 +846,7 @@ public:
      *   caller should write bytes_chunk::length amount of data.
      * - readers, who want to read the specified range from the file.
      *   The returned chunks is a scatter list containing the data from the
-     *   file. Chunks with is_empty set to true indicate that we don't have
-     *   cached data for that chunk and the caller must arrange to read that
-     *   data from the file.
+     *   file.
      *
      * TODO: Reuse buffer from prev/adjacent chunk if it has space. Currently
      *       we will allocate a new buffer, this works but is wasteful.
@@ -837,12 +871,11 @@ public:
      *          performing IO on the membuf. For writers it'll be after they
      *          are done copying application data to the membuf and marking
      *          it dirty, and for readers it'll be after they are done reading
-     *          data from the Blob into the membuf. Since membufs for which
-     *          is_empty is not true, are not read, for them the inuse count
-     *          can be dropped right after return. Once the caller drops inuse
-     *          count bytes_chunk_cache::clear() can potentially remove the
-     *          membuf from the cache, so the caller must make sure that it
-     *          drops inuse count only after correctly setting the state,
+     *          data from the Blob into the membuf (if it's not already
+     *          uptodate). Once the caller drops inuse count
+     *          bytes_chunk_cache::clear() can potentially remove the membuf
+     *          from the cache, so the caller must make sure that it drops
+     *          inuse count only after correctly setting the state,
      *          i.e., call set_dirty() after writing to the membuf.
      *       2. IOs can be performed to the membuf only after locking it using
      *          set_locked(). Once the IO completes release the lock using
@@ -949,7 +982,7 @@ public:
      *
      * If release() successfully releases one or more chunks, a subsequent
      * call to get() won't find them in the chunkmap and hence will allocate
-     * fresh chunk (with is_empty true).
+     * fresh chunk (with is_new true).
      *
      * Note that release() removes the chunks from chunkmap and drops the
      * original ref on the membufs. The membuf itself won't be freed till the

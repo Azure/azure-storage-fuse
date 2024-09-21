@@ -514,7 +514,7 @@ lock_and_copy:
          * membuf is uptodate we can safely copy to it. In both cases the
          * membuf remains uptodate after the copy.
          */
-        if (bc.is_empty || mb->is_uptodate()) {
+        if (bc.maps_full_membuf() || mb->is_uptodate()) {
             assert(bc.length <= remaining);
             ::memcpy(bc.get_buffer(), buf, bc.length);
             mb->set_uptodate();

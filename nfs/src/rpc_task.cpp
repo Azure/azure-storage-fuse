@@ -2458,7 +2458,7 @@ static void read_callback(
          */
         assert((bc->length == bc->pvt) || res->READ3res_u.resok.eof);
 
-        if (bc->is_empty && (bc->length == bc->pvt)) {
+        if (bc->maps_full_membuf() && (bc->length == bc->pvt)) {
             /*
              * Only the first read which got hold of the complete membuf
              * will have this byte_chunk set to empty.
@@ -2469,7 +2469,6 @@ static void read_callback(
             AZLogDebug("[{}] Setting uptodate flag for membuf [{}, {})",
                        ino, bc->offset, bc->offset + bc->length);
 
-            assert(bc->maps_full_membuf());
             bc->get_membuf()->set_uptodate();
         } else {
             bool set_uptodate = false;
@@ -2478,7 +2477,7 @@ static void read_callback(
              * If we got eof in a partial read, release the non-existent
              * portion of the chunk.
              */
-            if (bc->is_empty && (bc->length > bc->pvt) &&
+            if (bc->maps_full_membuf() && (bc->length > bc->pvt) &&
                 res->READ3res_u.resok.eof) {
                 assert(res->READ3res_u.resok.count < issued_length);
 
@@ -2509,9 +2508,11 @@ static void read_callback(
 
             if (!set_uptodate) {
                 AZLogDebug("[{}] Not setting uptodate flag for membuf "
-                           "[{}, {}), is_empty={}, bc->length={}, bc->pvt={}",
+                           "[{}, {}), maps_full_membuf={}, is_new={}, "
+                           "bc->length={}, bc->pvt={}",
                            ino, bc->offset, bc->offset + bc->length,
-                           bc->is_empty, bc->length, bc->pvt);
+                           bc->maps_full_membuf(), bc->is_new, bc->length,
+                           bc->pvt);
             }
         }
     } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {

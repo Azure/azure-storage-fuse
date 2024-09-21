@@ -600,7 +600,8 @@ bytes_chunk::bytes_chunk(bytes_chunk_cache *_bcc,
                                                   _offset,
                                                   _length,
                                                   _bcc->backing_file_fd),
-                         true /* is_empty */)
+                         true /* is_whole */,
+                         true /* is_new */)
 {
 }
 
@@ -609,14 +610,19 @@ bytes_chunk::bytes_chunk(bytes_chunk_cache *_bcc,
                          uint64_t _length,
                          uint64_t _buffer_offset,
                          const std::shared_ptr<membuf>& _alloc_buffer,
-                         bool _is_empty) :
+                         bool _is_whole,
+                         bool _is_new) :
              bcc(_bcc),
              alloc_buffer(_alloc_buffer),
              offset(_offset),
              length(_length),
              buffer_offset(_buffer_offset),
-             is_empty(_is_empty)
+             is_whole(_is_whole),
+             is_new(_is_new)
 {
+    // new bytes_chunk MUST cover whole membuf.
+    assert(!is_new || is_whole);
+
     assert(bcc != nullptr);
     // alloc_buffer must always be valid.
     assert(alloc_buffer != nullptr);
@@ -783,7 +789,7 @@ do { \
      * We start from the first chunk covering the start of the requested range
      * and then iterate over the subsequent chunks (allocating missing chunks
      * along the way) till we cover the entire requested range. Newly allocated
-     * chunks can be identified in the returned chunkvec as they have is_empty
+     * chunks can be identified in the returned chunkvec as they have is_new
      * set.
      */
     auto it = chunkmap.lower_bound(next_offset);
@@ -1106,8 +1112,16 @@ do { \
             assert(chunk_length > 0);
 
             if (action == scan_action::SCAN_ACTION_GET) {
+                /*
+                 * Starting offset of this request matches the bytes_chunk in
+                 * the chunkmap, if length also matches then is_whole MUST
+                 * be set.
+                 */
+                assert(chunk_offset == bc->offset);
+                const bool is_whole = (chunk_length == bc->length);
                 chunkvec.emplace_back(this, chunk_offset, chunk_length,
-                                      bc->buffer_offset, bc->alloc_buffer);
+                                      bc->buffer_offset, bc->alloc_buffer,
+                                      is_whole);
                 AZLogDebug("(existing chunk) [{},{}) b:{} a:{}",
                            chunk_offset, chunk_offset + chunk_length,
                            fmt::ptr(chunkvec.back().get_buffer()),
@@ -1260,9 +1274,15 @@ do { \
             assert(chunk_length > 0);
 
             if (action == scan_action::SCAN_ACTION_GET) {
+                /*
+                 * Returned bytes_chunk doesn't have the same starting offset
+                 * as the bytes_chunk in the chunkmap, so is_whole MUST be
+                 * set to false.
+                 */
                 chunkvec.emplace_back(this, chunk_offset, chunk_length,
                                       bc->buffer_offset + (next_offset - bc->offset),
-                                      bc->alloc_buffer);
+                                      bc->alloc_buffer,
+                                      false /* is_whole */);
                 AZLogDebug("(existing chunk) [{},{}) b:{} a:{}",
                            chunk_offset, chunk_offset + chunk_length,
                            fmt::ptr(chunkvec.back().get_buffer()),
@@ -1386,15 +1406,17 @@ allocate_only_chunk:
                            next_offset, next_offset + chunk_length);
 
                 /*
-                 * Though this new chunk is sharing alloc_buffer with the last
-                 * chunk, it's nevertheless a new chunk and hence is_empty must
-                 * be true.
+                 * Since this new chunk is sharing alloc_buffer with the last
+                 * chunk, is_new must be false.
+                 * Also it's not referring to the entire membuf, so is_whole
+                 * must be false.
                  */
                 chunkvec.emplace_back(this, next_offset,
                                       chunk_length,
                                       last_bc->buffer_offset + last_bc->length,
                                       last_bc->alloc_buffer,
-                                      true /* is_empty */);
+                                      false /* is_whole */,
+                                      false /* is_new */);
 
                 /*
                  * last chunk and this new chunk are sharing the same
@@ -1442,7 +1464,9 @@ allocate_only_chunk:
             chunk.alloc_buffer->set_inuse();
         }
 
-        if (chunk.is_empty) {
+        if (chunk.is_new) {
+            // New chunk is always a whole chunk.
+            assert(chunk.is_whole);
             assert(chunk.alloc_buffer->allocated_buffer != nullptr);
             assert(chunk.alloc_buffer->buffer >=
                    chunk.alloc_buffer->allocated_buffer);
@@ -2089,8 +2113,8 @@ int bytes_chunk_cache::unit_test()
      * Choose file-backed or non file-backed cache for testing.
      * For file-backed cache, make sure /tmp as sufficient space.
      */
-#if 0
-    bytes_chunk_cache cache;
+#if 1
+    bytes_chunk_cache cache(nullptr);
 #else
     bytes_chunk_cache cache(nullptr, "/tmp/bytes_chunk_cache");
 #endif
@@ -2111,7 +2135,8 @@ int bytes_chunk_cache::unit_test()
 do { \
     assert(chunk.offset == start); \
     assert(chunk.length == end-start); \
-    assert(chunk.is_empty); \
+    assert(chunk.is_new); \
+    assert(chunk.is_whole); \
     if (cache.is_file_backed()) { \
         assert(chunk.get_membuf()->buffer >= \
                chunk.get_membuf()->allocated_buffer); \
@@ -2138,7 +2163,7 @@ do { \
 do { \
     assert(chunk.offset == start); \
     assert(chunk.length == end-start); \
-    assert(!(chunk.is_empty)); \
+    assert(!(chunk.is_new)); \
     if (cache.is_file_backed()) { \
         assert(chunk.get_membuf()->buffer >= \
                chunk.get_membuf()->allocated_buffer); \
@@ -2208,9 +2233,10 @@ do { \
 #define PRINT_CHUNK(chunk) \
 do { \
     assert(chunk.length > 0); \
-    AZLogInfo("[{},{}){} <{}> use_count={}, flag=0x{:x}", chunk.offset,\
+    AZLogInfo("[{},{}){}{} <{}> use_count={}, flag=0x{:x}", chunk.offset,\
               chunk.offset + chunk.length,\
-              chunk.is_empty ? " [Empty]" : "", \
+              chunk.is_new ? " [New]" : "", \
+              chunk.is_whole ? " [Whole]" : "", \
               fmt::ptr(chunk.get_buffer()), \
               chunk.get_membuf_usecount(), \
               chunk.get_membuf()->get_flag()); \
@@ -2276,6 +2302,7 @@ do { \
     ASSERT_EXTENT(100, 200);
     ASSERT_EXISTING(v[0], 100, 200);
     assert(v[0].get_buffer() == (buffer + 100));
+    assert(v[0].is_whole);
 
     for ([[maybe_unused]] const auto& e : v) {
         PRINT_CHUNK(e);
@@ -2298,6 +2325,7 @@ do { \
     ASSERT_NEW(v[0], 50, 100);
     ASSERT_EXISTING(v[1], 100, 150);
     assert(v[1].get_buffer() == (buffer + 100));
+    assert(!v[1].is_whole);
 
     for ([[maybe_unused]] const auto& e : v) {
         PRINT_CHUNK(e);
