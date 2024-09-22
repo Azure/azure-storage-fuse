@@ -383,17 +383,8 @@ struct nfs_inode
      */
     int64_t get_file_size() const
     {
-        /*
-         * This is set in the constructor as a newly created nfs_inode always
-         * has attributes cached in nfs_inode::attr.
-         */
-        assert(attr_timeout_timestamp != -1);
-
-        const int64_t now_msecs = get_current_msecs();
-        const bool attr_stale = (attr_timeout_timestamp < now_msecs);
         assert((size_t) attr.st_size <= AZNFSC_MAX_FILE_SIZE);
-
-        return attr_stale ? -1 : attr.st_size;
+        return attr_cache_expired() ? -1 : attr.st_size;
     }
 
     /**

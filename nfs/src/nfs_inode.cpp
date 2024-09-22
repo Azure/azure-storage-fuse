@@ -699,8 +699,7 @@ void nfs_inode::revalidate(bool force)
      */
     assert(attr_timeout_timestamp != -1);
 
-    const int64_t now_msecs = get_current_msecs();
-    const bool revalidate_now = force || (attr_timeout_timestamp < now_msecs);
+    const bool revalidate_now = force || attr_cache_expired();
 
     // Nothing to do, return.
     if (!revalidate_now) {
@@ -757,7 +756,7 @@ void nfs_inode::revalidate(bool force)
             attr_timeout_secs =
                 std::min((int) attr_timeout_secs*2, get_actimeo_max());
         }
-        attr_timeout_timestamp = now_msecs + attr_timeout_secs*1000;
+        attr_timeout_timestamp = get_current_msecs() + attr_timeout_secs*1000;
     }
 }
 
