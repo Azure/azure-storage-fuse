@@ -175,13 +175,23 @@ static void aznfsc_ll_rename(fuse_req_t req,
                              const char *newname,
                              unsigned int flags)
 {
-    AZLogDebug("aznfsc_ll_rename(req={}, parent_ino={}, name={},"
-               " newparent_ino={}, newname={}, flags={})",
-               fmt::ptr(req), parent_ino, name,
-               newparent_ino, newname, flags);
-
-    // We don't support `RENAME_EXCHANGE` or `RENAME_NOREPLACE` flags for now.
-    assert(flags == 0);
+    /*
+     * We don't support renameat2() i.e., no support for `RENAME_EXCHANGE` or
+     * `RENAME_NOREPLACE` flags. Force flags to 0. Default NFS rename behaviour
+     * should be fine.
+     */
+    if (flags != 0) {
+        AZLogWarn("aznfsc_ll_rename(req={}, parent_ino={}, name={}, "
+                  "newparent_ino={}, newname={}, flags={})",
+                  fmt::ptr(req), parent_ino, name,
+                  newparent_ino, newname, flags);
+        flags = 0;
+    } else {
+        AZLogDebug("aznfsc_ll_rename(req={}, parent_ino={}, name={}, "
+                   "newparent_ino={}, newname={}, flags={})",
+                   fmt::ptr(req), parent_ino, name,
+                   newparent_ino, newname, flags);
+    }
 
     struct nfs_client *client = get_nfs_client_from_fuse_req(req);
     client->rename(req, parent_ino, name, newparent_ino, newname,
