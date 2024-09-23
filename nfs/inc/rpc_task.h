@@ -1123,6 +1123,11 @@ public:
         offset = off;
     }
 
+    void set_target_offset(off_t offset)
+    {
+        target_offset = offset;
+    }
+
     void set_ino(fuse_ino_t ino)
     {
         inode = ino;
@@ -1149,6 +1154,11 @@ public:
         return offset;
     }
 
+    off_t get_target_offset() const
+    {
+        return target_offset;
+    }
+
     size_t get_size() const
     {
         return size;
@@ -1167,6 +1177,9 @@ private:
     size_t size;
 
     off_t offset;
+
+    // Target offset to reach if this is a reenumeration.
+    off_t target_offset;
 
     // File info passed by the fuse layer.
     fuse_file_info file;
@@ -1802,6 +1815,7 @@ public:
                      fuse_ino_t inode,
                      size_t size,
                      off_t offset,
+                     off_t target_offset,
                      struct fuse_file_info *file);
 
     void run_readdir();
@@ -1811,6 +1825,7 @@ public:
                          fuse_ino_t inode,
                          size_t size,
                          off_t offset,
+                         off_t target_offset,
                          struct fuse_file_info *file);
 
     void run_readdirplus();
