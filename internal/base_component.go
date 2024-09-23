@@ -111,6 +111,13 @@ func (base *BaseComponent) IsDirEmpty(options IsDirEmptyOptions) bool {
 	return false
 }
 
+func (base *BaseComponent) DeleteEmptyDirs(options DeleteDirOptions) error {
+	if base.next != nil {
+		return base.next.DeleteEmptyDirs(options)
+	}
+	return nil
+}
+
 func (base *BaseComponent) OpenDir(options OpenDirOptions) error {
 	if base.next != nil {
 		return base.next.OpenDir(options)

@@ -614,6 +614,43 @@ func (fc *FileCache) IsDirEmpty(options internal.IsDirEmptyOptions) bool {
 	return fc.NextComponent().IsDirEmpty(options)
 }
 
+// DeleteEmptyDirs: delete empty directories in local cache, return error if directory is not empty
+func (fc *FileCache) DeleteEmptyDirs(options internal.DeleteDirOptions) error {
+	localPath := options.Name
+	if !strings.Contains(options.Name, fc.tmpPath) {
+		localPath = filepath.Join(fc.tmpPath, options.Name)
+	}
+
+	log.Trace("FileCache::DeleteEmptyDirs : %s", localPath)
+
+	entries, err := os.ReadDir(localPath)
+	if err != nil {
+		log.Debug("FileCache::DeleteEmptyDirs : Unable to read directory %s [%s]", localPath, err.Error())
+		return err
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			err = fc.DeleteEmptyDirs(internal.DeleteDirOptions{
+				Name: filepath.Join(localPath, entry.Name()),
+			})
+			if err != nil {
+				log.Err("FileCache::DeleteEmptyDirs : Unable to delete directory %s [%s]", localPath, err.Error())
+				return err
+			}
+		} else {
+			log.Err("FileCache::DeleteEmptyDirs : Directory %s is not empty, contains file %s", localPath, entry.Name())
+			return fmt.Errorf("unable to delete directory %s, contains file %s", localPath, entry.Name())
+		}
+	}
+
+	if !strings.EqualFold(fc.tmpPath, localPath) {
+		return os.Remove(localPath)
+	}
+
+	return nil
+}
+
 // RenameDir: Recursively invalidate the source directory and its children
 func (fc *FileCache) RenameDir(options internal.RenameDirOptions) error {
 	log.Trace("FileCache::RenameDir : src=%s, dst=%s", options.Src, options.Dst)
