@@ -824,6 +824,18 @@ bool nfs_inode::update_nolock(const struct fattr3& fattr)
 
 void nfs_inode::force_update_attr_nolock(const struct fattr3& fattr)
 {
+    const bool fattr_is_newer =
+        (compare_timespec_and_nfstime(attr.st_ctim, fattr.ctime) == -1);
+
+    /*
+     * Only update inode attributes if fattr is newer.
+     * If not newer, don't update attr_timeout_timestamp as we would like
+     * to query the server and find out what's going on.
+     */
+    if (!fattr_is_newer) {
+        return;
+    }
+
     /*
      * Update cached attributes and also reset the attr_timeout_secs and
      * attr_timeout_timestamp since the attributes have changed.
