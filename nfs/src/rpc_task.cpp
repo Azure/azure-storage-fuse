@@ -2846,6 +2846,9 @@ static void readdir_callback(
         task->get_client()->jukebox_retry(task);
         return;
     } else if (NFS_STATUS(res) == NFS3ERR_BAD_COOKIE) {
+        AZLogWarn("[{}] got NFS3ERR_BAD_COOKIE for offset: {}, cleaning "
+                  "dircache and starting reenumeration", 
+                  dir_ino, task->rpc_api->readdir_task.get_offset());
         dir_inode->invalidate_cache();
 
         /*
@@ -3211,6 +3214,9 @@ static void readdirplus_callback(
         task->get_client()->jukebox_retry(task);
         return;
     } else if (NFS_STATUS(res) == NFS3ERR_BAD_COOKIE) {
+        AZLogWarn("[{}] got NFS3ERR_BAD_COOKIE for offset: {}, cleaning "
+                  "dircache and starting reenumeration", 
+                  dir_ino, task->rpc_api->readdir_task.get_offset());
         dir_inode->invalidate_cache();
 
         /*
