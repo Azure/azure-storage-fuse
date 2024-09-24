@@ -2802,7 +2802,7 @@ static void readdir_callback(
     ssize_t rem_size = task->rpc_api->readdir_task.get_size();
     std::vector<const directory_entry*> readdirentries;
     int num_dirents = 0;
-    const int status = task->status(rpc_status, NFS_STATUS(res));
+    int status = task->status(rpc_status, NFS_STATUS(res));
 
     // For readdir we don't use parent_task to track the fuse request.
     assert(task->rpc_api->parent_task == nullptr);
@@ -2830,6 +2830,21 @@ static void readdir_callback(
 
     const bool is_reenumerating =
         (task->rpc_api->readdir_task.get_target_offset() != 0);
+
+#ifdef ENABLE_PRESSURE_POINTS
+            /*
+             * Bad cookie pressure point. Random bad cookie errors which
+             * can cause multiple re-enumerations.
+             */
+            if (inject_error() && status == 0) {
+                AZLogWarn("[{}] PP: bad cookie at offset {} ",
+                          is_reenumerating ? "(R)" : "",
+                          dir_ino, task->rpc_api->readdir_task.get_offset());
+
+                (res)->status = NFS3ERR_BAD_COOKIE;
+                status = task->status(rpc_status, NFS_STATUS(res));
+            }
+#endif
 
     /*
      * Now that the request has completed, we can query libnfs for the
@@ -2997,7 +3012,7 @@ static void readdir_callback(
         task->get_client()->jukebox_retry(task);
         return;
     } else if (NFS_STATUS(res) == NFS3ERR_BAD_COOKIE) {
-        AZLogWarn("[{}] readdir_callback{}: got NFS3ERR_BAD_COOKIE for "
+        AZLogWarn("[{}] readdir_callback {}: got NFS3ERR_BAD_COOKIE for "
                   "offset: {}, clearing dircache and starting re-enumeration",
                   is_reenumerating ? "(R)" : "",
                   dir_ino, task->rpc_api->readdir_task.get_offset());
@@ -3036,7 +3051,6 @@ static void readdir_callback(
      * start another readdir call for the next batch.
      */
     if (!got_new_entry) {
-        assert(is_reenumerating);
         assert(last_valid_offset <
                 task->rpc_api->readdir_task.get_target_offset());
 
@@ -3103,7 +3117,7 @@ static void readdirplus_callback(
     ssize_t rem_size = task->rpc_api->readdir_task.get_size();
     std::vector<const directory_entry*> readdirentries;
     int num_dirents = 0;
-    const int status = task->status(rpc_status, NFS_STATUS(res));
+    int status = task->status(rpc_status, NFS_STATUS(res));
 
     // For readdir we don't use parent_task to track the fuse request.
     assert(task->rpc_api->parent_task == nullptr);
@@ -3131,6 +3145,21 @@ static void readdirplus_callback(
 
     const bool is_reenumerating =
         (task->rpc_api->readdir_task.get_target_offset() != 0);
+
+#ifdef ENABLE_PRESSURE_POINTS
+            /*
+             * Bad cookie pressure point. Random bad cookie errors which
+             * can cause multiple re-enumerations.
+             */
+            if (inject_error() && status == 0) {
+                AZLogWarn("[{}] PP: bad cookie at offset {} ",
+                          is_reenumerating ? "(R)" : "",
+                          dir_ino, task->rpc_api->readdir_task.get_offset());
+
+                (res)->status = NFS3ERR_BAD_COOKIE;
+                status = task->status(rpc_status, NFS_STATUS(res));
+            }
+#endif
 
     /*
      * Now that the request has completed, we can query libnfs for the
@@ -3368,7 +3397,7 @@ static void readdirplus_callback(
                      * didn't return eof, this means the directory shrank in the
                      * server. To be safe, invalidate the cache.
                      */
-                    AZLogWarn("[{}] readdirplus_callback{}: Directory shrank in "
+                    AZLogWarn("[{}] readdirplus_callback {}: Directory shrank in "
                             "the server! cookie asked: {} target_offset: {}. ",
                             "Purging cache!",
                             is_reenumerating ? "(R)" : "",
@@ -3428,7 +3457,6 @@ static void readdirplus_callback(
      * start another readdirplus call for the next batch.
      */
     if (!got_new_entry) {
-        assert(is_reenumerating);
         assert(last_valid_offset <
                 task->rpc_api->readdir_task.get_target_offset());
 
