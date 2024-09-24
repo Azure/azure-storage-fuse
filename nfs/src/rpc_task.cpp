@@ -44,13 +44,22 @@ do { \
 #ifdef ENABLE_PRESSURE_POINTS
 #define INJECT_BAD_COOKIE(res, task) \
 do { \
+    /* \
+     * Must be called only for READDIR and READDIRPLUS. \
+     */ \
+    assert(task->get_op_type() == FUSE_READDIR || \
+           task->get_op_type() == FUSE_READDIRPLUS); \
     if (res && (NFS_STATUS(res) == NFS3_OK)) { \
-        if (inject_error() && task->rpc_api->readdir_task.get_offset() != 0) { \
-            AZLogWarn("[{}] PP: bad cookie at offset {} ", \
-                       task->rpc_api->readdir_task.get_target_offset() != 0 ? "(R)" : "", \
+        /* \
+         * Don't simulate badcookie error for cookie==0. \
+         */ \
+        if (inject_error() && \
+            task->rpc_api->readdir_task.get_offset() != 0) { \
+            AZLogWarn("[{}] PP: {} bad cookie, offset {}, target_offset {} ", \
                        task->rpc_api->readdir_task.get_ino(), \
+                       __FUNCTION__, \
                        task->rpc_api->readdir_task.get_offset(), \
-                       __FUNCTION__); \
+                       task->rpc_api->readdir_task.get_target_offset()); \
             (res)->status = NFS3ERR_BAD_COOKIE; \
         } \
     } \
@@ -2821,7 +2830,7 @@ static void readdir_callback(
     ssize_t rem_size = task->rpc_api->readdir_task.get_size();
     std::vector<const directory_entry*> readdirentries;
     int num_dirents = 0;
-    int status = task->status(rpc_status, NFS_STATUS(res));
+    const int status = task->status(rpc_status, NFS_STATUS(res));
 
     // For readdir we don't use parent_task to track the fuse request.
     assert(task->rpc_api->parent_task == nullptr);
@@ -2969,7 +2978,7 @@ static void readdir_callback(
             ++num_dirents;
         }
 
-        AZLogDebug("readdir_callback{}: Num of entries returned by server is {}, "
+        AZLogDebug("readdir_callback {}: Num of entries returned by server is {}, "
                    "returned to fuse: {}, eof: {}, eof_cookie: {}",
                    is_reenumerating ? "(R)" : "",
                    num_dirents, readdirentries.size(), eof, eof_cookie);
@@ -2995,7 +3004,7 @@ static void readdir_callback(
                      * didn't return eof, this means the directory shrank in the
                      * server. To be safe, invalidate the cache.
                      */
-                    AZLogWarn("[{}] readdir_callback{}: Directory shrank in "
+                    AZLogWarn("[{}] readdir_callback {}: Directory shrank in "
                             "the server! cookie asked: {} target_offset: {}. ",
                             "Purging cache!",
                             is_reenumerating ? "(R)" : "",
@@ -3053,6 +3062,9 @@ static void readdir_callback(
      * We have not seen a new entry and the call has not failed, hence this is a
      * reenumeration call and we have not reached the target_offset yet. We have to
      * start another readdir call for the next batch.
+     * The assert has last_valid_offset==0 clause for cases where the callback
+     * was called for a regular readdir (not re-enumerating) but it failed with
+     * badcookie and hence we are here enumerating.
      */
     if (!got_new_entry) {
         assert(is_reenumerating || last_valid_offset == 0);
@@ -3123,7 +3135,7 @@ static void readdirplus_callback(
     ssize_t rem_size = task->rpc_api->readdir_task.get_size();
     std::vector<const directory_entry*> readdirentries;
     int num_dirents = 0;
-    int status = task->status(rpc_status, NFS_STATUS(res));
+    const int status = task->status(rpc_status, NFS_STATUS(res));
 
     // For readdir we don't use parent_task to track the fuse request.
     assert(task->rpc_api->parent_task == nullptr);
@@ -3363,7 +3375,7 @@ static void readdirplus_callback(
             ++num_dirents;
         }
 
-        AZLogDebug("readdirplus_callback{}: Num of entries returned by server "
+        AZLogDebug("readdirplus_callback {}: Num of entries returned by server "
                    "is {}, returned to fuse: {}, eof: {}, eof_cookie: {}",
                    is_reenumerating ? "(R)" : "",
                    num_dirents, readdirentries.size(), eof, eof_cookie);
@@ -3409,7 +3421,7 @@ static void readdirplus_callback(
         task->get_client()->jukebox_retry(task);
         return;
     } else if (NFS_STATUS(res) == NFS3ERR_BAD_COOKIE) {
-        AZLogWarn("[{}] readdirplus_callback{}: got NFS3ERR_BAD_COOKIE for "
+        AZLogWarn("[{}] readdirplus_callback {}: got NFS3ERR_BAD_COOKIE for "
                   "offset: {}, clearing dircache and starting re-enumeration",
                   is_reenumerating ? "(R)" : "",
                   dir_ino, task->rpc_api->readdir_task.get_offset());
@@ -3446,6 +3458,9 @@ static void readdirplus_callback(
      * We have not seen a new entry and the call has not failed, hence this is a
      * reenumeration call and we have not reached the target_offset yet. We have to
      * start another readdirplus call for the next batch.
+     * The assert has last_valid_offset==0 clause for cases where the callback
+     * was called for a regular readdir (not re-enumerating) but it failed with
+     * badcookie and hence we are here enumerating.
      */
     if (!got_new_entry) {
         assert(is_reenumerating || last_valid_offset == 0);
