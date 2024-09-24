@@ -3176,7 +3176,7 @@ static void readdirplus_callback(
     if (status == 0) {
         const struct entryplus3 *entry =
             res->READDIRPLUS3res_u.resok.reply.entries;
-        const bool eof = res->READDIRPLUS3res_u.resok.reply.eof;
+        eof = res->READDIRPLUS3res_u.resok.reply.eof;
         int64_t eof_cookie = -1;
 
         // Get handle to the readdirectory cache.
