@@ -41,6 +41,24 @@ do { \
 #define INJECT_JUKEBOX(res, task) /* nothing */
 #endif
 
+#ifdef ENABLE_PRESSURE_POINTS
+#define INJECT_BAD_COOKIE(res, task) \
+do { \
+    if (res && (NFS_STATUS(res) == NFS3_OK)) { \
+        if (inject_error() && task->rpc_api->readdir_task.get_offset() != 0) { \
+            AZLogWarn("[{}] PP: bad cookie at offset {} ", \
+                       task->rpc_api->readdir_task.get_target_offset() != 0 ? "(R)" : "", \
+                       task->rpc_api->readdir_task.get_ino(), \
+                       task->rpc_api->readdir_task.get_offset(), \
+                       __FUNCTION__); \
+            (res)->status = NFS3ERR_BAD_COOKIE; \
+        } \
+    } \
+} while (0)
+#else
+#define INJECT_BAD_COOKIE(res, task) /* nothing */
+#endif
+
 /* static */
 std::atomic<int> rpc_task::async_slots = MAX_ASYNC_RPC_TASKS;
 
@@ -2794,6 +2812,7 @@ static void readdir_callback(
     READDIR3res *const res = (READDIR3res*) data;
 
     INJECT_JUKEBOX(res, task);
+    INJECT_BAD_COOKIE(res, task);
 
     const fuse_ino_t dir_ino = task->rpc_api->readdir_task.get_ino();
     struct nfs_inode *const dir_inode =
@@ -2830,21 +2849,6 @@ static void readdir_callback(
 
     const bool is_reenumerating =
         (task->rpc_api->readdir_task.get_target_offset() != 0);
-
-#ifdef ENABLE_PRESSURE_POINTS
-            /*
-             * Bad cookie pressure point. Random bad cookie errors which
-             * can cause multiple re-enumerations.
-             */
-            if (inject_error() && status == 0) {
-                AZLogWarn("[{}] PP: bad cookie at offset {} ",
-                          is_reenumerating ? "(R)" : "",
-                          dir_ino, task->rpc_api->readdir_task.get_offset());
-
-                (res)->status = NFS3ERR_BAD_COOKIE;
-                status = task->status(rpc_status, NFS_STATUS(res));
-            }
-#endif
 
     /*
      * Now that the request has completed, we can query libnfs for the
@@ -3051,6 +3055,7 @@ static void readdir_callback(
      * start another readdir call for the next batch.
      */
     if (!got_new_entry) {
+        assert(is_reenumerating || last_valid_offset == 0);
         assert(last_valid_offset <
                 task->rpc_api->readdir_task.get_target_offset());
 
@@ -3109,6 +3114,7 @@ static void readdirplus_callback(
     READDIRPLUS3res *const res = (READDIRPLUS3res*) data;
 
     INJECT_JUKEBOX(res, task);
+    INJECT_BAD_COOKIE(res, task);
 
     const fuse_ino_t dir_ino = task->rpc_api->readdir_task.get_ino();
     struct nfs_inode *const dir_inode =
@@ -3145,21 +3151,6 @@ static void readdirplus_callback(
 
     const bool is_reenumerating =
         (task->rpc_api->readdir_task.get_target_offset() != 0);
-
-#ifdef ENABLE_PRESSURE_POINTS
-            /*
-             * Bad cookie pressure point. Random bad cookie errors which
-             * can cause multiple re-enumerations.
-             */
-            if (inject_error() && status == 0) {
-                AZLogWarn("[{}] PP: bad cookie at offset {} ",
-                          is_reenumerating ? "(R)" : "",
-                          dir_ino, task->rpc_api->readdir_task.get_offset());
-
-                (res)->status = NFS3ERR_BAD_COOKIE;
-                status = task->status(rpc_status, NFS_STATUS(res));
-            }
-#endif
 
     /*
      * Now that the request has completed, we can query libnfs for the
@@ -3457,6 +3448,7 @@ static void readdirplus_callback(
      * start another readdirplus call for the next batch.
      */
     if (!got_new_entry) {
+        assert(is_reenumerating || last_valid_offset == 0);
         assert(last_valid_offset <
                 task->rpc_api->readdir_task.get_target_offset());
 
