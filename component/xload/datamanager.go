@@ -82,10 +82,10 @@ func (r *RemoteDataManager) ReadData(item *workItem) (int, error) {
 // WriteData writes data to the data manager
 func (r *RemoteDataManager) WriteData(item *workItem) (int, error) {
 	return int(item.block.length), r.remote.StageData(internal.StageDataOptions{
-		Name:   item.path,
-		Data:   item.block.data[0:item.block.length],
-		Offset: uint64(item.block.offset),
-		Id:     item.block.id})
+		Name: item.path,
+		Data: item.block.data[0:item.block.length],
+		// Offset: uint64(item.block.offset),
+		Id: item.block.id})
 }
 
 // CommitData commits data to the data manager
