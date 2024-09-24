@@ -346,42 +346,47 @@ struct nfs_inode *nfs_client::get_nfs_inode(const nfs_fh3 *fh,
         const auto range = inode_map.equal_range(fattr->fileid);
 
         for (auto i = range.first; i != range.second; ++i) {
+            struct nfs_inode *inode = i->second;
             assert(i->first == fattr->fileid);
-            assert(i->second->magic == NFS_INODE_MAGIC);
+            assert(inode->magic == NFS_INODE_MAGIC);
 
-            if (FH_EQUAL(&(i->second->get_fh()), fh)) {
+            if (FH_EQUAL(&(inode->get_fh()), fh)) {
                 // File type must not change for an inode.
-                assert(i->second->file_type == file_type);
+                assert(inode->file_type == file_type);
 
-                if (i->second->is_forgotten()) {
+                if (inode->is_forgotten()) {
                     AZLogDebug("[{}:{} / 0x{:08x}] Reusing forgotten inode "
                                "(dircachecnt={}), "
                                "size {} -> {}, "
                                "ctime {}.{} -> {}.{}, "
                                "mtime {}.{} -> {}.{}",
-                               i->second->get_filetype_coding(),
-                               i->second->get_fuse_ino(),
-                               i->second->get_crc(),
-                               i->second->dircachecnt.load(),
-                               i->second->attr.st_size, fattr->size,
-                               i->second->attr.st_ctim.tv_sec,
-                               i->second->attr.st_ctim.tv_nsec,
+                               inode->get_filetype_coding(),
+                               inode->get_fuse_ino(),
+                               inode->get_crc(),
+                               inode->dircachecnt.load(),
+                               inode->attr.st_size, fattr->size,
+                               inode->attr.st_ctim.tv_sec,
+                               inode->attr.st_ctim.tv_nsec,
                                fattr->ctime.seconds,
                                fattr->ctime.nseconds,
-                               i->second->attr.st_mtim.tv_sec,
-                               i->second->attr.st_mtim.tv_nsec,
+                               inode->attr.st_mtim.tv_sec,
+                               inode->attr.st_mtim.tv_nsec,
                                fattr->mtime.seconds,
                                fattr->mtime.nseconds);
                 }
 
                 /*
                  * Copy the attributes to the inode as they would be the most
-                 * recent ones.
+                 * recent ones. Also reset the attribute cache timeout.
                  */
-                nfs_client::stat_from_fattr3(&i->second->attr, fattr);
+                nfs_client::stat_from_fattr3(&inode->attr, fattr);
 
-                i->second->incref();
-                return i->second;
+                inode->attr_timeout_secs = inode->get_actimeo_min();
+                inode->attr_timeout_timestamp =
+                    get_current_msecs() + inode->attr_timeout_secs*1000;
+
+                inode->incref();
+                return inode;
             }
         }
     }
@@ -1186,7 +1191,6 @@ void nfs_client::reply_entry(
     const struct fattr3 *fattr,
     const struct fuse_file_info *file)
 {
-    static struct fattr3 zero_fattr;
     struct nfs_inode *inode = nullptr;
     fuse_entry_param entry;
     /*
@@ -1235,8 +1239,7 @@ void nfs_client::reply_entry(
                    inode->dircachecnt.load(),
                    inode->forget_expected.load() + 1);
 
-        parent_inode->dnlc_add(ctx->rpc_api->get_file_name(),
-                               inode->get_fuse_ino());
+        parent_inode->dnlc_add(ctx->rpc_api->get_file_name(), inode);
 
         /*
          * This is the common place where we return inode to fuse.
@@ -1262,7 +1265,6 @@ void nfs_client::reply_entry(
          */
         assert(aznfsc_cfg.lookupcache_int == AZNFSCFG_LOOKUPCACHE_ALL);
         assert(!fattr);
-        stat_from_fattr3(&entry.attr, &zero_fattr);
 
         entry.attr_timeout = aznfsc_cfg.actimeo;
         entry.entry_timeout = aznfsc_cfg.actimeo;
@@ -1299,50 +1301,98 @@ void nfs_client::jukebox_retry(struct rpc_task *task)
 
 // Translate a NFS fattr3 into struct stat.
 /* static */
-void nfs_client::stat_from_fattr3(struct stat *st, const struct fattr3 *attr)
+void nfs_client::stat_from_fattr3(struct stat *st, const struct fattr3 *fattr)
 {
+    // TODO: Remove this memset if we are setting all fields.
     ::memset(st, 0, sizeof(*st));
-    st->st_dev = attr->fsid;
-    st->st_ino = attr->fileid;
-    st->st_mode = attr->mode;
-    st->st_nlink = attr->nlink;
-    st->st_uid = attr->uid;
-    st->st_gid = attr->gid;
-    // TODO: Uncomment the below line.
-    // st->st_rdev = makedev(attr->rdev.specdata1, attr->rdev.specdata2);
-    st->st_size = attr->size;
-    st->st_blksize = NFS_BLKSIZE;
-    st->st_blocks = (attr->used + 511) >> 9;
-    st->st_atim.tv_sec = attr->atime.seconds;
-    st->st_atim.tv_nsec = attr->atime.nseconds;
-    st->st_mtim.tv_sec = attr->mtime.seconds;
-    st->st_mtim.tv_nsec = attr->mtime.nseconds;
-    st->st_ctim.tv_sec = attr->ctime.seconds;
-    st->st_ctim.tv_nsec = attr->ctime.nseconds;
 
-    switch (attr->type) {
-    case NF3REG:
-        st->st_mode |= S_IFREG;
-        break;
-    case NF3DIR:
-        st->st_mode |= S_IFDIR;
-        break;
-    case NF3BLK:
-        st->st_mode |= S_IFBLK;
-        break;
-    case NF3CHR:
-        st->st_mode |= S_IFCHR;
-        break;
-    case NF3LNK:
-        st->st_mode |= S_IFLNK;
-        break;
-    case NF3SOCK:
-        st->st_mode |= S_IFSOCK;
-        break;
-    case NF3FIFO:
-        st->st_mode |= S_IFIFO;
-        break;
+    st->st_dev = fattr->fsid;
+    st->st_ino = fattr->fileid;
+    st->st_mode = fattr->mode;
+    st->st_nlink = fattr->nlink;
+    st->st_uid = fattr->uid;
+    st->st_gid = fattr->gid;
+    // TODO: Uncomment the below line.
+    // st->st_rdev = makedev(fattr->rdev.specdata1, fattr->rdev.specdata2);
+    st->st_size = fattr->size;
+    st->st_blksize = NFS_BLKSIZE;
+    st->st_blocks = (fattr->used + 511) >> 9;
+    st->st_atim.tv_sec = fattr->atime.seconds;
+    st->st_atim.tv_nsec = fattr->atime.nseconds;
+    st->st_mtim.tv_sec = fattr->mtime.seconds;
+    st->st_mtim.tv_nsec = fattr->mtime.nseconds;
+    st->st_ctim.tv_sec = fattr->ctime.seconds;
+    st->st_ctim.tv_nsec = fattr->ctime.nseconds;
+
+    switch (fattr->type) {
+        case NF3REG:
+            st->st_mode |= S_IFREG;
+            break;
+        case NF3DIR:
+            st->st_mode |= S_IFDIR;
+            break;
+        case NF3BLK:
+            st->st_mode |= S_IFBLK;
+            break;
+        case NF3CHR:
+            st->st_mode |= S_IFCHR;
+            break;
+        case NF3LNK:
+            st->st_mode |= S_IFLNK;
+            break;
+        case NF3SOCK:
+            st->st_mode |= S_IFSOCK;
+            break;
+        case NF3FIFO:
+            st->st_mode |= S_IFIFO;
+            break;
+        default:
+            assert(0);
     }
+}
+
+// Translate an NFS fattr3 into struct stat.
+/* static */
+void nfs_client::fattr3_from_stat(struct fattr3 *fattr, const struct stat *st)
+{
+    // TODO: Remove this memset if we are setting all fields.
+    ::memset(fattr, 0, sizeof(*fattr));
+
+    fattr->fsid = st->st_dev;
+    fattr->fileid = st->st_ino;
+    fattr->mode = st->st_mode;
+    fattr->nlink = st->st_nlink;
+    fattr->uid = st->st_uid;
+    fattr->gid = st->st_gid;
+
+    // TODO: set rdev.
+
+    fattr->size = st->st_size;
+    fattr->used = st->st_blocks * 512;
+
+    fattr->atime.seconds = st->st_atim.tv_sec;
+    fattr->atime.nseconds = st->st_atim.tv_nsec;
+    fattr->mtime.seconds = st->st_mtim.tv_sec;
+    fattr->mtime.nseconds = st->st_mtim.tv_nsec;
+    fattr->ctime.seconds = st->st_ctim.tv_sec;
+    fattr->ctime.nseconds = st->st_ctim.tv_nsec;
+
+    if (S_ISREG(st->st_mode))
+        fattr->type = NF3REG;
+    else if (S_ISDIR(st->st_mode))
+        fattr->type = NF3DIR;
+    else if (S_ISLNK(st->st_mode))
+        fattr->type = NF3LNK;
+    else if (S_ISBLK(st->st_mode))
+        fattr->type = NF3BLK;
+    else if (S_ISCHR(st->st_mode))
+        fattr->type = NF3CHR;
+    else if (S_ISSOCK(st->st_mode))
+        fattr->type = NF3SOCK;
+    else if (S_ISFIFO(st->st_mode))
+        fattr->type = NF3FIFO;
+    else
+        assert(0);
 }
 
 /*

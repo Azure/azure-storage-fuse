@@ -232,6 +232,7 @@ public:
                    optype == FUSE_READ ||
                    optype == FUSE_WRITE ||
                    optype == FUSE_GETATTR ||
+                   optype == FUSE_LOOKUP ||
                    optype == FUSE_SETATTR);
         } else {
             /*
@@ -315,6 +316,8 @@ public:
     static std::atomic<uint64_t> bytes_read_ahead;
     static std::atomic<uint64_t> tot_getattr_reqs;
     static std::atomic<uint64_t> getattr_served_from_cache;
+    static std::atomic<uint64_t> tot_lookup_reqs;
+    static std::atomic<uint64_t> lookup_served_from_cache;
 };
 
 #define INC_GBL_STATS(var, inc)  rpc_stats_az::var += (inc)

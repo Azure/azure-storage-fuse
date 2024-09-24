@@ -3,6 +3,49 @@
 #include "file_cache.h"
 #include "rpc_task.h"
 
+dnlc_info::dnlc_info(const struct nfs_inode *inode) :
+    ino(inode->get_fuse_ino())
+{
+    /*
+     * Caller will always pass inode with freshly queried attributes.
+     * Note: When dnlc_add() is called for cached dir_entries, we can have
+     *       inode with attr cache expired.
+     */
+    assert(inode->magic == NFS_INODE_MAGIC);
+#if 0
+    assert(!inode->attr_cache_expired());
+#endif
+
+    FH_COPY(&fh, &(inode->get_fh()));
+    fh_is_valid = 1;
+
+    nfs_client::fattr3_from_stat(&fattr, &inode->attr);
+    fattr_is_valid = 1;
+}
+
+dnlc_info::dnlc_info(dnlc_info&& di) :
+    ino(di.ino)
+{
+    assert(!FH_VALID(&fh));
+    assert(di.ino != 0);
+    assert(di.fh_is_valid);
+    assert(di.fattr_is_valid);
+
+    fh_is_valid = di.fh_is_valid;
+    if (fh_is_valid) {
+        fh.data.data_val = di.fh.data.data_val;
+        fh.data.data_len = di.fh.data.data_len;
+        di.fh.data.data_val = nullptr;
+        di.fh.data.data_len = 0;
+        di.fh_is_valid = 0;
+    }
+
+    fattr_is_valid = di.fattr_is_valid;
+    if (fattr_is_valid) {
+        fattr = di.fattr;
+    }
+}
+
 /**
  * Constructor.
  * nfs_client must be known when nfs_inode is being created.
@@ -44,9 +87,7 @@ nfs_inode::nfs_inode(const struct nfs_fh3 *filehandle,
     // ino is either set to FUSE_ROOT_ID or set to address of nfs_inode.
     assert((ino == (fuse_ino_t) this) || (ino == FUSE_ROOT_ID));
 
-    fh.data.data_len = filehandle->data.data_len;
-    fh.data.data_val = new char[fh.data.data_len];
-    ::memcpy(fh.data.data_val, filehandle->data.data_val, fh.data.data_len);
+    FH_COPY(&fh, filehandle);
 
     /*
      * Calculate and store the CRC32 hash of the filehandle.
@@ -125,9 +166,7 @@ nfs_inode::~nfs_inode()
 #endif
 
     assert(fh.data.data_val != nullptr);
-    delete[] fh.data.data_val;
-    fh.data.data_val = nullptr;
-    fh.data.data_len = 0;
+    FH_FREE(&fh);
 }
 
 void nfs_inode::decref(size_t cnt, bool from_forget)
@@ -276,20 +315,15 @@ struct nfs_inode *nfs_inode::lookup(const char *filename)
     /*
      * First search in dnlc, if not found perform LOOKUP RPC.
      */
-    {
-        std::unique_lock<std::shared_mutex> lock(ilock);
-        auto it = dnlc.find(filename);
-        if (it != dnlc.end()) {
-            child_ino = it->second;
-            assert(child_ino != 0);
-            inode = client->get_nfs_inode_from_ino(child_ino);
-            AZLogDebug("{}/{} -> {}, found in DNLC! (lookupcnt: {}, "
-                       "dircachecnt: {}, forget_expected: {})",
-                       get_fuse_ino(), filename, child_ino,
-                       inode->lookupcnt.load(),
-                       inode->dircachecnt.load(),
-                       inode->forget_expected.load());
-        }
+    if (dnlc_lookup(filename, &child_ino, nullptr, nullptr)) {
+        assert(child_ino != 0);
+        inode = client->get_nfs_inode_from_ino(child_ino);
+        AZLogDebug("{}/{} -> {}, found in DNLC! (lookupcnt: {}, "
+                   "dircachecnt: {}, forget_expected: {})",
+                   get_fuse_ino(), filename, child_ino,
+                   inode->lookupcnt.load(),
+                   inode->dircachecnt.load(),
+                   inode->forget_expected.load());
     }
 
     if (child_ino == 0) {
@@ -417,7 +451,7 @@ void nfs_inode::sync_membufs(std::vector<bytes_chunk> &bc_vec, bool is_flush)
 
             continue;
         }
-    
+
         if (flush_task == nullptr) {
             flush_task =
                 get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_FLUSH);

@@ -147,6 +147,36 @@ int compare_timespec_and_nfstime(const struct timespec& ts,
 }
 
 static inline
+int compare_timespec(const struct timespec& ts1,
+                     const struct timespec& ts2)
+{
+    const uint64_t ns1 = ts1.tv_sec*1000'000'000ULL + ts1.tv_nsec;
+    const uint64_t ns2 = ts2.tv_sec*1000'000'000ULL + ts2.tv_nsec;
+
+    if (ns1 == ns2)
+        return 0;
+    else if (ns1 < ns2)
+        return -1;
+    else
+        return 1;
+}
+
+static inline
+int compare_nfstime(const struct nfstime3& nt1,
+                    const struct nfstime3& nt2)
+{
+    const uint64_t ns1 = nt1.seconds*1000'000'000ULL + nt1.nseconds;
+    const uint64_t ns2 = nt2.seconds*1000'000'000ULL + nt2.nseconds;
+
+    if (ns1 == ns2)
+        return 0;
+    else if (ns1 < ns2)
+        return -1;
+    else
+        return 1;
+}
+
+static inline
 uint32_t calculate_crc32(const unsigned char *buf, int len)
 {
     return ::crc32(::crc32(0L, Z_NULL, 0), buf, len);

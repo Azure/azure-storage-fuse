@@ -1278,13 +1278,30 @@ void readlink_callback(
 void rpc_task::run_lookup()
 {
     fuse_ino_t parent_ino = rpc_api->lookup_task.get_parent_ino();
+    struct nfs_inode *inode = get_client()->get_nfs_inode_from_ino(parent_ino);
     bool rpc_retry;
     rpc_pdu *pdu = nullptr;
+    const char *const filename = (char*) rpc_api->lookup_task.get_file_name();
+    struct nfs_fh3 fh = {0, nullptr};
+    struct fattr3 fattr;
+
+    INC_GBL_STATS(tot_lookup_reqs, 1);
+
+    /*
+     * Lookup dnlc to see if we have valid cached lookup data.
+     */
+    if (inode->dnlc_lookup(filename, nullptr, &fh, &fattr)) {
+        INC_GBL_STATS(lookup_served_from_cache, 1);
+        AZLogDebug("[{}/{}] Returning cached lookup", parent_ino, filename);
+        get_client()->reply_entry(this, &fh, &fattr, nullptr);
+        FH_FREE(&fh);
+        return;
+    }
 
     do {
         LOOKUP3args args;
-        args.what.dir = get_client()->get_nfs_inode_from_ino(parent_ino)->get_fh();
-        args.what.name = (char*) rpc_api->lookup_task.get_file_name();
+        args.what.dir = inode->get_fh();
+        args.what.name = (char *) filename;
 
         rpc_retry = false;
         /*
@@ -3696,8 +3713,12 @@ void rpc_task::send_readdir_response(
         if (readdirplus) {
             struct fuse_entry_param fuseentry;
 
+#ifdef ENABLE_PARANOID
+            assert(::memcmp(&it->attributes,
+                            &it->nfs_inode->attr, sizeof(struct stat)) == 0);
+#endif
+
             // We don't need the memset as we are setting all members.
-            //memset(&fuseentry, 0, sizeof(fuseentry));
             fuseentry.attr = it->attributes;
             fuseentry.ino = it->nfs_inode->get_fuse_ino();
             fuseentry.generation = it->nfs_inode->get_generation();
@@ -3719,7 +3740,7 @@ void rpc_task::send_readdir_response(
              * equivalent of lookup (and fuse may skip lookup if this file
              * is opened), so save in dnlc.
              */
-            parent_inode->dnlc_add(it->name, fuseentry.ino);
+            parent_inode->dnlc_add(it->name, it->nfs_inode);
 
             /*
              * Insert the entry into the buffer.

@@ -12,9 +12,68 @@
 // Compare two nfs_fh3 filehandles.
 #define FH_EQUAL(fh1, fh2) \
     (((fh1)->data.data_len == (fh2)->data.data_len) && \
-     (!memcmp((fh1)->data.data_val, \
-              (fh2)->data.data_val, \
-              (fh1)->data.data_len)))
+     (!::memcmp((fh1)->data.data_val, \
+                (fh2)->data.data_val, \
+                (fh1)->data.data_len)))
+
+#define FH_VALID(fh) \
+    (((fh)->data.data_len > 0) && ((fh)->data.data_val != nullptr))
+
+// *fh1 = *fh2
+#define FH_COPY(fh1, fh2) \
+do { \
+    /* Don't overwrite a valid fh, leaking memory */ \
+    assert(!FH_VALID(fh1)); \
+    assert(FH_VALID(fh2)); \
+    (fh1)->data.data_len = (fh2)->data.data_len; \
+    (fh1)->data.data_val = (char *) ::malloc((fh1)->data.data_len); \
+    ::memcpy((fh1)->data.data_val, (fh2)->data.data_val, (fh1)->data.data_len); \
+} while (0)
+
+#define FH_FREE(fh) \
+do { \
+    ::free((fh)->data.data_val); \
+    (fh)->data.data_val = nullptr; \
+    (fh)->data.data_len = 0; \
+} while (0)
+
+/**
+ * Information stored in DNLC cache.
+ * This is stored in nfs_inode->dnlc and filename is the key.
+ */
+struct dnlc_info
+{
+    /**
+     * Most common usage is to populate dnlc_info from struct nfs_inode.
+     */
+    dnlc_info(const struct nfs_inode *inode);
+
+    /**
+     * Move constructor.
+     */
+    dnlc_info(dnlc_info&& di);
+
+    ~dnlc_info()
+    {
+        if (fh_is_valid) {
+            FH_FREE(&fh);
+        }
+    }
+
+    uint8_t fh_is_valid:1,
+            fattr_is_valid:1;
+
+    /*
+     * We don't store nfs_inode* to save the complexity of refcounting the
+     * nfs_inode. Caller, from its context, knows that the inode fields it
+     * intends to use are valid.
+     *
+     * TODO: See if we should save nfs_inode* instead.
+     */
+    const fuse_ino_t ino = 0;
+    struct nfs_fh3 fh = {0, nullptr};
+    struct fattr3 fattr;
+};
 
 /**
  * This is the NFS inode structure. There is one of these per file/directory
@@ -102,7 +161,7 @@ struct nfs_inode
      * NFSv3 filehandle returned by the server.
      * We use this to identify this file/directory to the server.
      */
-    nfs_fh3 fh;
+    nfs_fh3 fh = {0, nullptr};
 
     /*
      * CRC32 hash of fh.
@@ -177,12 +236,13 @@ struct nfs_inode
      * also when we respond to READDIRPLUS request.
      * This does not have a TTL but it is revalidated from nfs_inode::lookup()
      * and dropped if directory mtime has changed which could mean some files
-     * may have been deleted or renamed.
+     * may have been deleted or renamed. Also specific entries are deleted if
+     * files are deleted, renamed.
      *
      * Note: dnlc stores the inode number w/o holding a ref on the inode.
      *       See comment above nfs_inode::lookup() to see why this is safe.
      */
-    std::unordered_map<std::string, fuse_ino_t> dnlc;
+    std::unordered_map<std::string, struct dnlc_info> dnlc;
 
     /*
      * Pointer to the readdirectory cache.
@@ -406,18 +466,89 @@ struct nfs_inode
     }
 
     /**
-     * Add filename/ino to dnlc.
+     * Add filename to dnlc.
      */
-    void dnlc_add(const std::string& filename, fuse_ino_t ino)
+    void dnlc_add(const std::string& filename, struct dnlc_info&& di)
     {
+        AZLogDebug("[{}] dnlc_add: Adding {} to cache", ino, filename);
+
+        assert(di.ino != 0);
+        assert(di.fh_is_valid);
+        assert(di.fattr_is_valid);
+
         std::unique_lock<std::shared_mutex> lock(ilock);
-        dnlc[filename] = ino;
+        auto it = dnlc.find(filename);
+        if (it == dnlc.end()) {
+            const auto it1 = dnlc.emplace(filename, std::move(di));
+            assert(it1.second);
+            return;
+        }
+
+        AZLogDebug("[{}] dnlc_add: {} already present in cache",
+                   ino, filename);
+
+        const struct dnlc_info &di_s = it->second;
+        /*
+         * If filename already exists, replace if the to-be-added info
+         * is more recent than the stored one.
+         * Currently dnlc_info always contains attributes.
+         */
+        assert(di.fattr_is_valid);
+        assert(di_s.fattr_is_valid);
+        const bool is_newer =
+            compare_nfstime(di.fattr.ctime, di_s.fattr.ctime) > 0;
+        if (is_newer) {
+            AZLogDebug("[{}] dnlc_add: {} updating", ino, filename);
+
+            dnlc.erase(it);
+            const auto it1 = dnlc.emplace(filename, std::move(di));
+            assert(it1.second);
+        }
     }
 
     void dnlc_remove(const std::string& filename)
     {
+        AZLogDebug("[{}] dnlc_remove: Removing {} from cache", ino, filename);
+
         std::unique_lock<std::shared_mutex> lock(ilock);
         dnlc.erase(filename);
+    }
+
+    bool dnlc_lookup(const std::string& filename,
+                     fuse_ino_t *ino,
+                     struct nfs_fh3 *fh,
+                     struct fattr3 *fattr)
+    {
+        std::shared_lock<std::shared_mutex> lock(ilock);
+        auto it = dnlc.find(filename);
+        if (it != dnlc.end()) {
+            /*
+             * TODO: Use dnlc ttl from config.
+             */
+            const bool dnlc_expired = false;
+            const struct dnlc_info &di_s = it->second;
+
+            assert(di_s.ino != 0);
+            assert(di_s.fh_is_valid);
+            assert(di_s.fattr_is_valid);
+
+            if (!dnlc_expired) {
+                if (ino) {
+                    *ino = di_s.ino;
+                }
+
+                if (fh) {
+                    FH_COPY(fh, &di_s.fh);
+                }
+
+                if (fattr) {
+                    *fattr = di_s.fattr;
+                }
+
+                return true;
+            }
+        }
+        return false;
     }
 
     /*
@@ -537,6 +668,7 @@ struct nfs_inode
 
     const struct nfs_fh3& get_fh() const
     {
+        assert(FH_VALID(&fh));
         return fh;
     }
 
