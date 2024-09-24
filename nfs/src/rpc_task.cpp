@@ -2804,12 +2804,33 @@ static void readdir_callback(
     int num_dirents = 0;
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
-    // Last valid offset seen by this callback.
+    // For readdir we don't use parent_task to track the fuse request.
+    assert(task->rpc_api->parent_task == nullptr);
+
+    /*
+     * Last valid offset seen for this directory enumeration. We keep on
+     * updating this as we read entries from the returned list, so at any
+     * point it contains the last cookie seen from the server and in case of
+     * re-enumeration the next READDIR RPC should ask entries starting from
+     * last_valid_offset+1.
+     * Only used when re-enumerating.
+     */
     off_t last_valid_offset = task->rpc_api->readdir_task.get_offset();
-    
-    // We only want to send to fuse when we see a new entry or we get eof.
-    bool should_send_response = false;
-    
+
+    /*
+     * This tracks if we have got a "new entry" that we would like to send to
+     * fuse. For the regular case (no re-enumeration) this is not very
+     * interesting as all entries received are entries, but for re-enumeration
+     * case this will be set only when we get an entry with cookie greater than
+     * the target_offset (set when we received the NFS3ERR_BAD_COOKIE error).
+     * Note that we will need to send response to fuse when either got_new_entry
+     * is set or we got eof.
+     */
+    bool got_new_entry = false;
+
+    const bool is_reenumerating =
+        (task->rpc_api->readdir_task.get_target_offset() != 0);
+
     /*
      * Now that the request has completed, we can query libnfs for the
      * dispatch time.
@@ -2839,8 +2860,14 @@ static void readdir_callback(
                 break;
             }
 #endif
-            
+
+            /*
+             * Blob NFS server should not send a cookie less than what we asked
+             * for.
+             */
+            assert(entry->cookie > (uint64_t) last_valid_offset);
             last_valid_offset = entry->cookie;
+
             /*
              * Keep updating eof_cookie, when we exit the loop we will have
              * eof_cookie set correctly.
@@ -2891,31 +2918,28 @@ static void readdir_callback(
             dircache_handle->add(dir_entry);
 
             /*
-             * If this is a reenumeration callback, the target_offset would
-             * be set to the "bad cookie" otherwise target_offset is 0.
-             * If we see something new here, this means either this is a 
-             * fresh call or the server succeeded to cross the bad_cookie this
-             * time.In either case, we need to return to fuse.
+             * If this is a re-enumeration callback, the target_offset would
+             * be set to one more than the last cookie received before we got
+             * the badcookie error, otherwise target_offset will be 0.
+             * If we see something new here, this can mean one of the two:
+             * - This is a regular (non re-enumeration) call.
+             * - This is a re-enumeration call and we have seen a cookie >=
+             *   target_offset, the last cookie seen before the badcookie error.
+             * In either case, we need to return this this new entry (and
+             * subsequent ones) to fuse.
              */
-            if (!should_send_response) {
-                should_send_response = (((off_t)entry->cookie >= 
-                                  task->rpc_api->readdir_task.get_target_offset()));
-            }
+            got_new_entry = (((off_t) entry->cookie >=
+                        task->rpc_api->readdir_task.get_target_offset()));
 
-            if (should_send_response) {
-                /*
-                 * Reset the target offset as reenumeration has stopped after this.
-                 * We do this for sanity here.
-                 */ 
-                task->rpc_api->readdir_task.set_target_offset(0);
-            }
+            // Only for re-enumeration case we can have got_new_entry as false.
+            assert(got_new_entry || is_reenumerating);
 
             /*
              * If we found an entry that has not been sent before, we need to
              * add it to the directory_entry vector but ONLY upto the byte
              * limit requested by fuse readdir call.
              */
-            if (should_send_response && rem_size >= 0) {
+            if (got_new_entry && rem_size >= 0) {
                 rem_size -= dir_entry->get_fuse_buf_size(false /* readdirplus */);
                 if (rem_size >= 0) {
                     readdirentries.push_back(dir_entry);
@@ -2926,10 +2950,10 @@ static void readdir_callback(
             ++num_dirents;
         }
 
-        AZLogDebug("readdir_callback: Num of entries returned by server is {}, "
+        AZLogDebug("readdir_callback{}: Num of entries returned by server is {}, "
                    "returned to fuse: {}, eof: {}, eof_cookie: {}",
-                   num_dirents, readdirentries.size(),
-                   eof, eof_cookie);
+                   is_reenumerating ? "(R)" : "",
+                   num_dirents, readdirentries.size(), eof, eof_cookie);
 
         dircache_handle->set_cookieverf(&res->READDIR3res_u.resok.cookieverf);
 
@@ -2940,37 +2964,25 @@ static void readdir_callback(
              * In such case, we must already have set eof and eof_cookie.
              */
             if (eof_cookie != -1) {
+                assert(num_dirents > 0);
                 dircache_handle->set_eof(eof_cookie);
             } else {
                 assert(num_dirents == 0);
                 assert(readdirentries.size() == 0);
                 if (dircache_handle->get_eof() != true) {
-                    if (num_dirents == 0) {
-                        /*
-                        * Server returned 0 entries and set eof to true, but the
-                        * previous READDIR call that we made, for that server
-                        * didn't return eof, this means the directory shrank in the
-                        * server. To be safe, invalidate the cache.
-                        */
-                        AZLogWarn("[{}] readdir_callback: Directory shrank in "
-                                "the server! cookie asked = {}. Purging cache!",
-                                dir_ino, task->rpc_api->readdir_task.get_offset());
-                        dir_inode->invalidate_cache();
-                    } else {
-                        /*
-                         * Server has not returned a new entry but we got eof, this
-                         * can ONLY happen when this is a reenumeration call which
-                         * saw EOF before it could reach the target cookie. We have
-                         * already repopulated the cache in this case and hence, we
-                         * do not need to invalidate again.
-                         */
-                        assert(task->rpc_api->readdir_task.get_target_offset() != 0);
-                        AZLogWarn("[{}] readdir_callback: got eof at {} before "
-                                  "reaching the target_offset {}. Bad cookie was "
-                                  "due to directory shrinking.",
-                                  dir_ino, task->rpc_api->readdir_task.get_offset(),
-                                  task->rpc_api->readdir_task.get_target_offset());
-                    }
+                    /*
+                     * Server returned 0 entries and set eof to true, but the
+                     * previous READDIR call that we made, for that server
+                     * didn't return eof, this means the directory shrank in the
+                     * server. To be safe, invalidate the cache.
+                     */
+                    AZLogWarn("[{}] readdir_callback{}: Directory shrank in "
+                            "the server! cookie asked: {} target_offset: {}. ",
+                            "Purging cache!",
+                            is_reenumerating ? "(R)" : "",
+                            dir_ino, task->rpc_api->readdir_task.get_offset(),
+                            task->rpc_api->readdir_task.get_target_offset());
+                    dir_inode->invalidate_cache();
                 } else {
                     assert((int64_t) dircache_handle->get_eof_cookie() != -1);
                 }
@@ -2978,51 +2990,64 @@ static void readdir_callback(
         }
 
         // Only send to fuse if we have seen new entries or EOF.
-        if(should_send_response || eof) {
+        if (got_new_entry || eof) {
             task->send_readdir_response(readdirentries);
         }
-
     } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
         task->get_client()->jukebox_retry(task);
         return;
     } else if (NFS_STATUS(res) == NFS3ERR_BAD_COOKIE) {
-        AZLogWarn("[{}] got NFS3ERR_BAD_COOKIE for offset: {}, cleaning "
-                  "dircache and starting reenumeration", 
+        AZLogWarn("[{}] readdir_callback{}: got NFS3ERR_BAD_COOKIE for "
+                  "offset: {}, clearing dircache and starting re-enumeration",
+                  is_reenumerating ? "(R)" : "",
                   dir_ino, task->rpc_api->readdir_task.get_offset());
+
         dir_inode->invalidate_cache();
 
         /*
-         * We have received a bad cookie error, we have to restart enumeration 
-         * until either the server returns a valid response or we reach eof. 
+         * We have received a bad cookie error, we have to restart enumeration
+         * until either the server returns a valid response or we reach eof.
          * If we keep getting bad cookie we will keep on reenumerating forever.
          */
         last_valid_offset = 0;
-        
+
         /*
          * We need to maintain the monotonocity of the target_offset
-         * because it represents the offsets already sent to fuse as part of 
+         * because it represents the offsets already sent to fuse as part of
          * this enumeration. This protects us from sending duplicate entries
          * to fuse if we receive bad_cookie before we reach the target during
-         * reenumeration. 
+         * reenumeration.
+         * If this is the first bad_cookie error for this enumeration, then
+         * target_offset must be set to "get_offset() + 1", else if it's a
+         * re-enumeration and we again got a badcookie then the target_offset
+         * must not be set less than the original target_offset.
          */
         task->rpc_api->readdir_task.set_target_offset(
-                                    std::max(task->rpc_api->readdir_task.get_offset() + 1, 
-                                    task->rpc_api->readdir_task.get_target_offset()));
+                std::max(task->rpc_api->readdir_task.get_offset() + 1,
+                         task->rpc_api->readdir_task.get_target_offset()));
     } else {
         task->reply_error(status);
         return;
     }
 
- 
     /*
-     * We have not seen a new entry and the call has not failed hence, this is a
+     * We have not seen a new entry and the call has not failed, hence this is a
      * reenumeration call and we have not reached the target_offset yet. We have to
-     * start another readdir call for the next batch. 
+     * start another readdir call for the next batch.
      */
-    if (!should_send_response) {
+    if (!got_new_entry) {
+        assert(is_reenumerating);
+        assert(last_valid_offset <
+                task->rpc_api->readdir_task.get_target_offset());
+
+        /*
+         * Create a new child task to carry out this request.
+         * Query cookies starting from last_valid_offset+1.
+         * If re-enumeration, set the target_offset appropriately.
+         */
         struct rpc_task *child_tsk =
             task->get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_READDIR);
-        
+
         child_tsk->init_readdir(
             task->rpc_api->req,
             task->rpc_api->readdir_task.get_ino(),
@@ -3031,16 +3056,16 @@ static void readdir_callback(
             task->rpc_api->readdir_task.get_target_offset(),
             task->rpc_api->readdir_task.get_fuse_file());
 
-        /*
-         * Set the parent task of the child to the parent of the
-         * current RPC task. This is required if the current task itself
-         * is one of the child tasks running part of the request.
-         */
-        child_tsk->rpc_api->parent_task = task->rpc_api->parent_task;
-        
+        assert(child_tsk->rpc_api->parent_task == nullptr);
+
+        AZLogDebug("[{}] readdir_callback{}: Re-enumerating from {} with "
+                   "target_offset {}",
+                   dir_ino, last_valid_offset,
+                   task->rpc_api->readdir_task.get_target_offset());
+
         /*
          * This will orchestrate a new readdir call and we will handle the response
-         * in the callback. We already ensure we do not send duplicate entries to fuse. 
+         * in the callback. We already ensure we do not send duplicate entries to fuse.
          */
         child_tsk->fetch_readdir_entries_from_server();
 
@@ -3080,11 +3105,32 @@ static void readdirplus_callback(
     int num_dirents = 0;
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
-    // Last valid offset seen by this callback.
+    // For readdir we don't use parent_task to track the fuse request.
+    assert(task->rpc_api->parent_task == nullptr);
+
+    /*
+     * Last valid offset seen for this directory enumeration. We keep on
+     * updating this as we read entries from the returned list, so at any
+     * point it contains the last cookie seen from the server and in case of
+     * re-enumeration the next READDIR RPC should ask entries starting from
+     * last_valid_offset+1.
+     * Only used when re-enumerating.
+     */
     off_t last_valid_offset = task->rpc_api->readdir_task.get_offset();
-    
-    // We only want to send to fuse when we see new entries or we get eof.
-    bool should_send_response = false;
+
+    /*
+     * This tracks if we have got a "new entry" that we would like to send to
+     * fuse. For the regular case (no re-enumeration) this is not very
+     * interesting as all entries received are entries, but for re-enumeration
+     * case this will be set only when we get an entry with cookie greater than
+     * the target_offset (set when we received the NFS3ERR_BAD_COOKIE error).
+     * Note that we will need to send response to fuse when either got_new_entry
+     * is set or we got eof.
+     */
+    bool got_new_entry = false;
+
+    const bool is_reenumerating =
+        (task->rpc_api->readdir_task.get_target_offset() != 0);
 
     /*
      * Now that the request has completed, we can query libnfs for the
@@ -3116,6 +3162,11 @@ static void readdirplus_callback(
                 break;
             }
 #endif
+            /*
+             * Blob NFS server should not send a cookie less than what we asked
+             * for.
+             */
+            assert(entry->cookie > (uint64_t) last_valid_offset);
             last_valid_offset = entry->cookie;
 
             const struct fattr3 *fattr = nullptr;
@@ -3220,33 +3271,29 @@ static void readdirplus_callback(
             // Add to readdirectory_cache for future use.
             dircache_handle->add(dir_entry);
 
-            
             /*
-             * If this is a reenumeration callback, the target_offset would
-             * be set to the "bad cookie" otherwise target_offset is 0.
-             * If we see something new here, this means either this is a 
-             * fresh call or the server succeeded to cross the bad_cookie this
-             * time.In either case, we need to return to fuse.
+             * If this is a re-enumeration callback, the target_offset would
+             * be set to one more than the last cookie received before we got
+             * the badcookie error, otherwise target_offset will be 0.
+             * If we see something new here, this can mean one of the two:
+             * - This is a regular (non re-enumeration) call.
+             * - This is a re-enumeration call and we have seen a cookie >=
+             *   target_offset, the last cookie seen before the badcookie error.
+             * In either case, we need to return this this new entry (and
+             * subsequent ones) to fuse.
              */
-            if (!should_send_response) {
-                should_send_response = (((off_t)entry->cookie >= 
-                                  task->rpc_api->readdir_task.get_target_offset()));
-            }
+            got_new_entry = (((off_t) entry->cookie >=
+                        task->rpc_api->readdir_task.get_target_offset()));
 
-            if (should_send_response) {
-                /*
-                 * Reset the target offset as reenumeration has stopped after this.
-                 * We do this for sanity here.
-                 */ 
-                task->rpc_api->readdir_task.set_target_offset(0);
-            }
+            // Only for re-enumeration case we can have got_new_entry as false.
+            assert(got_new_entry || is_reenumerating);
 
             /*
              * If we found an entry that has not been sent before, we need to
              * add it to the directory_entry vector but ONLY upto the byte
              * limit requested by fuse readdirplus call.
              */
-            if (should_send_response && rem_size >= 0) {
+            if (got_new_entry && rem_size >= 0) {
                 rem_size -= dir_entry->get_fuse_buf_size(true /* readdirplus */);
                 if (rem_size >= 0) {
                     /*
@@ -3296,10 +3343,10 @@ static void readdirplus_callback(
             ++num_dirents;
         }
 
-        AZLogDebug("readdirplus_callback: Num of entries returned by server "
+        AZLogDebug("readdirplus_callback{}: Num of entries returned by server "
                    "is {}, returned to fuse: {}, eof: {}, eof_cookie: {}",
-                   num_dirents, readdirentries.size(),
-                   eof, eof_cookie);
+                   is_reenumerating ? "(R)" : "",
+                   num_dirents, readdirentries.size(), eof, eof_cookie);
 
         dircache_handle->set_cookieverf(&res->READDIRPLUS3res_u.resok.cookieverf);
 
@@ -3310,36 +3357,24 @@ static void readdirplus_callback(
              * In such case, we must already have set eof and eof_cookie.
              */
             if (eof_cookie != -1) {
+                assert(num_dirents > 0);
                 dircache_handle->set_eof(eof_cookie);
             } else {
                 assert(readdirentries.size() == 0);
                 if (dircache_handle->get_eof() != true) {
-                    if (num_dirents == 0) {
-                        /*
-                        * Server returned 0 entries and set eof to true, but the
-                        * previous READDIR call that we made, for that server
-                        * didn't return eof, this means the directory shrank in the
-                        * server. To be safe, invalidate the cache.
-                        */
-                        AZLogWarn("[{}] readdirplus_callback: Directory shrank in "
-                                "the server! cookie asked = {}. Purging cache!",
-                                dir_ino, task->rpc_api->readdir_task.get_offset());
-                        dir_inode->invalidate_cache();
-                    } else {
-                        /*
-                         * Server has not returned a new entry but we got eof, this
-                         * can ONLY happen when this is a reenumeration call which
-                         * saw EOF before it could reach the target cookie. We have
-                         * already repopulated the cache in this case and hence, we
-                         * do not need to invalidate again.
-                         */
-                        assert(task->rpc_api->readdir_task.get_target_offset() != 0);
-                        AZLogWarn("[{}] readdirplus_callback: got eof at {} before "
-                                  "reaching the target_offset {}. Bad cookie was "
-                                  "due to directory shrinking.",
-                                  dir_ino, task->rpc_api->readdir_task.get_offset(),
-                                  task->rpc_api->readdir_task.get_target_offset());
-                    }
+                    /*
+                     * Server returned 0 entries and set eof to true, but the
+                     * previous READDIR call that we made, for that server
+                     * didn't return eof, this means the directory shrank in the
+                     * server. To be safe, invalidate the cache.
+                     */
+                    AZLogWarn("[{}] readdirplus_callback{}: Directory shrank in "
+                            "the server! cookie asked: {} target_offset: {}. ",
+                            "Purging cache!",
+                            is_reenumerating ? "(R)" : "",
+                            dir_ino, task->rpc_api->readdir_task.get_offset(),
+                            task->rpc_api->readdir_task.get_target_offset());
+                    dir_inode->invalidate_cache();
                 } else {
                     assert((int64_t) dircache_handle->get_eof_cookie() != -1);
                 }
@@ -3347,47 +3382,61 @@ static void readdirplus_callback(
         }
 
         // Only send to fuse if we have seen new entries.
-        if(should_send_response || eof) {
+        if (got_new_entry || eof) {
             task->send_readdir_response(readdirentries);
         }
     } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
         task->get_client()->jukebox_retry(task);
         return;
     } else if (NFS_STATUS(res) == NFS3ERR_BAD_COOKIE) {
-        AZLogWarn("[{}] got NFS3ERR_BAD_COOKIE for offset: {}, cleaning "
-                  "dircache and starting reenumeration", 
+        AZLogWarn("[{}] readdirplus_callback{}: got NFS3ERR_BAD_COOKIE for "
+                  "offset: {}, clearing dircache and starting re-enumeration",
+                  is_reenumerating ? "(R)" : "",
                   dir_ino, task->rpc_api->readdir_task.get_offset());
+
         dir_inode->invalidate_cache();
 
         /*
-         * We have received a bad cookie error, we have to restart enumeration 
-         * until either the server returns a valid response or we reach eof. 
+         * We have received a bad cookie error, we have to restart enumeration
+         * until either the server returns a valid response or we reach eof.
          * If we keep getting bad cookie we will keep on reenumerating forever.
          */
         last_valid_offset = 0;
-        
+
         /*
          * We need to maintain the monotonocity of the target_offset
-         * because it represents the offsets already sent to fuse as part of 
+         * because it represents the offsets already sent to fuse as part of
          * this enumeration. This protects us from sending duplicate entries
          * to fuse if we receive bad_cookie before we reach the target during
-         * reenumeration. 
+         * reenumeration.
+         * If this is the first bad_cookie error for this enumeration, then
+         * target_offset must be set to "get_offset() + 1", else if it's a
+         * re-enumeration and we again got a badcookie then the target_offset
+         * must not be set less than the original target_offset.
          */
         task->rpc_api->readdir_task.set_target_offset(
-                                    std::max(task->rpc_api->readdir_task.get_offset() + 1, 
-                                    task->rpc_api->readdir_task.get_target_offset()));
+                std::max(task->rpc_api->readdir_task.get_offset() + 1,
+                         task->rpc_api->readdir_task.get_target_offset()));
     } else {
         task->reply_error(status);
         return;
     }
 
     /*
-     * We have not seen a new entry and the call has not failed hence, this is a
+     * We have not seen a new entry and the call has not failed, hence this is a
      * reenumeration call and we have not reached the target_offset yet. We have to
-     * start another readdir call for the next batch. 
+     * start another readdirplus call for the next batch.
      */
-    if (!should_send_response) {
-        // Create a new child task to carry out this request.
+    if (!got_new_entry) {
+        assert(is_reenumerating);
+        assert(last_valid_offset <
+                task->rpc_api->readdir_task.get_target_offset());
+
+        /*
+         * Create a new child task to carry out this request.
+         * Query cookies starting from last_valid_offset+1.
+         * If re-enumeration, set the target_offset appropriately.
+         */
         struct rpc_task *child_tsk =
             task->get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_READDIRPLUS);
         child_tsk->init_readdirplus(
@@ -3398,16 +3447,16 @@ static void readdirplus_callback(
             task->rpc_api->readdir_task.get_target_offset(),
             task->rpc_api->readdir_task.get_fuse_file());
 
-        /*
-         * Set the parent task of the child to the parent of the
-         * current RPC task. This is required if the current task itself
-         * is one of the child tasks running part of the request.
-         */
-        child_tsk->rpc_api->parent_task = task->rpc_api->parent_task;
+        assert(child_tsk->rpc_api->parent_task == nullptr);
+
+        AZLogDebug("[{}] readdirplus_callback{}: Re-enumerating from {} with "
+                   "target_offset {}",
+                   dir_ino, last_valid_offset,
+                   task->rpc_api->readdir_task.get_target_offset());
 
         /*
          * This will orchestrate a new readdir call and we will handle the response
-         * in the callback. We already ensure we do not send duplicate entries to fuse. 
+         * in the callback. We already ensure we do not send duplicate entries to fuse.
          */
         child_tsk->fetch_readdirplus_entries_from_server();
 

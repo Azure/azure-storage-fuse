@@ -1178,7 +1178,12 @@ private:
 
     off_t offset;
 
-    // Target offset to reach if this is a reenumeration.
+    /*
+     * Target offset to reach if this is a re-enumeration.
+     * This is one more than the last cookie seen before we got a badcookie
+     * error, so only cookies >= target_offset are of interest on
+     * re-enumeration. Only those we can send in our response to fuse.
+     */
     off_t target_offset;
 
     // File info passed by the fuse layer.

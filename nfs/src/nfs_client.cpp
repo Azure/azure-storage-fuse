@@ -996,7 +996,7 @@ void nfs_client::readdir(
     // Force revalidate for offset==0 to ensure cto consistency.
     inode->revalidate(offset == 0);
 
-    tsk->init_readdir(req, ino, size, offset, 0, file);
+    tsk->init_readdir(req, ino, size, offset, 0 /* target_offset */, file);
     tsk->run_readdir();
 }
 
@@ -1013,7 +1013,7 @@ void nfs_client::readdirplus(
     // Force revalidate for offset==0 to ensure cto consistency.
     inode->revalidate(offset == 0);
 
-    tsk->init_readdirplus(req, ino, size, offset, 0, file);
+    tsk->init_readdirplus(req, ino, size, offset, 0 /* target_offset */, file);
     tsk->run_readdirplus();
 }
 
