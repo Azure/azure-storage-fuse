@@ -496,7 +496,7 @@ func (bb *BlockBlob) getAttrUsingList(name string) (attr *internal.ObjAttr, err 
 	}
 
 	if err == nil {
-		log.Err("BlockBlob::getAttrUsingList : blob %s does not exist", name)
+		log.Warn("BlockBlob::getAttrUsingList : blob %s does not exist", name)
 		return nil, syscall.ENOENT
 	}
 
@@ -1419,7 +1419,7 @@ func (bb *BlockBlob) GetCommittedBlockList(name string) (*internal.CommittedBloc
 
 // StageBlock : stages a block and returns its blockid
 func (bb *BlockBlob) StageBlock(name string, data []byte, id string) error {
-	log.Trace("BlockBlob::StageBlock : name %s", name)
+	log.Trace("BlockBlob::StageBlock : name %s, ID %v, length %v", name, id, len(data))
 
 	ctx, cancel := context.WithTimeout(context.Background(), max_context_timeout*time.Minute)
 	defer cancel()

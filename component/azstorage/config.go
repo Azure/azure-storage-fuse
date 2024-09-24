@@ -138,8 +138,6 @@ const (
 	EnvAzStorageAadEndpoint            = "AZURE_STORAGE_AAD_ENDPOINT"
 	EnvAzStorageAuthType               = "AZURE_STORAGE_AUTH_TYPE"
 	EnvAzStorageBlobEndpoint           = "AZURE_STORAGE_BLOB_ENDPOINT"
-	EnvHttpProxy                       = "http_proxy"
-	EnvHttpsProxy                      = "https_proxy"
 	EnvAzStorageAccountContainer       = "AZURE_STORAGE_ACCOUNT_CONTAINER"
 	EnvAzAuthResource                  = "AZURE_STORAGE_AUTH_RESOURCE"
 	EnvAzStorageCpkEncryptionKey       = "AZURE_STORAGE_CPK_ENCRYPTION_KEY"
@@ -218,9 +216,6 @@ func RegisterEnvVariables() {
 	config.BindEnv("azstorage.endpoint", EnvAzStorageBlobEndpoint)
 
 	config.BindEnv("azstorage.mode", EnvAzStorageAuthType)
-
-	config.BindEnv("azstorage.http-proxy", EnvHttpProxy)
-	config.BindEnv("azstorage.https-proxy", EnvHttpsProxy)
 
 	config.BindEnv("azstorage.container", EnvAzStorageAccountContainer)
 
