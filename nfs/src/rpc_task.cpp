@@ -41,6 +41,24 @@ do { \
 #define INJECT_JUKEBOX(res, task) /* nothing */
 #endif
 
+#ifdef ENABLE_PRESSURE_POINTS
+#define INJECT_BAD_COOKIE(res, task) \
+do { \
+    if (res && (NFS_STATUS(res) == NFS3_OK)) { \
+        if (inject_error() && task->rpc_api->readdir_task.get_offset() != 0) { \
+            AZLogWarn("[{}] PP: bad cookie at offset {} ", \
+                       task->rpc_api->readdir_task.get_target_offset() != 0 ? "(R)" : "", \
+                       task->rpc_api->readdir_task.get_ino(), \
+                       task->rpc_api->readdir_task.get_offset(), \
+                       __FUNCTION__); \
+            (res)->status = NFS3ERR_BAD_COOKIE; \
+        } \
+    } \
+} while (0)
+#else
+#define INJECT_BAD_COOKIE(res, task) /* nothing */
+#endif
+
 /* static */
 std::atomic<int> rpc_task::async_slots = MAX_ASYNC_RPC_TASKS;
 
@@ -2794,6 +2812,7 @@ static void readdir_callback(
     READDIR3res *const res = (READDIR3res*) data;
 
     INJECT_JUKEBOX(res, task);
+    INJECT_BAD_COOKIE(res, task);
 
     const fuse_ino_t dir_ino = task->rpc_api->readdir_task.get_ino();
     struct nfs_inode *const dir_inode =
@@ -2802,7 +2821,7 @@ static void readdir_callback(
     ssize_t rem_size = task->rpc_api->readdir_task.get_size();
     std::vector<const directory_entry*> readdirentries;
     int num_dirents = 0;
-    const int status = task->status(rpc_status, NFS_STATUS(res));
+    int status = task->status(rpc_status, NFS_STATUS(res));
 
     // For readdir we don't use parent_task to track the fuse request.
     assert(task->rpc_api->parent_task == nullptr);
@@ -2997,7 +3016,7 @@ static void readdir_callback(
         task->get_client()->jukebox_retry(task);
         return;
     } else if (NFS_STATUS(res) == NFS3ERR_BAD_COOKIE) {
-        AZLogWarn("[{}] readdir_callback{}: got NFS3ERR_BAD_COOKIE for "
+        AZLogWarn("[{}] readdir_callback {}: got NFS3ERR_BAD_COOKIE for "
                   "offset: {}, clearing dircache and starting re-enumeration",
                   is_reenumerating ? "(R)" : "",
                   dir_ino, task->rpc_api->readdir_task.get_offset());
@@ -3036,7 +3055,7 @@ static void readdir_callback(
      * start another readdir call for the next batch.
      */
     if (!got_new_entry) {
-        assert(is_reenumerating);
+        assert(is_reenumerating || last_valid_offset == 0);
         assert(last_valid_offset <
                 task->rpc_api->readdir_task.get_target_offset());
 
@@ -3095,6 +3114,7 @@ static void readdirplus_callback(
     READDIRPLUS3res *const res = (READDIRPLUS3res*) data;
 
     INJECT_JUKEBOX(res, task);
+    INJECT_BAD_COOKIE(res, task);
 
     const fuse_ino_t dir_ino = task->rpc_api->readdir_task.get_ino();
     struct nfs_inode *const dir_inode =
@@ -3103,7 +3123,7 @@ static void readdirplus_callback(
     ssize_t rem_size = task->rpc_api->readdir_task.get_size();
     std::vector<const directory_entry*> readdirentries;
     int num_dirents = 0;
-    const int status = task->status(rpc_status, NFS_STATUS(res));
+    int status = task->status(rpc_status, NFS_STATUS(res));
 
     // For readdir we don't use parent_task to track the fuse request.
     assert(task->rpc_api->parent_task == nullptr);
@@ -3368,7 +3388,7 @@ static void readdirplus_callback(
                      * didn't return eof, this means the directory shrank in the
                      * server. To be safe, invalidate the cache.
                      */
-                    AZLogWarn("[{}] readdirplus_callback{}: Directory shrank in "
+                    AZLogWarn("[{}] readdirplus_callback {}: Directory shrank in "
                             "the server! cookie asked: {} target_offset: {}. ",
                             "Purging cache!",
                             is_reenumerating ? "(R)" : "",
@@ -3428,7 +3448,7 @@ static void readdirplus_callback(
      * start another readdirplus call for the next batch.
      */
     if (!got_new_entry) {
-        assert(is_reenumerating);
+        assert(is_reenumerating || last_valid_offset == 0);
         assert(last_valid_offset <
                 task->rpc_api->readdir_task.get_target_offset());
 
