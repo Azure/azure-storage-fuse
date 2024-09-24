@@ -2831,6 +2831,7 @@ static void readdir_callback(
     std::vector<const directory_entry*> readdirentries;
     int num_dirents = 0;
     const int status = task->status(rpc_status, NFS_STATUS(res));
+    bool eof = false;
 
     // For readdir we don't use parent_task to track the fuse request.
     assert(task->rpc_api->parent_task == nullptr);
@@ -2867,7 +2868,7 @@ static void readdir_callback(
 
     if (status == 0) {
         const struct entry3 *entry = res->READDIR3res_u.resok.reply.entries;
-        const bool eof = res->READDIR3res_u.resok.reply.eof;
+        eof = res->READDIR3res_u.resok.reply.eof;
         int64_t eof_cookie = -1;
 
         // Get handle to the readdirectory cache.
@@ -3020,6 +3021,7 @@ static void readdir_callback(
         // Only send to fuse if we have seen new entries or EOF.
         if (got_new_entry || eof) {
             task->send_readdir_response(readdirentries);
+            return;
         }
     } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
         task->get_client()->jukebox_retry(task);
@@ -3066,43 +3068,43 @@ static void readdir_callback(
      * was called for a regular readdir (not re-enumerating) but it failed with
      * badcookie and hence we are here enumerating.
      */
-    if (!got_new_entry) {
-        assert(is_reenumerating || last_valid_offset == 0);
-        assert(last_valid_offset <
-                task->rpc_api->readdir_task.get_target_offset());
+    assert(!got_new_entry);
+    assert(is_reenumerating || last_valid_offset == 0);
+    assert(last_valid_offset <
+            task->rpc_api->readdir_task.get_target_offset());
+    assert(!eof);
 
-        /*
-         * Create a new child task to carry out this request.
-         * Query cookies starting from last_valid_offset+1.
-         * If re-enumeration, set the target_offset appropriately.
-         */
-        struct rpc_task *child_tsk =
-            task->get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_READDIR);
+    /*
+     * Create a new child task to carry out this request.
+     * Query cookies starting from last_valid_offset+1.
+     * If re-enumeration, set the target_offset appropriately.
+     */
+    struct rpc_task *child_tsk =
+        task->get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_READDIR);
 
-        child_tsk->init_readdir(
-            task->rpc_api->req,
-            task->rpc_api->readdir_task.get_ino(),
-            task->rpc_api->readdir_task.get_size(),
-            last_valid_offset,
-            task->rpc_api->readdir_task.get_target_offset(),
-            task->rpc_api->readdir_task.get_fuse_file());
+    child_tsk->init_readdir(
+        task->rpc_api->req,
+        task->rpc_api->readdir_task.get_ino(),
+        task->rpc_api->readdir_task.get_size(),
+        last_valid_offset,
+        task->rpc_api->readdir_task.get_target_offset(),
+        task->rpc_api->readdir_task.get_fuse_file());
 
-        assert(child_tsk->rpc_api->parent_task == nullptr);
+    assert(child_tsk->rpc_api->parent_task == nullptr);
 
-        AZLogDebug("[{}] readdir_callback{}: Re-enumerating from {} with "
-                   "target_offset {}",
-                   dir_ino, last_valid_offset,
-                   task->rpc_api->readdir_task.get_target_offset());
+    AZLogDebug("[{}] readdir_callback{}: Re-enumerating from {} with "
+               "target_offset {}",
+               dir_ino, last_valid_offset,
+               task->rpc_api->readdir_task.get_target_offset());
 
-        /*
-         * This will orchestrate a new readdir call and we will handle the response
-         * in the callback. We already ensure we do not send duplicate entries to fuse.
-         */
-        child_tsk->fetch_readdir_entries_from_server();
+    /*
+     * This will orchestrate a new readdir call and we will handle the response
+     * in the callback. We already ensure we do not send duplicate entries to fuse.
+     */
+    child_tsk->fetch_readdir_entries_from_server();
 
-        // Free the current task here, the child task will ensure a response is sent.
-        task->free_rpc_task();
-    }
+    // Free the current task here, the child task will ensure a response is sent.
+    task->free_rpc_task();
 }
 
 /*
@@ -3136,6 +3138,7 @@ static void readdirplus_callback(
     std::vector<const directory_entry*> readdirentries;
     int num_dirents = 0;
     const int status = task->status(rpc_status, NFS_STATUS(res));
+    bool eof = false;
 
     // For readdir we don't use parent_task to track the fuse request.
     assert(task->rpc_api->parent_task == nullptr);
@@ -3416,6 +3419,7 @@ static void readdirplus_callback(
         // Only send to fuse if we have seen new entries.
         if (got_new_entry || eof) {
             task->send_readdir_response(readdirentries);
+            return;
         }
     } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
         task->get_client()->jukebox_retry(task);
@@ -3462,42 +3466,42 @@ static void readdirplus_callback(
      * was called for a regular readdir (not re-enumerating) but it failed with
      * badcookie and hence we are here enumerating.
      */
-    if (!got_new_entry) {
-        assert(is_reenumerating || last_valid_offset == 0);
-        assert(last_valid_offset <
-                task->rpc_api->readdir_task.get_target_offset());
+    assert(!got_new_entry);
+    assert(is_reenumerating || last_valid_offset == 0);
+    assert(last_valid_offset <
+            task->rpc_api->readdir_task.get_target_offset());
+    assert(!eof);
 
-        /*
-         * Create a new child task to carry out this request.
-         * Query cookies starting from last_valid_offset+1.
-         * If re-enumeration, set the target_offset appropriately.
-         */
-        struct rpc_task *child_tsk =
-            task->get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_READDIRPLUS);
-        child_tsk->init_readdirplus(
-            task->rpc_api->req,
-            task->rpc_api->readdir_task.get_ino(),
-            task->rpc_api->readdir_task.get_size(),
-            last_valid_offset,
-            task->rpc_api->readdir_task.get_target_offset(),
-            task->rpc_api->readdir_task.get_fuse_file());
+    /*
+     * Create a new child task to carry out this request.
+     * Query cookies starting from last_valid_offset+1.
+     * If re-enumeration, set the target_offset appropriately.
+     */
+    struct rpc_task *child_tsk =
+        task->get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_READDIRPLUS);
+    child_tsk->init_readdirplus(
+        task->rpc_api->req,
+        task->rpc_api->readdir_task.get_ino(),
+        task->rpc_api->readdir_task.get_size(),
+        last_valid_offset,
+        task->rpc_api->readdir_task.get_target_offset(),
+        task->rpc_api->readdir_task.get_fuse_file());
 
-        assert(child_tsk->rpc_api->parent_task == nullptr);
+    assert(child_tsk->rpc_api->parent_task == nullptr);
 
-        AZLogDebug("[{}] readdirplus_callback{}: Re-enumerating from {} with "
-                   "target_offset {}",
-                   dir_ino, last_valid_offset,
-                   task->rpc_api->readdir_task.get_target_offset());
+    AZLogDebug("[{}] readdirplus_callback{}: Re-enumerating from {} with "
+               "target_offset {}",
+               dir_ino, last_valid_offset,
+               task->rpc_api->readdir_task.get_target_offset());
 
-        /*
-         * This will orchestrate a new readdir call and we will handle the response
-         * in the callback. We already ensure we do not send duplicate entries to fuse.
-         */
-        child_tsk->fetch_readdirplus_entries_from_server();
+    /*
+     * This will orchestrate a new readdir call and we will handle the response
+     * in the callback. We already ensure we do not send duplicate entries to fuse.
+     */
+    child_tsk->fetch_readdirplus_entries_from_server();
 
-        // Free the current task here, the child task will ensure a response is sent.
-        task->free_rpc_task();
-    }
+    // Free the current task here, the child task will ensure a response is sent.
+    task->free_rpc_task();
 }
 
 void rpc_task::get_readdir_entries_from_cache()
