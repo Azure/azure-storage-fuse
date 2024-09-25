@@ -883,7 +883,12 @@ static void createfile_callback(
 
     auto res = (CREATE3res*)data;
 
+#if 0
+    /*
+     * Don't inject jukebox for non-idempotent requests.
+     */
     INJECT_JUKEBOX(res, task);
+#endif
 
     const fuse_ino_t ino =
         task->rpc_api->create_task.get_parent_ino();
@@ -973,7 +978,12 @@ void mknod_callback(
 
     auto res = (CREATE3res*)data;
 
+#if 0
+    /*
+     * Don't inject jukebox for non-idempotent requests.
+     */
     INJECT_JUKEBOX(res, task);
+#endif
 
     const fuse_ino_t ino =
         task->rpc_api->mknod_task.get_parent_ino();
@@ -1017,7 +1027,12 @@ void mkdir_callback(
 
     auto res = (MKDIR3res*)data;
 
+#if 0
+    /*
+     * Don't inject jukebox for non-idempotent requests.
+     */
     INJECT_JUKEBOX(res, task);
+#endif
 
     const fuse_ino_t ino =
         task->rpc_api->mkdir_task.get_parent_ino();
