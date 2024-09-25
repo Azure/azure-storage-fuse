@@ -19,8 +19,8 @@ func init() {
 		return
 	}
 
-	// Please provide the plugin names as a colon-separated list of `.so` files located in the specified plugin directory. For example:
-	// BLOBFUSE_PLUGIN_NAMES=plugin1.so:plugin2.so:plugin3.so
+	// Environment variable which expects file names as a colon-separated list of `.so` files located in
+	// the specified plugin directory. For example: BLOBFUSE_PLUGIN_NAMES=plugin1.so:plugin2.so:plugin3.so
 	pluginFilesPath := os.Getenv("BLOBFUSE_PLUGIN_NAMES")
 
 	var pluginFiles []string
