@@ -1076,7 +1076,12 @@ void unlink_callback(
 
     auto res = (REMOVE3res*)data;
 
+#if 0
+    /*
+     * Don't inject jukebox for non-idempotent requests.
+     */
     INJECT_JUKEBOX(res, task);
+#endif
 
     const fuse_ino_t ino =
         task->rpc_api->unlink_task.get_parent_ino();
@@ -1112,7 +1117,12 @@ void rmdir_callback(
 
     auto res = (RMDIR3res*) data;
 
+#if 0
+    /*
+     * Don't inject jukebox for non-idempotent requests.
+     */
     INJECT_JUKEBOX(res, task);
+#endif
 
     const fuse_ino_t ino =
         task->rpc_api->rmdir_task.get_parent_ino();
@@ -1147,7 +1157,12 @@ void symlink_callback(
 
     auto res = (SYMLINK3res*) data;
 
+#if 0
+    /*
+     * Don't inject jukebox for non-idempotent requests.
+     */
     INJECT_JUKEBOX(res, task);
+#endif
 
     const fuse_ino_t ino =
         task->rpc_api->symlink_task.get_parent_ino();
@@ -1196,7 +1211,12 @@ void rename_callback(
     const bool silly_rename = task->rpc_api->rename_task.get_silly_rename();
     auto res = (RENAME3res*) data;
 
+#if 0
+    /*
+     * Don't inject jukebox for non-idempotent requests.
+     */
     INJECT_JUKEBOX(res, task);
+#endif
 
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
