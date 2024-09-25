@@ -13,7 +13,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
-// SAMPLE external COMPONENT IMPLEMENTATION
+// SAMPLE EXTERNAL COMPONENT IMPLEMENTATION
 // This is a sample external component implementation that can be used as a reference to implement external components.
 // The external component should implement the external.Component interface.
 const (
@@ -30,9 +30,11 @@ func (e *test2) SetName(name string) {
 func (e *test2) SetNextComponent(nc external.Component) {
 	e.BaseComponent.SetNextComponent(nc)
 }
-func InitPlugin() {
-	external.AddComponent(CompName, NewexternalComponent)
+
+func GetExternalComponent() (string, func() external.Component) {
+	return CompName, NewexternalComponent
 }
+
 func NewexternalComponent() external.Component {
 	comp := &test2{}
 	comp.SetName(CompName)
@@ -152,7 +154,7 @@ func (e *test2) StageData(opt external.StageDataOptions) error {
 	}
 	defer fileHandle.Close()
 
-	fileOffset := int64(opt.Offset) * e.blockSize
+	fileOffset := int64(opt.Offset)
 
 	_, err = fileHandle.WriteAt(opt.Data, fileOffset)
 

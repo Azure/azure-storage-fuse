@@ -1352,7 +1352,7 @@ func (bc *BlockCache) upload(item *workItem) {
 	err := bc.NextComponent().StageData(internal.StageDataOptions{
 		Name:   item.handle.Path,
 		Data:   item.block.data[0 : item.block.endIndex-item.block.offset],
-		Offset: uint64(item.block.id),
+		Offset: uint64(item.block.offset),
 		Id:     item.blockId})
 	if err != nil {
 		// Fail to write the data so just reschedule this request

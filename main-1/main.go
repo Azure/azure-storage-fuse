@@ -10,7 +10,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/external"
 )
 
-// SAMPLE external COMPONENT IMPLEMENTATION
+// SAMPLE EXTERNAL COMPONENT IMPLEMENTATION
 // This is a sample external component implementation that can be used as a reference to implement external components.
 // The external component should implement the external.Component interface.
 const (
@@ -23,11 +23,13 @@ const (
 func (e *test1) SetName(name string) {
 	e.BaseComponent.SetName(name)
 }
+
 func (e *test1) SetNextComponent(nc external.Component) {
 	e.BaseComponent.SetNextComponent(nc)
 }
-func InitPlugin() {
-	external.AddComponent("test1", NewexternalComponent)
+
+func GetExternalComponent() (string, func() external.Component) {
+	return CompName, NewexternalComponent
 }
 
 func NewexternalComponent() external.Component {

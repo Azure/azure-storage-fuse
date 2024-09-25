@@ -5,6 +5,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
 
+// Package external is a wrapper around internal package to expose the internal attributes for writing custom components.
 const (
 	PropFlagUnknown uint16 = iota
 	PropFlagNotExists
@@ -65,11 +66,6 @@ type CommittedBlockList = internal.CommittedBlockList
 
 // Type aliases for pipeline
 type Handle = handlemap.Handle
-
-// Wrapper function to expose AddComponent
-func AddComponent(name string, init internal.NewComponent) {
-	internal.AddComponent(name, init)
-}
 
 type ComponentPriorityWrapper struct {
 	internal.ComponentPriority

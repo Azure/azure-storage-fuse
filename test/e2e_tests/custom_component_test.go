@@ -122,7 +122,7 @@ func TestCustomComponentTestSuite(t *testing.T) {
 	initcustomComponentFlags()
 	tConf = testConf{}
 
-	buffer = make([]byte, int64(blockSizeMB)*MB)
+	buffer = make([]byte, 9*int64(blockSizeMB)*MB+2*MB)
 
 	// Generate random test dir name where our End to End test run is contained
 	testDirName := getcustomComponentTestDirName(10)
