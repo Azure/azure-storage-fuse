@@ -3004,6 +3004,20 @@ static void readdir_callback(
             // Add to readdirectory_cache for future use.
             dircache_handle->add(dir_entry);
 
+#ifdef ENABLE_PARANOID
+            /*
+             * Entries added by readdir do not contribute to dnlc cache.
+             *
+             * Note: Technically there could be some other thread processing
+             *       readdirplus response for the same directory and it may
+             *       race with this thread, remove the above entry added by
+             *       readdir and add an entry by readdirplus. This is so rare
+             *       that we assert anyway.
+             */
+            assert(dircache_handle->dnlc_lookup(dir_entry->name) == nullptr);
+            assert(dir_inode->dnlc_lookup(dir_entry->name) == nullptr);
+#endif
+
             /*
              * If this is a re-enumeration callback, the target_offset would
              * be set to one more than the last cookie received before we got
@@ -3363,6 +3377,24 @@ static void readdirplus_callback(
 
             // Add to readdirectory_cache for future use.
             dircache_handle->add(dir_entry);
+
+#ifdef ENABLE_PARANOID
+            /*
+             * Now we should be able to perform dnlc lookup for dir_entry->name
+             * and it must yield nfs_inode. Try both from the dircache_handle
+             * and the inode.
+             *
+             * Note: This assert can fail under very rare circumstances.
+             *       See note in readdir_callback().
+             */
+            struct nfs_inode *tmpi = dircache_handle->dnlc_lookup(dir_entry->name);
+            assert(tmpi == nfs_inode);
+            tmpi->decref();
+
+            tmpi = dir_inode->dnlc_lookup(dir_entry->name);
+            assert(tmpi == nfs_inode);
+            tmpi->decref();
+#endif
 
             /*
              * If this is a re-enumeration callback, the target_offset would
