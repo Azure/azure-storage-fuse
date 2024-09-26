@@ -34,8 +34,8 @@ struct directory_entry
      * Again, for READDIR fetched entries, we won't know the filehandle
      * (and the fileid), hence we won't have the inode set.
      */
-    struct nfs_inode* const nfs_inode;
-    char* const name;
+    struct nfs_inode *const nfs_inode;
+    char *const name;
 
     // Constructor for adding a readdirplus returned entry.
     directory_entry(char* name_,
@@ -103,6 +103,9 @@ struct directory_entry
     }
 };
 
+/**
+ * This is our unified readdir and DNLC cache.
+ */
 struct readdirectory_cache
 {
 private:
@@ -133,7 +136,14 @@ private:
 
     cookieverf3 cookie_verifier;
 
+    /*
+     * dir_entries is the readdir cache, indexed by cookie value.
+     * We double readdir cache as DNLC cache too. dnlc_map is used to convert
+     * filename (which is the index into the DNLC cache) to cookie (which is
+     * the index into the readdir cache).
+     */
     std::map<cookie3, struct directory_entry*> dir_entries;
+    std::unordered_map<const char *, cookie3> dnlc_map;
 
     /*
      * This lock protects all the members of this readdirectory_cache.
@@ -231,18 +241,58 @@ public:
     }
 
     /**
+     * Given a filename, returns the cookie corresponding to that.
+     * The cookie returned is the one returned for this filename, by the latest
+     * READDIR/READDIRPLUS response.
+     * A return value of 0 means the file was not found in the cache.
+     *
+     * Note: Caller MUST hold the readdircache_lock.
+     */
+    cookie3 filename_to_cookie(const char *filename) const
+    {
+        const auto it = dnlc_map.find(filename);
+        const cookie3 cookie = (it == dnlc_map.end()) ? 0 : it->second;
+
+#ifndef ENABLE_NON_AZURE_NFS
+        /*
+         * Blob NFS uses 1:1 mappign betweek cookie and files, so the
+         * following sanity assert should be good to catch any bugs.
+         */
+        assert(cookie < UINT32_MAX);
+#endif
+
+        return cookie;
+    }
+
+    /**
      * Lookup and return the directory_entry corresponding to the
      * given cookie.
+     * lookup() is the readdir cache lookup method, while dnlc_lookup() is
+     * the DNLC cache lookup method.
+     *
+     * Note: lookup() returns after holding a dircachecnt ref on the inode,
+     *       while dnlc_lookup() holds a lookupcnt ref on the inode.
+     *       Caller must drop this extra ref held.
      */
-    struct directory_entry *lookup(cookie3 cookie) const;
+    struct directory_entry *lookup(cookie3 cookie,
+                                   const char *filename_hint = nullptr) const;
+    struct nfs_inode *dnlc_lookup(const char *filename) const;
 
     /**
      * Remove the given cookie from readdirectory_cache.
      * Returns false if the cookie was not found, else it delete the cookie
      * and returns true. It also deletes the inode if this was the last ref
      * on the inode.
+     * remove() is the readdir cache delete method, while dnlc_remove() is
+     * the DNLC cache delete method.
      */
-    bool remove(cookie3 cookie);
+    bool remove(cookie3 cookie, const char *filename_hint = nullptr);
+
+    bool dnlc_remove(const char *filename)
+    {
+        assert(filename != nullptr);
+        return remove(0, filename);
+    }
 
     /**
      * Remove all entries from the cache.

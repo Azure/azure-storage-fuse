@@ -65,6 +65,9 @@ directory_entry::~directory_entry()
 bool readdirectory_cache::add(struct directory_entry* entry)
 {
     assert(entry != nullptr);
+    assert(entry->name != nullptr);
+    // 0 is not a valid cookie.
+    assert(entry->cookie != 0);
 
     {
         // Get exclusive lock on the map to add the entry to the map.
@@ -94,8 +97,26 @@ bool readdirectory_cache::add(struct directory_entry* entry)
                        entry->nfs_inode->dircachecnt.load());
         }
 
-        const auto& it = dir_entries.insert({entry->cookie, entry});
-        cache_size += entry->get_cache_size();
+        const auto it = dir_entries.emplace(entry->cookie, entry);
+
+        /*
+         * Caller only calls us after ensuring cookie isn't already cached,
+         * but since we don't hold the readdircache_lock across removing the
+         * old entry and adding this one, it may race with some other thread.
+         */
+        if (it.second) {
+            cache_size += entry->get_cache_size();
+
+            /*
+             * Also add to the DNLC cache.
+             * In the common case the entry must not be present in the DNLC
+             * cache, but in case directory changes, same filename must have
+             * been seen on a different cookie value earlier.
+             * In any case, overwrite that.
+             */
+            dnlc_map[entry->name] = entry->cookie;
+        }
+
         return it.second;
     }
 
@@ -106,15 +127,33 @@ bool readdirectory_cache::add(struct directory_entry* entry)
     return false;
 }
 
-struct directory_entry *readdirectory_cache::lookup(cookie3 cookie) const
+struct directory_entry *readdirectory_cache::lookup(
+        cookie3 cookie,
+        const char *filename_hint) const
 {
-    // Take shared look to see if the entry exist in the cache.
+    // Either cookie or filename_hint (not both) must be passed.
+    assert((cookie == 0) == (filename_hint != nullptr));
+
+    // Take shared look to see if the entry exists in the cache.
     std::shared_lock<std::shared_mutex> lock(readdircache_lock);
+
+    if (filename_hint) {
+        cookie = filename_to_cookie(filename_hint);
+        if (cookie == 0) {
+            return nullptr;
+        }
+    }
 
     const auto it = dir_entries.find(cookie);
 
     struct directory_entry *dirent =
         (it != dir_entries.end()) ? it->second : nullptr;
+
+    /*
+     * If filename_hint was passed it MUST match the name in the dirent.
+     */
+    assert(!dirent || !filename_hint ||
+           (::strcmp(dirent->name, filename_hint) == 0));
 
     if (dirent && dirent->nfs_inode) {
         /*
@@ -136,12 +175,44 @@ struct directory_entry *readdirectory_cache::lookup(cookie3 cookie) const
     return dirent;
 }
 
-bool readdirectory_cache::remove(cookie3 cookie)
+struct nfs_inode *readdirectory_cache::dnlc_lookup(const char *filename) const
 {
+    assert(filename != nullptr);
+
+    const struct directory_entry *dirent = lookup(0, filename);
+
+    if (dirent && dirent->nfs_inode) {
+        assert(::strcmp(filename, dirent->name) == 0);
+
+        /*
+         * lookup() must have held a dircachecnt ref on the inode, drop that
+         * but only after holding a fresh lookupcnt ref.
+         */
+        dirent->nfs_inode->incref();
+        assert(dirent->nfs_inode->dircachecnt > 0);
+        dirent->nfs_inode->dircachecnt--;
+        return dirent->nfs_inode;
+    }
+
+    return nullptr;
+}
+
+bool readdirectory_cache::remove(cookie3 cookie, const char *filename_hint)
+{
+    // Either cookie or filename_hint (not both) must be passed.
+    assert((cookie == 0) == (filename_hint != nullptr));
+
     struct nfs_inode *inode = nullptr;
 
     {
         std::unique_lock<std::shared_mutex> lock(readdircache_lock);
+
+        if (filename_hint) {
+            cookie = filename_to_cookie(filename_hint);
+            if (cookie == 0) {
+                return false;
+            }
+        }
 
         const auto it = dir_entries.find(cookie);
         struct directory_entry *dirent =
@@ -157,6 +228,12 @@ bool readdirectory_cache::remove(cookie3 cookie)
         }
 
         assert(dirent->cookie == cookie);
+
+        /*
+         * Remove the DNLC entry.
+         */
+        [[maybe_unused]] const int cnt = dnlc_map.erase(dirent->name);
+        assert(cnt == 1);
 
         /*
          * This just removes it from the cache, no destructor is called at
@@ -299,7 +376,11 @@ void readdirectory_cache::clear()
             delete it->second;
         }
 
+        // For every entry added to dir_entries we add one to dnlc_map.
+        assert(dir_entries.size() == dnlc_map.size());
+
         dir_entries.clear();
+        dnlc_map.clear();
     }
 
     if (!tofree_vec.empty()) {
