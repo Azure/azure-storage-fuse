@@ -378,12 +378,65 @@ struct nfs_inode *nfs_client::get_nfs_inode(const nfs_fh3 *fh,
                 /*
                  * Copy the attributes to the inode as they would be the most
                  * recent ones. Also reset the attribute cache timeout.
+                 * For correctness we update the inode attributes only if they
+                 * are newer than the cached ones.
                  */
-                nfs_client::stat_from_fattr3(&inode->attr, fattr);
+                const bool fattr_is_newer =
+                    (compare_timespec_and_nfstime(inode->attr.st_ctim,
+                                                  fattr->ctime) == -1);
+                if (fattr_is_newer) {
+                    AZLogWarn("[{}:{} / 0x{:08x}] Updating inode attr, "
+                              "size {} -> {}, "
+                              "ctime {}.{} -> {}.{}, "
+                              "mtime {}.{} -> {}.{}",
+                              inode->get_filetype_coding(),
+                              inode->get_fuse_ino(),
+                              inode->get_crc(),
+                              inode->attr.st_size, fattr->size,
+                              inode->attr.st_ctim.tv_sec,
+                              inode->attr.st_ctim.tv_nsec,
+                              fattr->ctime.seconds,
+                              fattr->ctime.nseconds,
+                              inode->attr.st_mtim.tv_sec,
+                              inode->attr.st_mtim.tv_nsec,
+                              fattr->mtime.seconds,
+                              fattr->mtime.nseconds);
 
-                inode->attr_timeout_secs = inode->get_actimeo_min();
-                inode->attr_timeout_timestamp =
-                    get_current_msecs() + inode->attr_timeout_secs*1000;
+                    nfs_client::stat_from_fattr3(&inode->attr, fattr);
+
+                    inode->attr_timeout_secs = inode->get_actimeo_min();
+                    inode->attr_timeout_timestamp =
+                        get_current_msecs() + inode->attr_timeout_secs*1000;
+                } else {
+                    AZLogWarn("[{}:{} / 0x{:08x}] NOT updating inode attr, "
+                              "size {} -> {}, "
+                              "ctime {}.{} -> {}.{}, "
+                              "mtime {}.{} -> {}.{}",
+                              inode->get_filetype_coding(),
+                              inode->get_fuse_ino(),
+                              inode->get_crc(),
+                              inode->attr.st_size, fattr->size,
+                              inode->attr.st_ctim.tv_sec,
+                              inode->attr.st_ctim.tv_nsec,
+                              fattr->ctime.seconds,
+                              fattr->ctime.nseconds,
+                              inode->attr.st_mtim.tv_sec,
+                              inode->attr.st_mtim.tv_nsec,
+                              fattr->mtime.seconds,
+                              fattr->mtime.nseconds);
+                    /*
+                     * XXX This assert is seen to fail in following case:
+                     *     - We update the directory inode's attributes based
+                     *       on the postop attributes returned in some dirop
+                     *       request.
+                     *     - Later we query the actual directory attributes
+                     *       using a LOOKUP call.
+                     */
+#if 0
+                    assert(compare_timespec_and_nfstime(
+                                inode->attr.st_ctim, fattr->ctime) == 0);
+#endif
+                }
 
                 inode->incref();
                 return inode;
@@ -448,6 +501,10 @@ struct nfs_inode *nfs_client::get_nfs_inode(const nfs_fh3 *fh,
                                   fattr->mtime.nseconds);
 
                         nfs_client::stat_from_fattr3(&i->second->attr, fattr);
+
+                        i->second->attr_timeout_secs = i->second->get_actimeo_min();
+                        i->second->attr_timeout_timestamp =
+                            get_current_msecs() + i->second->attr_timeout_secs*1000;
                     }
                 }
 
@@ -1303,6 +1360,13 @@ void nfs_client::jukebox_retry(struct rpc_task *task)
 /* static */
 void nfs_client::stat_from_fattr3(struct stat *st, const struct fattr3 *fattr)
 {
+    /*
+     * We should never be called with older fattr.
+     */
+    [[maybe_unused]] const bool fattr_is_newer =
+        (compare_timespec_and_nfstime(st->st_ctim, fattr->ctime) == -1);
+    assert(fattr_is_newer);
+
     // TODO: Remove this memset if we are setting all fields.
     ::memset(st, 0, sizeof(*st));
 

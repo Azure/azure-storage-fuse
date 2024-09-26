@@ -102,7 +102,8 @@ nfs_inode::nfs_inode(const struct nfs_fh3 *filehandle,
      * Most common case is we are creating nfs_inode when we got a fh (and
      * attributes) for a file, f.e., LOOKUP, CREATE, READDIRPLUS, etc.
      */
-    client->stat_from_fattr3(&attr, fattr);
+    attr.st_ctim = {0, 0};
+    nfs_client::stat_from_fattr3(&attr, fattr);
 
     // file type as per fattr should match the one passed explicitly..
     assert((attr.st_mode & S_IFMT) == file_type);
@@ -827,7 +828,7 @@ bool nfs_inode::update_nolock(const struct fattr3& fattr)
      * Update cached attributes and also reset the attr_timeout_secs and
      * attr_timeout_timestamp since the attributes have changed.
      */
-    get_client()->stat_from_fattr3(&attr, &fattr);
+    nfs_client::stat_from_fattr3(&attr, &fattr);
     attr_timeout_secs = get_actimeo_min();
     attr_timeout_timestamp = get_current_msecs() + attr_timeout_secs*1000;
 
@@ -874,7 +875,7 @@ void nfs_inode::force_update_attr_nolock(const struct fattr3& fattr)
      * Update cached attributes and also reset the attr_timeout_secs and
      * attr_timeout_timestamp since the attributes have changed.
      */
-    get_client()->stat_from_fattr3(&attr, &fattr);
+    nfs_client::stat_from_fattr3(&attr, &fattr);
     attr_timeout_secs = get_actimeo_min();
     attr_timeout_timestamp = get_current_msecs() + attr_timeout_secs*1000;
 

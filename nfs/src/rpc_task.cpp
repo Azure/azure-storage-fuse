@@ -949,9 +949,9 @@ static void setattr_callback(
     if (status == 0) {
         UPDATE_INODE_ATTR(inode, res->SETATTR3res_u.resok.obj_wcc.after);
 
-        struct stat st;
+        struct stat st = {0};
 
-        task->get_client()->stat_from_fattr3(
+        nfs_client::stat_from_fattr3(
             &st, &res->SETATTR3res_u.resok.obj_wcc.after.post_op_attr_u.attributes);
 
         /*
@@ -1317,11 +1317,22 @@ void rpc_task::run_lookup()
     bool rpc_retry;
     rpc_pdu *pdu = nullptr;
     const char *const filename = (char*) rpc_api->lookup_task.get_file_name();
+#if 0
     struct nfs_fh3 fh = {0, nullptr};
     struct fattr3 fattr;
+#endif
 
     INC_GBL_STATS(tot_lookup_reqs, 1);
 
+    /*
+     * TODO: This can return stale attributes if the inode's size/time changes
+     *       after we cache it in the dnlc cache. Note that we purge dnlc cache
+     *       only when the directory changes, but the contained file/dir's
+     *       inode can change w/o the parent directory changing.
+     *       This means we WILL HAVE to store properly refcounted nfs_inode
+     *       pointer in the dnlc cache.
+     */
+#if 0
     /*
      * Lookup dnlc to see if we have valid cached lookup data.
      */
@@ -1333,6 +1344,7 @@ void rpc_task::run_lookup()
         FH_FREE(&fh);
         return;
     }
+#endif
 
     do {
         LOOKUP3args args;
@@ -3754,6 +3766,8 @@ void rpc_task::send_readdir_response(
              * it->attributes are copied from nfs_inode->attr at the time when
              * the directory_entry was created, after that inode's ctime can
              * only go forward.
+             *
+             * TODO: Remove directory_entry->attributes if we don't need them.
              */
             assert((::memcmp(&it->attributes,
                              &it->nfs_inode->attr, sizeof(struct stat)) == 0) ||
