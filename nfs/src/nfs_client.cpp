@@ -1456,8 +1456,15 @@ void nfs_client::fattr3_from_stat(struct fattr3 *fattr, const struct stat *st)
         fattr->type = NF3SOCK;
     else if (S_ISFIFO(st->st_mode))
         fattr->type = NF3FIFO;
-    else
+    else {
+        /*
+         * XXX This has been seen to randomly fail for regular files.
+         *     Add instrumentation to understand better.
+         */
+        AZLogError("st->st_mode={} S_ISREG(st->st_mode)={} S_IFREG={}",
+                   st->st_mode, S_ISREG(st->st_mode), S_IFREG);
         assert(0);
+    }
 }
 
 /*
