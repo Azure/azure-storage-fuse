@@ -3,49 +3,6 @@
 #include "file_cache.h"
 #include "rpc_task.h"
 
-dnlc_info::dnlc_info(const struct nfs_inode *inode) :
-    ino(inode->get_fuse_ino())
-{
-    /*
-     * Caller will always pass inode with freshly queried attributes.
-     * Note: When dnlc_add() is called for cached dir_entries, we can have
-     *       inode with attr cache expired.
-     */
-    assert(inode->magic == NFS_INODE_MAGIC);
-#if 0
-    assert(!inode->attr_cache_expired());
-#endif
-
-    FH_COPY(&fh, &(inode->get_fh()));
-    fh_is_valid = 1;
-
-    nfs_client::fattr3_from_stat(&fattr, &inode->attr);
-    fattr_is_valid = 1;
-}
-
-dnlc_info::dnlc_info(dnlc_info&& di) :
-    ino(di.ino)
-{
-    assert(!FH_VALID(&fh));
-    assert(di.ino != 0);
-    assert(di.fh_is_valid);
-    assert(di.fattr_is_valid);
-
-    fh_is_valid = di.fh_is_valid;
-    if (fh_is_valid) {
-        fh.data.data_val = di.fh.data.data_val;
-        fh.data.data_len = di.fh.data.data_len;
-        di.fh.data.data_val = nullptr;
-        di.fh.data.data_len = 0;
-        di.fh_is_valid = 0;
-    }
-
-    fattr_is_valid = di.fattr_is_valid;
-    if (fattr_is_valid) {
-        fattr = di.fattr;
-    }
-}
-
 /**
  * Constructor.
  * nfs_client must be known when nfs_inode is being created.
@@ -309,22 +266,28 @@ struct nfs_inode *nfs_inode::lookup(const char *filename)
     // Revalidate to ensure dnlc cache can be safely used.
     revalidate();
 
-    struct nfs_client *client = get_client();
-    struct nfs_inode *inode = nullptr;
-    fuse_ino_t child_ino = 0;
-
     /*
      * First search in dnlc, if not found perform LOOKUP RPC.
      */
-    if (dnlc_lookup(filename, &child_ino, nullptr, nullptr)) {
+    struct nfs_client *client = get_client();
+    struct nfs_inode *child_inode = dnlc_lookup(filename);
+    fuse_ino_t child_ino = 0;
+
+    if (child_inode) {
+        child_ino = child_inode->get_fuse_ino();
         assert(child_ino != 0);
-        inode = client->get_nfs_inode_from_ino(child_ino);
+
         AZLogDebug("{}/{} -> {}, found in DNLC! (lookupcnt: {}, "
                    "dircachecnt: {}, forget_expected: {})",
                    get_fuse_ino(), filename, child_ino,
-                   inode->lookupcnt.load(),
-                   inode->dircachecnt.load(),
-                   inode->forget_expected.load());
+                   child_inode->lookupcnt.load(),
+                   child_inode->dircachecnt.load(),
+                   child_inode->forget_expected.load());
+       /*
+        * Caller doesn't expect a ref on the inode, drop the ref held by
+        * dnlc_lookup().
+        */
+        child_inode->decref();
     }
 
     if (child_ino == 0) {
@@ -334,21 +297,22 @@ struct nfs_inode *nfs_inode::lookup(const char *filename)
            return nullptr;
        }
        assert(child_ino != 0);
-       inode = client->get_nfs_inode_from_ino(child_ino);
-       /*
-        * Caller doesn't expect a ref on the inode, drop the ref held by
-        * lookup_sync().
-        */
-       inode->decref();
+       child_inode = client->get_nfs_inode_from_ino(child_ino);
+
        AZLogDebug("{}/{} -> {}, found via sync LOOKUP! (lookupcnt: {}, "
                   "dircachecnt: {}, forget_expected: {})",
                   get_fuse_ino(), filename, child_ino,
-                  inode->lookupcnt.load(),
-                  inode->dircachecnt.load(),
-                  inode->forget_expected.load());
+                  child_inode->lookupcnt.load(),
+                  child_inode->dircachecnt.load(),
+                  child_inode->forget_expected.load());
+       /*
+        * Caller doesn't expect a ref on the child_inode, drop the ref held by
+        * lookup_sync().
+        */
+       child_inode->decref();
     }
 
-    return inode;
+    return child_inode;
 }
 
 int nfs_inode::get_actimeo_min() const
@@ -748,7 +712,7 @@ void nfs_inode::revalidate(bool force)
      * useful for fresh directory enumerations (common when running "find"
      * command) where these GETATTR RPCs add unwanted delay.
      */
-    if (is_cache_empty() && is_dnlc_empty()) {
+    if (is_cache_empty()) {
         AZLogDebug("revalidate: Skipping as cache is empty!");
         return;
     }
@@ -897,9 +861,7 @@ void nfs_inode::invalidate_cache_nolock()
      */
     if (is_dir()) {
         purge_dircache_nolock();
-        purge_dnlc_nolock();
     } else if (is_regfile()) {
-        assert(is_dnlc_empty());
         purge_filecache_nolock();
     }
 }
@@ -914,14 +876,6 @@ void nfs_inode::purge_dircache_nolock()
     if (dircache_handle) {
         AZLogWarn("[{}] Purging dircache", get_fuse_ino());
         dircache_handle->clear();
-    }
-}
-
-void nfs_inode::purge_dnlc_nolock()
-{
-    if (!dnlc.empty()) {
-        AZLogWarn("[{}] Purging dnlc", get_fuse_ino());
-        dnlc.clear();
     }
 }
 

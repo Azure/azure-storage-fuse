@@ -937,7 +937,9 @@ bool nfs_client::silly_rename(
      * This is called from aznfsc_ll_unlink() for all unlinked files, so
      * this is a good place to remove the entry from DNLC.
      */
-    parent_inode->dnlc_remove(name);
+    if (parent_inode->dircache_handle) {
+        parent_inode->dircache_handle->dnlc_remove(name);
+    }
 
     /*
      * Note: VFS will hold the inode lock for the target file, so it won't
@@ -985,7 +987,9 @@ void nfs_client::rmdir(
     struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_RMDIR);
     struct nfs_inode *parent_inode = get_nfs_inode_from_ino(parent_ino);
 
-    parent_inode->dnlc_remove(name);
+    if (parent_inode->dircache_handle) {
+        parent_inode->dircache_handle->dnlc_remove(name);
+    }
     tsk->init_rmdir(req, parent_ino, name);
     tsk->run_rmdir();
 }
@@ -1015,7 +1019,9 @@ void nfs_client::rename(
     struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_RENAME);
     struct nfs_inode *parent_inode = get_nfs_inode_from_ino(parent_ino);
 
-    parent_inode->dnlc_remove(name);
+    if (parent_inode->dircache_handle) {
+        parent_inode->dircache_handle->dnlc_remove(name);
+    }
 
     tsk->init_rename(req, parent_ino, name, newparent_ino, new_name,
                      silly_rename, silly_rename_ino, flags);
@@ -1261,9 +1267,6 @@ void nfs_client::reply_entry(
 
     if (fh) {
         const fuse_ino_t parent_ino = ctx->rpc_api->get_parent_ino();
-        struct nfs_inode *parent_inode =
-            ctx->get_client()->get_nfs_inode_from_ino(parent_ino);
-
         /*
          * This will grab a lookupcnt ref on the inode, which will be freed
          * from fuse forget callback.
@@ -1295,8 +1298,6 @@ void nfs_client::reply_entry(
                    inode->lookupcnt.load(),
                    inode->dircachecnt.load(),
                    inode->forget_expected.load() + 1);
-
-        parent_inode->dnlc_add(ctx->rpc_api->get_file_name(), inode);
 
         /*
          * This is the common place where we return inode to fuse.

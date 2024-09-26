@@ -1317,34 +1317,27 @@ void rpc_task::run_lookup()
     bool rpc_retry;
     rpc_pdu *pdu = nullptr;
     const char *const filename = (char*) rpc_api->lookup_task.get_file_name();
-#if 0
-    struct nfs_fh3 fh = {0, nullptr};
-    struct fattr3 fattr;
-#endif
 
     INC_GBL_STATS(tot_lookup_reqs, 1);
 
     /*
-     * TODO: This can return stale attributes if the inode's size/time changes
-     *       after we cache it in the dnlc cache. Note that we purge dnlc cache
-     *       only when the directory changes, but the contained file/dir's
-     *       inode can change w/o the parent directory changing.
-     *       This means we WILL HAVE to store properly refcounted nfs_inode
-     *       pointer in the dnlc cache.
-     */
-#if 0
-    /*
      * Lookup dnlc to see if we have valid cached lookup data.
      */
-    if (inode->dnlc_lookup(filename, nullptr, &fh, &fattr)) {
-        AZLogDebug("[{}/{}] Returning cached lookup", parent_ino, filename);
+    struct nfs_inode *child_inode = inode->dnlc_lookup(filename);
+    if (child_inode) {
+        AZLogDebug("[{}/{}] Returning cached lookup, child_ino={}",
+                   parent_ino, filename, child_inode->get_fuse_ino());
 
         INC_GBL_STATS(lookup_served_from_cache, 1);
-        get_client()->reply_entry(this, &fh, &fattr, nullptr);
-        FH_FREE(&fh);
+
+        struct fattr3 fattr;
+        nfs_client::fattr3_from_stat(&fattr, &inode->attr);
+        get_client()->reply_entry(this, &child_inode->get_fh(), &fattr, nullptr);
+
+        // Drop the ref held by dnlc_lookup().
+        child_inode->decref();
         return;
     }
-#endif
 
     do {
         LOOKUP3args args;
@@ -3718,8 +3711,6 @@ void rpc_task::send_readdir_response(
      */
     const size_t size = rpc_api->readdir_task.get_size();
     const fuse_ino_t parent_ino = rpc_api->readdir_task.get_ino();
-    struct nfs_inode *parent_inode =
-        get_client()->get_nfs_inode_from_ino(parent_ino);
 
     // Fuse always requests 4096 bytes.
     assert(size >= 4096);
@@ -3792,13 +3783,6 @@ void rpc_task::send_readdir_response(
                        it->nfs_inode->lookupcnt.load(),
                        it->nfs_inode->dircachecnt.load(),
                        it->nfs_inode->forget_expected.load());
-
-            /*
-             * Readdirplus returns inode for every file, so it's the
-             * equivalent of lookup (and fuse may skip lookup if this file
-             * is opened), so save in dnlc.
-             */
-            parent_inode->dnlc_add(it->name, it->nfs_inode);
 
             /*
              * Insert the entry into the buffer.
