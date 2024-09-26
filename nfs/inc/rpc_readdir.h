@@ -205,7 +205,7 @@ public:
         return false;
     }
 
-    bool add(struct directory_entry* entry);
+    bool add(struct directory_entry* entry, bool acquire_lock = true);
 
     const cookieverf3* get_cookieverf() const
     {
@@ -274,8 +274,11 @@ public:
      *       while dnlc_lookup() holds a lookupcnt ref on the inode.
      *       Caller must drop this extra ref held.
      */
-    struct directory_entry *lookup(cookie3 cookie,
-                                   const char *filename_hint = nullptr) const;
+    struct directory_entry *lookup(
+            cookie3 cookie,
+            const char *filename_hint = nullptr,
+            bool acquire_lock = true) const;
+
     struct nfs_inode *dnlc_lookup(const char *filename) const;
 
     /**
@@ -286,7 +289,9 @@ public:
      * remove() is the readdir cache delete method, while dnlc_remove() is
      * the DNLC cache delete method.
      */
-    bool remove(cookie3 cookie, const char *filename_hint = nullptr);
+    bool remove(cookie3 cookie,
+                const char *filename_hint = nullptr,
+                bool acquire_lock = true);
 
     bool dnlc_remove(const char *filename)
     {

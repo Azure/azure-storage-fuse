@@ -43,7 +43,11 @@ directory_entry::directory_entry(char *name_,
     // NFS recommends against this.
     assert(fileid_ != 0);
 
-    // fuse_add_direntry() needs these two fields, so set them.
+    /*
+     * fuse_add_direntry() needs these two fields, so set them.
+     * A readdir response doesn't tell us about the filetype (which is what
+     * fuse wants to extract from the st_mode fields), so set it to 0.
+     */
     ::memset(&attributes, 0, sizeof(attributes));
     attributes.st_ino = fileid_;
     attributes.st_mode = 0;
@@ -62,7 +66,8 @@ directory_entry::~directory_entry()
     ::free(name);
 }
 
-bool readdirectory_cache::add(struct directory_entry* entry)
+bool readdirectory_cache::add(struct directory_entry* entry,
+                              bool acquire_lock)
 {
     assert(entry != nullptr);
     assert(entry->name != nullptr);
@@ -70,8 +75,16 @@ bool readdirectory_cache::add(struct directory_entry* entry)
     assert(entry->cookie != 0);
 
     {
-        // Get exclusive lock on the map to add the entry to the map.
-        std::unique_lock<std::shared_mutex> lock(readdircache_lock);
+        /*
+         * If acquire_lock is true, get exclusive lock on the map for adding
+         * the entry to the map. We use a dummy_lock for minimal code changes
+         * in the no-lock case.
+         * If you call it with acquire_lock=false make sure readdircache_lock
+         * is held in exclusive mode.
+         */
+        std::shared_mutex dummy_lock;
+        std::unique_lock<std::shared_mutex> lock(
+                acquire_lock ? readdircache_lock : dummy_lock);
 
         // TODO: Fix this.
         if (cache_size >= MAX_CACHE_SIZE_LIMIT) {
@@ -129,13 +142,23 @@ bool readdirectory_cache::add(struct directory_entry* entry)
 
 struct directory_entry *readdirectory_cache::lookup(
         cookie3 cookie,
-        const char *filename_hint) const
+        const char *filename_hint,
+        bool acquire_lock) const
 {
     // Either cookie or filename_hint (not both) must be passed.
     assert((cookie == 0) == (filename_hint != nullptr));
 
     // Take shared look to see if the entry exists in the cache.
-    std::shared_lock<std::shared_mutex> lock(readdircache_lock);
+    /*
+     * If acquire_lock is true, get shared lock on the map for looking up the
+     * entry in the map. We use a dummy_lock for minimal code changes in the
+     * no-lock case.
+     * If you call it with acquire_lock=false make sure readdircache_lock
+     * is held in shared or exclusive mode.
+     */
+    std::shared_mutex dummy_lock;
+    std::shared_lock<std::shared_mutex> lock(
+            acquire_lock ? readdircache_lock : dummy_lock);
 
     if (filename_hint) {
         cookie = filename_to_cookie(filename_hint);
@@ -197,7 +220,9 @@ struct nfs_inode *readdirectory_cache::dnlc_lookup(const char *filename) const
     return nullptr;
 }
 
-bool readdirectory_cache::remove(cookie3 cookie, const char *filename_hint)
+bool readdirectory_cache::remove(cookie3 cookie,
+                                 const char *filename_hint,
+                                 bool acquire_lock)
 {
     // Either cookie or filename_hint (not both) must be passed.
     assert((cookie == 0) == (filename_hint != nullptr));
@@ -205,7 +230,16 @@ bool readdirectory_cache::remove(cookie3 cookie, const char *filename_hint)
     struct nfs_inode *inode = nullptr;
 
     {
-        std::unique_lock<std::shared_mutex> lock(readdircache_lock);
+        /*
+         * If acquire_lock is true, get exclusive lock on the map for removing
+         * the entry from the map. We use a dummy_lock for minimal code changes
+         * in the no-lock case.
+         * If you call it with acquire_lock=false make sure readdircache_lock
+         * is held in exclusive mode.
+         */
+        std::shared_mutex dummy_lock;
+        std::unique_lock<std::shared_mutex> lock(
+                acquire_lock ? readdircache_lock : dummy_lock);
 
         if (filename_hint) {
             cookie = filename_to_cookie(filename_hint);
