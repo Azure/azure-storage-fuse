@@ -202,6 +202,15 @@ private:
     cookieverf3 cookie_verifier;
 
     /*
+     * Absolute time in msecs since epoch when this directory cache was last
+     * confirmed. A directory is said to be "confirmed" when we know that we
+     * have the full directory cached and hence we can respond to -ve lookup
+     * requests with confidence. By definition every newly created directory
+     * starts as confirmed.
+     */
+    uint64_t confirmed_msecs = 0;
+
+    /*
      * dir_entries is the readdir cache, indexed by cookie value.
      * We double readdir cache as DNLC cache too. dnlc_map is used to convert
      * filename (which is the index into the DNLC cache) to cookie (which is
@@ -269,6 +278,18 @@ public:
 
         return false;
     }
+
+    /**
+     * Set this directory cache as "confirmed".
+     */
+    void set_confirmed();
+
+    /**
+     * Is this directory cache confirmed recently?
+     * If readdirectory_cache lookup returns no entry and is_confirmed()
+     * returns true, then we can return a negative lookup response to fuse.
+     */
+    bool is_confirmed() const;
 
     bool add(struct directory_entry* entry, bool acquire_lock = true);
     void dnlc_add(const char *filename, struct nfs_inode *inode);
@@ -345,7 +366,8 @@ public:
             const char *filename_hint = nullptr,
             bool acquire_lock = true) const;
 
-    struct nfs_inode *dnlc_lookup(const char *filename) const;
+    struct nfs_inode *dnlc_lookup(const char *filename,
+                                  bool *negative_confirmed = nullptr) const;
 
     /**
      * Remove the given cookie from readdirectory_cache.

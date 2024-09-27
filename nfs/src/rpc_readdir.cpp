@@ -73,6 +73,19 @@ void directory_entry::update_inode(struct nfs_inode *inode)
     inode->dircachecnt++;
 }
 
+void readdirectory_cache::set_confirmed()
+{
+    confirmed_msecs = get_current_msecs();
+
+    AZLogDebug("[{}] Marked as confirmed!", inode->get_fuse_ino());
+}
+
+bool readdirectory_cache::is_confirmed() const
+{
+    const uint64_t now = get_current_msecs();
+    return (confirmed_msecs + (inode->get_actimeo() * 1000)) > now;
+}
+
 bool readdirectory_cache::add(struct directory_entry* entry,
                               bool acquire_lock)
 {
@@ -306,7 +319,9 @@ struct directory_entry *readdirectory_cache::lookup(
     return dirent;
 }
 
-struct nfs_inode *readdirectory_cache::dnlc_lookup(const char *filename) const
+struct nfs_inode *readdirectory_cache::dnlc_lookup(
+        const char *filename,
+        bool *negative_confirmed) const
 {
     assert(filename != nullptr);
 
@@ -323,6 +338,20 @@ struct nfs_inode *readdirectory_cache::dnlc_lookup(const char *filename) const
         assert(dirent->nfs_inode->dircachecnt > 0);
         dirent->nfs_inode->dircachecnt--;
         return dirent->nfs_inode;
+    } else if (dirent) {
+        /*
+         * If dirent is non-null it means the directory_entry was created from
+         * READDIR results. It cannot be used to serve a LOOKUP request but we
+         * know for sure that file exists. Let the caller know so that they can
+         * perform LOOKUP RPC to get the fh and attr details.
+         */
+        if (negative_confirmed) {
+            *negative_confirmed = false;
+        }
+    } else {
+        if (negative_confirmed) {
+            *negative_confirmed = is_confirmed();
+        }
     }
 
     return nullptr;

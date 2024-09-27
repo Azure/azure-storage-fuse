@@ -1256,6 +1256,9 @@ void nfs_client::reply_entry(
     const struct fattr3 *fattr,
     const struct fuse_file_info *file)
 {
+    assert(ctx->magic == RPC_TASK_MAGIC);
+
+    const enum fuse_opcode optype = ctx->get_op_type();
     struct nfs_inode *inode = nullptr;
     fuse_entry_param entry;
     /*
@@ -1308,9 +1311,14 @@ void nfs_client::reply_entry(
          * or dir cache, so allocate them now.
          */
         if (inode->is_regfile()) {
+            assert(optype == FUSE_LOOKUP ||
+                   optype == FUSE_CREATE ||
+                   optype == FUSE_MKNOD);
             inode->get_or_alloc_filecache();
         } else if (inode->is_dir()) {
-            inode->get_or_alloc_dircache();
+            assert(optype == FUSE_LOOKUP ||
+                   optype == FUSE_MKDIR);
+            inode->get_or_alloc_dircache(optype == FUSE_MKDIR);
         }
 
         /*

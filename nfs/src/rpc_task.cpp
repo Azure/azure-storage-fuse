@@ -1317,13 +1317,15 @@ void rpc_task::run_lookup()
     bool rpc_retry;
     rpc_pdu *pdu = nullptr;
     const char *const filename = (char*) rpc_api->lookup_task.get_file_name();
+    bool negative_confirmed = false;
 
     INC_GBL_STATS(tot_lookup_reqs, 1);
 
     /*
      * Lookup dnlc to see if we have valid cached lookup data.
      */
-    struct nfs_inode *child_inode = inode->dnlc_lookup(filename);
+    struct nfs_inode *child_inode =
+        inode->dnlc_lookup(filename, &negative_confirmed);
     if (child_inode) {
         AZLogDebug("[{}/{}] Returning cached lookup, child_ino={}",
                    parent_ino, filename, child_inode->get_fuse_ino());
@@ -1336,6 +1338,16 @@ void rpc_task::run_lookup()
 
         // Drop the ref held by dnlc_lookup().
         child_inode->decref();
+        return;
+    } else if (negative_confirmed) {
+        AZLogDebug("[{}/{}] Returning cached lookup (negative)",
+                   parent_ino, filename);
+
+        INC_GBL_STATS(lookup_served_from_cache, 1);
+        get_client()->reply_entry(this,
+                                  nullptr /* fh */,
+                                  nullptr /* fattr */,
+                                  nullptr /* file */);
         return;
     }
 

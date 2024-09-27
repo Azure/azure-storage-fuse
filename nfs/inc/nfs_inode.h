@@ -292,7 +292,8 @@ struct nfs_inode
      * This must be called from code that returns an inode after a directory
      * is opened or created.
      */
-    std::shared_ptr<readdirectory_cache>& get_or_alloc_dircache()
+    std::shared_ptr<readdirectory_cache>& get_or_alloc_dircache(
+            bool newly_created = false)
     {
         assert(is_dir());
         {
@@ -304,6 +305,12 @@ struct nfs_inode
         std::unique_lock<std::shared_mutex> lock(ilock);
         if (!dircache_handle) {
             dircache_handle = std::make_shared<readdirectory_cache>(client, this);
+            /*
+             * If this directory is just created, mark it as "confirmed".
+             */
+            if (newly_created) {
+                dircache_handle->set_confirmed();
+            }
         }
 
         return dircache_handle;
@@ -418,12 +425,14 @@ struct nfs_inode
      * It'll hold a lookupcnt ref on the returned inode and caller must drop
      * that ref by calling decref().
      */
-    struct nfs_inode *dnlc_lookup(const char *filename) const
+    struct nfs_inode *dnlc_lookup(const char *filename,
+                                  bool *negative_confirmed = nullptr) const
     {
         assert(is_dir());
 
         if (dircache_handle) {
-            struct nfs_inode *inode = dircache_handle->dnlc_lookup(filename);
+            struct nfs_inode *inode =
+                dircache_handle->dnlc_lookup(filename, negative_confirmed);
             // dnlc_lookup() must have held a lookupcnt ref.
             assert(!inode || inode->lookupcnt > 0);
 
