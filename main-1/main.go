@@ -18,7 +18,7 @@ const (
 	Mb       = 1024 * 1024
 )
 
-// var _ external.Component = &test1{}
+var _ external.Component = &test1{}
 
 func (e *test1) SetName(name string) {
 	e.BaseComponent.SetName(name)
