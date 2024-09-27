@@ -58,6 +58,8 @@ bool nfs_client::init()
     assert(root_fh->lookupcnt == 1);
     assert(root_fh->dircachecnt == 0);
 
+    root_fh->get_or_alloc_dircache();
+
     // Initialize the RPC task list.
     rpc_task_helper = rpc_task_helper::get_instance(this);
 

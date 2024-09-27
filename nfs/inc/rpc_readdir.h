@@ -208,7 +208,7 @@ private:
      * the index into the readdir cache).
      */
     std::map<cookie3, struct directory_entry*> dir_entries;
-    std::unordered_map<const char *, cookie3> dnlc_map;
+    std::unordered_map<std::string, cookie3> dnlc_map;
 
     /*
      * This lock protects all the members of this readdirectory_cache.

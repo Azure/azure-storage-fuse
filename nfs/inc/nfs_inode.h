@@ -447,9 +447,11 @@ struct nfs_inode
          * created.
          */
         assert(is_dir());
-        assert(dircache_handle);
+        //assert(dircache_handle);
 
-        return dircache_handle->dnlc_add(filename, inode);
+        if (dircache_handle) {
+            dircache_handle->dnlc_add(filename, inode);
+        }
     }
 
     /*
