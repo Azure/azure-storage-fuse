@@ -140,6 +140,79 @@ bool readdirectory_cache::add(struct directory_entry* entry,
     return false;
 }
 
+void readdirectory_cache::dnlc_add(const char *filename,
+                                   struct nfs_inode *inode)
+{
+    assert(filename);
+    assert(inode);
+    assert(inode->magic == NFS_INODE_MAGIC);
+
+    /*
+     * When adding directly to DNLC we use impossible cookie values,
+     * starting at UINT64_MAX/2. These cannot occur in READDIR/READDIRPLUS
+     * response from the Blob NFS server.
+     *
+     * TODO: This needs review for supporting other NFS servers.
+     *       Ref: ENABLE_NON_AZURE_NFS.
+     */
+    static uint64_t bigcookie = (UINT64_MAX >> 1);
+
+    std::unique_lock<std::shared_mutex> lock(readdircache_lock);
+
+    /*
+     * See the directory_entry update rules in directory_entry comments.
+     */
+    cookie3 cookie = filename_to_cookie(filename);
+
+    if (cookie != 0) {
+        struct directory_entry *de =
+            lookup(cookie, nullptr, false /* acquire_lock */);
+
+        if (de->nfs_inode == inode) {
+            /*
+             * Type (1) or (3) entry already present, with matching nfs_inode,
+             * do nothing.
+             */
+            return;
+        } else if (!de->nfs_inode) {
+            /*
+             * Type (2) entry present, keep the cookie but add nfs_inode,
+             * effectively promoting the entry to type (1).
+             */
+             assert(!inode->is_forgotten());
+             inode->dircachecnt++;
+             de->update_inode(inode);
+             de->attributes = inode->attr;
+             return;
+        } else {
+            /*
+             * Stale type (1) or (3) entry present (new nfs_inode doesn't
+             * match the saved one), filename has either been renamed or
+             * deleted+recreated. We need to delete the old entry and create
+             * a new type (3) entry.
+             */
+             [[maybe_unused]] const bool found = remove(cookie, nullptr, false);
+             assert(found);
+
+             cookie = bigcookie++;
+        }
+    } else {
+        cookie = bigcookie++;
+    }
+
+    struct directory_entry *dir_entry =
+        new struct directory_entry(strdup(filename), cookie, inode->attr, inode);
+
+    /*
+     * dir_entry must have one ref on the inode.
+     * This ref will protect the inode while this directory_entry is
+     * present in the readdirectory_cache (added below).
+     */
+    assert(inode->dircachecnt >= 1);
+
+    add(dir_entry, false /* acquire_lock */);
+}
+
 struct directory_entry *readdirectory_cache::lookup(
         cookie3 cookie,
         const char *filename_hint,

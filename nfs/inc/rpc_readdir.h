@@ -14,6 +14,59 @@
 //struct readdirectory_cache;
 //struct directory_entry;
 
+/*
+ * This is an entry in the unified readdir/DNLC cache.
+ * Note that an entry can be added to the unified cache, via one of the
+ * following:
+ * 1. READDIRPLUS response.
+ *    This creates the most complete entry with a valid cookie and a valid
+ *    nfs_inode pointer (with attributes and filehandle).
+ *    This can serve: READDIRPLUS, READDIR and LOOKUP requests.
+ * 2. READDIR response.
+ *    This creates an entry with a valid cookie but no nfs_inode pointer.
+ *    Only attributes.st_ino (the inode number) is valid.
+ *    This can serve: READDIR requests.
+ * 3. LOOKUP response.
+ *    This creates an entry with a special cookie (which is not possible in
+ *    READDIR/READDIRPLUS responses) but a valid nfs_inode pointer.
+ *    This can serve: LOOKUP requests. Though it has the nfs_inode pointer
+ *                    it doesn't have the cookie, hence cannot serve directory
+ *                    enumeration requests which need a valid cookie.
+ *
+ * Note: Blob NFS uses cookies starting at 1 and increasing by 1 for every
+ *       file, so we use UINT64_MAX/2 as the starting value for the special
+ *       cookie. This should never be returned in READDIR/READDIRPLUS response
+ *       hence we won't mistake a type (3) entry as type (1).
+
+ * Note on updating directory entries added in readdirectory_cache.
+ *
+ * READDIR and READDIRPLUS responses will always update old entries, deleting
+ * existing ones and adding new ones. This means if we have a type (1) entry
+ * and we get a READDIR response, it'll be deleted and a new type (2) entry
+ * will be created.
+ *
+ * LOOKUP response will update the entry with the following rules:
+ * Note that we don't want to blindly replace type (1) or (2) entries with
+ * type (3) entries as those are not usable by READDIR/READDIRPLUS then.
+ *
+ * - If we have a type (1) entry and the new nfs_inode in the lookup response
+ *   matches the saved one, don't do anything. This is the common case.
+ * - If we have a type (1) entry and the new nfs_inode does not match the saved
+ *   one, it means the file was either renamed or deleted and re-created. Next
+ *   time when aznfsc_ll_readdir{plus}() is called it'll purge the entire
+ *   readdir cache as the parent directory mtime would be different, thus
+ *   ensuring correctness, but if lookup is called before readdir/readdirplus
+ *   it'll delete the old entry and create a new type (3) entry.
+ * - If we have a type (2) entry and the new nfs_inode matches the saved one,
+ *   add nfs_inode and update directory_entry.attributes, thus promoting it to
+ *   type (1). Only in this case we update nfs_inode in a directory_entry.
+ * - If we have a type (2) entry and the new nfs_inode does not match the
+ *   saved one, delete the old entry and create a new type (3) entry.
+ * - If we have a type (3) entry and the new nfs_inode matches the saved one,
+ *   don't do anything.
+ * - If we have a type (3) entry and the new nfs_inode does not matche the
+ *   saved one, delete the old entry and create a new type (3) entry.
+ */
 struct directory_entry
 {
     const cookie3 cookie;
@@ -50,7 +103,19 @@ struct directory_entry
 
     ~directory_entry();
 
-    /*
+    /**
+     * nfs_inode is a const member to highlight the fact that it's not updated
+     * once initialized by the constuctor. Only in the case where we need to
+     * promote a type (2) entry to type (1) on receiving a LOOKUP response,
+     * we allow the update.
+     */
+    void update_inode(struct nfs_inode *inode)
+    {
+        assert(!nfs_inode);
+        *(const_cast<struct nfs_inode**>(&nfs_inode)) = inode;
+    }
+
+    /**
      * Returns size of the directory_entry.
      * This is used to find the cache space taken by this directory_entry.
      */
@@ -206,6 +271,7 @@ public:
     }
 
     bool add(struct directory_entry* entry, bool acquire_lock = true);
+    void dnlc_add(const char *filename, struct nfs_inode *inode);
 
     const cookieverf3* get_cookieverf() const
     {

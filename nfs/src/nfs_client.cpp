@@ -1309,6 +1309,11 @@ void nfs_client::reply_entry(
         } else if (inode->is_dir()) {
             inode->get_or_alloc_dircache();
         }
+
+        struct nfs_inode *parent_inode = get_nfs_inode_from_ino(parent_ino);
+
+        // Add to readdirectory_cache for future use.
+        parent_inode->dnlc_add(ctx->rpc_api->get_file_name(), inode);
     } else {
         /*
          * The only valid case where reply_entry() is called with null fh

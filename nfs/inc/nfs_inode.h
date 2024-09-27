@@ -433,6 +433,25 @@ struct nfs_inode
         return nullptr;
     }
 
+    /**
+     * Add DNLC entry "filename -> inode".
+     */
+    void dnlc_add(const char *filename, struct nfs_inode *inode)
+    {
+        assert(filename);
+        assert(inode);
+        assert(inode->magic == NFS_INODE_MAGIC);
+
+        /*
+         * By the time dnlc_add() is called, dircache_handle must have been
+         * created.
+         */
+        assert(is_dir());
+        assert(dircache_handle);
+
+        return dircache_handle->dnlc_add(filename, inode);
+    }
+
     /*
      * Find nfs_inode for 'filename' in this directory.
      * It first searches in dnlc and if not found there makes a sync LOOKUP
