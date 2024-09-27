@@ -8,13 +8,13 @@ logging:
 components:
   - libfuse
   - block_cache
-  - test1
-  - test2
+  - sample_custom_component1
+  - sample_custom_component2
 
-test1:
+sample_custom_component1:
   block-size-mb: 16
 
-test2:
+sample_custom_component2:
   block-size-mb: 16
 libfuse:
   attribute-expiration-sec: 120

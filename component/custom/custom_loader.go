@@ -32,7 +32,7 @@ func init() {
 	} else {
 		files, err := os.ReadDir(pluginDirPath)
 		if err != nil {
-			log.Err("custom_loader::Error reading plugin directory:", err)
+			log.Err("custom_loader::Error reading plugin directory: %s", err.Error())
 			return
 		}
 		for _, file := range files {
@@ -43,16 +43,17 @@ func init() {
 	}
 
 	for _, file := range pluginFiles {
-		log.Info("custom_loader::Opening plugin:", file)
+		log.Info("custom_loader::Opening plugin: %s", file)
 		p, err := plugin.Open(file)
 		if err != nil {
-			log.Err("custom_loader::Error opening plugin:", err.Error())
+			log.Err("custom_loader::Error opening plugin: %s", err.Error())
+			os.Exit(1)
 		}
 		log.Info("custom_loader::Plugin opened successfully")
 
 		getExternalComponentFunc, err := p.Lookup("GetExternalComponent")
 		if err != nil {
-			log.Err("custom_loader::Error looking up GetExternalComponent function:", err.Error())
+			log.Err("custom_loader::Error looking up GetExternalComponent function: %s", err.Error())
 			os.Exit(1)
 		}
 		getExternalComponent, ok := getExternalComponentFunc.(func() (string, func() external.Component))
