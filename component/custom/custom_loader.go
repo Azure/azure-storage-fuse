@@ -1,7 +1,6 @@
 package custom
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"plugin"
@@ -47,18 +46,18 @@ func init() {
 		log.Info("custom_loader::Opening plugin:", file)
 		p, err := plugin.Open(file)
 		if err != nil {
-			fmt.Println("custom_loader::Error opening plugin:", err.Error())
+			log.Err("custom_loader::Error opening plugin:", err.Error())
 		}
-		fmt.Println("custom_loader::Plugin opened successfully")
+		log.Info("custom_loader::Plugin opened successfully")
 
 		getExternalComponentFunc, err := p.Lookup("GetExternalComponent")
 		if err != nil {
-			log.Info("custom_loader::Error looking up GetExternalComponent function:", err.Error())
+			log.Err("custom_loader::Error looking up GetExternalComponent function:", err.Error())
 			os.Exit(1)
 		}
 		getExternalComponent, ok := getExternalComponentFunc.(func() (string, func() external.Component))
 		if !ok {
-			fmt.Println("custom_loader::Error casting GetExternalComponent function")
+			log.Err("custom_loader::Error casting GetExternalComponent function")
 			os.Exit(1)
 		}
 		compName, initExternalComponent := getExternalComponent()
