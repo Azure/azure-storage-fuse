@@ -108,12 +108,12 @@ struct directory_entry
      * once initialized by the constuctor. Only in the case where we need to
      * promote a type (2) entry to type (1) on receiving a LOOKUP response,
      * we allow the update.
+     *
+     * Every nfs_inode referenced by directory_entry has a dircachecnt ref
+     * which is dropped by ~directory_entry(), we grab that here as we add
+     * the nfs_inode to directory_entry.
      */
-    void update_inode(struct nfs_inode *inode)
-    {
-        assert(!nfs_inode);
-        *(const_cast<struct nfs_inode**>(&nfs_inode)) = inode;
-    }
+    void update_inode(struct nfs_inode *inode);
 
     /**
      * Returns size of the directory_entry.

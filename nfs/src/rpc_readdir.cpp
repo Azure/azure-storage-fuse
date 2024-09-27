@@ -66,6 +66,13 @@ directory_entry::~directory_entry()
     ::free(name);
 }
 
+void directory_entry::update_inode(struct nfs_inode *inode)
+{
+    assert(!nfs_inode);
+    *(const_cast<struct nfs_inode**>(&nfs_inode)) = inode;
+    inode->dircachecnt++;
+}
+
 bool readdirectory_cache::add(struct directory_entry* entry,
                               bool acquire_lock)
 {
@@ -196,8 +203,10 @@ void readdirectory_cache::dnlc_add(const char *filename,
         if (de->nfs_inode == inode) {
             /*
              * Type (1) or (3) entry already present, with matching nfs_inode,
-             * do nothing.
+             * do nothing. Drop the dircachecnt ref held by lookup().
              */
+            assert(de->nfs_inode->dircachecnt > 0);
+            de->nfs_inode->dircachecnt--;
             return;
         } else if (!de->nfs_inode) {
             /*
@@ -205,7 +214,6 @@ void readdirectory_cache::dnlc_add(const char *filename,
              * effectively promoting the entry to type (1).
              */
              assert(!inode->is_forgotten());
-             inode->dircachecnt++;
              de->update_inode(inode);
              de->attributes = inode->attr;
              return;
@@ -216,10 +224,12 @@ void readdirectory_cache::dnlc_add(const char *filename,
              * deleted+recreated. We need to delete the old entry and create
              * a new type (3) entry.
              */
-             [[maybe_unused]] const bool found = remove(cookie, nullptr, false);
-             assert(found);
+            assert(de->nfs_inode->dircachecnt > 0);
+            de->nfs_inode->dircachecnt--;
+            [[maybe_unused]] const bool found = remove(cookie, nullptr, false);
+            assert(found);
 
-             cookie = bigcookie++;
+            cookie = bigcookie++;
         }
     } else {
         cookie = bigcookie++;
