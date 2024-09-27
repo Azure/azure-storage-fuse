@@ -447,11 +447,16 @@ struct nfs_inode
          * created.
          */
         assert(is_dir());
-        //assert(dircache_handle);
 
-        if (dircache_handle) {
-            dircache_handle->dnlc_add(filename, inode);
+        /*
+         * Directory inodes returned by READDIRPLUS won't have dircache
+         * allocated, and fuse may call lookup on them.
+         */
+        if (!dircache_handle) {
+            get_or_alloc_dircache();
         }
+
+        dircache_handle->dnlc_add(filename, inode);
     }
 
     /*

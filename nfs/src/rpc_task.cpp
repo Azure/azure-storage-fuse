@@ -1331,7 +1331,7 @@ void rpc_task::run_lookup()
         INC_GBL_STATS(lookup_served_from_cache, 1);
 
         struct fattr3 fattr;
-        nfs_client::fattr3_from_stat(&fattr, &inode->attr);
+        nfs_client::fattr3_from_stat(&fattr, &child_inode->attr);
         get_client()->reply_entry(this, &child_inode->get_fh(), &fattr, nullptr);
 
         // Drop the ref held by dnlc_lookup().

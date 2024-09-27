@@ -1269,6 +1269,7 @@ void nfs_client::reply_entry(
 
     if (fh) {
         const fuse_ino_t parent_ino = ctx->rpc_api->get_parent_ino();
+        struct nfs_inode *parent_inode = get_nfs_inode_from_ino(parent_ino);
         /*
          * This will grab a lookupcnt ref on the inode, which will be freed
          * from fuse forget callback.
@@ -1312,9 +1313,9 @@ void nfs_client::reply_entry(
             inode->get_or_alloc_dircache();
         }
 
-        struct nfs_inode *parent_inode = get_nfs_inode_from_ino(parent_ino);
-
-        // Add to readdirectory_cache for future use.
+        /*
+         * Add lookup results to DNLC cache.
+         */
         parent_inode->dnlc_add(ctx->rpc_api->get_file_name(), inode);
     } else {
         /*

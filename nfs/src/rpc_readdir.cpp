@@ -110,14 +110,38 @@ bool readdirectory_cache::add(struct directory_entry* entry,
                        entry->nfs_inode->dircachecnt.load());
         }
 
+        assert(dir_entries.size() == dnlc_map.size());
+
+        /*
+         * If entry->name exists with a different cookie, remove that.
+         * Note that caller must have removed entry->cookie but entry->name
+         * may exist with another cookie (f.e. added by lookup and then now
+         * we are here for readdirplus).
+         */
+        const cookie3 cookie = filename_to_cookie(entry->name);
+        if (cookie != 0) {
+            remove(cookie, nullptr, false);
+        }
+
+        AZLogDebug("[{}] Adding dir cache entry {} -> {}",
+                   this->inode->get_fuse_ino(), entry->cookie, entry->name);
+
         const auto it = dir_entries.emplace(entry->cookie, entry);
 
         /*
          * Caller only calls us after ensuring cookie isn't already cached,
          * but since we don't hold the readdircache_lock across removing the
          * old entry and adding this one, it may race with some other thread.
+         *
+         * TODO: Move the code to remove directory_entry with key
+         *       entry->cookie, from readdir{plus}_callback() to here, inside
+         *       the lock.
          */
         if (it.second) {
+            AZLogDebug("[{}] Adding dnlc cache entry {} -> {}",
+                       this->inode->get_fuse_ino(), entry->name,
+                       entry->cookie);
+
             cache_size += entry->get_cache_size();
 
             /*
@@ -130,6 +154,7 @@ bool readdirectory_cache::add(struct directory_entry* entry,
             dnlc_map[entry->name] = entry->cookie;
         }
 
+        assert(dir_entries.size() == dnlc_map.size());
         return it.second;
     }
 
