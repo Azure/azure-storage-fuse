@@ -218,7 +218,7 @@ private:
      * requests with confidence. By definition every newly created directory
      * starts as confirmed.
      */
-    uint64_t confirmed_msecs = 0;
+    std::atomic<uint64_t> confirmed_msecs = 0;
 
     /*
      * dir_entries is the readdir cache, indexed by cookie value.
