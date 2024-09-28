@@ -992,6 +992,7 @@ void nfs_client::rmdir(
     if (parent_inode->dircache_handle) {
         parent_inode->dircache_handle->dnlc_remove(name);
     }
+
     tsk->init_rmdir(req, parent_ino, name);
     tsk->run_rmdir();
 }

@@ -196,6 +196,16 @@ private:
      */
     uint64_t eof_cookie = (uint64_t) -1;
 
+    /*
+     * Last cookie of the sequence that started at the start of the directory.
+     * If the sequence goes all the way upto eof w/o any gaps in between then
+     * we can mark the directory as "confirmed", in set_eof().
+     * It means that we have the entire directory in our cache and hence DNLC
+     * cache can reply to negative lookup with certainty.
+     * This is reset when we purge the cache.
+     */
+    uint64_t seq_last_cookie = 0;
+
     // Size of the cache.
     size_t cache_size;
 
@@ -285,9 +295,11 @@ public:
     void set_confirmed();
 
     /**
-     * Is this directory cache confirmed recently?
+     * Is this directory cache confirmed?
      * If readdirectory_cache lookup returns no entry and is_confirmed()
      * returns true, then we can return a negative lookup response to fuse.
+     * Depending on the config we may only consider if the directory was
+     * confirmed no longer than a certain period.
      */
     bool is_confirmed() const;
 
@@ -318,14 +330,7 @@ public:
         ::memcpy(&cookie_verifier, cokieverf, sizeof(cookie_verifier));
     }
 
-    void set_eof(uint64_t eof_cookie)
-    {
-        // Every directory will at least have "." and "..".
-        assert(eof_cookie >= 2);
-
-        eof = true;
-        this->eof_cookie = eof_cookie;
-    }
+    void set_eof(uint64_t eof_cookie);
 
     /**
      * Given a filename, returns the cookie corresponding to that.

@@ -75,15 +75,39 @@ void directory_entry::update_inode(struct nfs_inode *inode)
 
 void readdirectory_cache::set_confirmed()
 {
+    // Confirmed at time.
     confirmed_msecs = get_current_msecs();
 
-    AZLogDebug("[{}] Marked as confirmed!", inode->get_fuse_ino());
+    AZLogDebug("[{}] Marked as confirmed, seq_last_cookie={}, "
+               "eof_cookie={}",
+               inode->get_fuse_ino(), seq_last_cookie, eof_cookie);
 }
 
 bool readdirectory_cache::is_confirmed() const
 {
     const uint64_t now = get_current_msecs();
     return (confirmed_msecs + (inode->get_actimeo() * 1000)) > now;
+}
+
+void readdirectory_cache::set_eof(uint64_t eof_cookie)
+{
+    // Every directory will at least have "." and "..".
+    assert(eof_cookie >= 2);
+
+    eof = true;
+    this->eof_cookie = eof_cookie;
+
+    /*
+     * If we have seen/cached all cookies right from cookie=1 upto
+     * eof_cookie, mark the directory as confirmed.
+     */
+    if (seq_last_cookie == eof_cookie) {
+        set_confirmed();
+    } else {
+        AZLogDebug("[{}] Marked as NOT confirmed, seq_last_cookie={}, "
+                   "eof_cookie={}",
+                   inode->get_fuse_ino(), seq_last_cookie, eof_cookie);
+    }
 }
 
 bool readdirectory_cache::add(struct directory_entry* entry,
@@ -172,6 +196,19 @@ bool readdirectory_cache::add(struct directory_entry* entry,
              * In any case, overwrite that.
              */
             dnlc_map[entry->name] = entry->cookie;
+
+            /*
+             * Update seq_last_cookie as long as the sequence of cookies isn't
+             * broken.
+             * Note that Blob NFS server uses unit incrementing cookies, hence
+             * the following check works.
+             *
+             * For other NFS servers which return arbitrary cookie values, this
+             * won't work. Ref: ENABLE_NON_AZURE_NFS
+             */
+            if (entry->cookie == (seq_last_cookie + 1)) {
+                seq_last_cookie = entry->cookie;
+            }
         }
 
         assert(dir_entries.size() == dnlc_map.size());
@@ -552,6 +589,11 @@ void readdirectory_cache::clear()
 
         dir_entries.clear();
         dnlc_map.clear();
+
+        /*
+         * No cookies in the cache, hence no sequence.
+         */
+        seq_last_cookie = 0;
     }
 
     if (!tofree_vec.empty()) {

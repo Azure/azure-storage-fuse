@@ -2937,6 +2937,13 @@ static void readdir_callback(
     task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
 
     if (status == 0) {
+        /*
+         * Update attributes of parent directory returned in postop
+         * attributes. If directory mtime has changed since the last time it'll
+         * invalidate the cache.
+         */
+        UPDATE_INODE_ATTR(dir_inode, res->READDIR3res_u.resok.dir_attributes);
+
         const struct entry3 *entry = res->READDIR3res_u.resok.reply.entries;
         eof = res->READDIR3res_u.resok.reply.eof;
         int64_t eof_cookie = -1;
@@ -3258,6 +3265,13 @@ static void readdirplus_callback(
     task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
 
     if (status == 0) {
+        /*
+         * Update attributes of parent directory returned in postop
+         * attributes. If directory mtime has changed since the last time it'll
+         * invalidate the cache.
+         */
+        UPDATE_INODE_ATTR(dir_inode, res->READDIRPLUS3res_u.resok.dir_attributes);
+
         const struct entryplus3 *entry =
             res->READDIRPLUS3res_u.resok.reply.entries;
         eof = res->READDIRPLUS3res_u.resok.reply.eof;
