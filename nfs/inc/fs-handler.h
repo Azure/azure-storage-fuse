@@ -527,6 +527,15 @@ static void aznfsc_ll_create(fuse_req_t req,
                "mode=0{:03o}, fi={})",
                fmt::ptr(req), parent_ino, name, mode, fmt::ptr(fi));
 
+    /*
+     * See aznfsc_ll_open().
+     */
+    fi->direct_io = !aznfsc_cfg.cache.data.kernel.enable;
+    fi->keep_cache = aznfsc_cfg.cache.data.kernel.enable;
+    fi->nonseekable = 0;
+    fi->parallel_direct_writes = 1;
+    fi->noflush = 0;
+
     struct nfs_client *client = get_nfs_client_from_fuse_req(req);
     client->create(req, parent_ino, name, mode, fi);
 }
