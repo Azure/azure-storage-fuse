@@ -67,6 +67,11 @@ type CommittedBlockList = internal.CommittedBlockList
 // Type aliases for pipeline
 type Handle = handlemap.Handle
 
+// Wrapper function
+func NewHandle(path string) *Handle {
+	return handlemap.NewHandle(path)
+}
+
 type ComponentPriorityWrapper struct {
 	internal.ComponentPriority
 }
