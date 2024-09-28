@@ -177,12 +177,12 @@ private:
     /*
      * The singleton nfs_client, for convenience.
      */
-    struct nfs_client *client;
+    struct nfs_client *const client;
 
     /*
      * Directory inode, whose contents are cached by this readdirectory_cache.
      */
-    struct nfs_inode *inode;
+    struct nfs_inode *const inode;
 
     /*
      * This will be set if we have read all the entries of the directory
@@ -250,6 +250,8 @@ public:
         ::memset(&cookie_verifier, 0, sizeof(cookie_verifier));
     }
 
+    ~readdirectory_cache();
+
     std::shared_mutex& get_lock()
     {
         return readdircache_lock;
@@ -293,6 +295,7 @@ public:
      * Set this directory cache as "confirmed".
      */
     void set_confirmed();
+    void clear_confirmed();
 
     /**
      * Is this directory cache confirmed?
@@ -398,15 +401,5 @@ public:
      * ref.
      */
     void clear();
-
-    ~readdirectory_cache()
-    {
-        AZLogInfo("~readdirectory_cache() called");
-
-        /*
-         * The cache must have been purged before deleting.
-         */
-        assert(dir_entries.empty());
-    }
 };
 #endif /* __READDIR_RPC_TASK___ */

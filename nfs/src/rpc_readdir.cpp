@@ -66,6 +66,16 @@ directory_entry::~directory_entry()
     ::free(name);
 }
 
+readdirectory_cache::~readdirectory_cache()
+{
+    AZLogInfo("[{}] ~readdirectory_cache() called", inode->get_fuse_ino());
+
+    /*
+     * The cache must have been purged before deleting.
+     */
+    assert(dir_entries.empty());
+}
+
 void directory_entry::update_inode(struct nfs_inode *inode)
 {
     assert(!nfs_inode);
@@ -81,6 +91,13 @@ void readdirectory_cache::set_confirmed()
     AZLogDebug("[{}] Marked as confirmed, seq_last_cookie={}, "
                "eof_cookie={}",
                inode->get_fuse_ino(), seq_last_cookie, eof_cookie);
+}
+
+void readdirectory_cache::clear_confirmed()
+{
+    confirmed_msecs = 0;
+
+    AZLogDebug("[{}] Clear confirmed", inode->get_fuse_ino());
 }
 
 bool readdirectory_cache::is_confirmed() const
@@ -107,6 +124,7 @@ void readdirectory_cache::set_eof(uint64_t eof_cookie)
         AZLogDebug("[{}] Marked as NOT confirmed, seq_last_cookie={}, "
                    "eof_cookie={}",
                    inode->get_fuse_ino(), seq_last_cookie, eof_cookie);
+        clear_confirmed();
     }
 }
 
@@ -594,6 +612,7 @@ void readdirectory_cache::clear()
          * No cookies in the cache, hence no sequence.
          */
         seq_last_cookie = 0;
+        clear_confirmed();
     }
 
     if (!tofree_vec.empty()) {

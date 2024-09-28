@@ -383,10 +383,10 @@ struct nfs_inode *nfs_client::get_nfs_inode(const nfs_fh3 *fh,
                  * For correctness we update the inode attributes only if they
                  * are newer than the cached ones.
                  */
-                const bool fattr_is_newer =
-                    (compare_timespec_and_nfstime(inode->attr.st_ctim,
-                                                  fattr->ctime) == -1);
-                if (fattr_is_newer) {
+                const int fattr_compare =
+                    compare_timespec_and_nfstime(inode->attr.st_ctim,
+                                                 fattr->ctime);
+                if (fattr_compare < 0) {
                     AZLogWarn("[{}:{} / 0x{:08x}] Updating inode attr, "
                               "size {} -> {}, "
                               "ctime {}.{} -> {}.{}, "
@@ -409,7 +409,7 @@ struct nfs_inode *nfs_client::get_nfs_inode(const nfs_fh3 *fh,
                     inode->attr_timeout_secs = inode->get_actimeo_min();
                     inode->attr_timeout_timestamp =
                         get_current_msecs() + inode->attr_timeout_secs*1000;
-                } else {
+                } else if (fattr_compare > 0) {
                     AZLogWarn("[{}:{} / 0x{:08x}] NOT updating inode attr, "
                               "size {} -> {}, "
                               "ctime {}.{} -> {}.{}, "
@@ -432,11 +432,11 @@ struct nfs_inode *nfs_client::get_nfs_inode(const nfs_fh3 *fh,
                      *       on the postop attributes returned in some dirop
                      *       request.
                      *     - Later we query the actual directory attributes
-                     *       using a LOOKUP call.
+                     *       using a LOOKUP call. This can be less recent that
+                     *       above due to server attribute cacheing.
                      */
 #if 0
-                    assert(compare_timespec_and_nfstime(
-                                inode->attr.st_ctim, fattr->ctime) == 0);
+                    assert(0);
 #endif
                 }
 
