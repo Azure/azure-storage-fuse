@@ -874,7 +874,7 @@ void nfs_inode::invalidate_cache_nolock()
 void nfs_inode::purge_dircache_nolock()
 {
     if (dircache_handle) {
-        AZLogWarn("[{}] Purging dircache", get_fuse_ino());
+        AZLogDebug("[{}] Purging dircache", get_fuse_ino());
         dircache_handle->clear();
     }
 }
@@ -887,7 +887,7 @@ void nfs_inode::purge_dircache_nolock()
 void nfs_inode::purge_filecache_nolock()
 {
     if (filecache_handle) {
-        AZLogWarn("[{}] Purging filecache", get_fuse_ino());
+        AZLogDebug("[{}] Purging filecache", get_fuse_ino());
         filecache_handle->clear();
     }
 }
