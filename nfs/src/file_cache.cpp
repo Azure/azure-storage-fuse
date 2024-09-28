@@ -14,17 +14,15 @@
 //#define DEBUG_FILE_CACHE
 
 #ifndef DEBUG_FILE_CACHE
-#undef AZLogDebug
-#define AZLogDebug(fmt, ...)    /* nothing */
-//#undef AZLogInfo
-//#define AZLogInfo(fmt, ...)     /* nothing */
+#undef AZLogVerbose
+#define AZLogVerbose(fmt, ...)    /* nothing */
 #else
 /*
  * Debug is not enabled early on when self-tests run, so use Info.
  * Uncomment these if you want to see debug logs from cache self-test.
  */
-//#undef AZLogDebug
-//#define AZLogDebug AZLogInfo
+#undef AZLogVerbose
+#define AZLogVerbose AZLogInfo
 #endif
 
 namespace aznfsc {
@@ -745,8 +743,8 @@ do { \
     if (it != chunkmap.begin()) { \
         lookback_it = std::prev(it); \
         bc = &(lookback_it->second); \
-        AZLogDebug("lookback_it: [{},{})", \
-                   bc->offset, bc->offset + bc->length); \
+        AZLogVerbose("lookback_it: [{},{})", \
+                     bc->offset, bc->offset + bc->length); \
     } else { \
         assert(lookback_it == chunkmap.end()); \
     } \
@@ -805,8 +803,8 @@ do { \
                 /*
                  * Empty cache, nothing to release.
                  */
-                AZLogDebug("<Release [{}, {})> Empty cache, nothing to release",
-                           offset, offset + length);
+                AZLogVerbose("<Release [{}, {})> Empty cache, nothing to release",
+                             offset, offset + length);
                 goto end;
             }
 
@@ -817,8 +815,8 @@ do { \
             _extent_left = next_offset;
             _extent_right = next_offset + remaining_length;
 
-            AZLogDebug("(first/only chunk) _extent_left: {} _extent_right: {}",
-                       _extent_left, _extent_right);
+            AZLogVerbose("(first/only chunk) _extent_left: {} _extent_right: {}",
+                         _extent_left, _extent_right);
 
             assert(lookback_it == chunkmap.end());
             goto allocate_only_chunk;
@@ -835,10 +833,10 @@ do { \
                  * this will be the only chunk needed to cover the requested range.
                  */
                 if (action == scan_action::SCAN_ACTION_RELEASE) {
-                    AZLogDebug("<Release [{}, {})> First byte to release "
-                               "lies after the last chunk [{}, {})",
-                               offset, offset + length,
-                               bc->offset, bc->offset + bc->length);
+                    AZLogVerbose("<Release [{}, {})> First byte to release "
+                                 "lies after the last chunk [{}, {})",
+                                 offset, offset + length,
+                                 bc->offset, bc->offset + bc->length);
                     goto end;
                 }
 
@@ -849,7 +847,7 @@ do { \
                      * need to look back.
                      */
                     _extent_left = next_offset;
-                    AZLogDebug("_extent_left: {}", _extent_left);
+                    AZLogVerbose("_extent_left: {}", _extent_left);
                     assert(lookback_it == chunkmap.end());
                 } else {
                     /*
@@ -859,10 +857,10 @@ do { \
                      * actual left edge.
                      */
                     _extent_left = next_offset;
-                    AZLogDebug("(tentative) _extent_left: {}", _extent_left);
+                    AZLogVerbose("(tentative) _extent_left: {}", _extent_left);
 
-                    AZLogDebug("lookback_it: [{},{})",
-                               bc->offset, bc->offset + bc->length);
+                    AZLogVerbose("lookback_it: [{},{})",
+                                 bc->offset, bc->offset + bc->length);
                     lookback_it = it;
 #ifdef UTILIZE_TAILROOM_FROM_LAST_MEMBUF
                     last_bc = bc;
@@ -870,7 +868,7 @@ do { \
                 }
 
                 _extent_right = next_offset + remaining_length;
-                AZLogDebug("_extent_right: {}", _extent_right);
+                AZLogVerbose("_extent_right: {}", _extent_right);
 
                 assert(remaining_length > 0);
                 goto allocate_only_chunk;
@@ -883,7 +881,7 @@ do { \
                  * lookback_it to that.
                  */
                 _extent_left = bc->offset;
-                AZLogDebug("(tentative) _extent_left: {}", _extent_left);
+                AZLogVerbose("(tentative) _extent_left: {}", _extent_left);
 
                 SET_LOOKBACK_IT_TO_PREV();
             }
@@ -915,7 +913,7 @@ do { \
              * correctly.
              */
             _extent_left = it->first;
-            AZLogDebug("(tentative) _extent_left: {}", _extent_left);
+            AZLogVerbose("(tentative) _extent_left: {}", _extent_left);
 
             SET_LOOKBACK_IT_TO_PREV();
         } else {
@@ -957,17 +955,17 @@ do { \
                     _extent_right = chunk_offset + chunk_length;
                     assert(lookback_it == chunkmap.end());
 
-                    AZLogDebug("_extent_left: {}", _extent_left);
-                    AZLogDebug("(tentative) _extent_right: {}", _extent_right);
+                    AZLogVerbose("_extent_left: {}", _extent_left);
+                    AZLogVerbose("(tentative) _extent_right: {}", _extent_right);
 
                     chunkvec.emplace_back(this, chunk_offset, chunk_length);
-                    AZLogDebug("(new chunk) [{},{})",
-                               chunk_offset, chunk_offset + chunk_length);
+                    AZLogVerbose("(new chunk) [{},{})",
+                                 chunk_offset, chunk_offset + chunk_length);
                 } else {
-                    AZLogDebug("<Release [{}, {})> (non-existent chunk) "
-                               "[{},{})",
-                               offset, offset + length,
-                               chunk_offset, chunk_offset + chunk_length);
+                    AZLogVerbose("<Release [{}, {})> (non-existent chunk) "
+                                 "[{},{})",
+                                 offset, offset + length,
+                                 chunk_offset, chunk_offset + chunk_length);
                 }
             } else {
                 /*
@@ -1019,37 +1017,37 @@ do { \
                              * chunk offset is the _extent_left.
                              */
                             _extent_left = chunk_offset;
-                            AZLogDebug("_extent_left: {}", _extent_left);
+                            AZLogVerbose("_extent_left: {}", _extent_left);
                             assert(lookback_it == chunkmap.end());
                         } else {
                             _extent_left = chunk_offset;
-                            AZLogDebug("(tentative) _extent_left: {}", _extent_left);
+                            AZLogVerbose("(tentative) _extent_left: {}", _extent_left);
                             /*
                              * Else, new chunk touches the prev chunk, so we need
                              * to "look back" for finding the left edge.
                              */
-                            AZLogDebug("lookback_it: [{},{})",
-                                       bc->offset, bc->offset + bc->length);
+                            AZLogVerbose("lookback_it: [{},{})",
+                                         bc->offset, bc->offset + bc->length);
                             lookback_it = it;
                         }
 
                         _extent_right = chunk_offset + chunk_length;
-                        AZLogDebug("(tentative) _extent_right: {}", _extent_right);
+                        AZLogVerbose("(tentative) _extent_right: {}", _extent_right);
 
                         // Search for more chunks should start from the next chunk.
                         it = itn;
 
                         chunkvec.emplace_back(this, chunk_offset, chunk_length);
-                        AZLogDebug("(new chunk) [{},{})",
-                                chunk_offset, chunk_offset + chunk_length);
+                        AZLogVerbose("(new chunk) [{},{})",
+                                     chunk_offset, chunk_offset + chunk_length);
                     } else {
                         // Search for more chunks should start from the next chunk.
                         it = itn;
 
-                        AZLogDebug("<Release [{}, {})> (non-existent chunk) "
-                                   "[{},{})",
-                                   offset, offset + length,
-                                   chunk_offset, chunk_offset + chunk_length);
+                        AZLogVerbose("<Release [{}, {})> (non-existent chunk) "
+                                     "[{},{})",
+                                     offset, offset + length,
+                                     chunk_offset, chunk_offset + chunk_length);
                     }
                 } else {
                     /*
@@ -1060,7 +1058,7 @@ do { \
                      * forward to find the true right edge.
                      */
                     _extent_left = bc->offset;
-                    AZLogDebug("(tentative) _extent_left: {}", _extent_left);
+                    AZLogVerbose("(tentative) _extent_left: {}", _extent_left);
 
                     SET_LOOKBACK_IT_TO_PREV();
                 }
@@ -1122,10 +1120,10 @@ do { \
                 chunkvec.emplace_back(this, chunk_offset, chunk_length,
                                       bc->buffer_offset, bc->alloc_buffer,
                                       is_whole);
-                AZLogDebug("(existing chunk) [{},{}) b:{} a:{}",
-                           chunk_offset, chunk_offset + chunk_length,
-                           fmt::ptr(chunkvec.back().get_buffer()),
-                           fmt::ptr(bc->alloc_buffer->get()));
+                AZLogVerbose("(existing chunk) [{},{}) b:{} a:{}",
+                             chunk_offset, chunk_offset + chunk_length,
+                             fmt::ptr(chunkvec.back().get_buffer()),
+                             fmt::ptr(bc->alloc_buffer->get()));
             } else if (bc->safe_to_release()) {
                 assert (action == scan_action::SCAN_ACTION_RELEASE);
 
@@ -1140,9 +1138,9 @@ do { \
                      * case the cache is dropped. bc->get_buffer() will assert
                      * so avoid calling it.
                      */
-                    AZLogDebug("<Release [{}, {})> (releasing chunk) [{},{}) "
-                               "b:{} a:{}",
-                               offset, offset + length,
+                    AZLogVerbose("<Release [{}, {})> (releasing chunk) [{},{}) "
+                                 "b:{} a:{}",
+                                 offset, offset + length,
                                chunk_offset, chunk_offset + chunk_length,
                                bc->alloc_buffer->get() ?
                                     fmt::ptr(bc->get_buffer()) : nullptr,
@@ -1166,12 +1164,12 @@ do { \
                     /*
                      * Else trim the chunk (from the left).
                      */
-                    AZLogDebug("<Release [{}, {})> (trimming chunk from left) "
-                               "[{},{}) -> [{},{})",
-                               offset, offset + length,
-                               bc->offset, bc->offset + bc->length,
-                               bc->offset + chunk_length,
-                               bc->offset + bc->length);
+                    AZLogVerbose("<Release [{}, {})> (trimming chunk from left) "
+                                 "[{},{}) -> [{},{})",
+                                 offset, offset + length,
+                                 bc->offset, bc->offset + bc->length,
+                                 bc->offset + chunk_length,
+                                 bc->offset + bc->length);
 
                     bc->offset += chunk_length;
                     bc->buffer_offset += chunk_length;
@@ -1218,12 +1216,12 @@ do { \
                     goto done;
                 }
             } else {
-                AZLogDebug("<Release [{}, {})> skipping [{}, {}) as not safe "
-                           "to release: inuse={}, dirty={}",
-                           offset, offset + length,
-                           chunk_offset, chunk_offset + chunk_length,
-                           bc->get_membuf()->get_inuse(),
-                           bc->get_membuf()->is_dirty());
+                AZLogVerbose("<Release [{}, {})> skipping [{}, {}) as not safe "
+                             "to release: inuse={}, dirty={}",
+                             offset, offset + length,
+                             chunk_offset, chunk_offset + chunk_length,
+                             bc->get_membuf()->get_inuse(),
+                             bc->get_membuf()->is_dirty());
             }
 
             // This chunk is fully consumed, move to the next chunk.
@@ -1241,12 +1239,12 @@ do { \
 
             if (action == scan_action::SCAN_ACTION_GET) {
                 chunkvec.emplace_back(this, chunk_offset, chunk_length);
-                AZLogDebug("(new chunk) [{},{})",
-                           chunk_offset, chunk_offset+chunk_length);
+                AZLogVerbose("(new chunk) [{},{})",
+                             chunk_offset, chunk_offset+chunk_length);
             } else {
-                AZLogDebug("<Release [{}, {})> (non-existent chunk) [{},{})",
-                           offset, offset + length,
-                           chunk_offset, chunk_offset + chunk_length);
+                AZLogVerbose("<Release [{}, {})> (non-existent chunk) [{},{})",
+                             offset, offset + length,
+                             chunk_offset, chunk_offset + chunk_length);
             }
 
             /*
@@ -1261,7 +1259,7 @@ do { \
 
             if (action == scan_action::SCAN_ACTION_GET) {
                 _extent_right = next_offset;
-                AZLogDebug("(tentative) _extent_right: {}", _extent_right);
+                AZLogVerbose("(tentative) _extent_right: {}", _extent_right);
             }
             continue;
         } else /* (next_offset > bc->offset) */ {
@@ -1283,10 +1281,10 @@ do { \
                                       bc->buffer_offset + (next_offset - bc->offset),
                                       bc->alloc_buffer,
                                       false /* is_whole */);
-                AZLogDebug("(existing chunk) [{},{}) b:{} a:{}",
-                           chunk_offset, chunk_offset + chunk_length,
-                           fmt::ptr(chunkvec.back().get_buffer()),
-                           fmt::ptr(bc->alloc_buffer->get()));
+                AZLogVerbose("(existing chunk) [{},{}) b:{} a:{}",
+                             chunk_offset, chunk_offset + chunk_length,
+                             fmt::ptr(chunkvec.back().get_buffer()),
+                             fmt::ptr(bc->alloc_buffer->get()));
             } else if (bc->safe_to_release()) {
                 assert(action == scan_action::SCAN_ACTION_RELEASE);
                 assert(chunk_length <= remaining_length);
@@ -1326,11 +1324,11 @@ do { \
                      * All chunk data after next_offset is released, trim the
                      * chunk.
                      */
-                    AZLogDebug("<Release [{}, {})> (trimming chunk from right) "
-                               "[{},{}) -> [{},{})",
-                               offset, offset + length,
-                               bc->offset, bc->offset + bc->length,
-                               bc->offset, next_offset);
+                    AZLogVerbose("<Release [{}, {})> (trimming chunk from right) "
+                                 "[{},{}) -> [{},{})",
+                                 offset, offset + length,
+                                 bc->offset, bc->offset + bc->length,
+                                 bc->offset, next_offset);
 
                     bc->length = next_offset - bc->offset;
                     assert((int64_t) bc->length > 0);
@@ -1352,16 +1350,16 @@ do { \
                     assert(offset == next_offset);
                     assert(length == remaining_length);
 
-                    AZLogDebug("<Release [{}, {})> skipping as it lies in the "
-                               "middle of the chunk [{},{})",
-                               offset, offset + length,
-                               bc->offset, bc->offset + bc->length);
+                    AZLogVerbose("<Release [{}, {})> skipping as it lies in the "
+                                 "middle of the chunk [{},{})",
+                                 offset, offset + length,
+                                 bc->offset, bc->offset + bc->length);
                 }
             } else {
-                AZLogDebug("<Release [{}, {})> skipping [{}, {}) as not safe "
-                           "to release: inuse={}, dirty={}",
-                           offset, offset + length,
-                           chunk_offset, chunk_offset + chunk_length,
+                AZLogVerbose("<Release [{}, {})> skipping [{}, {}) as not safe "
+                             "to release: inuse={}, dirty={}",
+                             offset, offset + length,
+                             chunk_offset, chunk_offset + chunk_length,
                            bc->get_membuf()->get_inuse(),
                            bc->get_membuf()->is_dirty());
             }
@@ -1383,7 +1381,7 @@ done:
          */
         if (action == scan_action::SCAN_ACTION_GET) {
             _extent_right = bc->offset + bc->length;
-            AZLogDebug("(tentative) _extent_right: {}", _extent_right);
+            AZLogVerbose("(tentative) _extent_right: {}", _extent_right);
         }
     }
 
@@ -1395,15 +1393,15 @@ done:
 allocate_only_chunk:
     if (remaining_length != 0) {
         if (action == scan_action::SCAN_ACTION_GET) {
-            AZLogDebug("(only/last chunk) [{},{})",
-                       next_offset, next_offset + remaining_length);
+            AZLogVerbose("(only/last chunk) [{},{})",
+                         next_offset, next_offset + remaining_length);
 
     #ifdef UTILIZE_TAILROOM_FROM_LAST_MEMBUF
             if (last_bc && (last_bc->tailroom() > 0)) {
                 chunk_length = std::min(last_bc->tailroom(), remaining_length);
 
-                AZLogDebug("(sharing last chunk's alloc_buffer) [{},{})",
-                           next_offset, next_offset + chunk_length);
+                AZLogVerbose("(sharing last chunk's alloc_buffer) [{},{})",
+                             next_offset, next_offset + chunk_length);
 
                 /*
                  * Since this new chunk is sharing alloc_buffer with the last
@@ -1430,17 +1428,17 @@ allocate_only_chunk:
     #endif
 
             if (remaining_length) {
-                AZLogDebug("(new last chunk) [{},{})",
-                           next_offset, next_offset + remaining_length);
+                AZLogVerbose("(new last chunk) [{},{})",
+                             next_offset, next_offset + remaining_length);
                 chunkvec.emplace_back(this, next_offset, remaining_length);
             }
 
             remaining_length = 0;
         } else {
-            AZLogDebug("<Release [{}, {})> (non-existent chunk after end) "
-                       "[{},{})",
-                       offset, offset + length,
-                       next_offset, next_offset + remaining_length);
+            AZLogVerbose("<Release [{}, {})> (non-existent chunk after end) "
+                         "[{},{})",
+                         offset, offset + length,
+                         next_offset, next_offset + remaining_length);
             remaining_length = 0;
         }
     }
@@ -1491,8 +1489,8 @@ allocate_only_chunk:
              */
             assert(action == scan_action::SCAN_ACTION_GET);
 
-            AZLogDebug("(adding to chunkmap) [{},{})",
-                       chunk.offset, chunk.offset + chunk.length);
+            AZLogVerbose("(adding to chunkmap) [{},{})",
+                         chunk.offset, chunk.offset + chunk.length);
             /*
              * This will grab a ref on the alloc_buffer allocated when we
              * added the chunk to chunkvec. On returning from this function
@@ -1520,7 +1518,7 @@ allocate_only_chunk:
              */
             if ((chunk.offset + chunk.length) > _extent_right) {
                 _extent_right = (chunk.offset + chunk.length);
-                AZLogDebug("(tentative) _extent_right: {}", _extent_right);
+                AZLogVerbose("(tentative) _extent_right: {}", _extent_right);
             }
         }
     }
@@ -1541,13 +1539,13 @@ allocate_only_chunk:
                  * guaranteed safe-to-delete, so check before deleting.
                  */
                 if (bc->safe_to_release()) {
-                    AZLogDebug("<Release [{}, {})> (freeing chunk) [{},{}) "
-                               "b:{} a:{}",
-                               offset, offset + length,
-                               bc->offset, bc->offset + bc->length,
-                               bc->alloc_buffer->get() ?
-                                    fmt::ptr(bc->get_buffer()) : nullptr,
-                               fmt::ptr(bc->alloc_buffer->get()));
+                    AZLogVerbose("<Release [{}, {})> (freeing chunk) [{},{}) "
+                                 "b:{} a:{}",
+                                 offset, offset + length,
+                                 bc->offset, bc->offset + bc->length,
+                                 bc->alloc_buffer->get() ?
+                                      fmt::ptr(bc->get_buffer()) : nullptr,
+                                 fmt::ptr(bc->alloc_buffer->get()));
 
                     assert(num_chunks > 0);
                     num_chunks--;
@@ -1582,21 +1580,21 @@ allocate_only_chunk:
 
                 if ((_extent_left != AZNFSC_BAD_OFFSET) &&
                     ((bc->offset + bc->length) != _extent_left)) {
-                    AZLogDebug("(hit gap) _extent_left: {}, [{}, {})",
-                            _extent_left,
-                            bc->offset, (bc->offset + bc->length));
+                    AZLogVerbose("(hit gap) _extent_left: {}, [{}, {})",
+                                 _extent_left,
+                                 bc->offset, (bc->offset + bc->length));
                     break;
                 }
 
                 if (!bc->needs_flush()) {
-                    AZLogDebug("(hit noflush) _extent_left: {}, [{}, {})",
-                            _extent_left,
-                            bc->offset, (bc->offset + bc->length));
+                    AZLogVerbose("(hit noflush) _extent_left: {}, [{}, {})",
+                                 _extent_left,
+                                 bc->offset, (bc->offset + bc->length));
                     break;
                 }
 
                 _extent_left = bc->offset;
-                AZLogDebug("_extent_left: {}", _extent_left);
+                AZLogVerbose("_extent_left: {}", _extent_left);
             } while (lookback_it-- != chunkmap.begin());
         }
 
@@ -1608,21 +1606,21 @@ allocate_only_chunk:
 
             if ((_extent_right != AZNFSC_BAD_OFFSET) &&
                 (bc->offset != _extent_right)) {
-                AZLogDebug("(hit gap) _extent_right: {}, [{}, {})",
-                        _extent_right,
-                        bc->offset, (bc->offset + bc->length));
+                AZLogVerbose("(hit gap) _extent_right: {}, [{}, {})",
+                             _extent_right,
+                             bc->offset, (bc->offset + bc->length));
                 break;
             }
 
             if (!bc->needs_flush()) {
-                AZLogDebug("(hit noflush) _extent_right: {}, [{}, {})",
-                        _extent_right,
-                        bc->offset, (bc->offset + bc->length));
+                AZLogVerbose("(hit noflush) _extent_right: {}, [{}, {})",
+                             _extent_right,
+                             bc->offset, (bc->offset + bc->length));
                 break;
             }
 
             _extent_right = bc->offset + bc->length;
-            AZLogDebug("_extent_right: {}", _extent_right);
+            AZLogVerbose("_extent_right: {}", _extent_right);
         }
 
         *extent_left = _extent_left;
@@ -1822,8 +1820,8 @@ int64_t bytes_chunk_cache::drop(uint64_t offset, uint64_t length)
 
 void bytes_chunk_cache::clear()
 {
-    AZLogInfo("[{}] Cache purge: chunkmap.size()={}, backing_file_name={}",
-              fmt::ptr(this), chunkmap.size(), backing_file_name);
+    AZLogDebug("[{}] Cache purge: chunkmap.size()={}, backing_file_name={}",
+               fmt::ptr(this), chunkmap.size(), backing_file_name);
 
     assert(bytes_allocated <= bytes_allocated_g);
     assert(bytes_cached <= bytes_cached_g);
@@ -1865,10 +1863,10 @@ void bytes_chunk_cache::clear()
          *       skipped.
          */
         if (mb->is_inuse()) {
-            AZLogInfo("[{}] Cache purge: skipping inuse membuf(offset={}, "
-                      "length={}) (inuse count={}, dirty={})",
-                      fmt::ptr(this), mb->offset, mb->length,
-                      mb->get_inuse(), mb->is_dirty());
+            AZLogDebug("[{}] Cache purge: skipping inuse membuf(offset={}, "
+                       "length={}) (inuse count={}, dirty={})",
+                       fmt::ptr(this), mb->offset, mb->length,
+                       mb->get_inuse(), mb->is_dirty());
             continue;
         }
 
@@ -1884,9 +1882,9 @@ void bytes_chunk_cache::clear()
          * Cannot safely drop this from the cache.
          */
         if (mb->is_dirty()) {
-            AZLogInfo("[{}] Cache purge: skipping dirty membuf(offset={}, "
-                      "length={})",
-                      fmt::ptr(this), mb->offset, mb->length);
+            AZLogDebug("[{}] Cache purge: skipping dirty membuf(offset={}, "
+                       "length={})",
+                       fmt::ptr(this), mb->offset, mb->length);
             continue;
         }
 
@@ -1920,10 +1918,10 @@ void bytes_chunk_cache::clear()
     }
 
     if (!chunkmap.empty()) {
-        AZLogInfo("[{}] Cache purge: Skipping delete for backing_file_name={}, "
-                  "as chunkmap not empty (still present {} of {})",
-                  fmt::ptr(this), backing_file_name,
-                  chunkmap.size(), start_size);
+        AZLogDebug("[{}] Cache purge: Skipping delete for backing_file_name={}, "
+                   "as chunkmap not empty (still present {} of {})",
+                   fmt::ptr(this), backing_file_name,
+                   chunkmap.size(), start_size);
         assert(bytes_allocated > 0);
         return;
     }
@@ -1967,8 +1965,8 @@ void bytes_chunk_cache::clear()
                     backing_file_fd, strerror(errno));
             assert(0);
         } else {
-            AZLogInfo("Cache purge: Backing file {} closed, fd={}",
-                    backing_file_name, backing_file_fd);
+            AZLogDebug("Cache purge: Backing file {} closed, fd={}",
+                       backing_file_name, backing_file_fd);
         }
         backing_file_fd = -1;
         backing_file_len = 0;
@@ -1980,10 +1978,10 @@ void bytes_chunk_cache::clear()
         const int ret = ::unlink(backing_file_name.c_str());
         if ((ret != 0) && (errno != ENOENT)) {
             AZLogError("Cache purge: unlink({}) failed: {}",
-                    backing_file_name, strerror(errno));
+                       backing_file_name, strerror(errno));
             assert(0);
         } else {
-            AZLogInfo("Backing file {} deleted", backing_file_name);
+            AZLogDebug("Backing file {} deleted", backing_file_name);
         }
     }
 }
@@ -2023,7 +2021,7 @@ static void cache_read(bytes_chunk_cache& cache,
 {
     std::vector<bytes_chunk> v;
 
-    AZLogDebug("=====> cache_read({}, {})", offset, offset+length);
+    AZLogVerbose("=====> cache_read({}, {})", offset, offset+length);
     v = cache.get(offset, length);
     // At least one chunk.
     assert(v.size() >= 1);
@@ -2054,7 +2052,7 @@ static void cache_read(bytes_chunk_cache& cache,
 
     assert(total_length == length);
 
-    AZLogDebug("=====> cache_read({}, {}): vec={}",
+    AZLogVerbose("=====> cache_read({}, {}): vec={}",
                offset, offset+length, v.size());
 }
 
@@ -2065,7 +2063,7 @@ static void cache_write(bytes_chunk_cache& cache,
     std::vector<bytes_chunk> v;
     uint64_t l, r;
 
-    AZLogDebug("=====> cache_write({}, {})", offset, offset+length);
+    AZLogVerbose("=====> cache_write({}, {})", offset, offset+length);
     v = cache.getx(offset, length, &l, &r);
     // At least one chunk.
     assert(v.size() >= 1);
@@ -2098,9 +2096,9 @@ static void cache_write(bytes_chunk_cache& cache,
 
     assert(total_length == length);
 
-    AZLogDebug("=====> cache_write({}, {}): l={} r={} vec={}",
-               offset, offset+length, l, r, v.size());
-    AZLogDebug("=====> cache_release({}, {})", offset, offset+length);
+    AZLogVerbose("=====> cache_write({}, {}): l={} r={} vec={}",
+                 offset, offset+length, l, r, v.size());
+    AZLogVerbose("=====> cache_release({}, {})", offset, offset+length);
     assert(cache.release(offset, length) <= length);
 }
 
@@ -2903,7 +2901,7 @@ do { \
     AZLogInfo("========== Starting cache stress  ==========");
 
     for (int i = 0; i < 10'000'000; i++) {
-        AZLogDebug("\n\n ----[ {} ]----------\n", i);
+        AZLogVerbose("\n\n ----[ {} ]----------\n", i);
 
         const uint64_t offset = random_number(0, 100'000'000);
         const uint64_t length = random_number(1, AZNFSC_MAX_CHUNK_SIZE);

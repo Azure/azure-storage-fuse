@@ -610,10 +610,10 @@ void nfs_client::put_nfs_inode_nolock(struct nfs_inode *inode,
         assert(i->second->magic == NFS_INODE_MAGIC);
 
         if (i->second == inode) {
-            AZLogWarn("[{}:{}] Deleting inode (inode_map size: {})",
-                      inode->get_filetype_coding(),
-                      inode->get_fuse_ino(),
-                      inode_map.size()-1);
+            AZLogDebug("[{}:{}] Deleting inode (inode_map size: {})",
+                       inode->get_filetype_coding(),
+                       inode->get_fuse_ino(),
+                       inode_map.size()-1);
             inode_map.erase(i);
             delete inode;
             return;

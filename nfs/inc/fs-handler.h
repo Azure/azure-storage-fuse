@@ -215,8 +215,8 @@ static void aznfsc_ll_open(fuse_req_t req,
                            fuse_ino_t ino,
                            struct fuse_file_info *fi)
 {
-    AZLogInfo("aznfsc_ll_open(req={}, ino={}, fi={})",
-              fmt::ptr(req), ino, fmt::ptr(fi));
+    AZLogDebug("aznfsc_ll_open(req={}, ino={}, fi={})",
+               fmt::ptr(req), ino, fmt::ptr(fi));
 
     /*
      * We plan to manage our own file cache for better control over writes.
@@ -250,12 +250,12 @@ static void aznfsc_ll_open(fuse_req_t req,
      *       This is a hack and needs to be properly addressed!
      */
     if (inode->is_regfile() && !inode->is_cache_empty()) {
-        AZLogInfo("[{}] Clearing cache", ino);
+        AZLogDebug("[{}] Clearing cache", ino);
         inode->filecache_handle->clear();
     }
 
     if (inode->is_regfile() && inode->readahead_state) {
-        AZLogInfo("[{}] Resetting readahead state", ino);
+        AZLogDebug("[{}] Resetting readahead state", ino);
         inode->readahead_state->reset();
     }
 
