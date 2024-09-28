@@ -68,7 +68,7 @@ directory_entry::~directory_entry()
 
 readdirectory_cache::~readdirectory_cache()
 {
-    AZLogInfo("[{}] ~readdirectory_cache() called", inode->get_fuse_ino());
+    AZLogDebug("[{}] ~readdirectory_cache() called", inode->get_fuse_ino());
 
     /*
      * The cache must have been purged before deleting.
