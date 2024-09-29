@@ -696,9 +696,10 @@ public:
     }
 
     /**
-     * Default constructor, only for use by test code.
+     * Default constructor and assignment operator, only for use by test code.
      */
     bytes_chunk() = default;
+    bytes_chunk& operator=(const bytes_chunk&) = default;
 
 
 #ifdef UTILIZE_TAILROOM_FROM_LAST_MEMBUF

@@ -1986,12 +1986,6 @@ void bytes_chunk_cache::clear()
     }
 }
 
-static bool is_read()
-{
-    // 60:40 R:W.
-    return random_number(0, 100) <= 60;
-}
-
 std::vector<bytes_chunk> bytes_chunk_cache::get_dirty_bc_range(uint64_t start_off, uint64_t end_off) const
 {
     std::vector<bytes_chunk> bc_vec;
@@ -2013,6 +2007,13 @@ std::vector<bytes_chunk> bytes_chunk_cache::get_dirty_bc_range(uint64_t start_of
     }
 
     return bc_vec;
+}
+
+#ifdef DEBUG_FILE_CACHE
+static bool is_read()
+{
+    // 60:40 R:W.
+    return random_number(0, 100) <= 60;
 }
 
 static void cache_read(bytes_chunk_cache& cache,
@@ -2924,7 +2925,6 @@ do { \
     return 0;
 }
 
-#ifdef DEBUG_FILE_CACHE
 static int _i = bytes_chunk_cache::unit_test();
 #endif
 

@@ -846,7 +846,7 @@ void nfs_client::write(fuse_req_t req, fuse_ino_t ino, struct fuse_bufvec *bufv,
 void nfs_client::getattr(
     fuse_req_t req,
     fuse_ino_t ino,
-    struct fuse_file_info* file)
+    struct fuse_file_info *file)
 {
     struct nfs_inode *inode = get_nfs_inode_from_ino(ino);
 

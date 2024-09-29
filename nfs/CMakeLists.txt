@@ -226,7 +226,9 @@ endif()
 
 target_compile_options(${CMAKE_PROJECT_NAME}
                        PRIVATE -Wall
-                       PRIVATE -Werror)
+                       PRIVATE -Wextra -Wno-unused-parameter
+                       PRIVATE -Werror
+                       )
 
 # All libraries.
 target_link_libraries(${CMAKE_PROJECT_NAME}

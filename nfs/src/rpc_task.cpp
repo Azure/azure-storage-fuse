@@ -948,7 +948,7 @@ static void setattr_callback(
     if (status == 0) {
         UPDATE_INODE_ATTR(inode, res->SETATTR3res_u.resok.obj_wcc.after);
 
-        struct stat st = {0};
+        struct stat st = {};
 
         nfs_client::stat_from_fattr3(
             &st, &res->SETATTR3res_u.resok.obj_wcc.after.post_op_attr_u.attributes);

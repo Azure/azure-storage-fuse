@@ -28,7 +28,7 @@ void rpc_stats_az::dump_stats()
         transport.get_all_connections();
     const struct mount_options& mo = client.mnt_options;
     const struct sockaddr_storage *saddr = nullptr;
-    struct rpc_stats cum_stats = {0};
+    struct rpc_stats cum_stats = {};
     std::string str;
 
     /*
