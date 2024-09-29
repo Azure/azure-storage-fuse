@@ -412,7 +412,7 @@ static void aznfsc_ll_readdir(fuse_req_t req,
                fmt::ptr(req), ino, size, off, fmt::ptr(fi));
 
     struct nfs_client *client = get_nfs_client_from_fuse_req(req);
-    struct nfs_inode *inode = client->get_nfs_inode_from_ino(ino);
+    [[maybe_unused]] struct nfs_inode *inode = client->get_nfs_inode_from_ino(ino);
 
     // Must be called for an open directory.
     assert(inode->is_open());
