@@ -31,6 +31,9 @@ do { \
     assert(inode->magic == NFS_INODE_MAGIC); \
     assert(postop.attributes_follow); \
     if (postop.attributes_follow) { \
+        AZLogDebug("[{}] UPDATE_INODE_ATTR() from {}", \
+                   inode->get_fuse_ino(), \
+                   __FUNCTION__); \
         inode->update(postop.post_op_attr_u.attributes); \
     } \
 } while (0)

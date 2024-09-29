@@ -1195,9 +1195,6 @@ void symlink_callback(
     }
 }
 
-/*
- * TODO: Add postop attr handling.
- */
 void rename_callback(
     struct rpc_context *rpc,
     int rpc_status,
@@ -1208,6 +1205,12 @@ void rename_callback(
     assert(task->magic == RPC_TASK_MAGIC);
 
     assert(task->rpc_api->optype == FUSE_RENAME);
+    struct nfs_client *client = task->get_client();
+    const fuse_ino_t parent_ino = task->rpc_api->rename_task.get_parent_ino();
+    struct nfs_inode *parent_inode = client->get_nfs_inode_from_ino(parent_ino);
+    const fuse_ino_t newparent_ino = task->rpc_api->rename_task.get_newparent_ino();
+    struct nfs_inode *newparent_inode = client->get_nfs_inode_from_ino(newparent_ino);
+
     const bool silly_rename = task->rpc_api->rename_task.get_silly_rename();
     auto res = (RENAME3res*) data;
 
@@ -1240,15 +1243,13 @@ void rename_callback(
     if (status == 0 && silly_rename) {
         const fuse_ino_t silly_rename_ino =
             task->rpc_api->rename_task.get_silly_rename_ino();
-        struct nfs_client *client = task->get_client();
         assert(client->magic == NFS_CLIENT_MAGIC);
         struct nfs_inode *silly_rename_inode =
             client->get_nfs_inode_from_ino(silly_rename_ino);
         assert(silly_rename_inode->magic == NFS_INODE_MAGIC);
 
         // Silly rename has the same source and target dir.
-        assert(task->rpc_api->rename_task.get_parent_ino() ==
-               task->rpc_api->rename_task.get_newparent_ino());
+        assert(parent_ino == newparent_ino);
 
         silly_rename_inode->silly_renamed_name =
             task->rpc_api->rename_task.get_newname();
@@ -1270,6 +1271,15 @@ void rename_callback(
     if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
         task->get_client()->jukebox_retry(task);
     } else {
+        if (status == 0) {
+            UPDATE_INODE_ATTR(parent_inode,
+                              res->RENAME3res_u.resok.fromdir_wcc.after);
+
+            if (newparent_ino != parent_ino) {
+                UPDATE_INODE_ATTR(newparent_inode,
+                                  res->RENAME3res_u.resok.todir_wcc.after);
+            }
+        }
         task->reply_error(status);
     }
 }
