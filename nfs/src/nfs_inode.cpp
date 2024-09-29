@@ -679,9 +679,11 @@ bool nfs_inode::release(fuse_req_t req)
      * Delete the silly rename file.
      * Note that we will now respond to fuse when the unlink completes.
      * The caller MUST arrange to *not* respond to fuse.
+     * Silly rename is done only for regular files.
      */
     assert(!silly_renamed_name.empty());
     assert(parent_ino != 0);
+    assert(is_regfile());
 
     AZLogInfo("Deleting silly renamed file, {}/{}",
               parent_ino, silly_renamed_name);

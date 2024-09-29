@@ -397,6 +397,7 @@ static void aznfsc_ll_opendir(fuse_req_t req,
     assert(inode->is_dir());
 
     inode->get_or_alloc_dircache();
+    inode->opencnt++;
     fuse_reply_open(req, fi);
 }
 
@@ -411,6 +412,11 @@ static void aznfsc_ll_readdir(fuse_req_t req,
                fmt::ptr(req), ino, size, off, fmt::ptr(fi));
 
     struct nfs_client *client = get_nfs_client_from_fuse_req(req);
+    struct nfs_inode *inode = client->get_nfs_inode_from_ino(ino);
+
+    // Must be called for an open directory.
+    assert(inode->is_open());
+
     client->readdir(req, ino, size, off, fi);
 }
 
@@ -421,17 +427,24 @@ static void aznfsc_ll_releasedir(fuse_req_t req,
 {
     AZLogDebug("aznfsc_ll_releasedir(req={}, ino={}, fi={})",
                fmt::ptr(req), ino, fmt::ptr(fi));
+    struct nfs_client *client = get_nfs_client_from_fuse_req(req);
+    struct nfs_inode *inode = client->get_nfs_inode_from_ino(ino);
+
+    // Must be called for an open directory.
+    assert(inode->is_open());
 
     /*
      * We don't do anything in opendir() so nothing to be done in
-     * releasedir().
+     * releasedir() than just dropping the opencnt increased in
+     * aznfsc_ll_opendir().
      *
      * TODO: See if we want to flush the directory buffer to create
      *       space. This may be helpful for find(1)workloads which
      *       traverse a directory just once.
      */
 
-     fuse_reply_err(req, 0);
+    inode->release(req);
+    fuse_reply_err(req, 0);
 }
 
 [[maybe_unused]]
