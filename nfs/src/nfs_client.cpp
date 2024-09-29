@@ -479,7 +479,7 @@ struct nfs_inode *nfs_client::get_nfs_inode(const nfs_fh3 *fh,
                  * If fattr is newer, update inode attr.
                  */
                 {
-                    std::unique_lock<std::shared_mutex> lock(i->second->ilock);
+                    std::unique_lock<std::shared_mutex> lock1(i->second->ilock);
 
                     const bool fattr_is_newer =
                         (compare_timespec_and_nfstime(i->second->attr.st_ctim,

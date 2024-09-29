@@ -784,7 +784,6 @@ void rpc_task::issue_write_rpc()
 
     WRITE3args args;
     ::memset(&args, 0, sizeof(args));
-    struct rpc_pdu *pdu;
     bool rpc_retry = false;
     const uint64_t offset = bciov->offset;
     const uint64_t length = bciov->length;
@@ -804,11 +803,11 @@ void rpc_task::issue_write_rpc()
         rpc_retry = false;
         stats.on_rpc_issue();
 
-        if ((pdu = rpc_nfs3_writev_task(get_rpc_ctx(),
+        if (rpc_nfs3_writev_task(get_rpc_ctx(),
                                         write_iov_callback, &args,
                                         bciov->iov,
                                         bciov->iovcnt,
-                                        this)) == NULL) {
+                                        this) == NULL) {
             stats.on_rpc_cancel();
             /*
              * Most common reason for this is memory allocation failure,
@@ -1325,7 +1324,6 @@ void rpc_task::run_lookup()
     fuse_ino_t parent_ino = rpc_api->lookup_task.get_parent_ino();
     struct nfs_inode *inode = get_client()->get_nfs_inode_from_ino(parent_ino);
     bool rpc_retry;
-    rpc_pdu *pdu = nullptr;
     const char *const filename = (char*) rpc_api->lookup_task.get_file_name();
     bool negative_confirmed = false;
 
@@ -1374,8 +1372,8 @@ void rpc_task::run_lookup()
          *       access the task object after making the libnfs call.
          */
         stats.on_rpc_issue();
-        if ((pdu = rpc_nfs3_lookup_task(get_rpc_ctx(), lookup_callback, &args,
-                                 this)) == NULL) {
+        if (rpc_nfs3_lookup_task(get_rpc_ctx(), lookup_callback, &args,
+                                 this) == NULL) {
             stats.on_rpc_cancel();
             /*
              * Most common reason for this is memory allocation failure,
@@ -1397,7 +1395,6 @@ void rpc_task::run_access()
 {
     const fuse_ino_t ino = rpc_api->access_task.get_ino();
     bool rpc_retry;
-    rpc_pdu *pdu = nullptr;
 
     do {
         ACCESS3args args;
@@ -1406,8 +1403,8 @@ void rpc_task::run_access()
 
         rpc_retry = false;
         stats.on_rpc_issue();
-        if ((pdu = rpc_nfs3_access_task(get_rpc_ctx(), access_callback, &args,
-                                        this)) == NULL) {
+        if (rpc_nfs3_access_task(get_rpc_ctx(), access_callback, &args,
+                                        this) == NULL) {
             stats.on_rpc_cancel();
             /*
              * Most common reason for this is memory allocation failure,
@@ -1553,7 +1550,6 @@ void rpc_task::run_getattr()
     bool rpc_retry;
     auto ino = rpc_api->getattr_task.get_ino();
     struct nfs_inode *inode = get_client()->get_nfs_inode_from_ino(ino);
-    rpc_pdu *pdu = nullptr;
 
     INC_GBL_STATS(tot_getattr_reqs, 1);
 
@@ -1574,8 +1570,8 @@ void rpc_task::run_getattr()
 
         rpc_retry = false;
         stats.on_rpc_issue();
-        if ((pdu = rpc_nfs3_getattr_task(get_rpc_ctx(), getattr_callback, &args,
-                                  this)) == NULL) {
+        if (rpc_nfs3_getattr_task(get_rpc_ctx(), getattr_callback, &args,
+                                  this) == NULL) {
             stats.on_rpc_cancel();
             /*
              * Most common reason for this is memory allocation failure,
@@ -1597,7 +1593,6 @@ void rpc_task::run_statfs()
 {
     bool rpc_retry;
     auto ino = rpc_api->statfs_task.get_ino();
-    rpc_pdu *pdu = nullptr;
 
     do {
         FSSTAT3args args;
@@ -1605,8 +1600,8 @@ void rpc_task::run_statfs()
 
         rpc_retry = false;
         stats.on_rpc_issue();
-        if ((pdu = rpc_nfs3_fsstat_task(get_rpc_ctx(), statfs_callback, &args,
-                                 this)) == NULL) {
+        if (rpc_nfs3_fsstat_task(get_rpc_ctx(), statfs_callback, &args,
+                                 this) == NULL) {
             stats.on_rpc_cancel();
             /*
              * Most common reason for this is memory allocation failure,
@@ -1628,7 +1623,6 @@ void rpc_task::run_create_file()
 {
     bool rpc_retry;
     auto parent_ino = rpc_api->create_task.get_parent_ino();
-    rpc_pdu *pdu = nullptr;
 
     do {
         CREATE3args args;
@@ -1649,8 +1643,8 @@ void rpc_task::run_create_file()
 
         rpc_retry = false;
         stats.on_rpc_issue();
-        if ((pdu = rpc_nfs3_create_task(get_rpc_ctx(), createfile_callback, &args,
-                                 this)) == NULL) {
+        if (rpc_nfs3_create_task(get_rpc_ctx(), createfile_callback, &args,
+                                 this) == NULL) {
             stats.on_rpc_cancel();
             /*
              * Most common reason for this is memory allocation failure,
@@ -1672,7 +1666,6 @@ void rpc_task::run_mknod()
 {
     bool rpc_retry;
     auto parent_ino = rpc_api->mknod_task.get_parent_ino();
-    rpc_pdu *pdu = nullptr;
 
     // mknod is supported only for regular file.
     assert(S_ISREG(rpc_api->mknod_task.get_mode()));
@@ -1695,8 +1688,8 @@ void rpc_task::run_mknod()
 
         rpc_retry = false;
         stats.on_rpc_issue();
-        if ((pdu = rpc_nfs3_create_task(get_rpc_ctx(), mknod_callback, &args,
-                                 this)) == NULL) {
+        if (rpc_nfs3_create_task(get_rpc_ctx(), mknod_callback, &args,
+                                 this) == NULL) {
             stats.on_rpc_cancel();
             /*
              * Most common reason for this is memory allocation failure,
@@ -1718,7 +1711,6 @@ void rpc_task::run_mkdir()
 {
     bool rpc_retry;
     auto parent_ino = rpc_api->mkdir_task.get_parent_ino();
-    rpc_pdu *pdu = nullptr;
 
     do {
         MKDIR3args args;
@@ -1735,8 +1727,8 @@ void rpc_task::run_mkdir()
 
         rpc_retry = false;
         stats.on_rpc_issue();
-        if ((pdu = rpc_nfs3_mkdir_task(get_rpc_ctx(), mkdir_callback, &args,
-                                this)) == NULL) {
+        if (rpc_nfs3_mkdir_task(get_rpc_ctx(), mkdir_callback, &args,
+                                this) == NULL) {
             stats.on_rpc_cancel();
             /*
              * Most common reason for this is memory allocation failure,
@@ -1758,7 +1750,6 @@ void rpc_task::run_unlink()
 {
     bool rpc_retry;
     auto parent_ino = rpc_api->unlink_task.get_parent_ino();
-    rpc_pdu *pdu = nullptr;
 
     do {
         REMOVE3args args;
@@ -1767,8 +1758,8 @@ void rpc_task::run_unlink()
 
         rpc_retry = false;
         stats.on_rpc_issue();
-        if ((pdu = rpc_nfs3_remove_task(get_rpc_ctx(),
-                                 unlink_callback, &args, this)) == NULL) {
+        if (rpc_nfs3_remove_task(get_rpc_ctx(),
+                                 unlink_callback, &args, this) == NULL) {
             stats.on_rpc_cancel();
             /*
              * Most common reason for this is memory allocation failure,
@@ -1790,7 +1781,6 @@ void rpc_task::run_rmdir()
 {
     bool rpc_retry;
     auto parent_ino = rpc_api->rmdir_task.get_parent_ino();
-    rpc_pdu *pdu = nullptr;
 
     do {
         RMDIR3args args;
@@ -1800,8 +1790,8 @@ void rpc_task::run_rmdir()
 
         rpc_retry = false;
         stats.on_rpc_issue();
-        if ((pdu = rpc_nfs3_rmdir_task(get_rpc_ctx(),
-                                rmdir_callback, &args, this)) == NULL) {
+        if (rpc_nfs3_rmdir_task(get_rpc_ctx(),
+                                rmdir_callback, &args, this) == NULL) {
             stats.on_rpc_cancel();
             /*
              * Most common reason for this is memory allocation failure,
@@ -1823,7 +1813,6 @@ void rpc_task::run_symlink()
 {
     bool rpc_retry;
     const fuse_ino_t parent_ino = rpc_api->symlink_task.get_parent_ino();
-    rpc_pdu *pdu = nullptr;
 
     do {
         SYMLINK3args args;
@@ -1841,10 +1830,10 @@ void rpc_task::run_symlink()
 
         rpc_retry = false;
         stats.on_rpc_issue();
-        if ((pdu = rpc_nfs3_symlink_task(get_rpc_ctx(),
+        if (rpc_nfs3_symlink_task(get_rpc_ctx(),
                                          symlink_callback,
                                          &args,
-                                         this)) == NULL) {
+                                         this) == NULL) {
             stats.on_rpc_cancel();
             /*
              * Most common reason for this is memory allocation failure,
@@ -1868,8 +1857,6 @@ void rpc_task::run_rename()
     const fuse_ino_t parent_ino = rpc_api->rename_task.get_parent_ino();
     const fuse_ino_t newparent_ino = rpc_api->rename_task.get_newparent_ino();
 
-    rpc_pdu *pdu = nullptr;
-
     do {
         RENAME3args args;
         args.from.dir = get_client()->get_nfs_inode_from_ino(parent_ino)->get_fh();
@@ -1879,10 +1866,10 @@ void rpc_task::run_rename()
 
         rpc_retry = false;
         stats.on_rpc_issue();
-        if ((pdu = rpc_nfs3_rename_task(get_rpc_ctx(),
+        if (rpc_nfs3_rename_task(get_rpc_ctx(),
                                         rename_callback,
                                         &args,
-                                        this)) == NULL) {
+                                        this) == NULL) {
             stats.on_rpc_cancel();
             /*
              * Most common reason for this is memory allocation failure,
@@ -1904,7 +1891,6 @@ void rpc_task::run_readlink()
 {
     bool rpc_retry;
     const fuse_ino_t ino = rpc_api->readlink_task.get_ino();
-    rpc_pdu *pdu = nullptr;
 
     do {
         READLINK3args args;
@@ -1912,10 +1898,10 @@ void rpc_task::run_readlink()
 
         rpc_retry = false;
         stats.on_rpc_issue();
-        if ((pdu = rpc_nfs3_readlink_task(get_rpc_ctx(),
+        if (rpc_nfs3_readlink_task(get_rpc_ctx(),
                                           readlink_callback,
                                           &args,
-                                          this)) == NULL) {
+                                          this) == NULL) {
             stats.on_rpc_cancel();
             /*
              * Most common reason for this is memory allocation failure,
@@ -1940,7 +1926,6 @@ void rpc_task::run_setattr()
     auto attr = rpc_api->setattr_task.get_attr();
     const int valid = rpc_api->setattr_task.get_attr_flags_to_set();
     bool rpc_retry;
-    rpc_pdu *pdu = nullptr;
 
     /*
      * If this is a setattr(mtime) call called for updating mtime of a file
@@ -2023,8 +2008,8 @@ void rpc_task::run_setattr()
 
         rpc_retry = false;
         stats.on_rpc_issue();
-        if ((pdu = rpc_nfs3_setattr_task(get_rpc_ctx(), setattr_callback, &args,
-                                  this)) == NULL) {
+        if (rpc_nfs3_setattr_task(get_rpc_ctx(), setattr_callback, &args,
+                                  this) == NULL) {
             stats.on_rpc_cancel();
             /*
              * Most common reason for this is memory allocation failure,
@@ -2540,16 +2525,15 @@ static void read_callback(
                  * Note: It is okay to issue a read call directly here
                  *       as we are holding all the needed locks and refs.
                  */
-                rpc_pdu *pdu = nullptr;
                 rpc_retry = false;
                 child_tsk->get_stats().on_rpc_issue();
-                if ((pdu = rpc_nfs3_read_task(
+                if (rpc_nfs3_read_task(
                         child_tsk->get_rpc_ctx(),
                         read_callback,
                         bc->get_buffer() + bc->pvt,
                         new_size,
                         &new_args,
-                        (void *) new_ctx)) == NULL) {
+                        (void *) new_ctx) == NULL) {
                     child_tsk->get_stats().on_rpc_cancel();
                     /*
                      * Most common reason for this is memory allocation failure,
@@ -2797,16 +2781,15 @@ void rpc_task::read_from_server(struct bytes_chunk &bc)
         AZLogDebug("Issuing read to backend at offset: {} length: {}",
                    args.offset, args.count);
 
-        rpc_pdu *pdu = nullptr;
         rpc_retry = false;
         stats.on_rpc_issue();
-        if ((pdu = rpc_nfs3_read_task(
+        if (rpc_nfs3_read_task(
                 get_rpc_ctx(), /* This round robins request across connections */
                 read_callback,
                 bc.get_buffer() + bc.pvt,
                 args.count,
                 &args,
-                (void *) ctx)) == NULL) {
+                (void *) ctx) == NULL) {
             stats.on_rpc_cancel();
             /*
              * Most common reason for this is memory allocation failure,
@@ -2909,7 +2892,6 @@ static void readdir_callback(
     // How many max bytes worth of entries data does the caller want?
     ssize_t rem_size = task->rpc_api->readdir_task.get_size();
     std::vector<const directory_entry*> readdirentries;
-    int num_dirents = 0;
     const int status = task->status(rpc_status, NFS_STATUS(res));
     bool eof = false;
 
@@ -2957,6 +2939,7 @@ static void readdir_callback(
         const struct entry3 *entry = res->READDIR3res_u.resok.reply.entries;
         eof = res->READDIR3res_u.resok.reply.eof;
         int64_t eof_cookie = -1;
+        int num_dirents = 0;
 
         // Get handle to the readdirectory cache.
         std::shared_ptr<readdirectory_cache>& dircache_handle =
@@ -3237,7 +3220,6 @@ static void readdirplus_callback(
     // How many max bytes worth of entries data does the caller want?
     ssize_t rem_size = task->rpc_api->readdir_task.get_size();
     std::vector<const directory_entry*> readdirentries;
-    int num_dirents = 0;
     const int status = task->status(rpc_status, NFS_STATUS(res));
     bool eof = false;
 
@@ -3286,6 +3268,7 @@ static void readdirplus_callback(
             res->READDIRPLUS3res_u.resok.reply.entries;
         eof = res->READDIRPLUS3res_u.resok.reply.eof;
         int64_t eof_cookie = -1;
+        int num_dirents = 0;
 
         // Get handle to the readdirectory cache.
         std::shared_ptr<readdirectory_cache>& dircache_handle =
@@ -3682,7 +3665,6 @@ void rpc_task::fetch_readdir_entries_from_server()
     struct nfs_inode *dir_inode = get_client()->get_nfs_inode_from_ino(dir_ino);
     assert(dir_inode->dircache_handle);
     const cookie3 cookie = rpc_api->readdir_task.get_offset();
-    rpc_pdu *pdu = nullptr;
 
     do {
         READDIR3args args;
@@ -3697,10 +3679,10 @@ void rpc_task::fetch_readdir_entries_from_server()
 
         rpc_retry = false;
         stats.on_rpc_issue();
-        if ((pdu = rpc_nfs3_readdir_task(get_rpc_ctx(),
+        if (rpc_nfs3_readdir_task(get_rpc_ctx(),
                                   readdir_callback,
                                   &args,
-                                  this)) == NULL) {
+                                  this) == NULL) {
             stats.on_rpc_cancel();
             /*
              * Most common reason for this is memory allocation failure,
@@ -3725,7 +3707,6 @@ void rpc_task::fetch_readdirplus_entries_from_server()
     struct nfs_inode *dir_inode = get_client()->get_nfs_inode_from_ino(dir_ino);
     assert(dir_inode->dircache_handle);
     const cookie3 cookie = rpc_api->readdir_task.get_offset();
-    rpc_pdu *pdu = nullptr;
 
     do {
         READDIRPLUS3args args;
@@ -3745,10 +3726,10 @@ void rpc_task::fetch_readdirplus_entries_from_server()
 
         rpc_retry = false;
         stats.on_rpc_issue();
-        if ((pdu = rpc_nfs3_readdirplus_task(get_rpc_ctx(),
+        if (rpc_nfs3_readdirplus_task(get_rpc_ctx(),
                                       readdirplus_callback,
                                       &args,
-                                      this)) == NULL) {
+                                      this) == NULL) {
             stats.on_rpc_cancel();
             /*
              * Most common reason for this is memory allocation failure,

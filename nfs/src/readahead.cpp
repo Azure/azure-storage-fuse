@@ -244,8 +244,6 @@ static void readahead_callback (
                        bc->offset,
                        bc->offset + bc->length);
 
-            rpc_pdu *pdu = nullptr;
-
             do {
                 rpc_retry = false;
                 /*
@@ -257,13 +255,13 @@ static void readahead_callback (
                  *       as we are holding all the needed locks and refs.
                  */
                 partial_read_tsk->get_stats().on_rpc_issue();
-                if ((pdu = rpc_nfs3_read_task(
+                if (rpc_nfs3_read_task(
                         partial_read_tsk->get_rpc_ctx(),
                         readahead_callback,
                         bc->get_buffer() + bc->pvt,
                         new_size,
                         &new_args,
-                        (void *) ctx)) == NULL) {
+                        (void *) ctx) == NULL) {
                     partial_read_tsk->get_stats().on_rpc_cancel();
                     /*
                      * This call fails due to internal issues like OOM
@@ -441,7 +439,6 @@ int ra_state::issue_readaheads()
     int64_t ra_offset;
     auto read_cache = inode->filecache_handle;
     int ra_issued = 0;
-    static uint64_t num_no_readahead;
 
     /*
      * No cache, can't readahead.
@@ -570,8 +567,6 @@ int ra_state::issue_readaheads()
                        args.offset,
                        args.count);
 
-            rpc_pdu *pdu = nullptr;
-
             /*
              * tsk->get_rpc_ctx() call below will round robin readahead
              * requests across all available connections.
@@ -580,13 +575,13 @@ int ra_state::issue_readaheads()
              *       before moving to the other connection helps.
              */
             tsk->get_stats().on_rpc_issue();
-            if ((pdu = rpc_nfs3_read_task(
+            if (rpc_nfs3_read_task(
                         tsk->get_rpc_ctx(),
                         readahead_callback,
                         bc.get_buffer(),
                         bc.length,
                         &args,
-                        ctx)) == NULL) {
+                        ctx) == NULL) {
                 tsk->get_stats().on_rpc_cancel();
                 /*
                  * This call failed due to internal issues like OOM etc
@@ -624,6 +619,8 @@ int ra_state::issue_readaheads()
     }
 
     if (ra_issued == 0) {
+        static uint64_t num_no_readahead;
+
         // Log once every 1000 failed calls.
         if ((++num_no_readahead % 1000) == 0) {
             AZLogDebug("[{}] num_no_readahead={}, reason={}",
