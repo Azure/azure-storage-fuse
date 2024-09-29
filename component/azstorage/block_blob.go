@@ -1033,33 +1033,9 @@ func (bb *BlockBlob) createNewBlocks(blockList *common.BlockOffsetList, offset, 
 	return bufferSize, nil
 }
 
-func (bb *BlockBlob) removeBlocks(blockList *common.BlockOffsetList, size int64, name string) *common.BlockOffsetList {
-	_, index := blockList.BinarySearch(size)
-	// if the start index is equal to new size - block should be removed - move one index back
-	if blockList.BlockList[index].StartIndex == size {
-		index = index - 1
-	}
-	// if the file we're shrinking is in the middle of a block then shrink that block
-	if blockList.BlockList[index].EndIndex > size {
-		blk := blockList.BlockList[index]
-		blk.EndIndex = size
-		blk.Data = make([]byte, blk.EndIndex-blk.StartIndex)
-		blk.Flags.Set(common.DirtyBlock)
+func (bb *BlockBlob) TruncateFile(name string, size int64, blockSize int64) error {
+	// TODO : Truncate is sequential wirte now, we can upload multiple blocks in parallel
 
-		err := bb.ReadInBuffer(name, blk.StartIndex, blk.EndIndex-blk.StartIndex, blk.Data)
-		if err != nil {
-			log.Err("BlockBlob::removeBlocks : Failed to remove blocks %s [%s]", name, err.Error())
-		}
-
-	}
-	blk := blockList.BlockList[index]
-	blk.Flags.Set(common.RemovedBlocks)
-	blockList.BlockList = blockList.BlockList[:index+1]
-
-	return blockList
-}
-
-func (bb *BlockBlob) TruncateFile(name string, size int64) error {
 	// log.Trace("BlockBlob::TruncateFile : name=%s, size=%d", name, size)
 	attr, err := bb.GetAttr(name)
 	if err != nil {
@@ -1068,119 +1044,246 @@ func (bb *BlockBlob) TruncateFile(name string, size int64) error {
 			return err
 		}
 	}
-	if size == 0 || attr.Size == 0 {
-		// If we are resizing to a value > 1GB then we need to upload multiple blocks to resize
-		if size > 1*common.GbToBytes {
-			blkSize := int64(16 * common.MbToBytes)
-			blobName := filepath.Join(bb.Config.prefixPath, name)
-			blobClient := bb.Container.NewBlockBlobClient(blobName)
 
-			blkList := make([]string, 0)
-			id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
+	// Check if file really needs truncation or not
+	if size == attr.Size {
+		log.Debug("BlockBlob::TruncateFile : File %s is already of size %d", name, size)
+		return nil
+	}
 
-			for i := 0; size > 0; i++ {
-				if i == 0 || size < blkSize {
-					// Only first and last block we upload and rest all we replicate with the first block itself
-					if size < blkSize {
-						blkSize = size
-						id = base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
-					}
-					data := make([]byte, blkSize)
+	// File needs to be wiped out
+	if size == 0 {
+		err := bb.WriteFromBuffer(name, nil, make([]byte, size))
+		if err != nil {
+			log.Err("BlockBlob::TruncateFile : Failed to set the %s to 0 bytes [%s]", name, err.Error())
+		}
+		return nil
+	}
 
-					_, err = blobClient.StageBlock(context.Background(),
-						id,
-						streaming.NopCloser(bytes.NewReader(data)),
-						&blockblob.StageBlockOptions{
-							CPKInfo: bb.blobCPKOpt,
-						})
-					if err != nil {
-						log.Err("BlockBlob::TruncateFile : Failed to stage block for %s [%s]", name, err.Error())
-						return err
-					}
-				}
-				blkList = append(blkList, id)
-				size -= blkSize
-			}
+	// If blockSize is not provided use the azstorage configured block-size
+	// In case of block-cache component this shall be filled based on block-size configured there
+	if blockSize == 0 {
+		blockSize = bb.Config.blockSize
+	}
 
-			err = bb.CommitBlocks(blobName, blkList)
-			if err != nil {
-				log.Err("BlockBlob::TruncateFile : Failed to commit blocks for %s [%s]", name, err.Error())
-				return err
-			}
-		} else {
-			err := bb.WriteFromBuffer(name, nil, make([]byte, size))
-			if err != nil {
-				log.Err("BlockBlob::TruncateFile : Failed to set the %s to 0 bytes [%s]", name, err.Error())
-			}
+	if blockSize == 0 {
+		// Nothing is configured then assume 16MB as default size
+		blockSize = 16 * 1024 * 1024
+	}
+
+	if attr.Size == 0 {
+		// File does not have any data yet so we just need to fill this with 0's
+		err = bb.createSparseFile(name, size, blockSize, make([]string, 0), 16)
+		if err != nil {
+			log.Err("BlockBlob::TruncateFile : Failed to expand file %s [%s]", name, err.Error())
 		}
 		return err
 	}
 
-	//If new size is less than 256MB
-	if size < blockblob.MaxUploadBlobBytes {
-		data, err := bb.HandleSmallFile(name, size, attr.Size)
+	// Get the committed block list from the source file
+	committedBlockList, err := bb.GetCommittedBlockList(name)
+	if err != nil {
+		log.Err("BlockBlob::TruncateFile : Failed to get block list of file %s [%s]", name, err.Error())
+		return err
+	}
+
+	if committedBlockList == nil {
+		// This file is not split into blocks yet
+		// Read full file and then proceed based on new size
+		data, err := bb.readFileData(name, size, attr.Size)
 		if err != nil {
-			log.Err("BlockBlob::TruncateFile : Failed to read small file %s", name, err.Error())
+			log.Err("BlockBlob::TruncateFile : Failed to read file %s [%s]", name, err.Error())
 			return err
 		}
-		err = bb.WriteFromBuffer(name, nil, data)
+
+		err = bb.convertFileToBlocks(name, size, blockSize, data)
 		if err != nil {
-			log.Err("BlockBlob::TruncateFile : Failed to write from buffer file %s", name, err.Error())
-			return err
+			log.Err("BlockBlob::TruncateFile : Failed to expand file %s [%s]", name, err.Error())
 		}
-	} else {
-		bol, err := bb.GetFileBlockOffsets(name)
-		if err != nil {
-			log.Err("BlockBlob::TruncateFile : Failed to get block list of file %s [%s]", name, err.Error())
-			return err
-		}
-		if bol.SmallFile() {
-			data, err := bb.HandleSmallFile(name, size, attr.Size)
+		return err
+	}
+
+	// This file already has the blocks created we just need to truncate the blocks
+	return bb.updateBlocks(name, size, blockSize, committedBlockList)
+}
+
+func (bb *BlockBlob) readFileData(name string, truncateSize int64, fileSize int64) ([]byte, error) {
+	// If truncate size is smaller then file size then read only data upto truncate size
+	// If truncate size is bigger then file size then read entire file data
+	size := int64(math.Min((float64)(truncateSize), (float64)(fileSize)))
+
+	var data = make([]byte, size)
+
+	err := bb.ReadInBuffer(name, 0, size, data)
+	if err != nil {
+		log.Err("BlockBlob::readFileData : Failed to read small file %s", name, err.Error())
+	}
+
+	return data, err
+}
+
+func (bb *BlockBlob) createSparseFile(name string, size int64, blockSize int64, blkList []string, idLen int64) error {
+	blobName := filepath.Join(bb.Config.prefixPath, name)
+	blobClient := bb.Container.NewBlockBlobClient(blobName)
+
+	id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(idLen))
+	for i := 0; size > 0; i++ {
+		if i == 0 || size < blockSize {
+			// Only first and last block we upload and rest all we replicate with the first block itself
+			if size < blockSize {
+				blockSize = size
+				id = base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(idLen))
+			}
+			data := make([]byte, blockSize)
+
+			_, err := blobClient.StageBlock(context.Background(),
+				id,
+				streaming.NopCloser(bytes.NewReader(data)),
+				&blockblob.StageBlockOptions{
+					CPKInfo: bb.blobCPKOpt,
+				})
+
 			if err != nil {
-				log.Err("BlockBlob::TruncateFile : Failed to read small file %s", name, err.Error())
+				log.Err("BlockBlob::expandFile : Failed to stage block for %s [%s]", name, err.Error())
 				return err
 			}
-			err = bb.WriteFromBuffer(name, nil, data)
-			if err != nil {
-				log.Err("BlockBlob::TruncateFile : Failed to write from buffer file %s", name, err.Error())
-				return err
-			}
-		} else {
-			if size < attr.Size {
-				bol = bb.removeBlocks(bol, size, name)
-			} else if size > attr.Size {
-				_, err = bb.createNewBlocks(bol, bol.BlockList[len(bol.BlockList)-1].EndIndex, size-attr.Size)
-				if err != nil {
-					log.Err("BlockBlob::TruncateFile : Failed to create new blocks for file %s", name, err.Error())
-					return err
-				}
-			}
-			err = bb.StageAndCommit(name, bol)
-			if err != nil {
-				log.Err("BlockBlob::TruncateFile : Failed to stage and commit file %s", name, err.Error())
-				return err
-			}
 		}
+
+		blkList = append(blkList, id)
+		size -= blockSize
+	}
+
+	err := bb.CommitBlocks(blobName, blkList)
+	if err != nil {
+		log.Err("BlockBlob::expandFile : Failed to commit blocks for %s [%s]", name, err.Error())
+		return err
 	}
 
 	return nil
 }
+func (bb *BlockBlob) updateBlocks(name string, newSize int64, blockSize int64, blockList *internal.CommittedBlockList) error {
+	// Iterate through blockList to figure out how many blocks we can keep
+	removeBlocks := false
+	blkList := make([]string, 0)
 
-func (bb *BlockBlob) HandleSmallFile(name string, size int64, originalSize int64) ([]byte, error) {
-	var data = make([]byte, size)
-	var err error
-	if size > originalSize {
-		err = bb.ReadInBuffer(name, 0, 0, data)
-		if err != nil {
-			log.Err("BlockBlob::TruncateFile : Failed to read small file %s", name, err.Error())
-		}
-	} else {
-		err = bb.ReadInBuffer(name, 0, size, data)
-		if err != nil {
-			log.Err("BlockBlob::TruncateFile : Failed to read small file %s", name, err.Error())
-		}
+	blobName := filepath.Join(bb.Config.prefixPath, name)
+	blobClient := bb.Container.NewBlockBlobClient(blobName)
+
+	var block internal.CommittedBlock
+	lastIdx := 0
+
+	// Extract the block-id length and size of block so that we create new blocks accordingly
+	idLen := int64(16)
+	orgId, err := base64.StdEncoding.DecodeString((*blockList)[0].Id)
+	if err == nil {
+		idLen = int64(len(orgId))
 	}
-	return data, err
+	oldBlockSize := int64((*blockList)[0].Size)
+
+	if oldBlockSize != 0 {
+		blockSize = oldBlockSize
+	}
+
+	for lastIdx, block = range *blockList {
+		if newSize < int64(block.Size) {
+			removeBlocks = true
+			break
+		}
+		newSize -= int64(block.Size)
+		blkList = append(blkList, block.Id)
+	}
+
+	if newSize == 0 {
+		// New Size exactly aligns to the block boundary
+		// Commit the current list and no need to upload any data here
+		err := bb.CommitBlocks(blobName, blkList)
+		if err != nil {
+			log.Err("BlockBlob::updateBlocks : Failed to commit blocks for %s [%s]", name, err.Error())
+		}
+		return err
+	}
+
+	if removeBlocks {
+		// Last block in file needs truncation
+		data := make([]byte, newSize)
+
+		id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(idLen))
+		err := bb.ReadInBuffer(name, (*blockList)[lastIdx].Offset, newSize, data)
+		if err != nil {
+			log.Err("BlockBlob::updateBlocks : Failed to read buffer for %s [%s]", name, err.Error())
+			return err
+		}
+
+		_, err = blobClient.StageBlock(context.Background(),
+			id,
+			streaming.NopCloser(bytes.NewReader(data)),
+			&blockblob.StageBlockOptions{
+				CPKInfo: bb.blobCPKOpt,
+			})
+
+		if err != nil {
+			log.Err("BlockBlob::updateBlocks : Failed to stage block for %s [%s]", name, err.Error())
+			return err
+		}
+
+		blkList = append(blkList, id)
+		newSize = 0
+	}
+
+	return bb.createSparseFile(name, newSize, blockSize, blkList, idLen)
+}
+
+func (bb *BlockBlob) convertFileToBlocks(name string, size int64, blockSize int64, data []byte) error {
+	blobName := filepath.Join(bb.Config.prefixPath, name)
+	blobClient := bb.Container.NewBlockBlobClient(blobName)
+
+	oldDataLen := int64(len(data))
+	blkList := make([]string, 0)
+
+	offset := int64(0)
+	createBlock := true
+	id := ""
+
+	for i := 0; size > 0; i++ {
+		if size < blockSize {
+			blockSize = size
+			createBlock = true
+		}
+
+		if createBlock {
+			newData := make([]byte, blockSize)
+			id = base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
+
+			if offset < oldDataLen {
+				copy(newData, data[offset:])
+			} else {
+				createBlock = false
+			}
+
+			_, err := blobClient.StageBlock(context.Background(),
+				id,
+				streaming.NopCloser(bytes.NewReader(newData)),
+				&blockblob.StageBlockOptions{
+					CPKInfo: bb.blobCPKOpt,
+				})
+			if err != nil {
+				log.Err("BlockBlob::convertFileToBlocks : Failed to stage block for %s [%s]", name, err.Error())
+				return err
+			}
+		}
+
+		size -= blockSize
+		offset += blockSize
+		blkList = append(blkList, id)
+	}
+
+	err := bb.CommitBlocks(blobName, blkList)
+	if err != nil {
+		log.Err("BlockBlob::expandFile : Failed to commit blocks for %s [%s]", name, err.Error())
+		return err
+	}
+
+	return nil
 }
 
 // Write : write data at given offset to a blob
