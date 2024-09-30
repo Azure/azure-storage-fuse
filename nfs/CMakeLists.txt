@@ -24,6 +24,7 @@ option(ENABLE_TCMALLOC "Use tcmalloc for malloc/free/new/delete" ON)
 # Disable asan for nofuse as it doesn't work well with that.
 #
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+  add_definitions(-DENABLE_DEBUG)
   if(ENABLE_PARANOID)
     add_definitions(-DENABLE_PARANOID)
   endif()
