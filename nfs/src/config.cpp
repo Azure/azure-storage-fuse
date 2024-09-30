@@ -178,10 +178,10 @@ void aznfsc_cfg::set_defaults_and_sanitize()
     const char *err_prob = ::getenv("AZNFSC_INJECT_ERROR_PERCENT");
     if (err_prob) {
         inject_err_prob_pct_def = ::atof(err_prob);
-        if (inject_err_prob_pct_def < 0.0001) {
-            AZLogWarn("Capping AZNFSC_INJECT_ERROR_PERCENT ({}) to 0.0001",
+        if (inject_err_prob_pct_def < 0) {
+            AZLogWarn("Capping AZNFSC_INJECT_ERROR_PERCENT ({}) to 0",
                       err_prob);
-            inject_err_prob_pct_def = 0.0001;
+            inject_err_prob_pct_def = 0;
         } else if (inject_err_prob_pct_def > 100) {
             AZLogWarn("Capping AZNFSC_INJECT_ERROR_PERCENT ({}) to 100",
                       err_prob);
