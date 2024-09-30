@@ -271,7 +271,10 @@ static void aznfsc_ll_open(fuse_req_t req,
 
     inode->opencnt++;
 
-    fuse_reply_open(req, fi);
+    if (fuse_reply_open(req, fi) < 0) {
+        AZLogError("[{}] fuse_reply_open() failed", inode->get_fuse_ino());
+        inode->opencnt--;
+    }
 }
 
 [[maybe_unused]]
@@ -398,7 +401,11 @@ static void aznfsc_ll_opendir(fuse_req_t req,
 
     inode->get_or_alloc_dircache();
     inode->opencnt++;
-    fuse_reply_open(req, fi);
+
+    if (fuse_reply_open(req, fi) < 0) {
+        AZLogError("[{}] fuse_reply_open() failed", inode->get_fuse_ino());
+        inode->opencnt--;
+    }
 }
 
 [[maybe_unused]]

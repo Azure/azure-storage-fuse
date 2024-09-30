@@ -2044,19 +2044,26 @@ public:
          */
         inode->forget_expected++;
 
+        /*
+         * Increment opencnt before calling fuse_reply_create() as once we
+         * respond with the inode to fuse, it may call release for that inode
+         * and we have an assert in aznfsc_ll_release() that opencnt must be
+         * non-zero. If we fail to convey to fuse we decrement the opencnt.
+         */
+        inode->opencnt++;
+
         if (fuse_reply_create(get_fuse_req(), entry, file) < 0) {
+            AZLogError("[{}] fuse_reply_create() failed",
+                       inode->get_fuse_ino());
+
             /*
              * Not able to convey to fuse, drop forget_expected count
              * incremented above.
              */
             assert(inode->forget_expected > 0);
             inode->forget_expected--;
+            inode->opencnt--;
             inode->decref();
-        } else {
-            /*
-             * Successful creat(), increase opencnt.
-             */
-            inode->opencnt++;
         }
 
         free_rpc_task();
