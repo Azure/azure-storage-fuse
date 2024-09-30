@@ -415,7 +415,8 @@ struct nfs_inode *nfs_client::__get_nfs_inode(LOC_PARAMS
                     inode->attr_timeout_timestamp =
                         get_current_msecs() + inode->attr_timeout_secs*1000;
                 } else if (fattr_compare > 0) {
-                    AZLogWarn(LOC_FMT "[{}:{} / 0x{:08x}] NOT updating inode attr, "
+                    AZLogWarn(LOC_FMT
+                              "[{}:{} / 0x{:08x}] NOT updating inode attr, "
                               "size {} -> {}, "
                               "ctime {}.{} -> {}.{}, "
                               "mtime {}.{} -> {}.{}",
