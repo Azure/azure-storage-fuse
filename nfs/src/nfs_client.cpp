@@ -316,9 +316,10 @@ void nfs_client::jukebox_runner()
  * all inodes and returns from there if found, else creates a new nfs_inode.
  * The returned inode has it refcnt incremented by 1.
  */
-struct nfs_inode *nfs_client::get_nfs_inode(const nfs_fh3 *fh,
-                                            const struct fattr3 *fattr,
-                                            bool is_root_inode)
+struct nfs_inode *nfs_client::__get_nfs_inode(LOC_PARAMS
+                                              const nfs_fh3 *fh,
+                                              const struct fattr3 *fattr,
+                                              bool is_root_inode)
 {
     assert(fattr);
 
@@ -357,11 +358,13 @@ struct nfs_inode *nfs_client::get_nfs_inode(const nfs_fh3 *fh,
                 assert(inode->file_type == file_type);
 
                 if (inode->is_forgotten()) {
-                    AZLogDebug("[{}:{} / 0x{:08x}] Reusing forgotten inode "
+                    AZLogDebug(LOC_FMT
+                               "[{}:{} / 0x{:08x}] Reusing forgotten inode "
                                "(dircachecnt={}), "
                                "size {} -> {}, "
                                "ctime {}.{} -> {}.{}, "
                                "mtime {}.{} -> {}.{}",
+                               LOC_ARGS
                                inode->get_filetype_coding(),
                                inode->get_fuse_ino(),
                                inode->get_crc(),
@@ -387,10 +390,12 @@ struct nfs_inode *nfs_client::get_nfs_inode(const nfs_fh3 *fh,
                     compare_timespec_and_nfstime(inode->attr.st_ctim,
                                                  fattr->ctime);
                 if (fattr_compare < 0) {
-                    AZLogWarn("[{}:{} / 0x{:08x}] Updating inode attr, "
+                    AZLogWarn(LOC_FMT
+                              "[{}:{} / 0x{:08x}] Updating inode attr, "
                               "size {} -> {}, "
                               "ctime {}.{} -> {}.{}, "
                               "mtime {}.{} -> {}.{}",
+                              LOC_ARGS
                               inode->get_filetype_coding(),
                               inode->get_fuse_ino(),
                               inode->get_crc(),
@@ -410,10 +415,11 @@ struct nfs_inode *nfs_client::get_nfs_inode(const nfs_fh3 *fh,
                     inode->attr_timeout_timestamp =
                         get_current_msecs() + inode->attr_timeout_secs*1000;
                 } else if (fattr_compare > 0) {
-                    AZLogWarn("[{}:{} / 0x{:08x}] NOT updating inode attr, "
+                    AZLogWarn(LOC_FMT "[{}:{} / 0x{:08x}] NOT updating inode attr, "
                               "size {} -> {}, "
                               "ctime {}.{} -> {}.{}, "
                               "mtime {}.{} -> {}.{}",
+                              LOC_ARGS
                               inode->get_filetype_coding(),
                               inode->get_fuse_ino(),
                               inode->get_crc(),
@@ -452,7 +458,9 @@ struct nfs_inode *nfs_client::get_nfs_inode(const nfs_fh3 *fh,
     {
         std::unique_lock<std::shared_mutex> lock(inode_map_lock);
 
-        AZLogDebug("[{}:{} / 0x{:08x}] Allocated new inode ({})",
+        AZLogDebug(LOC_FMT
+                   "[{}:{} / 0x{:08x}] Allocated new inode ({})",
+                   LOC_ARGS
                    inode->get_filetype_coding(),
                    inode->get_fuse_ino(), inode->get_crc(), inode_map.size());
 
@@ -472,7 +480,9 @@ struct nfs_inode *nfs_client::get_nfs_inode(const nfs_fh3 *fh,
                 // File type must be same.
                 assert(i->second->file_type == file_type);
 
-                AZLogWarn("[{}] Another thread added inode, deleting ours",
+                AZLogWarn(LOC_FMT
+                          "[{}] Another thread added inode, deleting ours",
+                          LOC_ARGS
                           inode->get_fuse_ino());
 
                 /*
@@ -485,10 +495,12 @@ struct nfs_inode *nfs_client::get_nfs_inode(const nfs_fh3 *fh,
                         (compare_timespec_and_nfstime(i->second->attr.st_ctim,
                                                       fattr->ctime) == -1);
                     if (fattr_is_newer) {
-                        AZLogWarn("[{}:{} / 0x{:08x}] Updating inode attr, "
+                        AZLogWarn(LOC_FMT
+                                  "[{}:{} / 0x{:08x}] Updating inode attr, "
                                   "size {} -> {}, "
                                   "ctime {}.{} -> {}.{}, "
                                   "mtime {}.{} -> {}.{}",
+                                  LOC_ARGS
                                   i->second->get_filetype_coding(),
                                   i->second->get_fuse_ino(),
                                   i->second->get_crc(),

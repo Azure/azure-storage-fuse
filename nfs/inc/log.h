@@ -35,8 +35,28 @@
 #define AZLogVerbose(...)  /* nothing */
 #endif
 
-void init_log();
+#ifdef ENABLE_DEBUG
+/*
+ * __FILE__ like macro but returns the short filename, which is more usable
+ * in logs.
+ * The LOC* macros are used to add caller's file:line information to a function.
+ * This can aid debugging in some cases. Use with caution, when really required.
+ */
+#define __FILENAME__ ({const char *p = ::strrchr(__FILE__, '/'); p ? p + 1 : __FILE__;})
 
+#define LOC_PARAMS  const char *__srcfile, int __srcline,
+#define LOC_FMT     "[{}:{}]"
+#define LOC_ARGS    __srcfile, __srcline,
+#define LOC_VAL     __FILENAME__, __LINE__,
+#else /* ! ENABLE_DEBUG */
+#define LOC_PARAMS  /* nothing */
+#define LOC_FMT     ""
+#define LOC_ARGS    /* nothing */
+#define LOC_VAL     /* nothing */
+#endif /* ENABLE_DEBUG */
+
+
+void init_log();
 extern bool enable_debug_logs;
 
 #endif /* __AZNFSC_LOG_H__ */

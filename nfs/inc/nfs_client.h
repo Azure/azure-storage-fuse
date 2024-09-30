@@ -329,9 +329,13 @@ public:
      * number of 1, rest other inodes have inode number as the address of
      * the nfs_inode structure, which allows fast ino->inode mapping.
      */
-    struct nfs_inode *get_nfs_inode(const nfs_fh3 *fh,
-                                    const struct fattr3 *fattr,
-                                    bool is_root_inode = false);
+    struct nfs_inode *__get_nfs_inode(LOC_PARAMS
+                                      const nfs_fh3 *fh,
+                                      const struct fattr3 *fattr,
+                                      bool is_root_inode = false);
+
+#define get_nfs_inode(fh, fattr, ...) \
+    __get_nfs_inode(LOC_VAL fh, fattr, ## __VA_ARGS__)
 
     /**
      * Release the given inode, called when fuse FORGET call causes the
