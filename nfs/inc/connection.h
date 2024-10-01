@@ -12,7 +12,7 @@
  * TODO: Reserve this while one RPC is being transmitted, we don't want to
  *       mix data from multiple senders.
  */
-class nfs_connection
+struct nfs_connection
 {
 private:
     /*

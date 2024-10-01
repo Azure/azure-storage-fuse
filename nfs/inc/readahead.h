@@ -7,8 +7,8 @@
 #include "aznfsc.h"
 
 // Forward declarations.
-class nfs_inode;
-class nfs_client;
+struct nfs_inode;
+struct nfs_client;
 
 namespace aznfsc {
 

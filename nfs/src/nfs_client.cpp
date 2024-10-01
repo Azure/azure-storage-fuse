@@ -12,10 +12,6 @@ bool nfs_client::init()
     // init() must be called only once.
     assert(root_fh == nullptr);
 
-    const std::string& acc_name = aznfsc_cfg.account;
-    const std::string& cont_name = aznfsc_cfg.container;
-    const std::string& blob_suffix = aznfsc_cfg.cloud_suffix;
-
     /*
      * Setup RPC transport.
      * This will create all required connections and perform NFS mount on

@@ -80,7 +80,7 @@ private:
      * response. rpc_task_helper class allows efficient allocation of RPC
      * tasks.
      */
-    struct rpc_task_helper *rpc_task_helper = nullptr;
+    class rpc_task_helper *rpc_task_helper = nullptr;
 
     /*
      * JUKEBOX errors are handled by re-running the nfs_client handler for the
@@ -245,7 +245,7 @@ public:
         return transport;
     }
 
-    struct rpc_task_helper *get_rpc_task_helper()
+    class rpc_task_helper *get_rpc_task_helper()
     {
         return rpc_task_helper;
     }
