@@ -861,7 +861,7 @@ struct nfs_inode
     void lookup_dircache(
         cookie3 cookie,
         size_t max_size,
-        std::vector<const directory_entry*>& results,
+        std::vector<std::shared_ptr<const directory_entry>>& results,
         bool& eof,
         bool readdirplus);
 };

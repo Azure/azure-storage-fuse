@@ -897,7 +897,7 @@ void nfs_inode::purge_filecache_nolock()
 void nfs_inode::lookup_dircache(
     cookie3 cookie,
     size_t max_size,
-    std::vector<const directory_entry*>& results,
+    std::vector<std::shared_ptr<const directory_entry>>& results,
     bool& eof,
     bool readdirplus)
 {
@@ -920,7 +920,8 @@ void nfs_inode::lookup_dircache(
     eof = false;
 
     while (rem_size > 0) {
-        const struct directory_entry *entry = dircache_handle->lookup(cookie);
+        std::shared_ptr<const struct directory_entry> entry =
+            dircache_handle->lookup(cookie);
 
         /*
          * Cached entries stored by a prior READDIR call are not usable
@@ -948,9 +949,9 @@ void nfs_inode::lookup_dircache(
                  * readdirectory_cache::lookup() call above, to make sure that
                  * till we increase this refcnt, the inode is not freed.
                  *
-                 * Since send_readdir_response() will send this to fuse which
-                 * will later call forget for this we increment forget_expected
-                 * as well.
+                 * Since send_readdir_or_readdirplus_response() will send this
+                 * to fuse which will later call forget for this, we increment
+                 * forget_expected as well.
                  */
                 if (readdirplus && !entry->is_dot_or_dotdot()) {
                     entry->nfs_inode->forget_expected++;
