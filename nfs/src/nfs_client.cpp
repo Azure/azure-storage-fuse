@@ -559,6 +559,22 @@ void nfs_client::put_nfs_inode_nolock(struct nfs_inode *inode,
     inode->lookupcnt -= dropcnt;
 
     /*
+     * If this inode is referenced by some directory_entry then we cannot free
+     * it. We will attempt to free it later when the parent directory is purged
+     * and the inode loses its last dircachecnt reference.
+     *
+     * Note: It's important to first check dircachecnt before lookupcnt, as
+     *       users who want to protect nfs_inode using dircachecnt, acquire
+     *       dircachecnt before lookupcnt.
+     *       Ref readdirectory_cache::dnlc_lookup().
+     */
+    if (inode->dircachecnt > 0) {
+        AZLogVerbose("[{}] Inode is cached by readdir ({})",
+                     inode->get_fuse_ino(), inode->dircachecnt.load());
+        return;
+    }
+
+    /*
      * Caller should call us only for forgotten inodes but it's possible that
      * after we held the inode_map_lock some other thread got a reference on
      * this inode.
@@ -585,23 +601,15 @@ void nfs_client::put_nfs_inode_nolock(struct nfs_inode *inode,
      * started enumerating the directory before we could delete the directory
      * inode. Fuse will call FORGET on the directory and then we can free this
      * inode.
+     * XXX This should not happen as for enumerating a directory fuse would
+     *     have open()ed the directory and must have a lookupcnt ref on the
+     *     directory inode.
      */
     if (inode->is_dir() && !inode->is_cache_empty()) {
         AZLogWarn("[{}] Inode still has {} entries in dircache, skipping",
                   inode->get_fuse_ino(),
                   inode->dircache_handle->get_num_entries());
-        return;
-    }
-
-
-    /*
-     * If this inode is referenced by some directory_entry then we cannot free
-     * it. We will attempt to free it later when the parent directory is purged
-     * and the inode loses its last dircachecnt reference.
-     */
-    if (inode->dircachecnt) {
-        AZLogVerbose("[{}] Inode is cached by readdir ({})",
-                     inode->get_fuse_ino(), inode->dircachecnt.load());
+        assert(0);
         return;
     }
 

@@ -3091,10 +3091,10 @@ static void readdir_callback(
                      * server. To be safe, invalidate the cache.
                      */
                     AZLogWarn("[{}] readdir_callback {}: Directory shrank in "
-                            "the server! cookie asked: {} target_offset: {}. ",
+                            "the server! cookie asked: {} target_offset: {}. "
                             "Purging cache!",
-                            is_reenumerating ? "(R)" : "",
-                            dir_ino, task->rpc_api->readdir_task.get_offset(),
+                            dir_ino, is_reenumerating ? "(R)" : "",
+                            task->rpc_api->readdir_task.get_offset(),
                             task->rpc_api->readdir_task.get_target_offset());
                     dir_inode->invalidate_cache();
                 } else {
@@ -3515,10 +3515,10 @@ static void readdirplus_callback(
                      * server. To be safe, invalidate the cache.
                      */
                     AZLogWarn("[{}] readdirplus_callback {}: Directory shrank in "
-                            "the server! cookie asked: {} target_offset: {}. ",
+                            "the server! cookie asked: {} target_offset: {}. "
                             "Purging cache!",
-                            is_reenumerating ? "(R)" : "",
-                            dir_ino, task->rpc_api->readdir_task.get_offset(),
+                            dir_ino, is_reenumerating ? "(R)" : "",
+                            task->rpc_api->readdir_task.get_offset(),
                             task->rpc_api->readdir_task.get_target_offset());
                     dir_inode->invalidate_cache();
                 } else {

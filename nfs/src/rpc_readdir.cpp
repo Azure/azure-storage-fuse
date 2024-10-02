@@ -389,6 +389,10 @@ struct nfs_inode *readdirectory_cache::dnlc_lookup(
         /*
          * lookup() must have held a dircachecnt ref on the inode, drop that
          * but only after holding a fresh lookupcnt ref.
+         *
+         * See put_nfs_inode_nolock() how it first checks for dircachecnt and
+         * then lookupcnt, so if we acquire lookupcnt before dropping
+         * dircachecnt we will be safe.
          */
         dirent->nfs_inode->incref();
         assert(dirent->nfs_inode->dircachecnt > 0);
