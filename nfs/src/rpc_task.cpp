@@ -3009,7 +3009,8 @@ static void readdir_callback(
                 dircache_handle->remove(entry->cookie);
             }
 
-            dir_entry = std::make_shared<struct directory_entry>(strdup(entry->name),
+            dir_entry = std::make_shared<struct directory_entry>(
+                                            strdup(entry->name),
                                             entry->cookie,
                                             entry->fileid);
 
@@ -3382,7 +3383,8 @@ static void readdirplus_callback(
                 dircache_handle->remove(entry->cookie);
             }
 
-            dir_entry = std::make_shared<struct directory_entry>(strdup(entry->name),
+            dir_entry = std::make_shared<struct directory_entry>(
+                                                   strdup(entry->name),
                                                    entry->cookie,
                                                    nfs_inode->attr,
                                                    nfs_inode);
@@ -3653,7 +3655,21 @@ void rpc_task::get_readdir_entries_from_cache()
             fetch_readdir_entries_from_server();
         }
     } else {
-        // We are done fetching the entries, send the response now.
+        /*
+         * We are done fetching the entries, send the response now.
+         * Note that after lookup_dircache() populated directory entries in
+         * readdirentries, one or more of these directory_entry can get freed,
+         * f.e., we may receive an unlink() call for those. silly_rename() will
+         * remove the corresponding directory_entry from the readdirectory_cache
+         * which will cause the directory_entry to be freed. Obviously we hold
+         * a ref on the directory_entry->inode so the inode will be accessible.
+         * readdirentries holds shared_ptr of directory_entry objects, so even
+         * if unlink deletes the directory_entry from readdirectory_cache, our
+         * ref is valid and we can safely return it to fuse. Fuse will later
+         * call forget() for this inode and then we will free the inode.
+         * Note that since the file doesn't really exist now, any lookup() or
+         * unlink() call will fail with ENOENT.
+         */
         send_readdir_or_readdirplus_response(readdirentries);
     }
 }

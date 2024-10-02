@@ -849,7 +849,9 @@ struct nfs_inode
      *
      * cookie: offset in the directory from which the entries should be listed.
      * max_size: do not return entries more than these many bytes.
-     * results: returned entries are populated in this vector.
+     * results: returned entries are populated in this vector. Each of these
+     *          entry has a shared_ptr ref held so they can be safely used even
+     *          if the actual directory_entry in readdirectory_cache is deleted.
      * eof: will be set if there are no more entries in the directory, after
      *      the last entry returned.
      * readdirplus: consumer of the returned directory entries is readdirplus.

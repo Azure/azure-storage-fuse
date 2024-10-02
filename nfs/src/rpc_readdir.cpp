@@ -128,7 +128,7 @@ void readdirectory_cache::set_eof(uint64_t eof_cookie)
     }
 }
 
-bool readdirectory_cache::add(std::shared_ptr<struct directory_entry> entry,
+bool readdirectory_cache::add(const std::shared_ptr<struct directory_entry>& entry,
                               bool acquire_lock)
 {
     assert(entry != nullptr);
@@ -346,7 +346,7 @@ std::shared_ptr<struct directory_entry> readdirectory_cache::lookup(
 
     const auto it = dir_entries.find(cookie);
 
-    std::shared_ptr<struct directory_entry> dirent =
+    const std::shared_ptr<struct directory_entry>& dirent =
         (it != dir_entries.end()) ? it->second : nullptr;
 
     /*
@@ -470,7 +470,11 @@ bool readdirectory_cache::remove(cookie3 cookie,
 
         inode = dirent->nfs_inode;
 
-        // READDIR created cache entry, nothing more to do.
+        /*
+         * READDIR created cache entry, nothing more to do.
+         * directory_entry destructor will be called when dirent goes out of
+         * scope.
+         */
         if (!inode) {
             return true;
         }
@@ -504,6 +508,9 @@ bool readdirectory_cache::remove(cookie3 cookie,
          * ref on the inode, so we call incref() before deleting the
          * directory_entry. Later below we call decref() to drop the ref
          * held and if that's the only ref, inode will be deleted.
+         *
+         * Once dirent goes out of scope ~directory_entry() will be caalled
+         * which will drop the inode's original dircachecnt.
          */
         if (inode->dircachecnt == 1) {
             inode->incref();

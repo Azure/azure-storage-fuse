@@ -225,6 +225,12 @@ private:
      * We double readdir cache as DNLC cache too. dnlc_map is used to convert
      * filename (which is the index into the DNLC cache) to cookie (which is
      * the index into the readdir cache).
+     * dir_entries contains shared_ptr of directory_entry objects, thus
+     * lookup_dircache() can safely return a vector of directory_entry objects
+     * w/o worrying of them being deleted by an unlink() or some other call
+     * right after.
+     * Original ref to the shared_ptr is held when directory_entry is added to
+     * dir_entries by readdirectory_cache::add().
      */
     std::map<cookie3, std::shared_ptr<struct directory_entry>> dir_entries;
     std::unordered_map<std::string, cookie3> dnlc_map;
@@ -275,6 +281,10 @@ public:
      * Return true and populates the \p dirent if the entry corresponding
      * to \p cookie exists.
      * Returns false otherwise.
+     *
+     * Note: The returned directory_entry shared_ptr holds an extra ref, so
+     *       caller can safely use it even if the original directory_entry
+     *       stored in dir_entries is deleted.
      */
     bool get_entry_at(cookie3 cookie, std::shared_ptr<directory_entry>& dirent)
     {
@@ -306,7 +316,11 @@ public:
      */
     bool is_confirmed() const;
 
-    bool add(std::shared_ptr<struct directory_entry> entry, bool acquire_lock = true);
+    /**
+     * add() will add entry to dir_entries after bumping the shared_ptr ref.
+     */
+    bool add(const std::shared_ptr<struct directory_entry>& entry,
+             bool acquire_lock = true);
     void dnlc_add(const char *filename, struct nfs_inode *inode);
 
     const cookieverf3* get_cookieverf() const
@@ -368,6 +382,11 @@ public:
      * Note: lookup() returns after holding a dircachecnt ref on the inode,
      *       while dnlc_lookup() holds a lookupcnt ref on the inode.
      *       Caller must drop this extra ref held.
+     *
+     * Note: lookup() returns the directory_entry shared_ptr with an extra
+     *       ref held so that the returned directory_entry is safe to use
+     *       even if the corresponding actual directory_entry in dir_entries
+     *       is deleted after lookup() returns.
      */
     std::shared_ptr<struct directory_entry> lookup(
             cookie3 cookie,
