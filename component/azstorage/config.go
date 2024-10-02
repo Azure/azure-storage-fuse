@@ -75,6 +75,10 @@ func (AuthType) AZCLI() AuthType {
 	return AuthType(5)
 }
 
+func (AuthType) AZDEFAULT() AuthType {
+	return AuthType(6)
+}
+
 func (a AuthType) String() string {
 	return enum.StringInt(a, reflect.TypeOf(a))
 }
@@ -460,7 +464,8 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		az.stConfig.authConfig.OAuthTokenFilePath = opt.OAuthTokenFilePath
 	case EAuthType.AZCLI():
 		az.stConfig.authConfig.AuthMode = EAuthType.AZCLI()
-
+	case EAuthType.AZDEFAULT():
+		az.stConfig.authConfig.AuthMode = EAuthType.AZDEFAULT()
 	default:
 		log.Err("ParseAndValidateConfig : Invalid auth mode %s", opt.AuthMode)
 		return errors.New("invalid auth mode")
