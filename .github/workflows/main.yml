@@ -1,5 +1,8 @@
 name: Run Azure CLI Login with OpenID Connect
-on: [push]
+on:
+  push:
+    branches:
+    - vibhansa-fedTokenTest
 
 permissions:
   id-token: write # Require write permission to Fetch an OIDC token.
@@ -11,7 +14,6 @@ jobs:
     - name: Azure CLI Login
       uses: azure/login@v2
       with:
-        auth-type: IDENTITY
         client-id: ${{ secrets.AZURE_CLIENT_ID }}
         tenant-id: ${{ secrets.AZURE_TENANT_ID }}
         subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
