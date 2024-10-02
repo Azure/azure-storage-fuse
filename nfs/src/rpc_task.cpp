@@ -2867,7 +2867,7 @@ void rpc_task::run_readdirplus()
  * Callback for the READDIR RPC. Once this callback is called, it will first
  * populate the readdir cache with the newly fetched entries (minus the
  * attributes). Additionally it will populate the readdirentries vector and
- * call send_readdir_response() to respond to the fuse readdir call.
+ * call send_readdir_or_readdirplus_response() to respond to the fuse readdir call.
  *
  * TODO: Restart directory enumeration on getting NFS3ERR_BAD_COOKIE.
  */
@@ -2891,7 +2891,7 @@ static void readdir_callback(
         task->get_client()->get_nfs_inode_from_ino(dir_ino);
     // How many max bytes worth of entries data does the caller want?
     ssize_t rem_size = task->rpc_api->readdir_task.get_size();
-    std::vector<const directory_entry*> readdirentries;
+    std::vector<std::shared_ptr<const directory_entry>> readdirentries;
     const int status = task->status(rpc_status, NFS_STATUS(res));
     bool eof = false;
 
@@ -2990,7 +2990,7 @@ static void readdir_callback(
              *
              * TODO: Try to steal entry->name to avoid the strdup().
              */
-            struct directory_entry *dir_entry =
+            std::shared_ptr<struct directory_entry> dir_entry =
                 dircache_handle->lookup(entry->cookie);
 
             if (dir_entry ) {
@@ -3009,7 +3009,7 @@ static void readdir_callback(
                 dircache_handle->remove(entry->cookie);
             }
 
-            dir_entry = new directory_entry(strdup(entry->name),
+            dir_entry = std::make_shared<struct directory_entry>(strdup(entry->name),
                                             entry->cookie,
                                             entry->fileid);
 
@@ -3104,7 +3104,7 @@ static void readdir_callback(
 
         // Only send to fuse if we have seen new entries or EOF.
         if (got_new_entry || eof) {
-            task->send_readdir_response(readdirentries);
+            task->send_readdir_or_readdirplus_response(readdirentries);
             return;
         }
     } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
@@ -3195,7 +3195,7 @@ static void readdir_callback(
  * Callback for the READDIR RPC. Once this callback is called, it will first
  * populate the readdir cache with the newly fetched entries (with the
  * attributes). Additionally it will populate the readdirentries vector and
- * call send_readdir_response() to respond to the fuse readdir call.
+ * call send_readdir_or_readdirplus_response() to respond to the fuse readdir call.
  *
  * TODO: Restart directory enumeration on getting NFS3ERR_BAD_COOKIE.
  */
@@ -3219,7 +3219,7 @@ static void readdirplus_callback(
         task->get_client()->get_nfs_inode_from_ino(dir_ino);
     // How many max bytes worth of entries data does the caller want?
     ssize_t rem_size = task->rpc_api->readdir_task.get_size();
-    std::vector<const directory_entry*> readdirentries;
+    std::vector<std::shared_ptr<const directory_entry>> readdirentries;
     const int status = task->status(rpc_status, NFS_STATUS(res));
     bool eof = false;
 
@@ -3360,7 +3360,7 @@ static void readdirplus_callback(
              *
              * TODO: Try to steal entry->name to avoid the strdup().
              */
-            struct directory_entry *dir_entry =
+            std::shared_ptr<struct directory_entry> dir_entry =
                 dircache_handle->lookup(entry->cookie);
 
             if (dir_entry) {
@@ -3382,7 +3382,7 @@ static void readdirplus_callback(
                 dircache_handle->remove(entry->cookie);
             }
 
-            dir_entry = new struct directory_entry(strdup(entry->name),
+            dir_entry = std::make_shared<struct directory_entry>(strdup(entry->name),
                                                    entry->cookie,
                                                    nfs_inode->attr,
                                                    nfs_inode);
@@ -3441,7 +3441,7 @@ static void readdirplus_callback(
                 rem_size -= dir_entry->get_fuse_buf_size(true /* readdirplus */);
                 if (rem_size >= 0) {
                     /*
-                     * send_readdir_response() will drop this ref after adding
+                     * send_readdir_or_readdirplus_response() will drop this ref after adding
                      * to fuse buf, after which the lookupcnt ref will protect
                      * it.
                      */
@@ -3527,7 +3527,7 @@ static void readdirplus_callback(
 
         // Only send to fuse if we have seen new entries.
         if (got_new_entry || eof) {
-            task->send_readdir_response(readdirentries);
+            task->send_readdir_or_readdirplus_response(readdirentries);
             return;
         }
     } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
@@ -3621,7 +3621,7 @@ void rpc_task::get_readdir_entries_from_cache()
     // Must have been allocated by opendir().
     assert(nfs_inode->dircache_handle);
     bool is_eof = false;
-    std::vector<const directory_entry*> readdirentries;
+    std::vector<std::shared_ptr<const directory_entry>> readdirentries;
 
     assert(nfs_inode->is_dir());
 
@@ -3654,7 +3654,7 @@ void rpc_task::get_readdir_entries_from_cache()
         }
     } else {
         // We are done fetching the entries, send the response now.
-        send_readdir_response(readdirentries);
+        send_readdir_or_readdirplus_response(readdirentries);
     }
 }
 
@@ -3747,8 +3747,8 @@ void rpc_task::fetch_readdirplus_entries_from_server()
     } while (rpc_retry);
 }
 
-void rpc_task::send_readdir_response(
-    const std::vector<const directory_entry*>& readdirentries)
+void rpc_task::send_readdir_or_readdirplus_response(
+    const std::vector<std::shared_ptr<const directory_entry>>& readdirentries)
 {
     const bool readdirplus = (get_op_type() == FUSE_READDIRPLUS);
     /*
@@ -3775,7 +3775,8 @@ void rpc_task::send_readdir_response(
     size_t rem = size;
     int num_entries_added = 0;
 
-    AZLogDebug("send_readdir_response: Number of directory entries to send {}",
+    AZLogDebug("send_readdir_or_readdirplus_response: Number of directory"
+               " entries to send {}",
                readdirentries.size());
 
     for (const auto& it : readdirentries) {

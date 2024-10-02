@@ -2112,8 +2112,8 @@ public:
         return -nfsstat3_to_errno(nfs_status);
     }
 
-    void send_readdir_response(
-            const std::vector<const directory_entry*>& readdirentries);
+    void send_readdir_or_readdirplus_response(
+        const std::vector<std::shared_ptr<const directory_entry>>& readdirentries);
 
     void get_readdir_entries_from_cache();
 

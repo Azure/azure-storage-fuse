@@ -226,7 +226,7 @@ private:
      * filename (which is the index into the DNLC cache) to cookie (which is
      * the index into the readdir cache).
      */
-    std::map<cookie3, struct directory_entry*> dir_entries;
+    std::map<cookie3, std::shared_ptr<struct directory_entry>> dir_entries;
     std::unordered_map<std::string, cookie3> dnlc_map;
 
     /*
@@ -276,7 +276,7 @@ public:
      * to \p cookie exists.
      * Returns false otherwise.
      */
-    bool get_entry_at(cookie3 cookie, struct directory_entry** dirent)
+    bool get_entry_at(cookie3 cookie, std::shared_ptr<directory_entry>& dirent)
     {
         // Take shared lock on the map.
         std::shared_lock<std::shared_mutex> lock(readdircache_lock);
@@ -284,7 +284,7 @@ public:
 
         if (it != dir_entries.end())
         {
-            *dirent = it->second;
+            dirent = it->second;
             return true;
         }
 
@@ -306,7 +306,7 @@ public:
      */
     bool is_confirmed() const;
 
-    bool add(struct directory_entry* entry, bool acquire_lock = true);
+    bool add(std::shared_ptr<struct directory_entry> entry, bool acquire_lock = true);
     void dnlc_add(const char *filename, struct nfs_inode *inode);
 
     const cookieverf3* get_cookieverf() const
@@ -369,7 +369,7 @@ public:
      *       while dnlc_lookup() holds a lookupcnt ref on the inode.
      *       Caller must drop this extra ref held.
      */
-    struct directory_entry *lookup(
+    std::shared_ptr<struct directory_entry> lookup(
             cookie3 cookie,
             const char *filename_hint = nullptr,
             bool acquire_lock = true) const;

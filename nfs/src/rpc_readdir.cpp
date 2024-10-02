@@ -128,7 +128,7 @@ void readdirectory_cache::set_eof(uint64_t eof_cookie)
     }
 }
 
-bool readdirectory_cache::add(struct directory_entry* entry,
+bool readdirectory_cache::add(std::shared_ptr<struct directory_entry> entry,
                               bool acquire_lock)
 {
     assert(entry != nullptr);
@@ -265,7 +265,7 @@ void readdirectory_cache::dnlc_add(const char *filename,
     cookie3 cookie = filename_to_cookie(filename);
 
     if (cookie != 0) {
-        struct directory_entry *de =
+        std::shared_ptr<struct directory_entry> de =
             lookup(cookie, nullptr, false /* acquire_lock */);
 
         if (de->nfs_inode == inode) {
@@ -303,8 +303,9 @@ void readdirectory_cache::dnlc_add(const char *filename,
         cookie = bigcookie++;
     }
 
-    struct directory_entry *dir_entry =
-        new struct directory_entry(strdup(filename), cookie, inode->attr, inode);
+    std::shared_ptr<struct directory_entry> dir_entry =
+        std::make_shared<struct directory_entry>(
+            strdup(filename), cookie, inode->attr, inode);
 
     /*
      * dir_entry must have one ref on the inode.
@@ -316,7 +317,7 @@ void readdirectory_cache::dnlc_add(const char *filename,
     add(dir_entry, false /* acquire_lock */);
 }
 
-struct directory_entry *readdirectory_cache::lookup(
+std::shared_ptr<struct directory_entry> readdirectory_cache::lookup(
         cookie3 cookie,
         const char *filename_hint,
         bool acquire_lock) const
@@ -345,7 +346,7 @@ struct directory_entry *readdirectory_cache::lookup(
 
     const auto it = dir_entries.find(cookie);
 
-    struct directory_entry *dirent =
+    std::shared_ptr<struct directory_entry> dirent =
         (it != dir_entries.end()) ? it->second : nullptr;
 
     /*
@@ -366,7 +367,7 @@ struct directory_entry *readdirectory_cache::lookup(
          * Grab a ref on behalf of the caller so that the inode doesn't
          * get freed while the directory_entry is referring to it.
          * Once they are done using this directory_entry, they must drop
-         * this ref, mostly done in send_readdir_response().
+         * this ref, mostly done in send_readdir_or_readdirplus_response().
          */
         dirent->nfs_inode->dircachecnt++;
     }
@@ -380,7 +381,7 @@ struct nfs_inode *readdirectory_cache::dnlc_lookup(
 {
     assert(filename != nullptr);
 
-    const struct directory_entry *dirent = lookup(0, filename);
+    const std::shared_ptr<struct directory_entry> dirent = lookup(0, filename);
 
     if (dirent && dirent->nfs_inode) {
         assert(::strcmp(filename, dirent->name) == 0);
@@ -441,12 +442,12 @@ bool readdirectory_cache::remove(cookie3 cookie,
         }
 
         const auto it = dir_entries.find(cookie);
-        struct directory_entry *dirent =
+        std::shared_ptr<struct directory_entry> dirent =
             (it != dir_entries.end()) ? it->second : nullptr;
 
         /*
          * Given cookie not found in the cache.
-         * It should not happpen though since the caller would call remove()
+         * It should not happen though since the caller would call remove()
          * only after checking.
          */
         if (!dirent) {
@@ -463,7 +464,7 @@ bool readdirectory_cache::remove(cookie3 cookie,
 
         /*
          * This just removes it from the cache, no destructor is called at
-         * this point.
+         * this point as there is a ref held on this by the dirent shared_ptr.
          */
         dir_entries.erase(it);
 
@@ -471,7 +472,6 @@ bool readdirectory_cache::remove(cookie3 cookie,
 
         // READDIR created cache entry, nothing more to do.
         if (!inode) {
-            delete dirent;
             return true;
         }
 
@@ -507,14 +507,7 @@ bool readdirectory_cache::remove(cookie3 cookie,
          */
         if (inode->dircachecnt == 1) {
             inode->incref();
-
-            /*
-             * This will call ~directory_entry() which will drop the
-             * inode's original dircachecnt.
-             */
-            delete dirent;
         } else {
-            delete dirent;
             return true;
         }
     }
@@ -599,7 +592,7 @@ void readdirectory_cache::clear()
              * inode so the following decref() will free the inode if that
              * was the only ref.
              */
-            delete it->second;
+            it->second.reset();
         }
 
         // For every entry added to dir_entries we add one to dnlc_map.
