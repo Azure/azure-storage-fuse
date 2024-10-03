@@ -954,6 +954,7 @@ void nfs_inode::lookup_dircache(
                  * forget_expected as well.
                  */
                 if (readdirplus && !entry->is_dot_or_dotdot()) {
+                    // lookup() would have held a dircachecnt ref.
                     assert(entry->nfs_inode->dircachecnt >= 1);
                     entry->nfs_inode->forget_expected++;
                     entry->nfs_inode->incref();
