@@ -152,6 +152,7 @@ public:
             assert(0);
             return;
         }
+        assert((int64_t) length > 0);
 
         std::unique_lock<std::shared_mutex> _lock(lock);
 
@@ -203,6 +204,8 @@ public:
             max_byte_read = std::max(max_byte_read.load(), offset + length - 1);
             min_byte_read = std::min(min_byte_read.load(), offset);
         }
+
+        assert(max_byte_read >= min_byte_read);
 
         /*
          * Next readahead will be from last_byte_readahead+1, so if this read
