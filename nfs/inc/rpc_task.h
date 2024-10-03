@@ -25,6 +25,11 @@
  * Update cached inode attributes from freshly received postop attributes.
  * Blob NFS server must always returns postop attributes for success returns,
  * hence assert to check.
+ *
+ * XXX There are certain scenarios where Blob NFS may fail to provide postop
+ *     attributes for success return. If getattr fails after the operation
+ *     then operation will complete successfully but postop attributes won't
+ *     be returned, f.e., if file is deleted right after the operation.
  */
 #define UPDATE_INODE_ATTR(inode, postop) \
 do { \
