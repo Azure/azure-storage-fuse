@@ -362,7 +362,7 @@ private:
             return false;
         }
 
-        const int64_t access_range = (max_byte_read - min_byte_read);
+        const int64_t access_range = (max_byte_read - min_byte_read + 1);
         assert(access_range > 0);
 
         const int access_density = (num_bytes_read * 100) / access_range;
@@ -411,9 +411,13 @@ private:
     std::atomic<uint64_t> last_byte_readahead = 0;
 
     /*
-     * Smallest and largest byte read in the current section.
-     * This is truthfully updated as application reports its read calls through
-     * on_application_read().
+     * Smallest and largest byte read in the current section. These point to
+     * the minimum and the maximum byte read, so if application reads 3 bytes
+     * at offset 0, we will have:
+     * min_byte_read == 0, and
+     * max_byte_read == 2.
+     * These are truthfully updated as application reports its read calls
+     * through on_application_read().
      * These are reset when pattern detection is reset.
      */
     std::atomic<uint64_t> min_byte_read = 0;
