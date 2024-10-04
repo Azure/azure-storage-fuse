@@ -205,13 +205,15 @@ void nfs_client::jukebox_runner()
                     break;
                 case FUSE_UNLINK:
                     AZLogWarn("[JUKEBOX REISSUE] unlink(req={}, parent_ino={}, "
-                              "name={})",
+                              "name={}, for_silly_rename={})",
                               fmt::ptr(js->rpc_api->req),
                               js->rpc_api->unlink_task.get_parent_ino(),
-                              js->rpc_api->unlink_task.get_file_name());
+                              js->rpc_api->unlink_task.get_file_name(),
+                              js->rpc_api->unlink_task.get_for_silly_rename());
                     unlink(js->rpc_api->req,
                            js->rpc_api->unlink_task.get_parent_ino(),
-                           js->rpc_api->unlink_task.get_file_name());
+                           js->rpc_api->unlink_task.get_file_name(),
+                           js->rpc_api->unlink_task.get_for_silly_rename());
                     break;
                 case FUSE_SYMLINK:
                     AZLogWarn("[JUKEBOX REISSUE] symlink(req={}, link={}, "
@@ -990,11 +992,12 @@ bool nfs_client::silly_rename(
 void nfs_client::unlink(
     fuse_req_t req,
     fuse_ino_t parent_ino,
-    const char* name)
+    const char* name,
+    bool for_silly_rename)
 {
     struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_UNLINK);
 
-    tsk->init_unlink(req, parent_ino, name);
+    tsk->init_unlink(req, parent_ino, name, for_silly_rename);
     tsk->run_unlink();
 }
 

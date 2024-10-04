@@ -688,7 +688,8 @@ bool nfs_inode::release(fuse_req_t req)
     AZLogInfo("Deleting silly renamed file, {}/{}",
               parent_ino, silly_renamed_name);
 
-    client->unlink(req, parent_ino, silly_renamed_name.c_str());
+    client->unlink(req, parent_ino,
+                   silly_renamed_name.c_str(), true /* for_silly_rename */);
     return true;
 }
 

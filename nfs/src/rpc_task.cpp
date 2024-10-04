@@ -279,12 +279,14 @@ void rpc_task::init_mkdir(fuse_req *request,
 
 void rpc_task::init_unlink(fuse_req *request,
                            fuse_ino_t parent_ino,
-                           const char *name)
+                           const char *name,
+                           bool for_silly_rename)
 {
     assert(get_op_type() == FUSE_UNLINK);
     set_fuse_req(request);
     rpc_api->unlink_task.set_parent_ino(parent_ino);
     rpc_api->unlink_task.set_file_name(name);
+    rpc_api->unlink_task.set_for_silly_rename(for_silly_rename);
 
     fh_hash = get_client()->get_nfs_inode_from_ino(parent_ino)->get_crc();
 }
@@ -1082,10 +1084,13 @@ void unlink_callback(
     INJECT_JUKEBOX(res, task);
 #endif
 
-    const fuse_ino_t ino =
+    const fuse_ino_t parent_ino =
         task->rpc_api->unlink_task.get_parent_ino();
-    struct nfs_inode *inode =
-        task->get_client()->get_nfs_inode_from_ino(ino);
+    struct nfs_inode *parent_inode =
+        task->get_client()->get_nfs_inode_from_ino(parent_ino);
+    // Are we unlinking a silly-renamed file?
+    const bool for_silly_rename =
+        task->rpc_api->unlink_task.get_for_silly_rename();
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
     /*
@@ -1098,10 +1103,24 @@ void unlink_callback(
         task->get_client()->jukebox_retry(task);
     } else {
         if (status == 0) {
-            UPDATE_INODE_ATTR(inode, res->REMOVE3res_u.resok.dir_wcc.after);
+            UPDATE_INODE_ATTR(parent_inode, res->REMOVE3res_u.resok.dir_wcc.after);
         }
 
         task->reply_error(status);
+
+        /*
+         * Drop parent directory refcnt taken in rename_callback().
+         * Note that we drop the refcnt irrespective of the unlink status.
+         * This is done as fuse ignores any error returns from release()
+         * which means the inode will be forgotten and hence we must drop
+         * the parent directory inode ref which was taken to have a valid
+         * parent directory inode till the child inode is present.
+         * For jukebox we will retry the rename and drop the parent dir
+         * ref when the unlink completes.
+         */
+        if (for_silly_rename) {
+            parent_inode->decref();
+        }
     }
 }
 
@@ -1255,6 +1274,13 @@ void rename_callback(
         silly_rename_inode->parent_ino =
             task->rpc_api->rename_task.get_newparent_ino();
         silly_rename_inode->is_silly_renamed = true;
+
+        /*
+         * Successfully (silly)renamed, hold a ref on the parent directory
+         * inode so that it doesn't go away until we have deleted the
+         * silly-renamed file. This ref is dropped in unlink_callback().
+         */
+        parent_inode->incref();
 
         AZLogInfo("[{}] Silly rename successfully completed! "
                   "to-delete: {}/{}",

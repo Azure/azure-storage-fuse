@@ -404,23 +404,23 @@ public:
     void create(
         fuse_req_t req,
         fuse_ino_t parent_ino,
-        const char* name,
+        const char *name,
         mode_t mode,
         struct fuse_file_info* file);
 
     void mknod(
         fuse_req_t req,
         fuse_ino_t parent_ino,
-        const char* name,
+        const char *name,
         mode_t mode);
 
     void mkdir(
         fuse_req_t req,
         fuse_ino_t parent_ino,
-        const char* name,
+        const char *name,
         mode_t mode);
 
-    /*
+    /**
      * Try to perform silly rename of the given file and return true if silly
      * rename was required (and done), else return false.
      * Note that silly rename is required for a file that's open when unlink
@@ -431,10 +431,21 @@ public:
         fuse_ino_t parent_ino,
         const char *name);
 
+    /**
+     * for_silly_rename tells if this unlink() call is being made to delete
+     * a silly-renamed file (.nfs_*), as a result of a release() call from
+     * fuse that drops the final opencnt on the file. Note that an earlier
+     * unlink  of the file would have caused the file to be (silly)renamed to
+     * the .nfs_* name and now when the last opencnt is dropped we need to
+     * delete the .nfs_* file. Since we hold the parent directory inode refcnt
+     * in rename_callback() for silly renamed files, we need to drop the refcnt
+     * now.
+     */
     void unlink(
         fuse_req_t req,
         fuse_ino_t parent_ino,
-        const char* name);
+        const char *name,
+        bool for_silly_rename);
 
     void rmdir(
         fuse_req_t req,
