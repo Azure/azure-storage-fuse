@@ -174,9 +174,12 @@ struct nfs_inode
      * not valid and we need to fetch the attributes from the server.
      *
      * See update_nolock() how these attributes are compared with freshly
-     * fetched attributes to see if inode has changed.
+     * fetched preop or postop attributes to see if file/dir has changed
+     * (and thus the cache must be invalidated).
      *
      * Note: Update and access it under ilock.
+     * TODO: Audit all places where we access attr and make sure it's done
+     *       under ilock.
      */
     struct stat attr;
     int64_t attr_timeout_secs = -1;
@@ -734,9 +737,9 @@ struct nfs_inode
     /**
      * Update the inode given that we have received fresh attributes from
      * the server. These fresh attributes could have been received as
-     * postop attributes to any of the requests or it could be a result of
-     * explicit GETATTR call that we make from revalidate() when the attribute
-     * cache times out.
+     * postop (and preop) attributes to any of the requests or it could be a
+     * result of explicit GETATTR call that we make from revalidate() when the
+     * attribute cache times out.
      * We process the freshly received attributes as follows:
      * - If the ctime has not changed, then the file has not changed, and
      *   we don't do anything, else
@@ -745,7 +748,8 @@ struct nfs_inode
      * - If just ctime has changed then only the file metadata has changed
      *   and we update nfs_inode::attr from the received attributes.
      *
-     * Returns true if 'fattr' is newer than the cached attributes.
+     * Returns true if preattr/postattr indicate that file has changed since
+     * we cached it, false indicates that file has not changed.
      *
      * Caller must hold the inode lock.
      */

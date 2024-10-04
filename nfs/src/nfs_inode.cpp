@@ -783,37 +783,43 @@ bool nfs_inode::update_nolock(const struct fattr3 *postattr,
         /*
          * ctime cannot go back.
          */
-        assert(compare_timespec(postattr->ctime, preattr->ctime) >= 0);
+        assert(compare_nfstime(postattr->ctime, preattr->ctime) >= 0);
     }
 #endif
 
+    /*
+     * If postattr are present and they do not have a newer ctime than the
+     * cached attributes, then our cache (both attributes and data if any) is
+     * uptodate.
+     */
     if (postattr) {
         const bool postattr_is_newer =
             (compare_timespec_and_nfstime(attr.st_ctim, postattr->ctime) == -1);
 
-        /*
-         * ctime from postop attributes same as cached attributes, i.e., cached
-         * attributes are valid, skip update.
-         */
         if (!postattr_is_newer) {
             return false;
         }
     }
 
     /*
-     * Check whether file/dir on the server has changed from what we have
-     * cached. We perform this check with preop attributes if provided, else
-     * with postop attributes. Note that requests which change file/dir will
-     * provide both preop and postop attributes as we need to check with preop
-     * attributes to ignore changes done by that request itself. Other requests
-     * which do not change file/dir only have the postop attributes for this
-     * check.
-     * We consider file data as changed when either the mtime or the size
-     * changes.
+     * Either postattr is not provided (rare) or postattr has a newer ctime
+     * than the cached attributes. Latter could mean either file/dir data has
+     * changed (in which case we need to invalidate our cached data) or just
+     * the file/dir metadata has changed (in which case we don't invalidate the
+     * cached data and just update the inode attributes).
+     * For the "has file/dir data changed" check we use the preop attributes if
+     * provided, else we use the postop attributes. Note that requests which
+     * change file/dir will receive both preop and postop attributes from the
+     * server and for such requests we need to check cached attributes against
+     * the preop attributes to ignore changes done by the request itself. Other
+     * requests which do not change file/dir only have the postop attributes for
+     * this check.
+     * Note that we consider file/dir data as changed when either the mtime or
+     * the size changes.
      */
     const nfstime3 *pmtime = preattr ? &preattr->mtime : &postattr->mtime;
     const nfstime3 *pctime = preattr ? &preattr->ctime : &postattr->ctime;
-    const size3 *psize = preattr ? &preattr->size : &postattr->size;
+    const size3    *psize  = preattr ? &preattr->size  : &postattr->size;
     const bool file_data_changed =
         ((compare_timespec_and_nfstime(attr.st_mtim, *pmtime) != 0) ||
          (attr.st_size != (off_t) *psize));
@@ -855,6 +861,16 @@ bool nfs_inode::update_nolock(const struct fattr3 *postattr,
      *       we will reduce the file size in our saved nfs_inode::attr.
      *       Later when we flush the dirty membufs the size will be updated
      *       if some of those membufs write past the file.
+     *
+     * Note: For the rare case where server doesn't provide postop attributes
+     *       but only preop attributes, we might invalidate the cached data
+     *       and not update the cached attributes. This would cause the next
+     *       wcc data to also cause cache invalidation, untill we update the
+     *       cached attributes. This should not be common case and in case
+     *       it happens we will effectively run w/o attribute and data cache,
+     *       which is safe.
+     *       XXX We don't update ctime/mtime/size from preop attr even if they
+     *           are more recent.
      */
     if (file_data_changed) {
         AZLogDebug("[{}:{}] {} changed at server, "
@@ -867,6 +883,7 @@ bool nfs_inode::update_nolock(const struct fattr3 *postattr,
                    attr.st_mtim.tv_sec, attr.st_mtim.tv_nsec,
                    pmtime->seconds, pmtime->nseconds,
                    attr.st_size, *psize);
+
         invalidate_cache_nolock();
     }
 
