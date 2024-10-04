@@ -139,7 +139,7 @@ static void aznfsc_ll_unlink(fuse_req_t req,
         return;
     }
 
-    client->unlink(req, parent_ino, name);
+    client->unlink(req, parent_ino, name, false /* for_silly_rename */);
 }
 
 [[maybe_unused]]
