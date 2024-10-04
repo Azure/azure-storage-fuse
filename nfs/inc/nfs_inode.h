@@ -748,8 +748,9 @@ struct nfs_inode
      * - If just ctime has changed then only the file metadata has changed
      *   and we update nfs_inode::attr from the received attributes.
      *
-     * Returns true if preattr/postattr indicate that file has changed since
-     * we cached it, false indicates that file has not changed.
+     * Returns true if preattr/postattr indicate that file has changed (either
+     * metadata, or both) since we cached it, false indicates that file has not
+     * changed.
      *
      * Caller must hold the inode lock.
      */

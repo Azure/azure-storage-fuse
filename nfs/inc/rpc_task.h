@@ -52,7 +52,9 @@ do { \
  * and hence NFS server returns both preop and postop attributes.
  * The preop attributes are compared with the cached attributes to see if
  * the file/dir has changed from what we have cached, and if yes then we
- * invalidate the file/dir cache.
+ * invalidate the file/dir cache. If the postop attribute are present and
+ * newer (based on ctime comparison) than the cached attributes, inode cached
+ * attributes are updated.
  *
  * Note: Blob NFS server must always return both preop and postop attributes
  *       for success returns, hence assert to check.
@@ -73,7 +75,7 @@ do { \
         preattr = &preop.pre_op_attr_u.attributes; \
     } \
     if (preattr || postattr) { \
-        AZLogDebug("[{}] UPDATE_INODE_ATTR() from {}", \
+        AZLogDebug("[{}] UPDATE_INODE_WCC() from {}", \
                    inode->get_fuse_ino(), \
                    __FUNCTION__); \
         inode->update(postattr, preattr); \
