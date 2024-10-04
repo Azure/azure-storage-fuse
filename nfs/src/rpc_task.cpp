@@ -477,7 +477,7 @@ static void getattr_callback(
 
     if (status == 0) {
         // Got fresh attributes, update the attributes cached in the inode.
-        inode->update(res->GETATTR3res_u.resok.obj_attributes);
+        inode->update(&(res->GETATTR3res_u.resok.obj_attributes));
 
         /*
          * Set fuse kernel attribute cache timeout to the current attribute
@@ -641,24 +641,8 @@ static void write_iov_callback(
          * course of action is to drop our cached data. Note that we drop only
          * non-dirty data, anyways multiple client writing to the same file
          * w/o locking would result in undefined data state.
-         *
-         * TODO: Complete this.
          */
-#if 0
-        if (res->WRITE3res_u.resok.file_wcc.before.attributes_follow) {
-            const wcc_attr pre_attr =
-                res->WRITE3res_u.resok.file_wcc.before.pre_op_attr_u.attributes;
-            inode->update_on_preop(pre_attr);
-        }
-#endif
-
-        /*
-         * Simply update cached attributes per the post-op attributes.
-         */
-        if (res->WRITE3res_u.resok.file_wcc.after.attributes_follow) {
-            inode->force_update_attr(
-                    res->WRITE3res_u.resok.file_wcc.after.post_op_attr_u.attributes);
-        }
+        UPDATE_INODE_WCC(inode, res->WRITE3res_u.resok.file_wcc);
 
 #ifdef ENABLE_PRESSURE_POINTS
         /*
@@ -904,7 +888,7 @@ static void createfile_callback(
     task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
 
     if (status == 0) {
-        UPDATE_INODE_ATTR(inode, res->CREATE3res_u.resok.dir_wcc.after);
+        UPDATE_INODE_WCC(inode, res->CREATE3res_u.resok.dir_wcc);
 
         assert(
             res->CREATE3res_u.resok.obj.handle_follows &&
@@ -948,7 +932,7 @@ static void setattr_callback(
     task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
 
     if (status == 0) {
-        UPDATE_INODE_ATTR(inode, res->SETATTR3res_u.resok.obj_wcc.after);
+        UPDATE_INODE_WCC(inode, res->SETATTR3res_u.resok.obj_wcc);
 
         struct stat st = {};
 
@@ -999,7 +983,7 @@ void mknod_callback(
     task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
 
     if (status == 0) {
-        UPDATE_INODE_ATTR(inode, res->CREATE3res_u.resok.dir_wcc.after);
+        UPDATE_INODE_WCC(inode, res->CREATE3res_u.resok.dir_wcc);
 
         assert(
             res->CREATE3res_u.resok.obj.handle_follows &&
@@ -1048,7 +1032,7 @@ void mkdir_callback(
     task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
 
     if (status == 0) {
-        UPDATE_INODE_ATTR(inode, res->MKDIR3res_u.resok.dir_wcc.after);
+        UPDATE_INODE_WCC(inode, res->MKDIR3res_u.resok.dir_wcc);
 
         assert(
             res->MKDIR3res_u.resok.obj.handle_follows &&
@@ -1103,7 +1087,7 @@ void unlink_callback(
         task->get_client()->jukebox_retry(task);
     } else {
         if (status == 0) {
-            UPDATE_INODE_ATTR(parent_inode, res->REMOVE3res_u.resok.dir_wcc.after);
+            UPDATE_INODE_WCC(parent_inode, res->REMOVE3res_u.resok.dir_wcc);
         }
 
         task->reply_error(status);
@@ -1158,7 +1142,7 @@ void rmdir_callback(
         task->get_client()->jukebox_retry(task);
     } else {
         if (status == 0) {
-            UPDATE_INODE_ATTR(inode, res->RMDIR3res_u.resok.dir_wcc.after);
+            UPDATE_INODE_WCC(inode, res->RMDIR3res_u.resok.dir_wcc);
         }
         task->reply_error(status);
     }
@@ -1195,7 +1179,7 @@ void symlink_callback(
     task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
 
     if (status == 0) {
-        UPDATE_INODE_ATTR(inode, res->SYMLINK3res_u.resok.dir_wcc.after);
+        UPDATE_INODE_WCC(inode, res->SYMLINK3res_u.resok.dir_wcc);
 
         assert(
             res->SYMLINK3res_u.resok.obj.handle_follows &&
@@ -1297,12 +1281,12 @@ void rename_callback(
         task->get_client()->jukebox_retry(task);
     } else {
         if (status == 0) {
-            UPDATE_INODE_ATTR(parent_inode,
-                              res->RENAME3res_u.resok.fromdir_wcc.after);
+            UPDATE_INODE_WCC(parent_inode,
+                             res->RENAME3res_u.resok.fromdir_wcc);
 
             if (newparent_ino != parent_ino) {
-                UPDATE_INODE_ATTR(newparent_inode,
-                                  res->RENAME3res_u.resok.todir_wcc.after);
+                UPDATE_INODE_WCC(newparent_inode,
+                                 res->RENAME3res_u.resok.todir_wcc);
             }
         }
         task->reply_error(status);

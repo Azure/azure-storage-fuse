@@ -744,7 +744,7 @@ void nfs_inode::revalidate(bool force)
      */
     std::unique_lock<std::shared_mutex> lock(ilock);
 
-    if (!update_nolock(fattr)) {
+    if (!update_nolock(&fattr)) {
         /*
          * File not changed, exponentially increase attr_timeout_secs.
          * File changed case is handled inside update_nolock() as that's
@@ -765,42 +765,81 @@ void nfs_inode::revalidate(bool force)
 /**
  * Caller must hold exclusive inode lock.
  */
-bool nfs_inode::update_nolock(const struct fattr3& fattr)
+bool nfs_inode::update_nolock(const struct fattr3 *postattr,
+                              const struct wcc_attr *preattr)
 {
-    const bool fattr_is_newer =
-        (compare_timespec_and_nfstime(attr.st_ctim, fattr.ctime) == -1);
+    /*
+     * We must be called with at least one of preop or postop attributes.
+     * Operations that do not change file/dir, they will only get postop
+     * attributes from the server.
+     * Update operations that change file/dir, they will get both postop and
+     * preop attributes for success case and for failure cases they may not
+     * get the postop attributes.
+     */
+    assert(preattr || postattr);
 
-    // ctime has not increased, i.e., cached attributes are valid, skip update.
-    if (!fattr_is_newer) {
-        return false;
+#ifdef ENABLE_PARANOID
+    if (preattr && postattr) {
+        /*
+         * ctime cannot go back.
+         */
+        assert(compare_timespec(postattr->ctime, preattr->ctime) >= 0);
+    }
+#endif
+
+    if (postattr) {
+        const bool postattr_is_newer =
+            (compare_timespec_and_nfstime(attr.st_ctim, postattr->ctime) == -1);
+
+        /*
+         * ctime from postop attributes same as cached attributes, i.e., cached
+         * attributes are valid, skip update.
+         */
+        if (!postattr_is_newer) {
+            return false;
+        }
     }
 
     /*
+     * Check whether file/dir on the server has changed from what we have
+     * cached. We perform this check with preop attributes if provided, else
+     * with postop attributes. Note that requests which change file/dir will
+     * provide both preop and postop attributes as we need to check with preop
+     * attributes to ignore changes done by that request itself. Other requests
+     * which do not change file/dir only have the postop attributes for this
+     * check.
      * We consider file data as changed when either the mtime or the size
      * changes.
      */
+    const nfstime3 *pmtime = preattr ? &preattr->mtime : &postattr->mtime;
+    const nfstime3 *pctime = preattr ? &preattr->ctime : &postattr->ctime;
+    const size3 *psize = preattr ? &preattr->size : &postattr->size;
     const bool file_data_changed =
-        ((compare_timespec_and_nfstime(attr.st_mtim, fattr.mtime) != 0) ||
-         (attr.st_size != (off_t) fattr.size));
-
-    AZLogDebug("[{}] Got attributes newer than cached attributes, "
-               "ctime: {}.{} -> {}.{}, mtime: {}.{} -> {}.{}, size: {} -> {}",
-               ino, attr.st_ctim.tv_sec, attr.st_ctim.tv_nsec,
-               fattr.ctime.seconds, fattr.ctime.nseconds,
-               attr.st_mtim.tv_sec, attr.st_mtim.tv_nsec,
-               fattr.mtime.seconds, fattr.mtime.nseconds,
-               attr.st_size, fattr.size);
+        ((compare_timespec_and_nfstime(attr.st_mtim, *pmtime) != 0) ||
+         (attr.st_size != (off_t) *psize));
 
     /*
      * Update cached attributes and also reset the attr_timeout_secs and
      * attr_timeout_timestamp since the attributes have changed.
      */
-    nfs_client::stat_from_fattr3(&attr, &fattr);
-    attr_timeout_secs = get_actimeo_min();
-    attr_timeout_timestamp = get_current_msecs() + attr_timeout_secs*1000;
+    if (postattr) {
+        AZLogDebug("[{}:{}] Got attributes newer than cached attributes, "
+                   "ctime: {}.{} -> {}.{}, mtime: {}.{} -> {}.{}, "
+                   "size: {} -> {}",
+                   get_filetype_coding(), get_fuse_ino(),
+                   attr.st_ctim.tv_sec, attr.st_ctim.tv_nsec,
+                   postattr->ctime.seconds, postattr->ctime.nseconds,
+                   attr.st_mtim.tv_sec, attr.st_mtim.tv_nsec,
+                   postattr->mtime.seconds, postattr->mtime.nseconds,
+                   attr.st_size, postattr->size);
 
-    // file type should not change.
-    assert((attr.st_mode & S_IFMT) == file_type);
+        nfs_client::stat_from_fattr3(&attr, postattr);
+        attr_timeout_secs = get_actimeo_min();
+        attr_timeout_timestamp = get_current_msecs() + attr_timeout_secs*1000;
+
+        // file type should not change.
+        assert((attr.st_mode & S_IFMT) == file_type);
+    }
 
     /*
      * Invalidate cache iff file data has changed.
@@ -818,6 +857,16 @@ bool nfs_inode::update_nolock(const struct fattr3& fattr)
      *       if some of those membufs write past the file.
      */
     if (file_data_changed) {
+        AZLogDebug("[{}:{}] {} changed at server, "
+                   "ctime: {}.{} -> {}.{}, mtime: {}.{} -> {}.{}, "
+                   "size: {} -> {}",
+                   get_filetype_coding(), get_fuse_ino(),
+                   is_dir() ? "Directory" : "File",
+                   attr.st_ctim.tv_sec, attr.st_ctim.tv_nsec,
+                   pctime->seconds, pctime->nseconds,
+                   attr.st_mtim.tv_sec, attr.st_mtim.tv_nsec,
+                   pmtime->seconds, pmtime->nseconds,
+                   attr.st_size, *psize);
         invalidate_cache_nolock();
     }
 

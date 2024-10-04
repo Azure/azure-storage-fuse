@@ -749,7 +749,8 @@ struct nfs_inode
      *
      * Caller must hold the inode lock.
      */
-    bool update_nolock(const struct fattr3& fattr);
+    bool update_nolock(const struct fattr3 *postattr,
+                       const struct wcc_attr *preattr = nullptr);
 
     /**
      * Convenience function that calls update_nolock() after holding the
@@ -758,10 +759,11 @@ struct nfs_inode
      * XXX This MUST be called whenever we get fresh attributes for a file,
      *     most commonly as post-op attributes along with some RPC response.
      */
-    bool update(const struct fattr3& fattr)
+    bool update(const struct fattr3 *postattr,
+                const struct wcc_attr *preattr = nullptr)
     {
         std::unique_lock<std::shared_mutex> lock(ilock);
-        return update_nolock(fattr);
+        return update_nolock(postattr, preattr);
     }
 
     /**

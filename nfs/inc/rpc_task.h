@@ -21,10 +21,13 @@
 // Maximum number of simultaneous async rpc tasks.
 #define MAX_ASYNC_RPC_TASKS 1024
 
-/*
+/**
  * Update cached inode attributes from freshly received postop attributes.
- * Blob NFS server must always returns postop attributes for success returns,
- * hence assert to check.
+ * This should be called for (read) operations which do not update file/dir
+ * and hence NFS server returns just the postop attributes.
+ *
+ * Note: Blob NFS server must always return postop attributes for success
+ *       returns, hence assert to check.
  *
  * XXX There are certain scenarios where Blob NFS may fail to provide postop
  *     attributes for success return. If getattr fails after the operation
@@ -39,9 +42,44 @@ do { \
         AZLogDebug("[{}] UPDATE_INODE_ATTR() from {}", \
                    inode->get_fuse_ino(), \
                    __FUNCTION__); \
-        inode->update(postop.post_op_attr_u.attributes); \
+        inode->update(&(postop.post_op_attr_u.attributes)); \
     } \
 } while (0)
+
+/**
+ * Update cached inode attributes from freshly received wcc attributes.
+ * This should be called for (update) operations which update file/dir
+ * and hence NFS server returns both preop and postop attributes.
+ * The preop attributes are compared with the cached attributes to see if
+ * the file/dir has changed from what we have cached, and if yes then we
+ * invalidate the file/dir cache.
+ *
+ * Note: Blob NFS server must always return both preop and postop attributes
+ *       for success returns, hence assert to check.
+ */
+#define UPDATE_INODE_WCC(inode, wcc_data) \
+do { \
+    assert(inode->magic == NFS_INODE_MAGIC); \
+    const struct post_op_attr& postop = wcc_data.after; \
+    const struct pre_op_attr& preop = wcc_data.before; \
+    const struct fattr3 *postattr = nullptr; \
+    const struct wcc_attr *preattr = nullptr; \
+    assert(postop.attributes_follow); \
+    assert(preop.attributes_follow); \
+    if (postop.attributes_follow) { \
+        postattr = &postop.post_op_attr_u.attributes; \
+    } \
+    if (preop.attributes_follow) { \
+        preattr = &preop.pre_op_attr_u.attributes; \
+    } \
+    if (preattr || postattr) { \
+        AZLogDebug("[{}] UPDATE_INODE_ATTR() from {}", \
+                   inode->get_fuse_ino(), \
+                   __FUNCTION__); \
+        inode->update(postattr, preattr); \
+    } \
+} while (0)
+
 
 /**
  * LOOKUP RPC task definition.
