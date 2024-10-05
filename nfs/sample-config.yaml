@@ -93,6 +93,7 @@ fuse_max_background: 4096
 # file backed cache are controlled using filecache.* configs.
 #
 readahead_kb: 16384
+cache.attr.user.enable: true
 cache.readdir.kernel.enable: true
 cache.readdir.user.enable: true
 cache.data.kernel.enable: true

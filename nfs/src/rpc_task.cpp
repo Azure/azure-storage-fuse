@@ -894,8 +894,17 @@ static void createfile_callback(
          * even though we cannot correctly update our readdir cache with the
          * newly created file (as the readdir cache also needs the cookie to
          * be filled which only server can return in a READDIR{PLUS} response.
+         *
+         * If userspace attribute cache is disabled we use UPDATE_INODE_ATTR()
+         * which will force the parent directory readdir cache to be
+         * invalidated as directory mtime after this create operation would
+         * have changed.
          */
-        UPDATE_INODE_WCC(inode, res->CREATE3res_u.resok.dir_wcc);
+        if (aznfsc_cfg.cache.attr.user.enable) {
+            UPDATE_INODE_WCC(inode, res->CREATE3res_u.resok.dir_wcc);
+        } else {
+            UPDATE_INODE_ATTR(inode, res->CREATE3res_u.resok.dir_wcc.after);
+        }
 
         assert(
             res->CREATE3res_u.resok.obj.handle_follows &&
@@ -997,7 +1006,11 @@ void mknod_callback(
          * newly created file (as the readdir cache also needs the cookie to
          * be filled which only server can return in a READDIR{PLUS} response.
          */
-        UPDATE_INODE_WCC(inode, res->CREATE3res_u.resok.dir_wcc);
+        if (aznfsc_cfg.cache.attr.user.enable) {
+            UPDATE_INODE_WCC(inode, res->CREATE3res_u.resok.dir_wcc);
+        } else {
+            UPDATE_INODE_ATTR(inode, res->CREATE3res_u.resok.dir_wcc.after);
+        }
 
         assert(
             res->CREATE3res_u.resok.obj.handle_follows &&
@@ -1053,7 +1066,11 @@ void mkdir_callback(
          * newly created file (as the readdir cache also needs the cookie to
          * be filled which only server can return in a READDIR{PLUS} response.
          */
-        UPDATE_INODE_WCC(inode, res->MKDIR3res_u.resok.dir_wcc);
+        if (aznfsc_cfg.cache.attr.user.enable) {
+            UPDATE_INODE_WCC(inode, res->MKDIR3res_u.resok.dir_wcc);
+        } else {
+            UPDATE_INODE_ATTR(inode, res->MKDIR3res_u.resok.dir_wcc.after);
+        }
 
         assert(
             res->MKDIR3res_u.resok.obj.handle_follows &&
@@ -1113,7 +1130,11 @@ void unlink_callback(
              * need to call UPDATE_INODE_ATTR() to invalidate the
              * readdirectory_cache.
              */
-            UPDATE_INODE_WCC(parent_inode, res->REMOVE3res_u.resok.dir_wcc);
+            if (aznfsc_cfg.cache.attr.user.enable) {
+                UPDATE_INODE_WCC(parent_inode, res->REMOVE3res_u.resok.dir_wcc);
+            } else {
+                UPDATE_INODE_ATTR(parent_inode, res->REMOVE3res_u.resok.dir_wcc.after);
+            }
         }
 
         task->reply_error(status);
@@ -1173,7 +1194,11 @@ void rmdir_callback(
              * need to call UPDATE_INODE_ATTR() to invalidate the
              * readdirectory_cache.
              */
-            UPDATE_INODE_WCC(inode, res->RMDIR3res_u.resok.dir_wcc);
+            if (aznfsc_cfg.cache.attr.user.enable) {
+                UPDATE_INODE_WCC(inode, res->RMDIR3res_u.resok.dir_wcc);
+            } else {
+                UPDATE_INODE_ATTR(inode, res->RMDIR3res_u.resok.dir_wcc.after);
+            }
         }
         task->reply_error(status);
     }
@@ -1217,7 +1242,11 @@ void symlink_callback(
          * newly created file (as the readdir cache also needs the cookie to
          * be filled which only server can return in a READDIR{PLUS} response.
          */
-        UPDATE_INODE_WCC(inode, res->SYMLINK3res_u.resok.dir_wcc);
+        if (aznfsc_cfg.cache.attr.user.enable) {
+            UPDATE_INODE_WCC(inode, res->SYMLINK3res_u.resok.dir_wcc);
+        } else {
+            UPDATE_INODE_ATTR(inode, res->SYMLINK3res_u.resok.dir_wcc.after);
+        }
 
         assert(
             res->SYMLINK3res_u.resok.obj.handle_follows &&
@@ -1380,38 +1409,40 @@ void rpc_task::run_lookup()
     struct nfs_inode *inode = get_client()->get_nfs_inode_from_ino(parent_ino);
     bool rpc_retry;
     const char *const filename = (char*) rpc_api->lookup_task.get_file_name();
-    bool negative_confirmed = false;
 
     INC_GBL_STATS(tot_lookup_reqs, 1);
 
     /*
      * Lookup dnlc to see if we have valid cached lookup data.
      */
-    struct nfs_inode *child_inode =
-        inode->dnlc_lookup(filename, &negative_confirmed);
-    if (child_inode) {
-        AZLogDebug("[{}/{}] Returning cached lookup, child_ino={}",
-                   parent_ino, filename, child_inode->get_fuse_ino());
+    if (aznfsc_cfg.cache.attr.user.enable) {
+        bool negative_confirmed = false;
+        struct nfs_inode *child_inode =
+            inode->dnlc_lookup(filename, &negative_confirmed);
+        if (child_inode) {
+            AZLogDebug("[{}/{}] Returning cached lookup, child_ino={}",
+                    parent_ino, filename, child_inode->get_fuse_ino());
 
-        INC_GBL_STATS(lookup_served_from_cache, 1);
+            INC_GBL_STATS(lookup_served_from_cache, 1);
 
-        struct fattr3 fattr;
-        nfs_client::fattr3_from_stat(&fattr, &child_inode->attr);
-        get_client()->reply_entry(this, &child_inode->get_fh(), &fattr, nullptr);
+            struct fattr3 fattr;
+            nfs_client::fattr3_from_stat(&fattr, &child_inode->attr);
+            get_client()->reply_entry(this, &child_inode->get_fh(), &fattr, nullptr);
 
-        // Drop the ref held by dnlc_lookup().
-        child_inode->decref();
-        return;
-    } else if (negative_confirmed) {
-        AZLogDebug("[{}/{}] Returning cached lookup (negative)",
-                   parent_ino, filename);
+            // Drop the ref held by dnlc_lookup().
+            child_inode->decref();
+            return;
+        } else if (negative_confirmed) {
+            AZLogDebug("[{}/{}] Returning cached lookup (negative)",
+                    parent_ino, filename);
 
-        INC_GBL_STATS(lookup_served_from_cache, 1);
-        get_client()->reply_entry(this,
-                                  nullptr /* fh */,
-                                  nullptr /* fattr */,
-                                  nullptr /* file */);
-        return;
+            INC_GBL_STATS(lookup_served_from_cache, 1);
+            get_client()->reply_entry(this,
+                    nullptr /* fh */,
+                    nullptr /* fattr */,
+                    nullptr /* file */);
+            return;
+        }
     }
 
     do {
@@ -1611,11 +1642,13 @@ void rpc_task::run_getattr()
     /*
      * If inode's cached attribute is valid, use that.
      */
-    if (!inode->attr_cache_expired()) {
-        INC_GBL_STATS(getattr_served_from_cache, 1);
-        AZLogDebug("[{}] Returning cached attributes", ino);
-        reply_attr(&inode->attr, inode->get_actimeo());
-        return;
+    if (aznfsc_cfg.cache.attr.user.enable) {
+        if (!inode->attr_cache_expired()) {
+            INC_GBL_STATS(getattr_served_from_cache, 1);
+            AZLogDebug("[{}] Returning cached attributes", ino);
+            reply_attr(&inode->attr, inode->get_actimeo());
+            return;
+        }
     }
 
     do {

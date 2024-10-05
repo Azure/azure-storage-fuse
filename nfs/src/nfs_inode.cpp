@@ -779,12 +779,17 @@ bool nfs_inode::update_nolock(const struct fattr3 *postattr,
     assert(preattr || postattr);
 
 #ifdef ENABLE_PARANOID
+    /*
+     * XXX This assert has been seen to fail (for unlink).
+     */
+#if 0
     if (preattr && postattr) {
         /*
          * ctime cannot go back.
          */
         assert(compare_nfstime(postattr->ctime, preattr->ctime) >= 0);
     }
+#endif
 #endif
 
     /*

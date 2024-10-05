@@ -223,6 +223,16 @@ typedef struct aznfsc_cfg
     struct {
         struct {
             /*
+             * Userspace attribute/lookup cache.
+             * To disable kernel attribute cache set actimeo to 0.
+             */
+            struct {
+                bool enable = true;
+            } user;
+        } attr;
+
+        struct {
+            /*
              * Kernel readdir cache.
              */
             struct {
