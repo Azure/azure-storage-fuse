@@ -848,6 +848,7 @@ static void statfs_callback(
         st.f_files = res->FSSTAT3res_u.resok.tfiles;
         st.f_ffree = res->FSSTAT3res_u.resok.ffiles;
         st.f_favail = res->FSSTAT3res_u.resok.afiles;
+        st.f_namemax = NAME_MAX;
 
         task->reply_statfs(&st);
     } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
