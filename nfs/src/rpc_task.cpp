@@ -841,7 +841,8 @@ static void statfs_callback(
 
         struct statvfs st;
         ::memset(&st, 0, sizeof(st));
-        st.f_bsize = NFS_BLKSIZE;
+        st.f_bsize = task->get_client()->mnt_options.wsize_adj;
+        st.f_frsize = st.f_bsize;
         st.f_blocks = res->FSSTAT3res_u.resok.tbytes / NFS_BLKSIZE;
         st.f_bfree = res->FSSTAT3res_u.resok.fbytes / NFS_BLKSIZE;
         st.f_bavail = res->FSSTAT3res_u.resok.abytes / NFS_BLKSIZE;
