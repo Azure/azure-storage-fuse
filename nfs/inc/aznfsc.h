@@ -83,6 +83,18 @@ extern double inject_err_prob_pct_def;
 #endif
 
 /**
+ * Enum for defining the various consistency levels we support.
+ */
+enum class consistency_t
+{
+    INVALID = 0,
+    SOLOWRITER,
+    STANDARD,
+    DEFAULT = STANDARD,
+    MPA,
+};
+
+/**
  * This structure holds the entire aznfsclient configuration that controls the
  * behaviour of the aznfsclient fuse program. These config variables can be
  * configured in many ways, allowing user to conveniently express their default
@@ -197,6 +209,12 @@ typedef struct aznfsc_cfg
 
     // Fuse max_background config value.
     int fuse_max_background = -1;
+
+    /*************************************************
+     **              Cconsistency config            **
+     *************************************************/
+     const char *consistency = "standard";
+     consistency_t consistency_int = consistency_t::DEFAULT;
 
     /*************************************************
      **                 Cache config                **

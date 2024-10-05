@@ -117,6 +117,7 @@ do { \
         _CHECK_INT(acdirmax, AZNFSCFG_ACTIMEO_MIN, AZNFSCFG_ACTIMEO_MAX);
         _CHECK_INT(actimeo, AZNFSCFG_ACTIMEO_MIN, AZNFSCFG_ACTIMEO_MAX);
         _CHECK_STR(lookupcache);
+        _CHECK_STR(consistency);
         _CHECK_INT(rsize, AZNFSCFG_RSIZE_MIN, AZNFSCFG_RSIZE_MAX);
         _CHECK_INT(wsize, AZNFSCFG_WSIZE_MIN, AZNFSCFG_WSIZE_MAX);
         _CHECK_INT(retrans, AZNFSCFG_RETRANS_MIN, AZNFSCFG_RETRANS_MAX);
@@ -247,6 +248,23 @@ void aznfsc_cfg::set_defaults_and_sanitize()
         if (filecache.max_size_gb == -1)
             filecache.max_size_gb = AZNFSCFG_FILECACHE_MAX_GB_DEF;
     }
+
+    if (std::string(consistency) == "solowriter") {
+        consistency_int = consistency_t::SOLOWRITER;
+        /*
+         * Set actimeo to the max value. and lookupcache for caching positive
+         * and negative lookup responses.
+         */
+        actimeo = AZNFSCFG_ACTIMEO_MAX;
+        lookupcache_int = AZNFSCFG_LOOKUPCACHE_ALL;
+    } else if (std::string(consistency) == "standard") {
+        consistency_int = consistency_t::STANDARD;
+    } else if (std::string(consistency) == "mpa") {
+        consistency_int = consistency_t::MPA;
+    } else {
+        consistency_int = consistency_t::DEFAULT;
+    }
+
     if (cloud_suffix == nullptr)
         cloud_suffix = ::strdup("blob.core.windows.net");
 
@@ -273,7 +291,8 @@ void aznfsc_cfg::set_defaults_and_sanitize()
     AZLogDebug("acdirmin = {}", acdirmin);
     AZLogDebug("acdirmax = {}", acdirmax);
     AZLogDebug("actimeo = {}", actimeo);
-    AZLogDebug("lookupcache = {}", lookupcache);
+    AZLogDebug("lookupcache = {} ({})", lookupcache, lookupcache_int);
+    AZLogDebug("consistency = {} ({})", consistency, (int) consistency_int);
     AZLogDebug("readdir_maxcount = {}", readdir_maxcount);
     AZLogDebug("readahead_kb = {}", readahead_kb);
     AZLogDebug("fuse_max_background = {}", fuse_max_background);

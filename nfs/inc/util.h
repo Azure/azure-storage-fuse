@@ -103,6 +103,13 @@ bool is_valid_lookupcache(const std::string& lookupcache)
             lookupcache == "pos" || lookupcache == "positive");
 }
 
+static inline
+bool is_valid_consistency(const std::string& consistency)
+{
+    return (consistency == "solowriter" || consistency == "standard" ||
+            consistency == "mpa");
+}
+
 /**
  * Return milliseconds since epoch.
  * Use this for timestamping.
