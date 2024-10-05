@@ -979,6 +979,10 @@ void nfs_inode::lookup_dircache(
     assert(cookie < UINT32_MAX);
 #endif
 
+    if (dircache_handle->is_lookuponly()) {
+        purge_dircache();
+    }
+
     int num_cache_entries = 0;
     ssize_t rem_size = max_size;
     // Have we seen eof from the server?

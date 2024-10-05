@@ -68,7 +68,7 @@ directory_entry::~directory_entry()
 
 readdirectory_cache::~readdirectory_cache()
 {
-    AZLogDebug("[{}] ~readdirectory_cache() called", inode->get_fuse_ino());
+    AZLogDebug("[{}] ~readdirectory_cache() called", dir_inode->get_fuse_ino());
 
     /*
      * The cache must have been purged before deleting.
@@ -83,6 +83,25 @@ void directory_entry::update_inode(struct nfs_inode *inode)
     inode->dircachecnt++;
 }
 
+void readdirectory_cache::set_lookuponly()
+{
+    if (!lookuponly.exchange(true)) {
+        AZLogDebug("[{}] Marked as lookuponly", dir_inode->get_fuse_ino());
+    }
+}
+
+void readdirectory_cache::clear_lookuponly()
+{
+    if (lookuponly.exchange(false)) {
+        AZLogDebug("[{}] Clear lookuponly", dir_inode->get_fuse_ino());
+    }
+}
+
+bool readdirectory_cache::is_lookuponly() const
+{
+    return lookuponly;
+}
+
 void readdirectory_cache::set_confirmed()
 {
     // Confirmed at time.
@@ -90,20 +109,20 @@ void readdirectory_cache::set_confirmed()
 
     AZLogDebug("[{}] Marked as confirmed, seq_last_cookie={}, "
                "eof_cookie={}",
-               inode->get_fuse_ino(), seq_last_cookie, eof_cookie);
+               dir_inode->get_fuse_ino(), seq_last_cookie, eof_cookie);
 }
 
 void readdirectory_cache::clear_confirmed()
 {
     confirmed_msecs = 0;
 
-    AZLogDebug("[{}] Clear confirmed", inode->get_fuse_ino());
+    AZLogDebug("[{}] Clear confirmed", dir_inode->get_fuse_ino());
 }
 
 bool readdirectory_cache::is_confirmed() const
 {
     const uint64_t now = get_current_msecs();
-    return (confirmed_msecs + (inode->get_actimeo() * 1000)) > now;
+    return (confirmed_msecs + (dir_inode->get_actimeo() * 1000)) > now;
 }
 
 void readdirectory_cache::set_eof(uint64_t eof_cookie)
@@ -123,7 +142,7 @@ void readdirectory_cache::set_eof(uint64_t eof_cookie)
     } else {
         AZLogDebug("[{}] Marked as NOT confirmed, seq_last_cookie={}, "
                    "eof_cookie={}",
-                   inode->get_fuse_ino(), seq_last_cookie, eof_cookie);
+                   dir_inode->get_fuse_ino(), seq_last_cookie, eof_cookie);
         clear_confirmed();
     }
 }
@@ -152,7 +171,7 @@ bool readdirectory_cache::add(const std::shared_ptr<struct directory_entry>& ent
         if (cache_size >= MAX_CACHE_SIZE_LIMIT) {
             AZLogWarn("[{}] Exceeding cache max size. No more entries will "
                       "be added to the cache! curent size: {}",
-                      this->inode->get_fuse_ino(), cache_size);
+                      dir_inode->get_fuse_ino(), cache_size);
             return false;
         }
 
@@ -165,7 +184,7 @@ bool readdirectory_cache::add(const std::shared_ptr<struct directory_entry>& ent
 
             AZLogDebug("[{}] Adding {} fuse ino {}, cookie {}, to readdir "
                        "cache (dircachecnt {})",
-                       this->inode->get_fuse_ino(),
+                       dir_inode->get_fuse_ino(),
                        entry->name,
                        entry->nfs_inode->get_fuse_ino(),
                        entry->cookie,
@@ -186,7 +205,7 @@ bool readdirectory_cache::add(const std::shared_ptr<struct directory_entry>& ent
         }
 
         AZLogDebug("[{}] Adding dir cache entry {} -> {}",
-                   this->inode->get_fuse_ino(), entry->cookie, entry->name);
+                   dir_inode->get_fuse_ino(), entry->cookie, entry->name);
 
         const auto it = dir_entries.emplace(entry->cookie, entry);
 
@@ -201,7 +220,7 @@ bool readdirectory_cache::add(const std::shared_ptr<struct directory_entry>& ent
          */
         if (it.second) {
             AZLogDebug("[{}] Adding dnlc cache entry {} -> {}",
-                       this->inode->get_fuse_ino(), entry->name,
+                       dir_inode->get_fuse_ino(), entry->name,
                        entry->cookie);
 
             cache_size += entry->get_cache_size();
@@ -314,7 +333,11 @@ void readdirectory_cache::dnlc_add(const char *filename,
      */
     assert(inode->dircachecnt >= 1);
 
-    add(dir_entry, false /* acquire_lock */);
+    const bool added = add(dir_entry, false /* acquire_lock */);
+
+    if (added) {
+        set_lookuponly();
+    }
 }
 
 std::shared_ptr<struct directory_entry> readdirectory_cache::lookup(
@@ -425,6 +448,7 @@ bool readdirectory_cache::remove(cookie3 cookie,
     assert((cookie == 0) == (filename_hint != nullptr));
 
     struct nfs_inode *inode = nullptr;
+    const bool is_dnlc_remove = (cookie == 0);
 
     {
         /*
@@ -459,6 +483,10 @@ bool readdirectory_cache::remove(cookie3 cookie,
         }
 
         assert(dirent->cookie == cookie);
+
+        if (is_dnlc_remove) {
+            set_lookuponly();
+        }
 
         /*
          * Remove the DNLC entry.
@@ -495,7 +523,7 @@ bool readdirectory_cache::remove(cookie3 cookie,
         AZLogDebug("[{}] Removing {} fuse ino {}, cookie {}, from "
                    "readdir cache (lookupcnt={}, dircachecnt={}, "
                    "forget_expected={})",
-                   this->inode->get_fuse_ino(),
+                   dir_inode->get_fuse_ino(),
                    dirent->name,
                    inode->get_fuse_ino(),
                    dirent->cookie,
@@ -524,7 +552,7 @@ bool readdirectory_cache::remove(cookie3 cookie,
     }
 
     AZLogDebug("[D:{}] inode {} to be freed, after readdir cache remove",
-               this->inode->get_fuse_ino(),
+               dir_inode->get_fuse_ino(),
                inode->get_fuse_ino());
 
     /*
@@ -573,7 +601,7 @@ void readdirectory_cache::clear()
                 AZLogDebug("[{}] Removing {} fuse ino {}, cookie {}, from "
                            "readdir cache (dircachecnt {} lookupcnt {}, "
                            "forget_expected {})",
-                           this->inode->get_fuse_ino(),
+                           dir_inode->get_fuse_ino(),
                            it->second->name,
                            inode->get_fuse_ino(),
                            it->second->cookie,
@@ -617,11 +645,12 @@ void readdirectory_cache::clear()
          */
         seq_last_cookie = 0;
         clear_confirmed();
+        clear_lookuponly();
     }
 
     if (!tofree_vec.empty()) {
         AZLogDebug("[{}] {} inodes to be freed, after readdir cache purge",
-                   this->inode->get_fuse_ino(),
+                   dir_inode->get_fuse_ino(),
                    tofree_vec.size());
         /*
          * Drop the extra ref we held above, for all inodes in tofree_vec.

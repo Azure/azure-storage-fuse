@@ -182,7 +182,7 @@ private:
     /*
      * Directory inode, whose contents are cached by this readdirectory_cache.
      */
-    struct nfs_inode *const inode;
+    struct nfs_inode *const dir_inode;
 
     /*
      * This will be set if we have read all the entries of the directory
@@ -210,6 +210,41 @@ private:
     size_t cache_size;
 
     cookieverf3 cookie_verifier;
+
+    /*
+     * This readdirectory_cache can be used only for serving lookup queries,
+     * those made through dnlc_lookup(). It MUST NOT be used for serving
+     * readdir/readdirplus queries, made through lookup().
+     * If lookuponly is set, readdirectory_cache must be purged before
+     * serving any lookup() request.
+     *
+     * Q: When is a readdirectory_cache marked lookuponly?
+     * A: This is an optimization to allow dnlc_lookup() operation on a
+     *    readdirectory_cache after one or more file/dir is created or deleted
+     *    inside the directory. Note that when a file/dir is created inside a
+     *    directory we cannot keep using the readdirectory_cache for serving
+     *    directory enumeration queries as we cannot add a newly created file
+     *    or dir to the readdirectory_cache, since we need to add the cookie
+     *    as well. Instead of purging the readdirectory_cache on creation
+     *    or removal of a file/dir we instead mark it as lookuponly so that
+     *    we can continue to serve dnlc_lookup() queries. When lookup() is
+     *    called we then (lazily) purge the readdirectory_cache.
+     *
+     * Q: Why can't we remove a file/dir from the readdirectory_cache and
+     *    continue to use the readdirectory_cache for serving lookup() requests?
+     * A: Yes, unlike the create case, for delete case we can safely delete
+     *    a readdirectory_cache entry, but we still cannot do it due to the
+     *    way Blob NFS readdir cache works.
+     *    Since we have the directory entries cached, when fuse calls readdir
+     *    again we serve from the cache till we reach the deleted entry's cookie
+     *    which we don't find in the readdir cache. This causes us to make a
+     *    READDIR{PLUS} call to the server with the given cookie and the stored
+     *    cookieverifier. This will cause the server to return the deleted entry
+     *    also as it'll be in the readdir cache for that cookieverifier.
+     *    This is not correct, hence we mark the readdirectory_cache as
+     *    lookuponly even when a file/dir is deleted.
+     */
+    std::atomic<bool> lookuponly = false;
 
     /*
      * Absolute time in msecs since epoch when this directory cache was last
@@ -245,12 +280,12 @@ public:
     readdirectory_cache(struct nfs_client *_client,
                         struct nfs_inode *_inode):
         client(_client),
-        inode(_inode),
+        dir_inode(_inode),
         eof(false),
         cache_size(0)
     {
         assert(client);
-        assert(inode);
+        assert(dir_inode);
         assert(dir_entries.empty());
         // Initial cookie_verifier must be 0.
         ::memset(&cookie_verifier, 0, sizeof(cookie_verifier));
@@ -300,6 +335,10 @@ public:
 
         return false;
     }
+
+    void set_lookuponly();
+    void clear_lookuponly();
+    bool is_lookuponly() const;
 
     /**
      * Set this directory cache as "confirmed".
