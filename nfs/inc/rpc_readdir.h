@@ -215,8 +215,14 @@ private:
      * This readdirectory_cache can be used only for serving lookup queries,
      * those made through dnlc_lookup(). It MUST NOT be used for serving
      * readdir/readdirplus queries, made through lookup().
-     * If lookuponly is set, readdirectory_cache must be purged before
-     * serving any lookup() request.
+     * readdirectory_cache marked lookuponly is not exactly in sync with the
+     * directory contents (one or more file/dir has been created/deleted) since
+     * the directory contents were last enumerated and cached, though it can
+     * be used to serve dnlc_lookup() requests which query a specific filename
+     * and do not need the cookie to be correctly set.
+     *
+     * Note: If lookuponly is set, readdirectory_cache must be purged before
+     *       serving any lookup() request.
      *
      * Q: When is a readdirectory_cache marked lookuponly?
      * A: This is an optimization to allow dnlc_lookup() operation on a
@@ -228,7 +234,8 @@ private:
      *    as well. Instead of purging the readdirectory_cache on creation
      *    or removal of a file/dir we instead mark it as lookuponly so that
      *    we can continue to serve dnlc_lookup() queries. When lookup() is
-     *    called we then (lazily) purge the readdirectory_cache.
+     *    called we then purge the readdirectory_cache just before enumerating
+     *    the directory.
      *
      * Q: Why can't we remove a file/dir from the readdirectory_cache and
      *    continue to use the readdirectory_cache for serving lookup() requests?
@@ -336,6 +343,9 @@ public:
         return false;
     }
 
+    /**
+     * Accessor methods for lookuponly.
+     */
     void set_lookuponly();
     void clear_lookuponly();
     bool is_lookuponly() const;

@@ -335,6 +335,12 @@ void readdirectory_cache::dnlc_add(const char *filename,
 
     const bool added = add(dir_entry, false /* acquire_lock */);
 
+    /*
+     * If we add a new dnlc entry then we need to mark the cache as lookuponly
+     * as the cache is no more in sync with the directory in the server.
+     * This cache needs to be purged and reenumerated before it can be used
+     * to serve enumeration requests.
+     */
     if (added) {
         set_lookuponly();
     }
@@ -448,6 +454,12 @@ bool readdirectory_cache::remove(cookie3 cookie,
     assert((cookie == 0) == (filename_hint != nullptr));
 
     struct nfs_inode *inode = nullptr;
+
+    /*
+     * dnlc_remove will be set for the case when we are deleting a file or
+     * directory. The cache is no longer in sync with the directory and  we
+     * need to mark the cache as lookuponly.
+     */
     const bool is_dnlc_remove = (cookie == 0);
 
     {

@@ -971,6 +971,8 @@ void nfs_inode::lookup_dircache(
     // Sanity check.
     assert(max_size > 0 && max_size <= (64*1024*1024));
     assert(results.empty());
+    // Must be called only for a directory inode.
+    assert(is_dir());
     // Must have been allocated in open()/opendir().
     assert(dircache_handle);
 
@@ -979,7 +981,15 @@ void nfs_inode::lookup_dircache(
     assert(cookie < UINT32_MAX);
 #endif
 
+    /*
+     * If this readdirectory_cache is marked lookuponly, purge the cache now.
+     * Note that lookuponly readdir caches cannot be used to serve directory
+     * enumeration requests as they are not in sync with the actual directory
+     * content (one or more file/dir has been created/deleted since we last
+     * enumerated and cachd the enumeration results).
+     */
     if (dircache_handle->is_lookuponly()) {
+        AZLogDebug("[{}] Purging lookuponly dircache", get_fuse_ino());
         purge_dircache();
     }
 
