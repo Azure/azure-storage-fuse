@@ -888,7 +888,13 @@ static void createfile_callback(
     task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
 
     if (status == 0) {
-        UPDATE_INODE_WCC(inode, res->CREATE3res_u.resok.dir_wcc);
+        /*
+         * We cannot use UPDATE_INODE_WCC() here as we cannot update our
+         * readdir cache with the newly created file, as the readdir cache
+         * also needs the cookie to be filled which only server can return.
+         * So we cause the cache to be invalidated.
+         */
+        UPDATE_INODE_ATTR(inode, res->CREATE3res_u.resok.dir_wcc.after);
 
         assert(
             res->CREATE3res_u.resok.obj.handle_follows &&
@@ -983,7 +989,13 @@ void mknod_callback(
     task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
 
     if (status == 0) {
-        UPDATE_INODE_WCC(inode, res->CREATE3res_u.resok.dir_wcc);
+        /*
+         * We cannot use UPDATE_INODE_WCC() here as we cannot update our
+         * readdir cache with the newly created file, as the readdir cache
+         * also needs the cookie to be filled which only server can return.
+         * So we cause the cache to be invalidated.
+         */
+        UPDATE_INODE_ATTR(inode, res->CREATE3res_u.resok.dir_wcc.after);
 
         assert(
             res->CREATE3res_u.resok.obj.handle_follows &&
@@ -1032,7 +1044,13 @@ void mkdir_callback(
     task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
 
     if (status == 0) {
-        UPDATE_INODE_WCC(inode, res->MKDIR3res_u.resok.dir_wcc);
+        /*
+         * We cannot use UPDATE_INODE_WCC() here as we cannot update our
+         * readdir cache with the newly created dir, as the readdir cache
+         * also needs the cookie to be filled which only server can return.
+         * So we cause the cache to be invalidated.
+         */
+        UPDATE_INODE_ATTR(inode, res->MKDIR3res_u.resok.dir_wcc.after);
 
         assert(
             res->MKDIR3res_u.resok.obj.handle_follows &&
@@ -1087,7 +1105,20 @@ void unlink_callback(
         task->get_client()->jukebox_retry(task);
     } else {
         if (status == 0) {
-            UPDATE_INODE_WCC(parent_inode, res->REMOVE3res_u.resok.dir_wcc);
+            /*
+             * Even though we remove the file from the readdir cache, we still
+             * cannot use UPDATE_INODE_WCC() here due to the way Blob NFS
+             * readdir cache works.
+             * Since we have the directory entries cached, when fuse calls
+             * readdir again we serve from the cache till we reach the deleted
+             * entry which we don't find in the readdir cache. This causes us
+             * to make a READDIR{PLUS} call to the server with the given cookie
+             * and the stored cookieverifier. This will cause the server to
+             * return the deleted entry also as it'll be in the readdir cache
+             * for that cookieverifier.
+             * Hence we invalidate the readdir cache whenever a file is deleted.
+             */
+            UPDATE_INODE_ATTR(parent_inode, res->REMOVE3res_u.resok.dir_wcc.after);
         }
 
         task->reply_error(status);
@@ -1142,7 +1173,11 @@ void rmdir_callback(
         task->get_client()->jukebox_retry(task);
     } else {
         if (status == 0) {
-            UPDATE_INODE_WCC(inode, res->RMDIR3res_u.resok.dir_wcc);
+            /*
+             * See comment in unlink_callback() why we cannot use
+             * UPDATE_INODE_WCC().
+             */
+            UPDATE_INODE_ATTR(inode, res->RMDIR3res_u.resok.dir_wcc.after);
         }
         task->reply_error(status);
     }
@@ -1179,7 +1214,13 @@ void symlink_callback(
     task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
 
     if (status == 0) {
-        UPDATE_INODE_WCC(inode, res->SYMLINK3res_u.resok.dir_wcc);
+        /*
+         * We cannot use UPDATE_INODE_WCC() here as we cannot update our
+         * readdir cache with the newly created symlink, as the readdir cache
+         * also needs the cookie to be filled which only server can return.
+         * So we cause the cache to be invalidated.
+         */
+        UPDATE_INODE_ATTR(inode, res->SYMLINK3res_u.resok.dir_wcc.after);
 
         assert(
             res->SYMLINK3res_u.resok.obj.handle_follows &&
@@ -1281,12 +1322,19 @@ void rename_callback(
         task->get_client()->jukebox_retry(task);
     } else {
         if (status == 0) {
-            UPDATE_INODE_WCC(parent_inode,
-                             res->RENAME3res_u.resok.fromdir_wcc);
+            /*
+             * We cannot use UPDATE_INODE_WCC() here as we cannot update our
+             * readdir cache with the newly created file/dir, as the readdir
+             * cache also needs the cookie to be filled which only server can
+             * return.
+             * So we cause the cache to be invalidated.
+             */
+            UPDATE_INODE_ATTR(parent_inode,
+                              res->RENAME3res_u.resok.fromdir_wcc.after);
 
             if (newparent_ino != parent_ino) {
-                UPDATE_INODE_WCC(newparent_inode,
-                                 res->RENAME3res_u.resok.todir_wcc);
+                UPDATE_INODE_ATTR(newparent_inode,
+                                  res->RENAME3res_u.resok.todir_wcc.after);
             }
         }
         task->reply_error(status);
