@@ -1121,6 +1121,27 @@ public:
     }
 
     /**
+     * This should be called by writer threads to find out if they must wait
+     * for the write to complete. This will check both the cache specific and
+     * memory pressure.
+     */
+    bool do_inline_write() const
+    {
+        static const uint64_t max_dirty_allowed_per_cache =
+            max_dirty_extent_bytes() * 2;
+        const bool local_pressure = bytes_dirty > max_dirty_allowed_per_cache;
+
+        if (local_pressure) {
+            return true;
+        }
+
+        uint64_t inline_bytes;
+
+        get_prune_goals(&inline_bytes, nullptr);
+        return (inline_bytes > 0);
+    }
+
+    /**
      * get_prune_goals() looks at the following information and returns prune
      * goals for this cache:
      * - Total memory consumed by all caches.
@@ -1139,7 +1160,8 @@ public:
     void get_prune_goals(uint64_t *inline_bytes, uint64_t *periodic_bytes) const
     {
         // Maximum cache size allowed in bytes.
-        static const uint64_t max_total = (aznfsc_cfg.cache.data.user.max_size_mb * 1024 * 1024ULL);
+        static const uint64_t max_total =
+            (aznfsc_cfg.cache.data.user.max_size_mb * 1024 * 1024ULL);
         assert(max_total != 0);
 
         /*

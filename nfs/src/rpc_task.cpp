@@ -1607,10 +1607,7 @@ void rpc_task::run_write()
         extent_right = UINT64_MAX;
     }
 
-    uint64_t inline_bytes;
-    inode->filecache_handle->get_prune_goals(&inline_bytes, nullptr);
-
-    if (inline_bytes != 0) {
+    if (inode->filecache_handle->do_inline_write()) {
         AZLogInfo("[{}] Inline write {} bytes [{}, {}]",
                 ino, length, extent_left, extent_right);
         const int err = inode->flush_cache_and_wait(extent_left, extent_right);
