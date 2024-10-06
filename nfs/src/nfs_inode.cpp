@@ -884,11 +884,11 @@ bool nfs_inode::update_nolock(const struct fattr3 *postattr,
                    "size: {} -> {}",
                    get_filetype_coding(), get_fuse_ino(),
                    is_dir() ? "Directory" : "File",
-                   attr.st_ctim.tv_sec, attr.st_ctim.tv_nsec,
                    pctime->seconds, pctime->nseconds,
-                   attr.st_mtim.tv_sec, attr.st_mtim.tv_nsec,
+                   attr.st_ctim.tv_sec, attr.st_ctim.tv_nsec,
                    pmtime->seconds, pmtime->nseconds,
-                   attr.st_size, *psize);
+                   attr.st_mtim.tv_sec, attr.st_mtim.tv_nsec,
+                   *psize, attr.st_size);
 
         invalidate_cache_nolock();
     }

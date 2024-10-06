@@ -1041,9 +1041,23 @@ void nfs_client::rename(
 {
     struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_RENAME);
     struct nfs_inode *parent_inode = get_nfs_inode_from_ino(parent_ino);
+    struct nfs_inode *newparent_inode = get_nfs_inode_from_ino(newparent_ino);
 
+    /*
+     * 'name' is going away and 'new_name', if exists, will no longer refer to
+     * the same inode, remove both from dnlc cache.
+     * Note that rename_callback() does check the postop attributes of both
+     * source and target directories and purges their dir caches if the postop
+     * attribute suggests change in mtime/size, but it's safe to remove it here
+     * just in case the server doesn't return postop attributes or returns them
+     * incorrectly.
+     */
     if (parent_inode->dircache_handle) {
         parent_inode->dircache_handle->dnlc_remove(name);
+    }
+
+    if (newparent_inode->dircache_handle) {
+        newparent_inode->dircache_handle->dnlc_remove(new_name);
     }
 
     tsk->init_rename(req, parent_ino, name, newparent_ino, new_name,
