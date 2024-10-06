@@ -336,6 +336,14 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    /*
+     * Hide fuse'ism and behave like a normal POSIX fs.
+     * TODO: Make this configurable?
+     */
+    if (fuse_opt_add_arg(&args, "-oallow_other,default_permissions") == -1) {
+        return 1;
+    }
+
     if (opts.show_help) {
         aznfsc_help(argv[0]);
         fuse_cmdline_help();
