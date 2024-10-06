@@ -579,7 +579,7 @@ lock_and_copy:
     return 0;
 }
 
-int nfs_inode::flush_cache_and_wait()
+int nfs_inode::flush_cache_and_wait(uint64_t start_off, uint64_t end_off)
 {
     /*
      * MUST be called only for regular files.
@@ -615,7 +615,8 @@ int nfs_inode::flush_cache_and_wait()
      * of dirty bytes_chunks at that point. Note that we can have new dirty
      * bytes_chunks created but we don't want to wait for those.
      */
-    std::vector<bytes_chunk> bc_vec = filecache_handle->get_dirty_bc_range(0, UINT64_MAX);
+    std::vector<bytes_chunk> bc_vec =
+        filecache_handle->get_dirty_bc_range(start_off, end_off);
 
     /*
      * sync_membufs() iterate over the bc_vec and start flushing the dirty membufs.

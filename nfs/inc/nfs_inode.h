@@ -701,7 +701,7 @@ struct nfs_inode
      *       instant and flush those. Any new dirty membufs added after it
      *       queries the dirty membufs list, are not flushed.
      */
-    int flush_cache_and_wait();
+    int flush_cache_and_wait(uint64_t start_off = 0, uint64_t end_off = UINT64_MAX);
 
     /**
      * Sync the dirty membufs in the file cache to the NFS server.

@@ -1607,6 +1607,25 @@ void rpc_task::run_write()
         extent_right = UINT64_MAX;
     }
 
+    uint64_t inline_bytes;
+    inode->filecache_handle->get_prune_goals(&inline_bytes, nullptr);
+
+    if (inline_bytes != 0) {
+        AZLogInfo("[{}] Inline write {} bytes [{}, {}]",
+                ino, length, extent_left, extent_right);
+        const int err = inode->flush_cache_and_wait(extent_left, extent_right);
+        if (err == 0) {
+            reply_write(length);
+            return;
+        } else {
+            AZLogError("[{}] Inline write {} bytes failed with err {}",
+                    ino, length, err);
+            assert(0);
+            reply_error(err);
+            return;
+        }
+    }
+
     std::vector<bytes_chunk> bc_vec =
         inode->filecache_handle->get_dirty_bc_range(extent_left, extent_right);
 
