@@ -1608,6 +1608,7 @@ void rpc_task::run_write()
     }
 
     if (inode->filecache_handle->do_inline_write()) {
+        INC_GBL_STATS(inline_writes, 1);
         AZLogInfo("[{}] Inline write {} bytes [{}, {}]",
                 ino, length, extent_left, extent_right);
         const int err = inode->flush_cache_and_wait(extent_left, extent_right);

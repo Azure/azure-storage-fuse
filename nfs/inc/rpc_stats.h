@@ -318,6 +318,7 @@ public:
     static std::atomic<uint64_t> getattr_served_from_cache;
     static std::atomic<uint64_t> tot_lookup_reqs;
     static std::atomic<uint64_t> lookup_served_from_cache;
+    static std::atomic<uint64_t> inline_writes;
 };
 
 #define INC_GBL_STATS(var, inc)  rpc_stats_az::var += (inc)

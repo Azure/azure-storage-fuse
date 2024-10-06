@@ -18,6 +18,7 @@ namespace aznfsc {
 /* static */ std::atomic<uint64_t> rpc_stats_az::getattr_served_from_cache = 0;
 /* static */ std::atomic<uint64_t> rpc_stats_az::tot_lookup_reqs = 0;
 /* static */ std::atomic<uint64_t> rpc_stats_az::lookup_served_from_cache = 0;
+/* static */ std::atomic<uint64_t> rpc_stats_az::inline_writes = 0;
 
 /* static */
 void rpc_stats_az::dump_stats()
@@ -152,6 +153,8 @@ void rpc_stats_az::dump_stats()
     assert(read_cache_pct <= 100);
     str += "  " + std::to_string(GET_GBL_STATS(bytes_read_ahead)) +
                   " bytes read by readahead\n";
+    str += "  " + std::to_string(GET_GBL_STATS(inline_writes)) +
+                  " writes had to wait inline\n";
     const double getattr_cache_pct =
         tot_getattr_reqs ?
         ((getattr_served_from_cache * 100) / tot_getattr_reqs) : 0;
