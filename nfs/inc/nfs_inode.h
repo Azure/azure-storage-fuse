@@ -690,7 +690,9 @@ struct nfs_inode
 
     /**
      * Flush the dirty file cache represented by filecache_handle and wait
-     * till all dirty data is sync'ed with the NFS server.
+     * till all dirty data is sync'ed with the NFS server. Only dirty data
+     * in the given range is flushed if provided, else all dirty data is
+     * flushed.
      * Note that filecache_handle is the only writeback cache that we have
      * and hence this only flushes that.
      * For a non-reg file inode this will be a no-op.
@@ -701,7 +703,8 @@ struct nfs_inode
      *       instant and flush those. Any new dirty membufs added after it
      *       queries the dirty membufs list, are not flushed.
      */
-    int flush_cache_and_wait(uint64_t start_off = 0, uint64_t end_off = UINT64_MAX);
+    int flush_cache_and_wait(uint64_t start_off = 0,
+                             uint64_t end_off = UINT64_MAX);
 
     /**
      * Sync the dirty membufs in the file cache to the NFS server.

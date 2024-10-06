@@ -1123,10 +1123,15 @@ public:
     /**
      * This should be called by writer threads to find out if they must wait
      * for the write to complete. This will check both the cache specific and
-     * memory pressure.
+     * global memory pressure.
      */
     bool do_inline_write() const
     {
+        /*
+         * Allow two dirty extents before we force inline write.
+         * This way one of the extent can be getting flushed and we can populate
+         * the second one.
+         */
         static const uint64_t max_dirty_allowed_per_cache =
             max_dirty_extent_bytes() * 2;
         const bool local_pressure = bytes_dirty > max_dirty_allowed_per_cache;
@@ -1135,6 +1140,10 @@ public:
             return true;
         }
 
+        /*
+         * Global pressure is when get_prune_goals() returns non-zero bytes
+         * to be pruned inline.
+         */
         uint64_t inline_bytes;
 
         get_prune_goals(&inline_bytes, nullptr);

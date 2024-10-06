@@ -1607,18 +1607,25 @@ void rpc_task::run_write()
         extent_right = UINT64_MAX;
     }
 
+    /*
+     * Ok, we need to flush the extent now, check if we must do it inline.
+     */
     if (inode->filecache_handle->do_inline_write()) {
         INC_GBL_STATS(inline_writes, 1);
-        AZLogInfo("[{}] Inline write {} bytes [{}, {}]",
-                ino, length, extent_left, extent_right);
+
+        AZLogDebug("[{}] Inline write, {} bytes extent @ [{}, {})",
+                   ino, (extent_right - extent_left),
+                   extent_left, extent_right);
+
         const int err = inode->flush_cache_and_wait(extent_left, extent_right);
         if (err == 0) {
             reply_write(length);
             return;
         } else {
-            AZLogError("[{}] Inline write {} bytes failed with err {}",
-                    ino, length, err);
-            assert(0);
+            AZLogError("[{}] Inline write, {} bytes extent @ [{}, {}), failed "
+                       "with err {}",
+                       ino, (extent_right - extent_left),
+                       extent_left, extent_right, err);
             reply_error(err);
             return;
         }
