@@ -213,7 +213,7 @@ typedef struct aznfsc_cfg
     /*************************************************
      **              Cconsistency config            **
      *************************************************/
-     const char *consistency = "standard";
+     const char *consistency = nullptr;
      consistency_t consistency_int = consistency_t::DEFAULT;
 
     /*************************************************

@@ -2159,6 +2159,21 @@ void rpc_task::run_read()
     assert(rpc_api->parent_task == nullptr);
 
     /*
+     * In solowriter mode we know the file size definitively.
+     */
+    if (aznfsc_cfg.consistency_int == consistency_t::SOLOWRITER) {
+        const int64_t file_size = inode->get_file_size();
+        if ((file_size != -1) &&
+            (rpc_api->read_task.get_offset() >= file_size)) {
+            AZLogDebug("[{}] Read returning 0 bytes (eof) as requested "
+                       "offset ({}) >= file size ({})",
+                       ino, rpc_api->read_task.get_offset(), file_size);
+            reply_iov(nullptr, 0);
+            return;
+        }
+    }
+
+    /*
      * Get bytes_chunks covering the region caller wants to read.
      * The bytes_chunks returned could be any mix of old (already cached) or
      * new (cache allocated but yet to be read from blob). Note that reads

@@ -226,14 +226,21 @@ void aznfsc_cfg::set_defaults_and_sanitize()
     if (acdirmin > acdirmax)
         acdirmin = acdirmax;
 
-    if (std::string(lookupcache) == "all") {
-        lookupcache_int = AZNFSCFG_LOOKUPCACHE_ALL;
-    } else if (std::string(lookupcache) == "none") {
-        lookupcache_int = AZNFSCFG_LOOKUPCACHE_NONE;
-    } else if (std::string(lookupcache) == "pos" ||
-            std::string(lookupcache) == "positive") {
-        lookupcache_int = AZNFSCFG_LOOKUPCACHE_POS;
+    if (lookupcache) {
+        if (std::string(lookupcache) == "all") {
+            lookupcache_int = AZNFSCFG_LOOKUPCACHE_ALL;
+        } else if (std::string(lookupcache) == "none") {
+            lookupcache_int = AZNFSCFG_LOOKUPCACHE_NONE;
+        } else if (std::string(lookupcache) == "pos" ||
+                   std::string(lookupcache) == "positive") {
+            lookupcache_int = AZNFSCFG_LOOKUPCACHE_POS;
+        } else {
+            // We should not come here with an invalid value.
+            assert(0);
+            lookupcache_int = AZNFSCFG_LOOKUPCACHE_DEF;
+        }
     } else {
+        lookupcache = "";
         lookupcache_int = AZNFSCFG_LOOKUPCACHE_DEF;
     }
 
@@ -250,19 +257,26 @@ void aznfsc_cfg::set_defaults_and_sanitize()
             filecache.max_size_gb = AZNFSCFG_FILECACHE_MAX_GB_DEF;
     }
 
-    if (std::string(consistency) == "solowriter") {
-        consistency_int = consistency_t::SOLOWRITER;
-        /*
-         * Set actimeo to the max value. and lookupcache for caching positive
-         * and negative lookup responses.
-         */
-        actimeo = AZNFSCFG_ACTIMEO_MAX;
-        lookupcache_int = AZNFSCFG_LOOKUPCACHE_ALL;
-    } else if (std::string(consistency) == "standard") {
-        consistency_int = consistency_t::STANDARD;
-    } else if (std::string(consistency) == "mpa") {
-        consistency_int = consistency_t::MPA;
+    if (consistency) {
+        if (std::string(consistency) == "solowriter") {
+            consistency_int = consistency_t::SOLOWRITER;
+            /*
+             * Set actimeo to the max value. and lookupcache for caching positive
+             * and negative lookup responses.
+             */
+            actimeo = AZNFSCFG_ACTIMEO_MAX;
+            lookupcache_int = AZNFSCFG_LOOKUPCACHE_ALL;
+        } else if (std::string(consistency) == "standard") {
+            consistency_int = consistency_t::STANDARD;
+        } else if (std::string(consistency) == "mpa") {
+            consistency_int = consistency_t::MPA;
+        } else {
+            // We should not come here with an invalid value.
+            assert(0);
+            consistency_int = consistency_t::DEFAULT;
+        }
     } else {
+        consistency = "";
         consistency_int = consistency_t::DEFAULT;
     }
 
@@ -292,8 +306,8 @@ void aznfsc_cfg::set_defaults_and_sanitize()
     AZLogDebug("acdirmin = {}", acdirmin);
     AZLogDebug("acdirmax = {}", acdirmax);
     AZLogDebug("actimeo = {}", actimeo);
-    AZLogDebug("lookupcache = {} ({})", lookupcache, lookupcache_int);
-    AZLogDebug("consistency = {} ({})", consistency, (int) consistency_int);
+    AZLogDebug("lookupcache = <{}> ({})", lookupcache, lookupcache_int);
+    AZLogDebug("consistency = <{}> ({})", consistency, (int) consistency_int);
     AZLogDebug("readdir_maxcount = {}", readdir_maxcount);
     AZLogDebug("readahead_kb = {}", readahead_kb);
     AZLogDebug("fuse_max_background = {}", fuse_max_background);
