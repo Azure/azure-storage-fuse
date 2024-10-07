@@ -1547,6 +1547,20 @@ void rpc_task::run_write()
     }
 
     /*
+     * Fuse doesn't let us decide the max file size supported, so kernel can
+     * technically send us a request for an offset larger than we support.
+     * Failing here is the best response we can give.
+     */
+    if ((offset + length) > AZNFSC_MAX_FILE_SIZE) {
+        AZLogWarn("[{}] Write beyond maximum file size suported ({}), "
+                  "offset={}, length={}",
+                  ino, AZNFSC_MAX_FILE_SIZE, offset, length);
+
+        reply_error(EFBIG);
+        return;
+    }
+
+    /*
      * Copy application data into chunk cache and initiate writes for all
      * membufs. We don't wait for the writes to actually finish, which means
      * we support buffered writes.

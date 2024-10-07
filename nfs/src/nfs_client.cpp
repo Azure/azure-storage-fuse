@@ -1132,10 +1132,34 @@ void nfs_client::read(
     struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_READ);
     struct nfs_inode *inode = get_nfs_inode_from_ino(ino);
 
+    /*
+     * Fuse doesn't let us decide the max file size supported, so kernel can
+     * technically send us a request for an offset larger than we support.
+     * Adjust size to not read beyond the max file size supported.
+     * Note that we can pass it down to the Blob NFS server and it'll correctly
+     * handle it, but we have many useful asserts, avoid those.
+     */
+    if ((off + size) > AZNFSC_MAX_FILE_SIZE) {
+        const size_t adj_size =
+            std::max((off_t) AZNFSC_MAX_FILE_SIZE - off, (off_t) 0);
+        if (adj_size == 0) {
+            AZLogWarn("[{}] Read beyond maximum file size suported ({}), "
+                      "offset={}, size={}, adj_size={}",
+                      ino, AZNFSC_MAX_FILE_SIZE, off, size, adj_size);
+        }
+
+        size = adj_size;
+    }
+
     // Revalidate if attribute cache timeout expired.
     inode->revalidate();
 
     tsk->init_read(req, ino, size, off, fi);
+
+    if (size == 0) {
+        tsk->reply_iov(nullptr, 0);
+        return;
+    }
 
     /*
      * Allocate readahead_state if not already done.
