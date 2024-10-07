@@ -36,6 +36,7 @@ package libfuse
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
@@ -303,6 +304,30 @@ func (lf *Libfuse) Configure(_ bool) error {
 
 	log.Info("Libfuse::Configure : read-only %t, allow-other %t, allow-root %t, default-perm %d, entry-timeout %d, attr-time %d, negative-timeout %d, ignore-open-flags %t, nonempty %t, direct_io %t, max-fuse-threads %d, fuse-trace %t, extension %s, disable-writeback-cache %t, dirPermission %v, mountPath %v, umask %v",
 		lf.readOnly, lf.allowOther, lf.allowRoot, lf.filePermission, lf.entryExpiration, lf.attributeExpiration, lf.negativeTimeout, lf.ignoreOpenFlags, lf.nonEmptyMount, lf.directIO, lf.maxFuseThreads, lf.traceEnable, lf.extensionPath, lf.disableWritebackCache, lf.dirPermission, lf.mountPath, lf.umask)
+
+	if common.GenConfig {
+		log.Info("FileCache::Configure : config generation complete")
+		yamlContent := fmt.Sprintf(`
+libfuse:
+  attribute-expiration-sec: %v
+  entry-expiration-sec: %v
+  negative-entry-expiration-sec: %v
+	`, lf.attributeExpiration, lf.entryExpiration, lf.negativeTimeout)
+
+		// Open the file in append mode, create it if it doesn't exist
+		file, err := os.OpenFile("anu.yaml", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			fmt.Printf("Error opening file: %v\n", err)
+			return err
+		}
+		defer file.Close() // Ensure the file is closed when we're done
+
+		// Write the YAML content to the file
+		if _, err := file.WriteString(yamlContent); err != nil {
+			fmt.Printf("Error writing to file: %v\n", err)
+			return err
+		}
+	}
 
 	return nil
 }

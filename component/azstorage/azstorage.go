@@ -36,6 +36,7 @@ package azstorage
 import (
 	"context"
 	"fmt"
+	"os"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -82,6 +83,32 @@ func (az *AzStorage) SetNextComponent(c internal.Component) {
 // Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
 func (az *AzStorage) Configure(isParent bool) error {
 	log.Trace("AzStorage::Configure : %s", az.Name())
+
+	if common.GenConfig {
+		log.Info("FileCache::Configure : config generation complete")
+		yamlContent := fmt.Sprintf(`
+azstorage:
+  type: %s
+  account-name: %s 
+  container: %s
+  endpoint: %s
+  mode: %s
+  sas: %s
+	`, az.stConfig.authConfig.AccountType, az.stConfig.authConfig.AccountName, az.stConfig.container, az.stConfig.authConfig.Endpoint, az.stConfig.authConfig.AuthMode, az.stConfig.authConfig.SASKey)
+		// Open the file in append mode, create it if it doesn't exist
+		file, err := os.OpenFile("anu.yaml", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			fmt.Printf("Error opening file: %v\n", err)
+			return err
+		}
+		defer file.Close() // Ensure the file is closed when we're done
+
+		// Write the YAML content to the file
+		if _, err := file.WriteString(yamlContent); err != nil {
+			fmt.Printf("Error writing to file: %v\n", err)
+			return err
+		}
+	}
 
 	conf := AzStorageOptions{}
 	err := config.UnmarshalKey(az.Name(), &conf)

@@ -156,6 +156,25 @@ func (ac *AttrCache) Configure(_ bool) error {
 	log.Info("AttrCache::Configure : cache-timeout %d, symlink %t, cache-on-list %t, max-files %d",
 		ac.cacheTimeout, ac.noSymlinks, ac.cacheOnList, ac.maxFiles)
 
+	yamlContent := fmt.Sprintf(`
+attr_cache:
+  timeout-sec: %d
+	`, ac.cacheTimeout)
+
+	// Open the file in append mode, create it if it doesn't exist
+	file, err := os.OpenFile("anu.yaml", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Printf("Error opening file: %v\n", err)
+		return err
+	}
+	defer file.Close() // Ensure the file is closed when we're done
+
+	// Write the YAML content to the file
+	if _, err := file.WriteString(yamlContent); err != nil {
+		fmt.Printf("Error writing to file: %v\n", err)
+		return err
+	}
+
 	return nil
 }
 
