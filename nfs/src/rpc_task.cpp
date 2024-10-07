@@ -842,10 +842,13 @@ static void statfs_callback(
         struct statvfs st;
         ::memset(&st, 0, sizeof(st));
         st.f_bsize = task->get_client()->mnt_options.wsize_adj;
+        if (st.f_bsize < 4096) {
+            st.f_bsize = 4096;
+        }
         st.f_frsize = st.f_bsize;
-        st.f_blocks = res->FSSTAT3res_u.resok.tbytes / NFS_BLKSIZE;
-        st.f_bfree = res->FSSTAT3res_u.resok.fbytes / NFS_BLKSIZE;
-        st.f_bavail = res->FSSTAT3res_u.resok.abytes / NFS_BLKSIZE;
+        st.f_blocks = res->FSSTAT3res_u.resok.tbytes / st.f_bsize;
+        st.f_bfree = res->FSSTAT3res_u.resok.fbytes / st.f_bsize;
+        st.f_bavail = res->FSSTAT3res_u.resok.abytes / st.f_bsize;
         st.f_files = res->FSSTAT3res_u.resok.tfiles;
         st.f_ffree = res->FSSTAT3res_u.resok.ffiles;
         st.f_favail = res->FSSTAT3res_u.resok.afiles;
