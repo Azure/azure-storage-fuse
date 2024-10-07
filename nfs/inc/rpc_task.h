@@ -33,11 +33,14 @@
  *     attributes for success return. If getattr fails after the operation
  *     then operation will complete successfully but postop attributes won't
  *     be returned, f.e., if file is deleted right after the operation.
+ * XXX The attributes_follow assert is disabled as we have a PP in the server
+ *     which emulates postop attributes not being sent. When running against
+ *     prod tenants where PPs are disabled, you can enable the assert check.
  */
 #define UPDATE_INODE_ATTR(inode, postop) \
 do { \
     assert(inode->magic == NFS_INODE_MAGIC); \
-    assert(postop.attributes_follow); \
+    /* assert(postop.attributes_follow); */\
     if (postop.attributes_follow) { \
         AZLogDebug("[{}] UPDATE_INODE_ATTR() from {}", \
                    inode->get_fuse_ino(), \
@@ -66,8 +69,10 @@ do { \
     const struct pre_op_attr& preop = wcc_data.before; \
     const struct fattr3 *postattr = nullptr; \
     const struct wcc_attr *preattr = nullptr; \
+    /* \
     assert(postop.attributes_follow); \
     assert(preop.attributes_follow); \
+    */ \
     if (postop.attributes_follow) { \
         postattr = &postop.post_op_attr_u.attributes; \
     } \
