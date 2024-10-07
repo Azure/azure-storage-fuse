@@ -333,6 +333,7 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 	handle.Mtime = attr.Mtime
 	handle.Size = attr.Size
 
+	log.Debug("BlockCache::OpenFile : Size of file handle.Size %v", handle.Size)
 	bc.prepareHandleForBlockCache(handle)
 
 	if options.Flags&os.O_TRUNC != 0 || (options.Flags&os.O_WRONLY != 0 && options.Flags&os.O_APPEND == 0) {
@@ -927,7 +928,7 @@ func (bc *BlockCache) download(item *workItem) {
 				}
 
 				if n != int(bc.blockSize) && item.block.offset+uint64(n) != uint64(item.handle.Size) {
-					log.Err("BlockCache::download : Local data retrieved from disk size mismatch, Expected %v, OnDisk %v", bc.blockSize, n)
+					log.Err("BlockCache::download : Local data retrieved from disk size mismatch, Expected %v, OnDisk %v, fileSize %v", bc.getBlockSize(uint64(item.handle.Size), item.block), n, item.handle.Size)
 				}
 
 				f.Close()
@@ -945,6 +946,7 @@ func (bc *BlockCache) download(item *workItem) {
 		Offset: int64(item.block.offset),
 		Data:   item.block.data,
 	})
+	log.Debug("BlockCache::download : handle size %v, Downloaded size %v", item.handle.Size, n)
 
 	if item.failCnt > MAX_FAIL_CNT {
 		// If we failed to read the data 3 times then just give up
@@ -968,8 +970,10 @@ func (bc *BlockCache) download(item *workItem) {
 		return
 	}
 
+	log.Debug("BlockCache::download : Downloaded %v data from %v offset and file size %v", n, item.block.offset, item.handle.Size)
+
 	if n != int(bc.blockSize) && item.block.offset+uint64(n) != uint64(item.handle.Size) {
-		log.Err("BlockCache::download : Downloaded data size mismatch expected %v, Dowloaded %v", bc.blockSize, n)
+		log.Err("BlockCache::download : Downloaded data size mismatch expected %v, Downloaded %v", bc.getBlockSize(uint64(item.handle.Size), item.block), n)
 	}
 
 	if bc.tmpPath != "" {
@@ -982,7 +986,10 @@ func (bc *BlockCache) download(item *workItem) {
 		// Dump this block to local disk cache
 		f, err := os.Create(localPath)
 		if err == nil {
-			_, err := f.Write(item.block.data[:n])
+			t, err := f.Write(item.block.data[:n])
+			if n != t {
+				log.Err("BlockCache::download : Write to disk failure given %v, written %v", n, t)
+			}
 			if err != nil {
 				log.Err("BlockCache::download : Failed to write %s to disk [%v]", localPath, err.Error())
 				_ = os.Remove(localPath)
