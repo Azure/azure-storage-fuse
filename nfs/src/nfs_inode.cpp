@@ -90,6 +90,12 @@ nfs_inode::~nfs_inode()
     assert(lookupcnt == 0);
     assert(forget_expected == 0);
 
+#if 1
+    // XXX Remove me once this bug is fixed.
+    if (opencnt != 0) {
+        AZLogError("[{}] opencnt = {}!", ino, opencnt.load());
+    }
+#endif
     // We should never delete an inode which is still open()ed by user.
     assert(opencnt == 0);
 
