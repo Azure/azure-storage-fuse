@@ -49,11 +49,3 @@ func (xb *xbase) getThreadPool() *ThreadPool {
 func (xb *xbase) getRemote() internal.Component {
 	return xb.remote
 }
-
-// --------------------------------------------------------------------------------------------------------------------------------------------------
-
-type xmanager struct {
-	xbase
-}
-
-var _ xcomponent = &xmanager{}

@@ -50,12 +50,16 @@ type Xload struct {
 	blockSize uint64 // Size of each block to be cached
 	mode      Mode   // Mode of the Xload component
 
-	workerCount   uint32 // Number of workers running
+	workerCount uint32     // Number of workers running
+	blockPool   *BlockPool // Pool of blocks
+	path        string     // Path on local disk where Xload will operate
+
+	comp xcomponent
+
 	en            enumerator
 	dataMgrPool   *ThreadPool // Thread Pool for data upload download
 	dataSplitPool *ThreadPool // Thread Pool for chunking of a file
-	blockPool     *BlockPool  // Pool of blocks
-	path          string      // Path on local disk where Xload will operate
+
 }
 
 // Structure defining your config parameters
@@ -247,6 +251,15 @@ func (xl *Xload) StartUploader() error {
 func (xl *Xload) StartDownloader() error {
 	log.Trace("Xload::StartDownloader : Starting downloader")
 
+	// // Create remote lister pool to list local files
+	// lister, err := newXRemoteLister(xl.path, xl.NextComponent())
+	// if err != nil {
+	// 	log.Err("Xload::StartUploader : Unable to create local lister [%s]", err.Error())
+	// 	return err
+	// }
+
+	// // splitter, err :=
+
 	// Create remote data manager to upload blocks
 	dataMgr := RemoteDataManager{
 		remote: xl.NextComponent(),
@@ -266,14 +279,6 @@ func (xl *Xload) StartDownloader() error {
 
 	// Create a thread-pool to split file into blocks
 	xl.dataSplitPool = newThreadPool(MAX_DATA_SPLITTER, splitter.SplitData)
-
-	// Create remote lister pool to list local files
-	var err error
-	xl.en, err = newRemoteLister(xl.path, xl.NextComponent())
-	if err != nil {
-		log.Err("Xload::StartUploader : Unable to create local lister [%s]", err.Error())
-		return err
-	}
 
 	// start input threadpool
 	xl.en.getInputPool().Start()
