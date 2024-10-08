@@ -1536,10 +1536,9 @@ func (bc *BlockCache) stageZeroBlock(handle *handlemap.Handle, tryCnt int) (stri
 
 	log.Debug("BlockCache::stageZeroBlock : Staging zero block for %v=>%v, try = %v", handle.ID, handle.Path, tryCnt)
 	err := bc.NextComponent().StageData(internal.StageDataOptions{
-		Name:   handle.Path,
-		Data:   bc.blockPool.zeroBlock.data[:],
-		Offset: 0,
-		Id:     id,
+		Name: handle.Path,
+		Data: bc.blockPool.zeroBlock.data[:],
+		Id:   id,
 	})
 
 	if err != nil {

@@ -14,6 +14,8 @@ import (
 )
 
 // SAMPLE EXTERNAL COMPONENT IMPLEMENTATION
+// To build this component run the following command:
+// "go build -buildmode=plugin -o sample_custom_component2.so"
 // This is a sample external component implementation that can be used as a reference to implement external components.
 // The external component should implement the external.Component interface.
 const (
