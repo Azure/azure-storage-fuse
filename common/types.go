@@ -94,6 +94,9 @@ var TransferPipe = "/tmp/transferPipe"
 var PollingPipe = "/tmp/pollPipe"
 
 var MountPath string
+var GenConfig bool = false
+var TmpPath string
+var DirectIO bool
 
 // LogLevel enum
 type LogLevel int
