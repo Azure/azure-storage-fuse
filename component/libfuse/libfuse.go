@@ -307,7 +307,12 @@ func (lf *Libfuse) Configure(_ bool) error {
 
 	if common.GenConfig {
 		log.Info("FileCache::Configure : config generation complete")
-		yamlContent := fmt.Sprintf("\nlibfuse:\n  attribute-expiration-sec: %v\n  entry-expiration-sec: %v\n  negative-entry-expiration-sec: %v\n", lf.attributeExpiration, lf.entryExpiration, lf.negativeTimeout)
+		var yamlContent string
+		if common.DirectIO {
+			yamlContent = "\nlibfuse:\n  attribute-expiration-sec: 0\n  entry-expiration-sec: 0\n  negative-entry-expiration-sec: 0\n  direct-io: true\n"
+		} else {
+			yamlContent = fmt.Sprintf("\nlibfuse:\n  attribute-expiration-sec: %v\n  entry-expiration-sec: %v\n  negative-entry-expiration-sec: %v\n", lf.attributeExpiration, lf.entryExpiration, lf.negativeTimeout)
+		}
 
 		// Open the file in append mode, create it if it doesn't exist
 		file, err := os.OpenFile("defaultConfig.yaml", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)

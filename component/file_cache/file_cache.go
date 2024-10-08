@@ -320,6 +320,9 @@ func (c *FileCache) Configure(_ bool) error {
 
 	if common.GenConfig {
 		log.Info("FileCache::Configure : config generation complete")
+		if common.DirectIO {
+			c.cacheTimeout = 0
+		}
 		yamlContent := fmt.Sprintf("\nfile_cache:\n  path: %s\n  timeout-sec: %f\n  max-size-mb: %f\n", c.tmpPath, c.cacheTimeout, c.maxCacheSize/MB)
 		// Open the file in append mode, create it if it doesn't exist
 		file, err := os.OpenFile("defaultConfig.yaml", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)

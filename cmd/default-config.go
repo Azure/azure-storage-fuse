@@ -44,8 +44,9 @@ import (
 )
 
 type defaultConfigOptions struct {
-	configComp string
-	configTmp  string
+	configComp     string
+	configTmp      string
+	configDirectIO bool
 }
 
 var opts2 defaultConfigOptions
@@ -66,6 +67,9 @@ var defaultConfig = &cobra.Command{
 			return fmt.Errorf("temp path is required for file cache mode")
 		}
 
+		if opts2.configDirectIO {
+			common.DirectIO = true
+		}
 		pipeline := []string{"libfuse"}
 		if opts2.configComp == "bc" {
 			pipeline = append(pipeline, "block_cache")
@@ -124,5 +128,6 @@ var defaultConfig = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(defaultConfig)
 	defaultConfig.Flags().StringVar(&opts2.configComp, "component", "", "Input bc or fc.")
-	defaultConfig.Flags().StringVar(&opts2.configTmp, "tmp-path", "", "Input temppath")
+	defaultConfig.Flags().StringVar(&opts2.configTmp, "tmp-path", "", "Input path for caching")
+	defaultConfig.Flags().BoolVar(&opts2.configDirectIO, "direct-io", false, "Choose direct-io mode")
 }
