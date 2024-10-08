@@ -951,7 +951,6 @@ func (bc *BlockCache) download(item *workItem) {
 		Offset: int64(item.block.offset),
 		Data:   item.block.data,
 	})
-	log.Debug("BlockCache::download : handle size %v, Downloaded size %v", item.handle.Size, n)
 
 	if item.failCnt > MAX_FAIL_CNT {
 		// If we failed to read the data 3 times then just give up
@@ -974,8 +973,6 @@ func (bc *BlockCache) download(item *workItem) {
 		bc.threadPool.Schedule(false, item)
 		return
 	}
-
-	log.Debug("BlockCache::download : Downloaded %v data, Requested %v data, from %v offset and file size %v", n, bc.getBlockSize(uint64(item.handle.Size), item.block), item.block.offset, item.handle.Size)
 
 	if bc.tmpPath != "" {
 		err := os.MkdirAll(filepath.Dir(localPath), 0777)
