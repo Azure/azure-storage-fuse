@@ -106,8 +106,8 @@ bool is_valid_lookupcache(const std::string& lookupcache)
 static inline
 bool is_valid_consistency(const std::string& consistency)
 {
-    return (consistency == "solowriter" || consistency == "standard" ||
-            consistency == "mpa");
+    return (consistency == "solowriter" || consistency == "standardnfs" ||
+            consistency == "azurempa");
 }
 
 /**

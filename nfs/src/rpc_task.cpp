@@ -2177,8 +2177,11 @@ void rpc_task::run_read()
 
     /*
      * In solowriter mode we know the file size definitively.
+     * This is an optimization that saves an extra READ call to the server.
+     * The server will correctly return 0+eof for this READ call so we are
+     * functionally correct in other consistency modes too.
      */
-    if (aznfsc_cfg.consistency_int == consistency_t::SOLOWRITER) {
+    if (aznfsc_cfg.consistency_solowriter) {
         const int64_t file_size = inode->get_file_size();
         if ((file_size != -1) &&
             (rpc_api->read_task.get_offset() >= file_size)) {

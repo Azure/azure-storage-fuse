@@ -260,25 +260,37 @@ void aznfsc_cfg::set_defaults_and_sanitize()
     if (consistency) {
         if (std::string(consistency) == "solowriter") {
             consistency_int = consistency_t::SOLOWRITER;
+            consistency_solowriter = true;
             /*
              * Set actimeo to the max value. and lookupcache for caching positive
              * and negative lookup responses.
              */
             actimeo = AZNFSCFG_ACTIMEO_MAX;
             lookupcache_int = AZNFSCFG_LOOKUPCACHE_ALL;
-        } else if (std::string(consistency) == "standard") {
-            consistency_int = consistency_t::STANDARD;
-        } else if (std::string(consistency) == "mpa") {
-            consistency_int = consistency_t::MPA;
+        } else if (std::string(consistency) == "standardnfs") {
+            consistency_int = consistency_t::STANDARDNFS;
+            consistency_standardnfs = true;
+        } else if (std::string(consistency) == "azurempa") {
+            consistency_int = consistency_t::AZUREMPA;
+            consistency_azurempa = true;
         } else {
             // We should not come here with an invalid value.
             assert(0);
-            consistency_int = consistency_t::DEFAULT;
+            consistency_int = consistency_t::STANDARDNFS;
+            consistency_standardnfs = true;
         }
     } else {
         consistency = "";
-        consistency_int = consistency_t::DEFAULT;
+        consistency_int = consistency_t::STANDARDNFS;
+        consistency_standardnfs = true;
     }
+
+    /*
+     * One and only one consistency mode boolean must be set.
+     */
+    assert(((int) consistency_solowriter +
+            (int) consistency_standardnfs +
+            (int) consistency_azurempa) == 1);
 
     if (cloud_suffix == nullptr)
         cloud_suffix = ::strdup("blob.core.windows.net");

@@ -84,14 +84,14 @@ extern double inject_err_prob_pct_def;
 
 /**
  * Enum for defining the various consistency levels we support.
+ * Ref details in sample-config.yaml.
  */
 enum class consistency_t
 {
     INVALID = 0,
     SOLOWRITER,
-    STANDARD,
-    DEFAULT = STANDARD,
-    MPA,
+    STANDARDNFS,
+    AZUREMPA,
 };
 
 /**
@@ -213,8 +213,15 @@ typedef struct aznfsc_cfg
     /*************************************************
      **              Cconsistency config            **
      *************************************************/
-     const char *consistency = nullptr;
-     consistency_t consistency_int = consistency_t::DEFAULT;
+    const char *consistency = nullptr;
+    consistency_t consistency_int = consistency_t::INVALID;
+
+    /*
+     * Convenience shortcuts for consistency mode check.
+     */
+    bool consistency_solowriter = false;
+    bool consistency_standardnfs = false;
+    bool consistency_azurempa = false;
 
     /*************************************************
      **                 Cache config                **

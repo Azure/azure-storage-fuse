@@ -40,7 +40,7 @@ wsize: 1048576
 #   making changes to the share (creating/deleting files/dirs) those changes may
 #   not reflect for indefinitely long period.
 #
-# - standard
+# - standardnfs
 #   Use this to get the same consistency as standard NFS, which is close-to-open
 #   consistency with fresh attributes queried every actimeo period. actimeo
 #   config will be honoured.
@@ -52,7 +52,7 @@ wsize: 1048576
 #   Other non-NFS protocol clients may not see changes to files made by this
 #   fuse client till the file is closed.
 #
-# - mpa (Multi Protocol Access)
+# - azurempa (Multi Protocol Access)
 #   This is same as "standard" with one difference - non-NFS protocol clients
 #   will see changes to files made by this fuse client more promptly.
 #   Use this if you want to access files updated by this client, from other
