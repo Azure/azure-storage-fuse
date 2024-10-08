@@ -53,8 +53,8 @@ var opts2 defaultConfigOptions
 var defaultConfig = &cobra.Command{
 	Use:               "gen-config",
 	Short:             "Generate default config file.",
-	Long:              "Generate default config file with the values pre-caclulated by blobfuse2.",
-	SuggestFor:        []string{"conv test config", "convert test config"},
+	Long:              "Generate default config file with the values pre-caculated by blobfuse2.",
+	SuggestFor:        []string{"default config", "generate default config"},
 	Hidden:            true,
 	Args:              cobra.ExactArgs(0),
 	FlagErrorHandling: cobra.ExitOnError,
@@ -62,7 +62,7 @@ var defaultConfig = &cobra.Command{
 
 		common.GenConfig = true
 
-		if opts2.configComp == "" || opts2.configComp != "block_cache" && opts2.configComp != "file_cache" {
+		if opts2.configComp != "block_cache" && opts2.configComp != "file_cache" {
 			return fmt.Errorf("component is required and should be either block_cache or file_cache")
 		}
 
