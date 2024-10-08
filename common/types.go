@@ -95,6 +95,7 @@ var PollingPipe = "/tmp/pollPipe"
 
 var MountPath string
 var GenConfig bool = false
+var TmpPath string
 
 // LogLevel enum
 type LogLevel int

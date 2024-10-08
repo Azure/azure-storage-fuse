@@ -307,15 +307,10 @@ func (lf *Libfuse) Configure(_ bool) error {
 
 	if common.GenConfig {
 		log.Info("FileCache::Configure : config generation complete")
-		yamlContent := fmt.Sprintf(`
-libfuse:
-  attribute-expiration-sec: %v
-  entry-expiration-sec: %v
-  negative-entry-expiration-sec: %v
-	`, lf.attributeExpiration, lf.entryExpiration, lf.negativeTimeout)
+		yamlContent := fmt.Sprintf("\nlibfuse:\n  attribute-expiration-sec: %v\n  entry-expiration-sec: %v\n  negative-entry-expiration-sec: %v\n", lf.attributeExpiration, lf.entryExpiration, lf.negativeTimeout)
 
 		// Open the file in append mode, create it if it doesn't exist
-		file, err := os.OpenFile("anu.yaml", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		file, err := os.OpenFile("defaultConfig.yaml", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
 			fmt.Printf("Error opening file: %v\n", err)
 			return err

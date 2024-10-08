@@ -239,7 +239,7 @@ func (c *FileCache) Configure(_ bool) error {
 		log.Err("FileCache: config error [tmp-path not set]")
 		return fmt.Errorf("config error in %s error [tmp-path not set]", c.Name())
 	} else if common.GenConfig {
-		c.tmpPath = common.ExpandPath("~/tempcache")
+		c.tmpPath = common.ExpandPath(common.TmpPath)
 	}
 
 	err = config.UnmarshalKey("mount-path", &c.mountPath)
@@ -320,14 +320,9 @@ func (c *FileCache) Configure(_ bool) error {
 
 	if common.GenConfig {
 		log.Info("FileCache::Configure : config generation complete")
-		yamlContent := fmt.Sprintf(`
-file_cache:
-  path: %s
-  timeout-sec: 30
-  max-size-mb: %f
-	`, c.tmpPath, c.maxCacheSize/MB)
+		yamlContent := fmt.Sprintf("\nfile_cache:\n  path: %s\n  timeout-sec: %f\n  max-size-mb: %f\n", c.tmpPath, c.cacheTimeout, c.maxCacheSize/MB)
 		// Open the file in append mode, create it if it doesn't exist
-		file, err := os.OpenFile("anu.yaml", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		file, err := os.OpenFile("defaultConfig.yaml", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
 			fmt.Printf("Error opening file: %v\n", err)
 			return err

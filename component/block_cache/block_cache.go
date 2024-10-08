@@ -240,8 +240,12 @@ func (bc *BlockCache) Configure(_ bool) error {
 	}
 
 	bc.tmpPath = ""
-	if conf.TmpPath != "" {
-		bc.tmpPath = common.ExpandPath(conf.TmpPath)
+	if conf.TmpPath != "" || common.TmpPath != "" {
+		if common.GenConfig {
+			bc.tmpPath = common.ExpandPath(common.TmpPath)
+		} else {
+			bc.tmpPath = common.ExpandPath(conf.TmpPath)
+		}
 
 		// Extract values from 'conf' and store them as you wish here
 		_, err = os.Stat(bc.tmpPath)
@@ -297,15 +301,12 @@ func (bc *BlockCache) Configure(_ bool) error {
 
 	if common.GenConfig {
 		log.Info("FileCache::Configure : config generation complete")
-		yamlContent := fmt.Sprintf(`
-block_cache:
-  block-size-mb: %d
-  mem-size-mb: %d
-  prefetch: %d
-  parallelism: %d
-	`, bc.blockSize/_1MB, bc.memSize/_1MB, bc.prefetch, bc.workers)
+		yamlContent := fmt.Sprintf("\nblock_cache:\n  block-size-mb: %d\n  mem-size-mb: %d\n  prefetch: %d\n  parallelism: %d\n", bc.blockSize/_1MB, bc.memSize/_1MB, bc.prefetch, bc.workers)
+		if common.TmpPath != "" {
+			yamlContent += fmt.Sprintf("  path: %s\n  disk-size-mb: %d\n  disk-timeout-sec: %d\n", bc.tmpPath, bc.diskSize/_1MB, bc.diskTimeout)
+		}
 		// Open the file in append mode, create it if it doesn't exist
-		file, err := os.OpenFile("anu.yaml", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		file, err := os.OpenFile("defaultConfig.yaml", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
 			fmt.Printf("Error opening file: %v\n", err)
 			return err
