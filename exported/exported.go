@@ -1,11 +1,11 @@
-package external
+package exported
 
 import (
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
 
-// Package external is a wrapper around internal package to expose the internal attributes for writing custom components.
+// Package exported is a wrapper around internal package to expose the internal attributes for writing custom components.
 const (
 	PropFlagUnknown uint16 = iota
 	PropFlagNotExists

@@ -9,35 +9,35 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	"github.com/Azure/azure-storage-fuse/v2/external"
+	"github.com/Azure/azure-storage-fuse/v2/exported"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
-// SAMPLE EXTERNAL COMPONENT IMPLEMENTATION
+// SAMPLE CUSTOM COMPONENT IMPLEMENTATION
 // To build this component run the following command:
 // "go build -buildmode=plugin -o sample_custom_component2.so"
-// This is a sample external component implementation that can be used as a reference to implement external components.
-// The external component should implement the external.Component interface.
+// This is a sample custom component implementation that can be used as a reference to implement custom components.
+// The custom component should implement the exported.Component interface.
 const (
 	CompName = "sample_custom_component2"
 	Mb       = 1024 * 1024
 )
 
-var _ external.Component = &sample_custom_component2{}
+var _ exported.Component = &sample_custom_component2{}
 
 func (e *sample_custom_component2) SetName(name string) {
 	e.BaseComponent.SetName(name)
 }
 
-func (e *sample_custom_component2) SetNextComponent(nc external.Component) {
+func (e *sample_custom_component2) SetNextComponent(nc exported.Component) {
 	e.BaseComponent.SetNextComponent(nc)
 }
 
-func GetExternalComponent() (string, func() external.Component) {
+func GetExternalComponent() (string, func() exported.Component) {
 	return CompName, NewexternalComponent
 }
 
-func NewexternalComponent() external.Component {
+func NewexternalComponent() exported.Component {
 	comp := &sample_custom_component2{}
 	comp.SetName(CompName)
 	return comp
@@ -46,7 +46,7 @@ func NewexternalComponent() external.Component {
 type sample_custom_component2 struct {
 	blockSize    int64
 	externalPath string
-	external.BaseComponent
+	exported.BaseComponent
 }
 
 type sample_custom_component2Options struct {
@@ -73,7 +73,7 @@ func (e *sample_custom_component2) Configure(isParent bool) error {
 	return nil
 }
 
-func (e *sample_custom_component2) CreateFile(options external.CreateFileOptions) (*external.Handle, error) {
+func (e *sample_custom_component2) CreateFile(options exported.CreateFileOptions) (*exported.Handle, error) {
 	log.Info("sample_custom_component2::CreateFile")
 	filePath := filepath.Join(e.externalPath, options.Name)
 	fileHandle, err := os.OpenFile(filePath, os.O_CREATE, 0777)
@@ -82,13 +82,13 @@ func (e *sample_custom_component2) CreateFile(options external.CreateFileOptions
 		return nil, err
 	}
 	defer fileHandle.Close()
-	handle := &external.Handle{
+	handle := &exported.Handle{
 		Path: options.Name,
 	}
 	return handle, nil
 }
 
-func (e *sample_custom_component2) CreateDir(options external.CreateDirOptions) error {
+func (e *sample_custom_component2) CreateDir(options exported.CreateDirOptions) error {
 	log.Info("sample_custom_component2::CreateDir")
 	dirPath := filepath.Join(e.externalPath, options.Name)
 	err := os.MkdirAll(dirPath, 0777)
@@ -99,7 +99,7 @@ func (e *sample_custom_component2) CreateDir(options external.CreateDirOptions) 
 	return nil
 }
 
-func (e *sample_custom_component2) StreamDir(options external.StreamDirOptions) ([]*external.ObjAttr, string, error) {
+func (e *sample_custom_component2) StreamDir(options exported.StreamDirOptions) ([]*exported.ObjAttr, string, error) {
 	log.Info("sample_custom_component2::StreamDir")
 	var objAttrs []*internal.ObjAttr
 	path := formatListDirName(options.Name)
@@ -125,7 +125,7 @@ func (e *sample_custom_component2) StreamDir(options external.StreamDirOptions) 
 
 	return objAttrs, "", nil
 }
-func (e *sample_custom_component2) IsDirEmpty(options external.IsDirEmptyOptions) bool {
+func (e *sample_custom_component2) IsDirEmpty(options exported.IsDirEmptyOptions) bool {
 	log.Info("sample_custom_component2::IsDirEmpty")
 	files, err := os.ReadDir(filepath.Join(e.externalPath, options.Name))
 	if err != nil {
@@ -135,7 +135,7 @@ func (e *sample_custom_component2) IsDirEmpty(options external.IsDirEmptyOptions
 	return len(files) == 0
 }
 
-func (e *sample_custom_component2) DeleteDir(options external.DeleteDirOptions) error {
+func (e *sample_custom_component2) DeleteDir(options exported.DeleteDirOptions) error {
 	log.Info("sample_custom_component2::DeleteDir")
 	dirPath := filepath.Join(e.externalPath, options.Name)
 	err := os.RemoveAll(dirPath)
@@ -146,7 +146,7 @@ func (e *sample_custom_component2) DeleteDir(options external.DeleteDirOptions) 
 	return nil
 }
 
-func (e *sample_custom_component2) StageData(opt external.StageDataOptions) error {
+func (e *sample_custom_component2) StageData(opt exported.StageDataOptions) error {
 	log.Info("sample_custom_component2:: StageData")
 	filePath := filepath.Join(e.externalPath, opt.Name)
 	fileHandle, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY, 0777)
@@ -168,7 +168,7 @@ func (e *sample_custom_component2) StageData(opt external.StageDataOptions) erro
 	return nil
 }
 
-func (e *sample_custom_component2) ReadInBuffer(opt external.ReadInBufferOptions) (length int, err error) {
+func (e *sample_custom_component2) ReadInBuffer(opt exported.ReadInBufferOptions) (length int, err error) {
 	log.Info("sample_custom_component2:: ReadInBuffer")
 
 	filePath := filepath.Join(e.externalPath, opt.Handle.Path)
@@ -187,16 +187,16 @@ func (e *sample_custom_component2) ReadInBuffer(opt external.ReadInBufferOptions
 	return n, nil
 }
 
-func (e *sample_custom_component2) GetAttr(options external.GetAttrOptions) (attr *external.ObjAttr, err error) {
+func (e *sample_custom_component2) GetAttr(options exported.GetAttrOptions) (attr *exported.ObjAttr, err error) {
 	log.Info("sample_custom_component2::GetAttr for %s", options.Name)
 	fileAttr, err := os.Stat(filepath.Join(e.externalPath, options.Name))
 	if err != nil {
 		log.Trace("sample_custom_component2::GetAttr : Error getting file attributes: %s", err.Error())
-		return &external.ObjAttr{}, err
+		return &exported.ObjAttr{}, err
 	}
 
 	// Populate the ObjAttr struct with the file info.
-	attr = &external.ObjAttr{
+	attr = &exported.ObjAttr{
 		Mtime:  fileAttr.ModTime(), // Modified time
 		Atime:  time.Now(),         // Access time (current time as approximation)
 		Ctime:  fileAttr.ModTime(), // Change time (same as modified time in this case)
@@ -207,7 +207,7 @@ func (e *sample_custom_component2) GetAttr(options external.GetAttrOptions) (att
 		Size:   fileAttr.Size(),    // File size
 	}
 	if fileAttr.IsDir() {
-		attr.Flags.Set(external.PropFlagIsDir)
+		attr.Flags.Set(exported.PropFlagIsDir)
 	}
 	return attr, nil
 }
@@ -218,7 +218,7 @@ func formatListDirName(path string) string {
 	if path == "/" {
 		path = ""
 	} else if path != "" {
-		path = external.ExtendDirName(path)
+		path = exported.ExtendDirName(path)
 	}
 	return path
 }

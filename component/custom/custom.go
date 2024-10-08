@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	"github.com/Azure/azure-storage-fuse/v2/external"
+	"github.com/Azure/azure-storage-fuse/v2/exported"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
@@ -32,7 +32,7 @@ func init() {
 	} else {
 		files, err := os.ReadDir(pluginDirPath)
 		if err != nil {
-			log.Err("custom_loader::Error reading plugin directory: %s", err.Error())
+			log.Err("custom::Error reading plugin directory: %s", err.Error())
 			return
 		}
 		for _, file := range files {
@@ -43,22 +43,22 @@ func init() {
 	}
 
 	for _, file := range pluginFiles {
-		log.Info("custom_loader::Opening plugin: %s", file)
+		log.Info("custom::Opening plugin: %s", file)
 		p, err := plugin.Open(file)
 		if err != nil {
-			log.Err("custom_loader::Error opening plugin: %s", err.Error())
+			log.Err("custom::Error opening plugin: %s", err.Error())
 			os.Exit(1)
 		}
-		log.Info("custom_loader::Plugin opened successfully")
+		log.Info("custom::Plugin opened successfully")
 
 		getExternalComponentFunc, err := p.Lookup("GetExternalComponent")
 		if err != nil {
-			log.Err("custom_loader::Error looking up GetExternalComponent function: %s", err.Error())
+			log.Err("custom::Error looking up GetExternalComponent function: %s", err.Error())
 			os.Exit(1)
 		}
-		getExternalComponent, ok := getExternalComponentFunc.(func() (string, func() external.Component))
+		getExternalComponent, ok := getExternalComponentFunc.(func() (string, func() exported.Component))
 		if !ok {
-			log.Err("custom_loader::Error casting GetExternalComponent function")
+			log.Err("custom::Error casting GetExternalComponent function")
 			os.Exit(1)
 		}
 		compName, initExternalComponent := getExternalComponent()
