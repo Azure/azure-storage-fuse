@@ -319,23 +319,21 @@ func (c *FileCache) Configure(_ bool) error {
 		c.createEmptyFile, int(c.cacheTimeout), c.tmpPath, int(cacheConfig.maxSizeMB), int(cacheConfig.highThreshold), int(cacheConfig.lowThreshold), c.refreshSec, cacheConfig.maxEviction, c.hardLimit, conf.Policy, c.allowNonEmpty, c.cleanupOnStart, c.policyTrace, c.offloadIO, c.syncToFlush, c.syncToDelete, c.defaultPermission, c.diskHighWaterMark, c.maxCacheSize, c.mountPath)
 
 	if common.GenConfig {
-		log.Info("FileCache::Configure : config generation complete")
+		log.Info("FileCache::Configure : config generation started")
 		if common.DirectIO {
 			c.cacheTimeout = 0
 		}
-		yamlContent := fmt.Sprintf("\nfile_cache:\n  path: %s\n  timeout-sec: %f\n  max-size-mb: %f\n", c.tmpPath, c.cacheTimeout, c.maxCacheSize/MB)
+		yamlContent := fmt.Sprintf("\nfile_cache:\n  path: %s\n  timeout-sec: %d\n  max-size-mb: %d\n", c.tmpPath, int(c.cacheTimeout), int(c.maxCacheSize/MB))
 		// Open the file in append mode, create it if it doesn't exist
 		file, err := os.OpenFile("defaultConfig.yaml", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
-			fmt.Printf("Error opening file: %v\n", err)
-			return err
+			return fmt.Errorf("error opening default config file: [%s]", err.Error())
 		}
 		defer file.Close() // Ensure the file is closed when we're done
 
 		// Write the YAML content to the file
 		if _, err := file.WriteString(yamlContent); err != nil {
-			fmt.Printf("Error writing to file: %v\n", err)
-			return err
+			return fmt.Errorf("error writing to default config file [%s]", err.Error())
 		}
 	}
 

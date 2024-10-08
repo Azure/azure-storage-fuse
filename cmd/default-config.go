@@ -38,7 +38,6 @@ import (
 	"os"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
-	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/spf13/cobra"
 )
@@ -62,63 +61,67 @@ var defaultConfig = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		common.GenConfig = true
-		// Check if configTmp is not provided when component is fc
-		if opts2.configComp == "fc" && opts2.configTmp == "" {
-			return fmt.Errorf("temp path is required for file cache mode")
+
+		if opts2.configComp == "" || opts2.configComp != "block_cache" && opts2.configComp != "file_cache" {
+			return fmt.Errorf("component is required and should be either block_cache or file_cache")
 		}
 
-		if opts2.configDirectIO {
-			common.DirectIO = true
+		// Check if configTmp is not provided when component is fc
+		if opts2.configComp == "file_cache" && opts2.configTmp == "" {
+			return fmt.Errorf("temp path is required for file cache mode. Use flag --tmp-path to provide the path")
 		}
+
 		pipeline := []string{"libfuse"}
-		if opts2.configComp == "bc" {
+		if opts2.configComp == "block_cache" {
 			pipeline = append(pipeline, "block_cache")
 			common.TmpPath = opts2.configTmp
-		} else if opts2.configComp == "fc" {
+		} else if opts2.configComp == "file_cache" {
 			pipeline = append(pipeline, "file_cache")
 			common.TmpPath = opts2.configTmp
 		}
-		pipeline = append(pipeline, "attr_cache")
-		options.Components = pipeline
+		if opts2.configDirectIO {
+			common.DirectIO = true
+		} else {
+			pipeline = append(pipeline, "attr_cache")
+		}
 
-		log.Info("ConfigGen::Configure : Generating default config file")
 		yamlContent := "# Logger configuration\n#logging:\n  #  type: syslog|silent|base\n  #  level: log_off|log_crit|log_err|log_warning|log_info|log_trace|log_debug\n  #  file-path: <path where log files shall be stored. Default - '$HOME/.blobfuse2/blobfuse2.log'>\n"
+		yamlContent += "components:\n"
 
+		// Iterate through the pipeline and add each component to the YAML content
+		for _, component := range pipeline {
+			yamlContent += fmt.Sprintf("  - %s\n", component)
+		}
+		yamlContent += "  - azstorage\n"
 		// Open the file in append mode, create it if it doesn't exist
 		file, err := os.OpenFile("defaultConfig.yaml", os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0666)
 		if err != nil {
-			fmt.Printf("Error opening file: %v\n", err)
-			return err
+			return fmt.Errorf("error opening default config file: [%s]", err.Error())
 		}
 		defer file.Close() // Ensure the file is closed when we're done
 
 		// Write the YAML content to the file
 		if _, err := file.WriteString(yamlContent); err != nil {
-			fmt.Printf("Error writing to file: %v\n", err)
-			return err
+			return fmt.Errorf("error writing to default config file [%s]", err.Error())
 		}
 
 		_, err = internal.NewPipeline(pipeline, true)
 		if err != nil {
-			log.Err("Pipeline::NewPipeline : error creating pipeline [%s]", err)
-			return err
+			return fmt.Errorf("defaultConfig:: error creating pipeline [%s]", err.Error())
 		}
 
-		log.Info("FileCache::Configure : config generation complete")
 		yamlContent = "\n#Required\n#azstorage:\n  #  type: block|adls \n  #  account-name: <name of the storage account>\n  #  container: <name of the storage container to be mounted>\n  #  endpoint: <example - https://account-name.blob.core.windows.net>\n  #  mode: key|sas|spn|msi|azcli \n  #  account-key: <storage account key>\n  # OR\n  #  sas: <storage account sas>\n  # OR\n  #  appid: <storage account app id / client id for MSI>\n  # OR\n  #  tenantid: <storage account tenant id for SPN"
 
 		// Open the file in append mode, create it if it doesn't exist
 		file, err = os.OpenFile("defaultConfig.yaml", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
-			fmt.Printf("Error opening file: %v\n", err)
-			return err
+			return fmt.Errorf("error opening default config file: [%s]", err.Error())
 		}
 		defer file.Close() // Ensure the file is closed when we're done
 
 		// Write the YAML content to the file
 		if _, err := file.WriteString(yamlContent); err != nil {
-			fmt.Printf("Error writing to file: %v\n", err)
-			return err
+			return fmt.Errorf("error writing to default config file [%s]", err.Error())
 		}
 
 		return nil
@@ -127,7 +130,7 @@ var defaultConfig = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(defaultConfig)
-	defaultConfig.Flags().StringVar(&opts2.configComp, "component", "", "Input bc or fc.")
+	defaultConfig.Flags().StringVar(&opts2.configComp, "component", "", "Input block_cache or file_cache")
 	defaultConfig.Flags().StringVar(&opts2.configTmp, "tmp-path", "", "Input path for caching")
 	defaultConfig.Flags().BoolVar(&opts2.configDirectIO, "direct-io", false, "Choose direct-io mode")
 }

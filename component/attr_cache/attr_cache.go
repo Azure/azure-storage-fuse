@@ -42,6 +42,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
@@ -156,20 +157,22 @@ func (ac *AttrCache) Configure(_ bool) error {
 	log.Info("AttrCache::Configure : cache-timeout %d, symlink %t, cache-on-list %t, max-files %d",
 		ac.cacheTimeout, ac.noSymlinks, ac.cacheOnList, ac.maxFiles)
 
-	yamlContent := fmt.Sprintf("\nattr_cache:\n  timeout-sec: %d\n", ac.cacheTimeout)
+	if common.GenConfig {
+		log.Info("AttrCache::Configure : config generation started")
 
-	// Open the file in append mode, create it if it doesn't exist
-	file, err := os.OpenFile("defaultConfig.yaml", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		fmt.Printf("Error opening file: %v\n", err)
-		return err
-	}
-	defer file.Close() // Ensure the file is closed when we're done
+		yamlContent := fmt.Sprintf("\nattr_cache:\n  timeout-sec: %d\n", ac.cacheTimeout)
 
-	// Write the YAML content to the file
-	if _, err := file.WriteString(yamlContent); err != nil {
-		fmt.Printf("Error writing to file: %v\n", err)
-		return err
+		// Open the file in append mode, create it if it doesn't exist
+		file, err := os.OpenFile("defaultConfig.yaml", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			return fmt.Errorf("error opening default config file: [%s]", err.Error())
+		}
+		defer file.Close() // Ensure the file is closed when we're done
+
+		// Write the YAML content to the file
+		if _, err := file.WriteString(yamlContent); err != nil {
+			return fmt.Errorf("error writing to default config file [%s]", err.Error())
+		}
 	}
 
 	return nil

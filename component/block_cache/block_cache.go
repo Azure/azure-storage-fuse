@@ -300,7 +300,7 @@ func (bc *BlockCache) Configure(_ bool) error {
 	}
 
 	if common.GenConfig {
-		log.Info("FileCache::Configure : config generation complete")
+		log.Info("BlockCache::Configure : config generation started")
 		yamlContent := fmt.Sprintf("\nblock_cache:\n  block-size-mb: %d\n  mem-size-mb: %d\n  prefetch: %d\n  parallelism: %d\n", bc.blockSize/_1MB, bc.memSize/_1MB, bc.prefetch, bc.workers)
 		if common.TmpPath != "" {
 			yamlContent += fmt.Sprintf("  path: %s\n  disk-size-mb: %d\n  disk-timeout-sec: %d\n", bc.tmpPath, bc.diskSize/_1MB, bc.diskTimeout)
@@ -308,15 +308,13 @@ func (bc *BlockCache) Configure(_ bool) error {
 		// Open the file in append mode, create it if it doesn't exist
 		file, err := os.OpenFile("defaultConfig.yaml", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
-			fmt.Printf("Error opening file: %v\n", err)
-			return err
+			return fmt.Errorf("error opening default config file: [%s]", err.Error())
 		}
 		defer file.Close() // Ensure the file is closed when we're done
 
 		// Write the YAML content to the file
 		if _, err := file.WriteString(yamlContent); err != nil {
-			fmt.Printf("Error writing to file: %v\n", err)
-			return err
+			return fmt.Errorf("error writing to default config file [%s]", err.Error())
 		}
 	}
 
