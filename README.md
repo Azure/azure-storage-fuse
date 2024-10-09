@@ -204,8 +204,7 @@ To learn about a specific command, just include the name of the command (For exa
     * `AZURE_STORAGE_CPK_ENCRYPTION_KEY`: Customer provided base64-encoded AES-256 encryption key value.
     * `AZURE_STORAGE_CPK_ENCRYPTION_KEY_SHA256`: Base64-encoded SHA256 of the cpk encryption key.
 - Custom component options:
-    * `BLOBFUSE_PLUGIN_DIRECTORY`: Specifies the directory path containing the plugin .so files.
-    * `BLOBFUSE_PLUGIN_NAMES`:  Specifies the file names as a colon-separated list of `.so` files located in plugin directory specified by `BLOBFUSE_PLUGIN_DIRECTORY`.
+    * `BLOBFUSE_PLUGIN_PATH`: Specifies plugin file path as a colon-separated list of `.so` files. Example BLOBFUSE_PLUGIN_PATH="/path/to/plugin1.so:/path/to/plugin2.so".
 
 
 ## Config Guide
