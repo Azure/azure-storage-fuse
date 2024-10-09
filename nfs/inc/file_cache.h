@@ -102,8 +102,6 @@ namespace MB_Flag {
        Dirty              = (1 << 2), // Data in membuf is newer than the Blob.
        Flushing           = (1 << 3), // Data from dirty membuf is being synced
                                       // to Blob.
-       WaitingForUptodate = (1 << 4), // At least one thread is waiting for
-                                      // this membuf to become uptodate.
     };
 }
 
@@ -438,9 +436,6 @@ private:
 
     // For managing threads waiting on MB_Flag::Locked.
     std::condition_variable cv;
-
-    // For managing threads waiting for MB_Flag::Uptodate.
-    std::condition_variable cvu;
 
     /*
      * Incremented by bytes_chunk_cache::get() before returning a membuf to

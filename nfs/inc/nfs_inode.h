@@ -679,6 +679,8 @@ struct nfs_inode
      * Returns 0 if copy was successful, else a +ve errno value indicating the
      * error. This can be passed as-is to the rpc_task reply_error() method to
      * convey the error to fuse.
+     * EAGAIN is the special error code that would mean that caller must retry
+     * the current copy_to_cache() call.
      *
      * Note: The membufs to which the data is copied will be marked dirty and
      *       uptodate once copy_to_cache() returns.

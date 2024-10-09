@@ -492,6 +492,8 @@ int nfs_inode::copy_to_cache(const struct fuse_bufvec* bufv,
      * TODO: Investigate using splice for zero copy.
      */
     const char *buf = (char *) bufv->buf[bufv->idx].mem + bufv->off;
+    int err = 0;
+    bool inject_eagain = false;
 
     /*
      * Get bytes_chunk(s) covering the range [offset, offset+length).
@@ -509,9 +511,22 @@ int nfs_inode::copy_to_cache(const struct fuse_bufvec* bufv,
 #endif
 
         /*
+         * If we have already failed with EAGAIN, just drain the bc_vec
+         * clearing the inuse count for all the bytes_chunk.
+         *
+         * TODO: If we have copied at least one byte, do not fail but instead
+         *       let the caller know that we copied ledd.
+         */
+        if (err == EAGAIN) {
+            mb->clear_inuse();
+            assert(remaining >= bc.length);
+            remaining -= bc.length;
+            continue;
+        }
+
+        /*
          * Lock the membuf while we copy application data into it.
          */
-lock_and_copy:
         mb->set_locked();
 
         /*
@@ -519,6 +534,7 @@ lock_and_copy:
          * membuf is uptodate we can safely copy to it. In both cases the
          * membuf remains uptodate after the copy.
          */
+try_copy:
         if (bc.maps_full_membuf() || mb->is_uptodate()) {
             assert(bc.length <= remaining);
             ::memcpy(bc.get_buffer(), buf, bc.length);
@@ -527,9 +543,9 @@ lock_and_copy:
         } else {
 #ifdef ENABLE_PARANOID
             /*
-             * wait_uptodate() must return only after the membuf is indeed
-             * uptodate, and once marked uptodate membuf should remain
-             * uptodate.
+             * Once we find the membuf uptodate, after waiting, and run
+             * try_copy again, we must not find the membuf not-uptodate
+             * again.
              */
             assert(!found_not_uptodate);
             found_not_uptodate = true;
@@ -551,20 +567,41 @@ lock_and_copy:
              * is waiting to perform IO on the entire membuf, we simply let
              * that thread proceed with its IO. Once it's done the membuf will
              * be uptodate and then we can perform the simple copy.
+             * We wait for 50 msecs after releasing the lock to let the other
+             * thread get the lock. Once it gets the lock it'll only release
+             * it after it performs the IO. So, after we reacquire the lock
+             * if the membuf is not uptodate it implies that the other thread
+             * wasn't able to mark the membuf uptodate. In this case we need
+             * to get fresh bytes_chunk vector and re-do the copy.
              */
             AZLogWarn("[{}] Waiting for membuf [{}, {}) (bc [{}, {})) to "
-                      "be uptodate", ino,
+                      "become uptodate", ino,
                       mb->offset, mb->offset+mb->length,
                       bc.offset, bc.offset+bc.length);
-            mb->wait_uptodate_pre_unlock();
+
             mb->clear_locked();
-            mb->wait_uptodate_post_unlock();
-            assert(mb->is_uptodate());
-            AZLogWarn("[{}] Membuf [{}, {}) (bc [{}, {})) is now uptodate, "
-                      "retrying copy", ino,
-                      mb->offset, mb->offset+mb->length,
-                      bc.offset, bc.offset+bc.length);
-            goto lock_and_copy;
+            ::usleep(50 * 1000);
+            mb->set_locked();
+
+#ifdef ENABLE_PARANOID
+            inject_eagain = inject_error();
+#endif
+
+            if (mb->is_uptodate() && !inject_eagain) {
+                AZLogWarn("[{}] Membuf [{}, {}) (bc [{}, {})) is now uptodate, "
+                          "retrying copy", ino,
+                          mb->offset, mb->offset+mb->length,
+                          bc.offset, bc.offset+bc.length);
+                goto try_copy;
+            } else {
+                AZLogWarn("[{}] {}Membuf [{}, {}) (bc [{}, {})) not marked "
+                          "uptodate by other thread, returning EAGAIN",
+                          ino, inject_eagain ? "PP: " : "",
+                          mb->offset, mb->offset+mb->length,
+                          bc.offset, bc.offset+bc.length);
+                assert(err == 0);
+                err = EAGAIN;
+            }
         }
 
         /*
@@ -582,7 +619,7 @@ lock_and_copy:
     }
 
     assert(remaining == 0);
-    return 0;
+    return err;
 }
 
 int nfs_inode::flush_cache_and_wait(uint64_t start_off, uint64_t end_off)

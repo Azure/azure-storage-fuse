@@ -281,28 +281,12 @@ void membuf::set_uptodate()
         AZLogDebug("Set uptodate membuf [{}, {}), fd={}",
                    offset, offset+length, backing_file_fd);
     }
-
-    /*
-     * If there are any thread(s) waiting for this membuf to become uptodate,
-     * wake them all up. This is not common case.
-     */
-    if (flag & MB_Flag::WaitingForUptodate) {
-        AZLogDebug("One or more threads waiting for membuf [{}, {}), to "
-                   "become uptodate, waking all waiters!",
-                   offset, offset+length);
-        /*
-         * The following lock is to synchronize set_uptodate() (this thread),
-         * and wait_uptodate() (the thread waiting for the membuf to become
-         * uptodate).
-         */
-        std::unique_lock<std::mutex> _lock(lock);
-        flag &= ~MB_Flag::WaitingForUptodate;
-        cvu.notify_all();
-    }
 }
 
 /**
  * Must be called when a read from Blob fails.
+ *
+ * Note: This is highly unlikely with the default hard mount semantics.
  */
 void membuf::clear_uptodate()
 {
@@ -317,40 +301,13 @@ void membuf::clear_uptodate()
     bcc->bytes_uptodate -= length;
     bcc->bytes_uptodate_g -= length;
 
-    AZLogDebug("Clear uptodate membuf [{}, {}), fd={}",
-               offset, offset+length, backing_file_fd);
-}
+    AZLogWarn("Clear uptodate membuf [{}, {}), fd={}",
+              offset, offset+length, backing_file_fd);
 
-void membuf::wait_uptodate_pre_unlock()
-{
-    // pre_unlock must be called with membuf lock held.
-    assert(is_locked());
-
-    std::unique_lock<std::mutex> _lock(lock);
-    flag |= MB_Flag::WaitingForUptodate;
-}
-
-void membuf::wait_uptodate_post_unlock()
-{
-    std::unique_lock<std::mutex> _lock(lock);
-    while (!is_uptodate()) {
-        /*
-         * Give other thread ample time to perform the IO.
-         * We wait for 120 secs and log an error message, to catch any
-         * deadlocks.
-         */
-        if (!cv.wait_for(_lock, std::chrono::seconds(120),
-                         [this]{ return this->is_uptodate(); })) {
-            AZLogError("Timed out waiting for membuf [{}, {}) to become "
-                       "uptodate, re-trying!", offset, offset+length);
-        }
-    }
-
-    AZLogInfo("Successfully waited for membuf [{}, {}), now uptodate!",
-               offset, offset+length);
-
-    // Must never return w/o an uptodate membuf.
-    assert(is_uptodate());
+    /*
+     * Let's assert in debug builds so that we know if it happens.
+     */
+    assert(0);
 }
 
 /**

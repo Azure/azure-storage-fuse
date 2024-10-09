@@ -1564,12 +1564,37 @@ void rpc_task::run_write()
      * Copy application data into chunk cache and initiate writes for all
      * membufs. We don't wait for the writes to actually finish, which means
      * we support buffered writes.
+     * Note that copy_to_cache() may return EAGAIN in the rare case where this
+     * writer thread races with another thread trying to read the same membuf.
+     * The membuf is bigger than what the writer wants to write and is not
+     * uptodate, so the writer needs to wait for the the reader to read into
+     * the membuf and mark it uptodate before it can update the part it wants
+     * to write. The more common case is that the reader reads into the membuf,
+     * marks it uptodate and then writer gets the lock and proceeds, but it's
+     * possible that reader cannot complete the read (most likely reason being
+     * the file ends before the membuf). In this case copy_to_cache() fails with
+     * EAGAIN so that we can repeat the whole process right from getting the
+     * membufs. We do it for 10 times before failing the write, as it's highly
+     * unlikely that we need to repeat more than that.
      */
-    error_code = inode->copy_to_cache(bufv, offset,
-                                      &extent_left, &extent_right);
+    for (int i = 0; i < 10; i++) {
+        error_code = inode->copy_to_cache(bufv, offset,
+                                          &extent_left, &extent_right);
+        if (error_code != EAGAIN) {
+            break;
+        }
+
+        AZLogWarn("[{}] copy_to_cache(offset={}) failed with EAGAIN, retrying",
+                  ino, offset);
+    }
+
     if (error_code != 0) {
         AZLogWarn("[{}] copy_to_cache failed with error={}, "
                   "failing write!", ino, error_code);
+
+        if (error_code == EAGAIN) {
+            error_code = EIO;
+        }
         reply_error(error_code);
         return;
     }
@@ -1597,9 +1622,9 @@ void rpc_task::run_write()
     const uint64_t bytes_to_flush =
         inode->filecache_handle->get_bytes_to_flush();
 
-    AZLogDebug("extent_left: {}, extent_right: {}, size: {}, "
+    AZLogDebug("[{}] extent_left: {}, extent_right: {}, size: {}, "
                "bytes_to_flush: {} (max_dirty_extent: {})",
-               extent_left, extent_right,
+               ino, extent_left, extent_right,
                (extent_right - extent_left),
                bytes_to_flush,
                max_dirty_extent);
