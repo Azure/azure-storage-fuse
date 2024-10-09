@@ -187,6 +187,7 @@ func (rl *xremote) process(item *workItem) (int, error) {
 				// create directory in local
 				// spawn go routine for directory creation and then
 				// adding to the input channel of the listing component
+				// TODO: check how many threads can we spawn
 				go func(name string) {
 					localPath := filepath.Join(rl.path, name)
 					err = rl.mkdir(localPath)
