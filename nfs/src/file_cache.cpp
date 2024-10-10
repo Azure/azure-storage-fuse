@@ -625,6 +625,14 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
                                                  uint64_t *extent_left,
                                                  uint64_t *extent_right)
 {
+#ifdef ENABLE_PRESSURE_POINTS
+    /*
+     * Introduce delay to simulate race in getting bytes_chunk vector.
+     */
+    const uint64_t sleep_usecs = random_number(0, 10'000);
+    ::usleep(sleep_usecs);
+#endif
+
     assert(offset < AZNFSC_MAX_FILE_SIZE);
     assert(length > 0);
     // Cannot write more than AZNFSC_MAX_CHUNK_SIZE in a single call.
