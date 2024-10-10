@@ -1849,11 +1849,18 @@ void bytes_chunk_cache::clear()
         }
 
         /*
-         * Not under use, cannot be locked.
-         * Note that users are supposed to drop the inuse count only after
-         * releasing the membuf lock.
+         * Usually inuse count is dropped after the lock so if inuse count
+         * is zero membuf must not be locked, but users who may want to
+         * release() some chunk while holding the lock may drop their inuse
+         * count to allow release() to release the bytes_chunk.
          */
-        assert(!mb->is_locked());
+        if (mb->is_locked()) {
+            AZLogDebug("[{}] Cache purge: skipping locked membuf(offset={}, "
+                       "length={}) (inuse count={}, dirty={})",
+                       fmt::ptr(this), mb->offset, mb->length,
+                       mb->get_inuse(), mb->is_dirty());
+            continue;
+        }
 
         /*
          * Has data to be written to Blob.

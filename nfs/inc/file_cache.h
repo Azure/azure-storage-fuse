@@ -261,8 +261,16 @@ struct membuf
     bool is_locked() const
     {
         const bool locked = (flag & MB_Flag::Locked);
+        /*
+         * XXX Following assert is usually true but for the rare case when
+         *     caller may drop the inuse count while holding the lock for
+         *     release()ing the chunk, this will not hold.
+         *     See read_callback() for such usage.
+         */
+#if 0
         // If locked, must be inuse.
         assert(is_inuse() || !locked);
+#endif
         return locked;
     }
 
@@ -883,6 +891,12 @@ public:
      *          >>      perform IO
      *          >>      clear_locked()
      *          >>      clear_inuse()
+     *
+     * Note: Usually inuse count should be dropped after the lock is released,
+     *       but there's one case where you may drop inuse count while the lock
+     *       is held. This is if you want to call bytes_chunk_cache::release()
+     *       but want the lock for setting the membuf uptodate f.e.
+     *       See read_callback() for such usage.
      */
     std::vector<bytes_chunk> get(uint64_t offset, uint64_t length)
     {
