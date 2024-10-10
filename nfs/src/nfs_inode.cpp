@@ -612,9 +612,11 @@ try_copy:
                 err = EAGAIN;
 
                 /*
-                 * release the membuf before returning, so that when the caller
+                 * Release the membuf before returning, so that when the caller
                  * calls us again we get a new "full" membuf not this partial
                  * membuf again, else we will be stuck in a loop.
+                 * We need to drop the inuse count for release() to work, then
+                 * re-acquire it for subsequent code to work.
                  */
                 mb->clear_inuse();
                 filecache_handle->release(mb->offset, mb->length);
