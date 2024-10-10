@@ -2751,10 +2751,19 @@ static void read_callback(
              * Also the uptodate flag should be set only if we have read
              * the entire membuf.
              */
-            AZLogDebug("[{}] Setting uptodate flag for membuf [{}, {})",
-                       ino, bc->offset, bc->offset + bc->length);
+#ifdef ENABLE_PRESSURE_POINTS
+            if (inject_error()) {
+                AZLogDebug("[{}] PP: Not setting uptodate flag for membuf "
+                           "[{}, {})",
+                           ino, bc->offset, bc->offset + bc->length);
+            } else
+#endif
+            {
+                AZLogDebug("[{}] Setting uptodate flag for membuf [{}, {})",
+                           ino, bc->offset, bc->offset + bc->length);
 
-            bc->get_membuf()->set_uptodate();
+                bc->get_membuf()->set_uptodate();
+            }
         } else {
             bool set_uptodate = false;
 
