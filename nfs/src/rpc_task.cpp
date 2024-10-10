@@ -2556,9 +2556,12 @@ static void read_callback(
 
     /*
      * If we have already finished reading the entire bytes_chunk, why are we
-     * here.
+     * here. We must have locked the membuf and marked inuse before we issued
+     * the read.
      */
     assert(bc->pvt < bc->length);
+    assert(bc->get_membuf()->is_inuse());
+    assert(bc->get_membuf()->is_locked());
 
     const char* errstr;
     auto res = (READ3res*)data;
@@ -2763,9 +2766,18 @@ static void read_callback(
                 res->READ3res_u.resok.eof) {
                 assert(res->READ3res_u.resok.count < issued_length);
 
+                /*
+                 * We need to clear the inuse count held by this thread, else
+                 * release() will not be able to release. We drop and then
+                 * promptly grab the inuse count after the release(), so that
+                 * set_uptodate() can be called.
+                 */
+                bc->get_membuf()->clear_inuse();
                 const uint64_t released_bytes =
                     filecache_handle->release(bc->offset + bc->pvt,
                                               bc->length - bc->pvt);
+                bc->get_membuf()->set_inuse();
+
                 /*
                  * If we are able to successfully release all the extra bytes
                  * from the bytes_chunk, that means there's no other thread

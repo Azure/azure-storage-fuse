@@ -408,6 +408,14 @@ bool membuf::try_lock()
  */
 void membuf::set_locked()
 {
+#ifdef ENABLE_PRESSURE_POINTS
+    /*
+     * Introduce delay to simulate race in acquiring lock.
+     */
+    const uint64_t sleep_usecs = random_number(0, 10'000);
+    ::usleep(sleep_usecs);
+#endif
+
     AZLogDebug("Locking membuf [{}, {}), fd={}",
                offset, offset+length, backing_file_fd);
 
@@ -535,6 +543,11 @@ void membuf::set_inuse()
 
 void membuf::clear_inuse()
 {
+    /*
+     * We must not clear inuse with lock held but we cannot assert for
+     * !is_locked() here as some other thread can get the lock after we release.
+     */
+
     assert(bcc->bytes_inuse >= length);
     assert(bcc->bytes_inuse_g >= length);
     bcc->bytes_inuse -= length;

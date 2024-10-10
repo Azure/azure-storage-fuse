@@ -610,6 +610,15 @@ try_copy:
                           bc.offset, bc.offset+bc.length);
                 assert(err == 0);
                 err = EAGAIN;
+
+                /*
+                 * release the membuf before returning, so that when the caller
+                 * calls us again we get a new "full" membuf not this partial
+                 * membuf again, else we will be stuck in a loop.
+                 */
+                mb->clear_inuse();
+                filecache_handle->release(mb->offset, mb->length);
+                mb->set_inuse();
             }
         }
 
