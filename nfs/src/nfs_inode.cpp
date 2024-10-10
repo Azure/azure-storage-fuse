@@ -508,6 +508,15 @@ int nfs_inode::copy_to_cache(const struct fuse_bufvec* bufv,
         struct membuf *mb = bc.get_membuf();
 #ifdef ENABLE_PARANOID
         bool found_not_uptodate = false;
+
+        if (!err && inject_error()) {
+            err = EAGAIN;
+            AZLogWarn("[{}] PP: copy_to_cache(): injecting EAGAIN for membuf "
+                      "[{}, {}) (bc [{}, {})), length={}, remaining={}",
+                      ino, mb->offset, mb->offset+mb->length,
+                      bc.offset, bc.offset+bc.length,
+                      length, remaining);
+        }
 #endif
 
         /*
