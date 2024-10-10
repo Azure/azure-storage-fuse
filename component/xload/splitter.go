@@ -1,36 +1,3 @@
-/*
-    _____           _____   _____   ____          ______  _____  ------
-   |     |  |      |     | |     | |     |     | |       |            |
-   |     |  |      |     | |     | |     |     | |       |            |
-   | --- |  |      |     | |-----| |---- |     | |-----| |-----  ------
-   |     |  |      |     | |     | |     |     |       | |       |
-   | ____|  |_____ | ____| | ____| |     |_____|  _____| |_____  |_____
-
-
-   Licensed under the MIT License <http://opensource.org/licenses/MIT>.
-
-   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
-   Author : <blobfusedev@microsoft.com>
-
-   Permission is hereby granted, free of charge, to any person obtaining a copy
-   of this software and associated documentation files (the "Software"), to deal
-   in the Software without restriction, including without limitation the rights
-   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-   copies of the Software, and to permit persons to whom the Software is
-   furnished to do so, subject to the following conditions:
-
-   The above copyright notice and this permission notice shall be included in all
-   copies or substantial portions of the Software.
-
-   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-   SOFTWARE
-*/
-
 package xload
 
 import (
@@ -43,29 +10,67 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
-// Interface to read and write data
-type splitter interface {
-	SplitData(item *workItem) (int, error)
-}
+// verify that the below types implement the xcomponent interfaces
+var _ xcomponent = &splitter{}
+var _ xcomponent = &uploadSplitter{}
+var _ xcomponent = &downloadSplitter{}
 
-// -----------------------------------------------------------------------------------
-
-type UploadSplitter struct {
+type splitter struct {
+	xbase
 	blockSize uint64
 	blockPool *BlockPool
-	commiter  dataCommitter
-	schedule  func(item *workItem)
-	basePath  string
+	path      string
+}
+
+// --------------------------------------------------------------------------------------------------------
+
+type uploadSplitter struct {
+	splitter
+}
+
+func newUploadSpiltter(blockSize uint64, blockPool *BlockPool, path string, remote internal.Component) (*uploadSplitter, error) {
+	u := &uploadSplitter{
+		splitter: splitter{
+			blockSize: blockSize,
+			blockPool: blockPool,
+			path:      path,
+			xbase: xbase{
+				remote: remote,
+			},
+		},
+	}
+
+	u.init()
+	return u, nil
+}
+
+func (u *uploadSplitter) init() {
+	u.pool = newThreadPool(MAX_DATA_SPLITTER, u.process)
+	if u.pool == nil {
+		log.Err("uploadSplitter::init : fail to init thread pool")
+	}
+}
+
+func (u *uploadSplitter) start() {
+	u.getThreadPool().Start()
+}
+
+func (u *uploadSplitter) stop() {
+	if u.getThreadPool() != nil {
+		u.getThreadPool().Stop()
+	}
+	u.getNext().stop()
 }
 
 // SplitData reads data from the data manager
-func (u *UploadSplitter) SplitData(item *workItem) (int, error) {
+func (u *uploadSplitter) process(item *workItem) (int, error) {
 	var err error
 	var ids []string
 
-	log.Trace("UploadSplitter::SplitData : Splitting data for %s", item.path)
+	log.Trace("uploadSplitter::process : Splitting data for %s", item.path)
 	if item.path != "" {
 		return 0, nil // temporary code, remove this
 	}
@@ -78,7 +83,7 @@ func (u *UploadSplitter) SplitData(item *workItem) (int, error) {
 	numBlocks := ((item.dataLen - 1) / u.blockSize) + 1
 	offset := int64(0)
 
-	item.fileHandle, err = os.OpenFile(filepath.Join(u.basePath, item.path), os.O_RDONLY, 0644)
+	item.fileHandle, err = os.OpenFile(filepath.Join(u.path, item.path), os.O_RDONLY, 0644)
 	if err != nil {
 		return -1, fmt.Errorf("failed to open file %s [%v]", item.path, err)
 	}
@@ -95,11 +100,11 @@ func (u *UploadSplitter) SplitData(item *workItem) (int, error) {
 		for i := 0; i < int(numBlocks); i++ {
 			respSplitItem := <-responseChannel
 			if respSplitItem.err != nil {
-				log.Err("UploadSplitter::SplitData : Failed to read data from file %s", item.path)
+				log.Err("uploadSplitter::process : Failed to read data from file %s", item.path)
 				operationSuccess = false
 			}
 			if respSplitItem.block != nil {
-				log.Trace("UploadSplitter::SplitData : [%d] Upload successful for %s block[%d] %s offset %v", i, item.path, respSplitItem.block.index, respSplitItem.block.id, respSplitItem.block.offset)
+				log.Trace("uploadSplitter::process : [%d] Upload successful for %s block[%d] %s offset %v", i, item.path, respSplitItem.block.index, respSplitItem.block.id, respSplitItem.block.offset)
 				u.blockPool.Release(respSplitItem.block)
 			}
 		}
@@ -126,8 +131,8 @@ func (u *UploadSplitter) SplitData(item *workItem) (int, error) {
 					responseChannel: responseChannel,
 				}
 				ids = append(ids, splitItem.block.id)
-				log.Trace("UploadSplitter::SplitData : Scheduling %s block [%d] %s offset %v length %v", item.path, splitItem.block.index, splitItem.block.id, offset, splitItem.block.length)
-				u.schedule(splitItem)
+				log.Trace("uploadSplitter::process : Scheduling %s block [%d] %s offset %v length %v", item.path, splitItem.block.index, splitItem.block.id, offset, splitItem.block.length)
+				u.getNext().getThreadPool().Schedule(splitItem)
 			}
 		}
 
@@ -138,29 +143,59 @@ func (u *UploadSplitter) SplitData(item *workItem) (int, error) {
 	item.fileHandle.Close()
 
 	if !operationSuccess {
-		log.Err("UploadSplitter::SplitData : Failed to upload data from file %s", item.path)
+		log.Err("uploadSplitter::process : Failed to upload data from file %s", item.path)
 		return -1, fmt.Errorf("failed to upload data from file %s", item.path)
 	}
 
-	u.commiter.CommitData(item.path, ids)
-	return 0, nil
+	err = u.getNext().commitData(item.path, ids)
+	return 0, err
 }
 
-// -----------------------------------------------------------------------------------
+// --------------------------------------------------------------------------------------------------------
 
-type DownloadSplitter struct {
-	blockSize uint64
-	blockPool *BlockPool
-	commiter  dataCommitter
-	schedule  func(item *workItem)
-	basePath  string
+type downloadSplitter struct {
+	splitter
+}
+
+func newDownloadSplitter(blockSize uint64, blockPool *BlockPool, path string, remote internal.Component) (*downloadSplitter, error) {
+	d := &downloadSplitter{
+		splitter: splitter{
+			blockSize: blockSize,
+			blockPool: blockPool,
+			path:      path,
+			xbase: xbase{
+				remote: remote,
+			},
+		},
+	}
+
+	d.init()
+	return d, nil
+}
+
+func (d *downloadSplitter) init() {
+	d.pool = newThreadPool(MAX_DATA_SPLITTER, d.process)
+	if d.pool == nil {
+		log.Err("downloadSplitter::init : fail to init thread pool")
+	}
+}
+
+func (d *downloadSplitter) start() {
+	d.getThreadPool().Start()
+}
+
+func (d *downloadSplitter) stop() {
+	if d.getThreadPool() != nil {
+		d.getThreadPool().Stop()
+	}
+	d.getNext().stop()
 }
 
 // SplitData reads data from the data manager
-func (d *DownloadSplitter) SplitData(item *workItem) (int, error) {
+func (d *downloadSplitter) process(item *workItem) (int, error) {
 	var err error
 
-	log.Trace("DownloadSplitter::SplitData : Splitting data for %s", item.path)
+	log.Trace("downloadSplitter::process : Splitting data for %s", item.path)
 	if item.path != "" {
 		return 0, nil // temporary code, remove this
 	}
@@ -168,7 +203,7 @@ func (d *DownloadSplitter) SplitData(item *workItem) (int, error) {
 	numBlocks := ((item.dataLen - 1) / d.blockSize) + 1
 	offset := int64(0)
 
-	item.fileHandle, err = os.OpenFile(filepath.Join(d.basePath, item.path), os.O_WRONLY, 0644)
+	item.fileHandle, err = os.OpenFile(filepath.Join(d.path, item.path), os.O_WRONLY, 0644)
 	if err != nil {
 		return -1, fmt.Errorf("failed to open file %s [%v]", item.path, err)
 	}
@@ -185,18 +220,18 @@ func (d *DownloadSplitter) SplitData(item *workItem) (int, error) {
 		for i := 0; i < int(numBlocks); i++ {
 			respSplitItem := <-responseChannel
 			if respSplitItem.err != nil {
-				log.Err("DownloadSplitter::SplitData : Failed to read data from file %s", item.path)
+				log.Err("downloadSplitter::process : Failed to read data from file %s", item.path)
 				operationSuccess = false
 			}
 
 			_, err := item.fileHandle.WriteAt(respSplitItem.block.data, respSplitItem.block.offset)
 			if err != nil {
-				log.Err("DownloadSplitter::SplitData : Failed to write data to file %s", item.path)
+				log.Err("downloadSplitter::process : Failed to write data to file %s", item.path)
 				operationSuccess = false
 			}
 
 			if respSplitItem.block != nil {
-				log.Trace("DownloadSplitter::SplitData : Download successful %s index %d offset %v", item.path, respSplitItem.block.index, respSplitItem.block.offset)
+				log.Trace("downloadSplitter::process : Download successful %s index %d offset %v", item.path, respSplitItem.block.index, respSplitItem.block.offset)
 				d.blockPool.Release(respSplitItem.block)
 			}
 		}
@@ -217,8 +252,8 @@ func (d *DownloadSplitter) SplitData(item *workItem) (int, error) {
 				block:           block,
 				responseChannel: responseChannel,
 			}
-			log.Trace("DownloadSplitter::SplitData : Scheduling %s offset %v", item.path, offset)
-			d.schedule(splitItem)
+			log.Trace("downloadSplitter::process : Scheduling %s offset %v", item.path, offset)
+			d.getNext().getThreadPool().Schedule(splitItem)
 		}
 
 		offset += int64(d.blockSize)
@@ -228,7 +263,7 @@ func (d *DownloadSplitter) SplitData(item *workItem) (int, error) {
 	item.fileHandle.Close()
 
 	if !operationSuccess {
-		log.Err("UploadSplitter::SplitData : Failed to upload data from file %s", item.path)
+		log.Err("downloadSplitter::process : Failed to download data for file %s", item.path)
 		return -1, fmt.Errorf("failed to download data for file %s", item.path)
 	}
 

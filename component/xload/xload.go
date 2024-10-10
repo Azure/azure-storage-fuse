@@ -53,13 +53,7 @@ type Xload struct {
 	workerCount uint32     // Number of workers running
 	blockPool   *BlockPool // Pool of blocks
 	path        string     // Path on local disk where Xload will operate
-
-	comp xcomponent
-
-	en            enumerator
-	dataMgrPool   *ThreadPool // Thread Pool for data upload download
-	dataSplitPool *ThreadPool // Thread Pool for chunking of a file
-
+	comps       []xcomponent
 }
 
 // Structure defining your config parameters
@@ -151,37 +145,30 @@ func (xl *Xload) Start(ctx context.Context) error {
 	switch xl.mode {
 	case EMode.CHECKPOINT():
 		// Start checkpoint thread here
+		return fmt.Errorf("checkpoint is currently unsupported")
 	case EMode.DOWNLOAD():
 		// Start downloader here
-		err = xl.StartDownloader()
+		err = xl.startDownloader()
 		if err != nil {
 			log.Err("Xload::Start : Failed to start downloader [%s]", err.Error())
 			return err
 		}
 	case EMode.UPLOAD():
 		// Start uploader here
-		err = xl.StartUploader()
+		err = xl.startUploader()
 		if err != nil {
 			log.Err("Xload::Start : Failed to start uploader [%s]", err.Error())
 			return err
 		}
 	case EMode.SYNC():
 		//Start syncer here
+		return fmt.Errorf("sync is currently unsupported")
 	default:
 		log.Err("Xload::Start : Invalid mode : %s", xl.mode.String())
 		return fmt.Errorf("invalid mode in xload : %s", xl.mode.String())
 	}
 
-	// Start the data upload download thread pool
-	if xl.dataMgrPool != nil {
-		xl.dataMgrPool.Start()
-	}
-
-	// Start the pool to chunk each file
-	if xl.dataSplitPool != nil {
-		xl.dataSplitPool.Start()
-	}
-
+	xl.startComponents()
 	return nil
 }
 
@@ -189,104 +176,80 @@ func (xl *Xload) Start(ctx context.Context) error {
 func (xl *Xload) Stop() error {
 	log.Trace("Xload::Stop : Stopping component %s", xl.Name())
 
-	if xl.en.getInputPool() != nil {
-		xl.en.getInputPool().Stop()
-	}
-
-	// Stop of thread pool shall be in reverse order of start
-	if xl.dataSplitPool != nil {
-		xl.dataSplitPool.Stop()
-	}
-
-	if xl.dataMgrPool != nil {
-		xl.dataMgrPool.Stop()
-	}
-
+	xl.comps[0].stop()
 	xl.blockPool.Terminate()
 
 	return nil
 }
 
 // StartUploader : Start the uploader thread
-func (xl *Xload) StartUploader() error {
-	log.Trace("Xload::StartUploader : Starting uploader")
+func (xl *Xload) startUploader() error {
+	log.Trace("Xload::startUploader : Starting uploader")
 
-	// Create remote data manager to upload blocks
-	dataMgr := RemoteDataManager{
-		remote: xl.NextComponent(),
-	}
-
-	// Create a thread-pool to run workers which will call the uploader
-	xl.dataMgrPool = newThreadPool(MAX_WORKER_COUNT, dataMgr.WriteData)
-
-	// Create a block splitter
-	splitter := UploadSplitter{
-		blockSize: xl.blockSize,
-		blockPool: xl.blockPool,
-		commiter:  &dataMgr,
-		schedule:  xl.dataMgrPool.Schedule,
-		basePath:  xl.path,
-	}
-
-	// Create a thread-pool to split file into blocks
-	xl.dataSplitPool = newThreadPool(MAX_DATA_SPLITTER, splitter.SplitData)
-
-	// Create local lister pool to list local files
-	var err error
-	xl.en, err = newLocalLister(xl.path, xl.NextComponent())
+	ll, err := newLocalLister(xl.path, xl.NextComponent())
 	if err != nil {
-		log.Err("Xload::StartUploader : Unable to create local lister [%s]", err.Error())
+		log.Err("Xload::startUploader : failed to create local lister [%s]", err.Error())
 		return err
 	}
 
-	// start input threadpool
-	xl.en.getInputPool().Start()
-	xl.en.setOutputPool(xl.dataSplitPool)
+	us, err := newUploadSpiltter(xl.blockSize, xl.blockPool, xl.path, xl.NextComponent())
+	if err != nil {
+		log.Err("Xload::startUploader : failed to create upload splitter [%s]", err.Error())
+		return err
+	}
 
-	// Kick off the local lister here
-	xl.en.getInputPool().Schedule(&workItem{})
+	rdm, err := newRemoteDataManager(xl.NextComponent())
+	if err != nil {
+		log.Err("Xload::startUploader : failed to create remote data manager [%s]", err.Error())
+		return err
+	}
+
+	xl.comps = append(xl.comps, ll, us, rdm)
 	return nil
 }
 
-func (xl *Xload) StartDownloader() error {
-	log.Trace("Xload::StartDownloader : Starting downloader")
+func (xl *Xload) startDownloader() error {
+	log.Trace("Xload::startDownloader : Starting downloader")
 
 	// // Create remote lister pool to list local files
-	// lister, err := newXRemoteLister(xl.path, xl.NextComponent())
-	// if err != nil {
-	// 	log.Err("Xload::StartUploader : Unable to create local lister [%s]", err.Error())
-	// 	return err
-	// }
-
-	// // splitter, err :=
-
-	// Create remote data manager to upload blocks
-	dataMgr := RemoteDataManager{
-		remote: xl.NextComponent(),
+	rl, err := newRemoteLister(xl.path, xl.NextComponent())
+	if err != nil {
+		log.Err("Xload::startDownloader : Unable to create remote lister [%s]", err.Error())
+		return err
 	}
 
-	// Create a thread-pool to run workers which will call the uploader
-	xl.dataMgrPool = newThreadPool(MAX_WORKER_COUNT, dataMgr.ReadData)
-
-	// Create a block splitter
-	splitter := DownloadSplitter{
-		blockSize: xl.blockSize,
-		blockPool: xl.blockPool,
-		commiter:  &dataMgr,
-		schedule:  xl.dataMgrPool.Schedule,
-		basePath:  xl.path,
+	ds, err := newDownloadSplitter(xl.blockSize, xl.blockPool, xl.path, xl.NextComponent())
+	if err != nil {
+		log.Err("Xload::startDownloader : Unable to create download splitter [%s]", err.Error())
+		return err
 	}
 
-	// Create a thread-pool to split file into blocks
-	xl.dataSplitPool = newThreadPool(MAX_DATA_SPLITTER, splitter.SplitData)
+	rdm, err := newRemoteDataManager(xl.NextComponent())
+	if err != nil {
+		log.Err("Xload::startUploader : failed to create remote data manager [%s]", err.Error())
+		return err
+	}
 
-	// start input threadpool
-	xl.en.getInputPool().Start()
-	xl.en.setOutputPool(xl.dataSplitPool)
-
-	// Kick off the local lister here
-	xl.en.getInputPool().Schedule(&workItem{})
+	xl.comps = append(xl.comps, rl, ds, rdm)
 	return nil
+}
+
+func (xl *Xload) createChain() {
+	currComp := xl.comps[0]
+
+	for i := 1; i < len(xl.comps); i++ {
+		nextComp := xl.comps[i]
+		currComp.setNext(nextComp)
+		currComp = nextComp
+	}
+}
+
+func (xl *Xload) startComponents() {
+	xl.createChain()
+
+	for i := len(xl.comps) - 1; i >= 0; i-- {
+		xl.comps[i].start()
+	}
 }
 
 // ------------------------- Factory -------------------------------------------

@@ -6,39 +6,39 @@ import (
 )
 
 // verify that the below types implement the xcomponent interfaces
-var _ xcomponent = &xmanager{}
-var _ xcomponent = &xLocalDataManager{}
-var _ xcomponent = &xRemoteDataManager{}
+var _ xcomponent = &dataManager{}
+var _ xcomponent = &localDataManager{}
+var _ xcomponent = &remoteDataManager{}
 
-type xmanager struct {
+type dataManager struct {
 	xbase
 }
 
 // --------------------------------------------------------------------------------------------------------
 
-type xLocalDataManager struct {
-	xmanager
+type localDataManager struct {
+	dataManager
 }
 
-func newLocalDataManager() (*xLocalDataManager, error) {
-	ldm := &xLocalDataManager{}
+func newLocalDataManager() (*localDataManager, error) {
+	ldm := &localDataManager{}
 
 	ldm.init()
 	return ldm, nil
 }
 
-func (ldm *xLocalDataManager) init() {
+func (ldm *localDataManager) init() {
 	ldm.pool = newThreadPool(MAX_WORKER_COUNT, ldm.process)
 	if ldm.pool == nil {
-		log.Err("xLocalDataManager::init : fail to init thread pool")
+		log.Err("localDataManager::init : fail to init thread pool")
 	}
 }
 
-func (ldm *xLocalDataManager) start() {
+func (ldm *localDataManager) start() {
 	ldm.getThreadPool().Start()
 }
 
-func (ldm *xLocalDataManager) stop() {
+func (ldm *localDataManager) stop() {
 	if ldm.getThreadPool() != nil {
 		ldm.getThreadPool().Stop()
 	}
@@ -46,24 +46,24 @@ func (ldm *xLocalDataManager) stop() {
 }
 
 // ReadData reads data from the data manager
-func (ldm *xLocalDataManager) ReadData(item *workItem) (int, error) {
+func (ldm *localDataManager) ReadData(item *workItem) (int, error) {
 	return item.fileHandle.ReadAt(item.block.data, item.block.offset)
 }
 
 // WriteData writes data to the data manager
-func (ldm *xLocalDataManager) WriteData(item *workItem) (int, error) {
+func (ldm *localDataManager) WriteData(item *workItem) (int, error) {
 	return item.fileHandle.WriteAt(item.block.data, item.block.offset)
 }
 
 // --------------------------------------------------------------------------------------------------------
 
-type xRemoteDataManager struct {
-	xmanager
+type remoteDataManager struct {
+	dataManager
 }
 
-func newRemoteDataManager(remote internal.Component) (*xRemoteDataManager, error) {
-	rdm := &xRemoteDataManager{
-		xmanager: xmanager{
+func newRemoteDataManager(remote internal.Component) (*remoteDataManager, error) {
+	rdm := &remoteDataManager{
+		dataManager: dataManager{
 			xbase: xbase{
 				remote: remote,
 			},
@@ -74,18 +74,18 @@ func newRemoteDataManager(remote internal.Component) (*xRemoteDataManager, error
 	return rdm, nil
 }
 
-func (rdm *xRemoteDataManager) init() {
+func (rdm *remoteDataManager) init() {
 	rdm.pool = newThreadPool(MAX_WORKER_COUNT, rdm.process)
 	if rdm.pool == nil {
-		log.Err("xRemoteDataManager::init : fail to init thread pool")
+		log.Err("remoteDataManager::init : fail to init thread pool")
 	}
 }
 
-func (rdm *xRemoteDataManager) start() {
+func (rdm *remoteDataManager) start() {
 	rdm.getThreadPool().Start()
 }
 
-func (rdm *xRemoteDataManager) stop() {
+func (rdm *remoteDataManager) stop() {
 	if rdm.getThreadPool() != nil {
 		rdm.getThreadPool().Stop()
 	}
@@ -93,7 +93,7 @@ func (rdm *xRemoteDataManager) stop() {
 }
 
 // ReadData reads data from the data manager
-func (rdm *xRemoteDataManager) ReadData(item *workItem) (int, error) {
+func (rdm *remoteDataManager) ReadData(item *workItem) (int, error) {
 	return rdm.getRemote().ReadInBuffer(internal.ReadInBufferOptions{
 		Handle: nil,
 		Name:   item.path,
@@ -103,7 +103,7 @@ func (rdm *xRemoteDataManager) ReadData(item *workItem) (int, error) {
 }
 
 // WriteData writes data to the data manager
-func (rdm *xRemoteDataManager) WriteData(item *workItem) (int, error) {
+func (rdm *remoteDataManager) WriteData(item *workItem) (int, error) {
 	return int(item.block.length), rdm.getRemote().StageData(internal.StageDataOptions{
 		Name: item.path,
 		Data: item.block.data[0:item.block.length],
@@ -112,7 +112,7 @@ func (rdm *xRemoteDataManager) WriteData(item *workItem) (int, error) {
 }
 
 // CommitData commits data to the data manager
-func (rdm *xRemoteDataManager) commitData(name string, ids []string) error {
+func (rdm *remoteDataManager) commitData(name string, ids []string) error {
 	return rdm.remote.CommitData(internal.CommitDataOptions{
 		Name: name,
 		List: ids,

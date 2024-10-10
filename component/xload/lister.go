@@ -9,32 +9,32 @@ import (
 )
 
 // verify that the below types implement the xcomponent interfaces
-var _ xcomponent = &xlister{}
-var _ xcomponent = &xlocal{}
-var _ xcomponent = &xremote{}
+var _ xcomponent = &lister{}
+var _ xcomponent = &localLister{}
+var _ xcomponent = &remoteLister{}
 
 // verify that the below types implement the xenumerator interfaces
-var _ xenumerator = &xlocal{}
-var _ xenumerator = &xremote{}
+var _ enumerator = &localLister{}
+var _ enumerator = &remoteLister{}
 
-type xlister struct {
+type lister struct {
 	xbase
 	path string // base path of the directory to be listed
 }
 
-type xenumerator interface {
+type enumerator interface {
 	mkdir(name string) error
 }
 
 // --------------------------------------------------------------------------------------------------------
 
-type xlocal struct {
-	xlister
+type localLister struct {
+	lister
 }
 
-func newXLocalLister(path string, remote internal.Component) (*xlocal, error) {
-	ll := &xlocal{
-		xlister: xlister{
+func newLocalLister(path string, remote internal.Component) (*localLister, error) {
+	ll := &localLister{
+		lister: lister{
 			path: path,
 			xbase: xbase{
 				remote: remote,
@@ -45,39 +45,39 @@ func newXLocalLister(path string, remote internal.Component) (*xlocal, error) {
 	return ll, nil
 }
 
-func (ll *xlocal) init() {
+func (ll *localLister) init() {
 	ll.pool = newThreadPool(MAX_LISTER, ll.process)
 	if ll.pool == nil {
-		log.Err("xlister::init : fail to init thread pool")
+		log.Err("localLister::init : fail to init thread pool")
 	}
 }
 
-func (ll *xlocal) start() {
+func (ll *localLister) start() {
 	ll.getThreadPool().Start()
 	ll.getThreadPool().Schedule(&workItem{})
 }
 
-func (ll *xlocal) stop() {
+func (ll *localLister) stop() {
 	if ll.getThreadPool() != nil {
 		ll.getThreadPool().Stop()
 	}
 	ll.getNext().stop()
 }
 
-func (ll *xlocal) process(item *workItem) (int, error) {
+func (ll *localLister) process(item *workItem) (int, error) {
 	absPath := filepath.Join(ll.path, item.path)
 
-	log.Trace("xlister::process : Reading local dir %s", absPath)
+	log.Trace("localLister::process : Reading local dir %s", absPath)
 
 	entries, err := os.ReadDir(absPath)
 	if err != nil {
-		log.Err("xlister::process : [%s]", err.Error())
+		log.Err("localLister::process : [%s]", err.Error())
 		return 0, err
 	}
 
 	for _, entry := range entries {
 		relPath := filepath.Join(item.path, entry.Name())
-		log.Trace("xlister::process : Iterating: %s, Is directory: %v", relPath, entry.IsDir())
+		log.Trace("localLister::process : Iterating: %s, Is directory: %v", relPath, entry.IsDir())
 
 		if entry.IsDir() {
 			// spawn go routine for directory creation and then
@@ -86,7 +86,7 @@ func (ll *xlocal) process(item *workItem) (int, error) {
 				err = ll.mkdir(name)
 				// TODO:: xload : handle error
 				if err != nil {
-					log.Err("xlister::process : Failed to create directory [%s]", err.Error())
+					log.Err("localLister::process : Failed to create directory [%s]", err.Error())
 					return
 				}
 
@@ -104,7 +104,7 @@ func (ll *xlocal) process(item *workItem) (int, error) {
 					dataLen: uint64(info.Size()),
 				})
 			} else {
-				log.Err("xlister::process : Failed to get stat of %v", relPath)
+				log.Err("localLister::process : Failed to get stat of %v", relPath)
 			}
 		}
 	}
@@ -112,7 +112,7 @@ func (ll *xlocal) process(item *workItem) (int, error) {
 	return len(entries), nil
 }
 
-func (ll *xlocal) mkdir(name string) error {
+func (ll *localLister) mkdir(name string) error {
 	// create directory in container
 	return ll.getRemote().CreateDir(internal.CreateDirOptions{
 		Name: name,
@@ -122,13 +122,13 @@ func (ll *xlocal) mkdir(name string) error {
 
 // --------------------------------------------------------------------------------------------------------
 
-type xremote struct {
-	xlister
+type remoteLister struct {
+	lister
 }
 
-func newXRemoteLister(path string, remote internal.Component) (*xremote, error) {
-	rl := &xremote{
-		xlister: xlister{
+func newRemoteLister(path string, remote internal.Component) (*remoteLister, error) {
+	rl := &remoteLister{
+		lister: lister{
 			path: path,
 			xbase: xbase{
 				remote: remote,
@@ -139,29 +139,29 @@ func newXRemoteLister(path string, remote internal.Component) (*xremote, error) 
 	return rl, nil
 }
 
-func (rl *xremote) init() {
+func (rl *remoteLister) init() {
 	rl.pool = newThreadPool(MAX_LISTER, rl.process)
 	if rl.pool == nil {
 		log.Err("xlister::init : fail to init thread pool")
 	}
 }
 
-func (rl *xremote) start() {
+func (rl *remoteLister) start() {
 	rl.getThreadPool().Start()
 	rl.getThreadPool().Schedule(&workItem{})
 }
 
-func (rl *xremote) stop() {
+func (rl *remoteLister) stop() {
 	if rl.getThreadPool() != nil {
 		rl.getThreadPool().Stop()
 	}
 	rl.getNext().stop()
 }
 
-func (rl *xremote) process(item *workItem) (int, error) {
+func (rl *remoteLister) process(item *workItem) (int, error) {
 	absPath := item.path // TODO:: xload : check this for subdirectory mounting
 
-	log.Trace("xlister::process : Reading remote dir %s", absPath)
+	log.Trace("remoteLister::process : Reading remote dir %s", absPath)
 
 	marker := ""
 	var cnt, iteration int
@@ -172,16 +172,16 @@ func (rl *xremote) process(item *workItem) (int, error) {
 			Token: marker,
 		})
 		if err != nil {
-			log.Err("xlister::process : Remote listing failed for %s [%s]", absPath, err.Error())
+			log.Err("remoteLister::process : Remote listing failed for %s [%s]", absPath, err.Error())
 		}
 
 		marker = new_marker
 		cnt += len(entries)
 		iteration++
-		log.Debug("xlister::process : count: %d , iterations: %d", cnt, iteration)
+		log.Debug("remoteLister::process : count: %d , iterations: %d", cnt, iteration)
 
 		for _, entry := range entries {
-			log.Trace("xlister::process : Iterating: %s, Is directory: %v", entry.Path, entry.IsDir())
+			log.Trace("remoteLister::process : Iterating: %s, Is directory: %v", entry.Path, entry.IsDir())
 
 			if entry.IsDir() {
 				// create directory in local
@@ -193,7 +193,7 @@ func (rl *xremote) process(item *workItem) (int, error) {
 					err = rl.mkdir(localPath)
 					// TODO:: xload : handle error
 					if err != nil {
-						log.Err("xlister::process : Failed to create directory [%s]", err.Error())
+						log.Err("remoteLister::process : Failed to create directory [%s]", err.Error())
 						return
 					}
 
@@ -212,7 +212,7 @@ func (rl *xremote) process(item *workItem) (int, error) {
 		}
 
 		if len(new_marker) == 0 {
-			log.Debug("list::readDir : remote listing done for %s", absPath)
+			log.Debug("remoteLister::process : remote listing done for %s", absPath)
 			break
 		}
 	}
@@ -220,7 +220,7 @@ func (rl *xremote) process(item *workItem) (int, error) {
 	return cnt, nil
 }
 
-func (rl *xremote) mkdir(name string) error {
-	log.Trace("xlister::mkdir : Creating local path: %s", name)
+func (rl *remoteLister) mkdir(name string) error {
+	log.Trace("remoteLister::mkdir : Creating local path: %s", name)
 	return os.MkdirAll(name, 0777)
 }
