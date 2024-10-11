@@ -121,8 +121,7 @@ private:
     std::atomic<bool> shutting_down = false;
 
     nfs_client() :
-        transport(this),
-        jukebox_thread(std::thread(&nfs_client::jukebox_runner, this))
+        transport(this)
     {
     }
 

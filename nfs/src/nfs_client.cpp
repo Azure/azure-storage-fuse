@@ -59,6 +59,12 @@ bool nfs_client::init()
     // Initialize the RPC task list.
     rpc_task_helper = rpc_task_helper::get_instance(this);
 
+    /*
+     * Start the jukebox_runner thread for retrying requests that fail with
+     * NFS3ERR_JUKEBOX.
+     */
+    jukebox_thread = std::thread(&jukebox_runner, this);
+
     return true;
 }
 
@@ -67,7 +73,18 @@ void nfs_client::jukebox_runner()
     AZLogDebug("Started jukebox_runner");
 
     do {
-        if (jukebox_seeds.empty()) {
+        int jukebox_requests;
+
+        {
+            std::unique_lock<std::mutex> lock(jukebox_seeds_lock);
+            jukebox_requests = jukebox_seeds.size();
+        }
+
+        /*
+         * If no jukebox queued, wait more else wait less in order to meet the
+         * 5 sec jukebox deadline.
+         */
+        if (jukebox_requests == 0) {
             ::sleep(5);
         } else {
             ::sleep(1);
@@ -75,13 +92,14 @@ void nfs_client::jukebox_runner()
 
         {
             std::unique_lock<std::mutex> lock(jukebox_seeds_lock);
-            if (jukebox_seeds.empty()) {
+            jukebox_requests = jukebox_seeds.size();
+            if (jukebox_requests == 0) {
                 continue;
             }
         }
 
         AZLogDebug("jukebox_runner woken up ({} requests in queue)",
-                   jukebox_seeds.size());
+                   jukebox_requests);
 
         /*
          * Go over all queued requests and issue those which are ready to be
