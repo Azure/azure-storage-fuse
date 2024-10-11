@@ -86,7 +86,7 @@ var defaultConfig = &cobra.Command{
 		}
 
 		yamlContent := "# Logger configuration\n#logging:\n  #  type: syslog|silent|base\n  #  level: log_off|log_crit|log_err|log_warning|log_info|log_trace|log_debug\n  #  file-path: <path where log files shall be stored. Default - '$HOME/.blobfuse2/blobfuse2.log'>\n"
-		yamlContent += "components:\n"
+		yamlContent += "\ncomponents:\n"
 
 		// Iterate through the pipeline and add each component to the YAML content
 		for _, component := range pipeline {
