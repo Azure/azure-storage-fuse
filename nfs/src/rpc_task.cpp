@@ -2795,15 +2795,15 @@ static void read_callback(
                  */
                 assert(released_bytes <= (bc->length - bc->pvt));
                 if (released_bytes == (bc->length - bc->pvt)) {
-                    AZLogWarn("[{}] Setting uptodate flag for membuf [{}, {}) "
-                              "after read hit eof, requested [{}, {}), "
-                              "got [{}, {})",
-                              ino,
-                              bc->offset, bc->offset + bc->length,
-                              issued_offset,
-                              issued_offset + issued_length,
-                              issued_offset,
-                              issued_offset + res->READ3res_u.resok.count);
+                    AZLogDebug("[{}] Setting uptodate flag for membuf [{}, {}) "
+                               "after read hit eof, requested [{}, {}), "
+                               "got [{}, {})",
+                               ino,
+                               bc->offset, bc->offset + bc->length,
+                               issued_offset,
+                               issued_offset + issued_length,
+                               issued_offset,
+                               issued_offset + res->READ3res_u.resok.count);
                     bc->get_membuf()->set_uptodate();
                     set_uptodate = true;
                 }
