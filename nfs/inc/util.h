@@ -34,7 +34,8 @@ void set_kernel_readahead();
 static inline
 uint64_t random_number(uint64_t min, uint64_t max)
 {
-    static std::mt19937 gen((uint64_t) std::chrono::system_clock::now().time_since_epoch().count());
+    static thread_local std::mt19937 gen(
+            (uint64_t) std::chrono::system_clock::now().time_since_epoch().count());
     return min + (gen() % (max - min + 1));
 }
 
