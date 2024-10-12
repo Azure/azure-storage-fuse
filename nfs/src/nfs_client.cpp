@@ -734,9 +734,15 @@ static void lookup_sync_callback(
         } else {
             AZLogError("lookup_sync_callback() failed, status={}", status);
         }
-    }
 
-    ctx->cv.notify_one();
+        /*
+         * Notify inside the lock, since the other thread deletes ctx once
+         * done. As soon as we notify the other thread will try to acquire
+         * the lock and it may have to block as we have not released the lock
+         * yet. Since these sync calls are not frequent, it's ok.
+         */
+        ctx->cv.notify_one();
+    }
 }
 
 bool nfs_client::lookup_sync(fuse_ino_t parent_ino,
@@ -1602,9 +1608,15 @@ static void getattr_sync_callback(
             assert(ctx->fattr);
             *(ctx->fattr) = res->GETATTR3res_u.resok.obj_attributes;
         }
-    }
 
-    ctx->cv.notify_one();
+        /*
+         * Notify inside the lock, since the other thread deletes ctx once
+         * done. As soon as we notify the other thread will try to acquire
+         * the lock and it may have to block as we have not released the lock
+         * yet. Since these sync calls are not frequent, it's ok.
+         */
+        ctx->cv.notify_one();
+    }
 }
 
 /**
