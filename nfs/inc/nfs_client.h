@@ -170,6 +170,7 @@ public:
         assert(!shutting_down);
         shutting_down = true;
         
+repeat_fresh:
         auto end_delete = inode_map.end();
         for (auto it = inode_map.begin(), next_it = it; it != end_delete; it = next_it) {
             ++next_it;
@@ -203,6 +204,16 @@ public:
                     assert(0);
                     root_fh = nullptr;
                 }
+
+                /*
+                 * If this is a directory inode, the decref() above can not
+                 * only cause this directory inode to be deleted, but due to
+                 * the readdirectory_cache::clear() that it results in, some
+                 * other inodes (corresponding to files/dirs in this directory)
+                 * may be deleted and removed from the inode_map, so we cannot
+                 * continue iteration using the existing iterator.
+                 */
+                goto repeat_fresh;
             }
         }
 
