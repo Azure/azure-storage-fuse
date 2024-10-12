@@ -169,31 +169,46 @@ public:
     {
         assert(!shutting_down);
         shutting_down = true;
-        
+
 repeat_fresh:
         auto end_delete = inode_map.end();
         for (auto it = inode_map.begin(), next_it = it; it != end_delete; it = next_it) {
             ++next_it;
             struct nfs_inode *inode = it->second;
-            AZLogDebug("[{}:{}] Inode still present at shutdown: "
-                       "lookupcnt={}, dircachecnt={}, forget_expected={}, "
-                       "is_cache_empty={}",
-                       inode->get_filetype_coding(),
-                       inode->get_fuse_ino(),
-                       inode->lookupcnt.load(),
-                       inode->dircachecnt.load(),
-                       inode->forget_expected.load(),
-                       inode->is_cache_empty());
-            
+            const bool unexpected_refs =
+                ((inode->lookupcnt + inode->dircachecnt) == 0);
+
+            if (unexpected_refs) {
+                AZLogError("[BUG] [{}:{}] Inode with 0 ref still present in "
+                           "inode_map at shutdown: lookupcnt={}, "
+                           "dircachecnt={}, forget_expected={}, "
+                           "is_cache_empty={}",
+                           inode->get_filetype_coding(),
+                           inode->get_fuse_ino(),
+                           inode->lookupcnt.load(),
+                           inode->dircachecnt.load(),
+                           inode->forget_expected.load(),
+                           inode->is_cache_empty());
+            } else {
+                AZLogDebug("[{}:{}] Inode still present at shutdown: "
+                           "lookupcnt={}, dircachecnt={}, forget_expected={}, "
+                           "is_cache_empty={}",
+                           inode->get_filetype_coding(),
+                           inode->get_fuse_ino(),
+                           inode->lookupcnt.load(),
+                           inode->dircachecnt.load(),
+                           inode->forget_expected.load(),
+                           inode->is_cache_empty());
+            }
             /*
-             * Fuse wants to treat an unmount as an implicit forget for 
+             * Fuse wants to treat an unmount as an implicit forget for
              * all inodes. Fuse does not gurantee that it will call forget
              * for each inode, hence we have to implicity forget all inodes.
              */
             if (inode->forget_expected) {
                 assert(!inode->is_forgotten());
                 inode->decref(inode->forget_expected, true /* from_forget */);
-                
+
                 /*
                  * root_fh is not valid anymore, clear it now.
                  * We do not expect forget_expected to be non-zero for root
