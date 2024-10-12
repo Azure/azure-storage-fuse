@@ -63,7 +63,7 @@ bool nfs_client::init()
      * Start the jukebox_runner thread for retrying requests that fail with
      * NFS3ERR_JUKEBOX.
      */
-    jukebox_thread = std::thread(&jukebox_runner, this);
+    jukebox_thread = std::thread(&nfs_client::jukebox_runner, this);
 
     return true;
 }
