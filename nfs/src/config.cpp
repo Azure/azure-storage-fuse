@@ -118,8 +118,17 @@ do { \
         _CHECK_INT(actimeo, AZNFSCFG_ACTIMEO_MIN, AZNFSCFG_ACTIMEO_MAX);
         _CHECK_STR(lookupcache);
         _CHECK_STR(consistency);
-        _CHECK_INT(rsize, AZNFSCFG_RSIZE_MIN, AZNFSCFG_RSIZE_MAX);
+
+        /*
+         * bc_iovec::add_bc() does not accept bytes_chunk larger than wsize.
+         * Since fuse can send max 1MiB sized writes, we must not allow wsize
+         * to be set less than 1MiB.
+         * Since write can get a bytes_chunk allocated by read/readahead, rsize
+         * must not be allowed to be greater than wsize.
+         */
         _CHECK_INT(wsize, AZNFSCFG_WSIZE_MIN, AZNFSCFG_WSIZE_MAX);
+        _CHECK_INT(rsize, AZNFSCFG_RSIZE_MIN, std::min(wsize, AZNFSCFG_RSIZE_MAX));
+
         _CHECK_INT(retrans, AZNFSCFG_RETRANS_MIN, AZNFSCFG_RETRANS_MAX);
         _CHECK_INT(readdir_maxcount, AZNFSCFG_READDIR_MIN, AZNFSCFG_READDIR_MAX);
         /*
