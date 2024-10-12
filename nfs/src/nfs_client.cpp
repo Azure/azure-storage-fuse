@@ -546,8 +546,10 @@ struct nfs_inode *nfs_client::__get_nfs_inode(LOC_PARAMS
             }
         }
 
-        min_ino = std::min(min_ino, (fuse_ino_t) inode);
-        max_ino = std::max(max_ino, (fuse_ino_t) inode);
+#ifdef ENABLE_PARANOID
+        min_ino = std::min(min_ino.load(), (fuse_ino_t) inode);
+        max_ino = std::max(max_ino.load(), (fuse_ino_t) inode);
+#endif
 
         inode->incref();
 

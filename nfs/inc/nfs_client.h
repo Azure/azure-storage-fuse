@@ -105,13 +105,15 @@ private:
      */
     struct nfs_server_stat server_stat;
 
+#ifdef ENABLE_PARANOID
     /*
      * Since we use the address of nfs_inode as the inode number we
      * return to fuse, this is a small sanity check we do to check if
      * fuse is passing us valid inode numbers.
      */
-    uint64_t min_ino = UINT64_MAX;
-    uint64_t max_ino = 0;
+    std::atomic<uint64_t> min_ino = UINT64_MAX;
+    std::atomic<uint64_t> max_ino = 0;
+#endif
 
     /*
      * Set in shutdown() to let others know that nfs_client is shutting
@@ -294,8 +296,10 @@ public:
             return root_fh;
         }
 
+#ifdef ENABLE_PARANOID
         assert(ino >= min_ino);
         assert(ino <= max_ino);
+#endif
 
         struct nfs_inode *const nfsi =
             reinterpret_cast<struct nfs_inode *>(ino);
