@@ -410,10 +410,12 @@ void membuf::set_locked()
 {
 #ifdef ENABLE_PRESSURE_POINTS
     /*
-     * Introduce delay to simulate race in acquiring lock.
+     * Simulate delay in acquiring lock.
      */
-    const uint64_t sleep_usecs = random_number(0, 10'000);
-    ::usleep(sleep_usecs);
+    if (inject_error()) {
+        const uint64_t sleep_usecs = random_number(10'000, 1000'000);
+        ::usleep(sleep_usecs);
+    }
 #endif
 
     AZLogDebug("Locking membuf [{}, {}), fd={}",
@@ -627,10 +629,12 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
 {
 #ifdef ENABLE_PRESSURE_POINTS
     /*
-     * Introduce delay to simulate race in getting bytes_chunk vector.
+     * Simulate delay in getting bytes_chunk vector.
      */
-    const uint64_t sleep_usecs = random_number(0, 10'000);
-    ::usleep(sleep_usecs);
+    if (inject_error()) {
+        const uint64_t sleep_usecs = random_number(10'000, 1000'000);
+        ::usleep(sleep_usecs);
+    }
 #endif
 
     assert(offset < AZNFSC_MAX_FILE_SIZE);
