@@ -170,11 +170,11 @@ public:
         assert(!shutting_down);
         shutting_down = true;
 
-repeat_fresh:
         auto end_delete = inode_map.end();
         for (auto it = inode_map.begin(), next_it = it; it != end_delete; it = next_it) {
             ++next_it;
             struct nfs_inode *inode = it->second;
+            assert(inode->magic == NFS_INODE_MAGIC);
             const bool unexpected_refs =
                 ((inode->lookupcnt + inode->dircachecnt) == 0);
 
@@ -207,7 +207,38 @@ repeat_fresh:
              */
             if (inode->forget_expected) {
                 assert(!inode->is_forgotten());
+
+                /*
+                 * 'next_it' might get removed as a result of decref() of the
+                 * current inode, if 'it' corresponds to a directory inode and
+                 * 'next_it' corresponds to a file in that directory and
+                 * 'next_it' is present in inode_map only because of the
+                 * dircachecnt held by the readdir cache of the current dir.
+                 * To prevent next_it from being removed, we hold a lookupcnt
+                 * ref on next_inode and then drop that ref after the decref()
+                 * call.
+                 */
+                struct nfs_inode *next_inode = nullptr;
+
+                if (next_it != end_delete) {
+                    next_inode = next_it->second;
+                    assert(next_inode->magic == NFS_INODE_MAGIC);
+                    assert((next_inode->lookupcnt +
+                            next_inode->dircachecnt) > 0);
+                    next_inode->incref();
+                }
                 inode->decref(inode->forget_expected, true /* from_forget */);
+                if (next_inode) {
+                    /*
+                     * If the following decref() is going to cause next_it to
+                     * be removed, increment it before that.
+                     */
+                    if (next_inode->lookupcnt == 1 &&
+                        next_inode->dircachecnt == 0) {
+                        ++next_it;
+                    }
+                    next_inode->decref();
+                }
 
                 /*
                  * root_fh is not valid anymore, clear it now.
@@ -219,16 +250,6 @@ repeat_fresh:
                     assert(0);
                     root_fh = nullptr;
                 }
-
-                /*
-                 * If this is a directory inode, the decref() above can not
-                 * only cause this directory inode to be deleted, but due to
-                 * the readdirectory_cache::clear() that it results in, some
-                 * other inodes (corresponding to files/dirs in this directory)
-                 * may be deleted and removed from the inode_map, so we cannot
-                 * continue iteration using the existing iterator.
-                 */
-                goto repeat_fresh;
             }
         }
 
