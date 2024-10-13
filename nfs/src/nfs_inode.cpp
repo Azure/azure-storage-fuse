@@ -135,9 +135,9 @@ nfs_inode::~nfs_inode()
 
 void nfs_inode::decref(size_t cnt, bool from_forget)
 {
-    AZLogDebug("[{}] decref(cnt={}, from_forget={}) called "
+    AZLogDebug("[{}:{}] decref(cnt={}, from_forget={}) called "
                " (lookupcnt={}, dircachecnt={}, forget_expected={})",
-               ino, cnt, from_forget,
+               get_filetype_coding(), ino, cnt, from_forget,
                lookupcnt.load(), dircachecnt.load(),
                forget_expected.load());
 
@@ -157,9 +157,11 @@ void nfs_inode::decref(size_t cnt, bool from_forget)
          * the inode to fuse.
          */
         if ((int64_t) cnt > forget_expected) {
-            AZLogError("[{}] Extra forget from fuse @ {}, got {}, expected {}, "
-                       "last forget seen @ {}, lookupcnt={}, dircachecnt={}",
-                       ino, get_current_usecs(), cnt, forget_expected.load(),
+            AZLogError("[{}:{}] Extra forget from fuse @ {}, got {}, "
+                       "expected {}, last forget seen @ {}, lookupcnt={}, "
+                       "dircachecnt={}",
+                       get_filetype_coding(), ino,
+                       get_current_usecs(), cnt, forget_expected.load(),
                        last_forget_seen_usecs, lookupcnt.load(),
                        dircachecnt.load());
             assert(0);
@@ -211,9 +213,9 @@ try_again:
             AZLogDebug("[{}] lookupcnt dropping({}) to 0, forgetting inode",
                        ino, cnt);
         } else {
-            AZLogWarn("[{}] lookupcnt dropping({}) to {} "
+            AZLogWarn("[{}:{}] lookupcnt dropping({}) to {} "
                       "(some other thread got a fresh ref)",
-                      ino, cnt, lookupcnt - cnt);
+                      get_filetype_coding(), ino, cnt, lookupcnt - cnt);
         }
 
         /*
@@ -239,8 +241,8 @@ try_again:
             goto try_again;
         }
 
-        AZLogDebug("[{}] lookupcnt decremented({}) to {}",
-                   ino, cnt, lookupcnt.load());
+        AZLogDebug("[{}:{}] lookupcnt decremented({}) to {}",
+                   get_filetype_coding(), ino, cnt, lookupcnt.load());
     }
 }
 
