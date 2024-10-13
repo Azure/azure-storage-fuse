@@ -182,9 +182,10 @@ bool readdirectory_cache::add(const std::shared_ptr<struct directory_entry>& ent
              */
             assert(entry->nfs_inode->dircachecnt > 0);
 
-            AZLogDebug("[{}] Adding {} fuse ino {}, cookie {}, to readdir "
-                       "cache (dircachecnt {})",
+            AZLogDebug("[{}] Adding {} \"{}\", ino {}, cookie {}, to readdir "
+                       "cache (dircachecnt: {})",
                        dir_inode->get_fuse_ino(),
+                       entry->nfs_inode->is_dir() ? "directory" : "file",
                        entry->name,
                        entry->nfs_inode->get_fuse_ino(),
                        entry->cookie,
@@ -204,8 +205,12 @@ bool readdirectory_cache::add(const std::shared_ptr<struct directory_entry>& ent
             remove(cookie, nullptr, false);
         }
 
-        AZLogDebug("[{}] Adding dir cache entry {} -> {}",
-                   dir_inode->get_fuse_ino(), entry->cookie, entry->name);
+        AZLogDebug("[{}] Adding dir cache entry {} -> {} (dircachecnt: {}, "
+                   "lookupcnt: {})",
+                   dir_inode->get_fuse_ino(), entry->cookie,
+                   entry->name,
+                   entry->nfs_inode ? entry->nfs_inode->dircachecnt.load() : -1,
+                   entry->nfs_inode ? entry->nfs_inode->lookupcnt.load() : -1);
 
         const auto it = dir_entries.emplace(entry->cookie, entry);
 

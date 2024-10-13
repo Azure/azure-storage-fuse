@@ -542,8 +542,8 @@ struct nfs_inode
     {
         lookupcnt++;
 
-        AZLogDebug("[{}] lookupcnt incremented to {} (dircachecnt={}, "
-                   "forget_expected={})",
+        AZLogDebug("[{}] lookupcnt incremented to {} (dircachecnt: {}, "
+                   "forget_expected: {})",
                    ino, lookupcnt.load(), dircachecnt.load(),
                    forget_expected.load());
     }

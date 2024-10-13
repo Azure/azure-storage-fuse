@@ -210,10 +210,10 @@ try_again:
          * inode.
          */
         if (lookupcnt == cnt) {
-            AZLogDebug("[{}] lookupcnt dropping({}) to 0, forgetting inode",
+            AZLogDebug("[{}] lookupcnt dropping by {}, to 0, forgetting inode",
                        ino, cnt);
         } else {
-            AZLogWarn("[{}:{}] lookupcnt dropping({}) to {} "
+            AZLogWarn("[{}:{}] lookupcnt dropping by {}, to {} "
                       "(some other thread got a fresh ref)",
                       get_filetype_coding(), ino, cnt, lookupcnt - cnt);
         }
@@ -241,8 +241,11 @@ try_again:
             goto try_again;
         }
 
-        AZLogDebug("[{}:{}] lookupcnt decremented({}) to {}",
-                   get_filetype_coding(), ino, cnt, lookupcnt.load());
+        AZLogDebug("[{}:{}] lookupcnt decremented by {}, to {}, "
+                   "dircachecnt: {}, forget_expected: {}",
+                   get_filetype_coding(), ino, cnt,
+                   lookupcnt.load(), dircachecnt.load(),
+                   forget_expected.load());
     }
 }
 
