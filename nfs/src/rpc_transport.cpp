@@ -111,7 +111,7 @@ void rpc_transport::close()
 struct nfs_context *rpc_transport::get_nfs_context(conn_sched_t csched,
                                                    uint32_t fh_hash) const
 {
-    int idx = 0;
+    uint32_t idx = 0;
 
     switch (csched) {
         case CONN_SCHED_FIRST:

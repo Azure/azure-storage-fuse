@@ -63,9 +63,17 @@ private:
 
     /*
      * Last context on which the request was sent.
-     * Note: Each context is identified from 0 to X (where X is the value of nconnect)
+     * Note: Each context is identified from 0 to X-1 (where X is the value of nconnect).
+     * Note: We initialize it to UINT32_MAX-1 to force wraparound and catch
+     *       if it's not properly handled.
+     *
+     * Note: Note that this is updated by multiple threads w/o any lock, and
+     *       hence TSAN complains, but we are ok with occassional inaccuracy,
+     *       in favour of performance.
+     *       Following TSAN suppression suppresses it:
+     *       - race:rpc_transport::last_context
      */
-    mutable int last_context = 0;
+    mutable uint32_t last_context = UINT32_MAX - 2;
 
 public:
     rpc_transport(struct nfs_client* _client):
