@@ -197,12 +197,14 @@ struct nfs_inode
     /*
      * Pointer to the readdirectory cache.
      * Only valid for a directory, this will be nullptr for a non-directory.
+     * Access to this shared_ptr must be protect by ilock.
      */
     std::shared_ptr<readdirectory_cache> dircache_handle;
 
     /*
      * This is a handle to the chunk cache which caches data for this file.
      * Valid only for regular files.
+     * Access to this shared_ptr must be protect by ilock.
      */
     std::shared_ptr<bytes_chunk_cache> filecache_handle;
 
@@ -265,6 +267,9 @@ struct nfs_inode
      * Allocate file cache if not already allocated.
      * This must be called from code that returns an inode after a regular
      * file is opened or created.
+     *
+     * FIXME: This races with use of is_cache_empty() by another thread.
+     *        Ref aznfsc_ll_open().
      */
     std::shared_ptr<bytes_chunk_cache>& get_or_alloc_filecache()
     {
@@ -651,9 +656,22 @@ struct nfs_inode
 
     /**
      * Is the inode cache (filecache_handle or dircache_handle) empty?
+     *
+     * Note: This holds a shared lock on the inode.
+     *
+     * Note: This returns the current inode cache status at the time of this
+     *       call, it my change right after this function returns. Keep this
+     *       in mind when using the result.
      */
     bool is_cache_empty() const
     {
+        /*
+         * Hold a shared inode lock to protect access to shared pointers
+         * filecache_handle and dircache_handle. get_or_alloc_filecache(),
+         * or get_or_alloc_dircache() may be setting the shared_ptr.
+         */
+        std::shared_lock<std::shared_mutex> lock(ilock);
+
         if (is_regfile()) {
             return !filecache_handle || filecache_handle->is_empty();
         } else if (is_dir()) {

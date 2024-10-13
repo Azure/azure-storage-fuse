@@ -1189,6 +1189,7 @@ void nfs_client::read(
 
     /*
      * Allocate readahead_state if not already done.
+     * RA state is allocated here quite often.
      */
     inode->get_or_alloc_rastate();
 

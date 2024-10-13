@@ -232,6 +232,12 @@ static void aznfsc_ll_open(fuse_req_t req,
     fi->parallel_direct_writes = 1;
     fi->noflush = 0;
 
+    /*
+     * TODO: Use this to identify the open file handle for which a given fuse
+     *       request is made.
+     */
+    fi->fh = 12345678;
+
     struct nfs_client *client = get_nfs_client_from_fuse_req(req);
     struct nfs_inode *inode = client->get_nfs_inode_from_ino(ino);
 
@@ -254,6 +260,21 @@ static void aznfsc_ll_open(fuse_req_t req,
         inode->filecache_handle->clear();
     }
 
+    /*
+     * FIXME:
+     * readahead_state shared pointer access can race with
+     * get_or_alloc_rastate() which might be setting the shared_ptr.
+     * In general all the following shared pointers must be made private:
+     * - filecache_handle
+     * - dircache_handle
+     * - readahead_state
+     * and access to them must be protected by ilock.
+     *
+     * get_or_alloc_rastate() may still be creating the shared_ptr and the
+     * boolean inode->readahead_state check which calls the operator bool()
+     * will succeed, we will proceed to call reset() while the ra_state is
+     * being initialized by the get_or_alloc_rastate() thread.
+     */
     if (inode->is_regfile() && inode->readahead_state) {
         AZLogDebug("[{}] Resetting readahead state", ino);
         inode->readahead_state->reset();
@@ -284,8 +305,9 @@ static void aznfsc_ll_read(fuse_req_t req,
                            off_t off,
                            struct fuse_file_info *fi)
 {
-    AZLogDebug("aznfsc_ll_read(req={}, ino={}, size={}, offset={} fi={}",
-                fmt::ptr(req), ino, size, off, fmt::ptr(fi));
+    AZLogDebug("aznfsc_ll_read(req={}, ino={}, size={}, offset={} fi={}, "
+               "fi->fh={})",
+               fmt::ptr(req), ino, size, off, fmt::ptr(fi), fi->fh);
 
     /*
      * Sanity assert. 1MiB is the max read size fuse will ever issue.
@@ -339,8 +361,8 @@ static void aznfsc_ll_release(fuse_req_t req,
      * Though we shouldn't need the flush here but for safety we put it
      * here as fuse doc says flush()) may not be called.
      */
-    AZLogDebug("aznfsc_ll_release(req={}, ino={}, fi={})",
-               fmt::ptr(req), ino, fmt::ptr(fi));
+    AZLogDebug("aznfsc_ll_release(req={}, ino={}, fi={}, fi->fh={})",
+               fmt::ptr(req), ino, fmt::ptr(fi), fi->fh);
 
     struct nfs_client *client = get_nfs_client_from_fuse_req(req);
     struct nfs_inode *inode = client->get_nfs_inode_from_ino(ino);

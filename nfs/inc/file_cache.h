@@ -829,6 +829,15 @@ public:
      */
     bool is_empty() const
     {
+        /*
+         * TSAN Warning.
+         * FIXME:
+         * If we call it while bytes_chunk_cache::scan() is adding to chunkmap,
+         * TSAN complains of data race.
+         * We need to fix this, though usually the caller is not strictly
+         * depending on the result returned by this, as the cache can change
+         * right after the call.
+         */
         return chunkmap.empty();
     }
 
