@@ -414,6 +414,8 @@ void membuf::set_locked()
      */
     if (inject_error()) {
         const uint64_t sleep_usecs = random_number(10'000, 1000'000);
+        AZLogWarn("set_locked() membuf [{}, {}), delaying {} usecs",
+                  offset, offset+length, sleep_usecs);
         ::usleep(sleep_usecs);
     }
 #endif
@@ -633,6 +635,10 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
      */
     if (inject_error()) {
         const uint64_t sleep_usecs = random_number(10'000, 1000'000);
+        if (inode) {
+            AZLogWarn("[{}] scan(offset={}, length={}), delaying {} usecs",
+                      inode->get_fuse_ino(), offset, length, sleep_usecs);
+        }
         ::usleep(sleep_usecs);
     }
 #endif
