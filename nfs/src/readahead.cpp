@@ -619,12 +619,13 @@ int ra_state::issue_readaheads()
     }
 
     if (ra_issued == 0) {
-        static uint64_t num_no_readahead;
+        static std::atomic<uint64_t> num_no_readahead;
 
         // Log once every 1000 failed calls.
         if ((++num_no_readahead % 1000) == 0) {
             AZLogDebug("[{}] num_no_readahead={}, reason={}",
-                       inode->get_fuse_ino(), num_no_readahead, ra_offset);
+                       inode->get_fuse_ino(),
+                       num_no_readahead.load(), ra_offset);
         }
     }
 
