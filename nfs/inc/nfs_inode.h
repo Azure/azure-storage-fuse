@@ -666,11 +666,16 @@ struct nfs_inode
     bool is_cache_empty() const
     {
         /*
+         * FIXME: This causes a deadlock, fix it.
+         */
+#if 0
+        /*
          * Hold a shared inode lock to protect access to shared pointers
          * filecache_handle and dircache_handle. get_or_alloc_filecache(),
          * or get_or_alloc_dircache() may be setting the shared_ptr.
          */
         std::shared_lock<std::shared_mutex> lock(ilock);
+#endif
 
         if (is_regfile()) {
             return !filecache_handle || filecache_handle->is_empty();
