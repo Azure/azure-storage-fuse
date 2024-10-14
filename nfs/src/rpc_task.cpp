@@ -911,6 +911,14 @@ static void createfile_callback(
             UPDATE_INODE_ATTR(inode, res->CREATE3res_u.resok.dir_wcc.after);
         }
 
+        /*
+         * TODO: Remove this assert and if server doesn't send the filehandle,
+         *       make a LOOKUP RPC request to query the filehandle and pass
+         *       that to fuse. Since this callback is called in the context of
+         *       the libnfs thread, we should not issue a sync LOOKUP.
+         *       Same needs to be done for other create APIs like mkdir,
+         *       symlink and mknod.
+         */
         assert(
             res->CREATE3res_u.resok.obj.handle_follows &&
             res->CREATE3res_u.resok.obj_attributes.attributes_follow);
