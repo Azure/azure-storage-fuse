@@ -871,6 +871,15 @@ bool nfs_inode::update_nolock(const struct fattr3 *postattr,
             (compare_timespec_and_nfstime(attr.st_ctim, postattr->ctime) == -1);
 
         if (!postattr_is_newer) {
+            /*
+             * Attributes haven't changed from the cached ones, refresh the
+             * attribute cache timeout.
+             */
+            assert(attr_timeout_timestamp != -1);
+            assert(attr_timeout_secs != -1);
+            attr_timeout_timestamp =
+                std::max(get_current_msecs() + attr_timeout_secs*1000,
+                         attr_timeout_timestamp);
             return false;
         }
     }
