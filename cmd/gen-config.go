@@ -104,7 +104,7 @@ var generatedConfig = &cobra.Command{
 		yamlContent += "\n#Required\n#azstorage:\n  #  type: block|adls \n  #  account-name: <name of the storage account>\n  #  container: <name of the storage container to be mounted>\n  #  endpoint: <example - https://account-name.blob.core.windows.net>\n  #  mode: key|sas|spn|msi|azcli \n  #  account-key: <storage account key>\n  # OR\n  #  sas: <storage account sas>\n  # OR\n  #  appid: <storage account app id / client id for MSI>\n  # OR\n  #  tenantid: <storage account tenant id for SPN"
 
 		// Open the file in append mode, create it if it doesn't exist
-		file, err := os.OpenFile("generatedConfig.yaml", os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0666)
+		file, err := os.OpenFile("../generatedConfig.yaml", os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0666)
 		if err != nil {
 			return fmt.Errorf("error opening generated config file: [%s]", err.Error())
 		}
