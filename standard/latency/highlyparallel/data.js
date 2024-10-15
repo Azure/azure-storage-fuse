@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1728992775413,
+  "lastUpdate": 1728998373025,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -418,6 +418,45 @@ window.BENCHMARK_DATA = {
           {
             "name": "rand_read_128_thread",
             "value": 2215.4332351284334,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "64532198+vibhansa-msft@users.noreply.github.com",
+            "name": "Vikas Bhansali",
+            "username": "vibhansa-msft"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "8c6a53e527de17038fe4728d69ffee532c62f360",
+          "message": "Reverting custom component patch (#1541)",
+          "timestamp": "2024-10-15T14:25:54+05:30",
+          "tree_id": "b1f7ff028645e4ea33f7431a9f815fa862d2445c",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/8c6a53e527de17038fe4728d69ffee532c62f360"
+        },
+        "date": 1728998372753,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "seq_write_112_thread",
+            "value": 309.6891084128736,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "seq_read_128_thread",
+            "value": 327.5321756888013,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "rand_read_128_thread",
+            "value": 1899.7535435820055,
             "unit": "milliseconds"
           }
         ]
