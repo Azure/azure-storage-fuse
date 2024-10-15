@@ -1,9 +1,6 @@
 ## 2.3.3 (Unreleased)
 **Bug Fixes**
 
-**Features**
-- Added support for custom component via go plugin.
-
 ## 2.3.2 (2024-09-03)
 **Bug Fixes**
 - Fixed the case where file creation using SAS on HNS accounts was returning back wrong error code.
