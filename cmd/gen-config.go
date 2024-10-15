@@ -42,19 +42,19 @@ import (
 	"github.com/spf13/cobra"
 )
 
-type defaultConfigOptions struct {
+type generatedConfigOptions struct {
 	configComp     string
 	configTmp      string
 	configDirectIO bool
 }
 
-var opts2 defaultConfigOptions
+var opts2 generatedConfigOptions
 
-var defaultConfig = &cobra.Command{
+var generatedConfig = &cobra.Command{
 	Use:               "gen-config",
 	Short:             "Generate default config file.",
 	Long:              "Generate default config file with the values pre-caculated by blobfuse2.",
-	SuggestFor:        []string{"default config", "generate default config"},
+	SuggestFor:        []string{"generate default config", "generate config"},
 	Hidden:            true,
 	Args:              cobra.ExactArgs(0),
 	FlagErrorHandling: cobra.ExitOnError,
@@ -93,35 +93,26 @@ var defaultConfig = &cobra.Command{
 			yamlContent += fmt.Sprintf("  - %s\n", component)
 		}
 		yamlContent += "  - azstorage\n"
-		// Open the file in append mode, create it if it doesn't exist
-		file, err := os.OpenFile("defaultConfig.yaml", os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0666)
+
+		_, err := internal.NewPipeline(pipeline, true)
 		if err != nil {
-			return fmt.Errorf("error opening default config file: [%s]", err.Error())
+			return fmt.Errorf("generatedConfig:: error creating pipeline [%s]", err.Error())
+		}
+
+		yamlContent += common.ConfigYaml
+
+		yamlContent += "\n#Required\n#azstorage:\n  #  type: block|adls \n  #  account-name: <name of the storage account>\n  #  container: <name of the storage container to be mounted>\n  #  endpoint: <example - https://account-name.blob.core.windows.net>\n  #  mode: key|sas|spn|msi|azcli \n  #  account-key: <storage account key>\n  # OR\n  #  sas: <storage account sas>\n  # OR\n  #  appid: <storage account app id / client id for MSI>\n  # OR\n  #  tenantid: <storage account tenant id for SPN"
+
+		// Open the file in append mode, create it if it doesn't exist
+		file, err := os.OpenFile("generatedConfig.yaml", os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0666)
+		if err != nil {
+			return fmt.Errorf("error opening generated config file: [%s]", err.Error())
 		}
 		defer file.Close() // Ensure the file is closed when we're done
 
 		// Write the YAML content to the file
 		if _, err := file.WriteString(yamlContent); err != nil {
-			return fmt.Errorf("error writing to default config file [%s]", err.Error())
-		}
-
-		_, err = internal.NewPipeline(pipeline, true)
-		if err != nil {
-			return fmt.Errorf("defaultConfig:: error creating pipeline [%s]", err.Error())
-		}
-
-		yamlContent = "\n#Required\n#azstorage:\n  #  type: block|adls \n  #  account-name: <name of the storage account>\n  #  container: <name of the storage container to be mounted>\n  #  endpoint: <example - https://account-name.blob.core.windows.net>\n  #  mode: key|sas|spn|msi|azcli \n  #  account-key: <storage account key>\n  # OR\n  #  sas: <storage account sas>\n  # OR\n  #  appid: <storage account app id / client id for MSI>\n  # OR\n  #  tenantid: <storage account tenant id for SPN"
-
-		// Open the file in append mode, create it if it doesn't exist
-		file, err = os.OpenFile("defaultConfig.yaml", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			return fmt.Errorf("error opening default config file: [%s]", err.Error())
-		}
-		defer file.Close() // Ensure the file is closed when we're done
-
-		// Write the YAML content to the file
-		if _, err := file.WriteString(yamlContent); err != nil {
-			return fmt.Errorf("error writing to default config file [%s]", err.Error())
+			return fmt.Errorf("error writing to generated config file [%s]", err.Error())
 		}
 
 		return nil
@@ -129,8 +120,8 @@ var defaultConfig = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(defaultConfig)
-	defaultConfig.Flags().StringVar(&opts2.configComp, "component", "", "Input block_cache or file_cache")
-	defaultConfig.Flags().StringVar(&opts2.configTmp, "tmp-path", "", "Input path for caching")
-	defaultConfig.Flags().BoolVar(&opts2.configDirectIO, "direct-io", false, "Choose direct-io mode")
+	rootCmd.AddCommand(generatedConfig)
+	generatedConfig.Flags().StringVar(&opts2.configComp, "component", "", "Input block_cache or file_cache")
+	generatedConfig.Flags().StringVar(&opts2.configTmp, "tmp-path", "", "Input path for caching")
+	generatedConfig.Flags().BoolVar(&opts2.configDirectIO, "direct-io", false, "Choose direct-io mode")
 }

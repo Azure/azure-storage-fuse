@@ -97,6 +97,7 @@ var MountPath string
 var GenConfig bool = false
 var TmpPath string
 var DirectIO bool
+var ConfigYaml string
 
 // LogLevel enum
 type LogLevel int

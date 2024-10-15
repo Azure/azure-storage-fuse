@@ -36,7 +36,6 @@ package libfuse
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
@@ -247,6 +246,19 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 	return nil
 }
 
+func (lf *Libfuse) GenConfig() error {
+	log.Info("Libfuse::Configure : config generation started")
+	var yamlContent string
+	if common.DirectIO {
+		yamlContent = "\nlibfuse:\n  attribute-expiration-sec: 0\n  entry-expiration-sec: 0\n  negative-entry-expiration-sec: 0\n  direct-io: true\n"
+	} else {
+		yamlContent = fmt.Sprintf("\nlibfuse:\n  attribute-expiration-sec: %v\n  entry-expiration-sec: %v\n  negative-entry-expiration-sec: %v\n", lf.attributeExpiration, lf.entryExpiration, lf.negativeTimeout)
+	}
+
+	common.ConfigYaml += yamlContent
+	return nil
+}
+
 // Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
 //
 //	Return failure if any config is not valid to exit the process
@@ -306,25 +318,7 @@ func (lf *Libfuse) Configure(_ bool) error {
 		lf.readOnly, lf.allowOther, lf.allowRoot, lf.filePermission, lf.entryExpiration, lf.attributeExpiration, lf.negativeTimeout, lf.ignoreOpenFlags, lf.nonEmptyMount, lf.directIO, lf.maxFuseThreads, lf.traceEnable, lf.extensionPath, lf.disableWritebackCache, lf.dirPermission, lf.mountPath, lf.umask)
 
 	if common.GenConfig {
-		log.Info("Libfuse::Configure : config generation started")
-		var yamlContent string
-		if common.DirectIO {
-			yamlContent = "\nlibfuse:\n  attribute-expiration-sec: 0\n  entry-expiration-sec: 0\n  negative-entry-expiration-sec: 0\n  direct-io: true\n"
-		} else {
-			yamlContent = fmt.Sprintf("\nlibfuse:\n  attribute-expiration-sec: %v\n  entry-expiration-sec: %v\n  negative-entry-expiration-sec: %v\n", lf.attributeExpiration, lf.entryExpiration, lf.negativeTimeout)
-		}
-
-		// Open the file in append mode, create it if it doesn't exist
-		file, err := os.OpenFile("defaultConfig.yaml", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			return fmt.Errorf("error opening default config file: [%s]", err.Error())
-		}
-		defer file.Close() // Ensure the file is closed when we're done
-
-		// Write the YAML content to the file
-		if _, err := file.WriteString(yamlContent); err != nil {
-			return fmt.Errorf("error writing to default config file [%s]", err.Error())
-		}
+		lf.GenConfig()
 	}
 
 	return nil

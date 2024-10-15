@@ -120,6 +120,16 @@ func (ac *AttrCache) Stop() error {
 	return nil
 }
 
+// GenConfig : Generate the default config for the component
+func (ac *AttrCache) GenConfig() error {
+	log.Info("AttrCache::Configure : config generation started")
+
+	yamlContent := fmt.Sprintf("\nattr_cache:\n  timeout-sec: %d\n", ac.cacheTimeout)
+
+	common.ConfigYaml += yamlContent
+	return nil
+}
+
 // Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
 //
 //	Return failure if any config is not valid to exit the process
@@ -158,21 +168,7 @@ func (ac *AttrCache) Configure(_ bool) error {
 		ac.cacheTimeout, ac.noSymlinks, ac.cacheOnList, ac.maxFiles)
 
 	if common.GenConfig {
-		log.Info("AttrCache::Configure : config generation started")
-
-		yamlContent := fmt.Sprintf("\nattr_cache:\n  timeout-sec: %d\n", ac.cacheTimeout)
-
-		// Open the file in append mode, create it if it doesn't exist
-		file, err := os.OpenFile("defaultConfig.yaml", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			return fmt.Errorf("error opening default config file: [%s]", err.Error())
-		}
-		defer file.Close() // Ensure the file is closed when we're done
-
-		// Write the YAML content to the file
-		if _, err := file.WriteString(yamlContent); err != nil {
-			return fmt.Errorf("error writing to default config file [%s]", err.Error())
-		}
+		ac.GenConfig()
 	}
 
 	return nil

@@ -170,6 +170,18 @@ func (bc *BlockCache) Stop() error {
 	return nil
 }
 
+// GenConfig : Generate the default config for the component
+func (bc *BlockCache) GenConfig() error {
+	log.Info("BlockCache::Configure : config generation started")
+	yamlContent := fmt.Sprintf("\nblock_cache:\n  block-size-mb: %d\n  mem-size-mb: %d\n  prefetch: %d\n  parallelism: %d\n", bc.blockSize/_1MB, bc.memSize/_1MB, bc.prefetch, bc.workers)
+	if common.TmpPath != "" {
+		yamlContent += fmt.Sprintf("  path: %s\n  disk-size-mb: %d\n  disk-timeout-sec: %d\n", bc.tmpPath, bc.diskSize/_1MB, bc.diskTimeout)
+	}
+
+	common.ConfigYaml += yamlContent
+	return nil
+}
+
 // Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
 //
 //	Return failure if any config is not valid to exit the process
@@ -300,24 +312,8 @@ func (bc *BlockCache) Configure(_ bool) error {
 	}
 
 	if common.GenConfig {
-		log.Info("BlockCache::Configure : config generation started")
-		yamlContent := fmt.Sprintf("\nblock_cache:\n  block-size-mb: %d\n  mem-size-mb: %d\n  prefetch: %d\n  parallelism: %d\n", bc.blockSize/_1MB, bc.memSize/_1MB, bc.prefetch, bc.workers)
-		if common.TmpPath != "" {
-			yamlContent += fmt.Sprintf("  path: %s\n  disk-size-mb: %d\n  disk-timeout-sec: %d\n", bc.tmpPath, bc.diskSize/_1MB, bc.diskTimeout)
-		}
-		// Open the file in append mode, create it if it doesn't exist
-		file, err := os.OpenFile("defaultConfig.yaml", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			return fmt.Errorf("error opening default config file: [%s]", err.Error())
-		}
-		defer file.Close() // Ensure the file is closed when we're done
-
-		// Write the YAML content to the file
-		if _, err := file.WriteString(yamlContent); err != nil {
-			return fmt.Errorf("error writing to default config file [%s]", err.Error())
-		}
+		bc.GenConfig()
 	}
-
 	return nil
 }
 
