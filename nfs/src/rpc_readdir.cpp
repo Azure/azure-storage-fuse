@@ -338,17 +338,15 @@ void readdirectory_cache::dnlc_add(const char *filename,
      */
     assert(inode->dircachecnt >= 1);
 
-    const bool added = add(dir_entry, false /* acquire_lock */);
+    add(dir_entry, false /* acquire_lock */);
 
     /*
-     * If we add a new dnlc entry then we need to mark the cache as lookuponly
-     * as the cache is no more in sync with the directory in the server.
-     * This cache needs to be purged and reenumerated before it can be used
-     * to serve enumeration requests.
+     * Whether we are able to add the dnlc entry or not, the directory in the
+     * server has likely changed, so we cannot use the cache to serve directory
+     * enumeration requests. We can use it for serving lookup requests, so mark
+     * it lookuponly.
      */
-    if (added) {
-        set_lookuponly();
-    }
+    set_lookuponly();
 }
 
 std::shared_ptr<struct directory_entry> readdirectory_cache::lookup(
@@ -392,8 +390,8 @@ std::shared_ptr<struct directory_entry> readdirectory_cache::lookup(
     if (dirent && dirent->nfs_inode) {
         /*
          * When a directory_entry is added to to readdirectory_cache we
-         * hold a ref on the inode, so while it's in the cache dircachecnt
-         * must be non-zero.
+         * hold a ref on the inode, so while it's in the dir_entries map,
+         * dircachecnt must be non-zero.
          */
         assert(dirent->nfs_inode->dircachecnt > 0);
 
