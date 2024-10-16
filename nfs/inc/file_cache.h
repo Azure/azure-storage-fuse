@@ -424,7 +424,7 @@ private:
      *    dirty membuf is still uptodate since it has the latest content for
      *    the reader.
      */
-    std::mutex lock;
+    std::mutex mb_lock_44;
 
     /*
      * Flag bitmap for correctly defining the state of this membuf.
@@ -1393,7 +1393,7 @@ private:
     std::map<uint64_t, struct bytes_chunk> chunkmap;
 
     // Lock to protect chunkmap.
-    mutable std::mutex lock;
+    mutable std::mutex chunkmap_lock_43;
 
     /*
      * File whose data we are cacheing.

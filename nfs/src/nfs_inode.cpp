@@ -198,7 +198,7 @@ try_again:
         /*
          * Reduce the extra refcnt and revert the cnt.
          * After this the inode will have 'cnt' references that need to be
-         * dropped by put_nfs_inode() call below, with inode_map_lock held.
+         * dropped by put_nfs_inode() call below, with inode_map_lock_0 held.
          */
         lookupcnt += (cnt - 1);
         assert(lookupcnt >= cnt);
@@ -221,10 +221,10 @@ try_again:
         /*
          * This FORGET would drop the lookupcnt to 0, fuse vfs should not send
          * any more forgets, delete the inode. Note that before we grab the
-         * inode_map_lock in put_nfs_inode() some other thread can reuse the
+         * inode_map_lock_0 in put_nfs_inode() some other thread can reuse the
          * forgotten inode, in which case put_nfs_inode() will just skip it.
          *
-         * TODO: In order to avoid taking the inode_map_lock for every forget,
+         * TODO: In order to avoid taking inode_map_lock_0 for every forget,
          *       see if we should batch them in a threadlocal vector and call
          *       put_nfs_inodes() for a batch.
          */
@@ -816,7 +816,7 @@ void nfs_inode::revalidate(bool force)
      * has changed that what we have cached, and if so update the cached
      * attributes and invalidate the cache as appropriate.
      */
-    std::unique_lock<std::shared_mutex> lock(ilock);
+    std::unique_lock<std::shared_mutex> lock(ilock_1);
 
     if (!update_nolock(&fattr)) {
         /*
@@ -979,7 +979,7 @@ bool nfs_inode::update_nolock(const struct fattr3 *postattr,
 }
 
 /*
- * Caller must hold exclusive lock on nfs_inode->ilock.
+ * Caller must hold exclusive lock on nfs_inode->ilock_1.
  */
 void nfs_inode::force_update_attr_nolock(const struct fattr3& fattr)
 {
@@ -1173,7 +1173,7 @@ void nfs_inode::lookup_dircache(
                  * to us and one already taken as the directory_entry is added
                  * to readdirectory_cache::dir_entries.
                  * Also note that this readdirectory_cache won't be purged,
-                 * after lookup() releases the readdircache_lock since this dir
+                 * after lookup() releases readdircache_lock_2 since this dir
                  * is being enumerated by the current thread and hence it must
                  * have the directory open which should prevent fuse vfs from
                  * calling forget on the directory inode.

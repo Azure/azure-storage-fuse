@@ -57,10 +57,9 @@ struct nfs_inode
     /*
      * Inode lock.
      * Inode must be updated only with this lock held.
-     *
-     * TODO: See if we need this lock or fuse vfs will cover for this.
+     * VFS can make multiple calls (not writes) to the same file in parallel.
      */
-    mutable std::shared_mutex ilock;
+    mutable std::shared_mutex ilock_1;
 
     /*
      * Ref count of this inode.
@@ -177,16 +176,16 @@ struct nfs_inode
      * fetched preop or postop attributes to see if file/dir has changed
      * (and thus the cache must be invalidated).
      *
-     * Note: Update and access it under ilock.
+     * Note: Update and access it under ilock_1.
      * TODO: Audit all places where we access attr and make sure it's done
-     *       under ilock.
+     *       under ilock_1.
      */
     struct stat attr;
 
     /*
-     * attr_timeout_secs is protected by ilock.
-     * attr_timeout_timestamp is updated inder ilock, but can be accessed
-     * w/o ilock, f.e., run_getattr()->attr_cache_expired().
+     * attr_timeout_secs is protected by ilock_1.
+     * attr_timeout_timestamp is updated inder ilock_1, but can be accessed
+     * w/o ilock_1, f.e., run_getattr()->attr_cache_expired().
      */
     int64_t attr_timeout_secs = -1;
     std::atomic<int64_t> attr_timeout_timestamp = -1;
@@ -203,14 +202,14 @@ struct nfs_inode
     /*
      * Pointer to the readdirectory cache.
      * Only valid for a directory, this will be nullptr for a non-directory.
-     * Access to this shared_ptr must be protect by ilock.
+     * Access to this shared_ptr must be protect by ilock_1.
      */
     std::shared_ptr<readdirectory_cache> dircache_handle;
 
     /*
      * This is a handle to the chunk cache which caches data for this file.
      * Valid only for regular files.
-     * Access to this shared_ptr must be protect by ilock.
+     * Access to this shared_ptr must be protect by ilock_1.
      */
     std::shared_ptr<bytes_chunk_cache> filecache_handle;
 
@@ -281,12 +280,12 @@ struct nfs_inode
     {
         assert(is_regfile());
         {
-            std::shared_lock<std::shared_mutex> lock(ilock);
+            std::shared_lock<std::shared_mutex> lock(ilock_1);
             if (filecache_handle)
                 return filecache_handle;
         }
 
-        std::unique_lock<std::shared_mutex> lock(ilock);
+        std::unique_lock<std::shared_mutex> lock(ilock_1);
         if (!filecache_handle) {
             if (aznfsc_cfg.filecache.enable && aznfsc_cfg.filecache.cachedir) {
                 const std::string backing_file_name =
@@ -311,12 +310,12 @@ struct nfs_inode
     {
         assert(is_dir());
         {
-            std::shared_lock<std::shared_mutex> lock(ilock);
+            std::shared_lock<std::shared_mutex> lock(ilock_1);
             if (dircache_handle)
                 return dircache_handle;
         }
 
-        std::unique_lock<std::shared_mutex> lock(ilock);
+        std::unique_lock<std::shared_mutex> lock(ilock_1);
         if (!dircache_handle) {
             dircache_handle = std::make_shared<readdirectory_cache>(client, this);
             /*
@@ -337,12 +336,12 @@ struct nfs_inode
     {
         assert(is_regfile());
         {
-            std::shared_lock<std::shared_mutex> lock(ilock);
+            std::shared_lock<std::shared_mutex> lock(ilock_1);
             if (readahead_state)
                 return readahead_state;
         }
 
-        std::unique_lock<std::shared_mutex> lock(ilock);
+        std::unique_lock<std::shared_mutex> lock(ilock_1);
         if (!readahead_state) {
             readahead_state = std::make_shared<ra_state>(client, this);
         }
@@ -680,7 +679,7 @@ struct nfs_inode
          * filecache_handle and dircache_handle. get_or_alloc_filecache(),
          * or get_or_alloc_dircache() may be setting the shared_ptr.
          */
-        std::shared_lock<std::shared_mutex> lock(ilock);
+        std::shared_lock<std::shared_mutex> lock(ilock_1);
 #endif
 
         if (is_regfile()) {
@@ -801,7 +800,7 @@ struct nfs_inode
     bool update(const struct fattr3 *postattr,
                 const struct wcc_attr *preattr = nullptr)
     {
-        std::unique_lock<std::shared_mutex> lock(ilock);
+        std::unique_lock<std::shared_mutex> lock(ilock_1);
         return update_nolock(postattr, preattr);
     }
 
@@ -815,7 +814,7 @@ struct nfs_inode
 
     void force_update_attr(const struct fattr3& fattr)
     {
-        std::unique_lock<std::shared_mutex> lock(ilock);
+        std::unique_lock<std::shared_mutex> lock(ilock_1);
         force_update_attr_nolock(fattr);
     }
 
@@ -834,18 +833,18 @@ struct nfs_inode
      */
     void invalidate_cache()
     {
-        std::unique_lock<std::shared_mutex> lock(ilock);
+        std::unique_lock<std::shared_mutex> lock(ilock_1);
         invalidate_cache_nolock();
     }
 
     /**
-     * Caller must hold inode->ilock.
+     * Caller must hold inode->ilock_1.
      */
     void purge_dircache_nolock();
 
     void purge_dircache()
     {
-        std::unique_lock<std::shared_mutex> lock(ilock);
+        std::unique_lock<std::shared_mutex> lock(ilock_1);
         purge_dircache_nolock();
     }
 
@@ -871,7 +870,7 @@ struct nfs_inode
     }
 
     /**
-     * Caller must hold inode->ilock.
+     * Caller must hold inode->ilock_1.
      */
     void purge_filecache_nolock();
 
@@ -881,7 +880,7 @@ struct nfs_inode
      */
     void purge_filecache()
     {
-        std::unique_lock<std::shared_mutex> lock(ilock);
+        std::unique_lock<std::shared_mutex> lock(ilock_1);
         purge_filecache_nolock();
     }
 

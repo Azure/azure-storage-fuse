@@ -199,7 +199,7 @@ void nfs_client::jukebox_runner()
         int jukebox_requests;
 
         {
-            std::unique_lock<std::mutex> lock(jukebox_seeds_lock);
+            std::unique_lock<std::mutex> lock(jukebox_seeds_lock_39);
             jukebox_requests = jukebox_seeds.size();
         }
 
@@ -214,7 +214,7 @@ void nfs_client::jukebox_runner()
         }
 
         {
-            std::unique_lock<std::mutex> lock(jukebox_seeds_lock);
+            std::unique_lock<std::mutex> lock(jukebox_seeds_lock_39);
             jukebox_requests = jukebox_seeds.size();
             if (jukebox_requests == 0) {
                 continue;
@@ -227,11 +227,11 @@ void nfs_client::jukebox_runner()
         /*
          * Go over all queued requests and issue those which are ready to be
          * issued, i.e., they have been queued for more than JUKEBOX_DELAY_SECS
-         * seconds. We issue the requests after releasing jukebox_seeds_lock.
+         * seconds. We issue the requests after releasing jukebox_seeds_lock_39.
          */
         std::vector<jukebox_seedinfo *> jsv;
         {
-            std::unique_lock<std::mutex> lock(jukebox_seeds_lock);
+            std::unique_lock<std::mutex> lock(jukebox_seeds_lock_39);
             while (!jukebox_seeds.empty()) {
                 struct jukebox_seedinfo *js = jukebox_seeds.front();
 
@@ -478,7 +478,7 @@ struct nfs_inode *nfs_client::__get_nfs_inode(LOC_PARAMS
      * same file is recipe for disaster.
      */
     {
-        std::shared_lock<std::shared_mutex> lock(inode_map_lock);
+        std::shared_lock<std::shared_mutex> lock(inode_map_lock_0);
 
         /*
          * Search by fileid in the multimap. Since fileid is not guaranteed to
@@ -495,6 +495,8 @@ struct nfs_inode *nfs_client::__get_nfs_inode(LOC_PARAMS
             if (FH_EQUAL(&(inode->get_fh()), fh)) {
                 // File type must not change for an inode.
                 assert(inode->file_type == file_type);
+
+                std::unique_lock<std::shared_mutex> lock1(inode->ilock_1);
 
                 if (inode->is_forgotten()) {
                     AZLogDebug(LOC_FMT
@@ -596,7 +598,7 @@ struct nfs_inode *nfs_client::__get_nfs_inode(LOC_PARAMS
                                             is_root_inode ? FUSE_ROOT_ID : 0);
 
     {
-        std::unique_lock<std::shared_mutex> lock(inode_map_lock);
+        std::unique_lock<std::shared_mutex> lock(inode_map_lock_0);
 
         AZLogDebug(LOC_FMT
                    "[{}:{} / 0x{:08x}] Allocated new inode ({})",
@@ -629,7 +631,7 @@ struct nfs_inode *nfs_client::__get_nfs_inode(LOC_PARAMS
                  * If fattr is newer, update inode attr.
                  */
                 {
-                    std::unique_lock<std::shared_mutex> lock1(i->second->ilock);
+                    std::unique_lock<std::shared_mutex> lock1(i->second->ilock_1);
 
                     const bool fattr_is_newer =
                         (compare_timespec_and_nfstime(i->second->attr.st_ctim,
@@ -683,7 +685,7 @@ struct nfs_inode *nfs_client::__get_nfs_inode(LOC_PARAMS
     return inode;
 }
 
-// Caller must hold the inode_map_lock.
+// Caller must hold inode_map_lock_0.
 void nfs_client::put_nfs_inode_nolock(struct nfs_inode *inode,
                                       size_t dropcnt)
 {
@@ -721,7 +723,7 @@ void nfs_client::put_nfs_inode_nolock(struct nfs_inode *inode,
 
     /*
      * Caller should call us only for forgotten inodes but it's possible that
-     * after we held the inode_map_lock some other thread got a reference on
+     * after we held inode_map_lock_0 some other thread got a reference on
      * this inode.
      */
     if (inode->lookupcnt > 0) {
@@ -1237,6 +1239,10 @@ void nfs_client::setattr(
     tsk->run_setattr();
 }
 
+/*
+ * This can be called in parallel for the same directory, if multiple threads
+ * are enumerating the directory.
+ */
 void nfs_client::readdir(
     fuse_req_t req,
     fuse_ino_t ino,
@@ -1568,7 +1574,7 @@ void nfs_client::jukebox_retry(struct rpc_task *task)
         /*
          * Transfer ownership of rpc_api from rpc_task to jukebox_seedinfo.
          */
-        std::unique_lock<std::mutex> lock(jukebox_seeds_lock);
+        std::unique_lock<std::mutex> lock(jukebox_seeds_lock_39);
         jukebox_seeds.emplace(new jukebox_seedinfo(task->rpc_api));
 
         task->rpc_api = nullptr;

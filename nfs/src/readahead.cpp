@@ -419,7 +419,7 @@ int64_t ra_state::get_next_ra(uint64_t length)
         return -5;
     }
 
-    std::unique_lock<std::shared_mutex> _lock(lock);
+    std::unique_lock<std::shared_mutex> _lock(ra_lock_40);
 
     /*
      * Atomically update last_byte_readahead, as we don't want to return

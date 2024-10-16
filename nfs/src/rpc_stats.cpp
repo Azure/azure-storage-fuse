@@ -10,7 +10,7 @@
 namespace aznfsc {
 
 /* static */ struct rpc_opstat rpc_stats_az::opstats[FUSE_OPCODE_MAX + 1];
-/* static */ std::mutex rpc_stats_az::lock;
+/* static */ std::mutex rpc_stats_az::stats_lock_42;
 /* static */ std::atomic<uint64_t> rpc_stats_az::tot_bytes_read = 0;
 /* static */ std::atomic<uint64_t> rpc_stats_az::bytes_read_from_cache = 0;
 /* static */ std::atomic<uint64_t> rpc_stats_az::bytes_read_ahead = 0;
@@ -36,7 +36,7 @@ void rpc_stats_az::dump_stats()
      * Take exclusive lock to avoid mixing dump from simultaneous dump
      * requests.
      */
-    std::unique_lock<std::mutex> _lock(lock);
+    std::unique_lock<std::mutex> _lock(stats_lock_42);
 
     /*
      * Go over all connections, query libnfs for stats for each and accumulate

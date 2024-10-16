@@ -7,6 +7,26 @@
 #include "rpc_transport.h"
 #include "nfs_internal.h"
 
+/**
+ * This is an informal lock registry for all locks used in the aznfsclient code.
+ * Any new lock introduced should be added here and it must pick a unique number
+ * N for its name which is of the form <context>_lock_N. N is the order of the
+ * lock. A thread can only hold a higher order lock (greater N) then the highest
+ * order lock it's currently holding, i.e., a thread holding a lock *_lock_N
+ * cannot hold any lock from *_lock_0 to *_lock_N-1 (it can only hold *_lock_N+1
+ * and higher order locks).
+ * - nfs_client::inode_map_lock_0
+ * - nfs_inode::ilock_1
+ * - nfs_inode::readdircache_lock_2
+ * - nfs_client::jukebox_seeds_lock_39
+ * +++++++++++++++++++++++++++++++++
+ * - ra_state::ra_lock_40
+ * - rpc_task_helper::task_index_lock_41
+ * - rpc_stats_az::stats_lock_42
+ * - bytes_chunk_cache::chunkmap_lock_43
+ * - membuf::mb_lock_44
+ */
+
 extern "C" {
     /*
      * libnfs does not offer a prototype for this in any public header,
@@ -72,7 +92,7 @@ private:
      *    is referring to it.
      */
     std::multimap<uint64_t /* fileid */, struct nfs_inode*> inode_map;
-    std::shared_mutex inode_map_lock;
+    std::shared_mutex inode_map_lock_0;
 
     /*
      * Every RPC request is represented by an rpc_task which is created when
@@ -93,7 +113,7 @@ private:
     std::thread jukebox_thread;
     void jukebox_runner();
     std::queue<struct jukebox_seedinfo*> jukebox_seeds;
-    mutable std::mutex jukebox_seeds_lock;
+    mutable std::mutex jukebox_seeds_lock_39;
 
     /*
      * Holds info about the server, queried by FSINFO.
@@ -179,7 +199,7 @@ public:
 
     std::shared_mutex& get_inode_map_lock()
     {
-        return inode_map_lock;
+        return inode_map_lock_0;
     }
 
     /*
@@ -273,7 +293,7 @@ public:
      * nlookup parameter passed by fuse FORGET. Instead of the caller
      * reducing lookupcnt and then calling put_nfs_inode(), the caller
      * passes the amount by which the lookupcnt must be dropped. This is
-     * important as we need to drop the lookupcnt inside the inode_map_lock,
+     * important as we need to drop the lookupcnt inside inode_map_lock_0,
      * else if we drop before the lock and lookupcnt becomes 0, some other
      * thread can delete the inode while we still don't have the lock, and
      * then when we proceed to delete the inode, we would be accessing the
@@ -283,13 +303,13 @@ public:
      * not referenced by any readdirectory_cache (inode->dircachecnt is 0)
      * then the inode is removed from the inode_map and freed.
      *
-     * This nolock version does not hold the inode_map_lock so the caller
+     * This nolock version does not hold inode_map_lock_0 so the caller
      * must hold the lock before calling this. Usually you will call one of
      * the other variants which hold the lock.
      *
      * Note: Call put_nfs_inode()/put_nfs_inode_nolock() only when you are
      *       sure dropping dropcnt refs will cause the lookupcnt to become 0.
-     *       It's possible that before put_nfs_inode() acquires inode_map_lock,
+     *       It's possible that before put_nfs_inode() acquires inode_map_lock_0,
      *       someone may grab a fresh ref on the inode, but that's fine as
      *       put_nfs_inode_nolock() handles that. Since it expects caller to
      *       only call it when the inode lookupcnt is going to be 0, it logs
@@ -300,10 +320,10 @@ public:
     void put_nfs_inode(struct nfs_inode *inode, size_t dropcnt)
     {
         /*
-         * We need to hold the inode_map_lock while we check the inode for
+         * We need to hold inode_map_lock_0 while we check the inode for
          * eligibility to remove (and finally remove) from the inode_map.
          */
-        std::unique_lock<std::shared_mutex> lock(inode_map_lock);
+        std::unique_lock<std::shared_mutex> lock(inode_map_lock_0);
         put_nfs_inode_nolock(inode, dropcnt);
     }
 

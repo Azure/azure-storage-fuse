@@ -279,9 +279,8 @@ private:
 
     /*
      * This lock protects all the members of this readdirectory_cache.
-     * XXX We should use inode->ilock to protect this too?
      */
-    mutable std::shared_mutex readdircache_lock;
+    mutable std::shared_mutex readdircache_lock_2;
 
 public:
     readdirectory_cache(struct nfs_client *_client,
@@ -326,7 +325,7 @@ public:
     bool get_entry_at(cookie3 cookie, std::shared_ptr<directory_entry>& dirent)
     {
         // Take shared lock on the map.
-        std::shared_lock<std::shared_mutex> lock(readdircache_lock);
+        std::shared_lock<std::shared_mutex> lock(readdircache_lock_2);
         auto it = dir_entries.find(cookie);
 
         if (it != dir_entries.end())
@@ -387,7 +386,7 @@ public:
         assert(cokieverf != nullptr);
 
         // TODO: Can this be made atomic? Get exclusive lock to update the cookie verifier.
-        std::unique_lock<std::shared_mutex> lock(readdircache_lock);
+        std::unique_lock<std::shared_mutex> lock(readdircache_lock_2);
         ::memcpy(&cookie_verifier, cokieverf, sizeof(cookie_verifier));
     }
 
@@ -399,7 +398,7 @@ public:
      * READDIR/READDIRPLUS response.
      * A return value of 0 means the file was not found in the cache.
      *
-     * Note: Caller MUST hold the readdircache_lock.
+     * Note: Caller MUST hold readdircache_lock_2.
      */
     cookie3 filename_to_cookie(const char *filename) const
     {

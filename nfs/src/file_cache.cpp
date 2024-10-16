@@ -438,7 +438,7 @@ void membuf::set_locked()
 
     // Common case, not locked, lock w/o waiting.
     while (!try_lock()) {
-        std::unique_lock<std::mutex> _lock(lock);
+        std::unique_lock<std::mutex> _lock(mb_lock_44);
 
         /*
          * When reading data from the Blob, NFS read may take some time,
@@ -476,7 +476,7 @@ void membuf::clear_locked()
     assert(!is_flushing());
 
     {
-        std::unique_lock<std::mutex> _lock(lock);
+        std::unique_lock<std::mutex> _lock(mb_lock_44);
         flag &= ~MB_Flag::Locked;
 
         AZLogDebug("Unlocked membuf [{}, {}), fd={}",
@@ -697,7 +697,7 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
      * TODO: See if we can hold shared lock for cases where we don't have to
      *       update chunkmap.
      */
-    const std::unique_lock<std::mutex> _lock(lock);
+    const std::unique_lock<std::mutex> _lock(chunkmap_lock_43);
 
     /*
      * Temp variables to hold details for releasing a range.
@@ -1635,7 +1635,7 @@ void bytes_chunk_cache::inline_prune()
         return;
     }
 
-    const std::unique_lock<std::mutex> _lock(lock);
+    const std::unique_lock<std::mutex> _lock(chunkmap_lock_43);
 
     /*
      * Multiple fuse threads may get the prune goals and then all of them
@@ -1762,7 +1762,7 @@ int64_t bytes_chunk_cache::drop(uint64_t offset, uint64_t length)
         return 0;
     }
 
-    const std::unique_lock<std::mutex> _lock(lock);
+    const std::unique_lock<std::mutex> _lock(chunkmap_lock_43);
 
     /*
      * Find chunk with offset >= next_offset. Note that we only drop caches
@@ -1830,7 +1830,7 @@ void bytes_chunk_cache::clear()
      * returned, and it does that while holding the bytes_chunk_cache::lock, we
      * can safely remove from chunkmap iff inuse/dirty/locked are not set.
      */
-    const std::unique_lock<std::mutex> _lock(lock);
+    const std::unique_lock<std::mutex> _lock(chunkmap_lock_43);
     const uint64_t start_size = chunkmap.size();
 
     for (auto it = chunkmap.cbegin(), next_it = it;
@@ -1986,7 +1986,7 @@ std::vector<bytes_chunk> bytes_chunk_cache::get_dirty_bc_range(uint64_t start_of
     std::vector<bytes_chunk> bc_vec;
 
     // TODO: Make it shared lock.
-    const std::unique_lock<std::mutex> _lock(lock);
+    const std::unique_lock<std::mutex> _lock(chunkmap_lock_43);
     auto it = chunkmap.lower_bound(start_off);
 
     while (it != chunkmap.cend() && it->first <= end_off) {

@@ -154,7 +154,7 @@ public:
         }
         assert((int64_t) length > 0);
 
-        std::unique_lock<std::shared_mutex> _lock(lock);
+        std::unique_lock<std::shared_mutex> _lock(ra_lock_40);
 
         const uint64_t curr_section = (max_byte_read / SECTION_SIZE);
         const uint64_t this_section = (offset / SECTION_SIZE);
@@ -223,7 +223,7 @@ public:
      */
     bool is_sequential() const
     {
-        std::shared_lock<std::shared_mutex> _lock(lock);
+        std::shared_lock<std::shared_mutex> _lock(ra_lock_40);
 
         return is_sequential_nolock();
     }
@@ -445,7 +445,7 @@ private:
     /*
      * Lock for safely accessing/updating above state.
      */
-    mutable std::shared_mutex lock;
+    mutable std::shared_mutex ra_lock_40;
 };
 
 }

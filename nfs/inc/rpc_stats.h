@@ -60,7 +60,7 @@ struct rpc_opstat
 
     /*
      * Error map to store all the errors encountered by the given api.
-     * This is guarded by rpc_stats_az::lock.
+     * This is guarded by rpc_stats_az::stats_lock_42.
      */
     std::map<int /*error status*/, uint64_t /*error count*/> error_map;
 };
@@ -183,7 +183,7 @@ public:
              * on_rpc_complete will be called before sending response to fuse.
              * This should be okay as this will happen only in error state.
              */
-            std::unique_lock<std::mutex> _lock(lock);
+            std::unique_lock<std::mutex> _lock(stats_lock_42);
             auto result = opstats[optype].error_map.emplace(status, 1);
             if (!result.second) {
                 // If the key already exists, increment the error count.
@@ -299,7 +299,7 @@ private:
     /*
      * Lock for synchronizing dumping stats and for inserting into error_map.
      */
-    static std::mutex lock;
+    static std::mutex stats_lock_42;
 
 public:
     /*

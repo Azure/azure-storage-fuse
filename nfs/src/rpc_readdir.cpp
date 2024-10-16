@@ -160,12 +160,12 @@ bool readdirectory_cache::add(const std::shared_ptr<struct directory_entry>& ent
          * If acquire_lock is true, get exclusive lock on the map for adding
          * the entry to the map. We use a dummy_lock for minimal code changes
          * in the no-lock case.
-         * If you call it with acquire_lock=false make sure readdircache_lock
+         * If you call it with acquire_lock=false make sure readdircache_lock_2
          * is held in exclusive mode.
          */
         std::shared_mutex dummy_lock;
         std::unique_lock<std::shared_mutex> lock(
-                acquire_lock ? readdircache_lock : dummy_lock);
+                acquire_lock ? readdircache_lock_2 : dummy_lock);
 
         // TODO: Fix this.
         if (cache_size >= MAX_CACHE_SIZE_LIMIT) {
@@ -216,7 +216,7 @@ bool readdirectory_cache::add(const std::shared_ptr<struct directory_entry>& ent
 
         /*
          * Caller only calls us after ensuring cookie isn't already cached,
-         * but since we don't hold the readdircache_lock across removing the
+         * but since we don't hold readdircache_lock_2 across removing the
          * old entry and adding this one, it may race with some other thread.
          *
          * TODO: Move the code to remove directory_entry with key
@@ -281,7 +281,7 @@ void readdirectory_cache::dnlc_add(const char *filename,
      */
     static uint64_t bigcookie = (UINT64_MAX >> 1);
 
-    std::unique_lock<std::shared_mutex> lock(readdircache_lock);
+    std::unique_lock<std::shared_mutex> lock(readdircache_lock_2);
 
     /*
      * See the directory_entry update rules in directory_entry comments.
@@ -368,12 +368,12 @@ std::shared_ptr<struct directory_entry> readdirectory_cache::lookup(
      * If acquire_lock is true, get shared lock on the map for looking up the
      * entry in the map. We use a dummy_lock for minimal code changes in the
      * no-lock case.
-     * If you call it with acquire_lock=false make sure readdircache_lock
+     * If you call it with acquire_lock=false make sure readdircache_lock_2
      * is held in shared or exclusive mode.
      */
     std::shared_mutex dummy_lock;
     std::shared_lock<std::shared_mutex> lock(
-            acquire_lock ? readdircache_lock : dummy_lock);
+            acquire_lock ? readdircache_lock_2 : dummy_lock);
 
     if (filename_hint) {
         cookie = filename_to_cookie(filename_hint);
@@ -476,12 +476,12 @@ bool readdirectory_cache::remove(cookie3 cookie,
          * If acquire_lock is true, get exclusive lock on the map for removing
          * the entry from the map. We use a dummy_lock for minimal code changes
          * in the no-lock case.
-         * If you call it with acquire_lock=false make sure readdircache_lock
+         * If you call it with acquire_lock=false make sure readdircache_lock_2
          * is held in exclusive mode.
          */
         std::shared_mutex dummy_lock;
         std::unique_lock<std::shared_mutex> lock(
-                acquire_lock ? readdircache_lock : dummy_lock);
+                acquire_lock ? readdircache_lock_2 : dummy_lock);
 
         if (filename_hint) {
             cookie = filename_to_cookie(filename_hint);
@@ -587,7 +587,7 @@ bool readdirectory_cache::remove(cookie3 cookie,
 }
 
 /*
- * inode_map_lock must be held by the caller.
+ * inode_map_lock_0 must be held by the caller.
  */
 void readdirectory_cache::clear()
 {
@@ -602,7 +602,7 @@ void readdirectory_cache::clear()
     std::vector<struct nfs_inode*> tofree_vec;
 
     {
-        std::unique_lock<std::shared_mutex> lock(readdircache_lock);
+        std::unique_lock<std::shared_mutex> lock(readdircache_lock_2);
 
         eof = false;
         cache_size = 0;

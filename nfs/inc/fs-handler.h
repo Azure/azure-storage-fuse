@@ -268,7 +268,7 @@ static void aznfsc_ll_open(fuse_req_t req,
      * - filecache_handle
      * - dircache_handle
      * - readahead_state
-     * and access to them must be protected by ilock.
+     * and access to them must be protected by ilock_1.
      *
      * get_or_alloc_rastate() may still be creating the shared_ptr and the
      * boolean inode->readahead_state check which calls the operator bool()
