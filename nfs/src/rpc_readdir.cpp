@@ -224,9 +224,12 @@ bool readdirectory_cache::add(const std::shared_ptr<struct directory_entry>& ent
          *       the lock.
          */
         if (it.second) {
-            AZLogDebug("[{}] Adding dnlc cache entry {} -> {}",
+            AZLogDebug("[{}] Adding dnlc cache entry {} -> {} "
+                       "(dircachecnt: {}, lookupcnt: {})",
                        dir_inode->get_fuse_ino(), entry->name,
-                       entry->cookie);
+                       entry->cookie,
+                       entry->nfs_inode ? entry->nfs_inode->dircachecnt.load() : -1,
+                       entry->nfs_inode ? entry->nfs_inode->lookupcnt.load() : -1);
 
             cache_size += entry->get_cache_size();
 
@@ -360,6 +363,9 @@ std::shared_ptr<struct directory_entry> readdirectory_cache::lookup(
         const char *filename_hint,
         bool acquire_lock) const
 {
+    AZLogDebug("[{}] lookup(cookie: {}, filename_hint: {})",
+               dir_inode->ino, cookie, filename_hint);
+
     // Either cookie or filename_hint (not both) must be passed.
     assert((cookie == 0) == (filename_hint != nullptr));
 
@@ -378,14 +384,27 @@ std::shared_ptr<struct directory_entry> readdirectory_cache::lookup(
     if (filename_hint) {
         cookie = filename_to_cookie(filename_hint);
         if (cookie == 0) {
+            AZLogDebug("[{}] filename_hint: {}, not found",
+                       dir_inode->ino, filename_hint);
             return nullptr;
         }
+        AZLogDebug("[{}] filename_hint: {}, found with cookie: {}",
+                   dir_inode->ino, filename_hint, cookie);
     }
 
     const auto it = dir_entries.find(cookie);
 
     const std::shared_ptr<struct directory_entry>& dirent =
         (it != dir_entries.end()) ? it->second : nullptr;
+
+    if (!dirent) {
+        AZLogDebug("[{}] cookie: {}, not found",
+                   dir_inode->ino, cookie);
+    } else {
+        AZLogDebug("[{}] cookie: {}, found, ino: {}",
+                   dir_inode->ino, cookie,
+                   dirent->nfs_inode ? dirent->nfs_inode->get_fuse_ino() : -1);
+    }
 
     /*
      * If filename_hint was passed it MUST match the name in the dirent.
@@ -459,6 +478,9 @@ bool readdirectory_cache::remove(cookie3 cookie,
                                  const char *filename_hint,
                                  bool acquire_lock)
 {
+    AZLogDebug("[{}] remove(cookie: {}, filename_hint: {})",
+               dir_inode->ino, cookie, filename_hint);
+
     // Either cookie or filename_hint (not both) must be passed.
     assert((cookie == 0) == (filename_hint != nullptr));
 
@@ -486,14 +508,26 @@ bool readdirectory_cache::remove(cookie3 cookie,
         if (filename_hint) {
             cookie = filename_to_cookie(filename_hint);
             if (cookie == 0) {
+                AZLogDebug("[{}] filename_hint: {}, not found",
+                           dir_inode->ino, filename_hint);
                 return false;
             }
+            AZLogDebug("[{}] filename_hint: {}, found with cookie: {}",
+                       dir_inode->ino, filename_hint, cookie);
         }
 
         const auto it = dir_entries.find(cookie);
         std::shared_ptr<struct directory_entry> dirent =
             (it != dir_entries.end()) ? it->second : nullptr;
 
+        if (!dirent){
+            AZLogDebug("[{}] cookie: {}, not found",
+                       dir_inode->ino, cookie);
+        } else {
+            AZLogDebug("[{}] cookie: {}, found, ino: {}",
+                       dir_inode->ino, cookie,
+                       dirent->nfs_inode ? dirent->nfs_inode->ino : -1);
+        }
         /*
          * Given cookie not found in the cache.
          * It should not happen though since the caller would call remove()
