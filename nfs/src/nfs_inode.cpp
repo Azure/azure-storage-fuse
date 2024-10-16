@@ -91,9 +91,14 @@ nfs_inode::~nfs_inode()
     assert(forget_expected == 0);
 
 #if 1
-    // XXX Remove me once this bug is fixed.
+    /*
+     * XXX Remove me once this bug is fixed.
+     *     Last time when I hit this, it was for a directory for which the
+     *     lookupcnt unnaturally dropped by a large value (4), and it was
+     *     not called from decref.. was weird!!
+     */
     if (opencnt != 0) {
-        AZLogError("[{}] opencnt = {}!", ino, opencnt.load());
+        AZLogError("[{}:{}] opencnt = {}!", get_filetype_coding(), ino, opencnt.load());
     }
 #endif
     // We should never delete an inode which is still open()ed by user.
@@ -210,8 +215,8 @@ try_again:
          * inode.
          */
         if (lookupcnt == cnt) {
-            AZLogDebug("[{}] lookupcnt dropping by {}, to 0, forgetting inode",
-                       ino, cnt);
+            AZLogDebug("[{}:{}] lookupcnt dropping by {}, to 0, forgetting inode",
+                       get_filetype_coding, ino, cnt);
         } else {
             AZLogWarn("[{}:{}] lookupcnt dropping by {}, to {} "
                       "(some other thread got a fresh ref)",
