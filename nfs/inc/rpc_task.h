@@ -103,6 +103,31 @@ struct lookup_rpc_task
         parent_ino = parent;
     }
 
+    void set_fuse_file(fuse_file_info *fileinfo)
+    {
+        if (fileinfo != nullptr)
+        {
+            file = *fileinfo;
+            file_ptr = &file;
+        }
+        else
+        {
+            file_ptr = nullptr;
+        }
+    }
+
+    void set_is_called_for_fh(bool needs_fh)
+    {
+        is_called_for_fh = needs_fh;
+    }
+
+    void set_is_called_for_create_file(fuse_file_info *fileinfo)
+    {
+        is_called_for_create = true;
+        is_called_for_fh = true;
+        set_fuse_file(fileinfo);
+    }
+
     fuse_ino_t get_parent_ino() const
     {
         return parent_ino;
@@ -111,6 +136,21 @@ struct lookup_rpc_task
     const char *get_file_name() const
     {
         return file_name;
+    }
+
+    struct fuse_file_info *get_fuse_file() const
+    {
+        return file_ptr;
+    }
+
+    bool get_is_called_for_fh() const
+    {
+        return is_called_for_fh;
+    }
+
+    bool get_is_called_for_create_file() const
+    {
+        return is_called_for_create;
     }
 
     /**
@@ -124,6 +164,15 @@ struct lookup_rpc_task
 private:
     fuse_ino_t parent_ino;
     char *file_name;
+    /*
+     * This will be set to true if the lookup call is made to fetch the filehandle
+     * after a create/mkdir/symlink call returns with success but failed to populate
+     * the filehandle.
+     */
+    bool is_called_for_fh;
+    bool is_called_for_create;
+    struct fuse_file_info file;
+    struct fuse_file_info *file_ptr;
 };
 
 struct access_rpc_task

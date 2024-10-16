@@ -146,6 +146,8 @@ void rpc_task::init_lookup(fuse_req *request,
     set_fuse_req(request);
     rpc_api->lookup_task.set_file_name(name);
     rpc_api->lookup_task.set_parent_ino(parent_ino);
+    rpc_api->lookup_task.set_fuse_file(nullptr);
+    rpc_api->lookup_task.set_is_called_for_fh(false);
 
     fh_hash = get_client()->get_nfs_inode_from_ino(parent_ino)->get_crc();
 }
@@ -547,7 +549,7 @@ static void lookup_callback(
             task,
             &res->LOOKUP3res_u.resok.object,
             &res->LOOKUP3res_u.resok.obj_attributes.post_op_attr_u.attributes,
-            nullptr);
+            task->rpc_api->lookup_task.get_fuse_file());
     } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
         task->get_client()->jukebox_retry(task);
     } else {
@@ -919,15 +921,43 @@ static void createfile_callback(
          *       Same needs to be done for other create APIs like mkdir,
          *       symlink and mknod.
          */
-        assert(
-            res->CREATE3res_u.resok.obj.handle_follows &&
-            res->CREATE3res_u.resok.obj_attributes.attributes_follow);
+        if (!res->CREATE3res_u.resok.obj.handle_follows)
+        {
+            /*
+             * If the server doesn't send the filehandle (which is perfectly
+             * valid), make a LOOKUP RPC request to query the filehandle and
+             * pass that to fuse.
+             */
 
-        task->get_client()->reply_entry(
-            task,
-            &res->CREATE3res_u.resok.obj.post_op_fh3_u.handle,
-            &res->CREATE3res_u.resok.obj_attributes.post_op_attr_u.attributes,
-            task->rpc_api->create_task.get_fuse_file());
+            struct rpc_task *lookup_tsk =
+                    task->get_client()->get_rpc_task_helper()->alloc_rpc_task(
+                        FUSE_LOOKUP);
+
+            lookup_tsk->init_lookup(
+                task->get_fuse_req(),
+                task->rpc_api->create_task.get_file_name(),
+                task->rpc_api->create_task.get_parent_ino());
+
+            // Mark the lookup task as being called for the create file.
+            lookup_tsk->rpc_api->lookup_task.set_is_called_for_create_file(
+                task->rpc_api->create_task.get_fuse_file());
+
+            lookup_tsk->run_lookup();
+
+            /*
+             * Free the current RPC task since no response will be sent for this.
+             * The response to fuse will be sent by the above lookup call.
+             */
+            task->free_rpc_task();
+        }
+        else
+        {
+            task->get_client()->reply_entry(
+                task,
+                &res->CREATE3res_u.resok.obj.post_op_fh3_u.handle,
+                &res->CREATE3res_u.resok.obj_attributes.post_op_attr_u.attributes,
+                task->rpc_api->create_task.get_fuse_file());
+        }
     } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
         task->get_client()->jukebox_retry(task);
     } else {
@@ -1032,15 +1062,37 @@ void mknod_callback(
             UPDATE_INODE_ATTR(inode, res->CREATE3res_u.resok.dir_wcc.after);
         }
 
-        assert(
-            res->CREATE3res_u.resok.obj.handle_follows &&
-            res->CREATE3res_u.resok.obj_attributes.attributes_follow);
+        if (!res->CREATE3res_u.resok.obj.handle_follows) {
+            /*
+             * If the server doesn't send the filehandle (which is perfectly
+             * valid), make a LOOKUP RPC request to query the filehandle and
+             * pass that to fuse.
+             */
+            struct rpc_task *lookup_tsk =
+                    task->get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_LOOKUP);
 
-        task->get_client()->reply_entry(
-            task,
-            &res->CREATE3res_u.resok.obj.post_op_fh3_u.handle,
-            &res->CREATE3res_u.resok.obj_attributes.post_op_attr_u.attributes,
-            nullptr);
+            lookup_tsk->init_lookup(
+                task->get_fuse_req(),
+                task->rpc_api->create_task.get_file_name(),
+                task->rpc_api->create_task.get_parent_ino());
+
+            // Mark the lookup task as being called to populate the fh.
+            lookup_tsk->rpc_api->lookup_task.set_is_called_for_fh(true);
+
+            lookup_tsk->run_lookup();
+
+            /*
+             * Free the current RPC task since no response will be sent for this.
+             * The response to fuse will be sent by the above lookup call.
+             */
+            task->free_rpc_task();
+        } else {
+            task->get_client()->reply_entry(
+                task,
+                &res->CREATE3res_u.resok.obj.post_op_fh3_u.handle,
+                &res->CREATE3res_u.resok.obj_attributes.post_op_attr_u.attributes,
+                nullptr);
+        }
     } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
         task->get_client()->jukebox_retry(task);
     } else {
@@ -1092,15 +1144,34 @@ void mkdir_callback(
             UPDATE_INODE_ATTR(inode, res->MKDIR3res_u.resok.dir_wcc.after);
         }
 
-        assert(
-            res->MKDIR3res_u.resok.obj.handle_follows &&
-            res->MKDIR3res_u.resok.obj_attributes.attributes_follow);
+        if (!res->MKDIR3res_u.resok.obj.handle_follows) {
+            struct rpc_task *lookup_tsk =
+                    task->get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_LOOKUP);
 
-        task->get_client()->reply_entry(
-            task,
-            &res->MKDIR3res_u.resok.obj.post_op_fh3_u.handle,
-            &res->MKDIR3res_u.resok.obj_attributes.post_op_attr_u.attributes,
-            nullptr);
+            lookup_tsk->init_lookup(
+                task->get_fuse_req(),
+                task->rpc_api->mkdir_task.get_dir_name(),
+                task->rpc_api->mkdir_task.get_parent_ino());
+
+            // Mark the lookup task as being called to populate the fh.
+            lookup_tsk->rpc_api->lookup_task.set_is_called_for_fh(true);
+
+            lookup_tsk->run_lookup();
+
+            /*
+             * Free the current RPC task since no response will be sent for this.
+             * The response to fuse will be sent by the above lookup call.
+             */
+            task->free_rpc_task();
+
+            return;
+        } else {
+            task->get_client()->reply_entry(
+                task,
+                &res->MKDIR3res_u.resok.obj.post_op_fh3_u.handle,
+                &res->MKDIR3res_u.resok.obj_attributes.post_op_attr_u.attributes,
+                nullptr);
+        }
     } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
         task->get_client()->jukebox_retry(task);
     } else {
@@ -1447,12 +1518,13 @@ void rpc_task::run_lookup()
 
             struct fattr3 fattr;
             child_inode->fattr3_from_stat(fattr);
-            get_client()->reply_entry(this, &child_inode->get_fh(), &fattr, nullptr);
+            get_client()->reply_entry(this, &child_inode->get_fh(), &fattr, rpc_api->lookup_task.get_fuse_file());
 
             // Drop the ref held by dnlc_lookup().
             child_inode->decref();
             return;
-        } else if (negative_confirmed) {
+        } else if (negative_confirmed &&
+            !rpc_api->lookup_task.get_is_called_for_fh()) {
             AZLogDebug("[{}/{}] Returning cached lookup (negative)",
                     parent_ino, filename);
 
