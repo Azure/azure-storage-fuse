@@ -300,11 +300,6 @@ public:
 
     ~readdirectory_cache();
 
-    std::shared_mutex& get_lock()
-    {
-        return readdircache_lock;
-    }
-
     /**
      * Call this to check if the cache is empty.
      */

@@ -182,8 +182,14 @@ struct nfs_inode
      *       under ilock.
      */
     struct stat attr;
+
+    /*
+     * attr_timeout_secs is protected by ilock.
+     * attr_timeout_timestamp is updated inder ilock, but can be accessed
+     * w/o ilock, f.e., run_getattr()->attr_cache_expired().
+     */
     int64_t attr_timeout_secs = -1;
-    int64_t attr_timeout_timestamp = -1;
+    std::atomic<int64_t> attr_timeout_timestamp = -1;
 
     /*
      * Time in usecs we received the last cached write for this inode.
@@ -898,7 +904,7 @@ struct nfs_inode
     void lookup_dircache(
         cookie3 cookie,
         size_t max_size,
-        std::vector<std::shared_ptr<const directory_entry>>& results,
+        std::vector<std::shared_ptr<directory_entry>>& results,
         bool& eof,
         bool readdirplus);
 };

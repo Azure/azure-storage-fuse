@@ -349,6 +349,12 @@ void readdirectory_cache::dnlc_add(const char *filename,
     set_lookuponly();
 }
 
+/*
+ * If the directory_entry returned has a valid nfs_inode, lookup() will hold
+ * an additional dircachecnt ref on the inode. Caller will usually drop this
+ * after holding a lookupcnt ref before returning the entry in readdirplus
+ * response.
+ */
 std::shared_ptr<struct directory_entry> readdirectory_cache::lookup(
         cookie3 cookie,
         const char *filename_hint,

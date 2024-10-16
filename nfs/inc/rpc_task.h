@@ -2181,7 +2181,7 @@ public:
     }
 
     void send_readdir_or_readdirplus_response(
-        const std::vector<std::shared_ptr<const directory_entry>>& readdirentries);
+        const std::vector<std::shared_ptr<directory_entry>>& readdirentries);
 
     void get_readdir_entries_from_cache();
 
@@ -2238,7 +2238,7 @@ class rpc_task_helper
 {
 private:
     // Mutex for synchronizing access to free_task_index stack.
-    std::shared_mutex task_index_lock;
+    std::shared_mutex task_index_lock_100;
 
     // Stack containing index into the rpc_task_list vector.
     std::stack<int> free_task_index;
@@ -2366,7 +2366,7 @@ public:
 
     int get_free_idx()
     {
-        std::unique_lock<std::shared_mutex> lock(task_index_lock);
+        std::unique_lock<std::shared_mutex> lock(task_index_lock_100);
 
         // Wait until a free rpc task is available.
         while (free_task_index.empty()) {
@@ -2401,7 +2401,7 @@ public:
         assert(index >= 0 && index < MAX_OUTSTANDING_RPC_TASKS);
 
         {
-            std::unique_lock<std::shared_mutex> lock(task_index_lock);
+            std::unique_lock<std::shared_mutex> lock(task_index_lock_100);
 
 #ifdef ENABLE_PARANOID
             assert(free_task_index_set.size() == free_task_index.size());

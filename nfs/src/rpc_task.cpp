@@ -3070,9 +3070,8 @@ void rpc_task::run_readdirplus()
  * Callback for the READDIR RPC. Once this callback is called, it will first
  * populate the readdir cache with the newly fetched entries (minus the
  * attributes). Additionally it will populate the readdirentries vector and
- * call send_readdir_or_readdirplus_response() to respond to the fuse readdir call.
- *
- * TODO: Restart directory enumeration on getting NFS3ERR_BAD_COOKIE.
+ * call send_readdir_or_readdirplus_response() to respond to the fuse readdir
+ * call.
  */
 static void readdir_callback(
     struct rpc_context *rpc,
@@ -3094,7 +3093,7 @@ static void readdir_callback(
         task->get_client()->get_nfs_inode_from_ino(dir_ino);
     // How many max bytes worth of entries data does the caller want?
     ssize_t rem_size = task->rpc_api->readdir_task.get_size();
-    std::vector<std::shared_ptr<const directory_entry>> readdirentries;
+    std::vector<std::shared_ptr<directory_entry>> readdirentries;
     const int status = task->status(rpc_status, NFS_STATUS(res));
     bool eof = false;
 
@@ -3208,7 +3207,12 @@ static void readdir_callback(
                     dir_entry->nfs_inode->dircachecnt--;
                 }
 
-                // This will drop the original dircachecnt on the inode.
+                /*
+                 * Reset the dir_entry shared_ptr so that the subsequent
+                 * remove() call can release the original shared_ptr ref
+                 * on the directory_entry and free it.
+                 */
+                dir_entry.reset();
                 dircache_handle->remove(entry->cookie);
             }
 
@@ -3259,6 +3263,11 @@ static void readdir_callback(
             if (got_new_entry && rem_size >= 0) {
                 rem_size -= dir_entry->get_fuse_buf_size(false /* readdirplus */);
                 if (rem_size >= 0) {
+                    /*
+                     * readdir_callback() MUST NOT return directory_entry with
+                     * nfs_inode set.
+                     */
+                    assert(dir_entry->nfs_inode == nullptr);
                     readdirentries.push_back(dir_entry);
                 }
             }
@@ -3423,7 +3432,7 @@ static void readdirplus_callback(
         task->get_client()->get_nfs_inode_from_ino(dir_ino);
     // How many max bytes worth of entries data does the caller want?
     ssize_t rem_size = task->rpc_api->readdir_task.get_size();
-    std::vector<std::shared_ptr<const directory_entry>> readdirentries;
+    std::vector<std::shared_ptr<directory_entry>> readdirentries;
     const int status = task->status(rpc_status, NFS_STATUS(res));
     bool eof = false;
 
@@ -3500,9 +3509,6 @@ static void readdirplus_callback(
             last_valid_offset = entry->cookie;
 
             const struct fattr3 *fattr = nullptr;
-            const bool is_dot_or_dotdot =
-                directory_entry::is_dot_or_dotdot(entry->name);
-
             /*
              * Keep updating eof_cookie, when we exit the loop we will have
              * eof_cookie set correctly.
@@ -3525,12 +3531,18 @@ static void readdirplus_callback(
              * and if so use that, else create a new nfs_inode.
              * This will grab a lookupcnt ref on this inode. We will transfer
              * this same ref to fuse if we are able to successfully convey
-             * this directory_entry to fuse. Since fuse doesn't want us to
-             * grab a ref for "." and "..", we drop ref for those later below.
+             * this directory_entry to fuse.
+             * We also increment forget_expected as fuse will call forget()
+             * for these inodes.
+             *
+             * Note:  Caller must call decref() and decrement forget_expected
+             *        for inodes corresponding to directory_entrys that are not
+             *        returned to fuse.
              */
             struct nfs_inode *const nfs_inode =
                 task->get_client()->get_nfs_inode(
                     &entry->name_handle.post_op_fh3_u.handle, fattr);
+            nfs_inode->forget_expected++;
 
             if (!fattr) {
                 /*
@@ -3580,12 +3592,20 @@ static void readdirplus_callback(
                 }
 
                 /*
-                 * This will drop the original dircachecnt on the inode and
-                 * also delete the inode if the lookupcnt ref is also 0.
+                 * Reset the dir_entry shared_ptr so that the subsequent
+                 * remove() call can release the original shared_ptr ref
+                 * on the directory_entry, and also delete the inode if the
+                 * lookupcnt ref is also 0.
                  */
+                dir_entry.reset();
                 dircache_handle->remove(entry->cookie);
             }
 
+            /*
+             * This dir_entry shared_ptr will hold one dircachecnt ref on
+             * the inode. This will be transferred to the directory_entry
+             * installed by the following add() call.
+             */
             dir_entry = std::make_shared<struct directory_entry>(
                                                    strdup(entry->name),
                                                    entry->cookie,
@@ -3611,7 +3631,8 @@ static void readdirplus_callback(
              * Note: This assert can fail under very rare circumstances.
              *       See note in readdir_callback().
              */
-            struct nfs_inode *tmpi = dircache_handle->dnlc_lookup(dir_entry->name);
+            struct nfs_inode *tmpi =
+                dircache_handle->dnlc_lookup(dir_entry->name);
             assert(tmpi == nfs_inode);
             tmpi->decref();
 
@@ -3646,28 +3667,14 @@ static void readdirplus_callback(
                 rem_size -= dir_entry->get_fuse_buf_size(true /* readdirplus */);
                 if (rem_size >= 0) {
                     /*
-                     * send_readdir_or_readdirplus_response() will drop this ref after adding
-                     * to fuse buf, after which the lookupcnt ref will protect
-                     * it.
+                     * Any directory_entry added must have the inode's lookupcnt
+                     * ref and forget_expected bumped.
                      */
-                    nfs_inode->dircachecnt++;
-                    readdirentries.push_back(dir_entry);
+                    assert(dir_entry->nfs_inode);
+                    assert(dir_entry->nfs_inode->forget_expected > 0);
+                    assert(dir_entry->nfs_inode->lookupcnt > 0);
 
-                    /*
-                     * Fuse promises to call FORGET for each readdirplus
-                     * returned entry that is not "." or "..". Note that
-                     * get_nfs_inode() above would have grabbed a lookupcnt
-                     * ref for all entries, here we drop ref on "." and "..",
-                     * so we are only left with ref on non "." and "..".
-                     * Also since we are going to send this inode to fuse and
-                     * fuse promises to call forget for this, increment
-                     * forget_expected.
-                     */
-                    if (is_dot_or_dotdot) {
-                        nfs_inode->decref();
-                    } else {
-                        nfs_inode->forget_expected++;
-                    }
+                    readdirentries.push_back(dir_entry);
                 } else {
                     /*
                      * We are unable to add this entry to the fuse response
@@ -3678,13 +3685,22 @@ static void readdirplus_callback(
                                "fuse response buffer",
                                nfs_inode->get_fuse_ino(),
                                entry->name);
+                    assert(nfs_inode->forget_expected > 0);
+                    nfs_inode->forget_expected--;
                     nfs_inode->decref();
                 }
             } else {
                 AZLogDebug("[{}] {}: Dropping ref since couldn't fit in "
-                           "fuse response buffer",
+                           "fuse response buffer or re-enumerating after "
+                           "NFS3ERR_BAD_COOKIE and did not hit the target, "
+                           "cookie: {}, target_offset: {}, rem_size: {}",
                            nfs_inode->get_fuse_ino(),
-                           entry->name);
+                           entry->name,
+                           entry->cookie,
+                           task->rpc_api->readdir_task.get_target_offset(),
+                           rem_size);
+                assert(nfs_inode->forget_expected > 0);
+                nfs_inode->forget_expected--;
                 nfs_inode->decref();
             }
 
@@ -3826,7 +3842,7 @@ void rpc_task::get_readdir_entries_from_cache()
     // Must have been allocated by opendir().
     assert(nfs_inode->dircache_handle);
     bool is_eof = false;
-    std::vector<std::shared_ptr<const directory_entry>> readdirentries;
+    std::vector<std::shared_ptr<directory_entry>> readdirentries;
 
     assert(nfs_inode->is_dir());
 
@@ -3966,8 +3982,34 @@ void rpc_task::fetch_readdirplus_entries_from_server()
     } while (rpc_retry);
 }
 
+/*
+ * readdirentries vector passed to send_readdir_or_readdirplus_response() has
+ * one or more directory_entry with following properties:
+ * - For READDIRPLUS response every directory_entry MUST have a valid nfs_inode
+ *   pointer.
+ * - For READDIR response directory_entry may or may not have a valid nfs_inode
+ *   pointer.
+ * - If directory_entry has a valid nfs_inode pointer then the caller MUST have
+ *   held a lookupcnt ref on the inode. It must have additionally incremented
+ *   forget_expected.
+ *
+ * When responding to READDIRPLUS, fuse wants us to hold a ref on each inode
+ * corresponding to a file/dir which is not "." or "..", as it'll call forget
+ * for each of these.
+ * When responding to READDIR, fuse doesn't want us to hold a ref on any inode.
+ * This means:
+ * - For READDIR send_readdir_or_readdirplus_response() MUST call decref() for
+ *   each inode, and drop forget_expected.
+ * - For READDIRPLUS and successful callback to fuse, it MUST call decref() for
+ *   "." and ".." (for the rest fuse will call forget), and drop forget_expected.
+ * - For READDIRPLUS and failed callback to fuse, it MUST call decref() for each
+ *   inode and drop forget_expected.
+ * - Any directory_entry that could not be packed in the fuse response, if the
+ *   directory_entry has a valid nfs_inode, then it MUST call decref() for the
+ *   inode and decrement forget_expected.
+ */
 void rpc_task::send_readdir_or_readdirplus_response(
-    const std::vector<std::shared_ptr<const directory_entry>>& readdirentries)
+    const std::vector<std::shared_ptr<directory_entry>>& readdirentries)
 {
     const bool readdirplus = (get_op_type() == FUSE_READDIRPLUS);
     /*
@@ -3984,7 +4026,7 @@ void rpc_task::send_readdir_or_readdirplus_response(
     assert(size >= 4096);
 
     // Allocate fuse response buffer.
-    char *buf1 = (char *) malloc(size);
+    char *buf1 = (char *) ::malloc(size);
     if (!buf1) {
         reply_error(ENOMEM);
         return;
@@ -3998,27 +4040,24 @@ void rpc_task::send_readdir_or_readdirplus_response(
                " entries to send {}",
                readdirentries.size());
 
-    for (const auto& it : readdirentries) {
+    for (auto& it : readdirentries) {
         /*
          * Caller should make sure that it adds only directory entries after
          * what was requested in the READDIR{PLUS} call to readdirentries.
          */
-        assert((uint64_t) it->cookie > (uint64_t) rpc_api->readdir_task.get_offset());
+        assert((uint64_t) it->cookie >
+                (uint64_t) rpc_api->readdir_task.get_offset());
         size_t entsize;
 
-        /*
-         * Drop the ref held inside lookup() or readdirplus_callback().
-         *
-         * Note: entry->nfs_inode may be null for entries populated using
-         *       only readdir however, it is guaranteed to be present for
-         *       readdirplus.
-         */
-        if (it->nfs_inode) {
-            assert(it->nfs_inode->dircachecnt > 0);
-            it->nfs_inode->dircachecnt--;
-        }
-
         if (readdirplus) {
+            /*
+             * For readdirplus, caller MUST have set the inode and bumped
+             * lookupcnt ref and forget_expected.
+             */
+            assert(it->nfs_inode);
+            assert(it->nfs_inode->lookupcnt > 0);
+            assert(it->nfs_inode->forget_expected > 0);
+
             struct fuse_entry_param fuseentry;
 
 #ifdef ENABLE_PARANOID
@@ -4092,45 +4131,98 @@ void rpc_task::send_readdir_or_readdirplus_response(
             break;
         }
 
+#ifdef ENABLE_PRESSURE_POINTS
+        if (num_entries_added > 0) {
+            if (inject_error()) {
+                AZLogWarn("[{}] PP: sending less directory entries to fuse, "
+                          "size: {}, rem: {}, num_entries_added: {}",
+                          parent_ino, size, rem, num_entries_added);
+                break;
+            }
+        }
+#endif
+
         // Increment the buffer pointer to point to the next free space.
         current_buf += entsize;
         rem -= entsize;
         num_entries_added++;
 
         if (readdirplus) {
+            assert(it->nfs_inode);
+            assert(it->nfs_inode->lookupcnt > 0);
+            assert(it->nfs_inode->forget_expected > 0);
+
             /*
-             * Fuse expects lookupcnt of every entry returned by readdirplus(),
-             * except "." and "..", to be incremented. Make sure get_nfs_inode()
-             * has duly taken the refs.
+             * Caller would have bumped lookupcnt ref and forget_expected fpr
+             * *all* entries, fuse expects lookupcnt of every entry returned
+             * by readdirplus(), except "." and "..", to be incremented, so
+             * drop ref and forget_expected for "." and "..".
              *
-             * If fuse_reply_buf() below fails we drop these refcnts below.
+             * Note: We clear it->nfs_inode so that if fuse_reply_buf() fails
+             *       and we need to drop lookupcnt ref and forget_expected for
+             *       all the entries, we don't drop them again for these inodes.
              */
-            if (!it->is_dot_or_dotdot()) {
-                assert(it->nfs_inode->lookupcnt > 0);
+            if (it->is_dot_or_dotdot()) {
+                it->nfs_inode->forget_expected--;
+                it->nfs_inode->decref();
+                *(const_cast<struct nfs_inode**>(&it->nfs_inode)) = nullptr;
             }
+        } else if (it->nfs_inode) {
+            /*
+             * Note: entry->nfs_inode may be null for entries populated using
+             *       only readdir however, it is guaranteed to be present for
+             *       readdirplus.
+             */
+            assert(it->nfs_inode->forget_expected > 0);
+            it->nfs_inode->forget_expected--;
+            it->nfs_inode->decref();
+            *(const_cast<struct nfs_inode**>(&it->nfs_inode)) = nullptr;
         }
     }
 
-    AZLogDebug("Num of entries sent in readdir response is {}", num_entries_added);
+    bool inject_fuse_reply_buf_failure = false;
 
-    if (fuse_reply_buf(get_fuse_req(), buf1, size - rem) != 0) {
-        AZLogError("fuse_reply_buf failed!");
+#ifdef ENABLE_PRESSURE_POINTS
+    inject_fuse_reply_buf_failure = inject_error();
+#endif
 
-        if (readdirplus) {
-            for (const auto& it : readdirentries) {
-                if (!it->is_dot_or_dotdot()) {
-                    AZLogDebug("[{}] Dropping lookupcnt, now {}, "
-                               "forget_expected: {}",
-                               it->nfs_inode->get_fuse_ino(),
-                               it->nfs_inode->lookupcnt.load(),
-                               it->nfs_inode->forget_expected.load());
-                    it->nfs_inode->forget_expected--;
-                    it->nfs_inode->decref();
-                }
-            }
+    if (!inject_fuse_reply_buf_failure) {
+        AZLogDebug("Num of entries sent in readdir response is {}", num_entries_added);
+
+        if (fuse_reply_buf(get_fuse_req(), buf1, size - rem) != 0) {
+            AZLogError("fuse_reply_buf failed!");
+            num_entries_added = 0;
+        }
+    } else {
+        AZLogWarn("[{}] PP: injecting fuse_reply_buf() failure, "
+                  "size: {}, rem: {}, num_entries_added: {}",
+                  parent_ino, size, rem, num_entries_added);
+        num_entries_added = 0;
+    }
+
+    for (size_t i = num_entries_added; i < readdirentries.size(); i++) {
+        const std::shared_ptr<const directory_entry>& it = readdirentries[i];
+        if (it->nfs_inode) {
+            AZLogDebug("[{}] Dropping lookupcnt, now {}, "
+                       "forget_expected: {}",
+                       it->nfs_inode->get_fuse_ino(),
+                       it->nfs_inode->lookupcnt.load(),
+                       it->nfs_inode->forget_expected.load());
+            assert(it->nfs_inode->forget_expected > 0);
+            it->nfs_inode->forget_expected--;
+            it->nfs_inode->decref();
         }
     }
 
     free(buf1);
-    free_rpc_task();
+
+    if (!inject_fuse_reply_buf_failure) {
+        free_rpc_task();
+    } else {
+        /*
+         * EINVAL return from getdents() imply insufficient buffer, so caller
+         * should retry.
+         */
+        reply_error(EINVAL);
+    }
 }

@@ -230,6 +230,17 @@ try_again:
          */
         client->put_nfs_inode(this, cnt);
     } else {
+        /*
+         * After the --lookupcnt below some other thread calling decref()
+         * can delete this inode, so don't access it after that, hence we
+         * log before that but with updated lookupcnt.
+         */
+        AZLogDebug("[{}:{}] lookupcnt decremented by {}, to {}, "
+                   "dircachecnt: {}, forget_expected: {}",
+                   get_filetype_coding(), ino, cnt,
+                   lookupcnt.load() - 1, dircachecnt.load(),
+                   forget_expected.load());
+
         if (--lookupcnt == 0) {
             /*
              * This means that there was some thread holding a lookupcnt
@@ -240,12 +251,6 @@ try_again:
             lookupcnt += cnt;
             goto try_again;
         }
-
-        AZLogDebug("[{}:{}] lookupcnt decremented by {}, to {}, "
-                   "dircachecnt: {}, forget_expected: {}",
-                   get_filetype_coding(), ino, cnt,
-                   lookupcnt.load(), dircachecnt.load(),
-                   forget_expected.load());
     }
 }
 
@@ -879,7 +884,7 @@ bool nfs_inode::update_nolock(const struct fattr3 *postattr,
             assert(attr_timeout_secs != -1);
             attr_timeout_timestamp =
                 std::max(get_current_msecs() + attr_timeout_secs*1000,
-                         attr_timeout_timestamp);
+                         attr_timeout_timestamp.load());
             return false;
         }
     }
@@ -973,6 +978,9 @@ bool nfs_inode::update_nolock(const struct fattr3 *postattr,
     return true;
 }
 
+/*
+ * Caller must hold exclusive lock on nfs_inode->ilock.
+ */
 void nfs_inode::force_update_attr_nolock(const struct fattr3& fattr)
 {
     const bool fattr_is_newer =
@@ -1044,10 +1052,26 @@ void nfs_inode::purge_filecache_nolock()
     }
 }
 
+/*
+ * This will query the dir_entries map looking for upto 'max_size' entries
+ * starting at 'cookie'.
+ * The returned directory entries will be filled in 'results' vector.
+ * If 'readdirplus' is true it means caller wants these entries for responding
+ * to a READDIRPLUS request, which means all directory_entry returned will
+ * have a valid nfs_inode pointer.
+ * If 'readdirplus' is false it means caller wants these entries for responding
+ * to a READDIR request, in that case directory_entry returned may or may not
+ * have a valid nfs_inode pointer.
+ * Every directory_entry returned that has a valid nfs_inode, a lookupcnt ref
+ * will be held and also forget_expected will be increased for the inode. For
+ * entries passed to fuse these will be dropped when fuse calls forget for those
+ * inodes. For the rest, caller must arrange to drop both the lookupcnt and
+ * forget_expected.
+ */
 void nfs_inode::lookup_dircache(
     cookie3 cookie,
     size_t max_size,
-    std::vector<std::shared_ptr<const directory_entry>>& results,
+    std::vector<std::shared_ptr<directory_entry>>& results,
     bool& eof,
     bool readdirplus)
 {
@@ -1084,7 +1108,12 @@ void nfs_inode::lookup_dircache(
     eof = false;
 
     while (rem_size > 0) {
-        std::shared_ptr<const struct directory_entry> entry =
+        /*
+         * lookup() will hold a dircachecnt ref on the inode if entry has a
+         * valid nfs_inode. Also, there will one dircachecnt because of the
+         * directory_entry being present in dir_entries map.
+         */
+        std::shared_ptr<struct directory_entry> entry =
             dircache_handle->lookup(cookie);
 
         /*
@@ -1107,21 +1136,22 @@ void nfs_inode::lookup_dircache(
 
             if (rem_size >= 0) {
                 /*
-                 * This entry can fit in the fuse buffer.
-                 * We have to increment the lookupcnt for non "." and ".."
-                 * entries. Note that we took a dircachecnt reference inside
-                 * readdirectory_cache::lookup() call above, to make sure that
-                 * till we increase this refcnt, the inode is not freed.
-                 *
-                 * Since send_readdir_or_readdirplus_response() will send this
-                 * to fuse which will later call forget for this, we increment
-                 * forget_expected as well.
+                 * This entry can fit in the fuse buffer. If entry->nfs_inode
+                 * is valid then increase the inode lookupcnt ref and also the
+                 * forget_expected. Note that we do it regardless of whether
+                 * the caller wants it for READDIR or READDIRPLUS. Caller must
+                 * drop the lookupcnt ref and forget_expected correctly.
                  */
-                if (readdirplus && !entry->is_dot_or_dotdot()) {
-                    // lookup() would have held a dircachecnt ref.
-                    assert(entry->nfs_inode->dircachecnt >= 1);
+                if (entry->nfs_inode) {
+                    /*
+                     * lookup() would have held a dircachecnt ref and one
+                     * original dircachecnt ref held for each directory_entry
+                     * added to dir_entries.
+                     */
                     entry->nfs_inode->forget_expected++;
                     entry->nfs_inode->incref();
+                    assert(entry->nfs_inode->dircachecnt >= 2);
+                    entry->nfs_inode->dircachecnt--;
                 }
 
                 num_cache_entries++;
@@ -1144,7 +1174,7 @@ void nfs_inode::lookup_dircache(
                  * to readdirectory_cache::dir_entries.
                  * Also note that this readdirectory_cache won't be purged,
                  * after lookup() releases the readdircache_lock since this dir
-                 * is being enumerate by the current thread and hence it must
+                 * is being enumerated by the current thread and hence it must
                  * have the directory open which should prevent fuse vfs from
                  * calling forget on the directory inode.
                  *
@@ -1153,8 +1183,12 @@ void nfs_inode::lookup_dircache(
                  *       readdirplus.
                  */
                 if (entry->nfs_inode) {
-                    assert(entry->nfs_inode->dircachecnt >= 2);
-                    entry->nfs_inode->dircachecnt--;
+                    struct nfs_inode *inode = entry->nfs_inode;
+                    inode->incref();
+                    assert(inode->dircachecnt >= 2);
+                    inode->dircachecnt--;
+                    entry.reset();
+                    inode->decref();
                 }
 
                 // No space left to add more entries.
