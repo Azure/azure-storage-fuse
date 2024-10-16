@@ -913,21 +913,17 @@ static void createfile_callback(
             UPDATE_INODE_ATTR(inode, res->CREATE3res_u.resok.dir_wcc.after);
         }
 
-        /*
-         * TODO: Remove this assert and if server doesn't send the filehandle,
-         *       make a LOOKUP RPC request to query the filehandle and pass
-         *       that to fuse. Since this callback is called in the context of
-         *       the libnfs thread, we should not issue a sync LOOKUP.
-         *       Same needs to be done for other create APIs like mkdir,
-         *       symlink and mknod.
-         */
-        if (!res->CREATE3res_u.resok.obj.handle_follows)
-        {
+        if (!res->CREATE3res_u.resok.obj.handle_follows) {
             /*
              * If the server doesn't send the filehandle (which is perfectly
              * valid), make a LOOKUP RPC request to query the filehandle and
              * pass that to fuse.
              */
+            AZLogWarn("CreateFile failed to return filehandle, req={}, "
+                "parent_ino={}, name={}. Issuing lookup.",
+                fmt::ptr(task->get_fuse_req()),
+                task->rpc_api->create_task.get_parent_ino(),
+                task->rpc_api->create_task.get_file_name());
 
             struct rpc_task *lookup_tsk =
                     task->get_client()->get_rpc_task_helper()->alloc_rpc_task(
@@ -949,9 +945,9 @@ static void createfile_callback(
              * The response to fuse will be sent by the above lookup call.
              */
             task->free_rpc_task();
-        }
-        else
-        {
+
+            return;
+        } else {
             task->get_client()->reply_entry(
                 task,
                 &res->CREATE3res_u.resok.obj.post_op_fh3_u.handle,
@@ -1068,6 +1064,12 @@ void mknod_callback(
              * valid), make a LOOKUP RPC request to query the filehandle and
              * pass that to fuse.
              */
+            AZLogWarn("mknod failed to return filehandle, req={}, "
+                "parent_ino={}, name={}. Issuing lookup.",
+                fmt::ptr(task->get_fuse_req()),
+                task->rpc_api->create_task.get_parent_ino(),
+                task->rpc_api->create_task.get_file_name());
+
             struct rpc_task *lookup_tsk =
                     task->get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_LOOKUP);
 
@@ -1086,6 +1088,8 @@ void mknod_callback(
              * The response to fuse will be sent by the above lookup call.
              */
             task->free_rpc_task();
+
+            return;
         } else {
             task->get_client()->reply_entry(
                 task,
@@ -1145,6 +1149,17 @@ void mkdir_callback(
         }
 
         if (!res->MKDIR3res_u.resok.obj.handle_follows) {
+            /*
+             * If the server doesn't send the filehandle (which is perfectly
+             * valid), make a LOOKUP RPC request to query the filehandle and
+             * pass that to fuse.
+             */
+            AZLogWarn("mkdir failed to return filehandle, req={}, "
+                "parent_ino={}, name={}. Issuing lookup.",
+                fmt::ptr(task->get_fuse_req()),
+                task->rpc_api->mkdir_task.get_parent_ino(),
+                task->rpc_api->mkdir_task.get_dir_name());
+
             struct rpc_task *lookup_tsk =
                     task->get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_LOOKUP);
 
