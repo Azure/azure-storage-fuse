@@ -2181,7 +2181,7 @@ public:
     }
 
     void send_readdir_or_readdirplus_response(
-        const std::vector<std::shared_ptr<directory_entry>>& readdirentries);
+        const std::vector<std::shared_ptr<const directory_entry>>& readdirentries);
 
     void get_readdir_entries_from_cache();
 

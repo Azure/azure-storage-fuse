@@ -3093,7 +3093,7 @@ static void readdir_callback(
         task->get_client()->get_nfs_inode_from_ino(dir_ino);
     // How many max bytes worth of entries data does the caller want?
     ssize_t rem_size = task->rpc_api->readdir_task.get_size();
-    std::vector<std::shared_ptr<directory_entry>> readdirentries;
+    std::vector<std::shared_ptr<const directory_entry>> readdirentries;
     const int status = task->status(rpc_status, NFS_STATUS(res));
     bool eof = false;
 
@@ -3432,7 +3432,7 @@ static void readdirplus_callback(
         task->get_client()->get_nfs_inode_from_ino(dir_ino);
     // How many max bytes worth of entries data does the caller want?
     ssize_t rem_size = task->rpc_api->readdir_task.get_size();
-    std::vector<std::shared_ptr<directory_entry>> readdirentries;
+    std::vector<std::shared_ptr<const directory_entry>> readdirentries;
     const int status = task->status(rpc_status, NFS_STATUS(res));
     bool eof = false;
 
@@ -3842,7 +3842,7 @@ void rpc_task::get_readdir_entries_from_cache()
     // Must have been allocated by opendir().
     assert(nfs_inode->dircache_handle);
     bool is_eof = false;
-    std::vector<std::shared_ptr<directory_entry>> readdirentries;
+    std::vector<std::shared_ptr<const directory_entry>> readdirentries;
 
     assert(nfs_inode->is_dir());
 
@@ -4013,7 +4013,7 @@ void rpc_task::fetch_readdirplus_entries_from_server()
  *       and we have just a shared_ptr to them.
  */
 void rpc_task::send_readdir_or_readdirplus_response(
-    const std::vector<std::shared_ptr<directory_entry>>& readdirentries)
+    const std::vector<std::shared_ptr<const directory_entry>>& readdirentries)
 {
     const bool readdirplus = (get_op_type() == FUSE_READDIRPLUS);
     /*

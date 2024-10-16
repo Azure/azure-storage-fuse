@@ -1071,7 +1071,7 @@ void nfs_inode::purge_filecache_nolock()
 void nfs_inode::lookup_dircache(
     cookie3 cookie,
     size_t max_size,
-    std::vector<std::shared_ptr<directory_entry>>& results,
+    std::vector<std::shared_ptr<const directory_entry>>& results,
     bool& eof,
     bool readdirplus)
 {
