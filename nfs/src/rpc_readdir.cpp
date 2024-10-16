@@ -190,6 +190,11 @@ bool readdirectory_cache::add(const std::shared_ptr<struct directory_entry>& ent
                        entry->nfs_inode->get_fuse_ino(),
                        entry->cookie,
                        entry->nfs_inode->dircachecnt.load());
+        } else {
+            AZLogDebug("[{}] Adding \"{}\", cookie {}, to readdir cache",
+                       dir_inode->get_fuse_ino(),
+                       entry->name,
+                       entry->cookie);
         }
 
         assert(dir_entries.size() == dnlc_map.size());
@@ -563,6 +568,10 @@ bool readdirectory_cache::remove(cookie3 cookie,
          * scope.
          */
         if (!inode) {
+            AZLogDebug("[{}] Removing \"{}\", cookie {}, from readdir cache",
+                       dir_inode->get_fuse_ino(),
+                       dirent->name,
+                       dirent->cookie);
             return true;
         }
 
@@ -575,10 +584,11 @@ bool readdirectory_cache::remove(cookie3 cookie,
          */
         assert(inode->dircachecnt > 0);
 
-        AZLogDebug("[{}] Removing {} fuse ino {}, cookie {}, from "
+        AZLogDebug("[{}] Removing {} \"{}\" fuse ino {}, cookie {}, from "
                    "readdir cache (lookupcnt={}, dircachecnt={}, "
                    "forget_expected={})",
                    dir_inode->get_fuse_ino(),
+                   inode->is_dir() ? "directory" : "file",
                    dirent->name,
                    inode->get_fuse_ino(),
                    dirent->cookie,
@@ -653,18 +663,23 @@ void readdirectory_cache::clear()
                  */
                 assert(inode->dircachecnt > 0);
 
-                AZLogDebug("[{}] Removing {} fuse ino {}, cookie {}, from "
+                AZLogDebug("[{}] Removing {} \"{}\" fuse ino {}, cookie {}, from "
                            "readdir cache (dircachecnt {}, lookupcnt {}, "
                            "forget_expected {})",
                            dir_inode->get_fuse_ino(),
+                           inode->is_dir() ? "directory" : "file",
                            it->second->name,
                            inode->get_fuse_ino(),
                            it->second->cookie,
                            inode->dircachecnt.load(),
                            inode->lookupcnt.load(),
                            inode->forget_expected.load());
+            } else {
+                AZLogDebug("[{}] Removing \"{}\", cookie {}, from readdir cache",
+                           dir_inode->get_fuse_ino(),
+                           it->second->name,
+                           it->second->cookie);
             }
-
             /*
              * If this is the last dircachecnt on this inode, it means
              * there are no more readdirectory_cache,s referencing this

@@ -4007,6 +4007,10 @@ void rpc_task::fetch_readdirplus_entries_from_server()
  * - Any directory_entry that could not be packed in the fuse response, if the
  *   directory_entry has a valid nfs_inode, then it MUST call decref() for the
  *   inode and decrement forget_expected.
+ *
+ * TODO: While this is processing readdirentries, can those directory_entry
+ *       objects be modified? Note that they are present in inode->dir_entries
+ *       and we have just a shared_ptr to them.
  */
 void rpc_task::send_readdir_or_readdirplus_response(
     const std::vector<std::shared_ptr<directory_entry>>& readdirentries)
@@ -4034,11 +4038,11 @@ void rpc_task::send_readdir_or_readdirplus_response(
 
     char *current_buf = buf1;
     size_t rem = size;
-    int num_entries_added = 0;
+    size_t num_entries_added = 0;
 
     AZLogDebug("send_readdir_or_readdirplus_response: Number of directory"
-               " entries to send {}",
-               readdirentries.size());
+               " entries to send {}, size: {}",
+               readdirentries.size(), size);
 
     for (auto& it : readdirentries) {
         /*
@@ -4165,10 +4169,12 @@ void rpc_task::send_readdir_or_readdirplus_response(
             if (it->is_dot_or_dotdot()) {
                 it->nfs_inode->forget_expected--;
                 it->nfs_inode->decref();
-                *(const_cast<struct nfs_inode**>(&it->nfs_inode)) = nullptr;
             }
         } else if (it->nfs_inode) {
             /*
+             * For READDIR response, we need to drop lookupcnt ref and
+             * forget_expected for all entries with a valid inode.
+             *
              * Note: entry->nfs_inode may be null for entries populated using
              *       only readdir however, it is guaranteed to be present for
              *       readdirplus.
@@ -4176,10 +4182,15 @@ void rpc_task::send_readdir_or_readdirplus_response(
             assert(it->nfs_inode->forget_expected > 0);
             it->nfs_inode->forget_expected--;
             it->nfs_inode->decref();
-            *(const_cast<struct nfs_inode**>(&it->nfs_inode)) = nullptr;
         }
     }
 
+    /*
+     * startidx is the starting index into readdirentries vector from where
+     * we start cleaning up. In case of error this will be reset to 0, else
+     * it's set to num_entries_added.
+     */
+    size_t startidx = num_entries_added;
     bool inject_fuse_reply_buf_failure = false;
 
 #ifdef ENABLE_PRESSURE_POINTS
@@ -4191,27 +4202,47 @@ void rpc_task::send_readdir_or_readdirplus_response(
 
         if (fuse_reply_buf(get_fuse_req(), buf1, size - rem) != 0) {
             AZLogError("fuse_reply_buf failed!");
-            num_entries_added = 0;
+            startidx = 0;
         }
     } else {
         AZLogWarn("[{}] PP: injecting fuse_reply_buf() failure, "
                   "size: {}, rem: {}, num_entries_added: {}",
                   parent_ino, size, rem, num_entries_added);
-        num_entries_added = 0;
+        startidx = 0;
     }
 
-    for (size_t i = num_entries_added; i < readdirentries.size(); i++) {
+    for (size_t i = startidx; i < readdirentries.size(); i++) {
         const std::shared_ptr<const directory_entry>& it = readdirentries[i];
-        if (it->nfs_inode) {
-            AZLogDebug("[{}] Dropping lookupcnt, now {}, "
-                       "forget_expected: {}",
-                       it->nfs_inode->get_fuse_ino(),
-                       it->nfs_inode->lookupcnt.load(),
-                       it->nfs_inode->forget_expected.load());
-            assert(it->nfs_inode->forget_expected > 0);
-            it->nfs_inode->forget_expected--;
-            it->nfs_inode->decref();
+        /*
+         * If directory_entry doesn't have a valid inode, no cleanup to do.
+         */
+        if (!it->nfs_inode) {
+            assert(!readdirplus);
+            continue;
         }
+
+        /*
+         * Till num_entries_added we have dropped the lookupcnt ref and
+         * forget_expected for:
+         * - "." amd ".." for readdirplus.
+         * - all for readdir.
+         * Skip those now.
+         * Beyond num_entries_added, we have to drop for all.
+         */
+        if (i < num_entries_added) {
+            if (!readdirplus || it->is_dot_or_dotdot()) {
+                continue;
+            }
+        }
+
+        AZLogDebug("[{}] Dropping lookupcnt, now {}, "
+                   "forget_expected: {}",
+                   it->nfs_inode->get_fuse_ino(),
+                   it->nfs_inode->lookupcnt.load(),
+                   it->nfs_inode->forget_expected.load());
+        assert(it->nfs_inode->forget_expected > 0);
+        it->nfs_inode->forget_expected--;
+        it->nfs_inode->decref();
     }
 
     free(buf1);
