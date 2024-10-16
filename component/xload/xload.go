@@ -58,7 +58,7 @@ type Xload struct {
 
 // Structure defining your config parameters
 type XloadOptions struct {
-	// TODO: this should take the vaule from block cache or file cache config
+	// TODO:: xload : this should take the vaule from block cache or file cache config
 	BlockSize float64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
 	Mode      string  `config:"mode" yaml:"mode,omitempty"`
 	Path      string  `config:"path" yaml:"path,omitempty"`
@@ -168,13 +168,14 @@ func (xl *Xload) Start(ctx context.Context) error {
 		return fmt.Errorf("invalid mode in xload : %s", xl.mode.String())
 	}
 
-	xl.startComponents()
-	return nil
+	return xl.startComponents()
 }
 
 // Stop : Stop the component functionality and kill all threads started
 func (xl *Xload) Stop() error {
 	log.Trace("Xload::Stop : Stopping component %s", xl.Name())
+
+	// TODO:: xload : should we delete the files from local path
 
 	xl.comps[0].stop()
 	xl.blockPool.Terminate()
@@ -234,7 +235,12 @@ func (xl *Xload) startDownloader() error {
 	return nil
 }
 
-func (xl *Xload) createChain() {
+func (xl *Xload) createChain() error {
+	if len(xl.comps) == 0 {
+		log.Err("Xload::createChain : no component initialized in xload")
+		return fmt.Errorf("no component initialized in xload")
+	}
+
 	currComp := xl.comps[0]
 
 	for i := 1; i < len(xl.comps); i++ {
@@ -242,14 +248,22 @@ func (xl *Xload) createChain() {
 		currComp.setNext(nextComp)
 		currComp = nextComp
 	}
+
+	return nil
 }
 
-func (xl *Xload) startComponents() {
-	xl.createChain()
+func (xl *Xload) startComponents() error {
+	err := xl.createChain()
+	if err != nil {
+		log.Err("Xload::startComponents : failed to create chain [%s]", err.Error())
+		return err
+	}
 
 	for i := len(xl.comps) - 1; i >= 0; i-- {
 		xl.comps[i].start()
 	}
+
+	return nil
 }
 
 // ------------------------- Factory -------------------------------------------

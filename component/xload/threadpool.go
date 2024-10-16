@@ -96,7 +96,5 @@ func (t *ThreadPool) Do() {
 		if err != nil {
 			log.Err("ThreadPool::Do : Error in processing workitem [%s, %d] : %v", item.path, item.block.offset, err)
 		}
-		// item.err = err
-		// item.responseChannel <- item
 	}
 }

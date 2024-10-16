@@ -36,7 +36,6 @@ package block_cache
 import (
 	"container/list"
 	"context"
-	"encoding/base64"
 	"fmt"
 	"io"
 	"math"
@@ -1260,7 +1259,7 @@ func (bc *BlockCache) lineupUpload(handle *handlemap.Handle, block *Block, listM
 
 	// id := listMap[block.id]
 	// if id == "" {
-	id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
+	id := common.GetBlockID(16)
 	listMap[block.id] = &blockInfo{
 		id:        id,
 		committed: false,
@@ -1531,7 +1530,7 @@ func (bc *BlockCache) stageZeroBlock(handle *handlemap.Handle, tryCnt int) (stri
 		return "", fmt.Errorf("3 attempts to upload zero block have failed for %v=>%v", handle.ID, handle.Path)
 	}
 
-	id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
+	id := common.GetBlockID(16)
 
 	log.Debug("BlockCache::stageZeroBlock : Staging zero block for %v=>%v, try = %v", handle.ID, handle.Path, tryCnt)
 	err := bc.NextComponent().StageData(internal.StageDataOptions{

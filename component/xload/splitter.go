@@ -1,7 +1,6 @@
 package xload
 
 import (
-	"encoding/base64"
 	"fmt"
 	"io"
 	"os"
@@ -72,11 +71,11 @@ func (u *uploadSplitter) process(item *workItem) (int, error) {
 
 	log.Trace("uploadSplitter::process : Splitting data for %s", item.path)
 	if item.path != "" {
-		return 0, nil // temporary code, remove this
+		return 0, nil
 	}
 
 	if item.dataLen == 0 {
-		// TODO : If file is of size 0 then we just need to create the file
+		// TODO:: xload : If file is of size 0 then we just need to create the file
 		return 0, nil
 	}
 
@@ -122,7 +121,7 @@ func (u *uploadSplitter) process(item *workItem) (int, error) {
 				block.index = i
 				block.offset = offset
 				block.length = int64(dataLen)
-				block.id = base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
+				block.id = common.GetBlockID(16)
 
 				splitItem := &workItem{
 					path:            item.path,
@@ -197,7 +196,7 @@ func (d *downloadSplitter) process(item *workItem) (int, error) {
 
 	log.Trace("downloadSplitter::process : Splitting data for %s", item.path)
 	if item.path != "" {
-		return 0, nil // temporary code, remove this
+		return 0, nil
 	}
 
 	numBlocks := ((item.dataLen - 1) / d.blockSize) + 1
