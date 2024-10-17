@@ -336,6 +336,26 @@ func (suite *utilTestSuite) TestDirectoryCleanup() {
 
 }
 
+func (suite *utilTestSuite) TestWriteToFile() {
+
+	fileName := fmt.Sprintf("./test_%s.txt", randomString(8))
+	content := "Hello World"
+
+	defer os.Remove(fileName)
+
+	err := WriteToFile(fileName, content, WriteToFileOptions{})
+	suite.assert.Nil(err)
+
+	// Check if file exists
+	suite.assert.FileExists(fileName)
+
+	// Check the content of the file
+	data, err := os.ReadFile(fileName)
+	suite.assert.Nil(err)
+	suite.assert.Equal(content, string(data))
+
+}
+
 func (suite *utilTestSuite) TestGetFuseMinorVersion() {
 	i := GetFuseMinorVersion()
 	suite.assert.GreaterOrEqual(i, 0)

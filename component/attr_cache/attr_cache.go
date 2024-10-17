@@ -42,6 +42,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
@@ -119,6 +120,16 @@ func (ac *AttrCache) Stop() error {
 	return nil
 }
 
+// GenConfig : Generate the default config for the component
+func (ac *AttrCache) GenConfig() error {
+	log.Info("AttrCache::Configure : config generation started")
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("\nattr_cache:\n  timeout-sec: %d\n", ac.cacheTimeout))
+
+	common.ConfigYaml += sb.String()
+	return nil
+}
+
 // Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
 //
 //	Return failure if any config is not valid to exit the process
@@ -155,6 +166,10 @@ func (ac *AttrCache) Configure(_ bool) error {
 
 	log.Info("AttrCache::Configure : cache-timeout %d, symlink %t, cache-on-list %t, max-files %d",
 		ac.cacheTimeout, ac.noSymlinks, ac.cacheOnList, ac.maxFiles)
+
+	if common.GenConfig {
+		ac.GenConfig()
+	}
 
 	return nil
 }

@@ -170,6 +170,19 @@ func (bc *BlockCache) Stop() error {
 	return nil
 }
 
+// GenConfig : Generate the default config for the component
+func (bc *BlockCache) GenConfig() error {
+	log.Info("BlockCache::Configure : config generation started")
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("\nblock_cache:\n  block-size-mb: %d\n  mem-size-mb: %d\n  prefetch: %d\n  parallelism: %d\n", bc.blockSize/_1MB, bc.memSize/_1MB, bc.prefetch, bc.workers))
+	if common.TmpPath != "" {
+		sb.WriteString(fmt.Sprintf("  path: %s\n  disk-size-mb: %d\n  disk-timeout-sec: %d\n", bc.tmpPath, bc.diskSize/_1MB, bc.diskTimeout))
+	}
+
+	common.ConfigYaml += sb.String()
+	return nil
+}
+
 // Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
 //
 //	Return failure if any config is not valid to exit the process
@@ -240,8 +253,12 @@ func (bc *BlockCache) Configure(_ bool) error {
 	}
 
 	bc.tmpPath = ""
-	if conf.TmpPath != "" {
-		bc.tmpPath = common.ExpandPath(conf.TmpPath)
+	if conf.TmpPath != "" || common.TmpPath != "" {
+		if common.GenConfig {
+			bc.tmpPath = common.ExpandPath(common.TmpPath)
+		} else {
+			bc.tmpPath = common.ExpandPath(conf.TmpPath)
+		}
 
 		// Extract values from 'conf' and store them as you wish here
 		_, err = os.Stat(bc.tmpPath)
@@ -295,6 +312,9 @@ func (bc *BlockCache) Configure(_ bool) error {
 		}
 	}
 
+	if common.GenConfig {
+		bc.GenConfig()
+	}
 	return nil
 }
 
