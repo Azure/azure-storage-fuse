@@ -242,6 +242,13 @@ func (bc *BlockCache) Configure(_ bool) error {
 	bc.tmpPath = ""
 	if conf.TmpPath != "" {
 		bc.tmpPath = common.ExpandPath(conf.TmpPath)
+		//check mnt path is not same as temp path
+		var mntPath string
+		err = config.UnmarshalKey("mount-path", &mntPath)
+		if err == nil && mntPath == bc.tmpPath {
+			log.Err("BlockCache: config error [tmp-path is same as mount path]")
+			return fmt.Errorf("config error in %s error [tmp-path is same as mount path]", bc.Name())
+		}
 
 		// Extract values from 'conf' and store them as you wish here
 		_, err = os.Stat(bc.tmpPath)
@@ -249,10 +256,16 @@ func (bc *BlockCache) Configure(_ bool) error {
 			log.Info("BlockCache: config error [tmp-path does not exist. attempting to create tmp-path.]")
 			err := os.Mkdir(bc.tmpPath, os.FileMode(0755))
 			if err != nil {
-				log.Err("BlockCache: config error creating directory after clean [%s]", err.Error())
+				log.Err("BlockCache: config error creating directory of temp path after clean [%s]", err.Error())
 				return fmt.Errorf("config error in %s [%s]", bc.Name(), err.Error())
 			}
 		}
+
+		if !common.IsDirectoryEmpty(bc.tmpPath) {
+			log.Err("BlockCache: config error %s directory is not empty", bc.tmpPath)
+			return fmt.Errorf("config error in %s [%s]", bc.Name(), "temp directory not empty")
+		}
+
 		var stat syscall.Statfs_t
 		err = syscall.Statfs(bc.tmpPath, &stat)
 		if err != nil {
