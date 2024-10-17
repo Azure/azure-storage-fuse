@@ -303,9 +303,11 @@ void readdirectory_cache::dnlc_add(const char *filename,
         if (de->nfs_inode == inode) {
             /*
              * Type (1) or (3) entry already present, with matching nfs_inode,
-             * do nothing. Drop the dircachecnt ref held by lookup().
+             * do nothing. Drop the dircachecnt ref held by lookup(). This
+             * should be in addition to the original dircachecnt ref when
+             * directory_entry was created.
              */
-            assert(de->nfs_inode->dircachecnt > 0);
+            assert(de->nfs_inode->dircachecnt >= 2);
             de->nfs_inode->dircachecnt--;
             return;
         } else if (!de->nfs_inode) {
@@ -324,8 +326,9 @@ void readdirectory_cache::dnlc_add(const char *filename,
              * deleted+recreated. We need to delete the old entry and create
              * a new type (3) entry.
              */
-            assert(de->nfs_inode->dircachecnt > 0);
+            assert(de->nfs_inode->dircachecnt >= 2);
             de->nfs_inode->dircachecnt--;
+            de.reset();
             [[maybe_unused]] const bool found = remove(cookie, nullptr, false);
             assert(found);
 
@@ -449,15 +452,16 @@ struct nfs_inode *readdirectory_cache::dnlc_lookup(
         assert(::strcmp(filename, dirent->name) == 0);
 
         /*
-         * lookup() must have held a dircachecnt ref on the inode, drop that
-         * but only after holding a fresh lookupcnt ref.
+         * lookup() must have held a dircachecnt ref on the inode (on top of
+         * the original ref for the directory_entry), drop that but only after
+         * holding a fresh lookupcnt ref.
          *
          * See put_nfs_inode_nolock() how it first checks for dircachecnt and
          * then lookupcnt, so if we acquire lookupcnt before dropping
          * dircachecnt we will be safe.
          */
         dirent->nfs_inode->incref();
-        assert(dirent->nfs_inode->dircachecnt > 0);
+        assert(dirent->nfs_inode->dircachecnt >= 2);
         dirent->nfs_inode->dircachecnt--;
         return dirent->nfs_inode;
     } else if (dirent) {
@@ -557,6 +561,9 @@ bool readdirectory_cache::remove(cookie3 cookie,
         /*
          * This just removes it from the cache, no destructor is called at
          * this point as there is a ref held on this by the dirent shared_ptr.
+         * Also there could be other shared_ptr references to this
+         * directory_entry, but no one can take a fresh directory_entry ref
+         * after it's removed from dir_entries.
          */
         dir_entries.erase(it);
 
