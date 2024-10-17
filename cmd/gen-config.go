@@ -36,6 +36,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
@@ -71,49 +72,37 @@ var generatedConfig = &cobra.Command{
 			return fmt.Errorf("temp path is required for file cache mode. Use flag --tmp-path to provide the path")
 		}
 
-		pipeline := []string{"libfuse"}
-		if opts2.configComp == "block_cache" {
-			pipeline = append(pipeline, "block_cache")
-			common.TmpPath = opts2.configTmp
-		} else if opts2.configComp == "file_cache" {
-			pipeline = append(pipeline, "file_cache")
-			common.TmpPath = opts2.configTmp
-		}
+		pipeline := []string{"libfuse", opts2.configComp}
+		common.TmpPath = opts2.configTmp
+
 		if opts2.configDirectIO {
 			common.DirectIO = true
 		} else {
 			pipeline = append(pipeline, "attr_cache")
 		}
 
-		yamlContent := "# Logger configuration\n#logging:\n  #  type: syslog|silent|base\n  #  level: log_off|log_crit|log_err|log_warning|log_info|log_trace|log_debug\n  #  file-path: <path where log files shall be stored. Default - '$HOME/.blobfuse2/blobfuse2.log'>\n"
-		yamlContent += "\ncomponents:\n"
+		var sb strings.Builder
+		sb.WriteString("# Logger configuration\n#logging:\n  #  type: syslog|silent|base\n  #  level: log_off|log_crit|log_err|log_warning|log_info|log_trace|log_debug\n")
+		sb.WriteString("  #  file-path: <path where log files shall be stored. Default - '$HOME/.blobfuse2/blobfuse2.log'>\n")
+		sb.WriteString("\ncomponents:\n")
 
 		// Iterate through the pipeline and add each component to the YAML content
 		for _, component := range pipeline {
-			yamlContent += fmt.Sprintf("  - %s\n", component)
+			sb.WriteString(fmt.Sprintf("  - %s\n", component))
 		}
-		yamlContent += "  - azstorage\n"
+		sb.WriteString("  - azstorage\n")
 
 		_, err := internal.NewPipeline(pipeline, true)
 		if err != nil {
 			return fmt.Errorf("generatedConfig:: error creating pipeline [%s]", err.Error())
 		}
 
-		yamlContent += common.ConfigYaml
+		sb.WriteString(common.ConfigYaml)
 
-		yamlContent += "\n#Required\n#azstorage:\n  #  type: block|adls \n  #  account-name: <name of the storage account>\n  #  container: <name of the storage container to be mounted>\n  #  endpoint: <example - https://account-name.blob.core.windows.net>\n  #  mode: key|sas|spn|msi|azcli \n  #  account-key: <storage account key>\n  # OR\n  #  sas: <storage account sas>\n  # OR\n  #  appid: <storage account app id / client id for MSI>\n  # OR\n  #  tenantid: <storage account tenant id for SPN"
+		sb.WriteString("\n#Required\n#azstorage:\n  #  type: block|adls \n  #  account-name: <name of the storage account>\n  #  container: <name of the storage container to be mounted>\n  #  endpoint: <example - https://account-name.blob.core.windows.net>\n  ")
+		sb.WriteString("#  mode: key|sas|spn|msi|azcli \n  #  account-key: <storage account key>\n  # OR\n  #  sas: <storage account sas>\n  # OR\n  #  appid: <storage account app id / client id for MSI>\n  # OR\n  #  tenantid: <storage account tenant id for SPN")
 
-		// Open the file in append mode, create it if it doesn't exist
-		file, err := os.OpenFile("../generatedConfig.yaml", os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0666)
-		if err != nil {
-			return fmt.Errorf("error opening generated config file: [%s]", err.Error())
-		}
-		defer file.Close() // Ensure the file is closed when we're done
-
-		// Write the YAML content to the file
-		if _, err := file.WriteString(yamlContent); err != nil {
-			return fmt.Errorf("error writing to generated config file [%s]", err.Error())
-		}
+		common.WriteToFile("generatedConfig.yaml", sb.String(), os.O_TRUNC, 0644)
 
 		return nil
 	},

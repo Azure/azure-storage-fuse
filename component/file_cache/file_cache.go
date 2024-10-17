@@ -200,9 +200,10 @@ func (c *FileCache) GenConfig() error {
 	if common.DirectIO {
 		c.cacheTimeout = 0
 	}
-	yamlContent := fmt.Sprintf("\nfile_cache:\n  path: %s\n  timeout-sec: %d\n  max-size-mb: %d\n", c.tmpPath, int(c.cacheTimeout), int(c.maxCacheSize/MB))
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("\nfile_cache:\n  path: %s\n  timeout-sec: %d\n  max-size-mb: %d\n", c.tmpPath, int(c.cacheTimeout), int(c.maxCacheSize/MB)))
 
-	common.ConfigYaml += yamlContent
+	common.ConfigYaml += sb.String()
 	return nil
 }
 

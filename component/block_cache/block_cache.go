@@ -173,12 +173,13 @@ func (bc *BlockCache) Stop() error {
 // GenConfig : Generate the default config for the component
 func (bc *BlockCache) GenConfig() error {
 	log.Info("BlockCache::Configure : config generation started")
-	yamlContent := fmt.Sprintf("\nblock_cache:\n  block-size-mb: %d\n  mem-size-mb: %d\n  prefetch: %d\n  parallelism: %d\n", bc.blockSize/_1MB, bc.memSize/_1MB, bc.prefetch, bc.workers)
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("\nblock_cache:\n  block-size-mb: %d\n  mem-size-mb: %d\n  prefetch: %d\n  parallelism: %d\n", bc.blockSize/_1MB, bc.memSize/_1MB, bc.prefetch, bc.workers))
 	if common.TmpPath != "" {
-		yamlContent += fmt.Sprintf("  path: %s\n  disk-size-mb: %d\n  disk-timeout-sec: %d\n", bc.tmpPath, bc.diskSize/_1MB, bc.diskTimeout)
+		sb.WriteString(fmt.Sprintf("  path: %s\n  disk-size-mb: %d\n  disk-timeout-sec: %d\n", bc.tmpPath, bc.diskSize/_1MB, bc.diskTimeout))
 	}
 
-	common.ConfigYaml += yamlContent
+	common.ConfigYaml += sb.String()
 	return nil
 }
 

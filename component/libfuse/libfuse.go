@@ -36,6 +36,7 @@ package libfuse
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
@@ -248,14 +249,30 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 
 func (lf *Libfuse) GenConfig() error {
 	log.Info("Libfuse::Configure : config generation started")
-	var yamlContent string
+
+	// If DirectIO is enabled, override expiration values
 	if common.DirectIO {
-		yamlContent = "\nlibfuse:\n  attribute-expiration-sec: 0\n  entry-expiration-sec: 0\n  negative-entry-expiration-sec: 0\n  direct-io: true\n"
-	} else {
-		yamlContent = fmt.Sprintf("\nlibfuse:\n  attribute-expiration-sec: %v\n  entry-expiration-sec: %v\n  negative-entry-expiration-sec: %v\n", lf.attributeExpiration, lf.entryExpiration, lf.negativeTimeout)
+		lf.attributeExpiration = 0
+		lf.entryExpiration = 0
+		lf.negativeTimeout = 0
 	}
 
-	common.ConfigYaml += yamlContent
+	// Use a string builder to construct the YAML content
+	var sb strings.Builder
+	sb.WriteString("\nlibfuse:\n")
+
+	// DirectIO check merged within value setting
+	sb.WriteString(fmt.Sprintf(
+		"  attribute-expiration-sec: %v\n  entry-expiration-sec: %v\n  negative-entry-expiration-sec: %v\n",
+		lf.attributeExpiration, lf.entryExpiration, lf.negativeTimeout))
+
+	if common.DirectIO {
+		sb.WriteString("  direct-io: true\n")
+	}
+
+	// Append generated YAML to the common configuration
+	common.ConfigYaml += sb.String()
+
 	return nil
 }
 

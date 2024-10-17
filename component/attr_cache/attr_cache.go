@@ -123,10 +123,10 @@ func (ac *AttrCache) Stop() error {
 // GenConfig : Generate the default config for the component
 func (ac *AttrCache) GenConfig() error {
 	log.Info("AttrCache::Configure : config generation started")
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("\nattr_cache:\n  timeout-sec: %d\n", ac.cacheTimeout))
 
-	yamlContent := fmt.Sprintf("\nattr_cache:\n  timeout-sec: %d\n", ac.cacheTimeout)
-
-	common.ConfigYaml += yamlContent
+	common.ConfigYaml += sb.String()
 	return nil
 }
 
