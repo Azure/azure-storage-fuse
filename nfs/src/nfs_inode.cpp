@@ -216,7 +216,7 @@ try_again:
          */
         if (lookupcnt == cnt) {
             AZLogDebug("[{}:{}] lookupcnt dropping by {}, to 0, forgetting inode",
-                       get_filetype_coding, ino, cnt);
+                       get_filetype_coding(), ino, cnt);
         } else {
             AZLogWarn("[{}:{}] lookupcnt dropping by {}, to {} "
                       "(some other thread got a fresh ref)",
