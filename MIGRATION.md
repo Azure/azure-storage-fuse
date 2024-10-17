@@ -99,7 +99,7 @@ Note: Blobfuse2 accepts all CLI parameters that Blobfuse does, but may ignore pa
 | --log-level=LOG_WARNING                 | --log-level=LOG_WARNING                       | logging.level                         |                                                           |
 | --use-attr-cache=true                   | --use-attr-cache=true                         | attr_cache                            | Add attr_cache to the components list                     |
 | --use-adls=false                        | --use-adls=false                              | azstorage.type                        | Specify either 'block' or 'adls'                          |
-| --no-symlinks=false                     | --no-symlinks=false                           | attr_cache.no-symlinks                |                                                           |
+| --no-symlinks=false                     | --no-symlinks=true                            | attr_cache.no-symlinks                |                                                           |
 | --cache-on-list=true                    | --cache-on-list=true                          | attr_cache.no-cache-on-list           | This parameter has the opposite boolean semantics         |
 | --upload-modified-only=true             | --upload-modified-only=true                   |                                       | Always on in blobfuse2                                    |
 | --max-concurrency=12                    | --max-concurrency=12                          | azstorage.max-concurrency             |                                                           |
