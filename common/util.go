@@ -476,21 +476,18 @@ func GetFuseMinorVersion() int {
 	return val
 }
 
-type FileOptions struct {
+type WriteToFileOptions struct {
 	Flags      int
 	Permission os.FileMode
 }
 
-func NewFileOptions() FileOptions {
-	return FileOptions{
-		Flags:      0,
-		Permission: 0777,
-	}
-}
-
-func WriteToFile(filename string, data string, options FileOptions) error {
+func WriteToFile(filename string, data string, options WriteToFileOptions) error {
 	// Open the file with the provided flags, create it if it doesn't exist
-	file, err := os.OpenFile(filename, options.Flags|os.O_CREATE|os.O_WRONLY, 0666)
+	//check if options.Permission is 0 if so then assign 0777
+	if options.Permission == 0 {
+		options.Permission = 0777
+	}
+	file, err := os.OpenFile(filename, options.Flags|os.O_CREATE|os.O_WRONLY, options.Permission)
 	if err != nil {
 		return fmt.Errorf("error opening file: [%s]", err.Error())
 	}
