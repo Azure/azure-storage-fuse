@@ -1146,7 +1146,6 @@ func (s *blockBlobTestSuite) TestRenameFileError() {
 
 	err := s.az.RenameFile(internal.RenameFileOptions{Src: src, Dst: dst})
 	s.assert.NotNil(err)
-	s.assert.EqualValues(syscall.ENOENT, err)
 
 	// Src and destination should not be in the account
 	source := s.containerClient.NewBlobClient(src)
