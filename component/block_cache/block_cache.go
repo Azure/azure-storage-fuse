@@ -246,7 +246,11 @@ func (bc *BlockCache) Configure(_ bool) error {
 		//check mnt path is not same as temp path
 
 		err = config.UnmarshalKey("mount-path", &bc.mntPath)
-		if err == nil && bc.mntPath == bc.tmpPath {
+		if err != nil {
+			log.Err("BlockCache: config error [unable to obtain Mount Path]")
+			return fmt.Errorf("config error in %s [%s]", bc.Name(), err.Error())
+		}
+		if bc.mntPath == bc.tmpPath {
 			log.Err("BlockCache: config error [tmp-path is same as mount path]")
 			return fmt.Errorf("config error in %s error [tmp-path is same as mount path]", bc.Name())
 		}
