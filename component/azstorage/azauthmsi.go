@@ -97,7 +97,7 @@ func (azmsi *azAuthMSI) getTokenCredentialUsingCLI() (azcore.TokenCredential, er
 		if msg == "" {
 			msg = err.Error()
 		}
-		return nil, fmt.Errorf(msg)
+		return nil, fmt.Errorf("%s", msg)
 	}
 
 	log.Info("azAuthMSI::getTokenCredentialUsingCLI : Successfully logged in using Azure CLI")
