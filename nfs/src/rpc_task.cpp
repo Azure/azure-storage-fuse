@@ -965,6 +965,13 @@ static void setattr_callback(
 
         struct stat st = {};
 
+        /*
+         * TODO For NFS the postop attributes are optional, but fuse expects
+         *      us to pass attributes in the callback. If NFS server fails to
+         *      return the postop attributes we must query the attributes using
+         *      a GETATTR RPC.
+         */
+        assert(res->SETATTR3res_u.resok.obj_wcc.after.attributes_follow);
         nfs_client::stat_from_fattr3(
             &st, &res->SETATTR3res_u.resok.obj_wcc.after.post_op_attr_u.attributes);
 
@@ -3326,8 +3333,9 @@ static void readdir_callback(
     } else if (NFS_STATUS(res) == NFS3ERR_BAD_COOKIE) {
         AZLogWarn("[{}] readdir_callback {}: got NFS3ERR_BAD_COOKIE for "
                   "offset: {}, clearing dircache and starting re-enumeration",
+                  dir_ino,
                   is_reenumerating ? "(R)" : "",
-                  dir_ino, task->rpc_api->readdir_task.get_offset());
+                  task->rpc_api->readdir_task.get_offset());
 
         dir_inode->invalidate_cache();
 
