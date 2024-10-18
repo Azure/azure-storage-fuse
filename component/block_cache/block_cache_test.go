@@ -283,10 +283,15 @@ func (suite *blockCacheTestSuite) TestSomeInvalidConfigs() {
 	suite.assert.NotNil(err)
 	suite.assert.Contains(err.Error(), "fail to init block pool")
 
-	cfg = "read-only: true\n\nblock_cache:\n  block-size-mb: 8\n  mem-size-mb: 800\n  prefetch: 12\n  parallelism: 5\n  path: ./\n  disk-size-mb: 100\n  disk-timeout-sec: 0"
+	cfg = "read-only: true\n\nblock_cache:\n  block-size-mb: 8\n  mem-size-mb: 800\n  prefetch: 12\n  parallelism: 5\n  path: ./bctemp \n  disk-size-mb: 100\n  disk-timeout-sec: 0"
 	_, err = setupPipeline(cfg)
 	suite.assert.NotNil(err)
 	suite.assert.Contains(err.Error(), "timeout can not be zero")
+
+	cfg = "read-only: true\n\nblock_cache:\n  block-size-mb: 8\n  mem-size-mb: 800\n  prefetch: 12\n  parallelism: 5\n  path: ./ \n  disk-size-mb: 100\n  disk-timeout-sec: 0"
+	_, err = setupPipeline(cfg)
+	suite.assert.NotNil(err)
+	suite.assert.Contains(err.Error(), "temp directory not empty")
 }
 
 func (suite *blockCacheTestSuite) TestManualConfig() {

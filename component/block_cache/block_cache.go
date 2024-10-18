@@ -70,6 +70,7 @@ type BlockCache struct {
 
 	blockSize       uint64          // Size of each block to be cached
 	memSize         uint64          // Mem size to be used for caching at the startup
+	mntPath         string          // Mountpoint path
 	tmpPath         string          // Disk path where these blocks will be cached
 	diskSize        uint64          // Size of disk space allocated for the caching
 	diskTimeout     uint32          // Timeout for which disk blocks will be cached
@@ -243,9 +244,9 @@ func (bc *BlockCache) Configure(_ bool) error {
 	if conf.TmpPath != "" {
 		bc.tmpPath = common.ExpandPath(conf.TmpPath)
 		//check mnt path is not same as temp path
-		var mntPath string
-		err = config.UnmarshalKey("mount-path", &mntPath)
-		if err == nil && mntPath == bc.tmpPath {
+
+		err = config.UnmarshalKey("mount-path", &bc.mntPath)
+		if err == nil && bc.mntPath == bc.tmpPath {
 			log.Err("BlockCache: config error [tmp-path is same as mount path]")
 			return fmt.Errorf("config error in %s error [tmp-path is same as mount path]", bc.Name())
 		}
