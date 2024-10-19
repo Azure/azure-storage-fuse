@@ -4223,8 +4223,15 @@ void rpc_task::send_readdir_or_readdirplus_response(
     size_t startidx = num_entries_added;
     bool inject_fuse_reply_buf_failure = false;
 
+    /*
+     * XXX Applications don't seem to handle EINVAL return from getdents()
+     *     as expected, i.e., they don't retry the call with a bigger buffer.
+     *     Instead they treat it as an error. Keep it disabled.
+     */
+#if 0
 #ifdef ENABLE_PRESSURE_POINTS
     inject_fuse_reply_buf_failure = inject_error();
+#endif
 #endif
 
     if (!inject_fuse_reply_buf_failure) {
