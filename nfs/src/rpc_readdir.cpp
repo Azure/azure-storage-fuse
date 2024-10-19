@@ -169,9 +169,11 @@ bool readdirectory_cache::add(const std::shared_ptr<struct directory_entry>& ent
 
         // TODO: Fix this.
         if (cache_size >= MAX_CACHE_SIZE_LIMIT) {
-            AZLogWarn("[{}] Exceeding cache max size. No more entries will "
-                      "be added to the cache! curent size: {}",
-                      dir_inode->get_fuse_ino(), cache_size);
+            AZLogWarn("[{}] Readdir cache exceeded per-directory cache limit "
+                      "({} > {}). Not adding entry [name: {}, ino: {}]",
+                      dir_inode->get_fuse_ino(),
+                      cache_size, MAX_CACHE_SIZE_LIMIT, entry->name,
+                      entry->nfs_inode ? entry->nfs_inode->get_fuse_ino() : -1);
             return false;
         }
 

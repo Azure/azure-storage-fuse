@@ -3229,20 +3229,22 @@ static void readdir_callback(
                                             entry->fileid);
 
             // Add to readdirectory_cache for future use.
-            dircache_handle->add(dir_entry);
+            [[maybe_unused]] const bool added = dircache_handle->add(dir_entry);
 
 #ifdef ENABLE_PARANOID
-            /*
-             * Entries added by readdir do not contribute to dnlc cache.
-             *
-             * Note: Technically there could be some other thread processing
-             *       readdirplus response for the same directory and it may
-             *       race with this thread, remove the above entry added by
-             *       readdir and add an entry by readdirplus. This is so rare
-             *       that we assert anyway.
-             */
-            assert(dircache_handle->dnlc_lookup(dir_entry->name) == nullptr);
-            assert(dir_inode->dnlc_lookup(dir_entry->name) == nullptr);
+            if (added) {
+                /*
+                 * Entries added by readdir do not contribute to dnlc cache.
+                 *
+                 * Note: Technically there could be some other thread processing
+                 *       readdirplus response for the same directory and it may
+                 *       race with this thread, remove the above entry added by
+                 *       readdir and add an entry by readdirplus. This is so
+                 *       rare that we assert anyway.
+                 */
+                assert(dircache_handle->dnlc_lookup(dir_entry->name) == nullptr);
+                assert(dir_inode->dnlc_lookup(dir_entry->name) == nullptr);
+            }
 #endif
 
             /*
@@ -3276,7 +3278,23 @@ static void readdir_callback(
                      */
                     assert(dir_entry->nfs_inode == nullptr);
                     readdirentries.push_back(dir_entry);
+                }  else {
+                    /*
+                     * We are unable to add this entry to the fuse response
+                     * buffer, so we won't notify fuse of this entry.
+                     */
+                    AZLogDebug("{}/{}: Couldn't fit in fuse response buffer",
+                               dir_ino, dir_entry->name);
                 }
+            } else {
+                AZLogDebug("{}/{}: Couldn't fit in fuse response buffer "
+                           "or re-enumerating after NFS3ERR_BAD_COOKIE and did "
+                           "not hit the target, cookie: {}, target_offset: {}, "
+                           "rem_size: {}",
+                           dir_ino, dir_entry->name,
+                           dir_entry->cookie,
+                           task->rpc_api->readdir_task.get_target_offset(),
+                           rem_size);
             }
 
             entry = entry->nextentry;
@@ -3628,25 +3646,27 @@ static void readdirplus_callback(
             assert(nfs_inode->dircachecnt >= 1);
 
             // Add to readdirectory_cache for future use.
-            dircache_handle->add(dir_entry);
+            [[maybe_unused]] const bool added = dircache_handle->add(dir_entry);
 
 #ifdef ENABLE_PARANOID
-            /*
-             * Now we should be able to perform dnlc lookup for dir_entry->name
-             * and it must yield nfs_inode. Try both from the dircache_handle
-             * and the inode.
-             *
-             * Note: This assert can fail under very rare circumstances.
-             *       See note in readdir_callback().
-             */
-            struct nfs_inode *tmpi =
-                dircache_handle->dnlc_lookup(dir_entry->name);
-            assert(tmpi == nfs_inode);
-            tmpi->decref();
+            if (added) {
+                /*
+                 * Now we should be able to perform dnlc lookup for
+                 * dir_entry->name and it must yield nfs_inode. Try both from
+                 * the dircache_handle and the inode.
+                 *
+                 * Note: This assert can fail under very rare circumstances.
+                 *       See note in readdir_callback().
+                 */
+                struct nfs_inode *tmpi =
+                    dircache_handle->dnlc_lookup(dir_entry->name);
+                assert(tmpi == nfs_inode);
+                tmpi->decref();
 
-            tmpi = dir_inode->dnlc_lookup(dir_entry->name);
-            assert(tmpi == nfs_inode);
-            tmpi->decref();
+                tmpi = dir_inode->dnlc_lookup(dir_entry->name);
+                assert(tmpi == nfs_inode);
+                tmpi->decref();
+            }
 #endif
 
             /*
@@ -3689,26 +3709,28 @@ static void readdirplus_callback(
                      * buffer, so we won't notify fuse of this entry.
                      * Drop the ref held by get_nfs_inode().
                      */
-                    AZLogDebug("[{}] {}: Dropping ref since couldn't fit in "
+                    AZLogDebug("[{}] {}/{}: Dropping ref since couldn't fit in "
                                "fuse response buffer",
                                nfs_inode->get_fuse_ino(),
-                               entry->name);
+                               dir_ino, dir_entry->name);
                     assert(nfs_inode->forget_expected > 0);
                     nfs_inode->forget_expected--;
+                    dir_entry.reset();
                     nfs_inode->decref();
                 }
             } else {
-                AZLogDebug("[{}] {}: Dropping ref since couldn't fit in "
+                AZLogDebug("[{}] {}/{}: Dropping ref since couldn't fit in "
                            "fuse response buffer or re-enumerating after "
                            "NFS3ERR_BAD_COOKIE and did not hit the target, "
                            "cookie: {}, target_offset: {}, rem_size: {}",
                            nfs_inode->get_fuse_ino(),
-                           entry->name,
-                           entry->cookie,
+                           dir_ino, dir_entry->name,
+                           dir_entry->cookie,
                            task->rpc_api->readdir_task.get_target_offset(),
                            rem_size);
                 assert(nfs_inode->forget_expected > 0);
                 nfs_inode->forget_expected--;
+                dir_entry.reset();
                 nfs_inode->decref();
             }
 
