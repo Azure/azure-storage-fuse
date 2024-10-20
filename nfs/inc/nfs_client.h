@@ -234,8 +234,7 @@ public:
         // 0 is not a valid inode number.
         assert(ino != 0);
 
-        if (ino == FUSE_ROOT_ID)
-        {
+        if (ino == FUSE_ROOT_ID) {
             // root_fh must have been created by now.
             assert(root_fh != nullptr);
             assert(root_fh->magic == NFS_INODE_MAGIC);

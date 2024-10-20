@@ -453,7 +453,7 @@ void nfs_client::jukebox_runner()
  * Given a filehandle and fattr (containing fileid defining a file/dir),
  * get the nfs_inode for that file/dir. It searches in the global list of
  * all inodes and returns from there if found, else creates a new nfs_inode.
- * The returned inode has it refcnt incremented by 1.
+ * The returned inode has its refcnt incremented by 1.
  */
 struct nfs_inode *nfs_client::__get_nfs_inode(LOC_PARAMS
                                               const nfs_fh3 *fh,
