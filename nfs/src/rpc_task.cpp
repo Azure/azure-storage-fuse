@@ -3787,8 +3787,9 @@ static void readdirplus_callback(
     } else if (NFS_STATUS(res) == NFS3ERR_BAD_COOKIE) {
         AZLogWarn("[{}] readdirplus_callback {}: got NFS3ERR_BAD_COOKIE for "
                   "offset: {}, clearing dircache and starting re-enumeration",
+                  dir_ino,
                   is_reenumerating ? "(R)" : "",
-                  dir_ino, task->rpc_api->readdir_task.get_offset());
+                  task->rpc_api->readdir_task.get_offset());
 
         dir_inode->invalidate_cache();
 
