@@ -190,6 +190,13 @@ uint32_t calculate_crc32(const unsigned char *buf, int len)
     return ::crc32(::crc32(0L, Z_NULL, 0), buf, len);
 }
 
+static inline
+uint32_t calculate_crc32(const struct nfs_fh3& fh)
+{
+    return calculate_crc32((const unsigned char*) fh.data.data_val,
+                          fh.data.data_len);
+}
+
 /**
  * Inject error with given probability percentage.
  * f.e., pct_prob=0.1 would cause inject_error() to return true for 0.1% of

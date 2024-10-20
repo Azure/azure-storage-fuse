@@ -19,23 +19,37 @@
 #define FH_VALID(fh) \
     (((fh)->data.data_len > 0) && ((fh)->data.data_val != nullptr))
 
-// *fh1 = *fh2
-#define FH_COPY(fh1, fh2) \
-do { \
-    /* Don't overwrite a valid fh, leaking memory */ \
-    assert(!FH_VALID(fh1)); \
-    assert(FH_VALID(fh2)); \
-    (fh1)->data.data_len = (fh2)->data.data_len; \
-    (fh1)->data.data_val = (char *) ::malloc((fh1)->data.data_len); \
-    ::memcpy((fh1)->data.data_val, (fh2)->data.data_val, (fh1)->data.data_len); \
-} while (0)
+/**
+ * C++ object to hold struct nfs_fh3 from libnfs.
+ */
+struct nfs_fh3_deep
+{
+    nfs_fh3_deep(const struct nfs_fh3& _fh)
+    {
+#ifndef ENABLE_NON_AZURE_NFS
+        // Blob NFS FH is at least 50 bytes.
+        assert(_fh.data.data_len > 50 && _fh.data.data_len <= 64);
+#else
+        assert(_fh.data.data_len <= 64);
+#endif
+        fh.data.data_len = _fh.data.data_len;
+        fh.data.data_val = &fh_data[0];
+        ::memcpy(fh.data.data_val, _fh.data.data_val, fh.data.data_len);
+    }
 
-#define FH_FREE(fh) \
-do { \
-    ::free((fh)->data.data_val); \
-    (fh)->data.data_val = nullptr; \
-    (fh)->data.data_len = 0; \
-} while (0)
+    /**
+     * Return the libnfs nfs_fh3 object ref.
+     */
+    const struct nfs_fh3& get_fh() const
+    {
+        assert(FH_VALID(&fh));
+        return fh;
+    }
+
+private:
+    struct nfs_fh3 fh;
+    char fh_data[64];
+};
 
 /**
  * This is the NFS inode structure. There is one of these per file/directory
@@ -121,14 +135,16 @@ struct nfs_inode
     /*
      * NFSv3 filehandle returned by the server.
      * We use this to identify this file/directory to the server.
-     * TODO: Make this const.
      */
-    nfs_fh3 fh = {0, nullptr};
+    const nfs_fh3_deep fh;
 
     /*
      * CRC32 hash of fh.
+     * This serves multiple purposes, most importantly it can be used to print
+     * filehandle hashes in a way that can be used to match with wireshark.
+     * Also used for affining writes to a file to one RPC transport.
      */
-    uint32_t crc = 0;
+    const uint32_t crc = 0;
 
     /*
      * Fuse inode number.
@@ -599,8 +615,7 @@ struct nfs_inode
 
     const struct nfs_fh3& get_fh() const
     {
-        assert(FH_VALID(&fh));
-        return fh;
+        return fh.get_fh();
     }
 
     uint32_t get_crc() const

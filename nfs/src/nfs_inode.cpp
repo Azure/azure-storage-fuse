@@ -15,6 +15,8 @@ nfs_inode::nfs_inode(const struct nfs_fh3 *filehandle,
                      struct nfs_client *_client,
                      uint32_t _file_type,
                      fuse_ino_t _ino) :
+    fh(*filehandle),
+    crc(calculate_crc32(fh.get_fh())),
     ino(_ino == 0 ? (fuse_ino_t) this : _ino),
     generation(get_current_usecs()),
     file_type(_file_type),
@@ -29,30 +31,14 @@ nfs_inode::nfs_inode(const struct nfs_fh3 *filehandle,
     assert(write_error == 0);
 
 #ifndef ENABLE_NON_AZURE_NFS
-    // Blob NFS FH is at least 50 bytes.
-    assert(filehandle->data.data_len > 50 &&
-           filehandle->data.data_len <= 64);
     // Blob NFS supports only these file types.
     assert((file_type == S_IFREG) ||
            (file_type == S_IFDIR) ||
            (file_type == S_IFLNK));
-
-#else
-    assert(filehandle->data.data_len <= 64);
 #endif
 
     // ino is either set to FUSE_ROOT_ID or set to address of nfs_inode.
     assert((ino == (fuse_ino_t) this) || (ino == FUSE_ROOT_ID));
-
-    FH_COPY(&fh, filehandle);
-
-    /*
-     * Calculate and store the CRC32 hash of the filehandle.
-     * This serves multiple purposes, most importantly it can be used to print
-     * filehandle hashes in a way that can be used to match with wireshark.
-     */
-    crc = calculate_crc32((const unsigned char*) fh.data.data_val,
-                          fh.data.data_len);
 
     /*
      * We always have fattr when creating nfs_inode.
@@ -118,11 +104,6 @@ nfs_inode::~nfs_inode()
      */
     assert(is_cache_empty());
 
-#ifndef ENABLE_NON_AZURE_NFS
-    assert(fh.data.data_len > 50 && fh.data.data_len <= 64);
-#else
-    assert(fh.data.data_len <= 64);
-#endif
     assert((ino == (fuse_ino_t) this) || (ino == FUSE_ROOT_ID));
     assert(client != nullptr);
     assert(client->magic == NFS_CLIENT_MAGIC);
@@ -136,9 +117,6 @@ nfs_inode::~nfs_inode()
         assert(parent_ino == 0);
     }
 #endif
-
-    assert(fh.data.data_val != nullptr);
-    FH_FREE(&fh);
 }
 
 void nfs_inode::decref(size_t cnt, bool from_forget)
