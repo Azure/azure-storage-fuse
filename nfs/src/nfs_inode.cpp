@@ -77,6 +77,9 @@ nfs_inode::nfs_inode(const struct nfs_fh3 *filehandle,
     assert(!dircache_handle);
     assert(!readahead_state);
 
+    assert(lookupcnt == 0);
+    assert(dircachecnt == 0);
+
     assert(!is_silly_renamed);
     assert(silly_renamed_name.empty());
     assert(parent_ino == 0);

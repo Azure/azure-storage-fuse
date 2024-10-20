@@ -449,6 +449,57 @@ void nfs_client::jukebox_runner()
     } while (!shutting_down);
 }
 
+struct nfs_inode *nfs_client::__inode_from_inode_map(const nfs_fh3 *fh,
+                                                     const struct fattr3 *fattr,
+                                                     bool acquire_lock,
+                                                     bool *is_forgotten)
+{
+    assert(fh);
+    assert(fattr);
+
+#ifndef ENABLE_NON_AZURE_NFS
+    // Blob NFS supports only these file types.
+    assert((fattr->type == NF3REG) ||
+           (fattr->type == NF3DIR) ||
+           (fattr->type == NF3LNK));
+#endif
+
+    const uint32_t file_type = (fattr->type == NF3DIR) ? S_IFDIR :
+                                ((fattr->type == NF3LNK) ? S_IFLNK : S_IFREG);
+
+    std::shared_mutex dummy_lock;
+    std::shared_lock<std::shared_mutex> lock(
+            acquire_lock ? inode_map_lock_0 : dummy_lock);
+
+    /*
+     * Search by fileid in the multimap. Since fileid is not guaranteed to be
+     * unique, we need to check for FH match in the matched inode(s) list.
+     */
+    const auto range = inode_map.equal_range(fattr->fileid);
+
+    for (auto i = range.first; i != range.second; ++i) {
+        struct nfs_inode *inode = i->second;
+        assert(i->first == fattr->fileid);
+        assert(inode->magic == NFS_INODE_MAGIC);
+
+        if (!FH_EQUAL(&(inode->get_fh()), fh)) {
+            continue;
+        }
+
+        // File type must not change for an inode.
+        assert(inode->file_type == file_type);
+
+        if (is_forgotten) {
+            *is_forgotten = inode->is_forgotten();
+        }
+
+        inode->incref();
+        return inode;
+    }
+
+    return nullptr;
+}
+
 /**
  * Given a filehandle and fattr (containing fileid defining a file/dir),
  * get the nfs_inode for that file/dir. It searches in the global list of
@@ -460,6 +511,7 @@ struct nfs_inode *nfs_client::__get_nfs_inode(LOC_PARAMS
                                               const struct fattr3 *fattr,
                                               bool is_root_inode)
 {
+    assert(fh);
     assert(fattr);
 
 #ifndef ENABLE_NON_AZURE_NFS
@@ -477,134 +529,114 @@ struct nfs_inode *nfs_client::__get_nfs_inode(LOC_PARAMS
      * new one. This is very important as returning multiple inodes for the
      * same file is recipe for disaster.
      */
-    {
-        std::shared_lock<std::shared_mutex> lock(inode_map_lock_0);
+    bool is_forgotten = false;
+    struct nfs_inode *inode =
+        __inode_from_inode_map(fh, fattr, true /* acquire_lock */,
+                               &is_forgotten);
+
+    if (inode) {
+        std::unique_lock<std::shared_mutex> lock(inode->ilock_1);
+
+        if (is_forgotten) {
+            AZLogDebug(LOC_FMT
+                       "[{}:{} / 0x{:08x}] Reusing forgotten inode "
+                       "(dircachecnt={}), "
+                       "size {} -> {}, "
+                       "ctime {}.{} -> {}.{}, "
+                       "mtime {}.{} -> {}.{}",
+                       LOC_ARGS
+                       inode->get_filetype_coding(),
+                       inode->get_fuse_ino(),
+                       inode->get_crc(),
+                       inode->dircachecnt.load(),
+                       inode->attr.st_size, fattr->size,
+                       inode->attr.st_ctim.tv_sec,
+                       inode->attr.st_ctim.tv_nsec,
+                       fattr->ctime.seconds,
+                       fattr->ctime.nseconds,
+                       inode->attr.st_mtim.tv_sec,
+                       inode->attr.st_mtim.tv_nsec,
+                       fattr->mtime.seconds,
+                       fattr->mtime.nseconds);
+        }
 
         /*
-         * Search by fileid in the multimap. Since fileid is not guaranteed to
-         * be unique, we need to check for FH match in the matched inode(s)
-         * list.
+         * Copy the attributes to the inode as they would be the most
+         * recent ones. Also reset the attribute cache timeout.
+         * For correctness we update the inode attributes only if they
+         * are newer than the cached ones.
          */
-        const auto range = inode_map.equal_range(fattr->fileid);
+        const int fattr_compare =
+            compare_timespec_and_nfstime(inode->attr.st_ctim,
+                                         fattr->ctime);
+        if (fattr_compare < 0) {
+            AZLogWarn(LOC_FMT
+                      "[{}:{} / 0x{:08x}] Updating inode attr, "
+                      "size {} -> {}, "
+                      "ctime {}.{} -> {}.{}, "
+                      "mtime {}.{} -> {}.{}",
+                      LOC_ARGS
+                      inode->get_filetype_coding(),
+                      inode->get_fuse_ino(),
+                      inode->get_crc(),
+                      inode->attr.st_size, fattr->size,
+                      inode->attr.st_ctim.tv_sec,
+                      inode->attr.st_ctim.tv_nsec,
+                      fattr->ctime.seconds,
+                      fattr->ctime.nseconds,
+                      inode->attr.st_mtim.tv_sec,
+                      inode->attr.st_mtim.tv_nsec,
+                      fattr->mtime.seconds,
+                      fattr->mtime.nseconds);
 
-        for (auto i = range.first; i != range.second; ++i) {
-            struct nfs_inode *inode = i->second;
-            assert(i->first == fattr->fileid);
-            assert(inode->magic == NFS_INODE_MAGIC);
+            nfs_client::stat_from_fattr3(&inode->attr, fattr);
 
-            if (FH_EQUAL(&(inode->get_fh()), fh)) {
-                // File type must not change for an inode.
-                assert(inode->file_type == file_type);
-
-                std::unique_lock<std::shared_mutex> lock1(inode->ilock_1);
-
-                if (inode->is_forgotten()) {
-                    AZLogDebug(LOC_FMT
-                               "[{}:{} / 0x{:08x}] Reusing forgotten inode "
-                               "(dircachecnt={}), "
-                               "size {} -> {}, "
-                               "ctime {}.{} -> {}.{}, "
-                               "mtime {}.{} -> {}.{}",
-                               LOC_ARGS
-                               inode->get_filetype_coding(),
-                               inode->get_fuse_ino(),
-                               inode->get_crc(),
-                               inode->dircachecnt.load(),
-                               inode->attr.st_size, fattr->size,
-                               inode->attr.st_ctim.tv_sec,
-                               inode->attr.st_ctim.tv_nsec,
-                               fattr->ctime.seconds,
-                               fattr->ctime.nseconds,
-                               inode->attr.st_mtim.tv_sec,
-                               inode->attr.st_mtim.tv_nsec,
-                               fattr->mtime.seconds,
-                               fattr->mtime.nseconds);
-                }
-
-                /*
-                 * Copy the attributes to the inode as they would be the most
-                 * recent ones. Also reset the attribute cache timeout.
-                 * For correctness we update the inode attributes only if they
-                 * are newer than the cached ones.
-                 */
-                const int fattr_compare =
-                    compare_timespec_and_nfstime(inode->attr.st_ctim,
-                                                 fattr->ctime);
-                if (fattr_compare < 0) {
-                    AZLogWarn(LOC_FMT
-                              "[{}:{} / 0x{:08x}] Updating inode attr, "
-                              "size {} -> {}, "
-                              "ctime {}.{} -> {}.{}, "
-                              "mtime {}.{} -> {}.{}",
-                              LOC_ARGS
-                              inode->get_filetype_coding(),
-                              inode->get_fuse_ino(),
-                              inode->get_crc(),
-                              inode->attr.st_size, fattr->size,
-                              inode->attr.st_ctim.tv_sec,
-                              inode->attr.st_ctim.tv_nsec,
-                              fattr->ctime.seconds,
-                              fattr->ctime.nseconds,
-                              inode->attr.st_mtim.tv_sec,
-                              inode->attr.st_mtim.tv_nsec,
-                              fattr->mtime.seconds,
-                              fattr->mtime.nseconds);
-
-                    nfs_client::stat_from_fattr3(&inode->attr, fattr);
-
-                    inode->attr_timeout_secs = inode->get_actimeo_min();
-                    inode->attr_timeout_timestamp =
-                        get_current_msecs() + inode->attr_timeout_secs*1000;
-                } else if (fattr_compare > 0) {
-                    AZLogWarn(LOC_FMT
-                              "[{}:{} / 0x{:08x}] NOT updating inode attr, "
-                              "size {} -> {}, "
-                              "ctime {}.{} -> {}.{}, "
-                              "mtime {}.{} -> {}.{}",
-                              LOC_ARGS
-                              inode->get_filetype_coding(),
-                              inode->get_fuse_ino(),
-                              inode->get_crc(),
-                              inode->attr.st_size, fattr->size,
-                              inode->attr.st_ctim.tv_sec,
-                              inode->attr.st_ctim.tv_nsec,
-                              fattr->ctime.seconds,
-                              fattr->ctime.nseconds,
-                              inode->attr.st_mtim.tv_sec,
-                              inode->attr.st_mtim.tv_nsec,
-                              fattr->mtime.seconds,
-                              fattr->mtime.nseconds);
-                    /*
-                     * XXX This assert is seen to fail in following case:
-                     *     - We update the directory inode's attributes based
-                     *       on the postop attributes returned in some dirop
-                     *       request.
-                     *     - Later we query the actual directory attributes
-                     *       using a LOOKUP call. This can be less recent that
-                     *       above due to server attribute cacheing.
-                     */
+            inode->attr_timeout_secs = inode->get_actimeo_min();
+            inode->attr_timeout_timestamp =
+                get_current_msecs() + inode->attr_timeout_secs*1000;
+        } else if (fattr_compare > 0) {
+            AZLogWarn(LOC_FMT
+                      "[{}:{} / 0x{:08x}] NOT updating inode attr, "
+                      "size {} -> {}, "
+                      "ctime {}.{} -> {}.{}, "
+                      "mtime {}.{} -> {}.{}",
+                      LOC_ARGS
+                      inode->get_filetype_coding(),
+                      inode->get_fuse_ino(),
+                      inode->get_crc(),
+                      inode->attr.st_size, fattr->size,
+                      inode->attr.st_ctim.tv_sec,
+                      inode->attr.st_ctim.tv_nsec,
+                      fattr->ctime.seconds,
+                      fattr->ctime.nseconds,
+                      inode->attr.st_mtim.tv_sec,
+                      inode->attr.st_mtim.tv_nsec,
+                      fattr->mtime.seconds,
+                      fattr->mtime.nseconds);
+            /*
+             * XXX This assert is seen to fail in following case:
+             *     - We update the directory inode's attributes based
+             *       on the postop attributes returned in some dirop
+             *       request.
+             *     - Later we query the actual directory attributes
+             *       using a LOOKUP call. This can be less recent that
+             *       above due to server attribute cacheing.
+             */
 #if 0
-                    assert(0);
+            assert(0);
 #endif
-                }
-
-                inode->incref();
-                return inode;
-            }
         }
+
+        assert(!inode->is_forgotten());
+        return inode;
     }
 
-    struct nfs_inode *inode = new nfs_inode(fh, fattr, this, file_type,
-                                            is_root_inode ? FUSE_ROOT_ID : 0);
+    struct nfs_inode *new_inode =
+        new nfs_inode(fh, fattr, this, file_type,
+                      is_root_inode ? FUSE_ROOT_ID : 0);
 
     {
         std::unique_lock<std::shared_mutex> lock(inode_map_lock_0);
-
-        AZLogDebug(LOC_FMT
-                   "[{}:{} / 0x{:08x}] Allocated new inode ({})",
-                   LOC_ARGS
-                   inode->get_filetype_coding(),
-                   inode->get_fuse_ino(), inode->get_crc(), inode_map.size());
 
         /*
          * With the exclusive lock held, check once more if some other thread
@@ -612,77 +644,81 @@ struct nfs_inode *nfs_client::__get_nfs_inode(LOC_PARAMS
          * the inode created above, grab a refcnt on the inode created by the
          * other thread and return that.
          */
-        const auto range = inode_map.equal_range(fattr->fileid);
 
-        for (auto i = range.first; i != range.second; ++i) {
-            assert(i->first == fattr->fileid);
-            assert(i->second->magic == NFS_INODE_MAGIC);
+        struct nfs_inode *inode =
+            __inode_from_inode_map(fh, fattr, false /* acquire_lock */);
 
-            if (FH_EQUAL(&(i->second->get_fh()), fh)) {
-                // File type must be same.
-                assert(i->second->file_type == file_type);
+        AZLogDebug(LOC_FMT
+                   "[{}:{} / 0x{:08x}] Allocated new inode (map size: {})",
+                   LOC_ARGS
+                   new_inode->get_filetype_coding(),
+                   new_inode->get_fuse_ino(), new_inode->get_crc(),
+                   inode_map.size());
 
+        if (inode) {
+            AZLogWarn(LOC_FMT
+                      "[{}] Another thread added inode {}, deleting ours",
+                      LOC_ARGS
+                      new_inode->get_fuse_ino(),
+                      inode->get_fuse_ino());
+
+            /*
+             * If fattr is newer, update inode attr.
+             */
+            std::unique_lock<std::shared_mutex> lock1(inode->ilock_1);
+
+            const bool fattr_is_newer =
+                (compare_timespec_and_nfstime(inode->attr.st_ctim,
+                                              fattr->ctime) == -1);
+            if (fattr_is_newer) {
                 AZLogWarn(LOC_FMT
-                          "[{}] Another thread added inode, deleting ours",
-                          LOC_ARGS
-                          inode->get_fuse_ino());
+                        "[{}:{} / 0x{:08x}] Updating inode attr, "
+                        "size {} -> {}, "
+                        "ctime {}.{} -> {}.{}, "
+                        "mtime {}.{} -> {}.{}",
+                        LOC_ARGS
+                        inode->get_filetype_coding(),
+                        inode->get_fuse_ino(),
+                        inode->get_crc(),
+                        inode->attr.st_size, fattr->size,
+                        inode->attr.st_ctim.tv_sec,
+                        inode->attr.st_ctim.tv_nsec,
+                        fattr->ctime.seconds,
+                        fattr->ctime.nseconds,
+                        inode->attr.st_mtim.tv_sec,
+                        inode->attr.st_mtim.tv_nsec,
+                        fattr->mtime.seconds,
+                        fattr->mtime.nseconds);
 
-                /*
-                 * If fattr is newer, update inode attr.
-                 */
-                {
-                    std::unique_lock<std::shared_mutex> lock1(i->second->ilock_1);
+                nfs_client::stat_from_fattr3(&inode->attr, fattr);
 
-                    const bool fattr_is_newer =
-                        (compare_timespec_and_nfstime(i->second->attr.st_ctim,
-                                                      fattr->ctime) == -1);
-                    if (fattr_is_newer) {
-                        AZLogWarn(LOC_FMT
-                                  "[{}:{} / 0x{:08x}] Updating inode attr, "
-                                  "size {} -> {}, "
-                                  "ctime {}.{} -> {}.{}, "
-                                  "mtime {}.{} -> {}.{}",
-                                  LOC_ARGS
-                                  i->second->get_filetype_coding(),
-                                  i->second->get_fuse_ino(),
-                                  i->second->get_crc(),
-                                  i->second->attr.st_size, fattr->size,
-                                  i->second->attr.st_ctim.tv_sec,
-                                  i->second->attr.st_ctim.tv_nsec,
-                                  fattr->ctime.seconds,
-                                  fattr->ctime.nseconds,
-                                  i->second->attr.st_mtim.tv_sec,
-                                  i->second->attr.st_mtim.tv_nsec,
-                                  fattr->mtime.seconds,
-                                  fattr->mtime.nseconds);
-
-                        nfs_client::stat_from_fattr3(&i->second->attr, fattr);
-
-                        i->second->attr_timeout_secs = i->second->get_actimeo_min();
-                        i->second->attr_timeout_timestamp =
-                            get_current_msecs() + i->second->attr_timeout_secs*1000;
-                    }
-                }
-
-                delete inode;
-
-                i->second->incref();
-                return i->second;
+                inode->attr_timeout_secs = inode->get_actimeo_min();
+                inode->attr_timeout_timestamp =
+                    get_current_msecs() + inode->attr_timeout_secs*1000;
             }
+
+            delete new_inode;
+
+            return inode;
         }
 
+        /*
+         * Common case.
+         * Bump lookupcnt ref on the newly allocated inode, add it to the
+         * map and return.
+         */
 #ifdef ENABLE_PARANOID
-        min_ino = std::min(min_ino.load(), (fuse_ino_t) inode);
-        max_ino = std::max(max_ino.load(), (fuse_ino_t) inode);
+        min_ino = std::min(min_ino.load(), (fuse_ino_t) new_inode);
+        max_ino = std::max(max_ino.load(), (fuse_ino_t) new_inode);
 #endif
 
-        inode->incref();
+        new_inode->incref();
 
         // Ok, insert the newly allocated inode in the global map.
-        inode_map.insert({fattr->fileid, inode});
+        inode_map.insert({fattr->fileid, new_inode});
     }
 
-    return inode;
+    return new_inode;
 }
 
 // Caller must hold inode_map_lock_0.

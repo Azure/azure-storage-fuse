@@ -157,6 +157,16 @@ private:
         assert(root_fh == nullptr);
     }
 
+    /**
+     * Internal method used by __get_nfs_inode() for querying nfs_inode from
+     * inode_map. It returns nfs_inode after holding a lookupcnt ref so caller
+     * can safely use that w/o worrying about the nfs_inode being removed from
+     * inode_map.
+     */
+    struct nfs_inode *__inode_from_inode_map(const nfs_fh3 *fh,
+                                             const struct fattr3 *fattr,
+                                             bool acquire_lock = true,
+                                             bool *is_forgotten = nullptr);
 public:
     /*
      * Mount options (to be) used for mounting. These contain details of the

@@ -121,6 +121,7 @@ struct nfs_inode
     /*
      * NFSv3 filehandle returned by the server.
      * We use this to identify this file/directory to the server.
+     * TODO: Make this const.
      */
     nfs_fh3 fh = {0, nullptr};
 
