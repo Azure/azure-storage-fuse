@@ -100,15 +100,6 @@ bool nfs_connection::open()
                (int) nfs_get_readdir_maxcount(nfs_context));
     }
 
-    AZLogInfo("[{}] Successfully mounted nfs share ({}:{}). "
-              "Negotiated values: readmax={}, writemax={}, readdirmax={}",
-              (void *) nfs_context,
-              mo.server,
-              mo.export_path,
-              nfs_get_readmax(nfs_context),
-              nfs_get_writemax(nfs_context),
-              nfs_get_readdir_maxcount(nfs_context));
-
     /*
      * We must send requests promptly w/o waiting for nagle delay.
      *
@@ -146,6 +137,16 @@ bool nfs_connection::open()
                    (void *) nfs_context);
         goto unmount_and_destroy_context;
     }
+
+    AZLogInfo("[{} / {}] Successfully mounted nfs share ({}:{}). "
+              "Negotiated values: readmax={}, writemax={}, readdirmax={}",
+              (void *) nfs_context,
+              nfs_get_tid(nfs_context),
+              mo.server,
+              mo.export_path,
+              nfs_get_readmax(nfs_context),
+              nfs_get_writemax(nfs_context),
+              nfs_get_readdir_maxcount(nfs_context));
 
     return true;
 
