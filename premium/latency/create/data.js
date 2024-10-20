@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1729170930389,
+  "lastUpdate": 1729401003404,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -557,6 +557,43 @@ window.BENCHMARK_DATA = {
           "url": "https://github.com/Azure/azure-storage-fuse/commit/117411a55a653a0e2bc8d541ae666dc8e5e29a5c"
         },
         "date": 1729170930151,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "create_1000_files_in_10_threads",
+            "value": 0,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "create_1000_files_in_100_threads",
+            "value": 0,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "create_1l_files_in_20_threads",
+            "value": 0,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "jainakanksha-msft",
+            "username": "jainakanksha-msft",
+            "email": "jainakanksha@microsoft.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "117411a55a653a0e2bc8d541ae666dc8e5e29a5c",
+          "message": "Creating a PR template (#1546)",
+          "timestamp": "2024-10-17T12:06:28Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/117411a55a653a0e2bc8d541ae666dc8e5e29a5c"
+        },
+        "date": 1729401003173,
         "tool": "customSmallerIsBetter",
         "benches": [
           {
