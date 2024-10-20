@@ -22,13 +22,16 @@
  *    This creates the most complete entry with a valid cookie and a valid
  *    nfs_inode pointer (with attributes and filehandle).
  *    This can serve: READDIRPLUS, READDIR and LOOKUP requests.
+ *    This is referred to as a Type (1) entry.
  * 2. READDIR response.
  *    This creates an entry with a valid cookie but no nfs_inode pointer.
  *    Only attributes.st_ino (the inode number) is valid.
  *    This can serve: READDIR requests.
+ *    This is referred to as a Type (2) entry.
  * 3. LOOKUP response.
  *    This creates an entry with a special cookie (which is not possible in
  *    READDIR/READDIRPLUS responses) but a valid nfs_inode pointer.
+ *    This is referred to as a Type (3) entry.
  *    This can serve: LOOKUP requests. Though it has the nfs_inode pointer
  *                    it doesn't have the cookie, hence cannot serve directory
  *                    enumeration requests which need a valid cookie.
@@ -52,25 +55,22 @@
  * - If we have a type (1) entry and the new nfs_inode in the lookup response
  *   matches the saved one, don't do anything. This is the common case.
  * - If we have a type (1) entry and the new nfs_inode does not match the saved
- *   one, it means the file was either renamed or deleted and re-created. Next
+ *   one, it means the file was either renamed or deleted+recreated. Next
  *   time when aznfsc_ll_readdir{plus}() is called it'll purge the entire
  *   readdir cache as the parent directory mtime would be different, thus
  *   ensuring correctness, but if lookup is called before readdir/readdirplus
  *   it'll delete the old entry and create a new type (3) entry.
- * - If we have a type (2) entry and the new nfs_inode matches the saved one,
- *   add nfs_inode and update directory_entry.attributes, thus promoting it to
- *   type (1). Only in this case we update nfs_inode in a directory_entry.
- * - If we have a type (2) entry and the new nfs_inode does not match the
- *   saved one, delete the old entry and create a new type (3) entry.
+ * - If we have a type (2) entry delete that and add a new entry with the same
+ *   cookie and the new nfs_inode received in LOOKUP response.
  * - If we have a type (3) entry and the new nfs_inode matches the saved one,
  *   don't do anything.
- * - If we have a type (3) entry and the new nfs_inode does not matche the
+ * - If we have a type (3) entry and the new nfs_inode does not match the
  *   saved one, delete the old entry and create a new type (3) entry.
  */
 struct directory_entry
 {
     const cookie3 cookie;
-    struct stat attributes;
+    const struct stat attributes;
     /*
      * whether 'attributes' holds valid attributes?
      * directory_entry which are made as a result of READDIR call, would
@@ -81,7 +81,7 @@ struct directory_entry
      * of response update the directory_entry cache, this time with
      * attributes.
      */
-    bool has_attributes;
+    const bool has_attributes;
 
     /*
      * Again, for READDIR fetched entries, we won't know the filehandle
@@ -102,18 +102,6 @@ struct directory_entry
                     uint64_t fileid_);
 
     ~directory_entry();
-
-    /**
-     * nfs_inode is a const member to highlight the fact that it's not updated
-     * once initialized by the constuctor. Only in the case where we need to
-     * promote a type (2) entry to type (1) on receiving a LOOKUP response,
-     * we allow the update.
-     *
-     * Every nfs_inode referenced by directory_entry has a dircachecnt ref
-     * which is dropped by ~directory_entry(), we grab that here as we add
-     * the nfs_inode to directory_entry.
-     */
-    void update_inode(struct nfs_inode *inode);
 
     /**
      * Returns size of the directory_entry.

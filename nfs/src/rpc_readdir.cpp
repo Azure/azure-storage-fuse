@@ -35,6 +35,23 @@ directory_entry::directory_entry(char *name_,
                                  cookie3 cookie_,
                                  uint64_t fileid_) :
     cookie(cookie_),
+    attributes {
+        .st_dev = 0,
+        .st_ino = fileid_,
+        .st_nlink = 0,
+        .st_mode = 0,
+        .st_uid = 0,
+        .st_gid = 0,
+        .__pad0 = 0,
+        .st_rdev = 0,
+        .st_size = 0,
+        .st_blksize = 0,
+        .st_blocks = 0,
+        .st_atim = {0, 0},
+        .st_mtim = {0, 0},
+        .st_ctim = {0, 0},
+        .__glibc_reserved = {}
+    },
     has_attributes(false),
     nfs_inode(nullptr),
     name(name_)
@@ -44,13 +61,12 @@ directory_entry::directory_entry(char *name_,
     assert(fileid_ != 0);
 
     /*
-     * fuse_add_direntry() needs these two fields, so set them.
+     * fuse_add_direntry() needs these two fields, so we need to set them.
      * A readdir response doesn't tell us about the filetype (which is what
-     * fuse wants to extract from the st_mode fields), so set it to 0.
+     * fuse wants to extract from the st_mode fields), so we set it to 0.
      */
-    ::memset(&attributes, 0, sizeof(attributes));
-    attributes.st_ino = fileid_;
-    attributes.st_mode = 0;
+    assert(attributes.st_ino == fileid_);
+    assert(attributes.st_mode == 0);
 }
 
 directory_entry::~directory_entry()
@@ -74,13 +90,6 @@ readdirectory_cache::~readdirectory_cache()
      * The cache must have been purged before deleting.
      */
     assert(dir_entries.empty());
-}
-
-void directory_entry::update_inode(struct nfs_inode *inode)
-{
-    assert(!nfs_inode);
-    *(const_cast<struct nfs_inode**>(&nfs_inode)) = inode;
-    inode->dircachecnt++;
 }
 
 void readdirectory_cache::set_lookuponly()
@@ -280,6 +289,7 @@ void readdirectory_cache::dnlc_add(const char *filename,
     assert(filename);
     assert(inode);
     assert(inode->magic == NFS_INODE_MAGIC);
+    assert(!inode->is_forgotten());
 
     /*
      * When adding directly to DNLC we use impossible cookie values,
@@ -308,19 +318,20 @@ void readdirectory_cache::dnlc_add(const char *filename,
              * do nothing. Drop the dircachecnt ref held by lookup(). This
              * should be in addition to the original dircachecnt ref when
              * directory_entry was created.
+             * See directory_entry description for various type of entries.
              */
             assert(de->nfs_inode->dircachecnt >= 2);
             de->nfs_inode->dircachecnt--;
             return;
         } else if (!de->nfs_inode) {
             /*
-             * Type (2) entry present, keep the cookie but add nfs_inode,
-             * effectively promoting the entry to type (1).
+             * Type (2) entry present, remove that and add a new entry with the
+             * same cookie but with nfs_inode, effectively promoting the entry
+             * to type (1).
              */
-             assert(!inode->is_forgotten());
-             de->update_inode(inode);
-             de->attributes = inode->attr;
-             return;
+             de.reset();
+             [[maybe_unused]] const bool found = remove(cookie, nullptr, false);
+             assert(found);
         } else {
             /*
              * Stale type (1) or (3) entry present (new nfs_inode doesn't
