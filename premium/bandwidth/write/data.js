@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1729169639675,
+  "lastUpdate": 1729399816841,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -647,6 +647,48 @@ window.BENCHMARK_DATA = {
           {
             "name": "sequential_write_16_threads",
             "value": 1997.6165364583333,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "jainakanksha-msft",
+            "username": "jainakanksha-msft",
+            "email": "jainakanksha@microsoft.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "117411a55a653a0e2bc8d541ae666dc8e5e29a5c",
+          "message": "Creating a PR template (#1546)",
+          "timestamp": "2024-10-17T12:06:28Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/117411a55a653a0e2bc8d541ae666dc8e5e29a5c"
+        },
+        "date": 1729399816523,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_write",
+            "value": 1861.4069010416667,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_write_directio",
+            "value": 1780.5986328125,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_write_4_threads",
+            "value": 2009.2408854166667,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_write_16_threads",
+            "value": 1971.4420572916667,
             "unit": "MiB/s"
           }
         ]
