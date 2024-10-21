@@ -54,7 +54,7 @@ bool nfs_client::init()
     assert(root_fh->lookupcnt == 1);
     assert(root_fh->dircachecnt == 0);
 
-    root_fh->get_or_alloc_dircache();
+    root_fh->alloc_dircache();
 
     // Initialize the RPC task list.
     rpc_task_helper = rpc_task_helper::get_instance(this);
@@ -1353,10 +1353,10 @@ void nfs_client::read(
     }
 
     /*
-     * Allocate readahead_state if not already done.
-     * RA state is allocated here quite often.
+     * aznfsc_ll_read() must be called only after aznfsc_ll_open() or
+     * aznfsc_ll_create(), so we must have the readahead_state allocated.
      */
-    inode->get_or_alloc_rastate();
+    assert(inode->has_rastate());
 
     /*
      * Issue readaheads (if any) before application read.
@@ -1365,12 +1365,12 @@ void nfs_client::read(
      * to the server even while application read causes us to block.
      */
     [[maybe_unused]] const int num_ra =
-        inode->readahead_state->issue_readaheads();
+        inode->get_rastate()->issue_readaheads();
 
     AZLogDebug("[{}] {} readaheads issued for client read offset: {} size: {}",
                ino, num_ra, off, size);
 
-    inode->readahead_state->on_application_read(off, size);
+    inode->get_rastate()->on_application_read(off, size);
     tsk->run_read();
 }
 
@@ -1561,15 +1561,22 @@ void nfs_client::reply_entry(
          * After this fuse can call any of the functions that might need file
          * or dir cache, so allocate them now.
          */
-        if (inode->is_regfile()) {
-            assert(optype == FUSE_LOOKUP ||
-                   optype == FUSE_CREATE ||
-                   optype == FUSE_MKNOD);
-            inode->get_or_alloc_filecache();
-        } else if (inode->is_dir()) {
-            assert(optype == FUSE_LOOKUP ||
-                   optype == FUSE_MKDIR);
-            inode->get_or_alloc_dircache(optype == FUSE_MKDIR);
+        switch (optype) {
+            case FUSE_CREATE:
+                assert(file);
+                inode->on_fuse_open(optype);
+                break;
+            case FUSE_LOOKUP:
+            case FUSE_MKNOD:
+            case FUSE_MKDIR:
+            case FUSE_SYMLINK:
+                assert(!file);
+                inode->on_fuse_lookup(optype);
+                break;
+            default:
+                AZLogError("[{}] Invalid optype: {}",
+                           inode->get_fuse_ino(), (int) optype);
+                assert(0);
         }
 
         /*

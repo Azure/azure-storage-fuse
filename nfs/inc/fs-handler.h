@@ -274,26 +274,28 @@ static void aznfsc_ll_open(fuse_req_t req,
      * boolean inode->readahead_state check which calls the operator bool()
      * will succeed, we will proceed to call reset() while the ra_state is
      * being initialized by the get_or_alloc_rastate() thread.
+     *
+     * Note: We are not accessing inode->readahead_state directly anymore,
+     *       so the above race is gone but still leave the comment around
+     *       till we fully fix things.
      */
-    if (inode->is_regfile() && inode->readahead_state) {
+    if (inode->is_regfile() && inode->has_rastate()) {
         AZLogDebug("[{}] Resetting readahead state", ino);
-        inode->readahead_state->reset();
+        inode->get_rastate()->reset();
     }
 
     /*
      * If file cache is not allocated, allocate now.
-     * Mostly it'll be allocated in nfs_client::reply_entry().
+     * Mostly it'll be allocated in nfs_client::reply_entry(), but for inodes
+     * conveyed through readdirplus, nfs_client::reply_entry() won't be called
+     * and filecache_handle won't be allocated when aznfsc_ll_open() is called.
      */
-    if (inode->is_regfile()) {
-        inode->get_or_alloc_filecache();
-    } else if (inode->is_dir()) {
-        inode->get_or_alloc_dircache();
-    }
-
-    inode->opencnt++;
+    inode->on_fuse_open(FUSE_OPEN);
+    assert(inode->opencnt > 0);
 
     if (fuse_reply_open(req, fi) < 0) {
         AZLogError("[{}] fuse_reply_open() failed", inode->get_fuse_ino());
+        // Drop opencnt incremented in on_fuse_open().
         inode->opencnt--;
     }
 }
@@ -421,11 +423,12 @@ static void aznfsc_ll_opendir(fuse_req_t req,
 
     assert(inode->is_dir());
 
-    inode->get_or_alloc_dircache();
-    inode->opencnt++;
+    inode->on_fuse_open(FUSE_OPENDIR);
+    assert(inode->opencnt > 0);
 
     if (fuse_reply_open(req, fi) < 0) {
         AZLogError("[{}] fuse_reply_open() failed", inode->get_fuse_ino());
+        // Drop opencnt incremented in on_fuse_open().
         inode->opencnt--;
     }
 }

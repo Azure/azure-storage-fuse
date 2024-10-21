@@ -357,7 +357,7 @@ static void readahead_callback (
 
 delete_ctx:
     // Success or failure, report readahead completion.
-    inode->readahead_state->on_readahead_complete(bc->offset, bc->length);
+    inode->get_rastate()->on_readahead_complete(bc->offset, bc->length);
 
     // Free the readahead RPC task.
     task->free_rpc_task();

@@ -15,11 +15,11 @@ nfs_inode::nfs_inode(const struct nfs_fh3 *filehandle,
                      struct nfs_client *_client,
                      uint32_t _file_type,
                      fuse_ino_t _ino) :
+    file_type(_file_type),
     fh(*filehandle),
     crc(calculate_crc32(fh.get_fh())),
     ino(_ino == 0 ? (fuse_ino_t) this : _ino),
     generation(get_current_usecs()),
-    file_type(_file_type),
     client(_client)
 {
     // Sanity asserts.
@@ -242,11 +242,11 @@ try_again:
 
 bool nfs_inode::in_ra_window(uint64_t offset, uint64_t length) const
 {
-    if (!readahead_state) {
+    if (!has_rastate()) {
         return false;
     }
 
-    return readahead_state->in_ra_window(offset, length);
+    return get_rastate()->in_ra_window(offset, length);
 }
 
 /**

@@ -76,6 +76,12 @@ struct nfs_inode
     mutable std::shared_mutex ilock_1;
 
     /*
+     * S_IFREG, S_IFDIR, etc.
+     * 0 is not a valid file type.
+     */
+    const uint32_t file_type = 0;
+
+    /*
      * Ref count of this inode.
      * Fuse expects that whenever we make one of the following calls, we
      * must increment the lookupcnt of the inode:
@@ -132,6 +138,7 @@ struct nfs_inode
     fuse_ino_t parent_ino = 0;
     int silly_rename_level = 0;
 
+private:
     /*
      * NFSv3 filehandle returned by the server.
      * We use this to identify this file/directory to the server.
@@ -146,6 +153,13 @@ struct nfs_inode
      */
     const uint32_t crc = 0;
 
+    /*
+     * For maintaining readahead state.
+     * Valid only for regular files.
+     */
+    std::shared_ptr<ra_state> readahead_state;
+
+public:
     /*
      * Fuse inode number.
      * This is how fuse identifies this file/directory to us.
@@ -165,12 +179,6 @@ struct nfs_inode
      */
     const fuse_ino_t ino;
     const uint64_t generation;
-
-    /*
-     * S_IFREG, S_IFDIR, etc.
-     * 0 is not a valid file type.
-     */
-    const uint32_t file_type = 0;
 
     /*
      * Cached attributes for this inode and the current value of attribute
@@ -231,12 +239,6 @@ struct nfs_inode
     std::shared_ptr<bytes_chunk_cache> filecache_handle;
 
     /*
-     * For maintaining readahead state.
-     * Valid only for regular files.
-     */
-    std::shared_ptr<ra_state> readahead_state;
-
-    /*
      * How many forget count we expect from fuse.
      * It'll be incremented whenever we are able to successfully call one of
      * the following:
@@ -293,13 +295,15 @@ struct nfs_inode
      * FIXME: This races with use of is_cache_empty() by another thread.
      *        Ref aznfsc_ll_open().
      */
-    std::shared_ptr<bytes_chunk_cache>& get_or_alloc_filecache()
+    void alloc_filecache()
     {
         assert(is_regfile());
+
         {
             std::shared_lock<std::shared_mutex> lock(ilock_1);
-            if (filecache_handle)
-                return filecache_handle;
+            if (filecache_handle) {
+                return;
+            }
         }
 
         std::unique_lock<std::shared_mutex> lock(ilock_1);
@@ -313,8 +317,6 @@ struct nfs_inode
                 filecache_handle = std::make_shared<bytes_chunk_cache>(this);
             }
         }
-
-        return filecache_handle;
     }
 
     /**
@@ -322,14 +324,15 @@ struct nfs_inode
      * This must be called from code that returns an inode after a directory
      * is opened or created.
      */
-    std::shared_ptr<readdirectory_cache>& get_or_alloc_dircache(
-            bool newly_created = false)
+    void alloc_dircache(bool newly_created_directory = false)
     {
         assert(is_dir());
+
         {
             std::shared_lock<std::shared_mutex> lock(ilock_1);
-            if (dircache_handle)
-                return dircache_handle;
+            if (dircache_handle) {
+                return;
+            }
         }
 
         std::unique_lock<std::shared_mutex> lock(ilock_1);
@@ -338,32 +341,120 @@ struct nfs_inode
             /*
              * If this directory is just created, mark it as "confirmed".
              */
-            if (newly_created) {
+            if (newly_created_directory) {
                 dircache_handle->set_confirmed();
             }
         }
-
-        return dircache_handle;
     }
 
     /**
      * Allocate readahead_state if not already allocated.
      */
-    std::shared_ptr<ra_state>& get_or_alloc_rastate()
+    void alloc_rastate()
     {
         assert(is_regfile());
-        {
-            std::shared_lock<std::shared_mutex> lock(ilock_1);
-            if (readahead_state)
-                return readahead_state;
+
+        if (has_rastate()) {
+            return;
         }
 
         std::unique_lock<std::shared_mutex> lock(ilock_1);
         if (!readahead_state) {
             readahead_state = std::make_shared<ra_state>(client, this);
         }
+    }
 
+    /**
+     * Note: alloc_rastate() may be called right after this function returns,
+     *       which means readahead_state shared_ptr may be modified while
+     *       caller is accessing it, this will cause a data race.
+     *       To avoid this caller MUST call has_rastate() first to make sure
+     *       readahead_state is fully ready before calling get_rastate() and
+     *       using the returned readahead_state shared_ptr. This works because
+     *       once set readahead_state won't be cleared till nfs_inode is alive.
+     */
+    const std::shared_ptr<ra_state>& get_rastate() const
+    {
+        assert(is_regfile());
+        std::shared_lock<std::shared_mutex> lock(ilock_1);
         return readahead_state;
+    }
+
+    std::shared_ptr<ra_state>& get_rastate()
+    {
+        assert(is_regfile());
+        std::shared_lock<std::shared_mutex> lock(ilock_1);
+        return readahead_state;
+    }
+
+    bool has_rastate() const
+    {
+        assert(is_regfile());
+        std::shared_lock<std::shared_mutex> lock(ilock_1);
+        return (readahead_state != nullptr);
+    }
+
+    /**
+     * This must be called from all paths where we respond to a fuse request
+     * that amounts to open()ing a file/directory. Once a file/directory is
+     * open()ed, application can call all the POSIX APIs that take an fd, so if
+     * we defer anything in the nfs_inode constructor (as we are not sure if
+     * application will call any POSIX API on the file) perform the allocation
+     * here.
+     */
+    void on_fuse_open(enum fuse_opcode optype)
+    {
+        /*
+         * Only these fuse ops correspond to open()/creat() which return an
+         * fd.
+         */
+        assert((optype == FUSE_CREATE) ||
+               (optype == FUSE_OPEN) ||
+               (optype == FUSE_OPENDIR));
+
+        opencnt++;
+
+        if (is_regfile()) {
+            alloc_filecache();
+            alloc_rastate();
+        } else if (is_dir()) {
+            alloc_dircache();
+        }
+    }
+
+    /**
+     * This must be called from all paths where we respond to a fuse request
+     * that makes fuse aware of this inode. It could be lookup or readdirplus.
+     * Once fuse receives an inode it can call operations like lookup/getattr.
+     * See on_fuse_open() which is called by paths which not only return the inode
+     * but also an fd to the application, f.e. creat().
+     */
+    void on_fuse_lookup(enum fuse_opcode optype)
+    {
+        /*
+         * Only these fuse ops correspond to operations that return an inode
+         * to fuse, but don't cause a fd to be returned to the application.
+         * FUSE_READDIR and FUSE_READDIRPLUS are the only other ops that return
+         * inode to fuse but we don't call on_fuse_lookup() for those as they
+         * could be a lot and most commonly applications will not perform IO
+         * on all files returned by readdir/readdirplus.
+         */
+        assert((optype == FUSE_LOOKUP) ||
+               (optype == FUSE_MKNOD) ||
+               (optype == FUSE_MKDIR) ||
+               (optype == FUSE_SYMLINK));
+
+        if (is_regfile()) {
+            assert(optype == FUSE_LOOKUP ||
+                   optype == FUSE_MKNOD);
+        } else if (is_dir()) {
+            assert(optype == FUSE_LOOKUP ||
+                   optype == FUSE_MKDIR);
+            /*
+             * We have a unified cache for readdir/readdirplus and lookup.
+             */
+            alloc_dircache(optype == FUSE_MKDIR);
+        }
     }
 
     /**
@@ -489,11 +580,10 @@ struct nfs_inode
 
         /*
          * Directory inodes returned by READDIRPLUS won't have dircache
-         * allocated, and fuse may call lookup on them.
+         * allocated, and fuse may call lookup on them, allocate dircache now
+         * before calling dnlc_add().
          */
-        if (!dircache_handle) {
-            get_or_alloc_dircache();
-        }
+        alloc_dircache();
 
         dircache_handle->dnlc_add(filename, inode);
     }

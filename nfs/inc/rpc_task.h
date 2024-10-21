@@ -2113,12 +2113,15 @@ public:
         inode->forget_expected++;
 
         /*
-         * Increment opencnt before calling fuse_reply_create() as once we
-         * respond with the inode to fuse, it may call release for that inode
-         * and we have an assert in aznfsc_ll_release() that opencnt must be
-         * non-zero. If we fail to convey to fuse we decrement the opencnt.
+         * nfs_client::reply_entry()->on_fuse_open() must have incremented
+         * the inode opencnt.
+         * Note that it's important to increment opencnt before calling
+         * fuse_reply_create() as once we respond with the inode to fuse, it
+         * may call release for that inode and we have an assert in
+         * aznfsc_ll_release() that opencnt must be non-zero. If we fail to
+         * convey to fuse we decrement the opencnt.
          */
-        inode->opencnt++;
+        assert(inode->opencnt > 0);
 
         if (fuse_reply_create(get_fuse_req(), entry, file) < 0) {
             AZLogError("[{}] fuse_reply_create() failed",
@@ -2130,6 +2133,10 @@ public:
              */
             assert(inode->forget_expected > 0);
             inode->forget_expected--;
+            /*
+             * Drop opencnt incremented in
+             * nfs_client::reply_entry()->on_fuse_open().
+             */
             inode->opencnt--;
             inode->decref();
         }
