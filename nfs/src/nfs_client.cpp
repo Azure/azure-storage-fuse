@@ -464,8 +464,9 @@ struct nfs_inode *nfs_client::__inode_from_inode_map(const nfs_fh3 *fh,
            (fattr->type == NF3LNK));
 #endif
 
-    const uint32_t file_type = (fattr->type == NF3DIR) ? S_IFDIR :
-                                ((fattr->type == NF3LNK) ? S_IFLNK : S_IFREG);
+    [[maybe_unused]] const uint32_t file_type =
+        (fattr->type == NF3DIR) ? S_IFDIR :
+         ((fattr->type == NF3LNK) ? S_IFLNK : S_IFREG);
 
     std::shared_mutex dummy_lock;
     std::shared_lock<std::shared_mutex> lock(
@@ -1324,6 +1325,13 @@ void nfs_client::read(
     struct nfs_inode *inode = get_nfs_inode_from_ino(ino);
 
     /*
+     * aznfsc_ll_read() can only be called after aznfsc_ll_open() so filecache
+     * and readahead state must have been allocated when we reach here.
+     */
+    assert(inode->has_filecache());
+    assert(inode->has_rastate());
+
+    /*
      * Fuse doesn't let us decide the max file size supported, so kernel can
      * technically send us a request for an offset larger than we support.
      * Adjust size to not read beyond the max file size supported.
@@ -1351,12 +1359,6 @@ void nfs_client::read(
         tsk->reply_iov(nullptr, 0);
         return;
     }
-
-    /*
-     * aznfsc_ll_read() must be called only after aznfsc_ll_open() or
-     * aznfsc_ll_create(), so we must have the readahead_state allocated.
-     */
-    assert(inode->has_rastate());
 
     /*
      * Issue readaheads (if any) before application read.

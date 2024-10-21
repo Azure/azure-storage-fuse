@@ -1540,6 +1540,12 @@ void rpc_task::run_write()
     uint64_t extent_left = 0;
     uint64_t extent_right = 0;
 
+    /*
+     * aznfsc_ll_write_buf() can only be called after aznfsc_ll_open() so
+     * filecache must have been allocated when we reach here.
+     */
+    assert(inode->has_filecache());
+
     // Update cached write timestamp, if needed.
     inode->stamp_cached_write();
 
@@ -1628,14 +1634,14 @@ void rpc_task::run_write()
      *       queried for the first time.
      */
     static const uint64_t max_dirty_extent =
-        inode->filecache_handle->max_dirty_extent_bytes();
+        inode->get_filecache()->max_dirty_extent_bytes();
     assert(max_dirty_extent > 0);
 
     /*
      * How many bytes in the cache need to be flushed.
      */
     const uint64_t bytes_to_flush =
-        inode->filecache_handle->get_bytes_to_flush();
+        inode->get_filecache()->get_bytes_to_flush();
 
     AZLogDebug("[{}] extent_left: {}, extent_right: {}, size: {}, "
                "bytes_to_flush: {} (max_dirty_extent: {})",
@@ -1667,7 +1673,7 @@ void rpc_task::run_write()
     /*
      * Ok, we need to flush the extent now, check if we must do it inline.
      */
-    if (inode->filecache_handle->do_inline_write()) {
+    if (inode->get_filecache()->do_inline_write()) {
         INC_GBL_STATS(inline_writes, 1);
 
         AZLogDebug("[{}] Inline write, {} bytes extent @ [{}, {})",
@@ -1689,7 +1695,7 @@ void rpc_task::run_write()
     }
 
     std::vector<bytes_chunk> bc_vec =
-        inode->filecache_handle->get_dirty_bc_range(extent_left, extent_right);
+        inode->get_filecache()->get_dirty_bc_range(extent_left, extent_right);
 
     if (bc_vec.size() == 0) {
         reply_write(length);
@@ -2202,12 +2208,17 @@ void rpc_task::run_read()
 {
     const fuse_ino_t ino = rpc_api->read_task.get_ino();
     struct nfs_inode *inode = get_client()->get_nfs_inode_from_ino(ino);
-    std::shared_ptr<bytes_chunk_cache>& filecache_handle =
-        inode->filecache_handle;
 
     assert(inode->is_regfile());
-    // Must have been allocated in open().
-    assert(filecache_handle);
+    /*
+     * aznfsc_ll_read() can only be called after aznfsc_ll_open() so filecache
+     * and readahead state must have been allocated when we reach here.
+     */
+    assert(inode->has_filecache());
+    assert(inode->has_rastate());
+
+    std::shared_ptr<bytes_chunk_cache>& filecache_handle =
+        inode->get_filecache();
 
     /*
      * run_read() is called once for a fuse read request and must not be
@@ -2586,7 +2597,13 @@ static void read_callback(
     const int status = (task->status(rpc_status, NFS_STATUS(res), &errstr));
     fuse_ino_t ino = task->rpc_api->read_task.get_ino();
     struct nfs_inode *inode = task->get_client()->get_nfs_inode_from_ino(ino);
-    auto filecache_handle = inode->filecache_handle;
+
+    /*
+     * Applications can only issue reads on an open fd and we ensure filecache
+     * is created on file open.
+     */
+    assert(inode->has_filecache());
+    auto filecache_handle = inode->get_filecache();
     /*
      * read_callback() must only be called for read done from fuse for which
      * we must have allocated the cache.

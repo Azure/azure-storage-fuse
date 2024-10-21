@@ -154,8 +154,28 @@ private:
     const uint32_t crc = 0;
 
     /*
+     * This is a handle to the chunk cache which caches data for this file.
+     * Valid only for regular files.
+     * filecache_handle starts null in the nfs_inode constructor and is later
+     * initialized in on_fuse_open() (when we return the inode to fuse in a
+     * lookup response or the application calls open()/creat()). The idea is
+     * to allocate the cache only when really needed. For inodes returned to
+     * fuse in a readdirplus response we don't initialize the filecache_handle.
+     * Once initialized we never make it null again, though we can make the
+     * cache itself empty by invalidate_cache(). So if has_filecache() returns
+     * true we can safely access the filecache_handle shared_ptr returned by
+     * get_filecache().
+     * Access to this shared_ptr must be protect by ilock_1, whereas access to
+     * the bytes_chunk_cache itself must be protected by chunkmap_lock_43.
+     */
+    std::shared_ptr<bytes_chunk_cache> filecache_handle;
+
+    /*
      * For maintaining readahead state.
      * Valid only for regular files.
+     * Access to this shared_ptr must be protect by ilock_1, whereas access to
+     * the ra_state itself must be protected by ra_lock_40.
+     * Also see comments above filecache_handle.
      */
     std::shared_ptr<ra_state> readahead_state;
 
@@ -232,13 +252,6 @@ public:
     std::shared_ptr<readdirectory_cache> dircache_handle;
 
     /*
-     * This is a handle to the chunk cache which caches data for this file.
-     * Valid only for regular files.
-     * Access to this shared_ptr must be protect by ilock_1.
-     */
-    std::shared_ptr<bytes_chunk_cache> filecache_handle;
-
-    /*
      * How many forget count we expect from fuse.
      * It'll be incremented whenever we are able to successfully call one of
      * the following:
@@ -299,11 +312,8 @@ public:
     {
         assert(is_regfile());
 
-        {
-            std::shared_lock<std::shared_mutex> lock(ilock_1);
-            if (filecache_handle) {
-                return;
-            }
+        if (has_filecache()) {
+            return;
         }
 
         std::unique_lock<std::shared_mutex> lock(ilock_1);
@@ -317,6 +327,35 @@ public:
                 filecache_handle = std::make_shared<bytes_chunk_cache>(this);
             }
         }
+    }
+
+    /**
+     * This MUST be called only after has_filecache() returns true, else
+     * there's a possibility of data race, as the returned filecache_handle
+     * ref may be updated by alloc_filecache() right after get_filecache()
+     * returns and while the caller is accessing the shared_ptr.
+     * So f.e., calling "if (get_filecache())" to check presence of cache is
+     * not safe as get_filecache() is being used as a boolean here so it calls
+     * "shared_ptr::operator bool()" which returns true even while the
+     * shared_ptr is being initialized by alloc_filecache(), thus it causes
+     * a data race.
+     * has_filecache() does the comparison within the lock so it's safe, and
+     * also we are guaranteed that once filecache_handle is found to be present
+     * it won't go away and hence using the filecache_handle shared_ptr returned
+     * by get_filecache() is safe after has_filecache() returns true.
+     */
+    std::shared_ptr<bytes_chunk_cache>& get_filecache()
+    {
+        assert(is_regfile());
+        std::shared_lock<std::shared_mutex> lock(ilock_1);
+        return filecache_handle;
+    }
+
+    bool has_filecache() const
+    {
+        assert(is_regfile());
+        std::shared_lock<std::shared_mutex> lock(ilock_1);
+        return (filecache_handle != nullptr);
     }
 
     /**
@@ -359,19 +398,18 @@ public:
         }
 
         std::unique_lock<std::shared_mutex> lock(ilock_1);
+        /*
+         * readahead_state MUST only be created if filecache_handle is set.
+         */
+        assert(filecache_handle);
         if (!readahead_state) {
             readahead_state = std::make_shared<ra_state>(client, this);
         }
     }
 
     /**
-     * Note: alloc_rastate() may be called right after this function returns,
-     *       which means readahead_state shared_ptr may be modified while
-     *       caller is accessing it, this will cause a data race.
-     *       To avoid this caller MUST call has_rastate() first to make sure
-     *       readahead_state is fully ready before calling get_rastate() and
-     *       using the returned readahead_state shared_ptr. This works because
-     *       once set readahead_state won't be cleared till nfs_inode is alive.
+     * This MUST be called only after has_rastate() returns true.
+     * See comment above get_filecache().
      */
     const std::shared_ptr<ra_state>& get_rastate() const
     {
@@ -415,6 +453,10 @@ public:
         opencnt++;
 
         if (is_regfile()) {
+            /*
+             * Allocate filecache_handle after readahead_state as we assert
+             * for filecache_handle in alloc_rastate().
+             */
             alloc_filecache();
             alloc_rastate();
         } else if (is_dir()) {

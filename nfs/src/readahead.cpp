@@ -18,6 +18,9 @@
 
 namespace aznfsc {
 
+/**
+ * This is called from alloc_rastate() with exclusive lock on ilock_1.
+ */
 ra_state::ra_state(struct nfs_client *_client,
                    struct nfs_inode *_inode) :
         client(_client),
@@ -31,8 +34,17 @@ ra_state::ra_state(struct nfs_client *_client,
     // We should be called only for regular files.
     assert(inode->is_regfile());
 
-    // Readahead needs filecache.
-    assert(inode->filecache_handle != nullptr);
+    /*
+     * Readaheads are triggered by application reads and application reads
+     * are only performed on an open fd and we create filecache when file is
+     * opened by fuse.
+     * XXX We cannot perform the following assert as our caller alloc_rastate()
+     *     is already holding ilock_1, but note that alloc_rastate() does this
+     *     assert.
+     */
+#if 0
+    assert(inode->has_filecache());
+#endif
 
     /*
      * By the time ra_state is initialized mount must have already
@@ -116,7 +128,9 @@ static void readahead_callback (
     const int status = task->status(rpc_status, NFS_STATUS(res), &errstr);
     const fuse_ino_t ino = task->rpc_api->read_task.get_ino();
     struct nfs_inode *inode = task->get_client()->get_nfs_inode_from_ino(ino);
-    const auto read_cache = inode->filecache_handle;
+
+    assert(inode->has_filecache());
+    const auto read_cache = inode->get_filecache();
 
     assert(read_cache != nullptr);
     assert(ino == inode->get_fuse_ino());
@@ -434,18 +448,21 @@ int64_t ra_state::get_next_ra(uint64_t length)
 /*
  * TODO: Add readahead stats.
  */
+/**
+ * Note: This takes shared lock on ilock_1.
+ */
 int ra_state::issue_readaheads()
 {
     int64_t ra_offset;
-    auto read_cache = inode->filecache_handle;
-    int ra_issued = 0;
 
     /*
-     * No cache, can't readahead.
+     * issue_readaheads() MUST only be called for open files which will have
+     * the file cache initialized.
      */
-    if (!read_cache) {
-        return 0;
-    }
+    assert(inode->has_filecache());
+
+    auto& read_cache = inode->get_filecache();
+    int ra_issued = 0;
 
     /*
      * If userspace data cache is disabled, don't do readaheads.

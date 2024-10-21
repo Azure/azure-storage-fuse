@@ -257,7 +257,7 @@ static void aznfsc_ll_open(fuse_req_t req,
      */
     if (inode->is_regfile() && !inode->is_cache_empty()) {
         AZLogDebug("[{}] Clearing cache", ino);
-        inode->filecache_handle->clear();
+        inode->get_filecache()->clear();
     }
 
     /*

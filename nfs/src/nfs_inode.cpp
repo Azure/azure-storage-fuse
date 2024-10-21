@@ -461,6 +461,9 @@ void nfs_inode::sync_membufs(std::vector<bytes_chunk> &bc_vec, bool is_flush)
     }
 }
 
+/**
+ * Note: This takes shared lock on ilock_1.
+ */
 int nfs_inode::copy_to_cache(const struct fuse_bufvec* bufv,
                              off_t offset,
                              uint64_t *extent_left,
@@ -477,7 +480,7 @@ int nfs_inode::copy_to_cache(const struct fuse_bufvec* bufv,
      * filecache initialized.
      */
     assert(is_regfile());
-    assert(filecache_handle);
+    assert(has_filecache());
     assert(offset < (off_t) AZNFSC_MAX_FILE_SIZE);
 
     assert(bufv->idx < bufv->count);
@@ -638,6 +641,9 @@ try_copy:
     return err;
 }
 
+/**
+ * Note: This takes shared lock on ilock_1.
+ */
 int nfs_inode::flush_cache_and_wait(uint64_t start_off, uint64_t end_off)
 {
     /*
@@ -664,7 +670,7 @@ int nfs_inode::flush_cache_and_wait(uint64_t start_off, uint64_t end_off)
     /*
      * If flush() is called w/o open(), there won't be any cache, skip.
      */
-    if (!filecache_handle) {
+    if (!has_filecache()) {
         return 0;
     }
 

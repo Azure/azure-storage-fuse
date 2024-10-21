@@ -262,6 +262,8 @@ struct bc_iovec
      * will issue to the file using this bc_iovec.
      * It takes nfs_inode for releasing the cache chunks as IOs get completed
      * for the queued bytes_chunks.
+     *
+     * Note: This takes shared lock on ilock_1.
      */
     bc_iovec(struct nfs_inode *_inode) :
         inode(_inode),
@@ -269,6 +271,11 @@ struct bc_iovec
     {
         assert(inode->magic == NFS_INODE_MAGIC);
         assert(inode->is_regfile());
+        /*
+         * bc_iovec is used to perform writeback of cached data, so cache must
+         * be present.
+         */
+        assert(inode->has_filecache());
 
         /*
          * Grab a ref on the inode as we will need it for releasing cache
@@ -288,6 +295,9 @@ struct bc_iovec
         assert(iov == base);
     }
 
+    /*
+     * Note: This takes shared lock on ilock_1.
+     */
     ~bc_iovec()
     {
         assert(bcq.empty());
@@ -298,7 +308,8 @@ struct bc_iovec
          * on_io_complete() as every bytes_chunk completes as scanning the
          * bytes_chunk_cache is expensive.
          */
-        inode->filecache_handle->release(orig_offset, orig_length);
+        assert(inode->has_filecache());
+        inode->get_filecache()->release(orig_offset, orig_length);
         inode->decref();
     }
 
