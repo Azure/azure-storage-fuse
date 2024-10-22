@@ -1,38 +1,14 @@
 parameters:
-  - name: conf_template
-    type: string
-  - name: config_file
-    type: string
-  - name: container
-    type: string
   - name: temp_dir
     type: string
   - name: mount_dir
     type: string    
   - name: idstring
     type: string
-  - name: adls
-    type: boolean
-  - name: account_name
-    type: string
-  - name: account_key
-    type: string
-  - name: account_type
-    type: string
-  - name: account_endpoint
-  - name: distro_name
-    type: string
-  - name: quick_test
-    type: boolean
-    default: true
-  - name: verbose_log
-    type: boolean
-    default: false
-  - name: clone
-    type: boolean
-    default: false
   - name: kversion
     type: string
+  - name: config_file
+    type: string   
 
 steps:    
   - template: 'mount.yml'
@@ -47,18 +23,44 @@ steps:
 
   - script: |
       cd ${{ parameters.mount_dir }}
+      rm -rf *
+    displayName: 'Cleanup mount directory'
+
+  - script: |
+      cd ${{ parameters.mount_dir }}
+      pwd
       wget https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-${{ parameters.kversion }}.tar.xz  
+      ls -l 
     displayName: 'Get kernel tarfile'
 
   - script: |
-      tar -xvf {{ parameters.mount_dir }}/linux-${{ parameters.kversion }}.tar.xz
+      cd ${{ parameters.mount_dir }}
+      tar -xvf ${{ parameters.mount_dir }}/linux-${{ parameters.kversion }}.tar.xz
     displayName: 'Untar kernel'
 
   - script: |
-      cd {{ parameters.mount_dir }}/linux-${{ parameters.kversion }}
+      cd ${{ parameters.mount_dir }}/linux-${{ parameters.kversion }}
+      cp -v /boot/config-$(uname -r) .config
       make defconfig
       make
     displayName: 'Run MAKE on the kernel'
+
+  - script: |
+      cd ${{ parameters.mount_dir }}
+      tar -zcvf linux-${{ parameters.kversion }}.tar.gz linux-${{ parameters.kversion }}
+      ls -l 
+    displayName: 'Tar kernel'
+
+  - script: |
+      tail -n 200 blobfuse2-logs.txt
+    displayName: 'View Logs'
+    condition: failed()
+
+  - script: |
+      cd ${{ parameters.mount_dir }}
+      rm -rf linux-${{ parameters.kversion }}
+      rm -rf *tar*
+    displayName: 'Cleanup kernel'
 
   - template: 'cleanup.yml'
     parameters:
