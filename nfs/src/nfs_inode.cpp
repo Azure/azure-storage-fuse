@@ -1020,6 +1020,7 @@ void nfs_inode::invalidate_cache_nolock()
 
 /*
  * Purge the readdir cache.
+ * Caller must be holding ilock_1.
  * TODO: For now we purge the entire cache. This can be later changed to purge
  *       parts of cache.
  */
@@ -1073,7 +1074,7 @@ void nfs_inode::lookup_dircache(
     // Must be called only for a directory inode.
     assert(is_dir());
     // Must have been allocated in open()/opendir().
-    assert(dircache_handle);
+    assert(has_dircache());
 
 #ifndef ENABLE_NON_AZURE_NFS
     // Blob NFS uses cookie as a counter, so 4B is a practical check.
