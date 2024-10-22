@@ -62,6 +62,7 @@ import (
 )
 
 var home_dir, _ = os.UserHomeDir()
+var mountpoint = home_dir + "mountpoint"
 var dataBuff []byte
 
 type blockCacheTestSuite struct {
@@ -114,7 +115,7 @@ func setupPipeline(cfg string) (*testObj, error) {
 	}
 
 	config.ReadConfigFromReader(strings.NewReader(cfg))
-
+	config.Set("mount-path", mountpoint)
 	tobj.loopback = loopback.NewLoopbackFSComponent()
 	err := tobj.loopback.Configure(true)
 	if err != nil {
@@ -292,6 +293,11 @@ func (suite *blockCacheTestSuite) TestSomeInvalidConfigs() {
 	_, err = setupPipeline(cfg)
 	suite.assert.NotNil(err)
 	suite.assert.Contains(err.Error(), "temp directory not empty")
+
+	cfg = fmt.Sprintf("read-only: true\n\nblock_cache:\n  block-size-mb: 8\n  mem-size-mb: 800\n  prefetch: 12\n  parallelism: 5\n  path: %s \n  disk-size-mb: 100\n  disk-timeout-sec: 0", mountpoint)
+	_, err = setupPipeline(cfg)
+	suite.assert.NotNil(err)
+	suite.assert.Contains(err.Error(), "tmp-path is same as mount path")
 }
 
 func (suite *blockCacheTestSuite) TestManualConfig() {
