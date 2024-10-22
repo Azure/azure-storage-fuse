@@ -699,6 +699,11 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
      */
     const std::unique_lock<std::mutex> _lock(chunkmap_lock_43);
 
+	if (invalidate_pending.exchange(false)) {
+		AZLogDebug("[{}] (Deferred) Purging file_cache", inode->get_fuse_ino());
+		clear_nolock();
+	}
+
     /*
      * Temp variables to hold details for releasing a range.
      * All chunks in the range [begin_delete, end_delete) will be freed as
@@ -1806,7 +1811,10 @@ int64_t bytes_chunk_cache::drop(uint64_t offset, uint64_t length)
     return total_dropped_bytes;
 }
 
-void bytes_chunk_cache::clear()
+/**
+ * Caller MUST hold exclusive lock on chunkmap_lock_43.
+ */
+void bytes_chunk_cache::clear_nolock()
 {
     AZLogDebug("[{}] Cache purge: chunkmap.size()={}, backing_file_name={}",
                fmt::ptr(this), chunkmap.size(), backing_file_name);
@@ -1815,8 +1823,8 @@ void bytes_chunk_cache::clear()
     assert(bytes_cached <= bytes_cached_g);
 
     /*
-     * We hold the bytes_chunk_cache lock and go over all the bytes_chunk to
-     * see if they can be freed. Following bytes_chunk cannot be freed:
+     * We go over all the bytes_chunk to see if they can be freed. Following
+     * bytes_chunk cannot be freed:
      * 1. If it's marked dirty, i.e., it has data which needs to be sync'ed to
      *    the Blob. This is application data which need to be written to the
      *    Blob and freeing the bytes_chunk w/o that will cause data consistency
@@ -1830,7 +1838,6 @@ void bytes_chunk_cache::clear()
      * returned, and it does that while holding the bytes_chunk_cache::lock, we
      * can safely remove from chunkmap iff inuse/dirty/locked are not set.
      */
-    const std::unique_lock<std::mutex> _lock(chunkmap_lock_43);
     const uint64_t start_size = chunkmap.size();
 
     for (auto it = chunkmap.cbegin(), next_it = it;

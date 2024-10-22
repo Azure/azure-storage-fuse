@@ -270,6 +270,8 @@ private:
      */
     mutable std::shared_mutex readdircache_lock_2;
 
+    std::atomic<bool> invalidate_pending = false;
+
 public:
     readdirectory_cache(struct nfs_client *_client,
                         struct nfs_inode *_inode):
@@ -451,5 +453,12 @@ public:
      * ref.
      */
     void clear();
+
+    void invalidate()
+    {
+        invalidate_pending = true;
+    }
+
+    void clear_if_needed();
 };
 #endif /* __READDIR_RPC_TASK___ */

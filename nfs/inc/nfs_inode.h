@@ -349,7 +349,7 @@ public:
     std::shared_ptr<bytes_chunk_cache>& get_filecache()
     {
         assert(is_regfile());
-        std::shared_lock<std::shared_mutex> lock(ilock_1);
+        //std::shared_lock<std::shared_mutex> lock(ilock_1);
         return filecache_handle;
     }
 
@@ -394,7 +394,7 @@ public:
     std::shared_ptr<readdirectory_cache>& get_dircache()
     {
         assert(is_dir());
-        std::shared_lock<std::shared_mutex> lock(ilock_1);
+        //std::shared_lock<std::shared_mutex> lock(ilock_1);
         return dircache_handle;
     }
 
@@ -433,14 +433,14 @@ public:
     const std::shared_ptr<ra_state>& get_rastate() const
     {
         assert(is_regfile());
-        std::shared_lock<std::shared_mutex> lock(ilock_1);
+        //std::shared_lock<std::shared_mutex> lock(ilock_1);
         return readahead_state;
     }
 
     std::shared_ptr<ra_state>& get_rastate()
     {
         assert(is_regfile());
-        std::shared_lock<std::shared_mutex> lock(ilock_1);
+        //std::shared_lock<std::shared_mutex> lock(ilock_1);
         return readahead_state;
     }
 
@@ -984,33 +984,35 @@ public:
     }
 
     /**
-     * Invalidate/zap the cached data.
-     * Depending on whether this inode corresponds to a regular file or a
-     * directory, this will invalidate the appropriate cache.
-     *
-     * Caller must hold the inode lock.
+     * Invalidate/zap the cached data. This will correctly invalidate cached
+     * data for both file and directory caches.
+     * By default it will just mark the cache as invalid and the actual purging
+     * will be deferred till the next access to the cache, but the caller can
+     * request the cache to be purged inline by passing purge_now as true.
      */
-    void invalidate_cache_nolock();
-
-    /**
-     * Convenience function that calls invalidate_cache_nolock() after
-     * holding the inode lock.
-     */
-    void invalidate_cache()
+    void invalidate_cache(bool purge_now = false)
     {
-        std::unique_lock<std::shared_mutex> lock(ilock_1);
-        invalidate_cache_nolock();
-    }
+        if (is_dir()) {
+            if (has_dircache()) {
+                AZLogDebug("[{}] Invalidating dircache", get_fuse_ino());
+                dircache_handle->invalidate();
 
-    /**
-     * Caller must hold inode->ilock_1.
-     */
-    void purge_dircache_nolock();
+                if (purge_now) {
+                    AZLogDebug("[{}] Purging dircache", get_fuse_ino());
+                    dircache_handle->clear();
+                }
+            }
+        } else if (is_regfile()) {
+            if (has_filecache()) {
+                AZLogDebug("[{}] Invalidating filecache", get_fuse_ino());
+                filecache_handle->invalidate();
 
-    void purge_dircache()
-    {
-        std::unique_lock<std::shared_mutex> lock(ilock_1);
-        purge_dircache_nolock();
+                if (purge_now) {
+                    AZLogDebug("[{}] Purging filecache", get_fuse_ino());
+                    filecache_handle->clear();
+                }
+            }
+        }
     }
 
     /**
@@ -1032,21 +1034,6 @@ public:
     int get_write_error() const
     {
         return write_error;
-    }
-
-    /**
-     * Caller must hold inode->ilock_1.
-     */
-    void purge_filecache_nolock();
-
-    /**
-     * Caller must hold the inode lock.
-     * TODO: Implement this when we add read/write support.
-     */
-    void purge_filecache()
-    {
-        std::unique_lock<std::shared_mutex> lock(ilock_1);
-        purge_filecache_nolock();
     }
 
     /**

@@ -179,7 +179,7 @@ try_again:
          * Also for files since the inode last ref is dropped, further accesses
          * are unlikely, hence we can drop file caches too.
          */
-        invalidate_cache();
+        invalidate_cache(true /* purge_now */);
 
         /*
          * Reduce the extra refcnt and revert the cnt.
@@ -964,7 +964,7 @@ bool nfs_inode::update_nolock(const struct fattr3 *postattr,
                    attr.st_mtim.tv_sec, attr.st_mtim.tv_nsec,
                    *psize, attr.st_size);
 
-        invalidate_cache_nolock();
+        invalidate_cache();
     }
 
     return true;
@@ -997,52 +997,6 @@ void nfs_inode::force_update_attr_nolock(const struct fattr3& fattr)
 
     // file type should not change.
     assert((attr.st_mode & S_IFMT) == file_type);
-}
-
-
-/**
- * Caller must hold exclusive inode lock.
- */
-void nfs_inode::invalidate_cache_nolock()
-{
-    /*
-     * When directory mtime changes then we purge the readdir cache for that
-     * directory and also the DNLC cache for that directory. DNLC cache needs
-     * to be purged as directory contents changing could mean any existing
-     * file may have been deleted.
-     */
-    if (is_dir()) {
-        purge_dircache_nolock();
-    } else if (is_regfile()) {
-        purge_filecache_nolock();
-    }
-}
-
-/*
- * Purge the readdir cache.
- * Caller must be holding ilock_1.
- * TODO: For now we purge the entire cache. This can be later changed to purge
- *       parts of cache.
- */
-void nfs_inode::purge_dircache_nolock()
-{
-    if (dircache_handle) {
-        AZLogDebug("[{}] Purging dircache", get_fuse_ino());
-        dircache_handle->clear();
-    }
-}
-
-/*
- * Purge the file cache.
- * TODO: For now we purge the entire cache. This can be later changed to purge
- *       parts of cache.
- */
-void nfs_inode::purge_filecache_nolock()
-{
-    if (filecache_handle) {
-        AZLogDebug("[{}] Purging filecache", get_fuse_ino());
-        filecache_handle->clear();
-    }
 }
 
 /*
@@ -1087,11 +1041,9 @@ void nfs_inode::lookup_dircache(
      * enumeration requests as they are not in sync with the actual directory
      * content (one or more file/dir has been created/deleted since we last
      * enumerated and cachd the enumeration results).
+     * Also purge if invalid pending.
      */
-    if (dircache_handle->is_lookuponly()) {
-        AZLogDebug("[{}] Purging lookuponly dircache", get_fuse_ino());
-        purge_dircache();
-    }
+    dircache_handle->clear_if_needed();
 
     int num_cache_entries = 0;
     ssize_t rem_size = max_size;

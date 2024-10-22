@@ -1081,7 +1081,18 @@ public:
      * - Which are dirty.
      *   These need to be flushed to the Blob, else we lose data.
      */
-    void clear();
+    void clear_nolock();
+
+    void clear()
+    {
+        const std::unique_lock<std::mutex> _lock(chunkmap_lock_43);
+        clear_nolock();
+    }
+
+    void invalidate()
+    {
+        invalidate_pending = true;
+    }
 
     /**
      * Drop memory cache for all chunks in this bytes_chunk_cache.
@@ -1408,6 +1419,8 @@ private:
     std::string backing_file_name;
     int backing_file_fd = -1;
     std::atomic<uint64_t> backing_file_len = 0;
+
+    std::atomic<bool> invalidate_pending = false;
 
     // Count of total active caches.
     static std::atomic<uint64_t> num_caches;

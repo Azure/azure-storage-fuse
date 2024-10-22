@@ -753,3 +753,17 @@ void readdirectory_cache::clear()
         }
     }
 }
+
+void readdirectory_cache::clear_if_needed()
+{
+    if (invalidate_pending.exchange(false)) {
+        AZLogDebug("[{}] Purging invalid dircache",
+                dir_inode->get_fuse_ino());
+        clear();
+    } else if (is_lookuponly()) {
+        AZLogDebug("[{}] Purging lookuponly dircache",
+                dir_inode->get_fuse_ino());
+        clear();
+    }
+}
+
