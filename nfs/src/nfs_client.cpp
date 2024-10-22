@@ -792,7 +792,7 @@ void nfs_client::put_nfs_inode_nolock(struct nfs_inode *inode,
     if (inode->is_dir() && !inode->is_cache_empty()) {
         AZLogWarn("[{}] Inode still has {} entries in dircache, skipping",
                   inode->get_fuse_ino(),
-                  inode->dircache_handle->get_num_entries());
+                  inode->get_dircache()->get_num_entries());
         assert(0);
         return;
     }
@@ -1146,8 +1146,8 @@ bool nfs_client::silly_rename(
      * This is called from aznfsc_ll_unlink() for all unlinked files, so
      * this is a good place to remove the entry from DNLC.
      */
-    if (parent_inode->dircache_handle) {
-        parent_inode->dircache_handle->dnlc_remove(name);
+    if (parent_inode->has_dircache()) {
+        parent_inode->get_dircache()->dnlc_remove(name);
     }
 
     /*
@@ -1197,8 +1197,8 @@ void nfs_client::rmdir(
     struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task(FUSE_RMDIR);
     struct nfs_inode *parent_inode = get_nfs_inode_from_ino(parent_ino);
 
-    if (parent_inode->dircache_handle) {
-        parent_inode->dircache_handle->dnlc_remove(name);
+    if (parent_inode->has_dircache()) {
+        parent_inode->get_dircache()->dnlc_remove(name);
     }
 
     tsk->init_rmdir(req, parent_ino, name);
@@ -1240,12 +1240,12 @@ void nfs_client::rename(
      * just in case the server doesn't return postop attributes or returns them
      * incorrectly.
      */
-    if (parent_inode->dircache_handle) {
-        parent_inode->dircache_handle->dnlc_remove(name);
+    if (parent_inode->has_dircache()) {
+        parent_inode->get_dircache()->dnlc_remove(name);
     }
 
-    if (newparent_inode->dircache_handle) {
-        newparent_inode->dircache_handle->dnlc_remove(new_name);
+    if (newparent_inode->has_dircache()) {
+        newparent_inode->get_dircache()->dnlc_remove(new_name);
     }
 
     tsk->init_rename(req, parent_ino, name, newparent_ino, new_name,

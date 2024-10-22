@@ -171,6 +171,15 @@ private:
     std::shared_ptr<bytes_chunk_cache> filecache_handle;
 
     /*
+     * Pointer to the readdirectory cache.
+     * Only valid for a directory, this will be nullptr for a non-directory.
+     * Access to this shared_ptr must be protect by ilock_1, whereas access to
+     * the readdirectory_cache itself must be protected by readdircache_lock_2.
+     * Also see comments above filecache_handle.
+     */
+    std::shared_ptr<readdirectory_cache> dircache_handle;
+
+    /*
      * For maintaining readahead state.
      * Valid only for regular files.
      * Access to this shared_ptr must be protect by ilock_1, whereas access to
@@ -243,13 +252,6 @@ public:
 
     // nfs_client owning this inode.
     struct nfs_client *const client;
-
-    /*
-     * Pointer to the readdirectory cache.
-     * Only valid for a directory, this will be nullptr for a non-directory.
-     * Access to this shared_ptr must be protect by ilock_1.
-     */
-    std::shared_ptr<readdirectory_cache> dircache_handle;
 
     /*
      * How many forget count we expect from fuse.
@@ -367,11 +369,10 @@ public:
     {
         assert(is_dir());
 
-        {
-            std::shared_lock<std::shared_mutex> lock(ilock_1);
-            if (dircache_handle) {
-                return;
-            }
+        if (has_dircache()) {
+            // Cannot have dircache already present for newly created dirs.
+            assert(!newly_created_directory);
+            return;
         }
 
         std::unique_lock<std::shared_mutex> lock(ilock_1);
@@ -384,6 +385,24 @@ public:
                 dircache_handle->set_confirmed();
             }
         }
+    }
+
+    /**
+     * This MUST be called only after has_dircache() returns true.
+     * See comment above get_filecache().
+     */
+    std::shared_ptr<readdirectory_cache>& get_dircache()
+    {
+        assert(is_dir());
+        std::shared_lock<std::shared_mutex> lock(ilock_1);
+        return dircache_handle;
+    }
+
+    bool has_dircache() const
+    {
+        assert(is_dir());
+        std::shared_lock<std::shared_mutex> lock(ilock_1);
+        return (dircache_handle != nullptr);
     }
 
     /**
@@ -493,7 +512,8 @@ public:
             assert(optype == FUSE_LOOKUP ||
                    optype == FUSE_MKDIR);
             /*
-             * We have a unified cache for readdir/readdirplus and lookup.
+             * We have a unified cache for readdir/readdirplus and lookup, so
+             * we need to create the readdir cache on lookup.
              */
             alloc_dircache(optype == FUSE_MKDIR);
         }
@@ -587,13 +607,15 @@ public:
      * represented by this inode.
      * It'll hold a lookupcnt ref on the returned inode and caller must drop
      * that ref by calling decref().
+     *
+     * Note: This holds shared lock on ilock_1.
      */
     struct nfs_inode *dnlc_lookup(const char *filename,
                                   bool *negative_confirmed = nullptr) const
     {
         assert(is_dir());
 
-        if (dircache_handle) {
+        if (has_dircache()) {
             struct nfs_inode *inode =
                 dircache_handle->dnlc_lookup(filename, negative_confirmed);
             // dnlc_lookup() must have held a lookupcnt ref.
@@ -613,11 +635,6 @@ public:
         assert(filename);
         assert(inode);
         assert(inode->magic == NFS_INODE_MAGIC);
-
-        /*
-         * By the time dnlc_add() is called, dircache_handle must have been
-         * created.
-         */
         assert(is_dir());
 
         /*

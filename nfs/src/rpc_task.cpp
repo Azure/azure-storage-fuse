@@ -3121,6 +3121,12 @@ static void readdir_callback(
     const int status = task->status(rpc_status, NFS_STATUS(res));
     bool eof = false;
 
+    /*
+     * readdir can be called on a directory after open()ing it, so we must have
+     * created dircache.
+     */
+    assert(dir_inode->has_dircache());
+
     // For readdir we don't use parent_task to track the fuse request.
     assert(task->rpc_api->parent_task == nullptr);
 
@@ -3169,8 +3175,7 @@ static void readdir_callback(
 
         // Get handle to the readdirectory cache.
         std::shared_ptr<readdirectory_cache>& dircache_handle =
-            dir_inode->dircache_handle;
-        assert(dircache_handle);
+            dir_inode->get_dircache();
 
         // Process all dirents received.
         while (entry) {
@@ -3479,6 +3484,12 @@ static void readdirplus_callback(
     const int status = task->status(rpc_status, NFS_STATUS(res));
     bool eof = false;
 
+    /*
+     * readdir can be called on a directory after open()ing it, so we must have
+     * created dircache.
+     */
+    assert(dir_inode->has_dircache());
+
     // For readdir we don't use parent_task to track the fuse request.
     assert(task->rpc_api->parent_task == nullptr);
 
@@ -3528,8 +3539,7 @@ static void readdirplus_callback(
 
         // Get handle to the readdirectory cache.
         std::shared_ptr<readdirectory_cache>& dircache_handle =
-            dir_inode->dircache_handle;
-        assert(dircache_handle != nullptr);
+            dir_inode->get_dircache();
 
         // Process all dirents received.
         while (entry) {
@@ -3888,7 +3898,7 @@ void rpc_task::get_readdir_entries_from_cache()
     struct nfs_inode *nfs_inode =
         get_client()->get_nfs_inode_from_ino(rpc_api->readdir_task.get_ino());
     // Must have been allocated by opendir().
-    assert(nfs_inode->dircache_handle);
+    assert(nfs_inode->has_dircache());
     bool is_eof = false;
     std::vector<std::shared_ptr<const directory_entry>> readdirentries;
 
@@ -3946,7 +3956,7 @@ void rpc_task::fetch_readdir_entries_from_server()
     bool rpc_retry;
     const fuse_ino_t dir_ino = rpc_api->readdir_task.get_ino();
     struct nfs_inode *dir_inode = get_client()->get_nfs_inode_from_ino(dir_ino);
-    assert(dir_inode->dircache_handle);
+    assert(dir_inode->has_dircache());
     const cookie3 cookie = rpc_api->readdir_task.get_offset();
 
     do {
@@ -3955,7 +3965,7 @@ void rpc_task::fetch_readdir_entries_from_server()
         args.dir = dir_inode->get_fh();
         args.cookie = cookie;
         ::memcpy(&args.cookieverf,
-                 dir_inode->dircache_handle->get_cookieverf(),
+                 dir_inode->get_dircache()->get_cookieverf(),
                  sizeof(args.cookieverf));
 
         args.count = nfs_get_readdir_maxcount(get_nfs_context());
@@ -3988,7 +3998,7 @@ void rpc_task::fetch_readdirplus_entries_from_server()
     bool rpc_retry;
     const fuse_ino_t dir_ino = rpc_api->readdir_task.get_ino();
     struct nfs_inode *dir_inode = get_client()->get_nfs_inode_from_ino(dir_ino);
-    assert(dir_inode->dircache_handle);
+    assert(dir_inode->has_dircache());
     const cookie3 cookie = rpc_api->readdir_task.get_offset();
 
     do {
@@ -3997,7 +4007,7 @@ void rpc_task::fetch_readdirplus_entries_from_server()
         args.dir = dir_inode->get_fh();
         args.cookie = cookie;
         ::memcpy(&args.cookieverf,
-                 dir_inode->dircache_handle->get_cookieverf(),
+                 dir_inode->get_dircache()->get_cookieverf(),
                  sizeof(args.cookieverf));
 
         /*
