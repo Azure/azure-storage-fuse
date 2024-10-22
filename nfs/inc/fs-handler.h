@@ -229,7 +229,9 @@ static void aznfsc_ll_open(fuse_req_t req,
     fi->direct_io = !aznfsc_cfg.cache.data.kernel.enable;
     fi->keep_cache = aznfsc_cfg.cache.data.kernel.enable;
     fi->nonseekable = 0;
+#if 0
     fi->parallel_direct_writes = 1;
+#endif
     fi->noflush = 0;
 
     /*
@@ -578,7 +580,9 @@ static void aznfsc_ll_create(fuse_req_t req,
     fi->direct_io = !aznfsc_cfg.cache.data.kernel.enable;
     fi->keep_cache = aznfsc_cfg.cache.data.kernel.enable;
     fi->nonseekable = 0;
+#if 0
     fi->parallel_direct_writes = 1;
+#endif
     fi->noflush = 0;
 
     struct nfs_client *client = get_nfs_client_from_fuse_req(req);

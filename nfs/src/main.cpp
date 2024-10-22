@@ -122,7 +122,9 @@ static void aznfsc_ll_init(void *userdata,
 
     // TODO: See if we should enable this.
     conn->want &= ~FUSE_CAP_CACHE_SYMLINKS;
+#if 0
     conn->want &= ~FUSE_CAP_SETXATTR_EXT;
+#endif
 
 #if 0
     /*
