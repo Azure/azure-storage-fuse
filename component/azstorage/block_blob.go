@@ -327,6 +327,13 @@ func (bb *BlockBlob) RenameFile(source string, target string) error {
 	})
 
 	if err != nil {
+		serr := storeBlobErrToErr(err)
+		if serr == ErrFileNotFound {
+			//Ideally this case doesn't hit as we are checking for the existence of src
+			//before making the call for RenameFile
+			log.Err("BlockBlob::RenameFile : Src Blob doesn't Exist %s [%s]", source, err.Error())
+			return syscall.ENOENT
+		}
 		log.Err("BlockBlob::RenameFile : Failed to start copy of file %s [%s]", source, err.Error())
 		return err
 	}
@@ -398,9 +405,10 @@ func (bb *BlockBlob) RenameDirectory(source string, target string) error {
 	})
 	if err != nil {
 		serr := storeBlobErrToErr(err)
-		if serr == ErrFileNotFound && srcDirPresent {
-			return nil
-		} else if serr == ErrFileNotFound {
+		if serr == ErrFileNotFound { //marker blob doesn't exist for the directory
+			if srcDirPresent { //Some files exist inside the directory
+				return nil
+			}
 			log.Err("BlockBlob::RenameDirectory : %s marker blob does not exist and Src Directory doesn't Exist", source)
 			return syscall.ENOENT
 		} else {

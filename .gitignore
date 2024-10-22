@@ -21,3 +21,4 @@ lint.log
 azure-storage-fuse
 bfusemon
 test/scripts/dirIterate.go
+component/azstorage/logfile.txt
