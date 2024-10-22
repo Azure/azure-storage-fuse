@@ -405,6 +405,26 @@ public:
         return (dircache_handle != nullptr);
     }
 
+    bool has_cache() const
+    {
+        if (is_dir()) {
+            return has_dircache();
+        } else if (is_regfile()) {
+            return has_filecache();
+        }
+        return false;
+    }
+
+    bool has_cache_nolock() const
+    {
+        if (is_dir()) {
+            return dircache_handle != nullptr;
+        } else if (is_regfile()) {
+            return filecache_handle != nullptr;
+        }
+        return false;
+    }
+
     /**
      * Allocate readahead_state if not already allocated.
      */
@@ -989,28 +1009,28 @@ public:
      * By default it will just mark the cache as invalid and the actual purging
      * will be deferred till the next access to the cache, but the caller can
      * request the cache to be purged inline by passing purge_now as true.
+     *
+     * This is called from update_nolock() with ilock held.
      */
     void invalidate_cache(bool purge_now = false)
     {
         if (is_dir()) {
-            if (has_dircache()) {
-                AZLogDebug("[{}] Invalidating dircache", get_fuse_ino());
-                dircache_handle->invalidate();
+            assert(dircache_handle);
+            AZLogDebug("[{}] Invalidating dircache", get_fuse_ino());
+            dircache_handle->invalidate();
 
-                if (purge_now) {
-                    AZLogDebug("[{}] Purging dircache", get_fuse_ino());
-                    dircache_handle->clear();
-                }
+            if (purge_now) {
+                AZLogDebug("[{}] Purging dircache", get_fuse_ino());
+                dircache_handle->clear();
             }
         } else if (is_regfile()) {
-            if (has_filecache()) {
-                AZLogDebug("[{}] Invalidating filecache", get_fuse_ino());
-                filecache_handle->invalidate();
+            assert(filecache_handle);
+            AZLogDebug("[{}] Invalidating filecache", get_fuse_ino());
+            filecache_handle->invalidate();
 
-                if (purge_now) {
-                    AZLogDebug("[{}] Purging filecache", get_fuse_ino());
-                    filecache_handle->clear();
-                }
+            if (purge_now) {
+                AZLogDebug("[{}] Purging filecache", get_fuse_ino());
+                filecache_handle->clear();
             }
         }
     }

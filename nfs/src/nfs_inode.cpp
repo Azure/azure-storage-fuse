@@ -179,7 +179,9 @@ try_again:
          * Also for files since the inode last ref is dropped, further accesses
          * are unlikely, hence we can drop file caches too.
          */
-        invalidate_cache(true /* purge_now */);
+        if (has_cache()) {
+            invalidate_cache(true /* purge_now */);
+        }
 
         /*
          * Reduce the extra refcnt and revert the cnt.
@@ -964,7 +966,9 @@ bool nfs_inode::update_nolock(const struct fattr3 *postattr,
                    attr.st_mtim.tv_sec, attr.st_mtim.tv_nsec,
                    *psize, attr.st_size);
 
-        invalidate_cache();
+        if (has_cache_nolock()) {
+            invalidate_cache();
+        }
     }
 
     return true;
