@@ -558,7 +558,7 @@ public:
         assert(is_regfile());
         assert(!rastate_alloced || readahead_state);
 
-        return readahead_state;
+        return rastate_alloced;
     }
 
     /**
