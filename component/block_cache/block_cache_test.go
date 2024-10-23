@@ -166,6 +166,19 @@ func (tobj *testObj) cleanupPipeline() error {
 	return nil
 }
 
+func (suite *blockCacheTestSuite) TestStream() {
+	common.IsStream = false
+	emptyConfig := "read-only: true\n\nblock_cache:\n  block-size-mb: 16\n"
+	tobj, err := setupPipeline(emptyConfig)
+	defer tobj.cleanupPipeline()
+
+	suite.assert.Nil(err)
+	suite.assert.Equal(tobj.blockCache.Name(), "block_cache")
+	suite.assert.EqualValues(tobj.blockCache.blockSize, 16*_1MB)
+	// suite.assert.Contains(logOutput.String(), "Entering stream mode")
+	suite.assert.Equal(tobj.blockCache.stream.Name(), "stream")
+}
+
 // Tests the default configuration of block cache
 func (suite *blockCacheTestSuite) TestEmpty() {
 	emptyConfig := "read-only: true"
