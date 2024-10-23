@@ -36,6 +36,7 @@ package internal
 import (
 	"testing"
 
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
@@ -117,6 +118,14 @@ func (s *pipelineTestSuite) TestStartStopCreateNewPipeline() {
 
 	err = p.Stop()
 	s.assert.Nil(err)
+}
+
+func (s *pipelineTestSuite) TestNewPipelineWithGenConfig() {
+	common.GenConfig = true
+	defer func() { common.GenConfig = false }()
+	p, err := NewPipeline([]string{"ComponentA", "ComponentB", "ComponentC"}, false)
+	s.assert.Nil(err)
+	s.assert.Equal(0, len(p.components))
 }
 
 func TestPipelineTestSuite(t *testing.T) {
