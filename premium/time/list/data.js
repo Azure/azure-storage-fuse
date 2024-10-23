@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1729401359699,
+  "lastUpdate": 1729706706730,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -529,6 +529,40 @@ window.BENCHMARK_DATA = {
           {
             "name": "delete_100k_files",
             "value": "335.79000",
+            "unit": "seconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "33023344+tjvishnu@users.noreply.github.com",
+            "name": "Vishnu Charan TJ",
+            "username": "tjvishnu"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "4a9d9ab9024a5103258185b5744237c255f63cbd",
+          "message": "Merge pull request #1548 from Azure/tjvishnu-patch-3\n\nUpdate README.md",
+          "timestamp": "2024-10-23T09:51:14-07:00",
+          "tree_id": "e9172ff88945c2b0961534727238c6df7ad044cd",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/4a9d9ab9024a5103258185b5744237c255f63cbd"
+        },
+        "date": 1729706706437,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "list_100k_files",
+            "value": "12.16000",
+            "unit": "seconds"
+          },
+          {
+            "name": "delete_100k_files",
+            "value": "394.19000",
             "unit": "seconds"
           }
         ]
