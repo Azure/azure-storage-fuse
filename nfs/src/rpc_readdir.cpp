@@ -501,7 +501,7 @@ bool readdirectory_cache::remove(cookie3 cookie,
                                  bool acquire_lock)
 {
     AZLogDebug("[{}] remove(cookie: {}, filename_hint: {})",
-               dir_inode->ino, cookie, filename_hint);
+               dir_inode->ino, cookie, filename_hint ? filename_hint : "");
 
     // Either cookie or filename_hint (not both) must be passed.
     assert((cookie == 0) == (filename_hint != nullptr));
