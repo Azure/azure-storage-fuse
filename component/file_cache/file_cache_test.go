@@ -163,8 +163,7 @@ func (suite *fileCacheTestSuite) TestEmpty() {
 }
 
 // Tests configuration of file cache
-func (suite *fileCache
-	TestSuite) TestConfig() {
+func (suite *fileCacheTestSuite) TestConfig() {
 	defer suite.cleanupTest()
 	suite.cleanupTest() // teardown the default file cache generated
 	policy := "lru"
