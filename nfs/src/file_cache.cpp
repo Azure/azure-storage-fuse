@@ -699,6 +699,9 @@ std::vector<bytes_chunk> bytes_chunk_cache::scan(uint64_t offset,
      */
     const std::unique_lock<std::mutex> _lock(chunkmap_lock_43);
 
+	/*
+	 * Before we proceed with the cache lookup check if invalidate is pending.
+	 */
 	if (invalidate_pending.exchange(false)) {
 		AZLogDebug("[{}] (Deferred) Purging file_cache", inode->get_fuse_ino());
 		clear_nolock();

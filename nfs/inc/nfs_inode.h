@@ -157,18 +157,21 @@ private:
      * This is a handle to the chunk cache which caches data for this file.
      * Valid only for regular files.
      * filecache_handle starts null in the nfs_inode constructor and is later
-     * initialized in on_fuse_open() (when we return the inode to fuse in a
-     * lookup response or the application calls open()/creat()). The idea is
+     * initialized only in on_fuse_open() (when we return the inode to fuse in
+     * a lookup response or the application calls open()/creat()). The idea is
      * to allocate the cache only when really needed. For inodes returned to
      * fuse in a readdirplus response we don't initialize the filecache_handle.
      * Once initialized we never make it null again, though we can make the
      * cache itself empty by invalidate_cache(). So if has_filecache() returns
      * true we can safely access the filecache_handle shared_ptr returned by
      * get_filecache().
+     * alloc_filecache() initializes filecache_handle and sets filecache_alloced
+     * to true.
      * Access to this shared_ptr must be protect by ilock_1, whereas access to
      * the bytes_chunk_cache itself must be protected by chunkmap_lock_43.
      */
     std::shared_ptr<bytes_chunk_cache> filecache_handle;
+    std::atomic<bool> filecache_alloced = false;
 
     /*
      * Pointer to the readdirectory cache.
@@ -178,6 +181,7 @@ private:
      * Also see comments above filecache_handle.
      */
     std::shared_ptr<readdirectory_cache> dircache_handle;
+    std::atomic<bool> dircache_alloced = false;
 
     /*
      * For maintaining readahead state.
@@ -187,6 +191,7 @@ private:
      * Also see comments above filecache_handle.
      */
     std::shared_ptr<ra_state> readahead_state;
+    std::atomic<bool> rastate_alloced = false;
 
 public:
     /*
@@ -303,23 +308,71 @@ public:
     ~nfs_inode();
 
     /**
+     * Does this nfs_inode have cache allocated?
+     * It correctly checks cache for both directory and file inodes and it
+     * only checks if the cache is allocated and not whether cache has some
+     * data.
+     *
+     * Note: Only files/directories which are open()ed will have cache
+     *       allocated, also since directory cache doubles as DNLC, for
+     *       directories if at least one file/subdir inside this directory is
+     *       looked up by fuse, the cache will be allocated.
+     *
+     * LOCKS: None.
+     */
+    bool has_cache() const
+    {
+        if (is_dir()) {
+            return has_dircache();
+        } else if (is_regfile()) {
+            return has_filecache();
+        }
+
+        return false;
+    }
+
+    /**
+     * Is the inode cache (filecache_handle or dircache_handle) empty?
+     *
+     * Note: This returns the current inode cache status at the time of this
+     *       call, it my change right after this function returns. Keep this
+     *       in mind when using the result.
+     *
+     * LOCKS: None.
+     */
+    bool is_cache_empty() const
+    {
+        if (is_regfile()) {
+            return !has_filecache() || filecache_handle->is_empty();
+        } else if (is_dir()) {
+            return !has_dircache() || dircache_handle->is_empty();
+        } else {
+            return true;
+        }
+    }
+
+    /**
      * Allocate file cache if not already allocated.
      * This must be called from code that returns an inode after a regular
      * file is opened or created.
+     * It's a no-op if the filecache is already allocated.
      *
-     * FIXME: This races with use of is_cache_empty() by another thread.
-     *        Ref aznfsc_ll_open().
+     * LOCKS: If not already allocated it'll take exclusive ilock_1.
      */
     void alloc_filecache()
     {
         assert(is_regfile());
 
-        if (has_filecache()) {
+        if (filecache_alloced) {
+            // Once allocated it cannot become null again.
+            assert(filecache_handle);
             return;
         }
 
         std::unique_lock<std::shared_mutex> lock(ilock_1);
         if (!filecache_handle) {
+            assert(!filecache_alloced);
+
             if (aznfsc_cfg.filecache.enable && aznfsc_cfg.filecache.cachedir) {
                 const std::string backing_file_name =
                     std::string(aznfsc_cfg.filecache.cachedir) + "/" + std::to_string(get_fuse_ino());
@@ -328,6 +381,7 @@ public:
             } else {
                 filecache_handle = std::make_shared<bytes_chunk_cache>(this);
             }
+            filecache_alloced = true;
         }
     }
 
@@ -341,42 +395,59 @@ public:
      * "shared_ptr::operator bool()" which returns true even while the
      * shared_ptr is being initialized by alloc_filecache(), thus it causes
      * a data race.
-     * has_filecache() does the comparison within the lock so it's safe, and
-     * also we are guaranteed that once filecache_handle is found to be present
-     * it won't go away and hence using the filecache_handle shared_ptr returned
-     * by get_filecache() is safe after has_filecache() returns true.
+     * Once filecache_handle is allocated by alloc_filecache() it remains set
+     * for the life of the inode, so we can safely use the shared_ptr w/o the
+     * inode lock.
+     *
+     * Note: This MUST be called only when has_filecache() returns true.
+     *
+     * LOCKS: None.
      */
     std::shared_ptr<bytes_chunk_cache>& get_filecache()
     {
         assert(is_regfile());
-        //std::shared_lock<std::shared_mutex> lock(ilock_1);
+        assert(filecache_alloced);
+        assert(filecache_handle);
+
         return filecache_handle;
     }
 
+    /**
+     * External users of this nfs_inode can check for presence of filecache by
+     * calling has_filecache().
+     *
+     * LOCKS: None.
+     */
     bool has_filecache() const
     {
         assert(is_regfile());
-        std::shared_lock<std::shared_mutex> lock(ilock_1);
-        return (filecache_handle != nullptr);
+        assert(!filecache_alloced || filecache_handle);
+
+        return filecache_alloced;
     }
 
     /**
      * Allocate directory cache if not already allocated.
      * This must be called from code that returns an inode after a directory
      * is opened or created.
+     * It's a no-op if the dircache is already allocated.
+     *
+     * LOCKS: If not already allocated it'll take exclusive ilock_1.
      */
     void alloc_dircache(bool newly_created_directory = false)
     {
         assert(is_dir());
 
-        if (has_dircache()) {
-            // Cannot have dircache already present for newly created dirs.
-            assert(!newly_created_directory);
+        if (dircache_alloced) {
+            // Once allocated it cannot become null again.
+            assert(dircache_handle);
             return;
         }
 
         std::unique_lock<std::shared_mutex> lock(ilock_1);
         if (!dircache_handle) {
+            assert(!dircache_alloced);
+
             dircache_handle = std::make_shared<readdirectory_cache>(client, this);
             /*
              * If this directory is just created, mark it as "confirmed".
@@ -384,55 +455,57 @@ public:
             if (newly_created_directory) {
                 dircache_handle->set_confirmed();
             }
+
+            dircache_alloced = true;
         }
     }
 
     /**
      * This MUST be called only after has_dircache() returns true.
      * See comment above get_filecache().
+     *
+     * Note: This MUST be called only when has_dircache() returns true.
+     *
+     * LOCKS: None.
      */
     std::shared_ptr<readdirectory_cache>& get_dircache()
     {
         assert(is_dir());
-        //std::shared_lock<std::shared_mutex> lock(ilock_1);
+        assert(dircache_alloced);
+        assert(dircache_handle);
+
         return dircache_handle;
     }
 
+    /**
+     * External users of this nfs_inode can check for presence of dircache by
+     * calling has_dircache().
+     *
+     * LOCKS: None.
+     */
     bool has_dircache() const
     {
         assert(is_dir());
-        std::shared_lock<std::shared_mutex> lock(ilock_1);
-        return (dircache_handle != nullptr);
-    }
+        assert(!dircache_alloced || dircache_handle);
 
-    bool has_cache() const
-    {
-        if (is_dir()) {
-            return has_dircache();
-        } else if (is_regfile()) {
-            return has_filecache();
-        }
-        return false;
-    }
-
-    bool has_cache_nolock() const
-    {
-        if (is_dir()) {
-            return dircache_handle != nullptr;
-        } else if (is_regfile()) {
-            return filecache_handle != nullptr;
-        }
-        return false;
+        return dircache_alloced;
     }
 
     /**
      * Allocate readahead_state if not already allocated.
+     * This must be called from code that returns an inode after a directory
+     * is opened or created.
+     * It's a no-op if the rastate is already allocated.
+     *
+     * LOCKS: If not already allocated it'll take exclusive ilock_1.
      */
     void alloc_rastate()
     {
         assert(is_regfile());
 
-        if (has_rastate()) {
+        if (rastate_alloced) {
+            // Once allocated it cannot become null again.
+            assert(readahead_state);
             return;
         }
 
@@ -442,33 +515,50 @@ public:
          */
         assert(filecache_handle);
         if (!readahead_state) {
+            assert(!rastate_alloced);
             readahead_state = std::make_shared<ra_state>(client, this);
+            rastate_alloced = true;
         }
     }
 
     /**
      * This MUST be called only after has_rastate() returns true.
      * See comment above get_filecache().
+     *
+     * Note: This MUST be called only when has_rastate() returns true.
+     *
+     * LOCKS: None.
      */
     const std::shared_ptr<ra_state>& get_rastate() const
     {
         assert(is_regfile());
-        //std::shared_lock<std::shared_mutex> lock(ilock_1);
+        assert(rastate_alloced);
+        assert(readahead_state);
+
         return readahead_state;
     }
 
     std::shared_ptr<ra_state>& get_rastate()
     {
         assert(is_regfile());
-        //std::shared_lock<std::shared_mutex> lock(ilock_1);
+        assert(rastate_alloced);
+        assert(readahead_state);
+
         return readahead_state;
     }
 
+    /**
+     * External users of this nfs_inode can check for presence of dircache by
+     * calling has_dircache().
+     *
+     * LOCKS: None.
+     */
     bool has_rastate() const
     {
         assert(is_regfile());
-        std::shared_lock<std::shared_mutex> lock(ilock_1);
-        return (readahead_state != nullptr);
+        assert(!rastate_alloced || readahead_state);
+
+        return readahead_state;
     }
 
     /**
@@ -478,6 +568,8 @@ public:
      * we defer anything in the nfs_inode constructor (as we are not sure if
      * application will call any POSIX API on the file) perform the allocation
      * here.
+     *
+     * LOCKS: Exclusive ilock_1.
      */
     void on_fuse_open(enum fuse_opcode optype)
     {
@@ -509,6 +601,8 @@ public:
      * Once fuse receives an inode it can call operations like lookup/getattr.
      * See on_fuse_open() which is called by paths which not only return the inode
      * but also an fd to the application, f.e. creat().
+     *
+     * LOCKS: Exclusive ilock_1.
      */
     void on_fuse_lookup(enum fuse_opcode optype)
     {
@@ -611,6 +705,8 @@ public:
      * should not be purged.
      * Note that it checks if there is any overlap and not whether it fits
      * entirely within the RA window.
+     *
+     * LOCKS: None.
      */
     bool in_ra_window(uint64_t offset, uint64_t length) const;
 
@@ -628,7 +724,7 @@ public:
      * It'll hold a lookupcnt ref on the returned inode and caller must drop
      * that ref by calling decref().
      *
-     * Note: This holds shared lock on ilock_1.
+     * Note: Shared readdircache_lock_2.
      */
     struct nfs_inode *dnlc_lookup(const char *filename,
                                   bool *negative_confirmed = nullptr) const
@@ -843,39 +939,6 @@ public:
                                          : get_actimeo_min();
     }
 
-
-    /**
-     * Is the inode cache (filecache_handle or dircache_handle) empty?
-     *
-     * Note: This holds a shared lock on the inode.
-     *
-     * Note: This returns the current inode cache status at the time of this
-     *       call, it my change right after this function returns. Keep this
-     *       in mind when using the result.
-     */
-    bool is_cache_empty() const
-    {
-        /*
-         * FIXME: This causes a deadlock, fix it.
-         */
-#if 0
-        /*
-         * Hold a shared inode lock to protect access to shared pointers
-         * filecache_handle and dircache_handle. get_or_alloc_filecache(),
-         * or get_or_alloc_dircache() may be setting the shared_ptr.
-         */
-        std::shared_lock<std::shared_mutex> lock(ilock_1);
-#endif
-
-        if (is_regfile()) {
-            return !filecache_handle || filecache_handle->is_empty();
-        } else if (is_dir()) {
-            return !dircache_handle || dircache_handle->is_empty();
-        } else {
-            return true;
-        }
-    }
-
     /**
      * Copy application data into the inode's file cache.
      *
@@ -948,7 +1011,7 @@ public:
      * Other reasons for force invalidating the caches could be if file/dir
      * was updated by calls to write()/create()/rename().
      *
-     * This holds the inode lock.
+     * LOCKS: If revalidating it'll take exclusive ilock_1.
      */
     void revalidate(bool force = false);
 
@@ -970,7 +1033,7 @@ public:
      * metadata, or both) since we cached it, false indicates that file has not
      * changed.
      *
-     * Caller must hold the inode lock.
+     * LOCKS: Caller must take exclusive ilock_1.
      */
     bool update_nolock(const struct fattr3 *postattr,
                        const struct wcc_attr *preattr = nullptr);
@@ -978,6 +1041,8 @@ public:
     /**
      * Convenience function that calls update_nolock() after holding the
      * inode lock.
+     *
+     * LOCKS: Exclusive ilock_1.
      *
      * XXX This MUST be called whenever we get fresh attributes for a file,
      *     most commonly as post-op attributes along with some RPC response.
@@ -1007,30 +1072,39 @@ public:
      * Invalidate/zap the cached data. This will correctly invalidate cached
      * data for both file and directory caches.
      * By default it will just mark the cache as invalid and the actual purging
-     * will be deferred till the next access to the cache, but the caller can
-     * request the cache to be purged inline by passing purge_now as true.
+     * will be deferred till the next access to the cache, and will be done in
+     * the context that accesses the cache, but the caller can request the cache
+     * to be purged inline by passing purge_now as true.
      *
-     * This is called from update_nolock() with ilock held.
+     * LOCKS: None when purge_now is false.
+     *        When purge_now is true, exclusive chunkmap_lock_43 for files and
+     *        exclusive readdircache_lock_2 for directories.
      */
     void invalidate_cache(bool purge_now = false)
     {
         if (is_dir()) {
-            assert(dircache_handle);
-            AZLogDebug("[{}] Invalidating dircache", get_fuse_ino());
-            dircache_handle->invalidate();
+            if (has_dircache()) {
+                assert(dircache_handle);
+                AZLogDebug("[{}] Invalidating dircache", get_fuse_ino());
+                dircache_handle->invalidate();
 
-            if (purge_now) {
-                AZLogDebug("[{}] Purging dircache", get_fuse_ino());
-                dircache_handle->clear();
+                if (purge_now) {
+                    AZLogDebug("[{}] (Purgenow) Purging dircache", get_fuse_ino());
+                    dircache_handle->clear();
+                    AZLogDebug("[{}] (Purgenow) Purged dircache", get_fuse_ino());
+                }
             }
         } else if (is_regfile()) {
-            assert(filecache_handle);
-            AZLogDebug("[{}] Invalidating filecache", get_fuse_ino());
-            filecache_handle->invalidate();
+            if (has_filecache()) {
+                assert(filecache_handle);
+                AZLogDebug("[{}] Invalidating filecache", get_fuse_ino());
+                filecache_handle->invalidate();
 
-            if (purge_now) {
-                AZLogDebug("[{}] Purging filecache", get_fuse_ino());
-                filecache_handle->clear();
+                if (purge_now) {
+                    AZLogDebug("[{}] (Purgenow) Purging filecache", get_fuse_ino());
+                    filecache_handle->clear();
+                    AZLogDebug("[{}] (Purgenow) Purged filecache", get_fuse_ino());
+                }
             }
         }
     }

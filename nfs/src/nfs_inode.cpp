@@ -60,8 +60,11 @@ nfs_inode::nfs_inode(const struct nfs_fh3 *filehandle,
      * file/dir that's enumerated.
      */
     assert(!filecache_handle);
+    assert(!filecache_alloced);
     assert(!dircache_handle);
+    assert(!dircache_alloced);
     assert(!readahead_state);
+    assert(!rastate_alloced);
 
     assert(lookupcnt == 0);
     assert(dircachecnt == 0);
@@ -98,10 +101,15 @@ nfs_inode::~nfs_inode()
      * dir cache.
      */
     assert(dircachecnt == 0);
+
     /*
      * Directory inodes must not be freed while they have a non-empty dir
      * cache.
      */
+    assert((filecache_handle == nullptr) == (filecache_alloced == false));
+    assert((dircache_handle == nullptr) == (dircache_alloced == false));
+    assert((readahead_state == nullptr) == (rastate_alloced == false));
+    assert(((filecache_handle != nullptr) + (dircache_handle != nullptr)) < 2);
     assert(is_cache_empty());
 
     assert((ino == (fuse_ino_t) this) || (ino == FUSE_ROOT_ID));
@@ -119,6 +127,11 @@ nfs_inode::~nfs_inode()
 #endif
 }
 
+/**
+ * LOCKS: inode_map_lock_0.
+ *        readdircache_lock_2 for directory.
+ *        chunkmap_lock_43 for file.
+ */
 void nfs_inode::decref(size_t cnt, bool from_forget)
 {
     AZLogDebug("[{}:{}] decref(cnt={}, from_forget={}) called "
@@ -178,10 +191,12 @@ try_again:
          * /proc/sys/vm/drop_caches.
          * Also for files since the inode last ref is dropped, further accesses
          * are unlikely, hence we can drop file caches too.
+         *
+         * Note that invalidate_cache with purge_now=true, will take exclusive
+         * lock on chunkmap_lock_43 for files and readdircache_lock_2 for
+         * directories.
          */
-        if (has_cache()) {
-            invalidate_cache(true /* purge_now */);
-        }
+        invalidate_cache(true /* purge_now */);
 
         /*
          * Reduce the extra refcnt and revert the cnt.
@@ -966,9 +981,7 @@ bool nfs_inode::update_nolock(const struct fattr3 *postattr,
                    attr.st_mtim.tv_sec, attr.st_mtim.tv_nsec,
                    *psize, attr.st_size);
 
-        if (has_cache_nolock()) {
-            invalidate_cache();
-        }
+        invalidate_cache();
     }
 
     return true;
@@ -1040,12 +1053,15 @@ void nfs_inode::lookup_dircache(
 #endif
 
     /*
-     * If this readdirectory_cache is marked lookuponly, purge the cache now.
+     * Before looking up the cache check if we need to purge it.
+     * We need to purge the cache in two cases:
+     * 1. readdirectory_cache is marked lookuponly.
+     * 2. readdirectory_cache has invalidate_pending set.
+     *
      * Note that lookuponly readdir caches cannot be used to serve directory
      * enumeration requests as they are not in sync with the actual directory
      * content (one or more file/dir has been created/deleted since we last
      * enumerated and cachd the enumeration results).
-     * Also purge if invalid pending.
      */
     dircache_handle->clear_if_needed();
 
