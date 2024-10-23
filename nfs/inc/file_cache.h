@@ -1420,6 +1420,11 @@ private:
     int backing_file_fd = -1;
     std::atomic<uint64_t> backing_file_len = 0;
 
+    /*
+     * Flag to quickly mark the cache as invalid w/o purging the entire
+     * cache. Once invalidate_pending is set, next cache lookup will first
+     * purge the cache before proceeding.
+     */
     std::atomic<bool> invalidate_pending = false;
 
     // Count of total active caches.

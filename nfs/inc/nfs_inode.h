@@ -548,8 +548,8 @@ public:
     }
 
     /**
-     * External users of this nfs_inode can check for presence of dircache by
-     * calling has_dircache().
+     * External users of this nfs_inode can check for presence of readahead
+     * state by calling has_rastate().
      *
      * LOCKS: None.
      */

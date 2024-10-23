@@ -270,6 +270,11 @@ private:
      */
     mutable std::shared_mutex readdircache_lock_2;
 
+    /*
+     * Flag to quickly mark the cache as invalid w/o purging the entire
+     * cache. Once invalidate_pending is set, next cache lookup will first
+     * purge the cache.
+     */
     std::atomic<bool> invalidate_pending = false;
 
 public:
@@ -459,6 +464,12 @@ public:
         invalidate_pending = true;
     }
 
+    /**
+     * clear directory cache if pending. Directory cache is cleared in the
+     * following cases
+     * 1. readdirectory_cache is marked lookuponly.
+     * 2. readdirectory_cache has invalidate_pending set.
+     */
     void clear_if_needed();
 };
 #endif /* __READDIR_RPC_TASK___ */

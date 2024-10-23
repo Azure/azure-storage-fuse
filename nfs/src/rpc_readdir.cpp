@@ -385,7 +385,7 @@ std::shared_ptr<struct directory_entry> readdirectory_cache::lookup(
         bool acquire_lock) const
 {
     AZLogDebug("[{}] lookup(cookie: {}, filename_hint: {})",
-               dir_inode->ino, cookie, filename_hint);
+               dir_inode->ino, cookie, filename_hint ? filename_hint : "");
 
     // Either cookie or filename_hint (not both) must be passed.
     assert((cookie == 0) == (filename_hint != nullptr));
