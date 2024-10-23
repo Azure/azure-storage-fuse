@@ -52,12 +52,8 @@ func (suite *genConfig) SetupTest() {
 	suite.assert = assert.New(suite.T())
 }
 
-func TestGenConfig(t *testing.T) {
-	suite.Run(t, new(genConfig))
-}
-
 func (suite *genConfig) cleanupTest() {
-	os.Remove("../generatedConfig.yaml")
+	os.Remove("generatedConfig.yaml")
 }
 
 func (suite *genConfig) TestFileCacheConfigGen() {
@@ -72,10 +68,10 @@ func (suite *genConfig) TestFileCacheConfigGen() {
 	suite.assert.Nil(err)
 
 	//Check if a file is generated named generatedConfig.yaml
-	suite.assert.FileExists("../generatedConfig.yaml")
+	suite.assert.FileExists("generatedConfig.yaml")
 
 	//check if the generated file is not empty
-	file, err := os.ReadFile("../generatedConfig.yaml")
+	file, err := os.ReadFile("generatedConfig.yaml")
 	suite.assert.Nil(err)
 	suite.assert.NotEmpty(file)
 
@@ -98,10 +94,10 @@ func (suite *genConfig) TestBlockCacheConfigGen() {
 	suite.assert.Nil(err)
 
 	//Check if a file is generated named generatedConfig.yaml
-	suite.assert.FileExists("../generatedConfig.yaml")
+	suite.assert.FileExists("generatedConfig.yaml")
 
 	//check if the generated file is not empty
-	file, err := os.ReadFile("../generatedConfig.yaml")
+	file, err := os.ReadFile("generatedConfig.yaml")
 	suite.assert.Nil(err)
 	suite.assert.NotEmpty(file)
 
@@ -115,7 +111,7 @@ func (suite *genConfig) TestBlockCacheConfigGen() {
 	_, err = cmd.Output()
 	suite.assert.Nil(err)
 
-	file, err = os.ReadFile("../generatedConfig.yaml")
+	file, err = os.ReadFile("generatedConfig.yaml")
 	suite.assert.Nil(err)
 	//check if the generated file has no tmp path
 	suite.assert.NotContains(string(file), tempDir)
@@ -131,10 +127,10 @@ func (suite *genConfig) TestDirectIOConfigGen() {
 	suite.assert.Nil(err)
 
 	//Check if a file is generated named generatedConfig.yaml
-	suite.assert.FileExists("../generatedConfig.yaml")
+	suite.assert.FileExists("generatedConfig.yaml")
 
 	//check if the generated file is not empty
-	file, err := os.ReadFile("../generatedConfig.yaml")
+	file, err := os.ReadFile("generatedConfig.yaml")
 	suite.assert.Nil(err)
 	suite.assert.NotEmpty(file)
 
@@ -184,4 +180,8 @@ func (suite *genConfig) TestValidComponentAndInvalidTempPath() {
 	cmd := exec.Command("../blobfuse2", "gen-config", fmt.Sprintf("--component=%s", "file_cache"))
 	_, err := cmd.Output()
 	suite.assert.NotNil(err)
+}
+
+func TestGenConfig(t *testing.T) {
+	suite.Run(t, new(genConfig))
 }
