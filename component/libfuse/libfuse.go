@@ -335,7 +335,8 @@ func (lf *Libfuse) Configure(_ bool) error {
 		lf.readOnly, lf.allowOther, lf.allowRoot, lf.filePermission, lf.entryExpiration, lf.attributeExpiration, lf.negativeTimeout, lf.ignoreOpenFlags, lf.nonEmptyMount, lf.directIO, lf.maxFuseThreads, lf.traceEnable, lf.extensionPath, lf.disableWritebackCache, lf.dirPermission, lf.mountPath, lf.umask)
 
 	if common.GenConfig {
-		lf.GenConfig()
+		err = lf.GenConfig()
+		return err
 	}
 
 	return nil

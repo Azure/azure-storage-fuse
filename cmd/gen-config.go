@@ -102,9 +102,8 @@ var generatedConfig = &cobra.Command{
 		sb.WriteString("\n#Required\n#azstorage:\n  #  type: block|adls \n  #  account-name: <name of the storage account>\n  #  container: <name of the storage container to be mounted>\n  #  endpoint: <example - https://account-name.blob.core.windows.net>\n  ")
 		sb.WriteString("#  mode: key|sas|spn|msi|azcli \n  #  account-key: <storage account key>\n  # OR\n  #  sas: <storage account sas>\n  # OR\n  #  appid: <storage account app id / client id for MSI>\n  # OR\n  #  tenantid: <storage account tenant id for SPN")
 
-		common.WriteToFile("generatedConfig.yaml", sb.String(), common.WriteToFileOptions{Flags: os.O_TRUNC, Permission: 0644})
-
-		return nil
+		err = common.WriteToFile("generatedConfig.yaml", sb.String(), common.WriteToFileOptions{Flags: os.O_TRUNC, Permission: 0644})
+		return err
 	},
 }
 
