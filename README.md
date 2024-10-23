@@ -1,17 +1,32 @@
 # Blobfuse2 - A Microsoft supported Azure Storage FUSE driver
 ## About
 Blobfuse2 is an open source project developed to provide a virtual filesystem backed by the Azure Storage. It uses the libfuse open source library (fuse3) to communicate with the Linux FUSE kernel module, and implements the filesystem operations using the Azure Storage REST APIs.
-This is the next generation [blobfuse](https://github.com/Azure/azure-storage-fuse)
+This is the next generation [blobfuse](https://github.com/Azure/azure-storage-fuse).
 
-Blobfuse2 is stable, and is ***supported by Microsoft*** provided that it is used within its limits documented here. Blobfuse2 supports both reads and writes however, it does not guarantee continuous sync of data written to storage using other APIs or other mounts of Blobfuse2. For data integrity it is recommended that multiple sources do not modify the same blob/file. Please submit an issue [here](https://github.com/azure/azure-storage-fuse/issues) for any issues/feature requests/questions.
+## About Data Consistency and Concurrency
+Blobfuse2 is stable and ***supported by Microsoft*** when used within its [documented limits](#un-supported-file-system-operations). Blobfuse2 supports high-performance reads and writes with strong consistency; however, it is recommended that multiple clients do not modify the same blob/file simultaneously to ensure data integrity. Blobfuse2 does not guarantee continuous synchronization of data written to the same blob/file using multiple clients or across multiple mounts of Blobfuse2 concurrently. If you modify an existing blob/file with another client while also reading that object, Blobfuse2 will not return the most up-to-date data. To ensure your reads see the newest blob/file data, disable all forms of caching at kernel (using `direct-io`) as well as at Blobfuse2 level, and then re-open the blob/file.
 
-[This](https://github.com/Azure/azure-storage-fuse/tree/main?tab=readme-ov-file#config-guide) section will help you choose the correct config for Blobfuse2.
+Please submit an issue [here](https://github.com/azure/azure-storage-fuse/issues) for any issues/feature requests/questions.
+
+[This](#config-guide) section will help you choose the correct config for Blobfuse2.
 
 ##  NOTICE
-- We have seen some customer issues around files getting corrupted when `streaming` is used in write mode. Kindly avoid using this feature for write while we investigate and resolve it.
-- You can now use block-cache instead of streaming for both read and write workflows, which offers much better performance compared to streaming. To enable `block-cache` instead of `streaming`, use `--block-cache` in CLI param or `block-cache` as component in config file instead of `streaming`.
+- Due to known data consistency issues when using Blobfuse2 in `block-cache` mode,  it is strongly recommended that all Blobfuse2 installations be upgraded to version 2.3.2. For more information, see [this](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2-Known-issues).
 - As of version 2.3.0, blobfuse has updated its authentication methods. For Managed Identity, Object-ID based OAuth is solely accessible via CLI-based login, requiring Azure CLI on the system. For a dependency-free option, users may utilize Application/Client-ID or Resource ID based authentication.
+- `streaming` mode is being deprecated.
 
+## Limitations in Block Cache
+- Concurrent write operations on the same file using multiple handles is not checked for data consistency and may lead to incorrect data being written.
+- A read operation on a file that is being written to simultaneously by another process or handle will not return the most up-to-date data.
+- When copying files with trailing null bytes using `cp` utility to a Blobfuse2 mounted path, use `--sparse=never` parameter to avoid data being trimmed. For example, `cp --sparse=never src dest`.
+- In write operations, data written is persisted (or committed) to the Azure Storage container only when close, sync or flush operations are called by user application.
+- Files cannot be modified if they were originally created with block-size different than the one configured.
+
+## Recommendations in Block Cache
+- User applications must check the returned code (success/failure) for filesystem calls like read, write, close, flush, etc. If error is returned, the application must abort their respective operation.
+- User applications must ensure that there is only one writer at a time for a given file.
+- When dealing with very large files (in TiB), the block-size must be configured accordingly. Azure Storage supports only [50,000 blocks](https://learn.microsoft.com/en-us/rest/api/storageservices/put-block-list?tabs=microsoft-entra-id#remarks) per blob.
+  
 ## Blobfuse2 Benchmarks
 [This](https://azure.github.io/azure-storage-fuse/) page lists various benchmarking results for HNS and FNS Storage account.
 
@@ -254,6 +269,7 @@ If your use-case involves updating/uploading file(s) through other means and you
     `docker run -it --rm --cap-add=SYS_ADMIN --device=/dev/fuse --security-opt apparmor:unconfined <environment variables> <docker image>`
 - In case of `mount all` system may limit on number of containers you can mount in parallel (when you go above 100 containers). To increase this system limit use below command
     `echo 256 | sudo tee /proc/sys/fs/inotify/max_user_instances`
+- Refer [this](#limitations-in-block-cache) for block-cache limitations.
 
 ### Syslog security warning
 By default, Blobfuse2 will log to syslog. The default settings will, in some cases, log relevant file paths to syslog. 
