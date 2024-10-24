@@ -519,7 +519,8 @@ static void lookup_callback(
      * Kernel must cache -ve entries.
      */
     const bool cache_negative =
-        (aznfsc_cfg.lookupcache_int == AZNFSCFG_LOOKUPCACHE_ALL);
+        ((aznfsc_cfg.lookupcache_int == AZNFSCFG_LOOKUPCACHE_ALL) &&
+        (task->rpc_api->lookup_task.get_called_for_optype() == FUSE_LOOKUP));
 
     /*
      * Now that the request has completed, we can query libnfs for the
@@ -537,7 +538,6 @@ static void lookup_callback(
             nullptr /* fh */,
             nullptr /* fattr */,
             nullptr);
-        // TODO: Handle case for negative case for create/mkdir/mknod.
     } else if (status == 0) {
         /*
          * Update attributes of parent directory returned in postop
