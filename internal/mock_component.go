@@ -327,6 +327,20 @@ func (mr *MockComponentMockRecorder) IsDirEmpty(arg0 interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsDirEmpty", reflect.TypeOf((*MockComponent)(nil).IsDirEmpty), arg0)
 }
 
+// DeleteEmptyDirs mocks base method.
+func (m *MockComponent) DeleteEmptyDirs(arg0 DeleteDirOptions) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteEmptyDirs", arg0)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteDir indicates an expected call of DeleteEmptyDirs.
+func (mr *MockComponentMockRecorder) DeleteEmptyDirs(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteEmptyDirs", reflect.TypeOf((*MockComponent)(nil).DeleteEmptyDirs), arg0)
+}
+
 // Name mocks base method.
 func (m *MockComponent) Name() string {
 	m.ctrl.T.Helper()

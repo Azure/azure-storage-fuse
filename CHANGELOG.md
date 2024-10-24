@@ -1,5 +1,6 @@
 ## 2.3.3 (Unreleased)
 **Bug Fixes**
+- Delete empty directories from local cache on rmdir operation.
 
 ## 2.3.2 (2024-09-03)
 **Bug Fixes**
