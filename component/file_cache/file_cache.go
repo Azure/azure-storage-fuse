@@ -194,6 +194,19 @@ func (c *FileCache) Stop() error {
 	return nil
 }
 
+// GenConfig : Generate default config for the component
+func (c *FileCache) GenConfig() error {
+	log.Info("FileCache::Configure : config generation started")
+	if common.DirectIO {
+		c.cacheTimeout = 0
+	}
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("\nfile_cache:\n  path: %s\n  timeout-sec: %d\n  max-size-mb: %d\n", c.tmpPath, int(c.cacheTimeout), int(c.maxCacheSize/MB)))
+
+	common.ConfigYaml += sb.String()
+	return nil
+}
+
 // Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
 //
 //	Return failure if any config is not valid to exit the process
@@ -235,9 +248,11 @@ func (c *FileCache) Configure(_ bool) error {
 	}
 
 	c.tmpPath = common.ExpandPath(conf.TmpPath)
-	if c.tmpPath == "" {
+	if c.tmpPath == "" && !common.GenConfig {
 		log.Err("FileCache: config error [tmp-path not set]")
 		return fmt.Errorf("config error in %s error [tmp-path not set]", c.Name())
+	} else if common.GenConfig {
+		c.tmpPath = common.ExpandPath(common.TmpPath)
 	}
 
 	err = config.UnmarshalKey("mount-path", &c.mountPath)
@@ -315,6 +330,11 @@ func (c *FileCache) Configure(_ bool) error {
 
 	log.Info("FileCache::Configure : create-empty %t, cache-timeout %d, tmp-path %s, max-size-mb %d, high-mark %d, low-mark %d, refresh-sec %v, max-eviction %v, hard-limit %v, policy %s, allow-non-empty-temp %t, cleanup-on-start %t, policy-trace %t, offload-io %t, sync-to-flush %t, ignore-sync %t, defaultPermission %v, diskHighWaterMark %v, maxCacheSize %v, mountPath %v",
 		c.createEmptyFile, int(c.cacheTimeout), c.tmpPath, int(cacheConfig.maxSizeMB), int(cacheConfig.highThreshold), int(cacheConfig.lowThreshold), c.refreshSec, cacheConfig.maxEviction, c.hardLimit, conf.Policy, c.allowNonEmpty, c.cleanupOnStart, c.policyTrace, c.offloadIO, c.syncToFlush, c.syncToDelete, c.defaultPermission, c.diskHighWaterMark, c.maxCacheSize, c.mountPath)
+
+	if common.GenConfig {
+		err = c.GenConfig()
+		return err
+	}
 
 	return nil
 }

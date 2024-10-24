@@ -69,18 +69,23 @@ func TestUtil(t *testing.T) {
 	suite.Run(t, new(utilTestSuite))
 }
 
-func (suite *typesTestSuite) TestIsMountActiveNoMount() {
+func (suite *utilTestSuite) TestIsMountActiveNoMount() {
 	var out bytes.Buffer
 	cmd := exec.Command("pidof", "blobfuse2")
 	cmd.Stdout = &out
 	err := cmd.Run()
 	suite.assert.Equal("exit status 1", err.Error())
+	print(out.String())
+	cmd = exec.Command("../blobfuse2", "unmount", "all")
+	cmd.Stdout = &out
+	err = cmd.Run()
+	suite.assert.Nil(err)
 	res, err := IsMountActive("/mnt/blobfuse")
 	suite.assert.Nil(err)
 	suite.assert.False(res)
 }
 
-func (suite *typesTestSuite) TestIsMountActiveTwoMounts() {
+func (suite *utilTestSuite) TestIsMountActiveTwoMounts() {
 	var out bytes.Buffer
 
 	// Define the file name and the content you want to write
@@ -333,6 +338,26 @@ func (suite *utilTestSuite) TestDirectoryCleanup() {
 	suite.assert.Nil(err)
 
 	_ = os.RemoveAll(dirName)
+
+}
+
+func (suite *utilTestSuite) TestWriteToFile() {
+
+	fileName := fmt.Sprintf("./test_%s.txt", randomString(8))
+	content := "Hello World"
+
+	defer os.Remove(fileName)
+
+	err := WriteToFile(fileName, content, WriteToFileOptions{})
+	suite.assert.Nil(err)
+
+	// Check if file exists
+	suite.assert.FileExists(fileName)
+
+	// Check the content of the file
+	data, err := os.ReadFile(fileName)
+	suite.assert.Nil(err)
+	suite.assert.Equal(content, string(data))
 
 }
 

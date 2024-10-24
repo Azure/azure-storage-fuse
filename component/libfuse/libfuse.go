@@ -36,6 +36,7 @@ package libfuse
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
@@ -246,6 +247,35 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 	return nil
 }
 
+func (lf *Libfuse) GenConfig() error {
+	log.Info("Libfuse::Configure : config generation started")
+
+	// If DirectIO is enabled, override expiration values
+	if common.DirectIO {
+		lf.attributeExpiration = 0
+		lf.entryExpiration = 0
+		lf.negativeTimeout = 0
+	}
+
+	// Use a string builder to construct the YAML content
+	var sb strings.Builder
+	sb.WriteString("\nlibfuse:\n")
+
+	// DirectIO check merged within value setting
+	sb.WriteString(fmt.Sprintf(
+		"  attribute-expiration-sec: %v\n  entry-expiration-sec: %v\n  negative-entry-expiration-sec: %v\n",
+		lf.attributeExpiration, lf.entryExpiration, lf.negativeTimeout))
+
+	if common.DirectIO {
+		sb.WriteString("  direct-io: true\n")
+	}
+
+	// Append generated YAML to the common configuration
+	common.ConfigYaml += sb.String()
+
+	return nil
+}
+
 // Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
 //
 //	Return failure if any config is not valid to exit the process
@@ -303,6 +333,11 @@ func (lf *Libfuse) Configure(_ bool) error {
 
 	log.Info("Libfuse::Configure : read-only %t, allow-other %t, allow-root %t, default-perm %d, entry-timeout %d, attr-time %d, negative-timeout %d, ignore-open-flags %t, nonempty %t, direct_io %t, max-fuse-threads %d, fuse-trace %t, extension %s, disable-writeback-cache %t, dirPermission %v, mountPath %v, umask %v",
 		lf.readOnly, lf.allowOther, lf.allowRoot, lf.filePermission, lf.entryExpiration, lf.attributeExpiration, lf.negativeTimeout, lf.ignoreOpenFlags, lf.nonEmptyMount, lf.directIO, lf.maxFuseThreads, lf.traceEnable, lf.extensionPath, lf.disableWritebackCache, lf.dirPermission, lf.mountPath, lf.umask)
+
+	if common.GenConfig {
+		err = lf.GenConfig()
+		return err
+	}
 
 	return nil
 }
