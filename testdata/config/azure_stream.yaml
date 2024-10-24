@@ -16,7 +16,7 @@ libfuse:
   ignore-open-flags: true
 
 stream:
-  block-size-mb: 4
+  block-size-mb: 16
   max-buffers: 80
   buffer-size-mb: 8
 
