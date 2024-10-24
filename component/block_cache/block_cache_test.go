@@ -163,6 +163,7 @@ func (tobj *testObj) cleanupPipeline() error {
 	os.RemoveAll(tobj.fake_storage_path)
 	os.RemoveAll(tobj.disk_cache_path)
 
+	common.IsStream = false
 	return nil
 }
 
