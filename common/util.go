@@ -90,7 +90,7 @@ func IsMountActive(path string) (bool, error) {
 	var out bytes.Buffer
 	cmd := exec.Command("pidof", "blobfuse2")
 	cmd.Stdout = &out
-
+	print(out.String() + "Pids printed")
 	err := cmd.Run()
 	if err != nil {
 		if err.Error() == "exit status 1" {
