@@ -1504,14 +1504,14 @@ void nfs_client::jukebox_read(struct api_task_info *rpc_api)
  * client like lookup, create etc.
  */
 void nfs_client::reply_entry(
-    struct rpc_task *ctx,
+    struct rpc_task *task,
     const nfs_fh3 *fh,
     const struct fattr3 *fattr,
     const struct fuse_file_info *file)
 {
-    assert(ctx->magic == RPC_TASK_MAGIC);
+    assert(task->magic == RPC_TASK_MAGIC);
 
-    const enum fuse_opcode optype = ctx->get_op_type();
+    enum fuse_opcode optype = task->get_op_type();
     struct nfs_inode *inode = nullptr;
     fuse_entry_param entry;
     /*
@@ -1524,7 +1524,7 @@ void nfs_client::reply_entry(
     memset(&entry, 0, sizeof(entry));
 
     if (fh) {
-        const fuse_ino_t parent_ino = ctx->rpc_api->get_parent_ino();
+        const fuse_ino_t parent_ino = task->rpc_api->get_parent_ino();
         struct nfs_inode *parent_inode = get_nfs_inode_from_ino(parent_ino);
         /*
          * This will grab a lookupcnt ref on the inode, which will be freed
@@ -1554,12 +1554,31 @@ void nfs_client::reply_entry(
         AZLogDebug("[{}] <{}> Returning ino {} to fuse (filename: {}, "
                    "lookupcnt: {}, dircachecnt: {}, forget_expected: {})",
                    parent_ino,
-                   rpc_task::fuse_opcode_to_string(ctx->rpc_api->optype),
+                   rpc_task::fuse_opcode_to_string(task->rpc_api->optype),
                    inode->get_fuse_ino(),
-                   ctx->rpc_api->get_file_name(),
+                   task->rpc_api->get_file_name(),
                    inode->lookupcnt.load(),
                    inode->dircachecnt.load(),
                    inode->forget_expected.load() + 1);
+
+        if (optype == FUSE_LOOKUP) {
+            /*
+             * LOOKUP RPC can be issued in one of the following 2 cases:
+             * case1: The fuse has made a lookup call to get the filehandle.
+             *        This is the most common case.
+             * case2: Fuse issued create/mknod/mkdir calls returned
+             *        successfully but the NFS server failed to populate the
+             *        filehandle/postop attributes. In such cases, we make a
+             *        lookup call to get this filehandle as the fuse expects
+             *        it in response to the create/mknod/mkdir calls.
+             *        In this case, we need to return appropriate reply to
+             *        the fuse depending on what operation caused this lookup
+             *        call to be triggered. This information is stored in the
+             *        'called_for_optype' member of the lookup task and will
+             *        be set to that opcode of the calling op.
+             */
+            optype = task->rpc_api->lookup_task.get_called_for_optype();
+        }
 
         /*
          * This is the common place where we return inode to fuse.
@@ -1587,7 +1606,7 @@ void nfs_client::reply_entry(
         /*
          * Add lookup results to DNLC cache.
          */
-        parent_inode->dnlc_add(ctx->rpc_api->get_file_name(), inode);
+        parent_inode->dnlc_add(task->rpc_api->get_file_name(), inode);
     } else {
         /*
          * The only valid case where reply_entry() is called with null fh
@@ -1608,9 +1627,9 @@ void nfs_client::reply_entry(
     }
 
     if (file) {
-        ctx->reply_create(&entry, file);
+        task->reply_create(&entry, file);
     } else {
-        ctx->reply_entry(&entry);
+        task->reply_entry(&entry);
     }
 }
 
