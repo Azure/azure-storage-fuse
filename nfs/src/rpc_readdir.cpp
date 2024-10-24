@@ -283,6 +283,10 @@ bool readdirectory_cache::add(const std::shared_ptr<struct directory_entry>& ent
     return false;
 }
 
+/**
+ * LOCKS: Exclusive readdircache_lock_2.
+ *        Shared ilock_1.
+ */
 void readdirectory_cache::dnlc_add(const char *filename,
                                    struct nfs_inode *inode)
 {
@@ -300,69 +304,80 @@ void readdirectory_cache::dnlc_add(const char *filename,
      *       Ref: ENABLE_NON_AZURE_NFS.
      */
     static uint64_t bigcookie = (UINT64_MAX >> 1);
+    uint64_t cookie;
 
-    std::unique_lock<std::shared_mutex> lock(readdircache_lock_2);
+    {
+        std::unique_lock<std::shared_mutex> lock(readdircache_lock_2);
 
-    /*
-     * See the directory_entry update rules in directory_entry comments.
-     */
-    cookie3 cookie = filename_to_cookie(filename);
+        /*
+         * See the directory_entry update rules in directory_entry comments.
+         */
+        cookie = filename_to_cookie(filename);
 
-    if (cookie != 0) {
-        std::shared_ptr<struct directory_entry> de =
-            lookup(cookie, nullptr, false /* acquire_lock */);
+        if (cookie != 0) {
+            std::shared_ptr<struct directory_entry> de =
+                lookup(cookie, nullptr, false /* acquire_lock */);
 
-        if (de->nfs_inode == inode) {
-            /*
-             * Type (1) or (3) entry already present, with matching nfs_inode,
-             * do nothing. Drop the dircachecnt ref held by lookup(). This
-             * should be in addition to the original dircachecnt ref when
-             * directory_entry was created.
-             * See directory_entry description for various type of entries.
-             */
-            assert(de->nfs_inode->dircachecnt >= 2);
-            de->nfs_inode->dircachecnt--;
-            return;
-        } else if (!de->nfs_inode) {
-            /*
-             * Type (2) entry present, remove that and add a new entry with the
-             * same cookie but with nfs_inode, effectively promoting the entry
-             * to type (1).
-             */
-             de.reset();
-             [[maybe_unused]] const bool found = remove(cookie, nullptr, false);
-             assert(found);
+            if (de->nfs_inode == inode) {
+                /*
+                 * Type (1) or (3) entry already present, with matching nfs_inode,
+                 * do nothing. Drop the dircachecnt ref held by lookup(). This
+                 * should be in addition to the original dircachecnt ref when
+                 * directory_entry was created.
+                 * See directory_entry description for various type of entries.
+                 */
+                assert(de->nfs_inode->dircachecnt >= 2);
+                de->nfs_inode->dircachecnt--;
+                return;
+            } else if (!de->nfs_inode) {
+                /*
+                 * Type (2) entry present, remove that and add a new entry with the
+                 * same cookie but with nfs_inode, effectively promoting the entry
+                 * to type (1).
+                 */
+                de.reset();
+                [[maybe_unused]] const bool found = remove(cookie, nullptr, false);
+                assert(found);
+            } else {
+                /*
+                 * Stale type (1) or (3) entry present (new nfs_inode doesn't
+                 * match the saved one), filename has either been renamed or
+                 * deleted+recreated. We need to delete the old entry and create
+                 * a new type (3) entry.
+                 */
+                assert(de->nfs_inode->dircachecnt >= 2);
+                de->nfs_inode->dircachecnt--;
+                de.reset();
+                [[maybe_unused]] const bool found = remove(cookie, nullptr, false);
+                assert(found);
+
+                cookie = bigcookie++;
+            }
         } else {
-            /*
-             * Stale type (1) or (3) entry present (new nfs_inode doesn't
-             * match the saved one), filename has either been renamed or
-             * deleted+recreated. We need to delete the old entry and create
-             * a new type (3) entry.
-             */
-            assert(de->nfs_inode->dircachecnt >= 2);
-            de->nfs_inode->dircachecnt--;
-            de.reset();
-            [[maybe_unused]] const bool found = remove(cookie, nullptr, false);
-            assert(found);
-
             cookie = bigcookie++;
         }
-    } else {
-        cookie = bigcookie++;
     }
 
+    /*
+     * inode->get_attr() will take shared ilock_1 lock.
+     */
     std::shared_ptr<struct directory_entry> dir_entry =
         std::make_shared<struct directory_entry>(
-            strdup(filename), cookie, inode->attr, inode);
+            strdup(filename), cookie, inode->get_attr(), inode);
 
     /*
      * dir_entry must have one ref on the inode.
      * This ref will protect the inode while this directory_entry is
      * present in the readdirectory_cache (added below).
+     *
+     * Note: We release the readdircache_lock_2 above and then add() below
+     *       will acquire it again. Some other thread can add the cookie
+     *       in the meantime and the following add() will then not add.
+     *       This is ok, as in either case we end up having an entry for the
+     *       cookie.
      */
     assert(inode->dircachecnt >= 1);
-
-    add(dir_entry, false /* acquire_lock */);
+    add(dir_entry);
 
     /*
      * Whether we are able to add the dnlc entry or not, the directory in the
