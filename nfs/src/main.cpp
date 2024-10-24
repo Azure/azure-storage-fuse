@@ -307,8 +307,10 @@ static int set_signal_handler(int signum, void (*handler)(int))
 
 static void handle_usr1([[maybe_unused]] int signum)
 {
+    const int saved_errno = errno;
     assert(signum == SIGUSR1);
     rpc_stats_az::dump_stats();
+    errno = saved_errno;
 }
 
 int main(int argc, char *argv[])
@@ -459,9 +461,12 @@ int main(int argc, char *argv[])
 
     /*
      * We come here when user unmounts the fuse filesystem.
+     * There is one statfs call that kernel sends right on unmount, just wait
+     * 5 secs to process that before tearing up things.
+     * TODO: See if we can do better.
      */
     AZLogInfo("Shutting down!");
-
+    ::sleep(5);
     nfs_client::get_instance().shutdown();
 
 err_out4:
