@@ -193,6 +193,33 @@ private:
     std::shared_ptr<ra_state> readahead_state;
     std::atomic<bool> rastate_alloced = false;
 
+    /*
+     * Cached attributes for this inode.
+     * These cached attributes are valid till the absolute milliseconds value
+     * attr_timeout_timestamp. On expiry of this we will revalidate the inode
+     * by querying the attributes from the server. If the revalidation is
+     * successful (i.e., inode has not changed since we cached), then we
+     * increase attr_timeout_secs in an exponential fashion (upto the max
+     * actimeout value) and set attr_timeout_timestamp accordingly.
+     *
+     * If attr_timeout_secs is -1 that implies that cached attributes are
+     * not valid and we need to fetch the attributes from the server. This
+     * should never happen as we set attr in the nfs_inode constructor and
+     * from then on it's always set.
+     *
+     * See update_nolock() how these attributes are compared with freshly
+     * fetched preop or postop attributes to see if file/dir has changed
+     * (and thus the cache must be invalidated).
+     *
+     * Note: This MUST be accessed under ilock_1.
+     *
+     * Note: External users can access it using the get_attr() method which
+     *       correctly accesses it under ilock_1.
+     *       Callers already holding ilock_1 must use the nolock version
+     *       get_attr_nolock().
+     */
+    struct stat attr;
+
 public:
     /*
      * Fuse inode number.
@@ -215,38 +242,18 @@ public:
     const uint64_t generation;
 
     /*
-     * Cached attributes for this inode and the current value of attribute
-     * cache timeout. attr_timeout_secs will have a value between
-     * [acregmin, acregmax] or [acdirmin, acdirmax], depending on the
-     * filetype, and holds the current attribute cache timeout value for
-     * this inode, adjusted by exponential backoff and capped by the max
-     * limit.
-     * These cached attributes are valid till the absolute milliseconds value
-     * attr_timeout_timestamp. On expiry of this we will revalidate the inode
-     * by querying the attributes from the server. If the revalidation is
-     * successful (i.e., inode has not changed since we cached), then we
-     * increase attr_timeout_secs in an exponential fashion (upto the max
-     * actimeout value) and set attr_timeout_timestamp accordingly.
+     * attr_timeout_secs will have a value between [acregmin, acregmax] or
+     * [acdirmin, acdirmax], depending on the filetype, and holds the current
+     * attribute cache timeout value for this inode, adjusted by exponential
+     * backoff and capped by the max limit.
+     * attr_timeout_timestamp is the absolute time in msecs when the attribute
+     * cache is going to expire.
      *
-     * If attr_timeout_secs is -1 that implies that cached attributes are
-     * not valid and we need to fetch the attributes from the server.
-     *
-     * See update_nolock() how these attributes are compared with freshly
-     * fetched preop or postop attributes to see if file/dir has changed
-     * (and thus the cache must be invalidated).
-     *
-     * Note: Update and access it under ilock_1.
-     * TODO: Audit all places where we access attr and make sure it's done
-     *       under ilock_1.
-     */
-    struct stat attr;
-
-    /*
      * attr_timeout_secs is protected by ilock_1.
      * attr_timeout_timestamp is updated inder ilock_1, but can be accessed
      * w/o ilock_1, f.e., run_getattr()->attr_cache_expired().
      */
-    int64_t attr_timeout_secs = -1;
+    std::atomic<int64_t> attr_timeout_secs = -1;
     std::atomic<int64_t> attr_timeout_timestamp = -1;
 
     /*
@@ -651,6 +658,42 @@ public:
         return generation;
     }
 
+    /**
+     * Use this to safely fetch the inode attributes.
+     *
+     * LOCKS: Shared ilock_1.
+     */
+    struct stat get_attr() const
+    {
+        /*
+         * Following inode lock will be released after attr is copied to the
+         * caller.
+         */
+        std::shared_lock<std::shared_mutex> lock(ilock_1);
+        return attr;
+    }
+
+    /**
+     * Caller MUST hold shared ilock_1.
+     */
+    const struct stat& get_attr_nolock() const
+    {
+        return attr;
+    }
+
+    /**
+     * Caller MUST hold exclusive ilock_1.
+     */
+    struct stat& get_attr_nolock()
+    {
+        return attr;
+    }
+
+    /**
+     * Populate 'fattr' with this inode's attributes.
+     */
+    void fattr3_from_stat(struct fattr3& fattr) const;
+
     int get_silly_rename_level()
     {
         return silly_rename_level++;
@@ -659,6 +702,7 @@ public:
     /**
      * Return the NFS fileid. This is also the inode number returned by
      * stat(2).
+     * Caller MUST hold ilock_1.
      */
     uint64_t get_fileid() const
     {
@@ -694,6 +738,11 @@ public:
      */
     int64_t get_file_size() const
     {
+        /*
+         * XXX We access attr.st_size w/o holding ilock_1 as aligned access
+         *     to uint64_t should be safe, moreover we want to avoid the
+         *     ilock_1 in the read fastpath.
+         */
         assert((size_t) attr.st_size <= AZNFSC_MAX_FILE_SIZE);
         return attr_cache_expired() ? -1 : attr.st_size;
     }
@@ -935,7 +984,7 @@ public:
     int get_actimeo() const
     {
         // If not set, return the min configured value.
-        return (attr_timeout_secs != -1) ? attr_timeout_secs
+        return (attr_timeout_secs != -1) ? attr_timeout_secs.load()
                                          : get_actimeo_min();
     }
 

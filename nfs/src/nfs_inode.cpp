@@ -46,7 +46,7 @@ nfs_inode::nfs_inode(const struct nfs_fh3 *filehandle,
      * attributes) for a file, f.e., LOOKUP, CREATE, READDIRPLUS, etc.
      */
     attr.st_ctim = {0, 0};
-    nfs_client::stat_from_fattr3(&attr, fattr);
+    nfs_client::stat_from_fattr3(attr, *fattr);
 
     // file type as per fattr should match the one passed explicitly..
     assert((attr.st_mode & S_IFMT) == file_type);
@@ -255,6 +255,12 @@ try_again:
             goto try_again;
         }
     }
+}
+
+void nfs_inode::fattr3_from_stat(struct fattr3& fattr) const
+{
+    std::shared_lock<std::shared_mutex> lock(ilock_1);
+    nfs_client::fattr3_from_stat(fattr, attr);
 }
 
 bool nfs_inode::in_ra_window(uint64_t offset, uint64_t length) const
@@ -936,7 +942,7 @@ bool nfs_inode::update_nolock(const struct fattr3 *postattr,
                    postattr->mtime.seconds, postattr->mtime.nseconds,
                    attr.st_size, postattr->size);
 
-        nfs_client::stat_from_fattr3(&attr, postattr);
+        nfs_client::stat_from_fattr3(attr, *postattr);
         attr_timeout_secs = get_actimeo_min();
         attr_timeout_timestamp = get_current_msecs() + attr_timeout_secs*1000;
 
@@ -1008,7 +1014,7 @@ void nfs_inode::force_update_attr_nolock(const struct fattr3& fattr)
      * Update cached attributes and also reset the attr_timeout_secs and
      * attr_timeout_timestamp since the attributes have changed.
      */
-    nfs_client::stat_from_fattr3(&attr, &fattr);
+    nfs_client::stat_from_fattr3(attr, fattr);
     attr_timeout_secs = get_actimeo_min();
     attr_timeout_timestamp = get_current_msecs() + attr_timeout_secs*1000;
 

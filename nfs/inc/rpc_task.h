@@ -2017,9 +2017,9 @@ public:
         free_rpc_task();
     }
 
-    void reply_attr(const struct stat *attr, double attr_timeout)
+    void reply_attr(const struct stat& attr, double attr_timeout)
     {
-        fuse_reply_attr(get_fuse_req(), attr, attr_timeout);
+        fuse_reply_attr(get_fuse_req(), &attr, attr_timeout);
         free_rpc_task();
     }
 

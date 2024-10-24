@@ -505,8 +505,8 @@ public:
     /**
      * Convert between NFS fattr3 and POSIX struct stat.
      */
-    static void stat_from_fattr3(struct stat *st, const struct fattr3 *fattr);
-    static void fattr3_from_stat(struct fattr3 *fattr, const struct stat *st);
+    static void stat_from_fattr3(struct stat& st, const struct fattr3& fattr);
+    static void fattr3_from_stat(struct fattr3& fattr, const struct stat& st);
 
     void reply_entry(
         struct rpc_task* ctx,

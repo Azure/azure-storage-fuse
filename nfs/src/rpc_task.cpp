@@ -484,7 +484,7 @@ static void getattr_callback(
          * cache timeout for this inode, as per the recent revalidation
          * experience.
          */
-        task->reply_attr(&inode->attr, inode->get_actimeo());
+        task->reply_attr(inode->get_attr(), inode->get_actimeo());
     } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
         task->get_client()->jukebox_retry(task);
     } else {
@@ -973,14 +973,14 @@ static void setattr_callback(
          */
         assert(res->SETATTR3res_u.resok.obj_wcc.after.attributes_follow);
         nfs_client::stat_from_fattr3(
-            &st, &res->SETATTR3res_u.resok.obj_wcc.after.post_op_attr_u.attributes);
+            st, res->SETATTR3res_u.resok.obj_wcc.after.post_op_attr_u.attributes);
 
         /*
          * Set fuse kernel attribute cache timeout to the current attribute
          * cache timeout for this inode, as per the recent revalidation
          * experience.
          */
-        task->reply_attr(&st, inode->get_actimeo());
+        task->reply_attr(st, inode->get_actimeo());
     } else if (NFS_STATUS(res) == NFS3ERR_JUKEBOX) {
         task->get_client()->jukebox_retry(task);
     } else {
@@ -1446,7 +1446,7 @@ void rpc_task::run_lookup()
             INC_GBL_STATS(lookup_served_from_cache, 1);
 
             struct fattr3 fattr;
-            nfs_client::fattr3_from_stat(&fattr, &child_inode->attr);
+            child_inode->fattr3_from_stat(fattr);
             get_client()->reply_entry(this, &child_inode->get_fh(), &fattr, nullptr);
 
             // Drop the ref held by dnlc_lookup().
@@ -1735,7 +1735,7 @@ void rpc_task::run_getattr()
         if (!inode->attr_cache_expired()) {
             INC_GBL_STATS(getattr_served_from_cache, 1);
             AZLogDebug("[{}] Returning cached attributes", ino);
-            reply_attr(&inode->attr, inode->get_actimeo());
+            reply_attr(inode->get_attr(), inode->get_actimeo());
             return;
         }
     }
@@ -2119,7 +2119,7 @@ void rpc_task::run_setattr()
          * experience.
          */
         AZLogDebug("[{}] Skipping mtime update", ino);
-        reply_attr(&inode->attr, inode->get_actimeo());
+        reply_attr(inode->get_attr(), inode->get_actimeo());
         return;
     }
 
@@ -3606,8 +3606,8 @@ static void readdirplus_callback(
                  * response.
                  */
                 assert(0);
-                nfs_inode->attr.st_ino = entry->fileid;
-                nfs_inode->attr.st_mode = 0;
+                nfs_inode->get_attr_nolock().st_ino = entry->fileid;
+                nfs_inode->get_attr_nolock().st_mode = 0;
             }
 
             /*
@@ -3662,7 +3662,7 @@ static void readdirplus_callback(
             dir_entry = std::make_shared<struct directory_entry>(
                                                    strdup(entry->name),
                                                    entry->cookie,
-                                                   nfs_inode->attr,
+                                                   nfs_inode->get_attr(),
                                                    nfs_inode);
 
             /*
@@ -4130,15 +4130,19 @@ void rpc_task::send_readdir_or_readdirplus_response(
              *
              * TODO: Remove directory_entry->attributes if we don't need them.
              */
-            assert((::memcmp(&it->attributes,
-                             &it->nfs_inode->attr, sizeof(struct stat)) == 0) ||
-                   (compare_timespec(it->attributes.st_ctim,
-                                     it->nfs_inode->attr.st_ctim) < 0));
-            assert(it->attributes.st_ino == it->nfs_inode->attr.st_ino);
+			{
+				std::shared_lock<std::shared_mutex> lock(it->nfs_inode->ilock_1);
+				assert((::memcmp(&it->attributes,
+								 &it->nfs_inode->get_attr_nolock(),
+                                 sizeof(struct stat)) == 0) ||
+					   (compare_timespec(it->attributes.st_ctim,
+										 it->nfs_inode->get_attr_nolock().st_ctim) < 0));
+				assert(it->attributes.st_ino == it->nfs_inode->get_attr_nolock().st_ino);
+			}
 #endif
 
             // We don't need the memset as we are setting all members.
-            fuseentry.attr = it->nfs_inode->attr;
+            fuseentry.attr = it->nfs_inode->get_attr();
             fuseentry.ino = it->nfs_inode->get_fuse_ino();
             fuseentry.generation = it->nfs_inode->get_generation();
             fuseentry.attr_timeout = it->nfs_inode->get_actimeo();
