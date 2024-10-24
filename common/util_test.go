@@ -69,18 +69,23 @@ func TestUtil(t *testing.T) {
 	suite.Run(t, new(utilTestSuite))
 }
 
-func (suite *typesTestSuite) TestIsMountActiveNoMount() {
+func (suite *utilTestSuite) TestIsMountActiveNoMount() {
 	var out bytes.Buffer
 	cmd := exec.Command("pidof", "blobfuse2")
 	cmd.Stdout = &out
 	err := cmd.Run()
 	suite.assert.Equal("exit status 1", err.Error())
+	print(out.String())
+	cmd = exec.Command("../blobfuse2", "unmount", "all")
+	cmd.Stdout = &out
+	err = cmd.Run()
+	suite.assert.Nil(err)
 	res, err := IsMountActive("/mnt/blobfuse")
 	suite.assert.Nil(err)
 	suite.assert.False(res)
 }
 
-func (suite *typesTestSuite) TestIsMountActiveTwoMounts() {
+func (suite *utilTestSuite) TestIsMountActiveTwoMounts() {
 	var out bytes.Buffer
 
 	// Define the file name and the content you want to write
