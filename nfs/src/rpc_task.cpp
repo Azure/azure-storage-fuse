@@ -95,7 +95,7 @@ do { \
     /* \
      * Must be called only for mknod task. \
      */ \
-    assert(task->get_op_type() == FUSE_CREATE); \
+    assert(task->get_op_type() == FUSE_MKNOD); \
     if (res && (NFS_STATUS(res) == NFS3_OK)) { \
         if (inject_error()) { \
             AZLogWarn("[{}] PP: {} failed to populate fh, parent ino {}, filename {} ", \
@@ -1010,13 +1010,12 @@ static void createfile_callback(
             struct rpc_task *lookup_tsk =
                     task->get_client()->get_rpc_task_helper()->alloc_rpc_task(
                         FUSE_LOOKUP);
-
             lookup_tsk->init_lookup(
                 req,
                 file_name,
                 parent_ino);
 
-            // Mark the lookup task as being called for the create file.
+            // Mark the lookup task as being called to populate the fh by create.
             lookup_tsk->rpc_api->lookup_task.set_called_for_optype(FUSE_CREATE);
             lookup_tsk->rpc_api->lookup_task.set_fuse_file(fusefile);
 
@@ -1183,13 +1182,13 @@ void mknod_callback(
             AZLogWarn("mknod failed to return filehandle, req={}, "
                 "parent_ino={}, name={}. Issuing lookup.",
                 fmt::ptr(task->get_fuse_req()),
-                task->rpc_api->create_task.get_parent_ino(),
-                task->rpc_api->create_task.get_file_name());
+                task->rpc_api->mknod_task.get_parent_ino(),
+                task->rpc_api->mknod_task.get_file_name());
 
             struct fuse_req *req = task->get_fuse_req();
-            fuse_ino_t parent_ino = task->rpc_api->create_task.get_parent_ino();
+            fuse_ino_t parent_ino = task->rpc_api->mknod_task.get_parent_ino();
             char *file_name = ::strdup(
-                task->rpc_api->create_task.get_file_name());
+                task->rpc_api->mknod_task.get_file_name());
 
             /*
              * Free the current task as the response will be sent by the
@@ -1201,13 +1200,12 @@ void mknod_callback(
             struct rpc_task *lookup_tsk =
                     task->get_client()->get_rpc_task_helper()->alloc_rpc_task(
                         FUSE_LOOKUP);
-
             lookup_tsk->init_lookup(
                 req,
                 file_name,
                 parent_ino);
 
-            // Mark the lookup task as being called to populate the fh.
+            // Mark the lookup task as being called to populate the fh by mknod.
             lookup_tsk->rpc_api->lookup_task.set_called_for_optype(FUSE_MKNOD);
 
             lookup_tsk->run_lookup();
@@ -1306,11 +1304,10 @@ void mkdir_callback(
                 dir_name,
                 parent_ino);
 
-            // Mark the lookup task as being called to populate the fh.
+            // Mark the lookup task as being called to populate the fh by mkdir.
             lookup_tsk->rpc_api->lookup_task.set_called_for_optype(FUSE_MKDIR);
 
             lookup_tsk->run_lookup();
-
             ::free(dir_name);
             return;
         }
@@ -1678,7 +1675,11 @@ void rpc_task::run_lookup()
 
             struct fattr3 fattr;
             child_inode->fattr3_from_stat(fattr);
-            get_client()->reply_entry(this, &child_inode->get_fh(), &fattr, rpc_api->lookup_task.get_fuse_file());
+            get_client()->reply_entry(
+                this,
+                &child_inode->get_fh(),
+                &fattr,
+                rpc_api->lookup_task.get_fuse_file());
 
             // Drop the ref held by dnlc_lookup().
             child_inode->decref();
