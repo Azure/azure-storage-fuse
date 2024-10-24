@@ -68,6 +68,89 @@ do { \
 #define INJECT_BAD_COOKIE(res, task) /* nothing */
 #endif
 
+#ifdef ENABLE_PRESSURE_POINTS
+#define INJECT_CREATE_FH_POPULATE_FAILURE(res, task) \
+do { \
+    /* \
+     * Must be called only for create and mknod task. \
+     */ \
+    assert(task->get_op_type() == FUSE_CREATE); \
+    if (res && (NFS_STATUS(res) == NFS3_OK)) { \
+        if (inject_error()) { \
+            AZLogWarn("[{}] PP: {} failed to populate fh, parent ino {}, filename {} ", \
+                       __FUNCTION__, \
+                       task->rpc_api->create_task.get_parent_ino(), \
+                       task->rpc_api->create_task.get_file_name()); \
+            (res)->CREATE3res_u.resok.obj.handle_follows = 0; \
+        } \
+    } \
+} while (0)
+#else
+#define INJECT_CREATE_FH_POPULATE_FAILURE(res, task) /* nothing */
+#endif
+
+#ifdef ENABLE_PRESSURE_POINTS
+#define INJECT_MKNOD_FH_POPULATE_FAILURE(res, task) \
+do { \
+    /* \
+     * Must be called only for mknod task. \
+     */ \
+    assert(task->get_op_type() == FUSE_CREATE); \
+    if (res && (NFS_STATUS(res) == NFS3_OK)) { \
+        if (inject_error()) { \
+            AZLogWarn("[{}] PP: {} failed to populate fh, parent ino {}, filename {} ", \
+                       __FUNCTION__, \
+                       task->rpc_api->mknod_task.get_parent_ino(), \
+                       task->rpc_api->mknod_task.get_file_name()); \
+            (res)->CREATE3res_u.resok.obj.handle_follows = 0; \
+        } \
+    } \
+} while (0)
+#else
+#define INJECT_MKNOD_FH_POPULATE_FAILURE(res, task) /* nothing */
+#endif
+
+#ifdef ENABLE_PRESSURE_POINTS
+#define INJECT_MKDIR_FH_POPULATE_FAILURE(res, task) \
+do { \
+    /* \
+     * Must be called only for mkdir task. \
+     */ \
+    assert(task->get_op_type() == FUSE_MKDIR); \
+    if (res && (NFS_STATUS(res) == NFS3_OK)) { \
+        if (inject_error()) { \
+            AZLogWarn("[{}] PP: {} failed to populate fh, parent ino {}, dirname {} ", \
+                       __FUNCTION__, \
+                       task->rpc_api->mkdir_task.get_parent_ino(), \
+                       task->rpc_api->mkdir_task.get_dir_name()); \
+            (res)->MKDIR3res_u.resok.obj.handle_follows = 0; \
+        } \
+    } \
+} while (0)
+#else
+#define INJECT_MKDIR_FH_POPULATE_FAILURE(res, task) /* nothing */
+#endif
+
+#ifdef ENABLE_PRESSURE_POINTS
+#define INJECT_SETATTR_FH_POPULATE_FAILURE(res, task) \
+do { \
+    /* \
+     * Must be called only for setattr. \
+     */ \
+    assert(task->get_op_type() == FUSE_SETATTR); \
+    if (res && (NFS_STATUS(res) == NFS3_OK)) { \
+        if (inject_error()) { \
+            AZLogWarn("[{}] PP: {} failed to populate fh, ino {}", \
+                       __FUNCTION__, \
+                       task->rpc_api->setattr_task.get_ino()); \
+            (res)->SETATTR3res_u.resok.obj_wcc.after.attributes_follow = 0; \
+        } \
+    } \
+} while (0)
+#else
+#define INJECT_SETATTR_FH_POPULATE_FAILURE(res, task) /* nothing */
+#endif
+
 /* static */
 std::atomic<int> rpc_task::async_slots = MAX_ASYNC_RPC_TASKS;
 
@@ -889,6 +972,8 @@ static void createfile_callback(
         task->get_client()->get_nfs_inode_from_ino(ino);
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
+    INJECT_CREATE_FH_POPULATE_FAILURE(res, task);
+
     /*
      * Now that the request has completed, we can query libnfs for the
      * dispatch time.
@@ -896,11 +981,6 @@ static void createfile_callback(
     task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
 
     if (status == 0) {
-        static int i = 0;
-        if (++i % 5 == 0)
-        {
-            res->CREATE3res_u.resok.obj.handle_follows = 0;
-        }
         if (!res->CREATE3res_u.resok.obj.handle_follows) {
             /*
              * If the server doesn't send the filehandle (which is perfectly
@@ -1000,12 +1080,9 @@ static void setattr_callback(
      */
     task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
 
+    INJECT_SETATTR_FH_POPULATE_FAILURE(res, task);
+
     if (status == 0) {
-        static int i = 0;
-        if (++i % 5 == 0)
-        {
-            res->SETATTR3res_u.resok.obj_wcc.after.attributes_follow = 0;
-        }
         if (!res->SETATTR3res_u.resok.obj_wcc.after.attributes_follow) {
             /* 
              * For NFS, the postop attributes are optional, but fuse expects
@@ -1088,6 +1165,8 @@ void mknod_callback(
         task->get_client()->get_nfs_inode_from_ino(ino);
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
+    INJECT_MKNOD_FH_POPULATE_FAILURE(res, task);
+
     /*
      * Now that the request has completed, we can query libnfs for the
      * dispatch time.
@@ -1095,11 +1174,6 @@ void mknod_callback(
     task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
 
     if (status == 0) {
-        static int i = 0;
-        if (++i % 5 == 0)
-        {
-            res->CREATE3res_u.resok.obj.handle_follows = 0;
-        }
         if (!res->CREATE3res_u.resok.obj.handle_follows) {
             /*
              * If the server doesn't send the filehandle (which is perfectly
@@ -1190,6 +1264,8 @@ void mkdir_callback(
         task->get_client()->get_nfs_inode_from_ino(ino);
     const int status = task->status(rpc_status, NFS_STATUS(res));
 
+    INJECT_MKDIR_FH_POPULATE_FAILURE(res, task);
+
     /*
      * Now that the request has completed, we can query libnfs for the
      * dispatch time.
@@ -1197,11 +1273,6 @@ void mkdir_callback(
     task->get_stats().on_rpc_complete(rpc_get_pdu(rpc), NFS_STATUS(res));
 
     if (status == 0) {
-        static int i = 0;
-        if (++i % 5 == 0)
-        {
-            res->MKDIR3res_u.resok.obj.handle_follows = 0;
-        }
         if (!res->MKDIR3res_u.resok.obj.handle_follows) {
             /*
              * If the server doesn't send the filehandle (which is perfectly
