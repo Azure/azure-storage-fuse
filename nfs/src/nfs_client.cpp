@@ -1577,7 +1577,7 @@ void nfs_client::reply_entry(
              *        'called_for_optype' member of the lookup task and will
              *        be set to that opcode of the calling op.
              */
-            optype = task->rpc_api->lookup_task.get_called_for_optype();
+            optype = task->get_proxy_op_type();
         }
 
         /*

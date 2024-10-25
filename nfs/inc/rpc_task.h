@@ -103,11 +103,6 @@ struct lookup_rpc_task
         parent_ino = parent;
     }
 
-    void set_called_for_optype(enum fuse_opcode optype)
-    {
-        called_for_optype = optype;
-    }
-
     void set_fuse_file(fuse_file_info *fileinfo)
     {
         if (fileinfo != nullptr)
@@ -144,20 +139,9 @@ struct lookup_rpc_task
         ::free(file_name);
     }
 
-    enum fuse_opcode get_called_for_optype() const
-    {
-        return called_for_optype;
-    }
-
 private:
     fuse_ino_t parent_ino;
     char *file_name;
-
-    /*
-     * This will be set to the optype for which this lookup request is made.
-     */
-    enum fuse_opcode called_for_optype;
-
     struct fuse_file_info file;
     struct fuse_file_info *file_ptr;
 };
@@ -1453,6 +1437,14 @@ struct api_task_info
     enum fuse_opcode optype = (fuse_opcode) 0;
 
     /*
+     * Proxy operation type.
+     * By default, this will be set to \p optype.
+     * If the RPC task is issued on behalf of another task, the
+     * proxy_optype will be set to the RPC task issuing this.
+     */
+    enum fuse_opcode proxy_optype;
+
+    /*
      * Unnamed union for easy access.
      */
     union
@@ -1707,6 +1699,14 @@ public:
 
     enum fuse_opcode optype = (fuse_opcode) 0;
 
+    /*
+     * Proxy operation type.
+     * By default, this will be set to \p optype.
+     * If the RPC task is issued on behalf of another task, the
+     * proxy_optype will be set to the RPC task issuing this.
+     */
+    enum fuse_opcode proxy_optype = (fuse_opcode) 0;
+
 protected:
     /*
      * RPC stats. This has both stats specific to this RPC as well as
@@ -1808,6 +1808,14 @@ public:
                      fuse_ino_t parent_ino);
     void run_lookup();
 
+    void init_proxy_lookup(fuse_req *request,
+                     const char *name,
+                     fuse_ino_t parent_ino,
+                     enum fuse_opcode proxy_optype,
+                     fuse_file_info *fileinfo = nullptr);
+
+    void run_proxy_lookup();
+
     /*
      * init/run methods for the ACCESS RPC.
      */
@@ -1839,6 +1847,11 @@ public:
     void init_getattr(fuse_req *request,
                       fuse_ino_t ino);
     void run_getattr();
+
+    void init_proxy_getattr(fuse_req *request,
+                            fuse_ino_t ino,
+                            enum fuse_opcode proxy_optype);
+    void run_proxy_getattr();
 
     /*
      * init/run methods for the SETATTR RPC.
@@ -1996,12 +2009,24 @@ public:
     void set_op_type(enum fuse_opcode _optype)
     {
         optype = rpc_api->optype = _optype;
+        proxy_optype = rpc_api->proxy_optype = _optype;
+    }
+
+    void set_proxy_op_type(enum fuse_opcode _optype)
+    {
+        proxy_optype = rpc_api->proxy_optype = _optype;
     }
 
     enum fuse_opcode get_op_type() const
     {
         assert(!rpc_api || optype == rpc_api->optype);
         return optype;
+    }
+
+    enum fuse_opcode get_proxy_op_type() const
+    {
+        assert(!rpc_api || proxy_optype == rpc_api->proxy_optype);
+        return proxy_optype;
     }
 
     rpc_stats_az& get_stats()
