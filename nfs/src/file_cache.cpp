@@ -1659,8 +1659,8 @@ void bytes_chunk_cache::inline_prune()
     AZLogDebug("[{}] inline_prune(): Inline prune goal of {:0.2f} MB",
                fmt::ptr(this), inline_bytes / (1024 * 1024.0));
 
-    uint32_t inuse = 0, dirty = 0, inra = 0;
-    uint64_t inuse_bytes = 0, dirty_bytes = 0, inra_bytes = 0;
+    uint32_t inuse = 0, dirty = 0, locked = 0, inra = 0;
+    uint64_t inuse_bytes = 0, dirty_bytes = 0, locked_bytes = 0, inra_bytes = 0;
 
     for (auto it = chunkmap.cbegin(), next_it = it;
          (it != chunkmap.cend()) && (pruned_bytes < inline_bytes);
@@ -1700,11 +1700,23 @@ void bytes_chunk_cache::inline_prune()
         }
 
         /*
-         * Not under use, cannot be locked.
-         * Note that users are supposed to drop the inuse count only after
-         * releasing the membuf lock.
+         * Usually inuse count is dropped after the lock so if inuse count
+         * is zero membuf must not be locked, but users who may want to
+         * release() some chunk while holding the lock may drop their inuse
+         * count to allow release() to release the bytes_chunk.
          */
-        assert(!mb->is_locked());
+        if (mb->is_locked()) {
+            AZLogDebug("[{}] inline_prune(): skipping as membuf(offset={}, "
+                       "length={}) is locked (dirty={}, flushing={}, "
+                       "uptodate={})",
+                       fmt::ptr(this), mb->offset, mb->length,
+                       mb->is_dirty() ? "yes" : "no",
+                       mb->is_flushing() ? "yes" : "no",
+                       mb->is_uptodate() ? "yes" : "no");
+            locked++;
+            locked_bytes += mb->allocated_length;
+            continue;
+        }
 
         /*
          * Has data to be written to Blob.
@@ -1748,17 +1760,19 @@ void bytes_chunk_cache::inline_prune()
 
     if (pruned_bytes < inline_bytes) {
         AZLogDebug("Could not meet inline prune goal, pruned {} of {} bytes "
-                   "[inuse={}/{}, dirty={}/{}, inra={}/{}]",
+                   "[inuse={}/{}, dirty={}/{}, locked={}/{}, inra={}/{}]",
                    pruned_bytes, inline_bytes,
                    inuse, inuse_bytes,
                    dirty, dirty_bytes,
+                   locked, locked_bytes,
                    inra, inra_bytes);
     } else {
         AZLogDebug("Successfully pruned {} bytes [inuse={}/{}, dirty={}/{}, "
-                   "inra={}/{}]",
+                   "locked={}/{}, inra={}/{}]",
                    pruned_bytes,
                    inuse, inuse_bytes,
                    dirty, dirty_bytes,
+                   locked, locked_bytes,
                    inra, inra_bytes);
     }
 }
