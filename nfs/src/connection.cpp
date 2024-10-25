@@ -116,10 +116,15 @@ bool nfs_connection::open()
     /*
      * libnfs service loop wakes up every poll_timeout msecs to see if there
      * is any request pdu to send. Though lone request pdus are sent in the
-     * requester's context, but in some cases it helps for libnfs to check
-     * more promptly.
+     * requester's context, we use eventfd to notify the service thread when
+     * a new PDU is queued for sending. Use infinite poll timeout in debug
+     * builds to catch any bugs with eventfd notification.
      */
-    nfs_set_poll_timeout(nfs_context, 1);
+#ifdef ENABLE_DEBUG
+    nfs_set_poll_timeout(nfs_context, INT_MAX);
+#else
+    nfs_set_poll_timeout(nfs_context, 1000);
+#endif
 
     /*
      * We use libnfs in multithreading mode as we want 1 thread to do the IOs
