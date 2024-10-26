@@ -264,6 +264,10 @@ void rpc_task::do_proxy_lookup() const
     struct rpc_task *proxy_task =
         get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_LOOKUP);
 
+    proxy_task->init_lookup(get_fuse_req(),
+                            rpc_api->get_file_name(),
+                            rpc_api->get_parent_ino());
+
     /*
      * Proxy lookup task has additional fields that need to be set
      */
