@@ -73,6 +73,13 @@ void nfs_client::shutdown()
     assert(!shutting_down);
     shutting_down = true;
 
+    /*
+     * Shutdown libnfs RPC transport, so that we don't get any new callbacks
+     * after we cleanup our data structures below.
+     */
+    transport.close();
+    AZLogInfo("Stopped transport!");
+
     auto end_delete = inode_map.end();
     for (auto it = inode_map.begin(), next_it = it; it != end_delete; it = next_it) {
         ++next_it;
@@ -187,7 +194,6 @@ void nfs_client::shutdown()
 
     assert(inode_map.size() == 0);
 
-    transport.close();
     jukebox_thread.join();
 }
 

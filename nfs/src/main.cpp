@@ -328,6 +328,7 @@ int main(int argc, char *argv[])
     struct fuse_cmdline_opts opts;
     struct fuse_loop_config *loop_config = fuse_loop_cfg_create();
     int ret = -1;
+    bool client_started = false;
 
     /* Don't mask creation mode, kernel already did that */
     umask(0);
@@ -447,6 +448,7 @@ int main(int argc, char *argv[])
         goto err_out4;
     }
 
+    client_started = true;
     AZLogInfo("==> Aznfsclient fuse driver ready to serve requests!");
 
     if (opts.singlethread) {
@@ -461,13 +463,8 @@ int main(int argc, char *argv[])
 
     /*
      * We come here when user unmounts the fuse filesystem.
-     * There is one statfs call that kernel sends right on unmount, just wait
-     * 5 secs to process that before tearing up things.
-     * TODO: See if we can do better.
      */
     AZLogInfo("Shutting down!");
-    ::sleep(5);
-    nfs_client::get_instance().shutdown();
 
 err_out4:
     fuse_loop_cfg_destroy(loop_config);
@@ -479,6 +476,14 @@ err_out2:
 err_out1:
     free(opts.mountpoint);
     fuse_opt_free_args(&args);
+
+    /*
+     * Shutdown the client after fuse cleanup is performed so that we don't
+     * get any more requests from fuse.
+     */
+    if (client_started) {
+        nfs_client::get_instance().shutdown();
+    }
 
     return ret ? 1 : 0;
 }
