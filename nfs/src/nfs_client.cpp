@@ -1534,9 +1534,9 @@ void nfs_client::reply_entry(
 
         entry.ino = inode->get_fuse_ino();
         entry.generation = inode->get_generation();
-	/*
-	 * This takes shared lock on inode->ilock_1.
-	 */
+        /*
+         * This takes shared lock on inode->ilock_1.
+         */
         entry.attr = inode->get_attr();
         if (cache_positive) {
             entry.attr_timeout = inode->get_actimeo();
@@ -1547,6 +1547,22 @@ void nfs_client::reply_entry(
         }
 
         /*
+         * If it's a proxy task, optype of the original task should be used.
+         * Currently we use proxy task only for LOOKUP, so assert for that.
+         */
+        if (task->get_proxy_op_type() != (fuse_opcode) 0) {
+            AZLogDebug("Completing proxy task {} -> {}",
+                       rpc_task::fuse_opcode_to_string(optype),
+                       rpc_task::fuse_opcode_to_string(
+                           task->get_proxy_op_type()));
+
+            assert(optype == FUSE_LOOKUP);
+            optype = task->get_proxy_op_type();
+            // LOOKUP cannot be proxying a LOOKUP.
+            assert(optype != FUSE_LOOKUP);
+        }
+
+        /*
          * Note: reply_create()/reply_entry() below will increment
          *       forget_expected just before replying to fuse, so we log the
          *       updated count here.
@@ -1554,31 +1570,12 @@ void nfs_client::reply_entry(
         AZLogDebug("[{}] <{}> Returning ino {} to fuse (filename: {}, "
                    "lookupcnt: {}, dircachecnt: {}, forget_expected: {})",
                    parent_ino,
-                   rpc_task::fuse_opcode_to_string(task->rpc_api->optype),
+                   rpc_task::fuse_opcode_to_string(optype),
                    inode->get_fuse_ino(),
                    task->rpc_api->get_file_name(),
                    inode->lookupcnt.load(),
                    inode->dircachecnt.load(),
                    inode->forget_expected.load() + 1);
-
-        if (optype == FUSE_LOOKUP) {
-            /*
-             * LOOKUP RPC can be issued in one of the following 2 cases:
-             * case1: The fuse has made a lookup call to get the filehandle.
-             *        This is the most common case.
-             * case2: Fuse issued create/mknod/mkdir calls returned
-             *        successfully but the NFS server failed to populate the
-             *        filehandle/postop attributes. In such cases, we make a
-             *        lookup call to get this filehandle as the fuse expects
-             *        it in response to the create/mknod/mkdir calls.
-             *        In this case, we need to return appropriate reply to
-             *        the fuse depending on what operation caused this lookup
-             *        call to be triggered. This information is stored in the
-             *        'called_for_optype' member of the lookup task and will
-             *        be set to that opcode of the calling op.
-             */
-            optype = task->get_proxy_op_type();
-        }
 
         /*
          * This is the common place where we return inode to fuse.

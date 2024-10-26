@@ -103,15 +103,18 @@ struct lookup_rpc_task
         parent_ino = parent;
     }
 
+    /*
+     * Note: fileinfo is not passed by fuse for lookup request, this is only
+     *       used for storing the fileinfo of the original request, when this
+     *       lookup_rpc_task is used for proxy lookup.
+     *       See do_proxy_lookup().
+     */
     void set_fuse_file(fuse_file_info *fileinfo)
     {
-        if (fileinfo != nullptr)
-        {
+        if (fileinfo != nullptr) {
             file = *fileinfo;
             file_ptr = &file;
-        }
-        else
-        {
+        } else {
             file_ptr = nullptr;
         }
     }
@@ -1438,11 +1441,10 @@ struct api_task_info
 
     /*
      * Proxy operation type.
-     * By default, this will be set to \p optype.
-     * If the RPC task is issued on behalf of another task, the
-     * proxy_optype will be set to the RPC task issuing this.
+     * If the RPC task is issued on behalf of another task, this will be set
+     * to the optype of the original RPC task issuing this.
      */
-    enum fuse_opcode proxy_optype;
+    enum fuse_opcode proxy_optype = (fuse_opcode) 0;
 
     /*
      * Unnamed union for easy access.
@@ -1699,14 +1701,6 @@ public:
 
     enum fuse_opcode optype = (fuse_opcode) 0;
 
-    /*
-     * Proxy operation type.
-     * By default, this will be set to \p optype.
-     * If the RPC task is issued on behalf of another task, the
-     * proxy_optype will be set to the RPC task issuing this.
-     */
-    enum fuse_opcode proxy_optype = (fuse_opcode) 0;
-
 protected:
     /*
      * RPC stats. This has both stats specific to this RPC as well as
@@ -1808,13 +1802,19 @@ public:
                      fuse_ino_t parent_ino);
     void run_lookup();
 
-    void init_proxy_lookup(fuse_req *request,
-                     const char *name,
-                     fuse_ino_t parent_ino,
-                     enum fuse_opcode proxy_optype,
-                     fuse_file_info *fileinfo = nullptr);
-
-    void run_proxy_lookup();
+    /*
+     * Proxy lookup task is used for sending a LOOKUP RPC on behalf of some
+     * other RPC which failed to return the filehandle in postop data, f.e.,
+     * CREATE may fail to return FH, this is fine for NFS but fuse expects us
+     * to convey the FH in our create callback, hence we issue a LOOKUP RPC
+     * to query the FH for the newly created file.
+     *
+     * do_proxy_lookup() is called on the original task, it creates a new proxy
+     * lookup task properly initialized with data from the original task, sends
+     * the LOOKUP RPC, and on completion calls the fuse callback of the original
+     * fuse request.
+     */
+    void do_proxy_lookup() const;
 
     /*
      * init/run methods for the ACCESS RPC.
@@ -1848,10 +1848,10 @@ public:
                       fuse_ino_t ino);
     void run_getattr();
 
-    void init_proxy_getattr(fuse_req *request,
-                            fuse_ino_t ino,
-                            enum fuse_opcode proxy_optype);
-    void run_proxy_getattr();
+    /*
+     * Ref do_proxy_lookup() for details.
+     */
+    void do_proxy_getattr() const;
 
     /*
      * init/run methods for the SETATTR RPC.
@@ -2009,14 +2009,17 @@ public:
     void set_op_type(enum fuse_opcode _optype)
     {
         optype = rpc_api->optype = _optype;
-        proxy_optype = rpc_api->proxy_optype = _optype;
     }
 
     void set_proxy_op_type(enum fuse_opcode _optype)
     {
-        proxy_optype = rpc_api->proxy_optype = _optype;
+        rpc_api->proxy_optype = _optype;
     }
 
+    /**
+     * See rpc_task::free_rpc_task() for why we need rpc_task::optype along
+     * with api_task_info::optype.
+     */
     enum fuse_opcode get_op_type() const
     {
         assert(!rpc_api || optype == rpc_api->optype);
@@ -2025,8 +2028,8 @@ public:
 
     enum fuse_opcode get_proxy_op_type() const
     {
-        assert(!rpc_api || proxy_optype == rpc_api->proxy_optype);
-        return proxy_optype;
+        assert(rpc_api != nullptr);
+        return rpc_api->proxy_optype;
     }
 
     rpc_stats_az& get_stats()
@@ -2399,6 +2402,12 @@ public:
     /**
      * This returns a free rpc task instance from the pool of rpc tasks.
      * This call will block till a free rpc task is available.
+     *
+     * TODO: Add a use_reserved boolean parameter to alloc_rpc_task(), through
+     *       which caller can convey if it wants to eat into the reserved task
+     *       pool. Any time alloc_rpc_task() is called from a libnfs callback
+     *       context use_reserved must be set as blocking libnfs threads is
+     *       not good as they can complete requests and free up tasks.
      */
     struct rpc_task *alloc_rpc_task(fuse_opcode optype)
     {
