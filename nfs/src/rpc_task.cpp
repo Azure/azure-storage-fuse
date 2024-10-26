@@ -273,6 +273,7 @@ void rpc_task::do_proxy_lookup() const
      */
     switch (get_op_type()) {
         case FUSE_CREATE:
+            assert(rpc_api->create_task.get_fuse_file() != nullptr);
             proxy_task->rpc_api->lookup_task.set_fuse_file(
                     rpc_api->create_task.get_fuse_file());
             break;

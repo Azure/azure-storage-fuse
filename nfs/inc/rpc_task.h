@@ -2009,6 +2009,7 @@ public:
     void set_op_type(enum fuse_opcode _optype)
     {
         optype = rpc_api->optype = _optype;
+        rpc_api->proxy_optype = (fuse_opcode) 0;
     }
 
     void set_proxy_op_type(enum fuse_opcode _optype)
