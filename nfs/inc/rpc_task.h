@@ -2404,17 +2404,14 @@ public:
      * This returns a free rpc task instance from the pool of rpc tasks.
      * This call will block till a free rpc task is available.
      *
-     * TODO: Add a use_reserved boolean parameter to alloc_rpc_task(), through
-     *       which caller can convey if it wants to eat into the reserved task
-     *       pool. Any time alloc_rpc_task() is called from a libnfs callback
-     *       context use_reserved must be set as blocking libnfs threads is
-     *       not good as they can complete requests and free up tasks.
+     * Also see alloc_rpc_task_reserved().
      */
-    struct rpc_task *alloc_rpc_task(fuse_opcode optype)
+    struct rpc_task *alloc_rpc_task(fuse_opcode optype,
+                                    bool use_reserved = false)
     {
         // get_free_idx() can block, collect start time before that.
         const uint64_t start_usec = get_current_usecs();
-        const int free_index = get_free_idx();
+        const int free_index = get_free_idx(use_reserved);
         struct rpc_task *task = rpc_task_list[free_index];
 
         assert(task->magic == RPC_TASK_MAGIC);
@@ -2453,18 +2450,44 @@ public:
         return task;
     }
 
-    int get_free_idx()
+    /**
+     * Use this when allocating rpc_task in a libnfs callback context.
+     * This will avoid blocking the caller by reaching into the reserved pool
+     * if the regular pool of rpc_task is exhausted.
+     * Note that it's important to not block libnfs threads as they help
+     * complete RPC requests and thus free up rpc_task structures.
+     */
+    struct rpc_task *alloc_rpc_task_reserved(fuse_opcode optype)
     {
+        return alloc_rpc_task(optype, true /* use_reserved */);
+    }
+
+    int get_free_idx(bool use_reserved = false)
+    {
+        /*
+         * If caller is special allow them to eat into the reserved pool
+         * of tasks. We should keep as many tasks in the reserved pool as
+         * there are libnfs threads, so that in the worst case if every libnfs
+         * callback allocates a task they don't have to block.
+         * Don't allow more than 25% of total tasks as reserved tasks.
+         */
+        static const size_t RESERVED_TASKS = 1000;
+        static_assert(RESERVED_TASKS < MAX_OUTSTANDING_RPC_TASKS / 4);
+        const size_t spare_count = use_reserved ? 0 : RESERVED_TASKS;
+
         std::unique_lock<std::shared_mutex> lock(task_index_lock_41);
 
         // Wait until a free rpc task is available.
-        while (free_task_index.empty()) {
+        while (free_task_index.size() <= spare_count) {
 #ifdef ENABLE_PARANOID
-            assert(free_task_index_set.empty());
+            assert(free_task_index_set.size() == free_task_index.size());
 #endif
             if (!cv.wait_for(lock, std::chrono::seconds(30),
-                             [this] { return !free_task_index.empty(); })) {
-                AZLogError("Timed out waiting for free rpc_task, re-trying!");
+                             [this, spare_count] {
+                                return free_task_index.size() > spare_count;
+                             })) {
+                AZLogError("Timed out waiting for free rpc_task ({}), "
+                           "re-trying!", free_task_index.size());
             }
         }
 

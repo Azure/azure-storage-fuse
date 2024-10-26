@@ -4,6 +4,11 @@
 #include "rpc_stats.h"
 
 /*
+ * Catch incorrect use of alloc_rpc_task() in libnfs callbacks.
+ */
+#define alloc_rpc_task use_alloc_rpc_task_reserved_in_libnfs_callback
+
+/*
  * If this is defined we will call release() for the byte chunk which is read
  * by the application. This helps free the cache as soon as the reader reads
  * it. The idea is to not keep cached data hanging around for any longer than
@@ -262,7 +267,7 @@ void rpc_task::do_proxy_lookup() const
               rpc_api->get_file_name());
 
     struct rpc_task *proxy_task =
-        get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_LOOKUP);
+        get_client()->get_rpc_task_helper()->alloc_rpc_task_reserved(FUSE_LOOKUP);
 
     proxy_task->init_lookup(get_fuse_req(),
                             rpc_api->get_file_name(),
@@ -354,7 +359,7 @@ void rpc_task::do_proxy_getattr() const
     assert(get_op_type() == FUSE_SETATTR);
 
     struct rpc_task *proxy_task =
-        get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_GETATTR);
+        get_client()->get_rpc_task_helper()->alloc_rpc_task_reserved(FUSE_GETATTR);
 
     proxy_task->init_getattr(get_fuse_req(),
                              rpc_api->get_ino());
@@ -853,7 +858,7 @@ static void write_iov_callback(
 
             // Create a new flush_task for the remaining bc_iovec.
             struct rpc_task *flush_task =
-                    client->get_rpc_task_helper()->alloc_rpc_task(FUSE_FLUSH);
+                    client->get_rpc_task_helper()->alloc_rpc_task_reserved(FUSE_FLUSH);
             flush_task->init_flush(nullptr /* fuse_req */, ino);
             // Any new task should start fresh as a parent task.
             assert(flush_task->rpc_api->parent_task == nullptr);
@@ -2619,7 +2624,7 @@ void rpc_task::run_read()
              * Create a child rpc task to issue the read RPC to the backend.
              */
             struct rpc_task *child_tsk =
-                get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_READ);
+                get_client()->get_rpc_task_helper()->alloc_rpc_task_reserved(FUSE_READ);
 
             child_tsk->init_read(
                 rpc_api->req,
@@ -2933,7 +2938,7 @@ static void read_callback(
 
             // Create a new child task to carry out this request.
             struct rpc_task *child_tsk =
-                task->get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_READ);
+                task->get_client()->get_rpc_task_helper()->alloc_rpc_task_reserved(FUSE_READ);
 
             child_tsk->init_read(
                 task->rpc_api->req,
@@ -3690,7 +3695,7 @@ static void readdir_callback(
      * If re-enumeration, set the target_offset appropriately.
      */
     struct rpc_task *child_tsk =
-        task->get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_READDIR);
+        task->get_client()->get_rpc_task_helper()->alloc_rpc_task_reserved(FUSE_READDIR);
 
     child_tsk->init_readdir(
         task->rpc_api->req,
@@ -4131,7 +4136,7 @@ static void readdirplus_callback(
      * If re-enumeration, set the target_offset appropriately.
      */
     struct rpc_task *child_tsk =
-        task->get_client()->get_rpc_task_helper()->alloc_rpc_task(FUSE_READDIRPLUS);
+        task->get_client()->get_rpc_task_helper()->alloc_rpc_task_reserved(FUSE_READDIRPLUS);
     child_tsk->init_readdirplus(
         task->rpc_api->req,
         task->rpc_api->readdir_task.get_ino(),
