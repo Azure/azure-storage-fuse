@@ -1,0 +1,4 @@
+# ThreadSanitizer suppressions file for aznfsclient.
+
+race:bytes_chunk_cache::is_empty
+race:rpc_transport::last_context
