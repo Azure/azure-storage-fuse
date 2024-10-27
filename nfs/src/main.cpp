@@ -468,6 +468,12 @@ int main(int argc, char *argv[])
 
 err_out4:
     fuse_loop_cfg_destroy(loop_config);
+    /*
+     * Note: fuse_session_unmount() calls kernel umount which causes a statfs()
+     *       call. This causes statfs_callback() to be called in libnfs thread
+     *       context. TSAN shows a data race with this thread which is winding
+     *       down fuse data structures.
+     */
     fuse_session_unmount(se);
 err_out3:
     fuse_remove_signal_handlers(se);
