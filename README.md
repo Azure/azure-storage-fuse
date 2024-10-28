@@ -13,7 +13,7 @@ Please submit an issue [here](https://github.com/azure/azure-storage-fuse/issues
 ##  NOTICE
 - Due to known data consistency issues when using Blobfuse2 in `block-cache` mode,  it is strongly recommended that all Blobfuse2 installations be upgraded to version 2.3.2. For more information, see [this](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2-Known-issues).
 - As of version 2.3.0, blobfuse has updated its authentication methods. For Managed Identity, Object-ID based OAuth is solely accessible via CLI-based login, requiring Azure CLI on the system. For a dependency-free option, users may utilize Application/Client-ID or Resource ID based authentication.
-- `streaming` mode is being deprecated.
+- `streaming` mode is being deprecated. This is the older option and is replaced with the `block-cache` mode which is the more performant streaming option.
 
 ## Limitations in Block Cache
 - Concurrent write operations on the same file using multiple handles is not checked for data consistency and may lead to incorrect data being written.
