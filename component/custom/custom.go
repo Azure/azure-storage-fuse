@@ -38,6 +38,7 @@ import (
 	"os"
 	"plugin"
 	"strings"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/exported"
@@ -57,6 +58,8 @@ func initializePlugins() error {
 
 	for _, file := range pluginFiles {
 		if strings.HasSuffix(file, ".so") {
+			log.Info("loading plugin %s", file)
+			startTime := time.Now()
 			p, err := plugin.Open(file)
 			if err != nil {
 				return fmt.Errorf("error opening plugin %s: %s", file, err.Error())
@@ -74,6 +77,8 @@ func initializePlugins() error {
 
 			compName, initExternalComponent := getExternalComponent()
 			internal.AddComponent(compName, initExternalComponent)
+			duration := time.Since(startTime)
+			log.Info("plugin %s loaded successfully in %s", file, duration)
 		} else {
 			return fmt.Errorf("invalid plugin file extension: %s", file)
 		}
@@ -85,6 +90,7 @@ func init() {
 	err := initializePlugins()
 	if err != nil {
 		log.Err("custom::Error initializing plugins: %s", err.Error())
+		fmt.Printf("failed to initialize plugin: %s\n", err.Error())
 		os.Exit(1)
 	}
 }
