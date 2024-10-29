@@ -78,7 +78,7 @@ func initializePlugins() error {
 			compName, initExternalComponent := getExternalComponent()
 			internal.AddComponent(compName, initExternalComponent)
 			duration := time.Since(startTime)
-			log.Info("plugin %s loaded successfully in %s", file, duration)
+			log.Info("plugin %s loaded successfully in %v", file, duration)
 		} else {
 			return fmt.Errorf("invalid plugin file extension: %s", file)
 		}

@@ -53,8 +53,8 @@ func (suite *customTestSuite) SetupTest() {
 
 func (suite *customTestSuite) TestInitializePluginsValidPath() {
 	// Direct paths to the Go plugin source files
-	source1 := "../../test/sample_custom_component1"
-	source2 := "../../test/sample_custom_component2"
+	source1 := "../../test/sample_custom_component1/main.go"
+	source2 := "../../test/sample_custom_component2/main.go"
 
 	// Paths to the compiled .so files in the current directory
 	plugin1 := "sample_custom_component1.so"
