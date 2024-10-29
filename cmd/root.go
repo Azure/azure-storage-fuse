@@ -104,7 +104,7 @@ func getRemoteVersion(req string) (string, error) {
 	}
 
 	if len(body) > 50 {
-		log.Err("getRemoteVersion: something suspicious in the contents from remote verison")
+		log.Err("getRemoteVersion: something suspicious in the contents from remote version")
 		return "", fmt.Errorf("unable to get latest version")
 	}
 
