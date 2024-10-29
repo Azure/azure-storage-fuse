@@ -103,6 +103,11 @@ func getRemoteVersion(req string) (string, error) {
 		return "", err
 	}
 
+	if len(body) > 50 {
+		log.Err("getRemoteVersion: something suspicious in the contents from remote verison")
+		return "", fmt.Errorf("unable to get latest version")
+	}
+
 	var versionList VersionFilesList
 	err = xml.Unmarshal(body, &versionList)
 	if err != nil {
@@ -110,7 +115,7 @@ func getRemoteVersion(req string) (string, error) {
 		return "", err
 	}
 
-	if len(versionList.Version) < 5 {
+	if len(versionList.Version) < 5 || len(versionList.Version) > 20 {
 		return "", fmt.Errorf("unable to get latest version")
 	}
 

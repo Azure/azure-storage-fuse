@@ -1,5 +1,7 @@
-## 2.3.3 (Unreleased)
+## 2.4.0 (Unreleased)
 **Bug Fixes**
+**Other Changes**
+- Version check is now moved to a static website hosted on a public container.
 
 ## 2.3.2 (2024-09-03)
 **Bug Fixes**
