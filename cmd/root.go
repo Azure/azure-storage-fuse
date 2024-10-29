@@ -50,8 +50,7 @@ import (
 )
 
 type VersionFilesList struct {
-	XMLName xml.Name `xml:"EnumerationResults"`
-	Blobs   []Blob   `xml:"Blobs>Blob"`
+	Version string `xml:"latest"`
 }
 
 type Blob struct {
@@ -111,11 +110,11 @@ func getRemoteVersion(req string) (string, error) {
 		return "", err
 	}
 
-	if len(versionList.Blobs) != 1 {
+	if len(versionList.Version) < 5 {
 		return "", fmt.Errorf("unable to get latest version")
 	}
 
-	versionName := strings.Split(versionList.Blobs[0].Name, "/")[1]
+	versionName := versionList.Version
 	return versionName, nil
 }
 
@@ -126,7 +125,7 @@ func beginDetectNewVersion() chan interface{} {
 	go func() {
 		defer close(completed)
 
-		latestVersionUrl := common.Blobfuse2ListContainerURL + "?restype=container&comp=list&prefix=latest/"
+		latestVersionUrl := common.Blobfuse2ListContainerURL + "/latest/index.xml"
 		remoteVersion, err := getRemoteVersion(latestVersionUrl)
 		if err != nil {
 			log.Err("beginDetectNewVersion: error getting latest version [%s]", err.Error())
