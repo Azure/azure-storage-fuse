@@ -70,7 +70,7 @@ type BlockCache struct {
 
 	blockSize       uint64          // Size of each block to be cached
 	memSize         uint64          // Mem size to be used for caching at the startup
-	mntPath         string          // Mountpoint path
+	mntPath         string          // Mount path
 	tmpPath         string          // Disk path where these blocks will be cached
 	diskSize        uint64          // Size of disk space allocated for the caching
 	diskTimeout     uint32          // Timeout for which disk blocks will be cached
