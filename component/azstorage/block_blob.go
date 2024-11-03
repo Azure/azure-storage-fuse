@@ -101,9 +101,10 @@ func (bb *BlockBlob) Configure(cfg AzStorageConfig) error {
 	}
 
 	bb.listDetails = container.ListBlobsInclude{
-		Metadata:  true,
-		Deleted:   false,
-		Snapshots: false,
+		Metadata:    true,
+		Deleted:     false,
+		Snapshots:   false,
+		Permissions: true,
 	}
 
 	return nil
