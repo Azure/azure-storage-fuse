@@ -90,7 +90,6 @@ func IsMountActive(path string) (bool, error) {
 	var out bytes.Buffer
 	cmd := exec.Command("pidof", "blobfuse2")
 	cmd.Stdout = &out
-	print(out.String() + "Pids printed")
 	err := cmd.Run()
 	if err != nil {
 		if err.Error() == "exit status 1" {
@@ -117,11 +116,7 @@ func IsMountActive(path string) (bool, error) {
 
 		err := cmd.Run()
 		if err != nil {
-			cmd1 := exec.Command("pidof", "blobfuse2")
-			var out1 bytes.Buffer
-			cmd1.Stdout = &out1
-			err1 := cmd1.Run()
-			return true, fmt.Errorf("failed to get command line arguments for pid %s [%v] | pidlist %s | out1 %s | err1 [%v]", pid, err.Error(), pidString, out1.String(), err1)
+			return true, fmt.Errorf("failed to get command line arguments for pid %s [%v] ", pid, err.Error())
 		}
 
 		if strings.Contains(out.String(), path) {

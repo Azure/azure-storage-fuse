@@ -71,13 +71,13 @@ func TestUtil(t *testing.T) {
 
 func (suite *utilTestSuite) TestIsMountActiveNoMount() {
 	var out bytes.Buffer
-	// cmd := exec.Command("../blobfuse2", "unmount", "all")
-	// cmd.Stdout = &out
-	// err := cmd.Run()
-	// suite.assert.Nil(err)
-	cmd := exec.Command("pidof", "blobfuse2")
+	cmd := exec.Command("../blobfuse2", "unmount", "all")
 	cmd.Stdout = &out
 	err := cmd.Run()
+	suite.assert.Nil(err)
+	cmd = exec.Command("pidof", "blobfuse2")
+	cmd.Stdout = &out
+	err = cmd.Run()
 	suite.assert.Equal("exit status 1", err.Error())
 	res, err := IsMountActive("/mnt/blobfuse")
 	suite.assert.Nil(err)
