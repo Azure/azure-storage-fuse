@@ -168,8 +168,7 @@ func (ac *AttrCache) Configure(_ bool) error {
 		ac.cacheTimeout, ac.noSymlinks, ac.cacheOnList, ac.maxFiles)
 
 	if common.GenConfig {
-		err = ac.GenConfig()
-		return err
+		return ac.GenConfig()
 	}
 
 	return nil

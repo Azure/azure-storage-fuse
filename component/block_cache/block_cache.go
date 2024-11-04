@@ -313,8 +313,7 @@ func (bc *BlockCache) Configure(_ bool) error {
 	}
 
 	if common.GenConfig {
-		err = bc.GenConfig()
-		return err
+		return bc.GenConfig()
 	}
 	return nil
 }

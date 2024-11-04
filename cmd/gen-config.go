@@ -49,7 +49,7 @@ type generatedConfigOptions struct {
 	configDirectIO bool
 }
 
-var opts2 generatedConfigOptions
+var optsGenCfg generatedConfigOptions
 
 var generatedConfig = &cobra.Command{
 	Use:               "gen-config",
@@ -63,19 +63,19 @@ var generatedConfig = &cobra.Command{
 
 		common.GenConfig = true
 
-		if opts2.configComp != "block_cache" && opts2.configComp != "file_cache" {
-			return fmt.Errorf("component is required and should be either block_cache or file_cache")
+		if optsGenCfg.configComp != "block_cache" && optsGenCfg.configComp != "file_cache" {
+			return fmt.Errorf("component is required and should be either block_cache or file_cache. Please use --component flag to specify component name")
 		}
 
 		// Check if configTmp is not provided when component is fc
-		if opts2.configComp == "file_cache" && opts2.configTmp == "" {
+		if optsGenCfg.configComp == "file_cache" && optsGenCfg.configTmp == "" {
 			return fmt.Errorf("temp path is required for file cache mode. Use flag --tmp-path to provide the path")
 		}
 
-		pipeline := []string{"libfuse", opts2.configComp}
-		common.TmpPath = opts2.configTmp
+		pipeline := []string{"libfuse", optsGenCfg.configComp}
+		common.TmpPath = optsGenCfg.configTmp
 
-		if opts2.configDirectIO {
+		if optsGenCfg.configDirectIO {
 			common.DirectIO = true
 		} else {
 			pipeline = append(pipeline, "attr_cache")
@@ -109,7 +109,7 @@ var generatedConfig = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(generatedConfig)
-	generatedConfig.Flags().StringVar(&opts2.configComp, "component", "", "Input block_cache or file_cache")
-	generatedConfig.Flags().StringVar(&opts2.configTmp, "tmp-path", "", "Input path for caching")
-	generatedConfig.Flags().BoolVar(&opts2.configDirectIO, "direct-io", false, "Choose direct-io mode")
+	generatedConfig.Flags().StringVar(&optsGenCfg.configComp, "component", "", "Input block_cache or file_cache")
+	generatedConfig.Flags().StringVar(&optsGenCfg.configTmp, "tmp-path", "", "Input path for caching")
+	generatedConfig.Flags().BoolVar(&optsGenCfg.configDirectIO, "direct_io", false, "Choose direct-io mode")
 }
