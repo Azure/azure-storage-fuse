@@ -191,9 +191,10 @@ type ChownOptions struct {
 }
 
 type StageDataOptions struct {
-	Name string
-	Id   string
-	Data []byte
+	Name   string
+	Id     string
+	Data   []byte
+	Offset uint64
 }
 
 type CommitDataOptions struct {
