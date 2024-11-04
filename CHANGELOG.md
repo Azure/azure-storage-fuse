@@ -1,5 +1,7 @@
-## 2.3.3 (Unreleased)
+## 2.4.0 (Unreleased)
 **Bug Fixes**
+- Rename file was calling an additional getProperties call.
+
 
 ## 2.3.2 (2024-09-03)
 **Bug Fixes**
