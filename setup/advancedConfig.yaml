@@ -129,6 +129,7 @@ azstorage:
   clientid: <storage account client id for SPN>
   clientsecret: <storage account client secret for SPN>
   oauth-token-path: <path to file containing the OAuth token>
+  workload-identity-token: <service account token for workload identity>
   # Optional
   use-http: true|false <use http instead of https for storage connection>
   aadendpoint: <storage account custom aad endpoint>
