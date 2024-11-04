@@ -333,6 +333,7 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 	handle.Mtime = attr.Mtime
 	handle.Size = attr.Size
 
+	log.Debug("BlockCache::OpenFile : Size of file handle.Size %v", handle.Size)
 	bc.prepareHandleForBlockCache(handle)
 
 	if options.Flags&os.O_TRUNC != 0 || (options.Flags&os.O_WRONLY != 0 && options.Flags&os.O_APPEND == 0) {
@@ -496,6 +497,10 @@ func (bc *BlockCache) closeFileInternal(options internal.CloseFileOptions) error
 	return nil
 }
 
+func (bc *BlockCache) getBlockSize(fileSize uint64, block *Block) uint64 {
+	return min(bc.blockSize, fileSize-block.offset)
+}
+
 // ReadInBuffer: Read the file into a buffer
 func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
 	if options.Offset >= options.Handle.Size {
@@ -522,7 +527,9 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 
 		// Copy data from this block to user buffer
 		readOffset := uint64(options.Offset) - block.offset
-		bytesRead := copy(options.Data[dataRead:], block.data[readOffset:(block.endIndex-block.offset)])
+		blockSize := bc.getBlockSize(uint64(options.Handle.Size), block)
+
+		bytesRead := copy(options.Data[dataRead:], block.data[readOffset:blockSize])
 
 		// Move offset forward in case we need to copy more data
 		options.Offset += int64(bytesRead)
@@ -913,25 +920,31 @@ func (bc *BlockCache) download(item *workItem) {
 				log.Err("BlockCache::download : Failed to open file %s [%s]", fileName, err.Error())
 				_ = os.Remove(localPath)
 			} else {
+				var successfulRead bool = true
 				n, err := f.Read(item.block.data)
 				if err != nil {
 					log.Err("BlockCache::download : Failed to read data from disk cache %s [%s]", fileName, err.Error())
-					f.Close()
+					successfulRead = false
+					_ = os.Remove(localPath)
+				}
+
+				if n != int(bc.blockSize) && item.block.offset+uint64(n) != uint64(item.handle.Size) {
+					log.Err("BlockCache::download : Local data retrieved from disk size mismatch, Expected %v, OnDisk %v, fileSize %v", bc.getBlockSize(uint64(item.handle.Size), item.block), n, item.handle.Size)
+					successfulRead = false
 					_ = os.Remove(localPath)
 				}
 
 				f.Close()
 				// We have read the data from disk so there is no need to go over network
 				// Just mark the block that download is complete
-
-				item.block.endIndex = item.block.offset + uint64(n)
-				item.block.Ready(BlockStatusDownloaded)
-				return
+				if successfulRead {
+					item.block.Ready(BlockStatusDownloaded)
+					return
+				}
 			}
 		}
 	}
 
-	item.block.endIndex = item.block.offset
 	// If file does not exists then download the block from the container
 	n, err := bc.NextComponent().ReadInBuffer(internal.ReadInBufferOptions{
 		Handle: item.handle,
@@ -960,8 +973,6 @@ func (bc *BlockCache) download(item *workItem) {
 		bc.threadPool.Schedule(false, item)
 		return
 	}
-
-	item.block.endIndex = item.block.offset + uint64(n)
 
 	if bc.tmpPath != "" {
 		err := os.MkdirAll(filepath.Dir(localPath), 0777)
@@ -1020,10 +1031,6 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 		// Move offset forward in case we need to copy more data
 		options.Offset += int64(bytesWritten)
 		dataWritten += bytesWritten
-
-		if block.endIndex < uint64(options.Offset) {
-			block.endIndex = uint64(options.Offset)
-		}
 
 		if options.Handle.Size < options.Offset {
 			options.Handle.Size = options.Offset
@@ -1247,28 +1254,15 @@ func shouldCommitAndDownload(blockID int64, handle *handlemap.Handle) (bool, boo
 
 // lineupUpload : Create a work item and schedule the upload
 func (bc *BlockCache) lineupUpload(handle *handlemap.Handle, block *Block, listMap map[int64]*blockInfo) {
-	// if a block has data less than block size and is not the last block,
-	// add null at the end and upload the full block
-	// bc.printCooking(handle)
-	if block.endIndex < uint64(handle.Size) {
-		log.Debug("BlockCache::lineupUpload : Appending null for block %v, size %v for %v=>%s", block.id, (block.endIndex - block.offset), handle.ID, handle.Path)
-		block.endIndex = block.offset + bc.blockSize
-	} else if block.endIndex == uint64(handle.Size) {
-		// TODO: random write scenario where this block is not the last block
-		log.Debug("BlockCache::lineupUpload : Last block %v, size %v for %v=>%s", block.id, (block.endIndex - block.offset), handle.ID, handle.Path)
-	}
 
-	// id := listMap[block.id]
-	// if id == "" {
 	id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
 	listMap[block.id] = &blockInfo{
 		id:        id,
 		committed: false,
-		size:      block.endIndex - block.offset,
+		size:      bc.getBlockSize(uint64(handle.Size), block),
 	}
-	//}
 
-	log.Debug("BlockCache::lineupUpload : block %v, size %v for %v=>%s, blockId %v", block.id, (block.endIndex - block.offset), handle.ID, handle.Path, id)
+	log.Debug("BlockCache::lineupUpload : block %v, size %v for %v=>%s, blockId %v", block.id, bc.getBlockSize(uint64(handle.Size), block), handle.ID, handle.Path, id)
 	item := &workItem{
 		handle:   handle,
 		block:    block,
@@ -1277,8 +1271,6 @@ func (bc *BlockCache) lineupUpload(handle *handlemap.Handle, block *Block, listM
 		upload:   true,
 		blockId:  id,
 	}
-
-	// log.Debug("BlockCache::lineupUpload : Upload block %v=>%s (index %v, offset %v, data %v)", handle.ID, handle.Path, block.id, block.offset, (block.endIndex - block.offset))
 
 	block.Uploading()
 	block.flags.Clear(BlockFlagFailed)
@@ -1346,12 +1338,11 @@ func (bc *BlockCache) upload(item *workItem) {
 	flock := bc.fileLocks.Get(fileName)
 	flock.Lock()
 	defer flock.Unlock()
-	// log.Debug("BlockCache::Upload : block %v, size %v for %v=>%s, blockId %v", item.block.id, (item.block.endIndex - item.block.offset), item.handle.ID, item.handle.Path, item.blockId)
-
+	blockSize := bc.getBlockSize(uint64(item.handle.Size), item.block)
 	// This block is updated so we need to stage it now
 	err := bc.NextComponent().StageData(internal.StageDataOptions{
 		Name:   item.handle.Path,
-		Data:   item.block.data[0 : item.block.endIndex-item.block.offset],
+		Data:   item.block.data[0:blockSize],
 		Offset: uint64(item.block.offset),
 		Id:     item.blockId})
 	if err != nil {
@@ -1383,7 +1374,7 @@ func (bc *BlockCache) upload(item *workItem) {
 		// Dump this block to local disk cache
 		f, err := os.Create(localPath)
 		if err == nil {
-			_, err := f.Write(item.block.data[0 : item.block.endIndex-item.block.offset])
+			_, err := f.Write(item.block.data[0:blockSize])
 			if err != nil {
 				log.Err("BlockCache::upload : Failed to write %s to disk [%v]", localPath, err.Error())
 				_ = os.Remove(localPath)
