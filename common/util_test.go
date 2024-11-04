@@ -341,20 +341,25 @@ func (suite *utilTestSuite) TestDirectoryCleanup() {
 }
 
 func (suite *utilTestSuite) TestWriteToFile() {
-
-	fileName := fmt.Sprintf("./test_%s.txt", randomString(8))
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Println("Error getting home directory:", err)
+		return
+	}
+	filePath := fmt.Sprintf(".blobfuse2/test_%s.txt", randomString(8))
 	content := "Hello World"
+	filePath = homeDir + "/" + filePath
 
-	defer os.Remove(fileName)
+	defer os.Remove(filePath)
 
-	err := WriteToFile(fileName, content, WriteToFileOptions{})
+	err = WriteToFile(filePath, content, WriteToFileOptions{})
 	suite.assert.Nil(err)
 
 	// Check if file exists
-	suite.assert.FileExists(fileName)
+	suite.assert.FileExists(filePath)
 
 	// Check the content of the file
-	data, err := os.ReadFile(fileName)
+	data, err := os.ReadFile(filePath)
 	suite.assert.Nil(err)
 	suite.assert.Equal(content, string(data))
 

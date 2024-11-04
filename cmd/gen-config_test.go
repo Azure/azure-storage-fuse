@@ -50,10 +50,18 @@ type genConfig struct {
 
 func (suite *genConfig) SetupTest() {
 	suite.assert = assert.New(suite.T())
+
 }
 
 func (suite *genConfig) cleanupTest() {
-	os.Remove("generatedConfig.yaml")
+	os.Remove(suite.getDefaultLogLocation())
+}
+
+func (suite *genConfig) getDefaultLogLocation() string {
+	var homeDir, err = os.UserHomeDir()
+	suite.assert.Nil(err)
+	var logFilePath = homeDir + "/.blobfuse2/generatedConfig.yaml"
+	return logFilePath
 }
 
 func (suite *genConfig) TestFileCacheConfigGen() {
@@ -67,11 +75,13 @@ func (suite *genConfig) TestFileCacheConfigGen() {
 	_, err := cmd.Output()
 	suite.assert.Nil(err)
 
+	logFilePath := suite.getDefaultLogLocation()
+
 	//Check if a file is generated named generatedConfig.yaml
-	suite.assert.FileExists("generatedConfig.yaml")
+	suite.assert.FileExists(logFilePath)
 
 	//check if the generated file is not empty
-	file, err := os.ReadFile("generatedConfig.yaml")
+	file, err := os.ReadFile(logFilePath)
 	suite.assert.Nil(err)
 	suite.assert.NotEmpty(file)
 
@@ -93,11 +103,13 @@ func (suite *genConfig) TestBlockCacheConfigGen() {
 	_, err := cmd.Output()
 	suite.assert.Nil(err)
 
+	logFilePath := suite.getDefaultLogLocation()
+
 	//Check if a file is generated named generatedConfig.yaml
-	suite.assert.FileExists("generatedConfig.yaml")
+	suite.assert.FileExists(logFilePath)
 
 	//check if the generated file is not empty
-	file, err := os.ReadFile("generatedConfig.yaml")
+	file, err := os.ReadFile(logFilePath)
 	suite.assert.Nil(err)
 	suite.assert.NotEmpty(file)
 
@@ -111,7 +123,7 @@ func (suite *genConfig) TestBlockCacheConfigGen() {
 	_, err = cmd.Output()
 	suite.assert.Nil(err)
 
-	file, err = os.ReadFile("generatedConfig.yaml")
+	file, err = os.ReadFile(logFilePath)
 	suite.assert.Nil(err)
 	//check if the generated file has no tmp path
 	suite.assert.NotContains(string(file), tempDir)
@@ -121,16 +133,16 @@ func (suite *genConfig) TestBlockCacheConfigGen() {
 func (suite *genConfig) TestDirectIOConfigGen() {
 	defer suite.cleanupTest()
 
-	cmd := exec.Command("../blobfuse2", "gen-config", fmt.Sprintf("--component=%s", "block_cache"), "--direct-io")
+	cmd := exec.Command("../blobfuse2", "gen-config", fmt.Sprintf("--component=%s", "block_cache"), "--direct_io")
 
 	_, err := cmd.Output()
 	suite.assert.Nil(err)
 
-	//Check if a file is generated named generatedConfig.yaml
-	suite.assert.FileExists("generatedConfig.yaml")
+	logFilePath := suite.getDefaultLogLocation()
+	suite.assert.FileExists(logFilePath)
 
 	//check if the generated file is not empty
-	file, err := os.ReadFile("generatedConfig.yaml")
+	file, err := os.ReadFile(logFilePath)
 	suite.assert.Nil(err)
 	suite.assert.NotEmpty(file)
 
