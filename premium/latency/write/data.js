@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1729705108488,
+  "lastUpdate": 1730715745270,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -733,6 +733,50 @@ window.BENCHMARK_DATA = {
           {
             "name": "sequential_write_16_threads",
             "value": 0.14142639837933332,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "31076415+abhiguptacse@users.noreply.github.com",
+            "name": "Abhinav Gupta",
+            "username": "abhiguptacse"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "5728405152eeb763c374cdafef497c7383fb9483",
+          "message": "adding exported package (#1553)",
+          "timestamp": "2024-11-04T15:13:16+05:30",
+          "tree_id": "3eadcfb2df339d69d9353aa709b1b5065dc107d8",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/5728405152eeb763c374cdafef497c7383fb9483"
+        },
+        "date": 1730715745031,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_write",
+            "value": 0.13082345292966668,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_write_directio",
+            "value": 0.140460828343,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_write_4_threads",
+            "value": 0.13500094327866666,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_write_16_threads",
+            "value": 0.138999089755,
             "unit": "milliseconds"
           }
         ]
