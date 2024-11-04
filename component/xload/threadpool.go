@@ -93,6 +93,11 @@ func (t *ThreadPool) Do() {
 	// This thread will work only on both high and low priority channel
 	for item := range t.workItems {
 		_, err := t.callback(item)
+		// add this error in response channel
+		// TODO:: xload : verify
+		item.err = err
+		item.responseChannel <- item
+
 		if err != nil {
 			log.Err("ThreadPool::Do : Error in processing workitem [%s, %d] : %v", item.path, item.block.offset, err)
 		}

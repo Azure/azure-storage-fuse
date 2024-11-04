@@ -92,6 +92,15 @@ func (rdm *remoteDataManager) stop() {
 	rdm.getNext().stop()
 }
 
+// upload or download block
+func (rdm *remoteDataManager) process(item *workItem) (int, error) {
+	if item.download {
+		return rdm.ReadData(item)
+	} else {
+		return rdm.WriteData(item)
+	}
+}
+
 // ReadData reads data from the data manager
 func (rdm *remoteDataManager) ReadData(item *workItem) (int, error) {
 	return rdm.getRemote().ReadInBuffer(internal.ReadInBufferOptions{

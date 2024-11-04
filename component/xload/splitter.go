@@ -64,7 +64,8 @@ func (u *uploadSplitter) stop() {
 	u.getNext().stop()
 }
 
-// SplitData reads data from the data manager
+// split data in chunks which is sent for staging to the data manager
+// and then commit the staged data
 func (u *uploadSplitter) process(item *workItem) (int, error) {
 	var err error
 	var ids []string
@@ -128,6 +129,7 @@ func (u *uploadSplitter) process(item *workItem) (int, error) {
 					fileHandle:      nil,
 					block:           block,
 					responseChannel: responseChannel,
+					download:        false,
 				}
 				ids = append(ids, splitItem.block.id)
 				log.Trace("uploadSplitter::process : Scheduling %s block [%d] %s offset %v length %v", item.path, splitItem.block.index, splitItem.block.id, offset, splitItem.block.length)
@@ -190,7 +192,7 @@ func (d *downloadSplitter) stop() {
 	d.getNext().stop()
 }
 
-// SplitData reads data from the data manager
+// download data in chunks and then write to the local file
 func (d *downloadSplitter) process(item *workItem) (int, error) {
 	var err error
 
@@ -250,6 +252,7 @@ func (d *downloadSplitter) process(item *workItem) (int, error) {
 				fileHandle:      item.fileHandle,
 				block:           block,
 				responseChannel: responseChannel,
+				download:        true,
 			}
 			log.Trace("downloadSplitter::process : Scheduling %s offset %v", item.path, offset)
 			d.getNext().getThreadPool().Schedule(splitItem)

@@ -48,6 +48,7 @@ type workItem struct {
 	fileHandle      *os.File       // File handle to the file being processed
 	err             error          // Error if any
 	responseChannel chan *workItem // Channel to send the response
+	download        bool           // boolean variable to decide upload or download
 }
 
 // xload mode enum

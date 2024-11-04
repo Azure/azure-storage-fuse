@@ -205,7 +205,7 @@ func (xl *Xload) startUploader() error {
 		return err
 	}
 
-	xl.comps = append(xl.comps, ll, us, rdm)
+	xl.comps = []xcomponent{ll, us, rdm}
 	return nil
 }
 
@@ -231,7 +231,7 @@ func (xl *Xload) startDownloader() error {
 		return err
 	}
 
-	xl.comps = append(xl.comps, rl, ds, rdm)
+	xl.comps = []xcomponent{rl, ds, rdm}
 	return nil
 }
 
