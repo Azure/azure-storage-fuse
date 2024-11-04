@@ -104,7 +104,7 @@ func (bb *BlockBlob) Configure(cfg AzStorageConfig) error {
 		Metadata:    true,
 		Deleted:     false,
 		Snapshots:   false,
-		Permissions: true,
+		Permissions: false,
 	}
 
 	return nil
@@ -583,11 +583,21 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 				return blobList, nil, err
 			}
 		} else {
+			var mode os.FileMode
+			if blobInfo.Properties.Permissions != nil {
+				mode, err = getFileMode(*blobInfo.Properties.Permissions)
+				if err != nil {
+					log.Err("BlockBlob::List : Failed to get file mode for %s [%s]", *blobInfo.Name, err.Error())
+					return blobList, nil, err
+				}
+			} else {
+				mode = 0
+			}
 			attr = &internal.ObjAttr{
 				Path:   split(bb.Config.prefixPath, *blobInfo.Name),
 				Name:   filepath.Base(*blobInfo.Name),
 				Size:   *blobInfo.Properties.ContentLength,
-				Mode:   0,
+				Mode:   mode,
 				Mtime:  *blobInfo.Properties.LastModified,
 				Atime:  dereferenceTime(blobInfo.Properties.LastAccessedOn, *blobInfo.Properties.LastModified),
 				Ctime:  *blobInfo.Properties.LastModified,
@@ -621,7 +631,7 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 			// marker file not found in current iteration, so we need to manually check attributes via REST
 			_, err := bb.getAttrUsingRest(*blobInfo.Name)
 			// marker file also not found via manual check, safe to add to list
-			if err == syscall.ENOENT {
+			if err == syscall.ENOENT || bb.listDetails.Permissions {
 				// For these dirs we get only the name and no other properties so hardcoding time to current time
 				name := strings.TrimSuffix(*blobInfo.Name, "/")
 				attr := &internal.ObjAttr{
