@@ -106,7 +106,6 @@ type ReadFileOptions struct {
 
 type ReadInBufferOptions struct {
 	Handle *handlemap.Handle
-	Name   string
 	Offset int64
 	Data   []byte
 }

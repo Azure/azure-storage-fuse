@@ -95,8 +95,10 @@ func (t *ThreadPool) Do() {
 		_, err := t.callback(item)
 		// add this error in response channel
 		// TODO:: xload : verify
-		item.err = err
-		item.responseChannel <- item
+		if cap(item.responseChannel) > 0 {
+			item.err = err
+			item.responseChannel <- item
+		}
 
 		if err != nil {
 			log.Err("ThreadPool::Do : Error in processing workitem [%s, %d] : %v", item.path, item.block.offset, err)

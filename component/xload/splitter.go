@@ -126,6 +126,7 @@ func (u *uploadSplitter) process(item *workItem) (int, error) {
 
 				splitItem := &workItem{
 					path:            item.path,
+					dataLen:         item.dataLen,
 					fileHandle:      nil,
 					block:           block,
 					responseChannel: responseChannel,
@@ -148,7 +149,14 @@ func (u *uploadSplitter) process(item *workItem) (int, error) {
 		return -1, fmt.Errorf("failed to upload data from file %s", item.path)
 	}
 
-	err = u.getNext().commitData(item.path, ids)
+	err = u.getRemote().CommitData(internal.CommitDataOptions{
+		Name: item.path,
+		List: ids,
+	})
+	if err != nil {
+		log.Err("uploadSplitter::process : failed to commit data [%s]", err.Error())
+	}
+
 	return 0, err
 }
 
@@ -249,6 +257,7 @@ func (d *downloadSplitter) process(item *workItem) (int, error) {
 
 			splitItem := &workItem{
 				path:            item.path,
+				dataLen:         item.dataLen,
 				fileHandle:      item.fileHandle,
 				block:           block,
 				responseChannel: responseChannel,

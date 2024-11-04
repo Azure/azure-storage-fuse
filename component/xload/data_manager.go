@@ -3,6 +3,7 @@ package xload
 import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
 
 // verify that the below types implement the xcomponent interfaces
@@ -103,9 +104,10 @@ func (rdm *remoteDataManager) process(item *workItem) (int, error) {
 
 // ReadData reads data from the data manager
 func (rdm *remoteDataManager) ReadData(item *workItem) (int, error) {
+	h := handlemap.NewHandle(item.path)
+	h.Size = int64(item.dataLen)
 	return rdm.getRemote().ReadInBuffer(internal.ReadInBufferOptions{
-		Handle: nil,
-		Name:   item.path,
+		Handle: h,
 		Offset: item.block.offset,
 		Data:   item.block.data,
 	})
@@ -118,12 +120,4 @@ func (rdm *remoteDataManager) WriteData(item *workItem) (int, error) {
 		Data: item.block.data[0:item.block.length],
 		// Offset: uint64(item.block.offset),
 		Id: item.block.id})
-}
-
-// CommitData commits data to the data manager
-func (rdm *remoteDataManager) commitData(name string, ids []string) error {
-	return rdm.remote.CommitData(internal.CommitDataOptions{
-		Name: name,
-		List: ids,
-	})
 }

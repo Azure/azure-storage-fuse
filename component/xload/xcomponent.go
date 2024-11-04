@@ -11,7 +11,6 @@ type xcomponent interface {
 	setNext(s xcomponent)
 	getThreadPool() *ThreadPool
 	getRemote() internal.Component
-	commitData(name string, ids []string) error
 }
 
 type xbase struct {
@@ -49,8 +48,4 @@ func (xb *xbase) getThreadPool() *ThreadPool {
 
 func (xb *xbase) getRemote() internal.Component {
 	return xb.remote
-}
-
-func (xb *xbase) commitData(name string, ids []string) error {
-	return nil
 }

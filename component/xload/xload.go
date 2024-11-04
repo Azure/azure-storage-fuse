@@ -183,23 +183,43 @@ func (xl *Xload) Stop() error {
 	return nil
 }
 
+// getRemoteComponent returns the azstorage component if present in the pipeline,
+// else returns error
+func (xl *Xload) getRemoteComponent() (internal.Component, error) {
+	comp := xl.NextComponent()
+	for comp != nil {
+		if comp.Name() == "azstorage" {
+			return comp, nil
+		}
+		comp = comp.NextComponent()
+	}
+
+	return nil, fmt.Errorf("azstorage component is not present in the pipeline")
+}
+
 // StartUploader : Start the uploader thread
 func (xl *Xload) startUploader() error {
 	log.Trace("Xload::startUploader : Starting uploader")
 
-	ll, err := newLocalLister(xl.path, xl.NextComponent())
+	remoteComponent, err := xl.getRemoteComponent()
+	if err != nil {
+		log.Err("Xload::startUploader : %s", err.Error())
+		return err
+	}
+
+	ll, err := newLocalLister(xl.path, remoteComponent)
 	if err != nil {
 		log.Err("Xload::startUploader : failed to create local lister [%s]", err.Error())
 		return err
 	}
 
-	us, err := newUploadSpiltter(xl.blockSize, xl.blockPool, xl.path, xl.NextComponent())
+	us, err := newUploadSpiltter(xl.blockSize, xl.blockPool, xl.path, remoteComponent)
 	if err != nil {
 		log.Err("Xload::startUploader : failed to create upload splitter [%s]", err.Error())
 		return err
 	}
 
-	rdm, err := newRemoteDataManager(xl.NextComponent())
+	rdm, err := newRemoteDataManager(remoteComponent)
 	if err != nil {
 		log.Err("Xload::startUploader : failed to create remote data manager [%s]", err.Error())
 		return err
@@ -212,20 +232,26 @@ func (xl *Xload) startUploader() error {
 func (xl *Xload) startDownloader() error {
 	log.Trace("Xload::startDownloader : Starting downloader")
 
-	// // Create remote lister pool to list local files
-	rl, err := newRemoteLister(xl.path, xl.NextComponent())
+	remoteComponent, err := xl.getRemoteComponent()
+	if err != nil {
+		log.Err("Xload::startDownloader : %s", err.Error())
+		return err
+	}
+
+	// Create remote lister pool to list local files
+	rl, err := newRemoteLister(xl.path, remoteComponent)
 	if err != nil {
 		log.Err("Xload::startDownloader : Unable to create remote lister [%s]", err.Error())
 		return err
 	}
 
-	ds, err := newDownloadSplitter(xl.blockSize, xl.blockPool, xl.path, xl.NextComponent())
+	ds, err := newDownloadSplitter(xl.blockSize, xl.blockPool, xl.path, remoteComponent)
 	if err != nil {
 		log.Err("Xload::startDownloader : Unable to create download splitter [%s]", err.Error())
 		return err
 	}
 
-	rdm, err := newRemoteDataManager(xl.NextComponent())
+	rdm, err := newRemoteDataManager(remoteComponent)
 	if err != nil {
 		log.Err("Xload::startUploader : failed to create remote data manager [%s]", err.Error())
 		return err
