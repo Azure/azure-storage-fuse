@@ -51,37 +51,40 @@ func initializePlugins() error {
 	// Example BLOBFUSE_PLUGIN_PATH="/path/to/plugin1.so:/path/to/plugin2.so"
 	pluginFilesPath := os.Getenv("BLOBFUSE_PLUGIN_PATH")
 	if pluginFilesPath == "" {
+		log.Info("No plugins to load, BLOBFUSE_PLUGIN_PATH is empty")
 		return nil
 	}
 
 	pluginFiles := strings.Split(pluginFilesPath, ":")
 
 	for _, file := range pluginFiles {
-		if strings.HasSuffix(file, ".so") {
-			log.Info("loading plugin %s", file)
-			startTime := time.Now()
-			p, err := plugin.Open(file)
-			if err != nil {
-				return fmt.Errorf("error opening plugin %s: %s", file, err.Error())
-			}
-
-			getExternalComponentFunc, err := p.Lookup("GetExternalComponent")
-			if err != nil {
-				return fmt.Errorf("error looking up GetExternalComponent function in %s: %s", file, err.Error())
-			}
-
-			getExternalComponent, ok := getExternalComponentFunc.(func() (string, func() exported.Component))
-			if !ok {
-				return fmt.Errorf("error casting GetExternalComponent function in %s", file)
-			}
-
-			compName, initExternalComponent := getExternalComponent()
-			internal.AddComponent(compName, initExternalComponent)
-			duration := time.Since(startTime)
-			log.Info("plugin %s loaded successfully in %v", file, duration)
-		} else {
-			return fmt.Errorf("invalid plugin file extension: %s", file)
+		if !strings.HasSuffix(file, ".so") {
+			log.Err("Invalid plugin file extension: %s", file)
+			continue
 		}
+		log.Info("loading plugin %s", file)
+		startTime := time.Now()
+		p, err := plugin.Open(file)
+		if err != nil {
+			log.Err("Error opening plugin %s: %s", file, err.Error())
+			return fmt.Errorf("error opening plugin %s: %s", file, err.Error())
+		}
+
+		getExternalComponentFunc, err := p.Lookup("GetExternalComponent")
+		if err != nil {
+			log.Err("GetExternalComponent function lookup error in plugin %s: %s", file, err.Error())
+			return fmt.Errorf("GetExternalComponent function lookup error in plugin %s: %s", file, err.Error())
+		}
+
+		getExternalComponent, ok := getExternalComponentFunc.(func() (string, func() exported.Component))
+		if !ok {
+			log.Err("GetExternalComponent function in %s has some incorrect definition", file)
+			return fmt.Errorf("GetExternalComponent function in %s has some incorrect definition", file)
+		}
+
+		compName, initExternalComponent := getExternalComponent()
+		internal.AddComponent(compName, initExternalComponent)
+		log.Info("Plugin %s loaded in %s", file, time.Since(startTime))
 	}
 	return nil
 }
