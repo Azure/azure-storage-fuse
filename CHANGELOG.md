@@ -1,7 +1,14 @@
 ## 2.4.0 (Unreleased)
 **Bug Fixes**
 - Rename file was calling an additional getProperties call.
+- [#1426](https://github.com/Azure/azure-storage-fuse/issues/1426) Read panic in block-cache due to boundary conditions.
+- Rename file was calling an additional getProperties call.
 
+**Features**
+- Added support for custom component via go plugin.
+
+**Other Changes**
+- Stream config will be converted to block-cache config implicitly and 'stream' component is no longer used from this release onwards.
 
 ## 2.3.2 (2024-09-03)
 **Bug Fixes**
