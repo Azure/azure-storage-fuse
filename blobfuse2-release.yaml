@@ -1737,8 +1737,22 @@ stages:
     condition: succeeded('ReleaseArtifacts')
     jobs:
       - job: UpdateVersion
+        timeoutInMinutes: 120
+        strategy:
+          matrix:
+            UBN20:
+              vmImage: 'ubuntu-20.04'
+              fuselib: 'libfuse3-dev'
+              tags: 'fuse3'
+              depends: 'fuse3'
+              container: 'test-cnt-ubn-20'
+              AgentName: "blobfuse-ubuntu20"
+
         pool:
-          vmImage: 'ubuntu-20.04'
+          name: "blobfuse-ubuntu-pool"
+          demands:
+            - ImageOverride -equals $(agentName)
+
         variables:
           - group: NightlyBlobFuse
           - name: root_dir
@@ -1762,6 +1776,7 @@ stages:
               
               # install blobfuse2
               - script: |
+                  sudo apt install fuse3 -y
                   cd $(Build.ArtifactStagingDirectory)/blobfuse2
                   ls | grep -i ubuntu-20.04
                   sudo apt-get install ./`ls | grep -i ubuntu-20.04` -y
@@ -1775,7 +1790,39 @@ stages:
                 workingDirectory: $(root_dir)
 
               - script: |
-                  python3 releaseVersionUpdate.py "$(VERSION_CNT_SAS_URL)" "`blobfuse2 version`"
-                displayName: 'Updating version number'
-                workingDirectory: $(root_dir)
-
+                  mkdir -p ~/blob_mnt
+                  chmod 777 ~/blob_mnt
+                  mkdir -p ~/blobfusetemp
+                  chmod 777 ~/blobfusetemp
+                  blobfuse2 mount ~/blob_mnt --tmp-path=~/blobfusetemp --container-name="\$web"
+                  sleep 2
+                env:
+                  AZURE_STORAGE_ACCOUNT: "blobfuse2"
+                  AZURE_STORAGE_AUTH_TYPE: "msi"
+                displayName: 'Mount release container for version update'
+              
+              - script: |
+                  cd ~/blob_mnt/release/latest/
+                  ls -l 
+                  rm -v !("index.xml")
+                  ls -l 
+                displayName: 'Delete older version file'
+                
+              - script: |
+                  cd ~/blob_mnt/release/latest/
+                  touch `blobfuse2 version | cut -d " " -f3`
+                  ls -l 
+                displayName: 'Create new version file'
+              
+              - script: |
+                  cd ~/blob_mnt/release/latest/
+                  version=`blobfuse2 version | cut -d " " -f3`
+                  echo $version
+                  echo -e "<xml>\n<latest>$version</latest>\n</xml>" > index.xml
+                  cat index.xml
+                displayName: 'Update the XML file'    
+                
+              - script: |
+                  blobfuse2 unmount all
+                displayName: 'Unmount Blobfuse2'                              
+                
