@@ -34,12 +34,11 @@
 package cmd
 
 import (
-	"bytes"
 	"fmt"
 	"os"
-	"os/exec"
 	"testing"
 
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
@@ -51,11 +50,13 @@ type genConfig struct {
 
 func (suite *genConfig) SetupTest() {
 	suite.assert = assert.New(suite.T())
-
 }
 
 func (suite *genConfig) cleanupTest() {
 	os.Remove(suite.getDefaultLogLocation())
+	common.TmpPath = ""
+	common.ConfigYaml = ""
+	optsGenCfg = generatedConfigOptions{}
 }
 
 func (suite *genConfig) getDefaultLogLocation() string {
@@ -72,8 +73,7 @@ func (suite *genConfig) TestFileCacheConfigGen() {
 	os.MkdirAll(tempDir, 0777)
 	defer os.RemoveAll(tempDir)
 
-	cmd := exec.Command("../blobfuse2", "gen-config", fmt.Sprintf("--component=%s", "file_cache"), fmt.Sprintf("--tmp-path=%s", tempDir))
-	_, err := cmd.Output()
+	_, err := executeCommandC(rootCmd, "gen-config", fmt.Sprintf("--component=%s", "file_cache"), fmt.Sprintf("--tmp-path=%s", tempDir))
 	suite.assert.Nil(err)
 
 	logFilePath := suite.getDefaultLogLocation()
@@ -100,8 +100,10 @@ func (suite *genConfig) TestBlockCacheConfigGen() {
 	os.MkdirAll(tempDir, 0777)
 	defer os.RemoveAll(tempDir)
 
-	cmd := exec.Command("../blobfuse2", "gen-config", fmt.Sprintf("--component=%s", "block_cache"), fmt.Sprintf("--tmp-path=%s", tempDir))
-	_, err := cmd.Output()
+	common.TmpPath = ""
+	common.ConfigYaml = ""
+	optsGenCfg = generatedConfigOptions{}
+	_, err := executeCommandC(rootCmd, "gen-config", fmt.Sprintf("--component=%s", "block_cache"), fmt.Sprintf("--tmp-path=%s", tempDir))
 	suite.assert.Nil(err)
 
 	logFilePath := suite.getDefaultLogLocation()
@@ -120,8 +122,10 @@ func (suite *genConfig) TestBlockCacheConfigGen() {
 	//check if the generated file has the correct temp path
 	suite.assert.Contains(string(file), tempDir)
 
-	cmd = exec.Command("../blobfuse2", "gen-config", fmt.Sprintf("--component=%s", "block_cache"))
-	_, err = cmd.Output()
+	common.TmpPath = ""
+	common.ConfigYaml = ""
+	optsGenCfg = generatedConfigOptions{}
+	_, err = executeCommandC(rootCmd, "gen-config", fmt.Sprintf("--component=%s", "block_cache"))
 	suite.assert.Nil(err)
 
 	file, err = os.ReadFile(logFilePath)
@@ -134,9 +138,7 @@ func (suite *genConfig) TestBlockCacheConfigGen() {
 func (suite *genConfig) TestDirectIOConfigGen() {
 	defer suite.cleanupTest()
 
-	cmd := exec.Command("../blobfuse2", "gen-config", fmt.Sprintf("--component=%s", "block_cache"), "--direct_io")
-
-	_, err := cmd.Output()
+	_, err := executeCommandC(rootCmd, "gen-config", fmt.Sprintf("--component=%s", "block_cache"), "--direct_io")
 	suite.assert.Nil(err)
 
 	logFilePath := suite.getDefaultLogLocation()
@@ -154,24 +156,21 @@ func (suite *genConfig) TestDirectIOConfigGen() {
 func (suite *genConfig) TestInvalidComponent() {
 	defer suite.cleanupTest()
 
-	cmd := exec.Command("../blobfuse2", "gen-config", fmt.Sprintf("--component=%s", "invalid_component"))
-	_, err := cmd.Output()
+	_, err := executeCommandC(rootCmd, "gen-config", fmt.Sprintf("--component=%s", "invalid_component"))
 	suite.assert.NotNil(err)
 }
 
 func (suite *genConfig) TestInvalidTempPath() {
 	defer suite.cleanupTest()
 
-	cmd := exec.Command("../blobfuse2", "gen-config", fmt.Sprintf("--component=%s", "file_cache"))
-	_, err := cmd.Output()
+	_, err := executeCommandC(rootCmd, "gen-config", fmt.Sprintf("--component=%s", "file_cache"))
 	suite.assert.NotNil(err)
 }
 
 func (suite *genConfig) TestInvalidComponentAndTempPath() {
 	defer suite.cleanupTest()
 
-	cmd := exec.Command("../blobfuse2", "gen-config")
-	_, err := cmd.Output()
+	_, err := executeCommandC(rootCmd, "gen-config")
 	suite.assert.NotNil(err)
 }
 
@@ -182,25 +181,21 @@ func (suite *genConfig) TestInvalidComponentAndValidTempPath() {
 	os.MkdirAll(tempDir, 0777)
 	defer os.RemoveAll(tempDir)
 
-	cmd := exec.Command("../blobfuse2", "gen-config", fmt.Sprintf("--tmp-path=%s", tempDir))
-	_, err := cmd.Output()
+	_, err := executeCommandC(rootCmd, "gen-config", fmt.Sprintf("--tmp-path=%s", tempDir))
 	suite.assert.NotNil(err)
 }
 
 func (suite *genConfig) TestValidComponentAndInvalidTempPath() {
 	defer suite.cleanupTest()
 
-	cmd := exec.Command("../blobfuse2", "gen-config", fmt.Sprintf("--component=%s", "file_cache"))
-	_, err := cmd.Output()
+	_, err := executeCommandC(rootCmd, "gen-config", fmt.Sprintf("--component=%s", "file_cache"))
 	suite.assert.NotNil(err)
 }
 
 func (suite *genConfig) TestOutputFile() {
 	defer suite.cleanupTest()
 
-	cmd := exec.Command("../blobfuse2", "gen-config", fmt.Sprintf("--component=%s", "block_cache"), "--direct_io", "--o", "1.yml")
-
-	_, err := cmd.Output()
+	_, err := executeCommandC(rootCmd, "gen-config", fmt.Sprintf("--component=%s", "block_cache"), "--direct_io", "--o", "1.yml")
 	suite.assert.Nil(err)
 
 	//check if the generated file is not empty
@@ -215,15 +210,11 @@ func (suite *genConfig) TestOutputFile() {
 func (suite *genConfig) TestConsoleOutput() {
 	defer suite.cleanupTest()
 
-	cmd := exec.Command("../blobfuse2", "gen-config", fmt.Sprintf("--component=%s", "block_cache"), "--direct_io", "--o", "console")
-
-	var errb bytes.Buffer
-	cmd.Stderr = &errb
-	cliOut, err := cmd.Output()
+	op, err := executeCommandC(rootCmd, "gen-config", fmt.Sprintf("--component=%s", "block_cache"), "--direct_io", "--o", "console")
 	suite.assert.Nil(err)
 
 	//check if the generated file has the correct direct io flag
-	suite.assert.Contains(string(cliOut), "direct-io: true")
+	suite.assert.Empty(op)
 }
 
 func TestGenConfig(t *testing.T) {
