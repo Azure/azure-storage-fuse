@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1730801320639,
+  "lastUpdate": 1730829205999,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1329,6 +1329,70 @@ window.BENCHMARK_DATA = {
           {
             "name": "read_40GB",
             "value": 2376.633592966175,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "syeleti@microsoft.com",
+            "name": "syeleti-msft",
+            "username": "syeleti-msft"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "696ef5542657b6f118c369abe29b62f392408b3e",
+          "message": "Optimize Rename function logic to reduce the number of REST API calls. (#1459)\n\n* remove extra AREST API call in renameFile",
+          "timestamp": "2024-11-05T22:04:45+05:30",
+          "tree_id": "6a8a94643292f56ac0470aa8c5a20c27d9cb3669",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/696ef5542657b6f118c369abe29b62f392408b3e"
+        },
+        "date": 1730829205640,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "write_1GB",
+            "value": 669.0618493837042,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "write_10GB",
+            "value": 1879.3726353896022,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "write_100GB",
+            "value": 2000.6688238581926,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "write_40GB",
+            "value": 2020.4442851281713,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "read_1GB",
+            "value": 1348.8975082994878,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "read_10GB",
+            "value": 1866.1114508469807,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "read_100GB",
+            "value": 1998.2999320090912,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "read_40GB",
+            "value": 2255.2957218939496,
             "unit": "MiB/s"
           }
         ]
