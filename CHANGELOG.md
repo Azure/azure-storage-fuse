@@ -2,7 +2,7 @@
 **Bug Fixes**
 - [#1426](https://github.com/Azure/azure-storage-fuse/issues/1426) Read panic in block-cache due to boundary conditions.
 - Do not allow mount path and temp-cache path to be same when using block-cache.
-- Do not allow to mount with non-empty directory provided for disk persistance in block-cache.
+- Do not allow to mount with non-empty directory provided for disk persistence in block-cache.
 
 **Features**
 - Added support for custom component via go plugin.
