@@ -13,7 +13,7 @@ Please submit an issue [here](https://github.com/azure/azure-storage-fuse/issues
 ##  NOTICE
 - Due to known data consistency issues when using Blobfuse2 in `block-cache` mode,  it is strongly recommended that all Blobfuse2 installations be upgraded to version 2.3.2. For more information, see [this](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2-Known-issues).
 - As of version 2.3.0, blobfuse has updated its authentication methods. For Managed Identity, Object-ID based OAuth is solely accessible via CLI-based login, requiring Azure CLI on the system. For a dependency-free option, users may utilize Application/Client-ID or Resource ID based authentication.
-- `streaming` mode is being deprecated. This is the older option and is replaced with the `block-cache` mode which is the more performant streaming option.
+- `streaming` mode is deprecated. Blobfuse2 will implicitly convert your streaming config to block-cache.
 
 ## Limitations in Block Cache
 - Concurrent write operations on the same file using multiple handles is not checked for data consistency and may lead to incorrect data being written.
@@ -38,7 +38,7 @@ Visit [this](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2-Supporte
 - Basic file system operations such as mkdir, opendir, readdir, rmdir, open, 
    read, create, write, close, unlink, truncate, stat, rename
 - Local caching to improve subsequent access times
-- Streaming/Block-Cache to support reading AND writing large files 
+- Block-Cache to support reading AND writing large files 
 - Parallel downloads and uploads to improve access time for large files
 - Multiple mounts to the same container for read-only workloads
 
@@ -65,7 +65,7 @@ One of the biggest BlobFuse2 features is our brand new health monitor. It allows
 - CLI to check or update a parameter in the encrypted config
 - Set MD5 sum of a blob while uploading
 - Validate MD5 sum on download and fail file open on mismatch
-- Large file writing through write streaming/Block-Cache
+- Large file writing through write Block-Cache
 
  ## Blobfuse2 performance compared to blobfuse(v1.x.x)
 - 'git clone' operation is 25% faster (tested with vscode repo cloning)
@@ -154,8 +154,6 @@ To learn about a specific command, just include the name of the command (For exa
     * `--high-disk-threshold=<PERCENTAGE>`: If local cache usage exceeds this, start early eviction of files from cache.
     * `--low-disk-threshold=<PERCENTAGE>`: If local cache usage comes below this threshold then stop early eviction.
     * `--sync-to-flush=false` : Sync call will force upload a file to storage container if this is set to true, otherwise it just evicts file from local cache.
-- Stream options
-    * `--block-size-mb=<SIZE IN MB>`: Size of a block to be downloaded during streaming.
 - Block-Cache options
     * `--block-cache-block-size=<SIZE IN MB>`: Size of a block to be downloaded as a unit.
     * `--block-cache-pool-size=<SIZE IN MB>`: Size of pool to be used for caching. This limits total memory used by block-cache. Default - 80% of free memory available.
@@ -232,7 +230,6 @@ Below diagrams guide you to choose right configuration for your workloads.
 <br/><br/>
 - [Sample File Cache Config](./sampleFileCacheConfig.yaml)
 - [Sample Block-Cache Config](./sampleBlockCacheConfig.yaml)
-- [Sample Stream Config](./sampleStreamingConfig.yaml)
 - [All Config options](./setup/baseConfig.yaml) 
 
 

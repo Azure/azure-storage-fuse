@@ -41,5 +41,4 @@ import (
 	_ "github.com/Azure/azure-storage-fuse/v2/component/file_cache"
 	_ "github.com/Azure/azure-storage-fuse/v2/component/libfuse"
 	_ "github.com/Azure/azure-storage-fuse/v2/component/loopback"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/stream"
 )
