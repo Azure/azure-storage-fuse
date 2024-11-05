@@ -70,6 +70,7 @@ type BlockCache struct {
 
 	blockSize       uint64          // Size of each block to be cached
 	memSize         uint64          // Mem size to be used for caching at the startup
+	mntPath         string          // Mount path
 	tmpPath         string          // Disk path where these blocks will be cached
 	diskSize        uint64          // Size of disk space allocated for the caching
 	diskTimeout     uint32          // Timeout for which disk blocks will be cached
@@ -258,12 +259,22 @@ func (bc *BlockCache) Configure(_ bool) error {
 		bc.workers = conf.Workers
 	}
 
-	bc.tmpPath = ""
-	if conf.TmpPath != "" || common.TmpPath != "" {
-		if common.GenConfig {
-			bc.tmpPath = common.ExpandPath(common.TmpPath)
-		} else {
-			bc.tmpPath = common.ExpandPath(conf.TmpPath)
+	bc.tmpPath = common.ExpandPath(conf.TmpPath)
+	if common.GenConfig {
+		bc.tmpPath = common.ExpandPath(common.TmpPath)
+	}
+
+	if bc.tmpPath != "" {
+		//check mnt path is not same as temp path
+		err = config.UnmarshalKey("mount-path", &bc.mntPath)
+		if err != nil {
+			log.Err("BlockCache: config error [unable to obtain Mount Path]")
+			return fmt.Errorf("config error in %s [%s]", bc.Name(), err.Error())
+		}
+
+		if bc.mntPath == bc.tmpPath {
+			log.Err("BlockCache: config error [tmp-path is same as mount path]")
+			return fmt.Errorf("config error in %s error [tmp-path is same as mount path]", bc.Name())
 		}
 
 		// Extract values from 'conf' and store them as you wish here
@@ -272,10 +283,16 @@ func (bc *BlockCache) Configure(_ bool) error {
 			log.Info("BlockCache: config error [tmp-path does not exist. attempting to create tmp-path.]")
 			err := os.Mkdir(bc.tmpPath, os.FileMode(0755))
 			if err != nil {
-				log.Err("BlockCache: config error creating directory after clean [%s]", err.Error())
+				log.Err("BlockCache: config error creating directory of temp path after clean [%s]", err.Error())
 				return fmt.Errorf("config error in %s [%s]", bc.Name(), err.Error())
 			}
 		}
+
+		if !common.IsDirectoryEmpty(bc.tmpPath) {
+			log.Err("BlockCache: config error %s directory is not empty", bc.tmpPath)
+			return fmt.Errorf("config error in %s [%s]", bc.Name(), "temp directory not empty")
+		}
+
 		var stat syscall.Statfs_t
 		err = syscall.Statfs(bc.tmpPath, &stat)
 		if err != nil {
