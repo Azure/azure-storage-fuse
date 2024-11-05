@@ -2,6 +2,9 @@
 **Bug Fixes**
 - [#1426](https://github.com/Azure/azure-storage-fuse/issues/1426) Read panic in block-cache due to boundary conditions.
 
+**Other Changes**
+- Stream config will be converted to block-cache config implicitly and 'stream' component is no longer used from this release onwards.
+
 ## 2.3.2 (2024-09-03)
 **Bug Fixes**
 - Fixed the case where file creation using SAS on HNS accounts was returning back wrong error code.

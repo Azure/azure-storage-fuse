@@ -47,6 +47,7 @@ type generatedConfigOptions struct {
 	configComp     string
 	configTmp      string
 	configDirectIO bool
+	outputFile     string
 }
 
 var optsGenCfg generatedConfigOptions
@@ -102,15 +103,26 @@ var generatedConfig = &cobra.Command{
 		sb.WriteString("\n#Required\n#azstorage:\n  #  type: block|adls \n  #  account-name: <name of the storage account>\n  #  container: <name of the storage container to be mounted>\n  #  endpoint: <example - https://account-name.blob.core.windows.net>\n  ")
 		sb.WriteString("#  mode: key|sas|spn|msi|azcli \n  #  account-key: <storage account key>\n  # OR\n  #  sas: <storage account sas>\n  # OR\n  #  appid: <storage account app id / client id for MSI>\n  # OR\n  #  tenantid: <storage account tenant id for SPN")
 
-		// DefaultWorkDir := "$HOME/.blobfuse2"
-		// DefaultLogFile := filepath.Join(DefaultWorkDir, "generatedConfig.yaml")
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			fmt.Println("Error getting home directory:", err)
-			return err
+		filePath := ""
+		if optsGenCfg.outputFile == "" {
+			// DefaultWorkDir := "$HOME/.blobfuse2"
+			// DefaultLogFile := filepath.Join(DefaultWorkDir, "generatedConfig.yaml")
+			homeDir, err := os.UserHomeDir()
+			if err != nil {
+				fmt.Println("Error getting home directory:", err)
+				return err
+			}
+			filePath = homeDir + "/.blobfuse2/generatedConfig.yaml"
+		} else {
+			filePath = optsGenCfg.outputFile
 		}
-		filePath := homeDir + "/.blobfuse2/generatedConfig.yaml"
-		err = common.WriteToFile(filePath, sb.String(), common.WriteToFileOptions{Flags: os.O_TRUNC, Permission: 0644})
+
+		if optsGenCfg.outputFile == "console" {
+			fmt.Println(sb.String())
+		} else {
+			err = common.WriteToFile(filePath, sb.String(), common.WriteToFileOptions{Flags: os.O_TRUNC, Permission: 0644})
+		}
+
 		return err
 	},
 }
@@ -120,4 +132,5 @@ func init() {
 	generatedConfig.Flags().StringVar(&optsGenCfg.configComp, "component", "", "Input block_cache or file_cache")
 	generatedConfig.Flags().StringVar(&optsGenCfg.configTmp, "tmp-path", "", "Input path for caching")
 	generatedConfig.Flags().BoolVar(&optsGenCfg.configDirectIO, "direct_io", false, "Choose direct-io mode")
+	generatedConfig.Flags().StringVar(&optsGenCfg.outputFile, "o", "", "Output file location")
 }

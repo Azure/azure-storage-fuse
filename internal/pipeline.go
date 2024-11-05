@@ -58,6 +58,10 @@ func NewPipeline(components []string, isParent bool) (*Pipeline, error) {
 	comps := make([]Component, 0)
 	lastPriority := EComponentPriority.Producer()
 	for _, name := range components {
+		if name == "stream" {
+			common.IsStream = true
+			name = "block_cache"
+		}
 		//  Search component exists in our registered map or not
 		compInit, ok := registeredComponents[name]
 		if ok {

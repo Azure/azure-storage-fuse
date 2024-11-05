@@ -78,6 +78,26 @@ func NewComponentC() Component {
 	return &ComponentC{}
 }
 
+type ComponentStream struct {
+	BaseComponent
+}
+
+func NewComponentStream() Component {
+	comp := &ComponentStream{}
+	comp.SetName("stream")
+	return comp
+}
+
+type ComponentBlockCache struct {
+	BaseComponent
+}
+
+func NewComponentBlockCache() Component {
+	comp := &ComponentBlockCache{}
+	comp.SetName("block_cache")
+	return comp
+}
+
 /////////////////////////////////////////
 
 type pipelineTestSuite struct {
@@ -89,6 +109,8 @@ func (suite *pipelineTestSuite) SetupTest() {
 	AddComponent("ComponentA", NewComponentA)
 	AddComponent("ComponentB", NewComponentB)
 	AddComponent("ComponentC", NewComponentC)
+	AddComponent("stream", NewComponentStream)
+	AddComponent("block_cache", NewComponentBlockCache)
 	suite.assert = assert.New(suite.T())
 }
 
@@ -112,7 +134,7 @@ func (s *pipelineTestSuite) TestInvalidComponent() {
 func (s *pipelineTestSuite) TestStartStopCreateNewPipeline() {
 	p, err := NewPipeline([]string{"ComponentA", "ComponentB"}, false)
 	s.assert.Nil(err)
-
+	print(p.components[0].Name())
 	err = p.Start(nil)
 	s.assert.Nil(err)
 
@@ -126,6 +148,12 @@ func (s *pipelineTestSuite) TestNewPipelineWithGenConfig() {
 	p, err := NewPipeline([]string{"ComponentA", "ComponentB", "ComponentC"}, false)
 	s.assert.Nil(err)
 	s.assert.Equal(0, len(p.components))
+}
+
+func (s *pipelineTestSuite) TestStreamToBlockCacheConfig() {
+	p, err := NewPipeline([]string{"stream"}, false)
+	s.assert.Nil(err)
+	s.assert.Equal(p.components[0].Name(), "block_cache")
 }
 
 func TestPipelineTestSuite(t *testing.T) {
