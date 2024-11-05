@@ -1,8 +1,6 @@
-## 2.3.3 (Unreleased)
+## 2.4.0 (Unreleased)
 **Bug Fixes**
-
-**Features**
-- Added support for custom component via go plugin.
+- [#1426](https://github.com/Azure/azure-storage-fuse/issues/1426) Read panic in block-cache due to boundary conditions.
 
 ## 2.3.2 (2024-09-03)
 **Bug Fixes**
