@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1730736601728,
+  "lastUpdate": 1730796654841,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -399,6 +399,40 @@ window.BENCHMARK_DATA = {
           {
             "name": "create_10_20GB_file",
             "value": 3.809326545394729,
+            "unit": "GiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "137055338+ashruti-msft@users.noreply.github.com",
+            "name": "ashruti-msft",
+            "username": "ashruti-msft"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "46a557ce18bc597d06f560f73f4d792c70a72563",
+          "message": "Redirecting stream config to BlockCache (#1445)\n\n* Auto convert streaming config to block-cache config",
+          "timestamp": "2024-11-05T11:38:27+05:30",
+          "tree_id": "73c016b08ff97d4da1a648b55454b4e182c84916",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/46a557ce18bc597d06f560f73f4d792c70a72563"
+        },
+        "date": 1730796654601,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "read_10_20GB_file",
+            "value": 3.8983983839481398,
+            "unit": "GiB/s"
+          },
+          {
+            "name": "create_10_20GB_file",
+            "value": 3.8226049078616664,
             "unit": "GiB/s"
           }
         ]
