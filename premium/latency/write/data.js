@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1730789695380,
+  "lastUpdate": 1730799465023,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -865,6 +865,50 @@ window.BENCHMARK_DATA = {
           {
             "name": "sequential_write_16_threads",
             "value": 0.133971115734,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "31076415+abhiguptacse@users.noreply.github.com",
+            "name": "Abhinav Gupta",
+            "username": "abhiguptacse"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "0fb27e40864763f2c379134fb6e65bab9ebe4cd3",
+          "message": "Adding custom component feature (#1558)\n\n* adding custom component feature",
+          "timestamp": "2024-11-05T13:10:41+05:30",
+          "tree_id": "8ea42764d92489abc1d9e99857af7505ea29622e",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/0fb27e40864763f2c379134fb6e65bab9ebe4cd3"
+        },
+        "date": 1730799464771,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_write",
+            "value": 0.13967636560733332,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_write_directio",
+            "value": 0.13202464519066667,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_write_4_threads",
+            "value": 0.13470320491633334,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_write_16_threads",
+            "value": 0.12921912054866666,
             "unit": "milliseconds"
           }
         ]
