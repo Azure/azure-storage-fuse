@@ -1,7 +1,8 @@
 ## 2.4.0 (Unreleased)
 **Bug Fixes**
 - [#1426](https://github.com/Azure/azure-storage-fuse/issues/1426) Read panic in block-cache due to boundary conditions.
-  
+- Rename file was calling an additional getProperties call.
+
 **Features**
 - Added support for custom component via go plugin.
 
