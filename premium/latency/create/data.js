@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1730800650029,
+  "lastUpdate": 1730828504066,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -789,6 +789,45 @@ window.BENCHMARK_DATA = {
           "url": "https://github.com/Azure/azure-storage-fuse/commit/0fb27e40864763f2c379134fb6e65bab9ebe4cd3"
         },
         "date": 1730800649745,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "create_1000_files_in_10_threads",
+            "value": 0,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "create_1000_files_in_100_threads",
+            "value": 0,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "create_1l_files_in_20_threads",
+            "value": 0,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "syeleti@microsoft.com",
+            "name": "syeleti-msft",
+            "username": "syeleti-msft"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "696ef5542657b6f118c369abe29b62f392408b3e",
+          "message": "Optimize Rename function logic to reduce the number of REST API calls. (#1459)\n\n* remove extra AREST API call in renameFile",
+          "timestamp": "2024-11-05T22:04:45+05:30",
+          "tree_id": "6a8a94643292f56ac0470aa8c5a20c27d9cb3669",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/696ef5542657b6f118c369abe29b62f392408b3e"
+        },
+        "date": 1730828503789,
         "tool": "customSmallerIsBetter",
         "benches": [
           {
