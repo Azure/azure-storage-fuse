@@ -34,6 +34,7 @@
 package cmd
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -192,6 +193,37 @@ func (suite *genConfig) TestValidComponentAndInvalidTempPath() {
 	cmd := exec.Command("../blobfuse2", "gen-config", fmt.Sprintf("--component=%s", "file_cache"))
 	_, err := cmd.Output()
 	suite.assert.NotNil(err)
+}
+
+func (suite *genConfig) TestOutputFile() {
+	defer suite.cleanupTest()
+
+	cmd := exec.Command("../blobfuse2", "gen-config", fmt.Sprintf("--component=%s", "block_cache"), "--direct_io", "--o", "1.yml")
+
+	_, err := cmd.Output()
+	suite.assert.Nil(err)
+
+	//check if the generated file is not empty
+	file, err := os.ReadFile("1.yml")
+	suite.assert.Nil(err)
+	suite.assert.NotEmpty(file)
+
+	//check if the generated file has the correct direct io flag
+	suite.assert.Contains(string(file), "direct-io: true")
+}
+
+func (suite *genConfig) TestConsoleOutput() {
+	defer suite.cleanupTest()
+
+	cmd := exec.Command("../blobfuse2", "gen-config", fmt.Sprintf("--component=%s", "block_cache"), "--direct_io", "--o", "console")
+
+	var errb bytes.Buffer
+	cmd.Stderr = &errb
+	cliOut, err := cmd.Output()
+	suite.assert.Nil(err)
+
+	//check if the generated file has the correct direct io flag
+	suite.assert.Contains(string(cliOut), "direct-io: true")
 }
 
 func TestGenConfig(t *testing.T) {
