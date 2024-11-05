@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1730795848577,
+  "lastUpdate": 1730805832948,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -498,6 +498,45 @@ window.BENCHMARK_DATA = {
           {
             "name": "create_1l_files_in_20_threads",
             "value": 0.1025390625,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "31076415+abhiguptacse@users.noreply.github.com",
+            "name": "Abhinav Gupta",
+            "username": "abhiguptacse"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "0fb27e40864763f2c379134fb6e65bab9ebe4cd3",
+          "message": "Adding custom component feature (#1558)\n\n* adding custom component feature",
+          "timestamp": "2024-11-05T13:10:41+05:30",
+          "tree_id": "8ea42764d92489abc1d9e99857af7505ea29622e",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/0fb27e40864763f2c379134fb6e65bab9ebe4cd3"
+        },
+        "date": 1730805832686,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "create_1000_files_in_10_threads",
+            "value": 95.01171875,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "create_1000_files_in_100_threads",
+            "value": 98.6962890625,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "create_1l_files_in_20_threads",
+            "value": 0.0966796875,
             "unit": "MiB/s"
           }
         ]
