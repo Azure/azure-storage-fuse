@@ -164,6 +164,7 @@ func (tobj *testObj) cleanupPipeline() error {
 	os.RemoveAll(tobj.fake_storage_path)
 	os.RemoveAll(tobj.disk_cache_path)
 
+	common.IsStream = false
 	return nil
 }
 
@@ -2606,6 +2607,18 @@ func (suite *blockCacheTestSuite) TestReadWriteBlockInParallel() {
 	fs, err := os.Stat(storagePath)
 	suite.assert.Nil(err)
 	suite.assert.Equal(fs.Size(), int64(62*_1MB))
+}
+
+func (suite *blockCacheTestSuite) TestZZZZZStreamToBlockCacheConfig() {
+	common.IsStream = true
+	config := "read-only: true\n\nstream:\n  block-size-mb: 16\n  max-buffers: 80\n  buffer-size-mb: 8\n"
+	tobj, err := setupPipeline(config)
+	defer tobj.cleanupPipeline()
+
+	suite.assert.Nil(err)
+	suite.assert.Equal(tobj.blockCache.Name(), "block_cache")
+	suite.assert.EqualValues(tobj.blockCache.blockSize, 16*_1MB)
+	suite.assert.EqualValues(tobj.blockCache.memSize, 8*_1MB*80)
 }
 
 // In order for 'go test' to run this suite, we need to create
