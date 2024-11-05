@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1730797878610,
+  "lastUpdate": 1730825701337,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1501,6 +1501,75 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 74.825515817122,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "syeleti@microsoft.com",
+            "name": "syeleti-msft",
+            "username": "syeleti-msft"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "696ef5542657b6f118c369abe29b62f392408b3e",
+          "message": "Optimize Rename function logic to reduce the number of REST API calls. (#1459)\n\n* remove extra AREST API call in renameFile",
+          "timestamp": "2024-11-05T22:04:45+05:30",
+          "tree_id": "6a8a94643292f56ac0470aa8c5a20c27d9cb3669",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/696ef5542657b6f118c369abe29b62f392408b3e"
+        },
+        "date": 1730825701081,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read",
+            "value": 0.09271295322533334,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read",
+            "value": 74.32920587158999,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_small_file",
+            "value": 0.09170113699266667,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 0.18257299912166666,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_direct_io",
+            "value": 0.11233773875533333,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_direct_io",
+            "value": 71.03390004837334,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 0.17858195593899998,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 1.139232708547,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 77.81780134768066,
             "unit": "milliseconds"
           }
         ]
