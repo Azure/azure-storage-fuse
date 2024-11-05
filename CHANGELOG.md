@@ -1,6 +1,5 @@
 ## 2.4.0 (Unreleased)
 **Bug Fixes**
-- Rename file was calling an additional getProperties call.
 - [#1426](https://github.com/Azure/azure-storage-fuse/issues/1426) Read panic in block-cache due to boundary conditions.
 - Rename file was calling an additional getProperties call.
 
