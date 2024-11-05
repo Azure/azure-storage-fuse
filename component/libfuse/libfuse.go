@@ -268,6 +268,7 @@ func (lf *Libfuse) GenConfig() error {
 
 	if common.DirectIO {
 		sb.WriteString("  direct-io: true\n")
+		sb.WriteString("  disable-writeback-cache: true\n")
 	}
 
 	// Append generated YAML to the common configuration
