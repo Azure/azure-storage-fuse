@@ -3,7 +3,7 @@
 #   1. All boolean configs (true|false config) (except ignore-open-flags, virtual-directory) are set to 'false' by default. 
 #      No need to mention them in your config file unless you are setting them to true.
 #   2. 'loopbackfs' is purely for testing and shall not be used in production configuration.
-#   3. 'stream' and 'file_cache' can not co-exist and config file shall have only one of them based on your use case.
+#   3. 'block-cache' and 'file_cache' can not co-exist and config file shall have only one of them based on your use case.
 #   4. By default log level is set to 'log_warning' level and are redirected to syslog. 
 #      Either use 'base' logging or syslog filters to redirect logs to separate file.
 #      To install syslog filter follow below steps:        
@@ -71,14 +71,6 @@ libfuse:
 # Entry Cache configuration
 entry_cache:
   timeout-sec: <cache eviction timeout (in sec). Default - 30 sec>
-
-# Streaming configuration – remove and redirect to block-cache
-stream:
-  # If block-size-mb, max-buffers or buffer-size-mb are 0, the stream component will not cache blocks. 
-  block-size-mb: <for read only mode size of each block to be cached in memory while streaming (in MB). For read/write size of newly created blocks. Default - 0 MB>
-  max-buffers: <total number of buffers to store blocks in. Default - 0>
-  buffer-size-mb: <size for each buffer. Default - 0 MB>
-  file-caching: <read/write mode file level caching or handle level caching. Default - false (handle level caching ON)>
 
 # Block cache related configuration
 block_cache:
