@@ -11,6 +11,9 @@
 **Other Changes**
 - Stream config will be converted to block-cache config implicitly and 'stream' component is no longer used from this release onwards.
 
+**Other Changes**
+- MSI login with object-id will not rely on azcli anymore.
+
 ## 2.3.2 (2024-09-03)
 **Bug Fixes**
 - Fixed the case where file creation using SAS on HNS accounts was returning back wrong error code.
