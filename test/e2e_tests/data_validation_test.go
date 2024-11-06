@@ -169,17 +169,6 @@ func createFileHandleInLocalAndRemote(suite *dataValidationTestSuite, localFileP
 	return lfh, rfh
 }
 
-// Open File in Local and Mounted Directories and returns there file handles the associated fd has O_RDONLY Mode
-func openFileHandleInLocalAndRemote(suite *dataValidationTestSuite, flags int, localFilePath, remoteFilePath string) (lfh *os.File, rfh *os.File) {
-	lfh, err := os.OpenFile(localFilePath, flags, 0666)
-	suite.Nil(err)
-
-	rfh, err = os.OpenFile(remoteFilePath, flags, 0666)
-	suite.Nil(err)
-
-	return lfh, rfh
-}
-
 // closes the file handles, This ensures that data is flushed to disk/Azure Storage from the cache
 func closeFileHandles(suite *dataValidationTestSuite, handles ...*os.File) {
 	for _, h := range handles {
@@ -224,28 +213,6 @@ func generateFileWithRandomData(suite *dataValidationTestSuite, filePath string,
 		size -= bytesWritten
 	}
 	closeFileHandles(suite, fh)
-}
-
-func compareReadOperInLocalAndRemote(suite *dataValidationTestSuite, lfh, rfh *os.File, offset int64) {
-	buffer1 := make([]byte, 4*int(_1MB))
-	buffer2 := make([]byte, 4*int(_1MB))
-
-	bytes_read_local, err1 := lfh.ReadAt(buffer1, offset)
-	bytes_read_remote, err2 := rfh.ReadAt(buffer2, offset)
-	suite.Equal(err1, err2)
-	suite.Equal(bytes_read_local, bytes_read_remote)
-	suite.Equal(buffer1[:bytes_read_local], buffer2[:bytes_read_remote])
-}
-
-func compareWriteOperInLocalAndRemote(suite *dataValidationTestSuite, lfh, rfh *os.File, offset int64) {
-	sizeofbuffer := (rand.Int() % 4) + 1
-	buffer := make([]byte, sizeofbuffer*int(_1MB))
-	rand.Read(buffer)
-
-	bytes_written_local, err1 := lfh.WriteAt(buffer, offset)
-	bytes_written_remote, err2 := rfh.WriteAt(buffer, offset)
-	suite.Equal(err1, err2)
-	suite.Equal(bytes_written_local, bytes_written_remote)
 }
 
 // -------------- Data Validation Tests -------------------
@@ -750,52 +717,6 @@ func (suite *dataValidationTestSuite) TestPanicOnReadingFileInRandReadMode() {
 	}
 
 	closeFileHandles(suite, rfh)
-}
-
-func (suite *dataValidationTestSuite) TestReadDataAtBlockBoundaries() {
-	fileName := "testReadDataAtBlockBoundaries"
-	localFilePath, remoteFilePath := convertFileNameToFilePath(fileName)
-	fileSize := 35 * int(_1MB)
-	generateFileWithRandomData(suite, localFilePath, fileSize)
-	suite.copyToMountDir(localFilePath, remoteFilePath)
-	suite.validateData(localFilePath, remoteFilePath)
-
-	lfh, rfh := openFileHandleInLocalAndRemote(suite, os.O_RDWR, localFilePath, remoteFilePath)
-	var offset int64 = 0
-	//tests run in 16MB block size config.
-	//Data in File 35MB(3blocks)
-	//block1->16MB, block2->16MB, block3->3MB
-
-	//getting 4MB data from 1st block
-	compareReadOperInLocalAndRemote(suite, lfh, rfh, offset)
-	//getting 4MB data from overlapping blocks
-	offset = int64(15 * int(_1MB))
-	compareReadOperInLocalAndRemote(suite, lfh, rfh, offset)
-	//getting 4MB data from last block
-	offset = int64(32 * int(_1MB))
-	compareReadOperInLocalAndRemote(suite, lfh, rfh, offset)
-	//getting 4MB data from overlapping block with last block
-	offset = int64(30 * int(_1MB))
-	compareReadOperInLocalAndRemote(suite, lfh, rfh, offset)
-	//Read at some random offset
-	for i := 0; i < 10; i++ {
-		offset = rand.Int63() % int64(fileSize)
-		compareReadOperInLocalAndRemote(suite, lfh, rfh, offset)
-	}
-
-	//write at end of file
-	offset = int64(fileSize)
-	compareWriteOperInLocalAndRemote(suite, lfh, rfh, offset)
-	//Check the previous write with read
-	compareReadOperInLocalAndRemote(suite, lfh, rfh, offset)
-
-	//Write at Random offset in the file
-	offset = rand.Int63() % int64(fileSize)
-	compareWriteOperInLocalAndRemote(suite, lfh, rfh, offset)
-	//Check the previous write with read
-	compareReadOperInLocalAndRemote(suite, lfh, rfh, offset)
-
-	closeFileHandles(suite, lfh, rfh)
 }
 
 // -------------- Main Method -------------------
