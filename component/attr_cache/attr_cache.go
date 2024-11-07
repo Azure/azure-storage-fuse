@@ -164,7 +164,7 @@ func (ac *AttrCache) Configure(_ bool) error {
 
 	ac.noSymlinks = conf.NoSymlinks
 
-	log.Info("AttrCache::Configure : cache-timeout %d, symlink %t, cache-on-list %t, max-files %d",
+	log.Crit("AttrCache::Configure : cache-timeout %d, symlink %t, cache-on-list %t, max-files %d",
 		ac.cacheTimeout, ac.noSymlinks, ac.cacheOnList, ac.maxFiles)
 
 	return nil

@@ -310,9 +310,6 @@ func (bc *BlockCache) Configure(_ bool) error {
 		return fmt.Errorf("config error in %s [memory limit too low for configured prefetch]", bc.Name())
 	}
 
-	log.Info("BlockCache::Configure : block size %v, mem size %v, worker %v, prefetch %v, disk path %v, max size %v, disk timeout %v, prefetch-on-open %t, maxDiskUsageHit %v, noPrefetch %v",
-		bc.blockSize, bc.memSize, bc.workers, bc.prefetch, bc.tmpPath, bc.diskSize, bc.diskTimeout, bc.prefetchOnOpen, bc.maxDiskUsageHit, bc.noPrefetch)
-
 	bc.blockPool = NewBlockPool(bc.blockSize, bc.memSize)
 	if bc.blockPool == nil {
 		log.Err("BlockCache::Configure : fail to init Block pool")
@@ -332,6 +329,9 @@ func (bc *BlockCache) Configure(_ bool) error {
 			return fmt.Errorf("config error in %s [%s]", bc.Name(), err.Error())
 		}
 	}
+
+	log.Crit("BlockCache::Configure : block size %v, mem size %v, worker %v, prefetch %v, disk path %v, max size %v, disk timeout %v, prefetch-on-open %t, maxDiskUsageHit %v, noPrefetch %v",
+		bc.blockSize, bc.memSize, bc.workers, bc.prefetch, bc.tmpPath, bc.diskSize, bc.diskTimeout, bc.prefetchOnOpen, bc.maxDiskUsageHit, bc.noPrefetch)
 
 	return nil
 }
