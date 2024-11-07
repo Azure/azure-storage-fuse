@@ -118,9 +118,21 @@ func (c *EntryCache) Stop() error {
 func (c *EntryCache) Configure(_ bool) error {
 	log.Trace("EntryCache::Configure : %s", c.Name())
 
+	var readonly bool
+	err := config.UnmarshalKey("read-only", &readonly)
+	if err != nil {
+		log.Err("EntryCache::Configure : config error [unable to obtain read-only]")
+		return fmt.Errorf("config error in %s [%s]", c.Name(), err.Error())
+	}
+
+	if !readonly {
+		log.Err("EntryCache::Configure : EntryCache component should be used only in read-only mode")
+		return fmt.Errorf("EntryCache component should be used in only in read-only mode")
+	}
+
 	// >> If you do not need any config parameters remove below code and return nil
 	conf := EntryCacheOptions{}
-	err := config.UnmarshalKey(c.Name(), &conf)
+	err = config.UnmarshalKey(c.Name(), &conf)
 	if err != nil {
 		log.Err("EntryCache::Configure : config error [invalid config attributes]")
 		return fmt.Errorf("EntryCache: config error [invalid config attributes]")
