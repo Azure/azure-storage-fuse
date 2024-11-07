@@ -455,7 +455,7 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		az.stConfig.authConfig.AuthMode = EAuthType.SPN()
 		if opt.ClientID == "" || (opt.ClientSecret == "" && opt.OAuthTokenFilePath == "" && opt.WorkloadIdentityToken == "") || opt.TenantID == "" {
 			//lint:ignore ST1005 ignore
-			return errors.New(fmt.Sprintf("Client ID %s, Tenant ID %s or Client Secret %s, OAuthTokenFilePath %s, WorkloadIdentityToken %s not provided", opt.ClientID, opt.TenantID, opt.ClientSecret, opt.OAuthTokenFilePath, opt.WorkloadIdentityToken))
+			return errors.New("Client ID, Tenant ID or Client Secret, OAuthTokenFilePath, WorkloadIdentityToken not provided")
 		}
 		az.stConfig.authConfig.ClientID = opt.ClientID
 		az.stConfig.authConfig.ClientSecret = opt.ClientSecret
