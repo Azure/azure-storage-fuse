@@ -57,10 +57,7 @@ func (suite *genConfig) cleanupTest() {
 }
 
 func (suite *genConfig) getDefaultLogLocation() string {
-	var homeDir, err = os.UserHomeDir()
-	suite.assert.Nil(err)
-	var logFilePath = homeDir + "/.blobfuse2/generatedConfig.yaml"
-	return logFilePath
+	return "./blobfuse2.yaml"
 }
 
 func (suite *genConfig) TestNoTempPath() {
@@ -176,17 +173,18 @@ func (suite *genConfig) TestDirectIOConfigGen() {
 func (suite *genConfig) TestOutputFile() {
 	defer suite.cleanupTest()
 
-	_, err := executeCommandC(rootCmd, "gen-config", "--block-cache", "--direct-io", "--o", "1.yml")
+	_, err := executeCommandC(rootCmd, "gen-config", "--block-cache", "--direct-io", "--o", "1.yaml")
 	suite.assert.Nil(err)
 
 	//check if the generated file is not empty
-	file, err := os.ReadFile("1.yml")
+	file, err := os.ReadFile("1.yaml")
 	suite.assert.Nil(err)
 	suite.assert.NotEmpty(file)
 
 	//check if the generated file has the correct direct io flag
 	suite.assert.Contains(string(file), "direct-io: true")
 	suite.assert.NotContains(string(file), " path: ")
+	_ = os.Remove("1.yaml")
 }
 
 func (suite *genConfig) TestConsoleOutput() {

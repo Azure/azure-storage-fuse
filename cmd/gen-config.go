@@ -125,14 +125,7 @@ var generatedConfig = &cobra.Command{
 
 		filePath := ""
 		if optsGenCfg.outputFile == "" {
-			// DefaultWorkDir := "$HOME/.blobfuse2"
-			// DefaultLogFile := filepath.Join(DefaultWorkDir, "generatedConfig.yaml")
-			homeDir, err := os.UserHomeDir()
-			if err != nil {
-				fmt.Println("Error getting home directory:", err)
-				return err
-			}
-			filePath = homeDir + "/.blobfuse2/generatedConfig.yaml"
+			filePath = "./blobfuse2.yaml"
 		} else {
 			filePath = optsGenCfg.outputFile
 		}
