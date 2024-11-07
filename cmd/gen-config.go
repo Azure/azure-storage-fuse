@@ -65,7 +65,7 @@ var generatedConfig = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		// Check if configTmp is not provided when component is fc
-		if optsGenCfg.blockCache == false && optsGenCfg.tmpPath == "" {
+		if (!optsGenCfg.blockCache) && optsGenCfg.tmpPath == "" {
 			return fmt.Errorf("temp path is required for file cache mode. Use flag --tmp-path to provide the path")
 		}
 
