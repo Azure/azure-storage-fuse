@@ -117,7 +117,7 @@ func IsMountActive(path string) (bool, error) {
 
 		err := cmd.Run()
 		if err != nil {
-			return true, fmt.Errorf("failed to get command line arguments for pid %s [%v] ", pid, err.Error())
+			return true, fmt.Errorf("failed to get command line arguments for pid %s [%v]", pid, err.Error())
 		}
 
 		if strings.Contains(out.String(), path) {
