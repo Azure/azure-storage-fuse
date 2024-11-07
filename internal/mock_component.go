@@ -136,6 +136,10 @@ func (m *MockComponent) Configure(arg0 bool) error {
 	return ret0
 }
 
+func (m *MockComponent) GenConfig() string {
+	return ""
+}
+
 // Configure indicates an expected call of Configure.
 func (mr *MockComponentMockRecorder) Configure(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()

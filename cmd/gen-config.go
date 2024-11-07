@@ -39,18 +39,20 @@ import (
 	"strings"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/spf13/cobra"
 )
 
-type generatedConfigOptions struct {
-	configComp     string
-	configTmp      string
-	configDirectIO bool
-	outputFile     string
+type genConfigParams struct {
+	blockCache bool   `config:"block-cache" yaml:"block-cache,omitempty"`
+	directIO   bool   `config:"direct-io" yaml:"direct-io,omitempty"`
+	readOnly   bool   `config:"ro" yaml:"ro,omitempty"`
+	tmpPath    string `config:"tmp-path" yaml:"tmp-path,omitempty"`
+	outputFile string `config:"o" yaml:"o,omitempty"`
 }
 
-var optsGenCfg generatedConfigOptions
+var optsGenCfg genConfigParams
 
 var generatedConfig = &cobra.Command{
 	Use:               "gen-config",
@@ -62,43 +64,61 @@ var generatedConfig = &cobra.Command{
 	FlagErrorHandling: cobra.ExitOnError,
 	RunE: func(cmd *cobra.Command, args []string) error {
 
-		common.GenConfig = true
-
-		if optsGenCfg.configComp != "block_cache" && optsGenCfg.configComp != "file_cache" {
-			return fmt.Errorf("component is required and should be either block_cache or file_cache. Please use --component flag to specify component name")
-		}
-
 		// Check if configTmp is not provided when component is fc
-		if optsGenCfg.configComp == "file_cache" && optsGenCfg.configTmp == "" {
+		if optsGenCfg.blockCache == false && optsGenCfg.tmpPath == "" {
 			return fmt.Errorf("temp path is required for file cache mode. Use flag --tmp-path to provide the path")
 		}
 
-		pipeline := []string{"libfuse", optsGenCfg.configComp}
-		common.TmpPath = optsGenCfg.configTmp
-
-		if optsGenCfg.configDirectIO {
-			common.DirectIO = true
-		} else {
-			pipeline = append(pipeline, "attr_cache")
+		// Set the configs
+		if optsGenCfg.readOnly {
+			config.Set("read-only", "true")
 		}
 
+		if optsGenCfg.directIO {
+			config.Set("direct-io", "true")
+		}
+
+		config.Set("tmp-path", optsGenCfg.tmpPath)
+
+		// Create the pipeline
+		pipeline := []string{"libfuse"}
+		if optsGenCfg.blockCache {
+			pipeline = append(pipeline, "block_cache")
+		} else {
+			pipeline = append(pipeline, "file_cache")
+		}
+
+		if !optsGenCfg.directIO {
+			pipeline = append(pipeline, "attr_cache")
+		}
+		pipeline = append(pipeline, "azstorage")
+
 		var sb strings.Builder
+
+		if optsGenCfg.directIO {
+			sb.WriteString("direct-io: true\n")
+		}
+
+		if optsGenCfg.readOnly {
+			sb.WriteString("read-only: true\n\n")
+		}
+
 		sb.WriteString("# Logger configuration\n#logging:\n  #  type: syslog|silent|base\n  #  level: log_off|log_crit|log_err|log_warning|log_info|log_trace|log_debug\n")
 		sb.WriteString("  #  file-path: <path where log files shall be stored. Default - '$HOME/.blobfuse2/blobfuse2.log'>\n")
-		sb.WriteString("\ncomponents:\n")
 
-		// Iterate through the pipeline and add each component to the YAML content
+		sb.WriteString("\ncomponents:\n")
 		for _, component := range pipeline {
 			sb.WriteString(fmt.Sprintf("  - %s\n", component))
 		}
-		sb.WriteString("  - azstorage\n")
 
-		_, err := internal.NewPipeline(pipeline, true)
-		if err != nil {
-			return fmt.Errorf("generatedConfig:: error creating pipeline [%s]", err.Error())
+		for _, component := range pipeline {
+			c := internal.GetComponent(component)
+			if c == nil {
+				return fmt.Errorf("generatedConfig:: error getting component [%s]", component)
+			}
+			sb.WriteString("\n")
+			sb.WriteString(c.GenConfig())
 		}
-
-		sb.WriteString(common.ConfigYaml)
 
 		sb.WriteString("\n#Required\n#azstorage:\n  #  type: block|adls \n  #  account-name: <name of the storage account>\n  #  container: <name of the storage container to be mounted>\n  #  endpoint: <example - https://account-name.blob.core.windows.net>\n  ")
 		sb.WriteString("#  mode: key|sas|spn|msi|azcli \n  #  account-key: <storage account key>\n  # OR\n  #  sas: <storage account sas>\n  # OR\n  #  appid: <storage account app id / client id for MSI>\n  # OR\n  #  tenantid: <storage account tenant id for SPN")
@@ -117,6 +137,7 @@ var generatedConfig = &cobra.Command{
 			filePath = optsGenCfg.outputFile
 		}
 
+		var err error = nil
 		if optsGenCfg.outputFile == "console" {
 			fmt.Println(sb.String())
 		} else {
@@ -129,8 +150,10 @@ var generatedConfig = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(generatedConfig)
-	generatedConfig.Flags().StringVar(&optsGenCfg.configComp, "component", "", "Input block_cache or file_cache")
-	generatedConfig.Flags().StringVar(&optsGenCfg.configTmp, "tmp-path", "", "Input path for caching")
-	generatedConfig.Flags().BoolVar(&optsGenCfg.configDirectIO, "direct_io", false, "Choose direct-io mode")
+
+	generatedConfig.Flags().BoolVar(&optsGenCfg.blockCache, "block-cache", false, "Block-Cache shall be used as caching strategy")
+	generatedConfig.Flags().BoolVar(&optsGenCfg.directIO, "direct-io", false, "Direct-io mode shall be used")
+	generatedConfig.Flags().BoolVar(&optsGenCfg.readOnly, "ro", false, "Mount in read-only mode")
+	generatedConfig.Flags().StringVar(&optsGenCfg.tmpPath, "tmp-path", "", "Temp cache path to be used")
 	generatedConfig.Flags().StringVar(&optsGenCfg.outputFile, "o", "", "Output file location")
 }

@@ -102,15 +102,16 @@ type BlockCacheOptions struct {
 }
 
 const (
-	compName               = "block_cache"
-	defaultTimeout         = 120
-	MAX_POOL_USAGE  uint32 = 80
-	MIN_POOL_USAGE  uint32 = 50
-	MIN_PREFETCH           = 5
-	MIN_WRITE_BLOCK        = 3
-	MIN_RANDREAD           = 10
-	MAX_FAIL_CNT           = 3
-	MAX_BLOCKS             = 50000
+	compName                = "block_cache"
+	defaultTimeout          = 120
+	defaultBlockSize        = 16
+	MAX_POOL_USAGE   uint32 = 80
+	MIN_POOL_USAGE   uint32 = 50
+	MIN_PREFETCH            = 5
+	MIN_WRITE_BLOCK         = 3
+	MIN_RANDREAD            = 10
+	MAX_FAIL_CNT            = 3
+	MAX_BLOCKS              = 50000
 )
 
 // Verification to check satisfaction criteria with Component Interface
@@ -172,16 +173,32 @@ func (bc *BlockCache) Stop() error {
 }
 
 // GenConfig : Generate the default config for the component
-func (bc *BlockCache) GenConfig() error {
+func (bc *BlockCache) GenConfig() string {
 	log.Info("BlockCache::Configure : config generation started")
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("\nblock_cache:\n  block-size-mb: %d\n  mem-size-mb: %d\n  prefetch: %d\n  parallelism: %d\n", bc.blockSize/_1MB, bc.memSize/_1MB, bc.prefetch, bc.workers))
-	if common.TmpPath != "" {
-		sb.WriteString(fmt.Sprintf("  path: %s\n  disk-size-mb: %d\n  disk-timeout-sec: %d\n", bc.tmpPath, bc.diskSize/_1MB, bc.diskTimeout))
+
+	prefetch := uint32(math.Max((MIN_PREFETCH*2)+1, (float64)(2*runtime.NumCPU())))
+	memSize := uint32(bc.getDefaultMemSize() / _1MB)
+	if (prefetch * defaultBlockSize) > memSize {
+		prefetch = (MIN_PREFETCH * 2) + 1
 	}
 
-	common.ConfigYaml += sb.String()
-	return nil
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("\n%s:", bc.Name()))
+
+	sb.WriteString(fmt.Sprintf("\n  block-size-mb: %v", defaultBlockSize))
+	sb.WriteString(fmt.Sprintf("\n  mem-size-mb: %v", memSize))
+	sb.WriteString(fmt.Sprintf("\n  prefetch: %v", prefetch))
+	sb.WriteString(fmt.Sprintf("\n  parallelism: %v", uint32(3*runtime.NumCPU())))
+
+	var tmpPath string = ""
+	_ = config.UnmarshalKey("tmp-path", &tmpPath)
+	if tmpPath != "" {
+		sb.WriteString(fmt.Sprintf("\n  path: %v", tmpPath))
+		sb.WriteString(fmt.Sprintf("\n  disk-size-mb: %v", bc.getDefaultDiskSize(tmpPath)))
+		sb.WriteString(fmt.Sprintf("\n  disk-timeout-sec: %v", defaultTimeout))
+	}
+
+	return sb.String()
 }
 
 // Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
@@ -196,7 +213,7 @@ func (bc *BlockCache) Configure(_ bool) error {
 			return fmt.Errorf("config error in %s [%s]", bc.Name(), err.Error())
 		}
 	}
-	defaultMemSize := false
+
 	conf := BlockCacheOptions{}
 	err := config.UnmarshalKey(bc.Name(), &conf)
 	if err != nil {
@@ -204,7 +221,7 @@ func (bc *BlockCache) Configure(_ bool) error {
 		return fmt.Errorf("config error in %s [%s]", bc.Name(), err.Error())
 	}
 
-	bc.blockSize = uint64(16) * _1MB
+	bc.blockSize = uint64(defaultBlockSize) * _1MB
 	if config.IsSet(compName + ".block-size-mb") {
 		bc.blockSize = uint64(conf.BlockSize * float64(_1MB))
 	}
@@ -212,15 +229,7 @@ func (bc *BlockCache) Configure(_ bool) error {
 	if config.IsSet(compName + ".mem-size-mb") {
 		bc.memSize = conf.MemSize * _1MB
 	} else {
-		var sysinfo syscall.Sysinfo_t
-		err = syscall.Sysinfo(&sysinfo)
-		if err != nil {
-			log.Err("BlockCache::Configure : config error %s [%s]. Assigning a pre-defined value of 4GB.", bc.Name(), err.Error())
-			bc.memSize = uint64(4192) * _1MB
-		} else {
-			bc.memSize = uint64(0.8 * (float64)(sysinfo.Freeram) * float64(sysinfo.Unit))
-			defaultMemSize = true
-		}
+		bc.memSize = bc.getDefaultMemSize()
 	}
 
 	bc.diskTimeout = defaultTimeout
@@ -232,7 +241,7 @@ func (bc *BlockCache) Configure(_ bool) error {
 	bc.prefetch = uint32(math.Max((MIN_PREFETCH*2)+1, (float64)(2*runtime.NumCPU())))
 	bc.noPrefetch = false
 
-	if defaultMemSize && (uint64(bc.prefetch)*uint64(bc.blockSize)) > bc.memSize {
+	if (!config.IsSet(compName + ".mem-size-mb")) && (uint64(bc.prefetch)*uint64(bc.blockSize)) > bc.memSize {
 		bc.prefetch = (MIN_PREFETCH * 2) + 1
 	}
 
@@ -260,9 +269,6 @@ func (bc *BlockCache) Configure(_ bool) error {
 	}
 
 	bc.tmpPath = common.ExpandPath(conf.TmpPath)
-	if common.GenConfig {
-		bc.tmpPath = common.ExpandPath(common.TmpPath)
-	}
 
 	if bc.tmpPath != "" {
 		//check mnt path is not same as temp path
@@ -293,18 +299,10 @@ func (bc *BlockCache) Configure(_ bool) error {
 			return fmt.Errorf("config error in %s [%s]", bc.Name(), "temp directory not empty")
 		}
 
-		var stat syscall.Statfs_t
-		err = syscall.Statfs(bc.tmpPath, &stat)
-		if err != nil {
-			log.Err("BlockCache::Configure : config error %s [%s]. Assigning a default value of 4GB or if any value is assigned to .disk-size-mb in config.", bc.Name(), err.Error())
-			bc.diskSize = uint64(4192) * _1MB
-		} else {
-			bc.diskSize = uint64(0.8 * float64(stat.Bavail) * float64(stat.Bsize))
+		bc.diskSize = bc.getDefaultDiskSize(bc.tmpPath)
+		if config.IsSet(compName + ".disk-size-mb") {
+			bc.diskSize = conf.DiskSize * _1MB
 		}
-	}
-
-	if config.IsSet(compName + ".disk-size-mb") {
-		bc.diskSize = conf.DiskSize * _1MB
 	}
 
 	if (uint64(bc.prefetch) * uint64(bc.blockSize)) > bc.memSize {
@@ -335,10 +333,30 @@ func (bc *BlockCache) Configure(_ bool) error {
 		}
 	}
 
-	if common.GenConfig {
-		return bc.GenConfig()
-	}
 	return nil
+}
+
+func (bc *BlockCache) getDefaultDiskSize(path string) uint64 {
+	var stat syscall.Statfs_t
+	err := syscall.Statfs(path, &stat)
+	if err != nil {
+		log.Info("BlockCache::getDefaultDiskSize : config error %s [%s]. Assigning a default value of 4GB or if any value is assigned to .disk-size-mb in config.", bc.Name(), err.Error())
+		return uint64(4192) * _1MB
+	}
+
+	return uint64(0.8 * float64(stat.Bavail) * float64(stat.Bsize))
+}
+
+func (bc *BlockCache) getDefaultMemSize() uint64 {
+	var sysinfo syscall.Sysinfo_t
+	err := syscall.Sysinfo(&sysinfo)
+
+	if err != nil {
+		log.Info("BlockCache::getDefaultMemSize : config error %s [%s]. Assigning a pre-defined value of 4GB.", bc.Name(), err.Error())
+		return uint64(4192) * _1MB
+	}
+
+	return uint64(0.8 * (float64)(sysinfo.Freeram) * float64(sysinfo.Unit))
 }
 
 // CreateFile: Create a new file

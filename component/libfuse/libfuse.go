@@ -247,34 +247,27 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 	return nil
 }
 
-func (lf *Libfuse) GenConfig() error {
+func (lf *Libfuse) GenConfig() string {
 	log.Info("Libfuse::Configure : config generation started")
 
 	// If DirectIO is enabled, override expiration values
-	if common.DirectIO {
-		lf.attributeExpiration = 0
-		lf.entryExpiration = 0
-		lf.negativeTimeout = 0
-	}
+	directIO := false
+	_ = config.UnmarshalKey("direct-io", &directIO)
 
-	// Use a string builder to construct the YAML content
 	var sb strings.Builder
-	sb.WriteString("\nlibfuse:\n")
+	sb.WriteString(fmt.Sprintf("\n%s:", lf.Name()))
 
-	// DirectIO check merged within value setting
-	sb.WriteString(fmt.Sprintf(
-		"  attribute-expiration-sec: %v\n  entry-expiration-sec: %v\n  negative-entry-expiration-sec: %v\n",
-		lf.attributeExpiration, lf.entryExpiration, lf.negativeTimeout))
-
-	if common.DirectIO {
-		sb.WriteString("  direct-io: true\n")
-		sb.WriteString("  disable-writeback-cache: true\n")
+	timeout := defaultEntryExpiration
+	if directIO {
+		timeout = 0
+		sb.WriteString("\n  direct-io: true")
 	}
 
-	// Append generated YAML to the common configuration
-	common.ConfigYaml += sb.String()
+	sb.WriteString(fmt.Sprintf("\n  attribute-expiration-sec: %v", timeout))
+	sb.WriteString(fmt.Sprintf("\n  entry-expiration-sec: %v", timeout))
+	sb.WriteString(fmt.Sprintf("\n  negative-entry-expiration-sec: %v", timeout))
 
-	return nil
+	return sb.String()
 }
 
 // Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
@@ -334,10 +327,6 @@ func (lf *Libfuse) Configure(_ bool) error {
 
 	log.Info("Libfuse::Configure : read-only %t, allow-other %t, allow-root %t, default-perm %d, entry-timeout %d, attr-time %d, negative-timeout %d, ignore-open-flags %t, nonempty %t, direct_io %t, max-fuse-threads %d, fuse-trace %t, extension %s, disable-writeback-cache %t, dirPermission %v, mountPath %v, umask %v",
 		lf.readOnly, lf.allowOther, lf.allowRoot, lf.filePermission, lf.entryExpiration, lf.attributeExpiration, lf.negativeTimeout, lf.ignoreOpenFlags, lf.nonEmptyMount, lf.directIO, lf.maxFuseThreads, lf.traceEnable, lf.extensionPath, lf.disableWritebackCache, lf.dirPermission, lf.mountPath, lf.umask)
-
-	if common.GenConfig {
-		return lf.GenConfig()
-	}
 
 	return nil
 }

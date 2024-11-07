@@ -53,6 +53,14 @@ type NewComponent func() Component
 // Map holding all possible components along with their respective constructors
 var registeredComponents map[string]NewComponent
 
+func GetComponent(name string) Component {
+	compInit, ok := registeredComponents[name]
+	if ok {
+		return compInit()
+	}
+	return nil
+}
+
 // NewPipeline : Using a list of strings holding name of components, create and configure the component objects
 func NewPipeline(components []string, isParent bool) (*Pipeline, error) {
 	comps := make([]Component, 0)
@@ -75,17 +83,15 @@ func NewPipeline(components []string, isParent bool) (*Pipeline, error) {
 				return nil, err
 			}
 
-			if !common.GenConfig {
-				if !(comp.Priority() <= lastPriority) {
-					log.Err("Pipeline::NewPipeline : Invalid Component order [priority of %s higher than above components]", comp.Name())
-					return nil, fmt.Errorf("config error in Pipeline [component %s is out of order]", name)
-				} else {
-					lastPriority = comp.Priority()
-				}
-
-				// store the configured object in list of components
-				comps = append(comps, comp)
+			if !(comp.Priority() <= lastPriority) {
+				log.Err("Pipeline::NewPipeline : Invalid Component order [priority of %s higher than above components]", comp.Name())
+				return nil, fmt.Errorf("config error in Pipeline [component %s is out of order]", name)
+			} else {
+				lastPriority = comp.Priority()
 			}
+
+			// store the configured object in list of components
+			comps = append(comps, comp)
 		} else {
 			log.Err("Pipeline: error [component %s not registered]", name)
 			return nil, fmt.Errorf("config error in Pipeline [component %s not registered]", name)
