@@ -226,6 +226,13 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 		lf.negativeTimeout = defaultNegativeEntryExpiration
 	}
 
+	if lf.directIO {
+		lf.negativeTimeout = 0
+		lf.attributeExpiration = 0
+		lf.entryExpiration = 0
+		log.Crit("Libfuse::Validate : DirectIO enabled, setting fuse timeouts to 0")
+	}
+
 	if !(config.IsSet(compName+".uid") || config.IsSet(compName+".gid") ||
 		config.IsSet("lfuse.uid") || config.IsSet("lfuse.gid")) {
 		var err error

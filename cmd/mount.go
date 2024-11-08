@@ -361,6 +361,7 @@ var mountCmd = &cobra.Command{
 					config.Set("lfuse.gid", fmt.Sprint(val))
 				} else if v == "direct_io" || v == "direct_io=true" {
 					config.Set("lfuse.direct-io", "true")
+					config.Set("direct-io", "true")
 				} else {
 					return errors.New(common.FuseAllowedFlags)
 				}
@@ -433,6 +434,20 @@ var mountCmd = &cobra.Command{
 		log.Info("Mount Command: %s", os.Args)
 		log.Crit("Logging level set to : %s", logLevel.String())
 		log.Debug("Mount allowed on nonempty path : %v", options.NonEmpty)
+
+		directIO := false
+		_ = config.UnmarshalKey("direct-io", &directIO)
+		if directIO {
+			// Directio is enabled, so remove the attr-cache from the pipeline
+			for i, name := range options.Components {
+				if name == "attr_cache" {
+					options.Components = append(options.Components[:i], options.Components[i+1:]...)
+					log.Crit("Mount::runPipeline : Direct IO enabled, removing attr_cache from pipeline")
+					break
+				}
+			}
+		}
+
 		pipeline, err = internal.NewPipeline(options.Components, !daemon.WasReborn())
 		if err != nil {
 			if err.Error() == "Azure CLI not found on path" {
