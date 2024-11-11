@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1731311603071,
+  "lastUpdate": 1731316800111,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -2051,6 +2051,75 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 74.46743235869666,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "vibhansa@microsoft.com",
+            "name": "vibhansa",
+            "username": "vibhansa-msft"
+          },
+          "committer": {
+            "email": "vibhansa@microsoft.com",
+            "name": "vibhansa",
+            "username": "vibhansa-msft"
+          },
+          "distinct": true,
+          "id": "e495570d47ab842ad4d01d356007da266d498828",
+          "message": "Correcting code coverage ignore list",
+          "timestamp": "2024-11-11T01:00:43-08:00",
+          "tree_id": "7ff0cf2efcc7c4a408390db2782c6237cb48fbc3",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/e495570d47ab842ad4d01d356007da266d498828"
+        },
+        "date": 1731316799866,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read",
+            "value": 0.097969210844,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read",
+            "value": 70.62872873306033,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_small_file",
+            "value": 0.06243990083366666,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 0.13695183602333333,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_direct_io",
+            "value": 0.09851817632800002,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_direct_io",
+            "value": 67.56409691520767,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 0.17169706099466667,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 1.0645933465716668,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 73.31039026642334,
             "unit": "milliseconds"
           }
         ]
