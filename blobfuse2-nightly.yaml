@@ -858,11 +858,11 @@ stages:
             timeoutInMinutes: 60
             strategy:
               matrix:
-                # CentOS-7.9:
-                #   DistroVer: "CentOS-7.9"
-                #   Description: "CentOS 7.9"
-                #   AgentName: "blobfuse-centos7"
-                #   ContainerName: "test-cnt-cent-7"
+                CentOS-7.9:
+                  DistroVer: "CentOS-7.9"
+                  Description: "CentOS 7.9"
+                  AgentName: "blobfuse-centos7"
+                  ContainerName: "test-cnt-cent-7"
                 CentOS-8.5:
                   DistroVer: "CentOS-8.5"
                   Description: "CentOS 8.5"
