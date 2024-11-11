@@ -35,6 +35,7 @@ package internal
 
 import (
 	"context"
+	"fmt"
 	"syscall"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -119,7 +120,8 @@ func (base *BaseComponent) DeleteEmptyDirs(options DeleteDirOptions) error {
 	if base.next != nil {
 		return base.next.DeleteEmptyDirs(options)
 	}
-	return nil
+	// this method is only implemented in file cache
+	return fmt.Errorf("%s component does not implement DeleteEmptyDirs", base.Name())
 }
 
 func (base *BaseComponent) OpenDir(options OpenDirOptions) error {
