@@ -9,7 +9,6 @@
 - Rename file was calling an additional getProperties call.
 
 **Features**
-- Added support for custom component via go plugin.
 - Added 'gen-config' command to auto generate blobfuse2 config file.
 
 **Other Changes**
