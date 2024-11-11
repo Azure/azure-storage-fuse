@@ -119,6 +119,17 @@ func (ac *AttrCache) Stop() error {
 	return nil
 }
 
+// GenConfig : Generate the default config for the component
+func (ac *AttrCache) GenConfig() string {
+	log.Info("AttrCache::Configure : config generation started")
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("\n%s:", ac.Name()))
+	sb.WriteString(fmt.Sprintf("\n  timeout-sec: %v", defaultAttrCacheTimeout))
+
+	return sb.String()
+}
+
 // Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
 //
 //	Return failure if any config is not valid to exit the process
@@ -153,7 +164,7 @@ func (ac *AttrCache) Configure(_ bool) error {
 
 	ac.noSymlinks = conf.NoSymlinks
 
-	log.Info("AttrCache::Configure : cache-timeout %d, symlink %t, cache-on-list %t, max-files %d",
+	log.Crit("AttrCache::Configure : cache-timeout %d, symlink %t, cache-on-list %t, max-files %d",
 		ac.cacheTimeout, ac.noSymlinks, ac.cacheOnList, ac.maxFiles)
 
 	return nil
@@ -360,7 +371,6 @@ func (ac *AttrCache) RenameFile(options internal.RenameFileOptions) error {
 		ac.cacheLock.RLock()
 		defer ac.cacheLock.RUnlock()
 
-		// TODO: Can we just copy over the attributes from the source to the destination so we don't have to invalidate?
 		ac.deletePath(options.Src, time.Now())
 		ac.invalidatePath(options.Dst)
 	}
