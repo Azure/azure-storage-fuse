@@ -10,12 +10,11 @@
 
 **Features**
 - Added support for custom component via go plugin.
+- Added 'gen-config' command to auto generate blobfuse2 config file.
 
 **Other Changes**
 - Stream config will be converted to block-cache config implicitly and 'stream' component is no longer used from this release onwards.
-
-**Other Changes**
-- MSI login with object-id will not rely on azcli anymore.
+- MSI login with object-id will not rely on azcli anymore, rather it will be supported by 'azidentity' SDK.
 
 ## 2.3.2 (2024-09-03)
 **Bug Fixes**

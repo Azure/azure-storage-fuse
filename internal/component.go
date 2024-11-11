@@ -71,6 +71,7 @@ type Component interface {
 	Name() string
 	SetName(string)
 	Configure(bool) error
+	GenConfig() string
 	Priority() ComponentPriority
 
 	SetNextComponent(c Component)
