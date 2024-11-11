@@ -47,9 +47,9 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/component/attr_cache"
 	"github.com/Azure/azure-storage-fuse/v2/component/azstorage"
+	"github.com/Azure/azure-storage-fuse/v2/component/block_cache"
 	"github.com/Azure/azure-storage-fuse/v2/component/file_cache"
 	"github.com/Azure/azure-storage-fuse/v2/component/libfuse"
-	"github.com/Azure/azure-storage-fuse/v2/component/stream"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -96,7 +96,7 @@ type PipelineConfig struct {
 	NonEmptyMountOption         bool `yaml:"nonempty,omitempty"`
 	LogOptions                  `yaml:"logging,omitempty"`
 	libfuse.LibfuseOptions      `yaml:"libfuse,omitempty"`
-	stream.StreamOptions        `yaml:"stream,omitempty"`
+	block_cache.StreamOptions   `yaml:"stream,omitempty"`
 	file_cache.FileCacheOptions `yaml:"file_cache,omitempty"`
 	attr_cache.AttrCacheOptions `yaml:"attr_cache,omitempty"`
 	azstorage.AzStorageOptions  `yaml:"azstorage,omitempty"`
@@ -113,7 +113,7 @@ var bfv2FuseConfigOptions libfuse.LibfuseOptions
 var bfv2FileCacheConfigOptions file_cache.FileCacheOptions
 var bfv2AttrCacheConfigOptions attr_cache.AttrCacheOptions
 var bfv2ComponentsConfigOptions ComponentsConfig
-var bfv2StreamConfigOptions stream.StreamOptions
+var bfv2StreamConfigOptions block_cache.StreamOptions
 var bfv2ForegroundOption bool
 var bfv2ReadOnlyOption bool
 var bfv2NonEmptyMountOption bool
@@ -132,7 +132,7 @@ func resetOptions() {
 	bfv2FileCacheConfigOptions = file_cache.FileCacheOptions{}
 	bfv2AttrCacheConfigOptions = attr_cache.AttrCacheOptions{}
 	bfv2ComponentsConfigOptions = ComponentsConfig{}
-	bfv2StreamConfigOptions = stream.StreamOptions{}
+	bfv2StreamConfigOptions = block_cache.StreamOptions{}
 	bfv2ForegroundOption = false
 	bfv2ReadOnlyOption = false
 	bfv2NonEmptyMountOption = false

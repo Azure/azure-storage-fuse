@@ -62,6 +62,7 @@ import (
 )
 
 var home_dir, _ = os.UserHomeDir()
+var mountpoint = home_dir + "mountpoint"
 var dataBuff []byte
 
 type blockCacheTestSuite struct {
@@ -114,7 +115,7 @@ func setupPipeline(cfg string) (*testObj, error) {
 	}
 
 	config.ReadConfigFromReader(strings.NewReader(cfg))
-
+	config.Set("mount-path", mountpoint)
 	tobj.loopback = loopback.NewLoopbackFSComponent()
 	err := tobj.loopback.Configure(true)
 	if err != nil {
@@ -163,6 +164,7 @@ func (tobj *testObj) cleanupPipeline() error {
 	os.RemoveAll(tobj.fake_storage_path)
 	os.RemoveAll(tobj.disk_cache_path)
 
+	common.IsStream = false
 	return nil
 }
 
@@ -283,10 +285,20 @@ func (suite *blockCacheTestSuite) TestSomeInvalidConfigs() {
 	suite.assert.NotNil(err)
 	suite.assert.Contains(err.Error(), "fail to init block pool")
 
-	cfg = "read-only: true\n\nblock_cache:\n  block-size-mb: 8\n  mem-size-mb: 800\n  prefetch: 12\n  parallelism: 5\n  path: ./\n  disk-size-mb: 100\n  disk-timeout-sec: 0"
+	cfg = "read-only: true\n\nblock_cache:\n  block-size-mb: 8\n  mem-size-mb: 800\n  prefetch: 12\n  parallelism: 5\n  path: ./bctemp \n  disk-size-mb: 100\n  disk-timeout-sec: 0"
 	_, err = setupPipeline(cfg)
 	suite.assert.NotNil(err)
 	suite.assert.Contains(err.Error(), "timeout can not be zero")
+
+	cfg = "read-only: true\n\nblock_cache:\n  block-size-mb: 8\n  mem-size-mb: 800\n  prefetch: 12\n  parallelism: 5\n  path: ./ \n  disk-size-mb: 100\n  disk-timeout-sec: 0"
+	_, err = setupPipeline(cfg)
+	suite.assert.NotNil(err)
+	suite.assert.Contains(err.Error(), "temp directory not empty")
+
+	cfg = fmt.Sprintf("read-only: true\n\nblock_cache:\n  block-size-mb: 8\n  mem-size-mb: 800\n  prefetch: 12\n  parallelism: 5\n  path: %s \n  disk-size-mb: 100\n  disk-timeout-sec: 0", mountpoint)
+	_, err = setupPipeline(cfg)
+	suite.assert.NotNil(err)
+	suite.assert.Contains(err.Error(), "tmp-path is same as mount path")
 }
 
 func (suite *blockCacheTestSuite) TestManualConfig() {
@@ -2595,6 +2607,18 @@ func (suite *blockCacheTestSuite) TestReadWriteBlockInParallel() {
 	fs, err := os.Stat(storagePath)
 	suite.assert.Nil(err)
 	suite.assert.Equal(fs.Size(), int64(62*_1MB))
+}
+
+func (suite *blockCacheTestSuite) TestZZZZZStreamToBlockCacheConfig() {
+	common.IsStream = true
+	config := "read-only: true\n\nstream:\n  block-size-mb: 16\n  max-buffers: 80\n  buffer-size-mb: 8\n"
+	tobj, err := setupPipeline(config)
+	defer tobj.cleanupPipeline()
+
+	suite.assert.Nil(err)
+	suite.assert.Equal(tobj.blockCache.Name(), "block_cache")
+	suite.assert.EqualValues(tobj.blockCache.blockSize, 16*_1MB)
+	suite.assert.EqualValues(tobj.blockCache.memSize, 8*_1MB*80)
 }
 
 // In order for 'go test' to run this suite, we need to create

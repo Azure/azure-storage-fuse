@@ -1,11 +1,18 @@
 ## 2.4.0 (Unreleased)
-**Features**
-- Entry cache to hold directory listing results in cache for a given timeout. This will reduce REST calls going to storage while listing the blobs in parallel.
-
 **Bug Fixes**
-- Fix file truncation bug with block-cache 
+- [#1426](https://github.com/Azure/azure-storage-fuse/issues/1426) Read panic in block-cache due to boundary conditions.
+- Do not allow mount path and temp-cache path to be same when using block-cache.
+- Do not allow to mount with non-empty directory provided for disk persistence in block-cache.
+- Rename file was calling an additional getProperties call.
 
-## 2.3.2 (Unreleased)
+**Features**
+- Added 'gen-config' command to auto generate blobfuse2 config file.
+
+**Other Changes**
+- Stream config will be converted to block-cache config implicitly and 'stream' component is no longer used from this release onwards.
+- MSI login with object-id will not rely on azcli anymore, rather it will be supported by 'azidentity' SDK.
+
+## 2.3.2 (2024-09-03)
 **Bug Fixes**
 - Fixed the case where file creation using SAS on HNS accounts was returning back wrong error code.
 - [#1402](https://github.com/Azure/azure-storage-fuse/issues/1402) Fixed proxy URL parsing.

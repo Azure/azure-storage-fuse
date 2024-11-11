@@ -65,6 +65,10 @@ func (base *BaseComponent) Configure(isParent bool) error {
 	return nil
 }
 
+func (base *BaseComponent) GenConfig() string {
+	return ""
+}
+
 func (base *BaseComponent) Priority() ComponentPriority {
 	return EComponentPriority.LevelMid()
 }
