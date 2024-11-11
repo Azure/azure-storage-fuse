@@ -51,7 +51,7 @@ func initializePlugins() error {
 	// Example BLOBFUSE_PLUGIN_PATH="/path/to/plugin1.so:/path/to/plugin2.so"
 	pluginFilesPath := os.Getenv("BLOBFUSE_PLUGIN_PATH")
 	if pluginFilesPath == "" {
-		log.Info("No plugins to load, BLOBFUSE_PLUGIN_PATH is empty")
+		log.Debug("No plugins to load.")
 		return nil
 	}
 
