@@ -90,11 +90,11 @@ type mountOptions struct {
 	LazyWrite         bool           `config:"lazy-write"`
 
 	// v1 support
-	Streaming      bool     `config:"streaming"`
-	AttrCache      bool     `config:"use-attr-cache"`
-	LibfuseOptions []string `config:"libfuse-options"`
-	BlockCache     bool     `config:"block-cache"`
-	EntryCache     int      `config:"list-cache-timeout"`
+	Streaming         bool     `config:"streaming"`
+	AttrCache         bool     `config:"use-attr-cache"`
+	LibfuseOptions    []string `config:"libfuse-options"`
+	BlockCache        bool     `config:"block-cache"`
+	EntryCacheTimeout int      `config:"list-cache-timeout"`
 }
 
 var options mountOptions
@@ -314,7 +314,7 @@ var mountCmd = &cobra.Command{
 			options.Components = pipeline
 		}
 
-		if config.IsSet("entry_cache.timeout-sec") || options.EntryCache > 0 {
+		if config.IsSet("entry_cache.timeout-sec") || options.EntryCacheTimeout > 0 {
 			options.Components = append(options.Components[:1], append([]string{"entry_cache"}, options.Components[1:]...)...)
 		}
 
