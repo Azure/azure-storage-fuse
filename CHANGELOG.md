@@ -4,6 +4,7 @@
 - Do not allow mount path and temp-cache path to be same when using block-cache.
 - Do not allow to mount with non-empty directory provided for disk persistence in block-cache.
 - Rename file was calling an additional getProperties call.
+- Delete empty directories from local cache on rmdir operation.
 
 **Features**
 - Added 'gen-config' command to auto generate blobfuse2 config file.
