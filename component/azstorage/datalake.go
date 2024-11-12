@@ -402,8 +402,6 @@ func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 		attr.Mode = attr.Mode | os.ModeDir
 	}
 
-	attr.Flags.Set(internal.PropFlagMetadataRetrieved)
-
 	if dl.Config.honourACL && dl.Config.authConfig.ObjectID != "" {
 		acl, err := fileClient.GetAccessControl(context.Background(), nil)
 		if err != nil {
@@ -576,8 +574,8 @@ func (dl *Datalake) GetFileBlockOffsets(name string) (*common.BlockOffsetList, e
 	return dl.BlockBlob.GetFileBlockOffsets(name)
 }
 
-func (dl *Datalake) TruncateFile(name string, size int64) error {
-	return dl.BlockBlob.TruncateFile(name, size)
+func (dl *Datalake) TruncateFile(name string, size int64, blockSize int64) error {
+	return dl.BlockBlob.TruncateFile(name, size, blockSize)
 }
 
 // ChangeMod : Change mode of a path

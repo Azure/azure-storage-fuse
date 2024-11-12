@@ -29,7 +29,7 @@ stages:
             Description: "Blobfuse2 Perf Test"
 
       pool:
-        name: "blobfuse-perf-pool"
+        name: "blobfuse-perf-pool2"
         demands:
           - ImageOverride -equals $(AgentName)
 
@@ -269,7 +269,7 @@ stages:
               Description: "Blobfuse2 Perf Test"
 
         pool:
-          name: "blobfuse-perf-pool"
+          name: "blobfuse-perf-pool2"
           demands:
             - ImageOverride -equals $(AgentName)
 

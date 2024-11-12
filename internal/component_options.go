@@ -122,8 +122,9 @@ type GetFileBlockOffsetsOptions struct {
 }
 
 type TruncateFileOptions struct {
-	Name string
-	Size int64
+	Name      string
+	Size      int64
+	BlockSize int64
 }
 
 type CopyToFileOptions struct {
@@ -167,6 +168,7 @@ type CreateLinkOptions struct {
 
 type ReadLinkOptions struct {
 	Name string
+	Size int64
 }
 
 type GetAttrOptions struct {

@@ -474,7 +474,7 @@ func (az *AzStorage) GetFileBlockOffsets(options internal.GetFileBlockOffsetsOpt
 
 func (az *AzStorage) TruncateFile(options internal.TruncateFileOptions) error {
 	log.Trace("AzStorage::TruncateFile : %s to %d bytes", options.Name, options.Size)
-	err := az.storage.TruncateFile(options.Name, options.Size)
+	err := az.storage.TruncateFile(options.Name, options.Size, options.BlockSize)
 
 	if err == nil {
 		azStatsCollector.PushEvents(truncateFile, options.Name, map[string]interface{}{size: options.Size})
@@ -508,7 +508,7 @@ func (az *AzStorage) CreateLink(options internal.CreateLinkOptions) error {
 
 func (az *AzStorage) ReadLink(options internal.ReadLinkOptions) (string, error) {
 	log.Trace("AzStorage::ReadLink : Read symlink %s", options.Name)
-	data, err := az.storage.ReadBuffer(options.Name, 0, 0)
+	data, err := az.storage.ReadBuffer(options.Name, 0, options.Size)
 
 	if err != nil {
 		azStatsCollector.PushEvents(readLink, options.Name, nil)

@@ -1697,6 +1697,13 @@ stages:
                   echo "##vso[task.setvariable variable=is_preview]$is_preview"
                 fi
 
+                is_preview="false"
+                echo "##vso[task.setvariable variable=is_preview]$is_preview"
+                if [[ $marinerFuse3AmdRpm == *"preview"* ]]; then
+                  is_preview="true"
+                  echo "##vso[task.setvariable variable=is_preview]$is_preview"
+                fi
+
                 while IFS=, read -r distro fuseArchType repoName releaseName; do
 
                   # If the package is preview, publish to mariner preview package

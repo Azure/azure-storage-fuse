@@ -94,6 +94,7 @@ type mountOptions struct {
 	AttrCache      bool     `config:"use-attr-cache"`
 	LibfuseOptions []string `config:"libfuse-options"`
 	BlockCache     bool     `config:"block-cache"`
+	EntryCache     int      `config:"list-cache-timeout"`
 }
 
 var options mountOptions
@@ -311,6 +312,10 @@ var mountCmd = &cobra.Command{
 
 			pipeline = append(pipeline, "azstorage")
 			options.Components = pipeline
+		}
+
+		if config.IsSet("entry_cache.timeout-sec") || options.EntryCache > 0 {
+			options.Components = append(options.Components[:1], append([]string{"entry_cache"}, options.Components[1:]...)...)
 		}
 
 		if config.IsSet("libfuse-options") {

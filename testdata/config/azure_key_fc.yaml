@@ -5,7 +5,7 @@ logging:
 
 components:
   - libfuse
-  - block_cache
+  - file_cache
   - attr_cache
   - azstorage
 
@@ -16,13 +16,8 @@ libfuse:
   fuse-trace: false
   ignore-open-flags: true
 
-block_cache:
-  block-size-mb: 16
-  mem-size-mb: 4096
-  prefetch: 100
-  parallelism: 128
-  disk-timeout-sec: 200
-  prefetch-on-open: true
+file_cache:
+  path: { 1 }
 
 attr_cache:
   timeout-sec: 7200
@@ -35,5 +30,3 @@ azstorage:
   account-key: { NIGHTLY_STO_ACC_KEY }
   mode: key
   container: { 0 }
-  block-list-on-mount-sec: 10
-  ignore-access-modify: true
