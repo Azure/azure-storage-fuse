@@ -7,11 +7,12 @@
 - Delete empty directories from local cache on rmdir operation.
 
 **Features**
-- Added 'gen-config' command to auto generate blobfuse2 config file.
+- Added 'gen-config' command to auto generate Blobfuse2 config file.
 
 **Other Changes**
 - Stream config will be converted to block-cache config implicitly and 'stream' component is no longer used from this release onwards.
-- MSI login with object-id will not rely on azcli anymore, rather it will be supported by 'azidentity' SDK.
+- MSI login with object-id will not rely on 'azcli' anymore, rather it will be supported by 'azidentity' SDK.
+- 'df' command output will present memory availability in case of block-cache if disk is not configured.
 
 ## 2.3.2 (2024-09-03)
 **Bug Fixes**
