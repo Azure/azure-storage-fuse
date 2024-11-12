@@ -1,0 +1,216 @@
+parameters:
+  - name: conf_template
+    type: string
+  - name: config_file
+    type: string
+  - name: container
+    type: string
+  - name: temp_dir
+    type: string
+  - name: mount_dir
+    type: string    
+  - name: idstring
+    type: string
+  - name: adls
+    type: boolean
+  - name: account_name
+    type: string
+  - name: account_key
+    type: string
+  - name: account_type
+    type: string
+  - name: account_endpoint
+  - name: distro_name
+    type: string
+  - name: quick_test
+    type: boolean
+    default: true
+  - name: verbose_log
+    type: boolean
+    default: false
+  - name: clone
+    type: boolean
+    default: false
+  - name: block_size_mb
+    type: string
+    default: "8"
+
+steps:   
+  - script: |
+      $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/azure_key.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.config_file }}
+    displayName: 'Create Config File for RW mount'
+    env:
+      NIGHTLY_STO_ACC_NAME: ${{ parameters.account_name }}
+      NIGHTLY_STO_ACC_KEY: ${{ parameters.account_key }}
+      ACCOUNT_TYPE: ${{ parameters.account_type }}
+      ACCOUNT_ENDPOINT: ${{ parameters.account_endpoint }}
+      VERBOSE_LOG: ${{ parameters.verbose_log }}
+    continueOnError: false
+
+  - script: |
+      cat ${{ parameters.config_file }}
+    displayName: 'Print config file'
+
+  - template: 'mount.yml'
+    parameters:
+      working_dir: $(WORK_DIR)
+      mount_dir: ${{ parameters.mount_dir }}
+      temp_dir: ${{ parameters.temp_dir }}
+      prefix: ${{ parameters.idstring }}
+      mountStep: 
+        script: |
+          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) --file-cache-timeout=3200
+
+  - script: |
+      for i in $(seq 1 10); do echo $(shuf -i 0-4294967296 -n 1); done | parallel --will-cite -j 5 'head -c {} < /dev/urandom > ${{ parameters.mount_dir }}/datafiles_{}'
+      for i in {1,2,3,4,5,6,7,8,9,10,20,30,50,100,200}; do echo $i; done | parallel --will-cite -j 5 'head -c {}M < /dev/urandom > ${{ parameters.mount_dir }}/mixedfiles_{}.txt'
+      for i in {1,2,3,4,5,6,7,8,9,10,20,30,50,100,200}; do echo $i; done | parallel --will-cite -j 5 'head -c {}M < /dev/urandom > ${{ parameters.mount_dir }}/mixedfiles_{}.png'
+      cd ${{ parameters.mount_dir }}
+      python3 $(WORK_DIR)/testdata/scripts/generate-parquet-files.py
+      ls -l ${{ parameters.mount_dir }}/mixedfiles_*
+      ls -l ${{ parameters.mount_dir }}/datafiles_*
+    displayName: 'Generate data with File-Cache'
+
+  - script: |
+      md5sum ${{ parameters.mount_dir }}/datafiles_* > $(WORK_DIR)/md5sum_original_files.txt
+      md5sum ${{ parameters.mount_dir }}/mixedfiles_* >> $(WORK_DIR)/md5sum_original_files.txt
+    displayName: 'Generate md5Sum with File-Cache' 
+
+  - script: |
+      echo "----------------------------------------------"
+      ls -l ${{ parameters.mount_dir }}
+    displayName: 'Print contents of File-Cache'
+
+  - script: |
+      $(WORK_DIR)/blobfuse2 unmount all
+    displayName: 'Unmount RW mount'
+
+  - script: |
+      cd $(WORK_DIR)
+      $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/azure_key_bc.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.config_file }}
+    displayName: 'Create Config File for RO mount'
+    env:
+      NIGHTLY_STO_ACC_NAME: ${{ parameters.account_name }}
+      NIGHTLY_STO_ACC_KEY: ${{ parameters.account_key }}
+      ACCOUNT_TYPE: ${{ parameters.account_type }}
+      ACCOUNT_ENDPOINT: ${{ parameters.account_endpoint }}
+      VERBOSE_LOG: ${{ parameters.verbose_log }}
+    continueOnError: false
+
+  - template: 'mount.yml'
+    parameters:
+      working_dir: $(WORK_DIR)
+      mount_dir: ${{ parameters.mount_dir }}
+      temp_dir: ${{ parameters.temp_dir }}
+      prefix: ${{ parameters.idstring }}
+      ro_mount: true
+      mountStep: 
+        script: |
+          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) -o ro --block-cache-block-size ${{ parameters.block_size_mb }}
+
+  - script: |
+      echo "----------------------------------------------"
+      ls -l ${{ parameters.mount_dir }}/datafiles*
+      ls -l ${{ parameters.mount_dir }}/mixedfiles*
+    displayName: 'Print contents of Block-Cache'
+
+  - script: |
+      md5sum ${{ parameters.mount_dir }}/datafiles_* > $(WORK_DIR)/md5sum_block_cache.txt
+      md5sum ${{ parameters.mount_dir }}/mixedfiles_* >> $(WORK_DIR)/md5sum_block_cache.txt
+    displayName: 'Generate md5Sum with Block-Cache'
+
+  - script: |
+      $(WORK_DIR)/blobfuse2 unmount all
+    displayName: 'Unmount RW mount'
+
+  - script: |
+      echo "----------------------------------------------"
+      cat $(WORK_DIR)/md5sum_original_files.txt
+      cat $(WORK_DIR)/md5sum_original_files.txt | cut -d " " -f1 > $(WORK_DIR)/temp.txt && mv $(WORK_DIR)/temp.txt $(WORK_DIR)/md5sum_original_files.txt
+      echo "----------------------------------------------"
+      cat $(WORK_DIR)/md5sum_block_cache.txt
+      cat $(WORK_DIR)/md5sum_block_cache.txt | cut -d " " -f1 > $(WORK_DIR)/temp.txt && mv $(WORK_DIR)/temp.txt $(WORK_DIR)/md5sum_block_cache.txt
+      echo "----------------------------------------------"
+      diff $(WORK_DIR)/md5sum_original_files.txt $(WORK_DIR)/md5sum_block_cache.txt
+      if [ $? -ne 0 ]; then
+        exit 1
+      fi
+    displayName: 'Compare md5Sum'
+
+  - script: |
+      cd $(WORK_DIR)
+      $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/azure_key_bc.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.config_file }}
+    displayName: 'Create Config File for RO mount with direct-io and disk-cache enabled'
+    env:
+      NIGHTLY_STO_ACC_NAME: ${{ parameters.account_name }}
+      NIGHTLY_STO_ACC_KEY: ${{ parameters.account_key }}
+      ACCOUNT_TYPE: ${{ parameters.account_type }}
+      ACCOUNT_ENDPOINT: ${{ parameters.account_endpoint }}
+      VERBOSE_LOG: ${{ parameters.verbose_log }}
+    continueOnError: false
+
+  - script: |
+     if [ -d "block_cache" ]; then ls -l block_cache; rm -rf block_cache; mkdir block_cache  ; fi
+    displayName: 'Clear Temp Cache for Block Cache before mounting'
+
+  - template: 'mount.yml'
+    parameters:
+      working_dir: $(WORK_DIR)
+      mount_dir: ${{ parameters.mount_dir }}
+      temp_dir: ${{ parameters.temp_dir }}
+      prefix: ${{ parameters.idstring }}
+      ro_mount: true
+      mountStep: 
+        script: |
+          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) -o ro -o direct_io --block-cache-path block_cache --block-cache-block-size ${{ parameters.block_size_mb }}
+
+  - script: |
+      echo "----------------------------------------------"
+      ls -l ${{ parameters.mount_dir }}
+    displayName: 'Print contents of Block-Cache'
+
+  - script: |
+      md5sum ${{ parameters.mount_dir }}/datafiles_* > $(WORK_DIR)/md5sum_block_cache_direct_io.txt
+      md5sum ${{ parameters.mount_dir }}/mixedfiles_* >> $(WORK_DIR)/md5sum_block_cache_direct_io.txt
+    displayName: 'Generate md5Sum with Block-Cache Direct-IO'
+
+  - script: |
+      md5sum ${{ parameters.mount_dir }}/datafiles_* > $(WORK_DIR)/md5sum_block_cache_disk_cache.txt
+      md5sum ${{ parameters.mount_dir }}/mixedfiles_* >> $(WORK_DIR)/md5sum_block_cache_disk_cache.txt
+    displayName: 'Generate md5Sum with Block-Cache Disk-Cache'
+
+  - script: |
+      $(WORK_DIR)/blobfuse2 unmount all
+    displayName: 'Unmount RW mount'
+
+  - script: |
+      echo "----------------------------------------------"
+      cat $(WORK_DIR)/md5sum_original_files.txt
+      echo "----------------------------------------------"
+      cat $(WORK_DIR)/md5sum_block_cache_direct_io.txt | cut -d " " -f1 > $(WORK_DIR)/temp.txt && mv $(WORK_DIR)/temp.txt $(WORK_DIR)/md5sum_block_cache_direct_io.txt
+      cat $(WORK_DIR)/md5sum_block_cache_direct_io.txt
+      echo "----------------------------------------------"
+      diff $(WORK_DIR)/md5sum_original_files.txt $(WORK_DIR)/md5sum_block_cache_direct_io.txt
+      if [ $? -ne 0 ]; then
+        exit 1
+      fi
+    displayName: 'Compare md5Sum with Block-Cache Direct-IO'
+
+  - script: |
+      echo "----------------------------------------------"
+      cat $(WORK_DIR)/md5sum_original_files.txt
+      echo "----------------------------------------------"
+      cat $(WORK_DIR)/md5sum_block_cache_disk_cache.txt | cut -d " " -f1 > $(WORK_DIR)/temp.txt && mv $(WORK_DIR)/temp.txt $(WORK_DIR)/md5sum_block_cache_disk_cache.txt
+      cat $(WORK_DIR)/md5sum_block_cache_disk_cache.txt
+      echo "----------------------------------------------"
+      diff $(WORK_DIR)/md5sum_original_files.txt $(WORK_DIR)/md5sum_block_cache_disk_cache.txt
+      if [ $? -ne 0 ]; then
+        exit 1
+      fi
+    displayName: 'Compare md5Sum with Block-Cache Disk-Cache'
+
+  - template: 'cleanup.yml'
+    parameters:
+      working_dir: $(WORK_DIR)
+      mount_dir: ${{ parameters.mount_dir }}
+      temp_dir: ${{ parameters.temp_dir }}

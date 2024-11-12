@@ -138,8 +138,6 @@ const (
 	EnvAzStorageAadEndpoint            = "AZURE_STORAGE_AAD_ENDPOINT"
 	EnvAzStorageAuthType               = "AZURE_STORAGE_AUTH_TYPE"
 	EnvAzStorageBlobEndpoint           = "AZURE_STORAGE_BLOB_ENDPOINT"
-	EnvHttpProxy                       = "http_proxy"
-	EnvHttpsProxy                      = "https_proxy"
 	EnvAzStorageAccountContainer       = "AZURE_STORAGE_ACCOUNT_CONTAINER"
 	EnvAzAuthResource                  = "AZURE_STORAGE_AUTH_RESOURCE"
 	EnvAzStorageCpkEncryptionKey       = "AZURE_STORAGE_CPK_ENCRYPTION_KEY"
@@ -218,9 +216,6 @@ func RegisterEnvVariables() {
 	config.BindEnv("azstorage.endpoint", EnvAzStorageBlobEndpoint)
 
 	config.BindEnv("azstorage.mode", EnvAzStorageAuthType)
-
-	config.BindEnv("azstorage.http-proxy", EnvHttpProxy)
-	config.BindEnv("azstorage.https-proxy", EnvHttpsProxy)
 
 	config.BindEnv("azstorage.container", EnvAzStorageAccountContainer)
 
@@ -503,14 +498,14 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		log.Warn("unsupported v1 CLI parameter: debug-libcurl is not applicable in blobfuse2.")
 	}
 
-	log.Info("ParseAndValidateConfig : account %s, container %s, account-type %s, auth %s, prefix %s, endpoint %s, MD5 %v %v, virtual-directory %v, disable-compression %v, CPK %v",
+	log.Crit("ParseAndValidateConfig : account %s, container %s, account-type %s, auth %s, prefix %s, endpoint %s, MD5 %v %v, virtual-directory %v, disable-compression %v, CPK %v",
 		az.stConfig.authConfig.AccountName, az.stConfig.container, az.stConfig.authConfig.AccountType, az.stConfig.authConfig.AuthMode,
 		az.stConfig.prefixPath, az.stConfig.authConfig.Endpoint, az.stConfig.validateMD5, az.stConfig.updateMD5, az.stConfig.virtualDirectory, az.stConfig.disableCompression, az.stConfig.cpkEnabled)
-	log.Info("ParseAndValidateConfig : use-HTTP %t, block-size %d, max-concurrency %d, default-tier %s, fail-unsupported-op %t, mount-all-containers %t", az.stConfig.authConfig.UseHTTP, az.stConfig.blockSize, az.stConfig.maxConcurrency, az.stConfig.defaultTier, az.stConfig.ignoreAccessModifiers, az.stConfig.mountAllContainers)
-	log.Info("ParseAndValidateConfig : Retry Config: retry-count %d, max-timeout %d, backoff-time %d, max-delay %d",
+	log.Crit("ParseAndValidateConfig : use-HTTP %t, block-size %d, max-concurrency %d, default-tier %s, fail-unsupported-op %t, mount-all-containers %t", az.stConfig.authConfig.UseHTTP, az.stConfig.blockSize, az.stConfig.maxConcurrency, az.stConfig.defaultTier, az.stConfig.ignoreAccessModifiers, az.stConfig.mountAllContainers)
+	log.Crit("ParseAndValidateConfig : Retry Config: retry-count %d, max-timeout %d, backoff-time %d, max-delay %d",
 		az.stConfig.maxRetries, az.stConfig.maxTimeout, az.stConfig.backoffTime, az.stConfig.maxRetryDelay)
 
-	log.Info("ParseAndValidateConfig : Telemetry : %s, honour-ACL %v, disable-symlink %v", az.stConfig.telemetry, az.stConfig.honourACL, az.stConfig.disableSymlink)
+	log.Crit("ParseAndValidateConfig : Telemetry : %s, honour-ACL %v, disable-symlink %v", az.stConfig.telemetry, az.stConfig.honourACL, az.stConfig.disableSymlink)
 
 	return nil
 }

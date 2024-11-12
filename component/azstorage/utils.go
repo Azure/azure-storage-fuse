@@ -162,7 +162,7 @@ func setSDKLogListener() {
 func newBlobfuse2HttpClient(conf *AzStorageConfig) (*http.Client, error) {
 	var ProxyURL func(req *http.Request) (*url.URL, error)
 	if conf.proxyAddress == "" {
-		ProxyURL = nil
+		ProxyURL = http.ProxyFromEnvironment
 	} else {
 		u, err := url.Parse(conf.proxyAddress)
 		if err != nil {

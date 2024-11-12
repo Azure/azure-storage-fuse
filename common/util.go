@@ -55,6 +55,7 @@ import (
 
 var RootMount bool
 var ForegroundMount bool
+var IsStream bool
 
 // IsDirectoryMounted is a utility function that returns true if the directory is already mounted using fuse
 func IsDirectoryMounted(path string) bool {
@@ -90,7 +91,6 @@ func IsMountActive(path string) (bool, error) {
 	var out bytes.Buffer
 	cmd := exec.Command("pidof", "blobfuse2")
 	cmd.Stdout = &out
-
 	err := cmd.Run()
 	if err != nil {
 		if err.Error() == "exit status 1" {
@@ -474,4 +474,29 @@ func GetFuseMinorVersion() int {
 	}
 
 	return val
+}
+
+type WriteToFileOptions struct {
+	Flags      int
+	Permission os.FileMode
+}
+
+func WriteToFile(filename string, data string, options WriteToFileOptions) error {
+	// Open the file with the provided flags, create it if it doesn't exist
+	//check if options.Permission is 0 if so then assign 0777
+	if options.Permission == 0 {
+		options.Permission = 0777
+	}
+	file, err := os.OpenFile(filename, options.Flags|os.O_CREATE|os.O_WRONLY, options.Permission)
+	if err != nil {
+		return fmt.Errorf("error opening file: [%s]", err.Error())
+	}
+	defer file.Close() // Ensure the file is closed when we're done
+
+	// Write the data content to the file
+	if _, err := file.WriteString(data); err != nil {
+		return fmt.Errorf("error writing to file [%s]", err.Error())
+	}
+
+	return nil
 }

@@ -30,4 +30,4 @@ total_time = t4 - t1
 read_mbps = ((bytes_read/read_time) * 8)/(1024 * 1024) 
 total_mbps = ((bytes_read/total_time) * 8)/(1024 * 1024) 
 
-print(json.dumps({"name": "read_" + size + "GB", "open_time": open_time, "read_time": read_time, "close_time": close_time, "total_time": total_time, "read_mbps": read_mbps, "speed": total_mbps, "unit": "MiB/s"}))
+print(json.dumps({"name": "read_" + size + "GB", "open_time": open_time, "read_time": read_time, "close_time": close_time, "total_time": total_time, "read_mbps": read_mbps / 8, "speed": total_mbps / 8, "unit": "MiB/s"}))

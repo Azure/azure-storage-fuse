@@ -45,7 +45,7 @@ jobs:
           ignore-unfixed: true
           format: 'sarif'
           output: 'trivy-results-binary.sarif'
-          severity: 'CRITICAL,HIGH,MEDIUM,LOW'
+          severity: 'CRITICAL,HIGH,MEDIUM,LOW,UNKNOWN'
 
       - name: List Issues
         run: |

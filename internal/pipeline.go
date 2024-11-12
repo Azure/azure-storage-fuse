@@ -37,6 +37,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
@@ -52,11 +53,23 @@ type NewComponent func() Component
 // Map holding all possible components along with their respective constructors
 var registeredComponents map[string]NewComponent
 
+func GetComponent(name string) Component {
+	compInit, ok := registeredComponents[name]
+	if ok {
+		return compInit()
+	}
+	return nil
+}
+
 // NewPipeline : Using a list of strings holding name of components, create and configure the component objects
 func NewPipeline(components []string, isParent bool) (*Pipeline, error) {
 	comps := make([]Component, 0)
 	lastPriority := EComponentPriority.Producer()
 	for _, name := range components {
+		if name == "stream" {
+			common.IsStream = true
+			name = "block_cache"
+		}
 		//  Search component exists in our registered map or not
 		compInit, ok := registeredComponents[name]
 		if ok {

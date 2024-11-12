@@ -194,6 +194,30 @@ func (c *FileCache) Stop() error {
 	return nil
 }
 
+// GenConfig : Generate default config for the component
+func (c *FileCache) GenConfig() string {
+	log.Info("FileCache::Configure : config generation started")
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("\n%s:", c.Name()))
+
+	tmpPath := ""
+	_ = config.UnmarshalKey("tmp-path", &tmpPath)
+
+	directIO := false
+	_ = config.UnmarshalKey("direct-io", &directIO)
+
+	timeout := defaultFileCacheTimeout
+	if directIO {
+		timeout = 0
+	}
+
+	sb.WriteString(fmt.Sprintf("\n  path: %v", common.ExpandPath(tmpPath)))
+	sb.WriteString(fmt.Sprintf("\n  timeout-sec: %v", timeout))
+
+	return sb.String()
+}
+
 // Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
 //
 //	Return failure if any config is not valid to exit the process
@@ -215,6 +239,15 @@ func (c *FileCache) Configure(_ bool) error {
 	} else {
 		c.cacheTimeout = float64(defaultFileCacheTimeout)
 	}
+
+	directIO := false
+	_ = config.UnmarshalKey("direct-io", &directIO)
+
+	if directIO {
+		c.cacheTimeout = 0
+		log.Crit("FileCache::Configure : Direct IO mode enabled, cache timeout is set to 0")
+	}
+
 	if config.IsSet(compName + ".empty-dir-check") {
 		c.allowNonEmpty = !conf.EmptyDirCheck
 	} else {
@@ -241,7 +274,11 @@ func (c *FileCache) Configure(_ bool) error {
 	}
 
 	err = config.UnmarshalKey("mount-path", &c.mountPath)
-	if err == nil && c.mountPath == c.tmpPath {
+	if err != nil {
+		log.Err("FileCache: config error [unable to obtain Mount Path]")
+		return fmt.Errorf("config error in %s [%s]", c.Name(), err.Error())
+	}
+	if c.mountPath == c.tmpPath {
 		log.Err("FileCache: config error [tmp-path is same as mount path]")
 		return fmt.Errorf("config error in %s error [tmp-path is same as mount path]", c.Name())
 	}
@@ -313,7 +350,7 @@ func (c *FileCache) Configure(_ bool) error {
 		c.diskHighWaterMark = (((conf.MaxSizeMB * MB) * float64(cacheConfig.highThreshold)) / 100)
 	}
 
-	log.Info("FileCache::Configure : create-empty %t, cache-timeout %d, tmp-path %s, max-size-mb %d, high-mark %d, low-mark %d, refresh-sec %v, max-eviction %v, hard-limit %v, policy %s, allow-non-empty-temp %t, cleanup-on-start %t, policy-trace %t, offload-io %t, sync-to-flush %t, ignore-sync %t, defaultPermission %v, diskHighWaterMark %v, maxCacheSize %v, mountPath %v",
+	log.Crit("FileCache::Configure : create-empty %t, cache-timeout %d, tmp-path %s, max-size-mb %d, high-mark %d, low-mark %d, refresh-sec %v, max-eviction %v, hard-limit %v, policy %s, allow-non-empty-temp %t, cleanup-on-start %t, policy-trace %t, offload-io %t, sync-to-flush %t, ignore-sync %t, defaultPermission %v, diskHighWaterMark %v, maxCacheSize %v, mountPath %v",
 		c.createEmptyFile, int(c.cacheTimeout), c.tmpPath, int(cacheConfig.maxSizeMB), int(cacheConfig.highThreshold), int(cacheConfig.lowThreshold), c.refreshSec, cacheConfig.maxEviction, c.hardLimit, conf.Policy, c.allowNonEmpty, c.cleanupOnStart, c.policyTrace, c.offloadIO, c.syncToFlush, c.syncToDelete, c.defaultPermission, c.diskHighWaterMark, c.maxCacheSize, c.mountPath)
 
 	return nil
@@ -1226,12 +1263,28 @@ func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 		// Write to storage
 		// Create a new handle for the SDK to use to upload (read local file)
 		// The local handle can still be used for read and write.
+		var orgMode fs.FileMode
+		modeChanged := false
+
 		uploadHandle, err := os.Open(localPath)
 		if err != nil {
-			log.Err("FileCache::FlushFile : error [unable to open upload handle] %s [%s]", options.Handle.Path, err.Error())
-			return nil
-		}
+			if os.IsPermission(err) {
+				info, _ := os.Stat(localPath)
+				orgMode = info.Mode()
+				newMode := orgMode | 0444
+				err = os.Chmod(localPath, newMode)
+				if err == nil {
+					modeChanged = true
+					uploadHandle, err = os.Open(localPath)
+					log.Info("FileCache::FlushFile : read mode added to file %s", options.Handle.Path)
+				}
+			}
 
+			if err != nil {
+				log.Err("FileCache::FlushFile : error [unable to open upload handle] %s [%s]", options.Handle.Path, err.Error())
+				return err
+			}
+		}
 		err = fc.NextComponent().CopyFromFile(
 			internal.CopyFromFileOptions{
 				Name: options.Handle.Path,
@@ -1239,6 +1292,14 @@ func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 			})
 
 		uploadHandle.Close()
+
+		if modeChanged {
+			err1 := os.Chmod(localPath, orgMode)
+			if err1 != nil {
+				log.Err("FileCache::FlushFile : Failed to remove read mode from file %s [%s]", options.Handle.Path, err1.Error())
+			}
+		}
+
 		if err != nil {
 			log.Err("FileCache::FlushFile : %s upload failed [%s]", options.Handle.Path, err.Error())
 			return err

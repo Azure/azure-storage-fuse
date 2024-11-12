@@ -51,15 +51,22 @@ const (
 	BlockFlagFailed             // Block upload/download has failed
 )
 
+// Flags to denote the status of upload/download of a block
+const (
+	BlockStatusDownloaded     int = iota + 1 // Download of this block is complete
+	BlockStatusUploaded                      // Upload of this block is complete
+	BlockStatusDownloadFailed                // Download of this block has failed
+	BlockStatusUploadFailed                  // Upload of this block has failed
+)
+
 // Block is a memory mapped buffer with its state to hold data
 type Block struct {
-	offset   uint64          // Start offset of the data this block holds
-	id       int64           // Id of the block i.e. (offset / block size)
-	endIndex uint64          // Length of the data this block holds
-	state    chan int        // Channel depicting data has been read for this block or not
-	flags    common.BitMap16 // Various states of the block
-	data     []byte          // Data read from blob
-	node     *list.Element   // node representation of this block in the list inside handle
+	offset uint64          // Start offset of the data this block holds
+	id     int64           // Id of the block i.e. (offset / block size)
+	state  chan int        // Channel depicting data has been read for this block or not
+	flags  common.BitMap16 // Various states of the block
+	data   []byte          // Data read from blob
+	node   *list.Element   // node representation of this block in the list inside handle
 }
 
 type blockInfo struct {
@@ -115,7 +122,6 @@ func (b *Block) Delete() error {
 func (b *Block) ReUse() {
 	b.id = -1
 	b.offset = 0
-	b.endIndex = 0
 	b.flags.Reset()
 	b.flags.Set(BlockFlagFresh)
 	b.state = make(chan int, 1)
@@ -127,9 +133,9 @@ func (b *Block) Uploading() {
 }
 
 // Ready marks this Block is now ready for reading by its first reader (data download completed)
-func (b *Block) Ready() {
+func (b *Block) Ready(val int) {
 	select {
-	case b.state <- 1:
+	case b.state <- val:
 		break
 	default:
 		break
