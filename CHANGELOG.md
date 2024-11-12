@@ -1,4 +1,7 @@
 ## 2.4.0 (Unreleased)
+**Features**
+- Entry cache to hold directory listing results in cache for a given timeout. This will reduce REST calls going to storage while listing the blobs in parallel.
+
 **Bug Fixes**
 - [#1426](https://github.com/Azure/azure-storage-fuse/issues/1426) Read panic in block-cache due to boundary conditions.
 - Do not allow mount path and temp-cache path to be same when using block-cache.

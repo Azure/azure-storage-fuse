@@ -508,7 +508,7 @@ func (az *AzStorage) CreateLink(options internal.CreateLinkOptions) error {
 
 func (az *AzStorage) ReadLink(options internal.ReadLinkOptions) (string, error) {
 	log.Trace("AzStorage::ReadLink : Read symlink %s", options.Name)
-	data, err := az.storage.ReadBuffer(options.Name, 0, 0)
+	data, err := az.storage.ReadBuffer(options.Name, 0, options.Size)
 
 	if err != nil {
 		azStatsCollector.PushEvents(readLink, options.Name, nil)
