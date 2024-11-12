@@ -51,6 +51,7 @@ logging:
 # Pipeline configuration. Choose components to be engaged. The order below is the priority order that needs to be followed.
 components:
   - libfuse
+  - entry_cache
   - block_cache
   - file_cache
   - attr_cache
@@ -66,6 +67,10 @@ libfuse:
   fuse-trace: true|false <enable libfuse api trace logs for debugging>
   extension: <physical path to extension library>
   direct-io: true|false <enable to bypass the kernel cache>
+
+# Entry Cache configuration
+entry_cache:
+  timeout-sec: <cache eviction timeout (in sec). Default - 30 sec>
 
 # Block cache related configuration
 block_cache:
