@@ -332,11 +332,12 @@ func (mr *MockComponentMockRecorder) IsDirEmpty(arg0 interface{}) *gomock.Call {
 }
 
 // DeleteEmptyDirs mocks base method.
-func (m *MockComponent) DeleteEmptyDirs(arg0 DeleteDirOptions) error {
+func (m *MockComponent) DeleteEmptyDirs(arg0 DeleteDirOptions) (bool, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeleteEmptyDirs", arg0)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // DeleteDir indicates an expected call of DeleteEmptyDirs.

@@ -172,7 +172,7 @@ func testRmDirNotEmpty(suite *libfuseTestSuite) {
 	defer C.free(unsafe.Pointer(path))
 	isDirEmptyOptions := internal.IsDirEmptyOptions{Name: name}
 	suite.mock.EXPECT().IsDirEmpty(isDirEmptyOptions).Return(false)
-	suite.mock.EXPECT().DeleteEmptyDirs(internal.DeleteDirOptions{Name: name}).Return(errors.New("unable to delete directory"))
+	suite.mock.EXPECT().DeleteEmptyDirs(internal.DeleteDirOptions{Name: name}).Return(false, errors.New("unable to delete directory"))
 
 	err := libfuse_rmdir(path)
 	suite.assert.Equal(C.int(-C.ENOTEMPTY), err)

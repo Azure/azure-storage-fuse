@@ -582,8 +582,8 @@ func libfuse_rmdir(path *C.char) C.int {
 	empty := fuseFS.NextComponent().IsDirEmpty(internal.IsDirEmptyOptions{Name: name})
 	if !empty {
 		// delete empty directories from local cache directory
-		err := fuseFS.NextComponent().DeleteEmptyDirs(internal.DeleteDirOptions{Name: name})
-		if err != nil {
+		val, err := fuseFS.NextComponent().DeleteEmptyDirs(internal.DeleteDirOptions{Name: name})
+		if err != nil || !val {
 			log.Err("Libfuse::libfuse_rmdir : Failed to delete %s [%s]", name, err.Error())
 			return -C.ENOTEMPTY
 		}

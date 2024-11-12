@@ -84,7 +84,7 @@ type Component interface {
 	CreateDir(CreateDirOptions) error
 	DeleteDir(DeleteDirOptions) error
 	IsDirEmpty(IsDirEmptyOptions) bool
-	DeleteEmptyDirs(DeleteDirOptions) error
+	DeleteEmptyDirs(DeleteDirOptions) (bool, error)
 
 	OpenDir(OpenDirOptions) error
 	//ReadDir: implementation expectations
