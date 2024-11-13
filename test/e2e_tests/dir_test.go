@@ -584,12 +584,12 @@ func TestDirTestSuite(t *testing.T) {
 	// Sanity check in the off chance the same random name was generated twice and was still around somehow
 	err := os.RemoveAll(dirTest.testPath)
 	if err != nil {
-		fmt.Println("Could not cleanup feature dir before testing")
+		fmt.Printf("Could not cleanup feature dir before testing [%s]\n", err.Error())
 	}
 
 	err = os.Mkdir(dirTest.testPath, 0777)
 	if err != nil {
-		t.Error("Failed to create test directory")
+		t.Errorf("Failed to create test directory [%s]\n", err.Error())
 	}
 	rand.Read(dirTest.minBuff)
 	rand.Read(dirTest.medBuff)
