@@ -37,9 +37,9 @@
 package stress_test
 
 import (
+	"crypto/rand"
 	"flag"
 	"fmt"
-	"math/rand"
 	"os"
 	"path/filepath"
 	"strconv"

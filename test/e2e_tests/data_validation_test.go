@@ -38,10 +38,11 @@ package e2e_tests
 
 import (
 	"crypto/md5"
+	"crypto/rand"
 	"flag"
 	"fmt"
 	"io"
-	"math/rand"
+	mrand "math/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -49,7 +50,6 @@ import (
 	"strings"
 	"syscall"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/suite"
 )
@@ -100,7 +100,6 @@ func initDataValidationFlags() {
 }
 
 func getDataValidationTestDirName(n int) string {
-	rand.Seed(time.Now().UnixNano())
 	b := make([]byte, n)
 	rand.Read(b)
 	return fmt.Sprintf("%x", b)[:n]
@@ -238,7 +237,7 @@ func compareReadOperInLocalAndRemote(suite *dataValidationTestSuite, lfh, rfh *o
 }
 
 func compareWriteOperInLocalAndRemote(suite *dataValidationTestSuite, lfh, rfh *os.File, offset int64) {
-	sizeofbuffer := (rand.Int() % 4) + 1
+	sizeofbuffer := (mrand.Int() % 4) + 1
 	buffer := make([]byte, sizeofbuffer*int(_1MB))
 	rand.Read(buffer)
 
@@ -779,7 +778,7 @@ func (suite *dataValidationTestSuite) TestReadDataAtBlockBoundaries() {
 	compareReadOperInLocalAndRemote(suite, lfh, rfh, offset)
 	//Read at some random offset
 	for i := 0; i < 10; i++ {
-		offset = rand.Int63() % int64(fileSize)
+		offset = mrand.Int63() % int64(fileSize)
 		compareReadOperInLocalAndRemote(suite, lfh, rfh, offset)
 	}
 
@@ -790,7 +789,7 @@ func (suite *dataValidationTestSuite) TestReadDataAtBlockBoundaries() {
 	compareReadOperInLocalAndRemote(suite, lfh, rfh, offset)
 
 	//Write at Random offset in the file
-	offset = rand.Int63() % int64(fileSize)
+	offset = mrand.Int63() % int64(fileSize)
 	compareWriteOperInLocalAndRemote(suite, lfh, rfh, offset)
 	//Check the previous write with read
 	compareReadOperInLocalAndRemote(suite, lfh, rfh, offset)

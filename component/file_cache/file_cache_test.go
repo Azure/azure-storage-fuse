@@ -91,9 +91,9 @@ func newTestFileCache(next internal.Component) *FileCache {
 }
 
 func randomString(length int) string {
-	rand.Seed(time.Now().UnixNano())
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	b := make([]byte, length)
-	rand.Read(b)
+	r.Read(b)
 	return fmt.Sprintf("%x", b)[:length]
 }
 

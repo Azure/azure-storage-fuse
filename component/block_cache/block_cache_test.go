@@ -64,6 +64,7 @@ import (
 var home_dir, _ = os.UserHomeDir()
 var mountpoint = home_dir + "mountpoint"
 var dataBuff []byte
+var r *rand.Rand = rand.New(rand.NewSource(time.Now().UnixNano()))
 
 type blockCacheTestSuite struct {
 	suite.Suite
@@ -85,9 +86,8 @@ type testObj struct {
 }
 
 func randomString(length int) string {
-	rand.Seed(time.Now().UnixNano())
 	b := make([]byte, length)
-	rand.Read(b)
+	r.Read(b)
 	return fmt.Sprintf("%x", b)[:length]
 }
 
@@ -344,7 +344,7 @@ func (suite *blockCacheTestSuite) TestFileOpenClose() {
 	fileName := getTestFileName(suite.T().Name())
 	storagePath := filepath.Join(tobj.fake_storage_path, fileName)
 	data := make([]byte, 5*_1MB)
-	_, _ = rand.Read(data)
+	_, _ = r.Read(data)
 	ioutil.WriteFile(storagePath, data, 0777)
 
 	options := internal.OpenFileOptions{Name: fileName}
@@ -601,7 +601,7 @@ func (suite *blockCacheTestSuite) TestFileReadSerial() {
 	fileName := getTestFileName(suite.T().Name())
 	storagePath := filepath.Join(tobj.fake_storage_path, fileName)
 	data := make([]byte, 50*_1MB)
-	_, _ = rand.Read(data)
+	_, _ = r.Read(data)
 	ioutil.WriteFile(storagePath, data, 0777)
 
 	options := internal.OpenFileOptions{Name: fileName}
@@ -643,7 +643,7 @@ func (suite *blockCacheTestSuite) TestFileReadRandom() {
 	fileName := getTestFileName(suite.T().Name())
 	storagePath := filepath.Join(tobj.fake_storage_path, fileName)
 	data := make([]byte, 100*_1MB)
-	_, _ = rand.Read(data)
+	_, _ = r.Read(data)
 	ioutil.WriteFile(storagePath, data, 0777)
 
 	options := internal.OpenFileOptions{Name: fileName}
@@ -684,7 +684,7 @@ func (suite *blockCacheTestSuite) TestFileReadRandomNoPrefetch() {
 	fileName := getTestFileName(suite.T().Name())
 	storagePath := filepath.Join(tobj.fake_storage_path, fileName)
 	data := make([]byte, 100*_1MB)
-	_, _ = rand.Read(data)
+	_, _ = r.Read(data)
 	ioutil.WriteFile(storagePath, data, 0777)
 
 	options := internal.OpenFileOptions{Name: fileName}
@@ -727,7 +727,7 @@ func (suite *blockCacheTestSuite) TestDiskUsageCheck() {
 
 	// Default disk size is 50MB
 	data := make([]byte, 5*_1MB)
-	_, _ = rand.Read(data)
+	_, _ = r.Read(data)
 
 	type diskusagedata struct {
 		name     string
@@ -801,7 +801,7 @@ func (suite *blockCacheTestSuite) TestOpenWithTruncate() {
 	fileName := getTestFileName(suite.T().Name())
 	storagePath := filepath.Join(tobj.fake_storage_path, fileName)
 	data := make([]byte, 5*_1MB)
-	_, _ = rand.Read(data)
+	_, _ = r.Read(data)
 	ioutil.WriteFile(storagePath, data, 0777)
 
 	options := internal.OpenFileOptions{Name: fileName}
@@ -898,7 +898,7 @@ func (suite *blockCacheTestSuite) TestWriteFileMultiBlock() {
 	storagePath := filepath.Join(tobj.fake_storage_path, path)
 
 	data := make([]byte, 5*_1MB)
-	_, _ = rand.Read(data)
+	_, _ = r.Read(data)
 
 	options := internal.CreateFileOptions{Name: path, Mode: 0777}
 	h, err := tobj.blockCache.CreateFile(options)
@@ -937,7 +937,7 @@ func (suite *blockCacheTestSuite) TestWriteFileMultiBlockWithOverwrite() {
 	storagePath := filepath.Join(tobj.fake_storage_path, path)
 
 	data := make([]byte, 5*_1MB)
-	_, _ = rand.Read(data)
+	_, _ = r.Read(data)
 
 	options := internal.CreateFileOptions{Name: path, Mode: 0777}
 	h, err := tobj.blockCache.CreateFile(options)
@@ -988,7 +988,7 @@ func (suite *blockCacheTestSuite) TestWritefileWithAppend() {
 
 	path := getTestFileName(suite.T().Name())
 	data := make([]byte, 13*_1MB)
-	_, _ = rand.Read(data)
+	_, _ = r.Read(data)
 
 	options := internal.CreateFileOptions{Name: path, Mode: 0777}
 	h, err := tobj.blockCache.CreateFile(options)
@@ -1022,7 +1022,7 @@ func (suite *blockCacheTestSuite) TestWritefileWithAppend() {
 	h, err = tobj.blockCache.OpenFile(internal.OpenFileOptions{Name: path, Flags: os.O_RDWR, Mode: 0777})
 	suite.assert.Nil(err)
 	dataNew := make([]byte, 10*_1MB)
-	_, _ = rand.Read(data)
+	_, _ = r.Read(data)
 
 	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: h.Size, Data: dataNew}) // 5 bytes
 	suite.assert.Nil(err)
@@ -1054,14 +1054,14 @@ func (suite *blockCacheTestSuite) TestWriteBlockOutOfRange() {
 
 	path := getTestFileName(suite.T().Name())
 	data := make([]byte, 20*_1MB)
-	_, _ = rand.Read(data)
+	_, _ = r.Read(data)
 
 	options := internal.CreateFileOptions{Name: path, Mode: 0777}
 	h, err := tobj.blockCache.CreateFile(options)
 	suite.assert.Nil(err)
 
 	dataNew := make([]byte, 1*_1MB)
-	_, _ = rand.Read(data)
+	_, _ = r.Read(data)
 
 	n, err := tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 10 * 50001, Data: dataNew}) // 5 bytes
 	suite.assert.NotNil(err)
@@ -1790,7 +1790,7 @@ func (suite *blockCacheTestSuite) TestPreventRaceCondition() {
 	storagePath := filepath.Join(tobj.fake_storage_path, path)
 
 	data := make([]byte, _1MB)
-	_, _ = rand.Read(data)
+	_, _ = r.Read(data)
 
 	// write using block cache
 	options := internal.CreateFileOptions{Name: path, Mode: 0777}
@@ -1862,7 +1862,7 @@ func (suite *blockCacheTestSuite) TestBlockParallelUploadAndWrite() {
 	storagePath := filepath.Join(tobj.fake_storage_path, path)
 
 	data := make([]byte, _1MB)
-	_, _ = rand.Read(data)
+	_, _ = r.Read(data)
 
 	options := internal.CreateFileOptions{Name: path, Mode: 0777}
 	h, err := tobj.blockCache.CreateFile(options)
@@ -1924,7 +1924,7 @@ func (suite *blockCacheTestSuite) TestBlockParallelUploadAndWriteValidation() {
 	localPath := filepath.Join(tobj.disk_cache_path, path)
 
 	data := make([]byte, _1MB)
-	_, _ = rand.Read(data)
+	_, _ = r.Read(data)
 
 	// ------------------------------------------------------------------
 	// write to local file
@@ -2625,7 +2625,7 @@ func (suite *blockCacheTestSuite) TestZZZZZStreamToBlockCacheConfig() {
 // a normal test function and pass our suite to suite.Run
 func TestBlockCacheTestSuite(t *testing.T) {
 	dataBuff = make([]byte, 5*_1MB)
-	_, _ = rand.Read(dataBuff)
+	_, _ = r.Read(dataBuff)
 
 	suite.Run(t, new(blockCacheTestSuite))
 }
