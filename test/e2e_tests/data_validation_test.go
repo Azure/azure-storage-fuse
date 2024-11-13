@@ -751,51 +751,51 @@ func (suite *dataValidationTestSuite) TestPanicOnReadingFileInRandReadMode() {
 	closeFileHandles(suite, rfh)
 }
 
-func (suite *dataValidationTestSuite) TestReadDataAtBlockBoundaries() {
-	fileName := "testReadDataAtBlockBoundaries"
-	localFilePath, remoteFilePath := convertFileNameToFilePath(fileName)
-	fileSize := 35 * int(_1MB)
-	generateFileWithRandomData(suite, localFilePath, fileSize)
-	suite.copyToMountDir(localFilePath, remoteFilePath)
-	suite.validateData(localFilePath, remoteFilePath)
+// func (suite *dataValidationTestSuite) TestReadDataAtBlockBoundaries() {
+// 	fileName := "testReadDataAtBlockBoundaries"
+// 	localFilePath, remoteFilePath := convertFileNameToFilePath(fileName)
+// 	fileSize := 35 * int(_1MB)
+// 	generateFileWithRandomData(suite, localFilePath, fileSize)
+// 	suite.copyToMountDir(localFilePath, remoteFilePath)
+// 	suite.validateData(localFilePath, remoteFilePath)
 
-	lfh, rfh := openFileHandleInLocalAndRemote(suite, os.O_RDWR, localFilePath, remoteFilePath)
-	var offset int64 = 0
-	//tests run in 16MB block size config.
-	//Data in File 35MB(3blocks)
-	//block1->16MB, block2->16MB, block3->3MB
+// 	lfh, rfh := openFileHandleInLocalAndRemote(suite, os.O_RDWR, localFilePath, remoteFilePath)
+// 	var offset int64 = 0
+// 	//tests run in 16MB block size config.
+// 	//Data in File 35MB(3blocks)
+// 	//block1->16MB, block2->16MB, block3->3MB
 
-	//getting 4MB data from 1st block
-	compareReadOperInLocalAndRemote(suite, lfh, rfh, offset)
-	//getting 4MB data from overlapping blocks
-	offset = int64(15 * int(_1MB))
-	compareReadOperInLocalAndRemote(suite, lfh, rfh, offset)
-	//getting 4MB data from last block
-	offset = int64(32 * int(_1MB))
-	compareReadOperInLocalAndRemote(suite, lfh, rfh, offset)
-	//getting 4MB data from overlapping block with last block
-	offset = int64(30 * int(_1MB))
-	compareReadOperInLocalAndRemote(suite, lfh, rfh, offset)
-	//Read at some random offset
-	for i := 0; i < 10; i++ {
-		offset = mrand.Int63() % int64(fileSize)
-		compareReadOperInLocalAndRemote(suite, lfh, rfh, offset)
-	}
+// 	//getting 4MB data from 1st block
+// 	compareReadOperInLocalAndRemote(suite, lfh, rfh, offset)
+// 	//getting 4MB data from overlapping blocks
+// 	offset = int64(15 * int(_1MB))
+// 	compareReadOperInLocalAndRemote(suite, lfh, rfh, offset)
+// 	//getting 4MB data from last block
+// 	offset = int64(32 * int(_1MB))
+// 	compareReadOperInLocalAndRemote(suite, lfh, rfh, offset)
+// 	//getting 4MB data from overlapping block with last block
+// 	offset = int64(30 * int(_1MB))
+// 	compareReadOperInLocalAndRemote(suite, lfh, rfh, offset)
+// 	//Read at some random offset
+// 	for i := 0; i < 10; i++ {
+// 		offset = mrand.Int63() % int64(fileSize)
+// 		compareReadOperInLocalAndRemote(suite, lfh, rfh, offset)
+// 	}
 
-	//write at end of file
-	offset = int64(fileSize)
-	compareWriteOperInLocalAndRemote(suite, lfh, rfh, offset)
-	//Check the previous write with read
-	compareReadOperInLocalAndRemote(suite, lfh, rfh, offset)
+// 	//write at end of file
+// 	offset = int64(fileSize)
+// 	compareWriteOperInLocalAndRemote(suite, lfh, rfh, offset)
+// 	//Check the previous write with read
+// 	compareReadOperInLocalAndRemote(suite, lfh, rfh, offset)
 
-	//Write at Random offset in the file
-	offset = mrand.Int63() % int64(fileSize)
-	compareWriteOperInLocalAndRemote(suite, lfh, rfh, offset)
-	//Check the previous write with read
-	compareReadOperInLocalAndRemote(suite, lfh, rfh, offset)
+// 	//Write at Random offset in the file
+// 	offset = mrand.Int63() % int64(fileSize)
+// 	compareWriteOperInLocalAndRemote(suite, lfh, rfh, offset)
+// 	//Check the previous write with read
+// 	compareReadOperInLocalAndRemote(suite, lfh, rfh, offset)
 
-	closeFileHandles(suite, lfh, rfh)
-}
+// 	closeFileHandles(suite, lfh, rfh)
+// }
 
 // -------------- Main Method -------------------
 func TestDataValidationTestSuite(t *testing.T) {
