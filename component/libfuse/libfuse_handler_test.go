@@ -77,9 +77,9 @@ func (suite *libfuseTestSuite) TestConfig() {
 	suite.assert.False(suite.libfuse.allowRoot)
 	suite.assert.Equal(suite.libfuse.dirPermission, uint(fs.FileMode(0777)))
 	suite.assert.Equal(suite.libfuse.filePermission, uint(fs.FileMode(0777)))
-	suite.assert.Equal(suite.libfuse.entryExpiration, uint32(60))
-	suite.assert.Equal(suite.libfuse.attributeExpiration, uint32(60))
-	suite.assert.Equal(suite.libfuse.negativeTimeout, uint32(60))
+	suite.assert.Equal(suite.libfuse.entryExpiration, uint32(0))
+	suite.assert.Equal(suite.libfuse.attributeExpiration, uint32(0))
+	suite.assert.Equal(suite.libfuse.negativeTimeout, uint32(0))
 	suite.assert.True(suite.libfuse.directIO)
 }
 

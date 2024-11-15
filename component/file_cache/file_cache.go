@@ -194,6 +194,30 @@ func (c *FileCache) Stop() error {
 	return nil
 }
 
+// GenConfig : Generate default config for the component
+func (c *FileCache) GenConfig() string {
+	log.Info("FileCache::Configure : config generation started")
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("\n%s:", c.Name()))
+
+	tmpPath := ""
+	_ = config.UnmarshalKey("tmp-path", &tmpPath)
+
+	directIO := false
+	_ = config.UnmarshalKey("direct-io", &directIO)
+
+	timeout := defaultFileCacheTimeout
+	if directIO {
+		timeout = 0
+	}
+
+	sb.WriteString(fmt.Sprintf("\n  path: %v", common.ExpandPath(tmpPath)))
+	sb.WriteString(fmt.Sprintf("\n  timeout-sec: %v", timeout))
+
+	return sb.String()
+}
+
 // Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
 //
 //	Return failure if any config is not valid to exit the process
@@ -215,6 +239,15 @@ func (c *FileCache) Configure(_ bool) error {
 	} else {
 		c.cacheTimeout = float64(defaultFileCacheTimeout)
 	}
+
+	directIO := false
+	_ = config.UnmarshalKey("direct-io", &directIO)
+
+	if directIO {
+		c.cacheTimeout = 0
+		log.Crit("FileCache::Configure : Direct IO mode enabled, cache timeout is set to 0")
+	}
+
 	if config.IsSet(compName + ".empty-dir-check") {
 		c.allowNonEmpty = !conf.EmptyDirCheck
 	} else {
@@ -317,7 +350,7 @@ func (c *FileCache) Configure(_ bool) error {
 		c.diskHighWaterMark = (((conf.MaxSizeMB * MB) * float64(cacheConfig.highThreshold)) / 100)
 	}
 
-	log.Info("FileCache::Configure : create-empty %t, cache-timeout %d, tmp-path %s, max-size-mb %d, high-mark %d, low-mark %d, refresh-sec %v, max-eviction %v, hard-limit %v, policy %s, allow-non-empty-temp %t, cleanup-on-start %t, policy-trace %t, offload-io %t, sync-to-flush %t, ignore-sync %t, defaultPermission %v, diskHighWaterMark %v, maxCacheSize %v, mountPath %v",
+	log.Crit("FileCache::Configure : create-empty %t, cache-timeout %d, tmp-path %s, max-size-mb %d, high-mark %d, low-mark %d, refresh-sec %v, max-eviction %v, hard-limit %v, policy %s, allow-non-empty-temp %t, cleanup-on-start %t, policy-trace %t, offload-io %t, sync-to-flush %t, ignore-sync %t, defaultPermission %v, diskHighWaterMark %v, maxCacheSize %v, mountPath %v",
 		c.createEmptyFile, int(c.cacheTimeout), c.tmpPath, int(cacheConfig.maxSizeMB), int(cacheConfig.highThreshold), int(cacheConfig.lowThreshold), c.refreshSec, cacheConfig.maxEviction, c.hardLimit, conf.Policy, c.allowNonEmpty, c.cleanupOnStart, c.policyTrace, c.offloadIO, c.syncToFlush, c.syncToDelete, c.defaultPermission, c.diskHighWaterMark, c.maxCacheSize, c.mountPath)
 
 	return nil
@@ -616,6 +649,46 @@ func (fc *FileCache) IsDirEmpty(options internal.IsDirEmptyOptions) bool {
 
 	log.Debug("FileCache::IsDirEmpty : %s checking with container", options.Name)
 	return fc.NextComponent().IsDirEmpty(options)
+}
+
+// DeleteEmptyDirs: delete empty directories in local cache, return error if directory is not empty
+func (fc *FileCache) DeleteEmptyDirs(options internal.DeleteDirOptions) (bool, error) {
+	localPath := options.Name
+	if !strings.Contains(options.Name, fc.tmpPath) {
+		localPath = filepath.Join(fc.tmpPath, options.Name)
+	}
+
+	log.Trace("FileCache::DeleteEmptyDirs : %s", localPath)
+
+	entries, err := os.ReadDir(localPath)
+	if err != nil {
+		log.Debug("FileCache::DeleteEmptyDirs : Unable to read directory %s [%s]", localPath, err.Error())
+		return false, err
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			val, err := fc.DeleteEmptyDirs(internal.DeleteDirOptions{
+				Name: filepath.Join(localPath, entry.Name()),
+			})
+			if err != nil {
+				log.Err("FileCache::DeleteEmptyDirs : Unable to delete directory %s [%s]", localPath, err.Error())
+				return val, err
+			}
+		} else {
+			log.Err("FileCache::DeleteEmptyDirs : Directory %s is not empty, contains file %s", localPath, entry.Name())
+			return false, fmt.Errorf("unable to delete directory %s, contains file %s", localPath, entry.Name())
+		}
+	}
+
+	if !strings.EqualFold(fc.tmpPath, localPath) {
+		err = os.Remove(localPath)
+		if err != nil {
+			return false, err
+		}
+	}
+
+	return true, nil
 }
 
 // RenameDir: Recursively invalidate the source directory and its children
