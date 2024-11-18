@@ -8,6 +8,7 @@
 - Do not allow to mount with non-empty directory provided for disk persistence in block-cache.
 - Rename file was calling an additional getProperties call.
 - Delete empty directories from local cache on rmdir operation.
+- Upload of a file to Datalake was resetting the ACL and permissions applied to a file.
 
 **Features**
 - Added 'gen-config' command to auto generate blobfuse2 config file.
