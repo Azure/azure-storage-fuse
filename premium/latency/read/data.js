@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1731817404402,
+  "lastUpdate": 1731925102686,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -2394,6 +2394,75 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 76.28523581979199,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "64532198+vibhansa-msft@users.noreply.github.com",
+            "name": "Vikas Bhansali",
+            "username": "vibhansa-msft"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "26b576132e6abcdf2362a35948808b8e0192420d",
+          "message": "Rocky UT fails due to insufficient memory (#1570)\n\n* Fixing UT for Rocky env",
+          "timestamp": "2024-11-18T15:29:08+05:30",
+          "tree_id": "99b522042e9bcb9c46f3d240ee0ab1265ed82420",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/26b576132e6abcdf2362a35948808b8e0192420d"
+        },
+        "date": 1731925102440,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read",
+            "value": 0.09080091034033333,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read",
+            "value": 73.11042799045167,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_small_file",
+            "value": 0.07507278797966667,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 0.149687364866,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_direct_io",
+            "value": 0.11058975826900001,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_direct_io",
+            "value": 72.12919983689933,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 0.17143023408433336,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 1.109211648056,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 73.469497428261,
             "unit": "milliseconds"
           }
         ]
