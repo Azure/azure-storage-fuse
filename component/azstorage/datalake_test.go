@@ -2597,6 +2597,47 @@ func (s *datalakeTestSuite) TestPermissionPreservation() {
 	os.Remove(name + "_local")
 }
 
+func (s *datalakeTestSuite) TestPermissionPreservationWithCommit() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	_, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: []byte("test data")})
+	s.assert.Nil(err)
+
+	err = s.az.Chmod(internal.ChmodOptions{Name: name, Mode: 0767})
+	s.assert.Nil(err)
+
+	s.az.CloseFile(internal.CloseFileOptions{Handle: h})
+	s.assert.Nil(err)
+
+	// Stage and commti blocks here
+	data := []byte("123123")
+
+	id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
+	err = s.az.StageData(internal.StageDataOptions{
+		Name:   name,
+		Id:     id,
+		Data:   data,
+		Offset: 0,
+	})
+	s.assert.Nil(err)
+
+	ids := []string{}
+	ids = append(ids, id)
+	err = s.az.CommitData(internal.CommitDataOptions{
+		Name:      name,
+		List:      ids,
+		BlockSize: 1,
+	})
+	s.assert.Nil(err)
+
+	attr, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
+	s.assert.Nil(err)
+	s.assert.NotNil(attr)
+	s.assert.EqualValues(0767, attr.Mode)
+}
+
 // func (s *datalakeTestSuite) TestRAGRS() {
 // 	defer s.cleanupTest()
 // 	// Setup

@@ -681,5 +681,31 @@ func (dl *Datalake) StageBlock(name string, data []byte, id string) error {
 
 // CommitBlocks : persists the block list
 func (dl *Datalake) CommitBlocks(name string, blockList []string) error {
-	return dl.BlockBlob.CommitBlocks(name, blockList)
+	// File in DataLake may have permissions and ACL set. Just uploading the file will override them.
+	// So, we need to get the existing permissions and ACL and set them back after uploading the file.
+
+	fileClient := dl.Filesystem.NewFileClient(filepath.Join(dl.Config.prefixPath, name))
+	resp, err := fileClient.GetAccessControl(context.Background(), nil)
+	if err != nil {
+		// Earlier code was igoring this so it might break customer cases where they do not have auth to update ACL
+		log.Err("Datalake::CommitBlocks : Failed to get ACL for %s [%s]", name, err.Error())
+	}
+
+	retCode := dl.BlockBlob.CommitBlocks(name, blockList)
+
+	if err == nil {
+		// Cannot set both permissions and ACL in one call. ACL includes permission as well so just setting those back
+		// Just setting up the permissions will delete existing ACLs applied on the blob so do not convert this code to
+		// just set the permissions.
+		_, err := fileClient.SetAccessControl(context.Background(), &file.SetAccessControlOptions{
+			ACL: resp.ACL,
+		})
+
+		if err != nil {
+			// Earlier code was igoring this so it might break customer cases where they do not have auth to update ACL
+			log.Err("Datalake::CommitBlocks : Failed to set ACL for %s [%s]", name, err.Error())
+		}
+	}
+
+	return retCode
 }
