@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1731817403189,
+  "lastUpdate": 1731925101468,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -2394,6 +2394,75 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 13.081380208333334,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "64532198+vibhansa-msft@users.noreply.github.com",
+            "name": "Vikas Bhansali",
+            "username": "vibhansa-msft"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "26b576132e6abcdf2362a35948808b8e0192420d",
+          "message": "Rocky UT fails due to insufficient memory (#1570)\n\n* Fixing UT for Rocky env",
+          "timestamp": "2024-11-18T15:29:08+05:30",
+          "tree_id": "99b522042e9bcb9c46f3d240ee0ab1265ed82420",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/26b576132e6abcdf2362a35948808b8e0192420d"
+        },
+        "date": 1731925100023,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read",
+            "value": 2489.9052734375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read",
+            "value": 3.4182942708333335,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_small_file",
+            "value": 2818.0029296875,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 1533.451171875,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_direct_io",
+            "value": 2261.166015625,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_direct_io",
+            "value": 3.4677734375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 4791.8583984375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 3528.5338541666665,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 13.5859375,
             "unit": "MiB/s"
           }
         ]
