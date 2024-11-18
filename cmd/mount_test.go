@@ -294,7 +294,7 @@ func (suite *mountTestSuite) TestCliParamsV1() {
 	defer os.RemoveAll(tempLogDir)
 
 	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileMntTest),
-		fmt.Sprintf("--log-file-path=%s", tempLogDir+"/blobfuse2.log"), "--invalidate-on-sync", "--pre-mount-validate", "--basic-remount-check")
+		fmt.Sprintf("--log-file-path=%s", tempLogDir+"/blobfuse2.log"), "--invalidate-on-sync", "--pre-mount-validate", "--basic-remount-check", "-o", "direct_io")
 	suite.assert.NotNil(err)
 	suite.assert.Contains(op, "failed to initialize new pipeline")
 }
@@ -310,7 +310,7 @@ func (suite *mountTestSuite) TestStreamAttrCacheOptionsV1() {
 	defer os.RemoveAll(tempLogDir)
 
 	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--log-file-path=%s", tempLogDir+"/blobfuse2.log"),
-		"--streaming", "--use-attr-cache", "--invalidate-on-sync", "--pre-mount-validate", "--basic-remount-check")
+		"--streaming", "--use-attr-cache", "--invalidate-on-sync", "--pre-mount-validate", "--basic-remount-check", "-o", "direct_io")
 	suite.assert.NotNil(err)
 	suite.assert.Contains(op, "failed to initialize new pipeline")
 }
@@ -326,7 +326,7 @@ func (suite *mountTestSuite) TestInvalidLibfuseOption() {
 	// incorrect option
 	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileMntTest),
 		"-o allow_other", "-o attr_timeout=120", "-o entry_timeout=120", "-o negative_timeout=120",
-		"-o ro", "-o default_permissions", "-o umask=755", "-o a=b=c")
+		"-o ro", "-o default_permissions", "-o umask=755", "-o uid=1000", "-o gid=1000", "-o direct_io", "-o a=b=c")
 	suite.assert.NotNil(err)
 	suite.assert.Contains(op, "invalid FUSE options")
 }
@@ -342,7 +342,7 @@ func (suite *mountTestSuite) TestUndefinedLibfuseOption() {
 	// undefined option
 	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileMntTest),
 		"-o allow_other", "-o attr_timeout=120", "-o entry_timeout=120", "-o negative_timeout=120",
-		"-o ro", "-o allow_root", "-o umask=755", "-o random_option")
+		"-o ro", "-o allow_root", "-o umask=755", "-o uid=1000", "-o gid=1000", "-o direct_io", "-o random_option")
 	suite.assert.NotNil(err)
 	suite.assert.Contains(op, "invalid FUSE options")
 }
@@ -358,9 +358,39 @@ func (suite *mountTestSuite) TestInvalidUmaskValue() {
 	// incorrect umask value
 	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileMntTest),
 		"-o allow_other", "-o attr_timeout=120", "-o entry_timeout=120", "-o negative_timeout=120",
-		"-o ro", "-o allow_root", "-o default_permissions", "-o umask=abcd")
+		"-o ro", "-o allow_root", "-o default_permissions", "-o uid=1000", "-o gid=1000", "-o direct_io", "-o umask=abcd")
 	suite.assert.NotNil(err)
 	suite.assert.Contains(op, "failed to parse umask")
+}
+
+func (suite *mountTestSuite) TestInvalidUIDValue() {
+	defer suite.cleanupTest()
+
+	mntDir, err := os.MkdirTemp("", "mntdir")
+	suite.assert.Nil(err)
+	defer os.RemoveAll(mntDir)
+
+	// incorrect umask value
+	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileMntTest),
+		"-o allow_other", "-o attr_timeout=120", "-o entry_timeout=120", "-o negative_timeout=120",
+		"-o ro", "-o allow_root", "-o default_permissions", "-o umask=755", "-o gid=1000", "-o direct_io", "-o uid=abcd")
+	suite.assert.NotNil(err)
+	suite.assert.Contains(op, "failed to parse uid")
+}
+
+func (suite *mountTestSuite) TestInvalidGIDValue() {
+	defer suite.cleanupTest()
+
+	mntDir, err := os.MkdirTemp("", "mntdir")
+	suite.assert.Nil(err)
+	defer os.RemoveAll(mntDir)
+
+	// incorrect umask value
+	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileMntTest),
+		"-o allow_other", "-o attr_timeout=120", "-o entry_timeout=120", "-o negative_timeout=120",
+		"-o ro", "-o allow_root", "-o default_permissions", "-o umask=755", "-o uid=1000", "-o direct_io", "-o gid=abcd")
+	suite.assert.NotNil(err)
+	suite.assert.Contains(op, "failed to parse gid")
 }
 
 // fuse option parsing validation
