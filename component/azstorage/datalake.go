@@ -559,7 +559,7 @@ func (dl *Datalake) WriteFromFile(name string, metadata map[string]*string, fi *
 	fileClient := dl.Filesystem.NewFileClient(filepath.Join(dl.Config.prefixPath, name))
 	resp, err := fileClient.GetAccessControl(context.Background(), nil)
 	if err != nil {
-		// Earlier code was igoring this so it might break customer cases where they do not have auth to update ACL
+		// Earlier code was ignoring this so it might break customer cases where they do not have auth to update ACL
 		log.Err("Datalake::WriteFromFile : Failed to get ACL for %s [%s]", name, err.Error())
 	}
 
@@ -575,7 +575,7 @@ func (dl *Datalake) WriteFromFile(name string, metadata map[string]*string, fi *
 		})
 
 		if err != nil {
-			// Earlier code was igoring this so it might break customer cases where they do not have auth to update ACL
+			// Earlier code was ignoring this so it might break customer cases where they do not have auth to update ACL
 			log.Err("Datalake::WriteFromFile : Failed to set ACL for %s [%s]", name, err.Error())
 		}
 	}
@@ -687,7 +687,7 @@ func (dl *Datalake) CommitBlocks(name string, blockList []string) error {
 	fileClient := dl.Filesystem.NewFileClient(filepath.Join(dl.Config.prefixPath, name))
 	resp, err := fileClient.GetAccessControl(context.Background(), nil)
 	if err != nil {
-		// Earlier code was igoring this so it might break customer cases where they do not have auth to update ACL
+		// Earlier code was ignoring this so it might break customer cases where they do not have auth to update ACL
 		log.Err("Datalake::CommitBlocks : Failed to get ACL for %s [%s]", name, err.Error())
 	}
 
@@ -702,7 +702,7 @@ func (dl *Datalake) CommitBlocks(name string, blockList []string) error {
 		})
 
 		if err != nil {
-			// Earlier code was igoring this so it might break customer cases where they do not have auth to update ACL
+			// Earlier code was ignoring this so it might break customer cases where they do not have auth to update ACL
 			log.Err("Datalake::CommitBlocks : Failed to set ACL for %s [%s]", name, err.Error())
 		}
 	}

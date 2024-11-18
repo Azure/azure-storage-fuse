@@ -2611,7 +2611,7 @@ func (s *datalakeTestSuite) TestPermissionPreservationWithCommit() {
 	s.az.CloseFile(internal.CloseFileOptions{Handle: h})
 	s.assert.Nil(err)
 
-	// Stage and commti blocks here
+	// Stage and commit blocks here
 	data := []byte("123123")
 
 	id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
