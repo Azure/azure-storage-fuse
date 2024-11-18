@@ -8,7 +8,8 @@
 - Do not allow to mount with non-empty directory provided for disk persistence in block-cache.
 - Rename file was calling an additional getProperties call.
 - Delete empty directories from local cache on rmdir operation.
-- Upload of a file to Datalake was resetting the ACL and permissions applied to a file.
+- [#1547](https://github.com/Azure/azure-storage-fuse/issues/1547) Truncate logic of file cache is modified to prevent downloading and uploading the entire file.
+- Updating a file via Blobfuse2 was resetting the ACLs and Permissions applied to file in Datalake.
 
 **Features**
 - Added 'gen-config' command to auto generate blobfuse2 config file.
