@@ -2568,6 +2568,35 @@ func (s *datalakeTestSuite) TestUploadWithCPKEnabled() {
 	_ = os.Remove(name1)
 }
 
+func (s *datalakeTestSuite) TestPermissionPreservation() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	_, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: []byte("test data")})
+	s.assert.Nil(err)
+
+	err = s.az.Chmod(internal.ChmodOptions{Name: name, Mode: 0764})
+	s.assert.Nil(err)
+
+	s.az.CloseFile(internal.CloseFileOptions{Handle: h})
+	s.assert.Nil(err)
+
+	_ = os.WriteFile(name+"_local", []byte("123123"), 0764)
+	f, err := os.OpenFile(name+"_local", os.O_RDWR, 0764)
+	s.assert.Nil(err)
+
+	err = s.az.CopyFromFile(internal.CopyFromFileOptions{Name: name, File: f, Metadata: nil})
+	s.assert.Nil(err)
+
+	attr, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
+	s.assert.Nil(err)
+	s.assert.NotNil(attr)
+	s.assert.EqualValues(0764, attr.Mode)
+
+	os.Remove(name + "_local")
+}
+
 // func (s *datalakeTestSuite) TestRAGRS() {
 // 	defer s.cleanupTest()
 // 	// Setup

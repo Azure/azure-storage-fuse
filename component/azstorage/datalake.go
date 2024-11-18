@@ -553,7 +553,34 @@ func (dl *Datalake) ReadInBuffer(name string, offset int64, len int64, data []by
 
 // WriteFromFile : Upload local file to file
 func (dl *Datalake) WriteFromFile(name string, metadata map[string]*string, fi *os.File) (err error) {
-	return dl.BlockBlob.WriteFromFile(name, metadata, fi)
+	// File in DataLake may have permissions and ACL set. Just uploading the file will override them.
+	// So, we need to get the existing permissions and ACL and set them back after uploading the file.
+
+	fileClient := dl.Filesystem.NewFileClient(filepath.Join(dl.Config.prefixPath, name))
+	resp, err := fileClient.GetAccessControl(context.Background(), nil)
+	if err != nil {
+		// Earlier code was igoring this so it might break customer cases where they do not have auth to update ACL
+		log.Err("Datalake::WriteFromFile : Failed to get ACL for %s [%s]", name, err.Error())
+	}
+
+	// Upload the file, which will override the permissions and ACL
+	retCode := dl.BlockBlob.WriteFromFile(name, metadata, fi)
+
+	if err == nil {
+		// Cannot set both permissions and ACL in one call. ACL includes permission as well so just setting those back
+		// Just setting up the permissions will delete existing ACLs applied on the blob so do not convert this code to
+		// just set the permissions.
+		_, err := fileClient.SetAccessControl(context.Background(), &file.SetAccessControlOptions{
+			ACL: resp.ACL,
+		})
+
+		if err != nil {
+			// Earlier code was igoring this so it might break customer cases where they do not have auth to update ACL
+			log.Err("Datalake::WriteFromFile : Failed to set ACL for %s [%s]", name, err.Error())
+		}
+	}
+
+	return retCode
 }
 
 // WriteFromBuffer : Upload from a buffer to a file
