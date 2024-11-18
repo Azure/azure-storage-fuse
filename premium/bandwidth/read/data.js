@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1731925101468,
+  "lastUpdate": 1731942216431,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -2463,6 +2463,75 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 13.5859375,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "syeleti@microsoft.com",
+            "name": "syeleti-msft",
+            "username": "syeleti-msft"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "cbd7b10085d53e985f1a706fdbff1f7a906753eb",
+          "message": "truncate logic correction in filecache (#1569)\n\n* Fix will prevent the truncate in file cache to upload the entire file. This is causing the network error when the file is large.\r\nInstead it passes the call to the next component.",
+          "timestamp": "2024-11-18T20:13:40+05:30",
+          "tree_id": "d4d87da93630b37a9334068f28241ee5ef01b818",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/cbd7b10085d53e985f1a706fdbff1f7a906753eb"
+        },
+        "date": 1731942215138,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read",
+            "value": 2432.4658203125,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read",
+            "value": 3.4440104166666665,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_small_file",
+            "value": 2781.556640625,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 1230.8030598958333,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_direct_io",
+            "value": 2403.9303385416665,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_direct_io",
+            "value": 3.4710286458333335,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 4550.721028645833,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 3964.9807942708335,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 13.128255208333334,
             "unit": "MiB/s"
           }
         ]
