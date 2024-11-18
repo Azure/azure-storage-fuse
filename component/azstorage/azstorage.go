@@ -662,6 +662,9 @@ func init() {
 	cpkEnabled := config.AddBoolFlag("cpk-enabled", false, "Enable client provided key.")
 	config.BindPFlag(compName+".cpk-enabled", cpkEnabled)
 
+	preserveACL := config.AddBoolFlag("preserve-acl", false, "Preserve ACL in case of datalake storage")
+	config.BindPFlag(compName+".preserve-acl", preserveACL)
+
 	config.RegisterFlagCompletionFunc("container-name", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	})

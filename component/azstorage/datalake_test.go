@@ -2568,7 +2568,7 @@ func (s *datalakeTestSuite) TestUploadWithCPKEnabled() {
 	_ = os.Remove(name1)
 }
 
-func (s *datalakeTestSuite) TestPermissionPreservation() {
+func (s *datalakeTestSuite) TestPermissionPreservationWithoutFlag() {
 	defer s.cleanupTest()
 	// Setup
 	name := generateFileName()
@@ -2592,7 +2592,49 @@ func (s *datalakeTestSuite) TestPermissionPreservation() {
 	attr, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
 	s.assert.Nil(err)
 	s.assert.NotNil(attr)
-	s.assert.EqualValues(0764, attr.Mode)
+
+	acl, err := s.az.storage.(*Datalake).getAccessControl(name)
+	s.assert.Nil(err)
+	s.assert.Contains(acl, "user::rw-")
+	s.assert.Contains(acl, "other::---")
+
+	os.Remove(name + "_local")
+}
+
+func (s *datalakeTestSuite) TestPermissionPreservationWithFlag() {
+	defer s.cleanupTest()
+	// Setup
+	conf := fmt.Sprintf("azstorage:\n  preserve-acl: true\n  account-name: %s\n  endpoint: https://%s.dfs.core.windows.net/\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
+		storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsKey, s.container)
+	s.setupTestHelper(conf, s.container, false)
+
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	_, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: []byte("test data")})
+	s.assert.Nil(err)
+
+	err = s.az.Chmod(internal.ChmodOptions{Name: name, Mode: 0764})
+	s.assert.Nil(err)
+
+	s.az.CloseFile(internal.CloseFileOptions{Handle: h})
+	s.assert.Nil(err)
+
+	_ = os.WriteFile(name+"_local", []byte("123123"), 0764)
+	f, err := os.OpenFile(name+"_local", os.O_RDWR, 0764)
+	s.assert.Nil(err)
+
+	err = s.az.CopyFromFile(internal.CopyFromFileOptions{Name: name, File: f, Metadata: nil})
+	s.assert.Nil(err)
+
+	attr, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
+	s.assert.Nil(err)
+	s.assert.NotNil(attr)
+
+	acl, err := s.az.storage.(*Datalake).getAccessControl(name)
+	s.assert.Nil(err)
+	s.assert.Contains(acl, "user::rwx")
+	s.assert.Contains(acl, "group::rw-")
+	s.assert.Contains(acl, "other::r--")
 
 	os.Remove(name + "_local")
 }
@@ -2600,6 +2642,7 @@ func (s *datalakeTestSuite) TestPermissionPreservation() {
 func (s *datalakeTestSuite) TestPermissionPreservationWithCommit() {
 	defer s.cleanupTest()
 	// Setup
+	s.setupTestHelper("", s.container, false)
 	name := generateFileName()
 	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
 	_, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: []byte("test data")})
@@ -2636,6 +2679,12 @@ func (s *datalakeTestSuite) TestPermissionPreservationWithCommit() {
 	s.assert.Nil(err)
 	s.assert.NotNil(attr)
 	s.assert.EqualValues(0767, attr.Mode)
+
+	acl, err := s.az.storage.(*Datalake).getAccessControl(name)
+	s.assert.Nil(err)
+	s.assert.Contains(acl, "user::rwx")
+	s.assert.Contains(acl, "group::rw-")
+	s.assert.Contains(acl, "other::rwx")
 }
 
 // func (s *datalakeTestSuite) TestRAGRS() {
