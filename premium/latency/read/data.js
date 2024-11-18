@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1731925102686,
+  "lastUpdate": 1731942217453,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -2463,6 +2463,75 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 73.469497428261,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "syeleti@microsoft.com",
+            "name": "syeleti-msft",
+            "username": "syeleti-msft"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "cbd7b10085d53e985f1a706fdbff1f7a906753eb",
+          "message": "truncate logic correction in filecache (#1569)\n\n* Fix will prevent the truncate in file cache to upload the entire file. This is causing the network error when the file is large.\r\nInstead it passes the call to the next component.",
+          "timestamp": "2024-11-18T20:13:40+05:30",
+          "tree_id": "d4d87da93630b37a9334068f28241ee5ef01b818",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/cbd7b10085d53e985f1a706fdbff1f7a906753eb"
+        },
+        "date": 1731942217200,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read",
+            "value": 0.09409971914033334,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read",
+            "value": 72.55442871936967,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_small_file",
+            "value": 0.07745308324366666,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 0.18886405252500002,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_direct_io",
+            "value": 0.10400257051133333,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_direct_io",
+            "value": 72.010447098705,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 0.180717284284,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 0.9878659705233334,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 76.00853042084667,
             "unit": "milliseconds"
           }
         ]
