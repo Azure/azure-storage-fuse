@@ -2613,14 +2613,16 @@ func (suite *blockCacheTestSuite) TestReadWriteBlockInParallel() {
 
 func (suite *blockCacheTestSuite) TestZZZZZStreamToBlockCacheConfig() {
 	common.IsStream = true
-	config := "read-only: true\n\nstream:\n  block-size-mb: 16\n  max-buffers: 80\n  buffer-size-mb: 8\n"
+	config := "read-only: true\n\nstream:\n  block-size-mb: 16\n  max-buffers: 30\n  buffer-size-mb: 8\n"
 	tobj, err := setupPipeline(config)
 	defer tobj.cleanupPipeline()
 
 	suite.assert.Nil(err)
-	suite.assert.Equal(tobj.blockCache.Name(), "block_cache")
-	suite.assert.EqualValues(tobj.blockCache.blockSize, 16*_1MB)
-	suite.assert.EqualValues(tobj.blockCache.memSize, 8*_1MB*80)
+	if err == nil {
+		suite.assert.Equal(tobj.blockCache.Name(), "block_cache")
+		suite.assert.EqualValues(tobj.blockCache.blockSize, 16*_1MB)
+		suite.assert.EqualValues(tobj.blockCache.memSize, 8*_1MB*30)
+	}
 }
 
 // In order for 'go test' to run this suite, we need to create
