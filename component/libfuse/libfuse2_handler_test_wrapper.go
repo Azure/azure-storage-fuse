@@ -172,6 +172,7 @@ func testRmDirNotEmpty(suite *libfuseTestSuite) {
 	defer C.free(unsafe.Pointer(path))
 	isDirEmptyOptions := internal.IsDirEmptyOptions{Name: name}
 	suite.mock.EXPECT().IsDirEmpty(isDirEmptyOptions).Return(false)
+	suite.mock.EXPECT().DeleteEmptyDirs(internal.DeleteDirOptions{Name: name}).Return(false, errors.New("unable to delete directory"))
 
 	err := libfuse_rmdir(path)
 	suite.assert.Equal(C.int(-C.ENOTEMPTY), err)
@@ -490,6 +491,9 @@ func testReadLink(suite *libfuseTestSuite) {
 	defer C.free(unsafe.Pointer(path))
 	options := internal.ReadLinkOptions{Name: name}
 	suite.mock.EXPECT().ReadLink(options).Return("target", nil)
+	attr := &internal.ObjAttr{}
+	getAttrOpt := internal.GetAttrOptions{Name: name}
+	suite.mock.EXPECT().GetAttr(getAttrOpt).Return(attr, nil)
 
 	// https://stackoverflow.com/questions/41953619/how-to-initialise-empty-c-cstring-in-cgo
 	buf := C.CString("")
@@ -505,6 +509,9 @@ func testReadLinkNotExists(suite *libfuseTestSuite) {
 	defer C.free(unsafe.Pointer(path))
 	options := internal.ReadLinkOptions{Name: name}
 	suite.mock.EXPECT().ReadLink(options).Return("", syscall.ENOENT)
+	attr := &internal.ObjAttr{}
+	getAttrOpt := internal.GetAttrOptions{Name: name}
+	suite.mock.EXPECT().GetAttr(getAttrOpt).Return(attr, nil)
 
 	buf := C.CString("")
 	err := libfuse_readlink(path, buf, 7)
@@ -519,6 +526,8 @@ func testReadLinkError(suite *libfuseTestSuite) {
 	defer C.free(unsafe.Pointer(path))
 	options := internal.ReadLinkOptions{Name: name}
 	suite.mock.EXPECT().ReadLink(options).Return("", errors.New("failed to read link"))
+	getAttrOpt := internal.GetAttrOptions{Name: name}
+	suite.mock.EXPECT().GetAttr(getAttrOpt).Return(nil, nil)
 
 	buf := C.CString("")
 	err := libfuse_readlink(path, buf, 7)
