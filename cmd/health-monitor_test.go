@@ -72,10 +72,10 @@ type hmonTestSuite struct {
 }
 
 func generateRandomPID() string {
-	rand.Seed(time.Now().UnixNano())
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	var randpid int
 	for i := 0; i <= 5; i++ {
-		randpid = rand.Intn(90000) + 10000
+		randpid = r.Intn(90000) + 10000
 		_, err := os.FindProcess(randpid)
 		if err != nil {
 			break
