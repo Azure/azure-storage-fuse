@@ -560,13 +560,7 @@ func (dl *Datalake) WriteFromFile(name string, metadata map[string]*string, fi *
 	var fileClient *file.Client = nil
 
 	if dl.Config.preserveACL {
-		fileClient = dl.Filesystem.NewFileClient(filepath.Join(dl.Config.prefixPath, name))
-		resp, err := fileClient.GetAccessControl(context.Background(), nil)
-		if err != nil {
-			// Earlier code was ignoring this so it might break customer cases where they do not have auth to update ACL
-			log.Err("Datalake::WriteFromFile : Failed to get ACL for %s [%s]", name, err.Error())
-		}
-		acl = *resp.ACL
+		acl, err = dl.getACL(name)
 	}
 
 	// Upload the file, which will override the permissions and ACL
@@ -611,12 +605,12 @@ func (dl *Datalake) TruncateFile(name string, size int64) error {
 	return dl.BlockBlob.TruncateFile(name, size)
 }
 
-func (dl *Datalake) getAccessControl(name string) (string, error) {
-	log.Trace("Datalake::getAccessControl : Get ACLs for file %s", name)
+func (dl *Datalake) getACL(name string) (string, error) {
+	log.Trace("Datalake::getACL : Get ACLs for file %s", name)
 	fileClient := dl.Filesystem.NewFileClient(filepath.Join(dl.Config.prefixPath, name))
 	acl, err := fileClient.GetAccessControl(context.Background(), nil)
 	if err != nil {
-		log.Err("Datalake::getAccessControl : Failed to get ACLs for file %s [%s]", name, err.Error())
+		log.Err("Datalake::getACL : Failed to get ACLs for file %s [%s]", name, err.Error())
 		return "", err
 	}
 
@@ -633,7 +627,7 @@ func (dl *Datalake) ChangeMod(name string, mode os.FileMode) error {
 		// and create new string with the username included in the string
 		// Keeping this code here so in future if its required we can get the string and manipulate
 
-		currPerm, err := fileURL.GetAccessControl(context.Background())
+		currPerm, err := fileURL.getACL(context.Background())
 		e := storeDatalakeErrToErr(err)
 		if e == ErrFileNotFound {
 			return syscall.ENOENT
