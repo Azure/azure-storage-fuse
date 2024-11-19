@@ -560,13 +560,19 @@ func (dl *Datalake) WriteFromFile(name string, metadata map[string]*string, fi *
 	var fileClient *file.Client = nil
 
 	if dl.Config.preserveACL {
-		acl, err = dl.getACL(name)
+		fileClient = dl.Filesystem.NewFileClient(filepath.Join(dl.Config.prefixPath, name))
+		resp, err := fileClient.GetAccessControl(context.Background(), nil)
+		if err != nil {
+			log.Err("Datalake::getACL : Failed to get ACLs for file %s [%s]", name, err.Error())
+		} else if resp.ACL != nil {
+			acl = *resp.ACL
+		}
 	}
 
 	// Upload the file, which will override the permissions and ACL
 	retCode := dl.BlockBlob.WriteFromFile(name, metadata, fi)
 
-	if err == nil && acl != "" {
+	if acl != "" {
 		// Cannot set both permissions and ACL in one call. ACL includes permission as well so just setting those back
 		// Just setting up the permissions will delete existing ACLs applied on the blob so do not convert this code to
 		// just set the permissions.
@@ -603,18 +609,6 @@ func (dl *Datalake) GetFileBlockOffsets(name string) (*common.BlockOffsetList, e
 
 func (dl *Datalake) TruncateFile(name string, size int64) error {
 	return dl.BlockBlob.TruncateFile(name, size)
-}
-
-func (dl *Datalake) getACL(name string) (string, error) {
-	log.Trace("Datalake::getACL : Get ACLs for file %s", name)
-	fileClient := dl.Filesystem.NewFileClient(filepath.Join(dl.Config.prefixPath, name))
-	acl, err := fileClient.GetAccessControl(context.Background(), nil)
-	if err != nil {
-		log.Err("Datalake::getACL : Failed to get ACLs for file %s [%s]", name, err.Error())
-		return "", err
-	}
-
-	return *acl.ACL, nil
 }
 
 // ChangeMod : Change mode of a path

@@ -39,12 +39,14 @@ package azstorage
 import (
 	"bytes"
 	"container/list"
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"testing"
@@ -1856,7 +1858,7 @@ func (s *datalakeTestSuite) TestChmod() {
 
 	// File's ACL info should have changed
 	file := s.containerClient.NewFileClient(name)
-	acl, err := file.getACL(ctx, nil)
+	acl, err := file.GetAccessControl(ctx, nil)
 	s.assert.Nil(err)
 	s.assert.NotNil(acl.ACL)
 	s.assert.EqualValues("user::rw-,group::rw-,other::rw-", *acl.ACL)
@@ -2568,6 +2570,16 @@ func (s *datalakeTestSuite) TestUploadWithCPKEnabled() {
 	_ = os.Remove(name1)
 }
 
+func getACL(dl *Datalake, name string) (string, error) {
+	fileClient := dl.Filesystem.NewFileClient(filepath.Join(dl.Config.prefixPath, name))
+	acl, err := fileClient.GetAccessControl(context.Background(), nil)
+	if err != nil {
+		return "", err
+	}
+
+	return *acl.ACL, nil
+}
+
 func (s *datalakeTestSuite) TestPermissionPreservationWithoutFlag() {
 	defer s.cleanupTest()
 	// Setup
@@ -2593,7 +2605,7 @@ func (s *datalakeTestSuite) TestPermissionPreservationWithoutFlag() {
 	s.assert.Nil(err)
 	s.assert.NotNil(attr)
 
-	acl, err := s.az.storage.(*Datalake).getACL(name)
+	acl, err := getACL(s.az.storage.(*Datalake), name)
 	s.assert.Nil(err)
 	s.assert.Contains(acl, "user::rw-")
 	s.assert.Contains(acl, "other::---")
@@ -2630,7 +2642,7 @@ func (s *datalakeTestSuite) TestPermissionPreservationWithFlag() {
 	s.assert.Nil(err)
 	s.assert.NotNil(attr)
 
-	acl, err := s.az.storage.(*Datalake).getACL(name)
+	acl, err := getACL(s.az.storage.(*Datalake), name)
 	s.assert.Nil(err)
 	s.assert.Contains(acl, "user::rwx")
 	s.assert.Contains(acl, "group::rw-")
@@ -2680,7 +2692,7 @@ func (s *datalakeTestSuite) TestPermissionPreservationWithCommit() {
 	s.assert.NotNil(attr)
 	s.assert.EqualValues(0767, attr.Mode)
 
-	acl, err := s.az.storage.(*Datalake).getACL(name)
+	acl, err := getACL(s.az.storage.(*Datalake), name)
 	s.assert.Nil(err)
 	s.assert.Contains(acl, "user::rwx")
 	s.assert.Contains(acl, "group::rw-")
