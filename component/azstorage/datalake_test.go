@@ -2605,6 +2605,7 @@ func (s *datalakeTestSuite) TestPermissionPreservationWithoutFlag() {
 	attr, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
 	s.assert.Nil(err)
 	s.assert.NotNil(attr)
+	s.assert.NotEqual(0764, attr.Mode)
 
 	acl, err := getACL(s.az.storage.(*Datalake), name)
 	s.assert.Nil(err)
@@ -2642,6 +2643,7 @@ func (s *datalakeTestSuite) TestPermissionPreservationWithFlag() {
 	attr, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
 	s.assert.Nil(err)
 	s.assert.NotNil(attr)
+	s.assert.NotEqual(0764, attr.Mode)
 
 	acl, err := getACL(s.az.storage.(*Datalake), name)
 	s.assert.Nil(err)
