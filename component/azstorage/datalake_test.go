@@ -2573,8 +2573,13 @@ func (s *datalakeTestSuite) TestUploadWithCPKEnabled() {
 func getACL(dl *Datalake, name string) (string, error) {
 	fileClient := dl.Filesystem.NewFileClient(filepath.Join(dl.Config.prefixPath, name))
 	acl, err := fileClient.GetAccessControl(context.Background(), nil)
+
 	if err != nil {
 		return "", err
+	}
+
+	if acl.ACL == nil {
+		return "", nil
 	}
 
 	return *acl.ACL, nil
