@@ -45,6 +45,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -2581,27 +2582,32 @@ func getACL(dl *Datalake, name string) (string, error) {
 	return *acl.ACL, nil
 }
 
-func (s *datalakeTestSuite) TestPermissionPreservationWithoutFlag() {
-	defer s.cleanupTest()
-	// Setup
-	name := generateFileName()
+func (s *datalakeTestSuite) createFileWithData(name string, data []byte, mode os.FileMode) {
 	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
-	_, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: []byte("test data")})
+	_, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 	s.assert.Nil(err)
 
-	err = s.az.Chmod(internal.ChmodOptions{Name: name, Mode: 0764})
+	err = s.az.Chmod(internal.ChmodOptions{Name: name, Mode: mode})
 	s.assert.Nil(err)
 
 	s.az.CloseFile(internal.CloseFileOptions{Handle: h})
 	s.assert.Nil(err)
+}
 
-	_ = os.WriteFile(name+"_local", []byte("123123"), 0764)
-	f, err := os.OpenFile(name+"_local", os.O_RDWR, 0764)
+func (s *datalakeTestSuite) TestPermissionPreservationWithoutFlag() {
+	defer s.cleanupTest()
+	name := generateFileName()
+
+	data := []byte("test data")
+	mode := fs.FileMode(0764)
+	s.createFileWithData(name, data, mode)
+	// Simulate file copy and permission checks
+	_ = os.WriteFile(name+"_local", []byte("123123"), mode)
+	f, err := os.OpenFile(name+"_local", os.O_RDWR, mode)
 	s.assert.Nil(err)
 
 	err = s.az.CopyFromFile(internal.CopyFromFileOptions{Name: name, File: f, Metadata: nil})
 	s.assert.Nil(err)
-
 	attr, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
 	s.assert.Nil(err)
 	s.assert.NotNil(attr)
@@ -2623,18 +2629,12 @@ func (s *datalakeTestSuite) TestPermissionPreservationWithFlag() {
 	s.setupTestHelper(conf, s.container, false)
 
 	name := generateFileName()
-	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
-	_, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: []byte("test data")})
-	s.assert.Nil(err)
-
-	err = s.az.Chmod(internal.ChmodOptions{Name: name, Mode: 0764})
-	s.assert.Nil(err)
-
-	s.az.CloseFile(internal.CloseFileOptions{Handle: h})
-	s.assert.Nil(err)
-
-	_ = os.WriteFile(name+"_local", []byte("123123"), 0764)
-	f, err := os.OpenFile(name+"_local", os.O_RDWR, 0764)
+	data := []byte("test data")
+	mode := fs.FileMode(0764)
+	s.createFileWithData(name, data, mode)
+	// Simulate file copy and permission checks
+	_ = os.WriteFile(name+"_local", []byte("123123"), mode)
+	f, err := os.OpenFile(name+"_local", os.O_RDWR, mode)
 	s.assert.Nil(err)
 
 	err = s.az.CopyFromFile(internal.CopyFromFileOptions{Name: name, File: f, Metadata: nil})
@@ -2659,21 +2659,11 @@ func (s *datalakeTestSuite) TestPermissionPreservationWithCommit() {
 	// Setup
 	s.setupTestHelper("", s.container, false)
 	name := generateFileName()
-	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
-	_, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: []byte("test data")})
-	s.assert.Nil(err)
-
-	err = s.az.Chmod(internal.ChmodOptions{Name: name, Mode: 0767})
-	s.assert.Nil(err)
-
-	s.az.CloseFile(internal.CloseFileOptions{Handle: h})
-	s.assert.Nil(err)
-
-	// Stage and commit blocks here
+	s.createFileWithData(name, []byte("test data"), fs.FileMode(0767))
 	data := []byte("123123")
 
 	id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
-	err = s.az.StageData(internal.StageDataOptions{
+	err := s.az.StageData(internal.StageDataOptions{
 		Name:   name,
 		Id:     id,
 		Data:   data,
