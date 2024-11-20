@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1731942216431,
+  "lastUpdate": 1732090826732,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -2532,6 +2532,75 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 13.128255208333334,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "98318303+souravgupta-msft@users.noreply.github.com",
+            "name": "Sourav Gupta",
+            "username": "souravgupta-msft"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "1ce5915528db77980cae98721e28e37d1455e0f2",
+          "message": "Adding Debian 12 (#1572)",
+          "timestamp": "2024-11-20T13:30:48+05:30",
+          "tree_id": "9f10e0b7bb79f95370f21e432f011631361462c9",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/1ce5915528db77980cae98721e28e37d1455e0f2"
+        },
+        "date": 1732090825443,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read",
+            "value": 2469.8697916666665,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read",
+            "value": 3.560546875,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_small_file",
+            "value": 2407.6552734375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 1420.0296223958333,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_direct_io",
+            "value": 2453.6901041666665,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_direct_io",
+            "value": 3.6328125,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 4814.22265625,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 3973.2063802083335,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 12.8701171875,
             "unit": "MiB/s"
           }
         ]
