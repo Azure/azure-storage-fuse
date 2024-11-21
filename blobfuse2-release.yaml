@@ -1791,12 +1791,6 @@ stages:
                 displayName: 'Installing blobfuse2'
 
               - script: |
-                  wget https://raw.githubusercontent.com/Azure/azure-storage-fuse/`echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`/releaseVersionUpdate.py
-                  ls -l
-                displayName: 'Getting Python script'
-                workingDirectory: $(root_dir)
-
-              - script: |
                   mkdir -p ~/blob_mnt
                   chmod 777 ~/blob_mnt
                   mkdir -p ~/blobfusetemp
