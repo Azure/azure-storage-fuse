@@ -1828,7 +1828,7 @@ stages:
                   cd ~/blob_mnt/release/latest/
                   version=`blobfuse2 version | cut -d " " -f3`
                   echo "Release version: " $version
-                  echo -e "<xml>\n<latest>\n$version\n</latest>\n</xml>" >> index.xml
+                  echo -e "<xml>\n<latest>$version</latest>\n</xml>" > index.xml
                   echo "Printing index.xml"
                   cat index.xml
                 displayName: 'Update the XML file'    
