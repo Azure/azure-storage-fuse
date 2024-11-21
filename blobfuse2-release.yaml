@@ -1811,8 +1811,10 @@ stages:
               
               - script: |
                   cd ~/blob_mnt/release/latest/
+                  echo "Before cleanup"
                   ls -l 
                   rm -rf *
+                  echo "After cleanup"
                   ls -l 
                 displayName: 'Delete older version file'
                 
@@ -1825,8 +1827,9 @@ stages:
               - script: |
                   cd ~/blob_mnt/release/latest/
                   version=`blobfuse2 version | cut -d " " -f3`
-                  echo $version
-                  echo -e "<xml>\n<latest>$version</latest>\n</xml>" > index.xml
+                  echo "Release version: " $version
+                  echo -e "<xml>\n<latest>\n$version\n</latest>\n</xml>" >> index.xml
+                  echo "Printing index.xml"
                   cat index.xml
                 displayName: 'Update the XML file'    
                 
