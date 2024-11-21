@@ -1806,12 +1806,13 @@ stages:
                 env:
                   AZURE_STORAGE_ACCOUNT: "blobfuse2"
                   AZURE_STORAGE_AUTH_TYPE: "msi"
+                  AZURE_STORAGE_IDENTITY_CLIENT_ID: $(BLOBFUSE2_MSI_CIENT_ID)
                 displayName: 'Mount release container for version update'
               
               - script: |
                   cd ~/blob_mnt/release/latest/
                   ls -l 
-                  rm -v !("index.xml")
+                  rm -rf *
                   ls -l 
                 displayName: 'Delete older version file'
                 
