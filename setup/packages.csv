@@ -9,6 +9,7 @@ Ubuntu-24.04,fuse3ArmDeb,microsoft-ubuntu-noble-prod-apt,noble
 Debian-9.0,fuse2AmdDeb,microsoft-debian-stretch-prod-apt,stretch
 Debian-10.0,fuse2AmdDeb,microsoft-debian-buster-prod-apt,buster
 Debian-11.0,fuse3AmdDeb,microsoft-debian-bullseye-prod-apt,bullseye
+Debian-12.0,fuse3AmdDeb,microsoft-debian-bookworm-prod-apt,bookworm
 RHEL-7.5,fuse3AmdRpm,microsoft-rhel7.5-prod-yum,
 RHEL-7.8,fuse3AmdRpm,microsoft-rhel7.8-prod-yum,
 RHEL-8.1,fuse3AmdRpm,microsoft-rhel8.1-prod-yum,
