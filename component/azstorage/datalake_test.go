@@ -2611,11 +2611,12 @@ func (s *datalakeTestSuite) TestPermissionPreservationWithoutFlag() {
 	attr, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
 	s.assert.Nil(err)
 	s.assert.NotNil(attr)
-	s.assert.NotEqual(0764, attr.Mode)
+	s.assert.NotEqual(os.FileMode(0764), attr.Mode)
 
 	acl, err := getACL(s.az.storage.(*Datalake), name)
 	s.assert.Nil(err)
 	s.assert.Contains(acl, "user::rw-")
+	s.assert.Contains(acl, "group::r--")
 	s.assert.Contains(acl, "other::---")
 
 	os.Remove(name + "_local")
@@ -2643,7 +2644,7 @@ func (s *datalakeTestSuite) TestPermissionPreservationWithFlag() {
 	attr, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
 	s.assert.Nil(err)
 	s.assert.NotNil(attr)
-	s.assert.NotEqual(0764, attr.Mode)
+	s.assert.Equal(os.FileMode(0764), attr.Mode)
 
 	acl, err := getACL(s.az.storage.(*Datalake), name)
 	s.assert.Nil(err)
@@ -2683,7 +2684,7 @@ func (s *datalakeTestSuite) TestPermissionPreservationWithCommit() {
 	attr, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
 	s.assert.Nil(err)
 	s.assert.NotNil(attr)
-	s.assert.EqualValues(0767, attr.Mode)
+	s.assert.EqualValues(os.FileMode(0767), attr.Mode)
 
 	acl, err := getACL(s.az.storage.(*Datalake), name)
 	s.assert.Nil(err)
