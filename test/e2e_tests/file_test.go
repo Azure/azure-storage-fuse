@@ -37,10 +37,10 @@
 package e2e_tests
 
 import (
+	"crypto/rand"
 	"flag"
 	"fmt"
 	"io"
-	"math/rand"
 	"os"
 	"strconv"
 	"strings"
@@ -89,7 +89,6 @@ func initFileFlags() {
 }
 
 func getFileTestDirName(n int) string {
-	rand.Seed(time.Now().UnixNano())
 	b := make([]byte, n)
 	rand.Read(b)
 	return fmt.Sprintf("%x", b)[:n]
@@ -651,12 +650,12 @@ func TestFileTestSuite(t *testing.T) {
 	// Sanity check in the off chance the same random name was generated twice and was still around somehow
 	err := os.RemoveAll(fileTest.testPath)
 	if err != nil {
-		fmt.Println("Could not cleanup feature dir before testing")
+		fmt.Printf("Could not cleanup feature dir before testing [%s]\n", err.Error())
 	}
 
 	err = os.Mkdir(fileTest.testPath, 0777)
 	if err != nil {
-		t.Error("Failed to create test directory")
+		t.Errorf("Failed to create test directory [%s]\n", err.Error())
 	}
 	rand.Read(fileTest.minBuff)
 	rand.Read(fileTest.medBuff)

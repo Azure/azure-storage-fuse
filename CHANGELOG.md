@@ -8,12 +8,15 @@
 - Do not allow to mount with non-empty directory provided for disk persistence in block-cache.
 - Rename file was calling an additional getProperties call.
 - Delete empty directories from local cache on rmdir operation.
+- [#1547](https://github.com/Azure/azure-storage-fuse/issues/1547) Truncate logic of file cache is modified to prevent downloading and uploading the entire file.
 
 **Features**
 - Added 'gen-config' command to auto generate Blobfuse2 config file.
 
 **Other Changes**
 - Stream config will be converted to block-cache config implicitly and 'stream' component is no longer used from this release onwards.
+- MSI login with object-id will not rely on azcli anymore, rather it will be supported by 'azidentity' SDK.
+- Version check is now moved to a static website hosted on a public container.
 - MSI login with object-id will not rely on 'azcli' anymore, rather it will be supported by 'azidentity' SDK.
 - 'df' command output will present memory availability in case of block-cache if disk is not configured.
 
