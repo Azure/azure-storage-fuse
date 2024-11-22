@@ -147,7 +147,7 @@ func getDummyVersion() string {
 
 func (suite *rootCmdSuite) TestGetRemoteVersionValidContainer() {
 	defer suite.cleanupTest()
-	latestVersionUrl := common.Blobfuse2ListContainerURL + "?restype=container&comp=list&prefix=latest/"
+	latestVersionUrl := common.Blobfuse2ListContainerURL + "/latest/index.xml"
 	out, err := getRemoteVersion(latestVersionUrl)
 	suite.assert.NotEmpty(out)
 	suite.assert.Nil(err)
