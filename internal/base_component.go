@@ -65,6 +65,10 @@ func (base *BaseComponent) Configure(isParent bool) error {
 	return nil
 }
 
+func (base *BaseComponent) GenConfig() string {
+	return ""
+}
+
 func (base *BaseComponent) Priority() ComponentPriority {
 	return EComponentPriority.LevelMid()
 }
@@ -109,6 +113,13 @@ func (base *BaseComponent) IsDirEmpty(options IsDirEmptyOptions) bool {
 		return base.next.IsDirEmpty(options)
 	}
 	return false
+}
+
+func (base *BaseComponent) DeleteEmptyDirs(options DeleteDirOptions) (bool, error) {
+	if base.next != nil {
+		return base.next.DeleteEmptyDirs(options)
+	}
+	return false, nil
 }
 
 func (base *BaseComponent) OpenDir(options OpenDirOptions) error {

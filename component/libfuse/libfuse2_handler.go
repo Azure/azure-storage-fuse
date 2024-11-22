@@ -567,7 +567,16 @@ func libfuse_rmdir(path *C.char) C.int {
 
 	empty := fuseFS.NextComponent().IsDirEmpty(internal.IsDirEmptyOptions{Name: name})
 	if !empty {
-		return -C.ENOTEMPTY
+		// delete empty directories from local cache directory
+		val, err := fuseFS.NextComponent().DeleteEmptyDirs(internal.DeleteDirOptions{Name: name})
+		if !val {
+			// either file cache has failed or not present in the pipeline
+			if err != nil {
+				// if error is not nil, file cache has failed
+				log.Err("Libfuse::libfuse_rmdir : Failed to delete %s [%s]", name, err.Error())
+			}
+			return -C.ENOTEMPTY
+		}
 	}
 
 	err := fuseFS.NextComponent().DeleteDir(internal.DeleteDirOptions{Name: name})
@@ -957,7 +966,13 @@ func libfuse_readlink(path *C.char, buf *C.char, size C.size_t) C.int {
 	name = common.NormalizeObjectName(name)
 	//log.Trace("Libfuse::libfuse_readlink : Received for %s", name)
 
-	targetPath, err := fuseFS.NextComponent().ReadLink(internal.ReadLinkOptions{Name: name})
+	linkSize := int64(0)
+	attr, err := fuseFS.NextComponent().GetAttr(internal.GetAttrOptions{Name: name})
+	if err == nil && attr != nil {
+		linkSize = attr.Size
+	}
+
+	targetPath, err := fuseFS.NextComponent().ReadLink(internal.ReadLinkOptions{Name: name, Size: linkSize})
 	if err != nil {
 		log.Err("Libfuse::libfuse2_readlink : error reading link file %s [%s]", name, err.Error())
 		if os.IsNotExist(err) {

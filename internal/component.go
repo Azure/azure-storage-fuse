@@ -71,6 +71,7 @@ type Component interface {
 	Name() string
 	SetName(string)
 	Configure(bool) error
+	GenConfig() string
 	Priority() ComponentPriority
 
 	SetNextComponent(c Component)
@@ -83,6 +84,7 @@ type Component interface {
 	CreateDir(CreateDirOptions) error
 	DeleteDir(DeleteDirOptions) error
 	IsDirEmpty(IsDirEmptyOptions) bool
+	DeleteEmptyDirs(DeleteDirOptions) (bool, error)
 
 	OpenDir(OpenDirOptions) error
 	//ReadDir: implementation expectations

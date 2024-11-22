@@ -1697,6 +1697,13 @@ stages:
                   echo "##vso[task.setvariable variable=is_preview]$is_preview"
                 fi
 
+                is_preview="false"
+                echo "##vso[task.setvariable variable=is_preview]$is_preview"
+                if [[ $marinerFuse3AmdRpm == *"preview"* ]]; then
+                  is_preview="true"
+                  echo "##vso[task.setvariable variable=is_preview]$is_preview"
+                fi
+
                 while IFS=, read -r distro fuseArchType repoName releaseName; do
 
                   # If the package is preview, publish to mariner preview package
@@ -1737,8 +1744,22 @@ stages:
     condition: succeeded('ReleaseArtifacts')
     jobs:
       - job: UpdateVersion
+        timeoutInMinutes: 120
+        strategy:
+          matrix:
+            UBN20:
+              vmImage: 'ubuntu-20.04'
+              fuselib: 'libfuse3-dev'
+              tags: 'fuse3'
+              depends: 'fuse3'
+              container: 'test-cnt-ubn-20'
+              AgentName: "blobfuse-ubuntu20"
+
         pool:
-          vmImage: 'ubuntu-20.04'
+          name: "blobfuse-ubuntu-pool"
+          demands:
+            - ImageOverride -equals $(agentName)
+
         variables:
           - group: NightlyBlobFuse
           - name: root_dir
@@ -1762,6 +1783,7 @@ stages:
               
               # install blobfuse2
               - script: |
+                  sudo apt install fuse3 -y
                   cd $(Build.ArtifactStagingDirectory)/blobfuse2
                   ls | grep -i ubuntu-20.04
                   sudo apt-get install ./`ls | grep -i ubuntu-20.04` -y
@@ -1769,13 +1791,43 @@ stages:
                 displayName: 'Installing blobfuse2'
 
               - script: |
-                  wget https://raw.githubusercontent.com/Azure/azure-storage-fuse/`echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`/releaseVersionUpdate.py
-                  ls -l
-                displayName: 'Getting Python script'
-                workingDirectory: $(root_dir)
-
+                  mkdir -p ~/blob_mnt
+                  chmod 777 ~/blob_mnt
+                  mkdir -p ~/blobfusetemp
+                  chmod 777 ~/blobfusetemp
+                  blobfuse2 mount ~/blob_mnt --tmp-path=~/blobfusetemp --container-name="\$web"
+                  sleep 2
+                env:
+                  AZURE_STORAGE_ACCOUNT: "blobfuse2"
+                  AZURE_STORAGE_AUTH_TYPE: "msi"
+                  AZURE_STORAGE_IDENTITY_CLIENT_ID: $(BLOBFUSE2_MSI_CIENT_ID)
+                displayName: 'Mount release container for version update'
+              
               - script: |
-                  python3 releaseVersionUpdate.py "$(VERSION_CNT_SAS_URL)" "`blobfuse2 version`"
-                displayName: 'Updating version number'
-                workingDirectory: $(root_dir)
-
+                  cd ~/blob_mnt/release/latest/
+                  echo "Before cleanup"
+                  ls -l 
+                  rm -rf *
+                  echo "After cleanup"
+                  ls -l 
+                displayName: 'Delete older version file'
+                
+              - script: |
+                  cd ~/blob_mnt/release/latest/
+                  touch `blobfuse2 version | cut -d " " -f3`
+                  ls -l 
+                displayName: 'Create new version file'
+              
+              - script: |
+                  cd ~/blob_mnt/release/latest/
+                  version=`blobfuse2 version | cut -d " " -f3`
+                  echo "Release version: " $version
+                  echo -e "<xml>\n<latest>$version</latest>\n</xml>" > index.xml
+                  echo "Printing index.xml"
+                  cat index.xml
+                displayName: 'Update the XML file'    
+                
+              - script: |
+                  blobfuse2 unmount all
+                displayName: 'Unmount Blobfuse2'                              
+                
