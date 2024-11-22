@@ -2685,5 +2685,4 @@ func TestBlockCacheTestSuite(t *testing.T) {
 	_, _ = r.Read(dataBuff)
 
 	suite.Run(t, new(blockCacheTestSuite))
-	suite.Run(t, new(blockCacheTestSuite))
 }
