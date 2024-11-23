@@ -1,3 +1,5 @@
+# This setup script can be used to install all the dependencies required to clone and run the project on Ubuntu machines
+
 !/bin/bash
 
 Run the go_installer script with the parent directory as an argument
