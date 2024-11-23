@@ -91,9 +91,9 @@ func newTestFileCache(next internal.Component) *FileCache {
 }
 
 func randomString(length int) string {
-	rand.Seed(time.Now().UnixNano())
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	b := make([]byte, length)
-	rand.Read(b)
+	r.Read(b)
 	return fmt.Sprintf("%x", b)[:length]
 }
 
@@ -1909,6 +1909,57 @@ func (suite *fileCacheTestSuite) TestHardLimitOnSize() {
 	// try opening small file
 	err = suite.fileCache.TruncateFile(internal.TruncateFileOptions{Name: pathsmall, Size: 3 * MB})
 	suite.assert.NotNil(err)
+}
+
+func (suite *fileCacheTestSuite) createDirectoryStructure() {
+	err := os.MkdirAll(filepath.Join(suite.cache_path, "a", "b", "c", "d"), 0777)
+	suite.assert.NoError(err)
+
+	err = os.MkdirAll(filepath.Join(suite.cache_path, "a", "b", "e", "f"), 0777)
+	suite.assert.NoError(err)
+
+	err = os.MkdirAll(filepath.Join(suite.cache_path, "a", "b", "e", "g"), 0777)
+	suite.assert.NoError(err)
+
+	err = os.MkdirAll(filepath.Join(suite.cache_path, "h", "i", "j", "k"), 0777)
+	suite.assert.NoError(err)
+
+	err = os.MkdirAll(filepath.Join(suite.cache_path, "h", "l", "m", "n"), 0777)
+	suite.assert.NoError(err)
+}
+
+func (suite *fileCacheTestSuite) TestDeleteEmptyDirsRoot() {
+	defer suite.cleanupTest()
+
+	suite.createDirectoryStructure()
+	val, err := suite.fileCache.DeleteEmptyDirs(internal.DeleteDirOptions{Name: suite.cache_path})
+	suite.assert.NoError(err)
+	suite.assert.True(val)
+}
+
+func (suite *fileCacheTestSuite) TestDeleteEmptyDirsNonRoot() {
+	defer suite.cleanupTest()
+
+	suite.createDirectoryStructure()
+	val, err := suite.fileCache.DeleteEmptyDirs(internal.DeleteDirOptions{Name: "a"})
+	suite.assert.NoError(err)
+	suite.assert.True(val)
+
+	val, err = suite.fileCache.DeleteEmptyDirs(internal.DeleteDirOptions{Name: filepath.Join(suite.cache_path, "h")})
+	suite.assert.NoError(err)
+	suite.assert.True(val)
+}
+
+func (suite *fileCacheTestSuite) TestDeleteEmptyDirsNegative() {
+	defer suite.cleanupTest()
+
+	suite.createDirectoryStructure()
+	_, err := os.Create(filepath.Join(suite.cache_path, "h", "l", "m", "n", "file.txt"))
+	suite.assert.NoError(err)
+
+	val, err := suite.fileCache.DeleteEmptyDirs(internal.DeleteDirOptions{Name: suite.cache_path})
+	suite.assert.Error(err)
+	suite.assert.False(val)
 }
 
 // In order for 'go test' to run this suite, we need to create
