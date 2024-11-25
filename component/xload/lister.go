@@ -17,6 +17,8 @@ var _ xcomponent = &remoteLister{}
 var _ enumerator = &localLister{}
 var _ enumerator = &remoteLister{}
 
+const LISTER string = "lister"
+
 type lister struct {
 	xbase
 	path string // base path of the directory to be listed
@@ -41,6 +43,8 @@ func newLocalLister(path string, remote internal.Component) (*localLister, error
 			},
 		},
 	}
+
+	ll.setName(LISTER)
 	ll.init()
 	return ll, nil
 }
@@ -54,7 +58,7 @@ func (ll *localLister) init() {
 
 func (ll *localLister) start() {
 	ll.getThreadPool().Start()
-	ll.getThreadPool().Schedule(&workItem{})
+	ll.getThreadPool().Schedule(&workItem{compName: ll.getName()})
 }
 
 func (ll *localLister) stop() {
@@ -91,7 +95,8 @@ func (ll *localLister) process(item *workItem) (int, error) {
 				}
 
 				ll.getThreadPool().Schedule(&workItem{
-					path: name,
+					compName: ll.getName(),
+					path:     name,
 				})
 			}(relPath)
 
@@ -100,8 +105,9 @@ func (ll *localLister) process(item *workItem) (int, error) {
 			if err == nil {
 				// send file to the output channel for chunking
 				ll.getNext().getThreadPool().Schedule(&workItem{
-					path:    relPath,
-					dataLen: uint64(info.Size()),
+					compName: ll.getNext().getName(),
+					path:     relPath,
+					dataLen:  uint64(info.Size()),
 				})
 			} else {
 				log.Err("localLister::process : Failed to get stat of %v", relPath)
@@ -135,6 +141,8 @@ func newRemoteLister(path string, remote internal.Component) (*remoteLister, err
 			},
 		},
 	}
+
+	rl.setName(LISTER)
 	rl.init()
 	return rl, nil
 }
@@ -148,7 +156,7 @@ func (rl *remoteLister) init() {
 
 func (rl *remoteLister) start() {
 	rl.getThreadPool().Start()
-	rl.getThreadPool().Schedule(&workItem{})
+	rl.getThreadPool().Schedule(&workItem{compName: rl.getName()})
 }
 
 func (rl *remoteLister) stop() {
@@ -199,14 +207,16 @@ func (rl *remoteLister) process(item *workItem) (int, error) {
 
 					// push the directory to input pool for its listing
 					rl.getThreadPool().Schedule(&workItem{
-						path: name,
+						compName: rl.getName(),
+						path:     name,
 					})
 				}(entry.Path)
 			} else {
 				// send file to the output channel for chunking
 				rl.getNext().getThreadPool().Schedule(&workItem{
-					path:    entry.Path,
-					dataLen: uint64(entry.Size),
+					compName: rl.getNext().getName(),
+					path:     entry.Path,
+					dataLen:  uint64(entry.Size),
 				})
 			}
 		}

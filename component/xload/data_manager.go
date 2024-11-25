@@ -11,6 +11,8 @@ var _ xcomponent = &dataManager{}
 var _ xcomponent = &localDataManager{}
 var _ xcomponent = &remoteDataManager{}
 
+const DATA_MANAGER string = "DATA_MANAGER"
+
 type dataManager struct {
 	xbase
 }
@@ -24,6 +26,7 @@ type localDataManager struct {
 func newLocalDataManager() (*localDataManager, error) {
 	ldm := &localDataManager{}
 
+	ldm.setName(DATA_MANAGER)
 	ldm.init()
 	return ldm, nil
 }
@@ -71,6 +74,7 @@ func newRemoteDataManager(remote internal.Component) (*remoteDataManager, error)
 		},
 	}
 
+	rdm.setName(DATA_MANAGER)
 	rdm.init()
 	return rdm, nil
 }

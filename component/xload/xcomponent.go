@@ -11,9 +11,12 @@ type xcomponent interface {
 	setNext(s xcomponent)
 	getThreadPool() *ThreadPool
 	getRemote() internal.Component
+	getName() string
+	setName(s string)
 }
 
 type xbase struct {
+	name   string
 	pool   *ThreadPool
 	remote internal.Component
 	next   xcomponent
@@ -48,4 +51,12 @@ func (xb *xbase) getThreadPool() *ThreadPool {
 
 func (xb *xbase) getRemote() internal.Component {
 	return xb.remote
+}
+
+func (xb *xbase) getName() string {
+	return xb.name
+}
+
+func (xb *xbase) setName(s string) {
+	xb.name = s
 }

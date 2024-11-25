@@ -17,6 +17,8 @@ var _ xcomponent = &splitter{}
 var _ xcomponent = &uploadSplitter{}
 var _ xcomponent = &downloadSplitter{}
 
+const SPLITTER string = "splitter"
+
 type splitter struct {
 	xbase
 	blockSize uint64
@@ -42,6 +44,7 @@ func newUploadSpiltter(blockSize uint64, blockPool *BlockPool, path string, remo
 		},
 	}
 
+	u.setName(SPLITTER)
 	u.init()
 	return u, nil
 }
@@ -125,6 +128,7 @@ func (u *uploadSplitter) process(item *workItem) (int, error) {
 				block.id = common.GetBlockID(16)
 
 				splitItem := &workItem{
+					compName:        u.getNext().getName(),
 					path:            item.path,
 					dataLen:         item.dataLen,
 					fileHandle:      nil,
@@ -178,6 +182,7 @@ func newDownloadSplitter(blockSize uint64, blockPool *BlockPool, path string, re
 		},
 	}
 
+	d.setName(SPLITTER)
 	d.init()
 	return d, nil
 }
@@ -204,18 +209,22 @@ func (d *downloadSplitter) stop() {
 func (d *downloadSplitter) process(item *workItem) (int, error) {
 	var err error
 
-	log.Trace("downloadSplitter::process : Splitting data for %s", item.path)
-	if item.path != "" {
+	log.Debug("downloadSplitter::process : Splitting data for %s", item.path)
+	if len(item.path) == 0 {
 		return 0, nil
 	}
 
 	numBlocks := ((item.dataLen - 1) / d.blockSize) + 1
 	offset := int64(0)
 
-	item.fileHandle, err = os.OpenFile(filepath.Join(d.path, item.path), os.O_WRONLY, 0644)
+	// TODO:: xload : should we delete the file if it already exists
+	item.fileHandle, err = os.OpenFile(filepath.Join(d.path, item.path), os.O_WRONLY|os.O_CREATE, 0644)
 	if err != nil {
+		// create file
 		return -1, fmt.Errorf("failed to open file %s [%v]", item.path, err)
 	}
+
+	defer item.fileHandle.Close()
 
 	wg := sync.WaitGroup{}
 	wg.Add(1)
@@ -256,6 +265,7 @@ func (d *downloadSplitter) process(item *workItem) (int, error) {
 			block.length = int64(d.blockSize)
 
 			splitItem := &workItem{
+				compName:        d.getNext().getName(),
 				path:            item.path,
 				dataLen:         item.dataLen,
 				fileHandle:      item.fileHandle,
@@ -271,7 +281,11 @@ func (d *downloadSplitter) process(item *workItem) (int, error) {
 	}
 
 	wg.Wait()
-	item.fileHandle.Close()
+	err = item.fileHandle.Truncate(int64(item.dataLen))
+	if err != nil {
+		log.Err("downloadSplitter::process : Failed to truncate file %s [%s]", item.path, err.Error())
+		return -1, err
+	}
 
 	if !operationSuccess {
 		log.Err("downloadSplitter::process : Failed to download data for file %s", item.path)

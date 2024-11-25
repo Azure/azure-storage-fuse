@@ -42,6 +42,7 @@ import (
 
 // One workitem to be processed
 type workItem struct {
+	compName        string         // Name of the component
 	path            string         // Name of the file being processed
 	dataLen         uint64         // Length of the data to be processed
 	block           *Block         // Block to hold data for
