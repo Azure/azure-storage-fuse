@@ -1,6 +1,7 @@
 ## 2.4.0 (Unreleased)
 **Features**
 - Entry cache to hold directory listing results in cache for a given timeout. This will reduce REST calls going to storage while listing the blobs in parallel.
+- Added 'gen-config' command to auto generate blobfuse2 config file.
 
 **Bug Fixes**
 - [#1426](https://github.com/Azure/azure-storage-fuse/issues/1426) Read panic in block-cache due to boundary conditions.
@@ -10,9 +11,6 @@
 - Delete empty directories from local cache on rmdir operation.
 - [#1547](https://github.com/Azure/azure-storage-fuse/issues/1547) Truncate logic of file cache is modified to prevent downloading and uploading the entire file.
 - Updating a file via Blobfuse2 was resetting the ACLs and Permissions applied to file in Datalake.
-
-**Features**
-- Added 'gen-config' command to auto generate blobfuse2 config file.
 
 **Other Changes**
 - Stream config will be converted to block-cache config implicitly and 'stream' component is no longer used from this release onwards.
