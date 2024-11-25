@@ -149,6 +149,10 @@ steps:
       VERBOSE_LOG: ${{ parameters.verbose_log }}
     continueOnError: false
 
+  - script: |
+      > blobfuse2-logs.txt
+    displayName: 'Clear Logs'
+
   # - script: |
   #    if [ -d "block_cache" ]; then ls -l block_cache; rm -rf block_cache; mkdir block_cache  ; fi
   #   displayName: 'Clear Temp Cache for Block Cache before mounting'
@@ -162,7 +166,7 @@ steps:
       ro_mount: true
       mountStep: 
         script: |
-          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) -o ro -o direct_io --block-cache-path block_cache --block-cache-block-size ${{ parameters.block_size_mb }}
+          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) -o ro -o direct_io --block-cache-path block_cache --block-cache-block-size ${{ parameters.block_size_mb }} &> blobfuse2-logs.txt
 
   - script: |
       echo "----------------------------------------------"
