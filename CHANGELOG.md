@@ -9,6 +9,7 @@
 - Rename file was calling an additional getProperties call.
 - Delete empty directories from local cache on rmdir operation.
 - [#1547](https://github.com/Azure/azure-storage-fuse/issues/1547) Truncate logic of file cache is modified to prevent downloading and uploading the entire file.
+- Updating a file via Blobfuse2 was resetting the ACLs and Permissions applied to file in Datalake.
 
 **Features**
 - Added 'gen-config' command to auto generate Blobfuse2 config file.
