@@ -161,11 +161,15 @@ func (bc *BlockCache) Stop() error {
 	}
 
 	// Wait for thread pool to stop
+	log.Trace("BlockCache::Stop : Stopping ThreadPoool inside bc %s", bc.Name())
 	bc.threadPool.Stop()
+	log.Trace("BlockCache::Stop : Stopped ThreadPoool inside bc %s", bc.Name())
 
 	// Clear the disk cache on exit
 	if bc.tmpPath != "" {
+		log.Trace("BlockCache: Stopping Disk policy")
 		_ = bc.diskPolicy.Stop()
+		log.Trace("BlockCache: Calling OS to remove all the tempcache")
 		err := common.TempCacheCleanup(bc.tmpPath)
 		if err != nil {
 			log.Err("Something got messed up")

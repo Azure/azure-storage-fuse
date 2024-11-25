@@ -220,3 +220,8 @@ steps:
       working_dir: $(WORK_DIR)
       mount_dir: ${{ parameters.mount_dir }}
       temp_dir: ${{ parameters.temp_dir }}
+  
+  - script: |
+      ps -aux | grep blobfuse
+      sleep 500
+    displayName: 'Process is getting deleted without deleting tempcache'
