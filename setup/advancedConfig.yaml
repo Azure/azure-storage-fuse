@@ -151,6 +151,7 @@ azstorage:
   cpk-enabled: true|false <enable client provided key encryption>
   cpk-encryption-key: <customer provided base64-encoded AES-256 encryption key value>
   cpk-encryption-key-sha256:  <customer provided base64-encoded sha256 of the encryption key>
+  preserve-acl: true|false <preserve ACLs and Permissions set on file during updates>
 
 # Mount all configuration
 mountall:
