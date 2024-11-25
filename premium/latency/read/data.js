@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1732422174719,
+  "lastUpdate": 1732515063778,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -2737,6 +2737,75 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 75.63393488149067,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "64532198+vibhansa-msft@users.noreply.github.com",
+            "name": "Vikas Bhansali",
+            "username": "vibhansa-msft"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "b07781c04ce6f807fcb8622188ddec21e7765bc5",
+          "message": "Preserve ACL/Permissions while uploading file over datalake (#1571)\n\n* Add code to reset the ACLs post file upload in adls",
+          "timestamp": "2024-11-25T11:22:07+05:30",
+          "tree_id": "c58ac7ea6442e09dbae477bc2c40bca751970885",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/b07781c04ce6f807fcb8622188ddec21e7765bc5"
+        },
+        "date": 1732515063542,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read",
+            "value": 0.08768201125599999,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read",
+            "value": 68.60836463883366,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_small_file",
+            "value": 0.08909029743533335,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 0.18626808389866664,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_direct_io",
+            "value": 0.09561550345533333,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_direct_io",
+            "value": 70.55772116931733,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 0.1744371113823333,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 1.0957049347093335,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 75.36613445476233,
             "unit": "milliseconds"
           }
         ]
