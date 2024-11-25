@@ -1555,6 +1555,12 @@ stages:
               sudo apt install python3-pip -y
               sudo pip3 install pandas numpy pyarrow fastparquet
             displayName: 'Install Python Packages'
+          
+          - script: |
+              > blobfuse2-logs.txt
+            displayName: 'Clear Logs'
+            condition: always()
+  
 
           - template: 'azure-pipeline-templates/e2e-tests-block-cache-data-integrity.yml'
             parameters:

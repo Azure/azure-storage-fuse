@@ -166,7 +166,11 @@ func (bc *BlockCache) Stop() error {
 	// Clear the disk cache on exit
 	if bc.tmpPath != "" {
 		_ = bc.diskPolicy.Stop()
-		_ = common.TempCacheCleanup(bc.tmpPath)
+		err := common.TempCacheCleanup(bc.tmpPath)
+		if err != nil {
+			log.Err("Something got messed up")
+			log.Err("%s", err.Error())
+		}
 	}
 
 	return nil

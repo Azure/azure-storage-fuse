@@ -149,9 +149,9 @@ steps:
       VERBOSE_LOG: ${{ parameters.verbose_log }}
     continueOnError: false
 
-  - script: |
-     if [ -d "block_cache" ]; then ls -l block_cache; rm -rf block_cache; mkdir block_cache  ; fi
-    displayName: 'Clear Temp Cache for Block Cache before mounting'
+  # - script: |
+  #    if [ -d "block_cache" ]; then ls -l block_cache; rm -rf block_cache; mkdir block_cache  ; fi
+  #   displayName: 'Clear Temp Cache for Block Cache before mounting'
 
   - template: 'mount.yml'
     parameters:
@@ -209,6 +209,12 @@ steps:
       fi
     displayName: 'Compare md5Sum with Block-Cache Disk-Cache'
 
+  - task: PublishBuildArtifacts@1
+    inputs:
+      pathToPublish: blobfuse2-logs.txt
+      artifactName: 'blobfuse_block_cache.txt'
+    condition: failed()
+ 
   - template: 'cleanup.yml'
     parameters:
       working_dir: $(WORK_DIR)
