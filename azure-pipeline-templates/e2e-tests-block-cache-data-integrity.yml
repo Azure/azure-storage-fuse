@@ -163,7 +163,7 @@ steps:
       ro_mount: true
       mountStep: 
         script: |
-          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) -o ro -o direct_io --block-cache-path block_cache --block-cache-block-size ${{ parameters.block_size_mb }} &> blobfuse2-logs.txt
+          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) -o ro -o direct_io --block-cache-path block_cache --block-cache-block-size ${{ parameters.block_size_mb }} --foreground >> blobfuse2-logs.txt 2>&1 &
 
   - script: |
       echo "----------------------------------------------"
