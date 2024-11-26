@@ -149,9 +149,6 @@ steps:
       VERBOSE_LOG: ${{ parameters.verbose_log }}
     continueOnError: false
 
-  - script: |
-      > blobfuse2-logs.txt
-    displayName: 'Clear Logs'
 
   # - script: |
   #    if [ -d "block_cache" ]; then ls -l block_cache; rm -rf block_cache; mkdir block_cache  ; fi
@@ -213,12 +210,10 @@ steps:
       fi
     displayName: 'Compare md5Sum with Block-Cache Disk-Cache'
 
-  - script: |
-      cp blobfuse2-logs.txt  blobfuse2_${{ parameters.block_size_mb }}.txt
       
   - task: PublishBuildArtifacts@1
     inputs:
-      pathToPublish: blobfuse2_${{ parameters.block_size_mb }}.txt
+      pathToPublish: blobfuse2-logs.txt
       artifactName: 'blobfuse_block_cache.txt'
     condition: failed()
  
