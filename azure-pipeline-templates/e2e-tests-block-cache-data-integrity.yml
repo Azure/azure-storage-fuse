@@ -213,9 +213,12 @@ steps:
       fi
     displayName: 'Compare md5Sum with Block-Cache Disk-Cache'
 
+  - script: |
+      cp blobfuse2-logs.txt > blobfuse2_${{ parameters.block_size_mb }}
+      
   - task: PublishBuildArtifacts@1
     inputs:
-      pathToPublish: blobfuse2-logs.txt
+      pathToPublish: blobfuse2_${{ parameters.block_size_mb }}
       artifactName: 'blobfuse_block_cache.txt'
     condition: failed()
  
