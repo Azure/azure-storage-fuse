@@ -35,6 +35,8 @@ type localLister struct {
 }
 
 func newLocalLister(path string, remote internal.Component) (*localLister, error) {
+	log.Debug("lister::newLocalLister : create new local lister for %s", path)
+
 	ll := &localLister{
 		lister: lister{
 			path: path,
@@ -57,11 +59,14 @@ func (ll *localLister) init() {
 }
 
 func (ll *localLister) start() {
+	log.Debug("localLister::start : start local lister for %s", ll.path)
 	ll.getThreadPool().Start()
 	ll.getThreadPool().Schedule(&workItem{compName: ll.getName()})
 }
 
 func (ll *localLister) stop() {
+	log.Debug("localLister::stop : stop local lister for %s", ll.path)
+
 	if ll.getThreadPool() != nil {
 		ll.getThreadPool().Stop()
 	}
@@ -71,7 +76,7 @@ func (ll *localLister) stop() {
 func (ll *localLister) process(item *workItem) (int, error) {
 	absPath := filepath.Join(ll.path, item.path)
 
-	log.Trace("localLister::process : Reading local dir %s", absPath)
+	log.Debug("localLister::process : Reading local dir %s", absPath)
 
 	entries, err := os.ReadDir(absPath)
 	if err != nil {
@@ -81,7 +86,7 @@ func (ll *localLister) process(item *workItem) (int, error) {
 
 	for _, entry := range entries {
 		relPath := filepath.Join(item.path, entry.Name())
-		log.Trace("localLister::process : Iterating: %s, Is directory: %v", relPath, entry.IsDir())
+		log.Debug("localLister::process : Iterating: %s, Is directory: %v", relPath, entry.IsDir())
 
 		if entry.IsDir() {
 			// spawn go routine for directory creation and then
@@ -133,6 +138,8 @@ type remoteLister struct {
 }
 
 func newRemoteLister(path string, remote internal.Component) (*remoteLister, error) {
+	log.Debug("lister::newRemoteLister : create new remote lister for %s", path)
+
 	rl := &remoteLister{
 		lister: lister{
 			path: path,
@@ -150,16 +157,18 @@ func newRemoteLister(path string, remote internal.Component) (*remoteLister, err
 func (rl *remoteLister) init() {
 	rl.pool = newThreadPool(MAX_LISTER, rl.process)
 	if rl.pool == nil {
-		log.Err("xlister::init : fail to init thread pool")
+		log.Err("remoteLister::init : fail to init thread pool")
 	}
 }
 
 func (rl *remoteLister) start() {
+	log.Debug("remoteLister::start : start remote lister for %s", rl.path)
 	rl.getThreadPool().Start()
 	rl.getThreadPool().Schedule(&workItem{compName: rl.getName()})
 }
 
 func (rl *remoteLister) stop() {
+	log.Debug("remoteLister::stop : stop remote lister for %s", rl.path)
 	if rl.getThreadPool() != nil {
 		rl.getThreadPool().Stop()
 	}
@@ -169,7 +178,7 @@ func (rl *remoteLister) stop() {
 func (rl *remoteLister) process(item *workItem) (int, error) {
 	absPath := item.path // TODO:: xload : check this for subdirectory mounting
 
-	log.Trace("remoteLister::process : Reading remote dir %s", absPath)
+	log.Debug("remoteLister::process : Reading remote dir %s", absPath)
 
 	marker := ""
 	var cnt, iteration int
@@ -189,7 +198,7 @@ func (rl *remoteLister) process(item *workItem) (int, error) {
 		log.Debug("remoteLister::process : count: %d , iterations: %d", cnt, iteration)
 
 		for _, entry := range entries {
-			log.Trace("remoteLister::process : Iterating: %s, Is directory: %v", entry.Path, entry.IsDir())
+			log.Debug("remoteLister::process : Iterating: %s, Is directory: %v", entry.Path, entry.IsDir())
 
 			if entry.IsDir() {
 				// create directory in local
@@ -231,6 +240,6 @@ func (rl *remoteLister) process(item *workItem) (int, error) {
 }
 
 func (rl *remoteLister) mkdir(name string) error {
-	log.Trace("remoteLister::mkdir : Creating local path: %s", name)
+	log.Debug("remoteLister::mkdir : Creating local path: %s", name)
 	return os.MkdirAll(name, 0777)
 }

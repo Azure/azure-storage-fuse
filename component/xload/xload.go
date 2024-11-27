@@ -39,6 +39,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
@@ -175,10 +176,14 @@ func (xl *Xload) Start(ctx context.Context) error {
 func (xl *Xload) Stop() error {
 	log.Trace("Xload::Stop : Stopping component %s", xl.Name())
 
-	// TODO:: xload : should we delete the files from local path
-
 	xl.comps[0].stop()
 	xl.blockPool.Terminate()
+
+	// TODO:: xload : should we delete the files from local path
+	err := common.TempCacheCleanup(xl.path)
+	if err != nil {
+		log.Err("unable to clean xload local path [%s]", err.Error())
+	}
 
 	return nil
 }

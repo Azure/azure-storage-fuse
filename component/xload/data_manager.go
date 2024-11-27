@@ -24,8 +24,9 @@ type localDataManager struct {
 }
 
 func newLocalDataManager() (*localDataManager, error) {
-	ldm := &localDataManager{}
+	log.Debug("data_manager::newLocalDataManager : create new local data manager")
 
+	ldm := &localDataManager{}
 	ldm.setName(DATA_MANAGER)
 	ldm.init()
 	return ldm, nil
@@ -39,10 +40,12 @@ func (ldm *localDataManager) init() {
 }
 
 func (ldm *localDataManager) start() {
+	log.Debug("localDataManager::start : start local data manager")
 	ldm.getThreadPool().Start()
 }
 
 func (ldm *localDataManager) stop() {
+	log.Debug("localDataManager::stop : stop local data manager")
 	if ldm.getThreadPool() != nil {
 		ldm.getThreadPool().Stop()
 	}
@@ -66,6 +69,8 @@ type remoteDataManager struct {
 }
 
 func newRemoteDataManager(remote internal.Component) (*remoteDataManager, error) {
+	log.Debug("data_manager::newRemoteDataManager : create new remote data manager")
+
 	rdm := &remoteDataManager{
 		dataManager: dataManager{
 			xbase: xbase{
@@ -87,10 +92,12 @@ func (rdm *remoteDataManager) init() {
 }
 
 func (rdm *remoteDataManager) start() {
+	log.Debug("remoteDataManager::start : start remote data manager")
 	rdm.getThreadPool().Start()
 }
 
 func (rdm *remoteDataManager) stop() {
+	log.Debug("remoteDataManager::stop : stop remote data manager")
 	if rdm.getThreadPool() != nil {
 		rdm.getThreadPool().Stop()
 	}
@@ -108,6 +115,8 @@ func (rdm *remoteDataManager) process(item *workItem) (int, error) {
 
 // ReadData reads data from the data manager
 func (rdm *remoteDataManager) ReadData(item *workItem) (int, error) {
+	log.Debug("remoteDataManager::ReadData : Scheduling download for %s offset %v", item.path, item.block.offset)
+
 	h := handlemap.NewHandle(item.path)
 	h.Size = int64(item.dataLen)
 	return rdm.getRemote().ReadInBuffer(internal.ReadInBufferOptions{
@@ -119,6 +128,8 @@ func (rdm *remoteDataManager) ReadData(item *workItem) (int, error) {
 
 // WriteData writes data to the data manager
 func (rdm *remoteDataManager) WriteData(item *workItem) (int, error) {
+	log.Debug("remoteDataManager::WriteData : Scheduling upload for %s offset %v", item.path, item.block.offset)
+
 	return int(item.block.length), rdm.getRemote().StageData(internal.StageDataOptions{
 		Name: item.path,
 		Data: item.block.data[0:item.block.length],

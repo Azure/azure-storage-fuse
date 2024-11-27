@@ -33,6 +33,8 @@ type uploadSplitter struct {
 }
 
 func newUploadSpiltter(blockSize uint64, blockPool *BlockPool, path string, remote internal.Component) (*uploadSplitter, error) {
+	log.Debug("splitter::newUploadSpiltter : create new upload splitter for %s, block size %v", path, blockSize)
+
 	u := &uploadSplitter{
 		splitter: splitter{
 			blockSize: blockSize,
@@ -57,10 +59,12 @@ func (u *uploadSplitter) init() {
 }
 
 func (u *uploadSplitter) start() {
+	log.Debug("uploadSplitter::start : start upload splitter for %s", u.path)
 	u.getThreadPool().Start()
 }
 
 func (u *uploadSplitter) stop() {
+	log.Debug("uploadSplitter::stop : stop upload splitter for %s", u.path)
 	if u.getThreadPool() != nil {
 		u.getThreadPool().Stop()
 	}
@@ -73,7 +77,7 @@ func (u *uploadSplitter) process(item *workItem) (int, error) {
 	var err error
 	var ids []string
 
-	log.Trace("uploadSplitter::process : Splitting data for %s", item.path)
+	log.Debug("uploadSplitter::process : Splitting data for %s", item.path)
 	if item.path != "" {
 		return 0, nil
 	}
@@ -107,7 +111,7 @@ func (u *uploadSplitter) process(item *workItem) (int, error) {
 				operationSuccess = false
 			}
 			if respSplitItem.block != nil {
-				log.Trace("uploadSplitter::process : [%d] Upload successful for %s block[%d] %s offset %v", i, item.path, respSplitItem.block.index, respSplitItem.block.id, respSplitItem.block.offset)
+				log.Debug("uploadSplitter::process : [%d] Upload successful for %s block[%d] %s offset %v", i, item.path, respSplitItem.block.index, respSplitItem.block.id, respSplitItem.block.offset)
 				u.blockPool.Release(respSplitItem.block)
 			}
 		}
@@ -137,7 +141,7 @@ func (u *uploadSplitter) process(item *workItem) (int, error) {
 					download:        false,
 				}
 				ids = append(ids, splitItem.block.id)
-				log.Trace("uploadSplitter::process : Scheduling %s block [%d] %s offset %v length %v", item.path, splitItem.block.index, splitItem.block.id, offset, splitItem.block.length)
+				log.Debug("uploadSplitter::process : Scheduling %s block [%d] %s offset %v length %v", item.path, splitItem.block.index, splitItem.block.id, offset, splitItem.block.length)
 				u.getNext().getThreadPool().Schedule(splitItem)
 			}
 		}
@@ -171,6 +175,8 @@ type downloadSplitter struct {
 }
 
 func newDownloadSplitter(blockSize uint64, blockPool *BlockPool, path string, remote internal.Component) (*downloadSplitter, error) {
+	log.Debug("splitter::newDownloadSplitter : create new download splitter for %s, block size %v", path, blockSize)
+
 	d := &downloadSplitter{
 		splitter: splitter{
 			blockSize: blockSize,
@@ -195,10 +201,12 @@ func (d *downloadSplitter) init() {
 }
 
 func (d *downloadSplitter) start() {
+	log.Debug("downloadSplitter::start : start download splitter for %s", d.path)
 	d.getThreadPool().Start()
 }
 
 func (d *downloadSplitter) stop() {
+	log.Debug("downloadSplitter::stop : stop download splitter for %s", d.path)
 	if d.getThreadPool() != nil {
 		d.getThreadPool().Stop()
 	}
@@ -249,7 +257,7 @@ func (d *downloadSplitter) process(item *workItem) (int, error) {
 			}
 
 			if respSplitItem.block != nil {
-				log.Trace("downloadSplitter::process : Download successful %s index %d offset %v", item.path, respSplitItem.block.index, respSplitItem.block.offset)
+				log.Debug("downloadSplitter::process : Download successful %s index %d offset %v", item.path, respSplitItem.block.index, respSplitItem.block.offset)
 				d.blockPool.Release(respSplitItem.block)
 			}
 		}
@@ -273,7 +281,7 @@ func (d *downloadSplitter) process(item *workItem) (int, error) {
 				responseChannel: responseChannel,
 				download:        true,
 			}
-			log.Trace("downloadSplitter::process : Scheduling %s offset %v", item.path, offset)
+			log.Debug("downloadSplitter::process : Scheduling download for %s offset %v", item.path, offset)
 			d.getNext().getThreadPool().Schedule(splitItem)
 		}
 
@@ -289,6 +297,14 @@ func (d *downloadSplitter) process(item *workItem) (int, error) {
 
 	if !operationSuccess {
 		log.Err("downloadSplitter::process : Failed to download data for file %s", item.path)
+		log.Debug("downloadSplitter::process : deleting file %s", item.path)
+
+		// delete the file from the local path
+		err = os.Remove(filepath.Join(d.path, item.path))
+		if err != nil {
+			log.Err("downloadSplitter::process : Unable to delete file %s [%s]", item.path, err.Error())
+		}
+
 		return -1, fmt.Errorf("failed to download data for file %s", item.path)
 	}
 
