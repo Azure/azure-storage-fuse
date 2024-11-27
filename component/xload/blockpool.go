@@ -97,18 +97,13 @@ func (pool *BlockPool) Usage() uint32 {
 
 // Get a Block from the pool, return back if nothing is available
 func (pool *BlockPool) Get() *Block {
-	var b *Block = nil
-
-	select {
-	case b = <-pool.blocksCh:
-		break
-
-	default:
-		return nil
-	}
+	// getting a block from pool will be a blocking operation if the pool is empty
+	b := <-pool.blocksCh
 
 	// Mark the buffer ready for reuse now
-	b.ReUse()
+	if b != nil {
+		b.ReUse()
+	}
 	return b
 }
 

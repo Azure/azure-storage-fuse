@@ -49,7 +49,6 @@ func (ldm *localDataManager) stop() {
 	if ldm.getThreadPool() != nil {
 		ldm.getThreadPool().Stop()
 	}
-	ldm.getNext().stop()
 }
 
 // ReadData reads data from the data manager
@@ -101,7 +100,6 @@ func (rdm *remoteDataManager) stop() {
 	if rdm.getThreadPool() != nil {
 		rdm.getThreadPool().Stop()
 	}
-	rdm.getNext().stop()
 }
 
 // upload or download block

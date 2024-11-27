@@ -226,6 +226,7 @@ func (d *downloadSplitter) process(item *workItem) (int, error) {
 	offset := int64(0)
 
 	// TODO:: xload : should we delete the file if it already exists
+	// TODO:: xload : what should be the flags and mode
 	item.fileHandle, err = os.OpenFile(filepath.Join(d.path, item.path), os.O_WRONLY|os.O_CREATE, 0644)
 	if err != nil {
 		// create file
@@ -246,14 +247,14 @@ func (d *downloadSplitter) process(item *workItem) (int, error) {
 		for i := 0; i < int(numBlocks); i++ {
 			respSplitItem := <-responseChannel
 			if respSplitItem.err != nil {
-				log.Err("downloadSplitter::process : Failed to read data from file %s", item.path)
+				log.Err("downloadSplitter::process : Failed to download data for file %s", item.path)
 				operationSuccess = false
-			}
-
-			_, err := item.fileHandle.WriteAt(respSplitItem.block.data, respSplitItem.block.offset)
-			if err != nil {
-				log.Err("downloadSplitter::process : Failed to write data to file %s", item.path)
-				operationSuccess = false
+			} else {
+				_, err := item.fileHandle.WriteAt(respSplitItem.block.data, respSplitItem.block.offset)
+				if err != nil {
+					log.Err("downloadSplitter::process : Failed to write data to file %s", item.path)
+					operationSuccess = false
+				}
 			}
 
 			if respSplitItem.block != nil {
@@ -266,7 +267,7 @@ func (d *downloadSplitter) process(item *workItem) (int, error) {
 	for i := 0; i < int(numBlocks); i++ {
 		block := d.blockPool.Get()
 		if block == nil {
-			responseChannel <- &workItem{err: fmt.Errorf("failed to get block from pool for file %s %v", item.path, offset)}
+			responseChannel <- &workItem{err: fmt.Errorf("failed to get block from pool for file %s, offset %v", item.path, offset)}
 		} else {
 			block.index = i
 			block.offset = offset
@@ -299,7 +300,7 @@ func (d *downloadSplitter) process(item *workItem) (int, error) {
 		log.Err("downloadSplitter::process : Failed to download data for file %s", item.path)
 		log.Debug("downloadSplitter::process : deleting file %s", item.path)
 
-		// delete the file from the local path
+		// delete the file which failed to download from the local path
 		err = os.Remove(filepath.Join(d.path, item.path))
 		if err != nil {
 			log.Err("downloadSplitter::process : Unable to delete file %s [%s]", item.path, err.Error())
@@ -308,5 +309,6 @@ func (d *downloadSplitter) process(item *workItem) (int, error) {
 		return -1, fmt.Errorf("failed to download data for file %s", item.path)
 	}
 
+	log.Debug("downloadSplitter::process : Download completed for file %s", item.path)
 	return 0, nil
 }
