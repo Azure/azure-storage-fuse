@@ -583,15 +583,13 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 				return blobList, nil, err
 			}
 		} else {
-			var mode os.FileMode
+			var mode os.FileMode = 0
 			if blobInfo.Properties.Permissions != nil {
 				mode, err = getFileMode(*blobInfo.Properties.Permissions)
 				if err != nil {
 					log.Err("BlockBlob::List : Failed to get file mode for %s [%s]", *blobInfo.Name, err.Error())
 					return blobList, nil, err
 				}
-			} else {
-				mode = 0
 			}
 			attr = &internal.ObjAttr{
 				Path:   split(bb.Config.prefixPath, *blobInfo.Name),
@@ -654,15 +652,13 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 					log.Err("BlockBlob::List : Failed to get properties of blobprefix %s", *blobInfo.Name)
 					return blobList, nil, err
 				}
-				var mode os.FileMode
+				var mode os.FileMode = 0
 				if blobInfo.Properties.Permissions != nil {
 					mode, err = getFileMode(*blobInfo.Properties.Permissions)
 					if err != nil {
 						log.Err("BlockBlob::List : Failed to get file mode for %s [%s]", *blobInfo.Name, err.Error())
 						return blobList, nil, err
 					}
-				} else {
-					mode = 0
 				}
 				name := strings.TrimSuffix(*blobInfo.Name, "/")
 				attr := &internal.ObjAttr{
