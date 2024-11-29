@@ -135,12 +135,14 @@ func (bc *BlockCache) SetNextComponent(nc internal.Component) {
 func (bc *BlockCache) Start(ctx context.Context) error {
 	log.Trace("BlockCache::Start : Starting component %s", bc.Name())
 
+	log.Debug("BlockCache::Start : Creating block pool")
 	bc.blockPool = NewBlockPool(bc.blockSize, bc.memSize)
 	if bc.blockPool == nil {
 		log.Err("BlockCache::Start : failed to init block pool")
 		return fmt.Errorf("config error in %s [failed to init block pool]", bc.Name())
 	}
 
+	log.Debug("BlockCache::Start : Creating thread pool")
 	bc.threadPool = newThreadPool(bc.workers, bc.download, bc.upload)
 	if bc.threadPool == nil {
 		log.Err("BlockCache::Start : failed to init thread pool")
@@ -148,6 +150,7 @@ func (bc *BlockCache) Start(ctx context.Context) error {
 	}
 
 	// Start the thread pool and keep it ready for download
+	log.Debug("BlockCache::Start : Starting thread pool")
 	bc.threadPool.Start()
 
 	// If disk caching is enabled then start the disk eviction policy
