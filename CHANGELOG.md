@@ -1,3 +1,7 @@
+## 2.4.1 (Unreleased)
+**Bug Fixes**
+- Create block pool only once in the child process.
+
 ## 2.4.0 (Unreleased)
 **Features**
 - Entry cache to hold directory listing results in cache for a given timeout. This will reduce REST calls going to storage while listing the blobs in parallel.
