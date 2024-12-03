@@ -2575,6 +2575,50 @@ func (s *datalakeTestSuite) TestUploadWithCPKEnabled() {
 	_ = os.Remove(name1)
 }
 
+func (s *datalakeTestSuite) TestList() {
+	defer s.cleanupTest()
+	// Setup
+	s.tearDownTestHelper(false) // Don't delete the generated container.
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.dfs.core.windows.net/\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n",
+		storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsKey, s.container)
+	s.setupTestHelper(config, s.container, false)
+
+	base := generateDirectoryName()
+	s.setupHierarchy(base)
+
+	blobList, marker, err := s.az.storage.List(base, nil, 0)
+	s.assert.Nil(err)
+	emptyString := ""
+	s.assert.Equal(&emptyString, marker)
+	s.assert.NotNil(blobList)
+	s.assert.EqualValues(3, len(blobList))
+	s.assert.NotNil(blobList[0].Mode)
+
+	// Test listing with prefix
+	blobList, marker, err = s.az.storage.List(base+"b/", nil, 0)
+	s.assert.Nil(err)
+	s.assert.Equal(&emptyString, marker)
+	s.assert.NotNil(blobList)
+	s.assert.EqualValues(1, len(blobList))
+	s.assert.EqualValues("c1", blobList[0].Name)
+	s.assert.NotNil(blobList[0].Mode)
+
+	// Test listing with marker
+	blobList, marker, err = s.az.storage.List(base, to.Ptr("invalid-marker"), 0)
+	s.assert.NotNil(err)
+	s.assert.Equal(0, len(blobList))
+	s.assert.Nil(marker)
+
+	// Test listing with count
+	blobList, marker, err = s.az.storage.List("", nil, 1)
+	s.assert.Nil(err)
+	s.assert.NotNil(blobList)
+	s.assert.NotEmpty(marker)
+	s.assert.EqualValues(1, len(blobList))
+	s.assert.EqualValues(base, blobList[0].Path)
+	s.assert.NotNil(blobList[0].Mode)
+}
+
 // func (s *datalakeTestSuite) TestRAGRS() {
 // 	defer s.cleanupTest()
 // 	// Setup

@@ -3480,20 +3480,21 @@ func (s *blockBlobTestSuite) TestList() {
 	s.assert.EqualValues(3, len(blobList))
 
 	// Test listing with prefix
-	blobList, marker, err = s.az.storage.(*BlockBlob).List(base+"b/", nil, 0)
+	blobList, marker, err = s.az.storage.List(base+"b/", nil, 0)
 	s.assert.Nil(err)
 	s.assert.Equal(&emptyString, marker)
 	s.assert.NotNil(blobList)
 	s.assert.EqualValues(1, len(blobList))
+	s.assert.EqualValues("c1", blobList[0].Name)
 
 	// Test listing with marker
-	blobList, marker, err = s.az.storage.(*BlockBlob).List(base, to.Ptr("invalid-marker"), 0)
+	blobList, marker, err = s.az.storage.List(base, to.Ptr("invalid-marker"), 0)
 	s.assert.NotNil(err)
 	s.assert.Equal(0, len(blobList))
 	s.assert.Nil(marker)
 
 	// Test listing with count
-	blobList, marker, err = s.az.storage.(*BlockBlob).List("", nil, 1)
+	blobList, marker, err = s.az.storage.List("", nil, 1)
 	s.assert.Nil(err)
 	s.assert.NotNil(blobList)
 	s.assert.NotEmpty(marker)
