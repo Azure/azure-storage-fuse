@@ -89,12 +89,29 @@ func (xl *Xload) SetNextComponent(nc internal.Component) {
 	xl.BaseComponent.SetNextComponent(nc)
 }
 
+func (xl *Xload) Priority() internal.ComponentPriority {
+	return internal.EComponentPriority.LevelMid()
+}
+
 // Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
 func (xl *Xload) Configure(_ bool) error {
 	log.Trace("Xload::Configure : %s", xl.Name())
 
+	// xload component should be used only in readonly mode
+	var readonly bool
+	err := config.UnmarshalKey("read-only", &readonly)
+	if err != nil {
+		log.Err("Xload::Configure : config error [unable to obtain read-only]")
+		return fmt.Errorf("config error in %s [%s]", xl.Name(), err.Error())
+	}
+
+	if !readonly {
+		log.Err("Xload::Configure : Xload component should be used only in read-only mode")
+		return fmt.Errorf("Xload component should be used in only in read-only mode")
+	}
+
 	conf := XloadOptions{}
-	err := config.UnmarshalKey(xl.Name(), &conf)
+	err = config.UnmarshalKey(xl.Name(), &conf)
 	if err != nil {
 		log.Err("Xload::Configure : config error [invalid config attributes]")
 		return fmt.Errorf("Xload: config error [invalid config attributes]")
