@@ -3461,6 +3461,46 @@ func (suite *blockBlobTestSuite) UtilityFunctionTruncateFileToLarger(size int, t
 
 }
 
+func (s *blockBlobTestSuite) TestList() {
+	defer s.cleanupTest()
+	// Setup
+	s.tearDownTestHelper(false) // Don't delete the generated container.
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.dfs.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
+		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	s.setupTestHelper(config, s.container, true)
+
+	base := generateDirectoryName()
+	s.setupHierarchy(base)
+
+	blobList, marker, err := s.az.storage.List("", nil, 0)
+	s.assert.Nil(err)
+	emptyString := ""
+	s.assert.Equal(&emptyString, marker)
+	s.assert.NotNil(blobList)
+	s.assert.EqualValues(3, len(blobList))
+
+	// Test listing with prefix
+	blobList, marker, err = s.az.storage.(*BlockBlob).List(base+"b/", nil, 0)
+	s.assert.Nil(err)
+	s.assert.Equal(&emptyString, marker)
+	s.assert.NotNil(blobList)
+	s.assert.EqualValues(1, len(blobList))
+
+	// Test listing with marker
+	blobList, marker, err = s.az.storage.(*BlockBlob).List(base, to.Ptr("invalid-marker"), 0)
+	s.assert.NotNil(err)
+	s.assert.Equal(0, len(blobList))
+	s.assert.Nil(marker)
+
+	// Test listing with count
+	blobList, marker, err = s.az.storage.(*BlockBlob).List("", nil, 1)
+	s.assert.Nil(err)
+	s.assert.NotNil(blobList)
+	s.assert.NotEmpty(marker)
+	s.assert.EqualValues(1, len(blobList))
+	s.assert.EqualValues(base, blobList[0].Path)
+}
+
 // In order for 'go test' to run this suite, we need to create
 // a normal test function and pass our suite to suite.Run
 func TestBlockBlob(t *testing.T) {
