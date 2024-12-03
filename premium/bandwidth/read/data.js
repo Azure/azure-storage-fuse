@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1732530935373,
+  "lastUpdate": 1733202788578,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -2875,6 +2875,75 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 12.818359375,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "64532198+vibhansa-msft@users.noreply.github.com",
+            "name": "Vikas Bhansali",
+            "username": "vibhansa-msft"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "4a57c1b73fe7c0fd587bd9c6a4839f5ad8d0c257",
+          "message": "Readme updates for 2.4.0 release (#1583)\n\n* Readme Updated",
+          "timestamp": "2024-12-03T10:23:35+05:30",
+          "tree_id": "15cb23d5daa5b19f33b6a1da6c610212d2ec8fb2",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/4a57c1b73fe7c0fd587bd9c6a4839f5ad8d0c257"
+        },
+        "date": 1733202787246,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read",
+            "value": 2529.4290364583335,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read",
+            "value": 3.6243489583333335,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_small_file",
+            "value": 2496.1494140625,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 1451.3206380208333,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_direct_io",
+            "value": 2691.0904947916665,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_direct_io",
+            "value": 3.4254557291666665,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 5054.266927083333,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 3554.2522786458335,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 13.642903645833334,
             "unit": "MiB/s"
           }
         ]
