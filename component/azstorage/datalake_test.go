@@ -2592,7 +2592,7 @@ func (s *datalakeTestSuite) TestList() {
 	s.assert.Equal(&emptyString, marker)
 	s.assert.NotNil(blobList)
 	s.assert.EqualValues(3, len(blobList))
-	s.assert.NotNil(blobList[0].Mode)
+	s.assert.NotEqual(0, blobList[0].Mode)
 
 	// Test listing with prefix
 	blobList, marker, err = s.az.storage.List(base+"b/", nil, 0)
@@ -2601,7 +2601,7 @@ func (s *datalakeTestSuite) TestList() {
 	s.assert.NotNil(blobList)
 	s.assert.EqualValues(1, len(blobList))
 	s.assert.EqualValues("c1", blobList[0].Name)
-	s.assert.NotNil(blobList[0].Mode)
+	s.assert.NotEqual(0, blobList[0].Mode)
 
 	// Test listing with marker
 	blobList, marker, err = s.az.storage.List(base, to.Ptr("invalid-marker"), 0)
@@ -2616,7 +2616,7 @@ func (s *datalakeTestSuite) TestList() {
 	s.assert.NotEmpty(marker)
 	s.assert.EqualValues(1, len(blobList))
 	s.assert.EqualValues(base, blobList[0].Path)
-	s.assert.NotNil(blobList[0].Mode)
+	s.assert.NotEqual(0, blobList[0].Mode)
 }
 
 // func (s *datalakeTestSuite) TestRAGRS() {

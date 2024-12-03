@@ -657,7 +657,6 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 					mode, err = getFileMode(*blobInfo.Properties.Permissions)
 					if err != nil {
 						log.Err("BlockBlob::List : Failed to get file mode for %s [%s]", *blobInfo.Name, err.Error())
-						return blobList, nil, err
 					}
 				}
 				name := strings.TrimSuffix(*blobInfo.Name, "/")
