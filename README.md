@@ -120,6 +120,8 @@ To learn about a specific command, just include the name of the command (For exa
     * sudo fusermount3 -u <mount path>
 - Unmount all blobfuse2 instances
     * blobfuse2 unmount all 
+- Auto generate config file
+    * blobfuse2 gen-config --tmp-path=<local cache path> --o <path to save generated config>
 
 <!---TODO Add Usage for mount, unmount, etc--->
 ## CLI parameters
