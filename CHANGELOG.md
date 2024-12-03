@@ -1,6 +1,6 @@
 ## 2.4.1 (Unreleased)
 **Bug Fixes**
-- Create block pool only once in the child process.
+- Create block pool only in the child process.
 
 ## 2.4.0 (Unreleased)
 **Features**
