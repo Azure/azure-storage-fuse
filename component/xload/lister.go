@@ -3,7 +3,9 @@ package xload
 import (
 	"os"
 	"path/filepath"
+	"time"
 
+	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
@@ -135,6 +137,7 @@ func (ll *localLister) mkdir(name string) error {
 
 type remoteLister struct {
 	lister
+	listBlocked bool
 }
 
 func newRemoteLister(path string, remote internal.Component) (*remoteLister, error) {
@@ -147,6 +150,7 @@ func newRemoteLister(path string, remote internal.Component) (*remoteLister, err
 				remote: remote,
 			},
 		},
+		listBlocked: false,
 	}
 
 	rl.setName(LISTER)
@@ -175,10 +179,33 @@ func (rl *remoteLister) stop() {
 	rl.getNext().stop()
 }
 
+// wait for the configured block-list-on-mount-sec to make the list call
+func waitForListTimeout() error {
+	var blockListSeconds uint16 = 0
+	err := config.UnmarshalKey("azstorage.block-list-on-mount-sec", &blockListSeconds)
+	if err != nil {
+		return err
+	}
+	time.Sleep(time.Duration(blockListSeconds) * time.Second)
+	return nil
+}
+
 func (rl *remoteLister) process(item *workItem) (int, error) {
 	absPath := item.path // TODO:: xload : check this for subdirectory mounting
 
 	log.Debug("remoteLister::process : Reading remote dir %s", absPath)
+
+	// this block will be executed only in the first list call for the remote directory
+	// so haven't made the listBlocked variable atomic
+	if !rl.listBlocked {
+		log.Debug("remoteLister::process : Waiting for block-list-on-mount-sec before making the list call")
+		err := waitForListTimeout()
+		if err != nil {
+			log.Err("remoteLister::process : unable to unmarshal block-list-on-mount-sec [%s]", err.Error())
+			return 0, err
+		}
+		rl.listBlocked = true
+	}
 
 	marker := ""
 	var cnt, iteration int

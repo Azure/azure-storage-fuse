@@ -63,6 +63,7 @@ type XloadOptions struct {
 	BlockSize float64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
 	Mode      string  `config:"mode" yaml:"mode,omitempty"`
 	Path      string  `config:"path" yaml:"path,omitempty"`
+	// TODO:: xload : add parallelism parameter
 }
 
 const (
@@ -70,6 +71,7 @@ const (
 	MAX_WORKER_COUNT  = 64
 	MAX_DATA_SPLITTER = 16
 	MAX_LISTER        = 16
+	defaultBlockSize  = 16
 )
 
 // Verification to check satisfaction criteria with Component Interface
@@ -98,17 +100,43 @@ func (xl *Xload) Configure(_ bool) error {
 		return fmt.Errorf("Xload: config error [invalid config attributes]")
 	}
 
-	xl.blockSize = uint64(16) * _1MB // 16 MB as deafult block size
+	xl.blockSize = uint64(defaultBlockSize) * _1MB // 16 MB as deafult block size
 	if config.IsSet(compName + ".block-size-mb") {
 		xl.blockSize = uint64(conf.BlockSize * float64(_1MB))
 	}
 
-	xl.path = strings.TrimSpace(conf.Path)
+	xl.path = common.ExpandPath(strings.TrimSpace(conf.Path))
 	if xl.path == "" {
-		xl.path, err = os.Getwd()
+		// TODO:: xload : should we use current working directory in this case
+		log.Err("Xload::Configure : config error [path not given in xload]")
+		return fmt.Errorf("config error in %s [path not given]", xl.Name())
+	} else {
+		//check mnt path is not same as xload path
+		mntPath := ""
+		err = config.UnmarshalKey("mount-path", &mntPath)
 		if err != nil {
-			log.Err("Xload::Configure : Failed to get current directory [%s]", err.Error())
-			return err
+			log.Err("Xload::Configure : config error [unable to obtain Mount Path [%s]]", err.Error())
+			return fmt.Errorf("config error in %s [%s]", xl.Name(), err.Error())
+		}
+
+		if xl.path == mntPath {
+			log.Err("Xload::Configure : config error [xload path is same as mount path]")
+			return fmt.Errorf("config error in %s error [xload path is same as mount path]", xl.Name())
+		}
+
+		_, err = os.Stat(xl.path)
+		if os.IsNotExist(err) {
+			log.Info("Xload::Configure : config error [xload path does not exist, attempting to create path]")
+			err := os.Mkdir(xl.path, os.FileMode(0755))
+			if err != nil {
+				log.Err("Xload::Configure : config error creating directory of xload path [%s]", err.Error())
+				return fmt.Errorf("config error in %s [%s]", xl.Name(), err.Error())
+			}
+		}
+
+		if !common.IsDirectoryEmpty(xl.path) {
+			log.Err("Xload::Configure : config error %s directory is not empty", xl.path)
+			return fmt.Errorf("config error in %s [temp directory not empty]", xl.Name())
 		}
 	}
 
@@ -188,43 +216,24 @@ func (xl *Xload) Stop() error {
 	return nil
 }
 
-// getRemoteComponent returns the azstorage component if present in the pipeline,
-// else returns error
-func (xl *Xload) getRemoteComponent() (internal.Component, error) {
-	comp := xl.NextComponent()
-	for comp != nil {
-		if comp.Name() == "azstorage" {
-			return comp, nil
-		}
-		comp = comp.NextComponent()
-	}
-
-	return nil, fmt.Errorf("azstorage component is not present in the pipeline")
-}
-
 // StartUploader : Start the uploader thread
 func (xl *Xload) startUploader() error {
 	log.Trace("Xload::startUploader : Starting uploader")
 
-	remoteComponent, err := xl.getRemoteComponent()
-	if err != nil {
-		log.Err("Xload::startUploader : %s", err.Error())
-		return err
-	}
-
-	ll, err := newLocalLister(xl.path, remoteComponent)
+	// Create local lister pool to list local files
+	ll, err := newLocalLister(xl.path, xl.NextComponent())
 	if err != nil {
 		log.Err("Xload::startUploader : failed to create local lister [%s]", err.Error())
 		return err
 	}
 
-	us, err := newUploadSpiltter(xl.blockSize, xl.blockPool, xl.path, remoteComponent)
+	us, err := newUploadSpiltter(xl.blockSize, xl.blockPool, xl.path, xl.NextComponent())
 	if err != nil {
 		log.Err("Xload::startUploader : failed to create upload splitter [%s]", err.Error())
 		return err
 	}
 
-	rdm, err := newRemoteDataManager(remoteComponent)
+	rdm, err := newRemoteDataManager(xl.NextComponent())
 	if err != nil {
 		log.Err("Xload::startUploader : failed to create remote data manager [%s]", err.Error())
 		return err
@@ -237,26 +246,20 @@ func (xl *Xload) startUploader() error {
 func (xl *Xload) startDownloader() error {
 	log.Trace("Xload::startDownloader : Starting downloader")
 
-	remoteComponent, err := xl.getRemoteComponent()
-	if err != nil {
-		log.Err("Xload::startDownloader : %s", err.Error())
-		return err
-	}
-
-	// Create remote lister pool to list local files
-	rl, err := newRemoteLister(xl.path, remoteComponent)
+	// Create remote lister pool to list remote files
+	rl, err := newRemoteLister(xl.path, xl.NextComponent())
 	if err != nil {
 		log.Err("Xload::startDownloader : Unable to create remote lister [%s]", err.Error())
 		return err
 	}
 
-	ds, err := newDownloadSplitter(xl.blockSize, xl.blockPool, xl.path, remoteComponent)
+	ds, err := newDownloadSplitter(xl.blockSize, xl.blockPool, xl.path, xl.NextComponent())
 	if err != nil {
 		log.Err("Xload::startDownloader : Unable to create download splitter [%s]", err.Error())
 		return err
 	}
 
-	rdm, err := newRemoteDataManager(remoteComponent)
+	rdm, err := newRemoteDataManager(xl.NextComponent())
 	if err != nil {
 		log.Err("Xload::startUploader : failed to create remote data manager [%s]", err.Error())
 		return err

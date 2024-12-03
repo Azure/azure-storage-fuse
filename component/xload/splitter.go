@@ -293,7 +293,7 @@ func (d *downloadSplitter) process(item *workItem) (int, error) {
 	err = item.fileHandle.Truncate(int64(item.dataLen))
 	if err != nil {
 		log.Err("downloadSplitter::process : Failed to truncate file %s [%s]", item.path, err.Error())
-		return -1, err
+		operationSuccess = false
 	}
 
 	if !operationSuccess {
