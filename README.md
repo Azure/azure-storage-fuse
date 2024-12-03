@@ -109,19 +109,19 @@ To learn about a specific command, just include the name of the command (For exa
 
 ## Usage
 - Mount with blobfuse2
-    * blobfuse2 mount <mount path> --config-file=<config file>
+    * blobfuse2 mount \<mount path\> --config-file=\<config file\>
 - Mount blobfuse2 using legacy blobfuse config and cli parameters
-    * blobfuse2 mountv1 <blobfuse mount cli with options>
+    * blobfuse2 mountv1 \<blobfuse mount cli with options\>
 - Mount all containers in your storage account
-    * blobfuse2 mount all <mount path> --config-file=<config file>
+    * blobfuse2 mount all \<mount path\> --config-file=\<config file\>
 - List all mount instances of blobfuse2
     * blobfuse2 mount list
 - Unmount blobfuse2
-    * sudo fusermount3 -u <mount path>
+    * sudo fusermount3 -u \<mount path\>
 - Unmount all blobfuse2 instances
     * blobfuse2 unmount all 
 - Auto generate config file
-    * blobfuse2 gen-config --tmp-path=<local cache path> --o <path to save generated config>
+    * blobfuse2 gen-config --tmp-path=\<local cache path\> --o \<path to save generated config\>
 
 <!---TODO Add Usage for mount, unmount, etc--->
 ## CLI parameters
