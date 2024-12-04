@@ -8,57 +8,12 @@ import (
 
 // verify that the below types implement the xcomponent interfaces
 var _ xcomponent = &dataManager{}
-var _ xcomponent = &localDataManager{}
 var _ xcomponent = &remoteDataManager{}
 
 const DATA_MANAGER string = "DATA_MANAGER"
 
 type dataManager struct {
 	xbase
-}
-
-// --------------------------------------------------------------------------------------------------------
-
-type localDataManager struct {
-	dataManager
-}
-
-func newLocalDataManager() (*localDataManager, error) {
-	log.Debug("data_manager::newLocalDataManager : create new local data manager")
-
-	ldm := &localDataManager{}
-	ldm.setName(DATA_MANAGER)
-	ldm.init()
-	return ldm, nil
-}
-
-func (ldm *localDataManager) init() {
-	ldm.pool = newThreadPool(MAX_WORKER_COUNT, ldm.process)
-	if ldm.pool == nil {
-		log.Err("localDataManager::init : fail to init thread pool")
-	}
-}
-
-func (ldm *localDataManager) start() {
-	log.Debug("localDataManager::start : start local data manager")
-	ldm.getThreadPool().Start()
-}
-
-func (ldm *localDataManager) stop() {
-	log.Debug("localDataManager::stop : stop local data manager")
-	if ldm.getThreadPool() != nil {
-		ldm.getThreadPool().Stop()
-	}
-}
-
-// ReadData reads data from the data manager
-func (ldm *localDataManager) ReadData(item *workItem) (int, error) {
-	return item.fileHandle.ReadAt(item.block.data, item.block.offset)
-}
-
-// WriteData writes data to the data manager
-func (ldm *localDataManager) WriteData(item *workItem) (int, error) {
-	return item.fileHandle.WriteAt(item.block.data, item.block.offset)
 }
 
 // --------------------------------------------------------------------------------------------------------

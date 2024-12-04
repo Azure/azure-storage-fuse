@@ -59,7 +59,6 @@ type Xload struct {
 
 // Structure defining your config parameters
 type XloadOptions struct {
-	// TODO:: xload : this should take the vaule from block cache or file cache config
 	BlockSize float64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
 	Mode      string  `config:"mode" yaml:"mode,omitempty"`
 	Path      string  `config:"path" yaml:"path,omitempty"`
@@ -201,11 +200,7 @@ func (xl *Xload) Start(ctx context.Context) error {
 		}
 	case EMode.UPLOAD():
 		// Start uploader here
-		err = xl.startUploader()
-		if err != nil {
-			log.Err("Xload::Start : Failed to start uploader [%s]", err.Error())
-			return err
-		}
+		return fmt.Errorf("uploader is currently unsupported")
 	case EMode.SYNC():
 		//Start syncer here
 		return fmt.Errorf("sync is currently unsupported")
@@ -230,33 +225,6 @@ func (xl *Xload) Stop() error {
 		log.Err("unable to clean xload local path [%s]", err.Error())
 	}
 
-	return nil
-}
-
-// StartUploader : Start the uploader thread
-func (xl *Xload) startUploader() error {
-	log.Trace("Xload::startUploader : Starting uploader")
-
-	// Create local lister pool to list local files
-	ll, err := newLocalLister(xl.path, xl.NextComponent())
-	if err != nil {
-		log.Err("Xload::startUploader : failed to create local lister [%s]", err.Error())
-		return err
-	}
-
-	us, err := newUploadSpiltter(xl.blockSize, xl.blockPool, xl.path, xl.NextComponent())
-	if err != nil {
-		log.Err("Xload::startUploader : failed to create upload splitter [%s]", err.Error())
-		return err
-	}
-
-	rdm, err := newRemoteDataManager(xl.NextComponent())
-	if err != nil {
-		log.Err("Xload::startUploader : failed to create remote data manager [%s]", err.Error())
-		return err
-	}
-
-	xl.comps = []xcomponent{ll, us, rdm}
 	return nil
 }
 

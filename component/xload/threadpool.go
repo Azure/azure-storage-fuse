@@ -99,7 +99,6 @@ func (t *ThreadPool) Do() {
 		}
 
 		// add this error in response channel
-		// TODO:: xload : verify
 		if cap(item.responseChannel) > 0 {
 			item.err = err
 			item.responseChannel <- item
