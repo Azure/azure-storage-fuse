@@ -31,16 +31,60 @@
    SOFTWARE
 */
 
-package cmd
+package xload
 
 import (
-	_ "github.com/Azure/azure-storage-fuse/v2/component/attr_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/azstorage"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/block_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/custom"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/entry_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/file_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/libfuse"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/loopback"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/xload"
+	"os"
+	"reflect"
+
+	"github.com/JeffreyRichter/enum/enum"
 )
+
+// One workitem to be processed
+type workItem struct {
+	compName        string         // Name of the component
+	path            string         // Name of the file being processed
+	dataLen         uint64         // Length of the data to be processed
+	block           *Block         // Block to hold data for
+	fileHandle      *os.File       // File handle to the file being processed
+	err             error          // Error if any
+	responseChannel chan *workItem // Channel to send the response
+	download        bool           // boolean variable to decide upload or download
+}
+
+// xload mode enum
+type Mode int
+
+var EMode = Mode(0).INVALID_MODE()
+
+func (Mode) INVALID_MODE() Mode {
+	return Mode(0)
+}
+
+func (Mode) CHECKPOINT() Mode {
+	return Mode(1)
+}
+
+func (Mode) DOWNLOAD() Mode {
+	return Mode(2)
+}
+
+func (Mode) UPLOAD() Mode {
+	return Mode(3)
+}
+
+func (Mode) SYNC() Mode {
+	return Mode(4)
+}
+
+func (m Mode) String() string {
+	return enum.StringInt(m, reflect.TypeOf(m))
+}
+
+func (m *Mode) Parse(s string) error {
+	enumVal, err := enum.ParseInt(reflect.TypeOf(m), s, true, false)
+	if enumVal != nil {
+		*m = enumVal.(Mode)
+	}
+	return err
+}

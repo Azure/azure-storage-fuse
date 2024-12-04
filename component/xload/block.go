@@ -31,16 +31,66 @@
    SOFTWARE
 */
 
-package cmd
+package xload
 
 import (
-	_ "github.com/Azure/azure-storage-fuse/v2/component/attr_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/azstorage"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/block_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/custom"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/entry_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/file_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/libfuse"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/loopback"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/xload"
+	"fmt"
+	"syscall"
 )
+
+// Block is a memory mapped buffer with its state to hold data
+type Block struct {
+	index  int    // Index of the block in the pool
+	offset int64  // Start offset of the data this block holds
+	length int64  // Length of data that this block holds
+	id     string // ID to represent this block in the blob
+	data   []byte // Data this block holds
+}
+
+// AllocateBlock creates a new memory mapped buffer for the given size
+func AllocateBlock(size uint64) (*Block, error) {
+	if size == 0 {
+		return nil, fmt.Errorf("invalid size")
+	}
+
+	prot, flags := syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_ANON|syscall.MAP_PRIVATE
+	addr, err := syscall.Mmap(-1, 0, int(size), prot, flags)
+
+	if err != nil {
+		return nil, fmt.Errorf("mmap error: %v", err)
+	}
+
+	block := &Block{
+		index:  0,
+		data:   addr,
+		offset: 0,
+		length: 0,
+		id:     "",
+	}
+
+	return block, nil
+}
+
+// Delete cleans up the memory mapped buffer
+func (b *Block) Delete() error {
+	if b.data == nil {
+		return fmt.Errorf("invalid buffer")
+	}
+
+	err := syscall.Munmap(b.data)
+	b.data = nil
+	if err != nil {
+		// if we get here, there is likely memory corruption.
+		return fmt.Errorf("munmap error: %v", err)
+	}
+
+	return nil
+}
+
+// Clear the old data of this block
+func (b *Block) ReUse() {
+	b.id = ""
+	b.index = 0
+	b.offset = 0
+	b.length = 0
+}

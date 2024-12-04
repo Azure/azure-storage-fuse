@@ -31,16 +31,65 @@
    SOFTWARE
 */
 
-package cmd
+package xload
 
-import (
-	_ "github.com/Azure/azure-storage-fuse/v2/component/attr_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/azstorage"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/block_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/custom"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/entry_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/file_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/libfuse"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/loopback"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/xload"
-)
+import "github.com/Azure/azure-storage-fuse/v2/internal"
+
+type xcomponent interface {
+	init()
+	start()
+	stop()
+	process(item *workItem) (int, error)
+	getNext() xcomponent
+	setNext(s xcomponent)
+	getThreadPool() *ThreadPool
+	getRemote() internal.Component
+	getName() string
+	setName(s string)
+}
+
+type xbase struct {
+	name   string
+	pool   *ThreadPool
+	remote internal.Component
+	next   xcomponent
+}
+
+var _ xcomponent = &xbase{}
+
+func (xb *xbase) init() {
+}
+
+func (xb *xbase) start() {
+}
+
+func (xb *xbase) stop() {
+}
+
+func (xb *xbase) process(item *workItem) (int, error) {
+	return 0, nil
+}
+
+func (xb *xbase) getNext() xcomponent {
+	return xb.next
+}
+
+func (xb *xbase) setNext(s xcomponent) {
+	xb.next = s
+}
+
+func (xb *xbase) getThreadPool() *ThreadPool {
+	return xb.pool
+}
+
+func (xb *xbase) getRemote() internal.Component {
+	return xb.remote
+}
+
+func (xb *xbase) getName() string {
+	return xb.name
+}
+
+func (xb *xbase) setName(s string) {
+	xb.name = s
+}
