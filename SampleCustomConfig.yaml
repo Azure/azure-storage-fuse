@@ -1,0 +1,30 @@
+# sample config to test the custom component
+allow-other: true
+
+logging:
+  type: base
+  level: log_debug
+
+components:
+  - libfuse
+  - block_cache
+  - sample_custom_component1
+  - sample_custom_component2
+
+sample_custom_component1:
+  block-size-mb: 16
+
+sample_custom_component2:
+  block-size-mb: 16
+libfuse:
+  attribute-expiration-sec: 120
+  entry-expiration-sec: 120
+  negative-entry-expiration-sec: 240
+
+block_cache:
+  block-size-mb: 16
+  path: /tmp/cache
+  parallelism: 128
+
+attr_cache:
+  timeout-sec: 7200

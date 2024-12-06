@@ -64,7 +64,7 @@ func (suite *customTestSuite) SetupTest() {
 //
 // This flag disables all optimizations and inline replacements and then .so will load in debug mode as well.
 // However same .so will not work with cli mount and there you need to build .so without these flags.
-func (suite *customTestSuite) _TestInitializePluginsValidPath() {
+func (suite *customTestSuite) TestInitializePluginsValidPath() {
 	// Direct paths to the Go plugin source files
 	source1 := "../../test/sample_custom_component1/main.go"
 	source2 := "../../test/sample_custom_component2/main.go"
@@ -74,10 +74,10 @@ func (suite *customTestSuite) _TestInitializePluginsValidPath() {
 	plugin2 := "./sample_custom_component2.so"
 
 	// Compile the Go plugin source files into .so files
-	cmd := exec.Command("go", "build", "-buildmode=plugin", "-gcflags=all=-N -l", "-o", plugin1, source1)
+	cmd := exec.Command("go", "build", "-buildmode=plugin", "-o", plugin1, source1)
 	err := cmd.Run()
 	suite.assert.Nil(err)
-	cmd = exec.Command("go", "build", "-buildmode=plugin", "-gcflags=all=-N -l", "-o", plugin2, source2)
+	cmd = exec.Command("go", "build", "-buildmode=plugin", "-o", plugin2, source2)
 	err = cmd.Run()
 	suite.assert.Nil(err)
 
