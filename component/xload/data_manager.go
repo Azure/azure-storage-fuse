@@ -34,6 +34,8 @@
 package xload
 
 import (
+	"time"
+
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
@@ -55,13 +57,14 @@ type remoteDataManager struct {
 	dataManager
 }
 
-func newRemoteDataManager(remote internal.Component) (*remoteDataManager, error) {
+func newRemoteDataManager(remote internal.Component, statsMgr *statsManager) (*remoteDataManager, error) {
 	log.Debug("data_manager::newRemoteDataManager : create new remote data manager")
 
 	rdm := &remoteDataManager{
 		dataManager: dataManager{
 			xbase: xbase{
-				remote: remote,
+				remote:   remote,
+				statsMgr: statsMgr,
 			},
 		},
 	}
@@ -105,20 +108,48 @@ func (rdm *remoteDataManager) ReadData(item *workItem) (int, error) {
 
 	h := handlemap.NewHandle(item.path)
 	h.Size = int64(item.dataLen)
-	return rdm.getRemote().ReadInBuffer(internal.ReadInBufferOptions{
+	n, err := rdm.getRemote().ReadInBuffer(internal.ReadInBufferOptions{
 		Handle: h,
 		Offset: item.block.offset,
 		Data:   item.block.data,
 	})
+
+	// send the block download status to stats manager
+	rdm.getStatsManager().addStats(&statsItem{
+		name:             item.path,
+		success:          err == nil,
+		download:         true,
+		bytesTransferred: uint64(n),
+		timestamp:        time.Now().UTC(),
+	})
+
+	return n, err
 }
 
 // WriteData writes data to the data manager
 func (rdm *remoteDataManager) WriteData(item *workItem) (int, error) {
 	log.Debug("remoteDataManager::WriteData : Scheduling upload for %s offset %v", item.path, item.block.offset)
 
-	return int(item.block.length), rdm.getRemote().StageData(internal.StageDataOptions{
+	n := int(item.block.length)
+	err := rdm.getRemote().StageData(internal.StageDataOptions{
 		Name: item.path,
 		Data: item.block.data[0:item.block.length],
 		// Offset: uint64(item.block.offset),
-		Id: item.block.id})
+		Id: item.block.id,
+	})
+	if err != nil {
+		log.Err("remoteDataManager::WriteData : upload failed for %s offset %v [%v]", item.path, item.block.offset, err.Error())
+		n = 0
+	}
+
+	// send the block upload status to stats manager
+	rdm.getStatsManager().addStats(&statsItem{
+		name:             item.path,
+		success:          err == nil,
+		download:         false,
+		bytesTransferred: uint64(n),
+		timestamp:        time.Now().UTC(),
+	})
+
+	return n, err
 }

@@ -185,6 +185,9 @@ func (xl *Xload) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to create block pool")
 	}
 
+	// create stats manager
+	xl.statsMgr = newStatsmanager(MAX_WORKER_COUNT * 2)
+
 	var err error
 
 	// Xload : start code goes here
@@ -210,7 +213,7 @@ func (xl *Xload) Start(ctx context.Context) error {
 		return fmt.Errorf("invalid mode in xload : %s", xl.mode.String())
 	}
 
-	xl.startStatsManager()
+	xl.statsMgr.start()
 	return xl.startComponents()
 }
 
@@ -235,19 +238,19 @@ func (xl *Xload) startDownloader() error {
 	log.Trace("Xload::startDownloader : Starting downloader")
 
 	// Create remote lister pool to list remote files
-	rl, err := newRemoteLister(xl.path, xl.NextComponent())
+	rl, err := newRemoteLister(xl.path, xl.NextComponent(), xl.statsMgr)
 	if err != nil {
 		log.Err("Xload::startDownloader : Unable to create remote lister [%s]", err.Error())
 		return err
 	}
 
-	ds, err := newDownloadSplitter(xl.blockSize, xl.blockPool, xl.path, xl.NextComponent())
+	ds, err := newDownloadSplitter(xl.blockSize, xl.blockPool, xl.path, xl.NextComponent(), xl.statsMgr)
 	if err != nil {
 		log.Err("Xload::startDownloader : Unable to create download splitter [%s]", err.Error())
 		return err
 	}
 
-	rdm, err := newRemoteDataManager(xl.NextComponent())
+	rdm, err := newRemoteDataManager(xl.NextComponent(), xl.statsMgr)
 	if err != nil {
 		log.Err("Xload::startUploader : failed to create remote data manager [%s]", err.Error())
 		return err
@@ -286,11 +289,6 @@ func (xl *Xload) startComponents() error {
 	}
 
 	return nil
-}
-
-func (xl *Xload) startStatsManager() {
-	xl.statsMgr = newStatsmanager(MAX_WORKER_COUNT * 2)
-	xl.statsMgr.start()
 }
 
 // ------------------------- Factory -------------------------------------------

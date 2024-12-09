@@ -49,10 +49,11 @@ type xcomponent interface {
 }
 
 type xbase struct {
-	name   string
-	pool   *ThreadPool
-	remote internal.Component
-	next   xcomponent
+	name     string
+	pool     *ThreadPool
+	remote   internal.Component
+	next     xcomponent
+	statsMgr *statsManager
 }
 
 var _ xcomponent = &xbase{}
@@ -92,4 +93,8 @@ func (xb *xbase) getName() string {
 
 func (xb *xbase) setName(s string) {
 	xb.name = s
+}
+
+func (xb *xbase) getStatsManager() *statsManager {
+	return xb.statsMgr
 }

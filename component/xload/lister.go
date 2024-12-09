@@ -68,14 +68,15 @@ type remoteLister struct {
 	listBlocked bool
 }
 
-func newRemoteLister(path string, remote internal.Component) (*remoteLister, error) {
+func newRemoteLister(path string, remote internal.Component, statsMgr *statsManager) (*remoteLister, error) {
 	log.Debug("lister::newRemoteLister : create new remote lister for %s", path)
 
 	rl := &remoteLister{
 		lister: lister{
 			path: path,
 			xbase: xbase{
-				remote: remote,
+				remote:   remote,
+				statsMgr: statsMgr,
 			},
 		},
 		listBlocked: false,
@@ -151,6 +152,12 @@ func (rl *remoteLister) process(item *workItem) (int, error) {
 		iteration++
 		log.Debug("remoteLister::process : count: %d , iterations: %d", cnt, iteration)
 
+		// send number of items listed in current iteration to stats manager
+		rl.getStatsManager().addStats(&statsItem{
+			listerCount: uint64(len(entries)),
+			timestamp:   time.Now().UTC(),
+		})
+
 		for _, entry := range entries {
 			log.Debug("remoteLister::process : Iterating: %s, Is directory: %v", entry.Path, entry.IsDir())
 
@@ -195,5 +202,13 @@ func (rl *remoteLister) process(item *workItem) (int, error) {
 
 func (rl *remoteLister) mkdir(name string) error {
 	log.Debug("remoteLister::mkdir : Creating local path: %s", name)
-	return os.MkdirAll(name, 0777)
+	err := os.MkdirAll(name, 0777)
+
+	// send stats for dir creation
+	rl.getStatsManager().addStats(&statsItem{
+		name:      name,
+		success:   err == nil,
+		timestamp: time.Now().UTC(),
+	})
+	return err
 }

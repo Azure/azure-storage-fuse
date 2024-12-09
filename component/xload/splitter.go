@@ -38,6 +38,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
@@ -62,7 +63,7 @@ type downloadSplitter struct {
 	splitter
 }
 
-func newDownloadSplitter(blockSize uint64, blockPool *BlockPool, path string, remote internal.Component) (*downloadSplitter, error) {
+func newDownloadSplitter(blockSize uint64, blockPool *BlockPool, path string, remote internal.Component, statsMgr *statsManager) (*downloadSplitter, error) {
 	log.Debug("splitter::newDownloadSplitter : create new download splitter for %s, block size %v", path, blockSize)
 
 	d := &downloadSplitter{
@@ -71,7 +72,8 @@ func newDownloadSplitter(blockSize uint64, blockPool *BlockPool, path string, re
 			blockPool: blockPool,
 			path:      path,
 			xbase: xbase{
-				remote: remote,
+				remote:   remote,
+				statsMgr: statsMgr,
 			},
 		},
 	}
@@ -183,6 +185,14 @@ func (d *downloadSplitter) process(item *workItem) (int, error) {
 		log.Err("downloadSplitter::process : Failed to truncate file %s [%s]", item.path, err.Error())
 		operationSuccess = false
 	}
+
+	// send the download status to stats manager
+	d.getStatsManager().addStats(&statsItem{
+		name:      item.path,
+		success:   operationSuccess,
+		download:  true,
+		timestamp: time.Now().UTC(),
+	})
 
 	if !operationSuccess {
 		log.Err("downloadSplitter::process : Failed to download data for file %s", item.path)

@@ -33,14 +33,14 @@ type statsItem struct {
 
 func newStatsmanager(count uint32) *statsManager {
 	return &statsManager{
-		startTime: time.Now().UTC(),
-		items:     make(chan *statsItem, count*2),
+		items: make(chan *statsItem, count*2),
 	}
 }
 
 func (sm *statsManager) start() {
 	log.Debug("statsManager::start : start stats manager")
 	sm.wg.Add(1)
+	sm.startTime = time.Now().UTC()
 	go sm.statsProcessor()
 }
 
@@ -48,6 +48,10 @@ func (sm *statsManager) stop() {
 	log.Debug("statsManager::stop : stop stats manager")
 	close(sm.items)
 	sm.wg.Wait()
+}
+
+func (sm *statsManager) addStats(item *statsItem) {
+	sm.items <- item
 }
 
 func (sm *statsManager) statsProcessor() {
