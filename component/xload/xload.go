@@ -51,10 +51,11 @@ type Xload struct {
 	blockSize uint64 // Size of each block to be cached
 	mode      Mode   // Mode of the Xload component
 
-	workerCount uint32     // Number of workers running
-	blockPool   *BlockPool // Pool of blocks
-	path        string     // Path on local disk where Xload will operate
-	comps       []xcomponent
+	workerCount uint32        // Number of workers running
+	blockPool   *BlockPool    // Pool of blocks
+	path        string        // Path on local disk where Xload will operate
+	comps       []xcomponent  // list of components in xload
+	statsMgr    *statsManager // stats manager
 }
 
 // Structure defining your config parameters
@@ -209,6 +210,7 @@ func (xl *Xload) Start(ctx context.Context) error {
 		return fmt.Errorf("invalid mode in xload : %s", xl.mode.String())
 	}
 
+	xl.startStatsManager()
 	return xl.startComponents()
 }
 
@@ -217,6 +219,7 @@ func (xl *Xload) Stop() error {
 	log.Trace("Xload::Stop : Stopping component %s", xl.Name())
 
 	xl.comps[0].stop()
+	xl.statsMgr.stop()
 	xl.blockPool.Terminate()
 
 	// TODO:: xload : should we delete the files from local path
@@ -283,6 +286,11 @@ func (xl *Xload) startComponents() error {
 	}
 
 	return nil
+}
+
+func (xl *Xload) startStatsManager() {
+	xl.statsMgr = newStatsmanager(MAX_WORKER_COUNT * 2)
+	xl.statsMgr.start()
 }
 
 // ------------------------- Factory -------------------------------------------

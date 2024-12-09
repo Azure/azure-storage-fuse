@@ -1,19 +1,21 @@
 package xload
 
 import (
+	"sync"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
 type statsManager struct {
-	totalFiles      uint64    // total number of files that have been scanned so far
-	success         uint64    // number of files that have been successfully processed
-	failed          uint64    // number of files that failed
-	bytesDownloaded uint64    // total number of bytes downloaded
-	bytesUploaded   uint64    // total number of bytes uploaded
-	startTime       time.Time // variable indicating the time at which the stats manager started
-	items           chan *statsItem
+	totalFiles      uint64          // total number of files that have been scanned so far
+	success         uint64          // number of files that have been successfully processed
+	failed          uint64          // number of files that failed
+	bytesDownloaded uint64          // total number of bytes downloaded
+	bytesUploaded   uint64          // total number of bytes uploaded
+	startTime       time.Time       // variable indicating the time at which the stats manager started
+	wg              sync.WaitGroup  // wait group to wait for stats manager thread to finish
+	items           chan *statsItem // channel to hold the stats items
 	// TODO:: xload :
 	// bandwidth utilization
 	// bytes downloaded
@@ -36,32 +38,48 @@ func newStatsmanager(count uint32) *statsManager {
 	}
 }
 
-func (st *statsManager) statsProcessor(item *statsItem) {
-	for item := range st.items {
+func (sm *statsManager) start() {
+	log.Debug("statsManager::start : start stats manager")
+	sm.wg.Add(1)
+	go sm.statsProcessor()
+}
+
+func (sm *statsManager) stop() {
+	log.Debug("statsManager::stop : stop stats manager")
+	close(sm.items)
+	sm.wg.Wait()
+}
+
+func (sm *statsManager) statsProcessor() {
+	defer sm.wg.Done()
+
+	for item := range sm.items {
 		if item.listerCount > 0 {
 			// stats sent by the lister component
 			log.Debug("statsManager::statsProcessor : Directory listed %v, count %v", item.name, item.listerCount)
-			st.totalFiles += item.listerCount
-			log.Debug("statsManager::statsProcessor : Total number of files listed so far = %v", st.totalFiles)
+			sm.totalFiles += item.listerCount
+			log.Debug("statsManager::statsProcessor : Total number of files listed so far = %v", sm.totalFiles)
 		} else {
 			// stats sent by the splitter component
 			log.Debug("statsManager::statsProcessor : Name %v, success %v, download %v, bytes transferred %v", item.name, item.success, item.download, item.bytesTransferred)
 
 			if item.success {
-				st.success += 1
+				sm.success += 1
 			} else {
-				st.failed += 1
+				sm.failed += 1
 			}
 
 			if item.download {
-				st.bytesDownloaded += item.bytesTransferred
+				sm.bytesDownloaded += item.bytesTransferred
 			} else {
-				st.bytesUploaded += item.bytesTransferred
+				sm.bytesUploaded += item.bytesTransferred
 			}
 
-			st.calculateBandwidth(item.timestamp)
+			sm.calculateBandwidth(item.timestamp.UTC())
 		}
 	}
+
+	log.Debug("statsManager::statsProcessor : stats processor completed")
 }
 
 func (st *statsManager) calculateBandwidth(timestamp time.Time) {
