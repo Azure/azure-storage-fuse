@@ -34,8 +34,6 @@
 package xload
 
 import (
-	"time"
-
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
@@ -120,7 +118,6 @@ func (rdm *remoteDataManager) ReadData(item *workItem) (int, error) {
 		success:          err == nil,
 		download:         true,
 		bytesTransferred: uint64(n),
-		timestamp:        time.Now().UTC(),
 	})
 
 	return n, err
@@ -148,7 +145,6 @@ func (rdm *remoteDataManager) WriteData(item *workItem) (int, error) {
 		success:          err == nil,
 		download:         false,
 		bytesTransferred: uint64(n),
-		timestamp:        time.Now().UTC(),
 	})
 
 	return n, err

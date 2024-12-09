@@ -155,7 +155,6 @@ func (rl *remoteLister) process(item *workItem) (int, error) {
 		// send number of items listed in current iteration to stats manager
 		rl.getStatsManager().addStats(&statsItem{
 			listerCount: uint64(len(entries)),
-			timestamp:   time.Now().UTC(),
 		})
 
 		for _, entry := range entries {
@@ -206,9 +205,8 @@ func (rl *remoteLister) mkdir(name string) error {
 
 	// send stats for dir creation
 	rl.getStatsManager().addStats(&statsItem{
-		name:      name,
-		success:   err == nil,
-		timestamp: time.Now().UTC(),
+		name:    name,
+		success: err == nil,
 	})
 	return err
 }

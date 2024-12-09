@@ -38,7 +38,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
@@ -188,10 +187,9 @@ func (d *downloadSplitter) process(item *workItem) (int, error) {
 
 	// send the download status to stats manager
 	d.getStatsManager().addStats(&statsItem{
-		name:      item.path,
-		success:   operationSuccess,
-		download:  true,
-		timestamp: time.Now().UTC(),
+		name:     item.path,
+		success:  operationSuccess,
+		download: true,
 	})
 
 	if !operationSuccess {
