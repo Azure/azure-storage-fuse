@@ -185,10 +185,14 @@ func (xl *Xload) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to create block pool")
 	}
 
-	// create stats manager
-	xl.statsMgr = newStatsmanager(MAX_WORKER_COUNT * 2)
-
 	var err error
+
+	// create stats manager
+	xl.statsMgr, err = newStatsmanager(MAX_WORKER_COUNT * 2)
+	if err != nil {
+		log.Err("Xload::Start : Failed to create stats manager [%s]", err.Error())
+		return err
+	}
 
 	// Xload : start code goes here
 	switch xl.mode {

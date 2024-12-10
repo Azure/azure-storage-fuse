@@ -114,6 +114,7 @@ func (rdm *remoteDataManager) ReadData(item *workItem) (int, error) {
 
 	// send the block download status to stats manager
 	rdm.getStatsManager().addStats(&statsItem{
+		component:        DATA_MANAGER,
 		name:             item.path,
 		success:          err == nil,
 		download:         true,
@@ -141,6 +142,7 @@ func (rdm *remoteDataManager) WriteData(item *workItem) (int, error) {
 
 	// send the block upload status to stats manager
 	rdm.getStatsManager().addStats(&statsItem{
+		component:        DATA_MANAGER,
 		name:             item.path,
 		success:          err == nil,
 		download:         false,

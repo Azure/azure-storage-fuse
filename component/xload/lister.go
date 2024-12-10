@@ -154,6 +154,8 @@ func (rl *remoteLister) process(item *workItem) (int, error) {
 
 		// send number of items listed in current iteration to stats manager
 		rl.getStatsManager().addStats(&statsItem{
+			component:   LISTER,
+			name:        absPath,
 			listerCount: uint64(len(entries)),
 		})
 
@@ -205,8 +207,10 @@ func (rl *remoteLister) mkdir(name string) error {
 
 	// send stats for dir creation
 	rl.getStatsManager().addStats(&statsItem{
-		name:    name,
-		success: err == nil,
+		component: SPLITTER, // using splitter here to track the success/failure of mkdir operation
+		name:      name,
+		success:   err == nil,
+		download:  true,
 	})
 	return err
 }

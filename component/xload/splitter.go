@@ -187,9 +187,10 @@ func (d *downloadSplitter) process(item *workItem) (int, error) {
 
 	// send the download status to stats manager
 	d.getStatsManager().addStats(&statsItem{
-		name:     item.path,
-		success:  operationSuccess,
-		download: true,
+		component: SPLITTER,
+		name:      item.path,
+		success:   operationSuccess,
+		download:  true,
 	})
 
 	if !operationSuccess {
