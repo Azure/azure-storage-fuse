@@ -59,11 +59,11 @@ type azAuthConfig struct {
 	ObjectID      string
 
 	// SPN config
-	TenantID           string
-	ClientID           string
-	ClientSecret       string
-	OAuthTokenFilePath string
-	WorkloadIdentityToken string
+	TenantID                string
+	ClientID                string
+	ClientSecret            string
+	OAuthTokenFilePath      string
+	WorkloadIdentityToken   string
 	ActiveDirectoryEndpoint string
 
 	Endpoint     string
