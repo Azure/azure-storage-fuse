@@ -2672,7 +2672,7 @@ func (suite *blockCacheTestSuite) TestSizeOfFileInOpen() {
 
 	//Open and close the file using the given flag in local and mountpoint and
 	// check the size is same or not.
-	check := func(flag int) {
+	check := func(flag int) int {
 		lfh, err := os.OpenFile(localPath, flag, 0666)
 		suite.assert.Nil(err)
 		suite.assert.NotNil(lfh)
@@ -2693,9 +2693,12 @@ func (suite *blockCacheTestSuite) TestSizeOfFileInOpen() {
 		suite.assert.Nil(err)
 		sizeInMount := statInfoMount.Size()
 		suite.assert.Equal(sizeInLocal, sizeInMount)
+		return int(sizeInLocal)
 	}
-	check(os.O_WRONLY) // size of the file would be 1MB
-	check(os.O_TRUNC)  // size of the file would be zero here.
+	size := check(os.O_WRONLY) // size of the file would be 1MB
+	suite.assert.Equal(size, int(_1MB))
+	size = check(os.O_TRUNC) // size of the file would be zero here.
+	suite.assert.Equal(size, int(0))
 }
 
 // In order for 'go test' to run this suite, we need to create
