@@ -2626,8 +2626,7 @@ func (suite *blockCacheTestSuite) TestZZZZZStreamToBlockCacheConfig() {
 }
 
 // This test checks the size of the file when the file is opened in
-// O_TRUNC mode and O_WRONLY mode. This test is also done while turning
-// of the write-back cache
+// O_TRUNC mode and O_WRONLY mode.
 func (suite *blockCacheTestSuite) TestSizeOfFileInOpen() {
 	// Write-back cache is turned on by default while mounting.
 	config := "block_cache:\n  block-size-mb: 1\n  mem-size-mb: 20\n  prefetch: 12\n  parallelism: 1"
