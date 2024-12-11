@@ -15,6 +15,7 @@ type statsManager struct {
 	totalFiles      uint64          // total number of files that have been scanned so far
 	success         uint64          // number of files that have been successfully processed
 	failed          uint64          // number of files that failed
+	dirs            uint64          // number of directories processed
 	bytesDownloaded uint64          // total number of bytes downloaded
 	bytesUploaded   uint64          // total number of bytes uploaded
 	startTime       time.Time       // variable indicating the time at which the stats manager started
@@ -32,6 +33,7 @@ type statsItem struct {
 	component        string // component name which has exported the stat
 	listerCount      uint64 // number of files scanned by the lister in an iteration
 	name             string // name of the file processed
+	dir              bool   // flag to indicate if the item is a directory
 	success          bool   // flag to indicate if the file has been processed successfully or not
 	download         bool   // flag to denote upload or download
 	bytesTransferred uint64 // bytes uploaded or downloaded for this file
@@ -87,6 +89,14 @@ func (sm *statsManager) statsProcessor() {
 		case LISTER:
 			sm.totalFiles += item.listerCount
 			// log.Debug("statsManager::statsProcessor : Directory listed %v, total number of files listed so far = %v", item.name, sm.totalFiles)
+			if item.dir {
+				sm.dirs += 1
+				if item.success {
+					sm.success += 1
+				} else {
+					sm.failed += 1
+				}
+			}
 
 		case SPLITTER:
 			// log.Debug("statsManager::statsProcessor : splitter: Name %v, success %v, download %v", item.name, item.success, item.download)
@@ -115,43 +125,43 @@ func (sm *statsManager) statsProcessor() {
 	log.Debug("statsManager::statsProcessor : stats processor completed")
 }
 
-func (st *statsManager) statsExporter() {
+func (sm *statsManager) statsExporter() {
 	ticker := time.NewTicker(DURATION * time.Second)
 
 	for {
 		select {
-		case <-st.done:
+		case <-sm.done:
 			ticker.Stop()
 			return
 		case <-ticker.C:
-			st.addStats(&statsItem{
+			sm.addStats(&statsItem{
 				component: STATS_MANAGER,
 			})
 		}
 	}
 }
 
-func (st *statsManager) calculateBandwidth() {
-	if st.totalFiles == 0 {
-		log.Debug("statsManager::calculateBandwidth : skipping as total files listed so far is %v", st.totalFiles)
+func (sm *statsManager) calculateBandwidth() {
+	if sm.totalFiles == 0 {
+		log.Debug("statsManager::calculateBandwidth : skipping as total files listed so far is %v", sm.totalFiles)
 		return
 	}
 
 	currTime := time.Now().UTC()
-	timeLapsed := currTime.Sub(st.startTime).Seconds()
-	bytesTransferred := st.bytesDownloaded + st.bytesUploaded
-	filesProcessed := st.success + st.failed
-	filesPending := st.totalFiles - filesProcessed
-	percentCompleted := (float64(filesProcessed) / float64(st.totalFiles)) * 100
+	timeLapsed := currTime.Sub(sm.startTime).Seconds()
+	bytesTransferred := sm.bytesDownloaded + sm.bytesUploaded
+	filesProcessed := sm.success + sm.failed
+	filesPending := sm.totalFiles - filesProcessed
+	percentCompleted := (float64(filesProcessed) / float64(sm.totalFiles)) * 100
 	bandwidthMbps := float64(bytesTransferred*8) / (timeLapsed * float64(_1MB))
 
 	log.Debug("statsManager::calculateBandwidth : timestamp %v, %.2f%%, %v Done, %v Failed, "+
 		"%v Pending, %v Total, Bytes transferred %v, Throughput (Mbps): %.2f",
-		currTime.Format(time.RFC1123), percentCompleted, st.success, st.failed,
-		filesPending, st.totalFiles, bytesTransferred, bandwidthMbps)
+		currTime.Format(time.RFC1123), percentCompleted, sm.success, sm.failed,
+		filesPending, sm.totalFiles, bytesTransferred, bandwidthMbps)
 
-	if st.totalFiles == filesProcessed {
-		st.done <- true
+	if sm.totalFiles == filesProcessed && sm.totalFiles != sm.dirs {
+		sm.done <- true
 	}
 
 	// TODO:: xload : dump to json file

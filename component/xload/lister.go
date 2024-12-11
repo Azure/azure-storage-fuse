@@ -207,8 +207,9 @@ func (rl *remoteLister) mkdir(name string) error {
 
 	// send stats for dir creation
 	rl.getStatsManager().addStats(&statsItem{
-		component: SPLITTER, // using splitter here to track the success/failure of mkdir operation
+		component: LISTER,
 		name:      name,
+		dir:       true,
 		success:   err == nil,
 		download:  true,
 	})
