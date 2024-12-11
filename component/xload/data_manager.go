@@ -102,7 +102,7 @@ func (rdm *remoteDataManager) process(item *workItem) (int, error) {
 
 // ReadData reads data from the data manager
 func (rdm *remoteDataManager) ReadData(item *workItem) (int, error) {
-	log.Debug("remoteDataManager::ReadData : Scheduling download for %s offset %v", item.path, item.block.offset)
+	// log.Debug("remoteDataManager::ReadData : Scheduling download for %s offset %v", item.path, item.block.offset)
 
 	h := handlemap.NewHandle(item.path)
 	h.Size = int64(item.dataLen)
@@ -126,7 +126,7 @@ func (rdm *remoteDataManager) ReadData(item *workItem) (int, error) {
 
 // WriteData writes data to the data manager
 func (rdm *remoteDataManager) WriteData(item *workItem) (int, error) {
-	log.Debug("remoteDataManager::WriteData : Scheduling upload for %s offset %v", item.path, item.block.offset)
+	// log.Debug("remoteDataManager::WriteData : Scheduling upload for %s offset %v", item.path, item.block.offset)
 
 	n := int(item.block.length)
 	err := rdm.getRemote().StageData(internal.StageDataOptions{

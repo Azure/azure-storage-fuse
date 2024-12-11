@@ -60,9 +60,9 @@ func newStatsmanager(count uint32) (*statsManager, error) {
 }
 
 func (sm *statsManager) start() {
-	log.Debug("statsManager::start : start stats manager")
 	sm.wg.Add(1)
 	sm.startTime = time.Now().UTC()
+	log.Debug("statsManager::start : start stats manager at time %v", sm.startTime.Format(time.RFC1123))
 	go sm.statsProcessor()
 	go sm.statsExporter()
 }
@@ -132,6 +132,11 @@ func (st *statsManager) statsExporter() {
 }
 
 func (st *statsManager) calculateBandwidth() {
+	if st.totalFiles == 0 {
+		log.Debug("statsManager::calculateBandwidth : skipping as total files listed so far is %v", st.totalFiles)
+		return
+	}
+
 	currTime := time.Now().UTC()
 	timeLapsed := currTime.Sub(st.startTime).Seconds()
 	bytesTransferred := st.bytesDownloaded + st.bytesUploaded
@@ -144,6 +149,10 @@ func (st *statsManager) calculateBandwidth() {
 		"%v Pending, %v Total, Bytes transferred %v, Throughput (Mbps): %.2f",
 		currTime.Format(time.RFC1123), percentCompleted, st.success, st.failed,
 		filesPending, st.totalFiles, bytesTransferred, bandwidthMbps)
+
+	if st.totalFiles == filesProcessed {
+		st.done <- true
+	}
 
 	// TODO:: xload : dump to json file
 }

@@ -147,7 +147,7 @@ func (d *downloadSplitter) process(item *workItem) (int, error) {
 			}
 
 			if respSplitItem.block != nil {
-				log.Debug("downloadSplitter::process : Download successful %s index %d offset %v", item.path, respSplitItem.block.index, respSplitItem.block.offset)
+				// log.Debug("downloadSplitter::process : Download successful %s index %d offset %v", item.path, respSplitItem.block.index, respSplitItem.block.offset)
 				d.blockPool.Release(respSplitItem.block)
 			}
 		}
@@ -171,7 +171,7 @@ func (d *downloadSplitter) process(item *workItem) (int, error) {
 				responseChannel: responseChannel,
 				download:        true,
 			}
-			log.Debug("downloadSplitter::process : Scheduling download for %s offset %v", item.path, offset)
+			// log.Debug("downloadSplitter::process : Scheduling download for %s offset %v", item.path, offset)
 			d.getNext().getThreadPool().Schedule(splitItem)
 		}
 
