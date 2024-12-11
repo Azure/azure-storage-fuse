@@ -2625,6 +2625,79 @@ func (suite *blockCacheTestSuite) TestZZZZZStreamToBlockCacheConfig() {
 	}
 }
 
+// This test checks the size of the file when the file is opened in
+// O_TRUNC mode and O_WRONLY mode. This test is also done while turning
+// of the write-back cache
+func (suite *blockCacheTestSuite) TestSizeOfFileInOpen() {
+	// Write-back cache is turned on by default while mounting.
+	config := "block_cache:\n  block-size-mb: 1\n  mem-size-mb: 20\n  prefetch: 12\n  parallelism: 1"
+	tobj, err := setupPipeline(config)
+	suite.assert.Nil(err)
+	defer tobj.cleanupPipeline()
+
+	path := getTestFileName(suite.T().Name())
+	storagePath := filepath.Join(tobj.fake_storage_path, path)
+	localPath := filepath.Join(tobj.disk_cache_path, path)
+
+	// ------------------------------------------------------------------
+	// Create a local file
+	fh, err := os.Create(localPath)
+	suite.assert.Nil(err)
+
+	// write 1MB data at offset 0
+	n, err := fh.WriteAt(dataBuff[:_1MB], 0)
+	suite.assert.Nil(err)
+	suite.assert.Equal(n, int(_1MB))
+
+	err = fh.Close()
+	suite.assert.Nil(err)
+	// ------------------------------------------------------------------
+	// Create a file using Mountpoint
+	options := internal.CreateFileOptions{Name: path, Mode: 0777}
+	h, err := tobj.blockCache.CreateFile(options)
+	suite.assert.Nil(err)
+	suite.assert.NotNil(h)
+	suite.assert.Equal(h.Size, int64(0))
+	suite.assert.False(h.Dirty())
+
+	// write 1MB data at offset 0
+	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: dataBuff[:_1MB]})
+	suite.assert.Nil(err)
+	suite.assert.Equal(n, int(_1MB))
+	suite.assert.True(h.Dirty())
+
+	err = tobj.blockCache.CloseFile(internal.CloseFileOptions{Handle: h})
+	suite.assert.Nil(err)
+	//---------------------------------------------------------------------
+
+	//Open and close the file using the given flag in local and mountpoint and
+	// check the size is same or not.
+	check := func(flag int) {
+		lfh, err := os.OpenFile(localPath, flag, 0666)
+		suite.assert.Nil(err)
+		suite.assert.NotNil(lfh)
+		err = lfh.Close()
+		suite.assert.Nil(err)
+
+		openFileOptions := internal.OpenFileOptions{Name: path, Flags: flag, Mode: 0777}
+		rfh, err := tobj.blockCache.OpenFile(openFileOptions)
+		suite.assert.Nil(err)
+		err = tobj.blockCache.CloseFile(internal.CloseFileOptions{Handle: rfh})
+		suite.assert.Nil(err)
+
+		statInfoLocal, err := os.Stat(localPath)
+		suite.assert.Nil(err)
+		sizeInLocal := statInfoLocal.Size()
+
+		statInfoMount, err := os.Stat(storagePath)
+		suite.assert.Nil(err)
+		sizeInMount := statInfoMount.Size()
+		suite.assert.Equal(sizeInLocal, sizeInMount)
+	}
+	check(os.O_WRONLY) // size of the file would be 1MB
+	check(os.O_TRUNC)  // size of the file would be zero here.
+}
+
 // In order for 'go test' to run this suite, we need to create
 // a normal test function and pass our suite to suite.Run
 func TestBlockCacheTestSuite(t *testing.T) {
