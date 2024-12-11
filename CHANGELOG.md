@@ -1,6 +1,7 @@
 ## 2.4.1 (Unreleased)
 **Bug Fixes**
 - Create block pool only in the child process.
+- Prevent the block cache to truncate the file size to zero when the file is opened in O_WRONLY mode when writebackcache is disabled.
 
 ## 2.4.0 (Unreleased)
 **Features**
