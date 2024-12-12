@@ -149,9 +149,9 @@ steps:
       VERBOSE_LOG: ${{ parameters.verbose_log }}
     continueOnError: false
 
-  - script: |
-     if [ -d "block_cache" ]; then ls -l block_cache; rm -rf block_cache; mkdir block_cache  ; fi
-    displayName: 'Clear Temp Cache for Block Cache before mounting'
+  # - script: |
+  #    if [ -d "block_cache" ]; then ls -l block_cache; rm -rf block_cache; mkdir block_cache  ; fi
+  #   displayName: 'Clear Temp Cache for Block Cache before mounting'
 
   - template: 'mount.yml'
     parameters:
@@ -162,7 +162,7 @@ steps:
       ro_mount: true
       mountStep: 
         script: |
-          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) -o ro -o direct_io --block-cache-path block_cache --block-cache-block-size ${{ parameters.block_size_mb }}
+          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) -o ro -o direct_io --block-cache-path block_cache --block-cache-block-size ${{ parameters.block_size_mb }} --foreground > $(WORK_DIR)/outerr.txt 2>&1 &
 
   - script: |
       echo "----------------------------------------------"
@@ -178,6 +178,17 @@ steps:
       md5sum ${{ parameters.mount_dir }}/datafiles_* > $(WORK_DIR)/md5sum_block_cache_disk_cache.txt
       md5sum ${{ parameters.mount_dir }}/mixedfiles_* >> $(WORK_DIR)/md5sum_block_cache_disk_cache.txt
     displayName: 'Generate md5Sum with Block-Cache Disk-Cache'
+
+  - script: |
+      ps aux | grep blobfuse
+      echo "No of files in the folder temp path for the block cache"
+      if [ -d "block_cache" ]; then ls -l block_cache | wc -l; fi
+    displayName: 'foo----------Info about the path'
+  
+  - script: |
+      cat $(WORK_DIR)/outerr.txt
+    displayName: 'Printing Some strange error'
+
 
   - script: |
       $(WORK_DIR)/blobfuse2 unmount all
