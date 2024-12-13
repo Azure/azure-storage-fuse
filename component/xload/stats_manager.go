@@ -1,6 +1,7 @@
 package xload
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -39,6 +40,17 @@ type statsItem struct {
 	bytesTransferred uint64 // bytes uploaded or downloaded for this file
 }
 
+type statsJSONData struct {
+	Timestamp        string `json:"Timestamp"`
+	PercentCompleted string `json:"PercentCompleted"`
+	Total            uint64 `json:"Total"`
+	Done             uint64 `json:"Done"`
+	Failed           uint64 `json:"Failed"`
+	Pending          uint64 `json:"Pending"`
+	BytesTransferred uint64 `json:"BytesTransferred"`
+	BandwidthMbps    string `json:"Bandwidth(Mbps)"`
+}
+
 const (
 	STATS_MANAGER  = "STATS_MANAGER"
 	DURATION       = 4                                     // time interval in seconds at which the stats will be dumped
@@ -48,6 +60,7 @@ const (
 func newStatsmanager(count uint32) (*statsManager, error) {
 	pid := fmt.Sprintf("%v", os.Getpid())
 	path := common.ExpandPath(strings.ReplaceAll(JSON_FILE_PATH, "{PID}", pid))
+	log.Debug("statsManager::newStatsmanager : creating json file %v", path)
 	fh, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
 	if err != nil {
 		log.Err("statsManager::newStatsmanager : failed to create json file %v [%v]", path, err.Error())
@@ -65,16 +78,19 @@ func (sm *statsManager) start() {
 	sm.wg.Add(1)
 	sm.startTime = time.Now().UTC()
 	log.Debug("statsManager::start : start stats manager at time %v", sm.startTime.Format(time.RFC1123))
+	sm.writeToJSON([]byte("[\n"))
 	go sm.statsProcessor()
 	go sm.statsExporter()
 }
 
 func (sm *statsManager) stop() {
 	log.Debug("statsManager::stop : stop stats manager")
-	sm.fileHandle.Close()
 	close(sm.done)
 	close(sm.items)
 	sm.wg.Wait()
+
+	sm.writeToJSON([]byte("\n]"))
+	sm.fileHandle.Close()
 }
 
 func (sm *statsManager) addStats(item *statsItem) {
@@ -160,9 +176,52 @@ func (sm *statsManager) calculateBandwidth() {
 		currTime.Format(time.RFC1123), percentCompleted, sm.success, sm.failed,
 		filesPending, sm.totalFiles, bytesTransferred, bandwidthMbps)
 
-	if sm.totalFiles == filesProcessed && sm.totalFiles != sm.dirs {
-		sm.done <- true
+	err := sm.marshalStatsData(&statsJSONData{
+		Timestamp:        currTime.Format(time.RFC1123),
+		PercentCompleted: fmt.Sprintf("%.2f%%", percentCompleted),
+		Total:            sm.totalFiles,
+		Done:             sm.success,
+		Failed:           sm.failed,
+		Pending:          filesPending,
+		BytesTransferred: bytesTransferred,
+		BandwidthMbps:    fmt.Sprintf("%.2f", bandwidthMbps),
+	})
+	if err != nil {
+		log.Err("statsManager::calculateBandwidth : failed to write to json file [%v]", err.Error())
 	}
 
+	if sm.totalFiles == filesProcessed && sm.totalFiles != sm.dirs {
+		sm.done <- true
+		return
+	}
+
+	sm.writeToJSON([]byte(",\n"))
+
 	// TODO:: xload : dump to json file
+}
+
+func (sm *statsManager) marshalStatsData(data *statsJSONData) error {
+	jsonData, err := json.MarshalIndent(data, "", "\t")
+	if err != nil {
+		log.Err("statsManager::convertToBytes : unable to marshal [%v]", err.Error())
+		return err
+	}
+
+	err = sm.writeToJSON(jsonData)
+	if err != nil {
+		log.Err("statsManager::convertToBytes : failed to write to json file [%v]", err.Error())
+		return err
+	}
+
+	return nil
+}
+
+func (sm *statsManager) writeToJSON(data []byte) error {
+	_, err := sm.fileHandle.Write(data)
+	if err != nil {
+		log.Err("statsManager::writeToJSON : failed to write to json file [%v]", err.Error())
+		return err
+	}
+
+	return nil
 }
