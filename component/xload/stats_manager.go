@@ -23,11 +23,7 @@ type statsManager struct {
 	fileHandle      *os.File        // file where stats will be dumped
 	wg              sync.WaitGroup  // wait group to wait for stats manager thread to finish
 	items           chan *statsItem // channel to hold the stats items
-	done            chan bool       //channel to indicate if the stats manager has completed or not
-	// TODO:: xload :
-	// bandwidth utilization
-	// bytes downloaded
-	// dump to json file
+	done            chan bool       // channel to indicate if the stats manager has completed or not
 }
 
 type statsItem struct {
@@ -57,14 +53,18 @@ const (
 	JSON_FILE_PATH = "~/.blobfuse2/xload_stats_{PID}.json" // json file path where the stats manager will dump the stats
 )
 
-func newStatsmanager(count uint32) (*statsManager, error) {
-	pid := fmt.Sprintf("%v", os.Getpid())
-	path := common.ExpandPath(strings.ReplaceAll(JSON_FILE_PATH, "{PID}", pid))
-	log.Debug("statsManager::newStatsmanager : creating json file %v", path)
-	fh, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
-	if err != nil {
-		log.Err("statsManager::newStatsmanager : failed to create json file %v [%v]", path, err.Error())
-		return nil, err
+func newStatsmanager(count uint32, export bool) (*statsManager, error) {
+	var fh *os.File
+	var err error
+	if export {
+		pid := fmt.Sprintf("%v", os.Getpid())
+		path := common.ExpandPath(strings.ReplaceAll(JSON_FILE_PATH, "{PID}", pid))
+		log.Debug("statsManager::newStatsmanager : creating json file %v", path)
+		fh, err = os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
+		if err != nil {
+			log.Err("statsManager::newStatsmanager : failed to create json file %v [%v]", path, err.Error())
+			return nil, err
+		}
 	}
 
 	return &statsManager{
@@ -83,14 +83,17 @@ func (sm *statsManager) start() {
 	go sm.statsExporter()
 }
 
+// TODO:: xload : the stop method runs on unmount. See if the channels can be closed if the job is 100% complete
 func (sm *statsManager) stop() {
 	log.Debug("statsManager::stop : stop stats manager")
 	close(sm.done)
 	close(sm.items)
 	sm.wg.Wait()
 
-	sm.writeToJSON([]byte("\n]"))
-	sm.fileHandle.Close()
+	if sm.fileHandle != nil {
+		sm.writeToJSON([]byte("\n]"))
+		sm.fileHandle.Close()
+	}
 }
 
 func (sm *statsManager) addStats(item *statsItem) {
@@ -190,17 +193,20 @@ func (sm *statsManager) calculateBandwidth() {
 		log.Err("statsManager::calculateBandwidth : failed to write to json file [%v]", err.Error())
 	}
 
+	// TODO:: xload : determine more effective way to decide if the listing has completed and the stats exporter can be terminated
 	if sm.totalFiles == filesProcessed && sm.totalFiles != sm.dirs {
 		sm.done <- true
 		return
 	}
 
 	sm.writeToJSON([]byte(",\n"))
-
-	// TODO:: xload : dump to json file
 }
 
 func (sm *statsManager) marshalStatsData(data *statsJSONData) error {
+	if sm.fileHandle == nil {
+		return nil
+	}
+
 	jsonData, err := json.MarshalIndent(data, "", "\t")
 	if err != nil {
 		log.Err("statsManager::convertToBytes : unable to marshal [%v]", err.Error())
@@ -217,6 +223,10 @@ func (sm *statsManager) marshalStatsData(data *statsJSONData) error {
 }
 
 func (sm *statsManager) writeToJSON(data []byte) error {
+	if sm.fileHandle == nil {
+		return nil
+	}
+
 	_, err := sm.fileHandle.Write(data)
 	if err != nil {
 		log.Err("statsManager::writeToJSON : failed to write to json file [%v]", err.Error())

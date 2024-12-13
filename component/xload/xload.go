@@ -48,8 +48,9 @@ import (
 // Common structure for Component
 type Xload struct {
 	internal.BaseComponent
-	blockSize uint64 // Size of each block to be cached
-	mode      Mode   // Mode of the Xload component
+	blockSize      uint64 // Size of each block to be cached
+	mode           Mode   // Mode of the Xload component
+	exportProgress bool   // Export the progess of xload operation to json file
 
 	workerCount uint32        // Number of workers running
 	blockPool   *BlockPool    // Pool of blocks
@@ -60,9 +61,10 @@ type Xload struct {
 
 // Structure defining your config parameters
 type XloadOptions struct {
-	BlockSize float64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
-	Mode      string  `config:"mode" yaml:"mode,omitempty"`
-	Path      string  `config:"path" yaml:"path,omitempty"`
+	BlockSize      float64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
+	Mode           string  `config:"mode" yaml:"mode,omitempty"`
+	Path           string  `config:"path" yaml:"path,omitempty"`
+	ExportProgress bool    `config:"export-progress" yaml:"path,omitempty"`
 	// TODO:: xload : add parallelism parameter
 }
 
@@ -170,6 +172,7 @@ func (xl *Xload) Configure(_ bool) error {
 	}
 
 	xl.mode = mode
+	xl.exportProgress = conf.ExportProgress
 
 	return nil
 }
@@ -188,7 +191,7 @@ func (xl *Xload) Start(ctx context.Context) error {
 	var err error
 
 	// create stats manager
-	xl.statsMgr, err = newStatsmanager(MAX_WORKER_COUNT * 2)
+	xl.statsMgr, err = newStatsmanager(MAX_WORKER_COUNT*2, xl.exportProgress)
 	if err != nil {
 		log.Err("Xload::Start : Failed to create stats manager [%s]", err.Error())
 		return err
