@@ -57,6 +57,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
+	"github.com/vibhansa-msft/blobfilter"
 )
 
 const (
@@ -456,7 +457,6 @@ func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err 
 	}
 
 	parseMetadata(attr, prop.Metadata)
-
 	attr.Flags.Set(internal.PropFlagModeDefault)
 
 	return attr, nil
@@ -516,10 +516,23 @@ func (bb *BlockBlob) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 
 	// To support virtual directories with no marker blob, we call list instead of get properties since list will not return a 404
 	if bb.Config.virtualDirectory {
-		return bb.getAttrUsingList(name)
+		attr, err = bb.getAttrUsingList(name)
+	} else {
+		attr, err = bb.getAttrUsingRest(name)
 	}
 
-	return bb.getAttrUsingRest(name)
+	if bb.Config.filter != nil {
+		if !bb.Config.filter.IsFileAcceptable(&blobfilter.BlobAttr{
+			Name:  attr.Name,
+			Mtime: attr.Mtime,
+			Size:  attr.Size,
+		}) {
+			log.Debug("BlockBlob::GetAttr : Filtered out %s", name)
+			return nil, syscall.ENOENT
+		}
+	}
+
+	return attr, err
 }
 
 // List : Get a list of blobs matching the given prefix
@@ -578,6 +591,7 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 
 	// For some directories 0 byte meta file may not exists so just create a map to figure out such directories
 	var dirList = make(map[string]bool)
+	filterAttr := blobfilter.BlobAttr{}
 	for _, blobInfo := range listBlob.Segment.BlobItems {
 		attr := &internal.ObjAttr{}
 		if blobInfo.Properties.CustomerProvidedKeySHA256 != nil && *blobInfo.Properties.CustomerProvidedKeySHA256 != "" {
@@ -601,9 +615,22 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 				MD5:    blobInfo.Properties.ContentMD5,
 			}
 			parseMetadata(attr, blobInfo.Metadata)
+
 			attr.Flags.Set(internal.PropFlagModeDefault)
 		}
-		blobList = append(blobList, attr)
+
+		if bb.Config.filter != nil {
+			filterAttr.Name = attr.Name
+			filterAttr.Mtime = attr.Mtime
+			filterAttr.Size = attr.Size
+			if bb.Config.filter.IsFileAcceptable(&filterAttr) {
+				blobList = append(blobList, attr)
+			} else {
+				log.Debug("BlockBlob::List : Filtered out blob %s", attr.Name)
+			}
+		} else {
+			blobList = append(blobList, attr)
+		}
 
 		if attr.IsDir() {
 			// 0 byte meta found so mark this directory in map
@@ -640,7 +667,6 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 				attr.Crtime = attr.Mtime
 				attr.Ctime = attr.Mtime
 				attr.Flags.Set(internal.PropFlagModeDefault)
-				blobList = append(blobList, attr)
 			}
 		}
 	}

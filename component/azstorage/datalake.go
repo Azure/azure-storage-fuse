@@ -47,6 +47,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/vibhansa-msft/blobfilter"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
@@ -417,6 +418,17 @@ func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 		}
 	}
 
+	if dl.Config.filter != nil {
+		if !dl.Config.filter.IsFileAcceptable(&blobfilter.BlobAttr{
+			Name:  attr.Name,
+			Mtime: attr.Mtime,
+			Size:  attr.Size,
+		}) {
+			log.Debug("Datalake::GetAttr : Filtered out %s", name)
+			return nil, syscall.ENOENT
+		}
+	}
+
 	return attr, nil
 }
 
@@ -529,8 +541,21 @@ func (dl *Datalake) List(prefix string, marker *string, count int32) ([]*interna
 		// Any method that populates the metadata should set the attribute flag.
 		// Alternatively, if you want Datalake list paths to return metadata/properties as well.
 		// pass CLI parameter --no-symlinks=false in the mount command.
-		pathList = append(pathList, attr)
 
+		if dl.Config.filter != nil {
+			filterAttr := blobfilter.BlobAttr{}
+			filterAttr.Name = attr.Name
+			filterAttr.Mtime = attr.Mtime
+			filterAttr.Size = attr.Size
+			if dl.Config.filter.IsFileAcceptable(&filterAttr) {
+				pathList = append(pathList, attr)
+			} else {
+				log.Debug("Datalake::List : Filtered out %s", *pathInfo.Name)
+			}
+		} else {
+			pathList = append(pathList, attr)
+		}
+		pathList = append(pathList, attr)
 	}
 
 	return pathList, listPath.Continuation, nil

@@ -42,6 +42,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/vibhansa-msft/blobfilter"
 
 	"github.com/JeffreyRichter/enum/enum"
 )
@@ -185,6 +186,7 @@ type AzStorageOptions struct {
 	CPKEncryptionKey        string `config:"cpk-encryption-key" yaml:"cpk-encryption-key"`
 	CPKEncryptionKeySha256  string `config:"cpk-encryption-key-sha256" yaml:"cpk-encryption-key-sha256"`
 	PreserveACL             bool   `config:"preserve-acl" yaml:"preserve-acl"`
+	Filter                  string `config:"filter" yaml:"filter"`
 
 	// v1 support
 	UseAdls        bool   `config:"use-adls" yaml:"-"`
@@ -500,6 +502,17 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	}
 
 	az.stConfig.preserveACL = opt.PreserveACL
+	if opt.Filter != "" {
+		readonly := false
+		err1 := config.UnmarshalKey("read-only", &readonly)
+		if err1 != nil {
+			log.Err("ParseAndValidateConfig: Blob filters are supported only in read-only mode")
+			return errors.New("blobfilter is supported only in read-only mode")
+		}
+
+		az.stConfig.filter = &blobfilter.BlobFilter{}
+		az.stConfig.filter.Configure(opt.Filter)
+	}
 
 	log.Crit("ParseAndValidateConfig : account %s, container %s, account-type %s, auth %s, prefix %s, endpoint %s, MD5 %v %v, virtual-directory %v, disable-compression %v, CPK %v",
 		az.stConfig.authConfig.AccountName, az.stConfig.container, az.stConfig.authConfig.AccountType, az.stConfig.authConfig.AuthMode,

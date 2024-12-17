@@ -665,6 +665,9 @@ func init() {
 	preserveACL := config.AddBoolFlag("preserve-acl", false, "Preserve ACL and Permissions set on file during updates")
 	config.BindPFlag(compName+".preserve-acl", preserveACL)
 
+	blobFilter := config.AddStringFlag("filter", "", "Filter string to match blobs")
+	config.BindPFlag(compName+".filter", blobFilter)
+
 	config.RegisterFlagCompletionFunc("container-name", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	})
