@@ -43,6 +43,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
 
 // Common structure for Component
@@ -296,6 +297,10 @@ func (xl *Xload) startComponents() error {
 	}
 
 	return nil
+}
+
+func (xl *Xload) OpenFile(internal.OpenFileOptions) (*handlemap.Handle, error) {
+	return nil, nil
 }
 
 // ------------------------- Factory -------------------------------------------

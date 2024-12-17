@@ -95,15 +95,36 @@ func (pool *BlockPool) Usage() uint32 {
 	return ((pool.maxBlocks - (uint32)(len(pool.blocksCh))) * 100) / pool.maxBlocks
 }
 
-// Get a Block from the pool, return back if nothing is available
-func (pool *BlockPool) Get() *Block {
+// TryGet a block from the pool. If the pool is empty, wait till a block is released back to the pool
+func (pool *BlockPool) TryGet() *Block {
 	// getting a block from pool will be a blocking operation if the pool is empty
 	b := <-pool.blocksCh
 
 	// Mark the buffer ready for reuse now
-	if b != nil {
-		b.ReUse()
+	b.ReUse()
+	return b
+}
+
+func (pool *BlockPool) MustGet() *Block {
+	var b *Block = nil
+
+	select {
+	case b = <-pool.blocksCh:
+		break
+
+	default:
+		// There are no free blocks so we must allocate one and return here
+		// As the consumer of the pool needs a block immediately
+		log.Info("BlockPool::MustGet : No free blocks, allocating a new one")
+		var err error
+		b, err = AllocateBlock(pool.blockSize)
+		if err != nil {
+			return nil
+		}
 	}
+
+	// Mark the buffer ready for reuse now
+	b.ReUse()
 	return b
 }
 

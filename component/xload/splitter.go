@@ -154,7 +154,7 @@ func (d *downloadSplitter) process(item *workItem) (int, error) {
 	}()
 
 	for i := 0; i < int(numBlocks); i++ {
-		block := d.blockPool.Get()
+		block := d.blockPool.TryGet()
 		if block == nil {
 			responseChannel <- &workItem{err: fmt.Errorf("failed to get block from pool for file %s, offset %v", item.path, offset)}
 		} else {
@@ -172,7 +172,7 @@ func (d *downloadSplitter) process(item *workItem) (int, error) {
 				download:        true,
 			}
 			// log.Debug("downloadSplitter::process : Scheduling download for %s offset %v", item.path, offset)
-			d.getNext().getThreadPool().Schedule(splitItem)
+			d.getNext().getThreadPool().Schedule(false, splitItem)
 		}
 
 		offset += int64(d.blockSize)
