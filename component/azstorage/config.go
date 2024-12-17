@@ -42,6 +42,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal/filter"
 
 	"github.com/JeffreyRichter/enum/enum"
 )
@@ -381,6 +382,18 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	az.stConfig.cancelListForSeconds = opt.CancelListForSeconds
 
 	az.stConfig.telemetry = opt.Telemetry
+
+	//if blobFilter is provided, parse string and setup filters
+	if len(filter.ProvidedFilter) > 0 {
+		log.Info("ParseAndValidateConfig : provided filter is %s", filter.ProvidedFilter)
+		az.stConfig.filters = &filter.UserInputFilters{}
+		erro := az.stConfig.filters.ParseInp(&filter.ProvidedFilter)
+		log.Info("ParseAndValidateConfig : number of OR seperated filters are %d", len(az.stConfig.filters.FilterArr))
+		if erro != nil {
+			log.Err("ParseAndValidateConfig : mount failed due to an error encountered while parsing")
+			return erro
+		}
+	}
 
 	httpProxyProvided := opt.HttpProxyAddress != ""
 	httpsProxyProvided := opt.HttpsProxyAddress != ""
