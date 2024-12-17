@@ -46,16 +46,6 @@ parameters:
     displayName: 'Quick Stress'
     type: boolean
     default: true
-  
-  - name: data_validation
-    displayName: 'Data Validation Test'
-    type: boolean
-    default: true
-
-  - name: block_cache_validation
-    displayName: 'Block Cache Validation Test'
-    type: boolean
-    default: true
 
   - name: verbose_log
     displayName: 'Verbose Log'
@@ -74,19 +64,22 @@ stages:
           strategy:
             matrix:
               Ubuntu-20-BlockBlob:
-                imageName: 'ubuntu-20.04'
+                AgentName: 'blobfuse-ubuntu20'
                 containerName: 'test-cnt-ubn-20'
                 adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
                 fuselib: 'libfuse-dev'
                 tags: 'fuse2'
               Ubuntu-22-BlockBlob:
-                imageName: 'ubuntu-22.04'
+                AgentName: 'blobfuse-ubuntu22'
                 containerName: 'test-cnt-ubn-22'
                 adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
                 fuselib: 'libfuse3-dev'
                 tags: 'fuse3'
+
           pool:
-            vmImage: $(imageName)
+            name: "blobfuse-ubuntu-pool"
+            demands:
+              - ImageOverride -equals $(AgentName)
 
           variables:
             - group: NightlyBlobFuse
@@ -98,14 +91,8 @@ stages:
               value: '$(Pipeline.Workspace)/blobfuse2.yaml'
             - name: BLOBFUSE2_SAS_CFG
               value: '$(Pipeline.Workspace)/blobfuse2_sas_config.yaml'
-            - name: BLOBFUSE2_SPN_CFG
-              value: '$(Pipeline.Workspace)/blobfuse2_spn_config.yaml'
             - name: BLOBFUSE2_AZCLI_CFG
               value: '$(Pipeline.Workspace)/blobfuse2_azcli_config.yaml'
-            - name: BLOBFUSE2_STREAM_CFG
-              value: '$(Pipeline.Workspace)/blobfuse2_stream.yaml'
-            - name: BLOBFUSE2_STREAM_FILENAME_CFG
-              value: '$(Pipeline.Workspace)/blobfuse2_stream_filename.yaml'
             - name: BLOBFUSE2_ADLS_CFG
               value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
             - name: BLOBFUSE2_GTEST_CFG
@@ -124,6 +111,15 @@ stages:
               value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
 
           steps:
+            - script: |
+                sudo apt-get update --fix-missing
+                sudo apt update
+                sudo apt-get install cmake gcc $(fuselib) git parallel -y
+                if [ $(tags) == "fuse2" ]; then
+                  sudo apt-get install fuse -y
+                fi
+              displayName: 'Install libfuse'
+
             - checkout: none
 
             # Clone the repo
@@ -138,13 +134,7 @@ stages:
               displayName: 'Checkout Branch'
               workingDirectory: $(WORK_DIR)
 
-            - script: |
-                sudo apt-get update --fix-missing
-                sudo apt-get install $(fuselib) -y
-                if [ $(tags) == "fuse2" ]; then
-                  sudo apt-get install fuse -y
-                fi
-              displayName: 'Install libfuse'
+
 
             # -------------------------------------------------------
             # Pull and build the code
@@ -176,8 +166,6 @@ stages:
                   account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
                   account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
                   account_sas: $(NIGHTLY_STO_ACC_SAS)
-                  spn_account_name: $(AZTEST_BLOCK_ACC_NAME)
-                  spn_account_endpoint: 'https://$(AZTEST_BLOCK_ACC_NAME).blob.core.windows.net' 
                   client_id: $(AZTEST_CLIENT)
                   tenant_id: $(AZTEST_TENANT)
                   client_secret: $(AZTEST_SECRET)
@@ -191,17 +179,12 @@ stages:
                   quick_stress: ${{ parameters.quick_stress }}
                   test_key_credential: true 
                   test_sas_credential: true
-                  test_spn_credential: true
                   test_azcli_credential: true
-                  test_stream: true
-                  test_azurite: true
-                  stream_config: $(BLOBFUSE2_STREAM_CFG)
-                  stream_filename_config: $(BLOBFUSE2_STREAM_FILENAME_CFG)
+                  test_azurite: false
                   sas_credential_config: $(BLOBFUSE2_SAS_CFG)
-                  spn_credential_config: $(BLOBFUSE2_SPN_CFG)
                   azcli_credential_config: $(BLOBFUSE2_AZCLI_CFG)
                   azurite_config: $(BLOBFUSE2_AZURITE_CFG)
-                  distro_name: $(imageName)
+                  distro_name: $(AgentName)
                   verbose_log: ${{ parameters.verbose_log }}
                   tags: $(tags)
 
@@ -217,7 +200,7 @@ stages:
           strategy:
             matrix:
               Ubuntu-22-ARM64-BlockBlob:
-                imageName: 'blobfuse-ubn22-arm64'
+                AgentName: 'blobfuse-ubn22-arm64'
                 containerName: 'test-cnt-ubn-22-arm64'
                 adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22_ARM)
                 fuselib: 'libfuse3-dev'
@@ -226,7 +209,7 @@ stages:
           pool:
             name: "blobfuse-ubn-arm64-pool"
             demands:
-              - ImageOverride -equals $(imageName)
+              - ImageOverride -equals $(AgentName)
 
           variables:
             - group: NightlyBlobFuse
@@ -238,14 +221,8 @@ stages:
               value: '$(Pipeline.Workspace)/blobfuse2.yaml'
             - name: BLOBFUSE2_SAS_CFG
               value: '$(Pipeline.Workspace)/blobfuse2_sas_config.yaml'
-            - name: BLOBFUSE2_SPN_CFG
-              value: '$(Pipeline.Workspace)/blobfuse2_spn_config.yaml'
             - name: BLOBFUSE2_AZCLI_CFG
               value: '$(Pipeline.Workspace)/blobfuse2_azcli_config.yaml'
-            - name: BLOBFUSE2_STREAM_CFG
-              value: '$(Pipeline.Workspace)/blobfuse2_stream.yaml'
-            - name: BLOBFUSE2_STREAM_FILENAME_CFG
-              value: '$(Pipeline.Workspace)/blobfuse2_stream_filename.yaml'
             - name: BLOBFUSE2_ADLS_CFG
               value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
             - name: BLOBFUSE2_GTEST_CFG
@@ -264,6 +241,15 @@ stages:
               value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
 
           steps:
+            - script: |
+                sudo apt-get update --fix-missing
+                sudo apt update
+                sudo apt-get install cmake gcc $(fuselib) git parallel -y
+                if [ $(tags) == "fuse2" ]; then
+                  sudo apt-get install fuse -y
+                fi
+              displayName: 'Install libfuse'
+              
             - checkout: none
 
             - script: |
@@ -283,11 +269,6 @@ stages:
               displayName: 'Checkout Branch'
               workingDirectory: $(WORK_DIR)
 
-            - script: |
-                sudo apt-get update --fix-missing
-                sudo apt-get install $(tags) $(fuselib) gcc -y 
-              displayName: 'Install fuse'
-
             # -------------------------------------------------------
             # Pull and build the code
             - template: 'azure-pipeline-templates/build.yml'
@@ -318,8 +299,6 @@ stages:
                   account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
                   account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
                   account_sas: $(NIGHTLY_STO_ACC_SAS)
-                  spn_account_name: $(AZTEST_BLOCK_ACC_NAME)
-                  spn_account_endpoint: 'https://$(AZTEST_BLOCK_ACC_NAME).blob.core.windows.net' 
                   client_id: $(AZTEST_CLIENT)
                   tenant_id: $(AZTEST_TENANT)
                   client_secret: $(AZTEST_SECRET)
@@ -333,17 +312,12 @@ stages:
                   quick_stress: ${{ parameters.quick_stress }}
                   test_key_credential: true 
                   test_sas_credential: true
-                  test_spn_credential: true
                   test_azcli_credential: true
-                  test_stream: true
                   test_azurite: false
-                  stream_config: $(BLOBFUSE2_STREAM_CFG)
-                  stream_filename_config: $(BLOBFUSE2_STREAM_FILENAME_CFG)
                   sas_credential_config: $(BLOBFUSE2_SAS_CFG)
-                  spn_credential_config: $(BLOBFUSE2_SPN_CFG)
                   azcli_credential_config: $(BLOBFUSE2_AZCLI_CFG)
                   azurite_config: $(BLOBFUSE2_AZURITE_CFG)
-                  distro_name: $(imageName)
+                  distro_name: $(AgentName)
                   verbose_log: ${{ parameters.verbose_log }}
                   tags: $(tags)
 
@@ -360,19 +334,22 @@ stages:
           strategy:
             matrix:
               Ubuntu-20-ADLS:
-                imageName: 'ubuntu-20.04'
+                AgentName: 'blobfuse-ubuntu20'
                 containerName: 'test-cnt-ubn-20'
                 adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
                 fuselib: 'libfuse-dev'
                 tags: 'fuse2'
               Ubuntu-22-ADLS:
-                imageName: 'ubuntu-22.04'
+                AgentName: 'blobfuse-ubuntu22'
                 containerName: 'test-cnt-ubn-22'
                 adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
                 fuselib: 'libfuse3-dev'
                 tags: 'fuse3'
+
           pool:
-            vmImage: $(imageName)
+            name: "blobfuse-ubuntu-pool"
+            demands:
+              - ImageOverride -equals $(AgentName)
 
           variables:
             - group: NightlyBlobFuse
@@ -384,14 +361,8 @@ stages:
               value: '$(Pipeline.Workspace)/blobfuse2.yaml'
             - name: BLOBFUSE2_SAS_CFG
               value: '$(Pipeline.Workspace)/blobfuse2_sas_config.yaml'
-            - name: BLOBFUSE2_SPN_CFG
-              value: '$(Pipeline.Workspace)/blobfuse2_spn_config.yaml'
             - name: BLOBFUSE2_AZCLI_CFG
               value: '$(Pipeline.Workspace)/blobfuse2_azcli_config.yaml'
-            - name: BLOBFUSE2_STREAM_CFG
-              value: '$(Pipeline.Workspace)/blobfuse2_stream.yaml'
-            - name: BLOBFUSE2_STREAM_FILENAME_CFG
-              value: '$(Pipeline.Workspace)/blobfuse2_stream_filename.yaml'
             - name: BLOBFUSE2_ADLS_CFG
               value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
             - name: BLOBFUSE2_GTEST_CFG
@@ -410,6 +381,15 @@ stages:
               value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
 
           steps:
+            - script: |
+                sudo apt-get update --fix-missing
+                sudo apt update
+                sudo apt-get install cmake gcc $(fuselib) git -y
+                if [ $(tags) == "fuse2" ]; then
+                  sudo apt-get install fuse -y
+                fi
+              displayName: 'Install libfuse'
+              
             - checkout: none
 
             # Clone the repo
@@ -423,14 +403,6 @@ stages:
                 git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
               displayName: 'Checkout Branch'
               workingDirectory: $(WORK_DIR)
-
-            - script: |
-                sudo apt-get update --fix-missing
-                sudo apt-get install $(fuselib) -y
-                if [ $(tags) == "fuse2" ]; then
-                  sudo apt-get install fuse -y
-                fi
-              displayName: 'Install libfuse'
 
             # -------------------------------------------------------
             # Pull and build the code
@@ -458,8 +430,6 @@ stages:
                   account_name: $(AZTEST_ADLS_ACC_NAME)
                   account_key: $(AZTEST_ADLS_KEY)
                   account_sas: $(adlsSas)
-                  spn_account_name: $(AZTEST_ADLS_ACC_NAME)
-                  spn_account_endpoint: 'https://$(AZTEST_ADLS_ACC_NAME).dfs.core.windows.net' 
                   client_id: $(AZTEST_CLIENT)
                   tenant_id: $(AZTEST_TENANT)
                   client_secret: $(AZTEST_SECRET)
@@ -473,17 +443,12 @@ stages:
                   quick_stress: ${{ parameters.quick_stress }}
                   test_key_credential: true
                   test_sas_credential: true
-                  test_spn_credential: true
                   test_azcli_credential: true
-                  test_stream: true
                   test_azurite: false
-                  stream_config: $(BLOBFUSE2_STREAM_CFG)
-                  stream_filename_config: $(BLOBFUSE2_STREAM_FILENAME_CFG)
                   sas_credential_config: $(BLOBFUSE2_SAS_CFG)
-                  spn_credential_config: $(BLOBFUSE2_SPN_CFG)
                   azcli_credential_config: $(BLOBFUSE2_AZCLI_CFG)
                   azurite_config: $(BLOBFUSE2_AZURITE_CFG)
-                  distro_name: $(imageName)
+                  distro_name: $(AgentName)
                   verbose_log: ${{ parameters.verbose_log }}
                   tags: $(tags)
 
@@ -499,7 +464,7 @@ stages:
           strategy:
             matrix:
               Ubuntu-22-ARM64-ADLS:
-                imageName: 'blobfuse-ubn22-arm64'
+                AgentName: 'blobfuse-ubn22-arm64'
                 containerName: 'test-cnt-ubn-22-arm64'
                 adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22_ARM)
                 fuselib: 'libfuse3-dev'
@@ -507,7 +472,7 @@ stages:
           pool:
             name: "blobfuse-ubn-arm64-pool"
             demands:
-              - ImageOverride -equals $(imageName)
+              - ImageOverride -equals $(AgentName)
 
           variables:
             - group: NightlyBlobFuse
@@ -519,14 +484,8 @@ stages:
               value: '$(Pipeline.Workspace)/blobfuse2.yaml'
             - name: BLOBFUSE2_SAS_CFG
               value: '$(Pipeline.Workspace)/blobfuse2_sas_config.yaml'
-            - name: BLOBFUSE2_SPN_CFG
-              value: '$(Pipeline.Workspace)/blobfuse2_spn_config.yaml'
             - name: BLOBFUSE2_AZCLI_CFG
               value: '$(Pipeline.Workspace)/blobfuse2_azcli_config.yaml'
-            - name: BLOBFUSE2_STREAM_CFG
-              value: '$(Pipeline.Workspace)/blobfuse2_stream.yaml'
-            - name: BLOBFUSE2_STREAM_FILENAME_CFG
-              value: '$(Pipeline.Workspace)/blobfuse2_stream_filename.yaml'
             - name: BLOBFUSE2_ADLS_CFG
               value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
             - name: BLOBFUSE2_GTEST_CFG
@@ -545,6 +504,15 @@ stages:
               value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
 
           steps:
+            - script: |
+                sudo apt-get update --fix-missing
+                sudo apt update
+                sudo apt-get install cmake gcc $(fuselib) git -y
+                if [ $(tags) == "fuse2" ]; then
+                  sudo apt-get install fuse -y
+                fi
+              displayName: 'Install libfuse'
+              
             - checkout: none
 
             # Clone the repo
@@ -558,11 +526,6 @@ stages:
                 git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
               displayName: 'Checkout Branch'
               workingDirectory: $(WORK_DIR)
-
-            - script: |
-                sudo apt-get update --fix-missing
-                sudo apt-get install $(fuselib) gcc -y
-              displayName: 'Install fuse'
 
             # -------------------------------------------------------
             # Pull and build the code
@@ -590,8 +553,6 @@ stages:
                   account_name: $(AZTEST_ADLS_ACC_NAME)
                   account_key: $(AZTEST_ADLS_KEY)
                   account_sas: $(adlsSas)
-                  spn_account_name: $(AZTEST_ADLS_ACC_NAME)
-                  spn_account_endpoint: 'https://$(AZTEST_ADLS_ACC_NAME).dfs.core.windows.net' 
                   client_id: $(AZTEST_CLIENT)
                   tenant_id: $(AZTEST_TENANT)
                   client_secret: $(AZTEST_SECRET)
@@ -605,17 +566,12 @@ stages:
                   quick_stress: ${{ parameters.quick_stress }}
                   test_key_credential: true
                   test_sas_credential: false
-                  test_spn_credential: true
                   test_azcli_credential: true
-                  test_stream: true
                   test_azurite: false
-                  stream_config: $(BLOBFUSE2_STREAM_CFG)
-                  stream_filename_config: $(BLOBFUSE2_STREAM_FILENAME_CFG)
                   sas_credential_config: $(BLOBFUSE2_SAS_CFG)
-                  spn_credential_config: $(BLOBFUSE2_SPN_CFG)
                   azcli_credential_config: $(BLOBFUSE2_AZCLI_CFG)
                   azurite_config: $(BLOBFUSE2_AZURITE_CFG)
-                  distro_name: $(imageName)
+                  distro_name: $(AgentName)
                   verbose_log: ${{ parameters.verbose_log }}
                   tags: $(tags)
 
@@ -634,10 +590,13 @@ stages:
             strategy:
               matrix:
                 Ubuntu-20-Proxy:
-                  imageName: 'ubuntu-20.04'
+                  AgentName: 'blobfuse-ubuntu20'
                   containerName: 'test-cnt-ubn-18-proxy'
+
             pool:
-              vmImage: $(imageName)
+              name: "blobfuse-ubuntu-pool"
+              demands:
+                - ImageOverride -equals $(AgentName)
 
             variables:
               - group: NightlyBlobFuse
@@ -659,17 +618,23 @@ stages:
                 value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
 
             steps:
+              - script: |
+                  sudo apt-get update --fix-missing
+                  sudo apt update
+                  sudo apt-get install cmake gcc libfuse3-dev git -y
+                displayName: 'Install libfuse'
+              
               - checkout: none
 
               # Start Proxy
               - script: |
                   sudo apt-get update --fix-missing
-                  sudo apt remove mitmproxy
-                  sudo apt-get install python3-setuptools
-                  sudo apt install python3-pip
+                  sudo apt remove mitmproxy -y
+                  sudo apt-get install python3-setuptools -y
+                  sudo apt install python3-pip -y
                   sudo pip3 install werkzeug==2.3.7
                   sudo pip3 install mitmproxy
-                  mitmdump -w proxy_logs.txt &
+                  mitmdump -q -w proxy_logs.txt &
                 displayName: 'Install & Start Proxy'
 
               # Configure Proxy cert & env
@@ -692,11 +657,6 @@ stages:
                   git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
                 displayName: 'Checkout Branch'
                 workingDirectory: $(WORK_DIR)
-
-              - script: |
-                  sudo apt-get update --fix-missing
-                  sudo apt-get install libfuse3-dev
-                displayName: 'Install fuse3'
 
               # -------------------------------------------------------
               # Pull, build and unit test the code
@@ -736,7 +696,7 @@ stages:
                   mount_dir: $(MOUNT_DIR)
                   temp_dir: $(TEMP_DIR)
                   idstring: 'BlockBlob with Proxy and Key Credentials'
-                  distro_name: $(imageName)
+                  distro_name: $(AgentName)
                   adls: false
                   artifact_name: 'blockblob_proxy_key.txt'
                   verbose_log: ${{ parameters.verbose_log }}
@@ -770,7 +730,7 @@ stages:
                   mount_dir: $(MOUNT_DIR)
                   temp_dir: $(TEMP_DIR)
                   idstring: 'ADLS with Proxy and Key Credentials'
-                  distro_name: $(imageName)
+                  distro_name: $(AgentName)
                   adls: true
                   artifact_name: 'adls_proxy_key.txt'
                   verbose_log: ${{ parameters.verbose_log }}
@@ -805,42 +765,11 @@ stages:
                   mount_dir: $(MOUNT_DIR)
                   temp_dir: $(TEMP_DIR)
                   idstring: 'Block SAS'
-                  distro_name: $(imageName)
+                  distro_name: $(AgentName)
                   mountStep:
                     script: |
                       $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --default-working-dir=$(WORK_DIR)
                     displayName: 'AuthVerify-SAS: Mount'
-                    continueOnError: false
-
-              # Block SPN and proxy test
-              - script: |
-                  cd $(WORK_DIR)
-                  $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_spn_proxy.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
-                displayName: "Create SPN Config File"
-                env:
-                  NIGHTLY_SPN_ACC_NAME: $(AZTEST_BLOCK_ACC_NAME) 
-                  NIGHTLY_SPN_CLIENT_ID: $(AZTEST_CLIENT)
-                  NIGHTLY_SPN_TENANT_ID: $(AZTEST_TENANT)
-                  NIGHTLY_SPN_CLIENT_SECRET: $(AZTEST_SECRET)
-                  ACCOUNT_ENDPOINT: 'https://$(AZTEST_BLOCK_ACC_NAME).blob.core.windows.net'
-                  VERBOSE_LOG: ${{ parameters.verbose_log }}
-                continueOnError: false
-                  
-              - script:
-                  cat $(BLOBFUSE2_CFG)
-                displayName: "Print SPN Config File"
-
-              - template: 'azure-pipeline-templates/verify-auth.yml'
-                parameters:
-                  working_dir: $(WORK_DIR)
-                  mount_dir: $(MOUNT_DIR)
-                  temp_dir: $(TEMP_DIR)
-                  idstring: 'Block SPN'
-                  distro_name: $(imageName)
-                  mountStep:
-                    script: |
-                      $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --default-working-dir=$(WORK_DIR)
-                    displayName: 'AuthVerify-SPN: Mount'
                     continueOnError: false
 
               # ------------------------------------------------------------
@@ -859,12 +788,6 @@ stages:
             timeoutInMinutes: 60
             strategy:
               matrix:
-                RHEL-7.5:
-                  DistroVer: "RHEL-7.5"
-                  Description: "Red Hat Enterprise Linux 7.5"
-                  AgentName: "blobfuse-rhel7_5"
-                  ContainerName: "test-cnt-rhel-75"
-                  tags: 'fuse3'
                 RHEL-8.6:
                   DistroVer: "RHEL-8.6"
                   Description: "Red Hat Enterprise Linux 8.6"
@@ -902,12 +825,6 @@ stages:
                 value: "/usr/pipeline/workv2/go"
 
             steps:
-              - script: |
-                  sudo touch /etc/yum.repos.d/centos.repo
-                  sudo sh -c 'echo -e "[centos-extras]\nname=Centos extras - $basearch\nbaseurl=http://mirror.centos.org/centos/7/extras/x86_64\nenabled=1\ngpgcheck=1\ngpgkey=http://centos.org/keys/RPM-GPG-KEY-CentOS-7" > /etc/yum.repos.d/centos.repo'
-                condition: eq(variables['AgentName'], 'blobfuse-rhel7_5')
-                displayName: "Update OS mirrors"
-
               - template: 'azure-pipeline-templates/distro-tests.yml'
                 parameters:
                   working_dir: $(WORK_DIR)
@@ -928,10 +845,7 @@ stages:
                       sudo sed -i '/^failovermethod=/d' /etc/yum.repos.d/*.repo
                       sudo yum update -y
                       sudo yum groupinstall "Development Tools" -y
-                      if [ $(AgentName) == "blobfuse-rhel7_5" ]; then
-                        sudo yum-config-manager --save --setopt=rhui-rhel-7-server-dotnet-rhui-rpms.skip_if_unavailable=true
-                        sudo yum install git fuse fuse3-libs fuse3-devel fuse3 rh-python36 -y
-                      elif [ $(AgentName) == "blobfuse-rhel9" ]; then
+                      if [ $(AgentName) == "blobfuse-rhel9" ]; then
                         sudo yum install git fuse fuse3-libs fuse3-devel fuse3 python3 -y --nobest --allowerasing
                       else
                         sudo yum install git fuse fuse3-libs fuse3-devel fuse3 python36 -y --nobest --allowerasing
@@ -1110,12 +1024,6 @@ stages:
                 value: "/usr/pipeline/workv2/go"
 
             steps:
-              - script: |
-                  sudo touch /etc/yum.repos.d/centos.repo
-                  sudo sh -c 'echo -e "[centos-extras]\nname=Centos extras - $basearch\nbaseurl=http://mirror.centos.org/centos/7/extras/x86_64\nenabled=1\ngpgcheck=1\ngpgkey=http://centos.org/keys/RPM-GPG-KEY-CentOS-7" > /etc/yum.repos.d/centos.repo'
-                condition: eq(variables['AgentName'], 'blobfuse-rhel7_5')
-                displayName: "Update OS mirrors"
-
               - template: 'azure-pipeline-templates/distro-tests.yml'
                 parameters:
                   working_dir: $(WORK_DIR)
@@ -1193,10 +1101,10 @@ stages:
                   installStep:
                     script: |
                       sudo zypper -n install git golang make cmake gcc gcc-c++ glibc-devel fuse
-                      wget https://rpmfind.net/linux/opensuse/distribution/leap/15.4/repo/oss/x86_64/fuse3-3.10.5-150400.1.7.x86_64.rpm
+                      wget $(SUSE_FUSE3_PATH)/fuse3-3.10.5-150400.1.7.x86_64.rpm
                       sudo zypper -n --no-gpg-checks install fuse3-3.10.5-150400.1.7.x86_64.rpm
                       fusermount3 --v
-                      wget https://rpmfind.net/linux/opensuse/distribution/leap/15.4/repo/oss/x86_64/fuse3-devel-3.10.5-150400.1.7.x86_64.rpm
+                      wget $(SUSE_FUSE3_PATH)/fuse3-devel-3.10.5-150400.1.7.x86_64.rpm
                       sudo zypper -n --no-gpg-checks install fuse3-devel-3.10.5-150400.1.7.x86_64.rpm 
                     displayName: 'Install fuse'
                   verbose_log: ${{ parameters.verbose_log }}
@@ -1428,645 +1336,647 @@ stages:
                   temp_dir: $(TEMP_DIR)
 
 
-  - ${{ if eq(parameters.block_cache_validation, true) }}:
-    - stage: DataValidationBlockCache
-      jobs:
-        # Ubuntu Tests
-        - job: Set_1
-          timeoutInMinutes: 300
-          strategy:
-            matrix:
-              Ubuntu-22:
-                imageName: 'ubuntu-22.04'
-                containerName: 'test-cnt-ubn-22'
-                fuselib: 'libfuse3-dev'
-                tags: 'fuse3'
-          pool:
-            vmImage: $(imageName)
+  - stage: BlockCacheDataValidation
+    jobs:
+      # Ubuntu Tests
+      - job: Set_1
+        timeoutInMinutes: 300
+        strategy:
+          matrix:
+            Ubuntu-22:
+              AgentName: 'blobfuse-ubuntu22'
+              containerName: 'test-cnt-ubn-22'
+              adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
+              fuselib: 'libfuse3-dev'
+              tags: 'fuse3'
+            Ubuntu-20:
+              AgentName: 'blobfuse-ubuntu20'
+              containerName: 'test-cnt-ubn-20'
+              adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
+              fuselib: 'libfuse-dev'
+              tags: 'fuse2'
 
-          variables:
-            - group: NightlyBlobFuse
-            - name: ROOT_DIR
-              value: "/usr/pipeline/workv2"
-            - name: WORK_DIR
-              value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
-            - name: skipComponentGovernanceDetection
-              value: true
-            - name: MOUNT_DIR
-              value: "/usr/pipeline/workv2/blob_mnt"
-            - name: TEMP_DIR
-              value: "/usr/pipeline/workv2/temp"
-            - name: BLOBFUSE2_CFG
-              value: "/usr/pipeline/workv2/blobfuse2.yaml"
-            - name: GOPATH
-              value: "/usr/pipeline/workv2/go"
+        pool:
+          name: "blobfuse-ubuntu-pool"
+          demands:
+            - ImageOverride -equals $(AgentName)
 
-          steps:
-            - checkout: none
+        variables:
+          - group: NightlyBlobFuse
+          - name: ROOT_DIR
+            value: "/usr/pipeline/workv2"
+          - name: WORK_DIR
+            value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
+          - name: skipComponentGovernanceDetection
+            value: true
+          - name: MOUNT_DIR
+            value: "/usr/pipeline/workv2/blob_mnt"
+          - name: TEMP_DIR
+            value: "/usr/pipeline/workv2/temp"
+          - name: BLOBFUSE2_CFG
+            value: "/usr/pipeline/workv2/blobfuse2.yaml"
+          - name: GOPATH
+            value: "/usr/pipeline/workv2/go"
 
-            - template: 'azure-pipeline-templates/setup.yml'
-              parameters:
-                tags: $(tags)
-                installStep:
-                  script: |
-                    sudo apt-get update --fix-missing
-                    sudo apt-get install $(fuselib) -y
-                  displayName: 'Install fuse'
+        steps:
+          - template: 'azure-pipeline-templates/setup.yml'
+            parameters:
+              tags: $(tags)
+              installStep:
+                script: |
+                  sudo apt-get update --fix-missing
+                  sudo apt update
+                  sudo apt-get install cmake gcc $(fuselib) git parallel -y
+                  if [ $(tags) == "fuse2" ]; then
+                    sudo apt-get install fuse -y
+                  else
+                    sudo apt-get install fuse3 -y
+                  fi
+                displayName: 'Install fuse'
 
-            - template: 'azure-pipeline-templates/e2e-tests-block-cache.yml'
-              parameters:
-                conf_template: azure_key.yaml
-                config_file: $(BLOBFUSE2_CFG)
-                container: $(containerName)
-                idstring: Block_Blob
-                adls: false
-                account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
-                account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
-                account_type: block
-                account_endpoint: https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net
-                distro_name: $(imageName)
-                quick_test: false
-                verbose_log: ${{ parameters.verbose_log }}
-                clone: true
-                stream_direct_test: false
-                # TODO: These can be removed one day and replace all instances of ${{ parameters.temp_dir }} with $(TEMP_DIR) since it is a global variable
-                temp_dir: $(TEMP_DIR)
-                mount_dir: $(MOUNT_DIR)
+          - template: 'azure-pipeline-templates/e2e-tests-block-cache.yml'
+            parameters:
+              conf_template: azure_key.yaml
+              config_file: $(BLOBFUSE2_CFG)
+              container: $(containerName)
+              idstring: Block_Blob
+              adls: false
+              account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
+              account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
+              account_type: block
+              account_endpoint: https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net
+              distro_name: $(AgentName)
+              quick_test: false
+              verbose_log: ${{ parameters.verbose_log }}
+              clone: true
+              # TODO: These can be removed one day and replace all instances of ${{ parameters.temp_dir }} with $(TEMP_DIR) since it is a global variable
+              temp_dir: $(TEMP_DIR)
+              mount_dir: $(MOUNT_DIR)
+  
+  - stage: BlockCacheDataDirectIOValidation
+    jobs:
+      # Ubuntu Tests
+      - job: Set_1
+        timeoutInMinutes: 300
+        strategy:
+          matrix:
+            Ubuntu-20:
+              AgentName: 'blobfuse-ubuntu20'
+              containerName: 'test-cnt-ubn-20'
+              adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
+              fuselib: 'libfuse-dev'
+              tags: 'fuse2'          
+            Ubuntu-22:
+              AgentName: 'blobfuse-ubuntu22'
+              containerName: 'test-cnt-ubn-22'
+              adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
+              fuselib: 'libfuse3-dev'
+              tags: 'fuse3'
 
-  - ${{ if eq(parameters.data_validation, true) }}:
-    - stage: DataValidationBlob
-      jobs:
-        # Ubuntu Tests
-        - job: Set_1
-          timeoutInMinutes: 300
-          strategy:
-            matrix:
-              Ubuntu-20:
-                imageName: 'ubuntu-20.04'
-                containerName: 'test-cnt-ubn-20'
-                fuselib: 'libfuse-dev'
-                tags: 'fuse2'
-              Ubuntu-22:
-                imageName: 'ubuntu-22.04'
-                containerName: 'test-cnt-ubn-22'
-                fuselib: 'libfuse3-dev'
-                tags: 'fuse3'
-          pool:
-            vmImage: $(imageName)
+        pool:
+          name: "blobfuse-ubuntu-pool"
+          demands:
+            - ImageOverride -equals $(AgentName)
 
-          variables:
-            - group: NightlyBlobFuse
-            - name: ROOT_DIR
-              value: "/usr/pipeline/workv2"
-            - name: WORK_DIR
-              value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
-            - name: skipComponentGovernanceDetection
-              value: true
-            - name: MOUNT_DIR
-              value: "/usr/pipeline/workv2/blob_mnt"
-            - name: TEMP_DIR
-              value: "/usr/pipeline/workv2/temp"
-            - name: BLOBFUSE2_CFG
-              value: "/usr/pipeline/workv2/blobfuse2.yaml"
-            - name: GOPATH
-              value: "/usr/pipeline/workv2/go"
+        variables:
+          - group: NightlyBlobFuse
+          - name: ROOT_DIR
+            value: "/usr/pipeline/workv2"
+          - name: WORK_DIR
+            value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
+          - name: skipComponentGovernanceDetection
+            value: true
+          - name: MOUNT_DIR
+            value: "/usr/pipeline/workv2/blob_mnt"
+          - name: TEMP_DIR
+            value: "/usr/pipeline/workv2/temp"
+          - name: BLOBFUSE2_CFG
+            value: "/usr/pipeline/workv2/blobfuse2.yaml"
+          - name: GOPATH
+            value: "/usr/pipeline/workv2/go"
 
-          steps:
-            - checkout: none
+        steps:
+          - template: 'azure-pipeline-templates/setup.yml'
+            parameters:
+              tags: $(tags)
+              installStep:
+                script: |
+                  sudo apt-get update --fix-missing
+                  sudo apt update
+                  sudo apt-get install cmake gcc $(fuselib) git parallel -y
+                  if [ $(tags) == "fuse2" ]; then
+                    sudo apt-get install fuse -y
+                  else
+                    sudo apt-get install fuse3 -y
+                  fi
+                displayName: 'Install fuse'
 
-            - template: 'azure-pipeline-templates/setup.yml'
-              parameters:
-                tags: $(tags)
-                installStep:
-                  script: |
-                    sudo apt-get update --fix-missing
-                    sudo apt-get install $(fuselib) -y
-                  displayName: 'Install fuse'
+          - template: 'azure-pipeline-templates/e2e-tests-block-cache.yml'
+            parameters:
+              conf_template: azure_key.yaml
+              config_file: $(BLOBFUSE2_CFG)
+              container: $(containerName)
+              idstring: Block_Blob
+              adls: false
+              account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
+              account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
+              account_type: block
+              account_endpoint: https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net
+              distro_name: $(AgentName)
+              quick_test: false
+              verbose_log: ${{ parameters.verbose_log }}
+              clone: true
+              # TODO: These can be removed one day and replace all instances of ${{ parameters.temp_dir }} with $(TEMP_DIR) since it is a global variable
+              temp_dir: $(TEMP_DIR)
+              mount_dir: $(MOUNT_DIR)
+              mnt_flags: "-o direct_io"
 
-            - template: 'azure-pipeline-templates/e2e-tests-spcl.yml'
-              parameters:
-                conf_template: azure_key.yaml
-                config_file: $(BLOBFUSE2_CFG)
-                container: $(containerName)
-                idstring: Block_Blob
-                adls: false
-                account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
-                account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
-                account_type: block
-                account_endpoint: https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net
-                distro_name: $(imageName)
-                quick_test: false
-                verbose_log: ${{ parameters.verbose_log }}
-                clone: true
-                stream_direct_test: false
-                # TODO: These can be removed one day and replace all instances of ${{ parameters.temp_dir }} with $(TEMP_DIR) since it is a global variable
-                temp_dir: $(TEMP_DIR)
-                mount_dir: $(MOUNT_DIR)
 
-  - ${{ if eq(parameters.data_validation, true) }}:
-    - stage: DataValidationADLS
-      jobs:
-        # Ubuntu Tests
-        - job: Set_1
-          timeoutInMinutes: 300
-          strategy:
-            matrix:
-              Ubuntu-20:
-                imageName: 'ubuntu-20.04'
-                containerName: 'test-cnt-ubn-20'
-                fuselib: 'libfuse-dev'
-                tags: 'fuse2'
-              Ubuntu-22:
-                imageName: 'ubuntu-22.04'
-                containerName: 'test-cnt-ubn-22'
-                fuselib: 'libfuse3-dev'
-                tags: 'fuse3'
-          pool:
-            vmImage: $(imageName)
+  - stage: BlockCacheDataIntegrityValidation
+    jobs:
+      # Ubuntu Tests
+      - job: Set_1
+        timeoutInMinutes: 300
+        strategy:
+          matrix:
+            Ubuntu-20:
+              AgentName: 'blobfuse-ubuntu20'
+              containerName: 'test-cnt-ubn-20'
+              adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
+              fuselib: 'libfuse-dev'
+              tags: 'fuse2'          
+            Ubuntu-22:
+              AgentName: 'blobfuse-ubuntu22'
+              containerName: 'test-cnt-ubn-22'
+              adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
+              fuselib: 'libfuse3-dev'
+              tags: 'fuse3'
 
-          variables:
-            - group: NightlyBlobFuse
-            - name: ROOT_DIR
-              value: "/usr/pipeline/workv2"
-            - name: WORK_DIR
-              value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
-            - name: skipComponentGovernanceDetection
-              value: true
-            - name: MOUNT_DIR
-              value: "/usr/pipeline/workv2/blob_mnt"
-            - name: TEMP_DIR
-              value: "/usr/pipeline/workv2/temp"
-            - name: BLOBFUSE2_CFG
-              value: "/usr/pipeline/workv2/blobfuse2.yaml"
-            - name: GOPATH
-              value: "/usr/pipeline/workv2/go"
+        pool:
+          name: "blobfuse-ubuntu-pool"
+          demands:
+            - ImageOverride -equals $(AgentName)
 
-          steps:
-            - checkout: none
+        variables:
+          - group: NightlyBlobFuse
+          - name: ROOT_DIR
+            value: "/usr/pipeline/workv2"
+          - name: WORK_DIR
+            value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
+          - name: skipComponentGovernanceDetection
+            value: true
+          - name: MOUNT_DIR
+            value: "/usr/pipeline/workv2/blob_mnt"
+          - name: TEMP_DIR
+            value: "/usr/pipeline/workv2/temp"
+          - name: BLOBFUSE2_CFG
+            value: "/usr/pipeline/workv2/blobfuse2.yaml"
+          - name: GOPATH
+            value: "/usr/pipeline/workv2/go"
 
-            - template: 'azure-pipeline-templates/setup.yml'
-              parameters:
-                tags: $(tags)
-                installStep:
-                  script: |
-                    sudo apt-get update --fix-missing
-                    sudo apt-get install $(fuselib) -y
-                  displayName: 'Install fuse'
+        steps:
+          - template: 'azure-pipeline-templates/setup.yml'
+            parameters:
+              tags: $(tags)
+              installStep:
+                script: |
+                  sudo apt-get update --fix-missing
+                  sudo apt update
+                  sudo apt-get install cmake gcc $(fuselib) git parallel -y
+                  if [ $(tags) == "fuse2" ]; then
+                    sudo apt-get install fuse -y
+                  else
+                    sudo apt-get install fuse3 -y
+                  fi
+                displayName: 'Install fuse'
 
-            - template: 'azure-pipeline-templates/e2e-tests-spcl.yml'
-              parameters:
-                conf_template: azure_key.yaml
-                config_file: $(BLOBFUSE2_CFG)
-                container: $(containerName)
-                idstring: ADLS
-                adls: true
-                account_name: $(AZTEST_ADLS_ACC_NAME)
-                account_key: $(AZTEST_ADLS_KEY)
-                account_type: adls
-                account_endpoint: https://$(AZTEST_ADLS_ACC_NAME).dfs.core.windows.net
-                distro_name: $(imageName)
-                quick_test: false
-                verbose_log: ${{ parameters.verbose_log }}
-                clone: true
-                stream_direct_test: false
-                # TODO: These can be removed one day and replace all instances of ${{ parameters.temp_dir }} with $(TEMP_DIR) since it is a global variable
-                temp_dir: $(TEMP_DIR)
-                mount_dir: $(MOUNT_DIR)
+          - script: |
+              sudo apt-get install python3-setuptools -y
+              sudo apt install python3-pip -y
+              sudo pip3 install pandas numpy pyarrow fastparquet
+            displayName: 'Install Python Packages'
 
-  - ${{ if eq(parameters.data_validation, true) }}:
-    - stage: DataValidationStreamFileHandle
-      jobs:
-        # Ubuntu Tests
-        - job: Set_1
-          timeoutInMinutes: 300
-          strategy:
-            matrix:
-              Ubuntu-20:
-                imageName: 'ubuntu-20.04'
-                containerName: 'test-cnt-ubn-20'
-                fuselib: 'libfuse-dev'
-                tags: 'fuse2'
-              Ubuntu-22:
-                imageName: 'ubuntu-22.04'
-                containerName: 'test-cnt-ubn-22'
-                fuselib: 'libfuse3-dev'
-                tags: 'fuse3'
-          pool:
-            vmImage: $(imageName)
+          - template: 'azure-pipeline-templates/e2e-tests-block-cache-data-integrity.yml'
+            parameters:
+              conf_template: azure_key.yaml
+              config_file: $(BLOBFUSE2_CFG)
+              container: $(containerName)
+              idstring: Block_Blob
+              adls: false
+              account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
+              account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
+              account_type: block
+              account_endpoint: https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net
+              distro_name: $(AgentName)
+              quick_test: false
+              verbose_log: ${{ parameters.verbose_log }}
+              clone: true
+              # TODO: These can be removed one day and replace all instances of ${{ parameters.temp_dir }} with $(TEMP_DIR) since it is a global variable
+              temp_dir: $(TEMP_DIR)
+              mount_dir: $(MOUNT_DIR)
+              block_size_mb: "1"
 
-          variables:
-            - group: NightlyBlobFuse
-            - name: ROOT_DIR
-              value: "/usr/pipeline/workv2"
-            - name: WORK_DIR
-              value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
-            - name: skipComponentGovernanceDetection
-              value: true
-            - name: MOUNT_DIR
-              value: "/usr/pipeline/workv2/blob_mnt"
-            - name: TEMP_DIR
-              value: "/usr/pipeline/workv2/temp"
-            - name: BLOBFUSE2_CFG
-              value: "/usr/pipeline/workv2/blobfuse2.yaml"
-            - name: GOPATH
-              value: "/usr/pipeline/workv2/go"
+          - template: 'azure-pipeline-templates/e2e-tests-block-cache-data-integrity.yml'
+            parameters:
+              conf_template: azure_key.yaml
+              config_file: $(BLOBFUSE2_CFG)
+              container: $(containerName)
+              idstring: Block_Blob
+              adls: false
+              account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
+              account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
+              account_type: block
+              account_endpoint: https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net
+              distro_name: $(AgentName)
+              quick_test: false
+              verbose_log: ${{ parameters.verbose_log }}
+              clone: true
+              # TODO: These can be removed one day and replace all instances of ${{ parameters.temp_dir }} with $(TEMP_DIR) since it is a global variable
+              temp_dir: $(TEMP_DIR)
+              mount_dir: $(MOUNT_DIR)
+              block_size_mb: "8"
 
-          steps:
-            - checkout: none
+  - stage: StreamDataValidation
+    jobs:
+      # Ubuntu Tests
+      - job: Set_1
+        timeoutInMinutes: 300
+        strategy:
+          matrix:
+            Ubuntu-22:
+              AgentName: 'blobfuse-ubuntu22'
+              containerName: 'test-cnt-ubn-22'
+              adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
+              fuselib: 'libfuse3-dev'
+              tags: 'fuse3'
 
-            - template: 'azure-pipeline-templates/setup.yml'
-              parameters:
-                tags: $(tags)
-                installStep:
-                  script: |
-                    sudo apt-get update --fix-missing
-                    sudo apt-get install $(fuselib) -y
-                  displayName: 'Install fuse'
+        pool:
+          name: "blobfuse-ubuntu-pool"
+          demands:
+            - ImageOverride -equals $(AgentName)
 
-            - template: 'azure-pipeline-templates/e2e-tests-spcl.yml'
-              parameters:
-                conf_template: azure_stream.yaml
-                config_file: $(BLOBFUSE2_CFG)
-                container: $(containerName)
-                idstring: Stream_File_Handle
-                adls: false
-                account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
-                account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
-                account_type: block
-                account_endpoint: https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net
-                distro_name: $(imageName)
-                quick_test: false
-                verbose_log: ${{ parameters.verbose_log }}
-                clone: false
-                stream_direct_test: false
-                # TODO: These can be removed one day and replace all instances of ${{ parameters.temp_dir }} with $(TEMP_DIR) since it is a global variable
-                temp_dir: $(TEMP_DIR)
-                mount_dir: $(MOUNT_DIR)
+        variables:
+          - group: NightlyBlobFuse
+          - name: ROOT_DIR
+            value: "/usr/pipeline/workv2"
+          - name: WORK_DIR
+            value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
+          - name: skipComponentGovernanceDetection
+            value: true
+          - name: MOUNT_DIR
+            value: "/usr/pipeline/workv2/blob_mnt"
+          - name: TEMP_DIR
+            value: "/usr/pipeline/workv2/temp"
+          - name: BLOBFUSE2_CFG
+            value: "/usr/pipeline/workv2/blobfuse2.yaml"
+          - name: GOPATH
+            value: "/usr/pipeline/workv2/go"
 
-  - ${{ if eq(parameters.data_validation, true) }}:
-    - stage: DataValidationStreamFileHandleDirect
-      jobs:
-        # Ubuntu Tests
-        - job: Set_1
-          timeoutInMinutes: 300
-          strategy:
-            matrix:
-              Ubuntu-20:
-                imageName: 'ubuntu-20.04'
-                containerName: 'test-cnt-ubn-20'
-                fuselib: 'libfuse-dev'
-                tags: 'fuse2'
-              Ubuntu-22:
-                imageName: 'ubuntu-22.04'
-                containerName: 'test-cnt-ubn-22'
-                fuselib: 'libfuse3-dev'
-                tags: 'fuse3'
-          pool:
-            vmImage: $(imageName)
+        steps:
+          - template: 'azure-pipeline-templates/setup.yml'
+            parameters:
+              tags: $(tags)
+              installStep:
+                script: |
+                  sudo apt-get update --fix-missing
+                  sudo apt update
+                  sudo apt-get install cmake gcc $(fuselib) git parallel -y
+                  if [ $(tags) == "fuse2" ]; then
+                    sudo apt-get install fuse -y
+                  else
+                    sudo apt-get install fuse3 -y
+                  fi
+                displayName: 'Install fuse'
 
-          variables:
-            - group: NightlyBlobFuse
-            - name: ROOT_DIR
-              value: "/usr/pipeline/workv2"
-            - name: WORK_DIR
-              value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
-            - name: skipComponentGovernanceDetection
-              value: true
-            - name: MOUNT_DIR
-              value: "/usr/pipeline/workv2/blob_mnt"
-            - name: TEMP_DIR
-              value: "/usr/pipeline/workv2/temp"
-            - name: BLOBFUSE2_CFG
-              value: "/usr/pipeline/workv2/blobfuse2.yaml"
-            - name: GOPATH
-              value: "/usr/pipeline/workv2/go"
+          - template: 'azure-pipeline-templates/e2e-tests-block-cache.yml'
+            parameters:
+              conf_template: azure_stream.yaml
+              config_file: $(BLOBFUSE2_CFG)
+              container: $(containerName)
+              idstring: Stream
+              adls: false
+              account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
+              account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
+              account_type: block
+              account_endpoint: https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net
+              distro_name: $(AgentName)
+              quick_test: false
+              verbose_log: ${{ parameters.verbose_log }}
+              clone: true
+              # TODO: These can be removed one day and replace all instances of ${{ parameters.temp_dir }} with $(TEMP_DIR) since it is a global variable
+              temp_dir: $(TEMP_DIR)
+              mount_dir: $(MOUNT_DIR)
 
-          steps:
-            - checkout: none
+  - stage: FNSDataValidation
+    jobs:
+      # Ubuntu Tests
+      - job: Set_1
+        timeoutInMinutes: 300
+        strategy:
+          matrix:
+            Ubuntu-20:
+              AgentName: 'blobfuse-ubuntu20'
+              containerName: 'test-cnt-ubn-20'
+              adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
+              fuselib: 'libfuse-dev'
+              tags: 'fuse2'
+            Ubuntu-22:
+              AgentName: 'blobfuse-ubuntu22'
+              containerName: 'test-cnt-ubn-22'
+              adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
+              fuselib: 'libfuse3-dev'
+              tags: 'fuse3'
 
-            - template: 'azure-pipeline-templates/setup.yml'
-              parameters:
-                tags: $(tags)
-                installStep:
-                  script: |
-                    sudo apt-get update --fix-missing
-                    sudo apt-get install $(fuselib) -y
-                  displayName: 'Install fuse'
+        pool:
+          name: "blobfuse-ubuntu-pool"
+          demands:
+            - ImageOverride -equals $(AgentName)
 
-            - template: 'azure-pipeline-templates/e2e-tests-spcl.yml'
-              parameters:
-                conf_template: azure_stream_direct.yaml
-                config_file: $(BLOBFUSE2_CFG)
-                container: $(containerName)
-                idstring: Stream_File_Handle_Direct
-                adls: false
-                account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
-                account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
-                account_type: block
-                account_endpoint: https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net
-                distro_name: $(imageName)
-                quick_test: false
-                verbose_log: ${{ parameters.verbose_log }}
-                clone: false
-                stream_direct_test: true
-                # TODO: These can be removed one day and replace all instances of ${{ parameters.temp_dir }} with $(TEMP_DIR) since it is a global variable
-                temp_dir: $(TEMP_DIR)
-                mount_dir: $(MOUNT_DIR)
+        variables:
+          - group: NightlyBlobFuse
+          - name: ROOT_DIR
+            value: "/usr/pipeline/workv2"
+          - name: WORK_DIR
+            value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
+          - name: skipComponentGovernanceDetection
+            value: true
+          - name: MOUNT_DIR
+            value: "/usr/pipeline/workv2/blob_mnt"
+          - name: TEMP_DIR
+            value: "/usr/pipeline/workv2/temp"
+          - name: BLOBFUSE2_CFG
+            value: "/usr/pipeline/workv2/blobfuse2.yaml"
+          - name: GOPATH
+            value: "/usr/pipeline/workv2/go"
 
-  - ${{ if eq(parameters.data_validation, true) }}:
-    - stage: DataValidationStreamFileName
-      jobs:
-        # Ubuntu Tests
-        - job: Set_1
-          timeoutInMinutes: 300
-          strategy:
-            matrix:
-              Ubuntu-20:
-                imageName: 'ubuntu-20.04'
-                containerName: 'test-cnt-ubn-20'
-                fuselib: 'libfuse-dev'
-                tags: 'fuse2'
-              Ubuntu-22:
-                imageName: 'ubuntu-22.04'
-                containerName: 'test-cnt-ubn-22'
-                fuselib: 'libfuse3-dev'
-                tags: 'fuse3'
-          pool:
-            vmImage: $(imageName)
+        steps:
+          - template: 'azure-pipeline-templates/setup.yml'
+            parameters:
+              tags: $(tags)
+              installStep:
+                script: |
+                  sudo apt-get update --fix-missing
+                  sudo apt update
+                  sudo apt-get install cmake gcc $(fuselib) git parallel -y
+                  if [ $(tags) == "fuse2" ]; then
+                    sudo apt-get install fuse -y
+                  else
+                    sudo apt-get install fuse3 -y
+                  fi
+                displayName: 'Install fuse'
 
-          variables:
-            - group: NightlyBlobFuse
-            - name: ROOT_DIR
-              value: "/usr/pipeline/workv2"
-            - name: WORK_DIR
-              value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
-            - name: skipComponentGovernanceDetection
-              value: true
-            - name: MOUNT_DIR
-              value: "/usr/pipeline/workv2/blob_mnt"
-            - name: TEMP_DIR
-              value: "/usr/pipeline/workv2/temp"
-            - name: BLOBFUSE2_CFG
-              value: "/usr/pipeline/workv2/blobfuse2.yaml"
-            - name: GOPATH
-              value: "/usr/pipeline/workv2/go"
+          - template: 'azure-pipeline-templates/e2e-tests-spcl.yml'
+            parameters:
+              conf_template: azure_key.yaml
+              config_file: $(BLOBFUSE2_CFG)
+              container: $(containerName)
+              idstring: Block_Blob
+              adls: false
+              account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
+              account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
+              account_type: block
+              account_endpoint: https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net
+              distro_name: $(AgentName)
+              quick_test: false
+              verbose_log: ${{ parameters.verbose_log }}
+              clone: true
+              # TODO: These can be removed one day and replace all instances of ${{ parameters.temp_dir }} with $(TEMP_DIR) since it is a global variable
+              temp_dir: $(TEMP_DIR)
+              mount_dir: $(MOUNT_DIR)
 
-          steps:
-            - checkout: none
+  - stage: HNSDataValidation
+    jobs:
+      # Ubuntu Tests
+      - job: Set_1
+        timeoutInMinutes: 300
+        strategy:
+          matrix:
+            Ubuntu-20:
+              AgentName: 'blobfuse-ubuntu20'
+              containerName: 'test-cnt-ubn-20'
+              adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
+              fuselib: 'libfuse-dev'
+              tags: 'fuse2'
+            Ubuntu-22:
+              AgentName: 'blobfuse-ubuntu22'
+              containerName: 'test-cnt-ubn-22'
+              adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
+              fuselib: 'libfuse3-dev'
+              tags: 'fuse3'
 
-            - template: 'azure-pipeline-templates/setup.yml'
-              parameters:
-                tags: $(tags)
-                installStep:
-                  script: |
-                    sudo apt-get update --fix-missing
-                    sudo apt-get install $(fuselib) -y
-                  displayName: 'Install fuse'
+        pool:
+          name: "blobfuse-ubuntu-pool"
+          demands:
+            - ImageOverride -equals $(AgentName)
 
-            - template: 'azure-pipeline-templates/e2e-tests-spcl.yml'
-              parameters:
-                conf_template: azure_stream_filename.yaml
-                config_file: $(BLOBFUSE2_CFG)
-                container: $(containerName)
-                idstring: Stream_File_Name
-                adls: false
-                account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
-                account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
-                account_type: block
-                account_endpoint: https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net
-                distro_name: $(imageName)
-                quick_test: false
-                verbose_log: ${{ parameters.verbose_log }}
-                clone: false
-                stream_direct_test: false
-                # TODO: These can be removed one day and replace all instances of ${{ parameters.temp_dir }} with $(TEMP_DIR) since it is a global variable
-                temp_dir: $(TEMP_DIR)
-                mount_dir: $(MOUNT_DIR)
+        variables:
+          - group: NightlyBlobFuse
+          - name: ROOT_DIR
+            value: "/usr/pipeline/workv2"
+          - name: WORK_DIR
+            value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
+          - name: skipComponentGovernanceDetection
+            value: true
+          - name: MOUNT_DIR
+            value: "/usr/pipeline/workv2/blob_mnt"
+          - name: TEMP_DIR
+            value: "/usr/pipeline/workv2/temp"
+          - name: BLOBFUSE2_CFG
+            value: "/usr/pipeline/workv2/blobfuse2.yaml"
+          - name: GOPATH
+            value: "/usr/pipeline/workv2/go"
 
-  - ${{ if eq(parameters.data_validation, true) }}:
-    - stage: DataValidationStreamFileNameDirect
-      jobs:
-        # Ubuntu Tests
-        - job: Set_1
-          timeoutInMinutes: 300
-          strategy:
-            matrix:
-              Ubuntu-20:
-                imageName: 'ubuntu-20.04'
-                containerName: 'test-cnt-ubn-20'
-                fuselib: 'libfuse-dev'
-                tags: 'fuse2'
-              Ubuntu-22:
-                imageName: 'ubuntu-22.04'
-                containerName: 'test-cnt-ubn-22'
-                fuselib: 'libfuse3-dev'
-                tags: 'fuse3'
-          pool:
-            vmImage: $(imageName)
+        steps:
+          - template: 'azure-pipeline-templates/setup.yml'
+            parameters:
+              tags: $(tags)
+              installStep:
+                script: |
+                  sudo apt-get update --fix-missing
+                  sudo apt update
+                  sudo apt-get install cmake gcc $(fuselib) git parallel -y
+                  if [ $(tags) == "fuse2" ]; then
+                    sudo apt-get install fuse -y
+                  else
+                    sudo apt-get install fuse3 -y
+                  fi
+                displayName: 'Install fuse'
 
-          variables:
-            - group: NightlyBlobFuse
-            - name: ROOT_DIR
-              value: "/usr/pipeline/workv2"
-            - name: WORK_DIR
-              value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
-            - name: skipComponentGovernanceDetection
-              value: true
-            - name: MOUNT_DIR
-              value: "/usr/pipeline/workv2/blob_mnt"
-            - name: TEMP_DIR
-              value: "/usr/pipeline/workv2/temp"
-            - name: BLOBFUSE2_CFG
-              value: "/usr/pipeline/workv2/blobfuse2.yaml"
-            - name: GOPATH
-              value: "/usr/pipeline/workv2/go"
+          - template: 'azure-pipeline-templates/e2e-tests-spcl.yml'
+            parameters:
+              conf_template: azure_key.yaml
+              config_file: $(BLOBFUSE2_CFG)
+              container: $(containerName)
+              idstring: ADLS
+              adls: true
+              account_name: $(AZTEST_ADLS_ACC_NAME)
+              account_key: $(AZTEST_ADLS_KEY)
+              account_type: adls
+              account_endpoint: https://$(AZTEST_ADLS_ACC_NAME).dfs.core.windows.net
+              distro_name: $(AgentName)
+              quick_test: false
+              verbose_log: ${{ parameters.verbose_log }}
+              clone: true
+              # TODO: These can be removed one day and replace all instances of ${{ parameters.temp_dir }} with $(TEMP_DIR) since it is a global variable
+              temp_dir: $(TEMP_DIR)
+              mount_dir: $(MOUNT_DIR)
 
-          steps:
-            - checkout: none
+  - stage: Healthmon
+    jobs:
+      - job: Set_1
+        timeoutInMinutes: 300
+        strategy:
+          matrix:
+            Ubuntu-22:
+              AgentName: 'blobfuse-ubuntu22'
+              containerName: 'test-cnt-ubn-22'
+              adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
+              fuselib: 'libfuse3-dev'
+              tags: 'fuse3'
 
-            - template: 'azure-pipeline-templates/setup.yml'
-              parameters:
-                tags: $(tags)
-                installStep:
-                  script: |
-                    sudo apt-get update --fix-missing
-                    sudo apt-get install $(fuselib) -y
-                  displayName: 'Install fuse'
+        pool:
+          name: "blobfuse-ubuntu-pool"
+          demands:
+            - ImageOverride -equals $(AgentName)
 
-            - template: 'azure-pipeline-templates/e2e-tests-spcl.yml'
-              parameters:
-                conf_template: azure_stream_filename_direct.yaml
-                config_file: $(BLOBFUSE2_CFG)
-                container: $(containerName)
-                idstring: Stream_File_Name_Direct
-                adls: false
-                account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
-                account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
-                account_type: block
-                account_endpoint: https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net
-                distro_name: $(imageName)
-                quick_test: false
-                verbose_log: ${{ parameters.verbose_log }}
-                clone: false
-                stream_direct_test: true
-                # TODO: These can be removed one day and replace all instances of ${{ parameters.temp_dir }} with $(TEMP_DIR) since it is a global variable
-                temp_dir: $(TEMP_DIR)
-                mount_dir: $(MOUNT_DIR)
+        variables:
+          - group: NightlyBlobFuse
+          - name: MOUNT_DIR
+            value: '$(Pipeline.Workspace)/blob_mnt'
+          - name: TEMP_DIR
+            value: '$(Pipeline.Workspace)/blobfuse2_tmp'
+          - name: BLOBFUSE2_CFG
+            value: '$(Pipeline.Workspace)/blobfuse2.yaml'
+          - name: GOPATH
+            value: '$(Pipeline.Workspace)/go'
+          - name: ROOT_DIR
+            value: '$(System.DefaultWorkingDirectory)' 
+          - name: WORK_DIR
+            value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
 
-  - ${{ if eq(parameters.healthmon_test, true) }}:
-    - stage: Healthmon
-      jobs:
-        - job: Set_1
-          timeoutInMinutes: 300
-          strategy:
-            matrix:
-              Ubuntu-22:
-                imageName: 'ubuntu-22.04'
-                containerName: 'test-cnt-ubn-22'
-                adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
-                fuselib: 'libfuse3-dev'
-                tags: 'fuse3'
-          pool:
-            vmImage: $(imageName)
+        steps:
+          - script: |
+              sudo apt-get update --fix-missing -o Dpkg::Options::="--force-confnew"
+              sudo apt-get install make cmake gcc g++ parallel $(fuselib) -y -o Dpkg::Options::="--force-confnew"
+            displayName: 'Install libfuse'
 
-          variables:
-            - group: NightlyBlobFuse
-            - name: MOUNT_DIR
-              value: '$(Pipeline.Workspace)/blob_mnt'
-            - name: TEMP_DIR
-              value: '$(Pipeline.Workspace)/blobfuse2_tmp'
-            - name: BLOBFUSE2_CFG
-              value: '$(Pipeline.Workspace)/blobfuse2.yaml'
-            - name: GOPATH
-              value: '$(Pipeline.Workspace)/go'
-            - name: ROOT_DIR
-              value: '$(System.DefaultWorkingDirectory)' 
-            - name: WORK_DIR
-              value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
+          - checkout: none
 
-          steps:
-            - checkout: none
+          # Clone the repo
+          - script: |
+              git clone https://github.com/Azure/azure-storage-fuse
+            displayName: 'Checkout Code'
+            workingDirectory: $(ROOT_DIR)
 
-            - script: |
-                sudo apt-get update --fix-missing -o Dpkg::Options::="--force-confnew"
-                sudo apt-get install make cmake gcc g++ parallel $(fuselib) -y -o Dpkg::Options::="--force-confnew"
-              displayName: 'Install libfuse'
+          # Checkout the branch
+          - script: |
+              git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
+            displayName: 'Checkout Branch'
+            workingDirectory: $(WORK_DIR)
 
-            # Clone the repo
-            - script: |
-                git clone https://github.com/Azure/azure-storage-fuse
-              displayName: 'Checkout Code'
-              workingDirectory: $(ROOT_DIR)
+          # Create directory structure
+          - script: |
+              sudo mkdir -p $(ROOT_DIR)
+              sudo chown -R `whoami` $(ROOT_DIR)
+              chmod 777 $(ROOT_DIR)
+            displayName: 'Create Directory Structure'
 
-            # Checkout the branch
-            - script: |
-                git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
-              displayName: 'Checkout Branch'
+          # -------------------------------------------------------
+            # Alternative custom script for Self-Hosted agents to install Go-lang
+          - task: ShellScript@2
+            inputs:
+              scriptPath: "$(WORK_DIR)/go_installer.sh"
+              args: "$(ROOT_DIR)/"
+            displayName: "GoTool Custom Setup"
+
+          # Downloading Go dependency packages
+          - task: Go@0
+            inputs:
+              command: 'get'
+              arguments: '-d'
               workingDirectory: $(WORK_DIR)
+            displayName: "Go Get"
 
-            # Create directory structure
-            - script: |
-                sudo mkdir -p $(ROOT_DIR)
-                sudo chown -R `whoami` $(ROOT_DIR)
-                chmod 777 $(ROOT_DIR)
-              displayName: 'Create Directory Structure'
-
-            # -------------------------------------------------------
-             # Alternative custom script for Self-Hosted agents to install Go-lang
-            - task: ShellScript@2
-              inputs:
-                scriptPath: "$(WORK_DIR)/go_installer.sh"
-                args: "$(ROOT_DIR)/"
-              displayName: "GoTool Custom Setup"
-
-            # Downloading Go dependency packages
-            - task: Go@0
-              inputs:
-                command: 'get'
-                arguments: '-d'
-                workingDirectory: $(WORK_DIR)
-              displayName: "Go Get"
-
-            # Building our package
-            - task: Go@0
-              inputs:
-                command: 'build'
-                arguments: "-o blobfuse2"
-                workingDirectory: $(WORK_DIR)
-              displayName: "Go Build Blobfuse2"
-
-            # Building our package
-            - task: Go@0
-              inputs:
-                command: 'build'
-                arguments: "-o bfusemon ./tools/health-monitor/"
-                workingDirectory: $(WORK_DIR)
-              displayName: "Go Build bfusemon"
-
-            - script: |
-                cd $(WORK_DIR)
-                $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key_hmon.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
-              displayName: Create Key Config File
-              env:
-                ACCOUNT_TYPE: 'block'
-                NIGHTLY_STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
-                NIGHTLY_STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
-                ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
-                VERBOSE_LOG: false
-                USE_HTTP: false
-                HMON_OUTPUT: $(WORK_DIR)
-              continueOnError: false
-
-            - script: cat $(BLOBFUSE2_CFG)
-              displayName: Print config file
-
-            - script:
-                mkdir -p $(MOUNT_DIR)
-                mkdir -p $(TEMP_DIR)
-              displayName: "Create directory structure"
-
-            - template: 'azure-pipeline-templates/mount.yml'
-              parameters:
-                working_dir: $(WORK_DIR)
-                mount_dir: $(MOUNT_DIR)
-                temp_dir: $(TEMP_DIR)
-                prefix: "Mount"
-                mountStep:
-                  script: |
-                    sudo ln -s `pwd`/bfusemon /usr/local/bin/bfusemon
-                    ls -l /usr/local/bin/bfusemon*
-                    $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG)
-                  displayName: 'Mount Blobfuse2'
-                  workingDirectory: $(WORK_DIR)
-                  timeoutInMinutes: 3
-                  continueOnError: false
-
-            - script: |
-                sudo ps -aux | grep bfusemon
-              displayName: 'Print bfusemon Process info'
-              env:
-                mount_dir: $(MOUNT_DIR)
-
-            - script: |
-                touch $(MOUNT_DIR)/h1.txt
-                echo "123456" > $(MOUNT_DIR)/h2.txt
-                cp *.md $(MOUNT_DIR)/
-                mkdir $(MOUNT_DIR)/A
-                mv $(MOUNT_DIR)/h1.txt $(MOUNT_DIR)/h5.txt
-                mv $(MOUNT_DIR)/h*.* $(MOUNT_DIR)/A
-                rm -rf $(MOUNT_DIR)/*.md
-                rm -rf $(MOUNT_DIR)/A
-              displayName: "Test for health monitor"
+          # Building our package
+          - task: Go@0
+            inputs:
+              command: 'build'
+              arguments: "-o blobfuse2"
               workingDirectory: $(WORK_DIR)
+            displayName: "Go Build Blobfuse2"
 
-            - script: |
-                sleep 20s
-                cat $(WORK_DIR)/monitor_*.json
-              displayName: "Print bfusemon output"
+          # Building our package
+          - task: Go@0
+            inputs:
+              command: 'build'
+              arguments: "-o bfusemon ./tools/health-monitor/"
               workingDirectory: $(WORK_DIR)
+            displayName: "Go Build bfusemon"
 
-            - template: 'azure-pipeline-templates/cleanup.yml'
-              parameters:
-                working_dir: $(WORK_DIR)
-                mount_dir: $(MOUNT_DIR)
-                temp_dir: $(TEMP_DIR)
+          - script: |
+              cd $(WORK_DIR)
+              $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key_hmon.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
+            displayName: Create Key Config File
+            env:
+              ACCOUNT_TYPE: 'block'
+              NIGHTLY_STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
+              NIGHTLY_STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
+              ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
+              VERBOSE_LOG: false
+              USE_HTTP: false
+              HMON_OUTPUT: $(WORK_DIR)
+            continueOnError: false
+
+          - script: cat $(BLOBFUSE2_CFG)
+            displayName: Print config file
+
+          - script:
+              mkdir -p $(MOUNT_DIR)
+              mkdir -p $(TEMP_DIR)
+            displayName: "Create directory structure"
+
+          - template: 'azure-pipeline-templates/mount.yml'
+            parameters:
+              working_dir: $(WORK_DIR)
+              mount_dir: $(MOUNT_DIR)
+              temp_dir: $(TEMP_DIR)
+              prefix: "Mount"
+              mountStep:
+                script: |
+                  sudo ln -s `pwd`/bfusemon /usr/local/bin/bfusemon
+                  ls -l /usr/local/bin/bfusemon*
+                  $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG)
+                displayName: 'Mount Blobfuse2'
+                workingDirectory: $(WORK_DIR)
+                timeoutInMinutes: 3
+                continueOnError: false
+
+          - script: |
+              sudo ps -aux | grep bfusemon
+            displayName: 'Print bfusemon Process info'
+            env:
+              mount_dir: $(MOUNT_DIR)
+
+          - script: |
+              touch $(MOUNT_DIR)/h1.txt
+              echo "123456" > $(MOUNT_DIR)/h2.txt
+              cp *.md $(MOUNT_DIR)/
+              mkdir $(MOUNT_DIR)/A
+              mv $(MOUNT_DIR)/h1.txt $(MOUNT_DIR)/h5.txt
+              mv $(MOUNT_DIR)/h*.* $(MOUNT_DIR)/A
+              rm -rf $(MOUNT_DIR)/*.md
+              rm -rf $(MOUNT_DIR)/A
+            displayName: "Test for health monitor"
+            workingDirectory: $(WORK_DIR)
+
+          - script: |
+              sleep 20s
+              cat $(WORK_DIR)/monitor_*.json
+            displayName: "Print bfusemon output"
+            workingDirectory: $(WORK_DIR)
+
+          - template: 'azure-pipeline-templates/cleanup.yml'
+            parameters:
+              working_dir: $(WORK_DIR)
+              mount_dir: $(MOUNT_DIR)
+              temp_dir: $(TEMP_DIR)

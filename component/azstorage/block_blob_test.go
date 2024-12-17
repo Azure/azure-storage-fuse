@@ -40,6 +40,7 @@ import (
 	"bytes"
 	"container/list"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -47,7 +48,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"
@@ -285,9 +285,8 @@ func (s *blockBlobTestSuite) TestDefault() {
 }
 
 func randomString(length int) string {
-	random := rand.New(rand.NewSource(time.Now().UnixNano()))
 	b := make([]byte, length)
-	random.Read(b)
+	rand.Read(b)
 	return fmt.Sprintf("%x", b)[:length]
 }
 
@@ -644,7 +643,6 @@ func (s *blockBlobTestSuite) TestReadDirNoVirtualDirectory() {
 			s.assert.EqualValues(name, entries[0].Path)
 			s.assert.EqualValues(name, entries[0].Name)
 			s.assert.True(entries[0].IsDir())
-			s.assert.True(entries[0].IsMetadataRetrieved())
 			s.assert.True(entries[0].IsModeDefault())
 		})
 	}
@@ -664,13 +662,11 @@ func (s *blockBlobTestSuite) TestReadDirHierarchy() {
 	s.assert.EqualValues(base+"/c1", entries[0].Path)
 	s.assert.EqualValues("c1", entries[0].Name)
 	s.assert.True(entries[0].IsDir())
-	s.assert.True(entries[0].IsMetadataRetrieved())
 	s.assert.True(entries[0].IsModeDefault())
 	// Check the file
 	s.assert.EqualValues(base+"/c2", entries[1].Path)
 	s.assert.EqualValues("c2", entries[1].Name)
 	s.assert.False(entries[1].IsDir())
-	s.assert.True(entries[1].IsMetadataRetrieved())
 	s.assert.True(entries[1].IsModeDefault())
 }
 
@@ -693,19 +689,16 @@ func (s *blockBlobTestSuite) TestReadDirRoot() {
 			s.assert.EqualValues(base, entries[0].Path)
 			s.assert.EqualValues(base, entries[0].Name)
 			s.assert.True(entries[0].IsDir())
-			s.assert.True(entries[0].IsMetadataRetrieved())
 			s.assert.True(entries[0].IsModeDefault())
 			// Check the baseb dir
 			s.assert.EqualValues(base+"b", entries[1].Path)
 			s.assert.EqualValues(base+"b", entries[1].Name)
 			s.assert.True(entries[1].IsDir())
-			s.assert.True(entries[1].IsMetadataRetrieved())
 			s.assert.True(entries[1].IsModeDefault())
 			// Check the basec file
 			s.assert.EqualValues(base+"c", entries[2].Path)
 			s.assert.EqualValues(base+"c", entries[2].Name)
 			s.assert.False(entries[2].IsDir())
-			s.assert.True(entries[2].IsMetadataRetrieved())
 			s.assert.True(entries[2].IsModeDefault())
 		})
 	}
@@ -725,7 +718,6 @@ func (s *blockBlobTestSuite) TestReadDirSubDir() {
 	s.assert.EqualValues(base+"/c1"+"/gc1", entries[0].Path)
 	s.assert.EqualValues("gc1", entries[0].Name)
 	s.assert.False(entries[0].IsDir())
-	s.assert.True(entries[0].IsMetadataRetrieved())
 	s.assert.True(entries[0].IsModeDefault())
 }
 
@@ -745,7 +737,6 @@ func (s *blockBlobTestSuite) TestReadDirSubDirPrefixPath() {
 	s.assert.EqualValues("c1"+"/gc1", entries[0].Path)
 	s.assert.EqualValues("gc1", entries[0].Name)
 	s.assert.False(entries[0].IsDir())
-	s.assert.True(entries[0].IsMetadataRetrieved())
 	s.assert.True(entries[0].IsModeDefault())
 }
 
@@ -3457,7 +3448,7 @@ func (suite *blockBlobTestSuite) UtilityFunctionTruncateFileToLarger(size int, t
 	suite.assert.NotNil(resp.ContentLength)
 	suite.assert.EqualValues(truncatedLength, *resp.ContentLength)
 	output, _ := io.ReadAll(resp.Body)
-	suite.assert.EqualValues(data[:], output[:size])
+	suite.assert.EqualValues(data, output[:size])
 
 }
 

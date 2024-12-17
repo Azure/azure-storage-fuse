@@ -85,7 +85,7 @@ const (
 )
 
 // getAzStorageClientOptions : Create client options based on the config
-func getAzStorageClientOptions(conf *AzStorageConfig) azcore.ClientOptions {
+func getAzStorageClientOptions(conf *AzStorageConfig) (azcore.ClientOptions, error) {
 	retryOptions := policy.RetryOptions{
 		MaxRetries:    conf.maxRetries,                                 // Try at most 3 times to perform the operation (set to 1 to disable retries)
 		TryTimeout:    time.Second * time.Duration(conf.maxTimeout),    // Maximum time allowed for any single try
@@ -102,28 +102,33 @@ func getAzStorageClientOptions(conf *AzStorageConfig) azcore.ClientOptions {
 
 	logOptions := getSDKLogOptions()
 
-	transportOptions := newBlobfuse2HttpClient(conf)
+	transportOptions, err := newBlobfuse2HttpClient(conf)
+	if err != nil {
+		log.Err("utils::getAzStorageClientOptions : Failed to create transport client [%s]", err.Error())
+	}
 
 	return azcore.ClientOptions{
 		Retry:           retryOptions,
 		Logging:         logOptions,
 		PerCallPolicies: []policy.Policy{telemetryPolicy},
 		Transport:       transportOptions,
-	}
+	}, err
 }
 
 // getAzBlobServiceClientOptions : Create azblob service client options based on the config
-func getAzBlobServiceClientOptions(conf *AzStorageConfig) *service.ClientOptions {
+func getAzBlobServiceClientOptions(conf *AzStorageConfig) (*service.ClientOptions, error) {
+	opts, err := getAzStorageClientOptions(conf)
 	return &service.ClientOptions{
-		ClientOptions: getAzStorageClientOptions(conf),
-	}
+		ClientOptions: opts,
+	}, err
 }
 
 // getAzDatalakeServiceClientOptions : Create azdatalake service client options based on the config
-func getAzDatalakeServiceClientOptions(conf *AzStorageConfig) *serviceBfs.ClientOptions {
+func getAzDatalakeServiceClientOptions(conf *AzStorageConfig) (*serviceBfs.ClientOptions, error) {
+	opts, err := getAzStorageClientOptions(conf)
 	return &serviceBfs.ClientOptions{
-		ClientOptions: getAzStorageClientOptions(conf),
-	}
+		ClientOptions: opts,
+	}, err
 }
 
 // getLogOptions : to configure the SDK logging policy
@@ -155,17 +160,17 @@ func setSDKLogListener() {
 }
 
 // Create an HTTP Client with configured proxy
-func newBlobfuse2HttpClient(conf *AzStorageConfig) *http.Client {
-	var ProxyURL func(req *http.Request) (*url.URL, error) = func(req *http.Request) (*url.URL, error) {
-		// If a proxy address is passed return
-		var proxyURL url.URL = url.URL{
-			Host: conf.proxyAddress,
-		}
-		return &proxyURL, nil
-	}
-
+func newBlobfuse2HttpClient(conf *AzStorageConfig) (*http.Client, error) {
+	var ProxyURL func(req *http.Request) (*url.URL, error)
 	if conf.proxyAddress == "" {
-		ProxyURL = nil
+		ProxyURL = http.ProxyFromEnvironment
+	} else {
+		u, err := url.Parse(conf.proxyAddress)
+		if err != nil {
+			log.Err("utils::newBlobfuse2HttpClient : Failed to parse proxy : %s [%s]", conf.proxyAddress, err.Error())
+			return nil, err
+		}
+		ProxyURL = http.ProxyURL(u)
 	}
 
 	return &http.Client{
@@ -189,7 +194,7 @@ func newBlobfuse2HttpClient(conf *AzStorageConfig) *http.Client {
 			DisableCompression:     conf.disableCompression,
 			MaxResponseHeaderBytes: MaxResponseHeaderBytes,
 		},
-	}
+	}, nil
 }
 
 // getCloudConfiguration : returns cloud configuration type on the basis of endpoint

@@ -37,6 +37,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -51,6 +52,8 @@ type lruPolicyTestSuite struct {
 	assert *assert.Assertions
 	policy *lruPolicy
 }
+
+var cache_path = filepath.Join(home_dir, "file_cache")
 
 func (suite *lruPolicyTestSuite) SetupTest() {
 	// err := log.SetDefaultLogger("silent", common.LogConfig{Level: common.ELogLevel.LOG_DEBUG()})

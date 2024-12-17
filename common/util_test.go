@@ -34,12 +34,13 @@
 package common
 
 import (
+	"bytes"
+	"crypto/rand"
 	"fmt"
-	"math/rand"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -48,7 +49,6 @@ import (
 var home_dir, _ = os.UserHomeDir()
 
 func randomString(length int) string {
-	rand.Seed(time.Now().UnixNano())
 	b := make([]byte, length)
 	rand.Read(b)
 	return fmt.Sprintf("%x", b)[:length]
@@ -65,6 +65,78 @@ func (suite *utilTestSuite) SetupTest() {
 
 func TestUtil(t *testing.T) {
 	suite.Run(t, new(utilTestSuite))
+}
+
+func (suite *utilTestSuite) TestIsMountActiveNoMount() {
+	var out bytes.Buffer
+	cmd := exec.Command("../blobfuse2", "unmount", "all")
+	cmd.Stdout = &out
+	err := cmd.Run()
+	suite.assert.Nil(err)
+	cmd = exec.Command("pidof", "blobfuse2")
+	cmd.Stdout = &out
+	err = cmd.Run()
+	suite.assert.Equal("exit status 1", err.Error())
+	res, err := IsMountActive("/mnt/blobfuse")
+	suite.assert.Nil(err)
+	suite.assert.False(res)
+}
+
+func (suite *utilTestSuite) TestIsMountActiveTwoMounts() {
+	var out bytes.Buffer
+
+	// Define the file name and the content you want to write
+	fileName := "config.yaml"
+
+	lbpath := filepath.Join(home_dir, "lbpath")
+	os.MkdirAll(lbpath, 0777)
+	defer os.RemoveAll(lbpath)
+
+	content := "components:\n" +
+		"  - libfuse\n" +
+		"  - loopbackfs\n\n" +
+		"loopbackfs:\n" +
+		"  path: " + lbpath + "\n\n"
+
+	mntdir := filepath.Join(home_dir, "mountdir")
+	os.MkdirAll(mntdir, 0777)
+	defer os.RemoveAll(mntdir)
+
+	dir, err := os.Getwd()
+	suite.assert.Nil(err)
+	configFile := filepath.Join(dir, "config.yaml")
+	// Create or open the file. If it doesn't exist, it will be created.
+	file, err := os.Create(fileName)
+	suite.assert.Nil(err)
+	defer file.Close() // Ensure the file is closed after we're done
+
+	// Write the content to the file
+	_, err = file.WriteString(content)
+	suite.assert.Nil(err)
+
+	err = os.Chdir("..")
+	suite.assert.Nil(err)
+
+	dir, err = os.Getwd()
+	suite.assert.Nil(err)
+	binary := filepath.Join(dir, "blobfuse2")
+	cmd := exec.Command(binary, mntdir, "--config-file", configFile)
+	cmd.Stdout = &out
+	err = cmd.Run()
+	suite.assert.Nil(err)
+
+	res, err := IsMountActive(mntdir)
+	suite.assert.Nil(err)
+	suite.assert.True(res)
+
+	res, err = IsMountActive("/mnt/blobfuse")
+	suite.assert.Nil(err)
+	suite.assert.False(res)
+
+	cmd = exec.Command(binary, "unmount", mntdir)
+	cmd.Stdout = &out
+	err = cmd.Run()
+	suite.assert.Nil(err)
 }
 
 func (suite *typesTestSuite) TestDirectoryExists() {
@@ -228,6 +300,67 @@ func (suite *utilTestSuite) TestGetDiskUsage() {
 	suite.assert.NotEqual(usagePercent, 0)
 	suite.assert.NotEqual(usagePercent, 100)
 	_ = os.RemoveAll(filepath.Join(pwd, "util_test"))
+}
+
+func (suite *utilTestSuite) TestDirectoryCleanup() {
+	dirName := "./TestDirectoryCleanup"
+
+	// Directory does not exists
+	exists := DirectoryExists(dirName)
+	suite.assert.False(exists)
+
+	err := TempCacheCleanup(dirName)
+	suite.assert.Nil(err)
+
+	// Directory exists but is empty
+	_ = os.MkdirAll(dirName, 0777)
+	exists = DirectoryExists(dirName)
+	suite.assert.True(exists)
+
+	empty := IsDirectoryEmpty(dirName)
+	suite.assert.True(empty)
+
+	err = TempCacheCleanup(dirName)
+	suite.assert.Nil(err)
+
+	// Directory exists and is not empty
+	_ = os.MkdirAll(dirName+"/A", 0777)
+	exists = DirectoryExists(dirName)
+	suite.assert.True(exists)
+
+	empty = IsDirectoryEmpty(dirName)
+	suite.assert.False(empty)
+
+	err = TempCacheCleanup(dirName)
+	suite.assert.Nil(err)
+
+	_ = os.RemoveAll(dirName)
+
+}
+
+func (suite *utilTestSuite) TestWriteToFile() {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Println("Error getting home directory:", err)
+		return
+	}
+	filePath := fmt.Sprintf(".blobfuse2/test_%s.txt", randomString(8))
+	content := "Hello World"
+	filePath = homeDir + "/" + filePath
+
+	defer os.Remove(filePath)
+
+	err = WriteToFile(filePath, content, WriteToFileOptions{})
+	suite.assert.Nil(err)
+
+	// Check if file exists
+	suite.assert.FileExists(filePath)
+
+	// Check the content of the file
+	data, err := os.ReadFile(filePath)
+	suite.assert.Nil(err)
+	suite.assert.Equal(content, string(data))
+
 }
 
 func (suite *utilTestSuite) TestGetFuseMinorVersion() {

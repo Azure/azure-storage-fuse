@@ -64,7 +64,6 @@ const (
 	PropFlagIsDir
 	PropFlagEmptyDir
 	PropFlagSymlink
-	PropFlagMetadataRetrieved
 	PropFlagModeDefault // TODO: Does this sound better as ModeDefault or DefaultMode? The getter would be IsModeDefault or IsDefaultMode
 )
 
@@ -93,12 +92,6 @@ func (attr *ObjAttr) IsDir() bool {
 // IsSymlink : Test blob is a symlink or not
 func (attr *ObjAttr) IsSymlink() bool {
 	return attr.Flags.IsSet(PropFlagSymlink)
-}
-
-// IsMetadataRetrieved : Whether or not metadata has been retrieved for this path.
-// Datalake list paths does not support returning x-ms-properties (metadata), so we cannot be sure if the path is a symlink or not.
-func (attr *ObjAttr) IsMetadataRetrieved() bool {
-	return attr.Flags.IsSet(PropFlagMetadataRetrieved)
 }
 
 // IsModeDefault : Whether or not to use the default mode.

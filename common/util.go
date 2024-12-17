@@ -55,6 +55,7 @@ import (
 
 var RootMount bool
 var ForegroundMount bool
+var IsStream bool
 
 // IsDirectoryMounted is a utility function that returns true if the directory is already mounted using fuse
 func IsDirectoryMounted(path string) bool {
@@ -85,21 +86,79 @@ func IsDirectoryMounted(path string) bool {
 	return false
 }
 
+func IsMountActive(path string) (bool, error) {
+	// Get the process details for this path using ps -aux
+	var out bytes.Buffer
+	cmd := exec.Command("pidof", "blobfuse2")
+	cmd.Stdout = &out
+	err := cmd.Run()
+	if err != nil {
+		if err.Error() == "exit status 1" {
+			return false, nil
+		} else {
+			return true, fmt.Errorf("failed to get pid of blobfuse2 [%v]", err.Error())
+		}
+	}
+
+	// out contains the list of pids of the processes that are running
+	pidString := strings.Replace(out.String(), "\n", " ", -1)
+	pids := strings.Split(pidString, " ")
+	for _, pid := range pids {
+		// Get the mount path for this pid
+		// For this we need to check the command line arguments given to this command
+		// If the path is same then we need to return true
+		if pid == "" {
+			continue
+		}
+
+		cmd = exec.Command("ps", "-o", "args=", "-p", pid)
+		out.Reset()
+		cmd.Stdout = &out
+
+		err := cmd.Run()
+		if err != nil {
+			return true, fmt.Errorf("failed to get command line arguments for pid %s [%v]", pid, err.Error())
+		}
+
+		if strings.Contains(out.String(), path) {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 // IsDirectoryEmpty is a utility function that returns true if the directory at that path is empty or not
 func IsDirectoryEmpty(path string) bool {
+	if !DirectoryExists(path) {
+		// Directory does not exists so safe to assume its empty
+		return true
+	}
+
 	f, _ := os.Open(path)
 	defer f.Close()
 
 	_, err := f.Readdirnames(1)
-	if err == io.EOF {
-		return true
+	// If there is nothing in the directory then it is empty
+	return err == io.EOF
+}
+
+func TempCacheCleanup(path string) error {
+	if !IsDirectoryEmpty(path) {
+		// List the first level children of the directory
+		dirents, err := os.ReadDir(path)
+		if err != nil {
+			// Failed to list, return back error
+			return fmt.Errorf("failed to list directory contents : %s", err.Error())
+		}
+
+		// Delete all first level children with their hierarchy
+		for _, entry := range dirents {
+			os.RemoveAll(filepath.Join(path, entry.Name()))
+		}
 	}
 
-	if err != nil && err.Error() == "invalid argument" {
-		fmt.Println("Broken Mount : First Unmount ", path)
-	}
-
-	return false
+	return nil
 }
 
 // DirectoryExists is a utility function that returns true if the directory at that path exists and returns false if it does not exist.
@@ -415,4 +474,29 @@ func GetFuseMinorVersion() int {
 	}
 
 	return val
+}
+
+type WriteToFileOptions struct {
+	Flags      int
+	Permission os.FileMode
+}
+
+func WriteToFile(filename string, data string, options WriteToFileOptions) error {
+	// Open the file with the provided flags, create it if it doesn't exist
+	//check if options.Permission is 0 if so then assign 0777
+	if options.Permission == 0 {
+		options.Permission = 0777
+	}
+	file, err := os.OpenFile(filename, options.Flags|os.O_CREATE|os.O_WRONLY, options.Permission)
+	if err != nil {
+		return fmt.Errorf("error opening file: [%s]", err.Error())
+	}
+	defer file.Close() // Ensure the file is closed when we're done
+
+	// Write the data content to the file
+	if _, err := file.WriteString(data); err != nil {
+		return fmt.Errorf("error writing to file [%s]", err.Error())
+	}
+
+	return nil
 }

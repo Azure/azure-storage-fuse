@@ -34,14 +34,6 @@
 package azstorage
 
 import (
-	"bytes"
-	"context"
-	"errors"
-	"fmt"
-	"os"
-	"os/exec"
-	"strings"
-
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/service"
@@ -66,18 +58,22 @@ func (azmsi *azAuthMSI) getTokenCredential() (azcore.TokenCredential, error) {
 	}
 
 	if azmsi.config.ApplicationID != "" {
-		msiOpts.ID = (azidentity.ClientID)(azmsi.config.ApplicationID)
+		msiOpts.ID = azidentity.ClientID(azmsi.config.ApplicationID)
 	} else if azmsi.config.ResourceID != "" {
-		msiOpts.ID = (azidentity.ResourceID)(azmsi.config.ResourceID)
+		msiOpts.ID = azidentity.ResourceID(azmsi.config.ResourceID)
 	} else if azmsi.config.ObjectID != "" {
+		// Object id is supported by azidentity hence commenting the earlier code
+		msiOpts.ID = azidentity.ObjectID(azmsi.config.ObjectID)
+
 		// login using azcli
-		return azmsi.getTokenCredentialUsingCLI()
+		// return azmsi.getTokenCredentialUsingCLI()
 	}
 
 	cred, err := azidentity.NewManagedIdentityCredential(msiOpts)
 	return cred, err
 }
 
+/*
 func (azmsi *azAuthMSI) getTokenCredentialUsingCLI() (azcore.TokenCredential, error) {
 	command := "az login --identity --username " + azmsi.config.ObjectID
 
@@ -97,7 +93,7 @@ func (azmsi *azAuthMSI) getTokenCredentialUsingCLI() (azcore.TokenCredential, er
 		if msg == "" {
 			msg = err.Error()
 		}
-		return nil, fmt.Errorf(msg)
+		return nil, fmt.Errorf("%s", msg)
 	}
 
 	log.Info("azAuthMSI::getTokenCredentialUsingCLI : Successfully logged in using Azure CLI")
@@ -106,6 +102,7 @@ func (azmsi *azAuthMSI) getTokenCredentialUsingCLI() (azcore.TokenCredential, er
 	cred, err := azidentity.NewAzureCLICredential(nil)
 	return cred, err
 }
+*/
 
 type azAuthBlobMSI struct {
 	azAuthMSI
@@ -119,7 +116,13 @@ func (azmsi *azAuthBlobMSI) getServiceClient(stConfig *AzStorageConfig) (interfa
 		return nil, err
 	}
 
-	svcClient, err := service.NewClient(azmsi.config.Endpoint, cred, getAzBlobServiceClientOptions(stConfig))
+	opts, err := getAzBlobServiceClientOptions(stConfig)
+	if err != nil {
+		log.Err("azAuthBlobMSI::getServiceClient : Failed to create client options [%s]", err.Error())
+		return nil, err
+	}
+
+	svcClient, err := service.NewClient(azmsi.config.Endpoint, cred, opts)
 	if err != nil {
 		log.Err("azAuthBlobMSI::getServiceClient : Failed to create service client [%s]", err.Error())
 	}
@@ -139,7 +142,13 @@ func (azmsi *azAuthDatalakeMSI) getServiceClient(stConfig *AzStorageConfig) (int
 		return nil, err
 	}
 
-	svcClient, err := serviceBfs.NewClient(azmsi.config.Endpoint, cred, getAzDatalakeServiceClientOptions(stConfig))
+	opts, err := getAzDatalakeServiceClientOptions(stConfig)
+	if err != nil {
+		log.Err("azAuthDatalakeMSI::getServiceClient : Failed to create client options [%s]", err.Error())
+		return nil, err
+	}
+
+	svcClient, err := serviceBfs.NewClient(azmsi.config.Endpoint, cred, opts)
 	if err != nil {
 		log.Err("azAuthDatalakeMSI::getServiceClient : Failed to create service client [%s]", err.Error())
 	}

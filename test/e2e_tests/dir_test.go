@@ -37,9 +37,9 @@
 package e2e_tests
 
 import (
+	"crypto/rand"
 	"flag"
 	"fmt"
-	"math/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -88,7 +88,6 @@ func initDirFlags() {
 }
 
 func getTestDirName(n int) string {
-	rand.Seed(time.Now().UnixNano())
 	b := make([]byte, n)
 	rand.Read(b)
 	return fmt.Sprintf("%x", b)[:n]
@@ -281,7 +280,7 @@ func (suite *dirTestSuite) TestDirGetStats() {
 // # Change mod of directory
 func (suite *dirTestSuite) TestDirChmod() {
 	if suite.adlsTest == true {
-		dirName := suite.testPath + "/test3"
+		dirName := suite.testPath + "/testchmod"
 		err := os.Mkdir(dirName, 0777)
 		suite.Equal(nil, err)
 
@@ -585,12 +584,12 @@ func TestDirTestSuite(t *testing.T) {
 	// Sanity check in the off chance the same random name was generated twice and was still around somehow
 	err := os.RemoveAll(dirTest.testPath)
 	if err != nil {
-		fmt.Println("Could not cleanup feature dir before testing")
+		fmt.Printf("Could not cleanup feature dir before testing [%s]\n", err.Error())
 	}
 
 	err = os.Mkdir(dirTest.testPath, 0777)
 	if err != nil {
-		t.Error("Failed to create test directory")
+		t.Errorf("Failed to create test directory [%s]\n", err.Error())
 	}
 	rand.Read(dirTest.minBuff)
 	rand.Read(dirTest.medBuff)

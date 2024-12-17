@@ -1,9 +1,43 @@
-## 2.3.1 (Unreleased)
-**Bug Fixes**
-
+## 2.4.0 (Unreleased)
 **Features**
+- Added 'gen-config' command to auto generate the recommended blobfuse2 config file based on computing resources and memory available on the node. Command details can be found with `blobfuse2 gen-config --help`.
+- Added option to set Entry cache to hold directory listing results in cache for a given timeout. This will reduce REST calls going to storage and enables faster access across multiple applications that use Blobfuse on the same node.
+
+**Bug Fixes**
+- [#1426](https://github.com/Azure/azure-storage-fuse/issues/1426) Read panic in block-cache due to boundary conditions.
+- Do not allow mount path and temp-cache path to be same when using block-cache.
+- Do not allow to mount with non-empty directory provided for disk persistence in block-cache.
+- Rename file was calling an additional getProperties call.
+- Delete empty directories from local cache on rmdir operation.
+- [#1547](https://github.com/Azure/azure-storage-fuse/issues/1547) Truncate logic of file cache is modified to prevent downloading and uploading the entire file.
+- Updating a file via Blobfuse2 was resetting the ACLs and Permissions applied to file in Datalake.
 
 **Other Changes**
+- `Stream` option automatically replaced with "Stream with Block-cache" internally for optimized performance.
+- Login via Managed Identify is supported with Object-ID for all versions of blobfuse except 2.3.0 and 2.3.2.To use Object-ID for these two versions, use AzCLI or utilize Application/Client-ID or Resource ID base authentication..
+- Version check is now moved to a static website hosted on a public container.
+
+## 2.3.2 (2024-09-03)
+**Bug Fixes**
+- Fixed the case where file creation using SAS on HNS accounts was returning back wrong error code.
+- [#1402](https://github.com/Azure/azure-storage-fuse/issues/1402) Fixed proxy URL parsing.
+- In flush operation, the blocks will be committed only if the handle is dirty.
+- Fixed an issue in File-Cache that caused upload to fail due to insufficient permissions.
+
+**Data Integrity Fixes**
+- Fixed block-cache read of small files in direct-io mode, where file size is not multiple of kernel buffer size.
+- Fixed race condition in block-cache random write flow where a block is being uploaded and written to in parallel.
+- Fixed issue in block-cache random read/write flow where a uncommitted block, which is deleted from local cache, is reused.
+- Sparse file data integrity issues fixed.
+
+**Other Changes**
+- LFU policy in file cache has been removed.
+- Default values, if not assigned in config, for the following parameters in block-cache are calculated as follows:
+    - Memory preallocated for Block-Cache is 80% of free memory
+    - Disk Cache Size is 80% of free disk space
+    - Prefetch is 2 times number of CPU cores
+    - Parallelism is 3 times the number of CPU cores
+- Default value of Disk Cache Size in File Cache is 80% of free disk space
 
 ## 2.3.0 (2024-05-16)
 **Bug Fixes**

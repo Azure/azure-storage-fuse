@@ -1,0 +1,13 @@
+[global]
+name=blobfuse_benchmark
+bs=256k
+runtime=30s
+time_based
+filename=read_fio.data
+group_reporting
+
+[sequential_read_small_file]
+size=5m
+rw=read
+ioengine=sync
+fallocate=none

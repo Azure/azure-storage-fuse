@@ -92,10 +92,11 @@ type mountOptions struct {
 	blobFilter        string         `config:"blob-filter"`
 
 	// v1 support
-	Streaming      bool     `config:"streaming"`
-	AttrCache      bool     `config:"use-attr-cache"`
-	LibfuseOptions []string `config:"libfuse-options"`
-	BlockCache     bool     `config:"block-cache"`
+	Streaming         bool     `config:"streaming"`
+	AttrCache         bool     `config:"use-attr-cache"`
+	LibfuseOptions    []string `config:"libfuse-options"`
+	BlockCache        bool     `config:"block-cache"`
+	EntryCacheTimeout int      `config:"list-cache-timeout"`
 }
 
 var options mountOptions
@@ -108,7 +109,32 @@ func (opt *mountOptions) validate(skipNonEmptyMount bool) error {
 	if _, err := os.Stat(opt.MountPath); os.IsNotExist(err) {
 		return fmt.Errorf("mount directory does not exists")
 	} else if common.IsDirectoryMounted(opt.MountPath) {
-		return fmt.Errorf("directory is already mounted")
+		// Try to cleanup the stale mount
+		log.Info("Mount::validate : Mount directory is already mounted, trying to cleanup")
+		active, err := common.IsMountActive(opt.MountPath)
+		if active || err != nil {
+			// Previous mount is still active so we need to fail this mount
+			return fmt.Errorf("directory is already mounted")
+		} else {
+			// Previous mount is in stale state so lets cleanup the state
+			log.Info("Mount::validate : Cleaning up stale mount")
+			if err = unmountBlobfuse2(opt.MountPath); err != nil {
+				return fmt.Errorf("directory is already mounted, unmount manually before remount [%v]", err.Error())
+			}
+
+			// Clean up the file-cache temp directory if any
+			var tempCachePath string
+			_ = config.UnmarshalKey("file_cache.path", &tempCachePath)
+
+			var cleanupOnStart bool
+			_ = config.UnmarshalKey("file_cache.cleanup-on-start", &cleanupOnStart)
+
+			if tempCachePath != "" && !cleanupOnStart {
+				if err = common.TempCacheCleanup(tempCachePath); err != nil {
+					return fmt.Errorf("failed to cleanup file cache [%s]", err.Error())
+				}
+			}
+		}
 	} else if !skipNonEmptyMount && !common.IsDirectoryEmpty(opt.MountPath) {
 		return fmt.Errorf("mount directory is not empty")
 	}
@@ -297,6 +323,10 @@ var mountCmd = &cobra.Command{
 			options.Components = pipeline
 		}
 
+		if config.IsSet("entry_cache.timeout-sec") || options.EntryCacheTimeout > 0 {
+			options.Components = append(options.Components[:1], append([]string{"entry_cache"}, options.Components[1:]...)...)
+		}
+
 		if config.IsSet("libfuse-options") {
 			for _, v := range options.LibfuseOptions {
 				parameter := strings.Split(v, "=")
@@ -345,6 +375,7 @@ var mountCmd = &cobra.Command{
 					config.Set("lfuse.gid", fmt.Sprint(val))
 				} else if v == "direct_io" || v == "direct_io=true" {
 					config.Set("lfuse.direct-io", "true")
+					config.Set("direct-io", "true")
 				} else {
 					return errors.New(common.FuseAllowedFlags)
 				}
@@ -417,6 +448,20 @@ var mountCmd = &cobra.Command{
 		log.Info("Mount Command: %s", os.Args)
 		log.Crit("Logging level set to : %s", logLevel.String())
 		log.Debug("Mount allowed on nonempty path : %v", options.NonEmpty)
+
+		directIO := false
+		_ = config.UnmarshalKey("direct-io", &directIO)
+		if directIO {
+			// Directio is enabled, so remove the attr-cache from the pipeline
+			for i, name := range options.Components {
+				if name == "attr_cache" {
+					options.Components = append(options.Components[:i], options.Components[i+1:]...)
+					log.Crit("Mount::runPipeline : Direct IO enabled, removing attr_cache from pipeline")
+					break
+				}
+			}
+		}
+
 		pipeline, err = internal.NewPipeline(options.Components, !daemon.WasReborn())
 		if err != nil {
 			log.Err("mount : failed to initialize new pipeline [%v]", err)
@@ -737,5 +782,5 @@ func init() {
 
 func Destroy(message string) error {
 	_ = log.Destroy()
-	return fmt.Errorf(message)
+	return fmt.Errorf("%s", message)
 }

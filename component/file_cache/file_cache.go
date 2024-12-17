@@ -155,7 +155,7 @@ func (c *FileCache) Start(ctx context.Context) error {
 	log.Trace("Starting component : %s", c.Name())
 
 	if c.cleanupOnStart {
-		err := c.TempCacheCleanup()
+		err := common.TempCacheCleanup(c.tmpPath)
 		if err != nil {
 			return fmt.Errorf("error in %s error [fail to cleanup temp cache]", c.Name())
 		}
@@ -187,29 +187,35 @@ func (c *FileCache) Stop() error {
 	}
 
 	_ = c.policy.ShutdownPolicy()
-	_ = c.TempCacheCleanup()
+	_ = common.TempCacheCleanup(c.tmpPath)
 
 	fileCacheStatsCollector.Destroy()
 
 	return nil
 }
 
-func (c *FileCache) TempCacheCleanup() error {
-	// TODO : Cleanup temp cache dir before exit
-	if !isLocalDirEmpty(c.tmpPath) {
-		log.Err("FileCache::TempCacheCleanup : Cleaning up temp directory %s", c.tmpPath)
+// GenConfig : Generate default config for the component
+func (c *FileCache) GenConfig() string {
+	log.Info("FileCache::Configure : config generation started")
 
-		dirents, err := os.ReadDir(c.tmpPath)
-		if err != nil {
-			return nil
-		}
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("\n%s:", c.Name()))
 
-		for _, entry := range dirents {
-			os.RemoveAll(filepath.Join(c.tmpPath, entry.Name()))
-		}
+	tmpPath := ""
+	_ = config.UnmarshalKey("tmp-path", &tmpPath)
+
+	directIO := false
+	_ = config.UnmarshalKey("direct-io", &directIO)
+
+	timeout := defaultFileCacheTimeout
+	if directIO {
+		timeout = 0
 	}
 
-	return nil
+	sb.WriteString(fmt.Sprintf("\n  path: %v", common.ExpandPath(tmpPath)))
+	sb.WriteString(fmt.Sprintf("\n  timeout-sec: %v", timeout))
+
+	return sb.String()
 }
 
 // Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
@@ -233,6 +239,15 @@ func (c *FileCache) Configure(_ bool) error {
 	} else {
 		c.cacheTimeout = float64(defaultFileCacheTimeout)
 	}
+
+	directIO := false
+	_ = config.UnmarshalKey("direct-io", &directIO)
+
+	if directIO {
+		c.cacheTimeout = 0
+		log.Crit("FileCache::Configure : Direct IO mode enabled, cache timeout is set to 0")
+	}
+
 	if config.IsSet(compName + ".empty-dir-check") {
 		c.allowNonEmpty = !conf.EmptyDirCheck
 	} else {
@@ -241,7 +256,6 @@ func (c *FileCache) Configure(_ bool) error {
 	c.cleanupOnStart = conf.CleanupOnStart
 	c.policyTrace = conf.EnablePolicyTrace
 	c.offloadIO = conf.OffloadIO
-	c.maxCacheSize = conf.MaxSizeMB
 	c.syncToFlush = conf.SyncToFlush
 	c.syncToDelete = !conf.SyncNoOp
 	c.refreshSec = conf.RefreshSec
@@ -260,7 +274,11 @@ func (c *FileCache) Configure(_ bool) error {
 	}
 
 	err = config.UnmarshalKey("mount-path", &c.mountPath)
-	if err == nil && c.mountPath == c.tmpPath {
+	if err != nil {
+		log.Err("FileCache: config error [unable to obtain Mount Path]")
+		return fmt.Errorf("config error in %s [%s]", c.Name(), err.Error())
+	}
+	if c.mountPath == c.tmpPath {
 		log.Err("FileCache: config error [tmp-path is same as mount path]")
 		return fmt.Errorf("config error in %s error [tmp-path is same as mount path]", c.Name())
 	}
@@ -274,6 +292,19 @@ func (c *FileCache) Configure(_ bool) error {
 			log.Err("FileCache: config error creating directory after clean [%s]", err.Error())
 			return fmt.Errorf("config error in %s [%s]", c.Name(), err.Error())
 		}
+	}
+
+	var stat syscall.Statfs_t
+	err = syscall.Statfs(c.tmpPath, &stat)
+	if err != nil {
+		log.Err("FileCache::Configure : config error %s [%s]. Assigning a default value of 4GB or if any value is assigned to .disk-size-mb in config.", c.Name(), err.Error())
+		c.maxCacheSize = 4192 * MB
+	} else {
+		c.maxCacheSize = 0.8 * float64(stat.Bavail) * float64(stat.Bsize)
+	}
+
+	if config.IsSet(compName+".max-size-mb") && conf.MaxSizeMB != 0 {
+		c.maxCacheSize = conf.MaxSizeMB
 	}
 
 	if !isLocalDirEmpty(c.tmpPath) && !c.allowNonEmpty {
@@ -294,16 +325,7 @@ func (c *FileCache) Configure(_ bool) error {
 	}
 
 	cacheConfig := c.GetPolicyConfig(conf)
-
-	switch strings.ToLower(conf.Policy) {
-	case "lru":
-		c.policy = NewLRUPolicy(cacheConfig)
-	case "lfu":
-		c.policy = NewLFUPolicy(cacheConfig)
-	default:
-		log.Info("FileCache::Configure : Using default eviction policy")
-		c.policy = NewLRUPolicy(cacheConfig)
-	}
+	c.policy = NewLRUPolicy(cacheConfig)
 
 	if c.policy == nil {
 		log.Err("FileCache::Configure : failed to create cache eviction policy")
@@ -328,7 +350,7 @@ func (c *FileCache) Configure(_ bool) error {
 		c.diskHighWaterMark = (((conf.MaxSizeMB * MB) * float64(cacheConfig.highThreshold)) / 100)
 	}
 
-	log.Info("FileCache::Configure : create-empty %t, cache-timeout %d, tmp-path %s, max-size-mb %d, high-mark %d, low-mark %d, refresh-sec %v, max-eviction %v, hard-limit %v, policy %s, allow-non-empty-temp %t, cleanup-on-start %t, policy-trace %t, offload-io %t, sync-to-flush %t, ignore-sync %t, defaultPermission %v, diskHighWaterMark %v, maxCacheSize %v, mountPath %v",
+	log.Crit("FileCache::Configure : create-empty %t, cache-timeout %d, tmp-path %s, max-size-mb %d, high-mark %d, low-mark %d, refresh-sec %v, max-eviction %v, hard-limit %v, policy %s, allow-non-empty-temp %t, cleanup-on-start %t, policy-trace %t, offload-io %t, sync-to-flush %t, ignore-sync %t, defaultPermission %v, diskHighWaterMark %v, maxCacheSize %v, mountPath %v",
 		c.createEmptyFile, int(c.cacheTimeout), c.tmpPath, int(cacheConfig.maxSizeMB), int(cacheConfig.highThreshold), int(cacheConfig.lowThreshold), c.refreshSec, cacheConfig.maxEviction, c.hardLimit, conf.Policy, c.allowNonEmpty, c.cleanupOnStart, c.policyTrace, c.offloadIO, c.syncToFlush, c.syncToDelete, c.defaultPermission, c.diskHighWaterMark, c.maxCacheSize, c.mountPath)
 
 	return nil
@@ -627,6 +649,46 @@ func (fc *FileCache) IsDirEmpty(options internal.IsDirEmptyOptions) bool {
 
 	log.Debug("FileCache::IsDirEmpty : %s checking with container", options.Name)
 	return fc.NextComponent().IsDirEmpty(options)
+}
+
+// DeleteEmptyDirs: delete empty directories in local cache, return error if directory is not empty
+func (fc *FileCache) DeleteEmptyDirs(options internal.DeleteDirOptions) (bool, error) {
+	localPath := options.Name
+	if !strings.Contains(options.Name, fc.tmpPath) {
+		localPath = filepath.Join(fc.tmpPath, options.Name)
+	}
+
+	log.Trace("FileCache::DeleteEmptyDirs : %s", localPath)
+
+	entries, err := os.ReadDir(localPath)
+	if err != nil {
+		log.Debug("FileCache::DeleteEmptyDirs : Unable to read directory %s [%s]", localPath, err.Error())
+		return false, err
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			val, err := fc.DeleteEmptyDirs(internal.DeleteDirOptions{
+				Name: filepath.Join(localPath, entry.Name()),
+			})
+			if err != nil {
+				log.Err("FileCache::DeleteEmptyDirs : Unable to delete directory %s [%s]", localPath, err.Error())
+				return val, err
+			}
+		} else {
+			log.Err("FileCache::DeleteEmptyDirs : Directory %s is not empty, contains file %s", localPath, entry.Name())
+			return false, fmt.Errorf("unable to delete directory %s, contains file %s", localPath, entry.Name())
+		}
+	}
+
+	if !strings.EqualFold(fc.tmpPath, localPath) {
+		err = os.Remove(localPath)
+		if err != nil {
+			return false, err
+		}
+	}
+
+	return true, nil
 }
 
 // RenameDir: Recursively invalidate the source directory and its children
@@ -1241,12 +1303,28 @@ func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 		// Write to storage
 		// Create a new handle for the SDK to use to upload (read local file)
 		// The local handle can still be used for read and write.
+		var orgMode fs.FileMode
+		modeChanged := false
+
 		uploadHandle, err := os.Open(localPath)
 		if err != nil {
-			log.Err("FileCache::FlushFile : error [unable to open upload handle] %s [%s]", options.Handle.Path, err.Error())
-			return nil
-		}
+			if os.IsPermission(err) {
+				info, _ := os.Stat(localPath)
+				orgMode = info.Mode()
+				newMode := orgMode | 0444
+				err = os.Chmod(localPath, newMode)
+				if err == nil {
+					modeChanged = true
+					uploadHandle, err = os.Open(localPath)
+					log.Info("FileCache::FlushFile : read mode added to file %s", options.Handle.Path)
+				}
+			}
 
+			if err != nil {
+				log.Err("FileCache::FlushFile : error [unable to open upload handle] %s [%s]", options.Handle.Path, err.Error())
+				return err
+			}
+		}
 		err = fc.NextComponent().CopyFromFile(
 			internal.CopyFromFileOptions{
 				Name: options.Handle.Path,
@@ -1254,6 +1332,14 @@ func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 			})
 
 		uploadHandle.Close()
+
+		if modeChanged {
+			err1 := os.Chmod(localPath, orgMode)
+			if err1 != nil {
+				log.Err("FileCache::FlushFile : Failed to remove read mode from file %s [%s]", options.Handle.Path, err1.Error())
+			}
+		}
+
 		if err != nil {
 			log.Err("FileCache::FlushFile : %s upload failed [%s]", options.Handle.Path, err.Error())
 			return err
@@ -1410,9 +1496,6 @@ func (fc *FileCache) RenameFile(options internal.RenameFileOptions) error {
 func (fc *FileCache) TruncateFile(options internal.TruncateFileOptions) error {
 	log.Trace("FileCache::TruncateFile : name=%s, size=%d", options.Name, options.Size)
 
-	// If you call truncate CLI command from shell it always sends an open call first followed by truncate
-	// But if you call the truncate method from a C/C++ code then open is not hit and only truncate comes
-
 	if fc.diskHighWaterMark != 0 {
 		currSize, err := common.GetUsage(fc.tmpPath)
 		if err != nil {
@@ -1425,42 +1508,33 @@ func (fc *FileCache) TruncateFile(options internal.TruncateFileOptions) error {
 		}
 	}
 
-	var h *handlemap.Handle = nil
-	var err error = nil
+	flock := fc.fileLocks.Get(options.Name)
+	flock.Lock()
+	defer flock.Unlock()
 
-	if options.Size == 0 {
-		// If size is 0 then no need to download any file we can just create an empty file
-		h, err = fc.CreateFile(internal.CreateFileOptions{Name: options.Name, Mode: fc.defaultPermission})
-		if err != nil {
-			log.Err("FileCache::TruncateFile : Error creating file %s [%s]", options.Name, err.Error())
-			return err
-		}
-	} else {
-		// If size is not 0 then we need to open the file and then truncate it
-		// Open will force download if file was not present in local system
-		h, err = fc.OpenFile(internal.OpenFileOptions{Name: options.Name, Flags: os.O_RDWR, Mode: fc.defaultPermission})
-		if err != nil {
-			log.Err("FileCache::TruncateFile : Error opening file %s [%s]", options.Name, err.Error())
-			return err
-		}
+	err := fc.NextComponent().TruncateFile(options)
+	err = fc.validateStorageError(options.Name, err, "TruncateFile", true)
+	if err != nil {
+		log.Err("FileCache::TruncateFile : %s failed to truncate [%s]", options.Name, err.Error())
+		return err
 	}
 
 	// Update the size of the file in the local cache
 	localPath := filepath.Join(fc.tmpPath, options.Name)
-	fc.policy.CacheValid(localPath)
+	info, err := os.Stat(localPath)
+	if err == nil || os.IsExist(err) {
+		fc.policy.CacheValid(localPath)
 
-	// Truncate the file created in local system
-	err = os.Truncate(localPath, options.Size)
-	if err != nil {
-		log.Err("FileCache::TruncateFile : error truncating cached file %s [%s]", localPath, err.Error())
-		_ = fc.CloseFile(internal.CloseFileOptions{Handle: h})
-		return err
+		if info.Size() != options.Size {
+			err = os.Truncate(localPath, options.Size)
+			if err != nil {
+				log.Err("FileCache::TruncateFile : error truncating cached file %s [%s]", localPath, err.Error())
+				return err
+			}
+		}
 	}
 
-	// Mark the handle as dirty so that close of this file will force an upload
-	h.Flags.Set(handlemap.HandleFlagDirty)
-
-	return fc.CloseFile(internal.CloseFileOptions{Handle: h})
+	return nil
 }
 
 // Chmod : Update the file with its new permissions

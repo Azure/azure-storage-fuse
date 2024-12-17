@@ -3,7 +3,7 @@
 #   1. All boolean configs (true|false config) (except ignore-open-flags, virtual-directory) are set to 'false' by default. 
 #      No need to mention them in your config file unless you are setting them to true.
 #   2. 'loopbackfs' is purely for testing and shall not be used in production configuration.
-#   3. 'stream' and 'file_cache' can not co-exist and config file shall have only one of them based on your use case.
+#   3. 'block-cache' and 'file_cache' can not co-exist and config file shall have only one of them based on your use case.
 #   4. By default log level is set to 'log_warning' level and are redirected to syslog. 
 #      Either use 'base' logging or syslog filters to redirect logs to separate file.
 #      To install syslog filter follow below steps:        
@@ -51,6 +51,7 @@ logging:
 # Pipeline configuration. Choose components to be engaged. The order below is the priority order that needs to be followed.
 components:
   - libfuse
+  - entry_cache
   - block_cache
   - file_cache
   - attr_cache
@@ -67,23 +68,19 @@ libfuse:
   extension: <physical path to extension library>
   direct-io: true|false <enable to bypass the kernel cache>
 
-# Streaming configuration – remove and redirect to block-cache
-stream:
-  # If block-size-mb, max-buffers or buffer-size-mb are 0, the stream component will not cache blocks. 
-  block-size-mb: <for read only mode size of each block to be cached in memory while streaming (in MB). For read/write size of newly created blocks. Default - 0 MB>
-  max-buffers: <total number of buffers to store blocks in. Default - 0>
-  buffer-size-mb: <size for each buffer. Default - 0 MB>
-  file-caching: <read/write mode file level caching or handle level caching. Default - false (handle level caching ON)>
+# Entry Cache configuration
+entry_cache:
+  timeout-sec: <cache eviction timeout (in sec). Default - 30 sec>
 
 # Block cache related configuration
 block_cache:
   block-size-mb: <size of each block to be cached in memory (in MB). Default - 16 MB>
-  mem-size-mb: <total amount of memory to be preallocated for block cache (in MB). Default - 4192 MB>
+  mem-size-mb: <total amount of memory to be preallocated for block cache (in MB). Default - 80% of free memory>
   path: <path to local disk cache where downloaded blocked will be stored>
-  disk-size-mb: <maximum disk cache size allowed. Default - 4192 MB>
+  disk-size-mb: <maximum disk cache size allowed. Default - 80% of free disk space>
   disk-timeout-sec: <default disk cache eviction timeout (in sec). Default - 120 sec>
-  prefetch: <number of blocks to be prefetched in serial read case. Min - 11>
-  parallelism: <number of parallel threads downloading the data and writing to disk cache. Default - 128> 
+  prefetch: <number of blocks to be prefetched in serial read case. Min - 11, Default - 2 times number of CPU cores>
+  parallelism: <number of parallel threads downloading the data and writing to disk cache. Default - 3 times number of CPU cores> 
 
 # Disk cache related configuration
 file_cache:
@@ -92,7 +89,7 @@ file_cache:
 
   # Optional 
   timeout-sec: <default cache eviction timeout (in sec). Default - 120 sec>
-  max-size-mb: <maximum cache size allowed. Default - 0 (unlimited)>
+  max-size-mb: <maximum cache size allowed. Default - 80% of free disk space>
   allow-non-empty-temp: true|false <allow non empty temp directory at startup>
   cleanup-on-start: true|false <cleanup the temp directory on startup, if its not empty>
   sync-to-flush: true|false <sync call to a file will force upload of the contents to storage account>
@@ -115,7 +112,7 @@ azstorage:
   type: block|adls <type of storage account to be connected. Default - block>
   account-name: <name of the storage account>
   container: <name of the storage container to be mounted>
-  endpoint: <storage account endpoint (example - https://account-name.blob.core.windows.net)>
+  endpoint: <specify this parameter only if storage account is behind a private endpoint>
   mode: key|sas|spn|msi|azcli <kind of authentication to be used>
   account-key: <storage account key>
   # OR
@@ -123,7 +120,7 @@ azstorage:
   # OR
   appid: <storage account app id / client id for MSI>
   resid: <storage account resource id for MSI>
-  objid: <object id for MSI>
+  objid: <object id for MSI - needs Azure CLI on system>
   # OR
   tenantid: <storage account tenant id for SPN>
   clientid: <storage account client id for SPN>
@@ -153,6 +150,7 @@ azstorage:
   cpk-enabled: true|false <enable client provided key encryption>
   cpk-encryption-key: <customer provided base64-encoded AES-256 encryption key value>
   cpk-encryption-key-sha256:  <customer provided base64-encoded sha256 of the encryption key>
+  preserve-acl: true|false <preserve ACLs and Permissions set on file during updates>
 
 # Mount all configuration
 mountall:

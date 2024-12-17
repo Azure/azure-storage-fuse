@@ -34,11 +34,16 @@
 package file_cache
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io/fs"
+	"math"
 	"math/rand"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -86,9 +91,9 @@ func newTestFileCache(next internal.Component) *FileCache {
 }
 
 func randomString(length int) string {
-	rand.Seed(time.Now().UnixNano())
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	b := make([]byte, length)
-	rand.Read(b)
+	r.Read(b)
 	return fmt.Sprintf("%x", b)[:length]
 }
 
@@ -161,7 +166,7 @@ func (suite *fileCacheTestSuite) TestEmpty() {
 func (suite *fileCacheTestSuite) TestConfig() {
 	defer suite.cleanupTest()
 	suite.cleanupTest() // teardown the default file cache generated
-	policy := "lfu"
+	policy := "lru"
 	maxSizeMb := 1024
 	cacheTimeout := 60
 	maxDeletion := 10
@@ -178,10 +183,10 @@ func (suite *fileCacheTestSuite) TestConfig() {
 	suite.assert.Equal(suite.fileCache.tmpPath, suite.cache_path)
 	suite.assert.Equal(suite.fileCache.policy.Name(), policy)
 
-	suite.assert.EqualValues(suite.fileCache.policy.(*lfuPolicy).maxSizeMB, maxSizeMb)
-	suite.assert.EqualValues(suite.fileCache.policy.(*lfuPolicy).maxEviction, maxDeletion)
-	suite.assert.EqualValues(suite.fileCache.policy.(*lfuPolicy).highThreshold, highThreshold)
-	suite.assert.EqualValues(suite.fileCache.policy.(*lfuPolicy).lowThreshold, lowThreshold)
+	suite.assert.EqualValues(suite.fileCache.policy.(*lruPolicy).maxSizeMB, maxSizeMb)
+	suite.assert.EqualValues(suite.fileCache.policy.(*lruPolicy).maxEviction, maxDeletion)
+	suite.assert.EqualValues(suite.fileCache.policy.(*lruPolicy).highThreshold, highThreshold)
+	suite.assert.EqualValues(suite.fileCache.policy.(*lruPolicy).lowThreshold, lowThreshold)
 
 	suite.assert.Equal(suite.fileCache.createEmptyFile, createEmptyFile)
 	suite.assert.Equal(suite.fileCache.allowNonEmpty, allowNonEmptyTemp)
@@ -189,10 +194,30 @@ func (suite *fileCacheTestSuite) TestConfig() {
 	suite.assert.Equal(suite.fileCache.cleanupOnStart, cleanupOnStart)
 }
 
+func (suite *fileCacheTestSuite) TestDefaultCacheSize() {
+	defer suite.cleanupTest()
+	// Setup
+	config := fmt.Sprintf("file_cache:\n  path: %s\n", suite.cache_path)
+	suite.setupTestHelper(config) // setup a new file cache with a custom config (teardown will occur after the test as usual)
+
+	cmd := exec.Command("bash", "-c", fmt.Sprintf("df -B1 %s | awk 'NR==2{print $4}'", suite.cache_path))
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	err := cmd.Run()
+	suite.assert.Nil(err)
+	freeDisk, err := strconv.Atoi(strings.TrimSpace(out.String()))
+	suite.assert.Nil(err)
+	expected := uint64(0.8 * float64(freeDisk))
+	actual := suite.fileCache.maxCacheSize
+	difference := math.Abs(float64(actual) - float64(expected))
+	tolerance := 0.10 * float64(math.Max(float64(actual), float64(expected)))
+	suite.assert.LessOrEqual(difference, tolerance, "mssg:", actual, expected)
+}
+
 func (suite *fileCacheTestSuite) TestConfigPolicyTimeout() {
 	defer suite.cleanupTest()
 	suite.cleanupTest() // teardown the default file cache generated
-	policy := "lfu"
+	policy := "lru"
 	maxSizeMb := 1024
 	cacheTimeout := 60
 	maxDeletion := 10
@@ -209,11 +234,11 @@ func (suite *fileCacheTestSuite) TestConfigPolicyTimeout() {
 	suite.assert.Equal(suite.fileCache.tmpPath, suite.cache_path)
 	suite.assert.Equal(suite.fileCache.policy.Name(), policy)
 
-	suite.assert.EqualValues(suite.fileCache.policy.(*lfuPolicy).maxSizeMB, maxSizeMb)
-	suite.assert.EqualValues(suite.fileCache.policy.(*lfuPolicy).maxEviction, maxDeletion)
-	suite.assert.EqualValues(suite.fileCache.policy.(*lfuPolicy).highThreshold, highThreshold)
-	suite.assert.EqualValues(suite.fileCache.policy.(*lfuPolicy).lowThreshold, lowThreshold)
-	suite.assert.EqualValues(suite.fileCache.policy.(*lfuPolicy).cacheTimeout, cacheTimeout)
+	suite.assert.EqualValues(suite.fileCache.policy.(*lruPolicy).maxSizeMB, maxSizeMb)
+	suite.assert.EqualValues(suite.fileCache.policy.(*lruPolicy).maxEviction, maxDeletion)
+	suite.assert.EqualValues(suite.fileCache.policy.(*lruPolicy).highThreshold, highThreshold)
+	suite.assert.EqualValues(suite.fileCache.policy.(*lruPolicy).lowThreshold, lowThreshold)
+	suite.assert.EqualValues(suite.fileCache.policy.(*lruPolicy).cacheTimeout, cacheTimeout)
 
 	suite.assert.Equal(suite.fileCache.createEmptyFile, createEmptyFile)
 	suite.assert.Equal(suite.fileCache.allowNonEmpty, allowNonEmptyTemp)
@@ -224,7 +249,7 @@ func (suite *fileCacheTestSuite) TestConfigPolicyTimeout() {
 func (suite *fileCacheTestSuite) TestConfigPolicyDefaultTimeout() {
 	defer suite.cleanupTest()
 	suite.cleanupTest() // teardown the default file cache generated
-	policy := "lfu"
+	policy := "lru"
 	maxSizeMb := 1024
 	cacheTimeout := defaultFileCacheTimeout
 	maxDeletion := 10
@@ -241,11 +266,11 @@ func (suite *fileCacheTestSuite) TestConfigPolicyDefaultTimeout() {
 	suite.assert.Equal(suite.fileCache.tmpPath, suite.cache_path)
 	suite.assert.Equal(suite.fileCache.policy.Name(), policy)
 
-	suite.assert.EqualValues(suite.fileCache.policy.(*lfuPolicy).maxSizeMB, maxSizeMb)
-	suite.assert.EqualValues(suite.fileCache.policy.(*lfuPolicy).maxEviction, maxDeletion)
-	suite.assert.EqualValues(suite.fileCache.policy.(*lfuPolicy).highThreshold, highThreshold)
-	suite.assert.EqualValues(suite.fileCache.policy.(*lfuPolicy).lowThreshold, lowThreshold)
-	suite.assert.EqualValues(suite.fileCache.policy.(*lfuPolicy).cacheTimeout, cacheTimeout)
+	suite.assert.EqualValues(suite.fileCache.policy.(*lruPolicy).maxSizeMB, maxSizeMb)
+	suite.assert.EqualValues(suite.fileCache.policy.(*lruPolicy).maxEviction, maxDeletion)
+	suite.assert.EqualValues(suite.fileCache.policy.(*lruPolicy).highThreshold, highThreshold)
+	suite.assert.EqualValues(suite.fileCache.policy.(*lruPolicy).lowThreshold, lowThreshold)
+	suite.assert.EqualValues(suite.fileCache.policy.(*lruPolicy).cacheTimeout, cacheTimeout)
 
 	suite.assert.Equal(suite.fileCache.createEmptyFile, createEmptyFile)
 	suite.assert.Equal(suite.fileCache.allowNonEmpty, allowNonEmptyTemp)
@@ -256,7 +281,7 @@ func (suite *fileCacheTestSuite) TestConfigPolicyDefaultTimeout() {
 func (suite *fileCacheTestSuite) TestConfigZero() {
 	defer suite.cleanupTest()
 	suite.cleanupTest() // teardown the default file cache generated
-	policy := "lfu"
+	policy := "lru"
 	maxSizeMb := 1024
 	cacheTimeout := 0
 	maxDeletion := 10
@@ -273,10 +298,10 @@ func (suite *fileCacheTestSuite) TestConfigZero() {
 	suite.assert.Equal(suite.fileCache.tmpPath, suite.cache_path)
 	suite.assert.Equal(suite.fileCache.policy.Name(), policy)
 
-	suite.assert.EqualValues(suite.fileCache.policy.(*lfuPolicy).maxSizeMB, maxSizeMb)
-	suite.assert.EqualValues(suite.fileCache.policy.(*lfuPolicy).maxEviction, maxDeletion)
-	suite.assert.EqualValues(suite.fileCache.policy.(*lfuPolicy).highThreshold, highThreshold)
-	suite.assert.EqualValues(suite.fileCache.policy.(*lfuPolicy).lowThreshold, lowThreshold)
+	suite.assert.EqualValues(suite.fileCache.policy.(*lruPolicy).maxSizeMB, maxSizeMb)
+	suite.assert.EqualValues(suite.fileCache.policy.(*lruPolicy).maxEviction, maxDeletion)
+	suite.assert.EqualValues(suite.fileCache.policy.(*lruPolicy).highThreshold, highThreshold)
+	suite.assert.EqualValues(suite.fileCache.policy.(*lruPolicy).lowThreshold, lowThreshold)
 
 	suite.assert.Equal(suite.fileCache.createEmptyFile, createEmptyFile)
 	suite.assert.Equal(suite.fileCache.allowNonEmpty, allowNonEmptyTemp)
@@ -611,6 +636,50 @@ func (suite *fileCacheTestSuite) TestCreateFile() {
 	// Path should not be in fake storage
 	_, err = os.Stat(suite.fake_storage_path + "/" + path)
 	suite.assert.True(os.IsNotExist(err))
+}
+
+func (suite *fileCacheTestSuite) TestCreateFileWithNoPerm() {
+	defer suite.cleanupTest()
+	// Default is to not create empty files on create file to support immutable storage.
+	path := "file1"
+	options := internal.CreateFileOptions{Name: path, Mode: 0000}
+	f, err := suite.fileCache.CreateFile(options)
+	suite.assert.Nil(err)
+	suite.assert.True(f.Dirty()) // Handle should be dirty since it was not created in storage
+
+	// Path should be added to the file cache
+	_, err = os.Stat(suite.cache_path + "/" + path)
+	suite.assert.True(err == nil || os.IsExist(err))
+	// Path should not be in fake storage
+	_, err = os.Stat(suite.fake_storage_path + "/" + path)
+	suite.assert.True(os.IsNotExist(err))
+	err = suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: f})
+	suite.assert.Nil(err)
+	info, _ := os.Stat(suite.cache_path + "/" + path)
+	suite.assert.Equal(info.Mode(), os.FileMode(0000))
+}
+
+func (suite *fileCacheTestSuite) TestCreateFileWithWritePerm() {
+	defer suite.cleanupTest()
+	// Default is to not create empty files on create file to support immutable storage.
+	path := "file1"
+	options := internal.CreateFileOptions{Name: path, Mode: 0222}
+	f, err := suite.fileCache.CreateFile(options)
+	suite.assert.Nil(err)
+	suite.assert.True(f.Dirty()) // Handle should be dirty since it was not created in storage
+
+	os.Chmod(suite.cache_path+"/"+path, 0331)
+
+	// Path should be added to the file cache
+	_, err = os.Stat(suite.cache_path + "/" + path)
+	suite.assert.True(err == nil || os.IsExist(err))
+	// Path should not be in fake storage
+	_, err = os.Stat(suite.fake_storage_path + "/" + path)
+	suite.assert.True(os.IsNotExist(err))
+	err = suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: f})
+	suite.assert.Nil(err)
+	info, _ := os.Stat(suite.cache_path + "/" + path)
+	suite.assert.Equal(info.Mode(), fs.FileMode(0331))
 }
 
 func (suite *fileCacheTestSuite) TestCreateFileInDir() {
@@ -1840,6 +1909,57 @@ func (suite *fileCacheTestSuite) TestHardLimitOnSize() {
 	// try opening small file
 	err = suite.fileCache.TruncateFile(internal.TruncateFileOptions{Name: pathsmall, Size: 3 * MB})
 	suite.assert.NotNil(err)
+}
+
+func (suite *fileCacheTestSuite) createDirectoryStructure() {
+	err := os.MkdirAll(filepath.Join(suite.cache_path, "a", "b", "c", "d"), 0777)
+	suite.assert.NoError(err)
+
+	err = os.MkdirAll(filepath.Join(suite.cache_path, "a", "b", "e", "f"), 0777)
+	suite.assert.NoError(err)
+
+	err = os.MkdirAll(filepath.Join(suite.cache_path, "a", "b", "e", "g"), 0777)
+	suite.assert.NoError(err)
+
+	err = os.MkdirAll(filepath.Join(suite.cache_path, "h", "i", "j", "k"), 0777)
+	suite.assert.NoError(err)
+
+	err = os.MkdirAll(filepath.Join(suite.cache_path, "h", "l", "m", "n"), 0777)
+	suite.assert.NoError(err)
+}
+
+func (suite *fileCacheTestSuite) TestDeleteEmptyDirsRoot() {
+	defer suite.cleanupTest()
+
+	suite.createDirectoryStructure()
+	val, err := suite.fileCache.DeleteEmptyDirs(internal.DeleteDirOptions{Name: suite.cache_path})
+	suite.assert.NoError(err)
+	suite.assert.True(val)
+}
+
+func (suite *fileCacheTestSuite) TestDeleteEmptyDirsNonRoot() {
+	defer suite.cleanupTest()
+
+	suite.createDirectoryStructure()
+	val, err := suite.fileCache.DeleteEmptyDirs(internal.DeleteDirOptions{Name: "a"})
+	suite.assert.NoError(err)
+	suite.assert.True(val)
+
+	val, err = suite.fileCache.DeleteEmptyDirs(internal.DeleteDirOptions{Name: filepath.Join(suite.cache_path, "h")})
+	suite.assert.NoError(err)
+	suite.assert.True(val)
+}
+
+func (suite *fileCacheTestSuite) TestDeleteEmptyDirsNegative() {
+	defer suite.cleanupTest()
+
+	suite.createDirectoryStructure()
+	_, err := os.Create(filepath.Join(suite.cache_path, "h", "l", "m", "n", "file.txt"))
+	suite.assert.NoError(err)
+
+	val, err := suite.fileCache.DeleteEmptyDirs(internal.DeleteDirOptions{Name: suite.cache_path})
+	suite.assert.Error(err)
+	suite.assert.False(val)
 }
 
 // In order for 'go test' to run this suite, we need to create

@@ -25,13 +25,13 @@ parameters:
   - name: quick_test
     type: boolean
     default: true
+  - name: mnt_flags
+    type: string
+    default: ""
   - name: verbose_log
     type: boolean
     default: false
   - name: clone
-    type: boolean
-    default: false
-  - name: stream_direct_test
     type: boolean
     default: false
 
@@ -51,6 +51,7 @@ steps:
       cat ${{ parameters.config_file }}
     displayName: 'Print config file'
 
+  # run below step only if direct_io is false
   - template: 'mount.yml'
     parameters:
       working_dir: $(WORK_DIR)
@@ -59,7 +60,7 @@ steps:
       prefix: ${{ parameters.idstring }}
       mountStep: 
         script: |
-          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) --file-cache-timeout=3200
+          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) --file-cache-timeout=3200  ${{ parameters.mnt_flags }}
 
   - script: |
       for i in {1,2,3,4,5,6,7,8,9,10,20,30,50,100,200,1024,2048,4096}; do echo $i; done | parallel --will-cite -j 5 'head -c {}M < /dev/urandom > ${{ parameters.mount_dir }}/myfile_{}'
@@ -75,7 +76,12 @@ steps:
     displayName: 'Unmount RW mount'
 
   - script: |
-      $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/azure_key_bc.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.config_file }}
+      if [ "${{ parameters.idstring }}" = "Stream" ]; then
+      CONFIG_FILE=$(WORK_DIR)/testdata/config/azure_stream.yaml
+      else
+      CONFIG_FILE=$(WORK_DIR)/testdata/config/azure_key_bc.yaml
+      fi
+      $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$CONFIG_FILE --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.config_file }}
     displayName: 'Create Config File for RO mount'
     env:
       NIGHTLY_STO_ACC_NAME: ${{ parameters.account_name }}
@@ -84,6 +90,11 @@ steps:
       ACCOUNT_ENDPOINT: ${{ parameters.account_endpoint }}
       VERBOSE_LOG: ${{ parameters.verbose_log }}
     continueOnError: false
+
+
+  - script:
+      cat ${{ parameters.config_file }}
+    displayName: 'Print block cache config file'   
 
   - template: 'mount.yml'
     parameters:
@@ -94,7 +105,7 @@ steps:
       ro_mount: true
       mountStep: 
         script: |
-          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) -o ro
+          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) -o ro ${{ parameters.mnt_flags }}
 
   - script: |
       md5sum ${{ parameters.mount_dir }}/myfile_* > $(WORK_DIR)/md5sum_block_cache.txt
@@ -125,7 +136,7 @@ steps:
       ro_mount: true
       mountStep: 
         script: |
-          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR)
+          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) ${{ parameters.mnt_flags }}
 
   - script: |
       for i in {1,2,3,4,5,6,7,8,9,10,20,30,50,100,200,1024,2048,4096}; do echo $i; done | parallel --will-cite -j 5 'cp ${{ parameters.mount_dir }}/myfile_{} ${{ parameters.mount_dir }}/myfileCopy_{}'
@@ -164,7 +175,7 @@ steps:
       ro_mount: true
       mountStep: 
         script: |
-          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR)
+          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) ${{ parameters.mnt_flags }}
 
   - script: |
       rm -rf $(WORK_DIR)/localfile*
@@ -216,7 +227,7 @@ steps:
       ro_mount: true
       mountStep: 
         script: |
-          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR)
+          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) ${{ parameters.mnt_flags }}
 
   - script: |
       md5sum $(WORK_DIR)/localfile* > $(WORK_DIR)/md5sum_local_modified.txt
@@ -242,6 +253,17 @@ steps:
   - script: |
       $(WORK_DIR)/blobfuse2 unmount all
     displayName: 'Unmount RW mount'
+
+  - task: PublishBuildArtifacts@1
+    inputs:
+      pathToPublish: blobfuse2-logs.txt
+      artifactName: 'blobfuse_block_cache.txt'
+    condition: failed()
+    
+  - script: |
+      tail -n 200 blobfuse2-logs.txt
+    displayName: 'View Logs'
+    condition: failed()
 
   - template: 'cleanup.yml'
     parameters:

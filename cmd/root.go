@@ -50,8 +50,7 @@ import (
 )
 
 type VersionFilesList struct {
-	XMLName xml.Name `xml:"EnumerationResults"`
-	Blobs   []Blob   `xml:"Blobs>Blob"`
+	Version string `xml:"latest"`
 }
 
 type Blob struct {
@@ -104,6 +103,11 @@ func getRemoteVersion(req string) (string, error) {
 		return "", err
 	}
 
+	if len(body) > 50 {
+		log.Err("getRemoteVersion: something suspicious in the contents from remote version")
+		return "", fmt.Errorf("unable to get latest version")
+	}
+
 	var versionList VersionFilesList
 	err = xml.Unmarshal(body, &versionList)
 	if err != nil {
@@ -111,11 +115,11 @@ func getRemoteVersion(req string) (string, error) {
 		return "", err
 	}
 
-	if len(versionList.Blobs) != 1 {
+	if len(versionList.Version) < 5 || len(versionList.Version) > 20 {
 		return "", fmt.Errorf("unable to get latest version")
 	}
 
-	versionName := strings.Split(versionList.Blobs[0].Name, "/")[1]
+	versionName := versionList.Version
 	return versionName, nil
 }
 
@@ -126,7 +130,7 @@ func beginDetectNewVersion() chan interface{} {
 	go func() {
 		defer close(completed)
 
-		latestVersionUrl := common.Blobfuse2ListContainerURL + "?restype=container&comp=list&prefix=latest/"
+		latestVersionUrl := common.Blobfuse2ListContainerURL + "/latest/index.xml"
 		remoteVersion, err := getRemoteVersion(latestVersionUrl)
 		if err != nil {
 			log.Err("beginDetectNewVersion: error getting latest version [%s]", err.Error())
@@ -151,6 +155,29 @@ func beginDetectNewVersion() chan interface{} {
 			return
 		}
 
+		warningsUrl := common.Blobfuse2ListContainerURL + "/securitywarnings/" + common.Blobfuse2Version
+		hasWarnings := checkVersionExists(warningsUrl)
+
+		if hasWarnings {
+			// This version has known issues associated with it
+			// Check whether the version has been blocked by the dev team or not.
+			blockedVersions := common.Blobfuse2ListContainerURL + "/blockedversions/" + common.Blobfuse2Version
+			isBlocked := checkVersionExists(blockedVersions)
+
+			if isBlocked {
+				// This version is blocked and customer shall not be allowed to use this.
+				blockedPage := common.BlobFuse2BlockingURL + "#" + strings.ReplaceAll(strings.ReplaceAll(common.Blobfuse2Version, ".", ""), "~", "")
+				fmt.Fprintf(stderr, "PANIC: Visit %s to see the list of known issues blocking your current version [%s]\n", blockedPage, common.Blobfuse2Version)
+				log.Warn("PANIC: Visit %s to see the list of known issues blocking your current version [%s]\n", blockedPage, common.Blobfuse2Version)
+				os.Exit(1)
+			} else {
+				// This version is not blocked but has know issues list which customer shall visit.
+				warningsPage := common.BlobFuse2WarningsURL + "#" + strings.ReplaceAll(strings.ReplaceAll(common.Blobfuse2Version, ".", ""), "~", "")
+				fmt.Fprintf(stderr, "WARNING: Visit %s to see the list of known issues associated with your current version [%s]\n", warningsPage, common.Blobfuse2Version)
+				log.Warn("WARNING: Visit %s to see the list of known issues associated with your current version [%s]\n", warningsPage, common.Blobfuse2Version)
+			}
+		}
+
 		if local.OlderThan(*remote) {
 			executablePathSegments := strings.Split(strings.Replace(os.Args[0], "\\", "/", -1), "/")
 			executableName := executablePathSegments[len(executablePathSegments)-1]
@@ -158,14 +185,6 @@ func beginDetectNewVersion() chan interface{} {
 			fmt.Fprintf(stderr, "*** "+executableName+": A new version [%s] is available. Consider upgrading to latest version for bug-fixes & new features. ***\n", remoteVersion)
 			log.Info("*** "+executableName+": A new version [%s] is available. Consider upgrading to latest version for bug-fixes & new features. ***\n", remoteVersion)
 
-			warningsUrl := common.Blobfuse2ListContainerURL + "/securitywarnings/" + common.Blobfuse2Version
-			hasWarnings := checkVersionExists(warningsUrl)
-
-			if hasWarnings {
-				warningsPage := common.BlobFuse2WarningsURL + "#" + strings.ReplaceAll(common.Blobfuse2Version, ".", "")
-				fmt.Fprintf(stderr, "Visit %s to see the list of vulnerabilities associated with your current version [%s]\n", warningsPage, common.Blobfuse2Version)
-				log.Warn("Visit %s to see the list of vulnerabilities associated with your current version [%s]\n", warningsPage, common.Blobfuse2Version)
-			}
 			completed <- "A new version of Blobfuse2 is available"
 		}
 	}()

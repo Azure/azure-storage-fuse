@@ -807,7 +807,7 @@ stages:
               artifactName: 'blobfuse2'
             displayName: 'Publish Artifacts'
             
-      - job: Set_4
+      - job: Set_4_1
         timeoutInMinutes: 120
         strategy:
           matrix:
@@ -818,6 +818,72 @@ stages:
               fuse-version: 'fuse3'
               tags: 'fuse3'
               container: 'test-cnt-rhel-75'
+
+        pool:
+          name: "blobfuse-rhel-pool"
+          demands:
+            - ImageOverride -equals $(agentName)
+
+        variables:
+          - group: NightlyBlobFuse
+          - name: root_dir
+            value: '$(System.DefaultWorkingDirectory)'
+          - name: work_dir
+            value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
+          - name: mount_dir
+            value: '$(System.DefaultWorkingDirectory)/fusetmp'
+          - name: temp_dir
+            value: '$(System.DefaultWorkingDirectory)/fusetmpcache'
+
+        steps:
+          - checkout: none
+
+          - script: |
+              sudo yum update -y
+              sudo yum install git -y
+              sudo yum groupinstall "Development Tools" -y  
+            displayName: 'Install Git'
+
+          - task: DownloadBuildArtifacts@0
+            displayName: 'Download Build Artifacts'
+            inputs:
+              artifactName: 'blobfuse2-signed'
+              downloadPath: $(root_dir)
+              itemPattern: blobfuse2-signed/blobfuse2*$(tags)*x86_64.rpm
+
+          - script: |
+              ls -l
+              result=$(ls -1 | wc -l)
+              if [ $result -ne 1 ]; then
+                exit 1
+              fi
+            displayName: 'List Downloaded Package'
+            workingDirectory: $(root_dir)/blobfuse2-signed
+
+          - script: |
+              for f in ./blobfuse2*$(tags)*.rpm; do mv -v "$f" "${f/-$(tags)./-$(vmImage).}"; done;
+              cp ./blobfuse2*$(vmImage)*.rpm $(Build.ArtifactStagingDirectory)
+              f=`ls ./blobfuse2*$(vmImage)*.rpm`
+              cp "$f" $(sed 's:RHEL-7.5:RHEL-7.8:' <<< "$f")
+              cp "$f" $(sed 's:RHEL-7.5:RHEL-8.1:' <<< "$f")
+              cp "$f" $(sed 's:RHEL-7.5:RHEL-8.2:' <<< "$f")
+              cp ./blobfuse2*RHEL-7.8*.rpm $(Build.ArtifactStagingDirectory)
+              cp ./blobfuse2*RHEL-8*.rpm $(Build.ArtifactStagingDirectory)
+              rm -rf ./blobfuse2*RHEL-7.8*.rpm
+              rm -rf ./blobfuse2*RHEL-8*.rpm
+            displayName: 'Rename Package'
+            workingDirectory: $(root_dir)/blobfuse2-signed
+
+          # publishing the artifacts generated
+          - task: PublishBuildArtifacts@1
+            inputs:
+              artifactName: 'blobfuse2'
+            displayName: 'Publish Artifacts'
+
+      - job: Set_4_2
+        timeoutInMinutes: 120
+        strategy:
+          matrix:
             RHEL-8.6:
               agentName: "blobfuse-rhel8_6"
               vmImage: 'RHEL-8.6'
@@ -851,12 +917,6 @@ stages:
 
         steps:
           - checkout: none
-
-          - script: |
-              sudo touch /etc/yum.repos.d/centos.repo
-              sudo sh -c 'echo -e "[centos-extras]\nname=Centos extras - $basearch\nbaseurl=http://mirror.centos.org/centos/7/extras/x86_64\nenabled=1\ngpgcheck=1\ngpgkey=http://centos.org/keys/RPM-GPG-KEY-CentOS-7" > /etc/yum.repos.d/centos.repo'
-            condition: or(eq(variables['AgentName'], 'blobfuse-rhel7_5'),eq(variables['AgentName'], 'blobfuse-rhel7_8'))
-            displayName: "Update OS mirrors"
 
           - script: |
               sudo yum update -y
@@ -904,16 +964,6 @@ stages:
           - script: |
               for f in ./blobfuse2*$(tags)*.rpm; do mv -v "$f" "${f/-$(tags)./-$(vmImage).}"; done;
               cp ./blobfuse2*$(vmImage)*.rpm $(Build.ArtifactStagingDirectory)
-              if [ $(agentName) == "blobfuse-rhel7_5" ]; then
-                f=`ls ./blobfuse2*$(vmImage)*.rpm`
-                cp "$f" $(sed 's:RHEL-7.5:RHEL-7.8:' <<< "$f")
-                cp "$f" $(sed 's:RHEL-7.5:RHEL-8.1:' <<< "$f")
-                cp "$f" $(sed 's:RHEL-7.5:RHEL-8.2:' <<< "$f")
-                cp ./blobfuse2*RHEL-7.8*.rpm $(Build.ArtifactStagingDirectory)
-                cp ./blobfuse2*RHEL-8*.rpm $(Build.ArtifactStagingDirectory)
-                rm -rf ./blobfuse2*RHEL-7.8*.rpm
-                rm -rf ./blobfuse2*RHEL-8*.rpm
-              fi
             displayName: 'Rename Package'
             workingDirectory: $(root_dir)/blobfuse2-signed
 
@@ -921,11 +971,7 @@ stages:
               sudo sed -i '/^failovermethod=/d' /etc/yum.repos.d/*.repo
               sudo rpm -qip blobfuse2*$(vmImage)*.rpm
               sudo yum groupinstall "Development Tools" -y              
-              if [[ $(agentName) == "blobfuse-rhel7_5" || $(agentName) == "blobfuse-rhel7_8" ]]; then
-                sudo yum install fuse fuse3-libs fuse3-devel fuse3 -y
-              else
-                sudo yum install fuse fuse3-libs fuse3-devel fuse3 -y --nobest --allowerasing
-              fi
+              sudo yum install fuse fuse3-libs fuse3-devel fuse3 -y --nobest --allowerasing
               sudo rpm -i blobfuse2*$(vmImage)*.rpm
             displayName: 'Install Package'
             workingDirectory: $(Build.ArtifactStagingDirectory)
@@ -1395,12 +1441,6 @@ stages:
           - checkout: none
 
           - script: |
-              sudo touch /etc/yum.repos.d/centos.repo
-              sudo sh -c 'echo -e "[centos-extras]\nname=Centos extras - $basearch\nbaseurl=http://mirror.centos.org/centos/7/extras/x86_64\nenabled=1\ngpgcheck=1\ngpgkey=http://centos.org/keys/RPM-GPG-KEY-CentOS-7" > /etc/yum.repos.d/centos.repo'
-            condition: or(eq(variables['AgentName'], 'blobfuse-rhel7_5'),eq(variables['AgentName'], 'blobfuse-rhel7_8'))
-            displayName: "Update OS mirrors"
-
-          - script: |
               sudo yum update -y
               sudo yum install wget git -y
             displayName: 'Install Git'
@@ -1639,14 +1679,40 @@ stages:
 
                 fuse2AmdRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse2.x86_64.rpm`
                 echo "Fuse2 AMD RPM ID: $fuse2AmdRpm"
-
+                
+                marinerAmdRpmFile=$(ls blobfuse2* | grep 'cm2\.x86_64\.rpm')
                 marinerFuse3AmdRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*cm2.x86_64.rpm`
                 echo "Mariner fuse3 AMD RPM ID: $marinerFuse3AmdRpm"
+                echo "Mariner fuse3 AMD RPM $marinerAmdRpmFile"
 
+                marinerAarchRpmFile=$(ls blobfuse2* | grep 'cm2\.aarch64\.rpm')
                 marinerFuse3AarchRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*cm2.aarch64.rpm`
                 echo "Mariner fuse3 ARM RPM ID: $marinerFuse3AarchRpm"
+                echo "Mariner fuse3 ARM RPM: $marinerAarchRpmFile"
+
+                is_preview="false"
+                echo "##vso[task.setvariable variable=is_preview]$is_preview"
+                if [[ $marinerAmdRpmFile == *"preview"* ]]; then
+                  is_preview="true"
+                  echo "##vso[task.setvariable variable=is_preview]$is_preview"
+                fi
+
+                is_preview="false"
+                echo "##vso[task.setvariable variable=is_preview]$is_preview"
+                if [[ $marinerFuse3AmdRpm == *"preview"* ]]; then
+                  is_preview="true"
+                  echo "##vso[task.setvariable variable=is_preview]$is_preview"
+                fi
 
                 while IFS=, read -r distro fuseArchType repoName releaseName; do
+
+                  # If the package is preview, publish to mariner preview package
+                  if [[ $distro == *"Mariner-"* ]]; then
+                    if [ $is_preview = "true" ]; then
+                      repoName=$(echo $repoName | sed 's/prod/preview/')
+                    fi
+                  fi
+
                   echo "Uploading packages for $distro"
                   pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) repo package update --add-packages ${!fuseArchType} $repoName $releaseName
                 done < <(tail -n +3 ../packages.csv)
@@ -1659,6 +1725,13 @@ stages:
                   then
                     echo "Skipping for ARM type on $distro"
                   else
+                    if [[ $distro == *"Mariner-"* ]]; then
+                        if [ "$(is_preview)" = "true" ]; then
+                          repoName=$(echo $repoName | sed 's/prod/preview/')
+                        fi
+                    fi
+                    echo "Repository Name: $repoName"
+
                     echo "Publishing for $distro"
                     pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) repo publish $repoName
                   fi
@@ -1671,8 +1744,22 @@ stages:
     condition: succeeded('ReleaseArtifacts')
     jobs:
       - job: UpdateVersion
+        timeoutInMinutes: 120
+        strategy:
+          matrix:
+            UBN20:
+              vmImage: 'ubuntu-20.04'
+              fuselib: 'libfuse3-dev'
+              tags: 'fuse3'
+              depends: 'fuse3'
+              container: 'test-cnt-ubn-20'
+              AgentName: "blobfuse-ubuntu20"
+
         pool:
-          vmImage: 'ubuntu-20.04'
+          name: "blobfuse-ubuntu-pool"
+          demands:
+            - ImageOverride -equals $(agentName)
+
         variables:
           - group: NightlyBlobFuse
           - name: root_dir
@@ -1696,6 +1783,7 @@ stages:
               
               # install blobfuse2
               - script: |
+                  sudo apt install fuse3 -y
                   cd $(Build.ArtifactStagingDirectory)/blobfuse2
                   ls | grep -i ubuntu-20.04
                   sudo apt-get install ./`ls | grep -i ubuntu-20.04` -y
@@ -1703,13 +1791,43 @@ stages:
                 displayName: 'Installing blobfuse2'
 
               - script: |
-                  wget https://raw.githubusercontent.com/Azure/azure-storage-fuse/`echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`/releaseVersionUpdate.py
-                  ls -l
-                displayName: 'Getting Python script'
-                workingDirectory: $(root_dir)
-
+                  mkdir -p ~/blob_mnt
+                  chmod 777 ~/blob_mnt
+                  mkdir -p ~/blobfusetemp
+                  chmod 777 ~/blobfusetemp
+                  blobfuse2 mount ~/blob_mnt --tmp-path=~/blobfusetemp --container-name="\$web"
+                  sleep 2
+                env:
+                  AZURE_STORAGE_ACCOUNT: "blobfuse2"
+                  AZURE_STORAGE_AUTH_TYPE: "msi"
+                  AZURE_STORAGE_IDENTITY_CLIENT_ID: $(BLOBFUSE2_MSI_CIENT_ID)
+                displayName: 'Mount release container for version update'
+              
               - script: |
-                  python3 releaseVersionUpdate.py "$(VERSION_CNT_SAS_URL)" "`blobfuse2 version`"
-                displayName: 'Updating version number'
-                workingDirectory: $(root_dir)
-
+                  cd ~/blob_mnt/release/latest/
+                  echo "Before cleanup"
+                  ls -l 
+                  rm -rf *
+                  echo "After cleanup"
+                  ls -l 
+                displayName: 'Delete older version file'
+                
+              - script: |
+                  cd ~/blob_mnt/release/latest/
+                  touch `blobfuse2 version | cut -d " " -f3`
+                  ls -l 
+                displayName: 'Create new version file'
+              
+              - script: |
+                  cd ~/blob_mnt/release/latest/
+                  version=`blobfuse2 version | cut -d " " -f3`
+                  echo "Release version: " $version
+                  echo -e "<xml>\n<latest>$version</latest>\n</xml>" > index.xml
+                  echo "Printing index.xml"
+                  cat index.xml
+                displayName: 'Update the XML file'    
+                
+              - script: |
+                  blobfuse2 unmount all
+                displayName: 'Unmount Blobfuse2'                              
+                

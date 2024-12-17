@@ -39,11 +39,14 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -67,6 +70,7 @@ type BlockCache struct {
 
 	blockSize       uint64          // Size of each block to be cached
 	memSize         uint64          // Mem size to be used for caching at the startup
+	mntPath         string          // Mount path
 	tmpPath         string          // Disk path where these blocks will be cached
 	diskSize        uint64          // Size of disk space allocated for the caching
 	diskTimeout     uint32          // Timeout for which disk blocks will be cached
@@ -80,9 +84,9 @@ type BlockCache struct {
 	maxDiskUsageHit bool            // Flag to indicate if we have hit max disk usage
 	noPrefetch      bool            // Flag to indicate if prefetch is disabled
 	prefetchOnOpen  bool            // Start prefetching on file open call instead of waiting for first read
-
-	lazyWrite    bool           // Flag to indicate if lazy write is enabled
-	fileCloseOpt sync.WaitGroup // Wait group to wait for all async close operations to complete
+	stream          *Stream
+	lazyWrite       bool           // Flag to indicate if lazy write is enabled
+	fileCloseOpt    sync.WaitGroup // Wait group to wait for all async close operations to complete
 }
 
 // Structure defining your config parameters
@@ -98,15 +102,16 @@ type BlockCacheOptions struct {
 }
 
 const (
-	compName               = "block_cache"
-	defaultTimeout         = 120
-	MAX_POOL_USAGE  uint32 = 80
-	MIN_POOL_USAGE  uint32 = 50
-	MIN_PREFETCH           = 5
-	MIN_WRITE_BLOCK        = 3
-	MIN_RANDREAD           = 10
-	MAX_FAIL_CNT           = 3
-	MAX_BLOCKS             = 50000
+	compName                = "block_cache"
+	defaultTimeout          = 120
+	defaultBlockSize        = 16
+	MAX_POOL_USAGE   uint32 = 80
+	MIN_POOL_USAGE   uint32 = 50
+	MIN_PREFETCH            = 5
+	MIN_WRITE_BLOCK         = 3
+	MIN_RANDREAD            = 10
+	MAX_FAIL_CNT            = 3
+	MAX_BLOCKS              = 50000
 )
 
 // Verification to check satisfaction criteria with Component Interface
@@ -161,31 +166,39 @@ func (bc *BlockCache) Stop() error {
 	// Clear the disk cache on exit
 	if bc.tmpPath != "" {
 		_ = bc.diskPolicy.Stop()
-		_ = bc.TempCacheCleanup()
+		_ = common.TempCacheCleanup(bc.tmpPath)
 	}
 
 	return nil
 }
 
-// TempCacheCleanup cleans up the local cached contents
-func (bc *BlockCache) TempCacheCleanup() error {
-	if bc.tmpPath == "" {
-		return nil
+// GenConfig : Generate the default config for the component
+func (bc *BlockCache) GenConfig() string {
+	log.Info("BlockCache::Configure : config generation started")
+
+	prefetch := uint32(math.Max((MIN_PREFETCH*2)+1, (float64)(2*runtime.NumCPU())))
+	memSize := uint32(bc.getDefaultMemSize() / _1MB)
+	if (prefetch * defaultBlockSize) > memSize {
+		prefetch = (MIN_PREFETCH * 2) + 1
 	}
 
-	log.Info("BlockCache::TempCacheCleanup : Cleaning up temp directory %s", bc.tmpPath)
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("\n%s:", bc.Name()))
 
-	dirents, err := os.ReadDir(bc.tmpPath)
-	if err != nil {
-		log.Err("BlockCache::TempCacheCleanup : Failed to list directory %s [%v]", bc.tmpPath, err.Error())
-		return fmt.Errorf("failed to list directory %s", bc.tmpPath)
+	sb.WriteString(fmt.Sprintf("\n  block-size-mb: %v", defaultBlockSize))
+	sb.WriteString(fmt.Sprintf("\n  mem-size-mb: %v", memSize))
+	sb.WriteString(fmt.Sprintf("\n  prefetch: %v", prefetch))
+	sb.WriteString(fmt.Sprintf("\n  parallelism: %v", uint32(3*runtime.NumCPU())))
+
+	var tmpPath string = ""
+	_ = config.UnmarshalKey("tmp-path", &tmpPath)
+	if tmpPath != "" {
+		sb.WriteString(fmt.Sprintf("\n  path: %v", tmpPath))
+		sb.WriteString(fmt.Sprintf("\n  disk-size-mb: %v", bc.getDefaultDiskSize(tmpPath)))
+		sb.WriteString(fmt.Sprintf("\n  disk-timeout-sec: %v", defaultTimeout))
 	}
 
-	for _, entry := range dirents {
-		os.RemoveAll(filepath.Join(bc.tmpPath, entry.Name()))
-	}
-
-	return nil
+	return sb.String()
 }
 
 // Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
@@ -193,6 +206,13 @@ func (bc *BlockCache) TempCacheCleanup() error {
 //	Return failure if any config is not valid to exit the process
 func (bc *BlockCache) Configure(_ bool) error {
 	log.Trace("BlockCache::Configure : %s", bc.Name())
+	if common.IsStream {
+		err := bc.stream.Configure(true)
+		if err != nil {
+			log.Err("BlockCache:Stream::Configure : config error [invalid config attributes]")
+			return fmt.Errorf("config error in %s [%s]", bc.Name(), err.Error())
+		}
+	}
 
 	conf := BlockCacheOptions{}
 	err := config.UnmarshalKey(bc.Name(), &conf)
@@ -201,28 +221,29 @@ func (bc *BlockCache) Configure(_ bool) error {
 		return fmt.Errorf("config error in %s [%s]", bc.Name(), err.Error())
 	}
 
-	bc.blockSize = uint64(16) * _1MB
+	bc.blockSize = uint64(defaultBlockSize) * _1MB
 	if config.IsSet(compName + ".block-size-mb") {
 		bc.blockSize = uint64(conf.BlockSize * float64(_1MB))
 	}
 
-	bc.memSize = uint64(4192) * _1MB
 	if config.IsSet(compName + ".mem-size-mb") {
 		bc.memSize = conf.MemSize * _1MB
+	} else {
+		bc.memSize = bc.getDefaultMemSize()
 	}
 
-	bc.diskSize = uint64(4192)
-	if config.IsSet(compName + ".disk-size-mb") {
-		bc.diskSize = conf.DiskSize
-	}
 	bc.diskTimeout = defaultTimeout
 	if config.IsSet(compName + ".disk-timeout-sec") {
 		bc.diskTimeout = conf.DiskTimeout
 	}
 
 	bc.prefetchOnOpen = conf.PrefetchOnOpen
-	bc.prefetch = MIN_PREFETCH
+	bc.prefetch = uint32(math.Max((MIN_PREFETCH*2)+1, (float64)(2*runtime.NumCPU())))
 	bc.noPrefetch = false
+
+	if (!config.IsSet(compName + ".mem-size-mb")) && (uint64(bc.prefetch)*uint64(bc.blockSize)) > bc.memSize {
+		bc.prefetch = (MIN_PREFETCH * 2) + 1
+	}
 
 	err = config.UnmarshalKey("lazy-write", &bc.lazyWrite)
 	if err != nil {
@@ -242,14 +263,25 @@ func (bc *BlockCache) Configure(_ bool) error {
 
 	bc.maxDiskUsageHit = false
 
-	bc.workers = 128
+	bc.workers = uint32(3 * runtime.NumCPU())
 	if config.IsSet(compName + ".parallelism") {
 		bc.workers = conf.Workers
 	}
 
-	bc.tmpPath = ""
-	if conf.TmpPath != "" {
-		bc.tmpPath = common.ExpandPath(conf.TmpPath)
+	bc.tmpPath = common.ExpandPath(conf.TmpPath)
+
+	if bc.tmpPath != "" {
+		//check mnt path is not same as temp path
+		err = config.UnmarshalKey("mount-path", &bc.mntPath)
+		if err != nil {
+			log.Err("BlockCache: config error [unable to obtain Mount Path]")
+			return fmt.Errorf("config error in %s [%s]", bc.Name(), err.Error())
+		}
+
+		if bc.mntPath == bc.tmpPath {
+			log.Err("BlockCache: config error [tmp-path is same as mount path]")
+			return fmt.Errorf("config error in %s error [tmp-path is same as mount path]", bc.Name())
+		}
 
 		// Extract values from 'conf' and store them as you wish here
 		_, err = os.Stat(bc.tmpPath)
@@ -257,9 +289,19 @@ func (bc *BlockCache) Configure(_ bool) error {
 			log.Info("BlockCache: config error [tmp-path does not exist. attempting to create tmp-path.]")
 			err := os.Mkdir(bc.tmpPath, os.FileMode(0755))
 			if err != nil {
-				log.Err("BlockCache: config error creating directory after clean [%s]", err.Error())
+				log.Err("BlockCache: config error creating directory of temp path after clean [%s]", err.Error())
 				return fmt.Errorf("config error in %s [%s]", bc.Name(), err.Error())
 			}
+		}
+
+		if !common.IsDirectoryEmpty(bc.tmpPath) {
+			log.Err("BlockCache: config error %s directory is not empty", bc.tmpPath)
+			return fmt.Errorf("config error in %s [%s]", bc.Name(), "temp directory not empty")
+		}
+
+		bc.diskSize = bc.getDefaultDiskSize(bc.tmpPath)
+		if config.IsSet(compName + ".disk-size-mb") {
+			bc.diskSize = conf.DiskSize * _1MB
 		}
 	}
 
@@ -267,9 +309,6 @@ func (bc *BlockCache) Configure(_ bool) error {
 		log.Err("BlockCache::Configure : config error [memory limit too low for configured prefetch]")
 		return fmt.Errorf("config error in %s [memory limit too low for configured prefetch]", bc.Name())
 	}
-
-	log.Info("BlockCache::Configure : block size %v, mem size %v, worker %v, prefetch %v, disk path %v, max size %vMB, disk timeout %v, prefetch-on-open %t, maxDiskUsageHit %v, noPrefetch %v",
-		bc.blockSize, bc.memSize, bc.workers, bc.prefetch, bc.tmpPath, bc.diskSize, bc.diskTimeout, bc.prefetchOnOpen, bc.maxDiskUsageHit, bc.noPrefetch)
 
 	bc.blockPool = NewBlockPool(bc.blockSize, bc.memSize)
 	if bc.blockPool == nil {
@@ -284,14 +323,40 @@ func (bc *BlockCache) Configure(_ bool) error {
 	}
 
 	if bc.tmpPath != "" {
-		bc.diskPolicy, err = tlru.New(uint32((bc.diskSize*_1MB)/bc.blockSize), bc.diskTimeout, bc.diskEvict, 60, bc.checkDiskUsage)
+		bc.diskPolicy, err = tlru.New(uint32((bc.diskSize)/bc.blockSize), bc.diskTimeout, bc.diskEvict, 60, bc.checkDiskUsage)
 		if err != nil {
 			log.Err("BlockCache::Configure : fail to create LRU for memory nodes [%s]", err.Error())
 			return fmt.Errorf("config error in %s [%s]", bc.Name(), err.Error())
 		}
 	}
 
+	log.Crit("BlockCache::Configure : block size %v, mem size %v, worker %v, prefetch %v, disk path %v, max size %v, disk timeout %v, prefetch-on-open %t, maxDiskUsageHit %v, noPrefetch %v",
+		bc.blockSize, bc.memSize, bc.workers, bc.prefetch, bc.tmpPath, bc.diskSize, bc.diskTimeout, bc.prefetchOnOpen, bc.maxDiskUsageHit, bc.noPrefetch)
+
 	return nil
+}
+
+func (bc *BlockCache) getDefaultDiskSize(path string) uint64 {
+	var stat syscall.Statfs_t
+	err := syscall.Statfs(path, &stat)
+	if err != nil {
+		log.Info("BlockCache::getDefaultDiskSize : config error %s [%s]. Assigning a default value of 4GB or if any value is assigned to .disk-size-mb in config.", bc.Name(), err.Error())
+		return uint64(4192) * _1MB
+	}
+
+	return uint64(0.8 * float64(stat.Bavail) * float64(stat.Bsize))
+}
+
+func (bc *BlockCache) getDefaultMemSize() uint64 {
+	var sysinfo syscall.Sysinfo_t
+	err := syscall.Sysinfo(&sysinfo)
+
+	if err != nil {
+		log.Info("BlockCache::getDefaultMemSize : config error %s [%s]. Assigning a pre-defined value of 4GB.", bc.Name(), err.Error())
+		return uint64(4192) * _1MB
+	}
+
+	return uint64(0.8 * (float64)(sysinfo.Freeram) * float64(sysinfo.Unit))
 }
 
 // CreateFile: Create a new file
@@ -329,13 +394,15 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 	handle.Mtime = attr.Mtime
 	handle.Size = attr.Size
 
+	log.Debug("BlockCache::OpenFile : Size of file handle.Size %v", handle.Size)
 	bc.prepareHandleForBlockCache(handle)
 
-	if options.Flags&os.O_TRUNC != 0 || options.Flags&os.O_WRONLY != 0 {
+	if options.Flags&os.O_TRUNC != 0 || (options.Flags&os.O_WRONLY != 0 && options.Flags&os.O_APPEND == 0) {
 		// If file is opened in truncate or wronly mode then we need to wipe out the data consider current file size as 0
+		log.Debug("BlockCache::OpenFile : Truncate %v to 0", options.Name)
 		handle.Size = 0
 		handle.Flags.Set(handlemap.HandleFlagDirty)
-	} else if options.Flags&os.O_RDWR != 0 && handle.Size != 0 {
+	} else if handle.Size != 0 && (options.Flags&os.O_RDWR != 0 || options.Flags&os.O_APPEND != 0) {
 		// File is not opened in read-only mode so we need to get the list of blocks and validate the size
 		// As there can be a potential write on this file, currently configured block size and block size of the file in container
 		// has to match otherwise it will corrupt the file. Fail the open call if this is not the case.
@@ -345,18 +412,9 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 			return nil, fmt.Errorf("failed to retrieve block list for %s", options.Name)
 		}
 
-		lst, _ := handle.GetValue("blockList")
-		listMap := lst.(map[int64]string)
-
-		listLen := len(*blockList)
-		for idx, block := range *blockList {
-			listMap[int64(idx)] = block.Id
-			// All blocks shall of same size otherwise fail the open call
-			// Last block is allowed to be of smaller size as it can be partial block
-			if block.Size != bc.blockSize && idx != (listLen-1) {
-				log.Err("BlockCache::OpenFile : Block size mismatch for %s [block: %v, size: %v]", options.Name, block.Id, block.Size)
-				return nil, fmt.Errorf("block size mismatch for %s", options.Name)
-			}
+		valid := bc.validateBlockList(handle, options, blockList)
+		if !valid {
+			return nil, fmt.Errorf("block size mismatch for %s", options.Name)
 		}
 	}
 
@@ -374,6 +432,29 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 	return handle, nil
 }
 
+// validateBlockList: Validates the blockList and populates the blocklist inside the handle for a file.
+// This method is only called when the file is opened in O_RDWR mode.
+// Each Block's size must equal to blockSize set in config and last block size <= config's blockSize
+// returns true, if blockList is valid
+func (bc *BlockCache) validateBlockList(handle *handlemap.Handle, options internal.OpenFileOptions, blockList *internal.CommittedBlockList) bool {
+	lst, _ := handle.GetValue("blockList")
+	listMap := lst.(map[int64]*blockInfo)
+	listLen := len(*blockList)
+
+	for idx, block := range *blockList {
+		if (idx < (listLen-1) && block.Size != bc.blockSize) || (idx == (listLen-1) && block.Size > bc.blockSize) {
+			log.Err("BlockCache::validateBlockList : Block size mismatch for %s [block: %v, size: %v]", options.Name, block.Id, block.Size)
+			return false
+		}
+		listMap[int64(idx)] = &blockInfo{
+			id:        block.Id,
+			committed: true,
+			size:      block.Size,
+		}
+	}
+	return true
+}
+
 func (bc *BlockCache) prepareHandleForBlockCache(handle *handlemap.Handle) {
 	// Allocate a block pool object for this handle
 	// Actual linked list to hold the nodes
@@ -383,7 +464,7 @@ func (bc *BlockCache) prepareHandleForBlockCache(handle *handlemap.Handle) {
 	}
 
 	// Create map to hold the block-ids for this file
-	listMap := make(map[int64]string, 0)
+	listMap := make(map[int64]*blockInfo, 0)
 	handle.SetValue("blockList", listMap)
 
 	// Set next offset to download as 0
@@ -404,10 +485,13 @@ func (bc *BlockCache) FlushFile(options internal.FlushFileOptions) error {
 	options.Handle.Lock()
 	defer options.Handle.Unlock()
 
-	err := bc.commitBlocks(options.Handle)
-	if err != nil {
-		log.Err("BlockCache::FlushFile : Failed to commit blocks for %s [%s]", options.Handle.Path, err.Error())
-		return err
+	// call commit blocks only if the handle is dirty
+	if options.Handle.Dirty() {
+		err := bc.commitBlocks(options.Handle)
+		if err != nil {
+			log.Err("BlockCache::FlushFile : Failed to commit blocks for %s [%s]", options.Handle.Path, err.Error())
+			return err
+		}
 	}
 
 	return nil
@@ -453,6 +537,7 @@ func (bc *BlockCache) closeFileInternal(options internal.CloseFileOptions) error
 
 		// Wait for download to complete and then free up this block
 		<-block.state
+		block.node = nil
 		block.ReUse()
 		bc.blockPool.Release(block)
 	}
@@ -463,12 +548,18 @@ func (bc *BlockCache) closeFileInternal(options internal.CloseFileOptions) error
 	node = blockList.Front()
 	for ; node != nil; node = blockList.Front() {
 		block := blockList.Remove(node).(*Block)
+		// block.Unblock()
+		block.node = nil
 		block.ReUse()
 		bc.blockPool.Release(block)
 	}
 	options.Handle.Buffers.Cooked = nil
 
 	return nil
+}
+
+func (bc *BlockCache) getBlockSize(fileSize uint64, block *Block) uint64 {
+	return min(bc.blockSize, fileSize-block.offset)
 }
 
 // ReadInBuffer: Read the file into a buffer
@@ -497,14 +588,37 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 
 		// Copy data from this block to user buffer
 		readOffset := uint64(options.Offset) - block.offset
-		bytesRead := copy(options.Data[dataRead:], block.data[readOffset:])
+		blockSize := bc.getBlockSize(uint64(options.Handle.Size), block)
+
+		bytesRead := copy(options.Data[dataRead:], block.data[readOffset:blockSize])
 
 		// Move offset forward in case we need to copy more data
 		options.Offset += int64(bytesRead)
 		dataRead += bytesRead
+
+		if options.Offset >= options.Handle.Size {
+			// EOF reached so early exit
+			return dataRead, io.EOF
+		}
 	}
 
 	return dataRead, nil
+}
+
+func (bc *BlockCache) addToCooked(handle *handlemap.Handle, block *Block) {
+	if block.node != nil {
+		_ = handle.Buffers.Cooking.Remove(block.node)
+		_ = handle.Buffers.Cooked.Remove(block.node)
+	}
+	block.node = handle.Buffers.Cooked.PushBack(block)
+}
+
+func (bc *BlockCache) addToCooking(handle *handlemap.Handle, block *Block) {
+	if block.node != nil {
+		_ = handle.Buffers.Cooked.Remove(block.node)
+		_ = handle.Buffers.Cooking.Remove(block.node)
+	}
+	block.node = handle.Buffers.Cooking.PushBack(block)
 }
 
 // getBlock: From offset generate the Block index and get the Block corresponding to it
@@ -533,6 +647,20 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 	index := bc.getBlockIndex(readoffset)
 	node, found := handle.GetValue(fmt.Sprintf("%v", index))
 	if !found {
+
+		// block is not present in the buffer list, check if it is uncommitted
+		// If yes, commit all the uncommitted blocks first and then download this block
+		shouldCommit, _ := shouldCommitAndDownload(int64(index), handle)
+		if shouldCommit {
+			// commit all the uncommitted blocks to storage
+			log.Debug("BlockCache::getBlock : Downloading an uncommitted block %v, so committing all the staged blocks for %v=>%s", index, handle.ID, handle.Path)
+			err := bc.commitBlocks(handle)
+			if err != nil {
+				log.Err("BlockCache::getBlock : Failed to commit blocks for %v=>%s [%s]", handle.ID, handle.Path, err.Error())
+				return nil, err
+			}
+		}
+
 		// If this is the first read request then prefetch all required nodes
 		val, _ := handle.GetValue("#")
 		if !bc.noPrefetch && val.(uint64) == 0 {
@@ -570,39 +698,52 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 	block := node.(*Block)
 
 	// Wait for this block to complete the download
-	t := int(0)
-	t = <-block.state
+	t, ok := <-block.state
+	if ok {
+		// this block is now open to read and process
+		block.Unblock()
 
-	if t == 1 {
-		block.flags.Clear(BlockFlagDownloading)
+		switch t {
+		case BlockStatusDownloaded:
+			log.Debug("BlockCache::getBlock : Downloaded block %v for %v=>%s (read offset %v)", index, handle.ID, handle.Path, readoffset)
 
-		if block.IsFailed() {
-			log.Err("BlockCache::getBlock : Failed to download block %v=>%s (offset %v, index %v)", handle.ID, handle.Path, readoffset, index)
+			block.flags.Clear(BlockFlagDownloading)
+
+			// Download complete and you are first reader of this block
+			if !bc.noPrefetch && handle.OptCnt <= MIN_RANDREAD {
+				// So far this file has been read sequentially so prefetch more
+				val, _ := handle.GetValue("#")
+				if int64(val.(uint64)*bc.blockSize) < handle.Size {
+					_ = bc.startPrefetch(handle, val.(uint64), true)
+				}
+			}
+
+			// This block was moved to in-process queue as download is complete lets move it back to normal queue
+			bc.addToCooked(handle, block)
+
+			// mark this block as synced so that if it can used for write later
+			// which will move it back to cooking list as per the synced flag
+			block.flags.Set(BlockFlagSynced)
+
+		case BlockStatusUploaded:
+			log.Debug("BlockCache::getBlock : Staged block %v for %v=>%s (read offset %v)", index, handle.ID, handle.Path, readoffset)
+			block.flags.Clear(BlockFlagUploading)
+
+		case BlockStatusDownloadFailed:
+			log.Err("BlockCache::getBlock : Failed to download block %v for %v=>%s (read offset %v)", index, handle.ID, handle.Path, readoffset)
 
 			// Remove this node from handle so that next read retries to download the block again
-			_ = handle.Buffers.Cooking.Remove(block.node)
-			handle.RemoveValue(fmt.Sprintf("%v", block.id))
-			block.ReUse()
-			bc.blockPool.Release(block)
+			bc.releaseDownloadFailedBlock(handle, block)
 			return nil, fmt.Errorf("failed to download block")
+
+		case BlockStatusUploadFailed:
+			// Local data is still valid so continue using this buffer
+			log.Err("BlockCache::getBlock : Failed to upload block %v for %v=>%s (read offset %v)", index, handle.ID, handle.Path, readoffset)
+			block.flags.Clear(BlockFlagUploading)
+
+			// Move this block to end of queue as this is still modified and un-staged
+			bc.addToCooking(handle, block)
 		}
-
-		// Download complete and you are first reader of this block
-		if handle.OptCnt <= MIN_RANDREAD {
-			// So far this file has been read sequentially so prefetch more
-			val, _ := handle.GetValue("#")
-			if int64(val.(uint64)*bc.blockSize) < handle.Size {
-				_ = bc.startPrefetch(handle, val.(uint64), true)
-			}
-		}
-
-		// This block was moved to in-process queue as download is complete lets move it back to normal queue
-		_ = handle.Buffers.Cooking.Remove(block.node)
-		block.node = handle.Buffers.Cooked.PushBack(block)
-
-		// Mark this block is now open for everyone to read and process
-		// Once unblocked and moved to original queue, any instance can delete this block to reuse as well
-		block.Unblock()
 	}
 
 	return block, nil
@@ -636,15 +777,18 @@ func (bc *BlockCache) startPrefetch(handle *handlemap.Handle, index uint64, pref
 				block := handle.Buffers.Cooking.Remove(node).(*Block)
 				block.node = nil
 				i++
-
+				//This list may contain dirty blocks which are yet to be committed.
 				select {
-				case <-block.state:
+				case _, ok := <-block.state:
 					// As we are first reader of this block here its important to unblock any future readers on this block
-					block.flags.Clear(BlockFlagDownloading)
-					block.Unblock()
-
-					// Block is downloaded so it's safe to ready it for reuse
-					block.node = handle.Buffers.Cooked.PushBack(block)
+					if ok {
+						block.flags.Clear(BlockFlagDownloading)
+						block.Unblock()
+						// Block is downloaded so it's safe to ready it for reuse
+						block.node = handle.Buffers.Cooked.PushBack(block)
+					} else {
+						block.node = handle.Buffers.Cooking.PushBack(block)
+					}
 
 				default:
 					// Block is still under download so can not reuse this
@@ -694,10 +838,24 @@ func (bc *BlockCache) startPrefetch(handle *handlemap.Handle, index uint64, pref
 	}
 
 	for i := uint32(0); i < cnt; i++ {
-		// Revalidate this node does not exists in the block map
+		// Check if the block exists in the local cache or not
+		// If not, download the block from storage
 		_, found := handle.GetValue(fmt.Sprintf("%v", index))
 		if !found {
-			// Block not found so lets push it for download
+			// Check if the block is an uncommitted block or not
+			// For uncommitted block we need to commit the block first
+			shouldCommit, _ := shouldCommitAndDownload(int64(index), handle)
+			if shouldCommit {
+				// This shall happen only for the first uncommitted block and shall flush all the uncommitted blocks to storage
+				log.Debug("BlockCache::startPrefetch : Fetching an uncommitted block %v, so committing all the staged blocks for %v=>%s", index, handle.ID, handle.Path)
+				err := bc.commitBlocks(handle)
+				if err != nil {
+					log.Err("BlockCache::startPrefetch : Failed to commit blocks for %v=>%s [%s]", handle.ID, handle.Path, err.Error())
+					return err
+				}
+			}
+
+			// push the block for download
 			err := bc.refreshBlock(handle, index, prefetch || i > 0)
 			if err != nil {
 				return err
@@ -739,6 +897,16 @@ func (bc *BlockCache) refreshBlock(handle *handlemap.Handle, index uint64, prefe
 		block := node.Value.(*Block)
 
 		if block.id != -1 {
+			// If the block is being staged, then wait till it is uploaded
+			// and then use it for read
+			if block.flags.IsSet(BlockFlagUploading) {
+				log.Debug("BlockCache::refreshBlock : Waiting for the block %v to upload before using it for block %v read for %v=>%s", block.id, index, handle.ID, handle.Path)
+				_, ok := <-block.state
+				if ok {
+					block.Unblock()
+				}
+			}
+
 			// This is a reuse of a block case so we need to remove old entry from the map
 			handle.RemoveValue(fmt.Sprintf("%v", block.id))
 		}
@@ -769,11 +937,8 @@ func (bc *BlockCache) lineupDownload(handle *handlemap.Handle, block *Block, pre
 	}
 
 	// Remove this block from free block list and add to in-process list
-	if block.node != nil {
-		_ = handle.Buffers.Cooked.Remove(block.node)
-	}
+	bc.addToCooking(handle, block)
 
-	block.node = handle.Buffers.Cooking.PushFront(block)
 	block.flags.Set(BlockFlagDownloading)
 
 	// Send the work item to worker pool to schedule download
@@ -816,25 +981,31 @@ func (bc *BlockCache) download(item *workItem) {
 				log.Err("BlockCache::download : Failed to open file %s [%s]", fileName, err.Error())
 				_ = os.Remove(localPath)
 			} else {
+				var successfulRead bool = true
 				n, err := f.Read(item.block.data)
 				if err != nil {
 					log.Err("BlockCache::download : Failed to read data from disk cache %s [%s]", fileName, err.Error())
-					f.Close()
+					successfulRead = false
+					_ = os.Remove(localPath)
+				}
+
+				if n != int(bc.blockSize) && item.block.offset+uint64(n) != uint64(item.handle.Size) {
+					log.Err("BlockCache::download : Local data retrieved from disk size mismatch, Expected %v, OnDisk %v, fileSize %v", bc.getBlockSize(uint64(item.handle.Size), item.block), n, item.handle.Size)
+					successfulRead = false
 					_ = os.Remove(localPath)
 				}
 
 				f.Close()
 				// We have read the data from disk so there is no need to go over network
 				// Just mark the block that download is complete
-
-				item.block.endIndex = item.block.offset + uint64(n)
-				item.block.Ready()
-				return
+				if successfulRead {
+					item.block.Ready(BlockStatusDownloaded)
+					return
+				}
 			}
 		}
 	}
 
-	item.block.endIndex = item.block.offset
 	// If file does not exists then download the block from the container
 	n, err := bc.NextComponent().ReadInBuffer(internal.ReadInBufferOptions{
 		Handle: item.handle,
@@ -846,7 +1017,7 @@ func (bc *BlockCache) download(item *workItem) {
 		// If we failed to read the data 3 times then just give up
 		log.Err("BlockCache::download : 3 attempts to download a block have failed %v=>%s (index %v, offset %v)", item.handle.ID, item.handle.Path, item.block.id, item.block.offset)
 		item.block.Failed()
-		item.block.Ready()
+		item.block.Ready(BlockStatusDownloadFailed)
 		return
 	}
 
@@ -864,8 +1035,6 @@ func (bc *BlockCache) download(item *workItem) {
 		return
 	}
 
-	item.block.endIndex = item.block.offset + uint64(n)
-
 	if bc.tmpPath != "" {
 		err := os.MkdirAll(filepath.Dir(localPath), 0777)
 		if err != nil {
@@ -876,7 +1045,7 @@ func (bc *BlockCache) download(item *workItem) {
 		// Dump this block to local disk cache
 		f, err := os.Create(localPath)
 		if err == nil {
-			_, err := f.Write(item.block.data)
+			_, err := f.Write(item.block.data[:n])
 			if err != nil {
 				log.Err("BlockCache::download : Failed to write %s to disk [%v]", localPath, err.Error())
 				_ = os.Remove(localPath)
@@ -888,15 +1057,17 @@ func (bc *BlockCache) download(item *workItem) {
 	}
 
 	// Just mark the block that download is complete
-	item.block.Ready()
+	item.block.Ready(BlockStatusDownloaded)
 }
 
 // WriteFile: Write to the local file
 func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) {
-	//log.Debug("BlockCache::WriteFile : Writing %v bytes from %s", len(options.Data), options.Handle.Path)
+	// log.Debug("BlockCache::WriteFile : Writing %v bytes from %s", len(options.Data), options.Handle.Path)
 
 	options.Handle.Lock()
 	defer options.Handle.Unlock()
+
+	// log.Debug("BlockCache::WriteFile : Writing handle %v=>%v: offset %v, %v bytes", options.Handle.ID, options.Handle.Path, options.Offset, len(options.Data))
 
 	// Keep getting next blocks until you read the request amount of data
 	dataWritten := int(0)
@@ -907,6 +1078,8 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 			log.Err("BlockCache::WriteFile : Unable to allocate block for %s [%s]", options.Handle.Path, err.Error())
 			return dataWritten, err
 		}
+
+		// log.Debug("BlockCache::WriteFile : Writing to block %v, offset %v for handle %v=>%v", block.id, options.Offset, options.Handle.ID, options.Handle.Path)
 
 		// Copy the incoming data to block
 		writeOffset := uint64(options.Offset) - block.offset
@@ -920,9 +1093,8 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 		options.Offset += int64(bytesWritten)
 		dataWritten += bytesWritten
 
-		if block.endIndex < uint64(options.Offset) {
-			block.endIndex = uint64(options.Offset)
-			options.Handle.Size = int64(block.endIndex)
+		if options.Handle.Size < options.Offset {
+			options.Handle.Size = options.Offset
 		}
 	}
 
@@ -934,10 +1106,10 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 	index := bc.getBlockIndex(offset)
 	if index >= MAX_BLOCKS {
 		log.Err("BlockCache::getOrCreateBlock : Failed to get Block %v=>%s offset %v", handle.ID, handle.Path, offset)
-		return nil, fmt.Errorf("block index out of range. Increase your block size.")
+		return nil, fmt.Errorf("block index out of range. Increase your block size")
 	}
 
-	//log.Debug("FilBlockCacheCache::getOrCreateBlock : Get block for %s, index %v", handle.Path, index)
+	// log.Debug("FilBlockCacheCache::getOrCreateBlock : Get block for %s, index %v", handle.Path, index)
 
 	var block *Block
 	var err error
@@ -961,11 +1133,42 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 		block.offset = index * bc.blockSize
 
 		if block.offset < uint64(handle.Size) {
-			// We are writing somewhere in between so just fetch this block
-			bc.lineupDownload(handle, block, false)
+			shouldCommit, shouldDownload := shouldCommitAndDownload(block.id, handle)
 
-			// Now wait for download to complete
-			<-block.state
+			// if a block has been staged and deleted from the buffer list, then we should commit the existing blocks
+			// commit the dirty blocks and download the given block
+			if shouldCommit {
+				log.Debug("BlockCache::getOrCreateBlock : Fetching an uncommitted block %v, so committing all the staged blocks for %v=>%s", block.id, handle.ID, handle.Path)
+				err = bc.commitBlocks(handle)
+				if err != nil {
+					log.Err("BlockCache::getOrCreateBlock : Failed to commit blocks for %v=>%s [%s]", handle.ID, handle.Path, err.Error())
+					return nil, err
+				}
+			}
+
+			// download the block if,
+			//    - it was already committed, or
+			//    - it was committed by the above commit blocks operation
+			if shouldDownload || shouldCommit {
+				// We are writing somewhere in between so just fetch this block
+				log.Debug("BlockCache::getOrCreateBlock : Downloading block %v for %v=>%v", block.id, handle.ID, handle.Path)
+				bc.lineupDownload(handle, block, false)
+
+				// Now wait for download to complete
+				<-block.state
+
+				// if the block failed to download, it can't be used for overwriting
+				if block.IsFailed() {
+					log.Err("BlockCache::getOrCreateBlock : Failed to download block %v for %v=>%s", block.id, handle.ID, handle.Path)
+
+					// Remove this node from handle so that next read retries to download the block again
+					bc.releaseDownloadFailedBlock(handle, block)
+					return nil, fmt.Errorf("failed to download block")
+				}
+			} else {
+				log.Debug("BlockCache::getOrCreateBlock : push block %v to the cooking list for %v=>%v", block.id, handle.ID, handle.Path)
+				block.node = handle.Buffers.Cooking.PushBack(block)
+			}
 		} else {
 			block.node = handle.Buffers.Cooking.PushBack(block)
 		}
@@ -988,17 +1191,38 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 
 		// If the block was staged earlier then we are overwriting it here so move it back to cooking queue
 		if block.flags.IsSet(BlockFlagSynced) {
-			if block.node != nil {
-				_ = handle.Buffers.Cooked.Remove(block.node)
+			log.Debug("BlockCache::getOrCreateBlock : Overwriting back to staged block %v for %v=>%s", block.id, handle.ID, handle.Path)
+
+		} else if block.flags.IsSet(BlockFlagDownloading) {
+			log.Debug("BlockCache::getOrCreateBlock : Waiting for download to finish for committed block %v for %v=>%s", block.id, handle.ID, handle.Path)
+			_, ok := <-block.state
+			if ok {
+				block.Unblock()
 			}
 
-			block.node = handle.Buffers.Cooking.PushBack(block)
-			block.flags.Clear(BlockFlagSynced)
-		} else if block.flags.IsSet(BlockFlagDownloading) {
-			<-block.state
-			block.flags.Clear(BlockFlagDownloading)
-			block.Unblock()
+			// if the block failed to download, it can't be used for overwriting
+			if block.IsFailed() {
+				log.Err("BlockCache::getOrCreateBlock : Failed to download block %v for %v=>%s", block.id, handle.ID, handle.Path)
+
+				// Remove this node from handle so that next read retries to download the block again
+				bc.releaseDownloadFailedBlock(handle, block)
+				return nil, fmt.Errorf("failed to download block")
+			}
+		} else if block.flags.IsSet(BlockFlagUploading) {
+			// If the block is being staged, then wait till it is uploaded,
+			// and then write to the same block and move it back to cooking queue
+			log.Debug("BlockCache::getOrCreateBlock : Waiting for the block %v to upload for %v=>%s", block.id, handle.ID, handle.Path)
+			_, ok := <-block.state
+			if ok {
+				block.Unblock()
+			}
 		}
+
+		bc.addToCooking(handle, block)
+
+		block.flags.Clear(BlockFlagUploading)
+		block.flags.Clear(BlockFlagDownloading)
+		block.flags.Clear(BlockFlagSynced)
 	}
 
 	return block, nil
@@ -1012,7 +1236,7 @@ func (bc *BlockCache) stageBlocks(handle *handlemap.Handle, cnt int) error {
 	node := nodeList.Front()
 
 	lst, _ := handle.GetValue("blockList")
-	listMap := lst.(map[int64]string)
+	listMap := lst.(map[int64]*blockInfo)
 
 	for node != nil && cnt > 0 {
 		nextNode := node.Next()
@@ -1029,14 +1253,77 @@ func (bc *BlockCache) stageBlocks(handle *handlemap.Handle, cnt int) error {
 	return nil
 }
 
-// lineupUpload : Create a work item and schedule the upload
-func (bc *BlockCache) lineupUpload(handle *handlemap.Handle, block *Block, listMap map[int64]string) {
-	// id := listMap[block.id]
-	// if id == "" {
-	id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
-	listMap[block.id] = id
-	//}
+// remove the block which failed to download so that it can be used again
+func (bc *BlockCache) releaseDownloadFailedBlock(handle *handlemap.Handle, block *Block) {
+	if block.node != nil {
+		_ = handle.Buffers.Cooking.Remove(block.node)
+		_ = handle.Buffers.Cooked.Remove(block.node)
+	}
 
+	handle.RemoveValue(fmt.Sprintf("%v", block.id))
+	block.node = nil
+	block.ReUse()
+	bc.blockPool.Release(block)
+}
+
+func (bc *BlockCache) printCooking(handle *handlemap.Handle) { //nolint
+	nodeList := handle.Buffers.Cooking
+	node := nodeList.Front()
+	cookedId := []int64{}
+	cookingId := []int64{}
+	for node != nil {
+		nextNode := node.Next()
+		block := node.Value.(*Block)
+		cookingId = append(cookingId, block.id)
+		node = nextNode
+	}
+	nodeList = handle.Buffers.Cooked
+	node = nodeList.Front()
+	for node != nil {
+		nextNode := node.Next()
+		block := node.Value.(*Block)
+		cookedId = append(cookedId, block.id)
+		node = nextNode
+	}
+	log.Debug("BlockCache::printCookingnCooked : %v=>%s \n Cooking: [%v] \n Cooked: [%v]", handle.ID, handle.Path, cookingId, cookedId)
+
+}
+
+// shouldCommitAndDownload is used to check if we should commit the existing blocks and download the given block.
+// There can be a case where a block has been partially written, staged and cleared from the buffer list.
+// If write call comes for that block, we cannot get the previous staged data
+// since the block is not yet committed. So, we have to commit it.
+// If the block is staged and cleared from the buffer list, return true for commit and false for downloading.
+// if the block is already committed, return false for commit and true for downloading.
+func shouldCommitAndDownload(blockID int64, handle *handlemap.Handle) (bool, bool) {
+	lst, ok := handle.GetValue("blockList")
+	if !ok {
+		return false, false
+	}
+
+	listMap := lst.(map[int64]*blockInfo)
+	val, ok := listMap[blockID]
+	if ok {
+		// block id exists
+		// If block is staged, return true for commit and false for downloading
+		// If block is committed, return false for commit and true for downloading
+		return !val.committed, val.committed
+	} else {
+		return false, false
+	}
+}
+
+// lineupUpload : Create a work item and schedule the upload
+func (bc *BlockCache) lineupUpload(handle *handlemap.Handle, block *Block, listMap map[int64]*blockInfo) {
+
+	id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
+	listMap[block.id] = &blockInfo{
+		id:        id,
+		committed: false,
+		size:      bc.getBlockSize(uint64(handle.Size), block),
+	}
+
+	log.Debug("BlockCache::lineupUpload : block %v, size %v for %v=>%s, blockId %v", block.id, bc.getBlockSize(uint64(handle.Size), block), handle.ID, handle.Path, id)
 	item := &workItem{
 		handle:   handle,
 		block:    block,
@@ -1046,21 +1333,12 @@ func (bc *BlockCache) lineupUpload(handle *handlemap.Handle, block *Block, listM
 		blockId:  id,
 	}
 
-	log.Debug("BlockCache::lineupUpload : Upload block %v=>%s (index %v, offset %v, data %v)", handle.ID, handle.Path, block.id, block.offset, (block.endIndex - block.offset))
-
-	if (block.endIndex - block.offset) == 0 {
-		log.Err("BlockCache::lineupUpload : Upload block %v=>%s (index %v, offset %v, data %v) 0 byte block formed", handle.ID, handle.Path, block.id, block.offset, (block.endIndex - block.offset))
-	}
-
-	// Remove this block from free block list and add to in-process list
-	if block.node != nil {
-		_ = handle.Buffers.Cooking.Remove(block.node)
-	}
-
 	block.Uploading()
 	block.flags.Clear(BlockFlagFailed)
 	block.flags.Set(BlockFlagUploading)
-	block.node = handle.Buffers.Cooked.PushBack(block)
+
+	// Remove this block from free block list and add to in-process list
+	bc.addToCooked(handle, block)
 
 	// Send the work item to worker pool to schedule download
 	bc.threadPool.Schedule(false, item)
@@ -1071,6 +1349,11 @@ func (bc *BlockCache) waitAndFreeUploadedBlocks(handle *handlemap.Handle, cnt in
 	node := nodeList.Front()
 	nextNode := node
 
+	wipeoutBlock := false
+	if cnt == 1 {
+		wipeoutBlock = true
+	}
+
 	for nextNode != nil && cnt > 0 {
 		node = nextNode
 		nextNode = node.Next()
@@ -1078,26 +1361,32 @@ func (bc *BlockCache) waitAndFreeUploadedBlocks(handle *handlemap.Handle, cnt in
 		block := node.Value.(*Block)
 		if block.id != -1 {
 			// Wait for upload of this block to complete
-			<-block.state
+			_, ok := <-block.state
+			block.flags.Clear(BlockFlagDownloading)
 			block.flags.Clear(BlockFlagUploading)
-		}
 
-		block.Unblock()
+			if ok {
+				block.Unblock()
+			}
+		} else {
+			block.Unblock()
+		}
 
 		if block.IsFailed() {
 			log.Err("BlockCache::waitAndFreeUploadedBlocks : Failed to upload block, posting back to cooking list %v=>%s (index %v, offset %v)", handle.ID, handle.Path, block.id, block.offset)
-			_ = handle.Buffers.Cooked.Remove(block.node)
-			block.node = handle.Buffers.Cooking.PushFront(block)
+			bc.addToCooking(handle, block)
 			continue
 		}
 		cnt--
 
-		log.Debug("BlockCache::waitAndFreeUploadedBlocks : Block cleanup for block %v=>%s (index %v, offset %v)", handle.ID, handle.Path, block.id, block.offset)
-		handle.RemoveValue(fmt.Sprintf("%v", block.id))
-		nodeList.Remove(node)
-		block.node = nil
-		block.ReUse()
-		bc.blockPool.Release(block)
+		if wipeoutBlock || block.id == -1 {
+			log.Debug("BlockCache::waitAndFreeUploadedBlocks : Block cleanup for block %v=>%s (index %v, offset %v)", handle.ID, handle.Path, block.id, block.offset)
+			handle.RemoveValue(fmt.Sprintf("%v", block.id))
+			nodeList.Remove(node)
+			block.node = nil
+			block.ReUse()
+			bc.blockPool.Release(block)
+		}
 	}
 }
 
@@ -1110,12 +1399,12 @@ func (bc *BlockCache) upload(item *workItem) {
 	flock := bc.fileLocks.Get(fileName)
 	flock.Lock()
 	defer flock.Unlock()
-
+	blockSize := bc.getBlockSize(uint64(item.handle.Size), item.block)
 	// This block is updated so we need to stage it now
 	err := bc.NextComponent().StageData(internal.StageDataOptions{
 		Name:   item.handle.Path,
-		Data:   item.block.data[0 : item.block.endIndex-item.block.offset],
-		Offset: uint64(item.block.id),
+		Data:   item.block.data[0:blockSize],
+		Offset: uint64(item.block.offset),
 		Id:     item.blockId})
 	if err != nil {
 		// Fail to write the data so just reschedule this request
@@ -1126,7 +1415,7 @@ func (bc *BlockCache) upload(item *workItem) {
 			// If we failed to write the data 3 times then just give up
 			log.Err("BlockCache::upload : 3 attempts to upload a block have failed %v=>%s (index %v, offset %v)", item.handle.ID, item.handle.Path, item.block.id, item.block.offset)
 			item.block.Failed()
-			item.block.Ready()
+			item.block.Ready(BlockStatusUploadFailed)
 			return
 		}
 
@@ -1146,7 +1435,7 @@ func (bc *BlockCache) upload(item *workItem) {
 		// Dump this block to local disk cache
 		f, err := os.Create(localPath)
 		if err == nil {
-			_, err := f.Write(item.block.data[0 : item.block.endIndex-item.block.offset])
+			_, err := f.Write(item.block.data[0:blockSize])
 			if err != nil {
 				log.Err("BlockCache::upload : Failed to write %s to disk [%v]", localPath, err.Error())
 				_ = os.Remove(localPath)
@@ -1167,7 +1456,7 @@ func (bc *BlockCache) upload(item *workItem) {
 return_safe:
 	item.block.flags.Set(BlockFlagSynced)
 	item.block.NoMoreDirty()
-	item.block.Ready()
+	item.block.Ready(BlockStatusUploaded)
 }
 
 // Stage the given number of blocks from this handle
@@ -1204,34 +1493,113 @@ func (bc *BlockCache) commitBlocks(handle *handlemap.Handle) error {
 		}
 	}
 
-	// Generate the block id list order now
+	blockIDList, err := bc.getBlockIDList(handle)
+	if err != nil {
+		log.Err("BlockCache::commitBlocks : Failed to get block id list for %v [%v]", handle.Path, err.Error())
+		return err
+	}
+
+	log.Debug("BlockCache::commitBlocks : Committing blocks for %s", handle.Path)
+
+	// Commit the block list now
+	err = bc.NextComponent().CommitData(internal.CommitDataOptions{Name: handle.Path, List: blockIDList, BlockSize: bc.blockSize})
+	if err != nil {
+		log.Err("BlockCache::commitBlocks : Failed to commit blocks for %s [%s]", handle.Path, err.Error())
+		return err
+	}
+
+	// set all the blocks as committed
 	list, _ := handle.GetValue("blockList")
-	listMap := list.(map[int64]string)
+	listMap := list.(map[int64]*blockInfo)
+	for k := range listMap {
+		listMap[k].committed = true
+	}
+
+	handle.Flags.Clear(handlemap.HandleFlagDirty)
+	return nil
+}
+
+func (bc *BlockCache) getBlockIDList(handle *handlemap.Handle) ([]string, error) {
+	// generate the block id list order
+	list, _ := handle.GetValue("blockList")
+	listMap := list.(map[int64]*blockInfo)
 
 	offsets := make([]int64, 0)
-	blockIdList := make([]string, 0)
+	blockIDList := make([]string, 0)
 
 	for k := range listMap {
 		offsets = append(offsets, k)
 	}
 	sort.Slice(offsets, func(i, j int) bool { return offsets[i] < offsets[j] })
 
-	for i := 0; i < len(offsets); i++ {
-		blockIdList = append(blockIdList, listMap[offsets[i]])
-		log.Debug("BlockCache::commitBlocks : Preparing blocklist for %v=>%s (%v :  %v)", handle.ID, handle.Path, i, listMap[offsets[i]])
+	zeroBlockStaged := false
+	zeroBlockID := ""
+	index := int64(0)
+	i := 0
+
+	for i < len(offsets) {
+		if index == offsets[i] {
+			// TODO: when a staged block (not last block) has data less than block size
+			if i != len(offsets)-1 && listMap[offsets[i]].size != bc.blockSize {
+				log.Err("BlockCache::getBlockIDList : Staged block %v has less data %v for %v=>%s\n%v", offsets[i], listMap[offsets[i]].size, handle.ID, handle.Path, common.BlockCacheRWErrMsg)
+				return nil, fmt.Errorf("staged block %v has less data %v for %v=>%s\n%v", offsets[i], listMap[offsets[i]].size, handle.ID, handle.Path, common.BlockCacheRWErrMsg)
+			}
+
+			blockIDList = append(blockIDList, listMap[offsets[i]].id)
+			log.Debug("BlockCache::getBlockIDList : Preparing blocklist for %v=>%s (%v :  %v, size %v)", handle.ID, handle.Path, offsets[i], listMap[offsets[i]].id, listMap[offsets[i]].size)
+			index++
+			i++
+		} else {
+			for index < offsets[i] {
+				if !zeroBlockStaged {
+					id, err := bc.stageZeroBlock(handle, 1)
+					if err != nil {
+						return nil, err
+					}
+
+					zeroBlockStaged = true
+					zeroBlockID = id
+				}
+
+				blockIDList = append(blockIDList, zeroBlockID)
+				listMap[index] = &blockInfo{
+					id:        zeroBlockID,
+					committed: false,
+					size:      bc.blockPool.blockSize,
+				}
+				log.Debug("BlockCache::getBlockIDList : Adding zero block for %v=>%s, index %v", handle.ID, handle.Path, index)
+				log.Debug("BlockCache::getBlockIDList : Preparing blocklist for %v=>%s (%v :  %v, zero block size %v)", handle.ID, handle.Path, index, zeroBlockID, bc.blockPool.blockSize)
+				index++
+			}
+		}
 	}
 
-	log.Debug("BlockCache::commitBlocks : Committing blocks for %s", handle.Path)
+	return blockIDList, nil
+}
 
-	// Commit the block list now
-	err := bc.NextComponent().CommitData(internal.CommitDataOptions{Name: handle.Path, List: blockIdList, BlockSize: bc.blockSize})
+func (bc *BlockCache) stageZeroBlock(handle *handlemap.Handle, tryCnt int) (string, error) {
+	if tryCnt > MAX_FAIL_CNT {
+		// If we failed to write the data 3 times then just give up
+		log.Err("BlockCache::stageZeroBlock : 3 attempts to upload zero block have failed %v=>%v", handle.ID, handle.Path)
+		return "", fmt.Errorf("3 attempts to upload zero block have failed for %v=>%v", handle.ID, handle.Path)
+	}
+
+	id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
+
+	log.Debug("BlockCache::stageZeroBlock : Staging zero block for %v=>%v, try = %v", handle.ID, handle.Path, tryCnt)
+	err := bc.NextComponent().StageData(internal.StageDataOptions{
+		Name: handle.Path,
+		Data: bc.blockPool.zeroBlock.data[:],
+		Id:   id,
+	})
+
 	if err != nil {
-		log.Err("BlockCache::commitBlocks : Failed to commit blocks for %s [%s]", handle.Path, err.Error())
-		return err
+		log.Err("BlockCache::stageZeroBlock : Failed to write zero block for %v=>%v, try %v [%v]", handle.ID, handle.Path, tryCnt, err.Error())
+		return bc.stageZeroBlock(handle, tryCnt+1)
 	}
 
-	handle.Flags.Clear(handlemap.HandleFlagDirty)
-	return nil
+	log.Debug("BlockCache::stageZeroBlock : Zero block id for %v=>%v = %v", handle.ID, handle.Path, id)
+	return id, nil
 }
 
 // diskEvict : Callback when a node from disk expires
@@ -1258,7 +1626,7 @@ func (bc *BlockCache) diskEvict(node *list.Element) {
 // checkDiskUsage : Callback to check usage of disk and decide whether eviction is needed
 func (bc *BlockCache) checkDiskUsage() bool {
 	data, _ := common.GetUsage(bc.tmpPath)
-	usage := uint32((data * 100) / float64(bc.diskSize))
+	usage := uint32((data * 100) / float64(bc.diskSize/_1MB))
 
 	if bc.maxDiskUsageHit {
 		if usage >= MIN_POOL_USAGE {
@@ -1428,5 +1796,4 @@ func init() {
 
 	blockCachePrefetchOnOpen := config.AddBoolFlag("block-cache-prefetch-on-open", false, "Start prefetching on open or wait for first read.")
 	config.BindPFlag(compName+".prefetch-on-open", blockCachePrefetchOnOpen)
-
 }

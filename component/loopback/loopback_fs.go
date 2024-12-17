@@ -148,7 +148,6 @@ func (lfs *LoopbackFS) ReadDir(options internal.ReadDirOptions) ([]*internal.Obj
 			Mode:  info.Mode(),
 			Mtime: info.ModTime(),
 		}
-		attr.Flags.Set(internal.PropFlagMetadataRetrieved)
 		attr.Flags.Set(internal.PropFlagModeDefault)
 
 		if file.IsDir() {
@@ -186,7 +185,6 @@ func (lfs *LoopbackFS) StreamDir(options internal.StreamDirOptions) ([]*internal
 			Mode:  info.Mode(),
 			Mtime: info.ModTime(),
 		}
-		attr.Flags.Set(internal.PropFlagMetadataRetrieved)
 		attr.Flags.Set(internal.PropFlagModeDefault)
 
 		if file.IsDir() {
@@ -436,7 +434,6 @@ func (lfs *LoopbackFS) GetAttr(options internal.GetAttrOptions) (*internal.ObjAt
 		Mode:  info.Mode(),
 		Mtime: info.ModTime(),
 	}
-	attr.Flags.Set(internal.PropFlagMetadataRetrieved)
 	attr.Flags.Set(internal.PropFlagModeDefault)
 
 	if info.Mode()&os.ModeSymlink != 0 {
@@ -466,7 +463,7 @@ func (lfs *LoopbackFS) Chown(options internal.ChownOptions) error {
 
 func (lfs *LoopbackFS) StageData(options internal.StageDataOptions) error {
 	log.Trace("LoopbackFS::StageData : name=%s, id=%s", options.Name, options.Id)
-	path := fmt.Sprintf("%s_%d_%s", filepath.Join(lfs.path, options.Name), options.Offset, strings.ReplaceAll(options.Id, "/", "_"))
+	path := fmt.Sprintf("%s_%s", filepath.Join(lfs.path, options.Name), strings.ReplaceAll(options.Id, "/", "_"))
 	return os.WriteFile(path, options.Data, 0777)
 }
 
@@ -482,7 +479,7 @@ func (lfs *LoopbackFS) CommitData(options internal.CommitDataOptions) error {
 	}
 
 	for idx, id := range options.List {
-		path := fmt.Sprintf("%s_%d_%s", filepath.Join(lfs.path, options.Name), idx, strings.ReplaceAll(id, "/", "_"))
+		path := fmt.Sprintf("%s_%s", filepath.Join(lfs.path, options.Name), strings.ReplaceAll(id, "/", "_"))
 		info, err := os.Lstat(path)
 		if err == nil {
 			block, err := os.OpenFile(path, os.O_RDONLY, os.FileMode(0666))
@@ -510,11 +507,15 @@ func (lfs *LoopbackFS) CommitData(options internal.CommitDataOptions) error {
 			if err != nil {
 				return err
 			}
-
-			_ = os.Remove(path)
 		} else if !os.IsNotExist(err) {
 			return err
 		}
+	}
+
+	// delete the staged files
+	for _, id := range options.List {
+		path := fmt.Sprintf("%s_%s", filepath.Join(lfs.path, options.Name), strings.ReplaceAll(id, "/", "_"))
+		_ = os.Remove(path)
 	}
 
 	err = blob.Close()

@@ -31,9 +31,6 @@ parameters:
   - name: clone
     type: boolean
     default: false
-  - name: stream_direct_test
-    type: boolean
-    default: false
   - name: enable_symlink_adls
     type: boolean
     default: false
@@ -67,7 +64,6 @@ steps:
       artifact_name: '${{ parameters.distro_name }}_${{ parameters.idstring }}.txt'
       verbose_log: ${{ parameters.verbose_log }}
       clone: ${{ parameters.clone }}
-      stream_direct_test: ${{ parameters.stream_direct_test }}
       enable_symlink_adls: ${{ parameters.enable_symlink_adls }}
       mountStep:
         script: |
