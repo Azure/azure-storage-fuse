@@ -104,7 +104,7 @@ func (bb *BlockBlob) Configure(cfg AzStorageConfig) error {
 		Metadata:    true,
 		Deleted:     false,
 		Snapshots:   false,
-		Permissions: false,
+		Permissions: false, //Added to get permissions, acl, group, owner for HNS accounts
 	}
 
 	return nil
@@ -534,6 +534,8 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 	}
 
 	listPath := bb.getListPath(prefix)
+
+	// Get a result segment starting with the blob indicated by the current Marker.
 	pager := bb.Container.NewListBlobsHierarchyPager("/", &container.ListBlobsHierarchyOptions{
 		Marker:     marker,
 		MaxResults: &count,
@@ -542,16 +544,30 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 	})
 
 	listBlob, err := pager.NextPage(context.Background())
+
+	// Note: Since we make a list call with a prefix, we will not fail here for a non-existent directory.
+	// The blob service will not validate for us whether or not the path exists.
+	// This is different from ADLS Gen2 behavior.
+	// APIs that may be affected include IsDirEmpty, ReadDir and StreamDir
+
 	if err != nil {
 		log.Err("BlockBlob::List : Failed to list the container with the prefix %s", err.Error)
 		return nil, nil, err
 	}
+
+	// Process the blobs returned in this result segment (if the segment is empty, the loop body won't execute)
+	// Since block blob does not support acls, we set mode to 0 and FlagModeDefault to true so the fuse layer can return the default permission.
 
 	blobList, dirList, err := bb.processBlobItems(listBlob.Segment.BlobItems)
 	if err != nil {
 		return nil, nil, err
 	}
 
+	// In case virtual directory exists but its corresponding 0 byte marker file is not there holding hdi_isfolder then just iterating
+	// over BlobItems will fail to identify that directory. In such cases BlobPrefixes help to list all directories
+	// dirList contains all dirs for which we got 0 byte meta file in this iteration, so exclude those and add rest to the list
+	// Note: Since listing is paginated, sometimes the marker file may come in a different iteration from the BlobPrefix. For such
+	// cases we manually call GetAttr to check the existence of the marker file.
 	err = bb.processBlobPrefixes(listBlob.Segment.BlobPrefixes, dirList, &blobList)
 	if err != nil {
 		return nil, nil, err
@@ -570,6 +586,7 @@ func (bb *BlockBlob) getListPath(prefix string) string {
 
 func (bb *BlockBlob) processBlobItems(blobItems []*container.BlobItem) ([]*internal.ObjAttr, map[string]bool, error) {
 	blobList := make([]*internal.ObjAttr, 0)
+	// For some directories 0 byte meta file may not exists so just create a map to figure out such directories
 	dirList := make(map[string]bool)
 
 	for _, blobInfo := range blobItems {
@@ -580,6 +597,7 @@ func (bb *BlockBlob) processBlobItems(blobItems []*container.BlobItem) ([]*inter
 		blobList = append(blobList, attr)
 
 		if attr.IsDir() {
+			// 0 byte meta found so mark this directory in map
 			dirList[*blobInfo.Name+"/"] = true
 			attr.Size = 4096
 		}
@@ -612,7 +630,6 @@ func (bb *BlockBlob) getBlobAttr(blobInfo *container.BlobItem) (*internal.ObjAtt
 		MD5:    blobInfo.Properties.ContentMD5,
 	}
 	parseMetadata(attr, blobInfo.Metadata)
-	attr.Flags.Set(internal.PropFlagMetadataRetrieved)
 	attr.Flags.Set(internal.PropFlagModeDefault)
 
 	return attr, nil
@@ -635,26 +652,38 @@ func (bb *BlockBlob) dereferenceTime(input *time.Time, defaultTime time.Time) ti
 func (bb *BlockBlob) processBlobPrefixes(blobPrefixes []*container.BlobPrefix, dirList map[string]bool, blobList *[]*internal.ObjAttr) error {
 	for _, blobInfo := range blobPrefixes {
 		if _, ok := dirList[*blobInfo.Name]; ok {
+			// marker file found in current iteration, skip adding the directory
 			continue
-		}
-
-		_, err := bb.getAttrUsingRest(*blobInfo.Name)
-		if err == syscall.ENOENT {
-			attr := bb.createDirAttr(*blobInfo.Name)
-			*blobList = append(*blobList, attr)
-		} else if bb.listDetails.Permissions {
-			attr, err := bb.createDirAttrWithPermissions(blobInfo)
-			if err != nil {
-				return err
+		} else {
+			//Check to see if its a HNS account and we received properties in blob prefixes
+			if bb.listDetails.Permissions {
+				attr, err := bb.createDirAttrWithPermissions(blobInfo)
+				if err != nil {
+					return err
+				}
+				*blobList = append(*blobList, attr)
+			} else {
+				// marker file not found in current iteration, so we need to manually check attributes via REST
+				_, err := bb.getAttrUsingRest(*blobInfo.Name)
+				// marker file also not found via manual check, safe to add to list
+				if err == syscall.ENOENT {
+					attr := bb.createDirAttr(*blobInfo.Name)
+					*blobList = append(*blobList, attr)
+				}
 			}
-			*blobList = append(*blobList, attr)
 		}
+	}
+
+	// Clean up the temp map as its no more needed
+	for k := range dirList {
+		delete(dirList, k)
 	}
 
 	return nil
 }
 
 func (bb *BlockBlob) createDirAttr(name string) *internal.ObjAttr {
+	// For these dirs we get only the name and no other properties so hardcoding time to current time
 	name = strings.TrimSuffix(name, "/")
 	attr := &internal.ObjAttr{
 		Path:  split(bb.Config.prefixPath, name),
@@ -667,7 +696,6 @@ func (bb *BlockBlob) createDirAttr(name string) *internal.ObjAttr {
 	attr.Atime = attr.Mtime
 	attr.Crtime = attr.Mtime
 	attr.Ctime = attr.Mtime
-	attr.Flags.Set(internal.PropFlagMetadataRetrieved)
 	attr.Flags.Set(internal.PropFlagModeDefault)
 	return attr
 }
@@ -695,7 +723,6 @@ func (bb *BlockBlob) createDirAttrWithPermissions(blobInfo *container.BlobPrefix
 		Crtime: bb.dereferenceTime(blobInfo.Properties.CreationTime, *blobInfo.Properties.LastModified),
 		Flags:  internal.NewDirBitMap(),
 	}
-	attr.Flags.Set(internal.PropFlagMetadataRetrieved)
 	attr.Flags.Set(internal.PropFlagModeDefault)
 
 	return attr, nil
