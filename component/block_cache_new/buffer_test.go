@@ -1,3 +1,6 @@
+//go:build !authtest
+// +build !authtest
+
 /*
     _____           _____   _____   ____          ______  _____  ------
    |     |  |      |     | |     | |     |     | |       |            |
@@ -31,16 +34,30 @@
    SOFTWARE
 */
 
-package cmd
+package block_cache_new
 
 import (
-	_ "github.com/Azure/azure-storage-fuse/v2/component/attr_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/azstorage"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/block_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/block_cache_new"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/custom"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/entry_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/file_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/libfuse"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/loopback"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/suite"
 )
+
+type bufferTestSuite struct {
+	suite.Suite
+	assert *assert.Assertions
+}
+
+func (suite *bufferTestSuite) SetupTest() {
+}
+
+func (suite *bufferTestSuite) cleanupTest() {
+}
+
+func (suite *bufferTestSuite) TestAllocate() {
+
+}
+
+func TestBlockSuite(t *testing.T) {
+	suite.Run(t, new(bufferTestSuite))
+}
