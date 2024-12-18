@@ -593,7 +593,6 @@ func (bb *BlockBlob) getBlobAttr(blobInfo *container.BlobItem) (*internal.ObjAtt
 		log.Trace("BlockBlob::List : blob is encrypted with customer provided key so fetching metadata explicitly using REST")
 		return bb.getAttrUsingRest(*blobInfo.Name)
 	}
-	//--> separate func
 	mode, err := bb.getFileMode(blobInfo.Properties.Permissions)
 	if err != nil {
 		return nil, err

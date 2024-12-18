@@ -16,6 +16,8 @@ github.com/AzureAD/microsoft-authentication-library-for-go v1.2.2 h1:XHOnouVk1mx
 github.com/AzureAD/microsoft-authentication-library-for-go v1.2.2/go.mod h1:wP83P5OoQ5p6ip3ScPr0BAq0BvuPAvacpEuSzyouqAI=
 github.com/JeffreyRichter/enum v0.0.0-20180725232043-2567042f9cda h1:NOo6+gM9NNPJ3W56nxOKb4164LEw094U0C8zYQM8mQU=
 github.com/JeffreyRichter/enum v0.0.0-20180725232043-2567042f9cda/go.mod h1:2CaSFTh2ph9ymS6goiOKIBdfhwWUVsX4nQ5QjIYFHHs=
+github.com/ashruti-msft/azure-sdk-for-go/sdk/storage/azblob v0.0.0-20241126122032-5b3a6c6c8b4e h1:N4bAHgp3WHiXbwx6D3+mCR29GMQeceTj3pcRLts46Bk=
+github.com/ashruti-msft/azure-sdk-for-go/sdk/storage/azblob v0.0.0-20241126122032-5b3a6c6c8b4e/go.mod h1:PXe2h+LKcWTX9afWdZoHyODqR4fBa5boUM/8uJfZ0Jo=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
 github.com/cespare/xxhash/v2 v2.3.0/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
 github.com/cpuguy83/go-md2man/v2 v2.0.1/go.mod h1:tgQtvFlXSQOSOSIRvRPT7W67SCa46tRHOmNcaadrF8o=
