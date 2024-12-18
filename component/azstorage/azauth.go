@@ -63,6 +63,7 @@ type azAuthConfig struct {
 	ClientID                string
 	ClientSecret            string
 	OAuthTokenFilePath      string
+	WorkloadIdentityToken   string
 	ActiveDirectoryEndpoint string
 
 	Endpoint     string
