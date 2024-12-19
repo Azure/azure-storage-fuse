@@ -814,13 +814,13 @@ func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
 	log.Trace("Libfuse::libfuse_flush : %s, handle: %d", handle.Path, handle.ID)
 
 	// If the file handle is not dirty, there is no need to flush
-	if fileHandle.dirty != 0 {
-		handle.Flags.Set(handlemap.HandleFlagDirty)
-	}
+	// if fileHandle.dirty != 0 {
+	// 	handle.Flags.Set(handlemap.HandleFlagDirty)
+	// }
 
-	if !handle.Dirty() {
-		return 0
-	}
+	// if !handle.Dirty() {
+	// 	return 0
+	// }
 
 	err := fuseFS.NextComponent().FlushFile(internal.FlushFileOptions{Handle: handle})
 	if err != nil {
