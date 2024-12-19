@@ -143,7 +143,7 @@ func syncBuffersForFile(h *handlemap.Handle, file *File) error {
 	len_of_blocklist := len(file.blockList)
 	for i := 0; i < len_of_blocklist; i++ {
 		if file.blockList[i].block_type == local_block {
-			if file.blockList[i].buf == nil {
+			if file.blockList[i].buf == nil && i != len_of_blocklist-1 {
 				err = punchHole(file)
 				continue
 			}
@@ -194,7 +194,11 @@ func punchHole(f *File) error {
 	if f.holePunched {
 		return nil
 	}
-	return syncZeroBuffer(f.Name)
+	err := syncZeroBuffer(f.Name)
+	if err == nil {
+		f.holePunched = true
+	}
+	return err
 }
 
 func commitBuffersForFile(h *handlemap.Handle, file *File) error {

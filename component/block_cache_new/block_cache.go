@@ -201,6 +201,9 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 	offset := options.Offset
 	dataRead := 0
 	len_of_copy := len(options.Data)
+	f.Lock()
+	options.Handle.Size = f.size
+	f.Unlock()
 	for dataRead < len_of_copy {
 		idx := getBlockIndex(offset)
 		block_buf, err := getBlockForRead(idx, options.Handle, f)
@@ -216,7 +219,7 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 
 		dataRead += bytesCopied
 		offset += int64(bytesCopied)
-		if offset >= f.size { //this should be protected by lock ig, idk
+		if offset >= options.Handle.Size { //this should be protected by lock ig, idk
 			return dataRead, io.EOF
 		}
 	}
