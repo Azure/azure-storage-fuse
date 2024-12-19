@@ -14,6 +14,7 @@ type File struct {
 	Etag         string                     // Etag of the file
 	Name         string                     // File Name
 	size         int64                      // File Size
+	holePunched  bool                       // Represents if we have punched any hole while uploading the data.
 	transactions chan *Transaction          // Channel which contains all the outstanding requests
 }
 
@@ -59,11 +60,15 @@ func GetFile(key string) (*File, bool) {
 	return file.(*File), first_open
 }
 
-func DeleteHandleForFile(file *File, handle *handlemap.Handle) {
+// Remove the handle from the file
+// Release the buffers
+func DeleteHandleForFile(handle *handlemap.Handle) {
+	file, _ := GetFile(handle.Path)
 	file.Lock()
 	delete(file.handles, handle)
 	if len(file.handles) == 0 {
-		//fileMap.Delete(file.Name)
+		releaseBuffers(file)
+		fileMap.Delete(file.Name)
 	}
 	file.Unlock()
 }

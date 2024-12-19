@@ -264,9 +264,6 @@ func (bc *BlockCache) SyncFile(options internal.SyncFileOptions) error {
 	err := syncBuffersForFile(options.Handle, f)
 	if err == nil {
 		err = commitBuffersForFile(options.Handle, f)
-	} else {
-		log.Trace("BlockCAche::SyncFile: Unable to sync all blocks handle=%d, path=%s", options.Handle.ID, options.Handle.Path)
-		err = commitBuffersForFile(options.Handle, f)
 	}
 	return err
 }
@@ -282,6 +279,7 @@ func (bc *BlockCache) FlushFile(options internal.FlushFileOptions) error {
 func (bc *BlockCache) CloseFile(options internal.CloseFileOptions) error {
 	log.Trace("BlockCache::CloseFile : handle=%d, path=%s", options.Handle.ID, options.Handle.Path)
 	err := bc.SyncFile(internal.SyncFileOptions{Handle: options.Handle})
+	DeleteHandleForFile(options.Handle)
 	return err
 }
 

@@ -12,7 +12,8 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
 
-//TODO: Implement GC after 80% of memory given for blobfuse
+// TODO: Implement GC after 80% of memory given for blobfuse
+var zeroBuffer *Buffer
 
 type Buffer struct {
 	data       []byte    // Data holding in the buffer
@@ -31,7 +32,7 @@ type BufferPool struct {
 }
 
 func createBufferPool(bufSize int) *BufferPool {
-	return &BufferPool{
+	bPool := &BufferPool{
 		pool: sync.Pool{
 			New: func() any {
 				return new(Buffer)
@@ -40,6 +41,8 @@ func createBufferPool(bufSize int) *BufferPool {
 		bufferList: list.New(),
 		bufferSize: bufSize,
 	}
+	zeroBuffer = bPool.getBuffer()
+	return bPool
 }
 
 func (bp *BufferPool) getBuffer() *Buffer {
@@ -141,7 +144,8 @@ func syncBuffersForFile(h *handlemap.Handle, file *File) error {
 	for i := 0; i < len_of_blocklist; i++ {
 		if file.blockList[i].block_type == local_block {
 			if file.blockList[i].buf == nil {
-				err = createEmptyBlock()
+				err = punchHole(file)
+				continue
 			}
 			err = syncBuffer(file.Name, file.size, file.blockList[i])
 			if err != nil {
@@ -159,6 +163,7 @@ func syncBuffersForFile(h *handlemap.Handle, file *File) error {
 
 func syncBuffer(name string, size int64, blk *block) error {
 	blk.buf.Lock()
+	blk.id = base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
 	err := bc.NextComponent().StageData(
 		internal.StageDataOptions{
 			Name: name,
@@ -173,8 +178,23 @@ func syncBuffer(name string, size int64, blk *block) error {
 	return err
 }
 
-func createEmptyBlock() error {
-	return nil
+func syncZeroBuffer(name string) error {
+	return bc.NextComponent().StageData(
+		internal.StageDataOptions{
+			Name: name,
+			Id:   zero_block_id,
+			Data: zeroBuffer.data,
+		},
+	)
+
+}
+
+// stages empty block for the hole
+func punchHole(f *File) error {
+	if f.holePunched {
+		return nil
+	}
+	return syncZeroBuffer(f.Name)
 }
 
 func commitBuffersForFile(h *handlemap.Handle, file *File) error {
@@ -187,4 +207,16 @@ func commitBuffersForFile(h *handlemap.Handle, file *File) error {
 	err := bc.NextComponent().CommitData(internal.CommitDataOptions{Name: file.Name, List: blklist, BlockSize: uint64(BlockSize)})
 	file.Unlock()
 	return err
+}
+
+// Release all the buffers to the file if this handle is the last one opened on the file.
+func releaseBuffers(f *File) {
+	//Lock was already acquired on file
+	len_of_blocklist := len(f.blockList)
+	for i := 0; i < len_of_blocklist; i++ {
+		if f.blockList[i].buf != nil {
+			bPool.putBuffer(f.blockList[i].buf)
+		}
+		f.blockList[i].buf = nil
+	}
 }
