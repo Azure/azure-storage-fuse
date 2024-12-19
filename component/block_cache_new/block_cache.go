@@ -129,7 +129,7 @@ func (bc *BlockCache) validateBlockList(blkList *internal.CommittedBlockList) (b
 			log.Err("BlockCache:: Unqual sized blocklist")
 			return nil, false
 		}
-		newblkList = append(newblkList, block{idx: idx, id: blk.Id, buf: nil, downloadStatus: make(chan int)})
+		newblkList = append(newblkList, createBlock(idx, blk.Id, remote_block))
 	}
 	return newblkList, true
 }
@@ -163,7 +163,7 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 	f, first_open := GetFile(options.Name)
 	var blockList blockList
 
-	if first_open {
+	if first_open && attr.Size > 0 {
 		blkList, err := bc.NextComponent().GetCommittedBlockList(options.Name)
 		if err != nil || blkList == nil {
 			log.Err("BlockCache::OpenFile : Failed to get block list of %s [%v]", options.Name, err)
@@ -177,14 +177,16 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 
 	}
 
-	t := CreateTransaction(1)
-	t.request = CreateOpenReq(attr, options.Flags, blockList)
-	f.transactions <- &t
+	f.Lock()
+	if f.size == -1 {
+		populateFileInfo(f, attr)
+	}
+	handle := CreateFreshHandleForFile(f.Name, f.size, attr.Mtime)
+	f.handles[handle] = true
+	f.blockList = blockList
+	f.Unlock()
 
-	res := <-t.response
-	open_resp := res.(*open_res)
-
-	return open_resp.h, open_resp.err
+	return handle, nil
 }
 
 // ReadInBuffer: Read the file into a buffer
@@ -195,29 +197,92 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 		return 0, io.EOF
 	}
 	f, _ := GetFile(options.Handle.Path)
-	t := CreateTransaction(2)
-	t.request = CreateReadReq(options.Handle, options.Data, options.Offset)
-	f.transactions <- &t
 
-	res := <-t.response
-	read_res := res.(*read_res)
-	return read_res.bytesRead, read_res.err
+	offset := options.Offset
+	dataRead := 0
+	len_of_copy := len(options.Data)
+	for dataRead < len_of_copy {
+		idx := getBlockIndex(offset)
+		block_buf, err := getBlockForRead(idx, options.Handle, f)
+		if err != nil {
+			return dataRead, err
+		}
+		blockOffset := convertOffsetIntoBlockOffset(offset)
+
+		block_buf.RLock()
+		len_of_block_buf := block_buf.dataSize
+		bytesCopied := copy(options.Data[dataRead:], block_buf.data[blockOffset:len_of_block_buf])
+		block_buf.RUnlock()
+
+		dataRead += bytesCopied
+		offset += int64(bytesCopied)
+		if offset >= f.size { //this should be protected by lock ig, idk
+			return dataRead, io.EOF
+		}
+	}
+	return dataRead, nil
+
 }
 
 // WriteFile: Write to the local file
 func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) {
-	return 0, nil
+	log.Trace("BlockCache::WriteFile : handle=%d, path=%s", options.Handle.ID, options.Handle.Path)
+
+	f, _ := GetFile(options.Handle.Path)
+	offset := options.Offset
+	len_of_copy := len(options.Data)
+	dataWritten := 0
+	for dataWritten < len_of_copy {
+		idx := getBlockIndex(offset)
+		block_buf, err := getBlockForWrite(idx, options.Handle, f)
+		if err != nil {
+			return dataWritten, err
+		}
+		blockOffset := convertOffsetIntoBlockOffset(offset)
+
+		block_buf.Lock()
+		bytesCopied := copy(block_buf.data[blockOffset:BlockSize], options.Data[dataWritten:])
+		block_buf.synced = 0
+		block_buf.Unlock()
+
+		dataWritten += bytesCopied
+		offset += int64(dataWritten)
+		//Update the file size if it fall outside
+		f.Lock()
+		if offset > f.size {
+			f.size = offset
+		}
+		f.Unlock()
+	}
+	return dataWritten, nil
+
+}
+
+func (bc *BlockCache) SyncFile(options internal.SyncFileOptions) error {
+	log.Trace("BlockCache::SyncFile : handle=%d, path=%s", options.Handle.ID, options.Handle.Path)
+	f, _ := GetFile(options.Handle.Path)
+	err := syncBuffersForFile(options.Handle, f)
+	if err == nil {
+		err = commitBuffersForFile(options.Handle, f)
+	} else {
+		log.Trace("BlockCAche::SyncFile: Unable to sync all blocks handle=%d, path=%s", options.Handle.ID, options.Handle.Path)
+		err = commitBuffersForFile(options.Handle, f)
+	}
+	return err
 }
 
 // FlushFile: Flush the local file to storage
 func (bc *BlockCache) FlushFile(options internal.FlushFileOptions) error {
 	log.Trace("BlockCache::FlushFile : handle=%d, path=%s", options.Handle.ID, options.Handle.Path)
-	return nil
+	err := bc.SyncFile(internal.SyncFileOptions{Handle: options.Handle})
+	return err
 }
 
 // CloseFile: File is closed by application so release all the blocks and submit back to blockPool
 func (bc *BlockCache) CloseFile(options internal.CloseFileOptions) error {
-	return nil
+	log.Trace("BlockCache::CloseFile : handle=%d, path=%s", options.Handle.ID, options.Handle.Path)
+	err := bc.SyncFile(internal.SyncFileOptions{Handle: options.Handle})
+	return err
 }
 
 // TruncateFile: Truncate the file to the given size
@@ -246,11 +311,6 @@ func (bc *BlockCache) DeleteFile(options internal.DeleteFileOptions) error {
 // RenameFile: Invalidate the file in local cache.
 func (bc *BlockCache) RenameFile(options internal.RenameFileOptions) error {
 	log.Trace("BlockCache::RenameFile : src=%s, dst=%s", options.Src, options.Dst)
-	return nil
-}
-
-func (bc *BlockCache) SyncFile(options internal.SyncFileOptions) error {
-	log.Trace("BlockCache::SyncFile : handle=%d, path=%s", options.Handle.ID, options.Handle.Path)
 	return nil
 }
 

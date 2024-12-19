@@ -50,3 +50,19 @@ type write_res struct {
 	bytesWritten int
 	err          error
 }
+
+func CreateWriteReq(h *handlemap.Handle, data []byte, offset int64) *write_req {
+	return &write_req{h: h, data: data, offset: offset}
+}
+
+type sync_req struct {
+	h *handlemap.Handle
+}
+
+type sync_res struct {
+	err error
+}
+
+func CreateSyncReq(h *handlemap.Handle) *sync_req {
+	return &sync_req{h: h}
+}

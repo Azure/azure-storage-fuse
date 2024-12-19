@@ -22,6 +22,7 @@ func CreateFile(fileName string) *File {
 		Name:         fileName,
 		transactions: make(chan *Transaction, 1),
 		handles:      make(map[*handlemap.Handle]bool),
+		blockList:    make([]*block, 0),
 		size:         -1,
 	}
 

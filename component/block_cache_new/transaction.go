@@ -29,7 +29,7 @@ func HandleTransaction(file *File, t *Transaction) {
 	case 3:
 		serve_write(file, t)
 	case 4:
-		serve_close(file, t)
+		serve_sync(file, t)
 	}
 }
 
@@ -62,36 +62,82 @@ func serve_read(file *File, t *Transaction) {
 	// 	GetBlock(i, file)
 	// }
 	offset := req.offset
-	copied := 0
+	dataRead := 0
 	len_of_copy := len(req.data)
-	for copied < len_of_copy {
+	for dataRead < len_of_copy {
 		idx := getBlockIndex(offset)
-		block, err := getBlockForRead(idx, req.h, file)
+		block_buf, err := getBlockForRead(idx, req.h, file)
 		if err != nil {
 			res.err = err
 			break
 		}
-		blockOffset := getBlockOffset(offset)
-		bytesCopied := copy(req.data[copied:], block[blockOffset:])
-		copied += bytesCopied
+		blockOffset := convertOffsetIntoBlockOffset(offset)
+
+		block_buf.RLock()
+		len_of_block_buf := block_buf.dataSize
+		bytesCopied := copy(req.data[dataRead:], block_buf.data[blockOffset:len_of_block_buf])
+		block_buf.RUnlock()
+
+		dataRead += bytesCopied
 		offset += int64(bytesCopied)
 		if offset >= file.size { //this should be protected by lock ig, idk
 			res.err = io.EOF
 			break
 		}
 	}
-	res.bytesRead = copied
+	res.bytesRead = dataRead
 	t.response <- res
 }
 
 func serve_write(file *File, t *Transaction) {
+	req := t.request.(*write_req)
+	res := &write_res{bytesWritten: 0, err: nil}
+
+	offset := req.offset
+	len_of_copy := len(req.data)
+	dataWritten := 0
+	for dataWritten < len_of_copy {
+		idx := getBlockIndex(offset)
+		block_buf, err := getBlockForWrite(idx, req.h, file)
+		if err != nil {
+			res.err = err
+			break
+		}
+		blockOffset := convertOffsetIntoBlockOffset(offset)
+
+		block_buf.Lock()
+		bytesCopied := copy(block_buf.data[blockOffset:BlockSize], req.data[dataWritten:])
+		block_buf.synced = 0
+		block_buf.Unlock()
+
+		dataWritten += bytesCopied
+		offset += int64(dataWritten)
+		//Update the file size if it fall outside
+		file.Lock()
+		if offset > file.size {
+			file.size = offset
+		}
+		file.Unlock()
+	}
+
+	res.bytesWritten = dataWritten
+	t.response <- res
+}
+
+func serve_sync(file *File, t *Transaction) {
+	req := t.request.(*sync_req)
+	res := &sync_res{err: nil}
+
+	err := syncBuffersForFile(req.h, file)
+	if err == nil {
+		err = commitBuffersForFile(req.h, file)
+	}
+	res.err = err
+	t.response <- res
 
 }
 
-func serve_close(file *File, t *Transaction) {
-
-}
-
+// Todo: This following is incomplete
 func populateFileInfo(file *File, attr *internal.ObjAttr) {
 	file.size = attr.Size
 }
