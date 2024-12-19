@@ -521,7 +521,7 @@ func (bb *BlockBlob) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 		attr, err = bb.getAttrUsingRest(name)
 	}
 
-	if bb.Config.filter != nil {
+	if bb.Config.filter != nil && attr != nil {
 		if !bb.Config.filter.IsFileAcceptable(&blobfilter.BlobAttr{
 			Name:  attr.Name,
 			Mtime: attr.Mtime,
