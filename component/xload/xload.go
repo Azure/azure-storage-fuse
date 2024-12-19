@@ -37,6 +37,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -53,11 +54,12 @@ type Xload struct {
 	mode           Mode   // Mode of the Xload component
 	exportProgress bool   // Export the progess of xload operation to json file
 
-	workerCount uint32        // Number of workers running
-	blockPool   *BlockPool    // Pool of blocks
-	path        string        // Path on local disk where Xload will operate
-	comps       []xcomponent  // list of components in xload
-	statsMgr    *statsManager // stats manager
+	workerCount uint32          // Number of workers running
+	blockPool   *BlockPool      // Pool of blocks
+	path        string          // Path on local disk where Xload will operate
+	comps       []xcomponent    // list of components in xload
+	statsMgr    *statsManager   // stats manager
+	fileLocks   *common.LockMap // lock to take on a file if one thread is processing it
 }
 
 // Structure defining your config parameters
@@ -299,15 +301,114 @@ func (xl *Xload) startComponents() error {
 	return nil
 }
 
-func (xl *Xload) OpenFile(internal.OpenFileOptions) (*handlemap.Handle, error) {
-	return nil, nil
+func (xl *Xload) isDownloadRequired(localPath string, blobPath string) (bool, *internal.ObjAttr, error) {
+	downloadRequired := false
+	_, err := os.Stat(localPath)
+	if err != nil {
+		log.Debug("Xload::isDownloadRequired : %s is not present in local path [%v]", localPath, err.Error())
+		downloadRequired = true
+	}
+
+	// if downloadRequired && flock.Count() > 0 {
+	// 	downloadRequired = false
+	// }
+
+	var attr *internal.ObjAttr
+	err = nil
+	if downloadRequired {
+		attr, err = xl.NextComponent().GetAttr(internal.GetAttrOptions{Name: blobPath})
+		if err != nil {
+			log.Err("Xload::isDownloadRequired : Failed to get attr of %s [%s]", blobPath, err.Error())
+		}
+	}
+
+	return downloadRequired, attr, err
+}
+
+func (xl *Xload) getSplitter() xcomponent {
+	for _, c := range xl.comps {
+		if c.getName() == SPLITTER {
+			return c
+		}
+	}
+
+	return nil
+}
+
+// OpenFile: Download the file if not already downloaded and return the file handle
+func (xl *Xload) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
+	log.Trace("Xload::OpenFile : name=%s, flags=%d, mode=%s", options.Name, options.Flags, options.Mode)
+	localPath := filepath.Join(xl.path, options.Name)
+
+	flock := xl.fileLocks.Get(options.Name)
+	flock.Lock()
+	defer flock.Unlock()
+
+	downloadRequired, _, err := xl.isDownloadRequired(localPath, options.Name)
+	if err != nil {
+		log.Err("Xload::OpenFile : failed to open file %s [%s]", options.Name, err.Error())
+		return nil, err
+	}
+
+	if downloadRequired {
+		// send to splitter to download on priority
+		splitter := xl.getSplitter()
+		if splitter == nil {
+			log.Err("Xload::OpenFile : failed to  get download splitter")
+			return nil, fmt.Errorf("failed to  get download splitter")
+		}
+
+		// splitter.getThreadPool().Schedule(true, &workItem{
+		// 	compName: splitter.getName(),
+		// 	// path:     entry.Path,
+		// 	// dataLen:  uint64(entry.Size),
+		// })
+
+	} else {
+		log.Debug("FileCache::OpenFile : %s will be served from local path", options.Name)
+	}
+
+	fh, err := os.OpenFile(localPath, options.Flags, options.Mode)
+	if err != nil {
+		log.Err("FileCache::OpenFile : error opening cached file %s [%s]", options.Name, err.Error())
+		return nil, err
+	}
+
+	// Increment the handle count in this lock item as there is one handle open for this now
+	flock.Inc()
+
+	handle := handlemap.NewHandle(options.Name)
+	inf, err := fh.Stat()
+	if err == nil {
+		handle.Size = inf.Size()
+	}
+
+	handle.UnixFD = uint64(fh.Fd())
+	handle.Flags.Set(handlemap.HandleFlagCached)
+
+	log.Info("Xload::OpenFile : file=%s, fd=%d", options.Name, fh.Fd())
+	handle.SetFileObject(fh)
+
+	return handle, nil
+}
+
+func (xl *Xload) CloseFile(options internal.CloseFileOptions) error {
+	// Lock the file so that while close is in progress no one can open the file again
+	flock := xl.fileLocks.Get(options.Handle.Path)
+	flock.Lock()
+	defer flock.Unlock()
+
+	flock.Dec()
+	return nil
 }
 
 // ------------------------- Factory -------------------------------------------
 
 // Pipeline will call this method to create your object, initialize your variables here
 func NewXloadComponent() internal.Component {
-	comp := &Xload{}
+	comp := &Xload{
+		fileLocks: common.NewLockMap(),
+	}
 	comp.SetName(compName)
 	return comp
 }

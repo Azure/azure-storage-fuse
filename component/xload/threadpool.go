@@ -51,6 +51,9 @@ type ThreadPool struct {
 	priorityItems chan *workItem
 	workItems     chan *workItem
 
+	// Channel to close all the workers
+	done chan int
+
 	// Reader method that will actually read the data
 	callback func(*workItem) (int, error)
 }
@@ -66,6 +69,7 @@ func newThreadPool(count uint32, callback func(*workItem) (int, error)) *ThreadP
 		callback:      callback,
 		priorityItems: make(chan *workItem, count*2),
 		workItems:     make(chan *workItem, count*4),
+		done:          make(chan int, count),
 	}
 }
 
@@ -82,9 +86,15 @@ func (t *ThreadPool) Start() {
 
 // Stop all the workers threads
 func (t *ThreadPool) Stop() {
+	for i := uint32(0); i < t.worker; i++ {
+		t.done <- 1
+	}
+
+	t.wg.Wait()
+
+	close(t.done)
 	close(t.priorityItems)
 	close(t.workItems)
-	t.wg.Wait()
 }
 
 // Schedule the download of a block
@@ -104,8 +114,14 @@ func (t *ThreadPool) Do(priority bool) {
 
 	if priority {
 		// This thread will work only on high priority channel
-		for item := range t.priorityItems {
-			t.process(item)
+		for {
+			select {
+			case item := <-t.priorityItems:
+				t.process(item)
+
+			case <-t.done:
+				return
+			}
 		}
 	} else {
 		// This thread will work only on both high and low priority channel
@@ -116,6 +132,9 @@ func (t *ThreadPool) Do(priority bool) {
 
 			case item := <-t.workItems:
 				t.process(item)
+
+			case <-t.done:
+				return
 			}
 		}
 	}
