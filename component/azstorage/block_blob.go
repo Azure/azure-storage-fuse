@@ -667,6 +667,7 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 				attr.Crtime = attr.Mtime
 				attr.Ctime = attr.Mtime
 				attr.Flags.Set(internal.PropFlagModeDefault)
+				blobList = append(blobList, attr)
 			}
 		}
 	}
