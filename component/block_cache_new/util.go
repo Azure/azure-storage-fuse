@@ -2,7 +2,7 @@ package block_cache_new
 
 const remote_block bool = true
 const local_block bool = false
-const zero_block_id string = "8765432112345678"
+const zero_block_id string = "nBjhkW1MQstCqpeuOmlBOQ=="
 
 type block struct {
 	idx            int      // Block Index
