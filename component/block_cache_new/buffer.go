@@ -206,7 +206,7 @@ func commitBuffersForFile(h *handlemap.Handle, file *File) error {
 	file.Lock()
 	len_of_blocklist := len(file.blockList)
 	for i := 0; i < len_of_blocklist; i++ {
-		if file.blockList[i].buf == nil {
+		if file.blockList[i].block_type == local_block && file.blockList[i].buf == nil { //dirty way to do stuff
 			blklist = append(blklist, zero_block_id)
 		} else {
 			blklist = append(blklist, file.blockList[i].id)
