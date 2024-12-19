@@ -206,7 +206,11 @@ func commitBuffersForFile(h *handlemap.Handle, file *File) error {
 	file.Lock()
 	len_of_blocklist := len(file.blockList)
 	for i := 0; i < len_of_blocklist; i++ {
-		blklist = append(blklist, file.blockList[i].id)
+		if file.blockList[i].buf == nil {
+			blklist = append(blklist, zero_block_id)
+		} else {
+			blklist = append(blklist, file.blockList[i].id)
+		}
 	}
 	err := bc.NextComponent().CommitData(internal.CommitDataOptions{Name: file.Name, List: blklist, BlockSize: uint64(BlockSize)})
 	file.Unlock()
