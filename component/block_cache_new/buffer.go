@@ -168,7 +168,7 @@ func syncBuffer(name string, size int64, blk *block) error {
 		internal.StageDataOptions{
 			Name: name,
 			Id:   blk.id,
-			Data: blk.buf.data[:min(BlockSize, int(convertOffsetIntoBlockOffset(size)))],
+			Data: blk.buf.data[:getBlockSize(size, blk.idx)],
 		},
 	)
 	if err == nil {

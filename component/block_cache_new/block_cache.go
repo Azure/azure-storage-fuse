@@ -210,7 +210,7 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 		blockOffset := convertOffsetIntoBlockOffset(offset)
 
 		block_buf.RLock()
-		len_of_block_buf := block_buf.dataSize
+		len_of_block_buf := getBlockSize(options.Handle.Size, idx)
 		bytesCopied := copy(options.Data[dataRead:], block_buf.data[blockOffset:len_of_block_buf])
 		block_buf.RUnlock()
 

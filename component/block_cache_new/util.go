@@ -30,3 +30,7 @@ func getBlockIndex(offset int64) int {
 func convertOffsetIntoBlockOffset(offset int64) int64 {
 	return offset - int64(getBlockIndex(offset))*int64(BlockSize)
 }
+
+func getBlockSize(size int64, idx int) int {
+	return min(int(BlockSize), int(size)-(idx*BlockSize))
+}
