@@ -21,6 +21,7 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.19.0
 	github.com/stretchr/testify v1.10.0
+	github.com/vibhansa-msft/blobfilter v0.0.0-20241217091340-12fbb0f12278
 	github.com/vibhansa-msft/tlru v0.0.0-20240410102558-9e708419e21f
 	go.uber.org/atomic v1.11.0
 	gopkg.in/ini.v1 v1.67.0
@@ -50,7 +51,6 @@ require (
 	github.com/spf13/afero v1.11.0 // indirect
 	github.com/spf13/cast v1.7.0 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
-	github.com/vibhansa-msft/blobfilter v0.0.0-20241217091340-12fbb0f12278 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/crypto v0.31.0 // indirect
 	golang.org/x/exp v0.0.0-20241215155358-4a5509556b9e // indirect
