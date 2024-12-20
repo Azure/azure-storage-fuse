@@ -2715,6 +2715,8 @@ func (s *datalakeTestSuite) TestBlobFilters() {
 	s.assert.Nil(err)
 	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/d1.txt"})
 	s.assert.Nil(err)
+	err = s.az.CreateDir(internal.CreateDirOptions{Name: name + "/subdir"})
+	s.assert.Nil(err)
 
 	var iteration int = 0
 	var marker string = ""
@@ -2732,7 +2734,7 @@ func (s *datalakeTestSuite) TestBlobFilters() {
 			break
 		}
 	}
-	s.assert.EqualValues(7, len(blobList))
+	s.assert.EqualValues(8, len(blobList))
 
 	filter := &blobfilter.BlobFilter{}
 	s.az.storage.(*Datalake).Config.filter = filter
@@ -2753,7 +2755,7 @@ func (s *datalakeTestSuite) TestBlobFilters() {
 		}
 	}
 
-	s.assert.EqualValues(4, len(blobList))
+	s.assert.EqualValues(5, len(blobList))
 	s.az.stConfig.filter = nil
 }
 

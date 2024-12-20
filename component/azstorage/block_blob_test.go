@@ -3409,6 +3409,8 @@ func (s *blockBlobTestSuite) TestBlobFilters() {
 	s.assert.Nil(err)
 	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/d1.txt"})
 	s.assert.Nil(err)
+	err = s.az.CreateDir(internal.CreateDirOptions{Name: name + "/subdir"})
+	s.assert.Nil(err)
 
 	var iteration int = 0
 	var marker string = ""
@@ -3426,7 +3428,7 @@ func (s *blockBlobTestSuite) TestBlobFilters() {
 			break
 		}
 	}
-	s.assert.EqualValues(7, len(blobList))
+	s.assert.EqualValues(8, len(blobList))
 
 	filter := &blobfilter.BlobFilter{}
 	s.az.storage.(*BlockBlob).Config.filter = filter
@@ -3446,8 +3448,8 @@ func (s *blockBlobTestSuite) TestBlobFilters() {
 			break
 		}
 	}
-
-	s.assert.EqualValues(4, len(blobList))
+	// Only 4 files matches the pattern but there is a directory as well and directories are not filtered by blobfilter
+	s.assert.EqualValues(5, len(blobList))
 	s.az.stConfig.filter = nil
 }
 
