@@ -175,8 +175,11 @@ func newTestAzStorage(configuration string) (*AzStorage, error) {
 	_ = config.ReadConfigFromReader(strings.NewReader(configuration))
 	az := NewazstorageComponent()
 	err := az.Configure(true)
+	if err != nil {
+		return nil, err
+	}
 
-	return az.(*AzStorage), err
+	return az.(*AzStorage), nil
 }
 
 func (s *blockBlobTestSuite) SetupTest() {

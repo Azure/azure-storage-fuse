@@ -507,21 +507,10 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 
 	az.stConfig.preserveACL = opt.PreserveACL
 	if opt.Filter != "" {
-		readonly := false
-		_ = config.UnmarshalKey("read-only", &readonly)
-		if !readonly {
-			log.Err("ParseAndValidateConfig: Blob filters are supported only in read-only mode")
-			return errors.New("blobfilter is supported only in read-only mode")
-		}
-
-		az.stConfig.filter = &blobfilter.BlobFilter{}
-		err = az.stConfig.filter.Configure(opt.Filter)
+		err = configureBlobFilter(az, opt)
 		if err != nil {
-			log.Err("ParseAndValidateConfig : Failed to configure blob filter %s", err.Error())
-			return errors.New("failed to configure blob filter")
+			return err
 		}
-
-		log.Crit("ParseAndValidateConfig : Blob filter configured %s", opt.Filter)
 	}
 
 	log.Crit("ParseAndValidateConfig : account %s, container %s, account-type %s, auth %s, prefix %s, endpoint %s, MD5 %v %v, virtual-directory %v, disable-compression %v, CPK %v",
@@ -533,6 +522,25 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 
 	log.Crit("ParseAndValidateConfig : Telemetry : %s, honour-ACL %v, disable-symlink %v", az.stConfig.telemetry, az.stConfig.honourACL, az.stConfig.disableSymlink)
 
+	return nil
+}
+
+func configureBlobFilter(az *AzStorage, opt AzStorageOptions) error {
+	readonly := false
+	_ = config.UnmarshalKey("read-only", &readonly)
+	if !readonly {
+		log.Err("configureBlobFilter: Blob filters are supported only in read-only mode")
+		return errors.New("blobfilter is supported only in read-only mode")
+	}
+
+	az.stConfig.filter = &blobfilter.BlobFilter{}
+	err := az.stConfig.filter.Configure(opt.Filter)
+	if err != nil {
+		log.Err("configureBlobFilter : Failed to configure blob filter %s", err.Error())
+		return errors.New("failed to configure blob filter")
+	}
+
+	log.Crit("configureBlobFilter : Blob filter configured %s", opt.Filter)
 	return nil
 }
 
