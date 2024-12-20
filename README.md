@@ -261,6 +261,7 @@ Below diagrams guide you to choose right configuration for your workloads.
     - Extension can be supplied as string. Do not include "." in the filter
     - e.g. ```--filter=format=pdf```
 - Multiple filters can be combined using '&&' and '||' operator as well, however precedence using '()' is not supported yet.
+    - e.g. ```--filter=name=^testfil.* && size>130000000```
 
 
 ## Frequently Asked Questions
