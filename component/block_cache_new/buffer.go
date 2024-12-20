@@ -16,13 +16,11 @@ import (
 var zeroBuffer *Buffer
 
 type Buffer struct {
-	data       []byte    // Data holding in the buffer
-	dataSize   int64     // Size of the data
-	synced     int       // Flag representing the data is synced with Azure Storage or not
-	timer      time.Time // Timer for buffer expiry
-	blockIndex int       // Block Index inside blob, -1 if the blob doesn't contain blocks
-	checksum   []byte    // Check sum for the data
-	sync.RWMutex
+	data     []byte    // Data holding in the buffer
+	dataSize int64     // Size of the data
+	synced   int       // Flag representing the data is synced with Azure Storage or not
+	timer    time.Time // Timer for buffer expiry
+	checksum []byte    // Check sum for the data
 }
 
 type BufferPool struct {
@@ -42,17 +40,28 @@ func createBufferPool(bufSize int) *BufferPool {
 		bufferSize: bufSize,
 	}
 	zeroBuffer = bPool.getBuffer()
+	go doGC()
 	return bPool
+}
+
+type gcNode struct {
+	file *File
+	idx  int // block index inside the file
+}
+
+func doGC() {
+
 }
 
 func (bp *BufferPool) getBuffer() *Buffer {
 	b := bp.pool.Get().(*Buffer)
 	if b.data == nil {
 		b.data = make([]byte, BlockSize)
+	} else {
+		copy(b.data, zeroBuffer.data)
 	}
 	//b.data = b.data[:0]
 	b.synced = -1
-	b.blockIndex = -1
 	b.checksum = nil
 	return b
 }
@@ -63,9 +72,9 @@ func (bp *BufferPool) putBuffer(b *Buffer) {
 
 // Returns the buffer containing block.
 // This call only successed if the block idx < len(blocklist)
-func getBlockForRead(idx int, h *handlemap.Handle, file *File) (*Buffer, error) {
+func getBlockForRead(idx int, h *handlemap.Handle, file *File) (*block, error) {
 	var download bool = false
-	var buf *Buffer
+	var blk *block
 
 	file.Lock()
 	if idx >= len(file.blockList) {
@@ -77,12 +86,13 @@ func getBlockForRead(idx int, h *handlemap.Handle, file *File) (*Buffer, error) 
 		// I will start the download
 		download = file.blockList[idx].block_type
 		file.blockList[idx].buf = bPool.getBuffer()
-		buf = file.blockList[idx].buf
+		blk = file.blockList[idx]
 	}
 	file.Unlock()
 
 	if download {
-		buf.Lock()
+		blk.Lock()
+		buf := blk.buf
 		dataRead, err := bc.NextComponent().ReadInBuffer(internal.ReadInBufferOptions{
 			Handle: h,
 			Offset: int64(idx * BlockSize),
@@ -92,32 +102,29 @@ func getBlockForRead(idx int, h *handlemap.Handle, file *File) (*Buffer, error) 
 			buf.dataSize = int64(dataRead)
 			buf.synced = 1
 			buf.timer = time.Now()
-		}
-
-		buf.Unlock()
-
-		if err != nil {
+			close(blk.downloadStatus)
+		} else {
 			buf = nil
 			file.blockList[idx].downloadStatus <- 1 //something is wrong here can i update it without acquring lock??
-		} else {
-			close(file.blockList[idx].downloadStatus)
 		}
+		blk.Unlock()
 	}
-	_, ok := <-file.blockList[idx].downloadStatus
+	_, ok := <-blk.downloadStatus
 	if ok {
 		return nil, errors.New("failed to get the block")
 	}
-	return file.blockList[idx].buf, nil
+	return blk, nil
 }
 
 // This call will return buffer for writing for the block
 // This call should always return some buffer if len(blocklist) <= 50000
-func getBlockForWrite(idx int, h *handlemap.Handle, file *File) (*Buffer, error) {
+func getBlockForWrite(idx int, h *handlemap.Handle, file *File) (*block, error) {
 	if idx >= MAX_BLOCKS {
 		return nil, errors.New("write not supported space completed") // can we return ENOSPC error here?
 	}
 
 	file.Lock()
+	file.synced = false
 	len_of_blocklist := len(file.blockList)
 	if idx >= len_of_blocklist {
 		// Create at least 1 block. i.e, create blocks in the range (len(blocklist), idx]
@@ -162,7 +169,7 @@ func syncBuffersForFile(h *handlemap.Handle, file *File) error {
 }
 
 func syncBuffer(name string, size int64, blk *block) error {
-	blk.buf.Lock()
+	blk.Lock()
 	blk.id = base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
 	err := bc.NextComponent().StageData(
 		internal.StageDataOptions{
@@ -174,7 +181,7 @@ func syncBuffer(name string, size int64, blk *block) error {
 	if err == nil {
 		blk.buf.synced = 1
 	}
-	blk.buf.Unlock()
+	blk.Unlock()
 	return err
 }
 
@@ -191,6 +198,8 @@ func syncZeroBuffer(name string) error {
 
 // stages empty block for the hole
 func punchHole(f *File) error {
+	f.Lock()
+	defer f.Unlock()
 	if f.holePunched {
 		return nil
 	}
@@ -198,12 +207,14 @@ func punchHole(f *File) error {
 	if err == nil {
 		f.holePunched = true
 	}
+
 	return err
 }
 
 func commitBuffersForFile(h *handlemap.Handle, file *File) error {
 	var blklist []string
 	file.Lock()
+	defer file.Unlock()
 	len_of_blocklist := len(file.blockList)
 	for i := 0; i < len_of_blocklist; i++ {
 		if file.blockList[i].block_type == local_block && file.blockList[i].buf == nil { //dirty way to do stuff
@@ -212,8 +223,14 @@ func commitBuffersForFile(h *handlemap.Handle, file *File) error {
 			blklist = append(blklist, file.blockList[i].id)
 		}
 	}
+	if file.synced {
+		return nil
+	}
 	err := bc.NextComponent().CommitData(internal.CommitDataOptions{Name: file.Name, List: blklist, BlockSize: uint64(BlockSize)})
-	file.Unlock()
+	if err == nil {
+		file.synced = true
+	}
+
 	return err
 }
 

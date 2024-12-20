@@ -9,34 +9,25 @@ import (
 
 type File struct {
 	sync.RWMutex
-	handles      map[*handlemap.Handle]bool // Open file handles for this file
-	blockList    blockList                  // Blocklist
-	Etag         string                     // Etag of the file
-	Name         string                     // File Name
-	size         int64                      // File Size
-	holePunched  bool                       // Represents if we have punched any hole while uploading the data.
-	transactions chan *Transaction          // Channel which contains all the outstanding requests
+	handles     map[*handlemap.Handle]bool // Open file handles for this file
+	blockList   blockList                  // Blocklist
+	Etag        string                     // Etag of the file
+	Name        string                     // File Name
+	size        int64                      // File Size
+	synced      bool                       // Is file synced with Azure storage
+	holePunched bool                       // Represents if we have punched any hole while uploading the data.
 }
 
 func CreateFile(fileName string) *File {
 	f := &File{
-		Name:         fileName,
-		transactions: make(chan *Transaction, 1),
-		handles:      make(map[*handlemap.Handle]bool),
-		blockList:    make([]*block, 0),
-		size:         -1,
+		Name:      fileName,
+		handles:   make(map[*handlemap.Handle]bool),
+		blockList: make([]*block, 0),
+		size:      -1,
+		synced:    true,
 	}
 
 	return f
-}
-
-func startHandlingRequests(file *File) {
-	for {
-		select {
-		case t := <-file.transactions:
-			HandleTransaction(file, t)
-		}
-	}
 }
 
 // Sync Map filepath->*File
@@ -55,7 +46,6 @@ func GetFile(key string) (*File, bool) {
 	file, loaded := fileMap.LoadOrStore(key, f)
 	if !loaded {
 		first_open = true
-		go startHandlingRequests(f)
 	}
 	return file.(*File), first_open
 }
@@ -68,7 +58,7 @@ func DeleteHandleForFile(handle *handlemap.Handle) {
 	delete(file.handles, handle)
 	if len(file.handles) == 0 {
 		releaseBuffers(file)
-		fileMap.Delete(file.Name)
+		fileMap.Delete(file.Name) // Todo: what happens open call comes before release async call finish
 	}
 	file.Unlock()
 }

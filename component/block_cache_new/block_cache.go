@@ -183,7 +183,9 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 	}
 	handle := CreateFreshHandleForFile(f.Name, f.size, attr.Mtime)
 	f.handles[handle] = true
-	f.blockList = blockList
+	if blockList != nil {
+		f.blockList = blockList
+	}
 	f.Unlock()
 
 	return handle, nil
@@ -202,20 +204,21 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 	dataRead := 0
 	len_of_copy := len(options.Data)
 	f.Lock()
-	options.Handle.Size = f.size
+	options.Handle.Size = f.size // This is updated here as it is used by the nxt comp for upload usually not necessary!
 	f.Unlock()
 	for dataRead < len_of_copy {
 		idx := getBlockIndex(offset)
-		block_buf, err := getBlockForRead(idx, options.Handle, f)
+		blk, err := getBlockForRead(idx, options.Handle, f)
 		if err != nil {
 			return dataRead, err
 		}
 		blockOffset := convertOffsetIntoBlockOffset(offset)
 
-		block_buf.RLock()
+		blk.RLock()
+		block_buf := blk.buf
 		len_of_block_buf := getBlockSize(options.Handle.Size, idx)
 		bytesCopied := copy(options.Data[dataRead:], block_buf.data[blockOffset:len_of_block_buf])
-		block_buf.RUnlock()
+		blk.RUnlock()
 
 		dataRead += bytesCopied
 		offset += int64(bytesCopied)
@@ -237,16 +240,17 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 	dataWritten := 0
 	for dataWritten < len_of_copy {
 		idx := getBlockIndex(offset)
-		block_buf, err := getBlockForWrite(idx, options.Handle, f)
+		blk, err := getBlockForWrite(idx, options.Handle, f)
 		if err != nil {
 			return dataWritten, err
 		}
 		blockOffset := convertOffsetIntoBlockOffset(offset)
 
-		block_buf.Lock()
+		blk.Lock()
+		block_buf := blk.buf
 		bytesCopied := copy(block_buf.data[blockOffset:BlockSize], options.Data[dataWritten:])
 		block_buf.synced = 0
-		block_buf.Unlock()
+		blk.Unlock()
 
 		dataWritten += bytesCopied
 		offset += int64(dataWritten)

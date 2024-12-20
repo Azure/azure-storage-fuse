@@ -1,10 +1,17 @@
 package block_cache_new
 
+import (
+	"sync"
+
+	"github.com/Azure/azure-storage-fuse/v2/internal"
+)
+
 const remote_block bool = true
 const local_block bool = false
 const zero_block_id string = "nBjhkW1MQstCqpeuOmlBOQ=="
 
 type block struct {
+	sync.RWMutex
 	idx            int      // Block Index
 	id             string   // Block Id
 	buf            *Buffer  // Inmemory buffer if exists.
@@ -33,4 +40,9 @@ func convertOffsetIntoBlockOffset(offset int64) int64 {
 
 func getBlockSize(size int64, idx int) int {
 	return min(int(BlockSize), int(size)-(idx*BlockSize))
+}
+
+// Todo: This following is incomplete
+func populateFileInfo(file *File, attr *internal.ObjAttr) {
+	file.size = attr.Size
 }
