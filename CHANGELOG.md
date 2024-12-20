@@ -2,6 +2,9 @@
 **Bug Fixes**
 - Create block pool only in the child process.
 
+**Features**
+- Mount container or directory but restrict the view of blobs that you can see. This feature is available only in read-only mount.
+
 ## 2.4.0 (Unreleased)
 **Features**
 - Added 'gen-config' command to auto generate the recommended blobfuse2 config file based on computing resources and memory available on the node. Command details can be found with `blobfuse2 gen-config --help`.
