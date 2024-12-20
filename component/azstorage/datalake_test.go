@@ -2697,20 +2697,31 @@ func (s *datalakeTestSuite) TestPermissionPreservationWithCommit() {
 func (s *datalakeTestSuite) TestBlobFilters() {
 	defer s.cleanupTest()
 	// Setup
-	s.az.CreateFile(internal.CreateFileOptions{Name: "abcd1.txt"})
-	s.az.CreateFile(internal.CreateFileOptions{Name: "abcd2.txt"})
-	s.az.CreateFile(internal.CreateFileOptions{Name: "abcd3.txt"})
-	s.az.CreateFile(internal.CreateFileOptions{Name: "abcd4.txt"})
-	s.az.CreateDir(internal.CreateDirOptions{Name: "bcd1.txt"})
-	s.az.CreateFile(internal.CreateFileOptions{Name: "cd1.txt"})
-	s.az.CreateFile(internal.CreateFileOptions{Name: "d1.txt"})
+	var err error
+	name := generateDirectoryName()
+	err = s.az.CreateDir(internal.CreateDirOptions{Name: name})
+	s.assert.Nil(err)
+	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/abcd1.txt"})
+	s.assert.Nil(err)
+	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/abcd2.txt"})
+	s.assert.Nil(err)
+	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/abcd3.txt"})
+	s.assert.Nil(err)
+	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/abcd4.txt"})
+	s.assert.Nil(err)
+	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/bcd1.txt"})
+	s.assert.Nil(err)
+	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/cd1.txt"})
+	s.assert.Nil(err)
+	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/d1.txt"})
+	s.assert.Nil(err)
 
 	var iteration int = 0
 	var marker string = ""
 	blobList := make([]*internal.ObjAttr, 0)
 
 	for {
-		new_list, new_marker, err := s.az.StreamDir(internal.StreamDirOptions{Name: "/", Token: marker, Count: 50})
+		new_list, new_marker, err := s.az.StreamDir(internal.StreamDirOptions{Name: name + "/", Token: marker, Count: 50})
 		s.assert.Nil(err)
 		blobList = append(blobList, new_list...)
 		marker = new_marker
@@ -2726,11 +2737,11 @@ func (s *datalakeTestSuite) TestBlobFilters() {
 	filter := &blobfilter.BlobFilter{}
 	s.az.storage.(*Datalake).Config.filter = filter
 
-	err := filter.Configure("name=^abcd.*")
+	err = filter.Configure("name=^abcd.*")
 	s.assert.Nil(err)
 	blobList = make([]*internal.ObjAttr, 0)
 	for {
-		new_list, new_marker, err := s.az.StreamDir(internal.StreamDirOptions{Name: "/", Token: marker, Count: 50})
+		new_list, new_marker, err := s.az.StreamDir(internal.StreamDirOptions{Name: name + "/", Token: marker, Count: 50})
 		s.assert.Nil(err)
 		blobList = append(blobList, new_list...)
 		marker = new_marker

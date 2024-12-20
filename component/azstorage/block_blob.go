@@ -619,7 +619,13 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 			attr.Flags.Set(internal.PropFlagModeDefault)
 		}
 
-		if bb.Config.filter != nil {
+		if attr.IsDir() {
+			// 0 byte meta found so mark this directory in map
+			dirList[*blobInfo.Name+"/"] = true
+			attr.Size = 4096
+		}
+
+		if !attr.IsDir() && bb.Config.filter != nil {
 			filterAttr.Name = attr.Name
 			filterAttr.Mtime = attr.Mtime
 			filterAttr.Size = attr.Size
@@ -630,12 +636,6 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 			}
 		} else {
 			blobList = append(blobList, attr)
-		}
-
-		if attr.IsDir() {
-			// 0 byte meta found so mark this directory in map
-			dirList[*blobInfo.Name+"/"] = true
-			attr.Size = 4096
 		}
 	}
 

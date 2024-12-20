@@ -542,7 +542,7 @@ func (dl *Datalake) List(prefix string, marker *string, count int32) ([]*interna
 		// Alternatively, if you want Datalake list paths to return metadata/properties as well.
 		// pass CLI parameter --no-symlinks=false in the mount command.
 
-		if dl.Config.filter != nil {
+		if (attr.Mode&os.ModeDir) != 0 && dl.Config.filter != nil {
 			filterAttr := blobfilter.BlobAttr{}
 			filterAttr.Name = attr.Name
 			filterAttr.Mtime = attr.Mtime
