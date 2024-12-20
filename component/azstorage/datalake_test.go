@@ -56,6 +56,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
+	"github.com/vibhansa-msft/blobfilter"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake/directory"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake/file"
@@ -2691,6 +2692,58 @@ func (s *datalakeTestSuite) TestPermissionPreservationWithCommit() {
 	s.assert.Contains(acl, "user::rwx")
 	s.assert.Contains(acl, "group::rw-")
 	s.assert.Contains(acl, "other::rwx")
+}
+
+func (s *datalakeTestSuite) TestBlobFilters() {
+	defer s.cleanupTest()
+	// Setup
+	s.az.CreateFile(internal.CreateFileOptions{Name: "abcd1.txt"})
+	s.az.CreateFile(internal.CreateFileOptions{Name: "abcd2.txt"})
+	s.az.CreateFile(internal.CreateFileOptions{Name: "abcd3.txt"})
+	s.az.CreateFile(internal.CreateFileOptions{Name: "abcd4.txt"})
+	s.az.CreateDir(internal.CreateDirOptions{Name: "bcd1.txt"})
+	s.az.CreateFile(internal.CreateFileOptions{Name: "cd1.txt"})
+	s.az.CreateFile(internal.CreateFileOptions{Name: "d1.txt"})
+
+	var iteration int = 0
+	var marker string = ""
+	blobList := make([]*internal.ObjAttr, 0)
+
+	for {
+		new_list, new_marker, err := s.az.StreamDir(internal.StreamDirOptions{Name: "/", Token: marker, Count: 50})
+		s.assert.Nil(err)
+		blobList = append(blobList, new_list...)
+		marker = new_marker
+		iteration++
+
+		log.Debug("AzStorage::ReadDir : So far retrieved %d objects in %d iterations", len(blobList), iteration)
+		if new_marker == "" {
+			break
+		}
+	}
+	s.assert.EqualValues(7, len(blobList))
+
+	filter := &blobfilter.BlobFilter{}
+	s.az.storage.(*Datalake).Config.filter = filter
+
+	err := filter.Configure("name=^abcd.*")
+	s.assert.Nil(err)
+	blobList = make([]*internal.ObjAttr, 0)
+	for {
+		new_list, new_marker, err := s.az.StreamDir(internal.StreamDirOptions{Name: "/", Token: marker, Count: 50})
+		s.assert.Nil(err)
+		blobList = append(blobList, new_list...)
+		marker = new_marker
+		iteration++
+
+		log.Debug("AzStorage::ReadDir : So far retrieved %d objects in %d iterations", len(blobList), iteration)
+		if new_marker == "" {
+			break
+		}
+	}
+
+	s.assert.EqualValues(4, len(blobList))
+	s.az.stConfig.filter = nil
 }
 
 // func (s *datalakeTestSuite) TestRAGRS() {

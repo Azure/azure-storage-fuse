@@ -66,6 +66,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
+	"github.com/vibhansa-msft/blobfilter"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -3385,6 +3386,58 @@ func (suite *blockBlobTestSuite) TestTruncateBlockFileToLarger() {
 
 func (suite *blockBlobTestSuite) TestTruncateNoBlockFileToLarger() {
 	suite.UtilityFunctionTruncateFileToLarger(200*MB, 300*MB)
+}
+
+func (s *blockBlobTestSuite) TestBlobFilters() {
+	defer s.cleanupTest()
+	// Setup
+	s.az.CreateFile(internal.CreateFileOptions{Name: "abcd1.txt"})
+	s.az.CreateFile(internal.CreateFileOptions{Name: "abcd2.txt"})
+	s.az.CreateFile(internal.CreateFileOptions{Name: "abcd3.txt"})
+	s.az.CreateFile(internal.CreateFileOptions{Name: "abcd4.txt"})
+	s.az.CreateDir(internal.CreateDirOptions{Name: "bcd1.txt"})
+	s.az.CreateFile(internal.CreateFileOptions{Name: "cd1.txt"})
+	s.az.CreateFile(internal.CreateFileOptions{Name: "d1.txt"})
+
+	var iteration int = 0
+	var marker string = ""
+	blobList := make([]*internal.ObjAttr, 0)
+
+	for {
+		new_list, new_marker, err := s.az.StreamDir(internal.StreamDirOptions{Name: "/", Token: marker, Count: 50})
+		s.assert.Nil(err)
+		blobList = append(blobList, new_list...)
+		marker = new_marker
+		iteration++
+
+		log.Debug("AzStorage::ReadDir : So far retrieved %d objects in %d iterations", len(blobList), iteration)
+		if new_marker == "" {
+			break
+		}
+	}
+	s.assert.EqualValues(7, len(blobList))
+
+	filter := &blobfilter.BlobFilter{}
+	s.az.storage.(*BlockBlob).Config.filter = filter
+
+	err := filter.Configure("name=^abcd.*")
+	s.assert.Nil(err)
+	blobList = make([]*internal.ObjAttr, 0)
+	for {
+		new_list, new_marker, err := s.az.StreamDir(internal.StreamDirOptions{Name: "/", Token: marker, Count: 50})
+		s.assert.Nil(err)
+		blobList = append(blobList, new_list...)
+		marker = new_marker
+		iteration++
+
+		log.Debug("AzStorage::ReadDir : So far retrieved %d objects in %d iterations", len(blobList), iteration)
+		if new_marker == "" {
+			break
+		}
+	}
+
+	s.assert.EqualValues(4, len(blobList))
+	s.az.stConfig.filter = nil
 }
 
 func (suite *blockBlobTestSuite) UtilityFunctionTestTruncateFileToSmaller(size int, truncatedLength int) {
