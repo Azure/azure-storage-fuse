@@ -126,27 +126,18 @@ func (s *datalakeTestSuite) setupTestHelper(configuration string, container stri
 	s.config = configuration
 	s.assert = assert.New(s.T())
 
-	var err error
-	s.az, err = newTestAzStorage(configuration)
-	if s.az != nil {
-		s.az.Start(ctx) // Note: Start->TestValidation will fail but it doesn't matter. We are creating the container a few lines below anyway.
-		// We could create the container before but that requires rewriting the code to new up a service client.
+	s.az, _ = newTestAzStorage(configuration)
+	s.az.Start(ctx) // Note: Start->TestValidation will fail but it doesn't matter. We are creating the container a few lines below anyway.
+	// We could create the container before but that requires rewriting the code to new up a service client.
 
-		s.serviceClient = s.az.storage.(*Datalake).Service // Grab the service client to do some validation
-		s.containerClient = s.serviceClient.NewFileSystemClient(s.container)
-		if create {
-			s.containerClient.Create(ctx, nil)
-		}
-	} else {
-		fmt.Printf("Failed to create AzStorage [%s]\n", err.Error())
+	s.serviceClient = s.az.storage.(*Datalake).Service // Grab the service client to do some validation
+	s.containerClient = s.serviceClient.NewFileSystemClient(s.container)
+	if create {
+		s.containerClient.Create(ctx, nil)
 	}
 }
 
 func (s *datalakeTestSuite) tearDownTestHelper(delete bool) {
-	if s.az == nil {
-		return
-	}
-
 	s.az.Stop()
 	if delete {
 		s.containerClient.Delete(ctx, nil)
