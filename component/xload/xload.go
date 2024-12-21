@@ -254,7 +254,7 @@ func (xl *Xload) startDownloader() error {
 		return err
 	}
 
-	ds, err := newDownloadSplitter(xl.blockSize, xl.blockPool, xl.path, xl.NextComponent(), xl.statsMgr)
+	ds, err := newDownloadSplitter(xl.blockSize, xl.blockPool, xl.path, xl.NextComponent(), xl.statsMgr, xl.fileLocks)
 	if err != nil {
 		log.Err("Xload::startDownloader : Unable to create download splitter [%s]", err.Error())
 		return err
@@ -302,24 +302,16 @@ func (xl *Xload) startComponents() error {
 }
 
 func (xl *Xload) isDownloadRequired(localPath string, blobPath string) (bool, *internal.ObjAttr, error) {
-	downloadRequired := false
-	_, err := os.Stat(localPath)
-	if err != nil {
-		log.Debug("Xload::isDownloadRequired : %s is not present in local path [%v]", localPath, err.Error())
-		downloadRequired = true
-	}
-
-	// if downloadRequired && flock.Count() > 0 {
-	// 	downloadRequired = false
-	// }
+	filePresent, size := isFilePresent(localPath)
+	downloadRequired := !filePresent
 
 	var attr *internal.ObjAttr
-	err = nil
-	if downloadRequired {
-		attr, err = xl.NextComponent().GetAttr(internal.GetAttrOptions{Name: blobPath})
-		if err != nil {
-			log.Err("Xload::isDownloadRequired : Failed to get attr of %s [%s]", blobPath, err.Error())
-		}
+	var err error
+	attr, err = xl.NextComponent().GetAttr(internal.GetAttrOptions{Name: blobPath})
+	if err != nil {
+		log.Err("Xload::isDownloadRequired : Failed to get attr of %s [%s]", blobPath, err.Error())
+	} else {
+		downloadRequired = attr.Size != size
 	}
 
 	return downloadRequired, attr, err
@@ -344,7 +336,7 @@ func (xl *Xload) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, 
 	flock.Lock()
 	defer flock.Unlock()
 
-	downloadRequired, _, err := xl.isDownloadRequired(localPath, options.Name)
+	downloadRequired, attr, err := xl.isDownloadRequired(localPath, options.Name)
 	if err != nil {
 		log.Err("Xload::OpenFile : failed to open file %s [%s]", options.Name, err.Error())
 		return nil, err
@@ -354,23 +346,28 @@ func (xl *Xload) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, 
 		// send to splitter to download on priority
 		splitter := xl.getSplitter()
 		if splitter == nil {
-			log.Err("Xload::OpenFile : failed to  get download splitter")
+			log.Err("Xload::OpenFile : failed to  get download splitter for %s", options.Name)
 			return nil, fmt.Errorf("failed to  get download splitter")
 		}
 
-		// splitter.getThreadPool().Schedule(true, &workItem{
-		// 	compName: splitter.getName(),
-		// 	// path:     entry.Path,
-		// 	// dataLen:  uint64(entry.Size),
-		// })
+		_, err = splitter.process(&workItem{
+			compName: splitter.getName(),
+			path:     options.Name,
+			dataLen:  uint64(attr.Size),
+			priority: true,
+		})
+
+		if err != nil {
+			log.Err("Xload::OpenFile : failed to download file %s [%s]", options.Name, err.Error())
+		}
 
 	} else {
-		log.Debug("FileCache::OpenFile : %s will be served from local path", options.Name)
+		log.Debug("Xload::OpenFile : %s will be served from local path", options.Name)
 	}
 
 	fh, err := os.OpenFile(localPath, options.Flags, options.Mode)
 	if err != nil {
-		log.Err("FileCache::OpenFile : error opening cached file %s [%s]", options.Name, err.Error())
+		log.Err("Xload::OpenFile : error opening cached file %s [%s]", options.Name, err.Error())
 		return nil, err
 	}
 

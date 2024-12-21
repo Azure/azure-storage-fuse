@@ -33,7 +33,9 @@
 
 package xload
 
-import "github.com/Azure/azure-storage-fuse/v2/common/log"
+import (
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
+)
 
 const _1MB uint64 = (1024 * 1024)
 
@@ -95,8 +97,16 @@ func (pool *BlockPool) Usage() uint32 {
 	return ((pool.maxBlocks - (uint32)(len(pool.blocksCh))) * 100) / pool.maxBlocks
 }
 
+func (pool *BlockPool) GetBlock(priority bool) *Block {
+	if priority {
+		return pool.mustGet()
+	} else {
+		return pool.tryGet()
+	}
+}
+
 // TryGet a block from the pool. If the pool is empty, wait till a block is released back to the pool
-func (pool *BlockPool) TryGet() *Block {
+func (pool *BlockPool) tryGet() *Block {
 	// getting a block from pool will be a blocking operation if the pool is empty
 	b := <-pool.blocksCh
 
@@ -105,7 +115,7 @@ func (pool *BlockPool) TryGet() *Block {
 	return b
 }
 
-func (pool *BlockPool) MustGet() *Block {
+func (pool *BlockPool) mustGet() *Block {
 	var b *Block = nil
 
 	select {

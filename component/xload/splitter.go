@@ -39,6 +39,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
@@ -54,6 +55,7 @@ type splitter struct {
 	blockSize uint64
 	blockPool *BlockPool
 	path      string
+	fileLocks *common.LockMap
 }
 
 // --------------------------------------------------------------------------------------------------------
@@ -62,7 +64,7 @@ type downloadSplitter struct {
 	splitter
 }
 
-func newDownloadSplitter(blockSize uint64, blockPool *BlockPool, path string, remote internal.Component, statsMgr *statsManager) (*downloadSplitter, error) {
+func newDownloadSplitter(blockSize uint64, blockPool *BlockPool, path string, remote internal.Component, statsMgr *statsManager, fileLocks *common.LockMap) (*downloadSplitter, error) {
 	log.Debug("splitter::newDownloadSplitter : create new download splitter for %s, block size %v", path, blockSize)
 
 	d := &downloadSplitter{
@@ -70,6 +72,7 @@ func newDownloadSplitter(blockSize uint64, blockPool *BlockPool, path string, re
 			blockSize: blockSize,
 			blockPool: blockPool,
 			path:      path,
+			fileLocks: fileLocks,
 			xbase: xbase{
 				remote:   remote,
 				statsMgr: statsMgr,
@@ -104,9 +107,25 @@ func (d *downloadSplitter) stop() {
 
 // download data in chunks and then write to the local file
 func (d *downloadSplitter) process(item *workItem) (int, error) {
-	var err error
-
 	log.Debug("downloadSplitter::process : Splitting data for %s", item.path)
+
+	var err error
+	localPath := filepath.Join(d.path, item.path)
+
+	// if priority is false, it means that it has been scheduled by the lister and not OpenFile call
+	// so get a lock and wait if file is already under download by the OpenFile thread
+	// OpenFile thread already has a lock on the file, so don't take it again
+	if !item.priority {
+		flock := d.fileLocks.Get(item.path)
+		flock.Lock()
+		defer flock.Unlock()
+	}
+
+	filePresent, size := isFilePresent(localPath)
+	if filePresent && item.dataLen == uint64(size) {
+		return int(size), nil
+	}
+
 	if len(item.path) == 0 {
 		return 0, nil
 	}
@@ -116,7 +135,7 @@ func (d *downloadSplitter) process(item *workItem) (int, error) {
 
 	// TODO:: xload : should we delete the file if it already exists
 	// TODO:: xload : what should be the flags and mode and should we allocate the full size to the file
-	item.fileHandle, err = os.OpenFile(filepath.Join(d.path, item.path), os.O_WRONLY|os.O_CREATE, 0644)
+	item.fileHandle, err = os.OpenFile(localPath, os.O_WRONLY|os.O_CREATE, 0644)
 	if err != nil {
 		// create file
 		return -1, fmt.Errorf("failed to open file %s [%v]", item.path, err)
@@ -154,7 +173,7 @@ func (d *downloadSplitter) process(item *workItem) (int, error) {
 	}()
 
 	for i := 0; i < int(numBlocks); i++ {
-		block := d.blockPool.TryGet()
+		block := d.blockPool.GetBlock(item.priority)
 		if block == nil {
 			responseChannel <- &workItem{err: fmt.Errorf("failed to get block from pool for file %s, offset %v", item.path, offset)}
 		} else {
@@ -172,7 +191,7 @@ func (d *downloadSplitter) process(item *workItem) (int, error) {
 				download:        true,
 			}
 			// log.Debug("downloadSplitter::process : Scheduling download for %s offset %v", item.path, offset)
-			d.getNext().getThreadPool().Schedule(false, splitItem)
+			d.getNext().getThreadPool().Schedule(item.priority, splitItem)
 		}
 
 		offset += int64(d.blockSize)

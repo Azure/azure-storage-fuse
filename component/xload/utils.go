@@ -38,6 +38,7 @@ import (
 	"os"
 	"reflect"
 
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/JeffreyRichter/enum/enum"
 )
 
@@ -51,6 +52,7 @@ type workItem struct {
 	err             error          // Error if any
 	responseChannel chan *workItem // Channel to send the response
 	download        bool           // boolean variable to decide upload or download
+	priority        bool           // boolean flag to decide if this item needs to be processed on priority
 }
 
 // xload mode enum
@@ -93,4 +95,14 @@ func (m *Mode) Parse(s string) error {
 func roundFloat(val float64, precision int) float64 {
 	ratio := math.Pow(10, float64(precision))
 	return math.Round(val*ratio) / ratio
+}
+
+func isFilePresent(localPath string) (bool, int64) {
+	filePresent := true
+	fileInfo, err := os.Stat(localPath)
+	if err != nil {
+		log.Debug("utils::isDownloadRequired : %s is not present in local path [%v]", localPath, err.Error())
+		filePresent = false
+	}
+	return filePresent, fileInfo.Size()
 }
