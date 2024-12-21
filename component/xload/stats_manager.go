@@ -36,6 +36,7 @@ package xload
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"sync"
@@ -70,14 +71,14 @@ type statsItem struct {
 }
 
 type statsJSONData struct {
-	Timestamp        string `json:"Timestamp"`
-	PercentCompleted string `json:"PercentCompleted"`
-	Total            uint64 `json:"Total"`
-	Done             uint64 `json:"Done"`
-	Failed           uint64 `json:"Failed"`
-	Pending          uint64 `json:"Pending"`
-	BytesTransferred uint64 `json:"BytesTransferred"`
-	BandwidthMbps    string `json:"Bandwidth(Mbps)"`
+	Timestamp        string  `json:"Timestamp"`
+	PercentCompleted float64 `json:"PercentCompleted"`
+	Total            uint64  `json:"Total"`
+	Done             uint64  `json:"Done"`
+	Failed           uint64  `json:"Failed"`
+	Pending          uint64  `json:"Pending"`
+	BytesTransferred uint64  `json:"BytesTransferred"`
+	BandwidthMbps    float64 `json:"Bandwidth(Mbps)"`
 }
 
 const (
@@ -111,7 +112,9 @@ func (sm *statsManager) start() {
 	sm.wg.Add(1)
 	sm.startTime = time.Now().UTC()
 	log.Debug("statsManager::start : start stats manager at time %v", sm.startTime.Format(time.RFC1123))
-	sm.writeToJSON([]byte("[\n"))
+	sm.writeToJSON([]byte("[\n"), false)
+	sm.marshalStatsData(&statsJSONData{Timestamp: sm.startTime.Format(time.RFC1123)}, false)
+	sm.writeToJSON([]byte("\n]"), false)
 	go sm.statsProcessor()
 	go sm.statsExporter()
 }
@@ -124,7 +127,6 @@ func (sm *statsManager) stop() {
 	sm.wg.Wait()
 
 	if sm.fileHandle != nil {
-		sm.writeToJSON([]byte("\n]"))
 		sm.fileHandle.Close()
 	}
 }
@@ -214,14 +216,14 @@ func (sm *statsManager) calculateBandwidth() {
 
 	err := sm.marshalStatsData(&statsJSONData{
 		Timestamp:        currTime.Format(time.RFC1123),
-		PercentCompleted: fmt.Sprintf("%.2f%%", percentCompleted),
+		PercentCompleted: roundFloat(percentCompleted, 2),
 		Total:            sm.totalFiles,
 		Done:             sm.success,
 		Failed:           sm.failed,
 		Pending:          filesPending,
 		BytesTransferred: bytesTransferred,
-		BandwidthMbps:    fmt.Sprintf("%.2f", bandwidthMbps),
-	})
+		BandwidthMbps:    roundFloat(bandwidthMbps, 2),
+	}, true)
 	if err != nil {
 		log.Err("statsManager::calculateBandwidth : failed to write to json file [%v]", err.Error())
 	}
@@ -231,11 +233,9 @@ func (sm *statsManager) calculateBandwidth() {
 		sm.done <- true
 		return
 	}
-
-	sm.writeToJSON([]byte(",\n"))
 }
 
-func (sm *statsManager) marshalStatsData(data *statsJSONData) error {
+func (sm *statsManager) marshalStatsData(data *statsJSONData, seek bool) error {
 	if sm.fileHandle == nil {
 		return nil
 	}
@@ -246,7 +246,7 @@ func (sm *statsManager) marshalStatsData(data *statsJSONData) error {
 		return err
 	}
 
-	err = sm.writeToJSON(jsonData)
+	err = sm.writeToJSON(jsonData, seek)
 	if err != nil {
 		log.Err("statsManager::convertToBytes : failed to write to json file [%v]", err.Error())
 		return err
@@ -255,15 +255,38 @@ func (sm *statsManager) marshalStatsData(data *statsJSONData) error {
 	return nil
 }
 
-func (sm *statsManager) writeToJSON(data []byte) error {
+func (sm *statsManager) writeToJSON(data []byte, seek bool) error {
 	if sm.fileHandle == nil {
 		return nil
 	}
 
-	_, err := sm.fileHandle.Write(data)
+	var err error
+	if seek {
+		_, err = sm.fileHandle.Seek(-2, io.SeekEnd)
+		if err != nil {
+			log.Err("statsManager::writeToJSON : failed to seek [%v]", err.Error())
+			return err
+		}
+
+		_, err = sm.fileHandle.Write([]byte(",\n"))
+		if err != nil {
+			log.Err("statsManager::writeToJSON : failed to write to json file [%v]", err.Error())
+			return err
+		}
+	}
+
+	_, err = sm.fileHandle.Write(data)
 	if err != nil {
 		log.Err("statsManager::writeToJSON : failed to write to json file [%v]", err.Error())
 		return err
+	}
+
+	if seek {
+		_, err = sm.fileHandle.Write([]byte("\n]"))
+		if err != nil {
+			log.Err("statsManager::writeToJSON : failed to write to json file [%v]", err.Error())
+			return err
+		}
 	}
 
 	return nil
