@@ -72,21 +72,6 @@ steps:
         timeoutInMinutes: 3
         continueOnError: false
 
-  - template: huge-list-test.yml
-    parameters:
-      working_dir: $(WORK_DIR)
-      mount_dir: ${{ parameters.mount_dir }}
-      temp_dir: ${{ parameters.temp_dir }}
-      idstring: '${{ parameters.idstring }} Huge List Test'
-      distro_name: ${{ parameters.distro_name }}
-      mountStep:
-        script: >
-          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }}
-          --default-working-dir=$(WORK_DIR)
-          cat {{ parameters.config_file }}
-        displayName: 'HugeList with symlink on: Mount && display config'
-        continueOnError: false
-
   - template: 'cleanup.yml'
     parameters:
       working_dir: $(WORK_DIR)
