@@ -74,14 +74,14 @@ steps:
 
   - template: huge-list-test.yml
     parameters:
-      working_dir: ${{ parameters.working_dir }}
+      working_dir: $(WORK_DIR)
       mount_dir: ${{ parameters.mount_dir }}
       temp_dir: ${{ parameters.temp_dir }}
-      idstring: ${{ parameters.service }} Huge List Test
+      idstring: '${{ parameters.idstring }} Huge List Test'
       distro_name: ${{ parameters.distro_name }}
       mountStep:
         script: >
-          ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config }}
+          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config }}
           --default-working-dir=${{ parameters.working_dir }}
           cat {{ parameters.config }}
         displayName: 'HugeList with symlink on: Mount && display config'
