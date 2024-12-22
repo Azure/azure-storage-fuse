@@ -50,7 +50,6 @@ type gcNode struct {
 }
 
 func doGC() {
-
 }
 
 func (bp *BufferPool) getBuffer() *Buffer {
@@ -70,6 +69,13 @@ func (bp *BufferPool) putBuffer(b *Buffer) {
 	bp.pool.Put(b)
 }
 
+func getBlockWithReadAhead(idx int, h *handlemap.Handle, file *File) (*block, error) {
+	for i := 1; i <= 3; i++ {
+		go getBlockForRead(idx+i, h, file)
+	}
+	return getBlockForRead(idx, h, file)
+}
+
 // Returns the buffer containing block.
 // This call only successed if the block idx < len(blocklist)
 func getBlockForRead(idx int, h *handlemap.Handle, file *File) (*block, error) {
@@ -82,11 +88,11 @@ func getBlockForRead(idx int, h *handlemap.Handle, file *File) (*block, error) {
 		return nil, errors.New("block is out of the blocklist scope")
 	}
 	h.Size = file.size // This is necessary as next component uses this value to check bounds
-	if file.blockList[idx].buf == nil {
+	blk = file.blockList[idx]
+	if blk.buf == nil {
 		// I will start the download
-		download = file.blockList[idx].block_type
-		file.blockList[idx].buf = bPool.getBuffer()
-		blk = file.blockList[idx]
+		download = blk.block_type
+		blk.buf = bPool.getBuffer()
 	}
 	file.Unlock()
 
@@ -198,8 +204,6 @@ func syncZeroBuffer(name string) error {
 
 // stages empty block for the hole
 func punchHole(f *File) error {
-	f.Lock()
-	defer f.Unlock()
 	if f.holePunched {
 		return nil
 	}
@@ -243,5 +247,12 @@ func releaseBuffers(f *File) {
 			bPool.putBuffer(f.blockList[i].buf)
 		}
 		f.blockList[i].buf = nil
+	}
+}
+
+func releaseBufferForBlock(b *block) {
+	if b.buf != nil {
+		bPool.putBuffer(b.buf)
+		b.buf = nil
 	}
 }

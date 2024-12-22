@@ -289,11 +289,11 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 		conn.want |= C.FUSE_CAP_READDIRPLUS
 	}
 
-	// Allow fuse to read a file in parallel on different offsets
-	if (conn.capable & C.FUSE_CAP_ASYNC_READ) != 0 {
-		log.Info("Libfuse::libfuse_init : Enable Capability : FUSE_CAP_ASYNC_READ")
-		conn.want |= C.FUSE_CAP_ASYNC_READ
-	}
+	// // Allow fuse to read a file in parallel on different offsets
+	// if (conn.capable & C.FUSE_CAP_ASYNC_READ) != 0 {
+	// 	log.Info("Libfuse::libfuse_init : Enable Capability : FUSE_CAP_ASYNC_READ")
+	// 	conn.want |= C.FUSE_CAP_ASYNC_READ
+	// }
 
 	if (conn.capable & C.FUSE_CAP_SPLICE_WRITE) != 0 {
 		// While writing to fuse device let libfuse collate the data and write big chunks

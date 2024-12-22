@@ -73,30 +73,34 @@ type Buffers struct {
 
 type Handle struct {
 	sync.RWMutex
-	FObj     *os.File // File object being represented by this handle
-	CacheObj *Cache   // Streaming layer cache for this handle
-	Buffers  *Buffers
-	ID       HandleID // Blobfuse assigned unique ID to this handle
-	Size     int64    // Size of the file being handled here
-	Mtime    time.Time
-	UnixFD   uint64                 // Unix FD created by create/open syscall
-	OptCnt   uint64                 // Number of operations done on this file
-	Flags    common.BitMap16        // Various states of the file
-	Path     string                 // Always holds path relative to mount dir
-	values   map[string]interface{} // Map to hold other info if application wants to store
+	FObj        *os.File // File object being represented by this handle
+	CacheObj    *Cache   // Streaming layer cache for this handle
+	Buffers     *Buffers
+	ID          HandleID // Blobfuse assigned unique ID to this handle
+	Size        int64    // Size of the file being handled here
+	Mtime       time.Time
+	UnixFD      uint64                 // Unix FD created by create/open syscall
+	OptCnt      uint64                 // Number of operations done on this file
+	Flags       common.BitMap16        // Various states of the file
+	Path        string                 // Always holds path relative to mount dir
+	values      map[string]interface{} // Map to hold other info if application wants to store
+	Is_seq      uint                   //Tells whether the file is in sequential mode
+	Prev_offset int64                  // prev offset for the read op, neccesary to check if the file is reading sequentially
 }
 
 func NewHandle(path string) *Handle {
 	return &Handle{
-		ID:       InvalidHandleID,
-		Path:     path,
-		Size:     0,
-		Flags:    0,
-		OptCnt:   0,
-		values:   make(map[string]interface{}),
-		CacheObj: nil,
-		FObj:     nil,
-		Buffers:  nil,
+		ID:          InvalidHandleID,
+		Path:        path,
+		Size:        0,
+		Flags:       0,
+		OptCnt:      0,
+		values:      make(map[string]interface{}),
+		CacheObj:    nil,
+		FObj:        nil,
+		Buffers:     nil,
+		Is_seq:      0, // Initially assume file is random read
+		Prev_offset: 0,
 	}
 }
 

@@ -198,6 +198,12 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 		// EOF reached so early exit
 		return 0, io.EOF
 	}
+	h := options.Handle
+	if h.Prev_offset == options.Offset {
+		h.Is_seq++
+	} else {
+		h.Is_seq = 0
+	}
 	f, _ := GetFile(options.Handle.Path)
 
 	offset := options.Offset
@@ -206,9 +212,16 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 	f.Lock()
 	options.Handle.Size = f.size // This is updated here as it is used by the nxt comp for upload usually not necessary!
 	f.Unlock()
+
 	for dataRead < len_of_copy {
 		idx := getBlockIndex(offset)
-		blk, err := getBlockForRead(idx, options.Handle, f)
+		var blk *block
+		var err error
+		if options.Handle.Is_seq != 0 {
+			blk, err = getBlockWithReadAhead(idx, options.Handle, f)
+		} else {
+			blk, err = getBlockForRead(idx, options.Handle, f)
+		}
 		if err != nil {
 			return dataRead, err
 		}
@@ -218,6 +231,9 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 		block_buf := blk.buf
 		len_of_block_buf := getBlockSize(options.Handle.Size, idx)
 		bytesCopied := copy(options.Data[dataRead:], block_buf.data[blockOffset:len_of_block_buf])
+		if blockOffset+int64(bytesCopied) == int64(len_of_block_buf) {
+			releaseBufferForBlock(blk)
+		}
 		blk.RUnlock()
 
 		dataRead += bytesCopied
@@ -226,6 +242,8 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 			return dataRead, io.EOF
 		}
 	}
+
+	h.Prev_offset = options.Offset + int64(dataRead)
 	return dataRead, nil
 
 }
