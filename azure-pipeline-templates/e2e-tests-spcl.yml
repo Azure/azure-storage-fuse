@@ -81,9 +81,9 @@ steps:
       distro_name: ${{ parameters.distro_name }}
       mountStep:
         script: >
-          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config }}
+          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }}
           --default-working-dir=${{ parameters.working_dir }}
-          cat {{ parameters.config }}
+          cat {{ parameters.config_file }}
         displayName: 'HugeList with symlink on: Mount && display config'
         continueOnError: false
 
