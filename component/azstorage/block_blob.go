@@ -625,7 +625,7 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 			attr.Size = 4096
 		}
 
-		if !attr.IsDir() && bb.Config.filter != nil {
+		if bb.Config.filter != nil && !attr.IsDir() {
 			filterAttr.Name = attr.Name
 			filterAttr.Mtime = attr.Mtime
 			filterAttr.Size = attr.Size
