@@ -35,10 +35,12 @@ package block_cache_new
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"os"
 
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
@@ -217,11 +219,11 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 		idx := getBlockIndex(offset)
 		var blk *block
 		var err error
-		if options.Handle.Is_seq != 0 {
-			blk, err = getBlockWithReadAhead(idx, options.Handle, f)
-		} else {
-			blk, err = getBlockForRead(idx, options.Handle, f)
-		}
+		// if options.Handle.Is_seq != 0 {
+		// 	blk, err = getBlockWithReadAhead(idx, options.Handle, f)
+		// } else {
+		blk, err = getBlockForRead(idx, options.Handle, f)
+		//		}
 		if err != nil {
 			return dataRead, err
 		}
@@ -310,18 +312,55 @@ func (bc *BlockCache) CloseFile(options internal.CloseFileOptions) error {
 
 // TruncateFile: Truncate the file to the given size
 func (bc *BlockCache) TruncateFile(options internal.TruncateFileOptions) error {
+	h, err := bc.OpenFile(internal.OpenFileOptions{Name: options.Name, Flags: os.O_RDWR, Mode: 0666})
+	if err != nil {
+		return err
+	} else {
+		defer bc.CloseFile(internal.CloseFileOptions{Handle: h})
+	}
+	f, _ := GetFile(options.Name)
+	f.Lock()
+	defer f.Unlock()
+	f.size = options.Size
+	len_of_blocklst := len(f.blockList)
+	// Modify the blocklist
+	total_blocks := (options.Size + int64(BlockSize) - 1) / int64(BlockSize)
+	if total_blocks <= int64(len_of_blocklst) {
+		f.blockList = f.blockList[:total_blocks] //here memory of the blocks is not given to the pool, Modify it.
+	} else {
+		for i := len_of_blocklst; i < int(total_blocks); i++ {
+			id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
+			blk := createBlock(i, id, local_block)
+			close(blk.downloadStatus)
+			f.blockList = append(f.blockList, blk)
+			if i == int(total_blocks)-1 {
+				blk.buf = bPool.getBuffer()
+			}
+		}
+	}
 	return nil
 }
 
 // DeleteDir: Recursively invalidate the directory and its children
 func (bc *BlockCache) DeleteDir(options internal.DeleteDirOptions) error {
 	log.Trace("BlockCache::DeleteDir : %s", options.Name)
-	return nil
+	err := bc.NextComponent().DeleteDir(options)
+	if err != nil {
+		log.Err("BlockCache::DeleteDir : %s failed", options.Name)
+		return err
+	}
+	return err
 }
 
 // RenameDir: Recursively invalidate the source directory and its children
 func (bc *BlockCache) RenameDir(options internal.RenameDirOptions) error {
 	log.Trace("BlockCache::RenameDir : src=%s, dst=%s", options.Src, options.Dst)
+
+	err := bc.NextComponent().RenameDir(options)
+	if err != nil {
+		log.Err("BlockCache::RenameDir : error %s [%s]", options.Src, err.Error())
+		return err
+	}
 	return nil
 }
 

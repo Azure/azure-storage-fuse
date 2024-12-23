@@ -50,6 +50,7 @@ type gcNode struct {
 }
 
 func doGC() {
+
 }
 
 func (bp *BufferPool) getBuffer() *Buffer {
@@ -108,7 +109,7 @@ func getBlockForRead(idx int, h *handlemap.Handle, file *File) (*block, error) {
 			buf.dataSize = int64(dataRead)
 			buf.synced = 1
 			buf.timer = time.Now()
-			close(blk.downloadStatus)
+			close(blk.downloadStatus) // This is causing panic sometimes while reading sequential files of large size find out why?
 		} else {
 			buf = nil
 			file.blockList[idx].downloadStatus <- 1 //something is wrong here can i update it without acquring lock??
@@ -227,9 +228,9 @@ func commitBuffersForFile(h *handlemap.Handle, file *File) error {
 			blklist = append(blklist, file.blockList[i].id)
 		}
 	}
-	if file.synced {
-		return nil
-	}
+	// if file.synced {
+	// 	return nil
+	// }
 	err := bc.NextComponent().CommitData(internal.CommitDataOptions{Name: file.Name, List: blklist, BlockSize: uint64(BlockSize)})
 	if err == nil {
 		file.synced = true
