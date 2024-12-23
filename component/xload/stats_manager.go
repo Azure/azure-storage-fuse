@@ -112,9 +112,9 @@ func (sm *statsManager) start() {
 	sm.wg.Add(1)
 	sm.startTime = time.Now().UTC()
 	log.Debug("statsManager::start : start stats manager at time %v", sm.startTime.Format(time.RFC1123))
-	sm.writeToJSON([]byte("[\n"), false)
-	sm.marshalStatsData(&statsJSONData{Timestamp: sm.startTime.Format(time.RFC1123)}, false)
-	sm.writeToJSON([]byte("\n]"), false)
+	_ = sm.writeToJSON([]byte("[\n"), false)
+	_ = sm.marshalStatsData(&statsJSONData{Timestamp: sm.startTime.Format(time.RFC1123)}, false)
+	_ = sm.writeToJSON([]byte("\n]"), false)
 	go sm.statsProcessor()
 	go sm.statsExporter()
 }
