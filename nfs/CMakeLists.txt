@@ -91,6 +91,13 @@ if(NOT EXISTS "${PROJECT_SOURCE_DIR}/extern/spdlog/CMakeLists.txt")
     message(FATAL_ERROR "The spdlog submodule was not downloaded! GIT_SUBMODULE was turned off or failed. Please update submodules and try again.")
 endif()
 
+if(NOT EXISTS "${PROJECT_SOURCE_DIR}/extern/vcpkg/bootstrap-vcpkg.sh")
+    message(FATAL_ERROR "The vcpkg submodule was not downloaded! GIT_SUBMODULE was turned off or failed. Please update submodules and try again.")
+endif()
+
+find_package(azure-identity-cpp CONFIG REQUIRED)
+find_package(azure-storage-blobs-cpp CONFIG REQUIRED)
+
 #
 # Find fuse3 and if not found try to install.
 #
@@ -170,6 +177,25 @@ else()
     message(STATUS "Using zlib include dir ${ZLIB_INCLUDE_DIRS}")
 endif()
 
+#
+# Find jsoncpp and if not found try to install.
+#
+find_package(jsoncpp QUIET)
+if(NOT jsoncpp_FOUND)
+    message(STATUS "jsoncpp not found, trying to install libjsoncpp-dev!")
+    execute_process(COMMAND sudo apt-get install libjsoncpp-dev
+                    RESULT_VARIABLE jsoncpp_INSTALL_RESULT)
+    if(NOT jsoncpp_INSTALL_RESULT EQUAL "0")
+        message(FATAL_ERROR "apt-get install libjsoncpp-dev failed with ${jsoncpp_INSTALL_RESULT}, try installing libjsoncpp-dev manually")
+        # Call once more to ensure above install completed fine and also
+        # will set jsoncpp_INCLUDE_DIR and jsoncpp_LIBRARY variables.
+        find_package(jsoncpp REQUIRED)
+    endif()
+else()
+    message(STATUS "Using jsoncpp lib ${jsoncpp_LIBRARY}")
+    message(STATUS "Using jsoncpp include dir ${jsoncpp_INCLUDE_DIR}")
+endif()
+
 # Build libnfs (with multithreading enabled).
 set(ENABLE_MULTITHREADING ON)
 set(ENABLE_EXAMPLES ON)
@@ -222,7 +248,9 @@ if(NOT ENABLE_NO_FUSE)
 target_include_directories(${CMAKE_PROJECT_NAME}
                            PRIVATE "${fuse3_INCLUDE_DIR}")
 target_link_libraries(${CMAKE_PROJECT_NAME}
-                      ${fuse3_LIBRARY})
+                      ${fuse3_LIBRARY}
+		      jsoncpp_lib
+		      Azure::azure-identity Azure::azure-storage-blobs)
 endif()
 
 target_compile_options(${CMAKE_PROJECT_NAME}

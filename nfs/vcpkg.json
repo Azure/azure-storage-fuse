@@ -1,0 +1,6 @@
+{
+  "dependencies": [
+    "azure-identity-cpp",
+    "azure-storage-blobs-cpp"
+  ]
+}
