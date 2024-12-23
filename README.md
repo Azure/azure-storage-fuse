@@ -254,8 +254,8 @@ Below diagrams guide you to choose right configuration for your workloads.
     - e.g. ```filter=size > 1000```
 - Last Modified Date based filter
     - Supported operations are "<=", ">=", "<", ">" and "="
-    - Date shall be provided in RFC1123 Format e.g. "Mon, 24 Jan 1982 13:00:00 IST"
-    - e.g. ```filter=modtime>Mon, 24 Jan 1982 13:00:00 IST```
+    - Date shall be provided in RFC1123 Format e.g. "Mon, 24 Jan 1982 13:00:00 UTC"
+    - e.g. ```filter=modtime>Mon, 24 Jan 1982 13:00:00 UTC```
 - File Extension based filter
     - Supported operations are "=" and "!="
     - Extension can be supplied as string. Do not include "." in the filter

@@ -84,7 +84,7 @@ type AzStorageConfig struct {
 	cpkEncryptionKey       string
 	cpkEncryptionKeySha256 string
 
-	// Blob filterss
+	// Blob filters
 	filter *blobfilter.BlobFilter
 }
 
