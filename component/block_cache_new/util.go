@@ -1,6 +1,7 @@
 package block_cache_new
 
 import (
+	"strings"
 	"sync"
 
 	"github.com/Azure/azure-storage-fuse/v2/internal"
@@ -45,4 +46,8 @@ func getBlockSize(size int64, idx int) int {
 // Todo: This following is incomplete
 func populateFileInfo(file *File, attr *internal.ObjAttr) {
 	file.size = attr.Size
+}
+
+func isDstPathTempFile(path string) bool {
+	return strings.Contains(path, ".fuse_hidden")
 }

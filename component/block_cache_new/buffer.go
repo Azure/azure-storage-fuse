@@ -90,36 +90,37 @@ func getBlockForRead(idx int, h *handlemap.Handle, file *File) (*block, error) {
 	}
 	h.Size = file.size // This is necessary as next component uses this value to check bounds
 	blk = file.blockList[idx]
+	file.Unlock()
+
+	blk.Lock()
+	defer blk.Unlock()
 	if blk.buf == nil {
 		// I will start the download
 		download = blk.block_type
 		blk.buf = bPool.getBuffer()
 	}
-	file.Unlock()
 
 	if download {
-		blk.Lock()
-		buf := blk.buf
 		dataRead, err := bc.NextComponent().ReadInBuffer(internal.ReadInBufferOptions{
 			Handle: h,
 			Offset: int64(idx * BlockSize),
 			Data:   file.blockList[idx].buf.data,
 		})
 		if err == nil {
-			buf.dataSize = int64(dataRead)
-			buf.synced = 1
-			buf.timer = time.Now()
-			close(blk.downloadStatus) // This is causing panic sometimes while reading sequential files of large size find out why?
+			blk.buf.dataSize = int64(dataRead)
+			blk.buf.synced = 1
+			blk.buf.timer = time.Now()
+			//close(blk.downloadStatus) // This is causing panic sometimes while reading sequential files of large size find out why?
 		} else {
-			buf = nil
-			file.blockList[idx].downloadStatus <- 1 //something is wrong here can i update it without acquring lock??
+			blk.buf = nil
+			return blk, err
+			//file.blockList[idx].downloadStatus <- 1 //something is wrong here can i update it without acquring lock??
 		}
-		blk.Unlock()
 	}
-	_, ok := <-blk.downloadStatus
-	if ok {
-		return nil, errors.New("failed to get the block")
-	}
+	// _, ok := <-blk.downloadStatus
+	// if ok {
+	// 	return nil, errors.New("failed to get the block")
+	// }
 	return blk, nil
 }
 
@@ -252,7 +253,7 @@ func releaseBuffers(f *File) {
 }
 
 func releaseBufferForBlock(b *block) {
-	if b.buf != nil {
+	if b.buf != nil && b.buf.synced == 1 {
 		bPool.putBuffer(b.buf)
 		b.buf = nil
 	}

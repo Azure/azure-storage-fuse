@@ -40,7 +40,7 @@ func CreateFreshHandleForFile(name string, size int64, mtime time.Time) *handlem
 	return handle
 }
 
-func GetFile(key string) (*File, bool) {
+func GetFileFromPath(key string) (*File, bool) {
 	f := CreateFile(key)
 	var first_open bool = false
 	file, loaded := fileMap.LoadOrStore(key, f)
@@ -53,7 +53,7 @@ func GetFile(key string) (*File, bool) {
 // Remove the handle from the file
 // Release the buffers
 func DeleteHandleForFile(handle *handlemap.Handle) {
-	file, _ := GetFile(handle.Path)
+	file, _ := GetFileFromPath(handle.Path)
 	file.Lock()
 	delete(file.handles, handle)
 	if len(file.handles) == 0 {
@@ -61,4 +61,31 @@ func DeleteHandleForFile(handle *handlemap.Handle) {
 		fileMap.Delete(file.Name) // Todo: what happens open call comes before release async call finish
 	}
 	file.Unlock()
+}
+
+func checkFileExistsInOpen(key string) (*File, bool) {
+	f, ok := fileMap.Load(key)
+	if ok {
+		return f.(*File), ok
+	}
+	return nil, ok
+}
+
+func DeleteFile(f *File) {
+	fileMap.Delete(f.Name)
+}
+
+// Sync map for handles, *handle->*File
+var handleMap sync.Map
+
+func PutHandleIntoMap(h *handlemap.Handle, f *File) {
+	handleMap.Store(h, f)
+}
+
+func GetFileFromHandle(h *handlemap.Handle) *File {
+	f, ok := handleMap.Load(h)
+	if !ok {
+		panic("handle was not found inside the handlemap")
+	}
+	return f.(*File)
 }

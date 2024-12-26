@@ -55,6 +55,7 @@ import (
 */
 
 var bc *BlockCache
+var logy *os.File
 var BlockSize int
 var bPool *BufferPool
 var memory int = 1024 * 1024 * 1024
@@ -138,8 +139,8 @@ func (bc *BlockCache) validateBlockList(blkList *internal.CommittedBlockList) (b
 
 // CreateFile: Create a new file
 func (bc *BlockCache) CreateFile(options internal.CreateFileOptions) (*handlemap.Handle, error) {
-	log.Trace("BlockCache::CreateFile : name=%s, mode=%d", options.Name, options.Mode)
-
+	log.Trace("BlockCache::CreateFile : name=%s, mode=%s", options.Name, options.Mode)
+	logy.Write([]byte(fmt.Sprintf("BlockCache::CreateFile : name=%s, mode=%d\n", options.Name, options.Mode)))
 	_, err := bc.NextComponent().CreateFile(options)
 	if err != nil {
 		log.Err("BlockCache::CreateFile : Failed to create file %s", options.Name)
@@ -154,15 +155,15 @@ func (bc *BlockCache) CreateFile(options internal.CreateFileOptions) (*handlemap
 
 // OpenFile: Create a handle for the file user has requested to open
 func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
-	log.Trace("BlockCache::OpenFile : name=%s, flags=%d, mode=%s", options.Name, options.Flags, options.Mode)
-
+	log.Trace("BlockCache::OpenFile : name=%s, flags=%X, mode=%s", options.Name, options.Flags, options.Mode)
+	logy.Write([]byte(fmt.Sprintf("BlockCache::OpenFile : name=%s, flags=%d, mode=%s\n", options.Name, options.Flags, options.Mode)))
 	attr, err := bc.NextComponent().GetAttr(internal.GetAttrOptions{Name: options.Name})
 	if err != nil {
 		log.Err("BlockCache::OpenFile : Failed to get attr of %s [%s]", options.Name, err.Error())
 		return nil, err
 	}
 
-	f, first_open := GetFile(options.Name)
+	f, first_open := GetFileFromPath(options.Name)
 	var blockList blockList
 
 	if first_open && attr.Size > 0 {
@@ -189,13 +190,15 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 		f.blockList = blockList
 	}
 	f.Unlock()
+	PutHandleIntoMap(handle, f)
 
 	return handle, nil
 }
 
 // ReadInBuffer: Read the file into a buffer
 func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
-	log.Trace("BlockCache::ReadFile : handle=%d, path=%s", options.Handle.ID, options.Handle.Path)
+	log.Trace("BlockCache::ReadFile : handle=%d, path=%s, offset: %d\n", options.Handle.ID, options.Handle.Path, options.Offset)
+	logy.Write([]byte(fmt.Sprintf("BlockCache::ReadFile : handle=%d, path=%s, offset: %d\n", options.Handle.ID, options.Handle.Path, options.Offset)))
 	if options.Offset >= options.Handle.Size {
 		// EOF reached so early exit
 		return 0, io.EOF
@@ -206,7 +209,7 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 	} else {
 		h.Is_seq = 0
 	}
-	f, _ := GetFile(options.Handle.Path)
+	f := GetFileFromHandle(options.Handle)
 
 	offset := options.Offset
 	dataRead := 0
@@ -229,14 +232,14 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 		}
 		blockOffset := convertOffsetIntoBlockOffset(offset)
 
-		blk.RLock()
+		blk.Lock()
 		block_buf := blk.buf
 		len_of_block_buf := getBlockSize(options.Handle.Size, idx)
 		bytesCopied := copy(options.Data[dataRead:], block_buf.data[blockOffset:len_of_block_buf])
 		if blockOffset+int64(bytesCopied) == int64(len_of_block_buf) {
 			releaseBufferForBlock(blk)
 		}
-		blk.RUnlock()
+		blk.Unlock()
 
 		dataRead += bytesCopied
 		offset += int64(bytesCopied)
@@ -252,9 +255,9 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 
 // WriteFile: Write to the local file
 func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) {
-	log.Trace("BlockCache::WriteFile : handle=%d, path=%s", options.Handle.ID, options.Handle.Path)
-
-	f, _ := GetFile(options.Handle.Path)
+	log.Trace("BlockCache::WriteFile : handle=%d, path=%s, offset= %d", options.Handle.ID, options.Handle.Path, options.Offset)
+	logy.Write([]byte(fmt.Sprintf("BlockCache::WriteFile : handle=%d, path=%s, offset= %d\n", options.Handle.ID, options.Handle.Path, options.Offset)))
+	f := GetFileFromHandle(options.Handle)
 	offset := options.Offset
 	len_of_copy := len(options.Data)
 	dataWritten := 0
@@ -287,7 +290,8 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 
 func (bc *BlockCache) SyncFile(options internal.SyncFileOptions) error {
 	log.Trace("BlockCache::SyncFile : handle=%d, path=%s", options.Handle.ID, options.Handle.Path)
-	f, _ := GetFile(options.Handle.Path)
+	logy.Write([]byte(fmt.Sprintf("BlockCache::SyncFile : handle=%d, path=%s\n", options.Handle.ID, options.Handle.Path)))
+	f, _ := GetFileFromPath(options.Handle.Path)
 	err := syncBuffersForFile(options.Handle, f)
 	if err == nil {
 		err = commitBuffersForFile(options.Handle, f)
@@ -298,6 +302,7 @@ func (bc *BlockCache) SyncFile(options internal.SyncFileOptions) error {
 // FlushFile: Flush the local file to storage
 func (bc *BlockCache) FlushFile(options internal.FlushFileOptions) error {
 	log.Trace("BlockCache::FlushFile : handle=%d, path=%s", options.Handle.ID, options.Handle.Path)
+	logy.Write([]byte(fmt.Sprintf("BlockCache::FlushFile : handle=%d, path=%s\n", options.Handle.ID, options.Handle.Path)))
 	err := bc.SyncFile(internal.SyncFileOptions{Handle: options.Handle})
 	return err
 }
@@ -305,20 +310,24 @@ func (bc *BlockCache) FlushFile(options internal.FlushFileOptions) error {
 // CloseFile: File is closed by application so release all the blocks and submit back to blockPool
 func (bc *BlockCache) CloseFile(options internal.CloseFileOptions) error {
 	log.Trace("BlockCache::CloseFile : handle=%d, path=%s", options.Handle.ID, options.Handle.Path)
-	err := bc.SyncFile(internal.SyncFileOptions{Handle: options.Handle})
+	logy.Write([]byte(fmt.Sprintf("BlockCache::CloseFile : handle=%d, path=%s\n", options.Handle.ID, options.Handle.Path)))
+	//err := bc.SyncFile(internal.SyncFileOptions{Handle: options.Handle})
 	DeleteHandleForFile(options.Handle)
-	return err
+	return nil
 }
 
 // TruncateFile: Truncate the file to the given size
 func (bc *BlockCache) TruncateFile(options internal.TruncateFileOptions) error {
+	log.Trace("BlockCache::Truncate File : path=%s, size = %d", options.Name, options.Size)
+	logy.Write([]byte(fmt.Sprintf("BlockCache::Truncate File : path=%s, size = %d\n", options.Name, options.Size)))
 	h, err := bc.OpenFile(internal.OpenFileOptions{Name: options.Name, Flags: os.O_RDWR, Mode: 0666})
+
 	if err != nil {
 		return err
 	} else {
 		defer bc.CloseFile(internal.CloseFileOptions{Handle: h})
 	}
-	f, _ := GetFile(options.Name)
+	f, _ := GetFileFromPath(options.Name)
 	f.Lock()
 	defer f.Unlock()
 	f.size = options.Size
@@ -344,6 +353,7 @@ func (bc *BlockCache) TruncateFile(options internal.TruncateFileOptions) error {
 // DeleteDir: Recursively invalidate the directory and its children
 func (bc *BlockCache) DeleteDir(options internal.DeleteDirOptions) error {
 	log.Trace("BlockCache::DeleteDir : %s", options.Name)
+	logy.Write([]byte(fmt.Sprintf("BlockCache::DeleteDir : %s\n", options.Name)))
 	err := bc.NextComponent().DeleteDir(options)
 	if err != nil {
 		log.Err("BlockCache::DeleteDir : %s failed", options.Name)
@@ -355,7 +365,7 @@ func (bc *BlockCache) DeleteDir(options internal.DeleteDirOptions) error {
 // RenameDir: Recursively invalidate the source directory and its children
 func (bc *BlockCache) RenameDir(options internal.RenameDirOptions) error {
 	log.Trace("BlockCache::RenameDir : src=%s, dst=%s", options.Src, options.Dst)
-
+	logy.Write([]byte(fmt.Sprintf("BlockCache::RenameDir : src=%s, dst=%s\n", options.Src, options.Dst)))
 	err := bc.NextComponent().RenameDir(options)
 	if err != nil {
 		log.Err("BlockCache::RenameDir : error %s [%s]", options.Src, err.Error())
@@ -367,13 +377,47 @@ func (bc *BlockCache) RenameDir(options internal.RenameDirOptions) error {
 // DeleteFile: Invalidate the file in local cache.
 func (bc *BlockCache) DeleteFile(options internal.DeleteFileOptions) error {
 	log.Trace("BlockCache::DeleteFile : name=%s", options.Name)
+	logy.Write([]byte(fmt.Sprintf("BlockCache::DeleteFile : name=%s\n", options.Name)))
+	err := bc.NextComponent().DeleteFile(options)
+	if err != nil {
+		log.Err("BlockCache::DeleteFile : error  %s [%s]", options.Name, err.Error())
+		return err
+	}
 	return nil
 }
 
 // RenameFile: Invalidate the file in local cache.
 func (bc *BlockCache) RenameFile(options internal.RenameFileOptions) error {
 	log.Trace("BlockCache::RenameFile : src=%s, dst=%s", options.Src, options.Dst)
+	logy.Write([]byte(fmt.Sprintf("BlockCache::RenameFile : src=%s, dst=%s\n", options.Src, options.Dst)))
+	err := bc.NextComponent().RenameFile(options)
+	if err != nil {
+		log.Err("BlockCache::RenameFile : %s failed to rename file [%s]", options.Src, err.Error())
+		return err
+	} else {
+		f, _ := GetFileFromPath(options.Src)
+		if isDstPathTempFile(options.Dst) {
+			log.Trace("BlockCache::RenameFile : Deleting Src opened File src=%s, dst=%s", options.Src, options.Dst)
+			f.Name = options.Dst
+			f.Lock()
+			for h := range f.handles {
+				h.Path = options.Dst
+			}
+			f.Unlock()
+		}
+		DeleteFile(f)
+	}
+
 	return nil
+}
+
+func (bc *BlockCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr, error) {
+	attr, err := bc.NextComponent().GetAttr(options)
+	file, ok := checkFileExistsInOpen(options.Name)
+	if ok {
+		attr.Size = file.size
+	}
+	return attr, err
 }
 
 // ------------------------- Factory -------------------------------------------
@@ -381,6 +425,7 @@ func (bc *BlockCache) RenameFile(options internal.RenameFileOptions) error {
 // << DO NOT DELETE ANY AUTO GENERATED CODE HERE >>
 func NewBlockCacheComponent() internal.Component {
 	comp := &BlockCache{}
+	logy, _ = os.OpenFile("/home/fantom/logs/logy.txt", os.O_RDWR, 0666)
 	comp.blockSize = 8 * 1024 * 1024
 	BlockSize = int(comp.blockSize)
 	comp.SetName(compName)
