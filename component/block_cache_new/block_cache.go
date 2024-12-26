@@ -321,12 +321,11 @@ func (bc *BlockCache) TruncateFile(options internal.TruncateFileOptions) error {
 	log.Trace("BlockCache::Truncate File : path=%s, size = %d", options.Name, options.Size)
 	logy.Write([]byte(fmt.Sprintf("BlockCache::Truncate File : path=%s, size = %d\n", options.Name, options.Size)))
 	h, err := bc.OpenFile(internal.OpenFileOptions{Name: options.Name, Flags: os.O_RDWR, Mode: 0666})
-
+	defer bc.CloseFile(internal.CloseFileOptions{Handle: h})
 	if err != nil {
 		return err
-	} else {
-		defer bc.CloseFile(internal.CloseFileOptions{Handle: h})
 	}
+
 	f, _ := GetFileFromPath(options.Name)
 	f.Lock()
 	defer f.Unlock()

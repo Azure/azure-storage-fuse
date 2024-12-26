@@ -5,8 +5,8 @@ logging:
 
 components:
   - libfuse
-  - block_cache
-  - attr_cache
+  - block_cache_new
+  #- attr_cache
   - azstorage
 
 libfuse:
@@ -15,8 +15,8 @@ libfuse:
   negative-entry-expiration-sec: 0
   ignore-open-flags: true
 
-block_cache:
-  block-size-mb: 8
+#block_cache:
+#  block-size-mb: 8
 
 attr_cache:
   timeout-sec: 3600
