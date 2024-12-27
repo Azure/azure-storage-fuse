@@ -163,7 +163,7 @@ func syncBuffersForFile(h *handlemap.Handle, file *File) error {
 				continue
 			}
 			err = syncBuffer(file.Name, file.size, file.blockList[i])
-			if err != nil {
+			if err == nil {
 				file.blockList[i].block_type = remote_block
 			}
 		} else {
