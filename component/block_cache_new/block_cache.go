@@ -199,10 +199,6 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
 	log.Trace("BlockCache::ReadFile : handle=%d, path=%s, offset: %d\n", options.Handle.ID, options.Handle.Path, options.Offset)
 	logy.Write([]byte(fmt.Sprintf("BlockCache::ReadFile : handle=%d, path=%s, offset: %d\n", options.Handle.ID, options.Handle.Path, options.Offset)))
-	if options.Offset >= options.Handle.Size {
-		// EOF reached so early exit
-		return 0, io.EOF
-	}
 	h := options.Handle
 	if h.Prev_offset == options.Offset {
 		h.Is_seq++
@@ -217,6 +213,11 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 	f.Lock()
 	options.Handle.Size = f.size // This is updated here as it is used by the nxt comp for upload usually not necessary!
 	f.Unlock()
+
+	if options.Offset >= options.Handle.Size {
+		// EOF reached so early exit
+		return 0, io.EOF
+	}
 
 	for dataRead < len_of_copy {
 		idx := getBlockIndex(offset)
@@ -236,9 +237,9 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 		block_buf := blk.buf
 		len_of_block_buf := getBlockSize(options.Handle.Size, idx)
 		bytesCopied := copy(options.Data[dataRead:], block_buf.data[blockOffset:len_of_block_buf])
-		if blockOffset+int64(bytesCopied) == int64(len_of_block_buf) {
-			releaseBufferForBlock(blk)
-		}
+		// if blockOffset+int64(bytesCopied) == int64(len_of_block_buf) {
+		// 	releaseBufferForBlock(blk) // THis should handle the uncommited buffers
+		// }
 		blk.Unlock()
 
 		dataRead += bytesCopied
