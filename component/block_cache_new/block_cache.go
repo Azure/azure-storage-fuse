@@ -36,6 +36,7 @@ package block_cache_new
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -125,6 +126,9 @@ func (bc *BlockCache) Configure(_ bool) error {
 }
 
 func (bc *BlockCache) validateBlockList(blkList *internal.CommittedBlockList) (blockList, bool) {
+	if blkList == nil {
+		return nil, false
+	}
 	listLen := len(*blkList)
 	var newblkList blockList
 	for idx, blk := range *blkList {
@@ -163,24 +167,41 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 		return nil, err
 	}
 
+	if options.Flags&os.O_TRUNC != 0 {
+		attr.Size = 0
+	}
+
 	f, first_open := GetFileFromPath(options.Name)
 	var blockList blockList
+	var valid bool = false //Invalid blocklist blobs can only be read and can't be modified
+	if attr.Size == 0 {
+		valid = true
+	}
 
 	if first_open && attr.Size > 0 {
 		blkList, err := bc.NextComponent().GetCommittedBlockList(options.Name)
-		if err != nil || blkList == nil {
+		if err != nil {
 			log.Err("BlockCache::OpenFile : Failed to get block list of %s [%v]", options.Name, err)
 			return nil, fmt.Errorf("failed to retrieve block list for %s", options.Name)
 		}
-		var valid bool
 		blockList, valid = bc.validateBlockList(blkList)
 		if !valid {
-			return nil, fmt.Errorf("block size mismatch for %s", options.Name)
+			blockList = nil
 		}
-
 	}
 
 	f.Lock()
+	if valid {
+		f.readOnly = false // This file can be read and modified too
+	}
+
+	if f.readOnly && ((options.Flags&os.O_WRONLY != 0) || (options.Flags&os.O_RDWR != 0)) {
+		log.Err("BlockCache::OpenFile : Cannot Write to file %s whose blocklist is invalid", options.Name)
+		DeleteFile(f)
+		f.Unlock()
+		return nil, errors.New("cannot write to file whose blocklist is invalid")
+	}
+
 	if f.size == -1 {
 		populateFileInfo(f, attr)
 	}

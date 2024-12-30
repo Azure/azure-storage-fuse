@@ -80,31 +80,30 @@ func getBlockWithReadAhead(idx int, h *handlemap.Handle, file *File) (*block, er
 // Returns the buffer containing block.
 // This call only successed if the block idx < len(blocklist)
 func getBlockForRead(idx int, h *handlemap.Handle, file *File) (*block, error) {
-	var download bool = false
 	var blk *block
 
 	file.Lock()
-	if idx >= len(file.blockList) {
-		file.Unlock()
-		return nil, errors.New("block is out of the blocklist scope")
+	if file.readOnly {
+		blk = createBlock(idx, "", remote_block)
+		// TODO: blocks are not getting cached for readonly files
+	} else {
+		if idx >= len(file.blockList) {
+			file.Unlock()
+			return nil, errors.New("block is out of the blocklist scope")
+		}
+		h.Size = file.size // This is necessary as next component uses this value to check bounds
+		blk = file.blockList[idx]
 	}
-	h.Size = file.size // This is necessary as next component uses this value to check bounds
-	blk = file.blockList[idx]
 	file.Unlock()
 
 	blk.Lock()
 	defer blk.Unlock()
 	if blk.buf == nil {
-		// I will start the download
-		download = blk.block_type
 		blk.buf = bPool.getBuffer()
-	}
-
-	if download {
 		dataRead, err := bc.NextComponent().ReadInBuffer(internal.ReadInBufferOptions{
 			Handle: h,
 			Offset: int64(idx * BlockSize),
-			Data:   file.blockList[idx].buf.data,
+			Data:   blk.buf.data,
 		})
 		if err == nil {
 			blk.buf.dataSize = int64(dataRead)
@@ -221,6 +220,9 @@ func commitBuffersForFile(h *handlemap.Handle, file *File) error {
 	var blklist []string
 	file.Lock()
 	defer file.Unlock()
+	if file.readOnly {
+		return nil
+	}
 	len_of_blocklist := len(file.blockList)
 	for i := 0; i < len_of_blocklist; i++ {
 		if file.blockList[i].block_type == local_block && file.blockList[i].buf == nil { //dirty way to do stuff

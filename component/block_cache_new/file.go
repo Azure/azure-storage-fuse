@@ -16,6 +16,7 @@ type File struct {
 	size        int64                      // File Size
 	synced      bool                       // Is file synced with Azure storage
 	holePunched bool                       // Represents if we have punched any hole while uploading the data.
+	readOnly    bool                       // all blocklists which are invalid can only be read
 }
 
 func CreateFile(fileName string) *File {
@@ -25,6 +26,7 @@ func CreateFile(fileName string) *File {
 		blockList: make([]*block, 0),
 		size:      -1,
 		synced:    true,
+		readOnly:  true, // By default all files can be read
 	}
 
 	return f
@@ -72,7 +74,9 @@ func checkFileExistsInOpen(key string) (*File, bool) {
 }
 
 func DeleteFile(f *File) {
-	fileMap.Delete(f.Name)
+	if len(f.handles) == 0 {
+		fileMap.Delete(f.Name)
+	}
 }
 
 // Sync map for handles, *handle->*File
