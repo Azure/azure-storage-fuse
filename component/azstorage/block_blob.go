@@ -593,9 +593,12 @@ func (bb *BlockBlob) getBlobAttr(blobInfo *container.BlobItem) (*internal.ObjAtt
 		log.Trace("BlockBlob::List : blob is encrypted with customer provided key so fetching metadata explicitly using REST")
 		return bb.getAttrUsingRest(*blobInfo.Name)
 	}
+	//TODOANU:: check for blockblob if we get this value or not
+	//TODOANU:: check get filemode is correct values
 	mode, err := bb.getFileMode(blobInfo.Properties.Permissions)
 	if err != nil {
-		return nil, err
+		mode = 0
+		log.Warn("BlockBlob::createDirAttrWithPermissions : Failed to get file mode for %s [%s]", *blobInfo.Name, err.Error())
 	}
 
 	attr := &internal.ObjAttr{
@@ -612,7 +615,9 @@ func (bb *BlockBlob) getBlobAttr(blobInfo *container.BlobItem) (*internal.ObjAtt
 	}
 	parseMetadata(attr, blobInfo.Metadata)
 	attr.Flags.Set(internal.PropFlagMetadataRetrieved)
-	attr.Flags.Set(internal.PropFlagModeDefault)
+	if blobInfo.Properties.Permissions == nil {
+		attr.Flags.Set(internal.PropFlagModeDefault)
+	}
 
 	return attr, nil
 }
@@ -636,12 +641,12 @@ func (bb *BlockBlob) processBlobPrefixes(blobPrefixes []*container.BlobPrefix, d
 		if _, ok := dirList[*blobInfo.Name]; ok {
 			continue
 		}
-
+		//TODOANU :: shouldn't be called all the time
 		_, err := bb.getAttrUsingRest(*blobInfo.Name)
 		if err == syscall.ENOENT {
 			attr := bb.createDirAttr(*blobInfo.Name)
 			*blobList = append(*blobList, attr)
-		} else if bb.listDetails.Permissions {
+		} else if bb.listDetails.Permissions { //TODOANU:: check if this is correct listdetails
 			attr, err := bb.createDirAttrWithPermissions(blobInfo)
 			if err != nil {
 				return err
@@ -695,7 +700,6 @@ func (bb *BlockBlob) createDirAttrWithPermissions(blobInfo *container.BlobPrefix
 		Flags:  internal.NewDirBitMap(),
 	}
 	attr.Flags.Set(internal.PropFlagMetadataRetrieved)
-	attr.Flags.Set(internal.PropFlagModeDefault)
 
 	return attr, nil
 }
