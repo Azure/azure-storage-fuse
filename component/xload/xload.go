@@ -54,7 +54,7 @@ type Xload struct {
 	workerCount uint32     // Number of workers running
 	blockPool   *BlockPool // Pool of blocks
 	path        string     // Path on local disk where Xload will operate
-	comps       []xcomponent
+	comps       []XComponent
 }
 
 // Structure defining your config parameters
@@ -216,7 +216,7 @@ func (xl *Xload) Start(ctx context.Context) error {
 func (xl *Xload) Stop() error {
 	log.Trace("Xload::Stop : Stopping component %s", xl.Name())
 
-	xl.comps[0].stop()
+	xl.comps[0].Stop()
 	xl.blockPool.Terminate()
 
 	// TODO:: xload : should we delete the files from local path
@@ -232,25 +232,25 @@ func (xl *Xload) startDownloader() error {
 	log.Trace("Xload::startDownloader : Starting downloader")
 
 	// Create remote lister pool to list remote files
-	rl, err := newRemoteLister(xl.path, xl.NextComponent())
+	rl, err := NewRemoteLister(xl.path, xl.NextComponent())
 	if err != nil {
 		log.Err("Xload::startDownloader : Unable to create remote lister [%s]", err.Error())
 		return err
 	}
 
-	ds, err := newDownloadSplitter(xl.blockSize, xl.blockPool, xl.path, xl.NextComponent())
+	ds, err := NewDownloadSplitter(xl.blockSize, xl.blockPool, xl.path, xl.NextComponent())
 	if err != nil {
 		log.Err("Xload::startDownloader : Unable to create download splitter [%s]", err.Error())
 		return err
 	}
 
-	rdm, err := newRemoteDataManager(xl.NextComponent())
+	rdm, err := NewRemoteDataManager(xl.NextComponent())
 	if err != nil {
 		log.Err("Xload::startUploader : failed to create remote data manager [%s]", err.Error())
 		return err
 	}
 
-	xl.comps = []xcomponent{rl, ds, rdm}
+	xl.comps = []XComponent{rl, ds, rdm}
 	return nil
 }
 
@@ -264,7 +264,7 @@ func (xl *Xload) createChain() error {
 
 	for i := 1; i < len(xl.comps); i++ {
 		nextComp := xl.comps[i]
-		currComp.setNext(nextComp)
+		currComp.SetNext(nextComp)
 		currComp = nextComp
 	}
 
@@ -279,7 +279,7 @@ func (xl *Xload) startComponents() error {
 	}
 
 	for i := len(xl.comps) - 1; i >= 0; i-- {
-		xl.comps[i].start()
+		xl.comps[i].Start()
 	}
 
 	return nil

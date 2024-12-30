@@ -48,14 +48,14 @@ type ThreadPool struct {
 	wg sync.WaitGroup
 
 	// Channel to hold pending requests
-	workItems chan *workItem
+	workItems chan *WorkItem
 
 	// Reader method that will actually read the data
-	callback func(*workItem) (int, error)
+	callback func(*WorkItem) (int, error)
 }
 
-// newThreadPool creates a new thread pool
-func newThreadPool(count uint32, callback func(*workItem) (int, error)) *ThreadPool {
+// NewThreadPool creates a new thread pool
+func NewThreadPool(count uint32, callback func(*WorkItem) (int, error)) *ThreadPool {
 	if count == 0 || callback == nil {
 		return nil
 	}
@@ -63,7 +63,7 @@ func newThreadPool(count uint32, callback func(*workItem) (int, error)) *ThreadP
 	return &ThreadPool{
 		worker:    count,
 		callback:  callback,
-		workItems: make(chan *workItem, count*2),
+		workItems: make(chan *WorkItem, count*2),
 	}
 }
 
@@ -82,7 +82,7 @@ func (t *ThreadPool) Stop() {
 }
 
 // Schedule the download of a block
-func (t *ThreadPool) Schedule(item *workItem) {
+func (t *ThreadPool) Schedule(item *WorkItem) {
 	t.workItems <- item
 }
 
@@ -95,13 +95,13 @@ func (t *ThreadPool) Do() {
 		_, err := t.callback(item)
 		if err != nil {
 			// TODO:: xload : add retry logic
-			log.Err("ThreadPool::Do : Error in %s processing workitem %s : %v", item.compName, item.path, err)
+			log.Err("ThreadPool::Do : Error in %s processing workitem %s : %v", item.CompName, item.Path, err)
 		}
 
 		// add this error in response channel
-		if cap(item.responseChannel) > 0 {
-			item.err = err
-			item.responseChannel <- item
+		if cap(item.ResponseChannel) > 0 {
+			item.Err = err
+			item.ResponseChannel <- item
 		}
 	}
 }

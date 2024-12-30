@@ -44,8 +44,8 @@ import (
 )
 
 // verify that the below types implement the xcomponent interfaces
-var _ xcomponent = &lister{}
-var _ xcomponent = &remoteLister{}
+var _ XComponent = &lister{}
+var _ XComponent = &remoteLister{}
 
 // verify that the below types implement the xenumerator interfaces
 var _ enumerator = &remoteLister{}
@@ -53,7 +53,7 @@ var _ enumerator = &remoteLister{}
 const LISTER string = "lister"
 
 type lister struct {
-	xbase
+	XBase
 	path string // base path of the directory to be listed
 }
 
@@ -68,43 +68,43 @@ type remoteLister struct {
 	listBlocked bool
 }
 
-func newRemoteLister(path string, remote internal.Component) (*remoteLister, error) {
-	log.Debug("lister::newRemoteLister : create new remote lister for %s", path)
+func NewRemoteLister(path string, remote internal.Component) (*remoteLister, error) {
+	log.Debug("lister::NewRemoteLister : create new remote lister for %s", path)
 
 	rl := &remoteLister{
 		lister: lister{
 			path: path,
-			xbase: xbase{
+			XBase: XBase{
 				remote: remote,
 			},
 		},
 		listBlocked: false,
 	}
 
-	rl.setName(LISTER)
-	rl.init()
+	rl.SetName(LISTER)
+	rl.Init()
 	return rl, nil
 }
 
-func (rl *remoteLister) init() {
-	rl.pool = newThreadPool(MAX_LISTER, rl.process)
+func (rl *remoteLister) Init() {
+	rl.pool = NewThreadPool(MAX_LISTER, rl.Process)
 	if rl.pool == nil {
-		log.Err("remoteLister::init : fail to init thread pool")
+		log.Err("remoteLister::Init : fail to init thread pool")
 	}
 }
 
-func (rl *remoteLister) start() {
-	log.Debug("remoteLister::start : start remote lister for %s", rl.path)
-	rl.getThreadPool().Start()
-	rl.getThreadPool().Schedule(&workItem{compName: rl.getName()})
+func (rl *remoteLister) Start() {
+	log.Debug("remoteLister::Start : start remote lister for %s", rl.path)
+	rl.GetThreadPool().Start()
+	rl.GetThreadPool().Schedule(&WorkItem{CompName: rl.GetName()})
 }
 
-func (rl *remoteLister) stop() {
-	log.Debug("remoteLister::stop : stop remote lister for %s", rl.path)
-	if rl.getThreadPool() != nil {
-		rl.getThreadPool().Stop()
+func (rl *remoteLister) Stop() {
+	log.Debug("remoteLister::Stop : stop remote lister for %s", rl.path)
+	if rl.GetThreadPool() != nil {
+		rl.GetThreadPool().Stop()
 	}
-	rl.getNext().stop()
+	rl.GetNext().Stop()
 }
 
 // wait for the configured block-list-on-mount-sec to make the list call
@@ -118,18 +118,18 @@ func waitForListTimeout() error {
 	return nil
 }
 
-func (rl *remoteLister) process(item *workItem) (int, error) {
-	absPath := item.path // TODO:: xload : check this for subdirectory mounting
+func (rl *remoteLister) Process(item *WorkItem) (int, error) {
+	absPath := item.Path // TODO:: xload : check this for subdirectory mounting
 
-	log.Debug("remoteLister::process : Reading remote dir %s", absPath)
+	log.Debug("remoteLister::Process : Reading remote dir %s", absPath)
 
 	// this block will be executed only in the first list call for the remote directory
 	// so haven't made the listBlocked variable atomic
 	if !rl.listBlocked {
-		log.Debug("remoteLister::process : Waiting for block-list-on-mount-sec before making the list call")
+		log.Debug("remoteLister::Process : Waiting for block-list-on-mount-sec before making the list call")
 		err := waitForListTimeout()
 		if err != nil {
-			log.Err("remoteLister::process : unable to unmarshal block-list-on-mount-sec [%s]", err.Error())
+			log.Err("remoteLister::Process : unable to unmarshal block-list-on-mount-sec [%s]", err.Error())
 			return 0, err
 		}
 		rl.listBlocked = true
@@ -138,21 +138,21 @@ func (rl *remoteLister) process(item *workItem) (int, error) {
 	marker := ""
 	var cnt, iteration int
 	for {
-		entries, new_marker, err := rl.getRemote().StreamDir(internal.StreamDirOptions{
+		entries, new_marker, err := rl.GetRemote().StreamDir(internal.StreamDirOptions{
 			Name:  absPath,
 			Token: marker,
 		})
 		if err != nil {
-			log.Err("remoteLister::process : Remote listing failed for %s [%s]", absPath, err.Error())
+			log.Err("remoteLister::Process : Remote listing failed for %s [%s]", absPath, err.Error())
 		}
 
 		marker = new_marker
 		cnt += len(entries)
 		iteration++
-		log.Debug("remoteLister::process : count: %d , iterations: %d", cnt, iteration)
+		log.Debug("remoteLister::Process : count: %d , iterations: %d", cnt, iteration)
 
 		for _, entry := range entries {
-			log.Debug("remoteLister::process : Iterating: %s, Is directory: %v", entry.Path, entry.IsDir())
+			log.Debug("remoteLister::Process : Iterating: %s, Is directory: %v", entry.Path, entry.IsDir())
 
 			if entry.IsDir() {
 				// create directory in local
@@ -164,28 +164,28 @@ func (rl *remoteLister) process(item *workItem) (int, error) {
 					err = rl.mkdir(localPath)
 					// TODO:: xload : handle error
 					if err != nil {
-						log.Err("remoteLister::process : Failed to create directory [%s]", err.Error())
+						log.Err("remoteLister::Process : Failed to create directory [%s]", err.Error())
 						return
 					}
 
 					// push the directory to input pool for its listing
-					rl.getThreadPool().Schedule(&workItem{
-						compName: rl.getName(),
-						path:     name,
+					rl.GetThreadPool().Schedule(&WorkItem{
+						CompName: rl.GetName(),
+						Path:     name,
 					})
 				}(entry.Path)
 			} else {
 				// send file to the output channel for chunking
-				rl.getNext().getThreadPool().Schedule(&workItem{
-					compName: rl.getNext().getName(),
-					path:     entry.Path,
-					dataLen:  uint64(entry.Size),
+				rl.GetNext().GetThreadPool().Schedule(&WorkItem{
+					CompName: rl.GetNext().GetName(),
+					Path:     entry.Path,
+					DataLen:  uint64(entry.Size),
 				})
 			}
 		}
 
 		if len(new_marker) == 0 {
-			log.Debug("remoteLister::process : remote listing done for %s", absPath)
+			log.Debug("remoteLister::Process : remote listing done for %s", absPath)
 			break
 		}
 	}

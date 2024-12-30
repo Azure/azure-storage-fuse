@@ -40,13 +40,13 @@ import (
 )
 
 // verify that the below types implement the xcomponent interfaces
-var _ xcomponent = &dataManager{}
-var _ xcomponent = &remoteDataManager{}
+var _ XComponent = &dataManager{}
+var _ XComponent = &remoteDataManager{}
 
 const DATA_MANAGER string = "DATA_MANAGER"
 
 type dataManager struct {
-	xbase
+	XBase
 }
 
 // --------------------------------------------------------------------------------------------------------
@@ -55,44 +55,44 @@ type remoteDataManager struct {
 	dataManager
 }
 
-func newRemoteDataManager(remote internal.Component) (*remoteDataManager, error) {
-	log.Debug("data_manager::newRemoteDataManager : create new remote data manager")
+func NewRemoteDataManager(remote internal.Component) (*remoteDataManager, error) {
+	log.Debug("data_manager::NewRemoteDataManager : create new remote data manager")
 
 	rdm := &remoteDataManager{
 		dataManager: dataManager{
-			xbase: xbase{
+			XBase: XBase{
 				remote: remote,
 			},
 		},
 	}
 
-	rdm.setName(DATA_MANAGER)
-	rdm.init()
+	rdm.SetName(DATA_MANAGER)
+	rdm.Init()
 	return rdm, nil
 }
 
-func (rdm *remoteDataManager) init() {
-	rdm.pool = newThreadPool(MAX_WORKER_COUNT, rdm.process)
+func (rdm *remoteDataManager) Init() {
+	rdm.pool = NewThreadPool(MAX_WORKER_COUNT, rdm.Process)
 	if rdm.pool == nil {
-		log.Err("remoteDataManager::init : fail to init thread pool")
+		log.Err("remoteDataManager::Init : fail to init thread pool")
 	}
 }
 
-func (rdm *remoteDataManager) start() {
-	log.Debug("remoteDataManager::start : start remote data manager")
-	rdm.getThreadPool().Start()
+func (rdm *remoteDataManager) Start() {
+	log.Debug("remoteDataManager::Start : start remote data manager")
+	rdm.GetThreadPool().Start()
 }
 
-func (rdm *remoteDataManager) stop() {
-	log.Debug("remoteDataManager::stop : stop remote data manager")
-	if rdm.getThreadPool() != nil {
-		rdm.getThreadPool().Stop()
+func (rdm *remoteDataManager) Stop() {
+	log.Debug("remoteDataManager::Stop : stop remote data manager")
+	if rdm.GetThreadPool() != nil {
+		rdm.GetThreadPool().Stop()
 	}
 }
 
 // upload or download block
-func (rdm *remoteDataManager) process(item *workItem) (int, error) {
-	if item.download {
+func (rdm *remoteDataManager) Process(item *WorkItem) (int, error) {
+	if item.Download {
 		return rdm.ReadData(item)
 	} else {
 		return rdm.WriteData(item)
@@ -100,25 +100,25 @@ func (rdm *remoteDataManager) process(item *workItem) (int, error) {
 }
 
 // ReadData reads data from the data manager
-func (rdm *remoteDataManager) ReadData(item *workItem) (int, error) {
-	log.Debug("remoteDataManager::ReadData : Scheduling download for %s offset %v", item.path, item.block.offset)
+func (rdm *remoteDataManager) ReadData(item *WorkItem) (int, error) {
+	log.Debug("remoteDataManager::ReadData : Scheduling download for %s offset %v", item.Path, item.Block.offset)
 
-	h := handlemap.NewHandle(item.path)
-	h.Size = int64(item.dataLen)
-	return rdm.getRemote().ReadInBuffer(internal.ReadInBufferOptions{
+	h := handlemap.NewHandle(item.Path)
+	h.Size = int64(item.DataLen)
+	return rdm.GetRemote().ReadInBuffer(internal.ReadInBufferOptions{
 		Handle: h,
-		Offset: item.block.offset,
-		Data:   item.block.data,
+		Offset: item.Block.offset,
+		Data:   item.Block.data,
 	})
 }
 
 // WriteData writes data to the data manager
-func (rdm *remoteDataManager) WriteData(item *workItem) (int, error) {
-	log.Debug("remoteDataManager::WriteData : Scheduling upload for %s offset %v", item.path, item.block.offset)
+func (rdm *remoteDataManager) WriteData(item *WorkItem) (int, error) {
+	log.Debug("remoteDataManager::WriteData : Scheduling upload for %s offset %v", item.Path, item.Block.offset)
 
-	return int(item.block.length), rdm.getRemote().StageData(internal.StageDataOptions{
-		Name: item.path,
-		Data: item.block.data[0:item.block.length],
+	return int(item.Block.length), rdm.GetRemote().StageData(internal.StageDataOptions{
+		Name: item.Path,
+		Data: item.Block.data[0:item.Block.length],
 		// Offset: uint64(item.block.offset),
-		Id: item.block.id})
+		Id: item.Block.id})
 }
