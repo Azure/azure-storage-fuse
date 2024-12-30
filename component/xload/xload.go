@@ -42,19 +42,21 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	xcommon "github.com/Azure/azure-storage-fuse/v2/component/xload/common"
+	"github.com/Azure/azure-storage-fuse/v2/component/xload/comp"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
 // Common structure for Component
 type Xload struct {
 	internal.BaseComponent
-	blockSize uint64 // Size of each block to be cached
-	mode      Mode   // Mode of the Xload component
+	blockSize uint64       // Size of each block to be cached
+	mode      xcommon.Mode // Mode of the Xload component
 
-	workerCount uint32     // Number of workers running
-	blockPool   *BlockPool // Pool of blocks
-	path        string     // Path on local disk where Xload will operate
-	comps       []XComponent
+	workerCount uint32             // Number of workers running
+	blockPool   *xcommon.BlockPool // Pool of blocks
+	path        string             // Path on local disk where Xload will operate
+	comps       []xcommon.XComponent
 }
 
 // Structure defining your config parameters
@@ -66,11 +68,9 @@ type XloadOptions struct {
 }
 
 const (
-	compName          = "xload"
-	MAX_WORKER_COUNT  = 64
-	MAX_DATA_SPLITTER = 16
-	MAX_LISTER        = 16
-	defaultBlockSize  = 16
+	compName                = "xload"
+	defaultBlockSize        = 16
+	_1MB             uint64 = (1024 * 1024)
 )
 
 // Verification to check satisfaction criteria with Component Interface
@@ -156,14 +156,14 @@ func (xl *Xload) Configure(_ bool) error {
 		}
 	}
 
-	var mode Mode
+	var mode xcommon.Mode
 	err = mode.Parse(conf.Mode)
 	if err != nil {
 		log.Err("Xload::Configure : Failed to parse mode %s [%s]", conf.Mode, err.Error())
 		return fmt.Errorf("invalid mode in xload : %s", conf.Mode)
 	}
 
-	if mode == EMode.INVALID_MODE() {
+	if mode == xcommon.EMode.INVALID_MODE() {
 		log.Err("Xload::Configure : Invalid mode : %s", conf.Mode)
 		return fmt.Errorf("invalid mode in xload : %s", conf.Mode)
 	}
@@ -177,8 +177,8 @@ func (xl *Xload) Configure(_ bool) error {
 func (xl *Xload) Start(ctx context.Context) error {
 	log.Trace("Xload::Start : Starting component %s", xl.Name())
 
-	xl.workerCount = MAX_WORKER_COUNT
-	xl.blockPool = NewBlockPool(xl.blockSize, xl.workerCount*3)
+	xl.workerCount = xcommon.MAX_WORKER_COUNT
+	xl.blockPool = xcommon.NewBlockPool(xl.blockSize, xl.workerCount*3)
 	if xl.blockPool == nil {
 		log.Err("Xload::Start : Failed to create block pool")
 		return fmt.Errorf("failed to create block pool")
@@ -188,20 +188,20 @@ func (xl *Xload) Start(ctx context.Context) error {
 
 	// Xload : start code goes here
 	switch xl.mode {
-	case EMode.CHECKPOINT():
+	case xcommon.EMode.CHECKPOINT():
 		// Start checkpoint thread here
 		return fmt.Errorf("checkpoint is currently unsupported")
-	case EMode.DOWNLOAD():
+	case xcommon.EMode.DOWNLOAD():
 		// Start downloader here
 		err = xl.startDownloader()
 		if err != nil {
 			log.Err("Xload::Start : Failed to start downloader [%s]", err.Error())
 			return err
 		}
-	case EMode.UPLOAD():
+	case xcommon.EMode.UPLOAD():
 		// Start uploader here
 		return fmt.Errorf("uploader is currently unsupported")
-	case EMode.SYNC():
+	case xcommon.EMode.SYNC():
 		//Start syncer here
 		return fmt.Errorf("sync is currently unsupported")
 	default:
@@ -232,25 +232,25 @@ func (xl *Xload) startDownloader() error {
 	log.Trace("Xload::startDownloader : Starting downloader")
 
 	// Create remote lister pool to list remote files
-	rl, err := NewRemoteLister(xl.path, xl.NextComponent())
+	rl, err := comp.NewRemoteLister(xl.path, xl.NextComponent())
 	if err != nil {
 		log.Err("Xload::startDownloader : Unable to create remote lister [%s]", err.Error())
 		return err
 	}
 
-	ds, err := NewDownloadSplitter(xl.blockSize, xl.blockPool, xl.path, xl.NextComponent())
+	ds, err := comp.NewDownloadSplitter(xl.blockSize, xl.blockPool, xl.path, xl.NextComponent())
 	if err != nil {
 		log.Err("Xload::startDownloader : Unable to create download splitter [%s]", err.Error())
 		return err
 	}
 
-	rdm, err := NewRemoteDataManager(xl.NextComponent())
+	rdm, err := comp.NewRemoteDataManager(xl.NextComponent())
 	if err != nil {
 		log.Err("Xload::startUploader : failed to create remote data manager [%s]", err.Error())
 		return err
 	}
 
-	xl.comps = []XComponent{rl, ds, rdm}
+	xl.comps = []xcommon.XComponent{rl, ds, rdm}
 	return nil
 }
 

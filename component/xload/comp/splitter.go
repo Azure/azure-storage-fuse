@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package xload
+package comp
 
 import (
 	"fmt"
@@ -40,19 +40,20 @@ import (
 	"sync"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/component/xload/common"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
 // verify that the below types implement the xcomponent interfaces
-var _ XComponent = &splitter{}
-var _ XComponent = &downloadSplitter{}
+var _ common.XComponent = &splitter{}
+var _ common.XComponent = &downloadSplitter{}
 
 const SPLITTER string = "splitter"
 
 type splitter struct {
-	XBase
+	common.XBase
 	blockSize uint64
-	blockPool *BlockPool
+	blockPool *common.BlockPool
 	path      string
 }
 
@@ -62,7 +63,7 @@ type downloadSplitter struct {
 	splitter
 }
 
-func NewDownloadSplitter(blockSize uint64, blockPool *BlockPool, path string, remote internal.Component) (*downloadSplitter, error) {
+func NewDownloadSplitter(blockSize uint64, blockPool *common.BlockPool, path string, remote internal.Component) (*downloadSplitter, error) {
 	log.Debug("splitter::NewDownloadSplitter : create new download splitter for %s, block size %v", path, blockSize)
 
 	d := &downloadSplitter{
@@ -70,20 +71,18 @@ func NewDownloadSplitter(blockSize uint64, blockPool *BlockPool, path string, re
 			blockSize: blockSize,
 			blockPool: blockPool,
 			path:      path,
-			XBase: XBase{
-				remote: remote,
-			},
 		},
 	}
 
 	d.SetName(SPLITTER)
+	d.SetRemote(remote)
 	d.Init()
 	return d, nil
 }
 
 func (d *downloadSplitter) Init() {
-	d.pool = NewThreadPool(MAX_DATA_SPLITTER, d.Process)
-	if d.pool == nil {
+	d.SetThreadPool(common.NewThreadPool(common.MAX_DATA_SPLITTER, d.Process))
+	if d.GetThreadPool() == nil {
 		log.Err("downloadSplitter::Init : fail to init thread pool")
 	}
 }
@@ -102,7 +101,7 @@ func (d *downloadSplitter) Stop() {
 }
 
 // download data in chunks and then write to the local file
-func (d *downloadSplitter) Process(item *WorkItem) (int, error) {
+func (d *downloadSplitter) Process(item *common.WorkItem) (int, error) {
 	var err error
 
 	log.Debug("downloadSplitter::Process : Splitting data for %s", item.Path)
@@ -126,7 +125,7 @@ func (d *downloadSplitter) Process(item *WorkItem) (int, error) {
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 
-	responseChannel := make(chan *WorkItem, numBlocks)
+	responseChannel := make(chan *common.WorkItem, numBlocks)
 
 	operationSuccess := true
 	go func() {
@@ -138,7 +137,7 @@ func (d *downloadSplitter) Process(item *WorkItem) (int, error) {
 				log.Err("downloadSplitter::Process : Failed to download data for file %s", item.Path)
 				operationSuccess = false
 			} else {
-				_, err := item.FileHandle.WriteAt(respSplitItem.Block.data, respSplitItem.Block.offset)
+				_, err := item.FileHandle.WriteAt(respSplitItem.Block.Data, respSplitItem.Block.Offset)
 				if err != nil {
 					log.Err("downloadSplitter::Process : Failed to write data to file %s", item.Path)
 					operationSuccess = false
@@ -146,7 +145,7 @@ func (d *downloadSplitter) Process(item *WorkItem) (int, error) {
 			}
 
 			if respSplitItem.Block != nil {
-				log.Debug("downloadSplitter::Process : Download successful %s index %d offset %v", item.Path, respSplitItem.Block.index, respSplitItem.Block.offset)
+				log.Debug("downloadSplitter::Process : Download successful %s index %d offset %v", item.Path, respSplitItem.Block.Index, respSplitItem.Block.Offset)
 				d.blockPool.Release(respSplitItem.Block)
 			}
 		}
@@ -155,13 +154,13 @@ func (d *downloadSplitter) Process(item *WorkItem) (int, error) {
 	for i := 0; i < int(numBlocks); i++ {
 		block := d.blockPool.Get()
 		if block == nil {
-			responseChannel <- &WorkItem{Err: fmt.Errorf("failed to get block from pool for file %s, offset %v", item.Path, offset)}
+			responseChannel <- &common.WorkItem{Err: fmt.Errorf("failed to get block from pool for file %s, offset %v", item.Path, offset)}
 		} else {
-			block.index = i
-			block.offset = offset
-			block.length = int64(d.blockSize)
+			block.Index = i
+			block.Offset = offset
+			block.Length = int64(d.blockSize)
 
-			splitItem := &WorkItem{
+			splitItem := &common.WorkItem{
 				CompName:        d.GetNext().GetName(),
 				Path:            item.Path,
 				DataLen:         item.DataLen,

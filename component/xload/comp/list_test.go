@@ -31,75 +31,34 @@
    SOFTWARE
 */
 
-package xload
+package comp
 
-import "github.com/Azure/azure-storage-fuse/v2/internal"
+import (
+	"testing"
 
-type XComponent interface {
-	Init()
-	Start()
-	Stop()
-	Process(*WorkItem) (int, error)
-	GetNext() XComponent
-	SetNext(XComponent)
-	GetThreadPool() *ThreadPool
-	SetThreadPool(*ThreadPool)
-	GetRemote() internal.Component
-	SetRemote(internal.Component)
-	GetName() string
-	SetName(string)
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/suite"
+)
+
+type listTestSuite struct {
+	suite.Suite
+	assert *assert.Assertions
 }
 
-type XBase struct {
-	name   string
-	pool   *ThreadPool
-	remote internal.Component
-	next   XComponent
+func (suite *listTestSuite) SetupTest() {
 }
 
-var _ XComponent = &XBase{}
-
-func (xb *XBase) Init() {
+func (suite *listTestSuite) cleanupTest() {
 }
 
-func (xb *XBase) Start() {
+func (suite *listTestSuite) TestReadDir() {
+	// l := &local{}
+
+	// l.readDir(&workItem{
+	// 	basePath: "/home/sourav/go/src/azure-storage-fuse/common",
+	// })
 }
 
-func (xb *XBase) Stop() {
-}
-
-func (xb *XBase) Process(item *WorkItem) (int, error) {
-	return 0, nil
-}
-
-func (xb *XBase) GetNext() XComponent {
-	return xb.next
-}
-
-func (xb *XBase) SetNext(s XComponent) {
-	xb.next = s
-}
-
-func (xb *XBase) GetThreadPool() *ThreadPool {
-	return xb.pool
-}
-
-func (xb *XBase) SetThreadPool(pool *ThreadPool) {
-	xb.pool = pool
-}
-
-func (xb *XBase) GetRemote() internal.Component {
-	return xb.remote
-}
-
-func (xb *XBase) SetRemote(comp internal.Component) {
-	xb.remote = comp
-}
-
-func (xb *XBase) GetName() string {
-	return xb.name
-}
-
-func (xb *XBase) SetName(name string) {
-	xb.name = name
+func TestListSuite(t *testing.T) {
+	suite.Run(t, new(listTestSuite))
 }

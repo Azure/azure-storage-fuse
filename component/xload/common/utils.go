@@ -31,13 +31,19 @@
    SOFTWARE
 */
 
-package xload
+package common
 
 import (
 	"os"
 	"reflect"
 
 	"github.com/JeffreyRichter/enum/enum"
+)
+
+const (
+	MAX_WORKER_COUNT  = 64
+	MAX_DATA_SPLITTER = 16
+	MAX_LISTER        = 16
 )
 
 // One workitem to be processed

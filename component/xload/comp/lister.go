@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package xload
+package comp
 
 import (
 	"os"
@@ -40,12 +40,13 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/component/xload/common"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
 // verify that the below types implement the xcomponent interfaces
-var _ XComponent = &lister{}
-var _ XComponent = &remoteLister{}
+var _ common.XComponent = &lister{}
+var _ common.XComponent = &remoteLister{}
 
 // verify that the below types implement the xenumerator interfaces
 var _ enumerator = &remoteLister{}
@@ -53,7 +54,7 @@ var _ enumerator = &remoteLister{}
 const LISTER string = "lister"
 
 type lister struct {
-	XBase
+	common.XBase
 	path string // base path of the directory to be listed
 }
 
@@ -74,21 +75,19 @@ func NewRemoteLister(path string, remote internal.Component) (*remoteLister, err
 	rl := &remoteLister{
 		lister: lister{
 			path: path,
-			XBase: XBase{
-				remote: remote,
-			},
 		},
 		listBlocked: false,
 	}
 
 	rl.SetName(LISTER)
+	rl.SetRemote(remote)
 	rl.Init()
 	return rl, nil
 }
 
 func (rl *remoteLister) Init() {
-	rl.pool = NewThreadPool(MAX_LISTER, rl.Process)
-	if rl.pool == nil {
+	rl.SetThreadPool(common.NewThreadPool(common.MAX_LISTER, rl.Process))
+	if rl.GetThreadPool() == nil {
 		log.Err("remoteLister::Init : fail to init thread pool")
 	}
 }
@@ -96,7 +95,7 @@ func (rl *remoteLister) Init() {
 func (rl *remoteLister) Start() {
 	log.Debug("remoteLister::Start : start remote lister for %s", rl.path)
 	rl.GetThreadPool().Start()
-	rl.GetThreadPool().Schedule(&WorkItem{CompName: rl.GetName()})
+	rl.GetThreadPool().Schedule(&common.WorkItem{CompName: rl.GetName()})
 }
 
 func (rl *remoteLister) Stop() {
@@ -118,7 +117,7 @@ func waitForListTimeout() error {
 	return nil
 }
 
-func (rl *remoteLister) Process(item *WorkItem) (int, error) {
+func (rl *remoteLister) Process(item *common.WorkItem) (int, error) {
 	absPath := item.Path // TODO:: xload : check this for subdirectory mounting
 
 	log.Debug("remoteLister::Process : Reading remote dir %s", absPath)
@@ -169,14 +168,14 @@ func (rl *remoteLister) Process(item *WorkItem) (int, error) {
 					}
 
 					// push the directory to input pool for its listing
-					rl.GetThreadPool().Schedule(&WorkItem{
+					rl.GetThreadPool().Schedule(&common.WorkItem{
 						CompName: rl.GetName(),
 						Path:     name,
 					})
 				}(entry.Path)
 			} else {
 				// send file to the output channel for chunking
-				rl.GetNext().GetThreadPool().Schedule(&WorkItem{
+				rl.GetNext().GetThreadPool().Schedule(&common.WorkItem{
 					CompName: rl.GetNext().GetName(),
 					Path:     entry.Path,
 					DataLen:  uint64(entry.Size),
