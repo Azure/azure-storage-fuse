@@ -314,9 +314,11 @@ func (bc *BlockCache) SyncFile(options internal.SyncFileOptions) error {
 	log.Trace("BlockCache::SyncFile : handle=%d, path=%s", options.Handle.ID, options.Handle.Path)
 	logy.Write([]byte(fmt.Sprintf("BlockCache::SyncFile : handle=%d, path=%s\n", options.Handle.ID, options.Handle.Path)))
 	f, _ := GetFileFromPath(options.Handle.Path)
-	err := syncBuffersForFile(options.Handle, f)
+	fileChanged, err := syncBuffersForFile(options.Handle, f)
 	if err == nil {
-		err = commitBuffersForFile(options.Handle, f)
+		if fileChanged {
+			err = commitBuffersForFile(options.Handle, f)
+		}
 	}
 	return err
 }
@@ -446,7 +448,7 @@ func (bc *BlockCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAtt
 // << DO NOT DELETE ANY AUTO GENERATED CODE HERE >>
 func NewBlockCacheComponent() internal.Component {
 	comp := &BlockCache{}
-	logy, _ = os.OpenFile("/home/fantom/logs/logy.txt", os.O_RDWR, 0666)
+	logy, _ = os.OpenFile("/home/syeleti/logs/logy.txt", os.O_RDWR, 0666)
 	comp.blockSize = 8 * 1024 * 1024
 	BlockSize = int(comp.blockSize)
 	comp.SetName(compName)

@@ -155,8 +155,9 @@ func getBlockForWrite(idx int, h *handlemap.Handle, file *File) (*block, error) 
 }
 
 // Write all the Modified buffers to Azure Storage.
-func syncBuffersForFile(h *handlemap.Handle, file *File) error {
+func syncBuffersForFile(h *handlemap.Handle, file *File) (bool, error) {
 	var err error = nil
+	var fileChanged bool = false
 
 	file.Lock()
 	len_of_blocklist := len(file.blockList)
@@ -164,20 +165,23 @@ func syncBuffersForFile(h *handlemap.Handle, file *File) error {
 		if file.blockList[i].block_type == local_block {
 			if file.blockList[i].buf == nil && i != len_of_blocklist-1 {
 				err = punchHole(file)
+				fileChanged = true
 				continue
 			}
 			err = syncBuffer(file.Name, file.size, file.blockList[i])
+			fileChanged = true
 			if err == nil {
 				file.blockList[i].block_type = remote_block
 			}
 		} else {
 			if file.blockList[i].buf != nil && file.blockList[i].buf.synced == 0 {
 				syncBuffer(file.Name, file.size, file.blockList[i])
+				fileChanged = true
 			}
 		}
 	}
 	file.Unlock()
-	return err
+	return fileChanged, err
 }
 
 func syncBuffer(name string, size int64, blk *block) error {
