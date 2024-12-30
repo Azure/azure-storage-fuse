@@ -132,8 +132,8 @@ func (bc *BlockCache) validateBlockList(blkList *internal.CommittedBlockList) (b
 	listLen := len(*blkList)
 	var newblkList blockList
 	for idx, blk := range *blkList {
-		if (idx < (listLen-1) && blk.Size != bc.blockSize) || (idx == (listLen-1) && blk.Size > bc.blockSize) {
-			log.Err("BlockCache:: Unqual sized blocklist")
+		if (idx < (listLen-1) && blk.Size != bc.blockSize) || (idx == (listLen-1) && blk.Size > bc.blockSize) || (len(blk.Id) != StdBlockIdLength) {
+			log.Err("BlockCache::validateBlockList : Unsupported blocklist Format ")
 			return nil, false
 		}
 		newblkList = append(newblkList, createBlock(idx, blk.Id, remote_block))

@@ -10,6 +10,7 @@ import (
 const remote_block bool = true
 const local_block bool = false
 const zero_block_id string = "nBjhkW1MQstCqpeuOmlBOQ=="
+const StdBlockIdLength int = 24 // We use base64 encoded strings of length 24 in Blobfuse when updating the files.
 
 type block struct {
 	sync.RWMutex

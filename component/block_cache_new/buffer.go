@@ -84,7 +84,12 @@ func getBlockForRead(idx int, h *handlemap.Handle, file *File) (*block, error) {
 
 	file.Lock()
 	if file.readOnly {
-		blk = createBlock(idx, "", remote_block)
+		var ok bool
+		blk, ok = file.readOnlyBlocks[idx]
+		if !ok {
+			blk = createBlock(idx, "", remote_block)
+			file.readOnlyBlocks[idx] = blk
+		}
 		// TODO: blocks are not getting cached for readonly files
 	} else {
 		if idx >= len(file.blockList) {
