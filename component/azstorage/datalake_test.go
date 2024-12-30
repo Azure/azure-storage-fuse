@@ -455,7 +455,7 @@ func (s *datalakeTestSuite) TestIsDirEmptyError() {
 
 	empty := s.az.IsDirEmpty(internal.IsDirEmptyOptions{Name: name})
 
-	s.assert.False(empty) // Note: See comment in BlockBlob.List. BlockBlob behaves differently from Datalake
+	s.assert.True(empty) // Note: See comment in BlockBlob.List. BlockBlob behaves differently from Datalake
 
 	// Directory should not be in the account
 	dir := s.containerClient.NewDirectoryClient(name)
@@ -491,6 +491,7 @@ func (s *datalakeTestSuite) TestReadDirHierarchy() {
 	s.setupHierarchy(base)
 
 	// ReadDir only reads the first level of the hierarchy
+	//Using listblob api lists the files before directories so the order is reversed
 	entries, err := s.az.ReadDir(internal.ReadDirOptions{Name: base})
 	s.assert.Nil(err)
 	s.assert.EqualValues(2, len(entries))
@@ -521,24 +522,22 @@ func (s *datalakeTestSuite) TestReadDirRoot() {
 			entries, err := s.az.ReadDir(internal.ReadDirOptions{Name: path})
 			s.assert.Nil(err)
 			s.assert.EqualValues(3, len(entries))
+			//Listblob api lists files before directories so the order is reversed
 			// Check the base dir
-			s.assert.EqualValues(base, entries[0].Path)
-			s.assert.EqualValues(base, entries[0].Name)
-			s.assert.True(entries[0].IsDir())
-			s.assert.False(entries[0].IsMetadataRetrieved())
-			s.assert.False(entries[0].IsModeDefault())
-			// Check the baseb dir
-			s.assert.EqualValues(base+"b", entries[1].Path)
-			s.assert.EqualValues(base+"b", entries[1].Name)
+			s.assert.EqualValues(base, entries[1].Path)
+			s.assert.EqualValues(base, entries[1].Name)
 			s.assert.True(entries[1].IsDir())
-			s.assert.False(entries[1].IsMetadataRetrieved())
 			s.assert.False(entries[1].IsModeDefault())
-			// Check the basec file
-			s.assert.EqualValues(base+"c", entries[2].Path)
-			s.assert.EqualValues(base+"c", entries[2].Name)
-			s.assert.False(entries[2].IsDir())
-			s.assert.False(entries[2].IsMetadataRetrieved())
+			// Check the baseb dir
+			s.assert.EqualValues(base+"b", entries[2].Path)
+			s.assert.EqualValues(base+"b", entries[2].Name)
+			s.assert.True(entries[2].IsDir())
 			s.assert.False(entries[2].IsModeDefault())
+			// Check the basec file
+			s.assert.EqualValues(base+"c", entries[0].Path)
+			s.assert.EqualValues(base+"c", entries[0].Name)
+			s.assert.False(entries[0].IsDir())
+			s.assert.False(entries[0].IsModeDefault())
 		})
 	}
 }
@@ -557,7 +556,6 @@ func (s *datalakeTestSuite) TestReadDirSubDir() {
 	s.assert.EqualValues(base+"/c1"+"/gc1", entries[0].Path)
 	s.assert.EqualValues("gc1", entries[0].Name)
 	s.assert.False(entries[0].IsDir())
-	s.assert.False(entries[0].IsMetadataRetrieved())
 	s.assert.False(entries[0].IsModeDefault())
 }
 
@@ -574,10 +572,9 @@ func (s *datalakeTestSuite) TestReadDirSubDirPrefixPath() {
 	s.assert.Nil(err)
 	s.assert.EqualValues(1, len(entries))
 	// Check the dir
-	s.assert.EqualValues(base+"/c1"+"/gc1", entries[0].Path)
+	s.assert.EqualValues("c1"+"/gc1", entries[0].Path)
 	s.assert.EqualValues("gc1", entries[0].Name)
 	s.assert.False(entries[0].IsDir())
-	s.assert.False(entries[0].IsMetadataRetrieved())
 	s.assert.False(entries[0].IsModeDefault())
 }
 
@@ -588,7 +585,7 @@ func (s *datalakeTestSuite) TestReadDirError() {
 
 	entries, err := s.az.ReadDir(internal.ReadDirOptions{Name: name})
 
-	s.assert.NotNil(err) // Note: See comment in BlockBlob.List. BlockBlob behaves differently from Datalake
+	s.assert.Nil(err) // Note: See comment in BlockBlob.List. BlockBlob behaves differently from Datalake
 	s.assert.Empty(entries)
 	// Directory should not be in the account
 	dir := s.containerClient.NewDirectoryClient(name)

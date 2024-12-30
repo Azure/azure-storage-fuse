@@ -611,8 +611,6 @@ func (bb *BlockBlob) getBlobAttr(blobInfo *container.BlobItem) (*internal.ObjAtt
 		log.Trace("BlockBlob::List : blob is encrypted with customer provided key so fetching metadata explicitly using REST")
 		return bb.getAttrUsingRest(*blobInfo.Name)
 	}
-	//TODOANU:: check for blockblob if we get this value or not
-	//TODOANU:: check get filemode is correct values
 	mode, err := bb.getFileMode(blobInfo.Properties.Permissions)
 	if err != nil {
 		mode = 0
@@ -632,7 +630,7 @@ func (bb *BlockBlob) getBlobAttr(blobInfo *container.BlobItem) (*internal.ObjAtt
 		MD5:    blobInfo.Properties.ContentMD5,
 	}
 	parseMetadata(attr, blobInfo.Metadata)
-	if blobInfo.Properties.Permissions == nil {
+	if !bb.listDetails.Permissions {
 		attr.Flags.Set(internal.PropFlagModeDefault)
 	}
 
@@ -727,7 +725,6 @@ func (bb *BlockBlob) createDirAttrWithPermissions(blobInfo *container.BlobPrefix
 		Crtime: bb.dereferenceTime(blobInfo.Properties.CreationTime, *blobInfo.Properties.LastModified),
 		Flags:  internal.NewDirBitMap(),
 	}
-	attr.Flags.Set(internal.PropFlagModeDefault)
 
 	return attr, nil
 }
