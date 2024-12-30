@@ -250,6 +250,12 @@ func commitBuffersForFile(h *handlemap.Handle, file *File) error {
 // Release all the buffers to the file if this handle is the last one opened on the file.
 func releaseBuffers(f *File) {
 	//Lock was already acquired on file
+	if f.readOnly {
+		for _, b := range f.readOnlyBlocks {
+			bPool.putBuffer(b.buf)
+		}
+		f.readOnlyBlocks = make(map[int]*block)
+	}
 	len_of_blocklist := len(f.blockList)
 	for i := 0; i < len_of_blocklist; i++ {
 		if f.blockList[i].buf != nil {

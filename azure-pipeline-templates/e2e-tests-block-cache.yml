@@ -108,7 +108,7 @@ steps:
           $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) -o ro ${{ parameters.mnt_flags }}
 
   - script: |
-      md5sum ${{ parameters.mount_dir }}/myfile_* > $(WORK_DIR)/md5sum_block_cache.txt
+      md5sum ${{ parameters.mount_dir }}/myfile_* | tee $(WORK_DIR)/md5sum_block_cache.txt
     displayName: 'Generate md5Sum with Block-Cache'
 
   - script: |
