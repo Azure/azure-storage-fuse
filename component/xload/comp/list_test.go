@@ -31,77 +31,34 @@
    SOFTWARE
 */
 
-package xload
+package comp
 
 import (
-	"sync"
+	"testing"
 
-	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/suite"
 )
 
-// ThreadPool is a group of workers that can be used to execute a task
-type ThreadPool struct {
-	// Number of workers running in this group
-	worker uint32
-
-	// Wait group to wait for all workers to finish
-	wg sync.WaitGroup
-
-	// Channel to hold pending requests
-	workItems chan *workItem
-
-	// Reader method that will actually read the data
-	callback func(*workItem) (int, error)
+type listTestSuite struct {
+	suite.Suite
+	assert *assert.Assertions
 }
 
-// newThreadPool creates a new thread pool
-func newThreadPool(count uint32, callback func(*workItem) (int, error)) *ThreadPool {
-	if count == 0 || callback == nil {
-		return nil
-	}
-
-	return &ThreadPool{
-		worker:    count,
-		callback:  callback,
-		workItems: make(chan *workItem, count*2),
-	}
+func (suite *listTestSuite) SetupTest() {
 }
 
-// Start all the workers and wait till they start receiving requests
-func (t *ThreadPool) Start() {
-	for i := uint32(0); i < t.worker; i++ {
-		t.wg.Add(1)
-		go t.Do()
-	}
+func (suite *listTestSuite) cleanupTest() {
 }
 
-// Stop all the workers threads
-func (t *ThreadPool) Stop() {
-	close(t.workItems)
-	t.wg.Wait()
+func (suite *listTestSuite) TestReadDir() {
+	// l := &local{}
+
+	// l.readDir(&workItem{
+	// 	basePath: "/home/sourav/go/src/azure-storage-fuse/common",
+	// })
 }
 
-// Schedule the download of a block
-func (t *ThreadPool) Schedule(item *workItem) {
-	t.workItems <- item
-}
-
-// Do is the core task to be executed by each worker thread
-func (t *ThreadPool) Do() {
-	defer t.wg.Done()
-
-	// This thread will work only on both high and low priority channel
-	for item := range t.workItems {
-		_, err := t.callback(item)
-		if err != nil {
-			// TODO:: xload : add retry logic
-			log.Err("ThreadPool::Do : Error in %s processing workitem %s : %v", item.compName, item.path, err)
-		}
-
-		// add this error in response channel
-		if cap(item.responseChannel) > 0 {
-			item.err = err
-			item.responseChannel <- item
-		}
-	}
+func TestListSuite(t *testing.T) {
+	suite.Run(t, new(listTestSuite))
 }

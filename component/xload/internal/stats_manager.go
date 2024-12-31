@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package xload
+package internal
 
 import (
 	"encoding/json"
@@ -44,9 +44,10 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	xcommon "github.com/Azure/azure-storage-fuse/v2/component/xload/common"
 )
 
-type statsManager struct {
+type StatsManager struct {
 	totalFiles      uint64          // total number of files that have been scanned so far
 	success         uint64          // number of files that have been successfully processed
 	failed          uint64          // number of files that failed
@@ -56,18 +57,18 @@ type statsManager struct {
 	startTime       time.Time       // variable indicating the time at which the stats manager started
 	fileHandle      *os.File        // file where stats will be dumped
 	wg              sync.WaitGroup  // wait group to wait for stats manager thread to finish
-	items           chan *statsItem // channel to hold the stats items
+	items           chan *StatsItem // channel to hold the stats items
 	done            chan bool       // channel to indicate if the stats manager has completed or not
 }
 
-type statsItem struct {
-	component        string // component name which has exported the stat
-	listerCount      uint64 // number of files scanned by the lister in an iteration
-	name             string // name of the file processed
-	dir              bool   // flag to indicate if the item is a directory
-	success          bool   // flag to indicate if the file has been processed successfully or not
-	download         bool   // flag to denote upload or download
-	bytesTransferred uint64 // bytes uploaded or downloaded for this file
+type StatsItem struct {
+	Component        string // component name which has exported the stat
+	ListerCount      uint64 // number of files scanned by the lister in an iteration
+	Name             string // name of the file processed
+	Dir              bool   // flag to indicate if the item is a directory
+	Success          bool   // flag to indicate if the file has been processed successfully or not
+	Download         bool   // flag to denote upload or download
+	BytesTransferred uint64 // bytes uploaded or downloaded for this file
 }
 
 type statsJSONData struct {
@@ -87,7 +88,7 @@ const (
 	JSON_FILE_PATH = "~/.blobfuse2/xload_stats_{PID}.json" // json file path where the stats manager will dump the stats
 )
 
-func newStatsmanager(count uint32, export bool) (*statsManager, error) {
+func NewStatsmanager(count uint32, export bool) (*StatsManager, error) {
 	var fh *os.File
 	var err error
 	if export {
@@ -101,14 +102,14 @@ func newStatsmanager(count uint32, export bool) (*statsManager, error) {
 		}
 	}
 
-	return &statsManager{
+	return &StatsManager{
 		fileHandle: fh,
-		items:      make(chan *statsItem, count*2),
+		items:      make(chan *StatsItem, count*2),
 		done:       make(chan bool),
 	}, nil
 }
 
-func (sm *statsManager) start() {
+func (sm *StatsManager) Start() {
 	sm.wg.Add(1)
 	sm.startTime = time.Now().UTC()
 	log.Debug("statsManager::start : start stats manager at time %v", sm.startTime.Format(time.RFC1123))
@@ -120,7 +121,7 @@ func (sm *statsManager) start() {
 }
 
 // TODO:: xload : the stop method runs on unmount. See if the channels can be closed if the job is 100% complete
-func (sm *statsManager) stop() {
+func (sm *StatsManager) Stop() {
 	log.Debug("statsManager::stop : stop stats manager")
 	close(sm.done)
 	close(sm.items)
@@ -131,41 +132,41 @@ func (sm *statsManager) stop() {
 	}
 }
 
-func (sm *statsManager) addStats(item *statsItem) {
+func (sm *StatsManager) AddStats(item *StatsItem) {
 	sm.items <- item
 }
 
-func (sm *statsManager) statsProcessor() {
+func (sm *StatsManager) statsProcessor() {
 	defer sm.wg.Done()
 
 	for item := range sm.items {
-		switch item.component {
-		case LISTER:
-			sm.totalFiles += item.listerCount
+		switch item.Component {
+		case xcommon.LISTER:
+			sm.totalFiles += item.ListerCount
 			// log.Debug("statsManager::statsProcessor : Directory listed %v, total number of files listed so far = %v", item.name, sm.totalFiles)
-			if item.dir {
+			if item.Dir {
 				sm.dirs += 1
-				if item.success {
+				if item.Success {
 					sm.success += 1
 				} else {
 					sm.failed += 1
 				}
 			}
 
-		case SPLITTER:
+		case xcommon.SPLITTER:
 			// log.Debug("statsManager::statsProcessor : splitter: Name %v, success %v, download %v", item.name, item.success, item.download)
-			if item.success {
+			if item.Success {
 				sm.success += 1
 			} else {
 				sm.failed += 1
 			}
 
-		case DATA_MANAGER:
+		case xcommon.DATA_MANAGER:
 			// log.Debug("statsManager::statsProcessor : data manager: Name %v, success %v, download %v, bytes transferred %v", item.name, item.success, item.download, item.bytesTransferred)
-			if item.download {
-				sm.bytesDownloaded += item.bytesTransferred
+			if item.Download {
+				sm.bytesDownloaded += item.BytesTransferred
 			} else {
-				sm.bytesUploaded += item.bytesTransferred
+				sm.bytesUploaded += item.BytesTransferred
 			}
 
 		case STATS_MANAGER:
@@ -179,7 +180,7 @@ func (sm *statsManager) statsProcessor() {
 	log.Debug("statsManager::statsProcessor : stats processor completed")
 }
 
-func (sm *statsManager) statsExporter() {
+func (sm *StatsManager) statsExporter() {
 	ticker := time.NewTicker(DURATION * time.Second)
 
 	for {
@@ -188,14 +189,14 @@ func (sm *statsManager) statsExporter() {
 			ticker.Stop()
 			return
 		case <-ticker.C:
-			sm.addStats(&statsItem{
-				component: STATS_MANAGER,
+			sm.AddStats(&StatsItem{
+				Component: STATS_MANAGER,
 			})
 		}
 	}
 }
 
-func (sm *statsManager) calculateBandwidth() {
+func (sm *StatsManager) calculateBandwidth() {
 	if sm.totalFiles == 0 {
 		log.Debug("statsManager::calculateBandwidth : skipping as total files listed so far is %v", sm.totalFiles)
 		return
@@ -207,7 +208,7 @@ func (sm *statsManager) calculateBandwidth() {
 	filesProcessed := sm.success + sm.failed
 	filesPending := sm.totalFiles - filesProcessed
 	percentCompleted := (float64(filesProcessed) / float64(sm.totalFiles)) * 100
-	bandwidthMbps := float64(bytesTransferred*8) / (timeLapsed * float64(_1MB))
+	bandwidthMbps := float64(bytesTransferred*8) / (timeLapsed * float64(xcommon.MB))
 
 	log.Debug("statsManager::calculateBandwidth : timestamp %v, %.2f%%, %v Done, %v Failed, "+
 		"%v Pending, %v Total, Bytes transferred %v, Throughput (Mbps): %.2f",
@@ -216,13 +217,13 @@ func (sm *statsManager) calculateBandwidth() {
 
 	err := sm.marshalStatsData(&statsJSONData{
 		Timestamp:        currTime.Format(time.RFC1123),
-		PercentCompleted: roundFloat(percentCompleted, 2),
+		PercentCompleted: xcommon.RoundFloat(percentCompleted, 2),
 		Total:            sm.totalFiles,
 		Done:             sm.success,
 		Failed:           sm.failed,
 		Pending:          filesPending,
 		BytesTransferred: bytesTransferred,
-		BandwidthMbps:    roundFloat(bandwidthMbps, 2),
+		BandwidthMbps:    xcommon.RoundFloat(bandwidthMbps, 2),
 	}, true)
 	if err != nil {
 		log.Err("statsManager::calculateBandwidth : failed to write to json file [%v]", err.Error())
@@ -235,7 +236,7 @@ func (sm *statsManager) calculateBandwidth() {
 	}
 }
 
-func (sm *statsManager) marshalStatsData(data *statsJSONData, seek bool) error {
+func (sm *StatsManager) marshalStatsData(data *statsJSONData, seek bool) error {
 	if sm.fileHandle == nil {
 		return nil
 	}
@@ -255,7 +256,7 @@ func (sm *statsManager) marshalStatsData(data *statsJSONData, seek bool) error {
 	return nil
 }
 
-func (sm *statsManager) writeToJSON(data []byte, seek bool) error {
+func (sm *StatsManager) writeToJSON(data []byte, seek bool) error {
 	if sm.fileHandle == nil {
 		return nil
 	}

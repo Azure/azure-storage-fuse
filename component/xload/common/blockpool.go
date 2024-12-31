@@ -31,11 +31,9 @@
    SOFTWARE
 */
 
-package xload
+package common
 
 import "github.com/Azure/azure-storage-fuse/v2/common/log"
-
-const _1MB uint64 = (1024 * 1024)
 
 // BlockPool is a pool of Blocks
 type BlockPool struct {

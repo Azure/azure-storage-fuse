@@ -31,34 +31,76 @@
    SOFTWARE
 */
 
-package xload
+package common
 
 import (
-	"testing"
+	"math"
+	"os"
+	"reflect"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/suite"
+	"github.com/JeffreyRichter/enum/enum"
 )
 
-type listTestSuite struct {
-	suite.Suite
-	assert *assert.Assertions
+const (
+	MAX_WORKER_COUNT         = 64
+	MAX_DATA_SPLITTER        = 16
+	MAX_LISTER               = 16
+	MB                uint64 = (1024 * 1024)
+	LISTER            string = "LISTER"
+	SPLITTER          string = "SPLITTER"
+	DATA_MANAGER      string = "DATA_MANAGER"
+)
+
+// One workitem to be processed
+type WorkItem struct {
+	CompName        string         // Name of the component
+	Path            string         // Name of the file being processed
+	DataLen         uint64         // Length of the data to be processed
+	Block           *Block         // Block to hold data for
+	FileHandle      *os.File       // File handle to the file being processed
+	Err             error          // Error if any
+	ResponseChannel chan *WorkItem // Channel to send the response
+	Download        bool           // boolean variable to decide upload or download
 }
 
-func (suite *listTestSuite) SetupTest() {
+// xload mode enum
+type Mode int
+
+var EMode = Mode(0).INVALID_MODE()
+
+func (Mode) INVALID_MODE() Mode {
+	return Mode(0)
 }
 
-func (suite *listTestSuite) cleanupTest() {
+func (Mode) CHECKPOINT() Mode {
+	return Mode(1)
 }
 
-func (suite *listTestSuite) TestReadDir() {
-	// l := &local{}
-
-	// l.readDir(&workItem{
-	// 	basePath: "/home/sourav/go/src/azure-storage-fuse/common",
-	// })
+func (Mode) DOWNLOAD() Mode {
+	return Mode(2)
 }
 
-func TestListSuite(t *testing.T) {
-	suite.Run(t, new(listTestSuite))
+func (Mode) UPLOAD() Mode {
+	return Mode(3)
+}
+
+func (Mode) SYNC() Mode {
+	return Mode(4)
+}
+
+func (m Mode) String() string {
+	return enum.StringInt(m, reflect.TypeOf(m))
+}
+
+func (m *Mode) Parse(s string) error {
+	enumVal, err := enum.ParseInt(reflect.TypeOf(m), s, true, false)
+	if enumVal != nil {
+		*m = enumVal.(Mode)
+	}
+	return err
+}
+
+func RoundFloat(val float64, precision int) float64 {
+	ratio := math.Pow(10, float64(precision))
+	return math.Round(val*ratio) / ratio
 }

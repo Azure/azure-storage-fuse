@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package xload
+package common
 
 import (
 	"fmt"
@@ -40,11 +40,11 @@ import (
 
 // Block is a memory mapped buffer with its state to hold data
 type Block struct {
-	index  int    // Index of the block in the pool
-	offset int64  // Start offset of the data this block holds
-	length int64  // Length of data that this block holds
-	id     string // ID to represent this block in the blob
-	data   []byte // Data this block holds
+	Index  int    // Index of the block in the pool
+	Offset int64  // Start offset of the data this block holds
+	Length int64  // Length of data that this block holds
+	Id     string // ID to represent this block in the blob
+	Data   []byte // Data this block holds
 }
 
 // AllocateBlock creates a new memory mapped buffer for the given size
@@ -61,11 +61,11 @@ func AllocateBlock(size uint64) (*Block, error) {
 	}
 
 	block := &Block{
-		index:  0,
-		data:   addr,
-		offset: 0,
-		length: 0,
-		id:     "",
+		Index:  0,
+		Data:   addr,
+		Offset: 0,
+		Length: 0,
+		Id:     "",
 	}
 
 	return block, nil
@@ -73,12 +73,12 @@ func AllocateBlock(size uint64) (*Block, error) {
 
 // Delete cleans up the memory mapped buffer
 func (b *Block) Delete() error {
-	if b.data == nil {
+	if b.Data == nil {
 		return fmt.Errorf("invalid buffer")
 	}
 
-	err := syscall.Munmap(b.data)
-	b.data = nil
+	err := syscall.Munmap(b.Data)
+	b.Data = nil
 	if err != nil {
 		// if we get here, there is likely memory corruption.
 		return fmt.Errorf("munmap error: %v", err)
@@ -89,8 +89,8 @@ func (b *Block) Delete() error {
 
 // Clear the old data of this block
 func (b *Block) ReUse() {
-	b.id = ""
-	b.index = 0
-	b.offset = 0
-	b.length = 0
+	b.Id = ""
+	b.Index = 0
+	b.Offset = 0
+	b.Length = 0
 }

@@ -31,66 +31,77 @@
    SOFTWARE
 */
 
-package xload
+package common
 
 import (
-	"math"
-	"os"
-	"reflect"
+	"sync"
 
-	"github.com/JeffreyRichter/enum/enum"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
-// One workitem to be processed
-type workItem struct {
-	compName        string         // Name of the component
-	path            string         // Name of the file being processed
-	dataLen         uint64         // Length of the data to be processed
-	block           *Block         // Block to hold data for
-	fileHandle      *os.File       // File handle to the file being processed
-	err             error          // Error if any
-	responseChannel chan *workItem // Channel to send the response
-	download        bool           // boolean variable to decide upload or download
+// ThreadPool is a group of workers that can be used to execute a task
+type ThreadPool struct {
+	// Number of workers running in this group
+	worker uint32
+
+	// Wait group to wait for all workers to finish
+	wg sync.WaitGroup
+
+	// Channel to hold pending requests
+	workItems chan *WorkItem
+
+	// Reader method that will actually read the data
+	callback func(*WorkItem) (int, error)
 }
 
-// xload mode enum
-type Mode int
-
-var EMode = Mode(0).INVALID_MODE()
-
-func (Mode) INVALID_MODE() Mode {
-	return Mode(0)
-}
-
-func (Mode) CHECKPOINT() Mode {
-	return Mode(1)
-}
-
-func (Mode) DOWNLOAD() Mode {
-	return Mode(2)
-}
-
-func (Mode) UPLOAD() Mode {
-	return Mode(3)
-}
-
-func (Mode) SYNC() Mode {
-	return Mode(4)
-}
-
-func (m Mode) String() string {
-	return enum.StringInt(m, reflect.TypeOf(m))
-}
-
-func (m *Mode) Parse(s string) error {
-	enumVal, err := enum.ParseInt(reflect.TypeOf(m), s, true, false)
-	if enumVal != nil {
-		*m = enumVal.(Mode)
+// NewThreadPool creates a new thread pool
+func NewThreadPool(count uint32, callback func(*WorkItem) (int, error)) *ThreadPool {
+	if count == 0 || callback == nil {
+		return nil
 	}
-	return err
+
+	return &ThreadPool{
+		worker:    count,
+		callback:  callback,
+		workItems: make(chan *WorkItem, count*2),
+	}
 }
 
-func roundFloat(val float64, precision int) float64 {
-	ratio := math.Pow(10, float64(precision))
-	return math.Round(val*ratio) / ratio
+// Start all the workers and wait till they start receiving requests
+func (t *ThreadPool) Start() {
+	for i := uint32(0); i < t.worker; i++ {
+		t.wg.Add(1)
+		go t.Do()
+	}
+}
+
+// Stop all the workers threads
+func (t *ThreadPool) Stop() {
+	close(t.workItems)
+	t.wg.Wait()
+}
+
+// Schedule the download of a block
+func (t *ThreadPool) Schedule(item *WorkItem) {
+	t.workItems <- item
+}
+
+// Do is the core task to be executed by each worker thread
+func (t *ThreadPool) Do() {
+	defer t.wg.Done()
+
+	// This thread will work only on both high and low priority channel
+	for item := range t.workItems {
+		_, err := t.callback(item)
+		if err != nil {
+			// TODO:: xload : add retry logic
+			log.Err("ThreadPool::Do : Error in %s processing workitem %s : %v", item.CompName, item.Path, err)
+		}
+
+		// add this error in response channel
+		if cap(item.ResponseChannel) > 0 {
+			item.Err = err
+			item.ResponseChannel <- item
+		}
+	}
 }
