@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package xload
+package common
 
 import (
 	"sync"
@@ -48,18 +48,18 @@ type ThreadPool struct {
 	wg sync.WaitGroup
 
 	// Channel to hold pending requests
-	priorityItems chan *workItem
-	workItems     chan *workItem
+	priorityItems chan *WorkItem
+	workItems     chan *WorkItem
 
 	// Channel to close all the workers
 	done chan int
 
 	// Reader method that will actually read the data
-	callback func(*workItem) (int, error)
+	callback func(*WorkItem) (int, error)
 }
 
-// newThreadPool creates a new thread pool
-func newThreadPool(count uint32, callback func(*workItem) (int, error)) *ThreadPool {
+// NewThreadPool creates a new thread pool
+func NewThreadPool(count uint32, callback func(*WorkItem) (int, error)) *ThreadPool {
 	if count == 0 || callback == nil {
 		return nil
 	}
@@ -67,8 +67,8 @@ func newThreadPool(count uint32, callback func(*workItem) (int, error)) *ThreadP
 	return &ThreadPool{
 		worker:        count,
 		callback:      callback,
-		priorityItems: make(chan *workItem, count*2),
-		workItems:     make(chan *workItem, count*4),
+		priorityItems: make(chan *WorkItem, count*2),
+		workItems:     make(chan *WorkItem, count*4),
 		done:          make(chan int, count),
 	}
 }
@@ -98,7 +98,7 @@ func (t *ThreadPool) Stop() {
 }
 
 // Schedule the download of a block
-func (t *ThreadPool) Schedule(urgent bool, item *workItem) {
+func (t *ThreadPool) Schedule(urgent bool, item *WorkItem) {
 	// urgent specifies the priority of this task.
 	// true means high priority and false means low priority
 	if urgent {
@@ -140,16 +140,16 @@ func (t *ThreadPool) Do(priority bool) {
 	}
 }
 
-func (t *ThreadPool) process(item *workItem) {
+func (t *ThreadPool) process(item *WorkItem) {
 	_, err := t.callback(item)
 	if err != nil {
 		// TODO:: xload : add retry logic
-		log.Err("ThreadPool::Do : Error in %s processing workitem %s : %v", item.compName, item.path, err)
+		log.Err("ThreadPool::Do : Error in %s processing workitem %s : %v", item.CompName, item.Path, err)
 	}
 
 	// add this error in response channel
-	if cap(item.responseChannel) > 0 {
-		item.err = err
-		item.responseChannel <- item
+	if cap(item.ResponseChannel) > 0 {
+		item.Err = err
+		item.ResponseChannel <- item
 	}
 }

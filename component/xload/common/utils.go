@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package xload
+package common
 
 import (
 	"math"
@@ -42,17 +42,27 @@ import (
 	"github.com/JeffreyRichter/enum/enum"
 )
 
+const (
+	MAX_WORKER_COUNT         = 64
+	MAX_DATA_SPLITTER        = 16
+	MAX_LISTER               = 16
+	MB                uint64 = (1024 * 1024)
+	LISTER            string = "LISTER"
+	SPLITTER          string = "SPLITTER"
+	DATA_MANAGER      string = "DATA_MANAGER"
+)
+
 // One workitem to be processed
-type workItem struct {
-	compName        string         // Name of the component
-	path            string         // Name of the file being processed
-	dataLen         uint64         // Length of the data to be processed
-	block           *Block         // Block to hold data for
-	fileHandle      *os.File       // File handle to the file being processed
-	err             error          // Error if any
-	responseChannel chan *workItem // Channel to send the response
-	download        bool           // boolean variable to decide upload or download
-	priority        bool           // boolean flag to decide if this item needs to be processed on priority
+type WorkItem struct {
+	CompName        string         // Name of the component
+	Path            string         // Name of the file being processed
+	DataLen         uint64         // Length of the data to be processed
+	Block           *Block         // Block to hold data for
+	FileHandle      *os.File       // File handle to the file being processed
+	Err             error          // Error if any
+	ResponseChannel chan *WorkItem // Channel to send the response
+	Download        bool           // boolean variable to decide upload or download
+	Priority        bool           // boolean flag to decide if this item needs to be processed on priority
 }
 
 // xload mode enum
@@ -92,12 +102,12 @@ func (m *Mode) Parse(s string) error {
 	return err
 }
 
-func roundFloat(val float64, precision int) float64 {
+func RoundFloat(val float64, precision int) float64 {
 	ratio := math.Pow(10, float64(precision))
 	return math.Round(val*ratio) / ratio
 }
 
-func isFilePresent(localPath string) (bool, int64) {
+func IsFilePresent(localPath string) (bool, int64) {
 	filePresent := true
 	fileInfo, err := os.Stat(localPath)
 	if err != nil {

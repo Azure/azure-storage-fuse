@@ -31,70 +31,89 @@
    SOFTWARE
 */
 
-package xload
+package internal
 
-import "github.com/Azure/azure-storage-fuse/v2/internal"
+import (
+	"github.com/Azure/azure-storage-fuse/v2/component/xload/common"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
+)
 
-type xcomponent interface {
-	init()
-	start()
-	stop()
-	process(item *workItem) (int, error)
-	getNext() xcomponent
-	setNext(s xcomponent)
-	getThreadPool() *ThreadPool
-	getRemote() internal.Component
-	getName() string
-	setName(s string)
+type XComponent interface {
+	Init()
+	Start()
+	Stop()
+	Process(*common.WorkItem) (int, error)
+	GetNext() XComponent
+	SetNext(XComponent)
+	GetThreadPool() *common.ThreadPool
+	SetThreadPool(*common.ThreadPool)
+	GetRemote() internal.Component
+	SetRemote(internal.Component)
+	GetName() string
+	SetName(string)
+	GetStatsManager() *StatsManager
+	SetStatsManager(*StatsManager)
 }
 
-type xbase struct {
+type XBase struct {
 	name     string
-	pool     *ThreadPool
+	pool     *common.ThreadPool
 	remote   internal.Component
-	next     xcomponent
-	statsMgr *statsManager
+	next     XComponent
+	statsMgr *StatsManager
 }
 
-var _ xcomponent = &xbase{}
+var _ XComponent = &XBase{}
 
-func (xb *xbase) init() {
+func (xb *XBase) Init() {
 }
 
-func (xb *xbase) start() {
+func (xb *XBase) Start() {
 }
 
-func (xb *xbase) stop() {
+func (xb *XBase) Stop() {
 }
 
-func (xb *xbase) process(item *workItem) (int, error) {
+func (xb *XBase) Process(item *common.WorkItem) (int, error) {
 	return 0, nil
 }
 
-func (xb *xbase) getNext() xcomponent {
+func (xb *XBase) GetNext() XComponent {
 	return xb.next
 }
 
-func (xb *xbase) setNext(s xcomponent) {
+func (xb *XBase) SetNext(s XComponent) {
 	xb.next = s
 }
 
-func (xb *xbase) getThreadPool() *ThreadPool {
+func (xb *XBase) GetThreadPool() *common.ThreadPool {
 	return xb.pool
 }
 
-func (xb *xbase) getRemote() internal.Component {
+func (xb *XBase) SetThreadPool(pool *common.ThreadPool) {
+	xb.pool = pool
+}
+
+func (xb *XBase) GetRemote() internal.Component {
 	return xb.remote
 }
 
-func (xb *xbase) getName() string {
+func (xb *XBase) SetRemote(comp internal.Component) {
+	xb.remote = comp
+}
+
+func (xb *XBase) GetName() string {
 	return xb.name
 }
 
-func (xb *xbase) setName(s string) {
-	xb.name = s
+func (xb *XBase) SetName(name string) {
+	xb.name = name
 }
 
-func (xb *xbase) getStatsManager() *statsManager {
+func (xb *XBase) GetStatsManager() *StatsManager {
 	return xb.statsMgr
+}
+
+func (xb *XBase) SetStatsManager(sm *StatsManager) {
+	xb.statsMgr = sm
 }
