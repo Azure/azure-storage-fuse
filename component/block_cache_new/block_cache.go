@@ -337,6 +337,7 @@ func (bc *BlockCache) CloseFile(options internal.CloseFileOptions) error {
 	logy.Write([]byte(fmt.Sprintf("BlockCache::CloseFile : handle=%d, path=%s\n", options.Handle.ID, options.Handle.Path)))
 	//err := bc.SyncFile(internal.SyncFileOptions{Handle: options.Handle})
 	DeleteHandleForFile(options.Handle)
+	DeleteHandleFromMap(options.Handle)
 	return nil
 }
 

@@ -95,3 +95,7 @@ func GetFileFromHandle(h *handlemap.Handle) *File {
 	}
 	return f.(*File)
 }
+
+func DeleteHandleFromMap(h *handlemap.Handle) {
+	handleMap.Delete(h)
+}

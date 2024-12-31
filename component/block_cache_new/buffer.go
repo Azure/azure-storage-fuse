@@ -259,6 +259,7 @@ func releaseBuffers(f *File) {
 			bPool.putBuffer(b.buf)
 		}
 		f.readOnlyBlocks = make(map[int]*block)
+		return
 	}
 	len_of_blocklist := len(f.blockList)
 	for i := 0; i < len_of_blocklist; i++ {
