@@ -8,6 +8,8 @@ github.com/Azure/azure-sdk-for-go/sdk/internal v1.10.0 h1:ywEEhmNahHBihViHepv3xP
 github.com/Azure/azure-sdk-for-go/sdk/internal v1.10.0/go.mod h1:iZDifYGJTIgIIkYRNWPENUnqx6bJ2xnSDFI2tjwZNuY=
 github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage v1.6.0 h1:PiSrjRPpkQNjrM8H0WwKMnZUdu1RGMtd/LdGKUrOo+c=
 github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage v1.6.0/go.mod h1:oDrbWx4ewMylP7xHivfgixbfGBT6APAwsSoHRKotnIc=
+github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.5.0-beta.1.0.20241101205320-058b4f1276f8 h1:lEIiZVUYqfTefmla/1VdVN25KtD+Ocv6YU/aYmrO/go=
+github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.5.0-beta.1.0.20241101205320-058b4f1276f8/go.mod h1:PXe2h+LKcWTX9afWdZoHyODqR4fBa5boUM/8uJfZ0Jo=
 github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake v1.3.0-beta.1.0.20241101205320-058b4f1276f8 h1:/2kDSLunMEZCmppek7SI+GpnRhfPY5nuu4Sfk0pBMCQ=
 github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake v1.3.0-beta.1.0.20241101205320-058b4f1276f8/go.mod h1:CgYxIvUeJo6+7LdnaArwd1Mpk02d9ATikuJviLrxU5E=
 github.com/AzureAD/microsoft-authentication-extensions-for-go/cache v0.1.1 h1:WJTmL004Abzc5wDB5VtZG2PJk5ndYDgVacGqfirKxjM=
@@ -16,8 +18,6 @@ github.com/AzureAD/microsoft-authentication-library-for-go v1.2.2 h1:XHOnouVk1mx
 github.com/AzureAD/microsoft-authentication-library-for-go v1.2.2/go.mod h1:wP83P5OoQ5p6ip3ScPr0BAq0BvuPAvacpEuSzyouqAI=
 github.com/JeffreyRichter/enum v0.0.0-20180725232043-2567042f9cda h1:NOo6+gM9NNPJ3W56nxOKb4164LEw094U0C8zYQM8mQU=
 github.com/JeffreyRichter/enum v0.0.0-20180725232043-2567042f9cda/go.mod h1:2CaSFTh2ph9ymS6goiOKIBdfhwWUVsX4nQ5QjIYFHHs=
-github.com/ashruti-msft/azure-sdk-for-go/sdk/storage/azblob v0.0.0-20241126122032-5b3a6c6c8b4e h1:N4bAHgp3WHiXbwx6D3+mCR29GMQeceTj3pcRLts46Bk=
-github.com/ashruti-msft/azure-sdk-for-go/sdk/storage/azblob v0.0.0-20241126122032-5b3a6c6c8b4e/go.mod h1:PXe2h+LKcWTX9afWdZoHyODqR4fBa5boUM/8uJfZ0Jo=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
 github.com/cespare/xxhash/v2 v2.3.0/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
 github.com/cpuguy83/go-md2man/v2 v2.0.1/go.mod h1:tgQtvFlXSQOSOSIRvRPT7W67SCa46tRHOmNcaadrF8o=
