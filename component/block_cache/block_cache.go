@@ -135,7 +135,20 @@ func (bc *BlockCache) SetNextComponent(nc internal.Component) {
 func (bc *BlockCache) Start(ctx context.Context) error {
 	log.Trace("BlockCache::Start : Starting component %s", bc.Name())
 
+	bc.blockPool = NewBlockPool(bc.blockSize, bc.memSize)
+	if bc.blockPool == nil {
+		log.Err("BlockCache::Start : failed to init block pool")
+		return fmt.Errorf("config error in %s [failed to init block pool]", bc.Name())
+	}
+
+	bc.threadPool = newThreadPool(bc.workers, bc.download, bc.upload)
+	if bc.threadPool == nil {
+		log.Err("BlockCache::Start : failed to init thread pool")
+		return fmt.Errorf("config error in %s [failed to init thread pool]", bc.Name())
+	}
+
 	// Start the thread pool and keep it ready for download
+	log.Debug("BlockCache::Start : Starting thread pool")
 	bc.threadPool.Start()
 
 	// If disk caching is enabled then start the disk eviction policy
@@ -308,18 +321,6 @@ func (bc *BlockCache) Configure(_ bool) error {
 	if (uint64(bc.prefetch) * uint64(bc.blockSize)) > bc.memSize {
 		log.Err("BlockCache::Configure : config error [memory limit too low for configured prefetch]")
 		return fmt.Errorf("config error in %s [memory limit too low for configured prefetch]", bc.Name())
-	}
-
-	bc.blockPool = NewBlockPool(bc.blockSize, bc.memSize)
-	if bc.blockPool == nil {
-		log.Err("BlockCache::Configure : fail to init Block pool")
-		return fmt.Errorf("config error in %s [fail to init block pool]", bc.Name())
-	}
-
-	bc.threadPool = newThreadPool(bc.workers, bc.download, bc.upload)
-	if bc.threadPool == nil {
-		log.Err("BlockCache::Configure : fail to init thread pool")
-		return fmt.Errorf("config error in %s [fail to init thread pool]", bc.Name())
 	}
 
 	if bc.tmpPath != "" {
