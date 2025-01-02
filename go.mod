@@ -60,7 +60,7 @@ require (
 
 replace github.com/spf13/cobra => github.com/gapra-msft/cobra v1.4.1-0.20220411185530-5b83e8ba06dd
 
-replace github.com/Azure/azure-sdk-for-go/sdk/storage/azblob => github.com/ashruti-msft/azure-sdk-for-go/sdk/storage/azblob v0.0.0-20241126122032-5b3a6c6c8b4e
+// replace github.com/Azure/azure-sdk-for-go/sdk/storage/azblob => github.com/ashruti-msft/azure-sdk-for-go/sdk/storage/azblob v0.0.0-20241126122032-5b3a6c6c8b4e
 
 // replace github.com/Azure/azure-sdk-for-go/sdk/storage/azblob => /home/anubhuti/Downloads/azure-sdk-for-go/sdk/storage/azblob
 
