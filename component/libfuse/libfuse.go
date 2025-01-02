@@ -36,6 +36,11 @@ package libfuse
 import (
 	"context"
 	"fmt"
+
+	l "log"
+	"net/http"
+	_ "net/http/pprof"
+	"os"
 	"strings"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -150,6 +155,9 @@ func (lf *Libfuse) Priority() internal.ComponentPriority {
 //
 //	this shall not block the call otherwise pipeline will not start
 func (lf *Libfuse) Start(ctx context.Context) error {
+	go func() {
+		l.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
 	log.Trace("Libfuse::Start : Starting component %s", lf.Name())
 
 	// create stats collector for libfuse
@@ -160,6 +168,7 @@ func (lf *Libfuse) Start(ctx context.Context) error {
 
 	// This marks the global fuse object so shall be the first statement
 	fuseFS = lf
+	logy, _ = os.OpenFile("/home/fantom/logs/lat.txt", os.O_RDWR, 0666)
 
 	// This starts the libfuse process and hence shall always be the last statement
 	err := lf.initFuse()

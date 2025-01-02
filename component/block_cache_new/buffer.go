@@ -4,6 +4,7 @@ import (
 	"container/list"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -70,11 +71,15 @@ func (bp *BufferPool) putBuffer(b *Buffer) {
 	bp.pool.Put(b)
 }
 
-func getBlockWithReadAhead(idx int, h *handlemap.Handle, file *File) (*block, error) {
+func getBlockWithReadAhead(idx int, start int, h *handlemap.Handle, file *File) (*block, error) {
+	blk, err := getBlockForRead(idx, h, file)
 	for i := 1; i <= 3; i++ {
-		go getBlockForRead(idx+i, h, file)
+		if i+start < (int(h.Size)+BlockSize-1)/BlockSize {
+			logy2.WriteString(fmt.Sprintf("%v, idx %d, read ahead %d\n", h.Path, idx, i+start))
+			go getBlockForRead(i+start, h, file)
+		}
 	}
-	return getBlockForRead(idx, h, file)
+	return blk, err
 }
 
 // Returns the buffer containing block.
@@ -256,7 +261,9 @@ func releaseBuffers(f *File) {
 	//Lock was already acquired on file
 	if f.readOnly {
 		for _, b := range f.readOnlyBlocks {
-			bPool.putBuffer(b.buf)
+			if b.buf != nil {
+				bPool.putBuffer(b.buf)
+			}
 		}
 		f.readOnlyBlocks = make(map[int]*block)
 		return

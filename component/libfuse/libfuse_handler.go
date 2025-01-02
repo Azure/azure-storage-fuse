@@ -52,6 +52,7 @@ import (
 	"io/fs"
 	"os"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -72,6 +73,8 @@ we are converting back the pointer to our handle object to an integer value and 
 When read/write/flush/close call comes libfuse will supply this handle value back to blobfuse.
 In those calls we will convert integer value back to a pointer and get our valid handle object back for that file.
 */
+
+var logy *os.File
 
 const (
 	C_ENOENT = int(-C.ENOENT)
@@ -317,7 +320,7 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 	conn.max_background = C.uint(fuseFS.maxFuseThreads)
 
 	// While reading a file let kernel do readahed for better perf
-	conn.max_readahead = (4 * 1024 * 1024)
+	conn.max_readahead = 0
 	conn.max_read = (1 * 1024 * 1024)
 
 	// RHEL still has 3.3 fuse version and it does not allow max_write beyond 128K
@@ -743,10 +746,25 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 	return 0
 }
 
+var readTime time.Duration
+
+func timer(name string) func() {
+	start := time.Now()
+	return func() {
+		t := time.Since(start)
+		readTime += t
+		if t > time.Millisecond {
+			logy.WriteString(fmt.Sprintf("%s took %v\n", name, t))
+		}
+		logy.WriteString(fmt.Sprintf("Total time of read %v\n", readTime))
+	}
+}
+
 // libfuse_read reads data from an open file
 //
 //export libfuse_read
 func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.fuse_file_info_t) C.int {
+	defer timer(fmt.Sprintf("Read for path %s offet %d size %d", C.GoString(path), off, size))()
 	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
 	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
 
@@ -809,6 +827,7 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.
 //
 //export libfuse_flush
 func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
+	defer timer(fmt.Sprintf("Flush for path %s ", C.GoString(path)))()
 	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
 	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
 	log.Trace("Libfuse::libfuse_flush : %s, handle: %d", handle.Path, handle.ID)

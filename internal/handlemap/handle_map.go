@@ -84,7 +84,7 @@ type Handle struct {
 	Flags       common.BitMap16        // Various states of the file
 	Path        string                 // Always holds path relative to mount dir
 	values      map[string]interface{} // Map to hold other info if application wants to store
-	Is_seq      uint                   //Tells whether the file is in sequential mode
+	Is_seq      int                    //Tells whether the file is in sequential mode
 	Prev_offset int64                  // prev offset for the read op, neccesary to check if the file is reading sequentially
 }
 

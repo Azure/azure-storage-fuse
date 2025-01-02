@@ -56,7 +56,7 @@ import (
 */
 
 var bc *BlockCache
-var logy *os.File
+var logy, logy2 *os.File
 var BlockSize int
 var bPool *BufferPool
 var memory int = 1024 * 1024 * 1024
@@ -222,21 +222,28 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 	logy.Write([]byte(fmt.Sprintf("BlockCache::ReadFile : handle=%d, path=%s, offset: %d\n", options.Handle.ID, options.Handle.Path, options.Offset)))
 	h := options.Handle
 	if h.Prev_offset == options.Offset {
-		h.Is_seq++
+		if h.Is_seq == 0 {
+			h.Is_seq = getBlockIndex(options.Offset) + 1
+			logy2.WriteString(fmt.Sprintf("Seq read detected: at offset %d, Is_seq : %d \n", options.Offset, h.Is_seq))
+		}
 	} else {
 		h.Is_seq = 0
+		logy2.WriteString("********************Random Write********************************\n")
+		logy2.WriteString(fmt.Sprintf("Prev Offset: %d, cur offset: %d, Is_seq : %d \n", h.Prev_offset, options.Offset, h.Is_seq))
+
 	}
 	f := GetFileFromHandle(options.Handle)
 
 	offset := options.Offset
 	dataRead := 0
 	len_of_copy := len(options.Data)
-	f.Lock()
-	options.Handle.Size = f.size // This is updated here as it is used by the nxt comp for upload usually not necessary!
-	f.Unlock()
+	// f.Lock()
+	// options.Handle.Size = f.size // This is updated here as it is used by the nxt comp for upload usually not necessary!
+	// f.Unlock()
 
 	if options.Offset >= options.Handle.Size {
 		// EOF reached so early exit
+		logy2.WriteString(fmt.Sprintf("Something went wrong\n"))
 		return 0, io.EOF
 	}
 
@@ -244,12 +251,15 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 		idx := getBlockIndex(offset)
 		var blk *block
 		var err error
-		// if options.Handle.Is_seq != 0 {
-		// 	blk, err = getBlockWithReadAhead(idx, options.Handle, f)
-		// } else {
-		blk, err = getBlockForRead(idx, options.Handle, f)
-		//		}
+		if (options.Handle.Is_seq != 0) && ((offset % int64(BlockSize)) == 0) && (h.Is_seq < idx+5) {
+			logy2.WriteString(fmt.Sprintf("Read ahead starting at idx: %d, Is_seq : %d\n", idx, h.Is_seq))
+			blk, err = getBlockWithReadAhead(idx, int(options.Handle.Is_seq), options.Handle, f)
+			options.Handle.Is_seq += 3
+		} else {
+			blk, err = getBlockForRead(idx, options.Handle, f)
+		}
 		if err != nil {
+			logy2.WriteString(fmt.Sprintf("Something went wrong inside loop\n"))
 			return dataRead, err
 		}
 		blockOffset := convertOffsetIntoBlockOffset(offset)
@@ -258,9 +268,9 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 		block_buf := blk.buf
 		len_of_block_buf := getBlockSize(options.Handle.Size, idx)
 		bytesCopied := copy(options.Data[dataRead:], block_buf.data[blockOffset:len_of_block_buf])
-		// if blockOffset+int64(bytesCopied) == int64(len_of_block_buf) {
-		// 	releaseBufferForBlock(blk) // THis should handle the uncommited buffers
-		// }
+		if blockOffset+int64(bytesCopied) == int64(len_of_block_buf) {
+			releaseBufferForBlock(blk) // THis should handle the uncommited buffers
+		}
 		blk.Unlock()
 
 		dataRead += bytesCopied
@@ -449,7 +459,8 @@ func (bc *BlockCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAtt
 // << DO NOT DELETE ANY AUTO GENERATED CODE HERE >>
 func NewBlockCacheComponent() internal.Component {
 	comp := &BlockCache{}
-	logy, _ = os.OpenFile("/home/syeleti/logs/logy.txt", os.O_RDWR, 0666)
+	logy, _ = os.OpenFile("/home/fantom/logs/logy.txt", os.O_RDWR, 0666)
+	logy2, _ = os.OpenFile("/home/fantom/logs/logy2.txt", os.O_RDWR, 0666)
 	comp.blockSize = 8 * 1024 * 1024
 	BlockSize = int(comp.blockSize)
 	comp.SetName(compName)
