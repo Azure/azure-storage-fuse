@@ -309,7 +309,7 @@ func (xl *Xload) isDownloadRequired(localPath string, blobPath string) (bool, *i
 	attr, err = xl.NextComponent().GetAttr(internal.GetAttrOptions{Name: blobPath})
 	if err != nil {
 		log.Err("Xload::isDownloadRequired : Failed to get attr of %s [%s]", blobPath, err.Error())
-	} else {
+	} else if filePresent {
 		downloadRequired = attr.Size != size
 	}
 

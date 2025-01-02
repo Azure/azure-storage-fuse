@@ -108,11 +108,11 @@ func RoundFloat(val float64, precision int) float64 {
 }
 
 func IsFilePresent(localPath string) (bool, int64) {
-	filePresent := true
 	fileInfo, err := os.Stat(localPath)
 	if err != nil {
 		log.Debug("utils::isDownloadRequired : %s is not present in local path [%v]", localPath, err.Error())
-		filePresent = false
+		return false, 0
+	} else {
+		return true, fileInfo.Size()
 	}
-	return filePresent, fileInfo.Size()
 }
