@@ -481,7 +481,7 @@ func (ac *AttrCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr
 			// IsMetadataRetrieved is false in the case of ADLS List since the API does not support metadata.
 			// Once migration of ADLS list to blob endpoint is done (in future service versions), we can remove this.
 			// options.RetrieveMetadata is set by CopyFromFile and WriteFile which need metadata to ensure it is preserved.
-			if value.getAttr().IsMetadataRetrieved() || (ac.noSymlinks && !options.RetrieveMetadata) {
+			if !options.RetrieveMetadata {
 				// path exists and we have all the metadata required or we do not care about metadata
 				log.Debug("AttrCache::GetAttr : %s served from cache", options.Name)
 				return value.getAttr(), nil
