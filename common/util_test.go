@@ -35,13 +35,12 @@ package common
 
 import (
 	"bytes"
+	"crypto/rand"
 	"fmt"
-	"math/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -50,7 +49,6 @@ import (
 var home_dir, _ = os.UserHomeDir()
 
 func randomString(length int) string {
-	rand.Seed(time.Now().UnixNano())
 	b := make([]byte, length)
 	rand.Read(b)
 	return fmt.Sprintf("%x", b)[:length]
@@ -69,18 +67,22 @@ func TestUtil(t *testing.T) {
 	suite.Run(t, new(utilTestSuite))
 }
 
-func (suite *typesTestSuite) TestIsMountActiveNoMount() {
+func (suite *utilTestSuite) TestIsMountActiveNoMount() {
 	var out bytes.Buffer
-	cmd := exec.Command("pidof", "blobfuse2")
+	cmd := exec.Command("../blobfuse2", "unmount", "all")
 	cmd.Stdout = &out
 	err := cmd.Run()
+	suite.assert.Nil(err)
+	cmd = exec.Command("pidof", "blobfuse2")
+	cmd.Stdout = &out
+	err = cmd.Run()
 	suite.assert.Equal("exit status 1", err.Error())
 	res, err := IsMountActive("/mnt/blobfuse")
 	suite.assert.Nil(err)
 	suite.assert.False(res)
 }
 
-func (suite *typesTestSuite) TestIsMountActiveTwoMounts() {
+func (suite *utilTestSuite) TestIsMountActiveTwoMounts() {
 	var out bytes.Buffer
 
 	// Define the file name and the content you want to write
@@ -333,6 +335,31 @@ func (suite *utilTestSuite) TestDirectoryCleanup() {
 	suite.assert.Nil(err)
 
 	_ = os.RemoveAll(dirName)
+
+}
+
+func (suite *utilTestSuite) TestWriteToFile() {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Println("Error getting home directory:", err)
+		return
+	}
+	filePath := fmt.Sprintf(".blobfuse2/test_%s.txt", randomString(8))
+	content := "Hello World"
+	filePath = homeDir + "/" + filePath
+
+	defer os.Remove(filePath)
+
+	err = WriteToFile(filePath, content, WriteToFileOptions{})
+	suite.assert.Nil(err)
+
+	// Check if file exists
+	suite.assert.FileExists(filePath)
+
+	// Check the content of the file
+	data, err := os.ReadFile(filePath)
+	suite.assert.Nil(err)
+	suite.assert.Equal(content, string(data))
 
 }
 

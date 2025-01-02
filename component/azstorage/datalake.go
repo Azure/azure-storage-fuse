@@ -400,8 +400,6 @@ func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 		attr.Mode = attr.Mode | os.ModeDir
 	}
 
-	attr.Flags.Set(internal.PropFlagMetadataRetrieved)
-
 	if dl.Config.honourACL && dl.Config.authConfig.ObjectID != "" {
 		acl, err := fileClient.GetAccessControl(context.Background(), nil)
 		if err != nil {
@@ -445,7 +443,40 @@ func (dl *Datalake) ReadInBuffer(name string, offset int64, len int64, data []by
 
 // WriteFromFile : Upload local file to file
 func (dl *Datalake) WriteFromFile(name string, metadata map[string]*string, fi *os.File) (err error) {
-	return dl.BlockBlob.WriteFromFile(name, metadata, fi)
+	// File in DataLake may have permissions and ACL set. Just uploading the file will override them.
+	// So, we need to get the existing permissions and ACL and set them back after uploading the file.
+
+	var acl string = ""
+	var fileClient *file.Client = nil
+
+	if dl.Config.preserveACL {
+		fileClient = dl.Filesystem.NewFileClient(filepath.Join(dl.Config.prefixPath, name))
+		resp, err := fileClient.GetAccessControl(context.Background(), nil)
+		if err != nil {
+			log.Err("Datalake::getACL : Failed to get ACLs for file %s [%s]", name, err.Error())
+		} else if resp.ACL != nil {
+			acl = *resp.ACL
+		}
+	}
+
+	// Upload the file, which will override the permissions and ACL
+	retCode := dl.BlockBlob.WriteFromFile(name, metadata, fi)
+
+	if acl != "" {
+		// Cannot set both permissions and ACL in one call. ACL includes permission as well so just setting those back
+		// Just setting up the permissions will delete existing ACLs applied on the blob so do not convert this code to
+		// just set the permissions.
+		_, err := fileClient.SetAccessControl(context.Background(), &file.SetAccessControlOptions{
+			ACL: &acl,
+		})
+
+		if err != nil {
+			// Earlier code was ignoring this so it might break customer cases where they do not have auth to update ACL
+			log.Err("Datalake::WriteFromFile : Failed to set ACL for %s [%s]", name, err.Error())
+		}
+	}
+
+	return retCode
 }
 
 // WriteFromBuffer : Upload from a buffer to a file
@@ -480,7 +511,7 @@ func (dl *Datalake) ChangeMod(name string, mode os.FileMode) error {
 		// and create new string with the username included in the string
 		// Keeping this code here so in future if its required we can get the string and manipulate
 
-		currPerm, err := fileURL.GetAccessControl(context.Background())
+		currPerm, err := fileURL.getACL(context.Background())
 		e := storeDatalakeErrToErr(err)
 		if e == ErrFileNotFound {
 			return syscall.ENOENT

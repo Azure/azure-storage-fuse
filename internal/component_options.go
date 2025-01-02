@@ -167,6 +167,7 @@ type CreateLinkOptions struct {
 
 type ReadLinkOptions struct {
 	Name string
+	Size int64
 }
 
 type GetAttrOptions struct {
@@ -191,9 +192,10 @@ type ChownOptions struct {
 }
 
 type StageDataOptions struct {
-	Name string
-	Id   string
-	Data []byte
+	Name   string
+	Id     string
+	Data   []byte
+	Offset uint64
 }
 
 type CommitDataOptions struct {

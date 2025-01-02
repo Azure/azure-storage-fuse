@@ -40,6 +40,7 @@ import (
 	"bytes"
 	"container/list"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -47,7 +48,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"
@@ -285,9 +285,8 @@ func (s *blockBlobTestSuite) TestDefault() {
 }
 
 func randomString(length int) string {
-	random := rand.New(rand.NewSource(time.Now().UnixNano()))
 	b := make([]byte, length)
-	random.Read(b)
+	rand.Read(b)
 	return fmt.Sprintf("%x", b)[:length]
 }
 

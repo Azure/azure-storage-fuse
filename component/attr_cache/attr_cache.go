@@ -55,7 +55,6 @@ const defaultAttrCacheTimeout uint32 = (120)
 type AttrCache struct {
 	internal.BaseComponent
 	cacheTimeout uint32
-	cacheOnList  bool
 	noSymlinks   bool
 	maxFiles     int
 	cacheMap     map[string]*attrCacheItem
@@ -119,6 +118,17 @@ func (ac *AttrCache) Stop() error {
 	return nil
 }
 
+// GenConfig : Generate the default config for the component
+func (ac *AttrCache) GenConfig() string {
+	log.Info("AttrCache::Configure : config generation started")
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("\n%s:", ac.Name()))
+	sb.WriteString(fmt.Sprintf("\n  timeout-sec: %v", defaultAttrCacheTimeout))
+
+	return sb.String()
+}
+
 // Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
 //
 //	Return failure if any config is not valid to exit the process
@@ -139,22 +149,18 @@ func (ac *AttrCache) Configure(_ bool) error {
 		ac.cacheTimeout = defaultAttrCacheTimeout
 	}
 
-	if config.IsSet(compName + ".cache-on-list") {
-		ac.cacheOnList = conf.CacheOnList
-	} else {
-		ac.cacheOnList = !conf.NoCacheOnList
-	}
-
 	if config.IsSet(compName + ".max-files") {
 		ac.maxFiles = conf.MaxFiles
 	} else {
 		ac.maxFiles = defaultMaxFiles
 	}
 
-	ac.noSymlinks = conf.NoSymlinks
+	if config.IsSet(compName + ".no-symlinks") {
+		ac.noSymlinks = conf.NoSymlinks
+	}
 
-	log.Info("AttrCache::Configure : cache-timeout %d, symlink %t, cache-on-list %t, max-files %d",
-		ac.cacheTimeout, ac.noSymlinks, ac.cacheOnList, ac.maxFiles)
+	log.Crit("AttrCache::Configure : cache-timeout %d, symlink %t, max-files %d",
+		ac.cacheTimeout, ac.noSymlinks, ac.maxFiles)
 
 	return nil
 }
@@ -283,7 +289,7 @@ func (ac *AttrCache) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 // cacheAttributes : On dir listing cache the attributes for all files
 func (ac *AttrCache) cacheAttributes(pathList []*internal.ObjAttr) {
 	// Check whether or not we are supposed to cache on list
-	if ac.cacheOnList && len(pathList) > 0 {
+	if len(pathList) > 0 {
 		// Putting this inside loop is heavy as for each item we will do a kernel call to get current time
 		// If there are millions of blobs then cost of this is very high.
 		currTime := time.Now()
@@ -360,7 +366,6 @@ func (ac *AttrCache) RenameFile(options internal.RenameFileOptions) error {
 		ac.cacheLock.RLock()
 		defer ac.cacheLock.RUnlock()
 
-		// TODO: Can we just copy over the attributes from the source to the destination so we don't have to invalidate?
 		ac.deletePath(options.Src, time.Now())
 		ac.invalidatePath(options.Dst)
 	}
@@ -478,14 +483,8 @@ func (ac *AttrCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr
 			// no entry if path does not exist
 			return &internal.ObjAttr{}, syscall.ENOENT
 		} else {
-			// IsMetadataRetrieved is false in the case of ADLS List since the API does not support metadata.
-			// Once migration of ADLS list to blob endpoint is done (in future service versions), we can remove this.
-			// options.RetrieveMetadata is set by CopyFromFile and WriteFile which need metadata to ensure it is preserved.
-			if value.getAttr().IsMetadataRetrieved() || (ac.noSymlinks && !options.RetrieveMetadata) {
-				// path exists and we have all the metadata required or we do not care about metadata
-				log.Debug("AttrCache::GetAttr : %s served from cache", options.Name)
-				return value.getAttr(), nil
-			}
+			log.Debug("AttrCache::GetAttr : %s served from cache", options.Name)
+			return value.getAttr(), nil
 		}
 	}
 

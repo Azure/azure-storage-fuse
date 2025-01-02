@@ -39,11 +39,11 @@ package azstorage
 import (
 	"bytes"
 	"container/list"
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
-	"math/rand"
 	"os"
 	"strings"
 	"syscall"

@@ -36,6 +36,7 @@ package libfuse
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
@@ -225,6 +226,13 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 		lf.negativeTimeout = defaultNegativeEntryExpiration
 	}
 
+	if lf.directIO {
+		lf.negativeTimeout = 0
+		lf.attributeExpiration = 0
+		lf.entryExpiration = 0
+		log.Crit("Libfuse::Validate : DirectIO enabled, setting fuse timeouts to 0")
+	}
+
 	if !(config.IsSet(compName+".uid") || config.IsSet(compName+".gid") ||
 		config.IsSet("lfuse.uid") || config.IsSet("lfuse.gid")) {
 		var err error
@@ -244,6 +252,29 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 	log.Info("Libfuse::Validate : UID %v, GID %v", lf.ownerUID, lf.ownerGID)
 
 	return nil
+}
+
+func (lf *Libfuse) GenConfig() string {
+	log.Info("Libfuse::Configure : config generation started")
+
+	// If DirectIO is enabled, override expiration values
+	directIO := false
+	_ = config.UnmarshalKey("direct-io", &directIO)
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("\n%s:", lf.Name()))
+
+	timeout := defaultEntryExpiration
+	if directIO {
+		timeout = 0
+		sb.WriteString("\n  direct-io: true")
+	}
+
+	sb.WriteString(fmt.Sprintf("\n  attribute-expiration-sec: %v", timeout))
+	sb.WriteString(fmt.Sprintf("\n  entry-expiration-sec: %v", timeout))
+	sb.WriteString(fmt.Sprintf("\n  negative-entry-expiration-sec: %v", timeout))
+
+	return sb.String()
 }
 
 // Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
@@ -301,7 +332,7 @@ func (lf *Libfuse) Configure(_ bool) error {
 		return fmt.Errorf("%s config error %s", lf.Name(), err.Error())
 	}
 
-	log.Info("Libfuse::Configure : read-only %t, allow-other %t, allow-root %t, default-perm %d, entry-timeout %d, attr-time %d, negative-timeout %d, ignore-open-flags %t, nonempty %t, direct_io %t, max-fuse-threads %d, fuse-trace %t, extension %s, disable-writeback-cache %t, dirPermission %v, mountPath %v, umask %v",
+	log.Crit("Libfuse::Configure : read-only %t, allow-other %t, allow-root %t, default-perm %d, entry-timeout %d, attr-time %d, negative-timeout %d, ignore-open-flags %t, nonempty %t, direct_io %t, max-fuse-threads %d, fuse-trace %t, extension %s, disable-writeback-cache %t, dirPermission %v, mountPath %v, umask %v",
 		lf.readOnly, lf.allowOther, lf.allowRoot, lf.filePermission, lf.entryExpiration, lf.attributeExpiration, lf.negativeTimeout, lf.ignoreOpenFlags, lf.nonEmptyMount, lf.directIO, lf.maxFuseThreads, lf.traceEnable, lf.extensionPath, lf.disableWritebackCache, lf.dirPermission, lf.mountPath, lf.umask)
 
 	return nil
