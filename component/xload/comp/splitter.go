@@ -186,9 +186,10 @@ func (d *downloadSplitter) Process(item *common.WorkItem) (int, error) {
 				Block:           block,
 				ResponseChannel: responseChannel,
 				Download:        true,
+				Priority:        item.Priority,
 			}
 			// log.Debug("downloadSplitter::Process : Scheduling download for %s offset %v", item.Path, offset)
-			d.GetNext().GetThreadPool().Schedule(item.Priority, splitItem)
+			d.GetNext().GetThreadPool().Schedule(splitItem)
 		}
 
 		offset += int64(d.blockSize)
