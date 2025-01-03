@@ -7,7 +7,7 @@ toolchain go1.23.1
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.16.0
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.8.0
-	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.5.0-beta.1.0.20241101205320-058b4f1276f8
+	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.5.1-0.20250103011558-52b9e5fa8c78
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake v1.3.0-beta.1.0.20241101205320-058b4f1276f8
 	github.com/JeffreyRichter/enum v0.0.0-20180725232043-2567042f9cda
 	github.com/fsnotify/fsnotify v1.7.0
@@ -20,7 +20,7 @@ require (
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.19.0
-	github.com/stretchr/testify v1.9.0
+	github.com/stretchr/testify v1.10.0
 	github.com/vibhansa-msft/tlru v0.0.0-20240410102558-9e708419e21f
 	go.uber.org/atomic v1.11.0
 	gopkg.in/ini.v1 v1.67.0
@@ -30,7 +30,7 @@ require (
 
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/internal v1.10.0 // indirect
-	github.com/AzureAD/microsoft-authentication-library-for-go v1.2.2 // indirect
+	github.com/AzureAD/microsoft-authentication-library-for-go v1.3.2 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.4 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/golang-jwt/jwt/v5 v5.2.1 // indirect
@@ -51,17 +51,13 @@ require (
 	github.com/spf13/cast v1.7.0 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/crypto v0.28.0 // indirect
+	golang.org/x/crypto v0.31.0 // indirect
 	golang.org/x/exp v0.0.0-20240909161429-701f63a606c0 // indirect
-	golang.org/x/net v0.29.0 // indirect
-	golang.org/x/sys v0.26.0 // indirect
-	golang.org/x/text v0.19.0 // indirect
+	golang.org/x/net v0.33.0 // indirect
+	golang.org/x/sys v0.28.0 // indirect
+	golang.org/x/text v0.21.0 // indirect
 )
 
 replace github.com/spf13/cobra => github.com/gapra-msft/cobra v1.4.1-0.20220411185530-5b83e8ba06dd
-
-replace github.com/Azure/azure-sdk-for-go/sdk/storage/azblob => github.com/ashruti-msft/azure-sdk-for-go/sdk/storage/azblob v0.0.0-20241126122032-5b3a6c6c8b4e
-
-// replace github.com/Azure/azure-sdk-for-go/sdk/storage/azblob => /home/anubhuti/Downloads/azure-sdk-for-go/sdk/storage/azblob
 
 //replace github.com/Azure/azure-storage-azcopy/v10 v10.19.1-0.20230717101935-ab8ff0a85e48 => <local path>/azure-storage-azcopy
