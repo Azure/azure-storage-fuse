@@ -151,13 +151,17 @@ func (lf *Libfuse) Priority() internal.ComponentPriority {
 	return internal.EComponentPriority.Producer()
 }
 
+var PROFILE bool = false
+
 // Start : Pipeline calls this method to start the component functionality
 //
 //	this shall not block the call otherwise pipeline will not start
 func (lf *Libfuse) Start(ctx context.Context) error {
-	go func() {
-		l.Println(http.ListenAndServe("localhost:6060", nil))
-	}()
+	if PROFILE {
+		go func() {
+			l.Println(http.ListenAndServe("localhost:6060", nil))
+		}()
+	}
 	log.Trace("Libfuse::Start : Starting component %s", lf.Name())
 
 	// create stats collector for libfuse

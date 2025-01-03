@@ -161,6 +161,7 @@ func (bc *BlockCache) CreateFile(options internal.CreateFileOptions) (*handlemap
 func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
 	log.Trace("BlockCache::OpenFile : name=%s, flags=%X, mode=%s", options.Name, options.Flags, options.Mode)
 	logy.Write([]byte(fmt.Sprintf("BlockCache::OpenFile : name=%s, flags=%d, mode=%s\n", options.Name, options.Flags, options.Mode)))
+	// This call will be an overhead if attr cache is not present in the pipeline. There are somethings to reconsider here.
 	attr, err := bc.NextComponent().GetAttr(internal.GetAttrOptions{Name: options.Name})
 	if err != nil {
 		log.Err("BlockCache::OpenFile : Failed to get attr of %s [%s]", options.Name, err.Error())
@@ -171,14 +172,14 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 		attr.Size = 0
 	}
 
-	f, first_open := GetFileFromPath(options.Name)
+	f, _ := GetFileFromPath(options.Name)
 	var blockList blockList
 	var valid bool = false //Invalid blocklist blobs can only be read and can't be modified
 	if attr.Size == 0 {
 		valid = true
 	}
 
-	if first_open && attr.Size > 0 {
+	if attr.Size > 0 && ((options.Flags&os.O_WRONLY != 0) || (options.Flags&os.O_RDWR != 0)) {
 		blkList, err := bc.NextComponent().GetCommittedBlockList(options.Name)
 		if err != nil {
 			log.Err("BlockCache::OpenFile : Failed to get block list of %s [%v]", options.Name, err)
