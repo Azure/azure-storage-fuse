@@ -101,7 +101,13 @@ func (dl *Datalake) Configure(cfg AzStorageConfig) error {
 			EncryptionAlgorithm: to.Ptr(directory.EncryptionAlgorithmTypeAES256),
 		}
 	}
-	return dl.BlockBlob.Configure(transformConfig(cfg))
+
+	err := dl.BlockBlob.Configure(transformConfig(cfg))
+
+	// List call shall always retrieved permissions for HNS accounts
+	dl.BlockBlob.listDetails.Permissions = true
+
+	return err
 }
 
 // For dynamic config update the config here
@@ -422,7 +428,6 @@ func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 // This fetches the list using a marker so the caller code should handle marker logic
 // If count=0 - fetch max entries
 func (dl *Datalake) List(prefix string, marker *string, count int32) ([]*internal.ObjAttr, *string, error) {
-	dl.BlockBlob.listDetails.Permissions = true
 	return dl.BlockBlob.List(prefix, marker, count)
 }
 
