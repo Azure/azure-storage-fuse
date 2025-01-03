@@ -458,7 +458,6 @@ func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err 
 
 	parseMetadata(attr, prop.Metadata)
 
-	attr.Flags.Set(internal.PropFlagMetadataRetrieved)
 	// We do not get permissions as part of this getAttr call hence setting the flag to true
 	attr.Flags.Set(internal.PropFlagModeDefault)
 
