@@ -452,6 +452,7 @@ func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err 
 	parseMetadata(attr, prop.Metadata)
 
 	attr.Flags.Set(internal.PropFlagMetadataRetrieved)
+	// We do not get permissions as part of this getAttr call hence setting the flag to true
 	attr.Flags.Set(internal.PropFlagModeDefault)
 
 	return attr, nil
@@ -614,7 +615,8 @@ func (bb *BlockBlob) getBlobAttr(blobInfo *container.BlobItem) (*internal.ObjAtt
 	//--> separate func
 	mode, err := bb.getFileMode(blobInfo.Properties.Permissions)
 	if err != nil {
-		return nil, err
+		mode = 0
+		log.Warn("BlockBlob::getBlobAttr : Failed to get file mode for %s [%s]", *blobInfo.Name, err.Error())
 	}
 
 	attr := &internal.ObjAttr{
@@ -629,8 +631,12 @@ func (bb *BlockBlob) getBlobAttr(blobInfo *container.BlobItem) (*internal.ObjAtt
 		Flags:  internal.NewFileBitMap(),
 		MD5:    blobInfo.Properties.ContentMD5,
 	}
+
 	parseMetadata(attr, blobInfo.Metadata)
-	attr.Flags.Set(internal.PropFlagModeDefault)
+	if !bb.listDetails.Permissions {
+		// In case of HNS account do not set this flag
+		attr.Flags.Set(internal.PropFlagModeDefault)
+	}
 
 	return attr, nil
 }
@@ -696,6 +702,8 @@ func (bb *BlockBlob) createDirAttr(name string) *internal.ObjAttr {
 	attr.Atime = attr.Mtime
 	attr.Crtime = attr.Mtime
 	attr.Ctime = attr.Mtime
+
+	// This is called only in case of FNS when blobPrefix is there but the marker does not exists
 	attr.Flags.Set(internal.PropFlagModeDefault)
 	return attr
 }
@@ -723,7 +731,6 @@ func (bb *BlockBlob) createDirAttrWithPermissions(blobInfo *container.BlobPrefix
 		Crtime: bb.dereferenceTime(blobInfo.Properties.CreationTime, *blobInfo.Properties.LastModified),
 		Flags:  internal.NewDirBitMap(),
 	}
-	attr.Flags.Set(internal.PropFlagModeDefault)
 
 	return attr, nil
 }
