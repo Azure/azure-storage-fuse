@@ -56,6 +56,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
+	"github.com/vibhansa-msft/blobfilter"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake/directory"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake/file"
@@ -123,7 +124,6 @@ func (s *datalakeTestSuite) setupTestHelper(configuration string, container stri
 			storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsKey, s.container)
 	}
 	s.config = configuration
-
 	s.assert = assert.New(s.T())
 
 	s.az, _ = newTestAzStorage(configuration)
@@ -2691,6 +2691,92 @@ func (s *datalakeTestSuite) TestPermissionPreservationWithCommit() {
 	s.assert.Contains(acl, "user::rwx")
 	s.assert.Contains(acl, "group::rw-")
 	s.assert.Contains(acl, "other::rwx")
+}
+
+func (s *datalakeTestSuite) TestBlobFilters() {
+	defer s.cleanupTest()
+	// Setup
+	var err error
+	name := generateDirectoryName()
+	err = s.az.CreateDir(internal.CreateDirOptions{Name: name})
+	s.assert.Nil(err)
+	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/abcd1.txt"})
+	s.assert.Nil(err)
+	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/abcd2.txt"})
+	s.assert.Nil(err)
+	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/abcd3.txt"})
+	s.assert.Nil(err)
+	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/abcd4.txt"})
+	s.assert.Nil(err)
+	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/bcd1.txt"})
+	s.assert.Nil(err)
+	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/cd1.txt"})
+	s.assert.Nil(err)
+	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/d1.txt"})
+	s.assert.Nil(err)
+	err = s.az.CreateDir(internal.CreateDirOptions{Name: name + "/subdir"})
+	s.assert.Nil(err)
+
+	var iteration int = 0
+	var marker string = ""
+	blobList := make([]*internal.ObjAttr, 0)
+
+	for {
+		new_list, new_marker, err := s.az.StreamDir(internal.StreamDirOptions{Name: name + "/", Token: marker, Count: 50})
+		s.assert.Nil(err)
+		blobList = append(blobList, new_list...)
+		marker = new_marker
+		iteration++
+
+		log.Debug("AzStorage::ReadDir : So far retrieved %d objects in %d iterations", len(blobList), iteration)
+		if new_marker == "" {
+			break
+		}
+	}
+	s.assert.EqualValues(8, len(blobList))
+
+	filter := &blobfilter.BlobFilter{}
+	s.az.storage.(*Datalake).Config.filter = filter
+
+	err = filter.Configure("name=^abcd.*")
+	s.assert.Nil(err)
+	blobList = make([]*internal.ObjAttr, 0)
+	for {
+		new_list, new_marker, err := s.az.StreamDir(internal.StreamDirOptions{Name: name + "/", Token: marker, Count: 50})
+		s.assert.Nil(err)
+		blobList = append(blobList, new_list...)
+		marker = new_marker
+		iteration++
+
+		log.Debug("AzStorage::ReadDir : So far retrieved %d objects in %d iterations", len(blobList), iteration)
+		if new_marker == "" {
+			break
+		}
+	}
+
+	s.assert.EqualValues(5, len(blobList))
+
+	filter = &blobfilter.BlobFilter{}
+	s.az.storage.(*Datalake).Config.filter = filter
+
+	err = filter.Configure("name=^bla.*")
+	s.assert.Nil(err)
+	blobList = make([]*internal.ObjAttr, 0)
+	for {
+		new_list, new_marker, err := s.az.StreamDir(internal.StreamDirOptions{Name: name + "/", Token: marker, Count: 50})
+		s.assert.Nil(err)
+		blobList = append(blobList, new_list...)
+		marker = new_marker
+		iteration++
+
+		log.Debug("AzStorage::ReadDir : So far retrieved %d objects in %d iterations", len(blobList), iteration)
+		if new_marker == "" {
+			break
+		}
+	}
+
+	s.assert.EqualValues(1, len(blobList))
+	s.az.stConfig.filter = nil
 }
 
 // func (s *datalakeTestSuite) TestRAGRS() {
