@@ -3449,6 +3449,28 @@ func (s *blockBlobTestSuite) TestBlobFilters() {
 	}
 	// Only 4 files matches the pattern but there is a directory as well and directories are not filtered by blobfilter
 	s.assert.EqualValues(5, len(blobList))
+
+	filter = &blobfilter.BlobFilter{}
+	s.az.storage.(*Datalake).Config.filter = filter
+
+	err = filter.Configure("name=^bla.*")
+	s.assert.Nil(err)
+	blobList = make([]*internal.ObjAttr, 0)
+	for {
+		new_list, new_marker, err := s.az.StreamDir(internal.StreamDirOptions{Name: name + "/", Token: marker, Count: 50})
+		s.assert.Nil(err)
+		blobList = append(blobList, new_list...)
+		marker = new_marker
+		iteration++
+
+		log.Debug("AzStorage::ReadDir : So far retrieved %d objects in %d iterations", len(blobList), iteration)
+		if new_marker == "" {
+			break
+		}
+	}
+
+	s.assert.EqualValues(1, len(blobList))
+
 	s.az.stConfig.filter = nil
 }
 
