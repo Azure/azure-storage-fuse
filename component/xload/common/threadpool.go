@@ -98,10 +98,10 @@ func (t *ThreadPool) Stop() {
 }
 
 // Schedule the download of a block
-func (t *ThreadPool) Schedule(urgent bool, item *WorkItem) {
-	// urgent specifies the priority of this task.
+func (t *ThreadPool) Schedule(item *WorkItem) {
+	// item.Priority specifies the priority of this task.
 	// true means high priority and false means low priority
-	if urgent {
+	if item.Priority {
 		t.priorityItems <- item
 	} else {
 		t.workItems <- item
