@@ -34,6 +34,7 @@
 package common
 
 import (
+	"context"
 	"math"
 	"os"
 	"reflect"
@@ -54,15 +55,16 @@ const (
 
 // One workitem to be processed
 type WorkItem struct {
-	CompName        string         // Name of the component
-	Path            string         // Name of the file being processed
-	DataLen         uint64         // Length of the data to be processed
-	Block           *Block         // Block to hold data for
-	FileHandle      *os.File       // File handle to the file being processed
-	Err             error          // Error if any
-	ResponseChannel chan *WorkItem // Channel to send the response
-	Download        bool           // boolean variable to decide upload or download
-	Priority        bool           // boolean flag to decide if this item needs to be processed on priority
+	CompName        string          // Name of the component
+	Path            string          // Name of the file being processed
+	DataLen         uint64          // Length of the data to be processed
+	Block           *Block          // Block to hold data for
+	FileHandle      *os.File        // File handle to the file being processed
+	Err             error           // Error if any
+	ResponseChannel chan *WorkItem  // Channel to send the response
+	Download        bool            // boolean variable to decide upload or download
+	Priority        bool            // boolean flag to decide if this item needs to be processed on priority
+	Ctx             context.Context // context with cancellation method so that if download fails for one block, all other download operations will be cancelled
 }
 
 // xload mode enum

@@ -34,6 +34,7 @@
 package comp
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -144,6 +145,8 @@ func (d *downloadSplitter) Process(item *common.WorkItem) (int, error) {
 	wg.Add(1)
 
 	responseChannel := make(chan *common.WorkItem, numBlocks)
+	ctx, cancel := context.WithCancel(context.TODO())
+	defer cancel()
 
 	operationSuccess := true
 	go func() {
@@ -154,11 +157,13 @@ func (d *downloadSplitter) Process(item *common.WorkItem) (int, error) {
 			if respSplitItem.Err != nil {
 				log.Err("downloadSplitter::Process : Failed to download data for file %s", item.Path)
 				operationSuccess = false
+				cancel() // cancel the context to stop download of other chunks
 			} else {
 				_, err := item.FileHandle.WriteAt(respSplitItem.Block.Data, respSplitItem.Block.Offset)
 				if err != nil {
 					log.Err("downloadSplitter::Process : Failed to write data to file %s", item.Path)
 					operationSuccess = false
+					cancel() // cancel the context to stop download of other chunks
 				}
 			}
 
@@ -186,6 +191,7 @@ func (d *downloadSplitter) Process(item *common.WorkItem) (int, error) {
 				Block:           block,
 				ResponseChannel: responseChannel,
 				Download:        true,
+				Ctx:             ctx,
 			}
 			// log.Debug("downloadSplitter::Process : Scheduling download for %s offset %v", item.Path, offset)
 			d.GetNext().GetThreadPool().Schedule(item.Priority, splitItem)

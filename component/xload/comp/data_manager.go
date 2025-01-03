@@ -34,6 +34,8 @@
 package comp
 
 import (
+	"fmt"
+
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/component/xload/common"
 	xinternal "github.com/Azure/azure-storage-fuse/v2/component/xload/internal"
@@ -88,16 +90,23 @@ func (rdm *remoteDataManager) Stop() {
 
 // upload or download block
 func (rdm *remoteDataManager) Process(item *common.WorkItem) (int, error) {
-	if item.Download {
-		return rdm.ReadData(item)
-	} else {
-		return rdm.WriteData(item)
+	select {
+	case <-item.Ctx.Done(): // listen for cancellation signal
+		log.Err("remoteDataManager::Process : Cancelling download for offset %v of %v", item.Block.Offset, item.Path)
+		return 0, fmt.Errorf("cancelling download for offset %v of %v", item.Block.Offset, item.Path)
+
+	default:
+		if item.Download {
+			return rdm.ReadData(item)
+		} else {
+			return rdm.WriteData(item)
+		}
 	}
 }
 
 // ReadData reads data from the data manager
 func (rdm *remoteDataManager) ReadData(item *common.WorkItem) (int, error) {
-	// log.Debug("remoteDataManager::ReadData : Scheduling download for %s offset %v", item.path, item.block.offset)
+	// log.Debug("remoteDataManager::ReadData : Scheduling download for %s offset %v", item.Path, item.Block.Offset)
 
 	h := handlemap.NewHandle(item.Path)
 	h.Size = int64(item.DataLen)
