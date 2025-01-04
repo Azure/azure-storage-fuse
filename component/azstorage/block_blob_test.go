@@ -3451,7 +3451,7 @@ func (s *blockBlobTestSuite) TestBlobFilters() {
 	s.assert.EqualValues(5, len(blobList))
 
 	filter = &blobfilter.BlobFilter{}
-	s.az.storage.(*Datalake).Config.filter = filter
+	s.az.storage.(*BlockBlob).Config.filter = filter
 
 	err = filter.Configure("name=^bla.*")
 	s.assert.Nil(err)
