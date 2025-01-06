@@ -25,7 +25,6 @@ func CreateFile(fileName string) *File {
 		Name:           fileName,
 		handles:        make(map[*handlemap.Handle]bool),
 		readOnlyBlocks: make(map[int]*block),
-		blockList:      make([]*block, 0),
 		size:           -1,
 		synced:         true,
 		readOnly:       true, // By default all files can be read

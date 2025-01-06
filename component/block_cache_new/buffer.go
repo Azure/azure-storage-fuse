@@ -19,7 +19,6 @@ var zeroBuffer *Buffer
 type Buffer struct {
 	data     []byte    // Data holding in the buffer
 	dataSize int64     // Size of the data
-	synced   int       // Flag representing the data is synced with Azure Storage or not
 	timer    time.Time // Timer for buffer expiry
 	checksum []byte    // Check sum for the data
 }
@@ -62,16 +61,26 @@ func (bp *BufferPool) getBuffer() *Buffer {
 		copy(b.data, zeroBuffer.data)
 	}
 	//b.data = b.data[:0]
-	b.synced = -1
 	b.checksum = nil
 	return b
 }
 
-func (bp *BufferPool) putBuffer(b *Buffer) {
-	bp.pool.Put(b)
+func (bp *BufferPool) putBuffer(blk *block) {
+	if blk.buf != nil {
+		bp.pool.Put(blk.buf)
+		blk.buf = nil
+	}
 }
 
 func getBlockWithReadAhead(idx int, start int, h *handlemap.Handle, file *File) (*block, error) {
+	defer func() {
+		if r := recover(); r != nil {
+			// Print the panic info
+			logy.Write([]byte(fmt.Sprintf("Panic: Name: %s, blkidx: %d\n", h.Path, idx)))
+			logy.Write([]byte(fmt.Sprintf("Panic recovered: %v\n", r)))
+			panic("Read ahead panic")
+		}
+	}()
 	blk, err := getBlockForRead(idx, h, file)
 	for i := 1; i <= 3; i++ {
 		if i+start < (int(h.Size)+BlockSize-1)/BlockSize {
@@ -92,7 +101,7 @@ func getBlockForRead(idx int, h *handlemap.Handle, file *File) (*block, error) {
 		var ok bool
 		blk, ok = file.readOnlyBlocks[idx]
 		if !ok {
-			blk = createBlock(idx, "", remote_block)
+			blk = createBlock(idx, "", committedBlock)
 			file.readOnlyBlocks[idx] = blk
 		}
 		// TODO: blocks are not getting cached for readonly files
@@ -110,6 +119,17 @@ func getBlockForRead(idx int, h *handlemap.Handle, file *File) (*block, error) {
 	defer blk.Unlock()
 	if blk.buf == nil {
 		blk.buf = bPool.getBuffer()
+		switch blk.state {
+		case localBlock:
+			// This case occurs when we get read call on local Blocks which are not even put on the wire.
+			return blk, nil
+		case uncommitedBlock:
+			// This case occurs when we clear the uncommited block from the cache.
+			// generally the block should be committed otherwise old data will be served.
+			// Todo: Handle this case.
+			// We don't hit here yet as we dont invalidate cache entries for local and uncommited blocks
+			return blk, errors.New("todo : read for uncommited block which was removed from the cache")
+		}
 		dataRead, err := bc.NextComponent().ReadInBuffer(internal.ReadInBufferOptions{
 			Handle: h,
 			Offset: int64(idx * BlockSize),
@@ -117,19 +137,12 @@ func getBlockForRead(idx int, h *handlemap.Handle, file *File) (*block, error) {
 		})
 		if err == nil {
 			blk.buf.dataSize = int64(dataRead)
-			blk.buf.synced = 1
 			blk.buf.timer = time.Now()
-			//close(blk.downloadStatus) // This is causing panic sometimes while reading sequential files of large size find out why?
 		} else {
 			blk.buf = nil
 			return blk, err
-			//file.blockList[idx].downloadStatus <- 1 //something is wrong here can i update it without acquring lock??
 		}
 	}
-	// _, ok := <-blk.downloadStatus
-	// if ok {
-	// 	return nil, errors.New("failed to get the block")
-	// }
 	return blk, nil
 }
 
@@ -141,17 +154,23 @@ func getBlockForWrite(idx int, h *handlemap.Handle, file *File) (*block, error) 
 	}
 
 	file.Lock()
-	file.synced = false
-	len_of_blocklist := len(file.blockList)
-	if idx >= len_of_blocklist {
+	lenOfBlkLst := len(file.blockList)
+	if idx >= lenOfBlkLst {
 		// Create at least 1 block. i.e, create blocks in the range (len(blocklist), idx]
-		// Close the download channel as it is not necessary
-		for i := len_of_blocklist; i <= idx; i++ {
+		for i := lenOfBlkLst; i <= idx; i++ {
 			id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
-			blk := createBlock(i, id, local_block)
-			close(blk.downloadStatus)
+			blk := createBlock(i, id, localBlock)
 			file.blockList = append(file.blockList, blk)
+			if i == idx {
+				//Allocate a buffer for last block.
+				//No need to lock the block as we already acquired lock on file
+				blk.buf = bPool.getBuffer()
+			} else {
+				blk.hole = true
+			}
 		}
+		file.Unlock()
+		return file.blockList[idx], nil
 	}
 	h.Size = file.size // This is necessary as next component uses this value to check bounds
 	file.Unlock()
@@ -165,24 +184,27 @@ func syncBuffersForFile(h *handlemap.Handle, file *File) (bool, error) {
 	var fileChanged bool = false
 
 	file.Lock()
-	len_of_blocklist := len(file.blockList)
-	for i := 0; i < len_of_blocklist; i++ {
-		if file.blockList[i].block_type == local_block {
-			if file.blockList[i].buf == nil && i != len_of_blocklist-1 {
-				err = punchHole(file)
-				fileChanged = true
-				continue
-			}
-			err = syncBuffer(file.Name, file.size, file.blockList[i])
+	for _, blk := range file.blockList {
+		blk.Lock()
+		if blk.state == localBlock {
 			fileChanged = true
+			if blk.hole {
+				// This is a sparse block.
+				err = punchHole(file)
+			} else {
+				if blk.buf == nil {
+					panic("Local Block must always have some buffer")
+				}
+				err = syncBuffer(file.Name, file.size, blk)
+			}
 			if err == nil {
-				file.blockList[i].block_type = remote_block
+				blk.state = uncommitedBlock
 			}
-		} else {
-			if file.blockList[i].buf != nil && file.blockList[i].buf.synced == 0 {
-				syncBuffer(file.Name, file.size, file.blockList[i])
-				fileChanged = true
-			}
+		}
+		blk.Unlock()
+		if err != nil {
+			// One of the buffer has failed to commit, its better to fail early.
+			break
 		}
 	}
 	file.Unlock()
@@ -190,8 +212,10 @@ func syncBuffersForFile(h *handlemap.Handle, file *File) (bool, error) {
 }
 
 func syncBuffer(name string, size int64, blk *block) error {
-	blk.Lock()
 	blk.id = base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
+	if blk.buf == nil {
+		panic("Something has seriously messed up")
+	}
 	err := bc.NextComponent().StageData(
 		internal.StageDataOptions{
 			Name: name,
@@ -199,10 +223,6 @@ func syncBuffer(name string, size int64, blk *block) error {
 			Data: blk.buf.data[:getBlockSize(size, blk.idx)],
 		},
 	)
-	if err == nil {
-		blk.buf.synced = 1
-	}
-	blk.Unlock()
 	return err
 }
 
@@ -210,7 +230,7 @@ func syncZeroBuffer(name string) error {
 	return bc.NextComponent().StageData(
 		internal.StageDataOptions{
 			Name: name,
-			Id:   zero_block_id,
+			Id:   zeroBlockId,
 			Data: zeroBuffer.data,
 		},
 	)
@@ -237,17 +257,14 @@ func commitBuffersForFile(h *handlemap.Handle, file *File) error {
 	if file.readOnly {
 		return nil
 	}
-	len_of_blocklist := len(file.blockList)
-	for i := 0; i < len_of_blocklist; i++ {
-		if file.blockList[i].block_type == local_block && file.blockList[i].buf == nil { //dirty way to do stuff
-			blklist = append(blklist, zero_block_id)
+
+	for _, blk := range file.blockList {
+		if blk.hole {
+			blklist = append(blklist, zeroBlockId)
 		} else {
-			blklist = append(blklist, file.blockList[i].id)
+			blklist = append(blklist, blk.id)
 		}
 	}
-	// if file.synced {
-	// 	return nil
-	// }
 	err := bc.NextComponent().CommitData(internal.CommitDataOptions{Name: file.Name, List: blklist, BlockSize: uint64(BlockSize)})
 	if err == nil {
 		file.synced = true
@@ -260,26 +277,22 @@ func commitBuffersForFile(h *handlemap.Handle, file *File) error {
 func releaseBuffers(f *File) {
 	//Lock was already acquired on file
 	if f.readOnly {
-		for _, b := range f.readOnlyBlocks {
-			if b.buf != nil {
-				bPool.putBuffer(b.buf)
-			}
+		for _, blk := range f.readOnlyBlocks {
+			blk.Lock()
+			bPool.putBuffer(blk)
+			blk.Unlock()
 		}
 		f.readOnlyBlocks = make(map[int]*block)
-		return
 	}
-	len_of_blocklist := len(f.blockList)
-	for i := 0; i < len_of_blocklist; i++ {
-		if f.blockList[i].buf != nil {
-			bPool.putBuffer(f.blockList[i].buf)
-		}
-		f.blockList[i].buf = nil
+	for _, blk := range f.blockList {
+		blk.Lock()
+		bPool.putBuffer(blk)
+		blk.Unlock()
 	}
 }
 
-func releaseBufferForBlock(b *block) {
-	if b.buf != nil && b.buf.synced == 1 {
-		bPool.putBuffer(b.buf)
-		b.buf = nil
+func releaseBufferForBlock(blk *block) {
+	if blk.state == committedBlock {
+		bPool.putBuffer(blk)
 	}
 }

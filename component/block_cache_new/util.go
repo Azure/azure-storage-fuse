@@ -7,26 +7,34 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
-const remote_block bool = true
-const local_block bool = false
-const zero_block_id string = "nBjhkW1MQstCqpeuOmlBOQ=="
+// The following is the hardcoded blockId for punching the holes inside the file.
+// We generate the blockIds by choosing a random string.
+// Utilised When writing the file in the sparse manner
+const zeroBlockId string = "nBjhkW1MQstCqpeuOmlBOQ=="
 const StdBlockIdLength int = 24 // We use base64 encoded strings of length 24 in Blobfuse when updating the files.
+
+// Represents the Block State
+const (
+	localBlock      int = iota //Block is in local memory
+	uncommitedBlock            //Block is in the Azure Storage but not reflected yet in the Remote file
+	committedBlock             //Block is present inside the remote file
+)
 
 type block struct {
 	sync.RWMutex
-	idx            int      // Block Index
-	id             string   // Block Id
-	buf            *Buffer  // Inmemory buffer if exists.
-	block_type     bool     // It tells about the block came from the remote or  block came from the local
-	downloadStatus chan int // This channel gets handy when multiple handles works on same block at a time.
+	idx   int     // Block Index
+	id    string  // Block Id
+	buf   *Buffer // Inmemory buffer if exists.
+	state int     // It tells about the state of the block.
+	hole  bool    // Hole means this block is a null block. This can be used to do some sneaky optimisations.
 }
 
-func createBlock(idx int, id string, block_type bool) *block {
+func createBlock(idx int, id string, block_type int) *block {
 	return &block{idx: idx,
-		id:             id,
-		buf:            nil,
-		block_type:     block_type,
-		downloadStatus: make(chan int),
+		id:    id,
+		buf:   nil,
+		state: block_type,
+		hole:  false,
 	}
 }
 

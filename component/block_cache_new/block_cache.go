@@ -136,7 +136,7 @@ func (bc *BlockCache) validateBlockList(blkList *internal.CommittedBlockList) (b
 			log.Err("BlockCache::validateBlockList : Unsupported blocklist Format ")
 			return nil, false
 		}
-		newblkList = append(newblkList, createBlock(idx, blk.Id, remote_block))
+		newblkList = append(newblkList, createBlock(idx, blk.Id, committedBlock))
 	}
 	return newblkList, true
 }
@@ -162,36 +162,38 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 	log.Trace("BlockCache::OpenFile : name=%s, flags=%X, mode=%s", options.Name, options.Flags, options.Mode)
 	logy.Write([]byte(fmt.Sprintf("BlockCache::OpenFile : name=%s, flags=%d, mode=%s\n", options.Name, options.Flags, options.Mode)))
 	// This call will be an overhead if attr cache is not present in the pipeline. There are somethings to reconsider here.
-	attr, err := bc.NextComponent().GetAttr(internal.GetAttrOptions{Name: options.Name})
+	attr, err := bc.GetAttr(internal.GetAttrOptions{Name: options.Name})
 	if err != nil {
 		log.Err("BlockCache::OpenFile : Failed to get attr of %s [%s]", options.Name, err.Error())
 		return nil, err
 	}
 
-	if options.Flags&os.O_TRUNC != 0 {
-		attr.Size = 0
-	}
-
 	f, _ := GetFileFromPath(options.Name)
-	var blockList blockList
+	f.Lock()
+	defer f.Unlock()
+
+	var blockList blockList = make([]*block, 0)
 	var valid bool = false //Invalid blocklist blobs can only be read and can't be modified
-	if attr.Size == 0 {
+
+	if attr.Size == 0 || options.Flags&os.O_TRUNC != 0 {
+		f.size = 0
+		f.blockList = make([]*block, 0) //todo: return memory to pool
+		attr.Size = 0
 		valid = true
 	}
 
-	if attr.Size > 0 && ((options.Flags&os.O_WRONLY != 0) || (options.Flags&os.O_RDWR != 0)) {
+	if attr.Size > 0 && f.blockList == nil && ((options.Flags&os.O_WRONLY != 0) || (options.Flags&os.O_RDWR != 0)) {
 		blkList, err := bc.NextComponent().GetCommittedBlockList(options.Name)
 		if err != nil {
 			log.Err("BlockCache::OpenFile : Failed to get block list of %s [%v]", options.Name, err)
 			return nil, fmt.Errorf("failed to retrieve block list for %s", options.Name)
 		}
 		blockList, valid = bc.validateBlockList(blkList)
-		if !valid {
-			blockList = nil
+		if valid {
+			f.blockList = blockList
 		}
 	}
 
-	f.Lock()
 	if valid {
 		f.readOnly = false // This file can be read and modified too
 	}
@@ -208,10 +210,7 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 	}
 	handle := CreateFreshHandleForFile(f.Name, f.size, attr.Mtime)
 	f.handles[handle] = true
-	if blockList != nil {
-		f.blockList = blockList
-	}
-	f.Unlock()
+
 	PutHandleIntoMap(handle, f)
 
 	return handle, nil
@@ -229,7 +228,7 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 		}
 	} else {
 		h.Is_seq = 0
-		logy2.WriteString("********************Random Write********************************\n")
+		logy2.WriteString("********************Random Read********************************\n")
 		logy2.WriteString(fmt.Sprintf("Prev Offset: %d, cur offset: %d, Is_seq : %d \n", h.Prev_offset, options.Offset, h.Is_seq))
 
 	}
@@ -238,9 +237,9 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 	offset := options.Offset
 	dataRead := 0
 	len_of_copy := len(options.Data)
-	// f.Lock()
-	// options.Handle.Size = f.size // This is updated here as it is used by the nxt comp for upload usually not necessary!
-	// f.Unlock()
+	f.Lock()
+	options.Handle.Size = f.size // This is updated here as it is used by the nxt comp for upload usually not necessary!
+	f.Unlock()
 
 	if options.Offset >= options.Handle.Size {
 		// EOF reached so early exit
@@ -289,7 +288,7 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 // WriteFile: Write to the local file
 func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) {
 	log.Trace("BlockCache::WriteFile : handle=%d, path=%s, offset= %d", options.Handle.ID, options.Handle.Path, options.Offset)
-	logy.Write([]byte(fmt.Sprintf("BlockCache::WriteFile : handle=%d, path=%s, offset= %d\n", options.Handle.ID, options.Handle.Path, options.Offset)))
+	logy.Write([]byte(fmt.Sprintf("BlockCache::WriteFile : handle=%d, path=%s, offset= %d, size=%d\n", options.Handle.ID, options.Handle.Path, options.Offset, len(options.Data))))
 	f := GetFileFromHandle(options.Handle)
 	offset := options.Offset
 	len_of_copy := len(options.Data)
@@ -303,16 +302,17 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 		blockOffset := convertOffsetIntoBlockOffset(offset)
 
 		blk.Lock()
-		block_buf := blk.buf
-		bytesCopied := copy(block_buf.data[blockOffset:BlockSize], options.Data[dataWritten:])
-		block_buf.synced = 0
+		bytesCopied := copy(blk.buf.data[blockOffset:BlockSize], options.Data[dataWritten:])
+		blk.state = localBlock
+		blk.hole = false
 		blk.Unlock()
 
 		dataWritten += bytesCopied
-		offset += int64(dataWritten)
+		offset += int64(bytesCopied)
 		//Update the file size if it fall outside
 		f.Lock()
 		if offset > f.size {
+			logy.Write([]byte(fmt.Sprintf("BlockCache::WriteFile : Size MODIFIED after write handle=%d, path=%s, offset= %d, prev size=%d, cur size=%d\n", options.Handle.ID, options.Handle.Path, options.Offset, f.size, offset)))
 			f.size = offset
 		}
 		f.Unlock()
@@ -346,7 +346,6 @@ func (bc *BlockCache) FlushFile(options internal.FlushFileOptions) error {
 func (bc *BlockCache) CloseFile(options internal.CloseFileOptions) error {
 	log.Trace("BlockCache::CloseFile : handle=%d, path=%s", options.Handle.ID, options.Handle.Path)
 	logy.Write([]byte(fmt.Sprintf("BlockCache::CloseFile : handle=%d, path=%s\n", options.Handle.ID, options.Handle.Path)))
-	//err := bc.SyncFile(internal.SyncFileOptions{Handle: options.Handle})
 	DeleteHandleForFile(options.Handle)
 	DeleteHandleFromMap(options.Handle)
 	return nil
@@ -366,19 +365,20 @@ func (bc *BlockCache) TruncateFile(options internal.TruncateFileOptions) error {
 	f.Lock()
 	defer f.Unlock()
 	f.size = options.Size
-	len_of_blocklst := len(f.blockList)
+	lenOfBlkLst := len(f.blockList)
 	// Modify the blocklist
-	total_blocks := (options.Size + int64(BlockSize) - 1) / int64(BlockSize)
-	if total_blocks <= int64(len_of_blocklst) {
-		f.blockList = f.blockList[:total_blocks] //here memory of the blocks is not given to the pool, Modify it.
+	finalBlocksCnt := (options.Size + int64(BlockSize) - 1) / int64(BlockSize)
+	if finalBlocksCnt <= int64(lenOfBlkLst) {
+		f.blockList = f.blockList[:finalBlocksCnt] //here memory of the blocks is not given to the pool, Modify it.
 	} else {
-		for i := len_of_blocklst; i < int(total_blocks); i++ {
+		for i := lenOfBlkLst; i < int(finalBlocksCnt); i++ {
 			id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
-			blk := createBlock(i, id, local_block)
-			close(blk.downloadStatus)
+			blk := createBlock(i, id, localBlock)
 			f.blockList = append(f.blockList, blk)
-			if i == int(total_blocks)-1 {
+			if i == int(finalBlocksCnt)-1 {
 				blk.buf = bPool.getBuffer()
+			} else {
+				blk.hole = true
 			}
 		}
 	}
@@ -447,11 +447,18 @@ func (bc *BlockCache) RenameFile(options internal.RenameFileOptions) error {
 }
 
 func (bc *BlockCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr, error) {
+	log.Trace("BlockCache::GetAttr : file=%s", options.Name)
+
 	attr, err := bc.NextComponent().GetAttr(options)
+	if err == nil {
+		logy.Write([]byte(fmt.Sprintf("BlockCache::GetAttr retrived: file=%s, size: %d\n", options.Name, attr.Size)))
+	}
 	file, ok := checkFileExistsInOpen(options.Name)
 	if ok {
 		attr.Size = file.size
+		logy.Write([]byte(fmt.Sprintf("BlockCache::GetAttr MODIFIED: file=%s, size:%d\n", options.Name, attr.Size)))
 	}
+
 	return attr, err
 }
 
