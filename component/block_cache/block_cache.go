@@ -36,7 +36,9 @@ package block_cache
 import (
 	"container/list"
 	"context"
+	"crypto/md5"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"math"
@@ -84,6 +86,7 @@ type BlockCache struct {
 	maxDiskUsageHit bool            // Flag to indicate if we have hit max disk usage
 	noPrefetch      bool            // Flag to indicate if prefetch is disabled
 	prefetchOnOpen  bool            // Start prefetching on file open call instead of waiting for first read
+	consistency     bool            // Flag to indicate if strong data consistency is enabled
 	stream          *Stream
 	lazyWrite       bool           // Flag to indicate if lazy write is enabled
 	fileCloseOpt    sync.WaitGroup // Wait group to wait for all async close operations to complete
@@ -99,6 +102,7 @@ type BlockCacheOptions struct {
 	PrefetchCount  uint32  `config:"prefetch" yaml:"prefetch,omitempty"`
 	Workers        uint32  `config:"parallelism" yaml:"parallelism,omitempty"`
 	PrefetchOnOpen bool    `config:"prefetch-on-open" yaml:"prefetch-on-open,omitempty"`
+	Consistency    bool    `config:"consistency" yaml:"consistency,omitempty"`
 }
 
 const (
@@ -250,6 +254,8 @@ func (bc *BlockCache) Configure(_ bool) error {
 		bc.diskTimeout = conf.DiskTimeout
 	}
 
+	bc.consistency = conf.Consistency
+
 	bc.prefetchOnOpen = conf.PrefetchOnOpen
 	bc.prefetch = uint32(math.Max((MIN_PREFETCH*2)+1, (float64)(2*runtime.NumCPU())))
 	bc.noPrefetch = false
@@ -331,8 +337,8 @@ func (bc *BlockCache) Configure(_ bool) error {
 		}
 	}
 
-	log.Crit("BlockCache::Configure : block size %v, mem size %v, worker %v, prefetch %v, disk path %v, max size %v, disk timeout %v, prefetch-on-open %t, maxDiskUsageHit %v, noPrefetch %v",
-		bc.blockSize, bc.memSize, bc.workers, bc.prefetch, bc.tmpPath, bc.diskSize, bc.diskTimeout, bc.prefetchOnOpen, bc.maxDiskUsageHit, bc.noPrefetch)
+	log.Crit("BlockCache::Configure : block size %v, mem size %v, worker %v, prefetch %v, disk path %v, max size %v, disk timeout %v, prefetch-on-open %t, maxDiskUsageHit %v, noPrefetch %v, consistency %v",
+		bc.blockSize, bc.memSize, bc.workers, bc.prefetch, bc.tmpPath, bc.diskSize, bc.diskTimeout, bc.prefetchOnOpen, bc.maxDiskUsageHit, bc.noPrefetch, bc.consistency)
 
 	return nil
 }
@@ -997,11 +1003,35 @@ func (bc *BlockCache) download(item *workItem) {
 				}
 
 				f.Close()
-				// We have read the data from disk so there is no need to go over network
-				// Just mark the block that download is complete
+
 				if successfulRead {
-					item.block.Ready(BlockStatusDownloaded)
-					return
+					// If user has enabled consistency check then compute the md5sum and match it in xattr
+					if bc.consistency {
+						// Calculate MD5 checksum of the read data
+						hash := md5.Sum(item.block.data[:n])
+						md5sum := hex.EncodeToString(hash[:])
+
+						// Retrieve MD5 checksum from xattr
+						xattrMd5sum := make([]byte, 32)
+						_, err = syscall.Getxattr(localPath, "user.md5sum", xattrMd5sum)
+						if err != nil {
+							log.Err("BlockCache::download : Failed to get md5sum for file %s [%v]", fileName, err.Error())
+						} else {
+							// Compare checksums
+							if md5sum != string(xattrMd5sum) {
+								log.Err("BlockCache::download : MD5 checksum mismatch for file %s, expected %s, got %s", fileName, md5sum, string(xattrMd5sum))
+								successfulRead = false
+								_ = os.Remove(localPath)
+							}
+						}
+					}
+
+					// We have read the data from disk so there is no need to go over network
+					// Just mark the block that download is complete
+					if successfulRead {
+						item.block.Ready(BlockStatusDownloaded)
+						return
+					}
 				}
 			}
 		}
@@ -1022,7 +1052,7 @@ func (bc *BlockCache) download(item *workItem) {
 		return
 	}
 
-	if err != nil {
+	if err != nil && err != io.EOF {
 		// Fail to read the data so just reschedule this request
 		log.Err("BlockCache::download : Failed to read %v=>%s from offset %v [%s]", item.handle.ID, item.handle.Path, item.block.id, err.Error())
 		item.failCnt++
@@ -1054,6 +1084,16 @@ func (bc *BlockCache) download(item *workItem) {
 
 			f.Close()
 			bc.diskPolicy.Refresh(diskNode.(*list.Element))
+
+			// If user has enabled consistency check then compute the md5sum and save it in xattr
+			if bc.consistency {
+				hash := md5.Sum(item.block.data[:n])
+				md5sum := hex.EncodeToString(hash[:])
+				err = syscall.Setxattr(localPath, "user.md5sum", []byte(md5sum), 0)
+				if err != nil {
+					log.Err("BlockCache::download : Failed to set md5sum for file %s [%v]", localPath, err.Error())
+				}
+			}
 		}
 	}
 
@@ -1451,6 +1491,16 @@ func (bc *BlockCache) upload(item *workItem) {
 			} else {
 				bc.diskPolicy.Refresh(diskNode.(*list.Element))
 			}
+
+			// If user has enabled consistency check then compute the md5sum and save it in xattr
+			if bc.consistency {
+				hash := md5.Sum(item.block.data[:blockSize])
+				md5sum := hex.EncodeToString(hash[:])
+				err = syscall.Setxattr(localPath, "user.md5sum", []byte(md5sum), 0)
+				if err != nil {
+					log.Err("BlockCache::download : Failed to set md5sum for file %s [%v]", localPath, err.Error())
+				}
+			}
 		}
 	}
 
@@ -1797,4 +1847,7 @@ func init() {
 
 	blockCachePrefetchOnOpen := config.AddBoolFlag("block-cache-prefetch-on-open", false, "Start prefetching on open or wait for first read.")
 	config.BindPFlag(compName+".prefetch-on-open", blockCachePrefetchOnOpen)
+
+	strongConsistency := config.AddBoolFlag("block-cache-strong-consistency", false, "Enable strong data consistency for block cache.")
+	config.BindPFlag(compName+".consistency", strongConsistency)
 }

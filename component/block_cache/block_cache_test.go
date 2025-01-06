@@ -47,6 +47,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -2623,6 +2624,85 @@ func (suite *blockCacheTestSuite) TestZZZZZStreamToBlockCacheConfig() {
 		suite.assert.EqualValues(tobj.blockCache.blockSize, 2*_1MB)
 		suite.assert.EqualValues(tobj.blockCache.memSize, 8*_1MB*30)
 	}
+}
+
+func (suite *blockCacheTestSuite) TestStrongConsistency() {
+	tobj, err := setupPipeline("")
+	defer tobj.cleanupPipeline()
+
+	suite.assert.Nil(err)
+	suite.assert.NotNil(tobj.blockCache)
+
+	tobj.blockCache.consistency = true
+
+	path := getTestFileName(suite.T().Name())
+	options := internal.CreateFileOptions{Name: path, Mode: 0777}
+	h, err := tobj.blockCache.CreateFile(options)
+	suite.assert.Nil(err)
+	suite.assert.NotNil(h)
+	suite.assert.Equal(h.Size, int64(0))
+	suite.assert.False(h.Dirty())
+
+	storagePath := filepath.Join(tobj.fake_storage_path, path)
+	fs, err := os.Stat(storagePath)
+	suite.assert.Nil(err)
+	suite.assert.Equal(fs.Size(), int64(0))
+	//Generate random size of file in bytes less than 2MB
+
+	size := rand.Intn(2097152)
+	data := make([]byte, size)
+
+	n, err := tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data}) // Write data to file
+	suite.assert.Nil(err)
+	suite.assert.Equal(n, size)
+	suite.assert.Equal(h.Size, int64(size))
+
+	err = tobj.blockCache.CloseFile(internal.CloseFileOptions{Handle: h})
+	suite.assert.Nil(err)
+	suite.assert.Nil(h.Buffers.Cooked)
+	suite.assert.Nil(h.Buffers.Cooking)
+
+	localPath := filepath.Join(tobj.disk_cache_path, path+"::0")
+
+	xattrMd5sumOrg := make([]byte, 32)
+	_, err = syscall.Getxattr(localPath, "user.md5sum", xattrMd5sumOrg)
+	suite.assert.Nil(err)
+
+	h, err = tobj.blockCache.OpenFile(internal.OpenFileOptions{Name: path, Flags: os.O_RDWR})
+	suite.assert.Nil(err)
+	suite.assert.NotNil(h)
+	_, _ = tobj.blockCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: data})
+	err = tobj.blockCache.CloseFile(internal.CloseFileOptions{Handle: h})
+	suite.assert.Nil(err)
+	suite.assert.Nil(h.Buffers.Cooked)
+	suite.assert.Nil(h.Buffers.Cooking)
+
+	xattrMd5sumRead := make([]byte, 32)
+	_, err = syscall.Getxattr(localPath, "user.md5sum", xattrMd5sumRead)
+	suite.assert.Nil(err)
+	suite.assert.EqualValues(xattrMd5sumOrg, xattrMd5sumRead)
+
+	err = syscall.Setxattr(localPath, "user.md5sum", []byte("000"), 0)
+	suite.assert.Nil(err)
+
+	xattrMd5sum1 := make([]byte, 32)
+	_, err = syscall.Getxattr(localPath, "user.md5sum", xattrMd5sum1)
+	suite.assert.Nil(err)
+
+	h, err = tobj.blockCache.OpenFile(internal.OpenFileOptions{Name: path, Flags: os.O_RDWR})
+	suite.assert.Nil(err)
+	suite.assert.NotNil(h)
+	_, _ = tobj.blockCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: data})
+	err = tobj.blockCache.CloseFile(internal.CloseFileOptions{Handle: h})
+	suite.assert.Nil(err)
+	suite.assert.Nil(h.Buffers.Cooked)
+	suite.assert.Nil(h.Buffers.Cooking)
+
+	xattrMd5sum2 := make([]byte, 32)
+	_, err = syscall.Getxattr(localPath, "user.md5sum", xattrMd5sum2)
+	suite.assert.Nil(err)
+
+	suite.assert.NotEqualValues(xattrMd5sum1, xattrMd5sum2)
 }
 
 // In order for 'go test' to run this suite, we need to create
