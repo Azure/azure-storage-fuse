@@ -52,8 +52,8 @@ type BlockPool struct {
 // NewBlockPool allocates a new pool of blocks
 func NewBlockPool(blockSize uint64, blockCount uint32) *BlockPool {
 	// Ignore if config is invalid
-	if blockSize == 0 {
-		log.Err("blockpool::NewBlockPool : blockSize : %v", blockSize)
+	if blockSize == 0 || blockCount == 0 {
+		log.Err("blockpool::NewBlockPool : blockSize : %v, block count : %v", blockSize, blockCount)
 		return nil
 	}
 
