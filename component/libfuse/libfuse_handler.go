@@ -857,6 +857,12 @@ func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
 }
 
 // libfuse_truncate changes the size of a file
+// There are two filesystem calls which can lead to this callback:
+//  1. Truncate() -> SetAttr() called on file path.
+//  2. ftruncate()-> SetAttr() called on file handle.
+//
+// man page:    https://man7.org/linux/man-pages/man2/truncate.2.html
+// Libfuse Doc: https://github.com/libfuse/libfuse/blob/fc95fd5076fd845e496bfbcec1ad9da16534b1c9/include/fuse_lowlevel.h#L328
 //
 //export libfuse_truncate
 func libfuse_truncate(path *C.char, off C.off_t, fi *C.fuse_file_info_t) C.int {
@@ -864,7 +870,20 @@ func libfuse_truncate(path *C.char, off C.off_t, fi *C.fuse_file_info_t) C.int {
 	name = common.NormalizeObjectName(name)
 	log.Trace("Libfuse::libfuse_truncate : %s size %d", name, off)
 
-	err := fuseFS.NextComponent().TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(off)})
+	var handle *handlemap.Handle
+	if fi == nil {
+		handle = nil
+	} else {
+		fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
+		handle = (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
+	}
+
+	err := fuseFS.NextComponent().TruncateFile(
+		internal.TruncateFileOptions{
+			Handle: handle,
+			Name:   name,
+			Size:   int64(off),
+		})
 	if err != nil {
 		log.Err("Libfuse::libfuse_truncate : error truncating file %s [%s]", name, err.Error())
 		if os.IsNotExist(err) {

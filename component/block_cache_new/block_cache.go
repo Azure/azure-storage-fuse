@@ -352,30 +352,63 @@ func (bc *BlockCache) CloseFile(options internal.CloseFileOptions) error {
 }
 
 // TruncateFile: Truncate the file to the given size
-func (bc *BlockCache) TruncateFile(options internal.TruncateFileOptions) error {
+func (bc *BlockCache) TruncateFile(options internal.TruncateFileOptions) (err error) {
 	log.Trace("BlockCache::Truncate File : path=%s, size = %d", options.Name, options.Size)
 	logy.Write([]byte(fmt.Sprintf("BlockCache::Truncate File : path=%s, size = %d\n", options.Name, options.Size)))
-	h, err := bc.OpenFile(internal.OpenFileOptions{Name: options.Name, Flags: os.O_RDWR, Mode: 0666})
-	defer bc.CloseFile(internal.CloseFileOptions{Handle: h})
-	if err != nil {
-		return err
+	var h *handlemap.Handle = options.Handle
+	if h == nil {
+		// Truncate on Path, as there might exists some open handles we cannot pass on the call.
+		h, err = bc.OpenFile(internal.OpenFileOptions{Name: options.Name, Flags: os.O_RDWR, Mode: 0666})
+		defer bc.CloseFile(
+			internal.CloseFileOptions{
+				Handle: h,
+			},
+		)
+		if err != nil {
+			return
+		}
+		// It's important to flush file as there maynot be flush call after this.
+		defer func() {
+			err = bc.FlushFile(
+				internal.FlushFileOptions{
+					Handle: h,
+				},
+			)
+		}()
 	}
 
-	f, _ := GetFileFromPath(options.Name)
+	f := GetFileFromHandle(h)
 	f.Lock()
 	defer f.Unlock()
+	if f.size == options.Size {
+		return nil
+	}
 	f.size = options.Size
 	lenOfBlkLst := len(f.blockList)
 	// Modify the blocklist
 	finalBlocksCnt := (options.Size + int64(BlockSize) - 1) / int64(BlockSize)
 	if finalBlocksCnt <= int64(lenOfBlkLst) {
 		f.blockList = f.blockList[:finalBlocksCnt] //here memory of the blocks is not given to the pool, Modify it.
+		// Update the state of the last block.
+		if finalBlocksCnt > 0 {
+			lstBlk := f.blockList[finalBlocksCnt-1]
+			err = getBlock(int(finalBlocksCnt)-1, h, lstBlk)
+			if err != nil {
+				log.Trace("BlockCache::Truncate File : FAILED when retrieving last block path=%s, size = %d", options.Name, options.Size)
+				return err
+			}
+			// todo: Lock simplification
+			lstBlk.Lock()
+			lstBlk.state = localBlock
+			lstBlk.Unlock()
+		}
 	} else {
 		for i := lenOfBlkLst; i < int(finalBlocksCnt); i++ {
 			id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
 			blk := createBlock(i, id, localBlock)
 			f.blockList = append(f.blockList, blk)
 			if i == int(finalBlocksCnt)-1 {
+				// We are allocating buffer here as there might not be full hole for last block
 				blk.buf = bPool.getBuffer()
 			} else {
 				blk.hole = true
@@ -422,6 +455,7 @@ func (bc *BlockCache) DeleteFile(options internal.DeleteFileOptions) error {
 }
 
 // RenameFile: Invalidate the file in local cache.
+// We support soft deletes. more on this in lib
 func (bc *BlockCache) RenameFile(options internal.RenameFileOptions) error {
 	log.Trace("BlockCache::RenameFile : src=%s, dst=%s", options.Src, options.Dst)
 	logy.Write([]byte(fmt.Sprintf("BlockCache::RenameFile : src=%s, dst=%s\n", options.Src, options.Dst)))
