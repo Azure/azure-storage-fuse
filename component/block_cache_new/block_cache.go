@@ -324,7 +324,7 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 func (bc *BlockCache) SyncFile(options internal.SyncFileOptions) error {
 	log.Trace("BlockCache::SyncFile : handle=%d, path=%s", options.Handle.ID, options.Handle.Path)
 	logy.Write([]byte(fmt.Sprintf("BlockCache::SyncFile : handle=%d, path=%s\n", options.Handle.ID, options.Handle.Path)))
-	f, _ := GetFileFromPath(options.Handle.Path)
+	f := GetFileFromHandle(options.Handle)
 	fileChanged, err := syncBuffersForFile(options.Handle, f)
 	if err == nil {
 		if fileChanged {
@@ -385,24 +385,32 @@ func (bc *BlockCache) TruncateFile(options internal.TruncateFileOptions) (err er
 	}
 	f.size = options.Size
 	lenOfBlkLst := len(f.blockList)
+	changeStateOfBlockToLocal := func(idx int) error {
+		lstBlk := f.blockList[idx]
+		err = getBlock(idx, h, lstBlk)
+		if err != nil {
+			log.Trace("BlockCache::Truncate File : FAILED when retrieving last block path=%s, size = %d", options.Name, options.Size)
+			return err
+		}
+		// todo: Lock simplification
+		lstBlk.Lock()
+		lstBlk.state = localBlock
+		lstBlk.Unlock()
+		return nil
+	}
 	// Modify the blocklist
 	finalBlocksCnt := (options.Size + int64(BlockSize) - 1) / int64(BlockSize)
-	if finalBlocksCnt <= int64(lenOfBlkLst) {
+	if finalBlocksCnt <= int64(lenOfBlkLst) { //shrink
 		f.blockList = f.blockList[:finalBlocksCnt] //here memory of the blocks is not given to the pool, Modify it.
 		// Update the state of the last block.
 		if finalBlocksCnt > 0 {
-			lstBlk := f.blockList[finalBlocksCnt-1]
-			err = getBlock(int(finalBlocksCnt)-1, h, lstBlk)
-			if err != nil {
-				log.Trace("BlockCache::Truncate File : FAILED when retrieving last block path=%s, size = %d", options.Name, options.Size)
-				return err
-			}
-			// todo: Lock simplification
-			lstBlk.Lock()
-			lstBlk.state = localBlock
-			lstBlk.Unlock()
+			changeStateOfBlockToLocal(int(finalBlocksCnt) - 1)
 		}
-	} else {
+	} else { //expand
+		//Update the state of the last block before expanding.
+		if lenOfBlkLst > 0 {
+			changeStateOfBlockToLocal(lenOfBlkLst - 1)
+		}
 		for i := lenOfBlkLst; i < int(finalBlocksCnt); i++ {
 			id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
 			blk := createBlock(i, id, localBlock)
@@ -415,6 +423,7 @@ func (bc *BlockCache) TruncateFile(options internal.TruncateFileOptions) (err er
 			}
 		}
 	}
+	//todo: revert back to the prev state if any error occurs
 	return nil
 }
 
@@ -467,14 +476,14 @@ func (bc *BlockCache) RenameFile(options internal.RenameFileOptions) error {
 		f, _ := GetFileFromPath(options.Src)
 		if isDstPathTempFile(options.Dst) {
 			log.Trace("BlockCache::RenameFile : Deleting Src opened File src=%s, dst=%s", options.Src, options.Dst)
-			f.Name = options.Dst
 			f.Lock()
+			f.Name = options.Dst
 			for h := range f.handles {
 				h.Path = options.Dst
 			}
 			f.Unlock()
 		}
-		DeleteFile(f)
+		HardDeleteFile(options.Src)
 	}
 
 	return nil

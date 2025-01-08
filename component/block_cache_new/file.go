@@ -80,6 +80,10 @@ func DeleteFile(f *File) {
 	}
 }
 
+func HardDeleteFile(path string) {
+	fileMap.Delete(path)
+}
+
 // Sync map for handles, *handle->*File
 var handleMap sync.Map
 
