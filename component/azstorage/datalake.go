@@ -394,6 +394,7 @@ func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 		Ctime:  *prop.LastModified,
 		Crtime: *prop.LastModified,
 		Flags:  internal.NewFileBitMap(),
+		ETag:   (string)(*prop.ETag),
 	}
 	parseMetadata(attr, prop.Metadata)
 
@@ -507,6 +508,7 @@ func (dl *Datalake) List(prefix string, marker *string, count int32) ([]*interna
 				Ctime:  lastModifiedTime,
 				Crtime: lastModifiedTime,
 				Flags:  internal.NewFileBitMap(),
+				ETag:   *pathInfo.ETag,
 			}
 			if pathInfo.IsDirectory != nil && *pathInfo.IsDirectory {
 				attr.Flags = internal.NewDirBitMap()
