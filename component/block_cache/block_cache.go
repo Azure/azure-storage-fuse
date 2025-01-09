@@ -1037,7 +1037,7 @@ func (bc *BlockCache) download(item *workItem) {
 	} else if n == 0 {
 		// No data read so just reschedule this request
 		log.Err("BlockCache::download : Failed to read %v=>%s from offset %v [0 bytes read]", item.handle.ID, item.handle.Path, item.block.id)
-		item.failCnt++
+		item.failCnt = MAX_FAIL_CNT + 1
 		bc.threadPool.Schedule(false, item)
 		return
 	}
