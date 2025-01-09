@@ -39,6 +39,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -801,6 +802,56 @@ func (bb *BlockBlob) ReadInBuffer(name string, offset int64, len int64, data []b
 	}
 
 	return nil
+}
+
+// ReadInBufferWithETag : Download specific range from a file to a user provided buffer, return back the current etag along with data
+func (bb *BlockBlob) ReadInBufferWithETag(name string, offset int64, len int64, data []byte) (string, error) {
+	// log.Trace("BlockBlob::ReadInBuffer : name %s", name)
+	blobClient := bb.Container.NewBlobClient(filepath.Join(bb.Config.prefixPath, name))
+	ctx, cancel := context.WithTimeout(context.Background(), max_context_timeout*time.Minute)
+	defer cancel()
+
+	opt := &blob.DownloadStreamOptions{
+		Range: blob.HTTPRange{
+			Offset: offset,
+			Count:  len,
+		},
+		CPKInfo: bb.blobCPKOpt,
+	}
+
+	dr, err := blobClient.DownloadStream(ctx, opt)
+
+	if err != nil {
+		e := storeBlobErrToErr(err)
+		if e == ErrFileNotFound {
+			return "", syscall.ENOENT
+		} else if e == InvalidRange {
+			return "", syscall.ERANGE
+		}
+
+		log.Err("BlockBlob::ReadInBuffer : Failed to download blob %s [%s]", name, err.Error())
+		return "", err
+	}
+
+	var body io.ReadCloser = dr.NewRetryReader(ctx, nil)
+	dataRead, err := io.ReadFull(body, data)
+
+	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+		log.Err("BlockBlob::ReadInBuffer : Failed to copy data from body to buffer for blob %s [%s]", name, err.Error())
+		return "", err
+	}
+
+	if dataRead < 0 {
+		log.Err("BlockBlob::ReadInBuffer : Failed to copy data from body to buffer for blob %s", name)
+		return "", errors.New("failed to copy data from body to buffer")
+	}
+
+	err = body.Close()
+	if err != nil {
+		log.Err("BlockBlob::ReadInBuffer : Failed to close body for blob %s [%s]", name, err.Error())
+	}
+
+	return string(*dr.ETag), nil
 }
 
 func (bb *BlockBlob) calculateBlockSize(name string, fileSize int64) (blockSize int64, err error) {

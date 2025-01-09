@@ -107,6 +107,7 @@ type ReadFileOptions struct {
 type ReadInBufferOptions struct {
 	Handle *handlemap.Handle
 	Offset int64
+	Etag   *string
 	Data   []byte
 }
 

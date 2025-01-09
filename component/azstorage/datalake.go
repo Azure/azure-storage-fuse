@@ -551,6 +551,11 @@ func (dl *Datalake) ReadInBuffer(name string, offset int64, len int64, data []by
 	return dl.BlockBlob.ReadInBuffer(name, offset, len, data)
 }
 
+// ReadInBufferWithETag : Download specific range from a file to a user provided buffer, return back the current etag along with data
+func (dl *Datalake) ReadInBufferWithETag(name string, offset int64, len int64, data []byte) (string, error) {
+	return dl.BlockBlob.ReadInBufferWithETag(name, offset, len, data)
+}
+
 // WriteFromFile : Upload local file to file
 func (dl *Datalake) WriteFromFile(name string, metadata map[string]*string, fi *os.File) (err error) {
 	// File in DataLake may have permissions and ACL set. Just uploading the file will override them.

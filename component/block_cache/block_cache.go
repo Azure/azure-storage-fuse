@@ -395,6 +395,10 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 	handle.Mtime = attr.Mtime
 	handle.Size = attr.Size
 
+	if attr.ETag != "" {
+		handle.SetValue("ETAG", attr.ETag)
+	}
+
 	log.Debug("BlockCache::OpenFile : Size of file handle.Size %v", handle.Size)
 	bc.prepareHandleForBlockCache(handle)
 
@@ -1007,11 +1011,13 @@ func (bc *BlockCache) download(item *workItem) {
 		}
 	}
 
+	var etag string
 	// If file does not exists then download the block from the container
 	n, err := bc.NextComponent().ReadInBuffer(internal.ReadInBufferOptions{
 		Handle: item.handle,
 		Offset: int64(item.block.offset),
 		Data:   item.block.data,
+		Etag:   &etag,
 	})
 
 	if item.failCnt > MAX_FAIL_CNT {
@@ -1034,6 +1040,17 @@ func (bc *BlockCache) download(item *workItem) {
 		item.failCnt++
 		bc.threadPool.Schedule(false, item)
 		return
+	}
+
+	// Compare the ETAG value and fail download if blob has changed
+	if etag != "" {
+		etagVal, found := item.handle.GetValue("ETAG")
+		if found && etagVal != etag {
+			log.Err("BlockCache::download : Blob has changed for %v=>%s (index %v, offset %v)", item.handle.ID, item.handle.Path, item.block.id, item.block.offset)
+			item.block.Failed()
+			item.block.Ready(BlockStatusDownloadFailed)
+			return
+		}
 	}
 
 	if bc.tmpPath != "" {
