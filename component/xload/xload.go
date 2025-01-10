@@ -193,7 +193,7 @@ func (xl *Xload) Start(ctx context.Context) error {
 	var err error
 
 	// create stats manager
-	xl.statsMgr, err = xinternal.NewStatsmanager(xcommon.MAX_WORKER_COUNT*2, xl.exportProgress)
+	xl.statsMgr, err = xinternal.NewStatsManager(xcommon.MAX_WORKER_COUNT*2, xl.exportProgress)
 	if err != nil {
 		log.Err("Xload::Start : Failed to create stats manager [%s]", err.Error())
 		return err
