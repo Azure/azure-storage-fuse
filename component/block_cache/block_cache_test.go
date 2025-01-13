@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -330,12 +330,12 @@ func (suite *blockCacheTestSuite) TestSomeInvalidConfigs() {
 	cfg := "read-only: true\n\nblock_cache:\n  block-size-mb: 8\n  mem-size-mb: 800\n  prefetch: 12\n  parallelism: 0\n"
 	_, err := setupPipeline(cfg)
 	suite.assert.NotNil(err)
-	suite.assert.Contains(err.Error(), "fail to init thread pool")
+	suite.assert.Contains(err.Error(), "failed to init thread pool")
 
 	cfg = "read-only: true\n\nblock_cache:\n  block-size-mb: 1024000\n  mem-size-mb: 20240000\n  prefetch: 12\n  parallelism: 1\n"
 	_, err = setupPipeline(cfg)
 	suite.assert.NotNil(err)
-	suite.assert.Contains(err.Error(), "fail to init block pool")
+	suite.assert.Contains(err.Error(), "failed to init block pool")
 
 	cfg = "read-only: true\n\nblock_cache:\n  block-size-mb: 8\n  mem-size-mb: 800\n  prefetch: 12\n  parallelism: 5\n  path: ./bctemp \n  disk-size-mb: 100\n  disk-timeout-sec: 0"
 	_, err = setupPipeline(cfg)

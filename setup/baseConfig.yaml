@@ -36,7 +36,7 @@ azstorage:
   type: block|adls <type of storage account to be connected. Default - block>
   account-name: <name of the storage account>
   container: <name of the storage container to be mounted>
-  endpoint: <storage account endpoint (example - https://account-name.blob.core.windows.net)>
+  endpoint: <specify this parameter only if storage account is behind a private endpoint>
   mode: key|sas|spn|msi|azcli <kind of authentication to be used>
   account-key: <storage account key>
   # OR
@@ -50,3 +50,4 @@ azstorage:
   clientid: <storage account client id for SPN>
   clientsecret: <storage account client secret for SPN>
   oauth-token-path: <path to file containing the OAuth token>
+  workload-identity-token: <service account token for workload identity>

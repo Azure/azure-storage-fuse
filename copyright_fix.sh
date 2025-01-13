@@ -1,5 +1,6 @@
 #!/bin/bash
 
+# Update LICENSE and component.template files with correct year (Eg: "Copyright © 2020-2025" to "Copyright © 2020-2026") and run the script ./copyright.sh
 currYear=`date +"%Y"`
 searchStr="Copyright ©"
 copyLine=`grep -h $searchStr LICENSE`
