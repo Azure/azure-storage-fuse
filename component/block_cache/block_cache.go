@@ -34,11 +34,10 @@
 package block_cache
 
 import (
+	"bytes"
 	"container/list"
 	"context"
-	"crypto/md5"
 	"encoding/base64"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"math"
@@ -1008,18 +1007,17 @@ func (bc *BlockCache) download(item *workItem) {
 					// If user has enabled consistency check then compute the md5sum and match it in xattr
 					if bc.consistency {
 						// Calculate MD5 checksum of the read data
-						hash := md5.Sum(item.block.data[:n])
-						md5sum := hex.EncodeToString(hash[:])
+						hash := common.GetCRC64(item.block.data, n)
 
 						// Retrieve MD5 checksum from xattr
-						xattrMd5sum := make([]byte, 32)
-						_, err = syscall.Getxattr(localPath, "user.md5sum", xattrMd5sum)
+						xattrHash := make([]byte, 8)
+						_, err = syscall.Getxattr(localPath, "user.md5sum", xattrHash)
 						if err != nil {
 							log.Err("BlockCache::download : Failed to get md5sum for file %s [%v]", fileName, err.Error())
 						} else {
 							// Compare checksums
-							if md5sum != string(xattrMd5sum) {
-								log.Err("BlockCache::download : MD5 checksum mismatch for file %s, expected %s, got %s", fileName, md5sum, string(xattrMd5sum))
+							if !bytes.Equal(hash, xattrHash) {
+								log.Err("BlockCache::download : MD5 checksum mismatch for file %s, expected %v, got %v", fileName, xattrHash, hash)
 								successfulRead = false
 								_ = os.Remove(localPath)
 							}
@@ -1087,9 +1085,8 @@ func (bc *BlockCache) download(item *workItem) {
 
 			// If user has enabled consistency check then compute the md5sum and save it in xattr
 			if bc.consistency {
-				hash := md5.Sum(item.block.data[:n])
-				md5sum := hex.EncodeToString(hash[:])
-				err = syscall.Setxattr(localPath, "user.md5sum", []byte(md5sum), 0)
+				hash := common.GetCRC64(item.block.data, n)
+				err = syscall.Setxattr(localPath, "user.md5sum", hash, 0)
 				if err != nil {
 					log.Err("BlockCache::download : Failed to set md5sum for file %s [%v]", localPath, err.Error())
 				}
@@ -1494,9 +1491,8 @@ func (bc *BlockCache) upload(item *workItem) {
 
 			// If user has enabled consistency check then compute the md5sum and save it in xattr
 			if bc.consistency {
-				hash := md5.Sum(item.block.data[:blockSize])
-				md5sum := hex.EncodeToString(hash[:])
-				err = syscall.Setxattr(localPath, "user.md5sum", []byte(md5sum), 0)
+				hash := common.GetCRC64(item.block.data, int(blockSize))
+				err = syscall.Setxattr(localPath, "user.md5sum", hash, 0)
 				if err != nil {
 					log.Err("BlockCache::download : Failed to set md5sum for file %s [%v]", localPath, err.Error())
 				}
