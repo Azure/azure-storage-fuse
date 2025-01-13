@@ -1760,11 +1760,6 @@ func (bc *BlockCache) SyncFile(options internal.SyncFileOptions) error {
 }
 
 func (bc *BlockCache) StatFs() (*syscall.Statfs_t, bool, error) {
-	// cache_size = f_blocks * f_frsize/1024
-	// cache_size - used = f_frsize * f_bavail/1024
-	// cache_size - used = vfs.f_bfree * vfs.f_frsize / 1024
-	// if cache size is set to 0 then we have the root mount usage
-
 	var maxCacheSize uint64
 	if bc.diskSize > 0 {
 		maxCacheSize = bc.diskSize
