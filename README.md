@@ -168,6 +168,8 @@ To learn about a specific command, just include the name of the command (For exa
     * `--block-cache-prefetch=<Number of blocks>`: Number of blocks to prefetch at max when sequential reads are in progress. Default - 2 times number of CPU cores.
     * `--block-cache-parallelism=<count>`: Number of parallel threads doing upload/download operation. Default - 3 times number of CPU cores.
     * `--block-cache-prefetch-on-open=true`: Start prefetching on open system call instead of waiting for first read. Enhances perf if file is read sequentially from offset 0.
+    * `--block-cache-strong-consistency=true`: Enable strong data consistency checks in block-cache. This will increase load on your CPU and may introduce some latency. 
+    This will need support of `xattr` on your system. Kindly install the feature manually before using this cli parameter.
 - Fuse options
     * `--attr-timeout=<TIMEOUT IN SECONDS>`: Time the kernel can cache inode attributes.
     * `--entry-timeout=<TIMEOUT IN SECONDS>`: Time the kernel can cache directory listing.
