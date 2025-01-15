@@ -525,7 +525,7 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	return nil
 }
 
-func configureBlobFilter(az *AzStorage, opt AzStorageOptions) error {
+func configureBlobFilter(azStorage *AzStorage, opt AzStorageOptions) error {
 	readonly := false
 	_ = config.UnmarshalKey("read-only", &readonly)
 	if !readonly {
@@ -533,8 +533,8 @@ func configureBlobFilter(az *AzStorage, opt AzStorageOptions) error {
 		return errors.New("blobfilter is supported only in read-only mode")
 	}
 
-	az.stConfig.filter = &blobfilter.BlobFilter{}
-	err := az.stConfig.filter.Configure(opt.Filter)
+	azStorage.stConfig.filter = &blobfilter.BlobFilter{}
+	err := azStorage.stConfig.filter.Configure(opt.Filter)
 	if err != nil {
 		log.Err("configureBlobFilter : Failed to configure blob filter %s", err.Error())
 		return errors.New("failed to configure blob filter")
