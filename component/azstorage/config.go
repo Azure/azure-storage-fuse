@@ -520,7 +520,7 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	log.Crit("ParseAndValidateConfig : Retry Config: retry-count %d, max-timeout %d, backoff-time %d, max-delay %d, preserve-acl: %v",
 		az.stConfig.maxRetries, az.stConfig.maxTimeout, az.stConfig.backoffTime, az.stConfig.maxRetryDelay, az.stConfig.preserveACL)
 
-	log.Crit("ParseAndValidateConfig : Telemetry : %s, honour-ACL %v, disable-symlink %v", az.stConfig.telemetry, az.stConfig.honourACL, az.stConfig.disableSymlink)
+	log.Crit("ParseAndValidateConfig : Telemetry : %s, honour-ACL %v", az.stConfig.telemetry, az.stConfig.honourACL)
 
 	return nil
 }
@@ -589,16 +589,6 @@ func ParseAndReadDynamicConfig(az *AzStorage, opt AzStorageOptions, reload bool)
 		az.stConfig.honourACL = opt.HonourACL
 	} else {
 		az.stConfig.honourACL = false
-	}
-
-	// by default symlink will be disabled
-	az.stConfig.disableSymlink = true
-
-	if config.IsSet("attr_cache.no-symlinks") {
-		err := config.UnmarshalKey("attr_cache.no-symlinks", &az.stConfig.disableSymlink)
-		if err != nil {
-			log.Err("ParseAndReadDynamicConfig : Failed to unmarshal attr_cache.no-symlinks")
-		}
 	}
 
 	// Auth related reconfig

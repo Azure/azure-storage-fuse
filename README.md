@@ -143,7 +143,7 @@ To learn about a specific command, just include the name of the command (For exa
     * `--filter=<STRING>`: Enable blob filters for read-only mount to restrict the view on what all blobs user can see or read.
 - Attribute cache options
     * `--attr-cache-timeout=<TIMEOUT IN SECONDS>`: The timeout for the attribute cache entries.
-    * `--no-symlinks=true`: To improve performance disable symlink support.
+    * `--no-symlinks=false`: By default symlinks will be supported and the performance overhead, that earlier existed, has been resolved.
 - Storage options
     * `--container-name=<CONTAINER NAME>`: The container to mount.
     * `--cancel-list-on-mount-seconds=<TIMEOUT IN SECONDS>`: Time for which list calls will be blocked after mount. ( prevent billing charges on mounting)

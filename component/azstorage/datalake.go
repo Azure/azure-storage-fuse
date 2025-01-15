@@ -36,13 +36,11 @@ package azstorage
 import (
 	"context"
 	"fmt"
-	"io/fs"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -104,7 +102,13 @@ func (dl *Datalake) Configure(cfg AzStorageConfig) error {
 			EncryptionAlgorithm: to.Ptr(directory.EncryptionAlgorithmTypeAES256),
 		}
 	}
-	return dl.BlockBlob.Configure(transformConfig(cfg))
+
+	err := dl.BlockBlob.Configure(transformConfig(cfg))
+
+	// List call shall always retrieved permissions for HNS accounts
+	dl.BlockBlob.listDetails.Permissions = true
+
+	return err
 }
 
 // For dynamic config update the config here
@@ -436,129 +440,7 @@ func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 // This fetches the list using a marker so the caller code should handle marker logic
 // If count=0 - fetch max entries
 func (dl *Datalake) List(prefix string, marker *string, count int32) ([]*internal.ObjAttr, *string, error) {
-	log.Trace("Datalake::List : prefix %s, marker %s", prefix, func(marker *string) string {
-		if marker != nil {
-			return *marker
-		} else {
-			return ""
-		}
-	}(marker))
-
-	pathList := make([]*internal.ObjAttr, 0)
-
-	if count == 0 {
-		count = common.MaxDirListCount
-	}
-
-	prefixPath := filepath.Join(dl.Config.prefixPath, prefix)
-	if prefix != "" && prefix[len(prefix)-1] == '/' {
-		prefixPath += "/"
-	}
-
-	// Get a result segment starting with the path indicated by the current Marker.
-	pager := dl.Filesystem.NewListPathsPager(false, &filesystem.ListPathsOptions{
-		Marker:     marker,
-		MaxResults: &count,
-		Prefix:     &prefixPath,
-	})
-
-	// Process the paths returned in this result segment (if the segment is empty, the loop body won't execute)
-	listPath, err := pager.NextPage(context.Background())
-	if err != nil {
-		log.Err("Datalake::List : Failed to validate account with given auth %s", err.Error())
-		m := ""
-		e := storeDatalakeErrToErr(err)
-		if e == ErrFileNotFound { // TODO: should this be checked for list calls
-			return pathList, &m, syscall.ENOENT
-		} else if e == InvalidPermission {
-			return pathList, &m, syscall.EACCES
-		} else {
-			return pathList, &m, err
-		}
-	}
-
-	// Process the paths returned in this result segment (if the segment is empty, the loop body won't execute)
-	for _, pathInfo := range listPath.Paths {
-		var attr *internal.ObjAttr
-		var lastModifiedTime time.Time
-		if dl.Config.disableSymlink {
-			var mode fs.FileMode
-			if pathInfo.Permissions != nil {
-				mode, err = getFileMode(*pathInfo.Permissions)
-				if err != nil {
-					log.Err("Datalake::List : Failed to get file mode for %s [%s]", *pathInfo.Name, err.Error())
-					m := ""
-					return pathList, &m, err
-				}
-			} else {
-				// This happens when a blob account is mounted with type:adls
-				log.Err("Datalake::List : Failed to get file permissions for %s", *pathInfo.Name)
-			}
-
-			var contentLength int64 = 0
-			if pathInfo.ContentLength != nil {
-				contentLength = *pathInfo.ContentLength
-			} else {
-				// This happens when a blob account is mounted with type:adls
-				log.Err("Datalake::List : Failed to get file length for %s", *pathInfo.Name)
-			}
-
-			if pathInfo.LastModified != nil {
-				lastModifiedTime, err = time.Parse(time.RFC1123, *pathInfo.LastModified)
-				if err != nil {
-					log.Err("Datalake::List : Failed to get last modified time for %s [%s]", *pathInfo.Name, err.Error())
-				}
-			}
-			attr = &internal.ObjAttr{
-				Path:   *pathInfo.Name,
-				Name:   filepath.Base(*pathInfo.Name),
-				Size:   contentLength,
-				Mode:   mode,
-				Mtime:  lastModifiedTime,
-				Atime:  lastModifiedTime,
-				Ctime:  lastModifiedTime,
-				Crtime: lastModifiedTime,
-				Flags:  internal.NewFileBitMap(),
-			}
-			if pathInfo.IsDirectory != nil && *pathInfo.IsDirectory {
-				attr.Flags = internal.NewDirBitMap()
-				attr.Mode = attr.Mode | os.ModeDir
-			}
-		} else {
-			attr, err = dl.GetAttr(*pathInfo.Name)
-			if err != nil {
-				log.Err("Datalake::List : Failed to get properties for %s [%s]", *pathInfo.Name, err.Error())
-				m := ""
-				return pathList, &m, err
-			}
-		}
-
-		// Note: Datalake list paths does not return metadata/properties.
-		// To account for this and accurately return attributes when needed,
-		// we have a flag for whether or not metadata has been retrieved.
-		// If this flag is not set the attribute cache will call get attributes
-		// to fetch metadata properties.
-		// Any method that populates the metadata should set the attribute flag.
-		// Alternatively, if you want Datalake list paths to return metadata/properties as well.
-		// pass CLI parameter --no-symlinks=false in the mount command.
-
-		// We filter only files for now so if its directory add it to return list
-		if dl.Config.filter != nil && (attr.Mode&os.ModeDir) == 0 {
-			filterAttr := blobfilter.BlobAttr{}
-			filterAttr.Name = attr.Name
-			filterAttr.Mtime = attr.Mtime
-			filterAttr.Size = attr.Size
-			if dl.Config.filter.IsFileAcceptable(&filterAttr) {
-				pathList = append(pathList, attr)
-			} else {
-				log.Debug("Datalake::List : Filtered out %s", *pathInfo.Name)
-			}
-		} else {
-			pathList = append(pathList, attr)
-		}
-	}
-
-	return pathList, listPath.Continuation, nil
+	return dl.BlockBlob.List(prefix, marker, count)
 }
 
 // ReadToFile : Download a file to a local file
