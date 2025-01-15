@@ -612,28 +612,30 @@ func (bb *BlockBlob) processBlobItems(blobItems []*container.BlobItem) ([]*inter
 	filterAttr := blobfilter.BlobAttr{}
 
 	for _, blobInfo := range blobItems {
-		attr, err := bb.getBlobAttr(blobInfo)
+		blobAttr, err := bb.getBlobAttr(blobInfo)
 		if err != nil {
 			return nil, nil, err
 		}
 
-		if attr.IsDir() {
+		if blobAttr.IsDir() {
 			// 0 byte meta found so mark this directory in map
 			dirList[*blobInfo.Name+"/"] = true
-			attr.Size = 4096
+			blobAttr.Size = 4096
 		}
 
-		if bb.Config.filter != nil && !attr.IsDir() {
-			filterAttr.Name = attr.Name
-			filterAttr.Mtime = attr.Mtime
-			filterAttr.Size = attr.Size
+		if bb.Config.filter != nil && !blobAttr.IsDir() {
+			filterAttr.Name = blobAttr.Name
+			filterAttr.Mtime = blobAttr.Mtime
+			filterAttr.Size = blobAttr.Size
+
+			// TODO : Update external repo to rename API to IsAcceptable
 			if bb.Config.filter.IsFileAcceptable(&filterAttr) {
-				blobList = append(blobList, attr)
+				blobList = append(blobList, blobAttr)
 			} else {
-				log.Debug("BlockBlob::List : Filtered out blob %s", attr.Name)
+				log.Debug("BlockBlob::List : Filtered out blob %s", blobAttr.Name)
 			}
 		} else {
-			blobList = append(blobList, attr)
+			blobList = append(blobList, blobAttr)
 		}
 	}
 

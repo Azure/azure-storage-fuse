@@ -363,7 +363,7 @@ func (dl *Datalake) RenameDirectory(source string, target string) error {
 }
 
 // GetAttr : Retrieve attributes of the path
-func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
+func (dl *Datalake) GetAttr(name string) (blobAttr *internal.ObjAttr, err error) {
 	log.Trace("Datalake::GetAttr : name %s", name)
 
 	fileClient := dl.Filesystem.NewFileClient(filepath.Join(dl.Config.prefixPath, name))
@@ -373,23 +373,23 @@ func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 	if err != nil {
 		e := storeDatalakeErrToErr(err)
 		if e == ErrFileNotFound {
-			return attr, syscall.ENOENT
+			return blobAttr, syscall.ENOENT
 		} else if e == InvalidPermission {
 			log.Err("Datalake::GetAttr : Insufficient permissions for %s [%s]", name, err.Error())
-			return attr, syscall.EACCES
+			return blobAttr, syscall.EACCES
 		} else {
 			log.Err("Datalake::GetAttr : Failed to get path properties for %s [%s]", name, err.Error())
-			return attr, err
+			return blobAttr, err
 		}
 	}
 
 	mode, err := getFileMode(*prop.Permissions)
 	if err != nil {
 		log.Err("Datalake::GetAttr : Failed to get file mode for %s [%s]", name, err.Error())
-		return attr, err
+		return blobAttr, err
 	}
 
-	attr = &internal.ObjAttr{
+	blobAttr = &internal.ObjAttr{
 		Path:   name,
 		Name:   filepath.Base(name),
 		Size:   *prop.ContentLength,
@@ -400,11 +400,11 @@ func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 		Crtime: *prop.LastModified,
 		Flags:  internal.NewFileBitMap(),
 	}
-	parseMetadata(attr, prop.Metadata)
+	parseMetadata(blobAttr, prop.Metadata)
 
 	if *prop.ResourceType == "directory" {
-		attr.Flags = internal.NewDirBitMap()
-		attr.Mode = attr.Mode | os.ModeDir
+		blobAttr.Flags = internal.NewDirBitMap()
+		blobAttr.Mode = blobAttr.Mode | os.ModeDir
 	}
 
 	if dl.Config.honourACL && dl.Config.authConfig.ObjectID != "" {
@@ -417,23 +417,23 @@ func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 			if err != nil {
 				log.Err("Datalake::GetAttr : Failed to get file mode from ACL for %s [%s]", name, err.Error())
 			} else {
-				attr.Mode = mode
+				blobAttr.Mode = mode
 			}
 		}
 	}
 
 	if dl.Config.filter != nil {
 		if !dl.Config.filter.IsFileAcceptable(&blobfilter.BlobAttr{
-			Name:  attr.Name,
-			Mtime: attr.Mtime,
-			Size:  attr.Size,
+			Name:  blobAttr.Name,
+			Mtime: blobAttr.Mtime,
+			Size:  blobAttr.Size,
 		}) {
 			log.Debug("Datalake::GetAttr : Filtered out %s", name)
 			return nil, syscall.ENOENT
 		}
 	}
 
-	return attr, nil
+	return blobAttr, nil
 }
 
 // List : Get a list of path matching the given prefix
