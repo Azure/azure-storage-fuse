@@ -423,7 +423,7 @@ func (dl *Datalake) GetAttr(name string) (blobAttr *internal.ObjAttr, err error)
 	}
 
 	if dl.Config.filter != nil {
-		if !dl.Config.filter.IsFileAcceptable(&blobfilter.BlobAttr{
+		if !dl.Config.filter.IsAcceptable(&blobfilter.BlobAttr{
 			Name:  blobAttr.Name,
 			Mtime: blobAttr.Mtime,
 			Size:  blobAttr.Size,

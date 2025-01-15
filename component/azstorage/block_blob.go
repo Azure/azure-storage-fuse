@@ -525,7 +525,7 @@ func (bb *BlockBlob) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 	}
 
 	if bb.Config.filter != nil && attr != nil {
-		if !bb.Config.filter.IsFileAcceptable(&blobfilter.BlobAttr{
+		if !bb.Config.filter.IsAcceptable(&blobfilter.BlobAttr{
 			Name:  attr.Name,
 			Mtime: attr.Mtime,
 			Size:  attr.Size,
@@ -628,8 +628,7 @@ func (bb *BlockBlob) processBlobItems(blobItems []*container.BlobItem) ([]*inter
 			filterAttr.Mtime = blobAttr.Mtime
 			filterAttr.Size = blobAttr.Size
 
-			// TODO : Update external repo to rename API to IsAcceptable
-			if bb.Config.filter.IsFileAcceptable(&filterAttr) {
+			if bb.Config.filter.IsAcceptable(&filterAttr) {
 				blobList = append(blobList, blobAttr)
 			} else {
 				log.Debug("BlockBlob::List : Filtered out blob %s", blobAttr.Name)
