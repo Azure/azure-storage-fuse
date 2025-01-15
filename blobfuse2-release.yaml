@@ -1586,7 +1586,7 @@ stages:
   - ${{ if eq(parameters.publish_artifacts, true) }}:
     - stage: PublishArtifacts
       # dependsOn: ReleaseArtifacts
-      condition: succeeded('ReleaseArtifacts')
+      # condition: succeeded('ReleaseArtifacts')
       jobs:
         - job: PublishArtifacts
           timeoutInMinutes: 120
