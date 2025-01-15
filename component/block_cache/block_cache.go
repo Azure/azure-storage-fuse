@@ -400,7 +400,7 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 	handle.Mtime = attr.Mtime
 	handle.Size = attr.Size
 
-	if attr.ETag != "" {
+	if bc.consistency && attr.ETag != "" {
 		handle.SetValue("ETAG", attr.ETag)
 	}
 
@@ -1071,7 +1071,7 @@ func (bc *BlockCache) download(item *workItem) {
 	}
 
 	// Compare the ETAG value and fail download if blob has changed
-	if etag != "" {
+	if bc.consistency && etag != "" {
 		etagVal, found := item.handle.GetValue("ETAG")
 		if found && etagVal != etag {
 			log.Err("BlockCache::download : Blob has changed for %v=>%s (index %v, offset %v)", item.handle.ID, item.handle.Path, item.block.id, item.block.offset)
