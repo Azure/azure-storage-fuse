@@ -1,12 +1,17 @@
 ## 2.4.1 (Unreleased)
 **Bug Fixes**
 - Create block pool only in the child process.
+- Correct statFS results to reflect block-cache in memory cache status.
+
+**Other Changes**
+- Optimized listing operation on HNS account to support symlinks.
 
 **Features**
-- To protect against accidental overwrites on data stored by block-cache on temp path, md5 sums will be validated on read. This feature can be enabled by using `--block-cache-strong-consistency` cli flag.
+- To protect against accidental overwrites on data stored by block-cache on temp path, crc64 hash will be validated on read. This feature can be enabled by using `--block-cache-strong-consistency` cli flag.
 - To provide strong consistency check, ETAG of the file will be preserved on open. For any subsequent block download, with block-cache, ETAG will be verified and if the blob has changed in container the download will be declare failure resulting into read failure. This feature will be enabled with above cli option. Disable `attr_cache` when you want this feature to work with latest contents updated on blob.
+- To protect against accidental overwrites on data stored by block-cache on temp path, crc64 hash will be validated on read. This feature can be enabled by using `--block-cache-strong-consistency` cli flag.
 
-## 2.4.0 (Unreleased)
+## 2.4.0 (2024-12-03)
 **Features**
 - Added 'gen-config' command to auto generate the recommended blobfuse2 config file based on computing resources and memory available on the node. Command details can be found with `blobfuse2 gen-config --help`.
 - Added option to set Entry cache to hold directory listing results in cache for a given timeout. This will reduce REST calls going to storage and enables faster access across multiple applications that use Blobfuse on the same node.
@@ -24,6 +29,7 @@
 - `Stream` option automatically replaced with "Stream with Block-cache" internally for optimized performance.
 - Login via Managed Identify is supported with Object-ID for all versions of blobfuse except 2.3.0 and 2.3.2.To use Object-ID for these two versions, use AzCLI or utilize Application/Client-ID or Resource ID base authentication..
 - Version check is now moved to a static website hosted on a public container.
+- 'df' command output will present memory availability in case of block-cache if disk is not configured.
 
 ## 2.3.2 (2024-09-03)
 **Bug Fixes**

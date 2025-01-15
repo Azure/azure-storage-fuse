@@ -992,15 +992,15 @@ func (bc *BlockCache) download(item *workItem) {
 				_ = os.Remove(localPath)
 			} else {
 				var successfulRead bool = true
-				n, err := f.Read(item.block.data)
+				numberOfBytes, err := f.Read(item.block.data)
 				if err != nil {
 					log.Err("BlockCache::download : Failed to read data from disk cache %s [%s]", fileName, err.Error())
 					successfulRead = false
 					_ = os.Remove(localPath)
 				}
 
-				if n != int(bc.blockSize) && item.block.offset+uint64(n) != uint64(item.handle.Size) {
-					log.Err("BlockCache::download : Local data retrieved from disk size mismatch, Expected %v, OnDisk %v, fileSize %v", bc.getBlockSize(uint64(item.handle.Size), item.block), n, item.handle.Size)
+				if numberOfBytes != int(bc.blockSize) && item.block.offset+uint64(numberOfBytes) != uint64(item.handle.Size) {
+					log.Err("BlockCache::download : Local data retrieved from disk size mismatch, Expected %v, OnDisk %v, fileSize %v", bc.getBlockSize(uint64(item.handle.Size), item.block), numberOfBytes, item.handle.Size)
 					successfulRead = false
 					_ = os.Remove(localPath)
 				}
@@ -1009,24 +1009,7 @@ func (bc *BlockCache) download(item *workItem) {
 
 				if successfulRead {
 					// If user has enabled consistency check then compute the md5sum and match it in xattr
-					if bc.consistency {
-						// Calculate MD5 checksum of the read data
-						hash := common.GetCRC64(item.block.data, n)
-
-						// Retrieve MD5 checksum from xattr
-						xattrHash := make([]byte, 8)
-						_, err = syscall.Getxattr(localPath, "user.md5sum", xattrHash)
-						if err != nil {
-							log.Err("BlockCache::download : Failed to get md5sum for file %s [%v]", fileName, err.Error())
-						} else {
-							// Compare checksums
-							if !bytes.Equal(hash, xattrHash) {
-								log.Err("BlockCache::download : MD5 checksum mismatch for file %s, expected %v, got %v", fileName, xattrHash, hash)
-								successfulRead = false
-								_ = os.Remove(localPath)
-							}
-						}
-					}
+					successfulRead = checkBlockConsistency(bc, item, numberOfBytes, localPath, fileName)
 
 					// We have read the data from disk so there is no need to go over network
 					// Just mark the block that download is complete
@@ -1065,7 +1048,7 @@ func (bc *BlockCache) download(item *workItem) {
 	} else if n == 0 {
 		// No data read so just reschedule this request
 		log.Err("BlockCache::download : Failed to read %v=>%s from offset %v [0 bytes read]", item.handle.ID, item.handle.Path, item.block.id)
-		item.failCnt = MAX_FAIL_CNT + 1
+		item.failCnt++
 		bc.threadPool.Schedule(false, item)
 		return
 	}
@@ -1113,6 +1096,30 @@ func (bc *BlockCache) download(item *workItem) {
 
 	// Just mark the block that download is complete
 	item.block.Ready(BlockStatusDownloaded)
+}
+
+func checkBlockConsistency(blockCache *BlockCache, item *workItem, numberOfBytes int, localPath, fileName string) bool {
+	if !blockCache.consistency {
+		return true
+	}
+	// Calculate MD5 checksum of the read data
+	actualHash := common.GetCRC64(item.block.data, numberOfBytes)
+
+	// Retrieve MD5 checksum from xattr
+	xattrHash := make([]byte, 8)
+	_, err := syscall.Getxattr(localPath, "user.md5sum", xattrHash)
+	if err != nil {
+		log.Err("BlockCache::download : Failed to get md5sum for file %s [%v]", fileName, err.Error())
+	} else {
+		// Compare checksums
+		if !bytes.Equal(actualHash, xattrHash) {
+			log.Err("BlockCache::download : MD5 checksum mismatch for file %s, expected %v, got %v", fileName, xattrHash, actualHash)
+			_ = os.Remove(localPath)
+			return false
+		}
+	}
+
+	return true
 }
 
 // WriteFile: Write to the local file
@@ -1820,6 +1827,36 @@ func (bc *BlockCache) SyncFile(options internal.SyncFileOptions) error {
 	}
 
 	return nil
+}
+
+func (bc *BlockCache) StatFs() (*syscall.Statfs_t, bool, error) {
+	var maxCacheSize uint64
+	if bc.diskSize > 0 {
+		maxCacheSize = bc.diskSize
+	} else {
+		maxCacheSize = bc.memSize
+	}
+
+	if maxCacheSize == 0 {
+		return nil, false, nil
+	}
+
+	usage, _ := common.GetUsage(bc.tmpPath)
+	usage = usage * float64(_1MB)
+
+	available := (float64)(maxCacheSize) - usage
+	statfs := &syscall.Statfs_t{}
+	err := syscall.Statfs("/", statfs)
+	if err != nil {
+		log.Debug("BlockCache::StatFs : statfs err [%s].", err.Error())
+		return nil, false, err
+	}
+	statfs.Frsize = int64(bc.blockSize)
+	statfs.Blocks = uint64(maxCacheSize) / uint64(bc.blockSize)
+	statfs.Bavail = uint64(math.Max(0, available)) / uint64(bc.blockSize)
+	statfs.Bfree = statfs.Bavail
+
+	return statfs, true, nil
 }
 
 // ------------------------- Factory -------------------------------------------
