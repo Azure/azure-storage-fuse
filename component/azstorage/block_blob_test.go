@@ -174,7 +174,6 @@ func newTestAzStorage(configuration string) (*AzStorage, error) {
 	_ = config.ReadConfigFromReader(strings.NewReader(configuration))
 	az := NewazstorageComponent()
 	err := az.Configure(true)
-
 	return az.(*AzStorage), err
 }
 
@@ -3385,6 +3384,87 @@ func (suite *blockBlobTestSuite) TestTruncateBlockFileToLarger() {
 
 func (suite *blockBlobTestSuite) TestTruncateNoBlockFileToLarger() {
 	suite.UtilityFunctionTruncateFileToLarger(200*MB, 300*MB)
+}
+
+func (s *blockBlobTestSuite) TestBlobFilters() {
+	defer s.cleanupTest()
+	// Setup
+	var err error
+	name := generateDirectoryName()
+	err = s.az.CreateDir(internal.CreateDirOptions{Name: name})
+	s.assert.Nil(err)
+	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/abcd1.txt"})
+	s.assert.Nil(err)
+	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/abcd2.txt"})
+	s.assert.Nil(err)
+	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/abcd3.txt"})
+	s.assert.Nil(err)
+	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/abcd4.txt"})
+	s.assert.Nil(err)
+	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/bcd1.txt"})
+	s.assert.Nil(err)
+	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/cd1.txt"})
+	s.assert.Nil(err)
+	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/d1.txt"})
+	s.assert.Nil(err)
+	err = s.az.CreateDir(internal.CreateDirOptions{Name: name + "/subdir"})
+	s.assert.Nil(err)
+
+	var iteration int = 0
+	var marker string = ""
+	blobList := make([]*internal.ObjAttr, 0)
+
+	for {
+		new_list, new_marker, err := s.az.StreamDir(internal.StreamDirOptions{Name: name + "/", Token: marker, Count: 50})
+		s.assert.Nil(err)
+		blobList = append(blobList, new_list...)
+		marker = new_marker
+		iteration++
+
+		log.Debug("AzStorage::ReadDir : So far retrieved %d objects in %d iterations", len(blobList), iteration)
+		if new_marker == "" {
+			break
+		}
+	}
+	s.assert.EqualValues(8, len(blobList))
+	err = s.az.storage.(*BlockBlob).SetFilter("name=^abcd.*")
+	s.assert.Nil(err)
+
+	blobList = make([]*internal.ObjAttr, 0)
+	for {
+		new_list, new_marker, err := s.az.StreamDir(internal.StreamDirOptions{Name: name + "/", Token: marker, Count: 50})
+		s.assert.Nil(err)
+		blobList = append(blobList, new_list...)
+		marker = new_marker
+		iteration++
+
+		log.Debug("AzStorage::ReadDir : So far retrieved %d objects in %d iterations", len(blobList), iteration)
+		if new_marker == "" {
+			break
+		}
+	}
+	// Only 4 files matches the pattern but there is a directory as well and directories are not filtered by blobfilter
+	s.assert.EqualValues(5, len(blobList))
+	err = s.az.storage.(*BlockBlob).SetFilter("name=^bla.*")
+	s.assert.Nil(err)
+
+	blobList = make([]*internal.ObjAttr, 0)
+	for {
+		new_list, new_marker, err := s.az.StreamDir(internal.StreamDirOptions{Name: name + "/", Token: marker, Count: 50})
+		s.assert.Nil(err)
+		blobList = append(blobList, new_list...)
+		marker = new_marker
+		iteration++
+
+		log.Debug("AzStorage::ReadDir : So far retrieved %d objects in %d iterations", len(blobList), iteration)
+		if new_marker == "" {
+			break
+		}
+	}
+
+	s.assert.EqualValues(1, len(blobList))
+	err = s.az.storage.(*BlockBlob).SetFilter("")
+	s.assert.Nil(err)
 }
 
 func (suite *blockBlobTestSuite) UtilityFunctionTestTruncateFileToSmaller(size int, truncatedLength int) {

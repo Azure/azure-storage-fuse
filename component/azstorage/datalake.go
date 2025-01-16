@@ -45,6 +45,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/vibhansa-msft/blobfilter"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
@@ -362,7 +363,7 @@ func (dl *Datalake) RenameDirectory(source string, target string) error {
 }
 
 // GetAttr : Retrieve attributes of the path
-func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
+func (dl *Datalake) GetAttr(name string) (blobAttr *internal.ObjAttr, err error) {
 	log.Trace("Datalake::GetAttr : name %s", name)
 
 	fileClient := dl.Filesystem.NewFileClient(filepath.Join(dl.Config.prefixPath, name))
@@ -372,23 +373,23 @@ func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 	if err != nil {
 		e := storeDatalakeErrToErr(err)
 		if e == ErrFileNotFound {
-			return attr, syscall.ENOENT
+			return blobAttr, syscall.ENOENT
 		} else if e == InvalidPermission {
 			log.Err("Datalake::GetAttr : Insufficient permissions for %s [%s]", name, err.Error())
-			return attr, syscall.EACCES
+			return blobAttr, syscall.EACCES
 		} else {
 			log.Err("Datalake::GetAttr : Failed to get path properties for %s [%s]", name, err.Error())
-			return attr, err
+			return blobAttr, err
 		}
 	}
 
 	mode, err := getFileMode(*prop.Permissions)
 	if err != nil {
 		log.Err("Datalake::GetAttr : Failed to get file mode for %s [%s]", name, err.Error())
-		return attr, err
+		return blobAttr, err
 	}
 
-	attr = &internal.ObjAttr{
+	blobAttr = &internal.ObjAttr{
 		Path:   name,
 		Name:   filepath.Base(name),
 		Size:   *prop.ContentLength,
@@ -400,11 +401,11 @@ func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 		Flags:  internal.NewFileBitMap(),
 		ETag:   (string)(*prop.ETag),
 	}
-	parseMetadata(attr, prop.Metadata)
+	parseMetadata(blobAttr, prop.Metadata)
 
 	if *prop.ResourceType == "directory" {
-		attr.Flags = internal.NewDirBitMap()
-		attr.Mode = attr.Mode | os.ModeDir
+		blobAttr.Flags = internal.NewDirBitMap()
+		blobAttr.Mode = blobAttr.Mode | os.ModeDir
 	}
 
 	if dl.Config.honourACL && dl.Config.authConfig.ObjectID != "" {
@@ -417,12 +418,23 @@ func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 			if err != nil {
 				log.Err("Datalake::GetAttr : Failed to get file mode from ACL for %s [%s]", name, err.Error())
 			} else {
-				attr.Mode = mode
+				blobAttr.Mode = mode
 			}
 		}
 	}
 
-	return attr, nil
+	if dl.Config.filter != nil {
+		if !dl.Config.filter.IsAcceptable(&blobfilter.BlobAttr{
+			Name:  blobAttr.Name,
+			Mtime: blobAttr.Mtime,
+			Size:  blobAttr.Size,
+		}) {
+			log.Debug("Datalake::GetAttr : Filtered out %s", name)
+			return nil, syscall.ENOENT
+		}
+	}
+
+	return blobAttr, nil
 }
 
 // List : Get a list of path matching the given prefix
@@ -589,4 +601,18 @@ func (dl *Datalake) StageBlock(name string, data []byte, id string) error {
 // CommitBlocks : persists the block list
 func (dl *Datalake) CommitBlocks(name string, blockList []string) error {
 	return dl.BlockBlob.CommitBlocks(name, blockList)
+}
+
+func (dl *Datalake) SetFilter(filter string) error {
+	if filter == "" {
+		dl.Config.filter = nil
+	} else {
+		dl.Config.filter = &blobfilter.BlobFilter{}
+		err := dl.Config.filter.Configure(filter)
+		if err != nil {
+			return err
+		}
+	}
+
+	return dl.BlockBlob.SetFilter(filter)
 }

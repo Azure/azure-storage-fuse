@@ -8,9 +8,9 @@
 - Optimized listing operation on HNS account to support symlinks.
 
 **Features**
+- Mount container or directory but restrict the view of blobs that you can see. This feature is available only in read-only mount.
 - To protect against accidental overwrites on data stored by block-cache on temp path, crc64 hash will be validated on read. This feature can be enabled by using `--block-cache-strong-consistency` cli flag.
 - To provide strong consistency check, ETAG of the file will be preserved on open. For any subsequent block download, with block-cache, ETAG will be verified and if the blob has changed in container the download will be declare failure resulting into read failure. This feature will be enabled with above cli option. Disable `attr_cache` when you want this feature to work with latest contents updated on blob.
-- To protect against accidental overwrites on data stored by block-cache on temp path, crc64 hash will be validated on read. This feature can be enabled by using `--block-cache-strong-consistency` cli flag.
 
 ## 2.4.0 (2024-12-03)
 **Features**
