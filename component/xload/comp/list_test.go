@@ -176,15 +176,20 @@ func (tl *testLister) cleanup() error {
 }
 
 func (suite *listTestSuite) TestNewRemoteLister() {
-	rl, err := NewRemoteLister("home/user/random_path", nil, nil)
+	rl, err := NewRemoteLister("", nil, nil)
 	suite.assert.NotNil(err)
 	suite.assert.Nil(rl)
-	suite.assert.Contains(err.Error(), "remote component is nil")
+	suite.assert.Contains(err.Error(), "invalid parameters sent to create remote lister")
+
+	rl, err = NewRemoteLister("home/user/random_path", nil, nil)
+	suite.assert.NotNil(err)
+	suite.assert.Nil(rl)
+	suite.assert.Contains(err.Error(), "invalid parameters sent to create remote lister")
 
 	rl, err = NewRemoteLister("home/user/random_path", lb, nil)
 	suite.assert.NotNil(err)
 	suite.assert.Nil(rl)
-	suite.assert.Contains(err.Error(), "stats manager is nil")
+	suite.assert.Contains(err.Error(), "invalid parameters sent to create remote lister")
 
 	statsMgr, err := xinternal.NewStatsManager(1, false)
 	suite.assert.Nil(err)

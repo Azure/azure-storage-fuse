@@ -68,6 +68,11 @@ type downloadSplitter struct {
 func NewDownloadSplitter(blockSize uint64, blockPool *common.BlockPool, path string, remote internal.Component, statsMgr *xinternal.StatsManager, fileLocks *bcommon.LockMap) (*downloadSplitter, error) {
 	log.Debug("splitter::NewDownloadSplitter : create new download splitter for %s, block size %v", path, blockSize)
 
+	if blockSize == 0 || blockPool == nil || path == "" || remote == nil || statsMgr == nil || fileLocks == nil {
+		log.Err("lister::NewRemoteLister : invalid parameters sent to create download splitter")
+		return nil, fmt.Errorf("invalid parameters sent to create download splitter")
+	}
+
 	d := &downloadSplitter{
 		splitter: splitter{
 			blockSize: blockSize,
@@ -128,9 +133,6 @@ func (d *downloadSplitter) Process(item *common.WorkItem) (int, error) {
 		return 0, nil
 	}
 
-	numBlocks := ((item.DataLen - 1) / d.blockSize) + 1
-	offset := int64(0)
-
 	// TODO:: xload : should we delete the file if it already exists
 	// TODO:: xload : what should be the flags and mode and should we allocate the full size to the file
 	item.FileHandle, err = os.OpenFile(localPath, os.O_WRONLY|os.O_CREATE, 0644)
@@ -140,6 +142,22 @@ func (d *downloadSplitter) Process(item *common.WorkItem) (int, error) {
 	}
 
 	defer item.FileHandle.Close()
+
+	if item.DataLen == 0 {
+		log.Debug("downloadSplitter::Process : 0 byte file %s", item.Path)
+		// send the status to stats manager
+		d.GetStatsManager().AddStats(&xinternal.StatsItem{
+			Component: common.SPLITTER,
+			Name:      item.Path,
+			Success:   true,
+			Download:  true,
+		})
+
+		return 0, nil
+	}
+
+	numBlocks := ((item.DataLen - 1) / d.blockSize) + 1
+	offset := int64(0)
 
 	wg := sync.WaitGroup{}
 	wg.Add(1)

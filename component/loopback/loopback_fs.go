@@ -321,17 +321,20 @@ func (lfs *LoopbackFS) ReadInBuffer(options internal.ReadInBufferOptions) (int, 
 
 		n, err := f1.ReadAt(options.Data, options.Offset)
 		f1.Close()
+		if err == io.EOF {
+			err = nil
+		}
 		return n, err
 	}
 
 	options.Handle.RLock()
 	defer options.Handle.RUnlock()
 
-	if f == nil {
-		log.Err("LoopbackFS::ReadInBuffer : error [invalid file object]")
-		return 0, os.ErrInvalid
+	n, err := f.ReadAt(options.Data, options.Offset)
+	if err == io.EOF {
+		err = nil
 	}
-	return f.ReadAt(options.Data, options.Offset)
+	return n, err
 }
 
 func (lfs *LoopbackFS) WriteFile(options internal.WriteFileOptions) (int, error) {

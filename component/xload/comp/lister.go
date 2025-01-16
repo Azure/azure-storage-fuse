@@ -72,14 +72,9 @@ type remoteLister struct {
 func NewRemoteLister(path string, remote internal.Component, statsMgr *xinternal.StatsManager) (*remoteLister, error) {
 	log.Debug("lister::NewRemoteLister : create new remote lister for %s", path)
 
-	if remote == nil {
-		log.Err("lister::NewRemoteLister : remote component is nil")
-		return nil, fmt.Errorf("remote component is nil")
-	}
-
-	if statsMgr == nil {
-		log.Err("lister::NewRemoteLister : stats manager is nil")
-		return nil, fmt.Errorf("stats manager is nil")
+	if path == "" || remote == nil || statsMgr == nil {
+		log.Err("lister::NewRemoteLister : invalid parameters sent to create remote lister")
+		return nil, fmt.Errorf("invalid parameters sent to create remote lister")
 	}
 
 	rl := &remoteLister{
