@@ -137,6 +137,8 @@ type AzConnection interface {
 	CommitBlocks(string, []string) error
 
 	UpdateServiceClient(_, _ string) error
+
+	SetFilter(string)
 }
 
 // NewAzStorageConnection : Based on account type create respective AzConnection Object

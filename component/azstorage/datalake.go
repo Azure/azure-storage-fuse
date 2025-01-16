@@ -596,3 +596,14 @@ func (dl *Datalake) StageBlock(name string, data []byte, id string) error {
 func (dl *Datalake) CommitBlocks(name string, blockList []string) error {
 	return dl.BlockBlob.CommitBlocks(name, blockList)
 }
+
+func (dl *Datalake) SetFilter(filter string) {
+	if filter == "" {
+		dl.Config.filter = nil
+	} else {
+		dl.Config.filter = &blobfilter.BlobFilter{}
+		dl.Config.filter.Configure(filter)
+	}
+
+	dl.BlockBlob.SetFilter(filter)
+}

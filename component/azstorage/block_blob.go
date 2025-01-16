@@ -1584,3 +1584,12 @@ func (bb *BlockBlob) CommitBlocks(name string, blockList []string) error {
 
 	return nil
 }
+
+func (bb *BlockBlob) SetFilter(filter string) {
+	if filter == "" {
+		bb.Config.filter = nil
+	} else {
+		bb.Config.filter = &blobfilter.BlobFilter{}
+		bb.Config.filter.Configure(filter)
+	}
+}

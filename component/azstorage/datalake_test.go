@@ -56,7 +56,6 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
-	"github.com/vibhansa-msft/blobfilter"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake/directory"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake/file"
@@ -2736,12 +2735,8 @@ func (s *datalakeTestSuite) TestBlobFilters() {
 		}
 	}
 	s.assert.EqualValues(8, len(blobList))
+	s.az.storage.(*Datalake).SetFilter("name=^abcd.*")
 
-	filter := &blobfilter.BlobFilter{}
-	s.az.storage.(*Datalake).Config.filter = filter
-
-	err = filter.Configure("name=^abcd.*")
-	s.assert.Nil(err)
 	blobList = make([]*internal.ObjAttr, 0)
 	for {
 		new_list, new_marker, err := s.az.StreamDir(internal.StreamDirOptions{Name: name + "/", Token: marker, Count: 50})
@@ -2757,12 +2752,8 @@ func (s *datalakeTestSuite) TestBlobFilters() {
 	}
 
 	s.assert.EqualValues(5, len(blobList))
+	s.az.storage.(*Datalake).SetFilter("name=^bla.*")
 
-	filter = &blobfilter.BlobFilter{}
-	s.az.storage.(*Datalake).Config.filter = filter
-
-	err = filter.Configure("name=^bla.*")
-	s.assert.Nil(err)
 	blobList = make([]*internal.ObjAttr, 0)
 	for {
 		new_list, new_marker, err := s.az.StreamDir(internal.StreamDirOptions{Name: name + "/", Token: marker, Count: 50})
@@ -2778,7 +2769,7 @@ func (s *datalakeTestSuite) TestBlobFilters() {
 	}
 
 	s.assert.EqualValues(1, len(blobList))
-	s.az.stConfig.filter = nil
+	s.az.storage.(*Datalake).SetFilter("")
 }
 
 func (s *datalakeTestSuite) TestList() {

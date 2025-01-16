@@ -66,7 +66,6 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
-	"github.com/vibhansa-msft/blobfilter"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -3428,12 +3427,8 @@ func (s *blockBlobTestSuite) TestBlobFilters() {
 		}
 	}
 	s.assert.EqualValues(8, len(blobList))
+	s.az.storage.(*BlockBlob).SetFilter("name=^abcd.*")
 
-	filter := &blobfilter.BlobFilter{}
-	s.az.storage.(*BlockBlob).Config.filter = filter
-
-	err = filter.Configure("name=^abcd.*")
-	s.assert.Nil(err)
 	blobList = make([]*internal.ObjAttr, 0)
 	for {
 		new_list, new_marker, err := s.az.StreamDir(internal.StreamDirOptions{Name: name + "/", Token: marker, Count: 50})
@@ -3449,12 +3444,8 @@ func (s *blockBlobTestSuite) TestBlobFilters() {
 	}
 	// Only 4 files matches the pattern but there is a directory as well and directories are not filtered by blobfilter
 	s.assert.EqualValues(5, len(blobList))
+	s.az.storage.(*BlockBlob).SetFilter("name=^bla.*")
 
-	filter = &blobfilter.BlobFilter{}
-	s.az.storage.(*BlockBlob).Config.filter = filter
-
-	err = filter.Configure("name=^bla.*")
-	s.assert.Nil(err)
 	blobList = make([]*internal.ObjAttr, 0)
 	for {
 		new_list, new_marker, err := s.az.StreamDir(internal.StreamDirOptions{Name: name + "/", Token: marker, Count: 50})
@@ -3470,8 +3461,7 @@ func (s *blockBlobTestSuite) TestBlobFilters() {
 	}
 
 	s.assert.EqualValues(1, len(blobList))
-
-	s.az.stConfig.filter = nil
+	s.az.storage.(*BlockBlob).SetFilter("")
 }
 
 func (suite *blockBlobTestSuite) UtilityFunctionTestTruncateFileToSmaller(size int, truncatedLength int) {
