@@ -597,13 +597,16 @@ func (dl *Datalake) CommitBlocks(name string, blockList []string) error {
 	return dl.BlockBlob.CommitBlocks(name, blockList)
 }
 
-func (dl *Datalake) SetFilter(filter string) {
+func (dl *Datalake) SetFilter(filter string) error {
 	if filter == "" {
 		dl.Config.filter = nil
 	} else {
 		dl.Config.filter = &blobfilter.BlobFilter{}
-		dl.Config.filter.Configure(filter)
+		err := dl.Config.filter.Configure(filter)
+		if err != nil {
+			return err
+		}
 	}
 
-	dl.BlockBlob.SetFilter(filter)
+	return dl.BlockBlob.SetFilter(filter)
 }

@@ -2735,7 +2735,8 @@ func (s *datalakeTestSuite) TestBlobFilters() {
 		}
 	}
 	s.assert.EqualValues(8, len(blobList))
-	s.az.storage.(*Datalake).SetFilter("name=^abcd.*")
+	err = s.az.storage.(*Datalake).SetFilter("name=^abcd.*")
+	s.assert.Nil(err)
 
 	blobList = make([]*internal.ObjAttr, 0)
 	for {
@@ -2752,7 +2753,8 @@ func (s *datalakeTestSuite) TestBlobFilters() {
 	}
 
 	s.assert.EqualValues(5, len(blobList))
-	s.az.storage.(*Datalake).SetFilter("name=^bla.*")
+	err = s.az.storage.(*Datalake).SetFilter("name=^bla.*")
+	s.assert.Nil(err)
 
 	blobList = make([]*internal.ObjAttr, 0)
 	for {
@@ -2769,7 +2771,8 @@ func (s *datalakeTestSuite) TestBlobFilters() {
 	}
 
 	s.assert.EqualValues(1, len(blobList))
-	s.az.storage.(*Datalake).SetFilter("")
+	err = s.az.storage.(*Datalake).SetFilter("")
+	s.assert.Nil(err)
 }
 
 func (s *datalakeTestSuite) TestList() {

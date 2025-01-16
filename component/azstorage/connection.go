@@ -138,7 +138,7 @@ type AzConnection interface {
 
 	UpdateServiceClient(_, _ string) error
 
-	SetFilter(string)
+	SetFilter(string) error
 }
 
 // NewAzStorageConnection : Based on account type create respective AzConnection Object

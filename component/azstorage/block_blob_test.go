@@ -3427,7 +3427,8 @@ func (s *blockBlobTestSuite) TestBlobFilters() {
 		}
 	}
 	s.assert.EqualValues(8, len(blobList))
-	s.az.storage.(*BlockBlob).SetFilter("name=^abcd.*")
+	err = s.az.storage.(*BlockBlob).SetFilter("name=^abcd.*")
+	s.assert.Nil(err)
 
 	blobList = make([]*internal.ObjAttr, 0)
 	for {
@@ -3444,7 +3445,8 @@ func (s *blockBlobTestSuite) TestBlobFilters() {
 	}
 	// Only 4 files matches the pattern but there is a directory as well and directories are not filtered by blobfilter
 	s.assert.EqualValues(5, len(blobList))
-	s.az.storage.(*BlockBlob).SetFilter("name=^bla.*")
+	err = s.az.storage.(*BlockBlob).SetFilter("name=^bla.*")
+	s.assert.Nil(err)
 
 	blobList = make([]*internal.ObjAttr, 0)
 	for {
@@ -3461,7 +3463,8 @@ func (s *blockBlobTestSuite) TestBlobFilters() {
 	}
 
 	s.assert.EqualValues(1, len(blobList))
-	s.az.storage.(*BlockBlob).SetFilter("")
+	err = s.az.storage.(*BlockBlob).SetFilter("")
+	s.assert.Nil(err)
 }
 
 func (suite *blockBlobTestSuite) UtilityFunctionTestTruncateFileToSmaller(size int, truncatedLength int) {
