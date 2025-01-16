@@ -357,6 +357,13 @@ func TestSparseWritingBlockOverlap(t *testing.T) {
 	removeFiles(t, filename)
 }
 
+// Test write at end of the file and call truncate to expand at the middle of the writes.
+// Test write at end of the file and call truncate to shrink at the middle of the writes.
+// Test open, shrink, write, close, This should result in hole at the middle
+// Test open, expand, write at middle, close, This should change the file size.
+// Test open, expand, write at end, close, This should change the file size.
+// Test stripe writing with go routines.
+
 // Test stripe writing.
 // stripe writing means opening the files at different offsets and writing from that offset writing some data and finally close all the file descriptions.
 func TestStripeWriting(t *testing.T) {

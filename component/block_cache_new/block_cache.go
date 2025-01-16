@@ -59,6 +59,7 @@ var bc *BlockCache
 var logy, logy2 *os.File
 var BlockSize int
 var bPool *BufferPool
+var wp *workerPool
 var memory int = 1024 * 1024 * 1024
 
 // Common structure for Component
@@ -107,13 +108,14 @@ func (bc *BlockCache) SetNextComponent(nc internal.Component) {
 func (bc *BlockCache) Start(ctx context.Context) error {
 	log.Trace("BlockCache::Start : Starting component block_cache new %s", bc.Name())
 	bPool = createBufferPool(memory)
+	wp = createWorkerPool(64)
 	return nil
 }
 
 // Stop : Stop the component functionality and kill all threads started
 func (bc *BlockCache) Stop() error {
 	log.Trace("BlockCache::Stop : Stopping component block_cache_new %s", bc.Name())
-
+	wp.destroyWorkerPool()
 	return nil
 }
 
@@ -219,7 +221,7 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 // ReadInBuffer: Read the file into a buffer
 func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
 	log.Trace("BlockCache::ReadFile : handle=%d, path=%s, offset: %d\n", options.Handle.ID, options.Handle.Path, options.Offset)
-	logy.Write([]byte(fmt.Sprintf("BlockCache::ReadFile : handle=%d, path=%s, offset: %d\n", options.Handle.ID, options.Handle.Path, options.Offset)))
+	//logy.Write([]byte(fmt.Sprintf("BlockCache::ReadFile : handle=%d, path=%s, offset: %d\n", options.Handle.ID, options.Handle.Path, options.Offset)))
 	h := options.Handle
 	if h.Prev_offset == options.Offset {
 		if h.Is_seq == 0 {
@@ -237,9 +239,9 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 	offset := options.Offset
 	dataRead := 0
 	len_of_copy := len(options.Data)
-	f.Lock()
-	options.Handle.Size = f.size // This is updated here as it is used by the nxt comp for upload usually not necessary!
-	f.Unlock()
+	// f.Lock()
+	// options.Handle.Size = f.size // This is updated here as it is used by the nxt comp for upload usually not necessary!
+	// f.Unlock()
 
 	if options.Offset >= options.Handle.Size {
 		// EOF reached so early exit
@@ -251,12 +253,12 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 		idx := getBlockIndex(offset)
 		var blk *block
 		var err error
-		if (options.Handle.Is_seq != 0) && ((offset % int64(BlockSize)) == 0) && (h.Is_seq < idx+5) {
+		if (options.Handle.Is_seq != 0) && ((offset % int64(BlockSize)) == 0) && (h.Is_seq < idx+20) {
 			logy2.WriteString(fmt.Sprintf("Read ahead starting at idx: %d, Is_seq : %d\n", idx, h.Is_seq))
 			blk, err = getBlockWithReadAhead(idx, int(options.Handle.Is_seq), options.Handle, f)
 			options.Handle.Is_seq += 3
 		} else {
-			blk, err = getBlockForRead(idx, options.Handle, f)
+			blk, err = getBlockForRead(idx, options.Handle, f, true)
 		}
 		if err != nil {
 			logy2.WriteString(fmt.Sprintf("Something went wrong inside loop\n"))
@@ -387,7 +389,7 @@ func (bc *BlockCache) TruncateFile(options internal.TruncateFileOptions) (err er
 	lenOfBlkLst := len(f.blockList)
 	changeStateOfBlockToLocal := func(idx int) error {
 		lstBlk := f.blockList[idx]
-		err = getBlock(idx, h, lstBlk)
+		err = getBlock(idx, h, f, lstBlk, true)
 		if err != nil {
 			log.Trace("BlockCache::Truncate File : FAILED when retrieving last block path=%s, size = %d", options.Name, options.Size)
 			return err
@@ -493,8 +495,8 @@ func (bc *BlockCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAtt
 	log.Trace("BlockCache::GetAttr : file=%s", options.Name)
 
 	attr, err := bc.NextComponent().GetAttr(options)
-	if err == nil {
-		logy.Write([]byte(fmt.Sprintf("BlockCache::GetAttr retrived: file=%s, size: %d\n", options.Name, attr.Size)))
+	if err != nil {
+		return attr, err
 	}
 	file, ok := checkFileExistsInOpen(options.Name)
 	if ok {

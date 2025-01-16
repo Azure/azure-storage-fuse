@@ -1009,6 +1009,7 @@ func (bc *BlockCache) download(item *workItem) {
 	// If file does not exists then download the block from the container
 	n, err := bc.NextComponent().ReadInBuffer(internal.ReadInBufferOptions{
 		Handle: item.handle,
+		Name:   item.handle.Path,
 		Offset: int64(item.block.offset),
 		Data:   item.block.data,
 	})

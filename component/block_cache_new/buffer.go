@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -81,11 +82,11 @@ func getBlockWithReadAhead(idx int, start int, h *handlemap.Handle, file *File) 
 			panic("Read ahead panic")
 		}
 	}()
-	blk, err := getBlockForRead(idx, h, file)
+	blk, err := getBlockForRead(idx, h, file, true)
 	for i := 1; i <= 3; i++ {
-		if i+start < (int(h.Size)+BlockSize-1)/BlockSize {
+		if i+start < (int(atomic.LoadInt64(&file.size))+BlockSize-1)/BlockSize {
 			logy2.WriteString(fmt.Sprintf("%v, idx %d, read ahead %d\n", h.Path, idx, i+start))
-			go getBlockForRead(i+start, h, file)
+			getBlockForRead(i+start, h, file, false)
 		}
 	}
 	return blk, err
@@ -93,7 +94,7 @@ func getBlockWithReadAhead(idx int, start int, h *handlemap.Handle, file *File) 
 
 // Returns the buffer containing block.
 // This call only successed if the block idx < len(blocklist)
-func getBlockForRead(idx int, h *handlemap.Handle, file *File) (*block, error) {
+func getBlockForRead(idx int, h *handlemap.Handle, file *File, sync bool) (*block, error) {
 	var blk *block
 
 	file.Lock()
@@ -110,43 +111,26 @@ func getBlockForRead(idx int, h *handlemap.Handle, file *File) (*block, error) {
 			file.Unlock()
 			return nil, errors.New("block is out of the blocklist scope")
 		}
-		h.Size = file.size // This is necessary as next component uses this value to check bounds
+		//h.Size = file.size // This is necessary as next component uses this value to check bounds
 		blk = file.blockList[idx]
 	}
 	file.Unlock()
-	return blk, getBlock(idx, h, blk)
+	return blk, getBlock(idx, h, file, blk, sync)
 }
 
-func getBlock(idx int, h *handlemap.Handle, blk *block) error {
+func getBlock(idx int, h *handlemap.Handle, f *File, blk *block, sync bool) (err error) {
 	blk.Lock()
-	defer blk.Unlock()
 	if blk.buf == nil {
-		blk.buf = bPool.getBuffer()
-		switch blk.state {
-		case localBlock:
-			// This case occurs when we get read call on local Blocks which are not even put on the wire.
-			return nil
-		case uncommitedBlock:
-			// This case occurs when we clear the uncommited block from the cache.
-			// generally the block should be committed otherwise old data will be served.
-			// Todo: Handle this case.
-			// We don't hit here yet as we dont invalidate cache entries for local and uncommited blocks
-			return errors.New("todo : read for uncommited block which was removed from the cache")
+		blk.Unlock()
+		wp.createTask(false, sync, f, blk)
+		if sync {
+			err = <-blk.downloadDone
 		}
-		dataRead, err := bc.NextComponent().ReadInBuffer(internal.ReadInBufferOptions{
-			Handle: h,
-			Offset: int64(idx * BlockSize),
-			Data:   blk.buf.data,
-		})
-		if err == nil {
-			blk.buf.dataSize = int64(dataRead)
-			blk.buf.timer = time.Now()
-		} else {
-			blk.buf = nil
-			return err
-		}
+		return
 	}
-	return nil
+	blk.Unlock()
+	err = <-blk.downloadDone
+	return
 }
 
 // This call will return buffer for writing for the block
@@ -176,10 +160,10 @@ func getBlockForWrite(idx int, h *handlemap.Handle, file *File) (*block, error) 
 		return file.blockList[idx], nil
 	}
 	blk := file.blockList[idx]
-	h.Size = file.size // This is necessary as next component uses this value to check bounds
+	//h.Size = file.size // This is necessary as next component uses this value to check bounds
 	file.Unlock()
 
-	return blk, getBlock(idx, h, blk)
+	return blk, getBlock(idx, h, file, blk, true)
 }
 
 // Write all the Modified buffers to Azure Storage.

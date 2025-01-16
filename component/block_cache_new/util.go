@@ -28,20 +28,26 @@ const (
 
 type block struct {
 	sync.RWMutex
-	idx   int     // Block Index
-	id    string  // Block Id
-	buf   *Buffer // Inmemory buffer if exists.
-	state int     // It tells about the state of the block.
-	hole  bool    // Hole means this block is a null block. This can be used to do some sneaky optimisations.
+	idx          int        // Block Index
+	id           string     // Block Id
+	buf          *Buffer    // Inmemory buffer if exists.
+	state        int        // It tells about the state of the block.
+	hole         bool       // Hole means this block is a null block. This can be used to do some optimisations.
+	downloadDone chan error // Channel to block on until the download completes.
 }
 
 func createBlock(idx int, id string, block_type int) *block {
-	return &block{idx: idx,
-		id:    id,
-		buf:   nil,
-		state: block_type,
-		hole:  false,
+	blk := &block{idx: idx,
+		id:           id,
+		buf:          nil,
+		state:        block_type,
+		hole:         false,
+		downloadDone: make(chan error, 1),
 	}
+	if block_type == localBlock {
+		close(blk.downloadDone)
+	}
+	return blk
 }
 
 type blockList []*block
