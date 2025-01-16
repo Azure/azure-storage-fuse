@@ -8,6 +8,7 @@
 - Optimized listing operation on HNS account to support symlinks.
 
 **Features**
+- Mount container or directory but restrict the view of blobs that you can see. This feature is available only in read-only mount.
 - To protect against accidental overwrites on data stored by block-cache on temp path, md5 sums will be validated on read. This feature can be enabled by using `--block-cache-strong-consistency` cli flag.
 
 ## 2.4.0 (2024-12-03)

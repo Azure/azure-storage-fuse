@@ -57,6 +57,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
+	"github.com/vibhansa-msft/blobfilter"
 )
 
 const (
@@ -518,10 +519,23 @@ func (bb *BlockBlob) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 
 	// To support virtual directories with no marker blob, we call list instead of get properties since list will not return a 404
 	if bb.Config.virtualDirectory {
-		return bb.getAttrUsingList(name)
+		attr, err = bb.getAttrUsingList(name)
+	} else {
+		attr, err = bb.getAttrUsingRest(name)
 	}
 
-	return bb.getAttrUsingRest(name)
+	if bb.Config.filter != nil && attr != nil {
+		if !bb.Config.filter.IsAcceptable(&blobfilter.BlobAttr{
+			Name:  attr.Name,
+			Mtime: attr.Mtime,
+			Size:  attr.Size,
+		}) {
+			log.Debug("BlockBlob::GetAttr : Filtered out %s", name)
+			return nil, syscall.ENOENT
+		}
+	}
+
+	return attr, err
 }
 
 // List : Get a list of blobs matching the given prefix
@@ -595,18 +609,32 @@ func (bb *BlockBlob) processBlobItems(blobItems []*container.BlobItem) ([]*inter
 	blobList := make([]*internal.ObjAttr, 0)
 	// For some directories 0 byte meta file may not exists so just create a map to figure out such directories
 	dirList := make(map[string]bool)
+	filterAttr := blobfilter.BlobAttr{}
 
 	for _, blobInfo := range blobItems {
-		attr, err := bb.getBlobAttr(blobInfo)
+		blobAttr, err := bb.getBlobAttr(blobInfo)
 		if err != nil {
 			return nil, nil, err
 		}
-		blobList = append(blobList, attr)
 
-		if attr.IsDir() {
+		if blobAttr.IsDir() {
 			// 0 byte meta found so mark this directory in map
 			dirList[*blobInfo.Name+"/"] = true
-			attr.Size = 4096
+			blobAttr.Size = 4096
+		}
+
+		if bb.Config.filter != nil && !blobAttr.IsDir() {
+			filterAttr.Name = blobAttr.Name
+			filterAttr.Mtime = blobAttr.Mtime
+			filterAttr.Size = blobAttr.Size
+
+			if bb.Config.filter.IsAcceptable(&filterAttr) {
+				blobList = append(blobList, blobAttr)
+			} else {
+				log.Debug("BlockBlob::List : Filtered out blob %s", blobAttr.Name)
+			}
+		} else {
+			blobList = append(blobList, blobAttr)
 		}
 	}
 
@@ -1555,4 +1583,14 @@ func (bb *BlockBlob) CommitBlocks(name string, blockList []string) error {
 	}
 
 	return nil
+}
+
+func (bb *BlockBlob) SetFilter(filter string) error {
+	if filter == "" {
+		bb.Config.filter = nil
+		return nil
+	}
+
+	bb.Config.filter = &blobfilter.BlobFilter{}
+	return bb.Config.filter.Configure(filter)
 }
