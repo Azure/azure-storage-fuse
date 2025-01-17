@@ -52,8 +52,8 @@ steps:
       mkdir logs
     displayName: 'Print config file'
 
-    - script: |
-     if [ -d "logs" ]; then  rm -rf logs; mkdir logs  ; fi
+  - script: |
+      if [ -d "logs" ]; then  rm -rf logs; mkdir logs  ; fi
     displayName: 'Create logs directory'
 
   - template: 'mount.yml'
