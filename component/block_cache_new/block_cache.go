@@ -40,6 +40,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/user"
+	"path/filepath"
+	"strings"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
@@ -507,13 +510,26 @@ func (bc *BlockCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAtt
 	return attr, err
 }
 
+func expandPath(path string) (string, error) {
+	if strings.HasPrefix(path, "~/") {
+		usr, err := user.Current()
+		if err != nil {
+			return "", err
+		}
+		path = filepath.Join(usr.HomeDir, path[2:])
+	}
+	return filepath.Abs(path)
+}
+
 // ------------------------- Factory -------------------------------------------
 // Pipeline will call this method to create your object, initialize your variables here
 // << DO NOT DELETE ANY AUTO GENERATED CODE HERE >>
 func NewBlockCacheComponent() internal.Component {
 	comp := &BlockCache{}
-	logy, _ = os.OpenFile("/home/fantom/logs/logy.txt", os.O_RDWR, 0666)
-	logy2, _ = os.OpenFile("/home/fantom/logs/logy2.txt", os.O_RDWR, 0666)
+	a, _ := expandPath("~/logs/logy.txt")
+	b, _ := expandPath("~/logs/logy2.txt")
+	logy, _ = os.OpenFile(a, os.O_RDWR, 0666)
+	logy2, _ = os.OpenFile(b, os.O_RDWR, 0666)
 	comp.blockSize = 8 * 1024 * 1024
 	BlockSize = int(comp.blockSize)
 	comp.SetName(compName)

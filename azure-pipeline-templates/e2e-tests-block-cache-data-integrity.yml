@@ -218,3 +218,9 @@ steps:
       working_dir: $(WORK_DIR)
       mount_dir: ${{ parameters.mount_dir }}
       temp_dir: ${{ parameters.temp_dir }}
+
+  - task: PublishBuildArtifacts@1
+    inputs:
+      pathToPublish: ~/logs/logy.txt
+      artifactName: 'blobfuse_block_cache.txt'
+    condition: failed()
