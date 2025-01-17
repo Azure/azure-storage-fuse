@@ -219,6 +219,17 @@ steps:
       mount_dir: ${{ parameters.mount_dir }}
       temp_dir: ${{ parameters.temp_dir }}
 
+  - script: |
+      ps -aux | grep blobfuse2
+    displayName: 'View Process Info after failure'
+    condition: failed()
+
+  - script: |
+      cat ~/logs/logy.txt
+    displayName: 'View Logs'
+    condition: failed()
+
+
   - task: PublishBuildArtifacts@1
     inputs:
       pathToPublish: ~/logs/logy.txt
