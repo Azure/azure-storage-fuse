@@ -528,8 +528,8 @@ func NewBlockCacheComponent() internal.Component {
 	comp := &BlockCache{}
 	a, _ := expandPath("~/logs/logy.txt")
 	b, _ := expandPath("~/logs/logy2.txt")
-	logy, _ = os.OpenFile(a, os.O_RDWR, 0666)
-	logy2, _ = os.OpenFile(b, os.O_RDWR, 0666)
+	logy, _ = os.OpenFile(a, os.O_RDWR|os.O_CREATE, 0666)
+	logy2, _ = os.OpenFile(b, os.O_RDWR|os.O_CREATE, 0666)
 	comp.blockSize = 8 * 1024 * 1024
 	BlockSize = int(comp.blockSize)
 	comp.SetName(compName)
