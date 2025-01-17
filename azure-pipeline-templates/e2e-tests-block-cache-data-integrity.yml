@@ -125,7 +125,7 @@ steps:
     displayName: 'Print contents of Block-Cache'
 
   - script: |
-      md5sum ${{ parameters.mount_dir }}/datafiles_* | tee $(WORK_DIR)/md5sum_block_cache.txt &
+      md5sum ${{ parameters.mount_dir }}/datafiles_* | tee $(WORK_DIR)/md5sum_block_cache.txt
       md5sum ${{ parameters.mount_dir }}/mixedfiles_* | tee -a $(WORK_DIR)/md5sum_block_cache.txt
     displayName: 'Generate md5Sum with Block-Cache'
 
