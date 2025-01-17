@@ -111,7 +111,7 @@ func (bc *BlockCache) SetNextComponent(nc internal.Component) {
 func (bc *BlockCache) Start(ctx context.Context) error {
 	log.Trace("BlockCache::Start : Starting component block_cache new %s", bc.Name())
 	bPool = createBufferPool(memory)
-	wp = createWorkerPool(64)
+	wp = createWorkerPool(390)
 	return nil
 }
 
