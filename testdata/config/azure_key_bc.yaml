@@ -6,7 +6,7 @@ logging:
 components:
   - libfuse
   - block_cache_new
-  #- attr_cache
+  - attr_cache
   - azstorage
 
 libfuse:
