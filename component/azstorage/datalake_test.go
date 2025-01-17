@@ -12,7 +12,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -39,12 +39,15 @@ package azstorage
 import (
 	"bytes"
 	"container/list"
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"testing"
@@ -120,7 +123,6 @@ func (s *datalakeTestSuite) setupTestHelper(configuration string, container stri
 			storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsKey, s.container)
 	}
 	s.config = configuration
-
 	s.assert = assert.New(s.T())
 
 	s.az, _ = newTestAzStorage(configuration)
@@ -455,7 +457,7 @@ func (s *datalakeTestSuite) TestIsDirEmptyError() {
 
 	empty := s.az.IsDirEmpty(internal.IsDirEmptyOptions{Name: name})
 
-	s.assert.False(empty) // Note: See comment in BlockBlob.List. BlockBlob behaves differently from Datalake
+	s.assert.True(empty) // Note: See comment in BlockBlob.List. BlockBlob behaves differently from Datalake
 
 	// Directory should not be in the account
 	dir := s.containerClient.NewDirectoryClient(name)
@@ -491,19 +493,20 @@ func (s *datalakeTestSuite) TestReadDirHierarchy() {
 	s.setupHierarchy(base)
 
 	// ReadDir only reads the first level of the hierarchy
+	//Using listblob api lists the files before directories so the order is reversed
 	entries, err := s.az.ReadDir(internal.ReadDirOptions{Name: base})
 	s.assert.Nil(err)
 	s.assert.EqualValues(2, len(entries))
 	// Check the dir
-	s.assert.EqualValues(base+"/c1", entries[0].Path)
-	s.assert.EqualValues("c1", entries[0].Name)
-	s.assert.True(entries[0].IsDir())
-	s.assert.False(entries[0].IsModeDefault())
-	// Check the file
-	s.assert.EqualValues(base+"/c2", entries[1].Path)
-	s.assert.EqualValues("c2", entries[1].Name)
-	s.assert.False(entries[1].IsDir())
+	s.assert.EqualValues(base+"/c1", entries[1].Path)
+	s.assert.EqualValues("c1", entries[1].Name)
+	s.assert.True(entries[1].IsDir())
 	s.assert.False(entries[1].IsModeDefault())
+	// Check the file
+	s.assert.EqualValues(base+"/c2", entries[0].Path)
+	s.assert.EqualValues("c2", entries[0].Name)
+	s.assert.False(entries[0].IsDir())
+	s.assert.False(entries[0].IsModeDefault())
 }
 
 func (s *datalakeTestSuite) TestReadDirRoot() {
@@ -521,21 +524,22 @@ func (s *datalakeTestSuite) TestReadDirRoot() {
 			entries, err := s.az.ReadDir(internal.ReadDirOptions{Name: path})
 			s.assert.Nil(err)
 			s.assert.EqualValues(3, len(entries))
+			//Listblob api lists files before directories so the order is reversed
 			// Check the base dir
-			s.assert.EqualValues(base, entries[0].Path)
-			s.assert.EqualValues(base, entries[0].Name)
-			s.assert.True(entries[0].IsDir())
-			s.assert.False(entries[0].IsModeDefault())
-			// Check the baseb dir
-			s.assert.EqualValues(base+"b", entries[1].Path)
-			s.assert.EqualValues(base+"b", entries[1].Name)
+			s.assert.EqualValues(base, entries[1].Path)
+			s.assert.EqualValues(base, entries[1].Name)
 			s.assert.True(entries[1].IsDir())
 			s.assert.False(entries[1].IsModeDefault())
-			// Check the basec file
-			s.assert.EqualValues(base+"c", entries[2].Path)
-			s.assert.EqualValues(base+"c", entries[2].Name)
-			s.assert.False(entries[2].IsDir())
+			// Check the baseb dir
+			s.assert.EqualValues(base+"b", entries[2].Path)
+			s.assert.EqualValues(base+"b", entries[2].Name)
+			s.assert.True(entries[2].IsDir())
 			s.assert.False(entries[2].IsModeDefault())
+			// Check the basec file
+			s.assert.EqualValues(base+"c", entries[0].Path)
+			s.assert.EqualValues(base+"c", entries[0].Name)
+			s.assert.False(entries[0].IsDir())
+			s.assert.False(entries[0].IsModeDefault())
 		})
 	}
 }
@@ -570,7 +574,7 @@ func (s *datalakeTestSuite) TestReadDirSubDirPrefixPath() {
 	s.assert.Nil(err)
 	s.assert.EqualValues(1, len(entries))
 	// Check the dir
-	s.assert.EqualValues(base+"/c1"+"/gc1", entries[0].Path)
+	s.assert.EqualValues("c1"+"/gc1", entries[0].Path)
 	s.assert.EqualValues("gc1", entries[0].Name)
 	s.assert.False(entries[0].IsDir())
 	s.assert.False(entries[0].IsModeDefault())
@@ -583,7 +587,7 @@ func (s *datalakeTestSuite) TestReadDirError() {
 
 	entries, err := s.az.ReadDir(internal.ReadDirOptions{Name: name})
 
-	s.assert.NotNil(err) // Note: See comment in BlockBlob.List. BlockBlob behaves differently from Datalake
+	s.assert.Nil(err) // Note: See comment in BlockBlob.List. BlockBlob behaves differently from Datalake
 	s.assert.Empty(entries)
 	// Directory should not be in the account
 	dir := s.containerClient.NewDirectoryClient(name)
@@ -2566,6 +2570,253 @@ func (s *datalakeTestSuite) TestUploadWithCPKEnabled() {
 	_ = s.az.storage.DeleteFile(name1)
 	_ = s.az.storage.DeleteFile(name2)
 	_ = os.Remove(name1)
+}
+
+func getACL(dl *Datalake, name string) (string, error) {
+	fileClient := dl.Filesystem.NewFileClient(filepath.Join(dl.Config.prefixPath, name))
+	acl, err := fileClient.GetAccessControl(context.Background(), nil)
+
+	if err != nil || acl.ACL == nil {
+		return "", err
+	}
+
+	return *acl.ACL, nil
+}
+
+func (s *datalakeTestSuite) createFileWithData(name string, data []byte, mode os.FileMode) {
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	_, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.assert.Nil(err)
+
+	err = s.az.Chmod(internal.ChmodOptions{Name: name, Mode: mode})
+	s.assert.Nil(err)
+
+	s.az.CloseFile(internal.CloseFileOptions{Handle: h})
+	s.assert.Nil(err)
+}
+
+func (s *datalakeTestSuite) TestPermissionPreservationWithoutFlag() {
+	defer s.cleanupTest()
+	name := generateFileName()
+
+	data := []byte("test data")
+	mode := fs.FileMode(0764)
+	s.createFileWithData(name, data, mode)
+	// Simulate file copy and permission checks
+	_ = os.WriteFile(name+"_local", []byte("123123"), mode)
+	f, err := os.OpenFile(name+"_local", os.O_RDWR, mode)
+	s.assert.Nil(err)
+
+	err = s.az.CopyFromFile(internal.CopyFromFileOptions{Name: name, File: f, Metadata: nil})
+	s.assert.Nil(err)
+	attr, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
+	s.assert.Nil(err)
+	s.assert.NotNil(attr)
+	s.assert.NotEqual(os.FileMode(0764), attr.Mode)
+
+	acl, err := getACL(s.az.storage.(*Datalake), name)
+	s.assert.Nil(err)
+	s.assert.Contains(acl, "user::rw-")
+	s.assert.Contains(acl, "group::r--")
+	s.assert.Contains(acl, "other::---")
+
+	os.Remove(name + "_local")
+}
+
+func (s *datalakeTestSuite) TestPermissionPreservationWithFlag() {
+	defer s.cleanupTest()
+	// Setup
+	conf := fmt.Sprintf("azstorage:\n  preserve-acl: true\n  account-name: %s\n  endpoint: https://%s.dfs.core.windows.net/\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
+		storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsKey, s.container)
+	s.setupTestHelper(conf, s.container, false)
+
+	name := generateFileName()
+	data := []byte("test data")
+	mode := fs.FileMode(0764)
+	s.createFileWithData(name, data, mode)
+	// Simulate file copy and permission checks
+	_ = os.WriteFile(name+"_local", []byte("123123"), mode)
+	f, err := os.OpenFile(name+"_local", os.O_RDWR, mode)
+	s.assert.Nil(err)
+
+	err = s.az.CopyFromFile(internal.CopyFromFileOptions{Name: name, File: f, Metadata: nil})
+	s.assert.Nil(err)
+
+	attr, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
+	s.assert.Nil(err)
+	s.assert.NotNil(attr)
+	s.assert.Equal(os.FileMode(0764), attr.Mode)
+
+	acl, err := getACL(s.az.storage.(*Datalake), name)
+	s.assert.Nil(err)
+	s.assert.Contains(acl, "user::rwx")
+	s.assert.Contains(acl, "group::rw-")
+	s.assert.Contains(acl, "other::r--")
+
+	os.Remove(name + "_local")
+}
+
+func (s *datalakeTestSuite) TestPermissionPreservationWithCommit() {
+	defer s.cleanupTest()
+	// Setup
+	s.setupTestHelper("", s.container, false)
+	name := generateFileName()
+	s.createFileWithData(name, []byte("test data"), fs.FileMode(0767))
+	data := []byte("123123")
+
+	id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
+	err := s.az.StageData(internal.StageDataOptions{
+		Name:   name,
+		Id:     id,
+		Data:   data,
+		Offset: 0,
+	})
+	s.assert.Nil(err)
+
+	ids := []string{}
+	ids = append(ids, id)
+	err = s.az.CommitData(internal.CommitDataOptions{
+		Name:      name,
+		List:      ids,
+		BlockSize: 1,
+	})
+	s.assert.Nil(err)
+
+	attr, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
+	s.assert.Nil(err)
+	s.assert.NotNil(attr)
+	s.assert.EqualValues(os.FileMode(0767), attr.Mode)
+
+	acl, err := getACL(s.az.storage.(*Datalake), name)
+	s.assert.Nil(err)
+	s.assert.Contains(acl, "user::rwx")
+	s.assert.Contains(acl, "group::rw-")
+	s.assert.Contains(acl, "other::rwx")
+}
+
+func (s *datalakeTestSuite) TestBlobFilters() {
+	defer s.cleanupTest()
+	// Setup
+	var err error
+	name := generateDirectoryName()
+	err = s.az.CreateDir(internal.CreateDirOptions{Name: name})
+	s.assert.Nil(err)
+	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/abcd1.txt"})
+	s.assert.Nil(err)
+	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/abcd2.txt"})
+	s.assert.Nil(err)
+	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/abcd3.txt"})
+	s.assert.Nil(err)
+	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/abcd4.txt"})
+	s.assert.Nil(err)
+	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/bcd1.txt"})
+	s.assert.Nil(err)
+	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/cd1.txt"})
+	s.assert.Nil(err)
+	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/d1.txt"})
+	s.assert.Nil(err)
+	err = s.az.CreateDir(internal.CreateDirOptions{Name: name + "/subdir"})
+	s.assert.Nil(err)
+
+	var iteration int = 0
+	var marker string = ""
+	blobList := make([]*internal.ObjAttr, 0)
+
+	for {
+		new_list, new_marker, err := s.az.StreamDir(internal.StreamDirOptions{Name: name + "/", Token: marker, Count: 50})
+		s.assert.Nil(err)
+		blobList = append(blobList, new_list...)
+		marker = new_marker
+		iteration++
+
+		log.Debug("AzStorage::ReadDir : So far retrieved %d objects in %d iterations", len(blobList), iteration)
+		if new_marker == "" {
+			break
+		}
+	}
+	s.assert.EqualValues(8, len(blobList))
+	err = s.az.storage.(*Datalake).SetFilter("name=^abcd.*")
+	s.assert.Nil(err)
+
+	blobList = make([]*internal.ObjAttr, 0)
+	for {
+		new_list, new_marker, err := s.az.StreamDir(internal.StreamDirOptions{Name: name + "/", Token: marker, Count: 50})
+		s.assert.Nil(err)
+		blobList = append(blobList, new_list...)
+		marker = new_marker
+		iteration++
+
+		log.Debug("AzStorage::ReadDir : So far retrieved %d objects in %d iterations", len(blobList), iteration)
+		if new_marker == "" {
+			break
+		}
+	}
+
+	s.assert.EqualValues(5, len(blobList))
+	err = s.az.storage.(*Datalake).SetFilter("name=^bla.*")
+	s.assert.Nil(err)
+
+	blobList = make([]*internal.ObjAttr, 0)
+	for {
+		new_list, new_marker, err := s.az.StreamDir(internal.StreamDirOptions{Name: name + "/", Token: marker, Count: 50})
+		s.assert.Nil(err)
+		blobList = append(blobList, new_list...)
+		marker = new_marker
+		iteration++
+
+		log.Debug("AzStorage::ReadDir : So far retrieved %d objects in %d iterations", len(blobList), iteration)
+		if new_marker == "" {
+			break
+		}
+	}
+
+	s.assert.EqualValues(1, len(blobList))
+	err = s.az.storage.(*Datalake).SetFilter("")
+	s.assert.Nil(err)
+}
+
+func (s *datalakeTestSuite) TestList() {
+	defer s.cleanupTest()
+	// Setup
+	s.tearDownTestHelper(false) // Don't delete the generated container.
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.dfs.core.windows.net/\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n",
+		storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsKey, s.container)
+	s.setupTestHelper(config, s.container, false)
+
+	base := generateDirectoryName()
+	s.setupHierarchy(base)
+
+	blobList, marker, err := s.az.storage.List(base, nil, 0)
+	s.assert.Nil(err)
+	emptyString := ""
+	s.assert.Equal(&emptyString, marker)
+	s.assert.NotNil(blobList)
+	s.assert.EqualValues(3, len(blobList))
+	s.assert.NotEqual(0, blobList[0].Mode)
+
+	// Test listing with prefix
+	blobList, marker, err = s.az.storage.List(base+"b/", nil, 0)
+	s.assert.Nil(err)
+	s.assert.Equal(&emptyString, marker)
+	s.assert.NotNil(blobList)
+	s.assert.EqualValues(1, len(blobList))
+	s.assert.EqualValues("c1", blobList[0].Name)
+	s.assert.NotEqual(0, blobList[0].Mode)
+
+	// Test listing with marker
+	blobList, marker, err = s.az.storage.List(base, to.Ptr("invalid-marker"), 0)
+	s.assert.NotNil(err)
+	s.assert.Equal(0, len(blobList))
+	s.assert.Nil(marker)
+
+	// Test listing with count
+	blobList, marker, err = s.az.storage.List("", nil, 1)
+	s.assert.Nil(err)
+	s.assert.NotNil(blobList)
+	s.assert.NotEmpty(marker)
+	s.assert.EqualValues(1, len(blobList))
+	s.assert.EqualValues(base, blobList[0].Path)
+	s.assert.NotEqual(0, blobList[0].Mode)
 }
 
 // func (s *datalakeTestSuite) TestRAGRS() {

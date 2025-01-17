@@ -27,7 +27,6 @@ azstorage:
   type: block
   account-name: <ACCOUNT_NAME>
   sas: <SAS_TOKEN>
-  endpoint: https://<ACCOUNT_NAME>.blob.core.windows.net
   mode: sas
   container: <CONTAINER_NAME>
  

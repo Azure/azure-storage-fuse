@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -34,6 +34,8 @@
 package azstorage
 
 import (
+	"context"
+
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/service"
@@ -65,6 +67,20 @@ func (azspn *azAuthSPN) getTokenCredential() (azcore.TokenCredential, error) {
 			TenantID:      azspn.config.TenantID,
 			TokenFilePath: azspn.config.OAuthTokenFilePath,
 		})
+		if err != nil {
+			log.Err("AzAuthSPN::getTokenCredential : Failed to generate token for SPN [%s]", err.Error())
+			return nil, err
+		}
+	} else if azspn.config.WorkloadIdentityToken != "" {
+		log.Trace("AzAuthSPN::getTokenCredential : Going for fedrated token flow ")
+
+		cred, err = azidentity.NewClientAssertionCredential(
+			azspn.config.TenantID,
+			azspn.config.ClientID,
+			func(ctx context.Context) (string, error) {
+				return azspn.config.WorkloadIdentityToken, nil
+			},
+			&azidentity.ClientAssertionCredentialOptions{})
 		if err != nil {
 			log.Err("AzAuthSPN::getTokenCredential : Failed to generate token for SPN [%s]", err.Error())
 			return nil, err

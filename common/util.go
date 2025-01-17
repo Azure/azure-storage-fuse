@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -39,7 +39,9 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"encoding/binary"
 	"fmt"
+	"hash/crc64"
 	"io"
 	"os"
 	"os/exec"
@@ -499,4 +501,15 @@ func WriteToFile(filename string, data string, options WriteToFileOptions) error
 	}
 
 	return nil
+}
+
+func GetCRC64(data []byte, len int) []byte {
+	// Create a CRC64 hash using the ECMA polynomial
+	crc64Table := crc64.MakeTable(crc64.ECMA)
+	checksum := crc64.Checksum(data[:len], crc64Table)
+
+	checksumBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(checksumBytes, checksum)
+
+	return checksumBytes
 }

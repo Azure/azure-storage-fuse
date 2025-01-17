@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -476,6 +476,13 @@ func (lfs *LoopbackFS) CommitData(options internal.CommitDataOptions) error {
 	if err != nil {
 		log.Err("LoopbackFS::CommitData : error opening [%s]", err)
 		return err
+	}
+
+	if len(options.List) == 0 {
+		err = blob.Truncate(0)
+		if err != nil {
+			return err
+		}
 	}
 
 	for idx, id := range options.List {

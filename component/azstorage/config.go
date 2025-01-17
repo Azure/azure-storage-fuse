@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -42,6 +42,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/vibhansa-msft/blobfilter"
 
 	"github.com/JeffreyRichter/enum/enum"
 )
@@ -124,24 +125,25 @@ const DefaultMaxResultsForList int32 = 2
 // https://github.com/Azure/go-autorest/blob/a46566dfcbdc41e736295f94e9f690ceaf50094a/autorest/adal/token.go#L788
 // newServicePrincipalTokenFromMSI : reads them directly from env
 const (
-	EnvAzStorageAccount                = "AZURE_STORAGE_ACCOUNT"
-	EnvAzStorageAccountType            = "AZURE_STORAGE_ACCOUNT_TYPE"
-	EnvAzStorageAccessKey              = "AZURE_STORAGE_ACCESS_KEY"
-	EnvAzStorageSasToken               = "AZURE_STORAGE_SAS_TOKEN"
-	EnvAzStorageIdentityClientId       = "AZURE_STORAGE_IDENTITY_CLIENT_ID"
-	EnvAzStorageIdentityResourceId     = "AZURE_STORAGE_IDENTITY_RESOURCE_ID"
-	EnvAzStorageIdentityObjectId       = "AZURE_STORAGE_IDENTITY_OBJECT_ID"
-	EnvAzStorageSpnTenantId            = "AZURE_STORAGE_SPN_TENANT_ID"
-	EnvAzStorageSpnClientId            = "AZURE_STORAGE_SPN_CLIENT_ID"
-	EnvAzStorageSpnClientSecret        = "AZURE_STORAGE_SPN_CLIENT_SECRET"
-	EnvAzStorageSpnOAuthTokenFilePath  = "AZURE_OAUTH_TOKEN_FILE"
-	EnvAzStorageAadEndpoint            = "AZURE_STORAGE_AAD_ENDPOINT"
-	EnvAzStorageAuthType               = "AZURE_STORAGE_AUTH_TYPE"
-	EnvAzStorageBlobEndpoint           = "AZURE_STORAGE_BLOB_ENDPOINT"
-	EnvAzStorageAccountContainer       = "AZURE_STORAGE_ACCOUNT_CONTAINER"
-	EnvAzAuthResource                  = "AZURE_STORAGE_AUTH_RESOURCE"
-	EnvAzStorageCpkEncryptionKey       = "AZURE_STORAGE_CPK_ENCRYPTION_KEY"
-	EnvAzStorageCpkEncryptionKeySha256 = "AZURE_STORAGE_CPK_ENCRYPTION_KEY_SHA256"
+	EnvAzStorageAccount                  = "AZURE_STORAGE_ACCOUNT"
+	EnvAzStorageAccountType              = "AZURE_STORAGE_ACCOUNT_TYPE"
+	EnvAzStorageAccessKey                = "AZURE_STORAGE_ACCESS_KEY"
+	EnvAzStorageSasToken                 = "AZURE_STORAGE_SAS_TOKEN"
+	EnvAzStorageIdentityClientId         = "AZURE_STORAGE_IDENTITY_CLIENT_ID"
+	EnvAzStorageIdentityResourceId       = "AZURE_STORAGE_IDENTITY_RESOURCE_ID"
+	EnvAzStorageIdentityObjectId         = "AZURE_STORAGE_IDENTITY_OBJECT_ID"
+	EnvAzStorageSpnTenantId              = "AZURE_STORAGE_SPN_TENANT_ID"
+	EnvAzStorageSpnClientId              = "AZURE_STORAGE_SPN_CLIENT_ID"
+	EnvAzStorageSpnClientSecret          = "AZURE_STORAGE_SPN_CLIENT_SECRET"
+	EnvAzStorageSpnOAuthTokenFilePath    = "AZURE_OAUTH_TOKEN_FILE"
+	EnvAzStorageSpnWorkloadIdentityToken = "WORKLOAD_IDENTITY_TOKEN"
+	EnvAzStorageAadEndpoint              = "AZURE_STORAGE_AAD_ENDPOINT"
+	EnvAzStorageAuthType                 = "AZURE_STORAGE_AUTH_TYPE"
+	EnvAzStorageBlobEndpoint             = "AZURE_STORAGE_BLOB_ENDPOINT"
+	EnvAzStorageAccountContainer         = "AZURE_STORAGE_ACCOUNT_CONTAINER"
+	EnvAzAuthResource                    = "AZURE_STORAGE_AUTH_RESOURCE"
+	EnvAzStorageCpkEncryptionKey         = "AZURE_STORAGE_CPK_ENCRYPTION_KEY"
+	EnvAzStorageCpkEncryptionKeySha256   = "AZURE_STORAGE_CPK_ENCRYPTION_KEY_SHA256"
 )
 
 type AzStorageOptions struct {
@@ -157,6 +159,7 @@ type AzStorageOptions struct {
 	ClientID                string `config:"clientid" yaml:"clientid,omitempty"`
 	ClientSecret            string `config:"clientsecret" yaml:"clientsecret,omitempty"`
 	OAuthTokenFilePath      string `config:"oauth-token-path" yaml:"oauth-token-path,omitempty"`
+	WorkloadIdentityToken   string `config:"workload-identity-token" yaml:"workload-identity-token,omitempty"`
 	ActiveDirectoryEndpoint string `config:"aadendpoint" yaml:"aadendpoint,omitempty"`
 	Endpoint                string `config:"endpoint" yaml:"endpoint,omitempty"`
 	AuthMode                string `config:"mode" yaml:"mode,omitempty"`
@@ -184,6 +187,8 @@ type AzStorageOptions struct {
 	CPKEnabled              bool   `config:"cpk-enabled" yaml:"cpk-enabled"`
 	CPKEncryptionKey        string `config:"cpk-encryption-key" yaml:"cpk-encryption-key"`
 	CPKEncryptionKeySha256  string `config:"cpk-encryption-key-sha256" yaml:"cpk-encryption-key-sha256"`
+	PreserveACL             bool   `config:"preserve-acl" yaml:"preserve-acl"`
+	Filter                  string `config:"filter" yaml:"filter"`
 
 	// v1 support
 	UseAdls        bool   `config:"use-adls" yaml:"-"`
@@ -208,6 +213,7 @@ func RegisterEnvVariables() {
 	config.BindEnv("azstorage.clientid", EnvAzStorageSpnClientId)
 	config.BindEnv("azstorage.clientsecret", EnvAzStorageSpnClientSecret)
 	config.BindEnv("azstorage.oauth-token-path", EnvAzStorageSpnOAuthTokenFilePath)
+	config.BindEnv("azstorage.workload-identity-token", EnvAzStorageSpnWorkloadIdentityToken)
 
 	config.BindEnv("azstorage.objid", EnvAzStorageIdentityObjectId)
 
@@ -450,14 +456,15 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		az.stConfig.authConfig.ResourceID = opt.ResourceID
 	case EAuthType.SPN():
 		az.stConfig.authConfig.AuthMode = EAuthType.SPN()
-		if opt.ClientID == "" || (opt.ClientSecret == "" && opt.OAuthTokenFilePath == "") || opt.TenantID == "" {
+		if opt.ClientID == "" || (opt.ClientSecret == "" && opt.OAuthTokenFilePath == "" && opt.WorkloadIdentityToken == "") || opt.TenantID == "" {
 			//lint:ignore ST1005 ignore
-			return errors.New("Client ID, Tenant ID or Client Secret not provided")
+			return errors.New("Client ID, Tenant ID or Client Secret, OAuthTokenFilePath, WorkloadIdentityToken not provided")
 		}
 		az.stConfig.authConfig.ClientID = opt.ClientID
 		az.stConfig.authConfig.ClientSecret = opt.ClientSecret
 		az.stConfig.authConfig.TenantID = opt.TenantID
 		az.stConfig.authConfig.OAuthTokenFilePath = opt.OAuthTokenFilePath
+		az.stConfig.authConfig.WorkloadIdentityToken = opt.WorkloadIdentityToken
 	case EAuthType.AZCLI():
 		az.stConfig.authConfig.AuthMode = EAuthType.AZCLI()
 
@@ -498,15 +505,42 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		log.Warn("unsupported v1 CLI parameter: debug-libcurl is not applicable in blobfuse2.")
 	}
 
+	az.stConfig.preserveACL = opt.PreserveACL
+	if opt.Filter != "" {
+		err = configureBlobFilter(az, opt)
+		if err != nil {
+			return err
+		}
+	}
+
 	log.Crit("ParseAndValidateConfig : account %s, container %s, account-type %s, auth %s, prefix %s, endpoint %s, MD5 %v %v, virtual-directory %v, disable-compression %v, CPK %v",
 		az.stConfig.authConfig.AccountName, az.stConfig.container, az.stConfig.authConfig.AccountType, az.stConfig.authConfig.AuthMode,
 		az.stConfig.prefixPath, az.stConfig.authConfig.Endpoint, az.stConfig.validateMD5, az.stConfig.updateMD5, az.stConfig.virtualDirectory, az.stConfig.disableCompression, az.stConfig.cpkEnabled)
 	log.Crit("ParseAndValidateConfig : use-HTTP %t, block-size %d, max-concurrency %d, default-tier %s, fail-unsupported-op %t, mount-all-containers %t", az.stConfig.authConfig.UseHTTP, az.stConfig.blockSize, az.stConfig.maxConcurrency, az.stConfig.defaultTier, az.stConfig.ignoreAccessModifiers, az.stConfig.mountAllContainers)
-	log.Crit("ParseAndValidateConfig : Retry Config: retry-count %d, max-timeout %d, backoff-time %d, max-delay %d",
-		az.stConfig.maxRetries, az.stConfig.maxTimeout, az.stConfig.backoffTime, az.stConfig.maxRetryDelay)
+	log.Crit("ParseAndValidateConfig : Retry Config: retry-count %d, max-timeout %d, backoff-time %d, max-delay %d, preserve-acl: %v",
+		az.stConfig.maxRetries, az.stConfig.maxTimeout, az.stConfig.backoffTime, az.stConfig.maxRetryDelay, az.stConfig.preserveACL)
 
-	log.Crit("ParseAndValidateConfig : Telemetry : %s, honour-ACL %v, disable-symlink %v", az.stConfig.telemetry, az.stConfig.honourACL, az.stConfig.disableSymlink)
+	log.Crit("ParseAndValidateConfig : Telemetry : %s, honour-ACL %v", az.stConfig.telemetry, az.stConfig.honourACL)
 
+	return nil
+}
+
+func configureBlobFilter(azStorage *AzStorage, opt AzStorageOptions) error {
+	readonly := false
+	_ = config.UnmarshalKey("read-only", &readonly)
+	if !readonly {
+		log.Err("configureBlobFilter: Blob filters are supported only in read-only mode")
+		return errors.New("blobfilter is supported only in read-only mode")
+	}
+
+	azStorage.stConfig.filter = &blobfilter.BlobFilter{}
+	err := azStorage.stConfig.filter.Configure(opt.Filter)
+	if err != nil {
+		log.Err("configureBlobFilter : Failed to configure blob filter %s", err.Error())
+		return errors.New("failed to configure blob filter")
+	}
+
+	log.Crit("configureBlobFilter : Blob filter configured %s", opt.Filter)
 	return nil
 }
 
@@ -555,16 +589,6 @@ func ParseAndReadDynamicConfig(az *AzStorage, opt AzStorageOptions, reload bool)
 		az.stConfig.honourACL = opt.HonourACL
 	} else {
 		az.stConfig.honourACL = false
-	}
-
-	// by default symlink will be disabled
-	az.stConfig.disableSymlink = true
-
-	if config.IsSet("attr_cache.no-symlinks") {
-		err := config.UnmarshalKey("attr_cache.no-symlinks", &az.stConfig.disableSymlink)
-		if err != nil {
-			log.Err("ParseAndReadDynamicConfig : Failed to unmarshal attr_cache.no-symlinks")
-		}
 	}
 
 	// Auth related reconfig

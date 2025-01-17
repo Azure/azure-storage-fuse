@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -361,6 +361,16 @@ func (suite *utilTestSuite) TestWriteToFile() {
 	suite.assert.Nil(err)
 	suite.assert.Equal(content, string(data))
 
+}
+
+func (suite *utilTestSuite) TestCRC64() {
+	data := []byte("Hello World")
+	crc := GetCRC64(data, len(data))
+
+	data = []byte("Hello World!")
+	crc1 := GetCRC64(data, len(data))
+
+	suite.assert.NotEqual(crc, crc1)
 }
 
 func (suite *utilTestSuite) TestGetFuseMinorVersion() {

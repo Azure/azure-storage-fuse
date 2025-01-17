@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -661,6 +661,12 @@ func init() {
 
 	cpkEnabled := config.AddBoolFlag("cpk-enabled", false, "Enable client provided key.")
 	config.BindPFlag(compName+".cpk-enabled", cpkEnabled)
+
+	preserveACL := config.AddBoolFlag("preserve-acl", false, "Preserve ACL and Permissions set on file during updates")
+	config.BindPFlag(compName+".preserve-acl", preserveACL)
+
+	blobFilter := config.AddStringFlag("filter", "", "Filter string to match blobs")
+	config.BindPFlag(compName+".filter", blobFilter)
 
 	config.RegisterFlagCompletionFunc("container-name", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveNoFileComp

@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -298,9 +298,9 @@ func (c *FileCache) Configure(_ bool) error {
 	err = syscall.Statfs(c.tmpPath, &stat)
 	if err != nil {
 		log.Err("FileCache::Configure : config error %s [%s]. Assigning a default value of 4GB or if any value is assigned to .disk-size-mb in config.", c.Name(), err.Error())
-		c.maxCacheSize = 4192 * MB
+		c.maxCacheSize = 4192
 	} else {
-		c.maxCacheSize = 0.8 * float64(stat.Bavail) * float64(stat.Bsize)
+		c.maxCacheSize = (0.8 * float64(stat.Bavail) * float64(stat.Bsize)) / (MB)
 	}
 
 	if config.IsSet(compName+".max-size-mb") && conf.MaxSizeMB != 0 {

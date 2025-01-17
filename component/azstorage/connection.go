@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -40,6 +40,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/vibhansa-msft/blobfilter"
 )
 
 // Example for azblob usage : https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/storage/azblob#pkg-examples
@@ -73,14 +74,17 @@ type AzStorageConfig struct {
 	maxResultsForList  int32
 	disableCompression bool
 
-	telemetry      string
-	honourACL      bool
-	disableSymlink bool
+	telemetry   string
+	honourACL   bool
+	preserveACL bool
 
 	// CPK related config
 	cpkEnabled             bool
 	cpkEncryptionKey       string
 	cpkEncryptionKeySha256 string
+
+	// Blob filters
+	filter *blobfilter.BlobFilter
 }
 
 type AzStorageConnection struct {
@@ -133,6 +137,8 @@ type AzConnection interface {
 	CommitBlocks(string, []string) error
 
 	UpdateServiceClient(_, _ string) error
+
+	SetFilter(string) error
 }
 
 // NewAzStorageConnection : Based on account type create respective AzConnection Object

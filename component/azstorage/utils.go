@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -596,3 +596,21 @@ func removeLeadingSlashes(s string) string {
 	}
 	return s
 }
+
+// func parseBlobTags(tags *container.BlobTags) map[string]string {
+
+// 	if tags == nil {
+// 		return nil
+// 	}
+
+// 	blobtags := make(map[string]string)
+// 	for _, tag := range tags.BlobTagSet {
+// 		if tag != nil {
+// 			if tag.Key != nil {
+// 				blobtags[*tag.Key] = *tag.Value
+// 			}
+// 		}
+// 	}
+
+// 	return blobtags
+// }

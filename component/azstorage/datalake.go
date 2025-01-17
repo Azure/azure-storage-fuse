@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -36,17 +36,16 @@ package azstorage
 import (
 	"context"
 	"fmt"
-	"io/fs"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/vibhansa-msft/blobfilter"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
@@ -103,7 +102,13 @@ func (dl *Datalake) Configure(cfg AzStorageConfig) error {
 			EncryptionAlgorithm: to.Ptr(directory.EncryptionAlgorithmTypeAES256),
 		}
 	}
-	return dl.BlockBlob.Configure(transformConfig(cfg))
+
+	err := dl.BlockBlob.Configure(transformConfig(cfg))
+
+	// List call shall always retrieved permissions for HNS accounts
+	dl.BlockBlob.listDetails.Permissions = true
+
+	return err
 }
 
 // For dynamic config update the config here
@@ -358,7 +363,7 @@ func (dl *Datalake) RenameDirectory(source string, target string) error {
 }
 
 // GetAttr : Retrieve attributes of the path
-func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
+func (dl *Datalake) GetAttr(name string) (blobAttr *internal.ObjAttr, err error) {
 	log.Trace("Datalake::GetAttr : name %s", name)
 
 	fileClient := dl.Filesystem.NewFileClient(filepath.Join(dl.Config.prefixPath, name))
@@ -368,23 +373,23 @@ func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 	if err != nil {
 		e := storeDatalakeErrToErr(err)
 		if e == ErrFileNotFound {
-			return attr, syscall.ENOENT
+			return blobAttr, syscall.ENOENT
 		} else if e == InvalidPermission {
 			log.Err("Datalake::GetAttr : Insufficient permissions for %s [%s]", name, err.Error())
-			return attr, syscall.EACCES
+			return blobAttr, syscall.EACCES
 		} else {
 			log.Err("Datalake::GetAttr : Failed to get path properties for %s [%s]", name, err.Error())
-			return attr, err
+			return blobAttr, err
 		}
 	}
 
 	mode, err := getFileMode(*prop.Permissions)
 	if err != nil {
 		log.Err("Datalake::GetAttr : Failed to get file mode for %s [%s]", name, err.Error())
-		return attr, err
+		return blobAttr, err
 	}
 
-	attr = &internal.ObjAttr{
+	blobAttr = &internal.ObjAttr{
 		Path:   name,
 		Name:   filepath.Base(name),
 		Size:   *prop.ContentLength,
@@ -395,11 +400,11 @@ func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 		Crtime: *prop.LastModified,
 		Flags:  internal.NewFileBitMap(),
 	}
-	parseMetadata(attr, prop.Metadata)
+	parseMetadata(blobAttr, prop.Metadata)
 
 	if *prop.ResourceType == "directory" {
-		attr.Flags = internal.NewDirBitMap()
-		attr.Mode = attr.Mode | os.ModeDir
+		blobAttr.Flags = internal.NewDirBitMap()
+		blobAttr.Mode = blobAttr.Mode | os.ModeDir
 	}
 
 	if dl.Config.honourACL && dl.Config.authConfig.ObjectID != "" {
@@ -412,128 +417,30 @@ func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 			if err != nil {
 				log.Err("Datalake::GetAttr : Failed to get file mode from ACL for %s [%s]", name, err.Error())
 			} else {
-				attr.Mode = mode
+				blobAttr.Mode = mode
 			}
 		}
 	}
 
-	return attr, nil
+	if dl.Config.filter != nil {
+		if !dl.Config.filter.IsAcceptable(&blobfilter.BlobAttr{
+			Name:  blobAttr.Name,
+			Mtime: blobAttr.Mtime,
+			Size:  blobAttr.Size,
+		}) {
+			log.Debug("Datalake::GetAttr : Filtered out %s", name)
+			return nil, syscall.ENOENT
+		}
+	}
+
+	return blobAttr, nil
 }
 
 // List : Get a list of path matching the given prefix
 // This fetches the list using a marker so the caller code should handle marker logic
 // If count=0 - fetch max entries
 func (dl *Datalake) List(prefix string, marker *string, count int32) ([]*internal.ObjAttr, *string, error) {
-	log.Trace("Datalake::List : prefix %s, marker %s", prefix, func(marker *string) string {
-		if marker != nil {
-			return *marker
-		} else {
-			return ""
-		}
-	}(marker))
-
-	pathList := make([]*internal.ObjAttr, 0)
-
-	if count == 0 {
-		count = common.MaxDirListCount
-	}
-
-	prefixPath := filepath.Join(dl.Config.prefixPath, prefix)
-	if prefix != "" && prefix[len(prefix)-1] == '/' {
-		prefixPath += "/"
-	}
-
-	// Get a result segment starting with the path indicated by the current Marker.
-	pager := dl.Filesystem.NewListPathsPager(false, &filesystem.ListPathsOptions{
-		Marker:     marker,
-		MaxResults: &count,
-		Prefix:     &prefixPath,
-	})
-
-	// Process the paths returned in this result segment (if the segment is empty, the loop body won't execute)
-	listPath, err := pager.NextPage(context.Background())
-	if err != nil {
-		log.Err("Datalake::List : Failed to validate account with given auth %s", err.Error())
-		m := ""
-		e := storeDatalakeErrToErr(err)
-		if e == ErrFileNotFound { // TODO: should this be checked for list calls
-			return pathList, &m, syscall.ENOENT
-		} else if e == InvalidPermission {
-			return pathList, &m, syscall.EACCES
-		} else {
-			return pathList, &m, err
-		}
-	}
-
-	// Process the paths returned in this result segment (if the segment is empty, the loop body won't execute)
-	for _, pathInfo := range listPath.Paths {
-		var attr *internal.ObjAttr
-		var lastModifiedTime time.Time
-		if dl.Config.disableSymlink {
-			var mode fs.FileMode
-			if pathInfo.Permissions != nil {
-				mode, err = getFileMode(*pathInfo.Permissions)
-				if err != nil {
-					log.Err("Datalake::List : Failed to get file mode for %s [%s]", *pathInfo.Name, err.Error())
-					m := ""
-					return pathList, &m, err
-				}
-			} else {
-				// This happens when a blob account is mounted with type:adls
-				log.Err("Datalake::List : Failed to get file permissions for %s", *pathInfo.Name)
-			}
-
-			var contentLength int64 = 0
-			if pathInfo.ContentLength != nil {
-				contentLength = *pathInfo.ContentLength
-			} else {
-				// This happens when a blob account is mounted with type:adls
-				log.Err("Datalake::List : Failed to get file length for %s", *pathInfo.Name)
-			}
-
-			if pathInfo.LastModified != nil {
-				lastModifiedTime, err = time.Parse(time.RFC1123, *pathInfo.LastModified)
-				if err != nil {
-					log.Err("Datalake::List : Failed to get last modified time for %s [%s]", *pathInfo.Name, err.Error())
-				}
-			}
-			attr = &internal.ObjAttr{
-				Path:   *pathInfo.Name,
-				Name:   filepath.Base(*pathInfo.Name),
-				Size:   contentLength,
-				Mode:   mode,
-				Mtime:  lastModifiedTime,
-				Atime:  lastModifiedTime,
-				Ctime:  lastModifiedTime,
-				Crtime: lastModifiedTime,
-				Flags:  internal.NewFileBitMap(),
-			}
-			if pathInfo.IsDirectory != nil && *pathInfo.IsDirectory {
-				attr.Flags = internal.NewDirBitMap()
-				attr.Mode = attr.Mode | os.ModeDir
-			}
-		} else {
-			attr, err = dl.GetAttr(*pathInfo.Name)
-			if err != nil {
-				log.Err("Datalake::List : Failed to get properties for %s [%s]", *pathInfo.Name, err.Error())
-				m := ""
-				return pathList, &m, err
-			}
-		}
-
-		// Note: Datalake list paths does not return metadata/properties.
-		// To account for this and accurately return attributes when needed,
-		// we have a flag for whether or not metadata has been retrieved.
-		// If this flag is not set the attribute cache will call get attributes
-		// to fetch metadata properties.
-		// Any method that populates the metadata should set the attribute flag.
-		// Alternatively, if you want Datalake list paths to return metadata/properties as well.
-		// pass CLI parameter --no-symlinks=false in the mount command.
-		pathList = append(pathList, attr)
-
-	}
-
-	return pathList, listPath.Continuation, nil
+	return dl.BlockBlob.List(prefix, marker, count)
 }
 
 // ReadToFile : Download a file to a local file
@@ -553,7 +460,40 @@ func (dl *Datalake) ReadInBuffer(name string, offset int64, len int64, data []by
 
 // WriteFromFile : Upload local file to file
 func (dl *Datalake) WriteFromFile(name string, metadata map[string]*string, fi *os.File) (err error) {
-	return dl.BlockBlob.WriteFromFile(name, metadata, fi)
+	// File in DataLake may have permissions and ACL set. Just uploading the file will override them.
+	// So, we need to get the existing permissions and ACL and set them back after uploading the file.
+
+	var acl string = ""
+	var fileClient *file.Client = nil
+
+	if dl.Config.preserveACL {
+		fileClient = dl.Filesystem.NewFileClient(filepath.Join(dl.Config.prefixPath, name))
+		resp, err := fileClient.GetAccessControl(context.Background(), nil)
+		if err != nil {
+			log.Err("Datalake::getACL : Failed to get ACLs for file %s [%s]", name, err.Error())
+		} else if resp.ACL != nil {
+			acl = *resp.ACL
+		}
+	}
+
+	// Upload the file, which will override the permissions and ACL
+	retCode := dl.BlockBlob.WriteFromFile(name, metadata, fi)
+
+	if acl != "" {
+		// Cannot set both permissions and ACL in one call. ACL includes permission as well so just setting those back
+		// Just setting up the permissions will delete existing ACLs applied on the blob so do not convert this code to
+		// just set the permissions.
+		_, err := fileClient.SetAccessControl(context.Background(), &file.SetAccessControlOptions{
+			ACL: &acl,
+		})
+
+		if err != nil {
+			// Earlier code was ignoring this so it might break customer cases where they do not have auth to update ACL
+			log.Err("Datalake::WriteFromFile : Failed to set ACL for %s [%s]", name, err.Error())
+		}
+	}
+
+	return retCode
 }
 
 // WriteFromBuffer : Upload from a buffer to a file
@@ -588,7 +528,7 @@ func (dl *Datalake) ChangeMod(name string, mode os.FileMode) error {
 		// and create new string with the username included in the string
 		// Keeping this code here so in future if its required we can get the string and manipulate
 
-		currPerm, err := fileURL.GetAccessControl(context.Background())
+		currPerm, err := fileURL.getACL(context.Background())
 		e := storeDatalakeErrToErr(err)
 		if e == ErrFileNotFound {
 			return syscall.ENOENT
@@ -655,4 +595,18 @@ func (dl *Datalake) StageBlock(name string, data []byte, id string) error {
 // CommitBlocks : persists the block list
 func (dl *Datalake) CommitBlocks(name string, blockList []string) error {
 	return dl.BlockBlob.CommitBlocks(name, blockList)
+}
+
+func (dl *Datalake) SetFilter(filter string) error {
+	if filter == "" {
+		dl.Config.filter = nil
+	} else {
+		dl.Config.filter = &blobfilter.BlobFilter{}
+		err := dl.Config.filter.Configure(filter)
+		if err != nil {
+			return err
+		}
+	}
+
+	return dl.BlockBlob.SetFilter(filter)
 }
