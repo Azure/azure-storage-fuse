@@ -1191,6 +1191,25 @@ func (s *blockBlobTestSuite) TestReadInBuffer() {
 	s.assert.EqualValues(testData[:5], output)
 }
 
+func (s *blockBlobTestSuite) TestReadInBufferWithETAG() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "test data"
+	data := []byte(testData)
+	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	h, _ = s.az.OpenFile(internal.OpenFileOptions{Name: name})
+
+	output := make([]byte, 5)
+	var etag string
+	len, err := s.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: output, Etag: &etag})
+	s.assert.Nil(err)
+	s.assert.NotEqual(etag, "")
+	s.assert.EqualValues(5, len)
+	s.assert.EqualValues(testData[:5], output)
+}
+
 func (s *blockBlobTestSuite) TestReadInBufferLargeBuffer() {
 	defer s.cleanupTest()
 	// Setup
