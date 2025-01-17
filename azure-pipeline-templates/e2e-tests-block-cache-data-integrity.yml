@@ -54,7 +54,7 @@ steps:
 
   - script: |
       pwd
-      mkdir logs
+      mkdir ~/logs
     displayName: 'Create logs directory'
 
   - template: 'mount.yml'
