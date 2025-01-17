@@ -1540,6 +1540,9 @@ stages:
               tags: $(tags)
               installStep:
                 script: |
+                  cd /etc/apt
+                  sudo cp trusted.gpg trusted.gpg.d
+                  cd -
                   sudo apt-get update --fix-missing
                   sudo apt update
                   sudo apt-get install cmake gcc $(fuselib) git parallel -y
