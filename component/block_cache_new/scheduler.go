@@ -95,6 +95,7 @@ func doDownload(t *task, workerNo int, sync bool) {
 		switch blk.state {
 		case localBlock:
 			// This case occurs when we get read call on sparse local Blocks which are not even put on the wire.
+			close(blk.downloadDone)
 			return
 		case uncommitedBlock:
 			// This case occurs when we clear the uncommited block from the cache.

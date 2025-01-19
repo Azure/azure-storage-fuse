@@ -21,7 +21,7 @@ type Buffer struct {
 	data     []byte    // Data holding in the buffer
 	dataSize int64     // Size of the data
 	timer    time.Time // Timer for buffer expiry
-	checksum []byte    // Check sum for the data
+	checksum []byte    // Checksum for the data
 }
 
 type BufferPool struct {
@@ -152,6 +152,7 @@ func getBlockForWrite(idx int, h *handlemap.Handle, file *File) (*block, error) 
 				//Allocate a buffer for last block.
 				//No need to lock the block as we already acquired lock on file
 				blk.buf = bPool.getBuffer()
+				close(blk.downloadDone)
 			} else {
 				blk.hole = true
 			}

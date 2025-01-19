@@ -44,9 +44,6 @@ func createBlock(idx int, id string, block_type int) *block {
 		hole:         false,
 		downloadDone: make(chan error, 1),
 	}
-	if block_type == localBlock {
-		close(blk.downloadDone)
-	}
 	return blk
 }
 

@@ -304,6 +304,9 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 		blockOffset := convertOffsetIntoBlockOffset(offset)
 
 		blk.Lock()
+		if blk.buf == nil {
+			panic(fmt.Sprintf("Culprit Blk idx : %d, file name: %s", blk.idx, f.Name))
+		}
 		bytesCopied := copy(blk.buf.data[blockOffset:BlockSize], options.Data[dataWritten:])
 		blk.state = localBlock
 		blk.hole = false
