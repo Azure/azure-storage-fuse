@@ -112,8 +112,10 @@ stages:
 
           steps:
             - script: |
-                sudo apt-get update --fix-missing
-                sudo apt update
+                cd /etc/apt
+                sudo cp trusted.gpg trusted.gpg.d
+                cd
+                sudo apt-get update
                 sudo apt-get install cmake gcc $(fuselib) git parallel -y
                 if [ $(tags) == "fuse2" ]; then
                   sudo apt-get install fuse -y
@@ -242,8 +244,10 @@ stages:
 
           steps:
             - script: |
-                sudo apt-get update --fix-missing
-                sudo apt update
+                cd /etc/apt
+                sudo cp trusted.gpg trusted.gpg.d
+                cd
+                sudo apt-get update
                 sudo apt-get install cmake gcc $(fuselib) git parallel -y
                 if [ $(tags) == "fuse2" ]; then
                   sudo apt-get install fuse -y
@@ -382,8 +386,10 @@ stages:
 
           steps:
             - script: |
-                sudo apt-get update --fix-missing
-                sudo apt update
+                cd /etc/apt
+                sudo cp trusted.gpg trusted.gpg.d
+                cd
+                sudo apt-get update
                 sudo apt-get install cmake gcc $(fuselib) git -y
                 if [ $(tags) == "fuse2" ]; then
                   sudo apt-get install fuse -y
@@ -505,8 +511,10 @@ stages:
 
           steps:
             - script: |
-                sudo apt-get update --fix-missing
-                sudo apt update
+                cd /etc/apt
+                sudo cp trusted.gpg trusted.gpg.d
+                cd
+                sudo apt-get update
                 sudo apt-get install cmake gcc $(fuselib) git -y
                 if [ $(tags) == "fuse2" ]; then
                   sudo apt-get install fuse -y
@@ -619,8 +627,10 @@ stages:
 
             steps:
               - script: |
-                  sudo apt-get update --fix-missing
-                  sudo apt update
+                  cd /etc/apt
+                  sudo cp trusted.gpg trusted.gpg.d
+                  cd
+                  sudo apt-get update
                   sudo apt-get install cmake gcc libfuse3-dev git -y
                 displayName: 'Install libfuse'
               
@@ -628,7 +638,10 @@ stages:
 
               # Start Proxy
               - script: |
-                  sudo apt-get update --fix-missing
+                  cd /etc/apt
+                  sudo cp trusted.gpg trusted.gpg.d
+                  cd
+                  sudo apt-get update
                   sudo apt remove mitmproxy -y
                   sudo apt-get install python3-setuptools -y
                   sudo apt install python3-pip -y
@@ -1217,6 +1230,9 @@ stages:
               
               # Install libfuse
               - script: |
+                  cd /etc/apt
+                  sudo cp trusted.gpg trusted.gpg.d
+                  cd
                   sudo apt-get update --fix-missing -o Dpkg::Options::="--force-confnew"
                   sudo apt-get install make cmake gcc g++ libfuse3-dev fuse3 -y -o Dpkg::Options::="--force-confnew"  
                 displayName: 'Install Fuse'
@@ -1384,8 +1400,10 @@ stages:
               tags: $(tags)
               installStep:
                 script: |
-                  sudo apt-get update --fix-missing
-                  sudo apt update
+                  cd /etc/apt
+                  sudo cp trusted.gpg trusted.gpg.d
+                  cd
+                  sudo apt-get update
                   sudo apt-get install cmake gcc $(fuselib) git parallel -y
                   if [ $(tags) == "fuse2" ]; then
                     sudo apt-get install fuse -y
@@ -1461,8 +1479,10 @@ stages:
               tags: $(tags)
               installStep:
                 script: |
-                  sudo apt-get update --fix-missing
-                  sudo apt update
+                  cd /etc/apt
+                  sudo cp trusted.gpg trusted.gpg.d
+                  cd
+                  sudo apt-get update
                   sudo apt-get install cmake gcc $(fuselib) git parallel -y
                   if [ $(tags) == "fuse2" ]; then
                     sudo apt-get install fuse -y
@@ -1542,9 +1562,8 @@ stages:
                 script: |
                   cd /etc/apt
                   sudo cp trusted.gpg trusted.gpg.d
-                  cd -
-                  sudo apt-get update --fix-missing
-                  sudo apt update
+                  cd
+                  sudo apt-get update
                   sudo apt-get install cmake gcc $(fuselib) git parallel -y
                   if [ $(tags) == "fuse2" ]; then
                     sudo apt-get install fuse -y
@@ -1641,8 +1660,10 @@ stages:
               tags: $(tags)
               installStep:
                 script: |
-                  sudo apt-get update --fix-missing
-                  sudo apt update
+                  cd /etc/apt
+                  sudo cp trusted.gpg trusted.gpg.d
+                  cd
+                  sudo apt-get update
                   sudo apt-get install cmake gcc $(fuselib) git parallel -y
                   if [ $(tags) == "fuse2" ]; then
                     sudo apt-get install fuse -y
@@ -1718,8 +1739,10 @@ stages:
               tags: $(tags)
               installStep:
                 script: |
-                  sudo apt-get update --fix-missing
-                  sudo apt update
+                  cd /etc/apt
+                  sudo cp trusted.gpg trusted.gpg.d
+                  cd
+                  sudo apt-get update
                   sudo apt-get install cmake gcc $(fuselib) git parallel -y
                   if [ $(tags) == "fuse2" ]; then
                     sudo apt-get install fuse -y
@@ -1795,8 +1818,10 @@ stages:
               tags: $(tags)
               installStep:
                 script: |
-                  sudo apt-get update --fix-missing
-                  sudo apt update
+                  cd /etc/apt
+                  sudo cp trusted.gpg trusted.gpg.d
+                  cd
+                  sudo apt-get update
                   sudo apt-get install cmake gcc $(fuselib) git parallel -y
                   if [ $(tags) == "fuse2" ]; then
                     sudo apt-get install fuse -y
@@ -1859,6 +1884,9 @@ stages:
 
         steps:
           - script: |
+              cd /etc/apt
+              sudo cp trusted.gpg trusted.gpg.d
+              cd
               sudo apt-get update --fix-missing -o Dpkg::Options::="--force-confnew"
               sudo apt-get install make cmake gcc g++ parallel $(fuselib) -y -o Dpkg::Options::="--force-confnew"
             displayName: 'Install libfuse'
