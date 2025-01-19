@@ -10,6 +10,7 @@ on:
   pull_request:
     branches:
       - main
+      - blobfuse/2.*
 jobs:
   codespell:
     name: Check for spelling errors

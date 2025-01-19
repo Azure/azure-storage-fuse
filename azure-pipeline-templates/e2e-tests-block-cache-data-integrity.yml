@@ -72,8 +72,8 @@ steps:
     displayName: 'Generate data with File-Cache'
 
   - script: |
-      md5sum ${{ parameters.mount_dir }}/datafiles_* > $(WORK_DIR)/md5sum_original_files.txt
-      md5sum ${{ parameters.mount_dir }}/mixedfiles_* >> $(WORK_DIR)/md5sum_original_files.txt
+      md5sum ${{ parameters.mount_dir }}/datafiles_* | tee $(WORK_DIR)/md5sum_original_files.txt
+      md5sum ${{ parameters.mount_dir }}/mixedfiles_* | tee -a $(WORK_DIR)/md5sum_original_files.txt
     displayName: 'Generate md5Sum with File-Cache' 
 
   - script: |
@@ -97,6 +97,10 @@ steps:
       VERBOSE_LOG: ${{ parameters.verbose_log }}
     continueOnError: false
 
+  - script: |
+      cat ${{ parameters.config_file }}  
+    displayName: 'Print block cache Config file'
+
   - template: 'mount.yml'
     parameters:
       working_dir: $(WORK_DIR)
@@ -115,8 +119,8 @@ steps:
     displayName: 'Print contents of Block-Cache'
 
   - script: |
-      md5sum ${{ parameters.mount_dir }}/datafiles_* > $(WORK_DIR)/md5sum_block_cache.txt
-      md5sum ${{ parameters.mount_dir }}/mixedfiles_* >> $(WORK_DIR)/md5sum_block_cache.txt
+      md5sum ${{ parameters.mount_dir }}/datafiles_* | tee $(WORK_DIR)/md5sum_block_cache.txt
+      md5sum ${{ parameters.mount_dir }}/mixedfiles_* | tee -a $(WORK_DIR)/md5sum_block_cache.txt
     displayName: 'Generate md5Sum with Block-Cache'
 
   - script: |
@@ -170,13 +174,13 @@ steps:
     displayName: 'Print contents of Block-Cache'
 
   - script: |
-      md5sum ${{ parameters.mount_dir }}/datafiles_* > $(WORK_DIR)/md5sum_block_cache_direct_io.txt
-      md5sum ${{ parameters.mount_dir }}/mixedfiles_* >> $(WORK_DIR)/md5sum_block_cache_direct_io.txt
+      md5sum ${{ parameters.mount_dir }}/datafiles_* | tee $(WORK_DIR)/md5sum_block_cache_direct_io.txt
+      md5sum ${{ parameters.mount_dir }}/mixedfiles_* | tee -a $(WORK_DIR)/md5sum_block_cache_direct_io.txt
     displayName: 'Generate md5Sum with Block-Cache Direct-IO'
 
   - script: |
-      md5sum ${{ parameters.mount_dir }}/datafiles_* > $(WORK_DIR)/md5sum_block_cache_disk_cache.txt
-      md5sum ${{ parameters.mount_dir }}/mixedfiles_* >> $(WORK_DIR)/md5sum_block_cache_disk_cache.txt
+      md5sum ${{ parameters.mount_dir }}/datafiles_* | tee $(WORK_DIR)/md5sum_block_cache_disk_cache.txt
+      md5sum ${{ parameters.mount_dir }}/mixedfiles_* | tee -a $(WORK_DIR)/md5sum_block_cache_disk_cache.txt
     displayName: 'Generate md5Sum with Block-Cache Disk-Cache'
 
   - script: |
@@ -214,3 +218,4 @@ steps:
       working_dir: $(WORK_DIR)
       mount_dir: ${{ parameters.mount_dir }}
       temp_dir: ${{ parameters.temp_dir }}
+

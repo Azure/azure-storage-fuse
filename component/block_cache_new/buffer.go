@@ -25,9 +25,10 @@ type Buffer struct {
 }
 
 type BufferPool struct {
-	pool       sync.Pool  // Pool used to get and put the buffers.
-	bufferList *list.List // List of Outstanding buffers.
-	bufferSize int        // Size of the each buffer in the bytes for this pool
+	pool           sync.Pool  // Pool used to get and put the buffers.
+	pendingUploads *list.List // Pending Uploads list
+	syncedBlks     *list.List // Current Synced Blocks
+	bufferSize     int        // Size of the each buffer in the bytes for this pool
 }
 
 func createBufferPool(bufSize int) *BufferPool {
@@ -37,17 +38,17 @@ func createBufferPool(bufSize int) *BufferPool {
 				return new(Buffer)
 			},
 		},
-		bufferList: list.New(),
-		bufferSize: bufSize,
+		pendingUploads: list.New(),
+		bufferSize:     bufSize,
 	}
 	zeroBuffer = bPool.getBuffer()
 	go doGC()
 	return bPool
 }
 
-type gcNode struct {
+type blkNode struct {
 	file *File
-	idx  int // block index inside the file
+	blk  *block
 }
 
 func doGC() {

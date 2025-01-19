@@ -12,7 +12,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -292,7 +292,7 @@ func libfuse2_init(conn *C.fuse_conn_info_t) (res unsafe.Pointer) {
 	conn.max_background = C.uint(fuseFS.maxFuseThreads)
 
 	// While reading a file let kernel do readahed for better perf
-	conn.max_readahead = (4 * 1024 * 1024)
+	conn.max_readahead = 0
 
 	return nil
 }
