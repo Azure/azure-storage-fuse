@@ -1208,6 +1208,51 @@ func (s *blockBlobTestSuite) TestReadInBufferWithETAG() {
 	s.assert.NotEqual(etag, "")
 	s.assert.EqualValues(5, len)
 	s.assert.EqualValues(testData[:5], output)
+	_ = s.az.CloseFile(internal.CloseFileOptions{Handle: h})
+}
+
+func (s *blockBlobTestSuite) TestReadInBufferWithETAGMismatch() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "test data 12345678910"
+	data := []byte(testData)
+	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	_ = s.az.CloseFile(internal.CloseFileOptions{Handle: h})
+
+	attr, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
+	s.assert.Nil(err)
+	s.assert.NotNil(attr)
+	s.assert.NotEqual("", attr.ETag)
+	s.assert.Equal(int64(len(data)), attr.Size)
+
+	output := make([]byte, 5)
+	var etag string
+
+	h, _ = s.az.OpenFile(internal.OpenFileOptions{Name: name})
+	_, err = s.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: output, Etag: &etag})
+	s.assert.Nil(err)
+	s.assert.NotEqual(etag, "")
+	etag = strings.Trim(etag, `"`)
+	s.assert.Equal(etag, attr.ETag)
+
+	// Update the file in parallel using another handle
+	h1, err := s.az.OpenFile(internal.OpenFileOptions{Name: name})
+	s.assert.Nil(err)
+	testData = "test data 12345678910 123123123123123123123"
+	data = []byte(testData)
+	s.az.WriteFile(internal.WriteFileOptions{Handle: h1, Offset: 0, Data: data})
+	_ = s.az.CloseFile(internal.CloseFileOptions{Handle: h1})
+
+	// Read data back using older handle
+	_, err = s.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 5, Data: output, Etag: &etag})
+	s.assert.Nil(err)
+	s.assert.NotEqual(etag, "")
+	etag = strings.Trim(etag, `"`)
+	s.assert.NotEqual(etag, attr.ETag)
+
+	_ = s.az.CloseFile(internal.CloseFileOptions{Handle: h})
 }
 
 func (s *blockBlobTestSuite) TestReadInBufferLargeBuffer() {

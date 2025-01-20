@@ -453,17 +453,17 @@ func (az *AzStorage) ReadInBuffer(options internal.ReadInBufferOptions) (length 
 		return 0, nil
 	}
 
+	var etag string = ""
 	if options.Etag != nil {
-		etag, err := az.storage.ReadInBufferWithETag(options.Handle.Path, options.Offset, dataLen, options.Data)
-		if err != nil {
-			log.Err("AzStorage::ReadInBuffer : Failed to read %s [%s]", options.Handle.Path, err.Error())
-		}
+		etag, err = az.storage.ReadInBufferWithETag(options.Handle.Path, options.Offset, dataLen, options.Data)
 		*(options.Etag) = etag
 	} else {
 		err = az.storage.ReadInBuffer(options.Handle.Path, options.Offset, dataLen, options.Data)
-		if err != nil {
-			log.Err("AzStorage::ReadInBuffer : Failed to read %s [%s]", options.Handle.Path, err.Error())
-		}
+
+	}
+
+	if err != nil {
+		log.Err("AzStorage::ReadInBuffer : Failed to read %s [%s]", options.Handle.Path, err.Error())
 	}
 
 	length = int(dataLen)

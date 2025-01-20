@@ -1419,6 +1419,7 @@ func (s *datalakeTestSuite) TestReadInBufferWithETAG() {
 	s.assert.NotEqual(etag, "")
 	s.assert.EqualValues(5, len)
 	s.assert.EqualValues(testData[:5], output)
+	_ = s.az.CloseFile(internal.CloseFileOptions{Handle: h})
 }
 
 func (s *datalakeTestSuite) TestReadInBufferLargeBuffer() {

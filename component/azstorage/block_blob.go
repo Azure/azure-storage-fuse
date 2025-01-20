@@ -936,7 +936,7 @@ func (bb *BlockBlob) ReadInBufferWithETag(name string, offset int64, len int64, 
 		CPKInfo: bb.blobCPKOpt,
 	}
 
-	dr, err := blobClient.DownloadStream(ctx, opt)
+	downloadResponse, err := blobClient.DownloadStream(ctx, opt)
 
 	if err != nil {
 		e := storeBlobErrToErr(err)
@@ -950,7 +950,7 @@ func (bb *BlockBlob) ReadInBufferWithETag(name string, offset int64, len int64, 
 		return "", err
 	}
 
-	var streamBody io.ReadCloser = dr.NewRetryReader(ctx, nil)
+	var streamBody io.ReadCloser = downloadResponse.NewRetryReader(ctx, nil)
 	dataRead, err := io.ReadFull(streamBody, data)
 
 	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
@@ -968,7 +968,7 @@ func (bb *BlockBlob) ReadInBufferWithETag(name string, offset int64, len int64, 
 		log.Err("BlockBlob::ReadInBuffer : Failed to close body for blob %s [%s]", name, err.Error())
 	}
 
-	return string(*dr.ETag), nil
+	return string(*downloadResponse.ETag), nil
 }
 
 func (bb *BlockBlob) calculateBlockSize(name string, fileSize int64) (blockSize int64, err error) {
