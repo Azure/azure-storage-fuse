@@ -432,10 +432,10 @@ func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err 
 	})
 
 	if err != nil {
-		e := storeBlobErrToErr(err)
-		if e == ErrFileNotFound {
+		serr := storeBlobErrToErr(err)
+		if serr == ErrFileNotFound {
 			return attr, syscall.ENOENT
-		} else if e == InvalidPermission {
+		} else if serr == InvalidPermission {
 			log.Err("BlockBlob::getAttrUsingRest : Insufficient permissions for %s [%s]", name, err.Error())
 			return attr, syscall.EACCES
 		} else {
