@@ -676,15 +676,28 @@ func (suite *attrCacheTestSuite) TestRenameFile() {
 	suite.assert.NotContains(suite.attrCache.cacheMap, src)
 	suite.assert.NotContains(suite.attrCache.cacheMap, dst)
 
-	// Entry Already Exists
+	// Src, Dst Entry Already Exists
 	addPathToCache(suite.assert, suite.attrCache, src, false)
 	addPathToCache(suite.assert, suite.attrCache, dst, false)
+	options.SrcAttr = suite.attrCache.cacheMap[src].attr
+	options.DstAttr = suite.attrCache.cacheMap[dst].attr
 	suite.mock.EXPECT().RenameFile(options).Return(nil)
-
 	err = suite.attrCache.RenameFile(options)
 	suite.assert.Nil(err)
 	assertDeleted(suite, src)
-	assertInvalid(suite, dst)
+	assertUntouched(suite, dst)
+
+	// Src Entry Exist and Dst Entry Don't Exist
+	addPathToCache(suite.assert, suite.attrCache, src, false)
+	// Add negative entry to cache for Dst
+	suite.attrCache.cacheMap[dst] = newAttrCacheItem(&internal.ObjAttr{}, false, time.Now())
+	options.SrcAttr = suite.attrCache.cacheMap[src].attr
+	options.DstAttr = suite.attrCache.cacheMap[dst].attr
+	suite.mock.EXPECT().RenameFile(options).Return(nil)
+	err = suite.attrCache.RenameFile(options)
+	suite.assert.Nil(err)
+	assertDeleted(suite, src)
+	assertUntouched(suite, dst)
 }
 
 // Tests Write File

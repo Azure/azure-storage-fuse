@@ -361,7 +361,6 @@ func (ac *AttrCache) DeleteFile(options internal.DeleteFileOptions) error {
 func (ac *AttrCache) RenameFile(options internal.RenameFileOptions) error {
 	log.Trace("AttrCache::RenameFile : %s -> %s", options.Src, options.Dst)
 	srcAttr := options.SrcAttr
-	dstAttr := options.DstAttr
 	err := ac.NextComponent().RenameFile(options)
 	if err == nil {
 		// Copy source attribute to destination.
@@ -370,11 +369,12 @@ func (ac *AttrCache) RenameFile(options internal.RenameFileOptions) error {
 		defer ac.cacheLock.RUnlock()
 		dstCacheEntry, found := ac.cacheMap[options.Dst]
 		if found && dstCacheEntry.valid() {
-			dstAttr.Size = srcAttr.Size
-			dstAttr.Mode = srcAttr.Mode
-			dstAttr.Flags = srcAttr.Flags
-			dstAttr.MD5 = srcAttr.MD5
-			dstAttr.Metadata = srcAttr.Metadata
+			dstCacheEntry.attr.Size = srcAttr.Size
+			dstCacheEntry.attr.Path = options.Dst
+			dstCacheEntry.attr.Mode = srcAttr.Mode
+			dstCacheEntry.attr.Flags = srcAttr.Flags
+			dstCacheEntry.attr.MD5 = srcAttr.MD5
+			dstCacheEntry.attr.Metadata = srcAttr.Metadata
 			// Dst blob may not exist before
 			dstCacheEntry.attrFlag.Set(AttrFlagExists)
 		} else {
