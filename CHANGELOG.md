@@ -3,6 +3,7 @@
 - Create block pool only in the child process.
 - Prevent the block cache to truncate the file size to zero when the file is opened in O_WRONLY mode when writebackcache is disabled.
 - Correct statFS results to reflect block-cache in memory cache status.
+- Do not wipeout temp-cache on start after a un-graceful unmount, if `cleanup-on-start` is not configured in file-cache.
 
 **Other Changes**
 - Optimized listing operation on HNS account to support symlinks.
