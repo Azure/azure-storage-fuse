@@ -41,5 +41,8 @@ blobfuse2 --version
 # /etc/sudoers file,
 # <user_name> ALL=(ALL:ALL) NOPASSWD:ALL
 
+# Calling the setup script for AzSecPack setup
+echo "Calling the setup script for AzSecPack setup"
+setup/vmSetupAzSecPack.sh
 
 
