@@ -950,8 +950,8 @@ func (bb *BlockBlob) ReadInBufferWithETag(name string, offset int64, len int64, 
 		return "", err
 	}
 
-	var body io.ReadCloser = dr.NewRetryReader(ctx, nil)
-	dataRead, err := io.ReadFull(body, data)
+	var streamBody io.ReadCloser = dr.NewRetryReader(ctx, nil)
+	dataRead, err := io.ReadFull(streamBody, data)
 
 	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
 		log.Err("BlockBlob::ReadInBuffer : Failed to copy data from body to buffer for blob %s [%s]", name, err.Error())
@@ -963,7 +963,7 @@ func (bb *BlockBlob) ReadInBufferWithETag(name string, offset int64, len int64, 
 		return "", errors.New("failed to copy data from body to buffer")
 	}
 
-	err = body.Close()
+	err = streamBody.Close()
 	if err != nil {
 		log.Err("BlockBlob::ReadInBuffer : Failed to close body for blob %s [%s]", name, err.Error())
 	}
