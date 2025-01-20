@@ -1191,68 +1191,68 @@ func (s *blockBlobTestSuite) TestReadInBuffer() {
 	s.assert.EqualValues(testData[:5], output)
 }
 
-func (s *blockBlobTestSuite) TestReadInBufferWithETAG() {
-	defer s.cleanupTest()
+func (bbTestSuite *blockBlobTestSuite) TestReadInBufferWithETAG() {
+	defer bbTestSuite.cleanupTest()
 	// Setup
 	name := generateFileName()
-	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	handle, _ := bbTestSuite.az.CreateFile(internal.CreateFileOptions{Name: name})
 	testData := "test data"
 	data := []byte(testData)
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
-	h, _ = s.az.OpenFile(internal.OpenFileOptions{Name: name})
+	bbTestSuite.az.WriteFile(internal.WriteFileOptions{Handle: handle, Offset: 0, Data: data})
+	handle, _ = bbTestSuite.az.OpenFile(internal.OpenFileOptions{Name: name})
 
 	output := make([]byte, 5)
 	var etag string
-	len, err := s.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: output, Etag: &etag})
-	s.assert.Nil(err)
-	s.assert.NotEqual(etag, "")
-	s.assert.EqualValues(5, len)
-	s.assert.EqualValues(testData[:5], output)
-	_ = s.az.CloseFile(internal.CloseFileOptions{Handle: h})
+	len, err := bbTestSuite.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: handle, Offset: 0, Data: output, Etag: &etag})
+	bbTestSuite.assert.Nil(err)
+	bbTestSuite.assert.NotEqual(etag, "")
+	bbTestSuite.assert.EqualValues(5, len)
+	bbTestSuite.assert.EqualValues(testData[:5], output)
+	_ = bbTestSuite.az.CloseFile(internal.CloseFileOptions{Handle: handle})
 }
 
-func (s *blockBlobTestSuite) TestReadInBufferWithETAGMismatch() {
-	defer s.cleanupTest()
+func (bbTestSuite *blockBlobTestSuite) TestReadInBufferWithETAGMismatch() {
+	defer bbTestSuite.cleanupTest()
 	// Setup
 	name := generateFileName()
-	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	handle, _ := bbTestSuite.az.CreateFile(internal.CreateFileOptions{Name: name})
 	testData := "test data 12345678910"
 	data := []byte(testData)
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
-	_ = s.az.CloseFile(internal.CloseFileOptions{Handle: h})
+	bbTestSuite.az.WriteFile(internal.WriteFileOptions{Handle: handle, Offset: 0, Data: data})
+	_ = bbTestSuite.az.CloseFile(internal.CloseFileOptions{Handle: handle})
 
-	attr, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
-	s.assert.Nil(err)
-	s.assert.NotNil(attr)
-	s.assert.NotEqual("", attr.ETag)
-	s.assert.Equal(int64(len(data)), attr.Size)
+	attr, err := bbTestSuite.az.GetAttr(internal.GetAttrOptions{Name: name})
+	bbTestSuite.assert.Nil(err)
+	bbTestSuite.assert.NotNil(attr)
+	bbTestSuite.assert.NotEqual("", attr.ETag)
+	bbTestSuite.assert.Equal(int64(len(data)), attr.Size)
 
 	output := make([]byte, 5)
 	var etag string
 
-	h, _ = s.az.OpenFile(internal.OpenFileOptions{Name: name})
-	_, err = s.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: output, Etag: &etag})
-	s.assert.Nil(err)
-	s.assert.NotEqual(etag, "")
+	handle, _ = bbTestSuite.az.OpenFile(internal.OpenFileOptions{Name: name})
+	_, err = bbTestSuite.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: handle, Offset: 0, Data: output, Etag: &etag})
+	bbTestSuite.assert.Nil(err)
+	bbTestSuite.assert.NotEqual(etag, "")
 	etag = strings.Trim(etag, `"`)
-	s.assert.Equal(etag, attr.ETag)
+	bbTestSuite.assert.Equal(etag, attr.ETag)
 
 	// Update the file in parallel using another handle
-	h1, err := s.az.OpenFile(internal.OpenFileOptions{Name: name})
-	s.assert.Nil(err)
+	handle1, err := bbTestSuite.az.OpenFile(internal.OpenFileOptions{Name: name})
+	bbTestSuite.assert.Nil(err)
 	testData = "test data 12345678910 123123123123123123123"
 	data = []byte(testData)
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h1, Offset: 0, Data: data})
-	_ = s.az.CloseFile(internal.CloseFileOptions{Handle: h1})
+	bbTestSuite.az.WriteFile(internal.WriteFileOptions{Handle: handle1, Offset: 0, Data: data})
+	_ = bbTestSuite.az.CloseFile(internal.CloseFileOptions{Handle: handle1})
 
 	// Read data back using older handle
-	_, err = s.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 5, Data: output, Etag: &etag})
-	s.assert.Nil(err)
-	s.assert.NotEqual(etag, "")
+	_, err = bbTestSuite.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: handle, Offset: 5, Data: output, Etag: &etag})
+	bbTestSuite.assert.Nil(err)
+	bbTestSuite.assert.NotEqual(etag, "")
 	etag = strings.Trim(etag, `"`)
-	s.assert.NotEqual(etag, attr.ETag)
+	bbTestSuite.assert.NotEqual(etag, attr.ETag)
 
-	_ = s.az.CloseFile(internal.CloseFileOptions{Handle: h})
+	_ = bbTestSuite.az.CloseFile(internal.CloseFileOptions{Handle: handle})
 }
 
 func (s *blockBlobTestSuite) TestReadInBufferLargeBuffer() {
