@@ -96,8 +96,10 @@ type CloseFileOptions struct {
 }
 
 type RenameFileOptions struct {
-	Src string
-	Dst string
+	Src     string
+	Dst     string
+	SrcAttr *ObjAttr
+	DstAttr *ObjAttr
 }
 
 type ReadFileOptions struct {

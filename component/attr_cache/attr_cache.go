@@ -360,14 +360,27 @@ func (ac *AttrCache) DeleteFile(options internal.DeleteFileOptions) error {
 // RenameFile : Mark the source file deleted. Invalidate the destination file.
 func (ac *AttrCache) RenameFile(options internal.RenameFileOptions) error {
 	log.Trace("AttrCache::RenameFile : %s -> %s", options.Src, options.Dst)
-
+	srcAttr := options.SrcAttr
+	dstAttr := options.DstAttr
 	err := ac.NextComponent().RenameFile(options)
 	if err == nil {
+		// Copy source attribute to destination.
+		// LMT of destination will be modified by next component if the copy is success.
 		ac.cacheLock.RLock()
 		defer ac.cacheLock.RUnlock()
-
+		dstCacheEntry, found := ac.cacheMap[options.Dst]
+		if found && dstCacheEntry.valid() {
+			dstAttr.Size = srcAttr.Size
+			dstAttr.Mode = srcAttr.Mode
+			dstAttr.Flags = srcAttr.Flags
+			dstAttr.MD5 = srcAttr.MD5
+			dstAttr.Metadata = srcAttr.Metadata
+			// Dst blob may not exist before
+			dstCacheEntry.attrFlag.Set(AttrFlagExists)
+		} else {
+			ac.invalidatePath(options.Dst)
+		}
 		ac.deletePath(options.Src, time.Now())
-		ac.invalidatePath(options.Dst)
 	}
 
 	return err
