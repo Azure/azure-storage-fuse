@@ -1402,24 +1402,24 @@ func (s *datalakeTestSuite) TestReadInBuffer() {
 	s.assert.EqualValues(testData[:5], output)
 }
 
-func (s *datalakeTestSuite) TestReadInBufferWithETAG() {
-	defer s.cleanupTest()
+func (suite *datalakeTestSuite) TestReadInBufferWithETAG() {
+	defer suite.cleanupTest()
 	// Setup
 	name := generateFileName()
-	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	fileHandle, _ := suite.az.CreateFile(internal.CreateFileOptions{Name: name})
 	testData := "test data"
 	data := []byte(testData)
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
-	h, _ = s.az.OpenFile(internal.OpenFileOptions{Name: name})
+	suite.az.WriteFile(internal.WriteFileOptions{Handle: fileHandle, Offset: 0, Data: data})
+	fileHandle, _ = suite.az.OpenFile(internal.OpenFileOptions{Name: name})
 
 	output := make([]byte, 5)
 	var etag string
-	len, err := s.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: output, Etag: &etag})
-	s.assert.Nil(err)
-	s.assert.NotEqual(etag, "")
-	s.assert.EqualValues(5, len)
-	s.assert.EqualValues(testData[:5], output)
-	_ = s.az.CloseFile(internal.CloseFileOptions{Handle: h})
+	len, err := suite.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: fileHandle, Offset: 0, Data: output, Etag: &etag})
+	suite.assert.Nil(err)
+	suite.assert.NotEqual(etag, "")
+	suite.assert.EqualValues(5, len)
+	suite.assert.EqualValues(testData[:5], output)
+	_ = suite.az.CloseFile(internal.CloseFileOptions{Handle: fileHandle})
 }
 
 func (s *datalakeTestSuite) TestReadInBufferLargeBuffer() {
