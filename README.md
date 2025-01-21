@@ -235,10 +235,6 @@ Below diagrams guide you to choose right configuration for your workloads.
 - [Sample Block-Cache Config](./sampleBlockCacheConfig.yaml)
 - [All Config options](./setup/baseConfig.yaml) 
 
-To enhance the documentation for Azure Storage Fuse, you can add the following section:
-
----
-
 ## Using Private Endpoints with HNS-Enabled Storage Accounts
 
 When accessing an HNS (Hierarchical Namespace) enabled Azure Storage account behind private endpoints, it is crucial to create **two separate private endpoints** to ensure proper connectivity:
