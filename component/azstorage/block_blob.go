@@ -942,7 +942,10 @@ func (bb *BlockBlob) ReadInBuffer(name string, offset int64, len int64, data []b
 		log.Err("BlockBlob::ReadInBuffer : Failed to close body for blob %s [%s]", name, err.Error())
 	}
 
-	*etag = strings.Trim(string(*downloadResponse.ETag), `"`)
+	if etag != nil {
+		*etag = strings.Trim(string(*downloadResponse.ETag), `"`)
+	}
+
 	return nil
 }
 
