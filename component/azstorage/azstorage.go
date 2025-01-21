@@ -556,7 +556,7 @@ func (az *AzStorage) StageData(opt internal.StageDataOptions) error {
 }
 
 func (az *AzStorage) CommitData(opt internal.CommitDataOptions) error {
-	return az.storage.CommitBlocks(opt.Name, opt.List)
+	return az.storage.CommitBlocks(opt.Name, opt.List, opt.NewETag)
 }
 
 // TODO : Below methods are pending to be implemented

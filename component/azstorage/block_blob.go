@@ -1249,7 +1249,7 @@ func (bb *BlockBlob) TruncateFile(name string, size int64) error {
 				size -= blkSize
 			}
 
-			err = bb.CommitBlocks(blobName, blkList)
+			err = bb.CommitBlocks(blobName, blkList, nil)
 			if err != nil {
 				log.Err("BlockBlob::TruncateFile : Failed to commit blocks for %s [%s]", name, err.Error())
 				return err
@@ -1588,14 +1588,14 @@ func (bb *BlockBlob) StageBlock(name string, data []byte, id string) error {
 }
 
 // CommitBlocks : persists the block list
-func (bb *BlockBlob) CommitBlocks(name string, blockList []string) error {
+func (bb *BlockBlob) CommitBlocks(name string, blockList []string, newEtag *string) error {
 	log.Trace("BlockBlob::CommitBlocks : name %s", name)
 
 	ctx, cancel := context.WithTimeout(context.Background(), max_context_timeout*time.Minute)
 	defer cancel()
 
 	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
-	_, err := blobClient.CommitBlockList(ctx,
+	resp, err := blobClient.CommitBlockList(ctx,
 		blockList,
 		&blockblob.CommitBlockListOptions{
 			HTTPHeaders: &blob.HTTPHeaders{
@@ -1608,6 +1608,10 @@ func (bb *BlockBlob) CommitBlocks(name string, blockList []string) error {
 	if err != nil {
 		log.Err("BlockBlob::CommitBlocks : Failed to commit block list to blob %s [%s]", name, err.Error())
 		return err
+	}
+
+	if newEtag != nil {
+		*newEtag = strings.Trim(string(*resp.ETag), `"`)
 	}
 
 	return nil

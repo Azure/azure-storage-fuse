@@ -134,7 +134,7 @@ type AzConnection interface {
 
 	GetCommittedBlockList(string) (*internal.CommittedBlockList, error)
 	StageBlock(string, []byte, string) error
-	CommitBlocks(string, []string) error
+	CommitBlocks(string, []string, *string) error
 
 	UpdateServiceClient(_, _ string) error
 

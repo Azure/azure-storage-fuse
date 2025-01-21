@@ -203,6 +203,7 @@ type CommitDataOptions struct {
 	Name      string
 	List      []string
 	BlockSize uint64
+	NewETag   *string
 }
 
 type CommittedBlock struct {

@@ -594,8 +594,8 @@ func (dl *Datalake) StageBlock(name string, data []byte, id string) error {
 }
 
 // CommitBlocks : persists the block list
-func (dl *Datalake) CommitBlocks(name string, blockList []string) error {
-	return dl.BlockBlob.CommitBlocks(name, blockList)
+func (dl *Datalake) CommitBlocks(name string, blockList []string, newEtag *string) error {
+	return dl.BlockBlob.CommitBlocks(name, blockList, newEtag)
 }
 
 func (dl *Datalake) SetFilter(filter string) error {
