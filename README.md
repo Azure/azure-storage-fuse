@@ -235,6 +235,27 @@ Below diagrams guide you to choose right configuration for your workloads.
 - [Sample Block-Cache Config](./sampleBlockCacheConfig.yaml)
 - [All Config options](./setup/baseConfig.yaml) 
 
+To enhance the documentation for Azure Storage Fuse, you can add the following section:
+
+---
+
+## Using Private Endpoints with HNS-Enabled Storage Accounts
+
+When accessing an HNS (Hierarchical Namespace) enabled Azure Storage account behind private endpoints, it is crucial to create **two separate private endpoints** to ensure proper connectivity:
+
+1. **Private Endpoint for DFS**  
+   - Target: `privatelink.dfs.core.windows.net`  
+   - This endpoint is necessary for accessing the Data Lake Storage Gen2 (HNS) functionality.
+
+2. **Private Endpoint for Blob**  
+   - Target: `privatelink.blob.core.windows.net`  
+   - This endpoint is necessary for accessing Blob Storage operations.
+
+### Why Both Endpoints Are Required
+
+HNS-enabled storage accounts utilize separate endpoints for Blob and DFS operations:
+- The DFS endpoint (`dfs.core.windows.net`) is used for namespace-related operations like directory and file management.
+- The Blob endpoint (`blob.core.windows.net`) is used for operations like streaming data to and from blobs.
 
 ## Frequently Asked Questions
 - How do I generate a SAS with permissions for rename?
