@@ -318,8 +318,9 @@ func (bb *BlockBlob) DeleteDirectory(name string) (err error) {
 // Source file must exist in storage account before calling this method.
 // When the rename is success, Data, metadata, of the blob will be copied to the destination.
 // Creation time and LMT is not preserved for copyBlob API.
+// Copy the LMT to the src attr if the copy is success.
 // https://learn.microsoft.com/en-us/rest/api/storageservices/copy-blob?tabs=microsoft-entra-id
-func (bb *BlockBlob) RenameFile(source string, target string, dstAttr *internal.ObjAttr) error {
+func (bb *BlockBlob) RenameFile(source string, target string, srcAttr *internal.ObjAttr) error {
 	log.Trace("BlockBlob::RenameFile : %s -> %s", source, target)
 
 	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, source))
@@ -359,7 +360,7 @@ func (bb *BlockBlob) RenameFile(source string, target string, dstAttr *internal.
 	}
 
 	if copyStatus != nil && *copyStatus == blob.CopyStatusTypeSuccess {
-		modifyLMT(dstAttr, dstLMT)
+		modifyLMT(srcAttr, dstLMT)
 	}
 
 	log.Trace("BlockBlob::RenameFile : %s -> %s done", source, target)
