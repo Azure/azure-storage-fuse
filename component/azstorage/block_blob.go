@@ -456,7 +456,7 @@ func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err 
 		Crtime: *prop.CreationTime,
 		Flags:  internal.NewFileBitMap(),
 		MD5:    prop.ContentMD5,
-		ETag:   string(*prop.ETag),
+		ETag:   strings.Trim(string(*prop.ETag), `"`),
 	}
 
 	parseMetadata(attr, prop.Metadata)
@@ -665,7 +665,7 @@ func (bb *BlockBlob) getBlobAttr(blobInfo *container.BlobItem) (*internal.ObjAtt
 		Crtime: bb.dereferenceTime(blobInfo.Properties.CreationTime, *blobInfo.Properties.LastModified),
 		Flags:  internal.NewFileBitMap(),
 		MD5:    blobInfo.Properties.ContentMD5,
-		ETag:   (string)(*blobInfo.Properties.ETag),
+		ETag:   strings.Trim((string)(*blobInfo.Properties.ETag), `"`),
 	}
 
 	parseMetadata(attr, blobInfo.Metadata)
@@ -942,7 +942,7 @@ func (bb *BlockBlob) ReadInBuffer(name string, offset int64, len int64, data []b
 		log.Err("BlockBlob::ReadInBuffer : Failed to close body for blob %s [%s]", name, err.Error())
 	}
 
-	*etag = string(*downloadResponse.ETag)
+	*etag = strings.Trim(string(*downloadResponse.ETag), `"`)
 	return nil
 }
 
