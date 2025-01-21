@@ -891,40 +891,14 @@ func (bb *BlockBlob) ReadBuffer(name string, offset int64, len int64) ([]byte, e
 }
 
 // ReadInBuffer : Download specific range from a file to a user provided buffer
-func (bb *BlockBlob) ReadInBuffer(name string, offset int64, len int64, data []byte) error {
+func (bb *BlockBlob) ReadInBuffer(name string, offset int64, len int64, data []byte, etag *string) error {
 	// log.Trace("BlockBlob::ReadInBuffer : name %s", name)
-	blobClient := bb.Container.NewBlobClient(filepath.Join(bb.Config.prefixPath, name))
-	opt := (blob.DownloadBufferOptions)(*bb.downloadOptions)
-	opt.BlockSize = len
-	opt.Range = blob.HTTPRange{
-		Offset: offset,
-		Count:  len,
+	if etag != nil {
+		*etag = ""
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), max_context_timeout*time.Minute)
-	defer cancel()
-
-	_, err := blobClient.DownloadBuffer(ctx, data, &opt)
-
-	if err != nil {
-		e := storeBlobErrToErr(err)
-		if e == ErrFileNotFound {
-			return syscall.ENOENT
-		} else if e == InvalidRange {
-			return syscall.ERANGE
-		}
-
-		log.Err("BlockBlob::ReadInBuffer : Failed to download blob %s [%s]", name, err.Error())
-		return err
-	}
-
-	return nil
-}
-
-// ReadInBufferWithETag : Download specific range from a file to a user provided buffer, return back the current etag along with data
-func (bb *BlockBlob) ReadInBufferWithETag(name string, offset int64, len int64, data []byte) (string, error) {
-	// log.Trace("BlockBlob::ReadInBuffer : name %s", name)
 	blobClient := bb.Container.NewBlobClient(filepath.Join(bb.Config.prefixPath, name))
+
 	ctx, cancel := context.WithTimeout(context.Background(), max_context_timeout*time.Minute)
 	defer cancel()
 
@@ -941,13 +915,13 @@ func (bb *BlockBlob) ReadInBufferWithETag(name string, offset int64, len int64, 
 	if err != nil {
 		e := storeBlobErrToErr(err)
 		if e == ErrFileNotFound {
-			return "", syscall.ENOENT
+			return syscall.ENOENT
 		} else if e == InvalidRange {
-			return "", syscall.ERANGE
+			return syscall.ERANGE
 		}
 
-		log.Err("BlockBlob::ReadInBuffer : Failed to download blob %s [%s]", name, err.Error())
-		return "", err
+		log.Err("BlockBlob::ReadInBufferWithETag : Failed to download blob %s [%s]", name, err.Error())
+		return err
 	}
 
 	var streamBody io.ReadCloser = downloadResponse.NewRetryReader(ctx, nil)
@@ -955,12 +929,12 @@ func (bb *BlockBlob) ReadInBufferWithETag(name string, offset int64, len int64, 
 
 	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
 		log.Err("BlockBlob::ReadInBuffer : Failed to copy data from body to buffer for blob %s [%s]", name, err.Error())
-		return "", err
+		return err
 	}
 
 	if dataRead < 0 {
 		log.Err("BlockBlob::ReadInBuffer : Failed to copy data from body to buffer for blob %s", name)
-		return "", errors.New("failed to copy data from body to buffer")
+		return errors.New("failed to copy data from body to buffer")
 	}
 
 	err = streamBody.Close()
@@ -968,7 +942,8 @@ func (bb *BlockBlob) ReadInBufferWithETag(name string, offset int64, len int64, 
 		log.Err("BlockBlob::ReadInBuffer : Failed to close body for blob %s [%s]", name, err.Error())
 	}
 
-	return string(*downloadResponse.ETag), nil
+	*etag = string(*downloadResponse.ETag)
+	return nil
 }
 
 func (bb *BlockBlob) calculateBlockSize(name string, fileSize int64) (blockSize int64, err error) {
@@ -1218,7 +1193,7 @@ func (bb *BlockBlob) removeBlocks(blockList *common.BlockOffsetList, size int64,
 		blk.Data = make([]byte, blk.EndIndex-blk.StartIndex)
 		blk.Flags.Set(common.DirtyBlock)
 
-		err := bb.ReadInBuffer(name, blk.StartIndex, blk.EndIndex-blk.StartIndex, blk.Data)
+		err := bb.ReadInBuffer(name, blk.StartIndex, blk.EndIndex-blk.StartIndex, blk.Data, nil)
 		if err != nil {
 			log.Err("BlockBlob::removeBlocks : Failed to remove blocks %s [%s]", name, err.Error())
 		}
@@ -1342,12 +1317,12 @@ func (bb *BlockBlob) HandleSmallFile(name string, size int64, originalSize int64
 	var data = make([]byte, size)
 	var err error
 	if size > originalSize {
-		err = bb.ReadInBuffer(name, 0, 0, data)
+		err = bb.ReadInBuffer(name, 0, 0, data, nil)
 		if err != nil {
 			log.Err("BlockBlob::TruncateFile : Failed to read small file %s", name, err.Error())
 		}
 	} else {
-		err = bb.ReadInBuffer(name, 0, size, data)
+		err = bb.ReadInBuffer(name, 0, size, data, nil)
 		if err != nil {
 			log.Err("BlockBlob::TruncateFile : Failed to read small file %s", name, err.Error())
 		}
@@ -1422,7 +1397,7 @@ func (bb *BlockBlob) Write(options internal.WriteFileOptions) error {
 		oldDataBuffer := make([]byte, oldDataSize+newBufferSize)
 		if !appendOnly {
 			// fetch the blocks that will be impacted by the new changes so we can overwrite them
-			err = bb.ReadInBuffer(name, fileOffsets.BlockList[index].StartIndex, oldDataSize, oldDataBuffer)
+			err = bb.ReadInBuffer(name, fileOffsets.BlockList[index].StartIndex, oldDataSize, oldDataBuffer, nil)
 			if err != nil {
 				log.Err("BlockBlob::Write : Failed to read data in buffer %s [%s]", name, err.Error())
 			}

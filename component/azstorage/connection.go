@@ -120,8 +120,7 @@ type AzConnection interface {
 
 	ReadToFile(name string, offset int64, count int64, fi *os.File) error
 	ReadBuffer(name string, offset int64, len int64) ([]byte, error)
-	ReadInBuffer(name string, offset int64, len int64, data []byte) error
-	ReadInBufferWithETag(name string, offset int64, len int64, data []byte) (string, error)
+	ReadInBuffer(name string, offset int64, len int64, data []byte, etag *string) error
 
 	WriteFromFile(name string, metadata map[string]*string, fi *os.File) error
 	WriteFromBuffer(name string, metadata map[string]*string, data []byte) error

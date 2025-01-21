@@ -455,13 +455,8 @@ func (dl *Datalake) ReadBuffer(name string, offset int64, len int64) ([]byte, er
 }
 
 // ReadInBuffer : Download specific range from a file to a user provided buffer
-func (dl *Datalake) ReadInBuffer(name string, offset int64, len int64, data []byte) error {
-	return dl.BlockBlob.ReadInBuffer(name, offset, len, data)
-}
-
-// ReadInBufferWithETag : Download specific range from a file to a user provided buffer, return back the current etag along with data
-func (dl *Datalake) ReadInBufferWithETag(name string, offset int64, len int64, data []byte) (string, error) {
-	return dl.BlockBlob.ReadInBufferWithETag(name, offset, len, data)
+func (dl *Datalake) ReadInBuffer(name string, offset int64, len int64, data []byte, etag *string) error {
+	return dl.BlockBlob.ReadInBuffer(name, offset, len, data, etag)
 }
 
 // WriteFromFile : Upload local file to file
