@@ -208,7 +208,7 @@ func (suite *fileCacheTestSuite) TestDefaultCacheSize() {
 	freeDisk, err := strconv.Atoi(strings.TrimSpace(out.String()))
 	suite.assert.Nil(err)
 	expected := uint64(0.8 * float64(freeDisk))
-	actual := suite.fileCache.maxCacheSize
+	actual := suite.fileCache.maxCacheSize * MB
 	difference := math.Abs(float64(actual) - float64(expected))
 	tolerance := 0.10 * float64(math.Max(float64(actual), float64(expected)))
 	suite.assert.LessOrEqual(difference, tolerance, "mssg:", actual, expected)

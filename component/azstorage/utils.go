@@ -596,3 +596,21 @@ func removeLeadingSlashes(s string) string {
 	}
 	return s
 }
+
+// func parseBlobTags(tags *container.BlobTags) map[string]string {
+
+// 	if tags == nil {
+// 		return nil
+// 	}
+
+// 	blobtags := make(map[string]string)
+// 	for _, tag := range tags.BlobTagSet {
+// 		if tag != nil {
+// 			if tag.Key != nil {
+// 				blobtags[*tag.Key] = *tag.Value
+// 			}
+// 		}
+// 	}
+
+// 	return blobtags
+// }

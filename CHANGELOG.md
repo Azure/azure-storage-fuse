@@ -1,3 +1,17 @@
+## 2.4.1 (Unreleased)
+**Bug Fixes**
+- Create block pool only in the child process.
+- Prevent the block cache to truncate the file size to zero when the file is opened in O_WRONLY mode when writebackcache is disabled.
+- Correct statFS results to reflect block-cache in memory cache status.
+- Do not wipeout temp-cache on start after a un-graceful unmount, if `cleanup-on-start` is not configured in file-cache.
+
+**Other Changes**
+- Optimized listing operation on HNS account to support symlinks.
+
+**Features**
+- Mount container or directory but restrict the view of blobs that you can see. This feature is available only in read-only mount.
+- To protect against accidental overwrites on data stored by block-cache on temp path, md5 sums will be validated on read. This feature can be enabled by using `--block-cache-strong-consistency` cli flag.
+
 ## 2.4.0 (2024-12-03)
 **Features**
 - Added 'gen-config' command to auto generate the recommended blobfuse2 config file based on computing resources and memory available on the node. Command details can be found with `blobfuse2 gen-config --help`.
@@ -16,6 +30,7 @@
 - `Stream` option automatically replaced with "Stream with Block-cache" internally for optimized performance.
 - Login via Managed Identify is supported with Object-ID for all versions of blobfuse except 2.3.0 and 2.3.2.To use Object-ID for these two versions, use AzCLI or utilize Application/Client-ID or Resource ID base authentication..
 - Version check is now moved to a static website hosted on a public container.
+- 'df' command output will present memory availability in case of block-cache if disk is not configured.
 
 ## 2.3.2 (2024-09-03)
 **Bug Fixes**
