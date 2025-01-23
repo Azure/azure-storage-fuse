@@ -224,7 +224,7 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 // ReadInBuffer: Read the file into a buffer
 func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
 	log.Trace("BlockCache::ReadFile : handle=%d, path=%s, offset: %d\n", options.Handle.ID, options.Handle.Path, options.Offset)
-	//logy.Write([]byte(fmt.Sprintf("BlockCache::ReadFile : handle=%d, path=%s, offset: %d\n", options.Handle.ID, options.Handle.Path, options.Offset)))
+	logy.Write([]byte(fmt.Sprintf("BlockCache::ReadFile : handle=%d, path=%s, offset: %d\n", options.Handle.ID, options.Handle.Path, options.Offset)))
 	h := options.Handle
 	if h.Prev_offset == options.Offset {
 		if h.Is_seq == 0 {
@@ -242,11 +242,11 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 	offset := options.Offset
 	dataRead := 0
 	len_of_copy := len(options.Data)
-	// f.Lock()
-	// options.Handle.Size = f.size // This is updated here as it is used by the nxt comp for upload usually not necessary!
-	// f.Unlock()
+	f.Lock()
+	fileSize := f.size
+	f.Unlock()
 
-	if options.Offset >= options.Handle.Size {
+	if options.Offset >= fileSize {
 		// EOF reached so early exit
 		logy2.WriteString(fmt.Sprintf("Something went wrong\n"))
 		return 0, io.EOF
@@ -271,7 +271,7 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 
 		blk.Lock()
 		block_buf := blk.buf
-		len_of_block_buf := getBlockSize(options.Handle.Size, idx)
+		len_of_block_buf := getBlockSize(fileSize, idx)
 		bytesCopied := copy(options.Data[dataRead:], block_buf.data[blockOffset:len_of_block_buf])
 		if blockOffset+int64(bytesCopied) == int64(len_of_block_buf) {
 			releaseBufferForBlock(blk) // THis should handle the uncommited buffers
@@ -280,7 +280,7 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 
 		dataRead += bytesCopied
 		offset += int64(bytesCopied)
-		if offset >= options.Handle.Size { //this should be protected by lock ig, idk
+		if offset >= fileSize { //this should be protected by lock ig, idk
 			return dataRead, io.EOF
 		}
 	}
@@ -426,6 +426,7 @@ func (bc *BlockCache) TruncateFile(options internal.TruncateFileOptions) (err er
 			if i == int(finalBlocksCnt)-1 {
 				// We are allocating buffer here as there might not be full hole for last block
 				blk.buf = bPool.getBuffer()
+				close(blk.downloadDone)
 			} else {
 				blk.hole = true
 			}
@@ -506,7 +507,9 @@ func (bc *BlockCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAtt
 	}
 	file, ok := checkFileExistsInOpen(options.Name)
 	if ok {
+		file.Lock()
 		attr.Size = file.size
+		file.Unlock()
 		logy.Write([]byte(fmt.Sprintf("BlockCache::GetAttr MODIFIED: file=%s, size:%d\n", options.Name, attr.Size)))
 	}
 

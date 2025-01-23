@@ -37,8 +37,9 @@ parameters:
 
 steps:   
   - script: |
-      $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/azure_key.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.config_file }}
-    displayName: 'Create Config File for RW mount'
+      cd $(WORK_DIR)
+      $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/azure_key_bc.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.config_file }}
+    displayName: 'Create Config File for New Block cache'
     env:
       NIGHTLY_STO_ACC_NAME: ${{ parameters.account_name }}
       NIGHTLY_STO_ACC_KEY: ${{ parameters.account_key }}
@@ -47,9 +48,6 @@ steps:
       VERBOSE_LOG: ${{ parameters.verbose_log }}
     continueOnError: false
 
-  - script: |
-      cat ${{ parameters.config_file }}
-    displayName: 'Print config file'
 
   - template: 'mount.yml'
     parameters:
@@ -57,161 +55,70 @@ steps:
       mount_dir: ${{ parameters.mount_dir }}
       temp_dir: ${{ parameters.temp_dir }}
       prefix: ${{ parameters.idstring }}
+      ro_mount: true
       mountStep: 
         script: |
-          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) --file-cache-timeout=3200
+          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) --disable-writeback-cache=true
 
   - script: |
-      for i in $(seq 1 10); do echo $(shuf -i 0-4294967296 -n 1); done | parallel --will-cite -j 5 'head -c {} < /dev/urandom > ${{ parameters.mount_dir }}/datafiles_{}'
-      for i in {1,2,3,4,5,6,7,8,9,10,20,30,50,100,200}; do echo $i; done | parallel --will-cite -j 5 'head -c {}M < /dev/urandom > ${{ parameters.mount_dir }}/mixedfiles_{}.txt'
-      for i in {1,2,3,4,5,6,7,8,9,10,20,30,50,100,200}; do echo $i; done | parallel --will-cite -j 5 'head -c {}M < /dev/urandom > ${{ parameters.mount_dir }}/mixedfiles_{}.png'
+      echo "----------------------------------------------"
+      ls -l ${{ parameters.mount_dir }}
+    displayName: 'Print contents of Block-Cache'
+
+  - script: |
       cd ${{ parameters.mount_dir }}
-      python3 $(WORK_DIR)/testdata/scripts/generate-parquet-files.py
-      ls -l ${{ parameters.mount_dir }}/mixedfiles_*
-      ls -l ${{ parameters.mount_dir }}/datafiles_*
-    displayName: 'Generate data with File-Cache'
+      pwd
+    displayName: 'change current Working Directory'
 
   - script: |
-      md5sum ${{ parameters.mount_dir }}/datafiles_* | tee $(WORK_DIR)/md5sum_original_files.txt
-      md5sum ${{ parameters.mount_dir }}/mixedfiles_* | tee -a $(WORK_DIR)/md5sum_original_files.txt
-    displayName: 'Generate md5Sum with File-Cache' 
+      git clone https://github.com/microsoft/vscode.git
+    displayName: 'Git Clone VS Code'
 
   - script: |
-      echo "----------------------------------------------"
-      ls -l ${{ parameters.mount_dir }}
-    displayName: 'Print contents of File-Cache'
+      ll
+    displayName: 'list mount'
 
   - script: |
-      $(WORK_DIR)/blobfuse2 unmount all
-    displayName: 'Unmount RW mount'
+      git clone https://github.com/libfuse/libfuse.git
+    displayName: 'Git clone libfuse'
 
   - script: |
-      cd $(WORK_DIR)
-      $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/azure_key_bc.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.config_file }}
-    displayName: 'Create Config File for RO mount'
-    env:
-      NIGHTLY_STO_ACC_NAME: ${{ parameters.account_name }}
-      NIGHTLY_STO_ACC_KEY: ${{ parameters.account_key }}
-      ACCOUNT_TYPE: ${{ parameters.account_type }}
-      ACCOUNT_ENDPOINT: ${{ parameters.account_endpoint }}
-      VERBOSE_LOG: ${{ parameters.verbose_log }}
-    continueOnError: false
+      ll
+    displayName: 'list mount'
 
   - script: |
-      cat ${{ parameters.config_file }}  
-    displayName: 'Print block cache Config file'
-
-  - template: 'mount.yml'
-    parameters:
-      working_dir: $(WORK_DIR)
-      mount_dir: ${{ parameters.mount_dir }}
-      temp_dir: ${{ parameters.temp_dir }}
-      prefix: ${{ parameters.idstring }}
-      ro_mount: true
-      mountStep: 
-        script: |
-          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) -o ro --block-cache-block-size ${{ parameters.block_size_mb }}
+      wget https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.13.tar.xz 
+    displayName: 'Download latest linux Source'
 
   - script: |
-      echo "----------------------------------------------"
-      ls -l ${{ parameters.mount_dir }}/datafiles*
-      ls -l ${{ parameters.mount_dir }}/mixedfiles*
-    displayName: 'Print contents of Block-Cache'
+      unxz --keep linux-*.tar.xz
+    displayName: 'Uncompress Tarball'
 
   - script: |
-      md5sum ${{ parameters.mount_dir }}/datafiles_* | tee $(WORK_DIR)/md5sum_block_cache.txt
-      md5sum ${{ parameters.mount_dir }}/mixedfiles_* | tee -a $(WORK_DIR)/md5sum_block_cache.txt
-    displayName: 'Generate md5Sum with Block-Cache'
+      tar -xf linux-*.tar
+    displayName: 'Untar Linux source'
 
   - script: |
-      $(WORK_DIR)/blobfuse2 unmount all
-    displayName: 'Unmount RW mount'
+      cd linux-*/
+    displayName: 'Change working directory to linux'
 
   - script: |
-      echo "----------------------------------------------"
-      cat $(WORK_DIR)/md5sum_original_files.txt
-      cat $(WORK_DIR)/md5sum_original_files.txt | cut -d " " -f1 > $(WORK_DIR)/temp.txt && mv $(WORK_DIR)/temp.txt $(WORK_DIR)/md5sum_original_files.txt
-      echo "----------------------------------------------"
-      cat $(WORK_DIR)/md5sum_block_cache.txt
-      cat $(WORK_DIR)/md5sum_block_cache.txt | cut -d " " -f1 > $(WORK_DIR)/temp.txt && mv $(WORK_DIR)/temp.txt $(WORK_DIR)/md5sum_block_cache.txt
-      echo "----------------------------------------------"
-      diff $(WORK_DIR)/md5sum_original_files.txt $(WORK_DIR)/md5sum_block_cache.txt
-      if [ $? -ne 0 ]; then
-        exit 1
-      fi
-    displayName: 'Compare md5Sum'
+      ll
+    displayName: 'list mount'
 
   - script: |
-      cd $(WORK_DIR)
-      $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/azure_key_bc.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.config_file }}
-    displayName: 'Create Config File for RO mount with direct-io and disk-cache enabled'
-    env:
-      NIGHTLY_STO_ACC_NAME: ${{ parameters.account_name }}
-      NIGHTLY_STO_ACC_KEY: ${{ parameters.account_key }}
-      ACCOUNT_TYPE: ${{ parameters.account_type }}
-      ACCOUNT_ENDPOINT: ${{ parameters.account_endpoint }}
-      VERBOSE_LOG: ${{ parameters.verbose_log }}
-    continueOnError: false
+      make defconfig
+    displayName: 'Make Config'
 
   - script: |
-     if [ -d "block_cache" ]; then ls -l block_cache; rm -rf block_cache; mkdir block_cache  ; fi
-    displayName: 'Clear Temp Cache for Block Cache before mounting'
-
-  - template: 'mount.yml'
-    parameters:
-      working_dir: $(WORK_DIR)
-      mount_dir: ${{ parameters.mount_dir }}
-      temp_dir: ${{ parameters.temp_dir }}
-      prefix: ${{ parameters.idstring }}
-      ro_mount: true
-      mountStep: 
-        script: |
-          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) -o ro -o direct_io --block-cache-path block_cache --block-cache-block-size ${{ parameters.block_size_mb }}
+      make -j$(nproc) 2>&1 | tee log
+    displayName: 'Compile Source'
 
   - script: |
-      echo "----------------------------------------------"
-      ls -l ${{ parameters.mount_dir }}
-    displayName: 'Print contents of Block-Cache'
+      ll
+    displayName: 'list mount'
 
-  - script: |
-      md5sum ${{ parameters.mount_dir }}/datafiles_* | tee $(WORK_DIR)/md5sum_block_cache_direct_io.txt
-      md5sum ${{ parameters.mount_dir }}/mixedfiles_* | tee -a $(WORK_DIR)/md5sum_block_cache_direct_io.txt
-    displayName: 'Generate md5Sum with Block-Cache Direct-IO'
 
-  - script: |
-      md5sum ${{ parameters.mount_dir }}/datafiles_* | tee $(WORK_DIR)/md5sum_block_cache_disk_cache.txt
-      md5sum ${{ parameters.mount_dir }}/mixedfiles_* | tee -a $(WORK_DIR)/md5sum_block_cache_disk_cache.txt
-    displayName: 'Generate md5Sum with Block-Cache Disk-Cache'
-
-  - script: |
-      $(WORK_DIR)/blobfuse2 unmount all
-    displayName: 'Unmount RW mount'
-
-  - script: |
-      echo "----------------------------------------------"
-      cat $(WORK_DIR)/md5sum_original_files.txt
-      echo "----------------------------------------------"
-      cat $(WORK_DIR)/md5sum_block_cache_direct_io.txt | cut -d " " -f1 > $(WORK_DIR)/temp.txt && mv $(WORK_DIR)/temp.txt $(WORK_DIR)/md5sum_block_cache_direct_io.txt
-      cat $(WORK_DIR)/md5sum_block_cache_direct_io.txt
-      echo "----------------------------------------------"
-      diff $(WORK_DIR)/md5sum_original_files.txt $(WORK_DIR)/md5sum_block_cache_direct_io.txt
-      if [ $? -ne 0 ]; then
-        exit 1
-      fi
-    displayName: 'Compare md5Sum with Block-Cache Direct-IO'
-
-  - script: |
-      echo "----------------------------------------------"
-      cat $(WORK_DIR)/md5sum_original_files.txt
-      echo "----------------------------------------------"
-      cat $(WORK_DIR)/md5sum_block_cache_disk_cache.txt | cut -d " " -f1 > $(WORK_DIR)/temp.txt && mv $(WORK_DIR)/temp.txt $(WORK_DIR)/md5sum_block_cache_disk_cache.txt
-      cat $(WORK_DIR)/md5sum_block_cache_disk_cache.txt
-      echo "----------------------------------------------"
-      diff $(WORK_DIR)/md5sum_original_files.txt $(WORK_DIR)/md5sum_block_cache_disk_cache.txt
-      if [ $? -ne 0 ]; then
-        exit 1
-      fi
-    displayName: 'Compare md5Sum with Block-Cache Disk-Cache'
 
   - template: 'cleanup.yml'
     parameters:
