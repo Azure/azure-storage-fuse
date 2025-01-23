@@ -50,7 +50,7 @@ az upgrade -y
 # Log in to Azure
 # You will get a pop-up here select your account and login
 echo "You will get a pop-up here select your account and login"
-echo "PLEASE NOTE: After az login you should select the Subscription you are on and enter that Subscription ID :
+echo "PLEASE NOTE: After az login you should select the Subscription you are on and enter that Subscription ID : 
 \\n For Example: XCLient 116 is shown in the list of subscriptions, you should then enter 116"
 az login --tenant 72f988bf-86f1-41af-91ab-2d7cd011db47
 
@@ -101,6 +101,37 @@ fi
 echo "Please check the status of Azure Security Pack by running 'sudo /usr/local/bin/azsecd status'"
 echo "Installation of Azure Security Pack is complete.If you found any errors please manually check the installation steps."
 #-------------------------------------------------------------------------------------------------------
+# Define the command you want to run
+COMMAND="az vm assess-patches --resource-group $resource_group --name $vm_name"
+
+# Initialize variables
+attempt=0
+start_time=$(date +%s)
+
+# Loop until the command is successful
+while true; do
+  attempt=$((attempt + 1))
+  echo "Attempt $attempt: Trying to run the command..."
+
+  # Run the command
+  $COMMAND
+
+  # Check if the command was successful
+  if [ $? -eq 0 ]; then
+    echo "Command executed successfully on attempt $attempt."
+    break
+  else
+    echo "Command failed. Retrying..."
+  fi
+
+  # Optional: Add a sleep interval between attempts
+  sleep 1
+done
+
+# Measure the end time
+end_time=$(date +%s)
+elapsed_time=$((end_time - start_time))
+
 # Check for pending updates, assess and install patches
 #az vm assess-patches --resource-group <rg-name> --name <vm-name>
-#az vm install-patches --resource-group <rg-name> --name <vm-name> --maximum-duration PT2H --reboot-setting IfRequired --classifications-to-include-linux Critical Security
+az vm install-patches --resource-group $resource_group --name $vm_name --maximum-duration PT2H --reboot-setting IfRequired --classifications-to-include-linux Critical Security
