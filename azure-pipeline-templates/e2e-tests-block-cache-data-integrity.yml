@@ -75,7 +75,7 @@ steps:
     displayName: 'Git Clone VS Code'
 
   - script: |
-      ll
+      ls -l
     displayName: 'list mount'
 
   - script: |
@@ -83,7 +83,7 @@ steps:
     displayName: 'Git clone libfuse'
 
   - script: |
-      ll
+      ls -l
     displayName: 'list mount'
 
   - script: |
@@ -92,7 +92,7 @@ steps:
 
   - script: |
       unxz --keep linux-*.tar.xz
-    displayName: 'Uncompress Tarball'
+    displayName: 'Uncompress Tarbals -l'
 
   - script: |
       tar -xf linux-*.tar
@@ -103,7 +103,7 @@ steps:
     displayName: 'Change working directory to linux'
 
   - script: |
-      ll
+      ls -l
     displayName: 'list mount'
 
   - script: |
@@ -115,7 +115,7 @@ steps:
     displayName: 'Compile Source'
 
   - script: |
-      ll
+      ls -l
     displayName: 'list mount'
 
 
