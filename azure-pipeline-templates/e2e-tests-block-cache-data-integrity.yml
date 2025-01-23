@@ -68,56 +68,46 @@ steps:
   - script: |
       cd ${{ parameters.mount_dir }}
       pwd
-    displayName: 'change current Working Directory'
-
-  - script: |
       git clone https://github.com/microsoft/vscode.git
     displayName: 'Git Clone VS Code'
 
-  - script: |
-      ls -l
-    displayName: 'list mount'
 
   - script: |
+      cd ${{ parameters.mount_dir }}
+      pwd
       git clone https://github.com/libfuse/libfuse.git
     displayName: 'Git clone libfuse'
 
   - script: |
-      ls -l
-    displayName: 'list mount'
-
-  - script: |
+      cd ${{ parameters.mount_dir }}
+      pwd
       wget https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.13.tar.xz 
     displayName: 'Download latest linux Source'
 
   - script: |
+      cd ${{ parameters.mount_dir }}
+      pwd
       unxz --keep linux-*.tar.xz
-    displayName: 'Uncompress Tarbals -l'
+    displayName: 'Uncompress Tarballs'
 
   - script: |
+      cd ${{ parameters.mount_dir }}
+      pwd
       tar -xf linux-*.tar
     displayName: 'Untar Linux source'
 
-  - script: |
-      cd linux-*/
-    displayName: 'Change working directory to linux'
 
   - script: |
-      ls -l
-    displayName: 'list mount'
-
-  - script: |
+      cd ${{ parameters.mount_dir }}/linux-*/
+      pwd
       make defconfig
     displayName: 'Make Config'
 
   - script: |
+      cd ${{ parameters.mount_dir }}/linux-*/
+      pwd
       make -j$(nproc) 2>&1 | tee log
     displayName: 'Compile Source'
-
-  - script: |
-      ls -l
-    displayName: 'list mount'
-
 
 
   - template: 'cleanup.yml'
