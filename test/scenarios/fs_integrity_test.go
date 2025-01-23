@@ -260,10 +260,38 @@ func TestWrite10MB(t *testing.T) {
 	removeFiles(t, filename)
 }
 
-// Test for writing from 1 fd and reading from another fd.
+// Test Read Write From Same handle
 func TestOpenWriteRead(t *testing.T) {
 	t.Parallel()
 	filename := "testfile_open_write_read.txt"
+	tempbuffer := make([]byte, 4*1024)
+	databuffer := make([]byte, 4*1024) // 4KB buffer
+	_, err := io.ReadFull(rand.Reader, databuffer)
+	assert.Nil(t, err)
+
+	for _, mnt := range mountpoints {
+		filePath := filepath.Join(mnt, filename)
+		file, err := os.Create(filePath)
+		assert.Nil(t, err)
+		written, err := file.WriteAt(databuffer, 200)
+		assert.Nil(t, err)
+		assert.Equal(t, 4096, written)
+		read, err := file.Read(tempbuffer)
+		assert.Nil(t, err)
+		assert.Equal(t, 4096, read)
+		err = file.Close()
+		assert.Nil(t, err)
+	}
+
+	checkFileIntegrity(t, filename)
+	removeFiles(t, filename)
+
+}
+
+// Test for writing from 1 fd and reading from another fd.
+func TestOpenWriteReadMultipleHandles(t *testing.T) {
+	t.Parallel()
+	filename := "testfile_open_write_read_multiple_handles.txt"
 	tempbuffer := make([]byte, 4*1024)
 	databuffer := make([]byte, 4*1024) // 4KB buffer
 	_, err := io.ReadFull(rand.Reader, databuffer)
