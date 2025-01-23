@@ -180,6 +180,7 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 	var blockList blockList = make([]*block, 0)
 	var valid bool = false //Invalid blocklist blobs can only be read and can't be modified
 
+	// todo: O_TRUNC is not supported currently.
 	if attr.Size == 0 || options.Flags&os.O_TRUNC != 0 {
 		f.size = 0
 		f.blockList = make([]*block, 0) //todo: return memory to pool

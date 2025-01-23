@@ -1,7 +1,6 @@
 package block_cache_new
 
 import (
-	"container/list"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -25,10 +24,12 @@ type Buffer struct {
 }
 
 type BufferPool struct {
-	pool           sync.Pool  // Pool used to get and put the buffers.
-	pendingUploads *list.List // Pending Uploads list
-	syncedBlks     *list.List // Current Synced Blocks
-	bufferSize     int        // Size of the each buffer in the bytes for this pool
+	pool            sync.Pool   // Pool used to get and put the buffers.
+	localBlks       chan *block // Local Blocks which are yet to upload. This list can contain only Local Blocks
+	uploadingBlks   chan *block // Blocks which are uploading. This list contains local blocks.
+	downloadingBlks chan *block // Blocks which are downloading. This list contains Commited blocks.
+	syncedBlks      chan *block // Current Synced Blocks. This list can contain both commited and Uncommited blocks.
+	bufferSize      int         // Size of the each buffer in the bytes for this pool
 }
 
 func createBufferPool(bufSize int) *BufferPool {
@@ -38,11 +39,17 @@ func createBufferPool(bufSize int) *BufferPool {
 				return new(Buffer)
 			},
 		},
-		pendingUploads: list.New(),
-		bufferSize:     bufSize,
+		localBlks:       make(chan *block, 100), // Sizes of these channels need to be decided.
+		uploadingBlks:   make(chan *block, 100),
+		downloadingBlks: make(chan *block, 100),
+		syncedBlks:      make(chan *block, 100),
+		bufferSize:      bufSize,
 	}
 	zeroBuffer = bPool.getBuffer()
-	go doGC()
+	go bPool.asyncUploadScheduler()
+	go bPool.uploadWatcher()
+	go bPool.downloadWatcher()
+	go bPool.blockCleaner()
 	return bPool
 }
 
@@ -51,8 +58,33 @@ type blkNode struct {
 	blk  *block
 }
 
-func doGC() {
+// It will Schedule a task for uploading the block to Azure Storage
+// It will schedule a local block to upload when
+// 1. timer since last operation on the block was over.
+// Schedules the task and push the block into uploadingBlks.
+func (bp *BufferPool) asyncUploadScheduler() {
+	for blk := range bp.localBlks {
+		blk.Lock()
 
+		blk.Unlock()
+	}
+}
+
+// Checks the upload status of a block and responsible for moving it into the blockCleaner
+func (bp *BufferPool) uploadWatcher() {
+
+}
+
+func (bp *BufferPool) downloadWatcher() {
+
+}
+
+// Responsible for giving blocks back to the pool,
+// It can happen in 2 scenarios:
+// 1. Block is not referenced by any open handle.
+// 2. timer since last operation on the block was over.
+func (bp *BufferPool) blockCleaner() {
+	// totMemory :=
 }
 
 func (bp *BufferPool) getBuffer() *Buffer {

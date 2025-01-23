@@ -139,6 +139,7 @@ func TestFileWrite(t *testing.T) {
 	removeFiles(t, filename)
 }
 
+// Add Tests for reading and writing to the newly created blocks and modified blocks while truncate.
 const (
 	truncate int = iota
 	ftruncate
