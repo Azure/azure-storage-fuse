@@ -30,9 +30,6 @@ Components: main
 Architectures: $(dpkg --print-architecture)
 Signed-by: /etc/apt/keyrings/microsoft.gpg" | sudo tee /etc/apt/sources.list.d/azure-cli.sources
 
-# Install Azure CLI
-sudo apt-get install azure-cli -y
-
 # Update package lists again
 sudo apt-get update
 
@@ -63,6 +60,8 @@ resource_group=$(curl -H Metadata:true "http://169.254.169.254/metadata/instance
 # Check if VM name and resource group are not empty
 if [ -z "$vm_name" ] || [ -z "$resource_group" ]; then
     echo "Failed to retrieve VM name or resource group. You will have to manually insert these values in the upcoming commands"
+    echo "az vm extension set -n AzureMonitorLinuxAgent --publisher Microsoft.Azure.Monitor --version 1.0 --vm-name <vm-name> --resource-group <rg-name> --enable-auto-upgrade true --settings '{"GCS_AUTO_CONFIG": true}'"
+    echo "az vm extension set -n AzureSecurityLinuxAgent --publisher Microsoft.Azure.Security.Monitoring --version 2.0 --vm-name <vm-name> --resource-group <rg-name> --enable-auto-upgrade true --settings '{"enableGenevaUpload":true,"enableAutoConfig":true}'"
     exit 1
 fi
 
@@ -101,6 +100,9 @@ fi
 echo "Please check the status of Azure Security Pack by running 'sudo /usr/local/bin/azsecd status'"
 echo "Installation of Azure Security Pack is complete.If you found any errors please manually check the installation steps."
 #-------------------------------------------------------------------------------------------------------
+
+
+sleep 100
 # Check for pending updates, assess and install patches
-#az vm assess-patches --resource-group <rg-name> --name <vm-name>
-#az vm install-patches --resource-group <rg-name> --name <vm-name> --maximum-duration PT2H --reboot-setting IfRequired --classifications-to-include-linux Critical Security
+az vm assess-patches --resource-group $resource_group --name $vm_name
+az vm install-patches --resource-group $resource_group --name $vm_name --maximum-duration PT2H --reboot-setting IfRequired --classifications-to-include-linux Critical Security
