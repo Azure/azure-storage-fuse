@@ -47,7 +47,7 @@ az upgrade -y
 # Log in to Azure
 # You will get a pop-up here select your account and login
 echo "You will get a pop-up here select your account and login"
-echo "PLEASE NOTE: After az login you should select the Subscription you are on and enter that Subscription ID :
+echo "PLEASE NOTE: After az login you should select the Subscription you are on and enter that Subscription ID : 
 \\n For Example: XCLient 116 is shown in the list of subscriptions, you should then enter 116"
 az login --tenant 72f988bf-86f1-41af-91ab-2d7cd011db47
 
