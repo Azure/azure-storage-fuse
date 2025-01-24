@@ -41,8 +41,8 @@ steps:
       $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/azure_key_bc.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.config_file }}
     displayName: 'Create Config File for New Block cache'
     env:
-      NIGHTLY_STO_ACC_NAME: ${{ parameters.account_name }}
-      NIGHTLY_STO_ACC_KEY: ${{ parameters.account_key }}
+      TEMP_SYELETI_ACC_NAME: ${{ parameters.account_name }}
+      TEMP_SYELETI_ACC_KEY: ${{ parameters.account_key }}
       ACCOUNT_TYPE: ${{ parameters.account_type }}
       ACCOUNT_ENDPOINT: ${{ parameters.account_endpoint }}
       VERBOSE_LOG: ${{ parameters.verbose_log }}
