@@ -1521,13 +1521,13 @@ stages:
           matrix:
             Ubuntu-20:
               AgentName: 'blobfuse-ubuntu20'
-              containerName: 'test-cnt-ubn-20'
+              containerName: 'buildlinux20'
               adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
               fuselib: 'libfuse-dev'
               tags: 'fuse2'          
             Ubuntu-22:
               AgentName: 'blobfuse-ubuntu22'
-              containerName: 'test-cnt-ubn-22'
+              containerName: 'buildlinux22'
               adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
               fuselib: 'libfuse3-dev'
               tags: 'fuse3'
@@ -1573,10 +1573,8 @@ stages:
                 displayName: 'Install fuse'
 
           - script: |
-              sudo apt-get install python3-setuptools -y
-              sudo apt install python3-pip -y
-              sudo pip3 install pandas numpy pyarrow fastparquet
-            displayName: 'Install Python Packages'
+              sudo apt install bc binutils bison dwarves flex gcc git gnupg2 gzip libelf-dev libncurses5-dev libssl-dev make openssl pahole perl-base rsync tar xz-utils
+            displayName: 'Install tools required to build linux source'
 
           - template: 'azure-pipeline-templates/e2e-tests-block-cache-data-integrity.yml'
             parameters:
@@ -1585,10 +1583,10 @@ stages:
               container: $(containerName)
               idstring: Block_Blob
               adls: false
-              account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
-              account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
+              account_name: $(TEMP_SYELETI_ACC_NAME)
+              account_key: $(TEMP_SYELETI_ACC_KEY)
               account_type: block
-              account_endpoint: https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net
+              account_endpoint: https://$(TEMP_SYELETI_ACC_NAME).blob.core.windows.net
               distro_name: $(AgentName)
               quick_test: false
               verbose_log: ${{ parameters.verbose_log }}

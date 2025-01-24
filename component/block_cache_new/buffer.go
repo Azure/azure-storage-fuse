@@ -70,11 +70,12 @@ func (bp *BufferPool) asyncUploadScheduler() {
 	}
 }
 
-// Checks the upload status of a block and responsible for moving it into the blockCleaner
+// Checks the upload status of a block and responsible for moving it into the synced blocks
 func (bp *BufferPool) uploadWatcher() {
 
 }
 
+// Checks the download status of a block and responsible for moving it into the synced blocks
 func (bp *BufferPool) downloadWatcher() {
 
 }
