@@ -10,9 +10,9 @@ components:
   - azstorage
 
 libfuse:
-  attribute-expiration-sec: 0
-  entry-expiration-sec: 0
-  negative-entry-expiration-sec: 0
+  attribute-expiration-sec: 300
+  entry-expiration-sec: 300
+  negative-entry-expiration-sec: 300
   ignore-open-flags: true
 
 #block_cache:
