@@ -60,6 +60,11 @@ type remoteDataManager struct {
 func NewRemoteDataManager(remote internal.Component, statsMgr *xinternal.StatsManager) (*remoteDataManager, error) {
 	log.Debug("data_manager::NewRemoteDataManager : create new remote data manager")
 
+	if remote == nil || statsMgr == nil {
+		log.Err("data_manager::NewRemoteDataManager : invalid parameters sent to create remote data manager")
+		return nil, fmt.Errorf("invalid parameters sent to create remote data manager")
+	}
+
 	rdm := &remoteDataManager{}
 
 	rdm.SetName(common.DATA_MANAGER)
