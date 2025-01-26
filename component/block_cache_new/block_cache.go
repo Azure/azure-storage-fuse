@@ -294,13 +294,14 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 // WriteFile: Write to the local file
 func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) {
 	log.Trace("BlockCache::WriteFile : handle=%d, path=%s, offset= %d", options.Handle.ID, options.Handle.Path, options.Offset)
-	logy.Write([]byte(fmt.Sprintf("BlockCache::WriteFile : handle=%d, path=%s, offset= %d, size=%d\n", options.Handle.ID, options.Handle.Path, options.Offset, len(options.Data))))
+	logy.Write([]byte(fmt.Sprintf("BlockCache::WriteFile [START]: handle=%d, path=%s, offset= %d, size=%d\n", options.Handle.ID, options.Handle.Path, options.Offset, len(options.Data))))
 	f := GetFileFromHandle(options.Handle)
 	offset := options.Offset
 	len_of_copy := len(options.Data)
 	dataWritten := 0
 	for dataWritten < len_of_copy {
 		idx := getBlockIndex(offset)
+		logy.Write([]byte(fmt.Sprintf("BlockCache::WriteFile [PROGRESS] idx: %d\n", idx)))
 		blk, err := getBlockForWrite(idx, options.Handle, f)
 		if err != nil {
 			return dataWritten, err
@@ -326,6 +327,8 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 		}
 		f.Unlock()
 	}
+	logy.Write([]byte(fmt.Sprintf("BlockCache::WriteFile [COMPLETE] offset: %d\n", options.Offset)))
+
 	return dataWritten, nil
 
 }
@@ -404,6 +407,7 @@ func (bc *BlockCache) TruncateFile(options internal.TruncateFileOptions) (err er
 		// todo: Lock simplification
 		lstBlk.Lock()
 		lstBlk.state = localBlock
+		lstBlk.hole = false
 		lstBlk.Unlock()
 		return nil
 	}

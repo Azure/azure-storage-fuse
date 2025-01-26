@@ -317,5 +317,6 @@ func releaseBuffers(f *File) {
 func releaseBufferForBlock(blk *block) {
 	if blk.state == committedBlock {
 		bPool.putBuffer(blk)
+		blk.downloadDone = make(chan error, 1)
 	}
 }

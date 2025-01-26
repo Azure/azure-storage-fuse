@@ -102,7 +102,6 @@ func doDownload(t *task, workerNo int, sync bool) {
 			// generally the block should be committed otherwise old data will be served.
 			// Todo: Handle this case.
 			// We don't hit here yet as we dont invalidate cache entries for local and uncommited blocks
-			return
 			//return errors.New("todo : read for uncommited block which was removed from the cache")
 		}
 		logy.Write([]byte(fmt.Sprintf("BlockCache::doDownload : Download Scheduled for block[sync: %t], path=%s, blk Idx = %d, worker No = %d\n", sync, t.f.Name, t.blk.idx, workerNo)))
@@ -115,7 +114,7 @@ func doDownload(t *task, workerNo int, sync bool) {
 			logy.Write([]byte(fmt.Sprintf("BlockCache::doDownload : Download Completed for block[sync: %t], path=%s, blk Idx = %d, worker No = %d\n", sync, t.f.Name, t.blk.idx, workerNo)))
 			blk.buf.dataSize = int64(dataRead)
 			blk.buf.timer = time.Now()
-			blk.state = localBlock
+			blk.state = committedBlock
 			close(blk.downloadDone)
 		} else {
 			blk.buf = nil
