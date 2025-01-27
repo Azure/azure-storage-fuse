@@ -223,6 +223,21 @@ func (ac *AttrCache) invalidateDirectory(path string) {
 	ac.invalidatePath(path)
 }
 
+// Copies the attr to the given path.
+func (ac *AttrCache) updateCacheEntry(path string, attr *internal.ObjAttr) {
+	cacheEntry, found := ac.cacheMap[path]
+	if found {
+		// Copy the attr
+		cacheEntry.attr = attr
+		// Update the path inside the attr
+		cacheEntry.attr.Path = path
+		// Update the Existence of the entry
+		cacheEntry.attrFlag.Set(AttrFlagExists)
+		// Refresh the cache entry
+		cacheEntry.cachedAt = time.Now()
+	}
+}
+
 // invalidatePath: invalidates a path
 func (ac *AttrCache) invalidatePath(path string) {
 	// Keys in the cache map do not contain trailing /, truncate the path before referencing a key in the map.
@@ -367,16 +382,7 @@ func (ac *AttrCache) RenameFile(options internal.RenameFileOptions) error {
 		// LMT of Source will be modified by next component if the copy is success.
 		ac.cacheLock.RLock()
 		defer ac.cacheLock.RUnlock()
-		dstCacheEntry, found := ac.cacheMap[options.Dst]
-		if found {
-			// Copy the Src Attr to Dst
-			dstCacheEntry.attr = srcAttr
-			dstCacheEntry.attr.Path = options.Dst
-			// Dst blob may not exist before
-			dstCacheEntry.attrFlag.Set(AttrFlagExists)
-			// Refresh the cache
-			dstCacheEntry.cachedAt = time.Now()
-		}
+		ac.updateCacheEntry(options.Dst, srcAttr)
 		ac.deletePath(options.Src, time.Now())
 	}
 

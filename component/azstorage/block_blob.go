@@ -328,7 +328,7 @@ func (bb *BlockBlob) RenameFile(source string, target string, srcAttr *internal.
 
 	// not specifying source blob metadata, since passing empty metadata headers copies
 	// the source blob metadata to destination blob
-	startCopy, err := newBlobClient.StartCopyFromURL(context.Background(), blobClient.URL(), &blob.StartCopyFromURLOptions{
+	copyResponse, err := newBlobClient.StartCopyFromURL(context.Background(), blobClient.URL(), &blob.StartCopyFromURLOptions{
 		Tier: bb.Config.defaultTier,
 	})
 
@@ -344,19 +344,25 @@ func (bb *BlockBlob) RenameFile(source string, target string, srcAttr *internal.
 		return err
 	}
 
-	var dstLMT *time.Time = startCopy.LastModified
+	var dstLMT *time.Time = copyResponse.LastModified
 
-	copyStatus := startCopy.CopyStatus
+	copyStatus := copyResponse.CopyStatus
+	var prop blob.GetPropertiesResponse
+	pollCnt := 0
 	for copyStatus != nil && *copyStatus == blob.CopyStatusTypePending {
 		time.Sleep(time.Second * 1)
-		prop, err := newBlobClient.GetProperties(context.Background(), &blob.GetPropertiesOptions{
+		pollCnt++
+		prop, err = newBlobClient.GetProperties(context.Background(), &blob.GetPropertiesOptions{
 			CPKInfo: bb.blobCPKOpt,
 		})
 		if err != nil {
 			log.Err("BlockBlob::RenameFile : CopyStats : Failed to get blob properties for %s [%s]", source, err.Error())
 		}
-		dstLMT = prop.LastModified
 		copyStatus = prop.CopyStatus
+	}
+
+	if pollCnt > 0 {
+		dstLMT = prop.LastModified
 	}
 
 	if copyStatus != nil && *copyStatus == blob.CopyStatusTypeSuccess {
