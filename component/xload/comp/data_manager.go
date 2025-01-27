@@ -104,7 +104,8 @@ func (rdm *remoteDataManager) Process(item *common.WorkItem) (int, error) {
 		if item.Download {
 			return rdm.ReadData(item)
 		} else {
-			return rdm.WriteData(item)
+			// return rdm.WriteData(item)
+			return 0, nil
 		}
 	}
 }
@@ -133,6 +134,8 @@ func (rdm *remoteDataManager) ReadData(item *common.WorkItem) (int, error) {
 	return n, err
 }
 
+/*
+// uncomment this when the support for upload is added
 // WriteData writes data to the data manager
 func (rdm *remoteDataManager) WriteData(item *common.WorkItem) (int, error) {
 	// log.Debug("remoteDataManager::WriteData : Scheduling upload for %s offset %v", item.path, item.block.offset)
@@ -160,3 +163,4 @@ func (rdm *remoteDataManager) WriteData(item *common.WorkItem) (int, error) {
 
 	return n, err
 }
+*/
