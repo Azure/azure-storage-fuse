@@ -363,6 +363,16 @@ func (suite *utilTestSuite) TestWriteToFile() {
 
 }
 
+func (suite *utilTestSuite) TestCRC64() {
+	data := []byte("Hello World")
+	crc := GetCRC64(data, len(data))
+
+	data = []byte("Hello World!")
+	crc1 := GetCRC64(data, len(data))
+
+	suite.assert.NotEqual(crc, crc1)
+}
+
 func (suite *utilTestSuite) TestGetFuseMinorVersion() {
 	i := GetFuseMinorVersion()
 	suite.assert.GreaterOrEqual(i, 0)
