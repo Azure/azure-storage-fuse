@@ -38,12 +38,12 @@
 package internal
 
 import (
-	"time"
 	context "context"
 	common "github.com/Azure/azure-storage-fuse/v2/common"
 	handlemap "github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 	reflect "reflect"
 	"syscall"
+	"time"
 
 	gomock "github.com/golang/mock/gomock"
 )
