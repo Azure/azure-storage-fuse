@@ -542,6 +542,7 @@ func (suite *utilsTestSuite) TestRemovePrefixPath() {
 		result     string
 	}{
 		{prefixPath: "", path: "abc.txt", result: "abc.txt"},
+		{prefixPath: "", path: "ABC/DEF/abc.txt", result: "ABC/DEF/abc.txt"},
 		{prefixPath: "ABC", path: "ABC/DEF/1.txt", result: "DEF/1.txt"},
 		{prefixPath: "ABC/", path: "ABC/DEF/1.txt", result: "DEF/1.txt"},
 		{prefixPath: "ABC/DEF", path: "ABC/DEF/1.txt", result: "1.txt"},
