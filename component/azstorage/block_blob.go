@@ -653,7 +653,7 @@ func (bb *BlockBlob) getBlobAttr(blobInfo *container.BlobItem) (*internal.ObjAtt
 	}
 
 	attr := &internal.ObjAttr{
-		Path:   split(bb.Config.prefixPath, *blobInfo.Name),
+		Path:   removePrefixPath(bb.Config.prefixPath, *blobInfo.Name),
 		Name:   filepath.Base(*blobInfo.Name),
 		Size:   *blobInfo.Properties.ContentLength,
 		Mode:   mode,

@@ -553,6 +553,14 @@ func split(prefixPath string, path string) string {
 	return filepath.Join(paths...)
 }
 
+// removePrefixPath removes the given prefixPath from the beginning of path,
+// if it exists, and returns the resulting string without leading slashes.
+func removePrefixPath(prefixPath, path string) string {
+	prefixPath = strings.TrimLeft(prefixPath, "/")
+	path = strings.TrimPrefix(strings.TrimLeft(path, "/"), prefixPath)
+	return strings.TrimLeft(path, "/")
+}
+
 func sanitizeSASKey(key string) string {
 	if key == "" {
 		return key

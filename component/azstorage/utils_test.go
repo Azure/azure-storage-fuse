@@ -533,6 +533,33 @@ func (s *utilsTestSuite) TestRemoveLeadingSlashes() {
 	}
 }
 
+func (suite *utilsTestSuite) TestRemovePrefixPath() {
+	assert := assert.New(suite.T())
+
+	var inputs = []struct {
+		prefixPath string
+		path       string
+		result     string
+	}{
+		{prefixPath: "", path: "abc.txt", result: "abc.txt"},
+		{prefixPath: "ABC", path: "ABC/DEF/1.txt", result: "DEF/1.txt"},
+		{prefixPath: "ABC/", path: "ABC/DEF/1.txt", result: "DEF/1.txt"},
+		{prefixPath: "ABC/DEF", path: "ABC/DEF/1.txt", result: "1.txt"},
+		{prefixPath: "ABC/DEF/", path: "ABC/DEF/1.txt", result: "1.txt"},
+		{prefixPath: "ABC", path: "ABC/ABC.txt", result: "ABC.txt"},
+		{prefixPath: "A/B/C/D/E/", path: "A/B/C/D/E/F/G/H/I/j.txt", result: "F/G/H/I/j.txt"},
+		{prefixPath: "A/B/C/D/E", path: "/A/B/C/D/E/F/G/H/I/j.txt", result: "F/G/H/I/j.txt"},
+		{prefixPath: "A/B/C/D/E/", path: "/A/B/C/D/E/F/G/H/I/j.txt", result: "F/G/H/I/j.txt"},
+	}
+
+	for _, i := range inputs {
+		suite.Run(filepath.Join(i.prefixPath, i.path), func() {
+			output := removePrefixPath(i.prefixPath, i.path)
+			assert.EqualValues(i.result, output)
+		})
+	}
+}
+
 func TestUtilsTestSuite(t *testing.T) {
 	suite.Run(t, new(utilsTestSuite))
 }
