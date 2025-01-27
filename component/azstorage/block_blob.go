@@ -1079,14 +1079,14 @@ func (bb *BlockBlob) TruncateFile(name string, size int64) error {
 			blobClient := bb.Container.NewBlockBlobClient(blobName)
 
 			blkList := make([]string, 0)
-			id := common.GetBlockID(16)
+			id := common.GetBlockID(common.BlockIDLength)
 
 			for i := 0; size > 0; i++ {
 				if i == 0 || size < blkSize {
 					// Only first and last block we upload and rest all we replicate with the first block itself
 					if size < blkSize {
 						blkSize = size
-						id = common.GetBlockID(16)
+						id = common.GetBlockID(common.BlockIDLength)
 					}
 					data := make([]byte, blkSize)
 

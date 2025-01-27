@@ -143,6 +143,7 @@ func (rl *remoteLister) Process(item *common.WorkItem) (int, error) {
 		})
 		if err != nil {
 			log.Err("remoteLister::Process : Remote listing failed for %s [%s]", absPath, err.Error())
+			break
 		}
 
 		marker = new_marker

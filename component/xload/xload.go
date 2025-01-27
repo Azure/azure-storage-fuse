@@ -223,6 +223,7 @@ func (xl *Xload) Stop() error {
 	err := common.TempCacheCleanup(xl.path)
 	if err != nil {
 		log.Err("unable to clean xload local path [%s]", err.Error())
+		return err
 	}
 
 	return nil
