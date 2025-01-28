@@ -52,7 +52,6 @@ const SPLITTER string = "splitter"
 
 type splitter struct {
 	common.XBase
-	blockSize uint64
 	blockPool *common.BlockPool
 	path      string
 }
@@ -63,12 +62,11 @@ type downloadSplitter struct {
 	splitter
 }
 
-func NewDownloadSplitter(blockSize uint64, blockPool *common.BlockPool, path string, remote internal.Component) (*downloadSplitter, error) {
-	log.Debug("splitter::NewDownloadSplitter : create new download splitter for %s, block size %v", path, blockSize)
+func NewDownloadSplitter(blockPool *common.BlockPool, path string, remote internal.Component) (*downloadSplitter, error) {
+	log.Debug("splitter::NewDownloadSplitter : create new download splitter for %s, block size %v", path, blockPool.GetBlockSize())
 
 	d := &downloadSplitter{
 		splitter: splitter{
-			blockSize: blockSize,
 			blockPool: blockPool,
 			path:      path,
 		},
@@ -102,25 +100,31 @@ func (d *downloadSplitter) Stop() {
 
 // download data in chunks and then write to the local file
 func (d *downloadSplitter) Process(item *common.WorkItem) (int, error) {
-	var err error
-
 	log.Debug("downloadSplitter::Process : Splitting data for %s", item.Path)
+	var err error
+	localPath := filepath.Join(d.path, item.Path)
+
 	if len(item.Path) == 0 {
 		return 0, nil
 	}
 
-	numBlocks := ((item.DataLen - 1) / d.blockSize) + 1
-	offset := int64(0)
-
 	// TODO:: xload : should we delete the file if it already exists
 	// TODO:: xload : what should be the flags and mode and should we allocate the full size to the file
-	item.FileHandle, err = os.OpenFile(filepath.Join(d.path, item.Path), os.O_WRONLY|os.O_CREATE, 0644)
+	item.FileHandle, err = os.OpenFile(localPath, os.O_WRONLY|os.O_CREATE, 0644)
 	if err != nil {
 		// create file
 		return -1, fmt.Errorf("failed to open file %s [%v]", item.Path, err)
 	}
 
 	defer item.FileHandle.Close()
+
+	if item.DataLen == 0 {
+		log.Debug("downloadSplitter::Process : 0 byte file %s", item.Path)
+		return 0, nil
+	}
+
+	numBlocks := ((item.DataLen - 1) / d.blockPool.GetBlockSize()) + 1
+	offset := int64(0)
 
 	wg := sync.WaitGroup{}
 	wg.Add(1)
@@ -158,7 +162,7 @@ func (d *downloadSplitter) Process(item *common.WorkItem) (int, error) {
 		} else {
 			block.Index = i
 			block.Offset = offset
-			block.Length = int64(d.blockSize)
+			block.Length = int64(d.blockPool.GetBlockSize())
 
 			splitItem := &common.WorkItem{
 				CompName:        d.GetNext().GetName(),
@@ -170,10 +174,10 @@ func (d *downloadSplitter) Process(item *common.WorkItem) (int, error) {
 				Download:        true,
 			}
 			log.Debug("downloadSplitter::Process : Scheduling download for %s offset %v", item.Path, offset)
-			d.GetNext().GetThreadPool().Schedule(splitItem)
+			d.GetNext().Schedule(splitItem)
 		}
 
-		offset += int64(d.blockSize)
+		offset += int64(d.blockPool.GetBlockSize())
 	}
 
 	wg.Wait()

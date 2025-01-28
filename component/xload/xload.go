@@ -188,12 +188,9 @@ func (xl *Xload) Start(ctx context.Context) error {
 
 	// Xload : start code goes here
 	switch xl.mode {
-	case xcommon.EMode.CHECKPOINT():
-		// Start checkpoint thread here
-		return fmt.Errorf("checkpoint is currently unsupported")
-	case xcommon.EMode.DOWNLOAD():
+	case xcommon.EMode.PRELOAD():
 		// Start downloader here
-		err = xl.startDownloader()
+		err = xl.createDownloader()
 		if err != nil {
 			log.Err("Xload::Start : Failed to start downloader [%s]", err.Error())
 			return err
@@ -229,19 +226,19 @@ func (xl *Xload) Stop() error {
 	return nil
 }
 
-func (xl *Xload) startDownloader() error {
-	log.Trace("Xload::startDownloader : Starting downloader")
+func (xl *Xload) createDownloader() error {
+	log.Trace("Xload::createDownloader : Starting downloader")
 
 	// Create remote lister pool to list remote files
 	rl, err := comp.NewRemoteLister(xl.path, xl.NextComponent())
 	if err != nil {
-		log.Err("Xload::startDownloader : Unable to create remote lister [%s]", err.Error())
+		log.Err("Xload::createDownloader : Unable to create remote lister [%s]", err.Error())
 		return err
 	}
 
-	ds, err := comp.NewDownloadSplitter(xl.blockSize, xl.blockPool, xl.path, xl.NextComponent())
+	ds, err := comp.NewDownloadSplitter(xl.blockPool, xl.path, xl.NextComponent())
 	if err != nil {
-		log.Err("Xload::startDownloader : Unable to create download splitter [%s]", err.Error())
+		log.Err("Xload::createDownloader : Unable to create download splitter [%s]", err.Error())
 		return err
 	}
 

@@ -93,6 +93,10 @@ func (pool *BlockPool) Usage() uint32 {
 	return ((pool.maxBlocks - (uint32)(len(pool.blocksCh))) * 100) / pool.maxBlocks
 }
 
+func (pool *BlockPool) GetBlockSize() uint64 {
+	return pool.blockSize
+}
+
 // Get a Block from the pool, return back if nothing is available
 func (pool *BlockPool) Get() *Block {
 	// getting a block from pool will be a blocking operation if the pool is empty

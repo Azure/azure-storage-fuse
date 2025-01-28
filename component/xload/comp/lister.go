@@ -95,7 +95,7 @@ func (rl *remoteLister) Init() {
 func (rl *remoteLister) Start() {
 	log.Debug("remoteLister::Start : start remote lister for %s", rl.path)
 	rl.GetThreadPool().Start()
-	rl.GetThreadPool().Schedule(&common.WorkItem{CompName: rl.GetName()})
+	rl.Schedule(&common.WorkItem{CompName: rl.GetName()})
 }
 
 func (rl *remoteLister) Stop() {
@@ -169,14 +169,14 @@ func (rl *remoteLister) Process(item *common.WorkItem) (int, error) {
 					}
 
 					// push the directory to input pool for its listing
-					rl.GetThreadPool().Schedule(&common.WorkItem{
+					rl.Schedule(&common.WorkItem{
 						CompName: rl.GetName(),
 						Path:     name,
 					})
 				}(entry.Path)
 			} else {
 				// send file to the output channel for chunking
-				rl.GetNext().GetThreadPool().Schedule(&common.WorkItem{
+				rl.GetNext().Schedule(&common.WorkItem{
 					CompName: rl.GetNext().GetName(),
 					Path:     entry.Path,
 					DataLen:  uint64(entry.Size),

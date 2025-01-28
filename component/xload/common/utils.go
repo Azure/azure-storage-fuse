@@ -67,20 +67,16 @@ func (Mode) INVALID_MODE() Mode {
 	return Mode(0)
 }
 
-func (Mode) CHECKPOINT() Mode {
+func (Mode) PRELOAD() Mode {
 	return Mode(1)
 }
 
-func (Mode) DOWNLOAD() Mode {
+func (Mode) UPLOAD() Mode {
 	return Mode(2)
 }
 
-func (Mode) UPLOAD() Mode {
-	return Mode(3)
-}
-
 func (Mode) SYNC() Mode {
-	return Mode(4)
+	return Mode(3)
 }
 
 func (m Mode) String() string {
