@@ -681,8 +681,8 @@ func (dl *Datalake) GetCommittedBlockList(name string) (*internal.CommittedBlock
 }
 
 // StageBlock : stages a block and returns its blockid
-func (dl *Datalake) StageBlock(name string, data []byte, id string) error {
-	return dl.BlockBlob.StageBlock(name, data, id)
+func (dl *Datalake) StageBlock(ctx context.Context, name string, data []byte, id string) error {
+	return dl.BlockBlob.StageBlock(ctx, name, data, id)
 }
 
 // CommitBlocks : persists the block list

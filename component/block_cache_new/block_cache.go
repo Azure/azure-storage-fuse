@@ -43,6 +43,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
@@ -111,7 +112,7 @@ func (bc *BlockCache) SetNextComponent(nc internal.Component) {
 func (bc *BlockCache) Start(ctx context.Context) error {
 	log.Trace("BlockCache::Start : Starting component block_cache new %s", bc.Name())
 	bPool = createBufferPool(memory)
-	wp = createWorkerPool(390)
+	wp = createWorkerPool(64)
 	return nil
 }
 
@@ -128,22 +129,6 @@ func (bc *BlockCache) Stop() error {
 func (bc *BlockCache) Configure(_ bool) error {
 	log.Trace("BlockCache::Configure : %s", bc.Name())
 	return nil
-}
-
-func (bc *BlockCache) validateBlockList(blkList *internal.CommittedBlockList) (blockList, bool) {
-	if blkList == nil {
-		return nil, false
-	}
-	listLen := len(*blkList)
-	var newblkList blockList
-	for idx, blk := range *blkList {
-		if (idx < (listLen-1) && blk.Size != bc.blockSize) || (idx == (listLen-1) && blk.Size > bc.blockSize) || (len(blk.Id) != StdBlockIdLength) {
-			log.Err("BlockCache::validateBlockList : Unsupported blocklist Format ")
-			return nil, false
-		}
-		newblkList = append(newblkList, createBlock(idx, blk.Id, committedBlock))
-	}
-	return newblkList, true
 }
 
 // CreateFile: Create a new file
@@ -194,7 +179,7 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 			log.Err("BlockCache::OpenFile : Failed to get block list of %s [%v]", options.Name, err)
 			return nil, fmt.Errorf("failed to retrieve block list for %s", options.Name)
 		}
-		blockList, valid = bc.validateBlockList(blkList)
+		blockList, valid = validateBlockList(blkList, f)
 		if valid {
 			f.blockList = blockList
 		}
@@ -294,7 +279,7 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 // WriteFile: Write to the local file
 func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) {
 	log.Trace("BlockCache::WriteFile : handle=%d, path=%s, offset= %d", options.Handle.ID, options.Handle.Path, options.Offset)
-	logy.Write([]byte(fmt.Sprintf("BlockCache::WriteFile [START]: handle=%d, path=%s, offset= %d, size=%d\n", options.Handle.ID, options.Handle.Path, options.Offset, len(options.Data))))
+	logy.Write([]byte(fmt.Sprintf("BlockCache::WriteFile [START]: [time = %s] handle=%d, path=%s, offset= %d, size=%d\n", time.Now().String(), options.Handle.ID, options.Handle.Path, options.Offset, len(options.Data))))
 	f := GetFileFromHandle(options.Handle)
 	offset := options.Offset
 	len_of_copy := len(options.Data)
@@ -306,6 +291,8 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 		if err != nil {
 			return dataWritten, err
 		}
+		blk.cancelOngoingAsyncUpload()
+		blk.buf.resetTimer()
 		blockOffset := convertOffsetIntoBlockOffset(offset)
 
 		blk.Lock()
@@ -313,8 +300,7 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 			panic(fmt.Sprintf("Culprit Blk idx : %d, file name: %s", blk.idx, f.Name))
 		}
 		bytesCopied := copy(blk.buf.data[blockOffset:BlockSize], options.Data[dataWritten:])
-		blk.state = localBlock
-		blk.hole = false
+		updateModifiedBlock(blk)
 		blk.Unlock()
 
 		dataWritten += bytesCopied
@@ -335,7 +321,7 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 
 func (bc *BlockCache) SyncFile(options internal.SyncFileOptions) error {
 	log.Trace("BlockCache::SyncFile : handle=%d, path=%s", options.Handle.ID, options.Handle.Path)
-	logy.Write([]byte(fmt.Sprintf("BlockCache::SyncFile : handle=%d, path=%s\n", options.Handle.ID, options.Handle.Path)))
+	logy.Write([]byte(fmt.Sprintf("BlockCache::SyncFile Start : handle=%d, path=%s\n", options.Handle.ID, options.Handle.Path)))
 	f := GetFileFromHandle(options.Handle)
 	fileChanged, err := syncBuffersForFile(options.Handle, f)
 	if err == nil {
@@ -343,6 +329,7 @@ func (bc *BlockCache) SyncFile(options internal.SyncFileOptions) error {
 			err = commitBuffersForFile(options.Handle, f)
 		}
 	}
+	logy.Write([]byte(fmt.Sprintf("BlockCache::SyncFile Complete: handle=%d, path=%s\n", options.Handle.ID, options.Handle.Path)))
 	return err
 }
 
@@ -397,41 +384,28 @@ func (bc *BlockCache) TruncateFile(options internal.TruncateFileOptions) (err er
 	}
 	f.size = options.Size
 	lenOfBlkLst := len(f.blockList)
-	changeStateOfBlockToLocal := func(idx int) error {
-		lstBlk := f.blockList[idx]
-		err = getBlock(idx, h, f, lstBlk, true)
-		if err != nil {
-			log.Trace("BlockCache::Truncate File : FAILED when retrieving last block path=%s, size = %d", options.Name, options.Size)
-			return err
-		}
-		// todo: Lock simplification
-		lstBlk.Lock()
-		lstBlk.state = localBlock
-		lstBlk.hole = false
-		lstBlk.Unlock()
-		return nil
-	}
+
 	// Modify the blocklist
 	finalBlocksCnt := (options.Size + int64(BlockSize) - 1) / int64(BlockSize)
 	if finalBlocksCnt <= int64(lenOfBlkLst) { //shrink
 		f.blockList = f.blockList[:finalBlocksCnt] //here memory of the blocks is not given to the pool, Modify it.
 		// Update the state of the last block.
+		lastBlkIdx := int(finalBlocksCnt - 1)
 		if finalBlocksCnt > 0 {
-			changeStateOfBlockToLocal(int(finalBlocksCnt) - 1)
+			changeStateOfBlockToLocal(lastBlkIdx, f.blockList[lastBlkIdx])
 		}
 	} else { //expand
 		//Update the state of the last block before expanding.
 		if lenOfBlkLst > 0 {
-			changeStateOfBlockToLocal(lenOfBlkLst - 1)
+			changeStateOfBlockToLocal(lenOfBlkLst-1, f.blockList[lenOfBlkLst-1])
 		}
 		for i := lenOfBlkLst; i < int(finalBlocksCnt); i++ {
 			id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
-			blk := createBlock(i, id, localBlock)
+			blk := createBlock(i, id, localBlock, f)
 			f.blockList = append(f.blockList, blk)
 			if i == int(finalBlocksCnt)-1 {
 				// We are allocating buffer here as there might not be full hole for last block
 				blk.buf = bPool.getBuffer()
-				close(blk.downloadDone)
 			} else {
 				blk.hole = true
 			}

@@ -1,6 +1,7 @@
 package block_cache_new
 
 import (
+	"context"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -15,21 +16,24 @@ import (
 
 // TODO: Implement GC after 80% of memory given for blobfuse
 var zeroBuffer *Buffer
+var defaultBlockTimeout = 100 * time.Microsecond
 
 type Buffer struct {
-	data     []byte    // Data holding in the buffer
-	dataSize int64     // Size of the data
-	timer    time.Time // Timer for buffer expiry
-	checksum []byte    // Checksum for the data
+	data     []byte      // Data holding in the buffer
+	dataSize int64       // Size of the data
+	expiry   *time.Timer // Timer for buffer expiry
+	checksum []byte      // Checksum for the data
+}
+
+func (buf *Buffer) resetTimer() {
+	buf.expiry.Reset(defaultBlockTimeout)
 }
 
 type BufferPool struct {
-	pool            sync.Pool   // Pool used to get and put the buffers.
-	localBlks       chan *block // Local Blocks which are yet to upload. This list can contain only Local Blocks
-	uploadingBlks   chan *block // Blocks which are uploading. This list contains local blocks.
-	downloadingBlks chan *block // Blocks which are downloading. This list contains Commited blocks.
-	syncedBlks      chan *block // Current Synced Blocks. This list can contain both commited and Uncommited blocks.
-	bufferSize      int         // Size of the each buffer in the bytes for this pool
+	pool       sync.Pool   // Pool used to get and put the buffers.
+	localBlks  chan *block // Local Blocks which are yet to upload. This list can contain only Local Blocks
+	syncedBlks chan *block // Current Synced Blocks. This list can contain both commited and Uncommited blocks.
+	bufferSize int         // Size of the each buffer in the bytes for this pool
 }
 
 func createBufferPool(bufSize int) *BufferPool {
@@ -39,23 +43,15 @@ func createBufferPool(bufSize int) *BufferPool {
 				return new(Buffer)
 			},
 		},
-		localBlks:       make(chan *block, 100), // Sizes of these channels need to be decided.
-		uploadingBlks:   make(chan *block, 100),
-		downloadingBlks: make(chan *block, 100),
-		syncedBlks:      make(chan *block, 100),
-		bufferSize:      bufSize,
+		// Sizes of following channels need to be decided.
+		localBlks:  make(chan *block, 5000), // These blks are modified blocks and in local.
+		syncedBlks: make(chan *block, 5000), // These blks are synced with the azure storage.
+		bufferSize: bufSize,
 	}
 	zeroBuffer = bPool.getBuffer()
 	go bPool.asyncUploadScheduler()
-	go bPool.uploadWatcher()
-	go bPool.downloadWatcher()
 	go bPool.blockCleaner()
 	return bPool
-}
-
-type blkNode struct {
-	file *File
-	blk  *block
 }
 
 // It will Schedule a task for uploading the block to Azure Storage
@@ -64,19 +60,36 @@ type blkNode struct {
 // Schedules the task and push the block into uploadingBlks.
 func (bp *BufferPool) asyncUploadScheduler() {
 	for blk := range bp.localBlks {
+		<-blk.buf.expiry.C
 		blk.Lock()
-
+		if blk.state == localBlock {
+			select {
+			case _, ok := <-blk.uploadInProgress: // Check if sync upload is in progress
+				if !ok {
+					logy.Write([]byte(fmt.Sprintf("Async Uploader: Scheduling blk idx: %d, filePath: %s\n", blk.idx, blk.file.Name)))
+					scheduleUpload(blk, false)
+				}
+			case <-time.NewTimer(5 * time.Millisecond).C:
+			}
+		}
 		blk.Unlock()
 	}
 }
 
-// Checks the upload status of a block and responsible for moving it into the synced blocks
-func (bp *BufferPool) uploadWatcher() {
-
+func scheduleUpload(blk *block, sync bool) {
+	blk.uploadDone = make(chan error, 1)
+	blk.uploadInProgress = make(chan struct{}, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	blk.uploadCtx = ctx
+	taskDone := make(chan struct{}, 1)
+	blk.cancelOngoingAsyncUpload = func() {
+		cancel()
+		<-taskDone
+	}
+	wp.createTask(ctx, taskDone, true, sync, blk)
 }
 
-// Checks the download status of a block and responsible for moving it into the synced blocks
-func (bp *BufferPool) downloadWatcher() {
+func scheduleDownload(blk *block, sync bool) {
 
 }
 
@@ -85,7 +98,11 @@ func (bp *BufferPool) downloadWatcher() {
 // 1. Block is not referenced by any open handle.
 // 2. timer since last operation on the block was over.
 func (bp *BufferPool) blockCleaner() {
-	// totMemory :=
+	for blk := range bp.localBlks {
+		blk.Lock()
+		releaseBufferForBlock(blk)
+		blk.Unlock()
+	}
 }
 
 func (bp *BufferPool) getBuffer() *Buffer {
@@ -96,6 +113,7 @@ func (bp *BufferPool) getBuffer() *Buffer {
 		copy(b.data, zeroBuffer.data)
 	}
 	//b.data = b.data[:0]
+	b.expiry = time.NewTimer(defaultBlockTimeout)
 	b.checksum = nil
 	return b
 }
@@ -136,7 +154,7 @@ func getBlockForRead(idx int, h *handlemap.Handle, file *File, sync bool) (*bloc
 		var ok bool
 		blk, ok = file.readOnlyBlocks[idx]
 		if !ok {
-			blk = createBlock(idx, "", committedBlock)
+			blk = createBlock(idx, "", committedBlock, file)
 			file.readOnlyBlocks[idx] = blk
 		}
 		// TODO: blocks are not getting cached for readonly files
@@ -149,21 +167,23 @@ func getBlockForRead(idx int, h *handlemap.Handle, file *File, sync bool) (*bloc
 		blk = file.blockList[idx]
 	}
 	file.Unlock()
-	return blk, getBlock(idx, h, file, blk, sync)
+	_, err := getBlock(idx, blk, sync)
+	return blk, err
 }
 
-func getBlock(idx int, h *handlemap.Handle, f *File, blk *block, sync bool) (err error) {
+func getBlock(idx int, blk *block, sync bool) (state blockState, err error) {
 	blk.Lock()
+	defer blk.Unlock()
 	if blk.buf == nil {
-		blk.Unlock()
-		wp.createTask(false, sync, f, blk)
+		blk.downloadDone = make(chan error, 1)
+		wp.createTask(context.Background(), nil, false, sync, blk)
 		if sync {
 			err = <-blk.downloadDone
 		}
 		return
 	}
-	blk.Unlock()
 	err = <-blk.downloadDone
+	state = blk.state
 	return
 }
 
@@ -177,57 +197,100 @@ func getBlockForWrite(idx int, h *handlemap.Handle, file *File) (*block, error) 
 	file.Lock()
 	lenOfBlkLst := len(file.blockList)
 	if idx >= lenOfBlkLst {
+		// Update the state of the last block to local as null data may get's appended to it.
+		if lenOfBlkLst > 0 {
+			changeStateOfBlockToLocal(lenOfBlkLst-1, file.blockList[lenOfBlkLst-1])
+		}
+
 		// Create at least 1 block. i.e, create blocks in the range (len(blocklist), idx]
 		for i := lenOfBlkLst; i <= idx; i++ {
 			id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
-			blk := createBlock(i, id, localBlock)
+			blk := createBlock(i, id, localBlock, file)
 			file.blockList = append(file.blockList, blk)
 			if i == idx {
 				//Allocate a buffer for last block.
 				//No need to lock the block as we already acquired lock on file
 				blk.buf = bPool.getBuffer()
-				close(blk.downloadDone)
 			} else {
 				blk.hole = true
 			}
 		}
+		blk := file.blockList[idx]
+		bPool.localBlks <- blk
 		file.Unlock()
-		return file.blockList[idx], nil
+		return blk, nil
 	}
 	blk := file.blockList[idx]
-	//h.Size = file.size // This is necessary as next component uses this value to check bounds
 	file.Unlock()
-
-	return blk, getBlock(idx, h, file, blk, true)
+	blkState, err := getBlock(idx, blk, true)
+	if blkState == committedBlock || blkState == uncommitedBlock {
+		bPool.localBlks <- blk
+	}
+	return blk, err
 }
 
-// Write all the Modified buffers to Azure Storage.
+// Schedules the upload and return true if the block is local/uncommited.
+func syncUploader(blk *block) bool {
+	blk.Lock()
+	defer blk.Unlock()
+	if blk.state == localBlock {
+		if blk.hole {
+			// This is a sparse block.
+			err := punchHole(blk.file)
+			if err == nil {
+				blk.state = uncommitedBlock
+			}
+		} else {
+			if blk.buf == nil {
+				panic("Local Block must always have some buffer")
+			}
+			// Check if async upload is in progress.
+			select {
+			case err, ok := <-blk.uploadDone:
+				if ok && err == nil && !errors.Is(blk.uploadCtx.Err(), context.Canceled) {
+					// Upload was already completed by async scheduler and no more write came after it.
+					blk.state = uncommitedBlock
+					close(blk.uploadDone)
+					close(blk.uploadInProgress)
+				} else {
+					scheduleUpload(blk, true)
+				}
+			case <-time.NewTimer(20 * time.Millisecond).C:
+				// Taking toomuch time for async upload to complete, cancel the upload and schedule a new one.
+				blk.cancelOngoingAsyncUpload()
+				scheduleUpload(blk, true)
+			}
+			//err = syncBuffer(file.Name, file.size, blk)
+		}
+		return true
+	} else if blk.state == uncommitedBlock {
+		return true
+	}
+	return false
+}
+
+// Write all the Modified buffers to Azure Storage and return whether while is modified or not.
 func syncBuffersForFile(h *handlemap.Handle, file *File) (bool, error) {
 	var err error = nil
 	var fileChanged bool = false
 
 	file.Lock()
 	for _, blk := range file.blockList {
-		blk.Lock()
-		if blk.state == localBlock {
+		if syncUploader(blk) {
 			fileChanged = true
-			if blk.hole {
-				// This is a sparse block.
-				err = punchHole(file)
-			} else {
-				if blk.buf == nil {
-					panic("Local Block must always have some buffer")
-				}
-				err = syncBuffer(file.Name, file.size, blk)
-			}
-			if err == nil {
-				blk.state = uncommitedBlock
-			}
 		}
-		blk.Unlock()
+	}
+	for _, blk := range file.blockList {
+		err, ok := <-blk.uploadDone
+		if ok && err == nil {
+			blk.Lock()
+			blk.state = uncommitedBlock
+			close(blk.uploadDone)
+			close(blk.uploadInProgress)
+			blk.Unlock()
+		}
 		if err != nil {
-			// One of the buffer has failed to commit, its better to fail early.
-			break
+			panic(fmt.Sprintf("Upload doesn't happen for the block idx : %d, file : %s\n", blk.idx, blk.file.Name))
 		}
 	}
 	file.Unlock()
@@ -252,6 +315,7 @@ func syncBuffer(name string, size int64, blk *block) error {
 func syncZeroBuffer(name string) error {
 	return bc.NextComponent().StageData(
 		internal.StageDataOptions{
+			Ctx:  context.Background(),
 			Name: name,
 			Id:   zeroBlockId,
 			Data: zeroBuffer.data,
@@ -274,6 +338,7 @@ func punchHole(f *File) error {
 }
 
 func commitBuffersForFile(h *handlemap.Handle, file *File) error {
+	logy.Write([]byte(fmt.Sprintf("BlockCache::commitFile : %s\n", file.Name)))
 	var blklist []string
 	file.Lock()
 	defer file.Unlock()
@@ -292,7 +357,6 @@ func commitBuffersForFile(h *handlemap.Handle, file *File) error {
 	if err == nil {
 		file.synced = true
 	}
-
 	return err
 }
 
@@ -315,8 +379,7 @@ func releaseBuffers(f *File) {
 }
 
 func releaseBufferForBlock(blk *block) {
-	if blk.state == committedBlock {
+	if blk.state == committedBlock || blk.state == uncommitedBlock {
 		bPool.putBuffer(blk)
-		blk.downloadDone = make(chan error, 1)
 	}
 }

@@ -1422,10 +1422,10 @@ func (bb *BlockBlob) GetCommittedBlockList(name string) (*internal.CommittedBloc
 }
 
 // StageBlock : stages a block and returns its blockid
-func (bb *BlockBlob) StageBlock(name string, data []byte, id string) error {
+func (bb *BlockBlob) StageBlock(ctx context.Context, name string, data []byte, id string) error {
 	log.Trace("BlockBlob::StageBlock : name %s, ID %v, length %v", name, id, len(data))
 
-	ctx, cancel := context.WithTimeout(context.Background(), max_context_timeout*time.Minute)
+	ctx, cancel := context.WithTimeout(ctx, max_context_timeout*time.Minute)
 	defer cancel()
 
 	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))

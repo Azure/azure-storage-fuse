@@ -1403,6 +1403,7 @@ func (bc *BlockCache) upload(item *workItem) {
 	blockSize := bc.getBlockSize(uint64(item.handle.Size), item.block)
 	// This block is updated so we need to stage it now
 	err := bc.NextComponent().StageData(internal.StageDataOptions{
+		Ctx:    context.Background(),
 		Name:   item.handle.Path,
 		Data:   item.block.data[0:blockSize],
 		Offset: uint64(item.block.offset),
@@ -1589,6 +1590,7 @@ func (bc *BlockCache) stageZeroBlock(handle *handlemap.Handle, tryCnt int) (stri
 
 	log.Debug("BlockCache::stageZeroBlock : Staging zero block for %v=>%v, try = %v", handle.ID, handle.Path, tryCnt)
 	err := bc.NextComponent().StageData(internal.StageDataOptions{
+		Ctx:  context.Background(),
 		Name: handle.Path,
 		Data: bc.blockPool.zeroBlock.data[:],
 		Id:   id,

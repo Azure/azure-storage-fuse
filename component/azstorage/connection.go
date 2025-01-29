@@ -34,6 +34,7 @@
 package azstorage
 
 import (
+	"context"
 	"os"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
@@ -130,7 +131,7 @@ type AzConnection interface {
 	StageAndCommit(name string, bol *common.BlockOffsetList) error
 
 	GetCommittedBlockList(string) (*internal.CommittedBlockList, error)
-	StageBlock(string, []byte, string) error
+	StageBlock(context.Context, string, []byte, string) error
 	CommitBlocks(string, []string) error
 
 	UpdateServiceClient(_, _ string) error

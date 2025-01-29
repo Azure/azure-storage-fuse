@@ -34,6 +34,7 @@
 package internal
 
 import (
+	"context"
 	"os"
 
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
@@ -194,6 +195,7 @@ type ChownOptions struct {
 }
 
 type StageDataOptions struct {
+	Ctx    context.Context
 	Name   string
 	Id     string
 	Data   []byte

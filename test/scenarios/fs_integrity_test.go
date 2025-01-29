@@ -5,11 +5,13 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"flag"
+	"fmt"
 	"io"
 	"os"
 	"os/user"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 
@@ -196,35 +198,65 @@ func TestFileTruncateSameSize(t *testing.T) {
 func TestFileTruncateExpand(t *testing.T) {
 	t.Parallel()
 	filename := "testfile_truncate_expand.txt"
-	FileTruncate(t, filename, 5, 20, truncate)
-	FileTruncate(t, filename, 5, 20*1024*1024, truncate)
-	FileTruncate(t, filename, 20*1024*1024, 30*1024*1024, truncate)
+	var wg sync.WaitGroup
+	wg.Add(8)
+	for i := 0; i < 2; i++ {
+		var call int
+		if i == 0 {
+			call = truncate
+		} else {
+			call = ftruncate
+		}
+		go func() {
+			defer wg.Done()
+			FileTruncate(t, fmt.Sprintf("%s_5_20_%d", filename, call), 5, 20, call)
+		}()
+		go func() {
+			defer wg.Done()
+			FileTruncate(t, fmt.Sprintf("%s_5K_10M_%d", filename, call), 5*1024, 10*1024*1024, call)
+		}()
+		go func() {
+			defer wg.Done()
+			FileTruncate(t, fmt.Sprintf("%s5K_20M_%d", filename, call), 5*1024, 20*1024*1024, call)
+		}()
+		go func() {
+			defer wg.Done()
+			FileTruncate(t, fmt.Sprintf("%s_20M_30M_%d", filename, call), 20*1024*1024, 30*1024*1024, call)
+		}()
+	}
+	wg.Wait()
 }
 
 func TestFileTruncateShrink(t *testing.T) {
 	t.Parallel()
 	filename := "testfile_truncate_shrink.txt"
-	FileTruncate(t, filename, 20, 5, truncate)
-	FileTruncate(t, filename, 20*1024*1024, 5, truncate)
-	FileTruncate(t, filename, 30*1024*1024, 20*1024*1024, truncate)
-}
-
-// tests for truncate function which works on handle (i.e ftruncate)
-
-func TestFileFtruncateExpand(t *testing.T) {
-	t.Parallel()
-	filename := "testfile_ftruncate_expand.txt"
-	FileTruncate(t, filename, 5, 20, ftruncate)
-	FileTruncate(t, filename, 5, 20*1024*1024, ftruncate)
-	FileTruncate(t, filename, 20*1024*1024, 30*1024*1024, ftruncate)
-}
-
-func TestFileFtruncateShrink(t *testing.T) {
-	t.Parallel()
-	filename := "testfile_ftruncate_shrink.txt"
-	FileTruncate(t, filename, 20, 5, ftruncate)
-	FileTruncate(t, filename, 20*1024*1024, 5, ftruncate)
-	FileTruncate(t, filename, 30*1024*1024, 20*1024*1024, ftruncate)
+	var wg sync.WaitGroup
+	wg.Add(8)
+	for i := 0; i < 2; i++ {
+		var call int
+		if i == 0 {
+			call = truncate
+		} else {
+			call = ftruncate
+		}
+		go func() {
+			defer wg.Done()
+			FileTruncate(t, fmt.Sprintf("%s_20_5_%d", filename, call), 20, 5, call)
+		}()
+		go func() {
+			defer wg.Done()
+			FileTruncate(t, fmt.Sprintf("%s_10M_5K_%d", filename, call), 10*1024*1024, 5*1024, call)
+		}()
+		go func() {
+			defer wg.Done()
+			FileTruncate(t, fmt.Sprintf("%s20M_5K_%d", filename, call), 20*1024*1024, 5*1024, call)
+		}()
+		go func() {
+			defer wg.Done()
+			FileTruncate(t, fmt.Sprintf("%s_30M_20M_%d", filename, call), 30*1024*1024, 20*1024*1024, call)
+		}()
+	}
+	wg.Wait()
 }
 
 func TestTruncateNoFile(t *testing.T) {
@@ -237,6 +269,72 @@ func TestTruncateNoFile(t *testing.T) {
 		assert.NotNil(t, err)
 		assert.ErrorContains(t, err, "no such file or directory")
 	}
+}
+
+func WriteTruncateClose(t *testing.T, filename string, writeSize int, truncSize int, call int) {
+	content := make([]byte, writeSize)
+	_, err := io.ReadFull(rand.Reader, content)
+	assert.Nil(t, err)
+
+	for _, mnt := range mountpoints {
+		filePath := filepath.Join(mnt, filename)
+		file, err := os.Create(filePath)
+		assert.Nil(t, err)
+		written, err := file.Write(content)
+		assert.Nil(t, err)
+		assert.Equal(t, writeSize, written)
+		if call == truncate {
+			os.Truncate(filePath, int64(truncSize))
+		} else {
+			file.Truncate(int64(truncSize))
+		}
+		err = file.Close()
+		assert.Nil(t, err)
+	}
+
+	checkFileIntegrity(t, filename)
+	removeFiles(t, filename)
+}
+
+func TestWriteTruncateClose(t *testing.T) {
+	t.Parallel()
+
+	var wg sync.WaitGroup
+	wg.Add(12)
+	for i := 0; i < 2; i++ {
+		var call int
+		if i == 0 {
+			call = truncate
+		} else {
+			call = ftruncate
+		}
+		go func() {
+			defer wg.Done()
+			WriteTruncateClose(t, fmt.Sprintf("testWriteTruncateClose1M7M_%d", call), 1*1024*1024, 7*1024*1024, call)
+		}()
+		go func() {
+			defer wg.Done()
+			WriteTruncateClose(t, fmt.Sprintf("testWriteTruncateClose1M13M_%d", call), 1*1024*1024, 13*1024*1024, call)
+		}()
+		go func() {
+			defer wg.Done()
+			go WriteTruncateClose(t, fmt.Sprintf("testWriteTruncateClose1M20M_%d", call), 1*1024*1024, 20*1024*1024, call)
+		}()
+		go func() {
+			defer wg.Done()
+			go WriteTruncateClose(t, fmt.Sprintf("testWriteTruncateClose7M1M_%d", call), 7*1024*1024, 1*1024*1024, call)
+		}()
+		go func() {
+			defer wg.Done()
+			go WriteTruncateClose(t, fmt.Sprintf("testWriteTruncateClose13M1M_%d", call), 13*1024*1024, 1*1024*1024, call)
+		}()
+		go func() {
+			defer wg.Done()
+			go WriteTruncateClose(t, fmt.Sprintf("testWriteTruncateClose20M1M_%d", call), 20*1024*1024, 1*1024*1024, call)
+		}()
+	}
+	wg.Wait()
+
 }
 
 func TestWrite10MB(t *testing.T) {
@@ -262,7 +360,7 @@ func TestWrite10MB(t *testing.T) {
 }
 
 // Test Read Write From Same handle
-func TestOpenWriteRead(t *testing.T) {
+func TestOpenWriteRead1(t *testing.T) {
 	t.Parallel()
 	filename := "testfile_open_write_read.txt"
 	tempbuffer := make([]byte, 4*1024)
@@ -638,6 +736,8 @@ func TestUnlinkOnOpen(t *testing.T) {
 		err = file.Close()
 		assert.Nil(t, err)
 	}
+	checkFileIntegrity(t, filename)
+	removeFiles(t, filename)
 }
 
 func expandPath(path string) (string, error) {
