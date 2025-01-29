@@ -4,6 +4,7 @@
 - Prevent the block cache to truncate the file size to zero when the file is opened in O_WRONLY mode when writebackcache is disabled.
 - Correct statFS results to reflect block-cache in memory cache status.
 - Do not wipeout temp-cache on start after a un-graceful unmount, if `cleanup-on-start` is not configured in file-cache.
+- When the subdirectory is mounted and there is some file/folder operation, remove only the subdirectory path from the file paths.
 
 **Other Changes**
 - Optimized listing operation on HNS account to support symlinks.
