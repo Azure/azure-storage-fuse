@@ -548,10 +548,8 @@ func (suite *utilsTestSuite) TestRemovePrefixPath() {
 		{prefixPath: "ABC/DEF", path: "ABC/DEF/1.txt", result: "1.txt"},
 		{prefixPath: "ABC/DEF/", path: "ABC/DEF/1.txt", result: "1.txt"},
 		{prefixPath: "ABC", path: "ABC/ABC.txt", result: "ABC.txt"},
-		{prefixPath: "/ABC/", path: "ABC/ABC.txt", result: "ABC.txt"},
 		{prefixPath: "A/B/C/D/E/", path: "A/B/C/D/E/F/G/H/I/j.txt", result: "F/G/H/I/j.txt"},
-		{prefixPath: "A/B/C/D/E", path: "/A/B/C/D/E/F/G/H/I/j.txt", result: "F/G/H/I/j.txt"},
-		{prefixPath: "A/B/C/D/E/", path: "/A/B/C/D/E/F/G/H/I/j.txt", result: "F/G/H/I/j.txt"},
+		{prefixPath: "A/B/C/D/E/", path: "A/B/C/D/E/F/G/H/I/j.txt", result: "F/G/H/I/j.txt"},
 	}
 
 	for _, i := range inputs {

@@ -559,13 +559,8 @@ func removePrefixPath(prefixPath, path string) string {
 	if prefixPath == "" {
 		return path
 	}
-	prefixPath = trimSlash(prefixPath)
-	path = strings.TrimPrefix(trimSlash(path), prefixPath)
-	return trimSlash(path)
-}
-
-func trimSlash(path string) string {
-	if len(path) > 0 && path[0] == '/' {
+	path = strings.TrimPrefix(path, prefixPath)
+	if path[0] == '/' {
 		return path[1:]
 	}
 	return path

@@ -725,7 +725,7 @@ func (bb *BlockBlob) createDirAttr(name string) *internal.ObjAttr {
 	// For these dirs we get only the name and no other properties so hardcoding time to current time
 	name = strings.TrimSuffix(name, "/")
 	attr := &internal.ObjAttr{
-		Path:  split(bb.Config.prefixPath, name),
+		Path:  removePrefixPath(bb.Config.prefixPath, name),
 		Name:  filepath.Base(name),
 		Size:  4096,
 		Mode:  os.ModeDir,
