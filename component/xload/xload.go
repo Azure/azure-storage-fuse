@@ -156,16 +156,18 @@ func (xl *Xload) Configure(_ bool) error {
 		}
 	}
 
-	var mode xcommon.Mode
-	err = mode.Parse(conf.Mode)
-	if err != nil {
-		log.Err("Xload::Configure : Failed to parse mode %s [%s]", conf.Mode, err.Error())
-		return fmt.Errorf("invalid mode in xload : %s", conf.Mode)
-	}
+	var mode xcommon.Mode = xcommon.EMode.PRELOAD() // using preload as the default mode
+	if len(conf.Mode) > 0 {
+		err = mode.Parse(conf.Mode)
+		if err != nil {
+			log.Err("Xload::Configure : Failed to parse mode %s [%s]", conf.Mode, err.Error())
+			return fmt.Errorf("invalid mode in xload : %s", conf.Mode)
+		}
 
-	if mode == xcommon.EMode.INVALID_MODE() {
-		log.Err("Xload::Configure : Invalid mode : %s", conf.Mode)
-		return fmt.Errorf("invalid mode in xload : %s", conf.Mode)
+		if mode == xcommon.EMode.INVALID_MODE() {
+			log.Err("Xload::Configure : Invalid mode : %s", conf.Mode)
+			return fmt.Errorf("invalid mode in xload : %s", conf.Mode)
+		}
 	}
 
 	xl.mode = mode

@@ -112,8 +112,8 @@ func (d *downloadSplitter) Process(item *common.WorkItem) (int, error) {
 	// TODO:: xload : what should be the flags and mode and should we allocate the full size to the file
 	item.FileHandle, err = os.OpenFile(localPath, os.O_WRONLY|os.O_CREATE, 0644)
 	if err != nil {
-		// create file
-		return -1, fmt.Errorf("failed to open file %s [%v]", item.Path, err)
+		log.Err("downloadSplitter::Process : Failed to create file %s [%s]", item.Path, err.Error())
+		return -1, fmt.Errorf("failed to open file %s [%s]", item.Path, err.Error())
 	}
 
 	defer item.FileHandle.Close()
@@ -121,6 +121,20 @@ func (d *downloadSplitter) Process(item *common.WorkItem) (int, error) {
 	if item.DataLen == 0 {
 		log.Debug("downloadSplitter::Process : 0 byte file %s", item.Path)
 		return 0, nil
+	}
+
+	// truncate the file to its size
+	err = item.FileHandle.Truncate(int64(item.DataLen))
+	if err != nil {
+		log.Err("downloadSplitter::Process : Failed to truncate file %s, so deleting it from local path [%s]", item.Path, err.Error())
+
+		// delete the file which failed to truncate from the local path
+		err1 := os.Remove(localPath)
+		if err1 != nil {
+			log.Err("downloadSplitter::Process : Failed to delete file %s [%s]", item.Path, err1.Error())
+		}
+
+		return -1, fmt.Errorf("failed to truncate file %s [%s]", item.Path, err.Error())
 	}
 
 	numBlocks := ((item.DataLen - 1) / d.blockPool.GetBlockSize()) + 1
@@ -141,7 +155,7 @@ func (d *downloadSplitter) Process(item *common.WorkItem) (int, error) {
 				log.Err("downloadSplitter::Process : Failed to download data for file %s", item.Path)
 				operationSuccess = false
 			} else {
-				_, err := item.FileHandle.WriteAt(respSplitItem.Block.Data, respSplitItem.Block.Offset)
+				_, err := item.FileHandle.WriteAt(respSplitItem.Block.Data[:respSplitItem.DataLen], respSplitItem.Block.Offset)
 				if err != nil {
 					log.Err("downloadSplitter::Process : Failed to write data to file %s", item.Path)
 					operationSuccess = false
@@ -181,20 +195,14 @@ func (d *downloadSplitter) Process(item *common.WorkItem) (int, error) {
 	}
 
 	wg.Wait()
-	err = item.FileHandle.Truncate(int64(item.DataLen))
-	if err != nil {
-		log.Err("downloadSplitter::Process : Failed to truncate file %s [%s]", item.Path, err.Error())
-		operationSuccess = false
-	}
 
 	if !operationSuccess {
-		log.Err("downloadSplitter::Process : Failed to download data for file %s", item.Path)
-		log.Debug("downloadSplitter::Process : deleting file %s", item.Path)
+		log.Err("downloadSplitter::Process : Failed to download data for file %s, so deleting it from local path", item.Path)
 
 		// delete the file which failed to download from the local path
-		err = os.Remove(filepath.Join(d.path, item.Path))
+		err = os.Remove(localPath)
 		if err != nil {
-			log.Err("downloadSplitter::Process : Unable to delete file %s [%s]", item.Path, err.Error())
+			log.Err("downloadSplitter::Process : Failed to delete file %s [%s]", item.Path, err.Error())
 		}
 
 		return -1, fmt.Errorf("failed to download data for file %s", item.Path)
