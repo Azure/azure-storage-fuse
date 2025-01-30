@@ -96,6 +96,24 @@ steps:
       make -j$(nproc) 2>&1 | tee log
     displayName: 'Compile Source'
 
+  - script: |
+      cd ${{ parameters.mount_dir }}
+      pwd
+      git clone https://github.com/microsoft/vscode.git
+    displayName: 'Git Clone VS Code'
+
+  - script: |
+      cd ${{ parameters.mount_dir }}
+      pwd
+      git clone https://github.com/Azure/azure-storage-fuse.git
+    displayName: 'Git clone Blobfuse2'
+
+  - script: |
+      cd ${{ parameters.mount_dir }}
+      pwd
+      git clone https://github.com/libfuse/libfuse.git
+    displayName: 'Git clone libfuse'
+
 
   - template: 'cleanup.yml'
     parameters:
