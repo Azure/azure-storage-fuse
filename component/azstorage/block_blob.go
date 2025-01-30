@@ -298,7 +298,7 @@ func (bb *BlockBlob) DeleteDirectory(name string) (err error) {
 
 		// Process the blobs returned in this result segment (if the segment is empty, the loop body won't execute)
 		for _, blobInfo := range listBlobResp.Segment.BlobItems {
-			err = bb.DeleteFile(split(bb.Config.prefixPath, *blobInfo.Name))
+			err = bb.DeleteFile(removePrefixPath(bb.Config.prefixPath, *blobInfo.Name))
 			if err != nil {
 				log.Err("BlockBlob::DeleteDirectory : Failed to delete file %s [%s]", *blobInfo.Name, err.Error())
 			}
@@ -392,7 +392,7 @@ func (bb *BlockBlob) RenameDirectory(source string, target string) error {
 		// Process the blobs returned in this result segment (if the segment is empty, the loop body won't execute)
 		for _, blobInfo := range listBlobResp.Segment.BlobItems {
 			srcDirPresent = true
-			srcPath := split(bb.Config.prefixPath, *blobInfo.Name)
+			srcPath := removePrefixPath(bb.Config.prefixPath, *blobInfo.Name)
 			err = bb.RenameFile(srcPath, strings.Replace(srcPath, source, target, 1))
 			if err != nil {
 				log.Err("BlockBlob::RenameDirectory : Failed to rename file %s [%s]", srcPath, err.Error)
@@ -754,7 +754,7 @@ func (bb *BlockBlob) createDirAttrWithPermissions(blobInfo *container.BlobPrefix
 
 	name := strings.TrimSuffix(*blobInfo.Name, "/")
 	attr := &internal.ObjAttr{
-		Path:   split(bb.Config.prefixPath, name),
+		Path:   removePrefixPath(bb.Config.prefixPath, name),
 		Name:   filepath.Base(name),
 		Size:   *blobInfo.Properties.ContentLength,
 		Mode:   mode,
