@@ -1191,6 +1191,70 @@ func (s *blockBlobTestSuite) TestReadInBuffer() {
 	s.assert.EqualValues(testData[:5], output)
 }
 
+func (bbTestSuite *blockBlobTestSuite) TestReadInBufferWithETAG() {
+	defer bbTestSuite.cleanupTest()
+	// Setup
+	name := generateFileName()
+	handle, _ := bbTestSuite.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "test data"
+	data := []byte(testData)
+	bbTestSuite.az.WriteFile(internal.WriteFileOptions{Handle: handle, Offset: 0, Data: data})
+	handle, _ = bbTestSuite.az.OpenFile(internal.OpenFileOptions{Name: name})
+
+	output := make([]byte, 5)
+	var etag string
+	len, err := bbTestSuite.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: handle, Offset: 0, Data: output, Etag: &etag})
+	bbTestSuite.assert.Nil(err)
+	bbTestSuite.assert.NotEqual(etag, "")
+	bbTestSuite.assert.EqualValues(5, len)
+	bbTestSuite.assert.EqualValues(testData[:5], output)
+	_ = bbTestSuite.az.CloseFile(internal.CloseFileOptions{Handle: handle})
+}
+
+func (bbTestSuite *blockBlobTestSuite) TestReadInBufferWithETAGMismatch() {
+	defer bbTestSuite.cleanupTest()
+	// Setup
+	name := generateFileName()
+	handle, _ := bbTestSuite.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "test data 12345678910"
+	data := []byte(testData)
+	bbTestSuite.az.WriteFile(internal.WriteFileOptions{Handle: handle, Offset: 0, Data: data})
+	_ = bbTestSuite.az.CloseFile(internal.CloseFileOptions{Handle: handle})
+
+	attr, err := bbTestSuite.az.GetAttr(internal.GetAttrOptions{Name: name})
+	bbTestSuite.assert.Nil(err)
+	bbTestSuite.assert.NotNil(attr)
+	bbTestSuite.assert.NotEqual("", attr.ETag)
+	bbTestSuite.assert.Equal(int64(len(data)), attr.Size)
+
+	output := make([]byte, 5)
+	var etag string
+
+	handle, _ = bbTestSuite.az.OpenFile(internal.OpenFileOptions{Name: name})
+	_, err = bbTestSuite.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: handle, Offset: 0, Data: output, Etag: &etag})
+	bbTestSuite.assert.Nil(err)
+	bbTestSuite.assert.NotEqual(etag, "")
+	etag = strings.Trim(etag, `"`)
+	bbTestSuite.assert.Equal(etag, attr.ETag)
+
+	// Update the file in parallel using another handle
+	handle1, err := bbTestSuite.az.OpenFile(internal.OpenFileOptions{Name: name})
+	bbTestSuite.assert.Nil(err)
+	testData = "test data 12345678910 123123123123123123123"
+	data = []byte(testData)
+	bbTestSuite.az.WriteFile(internal.WriteFileOptions{Handle: handle1, Offset: 0, Data: data})
+	_ = bbTestSuite.az.CloseFile(internal.CloseFileOptions{Handle: handle1})
+
+	// Read data back using older handle
+	_, err = bbTestSuite.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: handle, Offset: 5, Data: output, Etag: &etag})
+	bbTestSuite.assert.Nil(err)
+	bbTestSuite.assert.NotEqual(etag, "")
+	etag = strings.Trim(etag, `"`)
+	bbTestSuite.assert.NotEqual(etag, attr.ETag)
+
+	_ = bbTestSuite.az.CloseFile(internal.CloseFileOptions{Handle: handle})
+}
+
 func (s *blockBlobTestSuite) TestReadInBufferLargeBuffer() {
 	defer s.cleanupTest()
 	// Setup
@@ -2376,7 +2440,7 @@ func (s *blockBlobTestSuite) TestFlushFileUpdateChunkedFile() {
 	updatedBlock := make([]byte, 2*MB)
 	rand.Read(updatedBlock)
 	h.CacheObj.BlockOffsetList.BlockList[1].Data = make([]byte, blockSize)
-	s.az.storage.ReadInBuffer(name, int64(blockSize), int64(blockSize), h.CacheObj.BlockOffsetList.BlockList[1].Data)
+	s.az.storage.ReadInBuffer(name, int64(blockSize), int64(blockSize), h.CacheObj.BlockOffsetList.BlockList[1].Data, nil)
 	copy(h.CacheObj.BlockOffsetList.BlockList[1].Data[MB:2*MB+MB], updatedBlock)
 	h.CacheObj.BlockOffsetList.BlockList[1].Flags.Set(common.DirtyBlock)
 
@@ -2413,7 +2477,7 @@ func (s *blockBlobTestSuite) TestFlushFileTruncateUpdateChunkedFile() {
 	// truncate block
 	h.CacheObj.BlockOffsetList.BlockList[1].Data = make([]byte, blockSize/2)
 	h.CacheObj.BlockOffsetList.BlockList[1].EndIndex = int64(blockSize + blockSize/2)
-	s.az.storage.ReadInBuffer(name, int64(blockSize), int64(blockSize)/2, h.CacheObj.BlockOffsetList.BlockList[1].Data)
+	s.az.storage.ReadInBuffer(name, int64(blockSize), int64(blockSize)/2, h.CacheObj.BlockOffsetList.BlockList[1].Data, nil)
 	h.CacheObj.BlockOffsetList.BlockList[1].Flags.Set(common.DirtyBlock)
 
 	// remove 2 blocks
@@ -3258,7 +3322,7 @@ func (s *blockBlobTestSuite) TestDownloadBlobWithCPKEnabled() {
 	s.assert.EqualValues(data, fileData)
 
 	buf := make([]byte, len(data))
-	err = s.az.storage.ReadInBuffer(name, 0, int64(len(data)), buf)
+	err = s.az.storage.ReadInBuffer(name, 0, int64(len(data)), buf, nil)
 	s.assert.Nil(err)
 	s.assert.EqualValues(data, buf)
 

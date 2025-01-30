@@ -1402,6 +1402,26 @@ func (s *datalakeTestSuite) TestReadInBuffer() {
 	s.assert.EqualValues(testData[:5], output)
 }
 
+func (suite *datalakeTestSuite) TestReadInBufferWithETAG() {
+	defer suite.cleanupTest()
+	// Setup
+	name := generateFileName()
+	fileHandle, _ := suite.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "test data"
+	data := []byte(testData)
+	suite.az.WriteFile(internal.WriteFileOptions{Handle: fileHandle, Offset: 0, Data: data})
+	fileHandle, _ = suite.az.OpenFile(internal.OpenFileOptions{Name: name})
+
+	output := make([]byte, 5)
+	var etag string
+	len, err := suite.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: fileHandle, Offset: 0, Data: output, Etag: &etag})
+	suite.assert.Nil(err)
+	suite.assert.NotEqual(etag, "")
+	suite.assert.EqualValues(5, len)
+	suite.assert.EqualValues(testData[:5], output)
+	_ = suite.az.CloseFile(internal.CloseFileOptions{Handle: fileHandle})
+}
+
 func (s *datalakeTestSuite) TestReadInBufferLargeBuffer() {
 	defer s.cleanupTest()
 	// Setup
@@ -2035,7 +2055,7 @@ func (s *datalakeTestSuite) TestFlushFileUpdateChunkedFile() {
 	updatedBlock := make([]byte, 2*MB)
 	rand.Read(updatedBlock)
 	h.CacheObj.BlockOffsetList.BlockList[1].Data = make([]byte, blockSize)
-	s.az.storage.ReadInBuffer(name, int64(blockSize), int64(blockSize), h.CacheObj.BlockOffsetList.BlockList[1].Data)
+	s.az.storage.ReadInBuffer(name, int64(blockSize), int64(blockSize), h.CacheObj.BlockOffsetList.BlockList[1].Data, nil)
 	copy(h.CacheObj.BlockOffsetList.BlockList[1].Data[MB:2*MB+MB], updatedBlock)
 	h.CacheObj.BlockOffsetList.BlockList[1].Flags.Set(common.DirtyBlock)
 
@@ -2073,7 +2093,7 @@ func (s *datalakeTestSuite) TestFlushFileTruncateUpdateChunkedFile() {
 	// truncate block
 	h.CacheObj.BlockOffsetList.BlockList[1].Data = make([]byte, blockSize/2)
 	h.CacheObj.BlockOffsetList.BlockList[1].EndIndex = int64(blockSize + blockSize/2)
-	s.az.storage.ReadInBuffer(name, int64(blockSize), int64(blockSize)/2, h.CacheObj.BlockOffsetList.BlockList[1].Data)
+	s.az.storage.ReadInBuffer(name, int64(blockSize), int64(blockSize)/2, h.CacheObj.BlockOffsetList.BlockList[1].Data, nil)
 	h.CacheObj.BlockOffsetList.BlockList[1].Flags.Set(common.DirtyBlock)
 
 	// remove 2 blocks
@@ -2490,7 +2510,7 @@ func (s *datalakeTestSuite) TestDownloadWithCPKEnabled() {
 	s.assert.EqualValues(data, fileData)
 
 	buf := make([]byte, len(data))
-	err = s.az.storage.ReadInBuffer(name, 0, int64(len(data)), buf)
+	err = s.az.storage.ReadInBuffer(name, 0, int64(len(data)), buf, nil)
 	s.assert.Nil(err)
 	s.assert.EqualValues(data, buf)
 

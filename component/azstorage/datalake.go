@@ -399,6 +399,7 @@ func (dl *Datalake) GetAttr(name string) (blobAttr *internal.ObjAttr, err error)
 		Ctime:  *prop.LastModified,
 		Crtime: *prop.LastModified,
 		Flags:  internal.NewFileBitMap(),
+		ETag:   (string)(*prop.ETag),
 	}
 	parseMetadata(blobAttr, prop.Metadata)
 
@@ -454,8 +455,8 @@ func (dl *Datalake) ReadBuffer(name string, offset int64, len int64) ([]byte, er
 }
 
 // ReadInBuffer : Download specific range from a file to a user provided buffer
-func (dl *Datalake) ReadInBuffer(name string, offset int64, len int64, data []byte) error {
-	return dl.BlockBlob.ReadInBuffer(name, offset, len, data)
+func (dl *Datalake) ReadInBuffer(name string, offset int64, len int64, data []byte, etag *string) error {
+	return dl.BlockBlob.ReadInBuffer(name, offset, len, data, etag)
 }
 
 // WriteFromFile : Upload local file to file
@@ -593,8 +594,8 @@ func (dl *Datalake) StageBlock(name string, data []byte, id string) error {
 }
 
 // CommitBlocks : persists the block list
-func (dl *Datalake) CommitBlocks(name string, blockList []string) error {
-	return dl.BlockBlob.CommitBlocks(name, blockList)
+func (dl *Datalake) CommitBlocks(name string, blockList []string, newEtag *string) error {
+	return dl.BlockBlob.CommitBlocks(name, blockList, newEtag)
 }
 
 func (dl *Datalake) SetFilter(filter string) error {
