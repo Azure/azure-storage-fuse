@@ -32,54 +32,64 @@ const (
 
 type block struct {
 	sync.RWMutex
-	idx                      int                // Block Index
-	id                       string             // Block Id
-	buf                      *Buffer            // Inmemory buffer if exists.
-	state                    blockState         // It tells about the state of the block.
-	hole                     bool               // Hole means this block is a null block. This can be used to do some optimisations.
-	downloadDone             chan error         // Channel to know when the download completes.
-	uploadDone               chan error         // Channel to know when the uplaod completes.
-	uploadInProgress         chan struct{}      // communication between sync and async uploaders.
-	cancelOngoingAsyncUpload context.CancelFunc // This function cancels the ongoing async upload, if any write comes after its scheduling.
-	uploadCtx                context.Context
-	file                     *File // file object that this block belong to.
+	idx                         int        // Block Index
+	id                          string     // Block Id
+	buf                         *Buffer    // Inmemory buffer if exists.
+	state                       blockState // It tells about the state of the block.
+	hole                        bool       // Hole means this block is a null block. This can be used to do some optimisations.
+	uploadDone                  chan error // Channel to know when the uplaod completes.
+	downloadDone                chan error // Channel to know when the download completes.
+	cancelOngoingAsyncUpload    func()     // This function cancels the ongoing async upload, maybe triggered by any write that comes after its scheduling.
+	cancelOngolingAsyncDownload func()     // This function cancel the ongoing async downlaod.
+	uploadCtx                   context.Context
+	downloadCtx                 context.Context
+	file                        *File // file object that this block belong to.
 }
 
 func createBlock(idx int, id string, state blockState, f *File) *block {
 	blk := &block{
-		idx:                      idx,
-		id:                       id,
-		buf:                      nil,
-		state:                    state,
-		hole:                     false,
-		downloadDone:             make(chan error, 1),
-		uploadInProgress:         make(chan struct{}, 1),
-		uploadDone:               make(chan error, 1),
-		cancelOngoingAsyncUpload: func() {},
-		file:                     f,
+		idx:                         idx,
+		id:                          id,
+		buf:                         nil,
+		state:                       state,
+		hole:                        false,
+		uploadDone:                  make(chan error, 1),
+		downloadDone:                make(chan error, 1),
+		cancelOngoingAsyncUpload:    func() {},
+		cancelOngolingAsyncDownload: func() {},
+		file:                        f,
 	}
-	close(blk.downloadDone)
-	close(blk.uploadInProgress)
 	close(blk.uploadDone)
+	close(blk.downloadDone)
 	return blk
 }
 
 type blockList []*block
 
 func validateBlockList(blkList *internal.CommittedBlockList, f *File) (blockList, bool) {
-	if blkList == nil {
-		return nil, false
+	if blkList == nil || len(*blkList) == 0 {
+		return createBlockListForReadOnlyFile(f), false
 	}
 	listLen := len(*blkList)
 	var newblkList blockList
 	for idx, blk := range *blkList {
 		if (idx < (listLen-1) && blk.Size != bc.blockSize) || (idx == (listLen-1) && blk.Size > bc.blockSize) || (len(blk.Id) != StdBlockIdLength) {
 			log.Err("BlockCache::validateBlockList : Unsupported blocklist Format ")
-			return nil, false
+			return createBlockListForReadOnlyFile(f), false
 		}
 		newblkList = append(newblkList, createBlock(idx, blk.Id, committedBlock, f))
 	}
 	return newblkList, true
+}
+
+func createBlockListForReadOnlyFile(f *File) blockList {
+	size := f.size
+	var newblkList blockList
+	noOfBlocks := (size + int64(BlockSize) - 1) / int64(BlockSize)
+	for i := 0; i < int(noOfBlocks); i++ {
+		newblkList = append(newblkList, createBlock(i, " ", committedBlock, f))
+	}
+	return newblkList
 }
 
 func getBlockIndex(offset int64) int {
@@ -110,12 +120,13 @@ func updateModifiedBlock(blk *block) {
 }
 
 func changeStateOfBlockToLocal(idx int, blk *block) error {
-	_, err := getBlock(idx, blk, true)
+	_, err := syncDownloader(idx, blk)
 	if err != nil {
 		log.Trace("BlockCache::Truncate File : FAILED when retrieving last block idx=%d, path=%s, size=%d", idx, blk.file.Name, blk.file.size)
 		return err
 	}
 	// todo: Lock simplification
+	blk.cancelOngoingAsyncUpload()
 	blk.Lock()
 	updateModifiedBlock(blk)
 	blk.Unlock()

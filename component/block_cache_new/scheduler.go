@@ -19,10 +19,12 @@ import (
 // Sync Writes: When User application does a flush call. The block should be uploaded on priority.
 // Async Writes:When blobfuse schedules a block to upload.
 
-type syncType bool
+type requestType int
 
-var Sync syncType = true
-var Async syncType = false
+const (
+	syncRequest requestType = iota
+	asyncRequest
+)
 
 type task struct {
 	ctx      context.Context
@@ -57,14 +59,14 @@ func createWorkerPool(size int) *workerPool {
 	}
 	return wp
 }
-func (wp *workerPool) createTask(ctx context.Context, taskDone chan<- struct{}, upload bool, syncRequest bool, blk *block) {
+func (wp *workerPool) createTask(ctx context.Context, taskDone chan<- struct{}, upload bool, r requestType, blk *block) {
 	t := &task{
 		ctx:      ctx,
 		taskDone: taskDone,
 		upload:   upload,
 		blk:      blk,
 	}
-	if syncRequest {
+	if r == syncRequest {
 		wp.syncStream <- t
 	} else {
 		wp.asyncStream <- t
@@ -77,65 +79,53 @@ func (wp *workerPool) worker(workerNo int) {
 	for {
 		select {
 		case t = <-wp.syncStream:
-			performTask(t, workerNo, true)
+			performTask(t, workerNo, syncRequest)
 		case t = <-wp.asyncStream:
-			performTask(t, workerNo, false)
+			performTask(t, workerNo, asyncRequest)
 		case <-wp.close:
 			return
 		}
 	}
 }
 
-func performTask(t *task, workerNo int, sync bool) {
+func performTask(t *task, workerNo int, r requestType) {
 	if t.upload {
-		doUpload(t, workerNo, sync)
+		doUpload(t, workerNo, r)
 	} else {
-		doDownload(t, workerNo, sync)
+		doDownload(t, workerNo, r)
 	}
 }
 
-func doDownload(t *task, workerNo int, sync bool) {
+func doDownload(t *task, workerNo int, r requestType) {
 	blk := t.blk
 	if blk.buf == nil {
-		blk.buf = bPool.getBuffer()
-		switch blk.state {
-		case localBlock:
-			// This case occurs when we get read call on sparse local Blocks which are not even put on the wire.
-			close(blk.downloadDone)
-			return
-		case uncommitedBlock:
-			// This case occurs when we clear the uncommited block from the cache.
-			// generally the block should be committed otherwise old data will be served.
-			// Todo: Handle this case.
-			// We don't hit here yet as we dont invalidate cache entries for local and uncommited blocks
-			//return errors.New("todo : read for uncommited block which was removed from the cache")
-		}
-		logy.Write([]byte(fmt.Sprintf("BlockCache::doDownload : Download Scheduled for block[sync: %t], path=%s, blk Idx = %d, worker No = %d\n", sync, t.blk.file.Name, t.blk.idx, workerNo)))
-		dataRead, err := bc.NextComponent().ReadInBuffer(internal.ReadInBufferOptions{
-			Name:   t.blk.file.Name,
-			Offset: int64(blk.idx * BlockSize),
-			Data:   blk.buf.data[:getBlockSize(atomic.LoadInt64(&t.blk.file.size), blk.idx)],
-		})
-		if err == nil {
-			logy.Write([]byte(fmt.Sprintf("BlockCache::doDownload : Download Completed for block[sync: %t], path=%s, blk Idx = %d, worker No = %d\n", sync, t.blk.file.Name, t.blk.idx, workerNo)))
-			blk.buf.dataSize = int64(dataRead)
-			blk.state = committedBlock
-			close(blk.downloadDone)
-		} else {
-			blk.buf = nil
-			logy.Write([]byte(fmt.Sprintf("BlockCache::doDownload : Download failed for block[sync: %t], path=%s, blk Idx = %d, worker No = %d\n", sync, t.blk.file.Name, t.blk.idx, workerNo)))
-			blk.downloadDone <- err
-		}
+		panic("Something has seriously messed up While Reading")
 	}
+	sizeOfData := getBlockSize(atomic.LoadInt64(&t.blk.file.size), blk.idx)
+	logy.Write([]byte(fmt.Sprintf("BlockCache::doDownload : Download Scheduled for block[sync: %d], path=%s, blk Idx = %d, worker No = %d\n", r, t.blk.file.Name, t.blk.idx, workerNo)))
+	_, err := bc.NextComponent().ReadInBuffer(internal.ReadInBufferOptions{
+		Name:   t.blk.file.Name,
+		Offset: int64(blk.idx * BlockSize),
+		Data:   blk.buf.data[:sizeOfData],
+	})
+	logy.Write([]byte(fmt.Sprintf("BlockCache::doDownload : Download Complete for block[sync: %d], path=%s, blk Idx = %d, worker No = %d\n", r, t.blk.file.Name, t.blk.idx, workerNo)))
+	if err == nil && !errors.Is(t.ctx.Err(), context.Canceled) {
+		blk.downloadDone <- nil
+	} else if err == nil {
+		blk.downloadDone <- t.ctx.Err()
+	} else {
+		blk.downloadDone <- err
+	}
+	close(t.taskDone)
 }
 
-func doUpload(t *task, workerNo int, sync bool) {
+func doUpload(t *task, workerNo int, r requestType) {
 	blk := t.blk
 	blk.id = base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
 	if blk.buf == nil {
-		panic("Something has seriously messed up")
+		panic("Something has seriously messed up While writing")
 	}
-	logy.Write([]byte(fmt.Sprintf("BlockCache::doUpload : Upload Scheduled for block[sync: %t], path=%s, blk Idx = %d, worker No = %d\n", sync, t.blk.file.Name, t.blk.idx, workerNo)))
+	logy.Write([]byte(fmt.Sprintf("BlockCache::doUpload : Upload Scheduled for block[sync: %d], path=%s, blk Idx = %d, worker No = %d\n", r, t.blk.file.Name, t.blk.idx, workerNo)))
 
 	err := bc.NextComponent().StageData(
 		internal.StageDataOptions{
@@ -145,6 +135,7 @@ func doUpload(t *task, workerNo int, sync bool) {
 			Data: blk.buf.data[:getBlockSize(atomic.LoadInt64(&t.blk.file.size), blk.idx)],
 		},
 	)
+	logy.Write([]byte(fmt.Sprintf("BlockCache::doUpload : Upload Complete for block[sync: %d], path=%s, blk Idx = %d, worker No = %d\n", r, t.blk.file.Name, t.blk.idx, workerNo)))
 	if err == nil && !errors.Is(t.ctx.Err(), context.Canceled) {
 		blk.uploadDone <- nil
 	} else if err == nil {
@@ -152,6 +143,5 @@ func doUpload(t *task, workerNo int, sync bool) {
 	} else {
 		blk.uploadDone <- err
 	}
-	blk.uploadInProgress <- struct{}{}
 	close(t.taskDone)
 }

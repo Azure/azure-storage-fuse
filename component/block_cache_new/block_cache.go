@@ -112,7 +112,7 @@ func (bc *BlockCache) SetNextComponent(nc internal.Component) {
 func (bc *BlockCache) Start(ctx context.Context) error {
 	log.Trace("BlockCache::Start : Starting component block_cache new %s", bc.Name())
 	bPool = createBufferPool(memory)
-	wp = createWorkerPool(64)
+	wp = createWorkerPool(8)
 	return nil
 }
 
@@ -158,47 +158,48 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 		return nil, err
 	}
 
-	f, _ := GetFileFromPath(options.Name)
+	f, first_open := GetFileFromPath(options.Name)
 	f.Lock()
 	defer f.Unlock()
+	if f.size == -1 {
+		populateFileInfo(f, attr)
+	}
 
-	var blockList blockList = make([]*block, 0)
-	var valid bool = false //Invalid blocklist blobs can only be read and can't be modified
+	if first_open {
+		f.blockList = createBlockListForReadOnlyFile(f)
+	}
 
 	// todo: O_TRUNC is not supported currently.
 	if attr.Size == 0 || options.Flags&os.O_TRUNC != 0 {
 		f.size = 0
 		f.blockList = make([]*block, 0) //todo: return memory to pool
 		attr.Size = 0
-		valid = true
+		f.blkListState = blockListValid
 	}
 
-	if attr.Size > 0 && f.blockList == nil && ((options.Flags&os.O_WRONLY != 0) || (options.Flags&os.O_RDWR != 0)) {
-		blkList, err := bc.NextComponent().GetCommittedBlockList(options.Name)
-		if err != nil {
-			log.Err("BlockCache::OpenFile : Failed to get block list of %s [%v]", options.Name, err)
-			return nil, fmt.Errorf("failed to retrieve block list for %s", options.Name)
-		}
-		blockList, valid = validateBlockList(blkList, f)
-		if valid {
+	if attr.Size > 0 {
+		if f.blkListState == blockListNotRetrieved && ((options.Flags&os.O_WRONLY != 0) || (options.Flags&os.O_RDWR != 0)) {
+			blkList, err := bc.NextComponent().GetCommittedBlockList(options.Name)
+			if err != nil {
+				log.Err("BlockCache::OpenFile : Failed to get block list of %s [%v]", options.Name, err)
+				return nil, fmt.Errorf("failed to retrieve block list for %s", options.Name)
+			}
+			blockList, valid := validateBlockList(blkList, f)
+			if valid {
+				f.blkListState = blockListValid
+			} else {
+				f.blkListState = blockListInvalid
+			}
 			f.blockList = blockList
 		}
 	}
 
-	if valid {
-		f.readOnly = false // This file can be read and modified too
-	}
-
-	if f.readOnly && ((options.Flags&os.O_WRONLY != 0) || (options.Flags&os.O_RDWR != 0)) {
+	if f.blkListState == blockListInvalid && ((options.Flags&os.O_WRONLY != 0) || (options.Flags&os.O_RDWR != 0)) {
 		log.Err("BlockCache::OpenFile : Cannot Write to file %s whose blocklist is invalid", options.Name)
 		DeleteFile(f)
-		f.Unlock()
 		return nil, errors.New("cannot write to file whose blocklist is invalid")
 	}
 
-	if f.size == -1 {
-		populateFileInfo(f, attr)
-	}
 	handle := CreateFreshHandleForFile(f.Name, f.size, attr.Mtime)
 	f.handles[handle] = true
 
@@ -358,14 +359,14 @@ func (bc *BlockCache) TruncateFile(options internal.TruncateFileOptions) (err er
 	if h == nil {
 		// Truncate on Path, as there might exists some open handles we cannot pass on the call.
 		h, err = bc.OpenFile(internal.OpenFileOptions{Name: options.Name, Flags: os.O_RDWR, Mode: 0666})
+		if err != nil {
+			return
+		}
 		defer bc.CloseFile(
 			internal.CloseFileOptions{
 				Handle: h,
 			},
 		)
-		if err != nil {
-			return
-		}
 		// It's important to flush file as there maynot be flush call after this.
 		defer func() {
 			err = bc.FlushFile(
@@ -405,7 +406,7 @@ func (bc *BlockCache) TruncateFile(options internal.TruncateFileOptions) (err er
 			f.blockList = append(f.blockList, blk)
 			if i == int(finalBlocksCnt)-1 {
 				// We are allocating buffer here as there might not be full hole for last block
-				blk.buf = bPool.getBuffer()
+				bPool.getBufferForBlock(blk)
 			} else {
 				blk.hole = true
 			}

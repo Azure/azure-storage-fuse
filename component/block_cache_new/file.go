@@ -9,25 +9,32 @@ import (
 
 type File struct {
 	sync.RWMutex
-	handles        map[*handlemap.Handle]bool // Open file handles for this file
-	readOnlyBlocks map[int]*block             // These blocks are used for files which are read only
-	blockList      blockList                  //  These blocks inside blocklist is used for files which can both read and write.
-	Etag           string                     // Etag of the file
-	Name           string                     // File Name
-	size           int64                      // File Size
-	synced         bool                       // Is file synced with Azure storage
-	holePunched    bool                       // Represents if we have punched any hole while uploading the data.
-	readOnly       bool                       // all blocklists which are not compatible with block cache can only be read
+	handles      map[*handlemap.Handle]bool // Open file handles for this file
+	blockList    blockList                  //  These blocks inside blocklist is used for files which can both read and write.
+	Etag         string                     // Etag of the file
+	Name         string                     // File Name
+	size         int64                      // File Size
+	synced       bool                       // Is file synced with Azure storage
+	holePunched  bool                       // Represents if we have punched any hole while uploading the data.
+	blkListState blocklistState             // all blocklists which are not compatible with block cache can only be read
 }
+
+type blocklistState int
+
+const (
+	blockListInvalid blocklistState = iota
+	blockListValid
+	blockListNotRetrieved
+)
 
 func CreateFile(fileName string) *File {
 	f := &File{
-		Name:           fileName,
-		handles:        make(map[*handlemap.Handle]bool),
-		readOnlyBlocks: make(map[int]*block),
-		size:           -1,
-		synced:         true,
-		readOnly:       true, // By default all files can be read
+		Name:         fileName,
+		handles:      make(map[*handlemap.Handle]bool),
+		blockList:    make([]*block, 0),
+		size:         -1,
+		synced:       true,
+		blkListState: blockListNotRetrieved,
 	}
 
 	return f
