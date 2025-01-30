@@ -66,6 +66,10 @@ type azAuthConfig struct {
 	WorkloadIdentityToken   string
 	ActiveDirectoryEndpoint string
 
+	// Client assertions
+	ClientAssertion string
+	UserAssertion   string
+
 	Endpoint     string
 	AuthResource string
 }
@@ -131,6 +135,12 @@ func getAzBlobAuth(config azAuthConfig) azAuth {
 				azAuthBase: base,
 			},
 		}
+	} else if config.AuthMode == EAuthType.BEHALF() {
+		return &azAuthBlobBehalf{
+			azAuthBehalf{
+				azAuthBase: base,
+			},
+		}
 	} else {
 		log.Crit("azAuth::getAzBlobAuth : Auth type %s not supported. Failed to create Auth object", config.AuthMode)
 	}
@@ -166,6 +176,12 @@ func getAzDatalakeAuth(config azAuthConfig) azAuth {
 	} else if config.AuthMode == EAuthType.AZCLI() {
 		return &azAuthDatalakeCLI{
 			azAuthCLI{
+				azAuthBase: base,
+			},
+		}
+	} else if config.AuthMode == EAuthType.BEHALF() {
+		return &azAuthDatalakeBehalf{
+			azAuthBehalf{
 				azAuthBase: base,
 			},
 		}

@@ -76,6 +76,10 @@ func (AuthType) AZCLI() AuthType {
 	return AuthType(5)
 }
 
+func (AuthType) BEHALF() AuthType {
+	return AuthType(6)
+}
+
 func (a AuthType) String() string {
 	return enum.StringInt(a, reflect.TypeOf(a))
 }
@@ -144,6 +148,8 @@ const (
 	EnvAzAuthResource                    = "AZURE_STORAGE_AUTH_RESOURCE"
 	EnvAzStorageCpkEncryptionKey         = "AZURE_STORAGE_CPK_ENCRYPTION_KEY"
 	EnvAzStorageCpkEncryptionKeySha256   = "AZURE_STORAGE_CPK_ENCRYPTION_KEY_SHA256"
+	EnvAzClientAssertion                 = "AZURE_STORAGE_CLIENT_ASSERTION"
+	EnvAzUserAssertion                   = "AZURE_STORAGE_USER_ASSERTION"
 )
 
 type AzStorageOptions struct {
@@ -189,6 +195,8 @@ type AzStorageOptions struct {
 	CPKEncryptionKeySha256  string `config:"cpk-encryption-key-sha256" yaml:"cpk-encryption-key-sha256"`
 	PreserveACL             bool   `config:"preserve-acl" yaml:"preserve-acl"`
 	Filter                  string `config:"filter" yaml:"filter"`
+	ClientAssertion         string `config:"client-assertion" yaml:"client-assertions"`
+	UserAssertion           string `config:"user-assertion" yaml:"user-assertions"`
 
 	// v1 support
 	UseAdls        bool   `config:"use-adls" yaml:"-"`
@@ -230,6 +238,8 @@ func RegisterEnvVariables() {
 	config.BindEnv("azstorage.cpk-encryption-key", EnvAzStorageCpkEncryptionKey)
 	config.BindEnv("azstorage.cpk-encryption-key-sha256", EnvAzStorageCpkEncryptionKeySha256)
 
+	config.BindEnv("azstorage.client-assertion", EnvAzClientAssertion)
+	config.BindEnv("azstorage.user-assertion", EnvAzUserAssertion)
 }
 
 //    ----------- Config Parsing and Validation  ---------------
@@ -467,6 +477,20 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		az.stConfig.authConfig.WorkloadIdentityToken = opt.WorkloadIdentityToken
 	case EAuthType.AZCLI():
 		az.stConfig.authConfig.AuthMode = EAuthType.AZCLI()
+	case EAuthType.BEHALF():
+		az.stConfig.authConfig.AuthMode = EAuthType.BEHALF()
+		if opt.ClientID == "" || opt.TenantID == "" {
+			return errors.New("Client ID or Tenant ID not provided")
+		}
+
+		if opt.ClientAssertion == "" || opt.UserAssertion == "" {
+			return errors.New("client assertion or user assertion not provided")
+		}
+
+		az.stConfig.authConfig.ClientID = opt.ClientID
+		az.stConfig.authConfig.TenantID = opt.TenantID
+		az.stConfig.authConfig.ClientAssertion = opt.ClientAssertion
+		az.stConfig.authConfig.UserAssertion = opt.UserAssertion
 
 	default:
 		log.Err("ParseAndValidateConfig : Invalid auth mode %s", opt.AuthMode)
