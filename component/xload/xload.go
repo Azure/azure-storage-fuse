@@ -116,12 +116,29 @@ func (xl *Xload) Configure(_ bool) error {
 		return fmt.Errorf("Xload: config error [invalid config attributes]")
 	}
 
-	xl.blockSize = uint64(defaultBlockSize) * _1MB // 16 MB as deafult block size
+	blockSize := (float64)(defaultBlockSize) // 16 MB as deafult block size
 	if config.IsSet(compName + ".block-size-mb") {
-		xl.blockSize = uint64(conf.BlockSize * float64(_1MB))
+		blockSize = conf.BlockSize
+	} else if config.IsSet("stream.block-size-mb") {
+		err = config.UnmarshalKey("stream.block-size-mb", &blockSize)
+		if err != nil {
+			log.Err("Xload::Configure : Failed to unmarshal block-size-mb [%s]", err.Error())
+		}
 	}
 
-	xl.path = common.ExpandPath(strings.TrimSpace(conf.Path))
+	xl.blockSize = uint64(blockSize * float64(_1MB))
+
+	localPath := strings.TrimSpace(conf.Path)
+	if localPath == "" {
+		if config.IsSet("file_cache.path") {
+			err = config.UnmarshalKey("file_cache.path", &localPath)
+			if err != nil {
+				log.Err("Xload::Configure : Failed to unmarshal tmp-path [%s]", err.Error())
+			}
+		}
+	}
+
+	xl.path = common.ExpandPath(localPath)
 	if xl.path == "" {
 		// TODO:: xload : should we use current working directory in this case
 		log.Err("Xload::Configure : config error [path not given in xload]")

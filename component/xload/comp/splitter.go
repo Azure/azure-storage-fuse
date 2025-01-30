@@ -110,6 +110,7 @@ func (d *downloadSplitter) Process(item *common.WorkItem) (int, error) {
 
 	// TODO:: xload : should we delete the file if it already exists
 	// TODO:: xload : what should be the flags and mode and should we allocate the full size to the file
+	// TODO:: xload : handle case if blob is a symlink
 	item.FileHandle, err = os.OpenFile(localPath, os.O_WRONLY|os.O_CREATE, 0644)
 	if err != nil {
 		log.Err("downloadSplitter::Process : Failed to create file %s [%s]", item.Path, err.Error())
