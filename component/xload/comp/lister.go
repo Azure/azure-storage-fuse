@@ -180,6 +180,9 @@ func (rl *remoteLister) Process(item *common.WorkItem) (int, error) {
 					CompName: rl.GetNext().GetName(),
 					Path:     entry.Path,
 					DataLen:  uint64(entry.Size),
+					Mode:     entry.Mode,
+					Atime:    entry.Atime,
+					Mtime:    entry.Mtime,
 				})
 			}
 		}

@@ -111,7 +111,7 @@ func (d *downloadSplitter) Process(item *common.WorkItem) (int, error) {
 	// TODO:: xload : should we delete the file if it already exists
 	// TODO:: xload : what should be the flags and mode and should we allocate the full size to the file
 	// TODO:: xload : handle case if blob is a symlink
-	item.FileHandle, err = os.OpenFile(localPath, os.O_WRONLY|os.O_CREATE, 0644)
+	item.FileHandle, err = os.OpenFile(localPath, os.O_WRONLY|os.O_CREATE, item.Mode)
 	if err != nil {
 		log.Err("downloadSplitter::Process : Failed to create file %s [%s]", item.Path, err.Error())
 		return -1, fmt.Errorf("failed to open file %s [%s]", item.Path, err.Error())
@@ -196,6 +196,13 @@ func (d *downloadSplitter) Process(item *common.WorkItem) (int, error) {
 	}
 
 	wg.Wait()
+
+	// update the last modified time
+	err = os.Chtimes(localPath, item.Atime, item.Mtime)
+	if err != nil {
+		log.Err("downloadSplitter::Process : Failed to change times of file %s [%s]", item.Path, err.Error())
+		operationSuccess = false
+	}
 
 	if !operationSuccess {
 		log.Err("downloadSplitter::Process : Failed to download data for file %s, so deleting it from local path", item.Path)
