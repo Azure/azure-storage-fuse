@@ -453,7 +453,8 @@ func (az *AzStorage) ReadInBuffer(options internal.ReadInBufferOptions) (length 
 		return 0, nil
 	}
 
-	err = az.storage.ReadInBuffer(options.Handle.Path, options.Offset, dataLen, options.Data)
+	err = az.storage.ReadInBuffer(options.Handle.Path, options.Offset, dataLen, options.Data, options.Etag)
+
 	if err != nil {
 		log.Err("AzStorage::ReadInBuffer : Failed to read %s [%s]", options.Handle.Path, err.Error())
 	}
@@ -555,7 +556,7 @@ func (az *AzStorage) StageData(opt internal.StageDataOptions) error {
 }
 
 func (az *AzStorage) CommitData(opt internal.CommitDataOptions) error {
-	return az.storage.CommitBlocks(opt.Name, opt.List)
+	return az.storage.CommitBlocks(opt.Name, opt.List, opt.NewETag)
 }
 
 // TODO : Below methods are pending to be implemented

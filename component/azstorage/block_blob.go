@@ -39,6 +39,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -431,10 +432,10 @@ func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err 
 	})
 
 	if err != nil {
-		e := storeBlobErrToErr(err)
-		if e == ErrFileNotFound {
+		serr := storeBlobErrToErr(err)
+		if serr == ErrFileNotFound {
 			return attr, syscall.ENOENT
-		} else if e == InvalidPermission {
+		} else if serr == InvalidPermission {
 			log.Err("BlockBlob::getAttrUsingRest : Insufficient permissions for %s [%s]", name, err.Error())
 			return attr, syscall.EACCES
 		} else {
@@ -455,6 +456,7 @@ func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err 
 		Crtime: *prop.CreationTime,
 		Flags:  internal.NewFileBitMap(),
 		MD5:    prop.ContentMD5,
+		ETag:   strings.Trim(string(*prop.ETag), `"`),
 	}
 
 	parseMetadata(attr, prop.Metadata)
@@ -663,6 +665,7 @@ func (bb *BlockBlob) getBlobAttr(blobInfo *container.BlobItem) (*internal.ObjAtt
 		Crtime: bb.dereferenceTime(blobInfo.Properties.CreationTime, *blobInfo.Properties.LastModified),
 		Flags:  internal.NewFileBitMap(),
 		MD5:    blobInfo.Properties.ContentMD5,
+		ETag:   strings.Trim((string)(*blobInfo.Properties.ETag), `"`),
 	}
 
 	parseMetadata(attr, blobInfo.Metadata)
@@ -888,20 +891,26 @@ func (bb *BlockBlob) ReadBuffer(name string, offset int64, len int64) ([]byte, e
 }
 
 // ReadInBuffer : Download specific range from a file to a user provided buffer
-func (bb *BlockBlob) ReadInBuffer(name string, offset int64, len int64, data []byte) error {
+func (bb *BlockBlob) ReadInBuffer(name string, offset int64, len int64, data []byte, etag *string) error {
 	// log.Trace("BlockBlob::ReadInBuffer : name %s", name)
-	blobClient := bb.Container.NewBlobClient(filepath.Join(bb.Config.prefixPath, name))
-	opt := (blob.DownloadBufferOptions)(*bb.downloadOptions)
-	opt.BlockSize = len
-	opt.Range = blob.HTTPRange{
-		Offset: offset,
-		Count:  len,
+	if etag != nil {
+		*etag = ""
 	}
+
+	blobClient := bb.Container.NewBlobClient(filepath.Join(bb.Config.prefixPath, name))
 
 	ctx, cancel := context.WithTimeout(context.Background(), max_context_timeout*time.Minute)
 	defer cancel()
 
-	_, err := blobClient.DownloadBuffer(ctx, data, &opt)
+	opt := &blob.DownloadStreamOptions{
+		Range: blob.HTTPRange{
+			Offset: offset,
+			Count:  len,
+		},
+		CPKInfo: bb.blobCPKOpt,
+	}
+
+	downloadResponse, err := blobClient.DownloadStream(ctx, opt)
 
 	if err != nil {
 		e := storeBlobErrToErr(err)
@@ -911,8 +920,30 @@ func (bb *BlockBlob) ReadInBuffer(name string, offset int64, len int64, data []b
 			return syscall.ERANGE
 		}
 
-		log.Err("BlockBlob::ReadInBuffer : Failed to download blob %s [%s]", name, err.Error())
+		log.Err("BlockBlob::ReadInBufferWithETag : Failed to download blob %s [%s]", name, err.Error())
 		return err
+	}
+
+	var streamBody io.ReadCloser = downloadResponse.NewRetryReader(ctx, nil)
+	dataRead, err := io.ReadFull(streamBody, data)
+
+	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+		log.Err("BlockBlob::ReadInBuffer : Failed to copy data from body to buffer for blob %s [%s]", name, err.Error())
+		return err
+	}
+
+	if dataRead < 0 {
+		log.Err("BlockBlob::ReadInBuffer : Failed to copy data from body to buffer for blob %s", name)
+		return errors.New("failed to copy data from body to buffer")
+	}
+
+	err = streamBody.Close()
+	if err != nil {
+		log.Err("BlockBlob::ReadInBuffer : Failed to close body for blob %s [%s]", name, err.Error())
+	}
+
+	if etag != nil {
+		*etag = strings.Trim(string(*downloadResponse.ETag), `"`)
 	}
 
 	return nil
@@ -1165,7 +1196,7 @@ func (bb *BlockBlob) removeBlocks(blockList *common.BlockOffsetList, size int64,
 		blk.Data = make([]byte, blk.EndIndex-blk.StartIndex)
 		blk.Flags.Set(common.DirtyBlock)
 
-		err := bb.ReadInBuffer(name, blk.StartIndex, blk.EndIndex-blk.StartIndex, blk.Data)
+		err := bb.ReadInBuffer(name, blk.StartIndex, blk.EndIndex-blk.StartIndex, blk.Data, nil)
 		if err != nil {
 			log.Err("BlockBlob::removeBlocks : Failed to remove blocks %s [%s]", name, err.Error())
 		}
@@ -1221,7 +1252,7 @@ func (bb *BlockBlob) TruncateFile(name string, size int64) error {
 				size -= blkSize
 			}
 
-			err = bb.CommitBlocks(blobName, blkList)
+			err = bb.CommitBlocks(blobName, blkList, nil)
 			if err != nil {
 				log.Err("BlockBlob::TruncateFile : Failed to commit blocks for %s [%s]", name, err.Error())
 				return err
@@ -1289,12 +1320,12 @@ func (bb *BlockBlob) HandleSmallFile(name string, size int64, originalSize int64
 	var data = make([]byte, size)
 	var err error
 	if size > originalSize {
-		err = bb.ReadInBuffer(name, 0, 0, data)
+		err = bb.ReadInBuffer(name, 0, 0, data, nil)
 		if err != nil {
 			log.Err("BlockBlob::TruncateFile : Failed to read small file %s", name, err.Error())
 		}
 	} else {
-		err = bb.ReadInBuffer(name, 0, size, data)
+		err = bb.ReadInBuffer(name, 0, size, data, nil)
 		if err != nil {
 			log.Err("BlockBlob::TruncateFile : Failed to read small file %s", name, err.Error())
 		}
@@ -1369,7 +1400,7 @@ func (bb *BlockBlob) Write(options internal.WriteFileOptions) error {
 		oldDataBuffer := make([]byte, oldDataSize+newBufferSize)
 		if !appendOnly {
 			// fetch the blocks that will be impacted by the new changes so we can overwrite them
-			err = bb.ReadInBuffer(name, fileOffsets.BlockList[index].StartIndex, oldDataSize, oldDataBuffer)
+			err = bb.ReadInBuffer(name, fileOffsets.BlockList[index].StartIndex, oldDataSize, oldDataBuffer, nil)
 			if err != nil {
 				log.Err("BlockBlob::Write : Failed to read data in buffer %s [%s]", name, err.Error())
 			}
@@ -1560,14 +1591,14 @@ func (bb *BlockBlob) StageBlock(name string, data []byte, id string) error {
 }
 
 // CommitBlocks : persists the block list
-func (bb *BlockBlob) CommitBlocks(name string, blockList []string) error {
+func (bb *BlockBlob) CommitBlocks(name string, blockList []string, newEtag *string) error {
 	log.Trace("BlockBlob::CommitBlocks : name %s", name)
 
 	ctx, cancel := context.WithTimeout(context.Background(), max_context_timeout*time.Minute)
 	defer cancel()
 
 	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
-	_, err := blobClient.CommitBlockList(ctx,
+	resp, err := blobClient.CommitBlockList(ctx,
 		blockList,
 		&blockblob.CommitBlockListOptions{
 			HTTPHeaders: &blob.HTTPHeaders{
@@ -1580,6 +1611,10 @@ func (bb *BlockBlob) CommitBlocks(name string, blockList []string) error {
 	if err != nil {
 		log.Err("BlockBlob::CommitBlocks : Failed to commit block list to blob %s [%s]", name, err.Error())
 		return err
+	}
+
+	if newEtag != nil {
+		*newEtag = strings.Trim(string(*resp.ETag), `"`)
 	}
 
 	return nil

@@ -400,6 +400,10 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 	handle.Mtime = attr.Mtime
 	handle.Size = attr.Size
 
+	if attr.ETag != "" {
+		handle.SetValue("ETAG", attr.ETag)
+	}
+
 	log.Debug("BlockCache::OpenFile : Size of file handle.Size %v", handle.Size)
 	bc.prepareHandleForBlockCache(handle)
 
@@ -952,12 +956,12 @@ func (bc *BlockCache) lineupDownload(handle *handlemap.Handle, block *Block, pre
 }
 
 // download : Method to download the given amount of data
-func (blockCache *BlockCache) download(item *workItem) {
+func (bc *BlockCache) download(item *workItem) {
 	fileName := fmt.Sprintf("%s::%v", item.handle.Path, item.block.id)
 
 	// filename_blockindex is the key for the lock
 	// this ensure that at a given time a block from a file is downloaded only once across all open handles
-	flock := blockCache.fileLocks.Get(fileName)
+	flock := bc.fileLocks.Get(fileName)
 	flock.Lock()
 	defer flock.Unlock()
 
@@ -965,18 +969,18 @@ func (blockCache *BlockCache) download(item *workItem) {
 	found := false
 	localPath := ""
 
-	if blockCache.tmpPath != "" {
+	if bc.tmpPath != "" {
 		// Update diskpolicy to reflect the new file
-		diskNode, found = blockCache.fileNodeMap.Load(fileName)
+		diskNode, found = bc.fileNodeMap.Load(fileName)
 		if !found {
-			diskNode = blockCache.diskPolicy.Add(fileName)
-			blockCache.fileNodeMap.Store(fileName, diskNode)
+			diskNode = bc.diskPolicy.Add(fileName)
+			bc.fileNodeMap.Store(fileName, diskNode)
 		} else {
-			blockCache.diskPolicy.Refresh(diskNode.(*list.Element))
+			bc.diskPolicy.Refresh(diskNode.(*list.Element))
 		}
 
 		// Check local file exists for this offset and file combination or not
-		localPath = filepath.Join(blockCache.tmpPath, fileName)
+		localPath = filepath.Join(bc.tmpPath, fileName)
 		_, err := os.Stat(localPath)
 
 		if err == nil {
@@ -995,8 +999,8 @@ func (blockCache *BlockCache) download(item *workItem) {
 					_ = os.Remove(localPath)
 				}
 
-				if numberOfBytes != int(blockCache.blockSize) && item.block.offset+uint64(numberOfBytes) != uint64(item.handle.Size) {
-					log.Err("BlockCache::download : Local data retrieved from disk size mismatch, Expected %v, OnDisk %v, fileSize %v", blockCache.getBlockSize(uint64(item.handle.Size), item.block), numberOfBytes, item.handle.Size)
+				if numberOfBytes != int(bc.blockSize) && item.block.offset+uint64(numberOfBytes) != uint64(item.handle.Size) {
+					log.Err("BlockCache::download : Local data retrieved from disk size mismatch, Expected %v, OnDisk %v, fileSize %v", bc.getBlockSize(uint64(item.handle.Size), item.block), numberOfBytes, item.handle.Size)
 					successfulRead = false
 					_ = os.Remove(localPath)
 				}
@@ -1005,7 +1009,7 @@ func (blockCache *BlockCache) download(item *workItem) {
 
 				if successfulRead {
 					// If user has enabled consistency check then compute the md5sum and match it in xattr
-					successfulRead = checkBlockConsistency(blockCache, item, numberOfBytes, localPath, fileName)
+					successfulRead = checkBlockConsistency(bc, item, numberOfBytes, localPath, fileName)
 
 					// We have read the data from disk so there is no need to go over network
 					// Just mark the block that download is complete
@@ -1018,11 +1022,13 @@ func (blockCache *BlockCache) download(item *workItem) {
 		}
 	}
 
+	var etag string
 	// If file does not exists then download the block from the container
-	n, err := blockCache.NextComponent().ReadInBuffer(internal.ReadInBufferOptions{
+	n, err := bc.NextComponent().ReadInBuffer(internal.ReadInBufferOptions{
 		Handle: item.handle,
 		Offset: int64(item.block.offset),
 		Data:   item.block.data,
+		Etag:   &etag,
 	})
 
 	if item.failCnt > MAX_FAIL_CNT {
@@ -1037,17 +1043,28 @@ func (blockCache *BlockCache) download(item *workItem) {
 		// Fail to read the data so just reschedule this request
 		log.Err("BlockCache::download : Failed to read %v=>%s from offset %v [%s]", item.handle.ID, item.handle.Path, item.block.id, err.Error())
 		item.failCnt++
-		blockCache.threadPool.Schedule(false, item)
+		bc.threadPool.Schedule(false, item)
 		return
 	} else if n == 0 {
 		// No data read so just reschedule this request
 		log.Err("BlockCache::download : Failed to read %v=>%s from offset %v [0 bytes read]", item.handle.ID, item.handle.Path, item.block.id)
 		item.failCnt++
-		blockCache.threadPool.Schedule(false, item)
+		bc.threadPool.Schedule(false, item)
 		return
 	}
 
-	if blockCache.tmpPath != "" {
+	// Compare the ETAG value and fail download if blob has changed
+	if etag != "" {
+		etagVal, found := item.handle.GetValue("ETAG")
+		if found && etagVal != etag {
+			log.Err("BlockCache::download : Blob has changed for %v=>%s (index %v, offset %v)", item.handle.ID, item.handle.Path, item.block.id, item.block.offset)
+			item.block.Failed()
+			item.block.Ready(BlockStatusDownloadFailed)
+			return
+		}
+	}
+
+	if bc.tmpPath != "" {
 		err := os.MkdirAll(filepath.Dir(localPath), 0777)
 		if err != nil {
 			log.Err("BlockCache::download : error creating directory structure for file %s [%s]", localPath, err.Error())
@@ -1064,10 +1081,10 @@ func (blockCache *BlockCache) download(item *workItem) {
 			}
 
 			f.Close()
-			blockCache.diskPolicy.Refresh(diskNode.(*list.Element))
+			bc.diskPolicy.Refresh(diskNode.(*list.Element))
 
 			// If user has enabled consistency check then compute the md5sum and save it in xattr
-			if blockCache.consistency {
+			if bc.consistency {
 				hash := common.GetCRC64(item.block.data, n)
 				err = syscall.Setxattr(localPath, "user.md5sum", hash, 0)
 				if err != nil {
@@ -1556,10 +1573,15 @@ func (bc *BlockCache) commitBlocks(handle *handlemap.Handle) error {
 	log.Debug("BlockCache::commitBlocks : Committing blocks for %s", handle.Path)
 
 	// Commit the block list now
-	err = bc.NextComponent().CommitData(internal.CommitDataOptions{Name: handle.Path, List: blockIDList, BlockSize: bc.blockSize})
+	var newEtag string = ""
+	err = bc.NextComponent().CommitData(internal.CommitDataOptions{Name: handle.Path, List: blockIDList, BlockSize: bc.blockSize, NewETag: &newEtag})
 	if err != nil {
 		log.Err("BlockCache::commitBlocks : Failed to commit blocks for %s [%s]", handle.Path, err.Error())
 		return err
+	}
+
+	if newEtag != "" {
+		handle.SetValue("ETAG", newEtag)
 	}
 
 	// set all the blocks as committed
