@@ -70,7 +70,7 @@ type azAuthConfig struct {
 	// This will need ApplicationID, TenantID and ClientID as well
 	UserAssertion string
 
-	// Auth resrouce / security scope for OAuth
+	// Auth resource / security scope for OAuth
 	AuthResource string
 
 	Endpoint string
