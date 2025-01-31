@@ -318,12 +318,13 @@ func (dl *Datalake) DeleteDirectory(name string) (err error) {
 }
 
 // RenameFile : Rename the file
-func (dl *Datalake) RenameFile(source string, target string) error {
+// While renaming the file, Creation time is preserved but LMT is changed for the destination blob.
+func (dl *Datalake) RenameFile(source string, target string, srcAttr *internal.ObjAttr) error {
 	log.Trace("Datalake::RenameFile : %s -> %s", source, target)
 
 	fileClient := dl.Filesystem.NewFileClient(url.PathEscape(filepath.Join(dl.Config.prefixPath, source)))
 
-	_, err := fileClient.Rename(context.Background(), filepath.Join(dl.Config.prefixPath, target), &file.RenameOptions{
+	renameResponse, err := fileClient.Rename(context.Background(), filepath.Join(dl.Config.prefixPath, target), &file.RenameOptions{
 		CPKInfo: dl.datalakeCPKOpt,
 	})
 	if err != nil {
@@ -336,7 +337,7 @@ func (dl *Datalake) RenameFile(source string, target string) error {
 			return err
 		}
 	}
-
+	modifyLMT(srcAttr, renameResponse.LastModified)
 	return nil
 }
 

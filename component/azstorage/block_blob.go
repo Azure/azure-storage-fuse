@@ -317,7 +317,11 @@ func (bb *BlockBlob) DeleteDirectory(name string) (err error) {
 
 // RenameFile : Rename the file
 // Source file must exist in storage account before calling this method.
-func (bb *BlockBlob) RenameFile(source string, target string) error {
+// When the rename is success, Data, metadata, of the blob will be copied to the destination.
+// Creation time and LMT is not preserved for copyBlob API.
+// Copy the LMT to the src attr if the copy is success.
+// https://learn.microsoft.com/en-us/rest/api/storageservices/copy-blob?tabs=microsoft-entra-id
+func (bb *BlockBlob) RenameFile(source string, target string, srcAttr *internal.ObjAttr) error {
 	log.Trace("BlockBlob::RenameFile : %s -> %s", source, target)
 
 	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, source))
@@ -325,7 +329,7 @@ func (bb *BlockBlob) RenameFile(source string, target string) error {
 
 	// not specifying source blob metadata, since passing empty metadata headers copies
 	// the source blob metadata to destination blob
-	startCopy, err := newBlobClient.StartCopyFromURL(context.Background(), blobClient.URL(), &blob.StartCopyFromURLOptions{
+	copyResponse, err := newBlobClient.StartCopyFromURL(context.Background(), blobClient.URL(), &blob.StartCopyFromURLOptions{
 		Tier: bb.Config.defaultTier,
 	})
 
@@ -341,16 +345,29 @@ func (bb *BlockBlob) RenameFile(source string, target string) error {
 		return err
 	}
 
-	copyStatus := startCopy.CopyStatus
+	var dstLMT *time.Time = copyResponse.LastModified
+
+	copyStatus := copyResponse.CopyStatus
+	var prop blob.GetPropertiesResponse
+	pollCnt := 0
 	for copyStatus != nil && *copyStatus == blob.CopyStatusTypePending {
 		time.Sleep(time.Second * 1)
-		prop, err := newBlobClient.GetProperties(context.Background(), &blob.GetPropertiesOptions{
+		pollCnt++
+		prop, err = newBlobClient.GetProperties(context.Background(), &blob.GetPropertiesOptions{
 			CPKInfo: bb.blobCPKOpt,
 		})
 		if err != nil {
 			log.Err("BlockBlob::RenameFile : CopyStats : Failed to get blob properties for %s [%s]", source, err.Error())
 		}
 		copyStatus = prop.CopyStatus
+	}
+
+	if pollCnt > 0 {
+		dstLMT = prop.LastModified
+	}
+
+	if copyStatus != nil && *copyStatus == blob.CopyStatusTypeSuccess {
+		modifyLMT(srcAttr, dstLMT)
 	}
 
 	log.Trace("BlockBlob::RenameFile : %s -> %s done", source, target)
@@ -394,7 +411,7 @@ func (bb *BlockBlob) RenameDirectory(source string, target string) error {
 		for _, blobInfo := range listBlobResp.Segment.BlobItems {
 			srcDirPresent = true
 			srcPath := split(bb.Config.prefixPath, *blobInfo.Name)
-			err = bb.RenameFile(srcPath, strings.Replace(srcPath, source, target, 1))
+			err = bb.RenameFile(srcPath, strings.Replace(srcPath, source, target, 1), nil)
 			if err != nil {
 				log.Err("BlockBlob::RenameDirectory : Failed to rename file %s [%s]", srcPath, err.Error)
 			}
@@ -420,7 +437,7 @@ func (bb *BlockBlob) RenameDirectory(source string, target string) error {
 		}
 	}
 
-	return bb.RenameFile(source, target)
+	return bb.RenameFile(source, target, nil)
 }
 
 func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err error) {
