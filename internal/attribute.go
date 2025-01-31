@@ -78,7 +78,8 @@ type ObjAttr struct {
 	Flags    common.BitMap16    // flags
 	Path     string             // full path
 	Name     string             // base name of the path
-	MD5      []byte             // MD5 hash of the blob
+	MD5      []byte             // MD5 of the blob as per last GetAttr
+	ETag     string             // ETag of the blob as per last GetAttr
 	Metadata map[string]*string // extra information to preserve
 }
 
