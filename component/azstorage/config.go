@@ -76,12 +76,8 @@ func (AuthType) AZCLI() AuthType {
 	return AuthType(5)
 }
 
-func (AuthType) ONBEHALF() AuthType {
-	return AuthType(6)
-}
-
 func (AuthType) CLIENTASSERTION() AuthType {
-	return AuthType(7)
+	return AuthType(6)
 }
 
 func (a AuthType) String() string {
@@ -481,22 +477,6 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		az.stConfig.authConfig.WorkloadIdentityToken = opt.WorkloadIdentityToken
 	case EAuthType.AZCLI():
 		az.stConfig.authConfig.AuthMode = EAuthType.AZCLI()
-	case EAuthType.ONBEHALF():
-		az.stConfig.authConfig.AuthMode = EAuthType.ONBEHALF()
-		if opt.ClientID == "" || opt.TenantID == "" || opt.ApplicationID == "" {
-			return errors.New("Client ID, Tenant ID or Application ID not provided")
-		}
-
-		if opt.UserAssertion == "" || opt.AADScope == "" {
-			return errors.New("user assertion or AAD scope not provided")
-		}
-
-		az.stConfig.authConfig.ClientID = opt.ClientID
-		az.stConfig.authConfig.TenantID = opt.TenantID
-		az.stConfig.authConfig.ApplicationID = opt.ApplicationID
-		az.stConfig.authConfig.UserAssertion = opt.UserAssertion
-		az.stConfig.authConfig.AADScope = opt.AADScope
-
 	case EAuthType.CLIENTASSERTION():
 		az.stConfig.authConfig.AuthMode = EAuthType.CLIENTASSERTION()
 		if opt.ClientID == "" || opt.TenantID == "" || opt.ApplicationID == "" {
@@ -510,6 +490,7 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		az.stConfig.authConfig.ClientID = opt.ClientID
 		az.stConfig.authConfig.TenantID = opt.TenantID
 		az.stConfig.authConfig.ApplicationID = opt.ApplicationID
+		az.stConfig.authConfig.UserAssertion = opt.UserAssertion
 		az.stConfig.authConfig.AADScope = opt.AADScope
 
 	default:

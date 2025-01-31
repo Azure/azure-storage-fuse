@@ -56,10 +56,6 @@ type azAuthClientAssertion struct {
 func (azclientassertion *azAuthClientAssertion) getTokenCredential() (azcore.TokenCredential, error) {
 	opts := azclientassertion.getAzIdentityClientOptions(&azclientassertion.config)
 
-	behalfOpts := &azidentity.ClientAssertionCredentialOptions{
-		ClientOptions: opts,
-	}
-
 	// Create MSI cred to fetch token
 	msiOpts := &azidentity.ManagedIdentityCredentialOptions{
 		ClientOptions: opts,
@@ -89,11 +85,28 @@ func (azclientassertion *azAuthClientAssertion) getTokenCredential() (azcore.Tok
 		return token.Token, nil
 	}
 
-	return azidentity.NewClientAssertionCredential(
-		azclientassertion.config.TenantID,
-		azclientassertion.config.ClientID,
-		getClientAssertions,
-		behalfOpts)
+	if azclientassertion.config.UserAssertion != "" {
+		assertOpts := &azidentity.ClientAssertionCredentialOptions{
+			ClientOptions: opts,
+		}
+
+		return azidentity.NewClientAssertionCredential(
+			azclientassertion.config.TenantID,
+			azclientassertion.config.ClientID,
+			getClientAssertions,
+			assertOpts)
+	} else {
+		assertOpts := &azidentity.OnBehalfOfCredentialOptions{
+			ClientOptions: opts,
+		}
+
+		return azidentity.NewOnBehalfOfCredentialWithClientAssertions(
+			azclientassertion.config.TenantID,
+			azclientassertion.config.ClientID,
+			azclientassertion.config.UserAssertion,
+			getClientAssertions,
+			assertOpts)
+	}
 }
 
 type azAuthBlobClientAssertion struct {

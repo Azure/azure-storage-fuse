@@ -135,12 +135,6 @@ func getAzBlobAuth(config azAuthConfig) azAuth {
 				azAuthBase: base,
 			},
 		}
-	} else if config.AuthMode == EAuthType.ONBEHALF() {
-		return &azAuthBlobOnBehalf{
-			azAuthOnBehalf{
-				azAuthBase: base,
-			},
-		}
 	} else if config.AuthMode == EAuthType.CLIENTASSERTION() {
 		return &azAuthBlobClientAssertion{
 			azAuthClientAssertion{
@@ -182,12 +176,6 @@ func getAzDatalakeAuth(config azAuthConfig) azAuth {
 	} else if config.AuthMode == EAuthType.AZCLI() {
 		return &azAuthDatalakeCLI{
 			azAuthCLI{
-				azAuthBase: base,
-			},
-		}
-	} else if config.AuthMode == EAuthType.ONBEHALF() {
-		return &azAuthDatalakeOnBehalf{
-			azAuthOnBehalf{
 				azAuthBase: base,
 			},
 		}
