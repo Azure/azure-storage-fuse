@@ -70,7 +70,6 @@ func (azmsi *azAuthMSI) getTokenCredential() (azcore.TokenCredential, error) {
 	}
 
 	cred, err := azidentity.NewManagedIdentityCredential(msiOpts)
-
 	return cred, err
 }
 
