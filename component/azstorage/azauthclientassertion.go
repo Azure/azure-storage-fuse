@@ -68,8 +68,8 @@ func (azclientassertion *azAuthClientAssertion) getTokenCredential() (azcore.Tok
 	}
 
 	scope := "https://vault.azure.net/.default"
-	if azclientassertion.config.AADScope != "" {
-		scope = azclientassertion.config.AADScope
+	if azclientassertion.config.AuthResource != "" {
+		scope = azclientassertion.config.AuthResource
 	}
 
 	getClientAssertions := func(context.Context) (string, error) {

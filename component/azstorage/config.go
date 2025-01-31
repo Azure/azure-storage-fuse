@@ -149,7 +149,6 @@ const (
 	EnvAzStorageCpkEncryptionKey         = "AZURE_STORAGE_CPK_ENCRYPTION_KEY"
 	EnvAzStorageCpkEncryptionKeySha256   = "AZURE_STORAGE_CPK_ENCRYPTION_KEY_SHA256"
 	EnvAzUserAssertion                   = "AZURE_STORAGE_USER_ASSERTION"
-	EnvAzStorageAADScope                 = "AZURE_STORAGE_AAD_SCOPE"
 )
 
 type AzStorageOptions struct {
@@ -196,7 +195,6 @@ type AzStorageOptions struct {
 	PreserveACL             bool   `config:"preserve-acl" yaml:"preserve-acl"`
 	Filter                  string `config:"filter" yaml:"filter"`
 	UserAssertion           string `config:"user-assertion" yaml:"user-assertions"`
-	AADScope                string `config:"scope" yaml:"scope"`
 
 	// v1 support
 	UseAdls        bool   `config:"use-adls" yaml:"-"`
@@ -239,7 +237,6 @@ func RegisterEnvVariables() {
 	config.BindEnv("azstorage.cpk-encryption-key-sha256", EnvAzStorageCpkEncryptionKeySha256)
 
 	config.BindEnv("azstorage.user-assertion", EnvAzUserAssertion)
-	config.BindEnv("azstorage.scope", EnvAzStorageAADScope)
 }
 
 //    ----------- Config Parsing and Validation  ---------------
@@ -483,15 +480,10 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 			return errors.New("Client ID, Tenant ID or Application ID not provided")
 		}
 
-		if opt.AADScope == "" {
-			return errors.New("AAD scope not provided")
-		}
-
 		az.stConfig.authConfig.ClientID = opt.ClientID
 		az.stConfig.authConfig.TenantID = opt.TenantID
 		az.stConfig.authConfig.ApplicationID = opt.ApplicationID
 		az.stConfig.authConfig.UserAssertion = opt.UserAssertion
-		az.stConfig.authConfig.AADScope = opt.AADScope
 
 	default:
 		log.Err("ParseAndValidateConfig : Invalid auth mode %s", opt.AuthMode)

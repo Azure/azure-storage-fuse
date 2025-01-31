@@ -66,12 +66,14 @@ type azAuthConfig struct {
 	WorkloadIdentityToken   string
 	ActiveDirectoryEndpoint string
 
-	// Client assertions
+	// Client assertions config
+	// This will need ApplicationID, TenantID and ClientID as well
 	UserAssertion string
-	AADScope      string
 
-	Endpoint     string
+	// Auth resrouce / security scope for OAuth
 	AuthResource string
+
+	Endpoint string
 }
 
 // azAuth : Interface to define a generic authentication type
