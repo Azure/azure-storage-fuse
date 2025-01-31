@@ -67,8 +67,8 @@ type azAuthConfig struct {
 	ActiveDirectoryEndpoint string
 
 	// Client assertions
-	ClientAssertion string
-	UserAssertion   string
+	UserAssertion string
+	AADScope      string
 
 	Endpoint     string
 	AuthResource string
@@ -135,9 +135,15 @@ func getAzBlobAuth(config azAuthConfig) azAuth {
 				azAuthBase: base,
 			},
 		}
-	} else if config.AuthMode == EAuthType.BEHALF() {
-		return &azAuthBlobBehalf{
-			azAuthBehalf{
+	} else if config.AuthMode == EAuthType.ONBEHALF() {
+		return &azAuthBlobOnBehalf{
+			azAuthOnBehalf{
+				azAuthBase: base,
+			},
+		}
+	} else if config.AuthMode == EAuthType.CLIENTASSERTION() {
+		return &azAuthBlobClientAssertion{
+			azAuthClientAssertion{
 				azAuthBase: base,
 			},
 		}
@@ -179,9 +185,15 @@ func getAzDatalakeAuth(config azAuthConfig) azAuth {
 				azAuthBase: base,
 			},
 		}
-	} else if config.AuthMode == EAuthType.BEHALF() {
-		return &azAuthDatalakeBehalf{
-			azAuthBehalf{
+	} else if config.AuthMode == EAuthType.ONBEHALF() {
+		return &azAuthDatalakeOnBehalf{
+			azAuthOnBehalf{
+				azAuthBase: base,
+			},
+		}
+	} else if config.AuthMode == EAuthType.CLIENTASSERTION() {
+		return &azAuthDatalakeClientAssertion{
+			azAuthClientAssertion{
 				azAuthBase: base,
 			},
 		}

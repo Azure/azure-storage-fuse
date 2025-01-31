@@ -45,17 +45,18 @@ import (
 )
 
 // Verify that the Auth implement the correct AzAuth interfaces
-var _ azAuth = &azAuthBlobOnBehalf{}
-var _ azAuth = &azAuthDatalakeOnBehalf{}
+var _ azAuth = &azAuthBlobClientAssertion{}
+var _ azAuth = &azAuthDatalakeClientAssertion{}
 
-type azAuthOnBehalf struct {
+type azAuthClientAssertion struct {
 	azAuthBase
 	azOAuthBase
 }
 
-func (azonbehalf *azAuthOnBehalf) getTokenCredential() (azcore.TokenCredential, error) {
-	opts := azonbehalf.getAzIdentityClientOptions(&azonbehalf.config)
-	behalfOpts := &azidentity.OnBehalfOfCredentialOptions{
+func (azclientassertion *azAuthClientAssertion) getTokenCredential() (azcore.TokenCredential, error) {
+	opts := azclientassertion.getAzIdentityClientOptions(&azclientassertion.config)
+
+	behalfOpts := &azidentity.ClientAssertionCredentialOptions{
 		ClientOptions: opts,
 	}
 
@@ -63,16 +64,16 @@ func (azonbehalf *azAuthOnBehalf) getTokenCredential() (azcore.TokenCredential, 
 	msiOpts := &azidentity.ManagedIdentityCredentialOptions{
 		ClientOptions: opts,
 	}
-	msiOpts.ID = azidentity.ClientID(azonbehalf.config.ApplicationID)
+	msiOpts.ID = azidentity.ClientID(azclientassertion.config.ApplicationID)
 	cred, err := azidentity.NewManagedIdentityCredential(msiOpts)
 	if err != nil {
-		log.Err("azAuthOnBehalf::getTokenCredential : Failed to create managed identity credential [%s]", err.Error())
+		log.Err("azAuthClientAssertion::getTokenCredential : Failed to create managed identity credential [%s]", err.Error())
 		return nil, err
 	}
 
 	scope := "https://vault.azure.net/.default"
-	if azonbehalf.config.AADScope != "" {
-		scope = azonbehalf.config.AADScope
+	if azclientassertion.config.AADScope != "" {
+		scope = azclientassertion.config.AADScope
 	}
 
 	getClientAssertions := func(context.Context) (string, error) {
@@ -81,68 +82,67 @@ func (azonbehalf *azAuthOnBehalf) getTokenCredential() (azcore.TokenCredential, 
 		})
 
 		if err != nil {
-			log.Err("azAuthOnBehalf::getTokenCredential : Failed to get token from managed identity credential [%s]", err.Error())
+			log.Err("azAuthClientAssertion::getTokenCredential : Failed to get token from managed identity credential [%s]", err.Error())
 			return "", err
 		}
 
 		return token.Token, nil
 	}
 
-	return azidentity.NewOnBehalfOfCredentialWithClientAssertions(
-		azonbehalf.config.TenantID,
-		azonbehalf.config.ClientID,
-		azonbehalf.config.UserAssertion,
+	return azidentity.NewClientAssertionCredential(
+		azclientassertion.config.TenantID,
+		azclientassertion.config.ClientID,
 		getClientAssertions,
 		behalfOpts)
 }
 
-type azAuthBlobOnBehalf struct {
-	azAuthOnBehalf
+type azAuthBlobClientAssertion struct {
+	azAuthClientAssertion
 }
 
 // getServiceClient : returns SPN based service client for blob
-func (azonbehalf *azAuthBlobOnBehalf) getServiceClient(stConfig *AzStorageConfig) (interface{}, error) {
-	cred, err := azonbehalf.getTokenCredential()
+func (azclientassertion *azAuthBlobClientAssertion) getServiceClient(stConfig *AzStorageConfig) (interface{}, error) {
+	cred, err := azclientassertion.getTokenCredential()
 	if err != nil {
-		log.Err("azAuthBlobOnBehalf::getServiceClient : Failed to get token credential from client assertion [%s]", err.Error())
+		log.Err("azAuthBlobClientAssertion::getServiceClient : Failed to get token credential from client assertion [%s]", err.Error())
 		return nil, err
 	}
 
 	opts, err := getAzBlobServiceClientOptions(stConfig)
 	if err != nil {
-		log.Err("azAuthBlobOnBehalf::getServiceClient : Failed to create client options [%s]", err.Error())
+		log.Err("azAuthBlobClientAssertion::getServiceClient : Failed to create client options [%s]", err.Error())
 		return nil, err
 	}
 
-	svcClient, err := service.NewClient(azonbehalf.config.Endpoint, cred, opts)
+	svcClient, err := service.NewClient(azclientassertion.config.Endpoint, cred, opts)
 	if err != nil {
-		log.Err("azAuthBlobOnBehalf::getServiceClient : Failed to create service client [%s]", err.Error())
+		log.Err("azAuthBlobClientAssertion::getServiceClient : Failed to create service client [%s]", err.Error())
 	}
 
 	return svcClient, err
 }
 
-type azAuthDatalakeOnBehalf struct {
-	azAuthOnBehalf
+type azAuthDatalakeClientAssertion struct {
+	azAuthClientAssertion
 }
 
 // getServiceClient : returns SPN based service client for blob
-func (azonbehalf *azAuthDatalakeOnBehalf) getServiceClient(stConfig *AzStorageConfig) (interface{}, error) {
-	cred, err := azonbehalf.getTokenCredential()
+func (azclientassertion *azAuthDatalakeClientAssertion) getServiceClient(stConfig *AzStorageConfig) (interface{}, error) {
+	cred, err := azclientassertion.getTokenCredential()
 	if err != nil {
-		log.Err("azAuthDatalakeOnBehalf::getServiceClient : Failed to get token credential from client assertion [%s]", err.Error())
+		log.Err("azAuthDatalakeClientAssertion::getServiceClient : Failed to get token credential from client assertion [%s]", err.Error())
 		return nil, err
 	}
 
 	opts, err := getAzDatalakeServiceClientOptions(stConfig)
 	if err != nil {
-		log.Err("azAuthDatalakeOnBehalf::getServiceClient : Failed to create client options [%s]", err.Error())
+		log.Err("azAuthDatalakeClientAssertion::getServiceClient : Failed to create client options [%s]", err.Error())
 		return nil, err
 	}
 
-	svcClient, err := serviceBfs.NewClient(azonbehalf.config.Endpoint, cred, opts)
+	svcClient, err := serviceBfs.NewClient(azclientassertion.config.Endpoint, cred, opts)
 	if err != nil {
-		log.Err("azAuthDatalakeOnBehalf::getServiceClient : Failed to create service client [%s]", err.Error())
+		log.Err("azAuthDatalakeClientAssertion::getServiceClient : Failed to create service client [%s]", err.Error())
 	}
 
 	return svcClient, err
