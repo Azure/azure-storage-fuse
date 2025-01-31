@@ -85,7 +85,7 @@ func (azclientassertion *azAuthClientAssertion) getTokenCredential() (azcore.Tok
 		return token.Token, nil
 	}
 
-	if azclientassertion.config.UserAssertion != "" {
+	if azclientassertion.config.UserAssertion == "" {
 		assertOpts := &azidentity.ClientAssertionCredentialOptions{
 			ClientOptions: opts,
 		}
