@@ -245,10 +245,10 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 		var err error
 		if (options.Handle.Is_seq != 0) && ((offset % int64(BlockSize)) == 0) && (h.Is_seq < idx+20) {
 			logy2.WriteString(fmt.Sprintf("Read ahead starting at idx: %d, Is_seq : %d\n", idx, h.Is_seq))
-			blk, err = getBlockWithReadAhead(idx, int(options.Handle.Is_seq), options.Handle, f)
+			blk, err = getBlockWithReadAhead(idx, int(options.Handle.Is_seq), f)
 			options.Handle.Is_seq += 3
 		} else {
-			blk, err = getBlockForRead(idx, options.Handle, f, true)
+			blk, err = getBlockForRead(idx, f, syncRequest)
 		}
 		if err != nil {
 			logy2.WriteString(fmt.Sprintf("Something went wrong inside loop\n"))
@@ -288,7 +288,7 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 	for dataWritten < len_of_copy {
 		idx := getBlockIndex(offset)
 		logy.Write([]byte(fmt.Sprintf("BlockCache::WriteFile [PROGRESS] idx: %d\n", idx)))
-		blk, err := getBlockForWrite(idx, options.Handle, f)
+		blk, err := getBlockForWrite(idx, f)
 		if err != nil {
 			return dataWritten, err
 		}
@@ -324,10 +324,10 @@ func (bc *BlockCache) SyncFile(options internal.SyncFileOptions) error {
 	log.Trace("BlockCache::SyncFile : handle=%d, path=%s", options.Handle.ID, options.Handle.Path)
 	logy.Write([]byte(fmt.Sprintf("BlockCache::SyncFile Start : handle=%d, path=%s\n", options.Handle.ID, options.Handle.Path)))
 	f := GetFileFromHandle(options.Handle)
-	fileChanged, err := syncBuffersForFile(options.Handle, f)
+	fileChanged, err := syncBuffersForFile(f)
 	if err == nil {
 		if fileChanged {
-			err = commitBuffersForFile(options.Handle, f)
+			err = commitBuffersForFile(f)
 		}
 	}
 	logy.Write([]byte(fmt.Sprintf("BlockCache::SyncFile Complete: handle=%d, path=%s\n", options.Handle.ID, options.Handle.Path)))
@@ -516,7 +516,7 @@ func NewBlockCacheComponent() internal.Component {
 	b, _ := expandPath("~/logs/logy2.txt")
 	logy, _ = os.OpenFile(a, os.O_RDWR|os.O_CREATE, 0666)
 	logy2, _ = os.OpenFile(b, os.O_RDWR|os.O_CREATE, 0666)
-	comp.blockSize = 8 * 1024 * 1024
+	comp.blockSize = 1 * 1024 * 1024
 	BlockSize = int(comp.blockSize)
 	comp.SetName(compName)
 	bc = comp

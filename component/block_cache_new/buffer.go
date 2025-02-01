@@ -11,12 +11,11 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
-	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
 
 // TODO: Implement GC after 80% of memory given for blobfuse
 var zeroBuffer *Buffer
-var defaultBlockTimeout = 100 * time.Microsecond
+var defaultBlockTimeout = 1 * time.Millisecond
 
 type Buffer struct {
 	data     []byte      // Data holding in the buffer
@@ -129,19 +128,19 @@ func (bp *BufferPool) putBuffer(blk *block) {
 	}
 }
 
-func getBlockWithReadAhead(idx int, start int, h *handlemap.Handle, file *File) (*block, error) {
+func getBlockWithReadAhead(idx int, start int, file *File) (*block, error) {
 	for i := 1; i <= 3; i++ {
 		if i+start < (int(atomic.LoadInt64(&file.size))+BlockSize-1)/BlockSize {
-			getBlockForRead(i+start, h, file, false)
+			getBlockForRead(i+start, file, asyncRequest)
 		}
 	}
-	blk, err := getBlockForRead(idx, h, file, true)
+	blk, err := getBlockForRead(idx, file, syncRequest)
 	return blk, err
 }
 
 // Returns the buffer containing block.
 // This call only successed if the block idx < len(blocklist)
-func getBlockForRead(idx int, h *handlemap.Handle, file *File, sync bool) (blk *block, err error) {
+func getBlockForRead(idx int, file *File, r requestType) (blk *block, err error) {
 
 	file.Lock()
 	if idx >= len(file.blockList) {
@@ -150,7 +149,7 @@ func getBlockForRead(idx int, h *handlemap.Handle, file *File, sync bool) (blk *
 	}
 	blk = file.blockList[idx]
 	file.Unlock()
-	if sync {
+	if r == syncRequest {
 		_, err = syncDownloader(idx, blk)
 	} else {
 		asyncDownloadScheduler(blk)
@@ -160,7 +159,7 @@ func getBlockForRead(idx int, h *handlemap.Handle, file *File, sync bool) (blk *
 
 // This call will return buffer for writing for the block
 // This call should always return some buffer if len(blocklist) <= 50000
-func getBlockForWrite(idx int, h *handlemap.Handle, file *File) (*block, error) {
+func getBlockForWrite(idx int, file *File) (*block, error) {
 	if idx >= MAX_BLOCKS {
 		return nil, errors.New("write not supported space completed") // can we return ENOSPC error here?
 	}
@@ -201,7 +200,7 @@ func getBlockForWrite(idx int, h *handlemap.Handle, file *File) (*block, error) 
 }
 
 // Write all the Modified buffers to Azure Storage and return whether while is modified or not.
-func syncBuffersForFile(h *handlemap.Handle, file *File) (bool, error) {
+func syncBuffersForFile(file *File) (bool, error) {
 	var err error = nil
 	var fileChanged bool = false
 
@@ -267,7 +266,7 @@ func punchHole(f *File) error {
 	return err
 }
 
-func commitBuffersForFile(h *handlemap.Handle, file *File) error {
+func commitBuffersForFile(file *File) error {
 	logy.Write([]byte(fmt.Sprintf("BlockCache::commitFile : %s\n", file.Name)))
 	var blklist []string
 	file.Lock()
@@ -285,6 +284,7 @@ func commitBuffersForFile(h *handlemap.Handle, file *File) error {
 	}
 	err := bc.NextComponent().CommitData(internal.CommitDataOptions{Name: file.Name, List: blklist, BlockSize: uint64(BlockSize)})
 	if err == nil {
+		//todo: change all the buffer states to commited
 		file.synced = true
 	}
 	return err
@@ -301,7 +301,7 @@ func releaseBuffers(f *File) {
 }
 
 func releaseBufferForBlock(blk *block) {
-	if blk.state == committedBlock || blk.state == uncommitedBlock {
+	if blk.state == committedBlock {
 		bPool.putBuffer(blk)
 	}
 }
