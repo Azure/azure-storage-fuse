@@ -53,10 +53,11 @@ type Xload struct {
 	blockSize uint64       // Size of each block to be cached
 	mode      xcommon.Mode // Mode of the Xload component
 
-	workerCount uint32             // Number of workers running
-	blockPool   *xcommon.BlockPool // Pool of blocks
-	path        string             // Path on local disk where Xload will operate
-	comps       []xcommon.XComponent
+	workerCount       uint32             // Number of workers running
+	blockPool         *xcommon.BlockPool // Pool of blocks
+	path              string             // Path on local disk where Xload will operate
+	defaultPermission os.FileMode        // default permissions of files and directories in the xload path
+	comps             []xcommon.XComponent
 }
 
 // Structure defining your config parameters
@@ -189,6 +190,20 @@ func (xl *Xload) Configure(_ bool) error {
 
 	xl.mode = mode
 
+	allowOther := false
+	err = config.UnmarshalKey("allow-other", &allowOther)
+	if err != nil {
+		log.Err("Xload::Configure : config error [unable to obtain allow-other]")
+	}
+
+	if allowOther {
+		xl.defaultPermission = common.DefaultAllowOtherPermissionBits
+	} else {
+		xl.defaultPermission = common.DefaultFilePermissionBits
+	}
+
+	log.Debug("Xload::Configure : block size %v, mode %v, path %v, default permission %v", xl.blockSize, xl.mode.String(), xl.path, xl.defaultPermission)
+
 	return nil
 }
 
@@ -249,7 +264,7 @@ func (xl *Xload) createDownloader() error {
 	log.Trace("Xload::createDownloader : Starting downloader")
 
 	// Create remote lister pool to list remote files
-	rl, err := comp.NewRemoteLister(xl.path, xl.NextComponent())
+	rl, err := comp.NewRemoteLister(xl.path, xl.defaultPermission, xl.NextComponent())
 	if err != nil {
 		log.Err("Xload::createDownloader : Unable to create remote lister [%s]", err.Error())
 		return err

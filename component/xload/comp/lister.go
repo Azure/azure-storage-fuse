@@ -55,7 +55,8 @@ const LISTER string = "lister"
 
 type lister struct {
 	common.XBase
-	path string // base path of the directory to be listed
+	path              string      // base path of the directory to be listed
+	defaultPermission os.FileMode // default permission of files and directories in the local path
 }
 
 type enumerator interface {
@@ -69,12 +70,13 @@ type remoteLister struct {
 	listBlocked bool
 }
 
-func NewRemoteLister(path string, remote internal.Component) (*remoteLister, error) {
-	log.Debug("lister::NewRemoteLister : create new remote lister for %s", path)
+func NewRemoteLister(path string, defaultPermission os.FileMode, remote internal.Component) (*remoteLister, error) {
+	log.Debug("lister::NewRemoteLister : create new remote lister for %s, default permission %v", path, defaultPermission)
 
 	rl := &remoteLister{
 		lister: lister{
-			path: path,
+			path:              path,
+			defaultPermission: defaultPermission,
 		},
 		listBlocked: false,
 	}
@@ -175,12 +177,17 @@ func (rl *remoteLister) Process(item *common.WorkItem) (int, error) {
 					})
 				}(entry.Path)
 			} else {
+				fileMode := rl.defaultPermission
+				if !entry.IsModeDefault() {
+					fileMode = entry.Mode
+				}
+
 				// send file to the output channel for chunking
 				rl.GetNext().Schedule(&common.WorkItem{
 					CompName: rl.GetNext().GetName(),
 					Path:     entry.Path,
 					DataLen:  uint64(entry.Size),
-					Mode:     entry.Mode,
+					Mode:     fileMode,
 					Atime:    entry.Atime,
 					Mtime:    entry.Mtime,
 				})
@@ -197,6 +204,6 @@ func (rl *remoteLister) Process(item *common.WorkItem) (int, error) {
 }
 
 func (rl *remoteLister) mkdir(name string) error {
-	log.Debug("remoteLister::mkdir : Creating local path: %s", name)
-	return os.MkdirAll(name, 0777)
+	log.Debug("remoteLister::mkdir : Creating local path: %s, mode %v", name, rl.defaultPermission)
+	return os.MkdirAll(name, rl.defaultPermission)
 }

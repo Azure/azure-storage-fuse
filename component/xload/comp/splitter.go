@@ -100,7 +100,7 @@ func (d *downloadSplitter) Stop() {
 
 // download data in chunks and then write to the local file
 func (d *downloadSplitter) Process(item *common.WorkItem) (int, error) {
-	log.Debug("downloadSplitter::Process : Splitting data for %s", item.Path)
+	log.Debug("downloadSplitter::Process : Splitting data for %s, mode %v", item.Path, item.Mode)
 	var err error
 	localPath := filepath.Join(d.path, item.Path)
 
@@ -203,7 +203,6 @@ func (d *downloadSplitter) Process(item *common.WorkItem) (int, error) {
 	err = os.Chtimes(localPath, item.Atime, item.Mtime)
 	if err != nil {
 		log.Err("downloadSplitter::Process : Failed to change times of file %s [%s]", item.Path, err.Error())
-		operationSuccess = false
 	}
 
 	if !operationSuccess {
