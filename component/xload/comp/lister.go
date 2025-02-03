@@ -211,7 +211,7 @@ func (rl *remoteLister) Process(item *common.WorkItem) (int, error) {
 }
 
 func (rl *remoteLister) mkdir(name string) error {
-	log.Debug("remoteLister::mkdir : Creating local path: %s", name)
+	log.Debug("remoteLister::mkdir : Creating local path: %s, mode %v", name, rl.defaultPermission)
 	err := os.MkdirAll(name, rl.defaultPermission)
 
 	// send stats for dir creation
