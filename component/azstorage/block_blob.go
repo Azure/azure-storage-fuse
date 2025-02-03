@@ -286,26 +286,6 @@ func (bb *BlockBlob) DeleteFile(name string) (err error) {
 // DeleteDirectory : Delete a virtual directory in the container/virtual directory
 func (bb *BlockBlob) DeleteDirectory(name string) (err error) {
 	log.Trace("BlockBlob::DeleteDirectory : name %s", name)
-
-	pager := bb.Container.NewListBlobsFlatPager(&container.ListBlobsFlatOptions{
-		Prefix: to.Ptr(filepath.Join(bb.Config.prefixPath, name) + "/"),
-	})
-	for pager.More() {
-		listBlobResp, err := pager.NextPage(context.Background())
-		if err != nil {
-			log.Err("BlockBlob::DeleteDirectory : Failed to get list of blobs %s", err.Error())
-			return err
-		}
-
-		// Process the blobs returned in this result segment (if the segment is empty, the loop body won't execute)
-		for _, blobInfo := range listBlobResp.Segment.BlobItems {
-			err = bb.DeleteFile(removePrefixPath(bb.Config.prefixPath, *blobInfo.Name))
-			if err != nil {
-				log.Err("BlockBlob::DeleteDirectory : Failed to delete file %s [%s]", *blobInfo.Name, err.Error())
-			}
-		}
-	}
-
 	err = bb.DeleteFile(name)
 	// libfuse deletes the files in the directory before this method is called.
 	// If the marker blob for directory is not present, ignore the ENOENT error.

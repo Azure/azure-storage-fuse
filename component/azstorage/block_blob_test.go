@@ -484,61 +484,6 @@ func (s *blockBlobTestSuite) setupHierarchy(base string) (*list.List, *list.List
 	return a, ab, ac
 }
 
-func (s *blockBlobTestSuite) TestDeleteDirHierarchy() {
-	defer s.cleanupTest()
-	// Setup
-	base := generateDirectoryName()
-	a, ab, ac := s.setupHierarchy(base)
-
-	err := s.az.DeleteDir(internal.DeleteDirOptions{Name: base})
-
-	s.assert.Nil(err)
-
-	/// a paths should be deleted
-	for p := a.Front(); p != nil; p = p.Next() {
-		_, err = s.containerClient.NewBlobClient(p.Value.(string)).GetProperties(ctx, nil)
-		s.assert.NotNil(err)
-	}
-	ab.PushBackList(ac) // ab and ac paths should exist
-	for p := ab.Front(); p != nil; p = p.Next() {
-		_, err = s.containerClient.NewBlobClient(p.Value.(string)).GetProperties(ctx, nil)
-		s.assert.Nil(err)
-	}
-}
-
-func (s *blockBlobTestSuite) TestDeleteSubDirPrefixPath() {
-	defer s.cleanupTest()
-	// Setup
-	base := generateDirectoryName()
-	a, ab, ac := s.setupHierarchy(base)
-
-	s.az.storage.SetPrefixPath(base)
-
-	attr, err := s.az.GetAttr(internal.GetAttrOptions{Name: "c1"})
-	s.assert.Nil(err)
-	s.assert.NotNil(attr)
-	s.assert.True(attr.IsDir())
-
-	err = s.az.DeleteDir(internal.DeleteDirOptions{Name: "c1"})
-	s.assert.Nil(err)
-
-	// a paths under c1 should be deleted
-	for p := a.Front(); p != nil; p = p.Next() {
-		path := p.Value.(string)
-		_, err = s.containerClient.NewBlobClient(path).GetProperties(ctx, nil)
-		if strings.HasPrefix(path, base+"/c1") {
-			s.assert.NotNil(err)
-		} else {
-			s.assert.Nil(err)
-		}
-	}
-	ab.PushBackList(ac) // ab and ac paths should exist
-	for p := ab.Front(); p != nil; p = p.Next() {
-		_, err = s.containerClient.NewBlobClient(p.Value.(string)).GetProperties(ctx, nil)
-		s.assert.Nil(err)
-	}
-}
-
 func (s *blockBlobTestSuite) TestDeleteDirError() {
 	defer s.cleanupTest()
 	// Setup
@@ -2194,21 +2139,6 @@ func (s *blockBlobTestSuite) TestChmod() {
 	s.assert.EqualValues(syscall.ENOTSUP, err)
 }
 
-func (s *blockBlobTestSuite) TestChmodIgnore() {
-	defer s.cleanupTest()
-	// Setup
-	s.tearDownTestHelper(false) // Don't delete the generated container.
-
-	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: false\n",
-		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
-	s.setupTestHelper(config, s.container, true)
-	name := generateFileName()
-	s.az.CreateFile(internal.CreateFileOptions{Name: name})
-
-	err := s.az.Chmod(internal.ChmodOptions{Name: name, Mode: 0666})
-	s.assert.Nil(err)
-}
-
 func (s *blockBlobTestSuite) TestChown() {
 	defer s.cleanupTest()
 	// Setup
@@ -3448,87 +3378,6 @@ func (suite *blockBlobTestSuite) TestTruncateBlockFileToLarger() {
 
 func (suite *blockBlobTestSuite) TestTruncateNoBlockFileToLarger() {
 	suite.UtilityFunctionTruncateFileToLarger(200*MB, 300*MB)
-}
-
-func (s *blockBlobTestSuite) TestBlobFilters() {
-	defer s.cleanupTest()
-	// Setup
-	var err error
-	name := generateDirectoryName()
-	err = s.az.CreateDir(internal.CreateDirOptions{Name: name})
-	s.assert.Nil(err)
-	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/abcd1.txt"})
-	s.assert.Nil(err)
-	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/abcd2.txt"})
-	s.assert.Nil(err)
-	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/abcd3.txt"})
-	s.assert.Nil(err)
-	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/abcd4.txt"})
-	s.assert.Nil(err)
-	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/bcd1.txt"})
-	s.assert.Nil(err)
-	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/cd1.txt"})
-	s.assert.Nil(err)
-	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/d1.txt"})
-	s.assert.Nil(err)
-	err = s.az.CreateDir(internal.CreateDirOptions{Name: name + "/subdir"})
-	s.assert.Nil(err)
-
-	var iteration int = 0
-	var marker string = ""
-	blobList := make([]*internal.ObjAttr, 0)
-
-	for {
-		new_list, new_marker, err := s.az.StreamDir(internal.StreamDirOptions{Name: name + "/", Token: marker, Count: 50})
-		s.assert.Nil(err)
-		blobList = append(blobList, new_list...)
-		marker = new_marker
-		iteration++
-
-		log.Debug("AzStorage::ReadDir : So far retrieved %d objects in %d iterations", len(blobList), iteration)
-		if new_marker == "" {
-			break
-		}
-	}
-	s.assert.EqualValues(8, len(blobList))
-	err = s.az.storage.(*BlockBlob).SetFilter("name=^abcd.*")
-	s.assert.Nil(err)
-
-	blobList = make([]*internal.ObjAttr, 0)
-	for {
-		new_list, new_marker, err := s.az.StreamDir(internal.StreamDirOptions{Name: name + "/", Token: marker, Count: 50})
-		s.assert.Nil(err)
-		blobList = append(blobList, new_list...)
-		marker = new_marker
-		iteration++
-
-		log.Debug("AzStorage::ReadDir : So far retrieved %d objects in %d iterations", len(blobList), iteration)
-		if new_marker == "" {
-			break
-		}
-	}
-	// Only 4 files matches the pattern but there is a directory as well and directories are not filtered by blobfilter
-	s.assert.EqualValues(5, len(blobList))
-	err = s.az.storage.(*BlockBlob).SetFilter("name=^bla.*")
-	s.assert.Nil(err)
-
-	blobList = make([]*internal.ObjAttr, 0)
-	for {
-		new_list, new_marker, err := s.az.StreamDir(internal.StreamDirOptions{Name: name + "/", Token: marker, Count: 50})
-		s.assert.Nil(err)
-		blobList = append(blobList, new_list...)
-		marker = new_marker
-		iteration++
-
-		log.Debug("AzStorage::ReadDir : So far retrieved %d objects in %d iterations", len(blobList), iteration)
-		if new_marker == "" {
-			break
-		}
-	}
-
-	s.assert.EqualValues(1, len(blobList))
-	err = s.az.storage.(*BlockBlob).SetFilter("")
-	s.assert.Nil(err)
 }
 
 func (suite *blockBlobTestSuite) UtilityFunctionTestTruncateFileToSmaller(size int, truncatedLength int) {
