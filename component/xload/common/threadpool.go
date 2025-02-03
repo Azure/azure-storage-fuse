@@ -86,6 +86,10 @@ func (t *ThreadPool) Schedule(item *WorkItem) {
 	t.workItems <- item
 }
 
+func (t *ThreadPool) IsChannelFull() bool {
+	return cap(t.workItems) == len(t.workItems)
+}
+
 // Do is the core task to be executed by each worker thread
 func (t *ThreadPool) Do() {
 	defer t.wg.Done()

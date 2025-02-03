@@ -41,17 +41,16 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/component/xload/common"
+	xinternal "github.com/Azure/azure-storage-fuse/v2/component/xload/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
 // verify that the below types implement the xcomponent interfaces
-var _ common.XComponent = &splitter{}
-var _ common.XComponent = &downloadSplitter{}
-
-const SPLITTER string = "splitter"
+var _ xinternal.XComponent = &splitter{}
+var _ xinternal.XComponent = &downloadSplitter{}
 
 type splitter struct {
-	common.XBase
+	xinternal.XBase
 	blockPool *common.BlockPool
 	path      string
 }
@@ -62,7 +61,7 @@ type downloadSplitter struct {
 	splitter
 }
 
-func NewDownloadSplitter(blockPool *common.BlockPool, path string, remote internal.Component) (*downloadSplitter, error) {
+func NewDownloadSplitter(blockPool *common.BlockPool, path string, remote internal.Component, statsMgr *xinternal.StatsManager) (*downloadSplitter, error) {
 	log.Debug("splitter::NewDownloadSplitter : create new download splitter for %s, block size %v", path, blockPool.GetBlockSize())
 
 	d := &downloadSplitter{
@@ -72,8 +71,9 @@ func NewDownloadSplitter(blockPool *common.BlockPool, path string, remote intern
 		},
 	}
 
-	d.SetName(SPLITTER)
+	d.SetName(common.SPLITTER)
 	d.SetRemote(remote)
+	d.SetStatsManager(statsMgr)
 	d.Init()
 	return d, nil
 }
@@ -165,7 +165,7 @@ func (d *downloadSplitter) Process(item *common.WorkItem) (int, error) {
 			}
 
 			if respSplitItem.Block != nil {
-				log.Debug("downloadSplitter::Process : Download successful %s index %d offset %v", item.Path, respSplitItem.Block.Index, respSplitItem.Block.Offset)
+				// log.Debug("downloadSplitter::process : Download successful %s index %d offset %v", item.path, respSplitItem.block.index, respSplitItem.block.offset)
 				d.blockPool.Release(respSplitItem.Block)
 			}
 		}
@@ -189,7 +189,7 @@ func (d *downloadSplitter) Process(item *common.WorkItem) (int, error) {
 				ResponseChannel: responseChannel,
 				Download:        true,
 			}
-			log.Debug("downloadSplitter::Process : Scheduling download for %s offset %v", item.Path, offset)
+			// log.Debug("downloadSplitter::Process : Scheduling download for %s offset %v", item.Path, offset)
 			d.GetNext().Schedule(splitItem)
 		}
 
@@ -204,6 +204,14 @@ func (d *downloadSplitter) Process(item *common.WorkItem) (int, error) {
 	if err != nil {
 		log.Err("downloadSplitter::Process : Failed to change times of file %s [%s]", item.Path, err.Error())
 	}
+
+	// send the download status to stats manager
+	d.GetStatsManager().AddStats(&xinternal.StatsItem{
+		Component: common.SPLITTER,
+		Name:      item.Path,
+		Success:   operationSuccess,
+		Download:  true,
+	})
 
 	if !operationSuccess {
 		log.Err("downloadSplitter::Process : Failed to download data for file %s, so deleting it from local path", item.Path)

@@ -31,10 +31,11 @@
    SOFTWARE
 */
 
-package common
+package internal
 
 import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/component/xload/common"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
@@ -42,23 +43,26 @@ type XComponent interface {
 	Init()
 	Start()
 	Stop()
-	Schedule(*WorkItem)
-	Process(*WorkItem) (int, error)
+	Schedule(*common.WorkItem)
+	Process(*common.WorkItem) (int, error)
 	GetNext() XComponent
 	SetNext(XComponent)
-	GetThreadPool() *ThreadPool
-	SetThreadPool(*ThreadPool)
+	GetThreadPool() *common.ThreadPool
+	SetThreadPool(*common.ThreadPool)
 	GetRemote() internal.Component
 	SetRemote(internal.Component)
 	GetName() string
 	SetName(string)
+	GetStatsManager() *StatsManager
+	SetStatsManager(*StatsManager)
 }
 
 type XBase struct {
-	name   string
-	pool   *ThreadPool
-	remote internal.Component
-	next   XComponent
+	name     string
+	pool     *common.ThreadPool
+	remote   internal.Component
+	next     XComponent
+	statsMgr *StatsManager
 }
 
 var _ XComponent = &XBase{}
@@ -72,10 +76,10 @@ func (xb *XBase) Start() {
 func (xb *XBase) Stop() {
 }
 
-func (xb *XBase) Schedule(item *WorkItem) {
+func (xb *XBase) Schedule(item *common.WorkItem) {
 	if xb.GetThreadPool() != nil {
 		// TODO:: xload : check if this is necessary and not an overhead
-		if cap(xb.GetThreadPool().workItems) == len(xb.GetThreadPool().workItems) {
+		if xb.GetThreadPool().IsChannelFull() {
 			log.Debug("xcomponent::Schedule : channel is full for %v", item.CompName)
 		}
 		xb.GetThreadPool().Schedule(item)
@@ -87,7 +91,7 @@ func (xb *XBase) Schedule(item *WorkItem) {
 	}
 }
 
-func (xb *XBase) Process(item *WorkItem) (int, error) {
+func (xb *XBase) Process(item *common.WorkItem) (int, error) {
 	return 0, nil
 }
 
@@ -99,11 +103,11 @@ func (xb *XBase) SetNext(s XComponent) {
 	xb.next = s
 }
 
-func (xb *XBase) GetThreadPool() *ThreadPool {
+func (xb *XBase) GetThreadPool() *common.ThreadPool {
 	return xb.pool
 }
 
-func (xb *XBase) SetThreadPool(pool *ThreadPool) {
+func (xb *XBase) SetThreadPool(pool *common.ThreadPool) {
 	xb.pool = pool
 }
 
@@ -121,4 +125,12 @@ func (xb *XBase) GetName() string {
 
 func (xb *XBase) SetName(name string) {
 	xb.name = name
+}
+
+func (xb *XBase) GetStatsManager() *StatsManager {
+	return xb.statsMgr
+}
+
+func (xb *XBase) SetStatsManager(sm *StatsManager) {
+	xb.statsMgr = sm
 }

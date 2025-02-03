@@ -41,20 +41,19 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/component/xload/common"
+	xinternal "github.com/Azure/azure-storage-fuse/v2/component/xload/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
 // verify that the below types implement the xcomponent interfaces
-var _ common.XComponent = &lister{}
-var _ common.XComponent = &remoteLister{}
+var _ xinternal.XComponent = &lister{}
+var _ xinternal.XComponent = &remoteLister{}
 
 // verify that the below types implement the xenumerator interfaces
 var _ enumerator = &remoteLister{}
 
-const LISTER string = "lister"
-
 type lister struct {
-	common.XBase
+	xinternal.XBase
 	path              string      // base path of the directory to be listed
 	defaultPermission os.FileMode // default permission of files and directories in the local path
 }
@@ -70,7 +69,7 @@ type remoteLister struct {
 	listBlocked bool
 }
 
-func NewRemoteLister(path string, defaultPermission os.FileMode, remote internal.Component) (*remoteLister, error) {
+func NewRemoteLister(path string, defaultPermission os.FileMode, remote internal.Component, statsMgr *xinternal.StatsManager) (*remoteLister, error) {
 	log.Debug("lister::NewRemoteLister : create new remote lister for %s, default permission %v", path, defaultPermission)
 
 	rl := &remoteLister{
@@ -81,8 +80,9 @@ func NewRemoteLister(path string, defaultPermission os.FileMode, remote internal
 		listBlocked: false,
 	}
 
-	rl.SetName(LISTER)
+	rl.SetName(common.LISTER)
 	rl.SetRemote(remote)
+	rl.SetStatsManager(statsMgr)
 	rl.Init()
 	return rl, nil
 }
@@ -153,6 +153,13 @@ func (rl *remoteLister) Process(item *common.WorkItem) (int, error) {
 		iteration++
 		log.Debug("remoteLister::Process : count: %d , iterations: %d", cnt, iteration)
 
+		// send number of items listed in current iteration to stats manager
+		rl.GetStatsManager().AddStats(&xinternal.StatsItem{
+			Component:   common.LISTER,
+			Name:        absPath,
+			ListerCount: uint64(len(entries)),
+		})
+
 		for _, entry := range entries {
 			log.Debug("remoteLister::Process : Iterating: %s, Is directory: %v", entry.Path, entry.IsDir())
 
@@ -205,5 +212,15 @@ func (rl *remoteLister) Process(item *common.WorkItem) (int, error) {
 
 func (rl *remoteLister) mkdir(name string) error {
 	log.Debug("remoteLister::mkdir : Creating local path: %s, mode %v", name, rl.defaultPermission)
-	return os.MkdirAll(name, rl.defaultPermission)
+	err := os.MkdirAll(name, rl.defaultPermission)
+
+	// send stats for dir creation
+	rl.GetStatsManager().AddStats(&xinternal.StatsItem{
+		Component: common.LISTER,
+		Name:      name,
+		Dir:       true,
+		Success:   err == nil,
+		Download:  true,
+	})
+	return err
 }

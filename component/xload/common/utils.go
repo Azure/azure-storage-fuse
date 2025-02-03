@@ -34,6 +34,7 @@
 package common
 
 import (
+	"math"
 	"os"
 	"reflect"
 	"time"
@@ -42,9 +43,13 @@ import (
 )
 
 const (
-	MAX_WORKER_COUNT  = 64
-	MAX_DATA_SPLITTER = 16
-	MAX_LISTER        = 16
+	MAX_WORKER_COUNT         = 64
+	MAX_DATA_SPLITTER        = 16
+	MAX_LISTER               = 16
+	MB                uint64 = (1024 * 1024)
+	LISTER            string = "LISTER"
+	SPLITTER          string = "SPLITTER"
+	DATA_MANAGER      string = "DATA_MANAGER"
 )
 
 // One workitem to be processed
@@ -93,4 +98,9 @@ func (m *Mode) Parse(s string) error {
 		*m = enumVal.(Mode)
 	}
 	return err
+}
+
+func RoundFloat(val float64, precision int) float64 {
+	ratio := math.Pow(10, float64(precision))
+	return math.Round(val*ratio) / ratio
 }
