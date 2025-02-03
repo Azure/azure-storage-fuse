@@ -8,6 +8,7 @@
 
 **Other Changes**
 - Optimized listing operation on HNS account to support symlinks.
+- Optimized Rename operation to do less number of REST calls.
 
 **Features**
 - Mount container or directory but restrict the view of blobs that you can see. This feature is available only in read-only mount.
