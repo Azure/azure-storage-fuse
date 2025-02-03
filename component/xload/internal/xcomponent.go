@@ -34,6 +34,7 @@
 package internal
 
 import (
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/component/xload/common"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
@@ -42,6 +43,7 @@ type XComponent interface {
 	Init()
 	Start()
 	Stop()
+	Schedule(*common.WorkItem)
 	Process(*common.WorkItem) (int, error)
 	GetNext() XComponent
 	SetNext(XComponent)
@@ -72,6 +74,21 @@ func (xb *XBase) Start() {
 }
 
 func (xb *XBase) Stop() {
+}
+
+func (xb *XBase) Schedule(item *common.WorkItem) {
+	if xb.GetThreadPool() != nil {
+		// TODO:: xload : check if this is necessary and not an overhead
+		if xb.GetThreadPool().IsChannelFull() {
+			log.Debug("xcomponent::Schedule : channel is full for %v", item.CompName)
+		}
+		xb.GetThreadPool().Schedule(item)
+	} else {
+		_, err := xb.Process(item)
+		if err != nil {
+			log.Err("xcomponent::Schedule : Failed to process for %v [%v]", item.CompName, err.Error())
+		}
+	}
 }
 
 func (xb *XBase) Process(item *common.WorkItem) (int, error) {

@@ -37,6 +37,7 @@ import (
 	"math"
 	"os"
 	"reflect"
+	"time"
 
 	"github.com/JeffreyRichter/enum/enum"
 )
@@ -56,6 +57,9 @@ type WorkItem struct {
 	CompName        string         // Name of the component
 	Path            string         // Name of the file being processed
 	DataLen         uint64         // Length of the data to be processed
+	Mode            os.FileMode    // permissions in 0xxx format
+	Atime           time.Time      // access time
+	Mtime           time.Time      // modified time
 	Block           *Block         // Block to hold data for
 	FileHandle      *os.File       // File handle to the file being processed
 	Err             error          // Error if any
@@ -72,20 +76,16 @@ func (Mode) INVALID_MODE() Mode {
 	return Mode(0)
 }
 
-func (Mode) CHECKPOINT() Mode {
+func (Mode) PRELOAD() Mode {
 	return Mode(1)
 }
 
-func (Mode) DOWNLOAD() Mode {
+func (Mode) UPLOAD() Mode {
 	return Mode(2)
 }
 
-func (Mode) UPLOAD() Mode {
-	return Mode(3)
-}
-
 func (Mode) SYNC() Mode {
-	return Mode(4)
+	return Mode(3)
 }
 
 func (m Mode) String() string {

@@ -86,13 +86,17 @@ func (t *ThreadPool) Schedule(item *WorkItem) {
 	t.workItems <- item
 }
 
+func (t *ThreadPool) IsChannelFull() bool {
+	return cap(t.workItems) == len(t.workItems)
+}
+
 // Do is the core task to be executed by each worker thread
 func (t *ThreadPool) Do() {
 	defer t.wg.Done()
 
 	// This thread will work only on both high and low priority channel
 	for item := range t.workItems {
-		_, err := t.callback(item)
+		n, err := t.callback(item)
 		if err != nil {
 			// TODO:: xload : add retry logic
 			log.Err("ThreadPool::Do : Error in %s processing workitem %s : %v", item.CompName, item.Path, err)
@@ -101,6 +105,7 @@ func (t *ThreadPool) Do() {
 		// add this error in response channel
 		if cap(item.ResponseChannel) > 0 {
 			item.Err = err
+			item.DataLen = (uint64)(n)
 			item.ResponseChannel <- item
 		}
 	}

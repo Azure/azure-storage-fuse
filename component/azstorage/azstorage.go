@@ -36,6 +36,7 @@ package azstorage
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -440,26 +441,39 @@ func (az *AzStorage) ReadFile(options internal.ReadFileOptions) (data []byte, er
 func (az *AzStorage) ReadInBuffer(options internal.ReadInBufferOptions) (length int, err error) {
 	//log.Trace("AzStorage::ReadInBuffer : Read %s from %d offset", h.Path, offset)
 
-	if options.Offset > atomic.LoadInt64(&options.Handle.Size) {
+	var size int64
+	var path string
+	if options.Handle != nil {
+		size = atomic.LoadInt64(&options.Handle.Size)
+		path = options.Handle.Path
+	} else {
+		size = options.Size
+		path = strings.TrimSpace(options.Path)
+		if len(path) == 0 {
+			log.Err("AzStorage::ReadInBuffer : Path not given for download")
+			return 0, fmt.Errorf("path not given for download")
+		}
+	}
+
+	if options.Offset > size {
 		return 0, syscall.ERANGE
 	}
 
 	var dataLen int64 = int64(len(options.Data))
-	if atomic.LoadInt64(&options.Handle.Size) < (options.Offset + int64(len(options.Data))) {
-		dataLen = options.Handle.Size - options.Offset
+	if size < (options.Offset + int64(len(options.Data))) {
+		dataLen = size - options.Offset
 	}
 
 	if dataLen == 0 {
 		return 0, nil
 	}
 
-	length = int(dataLen)
-	err = az.storage.ReadInBuffer(options.Handle.Path, options.Offset, dataLen, options.Data)
+	err = az.storage.ReadInBuffer(path, options.Offset, dataLen, options.Data)
 	if err != nil {
-		log.Err("AzStorage::ReadInBuffer : Failed to read %s [%s]", options.Handle.Path, err.Error())
-		length = 0
+		log.Err("AzStorage::ReadInBuffer : Failed to read %s [%s]", path, err.Error())
 	}
 
+	length = int(dataLen)
 	return
 }
 

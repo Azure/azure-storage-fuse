@@ -1314,7 +1314,7 @@ func shouldCommitAndDownload(blockID int64, handle *handlemap.Handle) (bool, boo
 
 // lineupUpload : Create a work item and schedule the upload
 func (bc *BlockCache) lineupUpload(handle *handlemap.Handle, block *Block, listMap map[int64]*blockInfo) {
-	id := common.GetBlockID(16)
+	id := common.GetBlockID(common.BlockIDLength)
 	listMap[block.id] = &blockInfo{
 		id:        id,
 		committed: false,
@@ -1582,7 +1582,7 @@ func (bc *BlockCache) stageZeroBlock(handle *handlemap.Handle, tryCnt int) (stri
 		return "", fmt.Errorf("3 attempts to upload zero block have failed for %v=>%v", handle.ID, handle.Path)
 	}
 
-	id := common.GetBlockID(16)
+	id := common.GetBlockID(common.BlockIDLength)
 
 	log.Debug("BlockCache::stageZeroBlock : Staging zero block for %v=>%v, try = %v", handle.ID, handle.Path, tryCnt)
 	err := bc.NextComponent().StageData(internal.StageDataOptions{

@@ -54,7 +54,8 @@ var _ enumerator = &remoteLister{}
 
 type lister struct {
 	xinternal.XBase
-	path string // base path of the directory to be listed
+	path              string      // base path of the directory to be listed
+	defaultPermission os.FileMode // default permission of files and directories in the local path
 }
 
 type enumerator interface {
@@ -68,12 +69,13 @@ type remoteLister struct {
 	listBlocked bool
 }
 
-func NewRemoteLister(path string, remote internal.Component, statsMgr *xinternal.StatsManager) (*remoteLister, error) {
-	log.Debug("lister::NewRemoteLister : create new remote lister for %s", path)
+func NewRemoteLister(path string, defaultPermission os.FileMode, remote internal.Component, statsMgr *xinternal.StatsManager) (*remoteLister, error) {
+	log.Debug("lister::NewRemoteLister : create new remote lister for %s, default permission %v", path, defaultPermission)
 
 	rl := &remoteLister{
 		lister: lister{
-			path: path,
+			path:              path,
+			defaultPermission: defaultPermission,
 		},
 		listBlocked: false,
 	}
@@ -95,7 +97,7 @@ func (rl *remoteLister) Init() {
 func (rl *remoteLister) Start() {
 	log.Debug("remoteLister::Start : start remote lister for %s", rl.path)
 	rl.GetThreadPool().Start()
-	rl.GetThreadPool().Schedule(&common.WorkItem{CompName: rl.GetName()})
+	rl.Schedule(&common.WorkItem{CompName: rl.GetName()})
 }
 
 func (rl *remoteLister) Stop() {
@@ -143,6 +145,7 @@ func (rl *remoteLister) Process(item *common.WorkItem) (int, error) {
 		})
 		if err != nil {
 			log.Err("remoteLister::Process : Remote listing failed for %s [%s]", absPath, err.Error())
+			break
 		}
 
 		marker = new_marker
@@ -175,17 +178,25 @@ func (rl *remoteLister) Process(item *common.WorkItem) (int, error) {
 					}
 
 					// push the directory to input pool for its listing
-					rl.GetThreadPool().Schedule(&common.WorkItem{
+					rl.Schedule(&common.WorkItem{
 						CompName: rl.GetName(),
 						Path:     name,
 					})
 				}(entry.Path)
 			} else {
+				fileMode := rl.defaultPermission
+				if !entry.IsModeDefault() {
+					fileMode = entry.Mode
+				}
+
 				// send file to the output channel for chunking
-				rl.GetNext().GetThreadPool().Schedule(&common.WorkItem{
+				rl.GetNext().Schedule(&common.WorkItem{
 					CompName: rl.GetNext().GetName(),
 					Path:     entry.Path,
 					DataLen:  uint64(entry.Size),
+					Mode:     fileMode,
+					Atime:    entry.Atime,
+					Mtime:    entry.Mtime,
 				})
 			}
 		}
@@ -201,7 +212,7 @@ func (rl *remoteLister) Process(item *common.WorkItem) (int, error) {
 
 func (rl *remoteLister) mkdir(name string) error {
 	log.Debug("remoteLister::mkdir : Creating local path: %s", name)
-	err := os.MkdirAll(name, 0777)
+	err := os.MkdirAll(name, rl.defaultPermission)
 
 	// send stats for dir creation
 	rl.GetStatsManager().AddStats(&xinternal.StatsItem{
