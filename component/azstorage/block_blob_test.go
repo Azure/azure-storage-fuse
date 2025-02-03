@@ -484,61 +484,6 @@ func (s *blockBlobTestSuite) setupHierarchy(base string) (*list.List, *list.List
 	return a, ab, ac
 }
 
-func (s *blockBlobTestSuite) TestDeleteDirHierarchy() {
-	defer s.cleanupTest()
-	// Setup
-	base := generateDirectoryName()
-	a, ab, ac := s.setupHierarchy(base)
-
-	err := s.az.DeleteDir(internal.DeleteDirOptions{Name: base})
-
-	s.assert.Nil(err)
-
-	/// a paths should be deleted
-	for p := a.Front(); p != nil; p = p.Next() {
-		_, err = s.containerClient.NewBlobClient(p.Value.(string)).GetProperties(ctx, nil)
-		s.assert.NotNil(err)
-	}
-	ab.PushBackList(ac) // ab and ac paths should exist
-	for p := ab.Front(); p != nil; p = p.Next() {
-		_, err = s.containerClient.NewBlobClient(p.Value.(string)).GetProperties(ctx, nil)
-		s.assert.Nil(err)
-	}
-}
-
-func (s *blockBlobTestSuite) TestDeleteSubDirPrefixPath() {
-	defer s.cleanupTest()
-	// Setup
-	base := generateDirectoryName()
-	a, ab, ac := s.setupHierarchy(base)
-
-	s.az.storage.SetPrefixPath(base)
-
-	attr, err := s.az.GetAttr(internal.GetAttrOptions{Name: "c1"})
-	s.assert.Nil(err)
-	s.assert.NotNil(attr)
-	s.assert.True(attr.IsDir())
-
-	err = s.az.DeleteDir(internal.DeleteDirOptions{Name: "c1"})
-	s.assert.Nil(err)
-
-	// a paths under c1 should be deleted
-	for p := a.Front(); p != nil; p = p.Next() {
-		path := p.Value.(string)
-		_, err = s.containerClient.NewBlobClient(path).GetProperties(ctx, nil)
-		if strings.HasPrefix(path, base+"/c1") {
-			s.assert.NotNil(err)
-		} else {
-			s.assert.Nil(err)
-		}
-	}
-	ab.PushBackList(ac) // ab and ac paths should exist
-	for p := ab.Front(); p != nil; p = p.Next() {
-		_, err = s.containerClient.NewBlobClient(p.Value.(string)).GetProperties(ctx, nil)
-		s.assert.Nil(err)
-	}
-}
-
 func (s *blockBlobTestSuite) TestDeleteDirError() {
 	defer s.cleanupTest()
 	// Setup

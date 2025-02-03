@@ -286,26 +286,6 @@ func (bb *BlockBlob) DeleteFile(name string) (err error) {
 // DeleteDirectory : Delete a virtual directory in the container/virtual directory
 func (bb *BlockBlob) DeleteDirectory(name string) (err error) {
 	log.Trace("BlockBlob::DeleteDirectory : name %s", name)
-
-	pager := bb.Container.NewListBlobsFlatPager(&container.ListBlobsFlatOptions{
-		Prefix: to.Ptr(filepath.Join(bb.Config.prefixPath, name) + "/"),
-	})
-	for pager.More() {
-		listBlobResp, err := pager.NextPage(context.Background())
-		if err != nil {
-			log.Err("BlockBlob::DeleteDirectory : Failed to get list of blobs %s", err.Error())
-			return err
-		}
-
-		// Process the blobs returned in this result segment (if the segment is empty, the loop body won't execute)
-		for _, blobInfo := range listBlobResp.Segment.BlobItems {
-			err = bb.DeleteFile(split(bb.Config.prefixPath, *blobInfo.Name))
-			if err != nil {
-				log.Err("BlockBlob::DeleteDirectory : Failed to delete file %s [%s]", *blobInfo.Name, err.Error())
-			}
-		}
-	}
-
 	err = bb.DeleteFile(name)
 	// libfuse deletes the files in the directory before this method is called.
 	// If the marker blob for directory is not present, ignore the ENOENT error.
@@ -410,7 +390,7 @@ func (bb *BlockBlob) RenameDirectory(source string, target string) error {
 		// Process the blobs returned in this result segment (if the segment is empty, the loop body won't execute)
 		for _, blobInfo := range listBlobResp.Segment.BlobItems {
 			srcDirPresent = true
-			srcPath := split(bb.Config.prefixPath, *blobInfo.Name)
+			srcPath := removePrefixPath(bb.Config.prefixPath, *blobInfo.Name)
 			err = bb.RenameFile(srcPath, strings.Replace(srcPath, source, target, 1), nil)
 			if err != nil {
 				log.Err("BlockBlob::RenameDirectory : Failed to rename file %s [%s]", srcPath, err.Error)
@@ -672,7 +652,7 @@ func (bb *BlockBlob) getBlobAttr(blobInfo *container.BlobItem) (*internal.ObjAtt
 	}
 
 	attr := &internal.ObjAttr{
-		Path:   split(bb.Config.prefixPath, *blobInfo.Name),
+		Path:   removePrefixPath(bb.Config.prefixPath, *blobInfo.Name),
 		Name:   filepath.Base(*blobInfo.Name),
 		Size:   *blobInfo.Properties.ContentLength,
 		Mode:   mode,
@@ -745,7 +725,7 @@ func (bb *BlockBlob) createDirAttr(name string) *internal.ObjAttr {
 	// For these dirs we get only the name and no other properties so hardcoding time to current time
 	name = strings.TrimSuffix(name, "/")
 	attr := &internal.ObjAttr{
-		Path:  split(bb.Config.prefixPath, name),
+		Path:  removePrefixPath(bb.Config.prefixPath, name),
 		Name:  filepath.Base(name),
 		Size:  4096,
 		Mode:  os.ModeDir,
@@ -774,7 +754,7 @@ func (bb *BlockBlob) createDirAttrWithPermissions(blobInfo *container.BlobPrefix
 
 	name := strings.TrimSuffix(*blobInfo.Name, "/")
 	attr := &internal.ObjAttr{
-		Path:   split(bb.Config.prefixPath, name),
+		Path:   removePrefixPath(bb.Config.prefixPath, name),
 		Name:   filepath.Base(name),
 		Size:   *blobInfo.Properties.ContentLength,
 		Mode:   mode,

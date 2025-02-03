@@ -533,24 +533,17 @@ func getFileMode(permissions string) (os.FileMode, error) {
 	return mode, nil
 }
 
-// Strips the prefixPath from the path and returns the joined string
-func split(prefixPath string, path string) string {
+// removePrefixPath removes the given prefixPath from the beginning of path,
+// if it exists, and returns the resulting string without leading slashes.
+func removePrefixPath(prefixPath, path string) string {
 	if prefixPath == "" {
 		return path
 	}
-
-	// Remove prefixpath from the given path
-	paths := strings.Split(path, prefixPath)
-	if paths[0] == "" {
-		paths = paths[1:]
+	path = strings.TrimPrefix(path, prefixPath)
+	if path[0] == '/' {
+		return path[1:]
 	}
-
-	// If result starts with "/" then remove that
-	if paths[0][0] == '/' {
-		paths[0] = paths[0][1:]
-	}
-
-	return filepath.Join(paths...)
+	return path
 }
 
 func sanitizeSASKey(key string) string {
