@@ -31,16 +31,34 @@
    SOFTWARE
 */
 
-package cmd
+package comp
 
 import (
-	_ "github.com/Azure/azure-storage-fuse/v2/component/attr_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/azstorage"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/block_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/custom"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/entry_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/file_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/libfuse"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/loopback"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/xload"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/suite"
 )
+
+type listTestSuite struct {
+	suite.Suite
+	assert *assert.Assertions
+}
+
+func (suite *listTestSuite) SetupTest() {
+}
+
+func (suite *listTestSuite) cleanupTest() {
+}
+
+func (suite *listTestSuite) TestReadDir() {
+	// l := &local{}
+
+	// l.readDir(&workItem{
+	// 	basePath: "/home/sourav/go/src/azure-storage-fuse/common",
+	// })
+}
+
+func TestListSuite(t *testing.T) {
+	suite.Run(t, new(listTestSuite))
+}
