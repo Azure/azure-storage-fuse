@@ -650,7 +650,7 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 
 		// block is not present in the buffer list, check if it is uncommitted
 		// If yes, commit all the uncommitted blocks first and then download this block
-		shouldCommit, _ := shouldCommitAndDownload(int64(index), handle)
+		shouldCommit, shouldDownload := shouldCommitAndDownload(int64(index), handle)
 		if shouldCommit {
 			// commit all the uncommitted blocks to storage
 			log.Debug("BlockCache::getBlock : Downloading an uncommitted block %v, so committing all the staged blocks for %v=>%s", index, handle.ID, handle.Path)
@@ -659,7 +659,26 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 				log.Err("BlockCache::getBlock : Failed to commit blocks for %v=>%s [%s]", handle.ID, handle.Path, err.Error())
 				return nil, err
 			}
+		} else if !shouldCommit && !shouldDownload {
+			prop, err := bc.GetAttr(internal.GetAttrOptions{Name: handle.Path, RetrieveMetadata: false})
+			//if failed to get attr
+			if err != nil {
+				log.Err("BlockCache::getBlock : Failed to get properties for %v=>%s [%s]", handle.ID, handle.Path, err.Error())
+				return nil, err
+			}
+			log.Debug("BlockCache::getBlock : DEBUGGG :: %v, %v", prop.Size, readoffset)
+
+			if readoffset >= uint64(prop.Size) {
+				//create a null block and return
+				block := bc.blockPool.TryGet()
+				block.offset = readoffset
+				block.data = make([]byte, bc.blockSize)
+				// block.flags.Set(BlockFlagSynced)
+				log.Debug("BlockCache::getBlock : Returning a null block %v for %v=>%s (read offset %v)", index, handle.ID, handle.Path, readoffset)
+				return block, nil
+			}
 		}
+		log.Debug("BlockCache::getBlock : DEBUGGG :: %v, %v", shouldCommit, shouldDownload)
 
 		// If this is the first read request then prefetch all required nodes
 		val, _ := handle.GetValue("#")
