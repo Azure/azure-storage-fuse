@@ -66,6 +66,7 @@ One of the biggest BlobFuse2 features is our brand new health monitor. It allows
 - Set MD5 sum of a blob while uploading
 - Validate MD5 sum on download and fail file open on mismatch
 - Large file writing through write Block-Cache
+- Blob filter to view only files matching given criteria for read-only mount
 
  ## Blobfuse2 performance compared to blobfuse(v1.x.x)
 - 'git clone' operation is 25% faster (tested with vscode repo cloning)
@@ -139,9 +140,10 @@ To learn about a specific command, just include the name of the command (For exa
     * `--wait-for-mount=<TIMEOUT IN SECONDS>` : Let parent process wait for given timeout before exit to ensure child has started. 
     * `--block-cache` : To enable block-cache instead of file-cache. This works only when mounted without any config file.
     * `--lazy-write` : To enable async close file handle call and schedule the upload in background.
+    * `--filter=<STRING>`: Enable blob filters for read-only mount to restrict the view on what all blobs user can see or read.
 - Attribute cache options
     * `--attr-cache-timeout=<TIMEOUT IN SECONDS>`: The timeout for the attribute cache entries.
-    * `--no-symlinks=true`: To improve performance disable symlink support.
+    * `--no-symlinks=false`: By default symlinks will be supported and the performance overhead, that earlier existed, has been resolved.
 - Storage options
     * `--container-name=<CONTAINER NAME>`: The container to mount.
     * `--cancel-list-on-mount-seconds=<TIMEOUT IN SECONDS>`: Time for which list calls will be blocked after mount. ( prevent billing charges on mounting)
@@ -166,6 +168,8 @@ To learn about a specific command, just include the name of the command (For exa
     * `--block-cache-prefetch=<Number of blocks>`: Number of blocks to prefetch at max when sequential reads are in progress. Default - 2 times number of CPU cores.
     * `--block-cache-parallelism=<count>`: Number of parallel threads doing upload/download operation. Default - 3 times number of CPU cores.
     * `--block-cache-prefetch-on-open=true`: Start prefetching on open system call instead of waiting for first read. Enhances perf if file is read sequentially from offset 0.
+    * `--block-cache-strong-consistency=true`: Enable strong data consistency checks in block-cache. This will increase load on your CPU and may introduce some latency. 
+    This will need support of `xattr` on your system. Kindly install the feature manually before using this cli parameter.
 - Fuse options
     * `--attr-timeout=<TIMEOUT IN SECONDS>`: Time the kernel can cache inode attributes.
     * `--entry-timeout=<TIMEOUT IN SECONDS>`: Time the kernel can cache directory listing.
@@ -234,6 +238,32 @@ Below diagrams guide you to choose right configuration for your workloads.
 - [Sample File Cache Config](./sampleFileCacheConfig.yaml)
 - [Sample Block-Cache Config](./sampleBlockCacheConfig.yaml)
 - [All Config options](./setup/baseConfig.yaml) 
+
+## Blob Filter
+- In case of read-only mount, user can configure a filter to restrict what all blobs a mount can see or operate on.
+- Blobfuse supports filters based on
+    - Name
+    - Size
+    - Last modified time
+    - File extension
+- Blob Name based filter
+    - Supported operations are "=" and "!="
+    - Name shall be a valid regex expression
+    - e.g. ```filter=name=^mine[0-1]\\d{3}.*```
+- Size based filter
+    - Supported operations are "<=", ">=", "!=", "<", ">" and "="
+    - Size shall be provided in bytes
+    - e.g. ```filter=size > 1000```
+- Last Modified Date based filter
+    - Supported operations are "<=", ">=", "<", ">" and "="
+    - Date shall be provided in RFC1123 Format e.g. "Mon, 24 Jan 1982 13:00:00 UTC"
+    - e.g. ```filter=modtime>Mon, 24 Jan 1982 13:00:00 UTC```
+- File Extension based filter
+    - Supported operations are "=" and "!="
+    - Extension can be supplied as string. Do not include "." in the filter
+    - e.g. ```--filter=format=pdf```
+- Multiple filters can be combined using '&&' and '||' operator as well, however precedence using '()' is not supported yet.
+    - e.g. ```--filter=name=^testfil.* && size>130000000```
 
 
 ## Frequently Asked Questions

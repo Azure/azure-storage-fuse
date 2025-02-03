@@ -533,24 +533,17 @@ func getFileMode(permissions string) (os.FileMode, error) {
 	return mode, nil
 }
 
-// Strips the prefixPath from the path and returns the joined string
-func split(prefixPath string, path string) string {
+// removePrefixPath removes the given prefixPath from the beginning of path,
+// if it exists, and returns the resulting string without leading slashes.
+func removePrefixPath(prefixPath, path string) string {
 	if prefixPath == "" {
 		return path
 	}
-
-	// Remove prefixpath from the given path
-	paths := strings.Split(path, prefixPath)
-	if paths[0] == "" {
-		paths = paths[1:]
+	path = strings.TrimPrefix(path, prefixPath)
+	if path[0] == '/' {
+		return path[1:]
 	}
-
-	// If result starts with "/" then remove that
-	if paths[0][0] == '/' {
-		paths[0] = paths[0][1:]
-	}
-
-	return filepath.Join(paths...)
+	return path
 }
 
 func sanitizeSASKey(key string) string {
@@ -596,3 +589,29 @@ func removeLeadingSlashes(s string) string {
 	}
 	return s
 }
+
+func modifyLMT(attr *internal.ObjAttr, lmt *time.Time) {
+	if attr != nil {
+		attr.Atime = *lmt
+		attr.Mtime = *lmt
+		attr.Ctime = *lmt
+	}
+}
+
+// func parseBlobTags(tags *container.BlobTags) map[string]string {
+
+// 	if tags == nil {
+// 		return nil
+// 	}
+
+// 	blobtags := make(map[string]string)
+// 	for _, tag := range tags.BlobTagSet {
+// 		if tag != nil {
+// 			if tag.Key != nil {
+// 				blobtags[*tag.Key] = *tag.Value
+// 			}
+// 		}
+// 	}
+
+// 	return blobtags
+// }
