@@ -36,7 +36,6 @@ package azstorage
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"math"
@@ -996,7 +995,7 @@ func (bb *BlockBlob) GetFileBlockOffsets(name string) (*common.BlockOffsetList, 
 }
 
 func (bb *BlockBlob) createBlock(blockIdLength, startIndex, size int64) *common.Block {
-	newBlockId := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(blockIdLength))
+	newBlockId := common.GetBlockID(blockIdLength)
 	newBlock := &common.Block{
 		Id:         newBlockId,
 		StartIndex: startIndex,
@@ -1080,14 +1079,14 @@ func (bb *BlockBlob) TruncateFile(name string, size int64) error {
 			blobClient := bb.Container.NewBlockBlobClient(blobName)
 
 			blkList := make([]string, 0)
-			id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
+			id := common.GetBlockID(common.BlockIDLength)
 
 			for i := 0; size > 0; i++ {
 				if i == 0 || size < blkSize {
 					// Only first and last block we upload and rest all we replicate with the first block itself
 					if size < blkSize {
 						blkSize = size
-						id = base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
+						id = common.GetBlockID(common.BlockIDLength)
 					}
 					data := make([]byte, blkSize)
 

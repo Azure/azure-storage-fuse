@@ -108,6 +108,8 @@ type ReadInBufferOptions struct {
 	Handle *handlemap.Handle
 	Offset int64
 	Data   []byte
+	Path   string
+	Size   int64
 }
 
 type WriteFileOptions struct {
