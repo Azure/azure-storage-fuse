@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package internal
+package stats
 
 import (
 	"encoding/json"

@@ -36,6 +36,7 @@ package internal
 import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/component/xload/common"
+	xstats "github.com/Azure/azure-storage-fuse/v2/component/xload/stats"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
@@ -53,8 +54,8 @@ type XComponent interface {
 	SetRemote(internal.Component)
 	GetName() string
 	SetName(string)
-	GetStatsManager() *StatsManager
-	SetStatsManager(*StatsManager)
+	GetStatsManager() *xstats.StatsManager
+	SetStatsManager(*xstats.StatsManager)
 }
 
 type XBase struct {
@@ -62,7 +63,7 @@ type XBase struct {
 	pool     *common.ThreadPool
 	remote   internal.Component
 	next     XComponent
-	statsMgr *StatsManager
+	statsMgr *xstats.StatsManager
 }
 
 var _ XComponent = &XBase{}
@@ -127,10 +128,10 @@ func (xb *XBase) SetName(name string) {
 	xb.name = name
 }
 
-func (xb *XBase) GetStatsManager() *StatsManager {
+func (xb *XBase) GetStatsManager() *xstats.StatsManager {
 	return xb.statsMgr
 }
 
-func (xb *XBase) SetStatsManager(sm *StatsManager) {
+func (xb *XBase) SetStatsManager(sm *xstats.StatsManager) {
 	xb.statsMgr = sm
 }

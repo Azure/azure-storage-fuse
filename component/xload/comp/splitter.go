@@ -42,6 +42,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/component/xload/common"
 	xinternal "github.com/Azure/azure-storage-fuse/v2/component/xload/internal"
+	xstats "github.com/Azure/azure-storage-fuse/v2/component/xload/stats"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
@@ -61,7 +62,7 @@ type downloadSplitter struct {
 	splitter
 }
 
-func NewDownloadSplitter(blockPool *common.BlockPool, path string, remote internal.Component, statsMgr *xinternal.StatsManager) (*downloadSplitter, error) {
+func NewDownloadSplitter(blockPool *common.BlockPool, path string, remote internal.Component, statsMgr *xstats.StatsManager) (*downloadSplitter, error) {
 	log.Debug("splitter::NewDownloadSplitter : create new download splitter for %s, block size %v", path, blockPool.GetBlockSize())
 
 	d := &downloadSplitter{
@@ -206,7 +207,7 @@ func (d *downloadSplitter) Process(item *common.WorkItem) (int, error) {
 	}
 
 	// send the download status to stats manager
-	d.GetStatsManager().AddStats(&xinternal.StatsItem{
+	d.GetStatsManager().AddStats(&xstats.StatsItem{
 		Component: common.SPLITTER,
 		Name:      item.Path,
 		Success:   operationSuccess,
