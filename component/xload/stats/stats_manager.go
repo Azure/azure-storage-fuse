@@ -56,7 +56,7 @@ type StatsManager struct {
 	bytesUploaded   uint64          // total number of bytes uploaded
 	startTime       time.Time       // variable indicating the time at which the stats manager started
 	fileHandle      *os.File        // file where stats will be dumped
-	wg              sync.WaitGroup  // wait group to wait for stats manager thread to finish
+	waitGroup       sync.WaitGroup  // wait group to wait for stats manager thread to finish
 	items           chan *StatsItem // channel to hold the stats items
 	done            chan bool       // channel to indicate if the stats manager has completed or not
 }
@@ -110,7 +110,7 @@ func NewStatsmanager(count uint32, export bool) (*StatsManager, error) {
 }
 
 func (sm *StatsManager) Start() {
-	sm.wg.Add(1)
+	sm.waitGroup.Add(1)
 	sm.startTime = time.Now().UTC()
 	log.Debug("statsManager::start : start stats manager at time %v", sm.startTime.Format(time.RFC1123))
 	_ = sm.writeToJSON([]byte("[\n"), false)
@@ -125,7 +125,7 @@ func (sm *StatsManager) Stop() {
 	log.Debug("statsManager::stop : stop stats manager")
 	close(sm.done)
 	close(sm.items)
-	sm.wg.Wait()
+	sm.waitGroup.Wait()
 
 	if sm.fileHandle != nil {
 		sm.fileHandle.Close()
@@ -137,7 +137,7 @@ func (sm *StatsManager) AddStats(item *StatsItem) {
 }
 
 func (sm *StatsManager) statsProcessor() {
-	defer sm.wg.Done()
+	defer sm.waitGroup.Done()
 
 	for item := range sm.items {
 		switch item.Component {

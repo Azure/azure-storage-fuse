@@ -106,8 +106,14 @@ func (rdm *remoteDataManager) ReadData(item *common.WorkItem) (int, error) {
 		Size:   (int64)(item.DataLen),
 	})
 
-	// send the block download status to stats manager asynchronously
-	rdm.sendStats(item.Path, true, bytesTransferred, err)
+	// send the block download status to stats manager
+	rdm.GetStatsManager().AddStats(&xstats.StatsItem{
+		Component:        common.DATA_MANAGER,
+		Name:             item.Path,
+		Success:          err == nil,
+		Download:         true,
+		BytesTransferred: uint64(bytesTransferred),
+	})
 
 	return bytesTransferred, err
 }
@@ -128,20 +134,14 @@ func (rdm *remoteDataManager) WriteData(item *common.WorkItem) (int, error) {
 		bytesTransferred = 0
 	}
 
-	// send the block upload status to stats manager asynchronously
-	rdm.sendStats(item.Path, false, bytesTransferred, err)
+	// send the block upload status to stats manager
+	rdm.GetStatsManager().AddStats(&xstats.StatsItem{
+		Component:        common.DATA_MANAGER,
+		Name:             item.Path,
+		Success:          err == nil,
+		Download:         false,
+		BytesTransferred: uint64(bytesTransferred),
+	})
 
 	return bytesTransferred, err
-}
-
-func (rdm *remoteDataManager) sendStats(path string, isDownloadMode bool, bytesTransferred int, err error) {
-	go func() {
-		rdm.GetStatsManager().AddStats(&xstats.StatsItem{
-			Component:        common.DATA_MANAGER,
-			Name:             path,
-			Success:          err == nil,
-			Download:         isDownloadMode,
-			BytesTransferred: uint64(bytesTransferred),
-		})
-	}()
 }

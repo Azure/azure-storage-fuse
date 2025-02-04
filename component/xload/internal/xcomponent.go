@@ -79,10 +79,6 @@ func (xb *XBase) Stop() {
 
 func (xb *XBase) Schedule(item *common.WorkItem) {
 	if xb.GetThreadPool() != nil {
-		// TODO:: xload : check if this is necessary and not an overhead
-		if xb.GetThreadPool().IsChannelFull() {
-			log.Debug("xcomponent::Schedule : channel is full for %v", item.CompName)
-		}
 		xb.GetThreadPool().Schedule(item)
 	} else {
 		_, err := xb.Process(item)
