@@ -238,6 +238,13 @@ func (ac *AttrCache) updateCacheEntry(path string, attr *internal.ObjAttr) {
 	}
 }
 
+func (ac *AttrCache) updateEtag(path string, etag string) {
+	cacheEntry, found := ac.cacheMap[path]
+	if found {
+		cacheEntry.setEtag(etag)
+	}
+}
+
 // invalidatePath: invalidates a path
 func (ac *AttrCache) invalidatePath(path string) {
 	// Keys in the cache map do not contain trailing /, truncate the path before referencing a key in the map.
@@ -428,6 +435,11 @@ func (ac *AttrCache) TruncateFile(options internal.TruncateFileOptions) error {
 		if found && value.valid() && value.exists() {
 			value.setSize(options.Size)
 		}
+		// todo: invalidating path here rather than updating with etag as
+		// Truncation logic in azure storage in az storage component is
+		// very complicated,wrong hence need modification on that.
+		// once it is modified one can call ac.updateEtag from here.
+		ac.invalidatePath(options.Name)
 	}
 	return err
 }
@@ -589,7 +601,9 @@ func (ac *AttrCache) CommitData(options internal.CommitDataOptions) error {
 	if err == nil {
 		ac.cacheLock.RLock()
 		defer ac.cacheLock.RUnlock()
-
+		if options.NewETag != nil {
+			ac.updateEtag(options.Name, *options.NewETag)
+		}
 		ac.invalidatePath(options.Name)
 	}
 	return err

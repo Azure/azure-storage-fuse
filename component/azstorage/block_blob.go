@@ -1206,7 +1206,7 @@ func (bb *BlockBlob) removeBlocks(blockList *common.BlockOffsetList, size int64,
 	return blockList
 }
 
-func (bb *BlockBlob) TruncateFile(name string, size int64) error {
+func (bb *BlockBlob) TruncateFile(name string, size int64, newEtag *string) error {
 	// log.Trace("BlockBlob::TruncateFile : name=%s, size=%d", name, size)
 	attr, err := bb.GetAttr(name)
 	if err != nil {
@@ -1249,7 +1249,7 @@ func (bb *BlockBlob) TruncateFile(name string, size int64) error {
 				size -= blkSize
 			}
 
-			err = bb.CommitBlocks(blobName, blkList, nil)
+			err = bb.CommitBlocks(blobName, blkList, newEtag)
 			if err != nil {
 				log.Err("BlockBlob::TruncateFile : Failed to commit blocks for %s [%s]", name, err.Error())
 				return err

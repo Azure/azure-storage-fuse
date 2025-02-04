@@ -475,7 +475,7 @@ func (az *AzStorage) GetFileBlockOffsets(options internal.GetFileBlockOffsetsOpt
 
 func (az *AzStorage) TruncateFile(options internal.TruncateFileOptions) error {
 	log.Trace("AzStorage::TruncateFile : %s to %d bytes", options.Name, options.Size)
-	err := az.storage.TruncateFile(options.Name, options.Size)
+	err := az.storage.TruncateFile(options.Name, options.Size, options.NewEtag)
 
 	if err == nil {
 		azStatsCollector.PushEvents(truncateFile, options.Name, map[string]interface{}{size: options.Size})
