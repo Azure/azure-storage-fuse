@@ -37,7 +37,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/component/xload/common"
 	xinternal "github.com/Azure/azure-storage-fuse/v2/component/xload/internal"
-	xstats "github.com/Azure/azure-storage-fuse/v2/component/xload/stats"
+	"github.com/Azure/azure-storage-fuse/v2/component/xload/stats"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
@@ -55,7 +55,7 @@ type remoteDataManager struct {
 	dataManager
 }
 
-func NewRemoteDataManager(remote internal.Component, statsMgr *xstats.StatsManager) (*remoteDataManager, error) {
+func NewRemoteDataManager(remote internal.Component, statsMgr *stats.StatsManager) (*remoteDataManager, error) {
 	log.Debug("data_manager::NewRemoteDataManager : create new remote data manager")
 
 	rdm := &remoteDataManager{}
@@ -107,7 +107,7 @@ func (rdm *remoteDataManager) ReadData(item *common.WorkItem) (int, error) {
 	})
 
 	// send the block download status to stats manager
-	rdm.GetStatsManager().AddStats(&xstats.StatsItem{
+	rdm.GetStatsManager().AddStats(&stats.StatsItem{
 		Component:        common.DATA_MANAGER,
 		Name:             item.Path,
 		Success:          err == nil,
@@ -135,7 +135,7 @@ func (rdm *remoteDataManager) WriteData(item *common.WorkItem) (int, error) {
 	}
 
 	// send the block upload status to stats manager
-	rdm.GetStatsManager().AddStats(&xstats.StatsItem{
+	rdm.GetStatsManager().AddStats(&stats.StatsItem{
 		Component:        common.DATA_MANAGER,
 		Name:             item.Path,
 		Success:          err == nil,

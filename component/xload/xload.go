@@ -45,7 +45,7 @@ import (
 	xcommon "github.com/Azure/azure-storage-fuse/v2/component/xload/common"
 	"github.com/Azure/azure-storage-fuse/v2/component/xload/comp"
 	xinternal "github.com/Azure/azure-storage-fuse/v2/component/xload/internal"
-	xstats "github.com/Azure/azure-storage-fuse/v2/component/xload/stats"
+	"github.com/Azure/azure-storage-fuse/v2/component/xload/stats"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
@@ -60,7 +60,7 @@ type Xload struct {
 	path              string                 // Path on local disk where Xload will operate
 	defaultPermission os.FileMode            // Default permissions of files and directories in the xload path
 	comps             []xinternal.XComponent // list of components in xload
-	statsMgr          *xstats.StatsManager   // stats manager
+	statsMgr          *stats.StatsManager    // stats manager
 }
 
 // Structure defining your config parameters
@@ -225,7 +225,7 @@ func (xl *Xload) Start(ctx context.Context) error {
 	var err error
 
 	// create stats manager
-	xl.statsMgr, err = xstats.NewStatsmanager(xcommon.MAX_WORKER_COUNT*2, xl.exportProgress)
+	xl.statsMgr, err = stats.NewStatsManager(xcommon.MAX_WORKER_COUNT*2, xl.exportProgress)
 	if err != nil {
 		log.Err("Xload::Start : Failed to create stats manager [%s]", err.Error())
 		return err

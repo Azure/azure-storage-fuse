@@ -88,16 +88,16 @@ const (
 	JSON_FILE_PATH = "~/.blobfuse2/xload_stats_{PID}.json" // json file path where the stats manager will dump the stats
 )
 
-func NewStatsmanager(count uint32, export bool) (*StatsManager, error) {
+func NewStatsManager(count uint32, isExportEnabled bool) (*StatsManager, error) {
 	var fh *os.File
 	var err error
-	if export {
+	if isExportEnabled {
 		pid := fmt.Sprintf("%v", os.Getpid())
 		path := common.ExpandPath(strings.ReplaceAll(JSON_FILE_PATH, "{PID}", pid))
-		log.Debug("statsManager::newStatsmanager : creating json file %v", path)
+		log.Debug("statsManager::NewStatsManager : creating json file %v", path)
 		fh, err = os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
 		if err != nil {
-			log.Err("statsManager::newStatsmanager : failed to create json file %v [%v]", path, err.Error())
+			log.Err("statsManager::NewStatsManager : failed to create json file %v [%v]", path, err.Error())
 			return nil, err
 		}
 	}
@@ -215,18 +215,20 @@ func (sm *StatsManager) calculateBandwidth() {
 		currTime.Format(time.RFC1123), percentCompleted, sm.success, sm.failed,
 		filesPending, sm.totalFiles, bytesTransferred, bandwidthMbps)
 
-	err := sm.marshalStatsData(&statsJSONData{
-		Timestamp:        currTime.Format(time.RFC1123),
-		PercentCompleted: xcommon.RoundFloat(percentCompleted, 2),
-		Total:            sm.totalFiles,
-		Done:             sm.success,
-		Failed:           sm.failed,
-		Pending:          filesPending,
-		BytesTransferred: bytesTransferred,
-		BandwidthMbps:    xcommon.RoundFloat(bandwidthMbps, 2),
-	}, true)
-	if err != nil {
-		log.Err("statsManager::calculateBandwidth : failed to write to json file [%v]", err.Error())
+	if sm.fileHandle != nil {
+		err := sm.marshalStatsData(&statsJSONData{
+			Timestamp:        currTime.Format(time.RFC1123),
+			PercentCompleted: xcommon.RoundFloat(percentCompleted, 2),
+			Total:            sm.totalFiles,
+			Done:             sm.success,
+			Failed:           sm.failed,
+			Pending:          filesPending,
+			BytesTransferred: bytesTransferred,
+			BandwidthMbps:    xcommon.RoundFloat(bandwidthMbps, 2),
+		}, true)
+		if err != nil {
+			log.Err("statsManager::calculateBandwidth : failed to write to json file [%v]", err.Error())
+		}
 	}
 
 	// TODO:: xload : determine more effective way to decide if the listing has completed and the stats exporter can be terminated

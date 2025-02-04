@@ -33,47 +33,12 @@
 
 package common
 
-import (
-	"math"
-	"reflect"
-
-	"github.com/JeffreyRichter/enum/enum"
+const (
+	MAX_WORKER_COUNT         = 64
+	MAX_DATA_SPLITTER        = 16
+	MAX_LISTER               = 16
+	MB                uint64 = (1024 * 1024)
+	LISTER            string = "LISTER"
+	SPLITTER          string = "SPLITTER"
+	DATA_MANAGER      string = "DATA_MANAGER"
 )
-
-// xload mode enum
-type Mode int
-
-var EMode = Mode(0).INVALID_MODE()
-
-func (Mode) INVALID_MODE() Mode {
-	return Mode(0)
-}
-
-func (Mode) PRELOAD() Mode {
-	return Mode(1)
-}
-
-func (Mode) UPLOAD() Mode {
-	return Mode(2)
-}
-
-func (Mode) SYNC() Mode {
-	return Mode(3)
-}
-
-func (m Mode) String() string {
-	return enum.StringInt(m, reflect.TypeOf(m))
-}
-
-func (m *Mode) Parse(s string) error {
-	enumVal, err := enum.ParseInt(reflect.TypeOf(m), s, true, false)
-	if enumVal != nil {
-		*m = enumVal.(Mode)
-	}
-	return err
-}
-
-func RoundFloat(val float64, precision int) float64 {
-	ratio := math.Pow10(precision)
-	return math.Round(val*ratio) / ratio
-}
