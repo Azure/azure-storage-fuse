@@ -36,7 +36,6 @@ package azstorage
 import (
 	"context"
 	"fmt"
-	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -448,7 +447,7 @@ func (az *AzStorage) ReadInBuffer(options internal.ReadInBufferOptions) (length 
 		path = options.Handle.Path
 	} else {
 		size = options.Size
-		path = strings.TrimSpace(options.Path)
+		path = options.Path
 		if len(path) == 0 {
 			log.Err("AzStorage::ReadInBuffer : Path not given for download")
 			return 0, fmt.Errorf("path not given for download")

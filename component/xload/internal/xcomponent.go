@@ -99,8 +99,8 @@ func (xb *XBase) GetNext() XComponent {
 	return xb.next
 }
 
-func (xb *XBase) SetNext(s XComponent) {
-	xb.next = s
+func (xb *XBase) SetNext(next XComponent) {
+	xb.next = next
 }
 
 func (xb *XBase) GetThreadPool() *common.ThreadPool {
