@@ -99,30 +99,24 @@ func (rdm *remoteDataManager) Process(item *common.WorkItem) (int, error) {
 func (rdm *remoteDataManager) ReadData(item *common.WorkItem) (int, error) {
 	// log.Debug("remoteDataManager::ReadData : Scheduling download for %s offset %v", item.path, item.block.offset)
 
-	n, err := rdm.GetRemote().ReadInBuffer(internal.ReadInBufferOptions{
+	bytesTransferred, err := rdm.GetRemote().ReadInBuffer(internal.ReadInBufferOptions{
 		Offset: item.Block.Offset,
 		Data:   item.Block.Data,
 		Path:   item.Path,
 		Size:   (int64)(item.DataLen),
 	})
 
-	// send the block download status to stats manager
-	rdm.GetStatsManager().AddStats(&xstats.StatsItem{
-		Component:        common.DATA_MANAGER,
-		Name:             item.Path,
-		Success:          err == nil,
-		Download:         true,
-		BytesTransferred: uint64(n),
-	})
+	// send the block download status to stats manager asynchronously
+	rdm.sendStats(item.Path, true, bytesTransferred, err)
 
-	return n, err
+	return bytesTransferred, err
 }
 
 // WriteData writes data to the data manager
 func (rdm *remoteDataManager) WriteData(item *common.WorkItem) (int, error) {
 	// log.Debug("remoteDataManager::WriteData : Scheduling upload for %s offset %v", item.path, item.block.offset)
 
-	n := int(item.Block.Length)
+	bytesTransferred := int(item.Block.Length)
 	err := rdm.GetRemote().StageData(internal.StageDataOptions{
 		Name: item.Path,
 		Data: item.Block.Data[0:item.Block.Length],
@@ -131,17 +125,23 @@ func (rdm *remoteDataManager) WriteData(item *common.WorkItem) (int, error) {
 	})
 	if err != nil {
 		log.Err("remoteDataManager::WriteData : upload failed for %s offset %v [%v]", item.Path, item.Block.Offset, err.Error())
-		n = 0
+		bytesTransferred = 0
 	}
 
-	// send the block upload status to stats manager
-	rdm.GetStatsManager().AddStats(&xstats.StatsItem{
-		Component:        common.DATA_MANAGER,
-		Name:             item.Path,
-		Success:          err == nil,
-		Download:         false,
-		BytesTransferred: uint64(n),
-	})
+	// send the block upload status to stats manager asynchronously
+	rdm.sendStats(item.Path, false, bytesTransferred, err)
 
-	return n, err
+	return bytesTransferred, err
+}
+
+func (rdm *remoteDataManager) sendStats(path string, isDownloadMode bool, bytesTransferred int, err error) {
+	go func() {
+		rdm.GetStatsManager().AddStats(&xstats.StatsItem{
+			Component:        common.DATA_MANAGER,
+			Name:             path,
+			Success:          err == nil,
+			Download:         isDownloadMode,
+			BytesTransferred: uint64(bytesTransferred),
+		})
+	}()
 }
