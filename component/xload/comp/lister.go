@@ -42,6 +42,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/component/xload/common"
 	xinternal "github.com/Azure/azure-storage-fuse/v2/component/xload/internal"
+	xstats "github.com/Azure/azure-storage-fuse/v2/component/xload/stats"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
@@ -69,7 +70,7 @@ type remoteLister struct {
 	listBlocked bool
 }
 
-func NewRemoteLister(path string, defaultPermission os.FileMode, remote internal.Component, statsMgr *xinternal.StatsManager) (*remoteLister, error) {
+func NewRemoteLister(path string, defaultPermission os.FileMode, remote internal.Component, statsMgr *xstats.StatsManager) (*remoteLister, error) {
 	log.Debug("lister::NewRemoteLister : create new remote lister for %s, default permission %v", path, defaultPermission)
 
 	rl := &remoteLister{
@@ -154,7 +155,7 @@ func (rl *remoteLister) Process(item *common.WorkItem) (int, error) {
 		log.Debug("remoteLister::Process : count: %d , iterations: %d", cnt, iteration)
 
 		// send number of items listed in current iteration to stats manager
-		rl.GetStatsManager().AddStats(&xinternal.StatsItem{
+		rl.GetStatsManager().AddStats(&xstats.StatsItem{
 			Component:   common.LISTER,
 			Name:        absPath,
 			ListerCount: uint64(len(entries)),
@@ -215,7 +216,7 @@ func (rl *remoteLister) mkdir(name string) error {
 	err := os.MkdirAll(name, rl.defaultPermission)
 
 	// send stats for dir creation
-	rl.GetStatsManager().AddStats(&xinternal.StatsItem{
+	rl.GetStatsManager().AddStats(&xstats.StatsItem{
 		Component: common.LISTER,
 		Name:      name,
 		Dir:       true,

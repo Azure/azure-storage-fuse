@@ -45,21 +45,22 @@ import (
 	xcommon "github.com/Azure/azure-storage-fuse/v2/component/xload/common"
 	"github.com/Azure/azure-storage-fuse/v2/component/xload/comp"
 	xinternal "github.com/Azure/azure-storage-fuse/v2/component/xload/internal"
+	xstats "github.com/Azure/azure-storage-fuse/v2/component/xload/stats"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
 // Common structure for Component
 type Xload struct {
 	internal.BaseComponent
-	blockSize         uint64                  // Size of each block to be cached
-	mode              xcommon.Mode            // Mode of the Xload component
-	exportProgress    bool                    // Export the progess of xload operation to json file
-	workerCount       uint32                  // Number of workers running
-	blockPool         *xcommon.BlockPool      // Pool of blocks
-	path              string                  // Path on local disk where Xload will operate
-	defaultPermission os.FileMode             // Default permissions of files and directories in the xload path
-	comps             []xinternal.XComponent  // list of components in xload
-	statsMgr          *xinternal.StatsManager // stats manager
+	blockSize         uint64                 // Size of each block to be cached
+	mode              xcommon.Mode           // Mode of the Xload component
+	exportProgress    bool                   // Export the progess of xload operation to json file
+	workerCount       uint32                 // Number of workers running
+	blockPool         *xcommon.BlockPool     // Pool of blocks
+	path              string                 // Path on local disk where Xload will operate
+	defaultPermission os.FileMode            // Default permissions of files and directories in the xload path
+	comps             []xinternal.XComponent // list of components in xload
+	statsMgr          *xstats.StatsManager   // stats manager
 }
 
 // Structure defining your config parameters
@@ -224,7 +225,7 @@ func (xl *Xload) Start(ctx context.Context) error {
 	var err error
 
 	// create stats manager
-	xl.statsMgr, err = xinternal.NewStatsmanager(xcommon.MAX_WORKER_COUNT*2, xl.exportProgress)
+	xl.statsMgr, err = xstats.NewStatsmanager(xcommon.MAX_WORKER_COUNT*2, xl.exportProgress)
 	if err != nil {
 		log.Err("Xload::Start : Failed to create stats manager [%s]", err.Error())
 		return err
