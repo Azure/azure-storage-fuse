@@ -125,9 +125,8 @@ type GetFileBlockOffsetsOptions struct {
 }
 
 type TruncateFileOptions struct {
-	Name    string
-	Size    int64
-	NewEtag *string
+	Name string
+	Size int64
 }
 
 type CopyToFileOptions struct {
