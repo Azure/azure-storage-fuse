@@ -1,9 +1,6 @@
 package block_cache_new
 
 import (
-	"os"
-	"testing"
-
 	"github.com/Azure/azure-storage-fuse/v2/component/azstorage"
 )
 
@@ -14,7 +11,7 @@ func setupPipeline() {
 
 }
 
-func TestMain(m *testing.M) {
-	setupPipeline()
-	os.Exit(m.Run())
-}
+// func TestMain(m *testing.M) {
+// 	setupPipeline()
+// 	os.Exit(m.Run())
+// }
