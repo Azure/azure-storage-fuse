@@ -110,7 +110,7 @@ type AzConnection interface {
 	DeleteFile(name string) error
 	DeleteDirectory(name string) error
 
-	RenameFile(string, string) error
+	RenameFile(string, string, *internal.ObjAttr) error
 	RenameDirectory(string, string) error
 
 	GetAttr(name string) (attr *internal.ObjAttr, err error)
