@@ -136,6 +136,14 @@ func (sm *StatsManager) AddStats(item *StatsItem) {
 	sm.items <- item
 }
 
+func (sm *StatsManager) updateSuccessFailedCtr(isSuccess bool) {
+	if isSuccess {
+		sm.success += 1
+	} else {
+		sm.failed += 1
+	}
+}
+
 func (sm *StatsManager) statsProcessor() {
 	defer sm.waitGroup.Done()
 
@@ -146,20 +154,12 @@ func (sm *StatsManager) statsProcessor() {
 			// log.Debug("statsManager::statsProcessor : Directory listed %v, total number of files listed so far = %v", item.name, sm.totalFiles)
 			if item.Dir {
 				sm.dirs += 1
-				if item.Success {
-					sm.success += 1
-				} else {
-					sm.failed += 1
-				}
+				sm.updateSuccessFailedCtr(item.Success)
 			}
 
 		case xcommon.SPLITTER:
 			// log.Debug("statsManager::statsProcessor : splitter: Name %v, success %v, download %v", item.name, item.success, item.download)
-			if item.Success {
-				sm.success += 1
-			} else {
-				sm.failed += 1
-			}
+			sm.updateSuccessFailedCtr(item.Success)
 
 		case xcommon.DATA_MANAGER:
 			// log.Debug("statsManager::statsProcessor : data manager: Name %v, success %v, download %v, bytes transferred %v", item.name, item.success, item.download, item.bytesTransferred)
