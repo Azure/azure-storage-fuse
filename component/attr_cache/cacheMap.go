@@ -109,7 +109,3 @@ func (value *attrCacheItem) setMode(mode os.FileMode) {
 	value.attr.Ctime = time.Now()
 	value.cachedAt = time.Now()
 }
-
-func (value *attrCacheItem) setEtag(etag string) {
-	value.attr.ETag = etag
-}

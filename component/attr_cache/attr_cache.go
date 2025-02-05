@@ -238,13 +238,6 @@ func (ac *AttrCache) updateCacheEntry(path string, attr *internal.ObjAttr) {
 	}
 }
 
-func (ac *AttrCache) updateEtag(path string, etag string) {
-	cacheEntry, found := ac.cacheMap[path]
-	if found {
-		cacheEntry.setEtag(etag)
-	}
-}
-
 // invalidatePath: invalidates a path
 func (ac *AttrCache) invalidatePath(path string) {
 	// Keys in the cache map do not contain trailing /, truncate the path before referencing a key in the map.
@@ -439,7 +432,6 @@ func (ac *AttrCache) TruncateFile(options internal.TruncateFileOptions) error {
 		// due to some changes that are required in az storage comp which
 		// were not necessarily required. Once they were done invalidation
 		// of the attribute can be removed.
-		// ac.updateEtag(options.path, etag)
 		ac.invalidatePath(options.Name)
 	}
 	return err
@@ -602,9 +594,6 @@ func (ac *AttrCache) CommitData(options internal.CommitDataOptions) error {
 	if err == nil {
 		ac.cacheLock.RLock()
 		defer ac.cacheLock.RUnlock()
-		// if options.NewETag != nil {
-		// 	ac.updateEtag(options.Name, *options.NewETag)
-		// }
 		// TODO: Could we just update the size, etag, modtime of the file here?
 		ac.invalidatePath(options.Name)
 	}
