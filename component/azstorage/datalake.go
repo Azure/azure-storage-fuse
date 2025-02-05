@@ -319,6 +319,7 @@ func (dl *Datalake) DeleteDirectory(name string) (err error) {
 
 // RenameFile : Rename the file
 // While renaming the file, Creation time is preserved but LMT is changed for the destination blob.
+// and also Etag of the destination blob changes
 func (dl *Datalake) RenameFile(source string, target string, srcAttr *internal.ObjAttr) error {
 	log.Trace("Datalake::RenameFile : %s -> %s", source, target)
 
@@ -337,7 +338,7 @@ func (dl *Datalake) RenameFile(source string, target string, srcAttr *internal.O
 			return err
 		}
 	}
-	modifyLMT(srcAttr, renameResponse.LastModified)
+	modifyLMTandEtag(srcAttr, renameResponse.LastModified, sanitizeEtag(renameResponse.ETag))
 	return nil
 }
 
@@ -400,7 +401,7 @@ func (dl *Datalake) GetAttr(name string) (blobAttr *internal.ObjAttr, err error)
 		Ctime:  *prop.LastModified,
 		Crtime: *prop.LastModified,
 		Flags:  internal.NewFileBitMap(),
-		ETag:   (string)(*prop.ETag),
+		ETag:   sanitizeEtag(prop.ETag),
 	}
 	parseMetadata(blobAttr, prop.Metadata)
 

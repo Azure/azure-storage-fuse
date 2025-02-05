@@ -436,9 +436,9 @@ func (ac *AttrCache) TruncateFile(options internal.TruncateFileOptions) error {
 			value.setSize(options.Size)
 		}
 		// todo: invalidating path here rather than updating with etag as
-		// Truncation logic in azure storage in az storage component is
-		// very complicated,wrong hence need modification on that.
-		// once it is modified one can call ac.updateEtag from here.
+		// Truncation logic in az storage component is very wrong,
+		// hence need modification on that. Until then invalidating the attr
+		// the path once it is modified one can call ac.updateEtag from here.
 		ac.invalidatePath(options.Name)
 	}
 	return err
