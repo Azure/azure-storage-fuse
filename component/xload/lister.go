@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package comp
+package xload
 
 import (
 	"os"
@@ -40,21 +40,18 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	"github.com/Azure/azure-storage-fuse/v2/component/xload/common"
-	xinternal "github.com/Azure/azure-storage-fuse/v2/component/xload/internal"
-	"github.com/Azure/azure-storage-fuse/v2/component/xload/stats"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
 // verify that the below types implement the xcomponent interfaces
-var _ xinternal.XComponent = &lister{}
-var _ xinternal.XComponent = &remoteLister{}
+var _ XComponent = &lister{}
+var _ XComponent = &remoteLister{}
 
 // verify that the below types implement the xenumerator interfaces
 var _ enumerator = &remoteLister{}
 
 type lister struct {
-	xinternal.XBase
+	XBase
 	path              string      // base path of the directory to be listed
 	defaultPermission os.FileMode // default permission of files and directories in the local path
 }
@@ -70,7 +67,7 @@ type remoteLister struct {
 	listBlocked bool
 }
 
-func NewRemoteLister(path string, defaultPermission os.FileMode, remote internal.Component, statsMgr *stats.StatsManager) (*remoteLister, error) {
+func NewRemoteLister(path string, defaultPermission os.FileMode, remote internal.Component, statsMgr *StatsManager) (*remoteLister, error) {
 	log.Debug("lister::NewRemoteLister : create new remote lister for %s, default permission %v", path, defaultPermission)
 
 	rl := &remoteLister{
@@ -81,7 +78,7 @@ func NewRemoteLister(path string, defaultPermission os.FileMode, remote internal
 		listBlocked: false,
 	}
 
-	rl.SetName(common.LISTER)
+	rl.SetName(LISTER)
 	rl.SetRemote(remote)
 	rl.SetStatsManager(statsMgr)
 	rl.Init()
@@ -89,7 +86,7 @@ func NewRemoteLister(path string, defaultPermission os.FileMode, remote internal
 }
 
 func (rl *remoteLister) Init() {
-	rl.SetThreadPool(common.NewThreadPool(common.MAX_LISTER, rl.Process))
+	rl.SetThreadPool(NewThreadPool(MAX_LISTER, rl.Process))
 	if rl.GetThreadPool() == nil {
 		log.Err("remoteLister::Init : fail to init thread pool")
 	}
@@ -98,7 +95,7 @@ func (rl *remoteLister) Init() {
 func (rl *remoteLister) Start() {
 	log.Debug("remoteLister::Start : start remote lister for %s", rl.path)
 	rl.GetThreadPool().Start()
-	rl.Schedule(&common.WorkItem{CompName: rl.GetName()})
+	rl.Schedule(&WorkItem{CompName: rl.GetName()})
 }
 
 func (rl *remoteLister) Stop() {
@@ -120,7 +117,7 @@ func waitForListTimeout() error {
 	return nil
 }
 
-func (rl *remoteLister) Process(item *common.WorkItem) (int, error) {
+func (rl *remoteLister) Process(item *WorkItem) (int, error) {
 	absPath := item.Path // TODO:: xload : check this for subdirectory mounting
 
 	log.Debug("remoteLister::Process : Reading remote dir %s", absPath)
@@ -155,8 +152,8 @@ func (rl *remoteLister) Process(item *common.WorkItem) (int, error) {
 		log.Debug("remoteLister::Process : count: %d , iterations: %d", cnt, iteration)
 
 		// send number of items listed in current iteration to stats manager
-		rl.GetStatsManager().AddStats(&stats.StatsItem{
-			Component:   common.LISTER,
+		rl.GetStatsManager().AddStats(&StatsItem{
+			Component:   LISTER,
 			Name:        absPath,
 			ListerCount: uint64(len(entries)),
 		})
@@ -179,7 +176,7 @@ func (rl *remoteLister) Process(item *common.WorkItem) (int, error) {
 					}
 
 					// push the directory to input pool for its listing
-					rl.Schedule(&common.WorkItem{
+					rl.Schedule(&WorkItem{
 						CompName: rl.GetName(),
 						Path:     name,
 					})
@@ -191,7 +188,7 @@ func (rl *remoteLister) Process(item *common.WorkItem) (int, error) {
 				}
 
 				// send file to the output channel for chunking
-				rl.GetNext().Schedule(&common.WorkItem{
+				rl.GetNext().Schedule(&WorkItem{
 					CompName: rl.GetNext().GetName(),
 					Path:     entry.Path,
 					DataLen:  uint64(entry.Size),
@@ -216,8 +213,8 @@ func (rl *remoteLister) mkdir(name string) error {
 	err := os.MkdirAll(name, rl.defaultPermission)
 
 	// send stats for dir creation
-	rl.GetStatsManager().AddStats(&stats.StatsItem{
-		Component: common.LISTER,
+	rl.GetStatsManager().AddStats(&StatsItem{
+		Component: LISTER,
 		Name:      name,
 		Dir:       true,
 		Success:   err == nil,

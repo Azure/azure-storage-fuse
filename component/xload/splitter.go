@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package comp
+package xload
 
 import (
 	"fmt"
@@ -40,19 +40,16 @@ import (
 	"sync"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	"github.com/Azure/azure-storage-fuse/v2/component/xload/common"
-	xinternal "github.com/Azure/azure-storage-fuse/v2/component/xload/internal"
-	"github.com/Azure/azure-storage-fuse/v2/component/xload/stats"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
 // verify that the below types implement the xcomponent interfaces
-var _ xinternal.XComponent = &splitter{}
-var _ xinternal.XComponent = &downloadSplitter{}
+var _ XComponent = &splitter{}
+var _ XComponent = &downloadSplitter{}
 
 type splitter struct {
-	xinternal.XBase
-	blockPool *common.BlockPool
+	XBase
+	blockPool *BlockPool
 	path      string
 }
 
@@ -62,7 +59,7 @@ type downloadSplitter struct {
 	splitter
 }
 
-func NewDownloadSplitter(blockPool *common.BlockPool, path string, remote internal.Component, statsMgr *stats.StatsManager) (*downloadSplitter, error) {
+func NewDownloadSplitter(blockPool *BlockPool, path string, remote internal.Component, statsMgr *StatsManager) (*downloadSplitter, error) {
 	log.Debug("splitter::NewDownloadSplitter : create new download splitter for %s, block size %v", path, blockPool.GetBlockSize())
 
 	d := &downloadSplitter{
@@ -72,7 +69,7 @@ func NewDownloadSplitter(blockPool *common.BlockPool, path string, remote intern
 		},
 	}
 
-	d.SetName(common.SPLITTER)
+	d.SetName(SPLITTER)
 	d.SetRemote(remote)
 	d.SetStatsManager(statsMgr)
 	d.Init()
@@ -80,7 +77,7 @@ func NewDownloadSplitter(blockPool *common.BlockPool, path string, remote intern
 }
 
 func (d *downloadSplitter) Init() {
-	d.SetThreadPool(common.NewThreadPool(common.MAX_DATA_SPLITTER, d.Process))
+	d.SetThreadPool(NewThreadPool(MAX_DATA_SPLITTER, d.Process))
 	if d.GetThreadPool() == nil {
 		log.Err("downloadSplitter::Init : fail to init thread pool")
 	}
@@ -100,7 +97,7 @@ func (d *downloadSplitter) Stop() {
 }
 
 // download data in chunks and then write to the local file
-func (d *downloadSplitter) Process(item *common.WorkItem) (int, error) {
+func (d *downloadSplitter) Process(item *WorkItem) (int, error) {
 	log.Debug("downloadSplitter::Process : Splitting data for %s, mode %v", item.Path, item.Mode)
 	var err error
 	localPath := filepath.Join(d.path, item.Path)
@@ -146,7 +143,7 @@ func (d *downloadSplitter) Process(item *common.WorkItem) (int, error) {
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 
-	responseChannel := make(chan *common.WorkItem, numBlocks)
+	responseChannel := make(chan *WorkItem, numBlocks)
 
 	operationSuccess := true
 	go func() {
@@ -175,13 +172,13 @@ func (d *downloadSplitter) Process(item *common.WorkItem) (int, error) {
 	for i := 0; i < int(numBlocks); i++ {
 		block := d.blockPool.Get()
 		if block == nil {
-			responseChannel <- &common.WorkItem{Err: fmt.Errorf("failed to get block from pool for file %s, offset %v", item.Path, offset)}
+			responseChannel <- &WorkItem{Err: fmt.Errorf("failed to get block from pool for file %s, offset %v", item.Path, offset)}
 		} else {
 			block.Index = i
 			block.Offset = offset
 			block.Length = int64(d.blockPool.GetBlockSize())
 
-			splitItem := &common.WorkItem{
+			splitItem := &WorkItem{
 				CompName:        d.GetNext().GetName(),
 				Path:            item.Path,
 				DataLen:         item.DataLen,
@@ -207,8 +204,8 @@ func (d *downloadSplitter) Process(item *common.WorkItem) (int, error) {
 	}
 
 	// send the download status to stats manager
-	d.GetStatsManager().AddStats(&stats.StatsItem{
-		Component: common.SPLITTER,
+	d.GetStatsManager().AddStats(&StatsItem{
+		Component: SPLITTER,
 		Name:      item.Path,
 		Success:   operationSuccess,
 		Download:  true,

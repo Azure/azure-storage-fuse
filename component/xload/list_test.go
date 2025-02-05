@@ -31,14 +31,34 @@
    SOFTWARE
 */
 
-package common
+package xload
 
-const (
-	MAX_WORKER_COUNT         = 64
-	MAX_DATA_SPLITTER        = 16
-	MAX_LISTER               = 16
-	MB                uint64 = (1024 * 1024)
-	LISTER            string = "LISTER"
-	SPLITTER          string = "SPLITTER"
-	DATA_MANAGER      string = "DATA_MANAGER"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/suite"
 )
+
+type listTestSuite struct {
+	suite.Suite
+	assert *assert.Assertions
+}
+
+func (suite *listTestSuite) SetupTest() {
+}
+
+func (suite *listTestSuite) cleanupTest() {
+}
+
+func (suite *listTestSuite) TestReadDir() {
+	// l := &local{}
+
+	// l.readDir(&workItem{
+	// 	basePath: "/home/sourav/go/src/azure-storage-fuse/common",
+	// })
+}
+
+func TestListSuite(t *testing.T) {
+	suite.Run(t, new(listTestSuite))
+}

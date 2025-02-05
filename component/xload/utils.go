@@ -31,14 +31,41 @@
    SOFTWARE
 */
 
-package common
+package xload
 
 import (
 	"math"
+	"os"
 	"reflect"
+	"time"
 
 	"github.com/JeffreyRichter/enum/enum"
 )
+
+const (
+	MAX_WORKER_COUNT         = 64
+	MAX_DATA_SPLITTER        = 16
+	MAX_LISTER               = 16
+	MB                uint64 = (1024 * 1024)
+	LISTER            string = "LISTER"
+	SPLITTER          string = "SPLITTER"
+	DATA_MANAGER      string = "DATA_MANAGER"
+)
+
+// One workitem to be processed
+type WorkItem struct {
+	CompName        string         // Name of the component
+	Path            string         // Name of the file being processed
+	DataLen         uint64         // Length of the data to be processed
+	Mode            os.FileMode    // permissions in 0xxx format
+	Atime           time.Time      // access time
+	Mtime           time.Time      // modified time
+	Block           *Block         // Block to hold data for
+	FileHandle      *os.File       // File handle to the file being processed
+	Err             error          // Error if any
+	ResponseChannel chan *WorkItem // Channel to send the response
+	Download        bool           // boolean variable to decide upload or download
+}
 
 // xload mode enum
 type Mode int

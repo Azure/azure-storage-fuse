@@ -31,22 +31,19 @@
    SOFTWARE
 */
 
-package comp
+package xload
 
 import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	"github.com/Azure/azure-storage-fuse/v2/component/xload/common"
-	xinternal "github.com/Azure/azure-storage-fuse/v2/component/xload/internal"
-	"github.com/Azure/azure-storage-fuse/v2/component/xload/stats"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
 // verify that the below types implement the xcomponent interfaces
-var _ xinternal.XComponent = &dataManager{}
-var _ xinternal.XComponent = &remoteDataManager{}
+var _ XComponent = &dataManager{}
+var _ XComponent = &remoteDataManager{}
 
 type dataManager struct {
-	xinternal.XBase
+	XBase
 }
 
 // --------------------------------------------------------------------------------------------------------
@@ -55,12 +52,12 @@ type remoteDataManager struct {
 	dataManager
 }
 
-func NewRemoteDataManager(remote internal.Component, statsMgr *stats.StatsManager) (*remoteDataManager, error) {
+func NewRemoteDataManager(remote internal.Component, statsMgr *StatsManager) (*remoteDataManager, error) {
 	log.Debug("data_manager::NewRemoteDataManager : create new remote data manager")
 
 	rdm := &remoteDataManager{}
 
-	rdm.SetName(common.DATA_MANAGER)
+	rdm.SetName(DATA_MANAGER)
 	rdm.SetRemote(remote)
 	rdm.SetStatsManager(statsMgr)
 	rdm.Init()
@@ -68,7 +65,7 @@ func NewRemoteDataManager(remote internal.Component, statsMgr *stats.StatsManage
 }
 
 func (rdm *remoteDataManager) Init() {
-	rdm.SetThreadPool(common.NewThreadPool(common.MAX_WORKER_COUNT, rdm.Process))
+	rdm.SetThreadPool(NewThreadPool(MAX_WORKER_COUNT, rdm.Process))
 	if rdm.GetThreadPool() == nil {
 		log.Err("remoteDataManager::Init : fail to init thread pool")
 	}
@@ -87,7 +84,7 @@ func (rdm *remoteDataManager) Stop() {
 }
 
 // upload or download block
-func (rdm *remoteDataManager) Process(item *common.WorkItem) (int, error) {
+func (rdm *remoteDataManager) Process(item *WorkItem) (int, error) {
 	if item.Download {
 		return rdm.ReadData(item)
 	} else {
@@ -96,7 +93,7 @@ func (rdm *remoteDataManager) Process(item *common.WorkItem) (int, error) {
 }
 
 // ReadData reads data from the data manager
-func (rdm *remoteDataManager) ReadData(item *common.WorkItem) (int, error) {
+func (rdm *remoteDataManager) ReadData(item *WorkItem) (int, error) {
 	// log.Debug("remoteDataManager::ReadData : Scheduling download for %s offset %v", item.path, item.block.offset)
 
 	bytesTransferred, err := rdm.GetRemote().ReadInBuffer(internal.ReadInBufferOptions{
@@ -107,8 +104,8 @@ func (rdm *remoteDataManager) ReadData(item *common.WorkItem) (int, error) {
 	})
 
 	// send the block download status to stats manager
-	rdm.GetStatsManager().AddStats(&stats.StatsItem{
-		Component:        common.DATA_MANAGER,
+	rdm.GetStatsManager().AddStats(&StatsItem{
+		Component:        DATA_MANAGER,
 		Name:             item.Path,
 		Success:          err == nil,
 		Download:         true,
@@ -119,7 +116,7 @@ func (rdm *remoteDataManager) ReadData(item *common.WorkItem) (int, error) {
 }
 
 // WriteData writes data to the data manager
-func (rdm *remoteDataManager) WriteData(item *common.WorkItem) (int, error) {
+func (rdm *remoteDataManager) WriteData(item *WorkItem) (int, error) {
 	// log.Debug("remoteDataManager::WriteData : Scheduling upload for %s offset %v", item.path, item.block.offset)
 
 	bytesTransferred := int(item.Block.Length)
@@ -135,8 +132,8 @@ func (rdm *remoteDataManager) WriteData(item *common.WorkItem) (int, error) {
 	}
 
 	// send the block upload status to stats manager
-	rdm.GetStatsManager().AddStats(&stats.StatsItem{
-		Component:        common.DATA_MANAGER,
+	rdm.GetStatsManager().AddStats(&StatsItem{
+		Component:        DATA_MANAGER,
 		Name:             item.Path,
 		Success:          err == nil,
 		Download:         false,

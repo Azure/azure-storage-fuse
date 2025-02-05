@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package stats
+package xload
 
 import (
 	"encoding/json"
@@ -44,7 +44,6 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	xcommon "github.com/Azure/azure-storage-fuse/v2/component/xload/common"
 )
 
 type StatsManager struct {
@@ -149,7 +148,7 @@ func (sm *StatsManager) statsProcessor() {
 
 	for item := range sm.items {
 		switch item.Component {
-		case xcommon.LISTER:
+		case LISTER:
 			sm.totalFiles += item.ListerCount
 			// log.Debug("statsManager::statsProcessor : Directory listed %v, total number of files listed so far = %v", item.name, sm.totalFiles)
 			if item.Dir {
@@ -157,11 +156,11 @@ func (sm *StatsManager) statsProcessor() {
 				sm.updateSuccessFailedCtr(item.Success)
 			}
 
-		case xcommon.SPLITTER:
+		case SPLITTER:
 			// log.Debug("statsManager::statsProcessor : splitter: Name %v, success %v, download %v", item.name, item.success, item.download)
 			sm.updateSuccessFailedCtr(item.Success)
 
-		case xcommon.DATA_MANAGER:
+		case DATA_MANAGER:
 			// log.Debug("statsManager::statsProcessor : data manager: Name %v, success %v, download %v, bytes transferred %v", item.name, item.success, item.download, item.bytesTransferred)
 			if item.Download {
 				sm.bytesDownloaded += item.BytesTransferred
@@ -208,7 +207,7 @@ func (sm *StatsManager) calculateBandwidth() {
 	filesProcessed := sm.success + sm.failed
 	filesPending := sm.totalFiles - filesProcessed
 	percentCompleted := (float64(filesProcessed) / float64(sm.totalFiles)) * 100
-	bandwidthMbps := float64(bytesTransferred*8) / (timeLapsed * float64(xcommon.MB))
+	bandwidthMbps := float64(bytesTransferred*8) / (timeLapsed * float64(MB))
 
 	log.Debug("statsManager::calculateBandwidth : timestamp %v, %.2f%%, %v Done, %v Failed, "+
 		"%v Pending, %v Total, Bytes transferred %v, Throughput (Mbps): %.2f",
@@ -218,13 +217,13 @@ func (sm *StatsManager) calculateBandwidth() {
 	if sm.fileHandle != nil {
 		err := sm.marshalStatsData(&statsJSONData{
 			Timestamp:        currTime.Format(time.RFC1123),
-			PercentCompleted: xcommon.RoundFloat(percentCompleted, 2),
+			PercentCompleted: RoundFloat(percentCompleted, 2),
 			Total:            sm.totalFiles,
 			Done:             sm.success,
 			Failed:           sm.failed,
 			Pending:          filesPending,
 			BytesTransferred: bytesTransferred,
-			BandwidthMbps:    xcommon.RoundFloat(bandwidthMbps, 2),
+			BandwidthMbps:    RoundFloat(bandwidthMbps, 2),
 		}, true)
 		if err != nil {
 			log.Err("statsManager::calculateBandwidth : failed to write to json file [%v]", err.Error())
