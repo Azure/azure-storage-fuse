@@ -45,7 +45,7 @@ type ThreadPool struct {
 	worker uint32
 
 	// Wait group to wait for all workers to finish
-	wg sync.WaitGroup
+	waitGroup sync.WaitGroup
 
 	// Channel to hold pending requests
 	workItems chan *WorkItem
@@ -70,7 +70,7 @@ func NewThreadPool(count uint32, callback func(*WorkItem) (int, error)) *ThreadP
 // Start all the workers and wait till they start receiving requests
 func (threadPool *ThreadPool) Start() {
 	for i := uint32(0); i < threadPool.worker; i++ {
-		threadPool.wg.Add(1)
+		threadPool.waitGroup.Add(1)
 		go threadPool.Do()
 	}
 }
@@ -78,7 +78,7 @@ func (threadPool *ThreadPool) Start() {
 // Stop all the workers threads
 func (threadPool *ThreadPool) Stop() {
 	close(threadPool.workItems)
-	threadPool.wg.Wait()
+	threadPool.waitGroup.Wait()
 }
 
 // Schedule the download of a block
@@ -88,11 +88,11 @@ func (threadPool *ThreadPool) Schedule(item *WorkItem) {
 
 // Do is the core task to be executed by each worker thread
 func (threadPool *ThreadPool) Do() {
-	defer threadPool.wg.Done()
+	defer threadPool.waitGroup.Done()
 
 	// This thread will work only on both high and low priority channel
 	for item := range threadPool.workItems {
-		n, err := threadPool.callback(item)
+		dataLength, err := threadPool.callback(item)
 		if err != nil {
 			// TODO:: xload : add retry logic
 			log.Err("ThreadPool::Do : Error in %s processing workitem %s : %v", item.CompName, item.Path, err)
@@ -101,7 +101,7 @@ func (threadPool *ThreadPool) Do() {
 		// add this error in response channel
 		if cap(item.ResponseChannel) > 0 {
 			item.Err = err
-			item.DataLen = (uint64)(n)
+			item.DataLen = (uint64)(dataLength)
 			item.ResponseChannel <- item
 		}
 	}

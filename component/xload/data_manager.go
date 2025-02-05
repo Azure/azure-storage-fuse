@@ -104,13 +104,7 @@ func (rdm *remoteDataManager) ReadData(item *WorkItem) (int, error) {
 	})
 
 	// send the block download status to stats manager
-	rdm.GetStatsManager().AddStats(&StatsItem{
-		Component:        DATA_MANAGER,
-		Name:             item.Path,
-		Success:          err == nil,
-		Download:         true,
-		BytesTransferred: uint64(bytesTransferred),
-	})
+	rdm.sendStats(item.Path, true, uint64(bytesTransferred), err == nil)
 
 	return bytesTransferred, err
 }
@@ -132,13 +126,18 @@ func (rdm *remoteDataManager) WriteData(item *WorkItem) (int, error) {
 	}
 
 	// send the block upload status to stats manager
-	rdm.GetStatsManager().AddStats(&StatsItem{
-		Component:        DATA_MANAGER,
-		Name:             item.Path,
-		Success:          err == nil,
-		Download:         false,
-		BytesTransferred: uint64(bytesTransferred),
-	})
+	rdm.sendStats(item.Path, false, uint64(bytesTransferred), err == nil)
 
 	return bytesTransferred, err
+}
+
+// send stats to stats manager
+func (rdm *remoteDataManager) sendStats(path string, isDownload bool, bytesTransferred uint64, isSuccess bool) {
+	rdm.GetStatsManager().AddStats(&StatsItem{
+		Component:        DATA_MANAGER,
+		Name:             path,
+		Success:          isSuccess,
+		Download:         isDownload,
+		BytesTransferred: bytesTransferred,
+	})
 }
