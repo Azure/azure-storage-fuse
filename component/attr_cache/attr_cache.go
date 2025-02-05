@@ -436,7 +436,10 @@ func (ac *AttrCache) TruncateFile(options internal.TruncateFileOptions) error {
 			value.setSize(options.Size)
 		}
 		// todo: invalidating path here rather than updating with etag
-		// We can update the etag from here, same goes for commitdata.
+		// due to some changes that are required in az storage comp which
+		// were not necessarily required. Once they were done invalidation
+		// of the attribute can be removed.
+		// ac.updateEtag(options.path, etag)
 		ac.invalidatePath(options.Name)
 	}
 	return err
@@ -599,10 +602,10 @@ func (ac *AttrCache) CommitData(options internal.CommitDataOptions) error {
 	if err == nil {
 		ac.cacheLock.RLock()
 		defer ac.cacheLock.RUnlock()
-		if options.NewETag != nil {
-			ac.updateEtag(options.Name, *options.NewETag)
-		}
-		// TODO: Could we just update the size and mod time of the file here? Or can other attributes change here?
+		// if options.NewETag != nil {
+		// 	ac.updateEtag(options.Name, *options.NewETag)
+		// }
+		// TODO: Could we just update the size, etag, modtime of the file here?
 		ac.invalidatePath(options.Name)
 	}
 	return err
