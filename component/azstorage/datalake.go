@@ -612,17 +612,3 @@ func (dl *Datalake) SetFilter(filter string) error {
 
 	return dl.BlockBlob.SetFilter(filter)
 }
-
-func (dl *Datalake) SetFilter(filter string) error {
-	if filter == "" {
-		dl.Config.filter = nil
-	} else {
-		dl.Config.filter = &blobfilter.BlobFilter{}
-		err := dl.Config.filter.Configure(filter)
-		if err != nil {
-			return err
-		}
-	}
-
-	return dl.BlockBlob.SetFilter(filter)
-}
