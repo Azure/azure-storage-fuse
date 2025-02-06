@@ -106,7 +106,7 @@ steps:
       ro_mount: true
       mountStep: 
         script: |
-          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) -o ro --block-cache-block-size ${{ parameters.block_size_mb }}
+          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) -o ro --block-cache-block-size ${{ parameters.block_size_mb }}  --foreground &> $(WORK_dir)/logy &
 
   - script: |
       echo "----------------------------------------------"
@@ -162,7 +162,7 @@ steps:
       ro_mount: true
       mountStep: 
         script: |
-          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) -o ro -o direct_io --block-cache-path block_cache --block-cache-block-size ${{ parameters.block_size_mb }}
+          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) -o ro -o direct_io --block-cache-path block_cache --block-cache-block-size ${{ parameters.block_size_mb }} --foreground &> $(WORK_dir)/logy &
 
   - script: |
       echo "----------------------------------------------"
@@ -208,6 +208,11 @@ steps:
         exit 1
       fi
     displayName: 'Compare md5Sum with Block-Cache Disk-Cache'
+
+  - script: |
+      cat $(WORK_dir)/logy
+    displayName: 'View Logs'
+    condition: failed()
 
   - template: 'cleanup.yml'
     parameters:
