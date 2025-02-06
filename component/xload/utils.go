@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package common
+package xload
 
 import (
 	"math"

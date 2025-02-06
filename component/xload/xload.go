@@ -43,9 +43,6 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	xcommon "github.com/Azure/azure-storage-fuse/v2/component/xload/common"
-	"github.com/Azure/azure-storage-fuse/v2/component/xload/comp"
-	xinternal "github.com/Azure/azure-storage-fuse/v2/component/xload/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
@@ -53,15 +50,15 @@ import (
 // Common structure for Component
 type Xload struct {
 	internal.BaseComponent
-	blockSize      uint64                  // Size of each block to be cached
-	mode           xcommon.Mode            // Mode of the Xload component
-	exportProgress bool                    // Export the progess of xload operation to json file
-	workerCount    uint32                  // Number of workers running
-	blockPool      *xcommon.BlockPool      // Pool of blocks
-	path           string                  // Path on local disk where Xload will operate
-	comps          []xinternal.XComponent  // list of components in xload
-	statsMgr       *xinternal.StatsManager // stats manager
-	fileLocks      *common.LockMap         // lock to take on a file if one thread is processing it
+	blockSize      uint64          // Size of each block to be cached
+	mode           Mode            // Mode of the Xload component
+	exportProgress bool            // Export the progess of xload operation to json file
+	workerCount    uint32          // Number of workers running
+	blockPool      *BlockPool      // Pool of blocks
+	path           string          // Path on local disk where Xload will operate
+	comps          []XComponent    // list of components in xload
+	statsMgr       *StatsManager   // stats manager
+	fileLocks      *common.LockMap // lock to take on a file if one thread is processing it
 }
 
 // Structure defining your config parameters
@@ -121,9 +118,9 @@ func (xl *Xload) Configure(_ bool) error {
 		return fmt.Errorf("Xload: config error [invalid config attributes]")
 	}
 
-	xl.blockSize = uint64(defaultBlockSize) * xcommon.MB // 16 MB as deafult block size
+	xl.blockSize = uint64(defaultBlockSize) * MB // 16 MB as deafult block size
 	if config.IsSet(compName + ".block-size-mb") {
-		xl.blockSize = uint64(conf.BlockSize * float64(xcommon.MB))
+		xl.blockSize = uint64(conf.BlockSize * float64(MB))
 	}
 
 	xl.path = common.ExpandPath(strings.TrimSpace(conf.Path))
@@ -161,14 +158,14 @@ func (xl *Xload) Configure(_ bool) error {
 		}
 	}
 
-	var mode xcommon.Mode
+	var mode Mode
 	err = mode.Parse(conf.Mode)
 	if err != nil {
 		log.Err("Xload::Configure : Failed to parse mode %s [%s]", conf.Mode, err.Error())
 		return fmt.Errorf("invalid mode in xload : %s", conf.Mode)
 	}
 
-	if mode == xcommon.EMode.INVALID_MODE() {
+	if mode == EMode.INVALID_MODE() {
 		log.Err("Xload::Configure : Invalid mode : %s", conf.Mode)
 		return fmt.Errorf("invalid mode in xload : %s", conf.Mode)
 	}
@@ -183,8 +180,8 @@ func (xl *Xload) Configure(_ bool) error {
 func (xl *Xload) Start(ctx context.Context) error {
 	log.Trace("Xload::Start : Starting component %s", xl.Name())
 
-	xl.workerCount = xcommon.MAX_WORKER_COUNT
-	xl.blockPool = xcommon.NewBlockPool(xl.blockSize, xl.workerCount*3)
+	xl.workerCount = MAX_WORKER_COUNT
+	xl.blockPool = NewBlockPool(xl.blockSize, xl.workerCount*3)
 	if xl.blockPool == nil {
 		log.Err("Xload::Start : Failed to create block pool")
 		return fmt.Errorf("failed to create block pool")
@@ -193,7 +190,7 @@ func (xl *Xload) Start(ctx context.Context) error {
 	var err error
 
 	// create stats manager
-	xl.statsMgr, err = xinternal.NewStatsmanager(xcommon.MAX_WORKER_COUNT*2, xl.exportProgress)
+	xl.statsMgr, err = NewStatsmanager(MAX_WORKER_COUNT*2, xl.exportProgress)
 	if err != nil {
 		log.Err("Xload::Start : Failed to create stats manager [%s]", err.Error())
 		return err
@@ -201,20 +198,20 @@ func (xl *Xload) Start(ctx context.Context) error {
 
 	// Xload : start code goes here
 	switch xl.mode {
-	case xcommon.EMode.CHECKPOINT():
+	case EMode.CHECKPOINT():
 		// Start checkpoint thread here
 		return fmt.Errorf("checkpoint is currently unsupported")
-	case xcommon.EMode.DOWNLOAD():
+	case EMode.DOWNLOAD():
 		// Start downloader here
 		err = xl.startDownloader()
 		if err != nil {
 			log.Err("Xload::Start : Failed to start downloader [%s]", err.Error())
 			return err
 		}
-	case xcommon.EMode.UPLOAD():
+	case EMode.UPLOAD():
 		// Start uploader here
 		return fmt.Errorf("uploader is currently unsupported")
-	case xcommon.EMode.SYNC():
+	case EMode.SYNC():
 		//Start syncer here
 		return fmt.Errorf("sync is currently unsupported")
 	default:
@@ -247,25 +244,25 @@ func (xl *Xload) startDownloader() error {
 	log.Trace("Xload::startDownloader : Starting downloader")
 
 	// Create remote lister pool to list remote files
-	rl, err := comp.NewRemoteLister(xl.path, xl.NextComponent(), xl.statsMgr)
+	rl, err := NewRemoteLister(xl.path, xl.NextComponent(), xl.statsMgr)
 	if err != nil {
 		log.Err("Xload::startDownloader : Unable to create remote lister [%s]", err.Error())
 		return err
 	}
 
-	ds, err := comp.NewDownloadSplitter(xl.blockSize, xl.blockPool, xl.path, xl.NextComponent(), xl.statsMgr, xl.fileLocks)
+	ds, err := NewDownloadSplitter(xl.blockSize, xl.blockPool, xl.path, xl.NextComponent(), xl.statsMgr, xl.fileLocks)
 	if err != nil {
 		log.Err("Xload::startDownloader : Unable to create download splitter [%s]", err.Error())
 		return err
 	}
 
-	rdm, err := comp.NewRemoteDataManager(xl.NextComponent(), xl.statsMgr)
+	rdm, err := NewRemoteDataManager(xl.NextComponent(), xl.statsMgr)
 	if err != nil {
 		log.Err("Xload::startUploader : failed to create remote data manager [%s]", err.Error())
 		return err
 	}
 
-	xl.comps = []xinternal.XComponent{rl, ds, rdm}
+	xl.comps = []XComponent{rl, ds, rdm}
 	return nil
 }
 
@@ -301,7 +298,7 @@ func (xl *Xload) startComponents() error {
 }
 
 func (xl *Xload) isDownloadRequired(localPath string, blobPath string) (bool, *internal.ObjAttr, error) {
-	filePresent, size := xcommon.IsFilePresent(localPath)
+	filePresent, size := IsFilePresent(localPath)
 	downloadRequired := !filePresent
 
 	var attr *internal.ObjAttr
@@ -316,9 +313,9 @@ func (xl *Xload) isDownloadRequired(localPath string, blobPath string) (bool, *i
 	return downloadRequired, attr, err
 }
 
-func (xl *Xload) getSplitter() xinternal.XComponent {
+func (xl *Xload) getSplitter() XComponent {
 	for _, c := range xl.comps {
-		if c.GetName() == xcommon.SPLITTER {
+		if c.GetName() == SPLITTER {
 			return c
 		}
 	}
@@ -349,7 +346,7 @@ func (xl *Xload) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, 
 			return nil, fmt.Errorf("failed to  get download splitter")
 		}
 
-		_, err = splitter.Process(&xcommon.WorkItem{
+		_, err = splitter.Process(&WorkItem{
 			CompName: splitter.GetName(),
 			Path:     options.Name,
 			DataLen:  uint64(attr.Size),

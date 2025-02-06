@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package comp
+package xload
 
 import (
 	"testing"
