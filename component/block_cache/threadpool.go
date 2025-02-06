@@ -69,7 +69,17 @@ type workItem struct {
 	failCnt  int32             // How many times this item has failed to download
 	upload   bool              // Flag marking this is a upload request or not
 	blockId  string            // BlockId of the block
+	ETag     string            // Etag of the file before scheduling.
 }
+
+// Reason for storing Etag in workitem struct
+// here getting the value of ETag inside upload/download methods
+// from the handle is somewhat tricker.
+// firstly we need to aquire a lock to read it from the handle.
+// In these methods the handle may be locked/maynotbe locked by
+// other go routine hence acquring would cause a deadlock.
+// It is already locked if the call came from the readInBuffer.
+// It is may be locked if the call come from the prefetch.
 
 // newThreadPool creates a new thread pool
 func newThreadPool(count uint32, reader func(*workItem), writer func(*workItem)) *ThreadPool {

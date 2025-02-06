@@ -117,7 +117,9 @@ func (suite *fileTestSuite) TestOpenFlag_O_TRUNC() {
 	fileName := suite.testPath + "/test_on_open"
 	buf := "foo"
 	srcFile, err := os.OpenFile(fileName, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0666)
-	srcFile.Write([]byte(buf))
+	suite.Nil(err)
+	bytesWritten, err := srcFile.Write([]byte(buf))
+	suite.Equal(len(buf), bytesWritten)
 	suite.Nil(err)
 	srcFile.Close()
 
