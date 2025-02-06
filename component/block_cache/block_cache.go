@@ -1055,7 +1055,9 @@ func (bc *BlockCache) download(item *workItem) {
 
 	// Compare the ETAG value and fail download if blob has changed
 	if etag != "" {
+		item.handle.Lock()
 		etagVal, found := item.handle.GetValue("ETAG")
+		item.handle.Unlock()
 		if found && etagVal != etag {
 			log.Err("BlockCache::download : Blob has changed for %v=>%s (index %v, offset %v)", item.handle.ID, item.handle.Path, item.block.id, item.block.offset)
 			item.block.Failed()
@@ -1531,6 +1533,7 @@ return_safe:
 }
 
 // Stage the given number of blocks from this handle
+// handle lock must be taken before calling this function
 func (bc *BlockCache) commitBlocks(handle *handlemap.Handle) error {
 	log.Debug("BlockCache::commitBlocks : Staging blocks for %s", handle.Path)
 
@@ -1580,6 +1583,7 @@ func (bc *BlockCache) commitBlocks(handle *handlemap.Handle) error {
 		return err
 	}
 
+	// Lock was already acquired on the handle.
 	if newEtag != "" {
 		handle.SetValue("ETAG", newEtag)
 	}
