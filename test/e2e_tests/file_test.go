@@ -113,6 +113,31 @@ func (suite *fileTestSuite) TestFileCreate() {
 	suite.fileTestCleanup([]string{fileName})
 }
 
+func (suite *fileTestSuite) TestOpenFlag_O_TRUNC() {
+	fileName := suite.testPath + "/test_on_open"
+	buf := "foo"
+	srcFile, err := os.OpenFile(fileName, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0666)
+	srcFile.Write([]byte(buf))
+	suite.Nil(err)
+	srcFile.Close()
+
+	srcFile, err = os.OpenFile(fileName, os.O_WRONLY, 0666)
+	suite.Nil(err)
+	srcFile.Close()
+
+	fileInfo, err := os.Stat(fileName)
+	suite.Equal(int64(len(buf)), fileInfo.Size())
+	suite.Nil(err)
+
+	srcFile, err = os.OpenFile(fileName, os.O_TRUNC|os.O_WRONLY, 0666)
+	suite.Nil(err)
+	srcFile.Close()
+
+	fileInfo, err = os.Stat(fileName)
+	suite.Equal(int64(0), fileInfo.Size())
+	suite.Nil(err)
+}
+
 func (suite *fileTestSuite) TestFileCreateUtf8Char() {
 	fileName := suite.testPath + "/भारत.txt"
 	srcFile, err := os.OpenFile(fileName, os.O_CREATE, 0777)
