@@ -1401,6 +1401,37 @@ func (s *datalakeTestSuite) TestReadInBuffer() {
 	s.assert.EqualValues(testData[:5], output)
 }
 
+func (s *datalakeTestSuite) TestReadInBufferWithoutHandle() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, err := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	s.assert.Nil(err)
+	s.assert.NotNil(h)
+
+	testData := "test data"
+	data := []byte(testData)
+	n, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.assert.Nil(err)
+	s.assert.Equal(n, len(data))
+
+	output := make([]byte, 5)
+	len, err := s.az.ReadInBuffer(internal.ReadInBufferOptions{Offset: 0, Data: output, Path: name, Size: (int64)(len(data))})
+	s.assert.Nil(err)
+	s.assert.EqualValues(5, len)
+	s.assert.EqualValues(testData[:5], output)
+}
+
+func (s *datalakeTestSuite) TestReadInBufferEmptyPath() {
+	defer s.cleanupTest()
+
+	output := make([]byte, 5)
+	len, err := s.az.ReadInBuffer(internal.ReadInBufferOptions{Offset: 0, Data: output, Size: 5})
+	s.assert.NotNil(err)
+	s.assert.EqualValues(0, len)
+	s.assert.Equal(err.Error(), "path not given for download")
+}
+
 func (s *datalakeTestSuite) TestReadInBufferLargeBuffer() {
 	defer s.cleanupTest()
 	// Setup

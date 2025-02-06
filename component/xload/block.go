@@ -31,66 +31,62 @@
    SOFTWARE
 */
 
-package common
+package xload
 
 import (
-	"os"
-	"reflect"
-	"time"
-
-	"github.com/JeffreyRichter/enum/enum"
+	"fmt"
+	"syscall"
 )
 
-const (
-	MAX_WORKER_COUNT  = 64
-	MAX_DATA_SPLITTER = 16
-	MAX_LISTER        = 16
-)
-
-// One workitem to be processed
-type WorkItem struct {
-	CompName        string         // Name of the component
-	Path            string         // Name of the file being processed
-	DataLen         uint64         // Length of the data to be processed
-	Mode            os.FileMode    // permissions in 0xxx format
-	Atime           time.Time      // access time
-	Mtime           time.Time      // modified time
-	Block           *Block         // Block to hold data for
-	FileHandle      *os.File       // File handle to the file being processed
-	Err             error          // Error if any
-	ResponseChannel chan *WorkItem // Channel to send the response
-	Download        bool           // boolean variable to decide upload or download
+// Block is a memory mapped buffer with its state to hold data
+type Block struct {
+	Index  int    // Index of the block in the pool
+	Offset int64  // Start offset of the data this block holds
+	Length int64  // Length of data that this block holds
+	Id     string // ID to represent this block in the blob
+	Data   []byte // Data this block holds
 }
 
-// xload mode enum
-type Mode int
-
-var EMode = Mode(0).INVALID_MODE()
-
-func (Mode) INVALID_MODE() Mode {
-	return Mode(0)
-}
-
-func (Mode) PRELOAD() Mode {
-	return Mode(1)
-}
-
-func (Mode) UPLOAD() Mode {
-	return Mode(2)
-}
-
-func (Mode) SYNC() Mode {
-	return Mode(3)
-}
-
-func (m Mode) String() string {
-	return enum.StringInt(m, reflect.TypeOf(m))
-}
-
-func (m *Mode) Parse(s string) error {
-	enumVal, err := enum.ParseInt(reflect.TypeOf(m), s, true, false)
-	if enumVal != nil {
-		*m = enumVal.(Mode)
+// AllocateBlock creates a new memory mapped buffer for the given size
+func AllocateBlock(size uint64) (*Block, error) {
+	if size == 0 {
+		return nil, fmt.Errorf("invalid size")
 	}
-	return err
+
+	prot, flags := syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_ANON|syscall.MAP_PRIVATE
+	addr, err := syscall.Mmap(-1, 0, int(size), prot, flags)
+
+	if err != nil {
+		return nil, fmt.Errorf("mmap error: %v", err)
+	}
+
+	block := &Block{
+		Data: addr,
+	}
+
+	return block, nil
+}
+
+// Delete cleans up the memory mapped buffer
+func (b *Block) Delete() error {
+	if b.Data == nil {
+		return fmt.Errorf("invalid buffer")
+	}
+
+	err := syscall.Munmap(b.Data)
+	b.Data = nil
+	if err != nil {
+		// if we get here, there is likely memory corruption.
+		return fmt.Errorf("munmap error: %v", err)
+	}
+
+	return nil
+}
+
+// Clear the old data of this block
+func (b *Block) ReUse() {
+	b.Id = ""
+	b.Index = 0
+	b.Offset = 0
+	b.Length = 0
 }

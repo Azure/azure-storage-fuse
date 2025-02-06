@@ -31,22 +31,19 @@
    SOFTWARE
 */
 
-package comp
+package xload
 
 import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	"github.com/Azure/azure-storage-fuse/v2/component/xload/common"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
 // verify that the below types implement the xcomponent interfaces
-var _ common.XComponent = &dataManager{}
-var _ common.XComponent = &remoteDataManager{}
-
-const DATA_MANAGER string = "DATA_MANAGER"
+var _ XComponent = &dataManager{}
+var _ XComponent = &remoteDataManager{}
 
 type dataManager struct {
-	common.XBase
+	XBase
 }
 
 // --------------------------------------------------------------------------------------------------------
@@ -55,19 +52,20 @@ type remoteDataManager struct {
 	dataManager
 }
 
-func NewRemoteDataManager(remote internal.Component) (*remoteDataManager, error) {
+func NewRemoteDataManager(remote internal.Component, statsMgr *StatsManager) (*remoteDataManager, error) {
 	log.Debug("data_manager::NewRemoteDataManager : create new remote data manager")
 
 	rdm := &remoteDataManager{}
 
 	rdm.SetName(DATA_MANAGER)
 	rdm.SetRemote(remote)
+	rdm.SetStatsManager(statsMgr)
 	rdm.Init()
 	return rdm, nil
 }
 
 func (rdm *remoteDataManager) Init() {
-	rdm.SetThreadPool(common.NewThreadPool(common.MAX_WORKER_COUNT, rdm.Process))
+	rdm.SetThreadPool(NewThreadPool(MAX_WORKER_COUNT, rdm.Process))
 	if rdm.GetThreadPool() == nil {
 		log.Err("remoteDataManager::Init : fail to init thread pool")
 	}
@@ -86,7 +84,7 @@ func (rdm *remoteDataManager) Stop() {
 }
 
 // upload or download block
-func (rdm *remoteDataManager) Process(item *common.WorkItem) (int, error) {
+func (rdm *remoteDataManager) Process(item *WorkItem) (int, error) {
 	if item.Download {
 		return rdm.ReadData(item)
 	} else {
@@ -95,24 +93,51 @@ func (rdm *remoteDataManager) Process(item *common.WorkItem) (int, error) {
 }
 
 // ReadData reads data from the data manager
-func (rdm *remoteDataManager) ReadData(item *common.WorkItem) (int, error) {
-	log.Debug("remoteDataManager::ReadData : Scheduling download for %s offset %v", item.Path, item.Block.Offset)
+func (rdm *remoteDataManager) ReadData(item *WorkItem) (int, error) {
+	// log.Debug("remoteDataManager::ReadData : Scheduling download for %s offset %v", item.path, item.block.offset)
 
-	return rdm.GetRemote().ReadInBuffer(internal.ReadInBufferOptions{
+	bytesTransferred, err := rdm.GetRemote().ReadInBuffer(internal.ReadInBufferOptions{
 		Offset: item.Block.Offset,
 		Data:   item.Block.Data,
 		Path:   item.Path,
 		Size:   (int64)(item.DataLen),
 	})
+
+	// send the block download status to stats manager
+	rdm.sendStats(item.Path, true, uint64(bytesTransferred), err == nil)
+
+	return bytesTransferred, err
 }
 
 // WriteData writes data to the data manager
-func (rdm *remoteDataManager) WriteData(item *common.WorkItem) (int, error) {
-	log.Debug("remoteDataManager::WriteData : Scheduling upload for %s offset %v", item.Path, item.Block.Offset)
+func (rdm *remoteDataManager) WriteData(item *WorkItem) (int, error) {
+	// log.Debug("remoteDataManager::WriteData : Scheduling upload for %s offset %v", item.path, item.block.offset)
 
-	return int(item.Block.Length), rdm.GetRemote().StageData(internal.StageDataOptions{
+	bytesTransferred := int(item.Block.Length)
+	err := rdm.GetRemote().StageData(internal.StageDataOptions{
 		Name: item.Path,
 		Data: item.Block.Data[0:item.Block.Length],
 		// Offset: uint64(item.block.offset),
-		Id: item.Block.Id})
+		Id: item.Block.Id,
+	})
+	if err != nil {
+		log.Err("remoteDataManager::WriteData : upload failed for %s offset %v [%v]", item.Path, item.Block.Offset, err.Error())
+		bytesTransferred = 0
+	}
+
+	// send the block upload status to stats manager
+	rdm.sendStats(item.Path, false, uint64(bytesTransferred), err == nil)
+
+	return bytesTransferred, err
+}
+
+// send stats to stats manager
+func (rdm *remoteDataManager) sendStats(path string, isDownload bool, bytesTransferred uint64, isSuccess bool) {
+	rdm.GetStatsManager().AddStats(&StatsItem{
+		Component:        DATA_MANAGER,
+		Name:             path,
+		Success:          isSuccess,
+		Download:         isDownload,
+		BytesTransferred: bytesTransferred,
+	})
 }

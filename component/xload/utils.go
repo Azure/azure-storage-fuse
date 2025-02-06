@@ -31,94 +31,76 @@
    SOFTWARE
 */
 
-package common
+package xload
 
 import (
-	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"math"
+	"os"
+	"reflect"
+	"time"
+
+	"github.com/JeffreyRichter/enum/enum"
 )
 
-type XComponent interface {
-	Init()
-	Start()
-	Stop()
-	Schedule(*WorkItem)
-	Process(*WorkItem) (int, error)
-	GetNext() XComponent
-	SetNext(XComponent)
-	GetThreadPool() *ThreadPool
-	SetThreadPool(*ThreadPool)
-	GetRemote() internal.Component
-	SetRemote(internal.Component)
-	GetName() string
-	SetName(string)
+const (
+	MAX_WORKER_COUNT         = 64
+	MAX_DATA_SPLITTER        = 16
+	MAX_LISTER               = 16
+	MB                uint64 = (1024 * 1024)
+	LISTER            string = "LISTER"
+	SPLITTER          string = "SPLITTER"
+	DATA_MANAGER      string = "DATA_MANAGER"
+)
+
+// One workitem to be processed
+type WorkItem struct {
+	CompName        string         // Name of the component
+	Path            string         // Name of the file being processed
+	DataLen         uint64         // Length of the data to be processed
+	Mode            os.FileMode    // permissions in 0xxx format
+	Atime           time.Time      // access time
+	Mtime           time.Time      // modified time
+	Block           *Block         // Block to hold data for
+	FileHandle      *os.File       // File handle to the file being processed
+	Err             error          // Error if any
+	ResponseChannel chan *WorkItem // Channel to send the response
+	Download        bool           // boolean variable to decide upload or download
 }
 
-type XBase struct {
-	name   string
-	pool   *ThreadPool
-	remote internal.Component
-	next   XComponent
+// xload mode enum
+type Mode int
+
+var EMode = Mode(0).INVALID_MODE()
+
+func (Mode) INVALID_MODE() Mode {
+	return Mode(0)
 }
 
-var _ XComponent = &XBase{}
-
-func (xb *XBase) Init() {
+func (Mode) PRELOAD() Mode {
+	return Mode(1)
 }
 
-func (xb *XBase) Start() {
+func (Mode) UPLOAD() Mode {
+	return Mode(2)
 }
 
-func (xb *XBase) Stop() {
+func (Mode) SYNC() Mode {
+	return Mode(3)
 }
 
-func (xb *XBase) Schedule(item *WorkItem) {
-	if xb.GetThreadPool() != nil {
-		// TODO:: xload : check if this is necessary and not an overhead
-		if cap(xb.GetThreadPool().workItems) == len(xb.GetThreadPool().workItems) {
-			log.Debug("xcomponent::Schedule : channel is full for %v", item.CompName)
-		}
-		xb.GetThreadPool().Schedule(item)
-	} else {
-		_, err := xb.Process(item)
-		if err != nil {
-			log.Err("xcomponent::Schedule : Failed to process for %v [%v]", item.CompName, err.Error())
-		}
+func (m Mode) String() string {
+	return enum.StringInt(m, reflect.TypeOf(m))
+}
+
+func (m *Mode) Parse(s string) error {
+	enumVal, err := enum.ParseInt(reflect.TypeOf(m), s, true, false)
+	if enumVal != nil {
+		*m = enumVal.(Mode)
 	}
+	return err
 }
 
-func (xb *XBase) Process(item *WorkItem) (int, error) {
-	return 0, nil
-}
-
-func (xb *XBase) GetNext() XComponent {
-	return xb.next
-}
-
-func (xb *XBase) SetNext(s XComponent) {
-	xb.next = s
-}
-
-func (xb *XBase) GetThreadPool() *ThreadPool {
-	return xb.pool
-}
-
-func (xb *XBase) SetThreadPool(pool *ThreadPool) {
-	xb.pool = pool
-}
-
-func (xb *XBase) GetRemote() internal.Component {
-	return xb.remote
-}
-
-func (xb *XBase) SetRemote(comp internal.Component) {
-	xb.remote = comp
-}
-
-func (xb *XBase) GetName() string {
-	return xb.name
-}
-
-func (xb *XBase) SetName(name string) {
-	xb.name = name
+func RoundFloat(val float64, precision int) float64 {
+	ratio := math.Pow10(precision)
+	return math.Round(val*ratio) / ratio
 }

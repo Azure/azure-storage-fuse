@@ -31,78 +31,101 @@
    SOFTWARE
 */
 
-package common
+package xload
 
 import (
-	"sync"
-
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
-// ThreadPool is a group of workers that can be used to execute a task
-type ThreadPool struct {
-	// Number of workers running in this group
-	worker uint32
-
-	// Wait group to wait for all workers to finish
-	wg sync.WaitGroup
-
-	// Channel to hold pending requests
-	workItems chan *WorkItem
-
-	// Reader method that will actually read the data
-	callback func(*WorkItem) (int, error)
+type XComponent interface {
+	Init()
+	Start()
+	Stop()
+	Schedule(*WorkItem)
+	Process(*WorkItem) (int, error)
+	GetNext() XComponent
+	SetNext(XComponent)
+	GetThreadPool() *ThreadPool
+	SetThreadPool(*ThreadPool)
+	GetRemote() internal.Component
+	SetRemote(internal.Component)
+	GetName() string
+	SetName(string)
+	GetStatsManager() *StatsManager
+	SetStatsManager(*StatsManager)
 }
 
-// NewThreadPool creates a new thread pool
-func NewThreadPool(count uint32, callback func(*WorkItem) (int, error)) *ThreadPool {
-	if count == 0 || callback == nil {
-		return nil
-	}
-
-	return &ThreadPool{
-		worker:    count,
-		callback:  callback,
-		workItems: make(chan *WorkItem, count*2),
-	}
+type XBase struct {
+	name     string
+	pool     *ThreadPool
+	remote   internal.Component
+	next     XComponent
+	statsMgr *StatsManager
 }
 
-// Start all the workers and wait till they start receiving requests
-func (t *ThreadPool) Start() {
-	for i := uint32(0); i < t.worker; i++ {
-		t.wg.Add(1)
-		go t.Do()
-	}
+var _ XComponent = &XBase{}
+
+func (xb *XBase) Init() {
 }
 
-// Stop all the workers threads
-func (t *ThreadPool) Stop() {
-	close(t.workItems)
-	t.wg.Wait()
+func (xb *XBase) Start() {
 }
 
-// Schedule the download of a block
-func (t *ThreadPool) Schedule(item *WorkItem) {
-	t.workItems <- item
+func (xb *XBase) Stop() {
 }
 
-// Do is the core task to be executed by each worker thread
-func (t *ThreadPool) Do() {
-	defer t.wg.Done()
-
-	// This thread will work only on both high and low priority channel
-	for item := range t.workItems {
-		n, err := t.callback(item)
+func (xb *XBase) Schedule(item *WorkItem) {
+	if xb.GetThreadPool() != nil {
+		xb.GetThreadPool().Schedule(item)
+	} else {
+		_, err := xb.Process(item)
 		if err != nil {
-			// TODO:: xload : add retry logic
-			log.Err("ThreadPool::Do : Error in %s processing workitem %s : %v", item.CompName, item.Path, err)
-		}
-
-		// add this error in response channel
-		if cap(item.ResponseChannel) > 0 {
-			item.Err = err
-			item.DataLen = (uint64)(n)
-			item.ResponseChannel <- item
+			log.Err("xcomponent::Schedule : Failed to process for %v [%v]", item.CompName, err.Error())
 		}
 	}
+}
+
+func (xb *XBase) Process(item *WorkItem) (int, error) {
+	return 0, nil
+}
+
+func (xb *XBase) GetNext() XComponent {
+	return xb.next
+}
+
+func (xb *XBase) SetNext(next XComponent) {
+	xb.next = next
+}
+
+func (xb *XBase) GetThreadPool() *ThreadPool {
+	return xb.pool
+}
+
+func (xb *XBase) SetThreadPool(pool *ThreadPool) {
+	xb.pool = pool
+}
+
+func (xb *XBase) GetRemote() internal.Component {
+	return xb.remote
+}
+
+func (xb *XBase) SetRemote(comp internal.Component) {
+	xb.remote = comp
+}
+
+func (xb *XBase) GetName() string {
+	return xb.name
+}
+
+func (xb *XBase) SetName(name string) {
+	xb.name = name
+}
+
+func (xb *XBase) GetStatsManager() *StatsManager {
+	return xb.statsMgr
+}
+
+func (xb *XBase) SetStatsManager(sm *StatsManager) {
+	xb.statsMgr = sm
 }
