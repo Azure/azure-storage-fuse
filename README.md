@@ -283,32 +283,6 @@ HNS-enabled storage accounts utilize separate endpoints for Blob and DFS operati
 - The DFS endpoint (`dfs.core.windows.net`) is used for namespace-related operations like directory and file management.
 - The Blob endpoint (`blob.core.windows.net`) is used for operations like streaming data to and from blobs.
 
-## Blob Filter
-- In case of read-only mount, user can configure a filter to restrict what all blobs a mount can see or operate on.
-- Blobfuse supports filters based on
-    - Name
-    - Size
-    - Last modified time
-    - File extension
-- Blob Name based filter
-    - Supported operations are "=" and "!="
-    - Name shall be a valid regex expression
-    - e.g. ```filter=name=^mine[0-1]\\d{3}.*```
-- Size based filter
-    - Supported operations are "<=", ">=", "!=", "<", ">" and "="
-    - Size shall be provided in bytes
-    - e.g. ```filter=size > 1000```
-- Last Modified Date based filter
-    - Supported operations are "<=", ">=", "<", ">" and "="
-    - Date shall be provided in RFC1123 Format e.g. "Mon, 24 Jan 1982 13:00:00 UTC"
-    - e.g. ```filter=modtime>Mon, 24 Jan 1982 13:00:00 UTC```
-- File Extension based filter
-    - Supported operations are "=" and "!="
-    - Extension can be supplied as string. Do not include "." in the filter
-    - e.g. ```--filter=format=pdf```
-- Multiple filters can be combined using '&&' and '||' operator as well, however precedence using '()' is not supported yet.
-    - e.g. ```--filter=name=^testfil.* && size>130000000```
-
 ## Frequently Asked Questions
 - How do I generate a SAS with permissions for rename?
 az cli has a command to generate a sas token. Open a command prompt and make sure you are logged in to az cli. Run the following command and the sas token will be displayed in the command prompt.
