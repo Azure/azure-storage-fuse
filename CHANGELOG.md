@@ -11,6 +11,7 @@
 - Optimized listing operation on HNS account to support symlinks.
 - Optimized Rename operation to do less number of REST calls.
 - Add documentation on usage of Private Endpoints with HNS-Enabled Storage Accounts
+
 **Features**
 - Mount container or directory but restrict the view of blobs that you can see. This feature is available only in read-only mount.
 - To protect against accidental overwrites on data stored by block-cache on temp path, crc64 hash will be validated on read. This feature can be enabled by using `--block-cache-strong-consistency` cli flag.
