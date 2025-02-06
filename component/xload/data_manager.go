@@ -36,7 +36,6 @@ package xload
 import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
-	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
 
 // verify that the below types implement the xcomponent interfaces
@@ -97,31 +96,24 @@ func (rdm *remoteDataManager) Process(item *WorkItem) (int, error) {
 func (rdm *remoteDataManager) ReadData(item *WorkItem) (int, error) {
 	// log.Debug("remoteDataManager::ReadData : Scheduling download for %s offset %v", item.path, item.block.offset)
 
-	h := handlemap.NewHandle(item.Path)
-	h.Size = int64(item.DataLen)
-	n, err := rdm.GetRemote().ReadInBuffer(internal.ReadInBufferOptions{
-		Handle: h,
+	bytesTransferred, err := rdm.GetRemote().ReadInBuffer(internal.ReadInBufferOptions{
 		Offset: item.Block.Offset,
 		Data:   item.Block.Data,
+		Path:   item.Path,
+		Size:   (int64)(item.DataLen),
 	})
 
 	// send the block download status to stats manager
-	rdm.GetStatsManager().AddStats(&StatsItem{
-		Component:        DATA_MANAGER,
-		Name:             item.Path,
-		Success:          err == nil,
-		Download:         true,
-		BytesTransferred: uint64(n),
-	})
+	rdm.sendStats(item.Path, true, uint64(bytesTransferred), err == nil)
 
-	return n, err
+	return bytesTransferred, err
 }
 
 // WriteData writes data to the data manager
 func (rdm *remoteDataManager) WriteData(item *WorkItem) (int, error) {
 	// log.Debug("remoteDataManager::WriteData : Scheduling upload for %s offset %v", item.path, item.block.offset)
 
-	n := int(item.Block.Length)
+	bytesTransferred := int(item.Block.Length)
 	err := rdm.GetRemote().StageData(internal.StageDataOptions{
 		Name: item.Path,
 		Data: item.Block.Data[0:item.Block.Length],
@@ -130,17 +122,22 @@ func (rdm *remoteDataManager) WriteData(item *WorkItem) (int, error) {
 	})
 	if err != nil {
 		log.Err("remoteDataManager::WriteData : upload failed for %s offset %v [%v]", item.Path, item.Block.Offset, err.Error())
-		n = 0
+		bytesTransferred = 0
 	}
 
 	// send the block upload status to stats manager
+	rdm.sendStats(item.Path, false, uint64(bytesTransferred), err == nil)
+
+	return bytesTransferred, err
+}
+
+// send stats to stats manager
+func (rdm *remoteDataManager) sendStats(path string, isDownload bool, bytesTransferred uint64, isSuccess bool) {
 	rdm.GetStatsManager().AddStats(&StatsItem{
 		Component:        DATA_MANAGER,
-		Name:             item.Path,
-		Success:          err == nil,
-		Download:         false,
-		BytesTransferred: uint64(n),
+		Name:             path,
+		Success:          isSuccess,
+		Download:         isDownload,
+		BytesTransferred: bytesTransferred,
 	})
-
-	return n, err
 }

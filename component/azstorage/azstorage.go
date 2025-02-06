@@ -423,7 +423,7 @@ func (az *AzStorage) DeleteFile(options internal.DeleteFileOptions) error {
 func (az *AzStorage) RenameFile(options internal.RenameFileOptions) error {
 	log.Trace("AzStorage::RenameFile : %s to %s", options.Src, options.Dst)
 
-	err := az.storage.RenameFile(options.Src, options.Dst)
+	err := az.storage.RenameFile(options.Src, options.Dst, options.SrcAttr)
 
 	if err == nil {
 		azStatsCollector.PushEvents(renameFile, options.Src, map[string]interface{}{src: options.Src, dest: options.Dst})
@@ -440,13 +440,27 @@ func (az *AzStorage) ReadFile(options internal.ReadFileOptions) (data []byte, er
 func (az *AzStorage) ReadInBuffer(options internal.ReadInBufferOptions) (length int, err error) {
 	//log.Trace("AzStorage::ReadInBuffer : Read %s from %d offset", h.Path, offset)
 
-	if options.Offset > atomic.LoadInt64(&options.Handle.Size) {
+	var size int64
+	var path string
+	if options.Handle != nil {
+		size = atomic.LoadInt64(&options.Handle.Size)
+		path = options.Handle.Path
+	} else {
+		size = options.Size
+		path = options.Path
+		if len(path) == 0 {
+			log.Err("AzStorage::ReadInBuffer : Path not given for download")
+			return 0, fmt.Errorf("path not given for download")
+		}
+	}
+
+	if options.Offset > size {
 		return 0, syscall.ERANGE
 	}
 
 	var dataLen int64 = int64(len(options.Data))
-	if atomic.LoadInt64(&options.Handle.Size) < (options.Offset + int64(len(options.Data))) {
-		dataLen = options.Handle.Size - options.Offset
+	if size < (options.Offset + int64(len(options.Data))) {
+		dataLen = size - options.Offset
 	}
 
 	if dataLen == 0 {
@@ -454,9 +468,9 @@ func (az *AzStorage) ReadInBuffer(options internal.ReadInBufferOptions) (length 
 	}
 
 	length = int(dataLen)
-	err = az.storage.ReadInBuffer(options.Handle.Path, options.Offset, dataLen, options.Data)
+	err = az.storage.ReadInBuffer(path, options.Offset, dataLen, options.Data, options.Etag)
 	if err != nil {
-		log.Err("AzStorage::ReadInBuffer : Failed to read %s [%s]", options.Handle.Path, err.Error())
+		log.Err("AzStorage::ReadInBuffer : Failed to read %s [%s]", path, err.Error())
 		length = 0
 	}
 
@@ -556,7 +570,7 @@ func (az *AzStorage) StageData(opt internal.StageDataOptions) error {
 }
 
 func (az *AzStorage) CommitData(opt internal.CommitDataOptions) error {
-	return az.storage.CommitBlocks(opt.Name, opt.List)
+	return az.storage.CommitBlocks(opt.Name, opt.List, opt.NewETag)
 }
 
 // TODO : Below methods are pending to be implemented
@@ -665,6 +679,9 @@ func init() {
 
 	preserveACL := config.AddBoolFlag("preserve-acl", false, "Preserve ACL and Permissions set on file during updates")
 	config.BindPFlag(compName+".preserve-acl", preserveACL)
+
+	blobFilter := config.AddStringFlag("filter", "", "Filter string to match blobs")
+	config.BindPFlag(compName+".filter", blobFilter)
 
 	config.RegisterFlagCompletionFunc("container-name", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveNoFileComp

@@ -50,7 +50,6 @@ var _ XComponent = &downloadSplitter{}
 
 type splitter struct {
 	XBase
-	blockSize uint64
 	blockPool *BlockPool
 	path      string
 	fileLocks *common.LockMap
@@ -62,12 +61,11 @@ type downloadSplitter struct {
 	splitter
 }
 
-func NewDownloadSplitter(blockSize uint64, blockPool *BlockPool, path string, remote internal.Component, statsMgr *StatsManager, fileLocks *common.LockMap) (*downloadSplitter, error) {
-	log.Debug("splitter::NewDownloadSplitter : create new download splitter for %s, block size %v", path, blockSize)
+func NewDownloadSplitter(blockPool *BlockPool, path string, remote internal.Component, statsMgr *StatsManager, fileLocks *common.LockMap) (*downloadSplitter, error) {
+	log.Debug("splitter::NewDownloadSplitter : create new download splitter for %s, block size %v", path, blockPool.GetBlockSize())
 
 	d := &downloadSplitter{
 		splitter: splitter{
-			blockSize: blockSize,
 			blockPool: blockPool,
 			path:      path,
 			fileLocks: fileLocks,
@@ -103,7 +101,7 @@ func (d *downloadSplitter) Stop() {
 
 // download data in chunks and then write to the local file
 func (d *downloadSplitter) Process(item *WorkItem) (int, error) {
-	log.Debug("downloadSplitter::Process : Splitting data for %s", item.Path)
+	log.Debug("downloadSplitter::Process : Splitting data for %s, mode %v", item.Path, item.Mode)
 	var err error
 	localPath := filepath.Join(d.path, item.Path)
 
@@ -125,18 +123,39 @@ func (d *downloadSplitter) Process(item *WorkItem) (int, error) {
 		return 0, nil
 	}
 
-	numBlocks := ((item.DataLen - 1) / d.blockSize) + 1
-	offset := int64(0)
-
 	// TODO:: xload : should we delete the file if it already exists
-	// TODO:: xload : what should be the flags and mode and should we allocate the full size to the file
-	item.FileHandle, err = os.OpenFile(localPath, os.O_WRONLY|os.O_CREATE, 0644)
+	// TODO:: xload : what should be the flags
+	// TODO:: xload : verify if the mode is set correctly
+	// TODO:: xload : handle case if blob is a symlink
+	item.FileHandle, err = os.OpenFile(localPath, os.O_WRONLY|os.O_CREATE, item.Mode)
 	if err != nil {
-		// create file
-		return -1, fmt.Errorf("failed to open file %s [%v]", item.Path, err)
+		log.Err("downloadSplitter::Process : Failed to create file %s [%s]", item.Path, err.Error())
+		return -1, fmt.Errorf("failed to open file %s [%s]", item.Path, err.Error())
 	}
 
 	defer item.FileHandle.Close()
+
+	if item.DataLen == 0 {
+		log.Debug("downloadSplitter::Process : 0 byte file %s", item.Path)
+		return 0, nil
+	}
+
+	// truncate the file to its size
+	err = item.FileHandle.Truncate(int64(item.DataLen))
+	if err != nil {
+		log.Err("downloadSplitter::Process : Failed to truncate file %s, so deleting it from local path [%s]", item.Path, err.Error())
+
+		// delete the file which failed to truncate from the local path
+		err1 := os.Remove(localPath)
+		if err1 != nil {
+			log.Err("downloadSplitter::Process : Failed to delete file %s [%s]", item.Path, err1.Error())
+		}
+
+		return -1, fmt.Errorf("failed to truncate file %s [%s]", item.Path, err.Error())
+	}
+
+	numBlocks := ((item.DataLen - 1) / d.blockPool.GetBlockSize()) + 1
+	offset := int64(0)
 
 	wg := sync.WaitGroup{}
 	wg.Add(1)
@@ -153,7 +172,7 @@ func (d *downloadSplitter) Process(item *WorkItem) (int, error) {
 				log.Err("downloadSplitter::Process : Failed to download data for file %s", item.Path)
 				operationSuccess = false
 			} else {
-				_, err := item.FileHandle.WriteAt(respSplitItem.Block.Data, respSplitItem.Block.Offset)
+				_, err := item.FileHandle.WriteAt(respSplitItem.Block.Data[:respSplitItem.DataLen], respSplitItem.Block.Offset)
 				if err != nil {
 					log.Err("downloadSplitter::Process : Failed to write data to file %s", item.Path)
 					operationSuccess = false
@@ -174,7 +193,7 @@ func (d *downloadSplitter) Process(item *WorkItem) (int, error) {
 		} else {
 			block.Index = i
 			block.Offset = offset
-			block.Length = int64(d.blockSize)
+			block.Length = int64(d.blockPool.GetBlockSize())
 
 			splitItem := &WorkItem{
 				CompName:        d.GetNext().GetName(),
@@ -187,17 +206,19 @@ func (d *downloadSplitter) Process(item *WorkItem) (int, error) {
 				Priority:        item.Priority,
 			}
 			// log.Debug("downloadSplitter::Process : Scheduling download for %s offset %v", item.Path, offset)
-			d.GetNext().GetThreadPool().Schedule(splitItem)
+			d.GetNext().Schedule(splitItem)
 		}
 
-		offset += int64(d.blockSize)
+		offset += int64(d.blockPool.GetBlockSize())
 	}
 
 	wg.Wait()
-	err = item.FileHandle.Truncate(int64(item.DataLen))
+
+	// update the last modified time
+	// TODO:: xload : verify if the lmt is updated correctly
+	err = os.Chtimes(localPath, item.Atime, item.Mtime)
 	if err != nil {
-		log.Err("downloadSplitter::Process : Failed to truncate file %s [%s]", item.Path, err.Error())
-		operationSuccess = false
+		log.Err("downloadSplitter::Process : Failed to change times of file %s [%s]", item.Path, err.Error())
 	}
 
 	// send the download status to stats manager
@@ -209,13 +230,12 @@ func (d *downloadSplitter) Process(item *WorkItem) (int, error) {
 	})
 
 	if !operationSuccess {
-		log.Err("downloadSplitter::Process : Failed to download data for file %s", item.Path)
-		log.Debug("downloadSplitter::Process : deleting file %s", item.Path)
+		log.Err("downloadSplitter::Process : Failed to download data for file %s, so deleting it from local path", item.Path)
 
 		// delete the file which failed to download from the local path
-		err = os.Remove(filepath.Join(d.path, item.Path))
+		err = os.Remove(localPath)
 		if err != nil {
-			log.Err("downloadSplitter::Process : Unable to delete file %s [%s]", item.Path, err.Error())
+			log.Err("downloadSplitter::Process : Failed to delete file %s [%s]", item.Path, err.Error())
 		}
 
 		return -1, fmt.Errorf("failed to download data for file %s", item.Path)

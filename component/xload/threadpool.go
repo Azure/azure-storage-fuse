@@ -45,7 +45,7 @@ type ThreadPool struct {
 	worker uint32
 
 	// Wait group to wait for all workers to finish
-	wg sync.WaitGroup
+	waitGroup sync.WaitGroup
 
 	// Channel to hold pending requests
 	priorityItems chan *WorkItem
@@ -74,52 +74,52 @@ func NewThreadPool(count uint32, callback func(*WorkItem) (int, error)) *ThreadP
 }
 
 // Start all the workers and wait till they start receiving requests
-func (t *ThreadPool) Start() {
+func (threadPool *ThreadPool) Start() {
 	// 10% threads will listne only on high priority channel
-	highPriority := (t.worker * 10) / 100
+	highPriority := (threadPool.worker * 10) / 100
 
-	for i := uint32(0); i < t.worker; i++ {
-		t.wg.Add(1)
-		go t.Do(i < highPriority)
+	for i := uint32(0); i < threadPool.worker; i++ {
+		threadPool.waitGroup.Add(1)
+		go threadPool.Do(i < highPriority)
 	}
 }
 
 // Stop all the workers threads
-func (t *ThreadPool) Stop() {
-	for i := uint32(0); i < t.worker; i++ {
-		t.done <- 1
+func (threadPool *ThreadPool) Stop() {
+	for i := uint32(0); i < threadPool.worker; i++ {
+		threadPool.done <- 1
 	}
 
-	t.wg.Wait()
+	threadPool.waitGroup.Wait()
 
-	close(t.done)
-	close(t.priorityItems)
-	close(t.workItems)
+	close(threadPool.done)
+	close(threadPool.priorityItems)
+	close(threadPool.workItems)
 }
 
 // Schedule the download of a block
-func (t *ThreadPool) Schedule(item *WorkItem) {
+func (threadPool *ThreadPool) Schedule(item *WorkItem) {
 	// item.Priority specifies the priority of this task.
 	// true means high priority and false means low priority
 	if item.Priority {
-		t.priorityItems <- item
+		threadPool.priorityItems <- item
 	} else {
-		t.workItems <- item
+		threadPool.workItems <- item
 	}
 }
 
 // Do is the core task to be executed by each worker thread
-func (t *ThreadPool) Do(priority bool) {
-	defer t.wg.Done()
+func (threadPool *ThreadPool) Do(priority bool) {
+	defer threadPool.waitGroup.Done()
 
 	if priority {
 		// This thread will work only on high priority channel
 		for {
 			select {
-			case item := <-t.priorityItems:
-				t.process(item)
+			case item := <-threadPool.priorityItems:
+				threadPool.process(item)
 
-			case <-t.done:
+			case <-threadPool.done:
 				return
 			}
 		}
@@ -127,29 +127,30 @@ func (t *ThreadPool) Do(priority bool) {
 		// This thread will work only on both high and low priority channel
 		for {
 			select {
-			case item := <-t.priorityItems:
-				t.process(item)
+			case item := <-threadPool.priorityItems:
+				threadPool.process(item)
 
-			case item := <-t.workItems:
-				t.process(item)
+			case item := <-threadPool.workItems:
+				threadPool.process(item)
 
-			case <-t.done:
+			case <-threadPool.done:
 				return
 			}
 		}
 	}
 }
 
-func (t *ThreadPool) process(item *WorkItem) {
-	_, err := t.callback(item)
+func (threadPool *ThreadPool) process(item *WorkItem) {
+	dataLength, err := threadPool.callback(item)
 	if err != nil {
 		// TODO:: xload : add retry logic
-		log.Err("ThreadPool::Do : Error in %s processing workitem %s : %v", item.CompName, item.Path, err)
+		log.Err("ThreadPool::Do : Error in %s processing workitem %s : %v", item.CompName, item.Path, err.Error())
 	}
 
 	// add this error in response channel
 	if cap(item.ResponseChannel) > 0 {
 		item.Err = err
+		item.DataLen = (uint64)(dataLength)
 		item.ResponseChannel <- item
 	}
 }
