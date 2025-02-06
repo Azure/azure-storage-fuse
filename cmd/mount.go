@@ -128,7 +128,7 @@ func (opt *mountOptions) validate(skipNonEmptyMount bool) error {
 			var cleanupOnStart bool
 			_ = config.UnmarshalKey("file_cache.cleanup-on-start", &cleanupOnStart)
 
-			if tempCachePath != "" && !cleanupOnStart {
+			if tempCachePath != "" && cleanupOnStart {
 				if err = common.TempCacheCleanup(tempCachePath); err != nil {
 					return fmt.Errorf("failed to cleanup file cache [%s]", err.Error())
 				}
