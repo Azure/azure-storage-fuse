@@ -50,15 +50,16 @@ import (
 // Common structure for Component
 type Xload struct {
 	internal.BaseComponent
-	blockSize      uint64          // Size of each block to be cached
-	mode           Mode            // Mode of the Xload component
-	exportProgress bool            // Export the progess of xload operation to json file
-	workerCount    uint32          // Number of workers running
-	blockPool      *BlockPool      // Pool of blocks
-	path           string          // Path on local disk where Xload will operate
-	comps          []XComponent    // list of components in xload
-	statsMgr       *StatsManager   // stats manager
-	fileLocks      *common.LockMap // lock to take on a file if one thread is processing it
+	blockSize         uint64          // Size of each block to be cached
+	mode              Mode            // Mode of the Xload component
+	exportProgress    bool            // Export the progess of xload operation to json file
+	workerCount       uint32          // Number of workers running
+	blockPool         *BlockPool      // Pool of blocks
+	path              string          // Path on local disk where Xload will operate
+	defaultPermission os.FileMode     // Default permissions of files and directories in the xload path
+	comps             []XComponent    // list of components in xload
+	statsMgr          *StatsManager   // stats manager
+	fileLocks         *common.LockMap // lock to take on a file if one thread is processing it
 }
 
 // Structure defining your config parameters
@@ -118,12 +119,29 @@ func (xl *Xload) Configure(_ bool) error {
 		return fmt.Errorf("Xload: config error [invalid config attributes]")
 	}
 
-	xl.blockSize = uint64(defaultBlockSize) * MB // 16 MB as deafult block size
+	blockSize := (float64)(defaultBlockSize) // 16 MB as deafult block size
 	if config.IsSet(compName + ".block-size-mb") {
-		xl.blockSize = uint64(conf.BlockSize * float64(MB))
+		blockSize = conf.BlockSize
+	} else if config.IsSet("stream.block-size-mb") {
+		err = config.UnmarshalKey("stream.block-size-mb", &blockSize)
+		if err != nil {
+			log.Err("Xload::Configure : Failed to unmarshal block-size-mb [%s]", err.Error())
+		}
 	}
 
-	xl.path = common.ExpandPath(strings.TrimSpace(conf.Path))
+	xl.blockSize = uint64(blockSize * float64(MB))
+
+	localPath := strings.TrimSpace(conf.Path)
+	if localPath == "" {
+		if config.IsSet("file_cache.path") {
+			err = config.UnmarshalKey("file_cache.path", &localPath)
+			if err != nil {
+				log.Err("Xload::Configure : Failed to unmarshal tmp-path [%s]", err.Error())
+			}
+		}
+	}
+
+	xl.path = common.ExpandPath(localPath)
 	if xl.path == "" {
 		// TODO:: xload : should we use current working directory in this case
 		log.Err("Xload::Configure : config error [path not given in xload]")
@@ -158,20 +176,36 @@ func (xl *Xload) Configure(_ bool) error {
 		}
 	}
 
-	var mode Mode
-	err = mode.Parse(conf.Mode)
-	if err != nil {
-		log.Err("Xload::Configure : Failed to parse mode %s [%s]", conf.Mode, err.Error())
-		return fmt.Errorf("invalid mode in xload : %s", conf.Mode)
-	}
+	var mode Mode = EMode.PRELOAD() // using preload as the default mode
+	if len(conf.Mode) > 0 {
+		err = mode.Parse(conf.Mode)
+		if err != nil {
+			log.Err("Xload::Configure : Failed to parse mode %s [%s]", conf.Mode, err.Error())
+			return fmt.Errorf("invalid mode in xload : %s", conf.Mode)
+		}
 
-	if mode == EMode.INVALID_MODE() {
-		log.Err("Xload::Configure : Invalid mode : %s", conf.Mode)
-		return fmt.Errorf("invalid mode in xload : %s", conf.Mode)
+		if mode == EMode.INVALID_MODE() {
+			log.Err("Xload::Configure : Invalid mode : %s", conf.Mode)
+			return fmt.Errorf("invalid mode in xload : %s", conf.Mode)
+		}
 	}
 
 	xl.mode = mode
 	xl.exportProgress = conf.ExportProgress
+
+	allowOther := false
+	err = config.UnmarshalKey("allow-other", &allowOther)
+	if err != nil {
+		log.Err("Xload::Configure : config error [unable to obtain allow-other]")
+	}
+
+	if allowOther {
+		xl.defaultPermission = common.DefaultAllowOtherPermissionBits
+	} else {
+		xl.defaultPermission = common.DefaultFilePermissionBits
+	}
+
+	log.Debug("Xload::Configure : block size %v, mode %v, path %v, default permission %v", xl.blockSize, xl.mode.String(), xl.path, xl.defaultPermission)
 
 	return nil
 }
@@ -198,12 +232,9 @@ func (xl *Xload) Start(ctx context.Context) error {
 
 	// Xload : start code goes here
 	switch xl.mode {
-	case EMode.CHECKPOINT():
-		// Start checkpoint thread here
-		return fmt.Errorf("checkpoint is currently unsupported")
-	case EMode.DOWNLOAD():
+	case EMode.PRELOAD():
 		// Start downloader here
-		err = xl.startDownloader()
+		err = xl.createDownloader()
 		if err != nil {
 			log.Err("Xload::Start : Failed to start downloader [%s]", err.Error())
 			return err
@@ -235,24 +266,25 @@ func (xl *Xload) Stop() error {
 	err := common.TempCacheCleanup(xl.path)
 	if err != nil {
 		log.Err("unable to clean xload local path [%s]", err.Error())
+		return err
 	}
 
 	return nil
 }
 
-func (xl *Xload) startDownloader() error {
-	log.Trace("Xload::startDownloader : Starting downloader")
+func (xl *Xload) createDownloader() error {
+	log.Trace("Xload::createDownloader : Starting downloader")
 
 	// Create remote lister pool to list remote files
-	rl, err := NewRemoteLister(xl.path, xl.NextComponent(), xl.statsMgr)
+	rl, err := NewRemoteLister(xl.path, xl.defaultPermission, xl.NextComponent(), xl.statsMgr)
 	if err != nil {
-		log.Err("Xload::startDownloader : Unable to create remote lister [%s]", err.Error())
+		log.Err("Xload::createDownloader : Unable to create remote lister [%s]", err.Error())
 		return err
 	}
 
-	ds, err := NewDownloadSplitter(xl.blockSize, xl.blockPool, xl.path, xl.NextComponent(), xl.statsMgr, xl.fileLocks)
+	ds, err := NewDownloadSplitter(xl.blockPool, xl.path, xl.NextComponent(), xl.statsMgr, xl.fileLocks)
 	if err != nil {
-		log.Err("Xload::startDownloader : Unable to create download splitter [%s]", err.Error())
+		log.Err("Xload::createDownloader : Unable to create download splitter [%s]", err.Error())
 		return err
 	}
 

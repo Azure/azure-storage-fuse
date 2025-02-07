@@ -61,11 +61,7 @@ func AllocateBlock(size uint64) (*Block, error) {
 	}
 
 	block := &Block{
-		Index:  0,
-		Data:   addr,
-		Offset: 0,
-		Length: 0,
-		Id:     "",
+		Data: addr,
 	}
 
 	return block, nil

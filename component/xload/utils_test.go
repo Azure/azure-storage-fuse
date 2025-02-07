@@ -56,15 +56,13 @@ func (suite *utilsTestSuite) TestModeParse() {
 		val  string
 		mode Mode
 	}{
-		{val: "download", mode: EMode.DOWNLOAD()},
+		{val: "download", mode: EMode.PRELOAD()},
 		{val: "upload", mode: EMode.UPLOAD()},
 		{val: "sync", mode: EMode.SYNC()},
-		{val: "checkpoint", mode: EMode.CHECKPOINT()},
 		{val: "invalid_mode", mode: EMode.INVALID_MODE()},
-		{val: "DOWNLOAD", mode: EMode.DOWNLOAD()},
+		{val: "DOWNLOAD", mode: EMode.PRELOAD()},
 		{val: "UpLoad", mode: EMode.UPLOAD()},
 		{val: "sYNC", mode: EMode.SYNC()},
-		{val: "checkPOINT", mode: EMode.CHECKPOINT()},
 		{val: "invalid", mode: EMode.INVALID_MODE()},
 		{val: "RANDOM", mode: EMode.INVALID_MODE()},
 	}
@@ -87,10 +85,9 @@ func (suite *utilsTestSuite) TestModeString() {
 		mode Mode
 		val  string
 	}{
-		{mode: EMode.DOWNLOAD(), val: "DOWNLOAD"},
+		{mode: EMode.PRELOAD(), val: "PRELOAD"},
 		{mode: EMode.UPLOAD(), val: "UPLOAD"},
 		{mode: EMode.SYNC(), val: "SYNC"},
-		{mode: EMode.CHECKPOINT(), val: "CHECKPOINT"},
 		{mode: EMode.INVALID_MODE(), val: "INVALID_MODE"},
 	}
 

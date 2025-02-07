@@ -55,7 +55,7 @@ type StatsManager struct {
 	bytesUploaded   uint64          // total number of bytes uploaded
 	startTime       time.Time       // variable indicating the time at which the stats manager started
 	fileHandle      *os.File        // file where stats will be dumped
-	wg              sync.WaitGroup  // wait group to wait for stats manager thread to finish
+	waitGroup       sync.WaitGroup  // wait group to wait for stats manager thread to finish
 	items           chan *StatsItem // channel to hold the stats items
 	done            chan bool       // channel to indicate if the stats manager has completed or not
 }
@@ -87,16 +87,16 @@ const (
 	JSON_FILE_PATH = "~/.blobfuse2/xload_stats_{PID}.json" // json file path where the stats manager will dump the stats
 )
 
-func NewStatsManager(count uint32, export bool) (*StatsManager, error) {
+func NewStatsManager(count uint32, isExportEnabled bool) (*StatsManager, error) {
 	var fh *os.File
 	var err error
-	if export {
+	if isExportEnabled {
 		pid := fmt.Sprintf("%v", os.Getpid())
 		path := common.ExpandPath(strings.ReplaceAll(JSON_FILE_PATH, "{PID}", pid))
-		log.Debug("statsManager::newStatsmanager : creating json file %v", path)
+		log.Debug("statsManager::NewStatsManager : creating json file %v", path)
 		fh, err = os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
 		if err != nil {
-			log.Err("statsManager::newStatsmanager : failed to create json file %v [%v]", path, err.Error())
+			log.Err("statsManager::NewStatsManager : failed to create json file %v [%v]", path, err.Error())
 			return nil, err
 		}
 	}
@@ -109,7 +109,7 @@ func NewStatsManager(count uint32, export bool) (*StatsManager, error) {
 }
 
 func (sm *StatsManager) Start() {
-	sm.wg.Add(1)
+	sm.waitGroup.Add(1)
 	sm.startTime = time.Now().UTC()
 	log.Debug("statsManager::start : start stats manager at time %v", sm.startTime.Format(time.RFC1123))
 	_ = sm.writeToJSON([]byte("[\n"), false)
@@ -125,7 +125,7 @@ func (sm *StatsManager) Stop() {
 	sm.done <- true // close the stats exporter thread
 	close(sm.done)  // TODO::xload : check if closing the done channel here will lead to closing the stats exporter thread
 	close(sm.items)
-	sm.wg.Wait()
+	sm.waitGroup.Wait()
 
 	if sm.fileHandle != nil {
 		sm.fileHandle.Close()
@@ -136,8 +136,16 @@ func (sm *StatsManager) AddStats(item *StatsItem) {
 	sm.items <- item
 }
 
+func (sm *StatsManager) updateSuccessFailedCtr(isSuccess bool) {
+	if isSuccess {
+		sm.success += 1
+	} else {
+		sm.failed += 1
+	}
+}
+
 func (sm *StatsManager) statsProcessor() {
-	defer sm.wg.Done()
+	defer sm.waitGroup.Done()
 
 	for item := range sm.items {
 		switch item.Component {
@@ -146,20 +154,12 @@ func (sm *StatsManager) statsProcessor() {
 			// log.Debug("statsManager::statsProcessor : Directory listed %v, total number of files listed so far = %v", item.name, sm.totalFiles)
 			if item.Dir {
 				sm.dirs += 1
-				if item.Success {
-					sm.success += 1
-				} else {
-					sm.failed += 1
-				}
+				sm.updateSuccessFailedCtr(item.Success)
 			}
 
 		case SPLITTER:
 			// log.Debug("statsManager::statsProcessor : splitter: Name %v, success %v, download %v", item.name, item.success, item.download)
-			if item.Success {
-				sm.success += 1
-			} else {
-				sm.failed += 1
-			}
+			sm.updateSuccessFailedCtr(item.Success)
 
 		case DATA_MANAGER:
 			// log.Debug("statsManager::statsProcessor : data manager: Name %v, success %v, download %v, bytes transferred %v", item.name, item.success, item.download, item.bytesTransferred)
@@ -215,18 +215,20 @@ func (sm *StatsManager) calculateBandwidth() {
 		currTime.Format(time.RFC1123), percentCompleted, sm.success, sm.failed,
 		filesPending, sm.totalFiles, bytesTransferred, bandwidthMbps)
 
-	err := sm.marshalStatsData(&statsJSONData{
-		Timestamp:        currTime.Format(time.RFC1123),
-		PercentCompleted: RoundFloat(percentCompleted, 2),
-		Total:            sm.totalFiles,
-		Done:             sm.success,
-		Failed:           sm.failed,
-		Pending:          filesPending,
-		BytesTransferred: bytesTransferred,
-		BandwidthMbps:    RoundFloat(bandwidthMbps, 2),
-	}, true)
-	if err != nil {
-		log.Err("statsManager::calculateBandwidth : failed to write to json file [%v]", err.Error())
+	if sm.fileHandle != nil {
+		err := sm.marshalStatsData(&statsJSONData{
+			Timestamp:        currTime.Format(time.RFC1123),
+			PercentCompleted: RoundFloat(percentCompleted, 2),
+			Total:            sm.totalFiles,
+			Done:             sm.success,
+			Failed:           sm.failed,
+			Pending:          filesPending,
+			BytesTransferred: bytesTransferred,
+			BandwidthMbps:    RoundFloat(bandwidthMbps, 2),
+		}, true)
+		if err != nil {
+			log.Err("statsManager::calculateBandwidth : failed to write to json file [%v]", err.Error())
+		}
 	}
 
 	// TODO:: xload : determine more effective way to decide if the listing has completed and the stats exporter can be terminated
