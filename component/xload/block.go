@@ -31,89 +31,66 @@
    SOFTWARE
 */
 
-package internal
+package xload
 
 import (
-	"github.com/Azure/azure-storage-fuse/v2/component/xload/common"
-	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"fmt"
+	"syscall"
 )
 
-type XComponent interface {
-	Init()
-	Start()
-	Stop()
-	Process(*common.WorkItem) (int, error)
-	GetNext() XComponent
-	SetNext(XComponent)
-	GetThreadPool() *common.ThreadPool
-	SetThreadPool(*common.ThreadPool)
-	GetRemote() internal.Component
-	SetRemote(internal.Component)
-	GetName() string
-	SetName(string)
-	GetStatsManager() *StatsManager
-	SetStatsManager(*StatsManager)
+// Block is a memory mapped buffer with its state to hold data
+type Block struct {
+	Index  int    // Index of the block in the pool
+	Offset int64  // Start offset of the data this block holds
+	Length int64  // Length of data that this block holds
+	Id     string // ID to represent this block in the blob
+	Data   []byte // Data this block holds
 }
 
-type XBase struct {
-	name     string
-	pool     *common.ThreadPool
-	remote   internal.Component
-	next     XComponent
-	statsMgr *StatsManager
+// AllocateBlock creates a new memory mapped buffer for the given size
+func AllocateBlock(size uint64) (*Block, error) {
+	if size == 0 {
+		return nil, fmt.Errorf("invalid size")
+	}
+
+	prot, flags := syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_ANON|syscall.MAP_PRIVATE
+	addr, err := syscall.Mmap(-1, 0, int(size), prot, flags)
+
+	if err != nil {
+		return nil, fmt.Errorf("mmap error: %v", err)
+	}
+
+	block := &Block{
+		Index:  0,
+		Data:   addr,
+		Offset: 0,
+		Length: 0,
+		Id:     "",
+	}
+
+	return block, nil
 }
 
-var _ XComponent = &XBase{}
+// Delete cleans up the memory mapped buffer
+func (b *Block) Delete() error {
+	if b.Data == nil {
+		return fmt.Errorf("invalid buffer")
+	}
 
-func (xb *XBase) Init() {
+	err := syscall.Munmap(b.Data)
+	b.Data = nil
+	if err != nil {
+		// if we get here, there is likely memory corruption.
+		return fmt.Errorf("munmap error: %v", err)
+	}
+
+	return nil
 }
 
-func (xb *XBase) Start() {
-}
-
-func (xb *XBase) Stop() {
-}
-
-func (xb *XBase) Process(item *common.WorkItem) (int, error) {
-	return 0, nil
-}
-
-func (xb *XBase) GetNext() XComponent {
-	return xb.next
-}
-
-func (xb *XBase) SetNext(s XComponent) {
-	xb.next = s
-}
-
-func (xb *XBase) GetThreadPool() *common.ThreadPool {
-	return xb.pool
-}
-
-func (xb *XBase) SetThreadPool(pool *common.ThreadPool) {
-	xb.pool = pool
-}
-
-func (xb *XBase) GetRemote() internal.Component {
-	return xb.remote
-}
-
-func (xb *XBase) SetRemote(comp internal.Component) {
-	xb.remote = comp
-}
-
-func (xb *XBase) GetName() string {
-	return xb.name
-}
-
-func (xb *XBase) SetName(name string) {
-	xb.name = name
-}
-
-func (xb *XBase) GetStatsManager() *StatsManager {
-	return xb.statsMgr
-}
-
-func (xb *XBase) SetStatsManager(sm *StatsManager) {
-	xb.statsMgr = sm
+// Clear the old data of this block
+func (b *Block) ReUse() {
+	b.Id = ""
+	b.Index = 0
+	b.Offset = 0
+	b.Length = 0
 }

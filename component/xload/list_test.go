@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package comp
+package xload
 
 import (
 	"fmt"
@@ -46,8 +46,6 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/component/loopback"
-	xcommon "github.com/Azure/azure-storage-fuse/v2/component/xload/common"
-	xinternal "github.com/Azure/azure-storage-fuse/v2/component/xload/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"golang.org/x/exp/rand"
 
@@ -126,13 +124,13 @@ func (suite *listTestSuite) createDirsAndFiles(path string) {
 }
 
 type testComponent struct {
-	xinternal.XBase
+	XBase
 	ctr atomic.Int64
 }
 
 func getTestcomponent() *testComponent {
 	tc := &testComponent{}
-	tc.SetThreadPool(xcommon.NewThreadPool(1, tc.Process))
+	tc.SetThreadPool(NewThreadPool(1, tc.Process))
 	tc.GetThreadPool().Start()
 	return tc
 }
@@ -141,14 +139,14 @@ func (tcmp *testComponent) Stop() {
 	tcmp.GetThreadPool().Stop()
 }
 
-func (tcmp *testComponent) Process(item *xcommon.WorkItem) (int, error) {
+func (tcmp *testComponent) Process(item *WorkItem) (int, error) {
 	tcmp.ctr.Add(1)
 	return int(tcmp.ctr.Load()), nil
 }
 
 type testLister struct {
 	path  string
-	stMgr *xinternal.StatsManager
+	stMgr *StatsManager
 }
 
 func setupTestLister() (*testLister, error) {
@@ -159,7 +157,7 @@ func setupTestLister() (*testLister, error) {
 		return nil, err
 	}
 
-	tl.stMgr, err = xinternal.NewStatsManager(1, false)
+	tl.stMgr, err = NewStatsManager(1, false)
 	if err != nil {
 		return nil, err
 	}
@@ -191,7 +189,7 @@ func (suite *listTestSuite) TestNewRemoteLister() {
 	suite.assert.Nil(rl)
 	suite.assert.Contains(err.Error(), "invalid parameters sent to create remote lister")
 
-	statsMgr, err := xinternal.NewStatsManager(1, false)
+	statsMgr, err := NewStatsManager(1, false)
 	suite.assert.Nil(err)
 	suite.assert.NotNil(statsMgr)
 

@@ -1,4 +1,37 @@
-package comp
+/*
+    _____           _____   _____   ____          ______  _____  ------
+   |     |  |      |     | |     | |     |     | |       |            |
+   |     |  |      |     | |     | |     |     | |       |            |
+   | --- |  |      |     | |-----| |---- |     | |-----| |-----  ------
+   |     |  |      |     | |     | |     |     |       | |       |
+   | ____|  |_____ | ____| | ____| |     |_____|  _____| |_____  |_____
+
+
+   Licensed under the MIT License <http://opensource.org/licenses/MIT>.
+
+   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
+   Author : <blobfusedev@microsoft.com>
+
+   Permission is hereby granted, free of charge, to any person obtaining a copy
+   of this software and associated documentation files (the "Software"), to deal
+   in the Software without restriction, including without limitation the rights
+   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+   copies of the Software, and to permit persons to whom the Software is
+   furnished to do so, subject to the following conditions:
+
+   The above copyright notice and this permission notice shall be included in all
+   copies or substantial portions of the Software.
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+   SOFTWARE
+*/
+
+package xload
 
 import (
 	"crypto/md5"
@@ -14,8 +47,6 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/component/loopback"
-	xcommon "github.com/Azure/azure-storage-fuse/v2/component/xload/common"
-	xinternal "github.com/Azure/azure-storage-fuse/v2/component/xload/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -89,9 +120,9 @@ func (suite *splitterTestSuite) createFiles(path string) {
 type testSplitter struct {
 	path      string
 	blockSize uint64
-	blockPool *xcommon.BlockPool
+	blockPool *BlockPool
 	locks     *common.LockMap
-	stMgr     *xinternal.StatsManager
+	stMgr     *StatsManager
 }
 
 func setupTestSplitter() (*testSplitter, error) {
@@ -103,10 +134,10 @@ func setupTestSplitter() (*testSplitter, error) {
 	}
 
 	ts.blockSize = 10
-	ts.blockPool = xcommon.NewBlockPool(ts.blockSize, 10)
+	ts.blockPool = NewBlockPool(ts.blockSize, 10)
 	ts.locks = common.NewLockMap()
 
-	ts.stMgr, err = xinternal.NewStatsManager(10, false)
+	ts.stMgr, err = NewStatsManager(10, false)
 	if err != nil {
 		return nil, err
 	}
@@ -129,11 +160,11 @@ func (suite *splitterTestSuite) TestNewDownloadSplitter() {
 	suite.assert.Nil(ds)
 	suite.assert.Contains(err.Error(), "invalid parameters sent to create download splitter")
 
-	statsMgr, err := xinternal.NewStatsManager(1, false)
+	statsMgr, err := NewStatsManager(1, false)
 	suite.assert.Nil(err)
 	suite.assert.NotNil(statsMgr)
 
-	ds, err = NewDownloadSplitter(1, xcommon.NewBlockPool(1, 1), "/home/user/random_path", remote, statsMgr, common.NewLockMap())
+	ds, err = NewDownloadSplitter(1, NewBlockPool(1, 1), "/home/user/random_path", remote, statsMgr, common.NewLockMap())
 	suite.assert.Nil(err)
 	suite.assert.NotNil(ds)
 }

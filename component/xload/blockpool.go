@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package common
+package xload
 
 import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"

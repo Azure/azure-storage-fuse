@@ -31,100 +31,109 @@
    SOFTWARE
 */
 
-package common
+package xload
 
 import (
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
 
-type blockTestSuite struct {
+type threadPoolTestSuite struct {
 	suite.Suite
 	assert *assert.Assertions
 }
 
-func (suite *blockTestSuite) TestBlockAllocate() {
+func (suite *threadPoolTestSuite) TestThreadPoolCreate() {
 	suite.assert = assert.New(suite.T())
 
-	b, err := AllocateBlock(0)
-	suite.assert.Nil(b)
-	suite.assert.NotNil(err)
-	suite.assert.Contains(err.Error(), "invalid size")
+	tp := NewThreadPool(0, nil)
+	suite.assert.Nil(tp)
 
-	b, err = AllocateBlock(10)
-	suite.assert.NotNil(b)
-	suite.assert.Nil(err)
-	suite.assert.NotNil(b.Data)
+	tp = NewThreadPool(1, nil)
+	suite.assert.Nil(tp)
 
-	err = b.Delete()
-	suite.assert.Nil(err)
+	tp = NewThreadPool(1, func(*WorkItem) (int, error) {
+		return 0, nil
+	})
+	suite.assert.NotNil(tp)
+	suite.assert.Equal(tp.worker, uint32(1))
 }
 
-func (suite *blockTestSuite) TestBlockAllocateBig() {
+func (suite *threadPoolTestSuite) TestThreadPoolStartStop() {
 	suite.assert = assert.New(suite.T())
 
-	b, err := AllocateBlock(100 * 1024 * 1024)
-	suite.assert.NotNil(b)
-	suite.assert.Nil(err)
-	suite.assert.NotNil(b.Data)
-	suite.assert.Equal(cap(b.Data), 100*1024*1024)
+	r := func(i *WorkItem) (int, error) {
+		return 0, nil
+	}
 
-	err = b.Delete()
-	suite.assert.Nil(err)
+	tp := NewThreadPool(2, r)
+	suite.assert.NotNil(tp)
+	suite.assert.Equal(tp.worker, uint32(2))
+
+	tp.Start()
+	suite.assert.NotNil(tp.priorityItems)
+	suite.assert.NotNil(tp.workItems)
+
+	tp.Stop()
 }
 
-func (suite *blockTestSuite) TestBlockAllocateHuge() {
+func (suite *threadPoolTestSuite) TestThreadPoolSchedule() {
 	suite.assert = assert.New(suite.T())
 
-	b, err := AllocateBlock(50 * 1024 * 1024 * 1024)
-	suite.assert.Nil(b)
-	suite.assert.NotNil(err)
-	suite.assert.Contains(err.Error(), "mmap error")
+	r := func(i *WorkItem) (int, error) {
+		return 0, nil
+	}
+
+	tp := NewThreadPool(2, r)
+	suite.assert.NotNil(tp)
+	suite.assert.Equal(tp.worker, uint32(2))
+
+	tp.Start()
+	suite.assert.NotNil(tp.priorityItems)
+	suite.assert.NotNil(tp.workItems)
+
+	tp.Schedule(&WorkItem{Priority: true})
+	tp.Schedule(&WorkItem{})
+
+	time.Sleep(1 * time.Second)
+	tp.Stop()
 }
 
-func (suite *blockTestSuite) TestBlockFreeNilData() {
+func (suite *threadPoolTestSuite) TestPrioritySchedule() {
 	suite.assert = assert.New(suite.T())
 
-	b, err := AllocateBlock(1)
-	suite.assert.NotNil(b)
-	suite.assert.Nil(err)
-	b.Data = nil
+	callbackCnt := int32(0)
+	r := func(i *WorkItem) (int, error) {
+		atomic.AddInt32(&callbackCnt, 1)
+		return 0, nil
+	}
 
-	err = b.Delete()
-	suite.assert.NotNil(err)
-	suite.assert.Contains(err.Error(), "invalid buffer")
+	tp := NewThreadPool(10, r)
+	suite.assert.NotNil(tp)
+	suite.assert.Equal(tp.worker, uint32(10))
+
+	tp.Start()
+	suite.assert.NotNil(tp.priorityItems)
+	suite.assert.NotNil(tp.workItems)
+
+	for i := 0; i < 100; i++ {
+		if i < 20 {
+			tp.Schedule(&WorkItem{Priority: true})
+		} else {
+			tp.Schedule(&WorkItem{})
+		}
+
+	}
+
+	time.Sleep(1 * time.Second)
+	suite.assert.Equal(callbackCnt, int32(100))
+	tp.Stop()
 }
 
-func (suite *blockTestSuite) TestBlockFreeInvalidData() {
-	suite.assert = assert.New(suite.T())
-
-	b, err := AllocateBlock(1)
-	suite.assert.NotNil(b)
-	suite.assert.Nil(err)
-	b.Data = make([]byte, 1)
-
-	err = b.Delete()
-	suite.assert.NotNil(err)
-	suite.assert.Contains(err.Error(), "invalid argument")
-}
-
-func (suite *blockTestSuite) TestBlockResuse() {
-	suite.assert = assert.New(suite.T())
-
-	b, err := AllocateBlock(1)
-	suite.assert.NotNil(b)
-	suite.assert.Nil(err)
-	b.Index = 1
-
-	b.ReUse()
-	suite.assert.Equal(b.Index, 0)
-
-	err = b.Delete()
-	suite.assert.Nil(err)
-}
-
-func TestBlockSuite(t *testing.T) {
-	suite.Run(t, new(blockTestSuite))
+func TestThreadPoolSuite(t *testing.T) {
+	suite.Run(t, new(threadPoolTestSuite))
 }
