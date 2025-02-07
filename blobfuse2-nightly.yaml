@@ -113,7 +113,6 @@ stages:
           steps:
             - script: |
                 sudo apt-get update --fix-missing
-                sudo apt update
                 sudo apt-get install cmake gcc $(fuselib) git parallel -y
                 if [ $(tags) == "fuse2" ]; then
                   sudo apt-get install fuse -y
@@ -243,7 +242,6 @@ stages:
           steps:
             - script: |
                 sudo apt-get update --fix-missing
-                sudo apt update
                 sudo apt-get install cmake gcc $(fuselib) git parallel -y
                 if [ $(tags) == "fuse2" ]; then
                   sudo apt-get install fuse -y
@@ -383,7 +381,6 @@ stages:
           steps:
             - script: |
                 sudo apt-get update --fix-missing
-                sudo apt update
                 sudo apt-get install cmake gcc $(fuselib) git -y
                 if [ $(tags) == "fuse2" ]; then
                   sudo apt-get install fuse -y
@@ -506,7 +503,6 @@ stages:
           steps:
             - script: |
                 sudo apt-get update --fix-missing
-                sudo apt update
                 sudo apt-get install cmake gcc $(fuselib) git -y
                 if [ $(tags) == "fuse2" ]; then
                   sudo apt-get install fuse -y
@@ -620,7 +616,6 @@ stages:
             steps:
               - script: |
                   sudo apt-get update --fix-missing
-                  sudo apt update
                   sudo apt-get install cmake gcc libfuse3-dev git -y
                 displayName: 'Install libfuse'
               
@@ -1385,7 +1380,6 @@ stages:
               installStep:
                 script: |
                   sudo apt-get update --fix-missing
-                  sudo apt update
                   sudo apt-get install cmake gcc $(fuselib) git parallel -y
                   if [ $(tags) == "fuse2" ]; then
                     sudo apt-get install fuse -y
@@ -1462,7 +1456,6 @@ stages:
               installStep:
                 script: |
                   sudo apt-get update --fix-missing
-                  sudo apt update
                   sudo apt-get install cmake gcc $(fuselib) git parallel -y
                   if [ $(tags) == "fuse2" ]; then
                     sudo apt-get install fuse -y
@@ -1541,7 +1534,6 @@ stages:
               installStep:
                 script: |
                   sudo apt-get update --fix-missing
-                  sudo apt update
                   sudo apt-get install cmake gcc $(fuselib) git parallel -y
                   if [ $(tags) == "fuse2" ]; then
                     sudo apt-get install fuse -y
@@ -1639,7 +1631,6 @@ stages:
               installStep:
                 script: |
                   sudo apt-get update --fix-missing
-                  sudo apt update
                   sudo apt-get install cmake gcc $(fuselib) git parallel -y
                   if [ $(tags) == "fuse2" ]; then
                     sudo apt-get install fuse -y
@@ -1716,7 +1707,6 @@ stages:
               installStep:
                 script: |
                   sudo apt-get update --fix-missing
-                  sudo apt update
                   sudo apt-get install cmake gcc $(fuselib) git parallel -y
                   if [ $(tags) == "fuse2" ]; then
                     sudo apt-get install fuse -y
@@ -1793,7 +1783,6 @@ stages:
               installStep:
                 script: |
                   sudo apt-get update --fix-missing
-                  sudo apt update
                   sudo apt-get install cmake gcc $(fuselib) git parallel -y
                   if [ $(tags) == "fuse2" ]; then
                     sudo apt-get install fuse -y
