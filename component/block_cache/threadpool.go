@@ -72,12 +72,12 @@ type workItem struct {
 	ETag     string            // Etag of the file before scheduling.
 }
 
-// Reason for storing Etag in workitem struct
+// Reason for storing Etag in workitem struct:
 // here getting the value of ETag inside upload/download methods
 // from the handle is somewhat tricker.
-// firstly we need to aquire a lock to read it from the handle.
-// In these methods the handle may be locked/maynotbe locked by
-// other go routine hence acquring would cause a deadlock.
+// firstly we need to acquire a lock to read it from the handle.
+// In these methods the handle may/maynot be locked by
+// other go routine hence acquiring it again would cause a deadlock.
 // It is already locked if the call came from the readInBuffer.
 // It is may be locked if the call come from the prefetch.
 
