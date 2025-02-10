@@ -696,22 +696,22 @@ stages:
 
             variables:
               - group: NightlyBlobFuse
+              - name: MOUNT_DIR
+                value: '$(Pipeline.Workspace)/blob_mnt'
+              - name: TEMP_DIR
+                value: '$(Pipeline.Workspace)/blobfuse2_tmp'
+              - name: BLOBFUSE2_CFG
+                value: '$(Pipeline.Workspace)/blobfuse2.yaml'
+              - name: BLOBFUSE2_ADLS_CFG
+                value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
+              - name: GOPATH
+                value: '$(Pipeline.Workspace)/go'
               - name: ROOT_DIR
-                value: "/usr/pipeline/workv2"
+                value: '$(System.DefaultWorkingDirectory)' 
               - name: WORK_DIR
-                value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
+                value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
               - name: skipComponentGovernanceDetection
                 value: true
-              - name: MOUNT_DIR
-                value: "/usr/pipeline/workv2/blob_mnt"
-              - name: TEMP_DIR
-                value: "/usr/pipeline/workv2/temp"
-              - name: BLOBFUSE2_CFG
-                value: "/usr/pipeline/workv2/blobfuse2.yaml"
-              - name: BLOBFUSE2_ADLS_CFG
-                value: "/home/vsts/workv2/blobfuse2.adls.yaml"
-              - name: GOPATH
-                value: "/usr/pipeline/workv2/go"
 
             steps:
               - template: 'azure-pipeline-templates/distro-tests.yml'
@@ -765,22 +765,22 @@ stages:
 
             variables:
               - group: NightlyBlobFuse
+              - name: MOUNT_DIR
+                value: '$(Pipeline.Workspace)/blob_mnt'
+              - name: TEMP_DIR
+                value: '$(Pipeline.Workspace)/blobfuse2_tmp'
+              - name: BLOBFUSE2_CFG
+                value: '$(Pipeline.Workspace)/blobfuse2.yaml'
+              - name: BLOBFUSE2_ADLS_CFG
+                value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
+              - name: GOPATH
+                value: '$(Pipeline.Workspace)/go'
               - name: ROOT_DIR
-                value: "/usr/pipeline/workv2"
+                value: '$(System.DefaultWorkingDirectory)' 
               - name: WORK_DIR
-                value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
+                value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
               - name: skipComponentGovernanceDetection
                 value: true
-              - name: MOUNT_DIR
-                value: "/usr/pipeline/workv2/blob_mnt"
-              - name: TEMP_DIR
-                value: "/usr/pipeline/workv2/temp"
-              - name: BLOBFUSE2_CFG
-                value: "/usr/pipeline/workv2/blobfuse2.yaml"
-              - name: BLOBFUSE2_ADLS_CFG
-                value: "/home/vsts/workv2/blobfuse2.adls.yaml"
-              - name: GOPATH
-                value: "/usr/pipeline/workv2/go"
 
             steps:
               - script: |
@@ -832,22 +832,22 @@ stages:
 
             variables:
               - group: NightlyBlobFuse
+              - name: MOUNT_DIR
+                value: '$(Pipeline.Workspace)/blob_mnt'
+              - name: TEMP_DIR
+                value: '$(Pipeline.Workspace)/blobfuse2_tmp'
+              - name: BLOBFUSE2_CFG
+                value: '$(Pipeline.Workspace)/blobfuse2.yaml'
+              - name: BLOBFUSE2_ADLS_CFG
+                value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
+              - name: GOPATH
+                value: '$(Pipeline.Workspace)/go'
               - name: ROOT_DIR
-                value: "/usr/pipeline/workv2"
+                value: '$(System.DefaultWorkingDirectory)' 
               - name: WORK_DIR
-                value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
+                value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
               - name: skipComponentGovernanceDetection
                 value: true
-              - name: MOUNT_DIR
-                value: "/usr/pipeline/workv2/blob_mnt"
-              - name: TEMP_DIR
-                value: "/usr/pipeline/workv2/temp"
-              - name: BLOBFUSE2_CFG
-                value: "/usr/pipeline/workv2/blobfuse2.yaml"
-              - name: BLOBFUSE2_ADLS_CFG
-                value: "/home/vsts/workv2/blobfuse2.adls.yaml"
-              - name: GOPATH
-                value: "/usr/pipeline/workv2/go"
 
             steps:
               - template: 'azure-pipeline-templates/distro-tests.yml'
@@ -895,22 +895,22 @@ stages:
 
             variables:
               - group: NightlyBlobFuse
+              - name: MOUNT_DIR
+                value: '$(Pipeline.Workspace)/blob_mnt'
+              - name: TEMP_DIR
+                value: '$(Pipeline.Workspace)/blobfuse2_tmp'
+              - name: BLOBFUSE2_CFG
+                value: '$(Pipeline.Workspace)/blobfuse2.yaml'
+              - name: BLOBFUSE2_ADLS_CFG
+                value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
+              - name: GOPATH
+                value: '$(Pipeline.Workspace)/go'
               - name: ROOT_DIR
-                value: "/usr/pipeline/workv2"
+                value: '$(System.DefaultWorkingDirectory)' 
               - name: WORK_DIR
-                value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
+                value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
               - name: skipComponentGovernanceDetection
                 value: true
-              - name: MOUNT_DIR
-                value: "/usr/pipeline/workv2/blob_mnt"
-              - name: TEMP_DIR
-                value: "/usr/pipeline/workv2/temp"
-              - name: BLOBFUSE2_CFG
-                value: "/usr/pipeline/workv2/blobfuse2.yaml"
-              - name: BLOBFUSE2_ADLS_CFG
-                value: "/home/vsts/workv2/blobfuse2.adls.yaml"
-              - name: GOPATH
-                value: "/usr/pipeline/workv2/go"
 
             steps:
               - template: 'azure-pipeline-templates/distro-tests.yml'
@@ -955,22 +955,22 @@ stages:
 
             variables:
               - group: NightlyBlobFuse
+              - name: MOUNT_DIR
+                value: '$(Pipeline.Workspace)/blob_mnt'
+              - name: TEMP_DIR
+                value: '$(Pipeline.Workspace)/blobfuse2_tmp'
+              - name: BLOBFUSE2_CFG
+                value: '$(Pipeline.Workspace)/blobfuse2.yaml'
+              - name: BLOBFUSE2_ADLS_CFG
+                value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
+              - name: GOPATH
+                value: '$(Pipeline.Workspace)/go'
               - name: ROOT_DIR
-                value: "/usr/pipeline/workv2"
+                value: '$(System.DefaultWorkingDirectory)' 
               - name: WORK_DIR
-                value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
+                value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
               - name: skipComponentGovernanceDetection
                 value: true
-              - name: MOUNT_DIR
-                value: "/usr/pipeline/workv2/blob_mnt"
-              - name: TEMP_DIR
-                value: "/usr/pipeline/workv2/temp"
-              - name: BLOBFUSE2_CFG
-                value: "/usr/pipeline/workv2/blobfuse2.yaml"
-              - name: BLOBFUSE2_ADLS_CFG
-                value: "/home/vsts/workv2/blobfuse2.adls.yaml"
-              - name: GOPATH
-                value: "/usr/pipeline/workv2/go"
 
             steps:
               - template: 'azure-pipeline-templates/distro-tests.yml'
@@ -1017,22 +1017,22 @@ stages:
 
             variables:
               - group: NightlyBlobFuse
+              - name: MOUNT_DIR
+                value: '$(Pipeline.Workspace)/blob_mnt'
+              - name: TEMP_DIR
+                value: '$(Pipeline.Workspace)/blobfuse2_tmp'
+              - name: BLOBFUSE2_CFG
+                value: '$(Pipeline.Workspace)/blobfuse2.yaml'
+              - name: BLOBFUSE2_ADLS_CFG
+                value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
+              - name: GOPATH
+                value: '$(Pipeline.Workspace)/go'
               - name: ROOT_DIR
-                value: "/usr/pipeline/workv2"
+                value: '$(System.DefaultWorkingDirectory)' 
               - name: WORK_DIR
-                value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
+                value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
               - name: skipComponentGovernanceDetection
                 value: true
-              - name: MOUNT_DIR
-                value: "/usr/pipeline/workv2/blob_mnt"
-              - name: TEMP_DIR
-                value: "/usr/pipeline/workv2/temp"
-              - name: BLOBFUSE2_CFG
-                value: "/usr/pipeline/workv2/blobfuse2.yaml"
-              - name: BLOBFUSE2_ADLS_CFG
-                value: "/home/vsts/workv2/blobfuse2.adls.yaml"
-              - name: GOPATH
-                value: "/usr/pipeline/workv2/go"
 
             steps:
               - template: 'azure-pipeline-templates/distro-tests.yml'
@@ -1068,6 +1068,7 @@ stages:
                   DistroVer: "Ubn20_MSI"
                   AgentName: "blobfuse-ubuntu20"
                   Description: "Ubuntu 20 MSI Test"
+                  ContainerName: "test-cnt-ubn-20-msi"
 
             pool:
               name: "blobfuse-ubuntu-pool"
@@ -1076,24 +1077,22 @@ stages:
 
             variables:
               - group: NightlyBlobFuse
+              - name: MOUNT_DIR
+                value: '$(Pipeline.Workspace)/blob_mnt'
+              - name: TEMP_DIR
+                value: '$(Pipeline.Workspace)/blobfuse2_tmp'
+              - name: BLOBFUSE2_CFG
+                value: '$(Pipeline.Workspace)/blobfuse2.msi.yaml'
+              - name: BLOBFUSE2_ADLS_CFG
+                value: '$(Pipeline.Workspace)/blobfuse2.msi.adls.yaml'
+              - name: GOPATH
+                value: '$(Pipeline.Workspace)/go'
               - name: ROOT_DIR
-                value: "/home/vsts/workv2/"
+                value: '$(System.DefaultWorkingDirectory)' 
               - name: WORK_DIR
-                value: "/home/vsts/workv2/go/src/azure-storage-fuse"
+                value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
               - name: skipComponentGovernanceDetection
                 value: true
-              - name: MOUNT_DIR
-                value: "/home/vsts/workv2/blob_mnt"
-              - name: TEMP_DIR
-                value: "/home/vsts/workv2/blobfuse2tmp"
-              - name: BLOBFUSE2_CFG
-                value: "/home/vsts/workv2//myblobv2.msi.yaml"
-              - name: BLOBFUSE2_CFG_ADLS
-                value: "/home/vsts/workv2/myblobv2.msi.adls.yaml"
-              - name: GOPATH
-                value: "/home/vsts/workv2/go"
-              - name: containerName
-                value: "test-cnt-ubn-20-msi"
 
             steps:
               # Print the agent info 
@@ -1119,7 +1118,7 @@ stages:
                   mount_dir: $(MOUNT_DIR)
                   temp_dir: $(TEMP_DIR)
                   gopath: $(GOPATH)
-                  container: $(containerName)
+                  container: $(ContainerName)
                   skip_msi: "false"
                   skip_azcli: "false"
               

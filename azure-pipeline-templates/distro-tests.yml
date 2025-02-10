@@ -58,7 +58,7 @@ steps:
       sudo mkdir -p $(ROOT_DIR)
       sudo chown -R `whoami` $(ROOT_DIR)
       chmod 777 $(ROOT_DIR)
-      mkdir -p $(ROOT_DIR)/go/src/azure-storage-fuse
+      mkdir -p $(ROOT_DIR)/azure-storage-fuse
     displayName: 'Create Directory Structure'
     
   # Build the code
