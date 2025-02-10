@@ -48,9 +48,9 @@ steps:
       sudo apt-get install make cmake gcc g++ git parallel -y
       if [ "${{ parameters.tags }}" == "fuse2" ]
       then
-        sudo apt-get install libfuse2 -y
+        sudo apt-get install libfuse2 libfuse-dev -y
       else
-        sudo apt-get install fuse3 -y
+        sudo apt-get install fuse3 libfuse3-dev -y
       fi
       fusermount -V
     displayName: 'Libfuse Setup'
