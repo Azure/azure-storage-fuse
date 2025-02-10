@@ -49,7 +49,6 @@ steps:
     displayName: 'Libfuse Setup'
     condition: eq('${{ parameters.hostedAgent }}', true)
 
-  - checkout: none
   # Clone the repo
   - script: |
       git clone https://github.com/Azure/azure-storage-fuse
