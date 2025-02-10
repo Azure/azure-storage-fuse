@@ -60,18 +60,6 @@ steps:
       chmod 777 $(ROOT_DIR)
       mkdir -p $(ROOT_DIR)/go/src
     displayName: 'Create Directory Structure'
-
-  # Clone the repo
-  - script: |
-      git clone https://github.com/Azure/azure-storage-fuse
-    displayName: 'Checkout Code'
-    workingDirectory: $(ROOT_DIR)/go/src
-
-  # Checkout the branch
-  - script: |
-      git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
-    displayName: 'Checkout Branch'
-    workingDirectory: ${{ parameters.working_dir }}
     
   # Build the code
   - template: 'build.yml'

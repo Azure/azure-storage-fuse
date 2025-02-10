@@ -62,26 +62,6 @@ stages:
               value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
 
           steps:
-            - checkout: none
-
-            # Clone the repo
-            - script: |
-                git clone https://github.com/Azure/azure-storage-fuse
-              displayName: 'Checkout Code'
-              workingDirectory: $(ROOT_DIR)
-
-            # Checkout the branch
-            - script: |
-                git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
-              displayName: 'Checkout Branch'
-              workingDirectory: $(WORK_DIR)
-          
-            - script: |
-                sudo apt-get update --fix-missing -o Dpkg::Options::="--force-confnew"
-                sudo apt-get install make cmake gcc g++ parallel $(fuselib) $(fuselib2) -y -o Dpkg::Options::="--force-confnew"
-              displayName: 'Install libfuse'
-
-
             # Create directory structure
             - script: |
                 sudo mkdir -p $(ROOT_DIR)

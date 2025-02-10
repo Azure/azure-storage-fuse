@@ -111,30 +111,6 @@ stages:
               value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
 
           steps:
-            - script: |
-                sudo apt-get update --fix-missing
-                sudo apt-get install cmake gcc $(fuselib) git parallel -y
-                if [ $(tags) == "fuse2" ]; then
-                  sudo apt-get install fuse -y
-                fi
-              displayName: 'Install libfuse'
-
-            - checkout: none
-
-            # Clone the repo
-            - script: |
-                git clone https://github.com/Azure/azure-storage-fuse
-              displayName: 'Checkout Code'
-              workingDirectory: $(ROOT_DIR)
-
-            # Checkout the branch
-            - script: |
-                git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
-              displayName: 'Checkout Branch'
-              workingDirectory: $(WORK_DIR)
-
-
-
             # -------------------------------------------------------
             # Pull and build the code
             - template: 'azure-pipeline-templates/build.yml'
@@ -241,32 +217,9 @@ stages:
 
           steps:
             - script: |
-                sudo apt-get update --fix-missing
-                sudo apt-get install cmake gcc $(fuselib) git parallel -y
-                if [ $(tags) == "fuse2" ]; then
-                  sudo apt-get install fuse -y
-                fi
-              displayName: 'Install libfuse'
-              
-            - checkout: none
-
-            - script: |
                 hostnamectl
               displayName: 'Host info'
               workingDirectory: $(ROOT_DIR)
-
-            # Clone the repo
-            - script: |
-                git clone https://github.com/Azure/azure-storage-fuse
-              displayName: 'Checkout Code'
-              workingDirectory: $(ROOT_DIR)
-
-            # Checkout the branch
-            - script: |
-                git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
-              displayName: 'Checkout Branch'
-              workingDirectory: $(WORK_DIR)
-
             # -------------------------------------------------------
             # Pull and build the code
             - template: 'azure-pipeline-templates/build.yml'
@@ -379,28 +332,6 @@ stages:
               value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
 
           steps:
-            - script: |
-                sudo apt-get update --fix-missing
-                sudo apt-get install cmake gcc $(fuselib) git -y
-                if [ $(tags) == "fuse2" ]; then
-                  sudo apt-get install fuse -y
-                fi
-              displayName: 'Install libfuse'
-              
-            - checkout: none
-
-            # Clone the repo
-            - script: |
-                git clone https://github.com/Azure/azure-storage-fuse
-              displayName: 'Checkout Code'
-              workingDirectory: $(ROOT_DIR)
-
-            # Checkout the branch
-            - script: |
-                git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
-              displayName: 'Checkout Branch'
-              workingDirectory: $(WORK_DIR)
-
             # -------------------------------------------------------
             # Pull and build the code
             - template: 'azure-pipeline-templates/build.yml'
@@ -501,28 +432,6 @@ stages:
               value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
 
           steps:
-            - script: |
-                sudo apt-get update --fix-missing
-                sudo apt-get install cmake gcc $(fuselib) git -y
-                if [ $(tags) == "fuse2" ]; then
-                  sudo apt-get install fuse -y
-                fi
-              displayName: 'Install libfuse'
-              
-            - checkout: none
-
-            # Clone the repo
-            - script: |
-                git clone https://github.com/Azure/azure-storage-fuse
-              displayName: 'Checkout Code'
-              workingDirectory: $(ROOT_DIR)
-
-            # Checkout the branch
-            - script: |
-                git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
-              displayName: 'Checkout Branch'
-              workingDirectory: $(WORK_DIR)
-
             # -------------------------------------------------------
             # Pull and build the code
             - template: 'azure-pipeline-templates/build.yml'
@@ -615,11 +524,8 @@ stages:
 
             steps:
               - script: |
-                  sudo apt-get update --fix-missing
-                  sudo apt-get install cmake gcc libfuse3-dev git -y
-                displayName: 'Install libfuse'
-              
-              - checkout: none
+                  sudo systemctl stop apt-daily.timer
+                displayName: 'Stop apt update manager'
 
               # Start Proxy
               - script: |
@@ -640,18 +546,6 @@ stages:
                   export https_proxy="127.0.0.1:8080"
                   export http_proxy="127.0.0.1:8080"
                 displayName: 'Configure Proxy'
-
-              # Clone the repo
-              - script: |
-                  git clone https://github.com/Azure/azure-storage-fuse
-                displayName: 'Checkout Code'
-                workingDirectory: $(ROOT_DIR)
-
-              # Checkout the branch
-              - script: |
-                  git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
-                displayName: 'Checkout Branch'
-                workingDirectory: $(WORK_DIR)
 
               # -------------------------------------------------------
               # Pull, build and unit test the code
@@ -1202,33 +1096,12 @@ stages:
                 value: "test-cnt-ubn-20-msi"
 
             steps:
-              - checkout: none
-
               # Print the agent info 
               - script: |
                   echo $(Description)
                   hostnamectl
                 displayName: 'Print Agent Info'
               
-              # Install libfuse
-              - script: |
-                  sudo apt-get update --fix-missing -o Dpkg::Options::="--force-confnew"
-                  sudo apt-get install make cmake gcc g++ libfuse3-dev fuse3 -y -o Dpkg::Options::="--force-confnew"  
-                displayName: 'Install Fuse'
-
-              # Install azcli
-              - script: |
-                  curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
-                  az --version
-                displayName: 'Install Azure CLI'
-
-              # Prestart cleanup
-              - script: |
-                  sudo fusermount3 -u $(MOUNT_DIR)
-                  sudo kill -9 `pidof blobfuse2`
-                  sudo rm -rf $(ROOT_DIR)
-                displayName: 'PreBuild Cleanup'
-
               # Create directory structure
               - script: |
                   sudo rm -rf $(ROOT_DIR)
@@ -1237,18 +1110,6 @@ stages:
                   chmod 777 $(ROOT_DIR)
                   mkdir -p $(ROOT_DIR)/go/src
                 displayName: 'Create Directory Structure'
-
-              # Checkout the code  
-              - script: |
-                  git clone https://github.com/Azure/azure-storage-fuse
-                displayName: 'Checkout Code'
-                workingDirectory: $(ROOT_DIR)/go/src
-
-              # Pull the branch
-              - script: |
-                  git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
-                displayName: 'Checkout Branch'
-                workingDirectory: $(WORK_DIR)
 
               # Build the code
               - template: 'azure-pipeline-templates/build.yml'
@@ -1260,6 +1121,7 @@ stages:
                   gopath: $(GOPATH)
                   container: $(containerName)
                   skip_msi: "false"
+                  skip_azcli: "false"
               
               # BlockBlob MSI Test
               - script: |
@@ -1374,19 +1236,19 @@ stages:
             value: "/usr/pipeline/workv2/go"
 
         steps:
-          - template: 'azure-pipeline-templates/setup.yml'
+          # -------------------------------------------------------
+          # Pull and build the code
+          - template: 'azure-pipeline-templates/build.yml'
             parameters:
+              working_directory: $(WORK_DIR)
+              root_dir: $(ROOT_DIR)
+              mount_dir: $(MOUNT_DIR)
+              temp_dir: $(TEMP_DIR)
+              gopath: $(GOPATH)
+              container: $(containerName)
               tags: $(tags)
-              installStep:
-                script: |
-                  sudo apt-get update --fix-missing
-                  sudo apt-get install cmake gcc $(fuselib) git parallel -y
-                  if [ $(tags) == "fuse2" ]; then
-                    sudo apt-get install fuse -y
-                  else
-                    sudo apt-get install fuse3 -y
-                  fi
-                displayName: 'Install fuse'
+              fuselib: $(fuselib)
+              skip_ut: true
 
           - template: 'azure-pipeline-templates/e2e-tests-block-cache.yml'
             parameters:
@@ -1450,19 +1312,19 @@ stages:
             value: "/usr/pipeline/workv2/go"
 
         steps:
-          - template: 'azure-pipeline-templates/setup.yml'
+          # -------------------------------------------------------
+          # Pull and build the code
+          - template: 'azure-pipeline-templates/build.yml'
             parameters:
+              working_directory: $(WORK_DIR)
+              root_dir: $(ROOT_DIR)
+              mount_dir: $(MOUNT_DIR)
+              temp_dir: $(TEMP_DIR)
+              gopath: $(GOPATH)
+              container: $(containerName)
               tags: $(tags)
-              installStep:
-                script: |
-                  sudo apt-get update --fix-missing
-                  sudo apt-get install cmake gcc $(fuselib) git parallel -y
-                  if [ $(tags) == "fuse2" ]; then
-                    sudo apt-get install fuse -y
-                  else
-                    sudo apt-get install fuse3 -y
-                  fi
-                displayName: 'Install fuse'
+              fuselib: $(fuselib)
+              skip_ut: true
 
           - template: 'azure-pipeline-templates/e2e-tests-block-cache.yml'
             parameters:
@@ -1625,19 +1487,19 @@ stages:
             value: "/usr/pipeline/workv2/go"
 
         steps:
-          - template: 'azure-pipeline-templates/setup.yml'
+          # -------------------------------------------------------
+          # Pull and build the code
+          - template: 'azure-pipeline-templates/build.yml'
             parameters:
+              working_directory: $(WORK_DIR)
+              root_dir: $(ROOT_DIR)
+              mount_dir: $(MOUNT_DIR)
+              temp_dir: $(TEMP_DIR)
+              gopath: $(GOPATH)
+              container: $(containerName)
               tags: $(tags)
-              installStep:
-                script: |
-                  sudo apt-get update --fix-missing
-                  sudo apt-get install cmake gcc $(fuselib) git parallel -y
-                  if [ $(tags) == "fuse2" ]; then
-                    sudo apt-get install fuse -y
-                  else
-                    sudo apt-get install fuse3 -y
-                  fi
-                displayName: 'Install fuse'
+              fuselib: $(fuselib)
+              skip_ut: true
 
           - template: 'azure-pipeline-templates/e2e-tests-block-cache.yml'
             parameters:
@@ -1701,19 +1563,19 @@ stages:
             value: "/usr/pipeline/workv2/go"
 
         steps:
-          - template: 'azure-pipeline-templates/setup.yml'
+          # -------------------------------------------------------
+          # Pull and build the code
+          - template: 'azure-pipeline-templates/build.yml'
             parameters:
+              working_directory: $(WORK_DIR)
+              root_dir: $(ROOT_DIR)
+              mount_dir: $(MOUNT_DIR)
+              temp_dir: $(TEMP_DIR)
+              gopath: $(GOPATH)
+              container: $(containerName)
               tags: $(tags)
-              installStep:
-                script: |
-                  sudo apt-get update --fix-missing
-                  sudo apt-get install cmake gcc $(fuselib) git parallel -y
-                  if [ $(tags) == "fuse2" ]; then
-                    sudo apt-get install fuse -y
-                  else
-                    sudo apt-get install fuse3 -y
-                  fi
-                displayName: 'Install fuse'
+              fuselib: $(fuselib)
+              skip_ut: true
 
           - template: 'azure-pipeline-templates/e2e-tests-spcl.yml'
             parameters:
@@ -1777,19 +1639,19 @@ stages:
             value: "/usr/pipeline/workv2/go"
 
         steps:
-          - template: 'azure-pipeline-templates/setup.yml'
+          # -------------------------------------------------------
+          # Pull and build the code
+          - template: 'azure-pipeline-templates/build.yml'
             parameters:
+              working_directory: $(WORK_DIR)
+              root_dir: $(ROOT_DIR)
+              mount_dir: $(MOUNT_DIR)
+              temp_dir: $(TEMP_DIR)
+              gopath: $(GOPATH)
+              container: $(containerName)
               tags: $(tags)
-              installStep:
-                script: |
-                  sudo apt-get update --fix-missing
-                  sudo apt-get install cmake gcc $(fuselib) git parallel -y
-                  if [ $(tags) == "fuse2" ]; then
-                    sudo apt-get install fuse -y
-                  else
-                    sudo apt-get install fuse3 -y
-                  fi
-                displayName: 'Install fuse'
+              fuselib: $(fuselib)
+              skip_ut: true
 
           - template: 'azure-pipeline-templates/e2e-tests-spcl.yml'
             parameters:
