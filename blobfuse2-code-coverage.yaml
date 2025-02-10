@@ -61,14 +61,6 @@ stages:
             - name: WORK_DIR
               value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
 
-          steps:
-            # Create directory structure
-            - script: |
-                sudo mkdir -p $(ROOT_DIR)
-                sudo chown -R `whoami` $(ROOT_DIR)
-                chmod 777 $(ROOT_DIR)
-              displayName: 'Create Directory Structure'
-
             # -------------------------------------------------------
             # Pull and build the code
             - template: 'azure-pipeline-templates/build.yml'

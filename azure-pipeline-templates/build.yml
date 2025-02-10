@@ -44,13 +44,13 @@ steps:
   # Package manager installs for libfuse, stop update manager before installation
   - script: |
       sudo systemctl stop apt-daily.timer
-      sudo apt-get update --fix-missing -o Dpkg::Options::="--force-confnew"
-      sudo apt-get install make cmake gcc g++ git parallel -y -o Dpkg::Options::="--force-confnew"
+      sudo apt-get update --fix-missing
+      sudo apt-get install make cmake gcc g++ git parallel -y
       if [ "${{ parameters.tags }}" == "fuse2" ]
       then
-        sudo apt-get install fuse libfuse-dev -y -o Dpkg::Options::="--force-confnew"
+        sudo apt-get install libfuse2 -y
       else
-        sudo apt-get install fuse3 libfuse3-dev -y -o Dpkg::Options::="--force-confnew"
+        sudo apt-get install fuse3 -y
       fi
       fusermount -V
     displayName: 'Libfuse Setup'
