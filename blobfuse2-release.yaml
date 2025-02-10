@@ -59,7 +59,7 @@ extends:
         image: windows2022-1espt
         os: windows  # OS of the image. Allowed values: windows, linux, macOS
 
-  stages:
+    stages:
     - stage: BuildArtifacts
       jobs:
         - job: Set_1
