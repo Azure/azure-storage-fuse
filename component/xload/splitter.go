@@ -114,7 +114,7 @@ func (d *downloadSplitter) Process(item *WorkItem) (int, error) {
 		defer flock.Unlock()
 	}
 
-	filePresent, size := IsFilePresent(localPath)
+	filePresent, size := isFilePresent(localPath)
 	if filePresent && item.DataLen == uint64(size) {
 		return int(size), nil
 	}

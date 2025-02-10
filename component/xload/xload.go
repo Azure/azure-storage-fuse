@@ -330,7 +330,7 @@ func (xl *Xload) startComponents() error {
 }
 
 func (xl *Xload) isDownloadRequired(localPath string, blobPath string) (bool, *internal.ObjAttr, error) {
-	filePresent, size := IsFilePresent(localPath)
+	filePresent, size := isFilePresent(localPath)
 	downloadRequired := !filePresent
 
 	var attr *internal.ObjAttr
