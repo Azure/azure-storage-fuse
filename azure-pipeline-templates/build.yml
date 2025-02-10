@@ -34,6 +34,13 @@ parameters:
     default: "libfuse3-dev"
 
 steps:
+  - script: |
+      sudo rm -rf $(ROOT_DIR)
+      sudo mkdir -p $(ROOT_DIR)
+      sudo chown -R `whoami` $(ROOT_DIR)
+      chmod 777 $(ROOT_DIR)
+    displayName: 'Create Directory Structure'
+
   # Package manager installs for libfuse, stop update manager before installation
   - script: |
       sudo systemctl stop apt-daily.timer
