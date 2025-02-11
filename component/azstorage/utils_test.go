@@ -39,6 +39,7 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -279,6 +280,18 @@ func (s *utilsTestSuite) TestSanitizeSASKey() {
 
 	key = sanitizeSASKey("abcd")
 	assert.EqualValues("?abcd", key)
+}
+
+func (s *utilsTestSuite) TestSanitizeEtag() {
+	assert := assert.New(s.T())
+
+	etagValue := azcore.ETag("\"abcd\"")
+	etag := sanitizeEtag(&etagValue)
+	assert.EqualValues(etag, "abcd")
+
+	etagValue = azcore.ETag("abcd")
+	etag = sanitizeEtag(&etagValue)
+	assert.EqualValues(etag, "abcd")
 }
 
 func (s *utilsTestSuite) TestBlockNonProxyOptions() {
