@@ -51,13 +51,13 @@ extends:
   # For productions pipelines, use "Official".
   template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
   parameters:
-    authenticatedContainerRegistries:
-    - registry: onebranch.azurecr.io
-      tenant: AME
-      identity: 1ESPipelineIdentity
-    containers:
-      default_linux_container:
-        image: mcr.microsoft.com/dotnet/sdk:6.0-focal
+    # authenticatedContainerRegistries:
+    # - registry: onebranch.azurecr.io
+    #   tenant: AME
+    #   identity: 1ESPipelineIdentity
+    # containers:
+    #   default_linux_container:
+    #     image: mcr.microsoft.com/dotnet/sdk:6.0-focal
     # The SDL Source analysis stage can only run in a windows environment due to limitations of Guardian tools. 
     # If you use Linux pool, we require an additional windows image in your pool to run the source analysis.
     sdl:   
