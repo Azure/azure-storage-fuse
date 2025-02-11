@@ -75,9 +75,6 @@ extends:
           name: blobfuse2-pool
           image: ubuntu22-1espt
           os: linux
-        containers:
-          default_linux_container:
-            image: onebranch.azurecr.io/linux/ubuntu-2004:latest
         templateContext:
           outputs:
           - output: pipelineArtifact
