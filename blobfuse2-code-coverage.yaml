@@ -61,6 +61,7 @@ stages:
             - name: WORK_DIR
               value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
 
+          steps:
             # -------------------------------------------------------
             # Pull and build the code
             - template: 'azure-pipeline-templates/build.yml'
