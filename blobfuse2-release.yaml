@@ -83,7 +83,9 @@ extends:
             value: '$(System.DefaultWorkingDirectory)'
           - name: work_dir
             value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
-          
+        
+        steps:
+        - powershell: echo "Hello World from host"
         # steps:
         #   - checkout: none
         #   - script: |
