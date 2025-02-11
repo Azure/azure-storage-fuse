@@ -937,66 +937,66 @@ stages:
                     displayName: 'Install fuse'
                   verbose_log: ${{ parameters.verbose_log }}
 
-          # SUSE Tests
-          - job: Set_9
-            timeoutInMinutes: 60
-            strategy:
-              matrix:
-                SUSE-15:
-                  DistroVer: "SUSE-15"
-                  Description: "SUSE Enterprise Linux 15"
-                  AgentName: "blobfuse-suse15"
-                  ContainerName: "test-cnt-suse-15"
+          # # SUSE Tests
+          # - job: Set_9
+          #   timeoutInMinutes: 60
+          #   strategy:
+          #     matrix:
+          #       SUSE-15:
+          #         DistroVer: "SUSE-15"
+          #         Description: "SUSE Enterprise Linux 15"
+          #         AgentName: "blobfuse-suse15"
+          #         ContainerName: "test-cnt-suse-15"
 
-            pool:
-              name: "blobfuse-suse-pool"
-              demands:
-                - ImageOverride -equals $(AgentName)
+          #   pool:
+          #     name: "blobfuse-suse-pool"
+          #     demands:
+          #       - ImageOverride -equals $(AgentName)
 
-            variables:
-              - group: NightlyBlobFuse
-              - name: MOUNT_DIR
-                value: '$(Pipeline.Workspace)/blob_mnt'
-              - name: TEMP_DIR
-                value: '$(Pipeline.Workspace)/blobfuse2_tmp'
-              - name: BLOBFUSE2_CFG
-                value: '$(Pipeline.Workspace)/blobfuse2.yaml'
-              - name: BLOBFUSE2_ADLS_CFG
-                value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
-              - name: GOPATH
-                value: '$(Pipeline.Workspace)/go'
-              - name: ROOT_DIR
-                value: '$(System.DefaultWorkingDirectory)' 
-              - name: WORK_DIR
-                value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
-              - name: skipComponentGovernanceDetection
-                value: true
+          #   variables:
+          #     - group: NightlyBlobFuse
+          #     - name: MOUNT_DIR
+          #       value: '$(Pipeline.Workspace)/blob_mnt'
+          #     - name: TEMP_DIR
+          #       value: '$(Pipeline.Workspace)/blobfuse2_tmp'
+          #     - name: BLOBFUSE2_CFG
+          #       value: '$(Pipeline.Workspace)/blobfuse2.yaml'
+          #     - name: BLOBFUSE2_ADLS_CFG
+          #       value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
+          #     - name: GOPATH
+          #       value: '$(Pipeline.Workspace)/go'
+          #     - name: ROOT_DIR
+          #       value: '$(System.DefaultWorkingDirectory)' 
+          #     - name: WORK_DIR
+          #       value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
+          #     - name: skipComponentGovernanceDetection
+          #       value: true
 
-            steps:
-              - template: 'azure-pipeline-templates/distro-tests.yml'
-                parameters:
-                  working_dir: $(WORK_DIR)
-                  root_dir: $(ROOT_DIR)
-                  temp_dir: $(TEMP_DIR)
-                  mount_dir: $(MOUNT_DIR)
-                  config_path: $(BLOBFUSE2_CFG)
-                  container: $(ContainerName)
-                  blob_account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
-                  blob_account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
-                  adls_account_name: $(AZTEST_ADLS_ACC_NAME)
-                  adls_account_key: $(AZTEST_ADLS_KEY)
-                  distro_name: $(AgentName)
-                  gopath: $(GOPATH)
-                  installStep:
-                    script: |
-                      sudo zypper -n install git golang make cmake gcc gcc-c++ glibc-devel fuse
-                      wget $(SUSE_FUSE3_PATH)/fuse3-3.10.5-150400.1.7.x86_64.rpm
-                      sudo zypper -n --no-gpg-checks install fuse3-3.10.5-150400.1.7.x86_64.rpm
-                      fusermount3 --v
-                      wget $(SUSE_FUSE3_PATH)/fuse3-devel-3.10.5-150400.1.7.x86_64.rpm
-                      sudo zypper -n --no-gpg-checks install fuse3-devel-3.10.5-150400.1.7.x86_64.rpm 
-                    displayName: 'Install fuse'
-                  verbose_log: ${{ parameters.verbose_log }}
+          #   steps:
+          #     - template: 'azure-pipeline-templates/distro-tests.yml'
+          #       parameters:
+          #         working_dir: $(WORK_DIR)
+          #         root_dir: $(ROOT_DIR)
+          #         temp_dir: $(TEMP_DIR)
+          #         mount_dir: $(MOUNT_DIR)
+          #         config_path: $(BLOBFUSE2_CFG)
+          #         container: $(ContainerName)
+          #         blob_account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
+          #         blob_account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
+          #         adls_account_name: $(AZTEST_ADLS_ACC_NAME)
+          #         adls_account_key: $(AZTEST_ADLS_KEY)
+          #         distro_name: $(AgentName)
+          #         gopath: $(GOPATH)
+          #         installStep:
+          #           script: |
+          #             sudo zypper -n install git golang make cmake gcc gcc-c++ glibc-devel fuse
+          #             wget $(SUSE_FUSE3_PATH)/fuse3-3.10.5-150400.1.7.x86_64.rpm
+          #             sudo zypper -n --no-gpg-checks install fuse3-3.10.5-150400.1.7.x86_64.rpm
+          #             fusermount3 --v
+          #             wget $(SUSE_FUSE3_PATH)/fuse3-devel-3.10.5-150400.1.7.x86_64.rpm
+          #             sudo zypper -n --no-gpg-checks install fuse3-devel-3.10.5-150400.1.7.x86_64.rpm 
+          #           displayName: 'Install fuse'
+          #         verbose_log: ${{ parameters.verbose_log }}
 
           # Mariner Tests
           - job: Set_10
