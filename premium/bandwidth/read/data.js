@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1737865406632,
+  "lastUpdate": 1739271258729,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -3622,6 +3622,75 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 13.757161458333334,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "syeleti@microsoft.com",
+            "name": "syeleti-msft",
+            "username": "syeleti-msft"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "be07ce307f2902f8fcaede3b3bfabd0444623b00",
+          "message": "Merge pull request #1622 from Azure/syeleti/missingReleaseChanges\n\nBug Fixes for Release 2.4.1\r\nUpdate renameFileOptions in fuse2 handler\r\nUpdate the ETag for dst attribute while renaming the file\r\nSanitize the ETag in datalake before adding it to the attribute\r\nInvalidate the attribute in attribute cache after doing a truncate operation on file. This is sort of quick hack done to avoid the complexity of truncate file in az storage component.\r\nAdd atomic_o_trunc flag in fuse2 options that will allow the fuse library to always pass the O_TRUNC flag on open call. see the comments in the code for more details\r\nSend ETag as a struct field to the workitem, as directly retrieving etag from the handle inside the download method is not safe as it might cause a race. seems like Locking the handle to retrieve Etag inside the download method is also a bad idea, as we don't know the handle is already locked/unlocked.\r\nWhen O_TRUNC flag is passed to the open call in file cache and closed immediately without any writes on the data, the old data inside the file is not getting wiped out from the server. fixed this issue\r\nRemove usage of apt command in pipeline as it states that it doesn't have stable CLI interface to use in the scripts. Use always apt-get to install any packages.",
+          "timestamp": "2025-02-11T16:03:58+05:30",
+          "tree_id": "4531234fa8dab11462f2d7c01a9d90c0650130c1",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/be07ce307f2902f8fcaede3b3bfabd0444623b00"
+        },
+        "date": 1739271257495,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read",
+            "value": 2382.6585286458335,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read",
+            "value": 3.7210286458333335,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_small_file",
+            "value": 2790.37890625,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 1240.1861979166667,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_direct_io",
+            "value": 2170.76171875,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_direct_io",
+            "value": 3.4427083333333335,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 4634.73828125,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 3909.2679036458335,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 13.5322265625,
             "unit": "MiB/s"
           }
         ]
