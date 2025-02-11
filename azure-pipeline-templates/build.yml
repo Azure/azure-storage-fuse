@@ -41,7 +41,9 @@ steps:
       chmod 777 $(ROOT_DIR)
     displayName: 'Create Directory Structure'
 
-  # Package manager installs for libfuse, stop update manager before installation
+  # Package manager installs for libfuse, 
+  # Before installation, stop any process such as update manager from using package manager.
+  # otherwise installation may fail
   - script: |
       sudo systemctl stop apt-daily.timer
       sudo ps -aux | grep -iE "apt"
@@ -58,9 +60,9 @@ steps:
       else
         sudo apt-get install fuse3 libfuse3-dev -y
       fi
-      fusermount -V
     displayName: 'Libfuse Setup'
     condition: eq('${{ parameters.hostedAgent }}', true)
+    retryCountOnTaskFailure: 3
 
   # Clone the repo
   - script: |
