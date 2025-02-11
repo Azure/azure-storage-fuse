@@ -47,6 +47,7 @@ steps:
   - script: |
       sleep 30
       sudo systemctl stop apt-daily.timer
+      echo "Add Lock Timout for apt package manager"
       sudo echo "DPkg::Lock::Timeout \"120\";" > /etc/apt/apt.conf.d/99timeout
       sudo ps -aux | grep -iE "apt"
       sudo killall apt apt-get
