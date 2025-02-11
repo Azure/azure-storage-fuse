@@ -47,12 +47,13 @@ steps:
   - script: |
       sleep 30
       sudo systemctl stop apt-daily.timer
+      sudo echo "DPkg::Lock::Timeout \"120\";" > /etc/apt/apt.conf.d/99timeout
       sudo ps -aux | grep -iE "apt"
       sudo killall apt apt-get
       yes | sudo fuser -vik -TERM /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock
       echo "Released any lock if some other process has acquired"
       sudo dpkg --configure -a
-      sudo dpkg --configure -a
+
       echo "Starting Updates and Installation of Packages"
       sudo apt-get update --fix-missing
       sudo apt-get install make cmake gcc g++ git parallel -y
