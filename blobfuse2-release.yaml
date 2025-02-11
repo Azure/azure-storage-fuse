@@ -85,13 +85,11 @@ extends:
             value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
         
         steps:
-        - powershell: echo "Hello World from host"
-        # steps:
-        #   - checkout: none
-        #   - script: |
-        #       git clone https://github.com/Azure/azure-storage-fuse
-        #     displayName: 'Checkout Code'
-        #     workingDirectory: $(root_dir)
+        - checkout: none
+        - script: |
+            git clone https://github.com/Azure/azure-storage-fuse
+          displayName: 'Checkout Code'
+          workingDirectory: $(root_dir)
           
         #   # list commits from past 12hrs
         #   - script: |
