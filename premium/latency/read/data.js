@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1737865407861,
+  "lastUpdate": 1739271261467,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -3622,6 +3622,75 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 72.63183824662,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "syeleti@microsoft.com",
+            "name": "syeleti-msft",
+            "username": "syeleti-msft"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "be07ce307f2902f8fcaede3b3bfabd0444623b00",
+          "message": "Merge pull request #1622 from Azure/syeleti/missingReleaseChanges\n\nBug Fixes for Release 2.4.1\r\nUpdate renameFileOptions in fuse2 handler\r\nUpdate the ETag for dst attribute while renaming the file\r\nSanitize the ETag in datalake before adding it to the attribute\r\nInvalidate the attribute in attribute cache after doing a truncate operation on file. This is sort of quick hack done to avoid the complexity of truncate file in az storage component.\r\nAdd atomic_o_trunc flag in fuse2 options that will allow the fuse library to always pass the O_TRUNC flag on open call. see the comments in the code for more details\r\nSend ETag as a struct field to the workitem, as directly retrieving etag from the handle inside the download method is not safe as it might cause a race. seems like Locking the handle to retrieve Etag inside the download method is also a bad idea, as we don't know the handle is already locked/unlocked.\r\nWhen O_TRUNC flag is passed to the open call in file cache and closed immediately without any writes on the data, the old data inside the file is not getting wiped out from the server. fixed this issue\r\nRemove usage of apt command in pipeline as it states that it doesn't have stable CLI interface to use in the scripts. Use always apt-get to install any packages.",
+          "timestamp": "2025-02-11T16:03:58+05:30",
+          "tree_id": "4531234fa8dab11462f2d7c01a9d90c0650130c1",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/be07ce307f2902f8fcaede3b3bfabd0444623b00"
+        },
+        "date": 1739271261176,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read",
+            "value": 0.09485635948,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read",
+            "value": 67.339939579207,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_small_file",
+            "value": 0.07760381220433334,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 0.18764585064800002,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_direct_io",
+            "value": 0.11587740403066667,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_direct_io",
+            "value": 72.68569150613966,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 0.18075039148866667,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 1.0136191450186667,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 73.820074720372,
             "unit": "milliseconds"
           }
         ]
