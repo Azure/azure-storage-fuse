@@ -44,6 +44,10 @@ steps:
   # Package manager installs for libfuse, stop update manager before installation
   - script: |
       sudo systemctl stop apt-daily.timer
+      sudo ps -aux | grep -iE "apt"
+      sudo killall apt apt-get
+      sudo fuser -vik -TERM /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock
+      sudo dpkg --configure --pending
       sudo apt-get update --fix-missing
       sudo apt-get install make cmake gcc g++ git parallel -y
       if [ "${{ parameters.tags }}" == "fuse2" ]
