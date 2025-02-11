@@ -938,10 +938,10 @@ func (bc *BlockCache) refreshBlock(handle *handlemap.Handle, index uint64, prefe
 
 // lineupDownload : Create a work item and schedule the download
 func (bc *BlockCache) lineupDownload(handle *handlemap.Handle, block *Block, prefetch bool) {
-	etagInterface, found := handle.GetValue("ETAG")
-	etag := ""
+	IEtag, found := handle.GetValue("ETAG")
+	Etag := ""
 	if found {
-		etag = etagInterface.(string)
+		Etag = IEtag.(string)
 	}
 	item := &workItem{
 		handle:   handle,
@@ -949,7 +949,7 @@ func (bc *BlockCache) lineupDownload(handle *handlemap.Handle, block *Block, pre
 		prefetch: prefetch,
 		failCnt:  0,
 		upload:   false,
-		ETag:     etag,
+		ETag:     Etag,
 	}
 
 	// Remove this block from free block list and add to in-process list
