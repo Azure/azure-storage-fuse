@@ -29,11 +29,9 @@ steps:
     displayName: "Installing Blobfuse2 Dependencies"
 
   # Build the binary  
-  - task: Go@0
-    inputs:
-      command: 'build'
-      arguments: "-tags ${{ parameters.tags }} -o blobfuse2"
-      workingDirectory: ${{ parameters.work_dir }}
+  - script: |
+      sudo go build -tags ${{ parameters.tags }} -o blobfuse2
+    workingDirectory: ${{ parameters.work_dir }}
     displayName: 'Building Blobfuse2'
   
   # Verifying whether built binary is correct
