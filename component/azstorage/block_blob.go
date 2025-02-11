@@ -299,6 +299,7 @@ func (bb *BlockBlob) DeleteDirectory(name string) (err error) {
 // Source file must exist in storage account before calling this method.
 // When the rename is success, Data, metadata, of the blob will be copied to the destination.
 // Creation time and LMT is not preserved for copyBlob API.
+// Etag of the destination blob changes.
 // Copy the LMT to the src attr if the copy is success.
 // https://learn.microsoft.com/en-us/rest/api/storageservices/copy-blob?tabs=microsoft-entra-id
 func (bb *BlockBlob) RenameFile(source string, target string, srcAttr *internal.ObjAttr) error {
@@ -326,6 +327,7 @@ func (bb *BlockBlob) RenameFile(source string, target string, srcAttr *internal.
 	}
 
 	var dstLMT *time.Time = copyResponse.LastModified
+	var dstETag string = sanitizeEtag(copyResponse.ETag)
 
 	copyStatus := copyResponse.CopyStatus
 	var prop blob.GetPropertiesResponse
@@ -344,10 +346,11 @@ func (bb *BlockBlob) RenameFile(source string, target string, srcAttr *internal.
 
 	if pollCnt > 0 {
 		dstLMT = prop.LastModified
+		dstETag = sanitizeEtag(prop.ETag)
 	}
 
 	if copyStatus != nil && *copyStatus == blob.CopyStatusTypeSuccess {
-		modifyLMT(srcAttr, dstLMT)
+		modifyLMTandEtag(srcAttr, dstLMT, dstETag)
 	}
 
 	log.Trace("BlockBlob::RenameFile : %s -> %s done", source, target)
@@ -453,7 +456,7 @@ func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err 
 		Crtime: *prop.CreationTime,
 		Flags:  internal.NewFileBitMap(),
 		MD5:    prop.ContentMD5,
-		ETag:   strings.Trim(string(*prop.ETag), `"`),
+		ETag:   sanitizeEtag(prop.ETag),
 	}
 
 	parseMetadata(attr, prop.Metadata)
@@ -662,7 +665,7 @@ func (bb *BlockBlob) getBlobAttr(blobInfo *container.BlobItem) (*internal.ObjAtt
 		Crtime: bb.dereferenceTime(blobInfo.Properties.CreationTime, *blobInfo.Properties.LastModified),
 		Flags:  internal.NewFileBitMap(),
 		MD5:    blobInfo.Properties.ContentMD5,
-		ETag:   strings.Trim((string)(*blobInfo.Properties.ETag), `"`),
+		ETag:   sanitizeEtag(blobInfo.Properties.ETag),
 	}
 
 	parseMetadata(attr, blobInfo.Metadata)
@@ -940,7 +943,7 @@ func (bb *BlockBlob) ReadInBuffer(name string, offset int64, len int64, data []b
 	}
 
 	if etag != nil {
-		*etag = strings.Trim(string(*downloadResponse.ETag), `"`)
+		*etag = sanitizeEtag(downloadResponse.ETag)
 	}
 
 	return nil
@@ -1611,7 +1614,7 @@ func (bb *BlockBlob) CommitBlocks(name string, blockList []string, newEtag *stri
 	}
 
 	if newEtag != nil {
-		*newEtag = strings.Trim(string(*resp.ETag), `"`)
+		*newEtag = sanitizeEtag(resp.ETag)
 	}
 
 	return nil
