@@ -136,7 +136,6 @@ extends:
             cp azure-storage-fuse/bfusemon pkgDir/usr/bin/bfusemon
             cp azure-storage-fuse/setup/baseConfig.yaml pkgDir/usr/share/blobfuse2/
             cp azure-storage-fuse/sampleFileCacheConfig.yaml pkgDir/usr/share/blobfuse2/
-            cp azure-storage-fuse/sampleStreamingConfig.yaml pkgDir/usr/share/blobfuse2/
             mkdir -p pkgDir/etc/rsyslog.d
             mkdir -p pkgDir/etc/logrotate.d
             cp azure-storage-fuse/setup/11-blobfuse2.conf pkgDir/etc/rsyslog.d
@@ -147,7 +146,7 @@ extends:
         # using fpm tool for packaging of our binary & performing post-install operations
         # for additional information about fpm refer https://fpm.readthedocs.io/en/v1.13.1/
         - script: |
-            fpm -s dir -t deb -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d $(depends) \
+            fpm -s dir -t deb -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d fuse3 \
             --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
             --description "An user-space filesystem for interacting with Azure Storage" 
             mv ./blobfuse2*.deb ./blobfuse2-`./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3`-$(tags).x86_64.deb
