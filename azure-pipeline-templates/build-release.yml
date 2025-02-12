@@ -28,6 +28,13 @@ steps:
       workingDirectory: ${{ parameters.work_dir }}
     displayName: "Installing Blobfuse2 Dependencies"
 
+  # install fuse3 libfuse3-dev
+  - script: |
+      sudo apt-get update --fix-missing
+      sudo apt-get install fuse3 libfuse3-dev -y
+      fusermount -V
+    displayName: 'Libfuse Setup'
+    
   # Build the binary  
   - script: |
       sudo go build -tags ${{ parameters.tags }} -o blobfuse2
