@@ -114,6 +114,7 @@ extends:
           displayName: "Installing Dependencies"
 
         # get glibc version with which build is done
+        #TODO:: downgrade to fuse2 glibc version
         - script: |
             ldd --version
           displayName: "GLIBC Version"
@@ -124,7 +125,7 @@ extends:
             work_dir: $(work_dir)
             root_dir: $(root_dir)
             unit_test: ${{ parameters.unit_test }}
-            tags: $(tags)
+            tags: 'fuse3'
             container: "test-cnt-ubn-22"
 
         # place the generated binary files & any additional files in appropriate locations
