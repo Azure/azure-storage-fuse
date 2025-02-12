@@ -1,9 +1,13 @@
+variables:
+  tags: 'fuse3'
+  depends: 'fuse3'
+
 parameters:
   - name: tag
     displayName: 'New Release Tag'
     type: string
     default: 'blobfuse2-'
-  
+
   - name: unit_test
     displayName: 'Execute Unit Tests'
     type: boolean
