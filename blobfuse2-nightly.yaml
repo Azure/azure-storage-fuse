@@ -1717,63 +1717,19 @@ stages:
             value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
 
         steps:
-          - script: |
-              sudo apt-get update --fix-missing -o Dpkg::Options::="--force-confnew"
-              sudo apt-get install make cmake gcc g++ parallel $(fuselib) -y -o Dpkg::Options::="--force-confnew"
-            displayName: 'Install libfuse'
-
-          - checkout: none
-
-          # Clone the repo
-          - script: |
-              git clone https://github.com/Azure/azure-storage-fuse
-            displayName: 'Checkout Code'
-            workingDirectory: $(ROOT_DIR)
-
-          # Checkout the branch
-          - script: |
-              git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
-            displayName: 'Checkout Branch'
-            workingDirectory: $(WORK_DIR)
-
-          # Create directory structure
-          - script: |
-              sudo mkdir -p $(ROOT_DIR)
-              sudo chown -R `whoami` $(ROOT_DIR)
-              chmod 777 $(ROOT_DIR)
-            displayName: 'Create Directory Structure'
-
           # -------------------------------------------------------
-            # Alternative custom script for Self-Hosted agents to install Go-lang
-          - task: ShellScript@2
-            inputs:
-              scriptPath: "$(WORK_DIR)/go_installer.sh"
-              args: "$(ROOT_DIR)/"
-            displayName: "GoTool Custom Setup"
-
-          # Downloading Go dependency packages
-          - task: Go@0
-            inputs:
-              command: 'get'
-              arguments: '-d'
-              workingDirectory: $(WORK_DIR)
-            displayName: "Go Get"
-
-          # Building our package
-          - task: Go@0
-            inputs:
-              command: 'build'
-              arguments: "-o blobfuse2"
-              workingDirectory: $(WORK_DIR)
-            displayName: "Go Build Blobfuse2"
-
-          # Building our package
-          - task: Go@0
-            inputs:
-              command: 'build'
-              arguments: "-o bfusemon ./tools/health-monitor/"
-              workingDirectory: $(WORK_DIR)
-            displayName: "Go Build bfusemon"
+          # Pull and build the code
+          - template: 'azure-pipeline-templates/build.yml'
+            parameters:
+              working_directory: $(WORK_DIR)
+              root_dir: $(ROOT_DIR)
+              mount_dir: $(MOUNT_DIR)
+              temp_dir: $(TEMP_DIR)
+              gopath: $(GOPATH)
+              container: $(containerName)
+              tags: $(tags)
+              fuselib: $(fuselib)
+              skip_ut: true
 
           - script: |
               cd $(WORK_DIR)
