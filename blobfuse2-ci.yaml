@@ -64,17 +64,6 @@ jobs:
         value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
       
     steps:
-      # Include the template to generate the container name
-      - template: 'azure-pipeline-templates/generate-container-name.yml'
-
-      # Create a Container in the storage account
-      - template: 'azure-pipeline-templates/container.yml'
-        parameters:
-          create_container: true
-          account_name: $(AZTEST_BLOCK_ACC_NAME)
-          account_key: $(AZTEST_BLOCK_KEY)
-          container_name: $(containerName)
-
       # Pull and build the code, Run the Unit Tests
       - template: 'azure-pipeline-templates/build.yml'
         parameters:
@@ -156,7 +145,7 @@ jobs:
           delete_container: true
           account_name: $(AZTEST_BLOCK_ACC_NAME)
           account_key: $(AZTEST_BLOCK_KEY)
-          container_name: $(containerName)      
+          container_name: $(containerName)
 
       - task: ComponentGovernanceComponentDetection@0
         inputs:

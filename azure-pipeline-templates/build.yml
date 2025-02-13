@@ -192,6 +192,19 @@ steps:
     condition: eq('${{ parameters.skip_azcli }}', 'false')
     retryCountOnTaskFailure: 3
 
+  # Create Container in storage Account.
+  # Include the template to generate the container name
+  - template: 'generate-container-name.yml'
+
+  # Create a Container in the storage account
+  - template: 'container.yml'
+    parameters:
+      create_container: true
+      account_name: $(AZTEST_BLOCK_ACC_NAME)
+      account_key: $(AZTEST_BLOCK_KEY)
+      container_name: $(containerName)
+
+
   # azcli login
   - script: |
       az login --identity --username $(ACLI_BLOBFUSE_MSI_APP_ID)
