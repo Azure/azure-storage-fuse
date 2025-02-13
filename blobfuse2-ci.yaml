@@ -15,21 +15,18 @@ jobs:
         Ubuntu-20:
           AgentName: 'blobfuse-ubuntu20'
           poolName: 'blobfuse-ubuntu-pool'
-          containerName: 'test-cnt-ubn-20'
           fuselib: 'libfuse-dev'
           tags: 'fuse2'
           adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
         Ubuntu-22:
           AgentName: 'blobfuse-ubuntu22'
           poolName: 'blobfuse-ubuntu-pool'
-          containerName: 'test-cnt-ubn-22'
           fuselib: 'libfuse3-dev'
           tags: 'fuse3'
           adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
         Ubuntu-22-ARM64:
           AgentName: 'blobfuse-ubn22-arm64'
           poolName: 'blobfuse-ubn-arm64-pool'
-          containerName: 'test-cnt-ubn-22'
           fuselib: 'libfuse3-dev'
           tags: 'fuse3'
           adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
@@ -67,8 +64,18 @@ jobs:
         value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
       
     steps:
-      # -------------------------------------------------------
-      # Pull and build the code
+      # Include the template to generate the container name
+      - template: 'azure-pipeline-templates/generate-container-name.yml'
+
+      # Create a Container in the storage account
+      - template: 'azure-pipeline-templates/container.yaml'
+        parameters:
+          create_container: true
+          account_name: $(AZTEST_BLOCK_ACC_NAME)
+          account_key: $(AZTEST_BLOCK_KEY)
+          container_name: $(containerName)
+
+      # Pull and build the code, Run the Unit Tests
       - template: 'azure-pipeline-templates/build.yml'
         parameters:
           working_directory: $(WORK_DIR)
@@ -141,6 +148,15 @@ jobs:
 
       # checks for bfusemon
       - template: 'azure-pipeline-templates/bfusemon.yml'
+
+      # delete the container
+      # Create a Container in the storage account
+      - template: 'azure-pipeline-templates/container.yaml'
+        parameters:
+          delete_container: true
+          account_name: $(AZTEST_BLOCK_ACC_NAME)
+          account_key: $(AZTEST_BLOCK_KEY)
+          container_name: $(containerName)      
 
       - task: ComponentGovernanceComponentDetection@0
         inputs:

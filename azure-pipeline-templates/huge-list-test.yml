@@ -26,13 +26,6 @@ steps:
   # Mount the container
   - ${{ parameters.mountStep }}
 
-  # Wait for some time to let the container come up
-  - script: |
-      sleep 10s
-    displayName: 'HugeList: ${{ parameters.idstring }} Waiting for Mount'
-    env:
-      mount_dir: ${{ parameters.mount_dir }}
-
   # Check blobfuse2 is mounted or not    
   - script: |
       ps -aux | grep blobfuse2

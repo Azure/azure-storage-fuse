@@ -19,7 +19,7 @@ parameters:
     default: "true"
   - name: skip_azcli
     type: string
-    default: "true"
+    default: "false"
   - name: skip_bfusemon
     type: boolean
     default: true
@@ -67,6 +67,8 @@ steps:
       else
         sudo apt-get install fuse3 libfuse3-dev -y
       fi
+      fusermount3 -V
+      fusermount -V
     displayName: 'Libfuse Setup'
     condition: eq('${{ parameters.hostedAgent }}', true)
     retryCountOnTaskFailure: 3

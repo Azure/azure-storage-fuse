@@ -1,0 +1,40 @@
+# Responsible for creation and deletion of container.
+parameters:
+  - name: create_container
+    type: boolean
+    default: false
+  - name: delete_container
+    type: boolean
+    default: false
+  - name: account_name
+    type: string
+  - name: account_key
+    type: string
+  - name: container_name
+    type: string
+
+
+steps:
+  # Creating the Container
+  - script: |
+      az --version
+    # Generate container Name
+      gen_container_name=$(tr -dc a-z0-9 </dev/urandom | head -c 16)
+    # Set the container name to the global variable
+      echo "##vso[task.setvariable variable=parameters.container_name;]$gen_container_name"
+      echo "Container Name is ${{ parameters.container_name}}"
+      az storage container create --name ${{ parameters.container_name }} \
+      --account-name ${{ parameters.account_name }} \
+      --account-key ${{ parameters.account_key }} \
+      --fail-on-exist
+    displayName: 'Create Container'
+    condition: eq('${{ parameters.create_container }}', true)
+
+  # Destroying the Container
+  - script: |
+      az --version
+      az storage container delete --name ${{ parameters.container_name }} \
+      --account-name ${{ parameters.account_name }} \
+      --account-key ${{ parameters.account_key }} \
+    displayName: 'Delete Container'
+    condition: eq('${{ parameters.delete_container }}', true)
