@@ -169,8 +169,8 @@ steps:
   - template: 'container.yml'
     parameters:
       create_container: true
-      account_name: $(AZTEST_BLOCK_ACC_NAME)
-      account_key: $(AZTEST_BLOCK_KEY)
+      account_name: $(AZTEST_ADLS_ACC_NAME)
+      account_key: $(AZTEST_ADLS_KEY)
       container_name: $(containerName)
 
   - script: |
