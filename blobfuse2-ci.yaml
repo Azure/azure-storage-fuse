@@ -14,58 +14,135 @@ jobs:
       matrix:
         Ubuntu-20:
           AgentName: 'blobfuse-ubuntu20'
+          poolName: 'blobfuse-ubuntu-pool'
           containerName: 'test-cnt-ubn-20'
           fuselib: 'libfuse-dev'
           tags: 'fuse2'
           adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
         Ubuntu-22:
           AgentName: 'blobfuse-ubuntu22'
+          poolName: 'blobfuse-ubuntu-pool'
+          containerName: 'test-cnt-ubn-22'
+          fuselib: 'libfuse3-dev'
+          tags: 'fuse3'
+          adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
+        Ubuntu-22-ARM64:
+          AgentName: 'blobfuse-ubn22-arm64'
+          poolName: 'blobfuse-ubn-arm64-pool'
           containerName: 'test-cnt-ubn-22'
           fuselib: 'libfuse3-dev'
           tags: 'fuse3'
           adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
   
     pool:
-      name: "blobfuse-ubuntu-pool"
+      name: $(poolName)
       demands:
         - ImageOverride -equals $(AgentName)
 
     variables:
       - group: NightlyBlobFuse
+      - name: MOUNT_DIR
+        value: '$(Pipeline.Workspace)/blob_mnt'
+      - name: TEMP_DIR
+        value: '$(Pipeline.Workspace)/blobfuse2_tmp'
+      - name: BLOBFUSE2_CFG
+        value: '$(Pipeline.Workspace)/blobfuse2.yaml'
+      - name: BLOBFUSE2_SAS_CFG
+        value: '$(Pipeline.Workspace)/blobfuse2_sas_config.yaml'
+      - name: BLOBFUSE2_AZCLI_CFG
+        value: '$(Pipeline.Workspace)/blobfuse2_azcli_config.yaml'
+      - name: BLOBFUSE2_ADLS_CFG
+        value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
+      - name: BLOBFUSE2_GTEST_CFG
+        value: '$(Pipeline.Workspace)/connection.yaml'
+      - name: BLOBFUSE2_AZURITE_CFG
+        value: '$(Pipeline.Workspace)/blobfuse2_azurite_config.yaml'
+      - name: BLOBFUSE2_STRESS_DIR
+        value: '$(Pipeline.Workspace)/blobfuse2_stress'
+      - name: GOPATH
+        value: '$(Pipeline.Workspace)/go'
+      - name: ROOT_DIR
+        value: '$(System.DefaultWorkingDirectory)'
+      - name: WORK_DIR
+        value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
       
     steps:
-    # ----------------------------------------------------------------
-      - template: 'azure-pipeline-templates/blobfuse2-ci-template.yml'
+      # -------------------------------------------------------
+      # Pull and build the code
+      - template: 'azure-pipeline-templates/build.yml'
         parameters:
+          working_directory: $(WORK_DIR)
+          root_dir: $(Pipeline.Workspace)
+          mount_dir: $(MOUNT_DIR)
+          temp_dir: $(TEMP_DIR)
+          gopath: $(GOPATH)
           container: $(containerName)
           tags: $(tags)
           fuselib: $(fuselib)
+          skip_azcli: "false"
+          skip_ut: "false"
 
-    
-  - job: test_ARM64
-    displayName: CI on
-    strategy:
-      matrix:
-        Ubuntu-22-ARM64:
-          AgentName: 'blobfuse-ubn22-arm64'
-          containerName: 'test-cnt-ubn-22'
-          fuselib: 'libfuse3-dev'
-          tags: 'fuse3'
-          adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
-  
-    pool:
-      name: "blobfuse-ubn-arm64-pool"
-      demands:
-        - ImageOverride -equals $(AgentName)
-    
-    variables:
-      - group: NightlyBlobFuse
-      
-    steps:
-    # ----------------------------------------------------------------
-      - template: 'azure-pipeline-templates/blobfuse2-ci-template.yml'
-        parameters:
-          container: $(containerName)
-          tags: $(tags)
-          fuselib: $(fuselib)  
-          skip_fmt: false  
+      # Code lint checks (Static-analysis)
+      - script: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin
+          $(go env GOPATH)/bin/golangci-lint --version
+          $(go env GOPATH)/bin/golangci-lint run --tests=false --build-tags ${{ parameters.tags }} --exclude-dirs test,common/stats_collector,common/stats_monitor --max-issues-per-linter=0 --exclude-files component/libfuse/libfuse2_handler_test_wrapper.go,component/libfuse/libfuse_handler_test_wrapper.go > lint.log
+          result=$(cat lint.log | wc -l)
+          if [ $result -ne 0 ]; then
+            echo "-----------------------------------"
+            echo "Below issues are found in SA"
+            cat lint.log
+            echo "-----------------------------------"
+            exit 1
+          else
+            echo "-----------------------------------"
+            echo "No issues are found in SA"
+            echo "-----------------------------------"
+          fi 
+        displayName: 'Static Analysis (Lint)'
+        condition: always()
+        workingDirectory: $(WORK_DIR)
+
+      # Copyright checks
+      - script: |
+          result=$(grep -L -r --include \*.go "`date +%Y` Microsoft Corporation" ./ | wc -l)
+          if [ $result -ne 0 ]; then
+            exit 1
+          else
+            echo "Copyright statements are up to date"
+          fi
+        displayName: 'Copyright check'
+        condition: always()
+        failOnStderr: true
+        workingDirectory: $(WORK_DIR)
+
+      # Go code formatting checks
+      - script: |
+          gofmt -s -l -d . | tee >&2
+        displayName: 'Go Format Check'
+        condition: eq(${{ parameters.skip_fmt }}, true)
+        failOnStderr: true
+        workingDirectory: $(WORK_DIR)
+
+      # Notices files check
+      - script: |
+          ./notices_fix.sh
+          result=$(git diff NOTICE | wc -l)
+          if [ $result -ne 0 ]; then
+            echo "Notices needs a fix. Run ./notices_fix.sh and commit NOTICE file."
+            exit 1
+          else
+            echo "Notices are up to date."
+          fi
+        displayName: 'Notice file check'
+        condition: always()
+        failOnStderr: true
+        workingDirectory: $(WORK_DIR)
+
+      - task: ComponentGovernanceComponentDetection@0
+        inputs:
+          scanType: 'Register'
+          verbosity: 'Verbose'
+          alertWarningLevel: 'High'
+        displayName: "Component governance"
+        condition: always()
