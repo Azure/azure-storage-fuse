@@ -33,7 +33,7 @@ steps:
 
   # delete the container in block account
   - ${{ if eq('${{ parameters.delete_containers }}', true) }}:
-    - template: 'azure-pipeline-templates/container.yml'
+    - template: 'container.yml'
       parameters:
         delete_container: true
         account_name: $(AZTEST_BLOCK_ACC_NAME)
@@ -42,7 +42,7 @@ steps:
 
   # delete the container in adls account
   - ${{ if eq('${{ parameters.delete_containers }}', true) }}:
-    - template: 'azure-pipeline-templates/container.yml'
+    - template: 'container.yml'
       parameters:
         delete_container: true
         account_name: $(AZTEST_ADLS_ACC_NAME)
