@@ -63,6 +63,5 @@ steps:
 
   - template: 'cleanup.yml'
     parameters:
-      working_dir: $(WORK_DIR)
-      mount_dir: $(MOUNT_DIR)
-      temp_dir: $(TEMP_DIR)
+      unmount: true
+      delete_containers: false

@@ -28,15 +28,11 @@ stages:
             matrix:
               Ubuntu-20:
                 AgentName: 'blobfuse-ubuntu20'
-                containerName: 'test-cnt-ubn-20'
                 fuselib: 'libfuse-dev'
-                fuselib2: 'fuse'
                 tags: 'fuse2'
               Ubuntu-22:
                 AgentName: 'blobfuse-ubuntu22'
-                containerName: 'test-cnt-ubn-22'
                 fuselib: 'libfuse3-dev'
-                fuselib2: 'fuse3'
                 tags: 'fuse3'          
 
           pool:
@@ -63,7 +59,7 @@ stages:
 
           steps:
             # -------------------------------------------------------
-            # Pull and build the code
+            # Pull and build the code and create the containers.
             - template: 'azure-pipeline-templates/build.yml'
               parameters:
                 working_directory: $(WORK_DIR)
@@ -71,14 +67,12 @@ stages:
                 mount_dir: $(MOUNT_DIR)
                 temp_dir: $(TEMP_DIR)
                 gopath: $(GOPATH)
-                container: $(containerName)
                 tags: $(tags)
                 fuselib: $(fuselib)
                 skip_msi: "false"
-                skip_azcli: "false"
 
             # -------------------------------------------------------
-            # UT based code coverage test
+            # UT based code coverage test.
             - script: |
                 go test -v -timeout=1h ./... --tags=unittest,$(tags) -covermode count -coverprofile ./blobfuse2_ut.cov
               workingDirectory: $(WORK_DIR)
@@ -596,84 +590,8 @@ stages:
               displayName: "File level coverage check"
               condition: always()
         
-    
-  
-  - ${{ if eq(parameters.cleanup_test, true) }}:   
-    - stage: AccountCleanup
-      condition: always()
-      jobs:
-        - job: Cleanup
-          timeoutInMinutes: 300
-          strategy:
-            matrix:
-              Ubuntu-20:
-                AgentName: 'blobfuse-ubuntu20'
-                containerName: 'test-cnt-ubn-20'
-                fuselib: 'libfuse3-dev'
-                fuselib2: 'fuse3'
-                tags: 'fuse3'          
-
-          pool:
-            name: "blobfuse-ubuntu-pool"
-            demands:
-              - ImageOverride -equals $(AgentName)
-
-          variables:
-            - group: NightlyBlobFuse
-            - name: MOUNT_DIR
-              value: '$(Pipeline.Workspace)/blob_mnt'
-            - name: TEMP_DIR
-              value: '$(Pipeline.Workspace)/blobfuse2_tmp'
-            - name: BLOBFUSE2_CFG
-              value: '$(Pipeline.Workspace)/blobfuse2.yaml'
-            - name: BLOBFUSE2_ADLS_CFG
-              value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
-            - name: GOPATH
-              value: '$(Pipeline.Workspace)/go'
-            - name: ROOT_DIR
-              value: '$(System.DefaultWorkingDirectory)' 
-            - name: WORK_DIR
-              value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
-
-          steps:
-            # -------------------------------------------------------
-            # Pull and build the code
-            - template: 'azure-pipeline-templates/build.yml'
+            # CleanUp the mount and delete the containers.
+            - template: 'azure-pipeline-templates/cleanup.yml'
               parameters:
-                working_directory: $(WORK_DIR)
-                root_dir: $(ROOT_DIR)
-                mount_dir: $(MOUNT_DIR)
-                temp_dir: $(TEMP_DIR)
-                gopath: $(GOPATH)
-                container: $(containerName)
-                tags: $(tags)
-                fuselib: $(fuselib)
-                skip_msi: "false"
-                skip_azcli: "true"
-          
-            # Run the block blob cleanup
-            - task: Go@0
-              inputs:
-                command: 'test'
-                arguments: '-timeout 120m -v test/accoutcleanup/accountcleanup_test.go'
-                workingDirectory:  $(WORK_DIR)
-              displayName: 'Block Blob cleanup'
-              timeoutInMinutes: 120
-              continueOnError: true
-              env:
-                STORAGE_ACCOUNT_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
-                STORAGE_ACCOUNT_Key: $(NIGHTLY_STO_BLOB_ACC_KEY)
-
-            # Run the gen2 cleanup
-            - task: Go@0
-              inputs:
-                command: 'test'
-                arguments: '-timeout 120m -v test/accoutcleanup/accountcleanup_test.go'
-                workingDirectory:  $(WORK_DIR)
-              displayName: 'Gen2 cleanup'
-              timeoutInMinutes: 120
-              continueOnError: true
-              env:
-                STORAGE_ACCOUNT_NAME: $(AZTEST_ADLS_ACC_NAME)
-                STORAGE_ACCOUNT_Key: $(AZTEST_ADLS_KEY)
-
+                unmount: false
+                delete_containers: true

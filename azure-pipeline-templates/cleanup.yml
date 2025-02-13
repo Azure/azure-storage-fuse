@@ -2,35 +2,27 @@
 # Default behaviour on calling this script will delete the containers on the storage account.
 # caution: When this is script is called for at the end of the job make sure to set the delete_containers:false.
 parameters:
-  - name: working_dir
-    type: string
-  - name: mount_dir
-    type: string
-  - name: temp_dir
-    type: string
+  - name: unmount
+    type: boolean
   - name: delete_containers
     type: boolean
-    default: false  #todo: remove the default value so the one who writes the scripts be cautioned.
 
 steps:
-  - script: |
-      ps -ef | grep blobfuse2
-      df -h
-    displayName: 'Check process info'
+  - ${{ if eq('${{ parameters.unmount }}', true) }}:
+    - script: |
+        ps -ef | grep blobfuse2
+        df -h
+      displayName: 'Check process info'
 
-  - script: |
-      sudo fusermount -u ${mount_dir}
-      sudo fusermount3 -u ${mount_dir}
-      sudo kill -9 `pidof blobfuse2` || true
-      rm -rf ${mount_dir}/*
-      rm -rf ${temp_dir}/*
-    timeoutInMinutes: 5
-    env:
-      working_dir: ${{ parameters.working_dir }}
-      mount_dir: ${{ parameters.mount_dir }}
-      temp_dir: ${{ parameters.temp_dir }}
-    displayName: 'Cleanup'
-    condition: always()
+    - script: |
+        sudo fusermount -u $(MOUNT_DIR)
+        sudo fusermount3 -u $(MOUNT_DIR)
+        sudo kill -9 `pidof blobfuse2` || true
+        rm -rf $(MOUNT_DIR)/*
+        rm -rf $(TEMP_DIR)/*
+      timeoutInMinutes: 5
+      displayName: 'Cleanup'
+      condition: always()
 
   # delete the container in block account
   - ${{ if eq('${{ parameters.delete_containers }}', true) }}:

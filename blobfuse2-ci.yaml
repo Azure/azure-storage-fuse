@@ -141,9 +141,7 @@ jobs:
       # CleanUp the mount and delete the containers.
       - template: 'azure-pipeline-templates/cleanup.yml'
         parameters:
-          working_dir: $(WORK_DIR)
-          mount_dir: $(MOUNT_DIR)
-          temp_dir: $(TEMP_DIR)
+          unmount: false
           delete_containers: true
 
       - task: ComponentGovernanceComponentDetection@0
