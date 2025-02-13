@@ -1,18 +1,12 @@
-## ✅ What
- 
-<!-- A brief description of the changes in this PR. -->
- 
-## 🤔 Why
- 
-<!-- A brief description of the reason for these changes. -->
- 
-## 👩‍🔬 How to validate if applicable
- 
-<!-- Step-by-step instructions for how reviewers can verify these changes work as expected. -->
- 
-## 🔖 Related links
- 
-- [Issues](<link>)
-- [Team thread](<link>)
-- [Documents](<link>)
-- [Email Subject]
+<!--
+Thank you for contributing to the Blobfuse2.
+
+Please verify the following before submitting your PR, thank you!
+-->
+
+- [ ] The purpose of this PR is explained in this or a referenced issue.
+- [ ] Tests are included and/or updated for code changes.
+- [ ] Updates to module CHANGELOG.md are included.
+- [ ] License headers are included in each file.
+- [ ] Need Documentation change (eg: readme.md).
+
