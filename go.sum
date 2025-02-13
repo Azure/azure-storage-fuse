@@ -8,10 +8,10 @@ github.com/Azure/azure-sdk-for-go/sdk/internal v1.10.0 h1:ywEEhmNahHBihViHepv3xP
 github.com/Azure/azure-sdk-for-go/sdk/internal v1.10.0/go.mod h1:iZDifYGJTIgIIkYRNWPENUnqx6bJ2xnSDFI2tjwZNuY=
 github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage v1.6.0 h1:PiSrjRPpkQNjrM8H0WwKMnZUdu1RGMtd/LdGKUrOo+c=
 github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage v1.6.0/go.mod h1:oDrbWx4ewMylP7xHivfgixbfGBT6APAwsSoHRKotnIc=
-github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.6.0 h1:UXT0o77lXQrikd1kgwIPQOUect7EoR/+sbP4wQKdzxM=
-github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.6.0/go.mod h1:cTvi54pg19DoT07ekoeMgE/taAwNtCShVeZqA+Iv2xI=
-github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake v1.4.1-0.20250211220702-d9d7f1bf1dd8 h1:xDlckOkqeSMVt2PE0Y4jDPrksx9+kWgmjnVoe0SrdqM=
-github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake v1.4.1-0.20250211220702-d9d7f1bf1dd8/go.mod h1:KkcFZGL0F/6ooKPl8Ub1EPtGOCVXBayeWuJ1IQomreA=
+github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.6.1-beta.1 h1:XFczdrb+crNIzbtZG7nXBMwNHCZjqHef9Wv12FWL/4A=
+github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.6.1-beta.1/go.mod h1:cTvi54pg19DoT07ekoeMgE/taAwNtCShVeZqA+Iv2xI=
+github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake v1.4.1-beta.1 h1:f6HhW/RaUO+Kfs/FEGt2KBrWG+eZUoVHpMIRDq1W9a0=
+github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake v1.4.1-beta.1/go.mod h1:shQA+KL2PTK0BauYvJdEfkC/m5iurt3KyZ523NQn/PQ=
 github.com/AzureAD/microsoft-authentication-extensions-for-go/cache v0.1.1 h1:WJTmL004Abzc5wDB5VtZG2PJk5ndYDgVacGqfirKxjM=
 github.com/AzureAD/microsoft-authentication-extensions-for-go/cache v0.1.1/go.mod h1:tCcJZ0uHAmvjsVYzEFivsRTN00oz5BEsRgQHu5JZ9WE=
 github.com/AzureAD/microsoft-authentication-library-for-go v1.3.3 h1:H5xDQaE3XowWfhZRUpnfC+rGZMEVoSiji+b+/HFAPU4=
