@@ -18,6 +18,7 @@ steps:
   # Creating the Container
   - script: |
       az --version
+      echo "Creating Container: ${{ parameters.container_name }}"
       az storage container create --name ${{ parameters.container_name }} \
       --account-name ${{ parameters.account_name }} \
       --account-key ${{ parameters.account_key }} \
@@ -28,6 +29,7 @@ steps:
   # Destroying the Container
   - script: |
       az --version
+      echo "Deleting Container: ${{ parameters.container_name }}"
       az storage container delete --name ${{ parameters.container_name }} \
       --account-name ${{ parameters.account_name }} \
       --account-key ${{ parameters.account_key }} \

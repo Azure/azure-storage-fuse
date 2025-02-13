@@ -58,7 +58,7 @@ steps:
       echo "Released any lock if some other process has acquired"
       sudo dpkg --configure -a
 
-      echo "Starting Updates and Installation of Packages"
+      echo "****************Starting Updates and Installation of Packages**************"
       sudo apt-get update --fix-missing
       sudo apt-get install make cmake gcc g++ git parallel -y
       if [ "${{ parameters.tags }}" == "fuse2" ]
@@ -69,6 +69,9 @@ steps:
       fi
       fusermount3 -V
       fusermount -V
+      echo "***********************Install AzCli*************************"
+      curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+      az --version
     displayName: 'Libfuse Setup'
     condition: eq('${{ parameters.hostedAgent }}', true)
     retryCountOnTaskFailure: 3
@@ -150,6 +153,26 @@ steps:
     env:
       gopath: ${{ parameters.gopath }}
 
+  # Create Container in storage Account.
+  # Include the template to generate the container name
+  - template: 'generate-container-name.yml'
+
+  # Create a Container in the block storage account
+  - template: 'container.yml'
+    parameters:
+      create_container: true
+      account_name: $(AZTEST_BLOCK_ACC_NAME)
+      account_key: $(AZTEST_BLOCK_KEY)
+      container_name: $(containerName)
+
+  # Create a Container in the adls storage account
+  - template: 'container.yml'
+    parameters:
+      create_container: true
+      account_name: $(AZTEST_BLOCK_ACC_NAME)
+      account_key: $(AZTEST_BLOCK_KEY)
+      container_name: $(containerName)
+
   - script: |
       cnfFile=$HOME/azuretest.json
       echo $cnfFile
@@ -157,8 +180,8 @@ steps:
       echo "{" > $cnfFile
       echo "\"block-acct\"": "\"$(AZTEST_BLOCK_ACC_NAME)\"", >> $cnfFile
       echo "\"adls-acct\"": "\"$(AZTEST_ADLS_ACC_NAME)\"", >> $cnfFile
-      echo "\"block-cont\"": "\"${{ parameters.container }}\"", >> $cnfFile
-      echo "\"adls-cont\"": "\"${{ parameters.container }}\"", >> $cnfFile
+      echo "\"block-cont\"": "\"$(containerName)\"", >> $cnfFile
+      echo "\"adls-cont\"": "\"$(containerName)\"", >> $cnfFile
       echo "\"block-key\"": "\"$(AZTEST_BLOCK_KEY)\"", >> $cnfFile
       echo "\"adls-key\"": "\"$(AZTEST_ADLS_KEY)\"", >> $cnfFile
       echo "\"block-sas\"": "\"$(AZTEST_BLOCK_SAS)\"", >> $cnfFile
@@ -177,33 +200,6 @@ steps:
     displayName: "Create AzureTest Config"
     continueOnError: false
     workingDirectory: ${{ parameters.working_directory }}
-
-  # Install azcli
-  - script: |
-      sleep 5
-      sudo ps -aux | grep -iE "apt"
-      sudo killall apt apt-get
-      yes | sudo fuser -vik -TERM /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock
-      echo "Released any lock if some other process has acquired"
-      sudo dpkg --configure -a
-      curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
-      az --version
-    displayName: 'Install Azure CLI'
-    condition: eq('${{ parameters.skip_azcli }}', 'false')
-    retryCountOnTaskFailure: 3
-
-  # Create Container in storage Account.
-  # Include the template to generate the container name
-  - template: 'generate-container-name.yml'
-
-  # Create a Container in the storage account
-  - template: 'container.yml'
-    parameters:
-      create_container: true
-      account_name: $(AZTEST_BLOCK_ACC_NAME)
-      account_key: $(AZTEST_BLOCK_KEY)
-      container_name: $(containerName)
-
 
   # azcli login
   - script: |
