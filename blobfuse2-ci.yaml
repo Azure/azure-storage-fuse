@@ -86,7 +86,7 @@ jobs:
       - script: |
           curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin
           $(go env GOPATH)/bin/golangci-lint --version
-          $(go env GOPATH)/bin/golangci-lint run --tests=false --build-tags ${{ parameters.tags }} --exclude-dirs test,common/stats_collector,common/stats_monitor --max-issues-per-linter=0 --exclude-files component/libfuse/libfuse2_handler_test_wrapper.go,component/libfuse/libfuse_handler_test_wrapper.go > lint.log
+          $(go env GOPATH)/bin/golangci-lint run --tests=false --build-tags $(tags) --exclude-dirs test,common/stats_collector,common/stats_monitor --max-issues-per-linter=0 --exclude-files component/libfuse/libfuse2_handler_test_wrapper.go,component/libfuse/libfuse_handler_test_wrapper.go > lint.log
           result=$(cat lint.log | wc -l)
           if [ $result -ne 0 ]; then
             echo "-----------------------------------"
@@ -120,7 +120,6 @@ jobs:
       - script: |
           gofmt -s -l -d . | tee >&2
         displayName: 'Go Format Check'
-        condition: eq(${{ parameters.skip_fmt }}, true)
         failOnStderr: true
         workingDirectory: $(WORK_DIR)
 
