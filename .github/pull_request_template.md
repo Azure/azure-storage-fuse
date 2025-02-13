@@ -14,11 +14,6 @@ Please verify the following before submitting your PR, thank you!
 
 - **Feature / Bug Fix**: (Brief description of the feature or issue being addressed)
 
-- **Related Links**:
-- [Issues](<link>)
-- [Team thread](<link>)
-- [Documents](<link>)
-- [Email Subject]
 
 ## How Has This Been Tested?
 <!-- Describe the testing strategy and any relevant details. Include information on how the change was tested (e.g., unit tests, integration tests, manual testing). If tests were added, specify what scenarios they cover. -->
@@ -30,3 +25,11 @@ Please verify the following before submitting your PR, thank you!
 - [ ] Documentation update required.
 - [ ] Updates to module CHANGELOG.md are included.
 - [ ] License headers are included in each file.
+
+## Related Links
+- [Issues](<link>)
+<!--  please add the following info if they were relavant to the PR.
+- [Team thread](<link>)
+- [Documents](<link>)
+- [Email Subject]
+-->
