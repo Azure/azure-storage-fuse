@@ -81,6 +81,7 @@ jobs:
           fuselib: $(fuselib)
           skip_azcli: "false"
           skip_ut: "false"
+          skip_bfusemon: false
 
       # Code lint checks (Static-analysis)
       - script: |
@@ -137,6 +138,9 @@ jobs:
         condition: always()
         failOnStderr: true
         workingDirectory: $(WORK_DIR)
+
+      # checks for bfusemon
+      - template: 'azure-pipeline-templates/bfusemon.yml'
 
       - task: ComponentGovernanceComponentDetection@0
         inputs:

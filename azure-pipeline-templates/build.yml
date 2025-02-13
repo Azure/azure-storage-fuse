@@ -20,6 +20,9 @@ parameters:
   - name: skip_azcli
     type: string
     default: "true"
+  - name: skip_bfusemon
+    type: boolean
+    default: true
   - name: proxy_address
     type: string
     default: ""
@@ -95,7 +98,7 @@ steps:
       workingDirectory: ${{ parameters.working_directory }}
     displayName: "Go Get"
 
-  # Building our package
+  # Building blobfuse2 binary
   - task: Go@0
     inputs:
       command: 'build'
@@ -103,12 +106,13 @@ steps:
       workingDirectory: ${{ parameters.working_directory }}
     displayName: "Go Build"
 
-  # Building our package
+  # Building bfusemon binary
   - task: Go@0
     inputs:
       command: 'build'
       arguments: "-tags ${{ parameters.tags }} -o bfusemon ./tools/health-monitor/"
       workingDirectory: ${{ parameters.working_directory }}
+    condition: eq('${{ parameters.skip_bfusemon }}', false)
     displayName: "Go Build bfusemon"
     
   #Verification of built binary
@@ -214,5 +218,6 @@ steps:
   - script: |
       cp ./utcover.cov  $(Build.ArtifactStagingDirectory)/
       rm -rf ./utcover.cov
+    condition: eq('${{ parameters.skip_ut }}', 'false')
     workingDirectory: ${{ parameters.working_directory }}
     displayName: "Save coverage report"
