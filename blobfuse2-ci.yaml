@@ -3,8 +3,14 @@
 # Add steps that build, run tests, deploy, and more:
 # https://aka.ms/yaml
 
+# Run CI on all the PR's merging to main
 pr:
 - main
+
+# Run CI when changes occured to main branch / branch with name ci/*
+trigger:
+- main
+- ci/*
 
 jobs:
   # Ubuntu based test suite

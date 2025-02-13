@@ -6,18 +6,6 @@
 # 3. Clear the _work or work directory which must be in myagent or $(HOME) directory
 # 4. Verify whether system is online from the Azure pipelines portal
 
-parameters:
-  - name: coverage_test
-    displayName: 'Code Coverage'
-    type: boolean
-    default: true
-
-  - name: cleanup_test
-    displayName: 'Account Cleanup'
-    type: boolean
-    default: true
-
-
 stages:
   - ${{ if eq(parameters.coverage_test, true) }}:    
     - stage: BuildAndTest
