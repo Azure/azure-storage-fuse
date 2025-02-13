@@ -68,7 +68,7 @@ jobs:
       - template: 'azure-pipeline-templates/generate-container-name.yml'
 
       # Create a Container in the storage account
-      - template: 'azure-pipeline-templates/container.yaml'
+      - template: 'azure-pipeline-templates/container.yml'
         parameters:
           create_container: true
           account_name: $(AZTEST_BLOCK_ACC_NAME)
@@ -151,7 +151,7 @@ jobs:
 
       # delete the container
       # Create a Container in the storage account
-      - template: 'azure-pipeline-templates/container.yaml'
+      - template: 'azure-pipeline-templates/container.yml'
         parameters:
           delete_container: true
           account_name: $(AZTEST_BLOCK_ACC_NAME)
