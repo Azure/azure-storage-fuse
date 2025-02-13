@@ -8,7 +8,7 @@ parameters:
     type: boolean
 
 steps:
-  - ${{ if eq('${{ parameters.unmount }}', true) }}:
+  - ${{ if eq(parameters.unmount, true) }}:
     - script: |
         ps -ef | grep blobfuse2
         df -h
@@ -25,7 +25,7 @@ steps:
       condition: always()
 
   # delete the container in block account
-  - ${{ if eq('${{ parameters.delete_containers }}', true) }}:
+  - ${{ if eq(parameters.delete_containers, true) }}:
     - template: 'container.yml'
       parameters:
         delete_container: true
@@ -34,7 +34,7 @@ steps:
         container_name: $(containerName)
 
   # delete the container in adls account
-  - ${{ if eq('${{ parameters.delete_containers }}', true) }}:
+  - ${{ if eq(parameters.delete_containers, true) }}:
     - template: 'container.yml'
       parameters:
         delete_container: true
