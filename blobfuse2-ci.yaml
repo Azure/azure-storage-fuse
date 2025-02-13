@@ -138,14 +138,13 @@ jobs:
       # checks for bfusemon
       - template: 'azure-pipeline-templates/bfusemon.yml'
 
-      # delete the container
-      # Create a Container in the storage account
-      - template: 'azure-pipeline-templates/container.yml'
+      # CleanUp the mount and delete the containers.
+      - template: 'azure-pipeline-templates/cleanup.yml'
         parameters:
-          delete_container: true
-          account_name: $(AZTEST_BLOCK_ACC_NAME)
-          account_key: $(AZTEST_BLOCK_KEY)
-          container_name: $(containerName)
+          working_dir: $(WORK_DIR)
+          mount_dir: $(MOUNT_DIR)
+          temp_dir: $(TEMP_DIR)
+          delete_containers: true
 
       - task: ComponentGovernanceComponentDetection@0
         inputs:

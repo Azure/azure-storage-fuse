@@ -1,3 +1,10 @@
+# This step is responsible for the following behaviour:
+# 1. Setup the VM all necessary packages.
+# 2. Build blobfuse, bfusemon, install AzCLI
+# 3. Create Temporary Containers in the storage account.
+#    Caution: The Deletion of the container is left to the caller of this file, caller must call the cleanup.yml with the parameter delete_containers: true
+# 4. Run Unit Tests if specified by parameter skip_ut: false
+
 parameters:
   - name: root_dir
     type: string
@@ -212,7 +219,7 @@ steps:
     condition: eq('${{ parameters.skip_ut }}', 'false') 
     inputs:
       command: 'test'
-      arguments: '-v -timeout=1h ./... --tags=unittest,${{ parameters.tags }} -coverprofile utcover.cov'
+      arguments: '-v -timeout=45m ./... --tags=unittest,${{ parameters.tags }} -coverprofile utcover.cov'
       workingDirectory: ${{ parameters.working_directory }}
     displayName: 'Unit tests'
     continueOnError: true     

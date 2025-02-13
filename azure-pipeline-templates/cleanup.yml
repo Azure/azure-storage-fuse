@@ -1,3 +1,6 @@
+# Responsible for Unmounting the blobfuse and Deletion of the Containers.
+# Default behaviour on calling this script will delete the containers on the storage account.
+# caution: When this is script is called for at the end of the job make sure to set the delete_containers:false.
 parameters:
   - name: working_dir
     type: string
@@ -5,6 +8,8 @@ parameters:
     type: string
   - name: temp_dir
     type: string
+  - name: delete_containers
+    type: boolean
 
 steps:
   - script: |
@@ -18,10 +23,28 @@ steps:
       sudo kill -9 `pidof blobfuse2` || true
       rm -rf ${mount_dir}/*
       rm -rf ${temp_dir}/*
-    timeoutInMinutes: 20
+    timeoutInMinutes: 5
     env:
       working_dir: ${{ parameters.working_dir }}
       mount_dir: ${{ parameters.mount_dir }}
       temp_dir: ${{ parameters.temp_dir }}
     displayName: 'Cleanup'
     condition: always()
+
+  # delete the container in block account
+  - template: 'azure-pipeline-templates/container.yml'
+    condition: eq('${{ parameters.delete_containers }}', true)
+    parameters:
+      delete_container: true
+      account_name: $(AZTEST_BLOCK_ACC_NAME)
+      account_key: $(AZTEST_BLOCK_KEY)
+      container_name: $(containerName)
+
+  # delete the container in adls account
+  - template: 'azure-pipeline-templates/container.yml'
+    condition: eq('${{ parameters.delete_containers }}', true)
+    parameters:
+      delete_container: true
+      account_name: $(AZTEST_ADLS_ACC_NAME)
+      account_key: $(AZTEST_ADLS_KEY)
+      container_name: $(containerName)
