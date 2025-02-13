@@ -18,11 +18,6 @@ steps:
   # Creating the Container
   - script: |
       az --version
-    # Generate container Name
-      gen_container_name=$(tr -dc a-z0-9 </dev/urandom | head -c 16)
-    # Set the container name to the global variable
-      echo "##vso[task.setvariable variable=parameters.container_name;]$gen_container_name"
-      echo "Container Name is ${{ parameters.container_name}}"
       az storage container create --name ${{ parameters.container_name }} \
       --account-name ${{ parameters.account_name }} \
       --account-key ${{ parameters.account_key }} \
