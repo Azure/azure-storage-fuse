@@ -18,6 +18,7 @@ parameters:
   # UBUNTU PACKAGE INSTALLATION
   # Before installation, stop any process such as update manager from using package manager.
   # otherwise installation may fail
+steps:
   - script: |
       sleep 30
       sudo systemctl stop apt-daily.timer
