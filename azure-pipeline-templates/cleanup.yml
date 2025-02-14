@@ -21,7 +21,7 @@ steps:
         rm -rf $(MOUNT_DIR)/*
         rm -rf $(TEMP_DIR)/*
       timeoutInMinutes: 5
-      displayName: 'Cleanup'
+      displayName: 'Unmount Container'
       condition: always()
 
   # delete the container in block account
