@@ -20,91 +20,75 @@ parameters:
   # otherwise installation may fail
 steps:
   - script: |
-      sleep 30
-      sudo systemctl stop apt-daily.timer
-      echo "Add Lock Timeout for apt package manager"
-      sudo sh -c 'echo "DPkg::Lock::Timeout \"120\";" > /etc/apt/apt.conf.d/99timeout'
-      sudo ps -aux | grep -iE "apt"
-      sudo killall apt apt-get
-      yes | sudo fuser -vik -TERM /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock
-      echo "Released any lock if some other process has acquired"
-      sudo dpkg --configure -a
+# ubuntu
+      if [ "$distro_id" == "0" ]; then      
+        sleep 30
+        sudo systemctl stop apt-daily.timer
+        echo "Add Lock Timeout for apt package manager"
+        sudo sh -c 'echo "DPkg::Lock::Timeout \"120\";" > /etc/apt/apt.conf.d/99timeout'
+        sudo ps -aux | grep -iE "apt"
+        sudo killall apt apt-get
+        yes | sudo fuser -vik -TERM /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock
+        echo "Released any lock if some other process has acquired"
+        sudo dpkg --configure -a
 
-      echo "****************Starting Updates and Installation of Packages**************"
-      sudo apt-get update --fix-missing
-      sudo apt-get install make cmake gcc g++ git parallel -y
-      if [ "$(tags)" == "fuse2" ]
-      then
-        sudo apt-get install libfuse2 libfuse-dev -y
-      else
-        sudo apt-get install fuse3 libfuse3-dev -y
+        echo "****************Starting Updates and Installation of Packages**************"
+        sudo apt-get update --fix-missing
+        sudo apt-get install make cmake gcc g++ git parallel -y
+        if [ "$(tags)" == "fuse2" ]
+        then
+          sudo apt-get install libfuse2 libfuse-dev -y
+        else
+          sudo apt-get install fuse3 libfuse3-dev -y
+        fi
+        fusermount3 -V
+        fusermount -V
+        echo "***********************Install AzCli*************************"
+        curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+        az --version
+# rhel
+      elif [ "$distro_id" == "1" ]; then
+        sudo sed -i '/^failovermethod=/d' /etc/yum.repos.d/*.repo
+        sudo yum update -y
+        sudo yum groupinstall "Development Tools" -y
+        if [ $(AgentName) == "blobfuse-rhel9" ]; then
+          sudo yum install git fuse fuse3-libs fuse3-devel fuse3 python3 -y --nobest --allowerasing
+        else
+          sudo yum install git fuse fuse3-libs fuse3-devel fuse3 python36 -y --nobest --allowerasing
+        fi
+# centos
+      elif [ "$distro_id" == "2" ]; then
+        if [ "$(AgentName)" == "blobfuse-centos8" ]
+        then
+          sudo sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*
+          sudo sed -i 's|baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
+        fi
+        sudo yum update -y --skip-broken
+        if [ $(AgentName) == "blobfuse-centos8" ]; then
+          sudo yum install gcc gcc-c++ make git fuse fuse3 fuse3-devel python36 -y --nobest --allowerasing
+        else
+          sudo yum install gcc gcc-c++ make git fuse3 fuse3-devel python36 -y
+        fi
+# oracle
+      elif [ "$distro_id" == "3" ]; then
+        sudo yum update -y
+        sudo yum install gcc gcc-c++ make git fuse fuse3 fuse3-devel python36 -y --nobest --allowerasing 
+# rocky
+      elif [ "$distro_id" == "4" ]; then
+        sudo sed -i '/^failovermethod=/d' /etc/yum.repos.d/*.repo
+        sudo yum update -y
+        sudo yum groupinstall "Development Tools" -y
+        sudo yum install wget git fuse fuse3-libs fuse3-devel fuse3 python3 -y --nobest --allowerasing
+# suse
+      elif [ "$distro_id" == "5" ]; then
+        sudo zypper -n install git golang make cmake gcc gcc-c++ glibc-devel fuse
+        wget $(SUSE_FUSE3_PATH)/fuse3-3.10.5-150400.1.7.x86_64.rpm
+        sudo zypper -n --no-gpg-checks install fuse3-3.10.5-150400.1.7.x86_64.rpm
+        fusermount3 --v
+        wget $(SUSE_FUSE3_PATH)/fuse3-devel-3.10.5-150400.1.7.x86_64.rpm
+        sudo zypper -n --no-gpg-checks install fuse3-devel-3.10.5-150400.1.7.x86_64.rpm 
+# mariner
+      elif [ "$distro_id" == "6" ]; then
+        sudo tdnf install gcc build-essential git fuse3 fuse3-devel python3 -y
       fi
-      fusermount3 -V
-      fusermount -V
-      echo "***********************Install AzCli*************************"
-      curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
-      az --version
-    condition: eq('${{ parameters.distro_id }}', "0")
-    displayName: 'Libfuse Setup ${{ parameters.distro_name }}'
-
-  # RHEL PACKAGE INSTALLATION
-  - script: |
-      sudo sed -i '/^failovermethod=/d' /etc/yum.repos.d/*.repo
-      sudo yum update -y
-      sudo yum groupinstall "Development Tools" -y
-      if [ $(AgentName) == "blobfuse-rhel9" ]; then
-        sudo yum install git fuse fuse3-libs fuse3-devel fuse3 python3 -y --nobest --allowerasing
-      else
-        sudo yum install git fuse fuse3-libs fuse3-devel fuse3 python36 -y --nobest --allowerasing
-      fi
-    condition: eq('${{ parameters.distro_id }}', "1")
-    displayName: 'Libfuse Setup ${{ parameters.distro_name }}'
-
-  # CENTOS PACKAGE INSTALLATION
-  - script: |
-      if [ "$(AgentName)" == "blobfuse-centos8" ]
-      then
-        sudo sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*
-        sudo sed -i 's|baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
-      fi
-      sudo yum update -y --skip-broken
-      if [ $(AgentName) == "blobfuse-centos8" ]; then
-        sudo yum install gcc gcc-c++ make git fuse fuse3 fuse3-devel python36 -y --nobest --allowerasing
-      else
-        sudo yum install gcc gcc-c++ make git fuse3 fuse3-devel python36 -y
-      fi
-    condition: eq('${{ parameters.distro_id }}', "2")
-    displayName: 'Libfuse Setup ${{ parameters.distro_name }}'
-
-  # ORACLE PACKAGE INSTALLATION
-  - script: |
-      sudo yum update -y
-      sudo yum install gcc gcc-c++ make git fuse fuse3 fuse3-devel python36 -y --nobest --allowerasing 
-    condition: eq('${{ parameters.distro_id }}', "3")
-    displayName: 'Libfuse Setup ${{ parameters.distro_name }}'
-
-  # ROCKY PACKAGE INSTALLATION
-  - script: |
-      sudo sed -i '/^failovermethod=/d' /etc/yum.repos.d/*.repo
-      sudo yum update -y
-      sudo yum groupinstall "Development Tools" -y
-      sudo yum install wget git fuse fuse3-libs fuse3-devel fuse3 python3 -y --nobest --allowerasing
-    condition: eq('${{ parameters.distro_id }}', "4")
-    displayName: 'Libfuse Setup ${{ parameters.distro_name }}'
-
-  # SUSE PACKAGE INSTALLATION
-  - script: |
-      sudo zypper -n install git golang make cmake gcc gcc-c++ glibc-devel fuse
-      wget $(SUSE_FUSE3_PATH)/fuse3-3.10.5-150400.1.7.x86_64.rpm
-      sudo zypper -n --no-gpg-checks install fuse3-3.10.5-150400.1.7.x86_64.rpm
-      fusermount3 --v
-      wget $(SUSE_FUSE3_PATH)/fuse3-devel-3.10.5-150400.1.7.x86_64.rpm
-      sudo zypper -n --no-gpg-checks install fuse3-devel-3.10.5-150400.1.7.x86_64.rpm 
-    condition: eq('${{ parameters.distro_id }}', "5")
-    displayName: 'Libfuse Setup ${{ parameters.distro_name }}'
-
-  # MARINER PACKAGE INSTALLATION
-  - script: |
-      sudo tdnf install gcc build-essential git fuse3 fuse3-devel python3 -y
-    condition: eq('${{ parameters.distro_id }}', "6")
     displayName: 'Libfuse Setup ${{ parameters.distro_name }}'
