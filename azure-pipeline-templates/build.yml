@@ -6,9 +6,12 @@
 # 4. Run Unit Tests if specified by parameter skip_ut: false
 
 parameters:
-  - name: hostedAgent
-    type: boolean
-    default: true
+  - name: distro_name
+    type: string
+    default: "UBUNTU"
+  - name: distro_id
+    type: string
+    default: "0"
   - name: skip_msi
     type: string
     default: "true"
@@ -34,36 +37,33 @@ steps:
     displayName: 'Create Directory Structure'
 
   # Package manager installs for libfuse, 
-  # Before installation, stop any process such as update manager from using package manager.
-  # otherwise installation may fail
-  - script: |
-      sleep 30
-      sudo systemctl stop apt-daily.timer
-      echo "Add Lock Timeout for apt package manager"
-      sudo sh -c 'echo "DPkg::Lock::Timeout \"120\";" > /etc/apt/apt.conf.d/99timeout'
-      sudo ps -aux | grep -iE "apt"
-      sudo killall apt apt-get
-      yes | sudo fuser -vik -TERM /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock
-      echo "Released any lock if some other process has acquired"
-      sudo dpkg --configure -a
+  - template: 'package-install.yml'
+    parameters:
+      distro_name: $(paramters.distro_name)
+      distro_id: $(paramters.distro_id)
 
-      echo "****************Starting Updates and Installation of Packages**************"
-      sudo apt-get update --fix-missing
-      sudo apt-get install make cmake gcc g++ git parallel -y
-      if [ "$(tags)" == "fuse2" ]
-      then
-        sudo apt-get install libfuse2 libfuse-dev -y
-      else
-        sudo apt-get install fuse3 libfuse3-dev -y
-      fi
-      fusermount3 -V
-      fusermount -V
-      echo "***********************Install AzCli*************************"
-      curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
-      az --version
-    displayName: 'Libfuse Setup'
-    condition: eq('${{ parameters.hostedAgent }}', true)
-    retryCountOnTaskFailure: 3
+
+  # If proxy is given, Install and setup the proxy, these tests can only be done on ubuntu
+  - ${{ if ne(parameters.proxy_address, "") }}:
+    # Start Proxy
+    - script: |
+        sudo apt-get update --fix-missing
+        sudo apt remove mitmproxy -y
+        sudo apt-get install python3-setuptools -y
+        sudo apt install python3-pip -y
+        sudo pip3 install werkzeug==2.3.7
+        sudo pip3 install mitmproxy
+        mitmdump -q -w proxy_logs.txt &
+      displayName: 'Install & Start Proxy'
+
+    # Configure Proxy cert & env
+    - script: |
+        sudo mkdir /usr/local/share/ca-certificates/extra
+        sudo cp ~/.mitmproxy/mitmproxy-ca-cert.cer /usr/local/share/ca-certificates/extra/mitmproxy-ca-cert.crt
+        sudo update-ca-certificates
+        export https_proxy="127.0.0.1:8080"
+        export http_proxy="127.0.0.1:8080"
+      displayName: 'Configure Proxy'
 
   # Clone the repo
   - script: |

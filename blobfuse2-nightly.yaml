@@ -57,7 +57,7 @@ stages:
   - ${{ if eq(parameters.base_test, true) }}:
     - stage: BuildAndTest
       jobs:
-        # Ubuntu Tests
+        # Ubuntu Tests for Block account
         - job: Set_1
           timeoutInMinutes: 300
 
@@ -65,124 +65,25 @@ stages:
             matrix:
               Ubuntu-20-BlockBlob:
                 AgentName: 'blobfuse-ubuntu20'
-                containerName: 'test-cnt-ubn-20'
+                poolName: 'blobfuse-ubuntu-pool'
                 adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
                 fuselib: 'libfuse-dev'
                 tags: 'fuse2'
               Ubuntu-22-BlockBlob:
                 AgentName: 'blobfuse-ubuntu22'
-                containerName: 'test-cnt-ubn-22'
+                poolName: 'blobfuse-ubuntu-pool'
                 adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
                 fuselib: 'libfuse3-dev'
                 tags: 'fuse3'
-
-          pool:
-            name: "blobfuse-ubuntu-pool"
-            demands:
-              - ImageOverride -equals $(AgentName)
-
-          variables:
-            - group: NightlyBlobFuse
-            - name: MOUNT_DIR
-              value: '$(Pipeline.Workspace)/blob_mnt'
-            - name: TEMP_DIR
-              value: '$(Pipeline.Workspace)/blobfuse2_tmp'
-            - name: BLOBFUSE2_CFG
-              value: '$(Pipeline.Workspace)/blobfuse2.yaml'
-            - name: BLOBFUSE2_SAS_CFG
-              value: '$(Pipeline.Workspace)/blobfuse2_sas_config.yaml'
-            - name: BLOBFUSE2_AZCLI_CFG
-              value: '$(Pipeline.Workspace)/blobfuse2_azcli_config.yaml'
-            - name: BLOBFUSE2_ADLS_CFG
-              value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
-            - name: BLOBFUSE2_GTEST_CFG
-              value: '$(Pipeline.Workspace)/connection.yaml'
-            - name: BLOBFUSE2_AZURITE_CFG
-              value: '$(Pipeline.Workspace)/blobfuse2_azurite_config.yaml'
-            - name: BLOBFUSE2_STRESS_DIR
-              value: '$(Pipeline.Workspace)/blobfuse2_stress'
-            - name: DECODE_PERCENTS
-              value: false
-            - name: GOPATH
-              value: '$(Pipeline.Workspace)/go'
-            - name: ROOT_DIR
-              value: '$(System.DefaultWorkingDirectory)' 
-            - name: WORK_DIR
-              value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
-
-          steps:
-            # -------------------------------------------------------
-            # Pull and build the code
-            - template: 'azure-pipeline-templates/build.yml'
-              parameters:
-                working_directory: $(WORK_DIR)
-                root_dir: $(Pipeline.Workspace)
-                mount_dir: $(MOUNT_DIR)
-                temp_dir: $(TEMP_DIR)
-                gopath: $(GOPATH)
-                container: $(containerName)
-                tags: $(tags)
-                fuselib: $(fuselib)
-                skip_azcli: "false"
-
-            # -------------------------------------------------------
-            - template: 'azure-pipeline-templates/invalid-command-tests.yml'
-              parameters:
-                working_dir: $(WORK_DIR)
-                mount_dir: $(MOUNT_DIR)
-
-            - ${{ if eq(parameters.exhaustive_test, true) }}:    
-              - template: 'azure-pipeline-templates/verbose-tests.yml'
-                parameters:
-                  service: 'BlockBlob'
-                  account_type: 'block'
-                  account_endpoint: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net' 
-                  adls: false
-                  account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
-                  account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
-                  account_sas: $(NIGHTLY_STO_ACC_SAS)
-                  client_id: $(AZTEST_CLIENT)
-                  tenant_id: $(AZTEST_TENANT)
-                  client_secret: $(AZTEST_SECRET)
-                  container: $(containerName)
-                  config: $(BLOBFUSE2_CFG)
-                  working_dir: $(WORK_DIR)
-                  mount_dir: $(MOUNT_DIR)
-                  temp_dir: $(TEMP_DIR)
-                  stress_dir: $(BLOBFUSE2_STRESS_DIR)
-                  huge_container: 'testcnt1'
-                  quick_stress: ${{ parameters.quick_stress }}
-                  test_key_credential: true 
-                  test_sas_credential: true
-                  test_azcli_credential: true
-                  test_azurite: false
-                  sas_credential_config: $(BLOBFUSE2_SAS_CFG)
-                  azcli_credential_config: $(BLOBFUSE2_AZCLI_CFG)
-                  azurite_config: $(BLOBFUSE2_AZURITE_CFG)
-                  distro_name: $(AgentName)
-                  verbose_log: ${{ parameters.verbose_log }}
-                  tags: $(tags)
-
-            - template: azure-pipeline-templates/cleanup.yml
-              parameters:
-                working_dir: $(WORK_DIR)
-                mount_dir: $(MOUNT_DIR)
-                temp_dir: $(TEMP_DIR)
-
-        - job: Set_1_ARM
-          timeoutInMinutes: 300
-
-          strategy:
-            matrix:
               Ubuntu-22-ARM64-BlockBlob:
                 AgentName: 'blobfuse-ubn22-arm64'
-                containerName: 'test-cnt-ubn-22-arm64'
+                poolName: 'blobfuse-ubn-arm64-pool'
                 adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22_ARM)
                 fuselib: 'libfuse3-dev'
                 tags: 'fuse3'
-          
+
           pool:
-            name: "blobfuse-ubn-arm64-pool"
+            name: $(poolName)
             demands:
               - ImageOverride -equals $(AgentName)
 
@@ -216,29 +117,15 @@ stages:
               value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
 
           steps:
-            - script: |
-                hostnamectl
-              displayName: 'Host info'
-              workingDirectory: $(ROOT_DIR)
             # -------------------------------------------------------
-            # Pull and build the code
+            # Build the code and create the containers.
             - template: 'azure-pipeline-templates/build.yml'
               parameters:
-                working_directory: $(WORK_DIR)
-                root_dir: $(Pipeline.Workspace)
-                mount_dir: $(MOUNT_DIR)
-                temp_dir: $(TEMP_DIR)
-                gopath: $(GOPATH)
-                container: $(containerName)
-                tags: $(tags)
-                fuselib: $(fuselib)
                 skip_azcli: "false"
 
             # -------------------------------------------------------
             - template: 'azure-pipeline-templates/invalid-command-tests.yml'
-              parameters:
-                working_dir: $(WORK_DIR)
-                mount_dir: $(MOUNT_DIR)
+
 
             - ${{ if eq(parameters.exhaustive_test, true) }}:    
               - template: 'azure-pipeline-templates/verbose-tests.yml'
@@ -253,11 +140,7 @@ stages:
                   client_id: $(AZTEST_CLIENT)
                   tenant_id: $(AZTEST_TENANT)
                   client_secret: $(AZTEST_SECRET)
-                  container: $(containerName)
                   config: $(BLOBFUSE2_CFG)
-                  working_dir: $(WORK_DIR)
-                  mount_dir: $(MOUNT_DIR)
-                  temp_dir: $(TEMP_DIR)
                   stress_dir: $(BLOBFUSE2_STRESS_DIR)
                   huge_container: 'testcnt1'
                   quick_stress: ${{ parameters.quick_stress }}
@@ -270,15 +153,13 @@ stages:
                   azurite_config: $(BLOBFUSE2_AZURITE_CFG)
                   distro_name: $(AgentName)
                   verbose_log: ${{ parameters.verbose_log }}
-                  tags: $(tags)
 
             - template: azure-pipeline-templates/cleanup.yml
               parameters:
-                working_dir: $(WORK_DIR)
-                mount_dir: $(MOUNT_DIR)
-                temp_dir: $(TEMP_DIR)
+                unmount: true
+                delete_containers: true
 
-        # Ubuntu Tests
+        # Ubuntu Tests for ADLS account
         - job: Set_2
           timeoutInMinutes: 300
 
@@ -286,19 +167,25 @@ stages:
             matrix:
               Ubuntu-20-ADLS:
                 AgentName: 'blobfuse-ubuntu20'
-                containerName: 'test-cnt-ubn-20'
+                poolName: 'blobfuse-ubuntu-pool'
                 adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
                 fuselib: 'libfuse-dev'
                 tags: 'fuse2'
               Ubuntu-22-ADLS:
                 AgentName: 'blobfuse-ubuntu22'
-                containerName: 'test-cnt-ubn-22'
+                poolName: 'blobfuse-ubuntu-pool'
                 adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
+                fuselib: 'libfuse3-dev'
+                tags: 'fuse3'
+              Ubuntu-22-ARM64-ADLS:
+                AgentName: 'blobfuse-ubn22-arm64'
+                poolName: 'blobfuse-ubn-arm64-pool'
+                adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22_ARM)
                 fuselib: 'libfuse3-dev'
                 tags: 'fuse3'
 
           pool:
-            name: "blobfuse-ubuntu-pool"
+            name: $(poolName)
             demands:
               - ImageOverride -equals $(AgentName)
 
@@ -333,17 +220,9 @@ stages:
 
           steps:
             # -------------------------------------------------------
-            # Pull and build the code
+            # Pull and build the code, Create the Containers in storage account
             - template: 'azure-pipeline-templates/build.yml'
               parameters:
-                working_directory: $(WORK_DIR)
-                root_dir: $(Pipeline.Workspace)
-                mount_dir: $(MOUNT_DIR)
-                temp_dir: $(TEMP_DIR)
-                gopath: $(GOPATH)
-                container: $(containerName)
-                tags: $(tags)
-                fuselib: $(fuselib)
                 skip_ut: true # Skip UT because Block Blob set runs it
                 skip_azcli: "false"
 
@@ -361,11 +240,7 @@ stages:
                   client_id: $(AZTEST_CLIENT)
                   tenant_id: $(AZTEST_TENANT)
                   client_secret: $(AZTEST_SECRET)
-                  container: $(containerName)
                   config: $(BLOBFUSE2_ADLS_CFG)
-                  working_dir: $(WORK_DIR)
-                  mount_dir: $(MOUNT_DIR)
-                  temp_dir: $(TEMP_DIR)
                   stress_dir: $(BLOBFUSE2_STRESS_DIR)
                   huge_container: 'testcnt'
                   quick_stress: ${{ parameters.quick_stress }}
@@ -378,114 +253,12 @@ stages:
                   azurite_config: $(BLOBFUSE2_AZURITE_CFG)
                   distro_name: $(AgentName)
                   verbose_log: ${{ parameters.verbose_log }}
-                  tags: $(tags)
 
             - template: azure-pipeline-templates/cleanup.yml
               parameters:
-                working_dir: $(WORK_DIR)
-                mount_dir: $(MOUNT_DIR)
-                temp_dir: $(TEMP_DIR)
-
-        - job: Set_2_ARM
-          timeoutInMinutes: 300
-
-          strategy:
-            matrix:
-              Ubuntu-22-ARM64-ADLS:
-                AgentName: 'blobfuse-ubn22-arm64'
-                containerName: 'test-cnt-ubn-22-arm64'
-                adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22_ARM)
-                fuselib: 'libfuse3-dev'
-                tags: 'fuse3'
-          pool:
-            name: "blobfuse-ubn-arm64-pool"
-            demands:
-              - ImageOverride -equals $(AgentName)
-
-          variables:
-            - group: NightlyBlobFuse
-            - name: MOUNT_DIR
-              value: '$(Pipeline.Workspace)/blob_mnt'
-            - name: TEMP_DIR
-              value: '$(Pipeline.Workspace)/blobfuse2_tmp'
-            - name: BLOBFUSE2_CFG
-              value: '$(Pipeline.Workspace)/blobfuse2.yaml'
-            - name: BLOBFUSE2_SAS_CFG
-              value: '$(Pipeline.Workspace)/blobfuse2_sas_config.yaml'
-            - name: BLOBFUSE2_AZCLI_CFG
-              value: '$(Pipeline.Workspace)/blobfuse2_azcli_config.yaml'
-            - name: BLOBFUSE2_ADLS_CFG
-              value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
-            - name: BLOBFUSE2_GTEST_CFG
-              value: '$(Pipeline.Workspace)/connection.yaml'
-            - name: BLOBFUSE2_AZURITE_CFG
-              value: '$(Pipeline.Workspace)/blobfuse2_azurite_config.yaml'
-            - name: BLOBFUSE2_STRESS_DIR
-              value: '$(Pipeline.Workspace)/blobfuse2_stress'
-            - name: DECODE_PERCENTS
-              value: false
-            - name: GOPATH
-              value: '$(Pipeline.Workspace)/go'
-            - name: ROOT_DIR
-              value: '$(System.DefaultWorkingDirectory)' 
-            - name: WORK_DIR
-              value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
-
-          steps:
-            # -------------------------------------------------------
-            # Pull and build the code
-            - template: 'azure-pipeline-templates/build.yml'
-              parameters:
-                working_directory: $(WORK_DIR)
-                root_dir: $(Pipeline.Workspace)
-                mount_dir: $(MOUNT_DIR)
-                temp_dir: $(TEMP_DIR)
-                gopath: $(GOPATH)
-                container: $(containerName)
-                tags: $(tags)
-                fuselib: $(fuselib)
-                skip_ut: true # Skip UT because Block Blob set runs it
-                skip_azcli: "false"
-
-            # -------------------------------------------------------
-            - ${{ if eq(parameters.exhaustive_test, true) }}:    
-              - template: 'azure-pipeline-templates/verbose-tests.yml'
-                parameters:
-                  service: 'ADLS'
-                  account_type: 'adls'
-                  account_endpoint: 'https://$(AZTEST_ADLS_ACC_NAME).dfs.core.windows.net' 
-                  adls: true
-                  account_name: $(AZTEST_ADLS_ACC_NAME)
-                  account_key: $(AZTEST_ADLS_KEY)
-                  account_sas: $(adlsSas)
-                  client_id: $(AZTEST_CLIENT)
-                  tenant_id: $(AZTEST_TENANT)
-                  client_secret: $(AZTEST_SECRET)
-                  container: $(containerName)
-                  config: $(BLOBFUSE2_ADLS_CFG)
-                  working_dir: $(WORK_DIR)
-                  mount_dir: $(MOUNT_DIR)
-                  temp_dir: $(TEMP_DIR)
-                  stress_dir: $(BLOBFUSE2_STRESS_DIR)
-                  huge_container: 'testcnt'
-                  quick_stress: ${{ parameters.quick_stress }}
-                  test_key_credential: true
-                  test_sas_credential: false
-                  test_azcli_credential: true
-                  test_azurite: false
-                  sas_credential_config: $(BLOBFUSE2_SAS_CFG)
-                  azcli_credential_config: $(BLOBFUSE2_AZCLI_CFG)
-                  azurite_config: $(BLOBFUSE2_AZURITE_CFG)
-                  distro_name: $(AgentName)
-                  verbose_log: ${{ parameters.verbose_log }}
-                  tags: $(tags)
-
-            - template: azure-pipeline-templates/cleanup.yml
-              parameters:
-                working_dir: $(WORK_DIR)
-                mount_dir: $(MOUNT_DIR)
-                temp_dir: $(TEMP_DIR)
-
+                unmount: true
+                delete_containers: true
+                
 
         - ${{ if eq(parameters.proxy_test, true) }}:
             # -----------------------------------------------------------
@@ -496,7 +269,6 @@ stages:
               matrix:
                 Ubuntu-20-Proxy:
                   AgentName: 'blobfuse-ubuntu20'
-                  containerName: 'test-cnt-ubn-18-proxy'
 
             pool:
               name: "blobfuse-ubuntu-pool"
@@ -523,40 +295,10 @@ stages:
                 value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
 
             steps:
-              - script: |
-                  sudo systemctl stop apt-daily.timer
-                displayName: 'Stop apt update manager'
-
-              # Start Proxy
-              - script: |
-                  sudo apt-get update --fix-missing
-                  sudo apt remove mitmproxy -y
-                  sudo apt-get install python3-setuptools -y
-                  sudo apt install python3-pip -y
-                  sudo pip3 install werkzeug==2.3.7
-                  sudo pip3 install mitmproxy
-                  mitmdump -q -w proxy_logs.txt &
-                displayName: 'Install & Start Proxy'
-
-              # Configure Proxy cert & env
-              - script: |
-                  sudo mkdir /usr/local/share/ca-certificates/extra
-                  sudo cp ~/.mitmproxy/mitmproxy-ca-cert.cer /usr/local/share/ca-certificates/extra/mitmproxy-ca-cert.crt
-                  sudo update-ca-certificates
-                  export https_proxy="127.0.0.1:8080"
-                  export http_proxy="127.0.0.1:8080"
-                displayName: 'Configure Proxy'
-
               # -------------------------------------------------------
-              # Pull, build and unit test the code
+              # Pull, build and unit test the code, create the containers.
               - template: 'azure-pipeline-templates/build.yml'
                 parameters:
-                  working_directory: $(WORK_DIR)
-                  root_dir: $(Pipeline.Workspace)
-                  mount_dir: $(MOUNT_DIR)
-                  temp_dir: $(TEMP_DIR)
-                  gopath: $(GOPATH)
-                  container: $(containerName)
                   proxy_address: "127.0.0.1:8080"
                   skip_ut: true
 
@@ -664,403 +406,15 @@ stages:
               # ------------------------------------------------------------
               - template: 'azure-pipeline-templates/cleanup.yml'
                 parameters:
-                  working_dir: $(WORK_DIR)
-                  mount_dir: $(MOUNT_DIR)
-                  temp_dir: $(TEMP_DIR)
+                  unmount: true
+                  delete_containers: true                  
               - script: |
                   kill -9 $(pgrep mitmdump)
                 displayName: 'Kill Proxy'
-        
-        - ${{ if eq(parameters.exhaustive_test, true) }}:
-          # RHEL Tests
-          - job: Set_4
-            timeoutInMinutes: 60
-            strategy:
-              matrix:
-                RHEL-8.6:
-                  DistroVer: "RHEL-8.6"
-                  Description: "Red Hat Enterprise Linux 8.6"
-                  AgentName: "blobfuse-rhel8_6"
-                  containerName: "test-cnt-rhel-86"
-                  tags: 'fuse3'
-                RHEL-9.0:
-                  DistroVer: "RHEL-9.0"
-                  Description: "Red Hat Enterprise Linux 9.0"
-                  AgentName: "blobfuse-rhel9"
-                  containerName: "test-cnt-rhel-9"
-                  tags: 'fuse3'
-            pool:
-              name: "blobfuse-rhel-pool"
-              demands:
-                - ImageOverride -equals $(AgentName)
-
-            variables:
-              - group: NightlyBlobFuse
-              - name: MOUNT_DIR
-                value: '$(Pipeline.Workspace)/blob_mnt'
-              - name: TEMP_DIR
-                value: '$(Pipeline.Workspace)/blobfuse2_tmp'
-              - name: BLOBFUSE2_CFG
-                value: '$(Pipeline.Workspace)/blobfuse2.yaml'
-              - name: BLOBFUSE2_ADLS_CFG
-                value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
-              - name: GOPATH
-                value: '$(Pipeline.Workspace)/go'
-              - name: ROOT_DIR
-                value: '$(System.DefaultWorkingDirectory)' 
-              - name: WORK_DIR
-                value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
-              - name: skipComponentGovernanceDetection
-                value: true
-
-            steps:
-              - template: 'azure-pipeline-templates/distro-tests.yml'
-                parameters:
-                  working_dir: $(WORK_DIR)
-                  root_dir: $(ROOT_DIR)
-                  temp_dir: $(TEMP_DIR)
-                  mount_dir: $(MOUNT_DIR)
-                  config_path: $(BLOBFUSE2_CFG)
-                  container: $(ContainerName)
-                  blob_account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
-                  blob_account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
-                  adls_account_name: $(AZTEST_ADLS_ACC_NAME)
-                  adls_account_key: $(AZTEST_ADLS_KEY)
-                  distro_name: $(AgentName)
-                  gopath: $(GOPATH)
-                  tags: $(tags) 
-                  installStep:
-                    script: |
-                      sudo sed -i '/^failovermethod=/d' /etc/yum.repos.d/*.repo
-                      sudo yum update -y
-                      sudo yum groupinstall "Development Tools" -y
-                      if [ $(AgentName) == "blobfuse-rhel9" ]; then
-                        sudo yum install git fuse fuse3-libs fuse3-devel fuse3 python3 -y --nobest --allowerasing
-                      else
-                        sudo yum install git fuse fuse3-libs fuse3-devel fuse3 python36 -y --nobest --allowerasing
-                      fi
-                    displayName: 'Install fuse'
-                  verbose_log: ${{ parameters.verbose_log }}
-
-          # Centos Tests
-          - job: Set_5
-            timeoutInMinutes: 60
-            strategy:
-              matrix:
-                CentOS-7.9:
-                  DistroVer: "CentOS-7.9"
-                  Description: "CentOS 7.9"
-                  AgentName: "blobfuse-centos7"
-                  ContainerName: "test-cnt-cent-7"
-                CentOS-8.5:
-                  DistroVer: "CentOS-8.5"
-                  Description: "CentOS 8.5"
-                  AgentName: "blobfuse-centos8"
-                  ContainerName: "test-cnt-cent-8"
-
-            pool:
-              name: "blobfuse-centos-pool"
-              demands:
-                - ImageOverride -equals $(AgentName)
-
-            variables:
-              - group: NightlyBlobFuse
-              - name: MOUNT_DIR
-                value: '$(Pipeline.Workspace)/blob_mnt'
-              - name: TEMP_DIR
-                value: '$(Pipeline.Workspace)/blobfuse2_tmp'
-              - name: BLOBFUSE2_CFG
-                value: '$(Pipeline.Workspace)/blobfuse2.yaml'
-              - name: BLOBFUSE2_ADLS_CFG
-                value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
-              - name: GOPATH
-                value: '$(Pipeline.Workspace)/go'
-              - name: ROOT_DIR
-                value: '$(System.DefaultWorkingDirectory)' 
-              - name: WORK_DIR
-                value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
-              - name: skipComponentGovernanceDetection
-                value: true
-
-            steps:
-              - script: |
-                  sudo sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*
-                  sudo sed -i 's|baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
-                condition: eq(variables['AgentName'], 'blobfuse-centos8')
-                displayName: "Update OS mirrors"
-
-              - template: 'azure-pipeline-templates/distro-tests.yml'
-                parameters:
-                  working_dir: $(WORK_DIR)
-                  root_dir: $(ROOT_DIR)
-                  temp_dir: $(TEMP_DIR)
-                  mount_dir: $(MOUNT_DIR)
-                  config_path: $(BLOBFUSE2_CFG)
-                  container: $(ContainerName)
-                  blob_account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
-                  blob_account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
-                  adls_account_name: $(AZTEST_ADLS_ACC_NAME)
-                  adls_account_key: $(AZTEST_ADLS_KEY)
-                  distro_name: $(AgentName)
-                  gopath: $(GOPATH)
-                  installStep:
-                    script: |
-                      sudo yum update -y --skip-broken
-                      if [ $(AgentName) == "blobfuse-centos8" ]; then
-                        sudo yum install gcc gcc-c++ make git fuse fuse3 fuse3-devel python36 -y --nobest --allowerasing
-                      else
-                        sudo yum install gcc gcc-c++ make git fuse3 fuse3-devel python36 -y
-                      fi
-                    displayName: 'Install fuse'
-                  verbose_log: ${{ parameters.verbose_log }}
-
-          # Oracle Tests
-          - job: Set_6
-            timeoutInMinutes: 60
-            strategy:
-              matrix:
-                Oracle-8.1:
-                  DistroVer: "Oracle-8.1"
-                  Description: "Oracle Linux 8.1"
-                  AgentName: "blobfuse-oracle81"
-                  ContainerName: "test-cnt-ora-81"
-
-            pool:
-              name: "blobfuse-oracle-pool"
-              demands:
-                - ImageOverride -equals $(AgentName)
-
-            variables:
-              - group: NightlyBlobFuse
-              - name: MOUNT_DIR
-                value: '$(Pipeline.Workspace)/blob_mnt'
-              - name: TEMP_DIR
-                value: '$(Pipeline.Workspace)/blobfuse2_tmp'
-              - name: BLOBFUSE2_CFG
-                value: '$(Pipeline.Workspace)/blobfuse2.yaml'
-              - name: BLOBFUSE2_ADLS_CFG
-                value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
-              - name: GOPATH
-                value: '$(Pipeline.Workspace)/go'
-              - name: ROOT_DIR
-                value: '$(System.DefaultWorkingDirectory)' 
-              - name: WORK_DIR
-                value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
-              - name: skipComponentGovernanceDetection
-                value: true
-
-            steps:
-              - template: 'azure-pipeline-templates/distro-tests.yml'
-                parameters:
-                  working_dir: $(WORK_DIR)
-                  root_dir: $(ROOT_DIR)
-                  temp_dir: $(TEMP_DIR)
-                  mount_dir: $(MOUNT_DIR)
-                  config_path: $(BLOBFUSE2_CFG)
-                  container: $(ContainerName)
-                  blob_account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
-                  blob_account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
-                  adls_account_name: $(AZTEST_ADLS_ACC_NAME)
-                  adls_account_key: $(AZTEST_ADLS_KEY)
-                  distro_name: $(AgentName)
-                  gopath: $(GOPATH)
-                  installStep:
-                    script: |
-                      sudo yum update -y
-                      sudo yum install gcc gcc-c++ make git fuse fuse3 fuse3-devel python36 -y --nobest --allowerasing 
-                    displayName: 'Install fuse'
-                  verbose_log: ${{ parameters.verbose_log }}
-
-          # ROCKY Tests
-          - job: Set_7
-            timeoutInMinutes: 60
-            strategy:
-              matrix:
-                Rocky-8.0:
-                  DistroVer: "Rocky-8.0"
-                  Description: "Rocky Linux 8.0"
-                  AgentName: "blobfuse-rocky8"
-                  ContainerName: "test-cnt-rocky-8"
-                  tags: 'fuse3'
-                Rocky-9.0:
-                  DistroVer: "Rocky-9.0"
-                  Description: "Rocky Linux 9.0"
-                  AgentName: "blobfuse-rocky9"
-                  ContainerName: "test-cnt-rocky-9"
-                  tags: 'fuse3'
-            pool:
-              name: "blobfuse2-rocky-pool"
-              demands:
-                - ImageOverride -equals $(AgentName)
-
-            variables:
-              - group: NightlyBlobFuse
-              - name: MOUNT_DIR
-                value: '$(Pipeline.Workspace)/blob_mnt'
-              - name: TEMP_DIR
-                value: '$(Pipeline.Workspace)/blobfuse2_tmp'
-              - name: BLOBFUSE2_CFG
-                value: '$(Pipeline.Workspace)/blobfuse2.yaml'
-              - name: BLOBFUSE2_ADLS_CFG
-                value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
-              - name: GOPATH
-                value: '$(Pipeline.Workspace)/go'
-              - name: ROOT_DIR
-                value: '$(System.DefaultWorkingDirectory)' 
-              - name: WORK_DIR
-                value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
-              - name: skipComponentGovernanceDetection
-                value: true
-
-            steps:
-              - template: 'azure-pipeline-templates/distro-tests.yml'
-                parameters:
-                  working_dir: $(WORK_DIR)
-                  root_dir: $(ROOT_DIR)
-                  temp_dir: $(TEMP_DIR)
-                  mount_dir: $(MOUNT_DIR)
-                  config_path: $(BLOBFUSE2_CFG)
-                  container: $(ContainerName)
-                  blob_account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
-                  blob_account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
-                  adls_account_name: $(AZTEST_ADLS_ACC_NAME)
-                  adls_account_key: $(AZTEST_ADLS_KEY)
-                  distro_name: $(AgentName)
-                  gopath: $(GOPATH)
-                  tags: $(tags) 
-                  installStep:
-                    script: |
-                      sudo sed -i '/^failovermethod=/d' /etc/yum.repos.d/*.repo
-                      sudo yum update -y
-                      sudo yum groupinstall "Development Tools" -y
-                      sudo yum install wget git fuse fuse3-libs fuse3-devel fuse3 python3 -y --nobest --allowerasing
-                    displayName: 'Install fuse'
-                  verbose_log: ${{ parameters.verbose_log }}
-
-          # # SUSE Tests
-          # - job: Set_9
-          #   timeoutInMinutes: 60
-          #   strategy:
-          #     matrix:
-          #       SUSE-15:
-          #         DistroVer: "SUSE-15"
-          #         Description: "SUSE Enterprise Linux 15"
-          #         AgentName: "blobfuse-suse15"
-          #         ContainerName: "test-cnt-suse-15"
-
-          #   pool:
-          #     name: "blobfuse-suse-pool"
-          #     demands:
-          #       - ImageOverride -equals $(AgentName)
-
-          #   variables:
-          #     - group: NightlyBlobFuse
-          #     - name: MOUNT_DIR
-          #       value: '$(Pipeline.Workspace)/blob_mnt'
-          #     - name: TEMP_DIR
-          #       value: '$(Pipeline.Workspace)/blobfuse2_tmp'
-          #     - name: BLOBFUSE2_CFG
-          #       value: '$(Pipeline.Workspace)/blobfuse2.yaml'
-          #     - name: BLOBFUSE2_ADLS_CFG
-          #       value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
-          #     - name: GOPATH
-          #       value: '$(Pipeline.Workspace)/go'
-          #     - name: ROOT_DIR
-          #       value: '$(System.DefaultWorkingDirectory)' 
-          #     - name: WORK_DIR
-          #       value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
-          #     - name: skipComponentGovernanceDetection
-          #       value: true
-
-          #   steps:
-          #     - template: 'azure-pipeline-templates/distro-tests.yml'
-          #       parameters:
-          #         working_dir: $(WORK_DIR)
-          #         root_dir: $(ROOT_DIR)
-          #         temp_dir: $(TEMP_DIR)
-          #         mount_dir: $(MOUNT_DIR)
-          #         config_path: $(BLOBFUSE2_CFG)
-          #         container: $(ContainerName)
-          #         blob_account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
-          #         blob_account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
-          #         adls_account_name: $(AZTEST_ADLS_ACC_NAME)
-          #         adls_account_key: $(AZTEST_ADLS_KEY)
-          #         distro_name: $(AgentName)
-          #         gopath: $(GOPATH)
-          #         installStep:
-          #           script: |
-          #             sudo zypper -n install git golang make cmake gcc gcc-c++ glibc-devel fuse
-          #             wget $(SUSE_FUSE3_PATH)/fuse3-3.10.5-150400.1.7.x86_64.rpm
-          #             sudo zypper -n --no-gpg-checks install fuse3-3.10.5-150400.1.7.x86_64.rpm
-          #             fusermount3 --v
-          #             wget $(SUSE_FUSE3_PATH)/fuse3-devel-3.10.5-150400.1.7.x86_64.rpm
-          #             sudo zypper -n --no-gpg-checks install fuse3-devel-3.10.5-150400.1.7.x86_64.rpm 
-          #           displayName: 'Install fuse'
-          #         verbose_log: ${{ parameters.verbose_log }}
-
-          # Mariner Tests
-          - job: Set_10
-            timeoutInMinutes: 60
-            strategy:
-              matrix:
-                Mariner2:
-                  DistroVer: "Mariner2"
-                  Description: "CBL-Mariner2 Linux"
-                  AgentName: "blobfuse-mariner2"
-                  ContainerName: "test-cnt-mari-2"
-                  fuselib: 'libfuse3-dev'
-                  tags: 'fuse3'
-            pool:
-              name: "blobfuse-mariner-pool"
-              demands:
-                - ImageOverride -equals $(AgentName)
-
-            variables:
-              - group: NightlyBlobFuse
-              - name: MOUNT_DIR
-                value: '$(Pipeline.Workspace)/blob_mnt'
-              - name: TEMP_DIR
-                value: '$(Pipeline.Workspace)/blobfuse2_tmp'
-              - name: BLOBFUSE2_CFG
-                value: '$(Pipeline.Workspace)/blobfuse2.yaml'
-              - name: BLOBFUSE2_ADLS_CFG
-                value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
-              - name: GOPATH
-                value: '$(Pipeline.Workspace)/go'
-              - name: ROOT_DIR
-                value: '$(System.DefaultWorkingDirectory)' 
-              - name: WORK_DIR
-                value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
-              - name: skipComponentGovernanceDetection
-                value: true
-
-            steps:
-              - template: 'azure-pipeline-templates/distro-tests.yml'
-                parameters:
-                  working_dir: $(WORK_DIR)
-                  root_dir: $(ROOT_DIR)
-                  temp_dir: $(TEMP_DIR)
-                  mount_dir: $(MOUNT_DIR)
-                  config_path: $(BLOBFUSE2_CFG)
-                  container: $(ContainerName)
-                  blob_account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
-                  blob_account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
-                  adls_account_name: $(AZTEST_ADLS_ACC_NAME)
-                  adls_account_key: $(AZTEST_ADLS_KEY)
-                  distro_name: $(AgentName)
-                  tags: $(tags)
-                  fuselib: $(fuselib)
-                  gopath: $(GOPATH)
-                  installStep:
-                    script: |
-                        sudo tdnf install gcc build-essential git fuse3 fuse3-devel python3 -y
-                    displayName: 'Install fuse'
-                  verbose_log: ${{ parameters.verbose_log }}
-
-        - ${{ if eq(parameters.msi_test, true) }}:
+        - ${{ if eq(parameters.msi_test, true) }}:  
           # -----------------------------------------------------------
           # Ubuntu-20.04 MSI tests
-          - job: Set_11
+          - job: Set_4
             timeoutInMinutes: 60
             strategy:
               matrix:
@@ -1068,7 +422,6 @@ stages:
                   DistroVer: "Ubn20_MSI"
                   AgentName: "blobfuse-ubuntu20"
                   Description: "Ubuntu 20 MSI Test"
-                  ContainerName: "test-cnt-ubn-20-msi"
 
             pool:
               name: "blobfuse-ubuntu-pool"
@@ -1100,28 +453,13 @@ stages:
                   echo $(Description)
                   hostnamectl
                 displayName: 'Print Agent Info'
-              
-              # Create directory structure
-              - script: |
-                  sudo rm -rf $(ROOT_DIR)
-                  sudo mkdir -p $(ROOT_DIR)
-                  sudo chown -R `whoami` $(ROOT_DIR)
-                  chmod 777 $(ROOT_DIR)
-                  mkdir -p $(ROOT_DIR)/go/src
-                displayName: 'Create Directory Structure'
 
               # Build the code
               - template: 'azure-pipeline-templates/build.yml'
                 parameters:
-                  working_directory: $(WORK_DIR)
-                  root_dir: $(ROOT_DIR)
-                  mount_dir: $(MOUNT_DIR)
-                  temp_dir: $(TEMP_DIR)
-                  gopath: $(GOPATH)
-                  container: $(ContainerName)
                   skip_msi: "false"
                   skip_azcli: "false"
-              
+
               # BlockBlob MSI Test
               - script: |
                   cd $(WORK_DIR)
@@ -1139,12 +477,9 @@ stages:
                   cat $(BLOBFUSE2_CFG)
                 displayName: "Print config file"
 
-              # Mount the cntainer and run basic tests
+              # Mount the container and run basic tests
               - template: 'azure-pipeline-templates/verify-auth.yml'
                 parameters:
-                  working_dir: $(WORK_DIR)
-                  mount_dir: $(MOUNT_DIR)
-                  temp_dir: $(TEMP_DIR)
                   idstring: 'BlockBlob MSI'
                   distro_name: $(AgentName)
                   mountStep:
@@ -1173,9 +508,6 @@ stages:
               # Mount the cntainer and run basic tests
               - template: 'azure-pipeline-templates/verify-auth.yml'
                 parameters:
-                  working_dir: $(WORK_DIR)
-                  mount_dir: $(MOUNT_DIR)
-                  temp_dir: $(TEMP_DIR)
                   idstring: 'ADLS MSI'
                   distro_name: $(AgentName)
                   mountStep:
@@ -1187,10 +519,118 @@ stages:
               # Cleanup
               - template: 'azure-pipeline-templates/cleanup.yml'
                 parameters:
-                  working_dir: $(WORK_DIR)
-                  mount_dir: $(MOUNT_DIR)
-                  temp_dir: $(TEMP_DIR)
+                  unmount: true
+                  delete_containers: true            
 
+        
+        - ${{ if eq(parameters.exhaustive_test, true) }}:
+          # Run E2E tests on different distros
+          - job: Set_5
+            continueOnError: true
+            timeoutInMinutes: 60
+            strategy:
+              matrix:
+                RHEL-8.6:
+                  DistroVer: 'RHEL-8.6'
+                  distroId: '1'
+                  poolName: 'blobfuse-rhel-pool'
+                  Description: 'Red Hat Enterprise Linux 8.6'
+                  AgentName: 'blobfuse-rhel8_6'
+                  tags: 'fuse3'
+                RHEL-9.0:
+                  DistroVer: 'RHEL-9.0'
+                  distroId: '1'
+                  poolName: 'blobfuse-rhel-pool'
+                  Description: 'Red Hat Enterprise Linux 9.0'
+                  AgentName: 'blobfuse-rhel9'
+                  tags: 'fuse3'
+                CentOS-7.9:
+                  DistroVer: "CentOS-7.9"
+                  distroId: '2'
+                  poolName: 'blobfuse-centos-pool'
+                  Description: "CentOS 7.9"
+                  AgentName: "blobfuse-centos7"
+                CentOS-8.5:
+                  DistroVer: "CentOS-8.5"
+                  distroId: '2'
+                  poolName: 'blobfuse-centos-pool'
+                  Description: "CentOS 8.5"
+                  AgentName: "blobfuse-centos8"
+                Oracle-8.1:
+                  DistroVer: "Oracle-8.1"
+                  distroId: '3'
+                  poolName: 'blobfuse-oracle-pool'
+                  Description: "Oracle Linux 8.1"
+                  AgentName: "blobfuse-oracle81"
+                Rocky-8.0:
+                  DistroVer: "Rocky-8.0"
+                  distroId: '4'
+                  poolName: 'blobfuse2-rocky-pool'
+                  Description: "Rocky Linux 8.0"
+                  AgentName: "blobfuse-rocky8"
+                  tags: 'fuse3'
+                Rocky-9.0:
+                  DistroVer: "Rocky-9.0"
+                  distroId: '4'
+                  poolName: 'blobfuse2-rocky-pool'
+                  Description: "Rocky Linux 9.0"
+                  AgentName: "blobfuse-rocky9"
+                  tags: 'fuse3'
+                SUSE-15:
+                  DistroVer: "SUSE-15"
+                  distroId: '5'
+                  poolName: 'blobfuse-suse-pool'
+                  Description: "SUSE Enterprise Linux 15"
+                  AgentName: "blobfuse-suse15"
+                Mariner2:
+                  DistroVer: "Mariner2"
+                  distroId: '6'
+                  poolName: 'blobfuse-mariner-pool'
+                  Description: "CBL-Mariner2 Linux"
+                  AgentName: "blobfuse-mariner2"
+                  fuselib: 'libfuse3-dev'
+                  tags: 'fuse3'                  
+            pool:
+              name: $(poolName)
+              demands:
+                - ImageOverride -equals $(AgentName)
+
+            variables:
+              - group: NightlyBlobFuse
+              - name: MOUNT_DIR
+                value: '$(Pipeline.Workspace)/blob_mnt'
+              - name: TEMP_DIR
+                value: '$(Pipeline.Workspace)/blobfuse2_tmp'
+              - name: BLOBFUSE2_CFG
+                value: '$(Pipeline.Workspace)/blobfuse2.yaml'
+              - name: BLOBFUSE2_ADLS_CFG
+                value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
+              - name: GOPATH
+                value: '$(Pipeline.Workspace)/go'
+              - name: ROOT_DIR
+                value: '$(System.DefaultWorkingDirectory)' 
+              - name: WORK_DIR
+                value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
+              - name: skipComponentGovernanceDetection
+                value: true
+
+            steps:
+              - template: 'azure-pipeline-templates/distro-tests.yml'
+                parameters:
+                  working_dir: $(WORK_DIR)
+                  root_dir: $(ROOT_DIR)
+                  temp_dir: $(TEMP_DIR)
+                  mount_dir: $(MOUNT_DIR)
+                  config_path: $(BLOBFUSE2_CFG)
+                  container: $(ContainerName)
+                  blob_account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
+                  blob_account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
+                  adls_account_name: $(AZTEST_ADLS_ACC_NAME)
+                  adls_account_key: $(AZTEST_ADLS_KEY)
+                  distro_name: $(AgentName)
+                  gopath: $(GOPATH)
+                  tags: $(tags) 
+                  verbose_log: ${{ parameters.verbose_log }}
 
   - stage: BlockCacheDataValidation
     jobs:

@@ -575,3 +575,4 @@ stages:
             parameters:
               unmount: false
               delete_containers: true
+            condition: always()

@@ -1,19 +1,5 @@
 parameters:
-  - name: working_dir
-    type: string
-  - name: root_dir
-    type: string
-  - name: temp_dir
-    type: string
-  - name: mount_dir
-    type: string
   - name: config_path
-    type: string
-  - name: container
-    type: string
-  - name: installStep
-    type: step
-  - name: gopath
     type: string
   - name: blob_account_name
     type: string
@@ -24,13 +10,7 @@ parameters:
   - name: adls_account_key
     type: string
   - name: distro_name
-    type: string
-  - name: tags
-    type: string
-    default: "null"    
-  - name: fuselib
-    type: string
-    default: "fuse3 libfuse3-dev"
+    type: string  
   - name: quick_test
     type: boolean
     default: true
@@ -47,9 +27,6 @@ steps:
       echo $(Description)
       hostnamectl
     displayName: 'Print Agent Info'
-
-  # Create directory structure and prepare to mount
-  - ${{ parameters.installStep }}
   
   - checkout: none
 
@@ -64,15 +41,8 @@ steps:
   # Build the code
   - template: 'build.yml'
     parameters:
-      root_dir: ${{ parameters.root_dir }}
-      working_directory: ${{ parameters.working_dir }}
-      mount_dir: ${{ parameters.mount_dir }}
-      temp_dir: ${{ parameters.temp_dir }}
-      hostedAgent: false
-      gopath: ${{ parameters.gopath }}
-      container: ${{ parameters.container }}
-      tags: ${{ parameters.tags }}
-      fuselib: ${{ parameters.fuselib }}
+      distro_name: $(DistroVer)
+      distro_id: $(distroId)
 
   # Block Blob Test
   - template: 'e2e-tests-spcl.yml'
@@ -90,7 +60,6 @@ steps:
       quick_test: ${{ parameters.quick_test }}
       verbose_log: ${{ parameters.verbose_log }}
       clone: ${{ parameters.clone }}
-      # TODO: These can be removed one day and replace all instances of ${{ parameters.temp_dir }} with $(TEMP_DIR) since it is a global variable
       temp_dir: $(TEMP_DIR)
       mount_dir: $(MOUNT_DIR)
 
@@ -110,7 +79,6 @@ steps:
       quick_test: ${{ parameters.quick_test }}
       verbose_log: ${{ parameters.verbose_log }}
       clone: ${{ parameters.clone }}
-      # TODO: These can be removed one day and replace all instances of ${{ parameters.temp_dir }} with $(TEMP_DIR) since it is a global variable
       temp_dir: $(TEMP_DIR)
       mount_dir: $(MOUNT_DIR)
 
@@ -119,7 +87,7 @@ steps:
     inputs:
       command: 'clean'
       arguments: '-cache -modcache -testcache -i'
-      workingDirectory: ${{ parameters.working_dir }}
+      workingDirectory: $(WORK_DIR)
     displayName: 'Clean up go tool dirs'
     timeoutInMinutes: 20
     continueOnError: true
