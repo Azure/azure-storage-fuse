@@ -34,6 +34,7 @@
 package xload
 
 import (
+	"context"
 	"sync"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -51,8 +52,9 @@ type ThreadPool struct {
 	priorityItems chan *WorkItem
 	workItems     chan *WorkItem
 
-	// Channel to close all the workers
-	done chan int
+	// context with cancellation method to close all the workers
+	ctx    context.Context
+	cancel context.CancelFunc
 
 	// Reader method that will actually read the data
 	callback func(*WorkItem) (int, error)
@@ -64,12 +66,14 @@ func NewThreadPool(count uint32, callback func(*WorkItem) (int, error)) *ThreadP
 		return nil
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
 	return &ThreadPool{
 		worker:        count,
 		callback:      callback,
 		priorityItems: make(chan *WorkItem, count*2),
 		workItems:     make(chan *WorkItem, count*4),
-		done:          make(chan int, count),
+		ctx:           ctx,
+		cancel:        cancel,
 	}
 }
 
@@ -86,13 +90,8 @@ func (threadPool *ThreadPool) Start() {
 
 // Stop all the workers threads
 func (threadPool *ThreadPool) Stop() {
-	for i := uint32(0); i < threadPool.worker; i++ {
-		threadPool.done <- 1
-	}
-
+	threadPool.cancel()
 	threadPool.waitGroup.Wait()
-
-	close(threadPool.done)
 	close(threadPool.priorityItems)
 	close(threadPool.workItems)
 }
@@ -119,7 +118,7 @@ func (threadPool *ThreadPool) Do(priority bool) {
 			case item := <-threadPool.priorityItems:
 				threadPool.process(item)
 
-			case <-threadPool.done:
+			case <-threadPool.ctx.Done(): // listen to cancellation signal
 				return
 			}
 		}
@@ -133,7 +132,7 @@ func (threadPool *ThreadPool) Do(priority bool) {
 			case item := <-threadPool.workItems:
 				threadPool.process(item)
 
-			case <-threadPool.done:
+			case <-threadPool.ctx.Done(): // listen to cancellation signal
 				return
 			}
 		}
