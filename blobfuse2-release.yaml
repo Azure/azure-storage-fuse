@@ -156,7 +156,7 @@ extends:
             --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
             --description "An user-space filesystem for interacting with Azure Storage" 
             mv ./blobfuse2*.deb ./blobfuse2-`./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3`-$(tags).x86_64.deb
-            cp ./blobfuse2*.deb $(Build.ArtifactStagingDirectory)
+            cp ./blobfuse2*.deb $(unsigned)
           workingDirectory: $(root_dir)
           displayName: 'Make deb Package'
 
@@ -165,114 +165,109 @@ extends:
             --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
             --description "An user-space filesystem for interacting with Azure Storage" 
             mv ./blobfuse2*.rpm ./blobfuse2-`./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3`-$(tags).x86_64.rpm
-            cp ./blobfuse2*.rpm $(Build.ArtifactStagingDirectory)
+            cp ./blobfuse2*.rpm $(unsigned)
           workingDirectory: $(root_dir)
           displayName: 'Make rpm Package'
-    # stages:
-    #   - stage: BuildArtifacts
-    #     jobs:
-    #       - job: Set_1
-    #         
-                
-    #       - job: Set_2_ARM
-    #         timeoutInMinutes: 120
-    #         pool:
-    #           name: blobfuse2-arm-pool
-    #           image: ubuntu22arm-custom1espt
-    #           os: linux
-    #           hostArchitecture: Arm64
-    #         templateContext:
-    #           outputs:
-    #             - output: pipelineArtifact
-    #               targetPath: $(System.DefaultWorkingDirectory)/blobfuse2-temp
-    #               artifactName: 'blobfuse2-temp'
-    #               displayName: 'Publish Artifacts'
-    #         strategy:
-    #           matrix:
-    #             Libfuse3:
-    #               vmImage: 'ubuntu-22.04'
-    #               fuselib: 'libfuse3-dev'
-    #               tags: 'fuse3'
-    #               depends: 'fuse3'
-    #               container: 'test-cnt-ubn-22-arm64'
-    #             AgentName: 'blobfuse-ubn22-arm64'
 
-    #         variables:
-    #           - group: NightlyBlobFuse
-    #           - name: root_dir
-    #             value: '$(System.DefaultWorkingDirectory)'
-    #           - name: work_dir
-    #             value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
+  #     - job: Set_2_ARM
+  #         timeoutInMinutes: 120
+  #         pool:
+  #           name: blobfuse2-arm-pool
+  #           image: ubuntu22arm-custom1espt
+  #           os: linux
+  #           hostArchitecture: Arm64
+  #         templateContext:
+  #           outputs:
+  #             - output: pipelineArtifact
+  #               targetPath: $(System.DefaultWorkingDirectory)/blobfuse2-temp
+  #               artifactName: 'blobfuse2-temp'
+  #               displayName: 'Publish Artifacts'
+  #         strategy:
+  #           matrix:
+  #             Libfuse3:
+  #               vmImage: 'ubuntu-22.04'
+  #               fuselib: 'libfuse3-dev'
+  #               tags: 'fuse3'
+  #               depends: 'fuse3'
+  #               container: 'test-cnt-ubn-22-arm64'
+  #             AgentName: 'blobfuse-ubn22-arm64'
+
+  #         variables:
+  #           - group: NightlyBlobFuse
+  #           - name: root_dir
+  #             value: '$(System.DefaultWorkingDirectory)'
+  #           - name: work_dir
+  #             value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
+          
+  #         steps:
+  #           - checkout: none
+  #           - script: |
+  #               git clone https://github.com/Azure/azure-storage-fuse
+  #             displayName: 'Checkout Code'
+  #             workingDirectory: $(root_dir)
             
-    #         steps:
-    #           - checkout: none
-    #           - script: |
-    #               git clone https://github.com/Azure/azure-storage-fuse
-    #             displayName: 'Checkout Code'
-    #             workingDirectory: $(root_dir)
-              
-    #           # list commits from past 12hrs
-    #           - script: |
-    #               git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
-    #               git --no-pager log --since="12 hours ago" --stat
-    #             displayName: 'List Commits'
-    #             workingDirectory: $(work_dir)
-              
-    #           # install dependencies required for compiling blobfuse
-    #           - script: |
-    #               sudo apt-get update --fix-missing
-    #               sudo apt-get install ruby-dev build-essential pkg-config cmake gcc g++ rpm $(fuselib) -y
-    #               sudo gem install fpm -V
-    #             displayName: "Installing Dependencies"
-
-    #           # get glibc version with which build is done
-    #           - script: |
-    #               ldd --version
-    #             displayName: "GLIBC Version"
-
-    #           # build blobfuse2 and generate binary
-    #           - template: 'azure-pipeline-templates/build-release.yml'
-    #             parameters:
-    #               work_dir: $(work_dir)
-    #               root_dir: $(root_dir)
-    #               unit_test: ${{ parameters.unit_test }}
-    #               tags: $(tags)
-    #               container: $(container)
-
-    #           # place the generated binary files & any additional files in appropriate locations
-    #           - script: |
-    #               mkdir -p pkgDir/usr/bin/
-    #               mkdir -p pkgDir/usr/share/blobfuse2/
-    #               cp azure-storage-fuse/blobfuse2 pkgDir/usr/bin/blobfuse2
-    #               cp azure-storage-fuse/bfusemon pkgDir/usr/bin/bfusemon
-    #               cp azure-storage-fuse/setup/baseConfig.yaml pkgDir/usr/share/blobfuse2/
-    #               cp azure-storage-fuse/sampleFileCacheConfig.yaml pkgDir/usr/share/blobfuse2/
-    #               cp azure-storage-fuse/sampleStreamingConfig.yaml pkgDir/usr/share/blobfuse2/
-    #               mkdir -p pkgDir/etc/rsyslog.d
-    #               mkdir -p pkgDir/etc/logrotate.d
-    #               cp azure-storage-fuse/setup/11-blobfuse2.conf pkgDir/etc/rsyslog.d
-    #               cp azure-storage-fuse/setup/blobfuse2-logrotate pkgDir/etc/logrotate.d/blobfuse2
-    #             workingDirectory: $(root_dir)
-    #             displayName: 'Accumulate pkg files'
-              
-    #           # using fpm tool for packaging of our binary & performing post-install operations
-    #           # for additional information about fpm refer https://fpm.readthedocs.io/en/v1.13.1/
-    #           - script: |
-    #               fpm -s dir -t deb -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d $(depends) \
-    #               --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
-    #               --description "An user-space filesystem for interacting with Azure Storage" 
-    #               mv ./blobfuse2*.deb ./blobfuse2-`./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3`-$(tags).arm64.deb
-    #               cp ./blobfuse2*.deb $(Build.ArtifactStagingDirectory)
-    #             workingDirectory: $(root_dir)
-    #             displayName: 'Make deb Package'
-
-    #           - script: |
-    #               fpm -s dir -t rpm -n blobfuse2 --rpm-digest sha256 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d $(depends) \
-    #               --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
-    #               --description "An user-space filesystem for interacting with Azure Storage" 
-    #               mv ./blobfuse2*.rpm ./blobfuse2-`./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3`-$(tags).aarch64.rpm
-    #               cp ./blobfuse2*.rpm $(Build.ArtifactStagingDirectory)
-    #             workingDirectory: $(root_dir)
-    #             displayName: 'Make rpm Package'
+  #           # list commits from past 12hrs
+  #           - script: |
+  #               git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
+  #               git --no-pager log --since="12 hours ago" --stat
+  #             displayName: 'List Commits'
+  #             workingDirectory: $(work_dir)
             
-    # # BuildArtifacts end here
+  #           # install dependencies required for compiling blobfuse
+  #           - script: |
+  #               sudo apt-get update --fix-missing
+  #               sudo apt-get install ruby-dev build-essential pkg-config cmake gcc g++ rpm $(fuselib) -y
+  #               sudo gem install fpm -V
+  #             displayName: "Installing Dependencies"
+
+  #           # get glibc version with which build is done
+  #           - script: |
+  #               ldd --version
+  #             displayName: "GLIBC Version"
+
+  #           # build blobfuse2 and generate binary
+  #           - template: 'azure-pipeline-templates/build-release.yml'
+  #             parameters:
+  #               work_dir: $(work_dir)
+  #               root_dir: $(root_dir)
+  #               unit_test: ${{ parameters.unit_test }}
+  #               tags: $(tags)
+  #               container: $(container)
+
+  #           # place the generated binary files & any additional files in appropriate locations
+  #           - script: |
+  #               mkdir -p pkgDir/usr/bin/
+  #               mkdir -p pkgDir/usr/share/blobfuse2/
+  #               cp azure-storage-fuse/blobfuse2 pkgDir/usr/bin/blobfuse2
+  #               cp azure-storage-fuse/bfusemon pkgDir/usr/bin/bfusemon
+  #               cp azure-storage-fuse/setup/baseConfig.yaml pkgDir/usr/share/blobfuse2/
+  #               cp azure-storage-fuse/sampleFileCacheConfig.yaml pkgDir/usr/share/blobfuse2/
+  #               cp azure-storage-fuse/sampleStreamingConfig.yaml pkgDir/usr/share/blobfuse2/
+  #               mkdir -p pkgDir/etc/rsyslog.d
+  #               mkdir -p pkgDir/etc/logrotate.d
+  #               cp azure-storage-fuse/setup/11-blobfuse2.conf pkgDir/etc/rsyslog.d
+  #               cp azure-storage-fuse/setup/blobfuse2-logrotate pkgDir/etc/logrotate.d/blobfuse2
+  #             workingDirectory: $(root_dir)
+  #             displayName: 'Accumulate pkg files'
+            
+  #           # using fpm tool for packaging of our binary & performing post-install operations
+  #           # for additional information about fpm refer https://fpm.readthedocs.io/en/v1.13.1/
+  #           - script: |
+  #               fpm -s dir -t deb -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d $(depends) \
+  #               --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
+  #               --description "An user-space filesystem for interacting with Azure Storage" 
+  #               mv ./blobfuse2*.deb ./blobfuse2-`./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3`-$(tags).arm64.deb
+  #               cp ./blobfuse2*.deb $(Build.ArtifactStagingDirectory)
+  #             workingDirectory: $(root_dir)
+  #             displayName: 'Make deb Package'
+
+  #           - script: |
+  #               fpm -s dir -t rpm -n blobfuse2 --rpm-digest sha256 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d $(depends) \
+  #               --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
+  #               --description "An user-space filesystem for interacting with Azure Storage" 
+  #               mv ./blobfuse2*.rpm ./blobfuse2-`./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3`-$(tags).aarch64.rpm
+  #               cp ./blobfuse2*.rpm $(Build.ArtifactStagingDirectory)
+  #             workingDirectory: $(root_dir)
+  #             displayName: 'Make rpm Package'
+          
+  # # BuildArtifacts end here
