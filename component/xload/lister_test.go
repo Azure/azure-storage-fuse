@@ -35,6 +35,7 @@ package xload
 
 import (
 	"fmt"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"
@@ -47,7 +48,6 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/component/loopback"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
-	"golang.org/x/exp/rand"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -60,7 +60,7 @@ type listTestSuite struct {
 
 var lb internal.Component
 var lb_path string
-var r *rand.Rand = rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+var r *rand.Rand = rand.New(rand.NewSource(time.Now().UnixNano()))
 
 func randomString(length int) string {
 	b := make([]byte, length)
