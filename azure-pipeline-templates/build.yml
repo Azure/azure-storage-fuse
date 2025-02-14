@@ -23,7 +23,7 @@ parameters:
     default: true
   - name: proxy_address
     type: string
-    default: ""
+    default: "no_proxy"
   - name: skip_ut
     type: boolean
     default: false
@@ -44,7 +44,7 @@ steps:
 
 
   # If proxy is given, Install and setup the proxy, these tests can only be done on ubuntu
-  - ${{ if ne(parameters.proxy_address, "") }}:
+  - ${{ if ne(parameters.proxy_address, "no_proxy") }}:
     # Start Proxy
     - script: |
         sudo apt-get update --fix-missing
