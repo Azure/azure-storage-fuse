@@ -333,9 +333,7 @@ func (xl *Xload) isDownloadRequired(localPath string, blobPath string) (bool, *i
 	filePresent, size := isFilePresent(localPath)
 	downloadRequired := !filePresent
 
-	var attr *internal.ObjAttr
-	var err error
-	attr, err = xl.NextComponent().GetAttr(internal.GetAttrOptions{Name: blobPath})
+	attr, err := xl.NextComponent().GetAttr(internal.GetAttrOptions{Name: blobPath})
 	if err != nil {
 		log.Err("Xload::isDownloadRequired : Failed to get attr of %s [%s]", blobPath, err.Error())
 	} else if filePresent {
@@ -403,9 +401,9 @@ func (xl *Xload) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, 
 	flock.Inc()
 
 	handle := handlemap.NewHandle(options.Name)
-	inf, err := fh.Stat()
+	info, err := fh.Stat()
 	if err == nil {
-		handle.Size = inf.Size()
+		handle.Size = info.Size()
 	}
 
 	handle.UnixFD = uint64(fh.Fd())

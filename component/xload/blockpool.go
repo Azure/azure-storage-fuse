@@ -53,7 +53,7 @@ type BlockPool struct {
 func NewBlockPool(blockSize uint64, blockCount uint32) *BlockPool {
 	// Ignore if config is invalid
 	if blockSize == 0 {
-		log.Err("blockpool::NewBlockPool : blockSize : %v", blockSize)
+		log.Err("BlockPool::NewBlockPool : blockSize : %v", blockSize)
 		return nil
 	}
 
@@ -65,12 +65,13 @@ func NewBlockPool(blockSize uint64, blockCount uint32) *BlockPool {
 
 	// Preallocate all blocks so that during runtime we do not spend CPU cycles on this
 	for i := (uint32)(0); i < blockCount; i++ {
-		b, err := AllocateBlock(blockSize)
+		block, err := AllocateBlock(blockSize)
 		if err != nil {
+			log.Err("BlockPool::NewBlockPool : unable to allocate block [%s]", err.Error())
 			return nil
 		}
 
-		pool.blocksCh <- b
+		pool.blocksCh <- block
 	}
 
 	return pool
@@ -82,11 +83,11 @@ func (pool *BlockPool) Terminate() {
 
 	// Release back the memory allocated to each block
 	for {
-		b := <-pool.blocksCh
-		if b == nil {
+		block := <-pool.blocksCh
+		if block == nil {
 			break
 		}
-		_ = b.Delete()
+		_ = block.Delete()
 	}
 }
 
@@ -110,18 +111,18 @@ func (pool *BlockPool) GetBlock(priority bool) *Block {
 // TryGet a block from the pool. If the pool is empty, wait till a block is released back to the pool
 func (pool *BlockPool) tryGet() *Block {
 	// getting a block from pool will be a blocking operation if the pool is empty
-	b := <-pool.blocksCh
+	block := <-pool.blocksCh
 
 	// Mark the buffer ready for reuse now
-	b.ReUse()
-	return b
+	block.ReUse()
+	return block
 }
 
 func (pool *BlockPool) mustGet() *Block {
-	var b *Block = nil
+	var block *Block = nil
 
 	select {
-	case b = <-pool.blocksCh:
+	case block = <-pool.blocksCh:
 		break
 
 	default:
@@ -129,23 +130,25 @@ func (pool *BlockPool) mustGet() *Block {
 		// As the consumer of the pool needs a block immediately
 		log.Info("BlockPool::MustGet : No free blocks, allocating a new one")
 		var err error
-		b, err = AllocateBlock(pool.blockSize)
+		block, err = AllocateBlock(pool.blockSize)
 		if err != nil {
+			// TODO:: xload : should we fall back to waiting to get a block from blockpool
+			log.Err("BlockPool::MustGet : unable to allocate block [%s]", err.Error())
 			return nil
 		}
 	}
 
 	// Mark the buffer ready for reuse now
-	b.ReUse()
-	return b
+	block.ReUse()
+	return block
 }
 
 // Release back the Block to the pool
-func (pool *BlockPool) Release(b *Block) {
+func (pool *BlockPool) Release(block *Block) {
 	select {
-	case pool.blocksCh <- b:
+	case pool.blocksCh <- block:
 		break
 	default:
-		_ = b.Delete()
+		_ = block.Delete()
 	}
 }
