@@ -49,9 +49,6 @@ stages:
           # Pull and build the code and create the containers.
           - template: 'azure-pipeline-templates/build.yml'
             parameters:
-              gopath: $(GOPATH)
-              tags: $(tags)
-              fuselib: $(fuselib)
               skip_msi: "false"
 
           # -------------------------------------------------------

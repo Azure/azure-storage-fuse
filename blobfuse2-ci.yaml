@@ -73,10 +73,6 @@ jobs:
       # Pull and build the code, Run the Unit Tests
       - template: 'azure-pipeline-templates/build.yml'
         parameters:
-          gopath: $(GOPATH)
-          container: $(containerName)
-          tags: $(tags)
-          fuselib: $(fuselib)
           skip_azcli: "false"
           skip_ut: "false"
           skip_bfusemon: false

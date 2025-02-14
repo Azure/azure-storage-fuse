@@ -9,10 +9,6 @@ parameters:
   - name: hostedAgent
     type: boolean
     default: true
-  - name: gopath
-    type: string
-  - name: container
-    type: string
   - name: skip_msi
     type: string
     default: "true"
@@ -28,12 +24,6 @@ parameters:
   - name: skip_ut
     type: boolean
     default: false
-  - name: tags
-    type: string
-    default: "null"    
-  - name: fuselib
-    type: string
-    default: "libfuse3-dev"
 
 steps:
   - script: |
@@ -60,7 +50,7 @@ steps:
       echo "****************Starting Updates and Installation of Packages**************"
       sudo apt-get update --fix-missing
       sudo apt-get install make cmake gcc g++ git parallel -y
-      if [ "${{ parameters.tags }}" == "fuse2" ]
+      if [ "$(tags)" == "fuse2" ]
       then
         sudo apt-get install libfuse2 libfuse-dev -y
       else
@@ -106,7 +96,7 @@ steps:
   - task: Go@0
     inputs:
       command: 'build'
-      arguments: "-tags ${{ parameters.tags }} -o blobfuse2"
+      arguments: "-tags $(tags) -o blobfuse2"
       workingDirectory: $(WORK_DIR)
     displayName: "Go Build"
 
@@ -114,7 +104,7 @@ steps:
   - task: Go@0
     inputs:
       command: 'build'
-      arguments: "-tags ${{ parameters.tags }} -o bfusemon ./tools/health-monitor/"
+      arguments: "-tags $(tags) -o bfusemon ./tools/health-monitor/"
       workingDirectory: $(WORK_DIR)
     condition: eq('${{ parameters.skip_bfusemon }}', false)
     displayName: "Go Build bfusemon"
@@ -146,11 +136,11 @@ steps:
       temp_dir: $(TEMP_DIR)
       
   - script: |
-      mkdir -p ${gopath}/src
-      echo "Creating gopath " ${gopath}
+      mkdir -p $(GOPATH)/src
+      echo "Creating gopath " $(GOPATH)
     displayName: "Create Gopath"
     env:
-      gopath: ${{ parameters.gopath }}
+      gopath: $(GOPATH)
 
   # Create Container in storage Account.
   # Include the template to generate the container name
@@ -214,7 +204,7 @@ steps:
     condition: eq('${{ parameters.skip_ut }}', 'false') 
     inputs:
       command: 'test'
-      arguments: '-v -timeout=45m ./... --tags=unittest,${{ parameters.tags }} -coverprofile utcover.cov'
+      arguments: '-v -timeout=45m ./... --tags=unittest,$(tags) -coverprofile utcover.cov'
       workingDirectory: $(WORK_DIR)
     displayName: 'Unit tests'
     continueOnError: true     
