@@ -329,25 +329,40 @@ func (xl *Xload) startComponents() error {
 	return nil
 }
 
-func (xl *Xload) isDownloadRequired(localPath string, blobPath string) (bool, *internal.ObjAttr, error) {
-	filePresent, size := isFilePresent(localPath)
-	downloadRequired := !filePresent
-
-	attr, err := xl.NextComponent().GetAttr(internal.GetAttrOptions{Name: blobPath})
-	if err != nil {
-		log.Err("Xload::isDownloadRequired : Failed to get attr of %s [%s]", blobPath, err.Error())
-	} else if filePresent {
-		downloadRequired = attr.Size != size
-	}
-
-	return downloadRequired, attr, err
-}
-
 func (xl *Xload) getSplitter() XComponent {
 	for _, c := range xl.comps {
 		if c.GetName() == SPLITTER {
 			return c
 		}
+	}
+
+	return nil
+}
+
+// downloadFile sends the file to splitter to be downloaded on priority
+func (xl *Xload) downloadFile(fileName string) error {
+	log.Debug("Xload::downloadFile : download file %s", fileName)
+	splitter := xl.getSplitter()
+	if splitter == nil {
+		log.Err("Xload::downloadFile : failed to  get download splitter for %s", fileName)
+		return fmt.Errorf("failed to  get download splitter")
+	}
+
+	attr, err := xl.NextComponent().GetAttr(internal.GetAttrOptions{Name: fileName})
+	if err != nil {
+		log.Err("Xload::downloadFile : Failed to get attr of %s [%s]", fileName, err.Error())
+	}
+
+	_, err = splitter.Process(&WorkItem{
+		CompName: splitter.GetName(),
+		Path:     fileName,
+		DataLen:  uint64(attr.Size),
+		Priority: true,
+	})
+
+	if err != nil {
+		log.Err("Xload::OpenFile : failed to download file %s [%s]", fileName, err.Error())
+		return err
 	}
 
 	return nil
@@ -362,29 +377,14 @@ func (xl *Xload) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, 
 	flock.Lock()
 	defer flock.Unlock()
 
-	downloadRequired, attr, err := xl.isDownloadRequired(localPath, options.Name)
-	if err != nil {
-		log.Err("Xload::OpenFile : failed to open file %s [%s]", options.Name, err.Error())
-		return nil, err
-	}
+	filePresent, _ := isFilePresent(localPath)
 
-	if downloadRequired {
-		// send to splitter to download on priority
-		splitter := xl.getSplitter()
-		if splitter == nil {
-			log.Err("Xload::OpenFile : failed to  get download splitter for %s", options.Name)
-			return nil, fmt.Errorf("failed to  get download splitter")
-		}
-
-		_, err = splitter.Process(&WorkItem{
-			CompName: splitter.GetName(),
-			Path:     options.Name,
-			DataLen:  uint64(attr.Size),
-			Priority: true,
-		})
-
+	// if file is not present, send it to splitter for downloading on priority
+	if !filePresent {
+		err := xl.downloadFile(options.Name)
 		if err != nil {
 			log.Err("Xload::OpenFile : failed to download file %s [%s]", options.Name, err.Error())
+			return nil, err
 		}
 
 	} else {
