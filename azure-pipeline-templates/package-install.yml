@@ -20,7 +20,7 @@ parameters:
   # otherwise installation may fail
 steps:
   - script: |
-# ubuntu
+      # ubuntu
       if [ "$(distro_id)" == "0" ]; then      
         sleep 30
         sudo systemctl stop apt-daily.timer
