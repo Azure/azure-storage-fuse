@@ -34,6 +34,10 @@ steps:
       sudo apt-get install fuse3 libfuse3-dev -y
       fusermount -V
     displayName: 'Libfuse Setup'
+
+  - script: |
+      mkdir -p $(unsigned)
+    displayName: 'Create output paths'
     
   # Build the binary  
   - script: |
