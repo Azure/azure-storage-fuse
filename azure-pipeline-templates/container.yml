@@ -6,6 +6,8 @@ parameters:
   - name: delete_container
     type: boolean
     default: false
+  - name: account_type   # accepted values: block, adls
+    type: string
   - name: account_name
     type: string
   - name: account_key
@@ -23,7 +25,7 @@ steps:
       --account-name ${{ parameters.account_name }} \
       --account-key ${{ parameters.account_key }} \
       --fail-on-exist
-    displayName: 'Create Container'
+    displayName: 'Creating ${{ parameters.account_type }} Container'
     condition: eq('${{ parameters.create_container }}', true)
 
   # Destroying the Container
@@ -33,5 +35,5 @@ steps:
       az storage container delete --name ${{ parameters.container_name }} \
       --account-name ${{ parameters.account_name }} \
       --account-key ${{ parameters.account_key }} \
-    displayName: 'Delete Container'
+    displayName: 'Deleting ${{ parameters.account_type }} Container'
     condition: eq('${{ parameters.delete_container }}', true)

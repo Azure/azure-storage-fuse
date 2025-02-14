@@ -6,14 +6,6 @@
 # 4. Run Unit Tests if specified by parameter skip_ut: false
 
 parameters:
-  - name: root_dir
-    type: string
-  - name: working_directory
-    type: string
-  - name: mount_dir
-    type: string
-  - name: temp_dir
-    type: string
   - name: hostedAgent
     type: boolean
     default: true
@@ -98,8 +90,8 @@ steps:
   # Custom script to install Go-lang
   - task: ShellScript@2
     inputs:
-      scriptPath: "${{ parameters.working_directory }}/go_installer.sh"
-      args: "${{ parameters.root_dir }}/"
+      scriptPath: "$(WORK_DIR)/go_installer.sh"
+      args: "$(ROOT_DIR)/"
     displayName: "GoTool Custom Setup"
 
   # Downloading Go dependency packages
@@ -107,7 +99,7 @@ steps:
     inputs:
       command: 'get'
       arguments: '-d'
-      workingDirectory: ${{ parameters.working_directory }}
+      workingDirectory: $(WORK_DIR)
     displayName: "Go Get"
 
   # Building blobfuse2 binary
@@ -115,7 +107,7 @@ steps:
     inputs:
       command: 'build'
       arguments: "-tags ${{ parameters.tags }} -o blobfuse2"
-      workingDirectory: ${{ parameters.working_directory }}
+      workingDirectory: $(WORK_DIR)
     displayName: "Go Build"
 
   # Building bfusemon binary
@@ -123,35 +115,35 @@ steps:
     inputs:
       command: 'build'
       arguments: "-tags ${{ parameters.tags }} -o bfusemon ./tools/health-monitor/"
-      workingDirectory: ${{ parameters.working_directory }}
+      workingDirectory: $(WORK_DIR)
     condition: eq('${{ parameters.skip_bfusemon }}', false)
     displayName: "Go Build bfusemon"
     
   #Verification of built binary
   - script: |
-      sudo chmod +x ${working_directory}/blobfuse2
-      ${working_directory}/blobfuse2 --version
+      sudo chmod +x $(WORK_DIR)/blobfuse2
+      $(WORK_DIR)/blobfuse2 --version
     displayName: 'Test binary'
     env:
-      working_directory: ${{ parameters.working_directory }}
+      working_directory: $(WORK_DIR)
 
   # Creating necessary directories
   - script: |
-      sudo fusermount -u ${mount_dir}
-      sudo fusermount3 -u ${mount_dir}
-      rm -rf ${mount_dir}
-      mkdir -p ${mount_dir}
-      echo "Creating mount dir " ${mount_dir}
+      sudo fusermount -u $(MOUNT_DIR)
+      sudo fusermount3 -u $(MOUNT_DIR)
+      rm -rf $(MOUNT_DIR)
+      mkdir -p $(MOUNT_DIR)
+      echo "Creating mount dir " $(MOUNT_DIR)
     displayName: 'Create Mount directory'
     env:
-      mount_dir: ${{ parameters.mount_dir }}
+      mount_dir: $(MOUNT_DIR)
 
   - script: |
-      mkdir -p ${temp_dir}
-      echo "Creating temp dir " ${temp_dir}
+      mkdir -p $(TEMP_DIR)
+      echo "Creating temp dir " $(TEMP_DIR)
     displayName: "Create Cache directory"
     env:
-      temp_dir: ${{ parameters.temp_dir }}
+      temp_dir: $(TEMP_DIR)
       
   - script: |
       mkdir -p ${gopath}/src
@@ -162,12 +154,14 @@ steps:
 
   # Create Container in storage Account.
   # Include the template to generate the container name
+  # This will set the value generated to the global containerName parameter for the job.
   - template: 'generate-container-name.yml'
 
   # Create a Container in the block storage account
   - template: 'container.yml'
     parameters:
       create_container: true
+      account_type: "block"
       account_name: $(AZTEST_BLOCK_ACC_NAME)
       account_key: $(AZTEST_BLOCK_KEY)
       container_name: $(containerName)
@@ -176,6 +170,7 @@ steps:
   - template: 'container.yml'
     parameters:
       create_container: true
+      account_type: "adls"
       account_name: $(AZTEST_ADLS_ACC_NAME)
       account_key: $(AZTEST_ADLS_KEY)
       container_name: $(containerName)
@@ -206,7 +201,7 @@ steps:
       cat $cnfFile
     displayName: "Create AzureTest Config"
     continueOnError: false
-    workingDirectory: ${{ parameters.working_directory }}
+    workingDirectory: $(WORK_DIR)
 
   # azcli login
   - script: |
@@ -220,7 +215,7 @@ steps:
     inputs:
       command: 'test'
       arguments: '-v -timeout=45m ./... --tags=unittest,${{ parameters.tags }} -coverprofile utcover.cov'
-      workingDirectory: ${{ parameters.working_directory }}
+      workingDirectory: $(WORK_DIR)
     displayName: 'Unit tests'
     continueOnError: true     
 
@@ -229,7 +224,7 @@ steps:
     inputs:
       command: 'tool'
       arguments: 'cover -func utcover.cov'
-      workingDirectory: ${{ parameters.working_directory }}
+      workingDirectory: $(WORK_DIR)
     displayName: 'Code Coverage Report'
     continueOnError: true
 
@@ -237,5 +232,5 @@ steps:
       cp ./utcover.cov  $(Build.ArtifactStagingDirectory)/
       rm -rf ./utcover.cov
     condition: eq('${{ parameters.skip_ut }}', 'false')
-    workingDirectory: ${{ parameters.working_directory }}
+    workingDirectory: $(WORK_DIR)
     displayName: "Save coverage report"
