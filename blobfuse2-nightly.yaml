@@ -66,13 +66,11 @@ stages:
               Ubuntu-20-BlockBlob:
                 AgentName: 'blobfuse-ubuntu20'
                 poolName: 'blobfuse-ubuntu-pool'
-                adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
                 fuselib: 'libfuse-dev'
                 tags: 'fuse2'
               Ubuntu-22-BlockBlob:
                 AgentName: 'blobfuse-ubuntu22'
                 poolName: 'blobfuse-ubuntu-pool'
-                adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
                 fuselib: 'libfuse3-dev'
                 tags: 'fuse3'
               Ubuntu-22-ARM64-BlockBlob:
