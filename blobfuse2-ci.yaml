@@ -73,10 +73,6 @@ jobs:
       # Pull and build the code, Run the Unit Tests
       - template: 'azure-pipeline-templates/build.yml'
         parameters:
-          working_directory: $(WORK_DIR)
-          root_dir: $(Pipeline.Workspace)
-          mount_dir: $(MOUNT_DIR)
-          temp_dir: $(TEMP_DIR)
           gopath: $(GOPATH)
           container: $(containerName)
           tags: $(tags)
