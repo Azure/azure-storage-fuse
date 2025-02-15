@@ -179,7 +179,7 @@ extends:
         templateContext:
           outputs:
             - output: pipelineArtifact
-              targetPath: $(System.ArtifactStagingDirectory)/blobfuse2-temp
+              targetPath: $(Build.ArtifactStagingDirectory)/blobfuse2-temp
               artifactName: 'blobfuse2-temp'
               displayName: 'Publish Artifacts'
 
