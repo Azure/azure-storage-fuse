@@ -36,8 +36,10 @@ steps:
     displayName: 'Libfuse Setup'
 
   - script: |
-      mkdir -p $(unsigned)
-    displayName: 'Create output paths'
+      if [ ! -d "$(unsigned)" ]; then
+        mkdir -p $(unsigned)
+      fi
+    displayName: 'Check and create output paths'
     
   # Build the binary  
   - script: |
