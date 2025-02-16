@@ -6,12 +6,6 @@
 # 4. Run Unit Tests if specified by parameter skip_ut: false
 
 parameters:
-  - name: distro_name
-    type: string
-    default: "UBUNTU"
-  - name: distro_id
-    type: string
-    default: "0"
   - name: skip_msi
     type: string
     default: "true"
@@ -39,8 +33,8 @@ steps:
   # Package manager installs for libfuse, 
   - template: 'package-install.yml'
     parameters:
-      distro_name: $(paramters.distro_name)
-      distro_id: $(paramters.distro_id)
+      distro: $(distro)
+      distro_version: $(distro_version)
 
 
   # If proxy is given, Install and setup the proxy, these tests can only be done on ubuntu

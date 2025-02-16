@@ -530,59 +530,59 @@ stages:
               matrix:
                 RHEL-8.6:
                   DistroVer: 'RHEL-8.6'
-                  distroId: '1'
+                  distro: rhel
                   poolName: 'blobfuse-rhel-pool'
                   Description: 'Red Hat Enterprise Linux 8.6'
                   AgentName: 'blobfuse-rhel8_6'
                   tags: 'fuse3'
                 RHEL-9.0:
                   DistroVer: 'RHEL-9.0'
-                  distroId: '1'
+                  distro: rhel
                   poolName: 'blobfuse-rhel-pool'
                   Description: 'Red Hat Enterprise Linux 9.0'
                   AgentName: 'blobfuse-rhel9'
                   tags: 'fuse3'
                 CentOS-7.9:
                   DistroVer: "CentOS-7.9"
-                  distroId: '2'
+                  distro: centos
                   poolName: 'blobfuse-centos-pool'
                   Description: "CentOS 7.9"
                   AgentName: "blobfuse-centos7"
                 CentOS-8.5:
                   DistroVer: "CentOS-8.5"
-                  distroId: '2'
+                  distro: centos
                   poolName: 'blobfuse-centos-pool'
                   Description: "CentOS 8.5"
                   AgentName: "blobfuse-centos8"
                 Oracle-8.1:
                   DistroVer: "Oracle-8.1"
-                  distroId: '3'
+                  distro: oracle
                   poolName: 'blobfuse-oracle-pool'
                   Description: "Oracle Linux 8.1"
                   AgentName: "blobfuse-oracle81"
                 Rocky-8.0:
                   DistroVer: "Rocky-8.0"
-                  distroId: '4'
+                  distro: rocky
                   poolName: 'blobfuse2-rocky-pool'
                   Description: "Rocky Linux 8.0"
                   AgentName: "blobfuse-rocky8"
                   tags: 'fuse3'
                 Rocky-9.0:
                   DistroVer: "Rocky-9.0"
-                  distroId: '4'
+                  distro: rocky
                   poolName: 'blobfuse2-rocky-pool'
                   Description: "Rocky Linux 9.0"
                   AgentName: "blobfuse-rocky9"
                   tags: 'fuse3'
                 SUSE-15:
                   DistroVer: "SUSE-15"
-                  distroId: '5'
+                  distro: suse
                   poolName: 'blobfuse-suse-pool'
                   Description: "SUSE Enterprise Linux 15"
                   AgentName: "blobfuse-suse15"
                 Mariner2:
                   DistroVer: "Mariner2"
-                  distroId: '6'
+                  distro: mariner
                   poolName: 'blobfuse-mariner-pool'
                   Description: "CBL-Mariner2 Linux"
                   AgentName: "blobfuse-mariner2"
