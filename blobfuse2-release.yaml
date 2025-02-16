@@ -296,14 +296,13 @@ extends:
         variables:
           - group: NightlyBlobFuse
           - name: amd64
-            value: $(System.DefaultWorkingDirectory)/amd64
+            value: $(Build.ArtifactStagingDirectory)/amd64
           - name: arm64
-            value: $(System.DefaultWorkingDirectory)/arm64
+            value: $(Build.ArtifactStagingDirectory)/arm64
           - name: mariner
-            value: $(System.DefaultWorkingDirectory)/mariner
+            value: $(Build.ArtifactStagingDirectory)/mariner
           - name: signed
-            value: $(System.DefaultWorkingDirectory)/signed
-
+            value: $(Build.ArtifactStagingDirectory)/signed
 
         steps:
         - checkout: none
@@ -322,7 +321,7 @@ extends:
 
         - script: |
             mkdir -p $(mariner) && chmod 755 $(mariner)
-            cp $(amd64)/*x86_64.rpm $(mariner)
+            cp $(amd64)/*-fuse3*.rpm $(mariner)
             sudo ls -lRt $(mariner)
             md5sum $(mariner)/*
           displayName: 'Copy artifacts for Mariner'
