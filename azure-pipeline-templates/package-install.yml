@@ -22,7 +22,7 @@ steps:
   - ${{ if eq(parameters.distro, 'ubuntu') }}:
     - script: |
         echo "these are equal"
-    displayName: "these are equal"
+    displayName: 'these are equal'
   - ${{ if ne(parameters.distro, 'ubuntu') }}:
     - script: |
         sleep 30
