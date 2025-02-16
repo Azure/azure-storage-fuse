@@ -33,7 +33,7 @@ steps:
   # Package manager installs for libfuse, 
   - template: 'package-install.yml'
     parameters:
-      distro: $(distro)
+      distro: ubuntu
       distro_version: $(distro_version)
 
 
