@@ -20,7 +20,7 @@ jobs:
       matrix:
         Ubuntu-20:
           AgentName: 'blobfuse-ubuntu20'
-          distro: 'ubuntu'
+          distro: ubuntu
           distro_version: 'ubuntu_20'
           poolName: 'blobfuse-ubuntu-pool'
           fuselib: 'libfuse-dev'
@@ -28,7 +28,7 @@ jobs:
           adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
         Ubuntu-22:
           AgentName: 'blobfuse-ubuntu22'
-          distro: 'ubuntu'
+          distro: ubuntu
           distro_version: 'ubuntu_22_x86'
           poolName: 'blobfuse-ubuntu-pool'
           fuselib: 'libfuse3-dev'
@@ -36,7 +36,7 @@ jobs:
           adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
         Ubuntu-22-ARM64:
           AgentName: 'blobfuse-ubn22-arm64'
-          distro: 'ubuntu'
+          distro: ubuntu
           distro_version: 'ubuntu_22_arm'
           poolName: 'blobfuse-ubn-arm64-pool'
           fuselib: 'libfuse3-dev'

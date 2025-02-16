@@ -18,22 +18,22 @@ parameters:
 
 steps:
   # Creating the Container
-  - script: |
-      az --version
-      echo "Creating Container: ${{ parameters.container_name }}"
-      az storage container create --name ${{ parameters.container_name }} \
-      --account-name ${{ parameters.account_name }} \
-      --account-key ${{ parameters.account_key }} \
-      --fail-on-exist
-    displayName: 'Creating ${{ parameters.account_type }} Container'
-    condition: eq('${{ parameters.create_container }}', true)
+  - ${{ eq(parameters.create_container, true) }}:
+    - script: |
+        az --version
+        echo "Creating Container: ${{ parameters.container_name }}"
+        az storage container create --name ${{ parameters.container_name }} \
+        --account-name ${{ parameters.account_name }} \
+        --account-key ${{ parameters.account_key }} \
+        --fail-on-exist
+      displayName: 'Creating ${{ parameters.account_type }} Container'
 
   # Destroying the Container
-  - script: |
-      az --version
-      echo "Deleting Container: ${{ parameters.container_name }}"
-      az storage container delete --name ${{ parameters.container_name }} \
-      --account-name ${{ parameters.account_name }} \
-      --account-key ${{ parameters.account_key }} \
-    displayName: 'Deleting ${{ parameters.account_type }} Container'
-    condition: eq('${{ parameters.delete_container }}', true)
+  - ${{ eq(parameters.delete_container, true) }}:
+    - script: |
+        az --version
+        echo "Deleting Container: ${{ parameters.container_name }}"
+        az storage container delete --name ${{ parameters.container_name }} \
+        --account-name ${{ parameters.account_name }} \
+        --account-key ${{ parameters.account_key }} \
+      displayName: 'Deleting ${{ parameters.account_type }} Container'
