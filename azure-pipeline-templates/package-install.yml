@@ -18,7 +18,12 @@ steps:
   - script: |
       echo ${{ parameters.distro }}
     displayName: 'Check on something'
+
   - ${{ if eq(parameters.distro, 'ubuntu') }}:
+    - script: |
+        echo "these are equal"
+    displayName: "these are equal"
+  - ${{ if ne(parameters.distro, 'ubuntu') }}:
     - script: |
         sleep 30
         sudo systemctl stop apt-daily.timer

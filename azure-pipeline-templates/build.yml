@@ -32,9 +32,9 @@ steps:
 
   # Package manager installs for libfuse, 
   - template: 'package-install.yml'
-    #parameters:
-      # distro: $(distro)
-      # distro_version: $(distro_version)
+    parameters:
+      distro: $(distro)
+      distro_version: $(distro_version)
 
 
   # If proxy is given, Install and setup the proxy, these tests can only be done on ubuntu
