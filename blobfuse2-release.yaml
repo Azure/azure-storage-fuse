@@ -126,7 +126,7 @@ extends:
           displayName: "GLIBC Version"
 
         # build blobfuse2 and generate binary
-        - template: azure-pipeline-templates/buildnew-release.yml@self
+        - template: azure-pipeline-templates/build-release.yml@self
           parameters:
             work_dir: $(work_dir)
             root_dir: $(root_dir)
@@ -219,7 +219,7 @@ extends:
           displayName: "GLIBC Version"
 
         # build blobfuse2 and generate binary
-        - template: 'azure-pipeline-templates/buildnew-release.yml@self'
+        - template: 'azure-pipeline-templates/build-release.yml@self'
           parameters:
             work_dir: $(work_dir)
             root_dir: $(root_dir)
@@ -227,7 +227,7 @@ extends:
             tags: $(tags)
             container: "test-cnt-ubn-22-arm"
 
-        - template: 'azure-pipeline-templates/esrp_sign_linux.yml@self'
+        - template: 'azure-pipeline-templates/build2new-release@self'
           parameters:
             FolderPath: '$(Build.ArtifactStagingDirectory)/blobfuse2-linux-unsigned'
             ESRP_AZCOPY_KEY_CODE: $(ESRP_AZCOPY_KEY_CODE)
