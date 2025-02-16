@@ -314,8 +314,10 @@ extends:
         
         - script: |
             sudo ls -lRt $(Build.ArtifactStagingDirectory)
-            md5sum $(Build.ArtifactStagingDirectory)/blobfuse2-temp/*.deb
-            md5sum $(Build.ArtifactStagingDirectory)/blobfuse2-temp/*.rpm
+            md5sum $(Build.ArtifactStagingDirectory)/amd64/*.deb
+            md5sum $(Build.ArtifactStagingDirectory)/amd64/*.rpm
+            md5sum $(Build.ArtifactStagingDirectory)/arm64/*.deb
+            md5sum $(Build.ArtifactStagingDirectory)/arm64/*.rpm
           displayName: 'List Artifacts'
 
         - script: |
@@ -337,14 +339,14 @@ extends:
           
         - template: azure-pipeline-templates/esrp_sign_linux.yml@self
           parameters:
-            FolderPath: '$(Build.ArtifactStagingDirectory)/blobfuse2-linux-unsigned'
+            FolderPath: '$(Build.ArtifactStagingDirectory)/amd64'
             ESRP_AZCOPY_KEY_CODE: $(ESRP_AZCOPY_KEY_CODE)
             Pattern: '*.rpm, *.deb'
             DisplayName: 'ESRP CodeSigning blobfuse2 linux amd64'
 
         - template: azure-pipeline-templates/esrp_sign_linux.yml@self
           parameters:
-            FolderPath: '$(Build.ArtifactStagingDirectory)/blobfuse2-linux-arm-unsigned'
+            FolderPath: '$(Build.ArtifactStagingDirectory)/arm64'
             ESRP_AZCOPY_KEY_CODE: $(ESRP_AZCOPY_KEY_CODE)
             Pattern: '*.rpm, *.deb'
             DisplayName: 'ESRP CodeSigning blobfuse2 linux arm64'
@@ -358,19 +360,26 @@ extends:
 
         # Validate signed images have md5sum changed
         - script: |
-            chmod 755 $(Build.ArtifactStagingDirectory)/blobfuse2-temp/*.rpm
-            chmod 755 $(Build.ArtifactStagingDirectory)/blobfuse2-temp/*.deb
+            chmod 755 $(Build.ArtifactStagingDirectory)/amd64/*.rpm
+            chmod 755 $(Build.ArtifactStagingDirectory)/amd64/*.deb
+            chmod 755 $(Build.ArtifactStagingDirectory)/arm64/*.rpm
+            chmod 755 $(Build.ArtifactStagingDirectory)/arm64/*.deb
             chmod 755 $(Build.ArtifactStagingDirectory)/mariner/*.rpm
-            rm -rf $(Build.ArtifactStagingDirectory)/blobfuse2-temp/*.md
+            rm -rf $(Build.ArtifactStagingDirectory)/amd64/*.md
+            rm -rf $(Build.ArtifactStagingDirectory)/arm64/*.md
             rm -rf $(Build.ArtifactStagingDirectory)/mariner/*.md
-            mv $(Build.ArtifactStagingDirectory)/blobfuse2-temp/* $(Build.ArtifactStagingDirectory)/
-            rm -rf $(Build.ArtifactStagingDirectory)/blobfuse2-temp/
+            mv $(Build.ArtifactStagingDirectory)/amd64/* $(Build.ArtifactStagingDirectory)/
+            mv $(Build.ArtifactStagingDirectory)/arm64/* $(Build.ArtifactStagingDirectory)/
+            mv $(Build.ArtifactStagingDirectory)/mariner/* $(Build.ArtifactStagingDirectory)/
+            rm -rf $(Build.ArtifactStagingDirectory)/amd64/
+            rm -rf $(Build.ArtifactStagingDirectory)/arm64/
+            rm -rf $(Build.ArtifactStagingDirectory)/mariner/
           displayName: 'Make Artifacts executable'
 
         - script: |
             sudo ls -lRt $(Build.ArtifactStagingDirectory)
-            md5sum $(Build.ArtifactStagingDirectory)/*.deb
-            md5sum $(Build.ArtifactStagingDirectory)/*.rpm
+            md5sum $(Build.ArtifactStagingDirectory)/amd64/*.deb
+            md5sum $(Build.ArtifactStagingDirectory)/arm64/*.rpm
             md5sum $(Build.ArtifactStagingDirectory)/mariner/*
           displayName: 'List Signed Artifacts'
 # SignArtifacts end here
