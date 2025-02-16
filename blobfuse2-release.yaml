@@ -125,6 +125,13 @@ extends:
             ldd --version
           displayName: "GLIBC Version"
 
+        - template: azure-pipeline-templates/esrp_sign_linux.yml@self
+          parameters:
+            FolderPath: '$(Build.ArtifactStagingDirectory)/blobfuse2-linux-unsigned'
+            ESRP_AZCOPY_KEY_CODE: $(ESRP_AZCOPY_KEY_CODE)
+            Pattern: '*.rpm, *.deb'
+            DisplayName: 'ESRP CodeSigning blobfuse2 linux amd64'
+
         # build blobfuse2 and generate binary
         - template: azure-pipeline-templates/build-release.yml@self
           parameters:
@@ -265,124 +272,124 @@ extends:
           
   # BuildArtifacts end here
 
-    - stage: SignArtifacts
-      dependsOn: BuildArtifacts
-      condition: succeeded('BuildArtifacts')
-      jobs:
-      - job: SignBlobfuse
-        timeoutInMinutes: 120
-        pool:
-          name: blobfuse2-pool
-          image: ubuntu22-1espt
-          os: linux
+    # - stage: SignArtifacts
+    #   dependsOn: BuildArtifacts
+    #   condition: succeeded('BuildArtifacts')
+    #   jobs:
+    #   - job: SignBlobfuse
+    #     timeoutInMinutes: 120
+    #     pool:
+    #       name: blobfuse2-pool
+    #       image: ubuntu22-1espt
+    #       os: linux
 
-        # download artifacts that need to be published
-        templateContext:
-          inputs:
-          - input: pipelineArtifact
-            artifactName: 'blobfuse2-linux-unsigned'
-            targetPath: $(Build.ArtifactStagingDirectory)/amd64
-            displayName: 'Download Artifacts'
-          - input: pipelineArtifact
-            artifactName: 'blobfuse-linux-arm-unsigned'
-            targetPath: $(Build.ArtifactStagingDirectory)/arm64
-            displayName: 'Download Artifacts'
-          outputs:
-          - output: pipelineArtifact
-            targetPath: $(System.DefaultWorkingDirectory)/blobfuse2-signed
-            artifactName: 'blobfuse2-linux-signed'
-            displayName: 'Publish Signed Artifacts'
+    #     # download artifacts that need to be published
+    #     templateContext:
+    #       inputs:
+    #       - input: pipelineArtifact
+    #         artifactName: 'blobfuse2-linux-unsigned'
+    #         targetPath: $(Build.ArtifactStagingDirectory)/amd64
+    #         displayName: 'Download Artifacts'
+    #       - input: pipelineArtifact
+    #         artifactName: 'blobfuse-linux-arm-unsigned'
+    #         targetPath: $(Build.ArtifactStagingDirectory)/arm64
+    #         displayName: 'Download Artifacts'
+    #       outputs:
+    #       - output: pipelineArtifact
+    #         targetPath: $(System.DefaultWorkingDirectory)/blobfuse2-signed
+    #         artifactName: 'blobfuse2-linux-signed'
+    #         displayName: 'Publish Signed Artifacts'
 
-        variables:
-          - group: NightlyBlobFuse
-          - name: amd64
-            value: $(System.DefaultWorkingDirectory)/amd64
-          - name: arm64
-            value: $(System.DefaultWorkingDirectory)/arm64
-          - name: mariner
-            value: $(System.DefaultWorkingDirectory)/mariner
-          - name: signed
-            value: $(System.DefaultWorkingDirectory)/signed
+    #     variables:
+    #       - group: NightlyBlobFuse
+    #       - name: amd64
+    #         value: $(System.DefaultWorkingDirectory)/amd64
+    #       - name: arm64
+    #         value: $(System.DefaultWorkingDirectory)/arm64
+    #       - name: mariner
+    #         value: $(System.DefaultWorkingDirectory)/mariner
+    #       - name: signed
+    #         value: $(System.DefaultWorkingDirectory)/signed
 
 
-        steps:
-        - checkout: none
-        - script: |
-            git clone https://github.com/Azure/azure-storage-fuse
-          displayName: 'Checkout Code'
-          workingDirectory: $(root_dir)
+    #     steps:
+    #     - checkout: none
+    #     - script: |
+    #         git clone https://github.com/Azure/azure-storage-fuse
+    #       displayName: 'Checkout Code'
+    #       workingDirectory: $(root_dir)
         
-        # list commits from past 12hrs
-        - script: |
-            git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
-            git --no-pager log --since="12 hours ago" --stat
-          displayName: 'List Commits'
-          workingDirectory: $(work_dir)
+    #     # list commits from past 12hrs
+    #     - script: |
+    #         git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
+    #         git --no-pager log --since="12 hours ago" --stat
+    #       displayName: 'List Commits'
+    #       workingDirectory: $(work_dir)
         
-        - script: |
-            echo ${{ parameters.tag }}
-          displayName: 'Tag Name'
+    #     - script: |
+    #         echo ${{ parameters.tag }}
+    #       displayName: 'Tag Name'
         
         
-        - script: |
-            sudo ls -lRt $(Build.ArtifactStagingDirectory)
-            md5sum $(Build.ArtifactStagingDirectory)/blobfuse2-temp/*.deb
-            md5sum $(Build.ArtifactStagingDirectory)/blobfuse2-temp/*.rpm
-          displayName: 'List Artifacts'
+    #     - script: |
+    #         sudo ls -lRt $(Build.ArtifactStagingDirectory)
+    #         md5sum $(Build.ArtifactStagingDirectory)/blobfuse2-temp/*.deb
+    #         md5sum $(Build.ArtifactStagingDirectory)/blobfuse2-temp/*.rpm
+    #       displayName: 'List Artifacts'
 
-        - script: |
-            mkdir -p $(mariner) && chmod 755 $(mariner)
-            cp $(amd64)/*x86_64.rpm $(mariner)
-            sudo ls -lRt $(mariner)
-            md5sum $(mariner)/*
-          displayName: 'Copy artifacts for Mariner'
-          workingDirectory: $(Build.ArtifactStagingDirectory)
+    #     - script: |
+    #         mkdir -p $(mariner) && chmod 755 $(mariner)
+    #         cp $(amd64)/*x86_64.rpm $(mariner)
+    #         sudo ls -lRt $(mariner)
+    #         md5sum $(mariner)/*
+    #       displayName: 'Copy artifacts for Mariner'
+    #       workingDirectory: $(Build.ArtifactStagingDirectory)
         
-        - script: |
-            sudo apt-get update
-            wget https://packages.microsoft.com/config/ubuntu/20.04/packages-microsoft-prod.deb 
-            sudo dpkg -i packages-microsoft-prod.deb 
-            sudo apt update 
-            sudo apt install apt-transport-https -y
-            sudo apt install dotnet-sdk-3.1 -y
-          displayName: "Update dependencies"
+    #     - script: |
+    #         sudo apt-get update
+    #         wget https://packages.microsoft.com/config/ubuntu/20.04/packages-microsoft-prod.deb 
+    #         sudo dpkg -i packages-microsoft-prod.deb 
+    #         sudo apt update 
+    #         sudo apt install apt-transport-https -y
+    #         sudo apt install dotnet-sdk-3.1 -y
+    #       displayName: "Update dependencies"
           
-        - template: azure-pipeline-templates/esrp_sign_linux.yml@self
-          parameters:
-            FolderPath: '$(Build.ArtifactStagingDirectory)/blobfuse2-linux-unsigned'
-            ESRP_AZCOPY_KEY_CODE: $(ESRP_AZCOPY_KEY_CODE)
-            Pattern: '*.rpm, *.deb'
-            DisplayName: 'ESRP CodeSigning blobfuse2 linux amd64'
+    #     - template: azure-pipeline-templates/esrp_sign_linux.yml@self
+    #       parameters:
+    #         FolderPath: '$(Build.ArtifactStagingDirectory)/blobfuse2-linux-unsigned'
+    #         ESRP_AZCOPY_KEY_CODE: $(ESRP_AZCOPY_KEY_CODE)
+    #         Pattern: '*.rpm, *.deb'
+    #         DisplayName: 'ESRP CodeSigning blobfuse2 linux amd64'
 
-        - template: azure-pipeline-templates/esrp_sign_linux.yml@self
-          parameters:
-            FolderPath: '$(Build.ArtifactStagingDirectory)/blobfuse2-linux-arm-unsigned'
-            ESRP_AZCOPY_KEY_CODE: $(ESRP_AZCOPY_KEY_CODE)
-            Pattern: '*.rpm, *.deb'
-            DisplayName: 'ESRP CodeSigning blobfuse2 linux arm64'
+    #     - template: azure-pipeline-templates/esrp_sign_linux.yml@self
+    #       parameters:
+    #         FolderPath: '$(Build.ArtifactStagingDirectory)/blobfuse2-linux-arm-unsigned'
+    #         ESRP_AZCOPY_KEY_CODE: $(ESRP_AZCOPY_KEY_CODE)
+    #         Pattern: '*.rpm, *.deb'
+    #         DisplayName: 'ESRP CodeSigning blobfuse2 linux arm64'
 
-        - template: azure-pipeline-templates/esrp_sign_linux.yml@self
-          parameters:
-            FolderPath: '$(mariner)'
-            ESRP_AZCOPY_KEY_CODE: $(ESRP_AZCOPY_KEY_CODE)
-            Pattern: '*.rpm'
-            DisplayName: 'ESRP CodeSigning blobfuse2 mariner'
+    #     - template: azure-pipeline-templates/esrp_sign_linux.yml@self
+    #       parameters:
+    #         FolderPath: '$(mariner)'
+    #         ESRP_AZCOPY_KEY_CODE: $(ESRP_AZCOPY_KEY_CODE)
+    #         Pattern: '*.rpm'
+    #         DisplayName: 'ESRP CodeSigning blobfuse2 mariner'
 
-        # Validate signed images have md5sum changed
-        - script: |
-            chmod 755 $(Build.ArtifactStagingDirectory)/blobfuse2-temp/*.rpm
-            chmod 755 $(Build.ArtifactStagingDirectory)/blobfuse2-temp/*.deb
-            chmod 755 $(Build.ArtifactStagingDirectory)/mariner/*.rpm
-            rm -rf $(Build.ArtifactStagingDirectory)/blobfuse2-temp/*.md
-            rm -rf $(Build.ArtifactStagingDirectory)/mariner/*.md
-            mv $(Build.ArtifactStagingDirectory)/blobfuse2-temp/* $(Build.ArtifactStagingDirectory)/
-            rm -rf $(Build.ArtifactStagingDirectory)/blobfuse2-temp/
-          displayName: 'Make Artifacts executable'
+    #     # Validate signed images have md5sum changed
+    #     - script: |
+    #         chmod 755 $(Build.ArtifactStagingDirectory)/blobfuse2-temp/*.rpm
+    #         chmod 755 $(Build.ArtifactStagingDirectory)/blobfuse2-temp/*.deb
+    #         chmod 755 $(Build.ArtifactStagingDirectory)/mariner/*.rpm
+    #         rm -rf $(Build.ArtifactStagingDirectory)/blobfuse2-temp/*.md
+    #         rm -rf $(Build.ArtifactStagingDirectory)/mariner/*.md
+    #         mv $(Build.ArtifactStagingDirectory)/blobfuse2-temp/* $(Build.ArtifactStagingDirectory)/
+    #         rm -rf $(Build.ArtifactStagingDirectory)/blobfuse2-temp/
+    #       displayName: 'Make Artifacts executable'
 
-        - script: |
-            sudo ls -lRt $(Build.ArtifactStagingDirectory)
-            md5sum $(Build.ArtifactStagingDirectory)/*.deb
-            md5sum $(Build.ArtifactStagingDirectory)/*.rpm
-            md5sum $(Build.ArtifactStagingDirectory)/mariner/*
-          displayName: 'List Signed Artifacts'
+    #     - script: |
+    #         sudo ls -lRt $(Build.ArtifactStagingDirectory)
+    #         md5sum $(Build.ArtifactStagingDirectory)/*.deb
+    #         md5sum $(Build.ArtifactStagingDirectory)/*.rpm
+    #         md5sum $(Build.ArtifactStagingDirectory)/mariner/*
+    #       displayName: 'List Signed Artifacts'
 # SignArtifacts end here
