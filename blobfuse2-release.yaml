@@ -336,21 +336,21 @@ extends:
             sudo apt install dotnet-sdk-3.1 -y
           displayName: "Update dependencies"
           
-        - template: setup/esrp_sign_linux.yml@self
+        - template: azure-pipeline-templates/esrp_sign_linux.yml@self
           parameters:
             FolderPath: '$(Build.ArtifactStagingDirectory)/blobfuse2-linux-unsigned'
             ESRP_AZCOPY_KEY_CODE: $(ESRP_AZCOPY_KEY_CODE)
             Pattern: '*.rpm, *.deb'
             DisplayName: 'ESRP CodeSigning blobfuse2 linux amd64'
 
-        - template: setup/esrp_sign_linux.yml@self
+        - template: azure-pipeline-templates/esrp_sign_linux.yml@self
           parameters:
             FolderPath: '$(Build.ArtifactStagingDirectory)/blobfuse2-linux-arm-unsigned'
             ESRP_AZCOPY_KEY_CODE: $(ESRP_AZCOPY_KEY_CODE)
             Pattern: '*.rpm, *.deb'
             DisplayName: 'ESRP CodeSigning blobfuse2 linux arm64'
 
-        - template: setup/esrp_sign_linux.yml@self
+        - template: azure-pipeline-templates/esrp_sign_linux.yml@self
           parameters:
             FolderPath: '$(mariner)'
             ESRP_AZCOPY_KEY_CODE: $(ESRP_AZCOPY_KEY_CODE)
