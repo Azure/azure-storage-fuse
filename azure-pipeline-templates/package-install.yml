@@ -15,7 +15,7 @@ parameters:
     default: ubuntu
 
 steps:
-  - scripe: |
+  - script: |
       echo ${{ parameters.distro }}
     displayName: 'Check on something'
   - ${{ if eq(parameters.distro, 'ubuntu') }}:
