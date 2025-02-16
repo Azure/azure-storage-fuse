@@ -227,7 +227,7 @@ extends:
             tags: $(tags)
             container: "test-cnt-ubn-22-arm"
 
-        - template: 'azure-pipeline-templates/build2new-release@self'
+        - template: azure-pipeline-templates/esrp_sign_linux.yml@self
           parameters:
             FolderPath: '$(Build.ArtifactStagingDirectory)/blobfuse2-linux-unsigned'
             ESRP_AZCOPY_KEY_CODE: $(ESRP_AZCOPY_KEY_CODE)
