@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1739271258729,
+  "lastUpdate": 1739679760048,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -3691,6 +3691,73 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 13.5322265625,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "syeleti-msft",
+            "username": "syeleti-msft",
+            "email": "syeleti@microsoft.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "b98358ada922745120776be8689f5a06b41f0c42",
+          "message": "Pipeline Changes (#1629)\n\nFix Error: \r\nE: Could not get lock /var/lib/dpkg/lock-frontend. It is held by process 6341 (dpkg)\r\nE: Unable to acquire the dpkg frontend lock (/var/lib/dpkg/lock-frontend), is another process using it?\r\nCleanup the pipeline",
+          "timestamp": "2025-02-13T04:12:38Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/b98358ada922745120776be8689f5a06b41f0c42"
+        },
+        "date": 1739679758874,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read",
+            "value": 2447.9375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read",
+            "value": 3.69140625,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_small_file",
+            "value": 2231.8251953125,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 1586.5520833333333,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_direct_io",
+            "value": 2381.3951822916665,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_direct_io",
+            "value": 3.6507161458333335,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 4456.171875,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 3581.9143880208335,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 13.259765625,
             "unit": "MiB/s"
           }
         ]
