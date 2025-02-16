@@ -227,6 +227,13 @@ extends:
             tags: $(tags)
             container: "test-cnt-ubn-22-arm"
 
+        - template: 'azure-pipeline-templates/esrp_sign_linux.yml@self'
+          parameters:
+            FolderPath: '$(Build.ArtifactStagingDirectory)/blobfuse2-linux-unsigned'
+            ESRP_AZCOPY_KEY_CODE: $(ESRP_AZCOPY_KEY_CODE)
+            Pattern: '*.rpm, *.deb'
+            DisplayName: 'ESRP CodeSigning blobfuse2 linux amd64'
+
         # place the generated binary files & any additional files in appropriate locations
         - script: |
             mkdir -p pkgDir/usr/bin/
