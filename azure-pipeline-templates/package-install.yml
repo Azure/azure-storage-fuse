@@ -2,14 +2,14 @@ parameters:
   - name: distro
     type: string
     default: ubuntu
-    values:
-    - ubuntu
-    - rhel
-    - centos
-    - oracle
-    - rocky
-    - suse
-    - mariner
+    # values:
+    # - ubuntu
+    # - rhel
+    # - centos
+    # - oracle
+    # - rocky
+    # - suse
+    # - mariner
   - name: distro_version
     type: string
     default: ubuntu
