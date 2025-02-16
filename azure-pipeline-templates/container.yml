@@ -1,5 +1,8 @@
 # Responsible for creation and deletion of container.
 parameters:
+  - name: generate_container
+    type: boolean
+    default: false
   - name: create_container
     type: boolean
     default: false
@@ -8,15 +11,25 @@ parameters:
     default: false
   - name: account_type   # accepted values: block, adls
     type: string
+    default: invalid
   - name: account_name
     type: string
+    default: invalid
   - name: account_key
     type: string
+    default: invalid
   - name: container_name
     type: string
-
+    default: invalid
 
 steps:
+  # Generate the Container Name
+  - ${{ if eq(parameters.generate_container, true) }}:
+    - bash: |
+        CONTAINER_NAME=$(cat /dev/urandom | tr -dc 'a-z0-9' | fold -w 16 | head -n 1)
+        echo "Generated container name: $CONTAINER_NAME"
+        echo "##vso[task.setvariable variable=containerName]$CONTAINER_NAME"
+      displayName: 'Generate random container name'
   # Creating the Container
   - ${{ if eq(parameters.create_container, true) }}:
     - script: |

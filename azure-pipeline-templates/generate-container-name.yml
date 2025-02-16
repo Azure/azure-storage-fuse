@@ -1,6 +1,0 @@
-steps:
-  - bash: |
-      CONTAINER_NAME=$(cat /dev/urandom | tr -dc 'a-z0-9' | fold -w 16 | head -n 1)
-      echo "Generated container name: $CONTAINER_NAME"
-      echo "##vso[task.setvariable variable=containerName]$CONTAINER_NAME"
-    displayName: 'Generate random container name'

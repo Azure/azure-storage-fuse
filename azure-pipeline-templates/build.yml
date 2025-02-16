@@ -139,7 +139,9 @@ steps:
   # Create Container in storage Account.
   # Include the template to generate the container name
   # This will set the value generated to the global containerName parameter for the job.
-  - template: 'generate-container-name.yml'
+  - template: 'container.yml'
+    parameters:
+      generate_container: true
 
   # Create a Container in the block storage account
   - template: 'container.yml'
