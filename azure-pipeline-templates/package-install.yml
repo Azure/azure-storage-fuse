@@ -44,7 +44,8 @@ steps:
         curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
         az --version
       displayName: 'Libfuse Setup ${{ parameters.distro_version }}'
-    # RHEL PACKAGE INSTALLATION
+  
+  # RHEL PACKAGE INSTALLATION
   - ${{ if eq(parameters.distro, 'rhel') }}:
     - script: |
         sudo sed -i '/^failovermethod=/d' /etc/yum.repos.d/*.repo
@@ -56,7 +57,8 @@ steps:
           sudo yum install git fuse fuse3-libs fuse3-devel fuse3 python36 -y --nobest --allowerasing
         fi
       displayName: 'Libfuse Setup ${{ parameters.distro_version }}'
-    # CENTOS PACKAGE INSTALLATION
+  
+  # CENTOS PACKAGE INSTALLATION
   - ${{ if eq(parameters.distro, 'centos') }}:
     - script: |
         if [ "$(AgentName)" == "blobfuse-centos8" ]
@@ -71,13 +73,15 @@ steps:
           sudo yum install gcc gcc-c++ make git fuse3 fuse3-devel python36 -y
         fi
       displayName: 'Libfuse Setup ${{ parameters.distro_version }}'
-    # ORACLE PACKAGE INSTALLATION
+  
+  # ORACLE PACKAGE INSTALLATION
   - ${{ if eq(parameters.distro, 'oracle') }}:
     - script: |
         sudo yum update -y
         sudo yum install gcc gcc-c++ make git fuse fuse3 fuse3-devel python36 -y --nobest --allowerasing 
       displayName: 'Libfuse Setup ${{ parameters.distro_version }}'
-    # ROCKY PACKAGE INSTALLATION
+  
+  # ROCKY PACKAGE INSTALLATION
   - ${{ if eq(parameters.distro, 'rocky') }}:
     - script: |
         sudo sed -i '/^failovermethod=/d' /etc/yum.repos.d/*.repo
@@ -85,7 +89,8 @@ steps:
         sudo yum groupinstall "Development Tools" -y
         sudo yum install wget git fuse fuse3-libs fuse3-devel fuse3 python3 -y --nobest --allowerasing
       displayName: 'Libfuse Setup ${{ parameters.distro_version }}'
-    # SUSE PACKAGE INSTALLATION
+  
+  # SUSE PACKAGE INSTALLATION
   - ${{ if eq(parameters.distro, 'suse') }}:
     - script: |
         sudo zypper -n install git golang make cmake gcc gcc-c++ glibc-devel fuse
@@ -95,7 +100,8 @@ steps:
         wget $(SUSE_FUSE3_PATH)/fuse3-devel-3.10.5-150400.1.7.x86_64.rpm
         sudo zypper -n --no-gpg-checks install fuse3-devel-3.10.5-150400.1.7.x86_64.rpm 
       displayName: 'Libfuse Setup ${{ parameters.distro_version }}'
-    # MARINER PACKAGE INSTALLATION
+  
+  # MARINER PACKAGE INSTALLATION
   - ${{ if eq(parameters.distro, 'mariner') }}:
     - script: |
         sudo tdnf install gcc build-essential git fuse3 fuse3-devel python3 -y
