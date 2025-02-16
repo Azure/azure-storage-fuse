@@ -18,7 +18,7 @@ parameters:
 
 steps:
   # Creating the Container
-  - ${{ eq(parameters.create_container, true) }}:
+  - ${{ if eq(parameters.create_container, true) }}:
     - script: |
         az --version
         echo "Creating Container: ${{ parameters.container_name }}"
@@ -29,7 +29,7 @@ steps:
       displayName: 'Creating ${{ parameters.account_type }} Container'
 
   # Destroying the Container
-  - ${{ eq(parameters.delete_container, true) }}:
+  - ${{ if eq(parameters.delete_container, true) }}:
     - script: |
         az --version
         echo "Deleting Container: ${{ parameters.container_name }}"
