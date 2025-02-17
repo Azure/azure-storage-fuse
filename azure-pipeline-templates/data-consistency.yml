@@ -60,7 +60,7 @@ steps:
 
   # Generate Config file for block cache
   - script: |
-      $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/azure_key_bc.yaml --container-name=$(containerName) --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.config_file }}
+      $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/azure_key_bc.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=${{ parameters.config_file }}
       cat ${{ parameters.config_file }}
     displayName: 'Create Config File for Block Cache'
     env:
