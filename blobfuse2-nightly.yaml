@@ -60,16 +60,22 @@ stages:
             matrix:
               Ubuntu-20-BlockBlob:
                 AgentName: 'blobfuse-ubuntu20'
+                distro: 'ubuntu'
+                distro_version: 'ubuntu_20'
                 poolName: 'blobfuse-ubuntu-pool'
                 fuselib: 'libfuse-dev'
                 tags: 'fuse2'
               Ubuntu-22-BlockBlob:
                 AgentName: 'blobfuse-ubuntu22'
+                distro: 'ubuntu'
+                distro_version: 'ubuntu_22_x86'
                 poolName: 'blobfuse-ubuntu-pool'
                 fuselib: 'libfuse3-dev'
                 tags: 'fuse3'
               Ubuntu-22-ARM64-BlockBlob:
                 AgentName: 'blobfuse-ubn22-arm64'
+                distro: 'ubuntu'
+                distro_version: 'ubuntu_22_arm64'
                 poolName: 'blobfuse-ubn-arm64-pool'
                 adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22_ARM)
                 fuselib: 'libfuse3-dev'
@@ -160,18 +166,24 @@ stages:
             matrix:
               Ubuntu-20-ADLS:
                 AgentName: 'blobfuse-ubuntu20'
+                distro: 'ubuntu'
+                distro_version: 'ubuntu_20'
                 poolName: 'blobfuse-ubuntu-pool'
                 adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
                 fuselib: 'libfuse-dev'
                 tags: 'fuse2'
               Ubuntu-22-ADLS:
                 AgentName: 'blobfuse-ubuntu22'
+                distro: 'ubuntu'
+                distro_version: 'ubuntu_22_x86'
                 poolName: 'blobfuse-ubuntu-pool'
                 adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
                 fuselib: 'libfuse3-dev'
                 tags: 'fuse3'
               Ubuntu-22-ARM64-ADLS:
                 AgentName: 'blobfuse-ubn22-arm64'
+                distro: 'ubuntu'
+                distro_version: 'ubuntu_22_arm64'
                 poolName: 'blobfuse-ubn-arm64-pool'
                 adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22_ARM)
                 fuselib: 'libfuse3-dev'
@@ -262,6 +274,8 @@ stages:
               matrix:
                 Ubuntu-20-Proxy:
                   AgentName: 'blobfuse-ubuntu20'
+                  distro: 'ubuntu'
+                  distro_version: 'ubuntu_20'
 
             pool:
               name: "blobfuse-ubuntu-pool"
@@ -379,9 +393,6 @@ stages:
 
               - template: 'azure-pipeline-templates/verify-auth.yml'
                 parameters:
-                  working_dir: $(WORK_DIR)
-                  mount_dir: $(MOUNT_DIR)
-                  temp_dir: $(TEMP_DIR)
                   idstring: 'Block SAS'
                   distro_name: $(AgentName)
                   mountStep:
@@ -407,6 +418,8 @@ stages:
               matrix:
                 Ubuntu-20-MSI:
                   DistroVer: "Ubn20_MSI"
+                  distro: 'ubuntu'
+                  distro_version: 'ubuntu_20'
                   AgentName: "blobfuse-ubuntu20"
                   Description: "Ubuntu 20 MSI Test"
 
@@ -651,6 +664,8 @@ stages:
           matrix:
             Ubuntu-22:
               AgentName: 'blobfuse-ubuntu22'
+              distro: 'ubuntu'
+              distro_version: 'ubuntu_22_x86'
               containerName: 'test-cnt-ubn-22'
               adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
               fuselib: 'libfuse3-dev'
@@ -726,12 +741,16 @@ stages:
           matrix:
             Ubuntu-20:
               AgentName: 'blobfuse-ubuntu20'
+              distro: 'ubuntu'
+              distro_version: 'ubuntu_20_x86'
               containerName: 'test-cnt-ubn-20'
               adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
               fuselib: 'libfuse-dev'
               tags: 'fuse2'          
             Ubuntu-22:
               AgentName: 'blobfuse-ubuntu22'
+              distro: 'ubuntu'
+              distro_version: 'ubuntu_22_x86'
               containerName: 'test-cnt-ubn-22'
               adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
               fuselib: 'libfuse3-dev'
@@ -804,12 +823,16 @@ stages:
           matrix:
             Ubuntu-20:
               AgentName: 'blobfuse-ubuntu20'
+              distro: 'ubuntu'
+              distro_version: 'ubuntu_20_x86'
               containerName: 'test-cnt-ubn-20'
               adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
               fuselib: 'libfuse-dev'
               tags: 'fuse2'          
             Ubuntu-22:
               AgentName: 'blobfuse-ubuntu22'
+              distro: 'ubuntu'
+              distro_version: 'ubuntu_22_x86'
               containerName: 'test-cnt-ubn-22'
               adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
               fuselib: 'libfuse3-dev'
