@@ -333,7 +333,7 @@ extends:
             sudo dpkg -i packages-microsoft-prod.deb 
             sudo apt update -y
             sudo apt install apt-transport-https -y
-            sudo apt install dotnet-sdk-9.0 -y
+            sudo apt install dotnet-sdk-6.0 -y
           displayName: "Update dependencies"
           
         - template: azure-pipeline-templates/esrp_sign_linux.yml@self
