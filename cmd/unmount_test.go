@@ -87,7 +87,7 @@ func (suite *unmountTestSuite) cleanupTest() {
 	time.Sleep(2 * time.Second)
 }
 
-// mount failure test where the mount directory does not exists
+// mount failure test where the mount directory does not exist
 func (suite *unmountTestSuite) TestUnmountCmd() {
 	defer suite.cleanupTest()
 
