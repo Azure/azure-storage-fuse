@@ -937,12 +937,18 @@ func (bc *BlockCache) refreshBlock(handle *handlemap.Handle, index uint64, prefe
 
 // lineupDownload : Create a work item and schedule the download
 func (bc *BlockCache) lineupDownload(handle *handlemap.Handle, block *Block, prefetch bool) {
+	IEtag, found := handle.GetValue("ETAG")
+	Etag := ""
+	if found {
+		Etag = IEtag.(string)
+	}
 	item := &workItem{
 		handle:   handle,
 		block:    block,
 		prefetch: prefetch,
 		failCnt:  0,
 		upload:   false,
+		ETag:     Etag,
 	}
 
 	// Remove this block from free block list and add to in-process list
@@ -1054,8 +1060,7 @@ func (bc *BlockCache) download(item *workItem) {
 
 	// Compare the ETAG value and fail download if blob has changed
 	if etag != "" {
-		etagVal, found := item.handle.GetValue("ETAG")
-		if found && etagVal != etag {
+		if item.ETag != "" && item.ETag != etag {
 			log.Err("BlockCache::download : Blob has changed for %v=>%s (index %v, offset %v)", item.handle.ID, item.handle.Path, item.block.id, item.block.offset)
 			item.block.Failed()
 			item.block.Ready(BlockStatusDownloadFailed)
@@ -1529,6 +1534,7 @@ return_safe:
 }
 
 // Stage the given number of blocks from this handle
+// handle lock must be taken before calling this function
 func (bc *BlockCache) commitBlocks(handle *handlemap.Handle) error {
 	log.Debug("BlockCache::commitBlocks : Staging blocks for %s", handle.Path)
 
@@ -1578,6 +1584,7 @@ func (bc *BlockCache) commitBlocks(handle *handlemap.Handle) error {
 		return err
 	}
 
+	// Lock was already acquired on the handle.
 	if newEtag != "" {
 		handle.SetValue("ETAG", newEtag)
 	}

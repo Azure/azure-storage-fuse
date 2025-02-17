@@ -590,12 +590,20 @@ func removeLeadingSlashes(s string) string {
 	return s
 }
 
-func modifyLMT(attr *internal.ObjAttr, lmt *time.Time) {
+func modifyLMTandEtag(attr *internal.ObjAttr, lmt *time.Time, ETag string) {
 	if attr != nil {
 		attr.Atime = *lmt
 		attr.Mtime = *lmt
 		attr.Ctime = *lmt
+		attr.ETag = ETag
 	}
+}
+
+func sanitizeEtag(ETag *azcore.ETag) string {
+	if ETag != nil {
+		return strings.Trim(string(*ETag), `"`)
+	}
+	return ""
 }
 
 // func parseBlobTags(tags *container.BlobTags) map[string]string {
