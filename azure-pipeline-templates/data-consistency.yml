@@ -60,14 +60,13 @@ steps:
 
   # Generate Config file for block cache
   - script: |
-      $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/azure_key_bc.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.config_file }}
+      $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/azure_key_bc.yaml --container-name=$(containerName) --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.config_file }}
       cat ${{ parameters.config_file }}
     displayName: 'Create Config File for Block Cache'
     env:
       NIGHTLY_STO_ACC_NAME: ${{ parameters.account_name }}
       NIGHTLY_STO_ACC_KEY: ${{ parameters.account_key }}
       ACCOUNT_TYPE: ${{ parameters.account_type }}
-      ACCOUNT_ENDPOINT: ${{ parameters.account_endpoint }}
       VERBOSE_LOG: ${{ parameters.verbose_log }}
  
   # Mount in Block Cache.
@@ -77,7 +76,7 @@ steps:
       ro_mount: true
       mountStep: 
         script: |
-          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR)
+          $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR)
   - template: 'data.yml'
     parameters:
       copy_data: true
@@ -90,7 +89,7 @@ steps:
       ro_mount: true
       mountStep: 
         script: |
-          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) -o direct_io
+          $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) -o direct_io
   - template: 'data.yml'
     parameters:
       copy_data: true
@@ -103,7 +102,7 @@ steps:
       ro_mount: true
       mountStep: 
         script: |
-          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) -o ro
+          $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) -o ro
   - template: 'data.yml'
     parameters:
       copy_data: false
