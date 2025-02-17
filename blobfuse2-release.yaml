@@ -369,7 +369,6 @@ extends:
             rm -rf $(Build.ArtifactStagingDirectory)/mariner/*.md
             mv $(Build.ArtifactStagingDirectory)/amd64/* $(Build.ArtifactStagingDirectory)/
             mv $(Build.ArtifactStagingDirectory)/arm64/* $(Build.ArtifactStagingDirectory)/
-            mv $(Build.ArtifactStagingDirectory)/mariner/* $(Build.ArtifactStagingDirectory)/
             rm -rf $(Build.ArtifactStagingDirectory)/amd64/
             rm -rf $(Build.ArtifactStagingDirectory)/arm64/
             rm -rf $(Build.ArtifactStagingDirectory)/mariner/
@@ -377,8 +376,8 @@ extends:
 
         - script: |
             sudo ls -lRt $(Build.ArtifactStagingDirectory)
-            md5sum $(Build.ArtifactStagingDirectory)/amd64/*.deb
-            md5sum $(Build.ArtifactStagingDirectory)/arm64/*.rpm
+            md5sum $(Build.ArtifactStagingDirectory)/*.deb
+            md5sum $(Build.ArtifactStagingDirectory)/*.rpm
             md5sum $(Build.ArtifactStagingDirectory)/mariner/*
           displayName: 'List Signed Artifacts'
 # SignArtifacts end here
