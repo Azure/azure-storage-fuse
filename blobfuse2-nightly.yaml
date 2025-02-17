@@ -616,7 +616,7 @@ stages:
 
             steps:
               # Build the code
-              - template: 'build.yml'
+              - template: 'azure-pipeline-templates/build.yml'
 
               # Block Blob Test
               - template: 'e2e-tests-spcl.yml'
