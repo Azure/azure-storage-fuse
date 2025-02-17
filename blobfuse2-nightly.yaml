@@ -651,7 +651,7 @@ stages:
                   delete_containers: true 
 
 
-  - stage: BlockCacheDataValidation
+  - stage: DataConsistency
     jobs:
       # Ubuntu Tests
       - job: Set_1
@@ -662,14 +662,12 @@ stages:
               AgentName: 'blobfuse-ubuntu22'
               distro: 'ubuntu'
               distro_version: 'ubuntu_22_x86'
-              containerName: 'test-cnt-ubn-22'
-              adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
               fuselib: 'libfuse3-dev'
               tags: 'fuse3'
             Ubuntu-20:
               AgentName: 'blobfuse-ubuntu20'
-              containerName: 'test-cnt-ubn-20'
-              adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
+              distro: 'ubuntu'
+              distro_version: 'ubuntu_20_x86'
               fuselib: 'libfuse-dev'
               tags: 'fuse2'
 
@@ -696,37 +694,189 @@ stages:
             value: '$(System.DefaultWorkingDirectory)' 
           - name: WORK_DIR
             value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
-
-        steps:
+          
+        steps: 
           # -------------------------------------------------------
-          # Pull and build the code
+          # Pull and build the code and create the containers
           - template: 'azure-pipeline-templates/build.yml'
             parameters:
               skip_ut: true
-
-          - template: 'azure-pipeline-templates/e2e-tests-block-cache.yml'
+          # Check data consistency for block accounts
+          - template: 'azure-pipeline-templates/data-consistency.yml'
             parameters:
-              conf_template: azure_key.yaml
               config_file: $(BLOBFUSE2_CFG)
-              container: $(containerName)
               idstring: Block_Blob
-              adls: false
-              account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
-              account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
+              account_name: $(AZTEST_BLOCK_ACC_NAME)
+              account_key: $(AZTEST_BLOCK_KEY)
               account_type: block
-              account_endpoint: https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net
-              distro_name: $(AgentName)
-              quick_test: false
               verbose_log: ${{ parameters.verbose_log }}
-              clone: true
-              # TODO: These can be removed one day and replace all instances of ${{ parameters.temp_dir }} with $(TEMP_DIR) since it is a global variable
-              temp_dir: $(TEMP_DIR)
-              mount_dir: $(MOUNT_DIR)
+
+          # Check data consistency for adls accounts
+          - template: 'azure-pipeline-templates/data-consistency.yml'
+            parameters:
+              config_file: $(BLOBFUSE2_CFG)
+              idstring: adls
+              account_name: $(AZTEST_ADLS_ACC_NAME)
+              account_key: $(AZTEST_ADLS_KEY)
+              account_type: adls
+              verbose_log: ${{ parameters.verbose_log }}
 
           - template: azure-pipeline-templates/cleanup.yml
             parameters:
               unmount: true
               delete_containers: true
+ 
+
+
+  - stage: BlockCacheDataValidation
+    jobs:
+      # Ubuntu Tests
+      - job: Set_1
+        timeoutInMinutes: 300
+        strategy:
+          matrix:
+            Ubuntu-22:
+              AgentName: 'blobfuse-ubuntu22'
+              distro: 'ubuntu'
+              distro_version: 'ubuntu_22_x86'
+              fuselib: 'libfuse3-dev'
+              tags: 'fuse3'
+            Ubuntu-20:
+              AgentName: 'blobfuse-ubuntu20'
+              distro: 'ubuntu'
+              distro_version: 'ubuntu_20_x86'
+              fuselib: 'libfuse-dev'
+              tags: 'fuse2'
+
+        pool:
+          name: "blobfuse-ubuntu-pool"
+          demands:
+            - ImageOverride -equals $(AgentName)
+
+        variables:
+          - group: NightlyBlobFuse
+          - name: MOUNT_DIR
+            value: '$(Pipeline.Workspace)/blob_mnt'
+          - name: TEMP_DIR
+            value: '$(Pipeline.Workspace)/blobfuse2_tmp'
+          - name: BLOBFUSE2_CFG
+            value: '$(Pipeline.Workspace)/blobfuse2.yaml'
+          - name: BLOBFUSE2_ADLS_CFG
+            value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
+          - name: skipComponentGovernanceDetection
+            value: true
+          - name: GOPATH
+            value: '$(Pipeline.Workspace)/go'
+          - name: ROOT_DIR
+            value: '$(System.DefaultWorkingDirectory)' 
+          - name: WORK_DIR
+            value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
+          
+        steps: 
+          # -------------------------------------------------------
+          # Pull and build the code and create the containers
+          - template: 'azure-pipeline-templates/build.yml'
+            parameters:
+              skip_ut: true
+          # Check data consistency for block accounts
+          - template: 'azure-pipeline-templates/data-consistency.yml'
+            parameters:
+              config_file: $(BLOBFUSE2_CFG)
+              idstring: Block_Blob
+              account_name: $(AZTEST_BLOCK_ACC_NAME)
+              account_key: $(AZTEST_BLOCK_KEY)
+              account_type: block
+              verbose_log: ${{ parameters.verbose_log }}
+
+          # Check data consistency for adls accounts
+          - template: 'azure-pipeline-templates/data-consistency.yml'
+            parameters:
+              config_file: $(BLOBFUSE2_CFG)
+              idstring: adls
+              account_name: $(AZTEST_ADLS_ACC_NAME)
+              account_key: $(AZTEST_ADLS_KEY)
+              account_type: adls
+              verbose_log: ${{ parameters.verbose_log }}
+
+          - template: azure-pipeline-templates/cleanup.yml
+            parameters:
+              unmount: true
+              delete_containers: true
+    # jobs:
+    #   # Ubuntu Tests
+    #   - job: Set_1
+    #     timeoutInMinutes: 300
+    #     strategy:
+    #       matrix:
+    #         Ubuntu-22:
+    #           AgentName: 'blobfuse-ubuntu22'
+    #           distro: 'ubuntu'
+    #           distro_version: 'ubuntu_22_x86'
+    #           containerName: 'test-cnt-ubn-22'
+    #           adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
+    #           fuselib: 'libfuse3-dev'
+    #           tags: 'fuse3'
+    #         Ubuntu-20:
+    #           AgentName: 'blobfuse-ubuntu20'
+    #           containerName: 'test-cnt-ubn-20'
+    #           adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
+    #           fuselib: 'libfuse-dev'
+    #           tags: 'fuse2'
+
+    #     pool:
+    #       name: "blobfuse-ubuntu-pool"
+    #       demands:
+    #         - ImageOverride -equals $(AgentName)
+
+    #     variables:
+    #       - group: NightlyBlobFuse
+    #       - name: MOUNT_DIR
+    #         value: '$(Pipeline.Workspace)/blob_mnt'
+    #       - name: TEMP_DIR
+    #         value: '$(Pipeline.Workspace)/blobfuse2_tmp'
+    #       - name: BLOBFUSE2_CFG
+    #         value: '$(Pipeline.Workspace)/blobfuse2.yaml'
+    #       - name: BLOBFUSE2_ADLS_CFG
+    #         value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
+    #       - name: skipComponentGovernanceDetection
+    #         value: true
+    #       - name: GOPATH
+    #         value: '$(Pipeline.Workspace)/go'
+    #       - name: ROOT_DIR
+    #         value: '$(System.DefaultWorkingDirectory)' 
+    #       - name: WORK_DIR
+    #         value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
+
+    #     steps:
+    #       # -------------------------------------------------------
+    #       # Pull and build the code and create the containers
+    #       - template: 'azure-pipeline-templates/build.yml'
+    #         parameters:
+    #           skip_ut: true
+
+    #       - template: 'azure-pipeline-templates/e2e-tests-block-cache.yml'
+    #         parameters:
+    #           conf_template: azure_key.yaml
+    #           config_file: $(BLOBFUSE2_CFG)
+    #           container: $(containerName)
+    #           idstring: Block_Blob
+    #           adls: false
+    #           account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
+    #           account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
+    #           account_type: block
+    #           account_endpoint: https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net
+    #           distro_name: $(AgentName)
+    #           quick_test: false
+    #           verbose_log: ${{ parameters.verbose_log }}
+    #           clone: true
+    #           # TODO: These can be removed one day and replace all instances of ${{ parameters.temp_dir }} with $(TEMP_DIR) since it is a global variable
+    #           temp_dir: $(TEMP_DIR)
+    #           mount_dir: $(MOUNT_DIR)
+
+    #       - template: azure-pipeline-templates/cleanup.yml
+    #         parameters:
+    #           unmount: true
+    #           delete_containers: true
 
   - stage: BlockCacheDataDirectIOValidation
     jobs:
