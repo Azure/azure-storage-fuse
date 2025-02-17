@@ -15,10 +15,10 @@ steps:
   - ${{ if eq(parameters.generate_data, true) }}:
     - script: |
         DATA_DIR=$(ROOT_DIR)/data_files
-        sudo rm -rf $(ROOT_DIR)
-        sudo mkdir -p $(ROOT_DIR)
-        sudo chown -R `whoami` $(ROOT_DIR)
-        chmod 777 $(ROOT_DIR)
+        sudo rm -rf $DATA_DIR
+        sudo mkdir -p $DATA_DIR
+        sudo chown -R `whoami` $DATA_DIR 
+        chmod 777 $DATA_DIR
         echo "##vso[task.setvariable variable=DATA_DIR]$DATA_DIR"
       displayName: "Create directory structure for storing files in local filesystem"
 
