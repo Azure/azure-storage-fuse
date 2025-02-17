@@ -619,7 +619,7 @@ stages:
               - template: 'azure-pipeline-templates/build.yml'
 
               # Block Blob Test
-              - template: 'e2e-tests-spcl.yml'
+              - template: 'azure-pipeline-templates/e2e-tests-spcl.yml'
                 parameters:
                   conf_template: azure_key.yaml
                   config_file: $(BLOBFUSE2_CFG)
@@ -634,7 +634,7 @@ stages:
                   clone: false
 
               # ADLS Test
-              - template: 'e2e-tests-spcl.yml'
+              - template: 'azure-pipeline-templates/e2e-tests-spcl.yml'
                 parameters:
                   conf_template: azure_key.yaml
                   config_file: $(BLOBFUSE2_CFG)
