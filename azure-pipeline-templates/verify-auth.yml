@@ -10,9 +10,6 @@ steps:
   # Mount the container
   - template: 'mount.yml'
     parameters:
-      working_dir: $(WORK_DIR)
-      mount_dir: $(MOUNT_DIR)
-      temp_dir: $(TEMP_DIR)
       prefix: ${{ parameters.idstring }}
       mountStep: ${{ parameters.mountStep }}
 

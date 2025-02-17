@@ -132,9 +132,6 @@ steps:
   - ${{ if eq(parameters.test_key_credential, true) }}:
     - template: e2e-tests.yml
       parameters:
-        working_dir: $(WORK_DIR)
-        mount_dir: $(MOUNT_DIR)
-        temp_dir: $(TEMP_DIR)
         adls: ${{ parameters.adls }}
         idstring: ${{ parameters.service }} with Key Credentials
         distro_name: ${{ parameters.distro_name }}
@@ -155,9 +152,6 @@ steps:
     parameters:
       conf_template: azure_block_perf.yaml
       config_file: ${{ parameters.config }}
-      container: $(containerName)
-      temp_dir: $(TEMP_DIR)
-      mount_dir: $(MOUNT_DIR)
       adls: ${{ parameters.adls }}
       account_name: ${{ parameters.account_name }}
       account_key: ${{ parameters.account_key }}
@@ -172,9 +166,6 @@ steps:
   - ${{ if eq(parameters.test_sas_credential, true) }}:
     - template: e2e-tests.yml
       parameters:
-        working_dir: $(WORK_DIR)
-        mount_dir: $(MOUNT_DIR)
-        temp_dir: $(TEMP_DIR)
         adls: ${{ parameters.adls }}
         idstring: ${{ parameters.service }} with SAS Credentials
         distro_name: ${{ parameters.distro_name }}
@@ -191,9 +182,6 @@ steps:
   - ${{ if eq(parameters.test_azcli_credential, true) }}:
     - template: e2e-tests.yml
       parameters:
-        working_dir: $(WORK_DIR)
-        mount_dir: $(MOUNT_DIR)
-        temp_dir: $(TEMP_DIR)
         adls: ${{ parameters.adls }}
         idstring: ${{ parameters.service }} with Azure CLI Credentials
         distro_name: ${{ parameters.distro_name }}
@@ -218,9 +206,6 @@ steps:
 
     - template: e2e-tests.yml
       parameters: 
-        working_dir: $(WORK_DIR)
-        mount_dir: $(MOUNT_DIR)
-        temp_dir: $(TEMP_DIR)
         adls: ${{ parameters.adls }}
         idstring: ${{ parameters.service }} with Azurite
         distro_name: ${{ parameters.distro_name }}
@@ -241,9 +226,6 @@ steps:
     parameters:
       conf_template: azure_key_lru_purge.yaml
       config_file: ${{ parameters.config }}
-      container: $(containerName)
-      temp_dir: $(TEMP_DIR)
-      mount_dir: $(MOUNT_DIR)
       adls: ${{ parameters.adls }}
       account_name: ${{ parameters.account_name }}
       account_key: ${{ parameters.account_key }}
@@ -257,9 +239,6 @@ steps:
     parameters:
       conf_template: azure_key_emptyfile.yaml
       config_file: ${{ parameters.config }}
-      container: $(containerName)
-      temp_dir: $(TEMP_DIR)
-      mount_dir: $(MOUNT_DIR)
       adls: ${{ parameters.adls }}
       account_name: ${{ parameters.account_name }}
       account_key: ${{ parameters.account_key }}
@@ -275,9 +254,6 @@ steps:
     parameters:
       conf_template: azure_key_directio.yaml
       config_file: ${{ parameters.config }}
-      container: $(containerName)
-      temp_dir: $(TEMP_DIR)
-      mount_dir: $(MOUNT_DIR)
       adls: ${{ parameters.adls }}
       account_name: ${{ parameters.account_name }}
       account_key: ${{ parameters.account_key }}
@@ -293,9 +269,6 @@ steps:
     parameters:
       conf_template: azure_key_symlink.yaml
       config_file: ${{ parameters.config }}
-      container: $(containerName)
-      temp_dir: $(TEMP_DIR)
-      mount_dir: $(MOUNT_DIR)
       adls: ${{ parameters.adls }}
       account_name: ${{ parameters.account_name }}
       account_key: ${{ parameters.account_key }}
@@ -325,18 +298,11 @@ steps:
 
   - template: mount-test.yml
     parameters:
-      working_dir: $(WORK_DIR)
-      mount_dir: $(MOUNT_DIR)
-      temp_dir: $(TEMP_DIR)
       config: ${{ parameters.config }}
       idstring: ${{ parameters.service }} Mount Test
-      tags: $(tags)
 
   - template: stress-test.yml
     parameters:
-      working_dir: $(WORK_DIR)
-      mount_dir: $(MOUNT_DIR)
-      temp_dir: $(TEMP_DIR)
       stress_dir: ${{ parameters.stress_dir }}
       idstring: ${{ parameters.service }} Stress Test
       quick: '${{ parameters.quick_stress }}'

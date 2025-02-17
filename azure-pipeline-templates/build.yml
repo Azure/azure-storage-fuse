@@ -2,7 +2,7 @@
 # 1. Setup the VM all necessary packages.
 # 2. Build blobfuse, bfusemon, install AzCLI
 # 3. Create Temporary Containers in the storage account with choosing random string as name and also sets the global containerName paramter to this value.
-#    Caution: The Deletion of the container is left to the caller of this file, caller must call the cleanup.yml with the parameter delete_containers: true
+#    Caution: The Deletion of the container is left to the caller of this file, caller must call the cleanup.yml with the parameter delete_containers: true at the end of the job
 # 4. Run Unit Tests if specified by parameter skip_ut: false
 
 parameters:

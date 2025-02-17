@@ -21,7 +21,7 @@ parameters:
 
   - name: exhaustive_test
     # Quick test or an exhaustive test
-    displayName: 'Exhaustive test'
+    displayName: 'Run E2E tests on all distros'
     type: boolean
     default: true
   
@@ -34,11 +34,6 @@ parameters:
   - name: msi_test
     # MSI auth based test suites to be run or not
     displayName: 'MSI test'
-    type: boolean
-    default: true
-
-  - name: healthmon_test
-    displayName: 'Healthmon test'
     type: boolean
     default: true
 
@@ -321,9 +316,6 @@ stages:
               # End to End tests
               - template: 'azure-pipeline-templates/e2e-tests.yml'
                 parameters:
-                  working_dir: $(WORK_DIR)
-                  mount_dir: $(MOUNT_DIR)
-                  temp_dir: $(TEMP_DIR)
                   idstring: 'BlockBlob with Proxy and Key Credentials'
                   distro_name: $(AgentName)
                   adls: false
@@ -355,9 +347,6 @@ stages:
 
               - template: 'azure-pipeline-templates/e2e-tests.yml'
                 parameters:
-                  working_dir: $(WORK_DIR)
-                  mount_dir: $(MOUNT_DIR)
-                  temp_dir: $(TEMP_DIR)
                   idstring: 'ADLS with Proxy and Key Credentials'
                   distro_name: $(AgentName)
                   adls: true
@@ -529,59 +518,59 @@ stages:
             strategy:
               matrix:
                 RHEL-8.6:
-                  DistroVer: 'RHEL-8.6'
+                  distro_version: 'RHEL-8.6'
                   distro: rhel
                   poolName: 'blobfuse-rhel-pool'
                   Description: 'Red Hat Enterprise Linux 8.6'
                   AgentName: 'blobfuse-rhel8_6'
                   tags: 'fuse3'
                 RHEL-9.0:
-                  DistroVer: 'RHEL-9.0'
+                  distro_version: 'RHEL-9.0'
                   distro: rhel
                   poolName: 'blobfuse-rhel-pool'
                   Description: 'Red Hat Enterprise Linux 9.0'
                   AgentName: 'blobfuse-rhel9'
                   tags: 'fuse3'
                 CentOS-7.9:
-                  DistroVer: "CentOS-7.9"
+                  distro_version: "CentOS-7.9"
                   distro: centos
                   poolName: 'blobfuse-centos-pool'
                   Description: "CentOS 7.9"
                   AgentName: "blobfuse-centos7"
                 CentOS-8.5:
-                  DistroVer: "CentOS-8.5"
+                  distro_version: "CentOS-8.5"
                   distro: centos
                   poolName: 'blobfuse-centos-pool'
                   Description: "CentOS 8.5"
                   AgentName: "blobfuse-centos8"
                 Oracle-8.1:
-                  DistroVer: "Oracle-8.1"
+                  distro_version: "Oracle-8.1"
                   distro: oracle
                   poolName: 'blobfuse-oracle-pool'
                   Description: "Oracle Linux 8.1"
                   AgentName: "blobfuse-oracle81"
                 Rocky-8.0:
-                  DistroVer: "Rocky-8.0"
+                  distro_version: "Rocky-8.0"
                   distro: rocky
                   poolName: 'blobfuse2-rocky-pool'
                   Description: "Rocky Linux 8.0"
                   AgentName: "blobfuse-rocky8"
                   tags: 'fuse3'
                 Rocky-9.0:
-                  DistroVer: "Rocky-9.0"
+                  distro_version: "Rocky-9.0"
                   distro: rocky
                   poolName: 'blobfuse2-rocky-pool'
                   Description: "Rocky Linux 9.0"
                   AgentName: "blobfuse-rocky9"
                   tags: 'fuse3'
                 SUSE-15:
-                  DistroVer: "SUSE-15"
+                  distro_version: "SUSE-15"
                   distro: suse
                   poolName: 'blobfuse-suse-pool'
                   Description: "SUSE Enterprise Linux 15"
                   AgentName: "blobfuse-suse15"
                 Mariner2:
-                  DistroVer: "Mariner2"
+                  distro_version: "Mariner2"
                   distro: mariner
                   poolName: 'blobfuse-mariner-pool'
                   Description: "CBL-Mariner2 Linux"
@@ -613,22 +602,45 @@ stages:
                 value: true
 
             steps:
-              - template: 'azure-pipeline-templates/distro-tests.yml'
+              # Build the code
+              - template: 'build.yml'
+
+              # Block Blob Test
+              - template: 'e2e-tests-spcl.yml'
                 parameters:
-                  working_dir: $(WORK_DIR)
-                  root_dir: $(ROOT_DIR)
-                  temp_dir: $(TEMP_DIR)
-                  mount_dir: $(MOUNT_DIR)
-                  config_path: $(BLOBFUSE2_CFG)
-                  container: $(ContainerName)
-                  blob_account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
-                  blob_account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
-                  adls_account_name: $(AZTEST_ADLS_ACC_NAME)
-                  adls_account_key: $(AZTEST_ADLS_KEY)
-                  distro_name: $(AgentName)
-                  gopath: $(GOPATH)
-                  tags: $(tags) 
+                  conf_template: azure_key.yaml
+                  config_file: $(BLOBFUSE2_CFG)
+                  idstring: block_blob_key
+                  adls: false
+                  account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
+                  account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
+                  account_type: block
+                  distro_name: $(distro_version)
+                  quick_test: true
                   verbose_log: ${{ parameters.verbose_log }}
+                  clone: false
+
+              # ADLS Test
+              - template: 'e2e-tests-spcl.yml'
+                parameters:
+                  conf_template: azure_key.yaml
+                  config_file: $(BLOBFUSE2_CFG)
+                  idstring: adls_key
+                  adls: true
+                  account_name: $(AZTEST_ADLS_ACC_NAME)
+                  account_key: $(AZTEST_ADLS_KEY)
+                  account_type: adls
+                  distro_name: $(distro_version)
+                  quick_test: true
+                  verbose_log: ${{ parameters.verbose_log }}
+                  clone: false
+
+              # Cleanup
+              - template: 'azure-pipeline-templates/cleanup.yml'
+                parameters:
+                  unmount: true
+                  delete_containers: true 
+
 
   - stage: BlockCacheDataValidation
     jobs:
@@ -679,14 +691,6 @@ stages:
           # Pull and build the code
           - template: 'azure-pipeline-templates/build.yml'
             parameters:
-              working_directory: $(WORK_DIR)
-              root_dir: $(ROOT_DIR)
-              mount_dir: $(MOUNT_DIR)
-              temp_dir: $(TEMP_DIR)
-              gopath: $(GOPATH)
-              container: $(containerName)
-              tags: $(tags)
-              fuselib: $(fuselib)
               skip_ut: true
 
           - template: 'azure-pipeline-templates/e2e-tests-block-cache.yml'
@@ -707,7 +711,12 @@ stages:
               # TODO: These can be removed one day and replace all instances of ${{ parameters.temp_dir }} with $(TEMP_DIR) since it is a global variable
               temp_dir: $(TEMP_DIR)
               mount_dir: $(MOUNT_DIR)
-  
+
+          - template: azure-pipeline-templates/cleanup.yml
+            parameters:
+              unmount: true
+              delete_containers: true
+
   - stage: BlockCacheDataDirectIOValidation
     jobs:
       # Ubuntu Tests
@@ -757,14 +766,6 @@ stages:
           # Pull and build the code
           - template: 'azure-pipeline-templates/build.yml'
             parameters:
-              working_directory: $(WORK_DIR)
-              root_dir: $(ROOT_DIR)
-              mount_dir: $(MOUNT_DIR)
-              temp_dir: $(TEMP_DIR)
-              gopath: $(GOPATH)
-              container: $(containerName)
-              tags: $(tags)
-              fuselib: $(fuselib)
               skip_ut: true
 
           - template: 'azure-pipeline-templates/e2e-tests-block-cache.yml'
@@ -786,6 +787,12 @@ stages:
               temp_dir: $(TEMP_DIR)
               mount_dir: $(MOUNT_DIR)
               mnt_flags: "-o direct_io"
+
+          - template: azure-pipeline-templates/cleanup.yml
+            parameters:
+              unmount: true
+              delete_containers: true
+
 
 
   - stage: BlockCacheDataIntegrityValidation
@@ -837,14 +844,6 @@ stages:
           # Pull and build the code
           - template: 'azure-pipeline-templates/build.yml'
             parameters:
-              working_directory: $(WORK_DIR)
-              root_dir: $(ROOT_DIR)
-              mount_dir: $(MOUNT_DIR)
-              temp_dir: $(TEMP_DIR)
-              gopath: $(GOPATH)
-              container: $(containerName)
-              tags: $(tags)
-              fuselib: $(fuselib)
               skip_ut: true
 
           - script: |
@@ -892,6 +891,11 @@ stages:
               temp_dir: $(TEMP_DIR)
               mount_dir: $(MOUNT_DIR)
               block_size_mb: "8"
+
+          - template: azure-pipeline-templates/cleanup.yml
+            parameters:
+              unmount: true
+              delete_containers: true
 
 
 # Run e2e tests for file cache, stream on hns, fns

@@ -211,6 +211,5 @@ steps:
 
   - template: 'cleanup.yml'
     parameters:
-      working_dir: $(WORK_DIR)
-      mount_dir: ${{ parameters.mount_dir }}
-      temp_dir: ${{ parameters.temp_dir }}
+      unmount: true
+      delete_containers: false
