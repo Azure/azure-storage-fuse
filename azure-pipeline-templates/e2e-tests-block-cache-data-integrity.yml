@@ -19,7 +19,6 @@ parameters:
     type: string
   - name: account_type
     type: string
-  - name: account_endpoint
   - name: distro_name
     type: string
   - name: quick_test

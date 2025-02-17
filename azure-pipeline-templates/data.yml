@@ -1,0 +1,63 @@
+# Generate files in Local Filesystem. files would be created at $(ROOT_DIR)/data_files/
+# Copy those files using to the mountpoint using CLI utilities.
+parameters:
+  - name: generate_data
+    type: boolean
+    default: false
+  - name: copy_data
+    type: boolean
+    default: false
+  - name: check_consistency
+    type: boolean
+    default: false
+
+steps:
+  - ${{ if eq(parameters.generate_data, true) }}:
+    - script: |
+        DATA_DIR=$(ROOT_DIR)/data_files
+        sudo rm -rf $(ROOT_DIR)
+        sudo mkdir -p $(ROOT_DIR)
+        sudo chown -R `whoami` $(ROOT_DIR)
+        chmod 777 $(ROOT_DIR)
+        echo "##vso[task.setvariable variable=DATA_DIR]$DATA_DIR"
+      displayName: "Create directory structure for storing files in local filesystem"
+
+    - bash: |
+        generate_random_file() {
+          local bs=$1
+
+          for count in "${file_counts[@]}"; do
+            file_name="$(DATA_DIR)/random_file_${size}_${bs}_${count}.txt"
+
+            echo "Generating file: $file_name"
+
+            # Use dd to create a file with random content
+            dd if=/dev/urandom of="$file_name" bs="$bs" count="$count" status=progress
+
+            echo "File $file_name generated successfully!"
+          done
+        }
+        file_counts=(1 2 4 7 8 9 10 20 30 50 100 200 1024 2048 4096)
+        echo "*************************Generate very small files*****************************"
+        generate_random_file "1"
+        echo "*************************Generating small files********************************"
+        generate_random_file "1K"
+        echo "*************************Generating medium files********************************"
+        generate_random_file "1M"
+      displayName: "Generate files with random data using dd command"
+    
+    - bash: |
+        md5sum * > checklist.chk
+      displayName: "Generate md5sum of the generated files"
+      workingDirectory: $(DATA_DIR)
+  
+  - ${{ if eq(parameters.copy_data, true) }}:
+    - script: |
+        cp -v $(DATA_DIR)/* $(MOUNT_DIR)/
+      displayName: "Copy Files to the Mountpoint"
+
+  - ${{ if eq(parameters.check_consistency, true) }}:
+    - script: |
+        md5sum -c $(DATA_DIR)/checklist.chk
+      displayName: "Compare the MD5sum of the Mount point with Local filesystem"
+      workingDirectory: $(MOUNT_DIR)
