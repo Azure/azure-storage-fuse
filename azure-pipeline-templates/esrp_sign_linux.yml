@@ -1,6 +1,6 @@
 parameters:
   FolderPath: ''
-  ESRP_AZCOPY_KEY_CODE: ''
+  ESRP_BLOBFUSE_KEY_CODE: ''
   Pattern: ''
   DisplayName: ''
 
@@ -17,7 +17,7 @@ steps:
     inlineOperation: |
       [
         {
-          "KeyCode" : "${{parameters.ESRP_AZCOPY_KEY_CODE}}",
+          "KeyCode" : "${{parameters.ESRP_BLOBFUSE_KEY_CODE}}",
           "OperationCode" : "LinuxSign",
           "Parameters" : {},
           "ToolName" : "sign",

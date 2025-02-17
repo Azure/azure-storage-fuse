@@ -339,21 +339,21 @@ extends:
         - template: azure-pipeline-templates/esrp_sign_linux.yml@self
           parameters:
             FolderPath: '$(Build.ArtifactStagingDirectory)/amd64'
-            ESRP_AZCOPY_KEY_CODE: $(ESRP_AZCOPY_KEY_CODE)
+            ESRP_BLOBFUSE_KEY_CODE: $(ESRP_BLOBFUSE_KEY_CODE)
             Pattern: '*.rpm, *.deb'
             DisplayName: 'ESRP CodeSigning blobfuse2 linux amd64'
 
         - template: azure-pipeline-templates/esrp_sign_linux.yml@self
           parameters:
             FolderPath: '$(Build.ArtifactStagingDirectory)/arm64'
-            ESRP_AZCOPY_KEY_CODE: $(ESRP_AZCOPY_KEY_CODE)
+            ESRP_BLOBFUSE_KEY_CODE: $(ESRP_BLOBFUSE_KEY_CODE)
             Pattern: '*.rpm, *.deb'
             DisplayName: 'ESRP CodeSigning blobfuse2 linux arm64'
 
         - template: azure-pipeline-templates/esrp_sign_linux.yml@self
           parameters:
             FolderPath: '$(mariner)'
-            ESRP_AZCOPY_KEY_CODE: $(ESRP_AZCOPY_KEY_CODE)
+            ESRP_BLOBFUSE_KEY_CODE: $(ESRP_BLOBFUSE_MARINER_KEY_CODE)
             Pattern: '*.rpm'
             DisplayName: 'ESRP CodeSigning blobfuse2 mariner'
 
