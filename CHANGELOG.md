@@ -6,10 +6,13 @@
 - Correct statFS results to reflect block-cache in memory cache status.
 - Do not wipeout temp-cache on start after a un-graceful unmount, if `cleanup-on-start` is not configured in file-cache.
 - When the subdirectory is mounted and there is some file/folder operation, remove only the subdirectory path from the file paths.
+- Enable atomic_o_trunc flag in libfuse to allow O_TRUNC flag to come in the open call for fuse2.
+- In file-cache, when the O_TRUNC flag is passed to the open call and no modifications were done to the file before closing it then update the file in the Azure Storage to size 0.
 
 **Other Changes**
 - Optimized listing operation on HNS account to support symlinks.
 - Optimized Rename operation to do less number of REST calls.
+- Add documentation on usage of Private Endpoints with HNS-Enabled Storage Accounts
 
 **Features**
 - Mount container or directory but restrict the view of blobs that you can see. This feature is available only in read-only mount.

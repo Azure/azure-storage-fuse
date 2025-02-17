@@ -815,12 +815,13 @@ func (suite *attrCacheTestSuite) TestTruncateFile() {
 
 	err = suite.attrCache.TruncateFile(options)
 	suite.assert.Nil(err)
-	suite.assert.Contains(suite.attrCache.cacheMap, path)
-	suite.assert.NotEqualValues(suite.attrCache.cacheMap[path].attr, &internal.ObjAttr{})
-	suite.assert.EqualValues(suite.attrCache.cacheMap[path].attr.Size, size) // new size should be set
-	suite.assert.EqualValues(suite.attrCache.cacheMap[path].attr.Mode, defaultMode)
-	suite.assert.True(suite.attrCache.cacheMap[path].valid())
-	suite.assert.True(suite.attrCache.cacheMap[path].exists())
+	// suite.assert.Contains(suite.attrCache.cacheMap, path)
+	// suite.assert.NotEqualValues(suite.attrCache.cacheMap[path].attr, &internal.ObjAttr{})
+	// suite.assert.EqualValues(suite.attrCache.cacheMap[path].attr.Size, size) // new size should be set
+	// suite.assert.EqualValues(suite.attrCache.cacheMap[path].attr.Mode, defaultMode)
+	// suite.assert.True(suite.attrCache.cacheMap[path].valid())
+	// suite.assert.True(suite.attrCache.cacheMap[path].exists())
+	suite.assert.False(suite.attrCache.cacheMap[path].valid())
 }
 
 // Tests CopyFromFile

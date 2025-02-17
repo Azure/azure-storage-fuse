@@ -1042,6 +1042,9 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 	flock.Inc()
 
 	handle := handlemap.NewHandle(options.Name)
+	if options.Flags&os.O_TRUNC != 0 {
+		handle.Flags.Set(handlemap.HandleFlagDirty)
+	}
 	inf, err := f.Stat()
 	if err == nil {
 		handle.Size = inf.Size()
@@ -1217,7 +1220,6 @@ func (fc *FileCache) WriteFile(options internal.WriteFileOptions) (int, error) {
 	if err == nil {
 		// Mark the handle dirty so the file is written back to storage on FlushFile.
 		options.Handle.Flags.Set(handlemap.HandleFlagDirty)
-
 	} else {
 		log.Err("FileCache::WriteFile : failed to write %s [%s]", options.Handle.Path, err.Error())
 	}

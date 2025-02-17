@@ -111,16 +111,17 @@ func (d *downloadSplitter) Process(item *WorkItem) (int, error) {
 	var err error
 	localPath := filepath.Join(d.path, item.Path)
 
-	// if priority is false, it means that it has been scheduled by the lister and not OpenFile call
-	// so get a lock and wait if file is already under download by the OpenFile thread
-	// OpenFile thread already has a lock on the file, so don't take it again
+	// if priority is false, it means that it has been scheduled by the lister and not by the OpenFile call.
+	// So, get a lock. If the locking goes into wait state, it means the file is already under download by the OpenFile thread.
+	// Otherwise, if there are no other locks, acquire a lock to prevent any OpenFile call from adding a request again.
+	// OpenFile thread already takes a lock on the file in its code, so don't take it again here.
 	if !item.Priority {
 		flock := d.fileLocks.Get(item.Path)
 		flock.Lock()
 		defer flock.Unlock()
 	}
 
-	filePresent, size := IsFilePresent(localPath)
+	filePresent, size := isFilePresent(localPath)
 	if filePresent && item.DataLen == uint64(size) {
 		return int(size), nil
 	}

@@ -62,39 +62,12 @@ stages:
               value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
 
           steps:
-            - checkout: none
-
-            # Clone the repo
-            - script: |
-                git clone https://github.com/Azure/azure-storage-fuse
-              displayName: 'Checkout Code'
-              workingDirectory: $(ROOT_DIR)
-
-            # Checkout the branch
-            - script: |
-                git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
-              displayName: 'Checkout Branch'
-              workingDirectory: $(WORK_DIR)
-          
-            - script: |
-                sudo apt-get update --fix-missing -o Dpkg::Options::="--force-confnew"
-                sudo apt-get install make cmake gcc g++ parallel $(fuselib) $(fuselib2) -y -o Dpkg::Options::="--force-confnew"
-              displayName: 'Install libfuse'
-
-
-            # Create directory structure
-            - script: |
-                sudo mkdir -p $(ROOT_DIR)
-                sudo chown -R `whoami` $(ROOT_DIR)
-                chmod 777 $(ROOT_DIR)
-              displayName: 'Create Directory Structure'
-
             # -------------------------------------------------------
             # Pull and build the code
             - template: 'azure-pipeline-templates/build.yml'
               parameters:
                 working_directory: $(WORK_DIR)
-                root_dir: $(Pipeline.Workspace)
+                root_dir: $(ROOT_DIR)
                 mount_dir: $(MOUNT_DIR)
                 temp_dir: $(TEMP_DIR)
                 gopath: $(GOPATH)
@@ -663,31 +636,20 @@ stages:
               value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
 
           steps:
-            - checkout: none
-            
-            - script: |
-                sudo apt-get update --fix-missing -o Dpkg::Options::="--force-confnew"
-                sudo apt-get install make cmake gcc g++ parallel $(fuselib) $(fuselib2) git -y -o Dpkg::Options::="--force-confnew"
-              displayName: 'Install dependency'
-
-            # Clone the repo
-            - script: |
-                git clone https://github.com/Azure/azure-storage-fuse
-              displayName: 'Checkout Code'
-              workingDirectory: $(ROOT_DIR)
-
-            # Checkout the branch
-            - script: |
-                git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
-              displayName: 'Checkout Branch'
-              workingDirectory: $(WORK_DIR)
-
-            # Custom script to install Go-lang
-            - task: ShellScript@2
-              inputs:
-                scriptPath: "$(work_dir)/go_installer.sh"
-                args: "$(root_dir)/"
-              displayName: "GoTool Custom Setup"
+            # -------------------------------------------------------
+            # Pull and build the code
+            - template: 'azure-pipeline-templates/build.yml'
+              parameters:
+                working_directory: $(WORK_DIR)
+                root_dir: $(ROOT_DIR)
+                mount_dir: $(MOUNT_DIR)
+                temp_dir: $(TEMP_DIR)
+                gopath: $(GOPATH)
+                container: $(containerName)
+                tags: $(tags)
+                fuselib: $(fuselib)
+                skip_msi: "false"
+                skip_azcli: "true"
           
             # Run the block blob cleanup
             - task: Go@0
