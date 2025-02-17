@@ -53,9 +53,6 @@ steps:
 
   - template: 'mount.yml'
     parameters:
-      working_dir: $(WORK_DIR)
-      mount_dir: ${{ parameters.mount_dir }}
-      temp_dir: ${{ parameters.temp_dir }}
       prefix: ${{ parameters.idstring }}
       mountStep: 
         script: |
@@ -99,9 +96,6 @@ steps:
 
   - template: 'mount.yml'
     parameters:
-      working_dir: $(WORK_DIR)
-      mount_dir: ${{ parameters.mount_dir }}
-      temp_dir: ${{ parameters.temp_dir }}
       prefix: ${{ parameters.idstring }}
       ro_mount: true
       mountStep: 
@@ -155,9 +149,6 @@ steps:
 
   - template: 'mount.yml'
     parameters:
-      working_dir: $(WORK_DIR)
-      mount_dir: ${{ parameters.mount_dir }}
-      temp_dir: ${{ parameters.temp_dir }}
       prefix: ${{ parameters.idstring }}
       ro_mount: true
       mountStep: 
