@@ -39,6 +39,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
@@ -51,6 +52,7 @@ type splitter struct {
 	XBase
 	blockPool *BlockPool
 	path      string
+	fileLocks *common.LockMap
 }
 
 // --------------------------------------------------------------------------------------------------------
@@ -59,13 +61,14 @@ type downloadSplitter struct {
 	splitter
 }
 
-func NewDownloadSplitter(blockPool *BlockPool, path string, remote internal.Component, statsMgr *StatsManager) (*downloadSplitter, error) {
+func NewDownloadSplitter(blockPool *BlockPool, path string, remote internal.Component, statsMgr *StatsManager, fileLocks *common.LockMap) (*downloadSplitter, error) {
 	log.Debug("splitter::NewDownloadSplitter : create new download splitter for %s, block size %v", path, blockPool.GetBlockSize())
 
 	d := &downloadSplitter{
 		splitter: splitter{
 			blockPool: blockPool,
 			path:      path,
+			fileLocks: fileLocks,
 		},
 	}
 
@@ -101,6 +104,21 @@ func (d *downloadSplitter) Process(item *WorkItem) (int, error) {
 	log.Debug("downloadSplitter::Process : Splitting data for %s, mode %v", item.Path, item.Mode)
 	var err error
 	localPath := filepath.Join(d.path, item.Path)
+
+	// if priority is false, it means that it has been scheduled by the lister and not by the OpenFile call.
+	// So, get a lock. If the locking goes into wait state, it means the file is already under download by the OpenFile thread.
+	// Otherwise, if there are no other locks, acquire a lock to prevent any OpenFile call from adding a request again.
+	// OpenFile thread already takes a lock on the file in its code, so don't take it again here.
+	if !item.Priority {
+		flock := d.fileLocks.Get(item.Path)
+		flock.Lock()
+		defer flock.Unlock()
+	}
+
+	filePresent, size := isFilePresent(localPath)
+	if filePresent && item.DataLen == uint64(size) {
+		return int(size), nil
+	}
 
 	if len(item.Path) == 0 {
 		return 0, nil
@@ -170,7 +188,7 @@ func (d *downloadSplitter) Process(item *WorkItem) (int, error) {
 	}()
 
 	for i := 0; i < int(numBlocks); i++ {
-		block := d.blockPool.Get()
+		block := d.blockPool.GetBlock(item.Priority)
 		if block == nil {
 			responseChannel <- &WorkItem{Err: fmt.Errorf("failed to get block from pool for file %s, offset %v", item.Path, offset)}
 		} else {
@@ -186,6 +204,7 @@ func (d *downloadSplitter) Process(item *WorkItem) (int, error) {
 				Block:           block,
 				ResponseChannel: responseChannel,
 				Download:        true,
+				Priority:        item.Priority,
 			}
 			// log.Debug("downloadSplitter::Process : Scheduling download for %s offset %v", item.Path, offset)
 			d.GetNext().Schedule(splitItem)

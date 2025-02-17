@@ -37,26 +37,29 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
 
 // Common structure for Component
 type Xload struct {
 	internal.BaseComponent
-	blockSize         uint64        // Size of each block to be cached
-	mode              Mode          // Mode of the Xload component
-	exportProgress    bool          // Export the progess of xload operation to json file
-	workerCount       uint32        // Number of workers running
-	blockPool         *BlockPool    // Pool of blocks
-	path              string        // Path on local disk where Xload will operate
-	defaultPermission os.FileMode   // Default permissions of files and directories in the xload path
-	comps             []XComponent  // list of components in xload
-	statsMgr          *StatsManager // stats manager
+	blockSize         uint64          // Size of each block to be cached
+	mode              Mode            // Mode of the Xload component
+	exportProgress    bool            // Export the progess of xload operation to json file
+	workerCount       uint32          // Number of workers running
+	blockPool         *BlockPool      // Pool of blocks
+	path              string          // Path on local disk where Xload will operate
+	defaultPermission os.FileMode     // Default permissions of files and directories in the xload path
+	comps             []XComponent    // list of components in xload
+	statsMgr          *StatsManager   // stats manager
+	fileLocks         *common.LockMap // lock to take on a file if one thread is processing it
 }
 
 // Structure defining your config parameters
@@ -279,7 +282,7 @@ func (xl *Xload) createDownloader() error {
 		return err
 	}
 
-	ds, err := NewDownloadSplitter(xl.blockPool, xl.path, xl.NextComponent(), xl.statsMgr)
+	ds, err := NewDownloadSplitter(xl.blockPool, xl.path, xl.NextComponent(), xl.statsMgr, xl.fileLocks)
 	if err != nil {
 		log.Err("Xload::createDownloader : Unable to create download splitter [%s]", err.Error())
 		return err
@@ -326,11 +329,109 @@ func (xl *Xload) startComponents() error {
 	return nil
 }
 
+func (xl *Xload) getSplitter() XComponent {
+	for _, c := range xl.comps {
+		if c.GetName() == SPLITTER {
+			return c
+		}
+	}
+
+	return nil
+}
+
+// downloadFile sends the file to splitter to be downloaded on priority
+func (xl *Xload) downloadFile(fileName string) error {
+	log.Debug("Xload::downloadFile : download file %s", fileName)
+	splitter := xl.getSplitter()
+	if splitter == nil {
+		log.Err("Xload::downloadFile : failed to  get download splitter for %s", fileName)
+		return fmt.Errorf("failed to  get download splitter")
+	}
+
+	attr, err := xl.NextComponent().GetAttr(internal.GetAttrOptions{Name: fileName})
+	if err != nil {
+		log.Err("Xload::downloadFile : Failed to get attr of %s [%s]", fileName, err.Error())
+	}
+
+	_, err = splitter.Process(&WorkItem{
+		CompName: splitter.GetName(),
+		Path:     fileName,
+		DataLen:  uint64(attr.Size),
+		Priority: true,
+	})
+
+	if err != nil {
+		log.Err("Xload::OpenFile : failed to download file %s [%s]", fileName, err.Error())
+		return err
+	}
+
+	return nil
+}
+
+// OpenFile: Download the file if not already downloaded and return the file handle
+func (xl *Xload) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
+	log.Trace("Xload::OpenFile : name=%s, flags=%d, mode=%s", options.Name, options.Flags, options.Mode)
+	localPath := filepath.Join(xl.path, options.Name)
+
+	flock := xl.fileLocks.Get(options.Name)
+	flock.Lock()
+	defer flock.Unlock()
+
+	filePresent, _ := isFilePresent(localPath)
+
+	// if file is not present, send it to splitter for downloading on priority
+	if !filePresent {
+		err := xl.downloadFile(options.Name)
+		if err != nil {
+			log.Err("Xload::OpenFile : failed to download file %s [%s]", options.Name, err.Error())
+			return nil, err
+		}
+
+	} else {
+		log.Debug("Xload::OpenFile : %s will be served from local path", options.Name)
+	}
+
+	fh, err := os.OpenFile(localPath, options.Flags, options.Mode)
+	if err != nil {
+		log.Err("Xload::OpenFile : error opening cached file %s [%s]", options.Name, err.Error())
+		return nil, err
+	}
+
+	// Increment the handle count in this lock item as there is one handle open for this now
+	flock.Inc()
+
+	handle := handlemap.NewHandle(options.Name)
+	info, err := fh.Stat()
+	if err == nil {
+		handle.Size = info.Size()
+	}
+
+	handle.UnixFD = uint64(fh.Fd())
+	handle.Flags.Set(handlemap.HandleFlagCached)
+
+	log.Info("Xload::OpenFile : file=%s, fd=%d", options.Name, fh.Fd())
+	handle.SetFileObject(fh)
+
+	return handle, nil
+}
+
+func (xl *Xload) CloseFile(options internal.CloseFileOptions) error {
+	// Lock the file so that while close is in progress no one can open the file again
+	flock := xl.fileLocks.Get(options.Handle.Path)
+	flock.Lock()
+	defer flock.Unlock()
+
+	flock.Dec()
+	return nil
+}
+
 // ------------------------- Factory -------------------------------------------
 
 // Pipeline will call this method to create your object, initialize your variables here
 func NewXloadComponent() internal.Component {
-	comp := &Xload{}
+	comp := &Xload{
+		fileLocks: common.NewLockMap(),
+	}
 	comp.SetName(compName)
 	return comp
 }
