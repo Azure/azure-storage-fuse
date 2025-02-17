@@ -37,7 +37,7 @@ steps:
   # Mount in File cache
   - template: 'mount.yml'
     parameters:
-      prefix: ${{ parameters.idstring }}-filecache
+      prefix: ${{ parameters.idstring }}-FILECACHE
       mountStep: 
         script: |
           $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) --file-cache-timeout=3200
@@ -49,7 +49,7 @@ steps:
   # Mount in File cache with direct-io
   - template: 'mount.yml'
     parameters:
-      prefix: ${{ parameters.idstring }}-filecache-directio
+      prefix: ${{ parameters.idstring }}-FILECACHE-DIRECTIO
       mountStep: 
         script: |
           $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) --file-cache-timeout=3200 -o direct_io
@@ -72,7 +72,7 @@ steps:
   # Mount in Block Cache.
   - template: 'mount.yml'
     parameters:
-      prefix: ${{ parameters.idstring }}
+      prefix: ${{ parameters.idstring }}-BLOCKCACHE
       ro_mount: true
       mountStep: 
         script: |
@@ -85,7 +85,7 @@ steps:
   # Mount in Block Cache direct-io
   - template: 'mount.yml'
     parameters:
-      prefix: ${{ parameters.idstring }}
+      prefix: ${{ parameters.idstring }}-BLOCKCACHE-DIRECTIO
       ro_mount: true
       mountStep: 
         script: |
@@ -98,7 +98,7 @@ steps:
   # Mount in Block Cache read-only
   - template: 'mount.yml'
     parameters:
-      prefix: ${{ parameters.idstring }}
+      prefix: ${{ parameters.idstring }}-BLOCKCACHE-RDONLY
       ro_mount: true
       mountStep: 
         script: |
@@ -107,5 +107,59 @@ steps:
     parameters:
       copy_data: false
       check_consistency: true
-
   
+  # Mount in Block Cache with Disk path 
+  - template: 'mount.yml'
+    parameters:
+      prefix: ${{ parameters.idstring }}-BLOCKCACHE-RO-DIO-TEMPPATH
+      mountStep: 
+        script: |
+          $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) -o ro -o direct_io --block-cache-path block_cache --block-cache-block-size 8
+  - template: 'data.yml'
+    parameters:
+      copy_data: true
+      check_consistency: true
+   # Now maybe some of the blocks got cache inside the disk
+  - template: 'data.yml'
+    parameters:
+      copy_data: false
+      check_consistency: true
+
+  # Create Config file for stream
+  # Context: historically blobfuse has something known as stream as component which was similar to block cache
+  # It got deprecated and replaced by block cache.
+  # for backward compatibility the stream configs are redirected to the block cache configs internally.
+  - script: |
+      $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/azure_stream.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=${{ parameters.config_file }}
+      cat ${{ parameters.config_file }}
+    displayName: 'Create Config File for Block Cache'
+    env:
+      NIGHTLY_STO_ACC_NAME: ${{ parameters.account_name }}
+      NIGHTLY_STO_ACC_KEY: ${{ parameters.account_key }}
+      ACCOUNT_TYPE: ${{ parameters.account_type }}
+      VERBOSE_LOG: ${{ parameters.verbose_log }}
+
+  # Mount using stream config.
+  - template: 'mount.yml'
+    parameters:
+      prefix: ${{ parameters.idstring }}-STREAM
+      ro_mount: true
+      mountStep: 
+        script: |
+          $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR)
+  - template: 'data.yml'
+    parameters:
+      copy_data: true
+      check_consistency: true
+
+  - task: PublishBuildArtifacts@1
+    inputs:
+      pathToPublish: blobfuse2-logs.txt
+      artifactName: 'blobfuse_block_cache.txt'
+    condition: failed()
+    
+  - script: |
+      tail -n 200 blobfuse2-logs.txt
+    displayName: 'View Logs'
+    condition: failed()
+

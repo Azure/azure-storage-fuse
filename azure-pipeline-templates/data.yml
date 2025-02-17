@@ -47,7 +47,7 @@ steps:
       displayName: "Generate files with random data using dd command"
     
     - bash: |
-        md5sum * > checklist.chk
+        md5sum * | tee checklist.chk
       displayName: "Generate md5sum of the generated files"
       workingDirectory: $(DATA_DIR)
   
@@ -56,8 +56,10 @@ steps:
         cp -v $(DATA_DIR)/* $(MOUNT_DIR)/
       displayName: "Copy Files to the Mountpoint"
 
+  # drop kernel page cache before getting the md5sums as copy might happened just now
   - ${{ if eq(parameters.check_consistency, true) }}:
     - script: |
+        sudo sh -c "sync; echo 3 > /proc/sys/vm/drop_caches"
         md5sum -c $(DATA_DIR)/checklist.chk
       displayName: "Compare the MD5sum of the Mount point with Local filesystem"
       workingDirectory: $(MOUNT_DIR)
