@@ -25,11 +25,12 @@ parameters:
 steps:
   # Generate the Container Name
   - ${{ if eq(parameters.generate_container, true) }}:
-    - bash: |
+    - script: |
         CONTAINER_NAME=$(cat /dev/urandom | tr -dc 'a-z0-9' | fold -w 16 | head -n 1)
         echo "Generated container name: $CONTAINER_NAME"
         echo "##vso[task.setvariable variable=containerName]$CONTAINER_NAME"
       displayName: 'Generate random container name'
+      condition: eq(variables['distro'], 'ubuntu')
   # Creating the Container
   - ${{ if eq(parameters.create_container, true) }}:
     - script: |
@@ -40,6 +41,7 @@ steps:
         --account-key ${{ parameters.account_key }} \
         --fail-on-exist
       displayName: 'Creating ${{ parameters.account_type }} Container'
+      condition: eq(variables['distro'], 'ubuntu')
 
   # Destroying the Container
   - ${{ if eq(parameters.delete_container, true) }}:
@@ -50,4 +52,4 @@ steps:
         --account-name ${{ parameters.account_name }} \
         --account-key ${{ parameters.account_key }} \
       displayName: 'Deleting ${{ parameters.account_type }} Container'
-      condition: always()
+      condition: eq(variables['distro'], 'ubuntu')

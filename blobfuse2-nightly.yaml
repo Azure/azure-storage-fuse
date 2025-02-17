@@ -77,7 +77,6 @@ stages:
                 distro: 'ubuntu'
                 distro_version: 'ubuntu_22_arm64'
                 poolName: 'blobfuse-ubn-arm64-pool'
-                adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22_ARM)
                 fuselib: 'libfuse3-dev'
                 tags: 'fuse3'
 
@@ -169,7 +168,6 @@ stages:
                 distro: 'ubuntu'
                 distro_version: 'ubuntu_20'
                 poolName: 'blobfuse-ubuntu-pool'
-                adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
                 fuselib: 'libfuse-dev'
                 tags: 'fuse2'
               Ubuntu-22-ADLS:
@@ -177,7 +175,6 @@ stages:
                 distro: 'ubuntu'
                 distro_version: 'ubuntu_22_x86'
                 poolName: 'blobfuse-ubuntu-pool'
-                adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
                 fuselib: 'libfuse3-dev'
                 tags: 'fuse3'
               Ubuntu-22-ARM64-ADLS:
@@ -185,7 +182,6 @@ stages:
                 distro: 'ubuntu'
                 distro_version: 'ubuntu_22_arm64'
                 poolName: 'blobfuse-ubn-arm64-pool'
-                adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22_ARM)
                 fuselib: 'libfuse3-dev'
                 tags: 'fuse3'
 
@@ -241,7 +237,7 @@ stages:
                   adls: true
                   account_name: $(AZTEST_ADLS_ACC_NAME)
                   account_key: $(AZTEST_ADLS_KEY)
-                  account_sas: $(adlsSas)
+                  account_sas: $(AZTEST_ADLS_SAS)
                   client_id: $(AZTEST_CLIENT)
                   tenant_id: $(AZTEST_TENANT)
                   client_secret: $(AZTEST_SECRET)
