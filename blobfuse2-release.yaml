@@ -371,7 +371,6 @@ extends:
             mv $(Build.ArtifactStagingDirectory)/arm64/* $(Build.ArtifactStagingDirectory)/
             rm -rf $(Build.ArtifactStagingDirectory)/amd64/
             rm -rf $(Build.ArtifactStagingDirectory)/arm64/
-            rm -rf $(Build.ArtifactStagingDirectory)/mariner/
           displayName: 'Make Artifacts executable'
 
         - script: |
