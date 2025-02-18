@@ -174,17 +174,17 @@ func (tl *testLister) cleanup() error {
 }
 
 func (suite *listTestSuite) TestNewRemoteLister() {
-	rl, err := NewRemoteLister("", common.DefaultFilePermissionBits, nil, nil)
+	rl, err := newRemoteLister("", common.DefaultFilePermissionBits, nil, nil)
 	suite.assert.NotNil(err)
 	suite.assert.Nil(rl)
 	suite.assert.Contains(err.Error(), "invalid parameters sent to create remote lister")
 
-	rl, err = NewRemoteLister("home/user/random_path", common.DefaultFilePermissionBits, nil, nil)
+	rl, err = newRemoteLister("home/user/random_path", common.DefaultFilePermissionBits, nil, nil)
 	suite.assert.NotNil(err)
 	suite.assert.Nil(rl)
 	suite.assert.Contains(err.Error(), "invalid parameters sent to create remote lister")
 
-	rl, err = NewRemoteLister("home/user/random_path", common.DefaultFilePermissionBits, lb, nil)
+	rl, err = newRemoteLister("home/user/random_path", common.DefaultFilePermissionBits, lb, nil)
 	suite.assert.NotNil(err)
 	suite.assert.Nil(rl)
 	suite.assert.Contains(err.Error(), "invalid parameters sent to create remote lister")
@@ -193,7 +193,7 @@ func (suite *listTestSuite) TestNewRemoteLister() {
 	suite.assert.Nil(err)
 	suite.assert.NotNil(statsMgr)
 
-	rl, err = NewRemoteLister("home/user/random_path", common.DefaultFilePermissionBits, lb, statsMgr)
+	rl, err = newRemoteLister("home/user/random_path", common.DefaultFilePermissionBits, lb, statsMgr)
 	suite.assert.Nil(err)
 	suite.assert.NotNil(rl)
 }
@@ -208,7 +208,7 @@ func (suite *listTestSuite) TestListerStartStop() {
 		suite.assert.Nil(err)
 	}()
 
-	rl, err := NewRemoteLister(tl.path, common.DefaultFilePermissionBits, lb, tl.stMgr)
+	rl, err := newRemoteLister(tl.path, common.DefaultFilePermissionBits, lb, tl.stMgr)
 	suite.assert.Nil(err)
 	suite.assert.NotNil(rl)
 
@@ -236,7 +236,7 @@ func (suite *listTestSuite) TestListerMkdir() {
 		suite.assert.Nil(err)
 	}()
 
-	rl, err := NewRemoteLister(tl.path, common.DefaultFilePermissionBits, lb, tl.stMgr)
+	rl, err := newRemoteLister(tl.path, common.DefaultFilePermissionBits, lb, tl.stMgr)
 	suite.assert.Nil(err)
 	suite.assert.NotNil(rl)
 

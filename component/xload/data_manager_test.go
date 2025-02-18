@@ -51,7 +51,7 @@ func (suite *dataManagerTestSuite) SetupSuite() {
 }
 
 func (suite *dataManagerTestSuite) TestNewRemoteDataManager() {
-	rdm, err := NewRemoteDataManager(nil, nil)
+	rdm, err := newRemoteDataManager(nil, nil)
 	suite.assert.NotNil(err)
 	suite.assert.Nil(rdm)
 	suite.assert.Contains(err.Error(), "invalid parameters sent to create remote data manager")
@@ -61,7 +61,7 @@ func (suite *dataManagerTestSuite) TestNewRemoteDataManager() {
 	suite.assert.Nil(err)
 	suite.assert.NotNil(statsMgr)
 
-	rdm, err = NewRemoteDataManager(remote, statsMgr)
+	rdm, err = newRemoteDataManager(remote, statsMgr)
 	suite.assert.Nil(err)
 	suite.assert.NotNil(rdm)
 }

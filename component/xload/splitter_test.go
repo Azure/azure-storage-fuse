@@ -155,7 +155,7 @@ func (ts *testSplitter) cleanup() error {
 }
 
 func (suite *splitterTestSuite) TestNewDownloadSplitter() {
-	ds, err := NewDownloadSplitter(nil, "", nil, nil, nil)
+	ds, err := newDownloadSplitter(nil, "", nil, nil, nil)
 	suite.assert.NotNil(err)
 	suite.assert.Nil(ds)
 	suite.assert.Contains(err.Error(), "invalid parameters sent to create download splitter")
@@ -164,7 +164,7 @@ func (suite *splitterTestSuite) TestNewDownloadSplitter() {
 	suite.assert.Nil(err)
 	suite.assert.NotNil(statsMgr)
 
-	ds, err = NewDownloadSplitter(NewBlockPool(1, 1), "/home/user/random_path", remote, statsMgr, common.NewLockMap())
+	ds, err = newDownloadSplitter(NewBlockPool(1, 1), "/home/user/random_path", remote, statsMgr, common.NewLockMap())
 	suite.assert.Nil(err)
 	suite.assert.NotNil(ds)
 }
@@ -179,15 +179,15 @@ func (suite *splitterTestSuite) TestSplitterStartStop() {
 		suite.assert.Nil(err)
 	}()
 
-	rl, err := NewRemoteLister(ts.path, common.DefaultFilePermissionBits, remote, ts.stMgr)
+	rl, err := newRemoteLister(ts.path, common.DefaultFilePermissionBits, remote, ts.stMgr)
 	suite.assert.Nil(err)
 	suite.assert.NotNil(rl)
 
-	ds, err := NewDownloadSplitter(ts.blockPool, ts.path, remote, ts.stMgr, ts.locks)
+	ds, err := newDownloadSplitter(ts.blockPool, ts.path, remote, ts.stMgr, ts.locks)
 	suite.assert.Nil(err)
 	suite.assert.NotNil(ds)
 
-	rdm, err := NewRemoteDataManager(remote, ts.stMgr)
+	rdm, err := newRemoteDataManager(remote, ts.stMgr)
 	suite.assert.Nil(err)
 	suite.assert.NotNil(rdm)
 

@@ -54,7 +54,7 @@ type remoteDataManager struct {
 	dataManager
 }
 
-func NewRemoteDataManager(remote internal.Component, statsMgr *StatsManager) (*remoteDataManager, error) {
+func newRemoteDataManager(remote internal.Component, statsMgr *StatsManager) (*remoteDataManager, error) {
 	log.Debug("data_manager::NewRemoteDataManager : create new remote data manager")
 
 	if remote == nil || statsMgr == nil {

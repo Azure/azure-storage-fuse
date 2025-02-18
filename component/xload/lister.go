@@ -68,7 +68,7 @@ type remoteLister struct {
 	listBlocked bool
 }
 
-func NewRemoteLister(path string, defaultPermission os.FileMode, remote internal.Component, statsMgr *StatsManager) (*remoteLister, error) {
+func newRemoteLister(path string, defaultPermission os.FileMode, remote internal.Component, statsMgr *StatsManager) (*remoteLister, error) {
 	log.Debug("lister::NewRemoteLister : create new remote lister for %s, default permission %v", path, defaultPermission)
 
 	if path == "" || remote == nil || statsMgr == nil {
