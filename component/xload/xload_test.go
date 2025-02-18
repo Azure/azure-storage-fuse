@@ -297,6 +297,27 @@ func (suite *xloadTestSuite) TestConfigAllowOther() {
 	suite.assert.Equal(suite.xload.defaultPermission, common.DefaultAllowOtherPermissionBits)
 }
 
+func (suite *xloadTestSuite) TestUnsupportedModes() {
+	defer suite.cleanupTest(false)
+	suite.cleanupTest(false) // teardown the default xload generated
+
+	modes := []string{"upload", "sync", "invalid_mode"}
+	blockSize := float64(0.001)
+	for _, m := range modes {
+		testConfig := fmt.Sprintf("xload:\n  path: %s\n  mode: %s\n  block-size-mb: %v\n\nloopbackfs:\n  path: %s\n\nread-only: true", suite.local_path, m, blockSize, suite.fake_storage_path)
+		err := suite.setupTestHelper(testConfig, true)
+		suite.assert.NotNil(err)
+	}
+
+	testConfig := fmt.Sprintf("xload:\n  path: %s\n  block-size-mb: %v\n\nloopbackfs:\n  path: %s\n\nread-only: true", suite.local_path, blockSize, suite.fake_storage_path)
+	err := suite.setupTestHelper(testConfig, false)
+	suite.assert.Nil(err)
+
+	suite.xload.mode = EMode.INVALID_MODE()
+	err = suite.xload.Start(context.Background())
+	suite.assert.NotNil(err)
+}
+
 func TestXloadTestSuite(t *testing.T) {
 	suite.Run(t, new(xloadTestSuite))
 }

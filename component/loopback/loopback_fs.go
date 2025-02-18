@@ -310,6 +310,12 @@ func (lfs *LoopbackFS) ReadLink(options internal.ReadLinkOptions) (string, error
 }
 
 func (lfs *LoopbackFS) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
+	// if handle is nil, create a new handle
+	// added because after changes in xload, path and size can be passed in ReadInBufferOptions, where handle can be nil
+	if options.Handle == nil {
+		options.Handle = handlemap.NewHandle(options.Path)
+		options.Handle.Size = options.Size
+	}
 	log.Trace("LoopbackFS::ReadInBuffer : name=%s", options.Handle.Path)
 	f := options.Handle.GetFileObject()
 
