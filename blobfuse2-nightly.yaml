@@ -230,7 +230,7 @@ stages:
             #-----------------------------------------------------------
             # Generate SAS for created container in ADLS with all the permissions.
             # Reason: the account SAS is not sufficient to change the ACL's
-            - template: 'container.yml'
+            - template: 'azure-pipeline-templates/container.yml'
               parameters:
                 generate_adls_sas: true
                 account_type: "adls"
