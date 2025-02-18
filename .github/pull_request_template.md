@@ -29,7 +29,6 @@ Please verify the following before submitting your PR, thank you!
 ## Related Links
 - [Issues](<link>)
 <!--  please add the following info if they were relavant to the PR.
-- [Team thread](<link>)
 - [Documents](<link>)
 - [Email Subject]
 -->
