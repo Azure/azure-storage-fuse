@@ -63,12 +63,12 @@ type downloadSplitter struct {
 }
 
 func NewDownloadSplitter(blockPool *BlockPool, path string, remote internal.Component, statsMgr *StatsManager, fileLocks *common.LockMap) (*downloadSplitter, error) {
-	log.Debug("splitter::NewDownloadSplitter : create new download splitter for %s, block size %v", path, blockPool.GetBlockSize())
-
 	if blockPool == nil || path == "" || remote == nil || statsMgr == nil || fileLocks == nil {
 		log.Err("lister::NewRemoteLister : invalid parameters sent to create download splitter")
 		return nil, fmt.Errorf("invalid parameters sent to create download splitter")
 	}
+
+	log.Debug("splitter::NewDownloadSplitter : create new download splitter for %s, block size %v", path, blockPool.GetBlockSize())
 
 	d := &downloadSplitter{
 		splitter: splitter{

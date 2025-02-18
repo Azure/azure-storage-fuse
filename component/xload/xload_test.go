@@ -120,6 +120,7 @@ func (suite *xloadTestSuite) setupTestHelper(configuration string, startComponen
 }
 
 func (suite *xloadTestSuite) cleanupTest(stopComp bool) {
+	config.ResetConfig()
 	if stopComp {
 		suite.loopback.Stop()
 		err := suite.xload.Stop()
@@ -166,7 +167,6 @@ func (suite *xloadTestSuite) TestConfigBlockSize() {
 	defer suite.cleanupTest(false)
 	suite.cleanupTest(false) // teardown the default xload generated
 
-	// test with block size set in config
 	blockSize := (float64)(5.5)
 	testConfig := fmt.Sprintf("xload:\n  path: %s\n  block-size-mb: %v\n\nloopbackfs:\n  path: %s\n\nread-only: true", suite.local_path, blockSize, suite.fake_storage_path)
 	err := suite.setupTestHelper(testConfig, false) // setup a new xload with a custom config (teardown will occur after the test as usual)
@@ -179,7 +179,6 @@ func (suite *xloadTestSuite) TestConfigBlockSizeInCLI() {
 	defer suite.cleanupTest(false)
 	suite.cleanupTest(false) // teardown the default xload generated
 
-	// test with block size set in config
 	blockSize := 4.8
 	testConfig := fmt.Sprintf("xload:\n  path: %s\n\nloopbackfs:\n  path: %s\n\nread-only: true", suite.local_path, suite.fake_storage_path)
 	err := config.ReadConfigFromReader(strings.NewReader(testConfig))
@@ -190,9 +189,112 @@ func (suite *xloadTestSuite) TestConfigBlockSizeInCLI() {
 	xload := (NewXloadComponent()).(*Xload)
 	err = xload.Configure(true)
 	suite.assert.Nil(err)
+	suite.assert.Equal(xload.path, suite.local_path)
+	suite.assert.Equal(xload.blockSize, uint64(blockSize*float64(MB)))
+}
+
+func (suite *xloadTestSuite) TestConfigNoPath() {
+	defer suite.cleanupTest(false)
+	suite.cleanupTest(false) // teardown the default xload generated
+
+	blockSize := (float64)(5.5)
+	testConfig := fmt.Sprintf("xload:\n  block-size-mb: %v\n\nloopbackfs:\n  path: %s\n\nread-only: true", blockSize, suite.fake_storage_path)
+	err := suite.setupTestHelper(testConfig, false) // setup a new xload with a custom config (teardown will occur after the test as usual)
+	suite.assert.NotNil(err)
+	suite.assert.Contains(err.Error(), "path not given")
+}
+
+func (suite *xloadTestSuite) TestConfigPathInCLI() {
+	defer suite.cleanupTest(false)
+	suite.cleanupTest(false) // teardown the default xload generated
+
+	blockSize := (float64)(4)
+	testConfig := fmt.Sprintf("xload:\n  block-size-mb: %v\n\nloopbackfs:\n  path: %s\n\nread-only: true", blockSize, suite.fake_storage_path)
+	err := config.ReadConfigFromReader(strings.NewReader(testConfig))
+	suite.assert.Nil(err)
+
+	config.Set("file_cache.path", suite.local_path)
+
+	xload := (NewXloadComponent()).(*Xload)
+	err = xload.Configure(true)
 	suite.assert.Nil(err)
 	suite.assert.Equal(xload.path, suite.local_path)
 	suite.assert.Equal(xload.blockSize, uint64(blockSize*float64(MB)))
+}
+
+func (suite *xloadTestSuite) TestConfigPathSameAsMountPath() {
+	defer suite.cleanupTest(false)
+	suite.cleanupTest(false) // teardown the default xload generated
+
+	testConfig := fmt.Sprintf("xload:\n  path: %s\n\nloopbackfs:\n  path: %s\n\nread-only: true", suite.local_path, suite.fake_storage_path)
+	err := config.ReadConfigFromReader(strings.NewReader(testConfig))
+	suite.assert.Nil(err)
+
+	config.Set("mount-path", suite.local_path)
+
+	xload := (NewXloadComponent()).(*Xload)
+	err = xload.Configure(true)
+	suite.assert.NotNil(err)
+	suite.assert.Contains(err.Error(), "xload path is same as mount path")
+}
+
+func (suite *xloadTestSuite) TestConfigPathNotEmpty() {
+	defer suite.cleanupTest(false)
+	suite.cleanupTest(false) // teardown the default xload generated
+
+	// create file in local path
+	err := os.Mkdir(suite.local_path, 0755)
+	suite.assert.Nil(err)
+	_, err = os.Create(filepath.Join(suite.local_path, "testFile"))
+	suite.assert.Nil(err)
+
+	testConfig := fmt.Sprintf("xload:\n  path: %s\n\nloopbackfs:\n  path: %s\n\nread-only: true", suite.local_path, suite.fake_storage_path)
+	err = suite.setupTestHelper(testConfig, false) // setup a new xload with a custom config (teardown will occur after the test as usual)
+	suite.assert.NotNil(err)
+	suite.assert.Contains(err.Error(), "temp directory not empty")
+}
+
+func (suite *xloadTestSuite) TestConfigMode() {
+	defer suite.cleanupTest(false)
+	suite.cleanupTest(false) // teardown the default xload generated
+
+	modes := []struct {
+		val  string
+		mode Mode
+	}{
+		{val: "preload", mode: EMode.PRELOAD()},
+		{val: "upload", mode: EMode.UPLOAD()},
+		{val: "sync", mode: EMode.SYNC()},
+		{val: "PRELOAD", mode: EMode.PRELOAD()},
+		{val: "UpLoad", mode: EMode.UPLOAD()},
+		{val: "sYNC", mode: EMode.SYNC()},
+		{val: "invalid_mode", mode: EMode.INVALID_MODE()},
+		{val: "Invalid_MODE", mode: EMode.INVALID_MODE()},
+		{val: "invalid", mode: EMode.INVALID_MODE()},
+		{val: "RANDOM", mode: EMode.INVALID_MODE()},
+	}
+
+	for i, m := range modes {
+		testConfig := fmt.Sprintf("xload:\n  path: %s\n  mode: %v\n\nloopbackfs:\n  path: %s\n\nread-only: true", suite.local_path, m.val, suite.fake_storage_path)
+		err := suite.setupTestHelper(testConfig, false)
+		if i < len(modes)-4 {
+			suite.assert.Nil(err)
+			suite.assert.Equal(suite.xload.path, suite.local_path)
+			suite.assert.Equal(suite.xload.mode, m.mode)
+		} else {
+			suite.assert.NotNil(err)
+		}
+	}
+}
+
+func (suite *xloadTestSuite) TestConfigAllowOther() {
+	defer suite.cleanupTest(false)
+	suite.cleanupTest(false) // teardown the default xload generated
+
+	testConfig := fmt.Sprintf("xload:\n  path: %s\n\nloopbackfs:\n  path: %s\n\nread-only: true\n\nallow-other: true", suite.local_path, suite.fake_storage_path)
+	err := suite.setupTestHelper(testConfig, false) // setup a new xload with a custom config (teardown will occur after the test as usual)
+	suite.assert.Nil(err)
+	suite.assert.Equal(suite.xload.defaultPermission, common.DefaultAllowOtherPermissionBits)
 }
 
 func TestXloadTestSuite(t *testing.T) {
