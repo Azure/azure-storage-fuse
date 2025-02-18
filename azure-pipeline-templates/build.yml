@@ -23,6 +23,7 @@ parameters:
     default: false
 
 steps:
+  - checkout: none
   - script: |
       sudo rm -rf $(ROOT_DIR)
       sudo mkdir -p $(ROOT_DIR)
