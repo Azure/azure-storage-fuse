@@ -56,11 +56,11 @@ func (suite *utilsTestSuite) TestModeParse() {
 		val  string
 		mode Mode
 	}{
-		{val: "download", mode: EMode.PRELOAD()},
+		{val: "preload", mode: EMode.PRELOAD()},
 		{val: "upload", mode: EMode.UPLOAD()},
 		{val: "sync", mode: EMode.SYNC()},
 		{val: "invalid_mode", mode: EMode.INVALID_MODE()},
-		{val: "DOWNLOAD", mode: EMode.PRELOAD()},
+		{val: "PRELOAD", mode: EMode.PRELOAD()},
 		{val: "UpLoad", mode: EMode.UPLOAD()},
 		{val: "sYNC", mode: EMode.SYNC()},
 		{val: "invalid", mode: EMode.INVALID_MODE()},
@@ -117,7 +117,7 @@ func (suite *utilsTestSuite) TestRoundFloat() {
 
 func (suite *utilsTestSuite) TestIsFilePresent() {
 	path := "/home/randomFile1234"
-	isPresent, size := IsFilePresent(path)
+	isPresent, size := isFilePresent(path)
 	suite.assert.Equal(isPresent, false)
 	suite.assert.EqualValues(size, 0)
 
@@ -129,14 +129,14 @@ func (suite *utilsTestSuite) TestIsFilePresent() {
 	defer os.Remove(path)
 	suite.assert.Nil(err)
 
-	isPresent, size = IsFilePresent(path)
+	isPresent, size = isFilePresent(path)
 	suite.assert.Equal(isPresent, true)
 	suite.assert.EqualValues(size, 0)
 
 	err = os.Truncate(path, 10)
 	suite.assert.Nil(err)
 
-	isPresent, size = IsFilePresent(path)
+	isPresent, size = isFilePresent(path)
 	suite.assert.Equal(isPresent, true)
 	suite.assert.EqualValues(size, 10)
 }
