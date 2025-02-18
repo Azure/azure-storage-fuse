@@ -226,6 +226,16 @@ stages:
               parameters:
                 skip_ut: true # Skip UT because Block Blob set runs it
                 skip_azcli: "false"
+            
+            #-----------------------------------------------------------
+            # Generate SAS for created container in ADLS with all the permissions.
+            # Reason: the account SAS is not sufficient to change the ACL's
+            - template: 'container.yml'
+              parameters:
+                generate_adls_sas: true
+                account_type: "adls"
+                account_name: $(AZTEST_ADLS_ACC_NAME)
+                account_key: $(AZTEST_ADLS_KEY)
 
             # -------------------------------------------------------
             - ${{ if eq(parameters.exhaustive_test, true) }}:    
@@ -237,7 +247,7 @@ stages:
                   adls: true
                   account_name: $(AZTEST_ADLS_ACC_NAME)
                   account_key: $(AZTEST_ADLS_KEY)
-                  account_sas: $(AZTEST_ADLS_SAS)
+                  account_sas: $(GENERATED_ADLS_CONTAINER_SAS)
                   client_id: $(AZTEST_CLIENT)
                   tenant_id: $(AZTEST_TENANT)
                   client_secret: $(AZTEST_SECRET)
@@ -622,8 +632,6 @@ stages:
             steps:
               # Build the code
               - template: 'azure-pipeline-templates/build.yml'
-                parameters:
-                  skip_azcli: "false"
 
               # Block Blob Test
               - template: 'azure-pipeline-templates/e2e-tests-spcl.yml'
