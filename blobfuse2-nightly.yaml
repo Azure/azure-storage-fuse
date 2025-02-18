@@ -530,6 +530,7 @@ stages:
                   distro_version: 'RHEL-8.6'
                   distro: rhel
                   poolName: 'blobfuse-rhel-pool'
+                  containerName: "test-cnt-rhel-86"
                   Description: 'Red Hat Enterprise Linux 8.6'
                   AgentName: 'blobfuse-rhel8_6'
                   tags: 'fuse3'
@@ -537,6 +538,7 @@ stages:
                   distro_version: 'RHEL-9.0'
                   distro: rhel
                   poolName: 'blobfuse-rhel-pool'
+                  containerName: "test-cnt-rhel-9"
                   Description: 'Red Hat Enterprise Linux 9.0'
                   AgentName: 'blobfuse-rhel9'
                   tags: 'fuse3'
@@ -544,24 +546,28 @@ stages:
                   distro_version: "CentOS-7.9"
                   distro: centos
                   poolName: 'blobfuse-centos-pool'
+                  containerName: "test-cnt-cent-7"
                   Description: "CentOS 7.9"
                   AgentName: "blobfuse-centos7"
                 CentOS-8.5:
                   distro_version: "CentOS-8.5"
                   distro: centos
                   poolName: 'blobfuse-centos-pool'
+                  containerName: "test-cnt-cent-8"
                   Description: "CentOS 8.5"
                   AgentName: "blobfuse-centos8"
                 Oracle-8.1:
                   distro_version: "Oracle-8.1"
                   distro: oracle
                   poolName: 'blobfuse-oracle-pool'
+                  containerName: "test-cnt-ora-81"
                   Description: "Oracle Linux 8.1"
                   AgentName: "blobfuse-oracle81"
                 Rocky-8.0:
                   distro_version: "Rocky-8.0"
                   distro: rocky
                   poolName: 'blobfuse2-rocky-pool'
+                  containerName: "test-cnt-rocky-8"
                   Description: "Rocky Linux 8.0"
                   AgentName: "blobfuse-rocky8"
                   tags: 'fuse3'
@@ -569,6 +575,7 @@ stages:
                   distro_version: "Rocky-9.0"
                   distro: rocky
                   poolName: 'blobfuse2-rocky-pool'
+                  containerName: "test-cnt-rocky-9"
                   Description: "Rocky Linux 9.0"
                   AgentName: "blobfuse-rocky9"
                   tags: 'fuse3'
@@ -576,12 +583,14 @@ stages:
                   distro_version: "SUSE-15"
                   distro: suse
                   poolName: 'blobfuse-suse-pool'
+                  containerName: "test-cnt-suse-15"
                   Description: "SUSE Enterprise Linux 15"
                   AgentName: "blobfuse-suse15"
                 Mariner2:
                   distro_version: "Mariner2"
                   distro: mariner
                   poolName: 'blobfuse-mariner-pool'
+                  containerName: "test-cnt-mari-2"
                   Description: "CBL-Mariner2 Linux"
                   AgentName: "blobfuse-mariner2"
                   fuselib: 'libfuse3-dev'
