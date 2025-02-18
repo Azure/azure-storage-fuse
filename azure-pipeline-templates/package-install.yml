@@ -83,17 +83,20 @@ steps:
   
   # SUSE PACKAGE INSTALLATION
   - script: |
-      sudo zypper -n install git golang make cmake gcc gcc-c++ glibc-devel fuse
+      sudo zypper -n install git golang make cmake gcc gcc-c++ glibc-devel fuse python3
       wget $(SUSE_FUSE3_PATH)/fuse3-3.10.5-150400.1.7.x86_64.rpm
       sudo zypper -n --no-gpg-checks install fuse3-3.10.5-150400.1.7.x86_64.rpm
       fusermount3 --v
       wget $(SUSE_FUSE3_PATH)/fuse3-devel-3.10.5-150400.1.7.x86_64.rpm
-      sudo zypper -n --no-gpg-checks install fuse3-devel-3.10.5-150400.1.7.x86_64.rpm 
+      sudo zypper -n --no-gpg-checks install fuse3-devel-3.10.5-150400.1.7.x86_64.rpm
+      sudo zypper install -y azure-cli
     displayName: 'Libfuse Setup ${{ parameters.distro_version }}'
     condition: eq(variables['distro'], 'suse')
   
   # MARINER PACKAGE INSTALLATION
   - script: |
       sudo tdnf install gcc build-essential git fuse3 fuse3-devel python3 -y
+      sudo tdnf install ca-certificates
+      sudo tdnf install azure-cli
     displayName: 'Libfuse Setup ${{ parameters.distro_version }}'
     condition: eq(variables['distro'], 'mariner')
