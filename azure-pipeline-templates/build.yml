@@ -11,7 +11,7 @@ parameters:
     default: "true"
   - name: skip_azcli
     type: string
-    default: "false"
+    default: "true"
   - name: skip_bfusemon
     type: boolean
     default: true

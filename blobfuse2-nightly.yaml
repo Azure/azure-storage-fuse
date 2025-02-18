@@ -622,6 +622,8 @@ stages:
             steps:
               # Build the code
               - template: 'azure-pipeline-templates/build.yml'
+                parameters:
+                  skip_azcli: "false"
 
               # Block Blob Test
               - template: 'azure-pipeline-templates/e2e-tests-spcl.yml'
