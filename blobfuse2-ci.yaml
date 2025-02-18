@@ -7,7 +7,7 @@
 pr:
 - main
 
-# Run CI when changes occured to main branch / branch with name ci/*
+# Run CI when changes occurred to main branch / branch with name ci/*
 trigger:
 - main
 - ci/*

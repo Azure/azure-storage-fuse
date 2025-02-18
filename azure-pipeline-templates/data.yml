@@ -1,4 +1,4 @@
-# Generate files in Local Filesystem. files would be created at $(ROOT_DIR)/data_files/
+# Generate files in Local Filesystem. files would be created at $(DATA_DIR)
 # Copy those files using to the mountpoint using CLI utilities.
 parameters:
   - name: generate_data
