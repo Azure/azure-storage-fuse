@@ -190,11 +190,11 @@ steps:
     continueOnError: false
     workingDirectory: $(WORK_DIR)
 
-  # azcli login
+  # azcli login, This is only for ubuntu distributions, where we create containers for the job
   - script: |
       az login --identity --username $(ACLI_BLOBFUSE_MSI_APP_ID)
     displayName: 'Azure CLI login'
-    condition: eq('${{ parameters.skip_azcli }}', 'false')
+    condition: eq(variables['distro'], 'ubuntu')
 
   # Running unit tests
   - task: Go@0
