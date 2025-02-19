@@ -321,10 +321,10 @@ stages:
                   $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key_proxy.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
                 displayName: 'Create Config File'
                 env:
-                  NIGHTLY_STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
-                  NIGHTLY_STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
-                  ACCOUNT_TYPE: 'block'
-                  ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
+                  STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
+                  STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
+                  STO_ACC_TYPE: 'block'
+                  STO_ACC_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
                   VERBOSE_LOG: ${{ parameters.verbose_log }}
                 continueOnError: false
 
@@ -354,10 +354,10 @@ stages:
                   $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key_proxy.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_ADLS_CFG)
                 displayName: 'Create ADLS Config File'
                 env:
-                  NIGHTLY_STO_ACC_NAME: $(AZTEST_ADLS_ACC_NAME)
-                  NIGHTLY_STO_ACC_KEY: $(AZTEST_ADLS_KEY)
-                  ACCOUNT_TYPE: 'adls'
-                  ACCOUNT_ENDPOINT: 'https://$(AZTEST_ADLS_ACC_NAME).dfs.core.windows.net'
+                  STO_ACC_NAME: $(AZTEST_ADLS_ACC_NAME)
+                  STO_ACC_KEY: $(AZTEST_ADLS_KEY)
+                  STO_ACC_TYPE: 'adls'
+                  STO_ACC_ENDPOINT: 'https://$(AZTEST_ADLS_ACC_NAME).dfs.core.windows.net'
                   VERBOSE_LOG: ${{ parameters.verbose_log }}
                 continueOnError: false
 
@@ -387,9 +387,9 @@ stages:
                   $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_sas_proxy.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
                 displayName: "Create SAS Config File"
                 env:
-                  NIGHTLY_STO_BLOB_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
-                  NIGHTLY_STO_ACC_SAS: $(NIGHTLY_STO_ACC_SAS)
-                  ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
+                  STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
+                  STO_ACC_SAS: $(NIGHTLY_STO_ACC_SAS)
+                  STO_ACC_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
                   VERBOSE_LOG: ${{ parameters.verbose_log }}
                 continueOnError: false
 
@@ -472,10 +472,10 @@ stages:
                   $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_msi.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
                 displayName: "Create MSI Config File"
                 env:
-                  NIGHTLY_STO_BLOB_ACC_NAME: $(AZTEST_BLOCK_ACC_NAME) 
-                  NIGHTLY_MSI_APP_ID: $(AZTEST_APP_ID)
-                  ACCOUNT_TYPE: 'block'
-                  ACCOUNT_ENDPOINT: 'https://$(AZTEST_BLOCK_ACC_NAME).blob.core.windows.net'
+                  STO_ACC_NAME: $(AZTEST_BLOCK_ACC_NAME) 
+                  STO_MSI_APP_ID: $(AZTEST_APP_ID)
+                  STO_ACC_TYPE: 'block'
+                  STO_ACC_ENDPOINT: 'https://$(AZTEST_BLOCK_ACC_NAME).blob.core.windows.net'
                   VERBOSE_LOG: ${{ parameters.verbose_log }}
                 continueOnError: false
 
@@ -500,10 +500,10 @@ stages:
                   $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_msi.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
                 displayName: "Create MSI Config File"
                 env:
-                  NIGHTLY_STO_BLOB_ACC_NAME: $(AZTEST_ADLS_ACC_NAME) 
-                  NIGHTLY_MSI_APP_ID: $(AZTEST_APP_ID)
-                  ACCOUNT_TYPE: 'adls'
-                  ACCOUNT_ENDPOINT: 'https://$(AZTEST_ADLS_ACC_NAME).dfs.core.windows.net'
+                  STO_ACC_NAME: $(AZTEST_ADLS_ACC_NAME) 
+                  STO_MSI_APP_ID: $(AZTEST_APP_ID)
+                  STO_ACC_TYPE: 'adls'
+                  STO_ACC_ENDPOINT: 'https://$(AZTEST_ADLS_ACC_NAME).dfs.core.windows.net'
                   VERBOSE_LOG: ${{ parameters.verbose_log }}
                 continueOnError: false
 

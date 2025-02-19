@@ -83,6 +83,7 @@ steps:
   
   # SUSE PACKAGE INSTALLATION
   - script: |
+      sudo zypper update -y
       sudo zypper -n install git golang make cmake gcc gcc-c++ glibc-devel fuse python3
       wget $(SUSE_FUSE3_PATH)/fuse3-3.10.5-150400.1.7.x86_64.rpm
       sudo zypper -n --no-gpg-checks install fuse3-3.10.5-150400.1.7.x86_64.rpm

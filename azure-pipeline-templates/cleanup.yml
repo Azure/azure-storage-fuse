@@ -15,11 +15,11 @@ steps:
       displayName: 'Check process info'
 
     - script: |
-        sudo fusermount -u $(MOUNT_DIR)
-        sudo fusermount3 -u $(MOUNT_DIR)
-        sudo kill -9 `pidof blobfuse2` || true
+        sudo umount -f $(MOUNT_DIR)
+        sudo kill -9 `pidof blobfuse2` &> /dev/null
         rm -rf $(MOUNT_DIR)/*
         rm -rf $(TEMP_DIR)/*
+        sudo cat /etc/mtab
       timeoutInMinutes: 5
       displayName: 'Unmount Container'
       condition: always()

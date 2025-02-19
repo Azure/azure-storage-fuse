@@ -28,9 +28,9 @@ steps:
       cat ${{ parameters.config_file }}
     displayName: 'Create Config File for File Cache'
     env:
-      NIGHTLY_STO_ACC_NAME: ${{ parameters.account_name }}
-      NIGHTLY_STO_ACC_KEY: ${{ parameters.account_key }}
-      ACCOUNT_TYPE: ${{ parameters.account_type }}
+      STO_ACC_NAME: ${{ parameters.account_name }}
+      STO_ACC_KEY: ${{ parameters.account_key }}
+      STO_ACC_TYPE: ${{ parameters.STO_ACC_TYPE }}
       VERBOSE_LOG: ${{ parameters.verbose_log }}
     continueOnError: false
   
@@ -64,9 +64,9 @@ steps:
       cat ${{ parameters.config_file }}
     displayName: 'Create Config File for Block Cache'
     env:
-      NIGHTLY_STO_ACC_NAME: ${{ parameters.account_name }}
-      NIGHTLY_STO_ACC_KEY: ${{ parameters.account_key }}
-      ACCOUNT_TYPE: ${{ parameters.account_type }}
+      STO_ACC_NAME: ${{ parameters.account_name }}
+      STO_ACC_KEY: ${{ parameters.account_key }}
+      STO_ACC_TYPE: ${{ parameters.account_type }}
       VERBOSE_LOG: ${{ parameters.verbose_log }}
  
   # Mount in Block Cache.
@@ -140,9 +140,9 @@ steps:
       cat ${{ parameters.config_file }}
     displayName: 'Create Config File for Block Cache'
     env:
-      NIGHTLY_STO_ACC_NAME: ${{ parameters.account_name }}
-      NIGHTLY_STO_ACC_KEY: ${{ parameters.account_key }}
-      ACCOUNT_TYPE: ${{ parameters.account_type }}
+      STO_ACC_NAME: ${{ parameters.account_name }}
+      STO_ACC_KEY: ${{ parameters.account_key }}
+      STO_ACC_TYPE: ${{ parameters.STO_ACC_TYPE }}
       VERBOSE_LOG: ${{ parameters.verbose_log }}
 
   # Mount using stream config.

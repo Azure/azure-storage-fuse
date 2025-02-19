@@ -59,10 +59,10 @@ steps:
       $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=${{ parameters.config }}
     displayName: Create Key Config File
     env:
-      ACCOUNT_TYPE: ${{ parameters.account_type }}
-      NIGHTLY_STO_ACC_NAME: ${{ parameters.account_name }}
-      NIGHTLY_STO_ACC_KEY: ${{ parameters.account_key }}
-      ACCOUNT_ENDPOINT: ${{ parameters.account_endpoint }}
+      STO_ACC_TYPE: ${{ parameters.account_type }}
+      STO_ACC_NAME: ${{ parameters.account_name }}
+      STO_ACC_KEY: ${{ parameters.account_key }}
+      STO_ACC_ENDPOINT: ${{ parameters.account_endpoint }}
       VERBOSE_LOG: ${{ parameters.verbose_log }}
       USE_HTTP: false
     condition: ${{ parameters.test_key_credential }}
@@ -78,10 +78,10 @@ steps:
       $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_sas.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=${{ parameters.sas_credential_config }}
     displayName: Create SAS Config File
     env:
-      NIGHTLY_STO_BLOB_ACC_NAME: ${{ parameters.account_name }}
-      NIGHTLY_STO_ACC_SAS: ${{ parameters.account_sas }}
-      ACCOUNT_TYPE: ${{ parameters.account_type }}
-      ACCOUNT_ENDPOINT: ${{ parameters.account_endpoint }}
+      STO_ACC_NAME: ${{ parameters.account_name }}
+      STO_ACC_SAS: ${{ parameters.account_sas }}
+      STO_ACC_TYPE: ${{ parameters.account_type }}
+      STO_ACC_ENDPOINT: ${{ parameters.account_endpoint }}
       VERBOSE_LOG: ${{ parameters.verbose_log }}
     condition: ${{ parameters.test_sas_credential }}
     continueOnError: false
@@ -96,9 +96,9 @@ steps:
       $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_cli.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=${{ parameters.azcli_credential_config }}
     displayName: Create Azure CLI Config File
     env:
-      NIGHTLY_STO_BLOB_ACC_NAME: ${{ parameters.account_name }}
-      ACCOUNT_TYPE: ${{ parameters.account_type }}
-      ACCOUNT_ENDPOINT: ${{ parameters.account_endpoint }}
+      STO_ACC_NAME: ${{ parameters.account_name }}
+      STO_ACC_TYPE: ${{ parameters.account_type }}
+      STO_ACC_ENDPOINT: ${{ parameters.account_endpoint }}
       VERBOSE_LOG: ${{ parameters.verbose_log }}
     condition: ${{ parameters.test_azcli_credential }}
     continueOnError: false
@@ -114,10 +114,10 @@ steps:
     displayName: Create Key Config File
     # Note: It is fine to hardcode these credentials since they are publicly documented fake credentials for Azurite
     env:
-      ACCOUNT_TYPE: ${{ parameters.account_type }}
-      NIGHTLY_STO_ACC_NAME: 'devstoreaccount1'
-      NIGHTLY_STO_ACC_KEY: 'Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw=='
-      ACCOUNT_ENDPOINT: 'http://127.0.0.1:10000/devstoreaccount1'
+      STO_ACC_TYPE: ${{ parameters.account_type }}
+      STO_ACC_NAME: 'devstoreaccount1'
+      STO_ACC_KEY: 'Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw=='
+      STO_ACC_ENDPOINT: 'http://127.0.0.1:10000/devstoreaccount1'
       USE_HTTP: 'true'
       VERBOSE_LOG: ${{ parameters.verbose_log }}
     condition: ${{ parameters.test_azurite }}
@@ -281,10 +281,10 @@ steps:
       $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key_huge.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=${{ parameters.config }}
     displayName: Create Config File
     env:
-      NIGHTLY_STO_ACC_NAME: ${{ parameters.account_name }}
-      NIGHTLY_STO_ACC_KEY: ${{ parameters.account_key }}
-      ACCOUNT_TYPE: ${{ parameters.account_type }}
-      ACCOUNT_ENDPOINT: ${{ parameters.account_endpoint }}
+      STO_ACC_NAME: ${{ parameters.account_name }}
+      STO_ACC_KEY: ${{ parameters.account_key }}
+      STO_ACC_TYPE: ${{ parameters.account_type }}
+      STO_ACC_ENDPOINT: ${{ parameters.account_endpoint }}
       VERBOSE_LOG: ${{ parameters.verbose_log }}
     continueOnError: false
 
@@ -314,10 +314,10 @@ steps:
       $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key_huge.yaml --container-name=${{ parameters.huge_container }} --temp-path=$(TEMP_DIR) --output-file=${{ parameters.config }}
     displayName: Create Config File
     env:
-      NIGHTLY_STO_ACC_NAME: ${{ parameters.account_name }}
-      NIGHTLY_STO_ACC_KEY: ${{ parameters.account_key }}
-      ACCOUNT_TYPE: ${{ parameters.account_type }}
-      ACCOUNT_ENDPOINT: ${{ parameters.account_endpoint }}
+      STO_ACC_NAME: ${{ parameters.account_name }}
+      STO_ACC_KEY: ${{ parameters.account_key }}
+      STO_ACC_TYPE: ${{ parameters.account_type }}
+      STO_ACC_ENDPOINT: ${{ parameters.account_endpoint }}
       VERBOSE_LOG: ${{ parameters.verbose_log }}
     continueOnError: false
 
