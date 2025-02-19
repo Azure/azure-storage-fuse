@@ -30,7 +30,7 @@ steps:
     env:
       STO_ACC_NAME: ${{ parameters.account_name }}
       STO_ACC_KEY: ${{ parameters.account_key }}
-      STO_ACC_TYPE: ${{ parameters.STO_ACC_TYPE }}
+      STO_ACC_TYPE: ${{ parameters.account_type }}
       VERBOSE_LOG: ${{ parameters.verbose_log }}
     continueOnError: false
   
@@ -142,7 +142,7 @@ steps:
     env:
       STO_ACC_NAME: ${{ parameters.account_name }}
       STO_ACC_KEY: ${{ parameters.account_key }}
-      STO_ACC_TYPE: ${{ parameters.STO_ACC_TYPE }}
+      STO_ACC_TYPE: ${{ parameters.account_type }}
       VERBOSE_LOG: ${{ parameters.verbose_log }}
 
   # Mount using stream config.
