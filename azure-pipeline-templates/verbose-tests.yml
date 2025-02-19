@@ -326,9 +326,6 @@ steps:
 
   - template: huge-list-test.yml
     parameters:
-      working_dir: $(WORK_DIR)
-      mount_dir: $(MOUNT_DIR)
-      temp_dir: $(TEMP_DIR)
       idstring: ${{ parameters.service }} Huge List Test
       distro_name: ${{ parameters.distro_name }}
       mountStep:

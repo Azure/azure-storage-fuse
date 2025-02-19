@@ -107,7 +107,13 @@ steps:
     parameters:
       copy_data: false
       check_consistency: true
-  
+
+  # The following script is a bug in block cache, where temp directory given was not getting cleaned after unmount.
+  # one can remove this when that is solved.
+  - script: |
+     if [ -d "block_cache" ]; then ls -l block_cache; rm -rf block_cache; mkdir block_cache  ; fi
+    displayName: '[BUG]Clear Temp Cache for Block Cache before mounting'
+
   # Mount in Block Cache with Disk path 
   - template: 'mount.yml'
     parameters:
