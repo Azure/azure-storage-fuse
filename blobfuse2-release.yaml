@@ -290,7 +290,7 @@ extends:
           outputs:
           - output: pipelineArtifact
             targetPath: $(Build.ArtifactStagingDirectory)/blobfuse2-signed
-            artifactName: 'blobfuse2-linux-signed'
+            artifactName: 'blobfuse2-signed'
             displayName: 'Publish Signed Artifacts'
 
         variables:
@@ -302,7 +302,7 @@ extends:
           - name: mariner
             value: $(Build.ArtifactStagingDirectory)/mariner
           - name: signed
-            value: $(Build.ArtifactStagingDirectory)/signed
+            value: $(Build.ArtifactStagingDirectory)/blobfuse2-signed
 
         steps:
         - checkout: none
@@ -313,6 +313,7 @@ extends:
         
         - script: |
             mkdir -p $(signed)
+            chmod 777 $(signed)
           displayName: 'Create Output Paths'
 
         - script: |
@@ -384,3 +385,4 @@ extends:
             md5sum $(Build.ArtifactStagingDirectory)/mariner/*
           displayName: 'List Signed Artifacts'
 # SignArtifacts end here
+
