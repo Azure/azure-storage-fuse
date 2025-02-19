@@ -31,16 +31,54 @@ parameters:
     default: "null"    
   - name: fuselib
     type: string
-    default: "fuse3 libfuse3-dev"
+    default: "libfuse3-dev"
 
 steps:
-  # Package manager installs for libfuse
   - script: |
+      sudo rm -rf $(ROOT_DIR)
+      sudo mkdir -p $(ROOT_DIR)
+      sudo chown -R `whoami` $(ROOT_DIR)
+      chmod 777 $(ROOT_DIR)
+    displayName: 'Create Directory Structure'
+
+  # Package manager installs for libfuse, 
+  # Before installation, stop any process such as update manager from using package manager.
+  # otherwise installation may fail
+  - script: |
+      sleep 30
+      sudo systemctl stop apt-daily.timer
+      echo "Add Lock Timeout for apt package manager"
+      sudo sh -c 'echo "DPkg::Lock::Timeout \"120\";" > /etc/apt/apt.conf.d/99timeout'
+      sudo ps -aux | grep -iE "apt"
+      sudo killall apt apt-get
+      yes | sudo fuser -vik -TERM /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock
+      echo "Released any lock if some other process has acquired"
+      sudo dpkg --configure -a
+
+      echo "Starting Updates and Installation of Packages"
       sudo apt-get update --fix-missing
-      sudo apt-get install ${{ parameters.fuselib }} -y
-      fusermount -V
+      sudo apt-get install make cmake gcc g++ git parallel -y
+      if [ "${{ parameters.tags }}" == "fuse2" ]
+      then
+        sudo apt-get install libfuse2 libfuse-dev -y
+      else
+        sudo apt-get install fuse3 libfuse3-dev -y
+      fi
     displayName: 'Libfuse Setup'
     condition: eq('${{ parameters.hostedAgent }}', true)
+    retryCountOnTaskFailure: 3
+
+  # Clone the repo
+  - script: |
+      git clone https://github.com/Azure/azure-storage-fuse
+    displayName: 'Checkout Code'
+    workingDirectory: $(ROOT_DIR)
+
+  # Checkout the branch
+  - script: |
+      git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
+    displayName: 'Checkout Branch'
+    workingDirectory: $(WORK_DIR)
 
   # Custom script to install Go-lang
   - task: ShellScript@2
@@ -136,10 +174,17 @@ steps:
 
   # Install azcli
   - script: |
+      sleep 5
+      sudo ps -aux | grep -iE "apt"
+      sudo killall apt apt-get
+      yes | sudo fuser -vik -TERM /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock
+      echo "Released any lock if some other process has acquired"
+      sudo dpkg --configure -a
       curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
       az --version
     displayName: 'Install Azure CLI'
     condition: eq('${{ parameters.skip_azcli }}', 'false')
+    retryCountOnTaskFailure: 3
 
   # azcli login
   - script: |

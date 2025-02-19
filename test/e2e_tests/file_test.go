@@ -113,6 +113,44 @@ func (suite *fileTestSuite) TestFileCreate() {
 	suite.fileTestCleanup([]string{fileName})
 }
 
+func (suite *fileTestSuite) TestOpenFlag_O_TRUNC() {
+	fileName := suite.testPath + "/test_on_open"
+	buf := "foo"
+	tempbuf := make([]byte, 4096)
+	srcFile, err := os.OpenFile(fileName, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0666)
+	suite.Nil(err)
+	bytesWritten, err := srcFile.Write([]byte(buf))
+	suite.Equal(len(buf), bytesWritten)
+	suite.Nil(err)
+	err = srcFile.Close()
+	suite.Nil(err)
+
+	srcFile, err = os.OpenFile(fileName, os.O_WRONLY, 0666)
+	suite.Nil(err)
+	err = srcFile.Close()
+	suite.Nil(err)
+
+	fileInfo, err := os.Stat(fileName)
+	suite.Equal(int64(len(buf)), fileInfo.Size())
+	suite.Nil(err)
+
+	srcFile, err = os.OpenFile(fileName, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0666)
+	suite.Nil(err)
+	read, _ := srcFile.Read(tempbuf)
+	suite.Equal(0, read)
+	err = srcFile.Close()
+	suite.Nil(err)
+
+	fileInfo, err = os.Stat(fileName)
+	suite.Equal(int64(0), fileInfo.Size())
+	suite.Nil(err)
+
+	srcFile, err = os.OpenFile(fileName, os.O_RDONLY, 0666)
+	suite.Nil(err)
+	read, _ = srcFile.Read(tempbuf)
+	suite.Equal(0, read)
+}
+
 func (suite *fileTestSuite) TestFileCreateUtf8Char() {
 	fileName := suite.testPath + "/भारत.txt"
 	srcFile, err := os.OpenFile(fileName, os.O_CREATE, 0777)
