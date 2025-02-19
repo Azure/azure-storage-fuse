@@ -34,6 +34,7 @@
 package xload
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -61,7 +62,12 @@ type downloadSplitter struct {
 	splitter
 }
 
-func NewDownloadSplitter(blockPool *BlockPool, path string, remote internal.Component, statsMgr *StatsManager, fileLocks *common.LockMap) (*downloadSplitter, error) {
+func newDownloadSplitter(blockPool *BlockPool, path string, remote internal.Component, statsMgr *StatsManager, fileLocks *common.LockMap) (*downloadSplitter, error) {
+	if blockPool == nil || path == "" || remote == nil || statsMgr == nil || fileLocks == nil {
+		log.Err("lister::NewRemoteLister : invalid parameters sent to create download splitter")
+		return nil, fmt.Errorf("invalid parameters sent to create download splitter")
+	}
+
 	log.Debug("splitter::NewDownloadSplitter : create new download splitter for %s, block size %v", path, blockPool.GetBlockSize())
 
 	d := &downloadSplitter{
@@ -138,6 +144,13 @@ func (d *downloadSplitter) Process(item *WorkItem) (int, error) {
 
 	if item.DataLen == 0 {
 		log.Debug("downloadSplitter::Process : 0 byte file %s", item.Path)
+		// send the status to stats manager
+		d.GetStatsManager().AddStats(&StatsItem{
+			Component: SPLITTER,
+			Name:      item.Path,
+			Success:   true,
+			Download:  true,
+		})
 		return 0, nil
 	}
 
@@ -162,6 +175,8 @@ func (d *downloadSplitter) Process(item *WorkItem) (int, error) {
 	wg.Add(1)
 
 	responseChannel := make(chan *WorkItem, numBlocks)
+	ctx, cancel := context.WithCancel(context.TODO())
+	defer cancel()
 
 	operationSuccess := true
 	go func() {
@@ -172,11 +187,13 @@ func (d *downloadSplitter) Process(item *WorkItem) (int, error) {
 			if respSplitItem.Err != nil {
 				log.Err("downloadSplitter::Process : Failed to download data for file %s", item.Path)
 				operationSuccess = false
+				cancel() // cancel the context to stop download of other chunks
 			} else {
 				_, err := item.FileHandle.WriteAt(respSplitItem.Block.Data[:respSplitItem.DataLen], respSplitItem.Block.Offset)
 				if err != nil {
 					log.Err("downloadSplitter::Process : Failed to write data to file %s", item.Path)
 					operationSuccess = false
+					cancel() // cancel the context to stop download of other chunks
 				}
 			}
 
@@ -205,6 +222,7 @@ func (d *downloadSplitter) Process(item *WorkItem) (int, error) {
 				ResponseChannel: responseChannel,
 				Download:        true,
 				Priority:        item.Priority,
+				Ctx:             ctx,
 			}
 			// log.Debug("downloadSplitter::Process : Scheduling download for %s offset %v", item.Path, offset)
 			d.GetNext().Schedule(splitItem)

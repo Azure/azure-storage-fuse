@@ -36,29 +36,36 @@ package xload
 import (
 	"testing"
 
+	"github.com/Azure/azure-storage-fuse/v2/component/loopback"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
 
-type listTestSuite struct {
+type dataManagerTestSuite struct {
 	suite.Suite
 	assert *assert.Assertions
 }
 
-func (suite *listTestSuite) SetupTest() {
+func (suite *dataManagerTestSuite) SetupSuite() {
+	suite.assert = assert.New(suite.T())
 }
 
-func (suite *listTestSuite) cleanupTest() {
+func (suite *dataManagerTestSuite) TestNewRemoteDataManager() {
+	rdm, err := newRemoteDataManager(nil, nil)
+	suite.assert.NotNil(err)
+	suite.assert.Nil(rdm)
+	suite.assert.Contains(err.Error(), "invalid parameters sent to create remote data manager")
+
+	remote := loopback.NewLoopbackFSComponent()
+	statsMgr, err := NewStatsManager(1, false)
+	suite.assert.Nil(err)
+	suite.assert.NotNil(statsMgr)
+
+	rdm, err = newRemoteDataManager(remote, statsMgr)
+	suite.assert.Nil(err)
+	suite.assert.NotNil(rdm)
 }
 
-func (suite *listTestSuite) TestReadDir() {
-	// l := &local{}
-
-	// l.readDir(&workItem{
-	// 	basePath: "/home/sourav/go/src/azure-storage-fuse/common",
-	// })
-}
-
-func TestListSuite(t *testing.T) {
-	suite.Run(t, new(listTestSuite))
+func TestDatamanagerSuite(t *testing.T) {
+	suite.Run(t, new(dataManagerTestSuite))
 }

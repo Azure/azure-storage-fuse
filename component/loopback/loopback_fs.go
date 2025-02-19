@@ -310,6 +310,12 @@ func (lfs *LoopbackFS) ReadLink(options internal.ReadLinkOptions) (string, error
 }
 
 func (lfs *LoopbackFS) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
+	// if handle is nil, create a new handle
+	// added because after changes in xload, path and size can be passed in ReadInBufferOptions, where handle can be nil
+	if options.Handle == nil {
+		options.Handle = handlemap.NewHandle(options.Path)
+		options.Handle.Size = options.Size
+	}
 	log.Trace("LoopbackFS::ReadInBuffer : name=%s", options.Handle.Path)
 	f := options.Handle.GetFileObject()
 
@@ -321,17 +327,20 @@ func (lfs *LoopbackFS) ReadInBuffer(options internal.ReadInBufferOptions) (int, 
 
 		n, err := f1.ReadAt(options.Data, options.Offset)
 		f1.Close()
+		if err == io.EOF {
+			err = nil
+		}
 		return n, err
 	}
 
 	options.Handle.RLock()
 	defer options.Handle.RUnlock()
 
-	if f == nil {
-		log.Err("LoopbackFS::ReadInBuffer : error [invalid file object]")
-		return 0, os.ErrInvalid
+	n, err := f.ReadAt(options.Data, options.Offset)
+	if err == io.EOF {
+		err = nil
 	}
-	return f.ReadAt(options.Data, options.Offset)
+	return n, err
 }
 
 func (lfs *LoopbackFS) WriteFile(options internal.WriteFileOptions) (int, error) {

@@ -104,7 +104,7 @@ func NewStatsManager(count uint32, isExportEnabled bool) (*StatsManager, error) 
 	return &StatsManager{
 		fileHandle: fh,
 		items:      make(chan *StatsItem, count*2),
-		done:       make(chan bool),
+		done:       make(chan bool, 1),
 	}, nil
 }
 
@@ -122,7 +122,8 @@ func (sm *StatsManager) Start() {
 // TODO:: xload : the stop method runs on unmount. See if the channels can be closed if the job is 100% complete
 func (sm *StatsManager) Stop() {
 	log.Debug("statsManager::stop : stop stats manager")
-	close(sm.done)
+	sm.done <- true // close the stats exporter thread
+	close(sm.done)  // TODO::xload : check if closing the done channel here will lead to closing the stats exporter thread
 	close(sm.items)
 	sm.waitGroup.Wait()
 

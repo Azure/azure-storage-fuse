@@ -34,6 +34,7 @@
 package xload
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -67,8 +68,13 @@ type remoteLister struct {
 	listBlocked bool
 }
 
-func NewRemoteLister(path string, defaultPermission os.FileMode, remote internal.Component, statsMgr *StatsManager) (*remoteLister, error) {
+func newRemoteLister(path string, defaultPermission os.FileMode, remote internal.Component, statsMgr *StatsManager) (*remoteLister, error) {
 	log.Debug("lister::NewRemoteLister : create new remote lister for %s, default permission %v", path, defaultPermission)
+
+	if path == "" || remote == nil || statsMgr == nil {
+		log.Err("lister::NewRemoteLister : invalid parameters sent to create remote lister")
+		return nil, fmt.Errorf("invalid parameters sent to create remote lister")
+	}
 
 	rl := &remoteLister{
 		lister: lister{

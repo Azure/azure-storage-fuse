@@ -276,19 +276,19 @@ func (xl *Xload) createDownloader() error {
 	log.Trace("Xload::createDownloader : Starting downloader")
 
 	// Create remote lister pool to list remote files
-	rl, err := NewRemoteLister(xl.path, xl.defaultPermission, xl.NextComponent(), xl.statsMgr)
+	rl, err := newRemoteLister(xl.path, xl.defaultPermission, xl.NextComponent(), xl.statsMgr)
 	if err != nil {
 		log.Err("Xload::createDownloader : Unable to create remote lister [%s]", err.Error())
 		return err
 	}
 
-	ds, err := NewDownloadSplitter(xl.blockPool, xl.path, xl.NextComponent(), xl.statsMgr, xl.fileLocks)
+	ds, err := newDownloadSplitter(xl.blockPool, xl.path, xl.NextComponent(), xl.statsMgr, xl.fileLocks)
 	if err != nil {
 		log.Err("Xload::createDownloader : Unable to create download splitter [%s]", err.Error())
 		return err
 	}
 
-	rdm, err := NewRemoteDataManager(xl.NextComponent(), xl.statsMgr)
+	rdm, err := newRemoteDataManager(xl.NextComponent(), xl.statsMgr)
 	if err != nil {
 		log.Err("Xload::startUploader : failed to create remote data manager [%s]", err.Error())
 		return err
