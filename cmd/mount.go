@@ -106,7 +106,7 @@ func (opt *mountOptions) validate(skipNonEmptyMount bool) error {
 	}
 
 	if _, err := os.Stat(opt.MountPath); os.IsNotExist(err) {
-		return fmt.Errorf("mount directory does not exists")
+		return fmt.Errorf("mount directory does not exist")
 	} else if common.IsDirectoryMounted(opt.MountPath) {
 		// Try to cleanup the stale mount
 		log.Info("Mount::validate : Mount directory is already mounted, trying to cleanup")
@@ -272,7 +272,7 @@ var mountCmd = &cobra.Command{
 		if options.ConfigFile == "" {
 			// Config file is not set in cli parameters
 			// Blobfuse2 defaults to config.yaml in current directory
-			// If the file does not exists then user might have configured required things in env variables
+			// If the file does not exist then user might have configured required things in env variables
 			// Fall back to defaults and let components fail if all required env variables are not set.
 			_, err := os.Stat(common.DefaultConfigFilePath)
 			if err != nil && os.IsNotExist(err) {
