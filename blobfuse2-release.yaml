@@ -329,6 +329,7 @@ extends:
         - script: |
             mkdir -p $(mariner) && chmod 755 $(mariner)
             cp $(amd64)/*-fuse3*.rpm $(mariner)
+            cp $(arm64)/*-fuse3*.rpm $(mariner)
             sudo ls -lRt $(mariner)
             md5sum $(mariner)/*
           displayName: 'Copy artifacts for Mariner'
@@ -389,4 +390,221 @@ extends:
             md5sum $(signed)/mariner/*
           displayName: 'List Signed Artifacts'
 # SignArtifacts end here
+
+    - stage: TestArtifacts
+      dependsOn: SignArtifacts
+      condition: succeeded('SignArtifacts')
+      jobs:
+      - job: Set_0
+        timeoutInMinutes: 120
+        pool:
+          name: blobfuse2-pool
+          image: ubuntu22-1espt
+          os: linux
+
+        # download artifacts that need to be published
+        templateContext:
+          inputs:
+          - input: pipelineArtifact
+            artifactName: 'blobfuse2-signed'
+            targetPath: $(System.DefaultWorkingDirectory)/blobfuse2
+            displayName: 'Download Artifacts'
+            itemPattern: blobfuse2*$(tags)*x86_64.deb
+          outputs:
+          - output: pipelineArtifact
+            targetPath: $(Build.ArtifactStagingDirectory)/blobfuse2
+            artifactName: 'blobfuse2'
+            displayName: 'Publish Signed Artifacts'
+
+        variables:
+          - group: NightlyBlobFuse
+          - name: root_dir
+            value: '$(System.DefaultWorkingDirectory)'
+          - name: work_dir
+            value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
+          - name: mount_dir
+            value: '$(System.DefaultWorkingDirectory)/fusetmp'
+          - name: temp_dir
+            value: '$(System.DefaultWorkingDirectory)/fusetmpcache'
+          - name: blobfuse2-binaries
+            value: $(Build.ArtifactStagingDirectory)/blobfuse2
+          - name: vmImage
+            value: 'Ubuntu-22.04'
+          - name: fuselib
+            value: 'libfuse3-dev'
+
+        steps:
+        - checkout: none
+
+        - script: |
+            git clone https://github.com/Azure/azure-storage-fuse
+          displayName: 'Checkout Code'
+          workingDirectory: $(root_dir)
+        - script: |
+            git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
+          displayName: 'Checkout Branch'
+          workingDirectory: $(root_dir)/azure-storage-fuse
+
+        - script:
+            mkdir -p $(Build.ArtifactStagingDirectory)/blobfuse2
+            chmod 777 $(Build.ArtifactStagingDirectory)/blobfuse2
+          displayName: 'Create Output Paths'
+
+        # Custom script to install Go-lang
+        - task: ShellScript@2
+          inputs:
+            scriptPath: "$(work_dir)/go_installer.sh"
+            args: "$(root_dir)/"
+          displayName: "GoTool Custom Setup"
+        
+        # get glibc version with which build is done
+        - script: |
+            ldd --version
+          displayName: "GLIBC Version"
+
+        - script: |
+            ls -l
+            result=$(ls -1 | wc -l)
+            if [ $result -ne 1 ]; then
+              exit 1
+            fi
+          displayName: 'List Downloaded Package'
+          workingDirectory: $(root_dir)/blobfuse2-signed      
+
+        - script: |
+            for f in ./blobfuse2*$(tags)*.deb; do mv -v "$f" "${f/-$(tags)./-$(vmImage).}"; done;
+            cp ./blobfuse2*$(vmImage)*.deb $(blobfuse2-binaries)
+          displayName: 'Rename Package'
+          workingDirectory: $(root_dir)/blobfuse2-signed
+          
+        - script: |
+            sudo dpkg --info blobfuse2*.deb
+            sudo dpkg -i blobfuse2*.deb
+            sudo apt-get install $(fuse-version) build-essential -y
+          displayName: 'Install Package'
+          workingDirectory: $(blobfuse2-binaries)
+
+        - template: 'azure-pipeline-templates/release-distro-tests.yml'
+          parameters:
+            root_dir: $(root_dir)
+            work_dir: $(work_dir)
+            mount_dir: $(mount_dir)
+            temp_dir: $(temp_dir)
+            container: $(container)
+
+        # Create container for blobfuse and publish it
+        - script: |
+            sudo apt-get install $(tags) $(fuselib) -y
+            chmod 777 *.sh
+            ./dockerinstall.sh
+            ./buildcontainer.sh Dockerfile x86_64
+            ./publishcontainer.sh $(AZTEST_DOCKER_REG_USER)  $(AZTEST_DOCKER_REG_PWD) x86_64
+            ./buildcontainer.sh DockerfileMariner mariner-x86_64
+            ./publishcontainer.sh $(AZTEST_DOCKER_REG_USER)  $(AZTEST_DOCKER_REG_PWD) mariner-x86_64
+          displayName: "Create and publish container"
+          workingDirectory: $(work_dir)/docker
+
+      - job: Set_2_ARM
+        timeoutInMinutes: 120
+        pool: 
+          name: blobfuse2-arm-pool
+          image: ubn22armblobfuse-1espt
+          os: linux
+          hostArchitecture: Arm64
+
+        # download artifacts that need to be published
+        templateContext:
+          inputs:
+          - input: pipelineArtifact
+            artifactName: 'blobfuse2-signed'
+            targetPath: $(System.DefaultWorkingDirectory)/blobfuse2-signed
+            displayName: 'Download Artifacts'
+            itemPattern: blobfuse2*$(tags)*arm64.deb
+          outputs:
+          - output: pipelineArtifact
+            targetPath: $(Build.ArtifactStagingDirectory)/blobfuse2
+            artifactName: 'blobfuse2'
+            displayName: 'Publish Signed Artifacts'
+
+        variables:
+          - group: NightlyBlobFuse
+          - name: root_dir
+            value: '$(System.DefaultWorkingDirectory)'
+          - name: work_dir
+            value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
+          - name: mount_dir
+            value: '$(System.DefaultWorkingDirectory)/fusetmp'
+          - name: temp_dir
+            value: '$(System.DefaultWorkingDirectory)/fusetmpcache'
+          - name: vmImage
+            value: 'Ubuntu-22.04'
+          - name: fuselib
+            value: 'libfuse3-dev'
+
+        steps:
+        - checkout: none
+
+        - script: |
+            git clone https://github.com/Azure/azure-storage-fuse
+          displayName: 'Checkout Code'
+          workingDirectory: $(root_dir)
+    
+        - script: |
+            git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
+          displayName: 'Checkout Branch'
+          workingDirectory: $(root_dir)/azure-storage-fuse
+        
+        # Custom script to install Go-lang
+        - task: ShellScript@2
+          inputs:
+            scriptPath: "$(work_dir)/go_installer.sh"
+            args: "$(root_dir)/"
+          displayName: "GoTool Custom Setup"
+
+        # get glibc version with which build is done
+        - script: |
+            sudo apt update
+            sudo apt --fix-broken install
+            ldd --version
+          displayName: "GLIBC Version"
+
+        - script: |
+            ls -l
+            result=$(ls -1 | wc -l)
+            if [ $result -ne 1 ]; then
+              exit 1
+            fi
+          displayName: 'List Downloaded Package'
+          workingDirectory: $(root_dir)/blobfuse2-signed
+
+        - script: |
+            for f in ./blobfuse2*$(tags)*.deb; do mv -v "$f" "${f/-$(tags)./-$(vmImage).}"; done;
+            cp ./blobfuse2*$(vmImage)*.deb $(Build.ArtifactStagingDirectory)blobfuse2
+          displayName: 'Rename Package'
+          workingDirectory: $(root_dir)/blobfuse2-signed
+
+        - script: |
+            sudo dpkg --info blobfuse2*.deb
+            sudo apt-get install $(fuse-version) build-essential -y
+            sudo dpkg -i blobfuse2*.deb
+          displayName: 'Install Package'
+          workingDirectory: $(Build.ArtifactStagingDirectory)/blobfuse2
+
+        - template: 'azure-pipeline-templates/release-distro-tests.yml'
+          parameters:
+            root_dir: $(root_dir)
+            work_dir: $(work_dir)
+            mount_dir: $(mount_dir)
+            temp_dir: $(temp_dir)
+            container: $(container)
+            
+        # Create container for blobfuse and publish it
+        - script: |
+            sudo apt-get install $(tags) $(fuselib) -y
+            chmod 777 *.sh
+            ./dockerinstall.sh
+            ./buildcontainer.sh DockerfileARM arm64
+            ./publishcontainer.sh $(AZTEST_DOCKER_REG_USER)  $(AZTEST_DOCKER_REG_PWD) arm64
+          displayName: "Create and publish ARM container"
+          workingDirectory: $(work_dir)/docker
 
