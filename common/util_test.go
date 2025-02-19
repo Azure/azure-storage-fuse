@@ -257,6 +257,16 @@ func (suite *utilTestSuite) TestExpandPath() {
 	path = ""
 	expandedPath = ExpandPath(path)
 	suite.assert.Equal(expandedPath, path)
+
+	path = "$HOME/.blobfuse2/config_$web.yaml"
+	expandedPath = ExpandPath(path)
+	suite.assert.NotEqual(expandedPath, path)
+	suite.assert.Contains(path, "$web")
+
+	path = "$HOME/.blobfuse2/$web"
+	expandedPath = ExpandPath(path)
+	suite.assert.NotEqual(expandedPath, path)
+	suite.assert.Contains(path, "$web")
 }
 
 func (suite *utilTestSuite) TestGetUSage() {
