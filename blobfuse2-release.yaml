@@ -314,6 +314,8 @@ extends:
         - script: |
             mkdir -p $(signed)
             chmod 777 $(signed)
+            mkdir -p $(signed)/mariner
+            chmod 777 $(signed)/mariner
           displayName: 'Create Output Paths'
 
         - script: |
@@ -372,17 +374,19 @@ extends:
             rm -rf $(Build.ArtifactStagingDirectory)/amd64/*.md
             rm -rf $(Build.ArtifactStagingDirectory)/arm64/*.md
             rm -rf $(Build.ArtifactStagingDirectory)/mariner/*.md
-            mv $(Build.ArtifactStagingDirectory)/amd64/* $(Build.ArtifactStagingDirectory)/
-            mv $(Build.ArtifactStagingDirectory)/arm64/* $(Build.ArtifactStagingDirectory)/
+            mv $(Build.ArtifactStagingDirectory)/amd64/* $(signed)
+            mv $(Build.ArtifactStagingDirectory)/arm64/* $(signed)
+            mv $(Build.ArtifactStagingDirectory)/mariner/* $(signed)/mariner
+            rm -rf $(Build.ArtifactStagingDirectory)/mariner/
             rm -rf $(Build.ArtifactStagingDirectory)/amd64/
             rm -rf $(Build.ArtifactStagingDirectory)/arm64/
           displayName: 'Make Artifacts executable'
 
         - script: |
             sudo ls -lRt $(Build.ArtifactStagingDirectory)
-            md5sum $(Build.ArtifactStagingDirectory)/*.deb
-            md5sum $(Build.ArtifactStagingDirectory)/*.rpm
-            md5sum $(Build.ArtifactStagingDirectory)/mariner/*
+            md5sum $(signed)/*.deb
+            md5sum $(signed)/*.rpm
+            md5sum $(signed)/mariner/*
           displayName: 'List Signed Artifacts'
 # SignArtifacts end here
 
