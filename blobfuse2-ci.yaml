@@ -11,6 +11,7 @@ pr:
 trigger:
 - main
 - ci/*
+- syeleti/*
 
 jobs:
   # Ubuntu based test suite
