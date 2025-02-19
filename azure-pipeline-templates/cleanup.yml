@@ -16,6 +16,8 @@ steps:
 
     - script: |
         sudo umount -f $(MOUNT_DIR)
+        sleep 10
+        ps aux | grep blobfuse2
         sudo kill -9 `pidof blobfuse2` &> /dev/null
         rm -rf $(MOUNT_DIR)/*
         rm -rf $(TEMP_DIR)/*
@@ -30,8 +32,8 @@ steps:
       parameters:
         delete_container: true
         account_type: "block"
-        account_name: $(AZTEST_BLOCK_ACC_NAME)
-        account_key: $(AZTEST_BLOCK_KEY)
+        account_name: $(BF2_BLK_ACC_NAME)
+        account_key: $(BF2_BLK_ACC_KEY)
         container_name: $(containerName)
 
   # delete the container in adls account
@@ -40,6 +42,6 @@ steps:
       parameters:
         delete_container: true
         account_type: "adls"
-        account_name: $(AZTEST_ADLS_ACC_NAME)
-        account_key: $(AZTEST_ADLS_KEY)
+        account_name: $(BF2_ADLS_ACC_NAME)
+        account_key: $(BF2_ADLS_ACC_KEY)
         container_name: $(containerName)

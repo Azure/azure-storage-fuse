@@ -33,10 +33,10 @@ steps:
       blobfuse2 gen-test-config --config-file=${{ parameters.root_dir }}/azure-storage-fuse/testdata/config/azure_key.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.root_dir }}/block_blob_config.yaml
     displayName: 'Create Blob Config File'
     env:
-      STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
-      STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
+      STO_ACC_NAME: $(BF2_BLK_ACC_NAME)
+      STO_ACC_KEY: $(BF2_BLK_ACC_KEY)
       STO_ACC_TYPE: 'block'
-      STO_ACC_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
+      STO_ACC_ENDPOINT: 'https://$(BF2_BLK_ACC_NAME).blob.core.windows.net'
       VERBOSE_LOG: false
       USE_HTTP: false
     continueOnError: false
@@ -92,10 +92,10 @@ steps:
       blobfuse2 gen-test-config --config-file=${{ parameters.root_dir }}/azure-storage-fuse/testdata/config/azure_key.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.root_dir }}/adls_config.yaml
     displayName: 'Create ADLS Config File'
     env:
-      STO_ACC_NAME: $(AZTEST_ADLS_ACC_NAME)
-      STO_ACC_KEY: $(AZTEST_ADLS_KEY)
+      STO_ACC_NAME: $(BF2_ADLS_ACC_NAME)
+      STO_ACC_KEY: $(BF2_ADLS_ACC_KEY)
       STO_ACC_TYPE: 'adls'
-      STO_ACC_ENDPOINT: 'https://$(AZTEST_ADLS_ACC_NAME).dfs.core.windows.net'
+      STO_ACC_ENDPOINT: 'https://$(BF2_ADLS_ACC_NAME).dfs.core.windows.net'
       VERBOSE_LOG: false
       USE_HTTP: false
     continueOnError: false

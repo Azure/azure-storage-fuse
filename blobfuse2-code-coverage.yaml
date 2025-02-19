@@ -71,10 +71,10 @@ stages:
               cd $(WORK_DIR)
               ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/blobfuse2_gentest1.cov gen-test-config --config-file=azure_key.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
             env:
-              STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
-              STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
+              STO_ACC_NAME: $(BF2_BLK_ACC_NAME)
+              STO_ACC_KEY: $(BF2_BLK_ACC_KEY)
               STO_ACC_TYPE: 'block'
-              STO_ACC_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
+              STO_ACC_ENDPOINT: 'https://$(BF2_BLK_ACC_NAME).blob.core.windows.net'
               VERBOSE_LOG: false
               USE_HTTP: false
             displayName: 'Create Config File - Block Blob'
@@ -128,10 +128,10 @@ stages:
               cd $(WORK_DIR)
               $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_ADLS_CFG)
             env:
-              STO_ACC_NAME: $(AZTEST_ADLS_ACC_NAME)
-              STO_ACC_KEY:  $(AZTEST_ADLS_KEY)
+              STO_ACC_NAME: $(BF2_ADLS_ACC_NAME)
+              STO_ACC_KEY:  $(BF2_ADLS_ACC_KEY)
               STO_ACC_TYPE: 'adls'
-              STO_ACC_ENDPOINT: 'https://$(AZTEST_ADLS_ACC_NAME).dfs.core.windows.net'
+              STO_ACC_ENDPOINT: 'https://$(BF2_ADLS_ACC_NAME).dfs.core.windows.net'
               VERBOSE_LOG: false
               USE_HTTP: false
             displayName: 'Create Config File - ADLS'
@@ -186,10 +186,10 @@ stages:
               $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
             displayName: 'Create Config File - Block Blob'
             env:
-              STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
-              STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
+              STO_ACC_NAME: $(BF2_BLK_ACC_NAME)
+              STO_ACC_KEY: $(BF2_BLK_ACC_KEY)
               STO_ACC_TYPE: 'block'
-              STO_ACC_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
+              STO_ACC_ENDPOINT: 'https://$(BF2_BLK_ACC_NAME).blob.core.windows.net'
               VERBOSE_LOG: false
               USE_HTTP: false
 
@@ -408,10 +408,10 @@ stages:
             workingDirectory: $(WORK_DIR)
             displayName: "CLI : Secure Config"
             env:
-              STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
-              STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
+              STO_ACC_NAME: $(BF2_BLK_ACC_NAME)
+              STO_ACC_KEY: $(BF2_BLK_ACC_KEY)
               STO_ACC_TYPE: 'block'
-              STO_ACC_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
+              STO_ACC_ENDPOINT: 'https://$(BF2_BLK_ACC_NAME).blob.core.windows.net'
               VERBOSE_LOG: false
               USE_HTTP: false
 
@@ -478,10 +478,10 @@ stages:
               cd $(WORK_DIR)
               $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key_proxy.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
             env:
-              STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
-              STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
+              STO_ACC_NAME: $(BF2_BLK_ACC_NAME)
+              STO_ACC_KEY: $(BF2_BLK_ACC_KEY)
               STO_ACC_TYPE: 'block'
-              STO_ACC_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
+              STO_ACC_ENDPOINT: 'https://$(BF2_BLK_ACC_NAME).blob.core.windows.net'
               VERBOSE_LOG: false
               USE_HTTP: false
             displayName: 'Create Config File - Block Blob Proxy'
@@ -509,10 +509,10 @@ stages:
               cd $(WORK_DIR)
               $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key_proxy.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_ADLS_CFG)
             env:
-              STO_ACC_NAME: $(AZTEST_ADLS_ACC_NAME)
-              STO_ACC_KEY:  $(AZTEST_ADLS_KEY)
+              STO_ACC_NAME: $(BF2_ADLS_ACC_NAME)
+              STO_ACC_KEY:  $(BF2_ADLS_ACC_KEY)
               STO_ACC_TYPE: 'adls'
-              STO_ACC_ENDPOINT: 'https://$(AZTEST_ADLS_ACC_NAME).dfs.core.windows.net'
+              STO_ACC_ENDPOINT: 'https://$(BF2_ADLS_ACC_NAME).dfs.core.windows.net'
               VERBOSE_LOG: false
               USE_HTTP: false
             displayName: 'Create Config File - ADLS Proxy'

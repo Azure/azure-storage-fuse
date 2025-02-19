@@ -5,9 +5,9 @@ steps:
     displayName: Create Key Config File
     env:
       STO_ACC_TYPE: 'block'
-      STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
-      STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
-      STO_ACC_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
+      STO_ACC_NAME: $(BF2_BLK_ACC_NAME)
+      STO_ACC_KEY: $(BF2_BLK_ACC_KEY)
+      STO_ACC_ENDPOINT: 'https://$(BF2_BLK_ACC_NAME).blob.core.windows.net'
       VERBOSE_LOG: false
       USE_HTTP: false
       HMON_OUTPUT: $(WORK_DIR)
