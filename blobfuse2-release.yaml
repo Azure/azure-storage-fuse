@@ -484,7 +484,7 @@ extends:
           displayName: 'Install Package'
           workingDirectory: $(blobfuse2-binaries)
 
-        - template: 'azure-pipeline-templates/release-distro-tests.yml'
+        - template: 'azure-pipeline-templates/release-distro-tests.yml@self'
           parameters:
             root_dir: $(root_dir)
             work_dir: $(work_dir)
@@ -590,7 +590,7 @@ extends:
           displayName: 'Install Package'
           workingDirectory: $(Build.ArtifactStagingDirectory)/blobfuse2
 
-        - template: 'azure-pipeline-templates/release-distro-tests.yml'
+        - template: 'azure-pipeline-templates/release-distro-tests.yml@self'
           parameters:
             root_dir: $(root_dir)
             work_dir: $(work_dir)
