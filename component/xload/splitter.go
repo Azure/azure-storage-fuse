@@ -39,6 +39,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -107,7 +108,9 @@ func (d *downloadSplitter) Stop() {
 
 // download data in chunks and then write to the local file
 func (d *downloadSplitter) Process(item *WorkItem) (int, error) {
-	log.Debug("downloadSplitter::Process : Splitting data for %s, mode %v", item.Path, item.Mode)
+	log.Debug("downloadSplitter::Process : Splitting data for %s, size %v, mode %v, priority %v, access time %v, modified time %v", item.Path, item.DataLen,
+		item.Mode, item.Priority, item.Atime.Format(time.DateTime), item.Mtime.Format(time.DateTime))
+
 	var err error
 	localPath := filepath.Join(d.path, item.Path)
 
@@ -123,6 +126,7 @@ func (d *downloadSplitter) Process(item *WorkItem) (int, error) {
 
 	filePresent, size := isFilePresent(localPath)
 	if filePresent && item.DataLen == uint64(size) {
+		log.Debug("downloadSplitter::Process : %s will be served from local path, priority %v", item.Path, item.Priority)
 		return int(size), nil
 	}
 
@@ -260,6 +264,6 @@ func (d *downloadSplitter) Process(item *WorkItem) (int, error) {
 		return -1, fmt.Errorf("failed to download data for file %s", item.Path)
 	}
 
-	log.Debug("downloadSplitter::Process : Download completed for file %s", item.Path)
+	log.Debug("downloadSplitter::Process : Download completed for file %s, priority %v", item.Path, item.Priority)
 	return 0, nil
 }

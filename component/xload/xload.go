@@ -340,8 +340,8 @@ func (xl *Xload) getSplitter() XComponent {
 }
 
 // downloadFile sends the file to splitter to be downloaded on priority
-func (xl *Xload) downloadFile(fileName string) error {
-	log.Debug("Xload::downloadFile : download file %s", fileName)
+func (xl *Xload) downloadFile(fileName string, mode os.FileMode) error {
+	log.Debug("Xload::downloadFile : download file %s, mode %s", fileName, mode)
 	splitter := xl.getSplitter()
 	if splitter == nil {
 		log.Err("Xload::downloadFile : failed to  get download splitter for %s", fileName)
@@ -351,6 +351,14 @@ func (xl *Xload) downloadFile(fileName string) error {
 	attr, err := xl.NextComponent().GetAttr(internal.GetAttrOptions{Name: fileName})
 	if err != nil {
 		log.Err("Xload::downloadFile : Failed to get attr of %s [%s]", fileName, err.Error())
+		return err
+	}
+
+	// create the local path where the file will be downloaded
+	err = os.MkdirAll(filepath.Dir(filepath.Join(xl.path, fileName)), xl.defaultPermission)
+	if err != nil {
+		log.Err("Xload::downloadFile : Failed to create local directory for %s [%s]", fileName, err.Error())
+		return err
 	}
 
 	_, err = splitter.Process(&WorkItem{
@@ -358,10 +366,13 @@ func (xl *Xload) downloadFile(fileName string) error {
 		Path:     fileName,
 		DataLen:  uint64(attr.Size),
 		Priority: true,
+		Mode:     mode,
+		Atime:    attr.Atime,
+		Mtime:    attr.Mtime,
 	})
 
 	if err != nil {
-		log.Err("Xload::OpenFile : failed to download file %s [%s]", fileName, err.Error())
+		log.Err("Xload::downloadFile : failed to download file %s [%s]", fileName, err.Error())
 		return err
 	}
 
@@ -381,7 +392,7 @@ func (xl *Xload) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, 
 
 	// if file is not present, send it to splitter for downloading on priority
 	if !filePresent {
-		err := xl.downloadFile(options.Name)
+		err := xl.downloadFile(options.Name, options.Mode)
 		if err != nil {
 			log.Err("Xload::OpenFile : failed to download file %s [%s]", options.Name, err.Error())
 			return nil, err
