@@ -413,7 +413,7 @@ extends:
           outputs:
           - output: pipelineArtifact
             targetPath: $(Build.ArtifactStagingDirectory)/blobfuse2
-            artifactName: 'blobfuse2'
+            artifactName: 'blobfuse2-ubn22'
             displayName: 'Publish Signed Artifacts'
 
         variables:
@@ -444,6 +444,7 @@ extends:
             git clone https://github.com/Azure/azure-storage-fuse
           displayName: 'Checkout Code'
           workingDirectory: $(root_dir)
+
         - script: |
             git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
           displayName: 'Checkout Branch'
@@ -508,7 +509,7 @@ extends:
           displayName: "Create and publish container"
           workingDirectory: $(work_dir)/docker
 
-      - job: Set_2_ARM
+      - job: Set_1_ARM
         timeoutInMinutes: 120
         pool: 
           name: blobfuse2-arm-pool
@@ -527,7 +528,7 @@ extends:
           outputs:
           - output: pipelineArtifact
             targetPath: $(Build.ArtifactStagingDirectory)/blobfuse2
-            artifactName: 'blobfuse2'
+            artifactName: 'blobfuse2-ubn22ARM'
             displayName: 'Publish Signed Artifacts'
 
         variables:
@@ -622,3 +623,4 @@ extends:
           displayName: "Create and publish ARM container"
           workingDirectory: $(work_dir)/docker
 
+      
