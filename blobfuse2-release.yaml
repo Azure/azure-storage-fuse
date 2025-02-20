@@ -432,6 +432,10 @@ extends:
             value: 'Ubuntu-22.04'
           - name: fuselib
             value: 'libfuse3-dev'
+          - name: container
+            value: 'test-cnt-ubn-22'
+          - name: fuse-version
+            value: 'fuse3'
 
         steps:
         - checkout: none
@@ -540,7 +544,12 @@ extends:
             value: 'Ubuntu-22.04'
           - name: fuselib
             value: 'libfuse3-dev'
-
+          - name: container
+            value: 'test-cnt-ubn-22-arm64'
+          - name: fuse-version
+            value: 'fuse3'
+          - name: blobfuse2-binaries
+            value: $(Build.ArtifactStagingDirectory)/blobfuse2
         steps:
         - checkout: none
 
@@ -584,7 +593,7 @@ extends:
 
         - script: |
             for f in ./blobfuse2*$(tags)*.deb; do mv -v "$f" "${f/-$(tags)./-$(vmImage).}"; done;
-            cp ./blobfuse2*$(vmImage)*.deb $(Build.ArtifactStagingDirectory)blobfuse2
+            cp ./blobfuse2*$(vmImage)*.deb $(Build.ArtifactStagingDirectory)/blobfuse2
           displayName: 'Rename Package'
           workingDirectory: $(root_dir)/blobfuse2-signed
 
@@ -593,7 +602,7 @@ extends:
             sudo apt-get install $(fuse-version) build-essential -y
             sudo dpkg -i blobfuse2*.deb
           displayName: 'Install Package'
-          workingDirectory: $(Build.ArtifactStagingDirectory)/blobfuse2
+          workingDirectory: $(blobfuse2-binaries)
 
         - template: 'azure-pipeline-templates/release-distro-tests.yml@self'
           parameters:
