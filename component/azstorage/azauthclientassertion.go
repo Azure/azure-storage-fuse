@@ -67,7 +67,7 @@ func (azclientassertion *azAuthClientAssertion) getTokenCredential() (azcore.Tok
 		return nil, err
 	}
 
-	scope := "https://storage.azure.com/.default"
+	scope := "api://AzureADTokenExchange"
 	if azclientassertion.config.AuthResource != "" {
 		scope = azclientassertion.config.AuthResource
 	}
