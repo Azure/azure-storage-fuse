@@ -17,7 +17,14 @@ parameters:
     type: boolean
     default: true
 
-
+resources:
+  pipelines:
+  - pipeline: buildPipeline
+    source: 'Blobfuse2 Artifacts'
+    project: BlobFuse
+    trigger: 
+      stages:
+        - BuildArtifacts
 stages:
   - ${{ if eq(parameters.coverage_test, true) }}:    
     - stage: BuildAndTest
