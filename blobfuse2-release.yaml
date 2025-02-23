@@ -51,7 +51,7 @@ resources:
 
   pipelines:
   - pipeline: buildPipeline
-    source: blobfuse2-ci
+    source: 'Blobfuse2 Code Coverage'
     project: BlobFuse
     trigger: 
       branches:
