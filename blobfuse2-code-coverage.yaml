@@ -23,8 +23,9 @@ resources:
     source: 'Blobfuse2 Artifact'
     project: BlobFuse
     trigger: 
-      stages:
-        - BuildArtifacts
+      branches:
+        include:
+          - ashruti/oneBranch
 stages:
   - ${{ if eq(parameters.coverage_test, true) }}:    
     - stage: BuildAndTest
