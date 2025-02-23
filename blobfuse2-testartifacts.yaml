@@ -1,0 +1,32 @@
+resources:
+  pipelines:
+  - pipeline: buildPipeline
+    source: 'Blobfuse2 Artifact'
+    project: BlobFuse
+    trigger: 
+      branches:
+        include:
+          - ashruti/oneBranch
+
+stages: 
+  - stage: TestArtifacts
+    jobs:
+      - job: TestArtifacts
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - checkout: self
+            persistCredentials: true
+          - task: DownloadPipelineArtifact@2
+            inputs:
+              source: 'specific'
+              project: 'BlobFuse'
+              pipeline: 'Blobfuse2 Artifact'
+              runVersionToDownload: 'latest'
+              artifactName: 'blobfuse2-linux-unsigned'
+          - script: |
+              ls -la
+              cd $(Pipeline.Workspace)/blobfuse2-linux-unsigned
+              ls -la
+            displayName: 'List files in the downloaded artifact'
+
