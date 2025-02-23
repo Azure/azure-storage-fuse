@@ -88,12 +88,6 @@ extends:
           name: blobfuse2-pool
           image: ubuntu22-1espt
           os: linux
-        templateContext:
-          outputs:
-          - output: pipelineArtifact
-            targetPath: $(Build.ArtifactStagingDirectory)/blobfuse2-temp
-            artifactName: 'blobfuse2-linux-unsigned'
-            displayName: 'Publish Artifacts'
 
         # Job strategy is not supported in the 1ES pipeline template. Refer https://eng.ms/docs/cloud-ai-platform/devdiv/one-engineering-system-1es/1es-docs/1es-pipeline-templates/faqs#:~:text=Unfortunately%2C%20it%20is%20not%20possible%20to%20use%20job%20strategy%20to%20specify%20pool%20at%20the%20pipeline.
 
