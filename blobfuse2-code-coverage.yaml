@@ -20,7 +20,7 @@ parameters:
 resources:
   pipelines:
   - pipeline: buildPipeline
-    source: 'Blobfuse2 Artifacts'
+    source: 'Blobfuse2 Artifact'
     project: BlobFuse
     trigger: 
       stages:
