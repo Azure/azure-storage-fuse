@@ -50,8 +50,9 @@ resources:
     ref: refs/tags/release
 
   pipelines:
-  - pipeline: blobfuse2-ci
+  - pipeline: buildPipeline
     source: blobfuse2-ci
+    project: BlobFuse
     trigger: 
       branches:
         include:
