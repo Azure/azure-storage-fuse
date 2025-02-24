@@ -66,8 +66,14 @@ type azAuthConfig struct {
 	WorkloadIdentityToken   string
 	ActiveDirectoryEndpoint string
 
-	Endpoint     string
+	// Client assertions config
+	// This will need ApplicationID, TenantID and ClientID as well
+	UserAssertion string
+
+	// Auth resource / security scope for OAuth
 	AuthResource string
+
+	Endpoint string
 }
 
 // azAuth : Interface to define a generic authentication type
@@ -131,6 +137,12 @@ func getAzBlobAuth(config azAuthConfig) azAuth {
 				azAuthBase: base,
 			},
 		}
+	} else if config.AuthMode == EAuthType.CLIENTASSERTION() {
+		return &azAuthBlobClientAssertion{
+			azAuthClientAssertion{
+				azAuthBase: base,
+			},
+		}
 	} else {
 		log.Crit("azAuth::getAzBlobAuth : Auth type %s not supported. Failed to create Auth object", config.AuthMode)
 	}
@@ -166,6 +178,12 @@ func getAzDatalakeAuth(config azAuthConfig) azAuth {
 	} else if config.AuthMode == EAuthType.AZCLI() {
 		return &azAuthDatalakeCLI{
 			azAuthCLI{
+				azAuthBase: base,
+			},
+		}
+	} else if config.AuthMode == EAuthType.CLIENTASSERTION() {
+		return &azAuthDatalakeClientAssertion{
+			azAuthClientAssertion{
 				azAuthBase: base,
 			},
 		}
