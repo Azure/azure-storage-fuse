@@ -125,6 +125,7 @@ func (rdm *remoteDataManager) ReadData(item *WorkItem) (int, error) {
 }
 
 // uncomment this when the support for upload is added
+/*
 // WriteData writes data to the data manager
 func (rdm *remoteDataManager) WriteData(item *WorkItem) (int, error) {
 	// log.Debug("remoteDataManager::WriteData : Scheduling upload for %s offset %v", item.path, item.block.offset)
@@ -146,6 +147,7 @@ func (rdm *remoteDataManager) WriteData(item *WorkItem) (int, error) {
 
 	return bytesTransferred, err
 }
+*/
 
 // send stats to stats manager
 func (rdm *remoteDataManager) sendStats(path string, isDownload bool, bytesTransferred uint64, isSuccess bool) {

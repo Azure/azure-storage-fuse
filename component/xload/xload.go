@@ -340,8 +340,8 @@ func (xl *Xload) getSplitter() XComponent {
 }
 
 // downloadFile sends the file to splitter to be downloaded on priority
-func (xl *Xload) downloadFile(fileName string, mode os.FileMode) error {
-	log.Debug("Xload::downloadFile : download file %s, mode %s", fileName, mode)
+func (xl *Xload) downloadFile(fileName string) error {
+	log.Debug("Xload::downloadFile : download file %s, mode %s", fileName)
 	splitter := xl.getSplitter()
 	if splitter == nil {
 		log.Err("Xload::downloadFile : failed to  get download splitter for %s", fileName)
@@ -352,6 +352,11 @@ func (xl *Xload) downloadFile(fileName string, mode os.FileMode) error {
 	if err != nil {
 		log.Err("Xload::downloadFile : Failed to get attr of %s [%s]", fileName, err.Error())
 		return err
+	}
+
+	fileMode := xl.defaultPermission
+	if !attr.IsModeDefault() {
+		fileMode = attr.Mode
 	}
 
 	// create the local path where the file will be downloaded
@@ -366,7 +371,7 @@ func (xl *Xload) downloadFile(fileName string, mode os.FileMode) error {
 		Path:     fileName,
 		DataLen:  uint64(attr.Size),
 		Priority: true,
-		Mode:     mode,
+		Mode:     fileMode,
 		Atime:    attr.Atime,
 		Mtime:    attr.Mtime,
 	})
@@ -392,7 +397,7 @@ func (xl *Xload) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, 
 
 	// if file is not present, send it to splitter for downloading on priority
 	if !filePresent {
-		err := xl.downloadFile(options.Name, options.Mode)
+		err := xl.downloadFile(options.Name)
 		if err != nil {
 			log.Err("Xload::OpenFile : failed to download file %s [%s]", options.Name, err.Error())
 			return nil, err
