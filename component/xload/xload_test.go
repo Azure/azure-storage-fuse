@@ -368,6 +368,43 @@ func (suite *xloadTestSuite) TestCreateChain() {
 	suite.assert.Nil(xl.comps[2].GetNext())
 }
 
+func (suite *xloadTestSuite) TestDownloadFileError() {
+	defer suite.cleanupTest(false)
+	suite.cleanupTest(false) // teardown the default xload generated
+
+	xl := &Xload{}
+	err := xl.downloadFile("file0")
+	suite.assert.NotNil(err)
+}
+
+func (suite *xloadTestSuite) TestDownloadFileGetAttrError() {
+	defer suite.cleanupTest(false)
+	suite.cleanupTest(false) // teardown the default xload generated
+
+	xl := &Xload{
+		path:      suite.local_path,
+		statsMgr:  &StatsManager{},
+		blockPool: &BlockPool{},
+		fileLocks: common.NewLockMap(),
+	}
+
+	cfg := fmt.Sprintf("loopbackfs:\n  path: %s\n", suite.fake_storage_path)
+	config.ReadConfigFromReader(strings.NewReader(cfg))
+	loopback := newLoopbackFS()
+
+	xl.SetNextComponent(loopback)
+
+	err := xl.createDownloader()
+	suite.assert.Nil(err)
+	suite.assert.Len(xl.comps, 3)
+
+	err = xl.createChain()
+	suite.assert.Nil(err)
+
+	err = xl.downloadFile("file0")
+	suite.assert.NotNil(err)
+}
+
 func (suite *xloadTestSuite) TestXloadStartStop() {
 	defer suite.cleanupTest(true)
 	config.ResetConfig()

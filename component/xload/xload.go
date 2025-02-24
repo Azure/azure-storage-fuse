@@ -341,7 +341,7 @@ func (xl *Xload) getSplitter() XComponent {
 
 // downloadFile sends the file to splitter to be downloaded on priority
 func (xl *Xload) downloadFile(fileName string) error {
-	log.Debug("Xload::downloadFile : download file %s, mode %s", fileName)
+	log.Debug("Xload::downloadFile : download file %s", fileName)
 	splitter := xl.getSplitter()
 	if splitter == nil {
 		log.Err("Xload::downloadFile : failed to  get download splitter for %s", fileName)
