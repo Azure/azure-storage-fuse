@@ -319,6 +319,62 @@ func (suite *xloadTestSuite) TestUnsupportedModes() {
 	suite.assert.NotNil(err)
 }
 
+func (suite *xloadTestSuite) TestPriority() {
+	defer suite.cleanupTest(false)
+	suite.cleanupTest(false) // teardown the default xload generated
+
+	xl := &Xload{}
+	suite.assert.Equal(xl.Priority(), internal.EComponentPriority.LevelMid())
+}
+
+func (suite *xloadTestSuite) TestBlockPoolError() {
+	defer suite.cleanupTest(false)
+	suite.cleanupTest(false) // teardown the default xload generated
+
+	xl := &Xload{}
+	err := xl.Start(context.Background())
+	suite.assert.NotNil(err)
+}
+
+func (suite *xloadTestSuite) TestXComponentDefault() {
+	defer suite.cleanupTest(false)
+	suite.cleanupTest(false) // teardown the default xload generated
+
+	type testCmp struct {
+		XBase
+	}
+
+	t := &testCmp{}
+
+	t.Schedule(nil)
+
+	n, err := t.Process(nil)
+	suite.assert.Nil(err)
+	suite.assert.Equal(n, 0)
+}
+
+// // test component which returns error in process method
+// type testCmpErr struct {
+// 	XBase
+// }
+
+// func (t *testCmpErr) Process(item *WorkItem) (int, error) {
+// 	return -1, fmt.Errorf("test error")
+// }
+
+// func (suite *xloadTestSuite) TestXComponentProcessError() {
+// 	defer suite.cleanupTest(false)
+// 	suite.cleanupTest(false) // teardown the default xload generated
+
+// 	t := &testCmpErr{}
+
+// 	t.Schedule(nil)
+
+// 	n, err := t.Process(nil)
+// 	suite.assert.NotNil(err)
+// 	suite.assert.Equal(n, -1)
+// }
+
 func (suite *xloadTestSuite) TestCreateDownloader() {
 	defer suite.cleanupTest(false)
 	suite.cleanupTest(false) // teardown the default xload generated
@@ -355,6 +411,9 @@ func (suite *xloadTestSuite) TestCreateChain() {
 	xl.SetNextComponent(xl)
 
 	err := xl.createChain()
+	suite.assert.NotNil(err)
+
+	err = xl.startComponents()
 	suite.assert.NotNil(err)
 
 	err = xl.createDownloader()

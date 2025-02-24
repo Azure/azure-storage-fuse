@@ -69,3 +69,5 @@ func (suite *dataManagerTestSuite) TestNewRemoteDataManager() {
 func TestDatamanagerSuite(t *testing.T) {
 	suite.Run(t, new(dataManagerTestSuite))
 }
+
+// TODO:: xload : add tests for context cancelled

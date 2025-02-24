@@ -38,6 +38,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -83,8 +84,8 @@ type statsJSONData struct {
 
 const (
 	STATS_MANAGER  = "STATS_MANAGER"
-	DURATION       = 4                                     // time interval in seconds at which the stats will be dumped
-	JSON_FILE_PATH = "~/.blobfuse2/xload_stats_{PID}.json" // json file path where the stats manager will dump the stats
+	DURATION       = 4                        // time interval in seconds at which the stats will be dumped
+	JSON_FILE_NAME = "xload_stats_{PID}.json" // json file name where the stats manager will dump the stats
 )
 
 func NewStatsManager(count uint32, isExportEnabled bool) (*StatsManager, error) {
@@ -92,7 +93,7 @@ func NewStatsManager(count uint32, isExportEnabled bool) (*StatsManager, error) 
 	var err error
 	if isExportEnabled {
 		pid := fmt.Sprintf("%v", os.Getpid())
-		path := common.ExpandPath(strings.ReplaceAll(JSON_FILE_PATH, "{PID}", pid))
+		path := common.ExpandPath(filepath.Join(common.DefaultWorkDir, strings.ReplaceAll(JSON_FILE_NAME, "{PID}", pid)))
 		log.Debug("statsManager::NewStatsManager : creating json file %v", path)
 		fh, err = os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
 		if err != nil {

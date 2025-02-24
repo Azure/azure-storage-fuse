@@ -124,9 +124,9 @@ func waitForListTimeout() error {
 }
 
 func (rl *remoteLister) Process(item *WorkItem) (int, error) {
-	absPath := item.Path // TODO:: xload : check this for subdirectory mounting
+	relPath := item.Path // TODO:: xload : check this for subdirectory mounting
 
-	log.Debug("remoteLister::Process : Reading remote dir %s", absPath)
+	log.Debug("remoteLister::Process : Reading remote dir %s", relPath)
 
 	// this block will be executed only in the first list call for the remote directory
 	// so haven't made the listBlocked variable atomic
@@ -144,11 +144,11 @@ func (rl *remoteLister) Process(item *WorkItem) (int, error) {
 	var cnt, iteration int
 	for {
 		entries, new_marker, err := rl.GetRemote().StreamDir(internal.StreamDirOptions{
-			Name:  absPath,
+			Name:  relPath,
 			Token: marker,
 		})
 		if err != nil {
-			log.Err("remoteLister::Process : Remote listing failed for %s [%s]", absPath, err.Error())
+			log.Err("remoteLister::Process : Remote listing failed for %s [%s]", relPath, err.Error())
 			break
 		}
 
@@ -160,7 +160,7 @@ func (rl *remoteLister) Process(item *WorkItem) (int, error) {
 		// send number of items listed in current iteration to stats manager
 		rl.GetStatsManager().AddStats(&StatsItem{
 			Component:   LISTER,
-			Name:        absPath,
+			Name:        relPath,
 			ListerCount: uint64(len(entries)),
 		})
 
@@ -206,7 +206,7 @@ func (rl *remoteLister) Process(item *WorkItem) (int, error) {
 		}
 
 		if len(new_marker) == 0 {
-			log.Debug("remoteLister::Process : remote listing done for %s", absPath)
+			log.Debug("remoteLister::Process : remote listing done for %s", relPath)
 			break
 		}
 	}

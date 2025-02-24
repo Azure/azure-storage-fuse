@@ -250,3 +250,5 @@ func computeMD5(filePath string) ([]byte, error) {
 func TestSplitterSuite(t *testing.T) {
 	suite.Run(t, new(splitterTestSuite))
 }
+
+// TODO:: xload : add tests for failure cases
