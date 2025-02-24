@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1740284584200,
+  "lastUpdate": 1740374836983,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -3894,6 +3894,75 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 75.733578385741,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "64532198+vibhansa-msft@users.noreply.github.com",
+            "name": "Vikas Bhansali",
+            "username": "vibhansa-msft"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "62584ff6a5997b1000b168fab568e6c10341e10c",
+          "message": "Add support for client assertion based authentication (#1620)\n\nAdd support for client assertion based authentication",
+          "timestamp": "2025-02-24T10:37:29+05:30",
+          "tree_id": "8ebae39180df473bc4d37acd3cac56a288a49b62",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/62584ff6a5997b1000b168fab568e6c10341e10c"
+        },
+        "date": 1740374836756,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read",
+            "value": 0.09313095773366666,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read",
+            "value": 75.29695604623066,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_small_file",
+            "value": 0.07565759239033333,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 0.17068658787566662,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_direct_io",
+            "value": 0.09997674434300001,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_direct_io",
+            "value": 71.75699931852233,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 0.18161137172633332,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 1.133129349954,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 72.541775152466,
             "unit": "milliseconds"
           }
         ]
