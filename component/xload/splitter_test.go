@@ -38,6 +38,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -166,6 +167,35 @@ func (suite *splitterTestSuite) TestNewDownloadSplitter() {
 	ds, err = newDownloadSplitter(NewBlockPool(1, 1), "/home/user/random_path", remote, statsMgr, common.NewLockMap())
 	suite.assert.Nil(err)
 	suite.assert.NotNil(ds)
+}
+
+func (suite *splitterTestSuite) TestProcessFilePresent() {
+	ts, err := setupTestSplitter()
+	suite.assert.Nil(err)
+	suite.assert.NotNil(ts)
+
+	defer func() {
+		err = ts.cleanup()
+		suite.assert.Nil(err)
+	}()
+
+	ds, err := newDownloadSplitter(ts.blockPool, ts.path, remote, ts.stMgr, ts.locks)
+	suite.assert.Nil(err)
+	suite.assert.NotNil(ds)
+
+	n, err := ds.Process(&WorkItem{})
+	suite.assert.NotNil(err)
+	suite.assert.Contains(err.Error(), "is a directory")
+	suite.assert.Equal(n, -1)
+
+	fileName := "file_4"
+	cpCmd := exec.Command("cp", filepath.Join(remote_path, fileName), ts.path)
+	_, err = cpCmd.Output()
+	suite.assert.Nil(err)
+
+	n, err = ds.Process(&WorkItem{Path: fileName, DataLen: uint64(36)})
+	suite.assert.Nil(err)
+	suite.assert.Equal(n, 36)
 }
 
 func (suite *splitterTestSuite) TestSplitterStartStop() {

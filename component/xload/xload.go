@@ -393,7 +393,7 @@ func (xl *Xload) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, 
 	flock.Lock()
 	defer flock.Unlock()
 
-	filePresent, _ := isFilePresent(localPath)
+	filePresent, _, _ := isFilePresent(localPath)
 
 	// if file is not present, send it to splitter for downloading on priority
 	if !filePresent {

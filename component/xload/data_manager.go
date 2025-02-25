@@ -102,7 +102,7 @@ func (rdm *remoteDataManager) Process(item *WorkItem) (int, error) {
 			return rdm.ReadData(item)
 		} else {
 			// return rdm.WriteData(item)
-			return 0, nil
+			return 0, fmt.Errorf("uploads are currently not supported, path %v", item.Path)
 		}
 	}
 }

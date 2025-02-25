@@ -124,14 +124,14 @@ func (d *downloadSplitter) Process(item *WorkItem) (int, error) {
 		defer flock.Unlock()
 	}
 
-	filePresent, size := isFilePresent(localPath)
+	filePresent, isDir, size := isFilePresent(localPath)
+	if isDir {
+		log.Err("downloadSplitter::Process : %s is a directory", item.Path)
+		return -1, fmt.Errorf("%s is a directory", item.Path)
+	}
 	if filePresent && item.DataLen == uint64(size) {
 		log.Debug("downloadSplitter::Process : %s will be served from local path, priority %v", item.Path, item.Priority)
 		return int(size), nil
-	}
-
-	if len(item.Path) == 0 {
-		return 0, nil
 	}
 
 	// TODO:: xload : should we delete the file if it already exists

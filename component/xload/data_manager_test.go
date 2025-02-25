@@ -34,6 +34,7 @@
 package xload
 
 import (
+	"context"
 	"testing"
 
 	"github.com/Azure/azure-storage-fuse/v2/component/loopback"
@@ -66,8 +67,30 @@ func (suite *dataManagerTestSuite) TestNewRemoteDataManager() {
 	suite.assert.NotNil(rdm)
 }
 
+func (suite *dataManagerTestSuite) TestProcessErrors() {
+	rdm := &remoteDataManager{}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	item := &WorkItem{
+		CompName: DATA_MANAGER,
+		Path:     "test",
+		Block:    &Block{},
+		Download: false,
+		Ctx:      ctx,
+	}
+
+	n, err := rdm.Process(item)
+	suite.assert.NotNil(err)
+	suite.assert.Equal(n, 0)
+
+	// cancel the context
+	cancel()
+
+	n, err = rdm.Process(item)
+	suite.assert.NotNil(err)
+	suite.assert.Equal(n, 0)
+}
+
 func TestDatamanagerSuite(t *testing.T) {
 	suite.Run(t, new(dataManagerTestSuite))
 }
-
-// TODO:: xload : add tests for context cancelled
