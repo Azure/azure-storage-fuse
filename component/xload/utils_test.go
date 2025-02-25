@@ -117,27 +117,35 @@ func (suite *utilsTestSuite) TestRoundFloat() {
 
 func (suite *utilsTestSuite) TestIsFilePresent() {
 	path := "/home/randomFile1234"
-	isPresent, size := isFilePresent(path)
+	isPresent, isDir, size := isFilePresent(path)
 	suite.assert.Equal(isPresent, false)
+	suite.assert.Equal(isDir, false)
 	suite.assert.EqualValues(size, 0)
 
 	currDir, err := os.Getwd()
 	suite.assert.Nil(err)
+
+	isPresent, isDir, size = isFilePresent(currDir)
+	suite.assert.Equal(isPresent, true)
+	suite.assert.Equal(isDir, true)
+	suite.assert.Greater(size, int64(0))
 
 	path = filepath.Join(currDir, "testFile1234")
 	_, err = os.Create(path)
 	defer os.Remove(path)
 	suite.assert.Nil(err)
 
-	isPresent, size = isFilePresent(path)
+	isPresent, isDir, size = isFilePresent(path)
 	suite.assert.Equal(isPresent, true)
+	suite.assert.Equal(isDir, false)
 	suite.assert.EqualValues(size, 0)
 
 	err = os.Truncate(path, 10)
 	suite.assert.Nil(err)
 
-	isPresent, size = isFilePresent(path)
+	isPresent, isDir, size = isFilePresent(path)
 	suite.assert.Equal(isPresent, true)
+	suite.assert.Equal(isDir, false)
 	suite.assert.EqualValues(size, 10)
 }
 

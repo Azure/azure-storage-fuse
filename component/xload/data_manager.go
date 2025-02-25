@@ -102,7 +102,7 @@ func (rdm *remoteDataManager) Process(item *WorkItem) (int, error) {
 			return rdm.ReadData(item)
 		} else {
 			// return rdm.WriteData(item)
-			return 0, nil
+			return 0, fmt.Errorf("uploads are currently not supported, path %v", item.Path)
 		}
 	}
 }
@@ -125,6 +125,7 @@ func (rdm *remoteDataManager) ReadData(item *WorkItem) (int, error) {
 }
 
 // uncomment this when the support for upload is added
+/*
 // WriteData writes data to the data manager
 func (rdm *remoteDataManager) WriteData(item *WorkItem) (int, error) {
 	// log.Debug("remoteDataManager::WriteData : Scheduling upload for %s offset %v", item.path, item.block.offset)
@@ -146,6 +147,7 @@ func (rdm *remoteDataManager) WriteData(item *WorkItem) (int, error) {
 
 	return bytesTransferred, err
 }
+*/
 
 // send stats to stats manager
 func (rdm *remoteDataManager) sendStats(path string, isDownload bool, bytesTransferred uint64, isSuccess bool) {

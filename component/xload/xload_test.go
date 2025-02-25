@@ -40,6 +40,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
@@ -316,6 +317,254 @@ func (suite *xloadTestSuite) TestUnsupportedModes() {
 	suite.xload.mode = EMode.INVALID_MODE()
 	err = suite.xload.Start(context.Background())
 	suite.assert.NotNil(err)
+}
+
+func (suite *xloadTestSuite) TestPriority() {
+	defer suite.cleanupTest(false)
+	suite.cleanupTest(false) // teardown the default xload generated
+
+	xl := &Xload{}
+	suite.assert.Equal(xl.Priority(), internal.EComponentPriority.LevelMid())
+}
+
+func (suite *xloadTestSuite) TestBlockPoolError() {
+	defer suite.cleanupTest(false)
+	suite.cleanupTest(false) // teardown the default xload generated
+
+	xl := &Xload{}
+	err := xl.Start(context.Background())
+	suite.assert.NotNil(err)
+}
+
+func (suite *xloadTestSuite) TestXComponentDefault() {
+	defer suite.cleanupTest(false)
+	suite.cleanupTest(false) // teardown the default xload generated
+
+	type testCmp struct {
+		XBase
+	}
+
+	t := &testCmp{}
+
+	t.Schedule(nil)
+
+	n, err := t.Process(nil)
+	suite.assert.Nil(err)
+	suite.assert.Equal(n, 0)
+}
+
+func (suite *xloadTestSuite) TestCreateDownloader() {
+	defer suite.cleanupTest(false)
+	suite.cleanupTest(false) // teardown the default xload generated
+
+	xl := &Xload{}
+	err := xl.createDownloader()
+	suite.assert.NotNil(err)
+	suite.assert.Len(xl.comps, 0)
+
+	xl.path = suite.local_path
+	xl.SetNextComponent(xl)
+	xl.statsMgr = &StatsManager{}
+	err = xl.createDownloader()
+	suite.assert.NotNil(err)
+	suite.assert.Len(xl.comps, 0)
+
+	xl.blockPool = &BlockPool{}
+	xl.fileLocks = common.NewLockMap()
+	err = xl.createDownloader()
+	suite.assert.Nil(err)
+	suite.assert.Len(xl.comps, 3)
+}
+
+func (suite *xloadTestSuite) TestCreateChain() {
+	defer suite.cleanupTest(false)
+	suite.cleanupTest(false) // teardown the default xload generated
+
+	xl := &Xload{
+		path:      suite.local_path,
+		statsMgr:  &StatsManager{},
+		blockPool: &BlockPool{},
+		fileLocks: common.NewLockMap(),
+	}
+	xl.SetNextComponent(xl)
+
+	err := xl.createChain()
+	suite.assert.NotNil(err)
+
+	err = xl.startComponents()
+	suite.assert.NotNil(err)
+
+	err = xl.createDownloader()
+	suite.assert.Nil(err)
+	suite.assert.Len(xl.comps, 3)
+
+	err = xl.createChain()
+	suite.assert.Nil(err)
+	suite.assert.NotNil(xl.comps[0].GetNext())
+	suite.assert.NotNil(xl.comps[1].GetNext())
+	suite.assert.Nil(xl.comps[2].GetNext())
+}
+
+func (suite *xloadTestSuite) TestDownloadFileError() {
+	defer suite.cleanupTest(false)
+	suite.cleanupTest(false) // teardown the default xload generated
+
+	xl := &Xload{}
+	err := xl.downloadFile("file0")
+	suite.assert.NotNil(err)
+}
+
+func (suite *xloadTestSuite) TestDownloadFileGetAttrError() {
+	defer suite.cleanupTest(false)
+	suite.cleanupTest(false) // teardown the default xload generated
+
+	xl := &Xload{
+		path:      suite.local_path,
+		statsMgr:  &StatsManager{},
+		blockPool: &BlockPool{},
+		fileLocks: common.NewLockMap(),
+	}
+
+	cfg := fmt.Sprintf("loopbackfs:\n  path: %s\n", suite.fake_storage_path)
+	config.ReadConfigFromReader(strings.NewReader(cfg))
+	loopback := newLoopbackFS()
+
+	xl.SetNextComponent(loopback)
+
+	err := xl.createDownloader()
+	suite.assert.Nil(err)
+	suite.assert.Len(xl.comps, 3)
+
+	err = xl.createChain()
+	suite.assert.Nil(err)
+
+	err = xl.downloadFile("file0")
+	suite.assert.NotNil(err)
+}
+
+func (suite *xloadTestSuite) TestXloadStartStop() {
+	defer suite.cleanupTest(true)
+	config.ResetConfig()
+
+	createTestDirsAndFiles(suite.fake_storage_path, suite.assert)
+
+	blockSize := (float64)(0.00001)
+	testConfig := fmt.Sprintf("xload:\n  path: %s\n  block-size-mb: %v\n\nloopbackfs:\n  path: %s\n\nread-only: true", suite.local_path, blockSize, suite.fake_storage_path)
+	err := suite.setupTestHelper(testConfig, true) // setup a new xload with a custom config (teardown will occur after the test as usual)
+	suite.assert.Nil(err)
+	suite.assert.Equal(suite.xload.path, suite.local_path)
+	suite.assert.Equal(suite.xload.blockSize, uint64(blockSize*float64(MB)))
+
+	time.Sleep(5 * time.Second)
+
+	validateMD5(suite.local_path, suite.fake_storage_path, suite.assert)
+}
+
+func (suite *xloadTestSuite) TestOpenFileAlreadyDownloaded() {
+	defer suite.cleanupTest(true)
+	config.ResetConfig()
+
+	createTestDirsAndFiles(suite.fake_storage_path, suite.assert)
+
+	blockSize := (float64)(0.00001)
+	testConfig := fmt.Sprintf("xload:\n  path: %s\n  block-size-mb: %v\n\nloopbackfs:\n  path: %s\n\nread-only: true", suite.local_path, blockSize, suite.fake_storage_path)
+	err := suite.setupTestHelper(testConfig, true) // setup a new xload with a custom config (teardown will occur after the test as usual)
+	suite.assert.Nil(err)
+	suite.assert.Equal(suite.xload.path, suite.local_path)
+	suite.assert.Equal(suite.xload.blockSize, uint64(blockSize*float64(MB)))
+
+	time.Sleep(5 * time.Second)
+
+	fh, err := suite.xload.OpenFile(internal.OpenFileOptions{Name: "file_4"})
+	suite.assert.Nil(err)
+	suite.assert.NotNil(fh)
+	suite.assert.Equal(fh.Size, (int64)(36))
+
+	err = suite.xload.CloseFile(internal.CloseFileOptions{Handle: fh})
+	suite.assert.Nil(err)
+
+	fh2, err := suite.xload.OpenFile(internal.OpenFileOptions{Name: "dir_0/file_3"})
+	suite.assert.Nil(err)
+	suite.assert.NotNil(fh2)
+	suite.assert.Equal(fh2.Size, (int64)(27))
+
+	err = suite.xload.CloseFile(internal.CloseFileOptions{Handle: fh2})
+	suite.assert.Nil(err)
+
+	validateMD5(suite.local_path, suite.fake_storage_path, suite.assert)
+}
+
+func (suite *xloadTestSuite) TestOpenFileWithDownload() {
+	defer suite.cleanupTest(true)
+	config.ResetConfig()
+
+	blockSize := (float64)(0.00001)
+	testConfig := fmt.Sprintf("xload:\n  path: %s\n  block-size-mb: %v\n\nloopbackfs:\n  path: %s\n\nread-only: true", suite.local_path, blockSize, suite.fake_storage_path)
+	err := suite.setupTestHelper(testConfig, true) // setup a new xload with a custom config (teardown will occur after the test as usual)
+	suite.assert.Nil(err)
+	suite.assert.Equal(suite.xload.path, suite.local_path)
+	suite.assert.Equal(suite.xload.blockSize, uint64(blockSize*float64(MB)))
+
+	time.Sleep(5 * time.Second)
+
+	createTestDirsAndFiles(suite.fake_storage_path, suite.assert)
+
+	// open file error
+	fh, err := suite.xload.OpenFile(internal.OpenFileOptions{Name: "dir_1/file_0"})
+	suite.assert.Nil(err)
+	suite.assert.NotNil(fh)
+	suite.assert.Equal(fh.Size, (int64)(0))
+
+	err = suite.xload.CloseFile(internal.CloseFileOptions{Handle: fh})
+	suite.assert.Nil(err)
+
+	fh1, err := suite.xload.OpenFile(internal.OpenFileOptions{Name: "file_4", Flags: os.O_RDONLY, Mode: common.DefaultFilePermissionBits})
+	suite.assert.Nil(err)
+	suite.assert.NotNil(fh1)
+	suite.assert.Equal(fh1.Size, (int64)(36))
+
+	err = suite.xload.CloseFile(internal.CloseFileOptions{Handle: fh1})
+	suite.assert.Nil(err)
+
+	fh2, err := suite.xload.OpenFile(internal.OpenFileOptions{Name: "dir_0/file_3", Flags: os.O_RDWR, Mode: common.DefaultFilePermissionBits})
+	suite.assert.Nil(err)
+	suite.assert.NotNil(fh2)
+	suite.assert.Equal(fh2.Size, (int64)(27))
+
+	err = suite.xload.CloseFile(internal.CloseFileOptions{Handle: fh2})
+	suite.assert.Nil(err)
+
+	suite.validateMD5WithOpenFile(suite.local_path, suite.fake_storage_path)
+}
+
+func (suite *xloadTestSuite) validateMD5WithOpenFile(localPath string, remotePath string) {
+	entries, err := os.ReadDir(remotePath)
+	suite.assert.Nil(err)
+
+	for _, entry := range entries {
+		localFilePath := filepath.Join(localPath, entry.Name())
+		remoteFilePath := filepath.Join(remotePath, entry.Name())
+
+		if entry.IsDir() {
+			suite.validateMD5WithOpenFile(localFilePath, remoteFilePath)
+		} else {
+			relPath := strings.TrimPrefix(localFilePath, suite.local_path+"/")
+			fh, err := suite.xload.OpenFile(internal.OpenFileOptions{Name: relPath, Flags: os.O_RDONLY, Mode: common.DefaultFilePermissionBits})
+			suite.assert.Nil(err)
+			suite.assert.NotNil(fh)
+
+			l, err := computeMD5(localFilePath)
+			suite.assert.Nil(err)
+
+			r, err := computeMD5(remoteFilePath)
+			suite.assert.Nil(err)
+
+			suite.assert.Equal(l, r)
+
+			err = suite.xload.CloseFile(internal.CloseFileOptions{Handle: fh})
+			suite.assert.Nil(err)
+		}
+	}
 }
 
 func TestXloadTestSuite(t *testing.T) {

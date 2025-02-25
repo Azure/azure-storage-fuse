@@ -111,12 +111,13 @@ func RoundFloat(val float64, precision int) float64 {
 	return math.Round(val*ratio) / ratio
 }
 
-func isFilePresent(localPath string) (bool, int64) {
+// returns if the given path is present, if its a directory and its size
+func isFilePresent(localPath string) (bool, bool, int64) {
 	fileInfo, err := os.Stat(localPath)
 	if err != nil {
 		log.Debug("utils::isFilePresent : %s is not present in local path [%v]", localPath, err.Error())
-		return false, 0
+		return false, false, 0
 	} else {
-		return true, fileInfo.Size()
+		return true, fileInfo.IsDir(), fileInfo.Size()
 	}
 }

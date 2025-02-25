@@ -79,6 +79,7 @@ func (xb *XBase) Schedule(item *WorkItem) {
 	if xb.GetThreadPool() != nil {
 		xb.GetThreadPool().Schedule(item)
 	} else {
+		// TODO:: xload : check if this call goes to the process method of the calling component
 		_, err := xb.Process(item)
 		if err != nil {
 			log.Err("xcomponent::Schedule : Failed to process for %v [%v]", item.CompName, err.Error())

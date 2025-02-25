@@ -351,6 +351,19 @@ func (xl *Xload) downloadFile(fileName string) error {
 	attr, err := xl.NextComponent().GetAttr(internal.GetAttrOptions{Name: fileName})
 	if err != nil {
 		log.Err("Xload::downloadFile : Failed to get attr of %s [%s]", fileName, err.Error())
+		return err
+	}
+
+	fileMode := xl.defaultPermission
+	if !attr.IsModeDefault() {
+		fileMode = attr.Mode
+	}
+
+	// create the local path where the file will be downloaded
+	err = os.MkdirAll(filepath.Dir(filepath.Join(xl.path, fileName)), xl.defaultPermission)
+	if err != nil {
+		log.Err("Xload::downloadFile : Failed to create local directory for %s [%s]", fileName, err.Error())
+		return err
 	}
 
 	_, err = splitter.Process(&WorkItem{
@@ -358,10 +371,13 @@ func (xl *Xload) downloadFile(fileName string) error {
 		Path:     fileName,
 		DataLen:  uint64(attr.Size),
 		Priority: true,
+		Mode:     fileMode,
+		Atime:    attr.Atime,
+		Mtime:    attr.Mtime,
 	})
 
 	if err != nil {
-		log.Err("Xload::OpenFile : failed to download file %s [%s]", fileName, err.Error())
+		log.Err("Xload::downloadFile : failed to download file %s [%s]", fileName, err.Error())
 		return err
 	}
 
@@ -377,7 +393,7 @@ func (xl *Xload) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, 
 	flock.Lock()
 	defer flock.Unlock()
 
-	filePresent, _ := isFilePresent(localPath)
+	filePresent, _, _ := isFilePresent(localPath)
 
 	// if file is not present, send it to splitter for downloading on priority
 	if !filePresent {

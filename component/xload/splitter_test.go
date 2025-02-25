@@ -38,6 +38,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -77,7 +78,7 @@ func (suite *splitterTestSuite) SetupSuite() {
 	err = remote.Configure(true)
 	suite.assert.Nil(err)
 
-	suite.createDirs(remote_path)
+	createTestDirsAndFiles(remote_path, suite.assert)
 }
 
 func (suite *splitterTestSuite) TearDownSuite() {
@@ -85,35 +86,34 @@ func (suite *splitterTestSuite) TearDownSuite() {
 	suite.assert.Nil(err)
 }
 
-func (suite *splitterTestSuite) createDirs(path string) {
-	suite.createFiles(path)
+func createTestDirsAndFiles(path string, assert *assert.Assertions) {
+	createTestFiles(path, assert)
 
 	for i := 0; i < 2; i++ {
 		dirName := filepath.Join(path, fmt.Sprintf("dir_%v", i))
 		err := os.MkdirAll(dirName, 0777)
-		suite.assert.Nil(err)
+		assert.Nil(err)
 
-		suite.createFiles(dirName)
+		createTestFiles(dirName, assert)
 	}
 }
 
-func (suite *splitterTestSuite) createFiles(path string) {
+func createTestFiles(path string, assert *assert.Assertions) {
 	for i := 0; i < 5; i++ {
 		filePath := filepath.Join(path, fmt.Sprintf("file_%v", i))
 		f, err := os.Create(filePath)
 		defer func() {
 			err = f.Close()
-			suite.assert.Nil(err)
+			assert.Nil(err)
 		}()
-		suite.assert.Nil(err)
+		assert.Nil(err)
 
 		n, err := f.Write([]byte(randomString(9 * i)))
-		suite.assert.Nil(err)
-		suite.assert.Equal(n, 9*i)
+		assert.Nil(err)
+		assert.Equal(n, 9*i)
 
 		err = os.Truncate(filePath, int64(9*i))
-		suite.assert.Nil(err)
-
+		assert.Nil(err)
 	}
 }
 
@@ -169,6 +169,35 @@ func (suite *splitterTestSuite) TestNewDownloadSplitter() {
 	suite.assert.NotNil(ds)
 }
 
+func (suite *splitterTestSuite) TestProcessFilePresent() {
+	ts, err := setupTestSplitter()
+	suite.assert.Nil(err)
+	suite.assert.NotNil(ts)
+
+	defer func() {
+		err = ts.cleanup()
+		suite.assert.Nil(err)
+	}()
+
+	ds, err := newDownloadSplitter(ts.blockPool, ts.path, remote, ts.stMgr, ts.locks)
+	suite.assert.Nil(err)
+	suite.assert.NotNil(ds)
+
+	n, err := ds.Process(&WorkItem{})
+	suite.assert.NotNil(err)
+	suite.assert.Contains(err.Error(), "is a directory")
+	suite.assert.Equal(n, -1)
+
+	fileName := "file_4"
+	cpCmd := exec.Command("cp", filepath.Join(remote_path, fileName), ts.path)
+	_, err = cpCmd.Output()
+	suite.assert.Nil(err)
+
+	n, err = ds.Process(&WorkItem{Path: fileName, DataLen: uint64(36)})
+	suite.assert.Nil(err)
+	suite.assert.Equal(n, 36)
+}
+
 func (suite *splitterTestSuite) TestSplitterStartStop() {
 	ts, err := setupTestSplitter()
 	suite.assert.Nil(err)
@@ -205,12 +234,12 @@ func (suite *splitterTestSuite) TestSplitterStartStop() {
 	// stop comoponents
 	rl.Stop()
 
-	suite.validateMD5(ts.path, remote_path)
+	validateMD5(ts.path, remote_path, suite.assert)
 }
 
-func (suite *splitterTestSuite) validateMD5(localPath string, remotePath string) {
+func validateMD5(localPath string, remotePath string, assert *assert.Assertions) {
 	entries, err := os.ReadDir(remotePath)
-	suite.assert.Nil(err)
+	assert.Nil(err)
 
 	for _, entry := range entries {
 		localFile := filepath.Join(localPath, entry.Name())
@@ -218,18 +247,18 @@ func (suite *splitterTestSuite) validateMD5(localPath string, remotePath string)
 
 		if entry.IsDir() {
 			f, err := os.Stat(localFile)
-			suite.assert.Nil(err)
-			suite.assert.True(f.IsDir())
+			assert.Nil(err)
+			assert.True(f.IsDir())
 
-			suite.validateMD5(localFile, remoteFile)
+			validateMD5(localFile, remoteFile, assert)
 		} else {
 			l, err := computeMD5(localFile)
-			suite.assert.Nil(err)
+			assert.Nil(err)
 
 			r, err := computeMD5(remoteFile)
-			suite.assert.Nil(err)
+			assert.Nil(err)
 
-			suite.assert.Equal(l, r)
+			assert.Equal(l, r)
 		}
 	}
 }
@@ -251,3 +280,5 @@ func computeMD5(filePath string) ([]byte, error) {
 func TestSplitterSuite(t *testing.T) {
 	suite.Run(t, new(splitterTestSuite))
 }
+
+// TODO:: xload : add tests for failure cases
