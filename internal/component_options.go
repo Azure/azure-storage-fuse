@@ -97,8 +97,10 @@ type CloseFileOptions struct {
 }
 
 type RenameFileOptions struct {
-	Src string
-	Dst string
+	Src     string
+	Dst     string
+	SrcAttr *ObjAttr
+	DstAttr *ObjAttr
 }
 
 type ReadFileOptions struct {
@@ -109,6 +111,7 @@ type ReadInBufferOptions struct {
 	Handle *handlemap.Handle
 	Name   string
 	Offset int64
+	Etag   *string
 	Data   []byte
 }
 
@@ -206,6 +209,7 @@ type CommitDataOptions struct {
 	Name      string
 	List      []string
 	BlockSize uint64
+	NewETag   *string
 }
 
 type CommittedBlock struct {

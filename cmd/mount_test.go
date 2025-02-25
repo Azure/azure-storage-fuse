@@ -121,18 +121,18 @@ func (suite *mountTestSuite) cleanupTest() {
 	common.DefaultLogFilePath = filepath.Join(common.DefaultWorkDir, "blobfuse2.log")
 }
 
-// mount failure test where the mount directory does not exists
+// mount failure test where the mount directory does not exist
 func (suite *mountTestSuite) TestMountDirNotExists() {
 	defer suite.cleanupTest()
 
 	tempDir := randomString(8)
 	op, err := executeCommandC(rootCmd, "mount", tempDir, fmt.Sprintf("--config-file=%s", confFileMntTest))
 	suite.assert.NotNil(err)
-	suite.assert.Contains(op, "mount directory does not exists")
+	suite.assert.Contains(op, "mount directory does not exist")
 
 	op, err = executeCommandC(rootCmd, "mount", "all", tempDir, fmt.Sprintf("--config-file=%s", confFileMntTest))
 	suite.assert.NotNil(err)
-	suite.assert.Contains(op, "mount directory does not exists")
+	suite.assert.Contains(op, "mount directory does not exist")
 }
 
 // mount failure test where the mount directory is not empty

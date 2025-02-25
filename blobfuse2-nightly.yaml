@@ -111,33 +111,6 @@ stages:
               value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
 
           steps:
-            - script: |
-                cd /etc/apt
-                sudo cp trusted.gpg trusted.gpg.d
-                cd
-                sudo apt-get update
-                sudo apt-get install cmake gcc $(fuselib) git parallel -y
-                if [ $(tags) == "fuse2" ]; then
-                  sudo apt-get install fuse -y
-                fi
-              displayName: 'Install libfuse'
-
-            - checkout: none
-
-            # Clone the repo
-            - script: |
-                git clone https://github.com/Azure/azure-storage-fuse
-              displayName: 'Checkout Code'
-              workingDirectory: $(ROOT_DIR)
-
-            # Checkout the branch
-            - script: |
-                git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
-              displayName: 'Checkout Branch'
-              workingDirectory: $(WORK_DIR)
-
-
-
             # -------------------------------------------------------
             # Pull and build the code
             - template: 'azure-pipeline-templates/build.yml'
@@ -244,35 +217,9 @@ stages:
 
           steps:
             - script: |
-                cd /etc/apt
-                sudo cp trusted.gpg trusted.gpg.d
-                cd
-                sudo apt-get update
-                sudo apt-get install cmake gcc $(fuselib) git parallel -y
-                if [ $(tags) == "fuse2" ]; then
-                  sudo apt-get install fuse -y
-                fi
-              displayName: 'Install libfuse'
-              
-            - checkout: none
-
-            - script: |
                 hostnamectl
               displayName: 'Host info'
               workingDirectory: $(ROOT_DIR)
-
-            # Clone the repo
-            - script: |
-                git clone https://github.com/Azure/azure-storage-fuse
-              displayName: 'Checkout Code'
-              workingDirectory: $(ROOT_DIR)
-
-            # Checkout the branch
-            - script: |
-                git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
-              displayName: 'Checkout Branch'
-              workingDirectory: $(WORK_DIR)
-
             # -------------------------------------------------------
             # Pull and build the code
             - template: 'azure-pipeline-templates/build.yml'
@@ -385,31 +332,6 @@ stages:
               value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
 
           steps:
-            - script: |
-                cd /etc/apt
-                sudo cp trusted.gpg trusted.gpg.d
-                cd
-                sudo apt-get update
-                sudo apt-get install cmake gcc $(fuselib) git -y
-                if [ $(tags) == "fuse2" ]; then
-                  sudo apt-get install fuse -y
-                fi
-              displayName: 'Install libfuse'
-              
-            - checkout: none
-
-            # Clone the repo
-            - script: |
-                git clone https://github.com/Azure/azure-storage-fuse
-              displayName: 'Checkout Code'
-              workingDirectory: $(ROOT_DIR)
-
-            # Checkout the branch
-            - script: |
-                git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
-              displayName: 'Checkout Branch'
-              workingDirectory: $(WORK_DIR)
-
             # -------------------------------------------------------
             # Pull and build the code
             - template: 'azure-pipeline-templates/build.yml'
@@ -510,31 +432,6 @@ stages:
               value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
 
           steps:
-            - script: |
-                cd /etc/apt
-                sudo cp trusted.gpg trusted.gpg.d
-                cd
-                sudo apt-get update
-                sudo apt-get install cmake gcc $(fuselib) git -y
-                if [ $(tags) == "fuse2" ]; then
-                  sudo apt-get install fuse -y
-                fi
-              displayName: 'Install libfuse'
-              
-            - checkout: none
-
-            # Clone the repo
-            - script: |
-                git clone https://github.com/Azure/azure-storage-fuse
-              displayName: 'Checkout Code'
-              workingDirectory: $(ROOT_DIR)
-
-            # Checkout the branch
-            - script: |
-                git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
-              displayName: 'Checkout Branch'
-              workingDirectory: $(WORK_DIR)
-
             # -------------------------------------------------------
             # Pull and build the code
             - template: 'azure-pipeline-templates/build.yml'
@@ -627,14 +524,8 @@ stages:
 
             steps:
               - script: |
-                  cd /etc/apt
-                  sudo cp trusted.gpg trusted.gpg.d
-                  cd
-                  sudo apt-get update
-                  sudo apt-get install cmake gcc libfuse3-dev git -y
-                displayName: 'Install libfuse'
-              
-              - checkout: none
+                  sudo systemctl stop apt-daily.timer
+                displayName: 'Stop apt update manager'
 
               # Start Proxy
               - script: |
@@ -658,18 +549,6 @@ stages:
                   export https_proxy="127.0.0.1:8080"
                   export http_proxy="127.0.0.1:8080"
                 displayName: 'Configure Proxy'
-
-              # Clone the repo
-              - script: |
-                  git clone https://github.com/Azure/azure-storage-fuse
-                displayName: 'Checkout Code'
-                workingDirectory: $(ROOT_DIR)
-
-              # Checkout the branch
-              - script: |
-                  git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
-                displayName: 'Checkout Branch'
-                workingDirectory: $(WORK_DIR)
 
               # -------------------------------------------------------
               # Pull, build and unit test the code
@@ -820,22 +699,22 @@ stages:
 
             variables:
               - group: NightlyBlobFuse
+              - name: MOUNT_DIR
+                value: '$(Pipeline.Workspace)/blob_mnt'
+              - name: TEMP_DIR
+                value: '$(Pipeline.Workspace)/blobfuse2_tmp'
+              - name: BLOBFUSE2_CFG
+                value: '$(Pipeline.Workspace)/blobfuse2.yaml'
+              - name: BLOBFUSE2_ADLS_CFG
+                value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
+              - name: GOPATH
+                value: '$(Pipeline.Workspace)/go'
               - name: ROOT_DIR
-                value: "/usr/pipeline/workv2"
+                value: '$(System.DefaultWorkingDirectory)' 
               - name: WORK_DIR
-                value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
+                value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
               - name: skipComponentGovernanceDetection
                 value: true
-              - name: MOUNT_DIR
-                value: "/usr/pipeline/workv2/blob_mnt"
-              - name: TEMP_DIR
-                value: "/usr/pipeline/workv2/temp"
-              - name: BLOBFUSE2_CFG
-                value: "/usr/pipeline/workv2/blobfuse2.yaml"
-              - name: BLOBFUSE2_ADLS_CFG
-                value: "/home/vsts/workv2/blobfuse2.adls.yaml"
-              - name: GOPATH
-                value: "/usr/pipeline/workv2/go"
 
             steps:
               - template: 'azure-pipeline-templates/distro-tests.yml'
@@ -889,22 +768,22 @@ stages:
 
             variables:
               - group: NightlyBlobFuse
+              - name: MOUNT_DIR
+                value: '$(Pipeline.Workspace)/blob_mnt'
+              - name: TEMP_DIR
+                value: '$(Pipeline.Workspace)/blobfuse2_tmp'
+              - name: BLOBFUSE2_CFG
+                value: '$(Pipeline.Workspace)/blobfuse2.yaml'
+              - name: BLOBFUSE2_ADLS_CFG
+                value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
+              - name: GOPATH
+                value: '$(Pipeline.Workspace)/go'
               - name: ROOT_DIR
-                value: "/usr/pipeline/workv2"
+                value: '$(System.DefaultWorkingDirectory)' 
               - name: WORK_DIR
-                value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
+                value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
               - name: skipComponentGovernanceDetection
                 value: true
-              - name: MOUNT_DIR
-                value: "/usr/pipeline/workv2/blob_mnt"
-              - name: TEMP_DIR
-                value: "/usr/pipeline/workv2/temp"
-              - name: BLOBFUSE2_CFG
-                value: "/usr/pipeline/workv2/blobfuse2.yaml"
-              - name: BLOBFUSE2_ADLS_CFG
-                value: "/home/vsts/workv2/blobfuse2.adls.yaml"
-              - name: GOPATH
-                value: "/usr/pipeline/workv2/go"
 
             steps:
               - script: |
@@ -956,22 +835,22 @@ stages:
 
             variables:
               - group: NightlyBlobFuse
+              - name: MOUNT_DIR
+                value: '$(Pipeline.Workspace)/blob_mnt'
+              - name: TEMP_DIR
+                value: '$(Pipeline.Workspace)/blobfuse2_tmp'
+              - name: BLOBFUSE2_CFG
+                value: '$(Pipeline.Workspace)/blobfuse2.yaml'
+              - name: BLOBFUSE2_ADLS_CFG
+                value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
+              - name: GOPATH
+                value: '$(Pipeline.Workspace)/go'
               - name: ROOT_DIR
-                value: "/usr/pipeline/workv2"
+                value: '$(System.DefaultWorkingDirectory)' 
               - name: WORK_DIR
-                value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
+                value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
               - name: skipComponentGovernanceDetection
                 value: true
-              - name: MOUNT_DIR
-                value: "/usr/pipeline/workv2/blob_mnt"
-              - name: TEMP_DIR
-                value: "/usr/pipeline/workv2/temp"
-              - name: BLOBFUSE2_CFG
-                value: "/usr/pipeline/workv2/blobfuse2.yaml"
-              - name: BLOBFUSE2_ADLS_CFG
-                value: "/home/vsts/workv2/blobfuse2.adls.yaml"
-              - name: GOPATH
-                value: "/usr/pipeline/workv2/go"
 
             steps:
               - template: 'azure-pipeline-templates/distro-tests.yml'
@@ -1019,22 +898,22 @@ stages:
 
             variables:
               - group: NightlyBlobFuse
+              - name: MOUNT_DIR
+                value: '$(Pipeline.Workspace)/blob_mnt'
+              - name: TEMP_DIR
+                value: '$(Pipeline.Workspace)/blobfuse2_tmp'
+              - name: BLOBFUSE2_CFG
+                value: '$(Pipeline.Workspace)/blobfuse2.yaml'
+              - name: BLOBFUSE2_ADLS_CFG
+                value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
+              - name: GOPATH
+                value: '$(Pipeline.Workspace)/go'
               - name: ROOT_DIR
-                value: "/usr/pipeline/workv2"
+                value: '$(System.DefaultWorkingDirectory)' 
               - name: WORK_DIR
-                value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
+                value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
               - name: skipComponentGovernanceDetection
                 value: true
-              - name: MOUNT_DIR
-                value: "/usr/pipeline/workv2/blob_mnt"
-              - name: TEMP_DIR
-                value: "/usr/pipeline/workv2/temp"
-              - name: BLOBFUSE2_CFG
-                value: "/usr/pipeline/workv2/blobfuse2.yaml"
-              - name: BLOBFUSE2_ADLS_CFG
-                value: "/home/vsts/workv2/blobfuse2.adls.yaml"
-              - name: GOPATH
-                value: "/usr/pipeline/workv2/go"
 
             steps:
               - template: 'azure-pipeline-templates/distro-tests.yml'
@@ -1061,66 +940,66 @@ stages:
                     displayName: 'Install fuse'
                   verbose_log: ${{ parameters.verbose_log }}
 
-          # SUSE Tests
-          - job: Set_9
-            timeoutInMinutes: 60
-            strategy:
-              matrix:
-                SUSE-15:
-                  DistroVer: "SUSE-15"
-                  Description: "SUSE Enterprise Linux 15"
-                  AgentName: "blobfuse-suse15"
-                  ContainerName: "test-cnt-suse-15"
+          # # SUSE Tests
+          # - job: Set_9
+          #   timeoutInMinutes: 60
+          #   strategy:
+          #     matrix:
+          #       SUSE-15:
+          #         DistroVer: "SUSE-15"
+          #         Description: "SUSE Enterprise Linux 15"
+          #         AgentName: "blobfuse-suse15"
+          #         ContainerName: "test-cnt-suse-15"
 
-            pool:
-              name: "blobfuse-suse-pool"
-              demands:
-                - ImageOverride -equals $(AgentName)
+          #   pool:
+          #     name: "blobfuse-suse-pool"
+          #     demands:
+          #       - ImageOverride -equals $(AgentName)
 
-            variables:
-              - group: NightlyBlobFuse
-              - name: ROOT_DIR
-                value: "/usr/pipeline/workv2"
-              - name: WORK_DIR
-                value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
-              - name: skipComponentGovernanceDetection
-                value: true
-              - name: MOUNT_DIR
-                value: "/usr/pipeline/workv2/blob_mnt"
-              - name: TEMP_DIR
-                value: "/usr/pipeline/workv2/temp"
-              - name: BLOBFUSE2_CFG
-                value: "/usr/pipeline/workv2/blobfuse2.yaml"
-              - name: BLOBFUSE2_ADLS_CFG
-                value: "/home/vsts/workv2/blobfuse2.adls.yaml"
-              - name: GOPATH
-                value: "/usr/pipeline/workv2/go"
+          #   variables:
+          #     - group: NightlyBlobFuse
+          #     - name: MOUNT_DIR
+          #       value: '$(Pipeline.Workspace)/blob_mnt'
+          #     - name: TEMP_DIR
+          #       value: '$(Pipeline.Workspace)/blobfuse2_tmp'
+          #     - name: BLOBFUSE2_CFG
+          #       value: '$(Pipeline.Workspace)/blobfuse2.yaml'
+          #     - name: BLOBFUSE2_ADLS_CFG
+          #       value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
+          #     - name: GOPATH
+          #       value: '$(Pipeline.Workspace)/go'
+          #     - name: ROOT_DIR
+          #       value: '$(System.DefaultWorkingDirectory)' 
+          #     - name: WORK_DIR
+          #       value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
+          #     - name: skipComponentGovernanceDetection
+          #       value: true
 
-            steps:
-              - template: 'azure-pipeline-templates/distro-tests.yml'
-                parameters:
-                  working_dir: $(WORK_DIR)
-                  root_dir: $(ROOT_DIR)
-                  temp_dir: $(TEMP_DIR)
-                  mount_dir: $(MOUNT_DIR)
-                  config_path: $(BLOBFUSE2_CFG)
-                  container: $(ContainerName)
-                  blob_account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
-                  blob_account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
-                  adls_account_name: $(AZTEST_ADLS_ACC_NAME)
-                  adls_account_key: $(AZTEST_ADLS_KEY)
-                  distro_name: $(AgentName)
-                  gopath: $(GOPATH)
-                  installStep:
-                    script: |
-                      sudo zypper -n install git golang make cmake gcc gcc-c++ glibc-devel fuse
-                      wget $(SUSE_FUSE3_PATH)/fuse3-3.10.5-150400.1.7.x86_64.rpm
-                      sudo zypper -n --no-gpg-checks install fuse3-3.10.5-150400.1.7.x86_64.rpm
-                      fusermount3 --v
-                      wget $(SUSE_FUSE3_PATH)/fuse3-devel-3.10.5-150400.1.7.x86_64.rpm
-                      sudo zypper -n --no-gpg-checks install fuse3-devel-3.10.5-150400.1.7.x86_64.rpm 
-                    displayName: 'Install fuse'
-                  verbose_log: ${{ parameters.verbose_log }}
+          #   steps:
+          #     - template: 'azure-pipeline-templates/distro-tests.yml'
+          #       parameters:
+          #         working_dir: $(WORK_DIR)
+          #         root_dir: $(ROOT_DIR)
+          #         temp_dir: $(TEMP_DIR)
+          #         mount_dir: $(MOUNT_DIR)
+          #         config_path: $(BLOBFUSE2_CFG)
+          #         container: $(ContainerName)
+          #         blob_account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
+          #         blob_account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
+          #         adls_account_name: $(AZTEST_ADLS_ACC_NAME)
+          #         adls_account_key: $(AZTEST_ADLS_KEY)
+          #         distro_name: $(AgentName)
+          #         gopath: $(GOPATH)
+          #         installStep:
+          #           script: |
+          #             sudo zypper -n install git golang make cmake gcc gcc-c++ glibc-devel fuse
+          #             wget $(SUSE_FUSE3_PATH)/fuse3-3.10.5-150400.1.7.x86_64.rpm
+          #             sudo zypper -n --no-gpg-checks install fuse3-3.10.5-150400.1.7.x86_64.rpm
+          #             fusermount3 --v
+          #             wget $(SUSE_FUSE3_PATH)/fuse3-devel-3.10.5-150400.1.7.x86_64.rpm
+          #             sudo zypper -n --no-gpg-checks install fuse3-devel-3.10.5-150400.1.7.x86_64.rpm 
+          #           displayName: 'Install fuse'
+          #         verbose_log: ${{ parameters.verbose_log }}
 
           # Mariner Tests
           - job: Set_10
@@ -1141,22 +1020,22 @@ stages:
 
             variables:
               - group: NightlyBlobFuse
+              - name: MOUNT_DIR
+                value: '$(Pipeline.Workspace)/blob_mnt'
+              - name: TEMP_DIR
+                value: '$(Pipeline.Workspace)/blobfuse2_tmp'
+              - name: BLOBFUSE2_CFG
+                value: '$(Pipeline.Workspace)/blobfuse2.yaml'
+              - name: BLOBFUSE2_ADLS_CFG
+                value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
+              - name: GOPATH
+                value: '$(Pipeline.Workspace)/go'
               - name: ROOT_DIR
-                value: "/usr/pipeline/workv2"
+                value: '$(System.DefaultWorkingDirectory)' 
               - name: WORK_DIR
-                value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
+                value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
               - name: skipComponentGovernanceDetection
                 value: true
-              - name: MOUNT_DIR
-                value: "/usr/pipeline/workv2/blob_mnt"
-              - name: TEMP_DIR
-                value: "/usr/pipeline/workv2/temp"
-              - name: BLOBFUSE2_CFG
-                value: "/usr/pipeline/workv2/blobfuse2.yaml"
-              - name: BLOBFUSE2_ADLS_CFG
-                value: "/home/vsts/workv2/blobfuse2.adls.yaml"
-              - name: GOPATH
-                value: "/usr/pipeline/workv2/go"
 
             steps:
               - template: 'azure-pipeline-templates/distro-tests.yml'
@@ -1192,6 +1071,7 @@ stages:
                   DistroVer: "Ubn20_MSI"
                   AgentName: "blobfuse-ubuntu20"
                   Description: "Ubuntu 20 MSI Test"
+                  ContainerName: "test-cnt-ubn-20-msi"
 
             pool:
               name: "blobfuse-ubuntu-pool"
@@ -1200,56 +1080,30 @@ stages:
 
             variables:
               - group: NightlyBlobFuse
+              - name: MOUNT_DIR
+                value: '$(Pipeline.Workspace)/blob_mnt'
+              - name: TEMP_DIR
+                value: '$(Pipeline.Workspace)/blobfuse2_tmp'
+              - name: BLOBFUSE2_CFG
+                value: '$(Pipeline.Workspace)/blobfuse2.msi.yaml'
+              - name: BLOBFUSE2_ADLS_CFG
+                value: '$(Pipeline.Workspace)/blobfuse2.msi.adls.yaml'
+              - name: GOPATH
+                value: '$(Pipeline.Workspace)/go'
               - name: ROOT_DIR
-                value: "/home/vsts/workv2/"
+                value: '$(System.DefaultWorkingDirectory)' 
               - name: WORK_DIR
-                value: "/home/vsts/workv2/go/src/azure-storage-fuse"
+                value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
               - name: skipComponentGovernanceDetection
                 value: true
-              - name: MOUNT_DIR
-                value: "/home/vsts/workv2/blob_mnt"
-              - name: TEMP_DIR
-                value: "/home/vsts/workv2/blobfuse2tmp"
-              - name: BLOBFUSE2_CFG
-                value: "/home/vsts/workv2//myblobv2.msi.yaml"
-              - name: BLOBFUSE2_CFG_ADLS
-                value: "/home/vsts/workv2/myblobv2.msi.adls.yaml"
-              - name: GOPATH
-                value: "/home/vsts/workv2/go"
-              - name: containerName
-                value: "test-cnt-ubn-20-msi"
 
             steps:
-              - checkout: none
-
               # Print the agent info 
               - script: |
                   echo $(Description)
                   hostnamectl
                 displayName: 'Print Agent Info'
               
-              # Install libfuse
-              - script: |
-                  cd /etc/apt
-                  sudo cp trusted.gpg trusted.gpg.d
-                  cd
-                  sudo apt-get update --fix-missing -o Dpkg::Options::="--force-confnew"
-                  sudo apt-get install make cmake gcc g++ libfuse3-dev fuse3 -y -o Dpkg::Options::="--force-confnew"  
-                displayName: 'Install Fuse'
-
-              # Install azcli
-              - script: |
-                  curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
-                  az --version
-                displayName: 'Install Azure CLI'
-
-              # Prestart cleanup
-              - script: |
-                  sudo fusermount3 -u $(MOUNT_DIR)
-                  sudo kill -9 `pidof blobfuse2`
-                  sudo rm -rf $(ROOT_DIR)
-                displayName: 'PreBuild Cleanup'
-
               # Create directory structure
               - script: |
                   sudo rm -rf $(ROOT_DIR)
@@ -1259,18 +1113,6 @@ stages:
                   mkdir -p $(ROOT_DIR)/go/src
                 displayName: 'Create Directory Structure'
 
-              # Checkout the code  
-              - script: |
-                  git clone https://github.com/Azure/azure-storage-fuse
-                displayName: 'Checkout Code'
-                workingDirectory: $(ROOT_DIR)/go/src
-
-              # Pull the branch
-              - script: |
-                  git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
-                displayName: 'Checkout Branch'
-                workingDirectory: $(WORK_DIR)
-
               # Build the code
               - template: 'azure-pipeline-templates/build.yml'
                 parameters:
@@ -1279,8 +1121,9 @@ stages:
                   mount_dir: $(MOUNT_DIR)
                   temp_dir: $(TEMP_DIR)
                   gopath: $(GOPATH)
-                  container: $(containerName)
+                  container: $(ContainerName)
                   skip_msi: "false"
+                  skip_azcli: "false"
               
               # BlockBlob MSI Test
               - script: |
@@ -1379,38 +1222,37 @@ stages:
 
         variables:
           - group: NightlyBlobFuse
-          - name: ROOT_DIR
-            value: "/usr/pipeline/workv2"
-          - name: WORK_DIR
-            value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
+          - name: MOUNT_DIR
+            value: '$(Pipeline.Workspace)/blob_mnt'
+          - name: TEMP_DIR
+            value: '$(Pipeline.Workspace)/blobfuse2_tmp'
+          - name: BLOBFUSE2_CFG
+            value: '$(Pipeline.Workspace)/blobfuse2.yaml'
+          - name: BLOBFUSE2_ADLS_CFG
+            value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
           - name: skipComponentGovernanceDetection
             value: true
-          - name: MOUNT_DIR
-            value: "/usr/pipeline/workv2/blob_mnt"
-          - name: TEMP_DIR
-            value: "/usr/pipeline/workv2/temp"
-          - name: BLOBFUSE2_CFG
-            value: "/usr/pipeline/workv2/blobfuse2.yaml"
           - name: GOPATH
-            value: "/usr/pipeline/workv2/go"
+            value: '$(Pipeline.Workspace)/go'
+          - name: ROOT_DIR
+            value: '$(System.DefaultWorkingDirectory)' 
+          - name: WORK_DIR
+            value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
 
         steps:
-          - template: 'azure-pipeline-templates/setup.yml'
+          # -------------------------------------------------------
+          # Pull and build the code
+          - template: 'azure-pipeline-templates/build.yml'
             parameters:
+              working_directory: $(WORK_DIR)
+              root_dir: $(ROOT_DIR)
+              mount_dir: $(MOUNT_DIR)
+              temp_dir: $(TEMP_DIR)
+              gopath: $(GOPATH)
+              container: $(containerName)
               tags: $(tags)
-              installStep:
-                script: |
-                  cd /etc/apt
-                  sudo cp trusted.gpg trusted.gpg.d
-                  cd
-                  sudo apt-get update
-                  sudo apt-get install cmake gcc $(fuselib) git parallel -y
-                  if [ $(tags) == "fuse2" ]; then
-                    sudo apt-get install fuse -y
-                  else
-                    sudo apt-get install fuse3 -y
-                  fi
-                displayName: 'Install fuse'
+              fuselib: $(fuselib)
+              skip_ut: true
 
           - template: 'azure-pipeline-templates/e2e-tests-block-cache.yml'
             parameters:
@@ -1455,41 +1297,40 @@ stages:
           name: "blobfuse-ubuntu-pool"
           demands:
             - ImageOverride -equals $(AgentName)
-
+    
         variables:
           - group: NightlyBlobFuse
-          - name: ROOT_DIR
-            value: "/usr/pipeline/workv2"
-          - name: WORK_DIR
-            value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
+          - name: MOUNT_DIR
+            value: '$(Pipeline.Workspace)/blob_mnt'
+          - name: TEMP_DIR
+            value: '$(Pipeline.Workspace)/blobfuse2_tmp'
+          - name: BLOBFUSE2_CFG
+            value: '$(Pipeline.Workspace)/blobfuse2.yaml'
+          - name: BLOBFUSE2_ADLS_CFG
+            value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
           - name: skipComponentGovernanceDetection
             value: true
-          - name: MOUNT_DIR
-            value: "/usr/pipeline/workv2/blob_mnt"
-          - name: TEMP_DIR
-            value: "/usr/pipeline/workv2/temp"
-          - name: BLOBFUSE2_CFG
-            value: "/usr/pipeline/workv2/blobfuse2.yaml"
           - name: GOPATH
-            value: "/usr/pipeline/workv2/go"
+            value: '$(Pipeline.Workspace)/go'
+          - name: ROOT_DIR
+            value: '$(System.DefaultWorkingDirectory)' 
+          - name: WORK_DIR
+            value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
 
         steps:
-          - template: 'azure-pipeline-templates/setup.yml'
+          # -------------------------------------------------------
+          # Pull and build the code
+          - template: 'azure-pipeline-templates/build.yml'
             parameters:
+              working_directory: $(WORK_DIR)
+              root_dir: $(ROOT_DIR)
+              mount_dir: $(MOUNT_DIR)
+              temp_dir: $(TEMP_DIR)
+              gopath: $(GOPATH)
+              container: $(containerName)
               tags: $(tags)
-              installStep:
-                script: |
-                  cd /etc/apt
-                  sudo cp trusted.gpg trusted.gpg.d
-                  cd
-                  sudo apt-get update
-                  sudo apt-get install cmake gcc $(fuselib) git parallel -y
-                  if [ $(tags) == "fuse2" ]; then
-                    sudo apt-get install fuse -y
-                  else
-                    sudo apt-get install fuse3 -y
-                  fi
-                displayName: 'Install fuse'
+              fuselib: $(fuselib)
+              skip_ut: true
 
           - template: 'azure-pipeline-templates/e2e-tests-block-cache.yml'
             parameters:
@@ -1539,38 +1380,37 @@ stages:
 
         variables:
           - group: NightlyBlobFuse
-          - name: ROOT_DIR
-            value: "/usr/pipeline/workv2"
-          - name: WORK_DIR
-            value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
+          - name: MOUNT_DIR
+            value: '$(Pipeline.Workspace)/blob_mnt'
+          - name: TEMP_DIR
+            value: '$(Pipeline.Workspace)/blobfuse2_tmp'
+          - name: BLOBFUSE2_CFG
+            value: '$(Pipeline.Workspace)/blobfuse2.yaml'
+          - name: BLOBFUSE2_ADLS_CFG
+            value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
           - name: skipComponentGovernanceDetection
             value: true
-          - name: MOUNT_DIR
-            value: "/usr/pipeline/workv2/blob_mnt"
-          - name: TEMP_DIR
-            value: "/usr/pipeline/workv2/temp"
-          - name: BLOBFUSE2_CFG
-            value: "/usr/pipeline/workv2/blobfuse2.yaml"
           - name: GOPATH
-            value: "/usr/pipeline/workv2/go"
+            value: '$(Pipeline.Workspace)/go'
+          - name: ROOT_DIR
+            value: '$(System.DefaultWorkingDirectory)' 
+          - name: WORK_DIR
+            value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
 
         steps:
-          - template: 'azure-pipeline-templates/setup.yml'
+          # -------------------------------------------------------
+          # Pull and build the code
+          - template: 'azure-pipeline-templates/build.yml'
             parameters:
+              working_directory: $(WORK_DIR)
+              root_dir: $(ROOT_DIR)
+              mount_dir: $(MOUNT_DIR)
+              temp_dir: $(TEMP_DIR)
+              gopath: $(GOPATH)
+              container: $(containerName)
               tags: $(tags)
-              installStep:
-                script: |
-                  cd /etc/apt
-                  sudo cp trusted.gpg trusted.gpg.d
-                  cd
-                  sudo apt-get update
-                  sudo apt-get install cmake gcc $(fuselib) git parallel -y
-                  if [ $(tags) == "fuse2" ]; then
-                    sudo apt-get install fuse -y
-                  else
-                    sudo apt-get install fuse3 -y
-                  fi
-                displayName: 'Install fuse'
+              fuselib: $(fuselib)
+              skip_ut: true
 
           - script: |
               sudo apt-get install bc binutils bison dwarves flex gcc git gnupg2 gzip libelf-dev libncurses5-dev libssl-dev make openssl perl-base rsync tar xz-utils -y
@@ -1617,38 +1457,37 @@ stages:
 
         variables:
           - group: NightlyBlobFuse
-          - name: ROOT_DIR
-            value: "/usr/pipeline/workv2"
-          - name: WORK_DIR
-            value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
+          - name: MOUNT_DIR
+            value: '$(Pipeline.Workspace)/blob_mnt'
+          - name: TEMP_DIR
+            value: '$(Pipeline.Workspace)/blobfuse2_tmp'
+          - name: BLOBFUSE2_CFG
+            value: '$(Pipeline.Workspace)/blobfuse2.yaml'
+          - name: BLOBFUSE2_ADLS_CFG
+            value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
           - name: skipComponentGovernanceDetection
             value: true
-          - name: MOUNT_DIR
-            value: "/usr/pipeline/workv2/blob_mnt"
-          - name: TEMP_DIR
-            value: "/usr/pipeline/workv2/temp"
-          - name: BLOBFUSE2_CFG
-            value: "/usr/pipeline/workv2/blobfuse2.yaml"
           - name: GOPATH
-            value: "/usr/pipeline/workv2/go"
+            value: '$(Pipeline.Workspace)/go'
+          - name: ROOT_DIR
+            value: '$(System.DefaultWorkingDirectory)' 
+          - name: WORK_DIR
+            value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
 
         steps:
-          - template: 'azure-pipeline-templates/setup.yml'
+          # -------------------------------------------------------
+          # Pull and build the code
+          - template: 'azure-pipeline-templates/build.yml'
             parameters:
+              working_directory: $(WORK_DIR)
+              root_dir: $(ROOT_DIR)
+              mount_dir: $(MOUNT_DIR)
+              temp_dir: $(TEMP_DIR)
+              gopath: $(GOPATH)
+              container: $(containerName)
               tags: $(tags)
-              installStep:
-                script: |
-                  cd /etc/apt
-                  sudo cp trusted.gpg trusted.gpg.d
-                  cd
-                  sudo apt-get update
-                  sudo apt-get install cmake gcc $(fuselib) git parallel -y
-                  if [ $(tags) == "fuse2" ]; then
-                    sudo apt-get install fuse -y
-                  else
-                    sudo apt-get install fuse3 -y
-                  fi
-                displayName: 'Install fuse'
+              fuselib: $(fuselib)
+              skip_ut: true
 
           - template: 'azure-pipeline-templates/e2e-tests-block-cache.yml'
             parameters:
@@ -1696,38 +1535,37 @@ stages:
 
         variables:
           - group: NightlyBlobFuse
-          - name: ROOT_DIR
-            value: "/usr/pipeline/workv2"
-          - name: WORK_DIR
-            value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
+          - name: MOUNT_DIR
+            value: '$(Pipeline.Workspace)/blob_mnt'
+          - name: TEMP_DIR
+            value: '$(Pipeline.Workspace)/blobfuse2_tmp'
+          - name: BLOBFUSE2_CFG
+            value: '$(Pipeline.Workspace)/blobfuse2.yaml'
+          - name: BLOBFUSE2_ADLS_CFG
+            value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
           - name: skipComponentGovernanceDetection
             value: true
-          - name: MOUNT_DIR
-            value: "/usr/pipeline/workv2/blob_mnt"
-          - name: TEMP_DIR
-            value: "/usr/pipeline/workv2/temp"
-          - name: BLOBFUSE2_CFG
-            value: "/usr/pipeline/workv2/blobfuse2.yaml"
           - name: GOPATH
-            value: "/usr/pipeline/workv2/go"
+            value: '$(Pipeline.Workspace)/go'
+          - name: ROOT_DIR
+            value: '$(System.DefaultWorkingDirectory)' 
+          - name: WORK_DIR
+            value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
 
         steps:
-          - template: 'azure-pipeline-templates/setup.yml'
+          # -------------------------------------------------------
+          # Pull and build the code
+          - template: 'azure-pipeline-templates/build.yml'
             parameters:
+              working_directory: $(WORK_DIR)
+              root_dir: $(ROOT_DIR)
+              mount_dir: $(MOUNT_DIR)
+              temp_dir: $(TEMP_DIR)
+              gopath: $(GOPATH)
+              container: $(containerName)
               tags: $(tags)
-              installStep:
-                script: |
-                  cd /etc/apt
-                  sudo cp trusted.gpg trusted.gpg.d
-                  cd
-                  sudo apt-get update
-                  sudo apt-get install cmake gcc $(fuselib) git parallel -y
-                  if [ $(tags) == "fuse2" ]; then
-                    sudo apt-get install fuse -y
-                  else
-                    sudo apt-get install fuse3 -y
-                  fi
-                displayName: 'Install fuse'
+              fuselib: $(fuselib)
+              skip_ut: true
 
           - template: 'azure-pipeline-templates/e2e-tests-spcl.yml'
             parameters:
@@ -1775,38 +1613,37 @@ stages:
 
         variables:
           - group: NightlyBlobFuse
-          - name: ROOT_DIR
-            value: "/usr/pipeline/workv2"
-          - name: WORK_DIR
-            value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
+          - name: MOUNT_DIR
+            value: '$(Pipeline.Workspace)/blob_mnt'
+          - name: TEMP_DIR
+            value: '$(Pipeline.Workspace)/blobfuse2_tmp'
+          - name: BLOBFUSE2_CFG
+            value: '$(Pipeline.Workspace)/blobfuse2.yaml'
+          - name: BLOBFUSE2_ADLS_CFG
+            value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
           - name: skipComponentGovernanceDetection
             value: true
-          - name: MOUNT_DIR
-            value: "/usr/pipeline/workv2/blob_mnt"
-          - name: TEMP_DIR
-            value: "/usr/pipeline/workv2/temp"
-          - name: BLOBFUSE2_CFG
-            value: "/usr/pipeline/workv2/blobfuse2.yaml"
           - name: GOPATH
-            value: "/usr/pipeline/workv2/go"
+            value: '$(Pipeline.Workspace)/go'
+          - name: ROOT_DIR
+            value: '$(System.DefaultWorkingDirectory)' 
+          - name: WORK_DIR
+            value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
 
         steps:
-          - template: 'azure-pipeline-templates/setup.yml'
+          # -------------------------------------------------------
+          # Pull and build the code
+          - template: 'azure-pipeline-templates/build.yml'
             parameters:
+              working_directory: $(WORK_DIR)
+              root_dir: $(ROOT_DIR)
+              mount_dir: $(MOUNT_DIR)
+              temp_dir: $(TEMP_DIR)
+              gopath: $(GOPATH)
+              container: $(containerName)
               tags: $(tags)
-              installStep:
-                script: |
-                  cd /etc/apt
-                  sudo cp trusted.gpg trusted.gpg.d
-                  cd
-                  sudo apt-get update
-                  sudo apt-get install cmake gcc $(fuselib) git parallel -y
-                  if [ $(tags) == "fuse2" ]; then
-                    sudo apt-get install fuse -y
-                  else
-                    sudo apt-get install fuse3 -y
-                  fi
-                displayName: 'Install fuse'
+              fuselib: $(fuselib)
+              skip_ut: true
 
           - template: 'azure-pipeline-templates/e2e-tests-spcl.yml'
             parameters:
@@ -1861,66 +1698,19 @@ stages:
             value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
 
         steps:
-          - script: |
-              cd /etc/apt
-              sudo cp trusted.gpg trusted.gpg.d
-              cd
-              sudo apt-get update --fix-missing -o Dpkg::Options::="--force-confnew"
-              sudo apt-get install make cmake gcc g++ parallel $(fuselib) -y -o Dpkg::Options::="--force-confnew"
-            displayName: 'Install libfuse'
-
-          - checkout: none
-
-          # Clone the repo
-          - script: |
-              git clone https://github.com/Azure/azure-storage-fuse
-            displayName: 'Checkout Code'
-            workingDirectory: $(ROOT_DIR)
-
-          # Checkout the branch
-          - script: |
-              git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
-            displayName: 'Checkout Branch'
-            workingDirectory: $(WORK_DIR)
-
-          # Create directory structure
-          - script: |
-              sudo mkdir -p $(ROOT_DIR)
-              sudo chown -R `whoami` $(ROOT_DIR)
-              chmod 777 $(ROOT_DIR)
-            displayName: 'Create Directory Structure'
-
           # -------------------------------------------------------
-            # Alternative custom script for Self-Hosted agents to install Go-lang
-          - task: ShellScript@2
-            inputs:
-              scriptPath: "$(WORK_DIR)/go_installer.sh"
-              args: "$(ROOT_DIR)/"
-            displayName: "GoTool Custom Setup"
-
-          # Downloading Go dependency packages
-          - task: Go@0
-            inputs:
-              command: 'get'
-              arguments: '-d'
-              workingDirectory: $(WORK_DIR)
-            displayName: "Go Get"
-
-          # Building our package
-          - task: Go@0
-            inputs:
-              command: 'build'
-              arguments: "-o blobfuse2"
-              workingDirectory: $(WORK_DIR)
-            displayName: "Go Build Blobfuse2"
-
-          # Building our package
-          - task: Go@0
-            inputs:
-              command: 'build'
-              arguments: "-o bfusemon ./tools/health-monitor/"
-              workingDirectory: $(WORK_DIR)
-            displayName: "Go Build bfusemon"
+          # Pull and build the code
+          - template: 'azure-pipeline-templates/build.yml'
+            parameters:
+              working_directory: $(WORK_DIR)
+              root_dir: $(ROOT_DIR)
+              mount_dir: $(MOUNT_DIR)
+              temp_dir: $(TEMP_DIR)
+              gopath: $(GOPATH)
+              container: $(containerName)
+              tags: $(tags)
+              fuselib: $(fuselib)
+              skip_ut: true
 
           - script: |
               cd $(WORK_DIR)

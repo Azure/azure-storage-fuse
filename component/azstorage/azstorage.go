@@ -422,7 +422,7 @@ func (az *AzStorage) DeleteFile(options internal.DeleteFileOptions) error {
 func (az *AzStorage) RenameFile(options internal.RenameFileOptions) error {
 	log.Trace("AzStorage::RenameFile : %s to %s", options.Src, options.Dst)
 
-	err := az.storage.RenameFile(options.Src, options.Dst)
+	err := az.storage.RenameFile(options.Src, options.Dst, options.SrcAttr)
 
 	if err == nil {
 		azStatsCollector.PushEvents(renameFile, options.Src, map[string]interface{}{src: options.Src, dest: options.Dst})
@@ -445,7 +445,8 @@ func (az *AzStorage) ReadInBuffer(options internal.ReadInBufferOptions) (length 
 		return 0, nil
 	}
 
-	err = az.storage.ReadInBuffer(options.Name, options.Offset, dataLen, options.Data)
+	err = az.storage.ReadInBuffer(options.Name, options.Offset, dataLen, options.Data, options.Etag)
+
 	if err != nil {
 		log.Err("AzStorage::ReadInBuffer : Failed to read %s [%s]", options.Name, err.Error())
 	}
@@ -547,7 +548,7 @@ func (az *AzStorage) StageData(opt internal.StageDataOptions) error {
 }
 
 func (az *AzStorage) CommitData(opt internal.CommitDataOptions) error {
-	return az.storage.CommitBlocks(opt.Name, opt.List)
+	return az.storage.CommitBlocks(opt.Name, opt.List, opt.NewETag)
 }
 
 // TODO : Below methods are pending to be implemented
@@ -656,6 +657,9 @@ func init() {
 
 	preserveACL := config.AddBoolFlag("preserve-acl", false, "Preserve ACL and Permissions set on file during updates")
 	config.BindPFlag(compName+".preserve-acl", preserveACL)
+
+	blobFilter := config.AddStringFlag("filter", "", "Filter string to match blobs")
+	config.BindPFlag(compName+".filter", blobFilter)
 
 	config.RegisterFlagCompletionFunc("container-name", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveNoFileComp

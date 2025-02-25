@@ -41,6 +41,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/vibhansa-msft/blobfilter"
 )
 
 // Example for azblob usage : https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/storage/azblob#pkg-examples
@@ -74,15 +75,17 @@ type AzStorageConfig struct {
 	maxResultsForList  int32
 	disableCompression bool
 
-	telemetry      string
-	honourACL      bool
-	disableSymlink bool
-	preserveACL    bool
+	telemetry   string
+	honourACL   bool
+	preserveACL bool
 
 	// CPK related config
 	cpkEnabled             bool
 	cpkEncryptionKey       string
 	cpkEncryptionKeySha256 string
+
+	// Blob filters
+	filter *blobfilter.BlobFilter
 }
 
 type AzStorageConnection struct {
@@ -108,7 +111,7 @@ type AzConnection interface {
 	DeleteFile(name string) error
 	DeleteDirectory(name string) error
 
-	RenameFile(string, string) error
+	RenameFile(string, string, *internal.ObjAttr) error
 	RenameDirectory(string, string) error
 
 	GetAttr(name string) (attr *internal.ObjAttr, err error)
@@ -118,7 +121,7 @@ type AzConnection interface {
 
 	ReadToFile(name string, offset int64, count int64, fi *os.File) error
 	ReadBuffer(name string, offset int64, len int64) ([]byte, error)
-	ReadInBuffer(name string, offset int64, len int64, data []byte) error
+	ReadInBuffer(name string, offset int64, len int64, data []byte, etag *string) error
 
 	WriteFromFile(name string, metadata map[string]*string, fi *os.File) error
 	WriteFromBuffer(name string, metadata map[string]*string, data []byte) error
@@ -132,9 +135,11 @@ type AzConnection interface {
 
 	GetCommittedBlockList(string) (*internal.CommittedBlockList, error)
 	StageBlock(context.Context, string, []byte, string) error
-	CommitBlocks(string, []string) error
+	CommitBlocks(string, []string, *string) error
 
 	UpdateServiceClient(_, _ string) error
+
+	SetFilter(string) error
 }
 
 // NewAzStorageConnection : Based on account type create respective AzConnection Object

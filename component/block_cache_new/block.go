@@ -25,7 +25,7 @@ const StdBlockIdLength int = 24 // We use base64 encoded strings of length 24 in
 type blockState int
 
 const (
-	localBlock      blockState = iota //Block is in local memory
+	localBlock      blockState = iota //Block is in local memory and is outofsync with Azure Storage.
 	uncommitedBlock                   //Block is in the Azure Storage but not reflected yet in the Remote file
 	committedBlock                    //Block is present inside the remote file
 )
