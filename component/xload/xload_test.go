@@ -353,28 +353,6 @@ func (suite *xloadTestSuite) TestXComponentDefault() {
 	suite.assert.Equal(n, 0)
 }
 
-// // test component which returns error in process method
-// type testCmpErr struct {
-// 	XBase
-// }
-
-// func (t *testCmpErr) Process(item *WorkItem) (int, error) {
-// 	return -1, fmt.Errorf("test error")
-// }
-
-// func (suite *xloadTestSuite) TestXComponentProcessError() {
-// 	defer suite.cleanupTest(false)
-// 	suite.cleanupTest(false) // teardown the default xload generated
-
-// 	t := &testCmpErr{}
-
-// 	t.Schedule(nil)
-
-// 	n, err := t.Process(nil)
-// 	suite.assert.NotNil(err)
-// 	suite.assert.Equal(n, -1)
-// }
-
 func (suite *xloadTestSuite) TestCreateDownloader() {
 	defer suite.cleanupTest(false)
 	suite.cleanupTest(false) // teardown the default xload generated
