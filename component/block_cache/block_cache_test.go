@@ -2830,6 +2830,57 @@ func (suite *blockCacheTestSuite) TestStrongConsistency() {
 	suite.assert.NotEqualValues(xattrMd5sum1, xattrMd5sum2)
 }
 
+func (suite *blockCacheTestSuite) TestReadCommittedLastBlockAfterAppends() {
+	prefetch := 12
+	cfg := fmt.Sprintf("block_cache:\n  block-size-mb: 1\n  mem-size-mb: 12\n  prefetch: %v\n  parallelism: 10", prefetch)
+	tobj, err := setupPipeline(cfg)
+	defer tobj.cleanupPipeline()
+
+	suite.assert.Nil(err)
+	suite.assert.NotNil(tobj.blockCache)
+
+	path := getTestFileName(suite.T().Name())
+	storagePath := filepath.Join(tobj.fake_storage_path, path)
+
+	// write using block cache
+	options := internal.CreateFileOptions{Name: path, Mode: 0777}
+	h, err := tobj.blockCache.CreateFile(options)
+	suite.assert.Nil(err)
+	suite.assert.NotNil(h)
+	suite.assert.Equal(h.Size, int64(0))
+	suite.assert.False(h.Dirty())
+
+	// Jump to 13thMB offset and write 500kb of data
+	n, err := tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: int64(13 * _1MB), Data: dataBuff[:(_1MB / 2)]})
+	suite.assert.Nil(err)
+	suite.assert.Equal(n, int(_1MB/2))
+	suite.assert.True(h.Dirty())
+
+	// Write remaining data backwords so that last block is staged first
+	for i := 0; i < 12; i++ {
+
+		n, err := tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: int64(uint64(12-i) * _1MB), Data: dataBuff[:_1MB]})
+		suite.assert.Nil(err)
+		suite.assert.Equal(n, int(_1MB))
+		suite.assert.True(h.Dirty())
+	}
+
+	// Now Jump to 20thMB offset and write 500kb of data
+	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: int64(20 * _1MB), Data: dataBuff[:(_1MB / 2)]})
+	suite.assert.Nil(err)
+	suite.assert.Equal(n, int(_1MB/2))
+	suite.assert.True(h.Dirty())
+
+	tobj.blockCache.FlushFile(internal.FlushFileOptions{Handle: h})
+
+	err = tobj.blockCache.CloseFile(internal.CloseFileOptions{Handle: h})
+	suite.assert.Nil(err)
+
+	_, err = os.Stat(storagePath)
+	suite.assert.Nil(err)
+	suite.assert.Equal(h.Size, int64((20*_1MB)+(_1MB/2)))
+}
+
 // In order for 'go test' to run this suite, we need to create
 // a normal test function and pass our suite to suite.Run
 func TestBlockCacheTestSuite(t *testing.T) {
