@@ -74,7 +74,7 @@ const (
 	DualStack              bool          = true
 	MaxIdleConns           int           = 0 // No limit
 	MaxIdleConnsPerHost    int           = 200
-	MaxConnsPerHost        int           = 300 
+	MaxConnsPerHost        int           = 300
 	IdleConnTimeout        time.Duration = 90 * time.Second
 	TLSHandshakeTimeout    time.Duration = 10 * time.Second
 	ExpectContinueTimeout  time.Duration = 1 * time.Second
@@ -183,7 +183,7 @@ func newBlobfuse2HttpClient(conf *AzStorageConfig) (*http.Client, error) {
 			}).Dial, /*Context*/
 			MaxIdleConns:          MaxIdleConns, // No limit
 			MaxIdleConnsPerHost:   MaxIdleConnsPerHost,
-			MaxConnsPerHost:       MaxConnsPerHost, 
+			MaxConnsPerHost:       MaxConnsPerHost,
 			IdleConnTimeout:       IdleConnTimeout,
 			TLSHandshakeTimeout:   TLSHandshakeTimeout,
 			ExpectContinueTimeout: ExpectContinueTimeout,
