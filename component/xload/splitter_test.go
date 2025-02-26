@@ -155,7 +155,12 @@ func (ts *testSplitter) cleanup() error {
 }
 
 func (suite *splitterTestSuite) TestNewDownloadSplitter() {
-	ds, err := newDownloadSplitter(nil, "", nil, nil, nil)
+	ds, err := newDownloadSplitter(nil)
+	suite.assert.NotNil(err)
+	suite.assert.Nil(ds)
+	suite.assert.Contains(err.Error(), "invalid parameters sent to create download splitter")
+
+	ds, err = newDownloadSplitter(&newDownloadSplitterOptions{})
 	suite.assert.NotNil(err)
 	suite.assert.Nil(ds)
 	suite.assert.Contains(err.Error(), "invalid parameters sent to create download splitter")
@@ -164,7 +169,13 @@ func (suite *splitterTestSuite) TestNewDownloadSplitter() {
 	suite.assert.Nil(err)
 	suite.assert.NotNil(statsMgr)
 
-	ds, err = newDownloadSplitter(NewBlockPool(1, 1), "/home/user/random_path", remote, statsMgr, common.NewLockMap())
+	ds, err = newDownloadSplitter(&newDownloadSplitterOptions{
+		blockPool: NewBlockPool(1, 1),
+		path:      "/home/user/random_path",
+		remote:    remote,
+		statsMgr:  statsMgr,
+		fileLocks: common.NewLockMap(),
+	})
 	suite.assert.Nil(err)
 	suite.assert.NotNil(ds)
 }
@@ -179,7 +190,7 @@ func (suite *splitterTestSuite) TestProcessFilePresent() {
 		suite.assert.Nil(err)
 	}()
 
-	ds, err := newDownloadSplitter(ts.blockPool, ts.path, remote, ts.stMgr, ts.locks)
+	ds, err := newDownloadSplitter(&newDownloadSplitterOptions{ts.blockPool, ts.path, remote, ts.stMgr, ts.locks, false})
 	suite.assert.Nil(err)
 	suite.assert.NotNil(ds)
 
@@ -208,15 +219,23 @@ func (suite *splitterTestSuite) TestSplitterStartStop() {
 		suite.assert.Nil(err)
 	}()
 
-	rl, err := newRemoteLister(ts.path, common.DefaultFilePermissionBits, remote, ts.stMgr)
+	rl, err := newRemoteLister(&newRemoteListerOptions{
+		path:              ts.path,
+		defaultPermission: common.DefaultFilePermissionBits,
+		remote:            remote,
+		statsMgr:          ts.stMgr,
+	})
 	suite.assert.Nil(err)
 	suite.assert.NotNil(rl)
 
-	ds, err := newDownloadSplitter(ts.blockPool, ts.path, remote, ts.stMgr, ts.locks)
+	ds, err := newDownloadSplitter(&newDownloadSplitterOptions{ts.blockPool, ts.path, remote, ts.stMgr, ts.locks, false})
 	suite.assert.Nil(err)
 	suite.assert.NotNil(ds)
 
-	rdm, err := newRemoteDataManager(remote, ts.stMgr)
+	rdm, err := newRemoteDataManager(&newRemoteDataManagerOptions{
+		remote:   remote,
+		statsMgr: ts.stMgr,
+	})
 	suite.assert.Nil(err)
 	suite.assert.NotNil(rdm)
 
