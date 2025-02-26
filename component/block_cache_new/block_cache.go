@@ -293,7 +293,7 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 			return dataWritten, err
 		}
 		blk.cancelOngoingAsyncUpload()
-		blk.buf.resetTimer()
+		blk.resetAsyncUploadTimer()
 		blockOffset := convertOffsetIntoBlockOffset(offset)
 
 		blk.Lock()

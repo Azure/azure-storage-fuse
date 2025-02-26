@@ -2,14 +2,13 @@ package block_cache_new
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"time"
 )
 
 func scheduleUpload(blk *block, r requestType) {
 	blk.uploadDone = make(chan error, 1)
 	ctx, cancel := context.WithCancel(context.Background())
-	blk.uploadCtx = ctx
 	taskDone := make(chan struct{}, 1)
 	blk.cancelOngoingAsyncUpload = func() {
 		cancel()
@@ -19,40 +18,46 @@ func scheduleUpload(blk *block, r requestType) {
 }
 
 // Schedules the upload and return true if the block is local/uncommited.
-func syncUploader(blk *block) bool {
+func uploader(blk *block, r requestType) (state blockState, err error) {
 	blk.Lock()
 	defer blk.Unlock()
 	if blk.state == localBlock {
 		if blk.hole {
 			// This is a sparse block.
-			err := punchHole(blk.file)
+			err = punchHole(blk.file)
 			if err == nil {
 				blk.state = uncommitedBlock
 			}
-		} else {
-			if blk.buf == nil {
-				panic("Local Block must always have some buffer")
-			}
+		} else if blk.buf != nil {
 			// Check if async upload is in progress.
 			select {
 			case err, ok := <-blk.uploadDone:
-				if ok && err == nil && !errors.Is(blk.uploadCtx.Err(), context.Canceled) {
+				if ok && err == nil {
 					// Upload was already completed by async scheduler and no more write came after it.
 					blk.state = uncommitedBlock
 					close(blk.uploadDone)
 				} else {
-					scheduleUpload(blk, syncRequest)
+					logy.Write([]byte(fmt.Sprintf("BlockCache::uploader :[sync: %d], path=%s, blk Idx = %d\n", r, blk.file.Name, blk.idx)))
+					scheduleUpload(blk, r)
 				}
-			case <-time.NewTimer(20 * time.Millisecond).C:
-				// Taking toomuch time for async upload to complete, cancel the upload and schedule a new one.
-				blk.cancelOngoingAsyncUpload()
-				scheduleUpload(blk, syncRequest)
+			case <-time.NewTimer(1000 * time.Millisecond).C:
+				// Taking toomuch time for request to complete,
+				// cancel the ongoing upload and schedule a new one.
+				if r == syncRequest {
+					logy.Write([]byte(fmt.Sprintf("BlockCache::uploader Debug :[sync: %d], path=%s, blk Idx = %d\n", r, blk.file.Name, blk.idx)))
+					blk.cancelOngoingAsyncUpload()
+					scheduleUpload(blk, r)
+				}
 			}
-			//err = syncBuffer(file.Name, file.size, blk)
 		}
-		return true
-	} else if blk.state == uncommitedBlock {
-		return true
 	}
-	return false
+	if r == syncRequest {
+		err, ok := <-blk.uploadDone
+		if ok && err == nil {
+			blk.state = uncommitedBlock
+			close(blk.uploadDone)
+		}
+	}
+	state = blk.state
+	return
 }

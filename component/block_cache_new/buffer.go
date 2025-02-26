@@ -15,17 +15,12 @@ import (
 
 // TODO: Implement GC after 80% of memory given for blobfuse
 var zeroBuffer *Buffer
-var defaultBlockTimeout = 1 * time.Millisecond
+var defaultBlockTimeout = 1000 * time.Millisecond
 
 type Buffer struct {
-	data     []byte      // Data holding in the buffer
-	valid    bool        // is date present in the buffer valid?
-	expiry   *time.Timer // Timer for buffer expiry
-	checksum []byte      // Checksum for the data
-}
-
-func (buf *Buffer) resetTimer() {
-	buf.expiry.Reset(defaultBlockTimeout)
+	data     []byte // Data hoding in the buffer
+	valid    bool   // is date present in the buffer valid?
+	checksum []byte // Checksum for the data
 }
 
 type BufferPool struct {
@@ -49,47 +44,30 @@ func createBufferPool(bufSize int) *BufferPool {
 	}
 	zeroBuffer = bPool.getBuffer(true)
 	go bPool.asyncUploadScheduler()
-	go bPool.blockCleaner()
+	go bPool.asyncBufferReclaimation()
 	return bPool
 }
 
-// It will Schedule a task for uploading the block to Azure Storage
-// It will schedule a local block to upload when
-// 1. timer since last operation on the block was over.
-// Schedules the task and push the block into uploadingBlks.
+// It will Schedule a task for uploading the block to Azure Storage asynchronously
+// when timer since last operation on the block was over.
 func (bp *BufferPool) asyncUploadScheduler() {
 	for blk := range bp.localBlks {
-		<-blk.buf.expiry.C
-		blk.Lock()
-		if blk.state == localBlock {
-			select {
-			case err, ok := <-blk.uploadDone: // Check if sync upload is in progress
-				if ok && err == nil && !errors.Is(blk.uploadCtx.Err(), context.Canceled) {
-					// Upload was already completed by async scheduler and no more write came after it.
-					blk.state = uncommitedBlock
-					close(blk.uploadDone)
-				} else if !ok {
-					//todo : Error handling when the upload is not success
-					logy.Write([]byte(fmt.Sprintf("Async Uploader: Scheduling blk idx: %d, filePath: %s\n", blk.idx, blk.file.Name)))
-					scheduleUpload(blk, asyncRequest)
-				}
-			case <-time.NewTimer(5 * time.Millisecond).C:
-			}
-		}
-		blk.Unlock()
+		<-blk.asyncUploadTimer.C
+		uploader(blk, asyncRequest)
 	}
 }
 
 // Responsible for giving blocks back to the pool,
-// It can happen in 2 scenarios:
-// 1. Block is not referenced by any open handle.
-// 2. timer since last operation on the block was over.
-func (bp *BufferPool) blockCleaner() {
-	for blk := range bp.localBlks {
-		blk.Lock()
-		releaseBufferForBlock(blk)
-		blk.Unlock()
-	}
+// This can only take the buffers from the commited/uncommited blocks
+// and not from the local block
+// This will kick when the memory of the process is getting exhausted:
+// So we will take back the memory from the already open handles
+func (bp *BufferPool) asyncBufferReclaimation() {
+	// for blk := range bp.localBlks {
+	// 	blk.Lock()
+	// 	releaseBufferForBlock(blk)
+	// 	blk.Unlock()
+	// }
 }
 
 func (bp *BufferPool) getBufferForBlock(blk *block) {
@@ -116,7 +94,6 @@ func (bp *BufferPool) getBuffer(valid bool) *Buffer {
 	}
 	//b.data = b.data[:0]
 	b.valid = valid
-	b.expiry = time.NewTimer(defaultBlockTimeout)
 	b.checksum = nil
 	return b
 }
@@ -127,6 +104,10 @@ func (bp *BufferPool) putBuffer(blk *block) {
 		blk.buf = nil
 	}
 }
+
+// ************************************************************************
+// The following are the functions describes on the buffer
+// **************************************************************
 
 func getBlockWithReadAhead(idx int, start int, file *File) (*block, error) {
 	for i := 1; i <= 3; i++ {
@@ -149,11 +130,7 @@ func getBlockForRead(idx int, file *File, r requestType) (blk *block, err error)
 	}
 	blk = file.blockList[idx]
 	file.Unlock()
-	if r == syncRequest {
-		_, err = syncDownloader(idx, blk)
-	} else {
-		asyncDownloadScheduler(blk)
-	}
+	_, err = downloader(blk, r)
 	return blk, err
 }
 
@@ -192,7 +169,7 @@ func getBlockForWrite(idx int, file *File) (*block, error) {
 	}
 	blk := file.blockList[idx]
 	file.Unlock()
-	blkState, err := syncDownloader(idx, blk)
+	blkState, err := downloader(blk, syncRequest)
 	if blkState == committedBlock || blkState == uncommitedBlock {
 		bPool.localBlks <- blk
 	}
@@ -206,39 +183,21 @@ func syncBuffersForFile(file *File) (bool, error) {
 
 	file.Lock()
 	for _, blk := range file.blockList {
-		if syncUploader(blk) {
+		// To make the sync upload faster, first we schedule all the requests as async
+		// Then status would be checked using sync requests.
+		blkstate, _ := uploader(blk, asyncRequest)
+		if blkstate != committedBlock {
 			fileChanged = true
 		}
 	}
 	for _, blk := range file.blockList {
-		err, ok := <-blk.uploadDone
-		if ok && err == nil {
-			blk.Lock()
-			blk.state = uncommitedBlock
-			close(blk.uploadDone)
-			blk.Unlock()
-		}
+		_, err := uploader(blk, syncRequest)
 		if err != nil {
 			panic(fmt.Sprintf("Upload doesn't happen for the block idx : %d, file : %s\n", blk.idx, blk.file.Name))
 		}
 	}
 	file.Unlock()
 	return fileChanged, err
-}
-
-func syncBuffer(name string, size int64, blk *block) error {
-	blk.id = base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
-	if blk.buf == nil {
-		panic("Something has seriously messed up")
-	}
-	err := bc.NextComponent().StageData(
-		internal.StageDataOptions{
-			Name: name,
-			Id:   blk.id,
-			Data: blk.buf.data[:getBlockSize(size, blk.idx)],
-		},
-	)
-	return err
 }
 
 func syncZeroBuffer(name string) error {
@@ -284,8 +243,11 @@ func commitBuffersForFile(file *File) error {
 	}
 	err := bc.NextComponent().CommitData(internal.CommitDataOptions{Name: file.Name, List: blklist, BlockSize: uint64(BlockSize)})
 	if err == nil {
-		//todo: change all the buffer states to commited
-		file.synced = true
+		for _, blk := range file.blockList {
+			blk.Lock()
+			blk.state = committedBlock
+			blk.Unlock()
+		}
 	}
 	return err
 }

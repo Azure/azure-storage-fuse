@@ -123,25 +123,33 @@ func doUpload(t *task, workerNo int, r requestType) {
 	blk := t.blk
 	blk.id = base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
 	if blk.buf == nil {
-		panic("Something has seriously messed up While writing")
+		logy.Write([]byte(fmt.Sprintf("BlockCache::doUpload : this is the work of async stuff[sync: %d], path=%s, blk Idx = %d, worker No = %d\n", r, t.blk.file.Name, t.blk.idx, workerNo)))
+		panic("messed up")
 	}
 	logy.Write([]byte(fmt.Sprintf("BlockCache::doUpload : Upload Scheduled for block[sync: %d], path=%s, blk Idx = %d, worker No = %d\n", r, t.blk.file.Name, t.blk.idx, workerNo)))
-
-	err := bc.NextComponent().StageData(
-		internal.StageDataOptions{
-			Ctx:  t.ctx,
-			Name: t.blk.file.Name,
-			Id:   blk.id,
-			Data: blk.buf.data[:getBlockSize(atomic.LoadInt64(&t.blk.file.size), blk.idx)],
-		},
-	)
-	logy.Write([]byte(fmt.Sprintf("BlockCache::doUpload : Upload Complete for block[sync: %d], path=%s, blk Idx = %d, worker No = %d\n", r, t.blk.file.Name, t.blk.idx, workerNo)))
-	if err == nil && !errors.Is(t.ctx.Err(), context.Canceled) {
-		blk.uploadDone <- nil
-	} else if err == nil {
-		blk.uploadDone <- t.ctx.Err()
+	blkSize := getBlockSize(atomic.LoadInt64(&t.blk.file.size), blk.idx)
+	if blkSize <= 0 {
+		// There has been a truncate call came to shrink the filesize.
+		// No need for uploading this block
+		logy.Write([]byte(fmt.Sprintf("BlockCache::doUpload : Not uploading the block as blocklist got contracted[sync: %d], path=%s, blk Idx = %d, worker No = %d\n", r, t.blk.file.Name, t.blk.idx, workerNo)))
+		blk.uploadDone <- errors.New("BlockList got contracted")
 	} else {
-		blk.uploadDone <- err
+		err := bc.NextComponent().StageData(
+			internal.StageDataOptions{
+				Ctx:  t.ctx,
+				Name: t.blk.file.Name,
+				Id:   blk.id,
+				Data: blk.buf.data[:blkSize],
+			},
+		)
+		logy.Write([]byte(fmt.Sprintf("BlockCache::doUpload : Upload Complete for block[sync: %d], path=%s, blk Idx = %d, worker No = %d\n", r, t.blk.file.Name, t.blk.idx, workerNo)))
+		if err == nil && !errors.Is(t.ctx.Err(), context.Canceled) {
+			blk.uploadDone <- nil
+		} else if err == nil {
+			blk.uploadDone <- t.ctx.Err()
+		} else {
+			blk.uploadDone <- err
+		}
 	}
 	close(t.taskDone)
 }

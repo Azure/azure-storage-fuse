@@ -1,9 +1,9 @@
 package block_cache_new
 
 import (
-	"context"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
@@ -37,13 +37,12 @@ type block struct {
 	buf                         *Buffer    // Inmemory buffer if exists.
 	state                       blockState // It tells about the state of the block.
 	hole                        bool       // Hole means this block is a null block. This can be used to do some optimisations.
+	asyncUploadTimer            *time.Timer
 	uploadDone                  chan error // Channel to know when the uplaod completes.
 	downloadDone                chan error // Channel to know when the download completes.
 	cancelOngoingAsyncUpload    func()     // This function cancels the ongoing async upload, maybe triggered by any write that comes after its scheduling.
 	cancelOngolingAsyncDownload func()     // This function cancel the ongoing async downlaod.
-	uploadCtx                   context.Context
-	downloadCtx                 context.Context
-	file                        *File // file object that this block belong to.
+	file                        *File      // file object that this block belong to.
 }
 
 func createBlock(idx int, id string, state blockState, f *File) *block {
@@ -53,6 +52,7 @@ func createBlock(idx int, id string, state blockState, f *File) *block {
 		buf:                         nil,
 		state:                       state,
 		hole:                        false,
+		asyncUploadTimer:            time.NewTimer(defaultBlockTimeout),
 		uploadDone:                  make(chan error, 1),
 		downloadDone:                make(chan error, 1),
 		cancelOngoingAsyncUpload:    func() {},
@@ -62,6 +62,10 @@ func createBlock(idx int, id string, state blockState, f *File) *block {
 	close(blk.uploadDone)
 	close(blk.downloadDone)
 	return blk
+}
+
+func (blk *block) resetAsyncUploadTimer() {
+	blk.asyncUploadTimer.Reset(defaultBlockTimeout)
 }
 
 type blockList []*block
@@ -120,7 +124,7 @@ func updateModifiedBlock(blk *block) {
 }
 
 func changeStateOfBlockToLocal(idx int, blk *block) error {
-	_, err := syncDownloader(idx, blk)
+	_, err := downloader(blk, syncRequest)
 	if err != nil {
 		log.Trace("BlockCache::Truncate File : FAILED when retrieving last block idx=%d, path=%s, size=%d", idx, blk.file.Name, blk.file.size)
 		return err
