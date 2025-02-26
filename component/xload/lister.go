@@ -68,25 +68,32 @@ type remoteLister struct {
 	listBlocked bool
 }
 
-func newRemoteLister(path string, defaultPermission os.FileMode, remote internal.Component, statsMgr *StatsManager) (*remoteLister, error) {
-	log.Debug("lister::NewRemoteLister : create new remote lister for %s, default permission %v", path, defaultPermission)
+type newRemoteListerOptions struct {
+	path              string
+	defaultPermission os.FileMode
+	remote            internal.Component
+	statsMgr          *StatsManager
+}
 
-	if path == "" || remote == nil || statsMgr == nil {
+func newRemoteLister(opts *newRemoteListerOptions) (*remoteLister, error) {
+	if opts == nil || opts.path == "" || opts.remote == nil || opts.statsMgr == nil {
 		log.Err("lister::NewRemoteLister : invalid parameters sent to create remote lister")
 		return nil, fmt.Errorf("invalid parameters sent to create remote lister")
 	}
 
+	log.Debug("lister::NewRemoteLister : create new remote lister for %s, default permission %v", opts.path, opts.defaultPermission)
+
 	rl := &remoteLister{
 		lister: lister{
-			path:              path,
-			defaultPermission: defaultPermission,
+			path:              opts.path,
+			defaultPermission: opts.defaultPermission,
 		},
 		listBlocked: false,
 	}
 
 	rl.SetName(LISTER)
-	rl.SetRemote(remote)
-	rl.SetStatsManager(statsMgr)
+	rl.SetRemote(opts.remote)
+	rl.SetStatsManager(opts.statsMgr)
 	rl.Init()
 	return rl, nil
 }

@@ -52,9 +52,10 @@ var _ XComponent = &downloadSplitter{}
 
 type splitter struct {
 	XBase
-	blockPool *BlockPool
-	path      string
-	fileLocks *common.LockMap
+	blockPool   *BlockPool
+	path        string
+	fileLocks   *common.LockMap
+	consistency bool
 }
 
 // --------------------------------------------------------------------------------------------------------
@@ -63,25 +64,35 @@ type downloadSplitter struct {
 	splitter
 }
 
-func newDownloadSplitter(blockPool *BlockPool, path string, remote internal.Component, statsMgr *StatsManager, fileLocks *common.LockMap) (*downloadSplitter, error) {
-	if blockPool == nil || path == "" || remote == nil || statsMgr == nil || fileLocks == nil {
+type newDownloadSplitterOptions struct {
+	blockPool   *BlockPool
+	path        string
+	remote      internal.Component
+	statsMgr    *StatsManager
+	fileLocks   *common.LockMap
+	consistency bool
+}
+
+func newDownloadSplitter(opts *newDownloadSplitterOptions) (*downloadSplitter, error) {
+	if opts == nil || opts.blockPool == nil || opts.path == "" || opts.remote == nil || opts.statsMgr == nil || opts.fileLocks == nil {
 		log.Err("lister::NewRemoteLister : invalid parameters sent to create download splitter")
 		return nil, fmt.Errorf("invalid parameters sent to create download splitter")
 	}
 
-	log.Debug("splitter::NewDownloadSplitter : create new download splitter for %s, block size %v", path, blockPool.GetBlockSize())
+	log.Debug("splitter::NewDownloadSplitter : create new download splitter for %s, block size %v", opts.path, opts.blockPool.GetBlockSize())
 
 	d := &downloadSplitter{
 		splitter: splitter{
-			blockPool: blockPool,
-			path:      path,
-			fileLocks: fileLocks,
+			blockPool:   opts.blockPool,
+			path:        opts.path,
+			fileLocks:   opts.fileLocks,
+			consistency: opts.consistency,
 		},
 	}
 
 	d.SetName(SPLITTER)
-	d.SetRemote(remote)
-	d.SetStatsManager(statsMgr)
+	d.SetRemote(opts.remote)
+	d.SetStatsManager(opts.statsMgr)
 	d.Init()
 	return d, nil
 }
@@ -125,13 +136,14 @@ func (d *downloadSplitter) Process(item *WorkItem) (int, error) {
 	}
 
 	filePresent, isDir, size := isFilePresent(localPath)
-	if isDir {
-		log.Err("downloadSplitter::Process : %s is a directory", item.Path)
-		return -1, fmt.Errorf("%s is a directory", item.Path)
-	}
-	if filePresent && item.DataLen == uint64(size) {
-		log.Debug("downloadSplitter::Process : %s will be served from local path, priority %v", item.Path, item.Priority)
-		return int(size), nil
+	if filePresent {
+		if isDir {
+			log.Err("downloadSplitter::Process : %s is a directory", item.Path)
+			return -1, fmt.Errorf("%s is a directory", item.Path)
+		} else if item.DataLen == uint64(size) {
+			log.Debug("downloadSplitter::Process : %s will be served from local path, priority %v", item.Path, item.Priority)
+			return int(size), nil
+		}
 	}
 
 	// TODO:: xload : should we delete the file if it already exists
