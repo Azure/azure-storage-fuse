@@ -38,6 +38,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sync"
 	"time"
 
@@ -274,6 +275,31 @@ func (d *downloadSplitter) Process(item *WorkItem) (int, error) {
 		}
 
 		return -1, fmt.Errorf("failed to download data for file %s", item.Path)
+	}
+
+	if d.consistency {
+		// Compute md5 of local file
+		fileMD5, err := common.GetMD5(item.FileHandle)
+		if err != nil {
+			log.Err("downloadSplitter::Process : Failed to generate MD5Sum for %s [%s]", item.Path, err.Error())
+		} else {
+			if item.MD5 == nil {
+				log.Warn("downloadSplitter::Process : Failed to get MD5Sum for blob %s", item.Path)
+			} else {
+				// compare md5 and fail is not match
+				if !reflect.DeepEqual(fileMD5, item.MD5) {
+					log.Err("downloadSplitter::Process : MD5Sum mismatch on download for file %s, so deleting it from local path", item.Path)
+
+					// delete the file from the local path if md5sum is not matching
+					err = os.Remove(localPath)
+					if err != nil {
+						log.Err("downloadSplitter::Process : Failed to delete file %s [%s]", item.Path, err.Error())
+					}
+
+					return -1, fmt.Errorf("md5sum mismatch on download for file %s", item.Path)
+				}
+			}
+		}
 	}
 
 	log.Debug("downloadSplitter::Process : Download completed for file %s, priority %v", item.Path, item.Priority)

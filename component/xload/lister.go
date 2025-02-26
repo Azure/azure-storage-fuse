@@ -200,7 +200,7 @@ func (rl *remoteLister) Process(item *WorkItem) (int, error) {
 					fileMode = entry.Mode
 				}
 
-				// send file to the output channel for chunking
+				// send file to the splitter's channel for chunking
 				rl.GetNext().Schedule(&WorkItem{
 					CompName: rl.GetNext().GetName(),
 					Path:     entry.Path,
@@ -208,6 +208,7 @@ func (rl *remoteLister) Process(item *WorkItem) (int, error) {
 					Mode:     fileMode,
 					Atime:    entry.Atime,
 					Mtime:    entry.Mtime,
+					MD5:      entry.MD5,
 				})
 			}
 		}

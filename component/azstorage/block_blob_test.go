@@ -2864,7 +2864,7 @@ func (s *blockBlobTestSuite) TestMD5SetOnUpload() {
 			s.assert.NotEmpty(prop.MD5)
 
 			_, _ = f.Seek(0, 0)
-			localMD5, err := getMD5(f)
+			localMD5, err := common.GetMD5(f)
 			s.assert.Nil(err)
 			s.assert.EqualValues(localMD5, prop.MD5)
 
@@ -2965,7 +2965,7 @@ func (s *blockBlobTestSuite) TestMD5AutoSetOnUpload() {
 			s.assert.NotEmpty(prop.MD5)
 
 			_, _ = f.Seek(0, 0)
-			localMD5, err := getMD5(f)
+			localMD5, err := common.GetMD5(f)
 			s.assert.Nil(err)
 			s.assert.EqualValues(localMD5, prop.MD5)
 
@@ -3021,7 +3021,7 @@ func (s *blockBlobTestSuite) TestInvalidateMD5PostUpload() {
 			s.assert.NotEmpty(prop.MD5)
 
 			_, _ = f.Seek(0, 0)
-			localMD5, err := getMD5(f)
+			localMD5, err := common.GetMD5(f)
 			s.assert.Nil(err)
 			s.assert.NotEqualValues(localMD5, prop.MD5)
 

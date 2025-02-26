@@ -208,7 +208,8 @@ func (xl *Xload) Configure(_ bool) error {
 		xl.defaultPermission = common.DefaultFilePermissionBits
 	}
 
-	log.Debug("Xload::Configure : block size %v, mode %v, path %v, default permission %v", xl.blockSize, xl.mode.String(), xl.path, xl.defaultPermission)
+	log.Debug("Xload::Configure : block size %v, mode %v, path %v, default permission %v, export progress %v, consistency %v", xl.blockSize,
+		xl.mode.String(), xl.path, xl.defaultPermission, xl.exportProgress, xl.consistency)
 
 	return nil
 }
@@ -392,6 +393,7 @@ func (xl *Xload) downloadFile(fileName string) error {
 		Mode:     fileMode,
 		Atime:    attr.Atime,
 		Mtime:    attr.Mtime,
+		MD5:      attr.MD5,
 	})
 
 	if err != nil {

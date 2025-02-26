@@ -823,7 +823,7 @@ func (bb *BlockBlob) ReadToFile(name string, offset int64, count int64, fi *os.F
 
 	if bb.Config.validateMD5 {
 		// Compute md5 of local file
-		fileMD5, err := getMD5(fi)
+		fileMD5, err := common.GetMD5(fi)
 		if err != nil {
 			log.Warn("BlockBlob::ReadToFile : Failed to generate MD5 Sum for %s", name)
 		} else {
@@ -1030,7 +1030,7 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]*string, fi 
 	// hence we take cost of calculating md5 only for files which are bigger in size and which will be converted to blocks.
 	md5sum := []byte{}
 	if bb.Config.updateMD5 && stat.Size() >= blockblob.MaxUploadBlobBytes {
-		md5sum, err = getMD5(fi)
+		md5sum, err = common.GetMD5(fi)
 		if err != nil {
 			// Md5 sum generation failed so set nil while uploading
 			log.Warn("BlockBlob::WriteFromFile : Failed to generate md5 of %s", name)
