@@ -137,9 +137,9 @@ func getAzBlobAuth(config azAuthConfig) azAuth {
 				azAuthBase: base,
 			},
 		}
-	} else if config.AuthMode == EAuthType.CLIENTASSERTION() {
-		return &azAuthBlobClientAssertion{
-			azAuthClientAssertion{
+	} else if config.AuthMode == EAuthType.WORKLOADIDENTITY() {
+		return &azAuthBlobWorkloadIdentity{
+			azAuthWorkloadIdentity{
 				azAuthBase: base,
 			},
 		}
@@ -181,9 +181,9 @@ func getAzDatalakeAuth(config azAuthConfig) azAuth {
 				azAuthBase: base,
 			},
 		}
-	} else if config.AuthMode == EAuthType.CLIENTASSERTION() {
-		return &azAuthDatalakeClientAssertion{
-			azAuthClientAssertion{
+	} else if config.AuthMode == EAuthType.WORKLOADIDENTITY() {
+		return &azAuthDatalakeWorkloadIdentity{
+			azAuthWorkloadIdentity{
 				azAuthBase: base,
 			},
 		}

@@ -45,31 +45,31 @@ import (
 )
 
 // Verify that the Auth implement the correct AzAuth interfaces
-var _ azAuth = &azAuthBlobClientAssertion{}
-var _ azAuth = &azAuthDatalakeClientAssertion{}
+var _ azAuth = &azAuthBlobWorkloadIdentity{}
+var _ azAuth = &azAuthDatalakeWorkloadIdentity{}
 
-type azAuthClientAssertion struct {
+type azAuthWorkloadIdentity struct {
 	azAuthBase
 	azOAuthBase
 }
 
-func (azclientassertion *azAuthClientAssertion) getTokenCredential() (azcore.TokenCredential, error) {
-	opts := azclientassertion.getAzIdentityClientOptions(&azclientassertion.config)
+func (azWorkloadIdentity *azAuthWorkloadIdentity) getTokenCredential() (azcore.TokenCredential, error) {
+	opts := azWorkloadIdentity.getAzIdentityClientOptions(&azWorkloadIdentity.config)
 
 	// Create MSI cred to fetch token
 	msiOpts := &azidentity.ManagedIdentityCredentialOptions{
 		ClientOptions: opts,
 	}
-	msiOpts.ID = azidentity.ClientID(azclientassertion.config.ApplicationID)
+	msiOpts.ID = azidentity.ClientID(azWorkloadIdentity.config.ApplicationID)
 	cred, err := azidentity.NewManagedIdentityCredential(msiOpts)
 	if err != nil {
-		log.Err("azAuthClientAssertion::getTokenCredential : Failed to create managed identity credential [%s]", err.Error())
+		log.Err("azAuthWorkloadIdentity::getTokenCredential : Failed to create managed identity credential [%s]", err.Error())
 		return nil, err
 	}
 
 	scope := "api://AzureADTokenExchange"
-	if azclientassertion.config.AuthResource != "" {
-		scope = azclientassertion.config.AuthResource
+	if azWorkloadIdentity.config.AuthResource != "" {
+		scope = azWorkloadIdentity.config.AuthResource
 	}
 
 	getClientAssertions := func(context.Context) (string, error) {
@@ -78,21 +78,21 @@ func (azclientassertion *azAuthClientAssertion) getTokenCredential() (azcore.Tok
 		})
 
 		if err != nil {
-			log.Err("azAuthClientAssertion::getTokenCredential : Failed to get token from managed identity credential [%s]", err.Error())
+			log.Err("azAuthWorkloadIdentity::getTokenCredential : Failed to get token from managed identity credential [%s]", err.Error())
 			return "", err
 		}
 
 		return token.Token, nil
 	}
 
-	if azclientassertion.config.UserAssertion == "" {
+	if azWorkloadIdentity.config.UserAssertion == "" {
 		assertOpts := &azidentity.ClientAssertionCredentialOptions{
 			ClientOptions: opts,
 		}
 
 		return azidentity.NewClientAssertionCredential(
-			azclientassertion.config.TenantID,
-			azclientassertion.config.ClientID,
+			azWorkloadIdentity.config.TenantID,
+			azWorkloadIdentity.config.ClientID,
 			getClientAssertions,
 			assertOpts)
 	} else {
@@ -101,61 +101,61 @@ func (azclientassertion *azAuthClientAssertion) getTokenCredential() (azcore.Tok
 		}
 
 		return azidentity.NewOnBehalfOfCredentialWithClientAssertions(
-			azclientassertion.config.TenantID,
-			azclientassertion.config.ClientID,
-			azclientassertion.config.UserAssertion,
+			azWorkloadIdentity.config.TenantID,
+			azWorkloadIdentity.config.ClientID,
+			azWorkloadIdentity.config.UserAssertion,
 			getClientAssertions,
 			assertOpts)
 	}
 }
 
-type azAuthBlobClientAssertion struct {
-	azAuthClientAssertion
+type azAuthBlobWorkloadIdentity struct {
+	azAuthWorkloadIdentity
 }
 
 // getServiceClient : returns SPN based service client for blob
-func (azclientassertion *azAuthBlobClientAssertion) getServiceClient(stConfig *AzStorageConfig) (interface{}, error) {
-	cred, err := azclientassertion.getTokenCredential()
+func (azWorkloadIdentity *azAuthBlobWorkloadIdentity) getServiceClient(stConfig *AzStorageConfig) (interface{}, error) {
+	cred, err := azWorkloadIdentity.getTokenCredential()
 	if err != nil {
-		log.Err("azAuthBlobClientAssertion::getServiceClient : Failed to get token credential from client assertion [%s]", err.Error())
+		log.Err("azAuthBlobWorkloadIdentity::getServiceClient : Failed to get token credential from client assertion [%s]", err.Error())
 		return nil, err
 	}
 
 	opts, err := getAzBlobServiceClientOptions(stConfig)
 	if err != nil {
-		log.Err("azAuthBlobClientAssertion::getServiceClient : Failed to create client options [%s]", err.Error())
+		log.Err("azAuthBlobWorkloadIdentity::getServiceClient : Failed to create client options [%s]", err.Error())
 		return nil, err
 	}
 
-	svcClient, err := service.NewClient(azclientassertion.config.Endpoint, cred, opts)
+	svcClient, err := service.NewClient(azWorkloadIdentity.config.Endpoint, cred, opts)
 	if err != nil {
-		log.Err("azAuthBlobClientAssertion::getServiceClient : Failed to create service client [%s]", err.Error())
+		log.Err("azAuthBlobWorkloadIdentity::getServiceClient : Failed to create service client [%s]", err.Error())
 	}
 
 	return svcClient, err
 }
 
-type azAuthDatalakeClientAssertion struct {
-	azAuthClientAssertion
+type azAuthDatalakeWorkloadIdentity struct {
+	azAuthWorkloadIdentity
 }
 
 // getServiceClient : returns SPN based service client for blob
-func (azclientassertion *azAuthDatalakeClientAssertion) getServiceClient(stConfig *AzStorageConfig) (interface{}, error) {
-	cred, err := azclientassertion.getTokenCredential()
+func (azWorkloadIdentity *azAuthDatalakeWorkloadIdentity) getServiceClient(stConfig *AzStorageConfig) (interface{}, error) {
+	cred, err := azWorkloadIdentity.getTokenCredential()
 	if err != nil {
-		log.Err("azAuthDatalakeClientAssertion::getServiceClient : Failed to get token credential from client assertion [%s]", err.Error())
+		log.Err("azAuthDatalakeWorkloadIdentity::getServiceClient : Failed to get token credential from client assertion [%s]", err.Error())
 		return nil, err
 	}
 
 	opts, err := getAzDatalakeServiceClientOptions(stConfig)
 	if err != nil {
-		log.Err("azAuthDatalakeClientAssertion::getServiceClient : Failed to create client options [%s]", err.Error())
+		log.Err("azAuthDatalakeWorkloadIdentity::getServiceClient : Failed to create client options [%s]", err.Error())
 		return nil, err
 	}
 
-	svcClient, err := serviceBfs.NewClient(azclientassertion.config.Endpoint, cred, opts)
+	svcClient, err := serviceBfs.NewClient(azWorkloadIdentity.config.Endpoint, cred, opts)
 	if err != nil {
-		log.Err("azAuthDatalakeClientAssertion::getServiceClient : Failed to create service client [%s]", err.Error())
+		log.Err("azAuthDatalakeWorkloadIdentity::getServiceClient : Failed to create service client [%s]", err.Error())
 	}
 
 	return svcClient, err
