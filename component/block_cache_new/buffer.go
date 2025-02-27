@@ -30,7 +30,7 @@ type BufferPool struct {
 	bufferSize int         // Size of the each buffer in the bytes for this pool
 }
 
-func createBufferPool(bufSize int) *BufferPool {
+func newBufferPool(bufSize int) *BufferPool {
 	bPool := &BufferPool{
 		pool: sync.Pool{
 			New: func() any {
@@ -63,11 +63,7 @@ func (bp *BufferPool) asyncUploadScheduler() {
 // This will kick when the memory of the process is getting exhausted:
 // So we will take back the memory from the already open handles
 func (bp *BufferPool) asyncBufferReclaimation() {
-	// for blk := range bp.localBlks {
-	// 	blk.Lock()
-	// 	releaseBufferForBlock(blk)
-	// 	blk.Unlock()
-	// }
+
 }
 
 func (bp *BufferPool) getBufferForBlock(blk *block) {

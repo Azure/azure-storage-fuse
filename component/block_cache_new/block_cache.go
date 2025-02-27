@@ -111,7 +111,7 @@ func (bc *BlockCache) SetNextComponent(nc internal.Component) {
 //	this shall not Block the call otherwise pipeline will not start
 func (bc *BlockCache) Start(ctx context.Context) error {
 	log.Trace("BlockCache::Start : Starting component block_cache new %s", bc.Name())
-	bPool = createBufferPool(memory)
+	bPool = newBufferPool(memory)
 	wp = createWorkerPool(8)
 	return nil
 }
