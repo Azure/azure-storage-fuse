@@ -1,6 +1,7 @@
 package block_cache_new
 
 import (
+	"container/list"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -24,10 +25,14 @@ type Buffer struct {
 }
 
 type BufferPool struct {
-	pool       sync.Pool   // Pool used to get and put the buffers.
-	localBlks  chan *block // Local Blocks which are yet to upload. This list can contain only Local Blocks
-	syncedBlks chan *block // Current Synced Blocks. This list can contain both commited and Uncommited blocks.
-	bufferSize int         // Size of the each buffer in the bytes for this pool
+	pool sync.Pool // Pool used for buffer management.
+	sync.Mutex
+	asyncUploadQueue      chan *block
+	updateRecentnessOfBlk chan *block // Channel used to update the recentness of LRU
+	localBlksLst          *list.List  // LRU of Local Blocks which are yet to upload for all the open handles. This list can contain only Local Blocks
+	syncedBlksLst         *list.List  // LRU of Synced Blocks which are present in memory for all the open handles. This list can contain both commited and Uncommited blocks.
+	lruCache              map[*block]*list.Element
+	maxBlocks             int // Size of the each buffer in the bytes for this pool
 }
 
 func newBufferPool(bufSize int) *BufferPool {
@@ -37,21 +42,59 @@ func newBufferPool(bufSize int) *BufferPool {
 				return new(Buffer)
 			},
 		},
-		// Sizes of following channels need to be decided.
-		localBlks:  make(chan *block, 5000), // These blks are modified blocks and in local.
-		syncedBlks: make(chan *block, 5000), // These blks are synced with the azure storage.
-		bufferSize: bufSize,
+		// Sizes of following channel need to be decided.
+		asyncUploadQueue:      make(chan *block, 5000),
+		updateRecentnessOfBlk: make(chan *block),
+		localBlksLst:          list.New(), // Intialize the LRU
+		syncedBlksLst:         list.New(), // Intialize the LRU
+		lruCache:              make(map[*block]*list.Element),
+		maxBlocks:             bufSize / BlockSize,
 	}
 	zeroBuffer = bPool.getBuffer(true)
 	go bPool.asyncUploadScheduler()
-	go bPool.asyncBufferReclaimation()
+	go bPool.updateLRU()
 	return bPool
+}
+
+func (bp *BufferPool) addLocalBlockToLRU(blk *block) {
+	ele := bp.localBlksLst.PushFront(blk)
+	bp.lruCache[blk] = ele
+}
+
+func (bp *BufferPool) addSyncedBlockToLRU(blk *block) {
+	ele := bp.syncedBlksLst.PushFront(blk)
+	bp.lruCache[blk] = ele
+}
+
+func (bp *BufferPool) removeBlksFromLRU(blkList blockList) {
+
+}
+
+// small optimisation to reduce the lock usage in the sequentail workflows.
+// When you are sequentially reading/writing the file, no need to update the recentness for every (4/128)K read/write, do it when the block change
+// But this don't work when the user works on multiple files at a time.
+func (bp *BufferPool) updateLRU() {
+	var prevblk *block
+	for {
+		blk := <-bp.updateRecentnessOfBlk
+		if prevblk != blk {
+			// Update the recentness in the LRU's
+			bp.Lock()
+			if ee, ok := bp.lruCache[blk]; ok {
+				bp.localBlksLst.MoveToFront(ee)
+				bp.syncedBlksLst.MoveToFront(ee)
+			}
+			bp.Unlock()
+		}
+		prevblk = blk
+	}
 }
 
 // It will Schedule a task for uploading the block to Azure Storage asynchronously
 // when timer since last operation on the block was over.
+// lazy scheduling of the blocks to the azure storage if the file is opened for so much time.
 func (bp *BufferPool) asyncUploadScheduler() {
-	for blk := range bp.localBlks {
+	for blk := range bp.asyncUploadQueue {
 		<-blk.asyncUploadTimer.C
 		uploader(blk, asyncRequest)
 	}
@@ -60,22 +103,61 @@ func (bp *BufferPool) asyncUploadScheduler() {
 // Responsible for giving blocks back to the pool,
 // This can only take the buffers from the commited/uncommited blocks
 // and not from the local block
-// This will kick when the memory of the process is getting exhausted:
-// So we will take back the memory from the already open handles
-func (bp *BufferPool) asyncBufferReclaimation() {
-
+// This will kick-in when the memory configured for the process is getting exhausted:
+// So we will take back the memory blks from the already open handles which are not using them.
+// Tries to keep the memory under 75%
+// What if all the blocks are in localblocks queue, How can you retake from them?
+// Maybe schedule uploads on them and then free here.
+func (bp *BufferPool) bufferReclaimation(r requestType, usage int) {
+	logy.Write([]byte(fmt.Sprintf("BlockCache::bufferReclaimation [START] cur usage: %d\n", usage)))
+	// Take the lock on buffer pool if the request is of type async
+	if r == asyncRequest {
+		bp.Lock()
+		defer bp.Unlock()
+	}
+	// noOfBlksToFree := ((usage - 75) * bPool.maxBlocks) / 100
+	// currentBlk := bp.syncedBlks.Front()
+	// for currentBlk != nil && noOfBlksToFree > 0 {
+	// blk := currentBlk.Value.(*block)
+	// blk.Lock()
+	// //TODO: Release this blk only when no open handle is working on it
+	// blk.releaseBuffer()
+	// blk.Unlock()
+	// bp.syncedBlks.Remove(currentBlk)
+	// currentBlk = bp.syncedBlks.Front()
+	// noOfBlksToFree--
+	// }
+	// Print the memory Utilization after reclaiming the blocks to pool.
+	outstandingBlks := bp.localBlksLst.Len() + bp.syncedBlksLst.Len()
+	usage = (outstandingBlks / bp.maxBlocks) * 100
+	logy.Write([]byte(fmt.Sprintf("BlockCache::bufferReclaimation [END] cur usage: %d\n", usage)))
 }
 
 func (bp *BufferPool) getBufferForBlock(blk *block) {
+	bp.Lock()
+	defer bp.Unlock()
 	switch blk.state {
 	case localBlock:
-		// This block is a hole
 		blk.buf = bPool.getBuffer(true)
+		bPool.addLocalBlockToLRU(blk)
 	case committedBlock:
 		blk.buf = bPool.getBuffer(false)
+		bPool.addSyncedBlockToLRU(blk)
 	case uncommitedBlock:
 		//Todo: Block is evicted from the cache, to retrieve it, first we should do putBlockList
 		panic("Todo: Read of evicted Uncommited block")
+	}
+
+	// Check the memory usage
+	outstandingBlks := bp.localBlksLst.Len() + bp.syncedBlksLst.Len()
+	usage := (outstandingBlks / bp.maxBlocks) * 100
+
+	if usage > 80 {
+		// reclaim the memory asynchronously
+		go bPool.bufferReclaimation(asyncRequest, usage)
+	} else if usage > 95 {
+		// reclaim the memory synchronously.
+		bPool.bufferReclaimation(syncRequest, usage)
 	}
 }
 
@@ -88,7 +170,6 @@ func (bp *BufferPool) getBuffer(valid bool) *Buffer {
 	} else {
 		copy(b.data, zeroBuffer.data)
 	}
-	//b.data = b.data[:0]
 	b.valid = valid
 	b.checksum = nil
 	return b
@@ -159,7 +240,7 @@ func getBlockForWrite(idx int, file *File) (*block, error) {
 			}
 		}
 		blk := file.blockList[idx]
-		bPool.localBlks <- blk
+		bPool.asyncUploadQueue <- blk
 		file.Unlock()
 		return blk, nil
 	}
@@ -167,12 +248,12 @@ func getBlockForWrite(idx int, file *File) (*block, error) {
 	file.Unlock()
 	blkState, err := downloader(blk, syncRequest)
 	if blkState == committedBlock || blkState == uncommitedBlock {
-		bPool.localBlks <- blk
+		bPool.asyncUploadQueue <- blk
 	}
 	return blk, err
 }
 
-// Write all the Modified buffers to Azure Storage and return whether while is modified or not.
+// Write all the Modified buffers to Azure Storage and return whether file is modified or not.
 func syncBuffersForFile(file *File) (bool, error) {
 	var err error = nil
 	var fileChanged bool = false
@@ -255,11 +336,5 @@ func releaseBuffers(f *File) {
 		blk.Lock()
 		bPool.putBuffer(blk)
 		blk.Unlock()
-	}
-}
-
-func releaseBufferForBlock(blk *block) {
-	if blk.state == committedBlock {
-		bPool.putBuffer(blk)
 	}
 }

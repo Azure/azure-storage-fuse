@@ -208,7 +208,7 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 	return handle, nil
 }
 
-// ReadInBuffer: Read the file into a buffer
+// ReadInBuffer: Read some data of the file into a buffer
 func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
 	log.Trace("BlockCache::ReadFile : handle=%d, path=%s, offset: %d\n", options.Handle.ID, options.Handle.Path, options.Offset)
 	logy.Write([]byte(fmt.Sprintf("BlockCache::ReadFile : handle=%d, path=%s, offset: %d\n", options.Handle.ID, options.Handle.Path, options.Offset)))
@@ -260,9 +260,9 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 		block_buf := blk.buf
 		len_of_block_buf := getBlockSize(fileSize, idx)
 		bytesCopied := copy(options.Data[dataRead:], block_buf.data[blockOffset:len_of_block_buf])
-		if blockOffset+int64(bytesCopied) == int64(len_of_block_buf) {
-			releaseBufferForBlock(blk) // THis should handle the uncommited buffers
-		}
+		// if blockOffset+int64(bytesCopied) == int64(len_of_block_buf) {
+		// 	blk.releaseBuffer() // THis should handle the uncommited buffers
+		// }
 		blk.Unlock()
 
 		dataRead += bytesCopied
