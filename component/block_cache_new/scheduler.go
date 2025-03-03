@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
@@ -73,6 +74,7 @@ func (wp *workerPool) createTask(ctx context.Context, taskDone chan<- struct{}, 
 }
 
 func (wp *workerPool) worker(workerNo int) {
+	log.Info("BlockCache::worker Starting worker %d", workerNo)
 	defer wp.wg.Done()
 	var t *task
 	for {
@@ -98,10 +100,11 @@ func performTask(t *task, workerNo int, r requestType) {
 func doDownload(t *task, workerNo int, r requestType) {
 	blk := t.blk
 	if blk.buf == nil {
-		panic("Something has seriously messed up While Reading")
+		panic("BlockCache::doDownload : Something has seriously messed up While Reading")
 	}
+	log.Trace("BlockCache::doDownload : Download Starting for blk idx: %d, file : %s", blk.idx, blk.file.Name)
 	sizeOfData := getBlockSize(atomic.LoadInt64(&t.blk.file.size), blk.idx)
-	// logy.Write([]byte(fmt.Sprintf("BlockCache::doDownload : Download Scheduled for block[sync: %d], path=%s, blk Idx = %d, worker No = %d\n", r, t.blk.file.Name, t.blk.idx, workerNo)))
+
 	_, err := bc.NextComponent().ReadInBuffer(internal.ReadInBufferOptions{
 		Name:   t.blk.file.Name,
 		Offset: int64(blk.idx * BlockSize),
@@ -109,12 +112,16 @@ func doDownload(t *task, workerNo int, r requestType) {
 	})
 	// logy.Write([]byte(fmt.Sprintf("BlockCache::doDownload : Download Complete for block[sync: %d], path=%s, blk Idx = %d, worker No = %d\n", r, t.blk.file.Name, t.blk.idx, workerNo)))
 	if err == nil && !errors.Is(t.ctx.Err(), context.Canceled) {
+		log.Debug("BlockCache::doDownload : Download Success for blk idx: %d, file : %s", blk.idx, blk.file.Name)
 		blk.downloadDone <- nil
 	} else if err == nil {
+		log.Debug("BlockCache::doDownload : Download Success but context canceled blk idx: %d, file : %s", blk.idx, blk.file.Name)
 		blk.downloadDone <- t.ctx.Err()
 	} else {
+		log.Err("BlockCache::doDownload : Download failed blk idx: %d, file : %s, err : %s", blk.idx, blk.file.Name, err.Error())
 		blk.downloadDone <- err
 	}
+	blk.refCnt.Add(-1)
 	close(t.taskDone)
 }
 
@@ -122,15 +129,14 @@ func doUpload(t *task, workerNo int, r requestType) {
 	blk := t.blk
 	blk.id = base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
 	if blk.buf == nil {
-		// logy.Write([]byte(fmt.Sprintf("BlockCache::doUpload : this is the work of async stuff[sync: %d], path=%s, blk Idx = %d, worker No = %d\n", r, t.blk.file.Name, t.blk.idx, workerNo)))
-		panic("messed up")
+		panic("BlockCache::doUpload : messed up")
 	}
-	// logy.Write([]byte(fmt.Sprintf("BlockCache::doUpload : Upload Scheduled for block[sync: %d], path=%s, blk Idx = %d, worker No = %d\n", r, t.blk.file.Name, t.blk.idx, workerNo)))
+	log.Trace("BlockCache::doDownload : Upload Starting for blk idx: %d, file : %s", blk.idx, blk.file.Name)
 	blkSize := getBlockSize(atomic.LoadInt64(&t.blk.file.size), blk.idx)
 	if blkSize <= 0 {
 		// There has been a truncate call came to shrink the filesize.
 		// No need for uploading this block
-		// logy.Write([]byte(fmt.Sprintf("BlockCache::doUpload : Not uploading the block as blocklist got contracted[sync: %d], path=%s, blk Idx = %d, worker No = %d\n", r, t.blk.file.Name, t.blk.idx, workerNo)))
+		log.Err("BlockCache::doUpload : Not uploading the block as blocklist got contracted[sync: %d], path=%s, blk Idx = %d, worker No = %d\n", r, t.blk.file.Name, t.blk.idx, workerNo)
 		blk.uploadDone <- errors.New("BlockList got contracted")
 	} else {
 		err := bc.NextComponent().StageData(
@@ -141,12 +147,14 @@ func doUpload(t *task, workerNo int, r requestType) {
 				Data: blk.buf.data[:blkSize],
 			},
 		)
-		// logy.Write([]byte(fmt.Sprintf("BlockCache::doUpload : Upload Complete for block[sync: %d], path=%s, blk Idx = %d, worker No = %d\n", r, t.blk.file.Name, t.blk.idx, workerNo)))
 		if err == nil && !errors.Is(t.ctx.Err(), context.Canceled) {
+			log.Debug("BlockCache::doUpload : Upload Success for blk idx: %d, file : %s", blk.idx, blk.file.Name)
 			blk.uploadDone <- nil
 		} else if err == nil {
+			log.Debug("BlockCache::doUpload : Upload Success but context canceled for blk idx: %d, file : %s", blk.idx, blk.file.Name)
 			blk.uploadDone <- t.ctx.Err()
 		} else {
+			log.Err("BlockCache::doUpload : Upload failed blk idx: %d, file : %s, err : %s", blk.idx, blk.file.Name, err.Error())
 			blk.uploadDone <- err
 		}
 	}

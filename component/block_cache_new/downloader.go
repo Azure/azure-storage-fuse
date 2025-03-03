@@ -14,6 +14,9 @@ func scheduleDownload(blk *block, r requestType) {
 			cancel()
 			<-taskDone
 		}
+		// Increment the ref cnt for blk as download is in progress.
+		// Its gets automatically once the download completes/fails
+		blk.refCnt.Add(1)
 		wp.createTask(ctx, taskDone, false, r, blk)
 	}
 }
@@ -29,21 +32,30 @@ func downloader(blk *block, r requestType) (state blockState, err error) {
 
 	if blk.state == committedBlock {
 		// Check if async Download is in progress.
-		select {
-		case err, ok := <-blk.downloadDone:
-			if ok && err == nil {
-				// Download was already completed.
-				blk.buf.valid = true
-				close(blk.downloadDone)
-			} else if !blk.buf.valid {
-				scheduleDownload(blk, r)
+		now := time.Now()
+	outer:
+		for {
+			select {
+			case err, ok := <-blk.downloadDone:
+				if ok && err == nil {
+					// Download was already completed.
+					blk.buf.valid = true
+					close(blk.downloadDone)
+				} else if !blk.buf.valid {
+					scheduleDownload(blk, r)
+				}
+				break outer
+			default:
+				// Taking toomuch time for completing the request, cancel and reschedule.
+				if time.Since(now) > 1000*time.Millisecond {
+					blk.cancelOngolingAsyncDownload()
+					scheduleDownload(blk, r)
+					break outer
+				}
 			}
-		case <-time.NewTimer(1000 * time.Millisecond).C:
-			// Taking toomuch time for completing the request, cancel and reschedule.
-			blk.cancelOngolingAsyncDownload()
-			scheduleDownload(blk, r)
 		}
 	}
+
 	if r == syncRequest {
 		bPool.updateRecentnessOfBlk <- blk
 		err, ok := <-blk.downloadDone
@@ -52,6 +64,6 @@ func downloader(blk *block, r requestType) (state blockState, err error) {
 			close(blk.downloadDone)
 		}
 	}
-	state = blk.state
+
 	return
 }

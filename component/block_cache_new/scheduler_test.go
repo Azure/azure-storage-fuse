@@ -1,15 +1,11 @@
 package block_cache_new
 
-import (
-	"github.com/Azure/azure-storage-fuse/v2/component/azstorage"
-)
+// func setupPipeline() {
+// 	bc := NewBlockCacheComponent()
+// 	az := azstorage.NewazstorageComponent()
+// 	bc.SetNextComponent(az)
 
-func setupPipeline() {
-	bc := NewBlockCacheComponent()
-	az := azstorage.NewazstorageComponent()
-	bc.SetNextComponent(az)
-
-}
+// }
 
 // func TestMain(m *testing.M) {
 // 	setupPipeline()

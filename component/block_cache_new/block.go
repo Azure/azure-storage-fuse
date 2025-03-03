@@ -128,9 +128,10 @@ func updateModifiedBlock(blk *block) {
 }
 
 func changeStateOfBlockToLocal(idx int, blk *block) error {
+	blk.refCnt.Add(1)
 	_, err := downloader(blk, syncRequest)
 	if err != nil {
-		log.Trace("BlockCache::Truncate File : FAILED when retrieving last block idx=%d, path=%s, size=%d", idx, blk.file.Name, blk.file.size)
+		log.Err("BlockCache::changeStateOfBlockToLocal : download failed for blk idx=%d, path=%s, size=%d", idx, blk.file.Name, blk.file.size)
 		return err
 	}
 	blk.cancelOngoingAsyncUpload()
@@ -138,7 +139,7 @@ func changeStateOfBlockToLocal(idx int, blk *block) error {
 	updateModifiedBlock(blk)
 	currefCnt := blk.refCnt.Add(-1)
 	if currefCnt < 0 {
-		panic("Ref cnt for the blk is not getting modififed correctly")
+		panic("BlockCache::changeStateOfBlockToLocal : Ref cnt for the blk is not getting modififed correctly")
 	}
 	blk.Unlock()
 	return nil

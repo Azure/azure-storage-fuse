@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
@@ -41,7 +42,7 @@ func newBufferPool(memSize int) *BufferPool {
 				return new(Buffer)
 			},
 		},
-		updateRecentnessOfBlk: make(chan *block),
+		updateRecentnessOfBlk: make(chan *block, 10),
 		localBlksLst:          list.New(), // Intialize the LRU
 		syncedBlksLst:         list.New(), // Intialize the LRU
 		lruCache:              make(map[*block]*list.Element),
@@ -88,9 +89,9 @@ func (bp *BufferPool) updateLRU() {
 	for {
 		blk := <-bp.updateRecentnessOfBlk
 		if prevblk != blk {
+			log.Info("BlockCache::updateLRU : updating the recentness of the block idx: %d, filename: %s", blk.idx, blk.file.Name)
 			// Update the recentness in the LRU's
 			bp.Lock()
-			// logy.Write([]byte(fmt.Sprintf("BlockCache::updateLRU blk: %d, file:%s\n", blk.idx, blk.file.Name)))
 			if ee, ok := bp.lruCache[blk]; ok {
 				bp.localBlksLst.MoveToFront(ee)
 				bp.syncedBlksLst.MoveToFront(ee)
@@ -114,34 +115,28 @@ func (bp *BufferPool) bufferReclaimation(r requestType, usage int) {
 
 	outstandingBlks := bp.localBlksLst.Len() + bp.syncedBlksLst.Len()
 	usage = ((outstandingBlks * 100) / bp.maxBlocks)
-	// logy.Write([]byte(fmt.Sprintf("BlockCache::bufferReclaimation [START] [sync: %d]cur usage: %d\n", r, usage)))
-	fmt.Println("START")
-
 	noOfBlksToFree := ((usage - 75) * bp.maxBlocks) / 100
-	// logy.Write([]byte(fmt.Sprintf("BlockCache::bufferReclaimation Need %d evictions, total blocks: %d, sync list: %d, local list: %d\n", noOfBlksToFree, bp.maxBlocks, bp.syncedBlksLst.Len(), bp.localBlksLst.Len())))
+	log.Info("BlockCache::bufferReclaimation : [START] [sync: %d]cur usage: %d, needed %d evictions", r, usage, noOfBlksToFree)
+
 	currentBlk := bp.syncedBlksLst.Back()
-	PrintMemUsage()
 	for currentBlk != nil && noOfBlksToFree > 0 {
 		blk := currentBlk.Value.(*block)
-		// Check the refcnt for the blk and only remove buffer if the refcnt is zero.
+		// Check the refcnt for the blk and only release buffer if the refcnt is zero.
 		if rcnt := blk.refCnt.Load(); rcnt == 0 {
 			blk.Lock()
 			// not an elegant solution as there might be possiblity of refcnt getting increased after the if cond.
 			bp.removeBlockFromLRU(blk)
 			bp.releaseBuffer(blk)
-			// logy.Write([]byte(fmt.Sprintf("BlockCache::bufferReclaimation Successful reclaim blk idx: %d, file: %s\n", blk.idx, blk.file.Name)))
+			log.Info("BlockCache::bufferReclaimation :  Successful reclaim blk idx: %d, file: %s", blk.idx, blk.file.Name)
 			blk.Unlock()
 			currentBlk = bp.syncedBlksLst.Back()
 			noOfBlksToFree--
 		}
 	}
-	PrintMemUsage()
-	fmt.Println("END")
-	// logy.Write([]byte(fmt.Sprintf("BlockCache::bufferReclaimation Failed %d evictions, total blocks: %d, sync list: %d, local list: %d\n", noOfBlksToFree, bp.maxBlocks, bp.syncedBlksLst.Len(), bp.localBlksLst.Len())))
-	// Print the memory Utilization after reclaiming the blocks to pool.
+
 	outstandingBlks = bp.localBlksLst.Len() + bp.syncedBlksLst.Len()
 	usage = ((outstandingBlks * 100) / bp.maxBlocks)
-	// logy.Write([]byte(fmt.Sprintf("BlockCache::bufferReclaimation [END] [sync: %d]cur usage: %d\n", r, usage)))
+	log.Info("BlockCache::bufferReclaimation : [START] [sync: %d]cur usage: %d, cant evict %d blocks", r, usage, noOfBlksToFree)
 }
 
 func (bp *BufferPool) getBufferForBlock(blk *block) {
@@ -156,7 +151,7 @@ func (bp *BufferPool) getBufferForBlock(blk *block) {
 		bPool.addSyncedBlockToLRU(blk)
 	case uncommitedBlock:
 		//Todo: Block is evicted from the cache, to retrieve it, first we should do putBlockList
-		panic("Todo: Read of evicted Uncommited block")
+		panic("BlockCache::getBufferForBlock : Todo: Read of evicted Uncommited block")
 	}
 
 	// Check the memory usage
@@ -165,7 +160,7 @@ func (bp *BufferPool) getBufferForBlock(blk *block) {
 
 	if usage > 80 && usage < 95 {
 		// reclaim the memory asynchronously
-		fmt.Printf("Block Idx = %d\n", blk.idx)
+		//fmt.Printf("Block Idx = %d\n", blk.idx)
 		go bPool.bufferReclaimation(asyncRequest, usage)
 	} else if usage >= 95 {
 		// reclaim the memory synchronously.
@@ -178,10 +173,8 @@ func (bp *BufferPool) getBufferForBlock(blk *block) {
 func (bp *BufferPool) getBuffer(valid bool) *Buffer {
 	b := bp.pool.Get().(*Buffer)
 	if b.data == nil {
-		// logy.Write([]byte(fmt.Sprintf("BlockCache: getBuffer [ALLOCU] Mem for buffer got allocated")))
 		b.data = make([]byte, BlockSize)
 	} else {
-		// logy.Write([]byte(fmt.Sprintf("BlockCache: getBuffer [CACHEU] Mem for buffer served from pool")))
 		copy(b.data, zeroBuffer.data)
 	}
 	b.valid = valid
@@ -218,6 +211,7 @@ func getBlockForRead(idx int, file *File, r requestType) (blk *block, err error)
 	file.Lock()
 	if idx >= len(file.blockList) {
 		file.Unlock()
+		log.Err("BlockCache::getBlockForRead : Cannot read block as offset is out of the file's blocklist")
 		return nil, errors.New("block is out of the blocklist scope")
 	}
 	blk = file.blockList[idx]
@@ -233,7 +227,7 @@ func getBlockForRead(idx int, file *File, r requestType) (blk *block, err error)
 // This call should always return some buffer if len(blocklist) <= 50000
 func getBlockForWrite(idx int, file *File) (*block, error) {
 	if idx >= MAX_BLOCKS {
-		return nil, errors.New("write not supported space completed") // can we return ENOSPC error here?
+		return nil, errors.New("write not supported, space completed") // can we return ENOSPC error here?
 	}
 
 	file.Lock()
@@ -241,7 +235,12 @@ func getBlockForWrite(idx int, file *File) (*block, error) {
 	if idx >= lenOfBlkLst {
 		// Update the state of the last block to local as null data may get's appended to it.
 		if lenOfBlkLst > 0 {
-			changeStateOfBlockToLocal(lenOfBlkLst-1, file.blockList[lenOfBlkLst-1])
+			err := changeStateOfBlockToLocal(lenOfBlkLst-1, file.blockList[lenOfBlkLst-1])
+			if err != nil {
+				log.Err("BlockCache::getBlockForWrite : failed to convert the last block to local, file path=%s, size = %d, err = %s", file.Name, file.size, err.Error())
+				file.Unlock()
+				return nil, err
+			}
 		}
 
 		// Create at least 1 block. i.e, create blocks in the range (len(blocklist), idx]
@@ -264,6 +263,7 @@ func getBlockForWrite(idx int, file *File) (*block, error) {
 		return blk, nil
 	}
 	blk := file.blockList[idx]
+	blk.refCnt.Add(1)
 	file.Unlock()
 	_, err := downloader(blk, syncRequest)
 	return blk, err
@@ -319,7 +319,7 @@ func punchHole(f *File) error {
 }
 
 func commitBuffersForFile(file *File) error {
-	// logy.Write([]byte(fmt.Sprintf("BlockCache::commitFile : %s\n", file.Name)))
+	log.Trace("BlockCache::commitBuffersForFile : %s\n", file.Name)
 	var blklist []string
 	file.Lock()
 	defer file.Unlock()

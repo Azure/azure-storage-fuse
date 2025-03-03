@@ -754,9 +754,9 @@ func timer(name string) func() {
 		t := time.Since(start)
 		readTime += t
 		if t > time.Millisecond {
-			logy.WriteString(fmt.Sprintf("%s took %v\n", name, t))
+			// logy.WriteString(fmt.Sprintf("%s took %v\n", name, t))
 		}
-		logy.WriteString(fmt.Sprintf("Total time of read %v\n", readTime))
+		// logy.WriteString(fmt.Sprintf("Total time of read %v\n", readTime))
 	}
 }
 
