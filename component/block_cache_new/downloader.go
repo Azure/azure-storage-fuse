@@ -18,6 +18,8 @@ func scheduleDownload(blk *block, r requestType) {
 	}
 }
 
+// reponsible for shceduling the download and wait for the download to complete if request is of type sync.
+// If block is already present then returns it.
 func downloader(blk *block, r requestType) (state blockState, err error) {
 	blk.Lock()
 	defer blk.Unlock()
@@ -43,6 +45,7 @@ func downloader(blk *block, r requestType) (state blockState, err error) {
 		}
 	}
 	if r == syncRequest {
+		bPool.updateRecentnessOfBlk <- blk
 		err, ok := <-blk.downloadDone
 		if ok && err == nil {
 			blk.buf.valid = true

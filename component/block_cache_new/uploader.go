@@ -2,7 +2,6 @@ package block_cache_new
 
 import (
 	"context"
-	"fmt"
 	"time"
 )
 
@@ -37,14 +36,14 @@ func uploader(blk *block, r requestType) (state blockState, err error) {
 					blk.state = uncommitedBlock
 					close(blk.uploadDone)
 				} else {
-					logy.Write([]byte(fmt.Sprintf("BlockCache::uploader :[sync: %d], path=%s, blk Idx = %d\n", r, blk.file.Name, blk.idx)))
+					// logy.Write([]byte(fmt.Sprintf("BlockCache::uploader :[sync: %d], path=%s, blk Idx = %d\n", r, blk.file.Name, blk.idx)))
 					scheduleUpload(blk, r)
 				}
 			case <-time.NewTimer(1000 * time.Millisecond).C:
 				// Taking toomuch time for request to complete,
 				// cancel the ongoing upload and schedule a new one.
 				if r == syncRequest {
-					logy.Write([]byte(fmt.Sprintf("BlockCache::uploader Debug :[sync: %d], path=%s, blk Idx = %d\n", r, blk.file.Name, blk.idx)))
+					// logy.Write([]byte(fmt.Sprintf("BlockCache::uploader Debug :[sync: %d], path=%s, blk Idx = %d\n", r, blk.file.Name, blk.idx)))
 					blk.cancelOngoingAsyncUpload()
 					scheduleUpload(blk, r)
 				}

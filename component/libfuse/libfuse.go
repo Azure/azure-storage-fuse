@@ -150,7 +150,7 @@ func (lf *Libfuse) Priority() internal.ComponentPriority {
 	return internal.EComponentPriority.Producer()
 }
 
-var PROFILE bool = false
+var PROFILE bool = true
 
 // Start : Pipeline calls this method to start the component functionality
 //

@@ -1,8 +1,11 @@
 package block_cache_new
 
 import (
+	"fmt"
+	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -32,11 +35,12 @@ const (
 
 type block struct {
 	sync.RWMutex
-	idx                         int        // Block Index
-	id                          string     // Block Id
-	buf                         *Buffer    // Inmemory buffer if exists.
-	state                       blockState // It tells about the state of the block.
-	hole                        bool       // Hole means this block is a null block. This can be used to do some optimisations.
+	idx                         int          // Block Index
+	id                          string       // Block Id
+	buf                         *Buffer      // Inmemory buffer if exists.
+	state                       blockState   // It tells about the state of the block.
+	hole                        bool         // Hole means this block is a null block. This can be used to do some optimisations.
+	refCnt                      atomic.Int32 // reference counter for block, how many handles are currenlty using block
 	asyncUploadTimer            *time.Timer
 	uploadDone                  chan error // Channel to know when the uplaod completes.
 	downloadDone                chan error // Channel to know when the download completes.
@@ -129,10 +133,29 @@ func changeStateOfBlockToLocal(idx int, blk *block) error {
 		log.Trace("BlockCache::Truncate File : FAILED when retrieving last block idx=%d, path=%s, size=%d", idx, blk.file.Name, blk.file.size)
 		return err
 	}
-	// todo: Lock simplification
 	blk.cancelOngoingAsyncUpload()
 	blk.Lock()
 	updateModifiedBlock(blk)
+	currefCnt := blk.refCnt.Add(-1)
+	if currefCnt < 0 {
+		panic("Ref cnt for the blk is not getting modififed correctly")
+	}
 	blk.Unlock()
 	return nil
+}
+
+// PrintMemUsage outputs the current, total and OS memory being used. As well as the number
+// of garage collection cycles completed.
+func PrintMemUsage() {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	// For info on each, see: https://golang.org/pkg/runtime/#MemStats
+	fmt.Printf("Alloc = %v MiB", bToMb(m.Alloc))
+	fmt.Printf("\tTotalAlloc = %v MiB", bToMb(m.TotalAlloc))
+	fmt.Printf("\tSys = %v MiB", bToMb(m.Sys))
+	fmt.Printf("\tNumGC = %v\n", m.NumGC)
+}
+
+func bToMb(b uint64) uint64 {
+	return b
 }
