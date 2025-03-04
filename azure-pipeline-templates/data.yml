@@ -45,6 +45,11 @@ steps:
         echo "*************************Generating medium files********************************"
         generate_random_file "1M"
       displayName: "Generate files with random data using dd command"
+
+    - bash: |
+        ls -lrt
+      displayName: "List the generated Files"
+      workingDirectory: $(DATA_DIR)        
     
     - bash: |
         md5sum * | tee checklist.chk

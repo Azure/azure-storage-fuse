@@ -48,7 +48,7 @@ parameters:
     default: false
   
   - name: fusemon
-    displayName: 'Run tests on bfusemon'
+    displayName: 'Run tests for bfusemon'
     type: boolean
     default: false
 
@@ -786,6 +786,10 @@ stages:
               parameters:
                 skip_ut: true
             
-
             # checks for bfusemon
             - template: 'azure-pipeline-templates/bfusemon.yml'
+
+            - template: azure-pipeline-templates/cleanup.yml
+              parameters:
+                unmount: true
+                delete_containers: true
