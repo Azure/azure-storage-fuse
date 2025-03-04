@@ -202,6 +202,18 @@ To learn about a specific command, just include the name of the command (For exa
     * `AZURE_STORAGE_AAD_ENDPOINT`: Specifies a custom AAD endpoint to authenticate against
     * `AZURE_STORAGE_SPN_CLIENT_SECRET`: Specifies the client secret for your application registration.
     * `AZURE_STORAGE_AUTH_RESOURCE` : Scope to be used while requesting for token.
+- Workload Identity auth:
+    * `AZURE_STORAGE_SPN_CLIENT_ID`: Specifies the clientid of the MI assigned to the storage account | clientid of the MI assigned as subject field on a Federated Identity Credential (FIC) on the App Registration
+    * `AZURE_STORAGE_SPN_TENANT_ID`: Specifies the tenant ID for your storage account
+    * `AZURE_STORAGE_IDENTITY_CLIENT_ID`: Specifies the application (client) ID of the App Registration or SPN
+    * `AZURE_STORAGE_AUTH_RESOURCE` : Scope to be used while requesting for token / MI Audience.
+            
+            Public Cloud: api://AzureADTokenExchange  (Default)
+
+            US Gov Cloud: api://AzureADTokenExchangeUSGov
+
+            China Cloud operated by 21Vianet: api://AzureADTokenExchangeChina
+
 - Proxy Server:
     * `http_proxy`: The proxy server address. Example: `10.1.22.4:8080`.    
     * `https_proxy`: The proxy server address when https is turned off forcing http. Example: `10.1.22.4:8080`.
