@@ -121,10 +121,20 @@ func isDstPathTempFile(path string) bool {
 	return strings.Contains(path, ".fuse_hidden")
 }
 
-// When block gets modified, update its fields.
+// When block gets modified. Modify the LRU's and state.
 func updateModifiedBlock(blk *block) {
-	blk.state = localBlock
 	blk.hole = false
+	if blk.state == committedBlock || blk.state == uncommitedBlock {
+		blk.state = localBlock
+		bPool.moveBlkFromSBLtoLBL(blk)
+	}
+}
+
+func changeStateOfBlockToUncommited(blk *block, globalPoolLock bool) {
+	if blk.state == localBlock {
+		blk.state = uncommitedBlock
+		bPool.moveBlkFromLBLtoSBL(blk, globalPoolLock)
+	}
 }
 
 func changeStateOfBlockToLocal(idx int, blk *block) error {

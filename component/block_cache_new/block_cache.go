@@ -129,7 +129,6 @@ func (bc *BlockCache) Configure(_ bool) error {
 // CreateFile: Create a new file
 func (bc *BlockCache) CreateFile(options internal.CreateFileOptions) (*handlemap.Handle, error) {
 	log.Trace("BlockCache::CreateFile : name=%s, mode=%s", options.Name, options.Mode)
-	// logy.Write([]byte(fmt.Sprintf("BlockCache::CreateFile : name=%s, mode=%d\n", options.Name, options.Mode)))
 	_, err := bc.NextComponent().CreateFile(options)
 	if err != nil {
 		log.Err("BlockCache::CreateFile : Failed to create file %s", options.Name)
@@ -145,7 +144,6 @@ func (bc *BlockCache) CreateFile(options internal.CreateFileOptions) (*handlemap
 // OpenFile: Create a handle for the file user has requested to open
 func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
 	log.Trace("BlockCache::OpenFile : name=%s, flags=%X, mode=%s", options.Name, options.Flags, options.Mode)
-	// This call will be an overhead if attr cache is not present in the pipeline. There are somethings to reconsider here.
 	attr, err := bc.GetAttr(internal.GetAttrOptions{Name: options.Name})
 	if err != nil {
 		log.Err("BlockCache::OpenFile : Failed to get attr of %s [%s]", options.Name, err.Error())
@@ -234,10 +232,10 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 		idx := getBlockIndex(offset)
 		var blk *block
 		var err error
-		if (options.Handle.Is_seq != 0) && ((offset % int64(BlockSize)) == 0) && (options.Handle.Is_seq < idx+5) {
+		if (options.Handle.Is_seq != 0) && ((offset % int64(BlockSize)) == 0) && (options.Handle.Is_seq <= idx+5) {
 			log.Debug("BlockCache::ReadInBuffer : Read ahead starting at idx: %d, Is_seq : %d", idx, options.Handle.Is_seq)
 			blk, err = getBlockWithReadAhead(idx, int(options.Handle.Is_seq), f)
-			options.Handle.Is_seq += 3
+			options.Handle.Is_seq += 5
 		} else {
 			blk, err = getBlockForRead(idx, f, syncRequest)
 		}

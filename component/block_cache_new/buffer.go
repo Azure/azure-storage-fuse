@@ -42,7 +42,7 @@ func newBufferPool(memSize int) *BufferPool {
 				return new(Buffer)
 			},
 		},
-		updateRecentnessOfBlk: make(chan *block, 10),
+		updateRecentnessOfBlk: make(chan *block),
 		localBlksLst:          list.New(), // Intialize the LRU
 		syncedBlksLst:         list.New(), // Intialize the LRU
 		lruCache:              make(map[*block]*list.Element),
@@ -81,9 +81,33 @@ func (bp *BufferPool) removeBlocksFromLRU(blkList blockList) {
 	}
 }
 
+func (bp *BufferPool) moveBlkFromSBLtoLBL(blk *block) {
+	bp.Lock()
+	defer bp.Unlock()
+	if ee, ok := bp.lruCache[blk]; ok {
+		bp.syncedBlksLst.Remove(ee)
+		bp.addLocalBlockToLRU(blk)
+	} else {
+		log.Err("BlockCache::moveBlkFromSBLtoLBL : Block is not present in LRU cache, blk idx : %d, file: %s", blk.idx, blk.file.Name)
+	}
+}
+
+func (bp *BufferPool) moveBlkFromLBLtoSBL(blk *block, globalPoolLock bool) {
+	if !globalPoolLock {
+		bp.Lock()
+		defer bp.Unlock()
+	}
+	if ee, ok := bp.lruCache[blk]; ok {
+		bp.localBlksLst.Remove(ee)
+		bp.addSyncedBlockToLRU(blk)
+	} else {
+		log.Err("BlockCache::moveBlkFromLBLtoSBL : Block is not present in LRU cache, blk idx : %d, file: %s", blk.idx, blk.file.Name)
+	}
+}
+
 // small optimisation to reduce the lock usage in the sequentail workflows.
 // When you are sequentially reading/writing the file, no need to update the recentness for every (4/128)K read/write, do it when the block change
-// But this don't work when the user works on multiple files at a time.
+// But this don't work when the user works on multiple files at the same time.
 func (bp *BufferPool) updateLRU() {
 	var prevblk *block
 	for {
@@ -106,7 +130,7 @@ func (bp *BufferPool) updateLRU() {
 // Working:
 // 1. Take the buffers from the blks which are idle and the blocks were commited/uncommited.
 // 2. If 1 is not enough, then schedule uploads for the local blks so that we can take back memory from them later using step 1.
-func (bp *BufferPool) bufferReclaimation(r requestType, usage int) {
+func (bp *BufferPool) bufferReclaimation(r requestType) {
 	// Take the lock on buffer pool if the request is of type async
 	if r == asyncRequest {
 		bp.Lock()
@@ -114,9 +138,11 @@ func (bp *BufferPool) bufferReclaimation(r requestType, usage int) {
 	}
 
 	outstandingBlks := bp.localBlksLst.Len() + bp.syncedBlksLst.Len()
-	usage = ((outstandingBlks * 100) / bp.maxBlocks)
-	noOfBlksToFree := ((usage - 75) * bp.maxBlocks) / 100
-	log.Info("BlockCache::bufferReclaimation : [START] [sync: %d]cur usage: %d, needed %d evictions", r, usage, noOfBlksToFree)
+	totalUsage := ((outstandingBlks * 100) / bp.maxBlocks)
+
+	usage := ((bp.syncedBlksLst.Len() * 100) / bp.maxBlocks)
+	noOfBlksToFree := max(((usage-70)*bp.maxBlocks)/100, 0)
+	log.Info("BlockCache::bufferReclaimation : [START] [sync: %d] Total Mem usage: %d, Synced blks Mem Usage: %d, needed %d evictions", r, totalUsage, usage, noOfBlksToFree)
 
 	currentBlk := bp.syncedBlksLst.Back()
 	for currentBlk != nil && noOfBlksToFree > 0 {
@@ -124,19 +150,65 @@ func (bp *BufferPool) bufferReclaimation(r requestType, usage int) {
 		// Check the refcnt for the blk and only release buffer if the refcnt is zero.
 		if rcnt := blk.refCnt.Load(); rcnt == 0 {
 			blk.Lock()
-			// not an elegant solution as there might be possiblity of refcnt getting increased after the if cond.
+			//todo: not an elegant solution as there might be possiblity of refcnt getting increased after the if cond.
 			bp.removeBlockFromLRU(blk)
 			bp.releaseBuffer(blk)
 			log.Info("BlockCache::bufferReclaimation :  Successful reclaim blk idx: %d, file: %s", blk.idx, blk.file.Name)
 			blk.Unlock()
-			currentBlk = bp.syncedBlksLst.Back()
 			noOfBlksToFree--
+		}
+		currentBlk = bp.syncedBlksLst.Back()
+	}
+
+	outstandingBlks = bp.localBlksLst.Len() + bp.syncedBlksLst.Len()
+	totalUsage = ((outstandingBlks * 100) / bp.maxBlocks)
+	usage = ((bp.syncedBlksLst.Len() * 100) / bp.maxBlocks)
+	log.Info("BlockCache::bufferReclaimation : [END] [sync: %d] Total Mem usage: %d, Synced Blks Mem Usage: %d, Unsuccessful evictions: %d", r, totalUsage, usage, noOfBlksToFree)
+}
+
+func (bp *BufferPool) asyncUploader(r requestType) {
+	if r == asyncRequest {
+		bp.Lock()
+		defer bp.Unlock()
+	}
+	outstandingBlks := bp.localBlksLst.Len() + bp.syncedBlksLst.Len()
+	totalUsage := ((outstandingBlks * 100) / bp.maxBlocks)
+
+	usage := ((bp.localBlksLst.Len() * 100) / bp.maxBlocks)
+	noOfAsyncUploads := max(((usage-30)*bp.maxBlocks)/100, 0)
+	log.Info("BlockCache::asyncUploader : [START] [sync: %d]Mem usage: %d, Synced blks Mem Usage: %d, needed %d async Uploads", r, totalUsage, usage, noOfAsyncUploads)
+	// Schedule uploads on least recently used blocks
+	currentBlk := bp.localBlksLst.Back()
+	for currentBlk != nil && noOfAsyncUploads > 0 {
+		blk := currentBlk.Value.(*block)
+		// Check the refcnt for the blk and only schedule blk if the refcnt is zero.
+		if rcnt := blk.refCnt.Load(); rcnt == 0 {
+			uploader(blk, asyncRequest, true)
+			noOfAsyncUploads--
+		}
+		currentBlk = bp.localBlksLst.Back()
+	}
+
+	if r == syncRequest {
+		// Wait for the async uploads to complete and get the local blks usage to less than 30
+		noOfAsyncUploads = max(((usage-30)*bp.maxBlocks)/100, 0)
+		for currentBlk != nil && noOfAsyncUploads > 0 {
+			blk := currentBlk.Value.(*block)
+			// Check the refcnt for the blk and only schedule blk if the refcnt is zero.
+			if rcnt := blk.refCnt.Load(); rcnt == 0 {
+				uploader(blk, syncRequest, true)
+				noOfAsyncUploads--
+			}
+			currentBlk = bp.localBlksLst.Back()
 		}
 	}
 
 	outstandingBlks = bp.localBlksLst.Len() + bp.syncedBlksLst.Len()
-	usage = ((outstandingBlks * 100) / bp.maxBlocks)
-	log.Info("BlockCache::bufferReclaimation : [START] [sync: %d]cur usage: %d, cant evict %d blocks", r, usage, noOfBlksToFree)
+	totalUsage = ((outstandingBlks * 100) / bp.maxBlocks)
+
+	usage = ((bp.localBlksLst.Len() * 100) / bp.maxBlocks)
+	log.Info("BlockCache::asyncUploader : [END] [sync: %d]Mem usage: %d, Synced blks Mem Usage: %d, Unsuccessful async upload schedules :%d", r, totalUsage, usage, noOfAsyncUploads)
+
 }
 
 func (bp *BufferPool) getBufferForBlock(blk *block) {
@@ -154,18 +226,35 @@ func (bp *BufferPool) getBufferForBlock(blk *block) {
 		panic("BlockCache::getBufferForBlock : Todo: Read of evicted Uncommited block")
 	}
 
-	// Check the memory usage
 	outstandingBlks := bp.localBlksLst.Len() + bp.syncedBlksLst.Len()
 	usage := ((outstandingBlks * 100) / bp.maxBlocks)
+	log.Debug("BlockCache::getBufferForBlock : Total Mem Usage %d", usage)
 
-	if usage > 80 && usage < 95 {
+	// Check the memory usage of synced blocks
+	SBusage := ((bp.syncedBlksLst.Len() * 100) / bp.maxBlocks)
+	log.Debug("BlockCache::getBufferForBlock : Synced Blocks Mem Usage %d", SBusage)
+	if SBusage > 80 && SBusage < 95 {
 		// reclaim the memory asynchronously
-		//fmt.Printf("Block Idx = %d\n", blk.idx)
-		go bPool.bufferReclaimation(asyncRequest, usage)
-	} else if usage >= 95 {
+		go bPool.bufferReclaimation(asyncRequest)
+	} else if SBusage >= 95 {
 		// reclaim the memory synchronously.
-		bPool.bufferReclaimation(syncRequest, usage)
+		bPool.bufferReclaimation(syncRequest)
 	}
+
+	// Check the memory of the local blocks
+	LBusage := ((bp.localBlksLst.Len() * 100) / bp.maxBlocks)
+	log.Debug("BlockCache::getBufferForBlock : Synced Blocks Mem Usage %d", LBusage)
+	// Always keep the local blocks to less than 50%
+	// Schedule the remaining blocks for async uploads.
+	if LBusage > 50 && LBusage < 55 {
+		go bPool.asyncUploader(asyncRequest)
+	} else if LBusage > 55 {
+		// doom is near, wait until it gets under 50.
+		// Writing to the memory is superfast, while uploading the blk takes an eternity.
+		// Better wait until the async uploads complete rather than getting into out of memory state.
+		bPool.asyncUploader(syncRequest)
+	}
+
 }
 
 // Returns the buffer.
@@ -194,7 +283,7 @@ func (bp *BufferPool) releaseBuffer(blk *block) {
 // **************************************************************
 
 func getBlockWithReadAhead(idx int, start int, file *File) (*block, error) {
-	for i := 1; i <= 3; i++ {
+	for i := 0; i <= 4; i++ {
 		if i+start < (int(atomic.LoadInt64(&file.size))+BlockSize-1)/BlockSize {
 			getBlockForRead(i+start, file, asyncRequest)
 		}
@@ -224,6 +313,7 @@ func getBlockForRead(idx int, file *File, r requestType) (blk *block, err error)
 }
 
 // This call will return buffer for writing for the block and also increments the refcnt of blk
+// It is the responsibility of the caller to decrement the refcnt after the completion of the op.
 // This call should always return some buffer if len(blocklist) <= 50000
 func getBlockForWrite(idx int, file *File) (*block, error) {
 	if idx >= MAX_BLOCKS {
@@ -278,13 +368,13 @@ func syncBuffersForFile(file *File) (bool, error) {
 	for _, blk := range file.blockList {
 		// To make the sync upload faster, first we schedule all the requests as async
 		// Then status would be checked using sync requests.
-		blkstate, _ := uploader(blk, asyncRequest)
+		blkstate, _ := uploader(blk, asyncRequest, false)
 		if blkstate != committedBlock {
 			fileChanged = true
 		}
 	}
 	for _, blk := range file.blockList {
-		_, err := uploader(blk, syncRequest)
+		_, err := uploader(blk, syncRequest, false)
 		if err != nil {
 			panic(fmt.Sprintf("Upload doesn't happen for the block idx : %d, file : %s\n", blk.idx, blk.file.Name))
 		}

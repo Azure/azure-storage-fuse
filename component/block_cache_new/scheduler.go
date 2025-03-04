@@ -22,8 +22,8 @@ import (
 type requestType int
 
 const (
-	syncRequest requestType = iota
-	asyncRequest
+	asyncRequest requestType = iota
+	syncRequest
 )
 
 type task struct {
@@ -102,7 +102,7 @@ func doDownload(t *task, workerNo int, r requestType) {
 	if blk.buf == nil {
 		panic("BlockCache::doDownload : Something has seriously messed up While Reading")
 	}
-	log.Trace("BlockCache::doDownload : Download Starting for blk idx: %d, file : %s", blk.idx, blk.file.Name)
+	log.Trace("BlockCache::doDownload : [sync:%d] Download Starting for blk idx: %d, file : %s", r, blk.idx, blk.file.Name)
 	sizeOfData := getBlockSize(atomic.LoadInt64(&t.blk.file.size), blk.idx)
 
 	_, err := bc.NextComponent().ReadInBuffer(internal.ReadInBufferOptions{
@@ -110,7 +110,7 @@ func doDownload(t *task, workerNo int, r requestType) {
 		Offset: int64(blk.idx * BlockSize),
 		Data:   blk.buf.data[:sizeOfData],
 	})
-	// logy.Write([]byte(fmt.Sprintf("BlockCache::doDownload : Download Complete for block[sync: %d], path=%s, blk Idx = %d, worker No = %d\n", r, t.blk.file.Name, t.blk.idx, workerNo)))
+
 	if err == nil && !errors.Is(t.ctx.Err(), context.Canceled) {
 		log.Debug("BlockCache::doDownload : Download Success for blk idx: %d, file : %s", blk.idx, blk.file.Name)
 		blk.downloadDone <- nil
@@ -131,7 +131,7 @@ func doUpload(t *task, workerNo int, r requestType) {
 	if blk.buf == nil {
 		panic("BlockCache::doUpload : messed up")
 	}
-	log.Trace("BlockCache::doDownload : Upload Starting for blk idx: %d, file : %s", blk.idx, blk.file.Name)
+	log.Trace("BlockCache::doUpload : [sync:%d] Upload Starting for blk idx: %d, file : %s", r, blk.idx, blk.file.Name)
 	blkSize := getBlockSize(atomic.LoadInt64(&t.blk.file.size), blk.idx)
 	if blkSize <= 0 {
 		// There has been a truncate call came to shrink the filesize.
@@ -158,5 +158,6 @@ func doUpload(t *task, workerNo int, r requestType) {
 			blk.uploadDone <- err
 		}
 	}
+	blk.refCnt.Add(-1)
 	close(t.taskDone)
 }
