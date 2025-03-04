@@ -204,7 +204,7 @@ func (bb *BlockBlob) TestPipeline() error {
 		var respErr *azcore.ResponseError
 		errors.As(err, &respErr)
 		if respErr != nil {
-			return fmt.Errorf("BlockBlob: [%s]", respErr.ErrorCode)
+			return fmt.Errorf("BlockBlob::TestPipeline : [%s]", respErr.ErrorCode) 
 		}
 		return err
 	}
