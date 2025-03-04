@@ -204,7 +204,7 @@ func (dl *Datalake) TestPipeline() error {
 		var respErr *azcore.ResponseError
 		errors.As(err, &respErr)
 		if respErr != nil {
-			return fmt.Errorf("Datalake: [%s]", respErr.ErrorCode)
+			return fmt.Errorf("Datalake::TestPipeline : [%s]", respErr.ErrorCode)
 		}
 		return err
 	}
