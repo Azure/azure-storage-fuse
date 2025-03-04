@@ -140,7 +140,7 @@ stages:
                   client_secret: $(AZTEST_SECRET)
                   config: $(BLOBFUSE2_CFG)
                   stress_dir: $(BLOBFUSE2_STRESS_DIR)
-                  huge_container: 'testcnt1'
+                  huge_container: 'million-files'
                   quick_stress: ${{ parameters.quick_stress }}
                   test_key_credential: true 
                   test_sas_credential: true
@@ -253,7 +253,7 @@ stages:
                   client_secret: $(AZTEST_SECRET)
                   config: $(BLOBFUSE2_ADLS_CFG)
                   stress_dir: $(BLOBFUSE2_STRESS_DIR)
-                  huge_container: 'testcnt'
+                  huge_container: 'million-files'
                   quick_stress: ${{ parameters.quick_stress }}
                   test_key_credential: true
                   test_sas_credential: true
