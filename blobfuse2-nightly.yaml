@@ -237,7 +237,7 @@ stages:
                   adls: true
                   account_name: $(BF2_ADLS_ACC_NAME)
                   account_key: $(BF2_ADLS_ACC_KEY)
-                  account_sas: $(GENERATED_ADLS_CONTAINER_SAS)
+                  account_sas: $(BF2_ADLS_ACC_SAS)
                   client_id: $(AZTEST_CLIENT)
                   tenant_id: $(AZTEST_TENANT)
                   client_secret: $(AZTEST_SECRET)

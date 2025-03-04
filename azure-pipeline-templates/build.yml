@@ -184,7 +184,7 @@ steps:
       echo "\"block-sas\"": "\"$(BF2_BLK_ACC_SAS)\"", >> $cnfFile
       echo "\"block-cont-sas-ubn-18\"": "\"$(AZTEST_BLOCK_CONT_SAS_UBN_18)\"", >> $cnfFile
       echo "\"block-cont-sas-ubn-20\"": "\"$(AZTEST_BLOCK_CONT_SAS_UBN_20)\"", >> $cnfFile
-      echo "\"adls-sas\"": "\"$(GENERATED_ADLS_CONTAINER_SAS)\"", >> $cnfFile
+      echo "\"adls-sas\"": "\"$(BF2_ADLS_ACC_SAS)\"", >> $cnfFile
       echo "\"msi-appid\"": "\"$(AZTEST_APP_ID)\"", >> $cnfFile
       echo "\"msi-resid\"": "\"$(AZTEST_RES_ID)\"", >> $cnfFile
       echo "\"msi-objid\"": "\"$(AZTEST_OBJ_ID)\"", >> $cnfFile

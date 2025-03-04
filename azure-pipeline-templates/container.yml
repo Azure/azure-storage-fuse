@@ -58,7 +58,7 @@ steps:
         --permissions acdelmoprw \
         --expiry $end \
         -o tsv`
-        echo "##vso[task.setvariable variable=GENERATED_ADLS_CONTAINER_SAS]$sas"
+        echo "##vso[task.setvariable variable=BF2_ADLS_ACC_SAS]$sas"
       displayName: 'Creating ADLS SAS for ${{ parameters.account_type }} Container'
       condition: eq(variables['distro'], 'ubuntu')
 
