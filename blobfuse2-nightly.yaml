@@ -463,7 +463,7 @@ stages:
                 displayName: "Create MSI Config File"
                 env:
                   STO_ACC_NAME: $(BF2_BLK_ACC_NAME) 
-                  STO_MSI_APP_ID: $(AZTEST_APP_ID)
+                  STO_MSI_APP_ID: $(BF2_MSI_CLIENT_ID)
                   STO_ACC_TYPE: 'block'
                   STO_ACC_ENDPOINT: 'https://$(BF2_BLK_ACC_NAME).blob.core.windows.net'
                   VERBOSE_LOG: ${{ parameters.verbose_log }}
@@ -491,7 +491,7 @@ stages:
                 displayName: "Create MSI Config File"
                 env:
                   STO_ACC_NAME: $(BF2_ADLS_ACC_NAME) 
-                  STO_MSI_APP_ID: $(AZTEST_APP_ID)
+                  STO_MSI_APP_ID: $(BF2_MSI_CLIENT_ID)
                   STO_ACC_TYPE: 'adls'
                   STO_ACC_ENDPOINT: 'https://$(BF2_ADLS_ACC_NAME).dfs.core.windows.net'
                   VERBOSE_LOG: ${{ parameters.verbose_log }}
