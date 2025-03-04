@@ -11,6 +11,10 @@ pr:
 trigger:
 - main
 - ci/*
+- vibhansa/*
+- akanksha/*
+- sourav/*
+- ashruti/*
 - syeleti/*
 
 jobs:
@@ -139,9 +143,6 @@ jobs:
         condition: always()
         failOnStderr: true
         workingDirectory: $(WORK_DIR)
-
-      # checks for bfusemon
-      - template: 'azure-pipeline-templates/bfusemon.yml'
 
       # CleanUp the mount and delete the containers.
       - template: 'azure-pipeline-templates/cleanup.yml'

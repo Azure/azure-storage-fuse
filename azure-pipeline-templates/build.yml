@@ -202,7 +202,7 @@ steps:
   - script: |
       az login --identity --username $(BF2_MSI_CLIENT_ID)
     displayName: 'Azure CLI login'
-    condition: eq(variables['distro'], 'ubuntu')
+    condition: eq('${{ parameters.skip_azcli }}', 'false') 
 
   # Running unit tests
   - task: Go@0
