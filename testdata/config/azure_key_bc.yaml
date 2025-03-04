@@ -26,7 +26,7 @@ azstorage:
   endpoint: { ACCOUNT_ENDPOINT }
   use-http: { USE_HTTP }
   account-name: { NIGHTLY_STO_ACC_NAME }
-  account-key: { NIGHTLY_STO_ACC_KEY  }
+  account-key: { NIGHTLY_STO_ACC_KEY }
   mode: key
   container: { 0 }
   tier: hot
