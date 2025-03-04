@@ -15,10 +15,14 @@ stages:
           matrix:
             Ubuntu-20:
               AgentName: 'blobfuse-ubuntu20'
+              distro: 'ubuntu'
+              distro_version: 'ubuntu_20'
               fuselib: 'libfuse-dev'
               tags: 'fuse2'
             Ubuntu-22:
               AgentName: 'blobfuse-ubuntu22'
+              distro: 'ubuntu'
+              distro_version: 'ubuntu_22_x86'
               fuselib: 'libfuse3-dev'
               tags: 'fuse3'          
 
