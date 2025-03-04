@@ -226,16 +226,6 @@ stages:
               parameters:
                 skip_ut: true # Skip UT because Block Blob set runs it
                 skip_azcli: "false"
-            
-            #-----------------------------------------------------------
-            # Generate SAS for created container in ADLS with all the permissions.
-            # Reason: the account SAS is not sufficient to change the ACL's
-            - template: 'azure-pipeline-templates/container.yml'
-              parameters:
-                generate_adls_sas: true
-                account_type: "adls"
-                account_name: $(BF2_ADLS_ACC_NAME)
-                account_key: $(BF2_ADLS_ACC_KEY)
 
             # -------------------------------------------------------
             - ${{ if eq(parameters.exhaustive_test, true) }}:    
