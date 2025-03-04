@@ -35,6 +35,7 @@ package azstorage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -199,8 +200,10 @@ func (dl *Datalake) TestPipeline() error {
 	// we are just validating the auth mode used. So, no need to iterate over the pages
 	_, err := listPathPager.NextPage(context.Background())
 	if err != nil {
-		log.Err("Datalake::TestPipeline : Failed to validate account with given auth %s", err.Error)
-		return err
+		var respErr *azcore.ResponseError
+		errors.As(err, &respErr)
+		log.Err("Datalake::TestPipeline : Failed to validate account with given auth %s", err.Error())
+		return fmt.Errorf("Datalake: [%s]", respErr.ErrorCode)
 	}
 
 	return dl.BlockBlob.TestPipeline()
