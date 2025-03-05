@@ -151,7 +151,7 @@ func (ds *downloadSplitter) Process(item *WorkItem) (int, error) {
 	// TODO:: xload : what should be the flags
 	// TODO:: xload : verify if the mode is set correctly
 	// TODO:: xload : handle case if blob is a symlink
-	item.FileHandle, err = os.OpenFile(localPath, os.O_WRONLY|os.O_CREATE, item.Mode)
+	item.FileHandle, err = os.OpenFile(localPath, os.O_RDWR|os.O_CREATE, item.Mode)
 	if err != nil {
 		log.Err("downloadSplitter::Process : Failed to create file %s [%s]", item.Path, err.Error())
 		return -1, fmt.Errorf("failed to open file %s [%s]", item.Path, err.Error())
@@ -257,6 +257,14 @@ func (ds *downloadSplitter) Process(item *WorkItem) (int, error) {
 		log.Err("downloadSplitter::Process : Failed to change times of file %s [%s]", item.Path, err.Error())
 	}
 
+	if ds.consistency && operationSuccess {
+		err = ds.checkConsistency(item)
+		if err != nil {
+			log.Err("downloadSplitter::Process : unable to check consistency for %s [%s]", item.Path, err.Error())
+			operationSuccess = false
+		}
+	}
+
 	// send the download status to stats manager
 	ds.GetStatsManager().AddStats(&StatsItem{
 		Component: SPLITTER,
@@ -277,38 +285,23 @@ func (ds *downloadSplitter) Process(item *WorkItem) (int, error) {
 		return -1, fmt.Errorf("failed to download data for file %s", item.Path)
 	}
 
-	if ds.consistency {
-		err = ds.checkConsistency(item)
-		if err != nil {
-			log.Err("downloadSplitter::Process : unable to check consistency for %s, so deleting it from local path", item.Path)
-
-			// delete the file from the local path if md5sum is not matching
-			err = os.Remove(localPath)
-			if err != nil {
-				log.Err("downloadSplitter::Process : Failed to delete file %s [%s]", item.Path, err.Error())
-			}
-
-			return -1, fmt.Errorf("md5sum mismatch on download for file %s", item.Path)
-		}
-	}
-
 	log.Debug("downloadSplitter::Process : Download completed for file %s, priority %v", item.Path, item.Priority)
 	return 0, nil
 }
 
 func (ds *downloadSplitter) checkConsistency(item *WorkItem) error {
 	if item.MD5 == nil {
-		log.Warn("downloadSplitter::Process : Unable to get MD5Sum for blob %s", item.Path)
+		log.Warn("downloadSplitter::checkConsistency : Unable to get MD5Sum for blob %s", item.Path)
 	} else {
 		// Compute md5 of local file
 		fileMD5, err := common.GetMD5(item.FileHandle)
 		if err != nil {
-			log.Err("downloadSplitter::Process : Failed to generate MD5Sum for %s [%s]", item.Path, err.Error())
+			log.Err("downloadSplitter::checkConsistency : Failed to generate MD5Sum for %s [%s]", item.Path, err.Error())
 			return err
 		}
 		// compare md5 and fail is not match
 		if !reflect.DeepEqual(fileMD5, item.MD5) {
-			log.Err("downloadSplitter::Process : MD5Sum mismatch on download for file %s", item.Path)
+			log.Err("downloadSplitter::checkConsistency : MD5Sum mismatch on download for file %s", item.Path)
 			return fmt.Errorf("md5sum mismatch on download for file %s", item.Path)
 		}
 	}
