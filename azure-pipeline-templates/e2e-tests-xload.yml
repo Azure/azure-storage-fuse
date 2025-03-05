@@ -109,25 +109,20 @@ steps:
 
   - script: |
       echo "----------------------------------------------"
-      echo $(WORK_DIR)
-      ls -lh $(WORK_DIR)
-      echo "----------------------------------------------"
       STATS_MANAGER=`ls $(WORK_DIR)/xload_stats_*.json`
       echo $STATS_MANAGER
-      ls -l $STATS_MANAGER
-      cat $STATS_MANAGER
 
-      # while true; do
-      #   percent=$(jq -r '.. | .PercentCompleted? | select(.)' "$STATS_MANAGER" | tail -n 1)
-      #   echo "PercentCompleted = $percent"
+      while true; do
+        percent=$(jq -r '.. | .PercentCompleted? | select(.)' "$STATS_MANAGER" | tail -n 1)
+        echo "PercentCompleted = $percent"
 
-      #   if [[ "$percent" == "100" ]]; then
-      #     echo "Processing complete!"
-      #     break
-      #   fi
+        if [[ "$percent" == "100" ]]; then
+          echo "Processing complete!"
+          break
+        fi
 
-      #   sleep 5
-      # done
+        sleep 5
+      done
     displayName: 'Print stats manager file'
 
   - script: |
