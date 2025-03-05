@@ -148,15 +148,14 @@ func (bp *BufferPool) bufferReclaimation(r requestType) {
 	for currentBlk != nil && noOfBlksToFree > 0 {
 		blk := currentBlk.Value.(*block)
 		// Check the refcnt for the blk and only release buffer if the refcnt is zero.
+		blk.Lock()
 		if rcnt := blk.refCnt.Load(); rcnt == 0 {
-			blk.Lock()
-			//todo: not an elegant solution as there might be possiblity of refcnt getting increased after the if cond.
 			bp.removeBlockFromLRU(blk)
 			bp.releaseBuffer(blk)
 			log.Info("BlockCache::bufferReclaimation :  Successful reclaim blk idx: %d, file: %s", blk.idx, blk.file.Name)
-			blk.Unlock()
 			noOfBlksToFree--
 		}
+		blk.Unlock()
 		currentBlk = currentBlk.Prev()
 	}
 
