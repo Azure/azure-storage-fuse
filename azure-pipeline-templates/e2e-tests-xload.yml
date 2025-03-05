@@ -1,0 +1,109 @@
+parameters:
+  - name: conf_template
+    type: string
+  - name: config_file
+    type: string
+  - name: container
+    type: string
+  - name: temp_dir
+    type: string
+  - name: mount_dir
+    type: string    
+  - name: idstring
+    type: string
+  - name: adls
+    type: boolean
+  - name: account_name
+    type: string
+  - name: account_key
+    type: string
+  - name: account_type
+    type: string
+  - name: account_endpoint
+  - name: distro_name
+    type: string
+  - name: quick_test
+    type: boolean
+    default: true
+  - name: mnt_flags
+    type: string
+    default: ""
+  - name: verbose_log
+    type: boolean
+    default: false
+  - name: clone
+    type: boolean
+    default: false
+
+steps:    
+  - script: |
+      $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/azure_key.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.config_file }}
+    displayName: 'Create Config File for RW mount'
+    env:
+      NIGHTLY_STO_ACC_NAME: ${{ parameters.account_name }}
+      NIGHTLY_STO_ACC_KEY: ${{ parameters.account_key }}
+      ACCOUNT_TYPE: ${{ parameters.account_type }}
+      ACCOUNT_ENDPOINT: ${{ parameters.account_endpoint }}
+      VERBOSE_LOG: ${{ parameters.verbose_log }}
+    continueOnError: false
+
+  - script:
+      cat ${{ parameters.config_file }}
+    displayName: 'Print config file'
+
+  # run below step only if direct_io is false
+  - template: 'mount.yml'
+    parameters:
+      working_dir: $(WORK_DIR)
+      mount_dir: ${{ parameters.mount_dir }}
+      temp_dir: ${{ parameters.temp_dir }}
+      prefix: ${{ parameters.idstring }}
+      mountStep: 
+        script: |
+          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) --file-cache-timeout=3200  ${{ parameters.mnt_flags }}
+
+  - script: |
+      for i in {1,2,3,4,5,6,7,8,9,10,20,30,50,100,200,1024,2048,4096}; do echo $i; done | parallel --will-cite -j 5 'head -c {}M < /dev/urandom > ${{ parameters.mount_dir }}/myfile_{}'
+      ls -lh ${{ parameters.mount_dir }}/myfile_*
+    displayName: 'Generate data'
+
+  - script: |
+      md5sum ${{ parameters.mount_dir }}/myfile_* > $(WORK_DIR)/md5sum_file_cache.txt
+    displayName: 'Generate md5Sum with File-Cache'
+
+  - script: |
+      $(WORK_DIR)/blobfuse2 unmount all
+    displayName: 'Unmount RW mount'
+
+  - script: |
+      $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/azure_key_xload.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.config_file }}
+    displayName: 'Create Config File for preload'
+    env:
+      NIGHTLY_STO_ACC_NAME: ${{ parameters.account_name }}
+      NIGHTLY_STO_ACC_KEY: ${{ parameters.account_key }}
+      ACCOUNT_TYPE: ${{ parameters.account_type }}
+      ACCOUNT_ENDPOINT: ${{ parameters.account_endpoint }}
+      VERBOSE_LOG: ${{ parameters.verbose_log }}
+    continueOnError: false
+
+
+  - script:
+      cat ${{ parameters.config_file }}
+    displayName: 'Print xload config file'   
+
+  - task: PublishBuildArtifacts@1
+    inputs:
+      pathToPublish: blobfuse2-logs.txt
+      artifactName: 'blobfuse_block_cache.txt'
+    condition: failed()
+    
+  - script: |
+      tail -n 200 blobfuse2-logs.txt
+    displayName: 'View Logs'
+    condition: failed()
+
+  - template: 'cleanup.yml'
+    parameters:
+      working_dir: $(WORK_DIR)
+      mount_dir: ${{ parameters.mount_dir }}
+      temp_dir: ${{ parameters.temp_dir }}
