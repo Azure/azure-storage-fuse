@@ -107,13 +107,15 @@ steps:
         script: |
           $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) -o ro ${{ parameters.mnt_flags }}
 
-  - script:
+  - script: |
+      echo "----------------------------------------------"
       echo $(WORK_DIR)
       ls -lh $(WORK_DIR)
-      echo "----------------------------------------------------------"
-      STATS_MANAGER=$(WORK_DIR)/xload_stats_*.json
+      echo "----------------------------------------------"
+      STATS_MANAGER=`ls $(WORK_DIR)/xload_stats_*.json`
       echo $STATS_MANAGER
       ls -l $STATS_MANAGER
+      cat $STATS_MANAGER
 
       # while true; do
       #   percent=$(jq -r '.. | .PercentCompleted? | select(.)' "$STATS_MANAGER" | tail -n 1)
