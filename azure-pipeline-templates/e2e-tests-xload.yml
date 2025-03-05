@@ -35,7 +35,11 @@ parameters:
     type: boolean
     default: false
 
-steps:    
+steps:
+  - script:
+      sudo apt-get install jq -y
+    displayName: 'Install dependencies'
+
   - script: |
       $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/azure_key.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.config_file }}
     displayName: 'Create Config File for RW mount'
@@ -105,6 +109,7 @@ steps:
 
   - script:
       STATS_MANAGER=$(WORK_DIR)/xload_stats_*.json
+      echo $STATS_MANAGER
       ls -l $STATS_MANAGER
 
       while true; do
@@ -130,15 +135,15 @@ steps:
 
   - script: |
       echo "----------------------------------------------"
-      cat $(WORK_DIR)/md5sum_block_cache.txt
+      cat $(WORK_DIR)/md5sum_xload.txt
       echo "----------------------------------------------"
       cat $(WORK_DIR)/md5sum_file_cache.txt
       echo "----------------------------------------------"
-      diff $(WORK_DIR)/md5sum_block_cache.txt $(WORK_DIR)/md5sum_file_cache.txt
+      diff $(WORK_DIR)/md5sum_xload.txt $(WORK_DIR)/md5sum_file_cache.txt
       if [ $? -ne 0 ]; then
         exit 1
       fi
-    displayName: 'Compare md5Sum'
+    displayName: 'Compare md5sum'
 
   - task: PublishBuildArtifacts@1
     inputs:
