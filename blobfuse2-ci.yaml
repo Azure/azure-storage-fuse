@@ -86,7 +86,6 @@ jobs:
         parameters:
           skip_azcli: "false"
           skip_ut: "false"
-          skip_bfusemon: false
 
       # Code lint checks (Static-analysis)
       - script: |

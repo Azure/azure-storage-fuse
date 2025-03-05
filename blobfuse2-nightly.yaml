@@ -785,6 +785,7 @@ stages:
             - template: 'azure-pipeline-templates/build.yml'
               parameters:
                 skip_ut: true
+                skip_bfusemon: false
             
             # checks for bfusemon
             - template: 'azure-pipeline-templates/bfusemon.yml'
