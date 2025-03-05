@@ -179,7 +179,7 @@ func (suite *listTestSuite) TestNewRemoteLister() {
 	suite.assert.Nil(rl)
 	suite.assert.Contains(err.Error(), "invalid parameters sent to create remote lister")
 
-	rl, err = newRemoteLister(&newRemoteListerOptions{
+	rl, err = newRemoteLister(&remoteListerOptions{
 		path:              "",
 		defaultPermission: common.DefaultFilePermissionBits,
 		remote:            nil,
@@ -189,7 +189,7 @@ func (suite *listTestSuite) TestNewRemoteLister() {
 	suite.assert.Nil(rl)
 	suite.assert.Contains(err.Error(), "invalid parameters sent to create remote lister")
 
-	rl, err = newRemoteLister(&newRemoteListerOptions{
+	rl, err = newRemoteLister(&remoteListerOptions{
 		path:              "home/user/random_path",
 		defaultPermission: common.DefaultFilePermissionBits,
 		remote:            nil,
@@ -199,7 +199,7 @@ func (suite *listTestSuite) TestNewRemoteLister() {
 	suite.assert.Nil(rl)
 	suite.assert.Contains(err.Error(), "invalid parameters sent to create remote lister")
 
-	rl, err = newRemoteLister(&newRemoteListerOptions{
+	rl, err = newRemoteLister(&remoteListerOptions{
 		path:              "home/user/random_path",
 		defaultPermission: common.DefaultFilePermissionBits,
 		remote:            lb,
@@ -213,7 +213,7 @@ func (suite *listTestSuite) TestNewRemoteLister() {
 	suite.assert.Nil(err)
 	suite.assert.NotNil(statsMgr)
 
-	rl, err = newRemoteLister(&newRemoteListerOptions{
+	rl, err = newRemoteLister(&remoteListerOptions{
 		path:              "home/user/random_path",
 		defaultPermission: common.DefaultFilePermissionBits,
 		remote:            lb,
@@ -233,7 +233,7 @@ func (suite *listTestSuite) TestListerStartStop() {
 		suite.assert.Nil(err)
 	}()
 
-	rl, err := newRemoteLister(&newRemoteListerOptions{
+	rl, err := newRemoteLister(&remoteListerOptions{
 		path:              tl.path,
 		defaultPermission: common.DefaultFilePermissionBits,
 		remote:            lb,
@@ -266,7 +266,7 @@ func (suite *listTestSuite) TestListerMkdir() {
 		suite.assert.Nil(err)
 	}()
 
-	rl, err := newRemoteLister(&newRemoteListerOptions{
+	rl, err := newRemoteLister(&remoteListerOptions{
 		path:              tl.path,
 		defaultPermission: common.DefaultFilePermissionBits,
 		remote:            lb,

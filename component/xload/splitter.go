@@ -65,7 +65,7 @@ type downloadSplitter struct {
 	splitter
 }
 
-type newDownloadSplitterOptions struct {
+type downloadSplitterOptions struct {
 	blockPool   *BlockPool
 	path        string
 	remote      internal.Component
@@ -74,7 +74,7 @@ type newDownloadSplitterOptions struct {
 	consistency bool
 }
 
-func newDownloadSplitter(opts *newDownloadSplitterOptions) (*downloadSplitter, error) {
+func newDownloadSplitter(opts *downloadSplitterOptions) (*downloadSplitter, error) {
 	if opts == nil || opts.blockPool == nil || opts.path == "" || opts.remote == nil || opts.statsMgr == nil || opts.fileLocks == nil {
 		log.Err("lister::NewRemoteLister : invalid parameters sent to create download splitter")
 		return nil, fmt.Errorf("invalid parameters sent to create download splitter")
@@ -82,7 +82,7 @@ func newDownloadSplitter(opts *newDownloadSplitterOptions) (*downloadSplitter, e
 
 	log.Debug("splitter::NewDownloadSplitter : create new download splitter for %s, block size %v", opts.path, opts.blockPool.GetBlockSize())
 
-	d := &downloadSplitter{
+	ds := &downloadSplitter{
 		splitter: splitter{
 			blockPool:   opts.blockPool,
 			path:        opts.path,
@@ -91,47 +91,47 @@ func newDownloadSplitter(opts *newDownloadSplitterOptions) (*downloadSplitter, e
 		},
 	}
 
-	d.SetName(SPLITTER)
-	d.SetRemote(opts.remote)
-	d.SetStatsManager(opts.statsMgr)
-	d.Init()
-	return d, nil
+	ds.SetName(SPLITTER)
+	ds.SetRemote(opts.remote)
+	ds.SetStatsManager(opts.statsMgr)
+	ds.Init()
+	return ds, nil
 }
 
-func (d *downloadSplitter) Init() {
-	d.SetThreadPool(NewThreadPool(MAX_DATA_SPLITTER, d.Process))
-	if d.GetThreadPool() == nil {
+func (ds *downloadSplitter) Init() {
+	ds.SetThreadPool(NewThreadPool(MAX_DATA_SPLITTER, ds.Process))
+	if ds.GetThreadPool() == nil {
 		log.Err("downloadSplitter::Init : fail to init thread pool")
 	}
 }
 
-func (d *downloadSplitter) Start() {
-	log.Debug("downloadSplitter::Start : start download splitter for %s", d.path)
-	d.GetThreadPool().Start()
+func (ds *downloadSplitter) Start() {
+	log.Debug("downloadSplitter::Start : start download splitter for %s", ds.path)
+	ds.GetThreadPool().Start()
 }
 
-func (d *downloadSplitter) Stop() {
-	log.Debug("downloadSplitter::Stop : stop download splitter for %s", d.path)
-	if d.GetThreadPool() != nil {
-		d.GetThreadPool().Stop()
+func (ds *downloadSplitter) Stop() {
+	log.Debug("downloadSplitter::Stop : stop download splitter for %s", ds.path)
+	if ds.GetThreadPool() != nil {
+		ds.GetThreadPool().Stop()
 	}
-	d.GetNext().Stop()
+	ds.GetNext().Stop()
 }
 
 // download data in chunks and then write to the local file
-func (d *downloadSplitter) Process(item *WorkItem) (int, error) {
+func (ds *downloadSplitter) Process(item *WorkItem) (int, error) {
 	log.Debug("downloadSplitter::Process : Splitting data for %s, size %v, mode %v, priority %v, access time %v, modified time %v", item.Path, item.DataLen,
 		item.Mode, item.Priority, item.Atime.Format(time.DateTime), item.Mtime.Format(time.DateTime))
 
 	var err error
-	localPath := filepath.Join(d.path, item.Path)
+	localPath := filepath.Join(ds.path, item.Path)
 
 	// if priority is false, it means that it has been scheduled by the lister and not by the OpenFile call.
 	// So, get a lock. If the locking goes into wait state, it means the file is already under download by the OpenFile thread.
 	// Otherwise, if there are no other locks, acquire a lock to prevent any OpenFile call from adding a request again.
 	// OpenFile thread already takes a lock on the file in its code, so don't take it again here.
 	if !item.Priority {
-		flock := d.fileLocks.Get(item.Path)
+		flock := ds.fileLocks.Get(item.Path)
 		flock.Lock()
 		defer flock.Unlock()
 	}
@@ -162,7 +162,7 @@ func (d *downloadSplitter) Process(item *WorkItem) (int, error) {
 	if item.DataLen == 0 {
 		log.Debug("downloadSplitter::Process : 0 byte file %s", item.Path)
 		// send the status to stats manager
-		d.GetStatsManager().AddStats(&StatsItem{
+		ds.GetStatsManager().AddStats(&StatsItem{
 			Component: SPLITTER,
 			Name:      item.Path,
 			Success:   true,
@@ -185,7 +185,7 @@ func (d *downloadSplitter) Process(item *WorkItem) (int, error) {
 		return -1, fmt.Errorf("failed to truncate file %s [%s]", item.Path, err.Error())
 	}
 
-	numBlocks := ((item.DataLen - 1) / d.blockPool.GetBlockSize()) + 1
+	numBlocks := ((item.DataLen - 1) / ds.blockPool.GetBlockSize()) + 1
 	offset := int64(0)
 
 	wg := sync.WaitGroup{}
@@ -216,22 +216,22 @@ func (d *downloadSplitter) Process(item *WorkItem) (int, error) {
 
 			if respSplitItem.Block != nil {
 				// log.Debug("downloadSplitter::process : Download successful %s index %d offset %v", item.path, respSplitItem.block.index, respSplitItem.block.offset)
-				d.blockPool.Release(respSplitItem.Block)
+				ds.blockPool.Release(respSplitItem.Block)
 			}
 		}
 	}()
 
 	for i := 0; i < int(numBlocks); i++ {
-		block := d.blockPool.GetBlock(item.Priority)
+		block := ds.blockPool.GetBlock(item.Priority)
 		if block == nil {
 			responseChannel <- &WorkItem{Err: fmt.Errorf("failed to get block from pool for file %s, offset %v", item.Path, offset)}
 		} else {
 			block.Index = i
 			block.Offset = offset
-			block.Length = int64(d.blockPool.GetBlockSize())
+			block.Length = int64(ds.blockPool.GetBlockSize())
 
 			splitItem := &WorkItem{
-				CompName:        d.GetNext().GetName(),
+				CompName:        ds.GetNext().GetName(),
 				Path:            item.Path,
 				DataLen:         item.DataLen,
 				FileHandle:      item.FileHandle,
@@ -242,10 +242,10 @@ func (d *downloadSplitter) Process(item *WorkItem) (int, error) {
 				Ctx:             ctx,
 			}
 			// log.Debug("downloadSplitter::Process : Scheduling download for %s offset %v", item.Path, offset)
-			d.GetNext().Schedule(splitItem)
+			ds.GetNext().Schedule(splitItem)
 		}
 
-		offset += int64(d.blockPool.GetBlockSize())
+		offset += int64(ds.blockPool.GetBlockSize())
 	}
 
 	wg.Wait()
@@ -258,7 +258,7 @@ func (d *downloadSplitter) Process(item *WorkItem) (int, error) {
 	}
 
 	// send the download status to stats manager
-	d.GetStatsManager().AddStats(&StatsItem{
+	ds.GetStatsManager().AddStats(&StatsItem{
 		Component: SPLITTER,
 		Name:      item.Path,
 		Success:   operationSuccess,
@@ -277,31 +277,41 @@ func (d *downloadSplitter) Process(item *WorkItem) (int, error) {
 		return -1, fmt.Errorf("failed to download data for file %s", item.Path)
 	}
 
-	if d.consistency {
-		// Compute md5 of local file
-		fileMD5, err := common.GetMD5(item.FileHandle)
+	if ds.consistency {
+		err = ds.checkConsistency(item)
 		if err != nil {
-			log.Err("downloadSplitter::Process : Failed to generate MD5Sum for %s [%s]", item.Path, err.Error())
-		} else {
-			if item.MD5 == nil {
-				log.Warn("downloadSplitter::Process : Failed to get MD5Sum for blob %s", item.Path)
-			} else {
-				// compare md5 and fail is not match
-				if !reflect.DeepEqual(fileMD5, item.MD5) {
-					log.Err("downloadSplitter::Process : MD5Sum mismatch on download for file %s, so deleting it from local path", item.Path)
+			log.Err("downloadSplitter::Process : unable to check consistency for %s, so deleting it from local path", item.Path)
 
-					// delete the file from the local path if md5sum is not matching
-					err = os.Remove(localPath)
-					if err != nil {
-						log.Err("downloadSplitter::Process : Failed to delete file %s [%s]", item.Path, err.Error())
-					}
-
-					return -1, fmt.Errorf("md5sum mismatch on download for file %s", item.Path)
-				}
+			// delete the file from the local path if md5sum is not matching
+			err = os.Remove(localPath)
+			if err != nil {
+				log.Err("downloadSplitter::Process : Failed to delete file %s [%s]", item.Path, err.Error())
 			}
+
+			return -1, fmt.Errorf("md5sum mismatch on download for file %s", item.Path)
 		}
 	}
 
 	log.Debug("downloadSplitter::Process : Download completed for file %s, priority %v", item.Path, item.Priority)
 	return 0, nil
+}
+
+func (ds *downloadSplitter) checkConsistency(item *WorkItem) error {
+	if item.MD5 == nil {
+		log.Warn("downloadSplitter::Process : Unable to get MD5Sum for blob %s", item.Path)
+	} else {
+		// Compute md5 of local file
+		fileMD5, err := common.GetMD5(item.FileHandle)
+		if err != nil {
+			log.Err("downloadSplitter::Process : Failed to generate MD5Sum for %s [%s]", item.Path, err.Error())
+			return err
+		}
+		// compare md5 and fail is not match
+		if !reflect.DeepEqual(fileMD5, item.MD5) {
+			log.Err("downloadSplitter::Process : MD5Sum mismatch on download for file %s", item.Path)
+			return fmt.Errorf("md5sum mismatch on download for file %s", item.Path)
+		}
+	}
+
+	return nil
 }

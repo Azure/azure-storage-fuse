@@ -68,14 +68,14 @@ type remoteLister struct {
 	listBlocked bool
 }
 
-type newRemoteListerOptions struct {
+type remoteListerOptions struct {
 	path              string
 	defaultPermission os.FileMode
 	remote            internal.Component
 	statsMgr          *StatsManager
 }
 
-func newRemoteLister(opts *newRemoteListerOptions) (*remoteLister, error) {
+func newRemoteLister(opts *remoteListerOptions) (*remoteLister, error) {
 	if opts == nil || opts.path == "" || opts.remote == nil || opts.statsMgr == nil {
 		log.Err("lister::NewRemoteLister : invalid parameters sent to create remote lister")
 		return nil, fmt.Errorf("invalid parameters sent to create remote lister")

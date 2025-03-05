@@ -280,7 +280,7 @@ func (xl *Xload) createDownloader() error {
 	log.Trace("Xload::createDownloader : Starting downloader")
 
 	// Create remote lister pool to list remote files
-	rl, err := newRemoteLister(&newRemoteListerOptions{
+	rl, err := newRemoteLister(&remoteListerOptions{
 		path:              xl.path,
 		defaultPermission: xl.defaultPermission,
 		remote:            xl.NextComponent(),
@@ -291,7 +291,7 @@ func (xl *Xload) createDownloader() error {
 		return err
 	}
 
-	ds, err := newDownloadSplitter(&newDownloadSplitterOptions{
+	ds, err := newDownloadSplitter(&downloadSplitterOptions{
 		blockPool:   xl.blockPool,
 		path:        xl.path,
 		remote:      xl.NextComponent(),
@@ -304,7 +304,7 @@ func (xl *Xload) createDownloader() error {
 		return err
 	}
 
-	rdm, err := newRemoteDataManager(&newRemoteDataManagerOptions{
+	rdm, err := newRemoteDataManager(&remoteDataManagerOptions{
 		remote:   xl.NextComponent(),
 		statsMgr: xl.statsMgr,
 	})

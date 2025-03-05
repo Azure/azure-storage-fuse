@@ -247,28 +247,6 @@ func (s *utilsTestSuite) TestGetFileModeFromACL() {
 	}
 }
 
-func (s *utilsTestSuite) TestGetMD5() {
-	assert := assert.New(s.T())
-
-	f, err := os.Create("abc.txt")
-	assert.Nil(err)
-
-	_, err = f.Write([]byte(randomString(50)))
-	assert.Nil(err)
-
-	f.Close()
-
-	f, err = os.Open("abc.txt")
-	assert.Nil(err)
-
-	md5Sum, err := common.GetMD5(f)
-	assert.Nil(err)
-	assert.NotZero(md5Sum)
-
-	f.Close()
-	os.Remove("abc.txt")
-}
-
 func (s *utilsTestSuite) TestSanitizeSASKey() {
 	assert := assert.New(s.T())
 

@@ -54,12 +54,12 @@ type remoteDataManager struct {
 	dataManager
 }
 
-type newRemoteDataManagerOptions struct {
+type remoteDataManagerOptions struct {
 	remote   internal.Component
 	statsMgr *StatsManager
 }
 
-func newRemoteDataManager(opts *newRemoteDataManagerOptions) (*remoteDataManager, error) {
+func newRemoteDataManager(opts *remoteDataManagerOptions) (*remoteDataManager, error) {
 	if opts == nil || opts.remote == nil || opts.statsMgr == nil {
 		log.Err("data_manager::NewRemoteDataManager : invalid parameters sent to create remote data manager")
 		return nil, fmt.Errorf("invalid parameters sent to create remote data manager")

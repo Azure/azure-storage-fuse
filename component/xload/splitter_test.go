@@ -160,7 +160,7 @@ func (suite *splitterTestSuite) TestNewDownloadSplitter() {
 	suite.assert.Nil(ds)
 	suite.assert.Contains(err.Error(), "invalid parameters sent to create download splitter")
 
-	ds, err = newDownloadSplitter(&newDownloadSplitterOptions{})
+	ds, err = newDownloadSplitter(&downloadSplitterOptions{})
 	suite.assert.NotNil(err)
 	suite.assert.Nil(ds)
 	suite.assert.Contains(err.Error(), "invalid parameters sent to create download splitter")
@@ -169,7 +169,7 @@ func (suite *splitterTestSuite) TestNewDownloadSplitter() {
 	suite.assert.Nil(err)
 	suite.assert.NotNil(statsMgr)
 
-	ds, err = newDownloadSplitter(&newDownloadSplitterOptions{
+	ds, err = newDownloadSplitter(&downloadSplitterOptions{
 		blockPool: NewBlockPool(1, 1),
 		path:      "/home/user/random_path",
 		remote:    remote,
@@ -190,7 +190,7 @@ func (suite *splitterTestSuite) TestProcessFilePresent() {
 		suite.assert.Nil(err)
 	}()
 
-	ds, err := newDownloadSplitter(&newDownloadSplitterOptions{ts.blockPool, ts.path, remote, ts.stMgr, ts.locks, false})
+	ds, err := newDownloadSplitter(&downloadSplitterOptions{ts.blockPool, ts.path, remote, ts.stMgr, ts.locks, false})
 	suite.assert.Nil(err)
 	suite.assert.NotNil(ds)
 
@@ -219,7 +219,7 @@ func (suite *splitterTestSuite) TestSplitterStartStop() {
 		suite.assert.Nil(err)
 	}()
 
-	rl, err := newRemoteLister(&newRemoteListerOptions{
+	rl, err := newRemoteLister(&remoteListerOptions{
 		path:              ts.path,
 		defaultPermission: common.DefaultFilePermissionBits,
 		remote:            remote,
@@ -228,11 +228,11 @@ func (suite *splitterTestSuite) TestSplitterStartStop() {
 	suite.assert.Nil(err)
 	suite.assert.NotNil(rl)
 
-	ds, err := newDownloadSplitter(&newDownloadSplitterOptions{ts.blockPool, ts.path, remote, ts.stMgr, ts.locks, false})
+	ds, err := newDownloadSplitter(&downloadSplitterOptions{ts.blockPool, ts.path, remote, ts.stMgr, ts.locks, false})
 	suite.assert.Nil(err)
 	suite.assert.NotNil(ds)
 
-	rdm, err := newRemoteDataManager(&newRemoteDataManagerOptions{
+	rdm, err := newRemoteDataManager(&remoteDataManagerOptions{
 		remote:   remote,
 		statsMgr: ts.stMgr,
 	})
