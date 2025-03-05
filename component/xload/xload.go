@@ -53,6 +53,7 @@ type Xload struct {
 	blockSize         uint64          // Size of each block to be cached
 	mode              Mode            // Mode of the Xload component
 	exportProgress    bool            // Export the progess of xload operation to json file
+	consistency       bool            // validate md5sum on download, if md5sum is set on blob
 	workerCount       uint32          // Number of workers running
 	blockPool         *BlockPool      // Pool of blocks
 	path              string          // Path on local disk where Xload will operate
@@ -68,6 +69,7 @@ type XloadOptions struct {
 	Mode           string  `config:"mode" yaml:"mode,omitempty"`
 	Path           string  `config:"path" yaml:"path,omitempty"`
 	ExportProgress bool    `config:"export-progress" yaml:"path,omitempty"`
+	Consistency    bool    `config:"consistency" yaml:"consistency,omitempty"`
 	// TODO:: xload : add parallelism parameter
 }
 
@@ -192,6 +194,7 @@ func (xl *Xload) Configure(_ bool) error {
 
 	xl.mode = mode
 	xl.exportProgress = conf.ExportProgress
+	xl.consistency = conf.Consistency
 
 	allowOther := false
 	err = config.UnmarshalKey("allow-other", &allowOther)
@@ -205,7 +208,8 @@ func (xl *Xload) Configure(_ bool) error {
 		xl.defaultPermission = common.DefaultFilePermissionBits
 	}
 
-	log.Debug("Xload::Configure : block size %v, mode %v, path %v, default permission %v", xl.blockSize, xl.mode.String(), xl.path, xl.defaultPermission)
+	log.Debug("Xload::Configure : block size %v, mode %v, path %v, default permission %v, export progress %v, consistency %v", xl.blockSize,
+		xl.mode.String(), xl.path, xl.defaultPermission, xl.exportProgress, xl.consistency)
 
 	return nil
 }
@@ -276,19 +280,34 @@ func (xl *Xload) createDownloader() error {
 	log.Trace("Xload::createDownloader : Starting downloader")
 
 	// Create remote lister pool to list remote files
-	rl, err := newRemoteLister(xl.path, xl.defaultPermission, xl.NextComponent(), xl.statsMgr)
+	rl, err := newRemoteLister(&remoteListerOptions{
+		path:              xl.path,
+		defaultPermission: xl.defaultPermission,
+		remote:            xl.NextComponent(),
+		statsMgr:          xl.statsMgr,
+	})
 	if err != nil {
 		log.Err("Xload::createDownloader : Unable to create remote lister [%s]", err.Error())
 		return err
 	}
 
-	ds, err := newDownloadSplitter(xl.blockPool, xl.path, xl.NextComponent(), xl.statsMgr, xl.fileLocks)
+	ds, err := newDownloadSplitter(&downloadSplitterOptions{
+		blockPool:   xl.blockPool,
+		path:        xl.path,
+		remote:      xl.NextComponent(),
+		statsMgr:    xl.statsMgr,
+		fileLocks:   xl.fileLocks,
+		consistency: xl.consistency,
+	})
 	if err != nil {
 		log.Err("Xload::createDownloader : Unable to create download splitter [%s]", err.Error())
 		return err
 	}
 
-	rdm, err := newRemoteDataManager(xl.NextComponent(), xl.statsMgr)
+	rdm, err := newRemoteDataManager(&remoteDataManagerOptions{
+		remote:   xl.NextComponent(),
+		statsMgr: xl.statsMgr,
+	})
 	if err != nil {
 		log.Err("Xload::startUploader : failed to create remote data manager [%s]", err.Error())
 		return err
@@ -374,6 +393,7 @@ func (xl *Xload) downloadFile(fileName string) error {
 		Mode:     fileMode,
 		Atime:    attr.Atime,
 		Mtime:    attr.Mtime,
+		MD5:      attr.MD5,
 	})
 
 	if err != nil {

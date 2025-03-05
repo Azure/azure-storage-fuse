@@ -42,6 +42,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
@@ -59,7 +60,8 @@ const compName = "loopbackfs"
 type LoopbackFS struct {
 	internal.BaseComponent
 
-	path string
+	path        string
+	consistency bool
 }
 
 var _ internal.Component = &LoopbackFS{}
@@ -86,6 +88,10 @@ func (lfs *LoopbackFS) Configure(_ bool) error {
 		lfs.path = conf.Path
 	}
 	return nil
+}
+
+func (lfs *LoopbackFS) SetConsistency(consistency bool) {
+	lfs.consistency = consistency
 }
 
 func (lfs *LoopbackFS) Name() string {
@@ -178,12 +184,20 @@ func (lfs *LoopbackFS) StreamDir(options internal.StreamDirOptions) ([]*internal
 
 	for _, file := range files {
 		info, _ := file.Info()
+		var md5 []byte
+		if lfs.consistency && !file.IsDir() {
+			md5, err = computeMD5(filepath.Join(path, file.Name()))
+			if err != nil {
+				log.Err("LoopbackFS::StreamDir : failed to compute md5sum [%s]", err)
+			}
+		}
 		attr := &internal.ObjAttr{
 			Path:  filepath.Join(options.Name, file.Name()),
 			Name:  file.Name(),
 			Size:  info.Size(),
 			Mode:  info.Mode(),
 			Mtime: info.ModTime(),
+			MD5:   md5,
 		}
 		attr.Flags.Set(internal.PropFlagModeDefault)
 
@@ -194,6 +208,17 @@ func (lfs *LoopbackFS) StreamDir(options internal.StreamDirOptions) ([]*internal
 		attrList = append(attrList, attr)
 	}
 	return attrList, "", nil
+}
+
+func computeMD5(path string) ([]byte, error) {
+	fh, err := os.Open(path)
+	if err != nil {
+		log.Err("LoopbackFS::computeMD5 : failed to compute md5sum [%s]", err)
+		return nil, err
+	}
+	defer fh.Close()
+
+	return common.GetMD5(fh)
 }
 
 func (lfs *LoopbackFS) RenameDir(options internal.RenameDirOptions) error {
