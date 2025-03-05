@@ -256,6 +256,56 @@ func (suite *splitterTestSuite) TestSplitterStartStop() {
 	validateMD5(ts.path, remote_path, suite.assert)
 }
 
+func (suite *splitterTestSuite) TestSplitterConsistency() {
+	ts, err := setupTestSplitter()
+	suite.assert.Nil(err)
+	suite.assert.NotNil(ts)
+
+	remote.(*loopback.LoopbackFS).SetConsistency(true)
+
+	defer func() {
+		remote.(*loopback.LoopbackFS).SetConsistency(false)
+		err = ts.cleanup()
+		suite.assert.Nil(err)
+	}()
+
+	rl, err := newRemoteLister(&remoteListerOptions{
+		path:              ts.path,
+		defaultPermission: common.DefaultFilePermissionBits,
+		remote:            remote,
+		statsMgr:          ts.stMgr,
+	})
+	suite.assert.Nil(err)
+	suite.assert.NotNil(rl)
+
+	ds, err := newDownloadSplitter(&downloadSplitterOptions{ts.blockPool, ts.path, remote, ts.stMgr, ts.locks, true})
+	suite.assert.Nil(err)
+	suite.assert.NotNil(ds)
+
+	rdm, err := newRemoteDataManager(&remoteDataManagerOptions{
+		remote:   remote,
+		statsMgr: ts.stMgr,
+	})
+	suite.assert.Nil(err)
+	suite.assert.NotNil(rdm)
+
+	// create chain
+	rl.SetNext(ds)
+	ds.SetNext(rdm)
+
+	// start components
+	rdm.Start()
+	ds.Start()
+	rl.Start()
+
+	time.Sleep(5 * time.Second)
+
+	// stop comoponents
+	rl.Stop()
+
+	validateMD5(ts.path, remote_path, suite.assert)
+}
+
 func validateMD5(localPath string, remotePath string, assert *assert.Assertions) {
 	entries, err := os.ReadDir(remotePath)
 	assert.Nil(err)
