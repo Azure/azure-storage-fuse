@@ -715,7 +715,7 @@ stages:
             parameters:
               skip_ut: true
           # Check data consistency for block accounts
-          - template: 'azure-pipeline-templates/data-consistency.yml'
+          - template: 'azure-pipeline-templates/data-integrity.yml'
             parameters:
               config_file: $(BLOBFUSE2_CFG)
               idstring: BLOCK
@@ -725,7 +725,7 @@ stages:
               verbose_log: ${{ parameters.verbose_log }}
 
           # Check data consistency for adls accounts
-          - template: 'azure-pipeline-templates/data-consistency.yml'
+          - template: 'azure-pipeline-templates/data-integrity.yml'
             parameters:
               config_file: $(BLOBFUSE2_CFG)
               idstring: ADLS
