@@ -157,7 +157,7 @@ func (bp *BufferPool) bufferReclaimation(r requestType) {
 			blk.Unlock()
 			noOfBlksToFree--
 		}
-		currentBlk = bp.syncedBlksLst.Back()
+		currentBlk = currentBlk.Prev()
 	}
 
 	outstandingBlks = bp.localBlksLst.Len() + bp.syncedBlksLst.Len()
