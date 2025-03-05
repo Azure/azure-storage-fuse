@@ -167,6 +167,7 @@ func (bp *BufferPool) bufferReclaimation(r requestType) {
 }
 
 func (bp *BufferPool) asyncUploader(r requestType) {
+	now := time.Now()
 	if r == asyncRequest {
 		bp.Lock()
 		defer bp.Unlock()
@@ -175,7 +176,7 @@ func (bp *BufferPool) asyncUploader(r requestType) {
 	totalUsage := ((outstandingBlks * 100) / bp.maxBlocks)
 
 	usage := ((bp.localBlksLst.Len() * 100) / bp.maxBlocks)
-	noOfAsyncUploads := max(((usage-30)*bp.maxBlocks)/100, 0)
+	noOfAsyncUploads := max(((usage-20)*bp.maxBlocks)/100, 0)
 	log.Info("BlockCache::asyncUploader : [START] [sync: %d]Mem usage: %d, Synced blks Mem Usage: %d, needed %d async Uploads", r, totalUsage, usage, noOfAsyncUploads)
 	// Schedule uploads on least recently used blocks
 	currentBlk := bp.localBlksLst.Back()
@@ -183,23 +184,26 @@ func (bp *BufferPool) asyncUploader(r requestType) {
 		blk := currentBlk.Value.(*block)
 		// Check the refcnt for the blk and only schedule blk if the refcnt is zero.
 		if rcnt := blk.refCnt.Load(); rcnt == 0 {
+			cow := time.Now()
 			uploader(blk, asyncRequest, true)
+			log.Info("BlockCache::asyncUploader : [took : %s] Upload scheduled for blk idx : %d, file: %s", time.Since(cow).String(), blk.idx, blk.file.Name)
 			noOfAsyncUploads--
 		}
-		currentBlk = bp.localBlksLst.Back()
+		currentBlk = currentBlk.Prev()
 	}
 
 	if r == syncRequest {
 		// Wait for the async uploads to complete and get the local blks usage to less than 30
-		noOfAsyncUploads = max(((usage-30)*bp.maxBlocks)/100, 0)
+		noOfAsyncUploads = max(((usage-20)*bp.maxBlocks)/100, 0)
 		for currentBlk != nil && noOfAsyncUploads > 0 {
 			blk := currentBlk.Value.(*block)
 			// Check the refcnt for the blk and only schedule blk if the refcnt is zero.
 			if rcnt := blk.refCnt.Load(); rcnt == 0 {
+				log.Info("BlockCache::asyncUploader : Waiting for Upload to complete blk idx : %d, file: %s", blk.idx, blk.file.Name)
 				uploader(blk, syncRequest, true)
 				noOfAsyncUploads--
 			}
-			currentBlk = bp.localBlksLst.Back()
+			currentBlk = currentBlk.Prev()
 		}
 	}
 
@@ -207,7 +211,7 @@ func (bp *BufferPool) asyncUploader(r requestType) {
 	totalUsage = ((outstandingBlks * 100) / bp.maxBlocks)
 
 	usage = ((bp.localBlksLst.Len() * 100) / bp.maxBlocks)
-	log.Info("BlockCache::asyncUploader : [END] [sync: %d]Mem usage: %d, Synced blks Mem Usage: %d, Unsuccessful async upload schedules :%d", r, totalUsage, usage, noOfAsyncUploads)
+	log.Info("BlockCache::asyncUploader : [END] [sync: %d][took : %s]Mem usage: %d, Synced blks Mem Usage: %d, Unsuccessful async upload schedules :%d", r, time.Since(now).String(), totalUsage, usage, noOfAsyncUploads)
 
 }
 
@@ -246,9 +250,9 @@ func (bp *BufferPool) getBufferForBlock(blk *block) {
 	log.Debug("BlockCache::getBufferForBlock : Synced Blocks Mem Usage %d", LBusage)
 	// Always keep the local blocks to less than 50%
 	// Schedule the remaining blocks for async uploads.
-	if LBusage > 50 && LBusage < 55 {
+	if LBusage > 30 && LBusage < 40 {
 		go bPool.asyncUploader(asyncRequest)
-	} else if LBusage > 55 {
+	} else if LBusage > 50 {
 		// doom is near, wait until it gets under 50.
 		// Writing to the memory is superfast, while uploading the blk takes an eternity.
 		// Better wait until the async uploads complete rather than getting into out of memory state.
