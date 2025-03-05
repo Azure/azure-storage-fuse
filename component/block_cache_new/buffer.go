@@ -146,6 +146,7 @@ func (bp *BufferPool) bufferReclaimation(r requestType) {
 
 	currentBlk := bp.syncedBlksLst.Back()
 	for currentBlk != nil && noOfBlksToFree > 0 {
+		nxtblk := currentBlk.Prev()
 		blk := currentBlk.Value.(*block)
 		// Check the refcnt for the blk and only release buffer if the refcnt is zero.
 		blk.Lock()
@@ -156,7 +157,7 @@ func (bp *BufferPool) bufferReclaimation(r requestType) {
 			noOfBlksToFree--
 		}
 		blk.Unlock()
-		currentBlk = currentBlk.Prev()
+		currentBlk = nxtblk
 	}
 
 	outstandingBlks = bp.localBlksLst.Len() + bp.syncedBlksLst.Len()
