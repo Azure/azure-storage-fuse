@@ -107,7 +107,6 @@ steps:
           $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) -o ro ${{ parameters.mnt_flags }}
 
   - script: |
-      echo "----------------------------------------------"
       STATS_MANAGER=`ls $(WORK_DIR)/xload_stats_*.json`
       echo $STATS_MANAGER
 
@@ -122,6 +121,9 @@ steps:
 
         sleep 5
       done
+
+      echo "----------------------------------------------"
+      tail -n 100 $STATS_MANAGER
     displayName: 'Stats manager info'
 
   - script: |
