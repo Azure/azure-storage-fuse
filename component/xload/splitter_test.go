@@ -228,7 +228,7 @@ func (suite *splitterTestSuite) TestSplitterStartStop() {
 	suite.assert.Nil(err)
 	suite.assert.NotNil(rl)
 
-	ds, err := newDownloadSplitter(&downloadSplitterOptions{ts.blockPool, ts.path, remote, ts.stMgr, ts.locks, false})
+	ds, err := newDownloadSplitter(&downloadSplitterOptions{ts.blockPool, ts.path, remote, ts.stMgr, ts.locks, true})
 	suite.assert.Nil(err)
 	suite.assert.NotNil(ds)
 
