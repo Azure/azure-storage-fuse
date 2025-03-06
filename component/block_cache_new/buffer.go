@@ -311,6 +311,9 @@ func getBlockForRead(idx int, file *File, r requestType) (blk *block, err error)
 		blk.incrementRefCnt()
 	}
 	_, err = downloader(blk, r)
+	if r == syncRequest {
+		bPool.updateRecentnessOfBlk <- blk
+	}
 	return blk, err
 }
 
@@ -358,6 +361,7 @@ func getBlockForWrite(idx int, file *File) (*block, error) {
 	file.Unlock()
 	blk.incrementRefCnt()
 	_, err := downloader(blk, syncRequest)
+	bPool.updateRecentnessOfBlk <- blk
 	return blk, err
 }
 

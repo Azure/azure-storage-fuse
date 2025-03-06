@@ -62,7 +62,6 @@ func downloader(blk *block, r requestType) (state blockState, err error) {
 	}
 
 	if r == syncRequest {
-		bPool.updateRecentnessOfBlk <- blk
 		err, ok := <-blk.downloadDone
 		if ok && err == nil {
 			blk.buf.valid = true
