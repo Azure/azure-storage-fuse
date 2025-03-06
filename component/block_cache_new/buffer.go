@@ -240,7 +240,7 @@ func (bp *BufferPool) getBufferForBlock(blk *block) {
 		go bPool.bufferReclaimation(asyncRequest)
 	} else if SBusage >= 95 {
 		// reclaim the memory synchronously.
-		bPool.bufferReclaimation(syncRequest)
+		go bPool.bufferReclaimation(syncRequest)
 	}
 
 	// Check the memory of the local blocks
@@ -254,7 +254,7 @@ func (bp *BufferPool) getBufferForBlock(blk *block) {
 		// doom is near, wait until it gets under 50.
 		// Writing to the memory is superfast, while uploading the blk takes an eternity.
 		// Better wait until the async uploads complete rather than getting into out of memory state.
-		bPool.asyncUploader(syncRequest)
+		go bPool.asyncUploader(syncRequest)
 	}
 
 }

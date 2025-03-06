@@ -251,6 +251,9 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 
 		blk.Lock()
 		block_buf := blk.buf
+		if blk.buf == nil {
+			panic("BlockCache::ReadInBuffer : Buffer got freed")
+		}
 		len_of_block_buf := getBlockSize(fileSize, idx)
 		bytesCopied := copy(options.Data[dataRead:], block_buf.data[blockOffset:len_of_block_buf])
 		blk.refCnt--
@@ -291,7 +294,7 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 		blk.cancelOngoingAsyncUpload()
 		blk.resetAsyncUploadTimer()
 		blockOffset := convertOffsetIntoBlockOffset(offset)
-
+		bPool.moveBlkFromSBLtoLBL(blk)
 		blk.Lock()
 		// What if write comes on a hole? currenlty not handled
 		if blk.buf == nil {

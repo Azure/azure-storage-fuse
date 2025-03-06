@@ -139,7 +139,6 @@ func updateModifiedBlock(blk *block) {
 	blk.hole = false
 	if blk.state == committedBlock || blk.state == uncommitedBlock {
 		blk.state = localBlock
-		bPool.moveBlkFromSBLtoLBL(blk)
 	}
 }
 
@@ -158,6 +157,7 @@ func changeStateOfBlockToLocal(idx int, blk *block) error {
 		panic("BlockCache::changeStateOfBlockToLocal : Ref cnt for the blk is not getting modififed correctly")
 	}
 	blk.Unlock()
+	bPool.moveBlkFromSBLtoLBL(blk)
 	return nil
 }
 
