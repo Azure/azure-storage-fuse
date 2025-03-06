@@ -294,19 +294,23 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 		blk.cancelOngoingAsyncUpload()
 		blk.resetAsyncUploadTimer()
 		blockOffset := convertOffsetIntoBlockOffset(offset)
-		bPool.moveBlkFromSBLtoLBL(blk)
+
 		blk.Lock()
 		// What if write comes on a hole? currenlty not handled
 		if blk.buf == nil {
 			panic(fmt.Sprintf("BlockCache::WriteFile : Culprit Blk idx : %d, file name: %s", blk.idx, f.Name))
 		}
 		bytesCopied := copy(blk.buf.data[blockOffset:BlockSize], options.Data[dataWritten:])
-		updateModifiedBlock(blk)
+		firstWriteOnblock := updateModifiedBlock(blk)
 		blk.refCnt--
 		if blk.refCnt < 0 {
 			panic("BlockCache::WriteFile : Ref cnt for the blk is not getting modififed correctly")
 		}
 		blk.Unlock()
+
+		if firstWriteOnblock {
+			bPool.moveBlkFromSBLtoLBL(blk)
+		}
 
 		dataWritten += bytesCopied
 		offset += int64(bytesCopied)

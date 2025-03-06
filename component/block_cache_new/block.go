@@ -135,11 +135,13 @@ func isDstPathTempFile(path string) bool {
 }
 
 // When block gets modified. Modify the LRU's and state.
-func updateModifiedBlock(blk *block) {
+func updateModifiedBlock(blk *block) bool {
 	blk.hole = false
 	if blk.state == committedBlock || blk.state == uncommitedBlock {
 		blk.state = localBlock
+		return true
 	}
+	return false
 }
 
 func changeStateOfBlockToLocal(idx int, blk *block) error {
@@ -151,13 +153,15 @@ func changeStateOfBlockToLocal(idx int, blk *block) error {
 	}
 	blk.cancelOngoingAsyncUpload()
 	blk.Lock()
-	updateModifiedBlock(blk)
+	firstWritetoBlk := updateModifiedBlock(blk)
 	blk.refCnt--
 	if blk.refCnt < 0 {
 		panic("BlockCache::changeStateOfBlockToLocal : Ref cnt for the blk is not getting modififed correctly")
 	}
 	blk.Unlock()
-	bPool.moveBlkFromSBLtoLBL(blk)
+	if firstWritetoBlk {
+		bPool.moveBlkFromSBLtoLBL(blk)
+	}
 	return nil
 }
 

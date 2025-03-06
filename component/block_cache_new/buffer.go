@@ -128,10 +128,8 @@ func (bp *BufferPool) updateLRU() {
 // 2. If 1 is not enough, then schedule uploads for the local blks so that we can take back memory from them later using step 1.
 func (bp *BufferPool) bufferReclaimation(r requestType) {
 	// Take the lock on buffer pool if the request is of type async
-	if r == asyncRequest {
-		bp.Lock()
-		defer bp.Unlock()
-	}
+	bp.Lock()
+	defer bp.Unlock()
 
 	outstandingBlks := bp.localBlksLst.Len() + bp.syncedBlksLst.Len()
 	totalUsage := ((outstandingBlks * 100) / bp.maxBlocks)
@@ -146,7 +144,7 @@ func (bp *BufferPool) bufferReclaimation(r requestType) {
 		blk := currentBlk.Value.(*block)
 		// Check the refcnt for the blk and only release buffer if the refcnt is zero.
 		blk.Lock()
-		if blk.refCnt == 0 {
+		if blk.refCnt == 0 && blk.state != localBlock {
 			bp.removeBlockFromLRU(blk)
 			bp.releaseBuffer(blk)
 			log.Info("BlockCache::bufferReclaimation :  Successful reclaim blk idx: %d, file: %s", blk.idx, blk.file.Name)
@@ -166,10 +164,8 @@ func (bp *BufferPool) bufferReclaimation(r requestType) {
 
 func (bp *BufferPool) asyncUploader(r requestType) {
 	now := time.Now()
-	if r == asyncRequest {
-		bp.Lock()
-		defer bp.Unlock()
-	}
+	bp.Lock()
+	defer bp.Unlock()
 	outstandingBlks := bp.localBlksLst.Len() + bp.syncedBlksLst.Len()
 	totalUsage := ((outstandingBlks * 100) / bp.maxBlocks)
 
@@ -225,7 +221,7 @@ func (bp *BufferPool) getBufferForBlock(blk *block) {
 		bPool.addSyncedBlockToLRU(blk)
 	case uncommitedBlock:
 		//Todo: Block is evicted from the cache, to retrieve it, first we should do putBlockList
-		panic("BlockCache::getBufferForBlock : Todo: Read of evicted Uncommited block")
+		panic(fmt.Sprintf("BlockCache::getBufferForBlock : Todo: Read of evicted Uncommited block idx : %d, file : %s", blk.idx, blk.file.Name))
 	}
 
 	outstandingBlks := bp.localBlksLst.Len() + bp.syncedBlksLst.Len()
