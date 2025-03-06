@@ -68,11 +68,14 @@ steps:
 
   - script: |
       for i in {1,2,3,4,5,6,7,8,9,10,20,30,50,100,200,1024,2048,4096}; do echo $i; done | parallel --will-cite -j 5 'head -c {}M < /dev/urandom > ${{ parameters.mount_dir }}/myfile_{}'
-      ls -lh ${{ parameters.mount_dir }}/myfile_*
+      for i in $(seq 1 10); do echo $(shuf -i 0-4294967296 -n 1); done | parallel --will-cite -j 5 'head -c {} < /dev/urandom > ${{ parameters.mount_dir }}/datafiles_{}'
+      cd ${{ parameters.mount_dir }}
+      python3 $(WORK_DIR)/testdata/scripts/generate-parquet-files.py
+      ls -l ${{ parameters.mount_dir }}/*
     displayName: 'Generate data'
 
   - script: |
-      md5sum ${{ parameters.mount_dir }}/myfile_* > $(WORK_DIR)/md5sum_file_cache.txt
+      md5sum ${{ parameters.mount_dir }}/* > $(WORK_DIR)/md5sum_file_cache.txt
     displayName: 'Generate md5Sum with File-Cache'
 
   - script: |
@@ -127,7 +130,7 @@ steps:
     displayName: 'Stats manager info'
 
   - script: |
-      md5sum ${{ parameters.mount_dir }}/myfile_* > $(WORK_DIR)/md5sum_xload.txt
+      md5sum ${{ parameters.mount_dir }}/* > $(WORK_DIR)/md5sum_xload.txt
     displayName: 'Generate md5Sum with preload'
 
   - script: |
