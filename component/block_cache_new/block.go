@@ -5,7 +5,6 @@ import (
 	"runtime"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -35,12 +34,12 @@ const (
 
 type block struct {
 	sync.RWMutex
-	idx                         int          // Block Index
-	id                          string       // Block Id
-	buf                         *Buffer      // Inmemory buffer if exists.
-	state                       blockState   // It tells about the state of the block.
-	hole                        bool         // Hole means this block is a null block. This can be used to do some optimisations.
-	refCnt                      atomic.Int32 // reference counter for block, how many handles are currenlty using block
+	idx                         int        // Block Index
+	id                          string     // Block Id
+	buf                         *Buffer    // Inmemory buffer if exists.
+	state                       blockState // It tells about the state of the block.
+	hole                        bool       // Hole means this block is a null block. This can be used to do some optimisations.
+	refCnt                      int        // reference counter for block, how many handles are currenlty using block
 	asyncUploadTimer            *time.Timer
 	uploadDone                  chan error // Channel to know when the uplaod completes.
 	downloadDone                chan error // Channel to know when the download completes.
@@ -70,6 +69,20 @@ func createBlock(idx int, id string, state blockState, f *File) *block {
 
 func (blk *block) resetAsyncUploadTimer() {
 	blk.asyncUploadTimer.Reset(defaultBlockTimeout)
+}
+
+func (blk *block) incrementRefCnt() int {
+	blk.Lock()
+	defer blk.Unlock()
+	blk.refCnt++
+	return blk.refCnt
+}
+
+func (blk *block) decrementRefCnt() int {
+	blk.Lock()
+	defer blk.Unlock()
+	blk.refCnt--
+	return blk.refCnt
 }
 
 type blockList []*block
@@ -138,7 +151,7 @@ func changeStateOfBlockToUncommited(blk *block, globalPoolLock bool) {
 }
 
 func changeStateOfBlockToLocal(idx int, blk *block) error {
-	blk.refCnt.Add(1)
+	blk.incrementRefCnt()
 	_, err := downloader(blk, syncRequest)
 	if err != nil {
 		log.Err("BlockCache::changeStateOfBlockToLocal : download failed for blk idx=%d, path=%s, size=%d", idx, blk.file.Name, blk.file.size)
@@ -147,8 +160,8 @@ func changeStateOfBlockToLocal(idx int, blk *block) error {
 	blk.cancelOngoingAsyncUpload()
 	blk.Lock()
 	updateModifiedBlock(blk)
-	currefCnt := blk.refCnt.Add(-1)
-	if currefCnt < 0 {
+	blk.refCnt--
+	if blk.refCnt < 0 {
 		panic("BlockCache::changeStateOfBlockToLocal : Ref cnt for the blk is not getting modififed correctly")
 	}
 	blk.Unlock()

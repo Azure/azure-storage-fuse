@@ -18,7 +18,7 @@ func scheduleDownload(blk *block, r requestType) {
 		}
 		// Increment the ref cnt for blk as download is in progress.
 		// Its gets automatically once the download completes/fails
-		blk.refCnt.Add(1)
+		// blk.refCnt++
 		wp.createTask(ctx, taskDone, false, r, blk)
 	}
 }
@@ -50,10 +50,12 @@ func downloader(blk *block, r requestType) (state blockState, err error) {
 			default:
 				// Taking toomuch time for completing the request, cancel and reschedule.
 				if time.Since(now) > 1000*time.Millisecond {
-					log.Info("BlockCache::downloader : Cancelling ongoing async upload and scheduling the new one")
+					log.Info("BlockCache::downloader : Cancelling ongoing async Download and scheduling the new one")
 					blk.cancelOngolingAsyncDownload()
 					scheduleDownload(blk, r)
 					break outer
+				} else {
+					time.Sleep(1 * time.Millisecond)
 				}
 			}
 		}

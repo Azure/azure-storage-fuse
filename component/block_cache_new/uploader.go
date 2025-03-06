@@ -3,13 +3,15 @@ package block_cache_new
 import (
 	"context"
 	"time"
+
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
 func scheduleUpload(blk *block, r requestType) {
 	blk.uploadDone = make(chan error, 1)
 	ctx, cancel := context.WithCancel(context.Background())
 	taskDone := make(chan struct{}, 1)
-	blk.refCnt.Add(1)
+	// blk.refCnt++
 	blk.cancelOngoingAsyncUpload = func() {
 		cancel()
 		<-taskDone
@@ -50,12 +52,14 @@ func uploader(blk *block, r requestType, globalPoolLock bool) (state blockState,
 					// Taking toomuch time for request to complete,
 					// cancel the ongoing upload and schedule a new one.
 					if time.Since(now) > 1000*time.Millisecond && r == syncRequest {
-						// logy.Write([]byte(fmt.Sprintf("BlockCache::uploader Debug :[sync: %d], path=%s, blk Idx = %d\n", r, blk.file.Name, blk.idx)))
+						log.Info("BlockCache::Uploader : Cancelling ongoing async upload and scheduling the new one")
 						blk.cancelOngoingAsyncUpload()
 						scheduleUpload(blk, r)
 						break outer
 					} else if r == asyncRequest {
 						break outer
+					} else {
+						time.Sleep(1 * time.Millisecond)
 					}
 				}
 			}

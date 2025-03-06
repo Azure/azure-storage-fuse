@@ -241,8 +241,8 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 		}
 		if err != nil {
 			log.Err("BlockCache::ReadInBuffer : Failed to read the block, idx:%d, file:%s", blk.id, blk.file.Name)
-			currefCnt := blk.refCnt.Add(-1)
-			if currefCnt < 0 {
+			curRefCnt := blk.decrementRefCnt()
+			if curRefCnt < 0 {
 				panic("BlockCache::ReadInBuffer : Ref cnt for the blk is not getting modififed correctly")
 			}
 			return dataRead, err
@@ -253,8 +253,8 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 		block_buf := blk.buf
 		len_of_block_buf := getBlockSize(fileSize, idx)
 		bytesCopied := copy(options.Data[dataRead:], block_buf.data[blockOffset:len_of_block_buf])
-		currefCnt := blk.refCnt.Add(-1)
-		if currefCnt < 0 {
+		blk.refCnt--
+		if blk.refCnt < 0 {
 			panic(" BlockCache::ReadInBuffer : Ref cnt for the blk is not getting modififed correctly")
 		}
 		blk.Unlock()
@@ -282,8 +282,8 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 		idx := getBlockIndex(offset)
 		blk, err := getBlockForWrite(idx, f)
 		if err != nil {
-			currefCnt := blk.refCnt.Add(-1)
-			if currefCnt < 0 {
+			curRefCnt := blk.decrementRefCnt()
+			if curRefCnt < 0 {
 				panic("BlockCache::WriteFile : Ref cnt for the blk is not getting modififed correctly")
 			}
 			return dataWritten, err
@@ -299,8 +299,8 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 		}
 		bytesCopied := copy(blk.buf.data[blockOffset:BlockSize], options.Data[dataWritten:])
 		updateModifiedBlock(blk)
-		currefCnt := blk.refCnt.Add(-1)
-		if currefCnt < 0 {
+		blk.refCnt--
+		if blk.refCnt < 0 {
 			panic("BlockCache::WriteFile : Ref cnt for the blk is not getting modififed correctly")
 		}
 		blk.Unlock()
@@ -328,6 +328,8 @@ func (bc *BlockCache) SyncFile(options internal.SyncFileOptions) error {
 			err = commitBuffersForFile(f)
 			if err != nil {
 				log.Err("BlockCache::SyncFile : Commiting buffers failed handle=%d, path=%s, err=%s", options.Handle.ID, options.Handle.Path, err.Error())
+			} else {
+				log.Info("BlockCache::SyncFile : Commit buffers success")
 			}
 		}
 	} else {

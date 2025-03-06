@@ -121,7 +121,6 @@ func doDownload(t *task, workerNo int, r requestType) {
 		log.Err("BlockCache::doDownload : Download failed blk idx: %d, file : %s, err : %s", blk.idx, blk.file.Name, err.Error())
 		blk.downloadDone <- err
 	}
-	blk.refCnt.Add(-1)
 	close(t.taskDone)
 }
 
@@ -158,6 +157,5 @@ func doUpload(t *task, workerNo int, r requestType) {
 			blk.uploadDone <- err
 		}
 	}
-	blk.refCnt.Add(-1)
 	close(t.taskDone)
 }

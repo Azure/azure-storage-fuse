@@ -150,11 +150,13 @@ func (bp *BufferPool) bufferReclaimation(r requestType) {
 		blk := currentBlk.Value.(*block)
 		// Check the refcnt for the blk and only release buffer if the refcnt is zero.
 		blk.Lock()
-		if rcnt := blk.refCnt.Load(); rcnt == 0 {
+		if blk.refCnt == 0 {
 			bp.removeBlockFromLRU(blk)
 			bp.releaseBuffer(blk)
 			log.Info("BlockCache::bufferReclaimation :  Successful reclaim blk idx: %d, file: %s", blk.idx, blk.file.Name)
 			noOfBlksToFree--
+		} else {
+			log.Info("BlockCache::bufferReclaimation :  Unsuccessful reclaim blk idx: %d, file: %s, refcnt: %d", blk.idx, blk.file.Name, blk.refCnt)
 		}
 		blk.Unlock()
 		currentBlk = nxtblk
@@ -183,11 +185,17 @@ func (bp *BufferPool) asyncUploader(r requestType) {
 	for currentBlk != nil && noOfAsyncUploads > 0 {
 		blk := currentBlk.Value.(*block)
 		// Check the refcnt for the blk and only schedule blk if the refcnt is zero.
-		if rcnt := blk.refCnt.Load(); rcnt == 0 {
+		var refcnt int = 0
+		blk.Lock()
+		refcnt = blk.refCnt
+		blk.Unlock()
+		if refcnt == 0 {
 			cow := time.Now()
 			uploader(blk, asyncRequest, true)
 			log.Info("BlockCache::asyncUploader : [took : %s] Upload scheduled for blk idx : %d, file: %s", time.Since(cow).String(), blk.idx, blk.file.Name)
 			noOfAsyncUploads--
+		} else {
+			log.Info("BlockCache::asyncUploader : Cannot schedule upload for blk idx : %d, file: %s, refcnt: %d", blk.idx, blk.file.Name, refcnt)
 		}
 		currentBlk = currentBlk.Prev()
 	}
@@ -195,13 +203,20 @@ func (bp *BufferPool) asyncUploader(r requestType) {
 	if r == syncRequest {
 		// Wait for the async uploads to complete and get the local blks usage to less than 30
 		noOfAsyncUploads = max(((usage-20)*bp.maxBlocks)/100, 0)
+		currentBlk := bp.localBlksLst.Back()
 		for currentBlk != nil && noOfAsyncUploads > 0 {
 			blk := currentBlk.Value.(*block)
 			// Check the refcnt for the blk and only schedule blk if the refcnt is zero.
-			if rcnt := blk.refCnt.Load(); rcnt == 0 {
+			var refCnt int = 0
+			blk.Lock()
+			refCnt = blk.refCnt
+			blk.Unlock()
+			if refCnt == 0 {
 				log.Info("BlockCache::asyncUploader : Waiting for Upload to complete blk idx : %d, file: %s", blk.idx, blk.file.Name)
 				uploader(blk, syncRequest, true)
 				noOfAsyncUploads--
+			} else {
+				log.Info("BlockCache::asyncUploader : Cannot Wait for upload for blk idx : %d, file: %s, refcnt: %d", blk.idx, blk.file.Name, refCnt)
 			}
 			currentBlk = currentBlk.Prev()
 		}
@@ -247,16 +262,16 @@ func (bp *BufferPool) getBufferForBlock(blk *block) {
 
 	// Check the memory of the local blocks
 	LBusage := ((bp.localBlksLst.Len() * 100) / bp.maxBlocks)
-	log.Debug("BlockCache::getBufferForBlock : Synced Blocks Mem Usage %d", LBusage)
+	log.Debug("BlockCache::getBufferForBlock : local Blocks Mem Usage %d", LBusage)
 	// Always keep the local blocks to less than 50%
 	// Schedule the remaining blocks for async uploads.
 	if LBusage > 30 && LBusage < 40 {
-		go bPool.asyncUploader(asyncRequest)
+		// go bPool.asyncUploader(asyncRequest)
 	} else if LBusage > 50 {
 		// doom is near, wait until it gets under 50.
 		// Writing to the memory is superfast, while uploading the blk takes an eternity.
 		// Better wait until the async uploads complete rather than getting into out of memory state.
-		bPool.asyncUploader(syncRequest)
+		// bPool.asyncUploader(syncRequest)
 	}
 
 }
@@ -310,7 +325,7 @@ func getBlockForRead(idx int, file *File, r requestType) (blk *block, err error)
 	blk = file.blockList[idx]
 	file.Unlock()
 	if r == syncRequest {
-		blk.refCnt.Add(1)
+		blk.incrementRefCnt()
 	}
 	_, err = downloader(blk, r)
 	return blk, err
@@ -352,13 +367,13 @@ func getBlockForWrite(idx int, file *File) (*block, error) {
 		}
 		blk := file.blockList[idx]
 		// Increment the refcnt on newly created block.
-		blk.refCnt.Add(1)
+		blk.refCnt++
 		file.Unlock()
 		return blk, nil
 	}
 	blk := file.blockList[idx]
-	blk.refCnt.Add(1)
 	file.Unlock()
+	blk.incrementRefCnt()
 	_, err := downloader(blk, syncRequest)
 	return blk, err
 }
