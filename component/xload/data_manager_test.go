@@ -52,7 +52,12 @@ func (suite *dataManagerTestSuite) SetupSuite() {
 }
 
 func (suite *dataManagerTestSuite) TestNewRemoteDataManager() {
-	rdm, err := newRemoteDataManager(nil, nil)
+	rdm, err := newRemoteDataManager(nil)
+	suite.assert.NotNil(err)
+	suite.assert.Nil(rdm)
+	suite.assert.Contains(err.Error(), "invalid parameters sent to create remote data manager")
+
+	rdm, err = newRemoteDataManager(&remoteDataManagerOptions{})
 	suite.assert.NotNil(err)
 	suite.assert.Nil(rdm)
 	suite.assert.Contains(err.Error(), "invalid parameters sent to create remote data manager")
@@ -62,7 +67,10 @@ func (suite *dataManagerTestSuite) TestNewRemoteDataManager() {
 	suite.assert.Nil(err)
 	suite.assert.NotNil(statsMgr)
 
-	rdm, err = newRemoteDataManager(remote, statsMgr)
+	rdm, err = newRemoteDataManager(&remoteDataManagerOptions{
+		remote:   remote,
+		statsMgr: statsMgr,
+	})
 	suite.assert.Nil(err)
 	suite.assert.NotNil(rdm)
 }
@@ -79,16 +87,16 @@ func (suite *dataManagerTestSuite) TestProcessErrors() {
 		Ctx:      ctx,
 	}
 
-	n, err := rdm.Process(item)
+	dataLength, err := rdm.Process(item)
 	suite.assert.NotNil(err)
-	suite.assert.Equal(n, 0)
+	suite.assert.Equal(dataLength, 0)
 
 	// cancel the context
 	cancel()
 
-	n, err = rdm.Process(item)
+	dataLength, err = rdm.Process(item)
 	suite.assert.NotNil(err)
-	suite.assert.Equal(n, 0)
+	suite.assert.Equal(dataLength, 0)
 }
 
 func TestDatamanagerSuite(t *testing.T) {
