@@ -143,13 +143,6 @@ func updateModifiedBlock(blk *block) {
 	}
 }
 
-func changeStateOfBlockToUncommited(blk *block, globalPoolLock bool) {
-	if blk.state == localBlock {
-		blk.state = uncommitedBlock
-		bPool.moveBlkFromLBLtoSBL(blk, globalPoolLock)
-	}
-}
-
 func changeStateOfBlockToLocal(idx int, blk *block) error {
 	blk.incrementRefCnt()
 	_, err := downloader(blk, syncRequest)

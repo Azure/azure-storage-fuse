@@ -20,9 +20,7 @@ func scheduleUpload(blk *block, r requestType) {
 }
 
 // Schedules the upload and return true if the block is local/uncommited.
-// globalPoolLock parameter is true is if the request come from the asyncUploader
-// in which case pool is already locked.
-func uploader(blk *block, r requestType, globalPoolLock bool) (state blockState, err error) {
+func uploader(blk *block, r requestType) (state blockState, err error) {
 	blk.Lock()
 	defer blk.Unlock()
 	if blk.state == localBlock {
@@ -41,7 +39,7 @@ func uploader(blk *block, r requestType, globalPoolLock bool) (state blockState,
 				case err, ok := <-blk.uploadDone:
 					if ok && err == nil {
 						// Upload was already completed by async scheduler and no more write came after it.
-						changeStateOfBlockToUncommited(blk, globalPoolLock)
+						blk.state = uncommitedBlock
 						close(blk.uploadDone)
 					} else {
 						// logy.Write([]byte(fmt.Sprintf("BlockCache::uploader :[sync: %d], path=%s, blk Idx = %d\n", r, blk.file.Name, blk.idx)))
@@ -68,7 +66,7 @@ func uploader(blk *block, r requestType, globalPoolLock bool) (state blockState,
 	if r == syncRequest {
 		err, ok := <-blk.uploadDone
 		if ok && err == nil {
-			changeStateOfBlockToUncommited(blk, globalPoolLock)
+			blk.state = uncommitedBlock
 			close(blk.uploadDone)
 		}
 	}
