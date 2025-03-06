@@ -37,9 +37,8 @@ parameters:
 
 steps:
   - script:
-      sudo apt-get install jq -y
-      sudo apt-get install python3-setuptools -y
-      sudo apt install python3-pip -y
+      sudo apt-get update
+      sudo apt-get install jq python3-setuptools python3-pip -y
       sudo pip3 install pandas numpy pyarrow fastparquet
     displayName: 'Install dependencies'
 
