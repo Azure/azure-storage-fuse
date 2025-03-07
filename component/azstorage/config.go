@@ -76,7 +76,7 @@ func (AuthType) AZCLI() AuthType {
 	return AuthType(5)
 }
 
-func (AuthType) CLIENTASSERTION() AuthType {
+func (AuthType) WORKLOADIDENTITY() AuthType {
 	return AuthType(6)
 }
 
@@ -474,8 +474,8 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		az.stConfig.authConfig.WorkloadIdentityToken = opt.WorkloadIdentityToken
 	case EAuthType.AZCLI():
 		az.stConfig.authConfig.AuthMode = EAuthType.AZCLI()
-	case EAuthType.CLIENTASSERTION():
-		az.stConfig.authConfig.AuthMode = EAuthType.CLIENTASSERTION()
+	case EAuthType.WORKLOADIDENTITY():
+		az.stConfig.authConfig.AuthMode = EAuthType.WORKLOADIDENTITY()
 		if opt.ClientID == "" || opt.TenantID == "" || opt.ApplicationID == "" {
 			return errors.New("Client ID, Tenant ID or Application ID not provided")
 		}
