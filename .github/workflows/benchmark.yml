@@ -23,7 +23,10 @@ jobs:
       pages: write
     
     steps:
-      - uses: "./.github/template/perftesting"
+      - name: "X86 Perf Testing"
+        uses: "./.github/template/perftesting"
+        with:
+          MACHINE: "X86"
 
   Arm64_PerfTesting:
     needs: X86_PerfTesting
@@ -43,6 +46,9 @@ jobs:
       pages: write
     
     steps:
-      - uses: "./.github/template/perftesting"
+      - name: "ARM64 Perf Testing"
+        uses: "./.github/template/perftesting"
+        with:
+          MACHINE: "ARM"
 
   

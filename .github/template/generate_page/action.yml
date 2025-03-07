@@ -11,6 +11,9 @@ inputs:
   TOKEN:   
     required: true
     description: "Token for checkin"  
+  MACHINE: 
+    required: true
+    description: "Type of machine"
 
 runs:
   using: "composite"
@@ -42,7 +45,7 @@ runs:
         auto-push: true
         comment-on-alert: true
         gh-pages-branch: benchmarks
-        benchmark-data-dir-path: ${{ inputs.TYPE }}/bandwidth/${{ inputs.TEST }}
+        benchmark-data-dir-path: ${{ inputs.MACHINE }}/${{ inputs.TYPE }}/bandwidth/${{ inputs.TEST }}
 
     # Push the latency results and publish the graphs
     - name: "Update Latency Results : ${{ inputs.TEST }}"
@@ -57,7 +60,7 @@ runs:
         auto-push: true
         comment-on-alert: true
         gh-pages-branch: benchmarks
-        benchmark-data-dir-path: ${{ inputs.TYPE }}/latency/${{ inputs.TEST }}  
+        benchmark-data-dir-path: ${{ inputs.MACHINE }}/${{ inputs.TYPE }}/latency/${{ inputs.TEST }}  
     
  
         

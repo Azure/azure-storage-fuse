@@ -1,6 +1,11 @@
 name: perftesting
 description: "Execute perf testing scripts and generate the pages"
 
+inputs:
+  MACHINE: 
+    required: true
+    description: "Type of machine"
+
 runs:
   using: "composite"
 
@@ -104,6 +109,7 @@ runs:
     - name: "Read Test"
       uses: "./.github/template/generate_page"
       with:
+        MACHINE: ${{ inputs.MACHINE }}
         TEST: "read"
         TYPE: ${{ matrix.TestType }}
         TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -112,6 +118,7 @@ runs:
     - name: "High threads Test"
       uses: "./.github/template/generate_page"
       with:
+        MACHINE: ${{ inputs.MACHINE }}
         TEST: "highlyparallel"
         TYPE: ${{ matrix.TestType }}
         TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -120,6 +127,7 @@ runs:
     - name: "Write Test"
       uses: "./.github/template/generate_page"
       with:
+        MACHINE: ${{ inputs.MACHINE }}
         TEST: "write"
         TYPE: ${{ matrix.TestType }}
         TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -128,6 +136,7 @@ runs:
     - name: "Create File Test"
       uses: "./.github/template/generate_page"
       with:
+        MACHINE: ${{ inputs.MACHINE }}
         TEST: "create"
         TYPE: ${{ matrix.TestType }}
         TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -157,7 +166,7 @@ runs:
         auto-push: true
         comment-on-alert: true
         gh-pages-branch: benchmarks
-        benchmark-data-dir-path: ${{ matrix.TestType }}/time/list
+        benchmark-data-dir-path: ${{ inputs.MACHINE }}/${{ matrix.TestType }}/time/list
 
     # ---------------------------------------------------------------------------------------
     # Run App baseed tests
@@ -182,7 +191,7 @@ runs:
         auto-push: true
         comment-on-alert: true
         gh-pages-branch: benchmarks
-        benchmark-data-dir-path: ${{ matrix.TestType }}/bandwidth/app
+        benchmark-data-dir-path: ${{ inputs.MACHINE }}/${{ matrix.TestType }}/bandwidth/app
 
     - name: "Update Latency Results : App"
       uses: benchmark-action/github-action-benchmark@v1
@@ -196,7 +205,7 @@ runs:
         auto-push: true
         comment-on-alert: true
         gh-pages-branch: benchmarks
-        benchmark-data-dir-path: ${{ matrix.TestType }}/time/app    
+        benchmark-data-dir-path: ${{ inputs.MACHINE }}/${{ matrix.TestType }}/time/app    
 
     - name: "Update Bandwidth Results : High Speed App"
       uses: benchmark-action/github-action-benchmark@v1
@@ -210,7 +219,7 @@ runs:
         auto-push: true
         comment-on-alert: true
         gh-pages-branch: benchmarks
-        benchmark-data-dir-path: ${{ matrix.TestType }}/bandwidth/highapp   
+        benchmark-data-dir-path: ${{ inputs.MACHINE }}/${{ matrix.TestType }}/bandwidth/highapp   
 
     - name: "Update Latency Results : High Speed App"
       uses: benchmark-action/github-action-benchmark@v1
@@ -224,7 +233,7 @@ runs:
         auto-push: true
         comment-on-alert: true
         gh-pages-branch: benchmarks
-        benchmark-data-dir-path: ${{ matrix.TestType }}/time/highapp  
+        benchmark-data-dir-path: ${{ inputs.MACHINE }}/${{ matrix.TestType }}/time/highapp  
 
     # ---------------------------------------------------------------------------------------
     # Run Rename tests
@@ -248,6 +257,6 @@ runs:
         auto-push: true
         comment-on-alert: true
         gh-pages-branch: benchmarks
-        benchmark-data-dir-path: ${{ matrix.TestType }}/time/rename  
+        benchmark-data-dir-path: ${{ inputs.MACHINE }}/${{ matrix.TestType }}/time/rename  
     # ---------------------------------------------------------------------------------------          
                 
