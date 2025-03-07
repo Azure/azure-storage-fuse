@@ -43,6 +43,7 @@ jobs:
           PREMIUM_KEY: ${{ secrets.PREMIUM_KEY }}
           STANDARD_HNS_KEY: ${{ secrets.STANDARD_HNS_KEY }}
           PREMIUM_HNS_KEY: ${{ secrets.PREMIUM_HNS_KEY }}
+          BENCH_CONTAINER: ${{ secrets.BENCH_CONTAINER }}
 
   Arm64_PerfTesting:
     needs: X86_PerfTesting
@@ -80,5 +81,6 @@ jobs:
           PREMIUM_KEY: ${{ secrets.PREMIUM_KEY }}
           STANDARD_HNS_KEY: ${{ secrets.STANDARD_HNS_KEY }}
           PREMIUM_HNS_KEY: ${{ secrets.PREMIUM_HNS_KEY }}
+          BENCH_CONTAINER: ${{ secrets.BENCH_CONTAINER }}
 
   
