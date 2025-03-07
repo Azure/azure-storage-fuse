@@ -3582,6 +3582,149 @@ func (s *blockBlobTestSuite) TestList() {
 	s.assert.EqualValues(base, blobList[0].Path)
 }
 
+func (s *blockBlobTestSuite) TestUpdateMetadata() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	s.az.CreateFile(internal.CreateFileOptions{Name: name})
+
+	// Test updating metadata
+	metadata := map[string]*string{
+		common.GroupId: to.Ptr("0"),
+		common.OwnerID: to.Ptr("0"),
+	}
+	err := s.az.storage.(*BlockBlob).updateMetadata(name, metadata)
+	s.assert.Nil(err)
+
+	// Verify metadata
+	blobClient := s.containerClient.NewBlobClient(name)
+	props, err := blobClient.GetProperties(ctx, nil)
+	s.assert.Nil(err)
+	s.assert.NotNil(props.Metadata)
+	s.assert.Equal("0", *props.Metadata[common.GroupId])
+	s.assert.Equal("0", *props.Metadata[common.OwnerID])
+}
+
+func (s *blockBlobTestSuite) TestUpdateMetadataNoChanges() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	s.az.CreateFile(internal.CreateFileOptions{Name: name})
+
+	// Set initial metadata
+	metadata := map[string]*string{
+		common.GroupId: to.Ptr("1000"),
+		common.OwnerID: to.Ptr("1000"),
+	}
+	blobClient := s.containerClient.NewBlobClient(name)
+	_, err := blobClient.SetMetadata(ctx, metadata, nil)
+	s.assert.Nil(err)
+	metadata = map[string]*string{}
+	// Test updating metadata with the same values
+	err = s.az.storage.(*BlockBlob).updateMetadata(name, metadata)
+	s.assert.Nil(err)
+
+	// Verify metadata remains unchanged
+	props, err := blobClient.GetProperties(ctx, nil)
+
+	s.assert.Nil(err)
+	s.assert.NotNil(props.Metadata)
+	s.assert.Equal("1000", *props.Metadata[common.GroupId])
+	s.assert.Equal("1000", *props.Metadata[common.OwnerID])
+
+	resp, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
+	s.assert.Nil(err)
+	s.assert.Equal("1000", *resp.Metadata["gid"])
+	s.assert.Equal("1000", *resp.Metadata["uid"])
+}
+
+func (s *blockBlobTestSuite) TestUpdateMetadataAddNewKey() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	s.az.CreateFile(internal.CreateFileOptions{Name: name})
+
+	// Set initial metadata
+	initialMetadata := map[string]*string{
+		"isDir": to.Ptr("1"),
+	}
+	blobClient := s.containerClient.NewBlobClient(name)
+	_, err := blobClient.SetMetadata(ctx, initialMetadata, nil)
+	s.assert.Nil(err)
+
+	// Test updating metadata with a new key
+	newMetadata := map[string]*string{
+		common.GroupId: to.Ptr("1000"),
+		common.OwnerID: to.Ptr("1000"),
+	}
+	err = s.az.storage.(*BlockBlob).updateMetadata(name, newMetadata)
+	s.assert.Nil(err)
+
+	// Verify metadata
+	props, err := blobClient.GetProperties(ctx, nil)
+	s.assert.Nil(err)
+	s.assert.NotNil(props.Metadata)
+	s.assert.Equal("1000", *props.Metadata[common.OwnerID])
+	s.assert.Equal("1000", *props.Metadata[common.GroupId])
+	s.assert.Equal("1", *props.Metadata["Isdir"])
+	resp, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
+	s.assert.Nil(err)
+	s.assert.Equal("1000", *resp.Metadata["gid"])
+	s.assert.Equal("1000", *resp.Metadata["uid"])
+}
+
+func (s *blockBlobTestSuite) TestUpdateMetadataModifyExistingKey() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	s.az.CreateFile(internal.CreateFileOptions{Name: name})
+
+	// Set initial metadata
+	initialMetadata := map[string]*string{
+		common.GroupId: to.Ptr("1000"),
+		common.OwnerID: to.Ptr("1000"),
+	}
+	blobClient := s.containerClient.NewBlobClient(name)
+	_, err := blobClient.SetMetadata(ctx, initialMetadata, nil)
+	s.assert.Nil(err)
+
+	// Test updating metadata with a modified value
+	modifiedMetadata := map[string]*string{
+		common.GroupId: to.Ptr("0"),
+		common.OwnerID: to.Ptr("0"),
+	}
+	err = s.az.storage.(*BlockBlob).updateMetadata(name, modifiedMetadata)
+	s.assert.Nil(err)
+
+	// Verify metadata
+	props, err := blobClient.GetProperties(ctx, nil)
+	s.assert.Nil(err)
+	s.assert.NotNil(props.Metadata)
+	s.assert.Equal("0", *props.Metadata[common.OwnerID])
+	s.assert.Equal("0", *props.Metadata[common.GroupId])
+	resp, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
+	s.assert.Nil(err)
+	s.assert.Equal("0", *resp.Metadata["gid"])
+	s.assert.Equal("0", *resp.Metadata["uid"])
+}
+
+func (s *blockBlobTestSuite) TestUpdateMetadataEmpty() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	s.az.CreateFile(internal.CreateFileOptions{Name: name})
+
+	// Test updating metadata with an empty map
+	err := s.az.storage.(*BlockBlob).updateMetadata(name, map[string]*string{})
+	s.assert.Nil(err)
+
+	// Verify metadata remains unchanged
+	blobClient := s.containerClient.NewBlobClient(name)
+	props, err := blobClient.GetProperties(ctx, nil)
+	s.assert.Nil(err)
+	s.assert.Nil(props.Metadata)
+}
+
 // In order for 'go test' to run this suite, we need to create
 // a normal test function and pass our suite to suite.Run
 func TestBlockBlob(t *testing.T) {

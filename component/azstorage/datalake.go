@@ -39,6 +39,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -402,6 +403,8 @@ func (dl *Datalake) GetAttr(name string) (blobAttr *internal.ObjAttr, err error)
 		Crtime: *prop.LastModified,
 		Flags:  internal.NewFileBitMap(),
 		ETag:   sanitizeEtag(prop.ETag),
+		UID:    prop.Metadata[common.OwnerID],
+		GID:    prop.Metadata[common.GroupId],
 	}
 	parseMetadata(blobAttr, prop.Metadata)
 
@@ -561,28 +564,23 @@ func (dl *Datalake) ChangeMod(name string, mode os.FileMode) error {
 }
 
 // ChangeOwner : Change owner of a path
-func (dl *Datalake) ChangeOwner(name string, _ int, _ int) error {
+func (dl *Datalake) ChangeOwner(name string, uid int, gid int) error {
 	log.Trace("Datalake::ChangeOwner : name %s", name)
 
-	if dl.Config.ignoreAccessModifiers {
-		// for operations like git clone where transaction fails if chown is not successful
-		// return success instead of ENOSYS
-		return nil
+	metadata := make(map[string]*string)
+	uidStr := strconv.Itoa(uid)
+	gidStr := strconv.Itoa(gid)
+	metadata[common.OwnerID] = &uidStr
+	metadata[common.GroupId] = &gidStr
+	err := dl.BlockBlob.updateMetadata(name, metadata)
+	e := storeDatalakeErrToErr(err)
+	if e == ErrFileNotFound {
+		return syscall.ENOENT
+	} else if err != nil {
+		log.Err("Datalake::ChangeOwner : Failed to change ownership of file %s to [%s]", name, err.Error())
+		return err
 	}
-
-	// TODO: This is not supported for now.
-	// fileURL := dl.Filesystem.NewRootDirectoryURL().NewFileURL(filepath.Join(dl.Config.prefixPath, name))
-	// group := strconv.Itoa(gid)
-	// owner := strconv.Itoa(uid)
-	// _, err := fileURL.SetAccessControl(context.Background(), azbfs.BlobFSAccessControl{Group: group, Owner: owner})
-	// e := storeDatalakeErrToErr(err)
-	// if e == ErrFileNotFound {
-	// 	return syscall.ENOENT
-	// } else if err != nil {
-	// 	log.Err("Datalake::ChangeOwner : Failed to change ownership of file %s to %s [%s]", name, mode, err.Error())
-	// 	return err
-	// }
-	return syscall.ENOTSUP
+	return nil
 }
 
 // GetCommittedBlockList : Get the list of committed blocks

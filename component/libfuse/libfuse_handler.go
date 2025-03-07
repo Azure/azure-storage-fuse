@@ -346,8 +346,17 @@ func libfuse_destroy(data unsafe.Pointer) {
 }
 
 func (lf *Libfuse) fillStat(attr *internal.ObjAttr, stbuf *C.stat_t) {
-	(*stbuf).st_uid = C.uint(lf.ownerUID)
-	(*stbuf).st_gid = C.uint(lf.ownerGID)
+	if attr.UID != nil {
+		(*stbuf).st_uid = C.uint(common.ParseUint32(*attr.UID))
+	} else {
+		(*stbuf).st_uid = C.uint(lf.ownerUID)
+	}
+
+	if attr.GID != nil {
+		(*stbuf).st_gid = C.uint(common.ParseUint32(*attr.GID))
+	} else {
+		(*stbuf).st_gid = C.uint(lf.ownerGID)
+	}
 	(*stbuf).st_nlink = 1
 	(*stbuf).st_size = C.long(attr.Size)
 
@@ -1156,6 +1165,25 @@ func libfuse_chown(path *C.char, uid C.uid_t, gid C.gid_t, fi *C.fuse_file_info_
 	name = common.NormalizeObjectName(name)
 	log.Trace("Libfuse::libfuse_chown : %s", name)
 	// TODO: Implement
+	err := fuseFS.NextComponent().Chown(
+		internal.ChownOptions{
+			Name:  name,
+			Owner: int(uid),
+			Group: int(gid),
+		})
+	if err != nil {
+		log.Err("Libfuse::libfuse_chown : error in chown of %s [%s]", name, err.Error())
+		if os.IsNotExist(err) {
+			return -C.ENOENT
+		} else if os.IsPermission(err) {
+			return -C.EACCES
+		}
+		return -C.EIO
+	}
+
+	libfuseStatsCollector.PushEvents(chown, name, map[string]interface{}{common.OwnerID: uid, common.GroupId: gid})
+	libfuseStatsCollector.UpdateStats(stats_manager.Increment, chown, (int64)(1))
+
 	return 0
 }
 

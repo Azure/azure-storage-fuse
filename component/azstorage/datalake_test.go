@@ -48,6 +48,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -2838,6 +2839,54 @@ func (s *datalakeTestSuite) TestList() {
 	s.assert.EqualValues(base, blobList[0].Path)
 	s.assert.NotEqual(0, blobList[0].Mode)
 }
+
+func (s *datalakeTestSuite) TestChangeOwner() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	s.az.CreateFile(internal.CreateFileOptions{Name: name})
+
+	// Test changing owner
+	uid := 1001
+	gid := 1002
+	err := s.az.Chown(internal.ChownOptions{Name: name, Owner: uid, Group: gid})
+	s.assert.Nil(err)
+
+	// Verify the owner has been changed
+	attr, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
+	s.assert.Nil(err)
+	s.assert.Equal(strconv.Itoa(uid), *attr.Metadata[common.OwnerID])
+	s.assert.Equal(strconv.Itoa(gid), *attr.Metadata[common.GroupId])
+}
+
+// func (s *datalakeTestSuite) TestChangeOwnerNonExistentFile() {
+// 	defer s.cleanupTest()
+// 	// Setup
+// 	name := generateFileName()
+
+// 	// Test changing owner on a non-existent file
+// 	uid := 1001
+// 	gid := 1002
+// 	err := s.az.Chown(internal.ChownOptions{Name: name, Owner: uid, Group: gid})
+// 	s.assert.NotNil(err)
+// 	s.assert.Equal(syscall.ENOENT, err)
+// }
+
+// func (s *datalakeTestSuite) TestChangeOwnerInsuffiecientPermission() {
+// 	defer s.cleanupTest()
+// 	// Setup
+// 	name := generateFileName()
+// 	s.az.CreateFile(internal.CreateFileOptions{Name: name})
+
+// 	// Simulate insufficient permissions by setting the file to read-only
+// 	s.az.Chmod(internal.ChmodOptions{Name: name, Mode: 0444})
+
+// 	// Test changing owner with insufficient permissions
+// 	uid := 1001
+// 	gid := 1002
+// 	err := s.az.Chown(internal.ChownOptions{Name: name, Owner: uid, Group: gid})
+// 	s.assert.Nil(err)
+// }
 
 // func (s *datalakeTestSuite) TestRAGRS() {
 // 	defer s.cleanupTest()
