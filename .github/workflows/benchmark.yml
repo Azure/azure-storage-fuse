@@ -31,12 +31,12 @@ jobs:
       - name: "Install Fuse3"
         run: |
           sleep 30
-          sudo systemctl stop apt-daily.timer
+          sudo systemctl stop apt-daily.timer || true
           echo "Add Lock Timeout for apt package manager"
           sudo sh -c 'echo "DPkg::Lock::Timeout \"120\";" > /etc/apt/apt.conf.d/99timeout'
           sudo ps -aux | grep -iE "apt"
-          sudo killall apt apt-get
-          yes | sudo fuser -vik -TERM /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock
+          sudo killall apt apt-get || true
+          yes | sudo fuser -vik -TERM /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock || true
           echo "Released any lock if some other process has acquired"
           sudo dpkg --configure -a
           echo "Starting Updates and Installation of Packages"
