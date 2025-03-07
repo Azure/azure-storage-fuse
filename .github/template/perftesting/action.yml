@@ -5,6 +5,36 @@ inputs:
   MACHINE: 
     required: true
     description: "Type of machine"
+  STANDARD_ACCOUNT:
+    required: true
+    description: "Standard Storage Account"
+  STANDARD_KEY:
+    required: true
+    description: "Standard Storage Account Key"
+  PREMIUM_ACCOUNT:
+    required: true
+    description: "Premium Storage Account"  
+  PREMIUM_KEY:  
+    required: true
+    description: "Premium Storage Account Key"  
+  STANDARD_HNS_ACCOUNT:
+    required: true
+    description: "Standard HNS Storage Account" 
+  STANDARD_HNS_KEY: 
+    required: true
+    description: "Standard HNS Storage Account Key"
+  PREMIUM_HNS_ACCOUNT:
+    required: true
+    description: "Premium HNS Storage Account"  
+  PREMIUM_HNS_KEY:
+    required: true
+    description: "Premium HNS Storage Account Key"  
+  BENCH_CONTAINER:
+    required: true
+    description: "Container for benchmarking" 
+  GITHUB_TOKEN:
+    required: true
+    description: "GitHub Token"
 
 runs:
   using: "composite"
@@ -64,27 +94,27 @@ runs:
       run: |
         if [ "${{ matrix.TestType }}" == "standard" ]; then
           echo "Create standard account env"
-          echo "AZURE_STORAGE_ACCOUNT=${{ secrets.STANDARD_ACCOUNT }}" >> $GITHUB_ENV
-          echo "AZURE_STORAGE_ACCESS_KEY=${{ secrets.STANDARD_KEY }}" >> $GITHUB_ENV
+          echo "AZURE_STORAGE_ACCOUNT=${{ inputs.STANDARD_ACCOUNT }}" >> $GITHUB_ENV
+          echo "AZURE_STORAGE_ACCESS_KEY=${{ inputs.STANDARD_KEY }}" >> $GITHUB_ENV
         elif [ "${{ matrix.TestType }}" == "premium" ]; then
           echo "Create premium account env"
-          echo "AZURE_STORAGE_ACCOUNT=${{ secrets.PREMIUM_ACCOUNT }}" >> $GITHUB_ENV
-          echo "AZURE_STORAGE_ACCESS_KEY=${{ secrets.PREMIUM_KEY }}" >> $GITHUB_ENV
+          echo "AZURE_STORAGE_ACCOUNT=${{ inputs.PREMIUM_ACCOUNT }}" >> $GITHUB_ENV
+          echo "AZURE_STORAGE_ACCESS_KEY=${{ inputs.PREMIUM_KEY }}" >> $GITHUB_ENV
         elif [ "${{ matrix.TestType }}" == "standard_hns" ]; then
           echo "Create standard hns account env"
-          echo "AZURE_STORAGE_ACCOUNT=${{ secrets.STANDARD_HNS_ACCOUNT }}" >> $GITHUB_ENV
-          echo "AZURE_STORAGE_ACCESS_KEY=${{ secrets.STANDARD_HNS_KEY }}" >> $GITHUB_ENV
+          echo "AZURE_STORAGE_ACCOUNT=${{ inputs.STANDARD_HNS_ACCOUNT }}" >> $GITHUB_ENV
+          echo "AZURE_STORAGE_ACCESS_KEY=${{ inputs.STANDARD_HNS_KEY }}" >> $GITHUB_ENV
         elif [ "${{ matrix.TestType }}" == "premium_hns" ]; then
           echo "Create premium hns account env"
-          echo "AZURE_STORAGE_ACCOUNT=${{ secrets.PREMIUM_HNS_ACCOUNT }}" >> $GITHUB_ENV
-          echo "AZURE_STORAGE_ACCESS_KEY=${{ secrets.PREMIUM_HNS_KEY }}" >> $GITHUB_ENV
+          echo "AZURE_STORAGE_ACCOUNT=${{ inputs.PREMIUM_HNS_ACCOUNT }}" >> $GITHUB_ENV
+          echo "AZURE_STORAGE_ACCESS_KEY=${{ inputs.PREMIUM_HNS_KEY }}" >> $GITHUB_ENV
         fi
 
     # Create the config file for testing
     - name: "Create config file for account type: ${{ matrix.TestType }}"
       shell: bash
       run: |
-        blobfuse2 gen-test-config --config-file=azure_block_bench.yaml --container-name=${{ secrets.BENCH_CONTAINER }}  --output-file=./config.yaml
+        blobfuse2 gen-test-config --config-file=azure_block_bench.yaml --container-name=${{ inputs.BENCH_CONTAINER }}  --output-file=./config.yaml
         cat ./config.yaml
 
     # Create the config file for testing
@@ -106,7 +136,7 @@ runs:
         MACHINE: ${{ inputs.MACHINE }}
         TEST: "read"
         TYPE: ${{ matrix.TestType }}
-        TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        TOKEN: ${{ inputs.GITHUB_TOKEN }}
 
     # Run the Write tests with high number of threads
     - name: "High threads Test"
@@ -115,7 +145,7 @@ runs:
         MACHINE: ${{ inputs.MACHINE }}
         TEST: "highlyparallel"
         TYPE: ${{ matrix.TestType }}
-        TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        TOKEN: ${{ inputs.GITHUB_TOKEN }}
 
     # Run the Write tests
     - name: "Write Test"
@@ -124,7 +154,7 @@ runs:
         MACHINE: ${{ inputs.MACHINE }}
         TEST: "write"
         TYPE: ${{ matrix.TestType }}
-        TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        TOKEN: ${{ inputs.GITHUB_TOKEN }}
           
     # Run the Create tests
     - name: "Create File Test"
@@ -133,7 +163,7 @@ runs:
         MACHINE: ${{ inputs.MACHINE }}
         TEST: "create"
         TYPE: ${{ matrix.TestType }}
-        TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        TOKEN: ${{ inputs.GITHUB_TOKEN }}
     # ---------------------------------------------------------------------------------------
 
 
@@ -155,7 +185,7 @@ runs:
         tool: 'customSmallerIsBetter'
         alert-threshold: "500%"
         max-items-in-chart: 100
-        github-token: ${{ secrets.GITHUB_TOKEN }}
+        github-token: ${{ inputs.GITHUB_TOKEN }}
         fail-on-alert: true
         auto-push: true
         comment-on-alert: true
@@ -180,7 +210,7 @@ runs:
         tool: 'customBiggerIsBetter'
         alert-threshold: "160%"
         max-items-in-chart: 100
-        github-token: ${{ secrets.GITHUB_TOKEN }}
+        github-token: ${{ inputs.GITHUB_TOKEN }}
         fail-on-alert: true
         auto-push: true
         comment-on-alert: true
@@ -194,7 +224,7 @@ runs:
         tool: 'customSmallerIsBetter'
         alert-threshold: "160%"
         max-items-in-chart: 100
-        github-token: ${{ secrets.GITHUB_TOKEN }}
+        github-token: ${{ inputs.GITHUB_TOKEN }}
         fail-on-alert: true
         auto-push: true
         comment-on-alert: true
@@ -208,7 +238,7 @@ runs:
         tool: 'customBiggerIsBetter'
         alert-threshold: "160%"
         max-items-in-chart: 100
-        github-token: ${{ secrets.GITHUB_TOKEN }}
+        github-token: ${{ inputs.GITHUB_TOKEN }}
         fail-on-alert: true
         auto-push: true
         comment-on-alert: true
@@ -222,7 +252,7 @@ runs:
         tool: 'customSmallerIsBetter'
         alert-threshold: "160%"
         max-items-in-chart: 100
-        github-token: ${{ secrets.GITHUB_TOKEN }}
+        github-token: ${{ inputs.GITHUB_TOKEN }}
         fail-on-alert: true
         auto-push: true
         comment-on-alert: true
@@ -246,7 +276,7 @@ runs:
         tool: 'customSmallerIsBetter'
         alert-threshold: "160%"
         max-items-in-chart: 100
-        github-token: ${{ secrets.GITHUB_TOKEN }}
+        github-token: ${{ inputs.GITHUB_TOKEN }}
         fail-on-alert: true
         auto-push: true
         comment-on-alert: true

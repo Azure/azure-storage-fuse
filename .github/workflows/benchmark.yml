@@ -34,6 +34,15 @@ jobs:
         uses: "./.github/template/perftesting"
         with:
           MACHINE: "X86"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          STANDARD_ACCOUNT: ${{ secrets.STANDARD_ACCOUNT }}
+          PREMIUM_ACCOUNT: ${{ secrets.PREMIUM_ACCOUNT }}
+          STANDARD_HNS_ACCOUNT: ${{ secrets.STANDARD_HNS_ACCOUNT }}
+          PREMIUM_HNS_ACCOUNT: ${{ secrets.PREMIUM_HNS_ACCOUNT }}
+          STANDARD_KEY: ${{ secrets.STANDARD_KEY }}
+          PREMIUM_KEY: ${{ secrets.PREMIUM_KEY }}
+          STANDARD_HNS_KEY: ${{ secrets.STANDARD_HNS_KEY }}
+          PREMIUM_HNS_KEY: ${{ secrets.PREMIUM_HNS_KEY }}
 
   Arm64_PerfTesting:
     needs: X86_PerfTesting
@@ -62,5 +71,14 @@ jobs:
         uses: "./.github/template/perftesting"
         with:
           MACHINE: "ARM"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          STANDARD_ACCOUNT: ${{ secrets.STANDARD_ACCOUNT }}
+          PREMIUM_ACCOUNT: ${{ secrets.PREMIUM_ACCOUNT }}
+          STANDARD_HNS_ACCOUNT: ${{ secrets.STANDARD_HNS_ACCOUNT }}
+          PREMIUM_HNS_ACCOUNT: ${{ secrets.PREMIUM_HNS_ACCOUNT }}
+          STANDARD_KEY: ${{ secrets.STANDARD_KEY }}
+          PREMIUM_KEY: ${{ secrets.PREMIUM_KEY }}
+          STANDARD_HNS_KEY: ${{ secrets.STANDARD_HNS_KEY }}
+          PREMIUM_HNS_KEY: ${{ secrets.PREMIUM_HNS_KEY }}
 
   
