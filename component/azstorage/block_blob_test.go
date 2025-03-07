@@ -335,6 +335,19 @@ func (s *blockBlobTestSuite) TestNoEndpoint() {
 	s.assert.Nil(err)
 }
 
+func (s *blockBlobTestSuite) TestContainerNotFound() {
+	defer s.cleanupTest()
+	// Setup
+	s.tearDownTestHelper(false) // Don't delete the generated container.
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
+		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, "foo")
+	s.setupTestHelper(config, "foo", false)
+
+	err := s.az.storage.TestPipeline()
+	s.assert.NotNil(err)
+	s.assert.Contains(err.Error(), "ContainerNotFound")
+}
+
 func (s *blockBlobTestSuite) TestListContainers() {
 	defer s.cleanupTest()
 	// Setup
