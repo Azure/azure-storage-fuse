@@ -1,0 +1,253 @@
+name: perftesting
+description: "Execute perf testing scripts and generate the pages"
+
+runs:
+  using: "composite"
+
+  steps:
+    # Print the host info
+    - name: 'Host info'
+      shell: bash
+      run: hostnamectl
+        
+    # Install Fuse3
+    - name: "Install Fuse3"
+      shell: bash
+      run: |
+        sleep 30
+        sudo systemctl stop apt-daily.timer || true
+        echo "Add Lock Timeout for apt package manager"
+        sudo sh -c 'echo "DPkg::Lock::Timeout \"120\";" > /etc/apt/apt.conf.d/99timeout'
+        sudo ps -aux | grep -iE "apt"
+        sudo killall apt apt-get || true
+        yes | sudo fuser -vik -TERM /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock || true
+        echo "Released any lock if some other process has acquired"
+        sudo dpkg --configure -a
+        echo "Starting Updates and Installation of Packages"
+        sudo apt-get update --fix-missing
+        sudo apt-get install fuse3 libfuse3-dev gcc -y
+
+    # Install Tools
+    - name: "Install Tools"
+      shell: bash
+      run: |
+        sudo apt-get install fio jq python3 -y
+
+      # Checkout main branch
+    - name: 'Checkout Blobfuse2'
+      uses: actions/checkout@v4.1.1
+      # with: 
+        # ref: vibhansa/perftestrunner
+
+    # Install GoLang
+    - name: "Install Go"
+      shell: bash
+      run: |
+        ./go_installer.sh ../
+        go version
+
+    # Build Blobfuse2
+    - name: "Build Blobfuse2"
+      shell: bash
+      run: |
+        ./build.sh
+
+    # Run binary and validate the version
+    - name: "Validate Version"
+      shell: bash
+      run: |
+        sudo cp ./blobfuse2 /usr/bin/
+        which blobfuse2
+        blobfuse2 --version
+
+    - name: "Create Env variables for account name and key"
+      shell: bash
+      run: |
+        if [ "${{ matrix.TestType }}" == "standard" ]; then
+          echo "Create standard account env"
+          echo "AZURE_STORAGE_ACCOUNT=${{ secrets.STANDARD_ACCOUNT }}" >> $GITHUB_ENV
+          echo "AZURE_STORAGE_ACCESS_KEY=${{ secrets.STANDARD_KEY }}" >> $GITHUB_ENV
+        elif [ "${{ matrix.TestType }}" == "premium" ]; then
+          echo "Create premium account env"
+          echo "AZURE_STORAGE_ACCOUNT=${{ secrets.PREMIUM_ACCOUNT }}" >> $GITHUB_ENV
+          echo "AZURE_STORAGE_ACCESS_KEY=${{ secrets.PREMIUM_KEY }}" >> $GITHUB_ENV
+        elif [ "${{ matrix.TestType }}" == "standard_hns" ]; then
+          echo "Create standard hns account env"
+          echo "AZURE_STORAGE_ACCOUNT=${{ secrets.STANDARD_HNS_ACCOUNT }}" >> $GITHUB_ENV
+          echo "AZURE_STORAGE_ACCESS_KEY=${{ secrets.STANDARD_HNS_KEY }}" >> $GITHUB_ENV
+        elif [ "${{ matrix.TestType }}" == "premium_hns" ]; then
+          echo "Create premium hns account env"
+          echo "AZURE_STORAGE_ACCOUNT=${{ secrets.PREMIUM_HNS_ACCOUNT }}" >> $GITHUB_ENV
+          echo "AZURE_STORAGE_ACCESS_KEY=${{ secrets.PREMIUM_HNS_KEY }}" >> $GITHUB_ENV
+        fi
+
+    # Create the config file for testing
+    - name: "Create config file for account type: ${{ matrix.TestType }}"
+      shell: bash
+      run: |
+        blobfuse2 gen-test-config --config-file=azure_block_bench.yaml --container-name=${{ secrets.BENCH_CONTAINER }}  --output-file=./config.yaml
+        cat ./config.yaml
+
+    # Create the config file for testing
+    - name: "Create mount path"
+      shell: bash
+      run: |
+        sudo mkdir -p /mnt/blob_mnt
+        sudo mkdir -p /mnt/tempcache
+        sudo chmod 777 /mnt/blob_mnt
+        sudo chmod 777 /mnt/tempcache
+
+    # ---------------------------------------------------------------------------------------------------------------------------------------------------
+    # Run the basic tests using FIO
+
+    # Run the Write tests
+    - name: "Read Test"
+      uses: "./.github/template/generate_page"
+      with:
+        TEST: "read"
+        TYPE: ${{ matrix.TestType }}
+        TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    # Run the Write tests with high number of threads
+    - name: "High threads Test"
+      uses: "./.github/template/generate_page"
+      with:
+        TEST: "highlyparallel"
+        TYPE: ${{ matrix.TestType }}
+        TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    # Run the Write tests
+    - name: "Write Test"
+      uses: "./.github/template/generate_page"
+      with:
+        TEST: "write"
+        TYPE: ${{ matrix.TestType }}
+        TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
+    # Run the Create tests
+    - name: "Create File Test"
+      uses: "./.github/template/generate_page"
+      with:
+        TEST: "create"
+        TYPE: ${{ matrix.TestType }}
+        TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    # ---------------------------------------------------------------------------------------
+
+
+    # Below tests needs to run seperatly as output is different
+    # ---------------------------------------------------------------------------------------------------
+    # Run the List tests
+    # this shall always runs after create tests
+    - name: "List File Test"
+      shell: bash
+      run: |
+        rm -rf /mnt/blob_mnt/*
+        rm -rf /mnt/tempcache/*
+        ./perf_testing/scripts/fio_bench.sh /mnt/blob_mnt list
+      
+    - name: "Update Benchmark Results : List"
+      uses: benchmark-action/github-action-benchmark@v1
+      with:
+        output-file-path: list/list_results.json
+        tool: 'customSmallerIsBetter'
+        alert-threshold: "500%"
+        max-items-in-chart: 100
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        fail-on-alert: true
+        auto-push: true
+        comment-on-alert: true
+        gh-pages-branch: benchmarks
+        benchmark-data-dir-path: ${{ matrix.TestType }}/time/list
+
+    # ---------------------------------------------------------------------------------------
+    # Run App baseed tests
+    # This needs to run seperatly as output is different
+    - name: "App based Test"
+      shell: bash
+      run: |
+        rm -rf /mnt/blob_mnt/*
+        rm -rf /mnt/tempcache/*
+        ./perf_testing/scripts/fio_bench.sh /mnt/blob_mnt app
+
+      
+    - name: "Update Bandwidth Results : App"
+      uses: benchmark-action/github-action-benchmark@v1
+      with:
+        output-file-path: app/app_bandwidth.json
+        tool: 'customBiggerIsBetter'
+        alert-threshold: "160%"
+        max-items-in-chart: 100
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        fail-on-alert: true
+        auto-push: true
+        comment-on-alert: true
+        gh-pages-branch: benchmarks
+        benchmark-data-dir-path: ${{ matrix.TestType }}/bandwidth/app
+
+    - name: "Update Latency Results : App"
+      uses: benchmark-action/github-action-benchmark@v1
+      with:
+        output-file-path: app/app_time.json
+        tool: 'customSmallerIsBetter'
+        alert-threshold: "160%"
+        max-items-in-chart: 100
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        fail-on-alert: true
+        auto-push: true
+        comment-on-alert: true
+        gh-pages-branch: benchmarks
+        benchmark-data-dir-path: ${{ matrix.TestType }}/time/app    
+
+    - name: "Update Bandwidth Results : High Speed App"
+      uses: benchmark-action/github-action-benchmark@v1
+      with:
+        output-file-path: app/highapp_bandwidth.json
+        tool: 'customBiggerIsBetter'
+        alert-threshold: "160%"
+        max-items-in-chart: 100
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        fail-on-alert: true
+        auto-push: true
+        comment-on-alert: true
+        gh-pages-branch: benchmarks
+        benchmark-data-dir-path: ${{ matrix.TestType }}/bandwidth/highapp   
+
+    - name: "Update Latency Results : High Speed App"
+      uses: benchmark-action/github-action-benchmark@v1
+      with:
+        output-file-path: app/highapp_time.json
+        tool: 'customSmallerIsBetter'
+        alert-threshold: "160%"
+        max-items-in-chart: 100
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        fail-on-alert: true
+        auto-push: true
+        comment-on-alert: true
+        gh-pages-branch: benchmarks
+        benchmark-data-dir-path: ${{ matrix.TestType }}/time/highapp  
+
+    # ---------------------------------------------------------------------------------------
+    # Run Rename tests
+    # This needs to run seperatly as output is different
+    - name: "Rename Test"
+      shell: bash
+      run: |
+        rm -rf /mnt/blob_mnt/*
+        rm -rf /mnt/tempcache/*
+        ./perf_testing/scripts/fio_bench.sh /mnt/blob_mnt rename
+
+    - name: "Update Latency Results : Rename"
+      uses: benchmark-action/github-action-benchmark@v1
+      with:
+        output-file-path: rename/rename_time.json
+        tool: 'customSmallerIsBetter'
+        alert-threshold: "160%"
+        max-items-in-chart: 100
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        fail-on-alert: true
+        auto-push: true
+        comment-on-alert: true
+        gh-pages-branch: benchmarks
+        benchmark-data-dir-path: ${{ matrix.TestType }}/time/rename  
+    # ---------------------------------------------------------------------------------------          
+                
