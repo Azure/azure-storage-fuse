@@ -81,6 +81,9 @@ type ObjAttr struct {
 	MD5      []byte             // MD5 of the blob as per last GetAttr
 	ETag     string             // ETag of the blob as per last GetAttr
 	Metadata map[string]*string // extra information to preserve
+	// Even though GID and UID are part of Metadata Map, I am defining new attributes to solve case sensitivity issue.
+	GID *string // Group ID
+	UID *string // User ID
 }
 
 // IsDir : Test blob is a directory or not

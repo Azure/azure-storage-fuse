@@ -519,3 +519,15 @@ func GetCRC64(data []byte, len int) []byte {
 
 	return checksumBytes
 }
+
+// parseUint32 converts a *string to uint32
+func ParseUint32(s string) uint32 {
+	if s == "" {
+		return 0
+	}
+	val, err := strconv.ParseUint(s, 10, 32)
+	if err != nil {
+		return 0
+	}
+	return uint32(val)
+}
