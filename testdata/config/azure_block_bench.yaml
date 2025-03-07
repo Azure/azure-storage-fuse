@@ -23,6 +23,7 @@ block_cache:
   disk-size-mb: 512000 
   disk-timeout-sec: 120 
   #prefetch-on-open: true
+  cleanup-on-start: true
 
 attr_cache:
   timeout-sec: 7200

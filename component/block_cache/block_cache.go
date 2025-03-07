@@ -89,6 +89,7 @@ type BlockCache struct {
 	stream          *Stream
 	lazyWrite       bool           // Flag to indicate if lazy write is enabled
 	fileCloseOpt    sync.WaitGroup // Wait group to wait for all async close operations to complete
+	cleanupOnStart  bool           // Clear temp directory on startup
 }
 
 // Structure defining your config parameters
@@ -102,6 +103,7 @@ type BlockCacheOptions struct {
 	Workers        uint32  `config:"parallelism" yaml:"parallelism,omitempty"`
 	PrefetchOnOpen bool    `config:"prefetch-on-open" yaml:"prefetch-on-open,omitempty"`
 	Consistency    bool    `config:"consistency" yaml:"consistency,omitempty"`
+	CleanupOnStart bool    `config:"cleanup-on-start" yaml:"cleanup-on-start,omitempty"`
 }
 
 const (
@@ -137,6 +139,13 @@ func (bc *BlockCache) SetNextComponent(nc internal.Component) {
 //	this shall not Block the call otherwise pipeline will not start
 func (bc *BlockCache) Start(ctx context.Context) error {
 	log.Trace("BlockCache::Start : Starting component %s", bc.Name())
+
+	if bc.cleanupOnStart {
+		err := common.TempCacheCleanup(bc.tmpPath)
+		if err != nil {
+			return fmt.Errorf("error in %s error [fail to cleanup temp cache]", bc.Name())
+		}
+	}
 
 	bc.blockPool = NewBlockPool(bc.blockSize, bc.memSize)
 	if bc.blockPool == nil {
@@ -287,6 +296,7 @@ func (bc *BlockCache) Configure(_ bool) error {
 	}
 
 	bc.tmpPath = common.ExpandPath(conf.TmpPath)
+	bc.cleanupOnStart = conf.CleanupOnStart
 
 	if bc.tmpPath != "" {
 		//check mnt path is not same as temp path
