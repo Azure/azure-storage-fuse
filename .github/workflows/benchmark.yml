@@ -24,6 +24,12 @@ jobs:
       pages: write
     
     steps:
+      # Checkout main branch
+      - name: 'Checkout Blobfuse2'
+        uses: actions/checkout@v4.1.1
+        with:
+          ref: ${{ github.ref }} # Checkout the branch that triggered the workflow
+
       - name: "X86 Perf Testing"
         uses: "./.github/template/perftesting"
         with:
@@ -47,6 +53,11 @@ jobs:
       pages: write
     
     steps:
+      - name: 'Checkout Blobfuse2'
+        uses: actions/checkout@v4.1.1
+        with:
+          ref: ${{ github.ref }} # Checkout the branch that triggered the workflow
+
       - name: "ARM64 Perf Testing"
         uses: "./.github/template/perftesting"
         with:

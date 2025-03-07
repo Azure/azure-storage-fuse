@@ -38,12 +38,6 @@ runs:
       run: |
         sudo apt-get install fio jq python3 -y
 
-      # Checkout main branch
-    - name: 'Checkout Blobfuse2'
-      uses: actions/checkout@v4.1.1
-      # with: 
-        # ref: vibhansa/perftestrunner
-
     # Install GoLang
     - name: "Install Go"
       shell: bash
