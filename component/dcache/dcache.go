@@ -39,6 +39,7 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/component/azstorage"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
@@ -58,6 +59,8 @@ type Dcache struct {
 	replicas  uint32
 	hbTimeout uint32
 	hbAbsence uint32
+
+	storage azstorage.AzConnection
 }
 
 // Structure defining your config parameters
@@ -94,7 +97,18 @@ func (c *Dcache) SetNextComponent(nc internal.Component) {
 func (c *Dcache) Start(ctx context.Context) error {
 	log.Trace("Dcache::Start : Starting component %s", c.Name())
 
-	// Dcache : start code goes here
+	footer := internal.GetStorageComponent()
+	if footer == nil {
+		log.Err("Dcache::Start : error [storage component not found]")
+		return fmt.Errorf("Dcache: error [storage component not found]")
+	}
+
+	azs := footer.(*azstorage.AzStorage)
+	c.storage = azs.GetBlobStorage()
+	if c.storage == nil {
+		log.Err("Dcache::Start : error [storage component not found]")
+		return fmt.Errorf("Dcache: error [storage component not found]")
+	}
 
 	return nil
 }
