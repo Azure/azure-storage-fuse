@@ -140,7 +140,8 @@ steps:
 
   - script: |
       for i in {1,2,3,4,5,6,7,8,9,10,20,30,50,100,200,1024,2048,4096}; do echo $i; done | parallel --will-cite -j 5 'cp -v ${{ parameters.mount_dir }}/myfile_{} ${{ parameters.mount_dir }}/myfileCopy_{}'
-      md5sum ${{ parameters.mount_dir }}/myfileCopy_* > $(WORK_DIR)/md5sum_block_cache_write.txt
+      sudo sh -c "echo 3 > /proc/sys/vm/drop_caches"
+      md5sum ${{ parameters.mount_dir }}/myfileCopy_* | tee $(WORK_DIR)/md5sum_block_cache_write.txt
       ls -lh ${{ parameters.mount_dir }}/myfile*
     displayName: 'Copy files using block-cache'
 
