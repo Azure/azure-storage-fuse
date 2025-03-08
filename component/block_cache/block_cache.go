@@ -140,13 +140,6 @@ func (bc *BlockCache) SetNextComponent(nc internal.Component) {
 func (bc *BlockCache) Start(ctx context.Context) error {
 	log.Trace("BlockCache::Start : Starting component %s", bc.Name())
 
-	if bc.cleanupOnStart {
-		err := common.TempCacheCleanup(bc.tmpPath)
-		if err != nil {
-			return fmt.Errorf("error in %s error [fail to cleanup temp cache]", bc.Name())
-		}
-	}
-
 	bc.blockPool = NewBlockPool(bc.blockSize, bc.memSize)
 	if bc.blockPool == nil {
 		log.Err("BlockCache::Start : failed to init block pool")
@@ -319,6 +312,13 @@ func (bc *BlockCache) Configure(_ bool) error {
 			if err != nil {
 				log.Err("BlockCache: config error creating directory of temp path after clean [%s]", err.Error())
 				return fmt.Errorf("config error in %s [%s]", bc.Name(), err.Error())
+			}
+		} else {
+			if bc.cleanupOnStart {
+				err := common.TempCacheCleanup(bc.tmpPath)
+				if err != nil {
+					return fmt.Errorf("error in %s error [fail to cleanup temp cache]", bc.Name())
+				}
 			}
 		}
 
