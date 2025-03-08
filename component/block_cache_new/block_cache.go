@@ -425,7 +425,9 @@ func (bc *BlockCache) TruncateFile(options internal.TruncateFileOptions) (err er
 			f.blockList = append(f.blockList, blk)
 			if i == int(finalBlocksCnt)-1 {
 				// We are allocating buffer here as there might not be full hole for last block
+				blk.Lock()
 				bPool.getBufferForBlock(blk)
+				blk.Unlock()
 			} else {
 				blk.hole = true
 			}

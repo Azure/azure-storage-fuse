@@ -30,6 +30,7 @@ type BufferPool struct {
 	sync.Mutex
 	updateRecentnessOfBlk chan *block // Channel used to update the recentness of LRU
 	localBlksLst          *list.List  // LRU of Local Blocks which are yet to upload for all the open handles. This list can contain only Local Blocks
+	onTheWireBlksLst      *list.List  // LRU of blocks for which the uploads has scheduled.
 	syncedBlksLst         *list.List  // LRU of Synced Blocks which are present in memory for all the open handles. This list can contain both commited and Uncommited blocks.
 	lruCache              map[*block]*list.Element
 	maxBlocks             int // Size of the each buffer in the bytes for this pool
@@ -43,8 +44,9 @@ func newBufferPool(memSize int) *BufferPool {
 			},
 		},
 		updateRecentnessOfBlk: make(chan *block),
-		localBlksLst:          list.New(), // Intialize the LRU
-		syncedBlksLst:         list.New(), // Intialize the LRU
+		localBlksLst:          list.New(), // Initialize the LRU
+		onTheWireBlksLst:      list.New(), // Initialize the LRU
+		syncedBlksLst:         list.New(), // Initialize the LRU
 		lruCache:              make(map[*block]*list.Element),
 		maxBlocks:             memSize / BlockSize,
 	}
@@ -63,9 +65,15 @@ func (bp *BufferPool) addSyncedBlockToLRU(blk *block) {
 	bp.lruCache[blk] = ele
 }
 
+func (bp *BufferPool) addPendingUploadBlkToLRU(blk *block) {
+	ele := bp.onTheWireBlksLst.PushFront(blk)
+	bp.lruCache[blk] = ele
+}
+
 func (bp *BufferPool) removeBlockFromLRU(blk *block) {
 	if ee, ok := bp.lruCache[blk]; ok {
 		bp.localBlksLst.Remove(ee)
+		bp.onTheWireBlksLst.Remove(ee)
 		bp.syncedBlksLst.Remove(ee)
 		delete(bp.lruCache, blk)
 	}
@@ -89,6 +97,33 @@ func (bp *BufferPool) moveBlkFromSBLtoLBL(blk *block) {
 		bp.addLocalBlockToLRU(blk)
 	} else {
 		log.Err("BlockCache::moveBlkFromSBLtoLBL : Block is not present in LRU cache, blk idx : %d, file: %s", blk.idx, blk.file.Name)
+	}
+}
+
+func (bp *BufferPool) moveBlkFromLBLtoOWBL(blk *block) {
+	if ee, ok := bp.lruCache[blk]; ok {
+		bp.localBlksLst.Remove(ee)
+		bp.addPendingUploadBlkToLRU(blk)
+	} else {
+		log.Err("BlockCache::moveBlkFromLBLtoOWBL : Block is not present in LRU cache, blk idx : %d, file: %s", blk.idx, blk.file.Name)
+	}
+}
+
+func (bp *BufferPool) moveBlkFromOWBLtoLBL(blk *block) {
+	if ee, ok := bp.lruCache[blk]; ok {
+		bp.onTheWireBlksLst.Remove(ee)
+		bp.addLocalBlockToLRU(blk)
+	} else {
+		log.Err("BlockCache::moveBlkFromOWBLtoLBL : Block is not present in LRU cache, blk idx : %d, file: %s", blk.idx, blk.file.Name)
+	}
+}
+
+func (bp *BufferPool) moveBlkFromOWBLtoSBL(blk *block) {
+	if ee, ok := bp.lruCache[blk]; ok {
+		bp.onTheWireBlksLst.Remove(ee)
+		bp.addSyncedBlockToLRU(blk)
+	} else {
+		log.Err("BlockCache::moveBlkFromOWBLtoLBL : Block is not present in LRU cache, blk idx : %d, file: %s", blk.idx, blk.file.Name)
 	}
 }
 
@@ -122,26 +157,28 @@ func (bp *BufferPool) updateLRU() {
 	}
 }
 
+func (bp *BufferPool) getTotalMemUsage() int {
+	outstandingBlks := bp.localBlksLst.Len() + bp.syncedBlksLst.Len()
+	return ((outstandingBlks * 100) / bp.maxBlocks)
+}
+
 // Responsible for giving blocks back to the pool,
 // Working:
 // 1. Take the buffers from the blks which are idle and the blocks were commited/uncommited.
 // 2. If 1 is not enough, then schedule uploads for the local blks so that we can take back memory from them later using step 1.
-func (bp *BufferPool) bufferReclaimation(r requestType) {
+func (bp *BufferPool) bufferReclaimation() {
 	// Take the lock on buffer pool if the request is of type async
-	bp.Lock()
-	defer bp.Unlock()
 
-	outstandingBlks := bp.localBlksLst.Len() + bp.syncedBlksLst.Len()
-	totalUsage := ((outstandingBlks * 100) / bp.maxBlocks)
+	totalUsage := bp.getTotalMemUsage()
 
 	usage := ((bp.syncedBlksLst.Len() * 100) / bp.maxBlocks)
-	noOfBlksToFree := max(((usage-70)*bp.maxBlocks)/100, 0)
-	log.Info("BlockCache::bufferReclaimation : [START] [sync: %d] Total Mem usage: %d, Synced blks Mem Usage: %d, needed %d evictions", r, totalUsage, usage, noOfBlksToFree)
+	noOfBlksToFree := max(((usage-60)*bp.maxBlocks)/100, 0)
+	log.Info("BlockCache::bufferReclaimation : [START] Total Mem usage: %d, Synced blks Mem Usage: %d, needed %d evictions", totalUsage, usage, noOfBlksToFree)
 
 	currentBlk := bp.syncedBlksLst.Back()
 	for currentBlk != nil && noOfBlksToFree > 0 {
-		nxtblk := currentBlk.Prev()
 		blk := currentBlk.Value.(*block)
+		currentBlk = currentBlk.Prev()
 		// Check the refcnt for the blk and only release buffer if the refcnt is zero.
 		blk.Lock()
 		if blk.refCnt == 0 && blk.state != localBlock {
@@ -153,60 +190,68 @@ func (bp *BufferPool) bufferReclaimation(r requestType) {
 			log.Info("BlockCache::bufferReclaimation :  Unsuccessful reclaim blk idx: %d, file: %s, refcnt: %d", blk.idx, blk.file.Name, blk.refCnt)
 		}
 		blk.Unlock()
-		currentBlk = nxtblk
 	}
 
-	outstandingBlks = bp.localBlksLst.Len() + bp.syncedBlksLst.Len()
-	totalUsage = ((outstandingBlks * 100) / bp.maxBlocks)
+	totalUsage = bp.getTotalMemUsage()
 	usage = ((bp.syncedBlksLst.Len() * 100) / bp.maxBlocks)
-	log.Info("BlockCache::bufferReclaimation : [END] [sync: %d] Total Mem usage: %d, Synced Blks Mem Usage: %d, Unsuccessful evictions: %d", r, totalUsage, usage, noOfBlksToFree)
+	log.Info("BlockCache::bufferReclaimation : [END] Total Mem usage: %d, Synced Blks Mem Usage: %d", totalUsage, usage)
 }
 
-func (bp *BufferPool) asyncUploader(r requestType) {
+func (bp *BufferPool) asyncUploadScheduler() {
 	now := time.Now()
-	bp.Lock()
-	defer bp.Unlock()
-	outstandingBlks := bp.localBlksLst.Len() + bp.syncedBlksLst.Len()
-	totalUsage := ((outstandingBlks * 100) / bp.maxBlocks)
+	totalUsage := bp.getTotalMemUsage()
 
 	usage := ((bp.localBlksLst.Len() * 100) / bp.maxBlocks)
 	noOfAsyncUploads := max(((usage-20)*bp.maxBlocks)/100, 0)
-	log.Info("BlockCache::asyncUploader : [START] [sync: %d]Mem usage: %d, Synced blks Mem Usage: %d, needed %d async Uploads", r, totalUsage, usage, noOfAsyncUploads)
+	log.Info("BlockCache::asyncUploadScheduler : [START] Mem usage: %d, Synced blks Mem Usage: %d, needed %d async Uploads", totalUsage, usage, noOfAsyncUploads)
 	// Schedule uploads on least recently used blocks
 	currentBlk := bp.localBlksLst.Back()
 	for currentBlk != nil && noOfAsyncUploads > 0 {
 		blk := currentBlk.Value.(*block)
+		currentBlk = currentBlk.Prev()
 		cow := time.Now()
 		uploader(blk, asyncRequest)
-		log.Info("BlockCache::asyncUploader : [took : %s] Upload scheduled for blk idx : %d, file: %s", time.Since(cow).String(), blk.idx, blk.file.Name)
+		bp.moveBlkFromLBLtoOWBL(blk)
+		log.Info("BlockCache::asyncUploadScheduler : [took : %s] Async Upload scheduled for blk idx : %d, file: %s", time.Since(cow).String(), blk.idx, blk.file.Name)
 		noOfAsyncUploads--
-		currentBlk = currentBlk.Prev()
 	}
 
-	if r == syncRequest {
-		// Wait for the async uploads to complete and get the local blks usage to less than 30
-		noOfAsyncUploads = max(((usage-20)*bp.maxBlocks)/100, 0)
-		currentBlk := bp.localBlksLst.Back()
-		for currentBlk != nil && noOfAsyncUploads > 0 {
-			blk := currentBlk.Value.(*block)
-			cow := time.Now()
-			state, _ := uploader(blk, syncRequest)
-			if state == uncommitedBlock {
-				bp.moveBlkFromLBLtoSBL(blk)
-				log.Info("BlockCache::asyncUploader : Moved block from the LBL to SBL blk idx : %d, file: %s", blk.idx, blk.file.Name)
-			}
-			log.Info("BlockCache::asyncUploader : [took : %s] Waiting for Async Upload to complete blk idx : %d, file: %s", time.Since(cow).String(), blk.idx, blk.file.Name)
-			noOfAsyncUploads--
-			currentBlk = currentBlk.Prev()
-		}
-	}
-
-	outstandingBlks = bp.localBlksLst.Len() + bp.syncedBlksLst.Len()
-	totalUsage = ((outstandingBlks * 100) / bp.maxBlocks)
+	totalUsage = bp.getTotalMemUsage()
 
 	usage = ((bp.localBlksLst.Len() * 100) / bp.maxBlocks)
-	log.Info("BlockCache::asyncUploader : [END] [sync: %d][took : %s]Mem usage: %d, Synced blks Mem Usage: %d, Unsuccessful async upload schedules :%d", r, time.Since(now).String(), totalUsage, usage, noOfAsyncUploads)
+	log.Info("BlockCache::asyncUploadScheduler : [END] [took : %s]Mem usage: %d, Synced blks Mem Usage: %d", time.Since(now).String(), totalUsage, usage)
 
+}
+
+func (bp *BufferPool) asyncUpladPoller() {
+	now := time.Now()
+	totalUsage := bp.getTotalMemUsage()
+	// Wait for the async uploads to complete and get the local blks usage to less than 30
+	usage := ((bp.onTheWireBlksLst.Len() * 100) / bp.maxBlocks)
+	noOfAsyncPolls := max(((usage-20)*bp.maxBlocks)/100, 0)
+	log.Info("BlockCache::asyncUploadPoller : [START] Mem usage: %d, Onwire blks Mem Usage: %d, needed %d async Polls", totalUsage, usage, noOfAsyncPolls)
+	currentBlk := bp.onTheWireBlksLst.Back()
+	for currentBlk != nil && noOfAsyncPolls > 0 {
+		blk := currentBlk.Value.(*block)
+		currentBlk = currentBlk.Prev()
+		cow := time.Now()
+		state, err := uploader(blk, syncRequest)
+		if err != nil {
+			// May be there was an write after scheduling, schedule it again
+			bp.moveBlkFromOWBLtoLBL(blk)
+			log.Info("BlockCache::asyncUploadPoller : Async Upload failed, err : %s, Rescheduling the blk idx : %d, file : %s", err.Error(), blk.idx, blk.file.Name)
+		}
+		if state == uncommitedBlock {
+			bp.moveBlkFromOWBLtoSBL(blk)
+			log.Info("BlockCache::asyncUploadPoller : Async Upload Success, Moved block from the OWBL to SBL blk idx : %d, file: %s", blk.idx, blk.file.Name)
+		}
+		log.Info("BlockCache::asyncUploadePoller : [took : %s] Async Poll to complete blk idx : %d, file: %s", time.Since(cow).String(), blk.idx, blk.file.Name)
+		noOfAsyncPolls--
+	}
+
+	totalUsage = bp.getTotalMemUsage()
+	usage = ((bp.onTheWireBlksLst.Len() * 100) / bp.maxBlocks)
+	log.Info("BlockCache::asyncUploadPoller : [END] [took : %s]Mem usage: %d, Onwire blks Mem Usage: %d", time.Since(now).String(), totalUsage, usage)
 }
 
 func (bp *BufferPool) getBufferForBlock(blk *block) {
@@ -224,33 +269,28 @@ func (bp *BufferPool) getBufferForBlock(blk *block) {
 		panic(fmt.Sprintf("BlockCache::getBufferForBlock : Todo: Read of evicted Uncommited block idx : %d, file : %s", blk.idx, blk.file.Name))
 	}
 
-	outstandingBlks := bp.localBlksLst.Len() + bp.syncedBlksLst.Len()
-	usage := ((outstandingBlks * 100) / bp.maxBlocks)
-	log.Debug("BlockCache::getBufferForBlock : Total Mem Usage %d", usage)
-
 	// Check the memory usage of synced blocks
 	SBusage := ((bp.syncedBlksLst.Len() * 100) / bp.maxBlocks)
-	log.Debug("BlockCache::getBufferForBlock : Synced Blocks Mem Usage %d", SBusage)
-	if SBusage > 80 && SBusage < 95 {
-		// reclaim the memory asynchronously
-		go bPool.bufferReclaimation(asyncRequest)
-	} else if SBusage >= 95 {
-		// reclaim the memory synchronously.
-		go bPool.bufferReclaimation(syncRequest)
+	if SBusage > 60 {
+		blk.Unlock()
+		bPool.bufferReclaimation()
+		blk.Lock()
 	}
 
 	// Check the memory of the local blocks
 	LBusage := ((bp.localBlksLst.Len() * 100) / bp.maxBlocks)
-	log.Debug("BlockCache::getBufferForBlock : local Blocks Mem Usage %d", LBusage)
-	// Always keep the local blocks to less than 50%
-	// Schedule the remaining blocks for async uploads.
-	if LBusage > 30 && LBusage < 40 {
-		go bPool.asyncUploader(asyncRequest)
-	} else if LBusage > 50 {
-		// doom is near, wait until it gets under 50.
-		// Writing to the memory is superfast, while uploading the blk takes an eternity.
-		// Better wait until the async uploads complete rather than getting into out of memory state.
-		go bPool.asyncUploader(syncRequest)
+	if LBusage > 20 {
+		blk.Unlock()
+		bPool.asyncUploadScheduler()
+		blk.Lock()
+	}
+
+	// Check the memory of the ongoingAsyncupload blocks
+	OUBusage := ((bp.onTheWireBlksLst.Len() * 100) / bp.maxBlocks)
+	if OUBusage > 20 {
+		blk.Unlock()
+		bPool.asyncUpladPoller()
+		blk.Lock()
 	}
 
 }
@@ -342,7 +382,9 @@ func getBlockForWrite(idx int, file *File) (*block, error) {
 			if i == idx {
 				//Allocate a buffer for last block.
 				//No need to lock the block as these are newly created blocks
+				blk.Lock()
 				bPool.getBufferForBlock(blk)
+				blk.Unlock()
 			} else {
 				blk.hole = true
 			}
