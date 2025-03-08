@@ -3,7 +3,7 @@ logging:
   file-path: "blobfuse2-logs.txt"
   type: base
 
-account-name: { NIGHTLY_STO_BLOB_ACC_NAME }
+account-name: { STO_ACC_NAME }
 container-name: { 0 }
 auth:
   type: msi
