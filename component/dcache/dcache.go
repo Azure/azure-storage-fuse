@@ -34,11 +34,12 @@
 package dcache
 
 import (
+	"context"
+	"fmt"
+
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
-	"context"
-	"fmt"
 )
 
 /* NOTES:
@@ -50,19 +51,30 @@ import (
 
 // Common structure for Component
 type Dcache struct {
-    internal.BaseComponent
+	internal.BaseComponent
+	cacheID   string
+	tmpPath   string
+	chunkSize uint64
+	replicas  uint32
+	hbTimeout uint32
+	hbAbsence uint32
 }
 
 // Structure defining your config parameters
 type DcacheOptions struct {
-	// e.g. var1 uint32 `config:"var1"`
+	CacheID   string `config:"cache-id" yaml:"cache-id,omitempty"`
+	TmpPath   string `config:"path" yaml:"path,omitempty"`
+	ChunkSize uint64 `config:"chunk-size" yaml:"chunk-size,omitempty"`
+	CacheSize uint64 `config:"cache-size" yaml:"cache-size,omitempty"`
+	Replicas  uint32 `config:"replicas" yaml:"replicas,omitempty"`
+	HBTimeout uint32 `config:"heartbeat-timeout" yaml:"heartbeat-timeout,omitempty"`
+	HBAbsence uint32 `config:"heartbeat-absence" yaml:"heartbeat-absence,omitempty"`
 }
 
 const compName = "dcache"
 
-//  Verification to check satisfaction criteria with Component Interface
+// Verification to check satisfaction criteria with Component Interface
 var _ internal.Component = &Dcache{}
-
 
 func (c *Dcache) Name() string {
 	return compName
@@ -77,13 +89,14 @@ func (c *Dcache) SetNextComponent(nc internal.Component) {
 }
 
 // Start : Pipeline calls this method to start the component functionality
-//  this shall not block the call otherwise pipeline will not start
+//
+//	this shall not block the call otherwise pipeline will not start
 func (c *Dcache) Start(ctx context.Context) error {
-    log.Trace("Dcache::Start : Starting component %s", c.Name())
+	log.Trace("Dcache::Start : Starting component %s", c.Name())
 
-    // Dcache : start code goes here
+	// Dcache : start code goes here
 
-    return nil
+	return nil
 }
 
 // Stop : Stop the component functionality and kill all threads started
@@ -94,7 +107,8 @@ func (c *Dcache) Stop() error {
 }
 
 // Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
-//  Return failure if any config is not valid to exit the process
+//
+//	Return failure if any config is not valid to exit the process
 func (c *Dcache) Configure(_ bool) error {
 	log.Trace("Dcache::Configure : %s", c.Name())
 
@@ -105,11 +119,9 @@ func (c *Dcache) Configure(_ bool) error {
 		log.Err("Dcache::Configure : config error [invalid config attributes]")
 		return fmt.Errorf("Dcache: config error [invalid config attributes]")
 	}
-	// Extract values from 'conf' and store them as you wish here
 
 	return nil
 }
-
 
 // OnConfigChange : If component has registered, on config file change this method is called
 func (c *Dcache) OnConfigChange() {
@@ -128,4 +140,25 @@ func NewDcacheComponent() internal.Component {
 // On init register this component to pipeline and supply your constructor
 func init() {
 	internal.AddComponent(compName, NewDcacheComponent)
+
+	cacheID := config.AddStringFlag("cache-id", "blobfuse2", "Cache ID for the distributed cache")
+	config.BindPFlag(compName+".cache-id", cacheID)
+
+	tmpPath := config.AddStringFlag("path", "/tmp", "Path to the cache")
+	config.BindPFlag(compName+".path", tmpPath)
+
+	chunkSize := config.AddUint64Flag("chunk-size", 1024*1024, "Chunk size for the cache")
+	config.BindPFlag(compName+".chunk-size", chunkSize)
+
+	cacheSize := config.AddUint64Flag("cache-size", 1024*1024*1024, "Cache size for the cache")
+	config.BindPFlag(compName+".cache-size", cacheSize)
+
+	replicas := config.AddUint32Flag("replicas", 3, "Number of replicas for the cache")
+	config.BindPFlag(compName+".replicas", replicas)
+
+	hbTimeout := config.AddUint32Flag("heartbeat-timeout", 60, "Heartbeat timeout for the cache")
+	config.BindPFlag(compName+".heartbeat-timeout", hbTimeout)
+
+	hbAbsence := config.AddUint32Flag("heartbeat-absence", 120, "Heartbeat absence for the cache")
+	config.BindPFlag(compName+".heartbeat-absence", hbAbsence)
 }
