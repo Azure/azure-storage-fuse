@@ -329,6 +329,11 @@ func (bp *BufferPool) getBuffer(valid bool) *Buffer {
 func (bp *BufferPool) releaseBuffer(blk *block) {
 	if blk.buf != nil {
 		bp.pool.Put(blk.buf)
+		//clear the state of the buffer
+		blk.downloadDone = make(chan error, 1)
+		close(blk.downloadDone)
+		blk.uploadDone = make(chan error, 1)
+		close(blk.uploadDone)
 		blk.buf = nil
 	}
 }

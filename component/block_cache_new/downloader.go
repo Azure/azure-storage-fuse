@@ -31,9 +31,6 @@ func downloader(blk *block, r requestType) (state blockState, err error) {
 	var ok bool
 	if blk.buf == nil {
 		bPool.getBufferForBlock(blk)
-		// There may be async download success buffer before clear the state.
-		blk.downloadDone = make(chan error, 1)
-		close(blk.downloadDone)
 	}
 
 	if blk.state == committedBlock {
