@@ -30,10 +30,13 @@ type BufferPool struct {
 	sync.Mutex
 	updateRecentnessOfBlk chan *block // Channel used to update the recentness of LRU
 	localBlksLst          *list.List  // LRU of Local Blocks which are yet to upload for all the open handles. This list can contain only Local Blocks
-	onTheWireBlksLst      *list.List  // LRU of blocks for which the uploads has scheduled.
-	syncedBlksLst         *list.List  // LRU of Synced Blocks which are present in memory for all the open handles. This list can contain both commited and Uncommited blocks.
-	lruCache              map[*block]*list.Element
-	maxBlocks             int // Size of the each buffer in the bytes for this pool
+	LBCache               map[*block]*list.Element
+	onTheWireBlksLst      *list.List // LRU of blocks for which the uploads has scheduled.
+	OWBCache              map[*block]*list.Element
+	syncedBlksLst         *list.List // LRU of Synced Blocks which are present in memory for all the open handles. This list can contain both commited and Uncommited blocks.
+	SBCache               map[*block]*list.Element
+
+	maxBlocks int // Size of the each buffer in the bytes for this pool
 }
 
 func newBufferPool(memSize int) *BufferPool {
@@ -45,10 +48,13 @@ func newBufferPool(memSize int) *BufferPool {
 		},
 		updateRecentnessOfBlk: make(chan *block),
 		localBlksLst:          list.New(), // Initialize the LRU
+		LBCache:               make(map[*block]*list.Element),
 		onTheWireBlksLst:      list.New(), // Initialize the LRU
+		OWBCache:              make(map[*block]*list.Element),
 		syncedBlksLst:         list.New(), // Initialize the LRU
-		lruCache:              make(map[*block]*list.Element),
-		maxBlocks:             memSize / BlockSize,
+		SBCache:               make(map[*block]*list.Element),
+
+		maxBlocks: memSize / BlockSize,
 	}
 	zeroBuffer = bPool.getBuffer(true)
 	go bPool.updateLRU()
@@ -57,26 +63,35 @@ func newBufferPool(memSize int) *BufferPool {
 
 func (bp *BufferPool) addLocalBlockToLRU(blk *block) {
 	ele := bp.localBlksLst.PushFront(blk)
-	bp.lruCache[blk] = ele
+	bp.LBCache[blk] = ele
 }
 
 func (bp *BufferPool) addSyncedBlockToLRU(blk *block) {
 	ele := bp.syncedBlksLst.PushFront(blk)
-	bp.lruCache[blk] = ele
+	bp.SBCache[blk] = ele
 }
 
 func (bp *BufferPool) addPendingUploadBlkToLRU(blk *block) {
 	ele := bp.onTheWireBlksLst.PushFront(blk)
-	bp.lruCache[blk] = ele
+	bp.OWBCache[blk] = ele
 }
 
 func (bp *BufferPool) removeBlockFromLRU(blk *block) {
-	if ee, ok := bp.lruCache[blk]; ok {
+	if ee, ok := bp.SBCache[blk]; ok {
 		bp.localBlksLst.Remove(ee)
 		bp.onTheWireBlksLst.Remove(ee)
 		bp.syncedBlksLst.Remove(ee)
-		delete(bp.lruCache, blk)
+		delete(bp.SBCache, blk)
 	}
+	if ee, ok := bp.LBCache[blk]; ok {
+		b := ee.Value.(*block)
+		panic(fmt.Sprintf("BlockCache::removeBlockFromLRU : Blk is present in more than 1 LRU(seen in local list) : blk idx : %d, fileName : %s", b.idx, b.file.Name))
+	}
+	if ee, ok := bp.OWBCache[blk]; ok {
+		b := ee.Value.(*block)
+		panic(fmt.Sprintf("BlockCache::removeBlockFromLRU : Blk is present in more than 1 LRU(seen in onthe wire list) : blk idx : %d, fileName : %s", b.idx, b.file.Name))
+	}
+
 }
 
 // This is called when all the references to open file were closed.
@@ -92,8 +107,9 @@ func (bp *BufferPool) removeBlocksFromLRU(blkList blockList) {
 func (bp *BufferPool) moveBlkFromSBLtoLBL(blk *block) {
 	bp.Lock()
 	defer bp.Unlock()
-	if ee, ok := bp.lruCache[blk]; ok {
+	if ee, ok := bp.SBCache[blk]; ok {
 		bp.syncedBlksLst.Remove(ee)
+		delete(bp.SBCache, blk)
 		bp.addLocalBlockToLRU(blk)
 	} else {
 		log.Err("BlockCache::moveBlkFromSBLtoLBL : Block is not present in LRU cache, blk idx : %d, file: %s", blk.idx, blk.file.Name)
@@ -101,8 +117,9 @@ func (bp *BufferPool) moveBlkFromSBLtoLBL(blk *block) {
 }
 
 func (bp *BufferPool) moveBlkFromLBLtoOWBL(blk *block) {
-	if ee, ok := bp.lruCache[blk]; ok {
+	if ee, ok := bp.LBCache[blk]; ok {
 		bp.localBlksLst.Remove(ee)
+		delete(bp.LBCache, blk)
 		bp.addPendingUploadBlkToLRU(blk)
 	} else {
 		log.Err("BlockCache::moveBlkFromLBLtoOWBL : Block is not present in LRU cache, blk idx : %d, file: %s", blk.idx, blk.file.Name)
@@ -110,8 +127,9 @@ func (bp *BufferPool) moveBlkFromLBLtoOWBL(blk *block) {
 }
 
 func (bp *BufferPool) moveBlkFromOWBLtoLBL(blk *block) {
-	if ee, ok := bp.lruCache[blk]; ok {
+	if ee, ok := bp.OWBCache[blk]; ok {
 		bp.onTheWireBlksLst.Remove(ee)
+		delete(bp.OWBCache, blk)
 		bp.addLocalBlockToLRU(blk)
 	} else {
 		log.Err("BlockCache::moveBlkFromOWBLtoLBL : Block is not present in LRU cache, blk idx : %d, file: %s", blk.idx, blk.file.Name)
@@ -119,20 +137,12 @@ func (bp *BufferPool) moveBlkFromOWBLtoLBL(blk *block) {
 }
 
 func (bp *BufferPool) moveBlkFromOWBLtoSBL(blk *block) {
-	if ee, ok := bp.lruCache[blk]; ok {
+	if ee, ok := bp.OWBCache[blk]; ok {
 		bp.onTheWireBlksLst.Remove(ee)
+		delete(bp.OWBCache, blk)
 		bp.addSyncedBlockToLRU(blk)
 	} else {
 		log.Err("BlockCache::moveBlkFromOWBLtoLBL : Block is not present in LRU cache, blk idx : %d, file: %s", blk.idx, blk.file.Name)
-	}
-}
-
-func (bp *BufferPool) moveBlkFromLBLtoSBL(blk *block) {
-	if ee, ok := bp.lruCache[blk]; ok {
-		bp.localBlksLst.Remove(ee)
-		bp.addSyncedBlockToLRU(blk)
-	} else {
-		log.Err("BlockCache::moveBlkFromLBLtoSBL : Block is not present in LRU cache, blk idx : %d, file: %s", blk.idx, blk.file.Name)
 	}
 }
 
@@ -144,13 +154,19 @@ func (bp *BufferPool) updateLRU() {
 	for {
 		blk := <-bp.updateRecentnessOfBlk
 		if prevblk != blk {
-			log.Info("BlockCache::updateLRU : updating the recentness of the block idx: %d, filename: %s", blk.idx, blk.file.Name)
+			// log.Info("BlockCache::updateLRU : updating the recentness of the block idx: %d, filename: %s", blk.idx, blk.file.Name)
 			// Update the recentness in the LRU's
 			bp.Lock()
-			if ee, ok := bp.lruCache[blk]; ok {
-				bp.localBlksLst.MoveToFront(ee)
+			if ee, ok := bp.SBCache[blk]; ok {
 				bp.syncedBlksLst.MoveToFront(ee)
 			}
+			if ee, ok := bp.LBCache[blk]; ok {
+				bp.localBlksLst.MoveToFront(ee)
+			}
+			// if ee, ok := bp.OWBCache[blk]; ok {
+			// 	b := ee.Value.(*block)
+			// 	panic(fmt.Sprintf("BlockCache::updateLRU : Blk is present in OWB : blk idx : %d, fileName : %s", b.idx, b.file.Name))
+			// }
 			bp.Unlock()
 		}
 		prevblk = blk
@@ -255,6 +271,7 @@ func (bp *BufferPool) asyncUpladPoller() {
 }
 
 func (bp *BufferPool) getBufferForBlock(blk *block) {
+	log.Info("BlockCache::getBufferForBlock : blk idx : %d file : %s", blk.idx, blk.file.Name)
 	bp.Lock()
 	defer bp.Unlock()
 	switch blk.state {
@@ -403,26 +420,44 @@ func getBlockForWrite(idx int, file *File) (*block, error) {
 	return blk, err
 }
 
+func (bp *BufferPool) scheduleAsyncUploadsForFile(file *File) (fileChanged bool) {
+	bp.Lock()
+	defer bp.Unlock()
+	for _, blk := range file.blockList {
+		// To make the sync upload faster, first we schedule all the requests as async
+		// Then status would be checked using sync requests.
+		blkstate, _ := uploader(blk, asyncRequest)
+		bp.moveBlkFromLBLtoOWBL(blk)
+		if blkstate != committedBlock {
+			fileChanged = true
+		}
+	}
+	return
+}
+
+func (bp *BufferPool) updateLRUafterUploadSuccess(file *File) {
+	bp.Lock()
+	defer bp.Unlock()
+	for _, blk := range file.blockList {
+		bp.moveBlkFromOWBLtoSBL(blk)
+	}
+}
+
 // Write all the Modified buffers to Azure Storage and return whether file is modified or not.
 func syncBuffersForFile(file *File) (bool, error) {
 	var err error = nil
 	var fileChanged bool = false
 
 	file.Lock()
-	for _, blk := range file.blockList {
-		// To make the sync upload faster, first we schedule all the requests as async
-		// Then status would be checked using sync requests.
-		blkstate, _ := uploader(blk, asyncRequest)
-		if blkstate != committedBlock {
-			fileChanged = true
-		}
-	}
+	fileChanged = bPool.scheduleAsyncUploadsForFile(file)
+	// Wait for the uploads to finish
 	for _, blk := range file.blockList {
 		_, err := uploader(blk, syncRequest)
 		if err != nil {
 			panic(fmt.Sprintf("Upload doesn't happen for the block idx : %d, file : %s\n", blk.idx, blk.file.Name))
 		}
 	}
+	bPool.updateLRUafterUploadSuccess(file)
 	file.Unlock()
 	return fileChanged, err
 }

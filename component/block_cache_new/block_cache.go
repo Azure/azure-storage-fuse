@@ -202,7 +202,7 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 
 // ReadInBuffer: Read some data of the file into a buffer
 func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
-	// log.Trace("BlockCache::ReadFile : handle=%d, path=%s, offset: %d\n", options.Handle.ID, options.Handle.Path, options.Offset)
+	//log.Trace("BlockCache::ReadFile : handle=%d, path=%s, offset: %d", options.Handle.ID, options.Handle.Path, options.Offset)
 	if options.Handle.Prev_offset == options.Offset {
 		if options.Handle.Is_seq == 0 {
 			options.Handle.Is_seq = getBlockIndex(options.Offset) + 1
@@ -254,6 +254,9 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 		if blk.buf == nil {
 			panic("BlockCache::ReadInBuffer : Buffer got freed")
 		}
+		if !blk.buf.valid {
+			panic(fmt.Sprintf("BlockCache::ReadInBuffer : Buffer is not valid in this block"))
+		}
 		len_of_block_buf := getBlockSize(fileSize, idx)
 		bytesCopied := copy(options.Data[dataRead:], block_buf.data[blockOffset:len_of_block_buf])
 		blk.refCnt--
@@ -300,6 +303,7 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 		if blk.buf == nil {
 			panic(fmt.Sprintf("BlockCache::WriteFile : Culprit Blk idx : %d, file name: %s", blk.idx, f.Name))
 		}
+		log.Info("BlockCache::WriteFile : Written to block blk idx : %d, file : %s, idx : %d", blk.idx, blk.file.Name, idx)
 		bytesCopied := copy(blk.buf.data[blockOffset:BlockSize], options.Data[dataWritten:])
 		firstWriteOnblock := updateModifiedBlock(blk)
 		blk.refCnt--

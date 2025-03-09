@@ -2,6 +2,7 @@ package block_cache_new
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -13,6 +14,7 @@ func scheduleUpload(blk *block, r requestType) {
 	taskDone := make(chan struct{}, 1)
 	// blk.refCnt++
 	blk.cancelOngoingAsyncUpload = func() {
+		log.Info("BlockCache::scheduleUpload : Async Upload Cancel")
 		cancel()
 		<-taskDone
 	}
@@ -23,9 +25,11 @@ func scheduleUpload(blk *block, r requestType) {
 func uploader(blk *block, r requestType) (state blockState, err error) {
 	blk.Lock()
 	defer blk.Unlock()
+	var ok bool
 	if blk.state == localBlock {
 		if blk.hole {
 			// This is a sparse block.
+			log.Info("BlockCache::Uploader : Punching a hole inside the file blk idx : %d, file name : %s", blk.idx, blk.file.Name)
 			err = punchHole(blk.file)
 			if err == nil {
 				blk.state = uncommitedBlock
@@ -36,7 +40,7 @@ func uploader(blk *block, r requestType) (state blockState, err error) {
 		outer:
 			for {
 				select {
-				case err, ok := <-blk.uploadDone:
+				case err, ok = <-blk.uploadDone:
 					if ok && err == nil {
 						// Upload was already completed by async scheduler and no more write came after it.
 						blk.state = uncommitedBlock
@@ -61,10 +65,12 @@ func uploader(blk *block, r requestType) (state blockState, err error) {
 					}
 				}
 			}
+		} else {
+			panic(fmt.Sprintf("BlockCache::uploader : buffer is misssing blk idx : %d, file name :%s", blk.idx, blk.file.Name))
 		}
 	}
 	if r == syncRequest {
-		err, ok := <-blk.uploadDone
+		err, ok = <-blk.uploadDone
 		if ok && err == nil {
 			blk.state = uncommitedBlock
 			close(blk.uploadDone)

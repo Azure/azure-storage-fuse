@@ -28,8 +28,12 @@ func scheduleDownload(blk *block, r requestType) {
 func downloader(blk *block, r requestType) (state blockState, err error) {
 	blk.Lock()
 	defer blk.Unlock()
+	var ok bool
 	if blk.buf == nil {
 		bPool.getBufferForBlock(blk)
+		// There may be async download success buffer before clear the state.
+		blk.downloadDone = make(chan error, 1)
+		close(blk.downloadDone)
 	}
 
 	if blk.state == committedBlock {
@@ -38,7 +42,7 @@ func downloader(blk *block, r requestType) (state blockState, err error) {
 	outer:
 		for {
 			select {
-			case err, ok := <-blk.downloadDone:
+			case err, ok = <-blk.downloadDone:
 				if ok && err == nil {
 					// Download was already completed.
 					blk.buf.valid = true
@@ -62,7 +66,7 @@ func downloader(blk *block, r requestType) (state blockState, err error) {
 	}
 
 	if r == syncRequest {
-		err, ok := <-blk.downloadDone
+		err, ok = <-blk.downloadDone
 		if ok && err == nil {
 			blk.buf.valid = true
 			close(blk.downloadDone)
