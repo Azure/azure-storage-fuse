@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
 func scheduleUpload(blk *block, r requestType) {
@@ -46,7 +47,6 @@ func uploader(blk *block, r requestType) (state blockState, err error) {
 						blk.state = uncommitedBlock
 						close(blk.uploadDone)
 					} else {
-						// logy.Write([]byte(fmt.Sprintf("BlockCache::uploader :[sync: %d], path=%s, blk Idx = %d\n", r, blk.file.Name, blk.idx)))
 						scheduleUpload(blk, r)
 					}
 					break outer
@@ -78,4 +78,29 @@ func uploader(blk *block, r requestType) (state blockState, err error) {
 	}
 	state = blk.state
 	return
+}
+
+// stages empty block for the hole
+func punchHole(f *File) error {
+	if f.holePunched {
+		return nil
+	}
+	err := syncZeroBuffer(f.Name)
+	if err == nil {
+		f.holePunched = true
+	}
+
+	return err
+}
+
+func syncZeroBuffer(name string) error {
+	return bc.NextComponent().StageData(
+		internal.StageDataOptions{
+			Ctx:  context.Background(),
+			Name: name,
+			Id:   zeroBlockId,
+			Data: zeroBuffer.data,
+		},
+	)
+
 }

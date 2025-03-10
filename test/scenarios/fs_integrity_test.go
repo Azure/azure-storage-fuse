@@ -697,6 +697,99 @@ func TestOTruncFlag(t *testing.T) {
 	removeFiles(t, filename)
 }
 
+func TestOTruncWhileWriting(t *testing.T) {
+	t.Parallel()
+	OTruncWhileWritingHelper(t, 64*1024)
+	OTruncWhileWritingHelper(t, 10*1024*1024)
+	OTruncWhileWritingHelper(t, 24*1024*1024)
+}
+
+func OTruncWhileWritingHelper(t *testing.T, size int) {
+	filename := "testfile_O_trunc_while_writing.txt"
+	databuf := make([]byte, 4096)
+	_, err := io.ReadFull(rand.Reader, databuf)
+	assert.Nil(t, err)
+	for _, mnt := range mountpoints {
+		filePath := filepath.Join(mnt, filename)
+
+		file, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0644)
+		assert.Nil(t, err)
+
+		for i := 0; i < size; i += 4096 {
+			bytesWritten, err := file.Write(databuf)
+			assert.Equal(t, 4096, bytesWritten)
+			assert.Nil(t, err)
+		}
+		// lets open file with O_TRUNC
+		file2, err := os.OpenFile(filePath, os.O_TRUNC, 0644)
+		assert.Nil(t, err)
+
+		// Continue the write on first fd.
+		bytesWritten, err := file.Write(databuf)
+		assert.Equal(t, 4096, bytesWritten)
+		assert.Nil(t, err)
+		// Now a big hole is formed at the starting of the file
+		err = file2.Close()
+		assert.Nil(t, err)
+		err = file.Close()
+		assert.Nil(t, err)
+	}
+
+	checkFileIntegrity(t, filename)
+	removeFiles(t, filename)
+}
+
+func TestOTruncWhileReading(t *testing.T) {
+	t.Parallel()
+	OTruncWhileReadingHelper(t, 64*1024)
+	OTruncWhileReadingHelper(t, 10*1024*1024)
+	OTruncWhileReadingHelper(t, 24*1024*1024)
+}
+func OTruncWhileReadingHelper(t *testing.T, size int) {
+	filename := "testfile_O_trunc_while_reading.txt"
+	databuf := make([]byte, 4096)
+	_, err := io.ReadFull(rand.Reader, databuf)
+	assert.Nil(t, err)
+	for _, mnt := range mountpoints {
+		filePath := filepath.Join(mnt, filename)
+		// Create the file with desired size before starting the test
+		file, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0644)
+		assert.Nil(t, err)
+
+		for i := 0; i < size; i += 4096 {
+			bytesWritten, err := file.Write(databuf)
+			assert.Equal(t, 4096, bytesWritten)
+			assert.Nil(t, err)
+		}
+		err = file.Close()
+		assert.Nil(t, err)
+		//------------------------------------------------------
+		// Start reading the file
+		file, err = os.OpenFile(filePath, os.O_RDONLY, 0644)
+		assert.Nil(t, err)
+		bytesread, err := file.Read(databuf)
+		assert.Equal(t, 4096, bytesread)
+		assert.Nil(t, err)
+
+		// lets open file with O_TRUNC
+		file2, err := os.OpenFile(filePath, os.O_TRUNC, 0644)
+		assert.Nil(t, err)
+
+		// Continue the reading on first fd.
+		bytesWritten, err := file.Read(databuf)
+		assert.Equal(t, 0, bytesWritten)
+		assert.Equal(t, io.EOF, err)
+
+		err = file2.Close()
+		assert.Nil(t, err)
+		err = file.Close()
+		assert.Nil(t, err)
+	}
+
+	checkFileIntegrity(t, filename)
+	removeFiles(t, filename)
+}
+
 // Test unlink on open
 func TestUnlinkOnOpen(t *testing.T) {
 	t.Parallel()

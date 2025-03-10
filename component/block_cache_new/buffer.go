@@ -2,7 +2,6 @@ package block_cache_new
 
 import (
 	"container/list"
-	"context"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -491,31 +490,6 @@ func syncBuffersForFile(file *File) (fileChanged bool, err error) {
 	}
 	bPool.updateLRUafterUploadSuccess(file)
 	return
-}
-
-func syncZeroBuffer(name string) error {
-	return bc.NextComponent().StageData(
-		internal.StageDataOptions{
-			Ctx:  context.Background(),
-			Name: name,
-			Id:   zeroBlockId,
-			Data: zeroBuffer.data,
-		},
-	)
-
-}
-
-// stages empty block for the hole
-func punchHole(f *File) error {
-	if f.holePunched {
-		return nil
-	}
-	err := syncZeroBuffer(f.Name)
-	if err == nil {
-		f.holePunched = true
-	}
-
-	return err
 }
 
 func commitBuffersForFile(file *File) error {
