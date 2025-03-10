@@ -23,6 +23,13 @@ cache_path=""
 mount_blobfuse() {
   set +e
 
+  # Remove anything present in the mount dir/ temp dir before mounting
+  if [ -d "/mnt/blob_mnt" ]; then
+    rm -rf /mnt/blob_mnt/*
+  fi
+  if [ -d "/mnt/tempcache" ]; then
+    rm -rf /mnt/tempcache/*
+  fi
   blobfuse2 mount ${mount_dir} --config-file=./config.yaml --log-type=${log_type} --log-level=${log_level} ${cache_path}
   mount_status=$?
   set -e
