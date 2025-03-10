@@ -24,10 +24,15 @@ func scheduleDownload(blk *block, r requestType) {
 }
 
 // reponsible for shceduling the download and wait for the download to complete if request is of type sync.
+// Increment the block ref count if the request is of type sync, Its responsibility of caller to decrement
+// the refcnt when the operation was completed
 // If block is already present then returns it.
 func downloader(blk *block, r requestType) (state blockState, err error) {
 	blk.Lock()
 	defer blk.Unlock()
+	if r == syncRequest {
+		blk.refCnt++
+	}
 	var ok bool
 	if blk.buf == nil {
 		bPool.getBufferForBlock(blk)

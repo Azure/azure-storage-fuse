@@ -7,6 +7,9 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
 
+// Note: There is a reason why we are storing the references to open handles inside a file rather
+// maintaing a counter, because to support deferring the removal of files when some open handles are present.
+// At that time we dont want to iterate over entire open handle map to change some fields
 type File struct {
 	sync.RWMutex
 	handles      map[*handlemap.Handle]bool // Open file handles for this file
@@ -17,6 +20,16 @@ type File struct {
 	synced       bool                       // Is file synced with Azure storage
 	holePunched  bool                       // Represents if we have punched any hole while uploading the data.
 	blkListState blocklistState             // all blocklists which are not compatible with block cache can only be read
+}
+
+func (f *File) getOpenFDcount() int {
+	return len(f.handles)
+}
+
+func (f *File) getFileSize() int64 {
+	f.Lock()
+	defer f.Unlock()
+	return f.size
 }
 
 type blocklistState int
@@ -43,14 +56,14 @@ func CreateFile(fileName string) *File {
 // Sync Map filepath->*File
 var fileMap sync.Map
 
-func CreateFreshHandleForFile(name string, size int64, mtime time.Time) *handlemap.Handle {
+func createFreshHandleForFile(name string, size int64, mtime time.Time) *handlemap.Handle {
 	handle := handlemap.NewHandle(name)
 	handle.Mtime = mtime
 	handle.Size = size
 	return handle
 }
 
-func GetFileFromPath(key string) (*File, bool) {
+func getFileFromPath(key string) (*File, bool) {
 	f := CreateFile(key)
 	var first_open bool = false
 	file, loaded := fileMap.LoadOrStore(key, f)
@@ -61,16 +74,17 @@ func GetFileFromPath(key string) (*File, bool) {
 }
 
 // Remove the handle from the file
-// Release the buffers
-func DeleteHandleForFile(handle *handlemap.Handle) {
-	file, _ := GetFileFromPath(handle.Path)
+// Release the buffers if the openFDcount is zero for the file
+func deleteOpenHandleForFile(handle *handlemap.Handle) {
+	file, _ := getFileFromPath(handle.Path)
 	file.Lock()
 	delete(file.handles, handle)
-	if len(file.handles) == 0 {
-		releaseBuffers(file)
+	if file.getOpenFDcount() == 0 {
+		releaseBuffersOfFile(file)
 		fileMap.Delete(file.Name) // Todo: what happens open call comes before release async call finish
 	}
 	file.Unlock()
+	deleteHandleFromHandleMap(handle)
 }
 
 func checkFileExistsInOpen(key string) (*File, bool) {
@@ -81,24 +95,24 @@ func checkFileExistsInOpen(key string) (*File, bool) {
 	return nil, ok
 }
 
-func DeleteFile(f *File) {
-	if len(f.handles) == 0 {
+func deleteFile(f *File) {
+	if f.getOpenFDcount() == 0 {
 		fileMap.Delete(f.Name)
 	}
 }
 
-func HardDeleteFile(path string) {
+func hardDeleteFile(path string) {
 	fileMap.Delete(path)
 }
 
-// Sync map for handles, *handle->*File
+// Global Map for all the open fds/handles across blobfuse, *handle->*File
 var handleMap sync.Map
 
-func PutHandleIntoMap(h *handlemap.Handle, f *File) {
+func putHandleIntoMap(h *handlemap.Handle, f *File) {
 	handleMap.Store(h, f)
 }
 
-func GetFileFromHandle(h *handlemap.Handle) *File {
+func getFileFromHandle(h *handlemap.Handle) *File {
 	f, ok := handleMap.Load(h)
 	if !ok {
 		panic("handle was not found inside the handlemap")
@@ -106,6 +120,6 @@ func GetFileFromHandle(h *handlemap.Handle) *File {
 	return f.(*File)
 }
 
-func DeleteHandleFromMap(h *handlemap.Handle) {
+func deleteHandleFromHandleMap(h *handlemap.Handle) {
 	handleMap.Delete(h)
 }

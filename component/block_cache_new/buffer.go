@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -77,19 +78,28 @@ func (bp *BufferPool) addPendingUploadBlkToLRU(blk *block) {
 }
 
 func (bp *BufferPool) removeBlockFromLRU(blk *block) {
+	cnt := 0
 	if ee, ok := bp.SBCache[blk]; ok {
-		bp.localBlksLst.Remove(ee)
-		bp.onTheWireBlksLst.Remove(ee)
 		bp.syncedBlksLst.Remove(ee)
 		delete(bp.SBCache, blk)
+		log.Info("BlockCache::removeBlockFromLRU : Blk removed from SB cache blk idx : %d, file : %s", blk.idx, blk.file.Name)
+		cnt++
 	}
 	if ee, ok := bp.LBCache[blk]; ok {
-		b := ee.Value.(*block)
-		panic(fmt.Sprintf("BlockCache::removeBlockFromLRU : Blk is present in more than 1 LRU(seen in local list) : blk idx : %d, fileName : %s", b.idx, b.file.Name))
+		bp.localBlksLst.Remove(ee)
+		delete(bp.LBCache, blk)
+		log.Info("BlockCache::removeBlockFromLRU : Blk removed from LB cache blk idx : %d, file : %s", blk.idx, blk.file.Name)
+		cnt++
 	}
 	if ee, ok := bp.OWBCache[blk]; ok {
-		b := ee.Value.(*block)
-		panic(fmt.Sprintf("BlockCache::removeBlockFromLRU : Blk is present in more than 1 LRU(seen in onthe wire list) : blk idx : %d, fileName : %s", b.idx, b.file.Name))
+		bp.onTheWireBlksLst.Remove(ee)
+		delete(bp.OWBCache, blk)
+		log.Info("BlockCache::removeBlockFromLRU : Blk removed from OWB cache blk idx : %d, file : %s", blk.idx, blk.file.Name)
+		cnt++
+	}
+	// Block should only present in 1LRU at any point of time
+	if cnt > 1 {
+		panic(fmt.Sprintf("BlockCache::removeBlockFromLRU : Blk is present in more than 1 LRU : blk idx : %d, fileName : %s", blk.idx, blk.file.Name))
 	}
 
 }
@@ -328,7 +338,7 @@ func (bp *BufferPool) getBuffer(valid bool) *Buffer {
 
 func (bp *BufferPool) releaseBuffer(blk *block) {
 	if blk.buf != nil {
-		//clear the state of the buffer
+		//clear the state of the block
 		blk.cancelOngolingAsyncDownload()
 		blk.downloadDone = make(chan error, 1)
 		close(blk.downloadDone)
@@ -367,9 +377,7 @@ func getBlockForRead(idx int, file *File, r requestType) (blk *block, err error)
 	}
 	blk = file.blockList[idx]
 	file.Unlock()
-	if r == syncRequest {
-		blk.incrementRefCnt()
-	}
+
 	_, err = downloader(blk, r)
 	if r == syncRequest {
 		bPool.updateRecentnessOfBlk <- blk
@@ -421,7 +429,6 @@ func getBlockForWrite(idx int, file *File) (*block, error) {
 	}
 	blk := file.blockList[idx]
 	file.Unlock()
-	blk.incrementRefCnt()
 	_, err := downloader(blk, syncRequest)
 	bPool.updateRecentnessOfBlk <- blk
 	return blk, err
@@ -451,22 +458,39 @@ func (bp *BufferPool) updateLRUafterUploadSuccess(file *File) {
 }
 
 // Write all the Modified buffers to Azure Storage and return whether file is modified or not.
-func syncBuffersForFile(file *File) (bool, error) {
-	var err error = nil
-	var fileChanged bool = false
-
+func syncBuffersForFile(file *File) (fileChanged bool, err error) {
 	file.Lock()
+	defer file.Unlock()
+	if file.blkListState == blockListInvalid || file.blkListState == blockListNotRetrieved {
+		fileChanged = false
+		return
+	}
+	if file.size == 0 {
+		// Handling O_TRUNC, if there is no write call come after open then we should reset the file to zero at the Azstorage
+		attr, err := bc.NextComponent().GetAttr(internal.GetAttrOptions{
+			Name: file.Name,
+		})
+		if err != nil {
+			log.Err("BlockCache::syncBuffersForFile : Failed to get attr of %s [%s]", file.Name, err.Error())
+			return false, err
+		}
+		if attr.Size != 0 {
+			fileChanged = true
+		} else {
+			fileChanged = false
+		}
+		return fileChanged, nil
+	}
 	fileChanged = bPool.scheduleAsyncUploadsForFile(file)
 	// Wait for the uploads to finish
 	for _, blk := range file.blockList {
-		_, err := uploader(blk, syncRequest)
+		_, err = uploader(blk, syncRequest)
 		if err != nil {
 			panic(fmt.Sprintf("Upload doesn't happen for the block idx : %d, file : %s\n", blk.idx, blk.file.Name))
 		}
 	}
 	bPool.updateLRUafterUploadSuccess(file)
-	file.Unlock()
-	return fileChanged, err
+	return
 }
 
 func syncZeroBuffer(name string) error {
@@ -499,7 +523,19 @@ func commitBuffersForFile(file *File) error {
 	var blklist []string
 	file.Lock()
 	defer file.Unlock()
-	if file.blkListState == blockListInvalid || file.blkListState == blockListNotRetrieved {
+	if file.size == 0 {
+		// This occurs when user do O_TRUNC on open and then close without doing any writes.
+		// Create an empty blob in storage
+		// Todo: current implementaion hardcoded the file mode to 0777
+		// this may fail to set the ACL's in ADLS if usr dont have permission
+		_, err := bc.NextComponent().CreateFile(internal.CreateFileOptions{
+			Name: file.Name,
+			Mode: os.FileMode(0777),
+		})
+		if err != nil {
+			log.Err("BlockCache::commitBuffersForFile : Failed to create an empty blob %s", file.Name)
+			return err
+		}
 		return nil
 	}
 
@@ -522,6 +558,8 @@ func commitBuffersForFile(file *File) error {
 }
 
 // Release all the buffers to the file if this handle is the last one opened on the file.
-func releaseBuffers(f *File) {
-	bPool.removeBlocksFromLRU(f.blockList)
+func releaseBuffersOfFile(f *File) {
+	if len(f.blockList) > 0 {
+		bPool.removeBlocksFromLRU(f.blockList)
+	}
 }

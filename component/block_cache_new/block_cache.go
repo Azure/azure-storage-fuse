@@ -150,7 +150,7 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 		return nil, err
 	}
 
-	f, first_open := GetFileFromPath(options.Name)
+	f, first_open := getFileFromPath(options.Name)
 	f.Lock()
 	defer f.Unlock()
 	if f.size == -1 {
@@ -161,11 +161,11 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 		f.blockList = createBlockListForReadOnlyFile(f)
 	}
 
-	// todo: O_TRUNC is not supported currently.
-	if attr.Size == 0 || options.Flags&os.O_TRUNC != 0 {
+	if options.Flags&os.O_TRUNC != 0 {
 		f.size = 0
-		f.blockList = make([]*block, 0) //todo: return memory to pool
-		attr.Size = 0
+		// If its already opened then return all the existing buffers to the pool.
+		releaseBuffersOfFile(f)
+		f.blockList = make([]*block, 0)
 		f.blkListState = blockListValid
 	}
 
@@ -188,14 +188,14 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 
 	if f.blkListState == blockListInvalid && ((options.Flags&os.O_WRONLY != 0) || (options.Flags&os.O_RDWR != 0)) {
 		log.Err("BlockCache::OpenFile : Cannot Write to file %s whose blocklist is invalid", options.Name)
-		DeleteFile(f)
+		deleteFile(f)
 		return nil, errors.New("cannot write to file whose blocklist is invalid")
 	}
 
-	handle := CreateFreshHandleForFile(f.Name, f.size, attr.Mtime)
+	handle := createFreshHandleForFile(f.Name, f.size, attr.Mtime)
 	f.handles[handle] = true
 
-	PutHandleIntoMap(handle, f)
+	putHandleIntoMap(handle, f)
 
 	return handle, nil
 }
@@ -213,17 +213,15 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 		log.Debug("BlockCache::ReadInBuffer : Random read detected Prev Offset: %d, cur offset: %d, Is_seq : %d", options.Handle.Prev_offset, options.Offset, options.Handle.Is_seq)
 
 	}
-	f := GetFileFromHandle(options.Handle)
+	f := getFileFromHandle(options.Handle)
 
 	offset := options.Offset
 	dataRead := 0
 	len_of_copy := len(options.Data)
-	f.Lock()
-	fileSize := f.size
-	f.Unlock()
+	fileSize := f.getFileSize()
 
 	if options.Offset >= fileSize {
-		// EOF reached so early exit
+		// EOF reached so early exit, this should not happen, as kernel already checks the file size before making the read call.
 		log.Err("BlockCache::ReadInBuffer : EOF reached before reading the file")
 		return 0, io.EOF
 	}
@@ -255,7 +253,7 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 			panic("BlockCache::ReadInBuffer : Buffer got freed")
 		}
 		if !blk.buf.valid {
-			panic(fmt.Sprintf("BlockCache::ReadInBuffer : Buffer is not valid in this block"))
+			panic("BlockCache::ReadInBuffer : Buffer is not valid in this block")
 		}
 		len_of_block_buf := getBlockSize(fileSize, idx)
 		bytesCopied := copy(options.Data[dataRead:], block_buf.data[blockOffset:len_of_block_buf])
@@ -267,7 +265,7 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 
 		dataRead += bytesCopied
 		offset += int64(bytesCopied)
-		if offset >= fileSize { //this should be protected by lock ig, idk
+		if offset >= fileSize {
 			return dataRead, io.EOF
 		}
 	}
@@ -280,7 +278,7 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 // WriteFile: Write to the local file
 func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) {
 	log.Trace("BlockCache::WriteFile : handle=%d, path=%s, offset= %d", options.Handle.ID, options.Handle.Path, options.Offset)
-	f := GetFileFromHandle(options.Handle)
+	f := getFileFromHandle(options.Handle)
 	offset := options.Offset
 	len_of_copy := len(options.Data)
 	dataWritten := 0
@@ -332,7 +330,7 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 
 func (bc *BlockCache) SyncFile(options internal.SyncFileOptions) error {
 	log.Trace("BlockCache::SyncFile : handle=%d, path=%s", options.Handle.ID, options.Handle.Path)
-	f := GetFileFromHandle(options.Handle)
+	f := getFileFromHandle(options.Handle)
 	fileChanged, err := syncBuffersForFile(f)
 	if err == nil {
 		if fileChanged {
@@ -359,8 +357,7 @@ func (bc *BlockCache) FlushFile(options internal.FlushFileOptions) error {
 // CloseFile: File is closed by application so release all the blocks and submit back to blockPool
 func (bc *BlockCache) CloseFile(options internal.CloseFileOptions) error {
 	log.Trace("BlockCache::CloseFile : handle=%d, path=%s", options.Handle.ID, options.Handle.Path)
-	DeleteHandleForFile(options.Handle)
-	DeleteHandleFromMap(options.Handle)
+	deleteOpenHandleForFile(options.Handle)
 	return nil
 }
 
@@ -394,7 +391,7 @@ func (bc *BlockCache) TruncateFile(options internal.TruncateFileOptions) (err er
 		}()
 	}
 
-	f := GetFileFromHandle(h)
+	f := getFileFromHandle(h)
 	f.Lock()
 	defer f.Unlock()
 	if f.size == options.Size {
@@ -483,7 +480,7 @@ func (bc *BlockCache) RenameFile(options internal.RenameFileOptions) error {
 		log.Err("BlockCache::RenameFile : %s failed to rename file [%s]", options.Src, err.Error())
 		return err
 	} else {
-		f, _ := GetFileFromPath(options.Src)
+		f, _ := getFileFromPath(options.Src)
 		if isDstPathTempFile(options.Dst) {
 			log.Info("BlockCache::RenameFile : Deleting an opened File src=%s, dst=%s", options.Src, options.Dst)
 			f.Lock()
@@ -493,7 +490,7 @@ func (bc *BlockCache) RenameFile(options internal.RenameFileOptions) error {
 			}
 			f.Unlock()
 		}
-		HardDeleteFile(options.Src)
+		hardDeleteFile(options.Src)
 	}
 
 	return nil
@@ -506,14 +503,21 @@ func (bc *BlockCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAtt
 	if err != nil {
 		return attr, err
 	}
+	// file stucture has more updated info attribute cache/Azure storage
 	file, ok := checkFileExistsInOpen(options.Name)
 	if ok {
-		file.Lock()
-		attr.Size = file.size
-		file.Unlock()
+		fileSize := file.getFileSize()
+		if fileSize != attr.Size {
+			// There has been a modification done on the file.
+			// Return new attribute with new file size.
+			// We dont want to update the value inside the attribute itself, as it changes the state of the attribute inside the attribute cache
+			newattr := *attr
+			newattr.Size = fileSize
+			return &newattr, nil
+		}
 	}
 
-	return attr, err
+	return attr, nil
 }
 
 // ------------------------- Factory -------------------------------------------

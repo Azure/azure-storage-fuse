@@ -107,8 +107,8 @@ func createBlockListForReadOnlyFile(f *File) blockList {
 	size := f.size
 	var newblkList blockList
 	noOfBlocks := (size + int64(BlockSize) - 1) / int64(BlockSize)
-	for i := 0; i < int(noOfBlocks); i++ {
-		newblkList = append(newblkList, createBlock(i, " ", committedBlock, f))
+	for i := range int(noOfBlocks) {
+		newblkList = append(newblkList, createBlock(i, "", committedBlock, f))
 	}
 	return newblkList
 }
@@ -145,7 +145,6 @@ func updateModifiedBlock(blk *block) bool {
 }
 
 func changeStateOfBlockToLocal(idx int, blk *block) error {
-	blk.incrementRefCnt()
 	_, err := downloader(blk, syncRequest)
 	if err != nil {
 		log.Err("BlockCache::changeStateOfBlockToLocal : download failed for blk idx=%d, path=%s, size=%d", idx, blk.file.Name, blk.file.size)
