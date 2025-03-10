@@ -466,8 +466,8 @@ var mountCmd = &cobra.Command{
 			pidFile := strings.Replace(options.MountPath, "/", "_", -1) + ".pid"
 			pidFileName := filepath.Join(os.ExpandEnv(common.DefaultWorkDir), pidFile)
 
-			pid := os.Getpid()
-			fname := fmt.Sprintf("/tmp/blobfuse2.%v", pid)
+			//pid := os.Getpid()
+			fname := "/tmp/blobfuse2.crash"
 
 			dmnCtx := &daemon.Context{
 				PidFileName: pidFileName,
@@ -509,7 +509,7 @@ var mountCmd = &cobra.Command{
 				// those logs from the file set in daemon context
 				return runPipeline(pipeline, ctx)
 			} else { // execute in parent only
-				defer os.Remove(fname)
+				//defer os.Remove(fname)
 
 				select {
 				case <-sigusr2:

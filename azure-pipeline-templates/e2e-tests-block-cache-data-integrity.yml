@@ -209,6 +209,16 @@ steps:
       fi
     displayName: 'Compare md5Sum with Block-Cache Disk-Cache'
 
+  - script: |
+       cat /tmp/blobfuse2.crash
+    displayName: 'View Crash file'
+    condition: always()
+    
+  - script: |
+      tail -n 200 blobfuse2-logs.txt
+    displayName: 'View Logs'
+    condition: always()
+
   - template: 'cleanup.yml'
     parameters:
       working_dir: $(WORK_DIR)

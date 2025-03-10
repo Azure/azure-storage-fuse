@@ -260,6 +260,11 @@ steps:
       pathToPublish: blobfuse2-logs.txt
       artifactName: 'blobfuse_block_cache.txt'
     condition: always()
+
+  - script: |
+       cat /tmp/blobfuse2.crash
+    displayName: 'View Crash file'
+    condition: always()
     
   - script: |
       tail -n 200 blobfuse2-logs.txt
