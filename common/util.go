@@ -335,7 +335,13 @@ func ExpandPath(path string) string {
 		path = filepath.Join(homeDir, path[2:])
 	}
 
-	path = os.ExpandEnv(path)
+	path = os.Expand(path, func(key string) string {
+		if azureSpecialContainers[key] {
+			return "$" + key // Keep it as is
+		}
+		return os.Getenv(key) // Expand normally
+	})
+
 	path, _ = filepath.Abs(path)
 	return path
 }

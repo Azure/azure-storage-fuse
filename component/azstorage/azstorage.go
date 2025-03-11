@@ -159,7 +159,7 @@ func (az *AzStorage) configureAndTest(isParent bool) error {
 		err = az.storage.TestPipeline()
 		if err != nil {
 			log.Err("AzStorage::configureAndTest : Failed to validate credentials [%s]", err.Error())
-			return fmt.Errorf("failed to authenticate credentials for %s", az.Name())
+			return fmt.Errorf("failed to authenticate %s credentials with error [%s]", az.Name(), err.Error())
 		}
 	}
 

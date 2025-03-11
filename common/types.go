@@ -328,3 +328,9 @@ func init() {
 	DefaultLogFilePath = filepath.Join(DefaultWorkDir, "blobfuse2.log")
 	StatsConfigFilePath = filepath.Join(DefaultWorkDir, "stats_monitor.cfg")
 }
+
+var azureSpecialContainers = map[string]bool{
+	"web":        true,
+	"logs":       true,
+	"changefeed": true,
+}
