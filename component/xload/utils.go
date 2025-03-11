@@ -71,6 +71,7 @@ type WorkItem struct {
 	Download        bool            // boolean variable to decide upload or download
 	Priority        bool            // boolean flag to decide if this item needs to be processed on priority
 	Ctx             context.Context // context with cancellation method so that if download fails for one block, all other download operations will be cancelled
+	MD5             []byte          // content md5 of the blob which can be used to check the consistency of the download
 }
 
 // xload mode enum

@@ -38,6 +38,7 @@ import (
 	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/md5"
 	"crypto/rand"
 	"encoding/binary"
 	"fmt"
@@ -512,4 +513,15 @@ func GetCRC64(data []byte, len int) []byte {
 	binary.BigEndian.PutUint64(checksumBytes, checksum)
 
 	return checksumBytes
+}
+
+func GetMD5(fi *os.File) ([]byte, error) {
+	hasher := md5.New()
+	_, err := io.Copy(hasher, fi)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate md5 [%s]", err.Error())
+	}
+
+	return hasher.Sum(nil), nil
 }

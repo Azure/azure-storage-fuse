@@ -360,6 +360,7 @@ func (suite *xloadTestSuite) TestCreateDownloader() {
 	xl := &Xload{}
 	err := xl.createDownloader()
 	suite.assert.NotNil(err)
+	suite.assert.Contains(err.Error(), "invalid parameters sent to create remote lister")
 	suite.assert.Len(xl.comps, 0)
 
 	xl.path = suite.local_path
@@ -367,6 +368,7 @@ func (suite *xloadTestSuite) TestCreateDownloader() {
 	xl.statsMgr = &StatsManager{}
 	err = xl.createDownloader()
 	suite.assert.NotNil(err)
+	suite.assert.Contains(err.Error(), "invalid parameters sent to create download splitter")
 	suite.assert.Len(xl.comps, 0)
 
 	xl.blockPool = &BlockPool{}
@@ -526,7 +528,7 @@ func (suite *xloadTestSuite) TestOpenFileWithDownload() {
 	err = suite.xload.CloseFile(internal.CloseFileOptions{Handle: fh1})
 	suite.assert.Nil(err)
 
-	fh2, err := suite.xload.OpenFile(internal.OpenFileOptions{Name: "dir_0/file_3", Flags: os.O_RDWR, Mode: common.DefaultFilePermissionBits})
+	fh2, err := suite.xload.OpenFile(internal.OpenFileOptions{Name: "dir_0/file_3", Flags: os.O_RDONLY, Mode: common.DefaultFilePermissionBits})
 	suite.assert.Nil(err)
 	suite.assert.NotNil(fh2)
 	suite.assert.Equal(fh2.Size, (int64)(27))
@@ -553,13 +555,13 @@ func (suite *xloadTestSuite) validateMD5WithOpenFile(localPath string, remotePat
 			suite.assert.Nil(err)
 			suite.assert.NotNil(fh)
 
-			l, err := computeMD5(localFilePath)
+			localMD5, err := computeMD5(localFilePath)
 			suite.assert.Nil(err)
 
-			r, err := computeMD5(remoteFilePath)
+			remoteMD5, err := computeMD5(remoteFilePath)
 			suite.assert.Nil(err)
 
-			suite.assert.Equal(l, r)
+			suite.assert.Equal(localMD5, remoteMD5)
 
 			err = suite.xload.CloseFile(internal.CloseFileOptions{Handle: fh})
 			suite.assert.Nil(err)
