@@ -52,19 +52,78 @@ steps:
       workingDirectory: $(DATA_DIR)        
     
     - bash: |
-        md5sum * | tee checklist.chk
+        md5sum * | tee ~/checklist.chk
       displayName: "Generate md5sum of the generated files"
       workingDirectory: $(DATA_DIR)
   
   - ${{ if eq(parameters.copy_data, true) }}:
     - script: |
         cp -v $(DATA_DIR)/* $(MOUNT_DIR)/
-      displayName: "Copy Files to the Mountpoint"
+      displayName: "SEQ Copy Files to the Mountpoint"
+
+    - script: |
+        for file in $(MOUNT_DIR)/*; do
+          cp -v "$file" "$(MOUNT_DIR)/$(basename "$file").SEQ"
+        done
+      displayName: "SEQ Copy Files across the Mountpoint"
+
+    - script: |
+        find $(DATA_DIR) -type f | parallel --will-cite -j 5 'cp -v {} $(MOUNT_DIR)/$(basename {}).TPAR'
+      displayName: "PARLLEL Copy Files to the Mountpoint"
+
+    - script: |
+        find $(DATA_DIR) -type f | parallel --will-cite -j 5 'cp -v $(MOUNT_DIR)/$(basename {}) $(MOUNT_DIR)/$(basename {}).APAR'
+        displayName: "PARLLEL Copy Files across the Mountpoint"
 
   # drop kernel page cache before getting the md5sums as copy might happened just now
   - ${{ if eq(parameters.check_consistency, true) }}:
     - script: |
         sudo sh -c "sync; echo 3 > /proc/sys/vm/drop_caches"
-        md5sum -c $(DATA_DIR)/checklist.chk
+        rm -v ~/mc1.*
+        for file in $(DATA_DIR)/*; do
+          md5sum "$(MOUNT_DIR)/$(basename "$file")" | tee -a ~/mc1.chk
+        done
+        for file in $(DATA_DIR)/*; do
+          md5sum "$(MOUNT_DIR)/$(basename "$file").SEQ" | tee -a ~/mc2.chk
+        done
+        for file in $(DATA_DIR)/*; do
+          md5sum "$(MOUNT_DIR)/$(basename "$file").TPAR" | tee -a ~/mc3.chk
+        done
+        for file in $(DATA_DIR)/*; do
+          md5sum "$(MOUNT_DIR)/$(basename "$file").APAR" | tee -a ~/mc4.chk
+        done
+        echo "--------------------------------------"
+        cat ~/mc1.chk
+        echo "--------------------------------------"
+        cat ~/mc2.chk
+        echo "--------------------------------------"
+        cat ~/mc3.chk
+        echo "--------------------------------------"
+        cat ~/mc4.chk
+        echo "--------------------------------------"
+        cat ~/mc1.chk | cut -d " " -f1 > ~/mc1.chk
+        cat ~/mc2.chk | cut -d " " -f1 > ~/mc2.chk
+        cat ~/mc3.chk | cut -d " " -f1 > ~/mc3.chk
+        cat ~/mc4.chk | cut -d " " -f1 > ~/mc4.chk
+        echo "--------------------------------------"
+        cat ~/mc1.chk
+        echo "--------------------------------------"
+        cat ~/mc2.chk
+        echo "--------------------------------------"
+        cat ~/mc3.chk
+        echo "--------------------------------------"
+        cat ~/mc4.chk
+        echo "--------------------------------------"
+        compare_md5sum() {
+          local mount_hashes=$1
+          diff ~/checklist.chk ${mount_hashes}
+          if [ $? -ne 0 ]; then
+            exit 1
+          fi
+        }
+        compare_md5sum "~/mc1.chk"
+        compare_md5sum "~/mc2.chk"
+        compare_md5sum "~/mc3.chk"
+        compare_md5sum "~/mc4.chk"
       displayName: "Compare the MD5sum of the Mount point with Local filesystem"
       workingDirectory: $(MOUNT_DIR)
