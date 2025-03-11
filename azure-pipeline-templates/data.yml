@@ -73,7 +73,7 @@ steps:
 
     - script: |
         find $(DATA_DIR) -type f | parallel --will-cite -j 5 'cp -v $(MOUNT_DIR)/$(basename {}) $(MOUNT_DIR)/$(basename {}).APAR'
-        displayName: "PARLLEL Copy Files across the Mountpoint"
+      displayName: "PARLLEL Copy Files across the Mountpoint"
 
   # drop kernel page cache before getting the md5sums as copy might happened just now
   - ${{ if eq(parameters.check_consistency, true) }}:
