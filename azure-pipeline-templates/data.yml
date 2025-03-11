@@ -121,9 +121,9 @@ steps:
             exit 1
           fi
         }
-        compare_md5sum "~/mc1.chk1"
-        compare_md5sum "~/mc2.chk1"
-        compare_md5sum "~/mc3.chk1"
-        compare_md5sum "~/mc4.chk1"
+        compare_md5sum ~/mc1.chk1
+        compare_md5sum ~/mc2.chk1
+        compare_md5sum ~/mc3.chk1
+        compare_md5sum ~/mc4.chk1
       displayName: "Compare the MD5sum of the Mount point with Local filesystem"
       workingDirectory: $(MOUNT_DIR)
