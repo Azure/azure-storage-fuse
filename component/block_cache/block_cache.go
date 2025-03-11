@@ -1570,7 +1570,7 @@ func (bc *BlockCache) commitBlocks(handle *handlemap.Handle) error {
 		}
 	}
 
-	blockIDList, restageId, err := bc.getBlockIDList(handle)
+	blockIDList, restageIds, err := bc.getBlockIDList(handle)
 	if err != nil {
 		log.Err("BlockCache::commitBlocks : Failed to get block id list for %v [%v]", handle.Path, err.Error())
 		return err
@@ -1598,10 +1598,11 @@ func (bc *BlockCache) commitBlocks(handle *handlemap.Handle) error {
 		listMap[k].committed = true
 	}
 
-	if restageId != "" {
-		// We need to restage with block by merging it to the next block
+	restaged := false
+	for _, restageID := range restageIds {
+		// We need to restage these blocks
 		for i := range blockIDList {
-			if blockIDList[i] == restageId {
+			if blockIDList[i] == restageID {
 				// Read one block from offset of this block, which shall effectively read this block and the next block
 				// Thne stage this block again with correct length
 				// Remove the next block from blockIDList
@@ -1613,16 +1614,25 @@ func (bc *BlockCache) commitBlocks(handle *handlemap.Handle) error {
 				}
 
 				block.Dirty()
-				return bc.commitBlocks(handle)
+				restaged = true
+
+				// Next item after this block was a semi zero filler so remove that from the list now
+				blockIDList = append(blockIDList[:i+1], blockIDList[i+2:]...)
+				break
 			}
 		}
+	}
+
+	if restaged {
+		// If any block was restaged then commit the blocks again
+		return bc.commitBlocks(handle)
 	}
 
 	handle.Flags.Clear(handlemap.HandleFlagDirty)
 	return nil
 }
 
-func (bc *BlockCache) getBlockIDList(handle *handlemap.Handle) ([]string, string, error) {
+func (bc *BlockCache) getBlockIDList(handle *handlemap.Handle) ([]string, []string, error) {
 	// generate the block id list order
 	list, _ := handle.GetValue("blockList")
 	listMap := list.(map[int64]*blockInfo)
@@ -1637,7 +1647,7 @@ func (bc *BlockCache) getBlockIDList(handle *handlemap.Handle) ([]string, string
 
 	zeroBlockStaged := false
 	zeroBlockID := ""
-	restageId := ""
+	restageId := make([]string, 0)
 	index := int64(0)
 	i := 0
 
@@ -1662,14 +1672,14 @@ func (bc *BlockCache) getBlockIDList(handle *handlemap.Handle) ([]string, string
 
 				if err != nil {
 					log.Err("BlockCache::getBlockIDList : Failed to write semi zero block for %v=>%v [%s]", handle.ID, handle.Path, err.Error())
-					return nil, "", err
+					return nil, nil, err
 				}
 
 				blockIDList = append(blockIDList, listMap[offsets[i]].id)
 				log.Debug("BlockCache::getBlockIDList : Preparing blocklist for %v=>%s (%v :  %v, size %v)", handle.ID, handle.Path, offsets[i], listMap[offsets[i]].id, listMap[offsets[i]].size)
 
 				// After the flush call we need to merge this particular block with the next block (semi zero block)
-				restageId = listMap[offsets[i]].id
+				restageId = append(restageId, listMap[offsets[i]].id)
 
 				// Add the semi zero block to the list
 				blockIDList = append(blockIDList, id)
@@ -1689,7 +1699,7 @@ func (bc *BlockCache) getBlockIDList(handle *handlemap.Handle) ([]string, string
 				if !zeroBlockStaged {
 					id, err := bc.stageZeroBlock(handle, 1)
 					if err != nil {
-						return nil, "", err
+						return nil, nil, err
 					}
 
 					zeroBlockStaged = true
