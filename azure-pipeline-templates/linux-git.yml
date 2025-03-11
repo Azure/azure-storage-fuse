@@ -55,7 +55,7 @@ steps:
       mount_dir: ${{ parameters.mount_dir }}
       temp_dir: ${{ parameters.temp_dir }}
       prefix: ${{ parameters.idstring }}
-      ro_mount: true
+      ro_mount: false
       mountStep: 
         script: |
           $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR)
