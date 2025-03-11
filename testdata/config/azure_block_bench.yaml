@@ -9,25 +9,9 @@ components:
   - attr_cache
   - azstorage
 
-libfuse:
-  attribute-expiration-sec: 120
-  entry-expiration-sec: 120
-  negative-entry-expiration-sec: 240
-  ignore-open-flags: true
-
 block_cache:
-  block-size-mb: 16
-  mem-size-mb: 204800
-  prefetch: 200
-  parallelism: 600
-  disk-size-mb: 512000 
-  disk-timeout-sec: 120 
-  #prefetch-on-open: true
   cleanup-on-start: true
 
-attr_cache:
-  timeout-sec: 7200
-  
 azstorage:
   mode: key
   container: { 0 }
