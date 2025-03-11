@@ -47,8 +47,8 @@ parameters:
     type: boolean
     default: false
   
-  - name: HealthMonitor
-    displayName: 'Run tests for bfusemon'
+  - name: healthmon
+    displayName: 'Run tests for Health monitor'
     type: boolean
     default: true
 
@@ -740,8 +740,8 @@ stages:
               delete_containers: true
 
 # Run bfusemon tests optionally when user invokes.
-  - ${{ if eq(parameters.fusemon, true) }}:
-    - stage: fusemon
+  - ${{ if eq(parameters.healthmon, true) }}:
+    - stage: Healthmon
       jobs:
         # Ubuntu Tests
         - job: Set_1
