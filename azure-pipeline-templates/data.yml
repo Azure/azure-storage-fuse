@@ -53,6 +53,7 @@ steps:
     
     - bash: |
         md5sum * | tee ~/checklist.chk
+        cat ~/checklist.chk | cut -d " " -f1 > ~/checklist.chk1
       displayName: "Generate md5sum of the generated files"
       workingDirectory: $(DATA_DIR)
   
@@ -116,7 +117,7 @@ steps:
         echo "--------------------------------------"
         compare_md5sum() {
           local mount_hashes=$1
-          diff ~/checklist.chk ${mount_hashes}
+          diff ~/checklist.chk1 ${mount_hashes}
           if [ $? -ne 0 ]; then
             exit 1
           fi
