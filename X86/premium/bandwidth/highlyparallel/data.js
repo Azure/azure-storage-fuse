@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1741628120131,
+  "lastUpdate": 1741663623888,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -155,6 +155,45 @@ window.BENCHMARK_DATA = {
           {
             "name": "rand_read_128_thread",
             "value": 4459.720703125,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "vibhansa@microsoft.com",
+            "name": "vibhansa",
+            "username": "vibhansa-msft"
+          },
+          "committer": {
+            "email": "vibhansa@microsoft.com",
+            "name": "vibhansa",
+            "username": "vibhansa-msft"
+          },
+          "distinct": true,
+          "id": "3b8c1479c707311289f5ee84bf3770b0956497d9",
+          "message": "Merge branch 'vibhansa/armperftest' of https://github.com/Azure/azure-storage-fuse into vibhansa/armperftest",
+          "timestamp": "2025-03-10T19:45:26-07:00",
+          "tree_id": "36cf3d2ea59d4e24ae14350add991d98e2be0d9c",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/3b8c1479c707311289f5ee84bf3770b0956497d9"
+        },
+        "date": 1741663623411,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "seq_write_112_thread",
+            "value": 15395.940755208334,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "seq_read_128_thread",
+            "value": 24687.582682291668,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "rand_read_128_thread",
+            "value": 4328.105143229167,
             "unit": "MiB/s"
           }
         ]
