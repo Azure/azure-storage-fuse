@@ -47,10 +47,10 @@ parameters:
     type: boolean
     default: false
   
-  - name: fusemon
+  - name: HealthMonitor
     displayName: 'Run tests for bfusemon'
     type: boolean
-    default: false
+    default: true
 
 stages:
   - ${{ if eq(parameters.base_test, true) }}:
