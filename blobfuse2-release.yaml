@@ -2,7 +2,7 @@ variables:
   tags: 'fuse3'
   depends: 'fuse3'
   project: 'BlobFuse'
-  pipelineId: 95
+  pipelineId: 97
   patToken: $(System.AccessToken)
   status: 'inProgress'
   organization: azstorage
