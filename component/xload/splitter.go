@@ -260,6 +260,7 @@ func (ds *downloadSplitter) Process(item *WorkItem) (int, error) {
 	if ds.consistency && operationSuccess {
 		err = ds.checkConsistency(item)
 		if err != nil {
+			// TODO:: xload : retry if consistency check fails
 			log.Err("downloadSplitter::Process : unable to check consistency for %s [%s]", item.Path, err.Error())
 			operationSuccess = false
 		}
