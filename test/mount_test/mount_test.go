@@ -119,7 +119,7 @@ func (suite *mountSuite) TestMountCmd() {
 	blobfuseUnmount(suite, mntDir)
 }
 
-// mount failure test where the mount directory does not exists
+// mount failure test where the mount directory does not exist
 func (suite *mountSuite) TestMountDirNotExists() {
 	tempDir := filepath.Join(mntDir, "tempdir")
 	mountCmd := exec.Command(blobfuseBinary, "mount", tempDir, "--config-file="+configFile)
@@ -129,7 +129,7 @@ func (suite *mountSuite) TestMountDirNotExists() {
 	suite.NotEqual(nil, err)
 	fmt.Println(errb.String())
 	suite.NotEqual(0, len(errb.String()))
-	suite.Contains(errb.String(), "mount directory does not exists")
+	suite.Contains(errb.String(), "mount directory does not exist")
 
 	// list blobfuse mounted directories
 	cliOut := listBlobfuseMounts(suite)
