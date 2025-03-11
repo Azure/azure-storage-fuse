@@ -1181,7 +1181,7 @@ func libfuse_chown(path *C.char, uid C.uid_t, gid C.gid_t, fi *C.fuse_file_info_
 		return -C.EIO
 	}
 
-	libfuseStatsCollector.PushEvents(chown, name, map[string]interface{}{common.OwnerID: uid, common.GroupId: gid})
+	libfuseStatsCollector.PushEvents(chown, name, map[string]interface{}{common.POSIXOwnerMeta: uid, common.POSIXGroupMeta: gid})
 	libfuseStatsCollector.UpdateStats(stats_manager.Increment, chown, (int64)(1))
 
 	return 0

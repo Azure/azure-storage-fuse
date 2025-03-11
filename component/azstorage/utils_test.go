@@ -534,6 +534,51 @@ func (suite *utilsTestSuite) TestRemovePrefixPath() {
 	}
 }
 
+func (s *utilsTestSuite) TestAddMetadata() {
+	assert := assert.New(s.T())
+
+	tests := []struct {
+		metadata Metadata
+		key      string
+		value    string
+		expected bool
+	}{
+		{metadata: Metadata{}, key: "key1", value: "value1", expected: true},
+		{metadata: Metadata{"key1": to.Ptr("value1")}, key: "key1", value: "value2", expected: false},
+		{metadata: Metadata{"Key1": to.Ptr("value1")}, key: "key1", value: "value2", expected: false},
+		{metadata: Metadata{}, key: "", value: "value1", expected: true},
+	}
+
+	for _, test := range tests {
+		result := AddMetadata(test.metadata, test.key, test.value)
+		assert.Equal(test.expected, result)
+		if test.expected {
+			assert.Equal(test.value, *test.metadata[test.key])
+		}
+	}
+}
+
+func (s *utilsTestSuite) TestReadMetadata() {
+	assert := assert.New(s.T())
+
+	tests := []struct {
+		metadata Metadata
+		key      string
+		expected *string
+	}{
+		{metadata: Metadata{"key1": to.Ptr("value1")}, key: "key1", expected: to.Ptr("value1")},
+		{metadata: Metadata{"Key1": to.Ptr("value1")}, key: "key1", expected: to.Ptr("value1")},
+		{metadata: Metadata{"key1": to.Ptr("value1")}, key: "Key1", expected: nil},
+		{metadata: Metadata{"key1": to.Ptr("value1")}, key: "key2", expected: nil},
+		{metadata: Metadata{}, key: "key1", expected: nil},
+	}
+
+	for _, test := range tests {
+		result := ReadMetadata(test.metadata, test.key)
+		assert.Equal(test.expected, result)
+	}
+}
+
 func TestUtilsTestSuite(t *testing.T) {
 	suite.Run(t, new(utilsTestSuite))
 }

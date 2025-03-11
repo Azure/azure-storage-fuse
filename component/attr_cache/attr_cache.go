@@ -580,8 +580,6 @@ func (ac *AttrCache) Chmod(options internal.ChmodOptions) error {
 
 // Chown : Update the file with its new owner and group (when datalake chown is implemented)
 func (ac *AttrCache) Chown(options internal.ChownOptions) error {
-	log.Trace("AttrCache::Chown : Change owner of file/directory %s", options.Name)
-
 	err := ac.NextComponent().Chown(options)
 	// TODO: Implement when datalake chown is supported.
 

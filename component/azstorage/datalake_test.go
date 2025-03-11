@@ -2846,74 +2846,14 @@ func (s *datalakeTestSuite) TestChangeOwner() {
 	name := generateFileName()
 	s.az.CreateFile(internal.CreateFileOptions{Name: name})
 
-	// Test changing owner
-	uid := 1001
-	gid := 1002
-	err := s.az.Chown(internal.ChownOptions{Name: name, Owner: uid, Group: gid})
+	err := s.az.storage.ChangeOwner(name, 1001, 1001)
 	s.assert.Nil(err)
 
-	// Verify the owner has been changed
 	attr, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
 	s.assert.Nil(err)
-	s.assert.Equal(strconv.Itoa(uid), *attr.Metadata[common.OwnerID])
-	s.assert.Equal(strconv.Itoa(gid), *attr.Metadata[common.GroupId])
+	s.assert.Equal(strconv.Itoa(1001), *attr.UID)
+	s.assert.Equal(strconv.Itoa(1001), *attr.GID)
 }
-
-// func (s *datalakeTestSuite) TestChangeOwnerNonExistentFile() {
-// 	defer s.cleanupTest()
-// 	// Setup
-// 	name := generateFileName()
-
-// 	// Test changing owner on a non-existent file
-// 	uid := 1001
-// 	gid := 1002
-// 	err := s.az.Chown(internal.ChownOptions{Name: name, Owner: uid, Group: gid})
-// 	s.assert.NotNil(err)
-// 	s.assert.Equal(syscall.ENOENT, err)
-// }
-
-// func (s *datalakeTestSuite) TestChangeOwnerInsuffiecientPermission() {
-// 	defer s.cleanupTest()
-// 	// Setup
-// 	name := generateFileName()
-// 	s.az.CreateFile(internal.CreateFileOptions{Name: name})
-
-// 	// Simulate insufficient permissions by setting the file to read-only
-// 	s.az.Chmod(internal.ChmodOptions{Name: name, Mode: 0444})
-
-// 	// Test changing owner with insufficient permissions
-// 	uid := 1001
-// 	gid := 1002
-// 	err := s.az.Chown(internal.ChownOptions{Name: name, Owner: uid, Group: gid})
-// 	s.assert.Nil(err)
-// }
-
-// func (s *datalakeTestSuite) TestRAGRS() {
-// 	defer s.cleanupTest()
-// 	// Setup
-// 	name := generateFileName()
-// 	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
-// 	testData := "test data"
-// 	data := []byte(testData)
-// 	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
-// 	h, _ = s.az.OpenFile(internal.OpenFileOptions{Name: name})
-// 	s.az.CloseFile(internal.CloseFileOptions{Handle: h})
-
-// 	// This can be flaky since it may take time to replicate the data. We could hardcode a container and file for this test
-// 	time.Sleep(time.Second * time.Duration(10))
-
-// 	s.tearDownTestHelper(false) // Don't delete the generated container.
-
-// 	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  endpoint: https://%s-secondary.dfs.core.windows.net\n",
-// 		storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsKey, s.container, storageTestConfigurationParameters.AdlsAccount)
-// 	s.setupTestHelper(config, s.container, false) // Don't create a new container
-
-// 	h, _ = s.az.OpenFile(internal.OpenFileOptions{Name: name})
-// 	output, err := s.az.ReadFile(internal.ReadFileOptions{Handle: h})
-// 	s.assert.Nil(err)
-// 	s.assert.EqualValues(testData, output)
-// 	s.az.CloseFile(internal.CloseFileOptions{Handle: h})
-// }
 
 // In order for 'go test' to run this suite, we need to create
 // a normal test function and pass our suite to suite.Run

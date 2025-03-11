@@ -44,6 +44,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -77,6 +78,8 @@ type BlockBlob struct {
 	listDetails     container.ListBlobsInclude
 	blockLocks      common.KeyedMutex
 }
+
+type Metadata map[string]*string
 
 // Verify that BlockBlob implements AzConnection interface
 var _ AzConnection = &BlockBlob{}
@@ -666,8 +669,8 @@ func (bb *BlockBlob) getBlobAttr(blobInfo *container.BlobItem) (*internal.ObjAtt
 		Flags:  internal.NewFileBitMap(),
 		MD5:    blobInfo.Properties.ContentMD5,
 		ETag:   sanitizeEtag(blobInfo.Properties.ETag),
-		GID:    blobInfo.Metadata["gid"],
-		UID:    blobInfo.Metadata["uid"],
+		GID:    ReadMetadata(blobInfo.Metadata, common.POSIXGroupMeta),
+		UID:    ReadMetadata(blobInfo.Metadata, common.POSIXOwnerMeta),
 	}
 
 	parseMetadata(attr, blobInfo.Metadata)
@@ -1525,17 +1528,35 @@ func (bb *BlockBlob) ChangeMod(name string, _ os.FileMode) error {
 }
 
 // ChangeOwner : Change owner of a blob
-func (bb *BlockBlob) ChangeOwner(name string, _ int, _ int) error {
+func (bb *BlockBlob) ChangeOwner(name string, uid int, gid int) error {
 	log.Trace("BlockBlob::ChangeOwner : name %s", name)
 
-	if bb.Config.ignoreAccessModifiers {
-		// for operations like git clone where transaction fails if chown is not successful
-		// return success instead of ENOSYS
-		return nil
+	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
+
+	// Fetch existing properties
+	prop, err := blobClient.GetProperties(context.Background(), &blob.GetPropertiesOptions{
+		CPKInfo: bb.blobCPKOpt,
+	})
+	if err != nil {
+		log.Err("BlockBlob::updateMetadata: Failed to fetch properties for %s [%s]", name, err.Error())
+		return err
+	}
+	if prop.Metadata == nil {
+		prop.Metadata = make(map[string]*string)
+	}
+	updatedOwner := AddMetadata(prop.Metadata, common.POSIXOwnerMeta, strconv.FormatUint(uint64(uid), 10))
+	updatedGroup := AddMetadata(prop.Metadata, common.POSIXGroupMeta, strconv.FormatUint(uint64(gid), 10))
+
+	// Apply metadata update
+	if updatedOwner || updatedGroup {
+		if _, err := blobClient.SetMetadata(context.Background(), prop.Metadata, nil); err != nil {
+			log.Err("BlockBlob::updateMetadata: Failed to set metadata for %s [%s]", name, err.Error())
+			return err
+		}
 	}
 
-	// This is not currently supported for a flat namespace account
-	return syscall.ENOTSUP
+	log.Info("BlockBlob::updateMetadata: Metadata updated for %s - %v", name, prop.Metadata)
+	return nil
 }
 
 // GetCommittedBlockList : Get the list of committed blocks
@@ -1630,68 +1651,4 @@ func (bb *BlockBlob) SetFilter(filter string) error {
 
 	bb.Config.filter = &blobfilter.BlobFilter{}
 	return bb.Config.filter.Configure(filter)
-}
-
-func (bb *BlockBlob) updateMetadata(name string, metadata map[string]*string) error {
-	if len(metadata) == 0 {
-		log.Info("BlockBlob::updateMetadata: No metadata to update for %s", name)
-		return nil
-	}
-
-	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
-
-	// Fetch existing properties
-	prop, err := blobClient.GetProperties(context.Background(), &blob.GetPropertiesOptions{
-		CPKInfo: bb.blobCPKOpt,
-	})
-	if err != nil {
-		log.Err("BlockBlob::updateMetadata: Failed to fetch properties for %s [%s]", name, err.Error())
-		return err
-	}
-
-	// Update metadata if needed
-	if prop.Metadata == nil {
-		prop.Metadata = make(map[string]*string)
-	}
-
-	update := false
-	for key, value := range metadata {
-		matchedKey := ""
-		// prop.Metadata having key like Gid and Uid, while I have inserted it gid, uid
-		for storageKey := range prop.Metadata {
-			if strings.EqualFold(storageKey, key) {
-				matchedKey = storageKey
-				break
-			}
-		}
-		if matchedKey == "" {
-			// key not found; add it
-			prop.Metadata[key] = value
-			update = true
-		} else {
-			// key found; compare values
-			existingValue := prop.Metadata[matchedKey]
-			if *existingValue != *value {
-				prop.Metadata[matchedKey] = value
-				update = true
-			}
-		}
-	}
-
-	// Skip update if nothing changed
-	if !update {
-		log.Info("BlockBlob::updateMetadata: No changes needed for %s", name)
-		return nil
-	}
-
-	// Apply metadata update
-	if _, err := blobClient.SetMetadata(context.Background(), prop.Metadata, &blob.SetMetadataOptions{
-		CPKInfo: bb.blobCPKOpt,
-	}); err != nil {
-		log.Err("BlockBlob::updateMetadata: Failed to set metadata for %s [%s]", name, err.Error())
-		return err
-	}
-
-	log.Info("BlockBlob::updateMetadata: Metadata updated for %s - %v", name, prop.Metadata)
-	return nil
 }

@@ -39,7 +39,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 
@@ -403,8 +402,8 @@ func (dl *Datalake) GetAttr(name string) (blobAttr *internal.ObjAttr, err error)
 		Crtime: *prop.LastModified,
 		Flags:  internal.NewFileBitMap(),
 		ETag:   sanitizeEtag(prop.ETag),
-		UID:    prop.Metadata[common.OwnerID],
-		GID:    prop.Metadata[common.GroupId],
+		UID:    ReadMetadata(prop.Metadata, common.POSIXOwnerMeta),
+		GID:    ReadMetadata(prop.Metadata, common.POSIXGroupMeta),
 	}
 	parseMetadata(blobAttr, prop.Metadata)
 
@@ -566,13 +565,7 @@ func (dl *Datalake) ChangeMod(name string, mode os.FileMode) error {
 // ChangeOwner : Change owner of a path
 func (dl *Datalake) ChangeOwner(name string, uid int, gid int) error {
 	log.Trace("Datalake::ChangeOwner : name %s", name)
-
-	metadata := make(map[string]*string)
-	uidStr := strconv.Itoa(uid)
-	gidStr := strconv.Itoa(gid)
-	metadata[common.OwnerID] = &uidStr
-	metadata[common.GroupId] = &gidStr
-	err := dl.BlockBlob.updateMetadata(name, metadata)
+	err := dl.BlockBlob.ChangeOwner(name, uid, gid)
 	e := storeDatalakeErrToErr(err)
 	if e == ErrFileNotFound {
 		return syscall.ENOENT

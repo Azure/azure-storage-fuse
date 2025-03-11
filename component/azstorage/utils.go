@@ -309,6 +309,36 @@ func parseMetadata(attr *internal.ObjAttr, metadata map[string]*string) {
 	}
 }
 
+func AddMetadata(metadata Metadata, key, value string) bool {
+	if _, ok := metadata[key]; ok {
+		return false
+	}
+
+	if key != "" {
+		capitalizedKey := strings.ToUpper(string(key[0])) + key[1:]
+		if _, ok := metadata[capitalizedKey]; ok {
+			return false
+		}
+	}
+	metadata[key] = &value
+	return true
+}
+
+func ReadMetadata(metadata Metadata, key string) *string {
+	if value, ok := metadata[key]; ok {
+		return value
+	}
+
+	if key != "" {
+		capitalizedKey := strings.ToUpper(string(key[0])) + key[1:]
+		if value, ok := metadata[capitalizedKey]; ok {
+			return value
+		}
+	}
+
+	return nil
+}
+
 //    ----------- Content-type handling  ---------------
 
 // ContentTypeMap : Store file extension to content-type mapping
