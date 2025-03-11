@@ -1,0 +1,122 @@
+parameters:
+  - name: conf_template
+    type: string
+  - name: config_file
+    type: string
+  - name: container
+    type: string
+  - name: temp_dir
+    type: string
+  - name: mount_dir
+    type: string    
+  - name: idstring
+    type: string
+  - name: adls
+    type: boolean
+  - name: account_name
+    type: string
+  - name: account_key
+    type: string
+  - name: account_type
+    type: string
+  - name: account_endpoint
+  - name: distro_name
+    type: string
+  - name: quick_test
+    type: boolean
+    default: true
+  - name: verbose_log
+    type: boolean
+    default: false
+  - name: clone
+    type: boolean
+    default: false
+  - name: block_size_mb
+    type: string
+    default: "8"
+
+steps:   
+  - script: |
+      cd $(WORK_DIR)
+      $(WORK_DIR)/blobfuse2 gen-test-config --config-file=$(WORK_DIR)/testdata/config/azure_key_bc.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.config_file }}
+    displayName: 'Create Config File for New Block cache'
+    env:
+      TEMP_SYELETI_ACC_NAME: ${{ parameters.account_name }}
+      TEMP_SYELETI_ACC_KEY: ${{ parameters.account_key }}
+      ACCOUNT_TYPE: ${{ parameters.account_type }}
+      ACCOUNT_ENDPOINT: ${{ parameters.account_endpoint }}
+      VERBOSE_LOG: ${{ parameters.verbose_log }}
+    continueOnError: false
+
+
+  - template: 'mount.yml'
+    parameters:
+      working_dir: $(WORK_DIR)
+      mount_dir: ${{ parameters.mount_dir }}
+      temp_dir: ${{ parameters.temp_dir }}
+      prefix: ${{ parameters.idstring }}
+      ro_mount: true
+      mountStep: 
+        script: |
+          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR)
+
+  - script: |
+      echo "----------------------------------------------"
+      ls -l ${{ parameters.mount_dir }}
+    displayName: 'Print contents of Block-Cache'
+
+  - script: |
+      cd ${{ parameters.mount_dir }}
+      pwd
+      wget https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.13.tar.xz 
+    displayName: 'Download latest linux Source'
+
+  - script: |
+      cd ${{ parameters.mount_dir }}
+      pwd
+      unxz --keep linux-*.tar.xz
+    displayName: 'Uncompress Tarballs'
+
+  - script: |
+      cd ${{ parameters.mount_dir }}
+      pwd
+      tar -xvf linux-*.tar
+    displayName: 'Untar Linux source'
+
+
+  - script: |
+      cd ${{ parameters.mount_dir }}/linux-*/
+      pwd
+      make defconfig
+    displayName: 'Make Config'
+
+  - script: |
+      cd ${{ parameters.mount_dir }}/linux-*/
+      pwd
+      make -j$(nproc) 2>&1 | tee log
+    displayName: 'Compile Source'
+
+  - script: |
+      cd ${{ parameters.mount_dir }}
+      pwd
+      git clone https://github.com/microsoft/vscode.git
+    displayName: 'Git Clone VS Code'
+
+  - script: |
+      cd ${{ parameters.mount_dir }}
+      pwd
+      git clone https://github.com/Azure/azure-storage-fuse.git
+    displayName: 'Git clone Blobfuse2'
+
+  - script: |
+      cd ${{ parameters.mount_dir }}
+      pwd
+      git clone https://github.com/libfuse/libfuse.git
+    displayName: 'Git clone libfuse'
+
+
+  - template: 'cleanup.yml'
+    parameters:
+      working_dir: $(WORK_DIR)
+      mount_dir: ${{ parameters.mount_dir }}
+      temp_dir: ${{ parameters.temp_dir }}
