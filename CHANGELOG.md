@@ -1,6 +1,6 @@
 ## 2.5.0 (Unreleased)
 **Features**
-- Added `Client Assertion` based authentication for containers. Configure `tenant-id, client-id, aad-application-id and security scope` with `authMode` set to `clientassertion`.
+- Added `Client Assertion` based authentication for containers. Configure `tenant-id, client-id, aad-application-id and security scope` with `authMode` set to `workloadidentity`.
 
 ## 2.5.0~preview.1 (Unreleased)
 **Features**
