@@ -94,7 +94,7 @@ func NewStatsManager(count uint32, isExportEnabled bool) (*StatsManager, error) 
 	if isExportEnabled {
 		pid := fmt.Sprintf("%v", os.Getpid())
 		path := common.ExpandPath(filepath.Join(common.DefaultWorkDir, strings.ReplaceAll(JSON_FILE_NAME, "{PID}", pid)))
-		log.Debug("statsManager::NewStatsManager : creating json file %v", path)
+		log.Crit("statsManager::NewStatsManager : creating json file %v", path)
 		fh, err = os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
 		if err != nil {
 			log.Err("statsManager::NewStatsManager : failed to create json file %v [%v]", path, err.Error())
@@ -211,7 +211,7 @@ func (sm *StatsManager) calculateBandwidth() {
 	percentCompleted := (float64(filesProcessed) / float64(sm.totalFiles)) * 100
 	bandwidthMbps := float64(bytesTransferred*8) / (timeLapsed * float64(MB))
 
-	log.Debug("statsManager::calculateBandwidth : timestamp %v, %.2f%%, %v Done, %v Failed, "+
+	log.Crit("statsManager::calculateBandwidth : timestamp %v, %.2f%%, %v Done, %v Failed, "+
 		"%v Pending, %v Total, Bytes transferred %v, Throughput (Mbps): %.2f",
 		currTime.Format(time.RFC1123), percentCompleted, sm.success, sm.failed,
 		filesPending, sm.totalFiles, bytesTransferred, bandwidthMbps)
