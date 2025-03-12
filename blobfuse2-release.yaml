@@ -127,6 +127,8 @@ extends:
             sudo apt-get update --fix-missing
             sudo apt-get install fuse3 libfuse3-dev -y
             fusermount -V
+            sudo apt install libfuse2
+            sudo apt-get install libfuse-dev -y
           displayName: 'Libfuse Setup'
 
         - script: |
