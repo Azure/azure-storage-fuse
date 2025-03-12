@@ -1101,6 +1101,25 @@ func libfuse2_chown(path *C.char, uid C.uid_t, gid C.gid_t) C.int {
 	name = common.NormalizeObjectName(name)
 	log.Trace("Libfuse::libfuse2_chown : %s", name)
 	// TODO: Implement
+	err := fuseFS.NextComponent().Chown(
+		internal.ChownOptions{
+			Name:  name,
+			Owner: int(uid),
+			Group: int(gid),
+		})
+	if err != nil {
+		log.Err("Libfuse::libfuse2_chown : error in chown of %s [%s]", name, err.Error())
+		if os.IsNotExist(err) {
+			return -C.ENOENT
+		} else if os.IsPermission(err) {
+			return -C.EACCES
+		}
+		return -C.EIO
+	}
+
+	libfuseStatsCollector.PushEvents(chown, name, map[string]interface{}{common.POSIXOwnerMeta: uid, common.POSIXGroupMeta: gid})
+	libfuseStatsCollector.UpdateStats(stats_manager.Increment, chown, (int64)(1))
+
 	return 0
 }
 

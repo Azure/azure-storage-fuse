@@ -311,20 +311,14 @@ func parseMetadata(attr *internal.ObjAttr, metadata map[string]*string) {
 
 func AddMetadata(metadata map[string]*string, key, value string) bool {
 	lowerKey := strings.ToLower(key)
-	var existingKey string
-	var found bool
 	for k := range metadata {
 		if strings.ToLower(k) == lowerKey {
-			existingKey, found = k, true
-			break
+			if *metadata[k] == value {
+				return false
+			}
+			metadata[k] = &value
+			return true
 		}
-	}
-	if found {
-		if *metadata[existingKey] == value {
-			return false
-		}
-		metadata[existingKey] = &value
-		return true
 	}
 	metadata[key] = &value
 	return true
