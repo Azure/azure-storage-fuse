@@ -531,3 +531,13 @@ func ParseUint32(s string) uint32 {
 	}
 	return uint32(val)
 }
+
+func ReadMetadata(metadata map[string]*string, key string) *string {
+	lowerKey := strings.ToLower(key)
+	for mapKey, mapValue := range metadata {
+		if strings.ToLower(mapKey) == lowerKey {
+			return mapValue
+		}
+	}
+	return nil
+}

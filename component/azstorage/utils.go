@@ -309,34 +309,25 @@ func parseMetadata(attr *internal.ObjAttr, metadata map[string]*string) {
 	}
 }
 
-func AddMetadata(metadata Metadata, key, value string) bool {
-	if _, ok := metadata[key]; ok {
-		return false
+func AddMetadata(metadata map[string]*string, key, value string) bool {
+	lowerKey := strings.ToLower(key)
+	var existingKey string
+	var found bool
+	for k := range metadata {
+		if strings.ToLower(k) == lowerKey {
+			existingKey, found = k, true
+			break
+		}
 	}
-
-	if key != "" {
-		capitalizedKey := strings.ToUpper(string(key[0])) + key[1:]
-		if _, ok := metadata[capitalizedKey]; ok {
+	if found {
+		if *metadata[existingKey] == value {
 			return false
 		}
+		metadata[existingKey] = &value
+		return true
 	}
 	metadata[key] = &value
 	return true
-}
-
-func ReadMetadata(metadata Metadata, key string) *string {
-	if value, ok := metadata[key]; ok {
-		return value
-	}
-
-	if key != "" {
-		capitalizedKey := strings.ToUpper(string(key[0])) + key[1:]
-		if value, ok := metadata[capitalizedKey]; ok {
-			return value
-		}
-	}
-
-	return nil
 }
 
 //    ----------- Content-type handling  ---------------

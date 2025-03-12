@@ -74,6 +74,7 @@ const (
 	BlockCacheRWErrMsg = "Notice: The random write flow using block cache is temporarily blocked due to potential data integrity issues. This is a precautionary measure. \nIf you see this message, contact blobfusedev@microsoft.com or create a GitHub issue. We're working on a fix. More details: https://aka.ms/blobfuse2warnings."
 	POSIXOwnerMeta     = "posix_owner"
 	POSIXGroupMeta     = "posix_group"
+	POSIXModeMeta      = "permissions"
 )
 
 func FuseIgnoredFlags() []string {

@@ -47,6 +47,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"math"
 	"os"
 	"path/filepath"
@@ -2141,7 +2142,32 @@ func (s *blockBlobTestSuite) TestGetAttrError() {
 	}
 }
 
-// If support for chown or chmod are ever added to blob, add tests for error cases and modify the following tests.
+func (s *blockBlobTestSuite) TestGetAttrFileMode() {
+	defer s.cleanupTest()
+	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
+		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	configs := []string{"", vdConfig}
+	for _, c := range configs {
+		// This is a little janky but required since testify suite does not support running setup or clean up for subtests.
+		s.tearDownTestHelper(false)
+		s.setupTestHelper(c, s.container, true)
+		testName := ""
+		if c != "" {
+			testName = "file-mode"
+		}
+		s.Run(testName, func() {
+			// Setup
+			name := generateFileName()
+			s.az.CreateFile(internal.CreateFileOptions{Name: name})
+			s.az.storage.ChangeMod(name, 0777)
+			props, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
+			s.assert.Nil(err)
+			s.assert.NotNil(props)
+			s.assert.Equal(os.FileMode(0777), props.Mode)
+		})
+	}
+}
+
 func (s *blockBlobTestSuite) TestChmod() {
 	defer s.cleanupTest()
 	// Setup
@@ -2149,23 +2175,13 @@ func (s *blockBlobTestSuite) TestChmod() {
 	s.az.CreateFile(internal.CreateFileOptions{Name: name})
 
 	err := s.az.Chmod(internal.ChmodOptions{Name: name, Mode: 0666})
-	s.assert.NotNil(err)
-	s.assert.EqualValues(syscall.ENOTSUP, err)
-}
-
-func (s *blockBlobTestSuite) TestChmodIgnore() {
-	defer s.cleanupTest()
-	// Setup
-	s.tearDownTestHelper(false) // Don't delete the generated container.
-
-	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: false\n",
-		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
-	s.setupTestHelper(config, s.container, true)
-	name := generateFileName()
-	s.az.CreateFile(internal.CreateFileOptions{Name: name})
-
-	err := s.az.Chmod(internal.ChmodOptions{Name: name, Mode: 0666})
 	s.assert.Nil(err)
+
+	props, err := s.containerClient.NewBlobClient(name).GetProperties(ctx, nil)
+	s.assert.Nil(err)
+	modeStr := common.ReadMetadata(props.Metadata, common.POSIXModeMeta)
+	val, _ := strconv.ParseUint(*modeStr, 10, 32)
+	s.assert.Equal(fs.FileMode(0666), fs.FileMode(val))
 }
 
 func (s *blockBlobTestSuite) TestChown() {
@@ -2175,23 +2191,31 @@ func (s *blockBlobTestSuite) TestChown() {
 	s.az.CreateFile(internal.CreateFileOptions{Name: name})
 
 	err := s.az.Chown(internal.ChownOptions{Name: name, Owner: 6, Group: 5})
-	s.assert.NotNil(err)
-	s.assert.EqualValues(syscall.ENOTSUP, err)
+	s.assert.Nil(err)
+
+	// Verify the metadata
+	blobClient := s.containerClient.NewBlobClient(name)
+	props, err := blobClient.GetProperties(ctx, nil)
+	s.assert.Nil(err)
+	s.assert.NotNil(props)
+	s.assert.Equal(strconv.Itoa(6), *common.ReadMetadata(props.Metadata, common.POSIXOwnerMeta))
+	s.assert.Equal(strconv.Itoa(5), *common.ReadMetadata(props.Metadata, common.POSIXGroupMeta))
+	resp, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
+	s.assert.Nil(err)
+	s.assert.Equal("6", *common.ReadMetadata(resp.Metadata, common.POSIXOwnerMeta))
+	s.assert.Equal("5", *common.ReadMetadata(resp.Metadata, common.POSIXGroupMeta))
 }
 
-func (s *blockBlobTestSuite) TestChownIgnore() {
+func (s *blockBlobTestSuite) TestChangeOwnerFileNotFound() {
 	defer s.cleanupTest()
 	// Setup
-	s.tearDownTestHelper(false) // Don't delete the generated container.
-
-	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: false\n",
-		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
-	s.setupTestHelper(config, s.container, true)
 	name := generateFileName()
-	s.az.CreateFile(internal.CreateFileOptions{Name: name})
 
-	err := s.az.Chown(internal.ChownOptions{Name: name, Owner: 6, Group: 5})
-	s.assert.Nil(err)
+	uid := 1001
+	gid := 1002
+	err := s.az.storage.ChangeOwner(name, uid, gid)
+	s.assert.NotNil(err)
+
 }
 
 func (s *blockBlobTestSuite) TestBlockSize() {
@@ -3594,43 +3618,6 @@ func (s *blockBlobTestSuite) TestList() {
 	s.assert.NotEmpty(marker)
 	s.assert.EqualValues(1, len(blobList))
 	s.assert.EqualValues(base, blobList[0].Path)
-}
-
-func (s *blockBlobTestSuite) TestChangeOwner() {
-	defer s.cleanupTest()
-	// Setup
-	name := generateFileName()
-	s.az.CreateFile(internal.CreateFileOptions{Name: name})
-
-	uid := 1001
-	gid := 1002
-
-	err := s.az.storage.ChangeOwner(name, uid, gid)
-	s.assert.Nil(err)
-
-	// Verify the metadata
-	blobClient := s.containerClient.NewBlobClient(name)
-	props, err := blobClient.GetProperties(ctx, nil)
-	s.assert.Nil(err)
-	s.assert.NotNil(props)
-	s.assert.Equal(strconv.Itoa(uid), *ReadMetadata(props.Metadata, common.POSIXOwnerMeta))
-	s.assert.Equal(strconv.Itoa(gid), *ReadMetadata(props.Metadata, common.POSIXGroupMeta))
-	resp, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
-	s.assert.Nil(err)
-	s.assert.Equal("1001", *ReadMetadata(resp.Metadata, common.POSIXOwnerMeta))
-	s.assert.Equal("1002", *ReadMetadata(resp.Metadata, common.POSIXGroupMeta))
-}
-
-func (s *blockBlobTestSuite) TestChangeOwnerFileNotFound() {
-	defer s.cleanupTest()
-	// Setup
-	name := generateFileName()
-
-	uid := 1001
-	gid := 1002
-	err := s.az.storage.ChangeOwner(name, uid, gid)
-	s.assert.NotNil(err)
-
 }
 
 // In order for 'go test' to run this suite, we need to create

@@ -408,8 +408,6 @@ func (dl *Datalake) GetAttr(name string) (blobAttr *internal.ObjAttr, err error)
 		Crtime: *prop.LastModified,
 		Flags:  internal.NewFileBitMap(),
 		ETag:   sanitizeEtag(prop.ETag),
-		UID:    ReadMetadata(prop.Metadata, common.POSIXOwnerMeta),
-		GID:    ReadMetadata(prop.Metadata, common.POSIXGroupMeta),
 	}
 	parseMetadata(blobAttr, prop.Metadata)
 
@@ -570,16 +568,7 @@ func (dl *Datalake) ChangeMod(name string, mode os.FileMode) error {
 
 // ChangeOwner : Change owner of a path
 func (dl *Datalake) ChangeOwner(name string, uid int, gid int) error {
-	log.Trace("Datalake::ChangeOwner : name %s", name)
-	err := dl.BlockBlob.ChangeOwner(name, uid, gid)
-	e := storeDatalakeErrToErr(err)
-	if e == ErrFileNotFound {
-		return syscall.ENOENT
-	} else if err != nil {
-		log.Err("Datalake::ChangeOwner : Failed to change ownership of file %s to [%s]", name, err.Error())
-		return err
-	}
-	return nil
+	return dl.BlockBlob.ChangeOwner(name, uid, gid)
 }
 
 // GetCommittedBlockList : Get the list of committed blocks

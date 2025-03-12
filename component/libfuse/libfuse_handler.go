@@ -346,14 +346,16 @@ func libfuse_destroy(data unsafe.Pointer) {
 }
 
 func (lf *Libfuse) fillStat(attr *internal.ObjAttr, stbuf *C.stat_t) {
-	if attr.UID != nil {
-		(*stbuf).st_uid = C.uint(common.ParseUint32(*attr.UID))
+	uid := common.ReadMetadata(attr.Metadata, common.POSIXOwnerMeta)
+	if uid != nil {
+		(*stbuf).st_uid = C.uint(common.ParseUint32(*uid))
 	} else {
 		(*stbuf).st_uid = C.uint(lf.ownerUID)
 	}
+	gid := common.ReadMetadata(attr.Metadata, common.POSIXGroupMeta)
 
-	if attr.GID != nil {
-		(*stbuf).st_gid = C.uint(common.ParseUint32(*attr.GID))
+	if gid != nil {
+		(*stbuf).st_gid = C.uint(common.ParseUint32(*gid))
 	} else {
 		(*stbuf).st_gid = C.uint(lf.ownerGID)
 	}

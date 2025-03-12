@@ -2864,8 +2864,8 @@ func (s *datalakeTestSuite) TestChangeOwner() {
 
 	attr, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
 	s.assert.Nil(err)
-	s.assert.Equal(strconv.Itoa(1001), *attr.UID)
-	s.assert.Equal(strconv.Itoa(1001), *attr.GID)
+	s.assert.Equal(strconv.Itoa(1001), *common.ReadMetadata(*&attr.Metadata, common.POSIXOwnerMeta))
+	s.assert.Equal(strconv.Itoa(1001), *common.ReadMetadata(*&attr.Metadata, common.POSIXGroupMeta))
 }
 
 // In order for 'go test' to run this suite, we need to create

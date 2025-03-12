@@ -42,6 +42,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
@@ -398,6 +399,27 @@ func (suite *utilTestSuite) TestCRC64() {
 	crc1 := GetCRC64(data, len(data))
 
 	suite.assert.NotEqual(crc, crc1)
+}
+
+func (s *utilTestSuite) TestReadMetadata() {
+	assert := assert.New(s.T())
+
+	tests := []struct {
+		metadata map[string]*string
+		key      string
+		expected *string
+	}{
+		{metadata: map[string]*string{"key1": to.Ptr("value1")}, key: "key1", expected: to.Ptr("value1")},
+		{metadata: map[string]*string{"Key1": to.Ptr("value1")}, key: "key1", expected: to.Ptr("value1")},
+		{metadata: map[string]*string{"key1": to.Ptr("value1")}, key: "Key1", expected: to.Ptr("value1")},
+		{metadata: map[string]*string{"key1": to.Ptr("value1")}, key: "key2", expected: nil},
+		{metadata: map[string]*string{}, key: "key1", expected: nil},
+	}
+
+	for _, test := range tests {
+		result := ReadMetadata(test.metadata, test.key)
+		assert.Equal(test.expected, result)
+	}
 }
 
 func (suite *utilTestSuite) TestGetFuseMinorVersion() {
