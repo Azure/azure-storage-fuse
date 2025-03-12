@@ -676,7 +676,7 @@ func (bb *BlockBlob) getBlobAttr(blobInfo *container.BlobItem) (*internal.ObjAtt
 	}
 
 	parseMetadata(attr, blobInfo.Metadata)
-	if !bb.listDetails.Permissions && !(mode != 0) {
+	if !bb.listDetails.Permissions && mode == 0 {
 		// In case of HNS account do not set this flag
 		attr.Flags.Set(internal.PropFlagModeDefault)
 	}
