@@ -673,6 +673,8 @@ func testChown(suite *libfuseTestSuite) {
 	group := C.uint(5)
 	owner := C.uint(4)
 
+	options := internal.ChownOptions{name: name, Owner: owner, Group: group}
+	suite.mock.EXPECT().Chown(options).Return(nil)
 	err := libfuse2_chown(path, owner, group)
 	suite.assert.Equal(C.int(0), err)
 }
