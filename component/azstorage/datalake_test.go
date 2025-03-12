@@ -202,6 +202,19 @@ func (s *datalakeTestSuite) TestNoEndpoint() {
 	s.assert.Nil(err)
 }
 
+func (s *datalakeTestSuite) TestFileSystemNotFound() {
+	defer s.cleanupTest()
+	// Setup
+	s.tearDownTestHelper(false) // Don't delete the generated container.
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
+		storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsKey, "foo")
+	s.setupTestHelper(config, "foo", false)
+
+	err := s.az.storage.TestPipeline()
+	s.assert.NotNil(err)
+	s.assert.Contains(err.Error(), "FilesystemNotFound")
+}
+
 func (s *datalakeTestSuite) TestListContainers() {
 	defer s.cleanupTest()
 	// Setup
