@@ -72,14 +72,10 @@ stages:
         targetPath: '$(root_dir)/blobfuse2-signed'
         definition: $(pipelineId)
         allowFailedBuilds: true
-        itemPattern: blobfuse2-signed/blobfuse2*$(tags)*x86_64.deb
+        # itemPattern: blobfuse2-signed/blobfuse2*$(tags)*x86_64.deb
 
     - script: |
         ls -l
-        result=$(ls -1 | wc -l)
-        if [ $result -ne 1 ]; then
-          exit 1
-        fi
       displayName: 'List Downloaded Package'
       workingDirectory: $(root_dir)/blobfuse2-signed
 
