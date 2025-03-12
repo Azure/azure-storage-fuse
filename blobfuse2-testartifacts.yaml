@@ -1,6 +1,4 @@
 variables:
-  tags: 'fuse3'
-  depends: 'fuse3'
   project: 'BlobFuse'
   pipelineId: 78
 
