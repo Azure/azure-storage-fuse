@@ -671,6 +671,34 @@ func testChown(suite *libfuseTestSuite) {
 	suite.assert.Equal(C.int(0), err)
 }
 
+func testChownNotExists(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	name := "path"
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+	group := C.uint(5)
+	owner := C.uint(4)
+	options := internal.ChownOptions{Name: name, Owner: int(owner), Group: int(group)}
+	suite.mock.EXPECT().Chown(options).Return(syscall.ENOENT)
+
+	err := libfuse_chown(path, owner, group, nil)
+	suite.assert.Equal(C.int(-C.ENOENT), err)
+}
+
+func testChownError(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	name := "path"
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+	group := C.uint(5)
+	owner := C.uint(4)
+	options := internal.ChownOptions{Name: name, Owner: int(owner), Group: int(group)}
+	suite.mock.EXPECT().Chown(options).Return(errors.New("failed to chown"))
+
+	err := libfuse_chown(path, owner, group, nil)
+	suite.assert.Equal(C.int(-C.EIO), err)
+}
+
 func testUtimens(suite *libfuseTestSuite) {
 	defer suite.cleanupTest()
 	name := "path"
