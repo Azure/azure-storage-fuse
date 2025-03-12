@@ -278,9 +278,11 @@ func libfuse2_init(conn *C.fuse_conn_info_t) (res unsafe.Pointer) {
 
 	log.Info("Libfuse::libfuse2_init : Kernel Caps : %d", conn.capable)
 
+	// Make the kernel readahead synchronous, that would make the implementation inside the blobfuse easier.
+	// Default behaviour of kernel is to do asynchronous readahead if its capable.
 	if (conn.capable & C.FUSE_CAP_ASYNC_READ) != 0 {
-		log.Info("Libfuse::libfuse2_init : Enable Capability : FUSE_CAP_ASYNC_READ")
-		conn.want |= C.FUSE_CAP_ASYNC_READ
+		log.Info("Libfuse::libfuse2_init : Disable Capability : FUSE_CAP_ASYNC_READ")
+		conn.want &= ^C.uint(C.FUSE_CAP_ASYNC_READ)
 	}
 
 	if (conn.capable & C.FUSE_CAP_BIG_WRITES) != 0 {
@@ -298,7 +300,7 @@ func libfuse2_init(conn *C.fuse_conn_info_t) (res unsafe.Pointer) {
 	conn.max_background = C.uint(fuseFS.maxFuseThreads)
 
 	// While reading a file let kernel do readahed for better perf
-	conn.max_readahead = 0
+	conn.max_readahead = 1 * 1024 * 1024
 
 	return nil
 }

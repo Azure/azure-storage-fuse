@@ -202,7 +202,7 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 
 // ReadInBuffer: Read some data of the file into a buffer
 func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
-	//log.Trace("BlockCache::ReadFile : handle=%d, path=%s, offset: %d", options.Handle.ID, options.Handle.Path, options.Offset)
+	//log.Trace("BlockCache::ReadFile : handle=%d, path=%s, offset: %d, bufsize : %d", options.Handle.ID, options.Handle.Path, options.Offset, len(options.Data))
 	if options.Handle.Prev_offset == options.Offset {
 		if options.Handle.Is_seq == 0 {
 			options.Handle.Is_seq = getBlockIndex(options.Offset) + 1

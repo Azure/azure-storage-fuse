@@ -292,11 +292,12 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 		conn.want |= C.FUSE_CAP_READDIRPLUS
 	}
 
-	// // Allow fuse to read a file in parallel on different offsets
-	// if (conn.capable & C.FUSE_CAP_ASYNC_READ) != 0 {
-	// 	log.Info("Libfuse::libfuse_init : Enable Capability : FUSE_CAP_ASYNC_READ")
-	// 	conn.want |= C.FUSE_CAP_ASYNC_READ
-	// }
+	// Make the kernel readahead synchronous, that would make the implementation inside the blobfuse easier.
+	// Default behaviour of kernel is to do asynchronous readahead if its capable.
+	if (conn.capable & C.FUSE_CAP_ASYNC_READ) != 0 {
+		log.Info("Libfuse::libfuse_init : Disable Capability : FUSE_CAP_ASYNC_READ")
+		conn.want &= ^C.uint(C.FUSE_CAP_ASYNC_READ)
+	}
 
 	if (conn.capable & C.FUSE_CAP_SPLICE_WRITE) != 0 {
 		// While writing to fuse device let libfuse collate the data and write big chunks
@@ -320,7 +321,7 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 	conn.max_background = C.uint(fuseFS.maxFuseThreads)
 
 	// While reading a file let kernel do readahed for better perf
-	conn.max_readahead = 0
+	conn.max_readahead = (1 * 1024 * 1024)
 	conn.max_read = (1 * 1024 * 1024)
 
 	// RHEL still has 3.3 fuse version and it does not allow max_write beyond 128K
