@@ -141,7 +141,7 @@ extends:
             work_dir: $(work_dir)
             root_dir: $(root_dir)
             unit_test: ${{ parameters.unit_test }}
-            tags: 'fuse3'
+            tags: 'fuse2'
             container: "test-cnt-ubn-22"
 
         # place the generated binary files & any additional files in appropriate locations

@@ -55,6 +55,11 @@ steps:
     displayName: "Test Binary built"
     continueOnError: false
 
+  - script: |
+      ldd ./blobfuse2 | grep fuse
+    workingDirectory: ${{ parameters.work_dir }}
+    displayName: 'Check fuse version in binary'
+
   # Build the health-monitor binary
   - script: |
       chmod 755 build.sh
