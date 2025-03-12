@@ -1534,9 +1534,18 @@ func (bb *BlockBlob) ChangeMod(name string, mode os.FileMode) error {
 	prop, err := blobClient.GetProperties(context.Background(), &blob.GetPropertiesOptions{
 		CPKInfo: bb.blobCPKOpt,
 	})
+
 	if err != nil {
-		log.Err("BlockBlob::ChangeMod: Failed to fetch properties for %s [%s]", name, err.Error())
-		return err
+		serr := storeBlobErrToErr(err)
+		if serr == ErrFileNotFound {
+			return syscall.ENOENT
+		} else if serr == InvalidPermission {
+			log.Err("BlockBlob::ChangeMod : Insufficient permissions for %s [%s]", name, err.Error())
+			return syscall.EACCES
+		} else {
+			log.Err("BlockBlob::ChangeMod : Failed to get blob properties for %s [%s]", name, err.Error())
+			return err
+		}
 	}
 	if prop.Metadata == nil {
 		prop.Metadata = make(map[string]*string)
@@ -1568,8 +1577,16 @@ func (bb *BlockBlob) ChangeOwner(name string, uid int, gid int) error {
 		CPKInfo: bb.blobCPKOpt,
 	})
 	if err != nil {
-		log.Err("BlockBlob::ChangeOwner: Failed to fetch properties for %s [%s]", name, err.Error())
-		return err
+		serr := storeBlobErrToErr(err)
+		if serr == ErrFileNotFound {
+			return syscall.ENOENT
+		} else if serr == InvalidPermission {
+			log.Err("BlockBlob::ChangeOwner : Insufficient permissions for %s [%s]", name, err.Error())
+			return syscall.EACCES
+		} else {
+			log.Err("BlockBlob::ChangeOwner : Failed to get blob properties for %s [%s]", name, err.Error())
+			return err
+		}
 	}
 	if prop.Metadata == nil {
 		prop.Metadata = make(map[string]*string)
