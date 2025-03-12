@@ -669,7 +669,7 @@ extends:
         steps:
         - checkout: none
         - bash: |
-            triggered_run=$(az pipelines run --project $(project) --id $(pipelineId) --branch 'main' --organization 'https://dev.azure.com/azstorage/' --query id)
+            triggered_run=$(az pipelines run --project $(project) --id $(pipelineId) --branch 'ashruti/oneBranch' --organization 'https://dev.azure.com/azstorage/' --query id)
             echo $triggered_run
             # Check if the output is a number
             if [[ $triggered_run =~ ^[0-9]+$ ]]; then
