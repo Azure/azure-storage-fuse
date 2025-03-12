@@ -110,6 +110,8 @@ extends:
                   sudo apt-get install ruby-dev build-essential pkg-config cmake gcc g++ rpm $(fuselib) -y
                   sudo gem install dotenv -v 2.8.1
                   sudo gem install fpm -V
+                  sudo apt install libfuse2 -y
+                  sudo apt-get install libfuse-dev -y
                 displayName: "Installing Dependencies"
 
               # get glibc version with which build is done
