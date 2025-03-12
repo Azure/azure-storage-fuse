@@ -1910,33 +1910,6 @@ func (s *datalakeTestSuite) TestChmodError() {
 	s.assert.EqualValues(syscall.ENOENT, err)
 }
 
-// If support for chown or chmod are ever added to blob, add tests for error cases and modify the following tests.
-func (s *datalakeTestSuite) TestChown() {
-	defer s.cleanupTest()
-	// Setup
-	name := generateFileName()
-	s.az.CreateFile(internal.CreateFileOptions{Name: name})
-
-	err := s.az.Chown(internal.ChownOptions{Name: name, Owner: 6, Group: 5})
-	s.assert.NotNil(err)
-	s.assert.EqualValues(syscall.ENOTSUP, err)
-}
-
-func (s *datalakeTestSuite) TestChownIgnore() {
-	defer s.cleanupTest()
-	// Setup
-	s.tearDownTestHelper(false) // Don't delete the generated container.
-
-	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.dfs.core.windows.net/\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: false\n",
-		storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsKey, s.container)
-	s.setupTestHelper(config, s.container, true)
-	name := generateFileName()
-	s.az.CreateFile(internal.CreateFileOptions{Name: name})
-
-	err := s.az.Chown(internal.ChownOptions{Name: name, Owner: 6, Group: 5})
-	s.assert.Nil(err)
-}
-
 func (s *datalakeTestSuite) TestGetFileBlockOffsetsSmallFile() {
 	defer s.cleanupTest()
 	// Setup
