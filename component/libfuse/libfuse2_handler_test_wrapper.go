@@ -689,7 +689,7 @@ func testChownNotExists(suite *libfuseTestSuite) {
 	options := internal.ChownOptions{Name: name, Owner: int(owner), Group: int(group)}
 	suite.mock.EXPECT().Chown(options).Return(syscall.ENOENT)
 
-	err := libfuse2_chown(path, owner, group, nil)
+	err := libfuse2_chown(path, owner, group)
 	suite.assert.Equal(C.int(-C.ENOENT), err)
 }
 
@@ -703,7 +703,7 @@ func testChownError(suite *libfuseTestSuite) {
 	options := internal.ChownOptions{Name: name, Owner: int(owner), Group: int(group)}
 	suite.mock.EXPECT().Chown(options).Return(errors.New("failed to chown"))
 
-	err := libfuse2_chown(path, owner, group, nil)
+	err := libfuse2_chown(path, owner, group)
 	suite.assert.Equal(C.int(-C.EIO), err)
 }
 
