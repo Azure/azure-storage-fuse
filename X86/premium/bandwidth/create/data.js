@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1741629898461,
+  "lastUpdate": 1741863775766,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -77,6 +77,45 @@ window.BENCHMARK_DATA = {
           {
             "name": "create_1l_files_in_20_threads",
             "value": 0.1015625,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "64532198+vibhansa-msft@users.noreply.github.com",
+            "name": "Vikas Bhansali",
+            "username": "vibhansa-msft"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "4743391f1eac34ad882c8766eb0ee100a2850101",
+          "message": "Merge branch 'main' into vibhansa/armperftest",
+          "timestamp": "2025-03-13T15:25:11+05:30",
+          "tree_id": "d38731698647b2856b859fa97b173461cbae6803",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/4743391f1eac34ad882c8766eb0ee100a2850101"
+        },
+        "date": 1741863775465,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "create_1000_files_in_10_threads",
+            "value": 108.671875,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "create_1000_files_in_100_threads",
+            "value": 104.4052734375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "create_1l_files_in_20_threads",
+            "value": 0.0830078125,
             "unit": "MiB/s"
           }
         ]
