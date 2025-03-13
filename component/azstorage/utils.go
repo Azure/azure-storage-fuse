@@ -309,6 +309,21 @@ func parseMetadata(attr *internal.ObjAttr, metadata map[string]*string) {
 	}
 }
 
+func AddMetadata(metadata map[string]*string, key, value string) bool {
+	lowerKey := strings.ToLower(key)
+	for k := range metadata {
+		if strings.ToLower(k) == lowerKey {
+			if *metadata[k] == value {
+				return false
+			}
+			metadata[k] = &value
+			return true
+		}
+	}
+	metadata[key] = &value
+	return true
+}
+
 //    ----------- Content-type handling  ---------------
 
 // ContentTypeMap : Store file extension to content-type mapping

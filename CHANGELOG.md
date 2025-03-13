@@ -1,6 +1,7 @@
 ## 2.5.0 (Unreleased)
 **Features**
 - Added `Client Assertion` based authentication for containers. Configure `tenant-id, client-id, aad-application-id and security scope` with `authMode` set to `workloadidentity`.
+- Added support for `chmod` and `chown` file system capabilities for blockblob accounts, and `chown` capability for Datalake accounts.
 
 ## 2.5.0~preview.1 (Unreleased)
 **Features**
