@@ -68,6 +68,7 @@ type downloadSplitter struct {
 type downloadSplitterOptions struct {
 	blockPool   *BlockPool
 	path        string
+	workerCount uint32
 	remote      internal.Component
 	statsMgr    *StatsManager
 	fileLocks   *common.LockMap
@@ -75,12 +76,12 @@ type downloadSplitterOptions struct {
 }
 
 func newDownloadSplitter(opts *downloadSplitterOptions) (*downloadSplitter, error) {
-	if opts == nil || opts.blockPool == nil || opts.path == "" || opts.remote == nil || opts.statsMgr == nil || opts.fileLocks == nil {
+	if opts == nil || opts.blockPool == nil || opts.path == "" || opts.remote == nil || opts.statsMgr == nil || opts.fileLocks == nil || opts.workerCount == 0 {
 		log.Err("lister::NewRemoteLister : invalid parameters sent to create download splitter")
 		return nil, fmt.Errorf("invalid parameters sent to create download splitter")
 	}
 
-	log.Debug("splitter::NewDownloadSplitter : create new download splitter for %s, block size %v", opts.path, opts.blockPool.GetBlockSize())
+	log.Debug("splitter::NewDownloadSplitter : create new download splitter for %s, block size %v, workers %v", opts.path, opts.blockPool.GetBlockSize(), opts.workerCount)
 
 	ds := &downloadSplitter{
 		splitter: splitter{
@@ -92,6 +93,7 @@ func newDownloadSplitter(opts *downloadSplitterOptions) (*downloadSplitter, erro
 	}
 
 	ds.SetName(SPLITTER)
+	ds.SetWorkerCount(opts.workerCount)
 	ds.SetRemote(opts.remote)
 	ds.SetStatsManager(opts.statsMgr)
 	ds.Init()
@@ -99,7 +101,7 @@ func newDownloadSplitter(opts *downloadSplitterOptions) (*downloadSplitter, erro
 }
 
 func (ds *downloadSplitter) Init() {
-	ds.SetThreadPool(NewThreadPool(MAX_DATA_SPLITTER, ds.Process))
+	ds.SetThreadPool(NewThreadPool(ds.GetWorkerCount(), ds.Process))
 	if ds.GetThreadPool() == nil {
 		log.Err("downloadSplitter::Init : fail to init thread pool")
 	}

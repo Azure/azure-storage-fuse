@@ -170,11 +170,12 @@ func (suite *splitterTestSuite) TestNewDownloadSplitter() {
 	suite.assert.NotNil(statsMgr)
 
 	ds, err = newDownloadSplitter(&downloadSplitterOptions{
-		blockPool: NewBlockPool(1, 1),
-		path:      "/home/user/random_path",
-		remote:    remote,
-		statsMgr:  statsMgr,
-		fileLocks: common.NewLockMap(),
+		blockPool:   NewBlockPool(1, 1),
+		path:        "/home/user/random_path",
+		workerCount: 4,
+		remote:      remote,
+		statsMgr:    statsMgr,
+		fileLocks:   common.NewLockMap(),
 	})
 	suite.assert.Nil(err)
 	suite.assert.NotNil(ds)
@@ -190,7 +191,7 @@ func (suite *splitterTestSuite) TestProcessFilePresent() {
 		suite.assert.Nil(err)
 	}()
 
-	ds, err := newDownloadSplitter(&downloadSplitterOptions{ts.blockPool, ts.path, remote, ts.stMgr, ts.locks, false})
+	ds, err := newDownloadSplitter(&downloadSplitterOptions{ts.blockPool, ts.path, 4, remote, ts.stMgr, ts.locks, false})
 	suite.assert.Nil(err)
 	suite.assert.NotNil(ds)
 
@@ -221,6 +222,7 @@ func (suite *splitterTestSuite) TestSplitterStartStop() {
 
 	rl, err := newRemoteLister(&remoteListerOptions{
 		path:              ts.path,
+		workerCount:       4,
 		defaultPermission: common.DefaultFilePermissionBits,
 		remote:            remote,
 		statsMgr:          ts.stMgr,
@@ -228,13 +230,14 @@ func (suite *splitterTestSuite) TestSplitterStartStop() {
 	suite.assert.Nil(err)
 	suite.assert.NotNil(rl)
 
-	ds, err := newDownloadSplitter(&downloadSplitterOptions{ts.blockPool, ts.path, remote, ts.stMgr, ts.locks, true})
+	ds, err := newDownloadSplitter(&downloadSplitterOptions{ts.blockPool, ts.path, 4, remote, ts.stMgr, ts.locks, true})
 	suite.assert.Nil(err)
 	suite.assert.NotNil(ds)
 
 	rdm, err := newRemoteDataManager(&remoteDataManagerOptions{
-		remote:   remote,
-		statsMgr: ts.stMgr,
+		workerCount: 8,
+		remote:      remote,
+		statsMgr:    ts.stMgr,
 	})
 	suite.assert.Nil(err)
 	suite.assert.NotNil(rdm)
@@ -271,6 +274,7 @@ func (suite *splitterTestSuite) TestSplitterConsistency() {
 
 	rl, err := newRemoteLister(&remoteListerOptions{
 		path:              ts.path,
+		workerCount:       4,
 		defaultPermission: common.DefaultFilePermissionBits,
 		remote:            remote,
 		statsMgr:          ts.stMgr,
@@ -278,13 +282,14 @@ func (suite *splitterTestSuite) TestSplitterConsistency() {
 	suite.assert.Nil(err)
 	suite.assert.NotNil(rl)
 
-	ds, err := newDownloadSplitter(&downloadSplitterOptions{ts.blockPool, ts.path, remote, ts.stMgr, ts.locks, true})
+	ds, err := newDownloadSplitter(&downloadSplitterOptions{ts.blockPool, ts.path, 4, remote, ts.stMgr, ts.locks, true})
 	suite.assert.Nil(err)
 	suite.assert.NotNil(ds)
 
 	rdm, err := newRemoteDataManager(&remoteDataManagerOptions{
-		remote:   remote,
-		statsMgr: ts.stMgr,
+		workerCount: 8,
+		remote:      remote,
+		statsMgr:    ts.stMgr,
 	})
 	suite.assert.Nil(err)
 	suite.assert.NotNil(rdm)

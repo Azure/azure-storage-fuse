@@ -36,8 +36,10 @@ package xload
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -218,7 +220,7 @@ func (xl *Xload) Configure(_ bool) error {
 func (xl *Xload) Start(ctx context.Context) error {
 	log.Trace("Xload::Start : Starting component %s", xl.Name())
 
-	xl.workerCount = MAX_WORKER_COUNT
+	xl.workerCount = uint32(math.Min(float64(runtime.NumCPU()*3), float64(MAX_WORKER_COUNT)))
 	xl.blockPool = NewBlockPool(xl.blockSize, xl.workerCount*3)
 	if xl.blockPool == nil {
 		log.Err("Xload::Start : Failed to create block pool")
@@ -228,7 +230,7 @@ func (xl *Xload) Start(ctx context.Context) error {
 	var err error
 
 	// create stats manager
-	xl.statsMgr, err = NewStatsManager(MAX_WORKER_COUNT*2, xl.exportProgress)
+	xl.statsMgr, err = NewStatsManager(xl.workerCount*2, xl.exportProgress)
 	if err != nil {
 		log.Err("Xload::Start : Failed to create stats manager [%s]", err.Error())
 		return err
@@ -282,6 +284,7 @@ func (xl *Xload) createDownloader() error {
 	// Create remote lister pool to list remote files
 	rl, err := newRemoteLister(&remoteListerOptions{
 		path:              xl.path,
+		workerCount:       uint32(math.Min(float64(xl.workerCount), float64(MAX_LISTER))),
 		defaultPermission: xl.defaultPermission,
 		remote:            xl.NextComponent(),
 		statsMgr:          xl.statsMgr,
@@ -294,6 +297,7 @@ func (xl *Xload) createDownloader() error {
 	ds, err := newDownloadSplitter(&downloadSplitterOptions{
 		blockPool:   xl.blockPool,
 		path:        xl.path,
+		workerCount: uint32(math.Min(float64(xl.workerCount), float64(MAX_DATA_SPLITTER))),
 		remote:      xl.NextComponent(),
 		statsMgr:    xl.statsMgr,
 		fileLocks:   xl.fileLocks,
@@ -305,8 +309,9 @@ func (xl *Xload) createDownloader() error {
 	}
 
 	rdm, err := newRemoteDataManager(&remoteDataManagerOptions{
-		remote:   xl.NextComponent(),
-		statsMgr: xl.statsMgr,
+		workerCount: xl.workerCount,
+		remote:      xl.NextComponent(),
+		statsMgr:    xl.statsMgr,
 	})
 	if err != nil {
 		log.Err("Xload::startUploader : failed to create remote data manager [%s]", err.Error())

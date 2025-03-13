@@ -57,11 +57,12 @@ type XComponent interface {
 }
 
 type XBase struct {
-	name     string
-	pool     *ThreadPool
-	remote   internal.Component
-	next     XComponent
-	statsMgr *StatsManager
+	name        string
+	pool        *ThreadPool
+	remote      internal.Component
+	next        XComponent
+	statsMgr    *StatsManager
+	workerCount uint32
 }
 
 var _ XComponent = &XBase{}
@@ -129,4 +130,12 @@ func (xb *XBase) GetStatsManager() *StatsManager {
 
 func (xb *XBase) SetStatsManager(sm *StatsManager) {
 	xb.statsMgr = sm
+}
+
+func (xb *XBase) GetWorkerCount() uint32 {
+	return xb.workerCount
+}
+
+func (xb *XBase) SetWorkerCount(workerCount uint32) {
+	xb.workerCount = workerCount
 }

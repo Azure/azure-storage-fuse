@@ -68,8 +68,9 @@ func (suite *dataManagerTestSuite) TestNewRemoteDataManager() {
 	suite.assert.NotNil(statsMgr)
 
 	rdm, err = newRemoteDataManager(&remoteDataManagerOptions{
-		remote:   remote,
-		statsMgr: statsMgr,
+		workerCount: 4,
+		remote:      remote,
+		statsMgr:    statsMgr,
 	})
 	suite.assert.Nil(err)
 	suite.assert.NotNil(rdm)
