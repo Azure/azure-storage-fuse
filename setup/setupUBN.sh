@@ -1,9 +1,10 @@
 # This setup script can be used to install all the dependencies required to clone and run the project on Ubuntu machines
+# To run this script: cd setup && ./setupUBN.sh
 
-!/bin/bash
+#!/bin/bash
 
-Run the go_installer script with the parent directory as an argument
-./go_installer.sh ../
+# Run the go_installer script with the parent directory as an argument
+../go_installer.sh ../
 echo "Installed go" 
 go version
 sudo apt update -y
@@ -11,6 +12,7 @@ sudo apt install openssh-server -y
 sudo apt install net-tools -y
 sudo apt install git -y
 sudo apt install gcc -y
+sudo apt install jq -y
 sudo apt install libfuse-dev -y
 sudo apt install fuse -y
 sudo apt install fuse3 -y
@@ -43,6 +45,6 @@ blobfuse2 --version
 
 # Calling the setup script for AzSecPack setup
 echo "Calling the setup script for AzSecPack setup"
-setup/vmSetupAzSecPack.sh
+./vmSetupAzSecPack.sh
 
 
