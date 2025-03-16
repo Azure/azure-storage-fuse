@@ -141,6 +141,83 @@ func TestFileWrite(t *testing.T) {
 	removeFiles(t, filename)
 }
 
+func TestFsync(t *testing.T) {
+	t.Parallel()
+	filename := "testfile_fsync.txt"
+	content := []byte("Hello, World!")
+	for _, mnt := range mountpoints {
+		filePath := filepath.Join(mnt, filename)
+		file, err := os.Create(filePath)
+		assert.Nil(t, err)
+
+		_, err = file.Write(content)
+		assert.Nil(t, err)
+
+		err = file.Sync()
+		assert.Nil(t, err)
+
+		readContent, err := os.ReadFile(filePath)
+		assert.Nil(t, err)
+
+		assert.Equal(t, string(content), string(readContent))
+
+		err = file.Close()
+		assert.Nil(t, err)
+	}
+
+	checkFileIntegrity(t, filename)
+	removeFiles(t, filename)
+}
+
+func TestFsyncWhileWriting(t *testing.T) {
+	t.Parallel()
+	var err error
+	filename := "testfile_fsync_while_writing.txt"
+	readBufSize := 4 * 1024
+	content := make([]byte, readBufSize)
+	_, err = io.ReadFull(rand.Reader, content)
+	assert.Nil(t, err)
+	expectedContent := make([]byte, 4*1024, 10*1024*1024)
+	copy(expectedContent, content)
+	actualContent := make([]byte, 10*1024*1024)
+	for _, mnt := range mountpoints {
+		filePath := filepath.Join(mnt, filename)
+		file, err := os.Create(filePath)
+		assert.Nil(t, err)
+
+		// Write 9MB data, for each 4K buffer do an fsync for each 4K buffer. do read the data after fsync with other handle.
+		for i := 0; i*readBufSize < 9*1024*1024; i++ {
+			bytesWritten, err := file.Write(content)
+			assert.Nil(t, err)
+			assert.Equal(t, len(content), bytesWritten)
+
+			// We cannot do fsync for every 4K write, as the test takes an enternity to finish
+			// do it for every 512K
+			if i%128 == 0 {
+				err = file.Sync()
+				assert.Nil(t, err)
+			}
+
+			file1, err := os.Open(filePath)
+			assert.Nil(t, err)
+			bytesRead, err := file1.Read(actualContent)
+			assert.Equal(t, (i+1)*readBufSize, bytesRead)
+			assert.Nil(t, err)
+			err = file1.Close()
+			assert.Nil(t, err)
+
+			assert.Equal(t, expectedContent[:(i+1)*readBufSize], actualContent[:(i+1)*readBufSize])
+			expectedContent = append(expectedContent, content...)
+		}
+
+		err = file.Close()
+		assert.Nil(t, err)
+	}
+
+	checkFileIntegrity(t, filename)
+	removeFiles(t, filename)
+}
+
 // Add Tests for reading and writing to the newly created blocks and modified blocks while truncate.
 const (
 	truncate int = iota
@@ -832,8 +909,6 @@ func TestUnlinkOnOpen(t *testing.T) {
 	checkFileIntegrity(t, filename)
 	removeFiles(t, filename)
 }
-
-// Test fsync while writing.
 
 // Test for multiple handles, parallel flush calls while writing.
 

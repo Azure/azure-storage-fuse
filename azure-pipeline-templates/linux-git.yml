@@ -93,7 +93,7 @@ steps:
   - script: |
       cd ${{ parameters.mount_dir }}/linux-*/
       pwd
-      make 2>&1 | tee log
+      make -j$(nproc) 2>&1 | tee log
     displayName: 'Compile Source'
 
   - script: |
