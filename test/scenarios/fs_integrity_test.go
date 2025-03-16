@@ -833,6 +833,16 @@ func TestUnlinkOnOpen(t *testing.T) {
 	removeFiles(t, filename)
 }
 
+// Test fsync while writing.
+
+// Test for multiple handles, parallel flush calls while writing.
+
+// Test for multiple handles, parallel flush calls while reading.
+
+// Test for multiple handles, parallel flush calls while reading and writing.
+
+// Aggressive random write on large file.
+
 func expandPath(path string) (string, error) {
 	if strings.HasPrefix(path, "~/") {
 		usr, err := user.Current()

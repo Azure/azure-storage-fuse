@@ -55,17 +55,18 @@ import (
    - To read any new setting from config file follow the Configure method default comments
 */
 
-var bc *BlockCache
+var bc *BlockCache // declaring it as a global variable to use in the other files of the same package.
 var BlockSize int
 var bPool *BufferPool
 var wp *workerPool
-var memory int = 1024 * 1024 * 1024
+var memory int = 500 * 1024 * 1024
 
 // Common structure for Component
 type BlockCache struct {
 	internal.BaseComponent
 
-	blockSize uint64 // Size of each block to be cached
+	blockSize uint64 // Size of each block that will be cached
+	memSize   uint64 // Memory given by the user to use for data caching.
 }
 
 // Structure defining your config parameters
@@ -82,7 +83,7 @@ type BlockCacheOptions struct {
 const (
 	compName         = "block_cache_new"
 	defaultTimeout   = 120
-	defaultBlockSize = 4
+	defaultBlockSize = 8
 	MAX_BLOCKS       = 50000
 )
 
@@ -167,6 +168,9 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 		releaseBuffersOfFile(f)
 		f.blockList = make([]*block, 0)
 		f.blkListState = blockListValid
+		if attr.Size != 0 {
+			f.changed = true
+		}
 	}
 
 	if attr.Size > 0 {
@@ -331,18 +335,9 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 func (bc *BlockCache) SyncFile(options internal.SyncFileOptions) error {
 	log.Trace("BlockCache::SyncFile : handle=%d, path=%s", options.Handle.ID, options.Handle.Path)
 	f := getFileFromHandle(options.Handle)
-	fileChanged, err := syncBuffersForFile(f)
-	if err == nil {
-		if fileChanged {
-			err = commitBuffersForFile(f)
-			if err != nil {
-				log.Err("BlockCache::SyncFile : Commiting buffers failed handle=%d, path=%s, err=%s", options.Handle.ID, options.Handle.Path, err.Error())
-			} else {
-				log.Info("BlockCache::SyncFile : Commit buffers success")
-			}
-		}
-	} else {
-		log.Err("BlockCache::SyncFile : Syncing buffers failed handle=%d, path=%s, err=%s", options.Handle.ID, options.Handle.Path, err.Error())
+	err := syncBuffersForFile(f)
+	if err != nil {
+		log.Err("BlockCache::SyncFile : flush failed for handle : %d, file : %s", options.Handle.ID, options.Handle.Path)
 	}
 	return err
 }
@@ -394,6 +389,7 @@ func (bc *BlockCache) TruncateFile(options internal.TruncateFileOptions) (err er
 	f := getFileFromHandle(h)
 	f.Lock()
 	defer f.Unlock()
+	f.changed = true
 	if f.size == options.Size {
 		return nil
 	}

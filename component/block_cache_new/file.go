@@ -20,6 +20,7 @@ type File struct {
 	synced       bool                       // Is file synced with Azure storage
 	holePunched  bool                       // Represents if we have punched any hole while uploading the data.
 	blkListState blocklistState             // all blocklists which are not compatible with block cache can only be read
+	changed      bool                       // is there any write/truncate operation happened?
 }
 
 func (f *File) getOpenFDcount() int {
@@ -48,6 +49,7 @@ func CreateFile(fileName string) *File {
 		size:         -1,
 		synced:       true,
 		blkListState: blockListNotRetrieved,
+		changed:      false,
 	}
 
 	return f

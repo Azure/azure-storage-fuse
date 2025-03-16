@@ -15,9 +15,8 @@ import (
 // Utilised When writing the file in the sparse manner.
 // If we fix on this then we can do some sneaky optimisations while reading/writing the file.
 // It is very less probable that the any UUID generated will match the same.
-// How do I come up with the value?
-// It is the base64 encoding string which came from calling common.NewUUIDWithLength function on
-// the string "AzureLuvBlobfuse". The string took is of 16 bytes.
+// It will come very handy when reading blob which was written by blobfuse and has holes.
+// also while doing aggressive random write we do flush the file sometimes to make the file consistent. It also helps there.
 const zeroBlockId string = "mb7yh/CyR8dYgZnL0kunig=="
 
 // "QXp1cmVMRXZCbG9iZnVzZQo="

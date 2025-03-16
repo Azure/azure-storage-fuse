@@ -30,9 +30,8 @@ func scheduleDownload(blk *block, r requestType) {
 func downloader(blk *block, r requestType) (state blockState, err error) {
 	blk.Lock()
 	defer blk.Unlock()
-	if r == syncRequest {
-		blk.refCnt++
-	}
+
+	blk.refCnt++
 	var ok bool
 	if blk.buf == nil {
 		bPool.getBufferForBlock(blk)
@@ -73,6 +72,8 @@ func downloader(blk *block, r requestType) (state blockState, err error) {
 			blk.buf.valid = true
 			close(blk.downloadDone)
 		}
+	} else {
+		blk.refCnt--
 	}
 
 	return
