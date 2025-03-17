@@ -51,10 +51,13 @@ const InvalidHandleID HandleID = 0
 
 // Flags represented in BitMap for various flags in the handle
 const (
-	HandleFlagUnknown uint16 = iota
-	HandleFlagDirty          // File has been modified with write operation or is a new file
-	HandleFlagFSynced        // User has called fsync on the file explicitly
-	HandleFlagCached         // File is cached in the local system by blobfuse2
+	HandleFlagUnknown    uint16 = iota
+	HandleFlagDirty             // File has been modified with write operation or is a new file
+	HandleFlagFSynced           // User has called fsync on the file explicitly
+	HandleFlagCached            // File is cached in the local system by blobfuse2
+	HandleFlagOpenRDONLY        // Handle is opened in Read only mode
+	HandleFlagOpenWRONLY        // Handle is opened in Write only mode
+	HandleFlagOpenRDWR          // Handle is opened in Read-Write mode
 )
 
 // Structure to hold in memory cache for streaming layer
@@ -117,6 +120,10 @@ func (handle *Handle) Fsynced() bool {
 // Cached : File is cached on local disk or not
 func (handle *Handle) Cached() bool {
 	return handle.Flags.IsSet(HandleFlagCached)
+}
+
+func (handle *Handle) IsHandleOpenedInRDONLY() bool {
+	return handle.Flags.IsSet(HandleFlagOpenRDONLY)
 }
 
 // GetFileObject : Get the OS.File handle stored within

@@ -916,6 +916,8 @@ func TestUnlinkOnOpen(t *testing.T) {
 
 // Test for multiple handles, parallel flush calls while reading and writing.
 
+// Dup the FD and do parllel flush calls while writing.
+
 // Aggressive random write on large file.
 
 func expandPath(path string) (string, error) {

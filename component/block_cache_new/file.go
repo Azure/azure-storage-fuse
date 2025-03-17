@@ -1,9 +1,11 @@
 package block_cache_new
 
 import (
+	"os"
 	"sync"
 	"time"
 
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
 
@@ -21,6 +23,7 @@ type File struct {
 	holePunched  bool                       // Represents if we have punched any hole while uploading the data.
 	blkListState blocklistState             // all blocklists which are not compatible with block cache can only be read
 	changed      bool                       // is there any write/truncate operation happened?
+	flushOngoing chan struct{}              // This channel blocks the operations on the blocks when there is a flush operation going on.
 }
 
 func (f *File) getOpenFDcount() int {
@@ -50,7 +53,9 @@ func CreateFile(fileName string) *File {
 		synced:       true,
 		blkListState: blockListNotRetrieved,
 		changed:      false,
+		flushOngoing: make(chan struct{}),
 	}
+	close(f.flushOngoing)
 
 	return f
 }
@@ -58,10 +63,21 @@ func CreateFile(fileName string) *File {
 // Sync Map filepath->*File
 var fileMap sync.Map
 
-func createFreshHandleForFile(name string, size int64, mtime time.Time) *handlemap.Handle {
+func createFreshHandleForFile(name string, size int64, mtime time.Time, flags int) *handlemap.Handle {
 	handle := handlemap.NewHandle(name)
 	handle.Mtime = mtime
 	handle.Size = size
+	if flags&os.O_RDONLY != 0 {
+		handle.Flags.Set(handlemap.HandleFlagOpenRDONLY)
+	} else if flags&os.O_WRONLY != 0 {
+		handle.Flags.Set(handlemap.HandleFlagOpenWRONLY)
+	} else if flags&os.O_RDWR != 0 {
+		handle.Flags.Set(handlemap.HandleFlagOpenRDWR)
+	} else {
+		log.Info("BlockCache::createFreshHandleForFile : Unknown Open flags %X, file : %s", handle.ID, name)
+		//todo: Do this correctly
+		handle.Flags.Set(handlemap.HandleFlagOpenRDONLY)
+	}
 	return handle
 }
 

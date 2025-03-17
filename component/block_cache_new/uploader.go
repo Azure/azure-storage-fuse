@@ -16,6 +16,9 @@ func scheduleUpload(blk *block, r requestType) {
 	// blk.refCnt++
 	blk.cancelOngoingAsyncUpload = func() {
 		log.Info("BlockCache::scheduleUpload : Async Upload Cancel")
+		// Before Cancelling the upload, wait to see if there is a flush operation is going on for the file.
+		// If there is a flush operation, then wait until the flush completes on the file.
+		<-blk.file.flushOngoing
 		cancel()
 		<-taskDone
 	}
@@ -55,7 +58,9 @@ func uploader(blk *block, r requestType) (state blockState, err error) {
 					// cancel the ongoing upload and schedule a new one.
 					if time.Since(now) > 1000*time.Millisecond && r == syncRequest {
 						log.Info("BlockCache::Uploader : Cancelling ongoing async upload and scheduling the new one")
+						blk.Unlock()
 						blk.cancelOngoingAsyncUpload()
+						blk.Lock()
 						scheduleUpload(blk, r)
 						break outer
 					} else if r == asyncRequest {

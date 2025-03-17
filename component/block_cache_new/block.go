@@ -40,11 +40,13 @@ type block struct {
 	hole                        bool       // Hole means this block is a null block. This can be used to do some optimisations.
 	refCnt                      int        // reference counter for block, how many handles are currenlty using block
 	asyncUploadTimer            *time.Timer
-	uploadDone                  chan error // Channel to know when the uplaod completes.
-	downloadDone                chan error // Channel to know when the download completes.
-	cancelOngoingAsyncUpload    func()     // This function cancels the ongoing async upload, maybe triggered by any write that comes after its scheduling.
-	cancelOngolingAsyncDownload func()     // This function cancel the ongoing async downlaod.
-	file                        *File      // file object that this block belong to.
+	uploadDone                  chan error    // Channel to know when the uplaod completes.
+	downloadDone                chan error    // Channel to know when the download completes.
+	cancelOngoingAsyncUpload    func()        // This function cancels the ongoing async upload, maybe triggered by any write that comes after its scheduling.
+	cancelOngolingAsyncDownload func()        // This function cancel the ongoing async download.
+	requestingBuffer            chan struct{} // Used to serilaize the getBuffer calls
+	requestingBufferFlag        bool          // first request of all getBuffer requests for the same block will make it true to say all others requests that it is doing flush operation
+	file                        *File         // file object that this block belong to.
 }
 
 func createBlock(idx int, id string, state blockState, f *File) *block {
@@ -59,10 +61,13 @@ func createBlock(idx int, id string, state blockState, f *File) *block {
 		downloadDone:                make(chan error, 1),
 		cancelOngoingAsyncUpload:    func() {},
 		cancelOngolingAsyncDownload: func() {},
+		requestingBuffer:            make(chan struct{}),
+		requestingBufferFlag:        false,
 		file:                        f,
 	}
 	close(blk.uploadDone)
 	close(blk.downloadDone)
+	close(blk.requestingBuffer)
 	return blk
 }
 

@@ -317,22 +317,39 @@ func (bp *BufferPool) getBufferForBlock(blk *block) {
 	case uncommitedBlock:
 		// This is like a stopping the world operation where we need to wait for all the dirty blocks to finish the uploads,
 		// then commit the file(i.e., doing a putblocklist) to retrieve the buffer back.
-		// release the lock on bufferPool until this operation finishes.
 		// Secondary caching like disk would come very handy for minimizing this scenario.
+		// We use writeback caching enabled by default, hence there may be multiple getBuffer requests for the same block. Hence serialization is important.
+		// We use channel to allow only one flush per file, and broadcast the result to all other requests by closing the channel
 		log.Info("BlockCache::getBufferForBlock : Doing Stopping the world operation for blk idx : %d, file : %s", blk.idx, blk.file.Name)
-		bPool.Unlock()
-		blk.Unlock()
-		err := syncBuffersForFile(blk.file)
-		if err != nil {
-			panic(fmt.Sprintf("BlockCache::getBufferForBlock : Stopping the world op failed block idx : %d, file : %s", blk.idx, blk.file.Name))
-		}
-		log.Info("BlockCache::getBufferForBlock : Stopping the world operation Success for blk idx : %d, file : %s", blk.idx, blk.file.Name)
-		blk.Lock()
-		bPool.Lock()
-		if blk.buf == nil {
-			blk.buf = bPool.getBuffer(false)
-			bPool.addSyncedBlockToLRU(blk)
+		if !blk.requestingBufferFlag {
+			blk.requestingBufferFlag = true
+			blk.requestingBuffer = make(chan struct{})
+			bPool.Unlock()
+			blk.Unlock()
+			err := syncBuffersForFile(blk.file)
+			if err != nil {
+				panic(fmt.Sprintf("BlockCache::getBufferForBlock : Stopping the world op failed block idx : %d, file : %s", blk.idx, blk.file.Name))
+			}
+			log.Info("BlockCache::getBufferForBlock : Stopping the world operation Success for blk idx : %d, file : %s", blk.idx, blk.file.Name)
+			blk.Lock()
+			bPool.Lock()
+			if blk.buf == nil {
+				blk.buf = bPool.getBuffer(false)
+				bPool.addSyncedBlockToLRU(blk)
+			} else {
+				panic(fmt.Sprintf("blk had buffer already blk idx : %d, file : %s", blk.idx, blk.file.Name))
+			}
+			// Broadcast the results to all other requests waiting for getting the buffer for the same block.
+			close(blk.requestingBuffer)
+			blk.requestingBufferFlag = false
 		} else {
+			// There is some other request that came before and doing flush operation.
+			// Hence wait for its result, without blocking.
+			bPool.Unlock()
+			blk.Unlock()
+			<-blk.requestingBuffer
+			blk.Lock()
+			bPool.Lock()
 			return
 		}
 	}
@@ -506,9 +523,13 @@ func (bp *BufferPool) updateLRUafterUploadSuccess(file *File) {
 
 // Write all the Modified buffers to Azure Storage and return whether file is modified or not.
 func syncBuffersForFile(file *File) (err error) {
-	file.Lock()
-	defer file.Unlock()
 	log.Trace("BlockCache::syncBuffersForFile : starting to flush the file to Azure storage")
+	file.Lock()
+	file.flushOngoing = make(chan struct{}) // This prevents the cancellations of the block uploads when there are writes happening in parllel to the flush
+	defer func() {
+		close(file.flushOngoing)
+		file.Unlock()
+	}()
 	if file.blkListState == blockListInvalid || file.blkListState == blockListNotRetrieved {
 		return nil
 	}

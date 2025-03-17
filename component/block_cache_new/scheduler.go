@@ -99,10 +99,16 @@ func performTask(t *task, workerNo int, r requestType) {
 
 func doDownload(t *task, workerNo int, r requestType) {
 	blk := t.blk
+	log.Trace("BlockCache::doDownload : [sync:%d] Download Starting for blk idx: %d, file : %s", r, blk.idx, blk.file.Name)
 	if blk.buf == nil {
 		panic("BlockCache::doDownload : Something has seriously messed up While Reading")
 	}
-	log.Trace("BlockCache::doDownload : [sync:%d] Download Starting for blk idx: %d, file : %s", r, blk.idx, blk.file.Name)
+	if blk.id == zeroBlockId {
+		log.Debug("BlockCache::doDownload : Reading a hole that was created by block cache")
+		blk.downloadDone <- nil
+		close(t.taskDone)
+		return
+	}
 	sizeOfData := getBlockSize(atomic.LoadInt64(&t.blk.file.size), blk.idx)
 
 	_, err := bc.NextComponent().ReadInBuffer(internal.ReadInBufferOptions{

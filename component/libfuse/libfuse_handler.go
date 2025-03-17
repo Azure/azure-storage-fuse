@@ -688,7 +688,7 @@ func libfuse_create(path *C.char, mode C.mode_t, fi *C.fuse_file_info_t) C.int {
 func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 	name := trimFusePath(path)
 	name = common.NormalizeObjectName(name)
-	log.Trace("Libfuse::libfuse_open : %s", name)
+	log.Trace("Libfuse::libfuse_open : %s, fi.flags %X", name, fi.flags)
 	// TODO: Should this sit behind a user option? What if we change something to support these in the future?
 	// Mask out SYNC and DIRECT flags since write operation will fail
 	if fi.flags&C.O_SYNC != 0 || fi.flags&C.__O_DIRECT != 0 {

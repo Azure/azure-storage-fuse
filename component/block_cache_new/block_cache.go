@@ -139,7 +139,8 @@ func (bc *BlockCache) CreateFile(options internal.CreateFileOptions) (*handlemap
 	return bc.OpenFile(internal.OpenFileOptions{
 		Name:  options.Name,
 		Flags: os.O_RDWR | os.O_TRUNC, //TODO: Standard says to open in O_WRONLY|O_TRUNC due to the writeback cache I defaulted it, it shoudl be change in future
-		Mode:  options.Mode})
+		Mode:  options.Mode,
+	})
 }
 
 // OpenFile: Create a handle for the file user has requested to open
@@ -196,7 +197,7 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 		return nil, errors.New("cannot write to file whose blocklist is invalid")
 	}
 
-	handle := createFreshHandleForFile(f.Name, f.size, attr.Mtime)
+	handle := createFreshHandleForFile(f.Name, f.size, attr.Mtime, options.Flags)
 	f.handles[handle] = true
 
 	putHandleIntoMap(handle, f)
@@ -334,6 +335,11 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 
 func (bc *BlockCache) SyncFile(options internal.SyncFileOptions) error {
 	log.Trace("BlockCache::SyncFile : handle=%d, path=%s", options.Handle.ID, options.Handle.Path)
+	if options.Handle.IsHandleOpenedInRDONLY() {
+		return nil
+	} else {
+		log.Info("BlockCache::SyncFile : File Open flags %d", options.Handle.Flags)
+	}
 	f := getFileFromHandle(options.Handle)
 	err := syncBuffersForFile(f)
 	if err != nil {
