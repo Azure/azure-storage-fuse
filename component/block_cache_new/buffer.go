@@ -404,11 +404,13 @@ func (bp *BufferPool) releaseBuffer(blk *block) {
 		blk.cancelOngolingAsyncDownload()
 		blk.downloadDone = make(chan error, 1)
 		close(blk.downloadDone)
+		close(blk.forceCancelUpload)
 		blk.cancelOngoingAsyncUpload()
 		blk.uploadDone = make(chan error, 1)
 		close(blk.uploadDone)
 		bp.pool.Put(blk.buf)
 		blk.buf = nil
+		blk.forceCancelUpload = make(chan struct{})
 	}
 }
 

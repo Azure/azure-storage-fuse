@@ -11,7 +11,7 @@ import (
 
 func scheduleUpload(blk *block, r requestType) {
 	blk.uploadDone = make(chan error, 1)
-	blk.forceCancelUpload = make(chan struct{}, 1)
+	blk.forceCancelUpload = make(chan struct{})
 	ctx, cancel := context.WithCancel(context.Background())
 	taskDone := make(chan struct{}, 1)
 	// blk.refCnt++

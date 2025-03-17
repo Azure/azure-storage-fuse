@@ -67,7 +67,6 @@ func createBlock(idx int, id string, state blockState, f *File) *block {
 		requestingBufferFlag:        false,
 		file:                        f,
 	}
-	close(blk.forceCancelUpload)
 	close(blk.uploadDone)
 	close(blk.downloadDone)
 	close(blk.requestingBuffer)
