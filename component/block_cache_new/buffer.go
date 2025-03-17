@@ -315,6 +315,9 @@ func (bp *BufferPool) getBufferForBlock(blk *block) {
 		blk.buf = bPool.getBuffer(false)
 		bPool.addSyncedBlockToLRU(blk)
 	case uncommitedBlock:
+		if blk.buf != nil {
+			return
+		}
 		// This is like a stopping the world operation where we need to wait for all the dirty blocks to finish the uploads,
 		// then commit the file(i.e., doing a putblocklist) to retrieve the buffer back.
 		// Secondary caching like disk would come very handy for minimizing this scenario.
@@ -336,8 +339,6 @@ func (bp *BufferPool) getBufferForBlock(blk *block) {
 			if blk.buf == nil {
 				blk.buf = bPool.getBuffer(false)
 				bPool.addSyncedBlockToLRU(blk)
-			} else {
-				panic(fmt.Sprintf("blk had buffer already blk idx : %d, file : %s", blk.idx, blk.file.Name))
 			}
 			// Broadcast the results to all other requests waiting for getting the buffer for the same block.
 			close(blk.requestingBuffer)

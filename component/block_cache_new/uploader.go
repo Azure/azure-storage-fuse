@@ -11,14 +11,19 @@ import (
 
 func scheduleUpload(blk *block, r requestType) {
 	blk.uploadDone = make(chan error, 1)
+	blk.forceCancelUpload = make(chan struct{}, 1)
 	ctx, cancel := context.WithCancel(context.Background())
 	taskDone := make(chan struct{}, 1)
 	// blk.refCnt++
 	blk.cancelOngoingAsyncUpload = func() {
-		log.Info("BlockCache::scheduleUpload : Async Upload Cancel")
+		log.Info("BlockCache::scheduleUpload : Async Upload Cancel for blk idx : %d, file : %s", blk.idx, blk.file.Name)
 		// Before Cancelling the upload, wait to see if there is a flush operation is going on for the file.
 		// If there is a flush operation, then wait until the flush completes on the file.
-		<-blk.file.flushOngoing
+		select {
+		case <-blk.file.flushOngoing:
+		case <-blk.forceCancelUpload:
+			log.Info("BlockCache::scheduleUpload : async Upload Canceled by flush call blk idx : %d, file : %s", blk.idx, blk.file.Name)
+		}
 		cancel()
 		<-taskDone
 	}
@@ -58,9 +63,9 @@ func uploader(blk *block, r requestType) (state blockState, err error) {
 					// cancel the ongoing upload and schedule a new one.
 					if time.Since(now) > 1000*time.Millisecond && r == syncRequest {
 						log.Info("BlockCache::Uploader : Cancelling ongoing async upload and scheduling the new one")
-						blk.Unlock()
+						// Here we should not wait for async upload to hang on to the flush to complete, as this came from the flush op, hence closing the channel would do it.
+						close(blk.forceCancelUpload)
 						blk.cancelOngoingAsyncUpload()
-						blk.Lock()
 						scheduleUpload(blk, r)
 						break outer
 					} else if r == asyncRequest {
