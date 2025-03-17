@@ -59,7 +59,7 @@ var bc *BlockCache // declaring it as a global variable to use in the other file
 var BlockSize int
 var bPool *BufferPool
 var wp *workerPool
-var memory int = 500 * 1024 * 1024
+var memory int = 1024 * 1024 * 1024
 
 // Common structure for Component
 type BlockCache struct {
