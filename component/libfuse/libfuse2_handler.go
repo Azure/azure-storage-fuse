@@ -283,6 +283,8 @@ func libfuse2_init(conn *C.fuse_conn_info_t) (res unsafe.Pointer) {
 	if (conn.capable & C.FUSE_CAP_ASYNC_READ) != 0 {
 		log.Info("Libfuse::libfuse2_init : Disable Capability : FUSE_CAP_ASYNC_READ")
 		conn.want &= ^C.uint(C.FUSE_CAP_ASYNC_READ)
+		// In fuse2 It is also necessary to switch off the async_read in fuse_conn_info struct
+		conn.async_read = C.uint(0)
 	}
 
 	if (conn.capable & C.FUSE_CAP_BIG_WRITES) != 0 {
