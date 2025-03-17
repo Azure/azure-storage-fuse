@@ -292,7 +292,7 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 		conn.want |= C.FUSE_CAP_READDIRPLUS
 	}
 
-	// Make the kernel readahead synchronous, that would make the implementation inside the blobfuse easier.
+	// Make the kernel readahead synchronous, that would make the readahead implementation inside the blobfuse easier.
 	// Default behaviour of kernel is to do asynchronous readahead if its capable.
 	if (conn.capable & C.FUSE_CAP_ASYNC_READ) != 0 {
 		log.Info("Libfuse::libfuse_init : Disable Capability : FUSE_CAP_ASYNC_READ")
