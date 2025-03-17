@@ -129,9 +129,9 @@ stages:
           AgentName: "blobfuse-ubuntu18"
         Ubuntu-20:
           vmImage: 'Ubuntu-20.04'
-          fuse-version: 'fuse3'
-          fuselib: 'libfuse3-dev'
-          tags: 'fuse3'
+          fuse-version: 'fuse'
+          fuselib: 'libfuse-dev'
+          tags: 'fuse2'
           container: 'test-cnt-ubn-20'
           AgentName: "blobfuse-ubuntu20"
     pool:
@@ -229,6 +229,7 @@ stages:
       - script: |
           sudo dpkg --info blobfuse2*.deb
           sudo apt-get install $(fuse-version) build-essential -y
+          sudo apt-get install $(tags) $(fuselib) -y
           sudo dpkg -i blobfuse2*.deb
         displayName: 'Install Package'
         workingDirectory: $(Build.ArtifactStagingDirectory)
@@ -558,9 +559,9 @@ stages:
         RHEL-8.6:
           agentName: "blobfuse-rhel8_6"
           vmImage: 'RHEL-8.6'
-          fuselib: 'fuse fuse3-libs fuse3-devel'
-          fuse-version: 'fuse3'
-          tags: 'fuse3'
+          fuselib: 'fuse fuse-libs fuse-devel'
+          fuse-version: 'fuse'
+          tags: 'fuse'
           container: 'test-cnt-rhel-86'
         RHEL-9.0:
           agentName: "blobfuse-rhel9"
@@ -649,7 +650,7 @@ stages:
           sudo sed -i '/^failovermethod=/d' /etc/yum.repos.d/*.repo
           sudo rpm -qip blobfuse2*$(vmImage)*.rpm
           sudo yum groupinstall "Development Tools" -y              
-          sudo yum install fuse fuse3-libs fuse3-devel fuse3 -y --nobest --allowerasing
+          sudo yum install $(fuselib) -y --nobest --allowerasing
           sudo rpm -i blobfuse2*$(vmImage)*.rpm
         displayName: 'Install Package'
         workingDirectory: $(Build.ArtifactStagingDirectory)
@@ -675,14 +676,14 @@ stages:
         CentOS-7.9:
           agentName: "blobfuse-centos7"
           vmImage: 'CentOS-7.0'
-          fuse-version: 'fuse3'
-          tags: 'fuse3'
+          fuse-version: 'fuse'
+          tags: 'fuse2'
           container: 'test-cnt-cent-7'
         CentOS-8.5:
           agentName: "blobfuse-centos8"
           vmImage: 'CentOS-8.0'
-          fuse-version: 'fuse3'
-          tags: 'fuse3'
+          fuse-version: 'fuse'
+          tags: 'fuse2'
           container: 'test-cnt-cent-8'
     
     pool:
@@ -770,9 +771,9 @@ stages:
           sudo rpm -qip blobfuse2*.rpm
           sudo yum install gcc gcc-c++ make -y
           if [ $(agentName) == "blobfuse-centos8" ]; then
-            sudo yum install fuse fuse3 fuse3-devel -y --nobest --allowerasing
+            sudo yum install fuse fuse-devel -y --nobest --allowerasing
           else
-            sudo yum install fuse fuse3 fuse3-devel -y
+            sudo yum install fuse fuse-devel -y
           fi
           sudo rpm -i blobfuse2*.rpm
         displayName: 'Install Package'
@@ -799,9 +800,9 @@ stages:
         Oracle-8.1:
           agentName: "blobfuse-oracle81"
           vmImage: 'Oracle-8.1'
-          fuselib: 'fuse3 fuse3-devel'
-          fuse-version: 'fuse3'
-          tags: 'fuse3'
+          fuselib: 'fuse fuse-devel'
+          fuse-version: 'fuse'
+          tags: 'fuse2'
           container: "test-cnt-ora-81"
     
     pool:
@@ -882,7 +883,7 @@ stages:
       - script: |
           sudo rpm -qip blobfuse2*.rpm
           sudo yum install gcc gcc-c++ make -y
-          sudo yum install fuse $(fuse-version) -y --nobest --allowerasing
+          sudo yum install $(fuse-version) -y --nobest --allowerasing
           sudo rpm -i blobfuse2*.rpm
         displayName: 'Install Package'
         workingDirectory: $(Build.ArtifactStagingDirectory)
@@ -908,8 +909,8 @@ stages:
         SUSE-15:
           agentName: "blobfuse-suse15"
           vmImage: 'SUSE-15Gen2'
-          fuse-version: 'fuse3'
-          tags: 'fuse3'
+          fuse-version: 'fuse'
+          tags: 'fuse2'
           container: "test-cnt-suse-15"
     
     pool:
@@ -989,10 +990,10 @@ stages:
 
       - script: |
           sudo rpm -qip blobfuse2*.rpm
-          sudo zypper -n install make cmake gcc gcc-c++ fuse fuse3 
-          wget https://rpmfind.net/linux/opensuse/distribution/leap/15.2/repo/oss/x86_64/fuse3-devel-3.6.1-lp152.1.19.x86_64.rpm
-          sudo zypper -n --no-gpg-checks install fuse3-devel-3.6.1-lp152.1.19.x86_64.rpm
-          sudo rm fuse3-devel*.rpm
+          sudo zypper -n install make cmake gcc gcc-c++ fuse
+          wget https://download.opensuse.org/repositories/filesystems/15.6/x86_64/fuse-2.9.9-lp156.104.8.x86_64.rpm
+          sudo zypper -n install fuse-2.9.9-lp156.104.8.x86_64.rpm
+          sudo rm fuse-2*.rpm
           sudo rpm -i blobfuse2*.rpm
         displayName: 'Install Package'
         workingDirectory: $(Build.ArtifactStagingDirectory)
@@ -1115,9 +1116,9 @@ stages:
         Rocky-8.0:
           agentName: "blobfuse-rocky8"
           vmImage: 'Rocky-8.0'
-          fuselib: 'fuse3-devel'
-          fuse-version: 'fuse3'
-          tags: 'fuse3'
+          fuselib: 'fuse-devel'
+          fuse-version: 'fuse'
+          tags: 'fuse2'
           container: 'test-cnt-rocky-8'
         Rocky-9.0:
           agentName: "blobfuse-rocky9"
@@ -1206,7 +1207,7 @@ stages:
           sudo sed -i '/^failovermethod=/d' /etc/yum.repos.d/*.repo
           sudo rpm -qip blobfuse2*$(vmImage)*.rpm
           sudo yum groupinstall "Development Tools" -y              
-          sudo yum install fuse fuse3-libs fuse3-devel fuse3 -y --nobest --allowerasing
+          sudo yum install fuse fuse-libs $(fuselib) -y --nobest --allowerasing
           sudo rpm -i blobfuse2*$(vmImage)*.rpm
         displayName: 'Install Package'
         workingDirectory: $(Build.ArtifactStagingDirectory)
