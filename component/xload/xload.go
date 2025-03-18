@@ -55,7 +55,7 @@ type Xload struct {
 	blockSize         uint64          // Size of each block to be cached
 	mode              Mode            // Mode of the Xload component
 	exportProgress    bool            // Export the progess of xload operation to json file
-	consistency       bool            // validate md5sum on download, if md5sum is set on blob
+	validateMD5       bool            // validate md5sum on download, if md5sum is set on blob
 	workerCount       uint32          // Number of workers running
 	blockPool         *BlockPool      // Pool of blocks
 	path              string          // Path on local disk where Xload will operate
@@ -71,7 +71,7 @@ type XloadOptions struct {
 	Mode           string  `config:"mode" yaml:"mode,omitempty"`
 	Path           string  `config:"path" yaml:"path,omitempty"`
 	ExportProgress bool    `config:"export-progress" yaml:"path,omitempty"`
-	Consistency    bool    `config:"consistency" yaml:"consistency,omitempty"`
+	ValidateMD5    bool    `config:"validate-md5" yaml:"validate-md5,omitempty"`
 	// TODO:: xload : add parallelism parameter
 }
 
@@ -196,7 +196,7 @@ func (xl *Xload) Configure(_ bool) error {
 
 	xl.mode = mode
 	xl.exportProgress = conf.ExportProgress
-	xl.consistency = conf.Consistency
+	xl.validateMD5 = conf.ValidateMD5
 
 	allowOther := false
 	err = config.UnmarshalKey("allow-other", &allowOther)
@@ -210,8 +210,8 @@ func (xl *Xload) Configure(_ bool) error {
 		xl.defaultPermission = common.DefaultFilePermissionBits
 	}
 
-	log.Crit("Xload::Configure : block size %v, mode %v, path %v, default permission %v, export progress %v, consistency %v", xl.blockSize,
-		xl.mode.String(), xl.path, xl.defaultPermission, xl.exportProgress, xl.consistency)
+	log.Crit("Xload::Configure : block size %v, mode %v, path %v, default permission %v, export progress %v, validate md5 %v", xl.blockSize,
+		xl.mode.String(), xl.path, xl.defaultPermission, xl.exportProgress, xl.validateMD5)
 
 	return nil
 }
@@ -301,7 +301,7 @@ func (xl *Xload) createDownloader() error {
 		remote:      xl.NextComponent(),
 		statsMgr:    xl.statsMgr,
 		fileLocks:   xl.fileLocks,
-		consistency: xl.consistency,
+		validateMD5: xl.validateMD5,
 	})
 	if err != nil {
 		log.Err("Xload::createDownloader : Unable to create download splitter [%s]", err.Error())

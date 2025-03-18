@@ -56,7 +56,7 @@ type splitter struct {
 	blockPool   *BlockPool
 	path        string
 	fileLocks   *common.LockMap
-	consistency bool
+	validateMD5 bool
 }
 
 // --------------------------------------------------------------------------------------------------------
@@ -72,7 +72,7 @@ type downloadSplitterOptions struct {
 	remote      internal.Component
 	statsMgr    *StatsManager
 	fileLocks   *common.LockMap
-	consistency bool
+	validateMD5 bool
 }
 
 func newDownloadSplitter(opts *downloadSplitterOptions) (*downloadSplitter, error) {
@@ -88,7 +88,7 @@ func newDownloadSplitter(opts *downloadSplitterOptions) (*downloadSplitter, erro
 			blockPool:   opts.blockPool,
 			path:        opts.path,
 			fileLocks:   opts.fileLocks,
-			consistency: opts.consistency,
+			validateMD5: opts.validateMD5,
 		},
 	}
 
@@ -259,11 +259,11 @@ func (ds *downloadSplitter) Process(item *WorkItem) (int, error) {
 		log.Err("downloadSplitter::Process : Failed to change times of file %s [%s]", item.Path, err.Error())
 	}
 
-	if ds.consistency && operationSuccess {
+	if ds.validateMD5 && operationSuccess {
 		err = ds.checkConsistency(item)
 		if err != nil {
-			// TODO:: xload : retry if consistency check fails
-			log.Err("downloadSplitter::Process : unable to check consistency for %s [%s]", item.Path, err.Error())
+			// TODO:: xload : retry if md5 validation fails
+			log.Err("downloadSplitter::Process : unable to validate md5 for %s [%s]", item.Path, err.Error())
 			operationSuccess = false
 		}
 	}
