@@ -230,6 +230,9 @@ stages:
           sudo dpkg --info blobfuse2*.deb
           sudo apt-get install $(fuse-version) build-essential -y
           sudo apt-get install $(tags) $(fuselib) -y
+          sudo yum install fuse fuse-devel -y --nobest --allowerasing
+          fuse --version
+          fusermount --version
           sudo dpkg -i blobfuse2*.deb
         displayName: 'Install Package'
         workingDirectory: $(Build.ArtifactStagingDirectory)
@@ -1207,7 +1210,7 @@ stages:
           sudo sed -i '/^failovermethod=/d' /etc/yum.repos.d/*.repo
           sudo rpm -qip blobfuse2*$(vmImage)*.rpm
           sudo yum groupinstall "Development Tools" -y              
-          sudo yum install fuse fuse-libs $(fuselib) -y --nobest --allowerasing
+          sudo yum install fuse fuse-libs $(fuselib) fuse3-libs -y --nobest --allowerasing
           sudo rpm -i blobfuse2*$(vmImage)*.rpm
         displayName: 'Install Package'
         workingDirectory: $(Build.ArtifactStagingDirectory)
