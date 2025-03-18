@@ -34,17 +34,19 @@
 package xload
 
 import (
-	"sync"
-
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
 // BlockPool is a pool of Blocks
 type BlockPool struct {
-	blocks *sync.Pool
+	// Channel holding free blocks
+	blocksCh chan *Block
 
 	// Size of each block this pool holds
 	blockSize uint64
+
+	// Number of block that this pool can handle at max
+	maxBlocks uint32
 }
 
 // NewBlockPool allocates a new pool of blocks
@@ -55,25 +57,43 @@ func NewBlockPool(blockSize uint64, blockCount uint32) *BlockPool {
 		return nil
 	}
 
-	return &BlockPool{
+	pool := &BlockPool{
+		blocksCh:  make(chan *Block, blockCount),
+		maxBlocks: uint32(blockCount),
 		blockSize: blockSize,
-		blocks: &sync.Pool{
-			New: func() interface{} {
-				return &Block{
-					Data: make([]byte, blockSize),
-				}
-			},
-		},
 	}
+
+	// Preallocate all blocks so that during runtime we do not spend CPU cycles on this
+	for i := (uint32)(0); i < blockCount; i++ {
+		block, err := AllocateBlock(blockSize)
+		if err != nil {
+			log.Err("BlockPool::NewBlockPool : unable to allocate block [%s]", err.Error())
+			return nil
+		}
+
+		pool.blocksCh <- block
+	}
+
+	return pool
 }
 
 // Terminate ends the block pool life
 func (pool *BlockPool) Terminate() {
+	close(pool.blocksCh)
+
+	// Release back the memory allocated to each block
+	for {
+		block := <-pool.blocksCh
+		if block == nil {
+			break
+		}
+		_ = block.Delete()
+	}
 }
 
 // Usage provides % usage of this block pool
 func (pool *BlockPool) Usage() uint32 {
-	return 0
+	return ((pool.maxBlocks - (uint32)(len(pool.blocksCh))) * 100) / pool.maxBlocks
 }
 
 func (pool *BlockPool) GetBlockSize() uint64 {
@@ -81,12 +101,54 @@ func (pool *BlockPool) GetBlockSize() uint64 {
 }
 
 func (pool *BlockPool) GetBlock(priority bool) *Block {
-	block := pool.blocks.Get().(*Block)
+	if priority {
+		return pool.mustGet()
+	} else {
+		return pool.tryGet()
+	}
+}
+
+// TryGet a block from the pool. If the pool is empty, wait till a block is released back to the pool
+func (pool *BlockPool) tryGet() *Block {
+	// getting a block from pool will be a blocking operation if the pool is empty
+	block := <-pool.blocksCh
+
+	// Mark the buffer ready for reuse now
+	block.ReUse()
+	return block
+}
+
+func (pool *BlockPool) mustGet() *Block {
+	var block *Block = nil
+
+	select {
+	case block = <-pool.blocksCh:
+		break
+
+	default:
+		// There are no free blocks so we must allocate one and return here
+		// As the consumer of the pool needs a block immediately
+		log.Info("BlockPool::MustGet : No free blocks, allocating a new one")
+		var err error
+		block, err = AllocateBlock(pool.blockSize)
+		if err != nil {
+			// TODO:: xload : should we fall back to waiting to get a block from blockpool
+			log.Err("BlockPool::MustGet : unable to allocate block [%s]", err.Error())
+			return nil
+		}
+	}
+
+	// Mark the buffer ready for reuse now
 	block.ReUse()
 	return block
 }
 
 // Release back the Block to the pool
 func (pool *BlockPool) Release(block *Block) {
-	pool.blocks.Put(block)
+	select {
+	case pool.blocksCh <- block:
+		break
+	default:
+		_ = block.Delete()
+	}
 }
