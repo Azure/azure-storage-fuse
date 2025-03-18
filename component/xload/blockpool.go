@@ -42,7 +42,7 @@ type BlockPool struct {
 	// Channel holding free blocks
 	blocksCh chan *Block
 
-	// Channel holding free blocks
+	// Channel holding free blocks for priority threads
 	priorityCh chan *Block
 
 	// Size of each block this pool holds
@@ -90,10 +90,16 @@ func NewBlockPool(blockSize uint64, blockCount uint32) *BlockPool {
 // Terminate ends the block pool life
 func (pool *BlockPool) Terminate() {
 	close(pool.blocksCh)
+	close(pool.priorityCh)
 
-	// Release back the memory allocated to each block
+	releaseBlocks(pool.blocksCh)
+	releaseBlocks(pool.priorityCh)
+}
+
+// release back the memory allocated to each block
+func releaseBlocks(ch chan *Block) {
 	for {
-		block := <-pool.blocksCh
+		block := <-ch
 		if block == nil {
 			break
 		}
@@ -103,7 +109,7 @@ func (pool *BlockPool) Terminate() {
 
 // Usage provides % usage of this block pool
 func (pool *BlockPool) Usage() uint32 {
-	return ((pool.maxBlocks - (uint32)(len(pool.blocksCh))) * 100) / pool.maxBlocks
+	return ((pool.maxBlocks - (uint32)(len(pool.blocksCh)+len(pool.priorityCh))) * 100) / pool.maxBlocks
 }
 
 func (pool *BlockPool) GetBlockSize() uint64 {
@@ -146,11 +152,14 @@ func (pool *BlockPool) mustGet() *Block {
 // Release back the Block to the pool
 func (pool *BlockPool) Release(block *Block) {
 	select {
-	case pool.blocksCh <- block:
-		break
 	case pool.priorityCh <- block:
 		break
 	default:
-		_ = block.Delete()
+		select {
+		case pool.blocksCh <- block:
+			break
+		default:
+			_ = block.Delete()
+		}
 	}
 }
