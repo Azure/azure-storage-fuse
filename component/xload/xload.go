@@ -210,7 +210,7 @@ func (xl *Xload) Configure(_ bool) error {
 		xl.defaultPermission = common.DefaultFilePermissionBits
 	}
 
-	log.Debug("Xload::Configure : block size %v, mode %v, path %v, default permission %v, export progress %v, consistency %v", xl.blockSize,
+	log.Crit("Xload::Configure : block size %v, mode %v, path %v, default permission %v, export progress %v, consistency %v", xl.blockSize,
 		xl.mode.String(), xl.path, xl.defaultPermission, xl.exportProgress, xl.consistency)
 
 	return nil
@@ -284,7 +284,7 @@ func (xl *Xload) createDownloader() error {
 	// Create remote lister pool to list remote files
 	rl, err := newRemoteLister(&remoteListerOptions{
 		path:              xl.path,
-		workerCount:       uint32(math.Min(float64(xl.workerCount), float64(MAX_LISTER))),
+		workerCount:       uint32(math.Min(float64(runtime.NumCPU()/2), float64(MAX_LISTER))),
 		defaultPermission: xl.defaultPermission,
 		remote:            xl.NextComponent(),
 		statsMgr:          xl.statsMgr,
@@ -297,7 +297,7 @@ func (xl *Xload) createDownloader() error {
 	ds, err := newDownloadSplitter(&downloadSplitterOptions{
 		blockPool:   xl.blockPool,
 		path:        xl.path,
-		workerCount: uint32(math.Min(float64(xl.workerCount), float64(MAX_DATA_SPLITTER))),
+		workerCount: uint32(math.Min(float64(runtime.NumCPU()), float64(MAX_DATA_SPLITTER))),
 		remote:      xl.NextComponent(),
 		statsMgr:    xl.statsMgr,
 		fileLocks:   xl.fileLocks,
