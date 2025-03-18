@@ -55,21 +55,23 @@ type remoteDataManager struct {
 }
 
 type remoteDataManagerOptions struct {
-	remote   internal.Component
-	statsMgr *StatsManager
+	workerCount uint32
+	remote      internal.Component
+	statsMgr    *StatsManager
 }
 
 func newRemoteDataManager(opts *remoteDataManagerOptions) (*remoteDataManager, error) {
-	if opts == nil || opts.remote == nil || opts.statsMgr == nil {
+	if opts == nil || opts.remote == nil || opts.statsMgr == nil || opts.workerCount == 0 {
 		log.Err("data_manager::NewRemoteDataManager : invalid parameters sent to create remote data manager")
 		return nil, fmt.Errorf("invalid parameters sent to create remote data manager")
 	}
 
-	log.Debug("data_manager::NewRemoteDataManager : create new remote data manager")
+	log.Debug("data_manager::NewRemoteDataManager : create new remote data manager, workers %v", opts.workerCount)
 
 	rdm := &remoteDataManager{}
 
 	rdm.SetName(DATA_MANAGER)
+	rdm.SetWorkerCount(opts.workerCount)
 	rdm.SetRemote(opts.remote)
 	rdm.SetStatsManager(opts.statsMgr)
 	rdm.Init()
@@ -77,7 +79,7 @@ func newRemoteDataManager(opts *remoteDataManagerOptions) (*remoteDataManager, e
 }
 
 func (rdm *remoteDataManager) Init() {
-	rdm.SetThreadPool(NewThreadPool(MAX_WORKER_COUNT, rdm.Process))
+	rdm.SetThreadPool(NewThreadPool(rdm.GetWorkerCount(), rdm.Process))
 	if rdm.GetThreadPool() == nil {
 		log.Err("remoteDataManager::Init : fail to init thread pool")
 	}

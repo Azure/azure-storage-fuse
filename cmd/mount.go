@@ -303,6 +303,7 @@ var mountCmd = &cobra.Command{
 				pipeline = append(pipeline, "block_cache")
 			} else if config.IsSet("preload") && options.Preload {
 				pipeline = append(pipeline, "xload")
+				config.Set("read-only", "true") // preload is only supported in read-only mode
 			} else {
 				pipeline = append(pipeline, "file_cache")
 			}
@@ -319,6 +320,10 @@ var mountCmd = &cobra.Command{
 
 		if config.IsSet("entry_cache.timeout-sec") || options.EntryCacheTimeout > 0 {
 			options.Components = append(options.Components[:1], append([]string{"entry_cache"}, options.Components[1:]...)...)
+		}
+
+		if config.IsSet("xload") {
+			config.Set("read-only", "true") // preload is only supported in read-only mode
 		}
 
 		if config.IsSet("libfuse-options") {

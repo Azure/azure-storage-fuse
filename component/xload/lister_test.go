@@ -181,6 +181,7 @@ func (suite *listTestSuite) TestNewRemoteLister() {
 
 	rl, err = newRemoteLister(&remoteListerOptions{
 		path:              "",
+		workerCount:       0,
 		defaultPermission: common.DefaultFilePermissionBits,
 		remote:            nil,
 		statsMgr:          nil,
@@ -191,6 +192,7 @@ func (suite *listTestSuite) TestNewRemoteLister() {
 
 	rl, err = newRemoteLister(&remoteListerOptions{
 		path:              "home/user/random_path",
+		workerCount:       4,
 		defaultPermission: common.DefaultFilePermissionBits,
 		remote:            nil,
 		statsMgr:          nil,
@@ -201,6 +203,7 @@ func (suite *listTestSuite) TestNewRemoteLister() {
 
 	rl, err = newRemoteLister(&remoteListerOptions{
 		path:              "home/user/random_path",
+		workerCount:       4,
 		defaultPermission: common.DefaultFilePermissionBits,
 		remote:            lb,
 		statsMgr:          nil,
@@ -215,6 +218,7 @@ func (suite *listTestSuite) TestNewRemoteLister() {
 
 	rl, err = newRemoteLister(&remoteListerOptions{
 		path:              "home/user/random_path",
+		workerCount:       4,
 		defaultPermission: common.DefaultFilePermissionBits,
 		remote:            lb,
 		statsMgr:          statsMgr,
@@ -235,6 +239,7 @@ func (suite *listTestSuite) TestListerStartStop() {
 
 	rl, err := newRemoteLister(&remoteListerOptions{
 		path:              tl.path,
+		workerCount:       4,
 		defaultPermission: common.DefaultFilePermissionBits,
 		remote:            lb,
 		statsMgr:          tl.stMgr,
@@ -268,6 +273,7 @@ func (suite *listTestSuite) TestListerMkdir() {
 
 	rl, err := newRemoteLister(&remoteListerOptions{
 		path:              tl.path,
+		workerCount:       4,
 		defaultPermission: common.DefaultFilePermissionBits,
 		remote:            lb,
 		statsMgr:          tl.stMgr,

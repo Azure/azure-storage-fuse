@@ -70,18 +70,19 @@ type remoteLister struct {
 
 type remoteListerOptions struct {
 	path              string
+	workerCount       uint32
 	defaultPermission os.FileMode
 	remote            internal.Component
 	statsMgr          *StatsManager
 }
 
 func newRemoteLister(opts *remoteListerOptions) (*remoteLister, error) {
-	if opts == nil || opts.path == "" || opts.remote == nil || opts.statsMgr == nil {
+	if opts == nil || opts.path == "" || opts.remote == nil || opts.statsMgr == nil || opts.workerCount == 0 {
 		log.Err("lister::NewRemoteLister : invalid parameters sent to create remote lister")
 		return nil, fmt.Errorf("invalid parameters sent to create remote lister")
 	}
 
-	log.Debug("lister::NewRemoteLister : create new remote lister for %s, default permission %v", opts.path, opts.defaultPermission)
+	log.Debug("lister::NewRemoteLister : create new remote lister for %s, default permission %v, workers %v", opts.path, opts.defaultPermission, opts.workerCount)
 
 	rl := &remoteLister{
 		lister: lister{
@@ -92,6 +93,7 @@ func newRemoteLister(opts *remoteListerOptions) (*remoteLister, error) {
 	}
 
 	rl.SetName(LISTER)
+	rl.SetWorkerCount(opts.workerCount)
 	rl.SetRemote(opts.remote)
 	rl.SetStatsManager(opts.statsMgr)
 	rl.Init()
@@ -99,7 +101,7 @@ func newRemoteLister(opts *remoteListerOptions) (*remoteLister, error) {
 }
 
 func (rl *remoteLister) Init() {
-	rl.SetThreadPool(NewThreadPool(MAX_LISTER, rl.Process))
+	rl.SetThreadPool(NewThreadPool(rl.GetWorkerCount(), rl.Process))
 	if rl.GetThreadPool() == nil {
 		log.Err("remoteLister::Init : fail to init thread pool")
 	}

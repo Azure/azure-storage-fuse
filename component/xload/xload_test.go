@@ -364,6 +364,7 @@ func (suite *xloadTestSuite) TestCreateDownloader() {
 	suite.assert.Len(xl.comps, 0)
 
 	xl.path = suite.local_path
+	xl.workerCount = 4
 	xl.SetNextComponent(xl)
 	xl.statsMgr = &StatsManager{}
 	err = xl.createDownloader()
@@ -383,10 +384,11 @@ func (suite *xloadTestSuite) TestCreateChain() {
 	suite.cleanupTest(false) // teardown the default xload generated
 
 	xl := &Xload{
-		path:      suite.local_path,
-		statsMgr:  &StatsManager{},
-		blockPool: &BlockPool{},
-		fileLocks: common.NewLockMap(),
+		path:        suite.local_path,
+		statsMgr:    &StatsManager{},
+		blockPool:   &BlockPool{},
+		fileLocks:   common.NewLockMap(),
+		workerCount: 4,
 	}
 	xl.SetNextComponent(xl)
 
@@ -421,10 +423,11 @@ func (suite *xloadTestSuite) TestDownloadFileGetAttrError() {
 	suite.cleanupTest(false) // teardown the default xload generated
 
 	xl := &Xload{
-		path:      suite.local_path,
-		statsMgr:  &StatsManager{},
-		blockPool: &BlockPool{},
-		fileLocks: common.NewLockMap(),
+		path:        suite.local_path,
+		statsMgr:    &StatsManager{},
+		blockPool:   &BlockPool{},
+		fileLocks:   common.NewLockMap(),
+		workerCount: 4,
 	}
 
 	cfg := fmt.Sprintf("loopbackfs:\n  path: %s\n", suite.fake_storage_path)
