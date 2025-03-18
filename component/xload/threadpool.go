@@ -115,41 +115,25 @@ func (threadPool *ThreadPool) Do(priority bool) {
 		// This thread will work only on high priority channel
 		for {
 			select {
+			case item := <-threadPool.priorityItems:
+				threadPool.process(item)
+
 			case <-threadPool.ctx.Done(): // listen to cancellation signal
 				return
-
-			default:
-				select {
-				case <-threadPool.ctx.Done(): // listen to cancellation signal
-					return
-				case item := <-threadPool.priorityItems:
-					threadPool.process(item)
-				}
 			}
 		}
 	} else {
 		// This thread will work only on both high and low priority channel
 		for {
 			select {
+			case item := <-threadPool.priorityItems:
+				threadPool.process(item)
+
+			case item := <-threadPool.workItems:
+				threadPool.process(item)
+
 			case <-threadPool.ctx.Done(): // listen to cancellation signal
 				return
-
-			default:
-				select {
-				case <-threadPool.ctx.Done(): // listen to cancellation signal
-					return
-				case item := <-threadPool.priorityItems:
-					threadPool.process(item)
-				default:
-					select {
-					case <-threadPool.ctx.Done(): // listen to cancellation signal
-						return
-					case item := <-threadPool.priorityItems:
-						threadPool.process(item)
-					case item := <-threadPool.workItems:
-						threadPool.process(item)
-					}
-				}
 			}
 		}
 	}
