@@ -230,7 +230,7 @@ stages:
           sudo dpkg --info blobfuse2*.deb
           sudo apt-get install $(fuse-version) build-essential -y
           sudo apt-get install $(tags) $(fuselib) -y
-          sudo yum install fuse fuse-devel -y --nobest --allowerasing
+          sudo apt-get install fuse libfuse-dev libfuse2 -y
           fuse --version
           fusermount --version
           sudo dpkg -i blobfuse2*.deb
