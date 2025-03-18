@@ -42,6 +42,9 @@ type BlockPool struct {
 	// Channel holding free blocks
 	blocksCh chan *Block
 
+	// Channel holding free blocks
+	priorityCh chan *Block
+
 	// Size of each block this pool holds
 	blockSize uint64
 
@@ -57,10 +60,13 @@ func NewBlockPool(blockSize uint64, blockCount uint32) *BlockPool {
 		return nil
 	}
 
+	highPriority := (blockCount * 10) / 100
+
 	pool := &BlockPool{
-		blocksCh:  make(chan *Block, blockCount),
-		maxBlocks: uint32(blockCount),
-		blockSize: blockSize,
+		blocksCh:   make(chan *Block, blockCount-highPriority),
+		priorityCh: make(chan *Block, highPriority),
+		maxBlocks:  uint32(blockCount),
+		blockSize:  blockSize,
 	}
 
 	// Preallocate all blocks so that during runtime we do not spend CPU cycles on this
@@ -71,7 +77,11 @@ func NewBlockPool(blockSize uint64, blockCount uint32) *BlockPool {
 			return nil
 		}
 
-		pool.blocksCh <- block
+		if i < highPriority {
+			pool.priorityCh <- block
+		} else {
+			pool.blocksCh <- block
+		}
 	}
 
 	return pool
@@ -122,20 +132,10 @@ func (pool *BlockPool) mustGet() *Block {
 	var block *Block = nil
 
 	select {
+	case block = <-pool.priorityCh:
+		break
 	case block = <-pool.blocksCh:
 		break
-
-	default:
-		// There are no free blocks so we must allocate one and return here
-		// As the consumer of the pool needs a block immediately
-		log.Info("BlockPool::MustGet : No free blocks, allocating a new one")
-		var err error
-		block, err = AllocateBlock(pool.blockSize)
-		if err != nil {
-			// TODO:: xload : should we fall back to waiting to get a block from blockpool
-			log.Err("BlockPool::MustGet : unable to allocate block [%s]", err.Error())
-			return nil
-		}
 	}
 
 	// Mark the buffer ready for reuse now
@@ -147,6 +147,8 @@ func (pool *BlockPool) mustGet() *Block {
 func (pool *BlockPool) Release(block *Block) {
 	select {
 	case pool.blocksCh <- block:
+		break
+	case pool.priorityCh <- block:
 		break
 	default:
 		_ = block.Delete()
