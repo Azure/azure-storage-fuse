@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1741636346358,
+  "lastUpdate": 1742378444594,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -57,6 +57,40 @@ window.BENCHMARK_DATA = {
           "url": "https://github.com/Azure/azure-storage-fuse/commit/79978157a7cb7035566f743a8c86becadf2dec81"
         },
         "date": 1741636346073,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "list_100k_files",
+            "value": "0.00000",
+            "unit": "seconds"
+          },
+          {
+            "name": "delete_100k_files",
+            "value": "0.00000",
+            "unit": "seconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "syeleti@microsoft.com",
+            "name": "Srinivas Yeleti",
+            "username": "syeleti-msft"
+          },
+          "committer": {
+            "email": "syeleti@microsoft.com",
+            "name": "Srinivas Yeleti",
+            "username": "syeleti-msft"
+          },
+          "distinct": true,
+          "id": "abeffac3531ff852a6240abfd960d263274a1527",
+          "message": "remove warning errors that is preventing the run to happen",
+          "timestamp": "2025-03-19T07:21:38Z",
+          "tree_id": "fb855960d36d4e3f6914668bbc2c3a116cd23e8a",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/abeffac3531ff852a6240abfd960d263274a1527"
+        },
+        "date": 1742378444312,
         "tool": "customSmallerIsBetter",
         "benches": [
           {
