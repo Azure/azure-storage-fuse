@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1741581608957,
+  "lastUpdate": 1742390092981,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -33,6 +33,40 @@ window.BENCHMARK_DATA = {
           {
             "name": "create_10_20GB_file",
             "value": 30.70083975791931,
+            "unit": "seconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "syeleti@microsoft.com",
+            "name": "Srinivas Yeleti",
+            "username": "syeleti-msft"
+          },
+          "committer": {
+            "email": "syeleti@microsoft.com",
+            "name": "Srinivas Yeleti",
+            "username": "syeleti-msft"
+          },
+          "distinct": true,
+          "id": "abeffac3531ff852a6240abfd960d263274a1527",
+          "message": "remove warning errors that is preventing the run to happen",
+          "timestamp": "2025-03-19T07:21:38Z",
+          "tree_id": "fb855960d36d4e3f6914668bbc2c3a116cd23e8a",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/abeffac3531ff852a6240abfd960d263274a1527"
+        },
+        "date": 1742390092740,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "read_10_20GB_file",
+            "value": 23.316811323165894,
+            "unit": "seconds"
+          },
+          {
+            "name": "create_10_20GB_file",
+            "value": 35.22517657279968,
             "unit": "seconds"
           }
         ]
