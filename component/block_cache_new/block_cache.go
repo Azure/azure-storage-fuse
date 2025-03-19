@@ -59,14 +59,23 @@ var bc *BlockCache // declaring it as a global variable to use in the other file
 var BlockSize int
 var bPool *BufferPool
 var wp *workerPool
-var memory int = 1024 * 1024 * 1024
+var memory int = 200 * 1024 * 1024
 
 // Common structure for Component
 type BlockCache struct {
 	internal.BaseComponent
 
-	blockSize uint64 // Size of each block that will be cached
-	memSize   uint64 // Memory given by the user to use for data caching.
+	blockSizeMB    uint64      // Size of each block that will be cached as per configuration file/ default
+	memSizeMB      uint64      // Memory given by the user to use for data caching.
+	tmpPath        string      // Can be used as secondary caching mechanism. Helpful in Random Read and Random writes.[TODO]
+	diskSizeMB     uint64      // Size of the Secondary Cache.
+	diskTimeout    uint32      // In seconds, invalidate the node in secondary cache after this many seconds. Currently Not used.
+	prefetchCount  uint32      // Represents the size of the readahead window while reading seqeuntially.
+	workers        uint32      // The number of go routines used for uploading and downloading concurrently.
+	prefetchOnOpen bool        // Start readahead as soon as open call is success from the 0th offset. [TODO]
+	consistency    bool        // CRC check for the secondary cache(preveting disk read failure). [TODO]
+	bPool          *BufferPool // Buffer Managemenet Pool.
+	wp             *workerPool // Worker Pool which has fixed go routines spawned already. Used to schedule tasks.
 }
 
 // Structure defining your config parameters
@@ -77,7 +86,9 @@ type BlockCacheOptions struct {
 	DiskSize       uint64  `config:"disk-size-mb" yaml:"disk-size-mb,omitempty"`
 	DiskTimeout    uint32  `config:"disk-timeout-sec" yaml:"timeout-sec,omitempty"`
 	PrefetchCount  uint32  `config:"prefetch" yaml:"prefetch,omitempty"`
+	Workers        uint32  `config:"parallelism" yaml:"parallelism,omitempty"`
 	PrefetchOnOpen bool    `config:"prefetch-on-open" yaml:"prefetch-on-open,omitempty"`
+	Consistency    bool    `config:"consistency" yaml:"consistency,omitempty"`
 }
 
 const (
@@ -527,8 +538,8 @@ func (bc *BlockCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAtt
 // << DO NOT DELETE ANY AUTO GENERATED CODE HERE >>
 func NewBlockCacheComponent() internal.Component {
 	comp := &BlockCache{}
-	comp.blockSize = 8 * 1024 * 1024
-	BlockSize = int(comp.blockSize)
+	comp.blockSizeMB = 8 * 1024 * 1024
+	BlockSize = int(comp.blockSizeMB)
 	comp.SetName(compName)
 	bc = comp
 	return comp

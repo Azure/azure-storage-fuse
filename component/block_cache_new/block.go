@@ -100,11 +100,11 @@ func validateBlockList(blkList *internal.CommittedBlockList, f *File) (blockList
 	listLen := len(*blkList)
 	var newblkList blockList
 	for idx, blk := range *blkList {
-		if idx < (listLen-1) && blk.Size != bc.blockSize {
-			log.Err("BlockCache::validateBlockList : Unsupported blocklist Format blk idx : %d is having size %d, while block size set is %d", idx, blk.Size, bc.blockSize)
+		if idx < (listLen-1) && blk.Size != bc.blockSizeMB {
+			log.Err("BlockCache::validateBlockList : Unsupported blocklist Format blk idx : %d is having size %d, while block size set is %d", idx, blk.Size, bc.blockSizeMB)
 			return createBlockListForReadOnlyFile(f), false
-		} else if idx == (listLen-1) && blk.Size > bc.blockSize {
-			log.Err("BlockCache::validateBlockList : Unsupported blocklist Format, Last block(i.e., blk idx : %d) is having greater size(i.e., %d MB) than block size configured is %dMB", idx, blk.Size, bc.blockSize)
+		} else if idx == (listLen-1) && blk.Size > bc.blockSizeMB {
+			log.Err("BlockCache::validateBlockList : Unsupported blocklist Format, Last block(i.e., blk idx : %d) is having greater size(i.e., %d MB) than block size configured is %dMB", idx, blk.Size, bc.blockSizeMB)
 			return createBlockListForReadOnlyFile(f), false
 		} else if len(blk.Id) != StdBlockIdLength {
 			log.Err("BlockCache::validateBlockList : Unsupported blocklist Format, block Id length for blk idx : %d is %d bytes is not matching to what blobfuse uses(i.e., %d bytes)", idx, len(blk.Id), StdBlockIdLength)
