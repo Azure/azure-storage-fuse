@@ -50,7 +50,7 @@ func (suite *HandleMapSuite) SetupTest() {
 	suite.assert = assert.New(suite.T())
 }
 
-// mount failure test where the mount directory does not exists
+// mount failure test where the mount directory does not exist
 func (suite *HandleMapSuite) TestNewHandle() {
 	h := NewHandle("abc")
 	suite.assert.NotNil(h)

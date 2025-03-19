@@ -257,6 +257,16 @@ func (suite *utilTestSuite) TestExpandPath() {
 	path = ""
 	expandedPath = ExpandPath(path)
 	suite.assert.Equal(expandedPath, path)
+
+	path = "$HOME/.blobfuse2/config_$web.yaml"
+	expandedPath = ExpandPath(path)
+	suite.assert.NotEqual(expandedPath, path)
+	suite.assert.Contains(path, "$web")
+
+	path = "$HOME/.blobfuse2/$web"
+	expandedPath = ExpandPath(path)
+	suite.assert.NotEqual(expandedPath, path)
+	suite.assert.Contains(path, "$web")
 }
 
 func (suite *utilTestSuite) TestGetUSage() {
@@ -361,6 +371,16 @@ func (suite *utilTestSuite) TestWriteToFile() {
 	suite.assert.Nil(err)
 	suite.assert.Equal(content, string(data))
 
+}
+
+func (suite *utilTestSuite) TestCRC64() {
+	data := []byte("Hello World")
+	crc := GetCRC64(data, len(data))
+
+	data = []byte("Hello World!")
+	crc1 := GetCRC64(data, len(data))
+
+	suite.assert.NotEqual(crc, crc1)
 }
 
 func (suite *utilTestSuite) TestGetFuseMinorVersion() {

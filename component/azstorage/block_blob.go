@@ -39,6 +39,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -47,6 +48,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/streaming"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
@@ -57,6 +59,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
+	"github.com/vibhansa-msft/blobfilter"
 )
 
 const (
@@ -101,9 +104,10 @@ func (bb *BlockBlob) Configure(cfg AzStorageConfig) error {
 	}
 
 	bb.listDetails = container.ListBlobsInclude{
-		Metadata:  true,
-		Deleted:   false,
-		Snapshots: false,
+		Metadata:    true,
+		Deleted:     false,
+		Snapshots:   false,
+		Permissions: false, //Added to get permissions, acl, group, owner for HNS accounts
 	}
 
 	return nil
@@ -196,7 +200,12 @@ func (bb *BlockBlob) TestPipeline() error {
 	// we are just validating the auth mode used. So, no need to iterate over the pages
 	_, err := listBlobPager.NextPage(context.Background())
 	if err != nil {
-		log.Err("BlockBlob::TestPipeline : Failed to validate account with given auth %s", err.Error)
+		log.Err("BlockBlob::TestPipeline : Failed to validate account with given auth %s", err.Error())
+		var respErr *azcore.ResponseError
+		errors.As(err, &respErr)
+		if respErr != nil {
+			return fmt.Errorf("BlockBlob::TestPipeline : [%s]", respErr.ErrorCode)
+		}
 		return err
 	}
 
@@ -283,26 +292,6 @@ func (bb *BlockBlob) DeleteFile(name string) (err error) {
 // DeleteDirectory : Delete a virtual directory in the container/virtual directory
 func (bb *BlockBlob) DeleteDirectory(name string) (err error) {
 	log.Trace("BlockBlob::DeleteDirectory : name %s", name)
-
-	pager := bb.Container.NewListBlobsFlatPager(&container.ListBlobsFlatOptions{
-		Prefix: to.Ptr(filepath.Join(bb.Config.prefixPath, name) + "/"),
-	})
-	for pager.More() {
-		listBlobResp, err := pager.NextPage(context.Background())
-		if err != nil {
-			log.Err("BlockBlob::DeleteDirectory : Failed to get list of blobs %s", err.Error())
-			return err
-		}
-
-		// Process the blobs returned in this result segment (if the segment is empty, the loop body won't execute)
-		for _, blobInfo := range listBlobResp.Segment.BlobItems {
-			err = bb.DeleteFile(split(bb.Config.prefixPath, *blobInfo.Name))
-			if err != nil {
-				log.Err("BlockBlob::DeleteDirectory : Failed to delete file %s [%s]", *blobInfo.Name, err.Error())
-			}
-		}
-	}
-
 	err = bb.DeleteFile(name)
 	// libfuse deletes the files in the directory before this method is called.
 	// If the marker blob for directory is not present, ignore the ENOENT error.
@@ -314,7 +303,12 @@ func (bb *BlockBlob) DeleteDirectory(name string) (err error) {
 
 // RenameFile : Rename the file
 // Source file must exist in storage account before calling this method.
-func (bb *BlockBlob) RenameFile(source string, target string) error {
+// When the rename is success, Data, metadata, of the blob will be copied to the destination.
+// Creation time and LMT is not preserved for copyBlob API.
+// Etag of the destination blob changes.
+// Copy the LMT to the src attr if the copy is success.
+// https://learn.microsoft.com/en-us/rest/api/storageservices/copy-blob?tabs=microsoft-entra-id
+func (bb *BlockBlob) RenameFile(source string, target string, srcAttr *internal.ObjAttr) error {
 	log.Trace("BlockBlob::RenameFile : %s -> %s", source, target)
 
 	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, source))
@@ -322,7 +316,7 @@ func (bb *BlockBlob) RenameFile(source string, target string) error {
 
 	// not specifying source blob metadata, since passing empty metadata headers copies
 	// the source blob metadata to destination blob
-	startCopy, err := newBlobClient.StartCopyFromURL(context.Background(), blobClient.URL(), &blob.StartCopyFromURLOptions{
+	copyResponse, err := newBlobClient.StartCopyFromURL(context.Background(), blobClient.URL(), &blob.StartCopyFromURLOptions{
 		Tier: bb.Config.defaultTier,
 	})
 
@@ -338,16 +332,31 @@ func (bb *BlockBlob) RenameFile(source string, target string) error {
 		return err
 	}
 
-	copyStatus := startCopy.CopyStatus
+	var dstLMT *time.Time = copyResponse.LastModified
+	var dstETag string = sanitizeEtag(copyResponse.ETag)
+
+	copyStatus := copyResponse.CopyStatus
+	var prop blob.GetPropertiesResponse
+	pollCnt := 0
 	for copyStatus != nil && *copyStatus == blob.CopyStatusTypePending {
 		time.Sleep(time.Second * 1)
-		prop, err := newBlobClient.GetProperties(context.Background(), &blob.GetPropertiesOptions{
+		pollCnt++
+		prop, err = newBlobClient.GetProperties(context.Background(), &blob.GetPropertiesOptions{
 			CPKInfo: bb.blobCPKOpt,
 		})
 		if err != nil {
 			log.Err("BlockBlob::RenameFile : CopyStats : Failed to get blob properties for %s [%s]", source, err.Error())
 		}
 		copyStatus = prop.CopyStatus
+	}
+
+	if pollCnt > 0 {
+		dstLMT = prop.LastModified
+		dstETag = sanitizeEtag(prop.ETag)
+	}
+
+	if copyStatus != nil && *copyStatus == blob.CopyStatusTypeSuccess {
+		modifyLMTandEtag(srcAttr, dstLMT, dstETag)
 	}
 
 	log.Trace("BlockBlob::RenameFile : %s -> %s done", source, target)
@@ -390,8 +399,8 @@ func (bb *BlockBlob) RenameDirectory(source string, target string) error {
 		// Process the blobs returned in this result segment (if the segment is empty, the loop body won't execute)
 		for _, blobInfo := range listBlobResp.Segment.BlobItems {
 			srcDirPresent = true
-			srcPath := split(bb.Config.prefixPath, *blobInfo.Name)
-			err = bb.RenameFile(srcPath, strings.Replace(srcPath, source, target, 1))
+			srcPath := removePrefixPath(bb.Config.prefixPath, *blobInfo.Name)
+			err = bb.RenameFile(srcPath, strings.Replace(srcPath, source, target, 1), nil)
 			if err != nil {
 				log.Err("BlockBlob::RenameDirectory : Failed to rename file %s [%s]", srcPath, err.Error)
 			}
@@ -417,7 +426,7 @@ func (bb *BlockBlob) RenameDirectory(source string, target string) error {
 		}
 	}
 
-	return bb.RenameFile(source, target)
+	return bb.RenameFile(source, target, nil)
 }
 
 func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err error) {
@@ -429,10 +438,10 @@ func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err 
 	})
 
 	if err != nil {
-		e := storeBlobErrToErr(err)
-		if e == ErrFileNotFound {
+		serr := storeBlobErrToErr(err)
+		if serr == ErrFileNotFound {
 			return attr, syscall.ENOENT
-		} else if e == InvalidPermission {
+		} else if serr == InvalidPermission {
 			log.Err("BlockBlob::getAttrUsingRest : Insufficient permissions for %s [%s]", name, err.Error())
 			return attr, syscall.EACCES
 		} else {
@@ -453,10 +462,12 @@ func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err 
 		Crtime: *prop.CreationTime,
 		Flags:  internal.NewFileBitMap(),
 		MD5:    prop.ContentMD5,
+		ETag:   sanitizeEtag(prop.ETag),
 	}
 
 	parseMetadata(attr, prop.Metadata)
 
+	// We do not get permissions as part of this getAttr call hence setting the flag to true
 	attr.Flags.Set(internal.PropFlagModeDefault)
 
 	return attr, nil
@@ -516,10 +527,23 @@ func (bb *BlockBlob) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 
 	// To support virtual directories with no marker blob, we call list instead of get properties since list will not return a 404
 	if bb.Config.virtualDirectory {
-		return bb.getAttrUsingList(name)
+		attr, err = bb.getAttrUsingList(name)
+	} else {
+		attr, err = bb.getAttrUsingRest(name)
 	}
 
-	return bb.getAttrUsingRest(name)
+	if bb.Config.filter != nil && attr != nil {
+		if !bb.Config.filter.IsAcceptable(&blobfilter.BlobAttr{
+			Name:  attr.Name,
+			Mtime: attr.Mtime,
+			Size:  attr.Size,
+		}) {
+			log.Debug("BlockBlob::GetAttr : Filtered out %s", name)
+			return nil, syscall.ENOENT
+		}
+	}
+
+	return attr, err
 }
 
 // List : Get a list of blobs matching the given prefix
@@ -534,16 +558,11 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 		}
 	}(marker))
 
-	blobList := make([]*internal.ObjAttr, 0)
-
 	if count == 0 {
 		count = common.MaxDirListCount
 	}
 
-	listPath := filepath.Join(bb.Config.prefixPath, prefix)
-	if (prefix != "" && prefix[len(prefix)-1] == '/') || (prefix == "" && bb.Config.prefixPath != "") {
-		listPath += "/"
-	}
+	listPath := bb.getListPath(prefix)
 
 	// Get a result segment starting with the blob indicated by the current Marker.
 	pager := bb.Container.NewListBlobsHierarchyPager("/", &container.ListBlobsHierarchyOptions{
@@ -562,54 +581,15 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 
 	if err != nil {
 		log.Err("BlockBlob::List : Failed to list the container with the prefix %s", err.Error)
-		return blobList, nil, err
-	}
-
-	dereferenceTime := func(input *time.Time, defaultTime time.Time) time.Time {
-		if input == nil {
-			return defaultTime
-		} else {
-			return *input
-		}
+		return nil, nil, err
 	}
 
 	// Process the blobs returned in this result segment (if the segment is empty, the loop body won't execute)
 	// Since block blob does not support acls, we set mode to 0 and FlagModeDefault to true so the fuse layer can return the default permission.
 
-	// For some directories 0 byte meta file may not exists so just create a map to figure out such directories
-	var dirList = make(map[string]bool)
-	for _, blobInfo := range listBlob.Segment.BlobItems {
-		attr := &internal.ObjAttr{}
-		if blobInfo.Properties.CustomerProvidedKeySHA256 != nil && *blobInfo.Properties.CustomerProvidedKeySHA256 != "" {
-			log.Trace("BlockBlob::List : blob is encrypted with customer provided key so fetching metadata explicitly using REST")
-			attr, err = bb.getAttrUsingRest(*blobInfo.Name)
-			if err != nil {
-				log.Err("BlockBlob::List : Failed to get properties of blob %s", *blobInfo.Name)
-				return blobList, nil, err
-			}
-		} else {
-			attr = &internal.ObjAttr{
-				Path:   split(bb.Config.prefixPath, *blobInfo.Name),
-				Name:   filepath.Base(*blobInfo.Name),
-				Size:   *blobInfo.Properties.ContentLength,
-				Mode:   0,
-				Mtime:  *blobInfo.Properties.LastModified,
-				Atime:  dereferenceTime(blobInfo.Properties.LastAccessedOn, *blobInfo.Properties.LastModified),
-				Ctime:  *blobInfo.Properties.LastModified,
-				Crtime: dereferenceTime(blobInfo.Properties.CreationTime, *blobInfo.Properties.LastModified),
-				Flags:  internal.NewFileBitMap(),
-				MD5:    blobInfo.Properties.ContentMD5,
-			}
-			parseMetadata(attr, blobInfo.Metadata)
-			attr.Flags.Set(internal.PropFlagModeDefault)
-		}
-		blobList = append(blobList, attr)
-
-		if attr.IsDir() {
-			// 0 byte meta found so mark this directory in map
-			dirList[*blobInfo.Name+"/"] = true
-			attr.Size = 4096
-		}
+	blobList, dirList, err := bb.processBlobItems(listBlob.Segment.BlobItems)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	// In case virtual directory exists but its corresponding 0 byte marker file is not there holding hdi_isfolder then just iterating
@@ -617,30 +597,127 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 	// dirList contains all dirs for which we got 0 byte meta file in this iteration, so exclude those and add rest to the list
 	// Note: Since listing is paginated, sometimes the marker file may come in a different iteration from the BlobPrefix. For such
 	// cases we manually call GetAttr to check the existence of the marker file.
-	for _, blobInfo := range listBlob.Segment.BlobPrefixes {
+	err = bb.processBlobPrefixes(listBlob.Segment.BlobPrefixes, dirList, &blobList)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return blobList, listBlob.NextMarker, nil
+}
+
+func (bb *BlockBlob) getListPath(prefix string) string {
+	listPath := filepath.Join(bb.Config.prefixPath, prefix)
+	if (prefix != "" && prefix[len(prefix)-1] == '/') || (prefix == "" && bb.Config.prefixPath != "") {
+		listPath += "/"
+	}
+	return listPath
+}
+
+func (bb *BlockBlob) processBlobItems(blobItems []*container.BlobItem) ([]*internal.ObjAttr, map[string]bool, error) {
+	blobList := make([]*internal.ObjAttr, 0)
+	// For some directories 0 byte meta file may not exists so just create a map to figure out such directories
+	dirList := make(map[string]bool)
+	filterAttr := blobfilter.BlobAttr{}
+
+	for _, blobInfo := range blobItems {
+		blobAttr, err := bb.getBlobAttr(blobInfo)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		if blobAttr.IsDir() {
+			// 0 byte meta found so mark this directory in map
+			dirList[*blobInfo.Name+"/"] = true
+			blobAttr.Size = 4096
+		}
+
+		if bb.Config.filter != nil && !blobAttr.IsDir() {
+			filterAttr.Name = blobAttr.Name
+			filterAttr.Mtime = blobAttr.Mtime
+			filterAttr.Size = blobAttr.Size
+
+			if bb.Config.filter.IsAcceptable(&filterAttr) {
+				blobList = append(blobList, blobAttr)
+			} else {
+				log.Debug("BlockBlob::List : Filtered out blob %s", blobAttr.Name)
+			}
+		} else {
+			blobList = append(blobList, blobAttr)
+		}
+	}
+
+	return blobList, dirList, nil
+}
+
+func (bb *BlockBlob) getBlobAttr(blobInfo *container.BlobItem) (*internal.ObjAttr, error) {
+	if blobInfo.Properties.CustomerProvidedKeySHA256 != nil && *blobInfo.Properties.CustomerProvidedKeySHA256 != "" {
+		log.Trace("BlockBlob::List : blob is encrypted with customer provided key so fetching metadata explicitly using REST")
+		return bb.getAttrUsingRest(*blobInfo.Name)
+	}
+	mode, err := bb.getFileMode(blobInfo.Properties.Permissions)
+	if err != nil {
+		mode = 0
+		log.Warn("BlockBlob::getBlobAttr : Failed to get file mode for %s [%s]", *blobInfo.Name, err.Error())
+	}
+
+	attr := &internal.ObjAttr{
+		Path:   removePrefixPath(bb.Config.prefixPath, *blobInfo.Name),
+		Name:   filepath.Base(*blobInfo.Name),
+		Size:   *blobInfo.Properties.ContentLength,
+		Mode:   mode,
+		Mtime:  *blobInfo.Properties.LastModified,
+		Atime:  bb.dereferenceTime(blobInfo.Properties.LastAccessedOn, *blobInfo.Properties.LastModified),
+		Ctime:  *blobInfo.Properties.LastModified,
+		Crtime: bb.dereferenceTime(blobInfo.Properties.CreationTime, *blobInfo.Properties.LastModified),
+		Flags:  internal.NewFileBitMap(),
+		MD5:    blobInfo.Properties.ContentMD5,
+		ETag:   sanitizeEtag(blobInfo.Properties.ETag),
+	}
+
+	parseMetadata(attr, blobInfo.Metadata)
+	if !bb.listDetails.Permissions {
+		// In case of HNS account do not set this flag
+		attr.Flags.Set(internal.PropFlagModeDefault)
+	}
+
+	return attr, nil
+}
+
+func (bb *BlockBlob) getFileMode(permissions *string) (os.FileMode, error) {
+	if permissions == nil {
+		return 0, nil
+	}
+	return getFileMode(*permissions)
+}
+
+func (bb *BlockBlob) dereferenceTime(input *time.Time, defaultTime time.Time) time.Time {
+	if input == nil {
+		return defaultTime
+	}
+	return *input
+}
+
+func (bb *BlockBlob) processBlobPrefixes(blobPrefixes []*container.BlobPrefix, dirList map[string]bool, blobList *[]*internal.ObjAttr) error {
+	for _, blobInfo := range blobPrefixes {
 		if _, ok := dirList[*blobInfo.Name]; ok {
 			// marker file found in current iteration, skip adding the directory
 			continue
 		} else {
-			// marker file not found in current iteration, so we need to manually check attributes via REST
-			_, err := bb.getAttrUsingRest(*blobInfo.Name)
-			// marker file also not found via manual check, safe to add to list
-			if err == syscall.ENOENT {
-				// For these dirs we get only the name and no other properties so hardcoding time to current time
-				name := strings.TrimSuffix(*blobInfo.Name, "/")
-				attr := &internal.ObjAttr{
-					Path:  split(bb.Config.prefixPath, name),
-					Name:  filepath.Base(name),
-					Size:  4096,
-					Mode:  os.ModeDir,
-					Mtime: time.Now(),
-					Flags: internal.NewDirBitMap(),
+			//Check to see if its a HNS account and we received properties in blob prefixes
+			if bb.listDetails.Permissions {
+				attr, err := bb.createDirAttrWithPermissions(blobInfo)
+				if err != nil {
+					return err
 				}
-				attr.Atime = attr.Mtime
-				attr.Crtime = attr.Mtime
-				attr.Ctime = attr.Mtime
-				attr.Flags.Set(internal.PropFlagModeDefault)
-				blobList = append(blobList, attr)
+				*blobList = append(*blobList, attr)
+			} else {
+				// marker file not found in current iteration, so we need to manually check attributes via REST
+				_, err := bb.getAttrUsingRest(*blobInfo.Name)
+				// marker file also not found via manual check, safe to add to list
+				if err == syscall.ENOENT {
+					attr := bb.createDirAttr(*blobInfo.Name)
+					*blobList = append(*blobList, attr)
+				}
 			}
 		}
 	}
@@ -650,7 +727,54 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 		delete(dirList, k)
 	}
 
-	return blobList, listBlob.NextMarker, nil
+	return nil
+}
+
+func (bb *BlockBlob) createDirAttr(name string) *internal.ObjAttr {
+	// For these dirs we get only the name and no other properties so hardcoding time to current time
+	name = strings.TrimSuffix(name, "/")
+	attr := &internal.ObjAttr{
+		Path:  removePrefixPath(bb.Config.prefixPath, name),
+		Name:  filepath.Base(name),
+		Size:  4096,
+		Mode:  os.ModeDir,
+		Mtime: time.Now(),
+		Flags: internal.NewDirBitMap(),
+	}
+	attr.Atime = attr.Mtime
+	attr.Crtime = attr.Mtime
+	attr.Ctime = attr.Mtime
+
+	// This is called only in case of FNS when blobPrefix is there but the marker does not exists
+	attr.Flags.Set(internal.PropFlagModeDefault)
+	return attr
+}
+
+func (bb *BlockBlob) createDirAttrWithPermissions(blobInfo *container.BlobPrefix) (*internal.ObjAttr, error) {
+	if blobInfo.Properties == nil {
+		return nil, fmt.Errorf("failed to get properties of blobprefix %s", *blobInfo.Name)
+	}
+
+	mode, err := bb.getFileMode(blobInfo.Properties.Permissions)
+	if err != nil {
+		mode = 0
+		log.Warn("BlockBlob::createDirAttrWithPermissions : Failed to get file mode for %s [%s]", *blobInfo.Name, err.Error())
+	}
+
+	name := strings.TrimSuffix(*blobInfo.Name, "/")
+	attr := &internal.ObjAttr{
+		Path:   removePrefixPath(bb.Config.prefixPath, name),
+		Name:   filepath.Base(name),
+		Size:   *blobInfo.Properties.ContentLength,
+		Mode:   mode,
+		Mtime:  *blobInfo.Properties.LastModified,
+		Atime:  bb.dereferenceTime(blobInfo.Properties.LastAccessedOn, *blobInfo.Properties.LastModified),
+		Ctime:  *blobInfo.Properties.LastModified,
+		Crtime: bb.dereferenceTime(blobInfo.Properties.CreationTime, *blobInfo.Properties.LastModified),
+		Flags:  internal.NewDirBitMap(),
+	}
+
+	return attr, nil
 }
 
 // track the progress of download of blobs where every 100MB of data downloaded is being tracked. It also tracks the completion of download
@@ -773,20 +897,26 @@ func (bb *BlockBlob) ReadBuffer(name string, offset int64, len int64) ([]byte, e
 }
 
 // ReadInBuffer : Download specific range from a file to a user provided buffer
-func (bb *BlockBlob) ReadInBuffer(name string, offset int64, len int64, data []byte) error {
+func (bb *BlockBlob) ReadInBuffer(name string, offset int64, len int64, data []byte, etag *string) error {
 	// log.Trace("BlockBlob::ReadInBuffer : name %s", name)
-	blobClient := bb.Container.NewBlobClient(filepath.Join(bb.Config.prefixPath, name))
-	opt := (blob.DownloadBufferOptions)(*bb.downloadOptions)
-	opt.BlockSize = len
-	opt.Range = blob.HTTPRange{
-		Offset: offset,
-		Count:  len,
+	if etag != nil {
+		*etag = ""
 	}
+
+	blobClient := bb.Container.NewBlobClient(filepath.Join(bb.Config.prefixPath, name))
 
 	ctx, cancel := context.WithTimeout(context.Background(), max_context_timeout*time.Minute)
 	defer cancel()
 
-	_, err := blobClient.DownloadBuffer(ctx, data, &opt)
+	opt := &blob.DownloadStreamOptions{
+		Range: blob.HTTPRange{
+			Offset: offset,
+			Count:  len,
+		},
+		CPKInfo: bb.blobCPKOpt,
+	}
+
+	downloadResponse, err := blobClient.DownloadStream(ctx, opt)
 
 	if err != nil {
 		e := storeBlobErrToErr(err)
@@ -796,8 +926,30 @@ func (bb *BlockBlob) ReadInBuffer(name string, offset int64, len int64, data []b
 			return syscall.ERANGE
 		}
 
-		log.Err("BlockBlob::ReadInBuffer : Failed to download blob %s [%s]", name, err.Error())
+		log.Err("BlockBlob::ReadInBufferWithETag : Failed to download blob %s [%s]", name, err.Error())
 		return err
+	}
+
+	var streamBody io.ReadCloser = downloadResponse.NewRetryReader(ctx, nil)
+	dataRead, err := io.ReadFull(streamBody, data)
+
+	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+		log.Err("BlockBlob::ReadInBuffer : Failed to copy data from body to buffer for blob %s [%s]", name, err.Error())
+		return err
+	}
+
+	if dataRead < 0 {
+		log.Err("BlockBlob::ReadInBuffer : Failed to copy data from body to buffer for blob %s", name)
+		return errors.New("failed to copy data from body to buffer")
+	}
+
+	err = streamBody.Close()
+	if err != nil {
+		log.Err("BlockBlob::ReadInBuffer : Failed to close body for blob %s [%s]", name, err.Error())
+	}
+
+	if etag != nil {
+		*etag = sanitizeEtag(downloadResponse.ETag)
 	}
 
 	return nil
@@ -1050,7 +1202,7 @@ func (bb *BlockBlob) removeBlocks(blockList *common.BlockOffsetList, size int64,
 		blk.Data = make([]byte, blk.EndIndex-blk.StartIndex)
 		blk.Flags.Set(common.DirtyBlock)
 
-		err := bb.ReadInBuffer(name, blk.StartIndex, blk.EndIndex-blk.StartIndex, blk.Data)
+		err := bb.ReadInBuffer(name, blk.StartIndex, blk.EndIndex-blk.StartIndex, blk.Data, nil)
 		if err != nil {
 			log.Err("BlockBlob::removeBlocks : Failed to remove blocks %s [%s]", name, err.Error())
 		}
@@ -1106,7 +1258,7 @@ func (bb *BlockBlob) TruncateFile(name string, size int64) error {
 				size -= blkSize
 			}
 
-			err = bb.CommitBlocks(blobName, blkList)
+			err = bb.CommitBlocks(blobName, blkList, nil)
 			if err != nil {
 				log.Err("BlockBlob::TruncateFile : Failed to commit blocks for %s [%s]", name, err.Error())
 				return err
@@ -1174,12 +1326,12 @@ func (bb *BlockBlob) HandleSmallFile(name string, size int64, originalSize int64
 	var data = make([]byte, size)
 	var err error
 	if size > originalSize {
-		err = bb.ReadInBuffer(name, 0, 0, data)
+		err = bb.ReadInBuffer(name, 0, 0, data, nil)
 		if err != nil {
 			log.Err("BlockBlob::TruncateFile : Failed to read small file %s", name, err.Error())
 		}
 	} else {
-		err = bb.ReadInBuffer(name, 0, size, data)
+		err = bb.ReadInBuffer(name, 0, size, data, nil)
 		if err != nil {
 			log.Err("BlockBlob::TruncateFile : Failed to read small file %s", name, err.Error())
 		}
@@ -1254,7 +1406,7 @@ func (bb *BlockBlob) Write(options internal.WriteFileOptions) error {
 		oldDataBuffer := make([]byte, oldDataSize+newBufferSize)
 		if !appendOnly {
 			// fetch the blocks that will be impacted by the new changes so we can overwrite them
-			err = bb.ReadInBuffer(name, fileOffsets.BlockList[index].StartIndex, oldDataSize, oldDataBuffer)
+			err = bb.ReadInBuffer(name, fileOffsets.BlockList[index].StartIndex, oldDataSize, oldDataBuffer, nil)
 			if err != nil {
 				log.Err("BlockBlob::Write : Failed to read data in buffer %s [%s]", name, err.Error())
 			}
@@ -1445,14 +1597,14 @@ func (bb *BlockBlob) StageBlock(name string, data []byte, id string) error {
 }
 
 // CommitBlocks : persists the block list
-func (bb *BlockBlob) CommitBlocks(name string, blockList []string) error {
+func (bb *BlockBlob) CommitBlocks(name string, blockList []string, newEtag *string) error {
 	log.Trace("BlockBlob::CommitBlocks : name %s", name)
 
 	ctx, cancel := context.WithTimeout(context.Background(), max_context_timeout*time.Minute)
 	defer cancel()
 
 	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
-	_, err := blobClient.CommitBlockList(ctx,
+	resp, err := blobClient.CommitBlockList(ctx,
 		blockList,
 		&blockblob.CommitBlockListOptions{
 			HTTPHeaders: &blob.HTTPHeaders{
@@ -1467,5 +1619,19 @@ func (bb *BlockBlob) CommitBlocks(name string, blockList []string) error {
 		return err
 	}
 
+	if newEtag != nil {
+		*newEtag = sanitizeEtag(resp.ETag)
+	}
+
 	return nil
+}
+
+func (bb *BlockBlob) SetFilter(filter string) error {
+	if filter == "" {
+		bb.Config.filter = nil
+		return nil
+	}
+
+	bb.Config.filter = &blobfilter.BlobFilter{}
+	return bb.Config.filter.Configure(filter)
 }

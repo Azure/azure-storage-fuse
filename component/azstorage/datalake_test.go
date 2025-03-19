@@ -123,7 +123,6 @@ func (s *datalakeTestSuite) setupTestHelper(configuration string, container stri
 			storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsKey, s.container)
 	}
 	s.config = configuration
-
 	s.assert = assert.New(s.T())
 
 	s.az, _ = newTestAzStorage(configuration)
@@ -201,6 +200,19 @@ func (s *datalakeTestSuite) TestNoEndpoint() {
 
 	err := s.az.storage.TestPipeline()
 	s.assert.Nil(err)
+}
+
+func (s *datalakeTestSuite) TestFileSystemNotFound() {
+	defer s.cleanupTest()
+	// Setup
+	s.tearDownTestHelper(false) // Don't delete the generated container.
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
+		storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsKey, "foo")
+	s.setupTestHelper(config, "foo", false)
+
+	err := s.az.storage.TestPipeline()
+	s.assert.NotNil(err)
+	s.assert.Contains(err.Error(), "FilesystemNotFound")
 }
 
 func (s *datalakeTestSuite) TestListContainers() {
@@ -458,7 +470,7 @@ func (s *datalakeTestSuite) TestIsDirEmptyError() {
 
 	empty := s.az.IsDirEmpty(internal.IsDirEmptyOptions{Name: name})
 
-	s.assert.False(empty) // Note: See comment in BlockBlob.List. BlockBlob behaves differently from Datalake
+	s.assert.True(empty) // Note: See comment in BlockBlob.List. BlockBlob behaves differently from Datalake
 
 	// Directory should not be in the account
 	dir := s.containerClient.NewDirectoryClient(name)
@@ -494,19 +506,20 @@ func (s *datalakeTestSuite) TestReadDirHierarchy() {
 	s.setupHierarchy(base)
 
 	// ReadDir only reads the first level of the hierarchy
+	//Using listblob api lists the files before directories so the order is reversed
 	entries, err := s.az.ReadDir(internal.ReadDirOptions{Name: base})
 	s.assert.Nil(err)
 	s.assert.EqualValues(2, len(entries))
 	// Check the dir
-	s.assert.EqualValues(base+"/c1", entries[0].Path)
-	s.assert.EqualValues("c1", entries[0].Name)
-	s.assert.True(entries[0].IsDir())
-	s.assert.False(entries[0].IsModeDefault())
-	// Check the file
-	s.assert.EqualValues(base+"/c2", entries[1].Path)
-	s.assert.EqualValues("c2", entries[1].Name)
-	s.assert.False(entries[1].IsDir())
+	s.assert.EqualValues(base+"/c1", entries[1].Path)
+	s.assert.EqualValues("c1", entries[1].Name)
+	s.assert.True(entries[1].IsDir())
 	s.assert.False(entries[1].IsModeDefault())
+	// Check the file
+	s.assert.EqualValues(base+"/c2", entries[0].Path)
+	s.assert.EqualValues("c2", entries[0].Name)
+	s.assert.False(entries[0].IsDir())
+	s.assert.False(entries[0].IsModeDefault())
 }
 
 func (s *datalakeTestSuite) TestReadDirRoot() {
@@ -524,21 +537,22 @@ func (s *datalakeTestSuite) TestReadDirRoot() {
 			entries, err := s.az.ReadDir(internal.ReadDirOptions{Name: path})
 			s.assert.Nil(err)
 			s.assert.EqualValues(3, len(entries))
+			//Listblob api lists files before directories so the order is reversed
 			// Check the base dir
-			s.assert.EqualValues(base, entries[0].Path)
-			s.assert.EqualValues(base, entries[0].Name)
-			s.assert.True(entries[0].IsDir())
-			s.assert.False(entries[0].IsModeDefault())
-			// Check the baseb dir
-			s.assert.EqualValues(base+"b", entries[1].Path)
-			s.assert.EqualValues(base+"b", entries[1].Name)
+			s.assert.EqualValues(base, entries[1].Path)
+			s.assert.EqualValues(base, entries[1].Name)
 			s.assert.True(entries[1].IsDir())
 			s.assert.False(entries[1].IsModeDefault())
-			// Check the basec file
-			s.assert.EqualValues(base+"c", entries[2].Path)
-			s.assert.EqualValues(base+"c", entries[2].Name)
-			s.assert.False(entries[2].IsDir())
+			// Check the baseb dir
+			s.assert.EqualValues(base+"b", entries[2].Path)
+			s.assert.EqualValues(base+"b", entries[2].Name)
+			s.assert.True(entries[2].IsDir())
 			s.assert.False(entries[2].IsModeDefault())
+			// Check the basec file
+			s.assert.EqualValues(base+"c", entries[0].Path)
+			s.assert.EqualValues(base+"c", entries[0].Name)
+			s.assert.False(entries[0].IsDir())
+			s.assert.False(entries[0].IsModeDefault())
 		})
 	}
 }
@@ -573,7 +587,7 @@ func (s *datalakeTestSuite) TestReadDirSubDirPrefixPath() {
 	s.assert.Nil(err)
 	s.assert.EqualValues(1, len(entries))
 	// Check the dir
-	s.assert.EqualValues(base+"/c1"+"/gc1", entries[0].Path)
+	s.assert.EqualValues("c1"+"/gc1", entries[0].Path)
 	s.assert.EqualValues("gc1", entries[0].Name)
 	s.assert.False(entries[0].IsDir())
 	s.assert.False(entries[0].IsModeDefault())
@@ -586,7 +600,7 @@ func (s *datalakeTestSuite) TestReadDirError() {
 
 	entries, err := s.az.ReadDir(internal.ReadDirOptions{Name: name})
 
-	s.assert.NotNil(err) // Note: See comment in BlockBlob.List. BlockBlob behaves differently from Datalake
+	s.assert.Nil(err) // Note: See comment in BlockBlob.List. BlockBlob behaves differently from Datalake
 	s.assert.Empty(entries)
 	// Directory should not be in the account
 	dir := s.containerClient.NewDirectoryClient(name)
@@ -1401,6 +1415,26 @@ func (s *datalakeTestSuite) TestReadInBuffer() {
 	s.assert.EqualValues(testData[:5], output)
 }
 
+func (suite *datalakeTestSuite) TestReadInBufferWithETAG() {
+	defer suite.cleanupTest()
+	// Setup
+	name := generateFileName()
+	fileHandle, _ := suite.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "test data"
+	data := []byte(testData)
+	suite.az.WriteFile(internal.WriteFileOptions{Handle: fileHandle, Offset: 0, Data: data})
+	fileHandle, _ = suite.az.OpenFile(internal.OpenFileOptions{Name: name})
+
+	output := make([]byte, 5)
+	var etag string
+	len, err := suite.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: fileHandle, Offset: 0, Data: output, Etag: &etag})
+	suite.assert.Nil(err)
+	suite.assert.NotEqual(etag, "")
+	suite.assert.EqualValues(5, len)
+	suite.assert.EqualValues(testData[:5], output)
+	_ = suite.az.CloseFile(internal.CloseFileOptions{Handle: fileHandle})
+}
+
 func (s *datalakeTestSuite) TestReadInBufferLargeBuffer() {
 	defer s.cleanupTest()
 	// Setup
@@ -2034,7 +2068,7 @@ func (s *datalakeTestSuite) TestFlushFileUpdateChunkedFile() {
 	updatedBlock := make([]byte, 2*MB)
 	rand.Read(updatedBlock)
 	h.CacheObj.BlockOffsetList.BlockList[1].Data = make([]byte, blockSize)
-	s.az.storage.ReadInBuffer(name, int64(blockSize), int64(blockSize), h.CacheObj.BlockOffsetList.BlockList[1].Data)
+	s.az.storage.ReadInBuffer(name, int64(blockSize), int64(blockSize), h.CacheObj.BlockOffsetList.BlockList[1].Data, nil)
 	copy(h.CacheObj.BlockOffsetList.BlockList[1].Data[MB:2*MB+MB], updatedBlock)
 	h.CacheObj.BlockOffsetList.BlockList[1].Flags.Set(common.DirtyBlock)
 
@@ -2072,7 +2106,7 @@ func (s *datalakeTestSuite) TestFlushFileTruncateUpdateChunkedFile() {
 	// truncate block
 	h.CacheObj.BlockOffsetList.BlockList[1].Data = make([]byte, blockSize/2)
 	h.CacheObj.BlockOffsetList.BlockList[1].EndIndex = int64(blockSize + blockSize/2)
-	s.az.storage.ReadInBuffer(name, int64(blockSize), int64(blockSize)/2, h.CacheObj.BlockOffsetList.BlockList[1].Data)
+	s.az.storage.ReadInBuffer(name, int64(blockSize), int64(blockSize)/2, h.CacheObj.BlockOffsetList.BlockList[1].Data, nil)
 	h.CacheObj.BlockOffsetList.BlockList[1].Flags.Set(common.DirtyBlock)
 
 	// remove 2 blocks
@@ -2489,7 +2523,7 @@ func (s *datalakeTestSuite) TestDownloadWithCPKEnabled() {
 	s.assert.EqualValues(data, fileData)
 
 	buf := make([]byte, len(data))
-	err = s.az.storage.ReadInBuffer(name, 0, int64(len(data)), buf)
+	err = s.az.storage.ReadInBuffer(name, 0, int64(len(data)), buf, nil)
 	s.assert.Nil(err)
 	s.assert.EqualValues(data, buf)
 
@@ -2691,6 +2725,131 @@ func (s *datalakeTestSuite) TestPermissionPreservationWithCommit() {
 	s.assert.Contains(acl, "user::rwx")
 	s.assert.Contains(acl, "group::rw-")
 	s.assert.Contains(acl, "other::rwx")
+}
+
+func (s *datalakeTestSuite) TestBlobFilters() {
+	defer s.cleanupTest()
+	// Setup
+	var err error
+	name := generateDirectoryName()
+	err = s.az.CreateDir(internal.CreateDirOptions{Name: name})
+	s.assert.Nil(err)
+	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/abcd1.txt"})
+	s.assert.Nil(err)
+	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/abcd2.txt"})
+	s.assert.Nil(err)
+	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/abcd3.txt"})
+	s.assert.Nil(err)
+	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/abcd4.txt"})
+	s.assert.Nil(err)
+	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/bcd1.txt"})
+	s.assert.Nil(err)
+	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/cd1.txt"})
+	s.assert.Nil(err)
+	_, err = s.az.CreateFile(internal.CreateFileOptions{Name: name + "/d1.txt"})
+	s.assert.Nil(err)
+	err = s.az.CreateDir(internal.CreateDirOptions{Name: name + "/subdir"})
+	s.assert.Nil(err)
+
+	var iteration int = 0
+	var marker string = ""
+	blobList := make([]*internal.ObjAttr, 0)
+
+	for {
+		new_list, new_marker, err := s.az.StreamDir(internal.StreamDirOptions{Name: name + "/", Token: marker, Count: 50})
+		s.assert.Nil(err)
+		blobList = append(blobList, new_list...)
+		marker = new_marker
+		iteration++
+
+		log.Debug("AzStorage::ReadDir : So far retrieved %d objects in %d iterations", len(blobList), iteration)
+		if new_marker == "" {
+			break
+		}
+	}
+	s.assert.EqualValues(8, len(blobList))
+	err = s.az.storage.(*Datalake).SetFilter("name=^abcd.*")
+	s.assert.Nil(err)
+
+	blobList = make([]*internal.ObjAttr, 0)
+	for {
+		new_list, new_marker, err := s.az.StreamDir(internal.StreamDirOptions{Name: name + "/", Token: marker, Count: 50})
+		s.assert.Nil(err)
+		blobList = append(blobList, new_list...)
+		marker = new_marker
+		iteration++
+
+		log.Debug("AzStorage::ReadDir : So far retrieved %d objects in %d iterations", len(blobList), iteration)
+		if new_marker == "" {
+			break
+		}
+	}
+
+	s.assert.EqualValues(5, len(blobList))
+	err = s.az.storage.(*Datalake).SetFilter("name=^bla.*")
+	s.assert.Nil(err)
+
+	blobList = make([]*internal.ObjAttr, 0)
+	for {
+		new_list, new_marker, err := s.az.StreamDir(internal.StreamDirOptions{Name: name + "/", Token: marker, Count: 50})
+		s.assert.Nil(err)
+		blobList = append(blobList, new_list...)
+		marker = new_marker
+		iteration++
+
+		log.Debug("AzStorage::ReadDir : So far retrieved %d objects in %d iterations", len(blobList), iteration)
+		if new_marker == "" {
+			break
+		}
+	}
+
+	s.assert.EqualValues(1, len(blobList))
+	err = s.az.storage.(*Datalake).SetFilter("")
+	s.assert.Nil(err)
+}
+
+func (s *datalakeTestSuite) TestList() {
+	defer s.cleanupTest()
+	// Setup
+	s.tearDownTestHelper(false) // Don't delete the generated container.
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.dfs.core.windows.net/\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n",
+		storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsKey, s.container)
+	s.setupTestHelper(config, s.container, false)
+
+	base := generateDirectoryName()
+	s.setupHierarchy(base)
+
+	blobList, marker, err := s.az.storage.List(base, nil, 0)
+	s.assert.Nil(err)
+	emptyString := ""
+	s.assert.Equal(&emptyString, marker)
+	s.assert.NotNil(blobList)
+	s.assert.EqualValues(3, len(blobList))
+	s.assert.NotEqual(0, blobList[0].Mode)
+
+	// Test listing with prefix
+	blobList, marker, err = s.az.storage.List(base+"b/", nil, 0)
+	s.assert.Nil(err)
+	s.assert.Equal(&emptyString, marker)
+	s.assert.NotNil(blobList)
+	s.assert.EqualValues(1, len(blobList))
+	s.assert.EqualValues("c1", blobList[0].Name)
+	s.assert.NotEqual(0, blobList[0].Mode)
+
+	// Test listing with marker
+	blobList, marker, err = s.az.storage.List(base, to.Ptr("invalid-marker"), 0)
+	s.assert.NotNil(err)
+	s.assert.Equal(0, len(blobList))
+	s.assert.Nil(marker)
+
+	// Test listing with count
+	blobList, marker, err = s.az.storage.List("", nil, 1)
+	s.assert.Nil(err)
+	s.assert.NotNil(blobList)
+	s.assert.NotEmpty(marker)
+	s.assert.EqualValues(1, len(blobList))
+	s.assert.EqualValues(base, blobList[0].Path)
+	s.assert.NotEqual(0, blobList[0].Mode)
 }
 
 // func (s *datalakeTestSuite) TestRAGRS() {

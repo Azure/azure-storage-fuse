@@ -73,8 +73,8 @@ const (
 	KeepAlive              time.Duration = 30 * time.Second
 	DualStack              bool          = true
 	MaxIdleConns           int           = 0 // No limit
-	MaxIdleConnsPerHost    int           = 100
-	MaxConnsPerHost        int           = 0 // No limit
+	MaxIdleConnsPerHost    int           = 200
+	MaxConnsPerHost        int           = 300
 	IdleConnTimeout        time.Duration = 90 * time.Second
 	TLSHandshakeTimeout    time.Duration = 10 * time.Second
 	ExpectContinueTimeout  time.Duration = 1 * time.Second
@@ -183,7 +183,7 @@ func newBlobfuse2HttpClient(conf *AzStorageConfig) (*http.Client, error) {
 			}).Dial, /*Context*/
 			MaxIdleConns:          MaxIdleConns, // No limit
 			MaxIdleConnsPerHost:   MaxIdleConnsPerHost,
-			MaxConnsPerHost:       MaxConnsPerHost, // No limit
+			MaxConnsPerHost:       MaxConnsPerHost,
 			IdleConnTimeout:       IdleConnTimeout,
 			TLSHandshakeTimeout:   TLSHandshakeTimeout,
 			ExpectContinueTimeout: ExpectContinueTimeout,
@@ -533,24 +533,17 @@ func getFileMode(permissions string) (os.FileMode, error) {
 	return mode, nil
 }
 
-// Strips the prefixPath from the path and returns the joined string
-func split(prefixPath string, path string) string {
+// removePrefixPath removes the given prefixPath from the beginning of path,
+// if it exists, and returns the resulting string without leading slashes.
+func removePrefixPath(prefixPath, path string) string {
 	if prefixPath == "" {
 		return path
 	}
-
-	// Remove prefixpath from the given path
-	paths := strings.Split(path, prefixPath)
-	if paths[0] == "" {
-		paths = paths[1:]
+	path = strings.TrimPrefix(path, prefixPath)
+	if path[0] == '/' {
+		return path[1:]
 	}
-
-	// If result starts with "/" then remove that
-	if paths[0][0] == '/' {
-		paths[0] = paths[0][1:]
-	}
-
-	return filepath.Join(paths...)
+	return path
 }
 
 func sanitizeSASKey(key string) string {
@@ -596,3 +589,37 @@ func removeLeadingSlashes(s string) string {
 	}
 	return s
 }
+
+func modifyLMTandEtag(attr *internal.ObjAttr, lmt *time.Time, ETag string) {
+	if attr != nil {
+		attr.Atime = *lmt
+		attr.Mtime = *lmt
+		attr.Ctime = *lmt
+		attr.ETag = ETag
+	}
+}
+
+func sanitizeEtag(ETag *azcore.ETag) string {
+	if ETag != nil {
+		return strings.Trim(string(*ETag), `"`)
+	}
+	return ""
+}
+
+// func parseBlobTags(tags *container.BlobTags) map[string]string {
+
+// 	if tags == nil {
+// 		return nil
+// 	}
+
+// 	blobtags := make(map[string]string)
+// 	for _, tag := range tags.BlobTagSet {
+// 		if tag != nil {
+// 			if tag.Key != nil {
+// 				blobtags[*tag.Key] = *tag.Value
+// 			}
+// 		}
+// 	}
+
+// 	return blobtags
+// }

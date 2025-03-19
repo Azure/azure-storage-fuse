@@ -39,6 +39,7 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -75,45 +76,6 @@ func (s *utilsTestSuite) TestContentType() {
 type contentTypeVal struct {
 	val    string
 	result string
-}
-
-func (s *utilsTestSuite) TestPrefixPathRemoval() {
-	assert := assert.New(s.T())
-
-	type PrefixPath struct {
-		prefix string
-		path   string
-		result string
-	}
-
-	var inputs = []PrefixPath{
-		{prefix: "", path: "abc.txt", result: "abc.txt"},
-		{prefix: "", path: "ABC", result: "ABC"},
-		{prefix: "", path: "ABC/DEF.txt", result: "ABC/DEF.txt"},
-		{prefix: "", path: "ABC/DEF/1.txt", result: "ABC/DEF/1.txt"},
-
-		{prefix: "ABC", path: "ABC/DEF/1.txt", result: "DEF/1.txt"},
-		{prefix: "ABC/", path: "ABC/DEF/1.txt", result: "DEF/1.txt"},
-		{prefix: "ABC", path: "ABC/DEF", result: "DEF"},
-		{prefix: "ABC/", path: "ABC/DEF", result: "DEF"},
-		{prefix: "ABC/", path: "ABC/DEF/G/H/1.txt", result: "DEF/G/H/1.txt"},
-
-		{prefix: "ABC/DEF", path: "ABC/DEF/1.txt", result: "1.txt"},
-		{prefix: "ABC/DEF/", path: "ABC/DEF/1.txt", result: "1.txt"},
-		{prefix: "ABC/DEF", path: "ABC/DEF/A/B/c.txt", result: "A/B/c.txt"},
-		{prefix: "ABC/DEF/", path: "ABC/DEF/A/B/c.txt", result: "A/B/c.txt"},
-
-		{prefix: "A/B/C/D/E", path: "A/B/C/D/E/F/G/H/I/j.txt", result: "F/G/H/I/j.txt"},
-		{prefix: "A/B/C/D/E/", path: "A/B/C/D/E/F/G/H/I/j.txt", result: "F/G/H/I/j.txt"},
-	}
-
-	for _, i := range inputs {
-		s.Run(filepath.Join(i.prefix, i.path), func() {
-			output := split(i.prefix, i.path)
-			assert.EqualValues(i.result, output)
-		})
-	}
-
 }
 
 func (s *utilsTestSuite) TestGetContentType() {
@@ -318,6 +280,18 @@ func (s *utilsTestSuite) TestSanitizeSASKey() {
 
 	key = sanitizeSASKey("abcd")
 	assert.EqualValues("?abcd", key)
+}
+
+func (s *utilsTestSuite) TestSanitizeEtag() {
+	assert := assert.New(s.T())
+
+	etagValue := azcore.ETag("\"abcd\"")
+	etag := sanitizeEtag(&etagValue)
+	assert.EqualValues(etag, "abcd")
+
+	etagValue = azcore.ETag("abcd")
+	etag = sanitizeEtag(&etagValue)
+	assert.EqualValues(etag, "abcd")
 }
 
 func (s *utilsTestSuite) TestBlockNonProxyOptions() {
@@ -530,6 +504,33 @@ func (s *utilsTestSuite) TestRemoveLeadingSlashes() {
 
 	for _, i := range inputs {
 		assert.Equal(i.result, removeLeadingSlashes(i.subdirectory))
+	}
+}
+
+func (suite *utilsTestSuite) TestRemovePrefixPath() {
+	assert := assert.New(suite.T())
+
+	var inputs = []struct {
+		prefixPath string
+		path       string
+		result     string
+	}{
+		{prefixPath: "", path: "abc.txt", result: "abc.txt"},
+		{prefixPath: "", path: "ABC/DEF/abc.txt", result: "ABC/DEF/abc.txt"},
+		{prefixPath: "ABC", path: "ABC/DEF/1.txt", result: "DEF/1.txt"},
+		{prefixPath: "ABC/", path: "ABC/DEF/1.txt", result: "DEF/1.txt"},
+		{prefixPath: "ABC/DEF", path: "ABC/DEF/1.txt", result: "1.txt"},
+		{prefixPath: "ABC/DEF/", path: "ABC/DEF/1.txt", result: "1.txt"},
+		{prefixPath: "ABC", path: "ABC/ABC.txt", result: "ABC.txt"},
+		{prefixPath: "A/B/C/D/E/", path: "A/B/C/D/E/F/G/H/I/j.txt", result: "F/G/H/I/j.txt"},
+		{prefixPath: "A/B/C/D/E/", path: "A/B/C/D/E/F/G/H/I/j.txt", result: "F/G/H/I/j.txt"},
+	}
+
+	for _, i := range inputs {
+		suite.Run(filepath.Join(i.prefixPath, i.path), func() {
+			output := removePrefixPath(i.prefixPath, i.path)
+			assert.EqualValues(i.result, output)
+		})
 	}
 }
 
