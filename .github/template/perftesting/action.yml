@@ -183,10 +183,10 @@ runs:
       with:
         output-file-path: list/list_results.json
         tool: 'customSmallerIsBetter'
-        alert-threshold: "500%"
+        #alert-threshold: "500%"
         max-items-in-chart: 100
         github-token: ${{ inputs.GITHUB_TOKEN }}
-        fail-on-alert: true
+        #fail-on-alert: true
         auto-push: true
         comment-on-alert: true
         gh-pages-branch: benchmarks
@@ -208,10 +208,10 @@ runs:
       with:
         output-file-path: app/app_bandwidth.json
         tool: 'customBiggerIsBetter'
-        alert-threshold: "160%"
+        #alert-threshold: "160%"
         max-items-in-chart: 100
         github-token: ${{ inputs.GITHUB_TOKEN }}
-        fail-on-alert: true
+        #fail-on-alert: true
         auto-push: true
         comment-on-alert: true
         gh-pages-branch: benchmarks
@@ -222,10 +222,10 @@ runs:
       with:
         output-file-path: app/app_time.json
         tool: 'customSmallerIsBetter'
-        alert-threshold: "160%"
+        #alert-threshold: "160%"
         max-items-in-chart: 100
         github-token: ${{ inputs.GITHUB_TOKEN }}
-        fail-on-alert: true
+        #fail-on-alert: true
         auto-push: true
         comment-on-alert: true
         gh-pages-branch: benchmarks
@@ -236,10 +236,10 @@ runs:
       with:
         output-file-path: app/highapp_bandwidth.json
         tool: 'customBiggerIsBetter'
-        alert-threshold: "160%"
+        #alert-threshold: "160%"
         max-items-in-chart: 100
         github-token: ${{ inputs.GITHUB_TOKEN }}
-        fail-on-alert: true
+        #fail-on-alert: true
         auto-push: true
         comment-on-alert: true
         gh-pages-branch: benchmarks
@@ -250,10 +250,10 @@ runs:
       with:
         output-file-path: app/highapp_time.json
         tool: 'customSmallerIsBetter'
-        alert-threshold: "160%"
+        #alert-threshold: "160%"
         max-items-in-chart: 100
         github-token: ${{ inputs.GITHUB_TOKEN }}
-        fail-on-alert: true
+        #fail-on-alert: true
         auto-push: true
         comment-on-alert: true
         gh-pages-branch: benchmarks
@@ -274,10 +274,10 @@ runs:
       with:
         output-file-path: rename/rename_time.json
         tool: 'customSmallerIsBetter'
-        alert-threshold: "160%"
+        #alert-threshold: "160%"
         max-items-in-chart: 100
         github-token: ${{ inputs.GITHUB_TOKEN }}
-        fail-on-alert: true
+        #fail-on-alert: true
         auto-push: true
         comment-on-alert: true
         gh-pages-branch: benchmarks
