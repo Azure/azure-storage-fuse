@@ -676,7 +676,6 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 				log.Err("BlockCache::getBlock : Failed to get properties for %v=>%s [%s]", handle.ID, handle.Path, err.Error())
 				return nil, err
 			}
-			log.Debug("BlockCache::getBlock : DEBUGGG :: %v, %v", prop.Size, readoffset)
 
 			if readoffset >= uint64(prop.Size) {
 				//create a null block and return
@@ -688,7 +687,6 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 				return block, nil
 			}
 		}
-		log.Debug("BlockCache::getBlock : DEBUGGG :: %v, %v", shouldCommit, shouldDownload)
 
 		// If this is the first read request then prefetch all required nodes
 		val, _ := handle.GetValue("#")
