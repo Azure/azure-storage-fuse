@@ -2856,7 +2856,7 @@ func (suite *blockCacheTestSuite) TestReadCommittedLastBlockAfterAppends() {
 	suite.assert.Equal(n, int(_1MB/2))
 	suite.assert.True(h.Dirty())
 
-	// Write remaining data backwords so that last block is staged first
+	// Write remaining data backwards so that last block is staged first
 	for i := 0; i < 12; i++ {
 
 		n, err := tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: int64(uint64(12-i) * _1MB), Data: dataBuff[:_1MB]})

@@ -1621,7 +1621,7 @@ func (bc *BlockCache) commitBlocks(handle *handlemap.Handle) error {
 		for i := range blockIDList {
 			if blockIDList[i] == restageID {
 				// Read one block from offset of this block, which shall effectively read this block and the next block
-				// Thne stage this block again with correct length
+				// The stage this block again with correct length
 				// Remove the next block from blockIDList
 				// Commit the block list again
 				block, err := bc.getOrCreateBlock(handle, uint64(i)*bc.blockSize)
