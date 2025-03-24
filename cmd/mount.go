@@ -94,7 +94,7 @@ type mountOptions struct {
 	AttrCache         bool     `config:"use-attr-cache"`
 	LibfuseOptions    []string `config:"libfuse-options"`
 	BlockCache        bool     `config:"block-cache"`
-	DCache            bool     `config:"distributed-cache"`
+	DistributedCache  bool     `config:"distributed-cache"`
 	EntryCacheTimeout int      `config:"list-cache-timeout"`
 }
 
@@ -301,8 +301,8 @@ var mountCmd = &cobra.Command{
 				pipeline = append(pipeline, "stream")
 			} else if config.IsSet("block-cache") && options.BlockCache {
 				pipeline = append(pipeline, "block_cache")
-			} else if config.IsSet("dcache") && options.DCache {
-				pipeline = append(pipeline, "dcache")
+			} else if config.IsSet("distributed-cache") && options.DistributedCache {
+				pipeline = append(pipeline, "distributed_cache")
 			} else {
 				pipeline = append(pipeline, "file_cache")
 			}
@@ -742,7 +742,7 @@ func init() {
 	mountCmd.Flags().BoolVar(&options.BlockCache, "block-cache", false, "Enable Block-Cache.")
 	config.BindPFlag("block-cache", mountCmd.Flags().Lookup("block-cache"))
 
-	mountCmd.Flags().BoolVar(&options.DCache, "distributed-cache", false, "Enable Distributed Cache.")
+	mountCmd.Flags().BoolVar(&options.DistributedCache, "distributed-cache", false, "Enable Distributed Cache.")
 	config.BindPFlag("distributed-cache", mountCmd.Flags().Lookup("distributed-cache"))
 
 	mountCmd.Flags().BoolVar(&options.AttrCache, "use-attr-cache", true, "Use attribute caching.")

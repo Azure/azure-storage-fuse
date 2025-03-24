@@ -56,13 +56,13 @@ type heartbeatManagerTestSuite struct {
 	hbManager         *HeartbeatManager
 }
 
-func (suite *heartbeatManagerTestSuite) TestHeartbeatManagerAddHeartBeat() {
+func (suite *heartbeatManagerTestSuite) TestStartHb() {
 	suite.hbManager.Starthb()
 	_, err := suite.hbManager.storage.GetAttr(suite.hbManager.hbPath + "/Nodes/" + suite.hbManager.nodeId + ".hb")
 	suite.assert.Nil(err)
 }
 
-func (suite *heartbeatManagerTestSuite) TestDistributedCacheRemoveHeartBeat() {
+func (suite *heartbeatManagerTestSuite) TestStopHb() {
 	suite.hbManager.Stop()
 	_, err := suite.hbManager.storage.GetAttr(suite.hbManager.hbPath + "/Nodes/" + suite.hbManager.nodeId + ".hb")
 	suite.assert.NotNil(err)
