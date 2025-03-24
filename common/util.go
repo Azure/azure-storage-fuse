@@ -519,3 +519,12 @@ func GetCRC64(data []byte, len int) []byte {
 
 	return checksumBytes
 }
+
+func GetHostName() (string, error) {
+	hostname, err := os.Hostname()
+	if err != nil {
+		fmt.Println("Error getting hostname:", err)
+		return "", err
+	}
+	return hostname, nil
+}

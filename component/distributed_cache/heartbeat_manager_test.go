@@ -1,5 +1,3 @@
-package cmd
-
 /*
     _____           _____   _____   ____          ______  _____  ------
    |     |  |      |     | |     | |     |     | |       |            |
@@ -33,14 +31,46 @@ package cmd
    SOFTWARE
 */
 
+package distributed_cache
+
 import (
-	_ "github.com/Azure/azure-storage-fuse/v2/component/attr_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/azstorage"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/block_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/custom"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/distributed_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/entry_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/file_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/libfuse"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/loopback"
+	"testing"
+
+	"github.com/Azure/azure-storage-fuse/v2/internal"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/suite"
 )
+
+// var home_dir, _ = os.UserHomeDir()
+// var mountpoint = home_dir + "mountpoint"
+// var dataBuff []byte
+// var random *rand.Rand = rand.New(rand.NewSource(time.Now().UnixNano()))
+
+type heartbeatManagerTestSuite struct {
+	suite.Suite
+	assert            *assert.Assertions
+	fake_storage_path string
+	disk_cache_path   string
+	loopback          internal.Component
+	hbManager         *HeartbeatManager
+}
+
+func (suite *heartbeatManagerTestSuite) TestHeartbeatManagerAddHeartBeat() {
+	suite.hbManager.Starthb()
+	_, err := suite.hbManager.storage.GetAttr(suite.hbManager.hbPath + "/Nodes/" + suite.hbManager.nodeId + ".hb")
+	suite.assert.Nil(err)
+}
+
+func (suite *heartbeatManagerTestSuite) TestDistributedCacheRemoveHeartBeat() {
+	suite.hbManager.Stop()
+	_, err := suite.hbManager.storage.GetAttr(suite.hbManager.hbPath + "/Nodes/" + suite.hbManager.nodeId + ".hb")
+	suite.assert.NotNil(err)
+}
+
+// In order for 'go test' to run this suite, we need to create
+// a normal test function and pass our suite to suite.Run
+func TestHeartbeatManagerTestSuite(t *testing.T) {
+
+	suite.Run(t, new(heartbeatManagerTestSuite))
+}

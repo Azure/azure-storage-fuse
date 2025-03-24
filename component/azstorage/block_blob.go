@@ -241,18 +241,22 @@ func (bb *BlockBlob) SetPrefixPath(path string) error {
 func (bb *BlockBlob) CreateFile(name string, mode os.FileMode) error {
 	log.Trace("BlockBlob::CreateFile : name %s", name)
 	var data []byte
-	return bb.WriteFromBuffer(name, nil, data)
+	return bb.WriteFromBuffer(internal.WriteFromBufferOptions{Name: name,
+		Data: data})
 }
 
 // CreateDirectory : Create a new directory in the container/virtual directory
-func (bb *BlockBlob) CreateDirectory(name string) error {
+func (bb *BlockBlob) CreateDirectory(name string, etag bool) error {
 	log.Trace("BlockBlob::CreateDirectory : name %s", name)
 
 	var data []byte
 	metadata := make(map[string]*string)
 	metadata[folderKey] = to.Ptr("true")
 
-	return bb.WriteFromBuffer(name, metadata, data)
+	return bb.WriteFromBuffer(internal.WriteFromBufferOptions{Name: name,
+		Metadata: metadata,
+		Data:     data,
+		Etag:     etag})
 }
 
 // CreateLink : Create a symlink in the container/virtual directory
@@ -261,7 +265,9 @@ func (bb *BlockBlob) CreateLink(source string, target string) error {
 	data := []byte(target)
 	metadata := make(map[string]*string)
 	metadata[symlinkKey] = to.Ptr("true")
-	return bb.WriteFromBuffer(source, metadata, data)
+	return bb.WriteFromBuffer(internal.WriteFromBufferOptions{Name: source,
+		Metadata: metadata,
+		Data:     data})
 }
 
 // DeleteFile : Delete a blob in the container/virtual directory
@@ -1089,25 +1095,35 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]*string, fi 
 }
 
 // WriteFromBuffer : Upload from a buffer to a blob
-func (bb *BlockBlob) WriteFromBuffer(name string, metadata map[string]*string, data []byte) error {
-	log.Trace("BlockBlob::WriteFromBuffer : name %s", name)
-	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
+func (bb *BlockBlob) WriteFromBuffer(options internal.WriteFromBufferOptions) error {
+	log.Trace("BlockBlob::WriteFromBuffer : name %s", options.Name)
+	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, options.Name))
 
-	defer log.TimeTrack(time.Now(), "BlockBlob::WriteFromBuffer", name)
+	defer log.TimeTrack(time.Now(), "BlockBlob::WriteFromBuffer", options.Name)
 
-	_, err := blobClient.UploadBuffer(context.Background(), data, &blockblob.UploadBufferOptions{
+	uploadOptions := &blockblob.UploadBufferOptions{
 		BlockSize:   bb.Config.blockSize,
 		Concurrency: bb.Config.maxConcurrency,
-		Metadata:    metadata,
+		Metadata:    options.Metadata,
 		AccessTier:  bb.Config.defaultTier,
 		HTTPHeaders: &blob.HTTPHeaders{
-			BlobContentType: to.Ptr(getContentType(name)),
+			BlobContentType: to.Ptr(getContentType(options.Name)),
 		},
 		CPKInfo: bb.blobCPKOpt,
-	})
+	}
+
+	if options.Etag {
+		uploadOptions.AccessConditions = &blob.AccessConditions{
+			ModifiedAccessConditions: &blob.ModifiedAccessConditions{
+				IfNoneMatch: to.Ptr(azcore.ETagAny),
+			},
+		}
+	}
+
+	_, err := blobClient.UploadBuffer(context.Background(), options.Data, uploadOptions)
 
 	if err != nil {
-		log.Err("BlockBlob::WriteFromBuffer : Failed to upload blob %s [%s]", name, err.Error())
+		log.Err("BlockBlob::WriteFromBuffer : Failed to upload blob %s [%s]", options.Name, err.Error())
 		return err
 	}
 
@@ -1264,7 +1280,10 @@ func (bb *BlockBlob) TruncateFile(name string, size int64) error {
 				return err
 			}
 		} else {
-			err := bb.WriteFromBuffer(name, nil, make([]byte, size))
+			err := bb.WriteFromBuffer(internal.WriteFromBufferOptions{
+				Name: name,
+				Data: make([]byte, size),
+			})
 			if err != nil {
 				log.Err("BlockBlob::TruncateFile : Failed to set the %s to 0 bytes [%s]", name, err.Error())
 			}
@@ -1279,7 +1298,8 @@ func (bb *BlockBlob) TruncateFile(name string, size int64) error {
 			log.Err("BlockBlob::TruncateFile : Failed to read small file %s", name, err.Error())
 			return err
 		}
-		err = bb.WriteFromBuffer(name, nil, data)
+		err = bb.WriteFromBuffer(internal.WriteFromBufferOptions{Name: name,
+			Data: data})
 		if err != nil {
 			log.Err("BlockBlob::TruncateFile : Failed to write from buffer file %s", name, err.Error())
 			return err
@@ -1296,7 +1316,8 @@ func (bb *BlockBlob) TruncateFile(name string, size int64) error {
 				log.Err("BlockBlob::TruncateFile : Failed to read small file %s", name, err.Error())
 				return err
 			}
-			err = bb.WriteFromBuffer(name, nil, data)
+			err = bb.WriteFromBuffer(internal.WriteFromBufferOptions{Name: name,
+				Data: data})
 			if err != nil {
 				log.Err("BlockBlob::TruncateFile : Failed to write from buffer file %s", name, err.Error())
 				return err
@@ -1383,7 +1404,9 @@ func (bb *BlockBlob) Write(options internal.WriteFileOptions) error {
 			}
 		}
 		// WriteFromBuffer should be able to handle the case where now the block is too big and gets split into multiple blocks
-		err := bb.WriteFromBuffer(name, options.Metadata, *dataBuffer)
+		err := bb.WriteFromBuffer(internal.WriteFromBufferOptions{Name: name,
+			Metadata: options.Metadata,
+			Data:     *dataBuffer})
 		if err != nil {
 			log.Err("BlockBlob::Write : Failed to upload to blob %s ", name, err.Error())
 			return err

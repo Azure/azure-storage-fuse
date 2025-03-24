@@ -120,6 +120,13 @@ type WriteFileOptions struct {
 	Metadata map[string]*string
 }
 
+type WriteFromBufferOptions struct {
+	Name     string
+	Metadata map[string]*string
+	Data     []byte
+	Etag     bool
+}
+
 type GetFileBlockOffsetsOptions struct {
 	Name string
 }

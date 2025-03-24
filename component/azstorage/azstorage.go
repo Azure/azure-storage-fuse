@@ -201,7 +201,7 @@ func (az *AzStorage) ListContainers() ([]string, error) {
 func (az *AzStorage) CreateDir(options internal.CreateDirOptions) error {
 	log.Trace("AzStorage::CreateDir : %s", options.Name)
 
-	err := az.storage.CreateDirectory(internal.TruncateDirName(options.Name))
+	err := az.storage.CreateDirectory(internal.TruncateDirName(options.Name), false)
 
 	if err == nil {
 		azStatsCollector.PushEvents(createDir, options.Name, map[string]interface{}{mode: options.Mode.String()})

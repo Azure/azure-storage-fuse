@@ -2583,7 +2583,8 @@ func (s *datalakeTestSuite) TestUploadWithCPKEnabled() {
 	s.assert.NotNil(resp.RequestID)
 
 	name2 := generateFileName()
-	err = s.az.storage.WriteFromBuffer(name2, nil, data)
+	err = s.az.storage.WriteFromBuffer(internal.WriteFromBufferOptions{Name: name2,
+		Data: data})
 	s.assert.Nil(err)
 
 	fileClient = s.containerClient.NewFileClient(name2)
