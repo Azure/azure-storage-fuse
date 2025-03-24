@@ -50,8 +50,8 @@ func createWorkerPool(size int) *workerPool {
 	wp := &workerPool{
 		workers:     size,
 		close:       make(chan struct{}),
-		syncStream:  make(chan *task, 500),
-		asyncStream: make(chan *task, 500),
+		syncStream:  make(chan *task, 2000),
+		asyncStream: make(chan *task, 2000),
 	}
 	for i := 0; i < size; i++ {
 		wp.wg.Add(1)
