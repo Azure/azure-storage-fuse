@@ -206,7 +206,7 @@ func (bp *BufferPool) bufferReclaimation() {
 		totalUsage := bp.getTotalMemUsage()
 
 		usage := ((bp.syncedBlksLst.Len() * 100) / bp.maxBlocks)
-		noOfBlksToFree := max(((usage-60)*bp.maxBlocks)/100, 0)
+		noOfBlksToFree := max(((usage-45)*bp.maxBlocks)/100, 0)
 		log.Info("BlockCache::bufferReclaimation : [START] Total Mem usage: %d, Synced blks Mem Usage: %d, needed %d evictions", totalUsage, usage, noOfBlksToFree)
 
 		currentBlk := bp.syncedBlksLst.Back()
@@ -246,7 +246,7 @@ func (bp *BufferPool) asyncUploadScheduler() {
 		totalUsage := bp.getTotalMemUsage()
 
 		usage := ((bp.localBlksLst.Len() * 100) / bp.maxBlocks)
-		noOfAsyncUploads := max(((usage-45)*bp.maxBlocks)/100, 0)
+		noOfAsyncUploads := max(((usage-25)*bp.maxBlocks)/100, 0)
 		log.Info("BlockCache::asyncUploadScheduler : [START] Mem usage: %d, Synced blks Mem Usage: %d, needed %d async Uploads", totalUsage, usage, noOfAsyncUploads)
 		// Schedule uploads on least recently used blocks
 		currentBlk := bp.localBlksLst.Back()
@@ -280,7 +280,7 @@ func (bp *BufferPool) asyncUpladPoller() {
 		totalUsage := bp.getTotalMemUsage()
 		// Wait for the async uploads to complete and get the local blks usage to less than 30
 		usage := ((bp.onTheWireBlksLst.Len() * 100) / bp.maxBlocks)
-		noOfAsyncPolls := max(((usage-20)*bp.maxBlocks)/100, 0)
+		noOfAsyncPolls := max(((usage-15)*bp.maxBlocks)/100, 0)
 		log.Info("BlockCache::asyncUploadPoller : [START] Mem usage: %d, Onwire blks Mem Usage: %d, needed %d async Polls", totalUsage, usage, noOfAsyncPolls)
 
 		// We want any async blocks to finish the uploads, We dont care which blocks will complete the uploads.
@@ -460,7 +460,7 @@ func (bp *BufferPool) getBufferForBlock(blk *block) {
 
 	// Check the memory of the ongoingAsyncupload blocks
 	OUBusage := ((bp.onTheWireBlksLst.Len() * 100) / bp.maxBlocks)
-	if OUBusage > 30 {
+	if OUBusage > 20 {
 		select {
 		case bp.wakeUpAsyncUploadPoller <- struct{}{}:
 		default:
