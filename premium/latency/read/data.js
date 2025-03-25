@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1742703860025,
+  "lastUpdate": 1742895237012,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -4645,6 +4645,75 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 77.36347013589267,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "64532198+vibhansa-msft@users.noreply.github.com",
+            "name": "Vikas Bhansali",
+            "username": "vibhansa-msft"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "d9ef7ac7a05a6877696828181121741b03c788d9",
+          "message": "Adding fix to refill non last block earlier staged with half data (#1643)\n\nCo-authored-by: root <root@anuD16vm.rf4m4cdxc02utd3nay3k4xiwce.xx.internal.cloudapp.net>\nCo-authored-by: ashruti-msft <137055338+ashruti-msft@users.noreply.github.com>\nCo-authored-by: syeleti-msft <syeleti@microsoft.com>\nCo-authored-by: souravgupta-msft <souravgupta@microsoft.com>",
+          "timestamp": "2025-03-25T14:44:46+05:30",
+          "tree_id": "cc99c0b9facfe38810260c1633a72daee5385a32",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/d9ef7ac7a05a6877696828181121741b03c788d9"
+        },
+        "date": 1742895236761,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read",
+            "value": 0.10964209893433334,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read",
+            "value": 84.13316595486134,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_small_file",
+            "value": 0.078581005426,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 0.18260662154500004,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_direct_io",
+            "value": 0.115053888949,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_direct_io",
+            "value": 77.22592890069133,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 0.19167115838100002,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 1.0627567453316666,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 74.248748514126,
             "unit": "milliseconds"
           }
         ]
