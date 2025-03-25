@@ -559,6 +559,10 @@ func (az *AzStorage) CommitData(opt internal.CommitDataOptions) error {
 	return az.storage.CommitBlocks(opt.Name, opt.List, opt.NewETag)
 }
 
+func (az *AzStorage) WriteFromBuffer(opt internal.WriteFromBufferOptions) error {
+	return az.storage.WriteFromBuffer(opt)
+}
+
 // TODO : Below methods are pending to be implemented
 // SetAttr(string, internal.ObjAttr) error
 // UnlinkFile(string) error
