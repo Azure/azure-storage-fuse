@@ -79,6 +79,10 @@ func (az *AzStorage) SetNextComponent(c internal.Component) {
 	az.BaseComponent.SetNextComponent(c)
 }
 
+func (az *AzStorage) GetBlobStorage() AzConnection {
+	return az.storage
+}
+
 // Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
 func (az *AzStorage) Configure(isParent bool) error {
 	log.Trace("AzStorage::Configure : %s", az.Name())

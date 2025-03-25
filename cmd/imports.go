@@ -1,3 +1,5 @@
+package cmd
+
 /*
     _____           _____   _____   ____          ______  _____  ------
    |     |  |      |     | |     | |     |     | |       |            |
@@ -31,13 +33,12 @@
    SOFTWARE
 */
 
-package cmd
-
 import (
 	_ "github.com/Azure/azure-storage-fuse/v2/component/attr_cache"
 	_ "github.com/Azure/azure-storage-fuse/v2/component/azstorage"
 	_ "github.com/Azure/azure-storage-fuse/v2/component/block_cache"
 	_ "github.com/Azure/azure-storage-fuse/v2/component/custom"
+	_ "github.com/Azure/azure-storage-fuse/v2/component/dcache"
 	_ "github.com/Azure/azure-storage-fuse/v2/component/entry_cache"
 	_ "github.com/Azure/azure-storage-fuse/v2/component/file_cache"
 	_ "github.com/Azure/azure-storage-fuse/v2/component/libfuse"
