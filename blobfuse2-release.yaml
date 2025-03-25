@@ -705,7 +705,6 @@ extends:
             fi
             echo "RUNID"
             echo $run_id
-            echo "##vso[task.setvariable variable=run_id]$run_id"
             echo "Checking the status of the triggered pipeline..."
             while true; do
               result=$(az pipelines runs show --organization https://dev.azure.com/$(organization) --project $(project) --id $run_id --query result --output tsv --only-show-errors)
