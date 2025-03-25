@@ -162,6 +162,11 @@ func doUpload(t *task, workerNo int, r requestType) {
 			log.Err("BlockCache::doUpload : Upload failed blk idx: %d, file : %s, err : %s", blk.idx, blk.file.Name, err.Error())
 			blk.uploadDone <- err
 		}
+		if r == asyncRequest {
+			//todo p1: generally we should push the blks for the async requests that were scheduler from the asyn scheduler.
+			// but we also schedule async uploads while flushing the file, at that time we should not push the blk in the below stream
+			bPool.uploadCompletedStream <- blk
+		}
 	}
 	close(t.taskDone)
 }

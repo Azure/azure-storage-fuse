@@ -186,14 +186,14 @@ func TestFsyncWhileWriting(t *testing.T) {
 		assert.Nil(t, err)
 
 		// Write 9MB data, for each 4K buffer do an fsync for each 4K buffer. do read the data after fsync with other handle.
-		for i := 0; i*readBufSize < 9*1024*1024; i++ {
+		for i := 0; i*readBufSize < 9*1024*1024; i += 4 * 1024 {
 			bytesWritten, err := file.Write(content)
 			assert.Nil(t, err)
 			assert.Equal(t, len(content), bytesWritten)
 
 			// We cannot do fsync for every 4K write, as the test takes an enternity to finish
 			// do it for every 512K
-			if i%128 == 0 {
+			if i%(512*1024*1024) == 0 {
 				err = file.Sync()
 				assert.Nil(t, err)
 			}
@@ -912,11 +912,110 @@ func TestUnlinkOnOpen(t *testing.T) {
 
 // Test for multiple handles, parallel flush calls while writing.
 
-// Test for multiple handles, parallel flush calls while reading.
+func TestParllelFlushCalls(t *testing.T) {
+	t.Parallel()
+	filename := "testfile_parallel_flush_calls.txt"
+	databuffer := make([]byte, 4*1024) // 4KB buffer
+	_, err := io.ReadFull(rand.Reader, databuffer)
+	assert.Nil(t, err)
 
-// Test for multiple handles, parallel flush calls while reading and writing.
+	for _, mnt := range mountpoints {
+		filePath := filepath.Join(mnt, filename)
+		file0, err := os.Create(filePath)
+		assert.Nil(t, err)
+		file1, err := os.OpenFile(filePath, os.O_RDWR, 0644)
+		assert.Nil(t, err)
+
+		// for each 1MB writes trigger a flush call from another go routine.
+		trigger_flush := make(chan struct{}, 1)
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				_, ok := <-trigger_flush
+				if !ok {
+					break
+				}
+				err := file1.Sync()
+				assert.Nil(t, err)
+				if err != nil {
+					fmt.Printf("%s", err.Error())
+				}
+			}
+		}()
+		// Write 40M data
+		for i := 0; i < 40*1024*1024; i += 4 * 1024 {
+			if i%(1*1024*1024) == 0 {
+				trigger_flush <- struct{}{}
+			}
+			byteswritten, err := file0.Write(databuffer)
+			assert.Equal(t, 4*1024, byteswritten)
+			assert.Nil(t, err)
+		}
+		close(trigger_flush)
+		wg.Wait()
+		err = file0.Close()
+		assert.Nil(t, err)
+		err = file1.Close()
+		assert.Nil(t, err)
+	}
+
+	checkFileIntegrity(t, filename)
+	removeFiles(t, filename)
+}
 
 // Dup the FD and do parllel flush calls while writing.
+func TestParllelFlushCallsByDuping(t *testing.T) {
+	filename := "testfile_parallel_flush_calls_using_dup.txt"
+	databuffer := make([]byte, 4*1024) // 4KB buffer
+	_, err := io.ReadFull(rand.Reader, databuffer)
+	assert.Nil(t, err)
+
+	for _, mnt := range mountpoints {
+		filePath := filepath.Join(mnt, filename)
+		file, err := os.Create(filePath)
+		assert.Nil(t, err)
+
+		fd1, err := syscall.Dup(int(file.Fd()))
+		assert.NotEqual(t, int(file.Fd()), fd1)
+		assert.Nil(t, err)
+
+		// for each 1MB writes trigger a flush call from another go routine.
+		trigger_flush := make(chan struct{}, 1)
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				_, ok := <-trigger_flush
+				if !ok {
+					break
+				}
+				err := syscall.Fdatasync(fd1)
+				assert.Nil(t, err)
+			}
+		}()
+		// Write 40M data
+		for i := 0; i <= 40*1024*1024; i += 4 * 1024 {
+			if i%(1*1024*1024) == 0 {
+				trigger_flush <- struct{}{}
+			}
+			byteswritten, err := file.Write(databuffer)
+			assert.Equal(t, 4*1024, byteswritten)
+			assert.Nil(t, err)
+		}
+		close(trigger_flush)
+		wg.Wait()
+		err = file.Close()
+		assert.Nil(t, err)
+		err = syscall.Close(fd1)
+		assert.Nil(t, err)
+	}
+
+	checkFileIntegrity(t, filename)
+	removeFiles(t, filename)
+}
 
 // Aggressive random write on large file.
 

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"reflect"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -36,6 +35,7 @@ type BufferPool struct {
 	wakeUpBufferReclaimation   chan struct{}
 	wakeUpAsyncUploadScheduler chan struct{}
 	wakeUpAsyncUploadPoller    chan struct{}
+	uploadCompletedStream      chan *block
 
 	maxBlocks int // Size of the each buffer in the bytes for this pool
 }
@@ -57,6 +57,7 @@ func newBufferPool(memSize int) *BufferPool {
 		wakeUpBufferReclaimation:   make(chan struct{}, 1),
 		wakeUpAsyncUploadScheduler: make(chan struct{}, 1),
 		wakeUpAsyncUploadPoller:    make(chan struct{}, 1),
+		uploadCompletedStream:      make(chan *block, 2000),
 
 		maxBlocks: memSize / BlockSize,
 	}
@@ -179,10 +180,6 @@ func (bp *BufferPool) updateLRU() {
 			if ee, ok := bp.LBCache[blk]; ok {
 				bp.localBlksLst.MoveToFront(ee)
 			}
-			// if ee, ok := bp.OWBCache[blk]; ok {
-			// 	b := ee.Value.(*block)
-			// 	panic(fmt.Sprintf("BlockCache::updateLRU : Blk is present in OWB : blk idx : %d, fileName : %s", b.idx, b.file.Name))
-			// }
 			bp.Unlock()
 		}
 		prevblk = blk
@@ -280,41 +277,17 @@ func (bp *BufferPool) asyncUpladPoller() {
 		totalUsage := bp.getTotalMemUsage()
 		// Wait for the async uploads to complete and get the local blks usage to less than 30
 		usage := ((bp.onTheWireBlksLst.Len() * 100) / bp.maxBlocks)
-		noOfAsyncPolls := max(((usage-15)*bp.maxBlocks)/100, 0)
+		noOfAsyncPolls := max(((usage-20)*bp.maxBlocks)/100, 0)
 		log.Info("BlockCache::asyncUploadPoller : [START] Mem usage: %d, Onwire blks Mem Usage: %d, needed %d async Polls", totalUsage, usage, noOfAsyncPolls)
 
-		// We want any async blocks to finish the uploads, We dont care which blocks will complete the uploads.
+		// We want any async blocks to finish the uploads, We dont care which blocks will complete first.
 		// Hence Listen on all Uploads simultaneosly.
-		cases := make([]reflect.SelectCase, bp.onTheWireBlksLst.Len())
-		onTheWireBlksArray := make([]*block, bp.onTheWireBlksLst.Len())
-		i := 0
-		for e := bp.onTheWireBlksLst.Front(); e != nil; e = e.Next() {
-			cases[i] = reflect.SelectCase{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(e.Value.(*block).uploadDone)}
-			onTheWireBlksArray[i] = e.Value.(*block)
-			i++
-		}
-
 		for range noOfAsyncPolls {
-			chosen, value, ok := reflect.Select(cases[:i])
-			blk := onTheWireBlksArray[chosen]
-
-			var err error
-			if value.IsValid() {
-				errI := value.Interface()
-				if errI != nil {
-					err = errI.(error)
-				}
-			}
-			log.Info("BlockCache::asyncUploadPoller : chan close status %t for blk idx : %d, file : %s", ok, blk.idx, blk.file.Name)
+			blk := <-bp.uploadCompletedStream
 			blk.Lock()
-			// It is important to Check the context status of upload, as the err was taken without acquiring the lock on block.
-			// So there might be a chance of write happenening after that on block, now we should not mark it as success but schedule another upload.
-			ctxErr := blk.uploadContext.Err()
-			if ctxErr != nil {
-				// Upload failed.
-				log.Err("BlockCache::asyncUploadPoller : Upload failed due to err : %s, blk idx : %d, file : %s", ctxErr.Error(), blk.idx, blk.file.Name)
-				bp.moveBlkFromOWBLtoLBL(blk)
-			} else if ok && err == nil {
+			err, ok := <-blk.uploadDone
+			if ok && err == nil {
+				close(blk.uploadDone)
 				log.Info("BlockCache::asyncUploadPoller : Upload Success, Moved block from the OWBL to SBL blk idx : %d, file: %s", blk.idx, blk.file.Name)
 				blk.state = uncommitedBlock
 				bp.moveBlkFromOWBLtoSBL(blk)
@@ -323,60 +296,17 @@ func (bp *BufferPool) asyncUpladPoller() {
 				if err != nil {
 					log.Err("BlockCache::asyncUploadPoller : Upload failed err : %s, blk idx : %d, file : %s", err.Error(), blk.idx, blk.file.Name)
 				} else {
-					log.Err("BlockCache::asyncUploadPoller : Upload failed without err blk idx : %d, file : %s", blk.idx, blk.file.Name)
+					// The status of the upload is consumed by the flush operation
+					log.Info("BlockCache::asyncUploadPoller : Upload failed without err blk idx : %d, file : %s", blk.idx, blk.file.Name)
 				}
-				bp.moveBlkFromOWBLtoLBL(blk)
-			}
-			if ok {
-				close(blk.uploadDone)
+				if blk.state == localBlock {
+					bp.moveBlkFromOWBLtoLBL(blk)
+				} else {
+					bp.moveBlkFromOWBLtoSBL(blk)
+				}
 			}
 			blk.Unlock()
-			i--
-			cases[i], cases[chosen] = cases[chosen], cases[i]
-			onTheWireBlksArray[i], onTheWireBlksArray[chosen] = onTheWireBlksArray[chosen], onTheWireBlksArray[i]
 		}
-
-		// currentBlk := bp.onTheWireBlksLst.Back()
-		// for currentBlk != nil && noOfAsyncPolls > 0 {
-		// 	blk := currentBlk.Value.(*block)
-		// 	currentBlk = currentBlk.Prev()
-		// 	cow := time.Now()
-		// 	state, err := uploader(blk, asyncRequest)
-		// 	if err != nil {
-		// 		// May be there was an write after scheduling, schedule it again
-		// 		bp.moveBlkFromOWBLtoLBL(blk)
-		// 		log.Info("BlockCache::asyncUploadPoller : Async Upload failed, err : %s, Rescheduling the blk idx : %d, file : %s", err.Error(), blk.idx, blk.file.Name)
-		// 	}
-		// 	if state == uncommitedBlock {
-		// 		bp.moveBlkFromOWBLtoSBL(blk)
-		// 		noOfAsyncPolls--
-		// 		log.Info("BlockCache::asyncUploadPoller : Async Upload Success, Moved block from the OWBL to SBL blk idx : %d, file: %s", blk.idx, blk.file.Name)
-		// 	}
-		// 	log.Info("BlockCache::asyncUploadePoller : [took : %s] Async Poll to complete blk idx : %d, file: %s", time.Since(cow).String(), blk.idx, blk.file.Name)
-		// }
-		// currentBlk = bp.onTheWireBlksLst.Back()
-		// if noOfAsyncPolls > 0 {
-		// 	// This is slow as we are waiting on some block for its upload to success but we dont have option now
-		// 	// If this takes long, this will single handedly takes down the Tx of the VM.
-		// 	// Generally this should not hit, even it hit it should
-		// 	for currentBlk != nil && noOfAsyncPolls > 0 {
-		// 		blk := currentBlk.Value.(*block)
-		// 		currentBlk = currentBlk.Prev()
-		// 		cow := time.Now()
-		// 		state, err := uploader(blk, syncRequest)
-		// 		if err != nil {
-		// 			// May be there was an write after scheduling, schedule it again
-		// 			bp.moveBlkFromOWBLtoLBL(blk)
-		// 			log.Info("BlockCache::asyncUploadPoller : Sync Upload failed, err : %s, Rescheduling the blk idx : %d, file : %s", err.Error(), blk.idx, blk.file.Name)
-		// 		}
-		// 		if state == uncommitedBlock {
-		// 			bp.moveBlkFromOWBLtoSBL(blk)
-		// 			log.Info("BlockCache::asyncUploadPoller : Sync Upload Success, Moved block from the OWBL to SBL blk idx : %d, file: %s", blk.idx, blk.file.Name)
-		// 		}
-		// 		noOfAsyncPolls--
-		// 		log.Info("BlockCache::asyncUploadePoller : [took : %s] Sync Poll to complete blk idx : %d, file: %s", time.Since(cow).String(), blk.idx, blk.file.Name)
-		// 	}
-		// }
 
 		totalUsage = bp.getTotalMemUsage()
 		usage = ((bp.onTheWireBlksLst.Len() * 100) / bp.maxBlocks)
@@ -585,6 +515,8 @@ func getBlockForWrite(idx int, file *File) (*block, error) {
 }
 
 func (bp *BufferPool) scheduleAsyncUploadsForFile(file *File) (fileChanged bool) {
+	bp.Lock()
+	defer bp.Unlock()
 	for _, blk := range file.blockList {
 		// To make the sync upload faster, first we schedule all the requests as async
 		// Then status would be checked using sync requests.
@@ -592,10 +524,6 @@ func (bp *BufferPool) scheduleAsyncUploadsForFile(file *File) (fileChanged bool)
 		if blkstate != committedBlock {
 			fileChanged = true
 		}
-	}
-	bp.Lock()
-	defer bp.Unlock()
-	for _, blk := range file.blockList {
 		bp.moveBlkFromLBLtoOWBL(blk)
 	}
 	return

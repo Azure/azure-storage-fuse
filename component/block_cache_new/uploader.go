@@ -21,8 +21,8 @@ func scheduleUpload(blk *block, r requestType) {
 		// Before Cancelling the upload, wait to see if there is a flush operation is going on for the file.
 		// If there is a flush operation, then wait until the flush completes on the file.
 		select {
-		case <-blk.file.flushOngoing:
-		case <-blk.forceCancelUpload:
+		case <-blk.file.flushOngoing: // This will always be success if there is no flush operation for the file.
+		case <-blk.forceCancelUpload: // This is always blocked, until unless closed.
 			log.Info("BlockCache::scheduleUpload : async Upload Canceled by flush call blk idx : %d, file : %s", blk.idx, blk.file.Name)
 		}
 		cancel()
@@ -65,10 +65,6 @@ func uploader(blk *block, r requestType) (state blockState, err error) {
 					if time.Since(now) > 1000*time.Millisecond && r == syncRequest {
 						log.Info("BlockCache::Uploader : Cancelling ongoing async upload and scheduling the new one")
 						// Here we should not wait for async upload to hang on to the flush to complete, as this came from the flush op, hence closing the channel would do it.
-						// Drain the channel before uploading
-						blk.Unlock()
-						<-blk.uploadDone
-						blk.Lock()
 						if blk.state == localBlock {
 							close(blk.forceCancelUpload)
 							blk.cancelOngoingAsyncUpload()

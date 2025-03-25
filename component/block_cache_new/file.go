@@ -76,7 +76,7 @@ func createFreshHandleForFile(name string, size int64, mtime time.Time, flags in
 	} else {
 		log.Info("BlockCache::createFreshHandleForFile : Unknown Open flags %X, file : %s", handle.ID, name)
 		//todo: Do this correctly
-		handle.Flags.Set(handlemap.HandleFlagOpenRDONLY)
+		handle.Flags.Set(handlemap.HandleFlagOpenRDWR)
 	}
 	return handle
 }

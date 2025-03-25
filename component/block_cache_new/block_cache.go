@@ -59,7 +59,7 @@ var bc *BlockCache // declaring it as a global variable to use in the other file
 var BlockSize int
 var bPool *BufferPool
 var wp *workerPool
-var memory int = 10 * 1024 * 1024 * 1024
+var memory int = 20 * 1024 * 1024 * 1024
 
 // Common structure for Component
 type BlockCache struct {
@@ -119,7 +119,7 @@ func (bc *BlockCache) SetNextComponent(nc internal.Component) {
 func (bc *BlockCache) Start(ctx context.Context) error {
 	log.Trace("BlockCache::Start : Starting component block_cache new %s", bc.Name())
 	bPool = newBufferPool(memory)
-	wp = createWorkerPool(200)
+	wp = createWorkerPool(512)
 	return nil
 }
 
