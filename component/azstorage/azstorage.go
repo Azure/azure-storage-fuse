@@ -201,7 +201,7 @@ func (az *AzStorage) ListContainers() ([]string, error) {
 func (az *AzStorage) CreateDir(options internal.CreateDirOptions) error {
 	log.Trace("AzStorage::CreateDir : %s", options.Name)
 
-	err := az.storage.CreateDirectory(internal.TruncateDirName(options.Name), false)
+	err := az.storage.CreateDirectory(internal.TruncateDirName(options.Name), options.Etag)
 
 	if err == nil {
 		azStatsCollector.PushEvents(createDir, options.Name, map[string]interface{}{mode: options.Mode.String()})
@@ -561,6 +561,10 @@ func (az *AzStorage) StageData(opt internal.StageDataOptions) error {
 
 func (az *AzStorage) CommitData(opt internal.CommitDataOptions) error {
 	return az.storage.CommitBlocks(opt.Name, opt.List, opt.NewETag)
+}
+
+func (az *AzStorage) WriteFromBuffer(opt internal.WriteFromBufferOptions) error {
+	return az.storage.WriteFromBuffer(opt)
 }
 
 // TODO : Below methods are pending to be implemented

@@ -1406,7 +1406,8 @@ func (bb *BlockBlob) Write(options internal.WriteFileOptions) error {
 		// WriteFromBuffer should be able to handle the case where now the block is too big and gets split into multiple blocks
 		err := bb.WriteFromBuffer(internal.WriteFromBufferOptions{Name: name,
 			Metadata: options.Metadata,
-			Data:     *dataBuffer})
+			Data:     *dataBuffer,
+			Etag:     options.Etag})
 		if err != nil {
 			log.Err("BlockBlob::Write : Failed to upload to blob %s ", name, err.Error())
 			return err

@@ -482,13 +482,11 @@ var mountCmd = &cobra.Command{
 			ctx, _ := context.WithCancel(context.Background()) //nolint
 
 			// Signal handlers for parent and child to communicate success or failures in mount
-			var sigusr2, sigchild chan os.Signal
+			var sigusr2 chan os.Signal
 			if !daemon.WasReborn() { // execute in parent only
 				sigusr2 = make(chan os.Signal, 1)
 				signal.Notify(sigusr2, syscall.SIGUSR2)
 
-				sigchild = make(chan os.Signal, 1)
-				signal.Notify(sigchild, syscall.SIGCHLD)
 			} else { // execute in child only
 				daemon.SetSigHandler(sigusrHandler(pipeline, ctx), syscall.SIGUSR1, syscall.SIGUSR2)
 				go func() {
@@ -514,11 +512,15 @@ var mountCmd = &cobra.Command{
 			} else { // execute in parent only
 				defer os.Remove(fname)
 
+				childDone := make(chan struct{})
+
+				go monitorChild(child.Pid, childDone)
+
 				select {
 				case <-sigusr2:
 					log.Info("mount: Child [%v] mounted successfully at %s", child.Pid, options.MountPath)
 
-				case <-sigchild:
+				case <-childDone:
 					// Get error string from the child, stderr or child was redirected to a file
 					log.Info("mount: Child [%v] terminated from %s", child.Pid, options.MountPath)
 
@@ -577,6 +579,29 @@ var mountCmd = &cobra.Command{
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveDefault
 	},
+}
+
+func monitorChild(pid int, done chan struct{}) {
+	// Monitor the child process and if child terminates then exit
+	var wstatus syscall.WaitStatus
+
+	for {
+		// Wait for a signal from child
+		wpid, err := syscall.Wait4(pid, &wstatus, 0, nil)
+		if err != nil {
+			log.Err("Error retrieving child status [%s]", err.Error())
+			break
+		}
+
+		if wpid == pid {
+			// Exit only if child has exited
+			// Signal can be received on a state change of child as well
+			if wstatus.Exited() || wstatus.Signaled() || wstatus.Stopped() {
+				close(done)
+				return
+			}
+		}
+	}
 }
 
 func ignoreFuseOptions(opt string) bool {
@@ -774,5 +799,9 @@ func init() {
 
 func Destroy(message string) error {
 	_ = log.Destroy()
-	return fmt.Errorf("%s", message)
+	if message != "" {
+		return fmt.Errorf("%s", message)
+	}
+
+	return nil
 }

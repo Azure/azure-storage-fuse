@@ -1,5 +1,12 @@
 name: Benchmark
 on:
+  workflow_dispatch: 
+    inputs:
+      run:
+        description: 'Run the workflow'
+        required: true
+        default: true
+        type: boolean 
   schedule:
     - cron: '0 4 * * SUN'
   push:
