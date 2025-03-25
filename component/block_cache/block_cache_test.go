@@ -2337,7 +2337,7 @@ func (suite *blockCacheTestSuite) TestBlockFailOverwrite() {
 	suite.assert.Equal(fs.Size(), int64(0))
 }
 
-func (suite *blockCacheTestSuite) TestBlockDownloadFailed() {
+func (suite *blockCacheTestSuite) TestBlockDownloadOffsetGreaterThanFileSize() {
 	cfg := "block_cache:\n  block-size-mb: 1\n  mem-size-mb: 20\n  prefetch: 12\n  parallelism: 10"
 	tobj, err := setupPipeline(cfg)
 	defer tobj.cleanupPipeline()
@@ -2367,26 +2367,21 @@ func (suite *blockCacheTestSuite) TestBlockDownloadFailed() {
 
 	data := make([]byte, _1MB)
 	n, err := tobj.blockCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: data})
-	suite.assert.NotNil(err)
-	suite.assert.Contains(err.Error(), "failed to download block")
-	suite.assert.Equal(n, 0)
-
-	// 1-4MB data being prefetched in blocks 1-3
-	suite.assert.Equal(h.Buffers.Cooking.Len(), 3)
+	suite.assert.Nil(err)
+	suite.assert.Equal(n, int(_1MB))
 
 	// write at offset 1MB where block 1 download will fail
 	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: int64(_1MB), Data: dataBuff[:1*_1MB]})
-	suite.assert.NotNil(err)
-	suite.assert.Contains(err.Error(), "failed to download block")
-	suite.assert.Equal(n, 0)
-	suite.assert.False(h.Dirty())
+	suite.assert.Nil(err)
+	suite.assert.Equal(n, int(_1MB))
+	suite.assert.True(h.Dirty())
 
 	err = tobj.blockCache.CloseFile(internal.CloseFileOptions{Handle: h})
 	suite.assert.Nil(err)
 
 	fs, err := os.Stat(storagePath)
 	suite.assert.Nil(err)
-	suite.assert.Equal(fs.Size(), int64(0))
+	suite.assert.Equal(fs.Size(), int64(2*_1MB))
 }
 
 func (suite *blockCacheTestSuite) TestReadStagedBlock() {
