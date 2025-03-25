@@ -567,28 +567,8 @@ func (dl *Datalake) ChangeMod(name string, mode os.FileMode) error {
 }
 
 // ChangeOwner : Change owner of a path
-func (dl *Datalake) ChangeOwner(name string, _ int, _ int) error {
-	log.Trace("Datalake::ChangeOwner : name %s", name)
-
-	if dl.Config.ignoreAccessModifiers {
-		// for operations like git clone where transaction fails if chown is not successful
-		// return success instead of ENOSYS
-		return nil
-	}
-
-	// TODO: This is not supported for now.
-	// fileURL := dl.Filesystem.NewRootDirectoryURL().NewFileURL(filepath.Join(dl.Config.prefixPath, name))
-	// group := strconv.Itoa(gid)
-	// owner := strconv.Itoa(uid)
-	// _, err := fileURL.SetAccessControl(context.Background(), azbfs.BlobFSAccessControl{Group: group, Owner: owner})
-	// e := storeDatalakeErrToErr(err)
-	// if e == ErrFileNotFound {
-	// 	return syscall.ENOENT
-	// } else if err != nil {
-	// 	log.Err("Datalake::ChangeOwner : Failed to change ownership of file %s to %s [%s]", name, mode, err.Error())
-	// 	return err
-	// }
-	return syscall.ENOTSUP
+func (dl *Datalake) ChangeOwner(name string, uid int, gid int) error {
+	return dl.BlockBlob.ChangeOwner(name, uid, gid)
 }
 
 // GetCommittedBlockList : Get the list of committed blocks
