@@ -3339,7 +3339,8 @@ func (s *blockBlobTestSuite) TestUploadBlobWithCPKEnabled() {
 	s.assert.NotNil(resp.RequestID)
 
 	name2 := generateFileName()
-	err = s.az.storage.WriteFromBuffer(name2, nil, data)
+	err = s.az.storage.WriteFromBuffer(internal.WriteFromBufferOptions{Name: name2,
+		Data: data})
 	s.assert.Nil(err)
 
 	file = s.containerClient.NewBlobClient(name2)

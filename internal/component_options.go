@@ -42,6 +42,7 @@ import (
 type CreateDirOptions struct {
 	Name string
 	Mode os.FileMode
+	Etag bool
 }
 
 type DeleteDirOptions struct {
@@ -118,6 +119,14 @@ type WriteFileOptions struct {
 	Offset   int64
 	Data     []byte
 	Metadata map[string]*string
+	Etag     bool
+}
+
+type WriteFromBufferOptions struct {
+	Name     string
+	Metadata map[string]*string
+	Data     []byte
+	Etag     bool
 }
 
 type GetFileBlockOffsetsOptions struct {

@@ -356,3 +356,10 @@ func (base *BaseComponent) CommitData(opt CommitDataOptions) error {
 	}
 	return nil
 }
+
+func (base *BaseComponent) WriteFromBuffer(opt WriteFromBufferOptions) error {
+	if base.next != nil {
+		return base.next.WriteFromBuffer(opt)
+	}
+	return nil
+}

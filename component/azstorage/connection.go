@@ -104,7 +104,7 @@ type AzConnection interface {
 	SetPrefixPath(string) error
 
 	CreateFile(name string, mode os.FileMode) error
-	CreateDirectory(name string) error
+	CreateDirectory(name string, etag bool) error
 	CreateLink(source string, target string) error
 
 	DeleteFile(name string) error
@@ -123,7 +123,7 @@ type AzConnection interface {
 	ReadInBuffer(name string, offset int64, len int64, data []byte, etag *string) error
 
 	WriteFromFile(name string, metadata map[string]*string, fi *os.File) error
-	WriteFromBuffer(name string, metadata map[string]*string, data []byte) error
+	WriteFromBuffer(options internal.WriteFromBufferOptions) error
 	Write(options internal.WriteFileOptions) error
 	GetFileBlockOffsets(name string) (*common.BlockOffsetList, error)
 

@@ -241,7 +241,7 @@ func (dl *Datalake) CreateFile(name string, mode os.FileMode) error {
 }
 
 // CreateDirectory : Create a new directory in the filesystem/directory
-func (dl *Datalake) CreateDirectory(name string) error {
+func (dl *Datalake) CreateDirectory(name string, _ bool) error {
 	log.Trace("Datalake::CreateDirectory : name %s", name)
 
 	directoryURL := dl.Filesystem.NewDirectoryClient(filepath.Join(dl.Config.prefixPath, name))
@@ -506,8 +506,8 @@ func (dl *Datalake) WriteFromFile(name string, metadata map[string]*string, fi *
 }
 
 // WriteFromBuffer : Upload from a buffer to a file
-func (dl *Datalake) WriteFromBuffer(name string, metadata map[string]*string, data []byte) error {
-	return dl.BlockBlob.WriteFromBuffer(name, metadata, data)
+func (dl *Datalake) WriteFromBuffer(options internal.WriteFromBufferOptions) error {
+	return dl.BlockBlob.WriteFromBuffer(options)
 }
 
 // Write : Write to a file at given offset
