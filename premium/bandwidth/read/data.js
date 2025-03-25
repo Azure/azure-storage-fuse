@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1742703858592,
+  "lastUpdate": 1742895235710,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -4645,6 +4645,75 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 12.903645833333334,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "64532198+vibhansa-msft@users.noreply.github.com",
+            "name": "Vikas Bhansali",
+            "username": "vibhansa-msft"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "d9ef7ac7a05a6877696828181121741b03c788d9",
+          "message": "Adding fix to refill non last block earlier staged with half data (#1643)\n\nCo-authored-by: root <root@anuD16vm.rf4m4cdxc02utd3nay3k4xiwce.xx.internal.cloudapp.net>\nCo-authored-by: ashruti-msft <137055338+ashruti-msft@users.noreply.github.com>\nCo-authored-by: syeleti-msft <syeleti@microsoft.com>\nCo-authored-by: souravgupta-msft <souravgupta@microsoft.com>",
+          "timestamp": "2025-03-25T14:44:46+05:30",
+          "tree_id": "cc99c0b9facfe38810260c1633a72daee5385a32",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/d9ef7ac7a05a6877696828181121741b03c788d9"
+        },
+        "date": 1742895234411,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read",
+            "value": 2075.8942057291665,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read",
+            "value": 2.974609375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_small_file",
+            "value": 2820.828125,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 1268.923828125,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_direct_io",
+            "value": 2168.1604817708335,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_direct_io",
+            "value": 3.236328125,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 4389.594401041667,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 3676.4215494791665,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 13.4443359375,
             "unit": "MiB/s"
           }
         ]
