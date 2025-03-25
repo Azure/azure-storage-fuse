@@ -681,7 +681,7 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 				//create a null block and return
 				block := bc.blockPool.TryGet()
 				block.offset = readoffset
-				block.data = make([]byte, bc.blockSize) // TODO: no need to allocate this buffer again as they are already pre allocated
+				block.data = make([]byte, bc.blockSize) // TODO: no need to allocate this buffer again as they are already pre allocated.
 				// block.flags.Set(BlockFlagSynced)
 				log.Debug("BlockCache::getBlock : Returning a null block %v for %v=>%s (read offset %v)", index, handle.ID, handle.Path, readoffset)
 				return block, nil
