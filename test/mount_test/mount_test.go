@@ -12,7 +12,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -119,7 +119,7 @@ func (suite *mountSuite) TestMountCmd() {
 	blobfuseUnmount(suite, mntDir)
 }
 
-// mount failure test where the mount directory does not exists
+// mount failure test where the mount directory does not exist
 func (suite *mountSuite) TestMountDirNotExists() {
 	tempDir := filepath.Join(mntDir, "tempdir")
 	mountCmd := exec.Command(blobfuseBinary, "mount", tempDir, "--config-file="+configFile)
@@ -129,7 +129,7 @@ func (suite *mountSuite) TestMountDirNotExists() {
 	suite.NotEqual(nil, err)
 	fmt.Println(errb.String())
 	suite.NotEqual(0, len(errb.String()))
-	suite.Contains(errb.String(), "mount directory does not exists")
+	suite.Contains(errb.String(), "mount directory does not exist")
 
 	// list blobfuse mounted directories
 	cliOut := listBlobfuseMounts(suite)

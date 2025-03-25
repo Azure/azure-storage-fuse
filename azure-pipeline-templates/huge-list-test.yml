@@ -55,6 +55,10 @@ steps:
     env:
       mount_dir: ${{ parameters.mount_dir }}
 
+  - script: grep "OUTGOING REQUEST" blobfuse2-logs.txt | wc -l
+    displayName: 'HugeList: ${{ parameters.idstring }} Request Count'
+    continueOnError: true
+
   - script: |
       cat blobfuse2-logs.txt
     displayName: 'View Logs'

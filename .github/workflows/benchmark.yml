@@ -1,5 +1,12 @@
 name: Benchmark
 on:
+  workflow_dispatch: 
+    inputs:
+      run:
+        description: 'Run the workflow'
+        required: true
+        default: true
+        type: boolean 
   schedule:
     - cron: '0 4 * * SUN'
   push:
@@ -30,7 +37,17 @@ jobs:
       # Install Fuse3
       - name: "Install Fuse3"
         run: |
-          sudo apt-get update
+          sleep 30
+          sudo systemctl stop apt-daily.timer || true
+          echo "Add Lock Timeout for apt package manager"
+          sudo sh -c 'echo "DPkg::Lock::Timeout \"120\";" > /etc/apt/apt.conf.d/99timeout'
+          sudo ps -aux | grep -iE "apt"
+          sudo killall apt apt-get || true
+          yes | sudo fuser -vik -TERM /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock || true
+          echo "Released any lock if some other process has acquired"
+          sudo dpkg --configure -a
+          echo "Starting Updates and Installation of Packages"
+          sudo apt-get update --fix-missing
           sudo apt-get install fuse3 libfuse3-dev gcc -y
 
       # Install Tools

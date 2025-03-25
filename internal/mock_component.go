@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -43,6 +43,7 @@ import (
 	handlemap "github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 	reflect "reflect"
 	"syscall"
+	"time"
 
 	gomock "github.com/golang/mock/gomock"
 )
@@ -534,6 +535,11 @@ func (mr *MockComponentMockRecorder) RenameDir(arg0 interface{}) *gomock.Call {
 func (m *MockComponent) RenameFile(arg0 RenameFileOptions) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RenameFile", arg0)
+	if arg0.DstAttr != nil {
+		arg0.DstAttr.Atime = time.Now()
+		arg0.DstAttr.Mtime = time.Now()
+		arg0.DstAttr.Ctime = time.Now()
+	}
 	ret0, _ := ret[0].(error)
 	return ret0
 }

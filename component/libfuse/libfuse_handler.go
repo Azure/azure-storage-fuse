@@ -12,7 +12,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -979,7 +979,10 @@ func libfuse_rename(src *C.char, dst *C.char, flags C.uint) C.int {
 			}
 		}
 
-		err := fuseFS.NextComponent().RenameDir(internal.RenameDirOptions{Src: srcPath, Dst: dstPath})
+		err := fuseFS.NextComponent().RenameDir(internal.RenameDirOptions{
+			Src: srcPath,
+			Dst: dstPath,
+		})
 		if err != nil {
 			log.Err("Libfuse::libfuse_rename : error renaming directory %s -> %s [%s]", srcPath, dstPath, err.Error())
 			return -C.EIO
@@ -989,7 +992,12 @@ func libfuse_rename(src *C.char, dst *C.char, flags C.uint) C.int {
 		libfuseStatsCollector.UpdateStats(stats_manager.Increment, renameDir, (int64)(1))
 
 	} else {
-		err := fuseFS.NextComponent().RenameFile(internal.RenameFileOptions{Src: srcPath, Dst: dstPath})
+		err := fuseFS.NextComponent().RenameFile(internal.RenameFileOptions{
+			Src:     srcPath,
+			Dst:     dstPath,
+			SrcAttr: srcAttr,
+			DstAttr: dstAttr,
+		})
 		if err != nil {
 			log.Err("Libfuse::libfuse_rename : error renaming file %s -> %s [%s]", srcPath, dstPath, err.Error())
 			return -C.EIO

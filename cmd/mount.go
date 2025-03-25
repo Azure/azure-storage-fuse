@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -105,7 +105,7 @@ func (opt *mountOptions) validate(skipNonEmptyMount bool) error {
 	}
 
 	if _, err := os.Stat(opt.MountPath); os.IsNotExist(err) {
-		return fmt.Errorf("mount directory does not exists")
+		return fmt.Errorf("mount directory does not exist")
 	} else if common.IsDirectoryMounted(opt.MountPath) {
 		// Try to cleanup the stale mount
 		log.Info("Mount::validate : Mount directory is already mounted, trying to cleanup")
@@ -127,7 +127,7 @@ func (opt *mountOptions) validate(skipNonEmptyMount bool) error {
 			var cleanupOnStart bool
 			_ = config.UnmarshalKey("file_cache.cleanup-on-start", &cleanupOnStart)
 
-			if tempCachePath != "" && !cleanupOnStart {
+			if tempCachePath != "" && cleanupOnStart {
 				if err = common.TempCacheCleanup(tempCachePath); err != nil {
 					return fmt.Errorf("failed to cleanup file cache [%s]", err.Error())
 				}
@@ -271,7 +271,7 @@ var mountCmd = &cobra.Command{
 		if options.ConfigFile == "" {
 			// Config file is not set in cli parameters
 			// Blobfuse2 defaults to config.yaml in current directory
-			// If the file does not exists then user might have configured required things in env variables
+			// If the file does not exist then user might have configured required things in env variables
 			// Fall back to defaults and let components fail if all required env variables are not set.
 			_, err := os.Stat(common.DefaultConfigFilePath)
 			if err != nil && os.IsNotExist(err) {
@@ -479,13 +479,11 @@ var mountCmd = &cobra.Command{
 			ctx, _ := context.WithCancel(context.Background()) //nolint
 
 			// Signal handlers for parent and child to communicate success or failures in mount
-			var sigusr2, sigchild chan os.Signal
+			var sigusr2 chan os.Signal
 			if !daemon.WasReborn() { // execute in parent only
 				sigusr2 = make(chan os.Signal, 1)
 				signal.Notify(sigusr2, syscall.SIGUSR2)
 
-				sigchild = make(chan os.Signal, 1)
-				signal.Notify(sigchild, syscall.SIGCHLD)
 			} else { // execute in child only
 				daemon.SetSigHandler(sigusrHandler(pipeline, ctx), syscall.SIGUSR1, syscall.SIGUSR2)
 				go func() {
@@ -511,11 +509,15 @@ var mountCmd = &cobra.Command{
 			} else { // execute in parent only
 				defer os.Remove(fname)
 
+				childDone := make(chan struct{})
+
+				go monitorChild(child.Pid, childDone)
+
 				select {
 				case <-sigusr2:
 					log.Info("mount: Child [%v] mounted successfully at %s", child.Pid, options.MountPath)
 
-				case <-sigchild:
+				case <-childDone:
 					// Get error string from the child, stderr or child was redirected to a file
 					log.Info("mount: Child [%v] terminated from %s", child.Pid, options.MountPath)
 
@@ -574,6 +576,29 @@ var mountCmd = &cobra.Command{
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveDefault
 	},
+}
+
+func monitorChild(pid int, done chan struct{}) {
+	// Monitor the child process and if child terminates then exit
+	var wstatus syscall.WaitStatus
+
+	for {
+		// Wait for a signal from child
+		wpid, err := syscall.Wait4(pid, &wstatus, 0, nil)
+		if err != nil {
+			log.Err("Error retrieving child status [%s]", err.Error())
+			break
+		}
+
+		if wpid == pid {
+			// Exit only if child has exited
+			// Signal can be received on a state change of child as well
+			if wstatus.Exited() || wstatus.Signaled() || wstatus.Stopped() {
+				close(done)
+				return
+			}
+		}
+	}
 }
 
 func ignoreFuseOptions(opt string) bool {
@@ -769,5 +794,9 @@ func init() {
 
 func Destroy(message string) error {
 	_ = log.Destroy()
-	return fmt.Errorf("%s", message)
+	if message != "" {
+		return fmt.Errorf("%s", message)
+	}
+
+	return nil
 }

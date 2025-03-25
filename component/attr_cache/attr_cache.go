@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -223,6 +223,21 @@ func (ac *AttrCache) invalidateDirectory(path string) {
 	ac.invalidatePath(path)
 }
 
+// Copies the attr to the given path.
+func (ac *AttrCache) updateCacheEntry(path string, attr *internal.ObjAttr) {
+	cacheEntry, found := ac.cacheMap[path]
+	if found {
+		// Copy the attr
+		cacheEntry.attr = attr
+		// Update the path inside the attr
+		cacheEntry.attr.Path = path
+		// Update the Existence of the entry
+		cacheEntry.attrFlag.Set(AttrFlagExists)
+		// Refresh the cache entry
+		cacheEntry.cachedAt = time.Now()
+	}
+}
+
 // invalidatePath: invalidates a path
 func (ac *AttrCache) invalidatePath(path string) {
 	// Keys in the cache map do not contain trailing /, truncate the path before referencing a key in the map.
@@ -360,14 +375,15 @@ func (ac *AttrCache) DeleteFile(options internal.DeleteFileOptions) error {
 // RenameFile : Mark the source file deleted. Invalidate the destination file.
 func (ac *AttrCache) RenameFile(options internal.RenameFileOptions) error {
 	log.Trace("AttrCache::RenameFile : %s -> %s", options.Src, options.Dst)
-
+	srcAttr := options.SrcAttr
 	err := ac.NextComponent().RenameFile(options)
 	if err == nil {
+		// Copy source attribute to destination.
+		// LMT of Source will be modified by next component if the copy is success.
 		ac.cacheLock.RLock()
 		defer ac.cacheLock.RUnlock()
-
+		ac.updateCacheEntry(options.Dst, srcAttr)
 		ac.deletePath(options.Src, time.Now())
-		ac.invalidatePath(options.Dst)
 	}
 
 	return err
@@ -412,6 +428,11 @@ func (ac *AttrCache) TruncateFile(options internal.TruncateFileOptions) error {
 		if found && value.valid() && value.exists() {
 			value.setSize(options.Size)
 		}
+		// todo: invalidating path here rather than updating with etag
+		// due to some changes that are required in az storage comp which
+		// were not necessarily required. Once they were done invalidation
+		// of the attribute can be removed.
+		ac.invalidatePath(options.Name)
 	}
 	return err
 }
@@ -573,7 +594,7 @@ func (ac *AttrCache) CommitData(options internal.CommitDataOptions) error {
 	if err == nil {
 		ac.cacheLock.RLock()
 		defer ac.cacheLock.RUnlock()
-
+		// TODO: Could we just update the size, etag, modtime of the file here?
 		ac.invalidatePath(options.Name)
 	}
 	return err

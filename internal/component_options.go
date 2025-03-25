@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -96,8 +96,10 @@ type CloseFileOptions struct {
 }
 
 type RenameFileOptions struct {
-	Src string
-	Dst string
+	Src     string
+	Dst     string
+	SrcAttr *ObjAttr
+	DstAttr *ObjAttr
 }
 
 type ReadFileOptions struct {
@@ -107,6 +109,7 @@ type ReadFileOptions struct {
 type ReadInBufferOptions struct {
 	Handle *handlemap.Handle
 	Offset int64
+	Etag   *string
 	Data   []byte
 }
 
@@ -202,6 +205,7 @@ type CommitDataOptions struct {
 	Name      string
 	List      []string
 	BlockSize uint64
+	NewETag   *string
 }
 
 type CommittedBlock struct {

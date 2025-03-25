@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -307,6 +307,30 @@ func (suite *LoopbackFSTestSuite) TestStageAndCommitData() {
 	blockList := []string{"123", "789", "456"}
 	err = lfs.CommitData(internal.CommitDataOptions{Name: "testBlock", List: blockList})
 	assert.Nil(err)
+}
+
+// This test is for opening the file in O_TRUNC on the existing file
+// must result in resetting the filesize to 0
+func (suite *LoopbackFSTestSuite) TestCommitNilDataToExistingFile() {
+	defer suite.cleanupTest()
+	assert := assert.New(suite.T())
+
+	lfs := &LoopbackFS{}
+
+	lfs.path = common.ExpandPath("~/blocklfstest")
+	err := os.MkdirAll(lfs.path, os.FileMode(0777))
+	assert.Nil(err)
+	defer os.RemoveAll(lfs.path)
+	Filepath := filepath.Join(lfs.path, "testFile")
+	os.WriteFile(Filepath, []byte("hello"), 0777)
+
+	blockList := []string{}
+	err = lfs.CommitData(internal.CommitDataOptions{Name: "testFile", List: blockList})
+	assert.Nil(err)
+
+	info, err := os.Stat(Filepath)
+	assert.Nil(err)
+	assert.Equal(info.Size(), int64(0))
 }
 
 func TestLoopbackFSTestSuite(t *testing.T) {

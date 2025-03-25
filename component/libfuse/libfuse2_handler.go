@@ -12,7 +12,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -220,6 +220,12 @@ func populateFuseArgs(opts *C.fuse_options_t, args *C.fuse_args_t) (*C.fuse_opti
 	if opts.umask != 0 {
 		options += fmt.Sprintf(",umask=%04d", opts.umask)
 	}
+
+	// force the fuse library to always pass O_TRUNC flag on open call
+	// Not checking the options since we don't allow user to configure this flag.
+	// This is the default behaviour for the fuse3 hence we don't pass this flag there.
+	// ref: https://github.com/libfuse/libfuse/blob/7f86f3be7148b15b71b63357813c66dd32177cf6/lib/fuse_lowlevel.c#L2161C2-L2161C16
+	options += ",atomic_o_trunc"
 
 	// direct_io option is used to bypass the kernel cache. It disables the use of
 	// page cache (file content cache) in the kernel for the filesystem.
@@ -920,7 +926,12 @@ func libfuse2_rename(src *C.char, dst *C.char) C.int {
 		libfuseStatsCollector.UpdateStats(stats_manager.Increment, renameDir, (int64)(1))
 
 	} else {
-		err := fuseFS.NextComponent().RenameFile(internal.RenameFileOptions{Src: srcPath, Dst: dstPath})
+		err := fuseFS.NextComponent().RenameFile(internal.RenameFileOptions{
+			Src:     srcPath,
+			Dst:     dstPath,
+			SrcAttr: srcAttr,
+			DstAttr: dstAttr,
+		})
 		if err != nil {
 			log.Err("Libfuse::libfuse2_rename : error renaming file %s -> %s [%s]", srcPath, dstPath, err.Error())
 			return -C.EIO

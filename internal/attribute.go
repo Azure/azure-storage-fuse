@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -69,16 +69,17 @@ const (
 
 // ObjAttr : Attributes of any file/directory
 type ObjAttr struct {
-	Mtime    time.Time       // modified time
-	Atime    time.Time       // access time
-	Ctime    time.Time       // change time
-	Crtime   time.Time       // creation time
-	Size     int64           // size of the file/directory
-	Mode     os.FileMode     // permissions in 0xxx format
-	Flags    common.BitMap16 // flags
-	Path     string          // full path
-	Name     string          // base name of the path
-	MD5      []byte
+	Mtime    time.Time          // modified time
+	Atime    time.Time          // access time
+	Ctime    time.Time          // change time
+	Crtime   time.Time          // creation time
+	Size     int64              // size of the file/directory
+	Mode     os.FileMode        // permissions in 0xxx format
+	Flags    common.BitMap16    // flags
+	Path     string             // full path
+	Name     string             // base name of the path
+	MD5      []byte             // MD5 of the blob as per last GetAttr
+	ETag     string             // ETag of the blob as per last GetAttr
 	Metadata map[string]*string // extra information to preserve
 }
 

@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -120,6 +120,25 @@ func assertUntouched(suite *attrCacheTestSuite, path string) {
 	suite.assert.EqualValues(suite.attrCache.cacheMap[path].attr.Mode, defaultMode)
 	suite.assert.True(suite.attrCache.cacheMap[path].valid())
 	suite.assert.True(suite.attrCache.cacheMap[path].exists())
+}
+
+// This method is used when we transfer the attributes from the src to dst, and mark src as invalid
+func assertAttributesTransferred(suite *attrCacheTestSuite, srcAttr *internal.ObjAttr, dstAttr *internal.ObjAttr) {
+	suite.assert.EqualValues(srcAttr.Size, dstAttr.Size)
+	suite.assert.EqualValues(srcAttr.Path, dstAttr.Path)
+	suite.assert.EqualValues(srcAttr.Mode, dstAttr.Mode)
+	suite.assert.EqualValues(srcAttr.Atime, dstAttr.Atime)
+	suite.assert.EqualValues(srcAttr.Mtime, dstAttr.Mtime)
+	suite.assert.EqualValues(srcAttr.Ctime, dstAttr.Ctime)
+	suite.assert.True(suite.attrCache.cacheMap[dstAttr.Path].exists())
+	suite.assert.True(suite.attrCache.cacheMap[dstAttr.Path].valid())
+}
+
+// If next component changes the times of the attribute.
+func assertSrcAttributeTimeChanged(suite *attrCacheTestSuite, srcAttr *internal.ObjAttr, srcAttrCopy internal.ObjAttr) {
+	suite.assert.NotEqualValues(suite, srcAttr.Atime, srcAttrCopy.Atime)
+	suite.assert.NotEqualValues(suite, srcAttr.Mtime, srcAttrCopy.Mtime)
+	suite.assert.NotEqualValues(suite, srcAttr.Ctime, srcAttrCopy.Ctime)
 }
 
 // Directory structure
@@ -676,15 +695,41 @@ func (suite *attrCacheTestSuite) TestRenameFile() {
 	suite.assert.NotContains(suite.attrCache.cacheMap, src)
 	suite.assert.NotContains(suite.attrCache.cacheMap, dst)
 
-	// Entry Already Exists
+	// Src, Dst Entry Already Exists
 	addPathToCache(suite.assert, suite.attrCache, src, false)
 	addPathToCache(suite.assert, suite.attrCache, dst, false)
-	suite.mock.EXPECT().RenameFile(options).Return(nil)
+	options.SrcAttr = suite.attrCache.cacheMap[src].attr
+	options.SrcAttr.Size = 1
+	options.SrcAttr.Mode = 2
+	options.DstAttr = suite.attrCache.cacheMap[dst].attr
+	options.DstAttr.Size = 3
+	options.DstAttr.Mode = 4
+	srcAttrCopy := *options.SrcAttr
 
+	suite.mock.EXPECT().RenameFile(options).Return(nil)
 	err = suite.attrCache.RenameFile(options)
 	suite.assert.Nil(err)
 	assertDeleted(suite, src)
-	assertInvalid(suite, dst)
+	modifiedDstAttr := suite.attrCache.cacheMap[dst].attr
+	assertSrcAttributeTimeChanged(suite, options.SrcAttr, srcAttrCopy)
+	// Check the attributes of the dst are same as the src.
+	assertAttributesTransferred(suite, options.SrcAttr, modifiedDstAttr)
+
+	// Src Entry Exist and Dst Entry Don't Exist
+	addPathToCache(suite.assert, suite.attrCache, src, false)
+	// Add negative entry to cache for Dst
+	suite.attrCache.cacheMap[dst] = newAttrCacheItem(&internal.ObjAttr{}, false, time.Now())
+	options.SrcAttr = suite.attrCache.cacheMap[src].attr
+	options.DstAttr = suite.attrCache.cacheMap[dst].attr
+	options.SrcAttr.Size = 1
+	options.SrcAttr.Mode = 2
+	suite.mock.EXPECT().RenameFile(options).Return(nil)
+	err = suite.attrCache.RenameFile(options)
+	suite.assert.Nil(err)
+	assertDeleted(suite, src)
+	modifiedDstAttr = suite.attrCache.cacheMap[dst].attr
+	assertSrcAttributeTimeChanged(suite, options.SrcAttr, srcAttrCopy)
+	assertAttributesTransferred(suite, options.SrcAttr, modifiedDstAttr)
 }
 
 // Tests Write File
@@ -770,12 +815,13 @@ func (suite *attrCacheTestSuite) TestTruncateFile() {
 
 	err = suite.attrCache.TruncateFile(options)
 	suite.assert.Nil(err)
-	suite.assert.Contains(suite.attrCache.cacheMap, path)
-	suite.assert.NotEqualValues(suite.attrCache.cacheMap[path].attr, &internal.ObjAttr{})
-	suite.assert.EqualValues(suite.attrCache.cacheMap[path].attr.Size, size) // new size should be set
-	suite.assert.EqualValues(suite.attrCache.cacheMap[path].attr.Mode, defaultMode)
-	suite.assert.True(suite.attrCache.cacheMap[path].valid())
-	suite.assert.True(suite.attrCache.cacheMap[path].exists())
+	// suite.assert.Contains(suite.attrCache.cacheMap, path)
+	// suite.assert.NotEqualValues(suite.attrCache.cacheMap[path].attr, &internal.ObjAttr{})
+	// suite.assert.EqualValues(suite.attrCache.cacheMap[path].attr.Size, size) // new size should be set
+	// suite.assert.EqualValues(suite.attrCache.cacheMap[path].attr.Mode, defaultMode)
+	// suite.assert.True(suite.attrCache.cacheMap[path].valid())
+	// suite.assert.True(suite.attrCache.cacheMap[path].exists())
+	suite.assert.False(suite.attrCache.cacheMap[path].valid())
 }
 
 // Tests CopyFromFile

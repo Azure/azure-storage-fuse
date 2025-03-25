@@ -1,4 +1,33 @@
-## 2.4.0 (Unreleased)
+## 2.5.0 (Unreleased)
+**Features**
+- Added `Client Assertion` based authentication for containers. Configure `tenant-id, client-id, aad-application-id and security scope` with `authMode` set to `workloadidentity`.
+
+## 2.5.0~preview.1 (Unreleased)
+**Features**
+
+**Bug Fixes**
+
+## 2.4.1 (2025-02-18)
+**Bug Fixes**
+- Create block pool only in the child process.
+- Prevent the block cache to truncate the file size to zero when the file is opened in O_WRONLY mode when writebackcache is disabled.
+- Correct statFS results to reflect block-cache in memory cache status.
+- Do not wipeout temp-cache on start after a un-graceful unmount, if `cleanup-on-start` is not configured in file-cache.
+- When the subdirectory is mounted and there is some file/folder operation, remove only the subdirectory path from the file paths.
+- Enable atomic_o_trunc flag in libfuse to allow O_TRUNC flag to come in the open call for fuse2.
+- In file-cache, when the O_TRUNC flag is passed to the open call and no modifications were done to the file before closing it then update the file in the Azure Storage to size 0.
+
+**Other Changes**
+- Optimized listing operation on HNS account to support symlinks.
+- Optimized Rename operation to do less number of REST calls.
+- Add documentation on usage of Private Endpoints with HNS-Enabled Storage Accounts
+
+**Features**
+- Mount container or directory but restrict the view of blobs that you can see. This feature is available only in read-only mount.
+- To protect against accidental overwrites on data stored by block-cache on temp path, crc64 hash will be validated on read. This feature can be enabled by using `--block-cache-strong-consistency` cli flag.
+- To provide strong consistency check, ETAG of the file will be preserved on open. For any subsequent block download, with block-cache, ETAG will be verified and if the blob has changed in container the download will be declare failure resulting into read failure.
+
+## 2.4.0 (2024-12-03)
 **Features**
 - Added 'gen-config' command to auto generate the recommended blobfuse2 config file based on computing resources and memory available on the node. Command details can be found with `blobfuse2 gen-config --help`.
 - Added option to set Entry cache to hold directory listing results in cache for a given timeout. This will reduce REST calls going to storage and enables faster access across multiple applications that use Blobfuse on the same node.
@@ -16,6 +45,7 @@
 - `Stream` option automatically replaced with "Stream with Block-cache" internally for optimized performance.
 - Login via Managed Identify is supported with Object-ID for all versions of blobfuse except 2.3.0 and 2.3.2.To use Object-ID for these two versions, use AzCLI or utilize Application/Client-ID or Resource ID base authentication..
 - Version check is now moved to a static website hosted on a public container.
+- 'df' command output will present memory availability in case of block-cache if disk is not configured.
 
 ## 2.3.2 (2024-09-03)
 **Bug Fixes**

@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2024 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2025 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -63,10 +63,17 @@ type azAuthConfig struct {
 	ClientID                string
 	ClientSecret            string
 	OAuthTokenFilePath      string
+	WorkloadIdentityToken   string
 	ActiveDirectoryEndpoint string
 
-	Endpoint     string
+	// Client assertions config
+	// This will need ApplicationID, TenantID and ClientID as well
+	UserAssertion string
+
+	// Auth resource / security scope for OAuth
 	AuthResource string
+
+	Endpoint string
 }
 
 // azAuth : Interface to define a generic authentication type
@@ -130,6 +137,12 @@ func getAzBlobAuth(config azAuthConfig) azAuth {
 				azAuthBase: base,
 			},
 		}
+	} else if config.AuthMode == EAuthType.WORKLOADIDENTITY() {
+		return &azAuthBlobWorkloadIdentity{
+			azAuthWorkloadIdentity{
+				azAuthBase: base,
+			},
+		}
 	} else {
 		log.Crit("azAuth::getAzBlobAuth : Auth type %s not supported. Failed to create Auth object", config.AuthMode)
 	}
@@ -165,6 +178,12 @@ func getAzDatalakeAuth(config azAuthConfig) azAuth {
 	} else if config.AuthMode == EAuthType.AZCLI() {
 		return &azAuthDatalakeCLI{
 			azAuthCLI{
+				azAuthBase: base,
+			},
+		}
+	} else if config.AuthMode == EAuthType.WORKLOADIDENTITY() {
+		return &azAuthDatalakeWorkloadIdentity{
+			azAuthWorkloadIdentity{
 				azAuthBase: base,
 			},
 		}
