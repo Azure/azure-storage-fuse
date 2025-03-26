@@ -34,9 +34,12 @@
 package distributed_cache
 
 import (
+	"errors"
+	"os"
 	"testing"
 
 	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/golang/mock/gomock"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -47,30 +50,55 @@ import (
 // var dataBuff []byte
 // var random *rand.Rand = rand.New(rand.NewSource(time.Now().UnixNano()))
 
-type heartbeatManagerTestSuite struct {
+type hbManagerTestSuite struct {
 	suite.Suite
-	assert            *assert.Assertions
-	fake_storage_path string
-	disk_cache_path   string
-	loopback          internal.Component
-	hbManager         *HeartbeatManager
+	assert    *assert.Assertions
+	hbManager *HeartbeatManager
+
+	mockCtrl *gomock.Controller
+	mock     *internal.MockComponent
 }
 
-func (suite *heartbeatManagerTestSuite) TestStartHb() {
-	suite.hbManager.Starthb()
-	_, err := suite.hbManager.storage.GetAttr(suite.hbManager.hbPath + "/Nodes/" + suite.hbManager.nodeId + ".hb")
+func (suite *hbManagerTestSuite) SetupTest() {
+	suite.assert = assert.New(suite.T())
+
+	suite.mockCtrl = gomock.NewController(suite.T())
+	suite.mock = internal.NewMockComponent(suite.mockCtrl)
+	cachePath, _ := os.UserHomeDir()
+	suite.hbManager = &HeartbeatManager{
+		cachePath: cachePath,
+		comp:      suite.mock,
+		hbPath:    "__CACHE__mycache1",
+	}
+}
+
+func (suite *hbManagerTestSuite) TestStartHbSuccess() {
+	suite.mock.EXPECT().WriteFromBuffer(gomock.Any()).Return(nil)
+	err := suite.hbManager.Starthb()
 	suite.assert.Nil(err)
 }
 
-func (suite *heartbeatManagerTestSuite) TestStopHb() {
-	suite.hbManager.Stop()
-	_, err := suite.hbManager.storage.GetAttr(suite.hbManager.hbPath + "/Nodes/" + suite.hbManager.nodeId + ".hb")
-	suite.assert.NotNil(err)
+func (suite *hbManagerTestSuite) TestStartHbFail() {
+	suite.mock.EXPECT().WriteFromBuffer(gomock.Any()).Return(errors.New("test error"))
+	err := suite.hbManager.Starthb()
+	suite.assert.Equal("test error", err.Error())
+}
+
+func (suite *hbManagerTestSuite) TestStopHbSuccess() {
+	suite.mock.EXPECT().DeleteFile(gomock.Any()).Return(nil)
+	err := suite.hbManager.Stop()
+	suite.assert.Nil(err)
+}
+
+func (suite *hbManagerTestSuite) TestStopHbFail() {
+	suite.mock.EXPECT().DeleteFile(gomock.Any()).Return(errors.New("test error"))
+	err := suite.hbManager.Stop()
+	suite.assert.Equal("test error", err.Error())
 }
 
 // In order for 'go test' to run this suite, we need to create
 // a normal test function and pass our suite to suite.Run
 func TestHeartbeatManagerTestSuite(t *testing.T) {
 
-	suite.Run(t, new(heartbeatManagerTestSuite))
+	suite.Run(t, new(hbManagerTestSuite))
 }

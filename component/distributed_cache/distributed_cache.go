@@ -35,7 +35,10 @@ package distributed_cache
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
+	"syscall"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/bloberror"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
@@ -56,9 +59,9 @@ type DistributedCache struct {
 	cacheID      string
 	cachePath    string
 	maxCacheSize uint64
-	replicas     uint32
+	replicas     uint8
 	hbTimeout    uint32
-	hbDuration   uint32
+	hbDuration   uint16
 
 	heartbeatManager *HeartbeatManager
 }
@@ -69,9 +72,9 @@ type DistributedCacheOptions struct {
 	CachePath         string `config:"path" yaml:"path,omitempty"`
 	ChunkSize         uint64 `config:"chunk-size" yaml:"chunk-size,omitempty"`
 	MaxCacheSize      uint64 `config:"max-cache-size" yaml:"cache-size,omitempty"`
-	Replicas          uint32 `config:"replicas" yaml:"replicas,omitempty"`
+	Replicas          uint8  `config:"replicas" yaml:"replicas,omitempty"`
 	HeartbeatTimeout  uint32 `config:"heartbeat-timeout" yaml:"heartbeat-timeout,omitempty"`
-	HeartbeatDuration uint32 `config:"heartbeat-duration" yaml:"heartbeat-duration,omitempty"`
+	HeartbeatDuration uint16 `config:"heartbeat-duration" yaml:"heartbeat-duration,omitempty"`
 	MissedHeartbeat   uint32 `config:"heartbeats-till-node-down" yaml:"heartbeats-till-node-down,omitempty"`
 }
 
@@ -109,7 +112,7 @@ func (dc *DistributedCache) Start(ctx context.Context) error {
 
 	log.Info("DistributedCache::Start : Cache structure setup completed")
 	dc.heartbeatManager = &HeartbeatManager{cachePath: dc.cachePath,
-		comp:         dc,
+		comp:         dc.NextComponent(),
 		hbDuration:   dc.hbDuration,
 		hbPath:       "__CACHE__" + dc.cacheID,
 		maxCacheSize: dc.maxCacheSize,
@@ -124,32 +127,33 @@ func (dc *DistributedCache) Start(ctx context.Context) error {
 func (dc *DistributedCache) setupCacheStructure(cacheDir string) error {
 	_, err := dc.NextComponent().GetAttr(internal.GetAttrOptions{Name: cacheDir + "/creator.txt"})
 	if err != nil {
-		directories := []string{cacheDir, cacheDir + "/Nodes", cacheDir + "/Objects"}
-		for _, dir := range directories {
-			if err := dc.NextComponent().CreateDir(internal.CreateDirOptions{Name: dir, Etag: true}); err != nil {
+		if os.IsNotExist(err) || err == syscall.ENOENT {
+			directories := []string{cacheDir, cacheDir + "/Nodes", cacheDir + "/Objects"}
+			for _, dir := range directories {
+				if err := dc.NextComponent().CreateDir(internal.CreateDirOptions{Name: dir, Etag: true}); err != nil {
 
-				// If I will check directly the creator file and if it is not created then I am kind of loop to check the file again and again Rather than that I have added the call to create remaining directory structure if the one is failed
-				if bloberror.HasCode(err, bloberror.BlobAlreadyExists) {
-					continue
-				} else if err != nil {
-					return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to create directory %s: %v]", dir, err))
+					if !bloberror.HasCode(err, bloberror.BlobAlreadyExists) {
+						return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to create directory %s: %v]", dir, err))
+					}
 				}
 			}
-		}
 
-		// Add metadata file with VM IP
-		ip, err := getVmIp()
-		if err != nil {
-			return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to get VM IP: %v]", err))
-		}
-		if err := dc.NextComponent().WriteFromBuffer(internal.WriteFromBufferOptions{Name: cacheDir + "/creator.txt",
-			Data: []byte(ip),
-			Etag: true}); err != nil {
-			if !bloberror.HasCode(err, bloberror.BlobAlreadyExists) {
-				return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to create creator file: %v]", err))
-			} else {
-				return nil
+			// Add metadata file with VM IP
+			ip, err := getVmIp()
+			if err != nil {
+				return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to get VM IP: %v]", err))
 			}
+			if err := dc.NextComponent().WriteFromBuffer(internal.WriteFromBufferOptions{Name: cacheDir + "/creator.txt",
+				Data: []byte(ip),
+				Etag: true}); err != nil {
+				if !bloberror.HasCode(err, bloberror.BlobAlreadyExists) {
+					return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to create creator file: %v]", err))
+				} else {
+					return nil
+				}
+			}
+		} else {
+			return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to read creator file: %v]", err))
 		}
 	}
 	return nil
@@ -158,14 +162,15 @@ func (dc *DistributedCache) setupCacheStructure(cacheDir string) error {
 // logAndReturnError logs the error and returns it.
 func logAndReturnError(msg string) error {
 	log.Err(msg)
-	return fmt.Errorf(msg)
+	return errors.New(msg)
 }
 
 // Stop : Stop the component functionality and kill all threads started
 func (dc *DistributedCache) Stop() error {
 	log.Trace("DistributedCache::Stop : Stopping component %s", dc.Name())
 	if dc.heartbeatManager != nil {
-		dc.heartbeatManager.Stop()
+		return dc.heartbeatManager.Stop()
+
 	}
 	return nil
 }
@@ -192,8 +197,14 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 	distributedCache.cacheID = conf.CacheID
 	distributedCache.cachePath = conf.CachePath
 	distributedCache.maxCacheSize = conf.MaxCacheSize
-	distributedCache.replicas = conf.Replicas
-	distributedCache.hbDuration = conf.HeartbeatDuration
+	distributedCache.replicas = defaultReplicas
+	if config.IsSet(compName + ".replicas") {
+		distributedCache.replicas = conf.Replicas
+	}
+	distributedCache.hbDuration = defaultHeartBeatDuration
+	if config.IsSet(compName + ".heartbeat-duration") {
+		distributedCache.hbDuration = conf.HeartbeatDuration
+	}
 
 	return nil
 }
@@ -228,13 +239,13 @@ func init() {
 	maxCacheSize := config.AddUint64Flag("max-cache-size", 0, "Cache size for the cache")
 	config.BindPFlag(compName+".max-cache-size", maxCacheSize)
 
-	replicas := config.AddUint32Flag("replicas", defaultReplicas, "Number of replicas for the cache")
+	replicas := config.AddUint8Flag("replicas", defaultReplicas, "Number of replicas for the cache")
 	config.BindPFlag(compName+".replicas", replicas)
 
 	heartbeatTimeout := config.AddUint32Flag("heartbeat-timeout", 30, "Heartbeat timeout for the cache")
 	config.BindPFlag(compName+".heartbeat-timeout", heartbeatTimeout)
 
-	heartbeatDuration := config.AddUint32Flag("heartbeat-duration", defaultHeartBeatDuration, "Heartbeat duration for the cache")
+	heartbeatDuration := config.AddUint16Flag("heartbeat-duration", defaultHeartBeatDuration, "Heartbeat duration for the cache")
 	config.BindPFlag(compName+".heartbeat-duration", heartbeatDuration)
 
 	missedHB := config.AddUint32Flag("heartbeats-till-node-down", 3, "Heartbeat absence for the cache")

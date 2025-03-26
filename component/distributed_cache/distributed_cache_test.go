@@ -37,84 +37,54 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand"
-	"os"
-	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
-	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/golang/mock/gomock"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
 
-var home_dir, _ = os.UserHomeDir()
-var mountpoint = home_dir + "mountpoint"
-var random *rand.Rand = rand.New(rand.NewSource(time.Now().UnixNano()))
 var ctx = context.Background()
 
 type distributedCacheTestSuite struct {
 	suite.Suite
-	assert            *assert.Assertions
-	fake_storage_path string
-	disk_cache_path   string
-	distributedCache  *DistributedCache
-	mockCtrl          *gomock.Controller
-	mockStorage       MockStorage
-}
-
-func randomString(length int) string {
-	b := make([]byte, length)
-	random.Read(b)
-	return fmt.Sprintf("%x", b)[:length]
-}
-
-func getFakeStoragePath(base string) string {
-	tmp_path := filepath.Join(home_dir, base+randomString(8))
-	ret := os.Mkdir(tmp_path, 0777)
-	log.Debug("Creating fake storage path %s", ret)
-	return tmp_path
+	assert           *assert.Assertions
+	distributedCache *DistributedCache
+	mockCtrl         *gomock.Controller
+	mock             *internal.MockComponent
 }
 
 func (suite *distributedCacheTestSuite) SetupTest() {
 	log.SetDefaultLogger("silent", common.LogConfig{Level: common.ELogLevel.LOG_DEBUG()})
-	suite.fake_storage_path = getFakeStoragePath("fake_storage")
-	suite.disk_cache_path = getFakeStoragePath("distributed_cache")
-
-	defaultConfig := fmt.Sprintf("read-only: true\n\ndistributed_cache:\n  cache-id: mycache1\n  path: %s", suite.disk_cache_path)
+	defaultConfig := "distributed_cache:\n  cache-id: mycache1\n  path: \\tmp"
 	log.Debug(defaultConfig)
+
 	suite.setupTestHelper(defaultConfig)
-	suite.mockCtrl = gomock.NewController(suite.T())
-	suite.mockStorage = *NewMockStroage(suite.mockCtrl)
 }
 
 func (suite *distributedCacheTestSuite) setupTestHelper(cfg string) error {
 	suite.assert = assert.New(suite.T())
 
 	config.ReadConfigFromReader(strings.NewReader(cfg))
-	config.Set("mount-path", mountpoint)
 
+	suite.mockCtrl = gomock.NewController(suite.T())
+	suite.mock = internal.NewMockComponent(suite.mockCtrl)
 	suite.distributedCache = NewDistributedCacheComponent().(*DistributedCache)
+	suite.distributedCache.SetNextComponent(suite.mock)
 	err := suite.distributedCache.Configure(true)
 	if err != nil {
 		return fmt.Errorf("Unable to configure distributed cache [%s]", err.Error())
 	}
-	suite.distributedCache.storage = &suite.mockStorage
-
-	err = suite.distributedCache.Start(ctx)
-	if err != nil {
-		return fmt.Errorf("Unable to start distributed cache [%s]", err.Error())
-	}
-
 	return nil
 }
 
-func (suite *distributedCacheTestSuite) cleanupPipeline() error {
+func (suite *distributedCacheTestSuite) TearDownTest() error {
 	config.ResetConfig()
 
 	err := suite.distributedCache.Stop()
@@ -123,53 +93,87 @@ func (suite *distributedCacheTestSuite) cleanupPipeline() error {
 		return nil
 	}
 
-	os.RemoveAll(suite.fake_storage_path)
-	os.RemoveAll(suite.disk_cache_path)
 	return nil
 }
 
 func (suite *distributedCacheTestSuite) TestManadatoryConfigMissing() {
+	suite.mock.EXPECT().GetAttr(gomock.Any()).Return(&internal.ObjAttr{}, errors.New("Failed"))
+	suite.distributedCache.Start(ctx)
 	suite.assert.Equal(suite.distributedCache.Name(), "distributed_cache")
 	suite.assert.EqualValues("mycache1", suite.distributedCache.cacheID)
-	suite.assert.EqualValues(suite.disk_cache_path, suite.distributedCache.cachePath)
-	suite.assert.EqualValues(3, suite.distributedCache.replicas)
-	suite.assert.EqualValues(30, suite.distributedCache.hbDuration)
-	suite.assert.EqualValues(0, suite.distributedCache.hbTimeout)
+	suite.assert.EqualValues("\\tmp", suite.distributedCache.cachePath)
+	suite.assert.EqualValues(uint8(3), suite.distributedCache.replicas)
+	suite.assert.EqualValues(uint16(30), suite.distributedCache.hbDuration)
+	suite.assert.EqualValues(uint16(0), suite.distributedCache.hbTimeout)
 
-	emptyConfig := fmt.Sprintf("read-only: true\n\nloopbackfs:\n  path: %s\n\ndistributed_cache:\n  cache-id: mycache1", suite.fake_storage_path)
+	emptyConfig := "read-only: true\n\ndistributed_cache:\n  cache-id: mycache1"
 	err := suite.setupTestHelper(emptyConfig)
-	defer suite.cleanupPipeline()
 
-	suite.assert.Equal(err.Error(), "Unable to configure distributed cache [config error in distributed_cache error [cache-path not set]]")
+	suite.assert.Equal("Unable to configure distributed cache [config error in distributed_cache: [cache-path not set]]", err.Error())
 
-	emptyConfig = fmt.Sprintf("read-only: true\n\nloopbackfs:\n  path: %s", suite.fake_storage_path)
+	emptyConfig = ""
 	err = suite.setupTestHelper(emptyConfig)
-	suite.assert.Equal(err.Error(), "Unable to configure distributed cache [config error in distributed_cache error [cache-id not set]]")
+	suite.assert.Equal("Unable to configure distributed cache [config error in distributed_cache: [cache-id not set]]", err.Error())
 
-	emptyConfig = fmt.Sprintf("read-only: true\n\nloopbackfs:\n  path: %s\n\ndistributed_cache:\n  cache-id: mycache1\n  path: %s", suite.fake_storage_path, suite.disk_cache_path)
+	emptyConfig = "read-only: true\n\ndistributed_cache:\n  path: \\tmp"
 	err = suite.setupTestHelper(emptyConfig)
-	suite.assert.Equal(err.Error(), "Unable to start distributed cache [DistributedCache::Start : error [invalid or missing storage component]]")
-
-	emptyConfig = fmt.Sprintf("read-only: true\n\nloopbackfs:\n  path: %s\n\ndistributed_cache:\n  path: %s", suite.fake_storage_path, suite.disk_cache_path)
-	err = suite.setupTestHelper(emptyConfig)
-	suite.assert.Equal(err.Error(), "Unable to configure distributed cache [config error in distributed_cache error [cache-id not set]]")
-
+	suite.assert.Equal("Unable to configure distributed cache [config error in distributed_cache: [cache-id not set]]", err.Error())
 }
 
-func (suite *distributedCacheTestSuite) TestDistributedCacheSetupCacheStructure() {
-
-	cacheDir := "__CACHE__" + suite.distributedCache.cacheID
-	suite.mockStorage.EXPECT().GetAttr(gomock.Any()).Return(nil, nil)
-	// suite.mockStorage.EXPECT().
-	// 	GetAttr(gomock.Any()).
-	// 	Return(&internal.ObjAttr{}, nil).
-	// 	Times(1)
-	err := suite.distributedCache.setupCacheStructure(cacheDir)
+func (suite *distributedCacheTestSuite) TestSetupCacheStructureSuccess() {
+	suite.mock.EXPECT().GetAttr(gomock.Any()).Return(&internal.ObjAttr{}, syscall.ENOENT)
+	suite.mock.EXPECT().CreateDir(gomock.Any()).Return(nil).AnyTimes()
+	suite.mock.EXPECT().WriteFromBuffer(gomock.Any()).Return(nil)
+	err := suite.distributedCache.Start(ctx)
 	suite.assert.Nil(err)
+}
 
-	suite.mockStorage.EXPECT().GetAttr(cacheDir+"/creator.txt").Return(nil, errors.New("Failed"))
-	err = suite.distributedCache.setupCacheStructure(cacheDir)
-	suite.assert.Nil(err)
+func (suite *distributedCacheTestSuite) TestSetupCacheStructureFailToReadStorage() {
+	suite.mock.EXPECT().GetAttr(gomock.Any()).Return(&internal.ObjAttr{}, syscall.EACCES)
+	err := suite.distributedCache.Start(ctx)
+	suite.assert.NotNil(err)
+	suite.assert.Equal("DistributedCache::Start error [failed to read creator file: permission denied]", err.Error())
+}
+
+func (suite *distributedCacheTestSuite) TestSetupCacheStructureFailToCreateDir() {
+	suite.mock.EXPECT().GetAttr(gomock.Any()).Return(&internal.ObjAttr{}, syscall.ENOENT)
+	suite.mock.EXPECT().CreateDir(gomock.Any()).Return(errors.New("Failed to create dir"))
+	err := suite.distributedCache.Start(ctx)
+	suite.assert.NotNil(err)
+	suite.assert.Equal("DistributedCache::Start error [failed to create directory __CACHE__mycache1: Failed to create dir]", err.Error())
+}
+
+func (suite *distributedCacheTestSuite) TestSetupCacheStructureFailToCreateNodeDir() {
+	suite.mock.EXPECT().GetAttr(gomock.Any()).Return(&internal.ObjAttr{}, syscall.ENOENT)
+	opt1 := internal.CreateDirOptions{Name: "__CACHE__" + suite.distributedCache.cacheID, Etag: true}
+	suite.mock.EXPECT().CreateDir(opt1).Return(nil)
+	opt2 := internal.CreateDirOptions{Name: "__CACHE__" + suite.distributedCache.cacheID + "/Nodes", Etag: true}
+	suite.mock.EXPECT().CreateDir(opt2).Return(errors.New("Failed to create dir"))
+	err := suite.distributedCache.Start(ctx)
+	suite.assert.NotNil(err)
+	suite.assert.Equal("DistributedCache::Start error [failed to create directory __CACHE__mycache1/Nodes: Failed to create dir]", err.Error())
+}
+
+func (suite *distributedCacheTestSuite) TestSetupCacheStructureFailToCreateObjectDir() {
+	suite.mock.EXPECT().GetAttr(gomock.Any()).Return(&internal.ObjAttr{}, syscall.ENOENT)
+	opt1 := internal.CreateDirOptions{Name: "__CACHE__" + suite.distributedCache.cacheID, Etag: true}
+	suite.mock.EXPECT().CreateDir(opt1).Return(nil)
+	opt2 := internal.CreateDirOptions{Name: "__CACHE__" + suite.distributedCache.cacheID + "/Nodes", Etag: true}
+	suite.mock.EXPECT().CreateDir(opt2).Return(nil)
+	opt3 := internal.CreateDirOptions{Name: "__CACHE__" + suite.distributedCache.cacheID + "/Objects", Etag: true}
+	suite.mock.EXPECT().CreateDir(opt3).Return(errors.New("Failed to create dir"))
+	err := suite.distributedCache.Start(ctx)
+	suite.assert.NotNil(err)
+	suite.assert.Equal("DistributedCache::Start error [failed to create directory __CACHE__mycache1/Objects: Failed to create dir]", err.Error())
+}
+
+func (suite *distributedCacheTestSuite) TestSetupCacheStructureFailToWriteCreatoFile() {
+	suite.mock.EXPECT().GetAttr(gomock.Any()).Return(&internal.ObjAttr{}, syscall.ENOENT)
+	suite.mock.EXPECT().CreateDir(gomock.Any()).Return(nil).AnyTimes()
+	suite.mock.EXPECT().WriteFromBuffer(gomock.Any()).Return(errors.New("Failed to create file"))
+	err := suite.distributedCache.Start(ctx)
+	suite.assert.NotNil(err)
+	suite.assert.Equal("DistributedCache::Start error [failed to create creator file: Failed to create file]", err.Error())
 }
 
 // In order for 'go test' to run this suite, we need to create

@@ -12,7 +12,7 @@ import (
 type HeartbeatManager struct {
 	comp         internal.Component
 	cachePath    string
-	hbDuration   uint32
+	hbDuration   uint16
 	hbPath       string
 	maxCacheSize uint64
 	nodeId       string
@@ -23,7 +23,7 @@ func (hm *HeartbeatManager) Start() {
 	hm.ticker = time.NewTicker(time.Duration(hm.hbDuration) * time.Second)
 	go func() {
 		for range hm.ticker.C {
-			log.Info("Scheduled task triggered")
+			log.Trace("Scheduled task triggered")
 			hm.Starthb()
 		}
 	}()
@@ -79,16 +79,21 @@ func (hm *HeartbeatManager) Starthb() error {
 	}
 
 	// Create a heartbeat file in storage with <nodeId>.hb
-	if err := hm.comp.NextComponent().WriteFromBuffer(internal.WriteFromBufferOptions{Name: hbPath, Data: data}); err != nil {
+	if err := hm.comp.WriteFromBuffer(internal.WriteFromBufferOptions{Name: hbPath, Data: data}); err != nil {
 		log.Err("AddHeartBeat: Failed to write heartbeat file: ", err)
 		return err
 	}
-	log.Info("AddHeartBeat: Heartbeat file updated successfully")
+	log.Trace("AddHeartBeat: Heartbeat file updated successfully")
 	return nil
 }
 
-func (hm *HeartbeatManager) Stop() {
+func (hm *HeartbeatManager) Stop() error {
 	hm.stopScehduler()
 	hbPath := hm.hbPath + "/Nodes/" + hm.nodeId + ".hb"
-	hm.comp.NextComponent().DeleteFile(internal.DeleteFileOptions{Name: hbPath})
+	err := hm.comp.DeleteFile(internal.DeleteFileOptions{Name: hbPath})
+	if err != nil {
+		log.Err("HeartbeatManager::Stop Failed to delete heartbeat file: ", err)
+		return err
+	}
+	return nil
 }
