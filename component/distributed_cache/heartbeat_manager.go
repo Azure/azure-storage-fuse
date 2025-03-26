@@ -6,27 +6,19 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	"github.com/Azure/azure-storage-fuse/v2/component/azstorage"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
 type HeartbeatManager struct {
-	cachePath  string
-	storage    azstorage.AzConnection
-	hbDuration uint32
-	nodeId     string
-	ticker     *time.Ticker
-	hbPath     string
+	comp         internal.Component
+	cachePath    string
+	hbDuration   uint32
+	hbPath       string
+	maxCacheSize uint64
+	nodeId       string
+	ticker       *time.Ticker
 }
 
-func NewHeartbeatManager(cachePath string, storage azstorage.AzConnection, hbDuration uint32, hbPath string) *HeartbeatManager {
-	return &HeartbeatManager{
-		cachePath:  cachePath,
-		hbPath:     hbPath,
-		storage:    storage,
-		hbDuration: hbDuration,
-	}
-}
 func (hm *HeartbeatManager) Start() {
 	hm.ticker = time.NewTicker(time.Duration(hm.hbDuration) * time.Second)
 	go func() {
@@ -58,19 +50,25 @@ func (hm *HeartbeatManager) Starthb() error {
 		log.Err("AddHeartBeat: Failed to get VM IP")
 		return err
 	}
-	total, free, err := evaluateVMStorage(hm.cachePath)
+	totalSpace, used_space, err := evaluateVMStorage(hm.cachePath)
 	if err != nil {
 		log.Err("AddHeartBeat: Failed to evaluate VM storage: ", err)
 		return err
 	}
 	hostname, _ := common.GetHostName()
+	totalSpace = func() uint64 {
+		if hm.maxCacheSize != 0 {
+			return hm.maxCacheSize
+		}
+		return totalSpace
+	}()
 	hbData := map[string]interface{}{
-		"ipaddr":             ipaddr,
-		"nodeid":             hm.nodeId,
-		"hostname":           hostname,
-		"last_heartbeat":     time.Now().Unix(),
-		"total_space_GB":     total / (1024 * 1024 * 1024),
-		"available_space_GB": free / (1024 * 1024 * 1024),
+		"ipaddr":           ipaddr,
+		"nodeid":           hm.nodeId,
+		"hostname":         hostname,
+		"last_heartbeat":   time.Now().Unix(),
+		"total_space_byte": totalSpace,
+		"used_space_byte":  used_space,
 	}
 
 	// Marshal the data into JSON
@@ -81,7 +79,7 @@ func (hm *HeartbeatManager) Starthb() error {
 	}
 
 	// Create a heartbeat file in storage with <nodeId>.hb
-	if err := hm.storage.WriteFromBuffer(internal.WriteFromBufferOptions{Name: hbPath, Data: data}); err != nil {
+	if err := hm.comp.NextComponent().WriteFromBuffer(internal.WriteFromBufferOptions{Name: hbPath, Data: data}); err != nil {
 		log.Err("AddHeartBeat: Failed to write heartbeat file: ", err)
 		return err
 	}
@@ -92,5 +90,5 @@ func (hm *HeartbeatManager) Starthb() error {
 func (hm *HeartbeatManager) Stop() {
 	hm.stopScehduler()
 	hbPath := hm.hbPath + "/Nodes/" + hm.nodeId + ".hb"
-	hm.storage.DeleteFile(hbPath)
+	hm.comp.NextComponent().DeleteFile(internal.DeleteFileOptions{Name: hbPath})
 }

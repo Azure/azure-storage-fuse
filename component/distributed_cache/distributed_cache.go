@@ -40,7 +40,6 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/bloberror"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	"github.com/Azure/azure-storage-fuse/v2/component/azstorage"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
@@ -54,13 +53,13 @@ import (
 // Common structure for Component
 type DistributedCache struct {
 	internal.BaseComponent
-	cacheID    string
-	cachePath  string
-	replicas   uint32
-	hbTimeout  uint32
-	hbDuration uint32
+	cacheID      string
+	cachePath    string
+	maxCacheSize uint64
+	replicas     uint32
+	hbTimeout    uint32
+	hbDuration   uint32
 
-	storage          azstorage.AzConnection
 	heartbeatManager *HeartbeatManager
 }
 
@@ -69,7 +68,7 @@ type DistributedCacheOptions struct {
 	CacheID           string `config:"cache-id" yaml:"cache-id,omitempty"`
 	CachePath         string `config:"path" yaml:"path,omitempty"`
 	ChunkSize         uint64 `config:"chunk-size" yaml:"chunk-size,omitempty"`
-	CacheSize         uint64 `config:"cache-size" yaml:"cache-size,omitempty"`
+	MaxCacheSize      uint64 `config:"max-cache-size" yaml:"cache-size,omitempty"`
 	Replicas          uint32 `config:"replicas" yaml:"replicas,omitempty"`
 	HeartbeatTimeout  uint32 `config:"heartbeat-timeout" yaml:"heartbeat-timeout,omitempty"`
 	HeartbeatDuration uint32 `config:"heartbeat-duration" yaml:"heartbeat-duration,omitempty"`
@@ -77,9 +76,9 @@ type DistributedCacheOptions struct {
 }
 
 const (
-	compName          = "distributed_cache"
-	HeartBeatDuration = 30
-	REPLICAS          = 3
+	compName                 = "distributed_cache"
+	defaultHeartBeatDuration = 30
+	defaultReplicas          = 3
 )
 
 // Verification to check satisfaction criteria with Component Interface
@@ -101,12 +100,6 @@ func (distributedCache *DistributedCache) SetNextComponent(nextComponent interna
 func (dc *DistributedCache) Start(ctx context.Context) error {
 	log.Trace("DistributedCache::Start : Starting component %s", dc.Name())
 
-	// Get and validate storage component
-	storageComponent, ok := internal.GetStorageComponent().(*azstorage.AzStorage)
-	if !ok || storageComponent.GetBlobStorage() == nil {
-		return logAndReturnError("DistributedCache::Start : error [invalid or missing storage component]")
-	}
-	dc.storage = storageComponent.GetBlobStorage()
 	cacheDir := "__CACHE__" + dc.cacheID
 
 	// Check and create cache directory if needed
@@ -115,7 +108,12 @@ func (dc *DistributedCache) Start(ctx context.Context) error {
 	}
 
 	log.Info("DistributedCache::Start : Cache structure setup completed")
-	dc.heartbeatManager = NewHeartbeatManager(dc.cachePath, dc.storage, dc.hbDuration, "__CACHE__"+dc.cacheID)
+	dc.heartbeatManager = &HeartbeatManager{cachePath: dc.cachePath,
+		comp:         dc,
+		hbDuration:   dc.hbDuration,
+		hbPath:       "__CACHE__" + dc.cacheID,
+		maxCacheSize: dc.maxCacheSize,
+	}
 	dc.heartbeatManager.Start()
 	return nil
 
@@ -124,11 +122,11 @@ func (dc *DistributedCache) Start(ctx context.Context) error {
 // setupCacheStructure checks and creates necessary cache directories and metadata.
 // It's doing 4 rest api calls, 3 for directory and 1 for creator file.+1 call to check the creator file
 func (dc *DistributedCache) setupCacheStructure(cacheDir string) error {
-	_, err := dc.storage.GetAttr(cacheDir + "/creator.txt")
+	_, err := dc.NextComponent().GetAttr(internal.GetAttrOptions{Name: cacheDir + "/creator.txt"})
 	if err != nil {
 		directories := []string{cacheDir, cacheDir + "/Nodes", cacheDir + "/Objects"}
 		for _, dir := range directories {
-			if err := dc.storage.CreateDirectory(dir, true); err != nil {
+			if err := dc.NextComponent().CreateDir(internal.CreateDirOptions{Name: dir, Etag: true}); err != nil {
 
 				// If I will check directly the creator file and if it is not created then I am kind of loop to check the file again and again Rather than that I have added the call to create remaining directory structure if the one is failed
 				if bloberror.HasCode(err, bloberror.BlobAlreadyExists) {
@@ -144,7 +142,7 @@ func (dc *DistributedCache) setupCacheStructure(cacheDir string) error {
 		if err != nil {
 			return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to get VM IP: %v]", err))
 		}
-		if err := dc.storage.WriteFromBuffer(internal.WriteFromBufferOptions{Name: cacheDir + "/creator.txt",
+		if err := dc.NextComponent().WriteFromBuffer(internal.WriteFromBufferOptions{Name: cacheDir + "/creator.txt",
 			Data: []byte(ip),
 			Etag: true}); err != nil {
 			if !bloberror.HasCode(err, bloberror.BlobAlreadyExists) {
@@ -184,29 +182,18 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 		log.Err("DistributedCache::Configure : config error [invalid config attributes]")
 		return fmt.Errorf("DistributedCache: config error [invalid config attributes]")
 	}
-	if config.IsSet(compName + ".cache-id") {
-		distributedCache.cacheID = conf.CacheID
-	} else {
-		log.Err("DistributedCache: config error [cache-id not set]")
-		return fmt.Errorf("config error in %s error [cache-id not set]", distributedCache.Name())
+	if conf.CacheID == "" {
+		return fmt.Errorf("config error in %s: [cache-id not set]", distributedCache.Name())
+	}
+	if conf.CachePath == "" {
+		return fmt.Errorf("config error in %s: [cache-path not set]", distributedCache.Name())
 	}
 
-	if config.IsSet(compName + ".path") {
-		distributedCache.cachePath = conf.CachePath
-	} else {
-		log.Err("DistributedCache: config error [cache-path not set]")
-		return fmt.Errorf("config error in %s error [cache-path not set]", distributedCache.Name())
-	}
-
-	distributedCache.replicas = REPLICAS
-	if config.IsSet(compName + ".replicas") {
-		distributedCache.replicas = conf.Replicas
-	}
-
-	distributedCache.hbDuration = HeartBeatDuration
-	if config.IsSet(compName + ".heartbeat-duration") {
-		distributedCache.hbDuration = conf.HeartbeatDuration
-	}
+	distributedCache.cacheID = conf.CacheID
+	distributedCache.cachePath = conf.CachePath
+	distributedCache.maxCacheSize = conf.MaxCacheSize
+	distributedCache.replicas = conf.Replicas
+	distributedCache.hbDuration = conf.HeartbeatDuration
 
 	return nil
 }
@@ -229,25 +216,25 @@ func NewDistributedCacheComponent() internal.Component {
 func init() {
 	internal.AddComponent(compName, NewDistributedCacheComponent)
 
-	cacheID := config.AddStringFlag("cache-id", "blobfuse", "Cache ID for the distributed cache")
+	cacheID := config.AddStringFlag("cache-id", "", "Cache ID for the distributed cache")
 	config.BindPFlag(compName+".cache-id", cacheID)
 
-	cachePath := config.AddStringFlag("cache-dir", "/tmp", "Path to the cache")
+	cachePath := config.AddStringFlag("cache-dir", "", "Path to the cache")
 	config.BindPFlag(compName+".path", cachePath)
 
-	chunkSize := config.AddUint64Flag("chunk-size", 1024*1024, "Chunk size for the cache")
+	chunkSize := config.AddUint64Flag("chunk-size", 16*1024*1024, "Chunk size for the cache")
 	config.BindPFlag(compName+".chunk-size", chunkSize)
 
-	cacheSize := config.AddUint64Flag("cache-size", 1024*1024*1024, "Cache size for the cache")
-	config.BindPFlag(compName+".cache-size", cacheSize)
+	maxCacheSize := config.AddUint64Flag("max-cache-size", 0, "Cache size for the cache")
+	config.BindPFlag(compName+".max-cache-size", maxCacheSize)
 
-	replicas := config.AddUint32Flag("replicas", 3, "Number of replicas for the cache")
+	replicas := config.AddUint32Flag("replicas", defaultReplicas, "Number of replicas for the cache")
 	config.BindPFlag(compName+".replicas", replicas)
 
 	heartbeatTimeout := config.AddUint32Flag("heartbeat-timeout", 30, "Heartbeat timeout for the cache")
 	config.BindPFlag(compName+".heartbeat-timeout", heartbeatTimeout)
 
-	heartbeatDuration := config.AddUint32Flag("heartbeat-duration", HeartBeatDuration, "Heartbeat duration for the cache")
+	heartbeatDuration := config.AddUint32Flag("heartbeat-duration", defaultHeartBeatDuration, "Heartbeat duration for the cache")
 	config.BindPFlag(compName+".heartbeat-duration", heartbeatDuration)
 
 	missedHB := config.AddUint32Flag("heartbeats-till-node-down", 3, "Heartbeat absence for the cache")
