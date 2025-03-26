@@ -1,0 +1,14 @@
+[global]
+name=blobfuse_file_integrity
+bs=1M
+runtime=5m
+do_verify=0
+filename=read_fio.data
+group_reporting
+
+[sequential_read]
+size=100G
+rw=read
+ioengine=sync
+fallocate=none
+unlink=1

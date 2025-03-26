@@ -185,6 +185,11 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 		}
 	}
 
+	if f.size == 0 {
+		// This check would be helpful for newly created files
+		f.blkListState = blockListValid
+	}
+
 	if attr.Size > 0 {
 		if f.blkListState == blockListNotRetrieved && ((options.Flags&os.O_WRONLY != 0) || (options.Flags&os.O_RDWR != 0)) {
 			blkList, err := bc.NextComponent().GetCommittedBlockList(options.Name)
@@ -293,7 +298,7 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 
 // WriteFile: Write to the local file
 func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) {
-	log.Trace("BlockCache::WriteFile : handle=%d, path=%s, offset= %d", options.Handle.ID, options.Handle.Path, options.Offset)
+	log.Trace("BlockCache::WriteFile : handle=%d, path=%s, offset= %d, bufsize=%d", options.Handle.ID, options.Handle.Path, options.Offset, len(options.Data))
 	f := getFileFromHandle(options.Handle)
 	offset := options.Offset
 	len_of_copy := len(options.Data)

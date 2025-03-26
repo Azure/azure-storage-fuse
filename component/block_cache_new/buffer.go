@@ -57,7 +57,7 @@ func newBufferPool(memSize int) *BufferPool {
 		wakeUpBufferReclaimation:   make(chan struct{}, 1),
 		wakeUpAsyncUploadScheduler: make(chan struct{}, 1),
 		wakeUpAsyncUploadPoller:    make(chan struct{}, 1),
-		uploadCompletedStream:      make(chan *block, 2000),
+		uploadCompletedStream:      make(chan *block, 20000), //todo p1: this is put to a large value as flush call is also pushing its blocks into this stream
 
 		maxBlocks: memSize / BlockSize,
 	}
