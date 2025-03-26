@@ -27,9 +27,11 @@ mount_blobfuse() {
   if [ -d "/mnt/blob_mnt" ]; then
     rm -rf /mnt/blob_mnt/*
   fi
+  
   if [ -d "/mnt/tempcache" ]; then
     rm -rf /mnt/tempcache/*
   fi
+
   blobfuse2 mount ${mount_dir} --config-file=./config.yaml --log-type=${log_type} --log-level=${log_level} ${cache_path}
   mount_status=$?
   set -e
@@ -41,7 +43,7 @@ mount_blobfuse() {
   fi
 
   # Wait for daemon to come up and stablise
-  sleep 5
+  sleep 10
 
   df -h | grep blobfuse
   df_status=$?
@@ -113,7 +115,7 @@ iterate_fio_files() {
     execute_test $job_file
 
     blobfuse2 unmount all
-    sleep 5
+    sleep 10
 
     rm -rf ~/.blobfuse2/*
   done
@@ -165,6 +167,7 @@ list_files() {
 
   # Unmount and cleanup now
   blobfuse2 unmount all
+  sleep 10
 
   echo $avg_list_time " : " $avg_del_time
 
@@ -194,6 +197,7 @@ read_write_using_app() {
 
   # Unmount and cleanup now
   blobfuse2 unmount all
+  sleep 10
 
   cat ${output}/app_write_*.json
 
@@ -213,6 +217,7 @@ read_write_using_app() {
 
   # Unmount and cleanup now
   blobfuse2 unmount all
+  sleep 10
 
   cat ${output}/app_read_*.json
 
@@ -236,13 +241,16 @@ read_write_using_app() {
   python3 ./perf_testing/scripts/highspeed_create.py ${mount_dir} 10 > ${output}/highspeed_app_write.json
   
   blobfuse2 unmount all
-  sleep 3
+  sleep 10
+
   mount_blobfuse
+
   python3 ./perf_testing/scripts/highspeed_read.py ${mount_dir}/20GFile* > ${output}/highspeed_app_read.json
   rm -rf ${mount_dir}/20GFile*
 
   # Unmount and cleanup now
   blobfuse2 unmount all
+  sleep 10
 
   cat ${output}/highspeed_app_*.json
 
@@ -279,6 +287,7 @@ rename_files() {
 # Method to prepare the system for test
 prepare_system() {
   blobfuse2 unmount all
+  sleep 10
   # Clean up logs and create output directory
   mkdir -p ${output}
   chmod 777 ${output}
@@ -295,7 +304,7 @@ if [[ ${test_name} == "write" ]]
 then
   # Execute write benchmark using fio
   echo "Running Write test cases"
-  cache_path="--block-cache-path=/mnt/tempcache"
+  #cache_path="--block-cache-path=/mnt/tempcache"
   iterate_fio_files "./perf_testing/config/write" 
   
 elif [[ ${test_name} == "read" ]] 
@@ -307,7 +316,7 @@ elif [[ ${test_name} == "highlyparallel" ]]
 then
   # Execute multi-threaded benchmark using fio
   echo "Running Highly Parallel test cases"
-  cache_path="--block-cache-path=/mnt/tempcache"
+  #cache_path="--block-cache-path=/mnt/tempcache"
   iterate_fio_files "./perf_testing/config/high_threads"
 elif [[ ${test_name} == "create" ]] 
 then  
@@ -324,6 +333,7 @@ then
   find . -name "create_1l_files_in_20_threads*" -delete  
   cd -
   ./blobfuse2 unmount all
+  sleep 10
 
   # Execute file create tests
   echo "Running Create test cases"
