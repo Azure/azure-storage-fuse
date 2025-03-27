@@ -34,12 +34,14 @@
 package azstorage
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"reflect"
 	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/service"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/vibhansa-msft/blobfilter"
@@ -309,8 +311,11 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	}
 	az.stConfig.authConfig.AccountName = opt.AccountName
 
+	var shouldDetectAccountType = false
+
 	// Validate account type property
 	if opt.AccountType == "" {
+		shouldDetectAccountType = true
 		opt.AccountType = "block"
 	}
 
@@ -318,6 +323,7 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		if opt.UseAdls {
 			az.stConfig.authConfig.AccountType = az.stConfig.authConfig.AccountType.ADLS()
 		} else {
+			shouldDetectAccountType = true
 			az.stConfig.authConfig.AccountType = az.stConfig.authConfig.AccountType.BLOCK()
 		}
 	} else {
@@ -530,16 +536,51 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		}
 	}
 
+	if shouldDetectAccountType {
+		DetectAccountType(az, opt)
+	}
+
 	log.Crit("ParseAndValidateConfig : account %s, container %s, account-type %s, auth %s, prefix %s, endpoint %s, MD5 %v %v, virtual-directory %v, disable-compression %v, CPK %v",
 		az.stConfig.authConfig.AccountName, az.stConfig.container, az.stConfig.authConfig.AccountType, az.stConfig.authConfig.AuthMode,
 		az.stConfig.prefixPath, az.stConfig.authConfig.Endpoint, az.stConfig.validateMD5, az.stConfig.updateMD5, az.stConfig.virtualDirectory, az.stConfig.disableCompression, az.stConfig.cpkEnabled)
 	log.Crit("ParseAndValidateConfig : use-HTTP %t, block-size %d, max-concurrency %d, default-tier %s, fail-unsupported-op %t, mount-all-containers %t", az.stConfig.authConfig.UseHTTP, az.stConfig.blockSize, az.stConfig.maxConcurrency, az.stConfig.defaultTier, az.stConfig.ignoreAccessModifiers, az.stConfig.mountAllContainers)
 	log.Crit("ParseAndValidateConfig : Retry Config: retry-count %d, max-timeout %d, backoff-time %d, max-delay %d, preserve-acl: %v",
 		az.stConfig.maxRetries, az.stConfig.maxTimeout, az.stConfig.backoffTime, az.stConfig.maxRetryDelay, az.stConfig.preserveACL)
-
 	log.Crit("ParseAndValidateConfig : Telemetry : %s, honour-ACL %v", az.stConfig.telemetry, az.stConfig.honourACL)
 
 	return nil
+}
+
+// Auto-Detect Account Type is HNS or FNS
+func DetectAccountType(az *AzStorage, opt AzStorageOptions) {
+	auth := getAzAuth(az.stConfig.authConfig)
+	if auth == nil {
+		log.Err("DetectAccountType : Failed to get auth type %s", az.stConfig.authConfig.AuthMode)
+		return
+	}
+
+	serviceClient, err := auth.getServiceClient(&az.stConfig)
+	if err != nil {
+		log.Err("DetectAccountType : Failed to get service client %s", err.Error())
+		return
+	}
+	containerClient := serviceClient.(*service.Client).NewContainerClient(az.stConfig.container)
+
+	accountInfo, err := containerClient.GetAccountInfo(context.Background(), nil)
+	if err != nil {
+		log.Err("DetectAccountType : Failed to get account info %s", err.Error())
+		return
+	}
+	if *accountInfo.IsHierarchicalNamespaceEnabled {
+		az.stConfig.authConfig.AccountType = EAccountType.ADLS()
+		opt.Endpoint = fmt.Sprintf("%s.dfs.core.windows.net", opt.AccountName)
+		az.stConfig.authConfig.Endpoint = opt.Endpoint
+		az.stConfig.authConfig.Endpoint = formatEndpointProtocol(az.stConfig.authConfig.Endpoint, opt.UseHTTP)
+		az.stConfig.authConfig.Endpoint = formatEndpointAccountType(az.stConfig.authConfig.Endpoint, az.stConfig.authConfig.AccountType)
+		log.Info("DetectAccountType : Account type detected as ADLS resetting account type to ADLS")
+	} else {
+		log.Info("DetectAccountType : Account type detected as BLOCK")
+	}
 }
 
 func configureBlobFilter(azStorage *AzStorage, opt AzStorageOptions) error {
