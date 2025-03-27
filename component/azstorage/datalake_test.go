@@ -178,6 +178,18 @@ func (s *datalakeTestSuite) TestDefault() {
 	s.assert.Empty(s.az.stConfig.proxyAddress)
 }
 
+func (s *datalakeTestSuite) TestDetectAccountTypeADLS() {
+	defer s.cleanupTest()
+	// Setup
+	s.tearDownTestHelper(false) // Don't delete the generated container.
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
+		storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsKey, s.container)
+	s.setupTestHelper(config, s.container, true)
+
+	err := s.az.storage.TestPipeline()
+	s.assert.Nil(err)
+}
+
 func (s *datalakeTestSuite) TestModifyEndpoint() {
 	defer s.cleanupTest()
 	// Setup

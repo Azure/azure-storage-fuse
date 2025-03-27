@@ -309,8 +309,12 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	}
 	az.stConfig.authConfig.AccountName = opt.AccountName
 
+	var shouldDetectAccountType = false
+	var shouldSetEndpoint = false
+
 	// Validate account type property
 	if opt.AccountType == "" {
+		shouldDetectAccountType = true
 		opt.AccountType = "block"
 	}
 
@@ -320,6 +324,7 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		} else {
 			az.stConfig.authConfig.AccountType = az.stConfig.authConfig.AccountType.BLOCK()
 		}
+		shouldDetectAccountType = false
 	} else {
 		var accountType AccountType
 		err := accountType.Parse(opt.AccountType)
@@ -372,6 +377,7 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 
 	// Validate endpoint
 	if opt.Endpoint == "" {
+		shouldSetEndpoint = true
 		log.Warn("ParseAndValidateConfig : account endpoint not provided, assuming the default .core.windows.net style endpoint")
 		if az.stConfig.authConfig.AccountType == EAccountType.BLOCK() {
 			opt.Endpoint = fmt.Sprintf("%s.blob.core.windows.net", opt.AccountName)
@@ -530,13 +536,20 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		}
 	}
 
+	if shouldDetectAccountType {
+		err := az.DetectAccountType(opt, shouldSetEndpoint)
+		if err != nil {
+			log.Err("ParseAndValidateConfig : Failed to detect account type %s", err.Error())
+			return err
+		}
+	}
+
 	log.Crit("ParseAndValidateConfig : account %s, container %s, account-type %s, auth %s, prefix %s, endpoint %s, MD5 %v %v, virtual-directory %v, disable-compression %v, CPK %v",
 		az.stConfig.authConfig.AccountName, az.stConfig.container, az.stConfig.authConfig.AccountType, az.stConfig.authConfig.AuthMode,
 		az.stConfig.prefixPath, az.stConfig.authConfig.Endpoint, az.stConfig.validateMD5, az.stConfig.updateMD5, az.stConfig.virtualDirectory, az.stConfig.disableCompression, az.stConfig.cpkEnabled)
 	log.Crit("ParseAndValidateConfig : use-HTTP %t, block-size %d, max-concurrency %d, default-tier %s, fail-unsupported-op %t, mount-all-containers %t", az.stConfig.authConfig.UseHTTP, az.stConfig.blockSize, az.stConfig.maxConcurrency, az.stConfig.defaultTier, az.stConfig.ignoreAccessModifiers, az.stConfig.mountAllContainers)
 	log.Crit("ParseAndValidateConfig : Retry Config: retry-count %d, max-timeout %d, backoff-time %d, max-delay %d, preserve-acl: %v",
 		az.stConfig.maxRetries, az.stConfig.maxTimeout, az.stConfig.backoffTime, az.stConfig.maxRetryDelay, az.stConfig.preserveACL)
-
 	log.Crit("ParseAndValidateConfig : Telemetry : %s, honour-ACL %v", az.stConfig.telemetry, az.stConfig.honourACL)
 
 	return nil
