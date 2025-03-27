@@ -321,12 +321,11 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 
 	if config.IsSet(compName + ".use-adls") {
 		if opt.UseAdls {
-			shouldDetectAccountType = false
 			az.stConfig.authConfig.AccountType = az.stConfig.authConfig.AccountType.ADLS()
 		} else {
-			shouldDetectAccountType = false
 			az.stConfig.authConfig.AccountType = az.stConfig.authConfig.AccountType.BLOCK()
 		}
+		shouldDetectAccountType = false
 	} else {
 		var accountType AccountType
 		err := accountType.Parse(opt.AccountType)
