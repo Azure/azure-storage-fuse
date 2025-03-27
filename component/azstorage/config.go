@@ -310,6 +310,7 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	az.stConfig.authConfig.AccountName = opt.AccountName
 
 	var shouldDetectAccountType = false
+	var shouldSetEndpoint = false
 
 	// Validate account type property
 	if opt.AccountType == "" {
@@ -376,6 +377,7 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 
 	// Validate endpoint
 	if opt.Endpoint == "" {
+		shouldSetEndpoint = true
 		log.Warn("ParseAndValidateConfig : account endpoint not provided, assuming the default .core.windows.net style endpoint")
 		if az.stConfig.authConfig.AccountType == EAccountType.BLOCK() {
 			opt.Endpoint = fmt.Sprintf("%s.blob.core.windows.net", opt.AccountName)
@@ -535,7 +537,11 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	}
 
 	if shouldDetectAccountType {
-		az.DetectAccountType(opt)
+		err := az.DetectAccountType(opt, shouldSetEndpoint)
+		if err != nil {
+			log.Err("ParseAndValidateConfig : Failed to detect account type %s", err.Error())
+			return err
+		}
 	}
 
 	log.Crit("ParseAndValidateConfig : account %s, container %s, account-type %s, auth %s, prefix %s, endpoint %s, MD5 %v %v, virtual-directory %v, disable-compression %v, CPK %v",

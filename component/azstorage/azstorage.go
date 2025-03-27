@@ -107,35 +107,38 @@ func (az *AzStorage) Configure(isParent bool) error {
 }
 
 // Auto-Detect Account Type is HNS or FNS
-func (az *AzStorage) DetectAccountType(opt AzStorageOptions) {
+func (az *AzStorage) DetectAccountType(opt AzStorageOptions, setEndpoint bool) error {
 	auth := getAzAuth(az.stConfig.authConfig)
 	if auth == nil {
 		log.Err("DetectAccountType : Failed to get auth type %s", az.stConfig.authConfig.AuthMode)
-		return
+		return fmt.Errorf("failed to get auth type %s", az.stConfig.authConfig.AuthMode)
 	}
 
 	serviceClient, err := auth.getServiceClient(&az.stConfig)
 	if err != nil {
 		log.Err("DetectAccountType : Failed to get service client %s", err.Error())
-		return
+		return err
 	}
 	containerClient := serviceClient.(*service.Client).NewContainerClient(az.stConfig.container)
 
 	accountInfo, err := containerClient.GetAccountInfo(context.Background(), nil)
 	if err != nil {
 		log.Err("DetectAccountType : Failed to get account info %s", err.Error())
-		return
+		return err
 	}
 	if *accountInfo.IsHierarchicalNamespaceEnabled {
 		az.stConfig.authConfig.AccountType = EAccountType.ADLS()
-		opt.Endpoint = fmt.Sprintf("%s.dfs.core.windows.net", opt.AccountName)
-		az.stConfig.authConfig.Endpoint = opt.Endpoint
-		az.stConfig.authConfig.Endpoint = formatEndpointProtocol(az.stConfig.authConfig.Endpoint, opt.UseHTTP)
-		az.stConfig.authConfig.Endpoint = formatEndpointAccountType(az.stConfig.authConfig.Endpoint, az.stConfig.authConfig.AccountType)
+		if setEndpoint {
+			opt.Endpoint = fmt.Sprintf("%s.dfs.core.windows.net", opt.AccountName)
+			az.stConfig.authConfig.Endpoint = opt.Endpoint
+			az.stConfig.authConfig.Endpoint = formatEndpointProtocol(az.stConfig.authConfig.Endpoint, opt.UseHTTP)
+			az.stConfig.authConfig.Endpoint = formatEndpointAccountType(az.stConfig.authConfig.Endpoint, az.stConfig.authConfig.AccountType)
+		}
 		log.Info("DetectAccountType : Account type detected as ADLS resetting account type to ADLS")
 	} else {
 		log.Info("DetectAccountType : Account type detected as BLOCK")
 	}
+	return nil
 }
 
 func (az *AzStorage) Priority() internal.ComponentPriority {
