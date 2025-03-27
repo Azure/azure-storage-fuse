@@ -59,7 +59,7 @@ var bc *BlockCache // declaring it as a global variable to use in the other file
 var BlockSize int
 var bPool *BufferPool
 var wp *workerPool
-var memory int = 20 * 1024 * 1024 * 1024
+var memory int = 40 * 1024 * 1024 * 1024
 
 // Common structure for Component
 type BlockCache struct {
@@ -251,7 +251,7 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 		idx := getBlockIndex(offset)
 		var blk *block
 		var err error
-		if (options.Handle.Is_seq != 0) && ((offset % int64(BlockSize)) == 0) && (options.Handle.Is_seq <= idx+5) {
+		if (options.Handle.Is_seq != 0) && ((offset % int64(BlockSize)) == 0) && (options.Handle.Is_seq <= idx+60) {
 			log.Debug("BlockCache::ReadInBuffer : Read ahead starting at idx: %d, Is_seq : %d", idx, options.Handle.Is_seq)
 			blk, err = getBlockWithReadAhead(idx, int(options.Handle.Is_seq), f)
 			options.Handle.Is_seq += 5
