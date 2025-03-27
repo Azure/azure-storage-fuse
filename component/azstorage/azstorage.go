@@ -41,6 +41,7 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/service"
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -103,6 +104,38 @@ func (az *AzStorage) Configure(isParent bool) error {
 	}
 
 	return nil
+}
+
+// Auto-Detect Account Type is HNS or FNS
+func (az *AzStorage) DetectAccountType(opt AzStorageOptions) {
+	auth := getAzAuth(az.stConfig.authConfig)
+	if auth == nil {
+		log.Err("DetectAccountType : Failed to get auth type %s", az.stConfig.authConfig.AuthMode)
+		return
+	}
+
+	serviceClient, err := auth.getServiceClient(&az.stConfig)
+	if err != nil {
+		log.Err("DetectAccountType : Failed to get service client %s", err.Error())
+		return
+	}
+	containerClient := serviceClient.(*service.Client).NewContainerClient(az.stConfig.container)
+
+	accountInfo, err := containerClient.GetAccountInfo(context.Background(), nil)
+	if err != nil {
+		log.Err("DetectAccountType : Failed to get account info %s", err.Error())
+		return
+	}
+	if *accountInfo.IsHierarchicalNamespaceEnabled {
+		az.stConfig.authConfig.AccountType = EAccountType.ADLS()
+		opt.Endpoint = fmt.Sprintf("%s.dfs.core.windows.net", opt.AccountName)
+		az.stConfig.authConfig.Endpoint = opt.Endpoint
+		az.stConfig.authConfig.Endpoint = formatEndpointProtocol(az.stConfig.authConfig.Endpoint, opt.UseHTTP)
+		az.stConfig.authConfig.Endpoint = formatEndpointAccountType(az.stConfig.authConfig.Endpoint, az.stConfig.authConfig.AccountType)
+		log.Info("DetectAccountType : Account type detected as ADLS resetting account type to ADLS")
+	} else {
+		log.Info("DetectAccountType : Account type detected as BLOCK")
+	}
 }
 
 func (az *AzStorage) Priority() internal.ComponentPriority {
