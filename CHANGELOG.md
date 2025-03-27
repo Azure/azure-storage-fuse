@@ -1,6 +1,7 @@
 ## 2.5.0 (Unreleased)
 **Features**
 - Added `Client Assertion` based authentication for containers. Configure `tenant-id, client-id, aad-application-id and security scope` with `authMode` set to `workloadidentity`.
+- Added feature to auto-detect account type as ADLS or Block if not specified by user.
 
 ## 2.5.0~preview.1 (Unreleased)
 **Features**
