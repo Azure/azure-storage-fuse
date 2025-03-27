@@ -324,7 +324,7 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 			shouldDetectAccountType = false
 			az.stConfig.authConfig.AccountType = az.stConfig.authConfig.AccountType.ADLS()
 		} else {
-			shouldDetectAccountType = true
+			shouldDetectAccountType = false
 			az.stConfig.authConfig.AccountType = az.stConfig.authConfig.AccountType.BLOCK()
 		}
 	} else {
