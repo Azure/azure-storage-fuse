@@ -60,7 +60,7 @@ type DistributedCache struct {
 	cachePath    string
 	maxCacheSize uint64
 	replicas     uint8
-	hbTimeout    uint32
+	maxMissedHbs uint8
 	hbDuration   uint16
 
 	heartbeatManager *HeartbeatManager
@@ -68,20 +68,20 @@ type DistributedCache struct {
 
 // Structure defining your config parameters
 type DistributedCacheOptions struct {
-	CacheID           string `config:"cache-id" yaml:"cache-id,omitempty"`
-	CachePath         string `config:"path" yaml:"path,omitempty"`
-	ChunkSize         uint64 `config:"chunk-size" yaml:"chunk-size,omitempty"`
-	MaxCacheSize      uint64 `config:"max-cache-size" yaml:"cache-size,omitempty"`
-	Replicas          uint8  `config:"replicas" yaml:"replicas,omitempty"`
-	HeartbeatTimeout  uint32 `config:"heartbeat-timeout" yaml:"heartbeat-timeout,omitempty"`
-	HeartbeatDuration uint16 `config:"heartbeat-duration" yaml:"heartbeat-duration,omitempty"`
-	MissedHeartbeat   uint32 `config:"heartbeats-till-node-down" yaml:"heartbeats-till-node-down,omitempty"`
+	CacheID             string `config:"cache-id" yaml:"cache-id,omitempty"`
+	CachePath           string `config:"path" yaml:"path,omitempty"`
+	ChunkSize           uint64 `config:"chunk-size" yaml:"chunk-size,omitempty"`
+	MaxCacheSize        uint64 `config:"max-cache-size" yaml:"cache-size,omitempty"`
+	Replicas            uint8  `config:"replicas" yaml:"replicas,omitempty"`
+	HeartbeatDuration   uint16 `config:"heartbeat-duration" yaml:"heartbeat-duration,omitempty"`
+	MaxMissedHeartbeats uint8  `config:"max-missed-heartbeats" yaml:"max-missed-heartbeats,omitempty"`
 }
 
 const (
 	compName                 = "distributed_cache"
 	defaultHeartBeatDuration = 30
 	defaultReplicas          = 3
+	defaultMaxMissedHBs      = 1
 )
 
 // Verification to check satisfaction criteria with Component Interface
@@ -116,6 +116,7 @@ func (dc *DistributedCache) Start(ctx context.Context) error {
 		hbDuration:   dc.hbDuration,
 		hbPath:       "__CACHE__" + dc.cacheID,
 		maxCacheSize: dc.maxCacheSize,
+		maxMissedHbs: dc.maxMissedHbs,
 	}
 	dc.heartbeatManager.Start()
 	return nil
@@ -205,6 +206,10 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 	if config.IsSet(compName + ".heartbeat-duration") {
 		distributedCache.hbDuration = conf.HeartbeatDuration
 	}
+	distributedCache.maxMissedHbs = defaultMaxMissedHBs
+	if config.IsSet(compName + ".max-missed-heartbeats") {
+		distributedCache.maxMissedHbs = uint8(conf.MaxMissedHeartbeats)
+	}
 
 	return nil
 }
@@ -242,12 +247,9 @@ func init() {
 	replicas := config.AddUint8Flag("replicas", defaultReplicas, "Number of replicas for the cache")
 	config.BindPFlag(compName+".replicas", replicas)
 
-	heartbeatTimeout := config.AddUint32Flag("heartbeat-timeout", 30, "Heartbeat timeout for the cache")
-	config.BindPFlag(compName+".heartbeat-timeout", heartbeatTimeout)
-
 	heartbeatDuration := config.AddUint16Flag("heartbeat-duration", defaultHeartBeatDuration, "Heartbeat duration for the cache")
 	config.BindPFlag(compName+".heartbeat-duration", heartbeatDuration)
 
-	missedHB := config.AddUint32Flag("heartbeats-till-node-down", 3, "Heartbeat absence for the cache")
-	config.BindPFlag(compName+".heartbeats-till-node-down", missedHB)
+	missedHB := config.AddUint32Flag("max-missed-heartbeats", 3, "Heartbeat absence for the cache")
+	config.BindPFlag(compName+".max-missed-heartbeats", missedHB)
 }

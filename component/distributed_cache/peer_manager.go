@@ -32,51 +32,11 @@ SOFTWARE
 */
 package distributed_cache
 
-import (
-	"encoding/json"
-
-	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	"github.com/Azure/azure-storage-fuse/v2/internal"
-	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
-)
-
-type PeerManager struct {
-	comp      internal.Component
-	cachePath string
-	hbPath    string
-	nodeId    string
-}
-
-var Peers map[string]*Peer = make(map[string]*Peer)
-
 type Peer struct {
-	IPAddr        string
-	NodeID        string
-	Hostname      string
-	TotalSpace    uint64
-	UsedSpace     uint64
-	LastHeartbeat int64
-}
-
-func (pm *PeerManager) StartDiscovery() {
-	attrs, err := pm.comp.ReadDir(internal.ReadDirOptions{Name: pm.hbPath + "/Nodes/"})
-	if err != nil {
-		return
-	}
-	for _, attr := range attrs {
-		log.Info(attr.Name)
-		data, err := pm.comp.ReadFile(internal.ReadFileOptions{
-			Handle: handlemap.NewHandle(attr.Path),
-		})
-		if err != nil {
-			continue
-		}
-
-		peer := Peer{}
-		if err := json.Unmarshal(data, &peer); err != nil {
-			continue
-		}
-
-		Peers[peer.NodeID] = &peer
-	}
+	IPAddr        string `json:"ipaddr"`
+	NodeID        string `json:"nodeid"`
+	Hostname      string `json:"hostname"`
+	TotalSpace    uint64 `json:"total_space_byte"`
+	UsedSpace     uint64 `json:"used_space_byte"`
+	LastHeartbeat uint64 `json:"last_heartbeat"`
 }

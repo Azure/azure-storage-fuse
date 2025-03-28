@@ -34,6 +34,7 @@ package distributed_cache
 
 import (
 	"encoding/json"
+	"syscall"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -47,6 +48,7 @@ type HeartbeatManager struct {
 	hbDuration   uint16
 	hbPath       string
 	maxCacheSize uint64
+	maxMissedHbs uint8
 	nodeId       string
 	ticker       *time.Ticker
 }
@@ -55,23 +57,18 @@ type HeartbeatData struct {
 	IPAddr         string `json:"ipaddr"`
 	NodeID         string `json:"nodeid"`
 	Hostname       string `json:"hostname"`
-	LastHeartbeat  int64  `json:"last_heartbeat"`
+	LastHeartbeat  uint64 `json:"last_heartbeat"`
 	TotalSpaceByte uint64 `json:"total_space_byte"`
 	UsedSpaceByte  uint64 `json:"used_space_byte"`
 }
 
 func (hm *HeartbeatManager) Start() {
-	pm := &PeerManager{
-		cachePath: hm.cachePath,
-		comp:      hm.comp,
-		hbPath:    hm.hbPath,
-	}
 	hm.ticker = time.NewTicker(time.Duration(hm.hbDuration) * time.Second)
 	go func() {
 		for range hm.ticker.C {
 			log.Trace("Scheduled task triggered")
 			hm.Starthb()
-			pm.StartDiscovery()
+			hm.StartDiscovery()
 		}
 	}()
 }
@@ -113,7 +110,7 @@ func (hm *HeartbeatManager) Starthb() error {
 		IPAddr:         ipaddr,
 		NodeID:         hm.nodeId,
 		Hostname:       hostname,
-		LastHeartbeat:  time.Now().Unix(),
+		LastHeartbeat:  uint64(time.Now().Unix()),
 		TotalSpaceByte: totalSpace,
 		UsedSpaceByte:  used_space,
 	}
@@ -142,5 +139,60 @@ func (hm *HeartbeatManager) Stop() error {
 		log.Err("HeartbeatManager::Stop Failed to delete heartbeat file: ", err)
 		return err
 	}
+	return nil
+}
+
+var PeersByNodeId map[string]*Peer = make(map[string]*Peer)
+var PeersByName map[string]*Peer = make(map[string]*Peer)
+
+func (hm *HeartbeatManager) StartDiscovery() {
+	attrs, err := hm.comp.ReadDir(internal.ReadDirOptions{Name: hm.hbPath + "/Nodes/"})
+	if err != nil {
+		log.Err("HeartbeatManager::StartDiscovery: Failed to read Cache Node directory: %v", err)
+		return
+	}
+	for _, attr := range attrs {
+		log.Info(attr.Name)
+		data, err := hm.comp.ReadFileWithName(internal.ReadFileWithNameOptions{
+			Path: attr.Path,
+		})
+		if err != nil {
+			maxRetry := 3
+			counter := 4
+			if err == syscall.ENOENT {
+				peer := PeersByNodeId[attr.Path]
+				delete(PeersByNodeId, attr.Path)
+				delete(PeersByName, peer.NodeID)
+				peer = nil
+				continue
+			} else if maxRetry > counter {
+				for retryForMaxNumber() != nil && maxRetry > counter {
+
+					counter++
+				}
+			}
+			log.Err("HeartbeatManager::StartDiscovery: Failed to read Cache Node directory: %v", err)
+			continue
+		}
+
+		peer := Peer{}
+		if err := json.Unmarshal(data, &peer); err != nil {
+			continue
+		}
+
+		allowableMissHB := time.Now().Unix() - int64(int(hm.hbDuration)*int(hm.maxMissedHbs))
+		// If the heartbeat is older than some threshold, remove
+		if int64(peer.LastHeartbeat) < allowableMissHB {
+			err = hm.comp.DeleteFile(internal.DeleteFileOptions{Name: attr.Path})
+			log.Err("HeartbeatManager::StartDiscovery: Failed to delete Node heartbeat: %v", err)
+		} else {
+			PeersByNodeId[peer.NodeID] = &peer
+			PeersByName[attr.Path] = &peer
+		}
+
+	}
+}
+
+func retryForMaxNumber() error {
 	return nil
 }
