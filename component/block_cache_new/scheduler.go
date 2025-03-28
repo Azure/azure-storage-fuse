@@ -113,7 +113,7 @@ func doDownload(t *task, workerNo int, r requestType) {
 
 	_, err := bc.NextComponent().ReadInBuffer(internal.ReadInBufferOptions{
 		Name:   t.blk.file.Name,
-		Offset: int64(blk.idx * BlockSize),
+		Offset: int64(uint64(blk.idx) * bc.blockSize),
 		Data:   blk.buf.data[:sizeOfData],
 	})
 

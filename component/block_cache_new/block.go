@@ -102,11 +102,11 @@ func validateBlockList(blkList *internal.CommittedBlockList, f *File) (blockList
 	listLen := len(*blkList)
 	var newblkList blockList
 	for idx, blk := range *blkList {
-		if idx < (listLen-1) && blk.Size != bc.blockSizeMB {
-			log.Err("BlockCache::validateBlockList : Unsupported blocklist Format blk idx : %d is having size %d, while block size set is %d", idx, blk.Size, bc.blockSizeMB)
+		if idx < (listLen-1) && blk.Size != bc.blockSize {
+			log.Err("BlockCache::validateBlockList : Unsupported blocklist Format blk idx : %d is having size %d bytes, while block size set is %d bytes", idx, blk.Size, bc.blockSize)
 			return createBlockListForReadOnlyFile(f), false
-		} else if idx == (listLen-1) && blk.Size > bc.blockSizeMB {
-			log.Err("BlockCache::validateBlockList : Unsupported blocklist Format, Last block(i.e., blk idx : %d) is having greater size(i.e., %d MB) than block size configured is %dMB", idx, blk.Size, bc.blockSizeMB)
+		} else if idx == (listLen-1) && blk.Size > bc.blockSize {
+			log.Err("BlockCache::validateBlockList : Unsupported blocklist Format, Last block(i.e., blk idx : %d) is having greater size(i.e., %d bytes) than block size configured is %d bytes", idx, blk.Size, bc.blockSize)
 			return createBlockListForReadOnlyFile(f), false
 		} else if len(blk.Id) != StdBlockIdLength {
 			log.Err("BlockCache::validateBlockList : Unsupported blocklist Format, block Id length for blk idx : %d is %d bytes is not matching to what blobfuse uses(i.e., %d bytes)", idx, len(blk.Id), StdBlockIdLength)
@@ -120,7 +120,7 @@ func validateBlockList(blkList *internal.CommittedBlockList, f *File) (blockList
 func createBlockListForReadOnlyFile(f *File) blockList {
 	size := f.size
 	var newblkList blockList
-	noOfBlocks := (size + int64(BlockSize) - 1) / int64(BlockSize)
+	noOfBlocks := (size + int64(bc.blockSize) - 1) / int64(bc.blockSize)
 	for i := range int(noOfBlocks) {
 		newblkList = append(newblkList, createBlock(i, "", committedBlock, f))
 	}
@@ -128,15 +128,15 @@ func createBlockListForReadOnlyFile(f *File) blockList {
 }
 
 func getBlockIndex(offset int64) int {
-	return int(offset / int64(BlockSize))
+	return int(offset / int64(bc.blockSize))
 }
 
 func convertOffsetIntoBlockOffset(offset int64) int64 {
-	return offset - int64(getBlockIndex(offset))*int64(BlockSize)
+	return offset - int64(getBlockIndex(offset))*int64(bc.blockSize)
 }
 
 func getBlockSize(size int64, idx int) int {
-	return min(int(BlockSize), int(size)-(idx*BlockSize))
+	return min(int(bc.blockSize), int(size)-(idx*int(bc.blockSize)))
 }
 
 // Todo: This following is incomplete

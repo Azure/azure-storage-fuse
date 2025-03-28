@@ -40,6 +40,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
@@ -56,34 +57,30 @@ import (
 */
 
 var bc *BlockCache // declaring it as a global variable to use in the other files of the same package.
-var BlockSize int
 var bPool *BufferPool
 var wp *workerPool
-var memory int = 40 * 1024 * 1024 * 1024
 
 // Common structure for Component
 type BlockCache struct {
 	internal.BaseComponent
 
-	blockSizeMB    uint64      // Size of each block that will be cached as per configuration file/ default
-	memSizeMB      uint64      // Memory given by the user to use for data caching.
-	tmpPath        string      // Can be used as secondary caching mechanism. Helpful in Random Read and Random writes.[TODO]
-	diskSizeMB     uint64      // Size of the Secondary Cache.
-	diskTimeout    uint32      // In seconds, invalidate the node in secondary cache after this many seconds. Currently Not used.
-	prefetchCount  uint32      // Represents the size of the readahead window while reading seqeuntially.
-	workers        uint32      // The number of go routines used for uploading and downloading concurrently.
-	prefetchOnOpen bool        // Start readahead as soon as open call is success from the 0th offset. [TODO]
-	consistency    bool        // CRC check for the secondary cache(preveting disk read failure). [TODO]
-	bPool          *BufferPool // Buffer Managemenet Pool.
-	wp             *workerPool // Worker Pool which has fixed go routines spawned already. Used to schedule tasks.
+	blockSize      uint64 // Size of each block that will be cached as per configuration file/ default
+	memSize        uint64 // Memory given by the user to use for data caching.
+	tmpPath        string // Can be used as secondary caching mechanism. Helpful in Random Read and Random writes.[TODO]
+	diskSizeMB     uint64 // Size of the Secondary Cache.
+	diskTimeout    uint32 // In seconds, invalidate the node in secondary cache after this many seconds. Currently Not used.
+	prefetch       uint32 // Represents the size of the readahead window while reading seqeuntially.
+	workers        uint32 // The number of go routines used for uploading and downloading concurrently.
+	prefetchOnOpen bool   // Start readahead as soon as open call is success from the 0th offset. [TODO]
+	consistency    bool   // CRC check for the secondary cache(preveting disk read failure). [TODO]
 }
 
 // Structure defining your config parameters
 type BlockCacheOptions struct {
-	BlockSize      float64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
-	MemSize        uint64  `config:"mem-size-mb" yaml:"mem-size-mb,omitempty"`
+	BlockSizeMB    float64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
+	MemSizeMB      uint64  `config:"mem-size-mb" yaml:"mem-size-mb,omitempty"`
 	TmpPath        string  `config:"path" yaml:"path,omitempty"`
-	DiskSize       uint64  `config:"disk-size-mb" yaml:"disk-size-mb,omitempty"`
+	DiskSizeMB     uint64  `config:"disk-size-mb" yaml:"disk-size-mb,omitempty"`
 	DiskTimeout    uint32  `config:"disk-timeout-sec" yaml:"timeout-sec,omitempty"`
 	PrefetchCount  uint32  `config:"prefetch" yaml:"prefetch,omitempty"`
 	Workers        uint32  `config:"parallelism" yaml:"parallelism,omitempty"`
@@ -117,9 +114,9 @@ func (bc *BlockCache) SetNextComponent(nc internal.Component) {
 //
 //	this shall not Block the call otherwise pipeline will not start
 func (bc *BlockCache) Start(ctx context.Context) error {
-	log.Trace("BlockCache::Start : Starting component block_cache new %s", bc.Name())
-	bPool = newBufferPool(memory)
-	wp = createWorkerPool(512)
+	log.Trace("BlockCache New::Start : Starting component block_cache new %s", bc.Name())
+	bPool = newBufferPool(bc.memSize)
+	wp = createWorkerPool(int(bc.workers))
 	return nil
 }
 
@@ -134,7 +131,35 @@ func (bc *BlockCache) Stop() error {
 //
 //	Return failure if any config is not valid to exit the process
 func (bc *BlockCache) Configure(_ bool) error {
-	log.Trace("BlockCache::Configure : %s", bc.Name())
+	log.Trace("BlockCache New::Configure : %s", bc.Name())
+
+	conf := BlockCacheOptions{}
+	err := config.UnmarshalKey(bc.Name(), &conf)
+	if err != nil {
+		log.Err("BlockCache::Configure : config error [invalid config attributes]")
+		return fmt.Errorf("config error in %s [%s]", bc.Name(), err.Error())
+	}
+
+	bc.blockSize = 8 * 1024 * 1024
+	if config.IsSet(compName + ".block-size-mb") {
+		bc.blockSize = uint64(conf.BlockSizeMB) * 1024 * 1024
+	}
+
+	if config.IsSet(compName + ".mem-size-mb") {
+		bc.memSize = conf.MemSizeMB * 1024 * 1024
+	}
+
+	if config.IsSet(compName + ".prefetch") {
+		bc.prefetch = conf.PrefetchCount
+	}
+
+	bc.workers = uint32(3 * runtime.NumCPU())
+	if config.IsSet(compName + ".parallelism") {
+		bc.workers = conf.Workers
+	}
+
+	log.Crit("BlockCache New::Configure : block size %v, mem size %v, worker %v, prefetch %v, disk path %v, max size %v, disk timeout %v, prefetch-on-open %t, consistency %v",
+		bc.blockSize, bc.memSize, bc.workers, bc.prefetch, bc.tmpPath, bc.diskSizeMB, bc.diskTimeout, bc.prefetchOnOpen, bc.consistency)
 	return nil
 }
 
@@ -251,7 +276,7 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 		idx := getBlockIndex(offset)
 		var blk *block
 		var err error
-		if (options.Handle.Is_seq != 0) && ((offset % int64(BlockSize)) == 0) && (options.Handle.Is_seq <= idx+60) {
+		if (options.Handle.Is_seq != 0) && ((offset % int64(bc.blockSize)) == 0) && (options.Handle.Is_seq <= idx+int(bc.prefetch)) {
 			log.Debug("BlockCache::ReadInBuffer : Read ahead starting at idx: %d, Is_seq : %d", idx, options.Handle.Is_seq)
 			blk, err = getBlockWithReadAhead(idx, int(options.Handle.Is_seq), f)
 			options.Handle.Is_seq += 5
@@ -323,7 +348,7 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 			panic(fmt.Sprintf("BlockCache::WriteFile : Culprit Blk idx : %d, file name: %s", blk.idx, f.Name))
 		}
 		log.Info("BlockCache::WriteFile : Written to block blk idx : %d, file : %s, idx : %d", blk.idx, blk.file.Name, idx)
-		bytesCopied := copy(blk.buf.data[blockOffset:BlockSize], options.Data[dataWritten:])
+		bytesCopied := copy(blk.buf.data[blockOffset:bc.blockSize], options.Data[dataWritten:])
 		firstWriteOnblock := updateModifiedBlock(blk)
 		blk.refCnt--
 		if blk.refCnt < 0 {
@@ -419,7 +444,7 @@ func (bc *BlockCache) TruncateFile(options internal.TruncateFileOptions) (err er
 	lenOfBlkLst := len(f.blockList)
 
 	// Modify the blocklist
-	finalBlocksCnt := (options.Size + int64(BlockSize) - 1) / int64(BlockSize)
+	finalBlocksCnt := (options.Size + int64(bc.blockSize) - 1) / int64(bc.blockSize)
 	if finalBlocksCnt <= int64(lenOfBlkLst) { //shrink
 		f.blockList = f.blockList[:finalBlocksCnt] //here memory of the blocks is not given to the pool, Modify it.
 		// Update the state of the last block.
@@ -543,8 +568,6 @@ func (bc *BlockCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAtt
 // << DO NOT DELETE ANY AUTO GENERATED CODE HERE >>
 func NewBlockCacheComponent() internal.Component {
 	comp := &BlockCache{}
-	comp.blockSizeMB = 8 * 1024 * 1024
-	BlockSize = int(comp.blockSizeMB)
 	comp.SetName(compName)
 	bc = comp
 	return comp

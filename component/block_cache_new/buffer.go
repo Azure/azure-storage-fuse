@@ -40,7 +40,7 @@ type BufferPool struct {
 	maxBlocks int // Size of the each buffer in the bytes for this pool
 }
 
-func newBufferPool(memSize int) *BufferPool {
+func newBufferPool(memSize uint64) *BufferPool {
 	bPool := &BufferPool{
 		pool: sync.Pool{
 			New: func() any {
@@ -59,7 +59,7 @@ func newBufferPool(memSize int) *BufferPool {
 		wakeUpAsyncUploadPoller:    make(chan struct{}, 1),
 		uploadCompletedStream:      make(chan *block, 20000), //todo p1: this is put to a large value as flush call is also pushing its blocks into this stream
 
-		maxBlocks: memSize / BlockSize,
+		maxBlocks: int(memSize / bc.blockSize),
 	}
 	zeroBuffer = bPool.getBuffer(true)
 	go bPool.updateLRU()
@@ -404,7 +404,7 @@ func (bp *BufferPool) getBufferForBlock(blk *block) {
 func (bp *BufferPool) getBuffer(valid bool) *Buffer {
 	b := bp.pool.Get().(*Buffer)
 	if b.data == nil {
-		b.data = make([]byte, BlockSize)
+		b.data = make([]byte, bc.blockSize)
 	} else {
 		copy(b.data, zeroBuffer.data)
 	}
@@ -435,7 +435,7 @@ func (bp *BufferPool) releaseBuffer(blk *block) {
 
 func getBlockWithReadAhead(idx int, start int, file *File) (*block, error) {
 	for i := 0; i <= 4; i++ {
-		if i+start < (int(atomic.LoadInt64(&file.size))+BlockSize-1)/BlockSize {
+		if i+start < int((uint64(atomic.LoadInt64(&file.size))+bc.blockSize-1)/bc.blockSize) {
 			getBlockForRead(i+start, file, asyncRequest)
 		}
 	}
@@ -603,7 +603,7 @@ func commitBuffersForFile(file *File) error {
 			blklist = append(blklist, blk.id)
 		}
 	}
-	err := bc.NextComponent().CommitData(internal.CommitDataOptions{Name: file.Name, List: blklist, BlockSize: uint64(BlockSize)})
+	err := bc.NextComponent().CommitData(internal.CommitDataOptions{Name: file.Name, List: blklist, BlockSize: uint64(bc.blockSize)})
 	if err == nil {
 		for _, blk := range file.blockList {
 			blk.Lock()

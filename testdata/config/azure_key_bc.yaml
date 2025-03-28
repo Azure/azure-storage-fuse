@@ -15,8 +15,11 @@ libfuse:
   negative-entry-expiration-sec: 300
   ignore-open-flags: true
 
-#block_cache:
-#  block-size-mb: 8
+block_cache_new:
+  block-size-mb: 8
+  mem-size-mb: 1024
+  prefetch: 10
+  parallelism: 64
 
 attr_cache:
   timeout-sec: 3600
