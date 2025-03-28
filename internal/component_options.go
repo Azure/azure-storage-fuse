@@ -107,6 +107,10 @@ type ReadFileOptions struct {
 	Handle *handlemap.Handle
 }
 
+type ReadFileWithNameOptions struct {
+	Path string
+}
+
 type ReadInBufferOptions struct {
 	Handle *handlemap.Handle
 	Offset int64

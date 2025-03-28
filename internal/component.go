@@ -108,6 +108,7 @@ type Component interface {
 	RenameFile(RenameFileOptions) error
 
 	ReadFile(ReadFileOptions) ([]byte, error)
+	ReadFileWithName(ReadFileWithNameOptions) ([]byte, error)
 	ReadInBuffer(ReadInBufferOptions) (int, error)
 
 	WriteFile(WriteFileOptions) (int, error)

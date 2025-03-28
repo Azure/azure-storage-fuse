@@ -43,6 +43,7 @@ import (
 	"time"
 
 	"github.com/JeffreyRichter/enum/enum"
+	gouuid "github.com/google/uuid"
 )
 
 // Standard config default values
@@ -321,6 +322,28 @@ func init() {
 	DefaultWorkDir = filepath.Join(val, ".blobfuse2")
 	DefaultLogFilePath = filepath.Join(DefaultWorkDir, "blobfuse2.log")
 	StatsConfigFilePath = filepath.Join(DefaultWorkDir, "stats_monitor.cfg")
+}
+
+func GetUUID() (string, error) {
+	uuidFilePath := filepath.Join(DefaultWorkDir, "blobfuse_node_uuid")
+
+	if _, err := os.Stat(uuidFilePath); err == nil {
+		// File exists, read its content
+		data, err := os.ReadFile(uuidFilePath)
+		if err != nil {
+			return "", err
+		}
+		return string(data), nil
+	}
+
+	// File doesn't exist, generate a new UUID
+	newUuid := gouuid.New().String()
+	if err := os.WriteFile(uuidFilePath, []byte(newUuid), 0600); err != nil {
+		return "", err
+	}
+
+	return newUuid, nil
+
 }
 
 var azureSpecialContainers = map[string]bool{

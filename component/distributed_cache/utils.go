@@ -1,5 +1,3 @@
-package cmd
-
 /*
     _____           _____   _____   ____          ______  _____  ------
    |     |  |      |     | |     | |     |     | |       |            |
@@ -33,14 +31,49 @@ package cmd
    SOFTWARE
 */
 
+package distributed_cache
+
 import (
-	_ "github.com/Azure/azure-storage-fuse/v2/component/attr_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/azstorage"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/block_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/custom"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/distributed_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/entry_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/file_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/libfuse"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/loopback"
+	"fmt"
+	"net"
+	"syscall"
 )
+
+var getNetAddrs = net.InterfaceAddrs
+var stat syscall.Statfs_t
+
+func getVmIp() (string, error) {
+	addresses, err := getNetAddrs()
+	if err != nil {
+		return "", err
+	}
+
+	var vmIP string
+	for _, addr := range addresses {
+		ipNet, ok := addr.(*net.IPNet)
+		if !ok || ipNet.IP.IsLoopback() {
+			continue
+		}
+		if ipNet.IP.To4() != nil {
+			vmIP = ipNet.IP.String()
+			// parts := strings.Split(vmIP, ".")
+			// vmIP = fmt.Sprintf("%s.%s.%d.%d", parts[0], parts[1], rand.Intn(256), rand.Intn(256))
+			break
+		}
+	}
+	if vmIP == "" {
+		return "", fmt.Errorf("unable to find a valid non-loopback IPv4 address")
+	}
+
+	return vmIP, nil
+}
+
+func evaluateVMStorage(path string) (uint64, uint64, error) {
+
+	if err := syscall.Statfs(path, &stat); err != nil {
+		return 0, 0, err
+	}
+	total := stat.Blocks * uint64(stat.Bsize)
+	free := stat.Bavail * uint64(stat.Bsize)
+	return total, free, nil
+}
