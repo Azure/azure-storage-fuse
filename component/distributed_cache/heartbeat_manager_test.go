@@ -45,11 +45,6 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-// var home_dir, _ = os.UserHomeDir()
-// var mountpoint = home_dir + "mountpoint"
-// var dataBuff []byte
-// var random *rand.Rand = rand.New(rand.NewSource(time.Now().UnixNano()))
-
 type hbManagerTestSuite struct {
 	suite.Suite
 	assert    *assert.Assertions

@@ -39,8 +39,11 @@ import (
 	"syscall"
 )
 
+var getNetAddrs = net.InterfaceAddrs
+var stat syscall.Statfs_t
+
 func getVmIp() (string, error) {
-	addresses, err := net.InterfaceAddrs()
+	addresses, err := getNetAddrs()
 	if err != nil {
 		return "", err
 	}
@@ -53,6 +56,8 @@ func getVmIp() (string, error) {
 		}
 		if ipNet.IP.To4() != nil {
 			vmIP = ipNet.IP.String()
+			// parts := strings.Split(vmIP, ".")
+			// vmIP = fmt.Sprintf("%s.%s.%d.%d", parts[0], parts[1], rand.Intn(256), rand.Intn(256))
 			break
 		}
 	}
@@ -64,7 +69,7 @@ func getVmIp() (string, error) {
 }
 
 func evaluateVMStorage(path string) (uint64, uint64, error) {
-	var stat syscall.Statfs_t
+
 	if err := syscall.Statfs(path, &stat); err != nil {
 		return 0, 0, err
 	}
