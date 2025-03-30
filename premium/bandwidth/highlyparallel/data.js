@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1742896009946,
+  "lastUpdate": 1743309366612,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1301,6 +1301,43 @@ window.BENCHMARK_DATA = {
           {
             "name": "rand_read_128_thread",
             "value": 4379.716471354167,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Vikas Bhansali",
+            "username": "vibhansa-msft",
+            "email": "64532198+vibhansa-msft@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "d9ef7ac7a05a6877696828181121741b03c788d9",
+          "message": "Adding fix to refill non last block earlier staged with half data (#1643)\n\nCo-authored-by: root <root@anuD16vm.rf4m4cdxc02utd3nay3k4xiwce.xx.internal.cloudapp.net>\nCo-authored-by: ashruti-msft <137055338+ashruti-msft@users.noreply.github.com>\nCo-authored-by: syeleti-msft <syeleti@microsoft.com>\nCo-authored-by: souravgupta-msft <souravgupta@microsoft.com>",
+          "timestamp": "2025-03-25T09:14:46Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/d9ef7ac7a05a6877696828181121741b03c788d9"
+        },
+        "date": 1743309366334,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "seq_write_112_thread",
+            "value": 18679.625651041668,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "seq_read_128_thread",
+            "value": 26028.941731770832,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "rand_read_128_thread",
+            "value": 4352.551432291667,
             "unit": "MiB/s"
           }
         ]
