@@ -66,7 +66,7 @@ func downloader(blk *block, r requestType) (state blockState, err error) {
 		}
 	}
 
-	if r == syncRequest {
+	if r.isRequestSync() {
 		err, ok = <-blk.downloadDone
 		if ok && err == nil {
 			blk.buf.valid = true

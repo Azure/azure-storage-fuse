@@ -17,7 +17,7 @@ libfuse:
 
 block_cache_new:
   block-size-mb: 8
-  mem-size-mb: 4096
+  mem-size-mb: 1024
   prefetch: 10
   parallelism: 64
 

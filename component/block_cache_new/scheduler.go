@@ -22,15 +22,29 @@ import (
 type requestType int
 
 const (
-	asyncRequest requestType = iota
+	asyncRequest requestType = 1 << iota
 	syncRequest
+	asyncUploadScheduler //Request has scheduled by a scheduler
 )
+
+func (r requestType) isRequestSync() bool {
+	return r&syncRequest != 0
+}
+
+func (r requestType) isRequestASync() bool {
+	return r&asyncRequest != 0
+}
+
+func (r requestType) isRequestScheduled() bool {
+	return r&asyncUploadScheduler != 0
+}
 
 type task struct {
 	ctx      context.Context
 	taskDone chan<- struct{} // gets notified when the task completed fully.
 	upload   bool            // Represents upload, !upload represents download
 	blk      *block
+	r        requestType
 }
 
 // Create Worker Pool of fixed Size.
@@ -65,8 +79,9 @@ func (wp *workerPool) createTask(ctx context.Context, taskDone chan<- struct{}, 
 		taskDone: taskDone,
 		upload:   upload,
 		blk:      blk,
+		r:        r,
 	}
-	if r == syncRequest {
+	if r.isRequestSync() {
 		wp.syncStream <- t
 	} else {
 		wp.asyncStream <- t
@@ -80,9 +95,9 @@ func (wp *workerPool) worker(workerNo int) {
 	for {
 		select {
 		case t = <-wp.syncStream:
-			performTask(t, workerNo, syncRequest)
+			performTask(t, workerNo, t.r)
 		case t = <-wp.asyncStream:
-			performTask(t, workerNo, asyncRequest)
+			performTask(t, workerNo, t.r)
 		case <-wp.close:
 			return
 		}
@@ -162,9 +177,7 @@ func doUpload(t *task, workerNo int, r requestType) {
 			log.Err("BlockCache::doUpload : Upload failed blk idx: %d, file : %s, err : %s", blk.idx, blk.file.Name, err.Error())
 			blk.uploadDone <- err
 		}
-		if r == asyncRequest {
-			//todo p1: generally we should push the blks for the async requests that were scheduler from the asyn scheduler.
-			// but we also schedule async uploads while flushing the file, at that time we should not push the blk in the below stream
+		if r.isRequestScheduled() {
 			bPool.uploadCompletedStream <- blk
 		}
 	}

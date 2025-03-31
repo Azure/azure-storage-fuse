@@ -57,7 +57,7 @@ func newBufferPool(memSize uint64) *BufferPool {
 		wakeUpBufferReclaimation:   make(chan struct{}, 1),
 		wakeUpAsyncUploadScheduler: make(chan struct{}, 1),
 		wakeUpAsyncUploadPoller:    make(chan struct{}, 1),
-		uploadCompletedStream:      make(chan *block, 20000), //todo p1: this is put to a large value as flush call is also pushing its blocks into this stream
+		uploadCompletedStream:      make(chan *block, 2000), //todo p1: this is put to a large value as flush call is also pushing its blocks into this stream
 
 		maxBlocks: int(memSize / bc.blockSize),
 	}
@@ -251,7 +251,9 @@ func (bp *BufferPool) asyncUploadScheduler() {
 			blk := currentBlk.Value.(*block)
 			currentBlk = currentBlk.Prev()
 			cow := time.Now()
-			uploader(blk, asyncRequest)
+			r := asyncRequest
+			r |= asyncUploadScheduler
+			uploader(blk, r)
 			bp.moveBlkFromLBLtoOWBL(blk)
 			log.Info("BlockCache::asyncUploadScheduler : [took : %s] Async Upload scheduled for blk idx : %d, file: %s", time.Since(cow).String(), blk.idx, blk.file.Name)
 			noOfAsyncUploads--
@@ -458,7 +460,7 @@ func getBlockForRead(idx int, file *File, r requestType) (blk *block, err error)
 	file.Unlock()
 
 	_, err = downloader(blk, r)
-	if r == syncRequest {
+	if r.isRequestSync() {
 		bPool.updateRecentnessOfBlk <- blk
 	}
 	return blk, err
