@@ -25,11 +25,10 @@ attr_cache:
   timeout-sec: 3600
   
 azstorage:
-  type: { ACCOUNT_TYPE }
-  endpoint: { ACCOUNT_ENDPOINT }
+  type: { STO_ACC_TYPE }
   use-http: false
-  account-name: { NIGHTLY_STO_ACC_NAME }
-  account-key: { NIGHTLY_STO_ACC_KEY }
+  account-name: { STO_ACC_NAME }
+  account-key: { STO_ACC_KEY }
   mode: key
   container: { 0 }
   tier: hot
