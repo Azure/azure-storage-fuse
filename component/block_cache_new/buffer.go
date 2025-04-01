@@ -285,29 +285,32 @@ func (bp *BufferPool) asyncUpladPoller() {
 		// We want any async blocks to finish the uploads, We dont care which blocks will complete first.
 		// Hence Listen on all Uploads simultaneosly.
 		for range noOfAsyncPolls {
-			blk := <-bp.uploadCompletedStream
-			blk.Lock()
-			err, ok := <-blk.uploadDone
-			if ok && err == nil {
-				close(blk.uploadDone)
-				log.Info("BlockCache::asyncUploadPoller : Upload Success, Moved block from the OWBL to SBL blk idx : %d, file: %s", blk.idx, blk.file.Name)
-				blk.state = uncommitedBlock
-				bp.moveBlkFromOWBLtoSBL(blk)
-			} else {
-				// May be the upload is failed/ Context got cancelled as there may be write afterwards
-				if err != nil {
-					log.Err("BlockCache::asyncUploadPoller : Upload failed err : %s, blk idx : %d, file : %s", err.Error(), blk.idx, blk.file.Name)
-				} else {
-					// The status of the upload is consumed by the flush operation
-					log.Info("BlockCache::asyncUploadPoller : Upload failed without err blk idx : %d, file : %s", blk.idx, blk.file.Name)
-				}
-				if blk.state == localBlock {
-					bp.moveBlkFromOWBLtoLBL(blk)
-				} else {
+			select {
+			case blk := <-bp.uploadCompletedStream:
+				blk.Lock()
+				err, ok := <-blk.uploadDone
+				if ok && err == nil {
+					close(blk.uploadDone)
+					log.Info("BlockCache::asyncUploadPoller : Upload Success, Moved block from the OWBL to SBL blk idx : %d, file: %s", blk.idx, blk.file.Name)
+					blk.state = uncommitedBlock
 					bp.moveBlkFromOWBLtoSBL(blk)
+				} else {
+					// May be the upload is failed/ Context got cancelled as there may be write afterwards
+					if err != nil {
+						log.Err("BlockCache::asyncUploadPoller : Upload failed err : %s, blk idx : %d, file : %s", err.Error(), blk.idx, blk.file.Name)
+					} else {
+						// The status of the upload is consumed by the flush operation
+						log.Info("BlockCache::asyncUploadPoller : Upload failed without err blk idx : %d, file : %s", blk.idx, blk.file.Name)
+					}
+					if blk.state == localBlock {
+						bp.moveBlkFromOWBLtoLBL(blk)
+					} else {
+						bp.moveBlkFromOWBLtoSBL(blk)
+					}
 				}
+				blk.Unlock()
+			default:
 			}
-			blk.Unlock()
 		}
 
 		totalUsage = bp.getTotalMemUsage()

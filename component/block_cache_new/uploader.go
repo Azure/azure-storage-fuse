@@ -61,7 +61,7 @@ func uploader(blk *block, r requestType) (state blockState, err error) {
 				default:
 					// Taking toomuch time for request to complete,
 					// cancel the ongoing upload and schedule a new one.
-					if time.Since(now) > 1000*time.Millisecond && r.isRequestSync() {
+					if time.Since(now) > 10*time.Second && r.isRequestSync() {
 						log.Info("BlockCache::Uploader : Cancelling ongoing async upload and scheduling the new one")
 						// Here we should not wait for async upload to hang on to the flush to complete, as this came from the flush op, hence closing the channel would do it.
 						if blk.state == localBlock {
@@ -71,6 +71,7 @@ func uploader(blk *block, r requestType) (state blockState, err error) {
 						}
 						break outer
 					} else if r.isRequestASync() {
+						// The block has already scheduled, just let go
 						break outer
 					} else {
 						time.Sleep(1 * time.Millisecond)

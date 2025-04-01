@@ -54,10 +54,14 @@ func downloader(blk *block, r requestType) (state blockState, err error) {
 				break outer
 			default:
 				// Taking toomuch time for completing the request, cancel and reschedule.
-				if time.Since(now) > 1000*time.Millisecond {
+				if time.Since(now) > 10*time.Second {
 					log.Info("BlockCache::downloader : Cancelling ongoing async Download and scheduling the new one")
 					blk.cancelOngolingAsyncDownload()
 					scheduleDownload(blk, r)
+					break outer
+				} else if r.isRequestASync() {
+					// The block has already scheduled, just let go
+					// This can happend when multiple handles are reading from the same block. and scheduling same readahead blocks.
 					break outer
 				} else {
 					time.Sleep(1 * time.Millisecond)
