@@ -48,7 +48,7 @@ func (suite *utilsTestSuite) TestGetVmIp() {
 func (suite *utilsTestSuite) TestEvaluateVMStorage() {
 	assert := assert.New(suite.T())
 
-	total, _, err := evaluateVMStorage("/mock/path")
+	_, _, err := evaluateVMStorage("/mock/path")
 	assert.Equal("no such file or directory", err.Error())
 
 	pwd, err := os.Getwd()
