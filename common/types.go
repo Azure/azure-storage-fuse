@@ -338,7 +338,7 @@ func GetUUID() (string, error) {
 
 	// File doesn't exist, generate a new UUID
 	newUuid := gouuid.New().String()
-	if err := os.WriteFile(uuidFilePath, []byte(newUuid), 0600); err != nil {
+	if err := os.WriteFile(uuidFilePath, []byte(newUuid), 0400); err != nil {
 		return "", err
 	}
 

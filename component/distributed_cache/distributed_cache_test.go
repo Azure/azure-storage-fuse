@@ -104,7 +104,6 @@ func (suite *distributedCacheTestSuite) TestManadatoryConfigMissing() {
 	suite.assert.EqualValues("\\tmp", suite.distributedCache.cachePath)
 	suite.assert.EqualValues(uint8(3), suite.distributedCache.replicas)
 	suite.assert.EqualValues(uint16(30), suite.distributedCache.hbDuration)
-	suite.assert.EqualValues(uint16(0), suite.distributedCache.hbTimeout)
 
 	emptyConfig := "read-only: true\n\ndistributed_cache:\n  cache-id: mycache1"
 	err := suite.setupTestHelper(emptyConfig)

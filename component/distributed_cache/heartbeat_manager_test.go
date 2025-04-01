@@ -34,9 +34,11 @@
 package distributed_cache
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/golang/mock/gomock"
@@ -90,9 +92,100 @@ func (suite *hbManagerTestSuite) TestStopHbFail() {
 	err := suite.hbManager.Stop()
 	suite.assert.Equal("test error", err.Error())
 }
+func (suite *hbManagerTestSuite) TestStartDiscoverySuccess() {
+	attrs := []*internal.ObjAttr{
+		{Name: "node1.hb", Path: "__CACHE__mycache1/Nodes/node1.hb"},
+		{Name: "node2.hb", Path: "__CACHE__mycache1/Nodes/node2.hb"},
+	}
 
-// In order for 'go test' to run this suite, we need to create
-// a normal test function and pass our suite to suite.Run
+	peerData := HeartbeatData{
+		NodeID:        "node1",
+		LastHeartbeat: uint64(time.Now().Unix()),
+	}
+	data, _ := json.Marshal(peerData)
+
+	suite.mock.EXPECT().ReadDir(gomock.Any()).Return(attrs, nil)
+	suite.mock.EXPECT().ReadFileWithName(gomock.Any()).Return(data, nil).Times(len(attrs))
+
+	suite.hbManager.hbDuration = 30
+	suite.hbManager.maxMissedHbs = 3
+
+	suite.hbManager.StartDiscovery()
+
+	suite.assert.NotNil(PeersByNodeId["node1"])
+	suite.assert.NotNil(PeersByName["__CACHE__mycache1/Nodes/node1.hb"])
+}
+
+func (suite *hbManagerTestSuite) TestStartDiscoveryReadDirFail() {
+	suite.mock.EXPECT().ReadDir(gomock.Any()).Return(nil, errors.New("read dir error"))
+
+	suite.hbManager.StartDiscovery()
+
+	suite.assert.Empty(PeersByNodeId)
+	suite.assert.Empty(PeersByName)
+}
+
+func (suite *hbManagerTestSuite) TestStartDiscoveryReadFileFail() {
+	attrs := []*internal.ObjAttr{
+		{Name: "node1.hb", Path: "__CACHE__mycache1/Nodes/node1.hb"},
+	}
+
+	suite.mock.EXPECT().ReadDir(gomock.Any()).Return(attrs, nil)
+	suite.mock.EXPECT().ReadFileWithName(gomock.Any()).Return(nil, errors.New("read file error"))
+
+	suite.hbManager.StartDiscovery()
+
+	suite.assert.Empty(PeersByNodeId)
+	suite.assert.Empty(PeersByName)
+}
+
+func (suite *hbManagerTestSuite) TestStartDiscoveryOldHeartbeat() {
+	attrs := []*internal.ObjAttr{
+		{Name: "node1.hb", Path: "__CACHE__mycache1/Nodes/node1.hb"},
+	}
+
+	peerData := HeartbeatData{
+		NodeID:        "node1",
+		LastHeartbeat: uint64(time.Now().Add(-time.Hour).Unix()),
+	}
+	data, _ := json.Marshal(peerData)
+
+	suite.mock.EXPECT().ReadDir(gomock.Any()).Return(attrs, nil)
+	suite.mock.EXPECT().ReadFileWithName(gomock.Any()).Return(data, nil)
+	suite.mock.EXPECT().DeleteFile(gomock.Any()).Return(nil)
+
+	suite.hbManager.hbDuration = 30
+	suite.hbManager.maxMissedHbs = 3
+
+	suite.hbManager.StartDiscovery()
+
+	suite.assert.Empty(PeersByNodeId)
+	suite.assert.Empty(PeersByName)
+}
+
+func (suite *hbManagerTestSuite) TestStartDiscoveryDeleteFileFail() {
+	attrs := []*internal.ObjAttr{
+		{Name: "node1.hb", Path: "__CACHE__mycache1/Nodes/node1.hb"},
+	}
+
+	peerData := HeartbeatData{
+		NodeID:        "node1",
+		LastHeartbeat: uint64(time.Now().Add(-time.Hour).Unix()),
+	}
+	data, _ := json.Marshal(peerData)
+
+	suite.mock.EXPECT().ReadDir(gomock.Any()).Return(attrs, nil)
+	suite.mock.EXPECT().ReadFileWithName(gomock.Any()).Return(data, nil)
+	suite.mock.EXPECT().DeleteFile(gomock.Any()).Return(errors.New("delete file error"))
+
+	suite.hbManager.hbDuration = 10
+	suite.hbManager.maxMissedHbs = 3
+
+	suite.hbManager.StartDiscovery()
+
+	suite.assert.Empty(PeersByNodeId)
+	suite.assert.Empty(PeersByName)
+}
 func TestHeartbeatManagerTestSuite(t *testing.T) {
 
 	suite.Run(t, new(hbManagerTestSuite))

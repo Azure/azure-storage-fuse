@@ -157,6 +157,7 @@ func (hm *HeartbeatManager) StartDiscovery() {
 			Path: attr.Path,
 		})
 		if err != nil {
+			// TODO{AKKU}: Pick maxRetry from config
 			maxRetry := 3
 			counter := 4
 			if err == syscall.ENOENT {

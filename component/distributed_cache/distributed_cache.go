@@ -78,10 +78,10 @@ type DistributedCacheOptions struct {
 }
 
 const (
-	compName                 = "distributed_cache"
-	defaultHeartBeatDuration = 30
-	defaultReplicas          = 3
-	defaultMaxMissedHBs      = 1
+	compName                         = "distributed_cache"
+	defaultHeartBeatDurationInSecond = 30
+	defaultReplicas                  = 3
+	defaultMaxMissedHBs              = 3
 )
 
 // Verification to check satisfaction criteria with Component Interface
@@ -202,7 +202,7 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 	if config.IsSet(compName + ".replicas") {
 		distributedCache.replicas = conf.Replicas
 	}
-	distributedCache.hbDuration = defaultHeartBeatDuration
+	distributedCache.hbDuration = defaultHeartBeatDurationInSecond
 	if config.IsSet(compName + ".heartbeat-duration") {
 		distributedCache.hbDuration = conf.HeartbeatDuration
 	}
@@ -247,7 +247,7 @@ func init() {
 	replicas := config.AddUint8Flag("replicas", defaultReplicas, "Number of replicas for the cache")
 	config.BindPFlag(compName+".replicas", replicas)
 
-	heartbeatDuration := config.AddUint16Flag("heartbeat-duration", defaultHeartBeatDuration, "Heartbeat duration for the cache")
+	heartbeatDuration := config.AddUint16Flag("heartbeat-duration", defaultHeartBeatDurationInSecond, "Heartbeat duration for the cache")
 	config.BindPFlag(compName+".heartbeat-duration", heartbeatDuration)
 
 	missedHB := config.AddUint32Flag("max-missed-heartbeats", 3, "Heartbeat absence for the cache")
