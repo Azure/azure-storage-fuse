@@ -224,7 +224,6 @@ func RegisterEnvVariables() {
 	config.BindEnv("azstorage.objid", EnvAzStorageIdentityObjectId)
 
 	config.BindEnv("azstorage.aadendpoint", EnvAzStorageAadEndpoint)
-
 	config.BindEnv("azstorage.endpoint", EnvAzStorageBlobEndpoint)
 
 	config.BindEnv("azstorage.mode", EnvAzStorageAuthType)
