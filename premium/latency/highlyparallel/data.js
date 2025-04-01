@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1743309367912,
+  "lastUpdate": 1743510434473,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1301,6 +1301,45 @@ window.BENCHMARK_DATA = {
           {
             "name": "rand_read_128_thread",
             "value": 1803.6369986413617,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "98318303+souravgupta-msft@users.noreply.github.com",
+            "name": "Sourav Gupta",
+            "username": "souravgupta-msft"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "dcd822091da26edd97331b9878be375b8cabff42",
+          "message": "Update dependencies (#1664)",
+          "timestamp": "2025-04-01T17:24:57+05:30",
+          "tree_id": "e8af3ea1e8b4c262f6f3adf881ed556d036bc96e",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/dcd822091da26edd97331b9878be375b8cabff42"
+        },
+        "date": 1743510434213,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "seq_write_112_thread",
+            "value": 385.76988683465805,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "seq_read_128_thread",
+            "value": 312.2670842722647,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "rand_read_128_thread",
+            "value": 1807.501926511599,
             "unit": "milliseconds"
           }
         ]
