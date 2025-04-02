@@ -1,5 +1,3 @@
-package cmd
-
 /*
     _____           _____   _____   ____          ______  _____  ------
    |     |  |      |     | |     | |     |     | |       |            |
@@ -33,14 +31,52 @@ package cmd
    SOFTWARE
 */
 
+package cmd
+
 import (
-	_ "github.com/Azure/azure-storage-fuse/v2/component/attr_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/azstorage"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/block_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/custom"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/distributed_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/entry_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/file_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/libfuse"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/loopback"
+	"fmt"
+	"os"
+	"text/tabwriter"
+
+	"github.com/Azure/azure-storage-fuse/v2/component/distributed_cache"
+	"github.com/spf13/cobra"
 )
+
+var dcacheCmd = &cobra.Command{
+	Use:               "dcache",
+	Short:             "Manage distributed cache",
+	Long:              "Manage distributed cache",
+	Args:              cobra.ExactArgs(1),
+	Hidden:            true,
+	FlagErrorHandling: cobra.ExitOnError,
+	RunE: func(cmd *cobra.Command, args []string) error {
+
+		listNodes()
+		return nil
+	},
+}
+
+func listNodes() {
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', 0)
+	// Print header
+	fmt.Fprintln(w, "Node ID\tIP\tHostname\tTotal (Bytes)\tUsed (Bytes)\tTotal (GB)\tUsed (GB)")
+	for nodeID, peer := range distributed_cache.PeersByNodeId {
+		fmt.Fprintf(
+			w,
+			"%s\t%s\t%s\t%d\t%d\t%d\t%d\n",
+			nodeID,
+			peer.IPAddr,
+			peer.Hostname,
+			peer.TotalSpace,
+			peer.UsedSpace,
+			peer.TotalSpace/1024/1024/1024,
+			peer.UsedSpace/1024/1024/1024,
+		)
+	}
+	w.Flush()
+}
+
+func init() {
+	rootCmd.AddCommand(dcacheCmd)
+
+}
