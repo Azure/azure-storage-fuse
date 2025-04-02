@@ -151,8 +151,8 @@ func doUpload(t *task, workerNo int, r requestType) {
 	if blk.buf == nil {
 		panic("BlockCache::doUpload : messed up")
 	}
-	log.Trace("BlockCache::doUpload : [sync:%d] Upload Starting for blk idx: %d, file : %s", r, blk.idx, blk.file.Name)
 	blkSize := getBlockSize(atomic.LoadInt64(&t.blk.file.size), blk.idx)
+	log.Trace("BlockCache::doUpload : [sync:%d] Upload Starting for blk idx: %d, file : %s, blk size : %d, file size : %d", r, blk.idx, blk.file.Name, blkSize, blk.file.size)
 	if blkSize <= 0 {
 		// There has been a truncate call came to shrink the filesize.
 		// No need for uploading this block

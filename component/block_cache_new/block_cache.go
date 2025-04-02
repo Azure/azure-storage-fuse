@@ -342,6 +342,14 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 		blk.resetAsyncUploadTimer()
 		blockOffset := convertOffsetIntoBlockOffset(offset)
 
+		// Modify the file size before copying the actual data to the buffer.
+		// As uploads are async/writeback it uses file size while uploading.
+		expectedBytesCopy := min(bc.blockSize-uint64(blockOffset), uint64(len_of_copy-dataWritten))
+		//Update the file size if it fall outside
+		f.Lock()
+		log.Debug("BlockCache::WriteFile : Size MODIFIED after write handle=%d, path=%s, offset= %d, prev size=%d, cur size=%d", options.Handle.ID, options.Handle.Path, options.Offset, f.size, offset)
+		f.size = max(f.size, offset+int64(expectedBytesCopy))
+		f.Unlock()
 		blk.Lock()
 		// What if write comes on a hole? currenlty not handled
 		if blk.buf == nil {
@@ -362,13 +370,10 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 
 		dataWritten += bytesCopied
 		offset += int64(bytesCopied)
-		//Update the file size if it fall outside
-		f.Lock()
-		if offset > f.size {
-			log.Debug("BlockCache::WriteFile : Size MODIFIED after write handle=%d, path=%s, offset= %d, prev size=%d, cur size=%d", options.Handle.ID, options.Handle.Path, options.Offset, f.size, offset)
-			f.size = offset
+		if expectedBytesCopy != uint64(bytesCopied) {
+			panic(fmt.Sprintf("BlockCache::WriteFile : Expected : %d and Actual : %d copy data mismatch for blk: %d, file : %s", expectedBytesCopy, bytesCopied, blk.idx, blk.file.Name))
 		}
-		f.Unlock()
+
 	}
 
 	return dataWritten, nil

@@ -577,7 +577,7 @@ func syncBuffersForFile(file *File) (err error) {
 	for _, blk := range file.blockList {
 		_, err = uploader(blk, syncRequest)
 		if err != nil {
-			panic(fmt.Sprintf("Upload doesn't happen for the block idx : %d, file : %s\n", blk.idx, blk.file.Name))
+			panic(fmt.Sprintf("Upload doesn't happen for the block idx : %d, file : %s, err: %s\n", blk.idx, blk.file.Name, err.Error()))
 		}
 	}
 	bPool.updateLRUafterUploadSuccess(file)
