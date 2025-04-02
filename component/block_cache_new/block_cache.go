@@ -350,6 +350,7 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 		log.Debug("BlockCache::WriteFile : Size MODIFIED after write handle=%d, path=%s, offset= %d, prev size=%d, cur size=%d", options.Handle.ID, options.Handle.Path, options.Offset, f.size, offset)
 		f.size = max(f.size, offset+int64(expectedBytesCopy))
 		f.Unlock()
+
 		blk.Lock()
 		// What if write comes on a hole? currenlty not handled
 		if blk.buf == nil {

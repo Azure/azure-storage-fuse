@@ -479,11 +479,13 @@ func getBlockForWrite(idx int, file *File) (*block, error) {
 
 	var fileSize int64
 	var dirtyBlock *block // When appending a block to blocklist, there may be a chance of reuploading the last block of prev blocklist by appending the zeros. hence change the state of it.
+	var isBlockAppended bool = false
 	file.Lock()
 	fileSize = file.size
 	file.changed = true
 	lenOfBlkLst := len(file.blockList)
 	if idx >= lenOfBlkLst {
+		isBlockAppended = true
 		// Update the state of the last block to local as null data may get's appended to it.
 		if lenOfBlkLst > 0 && getBlockSize(fileSize, lenOfBlkLst-1) != int(bc.blockSize) {
 			dirtyBlock = file.blockList[lenOfBlkLst-1]
@@ -518,7 +520,8 @@ func getBlockForWrite(idx int, file *File) (*block, error) {
 			log.Err("BlockCache::getBlockForWrite : failed to convert the last block to local, file path=%s, size = %d, err = %s", file.Name, file.size, err.Error())
 			return nil, err
 		}
-	} else {
+	}
+	if !isBlockAppended {
 		_, err := downloader(blk, syncRequest)
 		if err != nil {
 			log.Err("BlockCache::getBlockForWrite : failed to download the data, file path=%s, size = %d, err = %s", file.Name, file.size, err.Error())
