@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1743510433017,
+  "lastUpdate": 1743580824243,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1377,6 +1377,45 @@ window.BENCHMARK_DATA = {
           {
             "name": "rand_read_128_thread",
             "value": 4335.087239583333,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "98318303+souravgupta-msft@users.noreply.github.com",
+            "name": "Sourav Gupta",
+            "username": "souravgupta-msft"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "061bd5169ff3f446f770e8ddc31f3cef7d0687c9",
+          "message": "Fix installer script in Ubuntu (#1670)\n\nCo-authored-by: Vikas Bhansali <64532198+vibhansa-msft@users.noreply.github.com>",
+          "timestamp": "2025-04-02T12:58:30+05:30",
+          "tree_id": "4d02151ba28caca329219850f596580ca21f96a3",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/061bd5169ff3f446f770e8ddc31f3cef7d0687c9"
+        },
+        "date": 1743580823888,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "seq_write_112_thread",
+            "value": 18978.952799479168,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "seq_read_128_thread",
+            "value": 26002.480794270832,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "rand_read_128_thread",
+            "value": 4276.3134765625,
             "unit": "MiB/s"
           }
         ]
