@@ -156,10 +156,10 @@ func updateModifiedBlock(blk *block) bool {
 	return false
 }
 
-func changeStateOfBlockToLocal(idx int, blk *block) error {
+func changeStateOfBlockToLocal(blk *block) error {
 	_, err := downloader(blk, syncRequest)
 	if err != nil {
-		log.Err("BlockCache::changeStateOfBlockToLocal : download failed for blk idx=%d, path=%s, size=%d", idx, blk.file.Name, blk.file.size)
+		log.Err("BlockCache::changeStateOfBlockToLocal : download failed for blk idx=%d, path=%s, size=%d", blk.idx, blk.file.Name, blk.file.size)
 		return err
 	}
 	blk.cancelOngoingAsyncUpload()

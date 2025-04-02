@@ -477,18 +477,16 @@ func getBlockForWrite(idx int, file *File) (*block, error) {
 		return nil, errors.New("write not supported, space completed") // can we return ENOSPC error here?
 	}
 
+	var fileSize int64
+	var dirtyBlock *block // When appending a block to blocklist, there may be a chance of reuploading the last block of prev blocklist by appending the zeros. hence change the state of it.
 	file.Lock()
+	fileSize = file.size
 	file.changed = true
 	lenOfBlkLst := len(file.blockList)
 	if idx >= lenOfBlkLst {
 		// Update the state of the last block to local as null data may get's appended to it.
-		if lenOfBlkLst > 0 {
-			err := changeStateOfBlockToLocal(lenOfBlkLst-1, file.blockList[lenOfBlkLst-1])
-			if err != nil {
-				log.Err("BlockCache::getBlockForWrite : failed to convert the last block to local, file path=%s, size = %d, err = %s", file.Name, file.size, err.Error())
-				file.Unlock()
-				return nil, err
-			}
+		if lenOfBlkLst > 0 && getBlockSize(fileSize, lenOfBlkLst-1) != int(bc.blockSize) {
+			dirtyBlock = file.blockList[lenOfBlkLst-1]
 		}
 
 		// Create at least 1 block. i.e, create blocks in the range (len(blocklist), idx]
@@ -509,19 +507,36 @@ func getBlockForWrite(idx int, file *File) (*block, error) {
 		blk := file.blockList[idx]
 		// Increment the refcnt on newly created block.
 		blk.refCnt++
-		file.Unlock()
-		return blk, nil
 	}
 	blk := file.blockList[idx]
 	file.Unlock()
-	_, err := downloader(blk, syncRequest)
-	bPool.updateRecentnessOfBlk <- blk
-	return blk, err
+
+	if dirtyBlock != nil {
+		// last block of the prev blocklist may need to be uploaded again, if it's entire block data was not present previously.
+		err := changeStateOfBlockToLocal(dirtyBlock)
+		if err != nil {
+			log.Err("BlockCache::getBlockForWrite : failed to convert the last block to local, file path=%s, size = %d, err = %s", file.Name, file.size, err.Error())
+			return nil, err
+		}
+	} else {
+		_, err := downloader(blk, syncRequest)
+		if err != nil {
+			log.Err("BlockCache::getBlockForWrite : failed to download the data, file path=%s, size = %d, err = %s", file.Name, file.size, err.Error())
+			return nil, err
+		}
+		bPool.updateRecentnessOfBlk <- blk
+	}
+
+	return blk, nil
 }
 
 func (bp *BufferPool) scheduleAsyncUploadsForFile(file *File) (fileChanged bool) {
 	bp.Lock()
-	defer bp.Unlock()
+	for _, blk := range file.blockList {
+		// Move the blocks to ongoing state to prevent the async uploader to reschedule
+		bp.moveBlkFromLBLtoOWBL(blk)
+	}
+	bp.Unlock()
 	for _, blk := range file.blockList {
 		// To make the sync upload faster, first we schedule all the requests as async
 		// Then status would be checked using sync requests.
@@ -529,7 +544,6 @@ func (bp *BufferPool) scheduleAsyncUploadsForFile(file *File) (fileChanged bool)
 		if blkstate != committedBlock {
 			fileChanged = true
 		}
-		bp.moveBlkFromLBLtoOWBL(blk)
 	}
 	return
 }

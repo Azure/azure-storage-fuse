@@ -435,33 +435,28 @@ func (bc *BlockCache) TruncateFile(options internal.TruncateFileOptions) (err er
 
 	f := getFileFromHandle(h)
 	f.Lock()
-	defer f.Unlock()
 	f.changed = true
 	if f.size == options.Size {
+		f.Unlock()
 		return nil
 	}
-	f.size = options.Size
+
 	lenOfBlkLst := len(f.blockList)
+	var dirtyBlock *block //The last block which may be get changed as of the truncate operation may get changed in the size, hence required to change its state
 
 	// Modify the blocklist
 	finalBlocksCnt := (options.Size + int64(bc.blockSize) - 1) / int64(bc.blockSize)
 	if finalBlocksCnt <= int64(lenOfBlkLst) { //shrink
 		f.blockList = f.blockList[:finalBlocksCnt] //here memory of the blocks is not given to the pool, Modify it.
-		// Update the state of the last block.
+		// Update the state of the last block, if it's not aligned properly with blocks.
 		lastBlkIdx := int(finalBlocksCnt - 1)
 		if finalBlocksCnt > 0 {
-			err = changeStateOfBlockToLocal(lastBlkIdx, f.blockList[lastBlkIdx])
-			if err != nil {
-				log.Err("BlockCache::Truncate File : failed to convert the last block to local, file path=%s, size = %d, err = %s", options.Name, options.Size, err.Error())
-			}
+			dirtyBlock = f.blockList[lastBlkIdx]
 		}
 	} else { //expand
-		//Update the state of the last block before expanding.
-		if lenOfBlkLst > 0 {
-			changeStateOfBlockToLocal(lenOfBlkLst-1, f.blockList[lenOfBlkLst-1])
-			if err != nil {
-				log.Err("BlockCache::Truncate File : failed to convert the last block to local, file path=%s, size = %d, err = %s", options.Name, options.Size, err.Error())
-			}
+		//Update the state of the last block before expanding, if it's not aligned properly with the blocks.
+		if lenOfBlkLst > 0 && getBlockSize(f.size, lenOfBlkLst-1) != int(bc.blockSize) {
+			dirtyBlock = f.blockList[lenOfBlkLst-1]
 		}
 		for i := lenOfBlkLst; i < int(finalBlocksCnt); i++ {
 			id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
@@ -475,6 +470,16 @@ func (bc *BlockCache) TruncateFile(options internal.TruncateFileOptions) (err er
 			} else {
 				blk.hole = true
 			}
+		}
+	}
+	f.size = options.Size
+	f.Unlock()
+
+	if dirtyBlock != nil {
+		err = changeStateOfBlockToLocal(dirtyBlock)
+		if err != nil {
+			log.Err("BlockCache::Truncate File : failed to convert the last block to local, file path=%s, size = %d, err = %s", options.Name, options.Size, err.Error())
+			return err
 		}
 	}
 	//todo: revert back to the prev state if any error occurs
