@@ -4,7 +4,7 @@
 #!/bin/bash
 
 # Run the go_installer script with the parent directory as an argument
-../go_installer.sh ../
+../go_installer.sh ../../
 echo "Installed go" 
 go version
 sudo apt update -y
