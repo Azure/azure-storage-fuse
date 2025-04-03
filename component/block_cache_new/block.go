@@ -6,7 +6,6 @@ import (
 	"runtime"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
@@ -34,13 +33,12 @@ const (
 
 type block struct {
 	sync.RWMutex
-	idx                         int        // Block Index
-	id                          string     // Block Id
-	buf                         *Buffer    // Inmemory buffer if exists.
-	state                       blockState // It tells about the state of the block.
-	hole                        bool       // Hole means this block is a null block. This can be used to do some optimisations.
-	refCnt                      int        // reference counter for block, how many handles are currenlty using block
-	asyncUploadTimer            *time.Timer
+	idx                         int             // Block Index
+	id                          string          // Block Id
+	buf                         *Buffer         // Inmemory buffer if exists.
+	state                       blockState      // It tells about the state of the block.
+	hole                        bool            // Hole means this block is a null block. This can be used to do some optimisations.
+	refCnt                      int             // reference counter for block, how many handles are currenlty using block
 	uploadDone                  chan error      // Channel to know when the uplaod completes.
 	downloadDone                chan error      // Channel to know when the download completes.
 	uploadCtx                   context.Context // Context used while uploading the block

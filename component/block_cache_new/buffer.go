@@ -253,6 +253,7 @@ func (bp *BufferPool) asyncUploadScheduler() {
 			cow := time.Now()
 			r := asyncRequest
 			r |= asyncUploadScheduler
+			//todo : Schedule only when the ref cnt of the blk is zero, else there is a chance of cancelling the upload
 			uploader(blk, r)
 			bp.moveBlkFromLBLtoOWBL(blk)
 			log.Info("BlockCache::asyncUploadScheduler : [took : %s] Async Upload scheduled for blk idx : %d, file: %s", time.Since(cow).String(), blk.idx, blk.file.Name)
