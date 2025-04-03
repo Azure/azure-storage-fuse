@@ -289,7 +289,7 @@ func (bp *BufferPool) asyncUpladPoller() {
 			case blk := <-bp.uploadCompletedStream:
 				blk.Lock()
 				err, ok := <-blk.uploadDone
-				if ok && err == nil {
+				if ok && err == nil && blk.uploadCtx.Err() == nil {
 					close(blk.uploadDone)
 					log.Info("BlockCache::asyncUploadPoller : Upload Success, Moved block from the OWBL to SBL blk idx : %d, file: %s", blk.idx, blk.file.Name)
 					blk.state = uncommitedBlock

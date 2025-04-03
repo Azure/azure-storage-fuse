@@ -339,7 +339,6 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 			return dataWritten, err
 		}
 		blk.cancelOngoingAsyncUpload()
-		blk.resetAsyncUploadTimer()
 		blockOffset := convertOffsetIntoBlockOffset(offset)
 
 		// Modify the file size before copying the actual data to the buffer.
@@ -352,7 +351,6 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 		f.Unlock()
 
 		blk.Lock()
-		// What if write comes on a hole? currenlty not handled
 		if blk.buf == nil {
 			panic(fmt.Sprintf("BlockCache::WriteFile : Culprit Blk idx : %d, file name: %s", blk.idx, f.Name))
 		}

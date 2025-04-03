@@ -1,6 +1,7 @@
 package block_cache_new
 
 import (
+	"context"
 	"fmt"
 	"runtime"
 	"strings"
@@ -40,14 +41,15 @@ type block struct {
 	hole                        bool       // Hole means this block is a null block. This can be used to do some optimisations.
 	refCnt                      int        // reference counter for block, how many handles are currenlty using block
 	asyncUploadTimer            *time.Timer
-	uploadDone                  chan error    // Channel to know when the uplaod completes.
-	downloadDone                chan error    // Channel to know when the download completes.
-	cancelOngoingAsyncUpload    func()        // This function cancels the ongoing async upload, maybe triggered by any write that comes after its scheduling.
-	forceCancelUpload           chan struct{} // Cancel the ongoing upload forcefully without waiting for the flush call.
-	cancelOngolingAsyncDownload func()        // This function cancel the ongoing async download.
-	requestingBuffer            chan struct{} // Used to serilaize the getBuffer calls
-	requestingBufferFlag        bool          // first request of all getBuffer requests for the same block will make it true to say all others requests that it is doing flush operation
-	file                        *File         // file object that this block belong to.
+	uploadDone                  chan error      // Channel to know when the uplaod completes.
+	downloadDone                chan error      // Channel to know when the download completes.
+	uploadCtx                   context.Context // Context used while uploading the block
+	cancelOngoingAsyncUpload    func()          // This function cancels the ongoing async upload, maybe triggered by any write that comes after its scheduling.
+	forceCancelUpload           chan struct{}   // Cancel the ongoing upload forcefully without waiting for the flush call.
+	cancelOngolingAsyncDownload func()          // This function cancel the ongoing async download.
+	requestingBuffer            chan struct{}   // Used to serilaize the getBuffer calls
+	requestingBufferFlag        bool            // first request of all getBuffer requests for the same block will make it true to say all others requests that it is doing flush operation
+	file                        *File           // file object that this block belong to.
 }
 
 func createBlock(idx int, id string, state blockState, f *File) *block {
@@ -57,9 +59,9 @@ func createBlock(idx int, id string, state blockState, f *File) *block {
 		buf:                         nil,
 		state:                       state,
 		hole:                        false,
-		asyncUploadTimer:            time.NewTimer(defaultBlockTimeout),
 		uploadDone:                  make(chan error, 1),
 		downloadDone:                make(chan error, 1),
+		uploadCtx:                   context.Background(),
 		cancelOngoingAsyncUpload:    func() {},
 		forceCancelUpload:           make(chan struct{}),
 		cancelOngolingAsyncDownload: func() {},
@@ -71,10 +73,6 @@ func createBlock(idx int, id string, state blockState, f *File) *block {
 	close(blk.downloadDone)
 	close(blk.requestingBuffer)
 	return blk
-}
-
-func (blk *block) resetAsyncUploadTimer() {
-	blk.asyncUploadTimer.Reset(defaultBlockTimeout)
 }
 
 func (blk *block) incrementRefCnt() int {

@@ -13,6 +13,7 @@ func scheduleUpload(blk *block, r requestType) {
 	blk.uploadDone = make(chan error, 1)
 	blk.forceCancelUpload = make(chan struct{})
 	ctx, cancel := context.WithCancel(context.Background())
+	blk.uploadCtx = ctx
 	taskDone := make(chan struct{}, 1)
 	// blk.refCnt++
 	blk.cancelOngoingAsyncUpload = func() {
@@ -50,7 +51,7 @@ func uploader(blk *block, r requestType) (state blockState, err error) {
 			for {
 				select {
 				case err, ok = <-blk.uploadDone:
-					if ok && err == nil {
+					if ok && err == nil && blk.uploadCtx.Err() == nil {
 						// Upload was already completed by async scheduler and no more write came after it.
 						blk.state = uncommitedBlock
 						close(blk.uploadDone)
@@ -84,9 +85,15 @@ func uploader(blk *block, r requestType) (state blockState, err error) {
 	}
 	if r.isRequestSync() {
 		err, ok = <-blk.uploadDone
-		if ok && err == nil {
+		if ok && err == nil && blk.uploadCtx.Err() == nil {
 			blk.state = uncommitedBlock
 			close(blk.uploadDone)
+		} else {
+			if err != nil {
+				panic(fmt.Sprintf("BlockCache::uploader : Sync upload failed with err %s, blk idx : %d, file name :%s", err.Error(), blk.idx, blk.file.Name))
+			} else if blk.uploadCtx.Err() != nil {
+				panic(fmt.Sprintf("BlockCache::uploader : Sync upload failed with err %s, blk idx : %d, file name :%s", blk.uploadCtx.Err().Error(), blk.idx, blk.file.Name))
+			}
 		}
 	}
 	state = blk.state
