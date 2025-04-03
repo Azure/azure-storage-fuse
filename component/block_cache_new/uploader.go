@@ -56,6 +56,8 @@ func uploader(blk *block, r requestType) (state blockState, err error) {
 						blk.state = uncommitedBlock
 						close(blk.uploadDone)
 					} else {
+						close(blk.forceCancelUpload)
+						blk.cancelOngoingAsyncUpload()
 						scheduleUpload(blk, r)
 					}
 					break outer
@@ -71,7 +73,7 @@ func uploader(blk *block, r requestType) (state blockState, err error) {
 							scheduleUpload(blk, r)
 						}
 						break outer
-					} else if r.isRequestASync() {
+					} else if r.isRequestScheduled() {
 						// The block has already scheduled, just let go
 						break outer
 					} else {
