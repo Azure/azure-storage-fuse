@@ -106,7 +106,7 @@ reconfigure:
 
 	// If user has not specified the account type then detect it's HNS or FNS
 	if conf.AccountType == "" && az.storage.IsAccountADLS() {
-		log.Crit("AzStorage::Configure : Account is ADLS but config is not set, auto tuning config to ADLS")
+		log.Crit("AzStorage::Configure : Auto detected account type as adls, reconfiguring storage connection.")
 		az.storage = nil
 		conf.AccountType = "adls"
 		goto reconfigure
