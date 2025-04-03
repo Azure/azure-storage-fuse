@@ -104,8 +104,8 @@ reconfigure:
 		return err
 	}
 
-	// Validate account is HNS or not. If HNS then set .use-adls and recall config method
-	if az.stConfig.authConfig.AccountType != EAccountType.ADLS() && az.storage.IsAccountADLS() {
+	// If user has not specified the account type then detect it's HNS or FNS
+	if conf.AccountType == "" && az.storage.IsAccountADLS() {
 		log.Crit("AzStorage::Configure : Account is ADLS but config is not set, auto tuning config to ADLS")
 		az.storage = nil
 		conf.AccountType = "adls"
