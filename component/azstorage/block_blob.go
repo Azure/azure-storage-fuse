@@ -227,7 +227,7 @@ func (bb *BlockBlob) IsAccountADLS() bool {
 	_, err := listBlobPager.NextPage(context.Background())
 
 	if err == nil {
-		// Call will be successful only when we are able to retreive the permissions
+		// Call will be successful only when we are able to retrieve the permissions
 		// Permissions will work only in case of HNS accounts
 		log.Crit("BlockBlob::IsAccountADLS : Detected HNS account")
 		return true
