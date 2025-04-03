@@ -3,6 +3,7 @@
 - Added `Client Assertion` based authentication for containers. Configure `tenant-id, client-id, aad-application-id and security scope` with `authMode` set to `workloadidentity`.
 - Use `AZURE_STORAGE_SERVICE_API_VERSION` to override the `x-ms-version` parameter in REST calls.
 
+
 ## 2.4.1 (2025-02-18)
 **Bug Fixes**
 - Create block pool only in the child process.
