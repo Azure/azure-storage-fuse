@@ -68,8 +68,8 @@ func (s *StorageCallbackImpl) ListAllBlobs(path string) ([]string, error) {
 	return []string{}, nil
 }
 
-// Factory function to create a new instance of StorageImpl
-func newStorageImpl(nextComp internal.Component, azstorage internal.Component) dcachelib.StorageCallbacks {
+// Factory function to create a new instance of StorageCallbacks
+func Init(nextComp internal.Component, azstorage internal.Component) dcachelib.StorageCallbacks {
 
 	return &StorageCallbackImpl{
 		comp:      nextComp,
