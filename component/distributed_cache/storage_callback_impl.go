@@ -39,40 +39,62 @@ import (
 
 // StorageCallbackImpl is a struct that implements the Storage interface
 type StorageCallbackImpl struct {
-	comp      internal.Component
-	azstorage internal.Component
+	nextComp internal.Component
+	storage  internal.Component
 }
 
-// Implement the GetBlob method
-func (s *StorageCallbackImpl) GetBlob(blobName string) (string, error) {
-	return "", nil
+// GetBlob implements dcachelib.StorageCallbacks.
+func (sci *StorageCallbackImpl) GetBlob(options internal.ReadFileWithNameOptions) ([]byte, error) {
+	return sci.nextComp.ReadFileWithName(options)
 }
 
-// Implement the PutBlob method
-func (s *StorageCallbackImpl) PutBlob(blobName string, data string) error {
-	return nil
+// GetBlobFromStroage implements dcachelib.StorageCallbacks.
+func (sci *StorageCallbackImpl) GetBlobFromStroage(options internal.ReadFileWithNameOptions) ([]byte, error) {
+	return sci.storage.ReadFileWithName(options)
 }
 
-// Implement the GetProperties method
-func (s *StorageCallbackImpl) GetProperties(blobName string) (map[string]string, error) {
-	return map[string]string{}, nil
+// GetProperties implements dcachelib.StorageCallbacks.
+func (sci *StorageCallbackImpl) GetProperties(options internal.GetAttrOptions) (*internal.ObjAttr, error) {
+	return sci.nextComp.GetAttr(options)
 }
 
-// Implement the SetProperties method
-func (s *StorageCallbackImpl) SetProperties(blobName string, properties map[string]string) error {
-	return nil
+func (sci *StorageCallbackImpl) GetPropertiesFromStorage(options internal.GetAttrOptions) (*internal.ObjAttr, error) {
+	return sci.storage.GetAttr(options)
 }
 
-// Implement the ListBlobs method
-func (s *StorageCallbackImpl) ListAllBlobs(path string) ([]string, error) {
-	return []string{}, nil
+// ReadDir implements dcachelib.StorageCallbacks.
+func (sci *StorageCallbackImpl) ReadDir(options internal.ReadDirOptions) ([]*internal.ObjAttr, error) {
+	return sci.nextComp.ReadDir(options)
+}
+
+// ReadDirFromStroage implements dcachelib.StorageCallbacks.
+func (sci *StorageCallbackImpl) ReadDirFromStroage(options internal.ReadDirOptions) ([]*internal.ObjAttr, error) {
+	return sci.storage.ReadDir(options)
+}
+
+// SetProperties implements dcachelib.StorageCallbacks.
+func (sci *StorageCallbackImpl) SetProperties(path string, properties map[string]string) error {
+	panic("unimplemented")
+}
+
+// SetPropertiesInStorage implements dcachelib.StorageCallbacks.
+func (sci *StorageCallbackImpl) SetPropertiesInStorage(path string, properties map[string]string) error {
+	panic("unimplemented")
+}
+
+func (sci *StorageCallbackImpl) PutBlobInStorage(options internal.WriteFromBufferOptions) error {
+	return sci.storage.WriteFromBuffer(options)
+}
+
+func (sci *StorageCallbackImpl) PutBlob(options internal.WriteFromBufferOptions) error {
+	return sci.nextComp.WriteFromBuffer(options)
 }
 
 // Factory function to create a new instance of StorageCallbacks
 func Init(nextComp internal.Component, azstorage internal.Component) dcachelib.StorageCallbacks {
 
 	return &StorageCallbackImpl{
-		comp:      nextComp,
-		azstorage: azstorage,
+		nextComp: nextComp,
+		storage:  azstorage,
 	}
 }
