@@ -333,6 +333,26 @@ func (suite *LoopbackFSTestSuite) TestCommitNilDataToExistingFile() {
 	assert.Equal(info.Size(), int64(0))
 }
 
+func (suite *LoopbackFSTestSuite) TestWriteFromBuffer() {
+	defer suite.cleanupTest()
+	assert := assert.New(suite.T())
+	lfs := &LoopbackFS{}
+	lfs.WriteFromBuffer(internal.WriteFromBufferOptions{
+		Name: fileLorem,
+		Data: []byte("hello"),
+		Etag: true,
+	})
+	attr, err := suite.lfs.GetAttr(internal.GetAttrOptions{Name: fileLorem})
+	assert.Nil(err)
+	info, err := os.Stat(filepath.Join(testPath, fileLorem))
+	assert.Nil(err)
+
+	assert.Equal(attr.Size, info.Size())
+	assert.Equal(attr.Name, info.Name())
+	assert.Equal(attr.Mode, info.Mode())
+	assert.Equal(attr.IsDir(), info.IsDir())
+}
+
 func TestLoopbackFSTestSuite(t *testing.T) {
 	suite.Run(t, new(LoopbackFSTestSuite))
 }

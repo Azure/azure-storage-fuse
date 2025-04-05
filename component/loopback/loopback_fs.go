@@ -552,6 +552,12 @@ func (lfs *LoopbackFS) GetCommittedBlockList(name string) (*internal.CommittedBl
 	return &list, nil
 }
 
+func (lfs *LoopbackFS) WriteFromBuffer(options internal.WriteFromBufferOptions) error {
+	log.Trace("LoopbackFS::WriteFromBuffer : name=%s", options.Name)
+	path := filepath.Join(lfs.path, options.Name)
+	return os.WriteFile(path, options.Data, os.FileMode(0666))
+}
+
 func NewLoopbackFSComponent() internal.Component {
 	lfs := &LoopbackFS{}
 	lfs.SetName(compName)

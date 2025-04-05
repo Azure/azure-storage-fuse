@@ -200,6 +200,13 @@ func (base *BaseComponent) ReadFile(options ReadFileOptions) (b []byte, err erro
 	return b, err
 }
 
+func (base *BaseComponent) ReadFileWithName(options ReadFileWithNameOptions) (b []byte, err error) {
+	if base.next != nil {
+		return base.next.ReadFileWithName(options)
+	}
+	return b, err
+}
+
 func (base *BaseComponent) ReadInBuffer(options ReadInBufferOptions) (int, error) {
 	if base.next != nil {
 		return base.next.ReadInBuffer(options)
@@ -353,6 +360,13 @@ func (base *BaseComponent) StageData(opt StageDataOptions) error {
 func (base *BaseComponent) CommitData(opt CommitDataOptions) error {
 	if base.next != nil {
 		return base.next.CommitData(opt)
+	}
+	return nil
+}
+
+func (base *BaseComponent) WriteFromBuffer(opt WriteFromBufferOptions) error {
+	if base.next != nil {
+		return base.next.WriteFromBuffer(opt)
 	}
 	return nil
 }
