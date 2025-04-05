@@ -1,11 +1,11 @@
-## 2.5.0 (Unreleased)
+## 2.4.2 (Unreleased)
 **Features**
 - Added `Client Assertion` based authentication for containers. Configure `tenant-id, client-id, aad-application-id and security scope` with `authMode` set to `workloadidentity`.
-
-## 2.5.0~preview.1 (Unreleased)
-**Features**
+- Auto detection of account-type (block/adls) when user has not provided the type explicitly.
 
 **Bug Fixes**
+[#1630](https://github.com/Azure/azure-storage-fuse/issues/1426) Added support to mount special containers in `mount all` command.
+[#1647](https://github.com/Azure/azure-storage-fuse/issues/1647) Provide detailed error when authentication fails.
 
 ## 2.4.1 (2025-02-18)
 **Bug Fixes**

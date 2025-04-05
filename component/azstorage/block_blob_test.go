@@ -335,6 +335,18 @@ func (s *blockBlobTestSuite) TestNoEndpoint() {
 	s.assert.Nil(err)
 }
 
+func (s *blockBlobTestSuite) TestAccountType() {
+	defer s.cleanupTest()
+	// Setup
+	s.tearDownTestHelper(false) // Don't delete the generated container.
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
+		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	s.setupTestHelper(config, s.container, true)
+
+	val := s.az.storage.IsAccountADLS()
+	s.assert.False(val)
+}
+
 func (s *blockBlobTestSuite) TestContainerNotFound() {
 	defer s.cleanupTest()
 	// Setup
