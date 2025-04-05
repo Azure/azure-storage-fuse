@@ -212,6 +212,40 @@ func (bb *BlockBlob) TestPipeline() error {
 	return nil
 }
 
+// IsAccountADLS : Check account is ADLS or not
+func (bb *BlockBlob) IsAccountADLS() bool {
+	includeFields := bb.listDetails
+	includeFields.Permissions = true // for FNS account this property will return back error
+
+	listBlobPager := bb.Container.NewListBlobsHierarchyPager("/", &container.ListBlobsHierarchyOptions{
+		MaxResults: to.Ptr((int32)(2)),
+		Prefix:     &bb.Config.prefixPath,
+		Include:    includeFields,
+	})
+
+	// we are just validating the auth mode used. So, no need to iterate over the pages
+	_, err := listBlobPager.NextPage(context.Background())
+
+	if err == nil {
+		// Call will be successful only when we are able to retrieve the permissions
+		// Permissions will work only in case of HNS accounts
+		log.Crit("BlockBlob::IsAccountADLS : Detected HNS account")
+		return true
+	}
+
+	var respErr *azcore.ResponseError
+	errors.As(err, &respErr)
+	if respErr != nil {
+		if respErr.ErrorCode == "InvalidQueryParameterValue" {
+			log.Crit("BlockBlob::IsAccountADLS : Detected FNS account")
+			return false
+		}
+	}
+
+	log.Crit("BlockBlob::IsAccountADLS : Unable to detect account type, assuming FNS [%s]", err.Error())
+	return false
+}
+
 func (bb *BlockBlob) ListContainers() ([]string, error) {
 	log.Trace("BlockBlob::ListContainers : Listing containers")
 	cntList := make([]string, 0)
