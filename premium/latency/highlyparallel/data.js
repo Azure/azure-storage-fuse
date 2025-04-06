@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1743841247345,
+  "lastUpdate": 1743914151320,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -1418,6 +1418,43 @@ window.BENCHMARK_DATA = {
           {
             "name": "rand_read_128_thread",
             "value": 1768.336672538626,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Vikas Bhansali",
+            "username": "vibhansa-msft",
+            "email": "64532198+vibhansa-msft@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "60a9c141fec5183c0f129432576e4b0df7a8a57a",
+          "message": "Correct account type of HNS accounts (#1671)",
+          "timestamp": "2025-04-05T07:48:23Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/60a9c141fec5183c0f129432576e4b0df7a8a57a"
+        },
+        "date": 1743914151086,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "seq_write_112_thread",
+            "value": 379.84149119138993,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "seq_read_128_thread",
+            "value": 314.576943975496,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "rand_read_128_thread",
+            "value": 1801.6960425256757,
             "unit": "milliseconds"
           }
         ]
