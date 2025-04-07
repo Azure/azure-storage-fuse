@@ -307,12 +307,19 @@ stages:
             displayName: "Update dependencies"
             
           # Send images for signing
-          - task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@1
-            displayName: 'ESRP CodeSigning blobfuse2'
+          - task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@5
+            displayName: 'ESRP CodeSigning Blobfuse2'
             inputs:
-              ConnectedServiceName: 'PMC ESRP Blobfuse2 Signing'
+              ConnectedServiceName: 'WIF_MI_ESRP_V5'
+              AppRegistrationClientId: '5e8a0258-09a7-4a9c-85eb-d4cfe8243d0e' 
+              AppRegistrationTenantId: '33e01921-4d64-4f8c-a055-5bdaffd5e33d' 
+              AuthAKVName: 'azstorage-devex-kv' 
+              AuthCertName: 'azstorage-devex-esrp-auth1'
+              AuthSignCertName: 'bazstorage-devex-esrp-sign1'
               FolderPath: '$(Build.ArtifactStagingDirectory)/blobfuse2-temp'
               Pattern: '*.rpm, *.deb'
+              ServiceEndpointUrl: 'https://api.esrp.microsoft.com/api/v2' 
+              MaxConcurrency: 25
               signConfigType: inlineSignParams
               VerboseLogin: true
               inlineOperation: |
@@ -326,12 +333,19 @@ stages:
                   }
                 ]
 
-          - task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@1
-            displayName: 'ESRP CodeSigning blobfuse2 mariner'
+          - task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@5
+            displayName: 'ESRP CodeSigning Blobfuse2 for Mariner'
             inputs:
-              ConnectedServiceName: 'PMC ESRP Blobfuse2 Signing'
+              ConnectedServiceName: 'WIF_MI_ESRP_V5'
+              AppRegistrationClientId: '5e8a0258-09a7-4a9c-85eb-d4cfe8243d0e' 
+              AppRegistrationTenantId: '33e01921-4d64-4f8c-a055-5bdaffd5e33d' 
+              AuthAKVName: 'azstorage-devex-kv' 
+              AuthCertName: 'azstorage-devex-esrp-auth1'
+              AuthSignCertName: 'bazstorage-devex-esrp-sign1'
               FolderPath: '$(Build.ArtifactStagingDirectory)/mariner'
               Pattern: '*.rpm'
+              ServiceEndpointUrl: 'https://api.esrp.microsoft.com/api/v2' 
+              MaxConcurrency: 25
               signConfigType: inlineSignParams
               VerboseLogin: true
               inlineOperation: |
