@@ -97,6 +97,7 @@ type AzConnection interface {
 
 	SetupPipeline() error
 	TestPipeline() error
+	IsAccountADLS() bool
 
 	ListContainers() ([]string, error)
 
