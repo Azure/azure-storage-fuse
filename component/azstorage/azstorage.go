@@ -79,10 +79,6 @@ func (az *AzStorage) SetNextComponent(c internal.Component) {
 	az.BaseComponent.SetNextComponent(c)
 }
 
-func (az *AzStorage) GetBlobStorage() AzConnection {
-	return az.storage
-}
-
 // Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
 func (az *AzStorage) Configure(isParent bool) error {
 	log.Trace("AzStorage::Configure : %s", az.Name())
@@ -211,7 +207,7 @@ func (az *AzStorage) ListContainers() ([]string, error) {
 func (az *AzStorage) CreateDir(options internal.CreateDirOptions) error {
 	log.Trace("AzStorage::CreateDir : %s", options.Name)
 
-	err := az.storage.CreateDirectory(internal.TruncateDirName(options.Name), options.Etag)
+	err := az.storage.CreateDirectory(internal.TruncateDirName(options.Name), options.EtagNoneMatchConditions)
 
 	if err == nil {
 		azStatsCollector.PushEvents(createDir, options.Name, map[string]interface{}{mode: options.Mode.String()})

@@ -338,9 +338,9 @@ func (suite *LoopbackFSTestSuite) TestWriteFromBuffer() {
 	assert := assert.New(suite.T())
 	lfs := &LoopbackFS{}
 	lfs.WriteFromBuffer(internal.WriteFromBufferOptions{
-		Name: fileLorem,
-		Data: []byte("hello"),
-		Etag: true,
+		Name:                    fileLorem,
+		Data:                    []byte("hello"),
+		EtagNoneMatchConditions: "*",
 	})
 	attr, err := suite.lfs.GetAttr(internal.GetAttrOptions{Name: fileLorem})
 	assert.Nil(err)

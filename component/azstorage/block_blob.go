@@ -280,7 +280,7 @@ func (bb *BlockBlob) CreateFile(name string, mode os.FileMode) error {
 }
 
 // CreateDirectory : Create a new directory in the container/virtual directory
-func (bb *BlockBlob) CreateDirectory(name string, etag bool) error {
+func (bb *BlockBlob) CreateDirectory(name string, etagNoneMatchConditions string) error {
 	log.Trace("BlockBlob::CreateDirectory : name %s", name)
 
 	var data []byte
@@ -288,9 +288,9 @@ func (bb *BlockBlob) CreateDirectory(name string, etag bool) error {
 	metadata[folderKey] = to.Ptr("true")
 
 	return bb.WriteFromBuffer(internal.WriteFromBufferOptions{Name: name,
-		Metadata: metadata,
-		Data:     data,
-		Etag:     etag})
+		Metadata:                metadata,
+		Data:                    data,
+		EtagNoneMatchConditions: etagNoneMatchConditions})
 }
 
 // CreateLink : Create a symlink in the container/virtual directory
@@ -1146,10 +1146,17 @@ func (bb *BlockBlob) WriteFromBuffer(options internal.WriteFromBufferOptions) er
 		CPKInfo: bb.blobCPKOpt,
 	}
 
-	if options.Etag {
+	if options.EtagNoneMatchConditions != "" {
 		uploadOptions.AccessConditions = &blob.AccessConditions{
 			ModifiedAccessConditions: &blob.ModifiedAccessConditions{
-				IfNoneMatch: to.Ptr(azcore.ETagAny),
+				IfNoneMatch: to.Ptr(azcore.ETag(options.EtagNoneMatchConditions)),
+			},
+		}
+	}
+	if options.EtagMatchConditions != "" {
+		uploadOptions.AccessConditions = &blob.AccessConditions{
+			ModifiedAccessConditions: &blob.ModifiedAccessConditions{
+				IfMatch: to.Ptr(azcore.ETag(options.EtagMatchConditions)),
 			},
 		}
 	}
@@ -1439,9 +1446,9 @@ func (bb *BlockBlob) Write(options internal.WriteFileOptions) error {
 		}
 		// WriteFromBuffer should be able to handle the case where now the block is too big and gets split into multiple blocks
 		err := bb.WriteFromBuffer(internal.WriteFromBufferOptions{Name: name,
-			Metadata: options.Metadata,
-			Data:     *dataBuffer,
-			Etag:     options.Etag})
+			Metadata:                options.Metadata,
+			Data:                    *dataBuffer,
+			EtagNoneMatchConditions: options.EtagNoneMatchConditions})
 		if err != nil {
 			log.Err("BlockBlob::Write : Failed to upload to blob %s ", name, err.Error())
 			return err
