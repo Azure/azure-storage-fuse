@@ -45,7 +45,6 @@ import (
 type Pipeline struct {
 	components []Component
 	Header     Component
-	Footer     Component
 }
 
 // NewComponent : Function that all components have to register to allow their instantiation
@@ -115,8 +114,6 @@ func (p *Pipeline) Create() {
 		curComp.SetNextComponent(nextComp)
 		curComp = nextComp
 	}
-
-	p.Footer = curComp
 }
 
 // Start : Start the pipeline by calling 'Start' method of each component in reverse order of chaining
