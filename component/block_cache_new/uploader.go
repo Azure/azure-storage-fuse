@@ -51,10 +51,12 @@ func uploader(blk *block, r requestType) (state blockState, err error) {
 			for {
 				select {
 				case err, ok = <-blk.uploadDone:
+					if ok {
+						close(blk.uploadDone)
+					}
 					if ok && err == nil && blk.uploadCtx.Err() == nil {
 						// Upload was already completed by async scheduler and no more write came after it.
 						blk.state = uncommitedBlock
-						close(blk.uploadDone)
 					} else {
 						close(blk.forceCancelUpload)
 						blk.cancelOngoingAsyncUpload()
@@ -87,9 +89,11 @@ func uploader(blk *block, r requestType) (state blockState, err error) {
 	}
 	if r.isRequestSync() {
 		err, ok = <-blk.uploadDone
+		if ok {
+			close(blk.uploadDone)
+		}
 		if ok && err == nil && blk.uploadCtx.Err() == nil {
 			blk.state = uncommitedBlock
-			close(blk.uploadDone)
 		} else {
 			if err != nil {
 				panic(fmt.Sprintf("BlockCache::uploader : Sync upload failed with err %s, blk idx : %d, file name :%s", err.Error(), blk.idx, blk.file.Name))

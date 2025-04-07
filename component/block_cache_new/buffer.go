@@ -2,6 +2,7 @@ package block_cache_new
 
 import (
 	"container/list"
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -290,8 +291,10 @@ func (bp *BufferPool) asyncUpladPoller() {
 			case blk := <-bp.uploadCompletedStream:
 				blk.Lock()
 				err, ok := <-blk.uploadDone
-				if ok && err == nil && blk.uploadCtx.Err() == nil {
+				if ok {
 					close(blk.uploadDone)
+				}
+				if ok && err == nil && blk.uploadCtx.Err() == nil {
 					log.Info("BlockCache::asyncUploadPoller : Upload Success, Moved block from the OWBL to SBL blk idx : %d, file: %s", blk.idx, blk.file.Name)
 					blk.state = uncommitedBlock
 					bp.moveBlkFromOWBLtoSBL(blk)
@@ -429,6 +432,7 @@ func (bp *BufferPool) releaseBuffer(blk *block) {
 		blk.cancelOngoingAsyncUpload()
 		blk.uploadDone = make(chan error, 1)
 		close(blk.uploadDone)
+		blk.uploadCtx = context.Background()
 		bp.pool.Put(blk.buf)
 		blk.buf = nil
 		blk.forceCancelUpload = make(chan struct{})
