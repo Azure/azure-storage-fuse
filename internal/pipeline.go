@@ -53,30 +53,6 @@ type NewComponent func() Component
 
 // Map holding all possible components along with their respective constructors
 var registeredComponents map[string]NewComponent
-var CurrentPipeline *Pipeline
-
-func GetCurrentPipeline() *Pipeline {
-	return CurrentPipeline
-}
-
-func GetStorageComponent() Component {
-	if CurrentPipeline == nil {
-		log.Err("Pipeline: error [no pipeline created]")
-		return nil
-	}
-
-	if CurrentPipeline.Footer == nil {
-		log.Err("Pipeline: error [no footer component]")
-		return nil
-	}
-
-	if CurrentPipeline.Footer.Name() != "azstorage" {
-		log.Err("Pipeline: error [footer component is not azstorage]")
-		return nil
-	}
-
-	return CurrentPipeline.Footer
-}
 
 func GetComponent(name string) Component {
 	compInit, ok := registeredComponents[name]
@@ -88,7 +64,6 @@ func GetComponent(name string) Component {
 
 // NewPipeline : Using a list of strings holding name of components, create and configure the component objects
 func NewPipeline(components []string, isParent bool) (*Pipeline, error) {
-	CurrentPipeline = nil
 	comps := make([]Component, 0)
 	lastPriority := EComponentPriority.Producer()
 	for _, name := range components {
@@ -125,12 +100,9 @@ func NewPipeline(components []string, isParent bool) (*Pipeline, error) {
 
 	}
 
-	// Create pipeline structure holding list of all component objects requested by config file
-	CurrentPipeline = &Pipeline{
+	return &Pipeline{
 		components: comps,
-	}
-
-	return CurrentPipeline, nil
+	}, nil
 }
 
 // Create : Use the initialized objects to form a pipeline by registering next component to each component
