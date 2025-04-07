@@ -303,7 +303,7 @@ stages:
               sudo dpkg -i packages-microsoft-prod.deb 
               sudo apt update 
               sudo apt install apt-transport-https -y
-              sudo apt install dotnet-sdk-3.1 -y
+              sudo apt install dotnet-sdk-9.0 -y
             displayName: "Update dependencies"
             
           # Send images for signing
