@@ -36,7 +36,6 @@ package azstorage
 import (
 	"fmt"
 	"net/http"
-	"os"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -65,17 +64,18 @@ func (p blobfuseTelemetryPolicy) Do(req *policy.Request) (*http.Response, error)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------
-var serviceApiVersion = os.Getenv("AZURE_STORAGE_SERVICE_API_VERSION")
-
 // Policy to override the service version if requested by user
 type serviceVersionPolicy struct {
+	serviceApiVersion string
 }
 
-func newServiceVersionPolicy() policy.Policy {
-	return &serviceVersionPolicy{}
+func newServiceVersionPolicy(version string) policy.Policy {
+	return &serviceVersionPolicy{
+		serviceApiVersion: version,
+	}
 }
 
 func (r *serviceVersionPolicy) Do(req *policy.Request) (*http.Response, error) {
-	req.Raw().Header["x-ms-version"] = []string{serviceApiVersion}
+	req.Raw().Header["x-ms-version"] = []string{r.serviceApiVersion}
 	return req.Next()
 }

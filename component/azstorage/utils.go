@@ -108,9 +108,10 @@ func getAzStorageClientOptions(conf *AzStorageConfig) (azcore.ClientOptions, err
 
 	perCallPolicies := []policy.Policy{telemetryPolicy}
 
+	serviceApiVersion := os.Getenv("AZURE_STORAGE_SERVICE_API_VERSION")
 	if serviceApiVersion != "" {
 		// We need to override the service version
-		perCallPolicies = append(perCallPolicies, newServiceVersionPolicy())
+		perCallPolicies = append(perCallPolicies, newServiceVersionPolicy(serviceApiVersion))
 	}
 
 	return azcore.ClientOptions{
