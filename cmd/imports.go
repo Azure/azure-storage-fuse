@@ -1,5 +1,3 @@
-package cmd
-
 /*
     _____           _____   _____   ____          ______  _____  ------
    |     |  |      |     | |     | |     |     | |       |            |
@@ -32,6 +30,8 @@ package cmd
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE
 */
+
+package cmd
 
 import (
 	_ "github.com/Azure/azure-storage-fuse/v2/component/attr_cache"
