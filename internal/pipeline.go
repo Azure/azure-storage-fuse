@@ -99,6 +99,7 @@ func NewPipeline(components []string, isParent bool) (*Pipeline, error) {
 
 	}
 
+	// Create pipeline structure holding list of all component objects requested by config file
 	return &Pipeline{
 		components: comps,
 	}, nil
