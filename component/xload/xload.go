@@ -54,7 +54,7 @@ type Xload struct {
 	internal.BaseComponent
 	blockSize         uint64          // Size of each block to be cached
 	mode              Mode            // Mode of the Xload component
-	exportProgress    bool            // Export the progess of xload operation to json file
+	exportProgress    bool            // Export the progress of xload operation to json file
 	validateMD5       bool            // validate md5sum on download, if md5sum is set on blob
 	workerCount       uint32          // Number of workers running
 	blockPool         *BlockPool      // Pool of blocks
@@ -123,7 +123,7 @@ func (xl *Xload) Configure(_ bool) error {
 		return fmt.Errorf("Xload: config error [invalid config attributes]")
 	}
 
-	blockSize := (float64)(defaultBlockSize) // 16 MB as deafult block size
+	blockSize := (float64)(defaultBlockSize) // 16 MB as default block size
 	if config.IsSet(compName + ".block-size-mb") {
 		blockSize = conf.BlockSize
 	} else if config.IsSet("stream.block-size-mb") {
