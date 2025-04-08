@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package distributedcache
+package distributed_cache
 
 import (
 	"context"
@@ -160,7 +160,6 @@ func (dc *DistributedCache) setupCacheStructure(cacheDir string) error {
 // Stop : Stop the component functionality and kill all threads started
 func (dc *DistributedCache) Stop() error {
 	log.Trace("DistributedCache::Stop : Stopping component %s", dc.Name())
-
 	return nil
 }
 
@@ -198,7 +197,6 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 	if config.IsSet(compName + ".max-missed-heartbeats") {
 		distributedCache.maxMissedHbs = uint8(conf.MaxMissedHeartbeats)
 	}
-
 	return nil
 }
 
@@ -223,7 +221,7 @@ func init() {
 	cacheID := config.AddStringFlag("cache-id", "", "Cache ID for the distributed cache")
 	config.BindPFlag(compName+".cache-id", cacheID)
 
-	cachePath := config.AddStringFlag("cache-dir", "", "Path to the cache")
+	cachePath := config.AddStringFlag("cache-dir", "", "Local Path of the cache")
 	config.BindPFlag(compName+".path", cachePath)
 
 	chunkSize := config.AddUint64Flag("chunk-size", 16*1024*1024, "Chunk size for the cache")

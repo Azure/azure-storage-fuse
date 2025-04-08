@@ -212,6 +212,40 @@ func (bb *BlockBlob) TestPipeline() error {
 	return nil
 }
 
+// IsAccountADLS : Check account is ADLS or not
+func (bb *BlockBlob) IsAccountADLS() bool {
+	includeFields := bb.listDetails
+	includeFields.Permissions = true // for FNS account this property will return back error
+
+	listBlobPager := bb.Container.NewListBlobsHierarchyPager("/", &container.ListBlobsHierarchyOptions{
+		MaxResults: to.Ptr((int32)(2)),
+		Prefix:     &bb.Config.prefixPath,
+		Include:    includeFields,
+	})
+
+	// we are just validating the auth mode used. So, no need to iterate over the pages
+	_, err := listBlobPager.NextPage(context.Background())
+
+	if err == nil {
+		// Call will be successful only when we are able to retrieve the permissions
+		// Permissions will work only in case of HNS accounts
+		log.Crit("BlockBlob::IsAccountADLS : Detected HNS account")
+		return true
+	}
+
+	var respErr *azcore.ResponseError
+	errors.As(err, &respErr)
+	if respErr != nil {
+		if respErr.ErrorCode == "InvalidQueryParameterValue" {
+			log.Crit("BlockBlob::IsAccountADLS : Detected FNS account")
+			return false
+		}
+	}
+
+	log.Crit("BlockBlob::IsAccountADLS : Unable to detect account type, assuming FNS [%s]", err.Error())
+	return false
+}
+
 func (bb *BlockBlob) ListContainers() ([]string, error) {
 	log.Trace("BlockBlob::ListContainers : Listing containers")
 	cntList := make([]string, 0)
@@ -246,7 +280,7 @@ func (bb *BlockBlob) CreateFile(name string, mode os.FileMode) error {
 }
 
 // CreateDirectory : Create a new directory in the container/virtual directory
-func (bb *BlockBlob) CreateDirectory(name string, etag bool) error {
+func (bb *BlockBlob) CreateDirectory(name string, isNoneMatchEtagEnabled bool) error {
 	log.Trace("BlockBlob::CreateDirectory : name %s", name)
 
 	var data []byte
@@ -254,9 +288,9 @@ func (bb *BlockBlob) CreateDirectory(name string, etag bool) error {
 	metadata[folderKey] = to.Ptr("true")
 
 	return bb.WriteFromBuffer(internal.WriteFromBufferOptions{Name: name,
-		Metadata: metadata,
-		Data:     data,
-		Etag:     etag})
+		Metadata:               metadata,
+		Data:                   data,
+		IsNoneMatchEtagEnabled: isNoneMatchEtagEnabled})
 }
 
 // CreateLink : Create a symlink in the container/virtual directory
@@ -1112,10 +1146,17 @@ func (bb *BlockBlob) WriteFromBuffer(options internal.WriteFromBufferOptions) er
 		CPKInfo: bb.blobCPKOpt,
 	}
 
-	if options.Etag {
+	if options.IsNoneMatchEtagEnabled {
 		uploadOptions.AccessConditions = &blob.AccessConditions{
 			ModifiedAccessConditions: &blob.ModifiedAccessConditions{
 				IfNoneMatch: to.Ptr(azcore.ETagAny),
+			},
+		}
+	}
+	if options.EtagMatchConditions != "" {
+		uploadOptions.AccessConditions = &blob.AccessConditions{
+			ModifiedAccessConditions: &blob.ModifiedAccessConditions{
+				IfMatch: to.Ptr(azcore.ETag(options.EtagMatchConditions)),
 			},
 		}
 	}
@@ -1406,8 +1447,7 @@ func (bb *BlockBlob) Write(options internal.WriteFileOptions) error {
 		// WriteFromBuffer should be able to handle the case where now the block is too big and gets split into multiple blocks
 		err := bb.WriteFromBuffer(internal.WriteFromBufferOptions{Name: name,
 			Metadata: options.Metadata,
-			Data:     *dataBuffer,
-			Etag:     options.Etag})
+			Data:     *dataBuffer})
 		if err != nil {
 			log.Err("BlockBlob::Write : Failed to upload to blob %s ", name, err.Error())
 			return err
