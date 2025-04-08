@@ -280,7 +280,7 @@ func (bb *BlockBlob) CreateFile(name string, mode os.FileMode) error {
 }
 
 // CreateDirectory : Create a new directory in the container/virtual directory
-func (bb *BlockBlob) CreateDirectory(name string, etagNoneMatchConditions string) error {
+func (bb *BlockBlob) CreateDirectory(name string, isNoneMatchEtagEnabled bool) error {
 	log.Trace("BlockBlob::CreateDirectory : name %s", name)
 
 	var data []byte
@@ -288,9 +288,9 @@ func (bb *BlockBlob) CreateDirectory(name string, etagNoneMatchConditions string
 	metadata[folderKey] = to.Ptr("true")
 
 	return bb.WriteFromBuffer(internal.WriteFromBufferOptions{Name: name,
-		Metadata:                metadata,
-		Data:                    data,
-		EtagNoneMatchConditions: etagNoneMatchConditions})
+		Metadata:               metadata,
+		Data:                   data,
+		IsNoneMatchEtagEnabled: isNoneMatchEtagEnabled})
 }
 
 // CreateLink : Create a symlink in the container/virtual directory
@@ -1146,10 +1146,10 @@ func (bb *BlockBlob) WriteFromBuffer(options internal.WriteFromBufferOptions) er
 		CPKInfo: bb.blobCPKOpt,
 	}
 
-	if options.EtagNoneMatchConditions != "" {
+	if options.IsNoneMatchEtagEnabled {
 		uploadOptions.AccessConditions = &blob.AccessConditions{
 			ModifiedAccessConditions: &blob.ModifiedAccessConditions{
-				IfNoneMatch: to.Ptr(azcore.ETag(options.EtagNoneMatchConditions)),
+				IfNoneMatch: to.Ptr(azcore.ETagAny),
 			},
 		}
 	}
@@ -1446,9 +1446,8 @@ func (bb *BlockBlob) Write(options internal.WriteFileOptions) error {
 		}
 		// WriteFromBuffer should be able to handle the case where now the block is too big and gets split into multiple blocks
 		err := bb.WriteFromBuffer(internal.WriteFromBufferOptions{Name: name,
-			Metadata:                options.Metadata,
-			Data:                    *dataBuffer,
-			EtagNoneMatchConditions: options.EtagNoneMatchConditions})
+			Metadata: options.Metadata,
+			Data:     *dataBuffer})
 		if err != nil {
 			log.Err("BlockBlob::Write : Failed to upload to blob %s ", name, err.Error())
 			return err
