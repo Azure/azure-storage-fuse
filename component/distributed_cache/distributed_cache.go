@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package distributedcache
+package distributed_cache
 
 import (
 	"context"
@@ -106,7 +106,6 @@ func (dc *DistributedCache) Start(ctx context.Context) error {
 
 	cacheDir := "__CACHE__" + dc.cacheID
 	dc.azstroage = dc.NextComponent()
-	// Search through the pipeline until we find "azstorage" or run out of components
 	for dc.azstroage != nil && dc.azstroage.Name() != "azstorage" {
 		dc.azstroage = dc.azstroage.NextComponent()
 	}
@@ -128,7 +127,7 @@ func (dc *DistributedCache) setupCacheStructure(cacheDir string) error {
 		if os.IsNotExist(err) || err == syscall.ENOENT {
 			directories := []string{cacheDir, cacheDir + "/Nodes", cacheDir + "/Objects"}
 			for _, dir := range directories {
-				if err := dc.azstroage.CreateDir(internal.CreateDirOptions{Name: dir, Etag: true}); err != nil {
+				if err := dc.azstroage.CreateDir(internal.CreateDirOptions{Name: dir, IsNoneMatchEtagEnabled: true}); err != nil {
 
 					if !bloberror.HasCode(err, bloberror.BlobAlreadyExists) {
 						return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to create directory %s: %v]", dir, err))
@@ -142,8 +141,8 @@ func (dc *DistributedCache) setupCacheStructure(cacheDir string) error {
 				return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to get VM IP: %v]", err))
 			}
 			if err := dc.azstroage.WriteFromBuffer(internal.WriteFromBufferOptions{Name: cacheDir + "/creator.txt",
-				Data: []byte(ip),
-				Etag: true}); err != nil {
+				Data:                   []byte(ip),
+				IsNoneMatchEtagEnabled: true}); err != nil {
 				if !bloberror.HasCode(err, bloberror.BlobAlreadyExists) {
 					return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to create creator file: %v]", err))
 				} else {
@@ -160,7 +159,6 @@ func (dc *DistributedCache) setupCacheStructure(cacheDir string) error {
 // Stop : Stop the component functionality and kill all threads started
 func (dc *DistributedCache) Stop() error {
 	log.Trace("DistributedCache::Stop : Stopping component %s", dc.Name())
-
 	return nil
 }
 
@@ -198,7 +196,6 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 	if config.IsSet(compName + ".max-missed-heartbeats") {
 		distributedCache.maxMissedHbs = uint8(conf.MaxMissedHeartbeats)
 	}
-
 	return nil
 }
 
@@ -223,7 +220,7 @@ func init() {
 	cacheID := config.AddStringFlag("cache-id", "", "Cache ID for the distributed cache")
 	config.BindPFlag(compName+".cache-id", cacheID)
 
-	cachePath := config.AddStringFlag("cache-dir", "", "Path to the cache")
+	cachePath := config.AddStringFlag("cache-dir", "", "Local Path of the cache")
 	config.BindPFlag(compName+".path", cachePath)
 
 	chunkSize := config.AddUint64Flag("chunk-size", 16*1024*1024, "Chunk size for the cache")

@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package distributedcache
+package distributed_cache
 
 import (
 	"context"
@@ -149,9 +149,9 @@ func (suite *distributedCacheTestSuite) TestSetupCacheStructureFailToCreateDir()
 func (suite *distributedCacheTestSuite) TestSetupCacheStructureFailToCreateNodeDir() {
 	suite.mock.EXPECT().GetAttr(gomock.Any()).Return(&internal.ObjAttr{}, syscall.ENOENT)
 	suite.mock.EXPECT().Name().Return("azstorage").AnyTimes()
-	opt1 := internal.CreateDirOptions{Name: "__CACHE__" + suite.distributedCache.cacheID, Etag: true}
+	opt1 := internal.CreateDirOptions{Name: "__CACHE__" + suite.distributedCache.cacheID, IsNoneMatchEtagEnabled: true}
 	suite.mock.EXPECT().CreateDir(opt1).Return(nil)
-	opt2 := internal.CreateDirOptions{Name: "__CACHE__" + suite.distributedCache.cacheID + "/Nodes", Etag: true}
+	opt2 := internal.CreateDirOptions{Name: "__CACHE__" + suite.distributedCache.cacheID + "/Nodes", IsNoneMatchEtagEnabled: true}
 	suite.mock.EXPECT().CreateDir(opt2).Return(errors.New("Failed to create dir"))
 	err := suite.distributedCache.Start(ctx)
 	suite.assert.NotNil(err)
@@ -161,11 +161,11 @@ func (suite *distributedCacheTestSuite) TestSetupCacheStructureFailToCreateNodeD
 func (suite *distributedCacheTestSuite) TestSetupCacheStructureFailToCreateObjectDir() {
 	suite.mock.EXPECT().GetAttr(gomock.Any()).Return(&internal.ObjAttr{}, syscall.ENOENT)
 	suite.mock.EXPECT().Name().Return("azstorage").AnyTimes()
-	opt1 := internal.CreateDirOptions{Name: "__CACHE__" + suite.distributedCache.cacheID, Etag: true}
+	opt1 := internal.CreateDirOptions{Name: "__CACHE__" + suite.distributedCache.cacheID, IsNoneMatchEtagEnabled: true}
 	suite.mock.EXPECT().CreateDir(opt1).Return(nil)
-	opt2 := internal.CreateDirOptions{Name: "__CACHE__" + suite.distributedCache.cacheID + "/Nodes", Etag: true}
+	opt2 := internal.CreateDirOptions{Name: "__CACHE__" + suite.distributedCache.cacheID + "/Nodes", IsNoneMatchEtagEnabled: true}
 	suite.mock.EXPECT().CreateDir(opt2).Return(nil)
-	opt3 := internal.CreateDirOptions{Name: "__CACHE__" + suite.distributedCache.cacheID + "/Objects", Etag: true}
+	opt3 := internal.CreateDirOptions{Name: "__CACHE__" + suite.distributedCache.cacheID + "/Objects", IsNoneMatchEtagEnabled: true}
 	suite.mock.EXPECT().CreateDir(opt3).Return(errors.New("Failed to create dir"))
 	err := suite.distributedCache.Start(ctx)
 	suite.assert.NotNil(err)

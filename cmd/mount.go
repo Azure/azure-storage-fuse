@@ -766,9 +766,11 @@ func init() {
 
 	mountCmd.Flags().BoolVar(&options.BlockCache, "block-cache", false, "Enable Block-Cache.")
 	config.BindPFlag("block-cache", mountCmd.Flags().Lookup("block-cache"))
+	mountCmd.Flags().Lookup("block-cache").Hidden = true
 
-	mountCmd.Flags().BoolVar(&options.DistributedCache, "distributed-cache", false, "Enable Distributed Cache.")
-	config.BindPFlag("distributed-cache", mountCmd.Flags().Lookup("distributed-cache"))
+	mountCmd.Flags().BoolVar(&options.DistributedCache, "dcache", false, "Enable Distributed-Cache.")
+	config.BindPFlag("distributed-cache", mountCmd.Flags().Lookup("dcache"))
+	mountCmd.Flags().Lookup("dcache").Hidden = true
 
 	mountCmd.Flags().BoolVar(&options.AttrCache, "use-attr-cache", true, "Use attribute caching.")
 	config.BindPFlag("use-attr-cache", mountCmd.Flags().Lookup("use-attr-cache"))

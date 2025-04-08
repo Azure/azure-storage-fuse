@@ -31,47 +31,51 @@
    SOFTWARE
 */
 
-package distributed_cache
+package azstorage
 
 import (
-	"errors"
 	"fmt"
-	"net"
+	"net/http"
 
-	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
+	"github.com/Azure/azure-storage-fuse/v2/common"
 )
 
-var getNetAddrs = net.InterfaceAddrs
-
-// logAndReturnError logs the error and returns it.
-func logAndReturnError(msg string) error {
-	log.Err(msg)
-	return errors.New(msg)
+// blobfuseTelemetryPolicy is a custom pipeline policy to prepend the blobfuse user agent string to the one coming from SDK.
+// This is added in the PerCallPolicies which executes after the SDK's default telemetry policy.
+type blobfuseTelemetryPolicy struct {
+	telemetryValue string
 }
 
-// TODO: Interface name and identify the ip.
-func getVmIp() (string, error) {
-	addresses, err := getNetAddrs()
-	if err != nil {
-		return "", err
-	}
+// newBlobfuseTelemetryPolicy creates an object which prepends the blobfuse user agent string to the User-Agent request header
+func newBlobfuseTelemetryPolicy(telemetryValue string) policy.Policy {
+	return &blobfuseTelemetryPolicy{telemetryValue: telemetryValue}
+}
 
-	var vmIP string
-	for _, addr := range addresses {
-		ipNet, ok := addr.(*net.IPNet)
-		if !ok || ipNet.IP.IsLoopback() {
-			continue
-		}
-		if ipNet.IP.To4() != nil {
-			vmIP = ipNet.IP.String()
-			// parts := strings.Split(vmIP, ".")
-			// vmIP = fmt.Sprintf("%s.%s.%d.%d", parts[0], parts[1], rand.Intn(256), rand.Intn(256))
-			break
-		}
-	}
-	if vmIP == "" {
-		return "", fmt.Errorf("unable to find a valid non-loopback IPv4 address")
-	}
+func (p blobfuseTelemetryPolicy) Do(req *policy.Request) (*http.Response, error) {
+	userAgent := p.telemetryValue
 
-	return vmIP, nil
+	// prepend the blobfuse user agent string
+	if ua := req.Raw().Header.Get(common.UserAgentHeader); ua != "" {
+		userAgent = fmt.Sprintf("%s %s", userAgent, ua)
+	}
+	req.Raw().Header.Set(common.UserAgentHeader, userAgent)
+	return req.Next()
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------
+// Policy to override the service version if requested by user
+type serviceVersionPolicy struct {
+	serviceApiVersion string
+}
+
+func newServiceVersionPolicy(version string) policy.Policy {
+	return &serviceVersionPolicy{
+		serviceApiVersion: version,
+	}
+}
+
+func (r *serviceVersionPolicy) Do(req *policy.Request) (*http.Response, error) {
+	req.Raw().Header["x-ms-version"] = []string{r.serviceApiVersion}
+	return req.Next()
 }

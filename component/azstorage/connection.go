@@ -97,6 +97,7 @@ type AzConnection interface {
 
 	SetupPipeline() error
 	TestPipeline() error
+	IsAccountADLS() bool
 
 	ListContainers() ([]string, error)
 
@@ -104,7 +105,7 @@ type AzConnection interface {
 	SetPrefixPath(string) error
 
 	CreateFile(name string, mode os.FileMode) error
-	CreateDirectory(name string, etag bool) error
+	CreateDirectory(name string, isNoneMatchEtagEnabled bool) error
 	CreateLink(source string, target string) error
 
 	DeleteFile(name string) error

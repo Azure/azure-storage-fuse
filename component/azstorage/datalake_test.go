@@ -202,6 +202,18 @@ func (s *datalakeTestSuite) TestNoEndpoint() {
 	s.assert.Nil(err)
 }
 
+func (s *datalakeTestSuite) TestAccountType() {
+	defer s.cleanupTest()
+	// Setup
+	s.tearDownTestHelper(false) // Don't delete the generated container.
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
+		storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsKey, s.container)
+	s.setupTestHelper(config, s.container, true)
+
+	val := s.az.storage.IsAccountADLS()
+	s.assert.True(val)
+}
+
 func (s *datalakeTestSuite) TestFileSystemNotFound() {
 	defer s.cleanupTest()
 	// Setup
