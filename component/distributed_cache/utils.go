@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package distributedcache
+package distributed_cache
 
 import (
 	"errors"
