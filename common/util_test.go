@@ -409,3 +409,18 @@ func (s *utilTestSuite) TestGetMD5() {
 	f.Close()
 	os.Remove("abc.txt")
 }
+
+func (s *utilTestSuite) TestComponentExists() {
+	components := []string{
+		"component1",
+		"component2",
+		"component3",
+	}
+
+	exists := ComponentInPipeline(components, "component1")
+	s.Assert().True(exists)
+
+	exists = ComponentInPipeline(components, "component4")
+	s.Assert().False(exists)
+
+}
