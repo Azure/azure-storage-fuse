@@ -1673,7 +1673,7 @@ func (bc *BlockCache) getBlockIDList(handle *handlemap.Handle) ([]string, []stri
 				// Now we have written data beyond that point and its no longer the last block
 				// In such case we need to fill the gap with zero blocks
 				// For simplicity we will fill the gap with a new block and later merge both these blocks in one block
-				id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
+				id := common.GetBlockID(common.BlockIDLength)
 				fillerSize := (bc.blockSize - listMap[offsets[i]].size)
 				fillerOffset := uint64(offsets[i]*int64(bc.blockSize)) + listMap[offsets[i]].size
 
