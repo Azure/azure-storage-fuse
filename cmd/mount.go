@@ -320,6 +320,9 @@ var mountCmd = &cobra.Command{
 		if config.IsSet("entry_cache.timeout-sec") || options.EntryCacheTimeout > 0 {
 			options.Components = append(options.Components[:1], append([]string{"entry_cache"}, options.Components[1:]...)...)
 		}
+		if common.ComponentInPipeline(options.Components, "xload") {
+			config.Set("read-only", "true") // preload is only supported in read-only mode
+		}
 
 		if config.IsSet("libfuse-options") {
 			for _, v := range options.LibfuseOptions {

@@ -47,7 +47,7 @@ import (
 )
 
 const (
-	MAX_WORKER_COUNT         = 64
+	MAX_WORKER_COUNT         = 100
 	MAX_DATA_SPLITTER        = 16
 	MAX_LISTER               = 16
 	MB                uint64 = (1024 * 1024)

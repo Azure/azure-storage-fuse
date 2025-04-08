@@ -36,8 +36,10 @@ package xload
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -53,7 +55,7 @@ type Xload struct {
 	blockSize         uint64          // Size of each block to be cached
 	mode              Mode            // Mode of the Xload component
 	exportProgress    bool            // Export the progess of xload operation to json file
-	consistency       bool            // validate md5sum on download, if md5sum is set on blob
+	validateMD5       bool            // validate md5sum on download, if md5sum is set on blob
 	workerCount       uint32          // Number of workers running
 	blockPool         *BlockPool      // Pool of blocks
 	path              string          // Path on local disk where Xload will operate
@@ -69,7 +71,7 @@ type XloadOptions struct {
 	Mode           string  `config:"mode" yaml:"mode,omitempty"`
 	Path           string  `config:"path" yaml:"path,omitempty"`
 	ExportProgress bool    `config:"export-progress" yaml:"path,omitempty"`
-	Consistency    bool    `config:"consistency" yaml:"consistency,omitempty"`
+	ValidateMD5    bool    `config:"validate-md5" yaml:"validate-md5,omitempty"`
 	// TODO:: xload : add parallelism parameter
 }
 
@@ -194,7 +196,7 @@ func (xl *Xload) Configure(_ bool) error {
 
 	xl.mode = mode
 	xl.exportProgress = conf.ExportProgress
-	xl.consistency = conf.Consistency
+	xl.validateMD5 = conf.ValidateMD5
 
 	allowOther := false
 	err = config.UnmarshalKey("allow-other", &allowOther)
@@ -208,8 +210,8 @@ func (xl *Xload) Configure(_ bool) error {
 		xl.defaultPermission = common.DefaultFilePermissionBits
 	}
 
-	log.Debug("Xload::Configure : block size %v, mode %v, path %v, default permission %v, export progress %v, consistency %v", xl.blockSize,
-		xl.mode.String(), xl.path, xl.defaultPermission, xl.exportProgress, xl.consistency)
+	log.Crit("Xload::Configure : block size %v, mode %v, path %v, default permission %v, export progress %v, validate md5 %v", xl.blockSize,
+		xl.mode.String(), xl.path, xl.defaultPermission, xl.exportProgress, xl.validateMD5)
 
 	return nil
 }
@@ -218,7 +220,7 @@ func (xl *Xload) Configure(_ bool) error {
 func (xl *Xload) Start(ctx context.Context) error {
 	log.Trace("Xload::Start : Starting component %s", xl.Name())
 
-	xl.workerCount = MAX_WORKER_COUNT
+	xl.workerCount = uint32(math.Min(float64(runtime.NumCPU()*3), float64(MAX_WORKER_COUNT)))
 	xl.blockPool = NewBlockPool(xl.blockSize, xl.workerCount*3)
 	if xl.blockPool == nil {
 		log.Err("Xload::Start : Failed to create block pool")
@@ -228,7 +230,7 @@ func (xl *Xload) Start(ctx context.Context) error {
 	var err error
 
 	// create stats manager
-	xl.statsMgr, err = NewStatsManager(MAX_WORKER_COUNT*2, xl.exportProgress)
+	xl.statsMgr, err = NewStatsManager(xl.workerCount*2, xl.exportProgress)
 	if err != nil {
 		log.Err("Xload::Start : Failed to create stats manager [%s]", err.Error())
 		return err
@@ -282,6 +284,7 @@ func (xl *Xload) createDownloader() error {
 	// Create remote lister pool to list remote files
 	rl, err := newRemoteLister(&remoteListerOptions{
 		path:              xl.path,
+		workerCount:       uint32(math.Min(float64(runtime.NumCPU()/2), float64(MAX_LISTER))),
 		defaultPermission: xl.defaultPermission,
 		remote:            xl.NextComponent(),
 		statsMgr:          xl.statsMgr,
@@ -294,10 +297,11 @@ func (xl *Xload) createDownloader() error {
 	ds, err := newDownloadSplitter(&downloadSplitterOptions{
 		blockPool:   xl.blockPool,
 		path:        xl.path,
+		workerCount: uint32(math.Min(float64(runtime.NumCPU()), float64(MAX_DATA_SPLITTER))),
 		remote:      xl.NextComponent(),
 		statsMgr:    xl.statsMgr,
 		fileLocks:   xl.fileLocks,
-		consistency: xl.consistency,
+		validateMD5: xl.validateMD5,
 	})
 	if err != nil {
 		log.Err("Xload::createDownloader : Unable to create download splitter [%s]", err.Error())
@@ -305,8 +309,9 @@ func (xl *Xload) createDownloader() error {
 	}
 
 	rdm, err := newRemoteDataManager(&remoteDataManagerOptions{
-		remote:   xl.NextComponent(),
-		statsMgr: xl.statsMgr,
+		workerCount: xl.workerCount,
+		remote:      xl.NextComponent(),
+		statsMgr:    xl.statsMgr,
 	})
 	if err != nil {
 		log.Err("Xload::startUploader : failed to create remote data manager [%s]", err.Error())

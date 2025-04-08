@@ -531,3 +531,13 @@ func GetMD5(fi *os.File) ([]byte, error) {
 
 	return hasher.Sum(nil), nil
 }
+
+func ComponentInPipeline(pipeline []string, component string) bool {
+	for _, comp := range pipeline {
+		if comp == component {
+			return true
+		}
+	}
+
+	return false
+}
