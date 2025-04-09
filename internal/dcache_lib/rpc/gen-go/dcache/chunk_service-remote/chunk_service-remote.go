@@ -46,7 +46,7 @@ import (
 	"strconv"
 	"strings"
 	thrift "github.com/apache/thrift/lib/go/thrift"
-  "github.com/Azure/azure-storage-fuse/v2/internal/dcache_lib/rpc/gen-go/dcache"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache_lib/rpc/gen-go/dcache"
 )
 
 var _ = dcache.GoUnusedProtection__
