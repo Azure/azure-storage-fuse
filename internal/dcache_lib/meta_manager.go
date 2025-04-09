@@ -106,13 +106,3 @@ func (m *FileMetaManager) GetFileContent(filename string) ([]byte, error) {
 	// Implementation here
 	return nil, nil
 }
-
-func (m *FileMetaManager) GetMetaFile(filename string) (*MetaFile, error) {
-	// Implementation here
-	return nil, nil
-}
-
-func (m *FileMetaManager) GetMaterializedViews(filename string) ([]string, error) {
-	// Implementation here
-	return nil, nil
-}
