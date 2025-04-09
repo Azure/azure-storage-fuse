@@ -40,7 +40,6 @@ type MetaFile struct {
 	Size            int64    `json:"size"`
 	ClusterMapEpoch int64    `json:"cluster_map_epoch"`
 	MVList          []string `json:"mv_list"`
-	Count           int64    `json:"count"`
 }
 
 // MetaManager defines the interface for managing file metadata
