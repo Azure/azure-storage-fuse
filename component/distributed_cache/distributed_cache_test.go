@@ -184,4 +184,5 @@ func (suite *distributedCacheTestSuite) TestSetupCacheStructureFailToCreateObjec
 func TestDistributedCacheTestSuite(t *testing.T) {
 
 	suite.Run(t, new(distributedCacheTestSuite))
+
 }
