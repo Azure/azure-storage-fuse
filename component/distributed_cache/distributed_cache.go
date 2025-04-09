@@ -57,7 +57,6 @@ type DistributedCache struct {
 	internal.BaseComponent
 	cacheID             string
 	cachePath           string
-	maxCacheSize        uint64
 	replicas            uint8
 	maxMissedHbs        uint8
 	hbDuration          uint16
@@ -199,7 +198,6 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 
 	distributedCache.cacheID = conf.CacheID
 	distributedCache.cachePath = conf.CachePath
-	distributedCache.maxCacheSize = conf.MaxCacheSize
 	distributedCache.replicas = defaultReplicas
 	if config.IsSet(compName + ".replicas") {
 		distributedCache.replicas = conf.Replicas
