@@ -54,7 +54,7 @@ func (cm *ClusterManager) UpdateStroageConfigIfRequired() {
 func checkForRVs() {
 }
 
-func evaluateMVsForRVs() {}
+func evaluateMVsRVMapping() {}
 
 func (cm *ClusterManager) CreateClusterConfig() {}
 
