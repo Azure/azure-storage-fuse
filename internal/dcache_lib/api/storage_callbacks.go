@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package dcachelib
+package api
 
 import "github.com/Azure/azure-storage-fuse/v2/internal"
 
