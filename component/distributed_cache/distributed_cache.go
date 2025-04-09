@@ -35,7 +35,6 @@ package distributed_cache
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"syscall"
@@ -44,8 +43,6 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
-	dcachelib "github.com/Azure/azure-storage-fuse/v2/internal/dcache_lib"
-	. "github.com/Azure/azure-storage-fuse/v2/internal/dcache_lib/api"
 )
 
 /* NOTES:
@@ -75,9 +72,7 @@ type DistributedCache struct {
 	safeDeletes         bool
 	cacheAccess         string
 
-	azstroage        internal.Component
-	clusterManager   ClusterManager
-	strorageCallback StorageCallbacks
+	azstroage internal.Component
 }
 
 // Structure defining your config parameters
@@ -144,10 +139,6 @@ func (dc *DistributedCache) Start(ctx context.Context) error {
 	for dc.azstroage != nil && dc.azstroage.Name() != "azstorage" {
 		dc.azstroage = dc.azstroage.NextComponent()
 	}
-	dc.strorageCallback = initStorageCallback(
-		dc.NextComponent(),
-		dc.azstroage)
-	dc.clusterManager = dcachelib.NewClusterManager(dc.strorageCallback)
 
 	// Check and create cache directory if needed
 	if err := dc.setupCacheStructure(cacheDir); err != nil {
@@ -174,29 +165,6 @@ func (dc *DistributedCache) setupCacheStructure(cacheDir string) error {
 				}
 			}
 
-			dcacheConfig := DCacheConfig{
-				// MinNodes:               dc,
-				ChunkSize:              "4MB",
-				StripeSize:             "256MB",
-				NumReplicas:            3,
-				MvsPerRv:               1,
-				RvFullThreshold:        95,
-				RvNearfullThreshold:    80,
-				HeartbeatSeconds:       30,
-				HeartbeatsTillNodeDown: 3,
-				ClustermapEpoch:        300,
-				RebalancePercentage:    80,
-				SafeDeletes:            true,
-				CacheAccess:            "automatic",
-			}
-			dcacheConfigJSON, err := json.Marshal(dcacheConfig)
-			log.Err("DistributedCache::Start : dcacheConfigJSON: %v %s", err, dcacheConfigJSON)
-			err = dc.clusterManager.CreateClusterConfig()
-			if bloberror.HasCode(err, bloberror.BlobAlreadyExists) {
-				return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to create creator file: %v]", err))
-			} else {
-				return nil
-			}
 		} else {
 			return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to read creator file: %v]", err))
 		}
