@@ -67,7 +67,7 @@ type DistributedCache struct {
 // Structure defining your config parameters
 type DistributedCacheOptions struct {
 	CacheID             string `config:"cache-id" yaml:"cache-id,omitempty"`
-	CachePath           string `config:"path" yaml:"path,omitempty"`
+	CachePath           string `config:"cache-path" yaml:"cache-path,omitempty"`
 	ChunkSize           uint64 `config:"chunk-size" yaml:"chunk-size,omitempty"`
 	MaxCacheSize        uint64 `config:"max-cache-size" yaml:"cache-size,omitempty"`
 	Replicas            uint8  `config:"replicas" yaml:"replicas,omitempty"`
@@ -220,8 +220,8 @@ func init() {
 	cacheID := config.AddStringFlag("cache-id", "", "Cache ID for the distributed cache")
 	config.BindPFlag(compName+".cache-id", cacheID)
 
-	cachePath := config.AddStringFlag("cache-dir", "", "Local Path of the cache")
-	config.BindPFlag(compName+".path", cachePath)
+	cachePath := config.AddStringFlag("dcache-cache-path", "", "Local Path of the distributed cache separated by commas")
+	config.BindPFlag(compName+".cache-path", cachePath)
 
 	chunkSize := config.AddUint64Flag("chunk-size", 16*1024*1024, "Chunk size for the cache")
 	config.BindPFlag(compName+".chunk-size", chunkSize)

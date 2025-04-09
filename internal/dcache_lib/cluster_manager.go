@@ -33,22 +33,38 @@
 
 package dcachelib
 
-type NodeManagerOptions struct {
-	HbDuration   uint16
-	HbPath       string
-	MaxCacheSize uint64
-	MaxMissedHbs uint8
+type ClusterManager struct {
 }
 
-type ClusterManagerOptions struct {
+func (cm *ClusterManager) Start() {
 }
 
-type Peer struct {
+func (cm *ClusterManager) Stop() {
 }
 
-type MirroredVolume struct {
-	RVmapWithState map[RawVolume]*string
+func (cm *ClusterManager) WatchForConfigChanges() {
+	// Update your local cluster config in the Path
 }
 
-type RawVolume struct {
+func (cm *ClusterManager) UpdateStroageConfigIfRequired() {
+	checkForRVs()
+	//Mark the Mv degraded
+}
+
+func checkForRVs() {
+}
+
+func evaluateMVsForRVs() {}
+
+func (cm *ClusterManager) CreateClusterConfig() {}
+
+func IsAlive(peerId string) bool {
+	return false
+}
+
+func GetActiveMVs() []MirroredVolume {
+	return nil
+}
+
+func (cm *ClusterManager) UpdateMVs(mvs []MirroredVolume) {
 }
