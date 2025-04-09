@@ -1,0 +1,16 @@
+[global]
+name=blobfuse_file_integrity
+bs=1M
+filename=hole_over_blocks_fio.data
+verify=crc32c
+verify_fatal=1
+group_reporting
+
+[hole]
+size=10G
+# Create 16M Hole/2 blocks after each write call.
+# This will create the holes inside the blocks(assuming block size of 8M)
+rw=write:16M
+ioengine=sync
+fallocate=none
+unlink=1

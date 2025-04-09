@@ -313,7 +313,6 @@ func (bp *BufferPool) asyncUpladPoller() {
 					}
 				}
 				blk.Unlock()
-			default:
 			}
 		}
 

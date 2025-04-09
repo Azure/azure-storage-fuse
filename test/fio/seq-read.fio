@@ -1,14 +1,13 @@
 [global]
 name=blobfuse_file_integrity
 bs=1M
-runtime=5m
-do_verify=0
-filename=read_fio.data
+filename=write_fio.data
+verify=crc32c
+verify_fatal=1
 group_reporting
 
 [sequential_read]
-size=100G
+size=10G
 rw=read
 ioengine=sync
 fallocate=none
-unlink=1

@@ -1,14 +1,14 @@
 [global]
 name=blobfuse_file_integrity
 bs=1M
+filename=rand_write.data
 verify=crc32c
 verify_fatal=1
-filename=write_fio.data
 group_reporting
 
-[sequential_write]
-size=10G
-rw=write
+[rand_write]
+size=2G
+rw=randwrite
 ioengine=sync
 fallocate=none
-
+unlink=0
