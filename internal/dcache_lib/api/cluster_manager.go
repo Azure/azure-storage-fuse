@@ -31,24 +31,15 @@
    SOFTWARE
 */
 
-package dcachelib
+package api
 
-type NodeManagerOptions struct {
-	HbDuration   uint16
-	HbPath       string
-	MaxCacheSize uint64
-	MaxMissedHbs uint8
-}
-
-type ClusterManagerOptions struct {
-}
-
-type Peer struct {
-}
-
-type MirroredVolume struct {
-	RVmapWithState map[RawVolume]*string
-}
-
-type RawVolume struct {
+type ClusterManager interface {
+	Start() error
+	Stop() error
+	WatchForConfigChanges() error
+	UpdateStroageConfigIfRequired() error
+	CreateClusterConfig() error
+	IsAlive(peerId string) bool
+	GetActiveMVs() []MirroredVolume
+	UpdateMVs(mvs []MirroredVolume)
 }

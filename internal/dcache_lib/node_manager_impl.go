@@ -33,38 +33,23 @@
 
 package dcachelib
 
-type ClusterManager struct {
+import . "github.com/Azure/azure-storage-fuse/v2/internal/dcache_lib/api"
+
+type NodeManagerImpl struct {
 }
 
-func (cm *ClusterManager) Start() {
-}
-
-func (cm *ClusterManager) Stop() {
-}
-
-func (cm *ClusterManager) WatchForConfigChanges() {
-	// Update your local cluster config in the Path
-}
-
-func (cm *ClusterManager) UpdateStroageConfigIfRequired() {
-	checkForRVs()
-	//Mark the Mv degraded
-}
-
-func checkForRVs() {
-}
-
-func evaluateMVsRVMapping() {}
-
-func (cm *ClusterManager) CreateClusterConfig() {}
-
-func IsAlive(peerId string) bool {
-	return false
-}
-
-func GetActiveMVs() []MirroredVolume {
+func (nmi *NodeManagerImpl) Start() error {
+	nmi.punchHeartBeat()
 	return nil
 }
 
-func (cm *ClusterManager) UpdateMVs(mvs []MirroredVolume) {
+func (nmi *NodeManagerImpl) Stop() error {
+	return nil
+}
+
+func NewNodeManager() NodeManager {
+	return &NodeManagerImpl{}
+}
+
+func (nmi *NodeManagerImpl) punchHeartBeat() {
 }

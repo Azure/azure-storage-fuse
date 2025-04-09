@@ -55,13 +55,23 @@ import (
 // Common structure for Component
 type DistributedCache struct {
 	internal.BaseComponent
-	cacheID      string
-	cachePath    string
-	maxCacheSize uint64
-	replicas     uint8
-	maxMissedHbs uint8
-	hbDuration   uint16
-	azstroage    internal.Component
+	cacheID             string
+	cachePath           string
+	replicas            uint8
+	maxMissedHbs        uint8
+	hbDuration          uint16
+	chunkSize           uint64
+	minNodes            int
+	stripeSize          uint64
+	mvsPerRv            uint64
+	rvFullThreshold     uint64
+	rvNearfullThreshold uint64
+	clustermapEpoch     uint64
+	rebalancePercentage uint64
+	safeDeletes         bool
+	cacheAccess         string
+
+	azstroage internal.Component
 }
 
 // Structure defining your config parameters
@@ -69,17 +79,36 @@ type DistributedCacheOptions struct {
 	CacheID             string `config:"cache-id" yaml:"cache-id,omitempty"`
 	CachePath           string `config:"cache-path" yaml:"cache-path,omitempty"`
 	ChunkSize           uint64 `config:"chunk-size" yaml:"chunk-size,omitempty"`
+	StripeSize          uint64 `config:"stripe-size" yaml:"stripe-size,omitempty"`
 	MaxCacheSize        uint64 `config:"max-cache-size" yaml:"cache-size,omitempty"`
 	Replicas            uint8  `config:"replicas" yaml:"replicas,omitempty"`
 	HeartbeatDuration   uint16 `config:"heartbeat-duration" yaml:"heartbeat-duration,omitempty"`
 	MaxMissedHeartbeats uint8  `config:"max-missed-heartbeats" yaml:"max-missed-heartbeats,omitempty"`
+	MinNodes            int    `config:"min-nodes" yaml:"min-nodes,omitempty"`
+	MVsPerRv            uint64 `config:"mvs-per-rv" yaml:"mvs-per-rv,omitempty"`
+	RVFullThreshold     uint64 `config:"rv-full-threshold" yaml:"rv-full-threshold,omitempty"`
+	RVNearfullThreshold uint64 `config:"rv-nearfull-threshold" yaml:"rv-nearfull-threshold,omitempty"`
+	ClustermapEpoch     uint64 `config:"clustermap-epoch" yaml:"clustermap-epoch,omitempty"`
+	RebalancePercentage uint64 `config:"rebalance-percentage" yaml:"rebalance-percentage,omitempty"`
+	SafeDeletes         bool   `config:"safe-deletes" yaml:"safe-deletes,omitempty"`
+	CacheAccess         string `config:"cache-access" yaml:"cache-access,omitempty"`
 }
 
 const (
 	compName                         = "distributed_cache"
 	defaultHeartBeatDurationInSecond = 30
-	defaultReplicas                  = 3
+	defaultReplicas                  = 1
 	defaultMaxMissedHBs              = 3
+	defaultChunkSize                 = 16 * 1024 * 1024 // 16 MB
+	defaultMinNodes                  = 1
+	defaultStripeSize                = 4
+	defaultMvsPerRv                  = 1
+	defaultRvFullThreshold           = 95
+	defaultRvNearfullThreshold       = 80
+	defaultClustermapEpoch           = 300
+	defaultRebalancePercentage       = 80
+	defaultSafeDeletes               = false
+	defaultCacheAccess               = "automatic"
 )
 
 // Verification to check satisfaction criteria with Component Interface
@@ -122,7 +151,7 @@ func (dc *DistributedCache) Start(ctx context.Context) error {
 // setupCacheStructure checks and creates necessary cache directories and metadata.
 // It's doing 4 rest api calls, 3 for directory and 1 for creator file.+1 call to check the creator file
 func (dc *DistributedCache) setupCacheStructure(cacheDir string) error {
-	_, err := dc.azstroage.GetAttr(internal.GetAttrOptions{Name: cacheDir + "/creator.txt"})
+	_, err := dc.azstroage.GetAttr(internal.GetAttrOptions{Name: cacheDir + "/ClusterMap.json"})
 	if err != nil {
 		if os.IsNotExist(err) || err == syscall.ENOENT {
 			directories := []string{cacheDir, cacheDir + "/Nodes", cacheDir + "/Objects"}
@@ -135,20 +164,6 @@ func (dc *DistributedCache) setupCacheStructure(cacheDir string) error {
 				}
 			}
 
-			// Add metadata file with VM IP
-			ip, err := getVmIp()
-			if err != nil {
-				return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to get VM IP: %v]", err))
-			}
-			if err := dc.azstroage.WriteFromBuffer(internal.WriteFromBufferOptions{Name: cacheDir + "/creator.txt",
-				Data:                   []byte(ip),
-				IsNoneMatchEtagEnabled: true}); err != nil {
-				if !bloberror.HasCode(err, bloberror.BlobAlreadyExists) {
-					return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to create creator file: %v]", err))
-				} else {
-					return nil
-				}
-			}
 		} else {
 			return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to read creator file: %v]", err))
 		}
@@ -183,7 +198,6 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 
 	distributedCache.cacheID = conf.CacheID
 	distributedCache.cachePath = conf.CachePath
-	distributedCache.maxCacheSize = conf.MaxCacheSize
 	distributedCache.replicas = defaultReplicas
 	if config.IsSet(compName + ".replicas") {
 		distributedCache.replicas = conf.Replicas
@@ -195,6 +209,46 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 	distributedCache.maxMissedHbs = defaultMaxMissedHBs
 	if config.IsSet(compName + ".max-missed-heartbeats") {
 		distributedCache.maxMissedHbs = uint8(conf.MaxMissedHeartbeats)
+	}
+	distributedCache.chunkSize = defaultChunkSize
+	if config.IsSet(compName + ".chunk-size") {
+		distributedCache.chunkSize = conf.ChunkSize
+	}
+	distributedCache.minNodes = defaultMinNodes
+	if config.IsSet(compName + ".min-nodes") {
+		distributedCache.minNodes = conf.MinNodes
+	}
+	distributedCache.stripeSize = defaultStripeSize
+	if config.IsSet(compName + ".stripe-size") {
+		distributedCache.stripeSize = conf.StripeSize
+	}
+	distributedCache.mvsPerRv = defaultMvsPerRv
+	if config.IsSet(compName + ".mvs-per-rv") {
+		distributedCache.mvsPerRv = conf.MVsPerRv
+	}
+	distributedCache.rvFullThreshold = defaultRvFullThreshold
+	if config.IsSet(compName + ".rv-full-threshold") {
+		distributedCache.rvFullThreshold = conf.RVFullThreshold
+	}
+	distributedCache.rvNearfullThreshold = defaultRvNearfullThreshold
+	if config.IsSet(compName + ".rv-nearfull-threshold") {
+		distributedCache.rvNearfullThreshold = conf.RVNearfullThreshold
+	}
+	distributedCache.clustermapEpoch = defaultClustermapEpoch
+	if config.IsSet(compName + ".cluster-map-epoch") {
+		distributedCache.clustermapEpoch = conf.ClustermapEpoch
+	}
+	distributedCache.rebalancePercentage = defaultRebalancePercentage
+	if config.IsSet(compName + ".rebalance-percentage") {
+		distributedCache.rebalancePercentage = conf.RebalancePercentage
+	}
+	distributedCache.safeDeletes = defaultSafeDeletes
+	if config.IsSet(compName + ".safe-deletes") {
+		distributedCache.safeDeletes = conf.SafeDeletes
+	}
+	distributedCache.cacheAccess = defaultCacheAccess
+	if config.IsSet(compName + ".cache-access") {
+		distributedCache.cacheAccess = conf.CacheAccess
 	}
 	return nil
 }
