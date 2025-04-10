@@ -31,15 +31,65 @@
    SOFTWARE
 */
 
-package api
+package clustermanager
 
-type ClusterManager interface {
-	Start() error
-	Stop() error
-	WatchForConfigChanges() error
-	UpdateStroageConfigIfRequired() error
-	CreateClusterConfig() error
-	IsAlive(peerId string) bool
-	GetActiveMVs() []MirroredVolume
-	UpdateMVs(mvs []MirroredVolume)
+import (
+	dcachelib "github.com/Azure/azure-storage-fuse/v2/internal/dcache_lib"
+)
+
+type ClusterManagerImpl struct {
+	StorageCallback dcachelib.StorageCallbacks
+}
+
+func (cmi *ClusterManagerImpl) Start() error {
+	return nil
+}
+
+func (cmi *ClusterManagerImpl) Stop() error {
+	return nil
+}
+
+func NewClusterManager(callback dcachelib.StorageCallbacks) ClusterManager {
+	return &ClusterManagerImpl{}
+}
+
+func (cmi *ClusterManagerImpl) CreateClusterConfig() error {
+	return nil
+}
+
+func (cmi *ClusterManagerImpl) GetActiveMVs() []dcachelib.MirroredVolume {
+	return nil
+}
+
+func (cmi *ClusterManagerImpl) IsAlive(peerId string) bool {
+	return false
+}
+
+func (cmi *ClusterManagerImpl) UpdateMVs(mvs []dcachelib.MirroredVolume) {
+}
+
+func (cmi *ClusterManagerImpl) UpdateStroageConfigIfRequired() error {
+	checkForRVs()
+	evaluateMVsRVMapping()
+	//Mark the Mv degraded
+	return nil
+}
+
+func (cmi *ClusterManagerImpl) WatchForConfigChanges() error {
+
+	// Update your local cluster config in the Path
+	return nil
+}
+
+func checkForRVs() {
+}
+
+func evaluateMVsRVMapping() {}
+
+func IsAlive(peerId string) bool {
+	return false
+}
+
+func GetActiveMVs() []dcachelib.MirroredVolume {
+	return nil
 }

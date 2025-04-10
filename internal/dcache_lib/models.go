@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package api
+package dcachelib
 
 type NodeManagerOptions struct {
 	HbDuration   uint16

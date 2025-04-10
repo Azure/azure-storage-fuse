@@ -31,25 +31,9 @@
    SOFTWARE
 */
 
-package dcachelib
+package node_manager
 
-import . "github.com/Azure/azure-storage-fuse/v2/internal/dcache_lib/api"
-
-type NodeManagerImpl struct {
-}
-
-func (nmi *NodeManagerImpl) Start() error {
-	nmi.punchHeartBeat()
-	return nil
-}
-
-func (nmi *NodeManagerImpl) Stop() error {
-	return nil
-}
-
-func NewNodeManager() NodeManager {
-	return &NodeManagerImpl{}
-}
-
-func (nmi *NodeManagerImpl) punchHeartBeat() {
+type NodeManager interface {
+	Start() error
+	Stop() error
 }
