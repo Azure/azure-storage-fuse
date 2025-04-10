@@ -19,15 +19,7 @@ parameters:
     type: string
   - name: client_secret
     type: string
-  - name: container
-    type: string
   - name: config
-    type: string
-  - name: working_dir
-    type: string
-  - name: mount_dir
-    type: string
-  - name: temp_dir
     type: string
   - name: stress_dir
     type: string
@@ -58,21 +50,19 @@ parameters:
     default: "true"
   - name: verbose_log
     type: boolean
-  - name: tags
-    type: string
 
 #--------------------------------------- Setup: End to end tests with different Storage configurations ------------------------------------------
 # Create key credential config file if we need to test it
 steps:
   - script: |
-      cd ${{ parameters.working_dir }}
-      ${{ parameters.working_dir }}/blobfuse2 gen-test-config --config-file=azure_key.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.config }}
+      cd $(WORK_DIR)
+      $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=${{ parameters.config }}
     displayName: Create Key Config File
     env:
-      ACCOUNT_TYPE: ${{ parameters.account_type }}
-      NIGHTLY_STO_ACC_NAME: ${{ parameters.account_name }}
-      NIGHTLY_STO_ACC_KEY: ${{ parameters.account_key }}
-      ACCOUNT_ENDPOINT: ${{ parameters.account_endpoint }}
+      STO_ACC_TYPE: ${{ parameters.account_type }}
+      STO_ACC_NAME: ${{ parameters.account_name }}
+      STO_ACC_KEY: ${{ parameters.account_key }}
+      STO_ACC_ENDPOINT: ${{ parameters.account_endpoint }}
       VERBOSE_LOG: ${{ parameters.verbose_log }}
       USE_HTTP: false
     condition: ${{ parameters.test_key_credential }}
@@ -84,14 +74,14 @@ steps:
 
 # Create sas credential config file if we need to test it
   - script: |
-      cd ${{ parameters.working_dir }}
-      ${{ parameters.working_dir }}/blobfuse2 gen-test-config --config-file=azure_sas.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.sas_credential_config }}
+      cd $(WORK_DIR)
+      $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_sas.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=${{ parameters.sas_credential_config }}
     displayName: Create SAS Config File
     env:
-      NIGHTLY_STO_BLOB_ACC_NAME: ${{ parameters.account_name }}
-      NIGHTLY_STO_ACC_SAS: ${{ parameters.account_sas }}
-      ACCOUNT_TYPE: ${{ parameters.account_type }}
-      ACCOUNT_ENDPOINT: ${{ parameters.account_endpoint }}
+      STO_ACC_NAME: ${{ parameters.account_name }}
+      STO_ACC_SAS: ${{ parameters.account_sas }}
+      STO_ACC_TYPE: ${{ parameters.account_type }}
+      STO_ACC_ENDPOINT: ${{ parameters.account_endpoint }}
       VERBOSE_LOG: ${{ parameters.verbose_log }}
     condition: ${{ parameters.test_sas_credential }}
     continueOnError: false
@@ -102,13 +92,13 @@ steps:
 
 # Create azcli credential config file if we need to test it
   - script: |
-      cd ${{ parameters.working_dir }}
-      ${{ parameters.working_dir }}/blobfuse2 gen-test-config --config-file=azure_cli.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.azcli_credential_config }}
+      cd $(WORK_DIR)
+      $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_cli.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=${{ parameters.azcli_credential_config }}
     displayName: Create Azure CLI Config File
     env:
-      NIGHTLY_STO_BLOB_ACC_NAME: ${{ parameters.account_name }}
-      ACCOUNT_TYPE: ${{ parameters.account_type }}
-      ACCOUNT_ENDPOINT: ${{ parameters.account_endpoint }}
+      STO_ACC_NAME: ${{ parameters.account_name }}
+      STO_ACC_TYPE: ${{ parameters.account_type }}
+      STO_ACC_ENDPOINT: ${{ parameters.account_endpoint }}
       VERBOSE_LOG: ${{ parameters.verbose_log }}
     condition: ${{ parameters.test_azcli_credential }}
     continueOnError: false
@@ -119,15 +109,15 @@ steps:
 
   # Create azurite config file if we need to test it
   - script: |
-      cd ${{ parameters.working_dir }}
-      ${{ parameters.working_dir }}/blobfuse2 gen-test-config --config-file=azure_key.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.azurite_config }}
+      cd $(WORK_DIR)
+      $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=${{ parameters.azurite_config }}
     displayName: Create Key Config File
     # Note: It is fine to hardcode these credentials since they are publicly documented fake credentials for Azurite
     env:
-      ACCOUNT_TYPE: ${{ parameters.account_type }}
-      NIGHTLY_STO_ACC_NAME: 'devstoreaccount1'
-      NIGHTLY_STO_ACC_KEY: 'Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw=='
-      ACCOUNT_ENDPOINT: 'http://127.0.0.1:10000/devstoreaccount1'
+      STO_ACC_TYPE: ${{ parameters.account_type }}
+      STO_ACC_NAME: 'devstoreaccount1'
+      STO_ACC_KEY: 'Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw=='
+      STO_ACC_ENDPOINT: 'http://127.0.0.1:10000/devstoreaccount1'
       USE_HTTP: 'true'
       VERBOSE_LOG: ${{ parameters.verbose_log }}
     condition: ${{ parameters.test_azurite }}
@@ -142,9 +132,6 @@ steps:
   - ${{ if eq(parameters.test_key_credential, true) }}:
     - template: e2e-tests.yml
       parameters:
-        working_dir: ${{ parameters.working_dir }}
-        mount_dir: ${{ parameters.mount_dir }}
-        temp_dir: ${{ parameters.temp_dir }}
         adls: ${{ parameters.adls }}
         idstring: ${{ parameters.service }} with Key Credentials
         distro_name: ${{ parameters.distro_name }}
@@ -153,8 +140,8 @@ steps:
         verbose_log: ${{ parameters.verbose_log }}
         mountStep:
           script: >
-            ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config }}
-            --default-working-dir=${{ parameters.working_dir }}
+            $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=${{ parameters.config }}
+            --default-working-dir=$(WORK_DIR)
           displayName: 'E2E Test: Mount with Key Credential Configuration'
           timeoutInMinutes: 3
           continueOnError: false
@@ -165,14 +152,10 @@ steps:
     parameters:
       conf_template: azure_block_perf.yaml
       config_file: ${{ parameters.config }}
-      container: ${{ parameters.container }}
-      temp_dir: ${{ parameters.temp_dir }}
-      mount_dir: ${{ parameters.mount_dir }}
       adls: ${{ parameters.adls }}
       account_name: ${{ parameters.account_name }}
       account_key: ${{ parameters.account_key }}
       account_type: ${{ parameters.account_type }}
-      account_endpoint: ${{ parameters.account_endpoint }}
       idstring: "${{ parameters.service }} with Block-cache"
       distro_name: ${{ parameters.distro_name }}
       quick_test: false
@@ -182,9 +165,6 @@ steps:
   - ${{ if eq(parameters.test_sas_credential, true) }}:
     - template: e2e-tests.yml
       parameters:
-        working_dir: ${{ parameters.working_dir }}
-        mount_dir: ${{ parameters.mount_dir }}
-        temp_dir: ${{ parameters.temp_dir }}
         adls: ${{ parameters.adls }}
         idstring: ${{ parameters.service }} with SAS Credentials
         distro_name: ${{ parameters.distro_name }}
@@ -192,8 +172,8 @@ steps:
         verbose_log: ${{ parameters.verbose_log }}
         mountStep:
           script: >
-            ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.sas_credential_config }}
-            --default-working-dir=${{ parameters.working_dir }}
+            $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=${{ parameters.sas_credential_config }}
+            --default-working-dir=$(WORK_DIR)
           displayName: 'E2E Test: Mount with SAS Credential Configuration'
           timeoutInMinutes: 3
           continueOnError: false
@@ -201,9 +181,6 @@ steps:
   - ${{ if eq(parameters.test_azcli_credential, true) }}:
     - template: e2e-tests.yml
       parameters:
-        working_dir: ${{ parameters.working_dir }}
-        mount_dir: ${{ parameters.mount_dir }}
-        temp_dir: ${{ parameters.temp_dir }}
         adls: ${{ parameters.adls }}
         idstring: ${{ parameters.service }} with Azure CLI Credentials
         distro_name: ${{ parameters.distro_name }}
@@ -211,8 +188,8 @@ steps:
         verbose_log: ${{ parameters.verbose_log }}
         mountStep:
           script: >
-            ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.azcli_credential_config }}
-            --default-working-dir=${{ parameters.working_dir }}
+            $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=${{ parameters.azcli_credential_config }}
+            --default-working-dir=$(WORK_DIR)
           displayName: 'E2E Test: Mount with Azure CLI Credential Configuration'
           timeoutInMinutes: 3
           continueOnError: false
@@ -223,14 +200,11 @@ steps:
         sudo npm install -g azurite@3.29.0
         sudo mkdir azurite
         sudo azurite --silent --location azurite --debug azurite\debug.log &
-        az storage container create -n ${{ parameters.container }} --connection-string "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;"
+        az storage container create -n $(containerName) --connection-string "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;"
       displayName: 'Install and Run Azurite'
 
     - template: e2e-tests.yml
       parameters: 
-        working_dir: ${{ parameters.working_dir }}
-        mount_dir: ${{ parameters.mount_dir }}
-        temp_dir: ${{ parameters.temp_dir }}
         adls: ${{ parameters.adls }}
         idstring: ${{ parameters.service }} with Azurite
         distro_name: ${{ parameters.distro_name }}
@@ -239,8 +213,8 @@ steps:
         verbose_log: ${{ parameters.verbose_log }}
         mountStep:
           script: >
-            ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.azurite_config }}
-            --default-working-dir=${{ parameters.working_dir }}
+            $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=${{ parameters.azurite_config }}
+            --default-working-dir=$(WORK_DIR)
           displayName: 'E2E Test: Mount with Azurite Configuration'
           timeoutInMinutes: 3
           continueOnError: false
@@ -251,14 +225,10 @@ steps:
     parameters:
       conf_template: azure_key_lru_purge.yaml
       config_file: ${{ parameters.config }}
-      container: ${{ parameters.container }}
-      temp_dir: ${{ parameters.temp_dir }}
-      mount_dir: ${{ parameters.mount_dir }}
       adls: ${{ parameters.adls }}
       account_name: ${{ parameters.account_name }}
       account_key: ${{ parameters.account_key }}
       account_type: ${{ parameters.account_type }}
-      account_endpoint: ${{ parameters.account_endpoint }}
       idstring: "${{ parameters.service }} LRU policy no timeout"
       distro_name: ${{ parameters.distro_name }}
       verbose_log: ${{ parameters.verbose_log }}
@@ -267,14 +237,10 @@ steps:
     parameters:
       conf_template: azure_key_emptyfile.yaml
       config_file: ${{ parameters.config }}
-      container: ${{ parameters.container }}
-      temp_dir: ${{ parameters.temp_dir }}
-      mount_dir: ${{ parameters.mount_dir }}
       adls: ${{ parameters.adls }}
       account_name: ${{ parameters.account_name }}
       account_key: ${{ parameters.account_key }}
       account_type: ${{ parameters.account_type }}
-      account_endpoint: ${{ parameters.account_endpoint }}
       idstring: "${{ parameters.service }} LRU policy create empty"
       distro_name: ${{ parameters.distro_name }}
       quick_test: ${{ parameters.quick_test }}
@@ -285,14 +251,10 @@ steps:
     parameters:
       conf_template: azure_key_directio.yaml
       config_file: ${{ parameters.config }}
-      container: ${{ parameters.container }}
-      temp_dir: ${{ parameters.temp_dir }}
-      mount_dir: ${{ parameters.mount_dir }}
       adls: ${{ parameters.adls }}
       account_name: ${{ parameters.account_name }}
       account_key: ${{ parameters.account_key }}
       account_type: ${{ parameters.account_type }}
-      account_endpoint: ${{ parameters.account_endpoint }}
       idstring: "${{ parameters.service }} Direct IO tests"
       distro_name: ${{ parameters.distro_name }}
       quick_test: ${{ parameters.quick_test }}
@@ -303,14 +265,10 @@ steps:
     parameters:
       conf_template: azure_key_symlink.yaml
       config_file: ${{ parameters.config }}
-      container: ${{ parameters.container }}
-      temp_dir: ${{ parameters.temp_dir }}
-      mount_dir: ${{ parameters.mount_dir }}
       adls: ${{ parameters.adls }}
       account_name: ${{ parameters.account_name }}
       account_key: ${{ parameters.account_key }}
       account_type: ${{ parameters.account_type }}
-      account_endpoint: ${{ parameters.account_endpoint }}
       idstring: "${{ parameters.service }} Symlink config tests"
       distro_name: ${{ parameters.distro_name }}
       quick_test: ${{ parameters.quick_test }}
@@ -319,14 +277,14 @@ steps:
 
 #--------------------------------------- Setup: End to end tests with different File Cache configurations ------------------------------------------
   - script: |
-      cd ${{ parameters.working_dir }}
-      ${{ parameters.working_dir }}/blobfuse2 gen-test-config --config-file=azure_key_huge.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.config }}
+      cd $(WORK_DIR)
+      $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key_huge.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=${{ parameters.config }}
     displayName: Create Config File
     env:
-      NIGHTLY_STO_ACC_NAME: ${{ parameters.account_name }}
-      NIGHTLY_STO_ACC_KEY: ${{ parameters.account_key }}
-      ACCOUNT_TYPE: ${{ parameters.account_type }}
-      ACCOUNT_ENDPOINT: ${{ parameters.account_endpoint }}
+      STO_ACC_NAME: ${{ parameters.account_name }}
+      STO_ACC_KEY: ${{ parameters.account_key }}
+      STO_ACC_TYPE: ${{ parameters.account_type }}
+      STO_ACC_ENDPOINT: ${{ parameters.account_endpoint }}
       VERBOSE_LOG: ${{ parameters.verbose_log }}
     continueOnError: false
 
@@ -335,38 +293,31 @@ steps:
 
   - template: mount-test.yml
     parameters:
-      working_dir: ${{ parameters.working_dir }}
-      mount_dir: ${{ parameters.mount_dir }}
-      temp_dir: ${{ parameters.temp_dir }}
       config: ${{ parameters.config }}
       idstring: ${{ parameters.service }} Mount Test
-      tags: $(tags)
 
   - template: stress-test.yml
     parameters:
-      working_dir: ${{ parameters.working_dir }}
-      mount_dir: ${{ parameters.mount_dir }}
-      temp_dir: ${{ parameters.temp_dir }}
       stress_dir: ${{ parameters.stress_dir }}
       idstring: ${{ parameters.service }} Stress Test
       quick: '${{ parameters.quick_stress }}'
       distro_name: ${{ parameters.distro_name }}
       mountStep:
         script: >
-          ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config }} --default-working-dir=${{ parameters.working_dir }}
+          $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=${{ parameters.config }} --default-working-dir=$(WORK_DIR)
         displayName: 'StressTest: Mount'
         timeoutInMinutes: 3
         continueOnError: false
 
   - script: |
-      cd ${{ parameters.working_dir }}
-      ${{ parameters.working_dir }}/blobfuse2 gen-test-config --config-file=azure_key_huge.yaml --container-name=${{ parameters.huge_container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.config }}
+      cd $(WORK_DIR)
+      $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key_huge.yaml --container-name=${{ parameters.huge_container }} --temp-path=$(TEMP_DIR) --output-file=${{ parameters.config }}
     displayName: Create Config File
     env:
-      NIGHTLY_STO_ACC_NAME: ${{ parameters.account_name }}
-      NIGHTLY_STO_ACC_KEY: ${{ parameters.account_key }}
-      ACCOUNT_TYPE: ${{ parameters.account_type }}
-      ACCOUNT_ENDPOINT: ${{ parameters.account_endpoint }}
+      STO_ACC_NAME: ${{ parameters.account_name }}
+      STO_ACC_KEY: ${{ parameters.account_key }}
+      STO_ACC_TYPE: ${{ parameters.account_type }}
+      STO_ACC_ENDPOINT: ${{ parameters.account_endpoint }}
       VERBOSE_LOG: ${{ parameters.verbose_log }}
     continueOnError: false
 
@@ -375,14 +326,11 @@ steps:
 
   - template: huge-list-test.yml
     parameters:
-      working_dir: ${{ parameters.working_dir }}
-      mount_dir: ${{ parameters.mount_dir }}
-      temp_dir: ${{ parameters.temp_dir }}
       idstring: ${{ parameters.service }} Huge List Test
       distro_name: ${{ parameters.distro_name }}
       mountStep:
         script: >
-          ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config }}
-          --default-working-dir=${{ parameters.working_dir }}
+          $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=${{ parameters.config }}
+          --default-working-dir=$(WORK_DIR)
         displayName: 'HugeList: Mount'
         continueOnError: false

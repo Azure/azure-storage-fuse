@@ -67,16 +67,16 @@ steps:
           echo $cnfFile
           touch $cnfFile
           echo "{" > $cnfFile
-          echo "\"block-acct\"": "\"$(AZTEST_BLOCK_ACC_NAME)\"", >> $cnfFile
-          echo "\"adls-acct\"": "\"$(AZTEST_ADLS_ACC_NAME)\"", >> $cnfFile
+          echo "\"block-acct\"": "\"$(BF2_BLK_ACC_NAME)\"", >> $cnfFile
+          echo "\"adls-acct\"": "\"$(BF2_ADLS_ACC_NAME)\"", >> $cnfFile
           echo "\"block-cont\"": "\"${{ parameters.container }}\"", >> $cnfFile
           echo "\"adls-cont\"": "\"${{ parameters.container }}\"", >> $cnfFile
-          echo "\"block-key\"": "\"$(AZTEST_BLOCK_KEY)\"", >> $cnfFile
-          echo "\"adls-key\"": "\"$(AZTEST_ADLS_KEY)\"", >> $cnfFile
-          echo "\"block-sas\"": "\"$(AZTEST_BLOCK_SAS)\"", >> $cnfFile
+          echo "\"block-key\"": "\"$(BF2_BLK_ACC_KEY)\"", >> $cnfFile
+          echo "\"adls-key\"": "\"$(BF2_ADLS_ACC_KEY)\"", >> $cnfFile
+          echo "\"block-sas\"": "\"$(BF2_BLK_ACC_SAS)\"", >> $cnfFile
           echo "\"block-cont-sas-ubn-18\"": "\"$(AZTEST_BLOCK_CONT_SAS_UBN_18)\"", >> $cnfFile
           echo "\"block-cont-sas-ubn-20\"": "\"$(AZTEST_BLOCK_CONT_SAS_UBN_20)\"", >> $cnfFile
-          echo "\"adls-sas\"": "\"$(AZTEST_ADLS_SAS)\"", >> $cnfFile
+          echo "\"adls-sas\"": "\"$(BF2_ADLS_ACC_SAS)\"", >> $cnfFile
           echo "\"msi-appid\"": "\"$(AZTEST_APP_ID)\"", >> $cnfFile
           echo "\"msi-resid\"": "\"$(AZTEST_RES_ID)\"", >> $cnfFile
           echo "\"msi-objid\"": "\"$(AZTEST_OBJ_ID)\"", >> $cnfFile
