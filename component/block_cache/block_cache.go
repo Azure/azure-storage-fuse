@@ -670,7 +670,7 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 
 		// block is not present in the buffer list, check if it is uncommitted
 		// If yes, commit all the uncommitted blocks first and then download this block
-		shouldCommit, _ := shouldCommitAndDownload(int64(index), handle)
+		shouldCommit, shouldDownload := shouldCommitAndDownload(int64(index), handle)
 		if shouldCommit {
 			// commit all the uncommitted blocks to storage
 			log.Debug("BlockCache::getBlock : Downloading an uncommitted block %v, so committing all the staged blocks for %v=>%s", index, handle.ID, handle.Path)
@@ -678,6 +678,22 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 			if err != nil {
 				log.Err("BlockCache::getBlock : Failed to commit blocks for %v=>%s [%s]", handle.ID, handle.Path, err.Error())
 				return nil, err
+			}
+		} else if !shouldCommit && !shouldDownload {
+			prop, err := bc.GetAttr(internal.GetAttrOptions{Name: handle.Path, RetrieveMetadata: false})
+			//if failed to get attr
+			if err != nil {
+				log.Err("BlockCache::getBlock : Failed to get properties for %v=>%s [%s]", handle.ID, handle.Path, err.Error())
+				return nil, err
+			}
+
+			if readoffset >= uint64(prop.Size) {
+				//create a null block and return
+				block := bc.blockPool.MustGet()
+				block.offset = readoffset
+				// block.flags.Set(BlockFlagSynced)
+				log.Debug("BlockCache::getBlock : Returning a null block %v for %v=>%s (read offset %v)", index, handle.ID, handle.Path, readoffset)
+				return block, nil
 			}
 		}
 
@@ -1580,7 +1596,7 @@ func (bc *BlockCache) commitBlocks(handle *handlemap.Handle) error {
 		}
 	}
 
-	blockIDList, err := bc.getBlockIDList(handle)
+	blockIDList, restageIds, err := bc.getBlockIDList(handle)
 	if err != nil {
 		log.Err("BlockCache::commitBlocks : Failed to get block id list for %v [%v]", handle.Path, err.Error())
 		return err
@@ -1608,11 +1624,41 @@ func (bc *BlockCache) commitBlocks(handle *handlemap.Handle) error {
 		listMap[k].committed = true
 	}
 
+	restaged := false
+	for _, restageID := range restageIds {
+		// We need to restage these blocks
+		for i := range blockIDList {
+			if blockIDList[i] == restageID {
+				// Read one block from offset of this block, which shall effectively read this block and the next block
+				// The stage this block again with correct length
+				// Remove the next block from blockIDList
+				// Commit the block list again
+				block, err := bc.getOrCreateBlock(handle, uint64(i)*bc.blockSize)
+				if err != nil {
+					log.Err("BlockCache::commitBlocks : Failed to get block for %v [%v]", handle.Path, err.Error())
+					return err
+				}
+
+				block.Dirty()
+				restaged = true
+
+				// Next item after this block was a semi zero filler so remove that from the list now
+				blockIDList = append(blockIDList[:i+1], blockIDList[i+2:]...)
+				break
+			}
+		}
+	}
+
+	if restaged {
+		// If any block was restaged then commit the blocks again
+		return bc.commitBlocks(handle)
+	}
+
 	handle.Flags.Clear(handlemap.HandleFlagDirty)
 	return nil
 }
 
-func (bc *BlockCache) getBlockIDList(handle *handlemap.Handle) ([]string, error) {
+func (bc *BlockCache) getBlockIDList(handle *handlemap.Handle) ([]string, []string, error) {
 	// generate the block id list order
 	list, _ := handle.GetValue("blockList")
 	listMap := list.(map[int64]*blockInfo)
@@ -1627,27 +1673,59 @@ func (bc *BlockCache) getBlockIDList(handle *handlemap.Handle) ([]string, error)
 
 	zeroBlockStaged := false
 	zeroBlockID := ""
+	restageId := make([]string, 0)
 	index := int64(0)
 	i := 0
 
 	for i < len(offsets) {
 		if index == offsets[i] {
-			// TODO: when a staged block (not last block) has data less than block size
 			if i != len(offsets)-1 && listMap[offsets[i]].size != bc.blockSize {
-				log.Err("BlockCache::getBlockIDList : Staged block %v has less data %v for %v=>%s\n%v", offsets[i], listMap[offsets[i]].size, handle.ID, handle.Path, common.BlockCacheRWErrMsg)
-				return nil, fmt.Errorf("staged block %v has less data %v for %v=>%s\n%v", offsets[i], listMap[offsets[i]].size, handle.ID, handle.Path, common.BlockCacheRWErrMsg)
-			}
+				// A non last block was staged earlier and it is not of the same size as block size
+				// This happens when a block which is not full is staged and at that moment it was the last block
+				// Now we have written data beyond that point and its no longer the last block
+				// In such case we need to fill the gap with zero blocks
+				// For simplicity we will fill the gap with a new block and later merge both these blocks in one block
+				id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
+				fillerSize := (bc.blockSize - listMap[offsets[i]].size)
+				fillerOffset := uint64(offsets[i]*int64(bc.blockSize)) + listMap[offsets[i]].size
 
-			blockIDList = append(blockIDList, listMap[offsets[i]].id)
-			log.Debug("BlockCache::getBlockIDList : Preparing blocklist for %v=>%s (%v :  %v, size %v)", handle.ID, handle.Path, offsets[i], listMap[offsets[i]].id, listMap[offsets[i]].size)
-			index++
-			i++
+				log.Debug("BlockCache::getBlockIDList : Staging semi zero block for %v=>%v offset %v, size %v", handle.ID, handle.Path, fillerOffset, fillerSize)
+				err := bc.NextComponent().StageData(internal.StageDataOptions{
+					Name: handle.Path,
+					Data: bc.blockPool.zeroBlock.data[:fillerSize],
+					Id:   id,
+				})
+
+				if err != nil {
+					log.Err("BlockCache::getBlockIDList : Failed to write semi zero block for %v=>%v [%s]", handle.ID, handle.Path, err.Error())
+					return nil, nil, err
+				}
+
+				blockIDList = append(blockIDList, listMap[offsets[i]].id)
+				log.Debug("BlockCache::getBlockIDList : Preparing blocklist for %v=>%s (%v :  %v, size %v)", handle.ID, handle.Path, offsets[i], listMap[offsets[i]].id, listMap[offsets[i]].size)
+
+				// After the flush call we need to merge this particular block with the next block (semi zero block)
+				restageId = append(restageId, listMap[offsets[i]].id)
+
+				// Add the semi zero block to the list
+				blockIDList = append(blockIDList, id)
+				log.Debug("BlockCache::getBlockIDList : Preparing blocklist for %v=>%s (%v :  %v, size %v)", handle.ID, handle.Path, fillerOffset, id, fillerSize)
+
+				index++
+				i++
+
+			} else {
+				blockIDList = append(blockIDList, listMap[offsets[i]].id)
+				log.Debug("BlockCache::getBlockIDList : Preparing blocklist for %v=>%s (%v :  %v, size %v)", handle.ID, handle.Path, offsets[i], listMap[offsets[i]].id, listMap[offsets[i]].size)
+				index++
+				i++
+			}
 		} else {
 			for index < offsets[i] {
 				if !zeroBlockStaged {
 					id, err := bc.stageZeroBlock(handle, 1)
 					if err != nil {
-						return nil, err
+						return nil, nil, err
 					}
 
 					zeroBlockStaged = true
@@ -1667,7 +1745,7 @@ func (bc *BlockCache) getBlockIDList(handle *handlemap.Handle) ([]string, error)
 		}
 	}
 
-	return blockIDList, nil
+	return blockIDList, restageId, nil
 }
 
 func (bc *BlockCache) stageZeroBlock(handle *handlemap.Handle, tryCnt int) (string, error) {

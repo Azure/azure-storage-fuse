@@ -1,5 +1,5 @@
 # Script to setup Azsecpack on Ubuntu VM as per recent SFI guidelines
-!/bin/bash
+#!/bin/bash
 
 # Install Azure CLI
 curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
