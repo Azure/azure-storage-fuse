@@ -60,15 +60,15 @@ func NewClusterManager(callback dcachelib.StorageCallbacks) ClusterManager {
 	return &ClusterManagerImpl{}
 }
 
-func (cmi *ClusterManagerImpl) CreateClusterConfig(dcacheConfig DCacheConfig, storageCachepath string) error {
+func (cmi *ClusterManagerImpl) CreateClusterConfig(dcacheConfig dcachelib.DCacheConfig, storageCachepath string) error {
 	uuidVal, err := common.GetUUID()
 	if err != nil {
 		log.Err("AddHeartBeat: Failed to retrieve UUID, error: %v", err)
 		return err
 	}
-	clusterConfig := ClusterConfig{
+	clusterConfig := dcachelib.ClusterConfig{
 		Readonly:      evaluateReadOnlyState(),
-		State:         StateOffline,
+		State:         dcachelib.StateOffline,
 		Epoch:         1,
 		CreatedAt:     time.Now().Unix(),
 		LastUpdatedAt: time.Now().Unix(),
@@ -111,7 +111,7 @@ func (cmi *ClusterManagerImpl) WatchForConfigChanges() error {
 	return nil
 }
 
-func fetchRVList() []RawVolume {
+func fetchRVList() []dcachelib.RawVolume {
 	//iterate through heartbeat file and get the list of RVs
 	//add RV names to the list
 	//return the list
@@ -130,7 +130,7 @@ func fetchRVList() []RawVolume {
 	return nil
 }
 
-func evaluateMVsRVMapping() []MirroredVolume {
+func evaluateMVsRVMapping() []dcachelib.MirroredVolume {
 
 	// sample MV list
 	// a := []MirroredVolume{
