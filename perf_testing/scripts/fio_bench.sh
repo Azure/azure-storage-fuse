@@ -32,7 +32,7 @@ mount_blobfuse() {
     rm -rf /mnt/tempcache/*
   fi
 
-  blobfuse2 mount ${mount_dir} --config-file=./config.yaml --log-type=${log_type} --log-level=${log_level} ${cache_path}
+  blobfuse2 mount ${mount_dir} --config-file=./config.yaml --log-type=${log_type} --log-level=${log_level} ${cache_path} -o direct_io
   mount_status=$?
   set -e
   if [ $mount_status -ne 0 ]; then
