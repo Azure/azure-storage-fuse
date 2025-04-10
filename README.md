@@ -7,7 +7,10 @@ To keep track of performance regression introduced by any commit in the main bra
 
 ## Setup
 ### VM
-X86_64 tests are performed on `Standard D96ds_v5` (96 vcpus, 384 GiB memory) Azure VM running in `eastus2` region. ARM64 tests are performed on `Standard D96pds_v6` (96 vcpus, 384 GiB memory) Azure VM running in `eastus2` region. Specifications of this VM is listed [here](https://learn.microsoft.com/en-us/azure/virtual-machines/ddv5-ddsv5-series#ddsv5-series). 
+X86_64 tests are performed on `Standard D96ds_v5` (96 vcpus, 384 GiB memory) Azure VM running in `eastus2` region. Specifications of this VM can be found [here](https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/general-purpose/ddv5-series?tabs=sizebasic#sizes-in-series).
+
+
+ARM64 tests are performed on `Standard D96pds_v6` (96 vcpus, 384 GiB memory) Azure VM running in `eastus2` region. Specifications of this VM can be found [here](https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/general-purpose/dpdsv6-series?tabs=sizebasic#sizes-in-series).
 
 ### Storage
 A `Premium Blob Storage Account` and a `Standard Blob Storage Account` in `eastus2` region were used to conduct all tests. HNS was disabled on both these accounts.
