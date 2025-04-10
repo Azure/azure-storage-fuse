@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1744265418066,
+  "lastUpdate": 1744281605894,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -135,6 +135,40 @@ window.BENCHMARK_DATA = {
           {
             "name": "create_10_20GB_file",
             "value": 52.28382420539856,
+            "unit": "seconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "vibhansa@microsoft.com",
+            "name": "vibhansa",
+            "username": "vibhansa-msft"
+          },
+          "committer": {
+            "email": "vibhansa@microsoft.com",
+            "name": "vibhansa",
+            "username": "vibhansa-msft"
+          },
+          "distinct": true,
+          "id": "a255ef1080a4bee70d172d6b9d86109bc75a69ae",
+          "message": "Updating configs",
+          "timestamp": "2025-04-10T02:02:50-07:00",
+          "tree_id": "eab286874e9c1ba63c0fe44c0be17d45750a7853",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/a255ef1080a4bee70d172d6b9d86109bc75a69ae"
+        },
+        "date": 1744281605647,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "read_10_20GB_file",
+            "value": 21.832983255386353,
+            "unit": "seconds"
+          },
+          {
+            "name": "create_10_20GB_file",
+            "value": 51.91993045806885,
             "unit": "seconds"
           }
         ]
