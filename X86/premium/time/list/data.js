@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1742373133702,
+  "lastUpdate": 1744265060397,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -125,6 +125,40 @@ window.BENCHMARK_DATA = {
           "url": "https://github.com/Azure/azure-storage-fuse/commit/abeffac3531ff852a6240abfd960d263274a1527"
         },
         "date": 1742373133394,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "list_100k_files",
+            "value": "0.00000",
+            "unit": "seconds"
+          },
+          {
+            "name": "delete_100k_files",
+            "value": "0.00000",
+            "unit": "seconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "vibhansa@microsoft.com",
+            "name": "vibhansa",
+            "username": "vibhansa-msft"
+          },
+          "committer": {
+            "email": "vibhansa@microsoft.com",
+            "name": "vibhansa",
+            "username": "vibhansa-msft"
+          },
+          "distinct": true,
+          "id": "643e91f6a0e3b6c677d4f89a36e8e5209e046ec6",
+          "message": "Merge remote-tracking branch 'origin/main' into vibhansa/armperftest",
+          "timestamp": "2025-04-09T21:55:32-07:00",
+          "tree_id": "44e6262b9b6c585dac173204bc04e4eb084a6e47",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/643e91f6a0e3b6c677d4f89a36e8e5209e046ec6"
+        },
+        "date": 1744265060118,
         "tool": "customSmallerIsBetter",
         "benches": [
           {
