@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1742371436723,
+  "lastUpdate": 1744263484941,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -175,6 +175,50 @@ window.BENCHMARK_DATA = {
           {
             "name": "sequential_write_16_threads",
             "value": 1956.3704427083333,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "vibhansa@microsoft.com",
+            "name": "vibhansa",
+            "username": "vibhansa-msft"
+          },
+          "committer": {
+            "email": "vibhansa@microsoft.com",
+            "name": "vibhansa",
+            "username": "vibhansa-msft"
+          },
+          "distinct": true,
+          "id": "643e91f6a0e3b6c677d4f89a36e8e5209e046ec6",
+          "message": "Merge remote-tracking branch 'origin/main' into vibhansa/armperftest",
+          "timestamp": "2025-04-09T21:55:32-07:00",
+          "tree_id": "44e6262b9b6c585dac173204bc04e4eb084a6e47",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/643e91f6a0e3b6c677d4f89a36e8e5209e046ec6"
+        },
+        "date": 1744263484676,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_write",
+            "value": 1986.8720703125,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_write_directio",
+            "value": 1913.5218098958333,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_write_4_threads",
+            "value": 1883.5748697916667,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_write_16_threads",
+            "value": 2016.3824869791667,
             "unit": "MiB/s"
           }
         ]
