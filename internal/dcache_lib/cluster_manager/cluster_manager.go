@@ -40,7 +40,7 @@ type ClusterManager interface {
 	Stop() error
 	WatchForConfigChanges() error
 	UpdateStroageConfigIfRequired() error
-	CreateClusterConfig() error
+	CreateClusterConfig(DCacheConfig, string) error
 	IsAlive(peerId string) bool
 	GetActiveMVs() []dcachelib.MirroredVolume
 	UpdateMVs(mvs []dcachelib.MirroredVolume)
