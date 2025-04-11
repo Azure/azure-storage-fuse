@@ -44,7 +44,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	dcachelib "github.com/Azure/azure-storage-fuse/v2/internal/dcache_lib"
-	. "github.com/Azure/azure-storage-fuse/v2/internal/dcache_lib/api"
+	clustermanager "github.com/Azure/azure-storage-fuse/v2/internal/dcache_lib/cluster_manager"
 )
 
 /* NOTES:
@@ -74,8 +74,8 @@ type DistributedCache struct {
 	cacheAccess         string
 
 	azstroage        internal.Component
-	clusterManager   ClusterManager
-	strorageCallback StorageCallbacks
+	clusterManager   clustermanager.ClusterManager
+	strorageCallback dcachelib.StorageCallbacks
 }
 
 // Structure defining your config parameters
@@ -146,7 +146,7 @@ func (dc *DistributedCache) Start(ctx context.Context) error {
 	dc.strorageCallback = initStorageCallback(
 		dc.NextComponent(),
 		dc.azstroage)
-	dc.clusterManager = dcachelib.NewClusterManager(dc.strorageCallback)
+	dc.clusterManager = clustermanager.NewClusterManager(dc.strorageCallback)
 
 	// Check and create cache directory if needed
 	if err := dc.setupCacheStructure(cacheDir); err != nil {
@@ -173,7 +173,7 @@ func (dc *DistributedCache) setupCacheStructure(cacheDir string) error {
 				}
 			}
 
-			err = dc.clusterManager.CreateClusterConfig(DCacheConfig{
+			err = dc.clusterManager.CreateClusterConfig(dcachelib.DCacheConfig{
 				MinNodes:               dc.minNodes,
 				ChunkSize:              dc.chunkSize,
 				StripeSize:             dc.stripeSize,

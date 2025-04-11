@@ -45,7 +45,7 @@ import (
 )
 
 type ClusterManagerImpl struct {
-	StorageCallback dcachelib.StorageCallbacks
+	storageCallback dcachelib.StorageCallbacks
 }
 
 func (cmi *ClusterManagerImpl) Start() error {
@@ -57,7 +57,9 @@ func (cmi *ClusterManagerImpl) Stop() error {
 }
 
 func NewClusterManager(callback dcachelib.StorageCallbacks) ClusterManager {
-	return &ClusterManagerImpl{}
+	return &ClusterManagerImpl{
+		storageCallback: callback,
+	}
 }
 
 func (cmi *ClusterManagerImpl) CreateClusterConfig(dcacheConfig dcachelib.DCacheConfig, storageCachepath string) error {
@@ -79,7 +81,7 @@ func (cmi *ClusterManagerImpl) CreateClusterConfig(dcacheConfig dcachelib.DCache
 	}
 	clusterConfigJson, err := json.Marshal(clusterConfig)
 	log.Err("ClusterManager::CreateClusterConfig : ClusterConfigJson: %v", err)
-	err = cmi.StorageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{Name: storageCachepath + "/ClusterMap.json", Data: []byte(clusterConfigJson), IsNoneMatchEtagEnabled: true})
+	err = cmi.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{Name: storageCachepath + "/ClusterMap.json", Data: []byte(clusterConfigJson), IsNoneMatchEtagEnabled: true})
 	return err
 }
 
@@ -112,6 +114,7 @@ func (cmi *ClusterManagerImpl) WatchForConfigChanges() error {
 }
 
 func fetchRVList() []dcachelib.RawVolume {
+	rvList := []dcachelib.RawVolume{}
 	//iterate through heartbeat file and get the list of RVs
 	//add RV names to the list
 	//return the list
@@ -127,11 +130,12 @@ func fetchRVList() []dcachelib.RawVolume {
 	// 	TotalSpaceGB:     1000,
 	// 	AvailableSpaceGB: 3415,
 	// }
-	return nil
+	return rvList
 }
 
 func evaluateMVsRVMapping() []dcachelib.MirroredVolume {
 
+	mVList := []dcachelib.MirroredVolume{}
 	// sample MV list
 	// a := []MirroredVolume{
 	// 	{
@@ -139,7 +143,7 @@ func evaluateMVsRVMapping() []dcachelib.MirroredVolume {
 	// 		RVmapWithState: []VolumeState{{Volume: rv0, State: "online"}},
 	// 	},
 	// }
-	return nil
+	return mVList
 }
 
 func IsAlive(peerId string) bool {
