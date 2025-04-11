@@ -105,7 +105,7 @@ type AzConnection interface {
 	SetPrefixPath(string) error
 
 	CreateFile(name string, mode os.FileMode) error
-	CreateDirectory(name string, isNoneMatchEtagEnabled bool) error
+	CreateDirectory(name string, forceDirCreationDisabled bool) error
 	CreateLink(source string, target string) error
 
 	DeleteFile(name string) error
