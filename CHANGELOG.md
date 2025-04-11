@@ -1,6 +1,7 @@
 ## 2.5.0~preview.1 (Unreleased)
 **Features**
 - Preload feature added to download entire dataset on mount, to accelerate model training.
+- Added support for `chmod` and `chown` file system capabilities for blockblob accounts, and `chown` capability for Datalake accounts.
 
 ## 2.4.2 (2025-04-08)
 **Bug Fixes**

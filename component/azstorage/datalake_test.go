@@ -48,6 +48,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -1952,33 +1953,6 @@ func (s *datalakeTestSuite) TestChmodError() {
 	s.assert.EqualValues(syscall.ENOENT, err)
 }
 
-// If support for chown or chmod are ever added to blob, add tests for error cases and modify the following tests.
-func (s *datalakeTestSuite) TestChown() {
-	defer s.cleanupTest()
-	// Setup
-	name := generateFileName()
-	s.az.CreateFile(internal.CreateFileOptions{Name: name})
-
-	err := s.az.Chown(internal.ChownOptions{Name: name, Owner: 6, Group: 5})
-	s.assert.NotNil(err)
-	s.assert.EqualValues(syscall.ENOTSUP, err)
-}
-
-func (s *datalakeTestSuite) TestChownIgnore() {
-	defer s.cleanupTest()
-	// Setup
-	s.tearDownTestHelper(false) // Don't delete the generated container.
-
-	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.dfs.core.windows.net/\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: false\n",
-		storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsKey, s.container)
-	s.setupTestHelper(config, s.container, true)
-	name := generateFileName()
-	s.az.CreateFile(internal.CreateFileOptions{Name: name})
-
-	err := s.az.Chown(internal.ChownOptions{Name: name, Owner: 6, Group: 5})
-	s.assert.Nil(err)
-}
-
 func (s *datalakeTestSuite) TestGetFileBlockOffsetsSmallFile() {
 	defer s.cleanupTest()
 	// Setup
@@ -2895,32 +2869,20 @@ func (s *datalakeTestSuite) TestList() {
 	s.assert.NotEqual(0, blobList[0].Mode)
 }
 
-// func (s *datalakeTestSuite) TestRAGRS() {
-// 	defer s.cleanupTest()
-// 	// Setup
-// 	name := generateFileName()
-// 	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
-// 	testData := "test data"
-// 	data := []byte(testData)
-// 	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
-// 	h, _ = s.az.OpenFile(internal.OpenFileOptions{Name: name})
-// 	s.az.CloseFile(internal.CloseFileOptions{Handle: h})
+func (s *datalakeTestSuite) TestChangeOwner() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	s.az.CreateFile(internal.CreateFileOptions{Name: name})
 
-// 	// This can be flaky since it may take time to replicate the data. We could hardcode a container and file for this test
-// 	time.Sleep(time.Second * time.Duration(10))
+	err := s.az.storage.ChangeOwner(name, 1001, 1001)
+	s.assert.Nil(err)
 
-// 	s.tearDownTestHelper(false) // Don't delete the generated container.
-
-// 	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  endpoint: https://%s-secondary.dfs.core.windows.net\n",
-// 		storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsKey, s.container, storageTestConfigurationParameters.AdlsAccount)
-// 	s.setupTestHelper(config, s.container, false) // Don't create a new container
-
-// 	h, _ = s.az.OpenFile(internal.OpenFileOptions{Name: name})
-// 	output, err := s.az.ReadFile(internal.ReadFileOptions{Handle: h})
-// 	s.assert.Nil(err)
-// 	s.assert.EqualValues(testData, output)
-// 	s.az.CloseFile(internal.CloseFileOptions{Handle: h})
-// }
+	attr, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
+	s.assert.Nil(err)
+	s.assert.Equal(strconv.Itoa(1001), *common.ReadMetadata(*&attr.Metadata, common.POSIXOwnerMeta))
+	s.assert.Equal(strconv.Itoa(1001), *common.ReadMetadata(*&attr.Metadata, common.POSIXGroupMeta))
+}
 
 // In order for 'go test' to run this suite, we need to create
 // a normal test function and pass our suite to suite.Run

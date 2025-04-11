@@ -521,6 +521,27 @@ func GetCRC64(data []byte, len int) []byte {
 	return checksumBytes
 }
 
+// parseUint32 converts a *string to uint32
+func ParseUint32(s string) uint32 {
+	if s == "" {
+		return 0
+	}
+	val, err := strconv.ParseUint(s, 10, 32)
+	if err != nil {
+		return 0
+	}
+	return uint32(val)
+}
+
+func ReadMetadata(metadata map[string]*string, key string) *string {
+	lowerKey := strings.ToLower(key)
+	for mapKey, mapValue := range metadata {
+		if strings.ToLower(mapKey) == lowerKey {
+			return mapValue
+		}
+	}
+	return nil
+}
 func GetMD5(fi *os.File) ([]byte, error) {
 	hasher := md5.New()
 	_, err := io.Copy(hasher, fi)

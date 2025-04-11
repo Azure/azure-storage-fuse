@@ -42,6 +42,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
@@ -65,6 +66,23 @@ func (suite *utilTestSuite) SetupTest() {
 
 func TestUtil(t *testing.T) {
 	suite.Run(t, new(utilTestSuite))
+}
+func (suite *utilTestSuite) TestParseUint32() {
+	// Test with a valid string
+	result := ParseUint32("12345")
+	suite.assert.Equal(uint32(12345), result)
+
+	// Test with an empty string
+	result = ParseUint32("")
+	suite.assert.Equal(uint32(0), result)
+
+	// Test with an invalid string
+	result = ParseUint32("invalid")
+	suite.assert.Equal(uint32(0), result)
+
+	// Test with a string representing a number larger than uint32
+	result = ParseUint32("4294967296") // 2^32
+	suite.assert.Equal(uint32(0), result)
 }
 
 func (suite *utilTestSuite) TestIsMountActiveNoMount() {
@@ -381,6 +399,27 @@ func (suite *utilTestSuite) TestCRC64() {
 	crc1 := GetCRC64(data, len(data))
 
 	suite.assert.NotEqual(crc, crc1)
+}
+
+func (s *utilTestSuite) TestReadMetadata() {
+	assert := assert.New(s.T())
+
+	tests := []struct {
+		metadata map[string]*string
+		key      string
+		expected *string
+	}{
+		{metadata: map[string]*string{"key1": to.Ptr("value1")}, key: "key1", expected: to.Ptr("value1")},
+		{metadata: map[string]*string{"Key1": to.Ptr("value1")}, key: "key1", expected: to.Ptr("value1")},
+		{metadata: map[string]*string{"key1": to.Ptr("value1")}, key: "Key1", expected: to.Ptr("value1")},
+		{metadata: map[string]*string{"key1": to.Ptr("value1")}, key: "key2", expected: nil},
+		{metadata: map[string]*string{}, key: "key1", expected: nil},
+	}
+
+	for _, test := range tests {
+		result := ReadMetadata(test.metadata, test.key)
+		assert.Equal(test.expected, result)
+	}
 }
 
 func (suite *utilTestSuite) TestGetFuseMinorVersion() {

@@ -35,6 +35,7 @@ package attr_cache
 
 import (
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -106,6 +107,18 @@ func (value *attrCacheItem) setSize(size int64) {
 
 func (value *attrCacheItem) setMode(mode os.FileMode) {
 	value.attr.Mode = mode
+	value.attr.Ctime = time.Now()
+	value.cachedAt = time.Now()
+}
+
+func (value *attrCacheItem) setOwnerGroup(owner int, group int) {
+	ownerStr := strconv.FormatUint(uint64(owner), 10)
+	groupStr := strconv.FormatUint(uint64(group), 10)
+	if value.attr.Metadata == nil {
+		value.attr.Metadata = make(map[string]*string)
+	}
+	value.attr.Metadata[common.POSIXOwnerMeta] = &ownerStr
+	value.attr.Metadata[common.POSIXGroupMeta] = &groupStr
 	value.attr.Ctime = time.Now()
 	value.cachedAt = time.Now()
 }
