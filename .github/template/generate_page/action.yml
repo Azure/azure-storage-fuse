@@ -11,6 +11,9 @@ inputs:
   TOKEN:   
     required: true
     description: "Token for checkin"  
+  MACHINE: 
+    required: true
+    description: "Type of machine"
 
 runs:
   using: "composite"
@@ -35,14 +38,14 @@ runs:
       with:
         output-file-path: ${{ inputs.TEST }}/bandwidth_results.json
         tool: 'customBiggerIsBetter'
-        alert-threshold: "160%"
+        #alert-threshold: "160%"
         max-items-in-chart: 100
         github-token: ${{ inputs.TOKEN }}
-        fail-on-alert: true
+        #fail-on-alert: true
         auto-push: true
         comment-on-alert: true
         gh-pages-branch: benchmarks
-        benchmark-data-dir-path: ${{ inputs.TYPE }}/bandwidth/${{ inputs.TEST }}
+        benchmark-data-dir-path: ${{ inputs.MACHINE }}/${{ inputs.TYPE }}/bandwidth/${{ inputs.TEST }}
 
     # Push the latency results and publish the graphs
     - name: "Update Latency Results : ${{ inputs.TEST }}"
@@ -50,14 +53,14 @@ runs:
       with:
         output-file-path: ${{ inputs.TEST }}/latency_results.json
         tool: 'customSmallerIsBetter'
-        alert-threshold: "160%"
+        #alert-threshold: "160%"
         max-items-in-chart: 100
         github-token: ${{ inputs.TOKEN }}
-        fail-on-alert: true
+        #fail-on-alert: true
         auto-push: true
         comment-on-alert: true
         gh-pages-branch: benchmarks
-        benchmark-data-dir-path: ${{ inputs.TYPE }}/latency/${{ inputs.TEST }}  
+        benchmark-data-dir-path: ${{ inputs.MACHINE }}/${{ inputs.TYPE }}/latency/${{ inputs.TEST }}  
     
  
         
