@@ -167,7 +167,7 @@ steps:
       fi
     displayName: 'Compare md5Sum'
 
-- script: |
+  - script: |
       if [ -f "blobfuse2-logs.txt" ]; then
         > blobfuse2-logs.txt
       fi
