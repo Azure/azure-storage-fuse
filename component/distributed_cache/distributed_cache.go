@@ -165,7 +165,7 @@ func (dc *DistributedCache) setupCacheStructure(cacheDir string) error {
 		if os.IsNotExist(err) || err == syscall.ENOENT {
 			directories := []string{cacheDir, cacheDir + "/Nodes", cacheDir + "/Objects"}
 			for _, dir := range directories {
-				if err := dc.azstroage.CreateDir(internal.CreateDirOptions{Name: dir, IsNoneMatchEtagEnabled: true}); err != nil {
+				if err := dc.azstroage.CreateDir(internal.CreateDirOptions{Name: dir, ForceDirCreationDisabled: true}); err != nil {
 
 					if !bloberror.HasCode(err, bloberror.BlobAlreadyExists) {
 						return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to create directory %s: %v]", dir, err))

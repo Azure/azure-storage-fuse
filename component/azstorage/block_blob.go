@@ -280,7 +280,7 @@ func (bb *BlockBlob) CreateFile(name string, mode os.FileMode) error {
 }
 
 // CreateDirectory : Create a new directory in the container/virtual directory
-func (bb *BlockBlob) CreateDirectory(name string, isNoneMatchEtagEnabled bool) error {
+func (bb *BlockBlob) CreateDirectory(name string, forceDirCreationDisabled bool) error {
 	log.Trace("BlockBlob::CreateDirectory : name %s", name)
 
 	var data []byte
@@ -290,7 +290,7 @@ func (bb *BlockBlob) CreateDirectory(name string, isNoneMatchEtagEnabled bool) e
 	return bb.WriteFromBuffer(internal.WriteFromBufferOptions{Name: name,
 		Metadata:               metadata,
 		Data:                   data,
-		IsNoneMatchEtagEnabled: isNoneMatchEtagEnabled})
+		IsNoneMatchEtagEnabled: forceDirCreationDisabled})
 }
 
 // CreateLink : Create a symlink in the container/virtual directory
