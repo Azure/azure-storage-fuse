@@ -33,13 +33,15 @@
 
 package meta_manager
 
+import "github.com/google/uuid"
+
 // MetaFile represents the metadata structure for a file
 type MetaFile struct {
-	Filename        string   `json:"filename"`
-	FileID          string   `json:"file_id"`
-	Size            int64    `json:"size"`
-	ClusterMapEpoch int64    `json:"cluster_map_epoch"`
-	MVList          []string `json:"mv_list"`
+	Filename        string    `json:"filename"`
+	FileID          uuid.UUID `json:"file_id"`
+	Size            int64     `json:"size"`
+	ClusterMapEpoch int64     `json:"cluster_map_epoch"`
+	MVList          []string  `json:"mv_list"`
 }
 
 // MetaManager defines the interface for managing file metadata

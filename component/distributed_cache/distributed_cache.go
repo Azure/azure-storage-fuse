@@ -43,6 +43,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache_lib/meta_manager"
 )
 
 /* NOTES:
@@ -71,7 +72,7 @@ type DistributedCache struct {
 	safeDeletes         bool
 	cacheAccess         string
 
-	azstroage internal.Component
+	azstorage internal.Component
 }
 
 // Structure defining your config parameters
@@ -134,9 +135,9 @@ func (dc *DistributedCache) Start(ctx context.Context) error {
 	log.Trace("DistributedCache::Start : Starting component %s", dc.Name())
 
 	cacheDir := "__CACHE__" + dc.cacheID
-	dc.azstroage = dc.NextComponent()
-	for dc.azstroage != nil && dc.azstroage.Name() != "azstorage" {
-		dc.azstroage = dc.azstroage.NextComponent()
+	dc.azstorage = dc.NextComponent()
+	for dc.azstorage != nil && dc.azstorage.Name() != "azstorage" {
+		dc.azstorage = dc.azstorage.NextComponent()
 	}
 
 	// Check and create cache directory if needed
@@ -144,19 +145,35 @@ func (dc *DistributedCache) Start(ctx context.Context) error {
 		return err
 	}
 	log.Info("DistributedCache::Start : Cache structure setup completed")
+	dc.NewFunc()
 
 	return nil
+}
+
+func (dc *DistributedCache) NewFunc() {
+	storagecallback := initStorageCallback(dc.NextComponent(), dc.azstorage)
+	metamanager, err := meta_manager.NewMetaManager(dc.cacheID, storagecallback)
+	if err != nil {
+		log.Err("DistributedCache::NewFunc : error [failed to create new file: %v]", err)
+		return
+	}
+	err = metamanager.CreateMetaFile("jamU.txt", []string{"test", "test2"})
+	if err != nil {
+		log.Err("DistributedCache::NewFunc : error [failed to create new file: %v]", err)
+		return
+
+	}
 }
 
 // setupCacheStructure checks and creates necessary cache directories and metadata.
 // It's doing 4 rest api calls, 3 for directory and 1 for creator file.+1 call to check the creator file
 func (dc *DistributedCache) setupCacheStructure(cacheDir string) error {
-	_, err := dc.azstroage.GetAttr(internal.GetAttrOptions{Name: cacheDir + "/ClusterMap.json"})
+	_, err := dc.azstorage.GetAttr(internal.GetAttrOptions{Name: cacheDir + "/ClusterMap.json"})
 	if err != nil {
 		if os.IsNotExist(err) || err == syscall.ENOENT {
 			directories := []string{cacheDir, cacheDir + "/Nodes", cacheDir + "/Objects"}
 			for _, dir := range directories {
-				if err := dc.azstroage.CreateDir(internal.CreateDirOptions{Name: dir, IsNoneMatchEtagEnabled: true}); err != nil {
+				if err := dc.azstorage.CreateDir(internal.CreateDirOptions{Name: dir, IsNoneMatchEtagEnabled: true}); err != nil {
 
 					if !bloberror.HasCode(err, bloberror.BlobAlreadyExists) {
 						return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to create directory %s: %v]", dir, err))
