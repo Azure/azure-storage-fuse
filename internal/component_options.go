@@ -40,8 +40,9 @@ import (
 )
 
 type CreateDirOptions struct {
-	Name string
-	Mode os.FileMode
+	Name                     string
+	Mode                     os.FileMode
+	ForceDirCreationDisabled bool
 }
 
 type DeleteDirOptions struct {
@@ -106,6 +107,10 @@ type ReadFileOptions struct {
 	Handle *handlemap.Handle
 }
 
+type ReadFileWithNameOptions struct {
+	Path string
+}
+
 type ReadInBufferOptions struct {
 	Handle *handlemap.Handle
 	Offset int64
@@ -120,6 +125,14 @@ type WriteFileOptions struct {
 	Offset   int64
 	Data     []byte
 	Metadata map[string]*string
+}
+
+type WriteFromBufferOptions struct {
+	Name                   string
+	Metadata               map[string]*string
+	Data                   []byte
+	IsNoneMatchEtagEnabled bool
+	EtagMatchConditions    string
 }
 
 type GetFileBlockOffsetsOptions struct {
