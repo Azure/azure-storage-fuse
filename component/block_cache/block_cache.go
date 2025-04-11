@@ -88,6 +88,7 @@ type BlockCache struct {
 	stream          *Stream
 	lazyWrite       bool           // Flag to indicate if lazy write is enabled
 	fileCloseOpt    sync.WaitGroup // Wait group to wait for all async close operations to complete
+	cleanupOnStart  bool           // Clear temp directory on startup
 }
 
 // Structure defining your config parameters
@@ -101,6 +102,7 @@ type BlockCacheOptions struct {
 	Workers        uint32  `config:"parallelism" yaml:"parallelism,omitempty"`
 	PrefetchOnOpen bool    `config:"prefetch-on-open" yaml:"prefetch-on-open,omitempty"`
 	Consistency    bool    `config:"consistency" yaml:"consistency,omitempty"`
+	CleanupOnStart bool    `config:"cleanup-on-start" yaml:"cleanup-on-start,omitempty"`
 }
 
 const (
@@ -286,6 +288,7 @@ func (bc *BlockCache) Configure(_ bool) error {
 	}
 
 	bc.tmpPath = common.ExpandPath(conf.TmpPath)
+	bc.cleanupOnStart = conf.CleanupOnStart
 
 	if bc.tmpPath != "" {
 		//check mnt path is not same as temp path
@@ -308,6 +311,13 @@ func (bc *BlockCache) Configure(_ bool) error {
 			if err != nil {
 				log.Err("BlockCache: config error creating directory of temp path after clean [%s]", err.Error())
 				return fmt.Errorf("config error in %s [%s]", bc.Name(), err.Error())
+			}
+		} else {
+			if bc.cleanupOnStart {
+				err := common.TempCacheCleanup(bc.tmpPath)
+				if err != nil {
+					return fmt.Errorf("error in %s error [fail to cleanup temp cache]", bc.Name())
+				}
 			}
 		}
 
