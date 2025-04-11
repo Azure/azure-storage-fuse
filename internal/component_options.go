@@ -40,9 +40,9 @@ import (
 )
 
 type CreateDirOptions struct {
-	Name                   string
-	Mode                   os.FileMode
-	IsNoneMatchEtagEnabled bool
+	Name                     string
+	Mode                     os.FileMode
+	ForceDirCreationDisabled bool
 }
 
 type DeleteDirOptions struct {
