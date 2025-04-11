@@ -167,6 +167,12 @@ steps:
       fi
     displayName: 'Compare md5Sum'
 
+- script: |
+      if [ -f "blobfuse2-logs.txt" ]; then
+        > blobfuse2-logs.txt
+      fi
+    displayName: 'Empty blobfuse2-logs.txt if exists'
+
   - template: 'mount.yml'
     parameters:
       working_dir: $(WORK_DIR)
