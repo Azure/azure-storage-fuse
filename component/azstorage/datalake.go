@@ -212,6 +212,11 @@ func (dl *Datalake) TestPipeline() error {
 	return dl.BlockBlob.TestPipeline()
 }
 
+// IsAccountADLS : Check account is ADLS or not
+func (dl *Datalake) IsAccountADLS() bool {
+	return dl.BlockBlob.IsAccountADLS()
+}
+
 func (dl *Datalake) ListContainers() ([]string, error) {
 	log.Trace("Datalake::ListContainers : Listing containers")
 	return dl.BlockBlob.ListContainers()

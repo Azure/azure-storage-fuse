@@ -31,16 +31,51 @@
    SOFTWARE
 */
 
-package cmd
+package azstorage
 
 import (
-	_ "github.com/Azure/azure-storage-fuse/v2/component/attr_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/azstorage"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/block_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/custom"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/entry_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/file_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/libfuse"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/loopback"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/xload"
+	"fmt"
+	"net/http"
+
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
+	"github.com/Azure/azure-storage-fuse/v2/common"
 )
+
+// blobfuseTelemetryPolicy is a custom pipeline policy to prepend the blobfuse user agent string to the one coming from SDK.
+// This is added in the PerCallPolicies which executes after the SDK's default telemetry policy.
+type blobfuseTelemetryPolicy struct {
+	telemetryValue string
+}
+
+// newBlobfuseTelemetryPolicy creates an object which prepends the blobfuse user agent string to the User-Agent request header
+func newBlobfuseTelemetryPolicy(telemetryValue string) policy.Policy {
+	return &blobfuseTelemetryPolicy{telemetryValue: telemetryValue}
+}
+
+func (p blobfuseTelemetryPolicy) Do(req *policy.Request) (*http.Response, error) {
+	userAgent := p.telemetryValue
+
+	// prepend the blobfuse user agent string
+	if ua := req.Raw().Header.Get(common.UserAgentHeader); ua != "" {
+		userAgent = fmt.Sprintf("%s %s", userAgent, ua)
+	}
+	req.Raw().Header.Set(common.UserAgentHeader, userAgent)
+	return req.Next()
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------
+// Policy to override the service version if requested by user
+type serviceVersionPolicy struct {
+	serviceApiVersion string
+}
+
+func newServiceVersionPolicy(version string) policy.Policy {
+	return &serviceVersionPolicy{
+		serviceApiVersion: version,
+	}
+}
+
+func (r *serviceVersionPolicy) Do(req *policy.Request) (*http.Response, error) {
+	req.Raw().Header["x-ms-version"] = []string{r.serviceApiVersion}
+	return req.Next()
+}
