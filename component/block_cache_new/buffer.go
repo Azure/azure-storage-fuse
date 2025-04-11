@@ -261,10 +261,10 @@ func (bp *BufferPool) asyncUploadScheduler() {
 		for currentBlk != nil && noOfAsyncUploads > 0 {
 			noOfAsyncUploads--
 			blk := currentBlk.Value.(*block)
+			currentBlk = currentBlk.Prev()
 			if !blk.buf.valid {
 				continue
 			}
-			currentBlk = currentBlk.Prev()
 			cow := time.Now()
 			r := asyncRequest
 			r |= asyncUploadScheduler
