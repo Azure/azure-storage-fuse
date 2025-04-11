@@ -52,6 +52,7 @@ import (
 	"sync"
 	"syscall"
 
+	gouuid "github.com/google/uuid"
 	"gopkg.in/ini.v1"
 )
 
@@ -518,4 +519,26 @@ func GetCRC64(data []byte, len int) []byte {
 	binary.BigEndian.PutUint64(checksumBytes, checksum)
 
 	return checksumBytes
+}
+
+func GetUUID() (string, error) {
+	uuidFilePath := filepath.Join(DefaultWorkDir, "blobfuse_node_uuid")
+
+	if _, err := os.Stat(uuidFilePath); err == nil {
+		// File exists, read its content
+		data, err := os.ReadFile(uuidFilePath)
+		if err != nil {
+			return "", err
+		}
+		return string(data), nil
+	}
+
+	// File doesn't exist, generate a new UUID
+	newUuid := gouuid.New().String()
+	if err := os.WriteFile(uuidFilePath, []byte(newUuid), 0400); err != nil {
+		return "", err
+	}
+
+	return newUuid, nil
+
 }

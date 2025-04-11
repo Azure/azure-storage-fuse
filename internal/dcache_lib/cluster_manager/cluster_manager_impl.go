@@ -34,11 +34,18 @@
 package clustermanager
 
 import (
+	"encoding/json"
+	"time"
+
 	dcachelib "github.com/Azure/azure-storage-fuse/v2/internal/dcache_lib"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
 type ClusterManagerImpl struct {
-	StorageCallback dcachelib.StorageCallbacks
+	storageCallback dcachelib.StorageCallbacks
 }
 
 func (cmi *ClusterManagerImpl) Start() error {
@@ -50,11 +57,36 @@ func (cmi *ClusterManagerImpl) Stop() error {
 }
 
 func NewClusterManager(callback dcachelib.StorageCallbacks) ClusterManager {
-	return &ClusterManagerImpl{}
+	return &ClusterManagerImpl{
+		storageCallback: callback,
+	}
 }
 
-func (cmi *ClusterManagerImpl) CreateClusterConfig() error {
-	return nil
+func (cmi *ClusterManagerImpl) CreateClusterConfig(dcacheConfig dcachelib.DCacheConfig, storageCachepath string) error {
+	uuidVal, err := common.GetUUID()
+	if err != nil {
+		log.Err("AddHeartBeat: Failed to retrieve UUID, error: %v", err)
+		return err
+	}
+	clusterConfig := dcachelib.ClusterConfig{
+		Readonly:      evaluateReadOnlyState(),
+		State:         dcachelib.StateOffline,
+		Epoch:         1,
+		CreatedAt:     time.Now().Unix(),
+		LastUpdatedAt: time.Now().Unix(),
+		LastUpdatedBy: uuidVal,
+		Config:        dcacheConfig,
+		RVList:        fetchRVList(),
+		MVList:        evaluateMVsRVMapping(),
+	}
+	clusterConfigJson, err := json.Marshal(clusterConfig)
+	log.Err("ClusterManager::CreateClusterConfig : ClusterConfigJson: %v", err)
+	err = cmi.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{Name: storageCachepath + "/ClusterMap.json", Data: []byte(clusterConfigJson), IsNoneMatchEtagEnabled: true})
+	return err
+}
+
+func evaluateReadOnlyState() bool {
+	return true
 }
 
 func (cmi *ClusterManagerImpl) GetActiveMVs() []dcachelib.MirroredVolume {
@@ -69,7 +101,7 @@ func (cmi *ClusterManagerImpl) UpdateMVs(mvs []dcachelib.MirroredVolume) {
 }
 
 func (cmi *ClusterManagerImpl) UpdateStroageConfigIfRequired() error {
-	checkForRVs()
+	fetchRVList()
 	evaluateMVsRVMapping()
 	//Mark the Mv degraded
 	return nil
@@ -81,10 +113,38 @@ func (cmi *ClusterManagerImpl) WatchForConfigChanges() error {
 	return nil
 }
 
-func checkForRVs() {
+func fetchRVList() []dcachelib.RawVolume {
+	rvList := []dcachelib.RawVolume{}
+	//iterate through heartbeat file and get the list of RVs
+	//add RV names to the list
+	//return the list
+
+	// example
+	// rvName := "rv0"
+	// rv0 := RawVolume{
+	// 	Name:             rvName,
+	// 	HostNode:         "node-uuid",
+	// 	FSID:             "filesystem-guid",
+	// 	FDID:             "fault-domain-id",
+	// 	State:            "online",
+	// 	TotalSpaceGB:     1000,
+	// 	AvailableSpaceGB: 3415,
+	// }
+	return rvList
 }
 
-func evaluateMVsRVMapping() {}
+func evaluateMVsRVMapping() []dcachelib.MirroredVolume {
+
+	mVList := []dcachelib.MirroredVolume{}
+	// sample MV list
+	// a := []MirroredVolume{
+	// 	{
+	// 		Name:           "mv0",
+	// 		RVmapWithState: []VolumeState{{Volume: rv0, State: "online"}},
+	// 	},
+	// }
+	return mVList
+}
 
 func IsAlive(peerId string) bool {
 	return false

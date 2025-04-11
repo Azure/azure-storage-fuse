@@ -83,23 +83,23 @@ type ClusterConfig struct {
 	CreatedAt     int64            `json:"created-at,omitempty"`
 	LastUpdatedAt int64            `json:"last_updated_at,omitempty"`
 	LastUpdatedBy string           `json:"last_updated_by,omitempty"`
-	Config        []byte           `json:"config"`
+	Config        DCacheConfig     `json:"config"`
 	RVList        []RawVolume      `json:"rv-list"`
 	MVList        []MirroredVolume `json:"mv-list"`
 }
 
 type DCacheConfig struct {
 	MinNodes               int    `json:"min-nodes,omitempty"`
-	ChunkSize              string `json:"chunk-size,omitempty"`
-	StripeSize             string `json:"stripe-size,omitempty"`
-	NumReplicas            int    `json:"num-replicas,omitempty"`
-	MvsPerRv               int    `json:"mvs-per-rv,omitempty"`
-	RvFullThreshold        int    `json:"rv-full-threshold,omitempty"`
-	RvNearfullThreshold    int    `json:"rv-nearfull-threshold,omitempty"`
-	HeartbeatSeconds       int    `json:"heartbeat-seconds,omitempty"`
-	HeartbeatsTillNodeDown int    `json:"heartbeats-till-node-down,omitempty"`
-	ClustermapEpoch        int    `json:"clustermap-epoch,omitempty"`
-	RebalancePercentage    int    `json:"rebalance-percentage,omitempty"`
+	ChunkSize              uint64 `json:"chunk-size,omitempty"`
+	StripeSize             uint64 `json:"stripe-size,omitempty"`
+	NumReplicas            uint8  `json:"num-replicas,omitempty"`
+	MvsPerRv               uint64 `json:"mvs-per-rv,omitempty"`
+	RvFullThreshold        uint64 `json:"rv-full-threshold,omitempty"`
+	RvNearfullThreshold    uint64 `json:"rv-nearfull-threshold,omitempty"`
+	HeartbeatSeconds       uint16 `json:"heartbeat-seconds,omitempty"`
+	HeartbeatsTillNodeDown uint8  `json:"heartbeats-till-node-down,omitempty"`
+	ClustermapEpoch        uint64 `json:"clustermap-epoch,omitempty"`
+	RebalancePercentage    uint64 `json:"rebalance-percentage,omitempty"`
 	SafeDeletes            bool   `json:"safe-deletes,omitempty"`
 	CacheAccess            string `json:"cache-access,omitempty"`
 }
