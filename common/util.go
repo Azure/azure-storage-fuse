@@ -541,3 +541,49 @@ func ComponentInPipeline(pipeline []string, component string) bool {
 
 	return false
 }
+
+func ValidatePipeline(pipeline []string) error {
+	// file-cache, block-cache and xload are mutually exclusive
+	if ComponentInPipeline(pipeline, "file_cache") &&
+		ComponentInPipeline(pipeline, "block_cache") {
+		return fmt.Errorf("mount: file-cache and block-cache cannot be used together")
+	}
+
+	if ComponentInPipeline(pipeline, "file_cache") &&
+		ComponentInPipeline(pipeline, "xload") {
+		return fmt.Errorf("mount: file-cache and xload cannot be used together")
+	}
+
+	if ComponentInPipeline(pipeline, "block_cache") &&
+		ComponentInPipeline(pipeline, "xload") {
+		return fmt.Errorf("mount: block-cache and xload cannot be used together")
+	}
+
+	return nil
+}
+
+func UpdatePipeline(pipeline []string, component string) []string {
+	if ComponentInPipeline(pipeline, component) {
+		return pipeline
+	}
+
+	if component == "xload" {
+		for i, comp := range pipeline {
+			if comp == "file_cache" || comp == "block_cache" {
+				pipeline[i] = component
+				return pipeline
+			}
+		}
+	}
+
+	if component == "block_cache" {
+		for i, comp := range pipeline {
+			if comp == "file_cache" || comp == "xload" {
+				pipeline[i] = component
+				return pipeline
+			}
+		}
+	}
+
+	return pipeline
+}
