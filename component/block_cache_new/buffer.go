@@ -36,6 +36,7 @@ type BufferPool struct {
 	wakeUpBufferReclaimation   chan struct{}
 	wakeUpAsyncUploadScheduler chan struct{}
 	wakeUpAsyncUploadPoller    chan struct{}
+	asyncUploadsScheduledCnt   int
 	uploadCompletedStream      chan *block
 
 	maxBlocks int // Size of the each buffer in the bytes for this pool
@@ -58,6 +59,7 @@ func newBufferPool(memSize uint64) *BufferPool {
 		wakeUpBufferReclaimation:   make(chan struct{}, 1),
 		wakeUpAsyncUploadScheduler: make(chan struct{}, 1),
 		wakeUpAsyncUploadPoller:    make(chan struct{}, 1),
+		asyncUploadsScheduledCnt:   0,
 		uploadCompletedStream:      make(chan *block, 2000), //todo p1: this is put to a large value as flush call is also pushing its blocks into this stream
 
 		maxBlocks: int(memSize / bc.blockSize),
@@ -122,6 +124,11 @@ func (bp *BufferPool) removeBlocksFromLRU(blkList blockList) {
 	}
 }
 
+func (bp *BufferPool) isBlkPresentInOWBL(blk *block) bool {
+	_, ok := bp.OWBCache[blk]
+	return ok
+}
+
 func (bp *BufferPool) moveBlkFromSBLtoLBL(blk *block) {
 	bp.Lock()
 	defer bp.Unlock()
@@ -145,6 +152,9 @@ func (bp *BufferPool) moveBlkFromLBLtoOWBL(blk *block) {
 }
 
 func (bp *BufferPool) moveBlkFromOWBLtoLBL(blk *block) {
+	if blk.state != localBlock {
+		panic(fmt.Sprintf("BlockCache::moveBlkFromOWBLtoLBL : Block is not local[state : %d], idx : %d, file : %s", blk.state, blk.idx, blk.file.Name))
+	}
 	if ee, ok := bp.OWBCache[blk]; ok {
 		bp.onTheWireBlksLst.Remove(ee)
 		delete(bp.OWBCache, blk)
@@ -249,16 +259,27 @@ func (bp *BufferPool) asyncUploadScheduler() {
 		// Schedule uploads on least recently used blocks
 		currentBlk := bp.localBlksLst.Back()
 		for currentBlk != nil && noOfAsyncUploads > 0 {
+			noOfAsyncUploads--
 			blk := currentBlk.Value.(*block)
+			if !blk.buf.valid {
+				continue
+			}
 			currentBlk = currentBlk.Prev()
 			cow := time.Now()
 			r := asyncRequest
 			r |= asyncUploadScheduler
 			//todo : Schedule only when the ref cnt of the blk is zero, else there is a chance of cancelling the upload
-			uploader(blk, r)
-			bp.moveBlkFromLBLtoOWBL(blk)
+			state, _ := uploader(blk, r)
+			if state == localBlock {
+				bp.moveBlkFromLBLtoOWBL(blk)
+				bp.asyncUploadsScheduledCnt++
+			} else {
+				// This happens when blk is force canceled and write was there on it which would move the
+				// blk to local queue but the upload has scheduled. Hence move the blk to OWBL.
+				log.Err("BlockCache::asyncUploadScheduler : Block is not local[state : %d], idx : %d, file : %s", state, blk.idx, blk.file.Name)
+				bp.moveBlkFromLBLtoOWBL(blk)
+			}
 			log.Info("BlockCache::asyncUploadScheduler : [took : %s] Async Upload scheduled for blk idx : %d, file: %s", time.Since(cow).String(), blk.idx, blk.file.Name)
-			noOfAsyncUploads--
 		}
 
 		totalUsage = bp.getTotalMemUsage()
@@ -282,37 +303,46 @@ func (bp *BufferPool) asyncUpladPoller() {
 		// Wait for the async uploads to complete and get the local blks usage to less than 30
 		usage := ((bp.onTheWireBlksLst.Len() * 100) / bp.maxBlocks)
 		noOfAsyncPolls := max(((usage-20)*bp.maxBlocks)/100, 0)
-		log.Info("BlockCache::asyncUploadPoller : [START] Mem usage: %d, Onwire blks Mem Usage: %d, needed %d async Polls", totalUsage, usage, noOfAsyncPolls)
+		log.Info("BlockCache::asyncUploadPoller : [START] Mem usage: %d, Onwire blks Mem Usage: %d, needed %d async Polls, asyncUploadsScheduleCnt : %d", totalUsage, usage, noOfAsyncPolls, bp.asyncUploadsScheduledCnt)
 
 		// We want any async blocks to finish the uploads, We dont care which blocks will complete first.
 		// Hence Listen on all Uploads simultaneosly.
 		for range noOfAsyncPolls {
+			if bp.asyncUploadsScheduledCnt == 0 {
+				break
+			}
 			select {
 			case blk := <-bp.uploadCompletedStream:
-				blk.Lock()
-				err, ok := <-blk.uploadDone
-				if ok {
-					close(blk.uploadDone)
+				bp.asyncUploadsScheduledCnt--
+				if bp.asyncUploadsScheduledCnt < 0 {
+					panic(fmt.Sprintf("asyncuploadsScheuledCnt is less than zero, blk idx: %d, file : %s", blk.idx, blk.file.Name))
 				}
-				if ok && err == nil && blk.uploadCtx.Err() == nil {
-					log.Info("BlockCache::asyncUploadPoller : Upload Success, Moved block from the OWBL to SBL blk idx : %d, file: %s", blk.idx, blk.file.Name)
-					blk.state = uncommitedBlock
-					bp.moveBlkFromOWBLtoSBL(blk)
-				} else {
-					// May be the upload is failed/ Context got cancelled as there may be write afterwards
-					if err != nil {
-						log.Err("BlockCache::asyncUploadPoller : Upload failed err : %s, blk idx : %d, file : %s", err.Error(), blk.idx, blk.file.Name)
-					} else {
-						// The status of the upload is consumed by the flush operation
-						log.Info("BlockCache::asyncUploadPoller : Upload failed without err blk idx : %d, file : %s", blk.idx, blk.file.Name)
+				if bp.isBlkPresentInOWBL(blk) {
+					blk.Lock()
+					err, ok := <-blk.uploadDone
+					if ok {
+						close(blk.uploadDone)
 					}
-					if blk.state == localBlock {
-						bp.moveBlkFromOWBLtoLBL(blk)
-					} else {
+					if ok && err == nil && blk.uploadCtx.Err() == nil {
+						log.Info("BlockCache::asyncUploadPoller : Upload Success, Moved block from the OWBL to SBL blk idx : %d, file: %s", blk.idx, blk.file.Name)
+						blk.state = uncommitedBlock
 						bp.moveBlkFromOWBLtoSBL(blk)
+					} else if ok {
+						// May be the upload is failed/ Context got cancelled as there may be write afterwards
+						if err != nil {
+							log.Err("BlockCache::asyncUploadPoller : Upload failed err : %s, blk idx : %d, file : %s", err.Error(), blk.idx, blk.file.Name)
+						} else {
+							// The status of the upload is consumed by the flush operation
+							log.Info("BlockCache::asyncUploadPoller : Upload failed without err blk idx : %d, file : %s", blk.idx, blk.file.Name)
+						}
+						if blk.state == localBlock {
+							bp.moveBlkFromOWBLtoLBL(blk)
+						} else {
+							bp.moveBlkFromOWBLtoSBL(blk)
+						}
 					}
+					blk.Unlock()
 				}
-				blk.Unlock()
 			}
 		}
 
@@ -329,7 +359,7 @@ func (bp *BufferPool) getBufferForBlock(blk *block) {
 	defer bp.Unlock()
 	switch blk.state {
 	case localBlock:
-		blk.buf = bPool.getBuffer(true)
+		blk.buf = bPool.getBuffer(false)
 		bPool.addLocalBlockToLRU(blk)
 	case committedBlock:
 		blk.buf = bPool.getBuffer(false)
@@ -578,7 +608,10 @@ func syncBuffersForFile(file *File) (err error) {
 	if !file.changed {
 		return nil
 	}
-
+	// Check the blocks that are  falling into this file size, as there may be other handles writing
+	// to the same file, so we need to commit the blocks until the fileSize that we are aware of.
+	originalBlkLst := file.blockList
+	file.blockList = originalBlkLst[:getNoOfBlocksInFile(file.size)]
 	_ = bPool.scheduleAsyncUploadsForFile(file)
 	// Wait for the uploads to finish
 	for _, blk := range file.blockList {
@@ -600,6 +633,9 @@ func syncBuffersForFile(file *File) (err error) {
 	} else {
 		log.Err("BlockCache::syncBuffersForFile : Syncing buffers failed handle=%d, path=%s, err=%s", file.Name, err.Error())
 	}
+	// reset the blocklist to its original state.
+	file.blockList = originalBlkLst
+
 	return
 }
 

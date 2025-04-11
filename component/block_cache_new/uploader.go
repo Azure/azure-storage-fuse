@@ -77,7 +77,7 @@ func uploader(blk *block, r requestType) (state blockState, err error) {
 						break outer
 					} else if r.isRequestScheduled() {
 						// The block has already scheduled, just let go
-						break outer
+						panic("catasrophy for select statement")
 					} else {
 						time.Sleep(1 * time.Millisecond)
 					}
@@ -87,6 +87,7 @@ func uploader(blk *block, r requestType) (state blockState, err error) {
 			panic(fmt.Sprintf("BlockCache::uploader : buffer is misssing blk idx : %d, file name :%s", blk.idx, blk.file.Name))
 		}
 	}
+
 	if r.isRequestSync() {
 		err, ok = <-blk.uploadDone
 		if ok {

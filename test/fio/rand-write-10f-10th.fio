@@ -1,9 +1,9 @@
-[seq-writers]
+[random-writers]
 name=blobfuse_file_integrity
 bs=1M
-size=1G
+size=200M
 iodepth=5
-rw=write
+rw=randwrite
 numjobs=10
 ioengine=sync
 verify=crc32c

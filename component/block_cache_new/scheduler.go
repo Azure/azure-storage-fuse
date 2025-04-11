@@ -151,12 +151,13 @@ func doUpload(t *task, workerNo int, r requestType) {
 	if blk.buf == nil {
 		panic("BlockCache::doUpload : messed up")
 	}
-	blkSize := getBlockSize(atomic.LoadInt64(&t.blk.file.size), blk.idx)
+	fileSize := atomic.LoadInt64(&t.blk.file.size)
+	blkSize := getBlockSize(fileSize, blk.idx)
 	log.Trace("BlockCache::doUpload : [sync:%d] Upload Starting for blk idx: %d, file : %s, blk size : %d, file size : %d", r, blk.idx, blk.file.Name, blkSize, blk.file.size)
 	if blkSize <= 0 {
 		// There has been a truncate call came to shrink the filesize.
 		// No need for uploading this block
-		log.Err("BlockCache::doUpload : Not uploading the block as blocklist got contracted[sync: %d], path=%s, blk Idx = %d, worker No = %d\n", r, t.blk.file.Name, t.blk.idx, workerNo)
+		log.Err("BlockCache::doUpload : Not uploading the block as blocklist got contracted[sync: %d], file=%s, size=%d, blk Idx = %d, worker No = %d\n", r, t.blk.file.Name, fileSize, t.blk.idx, workerNo)
 		blk.uploadDone <- errors.New("BlockList got contracted")
 	} else {
 		err := bc.NextComponent().StageData(
@@ -177,9 +178,9 @@ func doUpload(t *task, workerNo int, r requestType) {
 			log.Err("BlockCache::doUpload : Upload failed blk idx: %d, file : %s, err : %s", blk.idx, blk.file.Name, err.Error())
 			blk.uploadDone <- err
 		}
-		if r.isRequestScheduled() {
-			bPool.uploadCompletedStream <- blk
-		}
+	}
+	if r.isRequestScheduled() {
+		bPool.uploadCompletedStream <- blk
 	}
 	close(t.taskDone)
 }

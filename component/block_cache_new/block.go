@@ -133,6 +133,10 @@ func getBlockSize(size int64, idx int) int {
 	return min(int(bc.blockSize), int(size)-(idx*int(bc.blockSize)))
 }
 
+func getNoOfBlocksInFile(size int64) int {
+	return int((size + int64(bc.blockSize) - 1) / int64(bc.blockSize))
+}
+
 // Todo: This following is incomplete
 func populateFileInfo(file *File, attr *internal.ObjAttr) {
 	file.size = attr.Size
@@ -145,6 +149,8 @@ func isDstPathTempFile(path string) bool {
 // When block gets modified. Modify the LRU's and state.
 func updateModifiedBlock(blk *block) bool {
 	blk.hole = false
+	blk.buf.valid = true // From this flag we are signalling that there has been a write on this block
+	// That info can be used by asyncupload scheduler to delay the scheduling.
 	if blk.state == committedBlock || blk.state == uncommitedBlock {
 		blk.state = localBlock
 		return true
