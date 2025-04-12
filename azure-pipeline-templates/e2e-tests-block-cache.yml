@@ -182,7 +182,7 @@ steps:
       ro_mount: true
       mountStep: 
         script: |
-          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) ${{ parameters.mnt_flags }}
+          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} -o direct_io --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) ${{ parameters.mnt_flags }}
 
   - script: |
       rm -rf $(WORK_DIR)/localfile*
