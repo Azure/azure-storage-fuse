@@ -149,8 +149,6 @@ func isDstPathTempFile(path string) bool {
 // When block gets modified. Modify the LRU's and state.
 func updateModifiedBlock(blk *block) bool {
 	blk.hole = false
-	blk.buf.valid = true // From this flag we are signalling that there has been a write on this block
-	// That info can be used by asyncupload scheduler to delay the scheduling.
 	if blk.state == committedBlock || blk.state == uncommitedBlock {
 		blk.state = localBlock
 		return true

@@ -262,9 +262,6 @@ func (bp *BufferPool) asyncUploadScheduler() {
 			noOfAsyncUploads--
 			blk := currentBlk.Value.(*block)
 			currentBlk = currentBlk.Prev()
-			if !blk.buf.valid {
-				continue
-			}
 			cow := time.Now()
 			r := asyncRequest
 			r |= asyncUploadScheduler
@@ -359,7 +356,7 @@ func (bp *BufferPool) getBufferForBlock(blk *block) {
 	defer bp.Unlock()
 	switch blk.state {
 	case localBlock:
-		blk.buf = bPool.getBuffer(false)
+		blk.buf = bPool.getBuffer(true)
 		bPool.addLocalBlockToLRU(blk)
 	case committedBlock:
 		blk.buf = bPool.getBuffer(false)
