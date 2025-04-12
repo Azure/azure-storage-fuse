@@ -40,7 +40,7 @@ steps:
     env:
       mount_dir: ${{ parameters.mount_dir }}
 
-  # Check blobfuse2 is mounted or not    
+  # Check blobfuse2 is mounted or not
   - script: |
       sudo ps -aux | grep blobfuse2
     displayName: 'Print Process info'

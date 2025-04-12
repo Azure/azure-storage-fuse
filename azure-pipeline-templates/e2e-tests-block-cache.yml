@@ -194,6 +194,17 @@ steps:
       for i in {1,2,3,4,5,6,7,8,9,10,20,30,50,100,200,1024,2048,4096}; do echo $i; done | parallel --will-cite -j 5 'cp -v $(WORK_DIR)/localfile{} ${{ parameters.mount_dir }}/remotefile{}'
     displayName: 'Upload local files'
 
+  - template: 'mount.yml'
+    parameters:
+      working_dir: $(WORK_DIR)
+      mount_dir: ${{ parameters.mount_dir }}
+      temp_dir: ${{ parameters.temp_dir }}
+      prefix: ${{ parameters.idstring }}
+      ro_mount: true
+      mountStep: 
+        script: |
+          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} -o direct_io --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) ${{ parameters.mnt_flags }}
+
   - script: |
       md5sum $(WORK_DIR)/localfile* > $(WORK_DIR)/md5sum_local_modified.txt
       md5sum ${{ parameters.mount_dir }}/remotefile* > $(WORK_DIR)/md5sum_remote_modified.txt
