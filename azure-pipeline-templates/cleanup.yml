@@ -25,8 +25,3 @@ steps:
       temp_dir: ${{ parameters.temp_dir }}
     displayName: 'Cleanup'
     condition: always()
-
-  - script: |
-       cat /tmp/blobfuse2.crash
-    displayName: 'View Crash file'
-    condition: always()
