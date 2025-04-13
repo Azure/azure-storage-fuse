@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1744350002788,
+  "lastUpdate": 1744530827008,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -381,6 +381,68 @@ window.BENCHMARK_DATA = {
           {
             "name": "read_40GB",
             "value": 17.016963243484497,
+            "unit": "seconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Vikas Bhansali",
+            "username": "vibhansa-msft",
+            "email": "64532198+vibhansa-msft@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "07c91329ece3d6310f1a56cdead7b10e449fc66f",
+          "message": "Preload feature drop to main branch (#1678)\n\nCo-authored-by: Sourav Gupta <98318303+souravgupta-msft@users.noreply.github.com>\nCo-authored-by: souravgupta <souravgupta@microsoft.com>",
+          "timestamp": "2025-04-11T09:17:56Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/07c91329ece3d6310f1a56cdead7b10e449fc66f"
+        },
+        "date": 1744530826767,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "write_1GB",
+            "value": 1.490208387374878,
+            "unit": "seconds"
+          },
+          {
+            "name": "write_10GB",
+            "value": 6.605675220489502,
+            "unit": "seconds"
+          },
+          {
+            "name": "write_100GB",
+            "value": 50.35501551628113,
+            "unit": "seconds"
+          },
+          {
+            "name": "write_40GB",
+            "value": 20.25282120704651,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_1GB",
+            "value": 0.8229119777679443,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_10GB",
+            "value": 4.728259325027466,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_100GB",
+            "value": 50.38026237487793,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_40GB",
+            "value": 18.220977067947388,
             "unit": "seconds"
           }
         ]
