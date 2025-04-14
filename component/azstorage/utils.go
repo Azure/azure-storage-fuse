@@ -288,6 +288,12 @@ func parseMetadata(attr *internal.ObjAttr, metadata map[string]*string) {
 			} else if strings.ToLower(k) == symlinkKey && *v == "true" {
 				attr.Flags = internal.NewSymlinkBitMap()
 				attr.Mode = attr.Mode | os.ModeSymlink
+			} else if strings.ToLower(k) == common.POSIXOwnerMeta {
+				attr.Owner = common.ParseUint32(*v)
+			} else if strings.ToLower(k) == common.POSIXGroupMeta {
+				attr.Group = common.ParseUint32(*v)
+			} else if strings.ToLower(k) == common.POSIXModeMeta {
+				attr.Mode, _ = getFileMode(*v)
 			}
 		}
 	}

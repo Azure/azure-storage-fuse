@@ -80,6 +80,8 @@ type ObjAttr struct {
 	Name     string             // base name of the path
 	MD5      []byte             // MD5 of the blob as per last GetAttr
 	ETag     string             // ETag of the blob as per last GetAttr
+	Owner    uint32             // Owner of the file
+	Group    uint32             // Group of the file
 	Metadata map[string]*string // extra information to preserve
 }
 
