@@ -45,8 +45,8 @@ type NodeServer struct {
 	server  thrift.TServer
 }
 
-func NewNodeServer(address string, cacheDir string) (*NodeServer, error) {
-	log.Debug("NodeServer::NewNodeServer: Creating NodeServer with address: %s, cacheDir: %s", address, cacheDir)
+func NewNodeServer(address string) (*NodeServer, error) {
+	log.Debug("NodeServer::NewNodeServer: Creating NodeServer with address: %s", address)
 
 	protocolFactory := thrift.NewTBinaryProtocolFactoryConf(nil)
 	transportFactory := thrift.NewTTransportFactory()
@@ -70,7 +70,7 @@ func NewNodeServer(address string, cacheDir string) (*NodeServer, error) {
 		return nil, err
 	}
 
-	handler := NewChunkServiceHandler(cacheDir)
+	handler := NewChunkServiceHandler()
 	processor := service.NewChunkServiceProcessor(handler)
 	server := thrift.NewTSimpleServer4(processor, transport, transportFactory, protocolFactory)
 

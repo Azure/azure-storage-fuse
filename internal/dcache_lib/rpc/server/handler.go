@@ -46,15 +46,13 @@ var _ service.ChunkService = &ChunkServiceHandler{}
 
 // ChunkServiceHandler struct implements the ChunkService interface
 type ChunkServiceHandler struct {
-	cacheDir string
-	locks    *common.LockMap
+	locks *common.LockMap
 	// more fields can be added here as needed
 }
 
-func NewChunkServiceHandler(cacheDir string) *ChunkServiceHandler {
+func NewChunkServiceHandler() *ChunkServiceHandler {
 	return &ChunkServiceHandler{
-		locks:    common.NewLockMap(),
-		cacheDir: cacheDir,
+		locks: common.NewLockMap(),
 	}
 }
 
