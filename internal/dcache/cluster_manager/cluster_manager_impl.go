@@ -68,6 +68,7 @@ func (c *ClusterManagerImpl) IsAlive(peerId string) bool {
 
 // Start implements ClusterManager.
 func (cmi *ClusterManagerImpl) Start(clusterManagerConfig ClusterManagerConfig) error {
+	//check if ClusterMap.json already created if yes don't create again
 	cmi.createClusterConfig(clusterManagerConfig)
 	//schedule Punch heartbeat
 	//Schedule clustermap config update at storage and local copy
