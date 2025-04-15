@@ -36,18 +36,12 @@ package dcache
 type Peer struct {
 }
 
-type VolumeState struct {
-	Volume RawVolume `json:"volume,omitempty"`
-	State  string    `json:"state,omitempty"`
-}
-
 type MirroredVolume struct {
-	Name           string        `json:"name,omitempty"`
-	RVmapWithState []VolumeState `json:"rv_map_with_state,omitempty"`
+	RVWithStateMap map[string]string `json:"rv_with_state_map,omitempty"`
+	State          StateEnum         `json:"state,omitempty"`
 }
 
 type RawVolume struct {
-	Name             string    `json:"name,omitempty"`
 	HostNode         string    `json:"host-node,omitempty"`
 	FSID             string    `json:"fsid,omitempty"`
 	FDID             string    `json:"fdid,omitempty"`
@@ -68,15 +62,15 @@ const (
 )
 
 type ClusterConfig struct {
-	Readonly      bool             `json:"readonly,omitempty"`
-	State         StateEnum        `json:"state,omitempty"`
-	Epoch         int64            `json:"epoch,omitempty"`
-	CreatedAt     int64            `json:"created-at,omitempty"`
-	LastUpdatedAt int64            `json:"last_updated_at,omitempty"`
-	LastUpdatedBy string           `json:"last_updated_by,omitempty"`
-	Config        DCacheConfig     `json:"config"`
-	RVList        []RawVolume      `json:"rv-list"`
-	MVList        []MirroredVolume `json:"mv-list"`
+	Readonly      bool                      `json:"readonly,omitempty"`
+	State         StateEnum                 `json:"state,omitempty"`
+	Epoch         int64                     `json:"epoch,omitempty"`
+	CreatedAt     int64                     `json:"created-at,omitempty"`
+	LastUpdatedAt int64                     `json:"last_updated_at,omitempty"`
+	LastUpdatedBy string                    `json:"last_updated_by,omitempty"`
+	Config        DCacheConfig              `json:"config"`
+	RVMap         map[string]RawVolume      `json:"rv-map"`
+	MVMap         map[string]MirroredVolume `json:"mv-map"`
 }
 
 type HeartbeatData struct {
