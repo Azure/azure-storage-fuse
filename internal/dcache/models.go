@@ -54,6 +54,7 @@ type RawVolume struct {
 	State            StateEnum `json:"state,omitempty"`
 	TotalSpaceGB     int       `json:"total_space_GB,omitempty"`
 	AvailableSpaceGB int       `json:"available_space_GB,omitempty"`
+	LocalCachePath   string
 }
 
 type StateEnum string
