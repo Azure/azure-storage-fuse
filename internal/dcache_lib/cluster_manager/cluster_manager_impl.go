@@ -63,7 +63,7 @@ func NewClusterManager(callback dcachelib.StorageCallbacks) ClusterManager {
 	return &ClusterManagerImpl{}
 }
 
-func (cmi *ClusterManagerImpl) CreateClusterConfig() error {
+func (cmi *ClusterManagerImpl) CreateClusterConfig(dcacheConfig dcachelib.DCacheConfig, storageCachepath string) error {
 	return nil
 }
 
