@@ -43,27 +43,27 @@ type StorageCallbackImpl struct {
 	storage  internal.Component
 }
 
-// DeleteBlob implements dcachelib.StorageCallbacks.
+// DeleteBlob implements dcache.StorageCallbacks.
 func (sci *StorageCallbackImpl) DeleteBlob(opt internal.DeleteFileOptions) error {
 	return sci.nextComp.DeleteFile(opt)
 }
 
-// DeleteBlobInStorage implements dcachelib.StorageCallbacks.
+// DeleteBlobInStorage implements dcache.StorageCallbacks.
 func (sci *StorageCallbackImpl) DeleteBlobInStorage(opt internal.DeleteFileOptions) error {
 	return sci.storage.DeleteFile(opt)
 }
 
-// GetBlob implements dcachelib.StorageCallbacks.
+// GetBlob implements dcache.StorageCallbacks.
 func (sci *StorageCallbackImpl) GetBlob(options internal.ReadFileWithNameOptions) ([]byte, error) {
 	return sci.nextComp.ReadFileWithName(options)
 }
 
-// GetBlobFromStorage implements dcachelib.StorageCallbacks.
+// GetBlobFromStorage implements dcache.StorageCallbacks.
 func (sci *StorageCallbackImpl) GetBlobFromStorage(options internal.ReadFileWithNameOptions) ([]byte, error) {
 	return sci.storage.ReadFileWithName(options)
 }
 
-// GetProperties implements dcachelib.StorageCallbacks.
+// GetProperties implements dcache.StorageCallbacks.
 func (sci *StorageCallbackImpl) GetProperties(options internal.GetAttrOptions) (*internal.ObjAttr, error) {
 	return sci.nextComp.GetAttr(options)
 }
@@ -72,22 +72,22 @@ func (sci *StorageCallbackImpl) GetPropertiesFromStorage(options internal.GetAtt
 	return sci.storage.GetAttr(options)
 }
 
-// ReadDir implements dcachelib.StorageCallbacks.
+// ReadDir implements dcache.StorageCallbacks.
 func (sci *StorageCallbackImpl) ReadDir(options internal.ReadDirOptions) ([]*internal.ObjAttr, error) {
 	return sci.nextComp.ReadDir(options)
 }
 
-// ReadDirFromStorage implements dcachelib.StorageCallbacks.
+// ReadDirFromStorage implements dcache.StorageCallbacks.
 func (sci *StorageCallbackImpl) ReadDirFromStorage(options internal.ReadDirOptions) ([]*internal.ObjAttr, error) {
 	return sci.storage.ReadDir(options)
 }
 
-// SetProperties implements dcachelib.StorageCallbacks.
+// SetProperties implements dcache.StorageCallbacks.
 func (sci *StorageCallbackImpl) SetProperties(path string, properties map[string]string) error {
 	panic("unimplemented")
 }
 
-// SetPropertiesInStorage implements dcachelib.StorageCallbacks.
+// SetPropertiesInStorage implements dcache.StorageCallbacks.
 func (sci *StorageCallbackImpl) SetPropertiesInStorage(path string, properties map[string]string) error {
 	panic("unimplemented")
 }
