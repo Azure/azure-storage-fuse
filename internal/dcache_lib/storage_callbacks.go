@@ -33,18 +33,21 @@
 
 package dcachelib
 
-import "github.com/Azure/azure-storage-fuse/v2/internal"
+import (
+	"github.com/Azure/azure-storage-fuse/v2/internal"
+)
 
 type StorageCallbacks interface {
 	GetBlobFromStorage(opt internal.ReadFileWithNameOptions) ([]byte, error)
 	PutBlobInStorage(opt internal.WriteFromBufferOptions) error
 	GetPropertiesFromStorage(opt internal.GetAttrOptions) (*internal.ObjAttr, error)
-	SetPropertiesInStorage(path string, properties map[string]string) error
+	SetPropertiesInStorage(properties internal.SetAttrOptions) error
 	ReadDirFromStroage(options internal.ReadDirOptions) ([]*internal.ObjAttr, error)
+	DeleteBlobInStorage(opt internal.DeleteFileOptions) error
 
 	GetBlob(opt internal.ReadFileWithNameOptions) ([]byte, error)
 	PutBlob(opt internal.WriteFromBufferOptions) error
 	GetProperties(opt internal.GetAttrOptions) (*internal.ObjAttr, error)
-	SetProperties(path string, properties map[string]string) error
+	SetProperties(properties internal.SetAttrOptions) error
 	ReadDir(options internal.ReadDirOptions) ([]*internal.ObjAttr, error)
 }

@@ -586,6 +586,22 @@ func (bb *BlockBlob) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 	return attr, err
 }
 
+// SetAttr : Set metadata property of the blob
+func (bb *BlockBlob) SetAttr(name string, attr *internal.ObjAttr) (err error) {
+	log.Trace("BlockBlob::GetAttr : name %s", name)
+
+	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
+	// Set the metadata
+	_, err = blobClient.SetMetadata(context.Background(), attr.Metadata, &blob.SetMetadataOptions{
+		AccessConditions: &blob.AccessConditions{
+			ModifiedAccessConditions: &blob.ModifiedAccessConditions{
+				IfMatch: to.Ptr(azcore.ETag(attr.ETag)),
+			},
+		},
+	})
+	return err
+}
+
 // List : Get a list of blobs matching the given prefix
 // This fetches the list using a marker so the caller code should handle marker logic
 // If count=0 - fetch max entries

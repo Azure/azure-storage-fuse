@@ -539,6 +539,10 @@ func (az *AzStorage) GetAttr(options internal.GetAttrOptions) (attr *internal.Ob
 	return az.storage.GetAttr(options.Name)
 }
 
+func (az *AzStorage) SetAttr(options internal.SetAttrOptions) error {
+	return az.storage.SetAttr(options.Name, options.Attr)
+}
+
 func (az *AzStorage) Chmod(options internal.ChmodOptions) error {
 	log.Trace("AzStorage::Chmod : Change mod of file %s", options.Name)
 	err := az.storage.ChangeMod(options.Name, options.Mode)

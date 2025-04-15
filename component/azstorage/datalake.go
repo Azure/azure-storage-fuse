@@ -450,6 +450,11 @@ func (dl *Datalake) GetAttr(name string) (blobAttr *internal.ObjAttr, err error)
 	return blobAttr, nil
 }
 
+// SetAttr : Set metadata property of path
+func (dl *Datalake) SetAttr(name string, attr *internal.ObjAttr) (err error) {
+	return dl.BlockBlob.SetAttr(name, attr)
+}
+
 // List : Get a list of path matching the given prefix
 // This fetches the list using a marker so the caller code should handle marker logic
 // If count=0 - fetch max entries

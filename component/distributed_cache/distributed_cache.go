@@ -43,7 +43,6 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
-	"github.com/Azure/azure-storage-fuse/v2/internal/dcache_lib/meta_manager"
 )
 
 /* NOTES:
@@ -145,24 +144,8 @@ func (dc *DistributedCache) Start(ctx context.Context) error {
 		return err
 	}
 	log.Info("DistributedCache::Start : Cache structure setup completed")
-	dc.NewFunc()
 
 	return nil
-}
-
-func (dc *DistributedCache) NewFunc() {
-	storagecallback := initStorageCallback(dc.NextComponent(), dc.azstorage)
-	metamanager, err := meta_manager.NewMetaManager(dc.cacheID, storagecallback)
-	if err != nil {
-		log.Err("DistributedCache::NewFunc : error [failed to create new file: %v]", err)
-		return
-	}
-	err = metamanager.CreateMetaFile("jamU.txt", []string{"test", "test2"})
-	if err != nil {
-		log.Err("DistributedCache::NewFunc : error [failed to create new file: %v]", err)
-		return
-
-	}
 }
 
 // setupCacheStructure checks and creates necessary cache directories and metadata.

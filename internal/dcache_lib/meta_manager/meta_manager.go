@@ -62,5 +62,5 @@ type MetaManager interface {
 	GetHandleCount(filename string) (int64, error)
 
 	// GetFileContent reads and returns the content of a file
-	GetFileContent(filename string) ([]byte, error)
+	GetFileContent(filename string) (*MetaFile, error)
 }
