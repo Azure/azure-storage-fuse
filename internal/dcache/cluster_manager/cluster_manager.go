@@ -31,47 +31,36 @@
    SOFTWARE
 */
 
-package distributed_cache
+package clustermanager
 
-import (
-	"errors"
-	"fmt"
-	"net"
+import "github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 
-	"github.com/Azure/azure-storage-fuse/v2/common/log"
-)
-
-var getNetAddrs = net.InterfaceAddrs
-
-// logAndReturnError logs the error and returns it.
-func logAndReturnError(msg string) error {
-	log.Err(msg)
-	return errors.New(msg)
+type ClusterManager interface {
+	Start(ClusterManagerConfig) error
+	Stop() error
+	CreateClusterConfig() error
+	GetActiveMVs() []dcache.MirroredVolume
+	GetPeer(nodeId string) dcache.Peer
+	GetPeerRVs(mvName string) []dcache.RawVolume
+	IsAlive(peerId string) bool
+	UpdateMVs(mvs []dcache.MirroredVolume)
+	UpdateStorageConfigIfRequired() error
+	WatchForConfigChanges() error
 }
 
-// TODO: Interface name and identify the ip.
-func getVmIp() (string, error) {
-	addresses, err := getNetAddrs()
-	if err != nil {
-		return "", err
-	}
-
-	var vmIP string
-	for _, addr := range addresses {
-		ipNet, ok := addr.(*net.IPNet)
-		if !ok || ipNet.IP.IsLoopback() {
-			continue
-		}
-		if ipNet.IP.To4() != nil {
-			vmIP = ipNet.IP.String()
-			// parts := strings.Split(vmIP, ".")
-			// vmIP = fmt.Sprintf("%s.%s.%d.%d", parts[0], parts[1], rand.Intn(256), rand.Intn(256))
-			break
-		}
-	}
-	if vmIP == "" {
-		return "", fmt.Errorf("unable to find a valid non-loopback IPv4 address")
-	}
-
-	return vmIP, nil
+type ClusterManagerConfig struct {
+	MinNodes               int
+	ChunkSize              uint64
+	StripeSize             uint64
+	NumReplicas            uint8
+	MvsPerRv               uint64
+	RvFullThreshold        uint64
+	RvNearfullThreshold    uint64
+	HeartbeatSeconds       uint16
+	HeartbeatsTillNodeDown uint8
+	ClustermapEpoch        uint64
+	RebalancePercentage    uint64
+	SafeDeletes            bool
+	CacheAccess            string
+	StoragePath            string
 }

@@ -522,27 +522,6 @@ func GetCRC64(data []byte, len int) []byte {
 	return checksumBytes
 }
 
-func GetUUID() (string, error) {
-	uuidFilePath := filepath.Join(DefaultWorkDir, "blobfuse_node_uuid")
-
-	if _, err := os.Stat(uuidFilePath); err == nil {
-		// File exists, read its content
-		data, err := os.ReadFile(uuidFilePath)
-		if err != nil {
-			return "", err
-		}
-		return string(data), nil
-	}
-
-	// File doesn't exist, generate a new UUID
-	newUuid := gouuid.New().String()
-	if err := os.WriteFile(uuidFilePath, []byte(newUuid), 0400); err != nil {
-		return "", err
-	}
-
-	return newUuid, nil
-}
-
 func GetMD5(fi *os.File) ([]byte, error) {
 	hasher := md5.New()
 	_, err := io.Copy(hasher, fi)
@@ -608,4 +587,26 @@ func UpdatePipeline(pipeline []string, component string) []string {
 	}
 
 	return pipeline
+}
+
+
+func GetUUID() (string, error) {
+	uuidFilePath := filepath.Join(DefaultWorkDir, "blobfuse_node_uuid")
+
+	if _, err := os.Stat(uuidFilePath); err == nil {
+		// File exists, read its content
+		data, err := os.ReadFile(uuidFilePath)
+		if err != nil {
+			return "", err
+		}
+		return string(data), nil
+	}
+
+	// File doesn't exist, generate a new UUID
+	newUuid := gouuid.New().String()
+	if err := os.WriteFile(uuidFilePath, []byte(newUuid), 0400); err != nil {
+		return "", err
+	}
+
+	return newUuid, nil
 }

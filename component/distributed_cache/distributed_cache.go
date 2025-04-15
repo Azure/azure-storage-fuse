@@ -35,6 +35,7 @@ package distributed_cache
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"syscall"
@@ -43,8 +44,8 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
-	dcachelib "github.com/Azure/azure-storage-fuse/v2/internal/dcache_lib"
-	clustermanager "github.com/Azure/azure-storage-fuse/v2/internal/dcache_lib/cluster_manager"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
+	clustermanager "github.com/Azure/azure-storage-fuse/v2/internal/dcache/cluster_manager"
 )
 
 /* NOTES:
@@ -75,7 +76,7 @@ type DistributedCache struct {
 
 	azstroage        internal.Component
 	clusterManager   clustermanager.ClusterManager
-	strorageCallback dcachelib.StorageCallbacks
+	strorageCallback dcache.StorageCallbacks
 }
 
 // Structure defining your config parameters
@@ -172,6 +173,27 @@ func (dc *DistributedCache) setupCacheStructure(cacheDir string) error {
 					}
 				}
 			}
+			err = dc.clusterManager.Start(clustermanager.ClusterManagerConfig{
+				MinNodes:               dc.minNodes,
+				ChunkSize:              dc.chunkSize,
+				StripeSize:             dc.stripeSize,
+				NumReplicas:            dc.replicas,
+				MvsPerRv:               dc.mvsPerRv,
+				RvFullThreshold:        dc.rvFullThreshold,
+				RvNearfullThreshold:    dc.rvNearfullThreshold,
+				HeartbeatSeconds:       dc.hbDuration,
+				HeartbeatsTillNodeDown: dc.maxMissedHbs,
+				ClustermapEpoch:        dc.clustermapEpoch,
+				RebalancePercentage:    dc.rebalancePercentage,
+				SafeDeletes:            dc.safeDeletes,
+				CacheAccess:            dc.cacheAccess,
+				StoragePath:            "__CACHE__" + dc.cacheID,
+			})
+			if bloberror.HasCode(err, bloberror.BlobAlreadyExists) {
+				return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to create creator file: %v]", err))
+			} else {
+				return nil
+			}
 
 			err = dc.clusterManager.CreateClusterConfig(dcachelib.DCacheConfig{
 				MinNodes:               dc.minNodes,
@@ -199,6 +221,11 @@ func (dc *DistributedCache) setupCacheStructure(cacheDir string) error {
 		}
 	}
 	return nil
+}
+
+func logAndReturnError(msg string) error {
+	log.Err(msg)
+	return errors.New(msg)
 }
 
 // Stop : Stop the component functionality and kill all threads started
