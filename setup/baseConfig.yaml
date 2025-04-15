@@ -7,16 +7,23 @@ logging:
 # Pipeline configuration. Choose components to be engaged. The order below is the priority order that needs to be followed.
 components:
   - libfuse
+  - xload
   - block_cache
   - file_cache
   - attr_cache
   - azstorage
- 
+
+# Xload configuration 
+xload:
+  path: <path to local disk cache where downloaded files will be stored>
+  export-progress: <preload progress will be exported to a json fil. Default output file is '~/.blobfuse2/xload_stats_{PID}.json'. Default - not exported> 
+  validate-md5: <if md5 sum is present in the blob, validate it post download. Default - false>
+
 # Block cache related configuration
 block_cache:
   block-size-mb: <size of each block to be cached in memory (in MB). Default - 16 MB>
   mem-size-mb: <total amount of memory to be preallocated for block cache (in MB). Default - 80% of free memory>
-  path: <path to local disk cache where downloaded blocked will be stored>
+  path: <path to local disk cache where downloaded blocks will be stored>
   disk-size-mb: <maximum disk cache size allowed. Default - 80% of free disk space>
   disk-timeout-sec: <default disk cache eviction timeout (in sec). Default - 120 sec>
   prefetch: <number of blocks to be prefetched in serial read case. Min - 11, Default - 2 times number of CPU cores>

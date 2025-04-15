@@ -34,11 +34,9 @@
 package azstorage
 
 import (
-	"crypto/md5"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -542,17 +540,6 @@ func sanitizeSASKey(key string) string {
 	}
 
 	return key
-}
-
-func getMD5(fi *os.File) ([]byte, error) {
-	hasher := md5.New()
-	_, err := io.Copy(hasher, fi)
-
-	if err != nil {
-		return nil, errors.New("failed to generate md5")
-	}
-
-	return hasher.Sum(nil), nil
 }
 
 func autoDetectAuthMode(opt AzStorageOptions) string {
