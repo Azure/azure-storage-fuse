@@ -2680,15 +2680,15 @@ func (p *LeaveMVResponse) String() string {
 
 // Attributes:
 //  - MV
-//  - PeerRV
 //  - SourceRV
 //  - TargetRV
+//  - PeerRV
 //  - DataLength
 type StartSyncRequest struct {
   MV string `thrift:"MV,1" db:"MV" json:"MV"`
-  PeerRV []string `thrift:"peerRV,2" db:"peerRV" json:"peerRV"`
-  SourceRV string `thrift:"sourceRV,3" db:"sourceRV" json:"sourceRV"`
-  TargetRV string `thrift:"targetRV,4" db:"targetRV" json:"targetRV"`
+  SourceRV string `thrift:"sourceRV,2" db:"sourceRV" json:"sourceRV"`
+  TargetRV string `thrift:"targetRV,3" db:"targetRV" json:"targetRV"`
+  PeerRV []string `thrift:"peerRV,4" db:"peerRV" json:"peerRV"`
   DataLength int64 `thrift:"dataLength,5" db:"dataLength" json:"dataLength"`
 }
 
@@ -2701,16 +2701,16 @@ func (p *StartSyncRequest) GetMV() string {
   return p.MV
 }
 
-func (p *StartSyncRequest) GetPeerRV() []string {
-  return p.PeerRV
-}
-
 func (p *StartSyncRequest) GetSourceRV() string {
   return p.SourceRV
 }
 
 func (p *StartSyncRequest) GetTargetRV() string {
   return p.TargetRV
+}
+
+func (p *StartSyncRequest) GetPeerRV() []string {
+  return p.PeerRV
 }
 
 func (p *StartSyncRequest) GetDataLength() int64 {
@@ -2740,7 +2740,7 @@ func (p *StartSyncRequest) Read(ctx context.Context, iprot thrift.TProtocol) err
         }
       }
     case 2:
-      if fieldTypeId == thrift.LIST {
+      if fieldTypeId == thrift.STRING {
         if err := p.ReadField2(ctx, iprot); err != nil {
           return err
         }
@@ -2760,7 +2760,7 @@ func (p *StartSyncRequest) Read(ctx context.Context, iprot thrift.TProtocol) err
         }
       }
     case 4:
-      if fieldTypeId == thrift.STRING {
+      if fieldTypeId == thrift.LIST {
         if err := p.ReadField4(ctx, iprot); err != nil {
           return err
         }
@@ -2804,6 +2804,24 @@ func (p *StartSyncRequest)  ReadField1(ctx context.Context, iprot thrift.TProtoc
 }
 
 func (p *StartSyncRequest)  ReadField2(ctx context.Context, iprot thrift.TProtocol) error {
+  if v, err := iprot.ReadString(ctx); err != nil {
+  return thrift.PrependError("error reading field 2: ", err)
+} else {
+  p.SourceRV = v
+}
+  return nil
+}
+
+func (p *StartSyncRequest)  ReadField3(ctx context.Context, iprot thrift.TProtocol) error {
+  if v, err := iprot.ReadString(ctx); err != nil {
+  return thrift.PrependError("error reading field 3: ", err)
+} else {
+  p.TargetRV = v
+}
+  return nil
+}
+
+func (p *StartSyncRequest)  ReadField4(ctx context.Context, iprot thrift.TProtocol) error {
   _, size, err := iprot.ReadListBegin(ctx)
   if err != nil {
     return thrift.PrependError("error reading list begin: ", err)
@@ -2822,24 +2840,6 @@ var _elem18 string
   if err := iprot.ReadListEnd(ctx); err != nil {
     return thrift.PrependError("error reading list end: ", err)
   }
-  return nil
-}
-
-func (p *StartSyncRequest)  ReadField3(ctx context.Context, iprot thrift.TProtocol) error {
-  if v, err := iprot.ReadString(ctx); err != nil {
-  return thrift.PrependError("error reading field 3: ", err)
-} else {
-  p.SourceRV = v
-}
-  return nil
-}
-
-func (p *StartSyncRequest)  ReadField4(ctx context.Context, iprot thrift.TProtocol) error {
-  if v, err := iprot.ReadString(ctx); err != nil {
-  return thrift.PrependError("error reading field 4: ", err)
-} else {
-  p.TargetRV = v
-}
   return nil
 }
 
@@ -2880,8 +2880,28 @@ func (p *StartSyncRequest) writeField1(ctx context.Context, oprot thrift.TProtoc
 }
 
 func (p *StartSyncRequest) writeField2(ctx context.Context, oprot thrift.TProtocol) (err error) {
-  if err := oprot.WriteFieldBegin(ctx, "peerRV", thrift.LIST, 2); err != nil {
-    return thrift.PrependError(fmt.Sprintf("%T write field begin error 2:peerRV: ", p), err) }
+  if err := oprot.WriteFieldBegin(ctx, "sourceRV", thrift.STRING, 2); err != nil {
+    return thrift.PrependError(fmt.Sprintf("%T write field begin error 2:sourceRV: ", p), err) }
+  if err := oprot.WriteString(ctx, string(p.SourceRV)); err != nil {
+  return thrift.PrependError(fmt.Sprintf("%T.sourceRV (2) field write error: ", p), err) }
+  if err := oprot.WriteFieldEnd(ctx); err != nil {
+    return thrift.PrependError(fmt.Sprintf("%T write field end error 2:sourceRV: ", p), err) }
+  return err
+}
+
+func (p *StartSyncRequest) writeField3(ctx context.Context, oprot thrift.TProtocol) (err error) {
+  if err := oprot.WriteFieldBegin(ctx, "targetRV", thrift.STRING, 3); err != nil {
+    return thrift.PrependError(fmt.Sprintf("%T write field begin error 3:targetRV: ", p), err) }
+  if err := oprot.WriteString(ctx, string(p.TargetRV)); err != nil {
+  return thrift.PrependError(fmt.Sprintf("%T.targetRV (3) field write error: ", p), err) }
+  if err := oprot.WriteFieldEnd(ctx); err != nil {
+    return thrift.PrependError(fmt.Sprintf("%T write field end error 3:targetRV: ", p), err) }
+  return err
+}
+
+func (p *StartSyncRequest) writeField4(ctx context.Context, oprot thrift.TProtocol) (err error) {
+  if err := oprot.WriteFieldBegin(ctx, "peerRV", thrift.LIST, 4); err != nil {
+    return thrift.PrependError(fmt.Sprintf("%T write field begin error 4:peerRV: ", p), err) }
   if err := oprot.WriteListBegin(ctx, thrift.STRING, len(p.PeerRV)); err != nil {
     return thrift.PrependError("error writing list begin: ", err)
   }
@@ -2893,27 +2913,7 @@ func (p *StartSyncRequest) writeField2(ctx context.Context, oprot thrift.TProtoc
     return thrift.PrependError("error writing list end: ", err)
   }
   if err := oprot.WriteFieldEnd(ctx); err != nil {
-    return thrift.PrependError(fmt.Sprintf("%T write field end error 2:peerRV: ", p), err) }
-  return err
-}
-
-func (p *StartSyncRequest) writeField3(ctx context.Context, oprot thrift.TProtocol) (err error) {
-  if err := oprot.WriteFieldBegin(ctx, "sourceRV", thrift.STRING, 3); err != nil {
-    return thrift.PrependError(fmt.Sprintf("%T write field begin error 3:sourceRV: ", p), err) }
-  if err := oprot.WriteString(ctx, string(p.SourceRV)); err != nil {
-  return thrift.PrependError(fmt.Sprintf("%T.sourceRV (3) field write error: ", p), err) }
-  if err := oprot.WriteFieldEnd(ctx); err != nil {
-    return thrift.PrependError(fmt.Sprintf("%T write field end error 3:sourceRV: ", p), err) }
-  return err
-}
-
-func (p *StartSyncRequest) writeField4(ctx context.Context, oprot thrift.TProtocol) (err error) {
-  if err := oprot.WriteFieldBegin(ctx, "targetRV", thrift.STRING, 4); err != nil {
-    return thrift.PrependError(fmt.Sprintf("%T write field begin error 4:targetRV: ", p), err) }
-  if err := oprot.WriteString(ctx, string(p.TargetRV)); err != nil {
-  return thrift.PrependError(fmt.Sprintf("%T.targetRV (4) field write error: ", p), err) }
-  if err := oprot.WriteFieldEnd(ctx); err != nil {
-    return thrift.PrependError(fmt.Sprintf("%T write field end error 4:targetRV: ", p), err) }
+    return thrift.PrependError(fmt.Sprintf("%T write field end error 4:peerRV: ", p), err) }
   return err
 }
 
@@ -2934,13 +2934,13 @@ func (p *StartSyncRequest) Equals(other *StartSyncRequest) bool {
     return false
   }
   if p.MV != other.MV { return false }
+  if p.SourceRV != other.SourceRV { return false }
+  if p.TargetRV != other.TargetRV { return false }
   if len(p.PeerRV) != len(other.PeerRV) { return false }
   for i, _tgt := range p.PeerRV {
     _src19 := other.PeerRV[i]
     if _tgt != _src19 { return false }
   }
-  if p.SourceRV != other.SourceRV { return false }
-  if p.TargetRV != other.TargetRV { return false }
   if p.DataLength != other.DataLength { return false }
   return true
 }
@@ -3056,16 +3056,16 @@ func (p *StartSyncResponse) String() string {
 // Attributes:
 //  - SyncID
 //  - MV
-//  - PeerRV
 //  - SourceRV
 //  - TargetRV
+//  - PeerRV
 //  - DataLength
 type EndSyncRequest struct {
   SyncID string `thrift:"syncID,1" db:"syncID" json:"syncID"`
   MV string `thrift:"MV,2" db:"MV" json:"MV"`
-  PeerRV []string `thrift:"peerRV,3" db:"peerRV" json:"peerRV"`
-  SourceRV string `thrift:"sourceRV,4" db:"sourceRV" json:"sourceRV"`
-  TargetRV string `thrift:"targetRV,5" db:"targetRV" json:"targetRV"`
+  SourceRV string `thrift:"sourceRV,3" db:"sourceRV" json:"sourceRV"`
+  TargetRV string `thrift:"targetRV,4" db:"targetRV" json:"targetRV"`
+  PeerRV []string `thrift:"peerRV,5" db:"peerRV" json:"peerRV"`
   DataLength int64 `thrift:"dataLength,6" db:"dataLength" json:"dataLength"`
 }
 
@@ -3082,16 +3082,16 @@ func (p *EndSyncRequest) GetMV() string {
   return p.MV
 }
 
-func (p *EndSyncRequest) GetPeerRV() []string {
-  return p.PeerRV
-}
-
 func (p *EndSyncRequest) GetSourceRV() string {
   return p.SourceRV
 }
 
 func (p *EndSyncRequest) GetTargetRV() string {
   return p.TargetRV
+}
+
+func (p *EndSyncRequest) GetPeerRV() []string {
+  return p.PeerRV
 }
 
 func (p *EndSyncRequest) GetDataLength() int64 {
@@ -3131,7 +3131,7 @@ func (p *EndSyncRequest) Read(ctx context.Context, iprot thrift.TProtocol) error
         }
       }
     case 3:
-      if fieldTypeId == thrift.LIST {
+      if fieldTypeId == thrift.STRING {
         if err := p.ReadField3(ctx, iprot); err != nil {
           return err
         }
@@ -3151,7 +3151,7 @@ func (p *EndSyncRequest) Read(ctx context.Context, iprot thrift.TProtocol) error
         }
       }
     case 5:
-      if fieldTypeId == thrift.STRING {
+      if fieldTypeId == thrift.LIST {
         if err := p.ReadField5(ctx, iprot); err != nil {
           return err
         }
@@ -3204,6 +3204,24 @@ func (p *EndSyncRequest)  ReadField2(ctx context.Context, iprot thrift.TProtocol
 }
 
 func (p *EndSyncRequest)  ReadField3(ctx context.Context, iprot thrift.TProtocol) error {
+  if v, err := iprot.ReadString(ctx); err != nil {
+  return thrift.PrependError("error reading field 3: ", err)
+} else {
+  p.SourceRV = v
+}
+  return nil
+}
+
+func (p *EndSyncRequest)  ReadField4(ctx context.Context, iprot thrift.TProtocol) error {
+  if v, err := iprot.ReadString(ctx); err != nil {
+  return thrift.PrependError("error reading field 4: ", err)
+} else {
+  p.TargetRV = v
+}
+  return nil
+}
+
+func (p *EndSyncRequest)  ReadField5(ctx context.Context, iprot thrift.TProtocol) error {
   _, size, err := iprot.ReadListBegin(ctx)
   if err != nil {
     return thrift.PrependError("error reading list begin: ", err)
@@ -3222,24 +3240,6 @@ var _elem20 string
   if err := iprot.ReadListEnd(ctx); err != nil {
     return thrift.PrependError("error reading list end: ", err)
   }
-  return nil
-}
-
-func (p *EndSyncRequest)  ReadField4(ctx context.Context, iprot thrift.TProtocol) error {
-  if v, err := iprot.ReadString(ctx); err != nil {
-  return thrift.PrependError("error reading field 4: ", err)
-} else {
-  p.SourceRV = v
-}
-  return nil
-}
-
-func (p *EndSyncRequest)  ReadField5(ctx context.Context, iprot thrift.TProtocol) error {
-  if v, err := iprot.ReadString(ctx); err != nil {
-  return thrift.PrependError("error reading field 5: ", err)
-} else {
-  p.TargetRV = v
-}
   return nil
 }
 
@@ -3291,8 +3291,28 @@ func (p *EndSyncRequest) writeField2(ctx context.Context, oprot thrift.TProtocol
 }
 
 func (p *EndSyncRequest) writeField3(ctx context.Context, oprot thrift.TProtocol) (err error) {
-  if err := oprot.WriteFieldBegin(ctx, "peerRV", thrift.LIST, 3); err != nil {
-    return thrift.PrependError(fmt.Sprintf("%T write field begin error 3:peerRV: ", p), err) }
+  if err := oprot.WriteFieldBegin(ctx, "sourceRV", thrift.STRING, 3); err != nil {
+    return thrift.PrependError(fmt.Sprintf("%T write field begin error 3:sourceRV: ", p), err) }
+  if err := oprot.WriteString(ctx, string(p.SourceRV)); err != nil {
+  return thrift.PrependError(fmt.Sprintf("%T.sourceRV (3) field write error: ", p), err) }
+  if err := oprot.WriteFieldEnd(ctx); err != nil {
+    return thrift.PrependError(fmt.Sprintf("%T write field end error 3:sourceRV: ", p), err) }
+  return err
+}
+
+func (p *EndSyncRequest) writeField4(ctx context.Context, oprot thrift.TProtocol) (err error) {
+  if err := oprot.WriteFieldBegin(ctx, "targetRV", thrift.STRING, 4); err != nil {
+    return thrift.PrependError(fmt.Sprintf("%T write field begin error 4:targetRV: ", p), err) }
+  if err := oprot.WriteString(ctx, string(p.TargetRV)); err != nil {
+  return thrift.PrependError(fmt.Sprintf("%T.targetRV (4) field write error: ", p), err) }
+  if err := oprot.WriteFieldEnd(ctx); err != nil {
+    return thrift.PrependError(fmt.Sprintf("%T write field end error 4:targetRV: ", p), err) }
+  return err
+}
+
+func (p *EndSyncRequest) writeField5(ctx context.Context, oprot thrift.TProtocol) (err error) {
+  if err := oprot.WriteFieldBegin(ctx, "peerRV", thrift.LIST, 5); err != nil {
+    return thrift.PrependError(fmt.Sprintf("%T write field begin error 5:peerRV: ", p), err) }
   if err := oprot.WriteListBegin(ctx, thrift.STRING, len(p.PeerRV)); err != nil {
     return thrift.PrependError("error writing list begin: ", err)
   }
@@ -3304,27 +3324,7 @@ func (p *EndSyncRequest) writeField3(ctx context.Context, oprot thrift.TProtocol
     return thrift.PrependError("error writing list end: ", err)
   }
   if err := oprot.WriteFieldEnd(ctx); err != nil {
-    return thrift.PrependError(fmt.Sprintf("%T write field end error 3:peerRV: ", p), err) }
-  return err
-}
-
-func (p *EndSyncRequest) writeField4(ctx context.Context, oprot thrift.TProtocol) (err error) {
-  if err := oprot.WriteFieldBegin(ctx, "sourceRV", thrift.STRING, 4); err != nil {
-    return thrift.PrependError(fmt.Sprintf("%T write field begin error 4:sourceRV: ", p), err) }
-  if err := oprot.WriteString(ctx, string(p.SourceRV)); err != nil {
-  return thrift.PrependError(fmt.Sprintf("%T.sourceRV (4) field write error: ", p), err) }
-  if err := oprot.WriteFieldEnd(ctx); err != nil {
-    return thrift.PrependError(fmt.Sprintf("%T write field end error 4:sourceRV: ", p), err) }
-  return err
-}
-
-func (p *EndSyncRequest) writeField5(ctx context.Context, oprot thrift.TProtocol) (err error) {
-  if err := oprot.WriteFieldBegin(ctx, "targetRV", thrift.STRING, 5); err != nil {
-    return thrift.PrependError(fmt.Sprintf("%T write field begin error 5:targetRV: ", p), err) }
-  if err := oprot.WriteString(ctx, string(p.TargetRV)); err != nil {
-  return thrift.PrependError(fmt.Sprintf("%T.targetRV (5) field write error: ", p), err) }
-  if err := oprot.WriteFieldEnd(ctx); err != nil {
-    return thrift.PrependError(fmt.Sprintf("%T write field end error 5:targetRV: ", p), err) }
+    return thrift.PrependError(fmt.Sprintf("%T write field end error 5:peerRV: ", p), err) }
   return err
 }
 
@@ -3346,13 +3346,13 @@ func (p *EndSyncRequest) Equals(other *EndSyncRequest) bool {
   }
   if p.SyncID != other.SyncID { return false }
   if p.MV != other.MV { return false }
+  if p.SourceRV != other.SourceRV { return false }
+  if p.TargetRV != other.TargetRV { return false }
   if len(p.PeerRV) != len(other.PeerRV) { return false }
   for i, _tgt := range p.PeerRV {
     _src21 := other.PeerRV[i]
     if _tgt != _src21 { return false }
   }
-  if p.SourceRV != other.SourceRV { return false }
-  if p.TargetRV != other.TargetRV { return false }
   if p.DataLength != other.DataLength { return false }
   return true
 }
