@@ -41,11 +41,6 @@ type ClusterManagerImpl struct {
 	storageCallback dcache.StorageCallbacks
 }
 
-// CreateClusterConfig implements ClusterManager.
-func (c *ClusterManagerImpl) CreateClusterConfig() error {
-	return nil
-}
-
 // GetActiveMVs implements ClusterManager.
 func (c *ClusterManagerImpl) GetActiveMVs() []dcache.MirroredVolume {
 	return nil
@@ -67,7 +62,7 @@ func (c *ClusterManagerImpl) IsAlive(peerId string) bool {
 }
 
 // Start implements ClusterManager.
-func (c *ClusterManagerImpl) Start(dcache.DCacheConfig) error {
+func (c *ClusterManagerImpl) Start(clusterManagerConfig ClusterManagerConfig) error {
 	return nil
 }
 

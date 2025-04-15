@@ -36,9 +36,8 @@ package clustermanager
 import "github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 
 type ClusterManager interface {
-	Start(dcache.DCacheConfig) error
+	Start(ClusterManagerConfig) error
 	Stop() error
-	CreateClusterConfig() error
 	GetActiveMVs() []dcache.MirroredVolume
 	GetPeer(nodeId string) dcache.Peer
 	GetPeerRVs(mvName string) []dcache.RawVolume
@@ -46,4 +45,20 @@ type ClusterManager interface {
 	UpdateMVs(mvs []dcache.MirroredVolume)
 	UpdateStorageConfigIfRequired() error
 	WatchForConfigChanges() error
+}
+
+type ClusterManagerConfig struct {
+	MinNodes               int
+	ChunkSize              uint64
+	StripeSize             uint64
+	NumReplicas            uint8
+	MvsPerRv               uint64
+	HeartbeatSeconds       uint16
+	HeartbeatsTillNodeDown uint8
+	ClustermapEpoch        uint64
+	RebalancePercentage    uint64
+	SafeDeletes            bool
+	CacheAccess            string
+	StorageCachePath       string
+	RVList                 []dcache.RawVolume
 }
