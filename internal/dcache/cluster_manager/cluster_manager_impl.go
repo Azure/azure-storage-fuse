@@ -67,7 +67,10 @@ func (c *ClusterManagerImpl) IsAlive(peerId string) bool {
 }
 
 // Start implements ClusterManager.
-func (c *ClusterManagerImpl) Start(dcache.DCacheConfig) error {
+func (c *ClusterManagerImpl) Start(clusterManagerConfig ClusterManagerConfig) error {
+	//create clusterMap.json file
+	//schedule Punch heartbeat
+	//Schedule clustermap config update at storage and local copy
 	return nil
 }
 

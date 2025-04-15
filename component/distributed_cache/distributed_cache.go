@@ -43,6 +43,8 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
+	clustermanager "github.com/Azure/azure-storage-fuse/v2/internal/dcache/cluster_manager"
 )
 
 /* NOTES:
@@ -71,7 +73,9 @@ type DistributedCache struct {
 	safeDeletes         bool
 	cacheAccess         string
 
-	azstroage internal.Component
+	azstroage        internal.Component
+	clusterManager   clustermanager.ClusterManager
+	strorageCallback dcache.StorageCallbacks
 }
 
 // Structure defining your config parameters
@@ -139,6 +143,11 @@ func (dc *DistributedCache) Start(ctx context.Context) error {
 		dc.azstroage = dc.azstroage.NextComponent()
 	}
 
+	dc.strorageCallback = initStorageCallback(
+		dc.NextComponent(),
+		dc.azstroage)
+	dc.clusterManager = clustermanager.NewClusterManager(dc.strorageCallback)
+
 	// Check and create cache directory if needed
 	if err := dc.setupCacheStructure(cacheDir); err != nil {
 		return err
@@ -162,6 +171,27 @@ func (dc *DistributedCache) setupCacheStructure(cacheDir string) error {
 						return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to create directory %s: %v]", dir, err))
 					}
 				}
+			}
+			err = dc.clusterManager.Start(clustermanager.ClusterManagerConfig{
+				MinNodes:               dc.minNodes,
+				ChunkSize:              dc.chunkSize,
+				StripeSize:             dc.stripeSize,
+				NumReplicas:            dc.replicas,
+				MvsPerRv:               dc.mvsPerRv,
+				RvFullThreshold:        dc.rvFullThreshold,
+				RvNearfullThreshold:    dc.rvNearfullThreshold,
+				HeartbeatSeconds:       dc.hbDuration,
+				HeartbeatsTillNodeDown: dc.maxMissedHbs,
+				ClustermapEpoch:        dc.clustermapEpoch,
+				RebalancePercentage:    dc.rebalancePercentage,
+				SafeDeletes:            dc.safeDeletes,
+				CacheAccess:            dc.cacheAccess,
+				StoragePath:            "__CACHE__" + dc.cacheID,
+			})
+			if bloberror.HasCode(err, bloberror.BlobAlreadyExists) {
+				return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to create creator file: %v]", err))
+			} else {
+				return nil
 			}
 
 		} else {
