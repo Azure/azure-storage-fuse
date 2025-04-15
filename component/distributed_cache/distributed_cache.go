@@ -187,7 +187,7 @@ func (dc *DistributedCache) setupCacheStructure(cacheDir string) error {
 				RebalancePercentage:    dc.rebalancePercentage,
 				SafeDeletes:            dc.safeDeletes,
 				CacheAccess:            dc.cacheAccess,
-				StoragePath:            "__CACHE__" + dc.cacheID,
+				StorageCachePath:       "__CACHE__" + dc.cacheID,
 			})
 			if bloberror.HasCode(err, bloberror.BlobAlreadyExists) {
 				return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to create creator file: %v]", err))

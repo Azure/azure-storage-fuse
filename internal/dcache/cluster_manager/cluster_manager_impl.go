@@ -34,16 +34,16 @@
 package clustermanager
 
 import (
+	"encoding/json"
+	"time"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 )
 
 type ClusterManagerImpl struct {
 	storageCallback dcache.StorageCallbacks
-}
-
-// CreateClusterConfig implements ClusterManager.
-func (c *ClusterManagerImpl) CreateClusterConfig() error {
-	return nil
 }
 
 // GetActiveMVs implements ClusterManager.
@@ -67,11 +67,49 @@ func (c *ClusterManagerImpl) IsAlive(peerId string) bool {
 }
 
 // Start implements ClusterManager.
-func (c *ClusterManagerImpl) Start(clusterManagerConfig ClusterManagerConfig) error {
-	//create clusterMap.json file
+func (cmi *ClusterManagerImpl) Start(clusterManagerConfig ClusterManagerConfig) error {
+	cmi.createClusterConfig(clusterManagerConfig)
 	//schedule Punch heartbeat
 	//Schedule clustermap config update at storage and local copy
 	return nil
+}
+
+func (cmi *ClusterManagerImpl) createClusterConfig(clusterManagerConfig ClusterManagerConfig) error {
+	uuidVal, err := common.GetUUID()
+	if err != nil {
+		log.Err("AddHeartBeat: Failed to retrieve UUID, error: %v", err)
+		return err
+	}
+	dcacheConfig := dcache.DCacheConfig{
+		MinNodes:  clusterManagerConfig.MinNodes,
+		ChunkSize: clusterManagerConfig.ChunkSize}
+	clusterConfig := dcache.ClusterConfig{
+		Readonly:      evaluateReadOnlyState(),
+		State:         dcache.StateOffline,
+		Epoch:         1,
+		CreatedAt:     time.Now().Unix(),
+		LastUpdatedAt: time.Now().Unix(),
+		LastUpdatedBy: uuidVal,
+		Config:        dcacheConfig,
+		RVList:        fetchRVList(),
+		MVList:        evaluateMVsRVMapping(),
+	}
+	clusterConfigJson, err := json.Marshal(clusterConfig)
+	log.Err("ClusterManager::CreateClusterConfig : ClusterConfigJson: %v, err %v", clusterConfigJson, err)
+	// err = cmi.metaManagerPutBlob(internal.WriteFromBufferOptions{Name: clusterManagerConfig.StorageCachePath + "/ClusterMap.json", Data: []byte(clusterConfigJson), IsNoneMatchEtagEnabled: true})
+	return nil
+}
+
+func evaluateMVsRVMapping() []dcache.MirroredVolume {
+	return []dcache.MirroredVolume{}
+}
+
+func fetchRVList() []dcache.RawVolume {
+	return []dcache.RawVolume{}
+}
+
+func evaluateReadOnlyState() bool {
+	return false
 }
 
 // Stop implements ClusterManager.
