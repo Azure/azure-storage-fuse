@@ -35,15 +35,22 @@ package clustermanager
 
 import (
 	"encoding/json"
+	"fmt"
+	"os"
+	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 )
 
 type ClusterManagerImpl struct {
 	storageCallback dcache.StorageCallbacks
+	ticker          *time.Ticker
+	nodeId          string
 }
 
 // GetActiveMVs implements ClusterManager.
@@ -70,9 +77,82 @@ func (c *ClusterManagerImpl) IsAlive(peerId string) bool {
 func (cmi *ClusterManagerImpl) Start(clusterManagerConfig ClusterManagerConfig) error {
 	//check if ClusterMap.json already created if yes don't create again
 	cmi.createClusterConfig(clusterManagerConfig)
-	//schedule Punch heartbeat
+	cmi.ticker = time.NewTicker(time.Duration(clusterManagerConfig.HeartbeatSeconds) * time.Second)
+	go func() {
+		for range cmi.ticker.C {
+			log.Trace("Scheduled task triggered")
+			cmi.punchHeartBeat(clusterManagerConfig)
+		}
+	}()
 	//Schedule clustermap config update at storage and local copy
 	return nil
+}
+
+func (cmi *ClusterManagerImpl) punchHeartBeat(clusterManagerConfig ClusterManagerConfig) {
+	uuidVal, err := common.GetUUID()
+	if err != nil {
+		log.Err("AddHeartBeat: Failed to retrieve UUID, error: %v", err)
+	}
+	cmi.nodeId = uuidVal
+
+	hbPath := clusterManagerConfig.StorageCachePath + "/Nodes/" + cmi.nodeId + ".hb"
+	ipaddr, err := dcache.GetVmIp()
+	if err != nil {
+		log.Err("AddHeartBeat: Failed to get VM IP")
+	}
+
+	hostname, err := os.Hostname()
+	if err != nil {
+		log.Err("Error getting hostname:", err)
+	}
+	listMyRVs(clusterManagerConfig.RVList)
+
+	hbData := dcache.HeartbeatData{
+		IPAddr:        ipaddr,
+		NodeID:        cmi.nodeId,
+		Hostname:      hostname,
+		LastHeartbeat: uint64(time.Now().Unix()),
+		RVList:        clusterManagerConfig.RVList,
+	}
+
+	// Marshal the data into JSON
+	data, err := json.MarshalIndent(hbData, "", "  ")
+	if err != nil {
+		log.Err("AddHeartBeat: Failed to marshal heartbeat data")
+	}
+
+	// Create a heartbeat file in storage with <nodeId>.hb
+	if err := cmi.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{Name: hbPath, Data: data}); err != nil {
+		log.Err("AddHeartBeat: Failed to write heartbeat file: ", err)
+	}
+	log.Trace("AddHeartBeat: Heartbeat file updated successfully")
+}
+
+func listMyRVs(rvList []dcache.RawVolume) {
+	for index, rv := range rvList {
+		log.Trace("RV %d: %s", index, rv)
+		// You can use GetUsage or GetDiskUsageFromStatfs here
+		usage, err := common.GetUsage(rv.LocalCachePath)
+		if err != nil {
+			log.Err("failed to get usage for path %s: %v", rv.LocalCachePath, err)
+		}
+		rvList[index].AvailableSpaceGB = rv.TotalSpaceGB - int((usage)/1024)
+		rvList[index].State = dcache.StateOnline
+		rvList[index].FDID = "0"
+		fsid, _ := getBlkId(rv.LocalCachePath)
+		rvList[index].FSID = fsid
+	}
+}
+func getBlkId(path string) (string, error) {
+	// devicePath, err := getDeviceByMount(path)
+	// if err != nil {
+	// 	return "", err
+	// }
+	out, err := exec.Command("blkid", "-o", "value", "-s", "UUID", path).Output()
+	if err != nil {
+		return "", fmt.Errorf("error running blkid: %v", err)
+	}
+	return strings.TrimSpace(string(out)), nil
 }
 
 func (cmi *ClusterManagerImpl) createClusterConfig(clusterManagerConfig ClusterManagerConfig) error {
@@ -119,6 +199,7 @@ func evaluateMVsRVMapping() map[string]dcache.MirroredVolume {
 }
 
 func fetchRVMap() map[string]dcache.RawVolume {
+	//Iterate over Heartbeat File
 	rvMap := map[string]dcache.RawVolume{}
 	// rv0 := dcache.RawVolume{
 	// 	HostNode:         "Node1",
