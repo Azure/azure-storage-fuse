@@ -91,22 +91,45 @@ func (cmi *ClusterManagerImpl) createClusterConfig(clusterManagerConfig ClusterM
 		LastUpdatedAt: time.Now().Unix(),
 		LastUpdatedBy: uuidVal,
 		Config:        dcacheConfig,
-		RVList:        fetchRVList(),
-		MVList:        evaluateMVsRVMapping(),
+		RVMap:         fetchRVMap(),
+		MVMap:         evaluateMVsRVMapping(),
 	}
 	clusterConfigJson, err := json.Marshal(clusterConfig)
 	log.Err("ClusterManager::CreateClusterConfig : ClusterConfigJson: %v, err %v", clusterConfigJson, err)
 	// err = cmi.metaManagerPutBlob(internal.WriteFromBufferOptions{Name: clusterManagerConfig.StorageCachePath + "/ClusterMap.json", Data: []byte(clusterConfigJson), IsNoneMatchEtagEnabled: true})
 	// err = cmi.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{Name: clusterManagerConfig.StorageCachePath + "/ClusterMap.json", Data: []byte(clusterConfigJson), IsNoneMatchEtagEnabled: true})
+	// return err
 	return nil
 }
 
-func evaluateMVsRVMapping() []dcache.MirroredVolume {
-	return []dcache.MirroredVolume{}
+func evaluateMVsRVMapping() map[string]dcache.MirroredVolume {
+
+	mvRvMap := map[string]dcache.MirroredVolume{}
+	// rvStateMap := map[string]string{
+	// 	"rv0": "online",
+	// 	"rv1": "offline",
+	// 	"rv2": "syncing"}
+	// mv0 := dcache.MirroredVolume{
+	// 	RVWithStateMap: rvStateMap,
+	// 	State:          dcache.StateOffline,
+	// }
+	// mvRvMap["mv0"] = mv0
+	return mvRvMap
 }
 
-func fetchRVList() []dcache.RawVolume {
-	return []dcache.RawVolume{}
+func fetchRVMap() map[string]dcache.RawVolume {
+	rvMap := map[string]dcache.RawVolume{}
+	// rv0 := dcache.RawVolume{
+	// 	HostNode:         "Node1",
+	// 	FSID:             "FSID1",
+	// 	FDID:             "FDID1",
+	// 	State:            "Active",
+	// 	TotalSpaceGB:     100,
+	// 	AvailableSpaceGB: 50,
+	// 	LocalCachePath:   "/path/to/cache",
+	// }
+	// rvMap["rv0"] = rv0
+	return rvMap
 }
 
 func evaluateReadOnlyState() bool {
