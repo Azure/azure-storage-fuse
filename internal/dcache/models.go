@@ -47,13 +47,13 @@ type MirroredVolume struct {
 }
 
 type RawVolume struct {
-	Name             string `json:"name,omitempty"`
-	HostNode         string `json:"host-node,omitempty"`
-	FSID             string `json:"fsid,omitempty"`
-	FDID             string `json:"fdid,omitempty"`
-	State            string `json:"state,omitempty"`
-	TotalSpaceGB     int    `json:"total_space_GB,omitempty"`
-	AvailableSpaceGB int    `json:"available_space_GB,omitempty"`
+	Name             string    `json:"name,omitempty"`
+	HostNode         string    `json:"host-node,omitempty"`
+	FSID             string    `json:"fsid,omitempty"`
+	FDID             string    `json:"fdid,omitempty"`
+	State            StateEnum `json:"state,omitempty"`
+	TotalSpaceGB     int       `json:"total_space_GB,omitempty"`
+	AvailableSpaceGB int       `json:"available_space_GB,omitempty"`
 }
 
 type StateEnum string
@@ -76,6 +76,14 @@ type ClusterConfig struct {
 	Config        DCacheConfig     `json:"config"`
 	RVList        []RawVolume      `json:"rv-list"`
 	MVList        []MirroredVolume `json:"mv-list"`
+}
+
+type HeartbeatData struct {
+	Hostname      string      `json:"hostname"`
+	IPAddr        string      `json:"ipaddr"`
+	NodeID        string      `json:"nodeid"`
+	LastHeartbeat uint64      `json:"last_heartbeat"`
+	RVList        []RawVolume `json:"rv-list"`
 }
 
 type DCacheConfig struct {
