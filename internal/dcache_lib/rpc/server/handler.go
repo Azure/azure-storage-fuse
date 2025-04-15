@@ -85,7 +85,8 @@ func (rv *RVInfo) isMvValid(mvPath string) error {
 	}
 
 	mvID := filepath.Base(mvPath)
-	if _, ok := rv.mvMap[mvID]; !ok {
+	mvInfo, ok := rv.mvMap[mvID]
+	if !ok || mvInfo == nil {
 		return fmt.Errorf("MV %s is not valid", mvID)
 	}
 
@@ -103,6 +104,39 @@ func (rv *RVInfo) getPeerRVs(mvID string) []string {
 // sample method; will be later removed after integrating with cluster manager
 func getChunkSize() int64 {
 	return 4 * 1024 * 1024 // 4MB
+}
+
+// check the if the chunk address is valid
+// - check if the fsID is valid
+// - check if the cache dir exists
+// - check if the MV is valid
+func (h *ChunkServiceHandler) checkValidChunkAddress(address *models.Address) error {
+	if address == nil || address.FileID == "" || address.FsID == "" || address.MvID == "" {
+		log.Err("ChunkServiceHandler::checkValidChunkAddress: Invalid chunk address")
+		return rpc.NewResponseError(rpc.InvalidRequest, "invalid chunk address")
+	}
+
+	// check if the fsID is valid
+	rvInfo, ok := h.fsIDMap[address.FsID]
+	if !ok || rvInfo == nil {
+		log.Err("ChunkServiceHandler::checkValidChunkAddress: Invalid fsID %s", address.FsID)
+		return rpc.NewResponseError(rpc.InvalidFSID, fmt.Sprintf("invalid fsID %s", address.FsID))
+	}
+
+	cacheDir := rvInfo.cacheDir
+	if cacheDir == "" || !common.DirectoryExists(cacheDir) {
+		log.Err("ChunkServiceHandler::checkValidChunkAddress: Cache dir not found for RV %s", rvInfo.rvID)
+		return rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("cache dir not found for RV %s", rvInfo.rvID))
+	}
+
+	// check if the MV is valid
+	mvPath := filepath.Join(cacheDir, address.MvID)
+	if err := rvInfo.isMvValid(mvPath); err != nil {
+		log.Err("ChunkServiceHandler::checkValidChunkAddress: MV %s is not valid [%s]", address.MvID, err.Error())
+		return rpc.NewResponseError(rpc.InvalidMV, fmt.Sprintf("MV %s is not valid [%s]", address.MvID, err.Error()))
+	}
+
+	return nil
 }
 
 func (h *ChunkServiceHandler) Hello(ctx context.Context, req *models.HelloRequest) (*models.HelloResponse, error) {
@@ -133,9 +167,16 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 		return nil, rpc.NewResponseError(rpc.InvalidRequest, "received nil GetChunk request")
 	}
 
+	// check if the chunk address is valid
+	err := h.checkValidChunkAddress(req.Address)
+	if err != nil {
+		log.Err("ChunkServiceHandler::GetChunk: Invalid chunk address [%s]", err.Error())
+		return nil, err
+	}
+
 	startTime := time.Now()
 
-	chunkAddress := fmt.Sprintf("%v-%v-%v-%v", req.Address.FileID, req.Address.FsID, req.Address.MvID, req.Address.OffsetInMB)
+	chunkAddress := getChunkAddress(req.Address.FileID, req.Address.FsID, req.Address.MvID, req.Address.OffsetInMB)
 	log.Debug("ChunkServiceHandler::GetChunk: Received GetChunk request for chunk address %v, offset within chunk %v, length %v", chunkAddress, req.Offset, req.Length)
 
 	// check if the chunk file is being written to in parallel by some other thread
@@ -145,26 +186,8 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("chunk %v is being written", chunkAddress))
 	}
 
-	// check if the fsID is valid
-	rvInfo, ok := h.fsIDMap[req.Address.FsID]
-	if !ok || rvInfo == nil {
-		log.Err("ChunkServiceHandler::GetChunk: Invalid fsID %s", req.Address.FsID)
-		return nil, rpc.NewResponseError(rpc.InvalidFSID, fmt.Sprintf("invalid fsID %s", req.Address.FsID))
-	}
-
+	rvInfo := h.fsIDMap[req.Address.FsID]
 	cacheDir := rvInfo.cacheDir
-	if cacheDir == "" || !common.DirectoryExists(cacheDir) {
-		log.Err("ChunkServiceHandler::GetChunk: Cache dir not found for RV %s", rvInfo.rvID)
-		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("cache dir not found for RV %s", rvInfo.rvID))
-	}
-
-	// check if the MV is valid
-	mvPath := filepath.Join(cacheDir, req.Address.MvID)
-	if err := rvInfo.isMvValid(mvPath); err != nil {
-		log.Err("ChunkServiceHandler::GetChunk: MV %s is not valid [%s]", req.Address.MvID, err.Error())
-		return nil, rpc.NewResponseError(rpc.InvalidMV, fmt.Sprintf("MV %s is not valid [%s]", req.Address.MvID, err.Error()))
-	}
-
 	chunkPath, hashPath := getChunkAndHashPath(cacheDir, req.Address.MvID, req.Address.FileID, req.Address.OffsetInMB)
 	log.Debug("ChunkServiceHandler::GetChunk: chunk path %s, hash path %s", chunkPath, hashPath)
 
@@ -218,7 +241,6 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 		PeerRV:         rvInfo.getPeerRVs(req.Address.MvID),
 	}
 
-	// TODO: case where chunk needs to be searched in .sync directory
 	return resp, nil
 }
 
@@ -228,18 +250,116 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 		return nil, rpc.NewResponseError(rpc.InvalidRequest, "received nil PutChunk request")
 	}
 
-	// startTime := time.Now()
+	// check if the chunk address is valid
+	err := h.checkValidChunkAddress(req.Chunk.Address)
+	if err != nil {
+		log.Err("ChunkServiceHandler::PutChunk: Invalid chunk address [%s]", err.Error())
+		return nil, err
+	}
 
-	chunkAddress := fmt.Sprintf("%v-%v-%v-%v", req.Chunk.Address.FileID, req.Chunk.Address.FsID, req.Chunk.Address.MvID, req.Chunk.Address.OffsetInMB)
+	startTime := time.Now()
+
+	chunkAddress := getChunkAddress(req.Chunk.Address.FileID, req.Chunk.Address.FsID, req.Chunk.Address.MvID, req.Chunk.Address.OffsetInMB)
+	log.Debug("ChunkServiceHandler::PutChunk: Received PutChunk request for chunk address %v, length %v, isSync %v", chunkAddress, req.Length, req.IsSync)
+
+	// acquire lock for the chunk address
 	flock := h.locks.Get(chunkAddress)
 	flock.Lock()
 	defer flock.Unlock()
 
-	return nil, nil
+	rvInfo := h.fsIDMap[req.Chunk.Address.FsID]
+	cacheDir := rvInfo.cacheDir
+
+	chunkPath, hashPath := getRegularMVPath(cacheDir, req.Chunk.Address.MvID, req.Chunk.Address.FileID, req.Chunk.Address.OffsetInMB)
+	if req.IsSync {
+		chunkPath, hashPath = getSyncMVPath(cacheDir, req.Chunk.Address.MvID, req.Chunk.Address.FileID, req.Chunk.Address.OffsetInMB)
+	}
+	log.Debug("ChunkServiceHandler::PutChunk: chunk path %s, hash path %s", chunkPath, hashPath)
+
+	err = os.WriteFile(chunkPath, req.Chunk.Data, 0400)
+	if err != nil {
+		log.Err("ChunkServiceHandler::PutChunk: Failed to write chunk file %s [%v]", chunkPath, err.Error())
+		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to write chunk file %s [%v]", chunkPath, err.Error()))
+	}
+
+	err = os.WriteFile(hashPath, []byte(req.Chunk.Hash), 0400)
+	if err != nil {
+		log.Err("ChunkServiceHandler::PutChunk: Failed to write hash file %s [%v]", hashPath, err.Error())
+		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to write hash file %s [%v]", hashPath, err.Error()))
+	}
+
+	availableSpace, err := common.GetAvailableDiskSpaceFromStatfs(cacheDir)
+	if err != nil {
+		log.Err("ChunkServiceHandler::PutChunk: Failed to get available disk space [%v]", err.Error())
+	}
+
+	// TODO: should we verify the hash after writing the chunk
+
+	resp := &models.PutChunkResponse{
+		TimeTaken:      time.Since(startTime).Microseconds(),
+		AvailableSpace: availableSpace,
+		PeerRV:         rvInfo.getPeerRVs(req.Chunk.Address.MvID),
+	}
+
+	return resp, nil
 }
 
 func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.RemoveChunkRequest) (*models.RemoveChunkResponse, error) {
-	return nil, nil
+	if req == nil || req.Address == nil {
+		log.Err("ChunkServiceHandler::RemoveChunk: Received nil RemoveChunk request")
+		return nil, rpc.NewResponseError(rpc.InvalidRequest, "received nil RemoveChunk request")
+	}
+
+	// check if the chunk address is valid
+	err := h.checkValidChunkAddress(req.Address)
+	if err != nil {
+		log.Err("ChunkServiceHandler::RemoveChunk: Invalid chunk address [%s]", err.Error())
+		return nil, err
+	}
+
+	startTime := time.Now()
+
+	chunkAddress := getChunkAddress(req.Address.FileID, req.Address.FsID, req.Address.MvID, req.Address.OffsetInMB)
+	log.Debug("ChunkServiceHandler::RemoveChunk: Received RemoveChunk request for chunk address %v", chunkAddress)
+
+	// acquire lock for the chunk address
+	flock := h.locks.Get(chunkAddress)
+	flock.Lock()
+	defer flock.Unlock()
+
+	rvInfo := h.fsIDMap[req.Address.FsID]
+	cacheDir := rvInfo.cacheDir
+
+	// TODO: check if we need to add isSync flag to remove from the sync directory explicitly
+	chunkPath, hashPath := getRegularMVPath(cacheDir, req.Address.MvID, req.Address.FileID, req.Address.OffsetInMB)
+	log.Debug("ChunkServiceHandler::RemoveChunk: chunk path %s, hash path %s", chunkPath, hashPath)
+
+	err = os.Remove(chunkPath)
+	if err != nil {
+		log.Err("ChunkServiceHandler::RemoveChunk: Failed to remove chunk file %s [%v]", chunkPath, err.Error())
+		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to remove chunk file %s [%v]", chunkPath, err.Error()))
+	}
+
+	err = os.Remove(hashPath)
+	if err != nil {
+		log.Err("ChunkServiceHandler::RemoveChunk: Failed to remove hash file %s [%v]", hashPath, err.Error())
+		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to remove hash file %s [%v]", hashPath, err.Error()))
+	}
+
+	availableSpace, err := common.GetAvailableDiskSpaceFromStatfs(cacheDir)
+	if err != nil {
+		log.Err("ChunkServiceHandler::RemoveChunk: Failed to get available disk space [%v]", err.Error())
+	}
+
+	// TODO: should we verify the hash after writing the chunk
+
+	resp := &models.RemoveChunkResponse{
+		TimeTaken:      time.Since(startTime).Microseconds(),
+		AvailableSpace: availableSpace,
+		PeerRV:         rvInfo.getPeerRVs(req.Address.MvID),
+	}
+
+	return resp, nil
 }
 
 func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequest) (*models.JoinMVResponse, error) {

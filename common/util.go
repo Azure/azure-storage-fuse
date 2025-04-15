@@ -451,6 +451,30 @@ func GetDiskUsageFromStatfs(path string) (float64, float64, error) {
 	return usedSpace, float64(usedSpace) / float64(totalSpace) * 100, nil
 }
 
+// GetAvailableDiskSpace: Current available disk space of temp path
+func GetAvailableDiskSpaceFromStatfs(path string) (int64, error) {
+	var stat syscall.Statfs_t
+	err := syscall.Statfs(path, &stat)
+	if err != nil {
+		return 0, err
+	}
+
+	if currentUID == -1 {
+		currentUID = os.Getuid()
+	}
+
+	var availableSpace uint64
+	if currentUID == 0 {
+		// Sudo  has mounted
+		availableSpace = stat.Bfree * uint64(stat.Frsize)
+	} else {
+		// non Sudo has mounted
+		availableSpace = stat.Bavail * uint64(stat.Frsize)
+	}
+
+	return int64(availableSpace), nil
+}
+
 func GetFuseMinorVersion() int {
 	var out bytes.Buffer
 	cmd := exec.Command("fusermount3", "--version")
