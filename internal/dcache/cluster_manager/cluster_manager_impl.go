@@ -34,34 +34,59 @@
 package clustermanager
 
 import (
-	"encoding/json"
-	"time"
-
-	"github.com/Azure/azure-storage-fuse/v2/common"
-	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 )
 
 type ClusterManagerImpl struct {
 	storageCallback dcache.StorageCallbacks
-	metaManager     metaManager.MetaManager
+}
+
+// CreateClusterConfig implements ClusterManager.
+func (c *ClusterManagerImpl) CreateClusterConfig(dcache.DCacheConfig, string) error {
+	return nil
+}
+
+// GetActiveMVs implements ClusterManager.
+func (c *ClusterManagerImpl) GetActiveMVs() []dcache.MirroredVolume {
+	return nil
 }
 
 // GetPeer implements ClusterManager.
-func (cmi *ClusterManagerImpl) GetPeer(nodeId string) dcache.Peer {
+func (c *ClusterManagerImpl) GetPeer(nodeId string) dcache.Peer {
 	return dcache.Peer{}
 }
 
 // GetPeerRVs implements ClusterManager.
-func (cmi *ClusterManagerImpl) GetPeerRVs(mvName string) []dcache.RawVolume {
+func (c *ClusterManagerImpl) GetPeerRVs(mvName string) []dcache.RawVolume {
 	return nil
 }
 
-func (cmi *ClusterManagerImpl) Start() error {
+// IsAlive implements ClusterManager.
+func (c *ClusterManagerImpl) IsAlive(peerId string) bool {
+	return false
+}
+
+// Start implements ClusterManager.
+func (c *ClusterManagerImpl) Start() error {
 	return nil
 }
 
-func (cmi *ClusterManagerImpl) Stop() error {
+// Stop implements ClusterManager.
+func (c *ClusterManagerImpl) Stop() error {
+	return nil
+}
+
+// UpdateMVs implements ClusterManager.
+func (c *ClusterManagerImpl) UpdateMVs(mvs []dcache.MirroredVolume) {
+}
+
+// UpdateStorageConfigIfRequired implements ClusterManager.
+func (c *ClusterManagerImpl) UpdateStorageConfigIfRequired() error {
+	return nil
+}
+
+// WatchForConfigChanges implements ClusterManager.
+func (c *ClusterManagerImpl) WatchForConfigChanges() error {
 	return nil
 }
 
@@ -69,96 +94,4 @@ func NewClusterManager(callback dcache.StorageCallbacks) ClusterManager {
 	return &ClusterManagerImpl{
 		storageCallback: callback,
 	}
-}
-
-func (cmi *ClusterManagerImpl) CreateClusterConfig(dcacheConfig dcache.DCacheConfig, storageCachepath string) error {
-	uuidVal, err := common.GetUUID()
-	if err != nil {
-		log.Err("AddHeartBeat: Failed to retrieve UUID, error: %v", err)
-		return err
-	}
-	clusterConfig := dcache.ClusterConfig{
-		Readonly:      evaluateReadOnlyState(),
-		State:         dcache.StateOffline,
-		Epoch:         1,
-		CreatedAt:     time.Now().Unix(),
-		LastUpdatedAt: time.Now().Unix(),
-		LastUpdatedBy: uuidVal,
-		Config:        dcacheConfig,
-		RVList:        fetchRVList(),
-		MVList:        evaluateMVsRVMapping(),
-	}
-	clusterConfigJson, err := json.Marshal(clusterConfig)
-	log.Err("ClusterManager::CreateClusterConfig : ClusterConfigJson: %v", err, clusterConfigJson)
-	// err = cmi.metaManager.PutBlob(internal.WriteFromBufferOptions{Name: storageCachepath + "/ClusterMap.json", Data: []byte(clusterConfigJson), IsNoneMatchEtagEnabled: true})
-	return nil
-}
-
-func evaluateReadOnlyState() bool {
-	return true
-}
-
-func (cmi *ClusterManagerImpl) GetActiveMVs() []dcache.MirroredVolume {
-	return nil
-}
-
-func (cmi *ClusterManagerImpl) IsAlive(peerId string) bool {
-	return false
-}
-
-func (cmi *ClusterManagerImpl) UpdateMVs(mvs []dcache.MirroredVolume) {
-}
-
-func (cmi *ClusterManagerImpl) UpdateStorageConfigIfRequired() error {
-	fetchRVList()
-	evaluateMVsRVMapping()
-	//Mark the Mv degraded
-	return nil
-}
-
-func (cmi *ClusterManagerImpl) WatchForConfigChanges() error {
-
-	// Update your local cluster config in the Path
-	return nil
-}
-
-func fetchRVList() []dcache.RawVolume {
-	rvList := []dcache.RawVolume{}
-	//iterate through heartbeat file and get the list of RVs
-	//add RV names to the list
-	//return the list
-
-	// example
-	// rvName := "rv0"
-	// rv0 := RawVolume{
-	// 	Name:             rvName,
-	// 	HostNode:         "node-uuid",
-	// 	FSID:             "filesystem-guid",
-	// 	FDID:             "fault-domain-id",
-	// 	State:            "online",
-	// 	TotalSpaceGB:     1000,
-	// 	AvailableSpaceGB: 3415,
-	// }
-	return rvList
-}
-
-func evaluateMVsRVMapping() []dcache.MirroredVolume {
-
-	mVList := []dcache.MirroredVolume{}
-	// sample MV list
-	// a := []MirroredVolume{
-	// 	{
-	// 		Name:           "mv0",
-	// 		RVmapWithState: []VolumeState{{Volume: rv0, State: "online"}},
-	// 	},
-	// }
-	return mVList
-}
-
-func IsAlive(peerId string) bool {
-	return false
-}
-
-func GetActiveMVs() []dcache.MirroredVolume {
-	return nil
 }
