@@ -43,13 +43,23 @@ type StorageCallbackImpl struct {
 	storage  internal.Component
 }
 
+// DeleteBlob implements dcachelib.StorageCallbacks.
+func (sci *StorageCallbackImpl) DeleteBlob(opt internal.DeleteFileOptions) error {
+	return sci.nextComp.DeleteFile(opt)
+}
+
+// DeleteBlobInStorage implements dcachelib.StorageCallbacks.
+func (sci *StorageCallbackImpl) DeleteBlobInStorage(opt internal.DeleteFileOptions) error {
+	return sci.storage.DeleteFile(opt)
+}
+
 // GetBlob implements dcachelib.StorageCallbacks.
 func (sci *StorageCallbackImpl) GetBlob(options internal.ReadFileWithNameOptions) ([]byte, error) {
 	return sci.nextComp.ReadFileWithName(options)
 }
 
-// GetBlobFromStroage implements dcachelib.StorageCallbacks.
-func (sci *StorageCallbackImpl) GetBlobFromStroage(options internal.ReadFileWithNameOptions) ([]byte, error) {
+// GetBlobFromStorage implements dcachelib.StorageCallbacks.
+func (sci *StorageCallbackImpl) GetBlobFromStorage(options internal.ReadFileWithNameOptions) ([]byte, error) {
 	return sci.storage.ReadFileWithName(options)
 }
 
@@ -67,8 +77,8 @@ func (sci *StorageCallbackImpl) ReadDir(options internal.ReadDirOptions) ([]*int
 	return sci.nextComp.ReadDir(options)
 }
 
-// ReadDirFromStroage implements dcachelib.StorageCallbacks.
-func (sci *StorageCallbackImpl) ReadDirFromStroage(options internal.ReadDirOptions) ([]*internal.ObjAttr, error) {
+// ReadDirFromStorage implements dcachelib.StorageCallbacks.
+func (sci *StorageCallbackImpl) ReadDirFromStorage(options internal.ReadDirOptions) ([]*internal.ObjAttr, error) {
 	return sci.storage.ReadDir(options)
 }
 
