@@ -123,7 +123,7 @@ func (st *Stream) Configure(_ bool) error {
 
 // On init register this component to pipeline and supply your constructor
 func init() {
-	blockSizeMb := config.AddUint64Flag("block-size-mb", 0, "Size (in MB) of a block to be downloaded during streaming.")
+	blockSizeMb := config.AddFloat64Flag("block-size-mb", 0.0, "Size (in MB) of a block to be downloaded during streaming.")
 	config.BindPFlag(compStream+".block-size-mb", blockSizeMb)
 
 	maxBlocksMb := config.AddIntFlag("max-blocks-per-file", 0, "Maximum number of blocks to be cached in memory for streaming.")

@@ -52,6 +52,7 @@ logging:
 components:
   - libfuse
   - entry_cache
+  - xload
   - block_cache
   - file_cache
   - attr_cache
@@ -71,6 +72,13 @@ libfuse:
 # Entry Cache configuration
 entry_cache:
   timeout-sec: <cache eviction timeout (in sec). Default - 30 sec>
+
+# Xload configuration 
+xload:
+  block-size-mb: <size of each block to be cached in memory (in MB). Default - 16 MB>
+  path: <path to local disk cache where downloaded files will be stored>
+  export-progress: <preload progress will be exported to a json fil. Default output file is '~/.blobfuse2/xload_stats_{PID}.json'. Default - not exported> 
+  validate-md5: <if md5 sum is present in the blob, validate it post download. Default - false>
 
 # Block cache related configuration
 block_cache:

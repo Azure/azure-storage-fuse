@@ -454,26 +454,40 @@ func (az *AzStorage) ReadFileWithName(options internal.ReadFileWithNameOptions) 
 func (az *AzStorage) ReadInBuffer(options internal.ReadInBufferOptions) (length int, err error) {
 	//log.Trace("AzStorage::ReadInBuffer : Read %s from %d offset", h.Path, offset)
 
-	if options.Offset > atomic.LoadInt64(&options.Handle.Size) {
+	var size int64
+	var path string
+	if options.Handle != nil {
+		size = atomic.LoadInt64(&options.Handle.Size)
+		path = options.Handle.Path
+	} else {
+		size = options.Size
+		path = options.Path
+		if len(path) == 0 {
+			log.Err("AzStorage::ReadInBuffer : Path not given for download")
+			return 0, fmt.Errorf("path not given for download")
+		}
+	}
+
+	if options.Offset > size {
 		return 0, syscall.ERANGE
 	}
 
 	var dataLen int64 = int64(len(options.Data))
-	if atomic.LoadInt64(&options.Handle.Size) < (options.Offset + int64(len(options.Data))) {
-		dataLen = options.Handle.Size - options.Offset
+	if size < (options.Offset + int64(len(options.Data))) {
+		dataLen = size - options.Offset
 	}
 
 	if dataLen == 0 {
 		return 0, nil
 	}
 
-	err = az.storage.ReadInBuffer(options.Handle.Path, options.Offset, dataLen, options.Data, options.Etag)
-
+	length = int(dataLen)
+	err = az.storage.ReadInBuffer(path, options.Offset, dataLen, options.Data, options.Etag)
 	if err != nil {
-		log.Err("AzStorage::ReadInBuffer : Failed to read %s [%s]", options.Handle.Path, err.Error())
+		log.Err("AzStorage::ReadInBuffer : Failed to read %s [%s]", path, err.Error())
+		length = 0
 	}
 
-	length = int(dataLen)
 	return
 }
 
@@ -684,7 +698,7 @@ func init() {
 	preserveACL := config.AddBoolFlag("preserve-acl", false, "Preserve ACL and Permissions set on file during updates")
 	config.BindPFlag(compName+".preserve-acl", preserveACL)
 
-	blobFilter := config.AddStringFlag("filter", "", "Filter string to match blobs")
+	blobFilter := config.AddStringFlag("filter", "", "Filter string to match blobs. For details refer [https://github.com/Azure/azure-storage-fuse?tab=readme-ov-file#blob-filter]")
 	config.BindPFlag(compName+".filter", blobFilter)
 
 	config.RegisterFlagCompletionFunc("container-name", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {

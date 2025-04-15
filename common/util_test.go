@@ -387,3 +387,89 @@ func (suite *utilTestSuite) TestGetFuseMinorVersion() {
 	i := GetFuseMinorVersion()
 	suite.assert.GreaterOrEqual(i, 0)
 }
+
+func (s *utilTestSuite) TestGetMD5() {
+	assert := assert.New(s.T())
+
+	f, err := os.Create("abc.txt")
+	assert.Nil(err)
+
+	_, err = f.Write([]byte(randomString(50)))
+	assert.Nil(err)
+
+	f.Close()
+
+	f, err = os.Open("abc.txt")
+	assert.Nil(err)
+
+	md5Sum, err := GetMD5(f)
+	assert.Nil(err)
+	assert.NotZero(md5Sum)
+
+	f.Close()
+	os.Remove("abc.txt")
+}
+
+func (s *utilTestSuite) TestComponentExists() {
+	components := []string{
+		"component1",
+		"component2",
+		"component3",
+	}
+
+	exists := ComponentInPipeline(components, "component1")
+	s.Assert().True(exists)
+
+	exists = ComponentInPipeline(components, "component4")
+	s.Assert().False(exists)
+
+}
+
+func (s *utilTestSuite) TestValidatePipeline() {
+	err := ValidatePipeline([]string{"libfuse", "file_cache", "block_cache", "azstorage"})
+	s.Assert().NotNil(err)
+
+	err = ValidatePipeline([]string{"libfuse", "file_cache", "xload", "azstorage"})
+	s.Assert().NotNil(err)
+
+	err = ValidatePipeline([]string{"libfuse", "block_cache", "xload", "azstorage"})
+	s.Assert().NotNil(err)
+
+	err = ValidatePipeline([]string{"libfuse", "file_cache", "block_cache", "xload", "azstorage"})
+	s.Assert().NotNil(err)
+
+	err = ValidatePipeline([]string{"libfuse", "file_cache", "azstorage"})
+	s.Assert().Nil(err)
+
+	err = ValidatePipeline([]string{"libfuse", "block_cache", "azstorage"})
+	s.Assert().Nil(err)
+
+	err = ValidatePipeline([]string{"libfuse", "xload", "attr_cache", "azstorage"})
+	s.Assert().Nil(err)
+}
+
+func (s *utilTestSuite) TestUpdatePipeline() {
+	pipeline := UpdatePipeline([]string{"libfuse", "file_cache", "azstorage"}, "xload")
+	s.Assert().NotNil(pipeline)
+	s.Assert().False(ComponentInPipeline(pipeline, "file_cache"))
+	s.Assert().Equal(pipeline, []string{"libfuse", "xload", "azstorage"})
+
+	pipeline = UpdatePipeline([]string{"libfuse", "block_cache", "azstorage"}, "xload")
+	s.Assert().NotNil(pipeline)
+	s.Assert().False(ComponentInPipeline(pipeline, "block_cache"))
+	s.Assert().Equal(pipeline, []string{"libfuse", "xload", "azstorage"})
+
+	pipeline = UpdatePipeline([]string{"libfuse", "file_cache", "azstorage"}, "block_cache")
+	s.Assert().NotNil(pipeline)
+	s.Assert().False(ComponentInPipeline(pipeline, "file_cache"))
+	s.Assert().Equal(pipeline, []string{"libfuse", "block_cache", "azstorage"})
+
+	pipeline = UpdatePipeline([]string{"libfuse", "xload", "azstorage"}, "block_cache")
+	s.Assert().NotNil(pipeline)
+	s.Assert().False(ComponentInPipeline(pipeline, "xload"))
+	s.Assert().Equal(pipeline, []string{"libfuse", "block_cache", "azstorage"})
+
+	pipeline = UpdatePipeline([]string{"libfuse", "xload", "azstorage"}, "xload")
+	s.Assert().NotNil(pipeline)
+	s.Assert().Equal(pipeline, []string{"libfuse", "xload", "azstorage"})
+}
