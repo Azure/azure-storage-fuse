@@ -53,8 +53,6 @@ type ClusterManagerConfig struct {
 	StripeSize             uint64
 	NumReplicas            uint8
 	MvsPerRv               uint64
-	RvFullThreshold        uint64
-	RvNearfullThreshold    uint64
 	HeartbeatSeconds       uint16
 	HeartbeatsTillNodeDown uint8
 	ClustermapEpoch        uint64
@@ -62,4 +60,5 @@ type ClusterManagerConfig struct {
 	SafeDeletes            bool
 	CacheAccess            string
 	StorageCachePath       string
+	RVList                 []dcache.RawVolume
 }
