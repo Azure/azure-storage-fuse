@@ -35,6 +35,7 @@ package distributed_cache
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"syscall"
@@ -199,6 +200,11 @@ func (dc *DistributedCache) setupCacheStructure(cacheDir string) error {
 		}
 	}
 	return nil
+}
+
+func logAndReturnError(msg string) error {
+	log.Err(msg)
+	return errors.New(msg)
 }
 
 // Stop : Stop the component functionality and kill all threads started
