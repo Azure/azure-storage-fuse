@@ -96,7 +96,7 @@ func (rv *RVInfo) isMvValid(mvPath string) error {
 	val, ok := rv.mvMap.Load(mvID)
 	mvInfo := val.(*MVInfo)
 	if !ok || mvInfo == nil {
-		return fmt.Errorf("MV %s is not valid", mvID)
+		return fmt.Errorf("MV %s is invalid", mvID)
 	}
 
 	return nil
@@ -592,8 +592,8 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 	val, ok := rvInfo.mvMap.Load(req.MV)
 	mvInfo := val.(*MVInfo)
 	if !ok || mvInfo == nil {
-		log.Err("ChunkServiceHandler::StartSync: MV %s is not valid for RV %s", req.MV, req.TargetRV)
-		return nil, rpc.NewResponseError(rpc.MVNotHostedByRV, fmt.Sprintf("MV %s is not valid for RV %s", req.MV, req.TargetRV))
+		log.Err("ChunkServiceHandler::StartSync: MV %s is invalid for RV %s", req.MV, req.TargetRV)
+		return nil, rpc.NewResponseError(rpc.MVNotHostedByRV, fmt.Sprintf("MV %s is invalid for RV %s", req.MV, req.TargetRV))
 	}
 
 	// check if the source RV is present in the peer RVs list
@@ -613,7 +613,7 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 	err := mvInfo.updateSyncState(true, base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16)))
 	if err != nil {
 		log.Err("ChunkServiceHandler::StartSync: MV %s is already in sync state [%v]", req.MV, err.Error())
-		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf(" MV %s is already in sync state [%v]", req.MV, err.Error()))
+		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("MV %s is already in sync state [%v]", req.MV, err.Error()))
 	}
 
 	return &models.StartSyncResponse{
@@ -622,5 +622,61 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 }
 
 func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRequest) (*models.EndSyncResponse, error) {
-	return nil, nil
+	if req == nil {
+		log.Err("ChunkServiceHandler::EndSync: Received nil EndSync request")
+		return nil, rpc.NewResponseError(rpc.InvalidRequest, "received nil EndSync request")
+	}
+
+	if req.SyncID == "" || req.MV == "" || req.SourceRV == "" || req.TargetRV == "" || len(req.PeerRV) == 0 {
+		log.Err("ChunkServiceHandler::EndSync: MV, SourceRV, PeerRVs or TargetRVs is empty")
+		return nil, rpc.NewResponseError(rpc.InvalidRequest, "MV, SourceRV, PeerRVs or TargetRVs is empty")
+	}
+
+	log.Debug("ChunkServiceHandler::EndSync: Received EndSync request for MV %s, sync id %s, SourceRV %s, TargetRV %s, PeerRVs %v, Data length %v", req.MV, req.SyncID, req.SourceRV, req.TargetRV, req.PeerRV, req.DataLength)
+
+	// source RV is the lowest index online RV. The node hosting this RV will send the end sync call to the peer RVs
+	// target RV is the RV which has to mark the completion of sync in MV
+	rvInfo := h.getRVInfoFromRvID(req.TargetRV)
+	if rvInfo == nil {
+		log.Err("ChunkServiceHandler::EndSync: Invalid RV %s", req.TargetRV)
+		return nil, rpc.NewResponseError(rpc.InvalidRV, fmt.Sprintf("invalid RV %s", req.TargetRV))
+	}
+
+	// check if MV is valid
+	val, ok := rvInfo.mvMap.Load(req.MV)
+	mvInfo := val.(*MVInfo)
+	if !ok || mvInfo == nil {
+		log.Err("ChunkServiceHandler::EndSync: MV %s is invalid for RV %s", req.MV, req.TargetRV)
+		return nil, rpc.NewResponseError(rpc.MVNotHostedByRV, fmt.Sprintf("MV %s is invalid for RV %s", req.MV, req.TargetRV))
+	}
+
+	if mvInfo.syncID != req.SyncID {
+		log.Err("ChunkServiceHandler::EndSync: SyncID %s is invalid for MV %s", req.SyncID, req.MV)
+		return nil, rpc.NewResponseError(rpc.InvalidRequest, fmt.Sprintf("syncID %s is invalid for MV %s", req.SyncID, req.MV))
+	}
+
+	// check if the source RV is present in the peer RVs list
+	if !slices.Contains(mvInfo.peerRVs, req.SourceRV) {
+		log.Err("ChunkServiceHandler::EndSync: Source RV %s is not present in the peer RVs list %v", req.SourceRV, mvInfo.peerRVs)
+		return nil, rpc.NewResponseError(rpc.InvalidRV, fmt.Sprintf("source RV %s is not present in the peer RVs list %v", req.SourceRV, mvInfo.peerRVs))
+	}
+
+	// validate the peer RVs list
+	slices.Sort(req.PeerRV)
+	if !isPeerRVsValid(mvInfo.peerRVs, req.PeerRV) {
+		log.Err("ChunkServiceHandler::StartSync: Peer RVs %v are invalid for MV %s", req.PeerRV, req.MV)
+		return nil, rpc.NewResponseError(rpc.InvalidRequest, fmt.Sprintf("peer RVs %v are invalid for MV %s", req.PeerRV, req.MV))
+	}
+
+	// update the sync state and sync id of the MV
+	err := mvInfo.updateSyncState(false, "")
+	if err != nil {
+		log.Err("ChunkServiceHandler::StartSync: Failed to mark sync completion state in MV %s [%v]", req.MV, err.Error())
+		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to mark sync completion state in MV %s [%v]", req.MV, err.Error()))
+	}
+
+	// TODO: Node will wait for any ongoing put-chunk/get-chunk requests, pause further put-chunk/get-chunk processing,
+	// move all chunks from “MV.sync” folder to the regular MV folder and then resume processing.
+
+	return &models.EndSyncResponse{}, nil
 }
