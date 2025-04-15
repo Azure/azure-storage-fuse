@@ -81,3 +81,19 @@ func getSyncMVPath(cacheDir string, mvID string, fileID string, offsetInMB int64
 func getChunkAddress(fileID string, fsID string, mvID string, offsetInMB int64) string {
 	return fmt.Sprintf("%v-%v-%v-%v", fileID, fsID, mvID, offsetInMB)
 }
+
+// check if the peer RVs are the same
+// the list is sorted before comparison
+func isPeerRVsValid(rv1 []string, rv2 []string) bool {
+	if len(rv1) != len(rv2) {
+		return false
+	}
+
+	for i := 0; i < len(rv1); i++ {
+		if rv1[i] != rv2[i] {
+			return false
+		}
+	}
+
+	return true
+}

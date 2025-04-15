@@ -38,6 +38,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -58,13 +61,14 @@ type ChunkServiceHandler struct {
 }
 
 type RVInfo struct {
-	rvID     string             // rv0, rv1, etc.
-	cacheDir string             // cache dir path for this RV
-	mvMap    map[string]*MVInfo // map of MV id against MV info
+	rvID     string       // rv0, rv1, etc.
+	cacheDir string       // cache dir path for this RV
+	mvMap    sync.Map     // sync map of MV id against MV info
+	mvCount  atomic.Int64 // count of MVs for this RV, this should be updated whenever a MV is added or removed from the sync map
 }
 
 type MVInfo struct {
-	peerRVs []string // peer RVs for this MV
+	peerRVs []string // sorted list of peer RVs for this MV
 }
 
 func NewChunkServiceHandler() *ChunkServiceHandler {
@@ -85,7 +89,8 @@ func (rv *RVInfo) isMvValid(mvPath string) error {
 	}
 
 	mvID := filepath.Base(mvPath)
-	mvInfo, ok := rv.mvMap[mvID]
+	val, ok := rv.mvMap.Load(mvID)
+	mvInfo := val.(*MVInfo)
 	if !ok || mvInfo == nil {
 		return fmt.Errorf("MV %s is not valid", mvID)
 	}
@@ -94,16 +99,34 @@ func (rv *RVInfo) isMvValid(mvPath string) error {
 }
 
 func (rv *RVInfo) getPeerRVs(mvID string) []string {
-	mvInfo, ok := rv.mvMap[mvID]
+	val, ok := rv.mvMap.Load(mvID)
+	mvInfo := val.(*MVInfo)
 	if !ok || mvInfo == nil {
 		return nil
 	}
 	return mvInfo.peerRVs
 }
 
-// sample method; will be later removed after integrating with cluster manager
+func (rv *RVInfo) addToMVMap(mvID string, val *MVInfo) {
+	rv.mvMap.Store(mvID, val)
+	rv.mvCount.Add(1)
+}
+
+func (rv *RVInfo) deleteFromMVMap(mvID string) {
+	rv.mvMap.Delete(mvID)
+	rv.mvCount.Add(-1)
+}
+
+// TODO: sample method, will be later removed after integrating with cluster manager
+// call cluster manager to get chunk size from config
 func getChunkSize() int64 {
 	return 4 * 1024 * 1024 // 4MB
+}
+
+// TODO: sampel method, will be later removed after integrating with cluster manager
+// call cluster manager to get mvs-per-rv from config
+func getMVsPerRV() int64 {
+	return 10
 }
 
 // check the if the chunk address is valid
@@ -132,11 +155,27 @@ func (h *ChunkServiceHandler) checkValidChunkAddress(address *models.Address) er
 	// check if the MV is valid
 	mvPath := filepath.Join(cacheDir, address.MvID)
 	if err := rvInfo.isMvValid(mvPath); err != nil {
-		log.Err("ChunkServiceHandler::checkValidChunkAddress: MV %s is not valid [%s]", address.MvID, err.Error())
-		return rpc.NewResponseError(rpc.InvalidMV, fmt.Sprintf("MV %s is not valid [%s]", address.MvID, err.Error()))
+		log.Err("ChunkServiceHandler::checkValidChunkAddress: MV %s is not hosted by RV %s [%s]", address.MvID, rvInfo.rvID, err.Error())
+		return rpc.NewResponseError(rpc.MVNotHostedByRV, fmt.Sprintf("MV %s is not hosted by RV %s [%s]", address.MvID, rvInfo.rvID, err.Error()))
 	}
 
 	return nil
+}
+
+// get the RVInfo from the rv id
+func (h *ChunkServiceHandler) getRVInfoFromRvID(rvID string) *RVInfo {
+	var rvInfo *RVInfo
+	for _, info := range h.fsIDMap {
+		if info == nil {
+			continue
+		}
+		if info.rvID == rvID {
+			rvInfo = info
+			break
+		}
+	}
+
+	return rvInfo
 }
 
 func (h *ChunkServiceHandler) Hello(ctx context.Context, req *models.HelloRequest) (*models.HelloResponse, error) {
@@ -227,7 +266,7 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	lmt, err := getLMT(fh)
 	if err != nil {
 		log.Err("ChunkServiceHandler::GetChunk: Failed to get LMT for chunk file %s [%v]", chunkPath, err.Error())
-		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to get LMT for chunk file %s [%v]", chunkPath, err.Error()))
+		// return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to get LMT for chunk file %s [%v]", chunkPath, err.Error()))
 	}
 
 	resp := &models.GetChunkResponse{
@@ -275,6 +314,13 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 		chunkPath, hashPath = getSyncMVPath(cacheDir, req.Chunk.Address.MvID, req.Chunk.Address.FileID, req.Chunk.Address.OffsetInMB)
 	}
 	log.Debug("ChunkServiceHandler::PutChunk: chunk path %s, hash path %s", chunkPath, hashPath)
+
+	// check if the chunk file is already present
+	_, err = os.Stat(chunkPath)
+	if err == nil {
+		log.Err("ChunkServiceHandler::PutChunk: chunk file %s already exists", chunkPath)
+		return nil, rpc.NewResponseError(rpc.ChunkAlreadyExists, fmt.Sprintf("chunk file %s already exists", chunkPath))
+	}
 
 	err = os.WriteFile(chunkPath, req.Chunk.Data, 0400)
 	if err != nil {
@@ -363,11 +409,117 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 }
 
 func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequest) (*models.JoinMVResponse, error) {
-	return nil, nil
+	if req == nil {
+		log.Err("ChunkServiceHandler::JoinMV: Received nil JoinMV request")
+		return nil, rpc.NewResponseError(rpc.InvalidRequest, "received nil JoinMV request")
+	}
+
+	if req.MV == "" || req.RV == "" {
+		log.Err("ChunkServiceHandler::JoinMV: MV or RV is empty")
+		return nil, rpc.NewResponseError(rpc.InvalidRequest, "MV or RV is empty")
+	}
+
+	log.Debug("ChunkServiceHandler::JoinMV: Received JoinMV request for MV %s, RV %s, reserve space %v, peer RVs %v", req.MV, req.RV, req.ReserveSpace, req.PeerRV)
+
+	rvInfo := h.getRVInfoFromRvID(req.RV)
+	if rvInfo == nil {
+		log.Err("ChunkServiceHandler::JoinMV: Invalid RV %s", req.RV)
+		return nil, rpc.NewResponseError(rpc.InvalidRV, fmt.Sprintf("invalid RV %s", req.RV))
+	}
+
+	cacheDir := rvInfo.cacheDir
+
+	// check if RV is already part of the given MV
+	_, ok := rvInfo.mvMap.Load(req.MV)
+	if ok {
+		log.Err("ChunkServiceHandler::JoinMV: RV %s is already part of the given MV %s", req.RV, req.MV)
+		return nil, rpc.NewResponseError(rpc.InvalidRequest, fmt.Sprintf("RV %s is already part of the given MV %s", req.RV, req.MV))
+	}
+
+	// TODO: call cluster manager to get mvs-per-rv from config
+	mvLimit := getMVsPerRV()
+	if rvInfo.mvCount.Load() >= mvLimit {
+		log.Err("ChunkServiceHandler::JoinMV: RV %s has reached the maximum number of MVs %d", req.RV, mvLimit)
+		return nil, rpc.NewResponseError(rpc.MaxMVsExceeded, fmt.Sprintf("RV %s has reached the maximum number of MVs %d", req.RV, mvLimit))
+	}
+
+	// RV is being added to an already existing MV
+	// check if the RV has enough space to store the new MV data
+	if req.ReserveSpace != 0 {
+		availableSpace, err := common.GetAvailableDiskSpaceFromStatfs(cacheDir)
+		if err != nil {
+			log.Err("ChunkServiceHandler::JoinMV: Failed to get available disk space for RV %v [%v]", req.RV, err.Error())
+			return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to get available disk space for RV %v [%v]", req.RV, err.Error()))
+		}
+
+		if availableSpace < req.ReserveSpace {
+			log.Err("ChunkServiceHandler::JoinMV: Not enough space to reserve %v bytes for joining MV %v", req.ReserveSpace, req.MV)
+			return nil, rpc.NewResponseError(rpc.InvalidRequest, fmt.Sprintf("not enough space to reserve %v bytes for joining MV %v", req.ReserveSpace, req.MV))
+		}
+	}
+
+	// create the MV directory
+	mvPath := filepath.Join(cacheDir, req.MV)
+	err := os.MkdirAll(mvPath, 0700)
+	if err != nil {
+		log.Err("ChunkServiceHandler::JoinMV: Failed to create MV directory %s [%v]", mvPath, err.Error())
+		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to create MV directory %s [%v]", mvPath, err.Error()))
+	}
+
+	// add in sync map
+	rvInfo.addToMVMap(req.MV, &MVInfo{peerRVs: req.PeerRV})
+
+	return &models.JoinMVResponse{}, nil
 }
 
 func (h *ChunkServiceHandler) LeaveMV(ctx context.Context, req *models.LeaveMVRequest) (*models.LeaveMVResponse, error) {
-	return nil, nil
+	if req == nil {
+		log.Err("ChunkServiceHandler::LeaveMV: Received nil LeaveMV request")
+		return nil, rpc.NewResponseError(rpc.InvalidRequest, "received nil LeaveMV request")
+	}
+
+	if req.MV == "" || req.RV == "" {
+		log.Err("ChunkServiceHandler::LeaveMV: MV or RV is empty")
+		return nil, rpc.NewResponseError(rpc.InvalidRequest, "MV or RV is empty")
+	}
+
+	log.Debug("ChunkServiceHandler::LeaveMV: Received LeaveMV request for MV %s, RV %s, peer RVs %v", req.MV, req.RV, req.PeerRV)
+
+	rvInfo := h.getRVInfoFromRvID(req.RV)
+	if rvInfo == nil {
+		log.Err("ChunkServiceHandler::LeaveMV: Invalid RV %s", req.RV)
+		return nil, rpc.NewResponseError(rpc.InvalidRV, fmt.Sprintf("invalid RV %s", req.RV))
+	}
+
+	cacheDir := rvInfo.cacheDir
+
+	// check if RV is part of the given MV
+	val, ok := rvInfo.mvMap.Load(req.MV)
+	if !ok {
+		log.Err("ChunkServiceHandler::LeaveMV: RV %s is not part of the given MV %s", req.RV, req.MV)
+		return nil, rpc.NewResponseError(rpc.InvalidRequest, fmt.Sprintf("RV %s is not part of the given MV %s", req.RV, req.MV))
+	}
+
+	// validate the peer RVs list
+	mvInfo := val.(*MVInfo)
+	slices.Sort(req.PeerRV)
+	if !isPeerRVsValid(mvInfo.peerRVs, req.PeerRV) {
+		log.Err("ChunkServiceHandler::LeaveMV: Peer RVs %v are invalid for MV %s", req.PeerRV, req.MV)
+		return nil, rpc.NewResponseError(rpc.InvalidRequest, fmt.Sprintf("peer RVs %v are invalid for MV %s", req.PeerRV, req.MV))
+	}
+
+	// create the MV directory
+	mvPath := filepath.Join(cacheDir, req.MV)
+	err := os.RemoveAll(mvPath)
+	if err != nil {
+		log.Err("ChunkServiceHandler::LeaveMV: Failed to remove MV directory %s [%v]", mvPath, err.Error())
+		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to remove MV directory %s [%v]", mvPath, err.Error()))
+	}
+
+	// add in sync map
+	rvInfo.deleteFromMVMap(req.MV)
+
+	return &models.LeaveMVResponse{}, nil
 }
 
 func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSyncRequest) (*models.StartSyncResponse, error) {

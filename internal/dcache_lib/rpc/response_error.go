@@ -36,8 +36,11 @@ package rpc
 const (
 	InvalidRequest      = iota + 1 // invalid rpc request
 	InvalidFSID                    // RV does not have the FSID
-	InvalidMV                      // RV is not a member of the given MV
+	MVNotHostedByRV                // RV is not a member of the given MV
+	InvalidRV                      // RV is invalid for the given node
 	InternalServerError            // Miscellaneous errors
+	ChunkAlreadyExists             // Chunk already exists
+	MaxMVsExceeded                 // Max number of MVs exceeded for the RV
 )
 
 type ResponseError struct {
