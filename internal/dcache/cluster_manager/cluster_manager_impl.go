@@ -42,7 +42,7 @@ type ClusterManagerImpl struct {
 }
 
 // CreateClusterConfig implements ClusterManager.
-func (c *ClusterManagerImpl) CreateClusterConfig(dcache.DCacheConfig, string) error {
+func (c *ClusterManagerImpl) CreateClusterConfig() error {
 	return nil
 }
 
@@ -67,7 +67,7 @@ func (c *ClusterManagerImpl) IsAlive(peerId string) bool {
 }
 
 // Start implements ClusterManager.
-func (c *ClusterManagerImpl) Start() error {
+func (c *ClusterManagerImpl) Start(dcache.DCacheConfig) error {
 	return nil
 }
 
