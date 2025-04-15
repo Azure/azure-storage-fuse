@@ -59,7 +59,7 @@ import (
 type DistributedCache struct {
 	internal.BaseComponent
 	cacheID             string
-	cachePath           string
+	cachePath           []string
 	replicas            uint8
 	maxMissedHbs        uint8
 	hbDuration          uint16
@@ -81,22 +81,22 @@ type DistributedCache struct {
 
 // Structure defining your config parameters
 type DistributedCacheOptions struct {
-	CacheID             string `config:"cache-id" yaml:"cache-id,omitempty"`
-	CachePath           string `config:"cache-path" yaml:"cache-path,omitempty"`
-	ChunkSize           uint64 `config:"chunk-size" yaml:"chunk-size,omitempty"`
-	StripeSize          uint64 `config:"stripe-size" yaml:"stripe-size,omitempty"`
-	MaxCacheSize        uint64 `config:"max-cache-size" yaml:"cache-size,omitempty"`
-	Replicas            uint8  `config:"replicas" yaml:"replicas,omitempty"`
-	HeartbeatDuration   uint16 `config:"heartbeat-duration" yaml:"heartbeat-duration,omitempty"`
-	MaxMissedHeartbeats uint8  `config:"max-missed-heartbeats" yaml:"max-missed-heartbeats,omitempty"`
-	MinNodes            int    `config:"min-nodes" yaml:"min-nodes,omitempty"`
-	MVsPerRv            uint64 `config:"mvs-per-rv" yaml:"mvs-per-rv,omitempty"`
-	RVFullThreshold     uint64 `config:"rv-full-threshold" yaml:"rv-full-threshold,omitempty"`
-	RVNearfullThreshold uint64 `config:"rv-nearfull-threshold" yaml:"rv-nearfull-threshold,omitempty"`
-	ClustermapEpoch     uint64 `config:"clustermap-epoch" yaml:"clustermap-epoch,omitempty"`
-	RebalancePercentage uint64 `config:"rebalance-percentage" yaml:"rebalance-percentage,omitempty"`
-	SafeDeletes         bool   `config:"safe-deletes" yaml:"safe-deletes,omitempty"`
-	CacheAccess         string `config:"cache-access" yaml:"cache-access,omitempty"`
+	CacheID             string   `config:"cache-id" yaml:"cache-id,omitempty"`
+	CachePath           []string `config:"cache-path" yaml:"cache-path,omitempty"`
+	ChunkSize           uint64   `config:"chunk-size" yaml:"chunk-size,omitempty"`
+	StripeSize          uint64   `config:"stripe-size" yaml:"stripe-size,omitempty"`
+	MaxCacheSize        uint64   `config:"max-cache-size" yaml:"cache-size,omitempty"`
+	Replicas            uint8    `config:"replicas" yaml:"replicas,omitempty"`
+	HeartbeatDuration   uint16   `config:"heartbeat-duration" yaml:"heartbeat-duration,omitempty"`
+	MaxMissedHeartbeats uint8    `config:"max-missed-heartbeats" yaml:"max-missed-heartbeats,omitempty"`
+	MinNodes            int      `config:"min-nodes" yaml:"min-nodes,omitempty"`
+	MVsPerRv            uint64   `config:"mvs-per-rv" yaml:"mvs-per-rv,omitempty"`
+	RVFullThreshold     uint64   `config:"rv-full-threshold" yaml:"rv-full-threshold,omitempty"`
+	RVNearfullThreshold uint64   `config:"rv-nearfull-threshold" yaml:"rv-nearfull-threshold,omitempty"`
+	ClustermapEpoch     uint64   `config:"clustermap-epoch" yaml:"clustermap-epoch,omitempty"`
+	RebalancePercentage uint64   `config:"rebalance-percentage" yaml:"rebalance-percentage,omitempty"`
+	SafeDeletes         bool     `config:"safe-deletes" yaml:"safe-deletes,omitempty"`
+	CacheAccess         string   `config:"cache-access" yaml:"cache-access,omitempty"`
 }
 
 const (
@@ -161,7 +161,7 @@ func (dc *DistributedCache) Start(ctx context.Context) error {
 // setupCacheStructure checks and creates necessary cache directories and metadata.
 // It's doing 4 rest api calls, 3 for directory and 1 for creator file.+1 call to check the creator file
 func (dc *DistributedCache) setupCacheStructure(cacheDir string) error {
-	_, err := dc.azstroage.GetAttr(internal.GetAttrOptions{Name: cacheDir + "/ClusterMap.json"})
+	_, err := dc.azstroage.GetAttr(internal.GetAttrOptions{Name: cacheDir + "/Objects"})
 	if err != nil {
 		if os.IsNotExist(err) || err == syscall.ENOENT {
 			directories := []string{cacheDir, cacheDir + "/Nodes", cacheDir + "/Objects"}
@@ -173,32 +173,38 @@ func (dc *DistributedCache) setupCacheStructure(cacheDir string) error {
 					}
 				}
 			}
-			err = dc.clusterManager.Start(clustermanager.ClusterManagerConfig{
-				MinNodes:               dc.minNodes,
-				ChunkSize:              dc.chunkSize,
-				StripeSize:             dc.stripeSize,
-				NumReplicas:            dc.replicas,
-				MvsPerRv:               dc.mvsPerRv,
-				HeartbeatSeconds:       dc.hbDuration,
-				HeartbeatsTillNodeDown: dc.maxMissedHbs,
-				ClustermapEpoch:        dc.clustermapEpoch,
-				RebalancePercentage:    dc.rebalancePercentage,
-				SafeDeletes:            dc.safeDeletes,
-				CacheAccess:            dc.cacheAccess,
-				StorageCachePath:       "__CACHE__" + dc.cacheID,
-				RVList:                 []dcache.RawVolume{},
-			})
-			if bloberror.HasCode(err, bloberror.BlobAlreadyExists) {
-				return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to create creator file: %v]", err))
-			} else {
-				return nil
-			}
 
 		} else {
 			return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to read creator file: %v]", err))
 		}
 	}
-	return nil
+
+	rvList := make([]dcache.RawVolume, len(dc.cachePath))
+	for index, path := range dc.cachePath {
+		rvList[index] = dcache.RawVolume{
+			LocalCachePath: path,
+		}
+	}
+	err = dc.clusterManager.Start(clustermanager.ClusterManagerConfig{
+		MinNodes:               dc.minNodes,
+		ChunkSize:              dc.chunkSize,
+		StripeSize:             dc.stripeSize,
+		NumReplicas:            dc.replicas,
+		MvsPerRv:               dc.mvsPerRv,
+		HeartbeatSeconds:       dc.hbDuration,
+		HeartbeatsTillNodeDown: dc.maxMissedHbs,
+		ClustermapEpoch:        dc.clustermapEpoch,
+		RebalancePercentage:    dc.rebalancePercentage,
+		SafeDeletes:            dc.safeDeletes,
+		CacheAccess:            dc.cacheAccess,
+		StorageCachePath:       "__CACHE__" + dc.cacheID,
+		RVList:                 rvList,
+	})
+	if bloberror.HasCode(err, bloberror.BlobAlreadyExists) {
+		return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to create creator file: %v]", err))
+	} else {
+		return nil
+	}
 }
 
 func logAndReturnError(msg string) error {
@@ -227,7 +233,7 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 	if conf.CacheID == "" {
 		return fmt.Errorf("config error in %s: [cache-id not set]", distributedCache.Name())
 	}
-	if conf.CachePath == "" {
+	if len(conf.CachePath) == 0 {
 		return fmt.Errorf("config error in %s: [cache-path not set]", distributedCache.Name())
 	}
 
