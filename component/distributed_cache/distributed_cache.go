@@ -179,15 +179,14 @@ func (dc *DistributedCache) setupCacheStructure(cacheDir string) error {
 				StripeSize:             dc.stripeSize,
 				NumReplicas:            dc.replicas,
 				MvsPerRv:               dc.mvsPerRv,
-				RvFullThreshold:        dc.rvFullThreshold,
-				RvNearfullThreshold:    dc.rvNearfullThreshold,
 				HeartbeatSeconds:       dc.hbDuration,
 				HeartbeatsTillNodeDown: dc.maxMissedHbs,
 				ClustermapEpoch:        dc.clustermapEpoch,
 				RebalancePercentage:    dc.rebalancePercentage,
 				SafeDeletes:            dc.safeDeletes,
 				CacheAccess:            dc.cacheAccess,
-				StoragePath:            "__CACHE__" + dc.cacheID,
+				StorageCachePath:       "__CACHE__" + dc.cacheID,
+				RVList:                 []dcache.RawVolume{},
 			})
 			if bloberror.HasCode(err, bloberror.BlobAlreadyExists) {
 				return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to create creator file: %v]", err))
