@@ -62,7 +62,7 @@ type distributedCacheTestSuite struct {
 
 func (suite *distributedCacheTestSuite) SetupTest() {
 	log.SetDefaultLogger("silent", common.LogConfig{Level: common.ELogLevel.LOG_DEBUG()})
-	defaultConfig := "distributed_cache:\n  cache-id: mycache1\n  cache-path: \\tmp"
+	defaultConfig := "distributed_cache:\n  cache-id: mycache1\n  cache-path:\n    - \\tmp"
 	log.Debug(defaultConfig)
 
 	suite.setupTestHelper(defaultConfig)
@@ -99,7 +99,7 @@ func (suite *distributedCacheTestSuite) TearDownTest() error {
 func (suite *distributedCacheTestSuite) TestManadatoryConfigMissing() {
 	suite.assert.EqualValues("distributed_cache", suite.distributedCache.Name())
 	suite.assert.EqualValues("mycache1", suite.distributedCache.cacheID)
-	suite.assert.EqualValues("\\tmp", suite.distributedCache.cachePath)
+	suite.assert.EqualValues(1, len(suite.distributedCache.cachePath))
 	suite.assert.EqualValues(uint8(1), suite.distributedCache.replicas)
 	suite.assert.EqualValues(uint16(30), suite.distributedCache.hbDuration)
 	suite.assert.EqualValues("automatic", suite.distributedCache.cacheAccess)
