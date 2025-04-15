@@ -44,6 +44,6 @@ type ClusterManager interface {
 	GetPeerRVs(mvName string) []dcachelib.RawVolume
 	IsAlive(peerId string) bool
 	UpdateMVs(mvs []dcachelib.MirroredVolume)
-	UpdateStroageConfigIfRequired() error
+	UpdateStorageConfigIfRequired() error
 	WatchForConfigChanges() error
 }

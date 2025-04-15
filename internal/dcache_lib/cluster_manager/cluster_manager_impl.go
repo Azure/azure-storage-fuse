@@ -78,7 +78,7 @@ func (cmi *ClusterManagerImpl) IsAlive(peerId string) bool {
 func (cmi *ClusterManagerImpl) UpdateMVs(mvs []dcachelib.MirroredVolume) {
 }
 
-func (cmi *ClusterManagerImpl) UpdateStroageConfigIfRequired() error {
+func (cmi *ClusterManagerImpl) UpdateStorageConfigIfRequired() error {
 	checkForRVs()
 	evaluateMVsRVMapping()
 	//Mark the Mv degraded
