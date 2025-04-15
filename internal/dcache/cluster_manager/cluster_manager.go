@@ -36,9 +36,9 @@ package clustermanager
 import "github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 
 type ClusterManager interface {
-	Start() error
+	Start(dcache.DCacheConfig) error
 	Stop() error
-	CreateClusterConfig(dcache.DCacheConfig, string) error
+	CreateClusterConfig() error
 	GetActiveMVs() []dcache.MirroredVolume
 	GetPeer(nodeId string) dcache.Peer
 	GetPeerRVs(mvName string) []dcache.RawVolume
