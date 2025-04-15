@@ -48,6 +48,16 @@ type ClusterManagerImpl struct {
 	storageCallback dcachelib.StorageCallbacks
 }
 
+// GetPeer implements ClusterManager.
+func (cmi *ClusterManagerImpl) GetPeer(nodeId string) dcachelib.Peer {
+	return dcachelib.Peer{}
+}
+
+// GetPeerRVs implements ClusterManager.
+func (cmi *ClusterManagerImpl) GetPeerRVs(mvName string) []dcachelib.RawVolume {
+	return nil
+}
+
 func (cmi *ClusterManagerImpl) Start() error {
 	return nil
 }
