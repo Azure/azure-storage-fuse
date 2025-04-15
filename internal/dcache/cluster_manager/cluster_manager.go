@@ -31,17 +31,19 @@
    SOFTWARE
 */
 
-package cmd
+package clustermanager
 
-import (
-	_ "github.com/Azure/azure-storage-fuse/v2/component/attr_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/azstorage"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/block_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/custom"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/distributed_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/entry_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/file_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/libfuse"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/loopback"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/xload"
-)
+import "github.com/Azure/azure-storage-fuse/v2/internal/dcache"
+
+type ClusterManager interface {
+	Start() error
+	Stop() error
+	CreateClusterConfig(dcache.DCacheConfig, string) error
+	GetActiveMVs() []dcache.MirroredVolume
+	GetPeer(nodeId string) dcache.Peer
+	GetPeerRVs(mvName string) []dcache.RawVolume
+	IsAlive(peerId string) bool
+	UpdateMVs(mvs []dcache.MirroredVolume)
+	UpdateStorageConfigIfRequired() error
+	WatchForConfigChanges() error
+}

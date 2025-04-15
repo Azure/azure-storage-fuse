@@ -1,0 +1,12 @@
+[global]
+name=test
+bs=8M
+filesize=10M
+numjobs=10
+nrfiles=2
+rw=write
+ioengine=sync
+group_reporting
+directory=./test/
+
+[test]

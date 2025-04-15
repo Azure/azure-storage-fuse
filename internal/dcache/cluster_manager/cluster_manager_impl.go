@@ -31,17 +31,67 @@
    SOFTWARE
 */
 
-package cmd
+package clustermanager
 
 import (
-	_ "github.com/Azure/azure-storage-fuse/v2/component/attr_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/azstorage"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/block_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/custom"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/distributed_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/entry_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/file_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/libfuse"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/loopback"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/xload"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 )
+
+type ClusterManagerImpl struct {
+	storageCallback dcache.StorageCallbacks
+}
+
+// CreateClusterConfig implements ClusterManager.
+func (c *ClusterManagerImpl) CreateClusterConfig(dcache.DCacheConfig, string) error {
+	return nil
+}
+
+// GetActiveMVs implements ClusterManager.
+func (c *ClusterManagerImpl) GetActiveMVs() []dcache.MirroredVolume {
+	return nil
+}
+
+// GetPeer implements ClusterManager.
+func (c *ClusterManagerImpl) GetPeer(nodeId string) dcache.Peer {
+	return dcache.Peer{}
+}
+
+// GetPeerRVs implements ClusterManager.
+func (c *ClusterManagerImpl) GetPeerRVs(mvName string) []dcache.RawVolume {
+	return nil
+}
+
+// IsAlive implements ClusterManager.
+func (c *ClusterManagerImpl) IsAlive(peerId string) bool {
+	return false
+}
+
+// Start implements ClusterManager.
+func (c *ClusterManagerImpl) Start() error {
+	return nil
+}
+
+// Stop implements ClusterManager.
+func (c *ClusterManagerImpl) Stop() error {
+	return nil
+}
+
+// UpdateMVs implements ClusterManager.
+func (c *ClusterManagerImpl) UpdateMVs(mvs []dcache.MirroredVolume) {
+}
+
+// UpdateStorageConfigIfRequired implements ClusterManager.
+func (c *ClusterManagerImpl) UpdateStorageConfigIfRequired() error {
+	return nil
+}
+
+// WatchForConfigChanges implements ClusterManager.
+func (c *ClusterManagerImpl) WatchForConfigChanges() error {
+	return nil
+}
+
+func NewClusterManager(callback dcache.StorageCallbacks) ClusterManager {
+	return &ClusterManagerImpl{
+		storageCallback: callback,
+	}
+}
