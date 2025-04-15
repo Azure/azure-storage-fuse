@@ -454,6 +454,7 @@ func (dl *Datalake) GetAttr(name string) (blobAttr *internal.ObjAttr, err error)
 func parsePosixInfo(attr *internal.ObjAttr, prop file.GetPropertiesResponse) {
 	if prop.Owner != nil {
 		attr.Owner = common.ParseUint32(*prop.Owner)
+		attr.Flags.Set(internal.PropFlagOwnerInfoFound)
 	}
 
 	if prop.Group != nil {

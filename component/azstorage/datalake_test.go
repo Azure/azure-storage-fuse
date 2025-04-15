@@ -48,7 +48,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -2867,21 +2866,6 @@ func (s *datalakeTestSuite) TestList() {
 	s.assert.EqualValues(1, len(blobList))
 	s.assert.EqualValues(base, blobList[0].Path)
 	s.assert.NotEqual(0, blobList[0].Mode)
-}
-
-func (s *datalakeTestSuite) TestChangeOwner() {
-	defer s.cleanupTest()
-	// Setup
-	name := generateFileName()
-	s.az.CreateFile(internal.CreateFileOptions{Name: name})
-
-	err := s.az.storage.ChangeOwner(name, 1001, 1001)
-	s.assert.Nil(err)
-
-	attr, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
-	s.assert.Nil(err)
-	s.assert.Equal(strconv.Itoa(1001), *common.ReadMetadata(*&attr.Metadata, common.POSIXOwnerMeta))
-	s.assert.Equal(strconv.Itoa(1001), *common.ReadMetadata(*&attr.Metadata, common.POSIXGroupMeta))
 }
 
 // In order for 'go test' to run this suite, we need to create

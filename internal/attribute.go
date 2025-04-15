@@ -64,7 +64,8 @@ const (
 	PropFlagIsDir
 	PropFlagEmptyDir
 	PropFlagSymlink
-	PropFlagModeDefault // TODO: Does this sound better as ModeDefault or DefaultMode? The getter would be IsModeDefault or IsDefaultMode
+	PropFlagModeDefault
+	PropFlagOwnerInfoFound
 )
 
 // ObjAttr : Attributes of any file/directory
@@ -99,4 +100,9 @@ func (attr *ObjAttr) IsSymlink() bool {
 // This is set in any storage service that does not support chmod/chown.
 func (attr *ObjAttr) IsModeDefault() bool {
 	return attr.Flags.IsSet(PropFlagModeDefault)
+}
+
+// OwnerDetected :
+func (attr *ObjAttr) OwnerInfoFound() bool {
+	return attr.Flags.IsSet(PropFlagOwnerInfoFound)
 }

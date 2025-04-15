@@ -500,9 +500,10 @@ func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err 
 	}
 
 	parseMetadata(attr, prop.Metadata)
-
-	// We do not get permissions as part of this getAttr call hence setting the flag to true
-	attr.Flags.Set(internal.PropFlagModeDefault)
+	if attr.Mode == 0 {
+		// We do not get permissions as part of this getAttr call hence setting the flag to true
+		attr.Flags.Set(internal.PropFlagModeDefault)
+	}
 
 	return attr, nil
 }
@@ -688,17 +689,11 @@ func (bb *BlockBlob) getBlobAttr(blobInfo *container.BlobItem) (*internal.ObjAtt
 		log.Trace("BlockBlob::List : blob is encrypted with customer provided key so fetching metadata explicitly using REST")
 		return bb.getAttrUsingRest(*blobInfo.Name)
 	}
-	mode, err := bb.getFileMode(blobInfo.Properties.Permissions, blobInfo.Metadata)
-	if err != nil {
-		mode = 0
-		log.Warn("BlockBlob::getBlobAttr : Failed to get file mode for %s [%s]", *blobInfo.Name, err.Error())
-	}
 
 	attr := &internal.ObjAttr{
 		Path:   removePrefixPath(bb.Config.prefixPath, *blobInfo.Name),
 		Name:   filepath.Base(*blobInfo.Name),
 		Size:   *blobInfo.Properties.ContentLength,
-		Mode:   mode,
 		Mtime:  *blobInfo.Properties.LastModified,
 		Atime:  bb.dereferenceTime(blobInfo.Properties.LastAccessedOn, *blobInfo.Properties.LastModified),
 		Ctime:  *blobInfo.Properties.LastModified,
@@ -709,29 +704,21 @@ func (bb *BlockBlob) getBlobAttr(blobInfo *container.BlobItem) (*internal.ObjAtt
 	}
 
 	parseMetadata(attr, blobInfo.Metadata)
-	if !bb.listDetails.Permissions && mode == 0 {
+	if attr.Mode == 0 {
 		// In case of HNS account do not set this flag
 		attr.Flags.Set(internal.PropFlagModeDefault)
 	}
 
-	return attr, nil
-}
+	if blobInfo.Properties.Owner != nil {
+		attr.Owner = common.ParseUint32(*blobInfo.Properties.Owner)
+		attr.Flags.Set(internal.PropFlagOwnerInfoFound)
+	}
 
-func (bb *BlockBlob) getFileMode(permissions *string, metadata map[string]*string) (os.FileMode, error) {
-	if metadata != nil {
-		permission := common.ReadMetadata(metadata, common.POSIXModeMeta)
-		if permission != nil {
-			mode, err := strconv.ParseUint(*permission, 10, 32)
-			if err != nil {
-				return 0, err
-			}
-			return os.FileMode(mode), nil
-		}
+	if blobInfo.Properties.Group != nil {
+		attr.Group = common.ParseUint32(*blobInfo.Properties.Group)
 	}
-	if permissions == nil {
-		return 0, nil
-	}
-	return getFileMode(*permissions)
+
+	return attr, nil
 }
 
 func (bb *BlockBlob) dereferenceTime(input *time.Time, defaultTime time.Time) time.Time {
@@ -799,7 +786,7 @@ func (bb *BlockBlob) createDirAttrWithPermissions(blobInfo *container.BlobPrefix
 		return nil, fmt.Errorf("failed to get properties of blobprefix %s", *blobInfo.Name)
 	}
 
-	mode, err := bb.getFileMode(blobInfo.Properties.Permissions, nil)
+	mode, err := getFileMode(*blobInfo.Properties.Permissions)
 	if err != nil {
 		mode = 0
 		log.Warn("BlockBlob::createDirAttrWithPermissions : Failed to get file mode for %s [%s]", *blobInfo.Name, err.Error())
@@ -816,6 +803,19 @@ func (bb *BlockBlob) createDirAttrWithPermissions(blobInfo *container.BlobPrefix
 		Ctime:  *blobInfo.Properties.LastModified,
 		Crtime: bb.dereferenceTime(blobInfo.Properties.CreationTime, *blobInfo.Properties.LastModified),
 		Flags:  internal.NewDirBitMap(),
+	}
+
+	if attr.Mode == 0 {
+		attr.Flags.Set(internal.PropFlagModeDefault)
+	}
+
+	if blobInfo.Properties.Owner != nil {
+		attr.Owner = common.ParseUint32(*blobInfo.Properties.Owner)
+		attr.Flags.Set(internal.PropFlagOwnerInfoFound)
+	}
+
+	if blobInfo.Properties.Group != nil {
+		attr.Group = common.ParseUint32(*blobInfo.Properties.Group)
 	}
 
 	return attr, nil

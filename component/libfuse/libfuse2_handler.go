@@ -309,19 +309,15 @@ func libfuse_destroy(data unsafe.Pointer) {
 }
 
 func (lf *Libfuse) fillStat(attr *internal.ObjAttr, stbuf *C.stat_t) {
-	uid := common.ReadMetadata(attr.Metadata, common.POSIXOwnerMeta)
-	if uid != nil {
-		(*stbuf).st_uid = C.uint(common.ParseUint32(*uid))
-	} else {
-		(*stbuf).st_uid = C.uint(lf.ownerUID)
-	}
-	gid := common.ReadMetadata(attr.Metadata, common.POSIXGroupMeta)
+	(*stbuf).st_uid = C.uint(lf.ownerUID)
+	(*stbuf).st_gid = C.uint(lf.ownerGID)
 
-	if gid != nil {
-		(*stbuf).st_gid = C.uint(common.ParseUint32(*gid))
-	} else {
-		(*stbuf).st_gid = C.uint(lf.ownerGID)
+	if !lf.overrideUser && attr.OwnerInfoFound() {
+		// If overrideUser is not set then we user the owner/group as per blob
+		(*stbuf).st_uid = C.uint(attr.Owner)
+		(*stbuf).st_gid = C.uint(attr.Group)
 	}
+
 	(*stbuf).st_nlink = 1
 	(*stbuf).st_size = C.long(attr.Size)
 

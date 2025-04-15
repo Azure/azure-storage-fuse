@@ -289,6 +289,7 @@ func parseMetadata(attr *internal.ObjAttr, metadata map[string]*string) {
 				attr.Flags = internal.NewSymlinkBitMap()
 				attr.Mode = attr.Mode | os.ModeSymlink
 			} else if strings.ToLower(k) == common.POSIXOwnerMeta {
+				attr.Flags.Set(internal.PropFlagOwnerInfoFound)
 				attr.Owner = common.ParseUint32(*v)
 			} else if strings.ToLower(k) == common.POSIXGroupMeta {
 				attr.Group = common.ParseUint32(*v)
