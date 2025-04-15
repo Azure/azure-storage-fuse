@@ -34,7 +34,7 @@ package distributed_cache
 
 import (
 	"github.com/Azure/azure-storage-fuse/v2/internal"
-	dcachelib "github.com/Azure/azure-storage-fuse/v2/internal/dcache_lib"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 )
 
 // StorageCallbackImpl is a struct that implements the Storage interface
@@ -101,7 +101,7 @@ func (sci *StorageCallbackImpl) PutBlob(options internal.WriteFromBufferOptions)
 }
 
 // Factory function to create a new instance of StorageCallbacks
-func initStorageCallback(nextComp internal.Component, azstorage internal.Component) dcachelib.StorageCallbacks {
+func initStorageCallback(nextComp internal.Component, azstorage internal.Component) dcache.StorageCallbacks {
 
 	return &StorageCallbackImpl{
 		nextComp: nextComp,

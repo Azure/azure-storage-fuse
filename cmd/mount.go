@@ -95,6 +95,7 @@ type mountOptions struct {
 	LibfuseOptions    []string `config:"libfuse-options"`
 	BlockCache        bool     `config:"block-cache"`
 	DistributedCache  bool     `config:"distributed-cache"`
+	Preload           bool     `config:"preload"`
 	EntryCacheTimeout int      `config:"list-cache-timeout"`
 }
 
@@ -303,6 +304,8 @@ var mountCmd = &cobra.Command{
 				pipeline = append(pipeline, "block_cache")
 			} else if config.IsSet("distributed-cache") && options.DistributedCache {
 				pipeline = append(pipeline, "distributed_cache")
+			} else if options.Preload {
+				pipeline = append(pipeline, "xload")
 			} else {
 				pipeline = append(pipeline, "file_cache")
 			}
@@ -319,6 +322,24 @@ var mountCmd = &cobra.Command{
 
 		if config.IsSet("entry_cache.timeout-sec") || options.EntryCacheTimeout > 0 {
 			options.Components = append(options.Components[:1], append([]string{"entry_cache"}, options.Components[1:]...)...)
+		}
+
+		if err = common.ValidatePipeline(options.Components); err != nil {
+			// file-cache, block-cache and xload are mutually exclusive
+			log.Err("mount: invalid pipeline components [%s]", err.Error())
+			return fmt.Errorf("invalid pipeline components [%s]", err.Error())
+		}
+
+		// either passed in CLI or in config file
+		if options.BlockCache || common.ComponentInPipeline(options.Components, "block_cache") {
+			// CLI overriding the pipeline to inject block-cache
+			options.Components = common.UpdatePipeline(options.Components, "block_cache")
+		}
+
+		if options.Preload || common.ComponentInPipeline(options.Components, "xload") {
+			// CLI overriding the pipeline to inject xload
+			options.Components = common.UpdatePipeline(options.Components, "xload")
+			config.Set("read-only", "true") // preload is only supported in read-only mode
 		}
 
 		if config.IsSet("libfuse-options") {
@@ -766,7 +787,9 @@ func init() {
 
 	mountCmd.Flags().BoolVar(&options.BlockCache, "block-cache", false, "Enable Block-Cache.")
 	config.BindPFlag("block-cache", mountCmd.Flags().Lookup("block-cache"))
-	mountCmd.Flags().Lookup("block-cache").Hidden = true
+
+	mountCmd.Flags().BoolVar(&options.Preload, "preload", false, "Enable Preload, to start downloading all files from container on mount.")
+	config.BindPFlag("preload", mountCmd.Flags().Lookup("preload"))
 
 	mountCmd.Flags().BoolVar(&options.DistributedCache, "dcache", false, "Enable Distributed-Cache.")
 	config.BindPFlag("distributed-cache", mountCmd.Flags().Lookup("dcache"))
@@ -774,7 +797,6 @@ func init() {
 
 	mountCmd.Flags().BoolVar(&options.AttrCache, "use-attr-cache", true, "Use attribute caching.")
 	config.BindPFlag("use-attr-cache", mountCmd.Flags().Lookup("use-attr-cache"))
-	mountCmd.Flags().Lookup("use-attr-cache").Hidden = true
 
 	mountCmd.Flags().Bool("invalidate-on-sync", true, "Invalidate file/dir on sync/fsync.")
 	config.BindPFlag("invalidate-on-sync", mountCmd.Flags().Lookup("invalidate-on-sync"))
