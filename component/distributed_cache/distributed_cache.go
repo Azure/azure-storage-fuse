@@ -184,12 +184,15 @@ func (dc *DistributedCache) setupCacheStructure(cacheDir string) error {
 	for index, path := range dc.cachePath {
 		fsid, _ := getBlockDeviceUUId(path)
 		// TODO{Akku} : More than 1 same fsid for rv, must fail distributed cache startup
-		totalSpace, _ := common.GetTotalSpace(path)
+		totalSpace, err := common.GetTotalSpace(path)
+		if err != nil {
+			return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to evaluate local cache Total space: %v]", err))
+		}
 		rvList[index] = dcache.RawVolume{
 			LocalCachePath: path,
 			FSID:           fsid,
 			FDID:           "0",
-			AvailableSpace: int(totalSpace),
+			AvailableSpace: totalSpace,
 		}
 	}
 	err = dc.clusterManager.Start(clustermanager.ClusterManagerConfig{
