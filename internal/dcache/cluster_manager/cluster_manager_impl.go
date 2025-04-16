@@ -107,6 +107,7 @@ func (cmi *ClusterManagerImpl) punchHeartBeat(clusterManagerConfig ClusterManage
 		log.Err("Error getting hostname:", err)
 	}
 	listMyRVs(clusterManagerConfig.RVList)
+	cmi.nodeId = clusterManagerConfig.RVList[0].NodeId
 	hbData := dcache.HeartbeatData{
 		IPAddr:        clusterManagerConfig.RVList[0].IPAddress,
 		NodeID:        cmi.nodeId,
@@ -194,20 +195,67 @@ func evaluateMVsRVMapping() map[string]dcache.MirroredVolume {
 	return mvRvMap
 }
 
-func fetchRVMap() map[string]dcache.RawVolume {
-	//Iterate over Heartbeat File
-	rvMap := map[string]dcache.RawVolume{}
-	// rv0 := dcache.RawVolume{
-	// 	HostNode:         "Node1",
-	// 	FSID:             "FSID1",
-	// 	FDID:             "FDID1",
-	// 	State:            "Active",
-	// 	TotalSpaceGB:     100,
-	// 	AvailableSpaceGB: 50,
-	// 	LocalCachePath:   "/path/to/cache",
-	// }
-	// rvMap["rv0"] = rv0
-	return rvMap
+func (cmi *ClusterManagerImpl) checkAndUpdateRVMap(configMapRVMap map[string]dcache.RawVolume) (bool, bool, error) {
+	dirListAttr, err := cmi.storageCallback.ReadDirFromStorage(internal.ReadDirOptions{Name: cmi.storageCachePath + "/Nodes"})
+	isRVMapUpdated := false
+	isMVsUpdateNeeded := false
+	if err != nil {
+		log.Err("ClusterManagerImpl::checkAndUpdateRVMap: Failed to read directory from Storage %s, error: %v", cmi.storageCachePath+"/Nodes", err)
+		return isRVMapUpdated, isMVsUpdateNeeded, err
+	}
+	log.Trace("ClusterManagerImpl::checkAndUpdateRVMap: Heartbeat files in storage %s", dirListAttr)
+
+	rVsByBlkID := make(map[string]dcache.RawVolume)
+
+	for _, fileAttr := range dirListAttr {
+
+		bytes, err := cmi.storageCallback.GetBlobFromStorage(internal.ReadFileWithNameOptions{Path: fileAttr.Path})
+		if err != nil {
+			log.Err("ClusterManagerImpl::checkAndUpdateRVMap: Failed to read heartbeat file %s, error: %v", fileAttr.Path, err)
+			return isRVMapUpdated, isMVsUpdateNeeded, err
+		}
+		var hbData dcache.HeartbeatData
+		if err := json.Unmarshal(bytes, &hbData); err != nil {
+			log.Err("ClusterManagerImpl::checkAndUpdateRVMap: Failed to parse JSON, error: %v", err)
+			return isRVMapUpdated, isMVsUpdateNeeded, err
+		}
+		for _, rv := range hbData.RVList {
+			rVsByBlkID[rv.FSID] = rv
+		}
+	}
+	if len(configMapRVMap) == 0 && len(rVsByBlkID) != 0 {
+		isRVMapUpdated = true
+		isMVsUpdateNeeded = true
+		//Update RV Map in StorageConfig
+
+		return isRVMapUpdated, isMVsUpdateNeeded, nil
+
+	}
+	for rvName, rvInConfig := range configMapRVMap {
+		if rvHb, found := rVsByBlkID[rvInConfig.FSID]; found {
+			if rvInConfig.State != rvHb.State {
+				isRVMapUpdated = true
+				isMVsUpdateNeeded = true
+				rvInConfig.State = rvHb.State
+			}
+			if rvInConfig.AvailableSpace != rvHb.AvailableSpace {
+				isRVMapUpdated = true
+				rvInConfig.AvailableSpace = rvHb.AvailableSpace
+				if rvInConfig.AvailableSpace < (rvInConfig.TotalSpace / 10) {
+					isMVsUpdateNeeded = true
+				}
+
+			}
+		} else {
+			log.Trace("ClusterManagerImpl::checkAndUpdateRVMap: FSID=%s missing in new heartbeats", rvName)
+			delete(configMapRVMap, rvName)
+			isRVMapUpdated = true
+			isMVsUpdateNeeded = true
+
+		}
+	}
+
+	return isRVMapUpdated, isMVsUpdateNeeded, nil
 }
 
 func evaluateReadOnlyState() bool {
@@ -230,11 +278,23 @@ func (cmi *ClusterManagerImpl) UpdateStorageConfigIfRequired() {
 		log.Err("UpdateStorageConfigIfRequired: bytes %v, err %v", bytes, err)
 		return
 	}
-	// if I am the leader
-	// Update the storage config map
-	//else check config map lastUpdateAt +1 sec expiry
-	// if expired
-	//update the storage config map
+	var clusterCfg dcache.ClusterConfig
+	if err := json.Unmarshal(bytes, &clusterCfg); err != nil {
+		log.Err("UpdateStorageConfigIfRequired: failed to parse JSON, error: %v", err)
+		return
+	}
+
+	if (clusterCfg.LastUpdatedBy == cmi.nodeId) || (time.Now().Unix()-clusterCfg.LastUpdatedAt > int64(clusterCfg.Config.ClustermapEpoch)) {
+		log.Trace("I am the leader or Config is stale. Proceed with updating the storage config map.")
+		isRVMapUpdated, isMVsUpdateNeeded, err := cmi.checkAndUpdateRVMap(clusterCfg.RVMap)
+		log.Err("UpdateStorageConfigIfRequired: isRVMapUpdated %v, isMVsUpdateNeeded %v, err %v", isRVMapUpdated, isMVsUpdateNeeded, err)
+		// if isRVMapUpdated {
+		// 	//update the MVRVMap if required
+		//}
+		// 	 update the LMT or LUB in Stroage Config and push the update
+		//If required trigger replication manager
+	}
+
 }
 
 // WatchForConfigChanges implements ClusterManager.
