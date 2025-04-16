@@ -98,8 +98,8 @@ func (cmi *ClusterManagerImpl) createClusterConfig(clusterManagerConfig ClusterM
 		LastUpdatedAt: time.Now().Unix(),
 		LastUpdatedBy: uuidVal,
 		Config:        dcacheConfig,
-		RVMap:         fetchRVMap(),
-		MVMap:         evaluateMVsRVMapping(),
+		RVMap:         map[string]dcache.RawVolume{},
+		MVMap:         map[string]dcache.MirroredVolume{},
 	}
 	clusterConfigJson, err := json.Marshal(clusterConfig)
 	log.Err("ClusterManager::CreateClusterConfig : ClusterConfigJson: %v, err %v", clusterConfigJson, err)
