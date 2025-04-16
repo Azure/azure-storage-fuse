@@ -40,9 +40,9 @@ import (
 )
 
 type CreateDirOptions struct {
-	Name                   string
-	Mode                   os.FileMode
-	IsNoneMatchEtagEnabled bool
+	Name                     string
+	Mode                     os.FileMode
+	ForceDirCreationDisabled bool
 }
 
 type DeleteDirOptions struct {
@@ -116,6 +116,8 @@ type ReadInBufferOptions struct {
 	Offset int64
 	Etag   *string
 	Data   []byte
+	Path   string
+	Size   int64
 }
 
 type WriteFileOptions struct {
