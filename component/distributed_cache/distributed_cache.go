@@ -180,6 +180,15 @@ func (dc *DistributedCache) setupCacheStructure(cacheDir string) error {
 		}
 	}
 
+	ipaddr, err := getVmIp()
+	if err != nil {
+		return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to get VM IP : %v]", err))
+	}
+
+	uuidVal, err := common.GetUUID()
+	if err != nil {
+		return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to retrieve UUID, error: %v]", err))
+	}
 	rvList := make([]dcache.RawVolume, len(dc.cachePath))
 	for index, path := range dc.cachePath {
 		fsid, err := getBlockDeviceUUId(path)
@@ -191,15 +200,7 @@ func (dc *DistributedCache) setupCacheStructure(cacheDir string) error {
 		if err != nil {
 			return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to evaluate local cache Total space: %v]", err))
 		}
-		ipaddr, err := getVmIp()
-		if err != nil {
-			return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to get VM IP : %v]", err))
-		}
 
-		uuidVal, err := common.GetUUID()
-		if err != nil {
-			return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to retrieve UUID, error: %v]", err))
-		}
 		rvList[index] = dcache.RawVolume{
 			NodeId:         uuidVal,
 			IPAddress:      ipaddr,
