@@ -46,9 +46,10 @@ import (
 )
 
 type ClusterManagerImpl struct {
-	storageCallback dcache.StorageCallbacks
-	ticker          *time.Ticker
-	nodeId          string
+	storageCallback  dcache.StorageCallbacks
+	ticker           *time.Ticker
+	clusterMapticker *time.Ticker
+	nodeId           string
 }
 
 // GetActiveMVs implements ClusterManager.
@@ -81,8 +82,20 @@ func (cmi *ClusterManagerImpl) Start(clusterManagerConfig ClusterManagerConfig) 
 			cmi.punchHeartBeat(clusterManagerConfig)
 		}
 	}()
-	//Schedule clustermap config update at storage and local copy
+	cmi.clusterMapticker = time.NewTicker(time.Duration(clusterManagerConfig.ClustermapEpoch) * time.Second)
+	go func() {
+		for range cmi.ticker.C {
+			log.Trace("Scheduled task triggered")
+			cmi.UpdateStorageConfigIfRequired()
+			cmi.UpdateConfigMapCacheCopy()
+		}
+	}()
 	return nil
+}
+
+func (c *ClusterManagerImpl) UpdateConfigMapCacheCopy() {
+	//update my local copy of config map if anythig is change
+	//Notify to replication manager if there is any change
 }
 
 func (cmi *ClusterManagerImpl) punchHeartBeat(clusterManagerConfig ClusterManagerConfig) {
@@ -210,6 +223,11 @@ func (c *ClusterManagerImpl) UpdateMVs(mvs []dcache.MirroredVolume) {
 
 // UpdateStorageConfigIfRequired implements ClusterManager.
 func (c *ClusterManagerImpl) UpdateStorageConfigIfRequired() error {
+	// if I am the leader
+	// Update the storage config map
+	//else check config map lastUpdateAt +1 sec expiry
+	// if expired
+	//update the storage config map
 	return nil
 }
 
