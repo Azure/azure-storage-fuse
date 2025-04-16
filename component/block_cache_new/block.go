@@ -87,6 +87,12 @@ func (blk *block) decrementRefCnt() int {
 	return blk.refCnt
 }
 
+func (blk *block) getRefCnt() int {
+	blk.Lock()
+	defer blk.Unlock()
+	return blk.refCnt
+}
+
 type blockList []*block
 
 func validateBlockList(blkList *internal.CommittedBlockList, f *File) (blockList, bool) {

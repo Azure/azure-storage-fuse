@@ -2,6 +2,7 @@ package block_cache_new
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -35,6 +36,9 @@ func scheduleUpload(blk *block, r requestType) {
 func uploader(blk *block, r requestType) (state blockState, err error) {
 	blk.Lock()
 	defer blk.Unlock()
+	if blk.refCnt > 0 {
+		return blk.state, errors.New(fmt.Sprintf("Blk has refCnt : %d, blk idx : %d, file: %s", blk.refCnt, blk.idx, blk.file.Name))
+	}
 	var ok bool
 	if blk.state == localBlock {
 		if blk.hole {

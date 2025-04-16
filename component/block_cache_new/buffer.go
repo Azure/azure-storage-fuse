@@ -266,15 +266,14 @@ func (bp *BufferPool) asyncUploadScheduler() {
 			r := asyncRequest
 			r |= asyncUploadScheduler
 			//todo : Schedule only when the ref cnt of the blk is zero, else there is a chance of cancelling the upload
-			state, _ := uploader(blk, r)
-			if state == localBlock {
+			state, err := uploader(blk, r)
+			if state == localBlock && err == nil {
 				bp.moveBlkFromLBLtoOWBL(blk)
 				bp.asyncUploadsScheduledCnt++
+			} else if state != localBlock {
+				panic(fmt.Sprintf("BlockCache::asyncUploadScheduler : Block is not local[state : %d], idx : %d, file : %s", state, blk.idx, blk.file.Name))
 			} else {
-				// This happens when blk is force canceled and write was there on it which would move the
-				// blk to local queue but the upload has scheduled. Hence move the blk to OWBL.
-				log.Err("BlockCache::asyncUploadScheduler : Block is not local[state : %d], idx : %d, file : %s", state, blk.idx, blk.file.Name)
-				bp.moveBlkFromLBLtoOWBL(blk)
+				log.Info("BlockCache::asyncUploadScheduler : failed to schedule with err [%s] for blk idx : %d, file: %s", err.Error(), blk.idx, blk.file.Name)
 			}
 			log.Info("BlockCache::asyncUploadScheduler : [took : %s] Async Upload scheduled for blk idx : %d, file: %s", time.Since(cow).String(), blk.idx, blk.file.Name)
 		}
