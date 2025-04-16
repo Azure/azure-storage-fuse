@@ -42,12 +42,14 @@ type MirroredVolume struct {
 }
 
 type RawVolume struct {
-	FSID             string    `json:"fsid,omitempty"`
-	FDID             string    `json:"fdid,omitempty"`
-	State            StateEnum `json:"state,omitempty"`
-	TotalSpaceGB     int       `json:"total_space_GB,omitempty"`
-	AvailableSpaceGB int       `json:"available_space_GB,omitempty"`
-	LocalCachePath   string    `json:"-"`
+	NodeId         string    `json:"node_id,omitempty"`
+	IPAddress      string    `json:"ipaddr,omitempty"`
+	FSID           string    `json:"fsid,omitempty"`
+	FDID           string    `json:"fdid,omitempty"`
+	State          StateEnum `json:"state,omitempty"`
+	TotalSpace     int       `json:"total_space,omitempty"`
+	AvailableSpace int       `json:"available_space,omitempty"`
+	LocalCachePath string    `json:"local_cache_path,omitempty"`
 }
 
 type StateEnum string
