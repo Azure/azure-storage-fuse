@@ -35,10 +35,7 @@ package clustermanager
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
-	"os/exec"
-	"strings"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -75,7 +72,7 @@ func (c *ClusterManagerImpl) IsAlive(peerId string) bool {
 
 // Start implements ClusterManager.
 func (cmi *ClusterManagerImpl) Start(clusterManagerConfig ClusterManagerConfig) error {
-	//check if ClusterMap.json already created if yes don't create again
+	//TODO{Akku}: check if ClusterMap.json already created if yes don't create again
 	cmi.createClusterConfig(clusterManagerConfig)
 	cmi.ticker = time.NewTicker(time.Duration(clusterManagerConfig.HeartbeatSeconds) * time.Second)
 	go func() {
@@ -131,28 +128,14 @@ func (cmi *ClusterManagerImpl) punchHeartBeat(clusterManagerConfig ClusterManage
 func listMyRVs(rvList []dcache.RawVolume) {
 	for index, rv := range rvList {
 		log.Trace("RV %d: %s", index, rv)
-		// You can use GetUsage or GetDiskUsageFromStatfs here
 		usage, err := common.GetUsage(rv.LocalCachePath)
 		if err != nil {
 			log.Err("failed to get usage for path %s: %v", rv.LocalCachePath, err)
 		}
-		rvList[index].AvailableSpaceGB = rv.TotalSpaceGB - int((usage)/1024)
+		rvList[index].AvailableSpace = rv.TotalSpace - int(usage)*1024
+		// TODO{Akku}: If available space is less than 10% of total space, set state to offline
 		rvList[index].State = dcache.StateOnline
-		rvList[index].FDID = "0"
-		fsid, _ := getBlkId(rv.LocalCachePath)
-		rvList[index].FSID = fsid
 	}
-}
-func getBlkId(path string) (string, error) {
-	// devicePath, err := getDeviceByMount(path)
-	// if err != nil {
-	// 	return "", err
-	// }
-	out, err := exec.Command("blkid", "-o", "value", "-s", "UUID", path).Output()
-	if err != nil {
-		return "", fmt.Errorf("error running blkid: %v", err)
-	}
-	return strings.TrimSpace(string(out)), nil
 }
 
 func (cmi *ClusterManagerImpl) createClusterConfig(clusterManagerConfig ClusterManagerConfig) error {
