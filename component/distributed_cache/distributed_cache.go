@@ -41,6 +41,7 @@ import (
 	"syscall"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/bloberror"
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
@@ -183,10 +184,12 @@ func (dc *DistributedCache) setupCacheStructure(cacheDir string) error {
 	for index, path := range dc.cachePath {
 		fsid, _ := getBlockDeviceUUId(path)
 		// TODO{Akku} : More than 1 same fsid for rv, must fail distributed cache startup
+		totalSpace, _ := common.GetTotalSpace(path)
 		rvList[index] = dcache.RawVolume{
 			LocalCachePath: path,
 			FSID:           fsid,
 			FDID:           "0",
+			AvailableSpace: int(totalSpace),
 		}
 	}
 	err = dc.clusterManager.Start(clustermanager.ClusterManagerConfig{
