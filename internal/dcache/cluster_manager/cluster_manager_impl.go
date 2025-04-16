@@ -209,8 +209,7 @@ func (c *ClusterManagerImpl) UpdateMVs(mvs []dcache.MirroredVolume) {
 }
 
 // UpdateStorageConfigIfRequired implements ClusterManager.
-func (c *ClusterManagerImpl) UpdateStorageConfigIfRequired() error {
-	return nil
+func (c *ClusterManagerImpl) UpdateStorageConfigIfRequired() {
 }
 
 // WatchForConfigChanges implements ClusterManager.
