@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package client
+package rpc_client
 
 import (
 	"fmt"
@@ -41,23 +41,23 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
-// ConnectionPool manages multiple connections efficiently
-type ConnectionPool struct {
+// connectionPool manages multiple connections efficiently
+type connectionPool struct {
 	mu          sync.Mutex
-	connections map[string]*ConnectionPair // map of node ID to connection
+	connections map[string]*connectionPair // map of node ID to rpc client
 	maxPerNode  uint32                     // Maximum number of open connections per node
 	maxNodes    uint32                     // Maximum number of nodes for which connections are open
 	timeout     uint32                     // Duration in seconds after which a connection is closed
 }
 
-// NewConnectionPool creates a new connection pool with the specified parameters
+// newConnectionPool creates a new connection pool with the specified parameters
 // maxPerNode: Maximum number of open connections per node
 // maxNodes: Maximum number of nodes for which connections are open
 // timeout: Duration in seconds after which a connection is closed
-func NewConnectionPool(maxPerNode uint32, maxNodes uint32, timeout uint32) *ConnectionPool {
-	log.Debug("ConnectionPool::NewConnectionPool: Creating new connection pool with maxPerNode: %d, maxNodes: %d, timeout: %d", maxPerNode, maxNodes, timeout)
-	return &ConnectionPool{
-		connections: make(map[string]*ConnectionPair),
+func newConnectionPool(maxPerNode uint32, maxNodes uint32, timeout uint32) *connectionPool {
+	log.Debug("ConnectionPool::newConnectionPool: Creating new connection pool with maxPerNode: %d, maxNodes: %d, timeout: %d", maxPerNode, maxNodes, timeout)
+	return &connectionPool{
+		connections: make(map[string]*connectionPair),
 		maxPerNode:  maxPerNode,
 		maxNodes:    maxNodes,
 		timeout:     timeout,
@@ -66,27 +66,27 @@ func NewConnectionPool(maxPerNode uint32, maxNodes uint32, timeout uint32) *Conn
 	// TODO: start a goroutine to periodically close inactive connections
 }
 
-// GetConnection retrieves a connection from the pool for the specified node ID
-// If no connection is available, a new one is created
-func (cp *ConnectionPool) GetConnection(nodeID string) (*Connection, error) {
-	log.Debug("ConnectionPool::GetConnection: Retrieving connection for node %s", nodeID)
+// getRPCClient retrieves a rpc client from the pool for the specified node ID
+// If no client is available, a new one is created
+func (cp *connectionPool) getRPCClient(nodeID string) (*rpcClient, error) {
+	log.Debug("connectionPool::getRPCClient: Retrieving rpc client for node %s", nodeID)
 
 	cp.mu.Lock()
 	defer cp.mu.Unlock()
 
-	var connPair *ConnectionPair
+	var connPair *connectionPair
 	connPair, exists := cp.connections[nodeID]
 	if !exists {
 		if len(cp.connections) >= int(cp.maxNodes) {
-			log.Debug("ConnectionPool::GetConnection: Maximum number of nodes reached, evict LRU connection")
-			err := cp.closeLRUConnection()
+			log.Debug("connectionPool::getRPCClient: Maximum number of nodes reached, evict LRU rpc client")
+			err := cp.closeLRUClient()
 			if err != nil {
-				log.Err("ConnectionPool::GetConnection: Failed to close LRU connection [%v]", err.Error())
+				log.Err("connectionPool::getRPCClient: Failed to close LRU rpc client [%v]", err.Error())
 				return nil, err
 			}
 		}
 
-		connPair = &ConnectionPair{}
+		connPair = &connectionPair{}
 		connPair.createConnections(nodeID, cp.maxPerNode)
 		cp.connections[nodeID] = connPair
 	}
@@ -96,18 +96,18 @@ func (cp *ConnectionPool) GetConnection(nodeID string) (*Connection, error) {
 		connPair.lastUsed = time.Now()
 		return conn, nil
 	default:
-		log.Err("ConnectionPool::GetConnection: No available connections in the pool for node %s", nodeID)
-		return nil, fmt.Errorf("no available connections in the pool for node %s", nodeID)
+		log.Err("connectionPool::getRPCClient: No available rpc client in the pool for node %s", nodeID)
+		return nil, fmt.Errorf("no available rpc client in the pool for node %s", nodeID)
 	}
 }
 
-// ReleaseConnection releases a connection back to the pool for the specified node ID
-func (cp *ConnectionPool) ReleaseConnection(nodeID string, conn *Connection) error {
-	log.Debug("ConnectionPool::ReleaseConnection: Releasing connection for node %s", nodeID)
+// releaseRPCClient releases a rpc client back to the pool for the specified node ID
+func (cp *connectionPool) releaseRPCClient(nodeID string, conn *rpcClient) error {
+	log.Debug("connectionPool::releaseConnection: Releasing connection for node %s", nodeID)
 
 	connPair, exists := cp.connections[nodeID]
 	if !exists {
-		log.Err("ConnectionPool::ReleaseConnection: No connection pair found for node %s", nodeID)
+		log.Err("connectionPool::releaseConnection: No connection pair found for node %s", nodeID)
 		return fmt.Errorf("no connection pair found for node %s", nodeID)
 	}
 
@@ -115,10 +115,10 @@ func (cp *ConnectionPool) ReleaseConnection(nodeID string, conn *Connection) err
 	return nil
 }
 
-// Close the least recently used connection from the connections pool
-func (cp *ConnectionPool) closeLRUConnection() error {
+// Close the least recently used rpc client from the connections pool
+func (cp *connectionPool) closeLRUClient() error {
 	// Find the least recently used connection and close it
-	var lruConnPair *ConnectionPair
+	var lruConnPair *connectionPair
 	lruNodeID := ""
 	for key, conn := range cp.connections {
 		if lruConnPair == nil || conn.lastUsed.Before(lruConnPair.lastUsed) {
@@ -130,7 +130,7 @@ func (cp *ConnectionPool) closeLRUConnection() error {
 	if lruConnPair != nil {
 		err := lruConnPair.closeConnections()
 		if err != nil {
-			log.Err("ConnectionPool::closeLRUConnection: Failed to close LRU connection for node %s [%v]", lruNodeID, err.Error())
+			log.Err("connectionPool::closeLRUClient: Failed to close LRU client for node %s [%v]", lruNodeID, err.Error())
 			return err
 		}
 		delete(cp.connections, lruNodeID)
@@ -140,13 +140,13 @@ func (cp *ConnectionPool) closeLRUConnection() error {
 }
 
 // closeInactiveConnections closes connections that have not been used for a specified timeout
-func (cp *ConnectionPool) closeInactiveConnections() {
+func (cp *connectionPool) closeInactiveConnections() {
 	// Cleanup old connections based on the LastUsed timestamp
 	// This will run in a separate goroutine and will periodically close the connections based on LRU strategy
 }
 
-// Close closes all connections in the pool
-func (cp *ConnectionPool) Close() error {
+// close closes all connections in the pool
+func (cp *connectionPool) close() error {
 	// see if this is needed
 	cp.mu.Lock()
 	defer cp.mu.Unlock()
@@ -154,37 +154,37 @@ func (cp *ConnectionPool) Close() error {
 	for key, connPair := range cp.connections {
 		err := connPair.closeConnections()
 		if err != nil {
-			log.Err("ConnectionPool::Close: Failed to close connection for node %s [%v]", key, err.Error())
+			log.Err("ConnectionPool::close: Failed to close connection for node %s [%v]", key, err.Error())
 			return err
 		}
 		delete(cp.connections, key)
 	}
 
-	cp.connections = make(map[string]*ConnectionPair)
+	cp.connections = make(map[string]*connectionPair)
 	return nil
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------
 
-// ConnectionPair holds a channel of connections to a node
+// connectionPair holds a channel of connections to a node
 // and the last used timestamp for LRU eviction
-type ConnectionPair struct {
-	connChan chan *Connection // channel to hold the connections to a node
-	lastUsed time.Time        // used for evicting inactive connections based on LRU
+type connectionPair struct {
+	connChan chan *rpcClient // channel to hold the connections to a node
+	lastUsed time.Time       // used for evicting inactive connections based on LRU
 }
 
-func (cp *ConnectionPair) createConnections(nodeID string, numConn uint32) {
-	log.Debug("ConnectionPair::createConnections: Creating %d connections for node %s", numConn, nodeID)
+func (cp *connectionPair) createConnections(nodeID string, numConn uint32) {
+	log.Debug("connectionPair::createConnections: Creating %d connections for node %s", numConn, nodeID)
 
-	cp.connChan = make(chan *Connection, numConn)
+	cp.connChan = make(chan *rpcClient, numConn)
 	cp.lastUsed = time.Now()
 
 	// Create connections and add them to the channel
 	for i := 0; i < int(numConn); i++ {
-		// TODO: getNodeAddress should be replaced with a function to get the node address from the config
-		conn, err := NewConnection(nodeID, getNodeAddress(nodeID))
+		// TODO: getNodeAddressFromID should be replaced with a function to get the node address from the config
+		conn, err := newRPCClient(nodeID, getNodeAddressFromID(nodeID))
 		if err != nil {
-			log.Err("ConnectionPair::createConnections: Failed to create connection for nodeID %v [%v]", nodeID, err.Error())
+			log.Err("connectionPair::createConnections: Failed to create connection for nodeID %v [%v]", nodeID, err.Error())
 			continue // skip this connection
 		}
 		cp.connChan <- conn
@@ -192,13 +192,13 @@ func (cp *ConnectionPair) createConnections(nodeID string, numConn uint32) {
 }
 
 // closeConnections closes all connections in the channel
-func (cp *ConnectionPair) closeConnections() error {
+func (cp *connectionPair) closeConnections() error {
 	close(cp.connChan)
 
 	for conn := range cp.connChan {
-		err := conn.Close()
+		err := conn.close()
 		if err != nil {
-			log.Err("ConnectionPair::closeConnections: Failed to close connection [%v]", err.Error())
+			log.Err("connectionPair::closeConnections: Failed to close connection [%v]", err.Error())
 			return err
 		}
 	}
@@ -206,7 +206,7 @@ func (cp *ConnectionPair) closeConnections() error {
 	return nil
 }
 
-// TODO: this will be replaced with a function to get the node address from the config
-func getNodeAddress(nodeID string) string {
+// TODO: call cluster manager to get the node address for the given node ID
+func getNodeAddressFromID(nodeID string) string {
 	return "localhost:9090"
 }

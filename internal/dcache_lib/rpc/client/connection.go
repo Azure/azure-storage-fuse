@@ -31,31 +31,30 @@
    SOFTWARE
 */
 
-package client
+package rpc_client
 
 import (
 	"context"
 	"crypto/tls"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	"github.com/Azure/azure-storage-fuse/v2/internal/dcache_lib/rpc/gen-go/dcache/models"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache_lib/rpc/gen-go/dcache/service"
 	"github.com/apache/thrift/lib/go/thrift"
 )
 
-// Connection struct holds the Thrift connection to a node
+// rpcClient struct holds the Thrift connection to a node
 // This is used to make RPC calls to the node
-type Connection struct {
+type rpcClient struct {
 	nodeID      string                      // Node ID of the node this connection is for, can be used for debug logs
 	nodeAddress string                      // Address of the node this connection is for
 	ctx         context.Context             // Context for the connection
-	Transport   thrift.TTransport           // Transport is the Thrift transport layer
-	Client      *service.ChunkServiceClient // Client is the Thrift client for the ChunkService
+	transport   thrift.TTransport           // Transport is the Thrift transport layer
+	svcClient   *service.ChunkServiceClient // Client is the Thrift client for the ChunkService
 }
 
-// NewConnection creates a new Thrift connection to a node
-func NewConnection(nodeID string, nodeAddress string) (*Connection, error) {
-	log.Debug("Connection::NewConnection: Creating new connection to node %s at %s", nodeID, nodeAddress)
+// newRPCClient creates a new Thrift connection to a node
+func newRPCClient(nodeID string, nodeAddress string) (*rpcClient, error) {
+	log.Debug("Connection::newRPCClient: Creating new connection to node %s at %s", nodeID, nodeAddress)
 
 	protocolFactory := thrift.NewTBinaryProtocolFactoryConf(nil)
 	transportFactory := thrift.NewTTransportFactory()
@@ -74,7 +73,7 @@ func NewConnection(nodeID string, nodeAddress string) (*Connection, error) {
 	transport = thrift.NewTSocketConf(nodeAddress, cfg)
 	transport, err := transportFactory.GetTransport(transport)
 	if err != nil {
-		log.Err("Connection::NewConnection: Failed to create transport [%v]", err.Error())
+		log.Err("Connection::newRPCClient: Failed to create transport [%v]", err.Error())
 		return nil, err
 	}
 
@@ -82,74 +81,30 @@ func NewConnection(nodeID string, nodeAddress string) (*Connection, error) {
 	oprot := protocolFactory.GetProtocol(transport)
 	client := service.NewChunkServiceClient(thrift.NewTStandardClient(iprot, oprot))
 
-	conn := &Connection{
+	conn := &rpcClient{
 		nodeID:      nodeID,
 		nodeAddress: nodeAddress,
 		ctx:         context.Background(), // TODO: check if context with cancel is needed
-		Transport:   transport,
-		Client:      client,
+		transport:   transport,
+		svcClient:   client,
 	}
 
-	err = conn.Transport.Open()
+	err = conn.transport.Open()
 	if err != nil {
-		log.Err("Connection::NewConnection: Failed to open transport [%v]", err.Error())
+		log.Err("Connection::newRPCClient: Failed to open transport [%v]", err.Error())
 		return nil, err
 	}
 
 	return conn, nil
 }
 
-// Close closes the Thrift connection to the node
-func (c *Connection) Close() error {
-	err := c.Transport.Close()
+// close closes the Thrift connection to the node
+func (c *rpcClient) close() error {
+	err := c.transport.Close()
 	if err != nil {
-		log.Err("Connection::Close: Failed to close transport [%v]", err.Error())
+		log.Err("Connection::close: Failed to close transport [%v]", err.Error())
 		return err
 	}
 
 	return nil
-}
-
-// IsAlive checks if the connection to the node is alive
-func (c *Connection) IsAlive(req *models.HelloRequest) bool {
-	// call rpc Hello() to check if the connection is alive
-	return true
-}
-
-// GetChunk retrieves a chunk from the node
-func (c *Connection) GetChunk(req *models.GetChunkRequest) (*models.GetChunkResponse, error) {
-	// call  rpc GetChunk() to get the chunk
-	return nil, nil
-}
-
-// PutChunk writes a chunk to the node
-func (c *Connection) PutChunk(req *models.PutChunkRequest) (*models.PutChunkResponse, error) {
-	// call rpc PutChunk() to put the chunk
-	return nil, nil
-}
-
-// RemoveChunk deletes a chunk from the node
-func (c *Connection) RemoveChunk(req *models.RemoveChunkRequest) (*models.RemoveChunkResponse, error) {
-	// call rpc RemoveChunk() to remove the chunk
-	return nil, nil
-}
-
-func (c *Connection) JoinMV(req *models.JoinMVRequest) (*models.JoinMVResponse, error) {
-	// call rpc JoinMV() to join the MV
-	return nil, nil
-}
-
-func (c *Connection) LeaveMV(req *models.LeaveMVRequest) (*models.LeaveMVResponse, error) {
-	// call rpc LeaveMV() to leave the MV
-	return nil, nil
-}
-
-func (c *Connection) StartSync(req *models.StartSyncRequest) (*models.StartSyncResponse, error) {
-	// call rpc StartSync() to start sync
-	return nil, nil
-}
-
-func (c *Connection) EndSync(req *models.EndSyncRequest) (*models.EndSyncResponse, error) {
-	// call rpc EndSync() to end sync
-	return nil, nil
 }

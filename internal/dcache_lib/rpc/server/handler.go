@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package server
+package rpc_server
 
 import (
 	"context"
