@@ -181,8 +181,12 @@ func (dc *DistributedCache) setupCacheStructure(cacheDir string) error {
 
 	rvList := make([]dcache.RawVolume, len(dc.cachePath))
 	for index, path := range dc.cachePath {
+		fsid, _ := getBlockDeviceUUId(path)
+		// TODO{Akku} : More than 1 same fsid for rv, must fail distributed cache startup
 		rvList[index] = dcache.RawVolume{
 			LocalCachePath: path,
+			FSID:           fsid,
+			FDID:           "0",
 		}
 	}
 	err = dc.clusterManager.Start(clustermanager.ClusterManagerConfig{
