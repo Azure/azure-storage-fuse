@@ -77,7 +77,7 @@ func (cmi *ClusterManagerImpl) Start(clusterManagerConfig ClusterManagerConfig) 
 	cmi.hbTicker = time.NewTicker(time.Duration(clusterManagerConfig.HeartbeatSeconds) * time.Second)
 	go func() {
 		for range cmi.hbTicker.C {
-			log.Trace("Scheduled task triggered")
+			log.Trace("Scheduled task Heartbeat Punch triggered")
 			cmi.punchHeartBeat(clusterManagerConfig)
 		}
 	}()
