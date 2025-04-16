@@ -76,6 +76,7 @@ func (c *ClusterManagerImpl) IsAlive(peerId string) bool {
 // Start implements ClusterManager.
 func (cmi *ClusterManagerImpl) Start(clusterManagerConfig ClusterManagerConfig) error {
 	cmi.storageCachePath = clusterManagerConfig.StorageCachePath
+	cmi.nodeId = clusterManagerConfig.RVList[0].NodeId
 	cmi.createClusterConfig(clusterManagerConfig)
 	cmi.hbTicker = time.NewTicker(time.Duration(clusterManagerConfig.HeartbeatSeconds) * time.Second)
 	go func() {
@@ -106,7 +107,6 @@ func (cmi *ClusterManagerImpl) punchHeartBeat(clusterManagerConfig ClusterManage
 		log.Err("Error getting hostname:", err)
 	}
 	listMyRVs(clusterManagerConfig.RVList)
-	cmi.nodeId = clusterManagerConfig.RVList[0].NodeId
 	hbData := dcache.HeartbeatData{
 		IPAddr:        clusterManagerConfig.RVList[0].IPAddress,
 		NodeID:        cmi.nodeId,
