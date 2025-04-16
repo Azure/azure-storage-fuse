@@ -35,17 +35,23 @@ package meta_manager
 
 // MetaFile represents the metadata structure for a file
 type MetaFile struct {
-	Filename        string   `json:"filename"`
-	FileID          string   `json:"file_id"`
-	Size            int64    `json:"size"`
-	ClusterMapEpoch int64    `json:"cluster_map_epoch"`
-	MVList          []string `json:"mv_list"`
+	Filename        string     `json:"filename"`
+	FileID          string     `json:"file_id"`
+	Size            int64      `json:"size"`
+	ClusterMapEpoch int64      `json:"cluster_map_epoch"`
+	FileLayout      FileLayout `json:"file_layout"`
+}
+
+type FileLayout struct {
+	ChunkSize  int64    `json:"chunk_size"`
+	StripeSize int64    `json:"stripe_size"`
+	MVList     []string `json:"mv_list"`
 }
 
 // MetaManager defines the interface for managing file metadata
 type MetaManager interface {
 	// CreateMetaFile creates or updates metadata for a file with its associated materialized views
-	CreateMetaFile(filename string, mvList []string) error
+	CreateMetaFile(filename string, filelayout FileLayout) error
 
 	// DeleteMetaFile removes metadata for a file
 	DeleteMetaFile(filename string) error
@@ -60,5 +66,12 @@ type MetaManager interface {
 	GetHandleCount(filename string) (int64, error)
 
 	// GetFileContent reads and returns the content of a file
-	GetFileContent(filename string) ([]byte, error)
+	GetContent(filename string) ([]byte, error)
+
+	// SetContent sets the content of a file with the specified chunk and stripe sizes
+	SetContent(filename string, data []byte) error
+
+	//Optional
+	// SetBlobMetadata(filename string, metadata map[string]string) error
+	// GetBlobMetadata(filename string) (map[string]string, error)
 }

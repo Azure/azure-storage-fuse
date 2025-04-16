@@ -13,7 +13,7 @@ func NewMetaManager(cacheID string) (MetaManager, error) {
 }
 
 // Implement all interface methods
-func (m *FileMetaManager) CreateMetaFile(filename string, mvList []string) error {
+func (m *FileMetaManager) CreateMetaFile(filename string, filelayout FileLayout) error {
 	// Implementation here
 	return nil
 }
@@ -38,7 +38,22 @@ func (m *FileMetaManager) GetHandleCount(filename string) (int64, error) {
 	return 0, nil
 }
 
-func (m *FileMetaManager) GetFileContent(filename string) ([]byte, error) {
+func (m *FileMetaManager) GetContent(filename string) ([]byte, error) {
 	// Implementation here
 	return nil, nil
 }
+
+func (m *FileMetaManager) SetContent(filename string, data []byte) error {
+	// Implementation here
+	return nil
+}
+
+// func (m *FileMetaManager) SetBlobMetadata(filename string, metadata map[string]string) error {
+// 	// Implementation here
+// 	return nil
+// }
+//
+// func (m *FileMetaManager) GetBlobMetadata(filename string) (map[string]string, error) {
+// 	// Implementation here
+// 	return nil, nil
+// }
