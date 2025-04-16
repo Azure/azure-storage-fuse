@@ -67,7 +67,7 @@ steps:
     displayName: 'Print config file'
 
   - script:
-      sudo apt-get install fio
+      sudo apt-get install fio -y
     displayName: 'Install Utils'
 
 # Run fio on 1 file 10G size SEQ read,write
