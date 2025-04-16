@@ -624,3 +624,8 @@ func (dl *Datalake) SetFilter(filter string) error {
 
 	return dl.BlockBlob.SetFilter(filter)
 }
+
+// SetMetadata : Set metadata property of path
+func (dl *Datalake) SetMetadata(name string, attr *internal.ObjAttr) (err error) {
+	return dl.BlockBlob.SetMetadata(name, attr)
+}

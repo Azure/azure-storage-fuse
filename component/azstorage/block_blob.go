@@ -1698,3 +1698,19 @@ func (bb *BlockBlob) SetFilter(filter string) error {
 	bb.Config.filter = &blobfilter.BlobFilter{}
 	return bb.Config.filter.Configure(filter)
 }
+
+// SetMetadata : Set metadata property of the blob
+func (bb *BlockBlob) SetMetadata(name string, attr *internal.ObjAttr) (err error) {
+	log.Trace("BlockBlob::GetAttr : name %s", name)
+
+	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
+	// Set the metadata
+	_, err = blobClient.SetMetadata(context.Background(), attr.Metadata, &blob.SetMetadataOptions{
+		AccessConditions: &blob.AccessConditions{
+			ModifiedAccessConditions: &blob.ModifiedAccessConditions{
+				IfMatch: to.Ptr(azcore.ETag(attr.ETag)),
+			},
+		},
+	})
+	return err
+}

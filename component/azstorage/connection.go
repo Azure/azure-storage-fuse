@@ -140,6 +140,8 @@ type AzConnection interface {
 	UpdateServiceClient(_, _ string) error
 
 	SetFilter(string) error
+
+	SetMetadata(name string, attr *internal.ObjAttr) error
 }
 
 // NewAzStorageConnection : Based on account type create respective AzConnection Object
