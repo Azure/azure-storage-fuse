@@ -1455,7 +1455,7 @@ stages:
               mount_dir: $(MOUNT_DIR)
               block_size_mb: "8"
 
-  - stage: Fio-Integrity-tests
+  - stage: FioIntegrityTests
     jobs:
       # Ubuntu Tests
       - job: Set_1
