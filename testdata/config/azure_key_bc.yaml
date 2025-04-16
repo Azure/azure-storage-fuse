@@ -5,7 +5,7 @@ logging:
 
 components:
   - libfuse
-  - block_cache_new
+  - block_cache
   - attr_cache
   - azstorage
 
@@ -19,6 +19,12 @@ block_cache_new:
   block-size-mb: 8
   mem-size-mb: 256
   prefetch: 1
+  parallelism: 64
+
+block_cache:
+  block-size-mb: 8
+  mem-size-mb: 256
+  prefetch: 11
   parallelism: 64
 
 attr_cache:
