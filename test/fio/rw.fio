@@ -1,10 +1,6 @@
-[seq-writers]
-name=blobfuse_file_integrity
+[writers]
 bs=1M
-size=1G
 iodepth=5
-rw=write
-numjobs=10
 ioengine=sync
 verify=crc32c
 verify_fatal=1
