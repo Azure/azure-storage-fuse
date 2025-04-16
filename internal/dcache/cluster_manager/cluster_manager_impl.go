@@ -39,7 +39,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
@@ -143,11 +142,6 @@ func (cmi *ClusterManagerImpl) createClusterConfig(clusterManagerConfig ClusterM
 		log.Trace("ClusterManager::createClusterConfig : ClusterMap.json already exists")
 		return nil
 	}
-	uuidVal, err := common.GetUUID()
-	if err != nil {
-		log.Err("AddHeartBeat: Failed to retrieve UUID, error: %v", err)
-		return err
-	}
 	dcacheConfig := dcache.DCacheConfig{
 		MinNodes:  clusterManagerConfig.MinNodes,
 		ChunkSize: clusterManagerConfig.ChunkSize}
@@ -157,7 +151,7 @@ func (cmi *ClusterManagerImpl) createClusterConfig(clusterManagerConfig ClusterM
 		Epoch:         1,
 		CreatedAt:     time.Now().Unix(),
 		LastUpdatedAt: time.Now().Unix(),
-		LastUpdatedBy: uuidVal,
+		LastUpdatedBy: clusterManagerConfig.RVList[0].NodeId,
 		Config:        dcacheConfig,
 		RVMap:         map[string]dcache.RawVolume{},
 		MVMap:         map[string]dcache.MirroredVolume{},
