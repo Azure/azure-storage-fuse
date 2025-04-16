@@ -64,15 +64,26 @@ type ChunkServiceHandler struct {
 type RVInfo struct {
 	rvID     string       // rv0, rv1, etc.
 	cacheDir string       // cache dir path for this RV
-	mvMap    sync.Map     // sync map of MV id against MV info
+	mvMap    sync.Map     // sync map of MV id against MVInfo
 	mvCount  atomic.Int64 // count of MVs for this RV, this should be updated whenever a MV is added or removed from the sync map
 }
 
 type MVInfo struct {
-	peerRVs   []string   // sorted list of peer RVs for this MV
-	mu        sync.Mutex // mutex to protect the concurrent update to isSyncing and syncID
-	isSyncing bool       // is the MV in syncing state
-	syncID    string     // sync ID for this MV if it in syncing state
+	SyncInfo              // sync info for this MV
+	peerRVs  []string     // sorted list of peer RVs for this MV
+	chunkOps atomic.Int64 // count of chunk operations (get, put or remove) for this MV in the given RV
+	blockOps atomic.Bool  // block chunk operations for this MV in the given RV. This is done when the .sync dir contents are being moved to the regular MV dir
+}
+
+type SyncInfo struct {
+	mu        sync.Mutex
+	isSyncing bool   // is the MV in syncing state
+	syncID    string // sync ID for this MV if it in syncing state
+
+	// sourceRV is the RV that is syncing the target RV in the MV.
+	// This is used when the source RV goes offline and is replaced by the cluster manager with a new RV.
+	// In this case, the sync will need to be restarted from the new RV.
+	sourceRV string // source RV for syncing this MV
 }
 
 func NewChunkServiceHandler() *ChunkServiceHandler {
@@ -121,18 +132,48 @@ func (rv *RVInfo) deleteFromMVMap(mvID string) {
 	rv.mvCount.Add(-1)
 }
 
-func (mv *MVInfo) updateSyncState(isSyncing bool, syncID string) error {
+func (mv *MVInfo) updateSyncState(isSyncing bool, syncID string, sourceRV string) error {
 	mv.mu.Lock()
 	defer mv.mu.Unlock()
 
-	if isSyncing && mv.isSyncing == isSyncing {
-		return fmt.Errorf("MV is already in syncing state with sync id %s", mv.syncID)
+	if isSyncing && mv.isSyncing {
+		// if the source RV is different from the current source RV, it means that the current source RV's node is offline
+		// and is replaced by a new RV. So, the sync process needs to be restarted with the new RV.
+		if mv.sourceRV != sourceRV {
+			mv.syncID = syncID
+			mv.sourceRV = sourceRV
+		} else {
+			return fmt.Errorf("MV is already in syncing state with sync id %s", mv.syncID)
+		}
 	}
 
 	mv.isSyncing = isSyncing
 	mv.syncID = syncID
+	mv.sourceRV = sourceRV
 
 	return nil
+}
+
+// block new chunk operations for this MV till the sync is in progress
+func (mv *MVInfo) blockChunkOps() {
+	for {
+		if mv.blockOps.Load() {
+			time.Sleep(100 * time.Microsecond) // TODO: check if this is optimal
+		} else {
+			break
+		}
+	}
+}
+
+// block the sync operation for this MV till the ongoing chunk operations are completed
+func (mv *MVInfo) blockSyncOp() {
+	for {
+		if mv.chunkOps.Load() > 0 {
+			time.Sleep(100 * time.Microsecond) // TODO: check if this is optimal
+		} else {
+			break
+		}
+	}
 }
 
 // TODO: sample method, will be later removed after integrating with cluster manager
@@ -236,6 +277,14 @@ func (h *ChunkServiceHandler) Hello(ctx context.Context, req *models.HelloReques
 	}, nil
 }
 
+// check if sync has started. If yes, block new chunk operations for this MV till the sync is completed
+func (h *ChunkServiceHandler) checkSyncStatus(fsID string, mvID string) {
+	rvInfo := h.fsIDMap[fsID]
+	val, _ := rvInfo.mvMap.Load(mvID)
+	mvInfo := val.(*MVInfo)
+	mvInfo.blockChunkOps()
+}
+
 func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunkRequest) (*models.GetChunkResponse, error) {
 	if req == nil || req.Address == nil {
 		log.Err("ChunkServiceHandler::GetChunk: Received nil GetChunk request")
@@ -248,6 +297,11 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 		log.Err("ChunkServiceHandler::GetChunk: Invalid chunk address [%s]", err.Error())
 		return nil, err
 	}
+
+	// check if the sync has started. If yes, block the chunk operations till the sync is completed
+	h.checkSyncStatus(req.Address.FsID, req.Address.MvID)
+
+	// increment the chunk operation count for this MV
 
 	startTime := time.Now()
 
@@ -610,7 +664,7 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 	}
 
 	// update the sync state and sync id of the MV
-	err := mvInfo.updateSyncState(true, base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16)))
+	err := mvInfo.updateSyncState(true, base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16)), req.SourceRV)
 	if err != nil {
 		log.Err("ChunkServiceHandler::StartSync: MV %s is already in sync state [%v]", req.MV, err.Error())
 		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("MV %s is already in sync state [%v]", req.MV, err.Error()))
@@ -669,7 +723,7 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 	}
 
 	// update the sync state and sync id of the MV
-	err := mvInfo.updateSyncState(false, "")
+	err := mvInfo.updateSyncState(false, "", "")
 	if err != nil {
 		log.Err("ChunkServiceHandler::StartSync: Failed to mark sync completion state in MV %s [%v]", req.MV, err.Error())
 		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to mark sync completion state in MV %s [%v]", req.MV, err.Error()))

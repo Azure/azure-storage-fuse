@@ -37,6 +37,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
@@ -90,7 +91,10 @@ func isPeerRVsValid(rv1 []string, rv2 []string) bool {
 	}
 
 	for i := 0; i < len(rv1); i++ {
-		if rv1[i] != rv2[i] {
+		// RV array can be like ["rv0", "rv5=syncing", "rv9=outofsync"]
+		s1 := (strings.Split(rv1[i], "="))[0]
+		s2 := (strings.Split(rv2[i], "="))[0]
+		if s1 != s2 {
 			return false
 		}
 	}

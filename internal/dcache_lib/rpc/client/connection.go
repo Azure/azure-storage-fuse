@@ -49,8 +49,8 @@ type Connection struct {
 	nodeID      string                      // Node ID of the node this connection is for, can be used for debug logs
 	nodeAddress string                      // Address of the node this connection is for
 	ctx         context.Context             // Context for the connection
-	Transport   thrift.TTransport           // Transport is the Thrift transport layer
-	Client      *service.ChunkServiceClient // Client is the Thrift client for the ChunkService
+	transport   thrift.TTransport           // Transport is the Thrift transport layer
+	client      *service.ChunkServiceClient // Client is the Thrift client for the ChunkService
 }
 
 // NewConnection creates a new Thrift connection to a node
@@ -86,11 +86,11 @@ func NewConnection(nodeID string, nodeAddress string) (*Connection, error) {
 		nodeID:      nodeID,
 		nodeAddress: nodeAddress,
 		ctx:         context.Background(), // TODO: check if context with cancel is needed
-		Transport:   transport,
-		Client:      client,
+		transport:   transport,
+		client:      client,
 	}
 
-	err = conn.Transport.Open()
+	err = conn.transport.Open()
 	if err != nil {
 		log.Err("Connection::NewConnection: Failed to open transport [%v]", err.Error())
 		return nil, err
@@ -101,7 +101,7 @@ func NewConnection(nodeID string, nodeAddress string) (*Connection, error) {
 
 // Close closes the Thrift connection to the node
 func (c *Connection) Close() error {
-	err := c.Transport.Close()
+	err := c.transport.Close()
 	if err != nil {
 		log.Err("Connection::Close: Failed to close transport [%v]", err.Error())
 		return err
@@ -110,46 +110,38 @@ func (c *Connection) Close() error {
 	return nil
 }
 
-// IsAlive checks if the connection to the node is alive
-func (c *Connection) IsAlive(req *models.HelloRequest) bool {
-	// call rpc Hello() to check if the connection is alive
-	return true
+// Hello checks if the connection to the node is alive
+func (c *Connection) Hello(req *models.HelloRequest) (*models.HelloResponse, error) {
+	return c.client.Hello(c.ctx, req)
 }
 
 // GetChunk retrieves a chunk from the node
 func (c *Connection) GetChunk(req *models.GetChunkRequest) (*models.GetChunkResponse, error) {
-	// call  rpc GetChunk() to get the chunk
-	return nil, nil
+	return c.client.GetChunk(c.ctx, req)
 }
 
 // PutChunk writes a chunk to the node
 func (c *Connection) PutChunk(req *models.PutChunkRequest) (*models.PutChunkResponse, error) {
-	// call rpc PutChunk() to put the chunk
-	return nil, nil
+	return c.client.PutChunk(c.ctx, req)
 }
 
 // RemoveChunk deletes a chunk from the node
 func (c *Connection) RemoveChunk(req *models.RemoveChunkRequest) (*models.RemoveChunkResponse, error) {
-	// call rpc RemoveChunk() to remove the chunk
-	return nil, nil
+	return c.client.RemoveChunk(c.ctx, req)
 }
 
 func (c *Connection) JoinMV(req *models.JoinMVRequest) (*models.JoinMVResponse, error) {
-	// call rpc JoinMV() to join the MV
-	return nil, nil
+	return c.client.JoinMV(c.ctx, req)
 }
 
 func (c *Connection) LeaveMV(req *models.LeaveMVRequest) (*models.LeaveMVResponse, error) {
-	// call rpc LeaveMV() to leave the MV
-	return nil, nil
+	return c.client.LeaveMV(c.ctx, req)
 }
 
 func (c *Connection) StartSync(req *models.StartSyncRequest) (*models.StartSyncResponse, error) {
-	// call rpc StartSync() to start sync
-	return nil, nil
+	return c.client.StartSync(c.ctx, req)
 }
 
 func (c *Connection) EndSync(req *models.EndSyncRequest) (*models.EndSyncResponse, error) {
-	// call rpc EndSync() to end sync
-	return nil, nil
+	return c.client.EndSync(c.ctx, req)
 }
