@@ -47,7 +47,7 @@ import (
 
 type ClusterManagerImpl struct {
 	storageCallback  dcache.StorageCallbacks
-	ticker           *time.Ticker
+	hbTicker        *time.Ticker
 	clusterMapticker *time.Ticker
 	nodeId           string
 }
@@ -75,9 +75,9 @@ func (c *ClusterManagerImpl) IsAlive(peerId string) bool {
 // Start implements ClusterManager.
 func (cmi *ClusterManagerImpl) Start(clusterManagerConfig ClusterManagerConfig) error {
 	cmi.createClusterConfig(clusterManagerConfig)
-	cmi.ticker = time.NewTicker(time.Duration(clusterManagerConfig.HeartbeatSeconds) * time.Second)
+	cmi.hbTicker = time.NewTicker(time.Duration(clusterManagerConfig.HeartbeatSeconds) * time.Second)
 	go func() {
-		for range cmi.ticker.C {
+		for range cmi.hbTicker.C {
 			log.Trace("Scheduled task triggered")
 			cmi.punchHeartBeat(clusterManagerConfig)
 		}
