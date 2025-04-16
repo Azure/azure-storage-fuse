@@ -37,7 +37,6 @@ import (
 	"bytes"
 	"container/list"
 	"context"
-	"encoding/base64"
 	"fmt"
 	"io"
 	"math"
@@ -89,6 +88,7 @@ type BlockCache struct {
 	stream          *Stream
 	lazyWrite       bool           // Flag to indicate if lazy write is enabled
 	fileCloseOpt    sync.WaitGroup // Wait group to wait for all async close operations to complete
+	cleanupOnStart  bool           // Clear temp directory on startup
 }
 
 // Structure defining your config parameters
@@ -102,6 +102,7 @@ type BlockCacheOptions struct {
 	Workers        uint32  `config:"parallelism" yaml:"parallelism,omitempty"`
 	PrefetchOnOpen bool    `config:"prefetch-on-open" yaml:"prefetch-on-open,omitempty"`
 	Consistency    bool    `config:"consistency" yaml:"consistency,omitempty"`
+	CleanupOnStart bool    `config:"cleanup-on-start" yaml:"cleanup-on-start,omitempty"`
 }
 
 const (
@@ -287,6 +288,7 @@ func (bc *BlockCache) Configure(_ bool) error {
 	}
 
 	bc.tmpPath = common.ExpandPath(conf.TmpPath)
+	bc.cleanupOnStart = conf.CleanupOnStart
 
 	if bc.tmpPath != "" {
 		//check mnt path is not same as temp path
@@ -309,6 +311,13 @@ func (bc *BlockCache) Configure(_ bool) error {
 			if err != nil {
 				log.Err("BlockCache: config error creating directory of temp path after clean [%s]", err.Error())
 				return fmt.Errorf("config error in %s [%s]", bc.Name(), err.Error())
+			}
+		} else {
+			if bc.cleanupOnStart {
+				err := common.TempCacheCleanup(bc.tmpPath)
+				if err != nil {
+					return fmt.Errorf("error in %s error [fail to cleanup temp cache]", bc.Name())
+				}
 			}
 		}
 
@@ -1398,8 +1407,7 @@ func shouldCommitAndDownload(blockID int64, handle *handlemap.Handle) (bool, boo
 
 // lineupUpload : Create a work item and schedule the upload
 func (bc *BlockCache) lineupUpload(handle *handlemap.Handle, block *Block, listMap map[int64]*blockInfo) {
-
-	id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
+	id := common.GetBlockID(common.BlockIDLength)
 	listMap[block.id] = &blockInfo{
 		id:        id,
 		committed: false,
@@ -1675,7 +1683,7 @@ func (bc *BlockCache) getBlockIDList(handle *handlemap.Handle) ([]string, []stri
 				// Now we have written data beyond that point and its no longer the last block
 				// In such case we need to fill the gap with zero blocks
 				// For simplicity we will fill the gap with a new block and later merge both these blocks in one block
-				id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
+				id := common.GetBlockID(common.BlockIDLength)
 				fillerSize := (bc.blockSize - listMap[offsets[i]].size)
 				fillerOffset := uint64(offsets[i]*int64(bc.blockSize)) + listMap[offsets[i]].size
 
@@ -1745,7 +1753,7 @@ func (bc *BlockCache) stageZeroBlock(handle *handlemap.Handle, tryCnt int) (stri
 		return "", fmt.Errorf("3 attempts to upload zero block have failed for %v=>%v", handle.ID, handle.Path)
 	}
 
-	id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
+	id := common.GetBlockID(common.BlockIDLength)
 
 	log.Debug("BlockCache::stageZeroBlock : Staging zero block for %v=>%v, try = %v", handle.ID, handle.Path, tryCnt)
 	err := bc.NextComponent().StageData(internal.StageDataOptions{
