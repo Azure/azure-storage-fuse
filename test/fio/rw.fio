@@ -5,3 +5,4 @@ ioengine=sync
 verify=crc32c
 verify_fatal=1
 group_reporting
+unlink=1
