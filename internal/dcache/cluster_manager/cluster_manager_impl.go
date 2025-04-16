@@ -36,6 +36,7 @@ package clustermanager
 import (
 	"encoding/json"
 	"os"
+	"syscall"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -72,7 +73,6 @@ func (c *ClusterManagerImpl) IsAlive(peerId string) bool {
 
 // Start implements ClusterManager.
 func (cmi *ClusterManagerImpl) Start(clusterManagerConfig ClusterManagerConfig) error {
-	//TODO{Akku}: check if ClusterMap.json already created if yes don't create again
 	cmi.createClusterConfig(clusterManagerConfig)
 	cmi.ticker = time.NewTicker(time.Duration(clusterManagerConfig.HeartbeatSeconds) * time.Second)
 	go func() {
@@ -139,6 +139,10 @@ func listMyRVs(rvList []dcache.RawVolume) {
 }
 
 func (cmi *ClusterManagerImpl) createClusterConfig(clusterManagerConfig ClusterManagerConfig) error {
+	if cmi.checkIfClusterMapExists(clusterManagerConfig.StorageCachePath) {
+		log.Trace("ClusterManager::createClusterConfig : ClusterMap.json already exists")
+		return nil
+	}
 	uuidVal, err := common.GetUUID()
 	if err != nil {
 		log.Err("AddHeartBeat: Failed to retrieve UUID, error: %v", err)
@@ -155,15 +159,26 @@ func (cmi *ClusterManagerImpl) createClusterConfig(clusterManagerConfig ClusterM
 		LastUpdatedAt: time.Now().Unix(),
 		LastUpdatedBy: uuidVal,
 		Config:        dcacheConfig,
-		RVMap:         fetchRVMap(),
-		MVMap:         evaluateMVsRVMapping(),
+		RVMap:         map[string]dcache.RawVolume{},
+		MVMap:         map[string]dcache.MirroredVolume{},
 	}
 	clusterConfigJson, err := json.Marshal(clusterConfig)
 	log.Err("ClusterManager::CreateClusterConfig : ClusterConfigJson: %v, err %v", clusterConfigJson, err)
-	// err = cmi.metaManagerPutBlob(internal.WriteFromBufferOptions{Name: clusterManagerConfig.StorageCachePath + "/ClusterMap.json", Data: []byte(clusterConfigJson), IsNoneMatchEtagEnabled: true})
-	// err = cmi.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{Name: clusterManagerConfig.StorageCachePath + "/ClusterMap.json", Data: []byte(clusterConfigJson), IsNoneMatchEtagEnabled: true})
-	// return err
-	return nil
+	// err = cmi.metaManager.PutMetaFile(internal.WriteFromBufferOptions{Name: clusterManagerConfig.StorageCachePath + "/ClusterMap.json", Data: []byte(clusterConfigJson), IsNoneMatchEtagEnabled: true})
+	err = cmi.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{Name: clusterManagerConfig.StorageCachePath + "/ClusterMap.json", Data: []byte(clusterConfigJson), IsNoneMatchEtagEnabled: true})
+	return err
+	// return nil
+}
+
+func (cmi *ClusterManagerImpl) checkIfClusterMapExists(path string) bool {
+	_, err := cmi.storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{Name: path + "/ClusterMap.json"})
+	if err != nil {
+		if os.IsNotExist(err) || err == syscall.ENOENT {
+			return false
+		}
+		log.Err("ClusterManagerImpl::checkIfClusterMapExists: Failed to check configFile presence in Storage path %s error: %v", path+"/ClusterMap.json", err)
+	}
+	return true
 }
 
 func evaluateMVsRVMapping() map[string]dcache.MirroredVolume {

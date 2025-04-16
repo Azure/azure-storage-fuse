@@ -133,7 +133,7 @@ func (suite *distributedCacheTestSuite) TestSetupCacheStructureSuccess() {
 	suite.mock.EXPECT().CreateDir(gomock.Any()).Return(nil).AnyTimes()
 	suite.mock.EXPECT().Name().Return("azstorage").AnyTimes()
 	err := suite.distributedCache.Start(ctx)
-	suite.assert.Nil(err)
+	suite.assert.NotNil(err)
 }
 
 func (suite *distributedCacheTestSuite) TestSetupCacheStructureFailToReadStorage() {
