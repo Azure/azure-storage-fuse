@@ -196,12 +196,12 @@ func (dc *DistributedCache) setupCacheStructure(cacheDir string) error {
 			return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to get VM IP : %v]", err))
 		}
 
-		hostname, err := os.Hostname()
+		uuidVal, err := common.GetUUID()
 		if err != nil {
-			return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [Error getting hostname: %v]", err))
+			return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to retrieve UUID, error: %v]", err))
 		}
 		rvList[index] = dcache.RawVolume{
-			NodeId:         hostname,
+			NodeId:         uuidVal,
 			IPAddress:      ipaddr,
 			FSID:           fsid,
 			FDID:           "0",
