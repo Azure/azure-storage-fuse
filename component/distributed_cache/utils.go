@@ -36,6 +36,7 @@ package distributed_cache
 import (
 	"bufio"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -87,4 +88,32 @@ func findMountDevice(path string) (string, error) {
 		return "", fmt.Errorf("no mount device found for path: %s", path)
 	}
 	return bestMatch, nil
+}
+
+var getNetAddrs = net.InterfaceAddrs
+
+func getVmIp() (string, error) {
+	addresses, err := getNetAddrs()
+	if err != nil {
+		return "", err
+	}
+
+	var vmIP string
+	for _, addr := range addresses {
+		ipNet, ok := addr.(*net.IPNet)
+		if !ok || ipNet.IP.IsLoopback() {
+			continue
+		}
+		if ipNet.IP.To4() != nil {
+			vmIP = ipNet.IP.String()
+			// parts := strings.Split(vmIP, ".")
+			// vmIP = fmt.Sprintf("%s.%s.%d.%d", parts[0], parts[1], rand.Intn(256), rand.Intn(256))
+			break
+		}
+	}
+	if vmIP == "" {
+		return "", fmt.Errorf("unable to find a valid non-loopback IPv4 address")
+	}
+
+	return vmIP, nil
 }
