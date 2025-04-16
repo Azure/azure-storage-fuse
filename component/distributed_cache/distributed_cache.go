@@ -182,17 +182,31 @@ func (dc *DistributedCache) setupCacheStructure(cacheDir string) error {
 
 	rvList := make([]dcache.RawVolume, len(dc.cachePath))
 	for index, path := range dc.cachePath {
-		fsid, _ := getBlockDeviceUUId(path)
+		fsid, err := getBlockDeviceUUId(path)
+		if err != nil {
+			return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to get raw volume UUID: %v]", err))
+		}
 		// TODO{Akku} : More than 1 same fsid for rv, must fail distributed cache startup
 		totalSpace, err := common.GetTotalSpace(path)
 		if err != nil {
 			return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to evaluate local cache Total space: %v]", err))
 		}
+		ipaddr, err := getVmIp()
+		if err != nil {
+			return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to get VM IP : %v]", err))
+		}
+
+		hostname, err := os.Hostname()
+		if err != nil {
+			return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [Error getting hostname: %v]", err))
+		}
 		rvList[index] = dcache.RawVolume{
-			LocalCachePath: path,
+			NodeId:         hostname,
+			IPAddress:      ipaddr,
 			FSID:           fsid,
 			FDID:           "0",
-			AvailableSpace: totalSpace,
+			TotalSpace:     totalSpace,
+			LocalCachePath: path,
 		}
 	}
 	err = dc.clusterManager.Start(clustermanager.ClusterManagerConfig{
