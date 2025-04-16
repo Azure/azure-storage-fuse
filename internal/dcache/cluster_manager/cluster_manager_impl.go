@@ -47,9 +47,10 @@ import (
 
 type ClusterManagerImpl struct {
 	storageCallback  dcache.StorageCallbacks
-	hbTicker        *time.Ticker
+	hbTicker         *time.Ticker
 	clusterMapticker *time.Ticker
 	nodeId           string
+	storageCachePath string
 }
 
 // GetActiveMVs implements ClusterManager.
@@ -74,6 +75,7 @@ func (c *ClusterManagerImpl) IsAlive(peerId string) bool {
 
 // Start implements ClusterManager.
 func (cmi *ClusterManagerImpl) Start(clusterManagerConfig ClusterManagerConfig) error {
+	cmi.storageCachePath = clusterManagerConfig.StorageCachePath
 	cmi.createClusterConfig(clusterManagerConfig)
 	cmi.hbTicker = time.NewTicker(time.Duration(clusterManagerConfig.HeartbeatSeconds) * time.Second)
 	go func() {
@@ -84,8 +86,8 @@ func (cmi *ClusterManagerImpl) Start(clusterManagerConfig ClusterManagerConfig) 
 	}()
 	cmi.clusterMapticker = time.NewTicker(time.Duration(clusterManagerConfig.ClustermapEpoch) * time.Second)
 	go func() {
-		for range cmi.ticker.C {
-			log.Trace("Scheduled task triggered")
+		for range cmi.clusterMapticker.C {
+			log.Trace("Scheduled Cluster Map update task triggered")
 			cmi.UpdateStorageConfigIfRequired()
 			cmi.UpdateConfigMapCacheCopy()
 		}
@@ -222,7 +224,12 @@ func (c *ClusterManagerImpl) UpdateMVs(mvs []dcache.MirroredVolume) {
 }
 
 // UpdateStorageConfigIfRequired implements ClusterManager.
-func (c *ClusterManagerImpl) UpdateStorageConfigIfRequired() {
+func (cmi *ClusterManagerImpl) UpdateStorageConfigIfRequired() {
+	bytes, err := cmi.storageCallback.GetBlobFromStorage(internal.ReadFileWithNameOptions{Path: cmi.storageCachePath + "/ClusterMap.json"})
+	if err != nil {
+		log.Err("UpdateStorageConfigIfRequired: bytes %v, err %v", bytes, err)
+		return
+	}
 	// if I am the leader
 	// Update the storage config map
 	//else check config map lastUpdateAt +1 sec expiry
