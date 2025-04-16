@@ -39,6 +39,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
@@ -85,26 +86,14 @@ func (cmi *ClusterManagerImpl) Start(clusterManagerConfig ClusterManagerConfig) 
 }
 
 func (cmi *ClusterManagerImpl) punchHeartBeat(clusterManagerConfig ClusterManagerConfig) {
-	uuidVal, err := common.GetUUID()
-	if err != nil {
-		log.Err("AddHeartBeat: Failed to retrieve UUID, error: %v", err)
-	}
-	cmi.nodeId = uuidVal
-
-	hbPath := clusterManagerConfig.StorageCachePath + "/Nodes/" + cmi.nodeId + ".hb"
-	ipaddr, err := dcache.GetVmIp()
-	if err != nil {
-		log.Err("AddHeartBeat: Failed to get VM IP")
-	}
-
 	hostname, err := os.Hostname()
 	if err != nil {
 		log.Err("Error getting hostname:", err)
 	}
 	listMyRVs(clusterManagerConfig.RVList)
-
+	cmi.nodeId = clusterManagerConfig.RVList[0].NodeId
 	hbData := dcache.HeartbeatData{
-		IPAddr:        ipaddr,
+		IPAddr:        clusterManagerConfig.RVList[0].IPAddress,
 		NodeID:        cmi.nodeId,
 		Hostname:      hostname,
 		LastHeartbeat: uint64(time.Now().Unix()),
@@ -118,7 +107,7 @@ func (cmi *ClusterManagerImpl) punchHeartBeat(clusterManagerConfig ClusterManage
 	}
 
 	// Create a heartbeat file in storage with <nodeId>.hb
-	if err := cmi.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{Name: hbPath, Data: data}); err != nil {
+	if err := cmi.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{Name: clusterManagerConfig.StorageCachePath + "/Nodes/" + cmi.nodeId + ".hb", Data: data}); err != nil {
 		log.Err("AddHeartBeat: Failed to write heartbeat file: ", err)
 	}
 	log.Trace("AddHeartBeat: Heartbeat file updated successfully")
@@ -131,7 +120,7 @@ func listMyRVs(rvList []dcache.RawVolume) {
 		if err != nil {
 			log.Err("failed to get usage for path %s: %v", rv.LocalCachePath, err)
 		}
-		rvList[index].AvailableSpace = rv.TotalSpace - int(usage)*1024
+		rvList[index].AvailableSpace = rv.TotalSpace - uint64(usage)*1024
 		// TODO{Akku}: If available space is less than 10% of total space, set state to offline
 		rvList[index].State = dcache.StateOnline
 	}
