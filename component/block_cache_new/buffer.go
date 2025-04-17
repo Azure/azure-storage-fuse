@@ -352,7 +352,6 @@ func (bp *BufferPool) asyncUpladPoller() {
 func (bp *BufferPool) getBufferForBlock(blk *block) {
 	log.Info("BlockCache::getBufferForBlock : blk idx : %d file : %s", blk.idx, blk.file.Name)
 	bp.Lock()
-	defer bp.Unlock()
 	switch blk.state {
 	case localBlock:
 		blk.buf = bPool.getBuffer(true)
@@ -396,11 +395,9 @@ func (bp *BufferPool) getBufferForBlock(blk *block) {
 			blk.Unlock()
 			<-blk.requestingBuffer
 			blk.Lock()
-			bPool.Lock()
 			return
 		}
 	}
-
 	// P1 Todo: The following wakeup calls can result in memory to go greater than 100% so keep a hard limit so that system to kill our process.
 	// P2 Todo: The following threshold values set can be dynamically adjusted to increase the overall throughput of the system
 
@@ -430,7 +427,7 @@ func (bp *BufferPool) getBufferForBlock(blk *block) {
 		default:
 		}
 	}
-
+	bp.Unlock()
 }
 
 // Returns the buffer.
