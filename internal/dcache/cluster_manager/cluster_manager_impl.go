@@ -74,7 +74,7 @@ func (c *ClusterManagerImpl) IsAlive(peerId string) bool {
 }
 
 // Start implements ClusterManager.
-func (cmi *ClusterManagerImpl) Start(clusterManagerConfig ClusterManagerConfig) error {
+func (cmi *ClusterManagerImpl) Start(clusterManagerConfig *ClusterManagerConfig) error {
 	cmi.storageCachePath = clusterManagerConfig.StorageCachePath
 	cmi.nodeId = clusterManagerConfig.RVList[0].NodeId
 	cmi.createClusterConfig(clusterManagerConfig)
@@ -101,7 +101,7 @@ func (c *ClusterManagerImpl) UpdateConfigMapCacheCopy() {
 	//Notify to replication manager if there is any change
 }
 
-func (cmi *ClusterManagerImpl) punchHeartBeat(clusterManagerConfig ClusterManagerConfig) {
+func (cmi *ClusterManagerImpl) punchHeartBeat(clusterManagerConfig *ClusterManagerConfig) {
 	hostname, err := os.Hostname()
 	if err != nil {
 		log.Err("Error getting hostname:", err)
@@ -142,7 +142,7 @@ func listMyRVs(rvList []dcache.RawVolume) {
 	}
 }
 
-func (cmi *ClusterManagerImpl) createClusterConfig(clusterManagerConfig ClusterManagerConfig) error {
+func (cmi *ClusterManagerImpl) createClusterConfig(clusterManagerConfig *ClusterManagerConfig) error {
 	if cmi.checkIfClusterMapExists(clusterManagerConfig.StorageCachePath) {
 		log.Trace("ClusterManager::createClusterConfig : ClusterMap.json already exists")
 		return nil
