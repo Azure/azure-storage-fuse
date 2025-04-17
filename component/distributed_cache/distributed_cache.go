@@ -210,7 +210,7 @@ func (dc *DistributedCache) setupCacheStructure(cacheDir string) error {
 			LocalCachePath: path,
 		}
 	}
-	err = dc.clusterManager.Start(clustermanager.ClusterManagerConfig{
+	err = dc.clusterManager.Start(&clustermanager.ClusterManagerConfig{
 		MinNodes:               dc.minNodes,
 		ChunkSize:              dc.chunkSize,
 		StripeSize:             dc.stripeSize,
