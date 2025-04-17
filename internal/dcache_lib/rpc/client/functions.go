@@ -63,21 +63,22 @@ func Hello(ctx context.Context, targetNodeID string, req *models.HelloRequest) (
 	// get RPC client from the client pool
 	client, err := cp.getRPCClient(targetNodeID)
 	if err != nil {
-		log.Err("rpc_client::Hello: Failed to get RPC client for node %s: %+v [%v]", targetNodeID, *req, err.Error())
+		// TODO: add %+v at end after error
+		log.Err("rpc_client::Hello: Failed to get RPC client for node %s [%v] : %+v", targetNodeID, err.Error(), *req)
 		return nil, err
 	}
 	defer func() {
 		// release RPC client back to the pool
 		err = cp.releaseRPCClient(client)
 		if err != nil {
-			log.Err("rpc_client::Hello: Failed to release RPC client for node %s: %+v [%v]", targetNodeID, *req, err.Error())
+			log.Err("rpc_client::Hello: Failed to release RPC client for node %s [%v] : %+v", targetNodeID, err.Error(), *req)
 		}
 	}()
 
 	// call the rpc method
 	resp, err := client.svcClient.Hello(ctx, req)
 	if err != nil {
-		log.Err("rpc_client::Hello: Failed to send Hello request to node %s: %+v [%v]", targetNodeID, *req, err.Error())
+		log.Err("rpc_client::Hello: Failed to send Hello request to node %s [%v] : %+v", targetNodeID, err.Error(), *req)
 		return nil, err
 	}
 
@@ -90,21 +91,21 @@ func GetChunk(ctx context.Context, targetNodeID string, req *models.GetChunkRequ
 	// get RPC client from the client pool
 	client, err := cp.getRPCClient(targetNodeID)
 	if err != nil {
-		log.Err("rpc_client::GetChunk: Failed to get RPC client for node %s: %+v [%v]", targetNodeID, *req, err.Error())
+		log.Err("rpc_client::GetChunk: Failed to get RPC client for node %s [%v] : %+v", targetNodeID, err.Error(), *req)
 		return nil, err
 	}
 	defer func() {
 		// release RPC client back to the pool
 		err = cp.releaseRPCClient(client)
 		if err != nil {
-			log.Err("rpc_client::GetChunk: Failed to release RPC client for node %s: %+v [%v]", targetNodeID, *req, err.Error())
+			log.Err("rpc_client::GetChunk: Failed to release RPC client for node %s [%v] : %+v", targetNodeID, err.Error(), *req)
 		}
 	}()
 
 	// call the rpc method
 	resp, err := client.svcClient.GetChunk(ctx, req)
 	if err != nil {
-		log.Err("rpc_client::GetChunk: Failed to send GetChunk request to node %s: %+v [%v]", targetNodeID, *req, err.Error())
+		log.Err("rpc_client::GetChunk: Failed to send GetChunk request to node %s [%v] : %+v", targetNodeID, err.Error(), *req)
 		return nil, err
 	}
 
@@ -117,21 +118,21 @@ func PutChunk(ctx context.Context, targetNodeID string, req *models.PutChunkRequ
 	// get RPC client from the client pool
 	client, err := cp.getRPCClient(targetNodeID)
 	if err != nil {
-		log.Err("rpc_client::PutChunk: Failed to get RPC client for node %s: %+v [%v]", targetNodeID, *req, err.Error())
+		log.Err("rpc_client::PutChunk: Failed to get RPC client for node %s [%v] : %+v", targetNodeID, err.Error(), *req)
 		return nil, err
 	}
 	defer func() {
 		// release RPC client back to the pool
 		err = cp.releaseRPCClient(client)
 		if err != nil {
-			log.Err("rpc_client::PutChunk: Failed to release RPC client for node %s: %+v [%v]", targetNodeID, *req, err.Error())
+			log.Err("rpc_client::PutChunk: Failed to release RPC client for node %s [%v] : %+v", targetNodeID, err.Error(), *req)
 		}
 	}()
 
 	// call the rpc method
 	resp, err := client.svcClient.PutChunk(ctx, req)
 	if err != nil {
-		log.Err("rpc_client::PutChunk: Failed to send PutChunk request to node %s: %+v [%v]", targetNodeID, *req, err.Error())
+		log.Err("rpc_client::PutChunk: Failed to send PutChunk request to node %s [%v] : %+v", targetNodeID, err.Error(), *req)
 		return nil, err
 	}
 
@@ -144,21 +145,21 @@ func RemoveChunk(ctx context.Context, targetNodeID string, req *models.RemoveChu
 	// get RPC client from the client pool
 	client, err := cp.getRPCClient(targetNodeID)
 	if err != nil {
-		log.Err("rpc_client::RemoveChunk: Failed to get RPC client for node %s: %+v [%v]", targetNodeID, *req, err.Error())
+		log.Err("rpc_client::RemoveChunk: Failed to get RPC client for node %s [%v] : %+v", targetNodeID, err.Error(), *req)
 		return nil, err
 	}
 	defer func() {
 		// release RPC client back to the pool
 		err = cp.releaseRPCClient(client)
 		if err != nil {
-			log.Err("rpc_client::RemoveChunk: Failed to release RPC client for node %s: %+v [%v]", targetNodeID, *req, err.Error())
+			log.Err("rpc_client::RemoveChunk: Failed to release RPC client for node %s [%v] : %+v", targetNodeID, err.Error(), *req)
 		}
 	}()
 
 	// call the rpc method
 	resp, err := client.svcClient.RemoveChunk(ctx, req)
 	if err != nil {
-		log.Err("rpc_client::RemoveChunk: Failed to send RemoveChunk request to node %s: %+v [%v]", targetNodeID, *req, err.Error())
+		log.Err("rpc_client::RemoveChunk: Failed to send RemoveChunk request to node %s [%v] : %+v", targetNodeID, err.Error(), *req)
 		return nil, err
 	}
 
@@ -171,21 +172,21 @@ func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest)
 	// get RPC client from the client pool
 	client, err := cp.getRPCClient(targetNodeID)
 	if err != nil {
-		log.Err("rpc_client::JoinMV: Failed to get RPC client for node %s: %+v [%v]", targetNodeID, *req, err.Error())
+		log.Err("rpc_client::JoinMV: Failed to get RPC client for node %s [%v] : %+v", targetNodeID, err.Error(), *req)
 		return nil, err
 	}
 	defer func() {
 		// release RPC client back to the pool
 		err = cp.releaseRPCClient(client)
 		if err != nil {
-			log.Err("rpc_client::JoinMV: Failed to release RPC client for node %s: %+v [%v]", targetNodeID, *req, err.Error())
+			log.Err("rpc_client::JoinMV: Failed to release RPC client for node %s [%v] : %+v", targetNodeID, err.Error(), *req)
 		}
 	}()
 
 	// call the rpc method
 	resp, err := client.svcClient.JoinMV(ctx, req)
 	if err != nil {
-		log.Err("rpc_client::JoinMV: Failed to send JoinMV request to node %s: %+v [%v]", targetNodeID, *req, err.Error())
+		log.Err("rpc_client::JoinMV: Failed to send JoinMV request to node %s [%v] : %+v", targetNodeID, err.Error(), *req)
 		return nil, err
 	}
 
@@ -198,21 +199,21 @@ func LeaveMV(ctx context.Context, targetNodeID string, req *models.LeaveMVReques
 	// get RPC client from the client pool
 	client, err := cp.getRPCClient(targetNodeID)
 	if err != nil {
-		log.Err("rpc_client::LeaveMV: Failed to get RPC client for node %s: %+v [%v]", targetNodeID, *req, err.Error())
+		log.Err("rpc_client::LeaveMV: Failed to get RPC client for node %s [%v] : %+v", targetNodeID, err.Error(), *req)
 		return nil, err
 	}
 	defer func() {
 		// release RPC client back to the pool
 		err = cp.releaseRPCClient(client)
 		if err != nil {
-			log.Err("rpc_client::LeaveMV: Failed to release RPC client for node %s: %+v [%v]", targetNodeID, *req, err.Error())
+			log.Err("rpc_client::LeaveMV: Failed to release RPC client for node %s [%v] : %+v", targetNodeID, err.Error(), *req)
 		}
 	}()
 
 	// call the rpc method
 	resp, err := client.svcClient.LeaveMV(ctx, req)
 	if err != nil {
-		log.Err("rpc_client::LeaveMV: Failed to send LeaveMV request to node %s: %+v [%v]", targetNodeID, *req, err.Error())
+		log.Err("rpc_client::LeaveMV: Failed to send LeaveMV request to node %s [%v] : %+v", targetNodeID, err.Error(), *req)
 		return nil, err
 	}
 
@@ -225,21 +226,21 @@ func StartSync(ctx context.Context, targetNodeID string, req *models.StartSyncRe
 	// get RPC client from the client pool
 	client, err := cp.getRPCClient(targetNodeID)
 	if err != nil {
-		log.Err("rpc_client::StartSync: Failed to get RPC client for node %s: %+v [%v]", targetNodeID, *req, err.Error())
+		log.Err("rpc_client::StartSync: Failed to get RPC client for node %s [%v] : %+v", targetNodeID, err.Error(), *req)
 		return nil, err
 	}
 	defer func() {
 		// release RPC client back to the pool
 		err = cp.releaseRPCClient(client)
 		if err != nil {
-			log.Err("rpc_client::StartSync: Failed to release RPC client for node %s: %+v [%v]", targetNodeID, *req, err.Error())
+			log.Err("rpc_client::StartSync: Failed to release RPC client for node %s [%v] : %+v", targetNodeID, err.Error(), *req)
 		}
 	}()
 
 	// call the rpc method
 	resp, err := client.svcClient.StartSync(ctx, req)
 	if err != nil {
-		log.Err("rpc_client::StartSync: Failed to send StartSync request to node %s: %+v [%v]", targetNodeID, *req, err.Error())
+		log.Err("rpc_client::StartSync: Failed to send StartSync request to node %s [%v] : %+v", targetNodeID, err.Error(), *req)
 		return nil, err
 	}
 
@@ -252,21 +253,21 @@ func EndSync(ctx context.Context, targetNodeID string, req *models.EndSyncReques
 	// get RPC client from the client pool
 	client, err := cp.getRPCClient(targetNodeID)
 	if err != nil {
-		log.Err("rpc_client::EndSync: Failed to get RPC client for node %s: %+v [%v]", targetNodeID, *req, err.Error())
+		log.Err("rpc_client::EndSync: Failed to get RPC client for node %s [%v] : %+v", targetNodeID, err.Error(), *req)
 		return nil, err
 	}
 	defer func() {
 		// release RPC client back to the pool
 		err = cp.releaseRPCClient(client)
 		if err != nil {
-			log.Err("rpc_client::EndSync: Failed to release RPC client for node %s: %+v [%v]", targetNodeID, *req, err.Error())
+			log.Err("rpc_client::EndSync: Failed to release RPC client for node %s [%v] : %+v", targetNodeID, err.Error(), *req)
 		}
 	}()
 
 	// call the rpc method
 	resp, err := client.svcClient.EndSync(ctx, req)
 	if err != nil {
-		log.Err("rpc_client::EndSync: Failed to send EndSync request to node %s: %+v [%v]", targetNodeID, *req, err.Error())
+		log.Err("rpc_client::EndSync: Failed to send EndSync request to node %s [%v] : %+v", targetNodeID, err.Error(), *req)
 		return nil, err
 	}
 

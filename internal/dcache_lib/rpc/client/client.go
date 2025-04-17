@@ -84,7 +84,7 @@ func newRPCClient(nodeID string, nodeAddress string) (*rpcClient, error) {
 
 	err = client.transport.Open()
 	if err != nil {
-		log.Err("rpcClient::newRPCClient: Failed to open transport [%v]", err.Error())
+		log.Err("rpcClient::newRPCClient: Failed to open transport node %s at %s [%v]", nodeID, nodeAddress, err.Error())
 		return nil, err
 	}
 

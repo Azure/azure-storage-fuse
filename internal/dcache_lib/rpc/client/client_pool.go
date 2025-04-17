@@ -80,10 +80,10 @@ func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
 		if len(cp.clients) >= int(cp.maxNodes) {
 			// TODO: remove this and rely on the closeInactiveRPCClients to close inactive clients
 			// GetRPCClient should be small and fast, refer https://github.com/Azure/azure-storage-fuse/pull/1684#discussion_r2047993390
-			log.Debug("clientPool::getRPCClient: Maximum number of nodes reached, evict LRU rpc client")
-			err := cp.closeLRUClient()
+			log.Debug("clientPool::getRPCClient: Maximum number of nodes reached, evict LRU node client pool")
+			err := cp.closeLRUCNodeClientPool()
 			if err != nil {
-				log.Err("clientPool::getRPCClient: Failed to close LRU rpc client [%v]", err.Error())
+				log.Err("clientPool::getRPCClient: Failed to close LRU node client pool [%v]", err.Error())
 				return nil, err
 			}
 		}
@@ -107,18 +107,25 @@ func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
 func (cp *clientPool) releaseRPCClient(client *rpcClient) error {
 	log.Debug("clientPool::releaseRPCClient: Releasing RPC client for node %s", client.nodeID)
 
+	cp.mu.Lock()
+	defer cp.mu.Unlock()
+
 	ncPool, exists := cp.clients[client.nodeID]
 	if !exists {
 		log.Err("clientPool::releaseRPCClient: No client pool found for node %s", client.nodeID)
 		return fmt.Errorf("no client pool found for node %s", client.nodeID)
 	}
 
+	// TODO: add assert to check the length of the channel is less than maxPerNode
 	ncPool.clientChan <- client
 	return nil
 }
 
-// Close the least recently used RPC client from the client pool
-func (cp *clientPool) closeLRUClient() error {
+// Close the least recently used node client pool from the client pool
+// caller of this method should hold the lock
+func (cp *clientPool) closeLRUCNodeClientPool() error {
+	// TODO: add assert to check that lock is held, mu.TryLock()
+	// TODO: add assert that the length of the client pool is greater than maxNodes
 	// Find the least recently used RPC client and close it
 	var lruNcPool *nodeClientPool
 	lruNodeID := ""
@@ -129,26 +136,25 @@ func (cp *clientPool) closeLRUClient() error {
 		}
 	}
 
-	if lruNcPool != nil {
-		err := lruNcPool.closeRPCClients()
-		if err != nil {
-			log.Err("clientPool::closeLRUClient: Failed to close LRU client for node %s [%v]", lruNodeID, err.Error())
-			return err
-		}
-		delete(cp.clients, lruNodeID)
+	// TODO: add assert that lruNcPool is not nil
+	err := lruNcPool.closeRPCClients()
+	if err != nil {
+		log.Err("clientPool::closeLRUCNodeClientPool: Failed to close LRU node client pool for node %s [%v]", lruNodeID, err.Error())
+		return err
 	}
+	delete(cp.clients, lruNodeID)
 
 	return nil
 }
 
-// closeInactiveRPCClients closes RPC clients that have not been used for a specified timeout
-func (cp *clientPool) closeInactiveRPCClients() {
+// closeInactiveNodeClientPools closes node client pools that have not been used for a specified timeout
+func (cp *clientPool) closeInactiveNodeClientPools() {
 	// Cleanup old RPC clients based on the LastUsed timestamp
-	// This will run in a separate goroutine and will periodically close the RPC clients based on LRU strategy
+	// This will run in a separate goroutine and will periodically close the node client pools based on LRU strategy
 }
 
-// close closes all RPC clients in the pool
-func (cp *clientPool) close() error {
+// closeAllNodeClientPools closes all node client pools in the pool
+func (cp *clientPool) closeAllNodeClientPools() error {
 	// TODO: see if this is needed
 	cp.mu.Lock()
 	defer cp.mu.Unlock()
@@ -156,13 +162,15 @@ func (cp *clientPool) close() error {
 	for key, ncPool := range cp.clients {
 		err := ncPool.closeRPCClients()
 		if err != nil {
-			log.Err("clientPool::close: Failed to close RPC clients for node %s [%v]", key, err.Error())
+			log.Err("clientPool::closeAllNodeClientPools: Failed to close node client pool for node %s [%v]", key, err.Error())
 			return err
 		}
 		delete(cp.clients, key)
 	}
 
-	cp.clients = make(map[string]*nodeClientPool)
+	// TODO: add assert to check that the length of the map is 0
+	// see if this is needed
+	// cp.clients = make(map[string]*nodeClientPool)
 	return nil
 }
 
@@ -188,7 +196,7 @@ func (ncPool *nodeClientPool) createRPCClients(numClients uint32) {
 		// TODO: getNodeAddressFromID should be replaced with a function to get the node address from the config
 		client, err := newRPCClient(ncPool.nodeID, getNodeAddressFromID(ncPool.nodeID))
 		if err != nil {
-			log.Err("nodeClientPool::createRPCClients: Failed to create RPC client for nodeID %v [%v]", ncPool.nodeID, err.Error())
+			log.Err("nodeClientPool::createRPCClients: Failed to create RPC client for node %s [%v]", ncPool.nodeID, err.Error())
 			continue // skip this client
 		}
 		ncPool.clientChan <- client
@@ -199,6 +207,7 @@ func (ncPool *nodeClientPool) createRPCClients(numClients uint32) {
 func (ncPool *nodeClientPool) closeRPCClients() error {
 	log.Debug("nodeClientPool::closeRPCClients: Closing RPC clients for node %s", ncPool.nodeID)
 
+	// TODO: add assert to check that the length of the channel is maxPerNode, so that all clients are released back
 	close(ncPool.clientChan)
 
 	for client := range ncPool.clientChan {
@@ -209,6 +218,7 @@ func (ncPool *nodeClientPool) closeRPCClients() error {
 		}
 	}
 
+	// TODO: add assert to check that the channel empty
 	return nil
 }
 
