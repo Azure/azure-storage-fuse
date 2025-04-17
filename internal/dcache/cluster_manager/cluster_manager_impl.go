@@ -117,6 +117,8 @@ func (cmi *ClusterManagerImpl) checkIfClusterMapExists(path string) bool {
 func evaluateMVsRVMapping() map[string]dcache.MirroredVolume {
 
 	mvRvMap := map[string]dcache.MirroredVolume{}
+	rvMap := fetchRVMap()
+
 	// rvStateMap := map[string]string{
 	// 	"rv0": "online",
 	// 	"rv1": "offline",
