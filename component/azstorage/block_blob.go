@@ -1700,15 +1700,27 @@ func (bb *BlockBlob) SetFilter(filter string) error {
 }
 
 // SetMetadata : Set metadata property of the blob
-func (bb *BlockBlob) SetMetadata(name string, attr *internal.ObjAttr) (err error) {
-	log.Trace("BlockBlob::GetAttr : name %s", name)
+func (bb *BlockBlob) SetMetadata(filePath string, newMetadata map[string]*string, etag *azcore.ETag, overwrite bool) (err error) {
+	log.Trace("BlockBlob::SetMetadata : name %s", filePath)
 
-	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
+	if !overwrite {
+		attr, err := bb.GetAttr(filePath)
+		if err != nil {
+			log.Err("BlockBlob::SetMetadata : Failed to get attributes of file %s [%s]", filePath, err.Error())
+			return err
+		}
+		for key, value := range newMetadata {
+			attr.Metadata[key] = value
+		}
+		newMetadata = attr.Metadata
+	}
+
+	blobClient := bb.Container.NewBlockBlobClient(filePath)
 	// Set the metadata
-	_, err = blobClient.SetMetadata(context.Background(), attr.Metadata, &blob.SetMetadataOptions{
+	_, err = blobClient.SetMetadata(context.Background(), newMetadata, &blob.SetMetadataOptions{
 		AccessConditions: &blob.AccessConditions{
 			ModifiedAccessConditions: &blob.ModifiedAccessConditions{
-				IfMatch: to.Ptr(azcore.ETag(attr.ETag)),
+				IfMatch: etag,
 			},
 		},
 	})

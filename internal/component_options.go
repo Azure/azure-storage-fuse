@@ -36,6 +36,7 @@ package internal
 import (
 	"os"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
 
@@ -193,9 +194,11 @@ type GetAttrOptions struct {
 	RetrieveMetadata bool
 }
 
-type SetAttrOptions struct {
-	Name string
-	Attr *ObjAttr
+type SetMetadataOptions struct {
+	Path      string
+	Metadata  map[string]*string
+	Etag      *azcore.ETag
+	Overwrite bool
 }
 
 type ChmodOptions struct {

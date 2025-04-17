@@ -36,6 +36,7 @@ package azstorage
 import (
 	"os"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -141,7 +142,7 @@ type AzConnection interface {
 
 	SetFilter(string) error
 
-	SetMetadata(name string, attr *internal.ObjAttr) error
+	SetMetadata(string, map[string]*string, *azcore.ETag, bool) error
 }
 
 // NewAzStorageConnection : Based on account type create respective AzConnection Object
