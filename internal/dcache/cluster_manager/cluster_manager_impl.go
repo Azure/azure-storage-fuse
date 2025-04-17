@@ -35,7 +35,11 @@ package clustermanager
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
+	"sort"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -90,14 +94,14 @@ func (cmi *ClusterManagerImpl) Start(clusterManagerConfig *ClusterManagerConfig)
 		for range cmi.clusterMapticker.C {
 			log.Trace("Scheduled Cluster Map update task triggered")
 			cmi.UpdateStorageConfigIfRequired()
-			cmi.UpdateConfigMapCacheCopy()
+			cmi.UpdateClusterMapCacheCopy()
 		}
 	}()
 	return nil
 }
 
-func (c *ClusterManagerImpl) UpdateConfigMapCacheCopy() {
-	//update my local copy of config map if anythig is change
+func (c *ClusterManagerImpl) UpdateClusterMapCacheCopy() {
+	//update my local copy of cluster map if anythig is change
 	//Notify to replication manager if there is any change
 }
 
@@ -195,7 +199,7 @@ func evaluateMVsRVMapping() map[string]dcache.MirroredVolume {
 	return mvRvMap
 }
 
-func (cmi *ClusterManagerImpl) checkAndUpdateRVMap(configMapRVMap map[string]dcache.RawVolume) (bool, bool, error) {
+func (cmi *ClusterManagerImpl) checkAndUpdateRVMap(clusterMapRVMap map[string]dcache.RawVolume) (bool, bool, error) {
 	dirListAttr, err := cmi.storageCallback.ReadDirFromStorage(internal.ReadDirOptions{Name: cmi.storageCachePath + "/Nodes"})
 	isRVMapUpdated := false
 	isMVsUpdateNeeded := false
@@ -223,38 +227,63 @@ func (cmi *ClusterManagerImpl) checkAndUpdateRVMap(configMapRVMap map[string]dca
 			rVsByBlkID[rv.FSID] = rv
 		}
 	}
-	if len(configMapRVMap) == 0 && len(rVsByBlkID) != 0 {
+	//There can be 3 scenarios
+	//1. There is nothing in clusterMap and RVs are present in heartbeat
+	//2. There is something in clusterMap which needs to be updated
+	//3. There is something in heartbeat which needs to be added to clusterMap
+
+	if len(clusterMapRVMap) == 0 && len(rVsByBlkID) != 0 {
 		isRVMapUpdated = true
 		isMVsUpdateNeeded = true
-		//Update RV Map in StorageConfig
+		i := 0
+		for _, rv := range rVsByBlkID {
+			clusterMapRVMap[fmt.Sprintf("rv%d", i)] = rv
+			i++
+		}
 
 		return isRVMapUpdated, isMVsUpdateNeeded, nil
-
 	}
-	for rvName, rvInConfig := range configMapRVMap {
-		if rvHb, found := rVsByBlkID[rvInConfig.FSID]; found {
-			if rvInConfig.State != rvHb.State {
+	rVsExistsInClusterMapByBlkID := make(map[string]dcache.RawVolume)
+	rvNameList := make([]string, 0, len(clusterMapRVMap))
+	for rvName, rvInClusterMap := range clusterMapRVMap {
+		if rvHb, found := rVsByBlkID[rvInClusterMap.FSID]; found {
+			if rvInClusterMap.State != rvHb.State {
 				isRVMapUpdated = true
 				isMVsUpdateNeeded = true
-				rvInConfig.State = rvHb.State
+				rvInClusterMap.State = rvHb.State
 			}
-			if rvInConfig.AvailableSpace != rvHb.AvailableSpace {
+			if rvInClusterMap.AvailableSpace != rvHb.AvailableSpace {
 				isRVMapUpdated = true
-				rvInConfig.AvailableSpace = rvHb.AvailableSpace
-				if rvInConfig.AvailableSpace < (rvInConfig.TotalSpace / 10) {
+				rvInClusterMap.AvailableSpace = rvHb.AvailableSpace
+				if rvInClusterMap.AvailableSpace < (rvInClusterMap.TotalSpace / 10) {
 					isMVsUpdateNeeded = true
 				}
 
 			}
+			rVsExistsInClusterMapByBlkID[rvInClusterMap.FSID] = rvHb
 		} else {
 			log.Trace("ClusterManagerImpl::checkAndUpdateRVMap: FSID=%s missing in new heartbeats", rvName)
-			delete(configMapRVMap, rvName)
+			rvInClusterMap.State = dcache.StateOffline
 			isRVMapUpdated = true
 			isMVsUpdateNeeded = true
 
 		}
+		clusterMapRVMap[rvName] = rvInClusterMap
+		rvNameList = append(rvNameList, rvName)
 	}
-
+	if len(rvNameList) != 0 {
+		sort.Strings(rvNameList)
+		lastRVName := rvNameList[len(rvNameList)-1]
+		i, _ := strconv.Atoi(strings.Split(lastRVName, "rv")[1])
+		for blkId, rv := range rVsByBlkID {
+			if _, exists := rVsExistsInClusterMapByBlkID[blkId]; !exists {
+				i++
+				clusterMapRVMap[fmt.Sprintf("rv%d", i)] = rv
+				isRVMapUpdated = true
+				isMVsUpdateNeeded = true
+			}
+		}
+	}
 	return isRVMapUpdated, isMVsUpdateNeeded, nil
 }
 
@@ -285,13 +314,13 @@ func (cmi *ClusterManagerImpl) UpdateStorageConfigIfRequired() {
 	}
 
 	if (clusterCfg.LastUpdatedBy == cmi.nodeId) || (time.Now().Unix()-clusterCfg.LastUpdatedAt > int64(clusterCfg.Config.ClustermapEpoch)) {
-		log.Trace("I am the leader or Config is stale. Proceed with updating the storage config map.")
+		log.Trace("I am the leader or Cluster map is stale. Proceed with updating the storage cluster map.")
 		isRVMapUpdated, isMVsUpdateNeeded, err := cmi.checkAndUpdateRVMap(clusterCfg.RVMap)
 		log.Err("UpdateStorageConfigIfRequired: isRVMapUpdated %v, isMVsUpdateNeeded %v, err %v", isRVMapUpdated, isMVsUpdateNeeded, err)
-		// if isRVMapUpdated {
-		// 	//update the MVRVMap if required
+		// if isMVsUpdateNeeded {
+		// 	//update the MVRVMapping
 		//}
-		// 	 update the LMT or LUB in Stroage Config and push the update
+		// 	 update the LMT or LUB in Stroage Cluster Map and push the update
 		//If required trigger replication manager
 	}
 
