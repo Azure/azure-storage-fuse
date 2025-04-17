@@ -1,4 +1,4 @@
-package meta_manager
+package metadata_manager
 
 // FileMetaManager is the implementation of MetaManager interface
 type FileMetaManager struct {
@@ -6,19 +6,19 @@ type FileMetaManager struct {
 }
 
 // NewMetaManager creates a new implementation of the MetaManager interface
-func NewMetaManager(cacheID string) (MetaManager, error) {
+func NewMetaManager(cacheID string) (MetadataManager, error) {
 	return &FileMetaManager{
 		cacheDir: cacheID,
 	}, nil
 }
 
 // Implement all interface methods
-func (m *FileMetaManager) CreateMetaFile(filename string, filelayout FileLayout) error {
+func (m *FileMetaManager) CreateFile(filename string, filelayout *FileLayout) (*FileMetadata, error) {
 	// Implementation here
-	return nil
+	return nil, nil
 }
 
-func (m *FileMetaManager) DeleteMetaFile(filename string) error {
+func (m *FileMetaManager) DeleteFile(filename string) error {
 	// Implementation here
 	return nil
 }
@@ -33,17 +33,22 @@ func (m *FileMetaManager) DecrementHandleCount(filename string) error {
 	return nil
 }
 
-func (m *FileMetaManager) GetHandleCount(filename string) (int64, error) {
+func (m *FileMetaManager) GetFileOpenCount(filename string) (int64, error) {
 	// Implementation here
 	return 0, nil
 }
 
-func (m *FileMetaManager) GetContent(filename string) ([]byte, error) {
+func (m *FileMetaManager) GetFile(filename string) (*FileMetadata, error) {
 	// Implementation here
 	return nil, nil
 }
 
-func (m *FileMetaManager) SetContent(filename string, data []byte) error {
+func (m *FileMetaManager) SetFile(filename string, data []byte) error {
+	// Implementation here
+	return nil
+}
+
+func (m *FileMetaManager) CreateCacheInternalFile(filename string, data []byte) error {
 	// Implementation here
 	return nil
 }

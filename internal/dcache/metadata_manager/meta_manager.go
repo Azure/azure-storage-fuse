@@ -31,10 +31,10 @@
    SOFTWARE
 */
 
-package meta_manager
+package metadata_manager
 
 // MetaFile represents the metadata structure for a file
-type MetaFile struct {
+type FileMetadata struct {
 	Filename        string     `json:"filename"`
 	FileID          string     `json:"file_id"`
 	Size            int64      `json:"size"`
@@ -49,27 +49,30 @@ type FileLayout struct {
 }
 
 // MetaManager defines the interface for managing file metadata
-type MetaManager interface {
-	// CreateMetaFile creates or updates metadata for a file with its associated materialized views
-	CreateMetaFile(filename string, filelayout FileLayout) error
+type MetadataManager interface {
+	// CreateFile creates or updates metadata for a file with its associated materialized views
+	CreateFile(filePath string, filelayout *FileLayout) (*FileMetadata, error)
 
-	// DeleteMetaFile removes metadata for a file
-	DeleteMetaFile(filename string) error
+	// CreateCacheInternalFile creates file for cluster map and heartbeat
+	CreateCacheInternalFile(filePath string, data []byte) error
+
+	// DeleteFile removes metadata for a file
+	DeleteFile(filePath string) error
 
 	// IncrementHandleCount increases the handle count for a file
-	IncrementHandleCount(filename string) error
+	IncrementHandleCount(filePath string) error
 
 	// DecrementHandleCount decreases the handle count for a file
-	DecrementHandleCount(filename string) error
+	DecrementHandleCount(filePath string) error
 
 	// GetHandleCount returns the current handle count for a file
-	GetHandleCount(filename string) (int64, error)
+	GetFileOpenCount(filePath string) (int64, error)
 
 	// GetFileContent reads and returns the content of a file
-	GetContent(filename string) ([]byte, error)
+	GetFile(filePath string) (*FileMetadata, error)
 
 	// SetContent sets the content of a file with the specified chunk and stripe sizes
-	SetContent(filename string, data []byte) error
+	SetFile(filePath string, data []byte) error
 
 	//Optional
 	// SetBlobMetadata(filename string, metadata map[string]string) error
