@@ -35,6 +35,7 @@ package clustermanager
 
 import (
 	"encoding/json"
+	"math"
 	"os"
 	"syscall"
 	"time"
@@ -118,18 +119,100 @@ func evaluateMVsRVMapping() map[string]dcache.MirroredVolume {
 
 	mvRvMap := map[string]dcache.MirroredVolume{}
 	rvMap := fetchRVMap()
+	mvMap := fecthMVMap()
 
-	// rvStateMap := map[string]string{
-	// 	"rv0": "online",
-	// 	"rv1": "offline",
-	// 	"rv2": "syncing"}
-	// mv0 := dcache.MirroredVolume{
-	// 	RVWithStateMap: rvStateMap,
-	// 	State:          dcache.StateOffline,
-	// }
-	// mvRvMap["mv0"] = mv0
-	return mvRvMap
+	// Calculate number of MVs
+	numRVs := len(rvMap)
+
+	NumReplicas := 1
+	MvsPerRv := 1
+
+	numMVs := int(math.Ceil(float64(numRVs) * float64(MvsPerRv) / float64(NumReplicas)))
+
+	// Group RVs by node for distribution
+	nodeToRVs := make(map[string][]string)
+	for rvID, rvInfo := range rvMap {
+		nodeToRVs[rvInfo.NodeId] = append(nodeToRVs[rvInfo.NodeId], rvID)
+	}
+
+	// Create tracking maps
+	rvAssignmentCount := make(map[string]int)     // Track how many times each RV has been assigned
+	mvRVSet := make([]map[string]bool, numMVs)    // Track which RVs are in each MV
+	mvNodeCount := make([]map[string]int, numMVs) // Track how many RVs from each node are in each MV
+
+	for i := range mvMap {
+		mvRVSet[i] = make(map[string]bool)
+		mvNodeCount[i] = make(map[string]int)
+	}
+
+	// First pass: Direct distribution in a single scan
+	// Assign RVs to MVs while maintaining constraints
+	currentMVIndex := 0
+
+	// Process nodes in a round-robin fashion to ensure diversity
+	nodesProcessed := 0
+	nodeIDs := make([]string, 0, len(nodeToRVs))
+	for nodeID := range nodeToRVs {
+		nodeIDs = append(nodeIDs, nodeID)
+	}
+
+	for nodesProcessed < len(nodeToRVs)*MvsPerRv {
+		for _, nodeID := range nodeIDs {
+			for _, rvID := range nodeToRVs[nodeID] {
+				// Skip if this RV has been fully assigned
+				if rvAssignmentCount[rvID] >= MvsPerRv {
+					continue
+				}
+
+				// Find next suitable MV
+				for attempts := 0; attempts < numMVs; attempts++ {
+					mvIndex := (currentMVIndex + attempts) % numMVs
+
+					// Check if this MV has space and doesn't already have this RV
+					if len(mvs[mvIndex].RVs) < rvsPerMV && !mvRVSet[mvIndex][rvID] {
+						// Assign the RV to this MV
+						mvs[mvIndex].RVs = append(mvs[mvIndex].RVs, rvID)
+						mvRVSet[mvIndex][rvID] = true
+						mvs[mvIndex].Nodes[nodeID] = true
+						mvNodeCount[mvIndex][nodeID]++
+						rvAssignmentCount[rvID]++
+
+						// Move to next MV for better distribution
+						currentMVIndex = (mvIndex + 1) % numMVs
+						break
+					}
+				}
+			}
+
+			nodesProcessed++
+			// Break early if we've assigned all RVs
+			if len(rvInstances) == 0 {
+				break
+			}
+		}
+	}
+
+	// Mark MVs with fewer RVs as special
+	for i := range mvMap {
+		if len(mvMap[i].RVWithStateMap) < NumReplicas {
+			mvMap[i].State = dcache.StateOffline
+		}
+	}
+
+	return mvMap
 }
+
+// go through the RVMap and find
+
+// rvStateMap := map[string]string{
+// 	"rv0": "online",
+// 	"rv1": "offline",
+// 	"rv2": "syncing"}
+// mv0 := dcache.MirroredVolume{
+// 	RVWithStateMap: rvStateMap,
+// 	State:          dcache.StateOffline,
+// }
+// mvRvMap["mv0"] = mv0
 
 func fetchRVMap() map[string]dcache.RawVolume {
 	rvMap := map[string]dcache.RawVolume{}
