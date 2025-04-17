@@ -33,25 +33,14 @@
 
 package metadata_manager
 
-// MetaFile represents the metadata structure for a file
-type FileMetadata struct {
-	Filename        string     `json:"filename"`
-	FileID          string     `json:"file_id"`
-	Size            int64      `json:"size"`
-	ClusterMapEpoch int64      `json:"cluster_map_epoch"`
-	FileLayout      FileLayout `json:"file_layout"`
-}
-
-type FileLayout struct {
-	ChunkSize  int64    `json:"chunk_size"`
-	StripeSize int64    `json:"stripe_size"`
-	MVList     []string `json:"mv_list"`
-}
+import (
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
+)
 
 // MetaManager defines the interface for managing file metadata
 type MetadataManager interface {
 	// CreateFile creates or updates metadata for a file with its associated materialized views
-	CreateFile(filePath string, filelayout *FileLayout) (*FileMetadata, error)
+	CreateFile(filePath string, filelayout *dcache.FileLayout) (*dcache.FileMetadata, error)
 
 	// CreateCacheInternalFile creates file for cluster map and heartbeat
 	CreateCacheInternalFile(filePath string, data []byte) error
@@ -69,7 +58,7 @@ type MetadataManager interface {
 	GetFileOpenCount(filePath string) (int64, error)
 
 	// GetFileContent reads and returns the content of a file
-	GetFile(filePath string) (*FileMetadata, error)
+	GetFile(filePath string) (*dcache.FileMetadata, error)
 
 	// SetContent sets the content of a file with the specified chunk and stripe sizes
 	SetFile(filePath string, data []byte) error
