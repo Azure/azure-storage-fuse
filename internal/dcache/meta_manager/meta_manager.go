@@ -31,36 +31,42 @@
    SOFTWARE
 */
 
-package meta_manager
+package metadata_manager
 
-import "github.com/google/uuid"
-
-// MetaFile represents the metadata structure for a file
-type MetaFile struct {
-	Filename        string    `json:"filename"`
-	FileID          uuid.UUID `json:"file_id"`
-	Size            int64     `json:"size"`
-	ClusterMapEpoch int64     `json:"cluster_map_epoch"`
-	MVList          []string  `json:"mv_list"`
-}
+import (
+	dcache "github.com/Azure/azure-storage-fuse/v2/internal/dcache"
+)
 
 // MetaManager defines the interface for managing file metadata
-type MetaManager interface {
-	// CreateMetaFile creates or updates metadata for a file with its associated materialized views
-	CreateMetaFile(filename string, mvList []string) error
+type MetadataManager interface {
+	// CreateFile creates or updates metadata for a file with its associated materialized views
+	CreateFile(filePath string, filelayout *dcache.FileLayout) (*dcache.FileMetadata, error)
 
-	// DeleteMetaFile removes metadata for a file
-	DeleteMetaFile(filename string) error
+	// CreateCacheInternalFile creates file for cluster map and heartbeat
+	CreateCacheInternalFile(filePath string, data []byte) error
+
+	// DeleteFile removes metadata for a file
+	DeleteFile(filePath string) error
 
 	// IncrementHandleCount increases the handle count for a file
-	IncrementHandleCount(filename string) error
+	IncrementFileOpenCount(filePath string) error
 
 	// DecrementHandleCount decreases the handle count for a file
-	DecrementHandleCount(filename string) error
+	DecrementFileOpenCount(filePath string) error
 
 	// GetHandleCount returns the current handle count for a file
-	GetHandleCount(filename string) (int64, error)
+	GetFileOpenCount(filePath string) (int64, error)
 
 	// GetFileContent reads and returns the content of a file
-	GetFileContent(filename string) (*MetaFile, error)
+	GetFile(filePath string) (*dcache.FileMetadata, error)
+
+	SetFileSize(filePath string, size int64) error
+
+	GetCacheInternalFile(filePath string) ([]byte, error)
+
+	SetCacheInternalFile(filePath string, data []byte) error
+
+	//Optional
+	// SetBlobMetadata(filename string, metadata map[string]string) error
+	// GetBlobMetadata(filename string) (map[string]string, error)
 }

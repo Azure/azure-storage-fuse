@@ -103,3 +103,17 @@ type DCacheConfig struct {
 	SafeDeletes            bool   `json:"safe-deletes,omitempty"`
 	CacheAccess            string `json:"cache-access,omitempty"`
 }
+
+type FileMetadata struct {
+	FilePath        string     `json:"filename"`
+	FileID          string     `json:"file_id"`
+	Size            int64      `json:"size"`
+	ClusterMapEpoch int64      `json:"cluster_map_epoch"`
+	FileLayout      FileLayout `json:"file_layout"`
+}
+
+type FileLayout struct {
+	ChunkSize  int64    `json:"chunk_size"`
+	StripeSize int64    `json:"stripe_size"`
+	MVList     []string `json:"mv_list"`
+}
