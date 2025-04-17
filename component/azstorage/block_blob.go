@@ -47,6 +47,8 @@ import (
 	"syscall"
 	"time"
 
+	"maps"
+
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/streaming"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
@@ -1709,9 +1711,7 @@ func (bb *BlockBlob) SetMetadata(filePath string, newMetadata map[string]*string
 			log.Err("BlockBlob::SetMetadata : Failed to get attributes of file %s [%s]", filePath, err.Error())
 			return err
 		}
-		for key, value := range newMetadata {
-			attr.Metadata[key] = value
-		}
+		maps.Copy(attr.Metadata, newMetadata)
 		newMetadata = attr.Metadata
 	}
 
