@@ -86,7 +86,7 @@ func (cmi *ClusterManagerImpl) Start(clusterManagerConfig *ClusterManagerConfig)
 	return nil
 }
 
-func (cmi *ClusterManagerImpl) punchHeartBeat(clusterManagerConfig ClusterManagerConfig) {
+func (cmi *ClusterManagerImpl) punchHeartBeat(clusterManagerConfig *ClusterManagerConfig) {
 	hostname, err := os.Hostname()
 	if err != nil {
 		log.Err("Error getting hostname:", err)
