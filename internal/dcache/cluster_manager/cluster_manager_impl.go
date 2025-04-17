@@ -62,7 +62,7 @@ func (c *ClusterManagerImpl) IsAlive(peerId string) bool {
 }
 
 // Start implements ClusterManager.
-func (c *ClusterManagerImpl) Start(clusterManagerConfig ClusterManagerConfig) error {
+func (c *ClusterManagerImpl) Start(clusterManagerConfig *ClusterManagerConfig) error {
 	return nil
 }
 
