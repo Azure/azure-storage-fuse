@@ -73,47 +73,59 @@ steps:
 # Run fio on 1 file 10G size SEQ read,write
   - script: |
       ls $(MOUNT_DIR)
+      rm ./*
       echo "******FIO JOB STARTING******"
       fio --rw=readwrite --bs=1M --size=10g --numjobs=1 $(WORK_DIR)/test/fio/rw.fio
+      ps aux | grep blobfuse2
     displayName: 'SEQ-10G-1F-1T'
     workingDirectory: $(MOUNT_DIR)
 
 # Run fio on 10 files 1G size SEQ read, write
   - script: |
       ls $(MOUNT_DIR)
+      rm ./*
       echo "******FIO JOB STARTING*******"
       fio --rw=readwrite --bs=1M --size=1g --numjobs=10 $(WORK_DIR)/test/fio/rw.fio
+      ps aux | grep blobfuse2
     displayName: 'SEQ-1G-10F-10T'
     workingDirectory: $(MOUNT_DIR)
 
-# Run fio on 1 file 2GB size RAND read, write
+# Run fio on 1 file 10GB size RAND read, write
   - script: |
       ls $(MOUNT_DIR)
+      rm ./*
       echo "******FIO JOB STARTING*******"
-      fio --rw=randwrite --bs=1M --size=2g --numjobs=1 $(WORK_DIR)/test/fio/rw.fio
+      fio --rw=randwrite --bs=1M --size=10g --numjobs=1 $(WORK_DIR)/test/fio/rw.fio
+      ps aux | grep blobfuse2
     displayName: 'RAND-2G-1F-1T'
     workingDirectory: $(MOUNT_DIR)
 
-# Run fio on 10 files 200M size RAND read, write
+# Run fio on 10 files 1000M size RAND read, write
   - script: |
       ls $(MOUNT_DIR)
+      rm ./*
       echo "******FIO JOB STARTING*******"
-      fio --rw=randwrite --bs=1M --size=200m --numjobs=10 $(WORK_DIR)/test/fio/rw.fio
+      fio --rw=randwrite --bs=1M --size=1g --numjobs=10 $(WORK_DIR)/test/fio/rw.fio
+      ps aux | grep blobfuse2
     displayName: 'RAND-200M-10F-10T'
     workingDirectory: $(MOUNT_DIR)
 
 # Run fio on file having hole inside blocks.(hole can be at middle/at the edges)
   - script: |
       ls $(MOUNT_DIR)
+      rm ./*
       echo "******FIO JOB STARTING*******"
       fio $(WORK_DIR)/test/fio/hole_inside_blocks.fio
+      ps aux | grep blobfuse2
     displayName: 'SEQ-HOLE3M-10G-1F-1T'
     workingDirectory: $(MOUNT_DIR)
 
 # Run fio on file having hole over blocks.(whole blocks can be of holes)
   - script: |
       ls $(MOUNT_DIR)
+      rm ./*
       echo "******FIO JOB STARTING*******"
       fio $(WORK_DIR)/test/fio/hole_over_blocks.fio
+      ps aux | grep blobfuse2
     displayName: 'SEQ-HOLE16M-10G-1F-1T'
     workingDirectory: $(MOUNT_DIR)

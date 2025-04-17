@@ -66,54 +66,56 @@ steps:
     displayName: 'Print contents of Block-Cache'
 
   - script: |
-      cd ${{ parameters.mount_dir }}
-      pwd
       wget https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.13.tar.xz 
     displayName: 'Download latest linux Source'
+    workingDirectory: $(MOUNT_DIR)
 
   - script: |
-      cd ${{ parameters.mount_dir }}
-      pwd
       unxz --keep linux-*.tar.xz
     displayName: 'Uncompress Tarballs'
+    workingDirectory: $(MOUNT_DIR)
 
   - script: |
-      cd ${{ parameters.mount_dir }}
-      pwd
       tar -xvf linux-*.tar
     displayName: 'Untar Linux source'
+    workingDirectory: $(MOUNT_DIR)
 
 
   - script: |
-      cd ${{ parameters.mount_dir }}/linux-*/
-      pwd
       make defconfig
     displayName: 'Make Config'
+    workingDirectory: $(MOUNT_DIR)
 
   - script: |
-      cd ${{ parameters.mount_dir }}/linux-*/
-      pwd
       make -j$(nproc) 2>&1 | tee log
     displayName: 'Compile Source'
+    workingDirectory: $(MOUNT_DIR)
 
   - script: |
-      cd ${{ parameters.mount_dir }}
-      pwd
       git clone https://github.com/microsoft/vscode.git
     displayName: 'Git Clone VS Code'
+    workingDirectory: $(MOUNT_DIR)
+
 
   - script: |
-      cd ${{ parameters.mount_dir }}
-      pwd
-      git clone https://github.com/Azure/azure-storage-fuse.git
-    displayName: 'Git clone Blobfuse2'
-
-  - script: |
-      cd ${{ parameters.mount_dir }}
-      pwd
       git clone https://github.com/libfuse/libfuse.git
     displayName: 'Git clone libfuse'
+    workingDirectory: $(MOUNT_DIR)
 
+  - script: |
+      git clone https://github.com/Azure/azure-storage-fuse.git
+    displayName: 'Git clone Blobfuse2'
+    workingDirectory: $(MOUNT_DIR)
+
+  - script: |
+      ./build.sh
+    displayName: 'Build Blobfuse'
+    workingDirectory: $(MOUNT_DIR)/azure-storage-fuse
+
+  - script: |
+      ./blobfuse2 --version
+    displayName: 'Run Blobfuse'
+    workingDirectory: $(MOUNT_DIR)/azure-storage-fuse
 
   - template: 'cleanup.yml'
     parameters:
