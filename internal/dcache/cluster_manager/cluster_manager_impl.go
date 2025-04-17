@@ -69,14 +69,14 @@ func (c *ClusterManagerImpl) IsAlive(peerId string) bool {
 }
 
 // Start implements ClusterManager.
-func (cmi *ClusterManagerImpl) Start(clusterManagerConfig ClusterManagerConfig) error {
+func (cmi *ClusterManagerImpl) Start(clusterManagerConfig *ClusterManagerConfig) error {
 	cmi.createClusterConfig(clusterManagerConfig)
 	//schedule Punch heartbeat
 	//Schedule clustermap config update at storage and local copy
 	return nil
 }
 
-func (cmi *ClusterManagerImpl) createClusterConfig(clusterManagerConfig ClusterManagerConfig) error {
+func (cmi *ClusterManagerImpl) createClusterConfig(clusterManagerConfig *ClusterManagerConfig) error {
 	if cmi.checkIfClusterMapExists(clusterManagerConfig.StorageCachePath) {
 		log.Trace("ClusterManager::createClusterConfig : ClusterMap.json already exists")
 		return nil
