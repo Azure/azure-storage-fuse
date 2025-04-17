@@ -41,12 +41,12 @@ type StorageCallbacks interface {
 	GetPropertiesFromStorage(opt internal.GetAttrOptions) (*internal.ObjAttr, error)
 	PutBlobInStorage(opt internal.WriteFromBufferOptions) error
 	ReadDirFromStorage(options internal.ReadDirOptions) ([]*internal.ObjAttr, error)
-	SetPropertiesInStorage(path string, properties map[string]string) error
+	SetMetaPropertiesInStorage(path string, properties map[string]string) error
 
 	DeleteBlob(opt internal.DeleteFileOptions) error
 	GetBlob(opt internal.ReadFileWithNameOptions) ([]byte, error)
 	GetProperties(opt internal.GetAttrOptions) (*internal.ObjAttr, error)
 	PutBlob(opt internal.WriteFromBufferOptions) error
 	ReadDir(options internal.ReadDirOptions) ([]*internal.ObjAttr, error)
-	SetProperties(path string, properties map[string]string) error
+	SetMetaProperties(path string, properties map[string]string) error
 }
