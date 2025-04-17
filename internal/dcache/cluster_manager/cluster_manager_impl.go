@@ -317,10 +317,20 @@ func (cmi *ClusterManagerImpl) UpdateStorageConfigIfRequired() {
 		log.Trace("I am the leader or Cluster map is stale. Proceed with updating the storage cluster map.")
 		isRVMapUpdated, isMVsUpdateNeeded, err := cmi.checkAndUpdateRVMap(clusterCfg.RVMap)
 		log.Err("UpdateStorageConfigIfRequired: isRVMapUpdated %v, isMVsUpdateNeeded %v, err %v", isRVMapUpdated, isMVsUpdateNeeded, err)
-		// if isMVsUpdateNeeded {
-		// 	//update the MVRVMapping
-		//}
-		// 	 update the LMT or LUB in Stroage Cluster Map and push the update
+
+		if isMVsUpdateNeeded {
+			//TODO{Akku}: evaluateMVsRVMapping()
+		}
+		clusterCfg.LastUpdatedBy = cmi.nodeId
+		clusterCfg.LastUpdatedAt = time.Now().Unix()
+		clusterCfgByte, _ := json.Marshal(clusterCfg)
+		cmi.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
+			Name: cmi.storageCachePath + "/ClusterMap.json",
+			Data: clusterCfgByte,
+			// EtagMatchConditions: ,
+			//TODO{Akku}: ADD Etag condition
+		})
+
 		//If required trigger replication manager
 	}
 
