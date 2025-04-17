@@ -39,9 +39,16 @@ type ClusterManager interface {
 	Start(*ClusterManagerConfig) error
 	Stop() error
 	GetActiveMVs() []dcache.MirroredVolume
+	GetDegradedMVs() []dcache.MirroredVolume
 	GetPeer(nodeId string) dcache.Peer
 	GetPeerRVs(mvName string) []dcache.RawVolume
 	IsAlive(peerId string) bool
+	LowestNumberRV(rvs []string) []string
+	NodeIdToIP(nodeId string) string
+	RVFsidToName(rvFsid string) string
+	RVNameToFsid(rvName string) string
+	RVNameToNodeId(rvName string) string
+	RVNameToIp(rvName string) string
 	UpdateMVs(mvs []dcache.MirroredVolume)
 	UpdateStorageConfigIfRequired()
 	WatchForConfigChanges() error
