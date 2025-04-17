@@ -41,6 +41,41 @@ type ClusterManagerImpl struct {
 	storageCallback dcache.StorageCallbacks
 }
 
+// GetDegradedMVs implements ClusterManager.
+func (c *ClusterManagerImpl) GetDegradedMVs() []dcache.MirroredVolume {
+	return make([]dcache.MirroredVolume, 0)
+}
+
+// LowestNumberRV implements ClusterManager.
+func (c *ClusterManagerImpl) LowestNumberRV(rvs []string) []string {
+	return make([]string, 0)
+}
+
+// NodeIdToIP implements ClusterManager.
+func (c *ClusterManagerImpl) NodeIdToIP(nodeId string) string {
+	return ""
+}
+
+// RVFsidToName implements ClusterManager.
+func (c *ClusterManagerImpl) RVFsidToName(rvFsid string) string {
+	return ""
+}
+
+// RVNameToFsid implements ClusterManager.
+func (c *ClusterManagerImpl) RVNameToFsid(rvName string) string {
+	return ""
+}
+
+// RVNameToIp implements ClusterManager.
+func (c *ClusterManagerImpl) RVNameToIp(rvName string) string {
+	return ""
+}
+
+// RVNameToNodeId implements ClusterManager.
+func (c *ClusterManagerImpl) RVNameToNodeId(rvName string) string {
+	return ""
+}
+
 // GetActiveMVs implements ClusterManager.
 func (c *ClusterManagerImpl) GetActiveMVs() []dcache.MirroredVolume {
 	return nil
