@@ -34,241 +34,82 @@
 package rpc_client
 
 import (
-	"context"
+	"crypto/tls"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	"github.com/Azure/azure-storage-fuse/v2/internal/dcache_lib/rpc/gen-go/dcache/models"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache_lib/rpc/gen-go/dcache/service"
+	"github.com/apache/thrift/lib/go/thrift"
 )
 
-var cp *connectionPool
-
-const (
-	// TODO: discuss with the team about these values
-	// defaultMaxPerNode is the default maximum number of open connections per node
-	defaultMaxPerNode = 5
-	// defaultMaxNodes is the default maximum number of nodes for which connections are open
-	defaultMaxNodes = 100
-	// defaultTimeout is the default duration in seconds after which a connection is closed
-	defaultTimeout = 60
-)
-
-func Hello(ctx context.Context, targetNodeID string, req *models.HelloRequest) (*models.HelloResponse, error) {
-	log.Debug("rpc_client::Hello: Sending Hello request to node %s", targetNodeID)
-
-	// get rpc client from the connection pool
-	conn, err := cp.getRPCClient(targetNodeID)
-	if err != nil {
-		log.Err("rpc_client::Hello: Failed to get connection for node %s [%v]", targetNodeID, err.Error())
-		return nil, err
-	}
-	defer func() {
-		// release rpc client back to the pool
-		err = cp.releaseRPCClient(targetNodeID, conn)
-		if err != nil {
-			log.Err("rpc_client::Hello: Failed to release connection for node %s [%v]", targetNodeID, err.Error())
-		}
-	}()
-
-	// call the rpc method
-	resp, err := conn.svcClient.Hello(ctx, req)
-	if err != nil {
-		log.Err("rpc_client::Hello: Failed to send Hello request to node %s [%v]", targetNodeID, err.Error())
-		return nil, err
-	}
-
-	return resp, nil
+// rpcClient struct holds the Thrift client to a node
+// This is used to make RPC calls to the node
+type rpcClient struct {
+	nodeID      string                      // Node ID of the node this client is for, can be used for debug logs
+	nodeAddress string                      // Address of the node this client is for
+	transport   thrift.TTransport           // Transport is the Thrift transport layer
+	svcClient   *service.ChunkServiceClient // Client is the Thrift client for the ChunkService
 }
 
-func GetChunk(ctx context.Context, targetNodeID string, req *models.GetChunkRequest) (*models.GetChunkResponse, error) {
-	log.Debug("rpc_client::GetChunk: Sending GetChunk request to node %s", targetNodeID)
+var protocolFactory thrift.TProtocolFactory
+var transportFactory thrift.TTransportFactory
+var thriftCfg *thrift.TConfiguration
 
-	// get rpc client from the connection pool
-	conn, err := cp.getRPCClient(targetNodeID)
-	if err != nil {
-		log.Err("rpc_client::GetChunk: Failed to get connection for node %s [%v]", targetNodeID, err.Error())
-		return nil, err
-	}
-	defer func() {
-		// release rpc client back to the pool
-		err = cp.releaseRPCClient(targetNodeID, conn)
-		if err != nil {
-			log.Err("rpc_client::GetChunk: Failed to release connection for node %s [%v]", targetNodeID, err.Error())
-		}
-	}()
+// newRPCClient creates a new Thrift RPC client for the node
+func newRPCClient(nodeID string, nodeAddress string) (*rpcClient, error) {
+	log.Debug("rpcClient::newRPCClient: Creating new RPC client for node %s at %s", nodeID, nodeAddress)
 
-	// call the rpc method
-	resp, err := conn.svcClient.GetChunk(ctx, req)
+	var transport thrift.TTransport
+
+	// if secure {
+	// 	transport = thrift.NewTSSLSocketConf(nodeAddress, thriftCfg)
+	// }
+
+	transport = thrift.NewTSocketConf(nodeAddress, thriftCfg)
+	transport, err := transportFactory.GetTransport(transport)
 	if err != nil {
-		log.Err("rpc_client::GetChunk: Failed to send GetChunk request to node %s [%v]", targetNodeID, err.Error())
+		log.Err("rpcClient::newRPCClient: Failed to create transport for node %s at %s [%v]", nodeID, nodeAddress, err.Error())
 		return nil, err
 	}
 
-	return resp, nil
+	iprot := protocolFactory.GetProtocol(transport)
+	oprot := protocolFactory.GetProtocol(transport)
+	svcClient := service.NewChunkServiceClient(thrift.NewTStandardClient(iprot, oprot))
+
+	client := &rpcClient{
+		nodeID:      nodeID,
+		nodeAddress: nodeAddress,
+		transport:   transport,
+		svcClient:   svcClient,
+	}
+
+	err = client.transport.Open()
+	if err != nil {
+		log.Err("rpcClient::newRPCClient: Failed to open transport [%v]", err.Error())
+		return nil, err
+	}
+
+	return client, nil
 }
 
-func PutChunk(ctx context.Context, targetNodeID string, req *models.PutChunkRequest) (*models.PutChunkResponse, error) {
-	log.Debug("rpc_client::PutChunk: Sending PutChunk request to node %s", targetNodeID)
-
-	// get rpc client from the connection pool
-	conn, err := cp.getRPCClient(targetNodeID)
+// close closes the Thrift RPC client to the node
+func (c *rpcClient) close() error {
+	err := c.transport.Close()
 	if err != nil {
-		log.Err("rpc_client::PutChunk: Failed to get connection for node %s [%v]", targetNodeID, err.Error())
-		return nil, err
-	}
-	defer func() {
-		// release rpc client back to the pool
-		err = cp.releaseRPCClient(targetNodeID, conn)
-		if err != nil {
-			log.Err("rpc_client::PutChunk: Failed to release connection for node %s [%v]", targetNodeID, err.Error())
-		}
-	}()
-
-	// call the rpc method
-	resp, err := conn.svcClient.PutChunk(ctx, req)
-	if err != nil {
-		log.Err("rpc_client::PutChunk: Failed to send PutChunk request to node %s [%v]", targetNodeID, err.Error())
-		return nil, err
+		log.Err("rpcClient::close: Failed to close transport for node %s at %s [%v]", c.nodeID, c.nodeAddress, err.Error())
+		return err
 	}
 
-	return resp, nil
-}
-
-func RemoveChunk(ctx context.Context, targetNodeID string, req *models.RemoveChunkRequest) (*models.RemoveChunkResponse, error) {
-	log.Debug("rpc_client::RemoveChunk: Sending RemoveChunk request to node %s", targetNodeID)
-
-	// get rpc client from the connection pool
-	conn, err := cp.getRPCClient(targetNodeID)
-	if err != nil {
-		log.Err("rpc_client::RemoveChunk: Failed to get connection for node %s [%v]", targetNodeID, err.Error())
-		return nil, err
-	}
-	defer func() {
-		// release rpc client back to the pool
-		err = cp.releaseRPCClient(targetNodeID, conn)
-		if err != nil {
-			log.Err("rpc_client::RemoveChunk: Failed to release connection for node %s [%v]", targetNodeID, err.Error())
-		}
-	}()
-
-	// call the rpc method
-	resp, err := conn.svcClient.RemoveChunk(ctx, req)
-	if err != nil {
-		log.Err("rpc_client::RemoveChunk: Failed to send RemoveChunk request to node %s [%v]", targetNodeID, err.Error())
-		return nil, err
-	}
-
-	return resp, nil
-}
-
-func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest) (*models.JoinMVResponse, error) {
-	log.Debug("rpc_client::JoinMV: Sending JoinMV request to node %s", targetNodeID)
-
-	// get rpc client from the connection pool
-	conn, err := cp.getRPCClient(targetNodeID)
-	if err != nil {
-		log.Err("rpc_client::JoinMV: Failed to get connection for node %s [%v]", targetNodeID, err.Error())
-		return nil, err
-	}
-	defer func() {
-		// release rpc client back to the pool
-		err = cp.releaseRPCClient(targetNodeID, conn)
-		if err != nil {
-			log.Err("rpc_client::JoinMV: Failed to release connection for node %s [%v]", targetNodeID, err.Error())
-		}
-	}()
-
-	// call the rpc method
-	resp, err := conn.svcClient.JoinMV(ctx, req)
-	if err != nil {
-		log.Err("rpc_client::JoinMV: Failed to send JoinMV request to node %s [%v]", targetNodeID, err.Error())
-		return nil, err
-	}
-
-	return resp, nil
-}
-
-func LeaveMV(ctx context.Context, targetNodeID string, req *models.LeaveMVRequest) (*models.LeaveMVResponse, error) {
-	log.Debug("rpc_client::LeaveMV: Sending LeaveMV request to node %s", targetNodeID)
-
-	// get rpc client from the connection pool
-	conn, err := cp.getRPCClient(targetNodeID)
-	if err != nil {
-		log.Err("rpc_client::LeaveMV: Failed to get connection for node %s [%v]", targetNodeID, err.Error())
-		return nil, err
-	}
-	defer func() {
-		// release rpc client back to the pool
-		err = cp.releaseRPCClient(targetNodeID, conn)
-		if err != nil {
-			log.Err("rpc_client::LeaveMV: Failed to release connection for node %s [%v]", targetNodeID, err.Error())
-		}
-	}()
-
-	// call the rpc method
-	resp, err := conn.svcClient.LeaveMV(ctx, req)
-	if err != nil {
-		log.Err("rpc_client::LeaveMV: Failed to send LeaveMV request to node %s [%v]", targetNodeID, err.Error())
-		return nil, err
-	}
-
-	return resp, nil
-}
-
-func StartSync(ctx context.Context, targetNodeID string, req *models.StartSyncRequest) (*models.StartSyncResponse, error) {
-	log.Debug("rpc_client::StartSync: Sending StartSync request to node %s", targetNodeID)
-
-	// get rpc client from the connection pool
-	conn, err := cp.getRPCClient(targetNodeID)
-	if err != nil {
-		log.Err("rpc_client::StartSync: Failed to get connection for node %s [%v]", targetNodeID, err.Error())
-		return nil, err
-	}
-	defer func() {
-		// release rpc client back to the pool
-		err = cp.releaseRPCClient(targetNodeID, conn)
-		if err != nil {
-			log.Err("rpc_client::StartSync: Failed to release connection for node %s [%v]", targetNodeID, err.Error())
-		}
-	}()
-
-	// call the rpc method
-	resp, err := conn.svcClient.StartSync(ctx, req)
-	if err != nil {
-		log.Err("rpc_client::StartSync: Failed to send StartSync request to node %s [%v]", targetNodeID, err.Error())
-		return nil, err
-	}
-
-	return resp, nil
-}
-
-func EndSync(ctx context.Context, targetNodeID string, req *models.EndSyncRequest) (*models.EndSyncResponse, error) {
-	log.Debug("rpc_client::EndSync: Sending EndSync request to node %s", targetNodeID)
-
-	// get rpc client from the connection pool
-	conn, err := cp.getRPCClient(targetNodeID)
-	if err != nil {
-		log.Err("rpc_client::EndSync: Failed to get connection for node %s [%v]", targetNodeID, err.Error())
-		return nil, err
-	}
-	defer func() {
-		// release rpc client back to the pool
-		err = cp.releaseRPCClient(targetNodeID, conn)
-		if err != nil {
-			log.Err("rpc_client::EndSync: Failed to release connection for node %s [%v]", targetNodeID, err.Error())
-		}
-	}()
-
-	// call the rpc method
-	resp, err := conn.svcClient.EndSync(ctx, req)
-	if err != nil {
-		log.Err("rpc_client::EndSync: Failed to send EndSync request to node %s [%v]", targetNodeID, err.Error())
-		return nil, err
-	}
-
-	return resp, nil
+	return nil
 }
 
 func init() {
-	log.Debug("rpc_client package initialized, create connection pool")
-	cp = newConnectionPool(defaultMaxPerNode, defaultMaxNodes, defaultTimeout)
+	log.Debug("rpcClient::init: Initializing protocol and transport factories")
+	protocolFactory = thrift.NewTBinaryProtocolFactoryConf(nil)
+	transportFactory = thrift.NewTTransportFactory()
+
+	thriftCfg = &thrift.TConfiguration{
+		TLSConfig: &tls.Config{
+			InsecureSkipVerify: true,
+		},
+	}
 }
