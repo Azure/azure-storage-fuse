@@ -20,17 +20,22 @@ func (m *FileMetaManager) CreateFile(filename string, filelayout *dcache.FileLay
 	return nil, nil
 }
 
+func (m *FileMetaManager) CreateCacheInternalFile(filename string, data []byte) error {
+	// Implementation here
+	return nil
+}
+
 func (m *FileMetaManager) DeleteFile(filename string) error {
 	// Implementation here
 	return nil
 }
 
-func (m *FileMetaManager) IncrementHandleCount(filename string) error {
+func (m *FileMetaManager) IncrementFileOpenCount(filename string) error {
 	// Implementation here
 	return nil
 }
 
-func (m *FileMetaManager) DecrementHandleCount(filename string) error {
+func (m *FileMetaManager) DecrementFileOpenCount(filename string) error {
 	// Implementation here
 	return nil
 }
@@ -45,12 +50,17 @@ func (m *FileMetaManager) GetFile(filename string) (*dcache.FileMetadata, error)
 	return nil, nil
 }
 
-func (m *FileMetaManager) SetFile(filename string, data []byte) error {
+func (m *FileMetaManager) SetFileSize(filename string, size int64) error {
 	// Implementation here
 	return nil
 }
 
-func (m *FileMetaManager) CreateCacheInternalFile(filename string, data []byte) error {
+func (m *FileMetaManager) GetCacheInternalFile(filename string) ([]byte, error) {
+	// Implementation here
+	return nil, nil
+}
+
+func (m *FileMetaManager) SetCacheInternalFile(filename string, data []byte) error {
 	// Implementation here
 	return nil
 }

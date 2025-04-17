@@ -49,10 +49,10 @@ type MetadataManager interface {
 	DeleteFile(filePath string) error
 
 	// IncrementHandleCount increases the handle count for a file
-	IncrementHandleCount(filePath string) error
+	IncrementFileOpenCount(filePath string) error
 
 	// DecrementHandleCount decreases the handle count for a file
-	DecrementHandleCount(filePath string) error
+	DecrementFileOpenCount(filePath string) error
 
 	// GetHandleCount returns the current handle count for a file
 	GetFileOpenCount(filePath string) (int64, error)
@@ -60,8 +60,11 @@ type MetadataManager interface {
 	// GetFileContent reads and returns the content of a file
 	GetFile(filePath string) (*dcache.FileMetadata, error)
 
-	// SetContent sets the content of a file with the specified chunk and stripe sizes
-	SetFile(filePath string, data []byte) error
+	SetFileSize(filePath string, size int64) error
+
+	GetCacheInternalFile(filePath string) ([]byte, error)
+
+	SetCacheInternalFile(filePath string, data []byte) error
 
 	//Optional
 	// SetBlobMetadata(filename string, metadata map[string]string) error
