@@ -1,76 +1,108 @@
 package metadata_manager
 
-import "github.com/Azure/azure-storage-fuse/v2/internal/dcache"
+import (
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
+)
 
-// FileMetaDataManager is the implementation of MetaDataManager interface
+// FileMetaDataManager is the implementation of MetadataManager interface
 type FileMetaDataManager struct {
 	cacheDir string
 }
 
-// NewMetaDataManager creates a new implementation of the MetaDataManager interface
+// NewMetaDataManager creates a new implementation of the MetadataManager interface
 func NewMetaDataManager(cacheID string) (MetadataManager, error) {
 	return &FileMetaDataManager{
 		cacheDir: cacheID,
 	}, nil
 }
 
-// Implement all interface methods
-func (m *FileMetaDataManager) CreateFile(filename string, filelayout *dcache.FileLayout) (*dcache.FileMetadata, error) {
-	// Implementation here
+// CreateFileInit creates the initial metadata for a file
+func (m *FileMetaDataManager) CreateFileInit(filePath string, fileMetadata *dcache.FileMetadata) error {
+	// Dummy implementation
+	return nil
+}
+
+// CreateFileFinalize finalizes the metadata for a file
+func (m *FileMetaDataManager) CreateFileFinalize(filePath string, fileMetadata *dcache.FileMetadata) error {
+	// Dummy implementation
+	return nil
+}
+
+// GetFile reads and returns the content of metadata for a file
+func (m *FileMetaDataManager) GetFile(filePath string) (*dcache.FileMetadata, error) {
+	// Dummy implementation
 	return nil, nil
 }
 
-func (m *FileMetaDataManager) CreateCacheInternalFile(filename string, data []byte) error {
-	// Implementation here
+// DeleteFile removes metadata for a file
+func (m *FileMetaDataManager) DeleteFile(filePath string) error {
+	// Dummy implementation
 	return nil
 }
 
-func (m *FileMetaDataManager) DeleteFile(filename string) error {
-	// Implementation here
-	return nil
-}
-
-func (m *FileMetaDataManager) IncrementFileOpenCount(filename string) error {
-	// Implementation here
-	return nil
-}
-
-func (m *FileMetaDataManager) DecrementFileOpenCount(filename string) error {
-	// Implementation here
-	return nil
-}
-
-func (m *FileMetaDataManager) GetFileOpenCount(filename string) (int64, error) {
-	// Implementation here
+// OpenFile increments the open count for a file and returns the updated count
+func (m *FileMetaDataManager) OpenFile(filePath string) (int64, error) {
+	// Dummy implementation
 	return 0, nil
 }
 
-func (m *FileMetaDataManager) GetFile(filename string) (*dcache.FileMetadata, error) {
-	// Implementation here
-	return nil, nil
+// CloseFile decrements the open count for a file and returns the updated count
+func (m *FileMetaDataManager) CloseFile(filePath string) (int64, error) {
+	// Dummy implementation
+	return 0, nil
 }
 
-func (m *FileMetaDataManager) SetFileSize(filename string, size int64) error {
-	// Implementation here
+// GetFileOpenCount returns the current open count for a file
+func (m *FileMetaDataManager) GetFileOpenCount(filePath string) (int64, error) {
+	// Dummy implementation
+	return 0, nil
+}
+
+// UpdateHeartbeat creates or updates the heartbeat file
+func (m *FileMetaDataManager) UpdateHeartbeat(nodeId string, data []byte) error {
+	// Dummy implementation
 	return nil
 }
 
-func (m *FileMetaDataManager) GetCacheInternalFile(filename string) ([]byte, error) {
-	// Implementation here
-	return nil, nil
-}
-
-func (m *FileMetaDataManager) SetCacheInternalFile(filename string, data []byte) error {
-	// Implementation here
+// DeleteHeartbeat deletes the heartbeat file
+func (m *FileMetaDataManager) DeleteHeartbeat(nodeId string, data []byte) error {
+	// Dummy implementation
 	return nil
 }
 
-// func (m *FileMetaDataManager) SetBlobMetadata(filename string, metadata map[string]string) error {
-// 	// Implementation here
-// 	return nil
-// }
-//
-// func (m *FileMetaDataManager) GetBlobMetadata(filename string) (map[string]string, error) {
-// 	// Implementation here
-// 	return nil, nil
-// }
+// GetHeartbeat reads and returns the content of the heartbeat file
+func (m *FileMetaDataManager) GetHeartbeat(nodeId string) ([]byte, error) {
+	// Dummy implementation
+	return nil, nil
+}
+
+// GetAllNodes enumerates and returns the list of all nodes with a heartbeat
+func (m *FileMetaDataManager) GetAllNodes() ([]string, error) {
+	// Dummy implementation
+	return nil, nil
+}
+
+// CreateInitialClusterMap creates the initial cluster map
+func (m *FileMetaDataManager) CreateInitialClusterMap(clustermap []byte) error {
+	// Dummy implementation
+	return nil
+}
+
+// UpdateClusterMapStart claims update ownership of the cluster map
+func (m *FileMetaDataManager) UpdateClusterMapStart(clustermap []byte, etag *azcore.ETag) error {
+	// Dummy implementation
+	return nil
+}
+
+// UpdateClusterMapEnd finalizes the cluster map update
+func (m *FileMetaDataManager) UpdateClusterMapEnd(clustermap []byte) error {
+	// Dummy implementation
+	return nil
+}
+
+// GetClusterMap reads and returns the content of the cluster map
+func (m *FileMetaDataManager) GetClusterMap() ([]byte, *azcore.ETag, error) {
+	// Dummy implementation
+	return nil, nil, nil
+}
