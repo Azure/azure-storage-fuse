@@ -39,11 +39,10 @@ import (
 
 // MetaManager defines the interface for managing file metadata
 type MetadataManager interface {
+
+	// Following APIs are used to manage metadata for files in the distributed cache
 	// CreateFile creates or updates metadata for a file with its associated materialized views
 	CreateFile(filePath string, filelayout *dcache.FileLayout) (*dcache.FileMetadata, error)
-
-	// CreateCacheInternalFile creates file for cluster map and heartbeat
-	CreateCacheInternalFile(filePath string, data []byte) error
 
 	// DeleteFile removes metadata for a file
 	DeleteFile(filePath string) error
@@ -62,9 +61,13 @@ type MetadataManager interface {
 
 	SetFileSize(filePath string, size int64) error
 
-	GetCacheInternalFile(filePath string) ([]byte, error)
+	// Following APIs are used to manage internal files in the distributed cache
+	// CreateCacheInternalFile creates file for cluster map and heartbeat
+	CreateInternalFile(filePath string, data []byte) error
 
-	SetCacheInternalFile(filePath string, data []byte) error
+	GetInternalFile(filePath string) ([]byte, error)
+
+	SetInternalFile(filePath string, data []byte) error
 
 	//Optional
 	// SetBlobMetadata(filename string, metadata map[string]string) error
