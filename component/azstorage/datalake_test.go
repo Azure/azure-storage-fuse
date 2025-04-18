@@ -202,6 +202,31 @@ func (s *datalakeTestSuite) TestNoEndpoint() {
 	s.assert.Nil(err)
 }
 
+func (s *datalakeTestSuite) TestAccountType() {
+	defer s.cleanupTest()
+	// Setup
+	s.tearDownTestHelper(false) // Don't delete the generated container.
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
+		storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsKey, s.container)
+	s.setupTestHelper(config, s.container, true)
+
+	val := s.az.storage.IsAccountADLS()
+	s.assert.True(val)
+}
+
+func (s *datalakeTestSuite) TestFileSystemNotFound() {
+	defer s.cleanupTest()
+	// Setup
+	s.tearDownTestHelper(false) // Don't delete the generated container.
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
+		storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsKey, "foo")
+	s.setupTestHelper(config, "foo", false)
+
+	err := s.az.storage.TestPipeline()
+	s.assert.NotNil(err)
+	s.assert.Contains(err.Error(), "FilesystemNotFound")
+}
+
 func (s *datalakeTestSuite) TestListContainers() {
 	defer s.cleanupTest()
 	// Setup
@@ -1400,6 +1425,37 @@ func (s *datalakeTestSuite) TestReadInBuffer() {
 	s.assert.Nil(err)
 	s.assert.EqualValues(5, len)
 	s.assert.EqualValues(testData[:5], output)
+}
+
+func (s *datalakeTestSuite) TestReadInBufferWithoutHandle() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, err := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	s.assert.Nil(err)
+	s.assert.NotNil(h)
+
+	testData := "test data"
+	data := []byte(testData)
+	n, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.assert.Nil(err)
+	s.assert.Equal(n, len(data))
+
+	output := make([]byte, 5)
+	len, err := s.az.ReadInBuffer(internal.ReadInBufferOptions{Offset: 0, Data: output, Path: name, Size: (int64)(len(data))})
+	s.assert.Nil(err)
+	s.assert.EqualValues(5, len)
+	s.assert.EqualValues(testData[:5], output)
+}
+
+func (s *datalakeTestSuite) TestReadInBufferEmptyPath() {
+	defer s.cleanupTest()
+
+	output := make([]byte, 5)
+	len, err := s.az.ReadInBuffer(internal.ReadInBufferOptions{Offset: 0, Data: output, Size: 5})
+	s.assert.NotNil(err)
+	s.assert.EqualValues(0, len)
+	s.assert.Equal(err.Error(), "path not given for download")
 }
 
 func (suite *datalakeTestSuite) TestReadInBufferWithETAG() {

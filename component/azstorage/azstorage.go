@@ -89,6 +89,8 @@ func (az *AzStorage) Configure(isParent bool) error {
 		return fmt.Errorf("config error in %s [%s]", az.Name(), err.Error())
 	}
 
+reconfigure:
+
 	err = ParseAndValidateConfig(az, conf)
 	if err != nil {
 		log.Err("AzStorage::Configure : Config validation failed [%s]", err.Error())
@@ -99,6 +101,14 @@ func (az *AzStorage) Configure(isParent bool) error {
 	if err != nil {
 		log.Err("AzStorage::Configure : Failed to validate storage account [%s]", err.Error())
 		return err
+	}
+
+	// If user has not specified the account type then detect it's HNS or FNS
+	if conf.AccountType == "" && az.storage.IsAccountADLS() {
+		log.Crit("AzStorage::Configure : Auto detected account type as adls, reconfiguring storage connection.")
+		az.storage = nil
+		conf.AccountType = "adls"
+		goto reconfigure
 	}
 
 	return nil
@@ -158,7 +168,7 @@ func (az *AzStorage) configureAndTest(isParent bool) error {
 		err = az.storage.TestPipeline()
 		if err != nil {
 			log.Err("AzStorage::configureAndTest : Failed to validate credentials [%s]", err.Error())
-			return fmt.Errorf("failed to authenticate credentials for %s", az.Name())
+			return fmt.Errorf("failed to authenticate %s credentials with error [%s]", az.Name(), err.Error())
 		}
 	}
 
@@ -441,6 +451,7 @@ func (az *AzStorage) ReadInBuffer(options internal.ReadInBufferOptions) (length 
 
 	var dataLen int64 = int64(len(options.Data))
 
+
 	if dataLen == 0 {
 		return 0, nil
 	}
@@ -451,7 +462,6 @@ func (az *AzStorage) ReadInBuffer(options internal.ReadInBufferOptions) (length 
 		log.Err("AzStorage::ReadInBuffer : Failed to read %s [%s]", options.Name, err.Error())
 	}
 
-	length = int(dataLen)
 	return
 }
 
@@ -658,7 +668,7 @@ func init() {
 	preserveACL := config.AddBoolFlag("preserve-acl", false, "Preserve ACL and Permissions set on file during updates")
 	config.BindPFlag(compName+".preserve-acl", preserveACL)
 
-	blobFilter := config.AddStringFlag("filter", "", "Filter string to match blobs")
+	blobFilter := config.AddStringFlag("filter", "", "Filter string to match blobs. For details refer [https://github.com/Azure/azure-storage-fuse?tab=readme-ov-file#blob-filter]")
 	config.BindPFlag(compName+".filter", blobFilter)
 
 	config.RegisterFlagCompletionFunc("container-name", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {

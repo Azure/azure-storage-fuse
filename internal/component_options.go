@@ -113,6 +113,8 @@ type ReadInBufferOptions struct {
 	Offset int64
 	Etag   *string
 	Data   []byte
+	Path   string
+	Size   int64
 }
 
 type WriteFileOptions struct {
