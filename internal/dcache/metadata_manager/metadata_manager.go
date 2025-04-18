@@ -37,7 +37,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 )
 
-// MetaManager defines the interface for managing file metadata
+// MetaDataManager defines the interface for managing file metadata
 type MetadataManager interface {
 	// CreateFile creates or updates metadata for a file with its associated materialized views
 	CreateFile(filePath string, filelayout *dcache.FileLayout) (*dcache.FileMetadata, error)
