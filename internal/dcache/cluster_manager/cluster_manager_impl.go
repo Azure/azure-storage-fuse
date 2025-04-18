@@ -40,17 +40,24 @@ import (
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
+	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
 )
 
 type ClusterManagerImpl struct {
 	storageCallback dcache.StorageCallbacks
+	metaDataManager mm.MetadataManager
+	storagePath     string
 }
 
 // Start implements ClusterManager.
 func (cmi *ClusterManagerImpl) Start(dCacheConfig *dcache.DCacheConfig, rvs []dcache.RawVolume) error {
-	cmi.createClusterMapIfRequired(dCacheConfig, rvs)
+	cmi.storagePath = "__CACHE__" + dCacheConfig.CacheId
+	cmi.metaDataManager, _ = mm.NewMetadataManager(cmi.storagePath)
+	err := cmi.createClusterMapIfRequired(dCacheConfig, rvs)
+	if err != nil {
+		return err
+	}
 	//schedule Punch heartbeat
 	//Schedule clustermap update at storage and local copy
 	return nil
@@ -121,40 +128,46 @@ func (c *ClusterManagerImpl) ReportRVFull(rvName string) error {
 	return nil
 }
 
-
 func (cmi *ClusterManagerImpl) createClusterMapIfRequired(dCacheConfig *dcache.DCacheConfig, rvList []dcache.RawVolume) error {
-	if cmi.checkIfClusterMapExists(dCacheConfig.CacheId) {
-		log.Trace("ClusterManager::createClusterConfig : ClusterMap.json already exists")
+	isClusterMapExists, err := cmi.checkIfClusterMapExists(dCacheConfig.CacheId)
+	if err != nil {
+		log.Err("ClusterManagerImpl::createClusterMapIfRequired: Failed to check clusterMap file presence in Storage path %s error: %v", cmi.storagePath+"/ClusterMap.json", err)
+	}
+	if isClusterMapExists {
+		log.Trace("ClusterManager::createClusterMapIfRequired : ClusterMap.json already exists")
 		return nil
 	}
-	clusterConfig := dcache.ClusterMap{
+	currentTime := time.Now().Unix()
+	clusterMap := dcache.ClusterMap{
 		Readonly:      evaluateReadOnlyState(),
 		State:         dcache.StateReady,
 		Epoch:         1,
-		CreatedAt:     time.Now().Unix(),
-		LastUpdatedAt: time.Now().Unix(),
+		CreatedAt:     currentTime,
+		LastUpdatedAt: currentTime,
 		LastUpdatedBy: rvList[0].NodeId,
 		Config:        *dCacheConfig,
 		RVMap:         map[string]dcache.RawVolume{},
 		MVMap:         map[string]dcache.MirroredVolume{},
 	}
-	clusterConfigJson, err := json.Marshal(clusterConfig)
-	log.Err("ClusterManager::CreateClusterConfig : ClusterConfigJson: %v, err %v", clusterConfigJson, err)
-	// err = cmi.metaManager.PutMetaFile(internal.WriteFromBufferOptions{Name: clusterManagerConfig.StorageCachePath + "/ClusterMap.json", Data: []byte(clusterConfigJson), IsNoneMatchEtagEnabled: true})
-	err = cmi.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{Name: "__CACHE__" + dCacheConfig.CacheId + "/ClusterMap.json", Data: []byte(clusterConfigJson), IsNoneMatchEtagEnabled: true})
-	return err
-	// return nil
+	clusterMapBytes, err := json.Marshal(clusterMap)
+	if err != nil {
+		log.Err("ClusterManager::createClusterMapIfRequired : Cluster Map Marshalling fail : %v, err %v", clusterMapBytes, err)
+		return err
+	}
+	cmi.metaDataManager.CreateInitialClusterMap(clusterMapBytes)
+	return nil
 }
 
-func (cmi *ClusterManagerImpl) checkIfClusterMapExists(cacheId string) bool {
-	_, err := cmi.storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{Name: "__CACHE__" + cacheId + "/ClusterMap.json"})
+func (cmi *ClusterManagerImpl) checkIfClusterMapExists(cacheId string) (bool, error) {
+	_, _, err := cmi.metaDataManager.GetClusterMap()
 	if err != nil {
 		if os.IsNotExist(err) || err == syscall.ENOENT {
-			return false
+			return false, nil
+		} else {
+			return false, err
 		}
-		log.Err("ClusterManagerImpl::checkIfClusterMapExists: Failed to check configFile presence in Storage path %s error: %v", "__CACHE__"+cacheId+"/ClusterMap.json", err)
 	}
-	return true
+	return true, nil
 }
 
 func evaluateMVsRVMapping() map[string]dcache.MirroredVolume {
