@@ -72,6 +72,7 @@ func (c *ClusterManagerImpl) IsAlive(peerId string) bool {
 // Start implements ClusterManager.
 func (cmi *ClusterManagerImpl) Start(clusterManagerConfig ClusterManagerConfig) error {
 	cmi.createClusterConfig(clusterManagerConfig)
+
 	//schedule Punch heartbeat
 	//Schedule clustermap config update at storage and local copy
 	return nil
@@ -115,11 +116,11 @@ func (cmi *ClusterManagerImpl) checkIfClusterMapExists(path string) bool {
 	return true
 }
 
-func evaluateMVsRVMapping() map[string]dcache.MirroredVolume {
+func EvaluateMVsRVMapping() map[int]dcache.MirroredVolume {
 
-	mvRvMap := map[string]dcache.MirroredVolume{}
+	mvMap := map[int]dcache.MirroredVolume{}
 	rvMap := fetchRVMap()
-	mvMap := fecthMVMap()
+	// mvMap := fecthMVMap()
 
 	// Calculate number of MVs
 	numRVs := len(rvMap)
@@ -140,6 +141,7 @@ func evaluateMVsRVMapping() map[string]dcache.MirroredVolume {
 	mvRVSet := make([]map[string]bool, numMVs)    // Track which RVs are in each MV
 	mvNodeCount := make([]map[string]int, numMVs) // Track how many RVs from each node are in each MV
 
+	// TODO :: Check from which Mv state is offline or iterate through all see which is more secure
 	for i := range mvMap {
 		mvRVSet[i] = make(map[string]bool)
 		mvNodeCount[i] = make(map[string]int)
@@ -169,33 +171,39 @@ func evaluateMVsRVMapping() map[string]dcache.MirroredVolume {
 					mvIndex := (currentMVIndex + attempts) % numMVs
 
 					// Check if this MV has space and doesn't already have this RV
-					if len(mvs[mvIndex].RVs) < rvsPerMV && !mvRVSet[mvIndex][rvID] {
-						// Assign the RV to this MV
-						mvs[mvIndex].RVs = append(mvs[mvIndex].RVs, rvID)
-						mvRVSet[mvIndex][rvID] = true
-						mvs[mvIndex].Nodes[nodeID] = true
-						mvNodeCount[mvIndex][nodeID]++
-						rvAssignmentCount[rvID]++
+					if len(mvMap[mvIndex].RVWithStateMap) < NumReplicas {
+						if mvRVSet[mvIndex] == nil || (mvRVSet[mvIndex] != nil && !mvRVSet[mvIndex][rvID]) {
+							// Assign the RV to this MV
+							mv := mvMap[mvIndex]
+							mv.RVWithStateMap[rvID] = rvMap[rvID].State
+							mvMap[mvIndex] = mv
+							mvRVSet[mvIndex][rvID] = true
+							// mvMap[mvIndex].Nodes[nodeID] = true
+							mvNodeCount[mvIndex][nodeID]++
+							rvAssignmentCount[rvID]++
 
-						// Move to next MV for better distribution
-						currentMVIndex = (mvIndex + 1) % numMVs
-						break
+							// Move to next MV for better distribution
+							currentMVIndex = (mvIndex + 1) % numMVs
+							break
+						}
 					}
 				}
 			}
 
 			nodesProcessed++
 			// Break early if we've assigned all RVs
-			if len(rvInstances) == 0 {
-				break
-			}
+			// if len(rvInstances) == 0 {
+			// 	break
+			// }
 		}
 	}
 
 	// Mark MVs with fewer RVs as special
 	for i := range mvMap {
 		if len(mvMap[i].RVWithStateMap) < NumReplicas {
-			mvMap[i].State = dcache.StateOffline
+			mv := mvMap[i]
+			mv.State = dcache.StateOffline
+			mvMap[i] = mv
 		}
 	}
 
@@ -215,19 +223,88 @@ func evaluateMVsRVMapping() map[string]dcache.MirroredVolume {
 // mvRvMap["mv0"] = mv0
 
 func fetchRVMap() map[string]dcache.RawVolume {
-	rvMap := map[string]dcache.RawVolume{}
-	// rv0 := dcache.RawVolume{
-	// 	HostNode:         "Node1",
-	// 	FSID:             "FSID1",
-	// 	FDID:             "FDID1",
-	// 	State:            "Active",
-	// 	TotalSpaceGB:     100,
-	// 	AvailableSpaceGB: 50,
-	// 	LocalCachePath:   "/path/to/cache",
-	// }
-	// rvMap["rv0"] = rv0
+	rvMap := map[string]dcache.RawVolume{
+		"rv0": {
+			NodeId:         "Node1",
+			IPAddress:      "192.168.1.1",
+			FSID:           "FSID1",
+			FDID:           "FDID1",
+			State:          dcache.StateOnline,
+			TotalSpace:     100,
+			AvailableSpace: 50,
+			LocalCachePath: "/path/to/cache/rv0",
+		},
+		"rv1": {
+			NodeId:         "Node1",
+			IPAddress:      "192.168.1.1",
+			FSID:           "FSID2",
+			FDID:           "FDID2",
+			State:          dcache.StateOnline,
+			TotalSpace:     200,
+			AvailableSpace: 150,
+			LocalCachePath: "/path/to/cache/rv1",
+		},
+
+		// Node 2 RVs
+		"rv2": {
+			NodeId:         "Node2",
+			IPAddress:      "192.168.1.2",
+			FSID:           "FSID3",
+			FDID:           "FDID3",
+			State:          dcache.StateOnline,
+			TotalSpace:     300,
+			AvailableSpace: 250,
+			LocalCachePath: "/path/to/cache/rv2",
+		},
+		"rv3": {
+			NodeId:         "Node2",
+			IPAddress:      "192.168.1.2",
+			FSID:           "FSID4",
+			FDID:           "FDID4",
+			State:          dcache.StateOnline,
+			TotalSpace:     400,
+			AvailableSpace: 350,
+			LocalCachePath: "/path/to/cache/rv3",
+		},
+
+		// Node 3 RVs
+		"rv4": {
+			NodeId:         "Node3",
+			IPAddress:      "192.168.1.3",
+			FSID:           "FSID5",
+			FDID:           "FDID5",
+			State:          dcache.StateOnline,
+			TotalSpace:     500,
+			AvailableSpace: 450,
+			LocalCachePath: "/path/to/cache/rv4",
+		},
+		"rv5": {
+			NodeId:         "Node3",
+			IPAddress:      "192.168.1.3",
+			FSID:           "FSID6",
+			FDID:           "FDID6",
+			State:          dcache.StateOnline,
+			TotalSpace:     600,
+			AvailableSpace: 550,
+			LocalCachePath: "/path/to/cache/rv5",
+		},
+	}
+
 	return rvMap
 }
+
+// Example RVs
+
+// rv0 := dcache.RawVolume{
+// 	HostNode:         "Node1",
+// 	FSID:             "FSID1",
+// 	FDID:             "FDID1",
+// 	State:            "Active",
+// 	TotalSpaceGB:     100,
+// 	AvailableSpaceGB: 50,
+// 	LocalCachePath:   "/path/to/cache",
+// }
+// rvMap["rv0"] = rv0
 
 func evaluateReadOnlyState() bool {
 	return false

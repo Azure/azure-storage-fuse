@@ -37,8 +37,8 @@ type Peer struct {
 }
 
 type MirroredVolume struct {
-	RVWithStateMap map[string]string `json:"rv_with_state_map,omitempty"`
-	State          StateEnum         `json:"state,omitempty"`
+	RVWithStateMap map[string]StateEnum `json:"rv_with_state_map,omitempty"`
+	State          StateEnum            `json:"state,omitempty"`
 }
 
 type RawVolume struct {
