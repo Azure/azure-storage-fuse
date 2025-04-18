@@ -41,19 +41,19 @@ type ClusterManagerImpl struct {
 	storageCallback dcache.StorageCallbacks
 }
 
-// GetRVs implements ClusterManager.
-func (c *ClusterManagerImpl) GetRVs(mvName string) []dcache.RawVolume {
-	panic("unimplemented")
+// Start implements ClusterManager.
+func (c *ClusterManagerImpl) Start(*dcache.DCacheConfig, []dcache.RawVolume) error {
+	return nil
 }
 
-// ReportRVDown implements ClusterManager.
-func (c *ClusterManagerImpl) ReportRVDown(rvName string) error {
-	panic("unimplemented")
+// Stop implements ClusterManager.
+func (c *ClusterManagerImpl) Stop() error {
+	return nil
 }
 
-// ReportRVFull implements ClusterManager.
-func (c *ClusterManagerImpl) ReportRVFull(rvName string) error {
-	panic("unimplemented")
+// GetActiveMVs implements ClusterManager.
+func (c *ClusterManagerImpl) GetActiveMVs() []dcache.MirroredVolume {
+	return make([]dcache.MirroredVolume, 0)
 }
 
 // GetDegradedMVs implements ClusterManager.
@@ -61,8 +61,18 @@ func (c *ClusterManagerImpl) GetDegradedMVs() []dcache.MirroredVolume {
 	return make([]dcache.MirroredVolume, 0)
 }
 
+// GetRVs implements ClusterManager.
+func (c *ClusterManagerImpl) GetRVs(mvName string) []dcache.RawVolume {
+	return make([]dcache.RawVolume, 0)
+}
+
+// IsAlive implements ClusterManager.
+func (c *ClusterManagerImpl) IsAlive(nodeId string) bool {
+	return false
+}
+
 // LowestNumberRV implements ClusterManager.
-func (c *ClusterManagerImpl) LowestNumberRV(rvs []string) []string {
+func (c *ClusterManagerImpl) LowestNumberRV(rvNames []string) []string {
 	return make([]string, 0)
 }
 
@@ -91,25 +101,16 @@ func (c *ClusterManagerImpl) RVNameToNodeId(rvName string) string {
 	return ""
 }
 
-// GetActiveMVs implements ClusterManager.
-func (c *ClusterManagerImpl) GetActiveMVs() []dcache.MirroredVolume {
+// ReportRVDown implements ClusterManager.
+func (c *ClusterManagerImpl) ReportRVDown(rvName string) error {
 	return nil
 }
 
-// IsAlive implements ClusterManager.
-func (c *ClusterManagerImpl) IsAlive(nodeId string) bool {
-	return false
-}
-
-// Start implements ClusterManager.
-func (c *ClusterManagerImpl) Start(dCacheConfig *dcache.DCacheConfig, rvs []dcache.RawVolume) error {
+// ReportRVFull implements ClusterManager.
+func (c *ClusterManagerImpl) ReportRVFull(rvName string) error {
 	return nil
 }
 
-// Stop implements ClusterManager.
-func (c *ClusterManagerImpl) Stop() error {
-	return nil
-}
 func NewClusterManager(callback dcache.StorageCallbacks) ClusterManager {
 	return &ClusterManagerImpl{
 		storageCallback: callback,
