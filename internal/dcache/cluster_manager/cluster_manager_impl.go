@@ -45,7 +45,7 @@ type ClusterManagerImpl struct {
 func (c *ClusterManagerImpl) Start(*dcache.DCacheConfig, []dcache.RawVolume) error {
 	//create clusterMap.json file
 	//schedule Punch heartbeat
-	//Schedule clustermap config update at storage and local copy
+	//Schedule clustermap update at storage and local copy
 	return nil
 }
 
