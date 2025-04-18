@@ -37,7 +37,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 )
 
-// MetaManager defines the interface for managing file metadata
+// MetaDataManager defines the interface for managing file metadata
 type MetadataManager interface {
 
 	// Following APIs are used to manage metadata for files in the distributed cache
