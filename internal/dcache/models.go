@@ -33,9 +33,6 @@
 
 package dcache
 
-type Peer struct {
-}
-
 type MirroredVolume struct {
 	RVWithStateMap map[string]string `json:"rv_with_state_map,omitempty"`
 	State          StateEnum         `json:"state,omitempty"`
@@ -62,7 +59,7 @@ const (
 	StateSyncing StateEnum = "syncing"
 )
 
-type ClusterConfig struct {
+type ClusterMap struct {
 	Readonly      bool                      `json:"readonly,omitempty"`
 	State         StateEnum                 `json:"state,omitempty"`
 	Epoch         int64                     `json:"epoch,omitempty"`
@@ -83,6 +80,7 @@ type HeartbeatData struct {
 }
 
 type DCacheConfig struct {
+	CacheId                string `json:"cache-id,omitempty"`
 	MinNodes               int    `json:"min-nodes,omitempty"`
 	ChunkSize              uint64 `json:"chunk-size,omitempty"`
 	StripeSize             uint64 `json:"stripe-size,omitempty"`
