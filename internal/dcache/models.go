@@ -104,6 +104,7 @@ type FileMetadata struct {
 	Size            int64      `json:"size"`
 	ClusterMapEpoch int64      `json:"cluster_map_epoch"`
 	FileLayout      FileLayout `json:"file_layout"`
+	Sha1hash        []byte     `json:"sha256"`
 }
 
 type FileLayout struct {
