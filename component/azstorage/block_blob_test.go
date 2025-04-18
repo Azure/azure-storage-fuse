@@ -2210,19 +2210,47 @@ func (s *blockBlobTestSuite) TestGetAttrFileMode() {
 }
 
 func (s *blockBlobTestSuite) TestChmod() {
-	// defer s.cleanupTest()
-	// // Setup
-	// name := generateFileName()
-	// s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	s.az.CreateFile(internal.CreateFileOptions{Name: name})
 
-	// err := s.az.Chmod(internal.ChmodOptions{Name: name, Mode: 0666})
-	// s.assert.Nil(err)
+	err := s.az.Chmod(internal.ChmodOptions{Name: name, Mode: 0666})
+	s.assert.Nil(err)
 
-	// props, err := s.containerClient.NewBlobClient(name).GetProperties(ctx, nil)
-	// s.assert.Nil(err)
-	// modeStr := common.ReadMetadata(props.Metadata, common.POSIXModeMeta)
-	// val, _ := strconv.ParseUint(*modeStr, 10, 32)
-	// s.assert.Equal(fs.FileMode(0666), fs.FileMode(val))
+	props, err := s.containerClient.NewBlobClient(name).GetProperties(ctx, nil)
+	s.assert.Nil(err)
+	s.assert.NotNil(props.Metadata)
+
+	if props.Metadata != nil {
+		s.assert.NotEmpty(props.Metadata)
+		val := props.Metadata[strings.ToUpper(string(common.POSIXModeMeta[0]))+common.POSIXModeMeta[1:]]
+		s.assert.Equal(*val, "rw-rw-rw-")
+	}
+
+	err = s.az.Chmod(internal.ChmodOptions{Name: name, Mode: 0444})
+	s.assert.Nil(err)
+	props, err = s.containerClient.NewBlobClient(name).GetProperties(ctx, nil)
+	s.assert.Nil(err)
+	s.assert.NotNil(props.Metadata)
+
+	if props.Metadata != nil {
+		s.assert.NotEmpty(props.Metadata)
+		val := props.Metadata[strings.ToUpper(string(common.POSIXModeMeta[0]))+common.POSIXModeMeta[1:]]
+		s.assert.Equal(*val, "r--r--r--")
+	}
+
+	err = s.az.Chmod(internal.ChmodOptions{Name: name, Mode: 0111})
+	s.assert.Nil(err)
+	props, err = s.containerClient.NewBlobClient(name).GetProperties(ctx, nil)
+	s.assert.Nil(err)
+	s.assert.NotNil(props.Metadata)
+
+	if props.Metadata != nil {
+		s.assert.NotEmpty(props.Metadata)
+		val := props.Metadata[strings.ToUpper(string(common.POSIXModeMeta[0]))+common.POSIXModeMeta[1:]]
+		s.assert.Equal(*val, "--x--x--x")
+	}
 }
 
 func (s *blockBlobTestSuite) TestChown() {

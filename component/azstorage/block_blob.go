@@ -1583,7 +1583,7 @@ func (bb *BlockBlob) ChangeMod(name string, mode os.FileMode) error {
 	if prop.Metadata == nil {
 		prop.Metadata = make(map[string]*string)
 	}
-	updatedMode := AddMetadata(prop.Metadata, common.POSIXModeMeta, strconv.FormatUint(uint64(mode), 10))
+	updatedMode := AddMetadata(prop.Metadata, common.POSIXModeMeta, mode.String()[1:])
 
 	// Apply metadata update
 	if updatedMode {
