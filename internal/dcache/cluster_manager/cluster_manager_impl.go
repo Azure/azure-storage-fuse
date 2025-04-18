@@ -110,7 +110,6 @@ func (c *ClusterManagerImpl) IsAlive(nodeId string) bool {
 
 // Start implements ClusterManager.
 func (cmi *ClusterManagerImpl) Start(dCacheConfig *dcache.DCacheConfig, rvs []dcache.RawVolume) error {
-	// cmi.createClusterConfig(clusterManagerConfig)
 	cmi.createClusterMapIfRequired(dCacheConfig, rvs)
 	//schedule Punch heartbeat
 	//Schedule clustermap config update at storage and local copy
