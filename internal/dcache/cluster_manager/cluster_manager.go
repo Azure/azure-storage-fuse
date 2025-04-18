@@ -62,8 +62,8 @@ type ClusterManager interface {
 	//It will check if the given nodeId is online as per local cache copy of cluster map
 	IsAlive(nodeId string) bool
 
-	//It will evaluate the lowest number of RVs for given rvs
-	LowestNumberRV(rvs []string) []string
+	//It will evaluate the lowest number of RVs for given rv Names
+	LowestNumberRV(rvNames []string) []string
 
 	//It will return the IP address of the given nodeId as per local cache copy of cluster map
 	NodeIdToIP(nodeId string) string
