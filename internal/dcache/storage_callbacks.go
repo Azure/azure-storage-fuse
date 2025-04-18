@@ -35,18 +35,42 @@ package dcache
 
 import "github.com/Azure/azure-storage-fuse/v2/internal"
 
+// Storage callback defines the interface for managing storage/nextComponent related APIs.
 type StorageCallbacks interface {
+
+	//It will Delete the blob in storage
 	DeleteBlobInStorage(opt internal.DeleteFileOptions) error
+
+	//It will Get the blob from storage
 	GetBlobFromStorage(opt internal.ReadFileWithNameOptions) ([]byte, error)
+
+	//It will Get the properties of the blob from storage
 	GetPropertiesFromStorage(opt internal.GetAttrOptions) (*internal.ObjAttr, error)
+
+	//It will Put the blob in storage
 	PutBlobInStorage(opt internal.WriteFromBufferOptions) error
+
+	//It will Read the directory from storage
 	ReadDirFromStorage(options internal.ReadDirOptions) ([]*internal.ObjAttr, error)
+
+	//It will Set the properties of the blob in storage
 	SetMetaPropertiesInStorage(path string, properties map[string]string) error
 
+	//It will Delete the blob through next Component whichever is in pipeline
 	DeleteBlob(opt internal.DeleteFileOptions) error
+
+	//It will Get the blob through next Component whichever is in pipeline
 	GetBlob(opt internal.ReadFileWithNameOptions) ([]byte, error)
+
+	//It will Get the properties of the blob through next Component whichever is in pipeline
 	GetProperties(opt internal.GetAttrOptions) (*internal.ObjAttr, error)
+
+	//It will Put the blob through next Component whichever is in pipeline
 	PutBlob(opt internal.WriteFromBufferOptions) error
+
+	//It will Read the directory through next Component whichever is in pipeline
 	ReadDir(options internal.ReadDirOptions) ([]*internal.ObjAttr, error)
+
+	//It will Set the properties of the blob through next Component whichever is in pipeline
 	SetMetaProperties(path string, properties map[string]string) error
 }
