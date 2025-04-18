@@ -62,7 +62,7 @@ const (
 	StateSyncing StateEnum = "syncing"
 )
 
-type ClusterConfig struct {
+type ClusterMap struct {
 	Readonly      bool                      `json:"readonly,omitempty"`
 	State         StateEnum                 `json:"state,omitempty"`
 	Epoch         int64                     `json:"epoch,omitempty"`
