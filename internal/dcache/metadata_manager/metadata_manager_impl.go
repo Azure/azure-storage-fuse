@@ -10,7 +10,7 @@ type BlobMetadataManager struct {
 	cacheDir string
 }
 
-// NewMetaDataManager creates a new implementation of the MetadataManager interface
+// NewMetadataManager creates a new implementation of the MetadataManager interface
 func NewMetadataManager(cacheDir string) (MetadataManager, error) {
 	return &BlobMetadataManager{
 		cacheDir: cacheDir,
