@@ -97,7 +97,7 @@ steps:
       echo "******FIO JOB STARTING*******"
       fio --rw=randwrite --bs=1M --size=10g --numjobs=1 $(WORK_DIR)/test/fio/rw.fio
       ps aux | grep blobfuse2
-    displayName: 'RAND-2G-1F-1T'
+    displayName: 'RAND-10G-1F-1T'
     workingDirectory: $(MOUNT_DIR)
 
 # Run fio on 10 files 1000M size RAND read, write
@@ -107,7 +107,7 @@ steps:
       echo "******FIO JOB STARTING*******"
       fio --rw=randwrite --bs=1M --size=1g --numjobs=10 $(WORK_DIR)/test/fio/rw.fio
       ps aux | grep blobfuse2
-    displayName: 'RAND-200M-10F-10T'
+    displayName: 'RAND-1G-10F-10T'
     workingDirectory: $(MOUNT_DIR)
 
 # Run fio on file having hole inside blocks.(hole can be at middle/at the edges)

@@ -5,7 +5,7 @@ logging:
 
 components:
   - libfuse
-  - block_cache
+  - block_cache_new
   - attr_cache
   - azstorage
 
@@ -15,10 +15,10 @@ libfuse:
   negative-entry-expiration-sec: 240
   ignore-open-flags: true
 
-block_cache:
+block_cache_new:
   block-size-mb: 16
   mem-size-mb: 204800
-  prefetch: 200
+  prefetch: 20
   parallelism: 600
   disk-size-mb: 512000 
   disk-timeout-sec: 120 
