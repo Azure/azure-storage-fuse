@@ -51,6 +51,21 @@ type ClusterManagerImpl struct {
 	nodeId          string
 }
 
+// GetRVs implements ClusterManager.
+func (c *ClusterManagerImpl) GetRVs(mvName string) []dcache.RawVolume {
+	panic("unimplemented")
+}
+
+// ReportRVDown implements ClusterManager.
+func (c *ClusterManagerImpl) ReportRVDown(rvName string) error {
+	panic("unimplemented")
+}
+
+// ReportRVFull implements ClusterManager.
+func (c *ClusterManagerImpl) ReportRVFull(rvName string) error {
+	panic("unimplemented")
+}
+
 // GetDegradedMVs implements ClusterManager.
 func (c *ClusterManagerImpl) GetDegradedMVs() []dcache.MirroredVolume {
 	return make([]dcache.MirroredVolume, 0)
@@ -91,25 +106,15 @@ func (c *ClusterManagerImpl) GetActiveMVs() []dcache.MirroredVolume {
 	return nil
 }
 
-// GetPeer implements ClusterManager.
-func (c *ClusterManagerImpl) GetPeer(nodeId string) dcache.Peer {
-	return dcache.Peer{}
-}
-
-// GetPeerRVs implements ClusterManager.
-func (c *ClusterManagerImpl) GetPeerRVs(mvName string) []dcache.RawVolume {
-	return nil
-}
-
 // IsAlive implements ClusterManager.
-func (c *ClusterManagerImpl) IsAlive(peerId string) bool {
+func (c *ClusterManagerImpl) IsAlive(nodeId string) bool {
 	return false
 }
 
 // Start implements ClusterManager.
-func (cmi *ClusterManagerImpl) Start(clusterManagerConfig *ClusterManagerConfig) error {
+func (cmi *ClusterManagerImpl) Start(dCacheConfig *dcache.DCacheConfig, rvs []dcache.RawVolume) error {
 	cmi.nodeId = clusterManagerConfig.RVList[0].NodeId
-	cmi.createClusterConfig(clusterManagerConfig)
+	cmi.createClusterMapIfRequired(dCacheConfig, rvs)
 	cmi.hbTicker = time.NewTicker(time.Duration(clusterManagerConfig.HeartbeatSeconds) * time.Second)
 	go func() {
 		for range cmi.hbTicker.C {
@@ -161,40 +166,37 @@ func listMyRVs(rvList []dcache.RawVolume) {
 	}
 }
 
-func (cmi *ClusterManagerImpl) createClusterConfig(clusterManagerConfig *ClusterManagerConfig) error {
-	if cmi.checkIfClusterMapExists(clusterManagerConfig.StorageCachePath) {
+func (cmi *ClusterManagerImpl) createClusterMapIfRequired(dCacheConfig *dcache.DCacheConfig, rvList []dcache.RawVolume) error {
+	if cmi.checkIfClusterMapExists(dCacheConfig.CacheId) {
 		log.Trace("ClusterManager::createClusterConfig : ClusterMap.json already exists")
 		return nil
 	}
-	dcacheConfig := dcache.DCacheConfig{
-		MinNodes:  clusterManagerConfig.MinNodes,
-		ChunkSize: clusterManagerConfig.ChunkSize}
-	clusterConfig := dcache.ClusterConfig{
+	clusterConfig := dcache.ClusterMap{
 		Readonly:      evaluateReadOnlyState(),
-		State:         dcache.StateOffline,
+		State:         dcache.StateReady,
 		Epoch:         1,
 		CreatedAt:     time.Now().Unix(),
 		LastUpdatedAt: time.Now().Unix(),
-		LastUpdatedBy: clusterManagerConfig.RVList[0].NodeId,
-		Config:        dcacheConfig,
+		LastUpdatedBy: rvList[0].NodeId,
+		Config:        *dCacheConfig,
 		RVMap:         map[string]dcache.RawVolume{},
 		MVMap:         map[string]dcache.MirroredVolume{},
 	}
 	clusterConfigJson, err := json.Marshal(clusterConfig)
 	log.Err("ClusterManager::CreateClusterConfig : ClusterConfigJson: %v, err %v", clusterConfigJson, err)
 	// err = cmi.metaManager.PutMetaFile(internal.WriteFromBufferOptions{Name: clusterManagerConfig.StorageCachePath + "/ClusterMap.json", Data: []byte(clusterConfigJson), IsNoneMatchEtagEnabled: true})
-	err = cmi.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{Name: clusterManagerConfig.StorageCachePath + "/ClusterMap.json", Data: []byte(clusterConfigJson), IsNoneMatchEtagEnabled: true})
+	err = cmi.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{Name: "__CACHE__" + dCacheConfig.CacheId + "/ClusterMap.json", Data: []byte(clusterConfigJson), IsNoneMatchEtagEnabled: true})
 	return err
 	// return nil
 }
 
-func (cmi *ClusterManagerImpl) checkIfClusterMapExists(path string) bool {
-	_, err := cmi.storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{Name: path + "/ClusterMap.json"})
+func (cmi *ClusterManagerImpl) checkIfClusterMapExists(cacheId string) bool {
+	_, err := cmi.storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{Name: "__CACHE__" + cacheId + "/ClusterMap.json"})
 	if err != nil {
 		if os.IsNotExist(err) || err == syscall.ENOENT {
 			return false
 		}
-		log.Err("ClusterManagerImpl::checkIfClusterMapExists: Failed to check configFile presence in Storage path %s error: %v", path+"/ClusterMap.json", err)
+		log.Err("ClusterManagerImpl::checkIfClusterMapExists: Failed to check configFile presence in Storage path %s error: %v", "__CACHE__"+cacheId+"/ClusterMap.json", err)
 	}
 	return true
 }
@@ -238,20 +240,6 @@ func evaluateReadOnlyState() bool {
 func (c *ClusterManagerImpl) Stop() error {
 	return nil
 }
-
-// UpdateMVs implements ClusterManager.
-func (c *ClusterManagerImpl) UpdateMVs(mvs []dcache.MirroredVolume) {
-}
-
-// UpdateStorageConfigIfRequired implements ClusterManager.
-func (c *ClusterManagerImpl) UpdateStorageConfigIfRequired() {
-}
-
-// WatchForConfigChanges implements ClusterManager.
-func (c *ClusterManagerImpl) WatchForConfigChanges() error {
-	return nil
-}
-
 func NewClusterManager(callback dcache.StorageCallbacks) ClusterManager {
 	return &ClusterManagerImpl{
 		storageCallback: callback,
