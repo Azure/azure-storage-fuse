@@ -39,9 +39,15 @@ import "github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 type ClusterManager interface {
 
 	// Start initializes the cluster manager with the given configuration.
+	//1. Create cluster config map if not present
+	//2. Schedule heartbeat punching
+	//3. Schedule cluster config update over storage
+	//4. Schedule cluster config update over local cache
 	Start(*ClusterManagerConfig) error
 
-	// Stop shuts down the cluster manager and releases any resources. Like stop heartbeat punching stop cluster config update
+	// Stop shuts down the cluster manager and releases any resources.
+	//1. Cancel scheduling of heartbeat punching
+	//2. Cancel scheduling of cluster config update over storage and local cache
 	Stop() error
 
 	//It will return online MVs as per local cache copy of cluster config map
