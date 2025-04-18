@@ -48,6 +48,21 @@ type ClusterManagerImpl struct {
 	storageCallback dcache.StorageCallbacks
 }
 
+// GetRVs implements ClusterManager.
+func (c *ClusterManagerImpl) GetRVs(mvName string) []dcache.RawVolume {
+	panic("unimplemented")
+}
+
+// ReportRVDown implements ClusterManager.
+func (c *ClusterManagerImpl) ReportRVDown(rvName string) error {
+	panic("unimplemented")
+}
+
+// ReportRVFull implements ClusterManager.
+func (c *ClusterManagerImpl) ReportRVFull(rvName string) error {
+	panic("unimplemented")
+}
+
 // GetDegradedMVs implements ClusterManager.
 func (c *ClusterManagerImpl) GetDegradedMVs() []dcache.MirroredVolume {
 	return make([]dcache.MirroredVolume, 0)
@@ -88,23 +103,13 @@ func (c *ClusterManagerImpl) GetActiveMVs() []dcache.MirroredVolume {
 	return nil
 }
 
-// GetPeer implements ClusterManager.
-func (c *ClusterManagerImpl) GetPeer(nodeId string) dcache.Peer {
-	return dcache.Peer{}
-}
-
-// GetPeerRVs implements ClusterManager.
-func (c *ClusterManagerImpl) GetPeerRVs(mvName string) []dcache.RawVolume {
-	return nil
-}
-
 // IsAlive implements ClusterManager.
-func (c *ClusterManagerImpl) IsAlive(peerId string) bool {
+func (c *ClusterManagerImpl) IsAlive(nodeId string) bool {
 	return false
 }
 
 // Start implements ClusterManager.
-func (cmi *ClusterManagerImpl) Start(clusterManagerConfig *ClusterManagerConfig) error {
+func (cmi *ClusterManagerImpl) Start(dCacheConfig *dcache.DCacheConfig, rvs []dcache.RawVolume) error {
 	cmi.createClusterConfig(clusterManagerConfig)
 	//schedule Punch heartbeat
 	//Schedule clustermap config update at storage and local copy
@@ -187,20 +192,6 @@ func evaluateReadOnlyState() bool {
 func (c *ClusterManagerImpl) Stop() error {
 	return nil
 }
-
-// UpdateMVs implements ClusterManager.
-func (c *ClusterManagerImpl) UpdateMVs(mvs []dcache.MirroredVolume) {
-}
-
-// UpdateStorageConfigIfRequired implements ClusterManager.
-func (c *ClusterManagerImpl) UpdateStorageConfigIfRequired() {
-}
-
-// WatchForConfigChanges implements ClusterManager.
-func (c *ClusterManagerImpl) WatchForConfigChanges() error {
-	return nil
-}
-
 func NewClusterManager(callback dcache.StorageCallbacks) ClusterManager {
 	return &ClusterManagerImpl{
 		storageCallback: callback,

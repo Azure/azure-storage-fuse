@@ -210,7 +210,8 @@ func (dc *DistributedCache) setupCacheStructure(cacheDir string) error {
 			LocalCachePath: path,
 		}
 	}
-	err = dc.clusterManager.Start(&clustermanager.ClusterManagerConfig{
+	err = dc.clusterManager.Start(&dcache.DCacheConfig{
+		CacheId:                dc.cacheID,
 		MinNodes:               dc.minNodes,
 		ChunkSize:              dc.chunkSize,
 		StripeSize:             dc.stripeSize,
@@ -222,9 +223,7 @@ func (dc *DistributedCache) setupCacheStructure(cacheDir string) error {
 		RebalancePercentage:    dc.rebalancePercentage,
 		SafeDeletes:            dc.safeDeletes,
 		CacheAccess:            dc.cacheAccess,
-		StorageCachePath:       "__CACHE__" + dc.cacheID,
-		RVList:                 rvList,
-	})
+	}, rvList)
 	if bloberror.HasCode(err, bloberror.BlobAlreadyExists) {
 		return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to create creator file: %v]", err))
 	} else {
