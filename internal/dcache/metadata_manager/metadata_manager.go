@@ -93,7 +93,6 @@ type MetadataManager interface {
 	// GetAllNodes enumerates and returns the list of all the nodes who have a heartbeat.
 	GetAllNodes() ([]string, error)
 
-	// TODO :: Rename ClusterConfig to ClusterMap.
 	// CreateInitialClusterMap creates the initial clustermap.
 	CreateInitialClusterMap(clustermap []byte) error
 

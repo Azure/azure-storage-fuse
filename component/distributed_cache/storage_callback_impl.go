@@ -101,6 +101,10 @@ func (sci *StorageCallbackImpl) PutBlob(options internal.WriteFromBufferOptions)
 	return sci.nextComp.WriteFromBuffer(options)
 }
 
+func (sci *StorageCallbackImpl) ListBlobs(options internal.ReadDirOptions) ([]*internal.ObjAttr, error) {
+	return sci.storage.ReadDir(options)
+}
+
 // Factory function to create a new instance of StorageCallbacks
 func initStorageCallback(nextComp internal.Component, azstorage internal.Component) dcache.StorageCallbacks {
 

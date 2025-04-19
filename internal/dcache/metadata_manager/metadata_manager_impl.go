@@ -324,24 +324,70 @@ func (m *BlobMetadataManager) GetAllNodes() ([]string, error) {
 
 // CreateInitialClusterMap creates the initial cluster map
 func (m *BlobMetadataManager) CreateInitialClusterMap(clustermap []byte) error {
-	// Dummy implementation
-	return nil
+	// Create the clustermap file path
+	clustermapPath := filepath.Join(m.cacheDir, "clustermap.json")
+	err := m.storageCallbacks.PutBlobInStorage(internal.WriteFromBufferOptions{
+		Name:                   clustermapPath,
+		Data:                   clustermap,
+		IsNoneMatchEtagEnabled: true,
+		EtagMatchConditions:    "",
+	})
+	if err != nil {
+		log.Debug("CreateInitialClusterMap :: Failed to create clustermap: %v", err)
+	}
+	return err
 }
 
 // UpdateClusterMapStart claims update ownership of the cluster map
-func (m *BlobMetadataManager) UpdateClusterMapStart(clustermap []byte, etag *azcore.ETag) error {
-	// Dummy implementation
-	return nil
+func (m *BlobMetadataManager) UpdateClusterMapStart(clustermap []byte, etag *string) error {
+	err := m.storageCallbacks.PutBlobInStorage(internal.WriteFromBufferOptions{
+		Name:                   filepath.Join(m.cacheDir, "clustermap.json"),
+		Data:                   clustermap,
+		IsNoneMatchEtagEnabled: false,
+		EtagMatchConditions:    *etag,
+	})
+	if err != nil {
+		if bloberror.HasCode(err, bloberror.ConditionNotMet) {
+			log.Warn("UpdateClusterMapStart :: ETag mismatch some other node has taken ownership for updating clustermap")
+		} else {
+			log.Debug("UpdateClusterMapStart :: Failed to update clustermap: %v", err)
+		}
+	}
+	return err
 }
 
 // UpdateClusterMapEnd finalizes the cluster map update
 func (m *BlobMetadataManager) UpdateClusterMapEnd(clustermap []byte) error {
-	// Dummy implementation
-	return nil
+	err := m.storageCallbacks.PutBlobInStorage(internal.WriteFromBufferOptions{
+		Name:                   filepath.Join(m.cacheDir, "clustermap.json"),
+		Data:                   clustermap,
+		IsNoneMatchEtagEnabled: false,
+		EtagMatchConditions:    "",
+	})
+	if err != nil {
+		log.Debug("UpdateClusterMapEnd :: Failed to finalize clustermap update: %v", err)
+	}
+
+	return err
 }
 
 // GetClusterMap reads and returns the content of the cluster map
-func (m *BlobMetadataManager) GetClusterMap() ([]byte, *azcore.ETag, error) {
-	// Dummy implementation
-	return nil, nil, nil
+func (m *BlobMetadataManager) GetClusterMap() ([]byte, *string, error) {
+	attr, err := m.storageCallbacks.GetPropertiesFromStorage(internal.GetAttrOptions{
+		Name: filepath.Join(m.cacheDir, "clustermap.json"),
+	})
+	if err != nil {
+		log.Debug("GetClusterMap :: Failed to get cluster map: %v", err)
+		return nil, nil, err
+	}
+	// Get the cluster map content from storage
+	data, err := m.storageCallbacks.GetBlobFromStorage(internal.ReadFileWithNameOptions{
+		Path: filepath.Join(m.cacheDir, "clustermap.json"),
+	})
+	if err != nil {
+		log.Debug("GetClusterMap :: Failed to get cluster map content: %v", err)
+		return nil, nil, err
+	}
+	// Return the cluster map content and ETag
+	return data, &attr.ETag, nil
 }
