@@ -84,13 +84,13 @@ func (sci *StorageCallbackImpl) ReadDirFromStorage(options internal.ReadDirOptio
 }
 
 // SetProperties implements dcache.StorageCallbacks.
-func (sci *StorageCallbackImpl) SetMetaProperties(path string, properties map[string]string) error {
-	panic("unimplemented")
+func (sci *StorageCallbackImpl) SetMetaProperties(options internal.SetMetadataOptions) error {
+	return sci.nextComp.SetMetadata(options)
 }
 
 // SetPropertiesInStorage implements dcache.StorageCallbacks.
-func (sci *StorageCallbackImpl) SetMetaPropertiesInStorage(path string, properties map[string]string) error {
-	panic("unimplemented")
+func (sci *StorageCallbackImpl) SetMetaPropertiesInStorage(options internal.SetMetadataOptions) error {
+	return sci.storage.SetMetadata(options)
 }
 
 func (sci *StorageCallbackImpl) PutBlobInStorage(options internal.WriteFromBufferOptions) error {
