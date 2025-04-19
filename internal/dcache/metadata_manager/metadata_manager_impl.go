@@ -255,25 +255,70 @@ func (m *BlobMetadataManager) GetFileOpenCount(filePath string) (int64, error) {
 
 // UpdateHeartbeat creates or updates the heartbeat file
 func (m *BlobMetadataManager) UpdateHeartbeat(nodeId string, data []byte) error {
-	// Dummy implementation
-	return nil
+	// Create the heartbeat file path
+	heartbeatFilePath := filepath.Join(m.cacheDir, "Nodes", nodeId+".hb")
+	err := m.storageCallbacks.PutBlobInStorage(internal.WriteFromBufferOptions{
+		Name:                   heartbeatFilePath,
+		Data:                   data,
+		IsNoneMatchEtagEnabled: false,
+		EtagMatchConditions:    "",
+	})
+	if err != nil {
+		log.Debug("UpdateHeartbeat :: Failed to put heartbeat blob in storage: %v", err)
+	}
+	return err
 }
 
 // DeleteHeartbeat deletes the heartbeat file
-func (m *BlobMetadataManager) DeleteHeartbeat(nodeId string, data []byte) error {
-	// Dummy implementation
+func (m *BlobMetadataManager) DeleteHeartbeat(nodeId string) error {
+	// Create the heartbeat file path
+	heartbeatFilePath := filepath.Join(m.cacheDir, "Nodes", nodeId+".hb")
+	err := m.storageCallbacks.DeleteBlobInStorage(internal.DeleteFileOptions{
+		Name: heartbeatFilePath,
+	})
+	if err != nil {
+		if bloberror.HasCode(err, bloberror.BlobNotFound) {
+			log.Warn("DeleteHeartbeat :: DeleteBlobInStorage failed since blob is already deleted")
+		}
+	}
 	return nil
 }
 
 // GetHeartbeat reads and returns the content of the heartbeat file
 func (m *BlobMetadataManager) GetHeartbeat(nodeId string) ([]byte, error) {
-	// Dummy implementation
-	return nil, nil
+	// Create the heartbeat file path
+	heartbeatFilePath := filepath.Join(m.cacheDir, "Nodes", nodeId+".hb")
+	// Get the heartbeat content from storage
+	data, err := m.storageCallbacks.GetBlobFromStorage(internal.ReadFileWithNameOptions{
+		Path: heartbeatFilePath,
+	})
+	if err != nil {
+		log.Debug("GetHeartbeat :: Failed to get heartbeat file content: %v", err)
+	}
+
+	return data, err
 }
 
 // GetAllNodes enumerates and returns the list of all nodes with a heartbeat
 func (m *BlobMetadataManager) GetAllNodes() ([]string, error) {
-	// Dummy implementation
+	list, err := m.storageCallbacks.ListBlobs(internal.ReadDirOptions{
+		Name: filepath.Join(m.cacheDir, "Nodes"),
+	})
+	if err != nil {
+		log.Debug("GetAllNodes :: Failed to get nodes list: %v", err)
+		return nil, err
+	}
+	// Extract the node IDs from the list of blobs
+	var nodes []string
+	for _, blob := range list {
+		if blob.Name != "" {
+			nodeId := blob.Name[:len(blob.Name)-3] // Remove the ".hb" extension
+			if nodeId != "" {
+				nodes = append(nodes, nodeId)
+			}
+		}
+	}
+
 	return nil, nil
 }
 
