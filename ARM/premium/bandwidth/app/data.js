@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1744631271060,
+  "lastUpdate": 1745139250988,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -443,6 +443,68 @@ window.BENCHMARK_DATA = {
           {
             "name": "read_40GB",
             "value": 3103.2971830094616,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Vikas Bhansali",
+            "username": "vibhansa-msft",
+            "email": "64532198+vibhansa-msft@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "07c91329ece3d6310f1a56cdead7b10e449fc66f",
+          "message": "Preload feature drop to main branch (#1678)\n\nCo-authored-by: Sourav Gupta <98318303+souravgupta-msft@users.noreply.github.com>\nCo-authored-by: souravgupta <souravgupta@microsoft.com>",
+          "timestamp": "2025-04-11T09:17:56Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/07c91329ece3d6310f1a56cdead7b10e449fc66f"
+        },
+        "date": 1745139250719,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "write_1GB",
+            "value": 950.9627178788882,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "write_10GB",
+            "value": 2556.9702541632714,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "write_100GB",
+            "value": 2512.553379042202,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "write_40GB",
+            "value": 2697.3764251754374,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "read_1GB",
+            "value": 1196.8466913030313,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "read_10GB",
+            "value": 3037.203113570714,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "read_100GB",
+            "value": 3186.708538761076,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "read_40GB",
+            "value": 3151.1621163047685,
             "unit": "MiB/s"
           }
         ]
