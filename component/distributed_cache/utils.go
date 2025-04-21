@@ -39,7 +39,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
@@ -64,25 +63,13 @@ func isPlaceholderDirForRoot(path string) (bool, *internal.ObjAttr) {
 	return false, nil
 }
 
-// Check if path is valid.
-// Rules: Cache Path should not contain more than one virtual component for azure/dcache.
-func isPathValid(path string) bool {
-	virtualCompsAzure := strings.Count(path, "fs=azure")
-	virtualCompsDcache := strings.Count(path, "fs=dcache")
-	if virtualCompsAzure+virtualCompsDcache > 1 {
-		log.Err("DistributedCache::isPathValid : Invalid format of Cache path : %s", path)
-		return false
-	}
-	return true
-}
-
 // Check if path contains fs=azure as it's subdirectory,
 // and returns the newpath
-func isPathContainsAzureVirtualComponent(path string) (found bool, resPath string) {
+func isAzurePath(path string) (found bool, resPath string) {
 	return isPathContainsSubDir(path, "fs=azure")
 }
 
-func isPathContainsDcacheVirtualComponent(path string) (found bool, resPath string) {
+func isDcachePath(path string) (found bool, resPath string) {
 	return isPathContainsSubDir(path, "fs=dcache")
 }
 
