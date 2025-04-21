@@ -34,6 +34,9 @@
 package clustermanager
 
 import (
+	"math"
+	"strconv"
+
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 )
 
@@ -108,6 +111,145 @@ func (c *ClusterManagerImpl) ReportRVDown(rvName string) error {
 
 // ReportRVFull implements ClusterManager.
 func (c *ClusterManagerImpl) ReportRVFull(rvName string) error {
+	return nil
+}
+
+func evaluateMVRVMapping(NumReplicas int, MvsPerRv int) map[string]dcache.MirroredVolume {
+
+	// Need to fetch latest MV Map from storage and update the local copy
+	mvMap := fetchMVMap()
+	// Need informtation about newest Rv's added
+	rvMap := fetchRVMap()
+
+	numRvs := len(rvMap)
+	// Calculate the number of Mvs needed
+	numMvs := int(math.Ceil(float64(numRvs) * float64(MvsPerRv) / float64(NumReplicas)))
+
+	// Group Rvs by node for distribution
+	nodeToRvs := make(map[string][]string)
+	for rvID, rvInfo := range rvMap {
+		nodeToRvs[rvInfo.NodeId] = append(nodeToRvs[rvInfo.NodeId], rvID)
+	}
+
+	// First pass: Direct distribution in a single scan
+	// Assign Rvs to Mvs while maintaining constraints
+	currentMvIndex := len(mvMap)
+	startMvIndex := currentMvIndex
+
+	// Create tracking maps
+	rvAssignmentCount := make(map[string]int)                       // Track how many times each Rv has been assigned
+	mvRvSet := make([]map[string]bool, numMvs)                      // Track which Rvs are in each Mv
+	mvNodeCount := make([]map[string]int, numMvs)                   // Track how many Rvs from each node are in each Mv
+	mvMap = append(mvMap, make([]dcache.MirroredVolume, numMvs)...) // Ensure mvMap has enough elements
+
+	for i := currentMvIndex; i < currentMvIndex+numMvs; i++ {
+		mvMap[i].RVWithStateMap = make(map[string]dcache.StateEnum)
+		mv := mvMap[i]
+		mv.State = dcache.StateOnline
+		mvMap[i] = mv
+	}
+
+	for i := range numMvs {
+		mvRvSet[i] = make(map[string]bool)
+		mvNodeCount[i] = make(map[string]int)
+	}
+
+	nodesProcessed := 0
+	nodeIDs := make([]string, 0, len(nodeToRvs))
+	for nodeID := range nodeToRvs {
+		nodeIDs = append(nodeIDs, nodeID)
+	}
+
+	// Ensure all Node's Rv's are distributed MvPerRv times
+	for nodesProcessed < len(nodeToRvs)*MvsPerRv {
+
+		// Iterate through each node
+		for _, nodeID := range nodeIDs {
+			// Check if all Rvs from this node have been assigned
+			for _, rvID := range nodeToRvs[nodeID] {
+				// Skip if this Rv has been fully assigned
+				if rvAssignmentCount[rvID] >= MvsPerRv {
+					continue
+				}
+
+				// Find next suitable Mv
+				for attempts := range numMvs {
+					// Calculate the Mv index in round robin fashion between startIndex and startIndex+numMvs
+					mvIndex := startMvIndex + (currentMvIndex+attempts)%numMvs
+
+					// Check if this Mv has space and doesn't already have this Rv
+					if len(mvMap[mvIndex].RVWithStateMap) < NumReplicas {
+						if mvRvSet[mvIndex%numMvs] != nil && !mvRvSet[mvIndex%numMvs][rvID] {
+							// Assign the Rv to this Mv
+							mv := mvMap[mvIndex]
+							mv.RVWithStateMap[rvID] = rvMap[rvID].State
+							mvMap[mvIndex] = mv
+							// Update tracking maps
+							// Mark Rv as assigned to this Mv
+							mvRvSet[mvIndex%numMvs][rvID] = true
+							// Track how many Rvs from this node are in this Mv
+							mvNodeCount[mvIndex%numMvs][nodeID]++
+							// Track how many times this Rv has been assigned
+							rvAssignmentCount[rvID]++
+
+							// Move to next Mv for better distribution
+							currentMvIndex = mvIndex + 1
+							if currentMvIndex >= numMvs {
+								currentMvIndex = startMvIndex
+							}
+							break
+						}
+					}
+				}
+			}
+			nodesProcessed++
+		}
+	}
+
+	// Delete Mvs with less Rvs than NumReplicas
+	for i := range mvMap {
+		if len(mvMap[i].RVWithStateMap) < NumReplicas {
+			// Delete mv from map
+			mvMap = append(mvMap[:i], mvMap[i+1:]...)
+			i-- // Adjust index after deletion
+		}
+	}
+
+	// Make a new map of string to MirroredVolume lenght len(mvMap)
+	mvRvMap := make(map[string]dcache.MirroredVolume, len(mvMap))
+	for i := range mvMap {
+		mvId := "mv" + strconv.Itoa(i)
+		mvRvMap[mvId] = mvMap[i]
+	}
+	// Update the RVWithStateMap for each Mv
+
+	return mvRvMap
+}
+
+func fetchMVMap() []dcache.MirroredVolume {
+	// mvMap := make([]dcache.MirroredVolume, 2)
+	// mvMap[0] = dcache.MirroredVolume{
+	// 	RVWithStateMap: map[string]dcache.StateEnum{
+	// 		"rv0": dcache.StateOnline,
+	// 		"rv1": dcache.StateOnline,
+	// 		"rv2": dcache.StateOnline,
+	// 	},
+	// 	State: dcache.StateOnline,
+	// }
+	// mvMap[1] = dcache.MirroredVolume{
+	// 	RVWithStateMap: map[string]dcache.StateEnum{
+	// 		"rv3": dcache.StateOnline,
+	// 		"rv4": dcache.StateOnline,
+	// 	},
+	// 	State: dcache.StateOffline,
+	// }
+
+	return nil
+}
+
+func fetchRVMap() map[string]dcache.RawVolume {
+	// is it possible to display only the new RV's that came up?
+
 	return nil
 }
 
