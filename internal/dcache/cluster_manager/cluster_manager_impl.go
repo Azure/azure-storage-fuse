@@ -37,6 +37,7 @@ import (
 	"encoding/json"
 	"math"
 	"os"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -116,181 +117,143 @@ func (cmi *ClusterManagerImpl) checkIfClusterMapExists(path string) bool {
 	return true
 }
 
-func EvaluateMVsRVMapping() map[int]dcache.MirroredVolume {
+func evaluateMVRVMapping(NumReplicas int, MvsPerRv int) map[string]dcache.MirroredVolume {
 
-	mvMap := map[int]dcache.MirroredVolume{}
+	// Need to fetch latest MV Map from storage and update the local copy
+	mvMap := fetchMVMap()
+	// Need informtation about newest Rv's added
 	rvMap := fetchRVMap()
-	// mvMap := fecthMVMap()
 
-	// Calculate number of MVs
-	numRVs := len(rvMap)
+	numRvs := len(rvMap)
+	// Calculate the number of Mvs needed
+	numMvs := int(math.Ceil(float64(numRvs) * float64(MvsPerRv) / float64(NumReplicas)))
 
-	NumReplicas := 1
-	MvsPerRv := 1
-
-	numMVs := int(math.Ceil(float64(numRVs) * float64(MvsPerRv) / float64(NumReplicas)))
-
-	// Group RVs by node for distribution
-	nodeToRVs := make(map[string][]string)
+	// Group Rvs by node for distribution
+	nodeToRvs := make(map[string][]string)
 	for rvID, rvInfo := range rvMap {
-		nodeToRVs[rvInfo.NodeId] = append(nodeToRVs[rvInfo.NodeId], rvID)
-	}
-
-	// Create tracking maps
-	rvAssignmentCount := make(map[string]int)     // Track how many times each RV has been assigned
-	mvRVSet := make([]map[string]bool, numMVs)    // Track which RVs are in each MV
-	mvNodeCount := make([]map[string]int, numMVs) // Track how many RVs from each node are in each MV
-
-	// TODO :: Check from which Mv state is offline or iterate through all see which is more secure
-	for i := range mvMap {
-		mvRVSet[i] = make(map[string]bool)
-		mvNodeCount[i] = make(map[string]int)
+		nodeToRvs[rvInfo.NodeId] = append(nodeToRvs[rvInfo.NodeId], rvID)
 	}
 
 	// First pass: Direct distribution in a single scan
-	// Assign RVs to MVs while maintaining constraints
-	currentMVIndex := 0
+	// Assign Rvs to Mvs while maintaining constraints
+	currentMvIndex := len(mvMap)
+	startMvIndex := currentMvIndex
 
-	// Process nodes in a round-robin fashion to ensure diversity
+	// Create tracking maps
+	rvAssignmentCount := make(map[string]int)                       // Track how many times each Rv has been assigned
+	mvRvSet := make([]map[string]bool, numMvs)                      // Track which Rvs are in each Mv
+	mvNodeCount := make([]map[string]int, numMvs)                   // Track how many Rvs from each node are in each Mv
+	mvMap = append(mvMap, make([]dcache.MirroredVolume, numMvs)...) // Ensure mvMap has enough elements
+
+	for i := currentMvIndex; i < currentMvIndex+numMvs; i++ {
+		mvMap[i].RVWithStateMap = make(map[string]dcache.StateEnum)
+		mv := mvMap[i]
+		mv.State = dcache.StateOnline
+		mvMap[i] = mv
+	}
+
+	for i := range numMvs {
+		mvRvSet[i] = make(map[string]bool)
+		mvNodeCount[i] = make(map[string]int)
+	}
+
 	nodesProcessed := 0
-	nodeIDs := make([]string, 0, len(nodeToRVs))
-	for nodeID := range nodeToRVs {
+	nodeIDs := make([]string, 0, len(nodeToRvs))
+	for nodeID := range nodeToRvs {
 		nodeIDs = append(nodeIDs, nodeID)
 	}
 
-	for nodesProcessed < len(nodeToRVs)*MvsPerRv {
+	// Ensure all Node's Rv's are distributed MvPerRv times
+	for nodesProcessed < len(nodeToRvs)*MvsPerRv {
+
+		// Iterate through each node
 		for _, nodeID := range nodeIDs {
-			for _, rvID := range nodeToRVs[nodeID] {
-				// Skip if this RV has been fully assigned
+			// Check if all Rvs from this node have been assigned
+			for _, rvID := range nodeToRvs[nodeID] {
+				// Skip if this Rv has been fully assigned
 				if rvAssignmentCount[rvID] >= MvsPerRv {
 					continue
 				}
 
-				// Find next suitable MV
-				for attempts := 0; attempts < numMVs; attempts++ {
-					mvIndex := (currentMVIndex + attempts) % numMVs
+				// Find next suitable Mv
+				for attempts := range numMvs {
+					// Calculate the Mv index in round robin fashion between startIndex and startIndex+numMvs
+					mvIndex := startMvIndex + (currentMvIndex+attempts)%numMvs
 
-					// Check if this MV has space and doesn't already have this RV
+					// Check if this Mv has space and doesn't already have this Rv
 					if len(mvMap[mvIndex].RVWithStateMap) < NumReplicas {
-						if mvRVSet[mvIndex] == nil || (mvRVSet[mvIndex] != nil && !mvRVSet[mvIndex][rvID]) {
-							// Assign the RV to this MV
+						if mvRvSet[mvIndex%numMvs] != nil && !mvRvSet[mvIndex%numMvs][rvID] {
+							// Assign the Rv to this Mv
 							mv := mvMap[mvIndex]
 							mv.RVWithStateMap[rvID] = rvMap[rvID].State
 							mvMap[mvIndex] = mv
-							mvRVSet[mvIndex][rvID] = true
-							// mvMap[mvIndex].Nodes[nodeID] = true
-							mvNodeCount[mvIndex][nodeID]++
+							// Update tracking maps
+							// Mark Rv as assigned to this Mv
+							mvRvSet[mvIndex%numMvs][rvID] = true
+							// Track how many Rvs from this node are in this Mv
+							mvNodeCount[mvIndex%numMvs][nodeID]++
+							// Track how many times this Rv has been assigned
 							rvAssignmentCount[rvID]++
 
-							// Move to next MV for better distribution
-							currentMVIndex = (mvIndex + 1) % numMVs
+							// Move to next Mv for better distribution
+							currentMvIndex = mvIndex + 1
+							if currentMvIndex >= numMvs {
+								currentMvIndex = startMvIndex
+							}
 							break
 						}
 					}
 				}
 			}
-
 			nodesProcessed++
-			// Break early if we've assigned all RVs
-			// if len(rvInstances) == 0 {
-			// 	break
-			// }
 		}
 	}
 
-	// Mark MVs with fewer RVs as special
+	// Delete Mvs with less Rvs than NumReplicas
 	for i := range mvMap {
 		if len(mvMap[i].RVWithStateMap) < NumReplicas {
-			mv := mvMap[i]
-			mv.State = dcache.StateOffline
-			mvMap[i] = mv
+			// Delete mv from map
+			mvMap = append(mvMap[:i], mvMap[i+1:]...)
+			i-- // Adjust index after deletion
 		}
 	}
 
-	return mvMap
+	// Make a new map of string to MirroredVolume lenght len(mvMap)
+	mvRvMap := make(map[string]dcache.MirroredVolume, len(mvMap))
+	for i := range mvMap {
+		mvId := "mv" + strconv.Itoa(i)
+		mvRvMap[mvId] = mvMap[i]
+	}
+	// Update the RVWithStateMap for each Mv
+
+	return mvRvMap
 }
 
-// go through the RVMap and find
+func fetchMVMap() []dcache.MirroredVolume {
+	// mvMap := make([]dcache.MirroredVolume, 2)
+	// mvMap[0] = dcache.MirroredVolume{
+	// 	RVWithStateMap: map[string]dcache.StateEnum{
+	// 		"rv0": dcache.StateOnline,
+	// 		"rv1": dcache.StateOnline,
+	// 		"rv2": dcache.StateOnline,
+	// 	},
+	// 	State: dcache.StateOnline,
+	// }
+	// mvMap[1] = dcache.MirroredVolume{
+	// 	RVWithStateMap: map[string]dcache.StateEnum{
+	// 		"rv3": dcache.StateOnline,
+	// 		"rv4": dcache.StateOnline,
+	// 	},
+	// 	State: dcache.StateOffline,
+	// }
 
-// rvStateMap := map[string]string{
-// 	"rv0": "online",
-// 	"rv1": "offline",
-// 	"rv2": "syncing"}
-// mv0 := dcache.MirroredVolume{
-// 	RVWithStateMap: rvStateMap,
-// 	State:          dcache.StateOffline,
-// }
-// mvRvMap["mv0"] = mv0
+	return nil
+}
 
 func fetchRVMap() map[string]dcache.RawVolume {
-	rvMap := map[string]dcache.RawVolume{
-		"rv0": {
-			NodeId:         "Node1",
-			IPAddress:      "192.168.1.1",
-			FSID:           "FSID1",
-			FDID:           "FDID1",
-			State:          dcache.StateOnline,
-			TotalSpace:     100,
-			AvailableSpace: 50,
-			LocalCachePath: "/path/to/cache/rv0",
-		},
-		"rv1": {
-			NodeId:         "Node1",
-			IPAddress:      "192.168.1.1",
-			FSID:           "FSID2",
-			FDID:           "FDID2",
-			State:          dcache.StateOnline,
-			TotalSpace:     200,
-			AvailableSpace: 150,
-			LocalCachePath: "/path/to/cache/rv1",
-		},
+	// is it possible to display only the new RV's that came up?
 
-		// Node 2 RVs
-		"rv2": {
-			NodeId:         "Node2",
-			IPAddress:      "192.168.1.2",
-			FSID:           "FSID3",
-			FDID:           "FDID3",
-			State:          dcache.StateOnline,
-			TotalSpace:     300,
-			AvailableSpace: 250,
-			LocalCachePath: "/path/to/cache/rv2",
-		},
-		"rv3": {
-			NodeId:         "Node2",
-			IPAddress:      "192.168.1.2",
-			FSID:           "FSID4",
-			FDID:           "FDID4",
-			State:          dcache.StateOnline,
-			TotalSpace:     400,
-			AvailableSpace: 350,
-			LocalCachePath: "/path/to/cache/rv3",
-		},
-
-		// Node 3 RVs
-		"rv4": {
-			NodeId:         "Node3",
-			IPAddress:      "192.168.1.3",
-			FSID:           "FSID5",
-			FDID:           "FDID5",
-			State:          dcache.StateOnline,
-			TotalSpace:     500,
-			AvailableSpace: 450,
-			LocalCachePath: "/path/to/cache/rv4",
-		},
-		"rv5": {
-			NodeId:         "Node3",
-			IPAddress:      "192.168.1.3",
-			FSID:           "FSID6",
-			FDID:           "FDID6",
-			State:          dcache.StateOnline,
-			TotalSpace:     600,
-			AvailableSpace: 550,
-			LocalCachePath: "/path/to/cache/rv5",
-		},
-	}
-
-	return rvMap
+	return nil
 }
 
 // Example RVs

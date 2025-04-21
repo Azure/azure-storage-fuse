@@ -150,8 +150,6 @@ func (dc *DistributedCache) Start(ctx context.Context) error {
 		dc.azstroage)
 	dc.clusterManager = clustermanager.NewClusterManager(dc.strorageCallback)
 
-	clustermanager.EvaluateMVsRVMapping()
-
 	// Check and create cache directory if needed
 	if err := dc.setupCacheStructure(cacheDir); err != nil {
 		return err
