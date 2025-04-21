@@ -49,16 +49,16 @@ var (
 
 // BlobMetadataManager is the implementation of MetadataManager interface
 type BlobMetadataManager struct {
-	cacheDir        string
+	mdRoot          string
 	storageCallback dcache.StorageCallbacks
 }
 
 // init initializes the singleton instance of BlobMetadataManager
-func Init(storageCallback dcache.StorageCallbacks, cacheDir string) {
+func Init(storageCallback dcache.StorageCallbacks, cacheId string) {
 	once.Do(func() {
 		MetadataManagerInstance = &BlobMetadataManager{
-			cacheDir:        cacheDir,        // Set a default cache directory
-			storageCallback: storageCallback, // Initialize storage callback to nil
+			mdRoot:          "__CACHE__" + cacheId, // Set a default cache directory
+			storageCallback: storageCallback,       // Initialize storage callback to nil
 		}
 	})
 }
