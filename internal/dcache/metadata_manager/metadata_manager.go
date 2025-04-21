@@ -52,13 +52,13 @@ type MetadataManager interface {
 	// Succeeds only when the file metadata is not already present.
 	// This will be called by the File Manager to create a non-existing file in response to a create call from fuse.
 	// TODO :: Handle the case where the node fails before CreateFileFinalize is called.
-	CreateFileInit(filePath string, fileMetadata *dcache.FileMetadata) error
+	CreateFileInit(filePath string, fileMetadata []byte) error
 
 	// CreateFileFinalize finalizes the metadata for a file updating size, sha256, and other properties.
 	// For properties which were not available at the time of CreateFileInit.
 	// Called by the File Manager in response to a close call from fuse.
 	// TODO :: Ensure that CreateFileInit and CreateFileFinalize are called by the same node.
-	CreateFileFinalize(filePath string, fileMetadata *dcache.FileMetadata) error
+	CreateFileFinalize(filePath string, fileMetadata []byte) error
 
 	// GetFile reads and returns the content of metadata for a file.
 	GetFile(filePath string) (*dcache.FileMetadata, error)

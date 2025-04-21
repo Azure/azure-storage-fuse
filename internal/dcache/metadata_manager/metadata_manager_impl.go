@@ -61,34 +61,36 @@ func NewMetadataManager(cacheDir string) (*BlobMetadataManager, error) {
 }
 
 // CreateFileInit creates the initial metadata for a file
-func (m *BlobMetadataManager) CreateFileInit(filePath string, fileMetadata *dcache.FileMetadata) error {
-	// Convert the metadata to JSON
-	jsonData, err := json.MarshalIndent(fileMetadata, "", "  ")
-	if err != nil {
-		log.Debug("CreateFileInit :: Failed to marshal metadata to JSON: %v", err)
-		return err
-	}
+// TODO :: Return etag value to use for CreateFileFinalize
+// Can help ensure cases where the initial node went down before finalizing and tried to finalize later
+func (m *BlobMetadataManager) CreateFileInit(filePath string, fileMetadata []byte) error {
+	path := filepath.Join(m.cacheDir, "Objects", filePath)
 	// Store the open-count in the metadata blob property
 	openCount := "0"
 	metadata := map[string]*string{
 		"opencount": &openCount,
 	}
 
-	err = m.storageCallbacks.PutBlobInStorage(internal.WriteFromBufferOptions{
-		Name:                   filepath.Join(m.cacheDir, "Objects", filePath),
+	err := m.storageCallbacks.PutBlobInStorage(internal.WriteFromBufferOptions{
+		Name:                   path,
 		Metadata:               metadata,
-		Data:                   jsonData,
+		Data:                   fileMetadata,
 		IsNoneMatchEtagEnabled: true,
 		EtagMatchConditions:    "",
 	})
 	if err != nil {
-		log.Debug("CreateFileInit :: Failed to put blob in storage: %v", err)
+		if bloberror.HasCode(err, bloberror.ConditionNotMet) {
+			log.Warn("CreateFileInit :: PutBlobInStorage for %s failed due to ETag mismatch", path)
+			return nil
+		}
+		log.Debug("CreateFileInit :: Failed to put blob %s in storage: %v", path, err)
 	}
 	return err
 }
 
 // CreateFileFinalize finalizes the metadata for a file
 func (m *BlobMetadataManager) CreateFileFinalize(filePath string, fileMetadata *dcache.FileMetadata) error {
+	path := filepath.Join(m.cacheDir, "Objects", filePath)
 	// Convert the metadata to JSON
 	jsonData, err := json.MarshalIndent(fileMetadata, "", "  ")
 	if err != nil {
@@ -97,22 +99,23 @@ func (m *BlobMetadataManager) CreateFileFinalize(filePath string, fileMetadata *
 	}
 	// TODO :: check metadata is not overwritten byt this
 	err = m.storageCallbacks.PutBlobInStorage(internal.WriteFromBufferOptions{
-		Name:                   filepath.Join(m.cacheDir, "Objects", filePath),
+		Name:                   path,
 		Data:                   jsonData,
 		IsNoneMatchEtagEnabled: false,
 		EtagMatchConditions:    "",
 	})
 	if err != nil {
-		log.Debug("CreateFileFinalize :: Failed to put blob in storage: %v", err)
+		log.Debug("CreateFileFinalize :: Failed to put blob %s in storage: %v", path, err)
 	}
 	return err
 }
 
 // GetFile reads and returns the content of metadata for a file
 func (m *BlobMetadataManager) GetFile(filePath string) (*dcache.FileMetadata, error) {
+	path := filepath.Join(m.cacheDir, "Objects", filePath)
 	// Get the metadata content from storage
 	data, err := m.storageCallbacks.GetBlobFromStorage(internal.ReadFileWithNameOptions{
-		Path: filepath.Join(m.cacheDir, "Objects", filePath),
+		Path: path,
 	})
 	if err != nil {
 		log.Debug("GetFile :: Failed to get metadata file content: %v", err)
