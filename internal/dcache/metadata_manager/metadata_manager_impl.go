@@ -34,20 +34,95 @@
 package metadata_manager
 
 import (
+	"sync"
+
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
+)
+
+var (
+	// MetadataManagerInstance is the singleton instance of BlobMetadataManager
+	MetadataManagerInstance *BlobMetadataManager
+	once                    sync.Once
 )
 
 // BlobMetadataManager is the implementation of MetadataManager interface
 type BlobMetadataManager struct {
-	cacheDir string
+	cacheDir        string
+	storageCallback dcache.StorageCallbacks
 }
 
-// NewMetadataManager creates a new implementation of the MetadataManager interface
-func NewMetadataManager(cacheDir string) (MetadataManager, error) {
-	return &BlobMetadataManager{
-		cacheDir: cacheDir,
-	}, nil
+// init initializes the singleton instance of BlobMetadataManager
+func Init(storageCallback dcache.StorageCallbacks, cacheDir string) {
+	once.Do(func() {
+		MetadataManagerInstance = &BlobMetadataManager{
+			cacheDir:        cacheDir,        // Set a default cache directory
+			storageCallback: storageCallback, // Initialize storage callback to nil
+		}
+	})
+}
+
+// Package-level functions that delegate to the singleton instance
+
+func CreateFileInit(filePath string, fileMetadata *dcache.FileMetadata) error {
+	return MetadataManagerInstance.CreateFileInit(filePath, fileMetadata)
+}
+
+func CreateFileFinalize(filePath string, fileMetadata *dcache.FileMetadata) error {
+	return MetadataManagerInstance.CreateFileFinalize(filePath, fileMetadata)
+}
+
+func GetFile(filePath string) (*dcache.FileMetadata, error) {
+	return MetadataManagerInstance.GetFile(filePath)
+}
+
+func DeleteFile(filePath string) error {
+	return MetadataManagerInstance.DeleteFile(filePath)
+}
+
+func OpenFile(filePath string) (int64, error) {
+	return MetadataManagerInstance.OpenFile(filePath)
+}
+
+func CloseFile(filePath string) (int64, error) {
+	return MetadataManagerInstance.CloseFile(filePath)
+}
+
+func GetFileOpenCount(filePath string) (int64, error) {
+	return MetadataManagerInstance.GetFileOpenCount(filePath)
+}
+
+func UpdateHeartbeat(nodeId string, data []byte) error {
+	return MetadataManagerInstance.UpdateHeartbeat(nodeId, data)
+}
+
+func DeleteHeartbeat(nodeId string, data []byte) error {
+	return MetadataManagerInstance.DeleteHeartbeat(nodeId, data)
+}
+
+func GetHeartbeat(nodeId string) ([]byte, error) {
+	return MetadataManagerInstance.GetHeartbeat(nodeId)
+}
+
+func GetAllNodes() ([]string, error) {
+	return MetadataManagerInstance.GetAllNodes()
+}
+
+func CreateInitialClusterMap(clustermap []byte) error {
+	return MetadataManagerInstance.CreateInitialClusterMap(clustermap)
+}
+
+func UpdateClusterMapStart(clustermap []byte, etag *azcore.ETag) error {
+	return MetadataManagerInstance.UpdateClusterMapStart(clustermap, etag)
+}
+
+func UpdateClusterMapEnd(clustermap []byte) error {
+	return MetadataManagerInstance.UpdateClusterMapEnd(clustermap)
+}
+
+func GetClusterMap() ([]byte, *azcore.ETag, error) {
+	return MetadataManagerInstance.GetClusterMap()
 }
 
 // CreateFileInit creates the initial metadata for a file
@@ -77,6 +152,7 @@ func (m *BlobMetadataManager) DeleteFile(filePath string) error {
 // OpenFile increments the open count for a file and returns the updated count
 func (m *BlobMetadataManager) OpenFile(filePath string) (int64, error) {
 	// Dummy implementation
+
 	return 0, nil
 }
 
@@ -125,6 +201,10 @@ func (m *BlobMetadataManager) CreateInitialClusterMap(clustermap []byte) error {
 // UpdateClusterMapStart claims update ownership of the cluster map
 func (m *BlobMetadataManager) UpdateClusterMapStart(clustermap []byte, etag *azcore.ETag) error {
 	// Dummy implementation
+	m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
+		Name: "cs.md",
+		Data: clustermap,
+	})
 	return nil
 }
 
