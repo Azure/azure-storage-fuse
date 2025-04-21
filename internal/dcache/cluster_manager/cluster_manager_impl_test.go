@@ -1,78 +1,49 @@
 package clustermanager
 
 import (
+	"errors"
 	"os"
 	"syscall"
 	"testing"
 
-	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
-	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
 	"github.com/stretchr/testify/suite"
 )
 
-type clusterManagerImplTestSuite struct {
+type ClusterManagerImplTestSuite struct {
 	suite.Suite
-	mockStorage         dcache.StorageCallbacks
-	mockMetaDataManager *mm.MockMetaDataManager
-	cmi                 ClusterManagerImpl
+	cmi ClusterManagerImpl
 }
 
-func (s *clusterManagerImplTestSuite) SetupTest() {
-	// Create the mock MetadataManager
-	s.mockMetaDataManager = mm.NewMockMetaDataManager()
+func (suite *ClusterManagerImplTestSuite) TestCheckIfClusterMapExists() {
+	orig := getClusterMap
+	defer func() { getClusterMap = orig }()
 
-	// Assign it to clusterManagerImpl
-	s.cmi = ClusterManagerImpl{
-		metaDataManager: s.mockMetaDataManager,
-	}
-}
+	// 1) success
+	getClusterMap = func() error { return nil }
+	exists, err := suite.cmi.checkIfClusterMapExists()
+	suite.NoError(err)
+	suite.True(exists)
 
-func (s *clusterManagerImplTestSuite) TestCheckIfClusterMapExists_FileExist() {
-	// Arrange
-	mockCacheID := "testCacheId"
-	// Configure the mock to return a file-not-found error
-	s.mockMetaDataManager.On("GetClusterMap").Return([]byte{}, nil, nil)
+	// 2) os.ErrNotExist
+	getClusterMap = func() error { return os.ErrNotExist }
+	exists, err = suite.cmi.checkIfClusterMapExists()
+	suite.NoError(err)
+	suite.False(exists)
 
-	// Act
-	exists, err := s.cmi.checkIfClusterMapExists(mockCacheID)
+	// 3) syscall.ENOENT
+	getClusterMap = func() error { return syscall.ENOENT }
+	exists, err = suite.cmi.checkIfClusterMapExists()
+	suite.NoError(err)
+	suite.False(exists)
 
-	// Assert
-	s.NoError(err)
-	s.True(exists)
-	s.mockMetaDataManager.AssertCalled(s.T(), "GetClusterMap")
-}
-
-func (s *clusterManagerImplTestSuite) TestCheckIfClusterMapExists_FileDoesNotExist() {
-	// Arrange
-	mockCacheID := "testCacheId"
-	// Configure the mock to return a file-not-found error
-	s.mockMetaDataManager.On("GetClusterMap").Return([]byte{}, nil, os.ErrNotExist)
-
-	// Act
-	exists, err := s.cmi.checkIfClusterMapExists(mockCacheID)
-
-	// Assert
-	s.NoError(err)
-	s.False(exists)
-	s.mockMetaDataManager.AssertCalled(s.T(), "GetClusterMap")
-}
-
-func (s *clusterManagerImplTestSuite) TestCheckIfClusterMapExists_UnexpectedError() {
-	// Arrange
-	mockCacheID := "testCacheId"
-	mockError := syscall.EIO
-	s.mockMetaDataManager.On("GetClusterMap").Return([]byte{}, nil, mockError)
-
-	// Act
-	exists, err := s.cmi.checkIfClusterMapExists(mockCacheID)
-
-	// Assert
-	s.Error(err)
-	s.False(exists)
-	s.Equal(mockError, err)
-	s.mockMetaDataManager.AssertCalled(s.T(), "GetClusterMap")
+	// 4) other error
+	testErr := errors.New("boom")
+	getClusterMap = func() error { return testErr }
+	exists, err = suite.cmi.checkIfClusterMapExists()
+	suite.EqualError(err, "boom")
+	suite.False(exists)
 }
 
 func TestClusterManagerImpl(t *testing.T) {
-	suite.Run(t, new(clusterManagerImplTestSuite))
+	suite.Run(t, new(ClusterManagerImplTestSuite))
 }

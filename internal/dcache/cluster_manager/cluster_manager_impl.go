@@ -127,7 +127,7 @@ func (c *ClusterManagerImpl) ReportRVFull(rvName string) error {
 }
 
 func (cmi *ClusterManagerImpl) checkAndCreateInitialClusterMap(dCacheConfig *dcache.DCacheConfig, rvList []dcache.RawVolume) error {
-	isClusterMapExists, err := cmi.checkIfClusterMapExists(dCacheConfig.CacheId)
+	isClusterMapExists, err := cmi.checkIfClusterMapExists()
 	if err != nil {
 		log.Err("ClusterManagerImpl::checkAndCreateInitialClusterMap: Failed to check clusterMap file presence in Storage path %s error: %v", cmi.storagePath+"/ClusterMap.json", err)
 	}
@@ -152,12 +152,12 @@ func (cmi *ClusterManagerImpl) checkAndCreateInitialClusterMap(dCacheConfig *dca
 		log.Err("ClusterManager::checkAndCreateInitialClusterMap : Cluster Map Marshalling fail : %+v, err %v", clusterMap, err)
 		return err
 	}
-	mm.MetadataManagerInstance.CreateInitialClusterMap(clusterMapBytes)
+	mm.CreateInitialClusterMap(clusterMapBytes)
 	return nil
 }
 
-func (cmi *ClusterManagerImpl) checkIfClusterMapExists(cacheId string) (bool, error) {
-	_, _, err := mm.MetadataManagerInstance.GetClusterMap()
+func (cmi *ClusterManagerImpl) checkIfClusterMapExists() (bool, error) {
+	err := getClusterMap()
 	if err != nil {
 		if os.IsNotExist(err) || err == syscall.ENOENT {
 			return false, nil
@@ -166,6 +166,11 @@ func (cmi *ClusterManagerImpl) checkIfClusterMapExists(cacheId string) (bool, er
 		}
 	}
 	return true, nil
+}
+
+var getClusterMap = func() error {
+	_, _, err := mm.GetClusterMap()
+	return err
 }
 
 func evaluateMVsRVMapping() map[string]dcache.MirroredVolume {
