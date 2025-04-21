@@ -43,86 +43,84 @@ import (
 
 var (
 	// MetadataManagerInstance is the singleton instance of BlobMetadataManager
-	MetadataManagerInstance *BlobMetadataManager
+	metadataManagerInstance *BlobMetadataManager
 	once                    sync.Once
 )
 
 // BlobMetadataManager is the implementation of MetadataManager interface
 type BlobMetadataManager struct {
-	cacheDir        string
+	mdRoot          string
 	storageCallback dcache.StorageCallbacks
 }
 
 // init initializes the singleton instance of BlobMetadataManager
-func Init(storageCallback dcache.StorageCallbacks, cacheDir string) {
-	once.Do(func() {
-		MetadataManagerInstance = &BlobMetadataManager{
-			cacheDir:        cacheDir,        // Set a default cache directory
-			storageCallback: storageCallback, // Initialize storage callback to nil
-		}
-	})
+func Init(storageCallback dcache.StorageCallbacks, cacheId string) {
+	metadataManagerInstance = &BlobMetadataManager{
+		mdRoot:          "__CACHE__" + cacheId, // Set a default cache directory
+		storageCallback: storageCallback,       // Initialize storage callback
+	}
 }
 
 // Package-level functions that delegate to the singleton instance
 
 func CreateFileInit(filePath string, fileMetadata *dcache.FileMetadata) error {
-	return MetadataManagerInstance.CreateFileInit(filePath, fileMetadata)
+	return metadataManagerInstance.CreateFileInit(filePath, fileMetadata)
 }
 
 func CreateFileFinalize(filePath string, fileMetadata *dcache.FileMetadata) error {
-	return MetadataManagerInstance.CreateFileFinalize(filePath, fileMetadata)
+	return metadataManagerInstance.CreateFileFinalize(filePath, fileMetadata)
 }
 
 func GetFile(filePath string) (*dcache.FileMetadata, error) {
-	return MetadataManagerInstance.GetFile(filePath)
+	return metadataManagerInstance.GetFile(filePath)
 }
 
 func DeleteFile(filePath string) error {
-	return MetadataManagerInstance.DeleteFile(filePath)
+	return metadataManagerInstance.DeleteFile(filePath)
 }
 
 func OpenFile(filePath string) (int64, error) {
-	return MetadataManagerInstance.OpenFile(filePath)
+	return metadataManagerInstance.OpenFile(filePath)
 }
 
 func CloseFile(filePath string) (int64, error) {
-	return MetadataManagerInstance.CloseFile(filePath)
+	return metadataManagerInstance.CloseFile(filePath)
 }
 
 func GetFileOpenCount(filePath string) (int64, error) {
-	return MetadataManagerInstance.GetFileOpenCount(filePath)
+	return metadataManagerInstance.GetFileOpenCount(filePath)
 }
 
 func UpdateHeartbeat(nodeId string, data []byte) error {
-	return MetadataManagerInstance.UpdateHeartbeat(nodeId, data)
+	return metadataManagerInstance.UpdateHeartbeat(nodeId, data)
 }
 
 func DeleteHeartbeat(nodeId string, data []byte) error {
-	return MetadataManagerInstance.DeleteHeartbeat(nodeId, data)
+	return metadataManagerInstance.DeleteHeartbeat(nodeId, data)
 }
 
 func GetHeartbeat(nodeId string) ([]byte, error) {
-	return MetadataManagerInstance.GetHeartbeat(nodeId)
+	return metadataManagerInstance.GetHeartbeat(nodeId)
 }
 
 func GetAllNodes() ([]string, error) {
-	return MetadataManagerInstance.GetAllNodes()
+	return metadataManagerInstance.GetAllNodes()
 }
 
 func CreateInitialClusterMap(clustermap []byte) error {
-	return MetadataManagerInstance.CreateInitialClusterMap(clustermap)
+	return metadataManagerInstance.CreateInitialClusterMap(clustermap)
 }
 
 func UpdateClusterMapStart(clustermap []byte, etag *azcore.ETag) error {
-	return MetadataManagerInstance.UpdateClusterMapStart(clustermap, etag)
+	return metadataManagerInstance.UpdateClusterMapStart(clustermap, etag)
 }
 
 func UpdateClusterMapEnd(clustermap []byte) error {
-	return MetadataManagerInstance.UpdateClusterMapEnd(clustermap)
+	return metadataManagerInstance.UpdateClusterMapEnd(clustermap)
 }
 
 func GetClusterMap() ([]byte, *azcore.ETag, error) {
-	return MetadataManagerInstance.GetClusterMap()
+	return metadataManagerInstance.GetClusterMap()
 }
 
 // CreateFileInit creates the initial metadata for a file
