@@ -46,15 +46,13 @@ import (
 
 type ClusterManagerImpl struct {
 	storageCallback dcache.StorageCallbacks
-	metaDataManager mm.MetadataManager
 	storagePath     string
 }
 
 // Start implements ClusterManager.
 func (cmi *ClusterManagerImpl) Start(dCacheConfig *dcache.DCacheConfig, rvs []dcache.RawVolume) error {
 	cmi.storagePath = "__CACHE__" + dCacheConfig.CacheId
-	cmi.metaDataManager, _ = mm.NewMetadataManager(cmi.storagePath)
-	err := cmi.createClusterMapIfRequired(dCacheConfig, rvs)
+	err := cmi.checkAndCreateInitialClusterMap(dCacheConfig, rvs)
 	if err != nil {
 		return err
 	}
@@ -128,13 +126,13 @@ func (c *ClusterManagerImpl) ReportRVFull(rvName string) error {
 	return nil
 }
 
-func (cmi *ClusterManagerImpl) createClusterMapIfRequired(dCacheConfig *dcache.DCacheConfig, rvList []dcache.RawVolume) error {
+func (cmi *ClusterManagerImpl) checkAndCreateInitialClusterMap(dCacheConfig *dcache.DCacheConfig, rvList []dcache.RawVolume) error {
 	isClusterMapExists, err := cmi.checkIfClusterMapExists(dCacheConfig.CacheId)
 	if err != nil {
-		log.Err("ClusterManagerImpl::createClusterMapIfRequired: Failed to check clusterMap file presence in Storage path %s error: %v", cmi.storagePath+"/ClusterMap.json", err)
+		log.Err("ClusterManagerImpl::checkAndCreateInitialClusterMap: Failed to check clusterMap file presence in Storage path %s error: %v", cmi.storagePath+"/ClusterMap.json", err)
 	}
 	if isClusterMapExists {
-		log.Trace("ClusterManager::createClusterMapIfRequired : ClusterMap.json already exists")
+		log.Trace("ClusterManager::checkAndCreateInitialClusterMap : ClusterMap.json already exists")
 		return nil
 	}
 	currentTime := time.Now().Unix()
@@ -151,15 +149,15 @@ func (cmi *ClusterManagerImpl) createClusterMapIfRequired(dCacheConfig *dcache.D
 	}
 	clusterMapBytes, err := json.Marshal(clusterMap)
 	if err != nil {
-		log.Err("ClusterManager::createClusterMapIfRequired : Cluster Map Marshalling fail : %v, err %v", clusterMapBytes, err)
+		log.Err("ClusterManager::checkAndCreateInitialClusterMap : Cluster Map Marshalling fail : %+v, err %v", clusterMap, err)
 		return err
 	}
-	cmi.metaDataManager.CreateInitialClusterMap(clusterMapBytes)
+	mm.MetadataManagerInstance.CreateInitialClusterMap(clusterMapBytes)
 	return nil
 }
 
 func (cmi *ClusterManagerImpl) checkIfClusterMapExists(cacheId string) (bool, error) {
-	_, _, err := cmi.metaDataManager.GetClusterMap()
+	_, _, err := mm.MetadataManagerInstance.GetClusterMap()
 	if err != nil {
 		if os.IsNotExist(err) || err == syscall.ENOENT {
 			return false, nil
