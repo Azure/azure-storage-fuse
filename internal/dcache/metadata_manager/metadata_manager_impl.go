@@ -34,8 +34,16 @@
 package metadata_manager
 
 import (
+	"sync"
+
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
+)
+
+var (
+	// MetadataManagerInstance is the singleton instance of BlobMetadataManager
+	MetadataManagerInstance *BlobMetadataManager
+	once                    sync.Once
 )
 
 // BlobMetadataManager is the implementation of MetadataManager interface
@@ -43,11 +51,75 @@ type BlobMetadataManager struct {
 	cacheDir string
 }
 
-// NewMetadataManager creates a new implementation of the MetadataManager interface
-func NewMetadataManager(cacheDir string) (MetadataManager, error) {
-	return &BlobMetadataManager{
-		cacheDir: cacheDir,
-	}, nil
+// init initializes the singleton instance of BlobMetadataManager
+func init() {
+	once.Do(func() {
+		MetadataManagerInstance = &BlobMetadataManager{
+			cacheDir: "/default/cache/dir", // Set a default cache directory
+		}
+	})
+}
+
+// Package-level functions that delegate to the singleton instance
+
+func CreateFileInit(filePath string, fileMetadata *dcache.FileMetadata) error {
+	return MetadataManagerInstance.CreateFileInit(filePath, fileMetadata)
+}
+
+func CreateFileFinalize(filePath string, fileMetadata *dcache.FileMetadata) error {
+	return MetadataManagerInstance.CreateFileFinalize(filePath, fileMetadata)
+}
+
+func GetFile(filePath string) (*dcache.FileMetadata, error) {
+	return MetadataManagerInstance.GetFile(filePath)
+}
+
+func DeleteFile(filePath string) error {
+	return MetadataManagerInstance.DeleteFile(filePath)
+}
+
+func OpenFile(filePath string) (int64, error) {
+	return MetadataManagerInstance.OpenFile(filePath)
+}
+
+func CloseFile(filePath string) (int64, error) {
+	return MetadataManagerInstance.CloseFile(filePath)
+}
+
+func GetFileOpenCount(filePath string) (int64, error) {
+	return MetadataManagerInstance.GetFileOpenCount(filePath)
+}
+
+func UpdateHeartbeat(nodeId string, data []byte) error {
+	return MetadataManagerInstance.UpdateHeartbeat(nodeId, data)
+}
+
+func DeleteHeartbeat(nodeId string, data []byte) error {
+	return MetadataManagerInstance.DeleteHeartbeat(nodeId, data)
+}
+
+func GetHeartbeat(nodeId string) ([]byte, error) {
+	return MetadataManagerInstance.GetHeartbeat(nodeId)
+}
+
+func GetAllNodes() ([]string, error) {
+	return MetadataManagerInstance.GetAllNodes()
+}
+
+func CreateInitialClusterMap(clustermap []byte) error {
+	return MetadataManagerInstance.CreateInitialClusterMap(clustermap)
+}
+
+func UpdateClusterMapStart(clustermap []byte, etag *azcore.ETag) error {
+	return MetadataManagerInstance.UpdateClusterMapStart(clustermap, etag)
+}
+
+func UpdateClusterMapEnd(clustermap []byte) error {
+	return MetadataManagerInstance.UpdateClusterMapEnd(clustermap)
+}
+
+func GetClusterMap() ([]byte, *azcore.ETag, error) {
+	return MetadataManagerInstance.GetClusterMap()
 }
 
 // CreateFileInit creates the initial metadata for a file
