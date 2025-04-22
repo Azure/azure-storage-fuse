@@ -34,8 +34,7 @@
 package clustermanager
 
 import (
-	"sync"
-
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 )
 
@@ -115,13 +114,13 @@ func (c *ClusterManagerImpl) ReportRVFull(rvName string) error {
 
 var (
 	// clusterManagerInstance is the singleton instance of the ClusterManagerImpl
-	clusterManagerInstance *ClusterManagerImpl
-	once                   sync.Once
+	clusterManagerInstance = ClusterManagerImpl{}
+	initCalled             = false
 )
 
 func Init(dCacheConfig *dcache.DCacheConfig, rvs []dcache.RawVolume) error {
-	once.Do(func() {
-		clusterManagerInstance = &ClusterManagerImpl{}
-	})
-	return clusterManagerInstance.start(dCacheConfig, rvs)
+	common.Assert(!initCalled, "Cluster Manager Init should only be called once")
+	initCalled = true
+	err := clusterManagerInstance.start(dCacheConfig, rvs)
+	return err
 }

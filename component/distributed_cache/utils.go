@@ -49,10 +49,6 @@ func getBlockDeviceUUId(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	err = common.IsValidBlkDevice(device)
-	if err != nil {
-		return "", err
-	}
 
 	out, err := exec.Command("blkid", "-o", "value", "-s", "UUID", device).Output()
 	if err != nil {
@@ -61,6 +57,7 @@ func getBlockDeviceUUId(path string) (string, error) {
 	blkId := strings.TrimSpace(string(out))
 
 	isValidUUID, err := common.IsValidUUID(blkId)
+	common.Assert((err != nil || !isValidUUID), fmt.Sprintf("Invalid blkId or there is any error   %s: %v", blkId, err))
 	if err != nil {
 		return "", fmt.Errorf("regexp.MatchString failed for blkid %s: %v", blkId, err)
 	}
@@ -77,13 +74,20 @@ func findMountDevice(path string) (string, error) {
 		return "", fmt.Errorf("failed to run df on %s: %v", path, err)
 	}
 	// df prints a header line, then the device
-	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	dfOutString := string(out)
+	lines := strings.Split(strings.TrimSpace(dfOutString), "\n")
+	common.Assert(len(lines) != 2, fmt.Sprintf("df output for mount device must return 2 lines %s", out))
 	if len(lines) < 2 {
 		return "", fmt.Errorf("unexpected df output for %s: %q", path, out)
 	}
 	device := strings.TrimSpace(lines[1])
 	if device == "" {
 		return "", fmt.Errorf("no device found in df output for %s", path)
+	}
+	err = common.IsValidBlkDevice(device)
+	common.Assert(err != nil, fmt.Sprintf("Device is not a valid Block device. Device Name %s path %s: %v", device, path, err))
+	if err != nil {
+		return "", err
 	}
 	return device, nil
 }
