@@ -1,4 +1,8 @@
-## 2.4.2 (Unreleased)
+## 2.5.0~preview.1 (Unreleased)
+**Features**
+- Preload feature added to download entire dataset on mount, to accelerate model training.
+
+## 2.4.2 (2025-04-08)
 **Bug Fixes**
 - [#1630](https://github.com/Azure/azure-storage-fuse/issues/1426) Added support to mount special containers in `mount all` command.
 - [#1647](https://github.com/Azure/azure-storage-fuse/issues/1647) Provide detailed error when authentication fails.

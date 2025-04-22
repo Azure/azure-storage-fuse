@@ -31,17 +31,27 @@
    SOFTWARE
 */
 
-package cmd
+package common
 
 import (
-	_ "github.com/Azure/azure-storage-fuse/v2/component/attr_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/azstorage"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/block_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/custom"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/distributed_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/entry_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/file_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/libfuse"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/loopback"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/xload"
+	"net"
+	"regexp"
 )
+
+// isValidGUID returns true if the string is a valid guid in the 8-4-4-4-12 format.
+func IsValidGUID(guid string) (bool, error) {
+	valid, err := regexp.MatchString(
+		"^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$", guid)
+	if err != nil {
+		return false, err
+	}
+	return valid, nil
+}
+
+func IsValidSpace(byte int) bool {
+	return byte < 0
+}
+
+func IsValidIP(ipAddress string) bool {
+	return net.ParseIP(ipAddress) != nil
+}
