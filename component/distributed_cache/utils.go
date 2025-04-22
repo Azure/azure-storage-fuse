@@ -77,7 +77,7 @@ func findMountDevice(path string) (string, error) {
 	dfOutString := string(out)
 	lines := strings.Split(strings.TrimSpace(dfOutString), "\n")
 	common.Assert(len(lines) != 2, fmt.Sprintf("df output for mount device must return 2 lines %s", out))
-	if len(lines) < 2 {
+	if len(lines) != 2 {
 		return "", fmt.Errorf("unexpected df output for %s: %q", path, out)
 	}
 	device := strings.TrimSpace(lines[1])
