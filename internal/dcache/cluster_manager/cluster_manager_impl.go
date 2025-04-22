@@ -291,7 +291,7 @@ func (cmi *ClusterManagerImpl) punchHeartBeat(rvList []dcache.RawVolume) {
 	// Marshal the data into JSON
 	data, err := json.MarshalIndent(hbData, "", "  ")
 	//Adding Assert because error capturing can just log the error and continue because it's a schedule method
-	common.Assert(err != nil, "Error marshalling heartbeat data %+v : error- %+v", hbData, err)
+	common.Assert(err != nil, "Error marshalling heartbeat data %+v : error - %v", hbData, err)
 
 	// Create and update heartbeat file in storage with <nodeId>.hb
 	err = mm.UpdateHeartbeat(cmi.nodeId, data)
