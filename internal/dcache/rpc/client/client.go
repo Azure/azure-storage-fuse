@@ -37,7 +37,7 @@ import (
 	"crypto/tls"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	"github.com/Azure/azure-storage-fuse/v2/internal/dcache_lib/rpc/gen-go/dcache/service"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/service"
 	"github.com/apache/thrift/lib/go/thrift"
 )
 

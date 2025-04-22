@@ -37,8 +37,8 @@ import (
 	"context"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
-	"github.com/Azure/azure-storage-fuse/v2/internal/dcache_lib/rpc/gen-go/dcache/models"
-	"github.com/Azure/azure-storage-fuse/v2/internal/dcache_lib/rpc/gen-go/dcache/service"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/service"
 )
 
 // type check to ensure that ChunkServiceHandler implements dcache.ChunkService interface
