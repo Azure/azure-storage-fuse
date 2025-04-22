@@ -35,8 +35,10 @@ package metadata_manager
 
 import (
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
@@ -47,75 +49,147 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 )
 
+var (
+	// MetadataManagerInstance is the singleton instance of BlobMetadataManager
+	metadataManagerInstance *BlobMetadataManager
+	once                    sync.Once
+)
+
 // BlobMetadataManager is the implementation of MetadataManager interface
 type BlobMetadataManager struct {
-	cacheDir         string
-	storageCallbacks dcache.StorageCallbacks
+	mdRoot          string
+	storageCallback dcache.StorageCallbacks
 }
 
-// NewMetadataManager creates a new implementation of the MetadataManager interface
-func NewMetadataManager(cacheDir string) (*BlobMetadataManager, error) {
-	return &BlobMetadataManager{
-		cacheDir: cacheDir,
-	}, nil
+// init initializes the singleton instance of BlobMetadataManager
+func Init(storageCallback dcache.StorageCallbacks, cacheId string) {
+	once.Do(func() {
+		metadataManagerInstance = &BlobMetadataManager{
+			mdRoot:          "__CACHE__" + cacheId, // Set a default cache directory
+			storageCallback: storageCallback,       // Initialize storage callback
+		}
+	})
+}
+
+// Package-level functions that delegate to the singleton instance
+
+func GetMdRoot() string {
+	return metadataManagerInstance.mdRoot
+}
+
+func CreateFileInit(filePath string, fileMetadata []byte) error {
+	return metadataManagerInstance.createFileInit(filePath, fileMetadata)
+}
+
+func CreateFileFinalize(filePath string, fileMetadata []byte) error {
+	return metadataManagerInstance.createFileFinalize(filePath, fileMetadata)
+}
+
+func GetFile(filePath string) (*dcache.FileMetadata, error) {
+	return metadataManagerInstance.getFile(filePath)
+}
+
+func DeleteFile(filePath string) error {
+	return metadataManagerInstance.deleteFile(filePath)
+}
+
+func OpenFile(filePath string) (int64, error) {
+	return metadataManagerInstance.openFile(filePath)
+}
+
+func CloseFile(filePath string) (int64, error) {
+	return metadataManagerInstance.closeFile(filePath)
+}
+
+func GetFileOpenCount(filePath string) (int64, error) {
+	return metadataManagerInstance.getFileOpenCount(filePath)
+}
+
+func UpdateHeartbeat(nodeId string, data []byte) error {
+	return metadataManagerInstance.updateHeartbeat(nodeId, data)
+}
+
+func DeleteHeartbeat(nodeId string, data []byte) error {
+	return metadataManagerInstance.deleteHeartbeat(nodeId, data)
+}
+
+func GetHeartbeat(nodeId string) ([]byte, error) {
+	return metadataManagerInstance.getHeartbeat(nodeId)
+}
+
+func GetAllNodes() ([]string, error) {
+	return metadataManagerInstance.getAllNodes()
+}
+
+func CreateInitialClusterMap(clustermap []byte) error {
+	return metadataManagerInstance.createInitialClusterMap(clustermap)
+}
+
+func UpdateClusterMapStart(clustermap []byte, etag *azcore.ETag) error {
+	return metadataManagerInstance.updateClusterMapStart(clustermap, etag)
+}
+
+func UpdateClusterMapEnd(clustermap []byte) error {
+	return metadataManagerInstance.updateClusterMapEnd(clustermap)
+}
+
+func GetClusterMap() ([]byte, *azcore.ETag, error) {
+	return metadataManagerInstance.getClusterMap()
 }
 
 // CreateFileInit creates the initial metadata for a file
-func (m *BlobMetadataManager) CreateFileInit(filePath string, fileMetadata *dcache.FileMetadata) error {
-	// Convert the metadata to JSON
-	jsonData, err := json.MarshalIndent(fileMetadata, "", "  ")
-	if err != nil {
-		log.Debug("CreateFileInit :: Failed to marshal metadata to JSON: %v", err)
-		return err
-	}
+// TODO :: Return etag value to use for CreateFileFinalize
+// Can help ensure cases where the initial node went down before finalizing and tried to finalize later
+func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byte) error {
+	path := filepath.Join(m.mdRoot, "Objects", filePath)
 	// Store the open-count in the metadata blob property
 	openCount := "0"
 	metadata := map[string]*string{
 		"opencount": &openCount,
 	}
 
-	err = m.storageCallbacks.PutBlobInStorage(internal.WriteFromBufferOptions{
-		Name:                   filepath.Join(m.cacheDir, "Objects", filePath),
+	err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
+		Name:                   path,
 		Metadata:               metadata,
-		Data:                   jsonData,
+		Data:                   fileMetadata,
 		IsNoneMatchEtagEnabled: true,
 		EtagMatchConditions:    "",
 	})
 	if err != nil {
-		log.Debug("CreateFileInit :: Failed to put blob in storage: %v", err)
+		if bloberror.HasCode(err, bloberror.ConditionNotMet) {
+			log.Warn("CreateFileInit :: PutBlobInStorage for %s failed due to ETag mismatch", path)
+			return nil
+		}
+		log.Debug("CreateFileInit :: Failed to put blob %s in storage: %v", path, err)
 	}
 	return err
 }
 
 // CreateFileFinalize finalizes the metadata for a file
-func (m *BlobMetadataManager) CreateFileFinalize(filePath string, fileMetadata *dcache.FileMetadata) error {
-	// Convert the metadata to JSON
-	jsonData, err := json.MarshalIndent(fileMetadata, "", "  ")
-	if err != nil {
-		log.Debug("CreateFileFinalize :: Failed to marshal metadata to JSON: %v", err)
-		return err
-	}
-	// TODO :: check metadata is not overwritten byt this
-	err = m.storageCallbacks.PutBlobInStorage(internal.WriteFromBufferOptions{
-		Name:                   filepath.Join(m.cacheDir, "Objects", filePath),
-		Data:                   jsonData,
+func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata []byte) error {
+	path := filepath.Join(m.mdRoot, "Objects", filePath)
+	// TODO :: check metadata property is not overwritten by this
+	err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
+		Name:                   path,
+		Data:                   fileMetadata,
 		IsNoneMatchEtagEnabled: false,
 		EtagMatchConditions:    "",
 	})
 	if err != nil {
-		log.Debug("CreateFileFinalize :: Failed to put blob in storage: %v", err)
+		log.Debug("CreateFileFinalize :: Failed to put blob %s in storage: %v", path, err)
 	}
 	return err
 }
 
 // GetFile reads and returns the content of metadata for a file
-func (m *BlobMetadataManager) GetFile(filePath string) (*dcache.FileMetadata, error) {
+func (m *BlobMetadataManager) getFile(filePath string) (*dcache.FileMetadata, error) {
+	path := filepath.Join(m.mdRoot, "Objects", filePath)
 	// Get the metadata content from storage
-	data, err := m.storageCallbacks.GetBlobFromStorage(internal.ReadFileWithNameOptions{
-		Path: filepath.Join(m.cacheDir, "Objects", filePath),
+	data, err := m.storageCallback.GetBlobFromStorage(internal.ReadFileWithNameOptions{
+		Path: path,
 	})
 	if err != nil {
-		log.Debug("GetFile :: Failed to get metadata file content: %v", err)
+		log.Debug("GetFile :: Failed to get metadata file content for file %s : %v", path, err)
 		return nil, err
 	}
 	// Unmarshal the JSON data into the Metadata struct
@@ -130,13 +204,14 @@ func (m *BlobMetadataManager) GetFile(filePath string) (*dcache.FileMetadata, er
 }
 
 // DeleteFile removes metadata for a file
-func (m *BlobMetadataManager) DeleteFile(filePath string) error {
-	err := m.storageCallbacks.DeleteBlobInStorage(internal.DeleteFileOptions{
-		Name: filepath.Join(m.cacheDir, "Objects", filePath),
+func (m *BlobMetadataManager) deleteFile(filePath string) error {
+	path := filepath.Join(m.mdRoot, "Objects", filePath)
+	err := m.storageCallback.DeleteBlobInStorage(internal.DeleteFileOptions{
+		Name: path,
 	})
 	if err != nil {
 		if bloberror.HasCode(err, bloberror.BlobNotFound) {
-			log.Warn("DeleteFile :: DeleteBlobInStorage failed since blob is already deleted")
+			log.Warn("DeleteFile :: DeleteBlobInStorage failed since blob %s is already deleted", path)
 			return nil
 		}
 	}
@@ -144,80 +219,93 @@ func (m *BlobMetadataManager) DeleteFile(filePath string) error {
 }
 
 // OpenFile increments the open count for a file and returns the updated count
-func (m *BlobMetadataManager) OpenFile(filePath string) (int64, error) {
-	count, err := m.updateHandleCount(filePath, true)
+func (m *BlobMetadataManager) openFile(filePath string) (int64, error) {
+	path := filepath.Join(m.mdRoot, "Objects", filePath)
+	count, err := m.updateHandleCount(path, true)
 	if err != nil {
-		log.Debug("OpenFile :: Failed to update file open count: %v", err)
+		log.Debug("OpenFile :: Failed to update file open count for path %s : %v", path, err)
 		return -1, err
 	}
 	return count, nil
 }
 
 // CloseFile decrements the open count for a file and returns the updated count
-func (m *BlobMetadataManager) CloseFile(filePath string) (int64, error) {
-	count, err := m.updateHandleCount(filePath, false)
+func (m *BlobMetadataManager) closeFile(filePath string) (int64, error) {
+	path := filepath.Join(m.mdRoot, "Objects", filePath)
+	count, err := m.updateHandleCount(path, false)
 	if err != nil {
-		log.Debug("CloseFile :: Failed to update file close count: %v", err)
+		log.Debug("CloseFile :: Failed to update file open count for file %s : %v", path, err)
 		return -1, err
 	}
 	return count, nil
 }
 
-func (m *BlobMetadataManager) updateHandleCount(filePath string, increment bool) (int64, error) {
-	const maxBackoff = 30           // Maximum backoff time in seconds
-	backoff := 1 * time.Millisecond // Initial backoff time in milliseconds
+func (m *BlobMetadataManager) updateHandleCount(path string, increment bool) (int64, error) {
+	const maxBackoff = 1 * time.Second // Maximum backoff time in seconds
+	backoff := 1 * time.Millisecond    // Initial backoff time in milliseconds
 	var openCount int
+	retryTime := time.Now()
 	for {
 		// Get the current handle count
-		attr, err := m.storageCallbacks.GetPropertiesFromStorage(internal.GetAttrOptions{
-			Name: filepath.Join(m.cacheDir, "Objects", filePath),
+		attr, err := m.storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{
+			Name: path,
 		})
 		if err != nil {
-			log.Debug("updateHandleCount :: Failed to get handle count: %v", err)
+			log.Debug("updateHandleCount :: Failed to get handle count for %s : %v", path, err)
 			return -1, err
 		}
 
-		if attr.Metadata["opencount"] != nil {
-			openCount, err = strconv.Atoi(*attr.Metadata["opencount"])
-			if err != nil {
-				log.Debug("GetFileOpenCount :: Failed to parse handle count: %v", err)
-				return -1, err
-			}
-			if increment {
-				openCount++
-			} else {
-				openCount--
-			}
-			if openCount < 0 {
-				openCount = 0
-			}
-			openCountStr := strconv.Itoa(openCount)
-			attr.Metadata["opencount"] = &openCountStr
+		// We never create file metadata blob w/o opencount property set.
+		if attr.Metadata["opencount"] == nil {
+			log.Debug("updateHandleCount :: File metadata blob found w/o opencount property: %s", path)
+			return -1, fmt.Errorf("Opencount property not found in metadata for path %s. Issue needs to be debugged.", path)
 		}
+		openCount, err = strconv.Atoi(*attr.Metadata["opencount"])
+		if err != nil {
+			log.Debug("GetFileOpenCount :: Failed to parse handle count for path %s : %v", path, err)
+			return -1, err
+		}
+		if increment {
+			openCount++
+		} else {
+			openCount--
+		}
+		if openCount < 0 {
+			log.Debug("updateHandleCount :: Handle count is negative for path %s : %d", path, openCount)
+			return -1, fmt.Errorf("Handle count is negative for path %s : %d", path, openCount)
+		}
+		openCountStr := strconv.Itoa(openCount)
+		attr.Metadata["opencount"] = &openCountStr
 
 		// Set the new metadata in storage
-		err = m.storageCallbacks.SetMetaPropertiesInStorage(internal.SetMetadataOptions{
-			Path:      filepath.Join(m.cacheDir, filePath),
+		err = m.storageCallback.SetMetaPropertiesInStorage(internal.SetMetadataOptions{
+			Path:      filepath.Join(m.mdRoot, path),
 			Metadata:  attr.Metadata,
 			Etag:      to.Ptr(azcore.ETag(attr.ETag)),
 			Overwrite: true,
 		})
 		if err != nil {
 			if bloberror.HasCode(err, bloberror.ConditionNotMet) {
-				log.Warn("updateHandleCount :: SetPropertiesInStorage failed due to ETag mismatch, retrying...")
+				log.Warn("updateHandleCount :: SetPropertiesInStorage failed for path %s due to ETag mismatch, retrying...", path)
 
 				// Apply exponential backoff
 				log.Debug("updateHandleCount :: Retrying in %d milliseconds...", backoff)
-				time.Sleep(time.Duration(backoff) * time.Millisecond)
+				time.Sleep(backoff)
 
 				// Double the backoff time, but cap it at maxBackoff
 				backoff *= 2
 				if backoff > maxBackoff {
 					backoff = maxBackoff
 				}
+
+				// Check if retrying has exceeded a minute
+				if time.Since(retryTime) >= time.Minute {
+					log.Warn("updateHandleCount :: Retrying exceeded one minute for path %s, exiting...", path)
+					return -1, fmt.Errorf("Retrying exceeded one minute for path %s", path)
+				}
 				continue
 			} else {
-				log.Debug("updateHandleCount :: Failed to update metadata property: %v", err)
+				log.Debug("updateHandleCount :: Failed to update metadata property for path %s : %v", path, err)
 				return -1, err
 			}
 		} else {
@@ -228,33 +316,35 @@ func (m *BlobMetadataManager) updateHandleCount(filePath string, increment bool)
 }
 
 // GetFileOpenCount returns the current open count for a file
-func (m *BlobMetadataManager) GetFileOpenCount(filePath string) (int64, error) {
-	prop, err := m.storageCallbacks.GetPropertiesFromStorage(internal.GetAttrOptions{
-		Name: filepath.Join(m.cacheDir, "Objects", filePath),
+func (m *BlobMetadataManager) getFileOpenCount(filePath string) (int64, error) {
+	path := filepath.Join(m.mdRoot, "Objects", filePath)
+	prop, err := m.storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{
+		Name: path,
 	})
 	if err != nil {
-		log.Debug("GetFileOpenCount :: Failed to get handle count: %v", err)
+		log.Debug("GetFileOpenCount :: Failed to get handle count for path %s : %v", path, err)
 		return -1, err
 	}
 	openCount, ok := prop.Metadata["opencount"]
 	if !ok {
-		log.Debug("GetFileOpenCount :: openCount not found in metadata")
+		log.Debug("GetFileOpenCount :: openCount not found in metadata for path %s : Error %v", path, err)
+		// TODO :: Add asserts
 		return -1, err
 	}
 	count, err := strconv.ParseInt(*openCount, 10, 64)
 	if err != nil {
-		log.Debug("GetFileOpenCount :: Failed to parse handle count: %v", err)
+		log.Debug("GetFileOpenCount :: Failed to parse handle count for path %s : %v", path, err)
 		return -1, err
 	}
 	if count < 0 {
-		log.Warn("GetHandleCount :: Handle count is negative")
+		log.Warn("GetHandleCount :: Handle count is negative for path %s : %d", path, count)
 	}
 
 	return count, nil
 }
 
 // UpdateHeartbeat creates or updates the heartbeat file
-func (m *BlobMetadataManager) UpdateHeartbeat(nodeId string, data []byte) error {
+func (m *BlobMetadataManager) updateHeartbeat(nodeId string, data []byte) error {
 	// Create the heartbeat file path
 	heartbeatFilePath := filepath.Join(m.cacheDir, "Nodes", nodeId+".hb")
 	err := m.storageCallbacks.PutBlobInStorage(internal.WriteFromBufferOptions{
@@ -270,7 +360,7 @@ func (m *BlobMetadataManager) UpdateHeartbeat(nodeId string, data []byte) error 
 }
 
 // DeleteHeartbeat deletes the heartbeat file
-func (m *BlobMetadataManager) DeleteHeartbeat(nodeId string) error {
+func (m *BlobMetadataManager) deleteHeartbeat(nodeId string) error {
 	// Create the heartbeat file path
 	heartbeatFilePath := filepath.Join(m.cacheDir, "Nodes", nodeId+".hb")
 	err := m.storageCallbacks.DeleteBlobInStorage(internal.DeleteFileOptions{
@@ -285,7 +375,7 @@ func (m *BlobMetadataManager) DeleteHeartbeat(nodeId string) error {
 }
 
 // GetHeartbeat reads and returns the content of the heartbeat file
-func (m *BlobMetadataManager) GetHeartbeat(nodeId string) ([]byte, error) {
+func (m *BlobMetadataManager) getHeartbeat(nodeId string) ([]byte, error) {
 	// Create the heartbeat file path
 	heartbeatFilePath := filepath.Join(m.cacheDir, "Nodes", nodeId+".hb")
 	// Get the heartbeat content from storage
@@ -300,7 +390,7 @@ func (m *BlobMetadataManager) GetHeartbeat(nodeId string) ([]byte, error) {
 }
 
 // GetAllNodes enumerates and returns the list of all nodes with a heartbeat
-func (m *BlobMetadataManager) GetAllNodes() ([]string, error) {
+func (m *BlobMetadataManager) getAllNodes() ([]string, error) {
 	list, err := m.storageCallbacks.ListBlobs(internal.ReadDirOptions{
 		Name: filepath.Join(m.cacheDir, "Nodes"),
 	})
@@ -323,7 +413,7 @@ func (m *BlobMetadataManager) GetAllNodes() ([]string, error) {
 }
 
 // CreateInitialClusterMap creates the initial cluster map
-func (m *BlobMetadataManager) CreateInitialClusterMap(clustermap []byte) error {
+func (m *BlobMetadataManager) createInitialClusterMap(clustermap []byte) error {
 	// Create the clustermap file path
 	clustermapPath := filepath.Join(m.cacheDir, "clustermap.json")
 	err := m.storageCallbacks.PutBlobInStorage(internal.WriteFromBufferOptions{
@@ -339,7 +429,7 @@ func (m *BlobMetadataManager) CreateInitialClusterMap(clustermap []byte) error {
 }
 
 // UpdateClusterMapStart claims update ownership of the cluster map
-func (m *BlobMetadataManager) UpdateClusterMapStart(clustermap []byte, etag *string) error {
+func (m *BlobMetadataManager) updateClusterMapStart(clustermap []byte, etag *string) error {
 	err := m.storageCallbacks.PutBlobInStorage(internal.WriteFromBufferOptions{
 		Name:                   filepath.Join(m.cacheDir, "clustermap.json"),
 		Data:                   clustermap,
@@ -357,7 +447,7 @@ func (m *BlobMetadataManager) UpdateClusterMapStart(clustermap []byte, etag *str
 }
 
 // UpdateClusterMapEnd finalizes the cluster map update
-func (m *BlobMetadataManager) UpdateClusterMapEnd(clustermap []byte) error {
+func (m *BlobMetadataManager) updateClusterMapEnd(clustermap []byte) error {
 	err := m.storageCallbacks.PutBlobInStorage(internal.WriteFromBufferOptions{
 		Name:                   filepath.Join(m.cacheDir, "clustermap.json"),
 		Data:                   clustermap,
@@ -372,7 +462,7 @@ func (m *BlobMetadataManager) UpdateClusterMapEnd(clustermap []byte) error {
 }
 
 // GetClusterMap reads and returns the content of the cluster map
-func (m *BlobMetadataManager) GetClusterMap() ([]byte, *string, error) {
+func (m *BlobMetadataManager) getClusterMap() ([]byte, *string, error) {
 	attr, err := m.storageCallbacks.GetPropertiesFromStorage(internal.GetAttrOptions{
 		Name: filepath.Join(m.cacheDir, "clustermap.json"),
 	})
