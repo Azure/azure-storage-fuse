@@ -36,10 +36,14 @@ package distributed_cache
 import (
 	"context"
 	"fmt"
+	"path/filepath"
+	"strings"
+	"syscall"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
 
 /* NOTES:
@@ -81,16 +85,16 @@ const (
 // Verification to check satisfaction criteria with Component Interface
 var _ internal.Component = &DistributedCache{}
 
-func (distributedCache *DistributedCache) Name() string {
+func (dc *DistributedCache) Name() string {
 	return compName
 }
 
-func (distributedCache *DistributedCache) SetName(name string) {
-	distributedCache.BaseComponent.SetName(name)
+func (dc *DistributedCache) SetName(name string) {
+	dc.BaseComponent.SetName(name)
 }
 
-func (distributedCache *DistributedCache) SetNextComponent(nextComponent internal.Component) {
-	distributedCache.BaseComponent.SetNextComponent(nextComponent)
+func (dc *DistributedCache) SetNextComponent(nextComponent internal.Component) {
+	dc.BaseComponent.SetNextComponent(nextComponent)
 }
 
 // Start initializes the DistributedCache component without blocking the pipeline.
@@ -109,20 +113,119 @@ func (dc *DistributedCache) Stop() error {
 // Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
 //
 //	Return failure if any config is not valid to exit the process
-func (distributedCache *DistributedCache) Configure(_ bool) error {
-	log.Trace("DistributedCache::Configure : %s", distributedCache.Name())
+func (dc *DistributedCache) Configure(_ bool) error {
+	log.Trace("DistributedCache::Configure : %s", dc.Name())
 
 	conf := DistributedCacheOptions{}
-	err := config.UnmarshalKey(distributedCache.Name(), &conf)
+	err := config.UnmarshalKey(dc.Name(), &conf)
 	if err != nil {
 		log.Err("DistributedCache::Configure : config error [invalid config attributes]")
 		return fmt.Errorf("DistributedCache: config error [invalid config attributes]")
 	}
+	dc.cacheID = conf.CacheID
+	dc.cachePath = conf.CachePath
+	dc.maxCacheSize = conf.MaxCacheSize
+
 	return nil
 }
 
 // OnConfigChange : If component has registered, on config file change this method is called
-func (distributedCache *DistributedCache) OnConfigChange() {
+func (dc *DistributedCache) OnConfigChange() {
+}
+
+func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr, error) {
+	if strings.HasPrefix(options.Name, "__CACHE__") {
+		return nil, syscall.ENOENT
+	}
+
+	isAzurePath, isDcachePath, rawPath := getFS(options.Name)
+	if isMountPointRoot(rawPath) {
+		if isAzurePath {
+			return getPlaceholderDirForRoot("fs=azure"), nil
+		} else if isDcachePath {
+			return getPlaceholderDirForRoot("fs=dcache"), nil
+		}
+	}
+	if isAzurePath {
+		// properties should be fetched from Azure
+		log.Debug("DistributedCache::GetAttr : Path is having Azure subcomponent, path : %s", options.Name)
+	} else if isDcachePath {
+		// properties should be fetched from Dcache
+		log.Debug("DistributedCache::GetAttr : Path is having Dcache subcomponent, path : %s", options.Name)
+		// todo :: call GetMdRoot() from metadata manager
+		rawPath = filepath.Join("__CACHE__"+dc.cacheID, "Objects", rawPath)
+	} else {
+		// todo : assert rawPath==options.Name
+	}
+
+	attr, err := dc.NextComponent().GetAttr(internal.GetAttrOptions{Name: rawPath})
+	if err != nil {
+		return nil, err
+	}
+	// Modify the attr if it came from specific virtual component.
+	// todo : if the path is fs=dcache/*, then populate size, times from the fileLayout
+	if isAzurePath || isDcachePath {
+		attr.Path = options.Name
+		attr.Name = filepath.Base(options.Name)
+	}
+	return attr, nil
+}
+
+func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*internal.ObjAttr, string, error) {
+	isAzurePath, isDcachePath, rawPath := getFS(options.Name)
+	if isAzurePath {
+		// properties should be fetched from Azure
+		log.Debug("DistributedCache::StreamDir : Path is having Azure subcomponent, path : %s", options.Name)
+	} else if isDcachePath {
+		// properties should be fetched from Dcache
+		log.Debug("DistributedCache::StreamDir : Path is having Dcache subcomponent, path : %s", options.Name)
+		// todo :: call GetMdRoot() from metadata manager
+		rawPath = filepath.Join("__CACHE__"+dc.cacheID, "Objects", rawPath)
+	} else {
+		// properties should be fetched from Azure
+		// todo : assert rawPath==options.Name
+
+	}
+	options.Name = rawPath
+	dirList, token, err := dc.NextComponent().StreamDir(options)
+	if err != nil {
+		return dirList, token, err
+	}
+	// todo : parse the attributes of the file like size,etc.. from the file layout.
+	// If the attributes come for the dcache virtual component.
+	if isMountPointRoot(rawPath) {
+		// todo : Show cache metadata when debug is enabled.
+		dirList = hideCacheMetadata(dirList)
+	}
+	return dirList, token, nil
+}
+
+func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
+	return nil, syscall.ENOTSUP
+}
+
+func (dc *DistributedCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
+	return 0, syscall.ENOTSUP
+}
+
+func (dc *DistributedCache) WriteFile(options internal.WriteFileOptions) (int, error) {
+	return 0, syscall.ENOTSUP
+}
+
+func (dc *DistributedCache) FlushFile(options internal.FlushFileOptions) error {
+	return syscall.ENOTSUP
+}
+
+func (dc *DistributedCache) CloseFile(options internal.CloseFileOptions) error {
+	return syscall.ENOTSUP
+}
+
+func (dc *DistributedCache) DeleteFile(options internal.DeleteFileOptions) error {
+	return syscall.ENOTSUP
+}
+
+func (dc *DistributedCache) RenameFile(options internal.RenameFileOptions) error {
+	return syscall.ENOTSUP
 }
 
 // ------------------------- Factory -------------------------------------------
