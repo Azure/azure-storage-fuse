@@ -648,8 +648,12 @@ func (h *ChunkServiceHandler) LeaveMV(ctx context.Context, req *models.LeaveMVRe
 		return nil, rpc.NewResponseError(rpc.InvalidRequest, fmt.Sprintf("peer RVs %v are invalid for MV %s", req.PeerRV, req.MV))
 	}
 
-	// create the MV directory
+	// delete the MV directory
 	mvPath := filepath.Join(cacheDir, req.MV)
+	flock := h.locks.Get(mvPath) // TODO: check if lock is needed in directory deletion
+	flock.Lock()
+	defer flock.Unlock()
+
 	err = os.RemoveAll(mvPath)
 	if err != nil {
 		log.Err("ChunkServiceHandler::LeaveMV: Failed to remove MV directory %s [%v]", mvPath, err.Error())
@@ -787,6 +791,8 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 		log.Err("ChunkServiceHandler::EndSync: Failed to move chunks from sync folder %s to regular MV folder %s [%v]", syncMvPath, regMVPath, err.Error())
 		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to move chunks from sync folder %s to regular MV folder %s [%v]", syncMvPath, regMVPath, err.Error()))
 	}
+
+	// TODO: should we also remove the sync folder
 
 	return &models.EndSyncResponse{}, nil
 }
