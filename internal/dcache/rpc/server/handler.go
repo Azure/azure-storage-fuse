@@ -57,25 +57,24 @@ var _ service.ChunkService = &ChunkServiceHandler{}
 // ChunkServiceHandler struct implements the ChunkService interface
 type ChunkServiceHandler struct {
 	locks   *common.LockMap
-	fsIDMap map[string]*RVInfo // map to store the fsID to RVInfo mapping
-	// more fields can be added here as needed
+	fsIDMap map[string]*rvInfo // map to store the fsID to rvInfo mapping
 }
 
-type RVInfo struct {
+type rvInfo struct {
 	rvID     string       // rv0, rv1, etc.
 	cacheDir string       // cache dir path for this RV
-	mvMap    sync.Map     // sync map of MV id against MVInfo
+	mvMap    sync.Map     // sync map of MV id against mvInfo
 	mvCount  atomic.Int64 // count of MVs for this RV, this should be updated whenever a MV is added or removed from the sync map
 }
 
-type MVInfo struct {
-	SyncInfo              // sync info for this MV
-	peerRVs  []string     // sorted list of peer RVs for this MV
-	chunkOps atomic.Int64 // count of chunk operations (get, put or remove) for this MV in the given RV
-	blockOps atomic.Bool  // block chunk operations for this MV in the given RV. This is done when the .sync dir contents are being moved to the regular MV dir
+type mvInfo struct {
+	syncInfo                  // sync info for this MV
+	peerRVs      []string     // sorted list of peer RVs for this MV
+	chunkOpsCnt  atomic.Int64 // count of chunk operations (get, put or remove) for this MV in the given RV
+	blockOpsFlag atomic.Bool  // block chunk operations for this MV in the given RV. This is done when the .sync dir contents are being moved to the regular MV dir
 }
 
-type SyncInfo struct {
+type syncInfo struct {
 	mu        sync.Mutex
 	isSyncing bool   // is the MV in syncing state
 	syncID    string // sync ID for this MV if it in syncing state
@@ -89,7 +88,7 @@ type SyncInfo struct {
 func NewChunkServiceHandler() *ChunkServiceHandler {
 	// TODO: get fsID, rvID and cache dir path for different RVs for the node from cluster manager
 	// below will be call to cluster manager to get the information
-	fsIDMap := make(map[string]*RVInfo)
+	fsIDMap := make(map[string]*rvInfo)
 
 	return &ChunkServiceHandler{
 		locks:   common.NewLockMap(),
@@ -98,41 +97,47 @@ func NewChunkServiceHandler() *ChunkServiceHandler {
 }
 
 // check if the given mv is valid
-func (rv *RVInfo) isMvValid(mvPath string) error {
+func (rv *rvInfo) isMvValid(mvPath string) error {
 	if !common.DirectoryExists(mvPath) {
 		return fmt.Errorf("MV path %s does not exist", mvPath)
 	}
 
 	mvID := filepath.Base(mvPath)
-	val, ok := rv.mvMap.Load(mvID)
-	mvInfo := val.(*MVInfo)
-	if !ok || mvInfo == nil {
-		return fmt.Errorf("MV %s is invalid", mvID)
-	}
-
-	return nil
+	_, err := rv.getMVInfo(mvID)
+	return err
 }
 
-func (rv *RVInfo) getPeerRVs(mvID string) []string {
-	val, ok := rv.mvMap.Load(mvID)
-	mvInfo := val.(*MVInfo)
-	if !ok || mvInfo == nil {
+func (rv *rvInfo) getPeerRVForMV(mvID string) []string {
+	mvInfo, err := rv.getMVInfo(mvID)
+	if err != nil {
+		log.Warn("ChunkServiceHandler::getPeerRVForMV: Failed to get MV %s info for %s [%v]", mvID, rv.rvID, err.Error())
 		return nil
 	}
+
 	return mvInfo.peerRVs
 }
 
-func (rv *RVInfo) addToMVMap(mvID string, val *MVInfo) {
+// getMVInfo returns the mvInfo for the given mvID
+func (rv *rvInfo) getMVInfo(mvID string) (*mvInfo, error) {
+	val, ok := rv.mvMap.Load(mvID)
+	mvInfo := val.(*mvInfo)
+	if !ok || mvInfo == nil {
+		return nil, fmt.Errorf("MV %s is invalid for RV %s", mvID, rv.rvID)
+	}
+	return mvInfo, nil
+}
+
+func (rv *rvInfo) addToMVMap(mvID string, val *mvInfo) {
 	rv.mvMap.Store(mvID, val)
 	rv.mvCount.Add(1)
 }
 
-func (rv *RVInfo) deleteFromMVMap(mvID string) {
+func (rv *rvInfo) deleteFromMVMap(mvID string) {
 	rv.mvMap.Delete(mvID)
 	rv.mvCount.Add(-1)
 }
 
-func (mv *MVInfo) updateSyncState(isSyncing bool, syncID string, sourceRV string) error {
+func (mv *mvInfo) updateSyncState(isSyncing bool, syncID string, sourceRV string) error {
 	mv.mu.Lock()
 	defer mv.mu.Unlock()
 
@@ -143,7 +148,7 @@ func (mv *MVInfo) updateSyncState(isSyncing bool, syncID string, sourceRV string
 			mv.syncID = syncID
 			mv.sourceRV = sourceRV
 		} else {
-			return fmt.Errorf("MV is already in syncing state with sync id %s", mv.syncID)
+			return fmt.Errorf("MV is already in syncing state with sync id %s and source RV %s", mv.syncID, mv.sourceRV)
 		}
 	}
 
@@ -155,9 +160,9 @@ func (mv *MVInfo) updateSyncState(isSyncing bool, syncID string, sourceRV string
 }
 
 // block new chunk operations for this MV till the sync is in progress
-func (mv *MVInfo) blockChunkOps() {
+func (mv *mvInfo) blockChunkOps() {
 	for {
-		if mv.blockOps.Load() {
+		if mv.blockOpsFlag.Load() {
 			time.Sleep(100 * time.Microsecond) // TODO: check if this is optimal
 		} else {
 			break
@@ -166,14 +171,32 @@ func (mv *MVInfo) blockChunkOps() {
 }
 
 // block the sync operation for this MV till the ongoing chunk operations are completed
-func (mv *MVInfo) blockSyncOp() {
+func (mv *mvInfo) blockSyncOps() {
 	for {
-		if mv.chunkOps.Load() > 0 {
+		if mv.chunkOpsCnt.Load() > 0 {
 			time.Sleep(100 * time.Microsecond) // TODO: check if this is optimal
 		} else {
 			break
 		}
 	}
+}
+
+// increment the chunk operation (get, put or remove) count for this MV
+func (mv *mvInfo) incrementChunkOps() {
+	mv.chunkOpsCnt.Add(1)
+}
+
+// ddecrement the chunk operation (get, put or remove) count for this MV
+func (mv *mvInfo) decrementChunkOps() {
+	mv.chunkOpsCnt.Add(-1)
+}
+
+func (mv *mvInfo) enableBlockChunkOps() {
+	mv.blockOpsFlag.Store(true)
+}
+
+func (mv *mvInfo) disableBlockChunkOps() {
+	mv.blockOpsFlag.Store(false)
 }
 
 // TODO: sample method, will be later removed after integrating with cluster manager
@@ -222,8 +245,8 @@ func (h *ChunkServiceHandler) checkValidChunkAddress(address *models.Address) er
 }
 
 // get the RVInfo from the rv id
-func (h *ChunkServiceHandler) getRVInfoFromRvID(rvID string) *RVInfo {
-	var rvInfo *RVInfo
+func (h *ChunkServiceHandler) getRVInfoFromRvID(rvID string) *rvInfo {
+	var rvInfo *rvInfo
 	for _, info := range h.fsIDMap {
 		if info == nil {
 			continue
@@ -277,14 +300,6 @@ func (h *ChunkServiceHandler) Hello(ctx context.Context, req *models.HelloReques
 	}, nil
 }
 
-// check if sync has started. If yes, block new chunk operations for this MV till the sync is completed
-func (h *ChunkServiceHandler) checkSyncStatus(fsID string, mvID string) {
-	rvInfo := h.fsIDMap[fsID]
-	val, _ := rvInfo.mvMap.Load(mvID)
-	mvInfo := val.(*MVInfo)
-	mvInfo.blockChunkOps()
-}
-
 func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunkRequest) (*models.GetChunkResponse, error) {
 	if req == nil || req.Address == nil {
 		log.Err("ChunkServiceHandler::GetChunk: Received nil GetChunk request")
@@ -298,24 +313,28 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 		return nil, err
 	}
 
+	rvInfo := h.fsIDMap[req.Address.FsID]
+	mvInfo, _ := rvInfo.getMVInfo(req.Address.MvID)
+
 	// check if the sync has started. If yes, block the chunk operations till the sync is completed
-	h.checkSyncStatus(req.Address.FsID, req.Address.MvID)
+	mvInfo.blockChunkOps()
 
 	// increment the chunk operation count for this MV
+	mvInfo.incrementChunkOps()
+
+	// decrement the chunk operation count for this MV when the function returns
+	defer mvInfo.decrementChunkOps()
 
 	startTime := time.Now()
 
 	chunkAddress := getChunkAddress(req.Address.FileID, req.Address.FsID, req.Address.MvID, req.Address.OffsetInMB)
 	log.Debug("ChunkServiceHandler::GetChunk: Received GetChunk request for chunk address %v, offset within chunk %v, length %v", chunkAddress, req.Offset, req.Length)
 
-	// check if the chunk file is being written to in parallel by some other thread
-	isLocked := h.locks.Locked(chunkAddress)
-	if isLocked {
-		log.Err("ChunkServiceHandler::GetChunk: chunk %v is being written", chunkAddress)
-		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("chunk %v is being written", chunkAddress))
-	}
+	// check if the chunk file is being updated in parallel by some other thread
+	flock := h.locks.Get(chunkAddress)
+	flock.Lock()
+	defer flock.Unlock()
 
-	rvInfo := h.fsIDMap[req.Address.FsID]
 	cacheDir := rvInfo.cacheDir
 	chunkPath, hashPath := getChunkAndHashPath(cacheDir, req.Address.MvID, req.Address.FileID, req.Address.OffsetInMB)
 	log.Debug("ChunkServiceHandler::GetChunk: chunk path %s, hash path %s", chunkPath, hashPath)
@@ -367,7 +386,7 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 		},
 		ChunkWriteTime: lmt,
 		TimeTaken:      time.Since(startTime).Microseconds(),
-		PeerRV:         rvInfo.getPeerRVs(req.Address.MvID),
+		PeerRV:         rvInfo.getPeerRVForMV(req.Address.MvID),
 	}
 
 	return resp, nil
@@ -386,6 +405,18 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 		return nil, err
 	}
 
+	rvInfo := h.fsIDMap[req.Chunk.Address.FsID]
+	mvInfo, _ := rvInfo.getMVInfo(req.Chunk.Address.MvID)
+
+	// check if the sync has started. If yes, block the chunk operations till the sync is completed
+	mvInfo.blockChunkOps()
+
+	// increment the chunk operation count for this MV
+	mvInfo.incrementChunkOps()
+
+	// decrement the chunk operation count for this MV when the function returns
+	defer mvInfo.decrementChunkOps()
+
 	startTime := time.Now()
 
 	chunkAddress := getChunkAddress(req.Chunk.Address.FileID, req.Chunk.Address.FsID, req.Chunk.Address.MvID, req.Chunk.Address.OffsetInMB)
@@ -396,7 +427,6 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	flock.Lock()
 	defer flock.Unlock()
 
-	rvInfo := h.fsIDMap[req.Chunk.Address.FsID]
 	cacheDir := rvInfo.cacheDir
 
 	chunkPath, hashPath := getRegularMVPath(cacheDir, req.Chunk.Address.MvID, req.Chunk.Address.FileID, req.Chunk.Address.OffsetInMB)
@@ -443,7 +473,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	resp := &models.PutChunkResponse{
 		TimeTaken:      time.Since(startTime).Microseconds(),
 		AvailableSpace: availableSpace,
-		PeerRV:         rvInfo.getPeerRVs(req.Chunk.Address.MvID),
+		PeerRV:         rvInfo.getPeerRVForMV(req.Chunk.Address.MvID),
 	}
 
 	return resp, nil
@@ -462,6 +492,18 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 		return nil, err
 	}
 
+	rvInfo := h.fsIDMap[req.Address.FsID]
+	mvInfo, _ := rvInfo.getMVInfo(req.Address.MvID)
+
+	// check if the sync has started. If yes, block the chunk operations till the sync is completed
+	mvInfo.blockChunkOps()
+
+	// increment the chunk operation count for this MV
+	mvInfo.incrementChunkOps()
+
+	// decrement the chunk operation count for this MV when the function returns
+	defer mvInfo.decrementChunkOps()
+
 	startTime := time.Now()
 
 	chunkAddress := getChunkAddress(req.Address.FileID, req.Address.FsID, req.Address.MvID, req.Address.OffsetInMB)
@@ -472,7 +514,6 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 	flock.Lock()
 	defer flock.Unlock()
 
-	rvInfo := h.fsIDMap[req.Address.FsID]
 	cacheDir := rvInfo.cacheDir
 
 	// TODO: check if we need to add isSync flag to remove from the sync directory explicitly
@@ -501,7 +542,7 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 	resp := &models.RemoveChunkResponse{
 		TimeTaken:      time.Since(startTime).Microseconds(),
 		AvailableSpace: availableSpace,
-		PeerRV:         rvInfo.getPeerRVs(req.Address.MvID),
+		PeerRV:         rvInfo.getPeerRVForMV(req.Address.MvID),
 	}
 
 	return resp, nil
@@ -529,8 +570,8 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 	cacheDir := rvInfo.cacheDir
 
 	// check if RV is already part of the given MV
-	_, ok := rvInfo.mvMap.Load(req.MV)
-	if ok {
+	_, err := rvInfo.getMVInfo(req.MV)
+	if err == nil {
 		log.Err("ChunkServiceHandler::JoinMV: RV %s is already part of the given MV %s", req.RV, req.MV)
 		return nil, rpc.NewResponseError(rpc.InvalidRequest, fmt.Sprintf("RV %s is already part of the given MV %s", req.RV, req.MV))
 	}
@@ -559,14 +600,15 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 
 	// create the MV directory
 	mvPath := filepath.Join(cacheDir, req.MV)
-	err := h.createMVDirectory(mvPath)
+	err = h.createMVDirectory(mvPath)
 	if err != nil {
 		log.Err("ChunkServiceHandler::JoinMV: Failed to create MV directory %s [%v]", mvPath, err.Error())
 		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to create MV directory %s [%v]", mvPath, err.Error()))
 	}
 
 	// add in sync map
-	rvInfo.addToMVMap(req.MV, &MVInfo{peerRVs: req.PeerRV})
+	slices.Sort(req.PeerRV)
+	rvInfo.addToMVMap(req.MV, &mvInfo{peerRVs: req.PeerRV})
 
 	return &models.JoinMVResponse{}, nil
 }
@@ -593,10 +635,9 @@ func (h *ChunkServiceHandler) LeaveMV(ctx context.Context, req *models.LeaveMVRe
 	cacheDir := rvInfo.cacheDir
 
 	// check if RV is part of the given MV
-	val, ok := rvInfo.mvMap.Load(req.MV)
-	mvInfo := val.(*MVInfo)
-	if !ok || mvInfo == nil {
-		log.Err("ChunkServiceHandler::LeaveMV: RV %s is not part of the given MV %s", req.RV, req.MV)
+	mvInfo, err := rvInfo.getMVInfo(req.MV)
+	if err != nil {
+		log.Err("ChunkServiceHandler::LeaveMV: RV %s is not part of the given MV %s [%v]", req.RV, req.MV, err.Error())
 		return nil, rpc.NewResponseError(rpc.InvalidRequest, fmt.Sprintf("RV %s is not part of the given MV %s", req.RV, req.MV))
 	}
 
@@ -609,7 +650,7 @@ func (h *ChunkServiceHandler) LeaveMV(ctx context.Context, req *models.LeaveMVRe
 
 	// create the MV directory
 	mvPath := filepath.Join(cacheDir, req.MV)
-	err := os.RemoveAll(mvPath)
+	err = os.RemoveAll(mvPath)
 	if err != nil {
 		log.Err("ChunkServiceHandler::LeaveMV: Failed to remove MV directory %s [%v]", mvPath, err.Error())
 		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to remove MV directory %s [%v]", mvPath, err.Error()))
@@ -643,10 +684,9 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 	}
 
 	// check if MV is valid
-	val, ok := rvInfo.mvMap.Load(req.MV)
-	mvInfo := val.(*MVInfo)
-	if !ok || mvInfo == nil {
-		log.Err("ChunkServiceHandler::StartSync: MV %s is invalid for RV %s", req.MV, req.TargetRV)
+	mvInfo, err := rvInfo.getMVInfo(req.MV)
+	if err != nil {
+		log.Err("ChunkServiceHandler::StartSync: MV %s is invalid for RV %s [%v]", req.MV, req.TargetRV, err.Error())
 		return nil, rpc.NewResponseError(rpc.MVNotHostedByRV, fmt.Sprintf("MV %s is invalid for RV %s", req.MV, req.TargetRV))
 	}
 
@@ -664,7 +704,7 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 	}
 
 	// update the sync state and sync id of the MV
-	err := mvInfo.updateSyncState(true, base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16)), req.SourceRV)
+	err = mvInfo.updateSyncState(true, base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16)), req.SourceRV)
 	if err != nil {
 		log.Err("ChunkServiceHandler::StartSync: MV %s is already in sync state [%v]", req.MV, err.Error())
 		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("MV %s is already in sync state [%v]", req.MV, err.Error()))
@@ -697,10 +737,9 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 	}
 
 	// check if MV is valid
-	val, ok := rvInfo.mvMap.Load(req.MV)
-	mvInfo := val.(*MVInfo)
-	if !ok || mvInfo == nil {
-		log.Err("ChunkServiceHandler::EndSync: MV %s is invalid for RV %s", req.MV, req.TargetRV)
+	mvInfo, err := rvInfo.getMVInfo(req.MV)
+	if err != nil {
+		log.Err("ChunkServiceHandler::EndSync: MV %s is invalid for RV %s [%v]", req.MV, req.TargetRV, err.Error())
 		return nil, rpc.NewResponseError(rpc.MVNotHostedByRV, fmt.Sprintf("MV %s is invalid for RV %s", req.MV, req.TargetRV))
 	}
 
@@ -722,15 +761,32 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 		return nil, rpc.NewResponseError(rpc.InvalidRequest, fmt.Sprintf("peer RVs %v are invalid for MV %s", req.PeerRV, req.MV))
 	}
 
+	// enable block chunk operations flag for this MV to pause further chunk operations (get, put or remove) on this MV
+	mvInfo.enableBlockChunkOps()
+
+	// disable block chunk operations flag for this MV when the function returns
+	defer mvInfo.disableBlockChunkOps()
+
+	// wait till the ongoing chunk operations  on this MV are completed
+	mvInfo.blockSyncOps()
+
 	// update the sync state and sync id of the MV
-	err := mvInfo.updateSyncState(false, "", "")
+	err = mvInfo.updateSyncState(false, "", "")
 	if err != nil {
 		log.Err("ChunkServiceHandler::StartSync: Failed to mark sync completion state in MV %s [%v]", req.MV, err.Error())
 		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to mark sync completion state in MV %s [%v]", req.MV, err.Error()))
 	}
 
-	// TODO: Node will wait for any ongoing put-chunk/get-chunk requests, pause further put-chunk/get-chunk processing,
-	// move all chunks from “MV.sync” folder to the regular MV folder and then resume processing.
+	// move all chunks from sync folder to the regular MV folder and then resume processing.
+	regMVPath := filepath.Join(rvInfo.cacheDir, req.MV)
+	syncMvPath := filepath.Join(rvInfo.cacheDir, req.MV+".sync")
+
+	log.Debug("ChunkServiceHandler::EndSync: Moving chunks from sync folder %s to regular MV folder %s", syncMvPath, regMVPath)
+	err = moveChunksToRegularMVPath(syncMvPath, regMVPath)
+	if err != nil {
+		log.Err("ChunkServiceHandler::EndSync: Failed to move chunks from sync folder %s to regular MV folder %s [%v]", syncMvPath, regMVPath, err.Error())
+		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to move chunks from sync folder %s to regular MV folder %s [%v]", syncMvPath, regMVPath, err.Error()))
+	}
 
 	return &models.EndSyncResponse{}, nil
 }

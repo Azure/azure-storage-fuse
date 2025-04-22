@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package server
+package rpc_server
 
 import (
 	"fmt"
@@ -100,4 +100,31 @@ func isPeerRVsValid(rv1 []string, rv2 []string) bool {
 	}
 
 	return true
+}
+
+// end sync operation will call this method to move all the chunks from the sync MV path to the regular MV path
+func moveChunksToRegularMVPath(syncMvPath string, regMvPath string) error {
+	entries, err := os.ReadDir(syncMvPath)
+	if err != nil {
+		log.Err("utils::moveChunksToRegularMVPath: Failed to read directory %s [%v]", syncMvPath, err.Error())
+		return err
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			log.Warn("utils::moveChunksToRegularMVPath: Skipping directory %s", entry.Name())
+			continue
+		}
+
+		src := filepath.Join(syncMvPath, entry.Name())
+		dest := filepath.Join(regMvPath, entry.Name())
+
+		err = os.Rename(src, dest)
+		if err != nil {
+			log.Err("utils::moveChunksToRegularMVPath: Failed to move chunk %s to %s [%v]", src, dest, err.Error())
+			return err
+		}
+	}
+
+	return nil
 }
