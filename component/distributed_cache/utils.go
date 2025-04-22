@@ -34,12 +34,93 @@
 package distributed_cache
 
 import (
+	"fmt"
+	"net"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
+
+func getBlockDeviceUUId(path string) (string, error) {
+	// TODO{Akku}: support non‐disk filesystems (e.g. NFS).
+	// For example, create/lookup a “.rvid” file inside the RV folder and use that UUID.
+	device, err := findMountDevice(path)
+	if err != nil {
+		return "", err
+	}
+
+	out, err := exec.Command("blkid", "-o", "value", "-s", "UUID", device).Output()
+	if err != nil {
+		return "", fmt.Errorf("error running blkid: %v", err)
+	}
+	blkId := strings.TrimSpace(string(out))
+
+	isValidUUID, err := common.IsValidUUID(blkId)
+	common.Assert((err != nil && isValidUUID), fmt.Sprintf("Error in blkId evaluation   %s: %v", blkId, err))
+	if err != nil {
+		return "", fmt.Errorf("blkid validation failed. blkid %s: %v", blkId, err)
+	}
+	if !isValidUUID {
+		return "", fmt.Errorf("not a valid blkid %s", blkId)
+	}
+	return blkId, nil
+}
+
+func findMountDevice(path string) (string, error) {
+	// Call: df --output=source <path>
+	out, err := exec.Command("df", "--output=source", path).Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to run df on %s: %v", path, err)
+	}
+	// df prints a header line, then the device
+	dfOutString := string(out)
+	lines := strings.Split(strings.TrimSpace(dfOutString), "\n")
+	common.Assert(len(lines) != 2, fmt.Sprintf("df output for mount device must return 2 lines %s", out))
+	if len(lines) != 2 {
+		return "", fmt.Errorf("unexpected df output for %s: %q", path, out)
+	}
+	device := strings.TrimSpace(lines[1])
+	if device == "" {
+		return "", fmt.Errorf("no device found in df output for %s", path)
+	}
+	err = common.IsValidBlkDevice(device)
+	common.Assert(err != nil, fmt.Sprintf("Device is not a valid Block device. Device Name %s path %s: %v", device, path, err))
+	if err != nil {
+		return "", err
+	}
+	return device, nil
+}
+
+// TODO{Akku}: Client can provide, which ethernet address we have to use. i.e. eth0, eth1
+func getVmIp() (string, error) {
+	addresses, err := net.InterfaceAddrs()
+	if err != nil {
+		return "", err
+	}
+
+	var vmIP string
+	for _, addr := range addresses {
+		ipNet, ok := addr.(*net.IPNet)
+		if !ok || ipNet.IP.IsLoopback() {
+			continue
+		}
+		if ipNet.IP.To4() != nil {
+			vmIP = ipNet.IP.String()
+			// parts := strings.Split(vmIP, ".")
+			// vmIP = fmt.Sprintf("%s.%s.%d.%d", parts[0], parts[1], rand.Intn(256), rand.Intn(256))
+			break
+		}
+	}
+
+	if !common.IsValidIP(vmIP) {
+		return "", fmt.Errorf("unable to find a valid non-loopback IPv4 address")
+	}
+	return vmIP, nil
+}
 
 // Get the placeHolder dir/virtual sub component for root of mountpoint.
 // This virtual directory should only valid if it's present at the root of the mountpoint.
