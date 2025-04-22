@@ -40,6 +40,7 @@ import (
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
 )
@@ -49,8 +50,8 @@ type ClusterManagerImpl struct {
 	storagePath     string
 }
 
-// Start implements ClusterManager.
-func (cmi *ClusterManagerImpl) Start(dCacheConfig *dcache.DCacheConfig, rvs []dcache.RawVolume) error {
+// start implements ClusterManager.
+func (cmi *ClusterManagerImpl) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache.RawVolume) error {
 	cmi.storagePath = "__CACHE__" + dCacheConfig.CacheId
 	err := cmi.checkAndCreateInitialClusterMap(dCacheConfig, rvs)
 	if err != nil {
@@ -206,8 +207,15 @@ func fetchRVMap() map[string]dcache.RawVolume {
 func evaluateReadOnlyState() bool {
 	return false
 }
-func NewClusterManager(callback dcache.StorageCallbacks) ClusterManager {
-	return &ClusterManagerImpl{
-		storageCallback: callback,
-	}
+var (
+	// clusterManagerInstance is the singleton instance of the ClusterManagerImpl
+	clusterManagerInstance = ClusterManagerImpl{}
+	initCalled             = false
+)
+
+func Init(dCacheConfig *dcache.DCacheConfig, rvs []dcache.RawVolume) error {
+	common.Assert(!initCalled, "Cluster Manager Init should only be called once")
+	initCalled = true
+	err := clusterManagerInstance.start(dCacheConfig, rvs)
+	return err
 }

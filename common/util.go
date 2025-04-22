@@ -44,10 +44,12 @@ import (
 	"fmt"
 	"hash/crc64"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -429,6 +431,16 @@ var currentUID int = -1
 // GetDiskUsageFromStatfs: Current disk usage of temp path
 func GetDiskUsageFromStatfs(path string) (float64, float64, error) {
 	// We need to compute the disk usage percentage for the temp path
+	totalSpace, availableSpace, err := GetDiskSpaceMetricsFromStatfs(path)
+	if err != nil || totalSpace == 0 {
+		return 0, 0, err
+	}
+	usedSpace := float64(totalSpace - availableSpace)
+	return usedSpace, (usedSpace / float64(totalSpace)) * 100, nil
+}
+
+// It will return totalSpace, availableSpace, and error if any while evaluting the Current disk usage of path using statfs
+func GetDiskSpaceMetricsFromStatfs(path string) (uint64, uint64, error) {
 	var stat syscall.Statfs_t
 	err := syscall.Statfs(path, &stat)
 	if err != nil {
@@ -449,8 +461,7 @@ func GetDiskUsageFromStatfs(path string) (float64, float64, error) {
 	}
 
 	totalSpace := stat.Blocks * uint64(stat.Frsize)
-	usedSpace := float64(totalSpace - availableSpace)
-	return usedSpace, float64(usedSpace) / float64(totalSpace) * 100, nil
+	return totalSpace, availableSpace, nil
 }
 
 func GetFuseMinorVersion() int {
@@ -589,31 +600,60 @@ func UpdatePipeline(pipeline []string, component string) []string {
 	return pipeline
 }
 
-func GetUUID() (string, error) {
+func GetNodeUUID() (string, error) {
 	uuidFilePath := filepath.Join(DefaultWorkDir, "blobfuse_node_uuid")
-
-	if _, err := os.Stat(uuidFilePath); err == nil {
+	_, err := os.Stat(uuidFilePath)
+	if err == nil {
 		// File exists, read its content
 		data, err := os.ReadFile(uuidFilePath)
 		if err != nil {
+			return "", fmt.Errorf("fail to read UUID File at :%s with error %s", uuidFilePath, err)
+		}
+		stringData := string(data)
+		isValidGUID, err := IsValidUUID(stringData)
+		if err != nil {
+			return "", fmt.Errorf("IsValidUUID failed for %s: %v", stringData, err)
+		}
+		if !isValidGUID {
+			return "", fmt.Errorf("not a valid UUID in UUID File at :%s UUID - %s", uuidFilePath, string(data))
+		}
+		return stringData, nil
+	}
+	if os.IsNotExist(err) {
+		// File doesn't exist, generate a new UUID
+		newUuid := gouuid.New().String()
+		Assert(IsValidUUID(newUuid))
+		if err := os.WriteFile(uuidFilePath, []byte(newUuid), 0400); err != nil {
 			return "", err
 		}
-		return string(data), nil
-	}
 
-	// File doesn't exist, generate a new UUID
-	newUuid := gouuid.New().String()
-	if err := os.WriteFile(uuidFilePath, []byte(newUuid), 0400); err != nil {
-		return "", err
+		return newUuid, nil
 	}
-
-	return newUuid, nil
+	return "", fmt.Errorf("failed to read node UUID from file at %s with error %s", uuidFilePath, err)
 }
 
-func GetTotalSpace(path string) (uint64, error) {
-	var stat syscall.Statfs_t
-	if err := syscall.Statfs(path, &stat); err != nil {
-		return 0, err
+// isValidGUID returns true if the string is a valid guid in the 8-4-4-4-12 format.
+func IsValidUUID(guid string) (bool, error) {
+	valid, err := regexp.MatchString(
+		"^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$", guid)
+	if err != nil {
+		return false, err
 	}
-	return stat.Blocks * uint64(stat.Bsize), nil
+	return valid, nil
+}
+
+func IsValidIP(ipAddress string) bool {
+	return net.ParseIP(ipAddress) != nil
+}
+
+func IsValidBlkDevice(device string) error {
+	fi, err := os.Stat(device)
+	if err != nil {
+		return fmt.Errorf("error stating device %s: %v", device, err)
+	}
+	mode := fi.Mode()
+	if mode&os.ModeDevice == 0 || mode&os.ModeCharDevice != 0 {
+		return fmt.Errorf("not a block device: %s having mode bits 0%4o", device, mode)
+	}
+	return nil
 }

@@ -34,11 +34,8 @@
 package distributed_cache
 
 import (
-	"context"
-	"errors"
 	"fmt"
 	"strings"
-	"syscall"
 	"testing"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -50,8 +47,6 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-var ctx = context.Background()
-
 type distributedCacheTestSuite struct {
 	suite.Suite
 	assert           *assert.Assertions
@@ -62,7 +57,8 @@ type distributedCacheTestSuite struct {
 
 func (suite *distributedCacheTestSuite) SetupTest() {
 	log.SetDefaultLogger("silent", common.LogConfig{Level: common.ELogLevel.LOG_DEBUG()})
-	defaultConfig := "distributed_cache:\n  cache-id: mycache1\n  cache-path:\n    - \\tmp"
+
+	defaultConfig := "distributed_cache:\n  cache-id: mycache1\n  cache-dirs:\n    - \\tmp"
 	log.Debug(defaultConfig)
 
 	suite.setupTestHelper(defaultConfig)
@@ -98,26 +94,26 @@ func (suite *distributedCacheTestSuite) TearDownTest() error {
 
 func (suite *distributedCacheTestSuite) TestManadatoryConfigMissing() {
 	suite.assert.EqualValues("distributed_cache", suite.distributedCache.Name())
-	suite.assert.EqualValues("mycache1", suite.distributedCache.cacheID)
-	suite.assert.EqualValues(1, len(suite.distributedCache.cachePath))
-	suite.assert.EqualValues(uint8(1), suite.distributedCache.replicas)
-	suite.assert.EqualValues(uint16(30), suite.distributedCache.hbDuration)
-	suite.assert.EqualValues("automatic", suite.distributedCache.cacheAccess)
-	suite.assert.EqualValues(16777216, suite.distributedCache.chunkSize)
-	suite.assert.EqualValues(300, suite.distributedCache.clustermapEpoch)
-	suite.assert.EqualValues(3, suite.distributedCache.maxMissedHbs)
-	suite.assert.EqualValues(1, suite.distributedCache.minNodes)
-	suite.assert.EqualValues(1, suite.distributedCache.mvsPerRv)
-	suite.assert.EqualValues(uint64(80), suite.distributedCache.rebalancePercentage)
-	suite.assert.EqualValues(95, suite.distributedCache.rvFullThreshold)
-	suite.assert.EqualValues(80, suite.distributedCache.rvNearfullThreshold)
-	suite.assert.EqualValues(false, suite.distributedCache.safeDeletes)
-	suite.assert.EqualValues(4, suite.distributedCache.stripeSize)
 
+	suite.assert.EqualValues("mycache1", suite.distributedCache.cfg.CacheID)
+	suite.assert.EqualValues(1, len(suite.distributedCache.cfg.CacheDirs))
+	suite.assert.EqualValues(uint8(1), suite.distributedCache.cfg.Replicas)
+	suite.assert.EqualValues(uint16(30), suite.distributedCache.cfg.HeartbeatDuration)
+	suite.assert.EqualValues("automatic", suite.distributedCache.cfg.CacheAccess)
+	suite.assert.EqualValues(uint64(4194304), suite.distributedCache.cfg.ChunkSize)
+	suite.assert.EqualValues(300, suite.distributedCache.cfg.ClustermapEpoch)
+	suite.assert.EqualValues(3, suite.distributedCache.cfg.MaxMissedHeartbeats)
+	suite.assert.EqualValues(1, suite.distributedCache.cfg.MinNodes)
+	suite.assert.EqualValues(uint64(10), suite.distributedCache.cfg.MVsPerRv)
+	suite.assert.EqualValues(uint64(80), suite.distributedCache.cfg.RebalancePercentage)
+	suite.assert.EqualValues(95, suite.distributedCache.cfg.RVFullThreshold)
+	suite.assert.EqualValues(80, suite.distributedCache.cfg.RVNearfullThreshold)
+	suite.assert.EqualValues(false, suite.distributedCache.cfg.SafeDeletes)
+	suite.assert.EqualValues(uint64(16777216), suite.distributedCache.cfg.StripeSize)
 	emptyConfig := "read-only: true\n\ndistributed_cache:\n  cache-id: mycache1"
 	err := suite.setupTestHelper(emptyConfig)
 
-	suite.assert.Equal("Unable to configure distributed cache [config error in distributed_cache: [cache-path not set]]", err.Error())
+	suite.assert.Equal("Unable to configure distributed cache [config error in distributed_cache: [cache-dirs not set]]", err.Error())
 
 	emptyConfig = ""
 	err = suite.setupTestHelper(emptyConfig)
@@ -126,57 +122,6 @@ func (suite *distributedCacheTestSuite) TestManadatoryConfigMissing() {
 	emptyConfig = "read-only: true\n\ndistributed_cache:\n  path: \\tmp"
 	err = suite.setupTestHelper(emptyConfig)
 	suite.assert.Equal("Unable to configure distributed cache [config error in distributed_cache: [cache-id not set]]", err.Error())
-}
-
-func (suite *distributedCacheTestSuite) TestSetupCacheStructureSuccess() {
-	suite.mock.EXPECT().GetAttr(gomock.Any()).Return(&internal.ObjAttr{}, syscall.ENOENT)
-	suite.mock.EXPECT().CreateDir(gomock.Any()).Return(nil).AnyTimes()
-	suite.mock.EXPECT().Name().Return("azstorage").AnyTimes()
-	err := suite.distributedCache.Start(ctx)
-	suite.assert.NotNil(err)
-}
-
-func (suite *distributedCacheTestSuite) TestSetupCacheStructureFailToReadStorage() {
-	suite.mock.EXPECT().GetAttr(gomock.Any()).Return(&internal.ObjAttr{}, syscall.EACCES)
-	suite.mock.EXPECT().Name().Return("azstorage").AnyTimes()
-	err := suite.distributedCache.Start(ctx)
-	suite.assert.NotNil(err)
-	suite.assert.Equal("DistributedCache::Start error [failed to read creator file: permission denied]", err.Error())
-}
-
-func (suite *distributedCacheTestSuite) TestSetupCacheStructureFailToCreateDir() {
-	suite.mock.EXPECT().GetAttr(gomock.Any()).Return(&internal.ObjAttr{}, syscall.ENOENT)
-	suite.mock.EXPECT().CreateDir(gomock.Any()).Return(errors.New("Failed to create dir"))
-	suite.mock.EXPECT().Name().Return("azstorage").AnyTimes()
-	err := suite.distributedCache.Start(ctx)
-	suite.assert.NotNil(err)
-	suite.assert.Equal("DistributedCache::Start error [failed to create directory __CACHE__mycache1: Failed to create dir]", err.Error())
-}
-
-func (suite *distributedCacheTestSuite) TestSetupCacheStructureFailToCreateNodeDir() {
-	suite.mock.EXPECT().GetAttr(gomock.Any()).Return(&internal.ObjAttr{}, syscall.ENOENT)
-	suite.mock.EXPECT().Name().Return("azstorage").AnyTimes()
-	opt1 := internal.CreateDirOptions{Name: "__CACHE__" + suite.distributedCache.cacheID, ForceDirCreationDisabled: true}
-	suite.mock.EXPECT().CreateDir(opt1).Return(nil)
-	opt2 := internal.CreateDirOptions{Name: "__CACHE__" + suite.distributedCache.cacheID + "/Nodes", ForceDirCreationDisabled: true}
-	suite.mock.EXPECT().CreateDir(opt2).Return(errors.New("Failed to create dir"))
-	err := suite.distributedCache.Start(ctx)
-	suite.assert.NotNil(err)
-	suite.assert.Equal("DistributedCache::Start error [failed to create directory __CACHE__mycache1/Nodes: Failed to create dir]", err.Error())
-}
-
-func (suite *distributedCacheTestSuite) TestSetupCacheStructureFailToCreateObjectDir() {
-	suite.mock.EXPECT().GetAttr(gomock.Any()).Return(&internal.ObjAttr{}, syscall.ENOENT)
-	suite.mock.EXPECT().Name().Return("azstorage").AnyTimes()
-	opt1 := internal.CreateDirOptions{Name: "__CACHE__" + suite.distributedCache.cacheID, ForceDirCreationDisabled: true}
-	suite.mock.EXPECT().CreateDir(opt1).Return(nil)
-	opt2 := internal.CreateDirOptions{Name: "__CACHE__" + suite.distributedCache.cacheID + "/Nodes", ForceDirCreationDisabled: true}
-	suite.mock.EXPECT().CreateDir(opt2).Return(nil)
-	opt3 := internal.CreateDirOptions{Name: "__CACHE__" + suite.distributedCache.cacheID + "/Objects", ForceDirCreationDisabled: true}
-	suite.mock.EXPECT().CreateDir(opt3).Return(errors.New("Failed to create dir"))
-	err := suite.distributedCache.Start(ctx)
-	suite.assert.NotNil(err)
-	suite.assert.Equal("DistributedCache::Start error [failed to create directory __CACHE__mycache1/Objects: Failed to create dir]", err.Error())
 }
 
 // In order for 'go test' to run this suite, we need to create

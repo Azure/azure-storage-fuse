@@ -43,7 +43,7 @@ type ClusterManager interface {
 	//2. Schedule heartbeat punching
 	//3. Schedule clusterMap update for storage
 	//4. Schedule clusterMap update for local cache
-	Start(*dcache.DCacheConfig, []dcache.RawVolume) error
+	start(*dcache.DCacheConfig, []dcache.RawVolume) error
 
 	// Stop shuts down the cluster manager and releases any resources.
 	//1. Cancel schedule of cluster update over storage and local cache
