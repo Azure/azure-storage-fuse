@@ -34,74 +34,49 @@
 package clustermanager
 
 import (
-	"encoding/json"
+	"errors"
+	"os"
+	"syscall"
 	"testing"
 
-	"github.com/Azure/azure-storage-fuse/v2/internal"
-	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	"github.com/stretchr/testify/suite"
 )
 
-type clusterManagerImplTestSuite struct {
+type ClusterManagerImplTestSuite struct {
 	suite.Suite
-	mockStorage dcache.StorageCallbacks
+	cmi ClusterManagerImpl
 }
 
-// MockStorageCallback is a fake storage callbacks implementation for tests
-type MockStorageCallback struct {
-	ReadDirAttr           []internal.ObjAttr
-	Storage               map[string][]byte
-	ReadDirFromStorageErr error
-	GetBlobFromStorageErr error
+func (suite *ClusterManagerImplTestSuite) TestCheckIfClusterMapExists() {
+	orig := getClusterMap
+	defer func() { getClusterMap = orig }()
+
+	// 1) success
+	getClusterMap = func() error { return nil }
+	exists, err := suite.cmi.checkIfClusterMapExists()
+	suite.NoError(err)
+	suite.True(exists)
+
+	// 2) os.ErrNotExist
+	getClusterMap = func() error { return os.ErrNotExist }
+	exists, err = suite.cmi.checkIfClusterMapExists()
+	suite.NoError(err)
+	suite.False(exists)
+
+	// 3) syscall.ENOENT
+	getClusterMap = func() error { return syscall.ENOENT }
+	exists, err = suite.cmi.checkIfClusterMapExists()
+	suite.NoError(err)
+	suite.False(exists)
+
+	// 4) other error
+	testErr := errors.New("boom")
+	getClusterMap = func() error { return testErr }
+	exists, err = suite.cmi.checkIfClusterMapExists()
+	suite.EqualError(err, "boom")
+	suite.False(exists)
 }
 
-func (m *MockStorageCallback) DeleteBlob(opt internal.DeleteFileOptions) error          { return nil }
-func (m *MockStorageCallback) DeleteBlobInStorage(opt internal.DeleteFileOptions) error { return nil }
-func (m *MockStorageCallback) GetBlob(opt internal.ReadFileWithNameOptions) ([]byte, error) {
-	return nil, nil
-}
-func (m *MockStorageCallback) GetBlobFromStorage(opt internal.ReadFileWithNameOptions) ([]byte, error) {
-	if m.GetBlobFromStorageErr != nil {
-		return nil, m.GetBlobFromStorageErr
-	}
-	if content, ok := m.Storage[opt.Path]; ok {
-		return content, nil
-	}
-	return []byte{}, nil
-}
-func (m *MockStorageCallback) GetProperties(opt internal.GetAttrOptions) (*internal.ObjAttr, error) {
-	return nil, nil
-}
-func (m *MockStorageCallback) GetPropertiesFromStorage(opt internal.GetAttrOptions) (*internal.ObjAttr, error) {
-	return nil, nil
-}
-func (m *MockStorageCallback) PutBlob(opt internal.WriteFromBufferOptions) error          { return nil }
-func (m *MockStorageCallback) PutBlobInStorage(opt internal.WriteFromBufferOptions) error { return nil }
-func (m *MockStorageCallback) ReadDir(options internal.ReadDirOptions) ([]*internal.ObjAttr, error) {
-	return nil, nil
-}
-func (m *MockStorageCallback) ReadDirFromStorage(options internal.ReadDirOptions) ([]*internal.ObjAttr, error) {
-	if m.ReadDirFromStorageErr != nil {
-		return nil, m.ReadDirFromStorageErr
-	}
-	var dirListing []*internal.ObjAttr
-	for i := range m.ReadDirAttr {
-		dirListing = append(dirListing, &m.ReadDirAttr[i])
-	}
-	return dirListing, nil
-}
-func (m *MockStorageCallback) SetProperties(path string, properties map[string]string) error {
-	return nil
-}
-func (m *MockStorageCallback) SetPropertiesInStorage(path string, properties map[string]string) error {
-	return nil
-}
-
-func (s *clusterManagerImplTestSuite) SetupTest() {
-	s.mockStorage = &MockStorageCallback{
-		Storage: make(map[string][]byte),
-	}
-}
 
 func createMockHeartbeat(nodeID, fsid string, available, total uint64) (internal.ObjAttr, string, []byte) {
 	attr := internal.ObjAttr{Name: nodeID + ".hb", Path: "/fakeStorage/Nodes/" + nodeID + ".hb"}
@@ -240,5 +215,5 @@ func (suite *clusterManagerImplTestSuite) TestCheckAndUpdateRVMapNewRVAdded() {
 }
 
 func TestClusterManagerImpl(t *testing.T) {
-	suite.Run(t, new(clusterManagerImplTestSuite))
+	suite.Run(t, new(ClusterManagerImplTestSuite))
 }

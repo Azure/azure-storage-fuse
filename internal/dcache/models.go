@@ -33,9 +33,6 @@
 
 package dcache
 
-type Peer struct {
-}
-
 type MirroredVolume struct {
 	RVWithStateMap map[string]string `json:"rv_with_state_map,omitempty"`
 	State          StateEnum         `json:"state,omitempty"`
@@ -62,7 +59,7 @@ const (
 	StateSyncing StateEnum = "syncing"
 )
 
-type ClusterConfig struct {
+type ClusterMap struct {
 	Readonly      bool                      `json:"readonly,omitempty"`
 	State         StateEnum                 `json:"state,omitempty"`
 	Epoch         int64                     `json:"epoch,omitempty"`
@@ -83,17 +80,33 @@ type HeartbeatData struct {
 }
 
 type DCacheConfig struct {
-	MinNodes               int    `json:"min-nodes,omitempty"`
+	CacheId                string `json:"cache-id,omitempty"`
+	MinNodes               uint32 `json:"min-nodes,omitempty"`
 	ChunkSize              uint64 `json:"chunk-size,omitempty"`
 	StripeSize             uint64 `json:"stripe-size,omitempty"`
-	NumReplicas            uint8  `json:"num-replicas,omitempty"`
+	NumReplicas            uint32 `json:"num-replicas,omitempty"`
 	MvsPerRv               uint64 `json:"mvs-per-rv,omitempty"`
 	RvFullThreshold        uint64 `json:"rv-full-threshold,omitempty"`
 	RvNearfullThreshold    uint64 `json:"rv-nearfull-threshold,omitempty"`
 	HeartbeatSeconds       uint16 `json:"heartbeat-seconds,omitempty"`
 	HeartbeatsTillNodeDown uint8  `json:"heartbeats-till-node-down,omitempty"`
 	ClustermapEpoch        uint64 `json:"clustermap-epoch,omitempty"`
-	RebalancePercentage    uint64 `json:"rebalance-percentage,omitempty"`
+	RebalancePercentage    uint8  `json:"rebalance-percentage,omitempty"`
 	SafeDeletes            bool   `json:"safe-deletes,omitempty"`
 	CacheAccess            string `json:"cache-access,omitempty"`
+}
+
+type FileMetadata struct {
+	Filename        string     `json:"filename"`
+	FileID          string     `json:"file_id"`
+	Size            int64      `json:"size"`
+	ClusterMapEpoch int64      `json:"cluster_map_epoch"`
+	FileLayout      FileLayout `json:"file_layout"`
+	Sha1hash        []byte     `json:"sha256"`
+}
+
+type FileLayout struct {
+	ChunkSize  int64    `json:"chunk_size"`
+	StripeSize int64    `json:"stripe_size"`
+	MVList     []string `json:"mv_list"`
 }

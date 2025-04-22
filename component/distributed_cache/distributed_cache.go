@@ -35,18 +35,19 @@ package distributed_cache
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"os"
+	"path/filepath"
+	"strings"
 	"syscall"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/bloberror"
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
-	clustermanager "github.com/Azure/azure-storage-fuse/v2/internal/dcache/cluster_manager"
+	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/cluster_manager"
+	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
+	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
 
 /* NOTES:
@@ -59,45 +60,33 @@ import (
 // Common structure for Component
 type DistributedCache struct {
 	internal.BaseComponent
-	cacheID             string
-	cachePath           []string
-	replicas            uint8
-	maxMissedHbs        uint8
-	hbDuration          uint16
-	chunkSize           uint64
-	minNodes            int
-	stripeSize          uint64
-	mvsPerRv            uint64
-	rvFullThreshold     uint64
-	rvNearfullThreshold uint64
-	clustermapEpoch     uint64
-	rebalancePercentage uint64
-	safeDeletes         bool
-	cacheAccess         string
+	cfg DistributedCacheOptions // ← holds cache‐id, cache‐dirs, replicas, chunk‐size, etc.
 
-	azstroage        internal.Component
-	clusterManager   clustermanager.ClusterManager
-	strorageCallback dcache.StorageCallbacks
+	azstorage       internal.Component
+	storageCallback dcache.StorageCallbacks
 }
 
 // Structure defining your config parameters
 type DistributedCacheOptions struct {
-	CacheID             string   `config:"cache-id" yaml:"cache-id,omitempty"`
-	CachePath           []string `config:"cache-path" yaml:"cache-path,omitempty"`
-	ChunkSize           uint64   `config:"chunk-size" yaml:"chunk-size,omitempty"`
-	StripeSize          uint64   `config:"stripe-size" yaml:"stripe-size,omitempty"`
-	MaxCacheSize        uint64   `config:"max-cache-size" yaml:"cache-size,omitempty"`
-	Replicas            uint8    `config:"replicas" yaml:"replicas,omitempty"`
-	HeartbeatDuration   uint16   `config:"heartbeat-duration" yaml:"heartbeat-duration,omitempty"`
-	MaxMissedHeartbeats uint8    `config:"max-missed-heartbeats" yaml:"max-missed-heartbeats,omitempty"`
-	MinNodes            int      `config:"min-nodes" yaml:"min-nodes,omitempty"`
-	MVsPerRv            uint64   `config:"mvs-per-rv" yaml:"mvs-per-rv,omitempty"`
-	RVFullThreshold     uint64   `config:"rv-full-threshold" yaml:"rv-full-threshold,omitempty"`
-	RVNearfullThreshold uint64   `config:"rv-nearfull-threshold" yaml:"rv-nearfull-threshold,omitempty"`
-	ClustermapEpoch     uint64   `config:"clustermap-epoch" yaml:"clustermap-epoch,omitempty"`
-	RebalancePercentage uint64   `config:"rebalance-percentage" yaml:"rebalance-percentage,omitempty"`
-	SafeDeletes         bool     `config:"safe-deletes" yaml:"safe-deletes,omitempty"`
-	CacheAccess         string   `config:"cache-access" yaml:"cache-access,omitempty"`
+	CacheID   string   `config:"cache-id" yaml:"cache-id,omitempty"`
+	CacheDirs []string `config:"cache-dirs" yaml:"cache-dirs,omitempty"`
+
+	ChunkSize  uint64 `config:"chunk-size" yaml:"chunk-size,omitempty"`
+	StripeSize uint64 `config:"stripe-size" yaml:"stripe-size,omitempty"`
+	Replicas   uint32 `config:"replicas" yaml:"replicas,omitempty"`
+
+	HeartbeatDuration   uint16 `config:"heartbeat-duration" yaml:"heartbeat-duration,omitempty"`
+	MaxMissedHeartbeats uint8  `config:"max-missed-heartbeats" yaml:"max-missed-heartbeats,omitempty"`
+	RVFullThreshold     uint64 `config:"rv-full-threshold" yaml:"rv-full-threshold,omitempty"`
+	RVNearfullThreshold uint64 `config:"rv-nearfull-threshold" yaml:"rv-nearfull-threshold,omitempty"`
+	MaxCacheSize        uint64 `config:"max-cache-size" yaml:"max-cache-size,omitempty"`
+
+	MinNodes            uint32 `config:"min-nodes" yaml:"min-nodes,omitempty"`
+	MVsPerRv            uint64 `config:"mvs-per-rv" yaml:"mvs-per-rv,omitempty"`
+	RebalancePercentage uint8  `config:"rebalance-percentage" yaml:"rebalance-percentage,omitempty"`
+	SafeDeletes         bool   `config:"safe-deletes" yaml:"safe-deletes,omitempty"`
+	CacheAccess         string `config:"cache-access" yaml:"cache-access,omitempty"`
+	ClustermapEpoch     uint64 `config:"clustermap-epoch" yaml:"clustermap-epoch,omitempty"`
 }
 
 const (
@@ -105,10 +94,10 @@ const (
 	defaultHeartBeatDurationInSecond = 30
 	defaultReplicas                  = 1
 	defaultMaxMissedHBs              = 3
-	defaultChunkSize                 = 16 * 1024 * 1024 // 16 MB
+	defaultChunkSize                 = 4 * 1024 * 1024 // 4 MB
 	defaultMinNodes                  = 1
-	defaultStripeSize                = 4
-	defaultMvsPerRv                  = 1
+	defaultStripeSize                = 16 * 1024 * 1024 // 16 MB
+	defaultMvsPerRv                  = 10
 	defaultRvFullThreshold           = 95
 	defaultRvNearfullThreshold       = 80
 	defaultClustermapEpoch           = 300
@@ -120,16 +109,16 @@ const (
 // Verification to check satisfaction criteria with Component Interface
 var _ internal.Component = &DistributedCache{}
 
-func (distributedCache *DistributedCache) Name() string {
+func (dc *DistributedCache) Name() string {
 	return compName
 }
 
-func (distributedCache *DistributedCache) SetName(name string) {
-	distributedCache.BaseComponent.SetName(name)
+func (dc *DistributedCache) SetName(name string) {
+	dc.BaseComponent.SetName(name)
 }
 
-func (distributedCache *DistributedCache) SetNextComponent(nextComponent internal.Component) {
-	distributedCache.BaseComponent.SetNextComponent(nextComponent)
+func (dc *DistributedCache) SetNextComponent(nextComponent internal.Component) {
+	dc.BaseComponent.SetNextComponent(nextComponent)
 }
 
 // Start : Pipeline calls this method to start the component functionality
@@ -139,66 +128,74 @@ func (dc *DistributedCache) Start(ctx context.Context) error {
 
 	log.Trace("DistributedCache::Start : Starting component %s", dc.Name())
 
-	cacheDir := "__CACHE__" + dc.cacheID
-	dc.azstroage = dc.NextComponent()
-	for dc.azstroage != nil && dc.azstroage.Name() != "azstorage" {
-		dc.azstroage = dc.azstroage.NextComponent()
+	dc.azstorage = dc.NextComponent()
+	for dc.azstorage != nil && dc.azstorage.Name() != "azstorage" {
+		dc.azstorage = dc.azstorage.NextComponent()
+	}
+	if dc.azstorage == nil {
+		return log.LogAndReturnError("DistributedCache::Start error [azstorage component not found]")
 	}
 
-	dc.strorageCallback = initStorageCallback(
+	dc.storageCallback = initStorageCallback(
 		dc.NextComponent(),
-		dc.azstroage)
-	dc.clusterManager = clustermanager.NewClusterManager(dc.strorageCallback)
+		dc.azstorage)
+	mm.Init(dc.storageCallback, dc.cfg.CacheID)
 
-	// Check and create cache directory if needed
-	if err := dc.setupCacheStructure(cacheDir); err != nil {
-		return err
+	errString := dc.startClusterManager()
+	if errString != "" {
+		return log.LogAndReturnError(errString)
 	}
-	log.Info("DistributedCache::Start : Cache structure setup completed")
-
+	log.Info("DistributedCache::Start : component started successfully")
 	return nil
 }
 
-// setupCacheStructure checks and creates necessary cache directories and metadata.
-// It's doing 4 rest api calls, 3 for directory and 1 for creator file.+1 call to check the creator file
-func (dc *DistributedCache) setupCacheStructure(cacheDir string) error {
-	_, err := dc.azstroage.GetAttr(internal.GetAttrOptions{Name: cacheDir + "/Objects"})
-	if err != nil {
-		if os.IsNotExist(err) || err == syscall.ENOENT {
-			directories := []string{cacheDir, cacheDir + "/Nodes", cacheDir + "/Objects"}
-			for _, dir := range directories {
-				if err := dc.azstroage.CreateDir(internal.CreateDirOptions{Name: dir, ForceDirCreationDisabled: true}); err != nil {
+func (dc *DistributedCache) startClusterManager() string {
 
-					if !bloberror.HasCode(err, bloberror.BlobAlreadyExists) {
-						return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to create directory %s: %v]", dir, err))
-					}
-				}
-			}
-
-		} else {
-			return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to read creator file: %v]", err))
-		}
+	dCacheConfig := &dcache.DCacheConfig{
+		CacheId:                dc.cfg.CacheID,
+		MinNodes:               dc.cfg.MinNodes,
+		ChunkSize:              dc.cfg.ChunkSize,
+		StripeSize:             dc.cfg.StripeSize,
+		NumReplicas:            dc.cfg.Replicas,
+		MvsPerRv:               dc.cfg.MVsPerRv,
+		HeartbeatSeconds:       dc.cfg.HeartbeatDuration,
+		HeartbeatsTillNodeDown: dc.cfg.MaxMissedHeartbeats,
+		ClustermapEpoch:        dc.cfg.ClustermapEpoch,
+		RebalancePercentage:    dc.cfg.RebalancePercentage,
+		SafeDeletes:            dc.cfg.SafeDeletes,
+		CacheAccess:            dc.cfg.CacheAccess,
 	}
+	rvList, err := dc.createRVList()
+	if err != nil {
+		return fmt.Sprintf("DistributedCache::Start error [Failed to create RV List for cluster manager : %v]", err)
+	}
+	if cm.Init(dCacheConfig, rvList) != nil {
+		return fmt.Sprintf("DistributedCache::Start error [Failed to start cluster manager : %v]", err)
+	}
+	return ""
+}
 
+func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
 	ipaddr, err := getVmIp()
 	if err != nil {
-		return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to get VM IP : %v]", err))
+		return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to get VM IP : %v]", err))
 	}
 
-	uuidVal, err := common.GetUUID()
+	uuidVal, err := common.GetNodeUUID()
 	if err != nil {
-		return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to retrieve UUID, error: %v]", err))
+		return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to retrieve UUID, error: %v]", err))
 	}
-	rvList := make([]dcache.RawVolume, len(dc.cachePath))
-	for index, path := range dc.cachePath {
+	rvList := make([]dcache.RawVolume, len(dc.cfg.CacheDirs))
+	for index, path := range dc.cfg.CacheDirs {
+		// TODO{Akku} : More than 1 cache dir with same fsid for rv, must fail distributed cache startup
 		fsid, err := getBlockDeviceUUId(path)
 		if err != nil {
-			return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to get raw volume UUID: %v]", err))
+			return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to get raw volume UUID: %v]", err))
 		}
-		// TODO{Akku} : More than 1 same fsid for rv, must fail distributed cache startup
-		totalSpace, err := common.GetTotalSpace(path)
+
+		totalSpace, availableSpace, err := common.GetDiskSpaceMetricsFromStatfs(path)
 		if err != nil {
-			return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to evaluate local cache Total space: %v]", err))
+			return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to evaluate local cache Total space: %v]", err))
 		}
 
 		rvList[index] = dcache.RawVolume{
@@ -207,34 +204,11 @@ func (dc *DistributedCache) setupCacheStructure(cacheDir string) error {
 			FSID:           fsid,
 			FDID:           "0",
 			TotalSpace:     totalSpace,
+			AvailableSpace: availableSpace,
 			LocalCachePath: path,
 		}
 	}
-	err = dc.clusterManager.Start(&clustermanager.ClusterManagerConfig{
-		MinNodes:               dc.minNodes,
-		ChunkSize:              dc.chunkSize,
-		StripeSize:             dc.stripeSize,
-		NumReplicas:            dc.replicas,
-		MvsPerRv:               dc.mvsPerRv,
-		HeartbeatSeconds:       dc.hbDuration,
-		HeartbeatsTillNodeDown: dc.maxMissedHbs,
-		ClustermapEpoch:        dc.clustermapEpoch,
-		RebalancePercentage:    dc.rebalancePercentage,
-		SafeDeletes:            dc.safeDeletes,
-		CacheAccess:            dc.cacheAccess,
-		StorageCachePath:       "__CACHE__" + dc.cacheID,
-		RVList:                 rvList,
-	})
-	if bloberror.HasCode(err, bloberror.BlobAlreadyExists) {
-		return logAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to create creator file: %v]", err))
-	} else {
-		return nil
-	}
-}
-
-func logAndReturnError(msg string) error {
-	log.Err(msg)
-	return errors.New(msg)
+	return rvList, nil
 }
 
 // Stop : Stop the component functionality and kill all threads started
@@ -249,78 +223,158 @@ func (dc *DistributedCache) Stop() error {
 func (distributedCache *DistributedCache) Configure(_ bool) error {
 	log.Trace("DistributedCache::Configure : %s", distributedCache.Name())
 
-	conf := DistributedCacheOptions{}
-	err := config.UnmarshalKey(distributedCache.Name(), &conf)
+	err := config.UnmarshalKey(distributedCache.Name(), &distributedCache.cfg)
+
 	if err != nil {
 		log.Err("DistributedCache::Configure : config error [invalid config attributes]")
 		return fmt.Errorf("DistributedCache: config error [invalid config attributes]")
 	}
-	if conf.CacheID == "" {
+	if distributedCache.cfg.CacheID == "" {
 		return fmt.Errorf("config error in %s: [cache-id not set]", distributedCache.Name())
 	}
-	if len(conf.CachePath) == 0 {
-		return fmt.Errorf("config error in %s: [cache-path not set]", distributedCache.Name())
+	if len(distributedCache.cfg.CacheDirs) == 0 {
+		return fmt.Errorf("config error in %s: [cache-dirs not set]", distributedCache.Name())
 	}
 
-	distributedCache.cacheID = conf.CacheID
-	distributedCache.cachePath = conf.CachePath
-	distributedCache.replicas = defaultReplicas
-	if config.IsSet(compName + ".replicas") {
-		distributedCache.replicas = conf.Replicas
+	if !config.IsSet(compName + ".replicas") {
+		distributedCache.cfg.Replicas = defaultReplicas
 	}
-	distributedCache.hbDuration = defaultHeartBeatDurationInSecond
-	if config.IsSet(compName + ".heartbeat-duration") {
-		distributedCache.hbDuration = conf.HeartbeatDuration
+	if !config.IsSet(compName + ".heartbeat-duration") {
+		distributedCache.cfg.HeartbeatDuration = defaultHeartBeatDurationInSecond
 	}
-	distributedCache.maxMissedHbs = defaultMaxMissedHBs
-	if config.IsSet(compName + ".max-missed-heartbeats") {
-		distributedCache.maxMissedHbs = uint8(conf.MaxMissedHeartbeats)
+	if !config.IsSet(compName + ".max-missed-heartbeats") {
+		distributedCache.cfg.MaxMissedHeartbeats = defaultMaxMissedHBs
 	}
-	distributedCache.chunkSize = defaultChunkSize
-	if config.IsSet(compName + ".chunk-size") {
-		distributedCache.chunkSize = conf.ChunkSize
+	if !config.IsSet(compName + ".chunk-size") {
+		distributedCache.cfg.ChunkSize = defaultChunkSize
 	}
-	distributedCache.minNodes = defaultMinNodes
-	if config.IsSet(compName + ".min-nodes") {
-		distributedCache.minNodes = conf.MinNodes
+	if !config.IsSet(compName + ".min-nodes") {
+		distributedCache.cfg.MinNodes = defaultMinNodes
 	}
-	distributedCache.stripeSize = defaultStripeSize
-	if config.IsSet(compName + ".stripe-size") {
-		distributedCache.stripeSize = conf.StripeSize
+	if !config.IsSet(compName + ".stripe-size") {
+		distributedCache.cfg.StripeSize = defaultStripeSize
 	}
-	distributedCache.mvsPerRv = defaultMvsPerRv
-	if config.IsSet(compName + ".mvs-per-rv") {
-		distributedCache.mvsPerRv = conf.MVsPerRv
+	if !config.IsSet(compName + ".mvs-per-rv") {
+		distributedCache.cfg.MVsPerRv = defaultMvsPerRv
 	}
-	distributedCache.rvFullThreshold = defaultRvFullThreshold
-	if config.IsSet(compName + ".rv-full-threshold") {
-		distributedCache.rvFullThreshold = conf.RVFullThreshold
+	if !config.IsSet(compName + ".rv-full-threshold") {
+		distributedCache.cfg.RVFullThreshold = defaultRvFullThreshold
 	}
-	distributedCache.rvNearfullThreshold = defaultRvNearfullThreshold
-	if config.IsSet(compName + ".rv-nearfull-threshold") {
-		distributedCache.rvNearfullThreshold = conf.RVNearfullThreshold
+	if !config.IsSet(compName + ".rv-nearfull-threshold") {
+		distributedCache.cfg.RVNearfullThreshold = defaultRvNearfullThreshold
 	}
-	distributedCache.clustermapEpoch = defaultClustermapEpoch
-	if config.IsSet(compName + ".cluster-map-epoch") {
-		distributedCache.clustermapEpoch = conf.ClustermapEpoch
+	if !config.IsSet(compName + ".clustermap-epoch") {
+		distributedCache.cfg.ClustermapEpoch = defaultClustermapEpoch
 	}
-	distributedCache.rebalancePercentage = defaultRebalancePercentage
-	if config.IsSet(compName + ".rebalance-percentage") {
-		distributedCache.rebalancePercentage = conf.RebalancePercentage
+	if !config.IsSet(compName + ".rebalance-percentage") {
+		distributedCache.cfg.RebalancePercentage = defaultRebalancePercentage
 	}
-	distributedCache.safeDeletes = defaultSafeDeletes
-	if config.IsSet(compName + ".safe-deletes") {
-		distributedCache.safeDeletes = conf.SafeDeletes
+	if !config.IsSet(compName + ".safe-deletes") {
+		distributedCache.cfg.SafeDeletes = defaultSafeDeletes
 	}
-	distributedCache.cacheAccess = defaultCacheAccess
-	if config.IsSet(compName + ".cache-access") {
-		distributedCache.cacheAccess = conf.CacheAccess
+	if !config.IsSet(compName + ".cache-access") {
+		distributedCache.cfg.CacheAccess = defaultCacheAccess
 	}
 	return nil
 }
 
 // OnConfigChange : If component has registered, on config file change this method is called
 func (dc *DistributedCache) OnConfigChange() {
+}
+
+func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr, error) {
+	if strings.HasPrefix(options.Name, "__CACHE__") {
+		return nil, syscall.ENOENT
+	}
+
+	isAzurePath, isDcachePath, rawPath := getFS(options.Name)
+	if isMountPointRoot(rawPath) {
+		if isAzurePath {
+			return getPlaceholderDirForRoot("fs=azure"), nil
+		} else if isDcachePath {
+			return getPlaceholderDirForRoot("fs=dcache"), nil
+		}
+	}
+	if isAzurePath {
+		// properties should be fetched from Azure
+		log.Debug("DistributedCache::GetAttr : Path is having Azure subcomponent, path : %s", options.Name)
+	} else if isDcachePath {
+		// properties should be fetched from Dcache
+		log.Debug("DistributedCache::GetAttr : Path is having Dcache subcomponent, path : %s", options.Name)
+		// todo :: call GetMdRoot() from metadata manager
+		rawPath = filepath.Join("__CACHE__"+dc.cfg.CacheID, "Objects", rawPath)
+	} else {
+		// todo : assert rawPath==options.Name
+	}
+
+	attr, err := dc.NextComponent().GetAttr(internal.GetAttrOptions{Name: rawPath})
+	if err != nil {
+		return nil, err
+	}
+	// Modify the attr if it came from specific virtual component.
+	// todo : if the path is fs=dcache/*, then populate size, times from the fileLayout
+	if isAzurePath || isDcachePath {
+		attr.Path = options.Name
+		attr.Name = filepath.Base(options.Name)
+	}
+	return attr, nil
+}
+
+func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*internal.ObjAttr, string, error) {
+	isAzurePath, isDcachePath, rawPath := getFS(options.Name)
+	if isAzurePath {
+		// properties should be fetched from Azure
+		log.Debug("DistributedCache::StreamDir : Path is having Azure subcomponent, path : %s", options.Name)
+	} else if isDcachePath {
+		// properties should be fetched from Dcache
+		log.Debug("DistributedCache::StreamDir : Path is having Dcache subcomponent, path : %s", options.Name)
+		// todo :: call GetMdRoot() from metadata manager
+		rawPath = filepath.Join("__CACHE__"+dc.cfg.CacheID, "Objects", rawPath)
+	} else {
+		// properties should be fetched from Azure
+		// todo : assert rawPath==options.Name
+
+	}
+	options.Name = rawPath
+	dirList, token, err := dc.NextComponent().StreamDir(options)
+	if err != nil {
+		return dirList, token, err
+	}
+	// todo : parse the attributes of the file like size,etc.. from the file layout.
+	// If the attributes come for the dcache virtual component.
+	if isMountPointRoot(rawPath) {
+		// todo : Show cache metadata when debug is enabled.
+		dirList = hideCacheMetadata(dirList)
+	}
+	return dirList, token, nil
+}
+
+func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
+	return nil, syscall.ENOTSUP
+}
+
+func (dc *DistributedCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
+	return 0, syscall.ENOTSUP
+}
+
+func (dc *DistributedCache) WriteFile(options internal.WriteFileOptions) (int, error) {
+	return 0, syscall.ENOTSUP
+}
+
+func (dc *DistributedCache) FlushFile(options internal.FlushFileOptions) error {
+	return syscall.ENOTSUP
+}
+
+func (dc *DistributedCache) CloseFile(options internal.CloseFileOptions) error {
+	return syscall.ENOTSUP
+}
+
+func (dc *DistributedCache) DeleteFile(options internal.DeleteFileOptions) error {
+	return syscall.ENOTSUP
+}
+
+func (dc *DistributedCache) RenameFile(options internal.RenameFileOptions) error {
+	return syscall.ENOTSUP
 }
 
 // ------------------------- Factory -------------------------------------------
@@ -340,16 +394,17 @@ func init() {
 	cacheID := config.AddStringFlag("cache-id", "", "Cache ID for the distributed cache")
 	config.BindPFlag(compName+".cache-id", cacheID)
 
-	cachePath := config.AddStringFlag("dcache-cache-path", "", "Local Path of the distributed cache separated by commas")
-	config.BindPFlag(compName+".cache-path", cachePath)
+	//TODO{Akku} : Need to update cache-dirs to be a list of strings for command line run, may be use StringSlice
+	cachePath := config.AddStringFlag("cache-dirs", "", "Local path(s) of the cache (comma‑separated)")
+	config.BindPFlag(compName+".cache-dirs", cachePath)
 
-	chunkSize := config.AddUint64Flag("chunk-size", 16*1024*1024, "Chunk size for the cache")
+	chunkSize := config.AddUint64Flag("chunk-size", defaultChunkSize, "Chunk size for the cache")
 	config.BindPFlag(compName+".chunk-size", chunkSize)
 
 	maxCacheSize := config.AddUint64Flag("max-cache-size", 0, "Cache size for the cache")
 	config.BindPFlag(compName+".max-cache-size", maxCacheSize)
 
-	replicas := config.AddUint8Flag("replicas", defaultReplicas, "Number of replicas for the cache")
+	replicas := config.AddUint32Flag("replicas", defaultReplicas, "Number of replicas for the cache")
 	config.BindPFlag(compName+".replicas", replicas)
 
 	heartbeatDuration := config.AddUint16Flag("heartbeat-duration", defaultHeartBeatDurationInSecond, "Heartbeat duration for the cache")
@@ -357,4 +412,31 @@ func init() {
 
 	missedHB := config.AddUint32Flag("max-missed-heartbeats", 3, "Heartbeat absence for the cache")
 	config.BindPFlag(compName+".max-missed-heartbeats", missedHB)
+
+	clustermapEpoch := config.AddUint64Flag("clustermap-epoch", defaultClustermapEpoch, "Epoch duration for the clustermap update")
+	config.BindPFlag(compName+".clustermap-epoch", clustermapEpoch)
+
+	stripeSize := config.AddUint64Flag("stripe-size", defaultStripeSize, "Stripe size for the cache")
+	config.BindPFlag(compName+".stripe-size", stripeSize)
+
+	mvsPerRv := config.AddUint64Flag("mvs-per-rv", defaultMvsPerRv, "Number of MVs per raw volume")
+	config.BindPFlag(compName+".mvs-per-rv", mvsPerRv)
+
+	rvFullThreshold := config.AddUint64Flag("rv-full-threshold", defaultRvFullThreshold, "Percent to mark RV full")
+	config.BindPFlag(compName+".rv-full-threshold", rvFullThreshold)
+
+	rvNearfullThreshold := config.AddUint64Flag("rv-nearfull-threshold", defaultRvNearfullThreshold, "Percent to mark RV near full")
+	config.BindPFlag(compName+".rv-nearfull-threshold", rvNearfullThreshold)
+
+	minNodes := config.AddUint32Flag("min-nodes", defaultMinNodes, "Minimum number of nodes required")
+	config.BindPFlag(compName+".min-nodes", minNodes)
+
+	rebalancePercentage := config.AddUint8Flag("rebalance-percentage", defaultRebalancePercentage, "Rebalance threshold percentage")
+	config.BindPFlag(compName+".rebalance-percentage", rebalancePercentage)
+
+	safeDeletes := config.AddBoolFlag("safe-deletes", defaultSafeDeletes, "Enable safe‑delete mode")
+	config.BindPFlag(compName+".safe-deletes", safeDeletes)
+
+	cacheAccess := config.AddStringFlag("cache-access", defaultCacheAccess, "Cache access mode (automatic/manual)")
+	config.BindPFlag(compName+".cache-access", cacheAccess)
 }
