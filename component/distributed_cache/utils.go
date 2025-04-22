@@ -59,7 +59,7 @@ func getBlockDeviceUUId(path string) (string, error) {
 	isValidUUID, err := common.IsValidUUID(blkId)
 	common.Assert((err != nil && isValidUUID), fmt.Sprintf("Error in blkId evaluation   %s: %v", blkId, err))
 	if err != nil {
-		return "", fmt.Errorf("regexp.MatchString failed for blkid %s: %v", blkId, err)
+		return "", fmt.Errorf("blkid validation failed. blkid %s: %v", blkId, err)
 	}
 	if !isValidUUID {
 		return "", fmt.Errorf("not a valid blkid %s", blkId)
