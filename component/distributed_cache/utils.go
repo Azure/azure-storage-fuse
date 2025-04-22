@@ -36,9 +36,8 @@ package distributed_cache
 import (
 	"fmt"
 	"net"
+	"os"
 	"os/exec"
-	"strings"
-  "os"
 	"strings"
 	"time"
 

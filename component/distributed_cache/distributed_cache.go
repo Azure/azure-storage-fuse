@@ -220,8 +220,8 @@ func (dc *DistributedCache) Stop() error {
 // Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
 //
 //	Return failure if any config is not valid to exit the process
-func (dc *DistributedCache) Configure(_ bool) error {
-	log.Trace("DistributedCache::Configure : %s", dc.Name())
+func (distributedCache *DistributedCache) Configure(_ bool) error {
+	log.Trace("DistributedCache::Configure : %s", distributedCache.Name())
 
 	err := config.UnmarshalKey(distributedCache.Name(), &distributedCache.cfg)
 
@@ -302,7 +302,7 @@ func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.
 		// properties should be fetched from Dcache
 		log.Debug("DistributedCache::GetAttr : Path is having Dcache subcomponent, path : %s", options.Name)
 		// todo :: call GetMdRoot() from metadata manager
-		rawPath = filepath.Join("__CACHE__"+dc.cacheID, "Objects", rawPath)
+		rawPath = filepath.Join("__CACHE__"+dc.cfg.CacheID, "Objects", rawPath)
 	} else {
 		// todo : assert rawPath==options.Name
 	}
@@ -329,7 +329,7 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 		// properties should be fetched from Dcache
 		log.Debug("DistributedCache::StreamDir : Path is having Dcache subcomponent, path : %s", options.Name)
 		// todo :: call GetMdRoot() from metadata manager
-		rawPath = filepath.Join("__CACHE__"+dc.cacheID, "Objects", rawPath)
+		rawPath = filepath.Join("__CACHE__"+dc.cfg.CacheID, "Objects", rawPath)
 	} else {
 		// properties should be fetched from Azure
 		// todo : assert rawPath==options.Name
