@@ -195,6 +195,55 @@ func (suite *unmountTestSuite) TestUnmountCmdValidArg() {
 	suite.assert.Empty(lst)
 }
 
+func (suite *unmountTestSuite) TestUnmountCmdLazy() {
+	defer suite.cleanupTest()
+
+	lazyFlags := []string{"--lazy", "-z"}
+	flagBeforePath := false
+	flagAfterPath := !flagBeforePath
+	possibleFlagPositions := []bool{flagBeforePath, flagAfterPath}
+	baseCommand := "unmount"
+
+	for _, lazyFlag := range lazyFlags {
+		for _, flagPosition := range possibleFlagPositions {
+			mountDirectory6, _ := os.MkdirTemp("", "TestUnMountTemp")
+			os.MkdirAll(mountDirectory6, 0777)
+			defer os.RemoveAll(mountDirectory6)
+
+			cmd := exec.Command("../blobfuse2", "mount", mountDirectory6, fmt.Sprintf("--config-file=%s", confFileUnMntTest))
+			_, err := cmd.Output()
+			suite.assert.NoError(err)
+
+			time.Sleep(2 * time.Second)
+			// move into the mount directory to cause busy error on regular unmount
+			err = os.Chdir(mountDirectory6)
+			suite.assert.NoError(err)
+
+			// normal unmount should fail
+			_, err = executeCommandC(rootCmd, "unmount", mountDirectory6)
+			suite.assert.Error(err)
+			suite.assert.Contains(err.Error(), "failed to unmount")
+
+			// test lazy unmount
+			args := []string{baseCommand}
+			if flagPosition == flagBeforePath {
+				args = append(args, lazyFlag, mountDirectory6)
+			} else {
+				args = append(args, mountDirectory6, lazyFlag)
+			}
+			_, err = executeCommandC(rootCmd, args...)
+			suite.assert.NoError(err)
+
+			// leave the mount directory to allow lazy unmount to complete
+			err = os.Chdir(currentDir)
+			suite.assert.NoError(err)
+
+			// clean up lazy flag
+			suite.cleanupTest()
+		}
+	}
+}
+
 func TestUnMountCommand(t *testing.T) {
 	confFile, err := os.CreateTemp("", "conf*.yaml")
 	if err != nil {
@@ -226,55 +275,4 @@ func TestUnMountCommand(t *testing.T) {
 
 	defer os.RemoveAll(tempDir)
 	suite.Run(t, new(unmountTestSuite))
-}
-
-func (suite *unmountTestSuite) TestUnmountCmdLazy() {
-	defer suite.cleanupTest()
-
-	lazyFlags := []string{"--lazy", "-z"}
-	flagBeforePath := false
-	flagAfterPath := !flagBeforePath
-	possibleFlagPositions := []bool{flagBeforePath, flagAfterPath}
-	baseCommand := "unmount"
-
-	for _, lazyFlag := range lazyFlags {
-		for _, flagPosition := range possibleFlagPositions {
-			mountDirectory6, _ := os.MkdirTemp("", "TestUnMountTemp")
-			os.MkdirAll(mountDirectory6, 0777)
-			defer os.RemoveAll(mountDirectory6)
-
-			cmd := exec.Command("../blobfuse2", "mount", mountDirectory6, fmt.Sprintf("--config-file=%s", confFileUnMntTest))
-			_, err := cmd.Output()
-			suite.assert.NoError(err)
-
-			time.Sleep(2 * time.Second)
-			// move into the mount directory to cause busy error on regular unmount
-			err = os.Chdir(mountDirectory6)
-			suite.assert.NoError(err)
-
-			// normal unmount should fail
-			_, err = executeCommandC(rootCmd, "unmount", mountDirectory6)
-			suite.assert.Error(err)
-			if err != nil {
-				suite.assert.Contains(err.Error(), "failed to unmount")
-			}
-
-			// test lazy unmount
-			args := []string{baseCommand}
-			if flagPosition == flagBeforePath {
-				args = append(args, lazyFlag, mountDirectory6)
-			} else {
-				args = append(args, mountDirectory6, lazyFlag)
-			}
-			_, err = executeCommandC(rootCmd, args...)
-			suite.assert.NoError(err)
-
-			// leave the mount directory to allow lazy unmount to complete
-			err = os.Chdir(currentDir)
-			suite.assert.NoError(err)
-
-			// clean up lazy flag
-			suite.cleanupTest()
-		}
-	}
 }

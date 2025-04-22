@@ -121,5 +121,4 @@ func init() {
 	unmountCmd.AddCommand(umntAllCmd)
 
 	unmountCmd.PersistentFlags().BoolP("lazy", "z", false, "Use lazy unmount")
-	umntAllCmd.PersistentFlags().BoolP("lazy", "z", false, "Use lazy unmount")
 }
