@@ -55,6 +55,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	gouuid "github.com/google/uuid"
 	"gopkg.in/ini.v1"
 )
@@ -435,8 +436,8 @@ func GetDiskUsageFromStatfs(path string) (float64, float64, error) {
 	if err != nil || totalSpace == 0 {
 		return 0, 0, err
 	}
-	usedSpace := totalSpace - availableSpace
-	return float64(usedSpace), float64(usedSpace/totalSpace) * 100, nil
+	usedSpace := float64(totalSpace - availableSpace)
+	return usedSpace, (usedSpace / float64(totalSpace)) * 100, nil
 }
 
 // It will return totalSpace, availableSpace, and error if any while evaluting the Current disk usage of path using statfs
@@ -600,42 +601,37 @@ func UpdatePipeline(pipeline []string, component string) []string {
 	return pipeline
 }
 
-func GetUUID() (string, error) {
+func GetNodeUUID() (string, error) {
 	uuidFilePath := filepath.Join(DefaultWorkDir, "blobfuse_node_uuid")
 	_, err := os.Stat(uuidFilePath)
 	if err == nil {
 		// File exists, read its content
 		data, err := os.ReadFile(uuidFilePath)
 		if err != nil {
-			return "", fmt.Errorf("Fail to read UUID File at :%s with error %s", uuidFilePath, err)
+			return "", fmt.Errorf("fail to read UUID File at :%s with error %s", uuidFilePath, err)
 		}
 		stringData := string(data)
 		isValidGUID, err := IsValidUUID(stringData)
 		if err != nil {
-			return "", fmt.Errorf("regexp.MatchString failed for %s: %v", stringData, err)
+			return "", fmt.Errorf("IsValidUUID failed for %s: %v", stringData, err)
 		}
 		if !isValidGUID {
-			return "", fmt.Errorf("Not a valid UUID in UUID File at :%s with error %s", uuidFilePath, string(data))
+			return "", fmt.Errorf("not a valid UUID in UUID File at :%s UUID - %s", uuidFilePath, string(data))
 		}
 		return stringData, nil
 	}
 	if os.IsNotExist(err) {
 		// File doesn't exist, generate a new UUID
 		newUuid := gouuid.New().String()
-		isValidGUID, err := IsValidUUID(newUuid)
-		if err != nil {
-			return "", fmt.Errorf("regexp.MatchString failed for %s: %v", newUuid, err)
-		}
-		if !isValidGUID {
-			return "", fmt.Errorf("Not a valid UUID in UUID File at :%s with error %s", uuidFilePath, string(newUuid))
-		}
+		Assert(IsValidUUID(newUuid))
 		if err := os.WriteFile(uuidFilePath, []byte(newUuid), 0400); err != nil {
+			log.Info("Generated UUID %s saved in file %s", newUuid, uuidFilePath)
 			return "", err
 		}
 
 		return newUuid, nil
 	}
-	return "", fmt.Errorf("Failed to stat UUID file at %s with error %s", uuidFilePath, err)
+	return "", fmt.Errorf("failed to read node UUID from file at %s with error %s", uuidFilePath, err)
 }
 
 // isValidGUID returns true if the string is a valid guid in the 8-4-4-4-12 format.
@@ -648,12 +644,8 @@ func IsValidUUID(guid string) (bool, error) {
 	return valid, nil
 }
 
-func IsValidSpace(byte int) bool {
-	return byte < 0
-}
-
 func IsValidIP(ipAddress string) bool {
-	return ipAddress == "" || net.ParseIP(ipAddress) != nil
+	return net.ParseIP(ipAddress) != nil
 }
 
 func IsValidBlkDevice(device string) error {
@@ -663,7 +655,7 @@ func IsValidBlkDevice(device string) error {
 	}
 	mode := fi.Mode()
 	if mode&os.ModeDevice == 0 || mode&os.ModeCharDevice != 0 {
-		return fmt.Errorf("not a block device: %s", device)
+		return fmt.Errorf("not a block device: %s having mode bits 0%4o", device, mode.Perm())
 	}
 	return nil
 }

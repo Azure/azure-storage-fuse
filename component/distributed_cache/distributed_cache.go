@@ -178,7 +178,7 @@ func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
 		return rvList, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to get VM IP : %v]", err))
 	}
 
-	uuidVal, err := common.GetUUID()
+	uuidVal, err := common.GetNodeUUID()
 	if err != nil {
 		return rvList, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to retrieve UUID, error: %v]", err))
 	}
