@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package server
+package rpc_server
 
 import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
