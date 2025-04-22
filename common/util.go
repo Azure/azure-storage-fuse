@@ -432,7 +432,7 @@ var currentUID int = -1
 func GetDiskUsageFromStatfs(path string) (float64, float64, error) {
 	// We need to compute the disk usage percentage for the temp path
 	totalSpace, availableSpace, err := GetDiskSpaceMetricsFromStatfs(path)
-	if err != nil {
+	if err != nil || totalSpace == 0 {
 		return 0, 0, err
 	}
 	usedSpace := float64(totalSpace - availableSpace)
