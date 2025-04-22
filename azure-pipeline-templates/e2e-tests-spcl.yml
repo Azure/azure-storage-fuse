@@ -2,13 +2,7 @@ parameters:
   - name: conf_template
     type: string
   - name: config_file
-    type: string
-  - name: container
-    type: string
-  - name: temp_dir
-    type: string
-  - name: mount_dir
-    type: string    
+    type: string  
   - name: idstring
     type: string
   - name: adls
@@ -19,7 +13,6 @@ parameters:
     type: string
   - name: account_type
     type: string
-  - name: account_endpoint
   - name: distro_name
     type: string
   - name: quick_test
@@ -38,13 +31,12 @@ parameters:
 steps:    
   - script: |
       cd $(WORK_DIR)
-      $(WORK_DIR)/blobfuse2 gen-test-config --config-file=${{ parameters.conf_template }} --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.config_file }}
+      $(WORK_DIR)/blobfuse2 gen-test-config --config-file=${{ parameters.conf_template }} --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=${{ parameters.config_file }}
     displayName: 'Create Config File : ${{ parameters.idstring }}'
     env:
-      NIGHTLY_STO_ACC_NAME: ${{ parameters.account_name }}
-      NIGHTLY_STO_ACC_KEY: ${{ parameters.account_key }}
-      ACCOUNT_TYPE: ${{ parameters.account_type }}
-      ACCOUNT_ENDPOINT: ${{ parameters.account_endpoint }}
+      STO_ACC_NAME: ${{ parameters.account_name }}
+      STO_ACC_KEY: ${{ parameters.account_key }}
+      STO_ACC_TYPE: ${{ parameters.account_type }}
       VERBOSE_LOG: ${{ parameters.verbose_log }}
     continueOnError: false
 
@@ -54,9 +46,6 @@ steps:
 
   - template: './e2e-tests.yml'
     parameters:
-      working_dir: $(WORK_DIR)
-      mount_dir: ${{ parameters.mount_dir }}
-      temp_dir: ${{ parameters.temp_dir }}
       adls: ${{ parameters.adls }}
       idstring: '${{ parameters.idstring }}'
       distro_name: ${{ parameters.distro_name }}
@@ -67,13 +56,12 @@ steps:
       enable_symlink_adls: ${{ parameters.enable_symlink_adls }}
       mountStep:
         script: |
-          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(System.DefaultWorkingDirectory)
+          $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=${{ parameters.config_file }} --default-working-dir=$(System.DefaultWorkingDirectory)
         displayName: 'E2E TEST : ${{ parameters.idstring }}'
         timeoutInMinutes: 3
         continueOnError: false
 
   - template: 'cleanup.yml'
     parameters:
-      working_dir: $(WORK_DIR)
-      mount_dir: ${{ parameters.mount_dir }}
-      temp_dir: ${{ parameters.temp_dir }}
+      unmount: true
+      delete_containers: false
