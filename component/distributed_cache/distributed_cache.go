@@ -37,6 +37,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
@@ -133,34 +134,38 @@ func (dc *DistributedCache) OnConfigChange() {
 }
 
 func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr, error) {
-	ok, attr := isPlaceholderDirForRoot(options.Name)
-	if ok {
-		return attr, nil
-	}
-	if options.Name == "__CACHE__"+dc.cacheID {
+	if strings.HasPrefix(options.Name, "__CACHE__") {
 		return nil, syscall.ENOENT
 	}
+
+	isAzurePath, isDcachePath, rawPath := getFS(options.Name)
 	newPath := options.Name
-	// Check if properties should be fetched from Azure
-	getAttrFromAzure, rawPath := isAzurePath(options.Name)
-	if getAttrFromAzure {
+	if isAzurePath {
+		// properties should be fetched from Azure
 		log.Info("DistributedCache::GetAttr : Path is having Azure subcomponent, path : %s", options.Name)
 		newPath = rawPath
-	}
-	// Check if properties should be fetched from Dcache
-	getAttrFromDcache, rawPath := isDcachePath(options.Name)
-	if getAttrFromDcache {
+	} else if isDcachePath {
+		// properties should be fetched from Dcache
 		log.Info("DistributedCache::GetAttr : Path is having Dcache subcomponent, path : %s", options.Name)
-		newPath = filepath.Join("__CACHE__"+dc.cacheID+"/Objects", rawPath)
+		newPath = filepath.Join("__CACHE__"+dc.cacheID, "Objects", rawPath)
+	} else {
+		// properties should be fetched from Azure
+		newPath = options.Name
 	}
-	// Default is to get the properties from the Azure
+	if isMountPointRoot(newPath) {
+		if isAzurePath {
+			return getPlaceholderDirForRoot("fs=azure"), nil
+		} else if isDcachePath {
+			return getPlaceholderDirForRoot("fs=dcache"), nil
+		}
+	}
 	attr, err := dc.NextComponent().GetAttr(internal.GetAttrOptions{Name: newPath})
 	if err != nil {
 		return nil, err
 	}
 	// Modify the attr if it came from specific virtual component.
 	// todo : parse the attributes from the filelayout if we are getting attr for the fs=dcache/*
-	if getAttrFromAzure || getAttrFromDcache {
+	if isAzurePath || isDcachePath {
 		attr.Path = options.Name
 		attr.Name = filepath.Base(options.Name)
 	}
@@ -168,19 +173,21 @@ func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.
 }
 
 func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*internal.ObjAttr, string, error) {
-	// Check If directory has azure as virtual subcomponent
-	getListFromAzure, rawPath := isAzurePath(options.Name)
-	if getListFromAzure {
+	isAzurePath, isDcachePath, rawPath := getFS(options.Name)
+	newPath := options.Name
+	if isAzurePath {
+		// properties should be fetched from Azure
 		log.Info("DistributedCache::StreamDir : Path is having Azure subcomponent, path : %s", options.Name)
-		options.Name = rawPath
-	}
-	// Check If directory has dcache as virtual subcomponent
-	getListFromDcache, rawPath := isDcachePath(options.Name)
-	if getListFromDcache {
+		newPath = rawPath
+	} else if isDcachePath {
+		// properties should be fetched from Dcache
 		log.Info("DistributedCache::StreamDir : Path is having Dcache subcomponent, path : %s", options.Name)
-		options.Name = filepath.Join("__CACHE__"+dc.cacheID+"/Objects", rawPath)
+		newPath = filepath.Join("__CACHE__"+dc.cacheID, "Objects", rawPath)
+	} else {
+		// properties should be fetched from Azure
+		newPath = options.Name
 	}
-	// Normal listing.
+	options.Name = newPath
 	dirList, token, err := dc.NextComponent().StreamDir(options)
 	if err != nil {
 		return dirList, token, err
@@ -188,7 +195,8 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 	// todo : parse the attributes of the file like size,etc.. from the file layout.
 	// If the attributes come for the dcache virtual component.
 	if isMountPointRoot(options.Name) {
-		dirList = hideCacheFolder(dirList, "__CACHE__"+dc.cacheID)
+		// todo : Show cache metadata when debug is enabled.
+		dirList = hideCacheMetadata(dirList)
 	}
 	return dirList, token, nil
 }

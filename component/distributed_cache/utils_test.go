@@ -54,23 +54,33 @@ func TestUtil(t *testing.T) {
 }
 
 func (suite *utilTestSuite) TestisPathContainsDcacheVirtualComponent() {
-	found, resPath := isDcachePath("fs=dcache/foo")
-	suite.assert.True(found)
-	suite.assert.Equal("foo", resPath)
-	found, resPath = isDcachePath("fs=dcache/foo/bar")
-	suite.assert.True(found)
-	suite.assert.Equal("foo/bar", resPath)
-	found, resPath = isDcachePath("fs=dcacheee/foo/bar")
-	suite.assert.False(found)
+	isAzurePath, isDcachePath, rawPath := getFS("fs=dcache/foo")
+	suite.assert.False(isAzurePath)
+	suite.assert.True(isDcachePath)
+	suite.assert.Equal("foo", rawPath)
+
+	isAzurePath, isDcachePath, rawPath = getFS("fs=dcache/foo/bar")
+	suite.assert.False(isAzurePath)
+	suite.assert.True(isDcachePath)
+	suite.assert.Equal("foo/bar", rawPath)
+
+	isAzurePath, isDcachePath, rawPath = getFS("fs=dcacheee/foo/bar")
+	suite.assert.False(isAzurePath)
+	suite.assert.False(isDcachePath)
+	suite.assert.Equal("fs=dcacheee/foo/bar", rawPath)
 }
 
 func (suite *utilTestSuite) TestisPathContainsAzureVirtualComponent() {
-	found, resPath := isAzurePath("fs=azure/foo")
-	suite.assert.True(found)
-	suite.assert.Equal("foo", resPath)
-	found, resPath = isAzurePath("fs=azure/foo/bar")
-	suite.assert.True(found)
-	suite.assert.Equal("foo/bar", resPath)
-	found, resPath = isAzurePath("fs=azureeee/foo/bar")
-	suite.assert.False(found)
+	isAzurePath, isDcachePath, rawPath := getFS("fs=azure/foo")
+	suite.assert.True(isAzurePath)
+	suite.assert.False(isDcachePath)
+	suite.assert.Equal("foo", rawPath)
+	isAzurePath, isDcachePath, rawPath = getFS("fs=azure/foo/bar")
+	suite.assert.True(isAzurePath)
+	suite.assert.False(isDcachePath)
+	suite.assert.Equal("foo/bar", rawPath)
+	isAzurePath, isDcachePath, rawPath = getFS("fs=azureeee/foo/bar")
+	suite.assert.False(isAzurePath)
+	suite.assert.False(isDcachePath)
+	suite.assert.Equal("fs=azureeee/foo/bar", rawPath)
 }

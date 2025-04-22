@@ -34,43 +34,50 @@
 package distributed_cache
 
 import (
+	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
-// Check if the path is of placeHolder dir/virtual sub component for root of mountpoint.
+// Get the placeHolder dir/virtual sub component for root of mountpoint.
 // This virtual directory should only valid if it's present at the root of the mountpoint.
-func isPlaceholderDirForRoot(path string) (bool, *internal.ObjAttr) {
-	if path == "fs=azure" || path == "fs=dcache" {
-		attr := &internal.ObjAttr{
-			Path:  path,
-			Name:  filepath.Base(path),
-			Size:  4096,
-			Mode:  os.ModeDir,
-			Mtime: time.Now(),
-			Flags: internal.NewDirBitMap(),
-		}
-		attr.Atime = attr.Mtime
-		attr.Crtime = attr.Mtime
-		attr.Ctime = attr.Mtime
-		attr.Flags.Set(internal.PropFlagModeDefault)
-		return true, attr
+func getPlaceholderDirForRoot(path string) *internal.ObjAttr {
+	attr := &internal.ObjAttr{
+		Path:  path,
+		Size:  4096,
+		Mode:  os.ModeDir,
+		Mtime: time.Now(),
+		Flags: internal.NewDirBitMap(),
 	}
-	return false, nil
+	attr.Atime = attr.Mtime
+	attr.Crtime = attr.Mtime
+	attr.Ctime = attr.Mtime
+	attr.Flags.Set(internal.PropFlagModeDefault)
+	return attr
 }
 
-// Check if path contains fs=azure as it's subdirectory,
-// and returns the newpath
-func isAzurePath(path string) (found bool, resPath string) {
-	return isPathContainsSubDir(path, "fs=azure")
-}
-
-func isDcachePath(path string) (found bool, resPath string) {
-	return isPathContainsSubDir(path, "fs=dcache")
+// returns true for isAzurePath, if path has "fs=azure" as its first subdir.
+// return true for isDcachPath, if path has "fs=dcache" as its first subdir.
+// rawPath is the resultant path after removing virtual dirs like "fs=azure/dcache"
+// returns path if it dont find any virtual dirs.
+func getFS(path string) (isAzurePath bool, isDcachePath bool, rawPath string) {
+	rawPath = path
+	isAzurePath, tempPath := isPathContainsSubDir(path, "fs=azure")
+	if isAzurePath {
+		rawPath = tempPath
+	}
+	isDcachePath, tempPath = isPathContainsSubDir(path, "fs=dcache")
+	if isDcachePath {
+		rawPath = tempPath
+	}
+	// todo :: Replace the following with an assert
+	if isAzurePath && isDcachePath {
+		panic(fmt.Sprintf("DistributedCache::getFS, path : %s is having both azure and dcache virtual subdirs", path))
+	}
+	return
 }
 
 // function to know path consists of given subdir at it's root
@@ -93,16 +100,17 @@ func isPathContainsSubDir(path string, subdir string) (found bool, resPath strin
 	return
 }
 
-// hides the cache folder __CACHE__ + cacheid folder from listing the mountpoint root
-func hideCacheFolder(dirList []*internal.ObjAttr, cachePath string) []*internal.ObjAttr {
-	for i, attr := range dirList {
-		if attr.Path == cachePath {
-			// The following can be replaced with swapping the element with last one. but that would
-			// mess up the blob ordering.
-			return append(dirList[:i], dirList[i+1:]...)
+// hides the cache folder that starts with prefix __CACHE__.
+func hideCacheMetadata(dirList []*internal.ObjAttr) []*internal.ObjAttr {
+	newDirList := make([]*internal.ObjAttr, len(dirList))
+	i := 0
+	for _, attr := range dirList {
+		if !strings.HasPrefix(attr.Path, "__CACHE__") {
+			newDirList[i] = attr
+			i++
 		}
 	}
-	return dirList
+	return newDirList[:i]
 }
 
 func isMountPointRoot(path string) bool {
