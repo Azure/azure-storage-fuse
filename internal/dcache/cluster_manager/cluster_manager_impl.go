@@ -53,7 +53,6 @@ type ClusterManagerImpl struct {
 	hbTicker         *time.Ticker
 	clusterMapticker *time.Ticker
 	nodeId           string
-	storageCachePath string
 }
 
 // It will return online MVs as per local cache copy of cluster map
@@ -130,8 +129,7 @@ func (cmi *ClusterManagerImpl) start(dCacheConfig *dcache.DCacheConfig, rvs []dc
 			cmi.punchHeartBeat(rvs)
 		}
 	}()
-  cmi.storageCachePath = clusterManagerConfig.StorageCachePath
-	cmi.clusterMapticker = time.NewTicker(time.Duration(clusterManagerConfig.ClustermapEpoch) * time.Second)
+	cmi.clusterMapticker = time.NewTicker(time.Duration(dCacheConfig.ClustermapEpoch) * time.Second)
 	go func() {
 		for range cmi.clusterMapticker.C {
 			log.Trace("Scheduled Cluster Map update task triggered")
@@ -276,11 +274,12 @@ func evaluateMVsRVMapping() map[string]dcache.MirroredVolume {
 }
 
 func (cmi *ClusterManagerImpl) checkAndUpdateRVMap(clusterMapRVMap map[string]dcache.RawVolume) (bool, bool, error) {
-	dirListAttr, err := cmi.storageCallback.ReadDirFromStorage(internal.ReadDirOptions{Name: cmi.storageCachePath + "/Nodes"})
+	dirListAttr, etag, err := mm.GetClusterMap()
+	log.Info("ClusterManagerImpl::checkAndUpdateRVMap: clusterMap %+v etag %v, err %v", dirListAttr, etag, err)
 	isRVMapUpdated := false
 	isMVsUpdateNeeded := false
 	if err != nil {
-		log.Err("ClusterManagerImpl::checkAndUpdateRVMap: Failed to read directory from Storage %s, error: %v", cmi.storageCachePath+"/Nodes", err)
+		// log.Err("ClusterManagerImpl::checkAndUpdateRVMap: Failed to read directory from Storage %s, error: %v", cmi.storageCachePath+"/Nodes", err)
 		return isRVMapUpdated, isMVsUpdateNeeded, err
 	}
 	log.Trace("ClusterManagerImpl::checkAndUpdateRVMap: Heartbeat files in storage %s", dirListAttr)
@@ -288,10 +287,11 @@ func (cmi *ClusterManagerImpl) checkAndUpdateRVMap(clusterMapRVMap map[string]dc
 	rVsByBlkID := make(map[string]dcache.RawVolume)
 
 	for _, fileAttr := range dirListAttr {
-
-		bytes, err := cmi.storageCallback.GetBlobFromStorage(internal.ReadFileWithNameOptions{Path: fileAttr.Path})
+		log.Trace("ClusterManagerImpl::checkAndUpdateRVMap: Heartbeat file %s", fileAttr)
+		bytes, err := mm.GetHeartbeat("")
+		// GetBlobFromStorage(internal.ReadFileWithNameOptions{Path: fileAttr.Path})
 		if err != nil {
-			log.Err("ClusterManagerImpl::checkAndUpdateRVMap: Failed to read heartbeat file %s, error: %v", fileAttr.Path, err)
+			// log.Err("ClusterManagerImpl::checkAndUpdateRVMap: Failed to read heartbeat file %s, error: %v", fileAttr.Path, err)
 			return isRVMapUpdated, isMVsUpdateNeeded, err
 		}
 		var hbData dcache.HeartbeatData
@@ -383,7 +383,7 @@ func (cmi *ClusterManagerImpl) punchHeartBeat(rvList []dcache.RawVolume) {
 	data, err := json.MarshalIndent(hbData, "", "  ")
 	//Adding Assert because error capturing can just log the error and continue because it's a schedule method
 	common.Assert(err != nil, "Error marshalling heartbeat data %+v : error - %v", hbData, err)
-  // Create and update heartbeat file in storage with <nodeId>.hb
+	// Create and update heartbeat file in storage with <nodeId>.hb
 	err = mm.UpdateHeartbeat(cmi.nodeId, data)
 	common.Assert(err != nil, "Error updating heartbeat file with nodeId %s in storage: %v", cmi.nodeId, err)
 	log.Trace("AddHeartBeat: Heartbeat file updated successfully")
@@ -391,12 +391,13 @@ func (cmi *ClusterManagerImpl) punchHeartBeat(rvList []dcache.RawVolume) {
 
 // UpdateStorageConfigIfRequired implements ClusterManager.
 func (cmi *ClusterManagerImpl) UpdateStorageConfigIfRequired() {
-	bytes, err := cmi.storageCallback.GetBlobFromStorage(internal.ReadFileWithNameOptions{Path: cmi.storageCachePath + "/ClusterMap.json"})
+	bytes, etag, err := mm.GetClusterMap()
+	log.Err("UpdateStorageConfigIfRequired: clusterMap %v, etag %v, err %v", bytes, etag, err)
 	if err != nil {
 		log.Err("UpdateStorageConfigIfRequired: bytes %v, err %v", bytes, err)
 		return
 	}
-	var clusterCfg dcache.ClusterConfig
+	var clusterCfg dcache.ClusterMap
 	if err := json.Unmarshal(bytes, &clusterCfg); err != nil {
 		log.Err("UpdateStorageConfigIfRequired: failed to parse JSON, error: %v", err)
 		return
@@ -413,12 +414,7 @@ func (cmi *ClusterManagerImpl) UpdateStorageConfigIfRequired() {
 		clusterCfg.LastUpdatedBy = cmi.nodeId
 		clusterCfg.LastUpdatedAt = time.Now().Unix()
 		clusterCfgByte, _ := json.Marshal(clusterCfg)
-		cmi.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
-			Name: cmi.storageCachePath + "/ClusterMap.json",
-			Data: clusterCfgByte,
-			// EtagMatchConditions: ,
-			//TODO{Akku}: ADD Etag condition
-		})
+		mm.UpdateClusterMapEnd(clusterCfgByte)
 
 		//If required trigger replication manager
 	}
