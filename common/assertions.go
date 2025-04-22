@@ -34,12 +34,14 @@
 package common
 
 import (
+	"fmt"
 	"net"
+	"os"
 	"regexp"
 )
 
 // isValidGUID returns true if the string is a valid guid in the 8-4-4-4-12 format.
-func IsValidGUID(guid string) (bool, error) {
+func IsValidUUID(guid string) (bool, error) {
 	valid, err := regexp.MatchString(
 		"^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$", guid)
 	if err != nil {
@@ -53,5 +55,17 @@ func IsValidSpace(byte int) bool {
 }
 
 func IsValidIP(ipAddress string) bool {
-	return net.ParseIP(ipAddress) != nil
+	return ipAddress == "" || net.ParseIP(ipAddress) != nil
+}
+
+func IsValidBlkDevice(device string) error {
+	fi, err := os.Stat(device)
+	if err != nil {
+		return fmt.Errorf("error stating device %s: %v", device, err)
+	}
+	mode := fi.Mode()
+	if mode&os.ModeDevice == 0 || mode&os.ModeCharDevice != 0 {
+		return fmt.Errorf("not a block device: %s", device)
+	}
+	return nil
 }

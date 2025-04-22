@@ -44,8 +44,8 @@ type RawVolume struct {
 	FSID           string    `json:"fsid,omitempty"`
 	FDID           string    `json:"fdid,omitempty"`
 	State          StateEnum `json:"state,omitempty"`
-	TotalSpace     uint64    `json:"total_space,omitempty"`
-	AvailableSpace uint64    `json:"available_space,omitempty"`
+	TotalSpace     float64   `json:"total_space,omitempty"`
+	AvailableSpace float64   `json:"available_space,omitempty"`
 	LocalCachePath string    `json:"local_cache_path,omitempty"`
 }
 

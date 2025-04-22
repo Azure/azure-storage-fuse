@@ -37,9 +37,13 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
+	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/cluster_manager"
+	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
 )
 
 /* NOTES:
@@ -52,30 +56,51 @@ import (
 // Common structure for Component
 type DistributedCache struct {
 	internal.BaseComponent
-	cacheID      string
-	cachePath    string
-	maxCacheSize uint64
-	replicas     uint8
-	maxMissedHbs uint8
-	hbDuration   uint16
+	cfg DistributedCacheOptions // ← holds cache‐id, cache‐dirs, replicas, chunk‐size, etc.
+
+	azstorage       internal.Component
+	storageCallback dcache.StorageCallbacks
 }
 
 // Structure defining your config parameters
 type DistributedCacheOptions struct {
-	CacheID             string `config:"cache-id" yaml:"cache-id,omitempty"`
-	CachePath           string `config:"path" yaml:"path,omitempty"`
-	ChunkSize           uint64 `config:"chunk-size" yaml:"chunk-size,omitempty"`
-	MaxCacheSize        uint64 `config:"max-cache-size" yaml:"cache-size,omitempty"`
-	Replicas            uint8  `config:"replicas" yaml:"replicas,omitempty"`
+	CacheID   string   `config:"cache-id" yaml:"cache-id,omitempty"`
+	CacheDirs []string `config:"cache-dirs" yaml:"cache-dirs,omitempty"`
+
+	ChunkSize  uint64 `config:"chunk-size" yaml:"chunk-size,omitempty"`
+	StripeSize uint64 `config:"stripe-size" yaml:"stripe-size,omitempty"`
+	Replicas   uint8  `config:"replicas" yaml:"replicas,omitempty"`
+
 	HeartbeatDuration   uint16 `config:"heartbeat-duration" yaml:"heartbeat-duration,omitempty"`
 	MaxMissedHeartbeats uint8  `config:"max-missed-heartbeats" yaml:"max-missed-heartbeats,omitempty"`
+	RVFullThreshold     uint64 `config:"rv-full-threshold" yaml:"rv-full-threshold,omitempty"`
+	RVNearfullThreshold uint64 `config:"rv-nearfull-threshold" yaml:"rv-nearfull-threshold,omitempty"`
+	MaxCacheSize        uint64 `config:"max-cache-size" yaml:"max-cache-size,omitempty"`
+
+	MinNodes            int    `config:"min-nodes" yaml:"min-nodes,omitempty"`
+	MVsPerRv            uint64 `config:"mvs-per-rv" yaml:"mvs-per-rv,omitempty"`
+	RebalancePercentage uint64 `config:"rebalance-percentage" yaml:"rebalance-percentage,omitempty"`
+	SafeDeletes         bool   `config:"safe-deletes" yaml:"safe-deletes,omitempty"`
+	CacheAccess         string `config:"cache-access" yaml:"cache-access,omitempty"`
+	ClustermapEpoch     uint64 `config:"clustermap-epoch" yaml:"clustermap-epoch,omitempty"`
 }
 
 const (
 	compName                         = "distributed_cache"
 	defaultHeartBeatDurationInSecond = 30
-	defaultReplicas                  = 3
+	defaultReplicas                  = 1
 	defaultMaxMissedHBs              = 3
+	defaultChunkSize                 = 4 * 1024 * 1024 // 4 MB
+	defaultMinNodes                  = 1
+	defaultStripeSize                = 16 * 1024 * 1024 // 16 MB
+	//TODO{Akku} : Need to update defaultMvsPerRv to 10 for future
+	defaultMvsPerRv            = 1
+	defaultRvFullThreshold     = 95
+	defaultRvNearfullThreshold = 80
+	defaultClustermapEpoch     = 300
+	defaultRebalancePercentage = 80
+	defaultSafeDeletes         = false
+	defaultCacheAccess         = "automatic"
 )
 
 // Verification to check satisfaction criteria with Component Interface
@@ -93,11 +118,93 @@ func (distributedCache *DistributedCache) SetNextComponent(nextComponent interna
 	distributedCache.BaseComponent.SetNextComponent(nextComponent)
 }
 
-// Start initializes the DistributedCache component without blocking the pipeline.
+// Start : Pipeline calls this method to start the component functionality
+//
+//	this shall not block the call otherwise pipeline will not start
 func (dc *DistributedCache) Start(ctx context.Context) error {
-	log.Trace("DistributedCache::Start : Starting component %s", dc.Name())
-	return nil
 
+	log.Trace("DistributedCache::Start : Starting component %s", dc.Name())
+
+	dc.azstorage = dc.NextComponent()
+	for dc.azstorage != nil && dc.azstorage.Name() != "azstorage" {
+		dc.azstorage = dc.azstorage.NextComponent()
+	}
+	if dc.azstorage == nil {
+		return log.LogAndReturnError("DistributedCache::Start error [azstorage component not found]")
+	}
+
+	dc.storageCallback = initStorageCallback(
+		dc.NextComponent(),
+		dc.azstorage)
+	mm.Init(dc.storageCallback, dc.cfg.CacheID)
+
+	errString := dc.startClusterManager()
+	if errString != "" {
+		return log.LogAndReturnError(errString)
+	}
+	log.Info("DistributedCache::Start : Cache structure setup completed")
+	return nil
+}
+
+func (dc *DistributedCache) startClusterManager() string {
+	rvList, err := dc.createRVList()
+	dCacheConfig := &dcache.DCacheConfig{
+		CacheId:                dc.cfg.CacheID,
+		MinNodes:               dc.cfg.MinNodes,
+		ChunkSize:              dc.cfg.ChunkSize,
+		StripeSize:             dc.cfg.StripeSize,
+		NumReplicas:            dc.cfg.Replicas,
+		MvsPerRv:               dc.cfg.MVsPerRv,
+		HeartbeatSeconds:       dc.cfg.HeartbeatDuration,
+		HeartbeatsTillNodeDown: dc.cfg.MaxMissedHeartbeats,
+		ClustermapEpoch:        dc.cfg.ClustermapEpoch,
+		RebalancePercentage:    dc.cfg.RebalancePercentage,
+		SafeDeletes:            dc.cfg.SafeDeletes,
+		CacheAccess:            dc.cfg.CacheAccess,
+	}
+	if err != nil {
+		return fmt.Sprintf("DistributedCache::Start error [Failed to create RV List for cluster manager : %v]", err)
+	}
+	if cm.Init(dCacheConfig, rvList) != nil {
+		return fmt.Sprintf("DistributedCache::Start error [Failed to start cluster manager : %v]", err)
+	}
+	return ""
+}
+
+func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
+	rvList := make([]dcache.RawVolume, len(dc.cfg.CacheDirs))
+	ipaddr, err := getVmIp()
+	if err != nil {
+		return rvList, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to get VM IP : %v]", err))
+	}
+
+	uuidVal, err := common.GetUUID()
+	if err != nil {
+		return rvList, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to retrieve UUID, error: %v]", err))
+	}
+	for index, path := range dc.cfg.CacheDirs {
+		// TODO{Akku} : More than 1 cache dir with same fsid for rv, must fail distributed cache startup
+		fsid, err := getBlockDeviceUUId(path)
+		if err != nil {
+			return rvList, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to get raw volume UUID: %v]", err))
+		}
+
+		totalSpace, availableSpace, err := common.GetDiskSpaceMetricsFromStatfs(path)
+		if err != nil {
+			return rvList, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to evaluate local cache Total space: %v]", err))
+		}
+
+		rvList[index] = dcache.RawVolume{
+			NodeId:         uuidVal,
+			IPAddress:      ipaddr,
+			FSID:           fsid,
+			FDID:           "0",
+			TotalSpace:     totalSpace,
+			AvailableSpace: availableSpace,
+			LocalCachePath: path,
+		}
+	}
+	return rvList, nil
 }
 
 // Stop : Stop the component functionality and kill all threads started
@@ -112,11 +219,56 @@ func (dc *DistributedCache) Stop() error {
 func (distributedCache *DistributedCache) Configure(_ bool) error {
 	log.Trace("DistributedCache::Configure : %s", distributedCache.Name())
 
-	conf := DistributedCacheOptions{}
-	err := config.UnmarshalKey(distributedCache.Name(), &conf)
+	err := config.UnmarshalKey(distributedCache.Name(), &distributedCache.cfg)
 	if err != nil {
 		log.Err("DistributedCache::Configure : config error [invalid config attributes]")
 		return fmt.Errorf("DistributedCache: config error [invalid config attributes]")
+	}
+	if distributedCache.cfg.CacheID == "" {
+		return fmt.Errorf("config error in %s: [cache-id not set]", distributedCache.Name())
+	}
+	if len(distributedCache.cfg.CacheDirs) == 0 {
+		return fmt.Errorf("config error in %s: [cache-dirs not set]", distributedCache.Name())
+	}
+
+	if !config.IsSet(compName + ".replicas") {
+		distributedCache.cfg.Replicas = defaultReplicas
+	}
+	if !config.IsSet(compName + ".heartbeat-duration") {
+		distributedCache.cfg.HeartbeatDuration = defaultHeartBeatDurationInSecond
+	}
+	if !config.IsSet(compName + ".max-missed-heartbeats") {
+		distributedCache.cfg.MaxMissedHeartbeats = defaultMaxMissedHBs
+	}
+	if !config.IsSet(compName + ".chunk-size") {
+		distributedCache.cfg.ChunkSize = defaultChunkSize
+	}
+	if !config.IsSet(compName + ".min-nodes") {
+		distributedCache.cfg.MinNodes = defaultMinNodes
+	}
+	if !config.IsSet(compName + ".stripe-size") {
+		distributedCache.cfg.StripeSize = defaultStripeSize
+	}
+	if !config.IsSet(compName + ".mvs-per-rv") {
+		distributedCache.cfg.MVsPerRv = defaultMvsPerRv
+	}
+	if !config.IsSet(compName + ".rv-full-threshold") {
+		distributedCache.cfg.RVFullThreshold = defaultRvFullThreshold
+	}
+	if !config.IsSet(compName + ".rv-nearfull-threshold") {
+		distributedCache.cfg.RVNearfullThreshold = defaultRvNearfullThreshold
+	}
+	if !config.IsSet(compName + ".clustermap-epoch") {
+		distributedCache.cfg.ClustermapEpoch = defaultClustermapEpoch
+	}
+	if !config.IsSet(compName + ".rebalance-percentage") {
+		distributedCache.cfg.RebalancePercentage = defaultRebalancePercentage
+	}
+	if !config.IsSet(compName + ".safe-deletes") {
+		distributedCache.cfg.SafeDeletes = defaultSafeDeletes
+	}
+	if !config.IsSet(compName + ".cache-access") {
+		distributedCache.cfg.CacheAccess = defaultCacheAccess
 	}
 	return nil
 }
@@ -142,10 +294,11 @@ func init() {
 	cacheID := config.AddStringFlag("cache-id", "", "Cache ID for the distributed cache")
 	config.BindPFlag(compName+".cache-id", cacheID)
 
-	cachePath := config.AddStringFlag("cache-dir", "", "Local Path of the cache")
-	config.BindPFlag(compName+".path", cachePath)
+	//TODO{Akku} : Need to update cache-dirs to be a list of strings for command line run, may be use StringSlice
+	cachePath := config.AddStringFlag("cache-dirs", "", "Local path(s) of the cache (comma‑separated)")
+	config.BindPFlag(compName+".cache-dirs", cachePath)
 
-	chunkSize := config.AddUint64Flag("chunk-size", 16*1024*1024, "Chunk size for the cache")
+	chunkSize := config.AddUint64Flag("chunk-size", defaultChunkSize, "Chunk size for the cache")
 	config.BindPFlag(compName+".chunk-size", chunkSize)
 
 	maxCacheSize := config.AddUint64Flag("max-cache-size", 0, "Cache size for the cache")
@@ -159,4 +312,31 @@ func init() {
 
 	missedHB := config.AddUint32Flag("max-missed-heartbeats", 3, "Heartbeat absence for the cache")
 	config.BindPFlag(compName+".max-missed-heartbeats", missedHB)
+
+	clustermapEpoch := config.AddUint64Flag("clustermap-epoch", defaultClustermapEpoch, "Epoch duration for the clustermap update")
+	config.BindPFlag(compName+".clustermap-epoch", clustermapEpoch)
+
+	stripeSize := config.AddUint64Flag("stripe-size", defaultStripeSize, "Stripe size for the cache")
+	config.BindPFlag(compName+".stripe-size", stripeSize)
+
+	mvsPerRv := config.AddUint64Flag("mvs-per-rv", defaultMvsPerRv, "Number of MVs per raw volume")
+	config.BindPFlag(compName+".mvs-per-rv", mvsPerRv)
+
+	rvFullThreshold := config.AddUint64Flag("rv-full-threshold", defaultRvFullThreshold, "Percent to mark RV full")
+	config.BindPFlag(compName+".rv-full-threshold", rvFullThreshold)
+
+	rvNearfullThreshold := config.AddUint64Flag("rv-nearfull-threshold", defaultRvNearfullThreshold, "Percent to mark RV near full")
+	config.BindPFlag(compName+".rv-nearfull-threshold", rvNearfullThreshold)
+
+	minNodes := config.AddIntFlag("min-nodes", defaultMinNodes, "Minimum number of nodes required")
+	config.BindPFlag(compName+".min-nodes", minNodes)
+
+	rebalancePercentage := config.AddUint64Flag("rebalance-percentage", defaultRebalancePercentage, "Rebalance threshold percentage")
+	config.BindPFlag(compName+".rebalance-percentage", rebalancePercentage)
+
+	safeDeletes := config.AddBoolFlag("safe-deletes", defaultSafeDeletes, "Enable safe‑delete mode")
+	config.BindPFlag(compName+".safe-deletes", safeDeletes)
+
+	cacheAccess := config.AddStringFlag("cache-access", defaultCacheAccess, "Cache access mode (automatic/manual)")
+	config.BindPFlag(compName+".cache-access", cacheAccess)
 }

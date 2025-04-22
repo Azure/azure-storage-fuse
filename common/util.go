@@ -53,6 +53,7 @@ import (
 	"sync"
 	"syscall"
 
+	gouuid "github.com/google/uuid"
 	"gopkg.in/ini.v1"
 )
 
@@ -428,6 +429,16 @@ var currentUID int = -1
 // GetDiskUsageFromStatfs: Current disk usage of temp path
 func GetDiskUsageFromStatfs(path string) (float64, float64, error) {
 	// We need to compute the disk usage percentage for the temp path
+	totalSpace, availableSpace, err := GetDiskSpaceMetricsFromStatfs(path)
+	if err != nil {
+		return 0, 0, err
+	}
+	usedSpace := float64(totalSpace - availableSpace)
+	return usedSpace, float64(usedSpace) / float64(totalSpace) * 100, nil
+}
+
+// It will return totalSpace, availableSpace, and error if any while evaluting the Current disk usage of path using statfs
+func GetDiskSpaceMetricsFromStatfs(path string) (float64, float64, error) {
 	var stat syscall.Statfs_t
 	err := syscall.Statfs(path, &stat)
 	if err != nil {
@@ -438,18 +449,17 @@ func GetDiskUsageFromStatfs(path string) (float64, float64, error) {
 		currentUID = os.Getuid()
 	}
 
-	var availableSpace uint64
+	var availableSpace float64
 	if currentUID == 0 {
 		// Sudo  has mounted
-		availableSpace = stat.Bfree * uint64(stat.Frsize)
+		availableSpace = float64(stat.Bfree * uint64(stat.Frsize))
 	} else {
 		// non Sudo has mounted
-		availableSpace = stat.Bavail * uint64(stat.Frsize)
+		availableSpace = float64(stat.Bavail * uint64(stat.Frsize))
 	}
 
-	totalSpace := stat.Blocks * uint64(stat.Frsize)
-	usedSpace := float64(totalSpace - availableSpace)
-	return usedSpace, float64(usedSpace) / float64(totalSpace) * 100, nil
+	totalSpace := float64(stat.Blocks * uint64(stat.Frsize))
+	return totalSpace, availableSpace, nil
 }
 
 func GetFuseMinorVersion() int {
@@ -586,4 +596,42 @@ func UpdatePipeline(pipeline []string, component string) []string {
 	}
 
 	return pipeline
+}
+
+func GetUUID() (string, error) {
+	uuidFilePath := filepath.Join(DefaultWorkDir, "blobfuse_node_uuid")
+	_, err := os.Stat(uuidFilePath)
+	if err == nil {
+		// File exists, read its content
+		data, err := os.ReadFile(uuidFilePath)
+		if err != nil {
+			return "", fmt.Errorf("Fail to read UUID File at :%s with error %s", uuidFilePath, err)
+		}
+		stringData := string(data)
+		isValidGUID, err := IsValidUUID(stringData)
+		if err != nil {
+			return "", fmt.Errorf("regexp.MatchString failed for %s: %v", stringData, err)
+		}
+		if !isValidGUID {
+			return "", fmt.Errorf("Not a valid UUID in UUID File at :%s with error %s", uuidFilePath, string(data))
+		}
+		return stringData, nil
+	}
+	if os.IsNotExist(err) {
+		// File doesn't exist, generate a new UUID
+		newUuid := gouuid.New().String()
+		isValidGUID, err := IsValidUUID(newUuid)
+		if err != nil {
+			return "", fmt.Errorf("regexp.MatchString failed for %s: %v", newUuid, err)
+		}
+		if !isValidGUID {
+			return "", fmt.Errorf("Not a valid UUID in UUID File at :%s with error %s", uuidFilePath, string(newUuid))
+		}
+		if err := os.WriteFile(uuidFilePath, []byte(newUuid), 0400); err != nil {
+			return "", err
+		}
+
+		return newUuid, nil
+	}
+	return "", fmt.Errorf("Failed to stat UUID file at %s with error %s", uuidFilePath, err)
 }
