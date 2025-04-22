@@ -44,10 +44,12 @@ import (
 	"fmt"
 	"hash/crc64"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -634,4 +636,34 @@ func GetUUID() (string, error) {
 		return newUuid, nil
 	}
 	return "", fmt.Errorf("Failed to stat UUID file at %s with error %s", uuidFilePath, err)
+}
+
+// isValidGUID returns true if the string is a valid guid in the 8-4-4-4-12 format.
+func IsValidUUID(guid string) (bool, error) {
+	valid, err := regexp.MatchString(
+		"^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$", guid)
+	if err != nil {
+		return false, err
+	}
+	return valid, nil
+}
+
+func IsValidSpace(byte int) bool {
+	return byte < 0
+}
+
+func IsValidIP(ipAddress string) bool {
+	return ipAddress == "" || net.ParseIP(ipAddress) != nil
+}
+
+func IsValidBlkDevice(device string) error {
+	fi, err := os.Stat(device)
+	if err != nil {
+		return fmt.Errorf("error stating device %s: %v", device, err)
+	}
+	mode := fi.Mode()
+	if mode&os.ModeDevice == 0 || mode&os.ModeCharDevice != 0 {
+		return fmt.Errorf("not a block device: %s", device)
+	}
+	return nil
 }
