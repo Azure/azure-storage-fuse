@@ -38,8 +38,12 @@ import (
 	"net"
 	"os/exec"
 	"strings"
+  "os"
+	"strings"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
 func getBlockDeviceUUId(path string) (string, error) {
@@ -117,4 +121,80 @@ func getVmIp() (string, error) {
 		return "", fmt.Errorf("unable to find a valid non-loopback IPv4 address")
 	}
 	return vmIP, nil
+}
+
+// Get the placeHolder dir/virtual sub component for root of mountpoint.
+// This virtual directory should only valid if it's present at the root of the mountpoint.
+func getPlaceholderDirForRoot(path string) *internal.ObjAttr {
+	attr := &internal.ObjAttr{
+		Path:  path,
+		Size:  4096,
+		Mode:  os.ModeDir,
+		Mtime: time.Now(),
+		Flags: internal.NewDirBitMap(),
+	}
+	attr.Atime = attr.Mtime
+	attr.Crtime = attr.Mtime
+	attr.Ctime = attr.Mtime
+	attr.Flags.Set(internal.PropFlagModeDefault)
+	return attr
+}
+
+// returns true for isAzurePath, if path has "fs=azure" as its first subdir.
+// return true for isDcachPath, if path has "fs=dcache" as its first subdir.
+// rawPath is the resultant path after removing virtual dirs like "fs=azure/dcache"
+// returns path if it dont find any virtual dirs.
+func getFS(path string) (isAzurePath bool, isDcachePath bool, rawPath string) {
+	rawPath = path
+	isAzurePath, tempPath := isPathContainsSubDir(path, "fs=azure")
+	if isAzurePath {
+		rawPath = tempPath
+	} else {
+		isDcachePath, tempPath = isPathContainsSubDir(path, "fs=dcache")
+		if isDcachePath {
+			rawPath = tempPath
+		}
+	}
+	return isAzurePath, isDcachePath, rawPath
+}
+
+// function to know path consists of given subdir at it's root
+// returns path without the subdir
+func isPathContainsSubDir(path string, subdir string) (found bool, resPath string) {
+	if len(path) == 0 {
+		return false, path
+	}
+
+	after, found := strings.CutPrefix(path, subdir)
+	if !found {
+		return false, path
+	}
+
+	resPath = after
+	if len(resPath) > 0 && resPath[0] != '/' {
+		return false, path
+	}
+	resPath = strings.TrimPrefix(resPath, "/")
+	return
+}
+
+// hides the cache folder that starts with prefix __CACHE__.
+func hideCacheMetadata(dirList []*internal.ObjAttr) []*internal.ObjAttr {
+	newDirList := make([]*internal.ObjAttr, len(dirList))
+	i := 0
+	for _, attr := range dirList {
+		// todo: think of a better approach for doing the following.
+		if !strings.HasPrefix(attr.Path, "__CACHE__") {
+			newDirList[i] = attr
+			i++
+		}
+	}
+	return newDirList[:i]
+}
+
+func isMountPointRoot(path string) bool {
+	if len(path) == 0 || (len(path) == 1 && path[0] == '/') {
+		return true
+	}
+	return false
 }
