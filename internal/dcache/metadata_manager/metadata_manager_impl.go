@@ -34,10 +34,14 @@
 package metadata_manager
 
 import (
+<<<<<<< HEAD
 	"encoding/json"
 	"path/filepath"
 	"strconv"
 	"time"
+=======
+	"sync"
+>>>>>>> fcf5e787a257265bf3078f2daaeeeac2b5366667
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
@@ -47,8 +51,15 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 )
 
+var (
+	// MetadataManagerInstance is the singleton instance of BlobMetadataManager
+	metadataManagerInstance *BlobMetadataManager
+	once                    sync.Once
+)
+
 // BlobMetadataManager is the implementation of MetadataManager interface
 type BlobMetadataManager struct {
+<<<<<<< HEAD
 	cacheDir         string
 	storageCallbacks dcache.StorageCallbacks
 }
@@ -254,52 +265,171 @@ func (m *BlobMetadataManager) GetFileOpenCount(filePath string) (int64, error) {
 	}
 
 	return count, nil
+=======
+	mdRoot          string
+	storageCallback dcache.StorageCallbacks
+}
+
+// init initializes the singleton instance of BlobMetadataManager
+func Init(storageCallback dcache.StorageCallbacks, cacheId string) {
+	once.Do(func() {
+		metadataManagerInstance = &BlobMetadataManager{
+			mdRoot:          "__CACHE__" + cacheId, // Set a default cache directory
+			storageCallback: storageCallback,       // Initialize storage callback
+		}
+	})
+}
+
+// Package-level functions that delegate to the singleton instance
+
+func CreateFileInit(filePath string, fileMetadata *dcache.FileMetadata) error {
+	return metadataManagerInstance.createFileInit(filePath, fileMetadata)
+}
+
+func CreateFileFinalize(filePath string, fileMetadata *dcache.FileMetadata) error {
+	return metadataManagerInstance.createFileFinalize(filePath, fileMetadata)
+}
+
+func GetFile(filePath string) (*dcache.FileMetadata, error) {
+	return metadataManagerInstance.getFile(filePath)
+}
+
+func DeleteFile(filePath string) error {
+	return metadataManagerInstance.deleteFile(filePath)
+}
+
+func OpenFile(filePath string) (int64, error) {
+	return metadataManagerInstance.openFile(filePath)
+}
+
+func CloseFile(filePath string) (int64, error) {
+	return metadataManagerInstance.closeFile(filePath)
+}
+
+func GetFileOpenCount(filePath string) (int64, error) {
+	return metadataManagerInstance.getFileOpenCount(filePath)
+}
+
+func UpdateHeartbeat(nodeId string, data []byte) error {
+	return metadataManagerInstance.updateHeartbeat(nodeId, data)
+}
+
+func DeleteHeartbeat(nodeId string, data []byte) error {
+	return metadataManagerInstance.deleteHeartbeat(nodeId, data)
+}
+
+func GetHeartbeat(nodeId string) ([]byte, error) {
+	return metadataManagerInstance.getHeartbeat(nodeId)
+}
+
+func GetAllNodes() ([]string, error) {
+	return metadataManagerInstance.getAllNodes()
+}
+
+func CreateInitialClusterMap(clustermap []byte) error {
+	return metadataManagerInstance.createInitialClusterMap(clustermap)
+}
+
+func UpdateClusterMapStart(clustermap []byte, etag *azcore.ETag) error {
+	return metadataManagerInstance.updateClusterMapStart(clustermap, etag)
+}
+
+func UpdateClusterMapEnd(clustermap []byte) error {
+	return metadataManagerInstance.updateClusterMapEnd(clustermap)
+}
+
+func GetClusterMap() ([]byte, *azcore.ETag, error) {
+	return metadataManagerInstance.getClusterMap()
+}
+
+// CreateFileInit creates the initial metadata for a file
+func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata *dcache.FileMetadata) error {
+	// Dummy implementation
+	return nil
+}
+
+// CreateFileFinalize finalizes the metadata for a file
+func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata *dcache.FileMetadata) error {
+	// Dummy implementation
+	return nil
+}
+
+// GetFile reads and returns the content of metadata for a file
+func (m *BlobMetadataManager) getFile(filePath string) (*dcache.FileMetadata, error) {
+	// Dummy implementation
+	return nil, nil
+}
+
+// DeleteFile removes metadata for a file
+func (m *BlobMetadataManager) deleteFile(filePath string) error {
+	// Dummy implementation
+	return nil
+}
+
+// OpenFile increments the open count for a file and returns the updated count
+func (m *BlobMetadataManager) openFile(filePath string) (int64, error) {
+	// Dummy implementation
+
+	return 0, nil
+}
+
+// CloseFile decrements the open count for a file and returns the updated count
+func (m *BlobMetadataManager) closeFile(filePath string) (int64, error) {
+	// Dummy implementation
+	return 0, nil
+}
+
+// GetFileOpenCount returns the current open count for a file
+func (m *BlobMetadataManager) getFileOpenCount(filePath string) (int64, error) {
+	// Dummy implementation
+	return 0, nil
+>>>>>>> fcf5e787a257265bf3078f2daaeeeac2b5366667
 }
 
 // UpdateHeartbeat creates or updates the heartbeat file
-func (m *BlobMetadataManager) UpdateHeartbeat(nodeId string, data []byte) error {
+func (m *BlobMetadataManager) updateHeartbeat(nodeId string, data []byte) error {
 	// Dummy implementation
 	return nil
 }
 
 // DeleteHeartbeat deletes the heartbeat file
-func (m *BlobMetadataManager) DeleteHeartbeat(nodeId string, data []byte) error {
+func (m *BlobMetadataManager) deleteHeartbeat(nodeId string, data []byte) error {
 	// Dummy implementation
 	return nil
 }
 
 // GetHeartbeat reads and returns the content of the heartbeat file
-func (m *BlobMetadataManager) GetHeartbeat(nodeId string) ([]byte, error) {
+func (m *BlobMetadataManager) getHeartbeat(nodeId string) ([]byte, error) {
 	// Dummy implementation
 	return nil, nil
 }
 
 // GetAllNodes enumerates and returns the list of all nodes with a heartbeat
-func (m *BlobMetadataManager) GetAllNodes() ([]string, error) {
+func (m *BlobMetadataManager) getAllNodes() ([]string, error) {
 	// Dummy implementation
 	return nil, nil
 }
 
 // CreateInitialClusterMap creates the initial cluster map
-func (m *BlobMetadataManager) CreateInitialClusterMap(clustermap []byte) error {
+func (m *BlobMetadataManager) createInitialClusterMap(clustermap []byte) error {
 	// Dummy implementation
 	return nil
 }
 
 // UpdateClusterMapStart claims update ownership of the cluster map
-func (m *BlobMetadataManager) UpdateClusterMapStart(clustermap []byte, etag *azcore.ETag) error {
+func (m *BlobMetadataManager) updateClusterMapStart(clustermap []byte, etag *azcore.ETag) error {
 	// Dummy implementation
 	return nil
 }
 
 // UpdateClusterMapEnd finalizes the cluster map update
-func (m *BlobMetadataManager) UpdateClusterMapEnd(clustermap []byte) error {
+func (m *BlobMetadataManager) updateClusterMapEnd(clustermap []byte) error {
 	// Dummy implementation
 	return nil
 }
 
 // GetClusterMap reads and returns the content of the cluster map
-func (m *BlobMetadataManager) GetClusterMap() ([]byte, *azcore.ETag, error) {
+func (m *BlobMetadataManager) getClusterMap() ([]byte, *azcore.ETag, error) {
 	// Dummy implementation
 	return nil, nil, nil
 }
