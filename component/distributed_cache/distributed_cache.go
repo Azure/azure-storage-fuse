@@ -35,7 +35,6 @@ package distributed_cache
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"

@@ -130,7 +130,7 @@ func (c *ClusterManagerImpl) ReportRVFull(rvName string) error {
 func (cmi *ClusterManagerImpl) checkAndCreateInitialClusterMap(dCacheConfig *dcache.DCacheConfig, rvList []dcache.RawVolume) error {
 	isClusterMapExists, err := cmi.checkIfClusterMapExists()
 	if err != nil {
-		log.Err("ClusterManagerImpl::checkAndCreateInitialClusterMap: Failed to check clusterMap file presence in Storage path %s error: %v", cmi.storagePath+"/ClusterMap.json", err)
+		log.Err("ClusterManagerImpl::checkAndCreateInitialClusterMap: Failed to check clusterMap file presence in Storage error: %v", err)
 	}
 	if isClusterMapExists {
 		log.Trace("ClusterManager::checkAndCreateInitialClusterMap : ClusterMap.json already exists")
