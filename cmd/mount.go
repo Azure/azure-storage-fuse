@@ -94,6 +94,7 @@ type mountOptions struct {
 	AttrCache         bool     `config:"use-attr-cache"`
 	LibfuseOptions    []string `config:"libfuse-options"`
 	BlockCache        bool     `config:"block-cache"`
+	Preload           bool     `config:"preload"`
 	EntryCacheTimeout int      `config:"list-cache-timeout"`
 }
 
@@ -300,6 +301,8 @@ var mountCmd = &cobra.Command{
 				pipeline = append(pipeline, "stream")
 			} else if config.IsSet("block-cache") && options.BlockCache {
 				pipeline = append(pipeline, "block_cache")
+			} else if options.Preload {
+				pipeline = append(pipeline, "xload")
 			} else {
 				pipeline = append(pipeline, "file_cache")
 			}
@@ -316,6 +319,24 @@ var mountCmd = &cobra.Command{
 
 		if config.IsSet("entry_cache.timeout-sec") || options.EntryCacheTimeout > 0 {
 			options.Components = append(options.Components[:1], append([]string{"entry_cache"}, options.Components[1:]...)...)
+		}
+
+		if err = common.ValidatePipeline(options.Components); err != nil {
+			// file-cache, block-cache and xload are mutually exclusive
+			log.Err("mount: invalid pipeline components [%s]", err.Error())
+			return fmt.Errorf("invalid pipeline components [%s]", err.Error())
+		}
+
+		// either passed in CLI or in config file
+		if options.BlockCache || common.ComponentInPipeline(options.Components, "block_cache") {
+			// CLI overriding the pipeline to inject block-cache
+			options.Components = common.UpdatePipeline(options.Components, "block_cache")
+		}
+
+		if options.Preload || common.ComponentInPipeline(options.Components, "xload") {
+			// CLI overriding the pipeline to inject xload
+			options.Components = common.UpdatePipeline(options.Components, "xload")
+			config.Set("read-only", "true") // preload is only supported in read-only mode
 		}
 
 		if config.IsSet("libfuse-options") {
@@ -479,13 +500,11 @@ var mountCmd = &cobra.Command{
 			ctx, _ := context.WithCancel(context.Background()) //nolint
 
 			// Signal handlers for parent and child to communicate success or failures in mount
-			var sigusr2, sigchild chan os.Signal
+			var sigusr2 chan os.Signal
 			if !daemon.WasReborn() { // execute in parent only
 				sigusr2 = make(chan os.Signal, 1)
 				signal.Notify(sigusr2, syscall.SIGUSR2)
 
-				sigchild = make(chan os.Signal, 1)
-				signal.Notify(sigchild, syscall.SIGCHLD)
 			} else { // execute in child only
 				daemon.SetSigHandler(sigusrHandler(pipeline, ctx), syscall.SIGUSR1, syscall.SIGUSR2)
 				go func() {
@@ -511,11 +530,15 @@ var mountCmd = &cobra.Command{
 			} else { // execute in parent only
 				//defer os.Remove(fname)
 
+				childDone := make(chan struct{})
+
+				go monitorChild(child.Pid, childDone)
+
 				select {
 				case <-sigusr2:
 					log.Info("mount: Child [%v] mounted successfully at %s", child.Pid, options.MountPath)
 
-				case <-sigchild:
+				case <-childDone:
 					// Get error string from the child, stderr or child was redirected to a file
 					log.Info("mount: Child [%v] terminated from %s", child.Pid, options.MountPath)
 
@@ -574,6 +597,29 @@ var mountCmd = &cobra.Command{
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveDefault
 	},
+}
+
+func monitorChild(pid int, done chan struct{}) {
+	// Monitor the child process and if child terminates then exit
+	var wstatus syscall.WaitStatus
+
+	for {
+		// Wait for a signal from child
+		wpid, err := syscall.Wait4(pid, &wstatus, 0, nil)
+		if err != nil {
+			log.Err("Error retrieving child status [%s]", err.Error())
+			break
+		}
+
+		if wpid == pid {
+			// Exit only if child has exited
+			// Signal can be received on a state change of child as well
+			if wstatus.Exited() || wstatus.Signaled() || wstatus.Stopped() {
+				close(done)
+				return
+			}
+		}
+	}
 }
 
 func ignoreFuseOptions(opt string) bool {
@@ -738,11 +784,12 @@ func init() {
 
 	mountCmd.Flags().BoolVar(&options.BlockCache, "block-cache", false, "Enable Block-Cache.")
 	config.BindPFlag("block-cache", mountCmd.Flags().Lookup("block-cache"))
-	mountCmd.Flags().Lookup("block-cache").Hidden = true
+
+	mountCmd.Flags().BoolVar(&options.Preload, "preload", false, "Enable Preload, to start downloading all files from container on mount.")
+	config.BindPFlag("preload", mountCmd.Flags().Lookup("preload"))
 
 	mountCmd.Flags().BoolVar(&options.AttrCache, "use-attr-cache", true, "Use attribute caching.")
 	config.BindPFlag("use-attr-cache", mountCmd.Flags().Lookup("use-attr-cache"))
-	mountCmd.Flags().Lookup("use-attr-cache").Hidden = true
 
 	mountCmd.Flags().Bool("invalidate-on-sync", true, "Invalidate file/dir on sync/fsync.")
 	config.BindPFlag("invalidate-on-sync", mountCmd.Flags().Lookup("invalidate-on-sync"))
@@ -769,5 +816,9 @@ func init() {
 
 func Destroy(message string) error {
 	_ = log.Destroy()
-	return fmt.Errorf("%s", message)
+	if message != "" {
+		return fmt.Errorf("%s", message)
+	}
+
+	return nil
 }
