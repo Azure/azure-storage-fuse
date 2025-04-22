@@ -435,12 +435,12 @@ func GetDiskUsageFromStatfs(path string) (float64, float64, error) {
 	if err != nil || totalSpace == 0 {
 		return 0, 0, err
 	}
-	usedSpace := float64(totalSpace - availableSpace)
-	return usedSpace, float64(usedSpace) / float64(totalSpace) * 100, nil
+	usedSpace := totalSpace - availableSpace
+	return float64(usedSpace), float64(usedSpace/totalSpace) * 100, nil
 }
 
 // It will return totalSpace, availableSpace, and error if any while evaluting the Current disk usage of path using statfs
-func GetDiskSpaceMetricsFromStatfs(path string) (float64, float64, error) {
+func GetDiskSpaceMetricsFromStatfs(path string) (uint64, uint64, error) {
 	var stat syscall.Statfs_t
 	err := syscall.Statfs(path, &stat)
 	if err != nil {
@@ -451,16 +451,16 @@ func GetDiskSpaceMetricsFromStatfs(path string) (float64, float64, error) {
 		currentUID = os.Getuid()
 	}
 
-	var availableSpace float64
+	var availableSpace uint64
 	if currentUID == 0 {
 		// Sudo  has mounted
-		availableSpace = float64(stat.Bfree * uint64(stat.Frsize))
+		availableSpace = stat.Bfree * uint64(stat.Frsize)
 	} else {
 		// non Sudo has mounted
-		availableSpace = float64(stat.Bavail * uint64(stat.Frsize))
+		availableSpace = stat.Bavail * uint64(stat.Frsize)
 	}
 
-	totalSpace := float64(stat.Blocks * uint64(stat.Frsize))
+	totalSpace := stat.Blocks * uint64(stat.Frsize)
 	return totalSpace, availableSpace, nil
 }
 
