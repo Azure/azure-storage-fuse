@@ -158,7 +158,7 @@ func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.
 		// todo : assert rawPath==options.Name
 	}
 
-	attr, err := dc.NextComponent().GetAttr(internal.GetAttrOptions{Name: newPath})
+	attr, err := dc.NextComponent().GetAttr(internal.GetAttrOptions{Name: rawPath})
 	if err != nil {
 		return nil, err
 	}
