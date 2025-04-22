@@ -34,6 +34,7 @@
 package clustermanager
 
 import (
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 )
 
@@ -42,7 +43,7 @@ type ClusterManagerImpl struct {
 }
 
 // Start implements ClusterManager.
-func (c *ClusterManagerImpl) Start(*dcache.DCacheConfig, []dcache.RawVolume) error {
+func (c *ClusterManagerImpl) start(*dcache.DCacheConfig, []dcache.RawVolume) error {
 	return nil
 }
 
@@ -111,8 +112,15 @@ func (c *ClusterManagerImpl) ReportRVFull(rvName string) error {
 	return nil
 }
 
-func NewClusterManager(callback dcache.StorageCallbacks) ClusterManager {
-	return &ClusterManagerImpl{
-		storageCallback: callback,
-	}
+var (
+	// clusterManagerInstance is the singleton instance of the ClusterManagerImpl
+	clusterManagerInstance = ClusterManagerImpl{}
+	initCalled             = false
+)
+
+func Init(dCacheConfig *dcache.DCacheConfig, rvs []dcache.RawVolume) error {
+	common.Assert(!initCalled, "Cluster Manager Init should only be called once")
+	initCalled = true
+	err := clusterManagerInstance.start(dCacheConfig, rvs)
+	return err
 }
