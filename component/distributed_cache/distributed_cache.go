@@ -69,7 +69,7 @@ type DistributedCacheOptions struct {
 
 	ChunkSize  uint64 `config:"chunk-size" yaml:"chunk-size,omitempty"`
 	StripeSize uint64 `config:"stripe-size" yaml:"stripe-size,omitempty"`
-	Replicas   uint8  `config:"replicas" yaml:"replicas,omitempty"`
+	Replicas   uint32 `config:"replicas" yaml:"replicas,omitempty"`
 
 	HeartbeatDuration   uint16 `config:"heartbeat-duration" yaml:"heartbeat-duration,omitempty"`
 	MaxMissedHeartbeats uint8  `config:"max-missed-heartbeats" yaml:"max-missed-heartbeats,omitempty"`
@@ -77,9 +77,9 @@ type DistributedCacheOptions struct {
 	RVNearfullThreshold uint64 `config:"rv-nearfull-threshold" yaml:"rv-nearfull-threshold,omitempty"`
 	MaxCacheSize        uint64 `config:"max-cache-size" yaml:"max-cache-size,omitempty"`
 
-	MinNodes            int    `config:"min-nodes" yaml:"min-nodes,omitempty"`
+	MinNodes            uint32 `config:"min-nodes" yaml:"min-nodes,omitempty"`
 	MVsPerRv            uint64 `config:"mvs-per-rv" yaml:"mvs-per-rv,omitempty"`
-	RebalancePercentage uint64 `config:"rebalance-percentage" yaml:"rebalance-percentage,omitempty"`
+	RebalancePercentage uint8  `config:"rebalance-percentage" yaml:"rebalance-percentage,omitempty"`
 	SafeDeletes         bool   `config:"safe-deletes" yaml:"safe-deletes,omitempty"`
 	CacheAccess         string `config:"cache-access" yaml:"cache-access,omitempty"`
 	ClustermapEpoch     uint64 `config:"clustermap-epoch" yaml:"clustermap-epoch,omitempty"`
@@ -93,14 +93,13 @@ const (
 	defaultChunkSize                 = 4 * 1024 * 1024 // 4 MB
 	defaultMinNodes                  = 1
 	defaultStripeSize                = 16 * 1024 * 1024 // 16 MB
-	//TODO{Akku} : Need to update defaultMvsPerRv to 10 for future
-	defaultMvsPerRv            = 1
-	defaultRvFullThreshold     = 95
-	defaultRvNearfullThreshold = 80
-	defaultClustermapEpoch     = 300
-	defaultRebalancePercentage = 80
-	defaultSafeDeletes         = false
-	defaultCacheAccess         = "automatic"
+	defaultMvsPerRv                  = 10
+	defaultRvFullThreshold           = 95
+	defaultRvNearfullThreshold       = 80
+	defaultClustermapEpoch           = 300
+	defaultRebalancePercentage       = 80
+	defaultSafeDeletes               = false
+	defaultCacheAccess               = "automatic"
 )
 
 // Verification to check satisfaction criteria with Component Interface
@@ -142,12 +141,12 @@ func (dc *DistributedCache) Start(ctx context.Context) error {
 	if errString != "" {
 		return log.LogAndReturnError(errString)
 	}
-	log.Info("DistributedCache::Start : Cache structure setup completed")
+	log.Info("DistributedCache::Start : component started successfully")
 	return nil
 }
 
 func (dc *DistributedCache) startClusterManager() string {
-	rvList, err := dc.createRVList()
+
 	dCacheConfig := &dcache.DCacheConfig{
 		CacheId:                dc.cfg.CacheID,
 		MinNodes:               dc.cfg.MinNodes,
@@ -162,6 +161,7 @@ func (dc *DistributedCache) startClusterManager() string {
 		SafeDeletes:            dc.cfg.SafeDeletes,
 		CacheAccess:            dc.cfg.CacheAccess,
 	}
+	rvList, err := dc.createRVList()
 	if err != nil {
 		return fmt.Sprintf("DistributedCache::Start error [Failed to create RV List for cluster manager : %v]", err)
 	}
@@ -172,26 +172,26 @@ func (dc *DistributedCache) startClusterManager() string {
 }
 
 func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
-	rvList := make([]dcache.RawVolume, len(dc.cfg.CacheDirs))
 	ipaddr, err := getVmIp()
 	if err != nil {
-		return rvList, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to get VM IP : %v]", err))
+		return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to get VM IP : %v]", err))
 	}
 
 	uuidVal, err := common.GetNodeUUID()
 	if err != nil {
-		return rvList, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to retrieve UUID, error: %v]", err))
+		return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to retrieve UUID, error: %v]", err))
 	}
+	rvList := make([]dcache.RawVolume, len(dc.cfg.CacheDirs))
 	for index, path := range dc.cfg.CacheDirs {
 		// TODO{Akku} : More than 1 cache dir with same fsid for rv, must fail distributed cache startup
 		fsid, err := getBlockDeviceUUId(path)
 		if err != nil {
-			return rvList, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to get raw volume UUID: %v]", err))
+			return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to get raw volume UUID: %v]", err))
 		}
 
 		totalSpace, availableSpace, err := common.GetDiskSpaceMetricsFromStatfs(path)
 		if err != nil {
-			return rvList, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to evaluate local cache Total space: %v]", err))
+			return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to evaluate local cache Total space: %v]", err))
 		}
 
 		rvList[index] = dcache.RawVolume{
@@ -304,7 +304,7 @@ func init() {
 	maxCacheSize := config.AddUint64Flag("max-cache-size", 0, "Cache size for the cache")
 	config.BindPFlag(compName+".max-cache-size", maxCacheSize)
 
-	replicas := config.AddUint8Flag("replicas", defaultReplicas, "Number of replicas for the cache")
+	replicas := config.AddUint32Flag("replicas", defaultReplicas, "Number of replicas for the cache")
 	config.BindPFlag(compName+".replicas", replicas)
 
 	heartbeatDuration := config.AddUint16Flag("heartbeat-duration", defaultHeartBeatDurationInSecond, "Heartbeat duration for the cache")
@@ -328,10 +328,10 @@ func init() {
 	rvNearfullThreshold := config.AddUint64Flag("rv-nearfull-threshold", defaultRvNearfullThreshold, "Percent to mark RV near full")
 	config.BindPFlag(compName+".rv-nearfull-threshold", rvNearfullThreshold)
 
-	minNodes := config.AddIntFlag("min-nodes", defaultMinNodes, "Minimum number of nodes required")
+	minNodes := config.AddUint32Flag("min-nodes", defaultMinNodes, "Minimum number of nodes required")
 	config.BindPFlag(compName+".min-nodes", minNodes)
 
-	rebalancePercentage := config.AddUint64Flag("rebalance-percentage", defaultRebalancePercentage, "Rebalance threshold percentage")
+	rebalancePercentage := config.AddUint8Flag("rebalance-percentage", defaultRebalancePercentage, "Rebalance threshold percentage")
 	config.BindPFlag(compName+".rebalance-percentage", rebalancePercentage)
 
 	safeDeletes := config.AddBoolFlag("safe-deletes", defaultSafeDeletes, "Enable safe‑delete mode")

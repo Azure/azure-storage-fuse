@@ -55,7 +55,6 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	gouuid "github.com/google/uuid"
 	"gopkg.in/ini.v1"
 )
@@ -625,7 +624,6 @@ func GetNodeUUID() (string, error) {
 		newUuid := gouuid.New().String()
 		Assert(IsValidUUID(newUuid))
 		if err := os.WriteFile(uuidFilePath, []byte(newUuid), 0400); err != nil {
-			log.Info("Generated UUID %s saved in file %s", newUuid, uuidFilePath)
 			return "", err
 		}
 
@@ -655,7 +653,7 @@ func IsValidBlkDevice(device string) error {
 	}
 	mode := fi.Mode()
 	if mode&os.ModeDevice == 0 || mode&os.ModeCharDevice != 0 {
-		return fmt.Errorf("not a block device: %s having mode bits 0%4o", device, mode.Perm())
+		return fmt.Errorf("not a block device: %s having mode bits 0%4o", device, mode)
 	}
 	return nil
 }
