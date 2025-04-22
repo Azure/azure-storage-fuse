@@ -188,6 +188,7 @@ func (cmi *ClusterManagerImpl) checkAndCreateInitialClusterMap(dCacheConfig *dca
 	isClusterMapExists, err := cmi.checkIfClusterMapExists()
 	if err != nil {
 		log.Err("ClusterManagerImpl::checkAndCreateInitialClusterMap: Failed to check clusterMap file presence in Storage error: %v", err)
+		return err
 	}
 	if isClusterMapExists {
 		log.Trace("ClusterManager::checkAndCreateInitialClusterMap : ClusterMap.json already exists")
