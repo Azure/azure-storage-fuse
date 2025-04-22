@@ -101,8 +101,12 @@ func (sci *StorageCallbackImpl) PutBlob(options internal.WriteFromBufferOptions)
 	return sci.nextComp.WriteFromBuffer(options)
 }
 
-func (sci *StorageCallbackImpl) ListBlobs(options internal.ReadDirOptions) ([]*internal.ObjAttr, error) {
-	return sci.storage.ReadDir(options)
+func (sci *StorageCallbackImpl) CreateDir(options internal.CreateDirOptions) error {
+	return sci.nextComp.CreateDir(options)
+}
+
+func (sci *StorageCallbackImpl) CreateDirInStorage(options internal.CreateDirOptions) error {
+	return sci.storage.CreateDir(options)
 }
 
 // Factory function to create a new instance of StorageCallbacks

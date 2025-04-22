@@ -36,9 +36,11 @@ package metadata_manager
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strconv"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
@@ -62,13 +64,34 @@ type BlobMetadataManager struct {
 }
 
 // init initializes the singleton instance of BlobMetadataManager
-func Init(storageCallback dcache.StorageCallbacks, cacheId string) {
+func Init(storageCallback dcache.StorageCallbacks, cacheId string) error {
 	once.Do(func() {
 		metadataManagerInstance = &BlobMetadataManager{
 			mdRoot:          "__CACHE__" + cacheId, // Set a default cache directory
 			storageCallback: storageCallback,       // Initialize storage callback
 		}
 	})
+
+	_, err := storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{Name: metadataManagerInstance.mdRoot + "/Objects"})
+	if err != nil {
+		if os.IsNotExist(err) || err == syscall.ENOENT {
+			directories := []string{metadataManagerInstance.mdRoot, metadataManagerInstance.mdRoot + "/Nodes", metadataManagerInstance.mdRoot + "/Objects"}
+			for _, dir := range directories {
+				if err := storageCallback.CreateDir(internal.CreateDirOptions{Name: dir, ForceDirCreationDisabled: true}); err != nil {
+
+					if !bloberror.HasCode(err, bloberror.BlobAlreadyExists) {
+						log.Err("DistributedCache::Start error [failed to create directory %s: %v]", dir, err)
+						return err
+					}
+				}
+			}
+
+		} else {
+			log.Err("DistributedCache::Start error [failed to get properties for %s: %v]", metadataManagerInstance.mdRoot, err)
+			return err
+		}
+	}
+	return nil
 }
 
 // Package-level functions that delegate to the singleton instance
@@ -160,7 +183,7 @@ func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byt
 			log.Warn("CreateFileInit :: PutBlobInStorage for %s failed due to ETag mismatch", path)
 			return nil
 		}
-		log.Debug("CreateFileInit :: Failed to put blob %s in storage: %v", path, err)
+		log.Err("CreateFileInit :: Failed to put blob %s in storage: %v", path, err)
 	}
 	return err
 }
@@ -176,7 +199,7 @@ func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata [
 		EtagMatchConditions:    "",
 	})
 	if err != nil {
-		log.Debug("CreateFileFinalize :: Failed to put blob %s in storage: %v", path, err)
+		log.Err("CreateFileFinalize :: Failed to put blob %s in storage: %v", path, err)
 	}
 	return err
 }
@@ -223,7 +246,7 @@ func (m *BlobMetadataManager) openFile(filePath string) (int64, error) {
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
 	count, err := m.updateHandleCount(path, true)
 	if err != nil {
-		log.Debug("OpenFile :: Failed to update file open count for path %s : %v", path, err)
+		log.Err("OpenFile :: Failed to update file open count for path %s : %v", path, err)
 		return -1, err
 	}
 	return count, nil
@@ -234,7 +257,7 @@ func (m *BlobMetadataManager) closeFile(filePath string) (int64, error) {
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
 	count, err := m.updateHandleCount(path, false)
 	if err != nil {
-		log.Debug("CloseFile :: Failed to update file open count for file %s : %v", path, err)
+		log.Err("CloseFile :: Failed to update file open count for path %s : %v", path, err)
 		return -1, err
 	}
 	return count, nil
@@ -251,18 +274,18 @@ func (m *BlobMetadataManager) updateHandleCount(path string, increment bool) (in
 			Name: path,
 		})
 		if err != nil {
-			log.Debug("updateHandleCount :: Failed to get handle count for %s : %v", path, err)
+			log.Err("updateHandleCount :: Failed to get handle count for %s : %v", path, err)
 			return -1, err
 		}
 
 		// We never create file metadata blob w/o opencount property set.
 		if attr.Metadata["opencount"] == nil {
-			log.Debug("updateHandleCount :: File metadata blob found w/o opencount property: %s", path)
+			log.Err("updateHandleCount :: File metadata blob found w/o opencount property: %s", path)
 			return -1, fmt.Errorf("Opencount property not found in metadata for path %s. Issue needs to be debugged.", path)
 		}
 		openCount, err = strconv.Atoi(*attr.Metadata["opencount"])
 		if err != nil {
-			log.Debug("GetFileOpenCount :: Failed to parse handle count for path %s : %v", path, err)
+			log.Err("GetFileOpenCount :: Failed to parse handle count for path %s : %v", path, err)
 			return -1, err
 		}
 		if increment {
@@ -271,7 +294,7 @@ func (m *BlobMetadataManager) updateHandleCount(path string, increment bool) (in
 			openCount--
 		}
 		if openCount < 0 {
-			log.Debug("updateHandleCount :: Handle count is negative for path %s : %d", path, openCount)
+			log.Err("updateHandleCount :: Handle count is negative for path %s : %d", path, openCount)
 			return -1, fmt.Errorf("Handle count is negative for path %s : %d", path, openCount)
 		}
 		openCountStr := strconv.Itoa(openCount)
@@ -305,7 +328,7 @@ func (m *BlobMetadataManager) updateHandleCount(path string, increment bool) (in
 				}
 				continue
 			} else {
-				log.Debug("updateHandleCount :: Failed to update metadata property for path %s : %v", path, err)
+				log.Err("updateHandleCount :: Failed to update metadata property for path %s : %v", path, err)
 				return -1, err
 			}
 		} else {
@@ -322,18 +345,18 @@ func (m *BlobMetadataManager) getFileOpenCount(filePath string) (int64, error) {
 		Name: path,
 	})
 	if err != nil {
-		log.Debug("GetFileOpenCount :: Failed to get handle count for path %s : %v", path, err)
+		log.Err("GetFileOpenCount :: Failed to get handle count for path %s : %v", path, err)
 		return -1, err
 	}
 	openCount, ok := prop.Metadata["opencount"]
 	if !ok {
-		log.Debug("GetFileOpenCount :: openCount not found in metadata for path %s : Error %v", path, err)
+		log.Err("GetFileOpenCount :: openCount not found in metadata for path %s : Error %v", path, err)
 		// TODO :: Add asserts
 		return -1, err
 	}
 	count, err := strconv.ParseInt(*openCount, 10, 64)
 	if err != nil {
-		log.Debug("GetFileOpenCount :: Failed to parse handle count for path %s : %v", path, err)
+		log.Err("GetFileOpenCount :: Failed to parse handle count for path %s : %v", path, err)
 		return -1, err
 	}
 	if count < 0 {

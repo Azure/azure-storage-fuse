@@ -74,6 +74,9 @@ type StorageCallbacks interface {
 	//It will Set the properties of the blob through next Component whichever is in pipeline
 	SetMetaProperties(options internal.SetMetadataOptions) error
 
-	// It will Get the list of blobs in the given directory
-	ListBlobs(options internal.ReadDirOptions) ([]*internal.ObjAttr, error)
+	//It will Create the directory through next Component whichever is in pipeline
+	CreateDir(options internal.CreateDirOptions) error
+
+	//It will Create the directory in storage
+	CreateDirInStorage(options internal.CreateDirOptions) error
 }
