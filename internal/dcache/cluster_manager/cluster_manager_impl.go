@@ -46,8 +46,8 @@ import (
 )
 
 type ClusterManagerImpl struct {
-	hbTicker        *time.Ticker
-	nodeId          string
+	hbTicker *time.Ticker
+	nodeId   string
 }
 
 // It will return online MVs as per local cache copy of cluster map
@@ -116,11 +116,12 @@ func (cmi *ClusterManagerImpl) start(dCacheConfig *dcache.DCacheConfig, rvs []dc
 	if err != nil {
 		return err
 	}
-	cmi.hbTicker = time.NewTicker(time.Duration(clusterManagerConfig.HeartbeatSeconds) * time.Second)
+	cmi.nodeId = rvs[0].NodeId
+	cmi.hbTicker = time.NewTicker(time.Duration(dCacheConfig.HeartbeatSeconds) * time.Second)
 	go func() {
 		for range cmi.hbTicker.C {
 			log.Trace("Scheduled task Heartbeat Punch triggered")
-			cmi.punchHeartBeat(clusterManagerConfig)
+			cmi.punchHeartBeat(rvs)
 		}
 	}()
 	//Schedule clustermap update at storage and local copy
@@ -209,7 +210,7 @@ func (cmi *ClusterManagerImpl) checkAndCreateInitialClusterMap(dCacheConfig *dca
 		Epoch:         1,
 		CreatedAt:     currentTime,
 		LastUpdatedAt: currentTime,
-		LastUpdatedBy: rvList[0].NodeId,
+		LastUpdatedBy: cmi.nodeId,
 		Config:        *dCacheConfig,
 		RVMap:         map[string]dcache.RawVolume{},
 		MVMap:         map[string]dcache.MirroredVolume{},
@@ -275,42 +276,34 @@ func evaluateReadOnlyState() bool {
 	return false
 }
 
-
-func (cmi *ClusterManagerImpl) punchHeartBeat(clusterManagerConfig *ClusterManagerConfig) {
+func (cmi *ClusterManagerImpl) punchHeartBeat(rvList []dcache.RawVolume) {
 	hostname, err := os.Hostname()
-	if err != nil {
-		log.Err("Error getting hostname:", err)
-	}
-	listMyRVs(clusterManagerConfig.RVList)
+	common.Assert(err != nil, "Error getting hostname in punchHeartBeat  %v", err)
+	listMyRVs(rvList)
 	hbData := dcache.HeartbeatData{
-		IPAddr:        clusterManagerConfig.RVList[0].IPAddress,
+		IPAddr:        rvList[0].IPAddress,
 		NodeID:        cmi.nodeId,
 		Hostname:      hostname,
 		LastHeartbeat: uint64(time.Now().Unix()),
-		RVList:        clusterManagerConfig.RVList,
+		RVList:        rvList,
 	}
 
 	// Marshal the data into JSON
 	data, err := json.MarshalIndent(hbData, "", "  ")
-	if err != nil {
-		log.Err("AddHeartBeat: Failed to marshal heartbeat data")
-	}
+	//Adding Assert because error capturing can just log the error and continue because it's a schedule method
+	common.Assert(err != nil, "Error marshalling heartbeat data: %v", err)
 
-	// Create a heartbeat file in storage with <nodeId>.hb
-	if err := cmi.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{Name: clusterManagerConfig.StorageCachePath + "/Nodes/" + cmi.nodeId + ".hb", Data: data}); err != nil {
-		log.Err("AddHeartBeat: Failed to write heartbeat file: ", err)
-	}
+	// Create and update heartbeat file in storage with <nodeId>.hb
+	err = mm.UpdateHeartbeat(cmi.nodeId, data)
+	common.Assert(err != nil, "Error updating heartbeat file with nodeId %s in storage: %v", cmi.nodeId, err)
 	log.Trace("AddHeartBeat: Heartbeat file updated successfully")
 }
 
 func listMyRVs(rvList []dcache.RawVolume) {
 	for index, rv := range rvList {
-		log.Trace("RV %d: %s", index, rv)
-		usage, err := common.GetUsage(rv.LocalCachePath)
-		if err != nil {
-			log.Err("failed to get usage for path %s: %v", rv.LocalCachePath, err)
-		}
-		rvList[index].AvailableSpace = rv.TotalSpace - uint64(usage)*1024
+		_, availableSpace, err := common.GetDiskSpaceMetricsFromStatfs(rv.LocalCachePath)
+		common.Assert(err != nil, "Error getting disk space metrics for path %s for punching heartbeat: %v", rv.LocalCachePath, err)
+		rvList[index].AvailableSpace = availableSpace
 		// TODO{Akku}: If available space is less than 10% of total space, set state to offline
 		rvList[index].State = dcache.StateOnline
 	}
