@@ -39,6 +39,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -132,8 +133,8 @@ func UpdateHeartbeat(nodeId string, data []byte) error {
 	return metadataManagerInstance.updateHeartbeat(nodeId, data)
 }
 
-func DeleteHeartbeat(nodeId string, data []byte) error {
-	return metadataManagerInstance.deleteHeartbeat(nodeId, data)
+func DeleteHeartbeat(nodeId string) error {
+	return metadataManagerInstance.deleteHeartbeat(nodeId)
 }
 
 func GetHeartbeat(nodeId string) ([]byte, error) {
@@ -148,7 +149,7 @@ func CreateInitialClusterMap(clustermap []byte) error {
 	return metadataManagerInstance.createInitialClusterMap(clustermap)
 }
 
-func UpdateClusterMapStart(clustermap []byte, etag *azcore.ETag) error {
+func UpdateClusterMapStart(clustermap []byte, etag *string) error {
 	return metadataManagerInstance.updateClusterMapStart(clustermap, etag)
 }
 
@@ -156,7 +157,7 @@ func UpdateClusterMapEnd(clustermap []byte) error {
 	return metadataManagerInstance.updateClusterMapEnd(clustermap)
 }
 
-func GetClusterMap() ([]byte, *azcore.ETag, error) {
+func GetClusterMap() ([]byte, *string, error) {
 	return metadataManagerInstance.getClusterMap()
 }
 
@@ -369,15 +370,16 @@ func (m *BlobMetadataManager) getFileOpenCount(filePath string) (int64, error) {
 // UpdateHeartbeat creates or updates the heartbeat file
 func (m *BlobMetadataManager) updateHeartbeat(nodeId string, data []byte) error {
 	// Create the heartbeat file path
-	heartbeatFilePath := filepath.Join(m.cacheDir, "Nodes", nodeId+".hb")
-	err := m.storageCallbacks.PutBlobInStorage(internal.WriteFromBufferOptions{
+	heartbeatFilePath := filepath.Join(m.mdRoot, "Nodes", nodeId+".hb")
+	err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
 		Name:                   heartbeatFilePath,
 		Data:                   data,
 		IsNoneMatchEtagEnabled: false,
 		EtagMatchConditions:    "",
 	})
 	if err != nil {
-		log.Debug("UpdateHeartbeat :: Failed to put heartbeat blob in storage: %v", err)
+		log.Err("UpdateHeartbeat :: Failed to put heartbeat blob path %s in storage: %v", heartbeatFilePath, err)
+		// TODO :: Add asserts
 	}
 	return err
 }
@@ -385,13 +387,13 @@ func (m *BlobMetadataManager) updateHeartbeat(nodeId string, data []byte) error 
 // DeleteHeartbeat deletes the heartbeat file
 func (m *BlobMetadataManager) deleteHeartbeat(nodeId string) error {
 	// Create the heartbeat file path
-	heartbeatFilePath := filepath.Join(m.cacheDir, "Nodes", nodeId+".hb")
-	err := m.storageCallbacks.DeleteBlobInStorage(internal.DeleteFileOptions{
+	heartbeatFilePath := filepath.Join(m.mdRoot, "Nodes", nodeId+".hb")
+	err := m.storageCallback.DeleteBlobInStorage(internal.DeleteFileOptions{
 		Name: heartbeatFilePath,
 	})
 	if err != nil {
 		if bloberror.HasCode(err, bloberror.BlobNotFound) {
-			log.Warn("DeleteHeartbeat :: DeleteBlobInStorage failed since blob is already deleted")
+			log.Err("DeleteHeartbeat :: DeleteBlobInStorage failed since blob %s is already deleted", heartbeatFilePath)
 		}
 	}
 	return nil
@@ -400,13 +402,13 @@ func (m *BlobMetadataManager) deleteHeartbeat(nodeId string) error {
 // GetHeartbeat reads and returns the content of the heartbeat file
 func (m *BlobMetadataManager) getHeartbeat(nodeId string) ([]byte, error) {
 	// Create the heartbeat file path
-	heartbeatFilePath := filepath.Join(m.cacheDir, "Nodes", nodeId+".hb")
+	heartbeatFilePath := filepath.Join(m.mdRoot, "Nodes", nodeId+".hb")
 	// Get the heartbeat content from storage
-	data, err := m.storageCallbacks.GetBlobFromStorage(internal.ReadFileWithNameOptions{
+	data, err := m.storageCallback.GetBlobFromStorage(internal.ReadFileWithNameOptions{
 		Path: heartbeatFilePath,
 	})
 	if err != nil {
-		log.Debug("GetHeartbeat :: Failed to get heartbeat file content: %v", err)
+		log.Err("GetHeartbeat :: Failed to get heartbeat file content for %s: %v", heartbeatFilePath, err)
 	}
 
 	return data, err
@@ -414,21 +416,30 @@ func (m *BlobMetadataManager) getHeartbeat(nodeId string) ([]byte, error) {
 
 // GetAllNodes enumerates and returns the list of all nodes with a heartbeat
 func (m *BlobMetadataManager) getAllNodes() ([]string, error) {
-	list, err := m.storageCallbacks.ListBlobs(internal.ReadDirOptions{
-		Name: filepath.Join(m.cacheDir, "Nodes"),
+	path := filepath.Join(m.mdRoot, "Nodes")
+	list, err := m.storageCallback.ReadDirFromStorage(internal.ReadDirOptions{
+		Name: path,
 	})
 	if err != nil {
-		log.Debug("GetAllNodes :: Failed to get nodes list: %v", err)
+		log.Err("GetAllNodes :: Failed to get nodes list from blob %s : %v", path, err)
 		return nil, err
 	}
 	// Extract the node IDs from the list of blobs
 	var nodes []string
 	for _, blob := range list {
-		if blob.Name != "" {
+		if strings.HasSuffix(blob.Name, ".hb") {
 			nodeId := blob.Name[:len(blob.Name)-3] // Remove the ".hb" extension
 			if nodeId != "" {
-				nodes = append(nodes, nodeId)
+				// TODO :: Add asserts
+				// here we should add an assert for debug builds
+				if Assert(IsValidGUID(nodeId), "Invalid heartbeat blob", blob.Name) {
+					nodes = append(nodes, nodeId)
+				}
+				// and for release builds, we should skip such blobs w/o a valid guid.
 			}
+		} else {
+			// TODO :: Add asserts
+			// Assert(false, "Unexpected blob found in Nodes folder", blob.Name)
 		}
 	}
 
@@ -438,47 +449,53 @@ func (m *BlobMetadataManager) getAllNodes() ([]string, error) {
 // CreateInitialClusterMap creates the initial cluster map
 func (m *BlobMetadataManager) createInitialClusterMap(clustermap []byte) error {
 	// Create the clustermap file path
-	clustermapPath := filepath.Join(m.cacheDir, "clustermap.json")
-	err := m.storageCallbacks.PutBlobInStorage(internal.WriteFromBufferOptions{
+	clustermapPath := filepath.Join(m.mdRoot, "clustermap.json")
+	err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
 		Name:                   clustermapPath,
 		Data:                   clustermap,
 		IsNoneMatchEtagEnabled: true,
 		EtagMatchConditions:    "",
 	})
 	if err != nil {
-		log.Debug("CreateInitialClusterMap :: Failed to create clustermap: %v", err)
+		log.Debug("CreateInitialClusterMap :: Failed to create clustermap %s : %v", clustermapPath, err)
+		return err
 	}
-	return err
+	log.Info("CreateInitialClusterMap :: Created initial clustermap with path %s", clustermapPath)
+	return nil
 }
 
 // UpdateClusterMapStart claims update ownership of the cluster map
 func (m *BlobMetadataManager) updateClusterMapStart(clustermap []byte, etag *string) error {
-	err := m.storageCallbacks.PutBlobInStorage(internal.WriteFromBufferOptions{
-		Name:                   filepath.Join(m.cacheDir, "clustermap.json"),
+	clustermapPath := filepath.Join(m.mdRoot, "clustermap.json")
+	err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
+		Name:                   clustermapPath,
 		Data:                   clustermap,
 		IsNoneMatchEtagEnabled: false,
 		EtagMatchConditions:    *etag,
 	})
 	if err != nil {
 		if bloberror.HasCode(err, bloberror.ConditionNotMet) {
-			log.Warn("UpdateClusterMapStart :: ETag mismatch some other node has taken ownership for updating clustermap")
+			log.Err("UpdateClusterMapStart :: ETag mismatch some other node has taken ownership for updating clustermap with path %s", clustermapPath)
 		} else {
-			log.Debug("UpdateClusterMapStart :: Failed to update clustermap: %v", err)
+			log.Err("UpdateClusterMapStart :: Failed to update clustermap %s : %v", clustermapPath, err)
 		}
 	}
+	// Caller should add a check to identify the error is ConditionNotMet or something else
+	// and take appropriate action.
 	return err
 }
 
 // UpdateClusterMapEnd finalizes the cluster map update
 func (m *BlobMetadataManager) updateClusterMapEnd(clustermap []byte) error {
-	err := m.storageCallbacks.PutBlobInStorage(internal.WriteFromBufferOptions{
-		Name:                   filepath.Join(m.cacheDir, "clustermap.json"),
+	clustermapPath := filepath.Join(m.mdRoot, "clustermap.json")
+	err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
+		Name:                   clustermapPath,
 		Data:                   clustermap,
 		IsNoneMatchEtagEnabled: false,
 		EtagMatchConditions:    "",
 	})
 	if err != nil {
-		log.Debug("UpdateClusterMapEnd :: Failed to finalize clustermap update: %v", err)
+		log.Err("UpdateClusterMapEnd :: Failed to finalize clustermap update for %s: %v", clustermapPath, err)
 	}
 
 	return err
@@ -486,16 +503,17 @@ func (m *BlobMetadataManager) updateClusterMapEnd(clustermap []byte) error {
 
 // GetClusterMap reads and returns the content of the cluster map
 func (m *BlobMetadataManager) getClusterMap() ([]byte, *string, error) {
-	attr, err := m.storageCallbacks.GetPropertiesFromStorage(internal.GetAttrOptions{
-		Name: filepath.Join(m.cacheDir, "clustermap.json"),
+	clustermapPath := filepath.Join(m.mdRoot, "clustermap.json")
+	attr, err := m.storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{
+		Name: clustermapPath,
 	})
 	if err != nil {
-		log.Debug("GetClusterMap :: Failed to get cluster map: %v", err)
+		log.Debug("GetClusterMap :: Failed to get cluster map properties %s : %v", clustermapPath, err)
 		return nil, nil, err
 	}
 	// Get the cluster map content from storage
-	data, err := m.storageCallbacks.GetBlobFromStorage(internal.ReadFileWithNameOptions{
-		Path: filepath.Join(m.cacheDir, "clustermap.json"),
+	data, err := m.storageCallback.GetBlobFromStorage(internal.ReadFileWithNameOptions{
+		Path: filepath.Join(m.mdRoot, "clustermap.json"),
 	})
 	if err != nil {
 		log.Debug("GetClusterMap :: Failed to get cluster map content: %v", err)
