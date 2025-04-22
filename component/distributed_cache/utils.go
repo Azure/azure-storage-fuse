@@ -94,8 +94,7 @@ func findMountDevice(path string) (string, error) {
 
 // TODO{Akku}: Client can provide, which ethernet address we have to use. i.e. eth0, eth1
 func getVmIp() (string, error) {
-	var getNetAddrs = net.InterfaceAddrs
-	addresses, err := getNetAddrs()
+	addresses, err := net.InterfaceAddrs()
 	if err != nil {
 		return "", err
 	}
