@@ -52,6 +52,7 @@ func getBlockDeviceUUId(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	out, err := exec.Command("blkid", "-o", "value", "-s", "UUID", device).Output()
 	if err != nil {
 		return "", fmt.Errorf("error running blkid: %v", err)

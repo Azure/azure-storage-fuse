@@ -57,7 +57,6 @@ type distributedCacheTestSuite struct {
 
 func (suite *distributedCacheTestSuite) SetupTest() {
 	log.SetDefaultLogger("silent", common.LogConfig{Level: common.ELogLevel.LOG_DEBUG()})
-
 	defaultConfig := "distributed_cache:\n  cache-id: mycache1\n  cache-dirs:\n    - \\tmp"
 	log.Debug(defaultConfig)
 
@@ -94,7 +93,6 @@ func (suite *distributedCacheTestSuite) TearDownTest() error {
 
 func (suite *distributedCacheTestSuite) TestManadatoryConfigMissing() {
 	suite.assert.EqualValues("distributed_cache", suite.distributedCache.Name())
-
 	suite.assert.EqualValues("mycache1", suite.distributedCache.cfg.CacheID)
 	suite.assert.EqualValues(1, len(suite.distributedCache.cfg.CacheDirs))
 	suite.assert.EqualValues(uint8(1), suite.distributedCache.cfg.Replicas)
@@ -110,6 +108,7 @@ func (suite *distributedCacheTestSuite) TestManadatoryConfigMissing() {
 	suite.assert.EqualValues(80, suite.distributedCache.cfg.RVNearfullThreshold)
 	suite.assert.EqualValues(false, suite.distributedCache.cfg.SafeDeletes)
 	suite.assert.EqualValues(uint64(16777216), suite.distributedCache.cfg.StripeSize)
+
 	emptyConfig := "read-only: true\n\ndistributed_cache:\n  cache-id: mycache1"
 	err := suite.setupTestHelper(emptyConfig)
 

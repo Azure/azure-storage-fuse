@@ -45,7 +45,6 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
-
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/cluster_manager"
 	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
@@ -128,6 +127,7 @@ func (dc *DistributedCache) SetNextComponent(nextComponent internal.Component) {
 func (dc *DistributedCache) Start(ctx context.Context) error {
 
 	log.Trace("DistributedCache::Start : Starting component %s", dc.Name())
+
 	dc.azstorage = dc.NextComponent()
 	for dc.azstorage != nil && dc.azstorage.Name() != "azstorage" {
 		dc.azstorage = dc.azstorage.NextComponent()
