@@ -41,20 +41,81 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
+	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
 )
 
 type ClusterManagerImpl struct {
-	storageCallback dcache.StorageCallbacks
 	hbTicker        *time.Ticker
 	nodeId          string
 }
 
-// Start implements ClusterManager.
-func (cmi *ClusterManagerImpl) Start(dCacheConfig *dcache.DCacheConfig, rvs []dcache.RawVolume) error {
-	cmi.nodeId = clusterManagerConfig.RVList[0].NodeId
-  cmi.createClusterMapIfRequired(dCacheConfig, rvs)
+// It will return online MVs as per local cache copy of cluster map
+func GetActiveMVs() []dcache.MirroredVolume {
+	return clusterManagerInstance.getActiveMVs()
+}
+
+// It will return offline/down MVs as per local cache copy of cluster map
+func GetDegradedMVs() []dcache.MirroredVolume {
+	return clusterManagerInstance.getDegradedMVs()
+}
+
+// It will return all the RVs for particular mv name as per local cache copy of cluster map
+func GetRVs(mvName string) []dcache.RawVolume {
+	return clusterManagerInstance.getRVs(mvName)
+}
+
+// It will check if the given nodeId is online as per local cache copy of cluster map
+func IsAlive(nodeId string) bool {
+	return clusterManagerInstance.isAlive(nodeId)
+}
+
+// It will evaluate the lowest number of RVs for given rv Names
+func LowestNumberRV(rvNames []string) []string {
+	return clusterManagerInstance.lowestNumberRV(rvNames)
+}
+
+// It will return the IP address of the given nodeId as per local cache copy of cluster map
+func NodeIdToIP(nodeId string) string {
+	return clusterManagerInstance.nodeIdToIP(nodeId)
+}
+
+// It will return the name of RV for the given RV FSID/Blkid as per local cache copy of cluster map
+func RVFsidToName(rvFsid string) string {
+	return clusterManagerInstance.rVFsidToName(rvFsid)
+}
+
+// It will return the RV FSID/Blkid of the given RV name as per local cache copy of cluster map
+func RVNameToFsid(rvName string) string {
+	return clusterManagerInstance.rVNameToFsid(rvName)
+}
+
+// It will return the nodeId/node uuid of the given RV name as per local cache copy of cluster map
+func RVNameToNodeId(rvName string) string {
+	return clusterManagerInstance.rVNameToNodeId(rvName)
+}
+
+// It will return the IP address of the given RV name as per local cache copy of cluster map
+func RVNameToIp(rvName string) string {
+	return clusterManagerInstance.rVNameToIp(rvName)
+}
+
+// Update RV state to down and update MVs
+func ReportRVDown(rvName string) error {
+	return clusterManagerInstance.reportRVDown(rvName)
+}
+
+// Update RV state to offline and update MVs
+func ReportRVFull(rvName string) error {
+	return clusterManagerInstance.reportRVFull(rvName)
+}
+
+// start implements ClusterManager.
+func (cmi *ClusterManagerImpl) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache.RawVolume) error {
+	err := cmi.checkAndCreateInitialClusterMap(dCacheConfig, rvs)
+	if err != nil {
+		return err
+	}
 	cmi.hbTicker = time.NewTicker(time.Duration(clusterManagerConfig.HeartbeatSeconds) * time.Second)
 	go func() {
 		for range cmi.hbTicker.C {
@@ -71,99 +132,112 @@ func (c *ClusterManagerImpl) Stop() error {
 	return nil
 }
 
-// GetActiveMVs implements ClusterManager.
-func (c *ClusterManagerImpl) GetActiveMVs() []dcache.MirroredVolume {
+// getActiveMVs implements ClusterManager.
+func (c *ClusterManagerImpl) getActiveMVs() []dcache.MirroredVolume {
 	return make([]dcache.MirroredVolume, 0)
 }
 
-// GetDegradedMVs implements ClusterManager.
-func (c *ClusterManagerImpl) GetDegradedMVs() []dcache.MirroredVolume {
+// getDegradedMVs implements ClusterManager.
+func (c *ClusterManagerImpl) getDegradedMVs() []dcache.MirroredVolume {
 	return make([]dcache.MirroredVolume, 0)
 }
 
-// GetRVs implements ClusterManager.
-func (c *ClusterManagerImpl) GetRVs(mvName string) []dcache.RawVolume {
+// getRVs implements ClusterManager.
+func (c *ClusterManagerImpl) getRVs(mvName string) []dcache.RawVolume {
 	return make([]dcache.RawVolume, 0)
 }
 
-// IsAlive implements ClusterManager.
-func (c *ClusterManagerImpl) IsAlive(nodeId string) bool {
+// isAlive implements ClusterManager.
+func (c *ClusterManagerImpl) isAlive(nodeId string) bool {
 	return false
 }
 
-// LowestNumberRV implements ClusterManager.
-func (c *ClusterManagerImpl) LowestNumberRV(rvNames []string) []string {
+// lowestNumberRV implements ClusterManager.
+func (c *ClusterManagerImpl) lowestNumberRV(rvNames []string) []string {
 	return make([]string, 0)
 }
 
-// NodeIdToIP implements ClusterManager.
-func (c *ClusterManagerImpl) NodeIdToIP(nodeId string) string {
+// nodeIdToIP implements ClusterManager.
+func (c *ClusterManagerImpl) nodeIdToIP(nodeId string) string {
 	return ""
 }
 
-// RVFsidToName implements ClusterManager.
-func (c *ClusterManagerImpl) RVFsidToName(rvFsid string) string {
+// rVFsidToName implements ClusterManager.
+func (c *ClusterManagerImpl) rVFsidToName(rvFsid string) string {
 	return ""
 }
 
-// RVNameToFsid implements ClusterManager.
-func (c *ClusterManagerImpl) RVNameToFsid(rvName string) string {
+// rVNameToFsid implements ClusterManager.
+func (c *ClusterManagerImpl) rVNameToFsid(rvName string) string {
 	return ""
 }
 
-// RVNameToIp implements ClusterManager.
-func (c *ClusterManagerImpl) RVNameToIp(rvName string) string {
+// rVNameToIp implements ClusterManager.
+func (c *ClusterManagerImpl) rVNameToIp(rvName string) string {
 	return ""
 }
 
-// RVNameToNodeId implements ClusterManager.
-func (c *ClusterManagerImpl) RVNameToNodeId(rvName string) string {
+// rVNameToNodeId implements ClusterManager.
+func (c *ClusterManagerImpl) rVNameToNodeId(rvName string) string {
 	return ""
 }
 
-// ReportRVDown implements ClusterManager.
-func (c *ClusterManagerImpl) ReportRVDown(rvName string) error {
+// reportRVDown implements ClusterManager.
+func (c *ClusterManagerImpl) reportRVDown(rvName string) error {
 	return nil
 }
 
-// ReportRVFull implements ClusterManager.
-func (c *ClusterManagerImpl) ReportRVFull(rvName string) error {
+// reportRVFull implements ClusterManager.
+func (c *ClusterManagerImpl) reportRVFull(rvName string) error {
 	return nil
 }
 
-func (cmi *ClusterManagerImpl) createClusterMapIfRequired(dCacheConfig *dcache.DCacheConfig, rvList []dcache.RawVolume) error {
-	if cmi.checkIfClusterMapExists(dCacheConfig.CacheId) {
-		log.Trace("ClusterManager::createClusterConfig : ClusterMap.json already exists")
+func (cmi *ClusterManagerImpl) checkAndCreateInitialClusterMap(dCacheConfig *dcache.DCacheConfig, rvList []dcache.RawVolume) error {
+	isClusterMapExists, err := cmi.checkIfClusterMapExists()
+	if err != nil {
+		log.Err("ClusterManagerImpl::checkAndCreateInitialClusterMap: Failed to check clusterMap file presence in Storage. error -: %v", err)
+		return err
+	}
+	if isClusterMapExists {
+		log.Trace("ClusterManager::checkAndCreateInitialClusterMap : ClusterMap.json already exists")
 		return nil
 	}
-	clusterConfig := dcache.ClusterMap{
+	currentTime := time.Now().Unix()
+	clusterMap := dcache.ClusterMap{
 		Readonly:      evaluateReadOnlyState(),
 		State:         dcache.StateReady,
 		Epoch:         1,
-		CreatedAt:     time.Now().Unix(),
-		LastUpdatedAt: time.Now().Unix(),
+		CreatedAt:     currentTime,
+		LastUpdatedAt: currentTime,
 		LastUpdatedBy: rvList[0].NodeId,
 		Config:        *dCacheConfig,
 		RVMap:         map[string]dcache.RawVolume{},
 		MVMap:         map[string]dcache.MirroredVolume{},
 	}
-	clusterConfigJson, err := json.Marshal(clusterConfig)
-	log.Err("ClusterManager::CreateClusterConfig : ClusterConfigJson: %v, err %v", clusterConfigJson, err)
-	// err = cmi.metaManager.PutMetaFile(internal.WriteFromBufferOptions{Name: clusterManagerConfig.StorageCachePath + "/ClusterMap.json", Data: []byte(clusterConfigJson), IsNoneMatchEtagEnabled: true})
-	err = cmi.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{Name: "__CACHE__" + dCacheConfig.CacheId + "/ClusterMap.json", Data: []byte(clusterConfigJson), IsNoneMatchEtagEnabled: true})
-	return err
-	// return nil
+	clusterMapBytes, err := json.Marshal(clusterMap)
+	if err != nil {
+		log.Err("ClusterManager::checkAndCreateInitialClusterMap : Cluster Map Marshalling fail : %+v, err %v", clusterMap, err)
+		return err
+	}
+	mm.CreateInitialClusterMap(clusterMapBytes)
+	return nil
 }
 
-func (cmi *ClusterManagerImpl) checkIfClusterMapExists(cacheId string) bool {
-	_, err := cmi.storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{Name: "__CACHE__" + cacheId + "/ClusterMap.json"})
+func (cmi *ClusterManagerImpl) checkIfClusterMapExists() (bool, error) {
+	err := getClusterMap()
 	if err != nil {
 		if os.IsNotExist(err) || err == syscall.ENOENT {
-			return false
+			return false, nil
+		} else {
+			return false, err
 		}
-		log.Err("ClusterManagerImpl::checkIfClusterMapExists: Failed to check configFile presence in Storage path %s error: %v", "__CACHE__"+cacheId+"/ClusterMap.json", err)
 	}
-	return true
+	return true, nil
+}
+
+var getClusterMap = func() error {
+	_, _, err := mm.GetClusterMap()
+	return err
 }
 
 func evaluateMVsRVMapping() map[string]dcache.MirroredVolume {
@@ -242,8 +316,15 @@ func listMyRVs(rvList []dcache.RawVolume) {
 	}
 }
 
-func NewClusterManager(callback dcache.StorageCallbacks) ClusterManager {
-	return &ClusterManagerImpl{
-		storageCallback: callback,
-	}
+var (
+	// clusterManagerInstance is the singleton instance of the ClusterManagerImpl
+	clusterManagerInstance ClusterManager = &ClusterManagerImpl{}
+	initCalled                            = false
+)
+
+func Init(dCacheConfig *dcache.DCacheConfig, rvs []dcache.RawVolume) error {
+	common.Assert(!initCalled, "Cluster Manager Init should only be called once")
+	initCalled = true
+	err := clusterManagerInstance.start(dCacheConfig, rvs)
+	return err
 }

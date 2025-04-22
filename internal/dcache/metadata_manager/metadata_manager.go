@@ -52,60 +52,60 @@ type MetadataManager interface {
 	// Succeeds only when the file metadata is not already present.
 	// This will be called by the File Manager to create a non-existing file in response to a create call from fuse.
 	// TODO :: Handle the case where the node fails before CreateFileFinalize is called.
-	CreateFileInit(filePath string, fileMetadata *dcache.FileMetadata) error
+	createFileInit(filePath string, fileMetadata *dcache.FileMetadata) error
 
 	// CreateFileFinalize finalizes the metadata for a file updating size, sha256, and other properties.
 	// For properties which were not available at the time of CreateFileInit.
 	// Called by the File Manager in response to a close call from fuse.
 	// TODO :: Ensure that CreateFileInit and CreateFileFinalize are called by the same node.
-	CreateFileFinalize(filePath string, fileMetadata *dcache.FileMetadata) error
+	createFileFinalize(filePath string, fileMetadata *dcache.FileMetadata) error
 
 	// GetFile reads and returns the content of metadata for a file.
-	GetFile(filePath string) (*dcache.FileMetadata, error)
+	getFile(filePath string) (*dcache.FileMetadata, error)
 
 	// DeleteFile removes metadata for a file.
-	DeleteFile(filePath string) error
+	deleteFile(filePath string) error
 
 	// OpenFile must be called when a file is opened by the application.
 	// This will increment the open count for the file and return the updated open count.
-	OpenFile(filePath string) (int64, error)
+	openFile(filePath string) (int64, error)
 
 	// CloseFile must be called when a file is closed by the application.
 	// This will decrement the open count for the file and return the updated open count.
-	CloseFile(filePath string) (int64, error)
+	closeFile(filePath string) (int64, error)
 
 	// GetFileOpenCount returns the current open count for a file.
-	GetFileOpenCount(filePath string) (int64, error)
+	getFileOpenCount(filePath string) (int64, error)
 
 	//
 	// Following APIs are used to manage internal files in the distributed cache.
 	//
 
 	// CreateHeartbeat creates the initial heartbeat file if not present else updates the heartbeat.
-	UpdateHeartbeat(nodeId string, data []byte) error
+	updateHeartbeat(nodeId string, data []byte) error
 
 	// DeleteHeartbeat deletes the heartbeat file.
-	DeleteHeartbeat(nodeId string, data []byte) error
+	deleteHeartbeat(nodeId string, data []byte) error
 
 	// GetHeartbeat reads and returns the content of the heartbeat file.
-	GetHeartbeat(nodeId string) ([]byte, error)
+	getHeartbeat(nodeId string) ([]byte, error)
 
 	// GetAllNodes enumerates and returns the list of all the nodes who have a heartbeat.
-	GetAllNodes() ([]string, error)
+	getAllNodes() ([]string, error)
 
 	// TODO :: Rename ClusterConfig to ClusterMap.
 	// CreateInitialClusterMap creates the initial clustermap.
-	CreateInitialClusterMap(clustermap []byte) error
+	createInitialClusterMap(clustermap []byte) error
 
 	// Any node wanting to update the clustermap should do the following:
 	// 1. Call GetClusterMap() to get the current clustermap and etag.
 	// 2. Call UpdateClusterMapStart() passing the etag returned by GetClusterMap()
 	//    to claim update ownership of the clustermap.
 	// 3. Call UpdateClusterMapEnd() with the finalized clustermap.
-	UpdateClusterMapStart(clustermap []byte, etag *azcore.ETag) error
-	UpdateClusterMapEnd(clustermap []byte) error
+	updateClusterMapStart(clustermap []byte, etag *azcore.ETag) error
+	updateClusterMapEnd(clustermap []byte) error
 
 	// GetClusterMap reads and returns the content of the clustermap.
 	// The clustermap returned could be in ready or syncing state and the caller should appropriately handle it.
-	GetClusterMap() ([]byte, *azcore.ETag, error)
+	getClusterMap() ([]byte, *azcore.ETag, error)
 }

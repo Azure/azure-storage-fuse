@@ -43,7 +43,7 @@ type ClusterManager interface {
 	//2. Schedule heartbeat punching
 	//3. Schedule clusterMap update for storage
 	//4. Schedule clusterMap update for local cache
-	Start(*dcache.DCacheConfig, []dcache.RawVolume) error
+	start(*dcache.DCacheConfig, []dcache.RawVolume) error
 
 	// Stop shuts down the cluster manager and releases any resources.
 	//1. Cancel schedule of cluster update over storage and local cache
@@ -51,38 +51,38 @@ type ClusterManager interface {
 	Stop() error
 
 	//It will return online MVs as per local cache copy of cluster map
-	GetActiveMVs() []dcache.MirroredVolume
+	getActiveMVs() []dcache.MirroredVolume
 
 	//It will return offline/down MVs as per local cache copy of cluster map
-	GetDegradedMVs() []dcache.MirroredVolume
+	getDegradedMVs() []dcache.MirroredVolume
 
 	//It will return all the RVs for particular mv name as per local cache copy of cluster map
-	GetRVs(mvName string) []dcache.RawVolume
+	getRVs(mvName string) []dcache.RawVolume
 
 	//It will check if the given nodeId is online as per local cache copy of cluster map
-	IsAlive(nodeId string) bool
+	isAlive(nodeId string) bool
 
 	//It will evaluate the lowest number of RVs for given rv Names
-	LowestNumberRV(rvNames []string) []string
+	lowestNumberRV(rvNames []string) []string
 
 	//It will return the IP address of the given nodeId as per local cache copy of cluster map
-	NodeIdToIP(nodeId string) string
+	nodeIdToIP(nodeId string) string
 
 	//It will return the name of RV for the given RV FSID/Blkid as per local cache copy of cluster map
-	RVFsidToName(rvFsid string) string
+	rVFsidToName(rvFsid string) string
 
 	//It will return the RV FSID/Blkid of the given RV name as per local cache copy of cluster map
-	RVNameToFsid(rvName string) string
+	rVNameToFsid(rvName string) string
 
 	//It will return the nodeId/node uuid of the given RV name as per local cache copy of cluster map
-	RVNameToNodeId(rvName string) string
+	rVNameToNodeId(rvName string) string
 
 	//It will return the IP address of the given RV name as per local cache copy of cluster map
-	RVNameToIp(rvName string) string
+	rVNameToIp(rvName string) string
 
 	//Update RV state to down and update MVs
-	ReportRVDown(rvName string) error
+	reportRVDown(rvName string) error
 
 	//Update RV state to offline and update MVs
-	ReportRVFull(rvName string) error
+	reportRVFull(rvName string) error
 }

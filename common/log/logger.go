@@ -245,3 +245,8 @@ func TimeTrackDiff(diff time.Duration, location string, name string) {
 		logObj.Crit("TimeTracker :: [%s] %s => %s", location, name, diff)
 	}
 }
+
+func LogAndReturnError(msg string) error {
+	Err(msg)
+	return errors.New(msg)
+}
