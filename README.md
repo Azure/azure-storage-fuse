@@ -260,7 +260,7 @@ Below are some points that user shall be aware while using preload:
 - Local cache path provided should have sufficient space to download the contents from storage. If local storage is full, preload will stop downloading the data.
 - If user application executes a file system open call on a certain file, call will wait until the file download completes. If the file was not under download, it will be downloaded on priority.
 - Files once downloaded will not be evicted from local cache.
-- Blobfuse will not detect any changes on the container (files modified or new files created), once preload completes all reads will be served from local cache only.
+- Blobfuse will not detect any changes on the container (files modified in the storage container), once preload completes. All reads will be served from local cache only. For any new files created on the container, open file-system call for the file will start download of that file.
  
 
 ## Blob Filter
