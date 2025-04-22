@@ -146,19 +146,16 @@ func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.
 			return getPlaceholderDirForRoot("fs=dcache"), nil
 		}
 	}
-	newPath := options.Name
 	if isAzurePath {
 		// properties should be fetched from Azure
 		log.Debug("DistributedCache::GetAttr : Path is having Azure subcomponent, path : %s", options.Name)
-		newPath = rawPath
 	} else if isDcachePath {
 		// properties should be fetched from Dcache
 		log.Debug("DistributedCache::GetAttr : Path is having Dcache subcomponent, path : %s", options.Name)
-		// todo :: call getRootMv from metadata manager
-		newPath = filepath.Join("__CACHE__"+dc.cacheID, "Objects", rawPath)
+		// todo :: call GetMdRoot() from metadata manager
+		rawPath = filepath.Join("__CACHE__"+dc.cacheID, "Objects", rawPath)
 	} else {
-		// properties should be fetched from Azure
-		newPath = options.Name
+		// todo : assert rawPath==options.Name
 	}
 
 	attr, err := dc.NextComponent().GetAttr(internal.GetAttrOptions{Name: newPath})
@@ -166,7 +163,7 @@ func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.
 		return nil, err
 	}
 	// Modify the attr if it came from specific virtual component.
-	// todo : parse the attributes from the filelayout if we are getting attr for the fs=dcache/*
+	// todo : if the path is fs=dcache/*, then populate size, times from the fileLayout
 	if isAzurePath || isDcachePath {
 		attr.Path = options.Name
 		attr.Name = filepath.Base(options.Name)
@@ -176,21 +173,20 @@ func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.
 
 func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*internal.ObjAttr, string, error) {
 	isAzurePath, isDcachePath, rawPath := getFS(options.Name)
-	newPath := options.Name
 	if isAzurePath {
 		// properties should be fetched from Azure
 		log.Debug("DistributedCache::StreamDir : Path is having Azure subcomponent, path : %s", options.Name)
-		newPath = rawPath
 	} else if isDcachePath {
 		// properties should be fetched from Dcache
 		log.Debug("DistributedCache::StreamDir : Path is having Dcache subcomponent, path : %s", options.Name)
-		// todo :: call getRootMv from metadata manager
-		newPath = filepath.Join("__CACHE__"+dc.cacheID, "Objects", rawPath)
+		// todo :: call GetMdRoot() from metadata manager
+		rawPath = filepath.Join("__CACHE__"+dc.cacheID, "Objects", rawPath)
 	} else {
 		// properties should be fetched from Azure
-		newPath = options.Name
+		// todo : assert rawPath==options.Name
+
 	}
-	options.Name = newPath
+	options.Name = rawPath
 	dirList, token, err := dc.NextComponent().StreamDir(options)
 	if err != nil {
 		return dirList, token, err

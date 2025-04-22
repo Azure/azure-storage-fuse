@@ -34,7 +34,6 @@
 package distributed_cache
 
 import (
-	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -68,16 +67,13 @@ func getFS(path string) (isAzurePath bool, isDcachePath bool, rawPath string) {
 	isAzurePath, tempPath := isPathContainsSubDir(path, "fs=azure")
 	if isAzurePath {
 		rawPath = tempPath
+	} else {
+		isDcachePath, tempPath = isPathContainsSubDir(path, "fs=dcache")
+		if isDcachePath {
+			rawPath = tempPath
+		}
 	}
-	isDcachePath, tempPath = isPathContainsSubDir(path, "fs=dcache")
-	if isDcachePath {
-		rawPath = tempPath
-	}
-	// todo :: Replace the following with an assert
-	if isAzurePath && isDcachePath {
-		panic(fmt.Sprintf("DistributedCache::getFS, path : %s is having both azure and dcache virtual subdirs", path))
-	}
-	return
+	return isAzurePath, isDcachePath, rawPath
 }
 
 // function to know path consists of given subdir at it's root
@@ -93,7 +89,7 @@ func isPathContainsSubDir(path string, subdir string) (found bool, resPath strin
 	}
 
 	resPath = after
-	if len(resPath) > 1 && resPath[0] != '/' {
+	if len(resPath) > 0 && resPath[0] != '/' {
 		return false, path
 	}
 	resPath = strings.TrimPrefix(resPath, "/")
@@ -105,6 +101,7 @@ func hideCacheMetadata(dirList []*internal.ObjAttr) []*internal.ObjAttr {
 	newDirList := make([]*internal.ObjAttr, len(dirList))
 	i := 0
 	for _, attr := range dirList {
+		// todo: think of a better approach for doing the following.
 		if !strings.HasPrefix(attr.Path, "__CACHE__") {
 			newDirList[i] = attr
 			i++
