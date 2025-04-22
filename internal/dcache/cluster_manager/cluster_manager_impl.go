@@ -146,7 +146,12 @@ func (c *ClusterManagerImpl) UpdateClusterMapCacheCopy() {
 }
 
 // Stop implements ClusterManager.
-func (c *ClusterManagerImpl) Stop() error {
+func (cmi *ClusterManagerImpl) Stop() error {
+	if cmi.hbTicker != nil {
+		cmi.hbTicker.Stop()
+	}
+	// TODO{Akku}: Delete the heartbeat file
+	// mm.DeleteHeartbeat(cmi.nodeId)
 	return nil
 }
 
