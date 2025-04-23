@@ -52,11 +52,12 @@ type RawVolume struct {
 type StateEnum string
 
 const (
-	StateOnline  StateEnum = "online"
-	StateOffline StateEnum = "offline"
-	StateDown    StateEnum = "down"
-	StateReady   StateEnum = "ready"
-	StateSyncing StateEnum = "syncing"
+	StateOnline   StateEnum = "online"
+	StateOffline  StateEnum = "offline"
+	StateDown     StateEnum = "down"
+	StateReady    StateEnum = "ready"
+	StateSyncing  StateEnum = "syncing"
+	StateReadOnly StateEnum = "readOnly"
 )
 
 type ClusterMap struct {
