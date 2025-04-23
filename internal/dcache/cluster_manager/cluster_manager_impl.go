@@ -54,6 +54,11 @@ func GetActiveMVs() []dcache.MirroredVolume {
 	return clusterManagerInstance.getActiveMVs()
 }
 
+// It will return the cache config as per local cache copy of cluster map
+func GetCacheConfig() *dcache.DCacheConfig {
+	return clusterManagerInstance.getCacheConfig()
+}
+
 // It will return offline/down MVs as per local cache copy of cluster map
 func GetDegradedMVs() []dcache.MirroredVolume {
 	return clusterManagerInstance.getDegradedMVs()
@@ -80,8 +85,8 @@ func NodeIdToIP(nodeId string) string {
 }
 
 // It will return the name of RV for the given RV FSID/Blkid as per local cache copy of cluster map
-func RvIdToName(rvFsid string) string {
-	return clusterManagerInstance.rvIdToName(rvFsid)
+func RvIdToName(rvId string) string {
+	return clusterManagerInstance.rvIdToName(rvId)
 }
 
 // It will return the RV FSID/Blkid of the given RV name as per local cache copy of cluster map
@@ -112,6 +117,8 @@ func ReportRVFull(rvName string) error {
 // start implements ClusterManager.
 func (cmi *ClusterManagerImpl) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache.RawVolume) error {
 	cmi.nodeId = rvs[0].NodeId
+	//TODO{Akku}: fix this assert to just work with 1 return value
+	common.Assert(common.IsValidUUID(cmi.nodeId))
 	err := cmi.checkAndCreateInitialClusterMap(dCacheConfig)
 	if err != nil {
 		return err
@@ -129,6 +136,11 @@ func (c *ClusterManagerImpl) Stop() error {
 // getActiveMVs implements ClusterManager.
 func (c *ClusterManagerImpl) getActiveMVs() []dcache.MirroredVolume {
 	return make([]dcache.MirroredVolume, 0)
+}
+
+// getCacheConfig implements ClusterManager.
+func (cmi *ClusterManagerImpl) getCacheConfig() *dcache.DCacheConfig {
+	return nil
 }
 
 // getDegradedMVs implements ClusterManager.
@@ -157,7 +169,7 @@ func (c *ClusterManagerImpl) nodeIdToIP(nodeId string) string {
 }
 
 // rvIdToName implements ClusterManager.
-func (c *ClusterManagerImpl) rvIdToName(rvFsid string) string {
+func (c *ClusterManagerImpl) rvIdToName(rvId string) string {
 	return ""
 }
 
@@ -193,12 +205,12 @@ func (cmi *ClusterManagerImpl) checkAndCreateInitialClusterMap(dCacheConfig *dca
 		return err
 	}
 	if isClusterMapExists {
-		log.Trace("ClusterManager::checkAndCreateInitialClusterMap : ClusterMap.json already exists")
+		log.Info("ClusterManager::checkAndCreateInitialClusterMap : ClusterMap already exists")
 		return nil
 	}
 	currentTime := time.Now().Unix()
 	clusterMap := dcache.ClusterMap{
-		Readonly:      evaluateReadOnlyState(),
+		Readonly:      true,
 		State:         dcache.StateReady,
 		Epoch:         1,
 		CreatedAt:     currentTime,
@@ -210,10 +222,18 @@ func (cmi *ClusterManagerImpl) checkAndCreateInitialClusterMap(dCacheConfig *dca
 	}
 	clusterMapBytes, err := json.Marshal(clusterMap)
 	if err != nil {
-		log.Err("ClusterManager::checkAndCreateInitialClusterMap : Cluster Map Marshalling fail : %+v, err %v", clusterMap, err)
+		log.Err("ClusterManager::checkAndCreateInitialClusterMap : ClusterMap Marshalling fail : %+v, err %v", clusterMap, err)
 		return err
 	}
-	return mm.CreateInitialClusterMap(clusterMapBytes)
+
+	err = mm.CreateInitialClusterMap(clusterMapBytes)
+	if err != nil {
+		log.Err("ClusterManager::checkAndCreateInitialClusterMap : ClusterMap creation fail : %+v, err %v", clusterMap, err)
+		return err
+	} else {
+		log.Info("ClusterManager::checkAndCreateInitialClusterMap : ClusterMap created successfully : %+v", clusterMap)
+	}
+	return err
 }
 
 func (cmi *ClusterManagerImpl) checkIfClusterMapExists() (bool, error) {
@@ -225,6 +245,7 @@ func (cmi *ClusterManagerImpl) checkIfClusterMapExists() (bool, error) {
 			return false, err
 		}
 	}
+	//TODO: Save the cluster map in local copy
 	return true, nil
 }
 
