@@ -258,6 +258,7 @@ By default, Blobfuse responds to kernel file-system calls. When user application
 
 
 Below are some points that user shall be aware while using preload:
+- Mount will be done in 'read-only' mode even if user has not provided it explicitly.
 - Local cache path provided should have sufficient space to download the contents from storage. If local storage is full, preload will stop downloading the data.
 - If user application executes a file system open call on a certain file, call will wait until the file download completes. If the file was not under download, it will be downloaded on priority.
 - Files once downloaded will not be evicted from local cache.
