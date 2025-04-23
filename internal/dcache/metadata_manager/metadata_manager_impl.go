@@ -46,6 +46,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/bloberror"
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
@@ -382,7 +383,7 @@ func (m *BlobMetadataManager) getFileOpenCount(filePath string) (int64, error) {
 		log.Warn("GetHandleCount :: Open count is negative for path %s : %d", path, count)
 	}
 
-	return count, nil
+	return int64(count), nil
 }
 
 // UpdateHeartbeat creates or updates the heartbeat file
