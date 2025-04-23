@@ -38,7 +38,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
-	"sync"
 	"syscall"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -145,69 +144,6 @@ func (dc *DistributedCache) Start(ctx context.Context) error {
 	if err != nil {
 		return log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to start metadata manager : %v]", err))
 	}
-
-	file := filepath.Join("my", "dir", "to", "metadata")
-	err = mm.CreateFileInit(file, []byte("metadatainit"))
-	err = mm.CreateFileFinalize(file, []byte("metadatafinalize"))
-	fileM, err := mm.GetFile(file)
-	print(fileM)
-
-	val, err := mm.OpenFile(file)
-	print(val)
-	val, err = mm.CloseFile(file)
-	print(val)
-	val, err = mm.GetFileOpenCount(file)
-	print(val)
-
-	// create 10 goroutines to open and close the file simultaneously and check the open count
-	var wg sync.WaitGroup
-	for i := 0; i < 100; i++ {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
-			// Randomly choose to either open or close the file
-			if i%3 == 0 {
-				val, err = mm.CloseFile(file)
-				print(val)
-			} else {
-				// Open the file
-				val, err = mm.OpenFile(file)
-				print(val)
-			}
-		}(i)
-	}
-	wg.Wait()
-	val, err = mm.GetFileOpenCount(file)
-	print(val)
-
-	err = mm.DeleteFile(file)
-	fileM, err = mm.GetFile(file)
-	print(fileM)
-
-	err = mm.UpdateHeartbeat("23", []byte("test"))
-	err = mm.UpdateHeartbeat("23", []byte("testnew"))
-	err = mm.DeleteHeartbeat("24")
-	data, err := mm.GetHeartbeat("23")
-	print(data)
-	err = mm.DeleteHeartbeat("23")
-	data, err = mm.GetHeartbeat("23")
-	print(data)
-	err = mm.UpdateHeartbeat("1", []byte("test1"))
-	err = mm.UpdateHeartbeat("2", []byte("test2"))
-	err = mm.UpdateHeartbeat("3", []byte("test3"))
-	err = mm.UpdateHeartbeat("4", []byte("test4"))
-	err = mm.UpdateHeartbeat("5", []byte("test5"))
-
-	nodes, err := mm.GetAllNodes()
-	print(nodes)
-
-	err = mm.CreateInitialClusterMap([]byte("clusterMap"))
-
-	data, etag, err := mm.GetClusterMap()
-	print(data, *etag, err)
-	err = mm.UpdateClusterMapStart([]byte("clusterMapSTART"), etag)
-	print(err)
-	err = mm.UpdateClusterMapEnd([]byte("clusterMapEND"))
 
 	errString := dc.startClusterManager()
 	if errString != "" {
