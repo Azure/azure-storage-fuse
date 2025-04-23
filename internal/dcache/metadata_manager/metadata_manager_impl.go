@@ -263,6 +263,7 @@ func (m *BlobMetadataManager) openFile(filePath string) (int64, error) {
 		return -1, err
 	}
 	log.Debug("OpenFile :: Updated file open count for path %s : %d", path, count)
+	common.Assert(count > 0, "Open file cannot have count <= 0", count)
 	return count, nil
 }
 
@@ -274,8 +275,8 @@ func (m *BlobMetadataManager) closeFile(filePath string) (int64, error) {
 		log.Err("CloseFile :: Failed to update file open count for path %s : %v", path, err)
 		return -1, err
 	}
-	// TODO :: Add assert file open count is not negative "file cannot have count < 0"
 	log.Debug("CloseFile :: Updated file open count for path %s : %d", path, count)
+	common.Assert(count >= 0, "File cannot have -ve opencount", count)
 	return count, nil
 }
 
@@ -368,7 +369,7 @@ func (m *BlobMetadataManager) getFileOpenCount(filePath string) (int64, error) {
 	openCount, ok := prop.Metadata["opencount"]
 	if !ok {
 		log.Err("GetFileOpenCount :: openCount not found in metadata for path %s", path)
-		// TODO :: Add asserts
+		common.Assert(false, fmt.Sprintf("openCount not found in metadata for path %s", path))
 		return -1, err
 	}
 	count, err := strconv.Atoi(*openCount)
