@@ -252,11 +252,14 @@ Below diagrams guide you to choose right configuration for your workloads.
 - [Sample Block-Cache Config](./sampleBlockCacheConfig.yaml)
 - [All Config options](./setup/baseConfig.yaml) 
 
-## Preload
+## Preload (Preview)
 
-In file caching mode, Blobfuse waits for open file system call. On receiving the open call it downloads entire file to a local cache before using them. This can make the initial load slower, especially for AI/ML tasks, where application is processing many files.The Preload feature helps by downloading entire containers or sub-directories to the local cache when you mount it. Preload enhances data availability, boosting efficiency and reducing wait times. This is vital for AI training with large datasets as it prepares all necessary files in advance, saving GPU time and cutting costs. Combining preload with our blob filter feature allows customers to access specific files in a container or sub-directory, offering extensive flexibility and optimizing GPU cycles. Combining this feature with `filter` you can choose what subset of data shall be fetched instead of downloading entire container or sub-directory.
+In file caching mode, Blobfuse waits for open file system call. On receiving the open call it downloads entire file to a local cache before using them. This can make the initial load slower, especially for AI/ML tasks, where application is processing many files.The Preload feature helps by downloading entire containers or sub-directories to the local cache when you mount it. Preload enhances data availability, boosting efficiency and reducing wait times. This is vital for AI training with large datasets as it prepares all necessary files in advance, saving GPU time and cutting costs. Combining preload with our blob filter feature allows customers to access specific files in a container or sub-directory, offering extensive flexibility and optimizing GPU cycles.
 
-When mounting Blobfuse using file-cache mode, mention the parameter “—preload” to enable this feature. All functionalities in this mode will function as is, except downloading all mentioned data for the mount during mount.  
+When mounting Blobfuse using file-cache mode, mention the parameter “—preload” to enable this feature. All functionalities in this mode will function as is, except downloading all mentioned data for the mount during mount. Sample command to enable this feature
+```
+blobfuse2 mount --preload /mnt/blobfuse_mnt --tmp-path=/home/temp_path 
+```
 
 ### Considerations when using preload 
 - When preload is enabled, Blobfuse mount switches to read-only mode. 
