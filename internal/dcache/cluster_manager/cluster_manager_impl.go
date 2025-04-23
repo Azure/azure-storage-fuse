@@ -80,13 +80,13 @@ func NodeIdToIP(nodeId string) string {
 }
 
 // It will return the name of RV for the given RV FSID/Blkid as per local cache copy of cluster map
-func RVFsidToName(rvFsid string) string {
-	return clusterManagerInstance.rVFsidToName(rvFsid)
+func RvIdToName(rvFsid string) string {
+	return clusterManagerInstance.rvIdToName(rvFsid)
 }
 
 // It will return the RV FSID/Blkid of the given RV name as per local cache copy of cluster map
-func RVNameToFsid(rvName string) string {
-	return clusterManagerInstance.rVNameToFsid(rvName)
+func RvNameToId(rvName string) string {
+	return clusterManagerInstance.rvNameToId(rvName)
 }
 
 // It will return the nodeId/node uuid of the given RV name as per local cache copy of cluster map
@@ -156,13 +156,13 @@ func (c *ClusterManagerImpl) nodeIdToIP(nodeId string) string {
 	return ""
 }
 
-// rVFsidToName implements ClusterManager.
-func (c *ClusterManagerImpl) rVFsidToName(rvFsid string) string {
+// rvIdToName implements ClusterManager.
+func (c *ClusterManagerImpl) rvIdToName(rvFsid string) string {
 	return ""
 }
 
-// rVNameToFsid implements ClusterManager.
-func (c *ClusterManagerImpl) rVNameToFsid(rvName string) string {
+// rvNameToId implements ClusterManager.
+func (c *ClusterManagerImpl) rvNameToId(rvName string) string {
 	return ""
 }
 

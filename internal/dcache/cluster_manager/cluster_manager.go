@@ -69,10 +69,10 @@ type ClusterManager interface {
 	nodeIdToIP(nodeId string) string
 
 	//It will return the name of RV for the given RV FSID/Blkid as per local cache copy of cluster map
-	rVFsidToName(rvFsid string) string
+	rvIdToName(rvFsid string) string
 
 	//It will return the RV FSID/Blkid of the given RV name as per local cache copy of cluster map
-	rVNameToFsid(rvName string) string
+	rvNameToId(rvName string) string
 
 	//It will return the nodeId/node uuid of the given RV name as per local cache copy of cluster map
 	rVNameToNodeId(rvName string) string
