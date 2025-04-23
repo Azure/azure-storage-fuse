@@ -65,8 +65,8 @@ func GetRVs(mvName string) []dcache.RawVolume {
 }
 
 // It will check if the given nodeId is online as per local cache copy of cluster map
-func IsAlive(nodeId string) bool {
-	return clusterManagerInstance.isAlive(nodeId)
+func IsOnline(nodeId string) bool {
+	return clusterManagerInstance.isOnline(nodeId)
 }
 
 // It will evaluate the lowest number of RVs for given rv Names
@@ -142,7 +142,7 @@ func (c *ClusterManagerImpl) getRVs(mvName string) []dcache.RawVolume {
 }
 
 // isAlive implements ClusterManager.
-func (c *ClusterManagerImpl) isAlive(nodeId string) bool {
+func (c *ClusterManagerImpl) isOnline(nodeId string) bool {
 	return false
 }
 

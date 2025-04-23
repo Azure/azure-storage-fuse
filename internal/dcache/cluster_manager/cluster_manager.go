@@ -60,7 +60,7 @@ type ClusterManager interface {
 	getRVs(mvName string) []dcache.RawVolume
 
 	//It will check if the given nodeId is online as per local cache copy of cluster map
-	isAlive(nodeId string) bool
+	isOnline(nodeId string) bool
 
 	//It will evaluate the lowest number of RVs for given rv Names
 	lowestNumberRV(rvNames []string) []string
