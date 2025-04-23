@@ -254,16 +254,17 @@ Below diagrams guide you to choose right configuration for your workloads.
 
 ## Preload
 
-By default, Blobfuse responds to kernel file-system calls. When user application opens a file, it will be downloaded to local cache and will remain there until user closes the file. In case of model training (AI/ML) workflows, if user application is going to process all the data that exists on the storage container, then one by one application will execute open file-system calls and it has to wait till the file download completes. To accelerate such workflows Blobfuse now has a capability to start downloading entire container/sub-directory, that user has mounted to local-cache as soon as mount succeeds, instead of waiting for the user application to execute file open call. Combining this feature with below mentioned blob-filters, user can control what files shall be part of the download set. This helps when you have structured data, and your application does not need access of the entire data but only a subset of it.
+In file caching mode, Blobfuse waits for open file system call. On receiving the open call it downloads entire file to a local cache before using them. This can make the initial load slower, especially for AI/ML tasks, where application is processing many files.The Preload feature helps by downloading entire containers or sub-directories to the local cache when you mount it. Preload enhances data availability, boosting efficiency and reducing wait times. This is vital for AI training with large datasets as it prepares all necessary files in advance, saving GPU time and cutting costs. Combining preload with our blob filter feature allows customers to access specific files in a container or sub-directory, offering extensive flexibility and optimizing GPU cycles. Combining this feature with `filter` you can choose what subset of data shall be fetched instead of downloading entire container or sub-directory.
 
+When mounting Blobfuse using file-cache mode, mention the parameter “—preload” to enable this feature. All functionalities in this mode will function as is, except downloading all mentioned data for the mount during mount.  
 
-Below are some points that user shall be aware while using preload:
-- Mount will be done in 'read-only' mode even if user has not provided it explicitly.
-- Local cache path provided should have sufficient space to download the contents from storage. If local storage is full, preload will stop downloading the data.
-- If user application executes a file system open call on a certain file, call will wait until the file download completes. If the file was not under download, it will be downloaded on priority.
-- Files once downloaded will not be evicted from local cache.
-- Blobfuse will not detect any changes on the container (files modified in the storage container), once preload completes. All reads will be served from local cache only. For any new files created on the container, open file-system call for the file will start download of that file.
- 
+### Considerations when using preload 
+- When preload is enabled, Blobfuse mount switches to read-only mode. 
+- Data from storage account isn't automatically refreshed after preload unless files are manually deleted from local cache and application tries to reopen a file.
+- Accessing a specific file prioritizes it in the download queue, while preload continues in the background.
+- Ensure sufficient disk space for complete data preloading. Insufficient space results in partial loading with other files read upon application access, which may not be ideal. 
+- Blobfuse logs will show preload status and any disk capacity warnings.  
+- Any new file created on the container will not get downloaded automatically after preload completes. Application can however choose to open the file for read and force download it. 
 
 ## Blob Filter
 - In case of read-only mount, user can configure a filter to restrict what all blobs a mount can see or operate on.
