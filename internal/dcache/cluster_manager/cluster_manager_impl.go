@@ -126,7 +126,6 @@ func (cmi *ClusterManagerImpl) start(dCacheConfig *dcache.DCacheConfig, rvs []dc
 	if err != nil {
 		return err
 	}
-	cmi.nodeId = rvs[0].NodeId
 	cmi.hostname, err = os.Hostname()
 	if err != nil {
 		return err
