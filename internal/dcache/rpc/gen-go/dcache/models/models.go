@@ -690,13 +690,13 @@ func (p *HelloResponse) String() string {
 
 // Attributes:
 //   - FileID
-//   - FsID
-//   - MvID
+//   - RvID
+//   - MvName
 //   - OffsetInMB
 type Address struct {
 	FileID     string `thrift:"fileID,1" db:"fileID" json:"fileID"`
-	FsID       string `thrift:"fsID,2" db:"fsID" json:"fsID"`
-	MvID       string `thrift:"mvID,3" db:"mvID" json:"mvID"`
+	RvID       string `thrift:"rvID,2" db:"rvID" json:"rvID"`
+	MvName     string `thrift:"mvName,3" db:"mvName" json:"mvName"`
 	OffsetInMB int64  `thrift:"offsetInMB,4" db:"offsetInMB" json:"offsetInMB"`
 }
 
@@ -708,12 +708,12 @@ func (p *Address) GetFileID() string {
 	return p.FileID
 }
 
-func (p *Address) GetFsID() string {
-	return p.FsID
+func (p *Address) GetRvID() string {
+	return p.RvID
 }
 
-func (p *Address) GetMvID() string {
-	return p.MvID
+func (p *Address) GetMvName() string {
+	return p.MvName
 }
 
 func (p *Address) GetOffsetInMB() int64 {
@@ -801,7 +801,7 @@ func (p *Address) ReadField2(ctx context.Context, iprot thrift.TProtocol) error 
 	if v, err := iprot.ReadString(ctx); err != nil {
 		return thrift.PrependError("error reading field 2: ", err)
 	} else {
-		p.FsID = v
+		p.RvID = v
 	}
 	return nil
 }
@@ -810,7 +810,7 @@ func (p *Address) ReadField3(ctx context.Context, iprot thrift.TProtocol) error 
 	if v, err := iprot.ReadString(ctx); err != nil {
 		return thrift.PrependError("error reading field 3: ", err)
 	} else {
-		p.MvID = v
+		p.MvName = v
 	}
 	return nil
 }
@@ -865,27 +865,27 @@ func (p *Address) writeField1(ctx context.Context, oprot thrift.TProtocol) (err 
 }
 
 func (p *Address) writeField2(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "fsID", thrift.STRING, 2); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field begin error 2:fsID: ", p), err)
+	if err := oprot.WriteFieldBegin(ctx, "rvID", thrift.STRING, 2); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 2:rvID: ", p), err)
 	}
-	if err := oprot.WriteString(ctx, string(p.FsID)); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T.fsID (2) field write error: ", p), err)
+	if err := oprot.WriteString(ctx, string(p.RvID)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.rvID (2) field write error: ", p), err)
 	}
 	if err := oprot.WriteFieldEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field end error 2:fsID: ", p), err)
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 2:rvID: ", p), err)
 	}
 	return err
 }
 
 func (p *Address) writeField3(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "mvID", thrift.STRING, 3); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field begin error 3:mvID: ", p), err)
+	if err := oprot.WriteFieldBegin(ctx, "mvName", thrift.STRING, 3); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 3:mvName: ", p), err)
 	}
-	if err := oprot.WriteString(ctx, string(p.MvID)); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T.mvID (3) field write error: ", p), err)
+	if err := oprot.WriteString(ctx, string(p.MvName)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.mvName (3) field write error: ", p), err)
 	}
 	if err := oprot.WriteFieldEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field end error 3:mvID: ", p), err)
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 3:mvName: ", p), err)
 	}
 	return err
 }
@@ -912,10 +912,10 @@ func (p *Address) Equals(other *Address) bool {
 	if p.FileID != other.FileID {
 		return false
 	}
-	if p.FsID != other.FsID {
+	if p.RvID != other.RvID {
 		return false
 	}
-	if p.MvID != other.MvID {
+	if p.MvName != other.MvName {
 		return false
 	}
 	if p.OffsetInMB != other.OffsetInMB {

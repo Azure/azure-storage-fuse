@@ -17,8 +17,8 @@ struct HelloResponse {
 
 struct Address {
     1: string fileID,
-    2: string fsID,
-    3: string mvID,
+    2: string rvID,
+    3: string mvName,
     4: i64 offsetInMB
 }
 

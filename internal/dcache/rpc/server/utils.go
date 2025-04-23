@@ -53,34 +53,34 @@ func getLMT(fh *os.File) (string, error) {
 
 // returns the chunk path and hash path for the given fileID and offsetInMB from the regular MV directory
 // If not present, return the path of the sync MV directory
-func getChunkAndHashPath(cacheDir string, mvID string, fileID string, offsetInMB int64) (string, string) {
-	chunkPath, hashPath := getRegularMVPath(cacheDir, mvID, fileID, offsetInMB)
+func getChunkAndHashPath(cacheDir string, mvName string, fileID string, offsetInMB int64) (string, string) {
+	chunkPath, hashPath := getRegularMVPath(cacheDir, mvName, fileID, offsetInMB)
 	_, err := os.Stat(chunkPath)
 	if err != nil {
 		log.Debug("utils::getChunkAndHashPath: chunk file %s does not exist, returning .sync directory path", chunkPath)
-		return getSyncMVPath(cacheDir, mvID, fileID, offsetInMB)
+		return getSyncMVPath(cacheDir, mvName, fileID, offsetInMB)
 	}
 
 	return chunkPath, hashPath
 }
 
 // returns the chunk path and hash path for the given fileID and offsetInMB from regular MV directory
-func getRegularMVPath(cacheDir string, mvID string, fileID string, offsetInMB int64) (string, string) {
-	chunkPath := filepath.Join(cacheDir, mvID, fmt.Sprintf("%v.%v.data", fileID, offsetInMB))
-	hashPath := filepath.Join(cacheDir, mvID, fmt.Sprintf("%v.%v.hash", fileID, offsetInMB))
+func getRegularMVPath(cacheDir string, mvName string, fileID string, offsetInMB int64) (string, string) {
+	chunkPath := filepath.Join(cacheDir, mvName, fmt.Sprintf("%v.%v.data", fileID, offsetInMB))
+	hashPath := filepath.Join(cacheDir, mvName, fmt.Sprintf("%v.%v.hash", fileID, offsetInMB))
 	return chunkPath, hashPath
 }
 
 // returns the chunk path and hash path for the given fileID and offsetInMB from MV.sync directory
-func getSyncMVPath(cacheDir string, mvID string, fileID string, offsetInMB int64) (string, string) {
-	chunkPath := filepath.Join(cacheDir, mvID+".sync", fmt.Sprintf("%v.%v.data", fileID, offsetInMB))
-	hashPath := filepath.Join(cacheDir, mvID+".sync", fmt.Sprintf("%v.%v.hash", fileID, offsetInMB))
+func getSyncMVPath(cacheDir string, mvName string, fileID string, offsetInMB int64) (string, string) {
+	chunkPath := filepath.Join(cacheDir, mvName+".sync", fmt.Sprintf("%v.%v.data", fileID, offsetInMB))
+	hashPath := filepath.Join(cacheDir, mvName+".sync", fmt.Sprintf("%v.%v.hash", fileID, offsetInMB))
 	return chunkPath, hashPath
 }
 
-// return the chunk address in the format <fileID>-<fsID>-<mvID>-<offsetInMB>
-func getChunkAddress(fileID string, fsID string, mvID string, offsetInMB int64) string {
-	return fmt.Sprintf("%v-%v-%v-%v", fileID, fsID, mvID, offsetInMB)
+// return the chunk address in the format <fileID>-<rvID>-<mvName>-<offsetInMB>
+func getChunkAddress(fileID string, rvID string, mvName string, offsetInMB int64) string {
+	return fmt.Sprintf("%v-%v-%v-%v", fileID, rvID, mvName, offsetInMB)
 }
 
 // check if the component RVs are the same
