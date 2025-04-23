@@ -53,7 +53,7 @@ type ClusterManagerImpl struct {
 	hbTicker         *time.Ticker
 	clusterMapticker *time.Ticker
 	nodeId           string
-  hostname string
+	hostname         string
 }
 
 // It will return online MVs as per local cache copy of cluster map
@@ -160,6 +160,9 @@ func (cmi *ClusterManagerImpl) stop() error {
 	}
 	// TODO{Akku}: Delete the heartbeat file
 	// mm.DeleteHeartbeat(cmi.nodeId)
+	if cmi.clusterMapticker != nil {
+		cmi.clusterMapticker.Stop()
+	}
 	return nil
 }
 
