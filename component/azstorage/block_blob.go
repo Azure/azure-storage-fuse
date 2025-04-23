@@ -1724,5 +1724,23 @@ func (bb *BlockBlob) SetMetadata(filePath string, newMetadata map[string]*string
 			},
 		},
 	})
-	return err
+
+	if err != nil {
+		serr := storeBlobErrToErr(err)
+		if serr == ErrFileNotFound {
+			log.Err("BlockBlob::SetMetadata : %s does not exist", filePath)
+			return syscall.ENOENT
+		} else if serr == BlobIsUnderLease {
+			log.Err("BlockBlob::SetMetadata : %s is under lease [%s] cannot update metadata", filePath, err.Error())
+			return syscall.EIO
+		} else if serr == InvalidPermission {
+			log.Err("BlockBlob::SetMetadata : Insufficient permissions for %s [%s]", filePath, err.Error())
+			return syscall.EACCES
+		} else {
+			log.Err("BlockBlob::SetMetadata : Failed to set metadata for blob %s [%s]", filePath, err.Error())
+			return err
+		}
+	}
+	log.Debug("BlockBlob::SetMetadata : Successfully set metadata for blob %s", filePath)
+	return nil
 }
