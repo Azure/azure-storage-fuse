@@ -307,9 +307,9 @@ func (base *BaseComponent) GetFileBlockOffsets(options GetFileBlockOffsetsOption
 	return &common.BlockOffsetList{}, nil
 }
 
-func (base *BaseComponent) SetAttr(options SetAttrOptions) error {
+func (base *BaseComponent) SetMetadata(options SetMetadataOptions) error {
 	if base.next != nil {
-		return base.next.SetAttr(options)
+		return base.next.SetMetadata(options)
 	}
 	return nil
 }

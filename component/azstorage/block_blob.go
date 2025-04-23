@@ -47,6 +47,8 @@ import (
 	"syscall"
 	"time"
 
+	"maps"
+
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/streaming"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
@@ -1697,4 +1699,48 @@ func (bb *BlockBlob) SetFilter(filter string) error {
 
 	bb.Config.filter = &blobfilter.BlobFilter{}
 	return bb.Config.filter.Configure(filter)
+}
+
+// SetMetadata : Set metadata property of the blob
+func (bb *BlockBlob) SetMetadata(filePath string, newMetadata map[string]*string, etag *azcore.ETag, overwrite bool) (err error) {
+	log.Trace("BlockBlob::SetMetadata : name %s", filePath)
+
+	if !overwrite {
+		attr, err := bb.GetAttr(filePath)
+		if err != nil {
+			log.Err("BlockBlob::SetMetadata : Failed to get attributes of file %s [%s]", filePath, err.Error())
+			return err
+		}
+		maps.Copy(attr.Metadata, newMetadata)
+		newMetadata = attr.Metadata
+	}
+
+	blobClient := bb.Container.NewBlockBlobClient(filePath)
+	// Set the metadata
+	_, err = blobClient.SetMetadata(context.Background(), newMetadata, &blob.SetMetadataOptions{
+		AccessConditions: &blob.AccessConditions{
+			ModifiedAccessConditions: &blob.ModifiedAccessConditions{
+				IfMatch: etag,
+			},
+		},
+	})
+
+	if err != nil {
+		serr := storeBlobErrToErr(err)
+		if serr == ErrFileNotFound {
+			log.Err("BlockBlob::SetMetadata : %s does not exist", filePath)
+			return syscall.ENOENT
+		} else if serr == BlobIsUnderLease {
+			log.Err("BlockBlob::SetMetadata : %s is under lease [%s] cannot update metadata", filePath, err.Error())
+			return syscall.EIO
+		} else if serr == InvalidPermission {
+			log.Err("BlockBlob::SetMetadata : Insufficient permissions for %s [%s]", filePath, err.Error())
+			return syscall.EACCES
+		} else {
+			log.Err("BlockBlob::SetMetadata : Failed to set metadata for blob %s [%s]", filePath, err.Error())
+			return err
+		}
+	}
+	log.Debug("BlockBlob::SetMetadata : Successfully set metadata for blob %s", filePath)
+	return nil
 }

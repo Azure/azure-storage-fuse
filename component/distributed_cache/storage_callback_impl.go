@@ -84,13 +84,13 @@ func (sci *StorageCallbackImpl) ReadDirFromStorage(options internal.ReadDirOptio
 }
 
 // SetProperties implements dcache.StorageCallbacks.
-func (sci *StorageCallbackImpl) SetMetaProperties(path string, properties map[string]string) error {
-	panic("unimplemented")
+func (sci *StorageCallbackImpl) SetMetaProperties(options internal.SetMetadataOptions) error {
+	return sci.nextComp.SetMetadata(options)
 }
 
 // SetPropertiesInStorage implements dcache.StorageCallbacks.
-func (sci *StorageCallbackImpl) SetMetaPropertiesInStorage(path string, properties map[string]string) error {
-	panic("unimplemented")
+func (sci *StorageCallbackImpl) SetMetaPropertiesInStorage(options internal.SetMetadataOptions) error {
+	return sci.storage.SetMetadata(options)
 }
 
 func (sci *StorageCallbackImpl) PutBlobInStorage(options internal.WriteFromBufferOptions) error {
@@ -99,6 +99,14 @@ func (sci *StorageCallbackImpl) PutBlobInStorage(options internal.WriteFromBuffe
 
 func (sci *StorageCallbackImpl) PutBlob(options internal.WriteFromBufferOptions) error {
 	return sci.nextComp.WriteFromBuffer(options)
+}
+
+func (sci *StorageCallbackImpl) CreateDir(options internal.CreateDirOptions) error {
+	return sci.nextComp.CreateDir(options)
+}
+
+func (sci *StorageCallbackImpl) CreateDirInStorage(options internal.CreateDirOptions) error {
+	return sci.storage.CreateDir(options)
 }
 
 // Factory function to create a new instance of StorageCallbacks

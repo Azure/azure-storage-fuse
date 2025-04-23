@@ -139,7 +139,11 @@ func (dc *DistributedCache) Start(ctx context.Context) error {
 	dc.storageCallback = initStorageCallback(
 		dc.NextComponent(),
 		dc.azstorage)
-	mm.Init(dc.storageCallback, dc.cfg.CacheID)
+
+	err := mm.Init(dc.storageCallback, dc.cfg.CacheID)
+	if err != nil {
+		return log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to start metadata manager : %v]", err))
+	}
 
 	errString := dc.startClusterManager()
 	if errString != "" {

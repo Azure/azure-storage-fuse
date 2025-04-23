@@ -565,18 +565,18 @@ func (mr *MockComponentMockRecorder) RenameFile(arg0 interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RenameFile", reflect.TypeOf((*MockComponent)(nil).RenameFile), arg0)
 }
 
-// SetAttr mocks base method.
-func (m *MockComponent) SetAttr(arg0 SetAttrOptions) error {
+// SetMetadata mocks base method.
+func (m *MockComponent) SetMetadata(arg0 SetMetadataOptions) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetAttr", arg0)
+	ret := m.ctrl.Call(m, "SetMetadata", arg0)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// SetAttr indicates an expected call of SetAttr.
-func (mr *MockComponentMockRecorder) SetAttr(arg0 interface{}) *gomock.Call {
+// SetMetadata indicates an expected call of SetMetadata.
+func (mr *MockComponentMockRecorder) SetMetadata(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetAttr", reflect.TypeOf((*MockComponent)(nil).SetAttr), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetMetadata", reflect.TypeOf((*MockComponent)(nil).SetMetadata), arg0)
 }
 
 // SetName mocks base method.
