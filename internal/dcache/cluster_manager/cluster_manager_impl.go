@@ -47,9 +47,10 @@ import (
 )
 
 type ClusterManagerImpl struct {
-	hbTicker *time.Ticker
-	nodeId   string
-	hostname string
+	hbTicker  *time.Ticker
+	nodeId    string
+	hostname  string
+	ipAddress string
 }
 
 // It will return online MVs as per local cache copy of cluster map
@@ -135,12 +136,14 @@ func (cmi *ClusterManagerImpl) start(dCacheConfig *dcache.DCacheConfig, rvs []dc
 	if err != nil {
 		return err
 	}
+	cmi.ipAddress = rvs[0].IPAddress
 	cmi.hbTicker = time.NewTicker(time.Duration(dCacheConfig.HeartbeatSeconds) * time.Second)
 	go func() {
 		for range cmi.hbTicker.C {
-			log.Trace("Scheduled task Heartbeat Punch triggered")
+			log.Debug("Scheduled task Heartbeat Punch triggered")
 			cmi.punchHeartBeat(rvs)
 		}
+		log.Info("Scheduled task Heartbeat Punch stopped")
 	}()
 	//Schedule clustermap update at storage and local copy
 	return nil
@@ -314,7 +317,7 @@ func (cmi *ClusterManagerImpl) punchHeartBeat(rvList []dcache.RawVolume) {
 
 	listMyRVs(rvList)
 	hbData := dcache.HeartbeatData{
-		IPAddr:        rvList[0].IPAddress,
+		IPAddr:        cmi.ipAddress,
 		NodeID:        cmi.nodeId,
 		Hostname:      cmi.hostname,
 		LastHeartbeat: uint64(time.Now().Unix()),
