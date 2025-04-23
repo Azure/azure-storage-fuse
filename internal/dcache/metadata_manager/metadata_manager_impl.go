@@ -440,8 +440,8 @@ func (m *BlobMetadataManager) getAllNodes() ([]string, error) {
 				common.Assert(false, "Invalid heartbeat blob", blob.Name)
 			}
 		} else {
+			log.Warn("GetAllNodes :: Unexpected blob found in Nodes folder: %s", blob.Name)
 			common.Assert(false, "Unexpected blob found in Nodes folder", blob.Name)
-
 		}
 	}
 
