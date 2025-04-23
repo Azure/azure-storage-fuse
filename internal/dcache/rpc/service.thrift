@@ -19,6 +19,10 @@ service ChunkService {
     // add RV to the given MV
     models.JoinMVResponse JoinMV(1: models.JoinMVRequest request)
 
+    // update the component RVs for the given MV
+    // this call is sent after the JoinMV call to the online RVs to update their component RVs list
+    models.UpdateMVResponse UpdateMV(1: models.UpdateMVRequest request)
+
     // remove RV from the given MV
     models.LeaveMVResponse LeaveMV(1: models.LeaveMVRequest request)
 

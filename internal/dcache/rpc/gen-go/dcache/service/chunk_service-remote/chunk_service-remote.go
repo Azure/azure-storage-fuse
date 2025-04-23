@@ -62,6 +62,7 @@ func Usage() {
   fmt.Fprintln(os.Stderr, "  PutChunkResponse PutChunk(PutChunkRequest request)")
   fmt.Fprintln(os.Stderr, "  RemoveChunkResponse RemoveChunk(RemoveChunkRequest request)")
   fmt.Fprintln(os.Stderr, "  JoinMVResponse JoinMV(JoinMVRequest request)")
+  fmt.Fprintln(os.Stderr, "  UpdateMVResponse UpdateMV(UpdateMVRequest request)")
   fmt.Fprintln(os.Stderr, "  LeaveMVResponse LeaveMV(LeaveMVRequest request)")
   fmt.Fprintln(os.Stderr, "  StartSyncResponse StartSync(StartSyncRequest request)")
   fmt.Fprintln(os.Stderr, "  EndSyncResponse EndSync(EndSyncRequest request)")
@@ -192,19 +193,19 @@ func main() {
       fmt.Fprintln(os.Stderr, "Hello requires 1 args")
       flag.Usage()
     }
-    arg34 := flag.Arg(1)
-    mbTrans35 := thrift.NewTMemoryBufferLen(len(arg34))
-    defer mbTrans35.Close()
-    _, err36 := mbTrans35.WriteString(arg34)
-    if err36 != nil {
+    arg38 := flag.Arg(1)
+    mbTrans39 := thrift.NewTMemoryBufferLen(len(arg38))
+    defer mbTrans39.Close()
+    _, err40 := mbTrans39.WriteString(arg38)
+    if err40 != nil {
       Usage()
       return
     }
-    factory37 := thrift.NewTJSONProtocolFactory()
-    jsProt38 := factory37.GetProtocol(mbTrans35)
+    factory41 := thrift.NewTJSONProtocolFactory()
+    jsProt42 := factory41.GetProtocol(mbTrans39)
     argvalue0 := models.NewHelloRequest()
-    err39 := argvalue0.Read(context.Background(), jsProt38)
-    if err39 != nil {
+    err43 := argvalue0.Read(context.Background(), jsProt42)
+    if err43 != nil {
       Usage()
       return
     }
@@ -217,19 +218,19 @@ func main() {
       fmt.Fprintln(os.Stderr, "GetChunk requires 1 args")
       flag.Usage()
     }
-    arg40 := flag.Arg(1)
-    mbTrans41 := thrift.NewTMemoryBufferLen(len(arg40))
-    defer mbTrans41.Close()
-    _, err42 := mbTrans41.WriteString(arg40)
-    if err42 != nil {
+    arg44 := flag.Arg(1)
+    mbTrans45 := thrift.NewTMemoryBufferLen(len(arg44))
+    defer mbTrans45.Close()
+    _, err46 := mbTrans45.WriteString(arg44)
+    if err46 != nil {
       Usage()
       return
     }
-    factory43 := thrift.NewTJSONProtocolFactory()
-    jsProt44 := factory43.GetProtocol(mbTrans41)
+    factory47 := thrift.NewTJSONProtocolFactory()
+    jsProt48 := factory47.GetProtocol(mbTrans45)
     argvalue0 := models.NewGetChunkRequest()
-    err45 := argvalue0.Read(context.Background(), jsProt44)
-    if err45 != nil {
+    err49 := argvalue0.Read(context.Background(), jsProt48)
+    if err49 != nil {
       Usage()
       return
     }
@@ -242,19 +243,19 @@ func main() {
       fmt.Fprintln(os.Stderr, "PutChunk requires 1 args")
       flag.Usage()
     }
-    arg46 := flag.Arg(1)
-    mbTrans47 := thrift.NewTMemoryBufferLen(len(arg46))
-    defer mbTrans47.Close()
-    _, err48 := mbTrans47.WriteString(arg46)
-    if err48 != nil {
+    arg50 := flag.Arg(1)
+    mbTrans51 := thrift.NewTMemoryBufferLen(len(arg50))
+    defer mbTrans51.Close()
+    _, err52 := mbTrans51.WriteString(arg50)
+    if err52 != nil {
       Usage()
       return
     }
-    factory49 := thrift.NewTJSONProtocolFactory()
-    jsProt50 := factory49.GetProtocol(mbTrans47)
+    factory53 := thrift.NewTJSONProtocolFactory()
+    jsProt54 := factory53.GetProtocol(mbTrans51)
     argvalue0 := models.NewPutChunkRequest()
-    err51 := argvalue0.Read(context.Background(), jsProt50)
-    if err51 != nil {
+    err55 := argvalue0.Read(context.Background(), jsProt54)
+    if err55 != nil {
       Usage()
       return
     }
@@ -267,19 +268,19 @@ func main() {
       fmt.Fprintln(os.Stderr, "RemoveChunk requires 1 args")
       flag.Usage()
     }
-    arg52 := flag.Arg(1)
-    mbTrans53 := thrift.NewTMemoryBufferLen(len(arg52))
-    defer mbTrans53.Close()
-    _, err54 := mbTrans53.WriteString(arg52)
-    if err54 != nil {
+    arg56 := flag.Arg(1)
+    mbTrans57 := thrift.NewTMemoryBufferLen(len(arg56))
+    defer mbTrans57.Close()
+    _, err58 := mbTrans57.WriteString(arg56)
+    if err58 != nil {
       Usage()
       return
     }
-    factory55 := thrift.NewTJSONProtocolFactory()
-    jsProt56 := factory55.GetProtocol(mbTrans53)
+    factory59 := thrift.NewTJSONProtocolFactory()
+    jsProt60 := factory59.GetProtocol(mbTrans57)
     argvalue0 := models.NewRemoveChunkRequest()
-    err57 := argvalue0.Read(context.Background(), jsProt56)
-    if err57 != nil {
+    err61 := argvalue0.Read(context.Background(), jsProt60)
+    if err61 != nil {
       Usage()
       return
     }
@@ -292,19 +293,19 @@ func main() {
       fmt.Fprintln(os.Stderr, "JoinMV requires 1 args")
       flag.Usage()
     }
-    arg58 := flag.Arg(1)
-    mbTrans59 := thrift.NewTMemoryBufferLen(len(arg58))
-    defer mbTrans59.Close()
-    _, err60 := mbTrans59.WriteString(arg58)
-    if err60 != nil {
+    arg62 := flag.Arg(1)
+    mbTrans63 := thrift.NewTMemoryBufferLen(len(arg62))
+    defer mbTrans63.Close()
+    _, err64 := mbTrans63.WriteString(arg62)
+    if err64 != nil {
       Usage()
       return
     }
-    factory61 := thrift.NewTJSONProtocolFactory()
-    jsProt62 := factory61.GetProtocol(mbTrans59)
+    factory65 := thrift.NewTJSONProtocolFactory()
+    jsProt66 := factory65.GetProtocol(mbTrans63)
     argvalue0 := models.NewJoinMVRequest()
-    err63 := argvalue0.Read(context.Background(), jsProt62)
-    if err63 != nil {
+    err67 := argvalue0.Read(context.Background(), jsProt66)
+    if err67 != nil {
       Usage()
       return
     }
@@ -312,24 +313,49 @@ func main() {
     fmt.Print(client.JoinMV(context.Background(), value0))
     fmt.Print("\n")
     break
+  case "UpdateMV":
+    if flag.NArg() - 1 != 1 {
+      fmt.Fprintln(os.Stderr, "UpdateMV requires 1 args")
+      flag.Usage()
+    }
+    arg68 := flag.Arg(1)
+    mbTrans69 := thrift.NewTMemoryBufferLen(len(arg68))
+    defer mbTrans69.Close()
+    _, err70 := mbTrans69.WriteString(arg68)
+    if err70 != nil {
+      Usage()
+      return
+    }
+    factory71 := thrift.NewTJSONProtocolFactory()
+    jsProt72 := factory71.GetProtocol(mbTrans69)
+    argvalue0 := models.NewUpdateMVRequest()
+    err73 := argvalue0.Read(context.Background(), jsProt72)
+    if err73 != nil {
+      Usage()
+      return
+    }
+    value0 := argvalue0
+    fmt.Print(client.UpdateMV(context.Background(), value0))
+    fmt.Print("\n")
+    break
   case "LeaveMV":
     if flag.NArg() - 1 != 1 {
       fmt.Fprintln(os.Stderr, "LeaveMV requires 1 args")
       flag.Usage()
     }
-    arg64 := flag.Arg(1)
-    mbTrans65 := thrift.NewTMemoryBufferLen(len(arg64))
-    defer mbTrans65.Close()
-    _, err66 := mbTrans65.WriteString(arg64)
-    if err66 != nil {
+    arg74 := flag.Arg(1)
+    mbTrans75 := thrift.NewTMemoryBufferLen(len(arg74))
+    defer mbTrans75.Close()
+    _, err76 := mbTrans75.WriteString(arg74)
+    if err76 != nil {
       Usage()
       return
     }
-    factory67 := thrift.NewTJSONProtocolFactory()
-    jsProt68 := factory67.GetProtocol(mbTrans65)
+    factory77 := thrift.NewTJSONProtocolFactory()
+    jsProt78 := factory77.GetProtocol(mbTrans75)
     argvalue0 := models.NewLeaveMVRequest()
-    err69 := argvalue0.Read(context.Background(), jsProt68)
-    if err69 != nil {
+    err79 := argvalue0.Read(context.Background(), jsProt78)
+    if err79 != nil {
       Usage()
       return
     }
@@ -342,19 +368,19 @@ func main() {
       fmt.Fprintln(os.Stderr, "StartSync requires 1 args")
       flag.Usage()
     }
-    arg70 := flag.Arg(1)
-    mbTrans71 := thrift.NewTMemoryBufferLen(len(arg70))
-    defer mbTrans71.Close()
-    _, err72 := mbTrans71.WriteString(arg70)
-    if err72 != nil {
+    arg80 := flag.Arg(1)
+    mbTrans81 := thrift.NewTMemoryBufferLen(len(arg80))
+    defer mbTrans81.Close()
+    _, err82 := mbTrans81.WriteString(arg80)
+    if err82 != nil {
       Usage()
       return
     }
-    factory73 := thrift.NewTJSONProtocolFactory()
-    jsProt74 := factory73.GetProtocol(mbTrans71)
+    factory83 := thrift.NewTJSONProtocolFactory()
+    jsProt84 := factory83.GetProtocol(mbTrans81)
     argvalue0 := models.NewStartSyncRequest()
-    err75 := argvalue0.Read(context.Background(), jsProt74)
-    if err75 != nil {
+    err85 := argvalue0.Read(context.Background(), jsProt84)
+    if err85 != nil {
       Usage()
       return
     }
@@ -367,19 +393,19 @@ func main() {
       fmt.Fprintln(os.Stderr, "EndSync requires 1 args")
       flag.Usage()
     }
-    arg76 := flag.Arg(1)
-    mbTrans77 := thrift.NewTMemoryBufferLen(len(arg76))
-    defer mbTrans77.Close()
-    _, err78 := mbTrans77.WriteString(arg76)
-    if err78 != nil {
+    arg86 := flag.Arg(1)
+    mbTrans87 := thrift.NewTMemoryBufferLen(len(arg86))
+    defer mbTrans87.Close()
+    _, err88 := mbTrans87.WriteString(arg86)
+    if err88 != nil {
       Usage()
       return
     }
-    factory79 := thrift.NewTJSONProtocolFactory()
-    jsProt80 := factory79.GetProtocol(mbTrans77)
+    factory89 := thrift.NewTJSONProtocolFactory()
+    jsProt90 := factory89.GetProtocol(mbTrans87)
     argvalue0 := models.NewEndSyncRequest()
-    err81 := argvalue0.Read(context.Background(), jsProt80)
-    if err81 != nil {
+    err91 := argvalue0.Read(context.Background(), jsProt90)
+    if err91 != nil {
       Usage()
       return
     }

@@ -79,6 +79,16 @@ struct JoinMVResponse {
     // status will be returned in the error
 }
 
+struct UpdateMVRequest {
+    1: string MV,
+    2: string RV,
+    3: list<string> componentRV
+}
+
+struct UpdateMVResponse {
+    // status will be returned in the error
+}
+
 struct LeaveMVRequest {
     1: string MV,
     2: string RV,

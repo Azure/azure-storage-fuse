@@ -69,6 +69,7 @@ type rvInfo struct {
 }
 
 type mvInfo struct {
+	mu           sync.Mutex
 	mvName       string       // mv0, mv1, etc.
 	componentRVs []string     // sorted list of component RVs for this MV
 	chunkOpsCnt  atomic.Int64 // count of chunk operations (get, put or remove) for this MV
@@ -77,7 +78,6 @@ type mvInfo struct {
 }
 
 type syncInfo struct {
-	mu        sync.Mutex
 	isSyncing bool   // is the MV in syncing state
 	syncID    string // sync ID for this MV if it in syncing state
 
@@ -172,6 +172,14 @@ func (mv *mvInfo) updateSyncState(isSyncing bool, syncID string, sourceRV string
 	mv.sourceRV = sourceRV
 
 	return nil
+}
+
+// update the component RVs for the MV
+func (mv *mvInfo) updateComponentRVs(componentRVs []string) {
+	mv.mu.Lock()
+	defer mv.mu.Unlock()
+
+	mv.componentRVs = componentRVs
 }
 
 // block new chunk operations for this MV till the sync is in progress
@@ -678,6 +686,43 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 	rvInfo.addToMVMap(req.MV, &mvInfo{mvName: req.MV, componentRVs: req.ComponentRV})
 
 	return &models.JoinMVResponse{}, nil
+}
+
+func (h *ChunkServiceHandler) UpdateMV(ctx context.Context, req *models.UpdateMVRequest) (*models.UpdateMVResponse, error) {
+	if req == nil {
+		log.Err("ChunkServiceHandler::UpdateMV: Received nil UpdateMV request")
+		common.Assert(false, "received nil UpdateMV request")
+		return nil, rpc.NewResponseError(rpc.InvalidRequest, "received nil UpdateMV request")
+	}
+
+	log.Debug("ChunkServiceHandler::UpdateMV: Received UpdateMV request: %+v", *req)
+
+	if req.MV == "" || req.RV == "" || len(req.ComponentRV) == 0 {
+		log.Err("ChunkServiceHandler::UpdateMV: MV, RV or ComponentRV is empty")
+		return nil, rpc.NewResponseError(rpc.InvalidRequest, "MV, RV or ComponentRV is empty")
+	}
+
+	rvInfo := h.getRVInfoFromRvName(req.RV)
+	if rvInfo == nil {
+		log.Err("ChunkServiceHandler::UpdateMV: Invalid RV %s", req.RV)
+		return nil, rpc.NewResponseError(rpc.InvalidRV, fmt.Sprintf("invalid RV %s", req.RV))
+	}
+
+	mvInfo, err := rvInfo.getMVInfo(req.MV)
+	if err != nil {
+		log.Err("ChunkServiceHandler::UpdateMV: RV %s is not part of the given MV %s [%v]", req.RV, req.MV, err.Error())
+		return nil, rpc.NewResponseError(rpc.InvalidRequest, fmt.Sprintf("RV %s is not part of the given MV %s", req.RV, req.MV))
+	}
+
+	log.Debug("ChunkServiceHandler::UpdateMV: Current component RVs %v, updated component RVs", mvInfo.componentRVs, req.ComponentRV)
+
+	// update the component RVs list for this MV
+	mvInfo.updateComponentRVs(req.ComponentRV)
+
+	// TODO: check if this is needed as mvInfo is a pointer
+	rvInfo.addToMVMap(req.MV, mvInfo)
+
+	return &models.UpdateMVResponse{}, nil
 }
 
 func (h *ChunkServiceHandler) LeaveMV(ctx context.Context, req *models.LeaveMVRequest) (*models.LeaveMVResponse, error) {
