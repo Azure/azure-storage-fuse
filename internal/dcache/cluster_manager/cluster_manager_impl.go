@@ -335,7 +335,7 @@ func (cmi *ClusterManagerImpl) punchHeartBeat(rvList []dcache.RawVolume) {
 		common.Assert(err == nil, fmt.Sprintf("Error updating heartbeat file with nodeId %s in storage: %v", cmi.nodeId, err))
 		log.Debug("AddHeartBeat: Heartbeat file updated successfully %+v", hbData)
 	} else {
-		log.Warn("Error Updating heartbeat for nodeId %s where data %+v : error - %v", cmi.nodeId, hbData, err)
+		log.Warn("Error Updating heartbeat for nodeId %s with data %+v : error - %v", cmi.nodeId, hbData, err)
 	}
 }
 
