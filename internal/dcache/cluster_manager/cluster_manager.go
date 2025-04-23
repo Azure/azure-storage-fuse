@@ -48,7 +48,7 @@ type ClusterManager interface {
 	// Stop shuts down the cluster manager and releases any resources.
 	//1. Cancel schedule of cluster update over storage and local cache
 	//2. Cancel schedule of heartbeat punching
-	Stop() error
+	stop() error
 
 	//It will return online MVs as per local cache copy of cluster map
 	getActiveMVs() []dcache.MirroredVolume
