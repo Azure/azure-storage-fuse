@@ -1435,10 +1435,12 @@ func (p *GetChunkResponse) String() string {
 //  - Chunk
 //  - Length
 //  - IsSync
+//  - ComponentRV
 type PutChunkRequest struct {
   Chunk *Chunk `thrift:"chunk,1" db:"chunk" json:"chunk"`
   Length int64 `thrift:"length,2" db:"length" json:"length"`
   IsSync bool `thrift:"isSync,3" db:"isSync" json:"isSync"`
+  ComponentRV []string `thrift:"componentRV,4" db:"componentRV" json:"componentRV"`
 }
 
 func NewPutChunkRequest() *PutChunkRequest {
@@ -1459,6 +1461,10 @@ func (p *PutChunkRequest) GetLength() int64 {
 
 func (p *PutChunkRequest) GetIsSync() bool {
   return p.IsSync
+}
+
+func (p *PutChunkRequest) GetComponentRV() []string {
+  return p.ComponentRV
 }
 func (p *PutChunkRequest) IsSetChunk() bool {
   return p.Chunk != nil
@@ -1507,6 +1513,16 @@ func (p *PutChunkRequest) Read(ctx context.Context, iprot thrift.TProtocol) erro
           return err
         }
       }
+    case 4:
+      if fieldTypeId == thrift.LIST {
+        if err := p.ReadField4(ctx, iprot); err != nil {
+          return err
+        }
+      } else {
+        if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+          return err
+        }
+      }
     default:
       if err := iprot.Skip(ctx, fieldTypeId); err != nil {
         return err
@@ -1548,6 +1564,28 @@ func (p *PutChunkRequest)  ReadField3(ctx context.Context, iprot thrift.TProtoco
   return nil
 }
 
+func (p *PutChunkRequest)  ReadField4(ctx context.Context, iprot thrift.TProtocol) error {
+  _, size, err := iprot.ReadListBegin(ctx)
+  if err != nil {
+    return thrift.PrependError("error reading list begin: ", err)
+  }
+  tSlice := make([]string, 0, size)
+  p.ComponentRV =  tSlice
+  for i := 0; i < size; i ++ {
+var _elem10 string
+    if v, err := iprot.ReadString(ctx); err != nil {
+    return thrift.PrependError("error reading field 0: ", err)
+} else {
+    _elem10 = v
+}
+    p.ComponentRV = append(p.ComponentRV, _elem10)
+  }
+  if err := iprot.ReadListEnd(ctx); err != nil {
+    return thrift.PrependError("error reading list end: ", err)
+  }
+  return nil
+}
+
 func (p *PutChunkRequest) Write(ctx context.Context, oprot thrift.TProtocol) error {
   if err := oprot.WriteStructBegin(ctx, "PutChunkRequest"); err != nil {
     return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err) }
@@ -1555,6 +1593,7 @@ func (p *PutChunkRequest) Write(ctx context.Context, oprot thrift.TProtocol) err
     if err := p.writeField1(ctx, oprot); err != nil { return err }
     if err := p.writeField2(ctx, oprot); err != nil { return err }
     if err := p.writeField3(ctx, oprot); err != nil { return err }
+    if err := p.writeField4(ctx, oprot); err != nil { return err }
   }
   if err := oprot.WriteFieldStop(ctx); err != nil {
     return thrift.PrependError("write field stop error: ", err) }
@@ -1594,6 +1633,24 @@ func (p *PutChunkRequest) writeField3(ctx context.Context, oprot thrift.TProtoco
   return err
 }
 
+func (p *PutChunkRequest) writeField4(ctx context.Context, oprot thrift.TProtocol) (err error) {
+  if err := oprot.WriteFieldBegin(ctx, "componentRV", thrift.LIST, 4); err != nil {
+    return thrift.PrependError(fmt.Sprintf("%T write field begin error 4:componentRV: ", p), err) }
+  if err := oprot.WriteListBegin(ctx, thrift.STRING, len(p.ComponentRV)); err != nil {
+    return thrift.PrependError("error writing list begin: ", err)
+  }
+  for _, v := range p.ComponentRV {
+    if err := oprot.WriteString(ctx, string(v)); err != nil {
+    return thrift.PrependError(fmt.Sprintf("%T. (0) field write error: ", p), err) }
+  }
+  if err := oprot.WriteListEnd(ctx); err != nil {
+    return thrift.PrependError("error writing list end: ", err)
+  }
+  if err := oprot.WriteFieldEnd(ctx); err != nil {
+    return thrift.PrependError(fmt.Sprintf("%T write field end error 4:componentRV: ", p), err) }
+  return err
+}
+
 func (p *PutChunkRequest) Equals(other *PutChunkRequest) bool {
   if p == other {
     return true
@@ -1603,6 +1660,11 @@ func (p *PutChunkRequest) Equals(other *PutChunkRequest) bool {
   if !p.Chunk.Equals(other.Chunk) { return false }
   if p.Length != other.Length { return false }
   if p.IsSync != other.IsSync { return false }
+  if len(p.ComponentRV) != len(other.ComponentRV) { return false }
+  for i, _tgt := range p.ComponentRV {
+    _src11 := other.ComponentRV[i]
+    if _tgt != _src11 { return false }
+  }
   return true
 }
 
@@ -1723,13 +1785,13 @@ func (p *PutChunkResponse)  ReadField3(ctx context.Context, iprot thrift.TProtoc
   tSlice := make([]string, 0, size)
   p.ComponentRV =  tSlice
   for i := 0; i < size; i ++ {
-var _elem10 string
+var _elem12 string
     if v, err := iprot.ReadString(ctx); err != nil {
     return thrift.PrependError("error reading field 0: ", err)
 } else {
-    _elem10 = v
+    _elem12 = v
 }
-    p.ComponentRV = append(p.ComponentRV, _elem10)
+    p.ComponentRV = append(p.ComponentRV, _elem12)
   }
   if err := iprot.ReadListEnd(ctx); err != nil {
     return thrift.PrependError("error reading list end: ", err)
@@ -1800,8 +1862,8 @@ func (p *PutChunkResponse) Equals(other *PutChunkResponse) bool {
   if p.AvailableSpace != other.AvailableSpace { return false }
   if len(p.ComponentRV) != len(other.ComponentRV) { return false }
   for i, _tgt := range p.ComponentRV {
-    _src11 := other.ComponentRV[i]
-    if _tgt != _src11 { return false }
+    _src13 := other.ComponentRV[i]
+    if _tgt != _src13 { return false }
   }
   return true
 }
@@ -2031,13 +2093,13 @@ func (p *RemoveChunkResponse)  ReadField3(ctx context.Context, iprot thrift.TPro
   tSlice := make([]string, 0, size)
   p.ComponentRV =  tSlice
   for i := 0; i < size; i ++ {
-var _elem12 string
+var _elem14 string
     if v, err := iprot.ReadString(ctx); err != nil {
     return thrift.PrependError("error reading field 0: ", err)
 } else {
-    _elem12 = v
+    _elem14 = v
 }
-    p.ComponentRV = append(p.ComponentRV, _elem12)
+    p.ComponentRV = append(p.ComponentRV, _elem14)
   }
   if err := iprot.ReadListEnd(ctx); err != nil {
     return thrift.PrependError("error reading list end: ", err)
@@ -2108,8 +2170,8 @@ func (p *RemoveChunkResponse) Equals(other *RemoveChunkResponse) bool {
   if p.AvailableSpace != other.AvailableSpace { return false }
   if len(p.ComponentRV) != len(other.ComponentRV) { return false }
   for i, _tgt := range p.ComponentRV {
-    _src13 := other.ComponentRV[i]
-    if _tgt != _src13 { return false }
+    _src15 := other.ComponentRV[i]
+    if _tgt != _src15 { return false }
   }
   return true
 }
@@ -2256,13 +2318,13 @@ func (p *JoinMVRequest)  ReadField4(ctx context.Context, iprot thrift.TProtocol)
   tSlice := make([]string, 0, size)
   p.ComponentRV =  tSlice
   for i := 0; i < size; i ++ {
-var _elem14 string
+var _elem16 string
     if v, err := iprot.ReadString(ctx); err != nil {
     return thrift.PrependError("error reading field 0: ", err)
 } else {
-    _elem14 = v
+    _elem16 = v
 }
-    p.ComponentRV = append(p.ComponentRV, _elem14)
+    p.ComponentRV = append(p.ComponentRV, _elem16)
   }
   if err := iprot.ReadListEnd(ctx); err != nil {
     return thrift.PrependError("error reading list end: ", err)
@@ -2345,8 +2407,8 @@ func (p *JoinMVRequest) Equals(other *JoinMVRequest) bool {
   if p.ReserveSpace != other.ReserveSpace { return false }
   if len(p.ComponentRV) != len(other.ComponentRV) { return false }
   for i, _tgt := range p.ComponentRV {
-    _src15 := other.ComponentRV[i]
-    if _tgt != _src15 { return false }
+    _src17 := other.ComponentRV[i]
+    if _tgt != _src17 { return false }
   }
   return true
 }
@@ -2528,13 +2590,13 @@ func (p *LeaveMVRequest)  ReadField3(ctx context.Context, iprot thrift.TProtocol
   tSlice := make([]string, 0, size)
   p.ComponentRV =  tSlice
   for i := 0; i < size; i ++ {
-var _elem16 string
+var _elem18 string
     if v, err := iprot.ReadString(ctx); err != nil {
     return thrift.PrependError("error reading field 0: ", err)
 } else {
-    _elem16 = v
+    _elem18 = v
 }
-    p.ComponentRV = append(p.ComponentRV, _elem16)
+    p.ComponentRV = append(p.ComponentRV, _elem18)
   }
   if err := iprot.ReadListEnd(ctx); err != nil {
     return thrift.PrependError("error reading list end: ", err)
@@ -2605,8 +2667,8 @@ func (p *LeaveMVRequest) Equals(other *LeaveMVRequest) bool {
   if p.RV != other.RV { return false }
   if len(p.ComponentRV) != len(other.ComponentRV) { return false }
   for i, _tgt := range p.ComponentRV {
-    _src17 := other.ComponentRV[i]
-    if _tgt != _src17 { return false }
+    _src19 := other.ComponentRV[i]
+    if _tgt != _src19 { return false }
   }
   return true
 }
@@ -2829,13 +2891,13 @@ func (p *StartSyncRequest)  ReadField4(ctx context.Context, iprot thrift.TProtoc
   tSlice := make([]string, 0, size)
   p.ComponentRV =  tSlice
   for i := 0; i < size; i ++ {
-var _elem18 string
+var _elem20 string
     if v, err := iprot.ReadString(ctx); err != nil {
     return thrift.PrependError("error reading field 0: ", err)
 } else {
-    _elem18 = v
+    _elem20 = v
 }
-    p.ComponentRV = append(p.ComponentRV, _elem18)
+    p.ComponentRV = append(p.ComponentRV, _elem20)
   }
   if err := iprot.ReadListEnd(ctx); err != nil {
     return thrift.PrependError("error reading list end: ", err)
@@ -2938,8 +3000,8 @@ func (p *StartSyncRequest) Equals(other *StartSyncRequest) bool {
   if p.TargetRV != other.TargetRV { return false }
   if len(p.ComponentRV) != len(other.ComponentRV) { return false }
   for i, _tgt := range p.ComponentRV {
-    _src19 := other.ComponentRV[i]
-    if _tgt != _src19 { return false }
+    _src21 := other.ComponentRV[i]
+    if _tgt != _src21 { return false }
   }
   if p.DataLength != other.DataLength { return false }
   return true
@@ -3229,13 +3291,13 @@ func (p *EndSyncRequest)  ReadField5(ctx context.Context, iprot thrift.TProtocol
   tSlice := make([]string, 0, size)
   p.ComponentRV =  tSlice
   for i := 0; i < size; i ++ {
-var _elem20 string
+var _elem22 string
     if v, err := iprot.ReadString(ctx); err != nil {
     return thrift.PrependError("error reading field 0: ", err)
 } else {
-    _elem20 = v
+    _elem22 = v
 }
-    p.ComponentRV = append(p.ComponentRV, _elem20)
+    p.ComponentRV = append(p.ComponentRV, _elem22)
   }
   if err := iprot.ReadListEnd(ctx); err != nil {
     return thrift.PrependError("error reading list end: ", err)
@@ -3350,8 +3412,8 @@ func (p *EndSyncRequest) Equals(other *EndSyncRequest) bool {
   if p.TargetRV != other.TargetRV { return false }
   if len(p.ComponentRV) != len(other.ComponentRV) { return false }
   for i, _tgt := range p.ComponentRV {
-    _src21 := other.ComponentRV[i]
-    if _tgt != _src21 { return false }
+    _src23 := other.ComponentRV[i]
+    if _tgt != _src23 { return false }
   }
   if p.DataLength != other.DataLength { return false }
   return true

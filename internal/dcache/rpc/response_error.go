@@ -41,6 +41,7 @@ const (
 	InternalServerError            // Miscellaneous errors
 	ChunkAlreadyExists             // Chunk already exists
 	MaxMVsExceeded                 // Max number of MVs exceeded for the RV
+	ComponentRVsInvalid            // Component RVs are invalid for the MV
 )
 
 type ResponseError struct {

@@ -124,6 +124,7 @@ func (rv *rvInfo) getMVInfo(mvName string) (*mvInfo, error) {
 	val, ok := rv.mvMap.Load(mvName)
 	mvInfo := val.(*mvInfo)
 	if !ok || mvInfo == nil {
+		common.Assert(false, "MV %s not found in RV %s", mvName, rv.rvName)
 		return nil, fmt.Errorf("MV %s is invalid for RV %s", mvName, rv.rvName)
 	}
 
@@ -142,6 +143,15 @@ func (rv *rvInfo) deleteFromMVMap(mvName string) {
 	rv.mvCount.Add(-1)
 }
 
+// return the current sync state of the MV
+func (mv *mvInfo) getSyncStatus() bool {
+	mv.mu.Lock()
+	defer mv.mu.Unlock()
+
+	return mv.isSyncing
+}
+
+// update the sync state of the MV
 func (mv *mvInfo) updateSyncState(isSyncing bool, syncID string, sourceRV string) error {
 	mv.mu.Lock()
 	defer mv.mu.Unlock()
@@ -318,7 +328,7 @@ func (h *ChunkServiceHandler) Hello(ctx context.Context, req *models.HelloReques
 		ReceiverNodeID: myNodeID,
 		Time:           time.Now().UnixMicro(),
 		RV:             myRvList,
-		MV:             req.MV, // TODO: discuss, how to fetch the MV list receiver shares with the sender
+		MV:             req.MV, // TODO:: discuss: how to fetch the MV list receiver shares with the sender
 	}, nil
 }
 
@@ -434,6 +444,14 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	rvInfo := h.fsIDMap[req.Chunk.Address.FsID]
 	mvInfo, _ := rvInfo.getMVInfo(req.Chunk.Address.MvID)
 
+	// validate the component RVs list
+	slices.Sort(req.ComponentRV)
+	if !isComponentRVsValid(mvInfo.componentRVs, req.ComponentRV) {
+		log.Err("ChunkServiceHandler::PutChunk: Request component RVs %v are invalid for MV %s component RVs %v", req.ComponentRV, req.Chunk.Address.MvID, mvInfo.componentRVs)
+		common.Assert(false, fmt.Sprintf("invalid component RVs for MV %s", req.Chunk.Address.MvID), req.ComponentRV, mvInfo.componentRVs)
+		return nil, rpc.NewResponseError(rpc.ComponentRVsInvalid, fmt.Sprintf("request component RVs %v are invalid for MV %s component RVs %v", req.ComponentRV, req.Chunk.Address.MvID, mvInfo.componentRVs))
+	}
+
 	// check if the sync has started. If yes, block the chunk operations till the sync is completed
 	mvInfo.blockChunkOps()
 
@@ -452,11 +470,33 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	defer flock.Unlock()
 
 	cacheDir := rvInfo.cacheDir
+	mvSyncState := mvInfo.getSyncStatus()
 
-	chunkPath, hashPath := getRegularMVPath(cacheDir, req.Chunk.Address.MvID, req.Chunk.Address.FileID, req.Chunk.Address.OffsetInMB)
+	var chunkPath, hashPath string
+	var createSyncDir bool
 	if req.IsSync {
-		chunkPath, hashPath = getSyncMVPath(cacheDir, req.Chunk.Address.MvID, req.Chunk.Address.FileID, req.Chunk.Address.OffsetInMB)
+		// sync RPC call
+		if mvSyncState {
+			chunkPath, hashPath = getSyncMVPath(cacheDir, req.Chunk.Address.MvID, req.Chunk.Address.FileID, req.Chunk.Address.OffsetInMB)
+			createSyncDir = true
+		} else {
+			log.Err("ChunkServiceHandler::PutChunk: MV %s is not in sync state, whereas the client request is sync call", req.Chunk.Address.MvID)
+			common.Assert(false, fmt.Sprintf("MV %s is not in sync state, whereas the client request is sync call", req.Chunk.Address.MvID))
+			return nil, rpc.NewResponseError(rpc.InvalidRequest, fmt.Sprintf("MV %s is not in sync state, whereas the client request is sync call", req.Chunk.Address.MvID))
+		}
+	} else {
+		// regular RPC call
+		if mvSyncState {
+			// client request is not sync call, but the MV is in sync state
+			// so, we need to create the chunk in the sync directory
+			chunkPath, hashPath = getSyncMVPath(cacheDir, req.Chunk.Address.MvID, req.Chunk.Address.FileID, req.Chunk.Address.OffsetInMB)
+			createSyncDir = true
+		} else {
+			chunkPath, hashPath = getRegularMVPath(cacheDir, req.Chunk.Address.MvID, req.Chunk.Address.FileID, req.Chunk.Address.OffsetInMB)
+		}
+	}
 
+	if createSyncDir {
 		//create sync directory if not present
 		syncDir := filepath.Join(cacheDir, req.Chunk.Address.MvID+".sync")
 		err = h.createMVDirectory(syncDir)
@@ -672,8 +712,9 @@ func (h *ChunkServiceHandler) LeaveMV(ctx context.Context, req *models.LeaveMVRe
 	// validate the component RVs list
 	slices.Sort(req.ComponentRV)
 	if !isComponentRVsValid(mvInfo.componentRVs, req.ComponentRV) {
-		log.Err("ChunkServiceHandler::LeaveMV: Component RVs %v are invalid for MV %s", req.ComponentRV, req.MV)
-		return nil, rpc.NewResponseError(rpc.InvalidRequest, fmt.Sprintf("component RVs %v are invalid for MV %s", req.ComponentRV, req.MV))
+		log.Err("ChunkServiceHandler::PutChunk: Request component RVs %v are invalid for MV %s component RVs %v", req.ComponentRV, req.MV, mvInfo.componentRVs)
+		common.Assert(false, fmt.Sprintf("invalid component RVs for MV %s", req.MV), req.ComponentRV, mvInfo.componentRVs)
+		return nil, rpc.NewResponseError(rpc.ComponentRVsInvalid, fmt.Sprintf("request component RVs %v are invalid for MV %s component RVs %v", req.ComponentRV, req.MV, mvInfo.componentRVs))
 	}
 
 	// delete the MV directory
@@ -732,8 +773,9 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 	// validate the component RVs list
 	slices.Sort(req.ComponentRV)
 	if !isComponentRVsValid(mvInfo.componentRVs, req.ComponentRV) {
-		log.Err("ChunkServiceHandler::StartSync: Component RVs %v are invalid for MV %s", req.ComponentRV, req.MV)
-		return nil, rpc.NewResponseError(rpc.InvalidRequest, fmt.Sprintf("component RVs %v are invalid for MV %s", req.ComponentRV, req.MV))
+		log.Err("ChunkServiceHandler::PutChunk: Request component RVs %v are invalid for MV %s component RVs %v", req.ComponentRV, req.MV, mvInfo.componentRVs)
+		common.Assert(false, fmt.Sprintf("invalid component RVs for MV %s", req.MV), req.ComponentRV, mvInfo.componentRVs)
+		return nil, rpc.NewResponseError(rpc.ComponentRVsInvalid, fmt.Sprintf("request component RVs %v are invalid for MV %s component RVs %v", req.ComponentRV, req.MV, mvInfo.componentRVs))
 	}
 
 	// update the sync state and sync id of the MV
@@ -791,8 +833,9 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 	// validate the component RVs list
 	slices.Sort(req.ComponentRV)
 	if !isComponentRVsValid(mvInfo.componentRVs, req.ComponentRV) {
-		log.Err("ChunkServiceHandler::StartSync: Component RVs %v are invalid for MV %s", req.ComponentRV, req.MV)
-		return nil, rpc.NewResponseError(rpc.InvalidRequest, fmt.Sprintf("component RVs %v are invalid for MV %s", req.ComponentRV, req.MV))
+		log.Err("ChunkServiceHandler::PutChunk: Request component RVs %v are invalid for MV %s component RVs %v", req.ComponentRV, req.MV, mvInfo.componentRVs)
+		common.Assert(false, fmt.Sprintf("invalid component RVs for MV %s", req.MV), req.ComponentRV, mvInfo.componentRVs)
+		return nil, rpc.NewResponseError(rpc.ComponentRVsInvalid, fmt.Sprintf("request component RVs %v are invalid for MV %s component RVs %v", req.ComponentRV, req.MV, mvInfo.componentRVs))
 	}
 
 	// enable block chunk operations flag for this MV to pause further chunk operations (get, put or remove) on this MV

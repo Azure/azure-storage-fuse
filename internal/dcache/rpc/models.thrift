@@ -39,13 +39,14 @@ struct GetChunkResponse {
     2: string chunkWriteTime,
     3: i64 timeTaken,
     4: list<string> componentRV
+    // TODO:: discuss: should we validate the component RV in GetChunk call
 }
 
 struct PutChunkRequest {
     1: Chunk chunk
     2: i64 length,
     3: bool isSync
-    // validate component RV list
+    4: list<string> componentRV // used to validate the component RV for the MV
 }
 
 struct PutChunkResponse {
@@ -57,6 +58,7 @@ struct PutChunkResponse {
 
 struct RemoveChunkRequest {
     1: Address address
+    // TODO:: discuss: should we validate the component RV in RemoveChunk call
 }
 
 struct RemoveChunkResponse {
