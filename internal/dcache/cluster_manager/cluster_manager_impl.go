@@ -297,17 +297,16 @@ func (cmi *ClusterManagerImpl) checkAndUpdateRVMap(clusterMapRVMap map[string]dc
 	}
 
 	rVsByBlkID := make(map[string]dcache.RawVolume)
-	for _, fileAttr := range nodeIds {
-		log.Trace("ClusterManagerImpl::checkAndUpdateRVMap: Heartbeat file %s", fileAttr)
-		bytes, err := mm.GetHeartbeat("")
-		// GetBlobFromStorage(internal.ReadFileWithNameOptions{Path: fileAttr.Path})
+	for _, nodeId := range nodeIds {
+		log.Trace("ClusterManagerImpl::checkAndUpdateRVMap: Heartbeat file %s", nodeId)
+		bytes, err := mm.GetHeartbeat(nodeId)
 		if err != nil {
-			// log.Err("ClusterManagerImpl::checkAndUpdateRVMap: Failed to read heartbeat file %s, error: %v", fileAttr.Path, err)
+			log.Err("ClusterManagerImpl::checkAndUpdateRVMap: Failed to read heartbeat file for node %s, error: %v", nodeId, err)
 			return isMVsUpdateNeeded, err
 		}
 		var hbData dcache.HeartbeatData
 		if err := json.Unmarshal(bytes, &hbData); err != nil {
-			log.Err("ClusterManagerImpl::checkAndUpdateRVMap: Failed to parse JSON, error: %v", err)
+			log.Err("ClusterManagerImpl::checkAndUpdateRVMap: Failed to parse heartbeat bytes, error: %v", err)
 			return isMVsUpdateNeeded, err
 		}
 		for _, rv := range hbData.RVList {
@@ -399,7 +398,7 @@ func (cmi *ClusterManagerImpl) punchHeartBeat(rvList []dcache.RawVolume) {
 func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 	clusterMapBytes, etag, err := mm.GetClusterMap()
 	if err != nil {
-		log.Err("updateStorageClusterMapIfRequired: GetClusterMap called fail from storage. err %v", err)
+		log.Err("updateStorageClusterMapIfRequired: GetClusterMap call fail from storage. err %v", err)
 		return
 	}
 	var clusterMap dcache.ClusterMap
@@ -426,7 +425,7 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 		clusterCfgByte, _ := json.Marshal(clusterMap)
 		mm.UpdateClusterMapEnd(clusterCfgByte)
 
-		//If required trigger replication manager
+		//iNotify replication manager
 	}
 
 }
