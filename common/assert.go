@@ -34,24 +34,37 @@
 package common
 
 import (
-	"net"
-	"regexp"
+	"log"
+	"os"
 )
 
-// isValidGUID returns true if the string is a valid guid in the 8-4-4-4-12 format.
-func IsValidGUID(guid string) (bool, error) {
-	valid, err := regexp.MatchString(
-		"^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$", guid)
-	if err != nil {
-		return false, err
+// Assert can be used to assert any condition. It'll cause the program to terminate.
+// Apart from the assertion condition it takes a variable number of items to print, which would mostly be a
+// message and/or err variable and optionally one or more relevant variables.
+// In non-debug builds it's a no-op.
+//
+// Examples:
+//
+//	Assert(err == nil, "Unexpected error return", err)
+//	Assert(isValid == true)
+//	Assert((value >= 0 && value <= 100), "Invalid percentage", value)
+func Assert(cond bool, msg ...interface{}) {
+	if !IsDebugBuild() {
+		return
 	}
-	return valid, nil
+	if !cond {
+		if len(msg) != 0 {
+			log.Panicf("Assertion failed: %v", msg)
+		} else {
+			log.Panicf("Assertion failed!")
+		}
+	}
 }
 
-func IsValidSpace(byte int) bool {
-	return byte < 0
-}
-
-func IsValidIP(ipAddress string) bool {
-	return net.ParseIP(ipAddress) != nil
+// IsDebugBuild can be used to test if we are running in a debug environment.
+// Note: Use this sparingly only to do stuff that we know for sure doesn't change the behavior of the program.
+//
+//	We need to be very careful in making sure debug build behaves same as prod builds for reliable testing.
+func IsDebugBuild() bool {
+	return (os.Getenv("BLOBFUSE_DEBUG") == "1")
 }

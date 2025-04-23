@@ -52,11 +52,12 @@ type RawVolume struct {
 type StateEnum string
 
 const (
-	StateOnline  StateEnum = "online"
-	StateOffline StateEnum = "offline"
-	StateDown    StateEnum = "down"
-	StateReady   StateEnum = "ready"
-	StateSyncing StateEnum = "syncing"
+	StateOnline   StateEnum = "online"
+	StateOffline  StateEnum = "offline"
+	StateDown     StateEnum = "down"
+	StateReady    StateEnum = "ready"
+	StateSyncing  StateEnum = "syncing"
+	StateReadOnly StateEnum = "readOnly"
 )
 
 type ClusterMap struct {
@@ -81,17 +82,17 @@ type HeartbeatData struct {
 
 type DCacheConfig struct {
 	CacheId                string `json:"cache-id,omitempty"`
-	MinNodes               int    `json:"min-nodes,omitempty"`
+	MinNodes               uint32 `json:"min-nodes,omitempty"`
 	ChunkSize              uint64 `json:"chunk-size,omitempty"`
 	StripeSize             uint64 `json:"stripe-size,omitempty"`
-	NumReplicas            uint8  `json:"num-replicas,omitempty"`
+	NumReplicas            uint32 `json:"num-replicas,omitempty"`
 	MvsPerRv               uint64 `json:"mvs-per-rv,omitempty"`
 	RvFullThreshold        uint64 `json:"rv-full-threshold,omitempty"`
 	RvNearfullThreshold    uint64 `json:"rv-nearfull-threshold,omitempty"`
 	HeartbeatSeconds       uint16 `json:"heartbeat-seconds,omitempty"`
 	HeartbeatsTillNodeDown uint8  `json:"heartbeats-till-node-down,omitempty"`
 	ClustermapEpoch        uint64 `json:"clustermap-epoch,omitempty"`
-	RebalancePercentage    uint64 `json:"rebalance-percentage,omitempty"`
+	RebalancePercentage    uint8  `json:"rebalance-percentage,omitempty"`
 	SafeDeletes            bool   `json:"safe-deletes,omitempty"`
 	CacheAccess            string `json:"cache-access,omitempty"`
 }

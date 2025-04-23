@@ -9,10 +9,6 @@ on:
         type: boolean 
   schedule:
     - cron: '0 4 * * SUN'
-  push:
-    branches:
-      - main
-      - vibhansa/*
 
 jobs:
   X86_PerfTesting:
