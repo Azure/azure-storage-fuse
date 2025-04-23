@@ -46,6 +46,7 @@ import (
 )
 
 type ClusterManagerImpl struct {
+	nodeId string
 }
 
 // It will return online MVs as per local cache copy of cluster map
@@ -110,7 +111,8 @@ func ReportRVFull(rvName string) error {
 
 // start implements ClusterManager.
 func (cmi *ClusterManagerImpl) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache.RawVolume) error {
-	err := cmi.checkAndCreateInitialClusterMap(dCacheConfig, rvs)
+	cmi.nodeId = rvs[0].NodeId
+	err := cmi.checkAndCreateInitialClusterMap(dCacheConfig)
 	if err != nil {
 		return err
 	}
@@ -184,7 +186,7 @@ func (c *ClusterManagerImpl) reportRVFull(rvName string) error {
 	return nil
 }
 
-func (cmi *ClusterManagerImpl) checkAndCreateInitialClusterMap(dCacheConfig *dcache.DCacheConfig, rvList []dcache.RawVolume) error {
+func (cmi *ClusterManagerImpl) checkAndCreateInitialClusterMap(dCacheConfig *dcache.DCacheConfig) error {
 	isClusterMapExists, err := cmi.checkIfClusterMapExists()
 	if err != nil {
 		log.Err("ClusterManagerImpl::checkAndCreateInitialClusterMap: Failed to check clusterMap file presence in Storage. error -: %v", err)
@@ -201,7 +203,7 @@ func (cmi *ClusterManagerImpl) checkAndCreateInitialClusterMap(dCacheConfig *dca
 		Epoch:         1,
 		CreatedAt:     currentTime,
 		LastUpdatedAt: currentTime,
-		LastUpdatedBy: rvList[0].NodeId,
+		LastUpdatedBy: cmi.nodeId,
 		Config:        *dCacheConfig,
 		RVMap:         map[string]dcache.RawVolume{},
 		MVMap:         map[string]dcache.MirroredVolume{},
@@ -211,8 +213,7 @@ func (cmi *ClusterManagerImpl) checkAndCreateInitialClusterMap(dCacheConfig *dca
 		log.Err("ClusterManager::checkAndCreateInitialClusterMap : Cluster Map Marshalling fail : %+v, err %v", clusterMap, err)
 		return err
 	}
-	mm.CreateInitialClusterMap(clusterMapBytes)
-	return nil
+	return mm.CreateInitialClusterMap(clusterMapBytes)
 }
 
 func (cmi *ClusterManagerImpl) checkIfClusterMapExists() (bool, error) {
