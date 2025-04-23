@@ -379,7 +379,7 @@ func (m *BlobMetadataManager) updateHeartbeat(nodeId string, data []byte) error 
 	})
 	if err != nil {
 		log.Err("UpdateHeartbeat :: Failed to put heartbeat blob path %s in storage: %v", heartbeatFilePath, err)
-		// TODO :: Add asserts
+		common.Assert(false, fmt.Sprintf("Failed to put heartbeat blob path %s in storage: %v", heartbeatFilePath, err))
 	}
 	return err
 }
@@ -394,9 +394,11 @@ func (m *BlobMetadataManager) deleteHeartbeat(nodeId string) error {
 	if err != nil {
 		if bloberror.HasCode(err, bloberror.BlobNotFound) {
 			log.Err("DeleteHeartbeat :: DeleteBlobInStorage failed since blob %s is already deleted", heartbeatFilePath)
+		} else {
+			log.Err("DeleteHeartbeat :: Failed to delete heartbeat blob %s in storage: %v", heartbeatFilePath, err)
 		}
 	}
-	return nil
+	return err
 }
 
 // GetHeartbeat reads and returns the content of the heartbeat file
@@ -409,6 +411,7 @@ func (m *BlobMetadataManager) getHeartbeat(nodeId string) ([]byte, error) {
 	})
 	if err != nil {
 		log.Err("GetHeartbeat :: Failed to get heartbeat file content for %s: %v", heartbeatFilePath, err)
+		common.Assert(false, fmt.Sprintf("Failed to get heartbeat file content for %s: %v", heartbeatFilePath, err))
 	}
 
 	return data, err
@@ -421,7 +424,8 @@ func (m *BlobMetadataManager) getAllNodes() ([]string, error) {
 		Name: path,
 	})
 	if err != nil {
-		log.Err("GetAllNodes :: Failed to get nodes list from blob %s : %v", path, err)
+		log.Err("GetAllNodes :: Failed to enumerate nodes list from %s : %v", path, err)
+		common.Assert(false, fmt.Sprintf("Failed to enumerate nodes list from %s : %v", path, err))
 		return nil, err
 	}
 	// Extract the node IDs from the list of blobs
@@ -429,17 +433,15 @@ func (m *BlobMetadataManager) getAllNodes() ([]string, error) {
 	for _, blob := range list {
 		if strings.HasSuffix(blob.Name, ".hb") {
 			nodeId := blob.Name[:len(blob.Name)-3] // Remove the ".hb" extension
-			if nodeId != "" {
-				// TODO :: Add asserts
-				// here we should add an assert for debug builds
-				if Assert(IsValidGUID(nodeId), "Invalid heartbeat blob", blob.Name) {
-					nodes = append(nodes, nodeId)
-				}
-				// and for release builds, we should skip such blobs w/o a valid guid.
+			if IsValidGUID(nodeId) {
+				nodes = append(nodes, nodeId)
+			} else {
+				log.Err("Invalid heartbeat blob: %s", blob.Name)
+				common.Assert(false, "Invalid heartbeat blob", blob.Name)
 			}
 		} else {
-			// TODO :: Add asserts
-			// Assert(false, "Unexpected blob found in Nodes folder", blob.Name)
+			common.Assert(false, "Unexpected blob found in Nodes folder", blob.Name)
+
 		}
 	}
 
@@ -456,8 +458,16 @@ func (m *BlobMetadataManager) createInitialClusterMap(clustermap []byte) error {
 		IsNoneMatchEtagEnabled: true,
 		EtagMatchConditions:    "",
 	})
+	// Caller has to check if the error is ConditionNotMet or something else
+	// and take appropriate action.
+	// If the error is ConditionNotMet, it means the clustermap already exists
+	// and the caller should not overwrite it.
 	if err != nil {
-		log.Debug("CreateInitialClusterMap :: Failed to create clustermap %s : %v", clustermapPath, err)
+		if bloberror.HasCode(err, bloberror.ConditionNotMet) {
+			log.Info("CreateInitialClusterMap :: PutBlobInStorage failed for %s due to ETag mismatch", clustermapPath)
+			return nil
+		}
+		log.Err("CreateInitialClusterMap :: Failed to put blob %s in storage: %v", clustermapPath, err)
 		return err
 	}
 	log.Info("CreateInitialClusterMap :: Created initial clustermap with path %s", clustermapPath)
@@ -473,18 +483,22 @@ func (m *BlobMetadataManager) updateClusterMapStart(clustermap []byte, etag *str
 		IsNoneMatchEtagEnabled: false,
 		EtagMatchConditions:    *etag,
 	})
+	// Caller should add a check to identify the error is ConditionNotMet or something else
+	// and take appropriate action.
+	// If the error is ConditionNotMet, it means the clustermap is already being updated
+	// and the caller should not overwrite it.
 	if err != nil {
 		if bloberror.HasCode(err, bloberror.ConditionNotMet) {
-			log.Err("UpdateClusterMapStart :: ETag mismatch some other node has taken ownership for updating clustermap with path %s", clustermapPath)
+			log.Warn("UpdateClusterMapStart :: ETag mismatch some other node has taken ownership for updating clustermap with path %s", clustermapPath)
 		} else {
 			log.Err("UpdateClusterMapStart :: Failed to update clustermap %s : %v", clustermapPath, err)
 		}
 	}
-	// Caller should add a check to identify the error is ConditionNotMet or something else
-	// and take appropriate action.
 	return err
 }
 
+// TODO :: for safe update  updateClusterMapStart should return a Etag
+// value to be used for updateClusterMapEnd
 // UpdateClusterMapEnd finalizes the cluster map update
 func (m *BlobMetadataManager) updateClusterMapEnd(clustermap []byte) error {
 	clustermapPath := filepath.Join(m.mdRoot, "clustermap.json")
@@ -501,22 +515,25 @@ func (m *BlobMetadataManager) updateClusterMapEnd(clustermap []byte) error {
 	return err
 }
 
-// GetClusterMap reads and returns the content of the cluster map
+// GetClusterMap reads and returns the content of the cluster map as a byte array, the current Etag value and error if any
 func (m *BlobMetadataManager) getClusterMap() ([]byte, *string, error) {
 	clustermapPath := filepath.Join(m.mdRoot, "clustermap.json")
 	attr, err := m.storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{
 		Name: clustermapPath,
 	})
 	if err != nil {
-		log.Debug("GetClusterMap :: Failed to get cluster map properties %s : %v", clustermapPath, err)
+		log.Err("GetClusterMap :: Failed to get cluster map properties %s : %v", clustermapPath, err)
 		return nil, nil, err
 	}
+	// TODO :: If some node updates the clustermap between GetProperties and GetBlobFromStorage
+	// then updateClusterMapStart will fail with ETag mismatch.
+	// In that case we can create a new function to call doawnloadStream directly for content and etag.
 	// Get the cluster map content from storage
 	data, err := m.storageCallback.GetBlobFromStorage(internal.ReadFileWithNameOptions{
-		Path: filepath.Join(m.mdRoot, "clustermap.json"),
+		Path: clustermapPath,
 	})
 	if err != nil {
-		log.Debug("GetClusterMap :: Failed to get cluster map content: %v", err)
+		log.Err("GetClusterMap :: Failed to get cluster map content with path %s : %v", clustermapPath, err)
 		return nil, nil, err
 	}
 	// Return the cluster map content and ETag
