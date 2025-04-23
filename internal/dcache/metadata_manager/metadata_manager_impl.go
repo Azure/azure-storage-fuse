@@ -453,7 +453,7 @@ func (m *BlobMetadataManager) getAllNodes() ([]string, error) {
 	for _, blob := range list {
 		if strings.HasSuffix(blob.Name, ".hb") {
 			nodeId := blob.Name[:len(blob.Name)-3] // Remove the ".hb" extension
-			if IsValidGUID(nodeId) {
+			if _, err := common.IsValidUUID(nodeId); err == nil {
 				nodes = append(nodes, nodeId)
 			} else {
 				log.Err("Invalid heartbeat blob: %s", blob.Name)
@@ -465,7 +465,7 @@ func (m *BlobMetadataManager) getAllNodes() ([]string, error) {
 		}
 	}
 
-	return nil, nil
+	return nodes, nil
 }
 
 // CreateInitialClusterMap creates the initial cluster map
