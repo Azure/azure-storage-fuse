@@ -83,9 +83,9 @@ func getChunkAddress(fileID string, fsID string, mvID string, offsetInMB int64) 
 	return fmt.Sprintf("%v-%v-%v-%v", fileID, fsID, mvID, offsetInMB)
 }
 
-// check if the peer RVs are the same
+// check if the component RVs are the same
 // the list is sorted before comparison
-func isPeerRVsValid(rv1 []string, rv2 []string) bool {
+func isComponentRVsValid(rv1 []string, rv2 []string) bool {
 	if len(rv1) != len(rv2) {
 		return false
 	}

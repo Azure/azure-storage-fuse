@@ -45,6 +45,7 @@ struct PutChunkRequest {
     1: Chunk chunk
     2: i64 length,
     3: bool isSync
+    // validate component RV list
 }
 
 struct PutChunkResponse {
@@ -88,8 +89,8 @@ struct LeaveMVResponse {
 
 struct StartSyncRequest {
     1: string MV,
-    2: string sourceRV, // source RV is the lowest index online RV. The node hosting this RV will send the start sync call to the peer RVs
-    3: string targetRV, // target RV is the RV which has to be synced
+    2: string sourceRV, // source RV is the lowest index online RV. The node hosting this RV will send the start sync call to the component RVs
+    3: string targetRV, // target RV is the target of the start sync request
     4: list<string> peerRV,
     5: i64 dataLength
 }
@@ -102,7 +103,7 @@ struct StartSyncResponse {
 struct EndSyncRequest {
     1: string syncID,
     2: string MV,
-    3: string sourceRV, // source RV is the lowest index online RV. The node hosting this RV will send the end sync call to the peer RVs
+    3: string sourceRV, // source RV is the lowest index online RV. The node hosting this RV will send the end sync call to the component RVs
     4: string targetRV, // target RV is the RV which has to stop the sync marking it as completed
     5: list<string> peerRV,
     6: i64 dataLength
