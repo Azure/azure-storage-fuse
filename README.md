@@ -251,6 +251,18 @@ Below diagrams guide you to choose right configuration for your workloads.
 - [Sample Block-Cache Config](./sampleBlockCacheConfig.yaml)
 - [All Config options](./setup/baseConfig.yaml) 
 
+## Preload
+
+By default, Blobfuse responds to kernel file-system calls. When user application opens a file, it will be downloaded to local cache and will remain there until user closes the file. In case of model training (AI/ML) workflows, if user application is going to process all the data that exists on the storage container, then one by one application will execute open file-system calls and it has to wait till the file download completes. To accelerate such workflows Blobfuse now has a capability to start downloading entire container/sub-directory, that user has mounted to local-cache as soon as mount succeeds, instead of waiting for the user application to execute file open call. Combining this feature with below mentioned blob-filters, user can control what files shall be part of the download set. This helps when you have structured data, and your application does not need access of the entire data but only a subset of it.
+
+
+Below are some points that user shall be aware while using preload:
+- Local cache path provided should have sufficient space to download the contents from storage. If local storage is full, preload will stop downloading the data.
+- If user application executes a file system open call on a certain file, call will wait until the file download completes. If the file was not under download, it will be downloaded on priority.
+- Files once downloaded will not be evicted from local cache.
+- Blobfuse will not detect any changes on the container (files modified in the storage container), once preload completes. All reads will be served from local cache only. For any new files created on the container, open file-system call for the file will start download of that file.
+ 
+
 ## Blob Filter
 - In case of read-only mount, user can configure a filter to restrict what all blobs a mount can see or operate on.
 - Blobfuse supports filters based on
