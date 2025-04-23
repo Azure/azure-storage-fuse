@@ -1,6 +1,7 @@
 ## 2.5.0~preview.1 (Unreleased)
 **Features**
 - Preload feature added to download entire dataset on mount, to accelerate model training.
+- Added `lazy` flag to unmount command which passes the lazy flag to fusermount when unmounting.
 
 ## 2.4.2 (2025-04-08)
 **Bug Fixes**
