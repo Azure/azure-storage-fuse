@@ -630,9 +630,9 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 
 	log.Debug("ChunkServiceHandler::JoinMV: Received JoinMV request: %+v", *req)
 
-	if req.MV == "" || req.RV == "" {
-		log.Err("ChunkServiceHandler::JoinMV: MV or RV is empty")
-		return nil, rpc.NewResponseError(rpc.InvalidRequest, "MV or RV is empty")
+	if req.MV == "" || req.RV == "" || len(req.ComponentRV) == 0 {
+		log.Err("ChunkServiceHandler::JoinMV: MV, RV or ComponentRV is empty")
+		return nil, rpc.NewResponseError(rpc.InvalidRequest, "MV, RV or ComponentRV is empty")
 	}
 
 	rvInfo := h.getRVInfoFromRvName(req.RV)
@@ -734,9 +734,9 @@ func (h *ChunkServiceHandler) LeaveMV(ctx context.Context, req *models.LeaveMVRe
 
 	log.Debug("ChunkServiceHandler::LeaveMV: Received LeaveMV request: %+v", *req)
 
-	if req.MV == "" || req.RV == "" {
-		log.Err("ChunkServiceHandler::LeaveMV: MV or RV is empty")
-		return nil, rpc.NewResponseError(rpc.InvalidRequest, "MV or RV is empty")
+	if req.MV == "" || req.RV == "" || len(req.ComponentRV) == 0 {
+		log.Err("ChunkServiceHandler::LeaveMV: MV, RV or ComponentRV is empty")
+		return nil, rpc.NewResponseError(rpc.InvalidRequest, "MV, RV or ComponentRV is empty")
 	}
 
 	rvInfo := h.getRVInfoFromRvName(req.RV)
