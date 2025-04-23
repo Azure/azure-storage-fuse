@@ -342,9 +342,9 @@ func listMyRVs(rvList []dcache.RawVolume) {
 		common.Assert(err == nil, fmt.Sprintf("Error getting disk space metrics for path %s for punching heartbeat: %v", rv.LocalCachePath, err))
 		if err != nil {
 			availableSpace = 0
+			log.Warn("Error getting disk space metrics for path %s for punching heartbeat that's why forcing available Space to set to zero : %v", rv.LocalCachePath, err)
 		}
 		rvList[index].AvailableSpace = availableSpace
-		// TODO{Akku}: If available space is less than 10% of total space, set state to readOnly
 		rvList[index].State = dcache.StateOnline
 	}
 }
