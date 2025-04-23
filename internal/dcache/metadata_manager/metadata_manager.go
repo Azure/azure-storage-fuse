@@ -85,7 +85,7 @@ type MetadataManager interface {
 	updateHeartbeat(nodeId string, data []byte) error
 
 	// DeleteHeartbeat deletes the heartbeat file.
-	deleteHeartbeat(nodeId string, data []byte) error
+	deleteHeartbeat(nodeId string) error
 
 	// GetHeartbeat reads and returns the content of the heartbeat file.
 	getHeartbeat(nodeId string) ([]byte, error)
@@ -93,7 +93,6 @@ type MetadataManager interface {
 	// GetAllNodes enumerates and returns the list of all the nodes who have a heartbeat.
 	getAllNodes() ([]string, error)
 
-	// TODO :: Rename ClusterConfig to ClusterMap.
 	// CreateInitialClusterMap creates the initial clustermap.
 	createInitialClusterMap(clustermap []byte) error
 
