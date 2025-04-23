@@ -384,11 +384,11 @@ func (cmi *ClusterManagerImpl) punchHeartBeat(rvList []dcache.RawVolume) {
 	// Marshal the data into JSON
 	data, err := json.MarshalIndent(hbData, "", "  ")
 	//Adding Assert because error capturing can just log the error and continue because it's a schedule method
-	common.Assert(err != nil, fmt.Sprintf("Error marshalling heartbeat data %+v : error - %v", hbData, err))
+	common.Assert(err == nil, fmt.Sprintf("Error marshalling heartbeat data %+v : error - %v", hbData, err))
 	if err == nil {
 		// Create and update heartbeat file in storage with <nodeId>.hb
 		err = mm.UpdateHeartbeat(cmi.nodeId, data)
-		common.Assert(err != nil, fmt.Sprintf("Error updating heartbeat file with nodeId %s in storage: %v", cmi.nodeId, err))
+		common.Assert(err == nil, fmt.Sprintf("Error updating heartbeat file with nodeId %s in storage: %v", cmi.nodeId, err))
 		log.Trace("AddHeartBeat: Heartbeat file updated successfully")
 	}
 }
@@ -431,7 +431,7 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 func listMyRVs(rvList []dcache.RawVolume) {
 	for index, rv := range rvList {
 		_, availableSpace, err := common.GetDiskSpaceMetricsFromStatfs(rv.LocalCachePath)
-		common.Assert(err != nil, fmt.Sprintf("Error getting disk space metrics for path %s for punching heartbeat: %v", rv.LocalCachePath, err))
+		common.Assert(err == nil, fmt.Sprintf("Error getting disk space metrics for path %s for punching heartbeat: %v", rv.LocalCachePath, err))
 		if err != nil {
 			availableSpace = 0
 		}
