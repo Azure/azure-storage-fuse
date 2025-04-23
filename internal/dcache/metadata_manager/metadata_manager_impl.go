@@ -302,7 +302,7 @@ func (m *BlobMetadataManager) updateHandleCount(path string, increment bool) (in
 		}
 		openCount, err = strconv.Atoi(*attr.Metadata["opencount"])
 		if err != nil {
-			log.Err("GetFileOpenCount :: Failed to parse handle count for path %s with value %s : %v", path, openCount, err)
+			log.Err("GetFileOpenCount :: Failed to parse handle count for path %s with value %s : %v", path, *attr.Metadata["opencount"], err)
 			return -1, err
 		}
 		if increment {
@@ -374,7 +374,7 @@ func (m *BlobMetadataManager) getFileOpenCount(filePath string) (int64, error) {
 	count, err := strconv.Atoi(*openCount)
 
 	if err != nil {
-		log.Err("GetFileOpenCount :: Failed to parse open count for path %s with value %d : %v", path, count, err)
+		log.Err("GetFileOpenCount :: Failed to parse open count for path %s with value %s : %v", path, *openCount, err)
 		return -1, err
 	}
 	if count < 0 {
