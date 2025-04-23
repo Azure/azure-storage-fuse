@@ -137,6 +137,7 @@ func (cmi *ClusterManagerImpl) start(dCacheConfig *dcache.DCacheConfig, rvs []dc
 		return err
 	}
 	cmi.ipAddress = rvs[0].IPAddress
+	common.Assert(common.IsValidIP(cmi.ipAddress), fmt.Sprintf("Invalid Ip[%s] for nodeId[%s]", cmi.ipAddress, cmi.nodeId))
 	cmi.hbTicker = time.NewTicker(time.Duration(dCacheConfig.HeartbeatSeconds) * time.Second)
 	go func() {
 		for range cmi.hbTicker.C {
@@ -332,7 +333,9 @@ func (cmi *ClusterManagerImpl) punchHeartBeat(rvList []dcache.RawVolume) {
 		// Create and update heartbeat file in storage with <nodeId>.hb
 		err = mm.UpdateHeartbeat(cmi.nodeId, data)
 		common.Assert(err == nil, fmt.Sprintf("Error updating heartbeat file with nodeId %s in storage: %v", cmi.nodeId, err))
-		log.Trace("AddHeartBeat: Heartbeat file updated successfully")
+		log.Debug("AddHeartBeat: Heartbeat file updated successfully %+v", hbData)
+	} else {
+		log.Warn("Error Updating heartbeat for nodeId %s where data %+v : error - %v", cmi.nodeId, hbData, err)
 	}
 }
 
