@@ -80,14 +80,16 @@ func Init(storageCallback dcache.StorageCallbacks, cacheId string) error {
 				if err := storageCallback.CreateDir(internal.CreateDirOptions{Name: dir, ForceDirCreationDisabled: true}); err != nil {
 
 					if !bloberror.HasCode(err, bloberror.BlobAlreadyExists) {
-						log.Err("DistributedCache::Start error [failed to create directory %s: %v]", dir, err)
+						log.Err("BlobMetadataManager :: Init error [failed to create directory %s: %v]", dir, err)
 						return err
 					}
+				} else {
+					log.Info("BlobMetadataManager :: Init [created directory %s]", dir)
 				}
 			}
 
 		} else {
-			log.Err("DistributedCache::Start error [failed to get properties for %s: %v]", metadataManagerInstance.mdRoot, err)
+			log.Err("BlobMetadataManager :: Init error [failed to get properties for %s: %v]", metadataManagerInstance.mdRoot, err)
 			return err
 		}
 	}
