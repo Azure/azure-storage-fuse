@@ -111,6 +111,9 @@ func ReportRVDown(rvName string) error {
 func ReportRVFull(rvName string) error {
 	return clusterManagerInstance.reportRVFull(rvName)
 }
+func Stop() error {
+	return clusterManagerInstance.stop()
+}
 
 // start implements ClusterManager.
 func (cmi *ClusterManagerImpl) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache.RawVolume) error {
@@ -135,7 +138,7 @@ func (cmi *ClusterManagerImpl) start(dCacheConfig *dcache.DCacheConfig, rvs []dc
 }
 
 // Stop implements ClusterManager.
-func (cmi *ClusterManagerImpl) Stop() error {
+func (cmi *ClusterManagerImpl) stop() error {
 	if cmi.hbTicker != nil {
 		cmi.hbTicker.Stop()
 	}
