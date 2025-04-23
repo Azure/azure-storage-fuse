@@ -82,6 +82,8 @@ func Init(storageCallback dcache.StorageCallbacks, cacheId string) error {
 					if !bloberror.HasCode(err, bloberror.BlobAlreadyExists) {
 						log.Err("BlobMetadataManager :: Init error [failed to create directory %s: %v]", dir, err)
 						return err
+					} else {
+						log.Info("BlobMetadataManager :: Init [directory %s already exists]", dir)
 					}
 				} else {
 					log.Info("BlobMetadataManager :: Init [created directory %s]", dir)
