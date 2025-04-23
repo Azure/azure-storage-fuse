@@ -334,8 +334,8 @@ func (m *BlobMetadataManager) updateHandleCount(path string, increment bool) (in
 
 				// Double the backoff time, but cap it at maxBackoff
 				backoff *= 2
-				if backoff > maxRetryTime {
-					backoff = maxRetryTime
+				if backoff > maxBackoff {
+					backoff = maxBackoff
 				}
 
 				// Check if retrying has exceeded a minute
