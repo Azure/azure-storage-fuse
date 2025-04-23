@@ -516,9 +516,11 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	var chunkPath, hashPath string
 	var createSyncDir bool
 	if req.IsSync {
-		// sync RPC call
+		// sync write RPC call. This is called after the StartSync RPC to copy the contents
+		// from the online RV (lowest index RV) to the new out of sync RV.
+		// In this case the chunks must be written to the regular mv directory, i.e. rv0/mv0
 		if mvSyncState {
-			chunkPath, hashPath = getSyncMVPath(cacheDir, req.Chunk.Address.MvName, req.Chunk.Address.FileID, req.Chunk.Address.OffsetInMB)
+			chunkPath, hashPath = getRegularMVPath(cacheDir, req.Chunk.Address.MvName, req.Chunk.Address.FileID, req.Chunk.Address.OffsetInMB)
 			createSyncDir = true
 		} else {
 			log.Err("ChunkServiceHandler::PutChunk: MV %s is not in sync state, whereas the client request is sync call", req.Chunk.Address.MvName)
@@ -526,10 +528,9 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 			return nil, rpc.NewResponseError(rpc.InvalidRequest, fmt.Sprintf("MV %s is not in sync state, whereas the client request is sync call", req.Chunk.Address.MvName))
 		}
 	} else {
-		// regular RPC call
+		// client write RPC call. If the MV is in sync state, the chunks must be written to the sync directory, i.e. rv0/mv0.sync
+		// If the MV is not in sync state, the chunks must be written to the regular mv directory, i.e. rv0/mv0
 		if mvSyncState {
-			// client request is not sync call, but the MV is in sync state
-			// so, we need to create the chunk in the sync directory
 			chunkPath, hashPath = getSyncMVPath(cacheDir, req.Chunk.Address.MvName, req.Chunk.Address.FileID, req.Chunk.Address.OffsetInMB)
 			createSyncDir = true
 		} else {
