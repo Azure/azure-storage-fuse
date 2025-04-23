@@ -97,7 +97,7 @@ func Init(storageCallback dcache.StorageCallbacks, cacheId string) error {
 			return err
 		}
 	}
-	// TODO :: Verify/Asseet that the directories are created successfully
+	common.Assert(err == nil, "Failed to create directories", err)
 	return nil
 }
 
@@ -172,15 +172,9 @@ func GetClusterMap() ([]byte, *string, error) {
 // Can help ensure cases where the initial node went down before finalizing and tried to finalize later
 func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byte) error {
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
-	// Store the open-count in the metadata blob property
-	openCount := "0"
-	metadata := map[string]*string{
-		"opencount": &openCount,
-	}
 
 	err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
 		Name:                   path,
-		Metadata:               metadata,
 		Data:                   fileMetadata,
 		IsNoneMatchEtagEnabled: true,
 		EtagMatchConditions:    "",
@@ -204,10 +198,15 @@ func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byt
 // CreateFileFinalize finalizes the metadata for a file
 func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata []byte) error {
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
-	// TODO :: check metadata property is not overwritten by this
+	// Store the open-count in the metadata blob property
+	openCount := "0"
+	metadata := map[string]*string{
+		"opencount": &openCount,
+	}
 	err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
 		Name:                   path,
 		Data:                   fileMetadata,
+		Metadata:               metadata,
 		IsNoneMatchEtagEnabled: false,
 		EtagMatchConditions:    "",
 	})
@@ -289,7 +288,7 @@ func (m *BlobMetadataManager) updateHandleCount(path string, increment bool) (in
 	var openCount int
 	retryTime := time.Now()
 	for {
-		// Get the current handle count
+		// Get the current open count
 		attr, err := m.storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{
 			Name: path,
 		})
@@ -301,7 +300,7 @@ func (m *BlobMetadataManager) updateHandleCount(path string, increment bool) (in
 		// We never create file metadata blob w/o opencount property set.
 		if attr.Metadata["opencount"] == nil {
 			log.Err("updateHandleCount :: File metadata blob found w/o opencount property: %s", path)
-			return -1, fmt.Errorf("Opencount property not found in metadata for path %s. Issue needs to be debugged.", path)
+			return -1, fmt.Errorf("opencount property not found in metadata for path %s. Issue needs to be debugged", path)
 		}
 		openCount, err = strconv.Atoi(*attr.Metadata["opencount"])
 		if err != nil {
@@ -315,7 +314,7 @@ func (m *BlobMetadataManager) updateHandleCount(path string, increment bool) (in
 		}
 		if openCount < 0 {
 			log.Err("updateHandleCount :: Handle count is negative for path %s : %d", path, openCount)
-			return -1, fmt.Errorf("Handle count is negative for path %s : %d", path, openCount)
+			return -1, fmt.Errorf("handle count is negative for path %s : %d", path, openCount)
 		}
 		openCountStr := strconv.Itoa(openCount)
 		attr.Metadata["opencount"] = &openCountStr
@@ -412,7 +411,7 @@ func (m *BlobMetadataManager) deleteHeartbeat(nodeId string) error {
 		Name: heartbeatFilePath,
 	})
 	if err != nil {
-		if bloberror.HasCode(err, bloberror.BlobNotFound) {
+		if os.IsNotExist(err) || err == syscall.ENOENT {
 			log.Err("DeleteHeartbeat :: DeleteBlobInStorage failed since blob %s is already deleted", heartbeatFilePath)
 		} else {
 			log.Err("DeleteHeartbeat :: Failed to delete heartbeat blob %s in storage: %v", heartbeatFilePath, err)
