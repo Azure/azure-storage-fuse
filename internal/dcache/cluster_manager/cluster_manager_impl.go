@@ -54,11 +54,17 @@ type ClusterManagerImpl struct {
 	clusterMapticker *time.Ticker
 	nodeId           string
 	hostname         string
+  ipAddress string
 }
 
 // It will return online MVs as per local cache copy of cluster map
 func GetActiveMVs() []dcache.MirroredVolume {
 	return clusterManagerInstance.getActiveMVs()
+}
+
+// It will return the cache config as per local cache copy of cluster map
+func GetCacheConfig() *dcache.DCacheConfig {
+	return clusterManagerInstance.getCacheConfig()
 }
 
 // It will return offline/down MVs as per local cache copy of cluster map
@@ -72,8 +78,8 @@ func GetRVs(mvName string) []dcache.RawVolume {
 }
 
 // It will check if the given nodeId is online as per local cache copy of cluster map
-func IsAlive(nodeId string) bool {
-	return clusterManagerInstance.isAlive(nodeId)
+func IsOnline(nodeId string) bool {
+	return clusterManagerInstance.isOnline(nodeId)
 }
 
 // It will evaluate the lowest number of RVs for given rv Names
@@ -87,13 +93,13 @@ func NodeIdToIP(nodeId string) string {
 }
 
 // It will return the name of RV for the given RV FSID/Blkid as per local cache copy of cluster map
-func RVFsidToName(rvFsid string) string {
-	return clusterManagerInstance.rVFsidToName(rvFsid)
+func RvIdToName(rvId string) string {
+	return clusterManagerInstance.rvIdToName(rvId)
 }
 
 // It will return the RV FSID/Blkid of the given RV name as per local cache copy of cluster map
-func RVNameToFsid(rvName string) string {
-	return clusterManagerInstance.rVNameToFsid(rvName)
+func RvNameToId(rvName string) string {
+	return clusterManagerInstance.rvNameToId(rvName)
 }
 
 // It will return the nodeId/node uuid of the given RV name as per local cache copy of cluster map
@@ -115,6 +121,7 @@ func ReportRVDown(rvName string) error {
 func ReportRVFull(rvName string) error {
 	return clusterManagerInstance.reportRVFull(rvName)
 }
+
 func Stop() error {
 	return clusterManagerInstance.stop()
 }
@@ -122,6 +129,9 @@ func Stop() error {
 // start implements ClusterManager.
 func (cmi *ClusterManagerImpl) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache.RawVolume) error {
 	cmi.nodeId = rvs[0].NodeId
+
+	//TODO{Akku}: fix this assert to just work with 1 return value
+	common.Assert(common.IsValidUUID(cmi.nodeId))
 	err := cmi.checkAndCreateInitialClusterMap(dCacheConfig)
 	if err != nil {
 		return err
@@ -130,12 +140,15 @@ func (cmi *ClusterManagerImpl) start(dCacheConfig *dcache.DCacheConfig, rvs []dc
 	if err != nil {
 		return err
 	}
+	cmi.ipAddress = rvs[0].IPAddress
+	common.Assert(common.IsValidIP(cmi.ipAddress), fmt.Sprintf("Invalid Ip[%s] for nodeId[%s]", cmi.ipAddress, cmi.nodeId))
 	cmi.hbTicker = time.NewTicker(time.Duration(dCacheConfig.HeartbeatSeconds) * time.Second)
 	go func() {
 		for range cmi.hbTicker.C {
-			log.Trace("Scheduled task Heartbeat Punch triggered")
+			log.Debug("Scheduled task Heartbeat Punch triggered")
 			cmi.punchHeartBeat(rvs)
 		}
+		log.Info("Scheduled task Heartbeat Punch stopped")
 	}()
 	cmi.clusterMapticker = time.NewTicker(time.Duration(dCacheConfig.ClustermapEpoch) * time.Second)
 	go func() {
@@ -171,6 +184,11 @@ func (c *ClusterManagerImpl) getActiveMVs() []dcache.MirroredVolume {
 	return make([]dcache.MirroredVolume, 0)
 }
 
+// getCacheConfig implements ClusterManager.
+func (cmi *ClusterManagerImpl) getCacheConfig() *dcache.DCacheConfig {
+	return nil
+}
+
 // getDegradedMVs implements ClusterManager.
 func (c *ClusterManagerImpl) getDegradedMVs() []dcache.MirroredVolume {
 	return make([]dcache.MirroredVolume, 0)
@@ -181,8 +199,7 @@ func (c *ClusterManagerImpl) getRVs(mvName string) []dcache.RawVolume {
 	return make([]dcache.RawVolume, 0)
 }
 
-// isAlive implements ClusterManager.
-func (c *ClusterManagerImpl) isAlive(nodeId string) bool {
+func (c *ClusterManagerImpl) isOnline(nodeId string) bool {
 	return false
 }
 
@@ -196,13 +213,13 @@ func (c *ClusterManagerImpl) nodeIdToIP(nodeId string) string {
 	return ""
 }
 
-// rVFsidToName implements ClusterManager.
-func (c *ClusterManagerImpl) rVFsidToName(rvFsid string) string {
+// rvIdToName implements ClusterManager.
+func (c *ClusterManagerImpl) rvIdToName(rvId string) string {
 	return ""
 }
 
-// rVNameToFsid implements ClusterManager.
-func (c *ClusterManagerImpl) rVNameToFsid(rvName string) string {
+// rvNameToId implements ClusterManager.
+func (c *ClusterManagerImpl) rvNameToId(rvName string) string {
 	return ""
 }
 
@@ -233,12 +250,12 @@ func (cmi *ClusterManagerImpl) checkAndCreateInitialClusterMap(dCacheConfig *dca
 		return err
 	}
 	if isClusterMapExists {
-		log.Trace("ClusterManager::checkAndCreateInitialClusterMap : ClusterMap.json already exists")
+		log.Info("ClusterManager::checkAndCreateInitialClusterMap : ClusterMap already exists")
 		return nil
 	}
 	currentTime := time.Now().Unix()
 	clusterMap := dcache.ClusterMap{
-		Readonly:      evaluateReadOnlyState(),
+		Readonly:      true,
 		State:         dcache.StateReady,
 		Epoch:         1,
 		CreatedAt:     currentTime,
@@ -250,10 +267,18 @@ func (cmi *ClusterManagerImpl) checkAndCreateInitialClusterMap(dCacheConfig *dca
 	}
 	clusterMapBytes, err := json.Marshal(clusterMap)
 	if err != nil {
-		log.Err("ClusterManager::checkAndCreateInitialClusterMap : Cluster Map Marshalling fail : %+v, err %v", clusterMap, err)
+		log.Err("ClusterManager::checkAndCreateInitialClusterMap : ClusterMap Marshalling fail : %+v, err %v", clusterMap, err)
 		return err
 	}
-	return mm.CreateInitialClusterMap(clusterMapBytes)
+
+	err = mm.CreateInitialClusterMap(clusterMapBytes)
+	if err != nil {
+		log.Err("ClusterManager::checkAndCreateInitialClusterMap : ClusterMap creation fail : %+v, err %v", clusterMap, err)
+		return err
+	} else {
+		log.Info("ClusterManager::checkAndCreateInitialClusterMap : ClusterMap created successfully : %+v", clusterMap)
+	}
+	return err
 }
 
 func (cmi *ClusterManagerImpl) checkIfClusterMapExists() (bool, error) {
@@ -265,6 +290,7 @@ func (cmi *ClusterManagerImpl) checkIfClusterMapExists() (bool, error) {
 			return false, err
 		}
 	}
+	//TODO: Save the cluster map in local copy
 	return true, nil
 }
 
@@ -286,6 +312,21 @@ func evaluateMVsRVMapping() map[string]dcache.MirroredVolume {
 	// }
 	// mvRvMap["mv0"] = mv0
 	return mvRvMap
+}
+
+func fetchRVMap() map[string]dcache.RawVolume {
+	rvMap := map[string]dcache.RawVolume{}
+	// rv0 := dcache.RawVolume{
+	// 	HostNode:         "Node1",
+	// 	FSID:             "FSID1",
+	// 	FDID:             "FDID1",
+	// 	State:            "Active",
+	// 	TotalSpaceGB:     100,
+	// 	AvailableSpaceGB: 50,
+	// 	LocalCachePath:   "/path/to/cache",
+	// }
+	// rvMap["rv0"] = rv0
+	return rvMap
 }
 
 func (cmi *ClusterManagerImpl) checkAndUpdateRVMap(clusterMapRVMap map[string]dcache.RawVolume) (bool, error) {
@@ -376,7 +417,7 @@ func (cmi *ClusterManagerImpl) punchHeartBeat(rvList []dcache.RawVolume) {
 
 	listMyRVs(rvList)
 	hbData := dcache.HeartbeatData{
-		IPAddr:        rvList[0].IPAddress,
+		IPAddr:        cmi.ipAddress,
 		NodeID:        cmi.nodeId,
 		Hostname:      cmi.hostname,
 		LastHeartbeat: uint64(time.Now().Unix()),
@@ -391,7 +432,9 @@ func (cmi *ClusterManagerImpl) punchHeartBeat(rvList []dcache.RawVolume) {
 		// Create and update heartbeat file in storage with <nodeId>.hb
 		err = mm.UpdateHeartbeat(cmi.nodeId, data)
 		common.Assert(err == nil, fmt.Sprintf("Error updating heartbeat file with nodeId %s in storage: %v", cmi.nodeId, err))
-		log.Trace("AddHeartBeat: Heartbeat file updated successfully")
+		log.Debug("AddHeartBeat: Heartbeat file updated successfully %+v", hbData)
+	} else {
+		log.Warn("Error Updating heartbeat for nodeId %s with data %+v : error - %v", cmi.nodeId, hbData, err)
 	}
 }
 
@@ -436,9 +479,9 @@ func listMyRVs(rvList []dcache.RawVolume) {
 		common.Assert(err == nil, fmt.Sprintf("Error getting disk space metrics for path %s for punching heartbeat: %v", rv.LocalCachePath, err))
 		if err != nil {
 			availableSpace = 0
+			log.Warn("Error getting disk space metrics for path %s for punching heartbeat that's why forcing available Space to set to zero : %v", rv.LocalCachePath, err)
 		}
 		rvList[index].AvailableSpace = availableSpace
-		// TODO{Akku}: If available space is less than 10% of total space, set state to readOnly
 		rvList[index].State = dcache.StateOnline
 	}
 }

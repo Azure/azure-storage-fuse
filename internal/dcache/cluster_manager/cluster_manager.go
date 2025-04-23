@@ -53,6 +53,9 @@ type ClusterManager interface {
 	//It will return online MVs as per local cache copy of cluster map
 	getActiveMVs() []dcache.MirroredVolume
 
+	//It will return the cache config as per local cache copy of cluster map
+	getCacheConfig() *dcache.DCacheConfig
+
 	//It will return offline/down MVs as per local cache copy of cluster map
 	getDegradedMVs() []dcache.MirroredVolume
 
@@ -60,7 +63,7 @@ type ClusterManager interface {
 	getRVs(mvName string) []dcache.RawVolume
 
 	//It will check if the given nodeId is online as per local cache copy of cluster map
-	isAlive(nodeId string) bool
+	isOnline(nodeId string) bool
 
 	//It will evaluate the lowest number of RVs for given rv Names
 	lowestNumberRV(rvNames []string) []string
@@ -69,10 +72,10 @@ type ClusterManager interface {
 	nodeIdToIP(nodeId string) string
 
 	//It will return the name of RV for the given RV FSID/Blkid as per local cache copy of cluster map
-	rVFsidToName(rvFsid string) string
+	rvIdToName(rvId string) string
 
 	//It will return the RV FSID/Blkid of the given RV name as per local cache copy of cluster map
-	rVNameToFsid(rvName string) string
+	rvNameToId(rvName string) string
 
 	//It will return the nodeId/node uuid of the given RV name as per local cache copy of cluster map
 	rVNameToNodeId(rvName string) string
