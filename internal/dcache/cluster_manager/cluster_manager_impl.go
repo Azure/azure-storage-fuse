@@ -378,12 +378,18 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 	}
 
 	now := time.Now().Unix()
-	stale := now-clusterMap.LastUpdatedAt > int64(clusterMap.Config.ClustermapEpoch)
+	if clusterMap.LastUpdatedAt > now {
+		log.Warn("updateStorageClusterMapIfRequired: skipping as it is already updated LastUpdatedAt(%s) and current time(%s) ", clusterMap.LastUpdatedAt, now)
+		return
+	}
+	clusterMapAge := now - clusterMap.LastUpdatedAt
+
+	stale := clusterMapAge > int64(clusterMap.Config.ClustermapEpoch+thresholdEpochTime)
 	leader := clusterMap.LastUpdatedBy == cmi.nodeId
 
 	// Skip if we're neither leader nor the map is stale
 	if !leader && !stale {
-		log.Trace("updateStorageClusterMapIfRequired: skipping, node (%s) is not leader and Cluster map is fresh (last update %d).", clusterMap.LastUpdatedAt, cmi.nodeId)
+		log.Warn("updateStorageClusterMapIfRequired: skipping, node (%s) is not leader and Cluster map is fresh (last update %d).", clusterMap.LastUpdatedAt, cmi.nodeId)
 		return
 	} else {
 		// TODO{Akku}: UpdateClusterMapStart should also expect a nodeId. In case leader is dead
@@ -505,6 +511,8 @@ var (
 	clusterManagerInstance ClusterManager = &ClusterManagerImpl{}
 	initCalled                            = false
 )
+
+const thresholdEpochTime = 60
 
 func Init(dCacheConfig *dcache.DCacheConfig, rvs []dcache.RawVolume) error {
 	common.Assert(!initCalled, "Cluster Manager Init should only be called once")
