@@ -38,6 +38,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
+	models "github.com/Azure/azure-storage-fuse/v2/internal/dcache/file_manager/models"
 )
 
 var (
@@ -64,15 +65,15 @@ func Init(storageCallback dcache.StorageCallbacks, cacheId string) {
 
 // Package-level functions that delegate to the singleton instance
 
-func CreateFileInit(filePath string, fileMetadata *dcache.FileMetadata) error {
+func CreateFileInit(filePath string, fileMetadata *models.FileMetadata) error {
 	return metadataManagerInstance.createFileInit(filePath, fileMetadata)
 }
 
-func CreateFileFinalize(filePath string, fileMetadata *dcache.FileMetadata) error {
+func CreateFileFinalize(filePath string, fileMetadata *models.FileMetadata) error {
 	return metadataManagerInstance.createFileFinalize(filePath, fileMetadata)
 }
 
-func GetFile(filePath string) (*dcache.FileMetadata, error) {
+func GetFile(filePath string) (*models.FileMetadata, error) {
 	return metadataManagerInstance.getFile(filePath)
 }
 
@@ -125,19 +126,19 @@ func GetClusterMap() ([]byte, *azcore.ETag, error) {
 }
 
 // CreateFileInit creates the initial metadata for a file
-func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata *dcache.FileMetadata) error {
+func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata *models.FileMetadata) error {
 	// Dummy implementation
 	return nil
 }
 
 // CreateFileFinalize finalizes the metadata for a file
-func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata *dcache.FileMetadata) error {
+func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata *models.FileMetadata) error {
 	// Dummy implementation
 	return nil
 }
 
 // GetFile reads and returns the content of metadata for a file
-func (m *BlobMetadataManager) getFile(filePath string) (*dcache.FileMetadata, error) {
+func (m *BlobMetadataManager) getFile(filePath string) (*models.FileMetadata, error) {
 	// Dummy implementation
 	return nil, nil
 }

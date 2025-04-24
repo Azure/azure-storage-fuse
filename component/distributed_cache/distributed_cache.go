@@ -36,6 +36,7 @@ package distributed_cache
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -46,6 +47,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/cluster_manager"
+	fm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/file_manager"
 	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
@@ -349,7 +351,26 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 	return dirList, token, nil
 }
 
+func (dc *DistributedCache) CreateFile(options internal.CreateFileOptions) (*handlemap.Handle, error) {
+	file := fm.NewFile(options.Name)
+	err := mm.CreateFileInit(options.Name, file.FileMetadata)
+	if err != nil {
+		log.Debug("DistributedCache::CreateFile : File Creation failed for file :  %s with err : %s", options.Name, err.Error())
+		return nil, err
+	}
+
+	// The metadata file was successfully created for the file
+	handle := handlemap.NewHandle(options.Name)
+	handle.DcacheFObj = file
+
+	return handle, nil
+}
+
 func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
+	if options.Flags&os.O_WRONLY != 0 || options.Flags&os.O_RDWR != 0 {
+		return nil, syscall.EACCES
+	}
+
 	return nil, syscall.ENOTSUP
 }
 
