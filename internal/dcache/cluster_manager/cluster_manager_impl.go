@@ -407,7 +407,7 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 			clusterMap.LastUpdatedAt, now)
 
 		// Assert, taking into account potential clock skew.
-		common.Assert((clusterMap.LastUpdatedAt-now) < 300, "Clock skew happening during clustermap update.")
+		common.Assert((clusterMap.LastUpdatedAt-now) < 300, "cluster.LastUpdatedAt is too much in future")
 		return
 	}
 
@@ -421,57 +421,62 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 	stale := clusterMapAge > int64(clusterMap.Config.ClustermapEpoch+thresholdEpochTime)
 	leader := clusterMap.LastUpdatedBy == cmi.nodeId
 
-	// Skip if clustermap already is checking state
+	//stale for checking state can be different than the stale for ready state
+	// TODO{Akku}: update stale calculation for checking state
+	// Skip if clustermap already in checking state
 	if clusterMap.State == dcache.StateChecking && !stale {
-		log.Trace("updateStorageClusterMapIfRequired: skipping,  Cluster map is under update")
+		log.Debug("updateStorageClusterMapIfRequired: skipping,  Cluster map is under update by (leader %s). current node (%s)", clusterMap.LastUpdatedBy, cmi.nodeId)
+
+		//Leader node should have updated the state to checking and it should not find the state to checking.
+		common.Assert(!leader, "It's not a leader")
 		return
 	}
 
 	// Skip if we're neither leader nor the clustermap is stale
 	if !leader && !stale {
-		log.Info("updateStorageClusterMapIfRequired: skipping, node (%s) is not leader and Cluster map is fresh (last update %d).", clusterMap.LastUpdatedAt, cmi.nodeId)
+		log.Info("updateStorageClusterMapIfRequired: skipping, node (%s) is not leader (leader is %s) and clusterMap is fresh (last updated at epoch %d, now %d).",
+			cmi.nodeId, clusterMap.LastUpdatedBy, clusterMap.LastUpdatedAt, now)
 		return
-	} else {
-		clusterMap.LastUpdatedBy = cmi.nodeId
-		clusterMap.State = dcache.StateChecking
-		clusterMap.LastUpdatedAt = now
-		updatedClusterMapBytes, err := json.Marshal(clusterMap)
-		if err != nil {
-			log.Err("updateStorageClusterMapIfRequired: Marshal failed for clustermap %+v: %v", clusterMap, err)
-			return
-		}
-
-		if err = mm.UpdateClusterMapStart(updatedClusterMapBytes, etag); err != nil {
-			log.Err("updateStorageClusterMapIfRequired: start Clustermap update failed for nodeId %s: %v", cmi.nodeId, err)
-			return
-		}
-
-		changed, err := cmi.reconcileRVMap(clusterMap.RVMap)
-		if err != nil {
-			log.Err("updateStorageClusterMapIfRequired: failed to reconcile RV mapping: %v", err)
-			return
-		}
-		if changed {
-			//TODO{Akku}: evaluateMVsRVMapping()
-		}
-
-		clusterMap.LastUpdatedAt = now
-		clusterMap.State = dcache.StateReady
-		updatedClusterMapBytes, err = json.Marshal(clusterMap)
-		if err != nil {
-			log.Err("updateStorageClusterMapIfRequired: Marshal failed for clustermap %+v: %v", clusterMap, err)
-			return
-		}
-
-		//TODO{Akku}: Make sure end update is happing with the same node as of start update
-		if err = mm.UpdateClusterMapEnd(updatedClusterMapBytes); err != nil {
-			log.Err("updateStorageClusterMapIfRequired: end failed to update cluster map %+v, error: %v", clusterMap, err)
-		} else {
-			log.Debug("updateStorageClusterMapIfRequired: cluster map %+v updated by %s at %d", clusterMap, cmi.nodeId, now)
-		}
-
-		//iNotify replication manager
 	}
+	clusterMap.LastUpdatedBy = cmi.nodeId
+	clusterMap.State = dcache.StateChecking
+	clusterMap.LastUpdatedAt = now
+	updatedClusterMapBytes, err := json.Marshal(clusterMap)
+	if err != nil {
+		log.Err("updateStorageClusterMapIfRequired: Marshal failed for clustermap %+v: %v", clusterMap, err)
+		return
+	}
+
+	if err = mm.UpdateClusterMapStart(updatedClusterMapBytes, etag); err != nil {
+		log.Err("updateStorageClusterMapIfRequired: start Clustermap update failed for nodeId %s: %v", cmi.nodeId, err)
+		return
+	}
+
+	changed, err := cmi.reconcileRVMap(clusterMap.RVMap)
+	if err != nil {
+		log.Err("updateStorageClusterMapIfRequired: failed to reconcile RV mapping: %v", err)
+		return
+	}
+	if changed {
+		//TODO{Akku}: evaluateMVsRVMapping()
+	}
+
+	clusterMap.LastUpdatedAt = now
+	clusterMap.State = dcache.StateReady
+	updatedClusterMapBytes, err = json.Marshal(clusterMap)
+	if err != nil {
+		log.Err("updateStorageClusterMapIfRequired: Marshal failed for clustermap %+v: %v", clusterMap, err)
+		return
+	}
+
+	//TODO{Akku}: Make sure end update is happing with the same node as of start update
+	if err = mm.UpdateClusterMapEnd(updatedClusterMapBytes); err != nil {
+		log.Err("updateStorageClusterMapIfRequired: end failed to update cluster map %+v, error: %v", clusterMap, err)
+	} else {
+		log.Debug("updateStorageClusterMapIfRequired: cluster map %+v updated by %s at %d", clusterMap, cmi.nodeId, now)
+	}
+
+	//iNotify replication manager
 
 }
 
