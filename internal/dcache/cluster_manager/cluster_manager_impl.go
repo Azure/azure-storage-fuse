@@ -428,7 +428,7 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 		log.Debug("updateStorageClusterMapIfRequired: skipping,  Cluster map is under update by (leader %s). current node (%s)", clusterMap.LastUpdatedBy, cmi.nodeId)
 
 		//Leader node should have updated the state to checking and it should not find the state to checking.
-		common.Assert(!leader, "It's not a leader")
+		common.Assert(!leader, "We don't expect leader to see the clustermap in checking state")
 		return
 	}
 
@@ -438,10 +438,11 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 			cmi.nodeId, clusterMap.LastUpdatedBy, clusterMap.LastUpdatedAt, now)
 		return
 	}
+
 	clusterMap.LastUpdatedBy = cmi.nodeId
 	clusterMap.State = dcache.StateChecking
-	clusterMap.LastUpdatedAt = now
 	updatedClusterMapBytes, err := json.Marshal(clusterMap)
+
 	if err != nil {
 		log.Err("updateStorageClusterMapIfRequired: Marshal failed for clustermap %+v: %v", clusterMap, err)
 		return
