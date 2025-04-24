@@ -390,7 +390,7 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 
 	// Skip if we're neither leader nor the map is stale
 	if !leader && !stale {
-		log.Warn("updateStorageClusterMapIfRequired: skipping, node (%s) is not leader and Cluster map is fresh (last update %d).", clusterMap.LastUpdatedAt, cmi.nodeId)
+		log.Info("updateStorageClusterMapIfRequired: skipping, node (%s) is not leader and Cluster map is fresh (last update %d).", clusterMap.LastUpdatedAt, cmi.nodeId)
 		return
 	} else {
 		// TODO{Akku}: UpdateClusterMapStart should also expect a nodeId. In case leader is dead
