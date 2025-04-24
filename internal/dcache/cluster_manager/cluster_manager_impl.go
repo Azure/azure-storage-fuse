@@ -450,12 +450,14 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 
 	if err = mm.UpdateClusterMapStart(updatedClusterMapBytes, etag); err != nil {
 		log.Err("updateStorageClusterMapIfRequired: start Clustermap update failed for nodeId %s: %v", cmi.nodeId, err)
+		common.Assert(false, "")
 		return
 	}
 
 	changed, err := cmi.reconcileRVMap(clusterMap.RVMap)
 	if err != nil {
 		log.Err("updateStorageClusterMapIfRequired: failed to reconcile RV mapping: %v", err)
+		common.Assert(false, "")
 		return
 	}
 	if changed {
@@ -475,6 +477,7 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 	//TODO{Akku}: Make sure end update is happing with the same node as of start update
 	if err = mm.UpdateClusterMapEnd(updatedClusterMapBytes); err != nil {
 		log.Err("updateStorageClusterMapIfRequired: end failed to update cluster map %+v, error: %v", clusterMap, err)
+		common.Assert(false, "")
 	} else {
 		log.Info("updateStorageClusterMapIfRequired: cluster map %+v updated by %s at %d", clusterMap, cmi.nodeId, now)
 	}
