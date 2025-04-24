@@ -384,6 +384,7 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 	}
 	clusterMapAge := now - clusterMap.LastUpdatedAt
 
+	const thresholdEpochTime = 60
 	stale := clusterMapAge > int64(clusterMap.Config.ClustermapEpoch+thresholdEpochTime)
 	leader := clusterMap.LastUpdatedBy == cmi.nodeId
 
@@ -511,8 +512,6 @@ var (
 	clusterManagerInstance ClusterManager = &ClusterManagerImpl{}
 	initCalled                            = false
 )
-
-const thresholdEpochTime = 60
 
 func Init(dCacheConfig *dcache.DCacheConfig, rvs []dcache.RawVolume) error {
 	common.Assert(!initCalled, "Cluster Manager Init should only be called once")
