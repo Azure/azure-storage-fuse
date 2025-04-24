@@ -403,11 +403,11 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 
 	now := time.Now().Unix()
 	if clusterMap.LastUpdatedAt > now {
-		log.Warn("updateStorageClusterMapIfRequired: LastUpdatedAt(%s) in future, now(%s), skipping update",
+		log.Warn("updateStorageClusterMapIfRequired: LastUpdatedAt(%d) in future, now(%d), skipping update",
 			clusterMap.LastUpdatedAt, now)
 
 		// Assert, taking into account potential clock skew.
-		common.Assert((clusterMap.LastUpdatedAt-now) < int64(clusterMap.Config.ClustermapEpoch), "Clock skew happening which clustermap update.")
+		common.Assert((clusterMap.LastUpdatedAt-now) < 300, "Clock skew happening during clustermap update.")
 		return
 	}
 
