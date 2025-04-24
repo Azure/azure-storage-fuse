@@ -41,7 +41,7 @@ type MirroredVolume struct {
 type RawVolume struct {
 	NodeId         string    `json:"node_id,omitempty"`
 	IPAddress      string    `json:"ipaddr,omitempty"`
-	FSID           string    `json:"fsid,omitempty"`
+	RvId           string    `json:"rvid,omitempty"`
 	FDID           string    `json:"fdid,omitempty"`
 	State          StateEnum `json:"state,omitempty"`
 	TotalSpace     uint64    `json:"total_space,omitempty"`
@@ -58,6 +58,7 @@ const (
 	StateReady    StateEnum = "ready"
 	StateSyncing  StateEnum = "syncing"
 	StateReadOnly StateEnum = "readOnly"
+	StateChecking StateEnum = "checking"
 )
 
 type ClusterMap struct {
