@@ -89,6 +89,22 @@ func selectOnlineRVForMV(mvName string) (string, error) {
 	return onlineRVs[index], nil
 }
 
+// check if all the component RVs are online
+// this is used to check if the MV is online or not
+func checkComponentRVsOnline(componentRVs []string) bool {
+	for _, rv := range componentRVs {
+		if strings.Contains(rv, "=") {
+			// this is not an online RV if flags are present
+			// For example, rv1=offline, rv5=outofsync, etc.
+			return false
+		}
+
+		// TODO: Hello RPC call can be used to check if the node hosting this RV is online
+	}
+
+	return true
+}
+
 // TODO:: integration: sample method, will be later removed after integrating with cluster manager
 // call cluster manager helper method to get the component RVs for the given MV
 func getComponentRVsForMV(mvName string) []string {

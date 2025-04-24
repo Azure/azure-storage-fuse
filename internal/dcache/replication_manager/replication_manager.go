@@ -59,7 +59,7 @@ func ReadMV(req *ReadMvRequest) (*ReadMvResponse, error) {
 		return nil, fmt.Errorf("invalid ReadMV request parameters: %+v", *req)
 	}
 
-	if req.Length > int64(req.ChunkSizeInMB)*1024*1024 {
+	if req.Length > req.ChunkSizeInMB*common.MbToBytes {
 		log.Err("ReplicationManager::ReadMV: Read length %v exceeds chunk size %vMB", req.Length, req.ChunkSizeInMB)
 		common.Assert(false, fmt.Sprintf("read length %v exceeds chunk size %vMB", req.Length, req.ChunkSizeInMB))
 		return nil, fmt.Errorf("read length %v exceeds chunk size %vMB", req.Length, req.ChunkSizeInMB)
@@ -69,10 +69,10 @@ func ReadMV(req *ReadMvRequest) (*ReadMvResponse, error) {
 	// chunks are stored in RV as,
 	// <cacheDir>/<mvName>/<fileID>.<offsetInMB>.data and
 	// <cacheDir>/<mvName>/<fileID>.<offsetInMB>.hash
-	offsetInMB := (req.Offset / req.ChunkSizeInMB * (1024 * 1024)) * req.ChunkSizeInMB
+	offsetInMB := (req.Offset / (req.ChunkSizeInMB * common.MbToBytes)) * req.ChunkSizeInMB
 
 	// relative offset within the chunk
-	relativeOffset := req.Offset - (offsetInMB * 1024 * 1024)
+	relativeOffset := req.Offset - (offsetInMB * common.MbToBytes)
 
 	selectedRvName, err := selectOnlineRVForMV(req.MvName)
 	if err != nil {
@@ -114,11 +114,12 @@ func ReadMV(req *ReadMvRequest) (*ReadMvResponse, error) {
 		return nil, err
 	}
 
-	common.Assert(rpcResp != nil, "GetChunk RPC response is nil for request %+v", *rpcReq)
-	common.Assert(rpcResp.Chunk != nil, "chunk in GetChunk RPC response is nil for request %+v", *rpcReq)
-	common.Assert(rpcResp.Chunk.Address != nil, "address of chunk in GetChunk RPC response is nil for request %+v", *rpcReq)
+	common.Assert(rpcResp != nil, fmt.Sprintf("GetChunk RPC response is nil for request %+v", *rpcReq))
+	common.Assert(rpcResp.Chunk != nil, fmt.Sprintf("chunk in GetChunk RPC response is nil for request %+v", *rpcReq))
+	common.Assert(rpcResp.Chunk.Address != nil, fmt.Sprintf("address of chunk in GetChunk RPC response is nil for request %+v", *rpcReq))
 
-	log.Debug("ReplicationManager::ReadMV: GetChunk RPC response: chunk lmt %v, time taken %v, component RVs %v, chunk address %+v", rpcResp.ChunkWriteTime, rpcResp.TimeTaken, rpcResp.PeerRV, *rpcResp.Chunk.Address)
+	log.Debug("ReplicationManager::ReadMV: GetChunk RPC response: chunk lmt %v, time taken %v, component RVs %v, chunk address %+v",
+		rpcResp.ChunkWriteTime, rpcResp.TimeTaken, rpcResp.PeerRV, *rpcResp.Chunk.Address)
 
 	// TODO:  should we validate the hash of the chunk here?
 
@@ -131,9 +132,101 @@ func ReadMV(req *ReadMvRequest) (*ReadMvResponse, error) {
 }
 
 func WriteMV(req *WriteMvRequest) (*WriteMvResponse, error) {
-	return nil, nil
-}
+	if req == nil {
+		log.Err("ReplicationManager::WriteMV: Received nil WriteMV request")
+		common.Assert(false, "received nil WriteMV request")
+		return nil, fmt.Errorf("received nil WriteMV request")
+	}
+	log.Debug("ReplicationManager::WriteMV: Received WriteMV request: file id %v, rv id %v, mv name %v, offset %v, chunk size in MB %v",
+		req.FileID, req.RvID, req.MvName, req.Offset, req.ChunkSizeInMB)
 
-func OfflineMV(req *OfflineMvRequest) (*OfflineMvResponse, error) {
-	return nil, nil
+	if req.FileID == "" || req.RvID == "" || req.MvName == "" || req.Offset < 0 || len(req.Data) == 0 || req.Hash == "" || req.ChunkSizeInMB <= 0 {
+		log.Err("ReplicationManager::WriteMV: Invalid WriteMV request parameters")
+		common.Assert(false, fmt.Sprintf("invalid WriteMV request parameters"))
+		return nil, fmt.Errorf("invalid WriteMV request parameters")
+	}
+
+	if len(req.Data) != int(req.ChunkSizeInMB*common.MbToBytes) {
+		log.Err("ReplicationManager::WriteMV: Write data length %v is not equal to chunk size %vMB", len(req.Data), req.ChunkSizeInMB)
+		common.Assert(false, fmt.Sprintf("write data length %v is not equal to chunk size %vMB", len(req.Data), req.ChunkSizeInMB))
+		return nil, fmt.Errorf("write data length %v is not equal to chunk size %vMB", len(req.Data), req.ChunkSizeInMB)
+	}
+
+	// offset given in request should be multiple of chunk size
+	if req.Offset%(req.ChunkSizeInMB*common.MbToBytes) != 0 {
+		log.Err("ReplicationManager::WriteMV: Write offset %v is not multiple of chunk size %vMB", req.Offset, req.ChunkSizeInMB)
+		common.Assert(false, fmt.Sprintf("write offset %v is not multiple of chunk size %vMB", req.Offset, req.ChunkSizeInMB))
+		return nil, fmt.Errorf("write offset %v is not multiple of chunk size %vMB", req.Offset, req.ChunkSizeInMB)
+	}
+
+	// calculate the offset in MB which is multiple of chunk size
+	// chunks are stored in RV as,
+	// <cacheDir>/<mvName>/<fileID>.<offsetInMB>.data and
+	// <cacheDir>/<mvName>/<fileID>.<offsetInMB>.hash
+	offsetInMB := (req.Offset / (req.ChunkSizeInMB * common.MbToBytes)) * req.ChunkSizeInMB
+
+	componentRVs := getComponentRVsForMV(req.MvName)
+	if len(componentRVs) == 0 {
+		log.Err("ReplicationManager::WriteMV: No component RVs found for the given MV %s", req.MvName)
+		common.Assert(false, "no component RVs found for the given MV", req.MvName)
+		return nil, fmt.Errorf("no component RVs found for the given MV %s", req.MvName)
+	}
+
+	// check if the mv is online. This is done by checking if all the component RVs are online.
+	// If any of the component RVs are offline, then fail this request.
+	// The caller of WriteMV should make sure that the MV is online at the time calling this function.
+	// This does not ensure that the MV will be online at the time of writing.
+	// If any of the PutChunk RPC calls fail, then the degradeMV method should be called.
+	rvsValid := checkComponentRVsOnline(componentRVs)
+	if !rvsValid {
+		log.Err("ReplicationManager::WriteMV: Not all component RVs are online for the given MV %s", req.MvName)
+		common.Assert(false, "not all component RVs are online for the given MV", req.MvName)
+		return nil, fmt.Errorf("not all component RVs are online for the given MV %s", req.MvName)
+	}
+
+	log.Debug("ReplicationManager::WriteMV: Component RVs for the given MV %s are: %v", req.MvName, componentRVs)
+
+	// write to all component RVs
+	// TODO: put chunk to each component RV can be done in parallel
+	for _, rv := range componentRVs {
+		rvID := getRvIDFromRvName(rv)
+		common.Assert(len(rvID) > 0, fmt.Sprintf("RV ID is empty for RV %s", rv))
+
+		targetNodeID := getNodeIDForRVName(rv)
+		common.Assert(len(targetNodeID) > 0, fmt.Sprintf("target node ID is empty for RV %s", rv))
+
+		log.Debug("ReplicationManager::WriteMV: Writing to RV %s having RV id %s and is hosted in node id %s", rv, rvID, targetNodeID)
+
+		rpcReq := &models.PutChunkRequest{
+			Chunk: &models.Chunk{
+				Address: &models.Address{
+					FileID:     req.FileID,
+					FsID:       rvID,
+					MvID:       req.MvName,
+					OffsetInMB: offsetInMB,
+				},
+				Data: req.Data,
+				Hash: req.Hash,
+			},
+			Length: req.ChunkSizeInMB * common.MbToBytes,
+			IsSync: false, // this is regular client write
+			// ComponentRV: componentRVs,
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), RPCClientTimeout*time.Second)
+		defer cancel()
+
+		rpcResp, err := rpc_client.PutChunk(ctx, targetNodeID, rpcReq)
+		if err != nil {
+			log.Err("ReplicationManager::WriteMV: Failed to put chunk to node %s [%v]", targetNodeID, err)
+			common.Assert(false, fmt.Sprintf("failed to put chunk to node %s", targetNodeID))
+			// TODO: run degradeMV method to degrade the MV
+			return nil, err
+		}
+
+		common.Assert(rpcResp != nil, "PutChunk RPC response is nil")
+		log.Debug("ReplicationManager::WriteMV: PutChunk RPC response: %+v", *rpcResp)
+	}
+
+	return &WriteMvResponse{}, nil
 }
