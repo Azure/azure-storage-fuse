@@ -141,7 +141,11 @@ func (dc *DistributedCache) Start(ctx context.Context) error {
 	dc.storageCallback = initStorageCallback(
 		dc.NextComponent(),
 		dc.azstorage)
-	mm.Init(dc.storageCallback, dc.cfg.CacheID)
+
+	err := mm.Init(dc.storageCallback, dc.cfg.CacheID)
+	if err != nil {
+		return log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to start metadata manager : %v]", err))
+	}
 
 	errString := dc.startClusterManager()
 	if errString != "" {
@@ -189,8 +193,8 @@ func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
 	}
 	rvList := make([]dcache.RawVolume, len(dc.cfg.CacheDirs))
 	for index, path := range dc.cfg.CacheDirs {
-		// TODO{Akku} : More than 1 cache dir with same fsid for rv, must fail distributed cache startup
-		fsid, err := getBlockDeviceUUId(path)
+		// TODO{Akku} : More than 1 cache dir with same rvId for rv, must fail distributed cache startup
+		rvId, err := getBlockDeviceUUId(path)
 		if err != nil {
 			return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to get raw volume UUID: %v]", err))
 		}
@@ -203,7 +207,7 @@ func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
 		rvList[index] = dcache.RawVolume{
 			NodeId:         uuidVal,
 			IPAddress:      ipaddr,
-			FSID:           fsid,
+			RvId:           rvId,
 			FDID:           "0",
 			TotalSpace:     totalSpace,
 			AvailableSpace: availableSpace,
@@ -353,11 +357,11 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 
 func (dc *DistributedCache) CreateFile(options internal.CreateFileOptions) (*handlemap.Handle, error) {
 	file := fm.NewFile(options.Name)
-	err := mm.CreateFileInit(options.Name, file.FileMetadata)
-	if err != nil {
-		log.Debug("DistributedCache::CreateFile : File Creation failed for file :  %s with err : %s", options.Name, err.Error())
-		return nil, err
-	}
+	// err := mm.CreateFileInit(options.Name, file.FileMetadata)
+	// if err != nil {
+	// 	log.Debug("DistributedCache::CreateFile : File Creation failed for file :  %s with err : %s", options.Name, err.Error())
+	// 	return nil, err
+	// }
 
 	// The metadata file was successfully created for the file
 	handle := handlemap.NewHandle(options.Name)

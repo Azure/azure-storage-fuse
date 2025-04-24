@@ -54,7 +54,7 @@ type StorageCallbacks interface {
 	ReadDirFromStorage(options internal.ReadDirOptions) ([]*internal.ObjAttr, error)
 
 	//It will Set the properties of the blob in storage
-	SetMetaPropertiesInStorage(path string, properties map[string]string) error
+	SetMetaPropertiesInStorage(options internal.SetMetadataOptions) error
 
 	//It will Delete the blob through next Component whichever is in pipeline
 	DeleteBlob(opt internal.DeleteFileOptions) error
@@ -72,5 +72,11 @@ type StorageCallbacks interface {
 	ReadDir(options internal.ReadDirOptions) ([]*internal.ObjAttr, error)
 
 	//It will Set the properties of the blob through next Component whichever is in pipeline
-	SetMetaProperties(path string, properties map[string]string) error
+	SetMetaProperties(options internal.SetMetadataOptions) error
+
+	//It will Create the directory through next Component whichever is in pipeline
+	CreateDir(options internal.CreateDirOptions) error
+
+	//It will Create the directory in storage
+	CreateDirInStorage(options internal.CreateDirOptions) error
 }

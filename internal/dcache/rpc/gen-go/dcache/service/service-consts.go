@@ -39,10 +39,9 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"time"
-	thrift "github.com/apache/thrift/lib/go/thrift"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
-
+	thrift "github.com/apache/thrift/lib/go/thrift"
+	"time"
 )
 
 // (needed to ensure safety because of naive import list construction.)
@@ -56,4 +55,3 @@ var _ = models.GoUnusedProtection__
 
 func init() {
 }
-
