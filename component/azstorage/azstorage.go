@@ -591,6 +591,10 @@ func (az *AzStorage) WriteFromBuffer(opt internal.WriteFromBufferOptions) error 
 	return az.storage.WriteFromBuffer(opt)
 }
 
+func (az *AzStorage) SetMetadata(options internal.SetMetadataOptions) error {
+	return az.storage.SetMetadata(options.Path, options.Metadata, options.Etag, options.Overwrite)
+}
+
 // TODO : Below methods are pending to be implemented
 // SetAttr(string, internal.ObjAttr) error
 // UnlinkFile(string) error
