@@ -34,17 +34,49 @@
 package clustermanager
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"syscall"
 	"testing"
 
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	"github.com/stretchr/testify/suite"
+)
+
+var (
+	// shared map for heartbeat mocks
+	mockHeartbeatData map[string][]byte
 )
 
 type ClusterManagerImplTestSuite struct {
 	suite.Suite
-	cmi ClusterManagerImpl
+	cmi              ClusterManagerImpl
+	origGetAllNodes  func() ([]string, error)
+	origGetHeartbeat func(string) ([]byte, error)
+}
+
+func (suite *ClusterManagerImplTestSuite) SetupTest() {
+	mockHeartbeatData = make(map[string][]byte)
+
+	// save originals
+	suite.origGetAllNodes = getAllNodes
+	suite.origGetHeartbeat = getHeartbeat
+
+	// override getHeartbeat to use mockHeartbeatData
+	getHeartbeat = func(nodeId string) ([]byte, error) {
+		if b, ok := mockHeartbeatData[nodeId]; ok {
+			return b, nil
+		}
+		return nil, fmt.Errorf("heartbeat not found for node %s", nodeId)
+	}
+}
+
+func (suite *ClusterManagerImplTestSuite) TearDownTest() {
+	// restore originals
+	getAllNodes = suite.origGetAllNodes
+	getHeartbeat = suite.origGetHeartbeat
 }
 
 func (suite *ClusterManagerImplTestSuite) TestCheckIfClusterMapExists() {
@@ -52,166 +84,150 @@ func (suite *ClusterManagerImplTestSuite) TestCheckIfClusterMapExists() {
 	defer func() { getClusterMap = orig }()
 
 	// 1) success
-	getClusterMap = func() error { return nil }
+	getClusterMap = func() ([]byte, *string, error) { return nil, nil, nil }
 	exists, err := suite.cmi.checkIfClusterMapExists()
 	suite.NoError(err)
 	suite.True(exists)
 
 	// 2) os.ErrNotExist
-	getClusterMap = func() error { return os.ErrNotExist }
+	getClusterMap = func() ([]byte, *string, error) { return nil, nil, os.ErrNotExist }
 	exists, err = suite.cmi.checkIfClusterMapExists()
 	suite.NoError(err)
 	suite.False(exists)
 
 	// 3) syscall.ENOENT
-	getClusterMap = func() error { return syscall.ENOENT }
+	getClusterMap = func() ([]byte, *string, error) { return nil, nil, syscall.ENOENT }
 	exists, err = suite.cmi.checkIfClusterMapExists()
 	suite.NoError(err)
 	suite.False(exists)
 
 	// 4) other error
 	testErr := errors.New("boom")
-	getClusterMap = func() error { return testErr }
+	getClusterMap = func() ([]byte, *string, error) { return nil, nil, testErr }
 	exists, err = suite.cmi.checkIfClusterMapExists()
 	suite.EqualError(err, "boom")
 	suite.False(exists)
 }
 
-
-func createMockHeartbeat(nodeID, fsid string, available, total uint64) (internal.ObjAttr, string, []byte) {
-	attr := internal.ObjAttr{Name: nodeID + ".hb", Path: "/fakeStorage/Nodes/" + nodeID + ".hb"}
-	hbData := dcache.HeartbeatData{
+// replace the old mockHeartbeat with this:
+func mockHeartbeat(nodeID, rvId string, available, total uint64) {
+	hb := dcache.HeartbeatData{
 		NodeID: nodeID,
 		RVList: []dcache.RawVolume{
-			{FSID: fsid, State: dcache.StateOnline, AvailableSpace: available, TotalSpace: total},
+			{RvId: rvId, State: dcache.StateOnline, AvailableSpace: available, TotalSpace: total},
 		},
 	}
-	hbBytes, _ := json.Marshal(hbData)
-	return attr, attr.Path, hbBytes
+	hbBytes, _ := json.Marshal(hb)
+	mockHeartbeatData[nodeID] = hbBytes
 }
 
-// TestCheckAndUpdateRVMapEmptyClusterMap tests scenario 1:
-// clusterMap having no RVs, but we have new data from heartbeats.
-func (suite *clusterManagerImplTestSuite) TestCheckAndUpdateRVMapNoRVInClusterMap() {
-	attrA, pathA, hbA := createMockHeartbeat("nodeA", "fsidA", 500, 1000)
-	attrB, pathB, hbB := createMockHeartbeat("nodeB", "fsidB", 300, 600)
-	mockStorage := &MockStorageCallback{
-		ReadDirAttr: []internal.ObjAttr{attrA, attrB},
-		Storage:     map[string][]byte{pathA: hbA, pathB: hbB},
-	}
-	// Create a new ClusterManagerImpl
-	cmi := &ClusterManagerImpl{
-		storageCallback:  mockStorage,
-		storageCachePath: "/fakeStorage",
-	}
-	// Scenario: clusterMap having no RVs
-	clusterMapRVMap := make(map[string]dcache.RawVolume)
-	isRVMapUpdated, isMVsUpdateNeeded, err := cmi.checkAndUpdateRVMap(clusterMapRVMap)
+func (suite *ClusterManagerImplTestSuite) TestReconcileRVMap_AddNewRV() {
 
-	suite.Require().NoError(err, "Expected no error from checkAndUpdateRVMap")
-	suite.Assert().True(isRVMapUpdated, "Expected isRVMapUpdated=true for new entries")
-	suite.Assert().True(isMVsUpdateNeeded, "Expected isMVsUpdateNeeded=true for new entries")
-	suite.Assert().Equal(2, len(clusterMapRVMap), "Two new volumes should be added from heartbeats")
-	suite.Assert().NotNil(clusterMapRVMap["rv0"])
-	suite.Assert().NotNil(clusterMapRVMap["rv1"])
+	// Mock data
+	mockNodeIDs := []string{"node1"}
+	mockHeartbeat("node1", "rv1", 50, 100)
+	getAllNodes = func() ([]string, error) {
+		return mockNodeIDs, nil
+	}
+
+	initialClusterMap := map[string]dcache.RawVolume{}
+	expectedClusterMap := map[string]dcache.RawVolume{
+		"rv0": {RvId: "rv1", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
+	}
+
+	changed, err := suite.cmi.reconcileRVMap(initialClusterMap)
+	suite.NoError(err)
+	suite.True(changed)
+	suite.Equal(expectedClusterMap, initialClusterMap)
 }
 
-// TestCheckAndUpdateRVMapExisting checks scenario 2/3:
-// Some entries exist in clusterMapRVMap, and new data must be merged or updated.
-func (suite *clusterManagerImplTestSuite) TestCheckAndUpdateRVMapExisting() {
+func (suite *ClusterManagerImplTestSuite) TestReconcileRVMap_AddNewRVWithExisting() {
 
-	// Old cluster map: volume "fsidA" is offline with 0 space
-	clusterMapRVMap := map[string]dcache.RawVolume{
-		"rv0": {FSID: "fsidA", State: dcache.StateOffline, AvailableSpace: 0, TotalSpace: 1000},
+	// Mock data
+	mockNodeIDs := []string{"node1", "node2"}
+	mockHeartbeat("node1", "rvId0", 50, 100)
+	mockHeartbeat("node2", "rvId1", 50, 100)
+	getAllNodes = func() ([]string, error) {
+		return mockNodeIDs, nil
 	}
 
-	attr, path, hb := createMockHeartbeat("nodeA", "fsidA", 700, 1000)
-	mockStorage := &MockStorageCallback{
-		ReadDirAttr: []internal.ObjAttr{attr},
-		Storage:     map[string][]byte{path: hb},
+	initialClusterMap := map[string]dcache.RawVolume{
+		"rv0": {RvId: "rvId0", State: dcache.StateOnline, AvailableSpace: 20, TotalSpace: 100},
 	}
-	cmi := &ClusterManagerImpl{
-		storageCallback:  mockStorage,
-		storageCachePath: "/fakeStorage",
+	expectedClusterMap := map[string]dcache.RawVolume{
+		"rv0": {RvId: "rvId0", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
+		"rv1": {RvId: "rvId1", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
 	}
 
-	isRVMapUpdated, isMVsUpdateNeeded, err := cmi.checkAndUpdateRVMap(clusterMapRVMap)
-
-	suite.Require().NoError(err)
-	suite.Assert().True(isRVMapUpdated, "Volume changed from offline to online, so it must be updated")
-	suite.Assert().True(isMVsUpdateNeeded, "Online state changes typically require MVs update")
-
-	// Ensure the clusterMap reflected the new data
-	suite.Assert().Equal(1, len(clusterMapRVMap))
-	updatedRV := clusterMapRVMap["rv0"]
-	suite.Assert().Equal(dcache.StateOnline, updatedRV.State, "Should be updated to online")
-	suite.Assert().Equal(uint64(700), updatedRV.AvailableSpace, "Should reflect the new available space (700)")
+	changed, err := suite.cmi.reconcileRVMap(initialClusterMap)
+	suite.NoError(err)
+	suite.True(changed)
+	suite.Equal(expectedClusterMap, initialClusterMap)
 }
 
-// TestCheckAndUpdateRVMapMissing tests the scenario where clusterMap has an entry not found in the heartbeat (becomes offline).
-func (suite *clusterManagerImplTestSuite) TestCheckAndUpdateRVMapMissing() {
+func (suite *ClusterManagerImplTestSuite) TestReconcileRVMap_UpdateExistingRV() {
 
-	// clusterMap has volume fsidA, fsidB
-	clusterMapRVMap := map[string]dcache.RawVolume{
-		"rv0": {FSID: "fsidA", State: dcache.StateOnline, AvailableSpace: 500, TotalSpace: 1000},
-		"rv1": {FSID: "fsidB", State: dcache.StateOnline, AvailableSpace: 200, TotalSpace: 800},
+	// Mock data
+	mockNodeIDs := []string{"node1"}
+	mockHeartbeat("node1", "rv1", 50, 100)
+
+	// Mock functions
+	getAllNodes = func() ([]string, error) {
+		return mockNodeIDs, nil
 	}
 
-	attr, path, hb := createMockHeartbeat("nodeA", "fsidA", 600, 1000)
-	mockStorage := &MockStorageCallback{
-		ReadDirAttr: []internal.ObjAttr{attr},
-		Storage:     map[string][]byte{path: hb},
+	initialClusterMap := map[string]dcache.RawVolume{
+		"rv0": {RvId: "rv1", State: dcache.StateOffline, AvailableSpace: 20, TotalSpace: 100},
 	}
-	cmi := &ClusterManagerImpl{
-		storageCallback:  mockStorage,
-		storageCachePath: "/fakeStorage",
+	expectedClusterMap := map[string]dcache.RawVolume{
+		"rv0": {RvId: "rv1", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
 	}
 
-	isRVMapUpdated, isMVsUpdateNeeded, err := cmi.checkAndUpdateRVMap(clusterMapRVMap)
-
-	suite.Require().NoError(err)
-	suite.Assert().True(isRVMapUpdated, "fsidB should go offline, which is an update")
-	suite.Assert().True(isMVsUpdateNeeded, "Offline changes typically require MVs update")
-
-	// fsidA updated from 500 to 600
-	suite.Assert().Equal(dcache.StateOnline, clusterMapRVMap["rv0"].State)
-	suite.Assert().Equal(uint64(600), clusterMapRVMap["rv0"].AvailableSpace)
-
-	// fsidB is missing in heartbeat -> offline
-	suite.Assert().Equal(dcache.StateOffline, clusterMapRVMap["rv1"].State)
+	changed, err := suite.cmi.reconcileRVMap(initialClusterMap)
+	suite.NoError(err)
+	suite.True(changed)
+	suite.Equal(expectedClusterMap, initialClusterMap)
 }
 
-// TestCheckAndUpdateRVMapMissing tests the scenario where clusterMap has an entries and new rv added(becomes online).
-func (suite *clusterManagerImplTestSuite) TestCheckAndUpdateRVMapNewRVAdded() {
-
-	// clusterMap has volume fsidA, fsidB
-	clusterMapRVMap := map[string]dcache.RawVolume{
-		"rv0": {FSID: "fsidA", State: dcache.StateOnline, AvailableSpace: 500, TotalSpace: 1000},
+func (suite *ClusterManagerImplTestSuite) TestReconcileRVMap_MarkMissingRVOffline() {
+	// Mock functions
+	getAllNodes = func() ([]string, error) {
+		return nil, nil
+	}
+	initialClusterMap := map[string]dcache.RawVolume{
+		"rv0": {RvId: "rv1", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
+	}
+	expectedClusterMap := map[string]dcache.RawVolume{
+		"rv0": {RvId: "rv1", State: dcache.StateOffline, AvailableSpace: 50, TotalSpace: 100},
 	}
 
-	attr1, path1, hb1 := createMockHeartbeat("nodeA", "fsidA", 400, 1000)
-	attr, path, hb := createMockHeartbeat("nodeB", "fsidB", 200, 800)
-	mockStorage := &MockStorageCallback{
-		ReadDirAttr: []internal.ObjAttr{attr1, attr},
-		Storage:     map[string][]byte{path: hb, path1: hb1},
+	changed, err := suite.cmi.reconcileRVMap(initialClusterMap)
+	suite.NoError(err)
+	suite.True(changed)
+	suite.Equal(expectedClusterMap, initialClusterMap)
+}
+
+func (suite *ClusterManagerImplTestSuite) TestReconcileRVMap_NoChangesRequired() {
+	// Mock data
+	mockNodeIDs := []string{"node1"}
+
+	// Mock functions
+	mockHeartbeat("node1", "rv1", 50, 100)
+	getAllNodes = func() ([]string, error) {
+		return mockNodeIDs, nil
 	}
-	cmi := &ClusterManagerImpl{
-		storageCallback:  mockStorage,
-		storageCachePath: "/fakeStorage",
+
+	initialClusterMap := map[string]dcache.RawVolume{
+		"rv0": {RvId: "rv1", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
+	}
+	expectedClusterMap := map[string]dcache.RawVolume{
+		"rv0": {RvId: "rv1", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
 	}
 
-	isRVMapUpdated, isMVsUpdateNeeded, err := cmi.checkAndUpdateRVMap(clusterMapRVMap)
-
-	suite.Require().NoError(err)
-	suite.Assert().True(isRVMapUpdated, "fsidB should go online, which is an new addition")
-	suite.Assert().True(isMVsUpdateNeeded, "New RV addition means MV RV mapping update")
-
-	// fsidA updated from 500 to 400
-	suite.Assert().Equal(dcache.StateOnline, clusterMapRVMap["rv0"].State)
-	suite.Assert().Equal(uint64(400), clusterMapRVMap["rv0"].AvailableSpace)
-
-	// fsidB is added in clusterMap
-	suite.Assert().Equal(dcache.StateOnline, clusterMapRVMap["rv1"].State)
+	changed, err := suite.cmi.reconcileRVMap(initialClusterMap)
+	suite.NoError(err)
+	suite.False(changed)
+	suite.Equal(expectedClusterMap, initialClusterMap)
 }
 
 func TestClusterManagerImpl(t *testing.T) {
