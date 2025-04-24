@@ -407,11 +407,13 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 			clusterMap.LastUpdatedAt, now)
 
 		// Assert, taking into account potential clock skew.
-		common.Assert((clusterMap.LastUpdatedAt-now) < int64(clusterMap.Config.ClustermapEpoch), "")
+		common.Assert((clusterMap.LastUpdatedAt-now) < int64(clusterMap.Config.ClustermapEpoch), "Clock skew happening which clustermap update.")
 		return
 	}
 
 	clusterMapAge := now - clusterMap.LastUpdatedAt
+	// Assert if clusterMap is not updated for 3 consecutive epochs.
+	// That might indicate some bug.
 	common.Assert(clusterMapAge < int64(clusterMap.Config.ClustermapEpoch*3),
 		fmt.Sprintf("clusterMapAge (%d) >= %d", clusterMapAge, clusterMap.Config.ClustermapEpoch*3))
 
@@ -419,8 +421,9 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 	stale := clusterMapAge > int64(clusterMap.Config.ClustermapEpoch+thresholdEpochTime)
 	leader := clusterMap.LastUpdatedBy == cmi.nodeId
 
-	if clusterMap.State == dcache.StateSyncing && !stale {
-		log.Trace("updateStorageClusterMapIfRequired: state is SYNCING and not stale, skipping")
+	// Skip if clustermap already is checking state
+	if clusterMap.State == dcache.StateChecking && !stale {
+		log.Trace("updateStorageClusterMapIfRequired: skipping,  Cluster map is under update")
 		return
 	}
 
@@ -429,9 +432,8 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 		log.Info("updateStorageClusterMapIfRequired: skipping, node (%s) is not leader and Cluster map is fresh (last update %d).", clusterMap.LastUpdatedAt, cmi.nodeId)
 		return
 	} else {
-		// TODO{Akku}: UpdateClusterMapStart should also expect a nodeId. In case leader is dead
 		clusterMap.LastUpdatedBy = cmi.nodeId
-		clusterMap.State = dcache.StateSyncing
+		clusterMap.State = dcache.StateChecking
 		clusterMap.LastUpdatedAt = now
 		updatedClusterMapBytes, err := json.Marshal(clusterMap)
 		if err != nil {
