@@ -33,17 +33,8 @@
 
 package models
 
-type CacheType int
-
-const (
-	Azure CacheType = iota
-	Dcache
-	Both
-)
-
 type FileMetadata struct {
-	Filename        string `json:"filename"`
-	CacheType       CacheType
+	Filename        string      `json:"filename"`
 	FileID          string      `json:"file_id"`
 	Size            int64       `json:"size"`
 	ClusterMapEpoch int64       `json:"cluster_map_epoch"`
