@@ -460,9 +460,11 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 	}
 	if changed {
 		//TODO{Akku}: evaluateMVsRVMapping()
+	} else {
+		log.Debug("updateStorageClusterMapIfRequired: No changes in RV mapping")
 	}
 
-	clusterMap.LastUpdatedAt = now
+	clusterMap.LastUpdatedAt = time.Now().Unix()
 	clusterMap.State = dcache.StateReady
 	updatedClusterMapBytes, err = json.Marshal(clusterMap)
 	if err != nil {
@@ -474,7 +476,7 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 	if err = mm.UpdateClusterMapEnd(updatedClusterMapBytes); err != nil {
 		log.Err("updateStorageClusterMapIfRequired: end failed to update cluster map %+v, error: %v", clusterMap, err)
 	} else {
-		log.Debug("updateStorageClusterMapIfRequired: cluster map %+v updated by %s at %d", clusterMap, cmi.nodeId, now)
+		log.Info("updateStorageClusterMapIfRequired: cluster map %+v updated by %s at %d", clusterMap, cmi.nodeId, now)
 	}
 
 	//iNotify replication manager
@@ -518,7 +520,7 @@ func (cmi *ClusterManagerImpl) reconcileRVMap(clusterMapRVMap map[string]dcache.
 			}
 			delete(rVsByRvId, rvHb.RvId)
 		} else {
-			log.Debug("ClusterManagerImpl::reconcileRVMap: RvId=%s missing in new heartbeats", rvName)
+			log.Debug("ClusterManagerImpl::reconcileRVMap: RvName=%s missing in new heartbeats", rvName)
 			rvInClusterMap.State = dcache.StateOffline
 			clusterMapRVMap[rvName] = rvInClusterMap
 			changed = true
