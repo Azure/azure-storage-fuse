@@ -450,14 +450,14 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 
 	if err = mm.UpdateClusterMapStart(updatedClusterMapBytes, etag); err != nil {
 		log.Err("updateStorageClusterMapIfRequired: start Clustermap update failed for nodeId %s: %v", cmi.nodeId, err)
-		common.Assert(false, "")
+		common.Assert(false)
 		return
 	}
 
 	changed, err := cmi.reconcileRVMap(clusterMap.RVMap)
 	if err != nil {
 		log.Err("updateStorageClusterMapIfRequired: failed to reconcile RV mapping: %v", err)
-		common.Assert(false, "")
+		common.Assert(false)
 		return
 	}
 	if changed {
@@ -477,7 +477,7 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 	//TODO{Akku}: Make sure end update is happing with the same node as of start update
 	if err = mm.UpdateClusterMapEnd(updatedClusterMapBytes); err != nil {
 		log.Err("updateStorageClusterMapIfRequired: end failed to update cluster map %+v, error: %v", clusterMap, err)
-		common.Assert(false, "")
+		common.Assert(false)
 	} else {
 		log.Info("updateStorageClusterMapIfRequired: cluster map %+v updated by %s at %d", clusterMap, cmi.nodeId, now)
 	}
@@ -504,6 +504,11 @@ func (cmi *ClusterManagerImpl) reconcileRVMap(clusterMapRVMap map[string]dcache.
 			return false, fmt.Errorf("ClusterManagerImpl::reconcileRVMap: Failed to parse heartbeat bytes for node %s: %v", nodeId, err)
 		}
 		for _, rv := range hbData.RVList {
+			if _, exists := rVsByRvId[rv.RvId]; exists {
+				common.Assert(false, fmt.Sprintf("Duplicate RVId[%s] in heartbeats", rv.RvId))
+			}
+			common.Assert(rv.AvailableSpace <= rv.TotalSpace, fmt.Sprintf("Available space %d is greater than total space %d for RVId %s", rv.AvailableSpace, rv.TotalSpace, rv.RvId))
+			common.Assert(common.IsValidUUID(rv.RvId))
 			rVsByRvId[rv.RvId] = rv
 		}
 	}
@@ -545,9 +550,11 @@ func (cmi *ClusterManagerImpl) reconcileRVMap(clusterMapRVMap map[string]dcache.
 		// Add new RV into clusterMap
 		idx := maxIdx + 1
 		for _, rv := range rVsByRvId {
-			clusterMapRVMap[fmt.Sprintf("rv%d", idx)] = rv
+			rvName := fmt.Sprintf("rv%d", idx)
+			clusterMapRVMap[rvName] = rv
 			idx++
 			changed = true
+			log.Info("reconcileRVMap: Adding new RV %+v by rvName %s to cluster map.", rv, rvName)
 		}
 	}
 	return changed, nil
