@@ -1,14 +1,7 @@
-variables:
-  tags: 'fuse3'
-  depends: 'fuse3'
-  tags2: 'fuse2'
-  depends2: 'fuse2'
-  project: 'BlobFuse'
-  pipelineId: 99
-  patToken: $(System.AccessToken)
-  status: 'inProgress'
-  organization: azstorage
+# Do not trigger this pipeline automatically
+trigger: none
 
+# Execute this for every PR on main
 pr:
 - main
 
@@ -18,6 +11,7 @@ resources:
     type: git
     name: 1ESPipelineTemplates/1ESPipelineTemplates
     ref: refs/tags/release
+
 
 extends:
   # The pipeline extends the 1ES PT which will inject different SDL and compliance tasks.
@@ -33,8 +27,10 @@ extends:
         image: windows2022-1espt
         os: windows  # OS of the image. Allowed values: windows, linux, macOS
 
-    jobs:
-      # Ubuntu based test suite
+    stages:
+    - stage: CI
+      jobs:
+
       - job: test
         displayName: CI on
         strategy:
@@ -57,13 +53,13 @@ extends:
           os: linux
           demands:
             - ImageOverride -equals $(AgentName)
-
+        
         variables:
           - group: NightlyBlobFuse
           
         steps:
         # ----------------------------------------------------------------
-          - template: 'azure-pipeline-templates/blobfuse2-ci-template.yml'
+          - template: 'azure-pipeline-templates/blobfuse2-ci-template.yml@self'
             parameters:
               container: $(containerName)
               tags: $(tags)
@@ -83,6 +79,7 @@ extends:
       
         pool:
           name: "blobfuse2-arm-pool"
+          os: linux
           demands:
             - ImageOverride -equals $(AgentName)
         
@@ -91,7 +88,7 @@ extends:
           
         steps:
         # ----------------------------------------------------------------
-          - template: 'azure-pipeline-templates/blobfuse2-ci-template.yml'
+          - template: 'azure-pipeline-templates/blobfuse2-ci-template.yml@self'
             parameters:
               container: $(containerName)
               tags: $(tags)
