@@ -347,21 +347,6 @@ var getClusterMap = func() ([]byte, *string, error) {
 	return mm.GetClusterMap()
 }
 
-func evaluateMVsRVMapping() map[string]dcache.MirroredVolume {
-
-	mvRvMap := map[string]dcache.MirroredVolume{}
-	// rvStateMap := map[string]string{
-	// 	"rv0": "online",
-	// 	"rv1": "offline",
-	// 	"rv2": "syncing"}
-	// mv0 := dcache.MirroredVolume{
-	// 	RVWithStateMap: rvStateMap,
-	// 	State:          dcache.StateOffline,
-	// }
-	// mvRvMap["mv0"] = mv0
-	return mvRvMap
-}
-
 var getHeartbeat = func(nodeId string) ([]byte, error) {
 	return mm.GetHeartbeat(nodeId)
 }
@@ -495,7 +480,7 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 		return
 	}
 	if changed {
-		//TODO{Akku}: evaluateMVsRVMapping()
+		cmi.updateMVList(clusterMap.RVMap, clusterMap.MVMap)
 	} else {
 		log.Debug("updateStorageClusterMapIfRequired: No changes in RV mapping")
 	}
@@ -518,6 +503,9 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 
 	//iNotify replication manager
 
+}
+
+func (cmi *ClusterManagerImpl) updateMVList(clusterMapRVMap map[string]dcache.RawVolume, clusterMapMVMap map[string]dcache.MirroredVolume) {
 }
 
 func (cmi *ClusterManagerImpl) updateRVList(clusterMapRVMap map[string]dcache.RawVolume) (bool, error) {
