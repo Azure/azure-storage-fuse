@@ -90,19 +90,19 @@ func (req *ReadMvRequest) isValid() error {
 
 	if req.Length < -1 || req.Length == 0 || req.Length > req.ChunkSizeInMB*common.MbToBytes {
 		log.Err("ReadMvRequest::isValid: Length is invalid in request: %s", reqStr)
-		return fmt.Errorf("Length is invalid in request: %s", reqStr)
+		return fmt.Errorf("length is invalid in request: %s", reqStr)
 	}
 
 	// check if the requested data is not overlapping between two chunks
 	// For example, if chunk size is 4MB and offset is 3MB, then length should be less than 1MB
 	if req.Length > 0 && req.OffsetInChunk+req.Length > req.ChunkSizeInMB*common.MbToBytes {
 		log.Err("ReadMvRequest::isValid: Length and OffsetInChunk are invalid in request: %s", reqStr)
-		return fmt.Errorf("Length and OffsetInChunk are invalid in request: %s", reqStr)
+		return fmt.Errorf("length and OffsetInChunk are invalid in request: %s", reqStr)
 	}
 
 	if len(req.Data) == 0 || len(req.Data) > int(req.ChunkSizeInMB*common.MbToBytes) {
 		log.Err("ReadMvRequest::isValid: Data buffer is invalid in request: %s", reqStr)
-		return fmt.Errorf("Data buffer is invalid in request: %s", reqStr)
+		return fmt.Errorf("data buffer is invalid in request: %s", reqStr)
 	}
 
 	requestedDataSize := req.Length
@@ -113,7 +113,7 @@ func (req *ReadMvRequest) isValid() error {
 	// check if the requested data size is less than the buffer size
 	if len(req.Data) < int(requestedDataSize) {
 		log.Err("ReadMvRequest::isValid: Data buffer size is less than requested data size in request: %s", reqStr)
-		return fmt.Errorf("Data buffer size is less than requested data size in request: %s", reqStr)
+		return fmt.Errorf("data buffer size is less than requested data size in request: %s", reqStr)
 	}
 
 	return nil
@@ -166,12 +166,12 @@ func (req *WriteMvRequest) isValid() error {
 
 	if len(req.Data) == 0 || len(req.Data) > int(req.ChunkSizeInMB*common.MbToBytes) {
 		log.Err("WriteMvRequest::isValid: Data buffer is invalid in request: %s", reqStr)
-		return fmt.Errorf("Data buffer is invalid in request: %s", reqStr)
+		return fmt.Errorf("data buffer is invalid in request: %s", reqStr)
 	}
 
 	if !req.IsLastChunk && len(req.Data) != int(req.ChunkSizeInMB*common.MbToBytes) {
 		log.Err("WriteMvRequest::isValid: Data buffer length is not equal to chunk size in request: %s", reqStr)
-		return fmt.Errorf("Data buffer length is not equal to chunk size in request: %s", reqStr)
+		return fmt.Errorf("data buffer length is not equal to chunk size in request: %s", reqStr)
 	}
 
 	return nil
