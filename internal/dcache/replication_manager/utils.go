@@ -43,7 +43,8 @@ import (
 )
 
 const (
-	RPCClientTimeout = 2 // in seconds
+	// TODO: discuss if this is a good value for RPC timeout
+	RPCClientTimeout = 10 // in milliseconds
 )
 
 func selectOnlineRVForMV(mvName string) (string, error) {

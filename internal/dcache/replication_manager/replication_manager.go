@@ -53,7 +53,7 @@ func ReadMV(req *ReadMvRequest) (*ReadMvResponse, error) {
 
 	log.Debug("ReplicationManager::ReadMV: Received ReadMV request: %+v", *req)
 
-	if req.FileID == "" || req.RvID == "" || req.MvName == "" || req.Offset < 0 || req.Length <= 0 || req.ChunkSizeInMB <= 0 {
+	if req.FileID == "" || req.MvName == "" || req.Offset < 0 || req.Length <= 0 || req.ChunkSizeInMB <= 0 {
 		log.Err("ReplicationManager::ReadMV: Invalid ReadMV request parameters: %+v", *req)
 		common.Assert(false, fmt.Sprintf("invalid ReadMV request parameters: %+v", *req))
 		return nil, fmt.Errorf("invalid ReadMV request parameters: %+v", *req)
@@ -64,6 +64,8 @@ func ReadMV(req *ReadMvRequest) (*ReadMvResponse, error) {
 		common.Assert(false, fmt.Sprintf("read length %v exceeds chunk size %vMB", req.Length, req.ChunkSizeInMB))
 		return nil, fmt.Errorf("read length %v exceeds chunk size %vMB", req.Length, req.ChunkSizeInMB)
 	}
+
+	// TODO: add a check to see if the requested data falls in one chunk and not overlaps between chunks
 
 	// calculate the offset in MB which is multiple of chunk size
 	// chunks are stored in RV as,
@@ -93,6 +95,7 @@ func ReadMV(req *ReadMvRequest) (*ReadMvResponse, error) {
 
 	log.Debug("ReplicationManager::ReadMV: Selected online RV for MV %s is %s having RV id %s and is hosted in node id %s", req.MvName, selectedRvName, selectedRvID, targetNodeID)
 
+	// TODO: optimization, should we send buffer also in the GetChunk request?
 	rpcReq := &models.GetChunkRequest{
 		Address: &models.Address{
 			FileID:     req.FileID,
@@ -104,7 +107,7 @@ func ReadMV(req *ReadMvRequest) (*ReadMvResponse, error) {
 		Length: req.Length,
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), RPCClientTimeout*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), RPCClientTimeout*time.Millisecond)
 	defer cancel()
 
 	rpcResp, err := rpc_client.GetChunk(ctx, targetNodeID, rpcReq)
@@ -137,19 +140,25 @@ func WriteMV(req *WriteMvRequest) (*WriteMvResponse, error) {
 		common.Assert(false, "received nil WriteMV request")
 		return nil, fmt.Errorf("received nil WriteMV request")
 	}
-	log.Debug("ReplicationManager::WriteMV: Received WriteMV request: file id %v, rv id %v, mv name %v, offset %v, chunk size in MB %v",
-		req.FileID, req.RvID, req.MvName, req.Offset, req.ChunkSizeInMB)
+	log.Debug("ReplicationManager::WriteMV: Received WriteMV request: file id %v, mv name %v, offset %v, chunk size in MB %v, is last chunk %v",
+		req.FileID, req.MvName, req.Offset, req.ChunkSizeInMB, req.IsLastChunk)
 
-	if req.FileID == "" || req.RvID == "" || req.MvName == "" || req.Offset < 0 || len(req.Data) == 0 || req.Hash == "" || req.ChunkSizeInMB <= 0 {
+	if req.FileID == "" || req.MvName == "" || req.Offset < 0 || len(req.Data) == 0 || req.Hash == "" || req.ChunkSizeInMB <= 0 {
 		log.Err("ReplicationManager::WriteMV: Invalid WriteMV request parameters")
 		common.Assert(false, fmt.Sprintf("invalid WriteMV request parameters"))
 		return nil, fmt.Errorf("invalid WriteMV request parameters")
 	}
 
-	if len(req.Data) != int(req.ChunkSizeInMB*common.MbToBytes) {
+	if !req.IsLastChunk && len(req.Data) != int(req.ChunkSizeInMB*common.MbToBytes) {
 		log.Err("ReplicationManager::WriteMV: Write data length %v is not equal to chunk size %vMB", len(req.Data), req.ChunkSizeInMB)
 		common.Assert(false, fmt.Sprintf("write data length %v is not equal to chunk size %vMB", len(req.Data), req.ChunkSizeInMB))
 		return nil, fmt.Errorf("write data length %v is not equal to chunk size %vMB", len(req.Data), req.ChunkSizeInMB)
+	}
+
+	if req.IsLastChunk && len(req.Data) > int(req.ChunkSizeInMB*common.MbToBytes) {
+		log.Err("ReplicationManager::WriteMV: Write data length %v is greater than chunk size %vMB for last chunk", len(req.Data), req.ChunkSizeInMB)
+		common.Assert(false, fmt.Sprintf("write data length %v is greater than chunk size %vMB for last chunk", len(req.Data), req.ChunkSizeInMB))
+		return nil, fmt.Errorf("write data length %v is greater than chunk size %vMB for last chunk", len(req.Data), req.ChunkSizeInMB)
 	}
 
 	// offset given in request should be multiple of chunk size
@@ -163,7 +172,7 @@ func WriteMV(req *WriteMvRequest) (*WriteMvResponse, error) {
 	// chunks are stored in RV as,
 	// <cacheDir>/<mvName>/<fileID>.<offsetInMB>.data and
 	// <cacheDir>/<mvName>/<fileID>.<offsetInMB>.hash
-	offsetInMB := (req.Offset / (req.ChunkSizeInMB * common.MbToBytes)) * req.ChunkSizeInMB
+	offsetInMB := req.Offset / common.MbToBytes
 
 	componentRVs := getComponentRVsForMV(req.MvName)
 	if len(componentRVs) == 0 {

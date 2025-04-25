@@ -35,7 +35,6 @@ package replication_manager
 
 type ReadMvRequest struct {
 	FileID        string // unique guid of the file stored in metadata blob
-	RvID          string // id of the RV; can be filesystem guid
 	MvName        string // mv0, mv1, etc.
 	Offset        int64  // Offset in bytes
 	Length        int64  // Length in bytes
@@ -49,12 +48,12 @@ type ReadMvResponse struct {
 
 type WriteMvRequest struct {
 	FileID        string // unique guid of the file stored in metadata blob
-	RvID          string // id of the RV; can be filesystem guid
 	MvName        string // mv0, mv1, etc.
 	Offset        int64  // Offset in bytes
 	Data          []byte // Data to be written
 	Hash          string // Hash of the data to be written
 	ChunkSizeInMB int64  // Chunk size in MB; 4MB, 8MB, etc.
+	IsLastChunk   bool   // true if this is the last chunk
 }
 
 type WriteMvResponse struct {
