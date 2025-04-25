@@ -89,12 +89,29 @@ type mvInfo struct {
 
 	// count of in-progress chunk operations (get, put or remove) for this MV.
 	// This is used to block the end sync call till all the ongoing chunk operations are completed.
-	chunkOpsInProgress atomic.Int64
+	chunkIOInProgress atomic.Int64
 
 	// flag to block chunk operations (get, put or remove) for this MV.
 	// This flag is enabled in the end sync call to pause new chunk operations in the MV.
 	// When the end sync call is completed, this flag is disabled.
 	blockOpsFlag atomic.Bool
+
+	// Two MV states are interesting from an IO standpoint.
+	// An online MV is the happy case where all RVs are online and sync'ed. In this state there won't be any
+	// resync Writes, and client Writes if any will be replicated to all the RVs, each of them storing the chunks
+	// in their respective mv folders. This is the normal case.
+	// A syncing MV is interesting. In this case there are resync writes going and possibly client writes too.
+	// Client chunks are saved in a special mv.sync folder while sync writes are saved in the regular mv folder.
+	// During EndSync, the client writes are moved from mv.sync to the regular mv folder and then we have the MV
+	// back in online state.
+	// The short period when an MV moves in and out of syncing state is important. We need to quiesce any IOs
+	// to make sure we don't miss resyncing any chunk.
+	// Both StartSync and EndSync will quiesce IOs just before they move the mv into and out of syncing state, and
+	// resume IOs once the MV is safely moved into the new state.
+	//
+	// This boolean flag will be set by StartSync and EndSync to put the mv in quiesce state and it'll be read
+	// and honored by the various chunk related APIs - GetChunk, PutChunk, etc.
+	quiesceIOs atomic.Bool
 
 	syncInfo // sync info for this MV
 }
@@ -258,45 +275,78 @@ func (mv *mvInfo) updateComponentRVs(componentRVs []string) {
 	mv.componentRVs = componentRVs
 }
 
-// block new chunk operations for this MV till the sync is in progress
-func (mv *mvInfo) blockChunkOps() {
-	for {
-		if mv.blockOpsFlag.Load() {
-			time.Sleep(100 * time.Microsecond) // TODO: check if this is optimal
-		} else {
-			break
-		}
-	}
-}
-
-// block the sync operation for this MV till the ongoing chunk operations are completed
-func (mv *mvInfo) blockSyncOps() {
-	for {
-		if mv.chunkOpsInProgress.Load() > 0 {
-			time.Sleep(1 * time.Millisecond) // TODO: check if this is optimal
-		} else {
-			break
-		}
-	}
-}
-
 // increment the in-progress chunk operation (get, put or remove) count for this MV
-func (mv *mvInfo) incrementChunkOpsInProgress() {
-	mv.chunkOpsInProgress.Add(1)
+func (mv *mvInfo) incOngoingIOs() {
+	mv.chunkIOInProgress.Add(1)
 }
 
 // ddecrement the in-progress chunk operation (get, put or remove) count for this MV after it has completed
-func (mv *mvInfo) decrementChunkOpsInProgress() {
-	common.Assert(mv.chunkOpsInProgress.Load() > 0, fmt.Sprintf("chunkOpsInProgress for MV %s is <= 0", mv.mvName))
-	mv.chunkOpsInProgress.Add(-1)
+func (mv *mvInfo) decOngoingIOs() {
+	common.Assert(mv.chunkIOInProgress.Load() > 0, fmt.Sprintf("chunkOpsInProgress for MV %s is <= 0", mv.mvName))
+	mv.chunkIOInProgress.Add(-1)
 }
 
-func (mv *mvInfo) enableBlockChunkOps() {
-	mv.blockOpsFlag.Store(true)
+// Block the calling thread if this MV is currently quiesced, by StartSync or EndSync.
+func (mv *mvInfo) blockIOIfMVQuiesced() error {
+	if !mv.quiesceIOs.Load() {
+		return nil
+	}
+
+	// Wait till MV is quiesced.
+	now := time.Now()
+	maxWait := 30 * time.Second
+
+	for {
+		if mv.quiesceIOs.Load() {
+			time.Sleep(1 * time.Millisecond)
+
+			elapsed := time.Since(now)
+			if elapsed > maxWait {
+				msg := fmt.Sprintf("%s still quiesced after %s", mv.mvName, maxWait)
+				common.Assert(false, msg)
+				return fmt.Errorf("%s", msg)
+			}
+		} else {
+			break
+		}
+	}
+
+	return nil
 }
 
-func (mv *mvInfo) disableBlockChunkOps() {
-	mv.blockOpsFlag.Store(false)
+// Set IO quiescing in the mv. Now GetChunk, PutChunk, will not allow any new IO.
+// Also, wait for any ongoing IOs to complete.
+func (mv *mvInfo) quiesceIOsStart() error {
+	mv.quiesceIOs.Store(true)
+
+	// Wait for any ongoing IOs to complete.
+	now := time.Now()
+	maxWait := 30 * time.Second
+
+	for {
+		if mv.chunkIOInProgress.Load() > 0 {
+			time.Sleep(1 * time.Millisecond)
+
+			elapsed := time.Since(now)
+			if elapsed > maxWait {
+				msg := fmt.Sprintf("%d ongoing IOs still pending after waiting for %s", mv.chunkIOInProgress.Load(), maxWait)
+				common.Assert(false, msg)
+				return fmt.Errorf("%s", msg)
+			}
+		} else {
+			log.Info("%s quiesced successfully!", mv.mvName)
+			break
+		}
+	}
+
+	// Quiesced successfully, no ongoing IOs and no new IOs will be allowed.
+	return nil
+}
+
+// quiesceIOsEnd() must be called only after quiesceIOsStart().
+func (mv *mvInfo) quiesceIOsEnd() {
+	common.Assert(mv.quiesceIOs.Load(), fmt.Sprintf("quiesceIOsEnd() called without quiesceIOsStart() for MV %s", mv.mvName))
+	mv.quiesceIOs.Store(false)
 }
 
 // TODO:: integration: sample method, will be later removed after integrating with cluster manager
@@ -427,14 +477,15 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	rvInfo := h.rvIDMap[req.Address.RvID]
 	mvInfo := rvInfo.getMVInfo(req.Address.MvName)
 
-	// check if the sync has started. If yes, block the chunk operations till the sync is completed
-	mvInfo.blockChunkOps()
+	// Block the calling thread if this MV is currently quiesced
+	err = mvInfo.blockIOIfMVQuiesced()
+	common.Assert(err == nil, fmt.Sprintf("failed to block IO for MV %s", mvInfo.mvName))
 
 	// increment the chunk operation count for this MV
-	mvInfo.incrementChunkOpsInProgress()
+	mvInfo.incOngoingIOs()
 
 	// decrement the chunk operation count for this MV when the function returns
-	defer mvInfo.decrementChunkOpsInProgress()
+	defer mvInfo.decOngoingIOs()
 
 	startTime := time.Now()
 
@@ -531,14 +582,15 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 		return nil, rpc.NewResponseError(rpc.ComponentRVsInvalid, fmt.Sprintf("request component RVs %v are invalid for MV %s component RVs %v", req.ComponentRV, req.Chunk.Address.MvName, componentRVsInMV))
 	}
 
-	// check if the sync has started. If yes, block the chunk operations till the sync is completed
-	mvInfo.blockChunkOps()
+	// Block the calling thread if this MV is currently quiesced
+	err = mvInfo.blockIOIfMVQuiesced()
+	common.Assert(err == nil, fmt.Sprintf("failed to block IO for MV %s", mvInfo.mvName))
 
 	// increment the chunk operation count for this MV
-	mvInfo.incrementChunkOpsInProgress()
+	mvInfo.incOngoingIOs()
 
 	// decrement the chunk operation count for this MV when the function returns
-	defer mvInfo.decrementChunkOpsInProgress()
+	defer mvInfo.decOngoingIOs()
 
 	startTime := time.Now()
 
@@ -630,14 +682,15 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 	rvInfo := h.rvIDMap[req.Address.RvID]
 	mvInfo := rvInfo.getMVInfo(req.Address.MvName)
 
-	// check if the sync has started. If yes, block the chunk operations till the sync is completed
-	mvInfo.blockChunkOps()
+	// Block the calling thread if this MV is currently quiesced
+	err = mvInfo.blockIOIfMVQuiesced()
+	common.Assert(err == nil, fmt.Sprintf("failed to block IO for MV %s", mvInfo.mvName))
 
 	// increment the chunk operation count for this MV
-	mvInfo.incrementChunkOpsInProgress()
+	mvInfo.incOngoingIOs()
 
 	// decrement the chunk operation count for this MV when the function returns
-	defer mvInfo.decrementChunkOpsInProgress()
+	defer mvInfo.decOngoingIOs()
 
 	startTime := time.Now()
 
@@ -956,17 +1009,16 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 		return nil, rpc.NewResponseError(rpc.ComponentRVsInvalid, fmt.Sprintf("request component RVs %v are invalid for MV %s component RVs %v", req.ComponentRV, req.MV, componentRVsInMV))
 	}
 
-	// enable block chunk operations flag for this MV to pause further chunk operations (get, put or remove) on this MV
-	mvInfo.enableBlockChunkOps()
+	// Set IO quiescing in the mv. Now GetChunk, PutChunk, will not allow any new IO.
+	// Also wait for any ongoing IOs to complete.
+	err := mvInfo.quiesceIOsStart()
+	common.Assert(err == nil, fmt.Sprintf("failed to quiesce IOs for MV %s [%v]", req.MV, err.Error()))
 
 	// disable block chunk operations flag for this MV when the function returns
-	defer mvInfo.disableBlockChunkOps()
-
-	// wait till the ongoing chunk operations on this MV are completed
-	mvInfo.blockSyncOps()
+	defer mvInfo.quiesceIOsEnd()
 
 	// update the sync state and sync id of the MV
-	err := mvInfo.updateSyncState(false, req.SyncID, req.SourceRV)
+	err = mvInfo.updateSyncState(false, req.SyncID, req.SourceRV)
 	if err != nil {
 		log.Err("ChunkServiceHandler::StartSync: Failed to mark sync completion state in MV %s [%v]", req.MV, err.Error())
 		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to mark sync completion state in MV %s [%v]", req.MV, err.Error()))
