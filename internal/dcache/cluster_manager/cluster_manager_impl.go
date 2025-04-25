@@ -362,21 +362,6 @@ func evaluateMVsRVMapping() map[string]dcache.MirroredVolume {
 	return mvRvMap
 }
 
-func fetchRVMap() map[string]dcache.RawVolume {
-	rvMap := map[string]dcache.RawVolume{}
-	// rv0 := dcache.RawVolume{
-	// 	HostNode:         "Node1",
-	// 	FSID:             "FSID1",
-	// 	FDID:             "FDID1",
-	// 	State:            "Active",
-	// 	TotalSpaceGB:     100,
-	// 	AvailableSpaceGB: 50,
-	// 	LocalCachePath:   "/path/to/cache",
-	// }
-	// rvMap["rv0"] = rv0
-	return rvMap
-}
-
 var getHeartbeat = func(nodeId string) ([]byte, error) {
 	return mm.GetHeartbeat(nodeId)
 }
