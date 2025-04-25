@@ -25,68 +25,68 @@ extends:
         os: windows  # OS of the image. Allowed values: windows, linux, macOS
 
     stages:
-      - stage: CI
-        jobs:
-          # Ubuntu based test suite
-          - job: test
-            displayName: CI on
-            strategy:
-              matrix:
-                Ubuntu-20:
-                  AgentName: 'ubn20-custom1espt'
-                  containerName: 'test-cnt-ubn-20'
-                  fuselib: 'libfuse-dev'
-                  tags: 'fuse2'
-                  adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
-                Ubuntu-22:
-                  AgentName: 'ubuntu22-1espt'
-                  containerName: 'test-cnt-ubn-22'
-                  fuselib: 'libfuse3-dev'
-                  tags: 'fuse3'
-                  adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
-          
-            pool:
-              name: "blobfuse2-pool"
-              os: linux
-              demands:
-                - ImageOverride -equals $(AgentName)
-           
-            variables:
-              - group: NightlyBlobFuse
-              
-            steps:
-            # ----------------------------------------------------------------
-              - template: 'azure-pipeline-templates/blobfuse2-ci-template.yml'
-                parameters:
-                  container: $(containerName)
-                  tags: $(tags)
-                  fuselib: $(fuselib)
+    - stage: CI
+      jobs:
 
-            
-          - job: test_ARM64
-            displayName: CI on
-            strategy:
-              matrix:
-                Ubuntu-22-ARM64:
-                  AgentName: 'ubn22armblobfuse-1espt'
-                  containerName: 'test-cnt-ubn-22'
-                  fuselib: 'libfuse3-dev'
-                  tags: 'fuse3'
-                  adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
+      - job: test
+        displayName: CI on
+        strategy:
+          matrix:
+            Ubuntu-20:
+              AgentName: 'ubn20-custom1espt'
+              containerName: 'test-cnt-ubn-20'
+              fuselib: 'libfuse-dev'
+              tags: 'fuse2'
+              adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
+            Ubuntu-22:
+              AgentName: 'ubuntu22-1espt'
+              containerName: 'test-cnt-ubn-22'
+              fuselib: 'libfuse3-dev'
+              tags: 'fuse3'
+              adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
+      
+        pool:
+          name: "blobfuse2-pool"
+          os: linux
+          demands:
+            - ImageOverride -equals $(AgentName)
+        
+        variables:
+          - group: NightlyBlobFuse
           
-            pool:
-              name: "blobfuse2-arm-pool"
-              demands:
-                - ImageOverride -equals $(AgentName)
-            
-            variables:
-              - group: NightlyBlobFuse
-              
-            steps:
-            # ----------------------------------------------------------------
-              - template: 'azure-pipeline-templates/blobfuse2-ci-template.yml'
-                parameters:
-                  container: $(containerName)
-                  tags: $(tags)
-                  fuselib: $(fuselib)  
-                  skip_fmt: false  
+        steps:
+        # ----------------------------------------------------------------
+          - template: 'azure-pipeline-templates/blobfuse2-ci-template.yml'
+            parameters:
+              container: $(containerName)
+              tags: $(tags)
+              fuselib: $(fuselib)
+
+        
+      - job: test_ARM64
+        displayName: CI on
+        strategy:
+          matrix:
+            Ubuntu-22-ARM64:
+              AgentName: 'ubn22armblobfuse-1espt'
+              containerName: 'test-cnt-ubn-22'
+              fuselib: 'libfuse3-dev'
+              tags: 'fuse3'
+              adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
+      
+        pool:
+          name: "blobfuse2-arm-pool"
+          demands:
+            - ImageOverride -equals $(AgentName)
+        
+        variables:
+          - group: NightlyBlobFuse
+          
+        steps:
+        # ----------------------------------------------------------------
+          - template: 'azure-pipeline-templates/blobfuse2-ci-template.yml'
+            parameters:
+              container: $(containerName)
+              tags: $(tags)
+              fuselib: $(fuselib)  
+              skip_fmt: false  
