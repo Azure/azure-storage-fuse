@@ -523,7 +523,6 @@ func updateMVList(rvMap map[string]dcache.RawVolume, existingMVMap map[string]dc
 		rvs    []rv
 	}
 
-	// nodeToRvs := make([]node, 0)
 	nodeToRvs := make(map[string]node)
 	// Populate the RV struct and node struct
 	for rvId, rvInfo := range rvMap {
@@ -544,7 +543,7 @@ func updateMVList(rvMap map[string]dcache.RawVolume, existingMVMap map[string]dc
 		}
 	}
 
-	// Phase 1
+	// Phase 1 : Check and update slots of Rv's used in existing MVs
 	for _, rVWithStateMap := range existingMVMap {
 		// Should we check for the state of the RV?
 		for rvName := range rVWithStateMap.RVWithStateMap {
@@ -556,19 +555,19 @@ func updateMVList(rvMap map[string]dcache.RawVolume, existingMVMap map[string]dc
 			}
 		}
 	}
-	// over
 
-	// Phase 2
+	// Phase 2 : Generate new MVs
 	for {
-		// Get a list of available nodes (nodes with at least one RV that has slots)
+		// Stored nodes in a slice as its wasy to shuffle
 		var availableNodes []node
 		for _, n := range nodeToRvs {
 			availableNodes = append(availableNodes, n)
 
 		}
-		val := (len(rvMap) * MvsPerRv) / NumReplicas
-		// End of MV generation
-		if len(availableNodes) < NumReplicas || len(existingMVMap) >= val {
+
+		max := (len(rvMap) * MvsPerRv) / NumReplicas
+		// End of MV generation if we have enough MVs or if we have exhausted all the nodes
+		if len(availableNodes) < NumReplicas || len(existingMVMap) >= max {
 			break
 		}
 
@@ -581,8 +580,11 @@ func updateMVList(rvMap map[string]dcache.RawVolume, existingMVMap map[string]dc
 		selectedNodes := availableNodes[:NumReplicas]
 
 		mvName := fmt.Sprintf("mv%d", len(existingMVMap)) // starting from index 0
+
+		// Select the first available RV from each selected node
 		for _, n := range selectedNodes {
 			for _, r := range n.rvs {
+				// Safe check for slots
 				if r.slots > 0 {
 					if _, exists := existingMVMap[mvName]; !exists {
 						rvwithstate := make(map[string]string)
@@ -596,6 +598,8 @@ func updateMVList(rvMap map[string]dcache.RawVolume, existingMVMap map[string]dc
 						// Update the existing MV
 						existingMVMap[mvName].RVWithStateMap[r.rvName] = string(dcache.StateOnline)
 					}
+
+					// Decrease the slot count for the RV in nodeToRvs
 					for i := range nodeToRvs[n.nodeId].rvs {
 						if nodeToRvs[n.nodeId].rvs[i].rvName == r.rvName {
 							nodeToRvs[n.nodeId].rvs[i].slots--
@@ -608,8 +612,10 @@ func updateMVList(rvMap map[string]dcache.RawVolume, existingMVMap map[string]dc
 		}
 
 		// Check if any node has exhausted all its rv's
+		// Remove the node from the map if it has no RVs left
 		for nodeId, node := range nodeToRvs {
 			for j := 0; j < len(node.rvs); {
+				// Remove a RV if its slots value is 0
 				if node.rvs[j].slots == 0 {
 					node.rvs = append(node.rvs[:j], node.rvs[j+1:]...)
 				} else {
@@ -624,7 +630,8 @@ func updateMVList(rvMap map[string]dcache.RawVolume, existingMVMap map[string]dc
 				nodeToRvs[nodeId] = node
 			}
 		}
-		log.Debug("updateMVList: Remaining nodes with RVs: %v", nodeToRvs)
+		// The nodeToRvs map is updated with reamining nodes and their RVs
+		// Only those RVs are left which have slots > 0
 	}
 	return existingMVMap
 }
