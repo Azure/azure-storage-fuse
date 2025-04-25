@@ -488,7 +488,7 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 		return
 	}
 
-	changed, err := cmi.reconcileRVMap(clusterMap.RVMap)
+	changed, err := cmi.updateRVList(clusterMap.RVMap)
 	if err != nil {
 		log.Err("updateStorageClusterMapIfRequired: failed to reconcile RV mapping: %v", err)
 		common.Assert(false)
@@ -520,10 +520,10 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 
 }
 
-func (cmi *ClusterManagerImpl) reconcileRVMap(clusterMapRVMap map[string]dcache.RawVolume) (bool, error) {
+func (cmi *ClusterManagerImpl) updateRVList(clusterMapRVMap map[string]dcache.RawVolume) (bool, error) {
 	nodeIds, err := getAllNodes()
 	if err != nil {
-		return false, fmt.Errorf("ClusterManagerImpl::reconcileRVMap: Failed to get all nodes: error: %v", err)
+		return false, fmt.Errorf("ClusterManagerImpl::updateRVList: Failed to get all nodes: error: %v", err)
 	}
 
 	rVsByRvId := make(map[string]dcache.RawVolume)
@@ -531,11 +531,11 @@ func (cmi *ClusterManagerImpl) reconcileRVMap(clusterMapRVMap map[string]dcache.
 	for _, nodeId := range nodeIds {
 		bytes, err := getHeartbeat(nodeId)
 		if err != nil {
-			return false, fmt.Errorf("ClusterManagerImpl::reconcileRVMap: Failed to read heartbeat file for node %s: %v", nodeId, err)
+			return false, fmt.Errorf("ClusterManagerImpl::updateRVList: Failed to read heartbeat file for node %s: %v", nodeId, err)
 		}
 		var hbData dcache.HeartbeatData
 		if err := json.Unmarshal(bytes, &hbData); err != nil {
-			return false, fmt.Errorf("ClusterManagerImpl::reconcileRVMap: Failed to parse heartbeat bytes for node %s: %v", nodeId, err)
+			return false, fmt.Errorf("ClusterManagerImpl::updateRVList: Failed to parse heartbeat bytes for node %s: %v", nodeId, err)
 		}
 		for _, rv := range hbData.RVList {
 			if _, exists := rVsByRvId[rv.RvId]; exists {
@@ -562,7 +562,7 @@ func (cmi *ClusterManagerImpl) reconcileRVMap(clusterMapRVMap map[string]dcache.
 			}
 			delete(rVsByRvId, rvHb.RvId)
 		} else {
-			log.Debug("ClusterManagerImpl::reconcileRVMap: RvName=%s missing in new heartbeats", rvName)
+			log.Debug("ClusterManagerImpl::updateRVList: RvName=%s missing in new heartbeats", rvName)
 			rvInClusterMap.State = dcache.StateOffline
 			clusterMapRVMap[rvName] = rvInClusterMap
 			changed = true
@@ -588,7 +588,7 @@ func (cmi *ClusterManagerImpl) reconcileRVMap(clusterMapRVMap map[string]dcache.
 			clusterMapRVMap[rvName] = rv
 			idx++
 			changed = true
-			log.Info("reconcileRVMap: Adding new RV %+v by rvName %s to cluster map.", rv, rvName)
+			log.Info("updateRVList: Adding new RV %+v by rvName %s to cluster map.", rv, rvName)
 		}
 	}
 	return changed, nil
