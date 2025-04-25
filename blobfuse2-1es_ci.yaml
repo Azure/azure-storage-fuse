@@ -56,7 +56,7 @@ extends:
           
         steps:
         # ----------------------------------------------------------------
-          - template: 'azure-pipeline-templates/blobfuse2-ci-template.yml'
+          - template: 'azure-pipeline-templates/blobfuse2-ci-template.yml@self'
             parameters:
               container: $(containerName)
               tags: $(tags)
@@ -84,7 +84,7 @@ extends:
           
         steps:
         # ----------------------------------------------------------------
-          - template: 'azure-pipeline-templates/blobfuse2-ci-template.yml'
+          - template: 'azure-pipeline-templates/blobfuse2-ci-template.yml@self'
             parameters:
               container: $(containerName)
               tags: $(tags)
