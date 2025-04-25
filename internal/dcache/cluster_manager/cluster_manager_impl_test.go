@@ -34,17 +34,49 @@
 package clustermanager
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"syscall"
 	"testing"
 
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	"github.com/stretchr/testify/suite"
+)
+
+var (
+	// shared map for heartbeat mocks
+	mockHeartbeatData map[string][]byte
 )
 
 type ClusterManagerImplTestSuite struct {
 	suite.Suite
-	cmi ClusterManagerImpl
+	cmi              ClusterManagerImpl
+	origGetAllNodes  func() ([]string, error)
+	origGetHeartbeat func(string) ([]byte, error)
+}
+
+func (suite *ClusterManagerImplTestSuite) SetupTest() {
+	mockHeartbeatData = make(map[string][]byte)
+
+	// save originals
+	suite.origGetAllNodes = getAllNodes
+	suite.origGetHeartbeat = getHeartbeat
+
+	// override getHeartbeat to use mockHeartbeatData
+	getHeartbeat = func(nodeId string) ([]byte, error) {
+		if b, ok := mockHeartbeatData[nodeId]; ok {
+			return b, nil
+		}
+		return nil, fmt.Errorf("heartbeat not found for node %s", nodeId)
+	}
+}
+
+func (suite *ClusterManagerImplTestSuite) TearDownTest() {
+	// restore originals
+	getAllNodes = suite.origGetAllNodes
+	getHeartbeat = suite.origGetHeartbeat
 }
 
 func (suite *ClusterManagerImplTestSuite) TestCheckIfClusterMapExists() {
@@ -52,29 +84,150 @@ func (suite *ClusterManagerImplTestSuite) TestCheckIfClusterMapExists() {
 	defer func() { getClusterMap = orig }()
 
 	// 1) success
-	getClusterMap = func() error { return nil }
+	getClusterMap = func() ([]byte, *string, error) { return nil, nil, nil }
 	exists, err := suite.cmi.checkIfClusterMapExists()
 	suite.NoError(err)
 	suite.True(exists)
 
 	// 2) os.ErrNotExist
-	getClusterMap = func() error { return os.ErrNotExist }
+	getClusterMap = func() ([]byte, *string, error) { return nil, nil, os.ErrNotExist }
 	exists, err = suite.cmi.checkIfClusterMapExists()
 	suite.NoError(err)
 	suite.False(exists)
 
 	// 3) syscall.ENOENT
-	getClusterMap = func() error { return syscall.ENOENT }
+	getClusterMap = func() ([]byte, *string, error) { return nil, nil, syscall.ENOENT }
 	exists, err = suite.cmi.checkIfClusterMapExists()
 	suite.NoError(err)
 	suite.False(exists)
 
 	// 4) other error
 	testErr := errors.New("boom")
-	getClusterMap = func() error { return testErr }
+	getClusterMap = func() ([]byte, *string, error) { return nil, nil, testErr }
 	exists, err = suite.cmi.checkIfClusterMapExists()
 	suite.EqualError(err, "boom")
 	suite.False(exists)
+}
+
+// replace the old mockHeartbeat with this:
+func mockHeartbeat(nodeID, rvId string, available, total uint64) {
+	hb := dcache.HeartbeatData{
+		NodeID: nodeID,
+		RVList: []dcache.RawVolume{
+			{RvId: rvId, State: dcache.StateOnline, AvailableSpace: available, TotalSpace: total},
+		},
+	}
+	hbBytes, _ := json.Marshal(hb)
+	mockHeartbeatData[nodeID] = hbBytes
+}
+
+func (suite *ClusterManagerImplTestSuite) TestReconcileRVMap_AddNewRV() {
+
+	// Mock data
+	mockNodeIDs := []string{"node1"}
+	mockHeartbeat("node1", "rv1", 50, 100)
+	getAllNodes = func() ([]string, error) {
+		return mockNodeIDs, nil
+	}
+
+	initialClusterMap := map[string]dcache.RawVolume{}
+	expectedClusterMap := map[string]dcache.RawVolume{
+		"rv0": {RvId: "rv1", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
+	}
+
+	changed, err := suite.cmi.reconcileRVMap(initialClusterMap)
+	suite.NoError(err)
+	suite.True(changed)
+	suite.Equal(expectedClusterMap, initialClusterMap)
+}
+
+func (suite *ClusterManagerImplTestSuite) TestReconcileRVMap_AddNewRVWithExisting() {
+
+	// Mock data
+	mockNodeIDs := []string{"node1", "node2"}
+	mockHeartbeat("node1", "rvId0", 50, 100)
+	mockHeartbeat("node2", "rvId1", 50, 100)
+	getAllNodes = func() ([]string, error) {
+		return mockNodeIDs, nil
+	}
+
+	initialClusterMap := map[string]dcache.RawVolume{
+		"rv0": {RvId: "rvId0", State: dcache.StateOnline, AvailableSpace: 20, TotalSpace: 100},
+	}
+	expectedClusterMap := map[string]dcache.RawVolume{
+		"rv0": {RvId: "rvId0", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
+		"rv1": {RvId: "rvId1", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
+	}
+
+	changed, err := suite.cmi.reconcileRVMap(initialClusterMap)
+	suite.NoError(err)
+	suite.True(changed)
+	suite.Equal(expectedClusterMap, initialClusterMap)
+}
+
+func (suite *ClusterManagerImplTestSuite) TestReconcileRVMap_UpdateExistingRV() {
+
+	// Mock data
+	mockNodeIDs := []string{"node1"}
+	mockHeartbeat("node1", "rv1", 50, 100)
+
+	// Mock functions
+	getAllNodes = func() ([]string, error) {
+		return mockNodeIDs, nil
+	}
+
+	initialClusterMap := map[string]dcache.RawVolume{
+		"rv0": {RvId: "rv1", State: dcache.StateOffline, AvailableSpace: 20, TotalSpace: 100},
+	}
+	expectedClusterMap := map[string]dcache.RawVolume{
+		"rv0": {RvId: "rv1", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
+	}
+
+	changed, err := suite.cmi.reconcileRVMap(initialClusterMap)
+	suite.NoError(err)
+	suite.True(changed)
+	suite.Equal(expectedClusterMap, initialClusterMap)
+}
+
+func (suite *ClusterManagerImplTestSuite) TestReconcileRVMap_MarkMissingRVOffline() {
+	// Mock functions
+	getAllNodes = func() ([]string, error) {
+		return nil, nil
+	}
+	initialClusterMap := map[string]dcache.RawVolume{
+		"rv0": {RvId: "rv1", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
+	}
+	expectedClusterMap := map[string]dcache.RawVolume{
+		"rv0": {RvId: "rv1", State: dcache.StateOffline, AvailableSpace: 50, TotalSpace: 100},
+	}
+
+	changed, err := suite.cmi.reconcileRVMap(initialClusterMap)
+	suite.NoError(err)
+	suite.True(changed)
+	suite.Equal(expectedClusterMap, initialClusterMap)
+}
+
+func (suite *ClusterManagerImplTestSuite) TestReconcileRVMap_NoChangesRequired() {
+	// Mock data
+	mockNodeIDs := []string{"node1"}
+
+	// Mock functions
+	mockHeartbeat("node1", "rv1", 50, 100)
+	getAllNodes = func() ([]string, error) {
+		return mockNodeIDs, nil
+	}
+
+	initialClusterMap := map[string]dcache.RawVolume{
+		"rv0": {RvId: "rv1", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
+	}
+	expectedClusterMap := map[string]dcache.RawVolume{
+		"rv0": {RvId: "rv1", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
+	}
+
+	changed, err := suite.cmi.reconcileRVMap(initialClusterMap)
+	suite.NoError(err)
+	suite.False(changed)
+	suite.Equal(expectedClusterMap, initialClusterMap)
 }
 
 func TestClusterManagerImpl(t *testing.T) {
