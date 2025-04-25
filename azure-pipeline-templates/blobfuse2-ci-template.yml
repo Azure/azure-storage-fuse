@@ -44,10 +44,10 @@ steps:
       az --version
     displayName: 'Install Azure CLI'
 
-  # azcli login
-  - script: |
-      az login --identity --username $(ACLI_BLOBFUSE_MSI_APP_ID)
-    displayName: 'Azure CLI login'
+  # # azcli login
+  # - script: |
+  #     az login --identity --client-id $(ACLI_BLOBFUSE_MSI_APP_ID)
+  #   displayName: 'Azure CLI login'
 
   - task: Go@0
     inputs:
@@ -75,7 +75,7 @@ steps:
       echo "\"msi-resid\"": "\"$(AZTEST_RES_ID)\"", >> $cnfFile
       echo "\"msi-objid\"": "\"$(AZTEST_OBJ_ID)\"", >> $cnfFile
       echo "\"skip-msi\"": "${{ parameters.skip_msi }}", >> $cnfFile
-      echo "\"skip-azcli\"": "false", >> $cnfFile
+      echo "\"skip-azcli\"": "true", >> $cnfFile
       echo "\"proxy-address\"": "\"${{ parameters.proxy_address }}\"" >> $cnfFile
       echo "}" >> $cnfFile
       cat $cnfFile
