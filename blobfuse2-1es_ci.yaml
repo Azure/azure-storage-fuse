@@ -1,3 +1,6 @@
+# Do not trigger this pipeline automatically
+trigger: none
+
 # Execute this for every PR on main
 pr:
 - main
@@ -76,6 +79,7 @@ extends:
       
         pool:
           name: "blobfuse2-arm-pool"
+          os: linux
           demands:
             - ImageOverride -equals $(AgentName)
         

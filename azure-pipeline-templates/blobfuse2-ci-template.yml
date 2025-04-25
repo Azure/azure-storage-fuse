@@ -46,7 +46,7 @@ steps:
 
   # azcli login
   - script: |
-      az login --identity --username $(ACLI_BLOBFUSE_MSI_APP_ID)
+      az login --identity --client-id $(ACLI_BLOBFUSE_MSI_APP_ID)
     displayName: 'Azure CLI login'
 
   - task: Go@0
