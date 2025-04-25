@@ -263,13 +263,13 @@ blobfuse2 mount --preload /mnt/blobfuse_mnt --tmp-path=/home/temp_path
 ```
 
 ### Considerations when using preload 
-- When preload is enabled, Blobfuse mount switches to read-only mode. 
-- Data from storage account isn't automatically refreshed after preload unless files are manually deleted from local cache and application tries to reopen a file.
-- Accessing a specific file prioritizes it in the download queue, while preload continues in the background.
-- Ensure sufficient disk space for complete data preloading. Insufficient space results in partial loading with other files read upon application access, which may not be ideal. 
-- Blobfuse logs will show preload status and any disk capacity warnings.  
-- Any new file created on the container will not get downloaded automatically after preload completes. Application can however choose to open the file for read and force download it. 
-- When preload is configured, file-cache configurations related to caching strategy like high/low thresholds, eviction policy will not be honoured.
+- Enabling preload makes the Blobfuse mount read-only.
+- Sufficient disk space is essential; otherwise, partial loading would occur, and this would also block new file access without manually deleting some files to create space.
+- Accessing a file immediately after mounting prioritizes it for download while preloading continues in the background.
+- All file- caching options in CLI and config file are ignored except for the temporary path setting.
+- Blobfuse logs show preload status and disk warnings.
+- Storage data does not refresh automatically unless files are manually deleted from the local cache and reopened.
+- Files added to the container after preload aren't auto downloaded but can be accessed by opening them for reading.
 
 
 ## Blob Filter
