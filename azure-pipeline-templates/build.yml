@@ -163,7 +163,7 @@ steps:
       echo "\"msi-resid\"": "\"$(AZTEST_RES_ID)\"", >> $cnfFile
       echo "\"msi-objid\"": "\"$(AZTEST_OBJ_ID)\"", >> $cnfFile
       echo "\"skip-msi\"": "${{ parameters.skip_msi }}", >> $cnfFile
-      echo "\"skip-azcli\"": "${{ parameters.skip_azcli }}", >> $cnfFile
+      echo "\"skip-azcli\"": "true", >> $cnfFile
       echo "\"proxy-address\"": "\"${{ parameters.proxy_address }}\"" >> $cnfFile
       
       echo "}" >> $cnfFile
@@ -187,10 +187,10 @@ steps:
     retryCountOnTaskFailure: 3
 
   # azcli login
-  - script: |
-      az login --identity --username $(ACLI_BLOBFUSE_MSI_APP_ID)
-    displayName: 'Azure CLI login'
-    condition: eq('${{ parameters.skip_azcli }}', 'false')
+  # - script: |
+  #     az login --identity --username $(ACLI_BLOBFUSE_MSI_APP_ID)
+  #   displayName: 'Azure CLI login'
+  #   condition: eq('${{ parameters.skip_azcli }}', 'false')
 
   # Running unit tests
   - task: Go@0
