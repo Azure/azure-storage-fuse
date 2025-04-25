@@ -37,6 +37,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -49,11 +50,15 @@ import (
 )
 
 type ClusterManagerImpl struct {
-	hbTicker         *time.Ticker
-	clusterMapticker *time.Ticker
-	nodeId           string
-	hostname         string
-	ipAddress        string
+	hbTicker            *time.Ticker
+	clusterMapticker    *time.Ticker
+	nodeId              string
+	hostname            string
+	ipAddress           string
+	localClusterMapPath string
+
+	localMap     *dcache.ClusterMap
+	localMapETag *string
 }
 
 // It will return online MVs as per local cache copy of cluster map
@@ -149,21 +154,65 @@ func (cmi *ClusterManagerImpl) start(dCacheConfig *dcache.DCacheConfig, rvs []dc
 		}
 		log.Info("Scheduled task \"Heartbeat Punch\" stopped")
 	}()
+	cmi.localClusterMapPath = filepath.Join(common.DefaultWorkDir, "clustermap.json")
 	cmi.clusterMapticker = time.NewTicker(time.Duration(dCacheConfig.ClustermapEpoch) * time.Second)
 	go func() {
 		for range cmi.clusterMapticker.C {
 			log.Debug("Scheduled \"Cluster Map update\" task triggered")
 			cmi.updateStorageClusterMapIfRequired()
 			cmi.updateClusterMapLocalCopyIfRequired()
+			//Push to replication manager channel/inotify for a change in MV\RV mapping
 		}
 		log.Info("Scheduled task \"ClusterMap update\" stopped")
 	}()
 	return nil
 }
 
-func (c *ClusterManagerImpl) updateClusterMapLocalCopyIfRequired() {
-	//update my local copy of cluster map if anythig is change
-	//iNotify to replication manager if there is any change
+func (cmi *ClusterManagerImpl) updateClusterMapLocalCopyIfRequired() {
+	// 1. Fetch the latest from storage
+	storageBytes, etag, err := getClusterMap()
+	if err != nil {
+		log.Err("ClusterManagerImpl::updateClusterMapLocalCopyIfRequired: failed to fetch cluster map for nodeId %s: %v", cmi.nodeId, err)
+		common.Assert(false)
+		return
+	}
+
+	common.Assert(etag != nil, fmt.Sprintf("expected non‑nil ETag for node %s", cmi.nodeId))
+	common.Assert(len(storageBytes) > 0,
+		fmt.Sprintf("received empty cluster map for local cache sync for node %s",
+			cmi.nodeId))
+
+	//2. if we've already loaded this exact version, skip the update
+	if cmi.localMap != nil && etag != nil && cmi.localMapETag != nil && *etag == *cmi.localMapETag {
+		log.Debug("ClusterManagerImpl::updateClusterMapLocalCopyIfRequired: earlier and new etag matching, skipping update")
+		return
+	}
+
+	//3. unmarshal storage copy
+	var storageClusterMap dcache.ClusterMap
+	if err := json.Unmarshal(storageBytes, &storageClusterMap); err != nil {
+		log.Err("ClusterManagerImpl::updateClusterMapLocalCopyIfRequired: invalid storage clustermap JSON for nodeId %s: %v", cmi.nodeId, err)
+		common.Assert(false)
+		return
+	}
+
+	common.Assert(storageClusterMap.LastUpdatedAt > 0,
+		fmt.Sprintf("invalid LastUpdatedAt (%d) in clusterMap for node %s",
+			storageClusterMap.LastUpdatedAt, cmi.nodeId))
+
+	//4. atomically write new local file
+	tmp := cmi.localClusterMapPath + ".tmp"
+	if err := os.WriteFile(tmp, storageBytes, 0644); err != nil {
+		log.Err("ClusterManagerImpl::updateClusterMapLocalCopyIfRequired: write temp file for localclustermap %+v failed: %v", storageClusterMap, err)
+		common.Assert(false)
+	} else if err := os.Rename(tmp, cmi.localClusterMapPath); err != nil {
+		log.Err("ClusterManagerImpl::updateClusterMapLocalCopyIfRequired: Tmp file rename (%s) ->(%s) for localclustermap %+v failed: %v", tmp, cmi.localClusterMapPath, storageClusterMap, err)
+		common.Assert(false)
+	}
+
+	//5. update in‑memory cache
+	cmi.localMap = &storageClusterMap
+	cmi.localMapETag = etag
 }
 
 // Stop implements ClusterManager.
