@@ -36,14 +36,12 @@ package clustermanager
 import (
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
-	"time"
-
-	"fmt"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -487,7 +485,7 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 		return
 	}
 	if changed {
-		cmi.updateMVList(clusterMap.RVMap, clusterMap.MVMap)
+		updateMVList(clusterMap.RVMap, clusterMap.MVMap, int(GetCacheConfig().NumReplicas), int(GetCacheConfig().MvsPerRv))
 	} else {
 		log.Debug("updateStorageClusterMapIfRequired: No changes in RV mapping")
 	}
@@ -512,7 +510,123 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 
 }
 
-func (cmi *ClusterManagerImpl) updateMVList(clusterMapRVMap map[string]dcache.RawVolume, clusterMapMVMap map[string]dcache.MirroredVolume) {
+func updateMVList(rvMap map[string]dcache.RawVolume, existingMVMap map[string]dcache.MirroredVolume, NumReplicas int, MvsPerRv int) map[string]dcache.MirroredVolume {
+
+	// Local types
+	type rv struct {
+		rvName string
+		slots  int //MvsPerRv
+	}
+
+	type node struct {
+		nodeId string
+		rvs    []rv
+	}
+
+	// nodeToRvs := make([]node, 0)
+	nodeToRvs := make(map[string]node)
+	// Populate the RV struct and node struct
+	for rvId, rvInfo := range rvMap {
+		if _, exists := nodeToRvs[rvInfo.NodeId]; exists {
+			// If the node already exists, append the RV to its list
+			node := nodeToRvs[rvInfo.NodeId]
+			node.rvs = append(node.rvs, rv{
+				rvName: rvId,
+				slots:  MvsPerRv,
+			})
+			nodeToRvs[rvInfo.NodeId] = node
+		} else {
+			// Create a new node and add the RV to it
+			nodeToRvs[rvInfo.NodeId] = node{
+				nodeId: rvInfo.NodeId,
+				rvs:    []rv{{rvName: rvId, slots: MvsPerRv}},
+			}
+		}
+	}
+
+	// Phase 1
+	for _, rVWithStateMap := range existingMVMap {
+		// Should we check for the state of the RV?
+		for rvName := range rVWithStateMap.RVWithStateMap {
+			nodeId := rvMap[rvName].NodeId
+			for i := range len(nodeToRvs[nodeId].rvs) {
+				if nodeToRvs[nodeId].rvs[i].rvName == rvName {
+					nodeToRvs[nodeId].rvs[i].slots--
+				}
+			}
+		}
+	}
+	// over
+
+	// Phase 2
+	for {
+		// Get a list of available nodes (nodes with at least one RV that has slots)
+		var availableNodes []node
+		for _, n := range nodeToRvs {
+			availableNodes = append(availableNodes, n)
+
+		}
+		val := (len(rvMap) * MvsPerRv) / NumReplicas
+		// End of MV generation
+		if len(availableNodes) < NumReplicas || len(existingMVMap) >= val {
+			break
+		}
+
+		// Shuffle the available nodes to randomize selection
+		rand.Shuffle(len(availableNodes), func(i, j int) {
+			availableNodes[i], availableNodes[j] = availableNodes[j], availableNodes[i]
+		})
+
+		// Take the first NumReplicas nodes
+		selectedNodes := availableNodes[:NumReplicas]
+
+		mvName := fmt.Sprintf("mv%d", len(existingMVMap)) // starting from index 0
+		for _, n := range selectedNodes {
+			for _, r := range n.rvs {
+				if r.slots > 0 {
+					if _, exists := existingMVMap[mvName]; !exists {
+						rvwithstate := make(map[string]string)
+						rvwithstate[r.rvName] = string(dcache.StateOnline)
+						// Create a new MV
+						existingMVMap[mvName] = dcache.MirroredVolume{
+							RVWithStateMap: rvwithstate,
+							State:          dcache.StateOnline,
+						}
+					} else {
+						// Update the existing MV
+						existingMVMap[mvName].RVWithStateMap[r.rvName] = string(dcache.StateOnline)
+					}
+					for i := range nodeToRvs[n.nodeId].rvs {
+						if nodeToRvs[n.nodeId].rvs[i].rvName == r.rvName {
+							nodeToRvs[n.nodeId].rvs[i].slots--
+							break
+						}
+					}
+					break
+				}
+			}
+		}
+
+		// Check if any node has exhausted all its rv's
+		for nodeId, node := range nodeToRvs {
+			for j := 0; j < len(node.rvs); {
+				if node.rvs[j].slots == 0 {
+					node.rvs = append(node.rvs[:j], node.rvs[j+1:]...)
+				} else {
+					j++
+				}
+			}
+
+			// If the node has no RVs left, remove it from the map
+			if len(node.rvs) == 0 {
+				delete(nodeToRvs, nodeId)
+			} else {
+				nodeToRvs[nodeId] = node
+			}
+		}
+		log.Debug("updateMVList: Remaining nodes with RVs: %v", nodeToRvs)
+	}
+	return existingMVMap
 }
 
 func (cmi *ClusterManagerImpl) updateRVList(clusterMapRVMap map[string]dcache.RawVolume) (bool, error) {

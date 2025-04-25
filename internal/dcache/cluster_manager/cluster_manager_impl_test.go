@@ -38,6 +38,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"syscall"
 	"testing"
 
@@ -228,6 +229,107 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateRVList_NoChangesRequired() {
 	suite.NoError(err)
 	suite.False(changed)
 	suite.Equal(expectedClusterMap, initialClusterMap)
+}
+
+func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_EmptyRvMap() {
+	mvMap := mockMvMap()
+	rvMap := map[string]dcache.RawVolume{} // Empty rvMap
+
+	numReplicas := 2
+	mvPerRv := 2
+	updated := updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
+
+	suite.True(len(updated) == len(mvMap), "No MVs should be updated when rvMap is empty")
+}
+
+func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_EmptyMvMap() {
+	mvMap := map[string]dcache.MirroredVolume{} // Empty mvMap
+	rvMap := mockRvMap()
+
+	numReplicas := 2
+	mvPerRv := 2
+	updated := updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
+
+	suite.TestUpdateMvList(updated, rvMap, numReplicas, mvPerRv)
+}
+
+func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_MaxMVs() {
+	mvMap := map[string]dcache.MirroredVolume{}
+	rvMap := mockRvMap()
+
+	numReplicas := 1
+	mvPerRv := 1
+	updated := updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
+
+	suite.Equal(len(updated), len(rvMap), "Number of updated MVs should be equal to number of RVs")
+	suite.TestUpdateMvList(updated, rvMap, numReplicas, mvPerRv)
+}
+
+func (suite *ClusterManagerImplTestSuite) TestUpdateMvList(updated map[string]dcache.MirroredVolume, rvMap map[string]dcache.RawVolume, numReplicas int, mvPerRv int) {
+	suite.True(len(updated) > 0)
+
+	// Check if all the mv's have numReplica rvs
+	for _, mv := range updated {
+		suite.Equal(numReplicas, len(mv.RVWithStateMap))
+	}
+
+	// Iterate over mvMap and check if any rv is repeated more than mvsPerRv times overall
+	count := make([]int, len(rvMap))
+	for i := range count {
+		count[i] = mvPerRv
+	}
+	for _, mv := range updated {
+		for rv, _ := range mv.RVWithStateMap {
+			index, err := strconv.Atoi(rv[2:])
+			suite.Nil(err)
+			count[index]--
+			suite.GreaterOrEqual(count[index], 0)
+		}
+	}
+
+	// Check if node diversity is maintained
+	for _, mv := range updated {
+		nodeMap := make(map[string]bool)
+		for rv, _ := range mv.RVWithStateMap {
+			nodeId := rvMap[rv].NodeId
+			_, ok := nodeMap[nodeId]
+			suite.False(ok, "Node diversity not maintained")
+			nodeMap[nodeId] = true
+		}
+	}
+}
+
+func mockMvMap() map[string]dcache.MirroredVolume {
+	return map[string]dcache.MirroredVolume{
+		"mv0": {
+			RVWithStateMap: map[string]string{
+				"rv0": string(dcache.StateOnline),
+				"rv1": string(dcache.StateOnline),
+			},
+			State: dcache.StateOnline,
+		},
+		"mv1": {
+			RVWithStateMap: map[string]string{
+				"rv2": string(dcache.StateOnline),
+				"rv3": string(dcache.StateOnline),
+			},
+			State: dcache.StateOnline,
+		},
+	}
+}
+
+func mockRvMap() map[string]dcache.RawVolume {
+	return map[string]dcache.RawVolume{
+		"rv0": {RvId: "rv0", NodeId: "node0", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
+		"rv1": {RvId: "rv1", NodeId: "node1", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
+		"rv2": {RvId: "rv2", NodeId: "node1", State: dcache.StateOnline, AvailableSpace: 30, TotalSpace: 100}, // Duplicate nodeId
+		"rv3": {RvId: "rv3", NodeId: "node3", State: dcache.StateOnline, AvailableSpace: 70, TotalSpace: 100},
+		"rv4": {RvId: "rv4", NodeId: "node4", State: dcache.StateOffline, AvailableSpace: 0, TotalSpace: 100},
+		"rv5": {RvId: "rv5", NodeId: "node5", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
+		"rv6": {RvId: "rv6", NodeId: "node3", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100}, // Duplicate nodeId
+		"rv7": {RvId: "rv7", NodeId: "node5", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
+		"rv8": {RvId: "rv8", NodeId: "node4", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
+	}
 }
 
 func TestClusterManagerImpl(t *testing.T) {
