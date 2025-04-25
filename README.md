@@ -269,7 +269,8 @@ blobfuse2 mount --preload /mnt/blobfuse_mnt --tmp-path=/home/temp_path
 - Ensure sufficient disk space for complete data preloading. Insufficient space results in partial loading with other files read upon application access, which may not be ideal. 
 - Blobfuse logs will show preload status and any disk capacity warnings.  
 - Any new file created on the container will not get downloaded automatically after preload completes. Application can however choose to open the file for read and force download it. 
-- When preload is configured, file-cache configurations related to caching strategy like high/low threasholds, eviction policy will not be honoured.
+- When preload is configured, file-cache configurations related to caching strategy like high/low thresholds, eviction policy will not be honoured.
+
 
 ## Blob Filter
 - In case of read-only mount, user can configure a filter to restrict what all blobs a mount can see or operate on.
