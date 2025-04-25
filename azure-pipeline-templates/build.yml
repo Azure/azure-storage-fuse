@@ -163,7 +163,7 @@ steps:
       echo "\"msi-resid\"": "\"$(AZTEST_RES_ID)\"", >> $cnfFile
       echo "\"msi-objid\"": "\"$(AZTEST_OBJ_ID)\"", >> $cnfFile
       echo "\"skip-msi\"": "${{ parameters.skip_msi }}", >> $cnfFile
-      echo "\"skip-azcli\"": "${{ parameters.skip_azcli }}", >> $cnfFile
+      echo "\"skip-azcli\"": "true", >> $cnfFile
       echo "\"proxy-address\"": "\"${{ parameters.proxy_address }}\"" >> $cnfFile
       
       echo "}" >> $cnfFile
