@@ -187,10 +187,10 @@ steps:
     retryCountOnTaskFailure: 3
 
   # azcli login
-  - script: |
-      az login --identity --username $(ACLI_BLOBFUSE_MSI_APP_ID)
-    displayName: 'Azure CLI login'
-    condition: eq('${{ parameters.skip_azcli }}', 'false')
+  # - script: |
+  #     az login --identity --username $(ACLI_BLOBFUSE_MSI_APP_ID)
+  #   displayName: 'Azure CLI login'
+  #   condition: eq('${{ parameters.skip_azcli }}', 'false')
 
   # Running unit tests
   - task: Go@0
