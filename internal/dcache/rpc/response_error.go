@@ -39,6 +39,7 @@ const (
 	MVNotHostedByRV                // RV is not a member of the given MV
 	InvalidRV                      // RV is invalid for the given node
 	InternalServerError            // Miscellaneous errors
+	ChunkNotFound                  // Chunk not found
 	ChunkAlreadyExists             // Chunk already exists
 	MaxMVsExceeded                 // Max number of MVs exceeded for the RV
 	ComponentRVsInvalid            // Component RVs are invalid for the MV

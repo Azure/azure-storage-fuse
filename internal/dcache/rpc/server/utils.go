@@ -42,15 +42,6 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
-// getLMT returns the last modified time of the file
-func getLMT(fh *os.File) (string, error) {
-	fi, err := fh.Stat()
-	if err != nil {
-		return "", err
-	}
-	return fi.ModTime().UTC().String(), nil
-}
-
 // returns the chunk path and hash path for the given fileID and offsetInMB from the regular MV directory
 // If not present, return the path of the sync MV directory
 func getChunkAndHashPath(cacheDir string, mvName string, fileID string, offsetInMB int64) (string, string) {
