@@ -1,7 +1,7 @@
 ## 2.5.0~preview.1 (Unreleased)
 **Features**
 - Preload feature added to download entire dataset on mount, to accelerate model training.
-- Added `lazy` flag to unmount command which passes the lazy flag to fusermount when unmounting.
+- Added support for lazy unmounts. If device is busy when unmount was executed, it will wait for device to be free and unmount automatically.
 
 ## 2.4.2 (2025-04-08)
 **Bug Fixes**
