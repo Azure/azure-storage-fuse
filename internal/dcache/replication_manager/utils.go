@@ -34,6 +34,8 @@
 package replication_manager
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
 	"math/rand"
 	"strings"
@@ -44,7 +46,7 @@ import (
 
 const (
 	// TODO: discuss if this is a good value for RPC timeout
-	RPCClientTimeout = 10 // in milliseconds
+	RPCClientTimeout = 2 // in seconds
 )
 
 func selectOnlineRVForMV(mvName string) (string, error) {
@@ -104,6 +106,13 @@ func checkComponentRVsOnline(componentRVs []string) bool {
 	}
 
 	return true
+}
+
+// TODO: should byte array be used for storing hash instead of string?
+// check is md5sum can be used for hash or crc should be used
+func getMD5Sum(data []byte) string {
+	hash := md5.Sum(data)
+	return hex.EncodeToString(hash[:])
 }
 
 // TODO:: integration: sample method, will be later removed after integrating with cluster manager
