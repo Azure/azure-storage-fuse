@@ -146,6 +146,8 @@ func (cmi *ClusterManagerImpl) start(dCacheConfig *dcache.DCacheConfig, rvs []dc
 	}
 	cmi.ipAddress = rvs[0].IPAddress
 	common.Assert(common.IsValidIP(cmi.ipAddress), fmt.Sprintf("Invalid Ip[%s] for nodeId[%s]", cmi.ipAddress, cmi.nodeId))
+
+	//TODO{Akku}: Start punching heartbeat right away and store the full fledged cluster map if present at storage
 	cmi.hbTicker = time.NewTicker(time.Duration(dCacheConfig.HeartbeatSeconds) * time.Second)
 	go func() {
 		for range cmi.hbTicker.C {
@@ -179,7 +181,7 @@ func (cmi *ClusterManagerImpl) updateClusterMapLocalCopyIfRequired() {
 
 	common.Assert(etag != nil, fmt.Sprintf("expected non‑nil ETag for node %s", cmi.nodeId))
 	common.Assert(len(storageBytes) > 0,
-		fmt.Sprintf("received empty cluster map for local cache sync for node %s",
+		fmt.Sprintf("received empty cluster map for node %s",
 			cmi.nodeId))
 
 	//2. if we've already loaded this exact version, skip the update
@@ -196,6 +198,7 @@ func (cmi *ClusterManagerImpl) updateClusterMapLocalCopyIfRequired() {
 		return
 	}
 
+	//TODO{Akku}: Add IsValidClusterMap and do extinsive validation over all the fields
 	common.Assert(storageClusterMap.LastUpdatedAt > 0,
 		fmt.Sprintf("invalid LastUpdatedAt (%d) in clusterMap for node %s",
 			storageClusterMap.LastUpdatedAt, cmi.nodeId))
