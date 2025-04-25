@@ -34,8 +34,9 @@
 package clustermanager
 
 import (
-	"math"
-	"strconv"
+	"fmt"
+	"math/rand"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 )
@@ -115,115 +116,170 @@ func (c *ClusterManagerImpl) ReportRVFull(rvName string) error {
 }
 
 func evaluateMVRVMapping(NumReplicas int, MvsPerRv int) map[string]dcache.MirroredVolume {
-
-	// Need to fetch latest MV Map from storage and update the local copy
-	mvMap := fetchMVMap()
-	// Need informtation about newest Rv's added
+	// const (
+	// 	NumReplicas = 3
+	// 	MVsPerRV    = 10
+	// )
 	rvMap := fetchRVMap()
+	existingMVMap := fetchMVMap()
 
-	numRvs := len(rvMap)
-	// Calculate the number of Mvs needed
-	numMvs := int(math.Ceil(float64(numRvs) * float64(MvsPerRv) / float64(NumReplicas)))
-
-	// Group Rvs by node for distribution
-	nodeToRvs := make(map[string][]string)
-	for rvID, rvInfo := range rvMap {
-		nodeToRvs[rvInfo.NodeId] = append(nodeToRvs[rvInfo.NodeId], rvID)
+	// Local types
+	type rv struct {
+		rvName string
+		slots  int // initialized with MVsPerRV
 	}
 
-	// First pass: Direct distribution in a single scan
-	// Assign Rvs to Mvs while maintaining constraints
-	currentMvIndex := len(mvMap)
-	startMvIndex := currentMvIndex
-
-	// Create tracking maps
-	rvAssignmentCount := make(map[string]int)                       // Track how many times each Rv has been assigned
-	mvRvSet := make([]map[string]bool, numMvs)                      // Track which Rvs are in each Mv
-	mvNodeCount := make([]map[string]int, numMvs)                   // Track how many Rvs from each node are in each Mv
-	mvMap = append(mvMap, make([]dcache.MirroredVolume, numMvs)...) // Ensure mvMap has enough elements
-
-	for i := currentMvIndex; i < currentMvIndex+numMvs; i++ {
-		mvMap[i].RVWithStateMap = make(map[string]dcache.StateEnum)
-		mv := mvMap[i]
-		mv.State = dcache.StateOnline
-		mvMap[i] = mv
+	type node struct {
+		nodeId string
+		rvs    []rv
+		active bool // to mark if node still has available RVs
 	}
 
-	for i := range numMvs {
-		mvRvSet[i] = make(map[string]bool)
-		mvNodeCount[i] = make(map[string]int)
+	// Helper function to find node by ID
+	findNode := func(nodes []node, nodeId string) int {
+		for i, n := range nodes {
+			if n.nodeId == nodeId {
+				return i
+			}
+		}
+		return -1
 	}
 
-	nodesProcessed := 0
-	nodeIDs := make([]string, 0, len(nodeToRvs))
-	for nodeID := range nodeToRvs {
-		nodeIDs = append(nodeIDs, nodeID)
+	// Phase 1: Initialize nodes and process existing MVs
+	var nodes []node
+
+	// Create initial node structure from RV map
+	nodeMap := make(map[string][]rv)
+	for rvId, rvInfo := range rvMap {
+		nodeMap[rvInfo.NodeId] = append(nodeMap[rvInfo.NodeId], rv{
+			rvName: rvId,
+			slots:  MvsPerRv,
+		})
 	}
 
-	// Ensure all Node's Rv's are distributed MvPerRv times
-	for nodesProcessed < len(nodeToRvs)*MvsPerRv {
+	// Convert map to slice and initialize nodes
+	for nodeId, rvs := range nodeMap {
+		nodes = append(nodes, node{
+			nodeId: nodeId,
+			rvs:    rvs,
+			active: true,
+		})
+	}
 
-		// Iterate through each node
-		for _, nodeID := range nodeIDs {
-			// Check if all Rvs from this node have been assigned
-			for _, rvID := range nodeToRvs[nodeID] {
-				// Skip if this Rv has been fully assigned
-				if rvAssignmentCount[rvID] >= MvsPerRv {
-					continue
-				}
-
-				// Find next suitable Mv
-				for attempts := range numMvs {
-					// Calculate the Mv index in round robin fashion between startIndex and startIndex+numMvs
-					mvIndex := startMvIndex + (currentMvIndex+attempts)%numMvs
-
-					// Check if this Mv has space and doesn't already have this Rv
-					if len(mvMap[mvIndex].RVWithStateMap) < NumReplicas {
-						if mvRvSet[mvIndex%numMvs] != nil && !mvRvSet[mvIndex%numMvs][rvID] {
-							// Assign the Rv to this Mv
-							mv := mvMap[mvIndex]
-							mv.RVWithStateMap[rvID] = rvMap[rvID].State
-							mvMap[mvIndex] = mv
-							// Update tracking maps
-							// Mark Rv as assigned to this Mv
-							mvRvSet[mvIndex%numMvs][rvID] = true
-							// Track how many Rvs from this node are in this Mv
-							mvNodeCount[mvIndex%numMvs][nodeID]++
-							// Track how many times this Rv has been assigned
-							rvAssignmentCount[rvID]++
-
-							// Move to next Mv for better distribution
-							currentMvIndex = mvIndex + 1
-							if currentMvIndex >= numMvs {
-								currentMvIndex = startMvIndex
-							}
-							break
-						}
+	// Process existing MVs
+	for _, mv := range existingMVMap {
+		for rvId := range mv.RVWithStateMap {
+			// Find the node containing this RV
+			for nodeIdx := range nodes {
+				for rvIdx := range nodes[nodeIdx].rvs {
+					if nodes[nodeIdx].rvs[rvIdx].rvName == rvId {
+						// Decrease available slots
+						nodes[nodeIdx].rvs[rvIdx].slots--
+						break
 					}
 				}
 			}
-			nodesProcessed++
 		}
 	}
 
-	// Delete Mvs with less Rvs than NumReplicas
-	for i := range mvMap {
-		if len(mvMap[i].RVWithStateMap) < NumReplicas {
-			// Delete mv from map
-			mvMap = append(mvMap[:i], mvMap[i+1:]...)
-			i-- // Adjust index after deletion
+	// Phase 2: Create new MVs
+	newMVs := make([]dcache.MirroredVolume, 0)
+	currentMVIndex := len(existingMVMap)
+
+	// Helper function to count active nodes
+	countActiveNodes := func(nodes []node) int {
+		count := 0
+		for _, n := range nodes {
+			if n.active {
+				count++
+			}
+		}
+		return count
+	}
+
+	// Helper function to get random active nodes
+	getRandomActiveNodes := func(nodes []node, count int) []int {
+		if countActiveNodes(nodes) < count {
+			return nil
+		}
+
+		activeIndices := make([]int, 0)
+		used := make(map[int]bool)
+		rand.Seed(time.Now().UnixNano())
+
+		for len(activeIndices) < count {
+			idx := rand.Intn(len(nodes))
+			if !used[idx] && nodes[idx].active {
+				activeIndices = append(activeIndices, idx)
+				used[idx] = true
+			}
+		}
+		return activeIndices
+	}
+
+	// Create new MVs until we can't fill them completely
+	for countActiveNodes(nodes) >= NumReplicas {
+		// Create new MV
+		mv := dcache.MirroredVolume{
+			RVWithStateMap: make(map[string]string),
+			State:          dcache.StateOnline,
+		}
+
+		// Get random active nodes
+		selectedNodes := getRandomActiveNodes(nodes, NumReplicas)
+		if selectedNodes == nil {
+			break
+		}
+
+		// Add one RV from each selected node
+		for _, nodeIdx := range selectedNodes {
+			// Find first RV with available slots
+			for rvIdx := range nodes[nodeIdx].rvs {
+				if nodes[nodeIdx].rvs[rvIdx].slots > 0 {
+					// Add RV to MV
+					rvName := nodes[nodeIdx].rvs[rvIdx].rvName
+					mv.RVWithStateMap[rvName] = rvMap[rvName].State
+
+					// Decrease slots
+					nodes[nodeIdx].rvs[rvIdx].slots--
+
+					// Check if this RV is exhausted
+					if nodes[nodeIdx].rvs[rvIdx].slots == 0 {
+						// Remove exhausted RV
+						nodes[nodeIdx].rvs = append(nodes[nodeIdx].rvs[:rvIdx], nodes[nodeIdx].rvs[rvIdx+1:]...)
+					}
+					break
+				}
+			}
+
+			// Check if node has any RVs left
+			if len(nodes[nodeIdx].rvs) == 0 {
+				nodes[nodeIdx].active = false
+			}
+		}
+
+		// Add the new MV if it has exactly NumReplicas RVs
+		if len(mv.RVWithStateMap) == NumReplicas {
+			newMVs = append(newMVs, mv)
+			currentMVIndex++
 		}
 	}
 
-	// Make a new map of string to MirroredVolume lenght len(mvMap)
-	mvRvMap := make(map[string]dcache.MirroredVolume, len(mvMap))
-	for i := range mvMap {
-		mvId := "mv" + strconv.Itoa(i)
-		mvRvMap[mvId] = mvMap[i]
-	}
-	// Update the RVWithStateMap for each Mv
+	// Combine existing and new MVs into final result
+	result := make(map[string]dcache.MirroredVolume, len(existingMVMap)+len(newMVs))
 
-	return mvRvMap
+	// Copy existing MVs
+	for mvId, mv := range existingMVMap {
+		result[mvId] = mv
+	}
+
+	// Add new MVs
+	for i, mv := range newMVs {
+		mvId := fmt.Sprintf("mv%d", currentMVIndex-len(newMVs)+i)
+		result[mvId] = mv
+	}
+
+	return result
 }
 
 func fetchMVMap() []dcache.MirroredVolume {
