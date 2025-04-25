@@ -1,0 +1,99 @@
+variables:
+  tags: 'fuse3'
+  depends: 'fuse3'
+  tags2: 'fuse2'
+  depends2: 'fuse2'
+  project: 'BlobFuse'
+  pipelineId: 99
+  patToken: $(System.AccessToken)
+  status: 'inProgress'
+  organization: azstorage
+
+pr:
+- main
+
+resources:
+  repositories:
+  - repository: 1esPipelines
+    type: git
+    name: 1ESPipelineTemplates/1ESPipelineTemplates
+    ref: refs/tags/release
+
+extends:
+  # The pipeline extends the 1ES PT which will inject different SDL and compliance tasks.
+  # For non-production pipelines, use "Unofficial" as defined below.
+  # For productions pipelines, use "Official".
+  template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
+  parameters:
+    # The SDL Source analysis stage can only run in a windows environment due to limitations of Guardian tools. 
+    # If you use Linux pool, we require an additional windows image in your pool to run the source analysis.
+    sdl:   
+      sourceAnalysisPool:
+        name: blobfuse2-pool  # Name of your hosted pool
+        image: windows2022-1espt
+        os: windows  # OS of the image. Allowed values: windows, linux, macOS
+
+    jobs:
+      # Ubuntu based test suite
+      - job: test
+        displayName: CI on
+        strategy:
+          matrix:
+            Ubuntu-20:
+              AgentName: 'ubn20-custom1espt'
+              containerName: 'test-cnt-ubn-20'
+              fuselib: 'libfuse-dev'
+              tags: 'fuse2'
+              adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
+            Ubuntu-22:
+              AgentName: 'ubuntu22-1espt'
+              containerName: 'test-cnt-ubn-22'
+              fuselib: 'libfuse3-dev'
+              tags: 'fuse3'
+              adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
+      
+        pool:
+          name: "blobfuse2-pool"
+          os: linux
+          demands:
+            - ImageOverride -equals $(AgentName)
+
+        variables:
+          - group: NightlyBlobFuse
+          
+        steps:
+        # ----------------------------------------------------------------
+          - template: 'azure-pipeline-templates/blobfuse2-ci-template.yml'
+            parameters:
+              container: $(containerName)
+              tags: $(tags)
+              fuselib: $(fuselib)
+
+        
+      - job: test_ARM64
+        displayName: CI on
+        strategy:
+          matrix:
+            Ubuntu-22-ARM64:
+              AgentName: 'ubn22armblobfuse-1espt'
+              containerName: 'test-cnt-ubn-22'
+              fuselib: 'libfuse3-dev'
+              tags: 'fuse3'
+              adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
+      
+        pool:
+          name: "blobfuse2-arm-pool"
+          demands:
+            - ImageOverride -equals $(AgentName)
+        
+        variables:
+          - group: NightlyBlobFuse
+          
+        steps:
+        # ----------------------------------------------------------------
+          - template: 'azure-pipeline-templates/blobfuse2-ci-template.yml'
+            parameters:
+              container: $(containerName)
+              tags: $(tags)
+              fuselib: $(fuselib)  
+              skip_fmt: false  
