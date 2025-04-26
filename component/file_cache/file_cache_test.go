@@ -1911,7 +1911,89 @@ func (suite *fileCacheTestSuite) TestHardLimitOnSize() {
 	suite.assert.NotNil(err)
 }
 
-func (suite *fileCacheTestSuite) createDirectoryStructure() {
+// create a list of emptry directoies in local and storage and then try deleteing those to validate emptry directories
+// are allowed be to deleted but non empty are not
+func (suite *fileCacheTestSuite) TestDeleteDirectory() {
+	defer suite.cleanupTest()
+
+	// Create local and remote dir structures
+	suite.createLocalDirectoryStructure()
+	suite.createRemoteDirectoryStructure()
+
+	// Create a file in the some random directories
+	file := "file43"
+	h, err := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: filepath.Join("a", "b", "c", "d", file), Mode: 0777})
+	suite.assert.Nil(err)
+	suite.assert.NotNil(h)
+	err = suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: h})
+	suite.assert.Nil(err)
+
+	h, err = suite.fileCache.CreateFile(internal.CreateFileOptions{Name: filepath.Join("a", "b", file), Mode: 0777})
+	suite.assert.Nil(err)
+	suite.assert.NotNil(h)
+	err = suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: h})
+	suite.assert.Nil(err)
+
+	h, err = suite.fileCache.CreateFile(internal.CreateFileOptions{Name: filepath.Join("h", "l", "m", file), Mode: 0777})
+	suite.assert.Nil(err)
+	suite.assert.NotNil(h)
+	err = suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: h})
+	suite.assert.Nil(err)
+
+	// Check directories are counted as non empty right now
+	empty := suite.fileCache.IsDirEmpty(internal.IsDirEmptyOptions{Name: filepath.Join("a")})
+	suite.assert.False(empty)
+
+	empty = suite.fileCache.IsDirEmpty(internal.IsDirEmptyOptions{Name: filepath.Join("a", "b", "c", "d")})
+	suite.assert.False(empty)
+
+	// Validate one emptry directory as well
+	empty = suite.fileCache.IsDirEmpty(internal.IsDirEmptyOptions{Name: filepath.Join("a", "b", "e", "f")})
+	suite.assert.True(empty)
+
+	// Delete file from one of the directory and validate its empty now, but its parent is not empty
+	err = suite.fileCache.DeleteFile(internal.DeleteFileOptions{Name: filepath.Join("a", "b", "c", "d", file)})
+	suite.assert.Nil(err)
+
+	empty = suite.fileCache.IsDirEmpty(internal.IsDirEmptyOptions{Name: filepath.Join("a", "b", "c", "d")})
+	suite.assert.True(empty)
+	empty = suite.fileCache.IsDirEmpty(internal.IsDirEmptyOptions{Name: filepath.Join("a", "b", "c")})
+	suite.assert.False(empty)
+
+	// Delete file only locally and not on remote and validate the directory is still not empty
+	h, err = suite.fileCache.CreateFile(internal.CreateFileOptions{Name: filepath.Join("h", "l", "m", "n", file), Mode: 0777})
+	suite.assert.Nil(err)
+	suite.assert.NotNil(h)
+	err = suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: h})
+	suite.assert.Nil(err)
+	empty = suite.fileCache.IsDirEmpty(internal.IsDirEmptyOptions{Name: filepath.Join("h", "l", "m", "n")})
+	suite.assert.False(empty)
+
+	os.Remove(filepath.Join(suite.cache_path, "h", "l", "m", "n", file))
+	empty = suite.fileCache.IsDirEmpty(internal.IsDirEmptyOptions{Name: filepath.Join("h", "l", "m", "n")})
+	suite.assert.False(empty)
+	os.Remove(filepath.Join(suite.fake_storage_path, "h", "l", "m", "n", file))
+	empty = suite.fileCache.IsDirEmpty(internal.IsDirEmptyOptions{Name: filepath.Join("h", "l", "m", "n")})
+	suite.assert.True(empty)
+
+	// Delete file only on remote and not on local and validate the directory is still not empty
+	h, err = suite.fileCache.CreateFile(internal.CreateFileOptions{Name: filepath.Join("h", "l", "m", "n", file), Mode: 0777})
+	suite.assert.Nil(err)
+	suite.assert.NotNil(h)
+	err = suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: h})
+	suite.assert.Nil(err)
+	empty = suite.fileCache.IsDirEmpty(internal.IsDirEmptyOptions{Name: filepath.Join("h", "l", "m", "n")})
+	suite.assert.False(empty)
+
+	os.Remove(filepath.Join(suite.fake_storage_path, "h", "l", "m", "n", file))
+	empty = suite.fileCache.IsDirEmpty(internal.IsDirEmptyOptions{Name: filepath.Join("h", "l", "m", "n")})
+	suite.assert.False(empty)
+	os.Remove(filepath.Join(suite.cache_path, "h", "l", "m", "n", file))
+	empty = suite.fileCache.IsDirEmpty(internal.IsDirEmptyOptions{Name: filepath.Join("h", "l", "m", "n")})
+	suite.assert.True(empty)
+}
+
+func (suite *fileCacheTestSuite) createLocalDirectoryStructure() {
 	err := os.MkdirAll(filepath.Join(suite.cache_path, "a", "b", "c", "d"), 0777)
 	suite.assert.NoError(err)
 
@@ -1921,45 +2003,25 @@ func (suite *fileCacheTestSuite) createDirectoryStructure() {
 	err = os.MkdirAll(filepath.Join(suite.cache_path, "a", "b", "e", "g"), 0777)
 	suite.assert.NoError(err)
 
-	err = os.MkdirAll(filepath.Join(suite.cache_path, "h", "i", "j", "k"), 0777)
-	suite.assert.NoError(err)
-
 	err = os.MkdirAll(filepath.Join(suite.cache_path, "h", "l", "m", "n"), 0777)
 	suite.assert.NoError(err)
 }
 
-func (suite *fileCacheTestSuite) TestDeleteEmptyDirsRoot() {
-	defer suite.cleanupTest()
-
-	suite.createDirectoryStructure()
-	val, err := suite.fileCache.DeleteEmptyDirs(internal.DeleteDirOptions{Name: suite.cache_path})
-	suite.assert.NoError(err)
-	suite.assert.True(val)
-}
-
-func (suite *fileCacheTestSuite) TestDeleteEmptyDirsNonRoot() {
-	defer suite.cleanupTest()
-
-	suite.createDirectoryStructure()
-	val, err := suite.fileCache.DeleteEmptyDirs(internal.DeleteDirOptions{Name: "a"})
-	suite.assert.NoError(err)
-	suite.assert.True(val)
-
-	val, err = suite.fileCache.DeleteEmptyDirs(internal.DeleteDirOptions{Name: filepath.Join(suite.cache_path, "h")})
-	suite.assert.NoError(err)
-	suite.assert.True(val)
-}
-
-func (suite *fileCacheTestSuite) TestDeleteEmptyDirsNegative() {
-	defer suite.cleanupTest()
-
-	suite.createDirectoryStructure()
-	_, err := os.Create(filepath.Join(suite.cache_path, "h", "l", "m", "n", "file.txt"))
+func (suite *fileCacheTestSuite) createRemoteDirectoryStructure() {
+	err := os.MkdirAll(filepath.Join(suite.fake_storage_path, "a", "b", "c", "d"), 0777)
 	suite.assert.NoError(err)
 
-	val, err := suite.fileCache.DeleteEmptyDirs(internal.DeleteDirOptions{Name: suite.cache_path})
-	suite.assert.Error(err)
-	suite.assert.False(val)
+	err = os.MkdirAll(filepath.Join(suite.fake_storage_path, "a", "b", "e", "f"), 0777)
+	suite.assert.NoError(err)
+
+	err = os.MkdirAll(filepath.Join(suite.fake_storage_path, "a", "b", "e", "g"), 0777)
+	suite.assert.NoError(err)
+
+	err = os.MkdirAll(filepath.Join(suite.fake_storage_path, "h", "i", "j", "k"), 0777)
+	suite.assert.NoError(err)
+
+	err = os.MkdirAll(filepath.Join(suite.fake_storage_path, "h", "l", "m", "n"), 0777)
+	suite.assert.NoError(err)
 }
 
 // In order for 'go test' to run this suite, we need to create
