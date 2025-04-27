@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1745142324068,
+  "lastUpdate": 1745746927858,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -305,6 +305,43 @@ window.BENCHMARK_DATA = {
           {
             "name": "rand_read_128_thread",
             "value": 892.3610026041666,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "James Fantin-Hardesty",
+            "username": "jfantinhardesty",
+            "email": "24646452+jfantinhardesty@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "1667ad8b4bebf79badfccb915c351fd3209883a9",
+          "message": "Feature: Lazy unmount (#1705)\n\nCo-authored-by: Vikas Bhansali <64532198+vibhansa-msft@users.noreply.github.com>",
+          "timestamp": "2025-04-26T07:11:48Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/1667ad8b4bebf79badfccb915c351fd3209883a9"
+        },
+        "date": 1745746927601,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "seq_write_112_thread",
+            "value": 39544.139973958336,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "seq_read_128_thread",
+            "value": 47880.0498046875,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "rand_read_128_thread",
+            "value": 877.9388020833334,
             "unit": "MiB/s"
           }
         ]
