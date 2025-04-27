@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1745139252442,
+  "lastUpdate": 1745743880319,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -505,6 +505,68 @@ window.BENCHMARK_DATA = {
           {
             "name": "read_40GB",
             "value": 13.000917911529541,
+            "unit": "seconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "James Fantin-Hardesty",
+            "username": "jfantinhardesty",
+            "email": "24646452+jfantinhardesty@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "1667ad8b4bebf79badfccb915c351fd3209883a9",
+          "message": "Feature: Lazy unmount (#1705)\n\nCo-authored-by: Vikas Bhansali <64532198+vibhansa-msft@users.noreply.github.com>",
+          "timestamp": "2025-04-26T07:11:48Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/1667ad8b4bebf79badfccb915c351fd3209883a9"
+        },
+        "date": 1745743880075,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "write_1GB",
+            "value": 0.878262996673584,
+            "unit": "seconds"
+          },
+          {
+            "name": "write_10GB",
+            "value": 4.015458583831787,
+            "unit": "seconds"
+          },
+          {
+            "name": "write_100GB",
+            "value": 37.17105221748352,
+            "unit": "seconds"
+          },
+          {
+            "name": "write_40GB",
+            "value": 15.590733528137207,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_1GB",
+            "value": 0.7337596416473389,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_10GB",
+            "value": 3.252476692199707,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_100GB",
+            "value": 32.973763942718506,
+            "unit": "seconds"
+          },
+          {
+            "name": "read_40GB",
+            "value": 12.739840269088745,
             "unit": "seconds"
           }
         ]
