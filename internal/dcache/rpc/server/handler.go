@@ -91,11 +91,6 @@ type mvInfo struct {
 	// This is used to block the end sync call till all the ongoing chunk operations are completed.
 	chunkIOInProgress atomic.Int64
 
-	// flag to block chunk operations (get, put or remove) for this MV.
-	// This flag is enabled in the end sync call to pause new chunk operations in the MV.
-	// When the end sync call is completed, this flag is disabled.
-	blockOpsFlag atomic.Bool
-
 	// Two MV states are interesting from an IO standpoint.
 	// An online MV is the happy case where all RVs are online and sync'ed. In this state there won't be any
 	// resync Writes, and client Writes if any will be replicated to all the RVs, each of them storing the chunks
@@ -385,12 +380,11 @@ func (h *ChunkServiceHandler) checkValidChunkAddress(address *models.Address) er
 
 	// check if the rvID is valid
 	rvInfo, ok := h.rvIDMap[address.RvID]
+	common.Assert(ok && rvInfo != nil, fmt.Sprintf("rvInfo nil for rvID %s", address.RvID))
 	if !ok || rvInfo == nil {
 		log.Err("ChunkServiceHandler::checkValidChunkAddress: Invalid rvID %s", address.RvID)
 		return rpc.NewResponseError(rpc.InvalidRVID, fmt.Sprintf("invalid rvID %s", address.RvID))
 	}
-
-	common.Assert(ok && rvInfo != nil, fmt.Sprintf("rvInfo nil for rvID %s", address.RvID))
 
 	cacheDir := rvInfo.cacheDir
 	common.Assert(cacheDir != "", fmt.Sprintf("cacheDir is empty for RV %s", rvInfo.rvName))
@@ -579,7 +573,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	if !isComponentRVsValid(componentRVsInMV, req.ComponentRV) {
 		log.Err("ChunkServiceHandler::PutChunk: Request component RVs %v are invalid for MV %s component RVs %v", req.ComponentRV, req.Chunk.Address.MvName, componentRVsInMV)
 		common.Assert(false, fmt.Sprintf("invalid component RVs for MV %s", req.Chunk.Address.MvName), req.ComponentRV, componentRVsInMV)
-		return nil, rpc.NewResponseError(rpc.ComponentRVsInvalid, fmt.Sprintf("request component RVs %v are invalid for MV %s component RVs %v", req.ComponentRV, req.Chunk.Address.MvName, componentRVsInMV))
+		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("request component RVs %v are invalid for MV %s component RVs %v", req.ComponentRV, req.Chunk.Address.MvName, componentRVsInMV))
 	}
 
 	// Block the calling thread if this MV is currently quiesced
@@ -873,7 +867,7 @@ func (h *ChunkServiceHandler) LeaveMV(ctx context.Context, req *models.LeaveMVRe
 	if !isComponentRVsValid(componentRVsInMV, req.ComponentRV) {
 		log.Err("ChunkServiceHandler::LeaveMV: Request component RVs %v are invalid for MV %s component RVs %v", req.ComponentRV, req.MV, componentRVsInMV)
 		common.Assert(false, fmt.Sprintf("invalid component RVs for MV %s", req.MV), req.ComponentRV, componentRVsInMV)
-		return nil, rpc.NewResponseError(rpc.ComponentRVsInvalid, fmt.Sprintf("request component RVs %v are invalid for MV %s component RVs %v", req.ComponentRV, req.MV, componentRVsInMV))
+		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("request component RVs %v are invalid for MV %s component RVs %v", req.ComponentRV, req.MV, componentRVsInMV))
 	}
 
 	// delete the MV directory
@@ -936,7 +930,7 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 	if !isComponentRVsValid(componentRVsInMV, req.ComponentRV) {
 		log.Err("ChunkServiceHandler::StartSync: Request component RVs %v are invalid for MV %s component RVs %v", req.ComponentRV, req.MV, componentRVsInMV)
 		common.Assert(false, fmt.Sprintf("invalid component RVs for MV %s", req.MV), req.ComponentRV, componentRVsInMV)
-		return nil, rpc.NewResponseError(rpc.ComponentRVsInvalid, fmt.Sprintf("request component RVs %v are invalid for MV %s component RVs %v", req.ComponentRV, req.MV, componentRVsInMV))
+		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("request component RVs %v are invalid for MV %s component RVs %v", req.ComponentRV, req.MV, componentRVsInMV))
 	}
 
 	// create the MV sync directory
@@ -1006,7 +1000,7 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 	if !isComponentRVsValid(componentRVsInMV, req.ComponentRV) {
 		log.Err("ChunkServiceHandler::EndSync: Request component RVs %v are invalid for MV %s component RVs %v", req.ComponentRV, req.MV, componentRVsInMV)
 		common.Assert(false, fmt.Sprintf("invalid component RVs for MV %s", req.MV), req.ComponentRV, componentRVsInMV)
-		return nil, rpc.NewResponseError(rpc.ComponentRVsInvalid, fmt.Sprintf("request component RVs %v are invalid for MV %s component RVs %v", req.ComponentRV, req.MV, componentRVsInMV))
+		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("request component RVs %v are invalid for MV %s component RVs %v", req.ComponentRV, req.MV, componentRVsInMV))
 	}
 
 	// Set IO quiescing in the mv. Now GetChunk, PutChunk, will not allow any new IO.

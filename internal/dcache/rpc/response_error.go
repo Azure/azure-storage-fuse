@@ -42,7 +42,10 @@ const (
 	ChunkNotFound                  // Chunk not found
 	ChunkAlreadyExists             // Chunk already exists
 	MaxMVsExceeded                 // Max number of MVs exceeded for the RV
-	ComponentRVsInvalid            // Component RVs are invalid for the MV
+	// Component RVs are invalid for the MV.
+	// This indicates the client that its copy of clustermap is stale.
+	// So, it should fetch the latest clustermap copy and retry.
+	NeedToRefreshClusterMap
 )
 
 type ResponseError struct {

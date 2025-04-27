@@ -37,7 +37,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
@@ -82,9 +81,14 @@ func isComponentRVsValid(rv1 []string, rv2 []string) bool {
 	}
 
 	for i := 0; i < len(rv1); i++ {
+		// TODO: discuss if the state of RV also needs to be compared
+		// The RV array can be like ["rv0", "rv5=syncing", "rv9=outofsync"]
 		// RV array can be like ["rv0", "rv5=syncing", "rv9=outofsync"]
-		s1 := (strings.Split(rv1[i], "="))[0]
-		s2 := (strings.Split(rv2[i], "="))[0]
+		// s1 := (strings.Split(rv1[i], "="))[0]
+		// s2 := (strings.Split(rv2[i], "="))[0]
+
+		s1 := rv1[i]
+		s2 := rv2[i]
 		if s1 != s2 {
 			return false
 		}
