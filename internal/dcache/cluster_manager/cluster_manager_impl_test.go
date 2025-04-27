@@ -121,7 +121,7 @@ func mockHeartbeat(nodeID, rvId string, available, total uint64) {
 	mockHeartbeatData[nodeID] = hbBytes
 }
 
-func (suite *ClusterManagerImplTestSuite) TestReconcileRVMap_AddNewRV() {
+func (suite *ClusterManagerImplTestSuite) TestUpdateRVList_AddNewRV() {
 
 	// Mock data
 	mockNodeIDs := []string{"node1"}
@@ -135,13 +135,13 @@ func (suite *ClusterManagerImplTestSuite) TestReconcileRVMap_AddNewRV() {
 		"rv0": {RvId: "rv1", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
 	}
 
-	changed, err := suite.cmi.reconcileRVMap(initialClusterMap)
+	changed, err := suite.cmi.updateRVList(initialClusterMap)
 	suite.NoError(err)
 	suite.True(changed)
 	suite.Equal(expectedClusterMap, initialClusterMap)
 }
 
-func (suite *ClusterManagerImplTestSuite) TestReconcileRVMap_AddNewRVWithExisting() {
+func (suite *ClusterManagerImplTestSuite) TestUpdateRVList_AddNewRVWithExisting() {
 
 	// Mock data
 	mockNodeIDs := []string{"node1", "node2"}
@@ -159,13 +159,13 @@ func (suite *ClusterManagerImplTestSuite) TestReconcileRVMap_AddNewRVWithExistin
 		"rv1": {RvId: "rvId1", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
 	}
 
-	changed, err := suite.cmi.reconcileRVMap(initialClusterMap)
+	changed, err := suite.cmi.updateRVList(initialClusterMap)
 	suite.NoError(err)
 	suite.True(changed)
 	suite.Equal(expectedClusterMap, initialClusterMap)
 }
 
-func (suite *ClusterManagerImplTestSuite) TestReconcileRVMap_UpdateExistingRV() {
+func (suite *ClusterManagerImplTestSuite) TestUpdateRVList_UpdateExistingRV() {
 
 	// Mock data
 	mockNodeIDs := []string{"node1"}
@@ -183,13 +183,13 @@ func (suite *ClusterManagerImplTestSuite) TestReconcileRVMap_UpdateExistingRV() 
 		"rv0": {RvId: "rv1", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
 	}
 
-	changed, err := suite.cmi.reconcileRVMap(initialClusterMap)
+	changed, err := suite.cmi.updateRVList(initialClusterMap)
 	suite.NoError(err)
 	suite.True(changed)
 	suite.Equal(expectedClusterMap, initialClusterMap)
 }
 
-func (suite *ClusterManagerImplTestSuite) TestReconcileRVMap_MarkMissingRVOffline() {
+func (suite *ClusterManagerImplTestSuite) TestUpdateRVList_MarkMissingRVOffline() {
 	// Mock functions
 	getAllNodes = func() ([]string, error) {
 		return nil, nil
@@ -201,13 +201,13 @@ func (suite *ClusterManagerImplTestSuite) TestReconcileRVMap_MarkMissingRVOfflin
 		"rv0": {RvId: "rv1", State: dcache.StateOffline, AvailableSpace: 50, TotalSpace: 100},
 	}
 
-	changed, err := suite.cmi.reconcileRVMap(initialClusterMap)
+	changed, err := suite.cmi.updateRVList(initialClusterMap)
 	suite.NoError(err)
 	suite.True(changed)
 	suite.Equal(expectedClusterMap, initialClusterMap)
 }
 
-func (suite *ClusterManagerImplTestSuite) TestReconcileRVMap_NoChangesRequired() {
+func (suite *ClusterManagerImplTestSuite) TestUpdateRVList_NoChangesRequired() {
 	// Mock data
 	mockNodeIDs := []string{"node1"}
 
@@ -224,7 +224,7 @@ func (suite *ClusterManagerImplTestSuite) TestReconcileRVMap_NoChangesRequired()
 		"rv0": {RvId: "rv1", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
 	}
 
-	changed, err := suite.cmi.reconcileRVMap(initialClusterMap)
+	changed, err := suite.cmi.updateRVList(initialClusterMap)
 	suite.NoError(err)
 	suite.False(changed)
 	suite.Equal(expectedClusterMap, initialClusterMap)
