@@ -33,7 +33,9 @@
 
 package filemanager
 
-import "github.com/Azure/azure-storage-fuse/v2/internal/dcache/file_manager/models"
+import (
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/file_manager/models"
+)
 
 func getChunkStartOffsetFromFileOffset(offset int64, fileLayout *models.FileLayout) int64 {
 	return (offset / fileLayout.ChunkSize) * fileLayout.ChunkSize
@@ -41,4 +43,52 @@ func getChunkStartOffsetFromFileOffset(offset int64, fileLayout *models.FileLayo
 
 func getChunkIdxFromFileOffset(offset int64, fileLayout *models.FileLayout) int64 {
 	return offset / fileLayout.ChunkSize
+}
+
+func getChunkOffsetFromFileOffset(offset int64, fileLayout *models.FileLayout) int64 {
+	return offset - getChunkStartOffsetFromFileOffset(offset, fileLayout)
+}
+
+func getChunkSize(offset int64, file *File) int64 {
+	return min(file.FileMetadata.Size-
+		getChunkStartOffsetFromFileOffset(offset, file.FileMetadata.FileLayout),
+		file.FileMetadata.FileLayout.ChunkSize)
+}
+
+func isOffsetChunkStarting(offset int64, fileLayout *models.FileLayout) bool {
+	return (offset%fileLayout.ChunkSize == 0)
+}
+
+// Does all file Init Process for creation of the file.
+func NewFile(fileName string) *File {
+	fileMetadata := &models.FileMetadata{
+		Filename: fileName,
+	}
+	// todo : assign uuid for fileID
+	// todo : get chunkSize and Stripe Size from the config and assign.
+	// todo : Choose appropriate MV's from the online mv's returned by the clustermap
+	fileMetadata.FileLayout = &models.FileLayout{
+		ChunkSize:  4 * 1024 * 1024,
+		StripeSize: 16 * 1024 * 1024,
+		MVList:     []string{"mv0", "mv1", "mv2"},
+	}
+	return &File{
+		FileMetadata: fileMetadata,
+	}
+}
+
+// Creates the chunk and allocates the chunk buf
+func NewChunk(idx int64, file *File) (*models.Chunk, error) {
+	buf, err := fileIOMgr.bp.getBuffer()
+	if err != nil {
+		return nil, err
+	}
+	return &models.Chunk{
+		Idx:              idx,
+		ChnkOffset:       idx * file.FileMetadata.FileLayout.ChunkSize,
+		Buf:              buf,
+		Err:              make(chan error),
+		ScheduleDownload: make(chan struct{}),
+		ScheduleUpload:   make(chan struct{}),
+	}, nil
 }

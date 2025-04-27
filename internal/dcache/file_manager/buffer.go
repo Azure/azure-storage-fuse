@@ -35,10 +35,11 @@ package filemanager
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 
-	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/common"
 )
 
 type bufferPool struct {
@@ -46,15 +47,15 @@ type bufferPool struct {
 	numRequestedBuffers int64
 	maxBuffers          int64
 	bufSize             int
-	emptyBuf            []byte
+	emptyBuf            []byte // Used to reset the buffers and also used as a buf to
+	//fill the holes inside the file while writing
 }
 
 func NewBufferPool(bufSize int, maxBuffers int) *bufferPool {
-	var buf []byte
 	return &bufferPool{
 		pool: sync.Pool{
 			New: func() any {
-				return buf
+				return make([]byte, bufSize)
 			},
 		},
 		bufSize:    bufSize,
@@ -65,22 +66,18 @@ func NewBufferPool(bufSize int, maxBuffers int) *bufferPool {
 
 func (bp *bufferPool) getBuffer() ([]byte, error) {
 	if atomic.LoadInt64(&bp.numRequestedBuffers) > bp.maxBuffers {
-		log.Info("Distributed Cache::getBuffer : Buffers Exhausted")
 		return nil, errors.New("Buffers Exhausted")
 	}
 
 	buf := bp.pool.Get().([]byte)
-	if buf == nil {
-		buf = make([]byte, bp.bufSize)
-	} else {
-		// This can be remove in the future.
-		copy(buf, bp.emptyBuf)
-	}
+	common.Assert(len(buf) == bp.bufSize, fmt.Sprintf("Allocated Buf Size %d != Required Buf Size %d", len(buf), bp.bufSize))
 	bp.numRequestedBuffers++
 	return buf, nil
 }
 
 func (bp *bufferPool) putBuffer(buf []byte) {
+	copy(buf, bp.emptyBuf)
 	bp.pool.Put(buf)
+	common.Assert(atomic.LoadInt64(&bp.numRequestedBuffers) > 0, fmt.Sprintf("Number of buffers are less than zero:  %d", atomic.LoadInt64(&bp.numRequestedBuffers)))
 	bp.numRequestedBuffers--
 }
