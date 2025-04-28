@@ -102,7 +102,7 @@ func (file *DcacheFile) ReadFile(offset int64, buf []byte) (bytesRead int, err e
 		if err != nil {
 			return 0, nil
 		}
-		chunkOffset := getChunkOffsetFromFileOffset(offset, file.FileMetadata.FileLayout)
+		chunkOffset := getChunkOffsetFromFileOffset(offset, &file.FileMetadata.FileLayout)
 		copied := copy(buf[bufOffset:], chunk.Buf[chunkOffset:chunk.Len])
 		offset += int64(copied)
 		bufOffset += copied
@@ -127,7 +127,7 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 		if err != nil {
 			return err
 		}
-		chunkOffset := getChunkOffsetFromFileOffset(offset, file.FileMetadata.FileLayout)
+		chunkOffset := getChunkOffsetFromFileOffset(offset, &file.FileMetadata.FileLayout)
 
 		// Todo: Support Bigger Holes(hole size > chunkSize) inside the file if offset jumps suddenly to a higher offset.
 		// Sanity check for resetting the garbage data of the chunk buf.
@@ -141,9 +141,9 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 		bufOffset += copied
 		chunk.Len += int64(copied)
 
-		common.Assert(chunk.Len == getChunkOffsetFromFileOffset(offset, file.FileMetadata.FileLayout),
+		common.Assert(chunk.Len == getChunkOffsetFromFileOffset(offset, &file.FileMetadata.FileLayout),
 			fmt.Sprintf("Acutal Chunk Len : %d is modified incorrectly, Expected chunkLen : %d",
-				chunk.Len, getChunkStartOffsetFromFileOffset(offset, file.FileMetadata.FileLayout)))
+				chunk.Len, getChunkStartOffsetFromFileOffset(offset, &file.FileMetadata.FileLayout)))
 
 		if chunk.Len == file.FileMetadata.FileLayout.ChunkSize {
 			// Schedule the upload
@@ -256,7 +256,7 @@ func (file *DcacheFile) releaseChunk(chunk *StagedChunk) {
 // Sync true : Schedules and waits for the download to complete.
 // Sync false: Schedules the read
 func (file *DcacheFile) readChunk(offset int64, sync bool) (*StagedChunk, error) {
-	chunkIdx := getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout)
+	chunkIdx := getChunkIdxFromFileOffset(offset, &file.FileMetadata.FileLayout)
 	log.Debug("DistributedCache::readChunk : sync: %t, chunkIdx : %d, file : %s", sync, chunkIdx, file.FileMetadata.Filename)
 	chunk, err := file.getChunkForRead(chunkIdx)
 	if err != nil {
@@ -271,7 +271,7 @@ func (file *DcacheFile) readChunk(offset int64, sync bool) (*StagedChunk, error)
 			chunk.Err <- err
 		}
 		// Release the previous chunks if any.
-		if isOffsetChunkStarting(offset, file.FileMetadata.FileLayout) {
+		if isOffsetChunkStarting(offset, &file.FileMetadata.FileLayout) {
 			// Clean the previous chunk
 			file.removeChunk(chunkIdx - 1)
 		}
@@ -281,13 +281,13 @@ func (file *DcacheFile) readChunk(offset int64, sync bool) (*StagedChunk, error)
 
 // Reads the chunk and also schedules the downloads for the readahead chunks
 func (file *DcacheFile) readChunkWithReadAhead(offset int64) (*StagedChunk, error) {
-	chunkIdx := getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout)
+	chunkIdx := getChunkIdxFromFileOffset(offset, &file.FileMetadata.FileLayout)
 	log.Debug("DistributedCache::readAheadChunk : offset : %d, chunkIdx : %d, file : %s", offset, chunkIdx, file.FileMetadata.Filename)
 
 	readAheadEndChunkIdx := min(chunkIdx+int64(fileIOMgr.numReadAheadChunks),
-		getChunkIdxFromFileOffset(file.FileMetadata.Size-1, file.FileMetadata.FileLayout))
+		getChunkIdxFromFileOffset(file.FileMetadata.Size-1, &file.FileMetadata.FileLayout))
 	// Schedule downloads for the readahead chunks
-	if isOffsetChunkStarting(offset, file.FileMetadata.FileLayout) {
+	if isOffsetChunkStarting(offset, &file.FileMetadata.FileLayout) {
 		for i := chunkIdx + 1; i <= readAheadEndChunkIdx; i++ {
 			_, err := file.readChunk(i*file.FileMetadata.FileLayout.ChunkSize, false)
 			if err != nil {
@@ -303,7 +303,7 @@ func (file *DcacheFile) readChunkWithReadAhead(offset int64) (*StagedChunk, erro
 // Creates/return the chunk that is ready to be written.
 // Also responsible for releasing the chunks, if the chunks are greater than staging area chunks.
 func (file *DcacheFile) CreateOrGetStagedChunk(offset int64) (*StagedChunk, error) {
-	chunkIdx := getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout)
+	chunkIdx := getChunkIdxFromFileOffset(offset, &file.FileMetadata.FileLayout)
 	log.Debug("DistributedCache::CreateOrGetStagedChunk : chunkIdx : %d, file : %s", chunkIdx, file.FileMetadata.Filename)
 	//	fmt.Printf("DistributedCache::CreateOrGetStagedChunk : chunkIdx : %d, file : %s\n", chunkIdx, file.FileMetadata.Filename)
 	chunk, err := file.getChunkForWrite(chunkIdx)
@@ -313,7 +313,7 @@ func (file *DcacheFile) CreateOrGetStagedChunk(offset int64) (*StagedChunk, erro
 
 	// release the chunks that are out of staging area, by waiting for their uploads to complete.
 	// only done at chunk boundaris to decrease the overhead
-	if isOffsetChunkStarting(offset, file.FileMetadata.FileLayout) {
+	if isOffsetChunkStarting(offset, &file.FileMetadata.FileLayout) {
 		// Release the buffer if it falls out of staging area.
 		releaseChunkIdx := chunkIdx - int64(fileIOMgr.numStagingChunks)
 		releaseChunk, err := file.loadChunk(releaseChunkIdx)

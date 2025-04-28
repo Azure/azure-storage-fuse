@@ -99,12 +99,12 @@ type DCacheConfig struct {
 }
 
 type FileMetadata struct {
-	Filename        string      `json:"filename"`
-	FileID          string      `json:"file_id"`
-	Size            int64       `json:"size"`
-	ClusterMapEpoch int64       `json:"cluster_map_epoch"`
-	FileLayout      *FileLayout `json:"file_layout"`
-	Sha1hash        []byte      `json:"sha256"`
+	Filename        string     `json:"filename"`
+	FileID          string     `json:"file_id"`
+	Size            int64      `json:"size"`
+	ClusterMapEpoch int64      `json:"cluster_map_epoch"`
+	FileLayout      FileLayout `json:"file_layout"`
+	Sha1hash        []byte     `json:"sha256"`
 }
 
 type FileLayout struct {

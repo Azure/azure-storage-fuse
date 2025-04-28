@@ -55,7 +55,7 @@ func getChunkOffsetFromFileOffset(offset int64, fileLayout *dcache.FileLayout) i
 
 func getChunkSize(offset int64, file *DcacheFile) int64 {
 	return min(file.FileMetadata.Size-
-		getChunkStartOffsetFromFileOffset(offset, file.FileMetadata.FileLayout),
+		getChunkStartOffsetFromFileOffset(offset, &file.FileMetadata.FileLayout),
 		file.FileMetadata.FileLayout.ChunkSize)
 }
 
@@ -71,7 +71,7 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 	// todo : assign uuid for fileID
 	// todo : get chunkSize and Stripe Size from the config and assign.
 	// todo : Choose appropriate MV's from the online mv's returned by the clustermap
-	fileMetadata.FileLayout = &dcache.FileLayout{
+	fileMetadata.FileLayout = dcache.FileLayout{
 		ChunkSize:  4 * 1024 * 1024,
 		StripeSize: 16 * 1024 * 1024,
 		MVList:     []string{"mv0", "mv1", "mv2"},
