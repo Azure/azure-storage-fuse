@@ -265,6 +265,46 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_MaxMVs() {
 	suite.TestUpdateMvList(updated, rvMap, numReplicas, mvPerRv)
 }
 
+func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_OfflineMv() {
+	mvMap := mockMvMap()
+	// Remove rv1 from mv0
+	delete(mvMap["mv0"].RVWithStateMap, "rv1")
+	// Remove rv3 from mv1
+	delete(mvMap["mv1"].RVWithStateMap, "rv3")
+	rvMap := mockRvMap()
+
+	rv := rvMap["rv0"]
+	rv.State = dcache.StateOffline
+	rvMap["rv0"] = rv
+
+	numReplicas := 1
+	mvPerRv := 2
+	updated := updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
+
+	suite.Equal(updated["mv0"].State, dcache.StateOffline, "Updated MV0 should be offline")
+	suite.TestUpdateMvList(updated, rvMap, numReplicas, mvPerRv)
+}
+
+func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_OfflineRv() {
+	mvMap := mockMvMap()
+	mvMap["mv0"].RVWithStateMap["rv6"] = string(dcache.StateOnline)
+	mvMap["mv1"].RVWithStateMap["rv5"] = string(dcache.StateOnline)
+	rvMap := mockRvMap()
+	rv := rvMap["rv4"]
+	rv.State = dcache.StateOffline
+	rvMap["rv4"] = rv
+
+	numReplicas := 3
+	mvPerRv := 5
+	updated := updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
+
+	for _, mv := range updated {
+		_, ok := mv.RVWithStateMap["rv4"]
+		suite.False(ok, "RV4 should not be present in any MV")
+	}
+	suite.TestUpdateMvList(updated, rvMap, numReplicas, mvPerRv)
+}
+
 func (suite *ClusterManagerImplTestSuite) TestUpdateMvList(updated map[string]dcache.MirroredVolume, rvMap map[string]dcache.RawVolume, numReplicas int, mvPerRv int) {
 	suite.True(len(updated) > 0)
 
@@ -324,7 +364,7 @@ func mockRvMap() map[string]dcache.RawVolume {
 		"rv1": {RvId: "rv1", NodeId: "node1", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
 		"rv2": {RvId: "rv2", NodeId: "node1", State: dcache.StateOnline, AvailableSpace: 30, TotalSpace: 100}, // Duplicate nodeId
 		"rv3": {RvId: "rv3", NodeId: "node3", State: dcache.StateOnline, AvailableSpace: 70, TotalSpace: 100},
-		"rv4": {RvId: "rv4", NodeId: "node4", State: dcache.StateOffline, AvailableSpace: 0, TotalSpace: 100},
+		"rv4": {RvId: "rv4", NodeId: "node4", State: dcache.StateOnline, AvailableSpace: 0, TotalSpace: 100},
 		"rv5": {RvId: "rv5", NodeId: "node5", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
 		"rv6": {RvId: "rv6", NodeId: "node3", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100}, // Duplicate nodeId
 		"rv7": {RvId: "rv7", NodeId: "node5", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},

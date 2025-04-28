@@ -524,8 +524,19 @@ func updateMVList(rvMap map[string]dcache.RawVolume, existingMVMap map[string]dc
 	}
 
 	nodeToRvs := make(map[string]node)
+
+	// TODO :: Degraded, offline, fix workfloes resync will be handled by replica
+	// Fix - rv is offline so replace it with new rv and mark state as out-of-sync
+	// Degraded - rv is offline so mark mv as degraded
+	// Sync - replica manager will take care of this and change mv state to syncing
+	// Offline - all rv's a
+
 	// Populate the RV struct and node struct
 	for rvId, rvInfo := range rvMap {
+		if rvInfo.State == dcache.StateOffline {
+			// Skip RVs that are offline
+			continue
+		}
 		if _, exists := nodeToRvs[rvInfo.NodeId]; exists {
 			// If the node already exists, append the RV to its list
 			node := nodeToRvs[rvInfo.NodeId]
@@ -544,9 +555,16 @@ func updateMVList(rvMap map[string]dcache.RawVolume, existingMVMap map[string]dc
 	}
 
 	// Phase 1 : Check and update slots of Rv's used in existing MVs
-	for _, rVWithStateMap := range existingMVMap {
-		// Should we check for the state of the RV?
-		for rvName := range rVWithStateMap.RVWithStateMap {
+	for mvName, mv := range existingMVMap {
+		for rvName := range mv.RVWithStateMap {
+			if rvMap[rvName].State == dcache.StateOffline {
+				// Skip RVs that are offline
+				mv.State = dcache.StateOffline
+				// Update the MV state to offline
+				existingMVMap[mvName] = mv
+				// Update the existing MV in the map
+				continue
+			}
 			nodeId := rvMap[rvName].NodeId
 			for i := range len(nodeToRvs[nodeId].rvs) {
 				if nodeToRvs[nodeId].rvs[i].rvName == rvName {
@@ -566,8 +584,11 @@ func updateMVList(rvMap map[string]dcache.RawVolume, existingMVMap map[string]dc
 		}
 
 		max := (len(rvMap) * MvsPerRv) / NumReplicas
+
+		common.Assert(max > 0, fmt.Sprintf("Max number of MVs %d is less than 0", max))
+		common.Assert(len(availableNodes) < max, fmt.Sprintf("Number of available nodes %d is greater than max %d", len(availableNodes), max))
 		// End of MV generation if we have enough MVs or if we have exhausted all the nodes
-		if len(availableNodes) < NumReplicas || len(existingMVMap) >= max {
+		if len(availableNodes) < NumReplicas {
 			break
 		}
 
