@@ -50,8 +50,8 @@ type FileLayout struct {
 
 type Chunk struct {
 	Idx              int64      // chunk index
-	ChnkOffset       int64      // offset within chunk, used when reading partial chunk
 	Buf              []byte     // buf size == chunkSize
+	Len              int64      // valid bytes in Buf
 	Err              chan error // Any Error while downloading/uploading
 	ScheduleDownload chan struct{}
 	ScheduleUpload   chan struct{}

@@ -85,7 +85,7 @@ func NewChunk(idx int64, file *File) (*models.Chunk, error) {
 	}
 	return &models.Chunk{
 		Idx:              idx,
-		ChnkOffset:       idx * file.FileMetadata.FileLayout.ChunkSize,
+		Len:              0,
 		Buf:              buf,
 		Err:              make(chan error),
 		ScheduleDownload: make(chan struct{}),
