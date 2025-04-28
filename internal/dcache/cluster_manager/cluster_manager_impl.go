@@ -76,6 +76,11 @@ func GetDegradedMVs() map[string]dcache.MirroredVolume {
 	return clusterManagerInstance.getDegradedMVs()
 }
 
+// It will return all the RVs for this particular node as per local cache copy of cluster map
+func GetMyRVs() map[string]dcache.RawVolume {
+	return clusterManagerInstance.getMyRVs()
+}
+
 // It will return all the RVs for particular mv name as per local cache copy of cluster map
 func GetRVs(mvName string) map[string]string {
 	return clusterManagerInstance.getRVs(mvName)
@@ -86,8 +91,8 @@ func IsOnline(nodeId string) bool {
 	return clusterManagerInstance.isOnline(nodeId)
 }
 
-// It will evaluate the lowest number of RVs for given rv Names
-func LowestNumberRV(rvNames []string) []string {
+// It will evaluate the lowest number of RV for given rv Names
+func LowestNumberRV(rvNames []string) string {
 	return clusterManagerInstance.lowestNumberRV(rvNames)
 }
 
@@ -134,8 +139,7 @@ func Stop() error {
 func (cmi *ClusterManagerImpl) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache.RawVolume) error {
 	cmi.nodeId = rvs[0].NodeId
 
-	//TODO{Akku}: fix this assert to just work with 1 return value
-	common.Assert(common.IsValidUUID(cmi.nodeId))
+	common.Assert(common.IsValidUUID(cmi.nodeId), fmt.Sprintf("Invalid nodeId[%s]", cmi.nodeId))
 	err := cmi.checkAndCreateInitialClusterMap(dCacheConfig)
 	if err != nil {
 		return err
@@ -208,10 +212,7 @@ func (cmi *ClusterManagerImpl) updateClusterMapLocalCopyIfRequired() {
 		return
 	}
 
-	//TODO{Akku}: Add IsValidClusterMap and do extinsive validation over all the fields
-	common.Assert(storageClusterMap.LastUpdatedAt > 0,
-		fmt.Sprintf("invalid LastUpdatedAt (%d) in clusterMap for node %s",
-			storageClusterMap.LastUpdatedAt, cmi.nodeId))
+	common.Assert(IsValidClusterMap(storageClusterMap))
 
 	//4. atomically write new local file
 	tmp := cmi.localClusterMapPath + ".tmp"
@@ -281,6 +282,22 @@ func (cmi *ClusterManagerImpl) getDegradedMVs() map[string]dcache.MirroredVolume
 	return degradedMVs
 }
 
+// getMyRVs implements ClusterManager
+func (cmi *ClusterManagerImpl) getMyRVs() map[string]dcache.RawVolume {
+	if cmi.localMap == nil {
+		log.Debug("ClusterManagerImpl::getMyRVs: local cluster map not loaded")
+		return nil
+	}
+
+	myRvs := make(map[string]dcache.RawVolume)
+	for name, rv := range cmi.localMap.RVMap {
+		if rv.NodeId == cmi.nodeId {
+			myRvs[name] = rv
+		}
+	}
+	return myRvs
+}
+
 // getRVs implements ClusterManager.
 func (cmi *ClusterManagerImpl) getRVs(mvName string) map[string]string {
 	if cmi.localMap == nil {
@@ -292,7 +309,7 @@ func (cmi *ClusterManagerImpl) getRVs(mvName string) map[string]string {
 		log.Debug("ClusterManagerImpl::getRVs: no mirrored volume named %s", mvName)
 		return nil
 	}
-	return mv.RVWithStateMap
+	return mv.Rvs
 }
 
 func (cmi *ClusterManagerImpl) isOnline(nodeId string) bool {
@@ -310,8 +327,19 @@ func (cmi *ClusterManagerImpl) isOnline(nodeId string) bool {
 }
 
 // lowestNumberRV implements ClusterManager.
-func (c *ClusterManagerImpl) lowestNumberRV(rvNames []string) []string {
-	return make([]string, 0)
+func (c *ClusterManagerImpl) lowestNumberRV(rvNames []string) string {
+	log.Debug("ClusterManagerImpl::lowestNumberRV: evaluating lowest number rvName %v", rvNames)
+	lowestNumberRv := ""
+	var min int
+	for _, name := range rvNames {
+		num, _ := strconv.Atoi(strings.TrimPrefix(name, "rv"))
+		if num < min {
+			min = num
+			lowestNumberRv = name
+		}
+	}
+	log.Debug("ClusterManagerImpl::lowestNumberRV: lowest number rvName is %s", lowestNumberRv)
+	return lowestNumberRv
 }
 
 // nodeIdToIP implements ClusterManager.
@@ -501,7 +529,7 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 		return
 	}
 	// LastUpdatedBy must be a valid nodeid.
-	common.Assert(common.IsValidUUID(clusterMap.LastUpdatedBy))
+	common.Assert(IsValidClusterMap(clusterMap))
 
 	//
 	// The node that updated the clusterMap last is preferred over others, for updating the clusterMap.
@@ -634,7 +662,7 @@ func (cmi *ClusterManagerImpl) updateRVList(clusterMapRVMap map[string]dcache.Ra
 				common.Assert(false, fmt.Sprintf("Duplicate RVId[%s] in heartbeats", rv.RvId))
 			}
 			common.Assert(rv.AvailableSpace <= rv.TotalSpace, fmt.Sprintf("Available space %d is greater than total space %d for RVId %s", rv.AvailableSpace, rv.TotalSpace, rv.RvId))
-			common.Assert(common.IsValidUUID(rv.RvId))
+			common.Assert(common.IsValidUUID(rv.RvId), fmt.Sprintf("Invalid RvId[%s]", rv.RvId))
 			rVsByRvId[rv.RvId] = rv
 		}
 	}

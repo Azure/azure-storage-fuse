@@ -610,10 +610,7 @@ func GetNodeUUID() (string, error) {
 			return "", fmt.Errorf("fail to read UUID File at :%s with error %s", uuidFilePath, err)
 		}
 		stringData := string(data)
-		isValidGUID, err := IsValidUUID(stringData)
-		if err != nil {
-			return "", fmt.Errorf("IsValidUUID failed for %s: %v", stringData, err)
-		}
+		isValidGUID := IsValidUUID(stringData)
 		if !isValidGUID {
 			return "", fmt.Errorf("not a valid UUID in UUID File at :%s UUID - %s", uuidFilePath, string(data))
 		}
@@ -622,7 +619,7 @@ func GetNodeUUID() (string, error) {
 	if os.IsNotExist(err) {
 		// File doesn't exist, generate a new UUID
 		newUuid := gouuid.New().String()
-		Assert(IsValidUUID(newUuid))
+		Assert(IsValidUUID(newUuid), fmt.Sprintf("Generated UUID %s is not valid", newUuid))
 		if err := os.WriteFile(uuidFilePath, []byte(newUuid), 0400); err != nil {
 			return "", err
 		}
@@ -633,13 +630,10 @@ func GetNodeUUID() (string, error) {
 }
 
 // isValidGUID returns true if the string is a valid guid in the 8-4-4-4-12 format.
-func IsValidUUID(guid string) (bool, error) {
-	valid, err := regexp.MatchString(
+func IsValidUUID(guid string) bool {
+	valid, _ := regexp.MatchString(
 		"^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$", guid)
-	if err != nil {
-		return false, err
-	}
-	return valid, nil
+	return valid
 }
 
 func IsValidIP(ipAddress string) bool {
