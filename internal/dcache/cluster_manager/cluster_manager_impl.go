@@ -59,6 +59,7 @@ type ClusterManagerImpl struct {
 
 	localMap     *dcache.ClusterMap
 	localMapETag *string
+	updatesChan  chan dcache.ClusterManagerEvent
 }
 
 // It will return online MVs as per local cache copy of cluster map
@@ -135,6 +136,10 @@ func Stop() error {
 	return clusterManagerInstance.stop()
 }
 
+func NotifyUpdates() <-chan dcache.ClusterManagerEvent {
+	return clusterManagerInstance.notifyUpdates()
+}
+
 // start implements ClusterManager.
 func (cmi *ClusterManagerImpl) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache.RawVolume) error {
 	cmi.nodeId = rvs[0].NodeId
@@ -150,6 +155,9 @@ func (cmi *ClusterManagerImpl) start(dCacheConfig *dcache.DCacheConfig, rvs []dc
 	}
 	cmi.ipAddress = rvs[0].IPAddress
 	common.Assert(common.IsValidIP(cmi.ipAddress), fmt.Sprintf("Invalid Ip[%s] for nodeId[%s]", cmi.ipAddress, cmi.nodeId))
+
+	// allocate notifyUpdates channel with small buffer
+	cmi.updatesChan = make(chan dcache.ClusterManagerEvent, 5)
 
 	cmi.hbTicker = time.NewTicker(time.Duration(dCacheConfig.HeartbeatSeconds) * time.Second)
 
@@ -227,6 +235,18 @@ func (cmi *ClusterManagerImpl) updateClusterMapLocalCopyIfRequired() {
 	//5. update in‑memory cache
 	cmi.localMap = &storageClusterMap
 	cmi.localMapETag = etag
+
+	//TODO{Akku}: Notify only if there is a change in MV RV mapping
+	//6. fire an notification event
+	select {
+	case cmi.updatesChan <- dcache.ClusterManagerEvent{}:
+	default:
+		// drop if nobody is listening or buffer is full
+	}
+}
+
+func (cmi *ClusterManagerImpl) notifyUpdates() <-chan dcache.ClusterManagerEvent {
+	return cmi.updatesChan
 }
 
 // Stop implements ClusterManager.
@@ -238,6 +258,9 @@ func (cmi *ClusterManagerImpl) stop() error {
 	// mm.DeleteHeartbeat(cmi.nodeId)
 	if cmi.clusterMapticker != nil {
 		cmi.clusterMapticker.Stop()
+	}
+	if cmi.updatesChan != nil {
+		close(cmi.updatesChan)
 	}
 	return nil
 }

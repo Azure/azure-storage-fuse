@@ -112,3 +112,6 @@ type FileLayout struct {
 	StripeSize int64    `json:"stripe_size"`
 	MVList     []string `json:"mv_list"`
 }
+
+type ClusterManagerEvent struct {
+}

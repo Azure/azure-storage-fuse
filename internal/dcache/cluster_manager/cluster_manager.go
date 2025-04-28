@@ -91,4 +91,7 @@ type ClusterManager interface {
 
 	//Update RV state to offline and update MVs
 	reportRVFull(rvName string) error
+
+	//Notify consumer about cluster manager Event
+	notifyUpdates() <-chan dcache.ClusterManagerEvent
 }
