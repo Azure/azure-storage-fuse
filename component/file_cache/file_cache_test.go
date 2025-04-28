@@ -1911,7 +1911,7 @@ func (suite *fileCacheTestSuite) TestHardLimitOnSize() {
 	suite.assert.NotNil(err)
 }
 
-// create a list of emptry directoies in local and storage and then try deleteing those to validate emptry directories
+// create a list of empty directories in local and storage and then try to delete those to validate empty directories
 // are allowed be to deleted but non empty are not
 func (suite *fileCacheTestSuite) TestDeleteDirectory() {
 	defer suite.cleanupTest()
@@ -1947,7 +1947,7 @@ func (suite *fileCacheTestSuite) TestDeleteDirectory() {
 	empty = suite.fileCache.IsDirEmpty(internal.IsDirEmptyOptions{Name: filepath.Join("a", "b", "c", "d")})
 	suite.assert.False(empty)
 
-	// Validate one emptry directory as well
+	// Validate one empty directory as well
 	empty = suite.fileCache.IsDirEmpty(internal.IsDirEmptyOptions{Name: filepath.Join("a", "b", "e", "f")})
 	suite.assert.True(empty)
 

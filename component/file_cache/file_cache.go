@@ -618,15 +618,15 @@ func (fc *FileCache) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 func (fc *FileCache) IsDirEmpty(options internal.IsDirEmptyOptions) bool {
 	log.Trace("FileCache::IsDirEmpty : %s", options.Name)
 
-	// Check if directory is emptry at remote or not, if container is not empty then return false
+	// Check if directory is empty at remote or not, if container is not empty then return false
 	emptyAtRemote := fc.NextComponent().IsDirEmpty(options)
 	if !emptyAtRemote {
 		log.Debug("FileCache::IsDirEmpty : %s is not empty at remote", options.Name)
 		return emptyAtRemote
 	}
 
-	// Remote is emptry so we need to check for the local directory
-	// While checking local directory we need to ensure that we delete all emptry directories and then
+	// Remote is empty so we need to check for the local directory
+	// While checking local directory we need to ensure that we delete all empty directories and then
 	// return the result.
 	cleanup, err := fc.deleteEmptyDirs(internal.DeleteDirOptions(options))
 	if err != nil {
