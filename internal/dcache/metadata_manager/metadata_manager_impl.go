@@ -51,7 +51,6 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
-	models "github.com/Azure/azure-storage-fuse/v2/internal/dcache/file_manager/models"
 )
 
 var (
@@ -116,7 +115,7 @@ func CreateFileFinalize(filePath string, fileMetadata []byte) error {
 	return metadataManagerInstance.createFileFinalize(filePath, fileMetadata)
 }
 
-func GetFile(filePath string) (*models.FileMetadata, error) {
+func GetFile(filePath string) (*dcache.FileMetadata, error) {
 	return metadataManagerInstance.getFile(filePath)
 }
 
@@ -219,7 +218,7 @@ func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata [
 
 // GetFile reads and returns the content of metadata for a file
 // TODO :: Check if we can return []byte to make this function symmetric with others
-func (m *BlobMetadataManager) getFile(filePath string) (*models.FileMetadata, error) {
+func (m *BlobMetadataManager) getFile(filePath string) (*dcache.FileMetadata, error) {
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
 	// Get the metadata content from storage
 	data, err := m.storageCallback.GetBlobFromStorage(internal.ReadFileWithNameOptions{
@@ -230,7 +229,7 @@ func (m *BlobMetadataManager) getFile(filePath string) (*models.FileMetadata, er
 		return nil, err
 	}
 	// Unmarshal the JSON data into the Metadata struct
-	var metadata models.FileMetadata
+	var metadata dcache.FileMetadata
 	err = json.Unmarshal(data, &metadata)
 	if err != nil {
 		log.Debug("GetFile :: Failed to unmarshal JSON data: %v", err)

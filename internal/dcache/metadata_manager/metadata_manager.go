@@ -35,7 +35,7 @@ package metadata_manager
 
 import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
-	models "github.com/Azure/azure-storage-fuse/v2/internal/dcache/file_manager/models"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 )
 
 // MetaDataManager defines the interface for managing metadata for the distributed cache.
@@ -52,16 +52,16 @@ type MetadataManager interface {
 	// Succeeds only when the file metadata is not already present.
 	// This will be called by the File Manager to create a non-existing file in response to a create call from fuse.
 	// TODO :: Handle the case where the node fails before CreateFileFinalize is called.
-	createFileInit(filePath string, fileMetadata *models.FileMetadata) error
+	createFileInit(filePath string, fileMetadata *dcache.FileMetadata) error
 
 	// CreateFileFinalize finalizes the metadata for a file updating size, sha256, and other properties.
 	// For properties which were not available at the time of CreateFileInit.
 	// Called by the File Manager in response to a close call from fuse.
 	// TODO :: Ensure that CreateFileInit and CreateFileFinalize are called by the same node.
-	createFileFinalize(filePath string, fileMetadata *models.FileMetadata) error
+	createFileFinalize(filePath string, fileMetadata *dcache.FileMetadata) error
 
 	// GetFile reads and returns the content of metadata for a file.
-	getFile(filePath string) (*models.FileMetadata, error)
+	getFile(filePath string) (*dcache.FileMetadata, error)
 
 	// DeleteFile removes metadata for a file.
 	deleteFile(filePath string) error

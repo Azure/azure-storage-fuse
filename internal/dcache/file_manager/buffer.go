@@ -62,7 +62,7 @@ func NewBufferPool(bufSize int, maxBuffers int) *bufferPool {
 }
 
 func (bp *bufferPool) getBuffer() ([]byte, error) {
-	if bp.getCurBuffersCnt() > bp.maxBuffers {
+	if bp.curBuffers.Load() > bp.maxBuffers {
 		return nil, errors.New("Buffers Exhausted")
 	}
 
@@ -74,10 +74,6 @@ func (bp *bufferPool) getBuffer() ([]byte, error) {
 
 func (bp *bufferPool) putBuffer(buf []byte) {
 	bp.pool.Put(buf)
-	common.Assert(bp.getCurBuffersCnt() > 0, fmt.Sprintf("Number of buffers are less than zero:  %d", bp.getCurBuffersCnt()))
+	common.Assert(bp.curBuffers.Load() > 0, fmt.Sprintf("Number of buffers are less than zero:  %d", bp.curBuffers.Load()))
 	bp.curBuffers.Add(-1)
-}
-
-func (bp *bufferPool) getCurBuffersCnt() int64 {
-	return bp.curBuffers.Load()
 }

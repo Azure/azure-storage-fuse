@@ -68,13 +68,14 @@ func (suite *fileIOManagerTestSuite) TearDownTest() {
 }
 
 func createExistingFile() *DcacheFile {
-	file := NewDcacheFile("foo")
+	file, _ := NewDcacheFile("foo")
 	file.FileMetadata.Size = 30 * 1024 * 1024
 	return file
 }
 
 func createNewFile() *DcacheFile {
-	return NewDcacheFile("foo")
+	file, _ := NewDcacheFile("foo")
+	return file
 }
 
 func (suite *fileIOManagerTestSuite) TestReadFile() {
@@ -84,7 +85,7 @@ func (suite *fileIOManagerTestSuite) TestReadFile() {
 		bytesRead, err := file.ReadFile(i, buf)
 		suite.assert.Equal(4096, bytesRead)
 		suite.assert.Nil(err)
-		suite.assert.LessOrEqual(fileIOMgr.bp.getCurBuffersCnt(), int64(6))
+		suite.assert.LessOrEqual(fileIOMgr.bp.curBuffers.Load(), int64(6))
 	}
 	// Read Last byte of the file
 	bytesRead, err := file.ReadFile(file.FileMetadata.Size-1, buf)
@@ -101,7 +102,7 @@ func (suite *fileIOManagerTestSuite) TestReadFile() {
 	// Release the file.
 	err = file.ReleaseFile()
 	suite.assert.Nil(err)
-	suite.assert.Equal(fileIOMgr.bp.getCurBuffersCnt(), int64(0))
+	suite.assert.Equal(fileIOMgr.bp.curBuffers.Load(), int64(0))
 }
 
 func (suite *fileIOManagerTestSuite) TestSeqWriteFile() {
@@ -111,7 +112,7 @@ func (suite *fileIOManagerTestSuite) TestSeqWriteFile() {
 		err := file.WriteFile(i, buf)
 		suite.assert.Nil(err)
 		suite.assert.Equal(i+4096, file.lastWriteOffset)
-		suite.assert.LessOrEqual(fileIOMgr.bp.getCurBuffersCnt(), int64(3))
+		suite.assert.LessOrEqual(fileIOMgr.bp.curBuffers.Load(), int64(3))
 	}
 	// sync the file.
 	err := file.SyncFile()
@@ -119,7 +120,7 @@ func (suite *fileIOManagerTestSuite) TestSeqWriteFile() {
 	// Release the file.
 	err = file.ReleaseFile()
 	suite.assert.Nil(err)
-	suite.assert.Equal(fileIOMgr.bp.getCurBuffersCnt(), int64(0))
+	suite.assert.Equal(fileIOMgr.bp.curBuffers.Load(), int64(0))
 
 }
 
@@ -130,7 +131,7 @@ func (suite *fileIOManagerTestSuite) TestRandWriteFile() {
 		err := file.WriteFile(i, buf)
 		suite.assert.Nil(err)
 		suite.assert.Equal(i+4096, file.lastWriteOffset)
-		suite.assert.LessOrEqual(fileIOMgr.bp.getCurBuffersCnt(), int64(3))
+		suite.assert.LessOrEqual(fileIOMgr.bp.curBuffers.Load(), int64(3))
 	}
 	// Now write at 5MB which should fail as we only allow seq writes.
 	err := file.WriteFile(5*1024*1024, buf)
@@ -141,8 +142,7 @@ func (suite *fileIOManagerTestSuite) TestRandWriteFile() {
 	// Release the file.
 	err = file.ReleaseFile()
 	suite.assert.Nil(err)
-	suite.assert.Equal(fileIOMgr.bp.getCurBuffersCnt(), int64(0))
-
+	suite.assert.Equal(fileIOMgr.bp.curBuffers.Load(), int64(0))
 }
 
 // This is majorly used when reading the file in random manner.
@@ -153,14 +153,14 @@ func (suite *fileIOManagerTestSuite) TestReadChunk() {
 	suite.assert.NotNil(chnk)
 	suite.assert.Equal(int64(0), chnk.Idx)
 	suite.assert.Equal(chunkSize, len(chnk.Buf))
-	suite.assert.LessOrEqual(fileIOMgr.bp.getCurBuffersCnt(), int64(2))
+	suite.assert.LessOrEqual(fileIOMgr.bp.curBuffers.Load(), int64(2))
 
 	chnk, err = file.readChunk(1024, true)
 	suite.assert.Nil(err)
 	suite.assert.NotNil(chnk)
 	suite.assert.Equal(int64(0), chnk.Idx)
 	suite.assert.Equal(chunkSize, len(chnk.Buf))
-	suite.assert.LessOrEqual(fileIOMgr.bp.getCurBuffersCnt(), int64(2))
+	suite.assert.LessOrEqual(fileIOMgr.bp.curBuffers.Load(), int64(2))
 }
 
 // Testing using sequentially reading the file and checking the buffers for chunks are getting
@@ -173,22 +173,9 @@ func (suite *fileIOManagerTestSuite) TestReadAheadChunk() {
 		suite.assert.NotNil(chnk)
 		suite.assert.Equal(i/chunkSize, chnk.Idx)
 		suite.assert.Equal(chunkSize, len(chnk.Buf))
-		suite.assert.LessOrEqual(fileIOMgr.bp.getCurBuffersCnt(), int64(6))
+		suite.assert.Equal(getChunkSize(i, file), chnk.Len)
+		suite.assert.LessOrEqual(fileIOMgr.bp.curBuffers.Load(), int64(6))
 	}
-}
-
-// This test's the writeback policy for the upload of chunks
-func (suite *fileIOManagerTestSuite) TestWriteChunk() {
-	file := createNewFile()
-	for i := int64(0); i < 30*1024*1024; i += 4 * 1024 {
-		chnk, err := file.writeChunk(i)
-		suite.assert.Nil(err)
-		suite.assert.NotNil(chnk)
-		suite.assert.Equal(i/chunkSize, chnk.Idx)
-		suite.assert.Equal(chunkSize, len(chnk.Buf))
-		suite.assert.LessOrEqual(fileIOMgr.bp.getCurBuffersCnt(), int64(3))
-	}
-
 }
 
 func TestFileManager(t *testing.T) {

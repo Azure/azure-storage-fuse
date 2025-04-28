@@ -42,7 +42,7 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/file_manager/models"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 )
 
 const (
@@ -76,9 +76,8 @@ func EndFileIOManager() {
 }
 
 type DcacheFile struct {
-	FileMetadata    *models.FileMetadata
-	Access          common.BitMap16 // Represents the cache access type like azure, dcache, both.
-	lastWriteOffset int64           // Every new offset that come to write should be greater than lastWriteOffset
+	FileMetadata    *dcache.FileMetadata
+	lastWriteOffset int64 // Every new offset that come to write should be greater than lastWriteOffset
 	// Offset should be monotonically increasing while writing to the file.
 	StagedChunks sync.Map // Chunk Idx -> *chunk
 	// The above chunks are the outstanding chunks for the file.
@@ -97,16 +96,14 @@ func (file *DcacheFile) ReadFile(offset int64, buf []byte) (bytesRead int, err e
 	bufOffset := 0
 	for offset < endOffset {
 		//  Currently calling direct readaahead for the chunk assuming sequential workflow
-		chnkIdx := getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout)
 		// todo : Add Sequential pattern detection.
 		// todo : Support Partial read of chunk, useful for random read scenarios.
-		chnk, err := file.readChunkWithReadAhead(chnkIdx)
+		chunk, err := file.readChunkWithReadAhead(offset)
 		if err != nil {
 			return 0, nil
 		}
-		chnkOffset := getChunkOffsetFromFileOffset(offset, file.FileMetadata.FileLayout)
-		chnkSize := getChunkSize(offset, file)
-		copied := copy(buf[bufOffset:], chnk.Buf[chnkOffset:chnkSize])
+		chunkOffset := getChunkOffsetFromFileOffset(offset, file.FileMetadata.FileLayout)
+		copied := copy(buf[bufOffset:], chunk.Buf[chunkOffset:chunk.Len])
 		offset += int64(copied)
 		bufOffset += copied
 	}
@@ -116,23 +113,44 @@ func (file *DcacheFile) ReadFile(offset int64, buf []byte) (bytesRead int, err e
 
 // Writes the file to the corresponing chunk(s) from the buf.
 func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
-	log.Debug("DistributedCache::WriteFile : offset : %d, bufSize : %d, file : %s", offset, len(buf), file.FileMetadata.Filename)
+	log.Debug("DistributedCache[FM]::WriteFile : offset : %d, bufSize : %d, file : %s", offset, len(buf), file.FileMetadata.Filename)
+
 	if offset < file.lastWriteOffset {
 		log.Info("DistributedCache[FM]::WriteFile: File handle is not writing in sequential manner, current Offset : %d, Prev Offset %d", offset, file.lastWriteOffset)
 		return syscall.ENOTSUP
 	}
+
 	endOffset := (offset + int64(len(buf)))
 	bufOffset := 0
 	for offset < endOffset {
-		chnkIdx := getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout)
-		chnk, err := file.writeChunk(chnkIdx)
+		chunk, err := file.CreateOrGetStagedChunk(offset)
 		if err != nil {
 			return err
 		}
-		chnkOffset := getChunkOffsetFromFileOffset(offset, file.FileMetadata.FileLayout)
-		copied := copy(chnk.Buf[chnkOffset:], buf[bufOffset:])
+		chunkOffset := getChunkOffsetFromFileOffset(offset, file.FileMetadata.FileLayout)
+
+		// Todo: Support Bigger Holes(hole size > chunkSize) inside the file if offset jumps suddenly to a higher offset.
+		// Sanity check for resetting the garbage data of the chunk buf.
+		if chunkOffset > chunk.Len {
+			resetBytes := copy(chunk.Buf[chunk.Len:chunkOffset], make([]byte, chunkOffset-chunk.Len))
+			chunk.Len += int64(resetBytes)
+		}
+
+		copied := copy(chunk.Buf[chunkOffset:], buf[bufOffset:])
 		offset += int64(copied)
 		bufOffset += copied
+		chunk.Len += int64(copied)
+
+		common.Assert(chunk.Len == getChunkOffsetFromFileOffset(offset, file.FileMetadata.FileLayout),
+			fmt.Sprintf("Acutal Chunk Len : %d is modified incorrectly, Expected chunkLen : %d",
+				chunk.Len, getChunkStartOffsetFromFileOffset(offset, file.FileMetadata.FileLayout)))
+
+		if chunk.Len == file.FileMetadata.FileLayout.ChunkSize {
+			// Schedule the upload
+			// todo: This not always true. if some writes to this chunk were skipped then there should be a
+			// way to stage this block.
+			scheduleUpload(chunk, file)
+		}
 	}
 	common.Assert(offset == endOffset, fmt.Sprintf("Write is not successful, expected Endoffset : %d, actual EndOffset : %d", endOffset, offset))
 	common.Assert(bufOffset == len(buf), fmt.Sprintf("Amount of Bytes copied : %d is not equal to buf len %d", bufOffset, len(buf)))
@@ -145,96 +163,73 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 func (file *DcacheFile) SyncFile() error {
 	log.Debug("DistributedCache[FM]::SyncFile : Sync File for %s", file.FileMetadata.Filename)
 	var err error
-	file.StagedChunks.Range(func(chnkIdx any, Ichnk any) bool {
-		chnk := Ichnk.(*models.StagedChunk)
-		scheduleUpload(chnk, file)
-		err = <-chnk.Err
+	file.StagedChunks.Range(func(chunkIdx any, Ichunk any) bool {
+		chunk := Ichunk.(*StagedChunk)
+		scheduleUpload(chunk, file)
+		err = <-chunk.Err
 		if err != nil {
 			return false
 		}
 		return true
 	})
-	if file.CanAccessAzure() {
-		// todo: if handle came for writing, do putblocklist to commit data.
-	}
 	return err
 }
 
 // Release all allocated buffers for the file
 func (file *DcacheFile) ReleaseFile() error {
 	log.Debug("DistributedCache[FM]::ReleaseFile :Releasing buffers for File for %s", file.FileMetadata.Filename)
-	file.StagedChunks.Range(func(chnkIdx any, Ichnk any) bool {
-		chnk := Ichnk.(*models.StagedChunk)
-		file.releaseChunk(chnk)
+	file.StagedChunks.Range(func(chunkIdx any, Ichunk any) bool {
+		chunk := Ichunk.(*StagedChunk)
+		file.releaseChunk(chunk)
 		return true
 	})
 	return nil
 }
 
-func (file *DcacheFile) SetAzureAccessFlag() {
-	file.Access.Set(cacheAccessAzure)
-}
-
-func (file *DcacheFile) SetDcacheAccessFlag() {
-	file.Access.Set(cacheAccessDcache)
-}
-
-func (file *DcacheFile) SetDefaultCache() {
-	file.Access.Set(cacheAccessAzure)
-	file.Access.Set(cacheAccessDcache)
-}
-
-func (file *DcacheFile) CanAccessDcache() bool {
-	return file.Access.IsSet(cacheAccessDcache)
-}
-
-func (file *DcacheFile) CanAccessAzure() bool {
-	return file.Access.IsSet(cacheAccessAzure)
-}
-
 // Get's the existing chunk from the chunks
 // or Create a new one and add it to the the chunks
-func (file *DcacheFile) getChunk(chnkIdx int64) (*models.StagedChunk, bool, error) {
-	log.Debug("DistributedCache::getChunk : getChunk for chnkIdx : %d, file : %s", chnkIdx, file.FileMetadata.Filename)
-	if chnkIdx < 0 {
-		return nil, false, errors.New("ChnkIdx is less than 0")
+func (file *DcacheFile) getChunk(chunkIdx int64) (*StagedChunk, bool, error) {
+	log.Debug("DistributedCache::getChunk : getChunk for chunkIdx : %d, file : %s", chunkIdx, file.FileMetadata.Filename)
+	if chunkIdx < 0 {
+		return nil, false, errors.New("ChunkIdx is less than 0")
 	}
-	if chnk, ok := file.StagedChunks.Load(chnkIdx); ok {
-		return chnk.(*models.StagedChunk), true, nil
+	if chunk, ok := file.StagedChunks.Load(chunkIdx); ok {
+		return chunk.(*StagedChunk), true, nil
 	}
-	chnk, err := NewChunk(chnkIdx, file)
+	chunk, err := NewChunk(chunkIdx, file)
 	if err != nil {
 		return nil, false, err
 	}
-	file.StagedChunks.Store(chnkIdx, chnk)
-	return chnk, false, nil
+	file.StagedChunks.Store(chunkIdx, chunk)
+	return chunk, false, nil
 }
 
-func (file *DcacheFile) getChunkForRead(chnkIdx int64) (*models.StagedChunk, error) {
-	log.Debug("DistributedCache::getChunkForRead : getChunk for Read chnkIdx : %d, file : %s", chnkIdx, file.FileMetadata.Filename)
-	chnk, loaded, err := file.getChunk(chnkIdx)
+func (file *DcacheFile) getChunkForRead(chunkIdx int64) (*StagedChunk, error) {
+	log.Debug("DistributedCache::getChunkForRead : getChunk for Read chunkIdx : %d, file : %s", chunkIdx, file.FileMetadata.Filename)
+	chunk, loaded, err := file.getChunk(chunkIdx)
 	if err == nil && !loaded {
-		close(chnk.ScheduleUpload)
+		close(chunk.ScheduleUpload)
+		chunk.Len = getChunkSize(chunkIdx*file.FileMetadata.FileLayout.ChunkSize, file)
 	}
-	return chnk, err
+	return chunk, err
 }
 
-func (file *DcacheFile) getChunkForWrite(chnkIdx int64) (*models.StagedChunk, error) {
-	log.Debug("DistributedCache::getChunkForWrite : getChunk for Write chnkIdx : %d, file : %s", chnkIdx, file.FileMetadata.Filename)
-	chnk, loaded, err := file.getChunk(chnkIdx)
+func (file *DcacheFile) getChunkForWrite(chunkIdx int64) (*StagedChunk, error) {
+	log.Debug("DistributedCache::getChunkForWrite : getChunk for Write chunkIdx : %d, file : %s", chunkIdx, file.FileMetadata.Filename)
+	chunk, loaded, err := file.getChunk(chunkIdx)
 	if err == nil && !loaded {
-		close(chnk.ScheduleDownload)
+		close(chunk.ScheduleDownload)
 	}
-	return chnk, err
+	return chunk, err
 }
 
 // load chunk from the file chunks
-func (file *DcacheFile) loadChunk(chnkIdx int64) (*models.StagedChunk, error) {
-	if chnkIdx < 0 {
-		return nil, errors.New("ChnkIdx is less than 0")
+func (file *DcacheFile) loadChunk(chunkIdx int64) (*StagedChunk, error) {
+	if chunkIdx < 0 {
+		return nil, errors.New("ChunkIdx is less than 0")
 	}
-	if chnk, ok := file.StagedChunks.Load(chnkIdx); ok {
-		return chnk.(*models.StagedChunk), nil
+	if chunk, ok := file.StagedChunks.Load(chunkIdx); ok {
+		return chunk.(*StagedChunk), nil
 	}
 	return nil, errors.New("Chunk is not found inside the file chunks")
 }
@@ -243,58 +238,57 @@ func (file *DcacheFile) loadChunk(chnkIdx int64) (*models.StagedChunk, error) {
 func (file *DcacheFile) removeChunk(chunkIdx int64) {
 	log.Debug("DisttributedCache::removeChunk : removing chunk from the chunks, chunk idx : %d, file : %s",
 		chunkIdx, file.FileMetadata.Filename)
-	Ichnk, loaded := file.StagedChunks.LoadAndDelete(chunkIdx)
+	Ichunk, loaded := file.StagedChunks.LoadAndDelete(chunkIdx)
 	if loaded {
-		chnk := Ichnk.(*models.StagedChunk)
-		fileIOMgr.bp.putBuffer(chnk.Buf)
+		chunk := Ichunk.(*StagedChunk)
+		fileIOMgr.bp.putBuffer(chunk.Buf)
 	}
 }
 
 // release the buffer for chunk
-func (file *DcacheFile) releaseChunk(chnk *models.StagedChunk) {
+func (file *DcacheFile) releaseChunk(chunk *StagedChunk) {
 	log.Debug("DisttributedCache::releaseChunk : releasing buffer for chunk, chunk idx : %d, file : %s",
-		chnk.Idx, file.FileMetadata.Filename)
-	fileIOMgr.bp.putBuffer(chnk.Buf)
+		chunk.Idx, file.FileMetadata.Filename)
+	fileIOMgr.bp.putBuffer(chunk.Buf)
 }
 
 // Read Chunk data from the file.
 // Sync true : Schedules and waits for the download to complete.
 // Sync false: Schedules the read
-func (file *DcacheFile) readChunk(offset int64, sync bool) (*models.StagedChunk, error) {
-	chnkIdx := getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout)
-	log.Debug("DistributedCache::readChunk : sync: %t, chnkIdx : %d, file : %s", sync, chnkIdx, file.FileMetadata.Filename)
-	chnk, err := file.getChunkForRead(chnkIdx)
+func (file *DcacheFile) readChunk(offset int64, sync bool) (*StagedChunk, error) {
+	chunkIdx := getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout)
+	log.Debug("DistributedCache::readChunk : sync: %t, chunkIdx : %d, file : %s", sync, chunkIdx, file.FileMetadata.Filename)
+	chunk, err := file.getChunkForRead(chunkIdx)
 	if err != nil {
-		return chnk, err
+		return chunk, err
 	}
 
-	scheduleDownload(chnk, file)
+	scheduleDownload(chunk, file)
 
 	if sync {
-		err = <-chnk.Err
+		err = <-chunk.Err
 		if err != nil {
-			chnk.Err <- err
+			chunk.Err <- err
 		}
-		// Do the cleanUp if the offset is starting offset of a chunk.
-		// Do the cleanup only at chunk starting.
+		// Release the previous chunks if any.
 		if isOffsetChunkStarting(offset, file.FileMetadata.FileLayout) {
 			// Clean the previous chunk
-			file.removeChunk(chnkIdx - 1)
+			file.removeChunk(chunkIdx - 1)
 		}
 	}
-	return chnk, err
+	return chunk, err
 }
 
 // Reads the chunk and also schedules the downloads for the readahead chunks
-func (file *DcacheFile) readChunkWithReadAhead(offset int64) (*models.StagedChunk, error) {
-	chnkIdx := getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout)
-	log.Debug("DistributedCache::readAheadChunk : offset : %d, chnkIdx : %d, file : %s", offset, chnkIdx, file.FileMetadata.Filename)
+func (file *DcacheFile) readChunkWithReadAhead(offset int64) (*StagedChunk, error) {
+	chunkIdx := getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout)
+	log.Debug("DistributedCache::readAheadChunk : offset : %d, chunkIdx : %d, file : %s", offset, chunkIdx, file.FileMetadata.Filename)
 
-	readAheadEndChnkIdx := min(chnkIdx+int64(fileIOMgr.numReadAheadChunks),
+	readAheadEndChunkIdx := min(chunkIdx+int64(fileIOMgr.numReadAheadChunks),
 		getChunkIdxFromFileOffset(file.FileMetadata.Size-1, file.FileMetadata.FileLayout))
 	// Schedule downloads for the readahead chunks
 	if isOffsetChunkStarting(offset, file.FileMetadata.FileLayout) {
-		for i := chnkIdx + 1; i <= readAheadEndChnkIdx; i++ {
+		for i := chunkIdx + 1; i <= readAheadEndChunkIdx; i++ {
 			_, err := file.readChunk(i*file.FileMetadata.FileLayout.ChunkSize, false)
 			if err != nil {
 				return nil, err
@@ -302,69 +296,65 @@ func (file *DcacheFile) readChunkWithReadAhead(offset int64) (*models.StagedChun
 		}
 	}
 	// Download the actual chunk
-	chnk, err := file.readChunk(offset, true)
-	return chnk, err
+	chunk, err := file.readChunk(offset, true)
+	return chunk, err
 }
 
-// Todo: Support Holes inside the file if offset jumps suddenly to a higher offset.
-func (file *DcacheFile) writeChunk(offset int64) (*models.StagedChunk, error) {
-	chnkIdx := getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout)
-	log.Debug("DistributedCache::writeChunk : chnkIdx : %d, file : %s", chnkIdx, file.FileMetadata.Filename)
-	chnk, err := file.getChunkForWrite(chnkIdx)
+// Creates/return the chunk that is ready to be written.
+// Also responsible for releasing the chunks, if the chunks are greater than staging area chunks.
+func (file *DcacheFile) CreateOrGetStagedChunk(offset int64) (*StagedChunk, error) {
+	chunkIdx := getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout)
+	log.Debug("DistributedCache::CreateOrGetStagedChunk : chunkIdx : %d, file : %s", chunkIdx, file.FileMetadata.Filename)
+	//	fmt.Printf("DistributedCache::CreateOrGetStagedChunk : chunkIdx : %d, file : %s\n", chunkIdx, file.FileMetadata.Filename)
+	chunk, err := file.getChunkForWrite(chunkIdx)
 	if err != nil {
-		return chnk, err
+		return chunk, err
 	}
 
-	// Do the Uploads and release only at chunk boundaris to decrease the overhead
+	// release the chunks that are out of staging area, by waiting for their uploads to complete.
+	// only done at chunk boundaris to decrease the overhead
 	if isOffsetChunkStarting(offset, file.FileMetadata.FileLayout) {
-		// Schedule Upload for the previous chunk
-		prevChnk, err := file.loadChunk(chnkIdx - 1)
-		if err == nil {
-			scheduleUpload(prevChnk, file)
-		}
-
 		// Release the buffer if it falls out of staging area.
-		releaseChnk, err := file.loadChunk(chnkIdx - int64(fileIOMgr.numStagingChunks))
+		releaseChunkIdx := chunkIdx - int64(fileIOMgr.numStagingChunks)
+		releaseChunk, err := file.loadChunk(releaseChunkIdx)
 		if err == nil {
-			err := <-releaseChnk.Err
+			err := <-releaseChunk.Err
 			if err != nil {
 				// If there is an error while uploading the block.
 				// As we are using writeback policy to upload the data.
 				// Better to fail early.
-				releaseChnk.Err <- err
+				releaseChunk.Err <- err
 				return nil, errors.New("DistributedCache::WriteChunk: failed to upload the previous chunk")
 			}
-			file.removeChunk(chnkIdx - 3)
+			file.removeChunk(releaseChunkIdx)
 		}
 	}
-	return chnk, nil
+	return chunk, nil
 }
 
-func scheduleDownload(chnk *models.StagedChunk, file *DcacheFile) {
+func scheduleDownload(chunk *StagedChunk, file *DcacheFile) {
 	select {
-	case <-chnk.ScheduleDownload:
+	case <-chunk.ScheduleDownload:
 	default:
-		close(chnk.ScheduleDownload)
+		close(chunk.ScheduleDownload)
 		t := &task{
-			file:       file,
-			chunk:      chnk,
-			fileLayout: *file.FileMetadata.FileLayout,
-			get_chunk:  true,
+			file:      file,
+			chunk:     chunk,
+			get_chunk: true,
 		}
 		fileIOMgr.wp.tasks <- t
 	}
 }
 
-func scheduleUpload(chnk *models.StagedChunk, file *DcacheFile) {
+func scheduleUpload(chunk *StagedChunk, file *DcacheFile) {
 	select {
-	case <-chnk.ScheduleUpload:
+	case <-chunk.ScheduleUpload:
 	default:
-		close(chnk.ScheduleUpload)
+		close(chunk.ScheduleUpload)
 		t := &task{
-			file:       file,
-			chunk:      chnk,
-			fileLayout: *file.FileMetadata.FileLayout,
-			get_chunk:  false,
+			file:      file,
+			chunk:     chunk,
+			get_chunk: false,
 		}
 		fileIOMgr.wp.tasks <- t
 	}

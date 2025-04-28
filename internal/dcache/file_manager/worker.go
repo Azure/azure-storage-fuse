@@ -37,14 +37,12 @@ import (
 	"sync"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/file_manager/models"
 )
 
 type task struct {
-	file       *DcacheFile
-	chunk      *models.StagedChunk
-	fileLayout models.FileLayout
-	get_chunk  bool
+	file      *DcacheFile
+	chunk     *StagedChunk
+	get_chunk bool
 }
 
 type workerPool struct {
@@ -96,26 +94,15 @@ func (wp *workerPool) readChunk(task *task) {
 	var err error
 
 	// Read From the Dcache
-	if task.file.CanAccessDcache() {
-		//Call MvRead method for reading the chunk.
-		// err = rm.MVRead()
-		if err == nil {
-			close(task.chunk.Err)
-			return
-		} else {
-			log.Info("DistrubuteCache[FM]::readChunk : Download of chunk to Dcache failed chnk idx : %d, file %s, err : %s",
-				task.chunk.Idx, task.file.FileMetadata.Filename, err.Error())
-		}
-	}
-
-	if task.file.CanAccessAzure() {
-		// Read the chunk from Azure
-	}
+	//Call MvRead method for reading the chunk.
+	// err = rm.MVRead()
 	if err == nil {
 		close(task.chunk.Err)
 		return
+	} else {
+		log.Info("DistrubuteCache[FM]::readChunk : Download of chunk to Dcache failed chnk idx : %d, file %s, err : %s",
+			task.chunk.Idx, task.file.FileMetadata.Filename, err.Error())
 	}
-
 	task.chunk.Err <- err
 }
 
@@ -123,29 +110,14 @@ func (wp *workerPool) writeChunk(task *task) {
 	log.Info("DistributedCache::writeChunk : Writing chunk idx : %d, file: %s", task.chunk.Idx, task.file.FileMetadata.Filename)
 	var err error
 
-	// Write to Dcache
-	if task.file.CanAccessDcache() {
-		//Call MvWrite method for reading the chunk.
-		// err = rm.MVWrite()
-		if err == nil {
-			close(task.chunk.Err)
-			return
-		} else {
-			log.Info("DistrubuteCache[FM]::WriteChunk : Upload of chunk to DCache failed chnk idx : %d, file %s, err : %s",
-				task.chunk.Idx, task.file.FileMetadata.Filename, err.Error())
-		}
-	}
-	// Write to Azure
-	if task.file.CanAccessAzure() {
-
-	}
-
-	// Todo : Both the errors must be checked if the cache-access=normal, that is azure and dcache,
-	// fail if any one of them fails.
-	// Todo : Write to Dcache and Azure parllely
+	//Call MvWrite method for reading the chunk.
+	// err = rm.MVWrite()
 	if err == nil {
 		close(task.chunk.Err)
 		return
+	} else {
+		log.Info("DistrubuteCache[FM]::WriteChunk : Upload of chunk to DCache failed chnk idx : %d, file %s, err : %s",
+			task.chunk.Idx, task.file.FileMetadata.Filename, err.Error())
 	}
 	task.chunk.Err <- err
 }

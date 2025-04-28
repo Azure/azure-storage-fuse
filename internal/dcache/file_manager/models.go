@@ -31,22 +31,7 @@
    SOFTWARE
 */
 
-package models
-
-type FileMetadata struct {
-	Filename        string      `json:"filename"`
-	FileID          string      `json:"file_id"`
-	Size            int64       `json:"size"`
-	ClusterMapEpoch int64       `json:"cluster_map_epoch"`
-	FileLayout      *FileLayout `json:"file_layout"`
-	Sha1hash        []byte      `json:"sha256"`
-}
-
-type FileLayout struct {
-	ChunkSize  int64    `json:"chunk_size"`
-	StripeSize int64    `json:"stripe_size"`
-	MVList     []string `json:"mv_list"`
-}
+package filemanager
 
 type StagedChunk struct {
 	Idx              int64      // chunk index

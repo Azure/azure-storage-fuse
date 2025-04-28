@@ -41,7 +41,6 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/cache_policy"
-	filemanager "github.com/Azure/azure-storage-fuse/v2/internal/dcache/file_manager"
 
 	"go.uber.org/atomic"
 )
@@ -74,18 +73,18 @@ type Buffers struct {
 
 type Handle struct {
 	sync.RWMutex
-	FObj       *os.File // File object being represented by this handle
-	CacheObj   *Cache   // Streaming layer cache for this handle
-	Buffers    *Buffers
-	ID         HandleID // Blobfuse assigned unique ID to this handle
-	Size       int64    // Size of the file being handled here
-	Mtime      time.Time
-	UnixFD     uint64                  // Unix FD created by create/open syscall
-	OptCnt     uint64                  // Number of operations done on this file
-	Flags      common.BitMap16         // Various states of the file
-	Path       string                  // Always holds path relative to mount dir
-	values     map[string]interface{}  // Map to hold other info if application wants to store
-	DcacheFObj *filemanager.DcacheFile // File object for Dcache component
+	FObj     *os.File // File object being represented by this handle
+	CacheObj *Cache   // Streaming layer cache for this handle
+	Buffers  *Buffers
+	ID       HandleID // Blobfuse assigned unique ID to this handle
+	Size     int64    // Size of the file being handled here
+	Mtime    time.Time
+	UnixFD   uint64                 // Unix FD created by create/open syscall
+	OptCnt   uint64                 // Number of operations done on this file
+	Flags    common.BitMap16        // Various states of the file
+	Path     string                 // Always holds path relative to mount dir
+	values   map[string]interface{} // Map to hold other info if application wants to store
+	IFObj    any                    // Generic file Object that can be used by other components.
 }
 
 func NewHandle(path string) *Handle {
