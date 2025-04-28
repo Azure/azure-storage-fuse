@@ -63,7 +63,6 @@ func Hello(ctx context.Context, targetNodeID string, req *models.HelloRequest) (
 	// get RPC client from the client pool
 	client, err := cp.getRPCClient(targetNodeID)
 	if err != nil {
-		// TODO: add %+v at end after error
 		log.Err("rpc_client::Hello: Failed to get RPC client for node %s [%v] : %+v", targetNodeID, err.Error(), *req)
 		return nil, err
 	}

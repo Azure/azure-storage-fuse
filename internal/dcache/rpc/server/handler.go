@@ -500,7 +500,6 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	}
 	defer fh.Close()
 
-	// TODO:: integration: call cluster manager to get chunk size
 	fInfo, err := fh.Stat()
 	if err != nil {
 		log.Err("ChunkServiceHandler::GetChunk: Failed to stat chunk file %s [%v]", chunkPath, err.Error())
