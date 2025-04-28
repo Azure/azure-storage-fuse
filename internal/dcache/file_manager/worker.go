@@ -41,8 +41,8 @@ import (
 )
 
 type task struct {
-	file       *File
-	chunk      *models.Chunk
+	file       *DcacheFile
+	chunk      *models.StagedChunk
 	fileLayout models.FileLayout
 	get_chunk  bool
 }

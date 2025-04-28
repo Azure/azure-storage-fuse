@@ -49,7 +49,7 @@ func getChunkOffsetFromFileOffset(offset int64, fileLayout *models.FileLayout) i
 	return offset - getChunkStartOffsetFromFileOffset(offset, fileLayout)
 }
 
-func getChunkSize(offset int64, file *File) int64 {
+func getChunkSize(offset int64, file *DcacheFile) int64 {
 	return min(file.FileMetadata.Size-
 		getChunkStartOffsetFromFileOffset(offset, file.FileMetadata.FileLayout),
 		file.FileMetadata.FileLayout.ChunkSize)
@@ -60,7 +60,7 @@ func isOffsetChunkStarting(offset int64, fileLayout *models.FileLayout) bool {
 }
 
 // Does all file Init Process for creation of the file.
-func NewFile(fileName string) *File {
+func NewFile(fileName string) *DcacheFile {
 	fileMetadata := &models.FileMetadata{
 		Filename: fileName,
 	}
@@ -72,18 +72,18 @@ func NewFile(fileName string) *File {
 		StripeSize: 16 * 1024 * 1024,
 		MVList:     []string{"mv0", "mv1", "mv2"},
 	}
-	return &File{
+	return &DcacheFile{
 		FileMetadata: fileMetadata,
 	}
 }
 
 // Creates the chunk and allocates the chunk buf
-func NewChunk(idx int64, file *File) (*models.Chunk, error) {
+func NewChunk(idx int64, file *DcacheFile) (*models.StagedChunk, error) {
 	buf, err := fileIOMgr.bp.getBuffer()
 	if err != nil {
 		return nil, err
 	}
-	return &models.Chunk{
+	return &models.StagedChunk{
 		Idx:              idx,
 		Len:              0,
 		Buf:              buf,

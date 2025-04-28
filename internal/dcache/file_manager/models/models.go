@@ -48,7 +48,7 @@ type FileLayout struct {
 	MVList     []string `json:"mv_list"`
 }
 
-type Chunk struct {
+type StagedChunk struct {
 	Idx              int64      // chunk index
 	Buf              []byte     // buf size == chunkSize
 	Len              int64      // valid bytes in Buf

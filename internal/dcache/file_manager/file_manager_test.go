@@ -44,7 +44,7 @@ import (
 type fileIOManagerTestSuite struct {
 	suite.Suite
 	assert *assert.Assertions
-	file   *File
+	file   *DcacheFile
 }
 
 const (
@@ -67,13 +67,13 @@ func (suite *fileIOManagerTestSuite) TearDownTest() {
 	EndFileIOManager()
 }
 
-func createExistingFile() *File {
+func createExistingFile() *DcacheFile {
 	file := NewFile("foo")
 	file.FileMetadata.Size = 30 * 1024 * 1024
 	return file
 }
 
-func createNewFile() *File {
+func createNewFile() *DcacheFile {
 	return NewFile("foo")
 }
 
