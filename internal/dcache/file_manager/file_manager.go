@@ -98,8 +98,7 @@ func (file *File) ReadFile(offset int64, buf []byte) (bytesRead int, err error) 
 	for offset < endOffset {
 		//  Currently calling direct readaahead for the chunk assuming sequential workflow
 		chnkIdx := getChunkIdxFromFileOffset(offset, file.FileMetadata.FileLayout)
-		// todo : Detection of the sequential nature of the handle can be found from storing the offset
-		// in the handle.
+		// todo : Add Sequential pattern detection.
 		// todo : Support Partial read of chunk, useful for random read scenarios.
 		chnk, err := file.readChunkWithReadAhead(chnkIdx)
 		if err != nil {

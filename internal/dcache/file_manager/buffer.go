@@ -43,12 +43,10 @@ import (
 )
 
 type bufferPool struct {
-	pool                sync.Pool
-	numRequestedBuffers int64
-	maxBuffers          int64
-	bufSize             int
-	emptyBuf            []byte // Used to reset the buffers and also used as a buf to
-	//fill the holes inside the file while writing
+	pool       sync.Pool    // sync.Pool to relieve GC
+	bufSize    int          // size of buffers in this pool
+	maxBuffers int64        // max allocated buffers allowed
+	curBuffers atomic.Int64 // buffers currently allocated
 }
 
 func NewBufferPool(bufSize int, maxBuffers int) *bufferPool {
@@ -59,25 +57,27 @@ func NewBufferPool(bufSize int, maxBuffers int) *bufferPool {
 			},
 		},
 		bufSize:    bufSize,
-		emptyBuf:   make([]byte, bufSize),
 		maxBuffers: int64(maxBuffers),
 	}
 }
 
 func (bp *bufferPool) getBuffer() ([]byte, error) {
-	if atomic.LoadInt64(&bp.numRequestedBuffers) > bp.maxBuffers {
+	if bp.getCurBuffersCnt() > bp.maxBuffers {
 		return nil, errors.New("Buffers Exhausted")
 	}
 
 	buf := bp.pool.Get().([]byte)
 	common.Assert(len(buf) == bp.bufSize, fmt.Sprintf("Allocated Buf Size %d != Required Buf Size %d", len(buf), bp.bufSize))
-	bp.numRequestedBuffers++
+	bp.curBuffers.Add(1)
 	return buf, nil
 }
 
 func (bp *bufferPool) putBuffer(buf []byte) {
-	copy(buf, bp.emptyBuf)
 	bp.pool.Put(buf)
-	common.Assert(atomic.LoadInt64(&bp.numRequestedBuffers) > 0, fmt.Sprintf("Number of buffers are less than zero:  %d", atomic.LoadInt64(&bp.numRequestedBuffers)))
-	bp.numRequestedBuffers--
+	common.Assert(bp.getCurBuffersCnt() > 0, fmt.Sprintf("Number of buffers are less than zero:  %d", bp.getCurBuffersCnt()))
+	bp.curBuffers.Add(-1)
+}
+
+func (bp *bufferPool) getCurBuffersCnt() int64 {
+	return bp.curBuffers.Load()
 }
