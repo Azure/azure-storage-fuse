@@ -257,19 +257,18 @@ Below diagrams guide you to choose right configuration for your workloads.
 In file caching mode, Blobfuse waits for open file system call. On receiving the open call it downloads entire file to a local cache before using them. This can make the initial load slower, especially for AI/ML tasks, where application is processing many files.The Preload feature helps by downloading entire containers or sub-directories to the local cache when you mount it. Preload enhances data availability, boosting efficiency and reducing wait times. This is vital for AI training with large datasets as it prepares all necessary files in advance, saving GPU time and cutting costs. Combining preload with our blob filter feature allows customers to access specific files in a container or sub-directory, offering extensive flexibility and optimizing GPU cycles.
 
 To enable preload with file-cache mode, use `--preload` parameter. Below is a sample command for reference:
-
 ```
 blobfuse2 mount --preload /mnt/blobfuse_mnt --tmp-path=/home/temp_path 
-
-/mnt/blobfuse_mnt is where the blob data can be accessed, and /home/temp_path serves as the cache for the Blobfuse mount.
 ```
+/mnt/blobfuse_mnt is where the blob data can be accessed, and /home/temp_path serves as the cache for the Blobfuse mount.
+
 
 Preloading blob data makes the mount read-only and prevents file eviction. To access updated files, unmount and remount the volume. Newly added files can still be accessed by reading them. If blob filter is used along with preload, only the filtered files are pre-loaded and accessible via the Blobfuse mount.
 
 ### Considerations when using preload 
 - Enabling preload makes the Blobfuse mount read-only.
 - All file-caching options in CLI and config file are ignored except for the temporary path setting.
-- Ensure enough disk space for all or filtered contents in the container; insufficient space may cause partial loading and block new file access until manual deletion.
+- Ensure enough disk space for all or filtered contents in the container; insufficient space may cause partial loading and block new file access until manual deletion from the local cache.
 - Accessing a file immediately after mounting prioritizes it for download while preloading continues in the background.
 - Blobfuse logs show preload status and disk warnings.
 - Blobfuse mount refreshes preloaded or opened files only if they are manually deleted from the local cache and reopened.
