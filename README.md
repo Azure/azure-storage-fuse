@@ -102,6 +102,7 @@ The general format of the Blobfuse2 commands is `blobfuse2 [command] [arguments]
 * `secure set` - Updates value of a config parameter.
 * `unmount` - Unmounts the Blobfuse2 filesystem.
 * `unmount all` - Unmounts all Blobfuse2 filesystems.
+* `unmount all --lazy` - Unmounts all Blobfuse2 filesystems in lazy unmount mode.
 * `gen-config` -  Auto generate recommended blobfuse2 config file.
 
 ## Find help from your command prompt
@@ -119,6 +120,8 @@ To learn about a specific command, just include the name of the command (For exa
     * blobfuse2 mount list
 - Unmount blobfuse2
     * sudo fusermount3 -u \<mount path\>
+- Unmount blobfuse2 in lazy mode
+    * sudo fusermount3 -u \<mount path\> --lazy
 - Unmount all blobfuse2 instances
     * blobfuse2 unmount all 
 - Auto generate config file
