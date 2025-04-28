@@ -560,11 +560,13 @@ func updateMVList(rvMap map[string]dcache.RawVolume, existingMVMap map[string]dc
 		for rvName := range mv.RVWithStateMap {
 			if rvMap[rvName].State == dcache.StateOffline {
 				offlineRv++
+				mv.RVWithStateMap[rvName] = string(dcache.StateOffline)
+				mv.State = dcache.StateDegraded
 				if offlineRv == len(mv.RVWithStateMap) {
 					mv.State = dcache.StateOffline
 					// Update the MV state to offline
-					existingMVMap[mvName] = mv
 				}
+				existingMVMap[mvName] = mv
 				continue
 			}
 			nodeId := rvMap[rvName].NodeId

@@ -59,6 +59,7 @@ const (
 	StateSyncing  StateEnum = "syncing"
 	StateReadOnly StateEnum = "readOnly"
 	StateChecking StateEnum = "checking"
+	StateDegraded StateEnum = "degraded"
 )
 
 type ClusterMap struct {

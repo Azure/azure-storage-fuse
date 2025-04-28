@@ -268,16 +268,20 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_MaxMVs() {
 func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_OfflineMv() {
 	mvMap := mockMvMap()
 	// Remove rv1 from mv0
-	delete(mvMap["mv0"].RVWithStateMap, "rv1")
-	// Remove rv3 from mv1
-	delete(mvMap["mv1"].RVWithStateMap, "rv3")
+	// delete(mvMap["mv0"].RVWithStateMap, "rv1")
+	// // Remove rv3 from mv1
+	// delete(mvMap["mv1"].RVWithStateMap, "rv3")
 	rvMap := mockRvMap()
 
 	rv := rvMap["rv0"]
 	rv.State = dcache.StateOffline
 	rvMap["rv0"] = rv
 
-	numReplicas := 1
+	rv = rvMap["rv1"]
+	rv.State = dcache.StateOffline
+	rvMap["rv1"] = rv
+
+	numReplicas := 2
 	mvPerRv := 2
 	updated := updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
 
@@ -302,6 +306,22 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_OfflineRv() {
 		_, ok := mv.RVWithStateMap["rv4"]
 		suite.False(ok, "RV4 should not be present in any MV")
 	}
+	suite.TestUpdateMvList(updated, rvMap, numReplicas, mvPerRv)
+}
+
+func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_DegradedMv() {
+	mvMap := mockMvMap()
+	rvMap := mockRvMap()
+
+	rv := rvMap["rv0"]
+	rv.State = dcache.StateOffline
+	rvMap["rv0"] = rv
+
+	numReplicas := 2
+	mvPerRv := 2
+	updated := updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
+
+	suite.Equal(updated["mv0"].State, dcache.StateDegraded, "Updated MV0 should be degraded")
 	suite.TestUpdateMvList(updated, rvMap, numReplicas, mvPerRv)
 }
 
