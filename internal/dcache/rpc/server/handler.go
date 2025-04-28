@@ -35,7 +35,6 @@ package rpc_server
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -48,6 +47,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/service"
+	gouuid "github.com/google/uuid"
 )
 
 // type check to ensure that ChunkServiceHandler implements dcache.ChunkService interface
@@ -133,7 +133,16 @@ type syncInfo struct {
 	sourceRVName string // source RV name for syncing this MV
 }
 
+var handler *ChunkServiceHandler
+
+// NewChunkServiceHandler creates a new ChunkServiceHandler instance
+// This is a singleton instance and is created only once.
+// Subsequent calls to this function will return the same instance.
 func NewChunkServiceHandler() *ChunkServiceHandler {
+	if handler != nil {
+		return handler
+	}
+
 	// TODO:: integration: get rvID, rvName and cache dir path for different RVs for the node from cluster manager
 	// below will be call to cluster manager to get the information
 	rvIDMap := getRvIDMap()
@@ -148,7 +157,7 @@ func NewChunkServiceHandler() *ChunkServiceHandler {
 func (rv *rvInfo) isMvPathValid(mvPath string) bool {
 	mvName := filepath.Base(mvPath)
 	mvInfo := rv.getMVInfo(mvName)
-	common.Assert(mvInfo != nil || common.DirectoryExists(mvPath), fmt.Sprintf("mvPath %s MUST be present", mvPath))
+	common.Assert(mvInfo == nil || common.DirectoryExists(mvPath), fmt.Sprintf("mvPath %s MUST be present", mvPath))
 	return mvInfo != nil
 }
 
@@ -179,6 +188,9 @@ func (rv *rvInfo) getMVInfo(mvName string) *mvInfo {
 func (rv *rvInfo) addToMVMap(mvName string, val *mvInfo) {
 	rv.mvMap.Store(mvName, val)
 	rv.mvCount.Add(1)
+
+	// TODO:: integration: call cluster manager to get mvs-per-rv from config
+	common.Assert(rv.mvCount.Load() <= getMVsPerRV(), fmt.Sprintf("mvCount for RV %s is greater than max MVs %d", rv.rvName, getMVsPerRV()))
 }
 
 func (rv *rvInfo) deleteFromMVMap(mvName string) {
@@ -221,6 +233,7 @@ func (mv *mvInfo) updateSyncState(isSyncing bool, syncID string, sourceRVName st
 		}
 
 		// sourceRV must be valid.
+		// TODO: add assert for IsValidRVName
 		common.Assert(mv.sourceRVName != "")
 
 		mv.isSyncing.Store(false)
@@ -230,8 +243,8 @@ func (mv *mvInfo) updateSyncState(isSyncing bool, syncID string, sourceRVName st
 		return nil
 	}
 
-	// StartSync.
-	common.Assert(syncID != "")
+	// StartSync
+	common.Assert(common.IsValidUUID(syncID))
 	common.Assert(sourceRVName != "")
 
 	if mv.isSyncing.Load() {
@@ -373,6 +386,7 @@ func getNodeUUID() string {
 // - check if the cache dir exists
 // - check if the MV is valid
 func (h *ChunkServiceHandler) checkValidChunkAddress(address *models.Address) error {
+	// TODO: add assert for IsValidUUID(), IsValidMVName()
 	if address == nil || address.FileID == "" || address.RvID == "" || address.MvName == "" {
 		log.Err("ChunkServiceHandler::checkValidChunkAddress: Invalid chunk address %+v", *address)
 		return rpc.NewResponseError(rpc.InvalidRequest, fmt.Sprintf("invalid chunk address %+v", *address))
@@ -491,11 +505,12 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	// decrement the chunk operation count for this MV when the function returns
 	defer mvInfo.decOngoingIOs()
 
+	// TODO: check if lock is needed for GetChunk
 	// check if the chunk file is being updated in parallel by some other thread
-	chunkAddress := getChunkAddress(req.Address.FileID, req.Address.RvID, req.Address.MvName, req.Address.OffsetInMiB)
-	flock := h.locks.Get(chunkAddress)
-	flock.Lock()
-	defer flock.Unlock()
+	// chunkAddress := getChunkAddress(req.Address.FileID, req.Address.RvID, req.Address.MvName, req.Address.OffsetInMiB)
+	// flock := h.locks.Get(chunkAddress)
+	// flock.Lock()
+	// defer flock.Unlock()
 
 	cacheDir := rvInfo.cacheDir
 	chunkPath, hashPath := getChunkAndHashPath(cacheDir, req.Address.MvName, req.Address.FileID, req.Address.OffsetInMiB)
@@ -633,7 +648,9 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 		return nil, rpc.NewResponseError(rpc.ChunkAlreadyExists, fmt.Sprintf("chunk file %s already exists", chunkPath))
 	}
 
-	err = os.WriteFile(chunkPath, req.Chunk.Data, 0400)
+	// write to .tmp file first and rename it to the final file
+	tmpChunkPath := fmt.Sprintf("%s.tmp", chunkPath)
+	err = os.WriteFile(tmpChunkPath, req.Chunk.Data, 0400)
 	if err != nil {
 		log.Err("ChunkServiceHandler::PutChunk: Failed to write chunk file %s [%v]", chunkPath, err.Error())
 		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to write chunk file %s [%v]", chunkPath, err.Error()))
@@ -653,6 +670,13 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	}
 
 	// TODO: should we verify the hash after writing the chunk
+
+	// rename the .tmp file to the final file
+	err = os.Rename(tmpChunkPath, chunkPath)
+	if err != nil {
+		log.Err("ChunkServiceHandler::PutChunk: Failed to rename chunk file %s to %s [%v]", tmpChunkPath, chunkPath, err.Error())
+		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to rename chunk file %s to %s [%v]", tmpChunkPath, chunkPath, err.Error()))
+	}
 
 	resp := &models.PutChunkResponse{
 		TimeTaken:      time.Since(startTime).Microseconds(),
@@ -700,17 +724,16 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 	// decrement the chunk operation count for this MV when the function returns
 	defer mvInfo.decOngoingIOs()
 
+	// TODO: check if lock is needed for RemoveChunk
 	// acquire lock for the chunk address to prevent concurrent delete operations
-	chunkAddress := getChunkAddress(req.Address.FileID, req.Address.RvID, req.Address.MvName, req.Address.OffsetInMiB)
-	flock := h.locks.Get(chunkAddress)
-	flock.Lock()
-	defer flock.Unlock()
+	// chunkAddress := getChunkAddress(req.Address.FileID, req.Address.RvID, req.Address.MvName, req.Address.OffsetInMiB)
+	// flock := h.locks.Get(chunkAddress)
+	// flock.Lock()
+	// defer flock.Unlock()
 
 	cacheDir := rvInfo.cacheDir
 
-	// TODO: check if we need to add isSync flag to remove from the sync directory explicitly
-	// TODO: check in sync directory also
-	chunkPath, hashPath := getRegularMVPath(cacheDir, req.Address.MvName, req.Address.FileID, req.Address.OffsetInMiB)
+	chunkPath, hashPath := getChunkAndHashPath(cacheDir, req.Address.MvName, req.Address.FileID, req.Address.OffsetInMiB)
 	log.Debug("ChunkServiceHandler::RemoveChunk: chunk path %s, hash path %s", chunkPath, hashPath)
 
 	err = os.Remove(chunkPath)
@@ -945,16 +968,24 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("request component RVs are invalid for MV %s [%v]", req.MV, err.Error()))
 	}
 
+	// Set IO quiescing in the mv. Now GetChunk, PutChunk, will not allow any new IO.
+	// Also wait for any ongoing IOs to complete.
+	err := mvInfo.quiesceIOsStart()
+	common.Assert(err == nil, fmt.Sprintf("failed to quiesce IOs for MV %s [%v]", req.MV, err.Error()))
+
+	// disable block chunk operations flag for this MV when the function returns
+	defer mvInfo.quiesceIOsEnd()
+
 	// create the MV sync directory
 	syncDir := filepath.Join(rvInfo.cacheDir, req.MV+".sync")
-	err := h.createMVDirectory(syncDir)
+	err = h.createMVDirectory(syncDir)
 	if err != nil {
 		log.Err("ChunkServiceHandler::StartSync: Failed to create sync directory %s [%v]", syncDir, err.Error())
 		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to create sync directory %s [%v]", syncDir, err.Error()))
 	}
 
 	// update the sync state and sync id of the MV
-	err = mvInfo.updateSyncState(true, base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16)), req.SourceRVName)
+	err = mvInfo.updateSyncState(true, gouuid.New().String(), req.SourceRVName)
 	if err != nil {
 		log.Err("ChunkServiceHandler::StartSync: MV %s is already in sync state [%v]", req.MV, err.Error())
 		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("MV %s is already in sync state [%v]", req.MV, err.Error()))
