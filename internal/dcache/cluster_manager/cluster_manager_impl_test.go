@@ -237,7 +237,7 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_EmptyRvMap() {
 
 	numReplicas := 2
 	mvPerRv := 2
-	updated := updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
+	updated := suite.cmi.updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
 
 	suite.True(len(updated) == len(mvMap), "No MVs should be updated when rvMap is empty")
 }
@@ -248,7 +248,7 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_EmptyMvMap() {
 
 	numReplicas := 2
 	mvPerRv := 2
-	updated := updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
+	updated := suite.cmi.updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
 
 	suite.TestUpdateMvList(updated, rvMap, numReplicas, mvPerRv)
 }
@@ -259,7 +259,7 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_MaxMVs() {
 
 	numReplicas := 1
 	mvPerRv := 1
-	updated := updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
+	updated := suite.cmi.updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
 
 	suite.Equal(len(updated), len(rvMap), "Number of updated MVs should be equal to number of RVs")
 	suite.TestUpdateMvList(updated, rvMap, numReplicas, mvPerRv)
@@ -283,7 +283,7 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_OfflineMv() {
 
 	numReplicas := 2
 	mvPerRv := 2
-	updated := updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
+	updated := suite.cmi.updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
 
 	suite.Equal(updated["mv0"].State, dcache.StateOffline, "Updated MV0 should be offline")
 	suite.TestUpdateMvList(updated, rvMap, numReplicas, mvPerRv)
@@ -300,7 +300,7 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_OfflineRv() {
 
 	numReplicas := 3
 	mvPerRv := 5
-	updated := updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
+	updated := suite.cmi.updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
 
 	for _, mv := range updated {
 		_, ok := mv.RVWithStateMap["rv4"]
@@ -319,7 +319,7 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_DegradedMv() {
 
 	numReplicas := 2
 	mvPerRv := 2
-	updated := updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
+	updated := suite.cmi.updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
 
 	suite.Equal(updated["mv0"].State, dcache.StateDegraded, "Updated MV0 should be degraded")
 	suite.TestUpdateMvList(updated, rvMap, numReplicas, mvPerRv)

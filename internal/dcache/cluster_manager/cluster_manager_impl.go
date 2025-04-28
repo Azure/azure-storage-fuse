@@ -485,7 +485,7 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 		return
 	}
 	if changed {
-		updateMVList(clusterMap.RVMap, clusterMap.MVMap, int(GetCacheConfig().NumReplicas), int(GetCacheConfig().MvsPerRv))
+		cmi.updateMVList(clusterMap.RVMap, clusterMap.MVMap, int(GetCacheConfig().NumReplicas), int(GetCacheConfig().MvsPerRv))
 	} else {
 		log.Debug("updateStorageClusterMapIfRequired: No changes in RV mapping")
 	}
@@ -510,7 +510,7 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 
 }
 
-func updateMVList(rvMap map[string]dcache.RawVolume, existingMVMap map[string]dcache.MirroredVolume, NumReplicas int, MvsPerRv int) map[string]dcache.MirroredVolume {
+func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, existingMVMap map[string]dcache.MirroredVolume, NumReplicas int, MvsPerRv int) map[string]dcache.MirroredVolume {
 
 	// Local types
 	type rv struct {
@@ -526,7 +526,7 @@ func updateMVList(rvMap map[string]dcache.RawVolume, existingMVMap map[string]dc
 	nodeToRvs := make(map[string]node)
 
 	// TODO :: Handle scenarios for degraded and fix scenarios
-	// Degraded - When any of the rv's in a mv is offline make mv as degraded
+	// Degraded - When any of the rv's in a mv is offline make mv as degraded [Done]
 	// Fix - Replace any rv which is offline with an available rv and mark rv as out-of-sync while mv's state will be degraded
 	// Sync - This will be handled by replica manager and it will change mv state to syncing
 	// Offline - Mark a mv as offline when all the rv's within it are offline [Done]
