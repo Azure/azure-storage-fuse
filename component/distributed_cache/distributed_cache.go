@@ -356,20 +356,45 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 }
 
 func (dc *DistributedCache) CreateFile(options internal.CreateFileOptions) (*handlemap.Handle, error) {
-	file := fm.NewFile(options.Name)
-	// err := mm.CreateFileInit(options.Name, file.FileMetadata)
-	// if err != nil {
-	// 	log.Debug("DistributedCache::CreateFile : File Creation failed for file :  %s with err : %s", options.Name, err.Error())
-	// 	return nil, err
-	// }
 
+	isAzurePath, isDcachePath, rawPath := getFS(options.Name)
+	var file *fm.DcacheFile
+	if isAzurePath {
+		// properties should be fetched from Azure
+		log.Debug("DistributedCache::CreateFile : Path is having Azure subcomponent, path : %s", options.Name)
+		_, err := dc.NextComponent().CreateFile(options)
+		if err != nil {
+			return nil, err
+		}
+	} else if isDcachePath {
+		// properties should be fetched from Dcache
+		log.Debug("DistributedCache::CreateFile : Path is having Dcache subcomponent, path : %s", options.Name)
+		var err error
+		file, err = fm.NewDcacheFile(rawPath)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// properties should be fetched from Azure
+		// todo : assert rawPath==options.Name
+		var err error
+		file, err = fm.NewDcacheFile(rawPath)
+		if err != nil {
+			return nil, err
+		}
+		_, err = dc.NextComponent().CreateFile(options)
+		if err != nil {
+			return nil, err
+		}
+	}
 	// The metadata file was successfully created for the file
 	handle := handlemap.NewHandle(options.Name)
-	handle.DcacheFObj = file
+	if isDcachePath {
+		handle.DcacheFObj = file
+	}
 
 	return handle, nil
 }
-
 func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
 	if options.Flags&os.O_WRONLY != 0 || options.Flags&os.O_RDWR != 0 {
 		return nil, syscall.EACCES

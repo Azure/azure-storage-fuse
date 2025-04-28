@@ -68,13 +68,13 @@ func (suite *fileIOManagerTestSuite) TearDownTest() {
 }
 
 func createExistingFile() *DcacheFile {
-	file := NewFile("foo")
+	file := NewDcacheFile("foo")
 	file.FileMetadata.Size = 30 * 1024 * 1024
 	return file
 }
 
 func createNewFile() *DcacheFile {
-	return NewFile("foo")
+	return NewDcacheFile("foo")
 }
 
 func (suite *fileIOManagerTestSuite) TestReadFile() {

@@ -60,7 +60,7 @@ func isOffsetChunkStarting(offset int64, fileLayout *models.FileLayout) bool {
 }
 
 // Does all file Init Process for creation of the file.
-func NewFile(fileName string) *DcacheFile {
+func NewDcacheFile(fileName string) (*DcacheFile, error) {
 	fileMetadata := &models.FileMetadata{
 		Filename: fileName,
 	}
@@ -72,9 +72,14 @@ func NewFile(fileName string) *DcacheFile {
 		StripeSize: 16 * 1024 * 1024,
 		MVList:     []string{"mv0", "mv1", "mv2"},
 	}
+	// err := mm.CreateFileInit(options.Name, file.FileMetadata)
+	// if err != nil {
+	// 	log.Debug("DistributedCache::CreateFile : File Creation failed for file :  %s with err : %s", options.Name, err.Error())
+	// 	return nil, err
+	// }
 	return &DcacheFile{
 		FileMetadata: fileMetadata,
-	}
+	}, nil
 }
 
 // Creates the chunk and allocates the chunk buf
