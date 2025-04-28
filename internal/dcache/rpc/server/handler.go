@@ -394,7 +394,7 @@ func (h *ChunkServiceHandler) checkValidChunkAddress(address *models.Address) er
 	mvPath := filepath.Join(cacheDir, address.MvName)
 	if rvInfo.isMvPathValid(mvPath) {
 		log.Err("ChunkServiceHandler::checkValidChunkAddress: MV %s is not hosted by RV %s", address.MvName, rvInfo.rvName)
-		return rpc.NewResponseError(rpc.MVNotHostedByRV, fmt.Sprintf("MV %s is not hosted by RV %s", address.MvName, rvInfo.rvName))
+		return rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("MV %s is not hosted by RV %s", address.MvName, rvInfo.rvName))
 	}
 
 	return nil
@@ -474,6 +474,12 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 
 	rvInfo := h.rvIDMap[req.Address.RvID]
 	mvInfo := rvInfo.getMVInfo(req.Address.MvName)
+
+	// validate the component RVs list
+	if err := isComponentRVsValid(mvInfo.getComponentRVs(), req.ComponentRV); err != nil {
+		log.Err("ChunkServiceHandler::GetChunk: Request component RVs are invalid for MV %s [%v]", req.Address.MvName, err.Error())
+		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("request component RVs are invalid for MV %s [%v]", req.Address.MvName, err.Error()))
+	}
 
 	// Block the calling thread if this MV is currently quiesced
 	err = mvInfo.blockIOIfMVQuiesced()
@@ -678,6 +684,12 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 	rvInfo := h.rvIDMap[req.Address.RvID]
 	mvInfo := rvInfo.getMVInfo(req.Address.MvName)
 
+	// validate the component RVs list
+	if err := isComponentRVsValid(mvInfo.getComponentRVs(), req.ComponentRV); err != nil {
+		log.Err("ChunkServiceHandler::RemoveChunk: Request component RVs are invalid for MV %s [%v]", req.Address.MvName, err.Error())
+		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("request component RVs are invalid for MV %s [%v]", req.Address.MvName, err.Error()))
+	}
+
 	// Block the calling thread if this MV is currently quiesced
 	err = mvInfo.blockIOIfMVQuiesced()
 	common.Assert(err == nil, fmt.Sprintf("failed to block IO for MV %s", mvInfo.mvName))
@@ -867,7 +879,7 @@ func (h *ChunkServiceHandler) LeaveMV(ctx context.Context, req *models.LeaveMVRe
 
 	// validate the component RVs list
 	if err := isComponentRVsValid(mvInfo.getComponentRVs(), req.ComponentRV); err != nil {
-		log.Err("ChunkServiceHandler::PutChunk: Request component RVs are invalid for MV %s [%v]", req.MV, err.Error())
+		log.Err("ChunkServiceHandler::LeaveMV: Request component RVs are invalid for MV %s [%v]", req.MV, err.Error())
 		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("request component RVs are invalid for MV %s [%v]", req.MV, err.Error()))
 	}
 
@@ -915,7 +927,7 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 	mvInfo := rvInfo.getMVInfo(req.MV)
 	if mvInfo == nil {
 		log.Err("ChunkServiceHandler::StartSync: MV %s is invalid for RV %s", req.MV, req.TargetRVName)
-		return nil, rpc.NewResponseError(rpc.MVNotHostedByRV, fmt.Sprintf("MV %s is invalid for RV %s", req.MV, req.TargetRVName))
+		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("MV %s is invalid for RV %s", req.MV, req.TargetRVName))
 	}
 
 	componentRVsInMV := mvInfo.getComponentRVs()
@@ -929,7 +941,7 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 
 	// validate the component RVs list
 	if err := isComponentRVsValid(componentRVsInMV, req.ComponentRV); err != nil {
-		log.Err("ChunkServiceHandler::PutChunk: Request component RVs are invalid for MV %s [%v]", req.MV, err.Error())
+		log.Err("ChunkServiceHandler::StartSync: Request component RVs are invalid for MV %s [%v]", req.MV, err.Error())
 		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("request component RVs are invalid for MV %s [%v]", req.MV, err.Error()))
 	}
 
@@ -979,7 +991,7 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 	mvInfo := rvInfo.getMVInfo(req.MV)
 	if mvInfo == nil {
 		log.Err("ChunkServiceHandler::EndSync: MV %s is invalid for RV %s", req.MV, req.TargetRVName)
-		return nil, rpc.NewResponseError(rpc.MVNotHostedByRV, fmt.Sprintf("MV %s is invalid for RV %s", req.MV, req.TargetRVName))
+		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("MV %s is invalid for RV %s", req.MV, req.TargetRVName))
 	}
 
 	if mvInfo.syncID != req.SyncID {
@@ -998,7 +1010,7 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 
 	// validate the component RVs list
 	if err := isComponentRVsValid(componentRVsInMV, req.ComponentRV); err != nil {
-		log.Err("ChunkServiceHandler::PutChunk: Request component RVs are invalid for MV %s [%v]", req.MV, err.Error())
+		log.Err("ChunkServiceHandler::StartSync: Request component RVs are invalid for MV %s [%v]", req.MV, err.Error())
 		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("request component RVs are invalid for MV %s [%v]", req.MV, err.Error()))
 	}
 

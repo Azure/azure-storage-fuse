@@ -36,7 +36,6 @@ package rpc
 const (
 	InvalidRequest      = iota + 1 // invalid rpc request
 	InvalidRVID                    // RV does not have the rvID
-	MVNotHostedByRV                // RV is not a member of the given MV
 	InvalidRV                      // RV is invalid for the given node
 	InternalServerError            // Miscellaneous errors
 	ChunkNotFound                  // Chunk not found

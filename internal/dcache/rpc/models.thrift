@@ -36,7 +36,8 @@ struct RVNameAndState {
 struct GetChunkRequest {
     1: Address address,
     2: i64 offsetInChunk,
-    3: i64 length
+    3: i64 length,
+    4: list<RVNameAndState> componentRV // used to validate the component RV for the MV
 }
 
 struct GetChunkResponse {
@@ -44,7 +45,6 @@ struct GetChunkResponse {
     2: string chunkWriteTime,
     3: i64 timeTaken,
     4: list<RVNameAndState> componentRV
-    // TODO:: discuss: should we validate the component RV in GetChunk call
 }
 
 struct PutChunkRequest {
@@ -62,8 +62,8 @@ struct PutChunkResponse {
 }
 
 struct RemoveChunkRequest {
-    1: Address address
-    // TODO:: discuss: should we validate the component RV in RemoveChunk call
+    1: Address address,
+    2: list<RVNameAndState> componentRV // used to validate the component RV for the MV
 }
 
 struct RemoveChunkResponse {
