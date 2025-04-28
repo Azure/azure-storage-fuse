@@ -62,7 +62,7 @@ type ClusterManagerImpl struct {
 }
 
 // It will return online MVs as per local cache copy of cluster map
-func GetActiveMVs() []dcache.MirroredVolume {
+func GetActiveMVs() map[string]dcache.MirroredVolume {
 	return clusterManagerInstance.getActiveMVs()
 }
 
@@ -72,12 +72,12 @@ func GetCacheConfig() *dcache.DCacheConfig {
 }
 
 // It will return offline/down MVs as per local cache copy of cluster map
-func GetDegradedMVs() []dcache.MirroredVolume {
+func GetDegradedMVs() map[string]dcache.MirroredVolume {
 	return clusterManagerInstance.getDegradedMVs()
 }
 
 // It will return all the RVs for particular mv name as per local cache copy of cluster map
-func GetRVs(mvName string) []dcache.RawVolume {
+func GetRVs(mvName string) map[string]string {
 	return clusterManagerInstance.getRVs(mvName)
 }
 
@@ -147,8 +147,12 @@ func (cmi *ClusterManagerImpl) start(dCacheConfig *dcache.DCacheConfig, rvs []dc
 	cmi.ipAddress = rvs[0].IPAddress
 	common.Assert(common.IsValidIP(cmi.ipAddress), fmt.Sprintf("Invalid Ip[%s] for nodeId[%s]", cmi.ipAddress, cmi.nodeId))
 
-	//TODO{Akku}: Start punching heartbeat right away and store the full fledged cluster map if present at storage
 	cmi.hbTicker = time.NewTicker(time.Duration(dCacheConfig.HeartbeatSeconds) * time.Second)
+
+	//Initial punch heartbeat triggering in a sync way to make this node available to detect as soon as possible
+	log.Debug("Task \"Heartbeat Punch\" triggered (initial)")
+	cmi.punchHeartBeat(rvs)
+
 	go func() {
 		for range cmi.hbTicker.C {
 			log.Debug("Scheduled task \"Heartbeat Punch\" triggered")
@@ -156,8 +160,13 @@ func (cmi *ClusterManagerImpl) start(dCacheConfig *dcache.DCacheConfig, rvs []dc
 		}
 		log.Info("Scheduled task \"Heartbeat Punch\" stopped")
 	}()
+
 	cmi.localClusterMapPath = filepath.Join(common.DefaultWorkDir, "clustermap.json")
 	cmi.clusterMapticker = time.NewTicker(time.Duration(dCacheConfig.ClustermapEpoch) * time.Second)
+
+	//Initial local copy update triggered in a sync way to make this node at least available with existing clusterMap configuration
+	log.Debug("Task \"Cluster Map update\" (initial) task triggered")
+	cmi.updateClusterMapLocalCopyIfRequired()
 	go func() {
 		for range cmi.clusterMapticker.C {
 			log.Debug("Scheduled \"Cluster Map update\" task triggered")
@@ -167,6 +176,7 @@ func (cmi *ClusterManagerImpl) start(dCacheConfig *dcache.DCacheConfig, rvs []dc
 		}
 		log.Info("Scheduled task \"ClusterMap update\" stopped")
 	}()
+
 	return nil
 }
 
@@ -232,26 +242,70 @@ func (cmi *ClusterManagerImpl) stop() error {
 }
 
 // getActiveMVs implements ClusterManager.
-func (c *ClusterManagerImpl) getActiveMVs() []dcache.MirroredVolume {
-	return make([]dcache.MirroredVolume, 0)
+func (cmi *ClusterManagerImpl) getActiveMVs() map[string]dcache.MirroredVolume {
+	if cmi.localMap == nil {
+		log.Debug("ClusterManagerImpl::getActiveMVs: local cluster map not loaded")
+		return nil
+	}
+	activeMVs := make(map[string]dcache.MirroredVolume)
+	for mvName, mv := range cmi.localMap.MVMap {
+		if mv.State == dcache.StateOnline {
+			activeMVs[mvName] = mv
+		}
+	}
+	return activeMVs
 }
 
 // getCacheConfig implements ClusterManager.
 func (cmi *ClusterManagerImpl) getCacheConfig() *dcache.DCacheConfig {
-	return nil
+	if cmi.localMap == nil {
+		log.Debug("ClusterManagerImpl::getCacheConfig: local cluster map not loaded")
+		return nil
+	}
+	return &cmi.localMap.Config
 }
 
 // getDegradedMVs implements ClusterManager.
-func (c *ClusterManagerImpl) getDegradedMVs() []dcache.MirroredVolume {
-	return make([]dcache.MirroredVolume, 0)
+func (cmi *ClusterManagerImpl) getDegradedMVs() map[string]dcache.MirroredVolume {
+
+	if cmi.localMap == nil {
+		log.Debug("ClusterManagerImpl::getDegradedMVs: local cluster map not loaded")
+		return nil
+	}
+	degradedMVs := make(map[string]dcache.MirroredVolume)
+	for mvName, mv := range cmi.localMap.MVMap {
+		if mv.State != dcache.StateOnline {
+			degradedMVs[mvName] = mv
+		}
+	}
+	return degradedMVs
 }
 
 // getRVs implements ClusterManager.
-func (c *ClusterManagerImpl) getRVs(mvName string) []dcache.RawVolume {
-	return make([]dcache.RawVolume, 0)
+func (cmi *ClusterManagerImpl) getRVs(mvName string) map[string]string {
+	if cmi.localMap == nil {
+		log.Debug("ClusterManagerImpl::getRVs: local cluster map not loaded")
+		return nil
+	}
+	mv, ok := cmi.localMap.MVMap[mvName]
+	if !ok {
+		log.Debug("ClusterManagerImpl::getRVs: no mirrored volume named %s", mvName)
+		return nil
+	}
+	return mv.RVWithStateMap
 }
 
-func (c *ClusterManagerImpl) isOnline(nodeId string) bool {
+func (cmi *ClusterManagerImpl) isOnline(nodeId string) bool {
+	if cmi.localMap == nil {
+		log.Debug("ClusterManagerImpl::isOnline: local cluster map not loaded")
+		return false
+	}
+	for _, rv := range cmi.localMap.RVMap {
+		if rv.NodeId == nodeId {
+			return rv.State == dcache.StateOnline
+		}
+	}
+	log.Debug("ClusterManagerImpl::isOnline: node %s not found", nodeId)
 	return false
 }
 
@@ -261,28 +315,75 @@ func (c *ClusterManagerImpl) lowestNumberRV(rvNames []string) []string {
 }
 
 // nodeIdToIP implements ClusterManager.
-func (c *ClusterManagerImpl) nodeIdToIP(nodeId string) string {
+func (cmi *ClusterManagerImpl) nodeIdToIP(nodeId string) string {
+	if cmi.localMap == nil {
+		log.Debug("ClusterManagerImpl::nodeIdToIP: local cluster map not loaded")
+		return ""
+	}
+	for _, rv := range cmi.localMap.RVMap {
+		if rv.NodeId == nodeId {
+			return rv.IPAddress
+		}
+	}
+	log.Debug("ClusterManagerImpl::nodeIdToIP: node %s not found", nodeId)
 	return ""
 }
 
 // rvIdToName implements ClusterManager.
-func (c *ClusterManagerImpl) rvIdToName(rvId string) string {
+func (cmi *ClusterManagerImpl) rvIdToName(rvId string) string {
+	if cmi.localMap == nil {
+		log.Debug("ClusterManagerImpl::rvIdToName: local cluster map not loaded")
+		return ""
+	}
+	for rvName, rv := range cmi.localMap.RVMap {
+		if rv.RvId == rvId {
+			return rvName
+		}
+	}
+	log.Debug("ClusterManagerImpl::rvIdToName: rvID %s not found", rvId)
 	return ""
 }
 
 // rvNameToId implements ClusterManager.
-func (c *ClusterManagerImpl) rvNameToId(rvName string) string {
-	return ""
+func (cmi *ClusterManagerImpl) rvNameToId(rvName string) string {
+	if cmi.localMap == nil {
+		log.Debug("ClusterManagerImpl::rvNameToId: local cluster map not loaded")
+		return ""
+	}
+	rv, ok := cmi.localMap.RVMap[rvName]
+	if !ok {
+		log.Debug("ClusterManagerImpl::rvNameToId: rvName %s not found", rvName)
+		return ""
+	}
+	return rv.RvId
 }
 
 // rVNameToIp implements ClusterManager.
-func (c *ClusterManagerImpl) rVNameToIp(rvName string) string {
-	return ""
+func (cmi *ClusterManagerImpl) rVNameToIp(rvName string) string {
+	if cmi.localMap == nil {
+		log.Debug("ClusterManagerImpl::rVNameToIp: local cluster map not loaded")
+		return ""
+	}
+	rv, ok := cmi.localMap.RVMap[rvName]
+	if !ok {
+		log.Debug("ClusterManagerImpl::rVNameToIp: rvName %s not found", rvName)
+		return ""
+	}
+	return rv.IPAddress
 }
 
 // rVNameToNodeId implements ClusterManager.
-func (c *ClusterManagerImpl) rVNameToNodeId(rvName string) string {
-	return ""
+func (cmi *ClusterManagerImpl) rVNameToNodeId(rvName string) string {
+	if cmi.localMap == nil {
+		log.Debug("ClusterManagerImpl::rVNameToNodeId: local cluster map not loaded")
+		return ""
+	}
+	rv, ok := cmi.localMap.RVMap[rvName]
+	if !ok {
+		log.Debug("ClusterManagerImpl::rVNameToNodeId: rvName %s not found", rvName)
+		return ""
+	}
+	return rv.NodeId
 }
 
 // reportRVDown implements ClusterManager.

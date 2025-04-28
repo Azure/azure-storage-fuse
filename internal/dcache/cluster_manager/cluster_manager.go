@@ -51,16 +51,16 @@ type ClusterManager interface {
 	stop() error
 
 	//It will return online MVs as per local cache copy of cluster map
-	getActiveMVs() []dcache.MirroredVolume
+	getActiveMVs() map[string]dcache.MirroredVolume
 
 	//It will return the cache config as per local cache copy of cluster map
 	getCacheConfig() *dcache.DCacheConfig
 
 	//It will return offline/down MVs as per local cache copy of cluster map
-	getDegradedMVs() []dcache.MirroredVolume
+	getDegradedMVs() map[string]dcache.MirroredVolume
 
 	//It will return all the RVs for particular mv name as per local cache copy of cluster map
-	getRVs(mvName string) []dcache.RawVolume
+	getRVs(mvName string) map[string]string
 
 	//It will check if the given nodeId is online as per local cache copy of cluster map
 	isOnline(nodeId string) bool
