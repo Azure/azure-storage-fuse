@@ -332,7 +332,6 @@ func (mr *MockComponentMockRecorder) IsDirEmpty(arg0 interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsDirEmpty", reflect.TypeOf((*MockComponent)(nil).IsDirEmpty), arg0)
 }
 
-
 // Name mocks base method.
 func (m *MockComponent) Name() string {
 	m.ctrl.T.Helper()
