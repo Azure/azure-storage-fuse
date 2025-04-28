@@ -37,8 +37,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 )
 
 // returns the chunk path and hash path for the given fileID and offsetInMB from the regular MV directory
@@ -73,28 +76,73 @@ func getChunkAddress(fileID string, rvID string, mvName string, offsetInMB int64
 	return fmt.Sprintf("%v-%v-%v-%v", fileID, rvID, mvName, offsetInMB)
 }
 
+// sort the component RVs in the MV
+// The RVs are sorted in increasing order of their names
+func sortComponentRVs(rvs []*models.RVNameAndState) {
+	sort.Slice(rvs, func(i, j int) bool {
+		return rvs[i].Name < rvs[j].Name
+	})
+}
+
 // check if the component RVs are the same
 // the list is sorted before comparison
-func isComponentRVsValid(rv1 []string, rv2 []string) bool {
-	if len(rv1) != len(rv2) {
-		return false
+// RV array can be like,
+// [
+//
+//	{"name":"rv0", "state": "online"},
+//	{"name":"rv5", "state": "syncing"},
+//	{"name":"rv9", "state": "outofsync"}
+//
+// ]
+func isComponentRVsValid(rvInMV []*models.RVNameAndState, rvInReq []*models.RVNameAndState) error {
+	if len(rvInMV) != len(rvInReq) {
+		return fmt.Errorf("request component RVs %s is not same as MV component RVs %s", componentRVsToString(rvInReq), componentRVsToString(rvInMV))
 	}
 
-	for i := 0; i < len(rv1); i++ {
-		// TODO: discuss if the state of RV also needs to be compared
-		// The RV array can be like ["rv0", "rv5=syncing", "rv9=outofsync"]
-		// RV array can be like ["rv0", "rv5=syncing", "rv9=outofsync"]
-		// s1 := (strings.Split(rv1[i], "="))[0]
-		// s2 := (strings.Split(rv2[i], "="))[0]
+	sortComponentRVs(rvInReq)
 
-		s1 := rv1[i]
-		s2 := rv2[i]
-		if s1 != s2 {
-			return false
+	isValid := true
+	for i := 0; i < len(rvInMV); i++ {
+		common.Assert(rvInMV[i] != nil, "Component RV is nil")
+		common.Assert(rvInReq[i] != nil, "Component RV is nil")
+
+		if rvInMV[i].Name != rvInReq[i].Name || rvInMV[i].State != rvInReq[i].State {
+			isValid = false
+			break
 		}
 	}
 
-	return true
+	if !isValid {
+		rvInMvStr := componentRVsToString(rvInMV)
+		rvInReqStr := componentRVsToString(rvInReq)
+		log.Err("utils::isComponentRVsValid: Request component RVs %s is not same as MV component RVs %s", rvInReqStr, rvInMvStr)
+		common.Assert(false, fmt.Sprintf("request component RVs %s is not same as MV component RVs %s", rvInReqStr, rvInMvStr))
+		return fmt.Errorf("request component RVs %s is not same as MV component RVs %s", rvInReqStr, rvInMvStr)
+	}
+
+	return nil
+}
+
+// convert *models.RVNameAndState to string
+// used for logging
+func componentRVsToString(rvs []*models.RVNameAndState) string {
+	var arr []models.RVNameAndState
+	for _, rv := range rvs {
+		common.Assert(rv != nil, "Component RV is nil")
+		arr = append(arr, *rv)
+	}
+	return fmt.Sprintf("%+v", arr)
+}
+
+// check if the RV is present in the component RVs of the MV
+func isRVPresentInMV(rvs []*models.RVNameAndState, rvName string) bool {
+	for _, rv := range rvs {
+		common.Assert(rv != nil, "Component RV is nil")
+		if rv.Name == rvName {
+			return true
+		}
+	}
+	return false
 }
 
 // end sync operation will call this method to move all the chunks from the sync MV path to the regular MV path
