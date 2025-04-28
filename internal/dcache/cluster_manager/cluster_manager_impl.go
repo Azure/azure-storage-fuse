@@ -525,11 +525,11 @@ func updateMVList(rvMap map[string]dcache.RawVolume, existingMVMap map[string]dc
 
 	nodeToRvs := make(map[string]node)
 
-	// TODO :: Degraded, offline, fix workfloes resync will be handled by replica
-	// Fix - rv is offline so replace it with new rv and mark state as out-of-sync
-	// Degraded - rv is offline so mark mv as degraded
-	// Sync - replica manager will take care of this and change mv state to syncing
-	// Offline - all rv's a
+	// TODO :: Handle scenarios for degraded and fix scenarios
+	// Degraded - When any of the rv's in a mv is offline make mv as degraded
+	// Fix - Replace any rv which is offline with an available rv and mark rv as out-of-sync while mv's state will be degraded
+	// Sync - This will be handled by replica manager and it will change mv state to syncing
+	// Offline - Mark a mv as offline when all the rv's within it are offline [Done]
 
 	// Populate the RV struct and node struct
 	for rvId, rvInfo := range rvMap {
@@ -556,13 +556,15 @@ func updateMVList(rvMap map[string]dcache.RawVolume, existingMVMap map[string]dc
 
 	// Phase 1 : Check and update slots of Rv's used in existing MVs
 	for mvName, mv := range existingMVMap {
+		offlineRv := 0
 		for rvName := range mv.RVWithStateMap {
 			if rvMap[rvName].State == dcache.StateOffline {
-				// Skip RVs that are offline
-				mv.State = dcache.StateOffline
-				// Update the MV state to offline
-				existingMVMap[mvName] = mv
-				// Update the existing MV in the map
+				offlineRv++
+				if offlineRv == len(mv.RVWithStateMap) {
+					mv.State = dcache.StateOffline
+					// Update the MV state to offline
+					existingMVMap[mvName] = mv
+				}
 				continue
 			}
 			nodeId := rvMap[rvName].NodeId
