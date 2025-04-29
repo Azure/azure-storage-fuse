@@ -34,8 +34,8 @@
 package dcache
 
 type MirroredVolume struct {
-	RVsWithState map[string]StateEnum `json:"rvs,omitempty"`
-	State        StateEnum            `json:"state,omitempty"`
+	RVs   map[string]StateEnum `json:"rvs,omitempty"`
+	State StateEnum            `json:"state,omitempty"`
 }
 
 type RawVolume struct {
@@ -52,14 +52,15 @@ type RawVolume struct {
 type StateEnum string
 
 const (
-	StateOnline   StateEnum = "online"
-	StateOffline  StateEnum = "offline"
-	StateDown     StateEnum = "down"
-	StateReady    StateEnum = "ready"
-	StateSyncing  StateEnum = "syncing"
-	StateReadOnly StateEnum = "readOnly"
-	StateChecking StateEnum = "checking"
-	StateDegraded StateEnum = "degraded"
+	StateOnline    StateEnum = "online"
+	StateOffline   StateEnum = "offline"
+	StateDegraded  StateEnum = "degraded"
+	StateDown      StateEnum = "down"
+	StateOutOfSync StateEnum = "outofsync"
+	StateReady     StateEnum = "ready"
+	StateSyncing   StateEnum = "syncing"
+	StateReadOnly  StateEnum = "readOnly"
+	StateChecking  StateEnum = "checking"
 )
 
 type ClusterMap struct {
@@ -112,4 +113,7 @@ type FileLayout struct {
 	ChunkSize  int64    `json:"chunk_size"`
 	StripeSize int64    `json:"stripe_size"`
 	MVList     []string `json:"mv_list"`
+}
+
+type ClusterManagerEvent struct {
 }

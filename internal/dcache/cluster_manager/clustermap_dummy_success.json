@@ -1,0 +1,61 @@
+{
+	"state": "offline",
+	"epoch": 1,
+	"created-at": 1744722356,
+	"last_updated_at": 1744894648,
+	"last_updated_by": "a7660cf9-4c4f-4d9b-9126-9fc8003cc41f",
+	"config": {
+        "cache-id":"mycache1",
+		"min-nodes": 1,
+		"chunk-size": 1073741824,
+        "stripe-size": 16777216,
+        "num-replicas": 2,
+        "mvs-per-rv": 1,
+        "heartbeat-seconds": 60,
+		"heartbeats-till-node-down": 3,
+		"clustermap-epoch": 300,
+		"rebalance-percentage": 80,
+		"safe-deletes": true,
+		"cache-access": "automatic"
+	},
+	"rv-map": {
+		"rv0": {
+			"node_id": "a7660cf9-4c4f-4d9b-9126-9fc8003cc41f",
+			"ipaddr": "172.31.9.98",
+			"rvid": "89ee03ba-6808-4977-a4fb-9b10174744f8",
+			"fdid": "0",
+			"state": "online",
+			"total_space": 103842365440,
+			"available_space": 103842365440,
+			"local_cache_path": "/tmp/blobfuse/"
+		},
+        "rv1": {
+			"node_id": "a7660cf9-4c4f-4d9b-9126-9fc8003cc41a",
+			"ipaddr": "172.31.9.99",
+			"rvid": "89ee03ba-6808-4977-a4fb-9b10174744f9",
+			"fdid": "0",
+			"state": "online",
+			"total_space": 103842365440,
+			"available_space": 103842365440,
+			"local_cache_path": "/tmp/blobfuse/"
+		}
+	},
+	"mv-map": {
+		"mv0":{
+			"rvs":{
+				"rv0":"online",
+				"rv1":"online"
+			},
+			
+			"state":"online"
+		},
+		"mv1":{
+			"rvs":{
+				"rv2":"online",
+				"rv3":"online"
+			},
+			
+			"state":"online"
+		}
+	}
+}
