@@ -38,6 +38,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
@@ -116,7 +117,7 @@ func (cp *clientPool) releaseRPCClient(client *rpcClient) error {
 		return fmt.Errorf("no client pool found for node %s", client.nodeID)
 	}
 
-	// TODO: add assert to check the length of the channel is less than maxPerNode
+	common.Assert(len(ncPool.clientChan) < int(cp.maxPerNode), "node client pool is full, cannot release client")
 	ncPool.clientChan <- client
 	return nil
 }
@@ -136,7 +137,7 @@ func (cp *clientPool) closeLRUCNodeClientPool() error {
 		}
 	}
 
-	// TODO: add assert that lruNcPool is not nil
+	common.Assert(lruNcPool != nil, "lruNcPool is nil")
 	err := lruNcPool.closeRPCClients()
 	if err != nil {
 		log.Err("clientPool::closeLRUCNodeClientPool: Failed to close LRU node client pool for node %s [%v]", lruNodeID, err.Error())
@@ -168,9 +169,7 @@ func (cp *clientPool) closeAllNodeClientPools() error {
 		delete(cp.clients, key)
 	}
 
-	// TODO: add assert to check that the length of the map is 0
-	// see if this is needed
-	// cp.clients = make(map[string]*nodeClientPool)
+	common.Assert(len(cp.clients) == 0, "client pool is not empty after closing all node client pools")
 	return nil
 }
 
@@ -218,7 +217,7 @@ func (ncPool *nodeClientPool) closeRPCClients() error {
 		}
 	}
 
-	// TODO: add assert to check that the channel empty
+	common.Assert(len(ncPool.clientChan) == 0, "client channel is not empty after closing all RPC clients")
 	return nil
 }
 

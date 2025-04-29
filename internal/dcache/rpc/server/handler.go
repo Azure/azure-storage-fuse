@@ -44,6 +44,7 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/service"
@@ -142,14 +143,12 @@ var handler *ChunkServiceHandler
 // NewChunkServiceHandler creates a new ChunkServiceHandler instance
 // This is a singleton instance and is created only once.
 // Subsequent calls to this function will return the same instance.
-func NewChunkServiceHandler() *ChunkServiceHandler {
+func NewChunkServiceHandler(rvs map[string]dcache.RawVolume) *ChunkServiceHandler {
 	if handler != nil {
 		return handler
 	}
 
-	// TODO:: integration: get rvID, rvName and cache dir path for different RVs for the node from cluster manager
-	// below will be call to cluster manager to get the information
-	rvIDMap := getRvIDMap()
+	rvIDMap := getRvIDMap(rvs)
 
 	return &ChunkServiceHandler{
 		locks:   common.NewLockMap(),
@@ -196,7 +195,6 @@ func (rv *rvInfo) addToMVMap(mvName string, val *mvInfo) {
 	rv.mvMap.Store(mvName, val)
 	rv.mvCount.Add(1)
 
-	// TODO:: integration: call cluster manager to get mvs-per-rv from config
 	common.Assert(rv.mvCount.Load() <= getMVsPerRV(), fmt.Sprintf("mvCount for RV %s is greater than max MVs %d", rv.rvName, getMVsPerRV()))
 }
 
@@ -364,30 +362,6 @@ func (mv *mvInfo) quiesceIOsEnd() {
 	mv.quiesceIOs.Store(false)
 }
 
-// TODO:: integration: sample method, will be later removed after integrating with cluster manager
-// call cluster manager to create the rvID map from config
-func getRvIDMap() map[string]*rvInfo {
-	return make(map[string]*rvInfo)
-}
-
-// TODO:: integration: sample method, will be later removed after integrating with cluster manager
-// call cluster manager to get mvs-per-rv from config
-func getMVsPerRV() int64 {
-	return 10
-}
-
-// TODO:: integration: sample method, will be later removed after integrating with cluster manager
-// call cluster manager helper method to get available disk space for the given path
-func getAvailableDiskSpace(path string) (int64, error) {
-	return 0, nil
-}
-
-// TODO:: integration: sample method, will be later removed after integrating with cluster manager
-// call cluster manager helper method to get the node ID of this node
-func getNodeUUID() string {
-	return "node-uuid" // TODO: get the node uuid from the config
-}
-
 // check the if the chunk address is valid
 // - check if the rvID is valid
 // - check if the cache dir exists
@@ -457,8 +431,7 @@ func (h *ChunkServiceHandler) Hello(ctx context.Context, req *models.HelloReques
 
 	// TODO: send more information in response on Hello RPC
 
-	// TODO:: integration: call cluster manager to get the node ID of this node
-	myNodeID := getNodeUUID()
+	myNodeID := getMyNodeUUID()
 	common.Assert(req.ReceiverNodeID == myNodeID, "Received Hello RPC destined for another node", req.ReceiverNodeID, myNodeID)
 
 	// get all the RVs exported by this node
@@ -674,8 +647,8 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	// 	return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to write hash file %s [%v]", hashPath, err.Error()))
 	// }
 
-	// TODO:: integration: call cluster manager to get the available disk space
 	availableSpace, err := getAvailableDiskSpace(cacheDir)
+	// TODO: add assert for available space
 	if err != nil {
 		log.Err("ChunkServiceHandler::PutChunk: Failed to get available disk space [%v]", err.Error())
 	}
@@ -760,8 +733,8 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to remove hash file %s [%v]", hashPath, err.Error()))
 	}
 
-	// TODO:: integration: call cluster manager to get the available disk space
 	availableSpace, err := getAvailableDiskSpace(cacheDir)
+	// TODO: add assert for available space
 	if err != nil {
 		log.Err("ChunkServiceHandler::RemoveChunk: Failed to get available disk space [%v]", err.Error())
 	}
@@ -806,7 +779,6 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 		return nil, rpc.NewResponseError(rpc.InvalidRequest, fmt.Sprintf("RV %s is already part of the given MV %s", req.RVName, req.MV))
 	}
 
-	// TODO:: integration: call cluster manager to get mvs-per-rv from config
 	mvLimit := getMVsPerRV()
 	if rvInfo.mvCount.Load() >= mvLimit {
 		log.Err("ChunkServiceHandler::JoinMV: RV %s has reached the maximum number of MVs %d", req.RVName, mvLimit)
@@ -817,8 +789,8 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 	// RV is being added to an already existing MV
 	// check if the RV has enough space to store the new MV data
 	if req.ReserveSpace != 0 {
-		// TODO:: integration: call cluster manager to get the available disk space
 		availableSpace, err := getAvailableDiskSpace(cacheDir)
+		// TODO: add assert for available space
 		if err != nil {
 			log.Err("ChunkServiceHandler::JoinMV: Failed to get available disk space for RV %v [%v]", req.RVName, err.Error())
 			return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to get available disk space for RV %v [%v]", req.RVName, err.Error()))

@@ -41,6 +41,7 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 )
 
@@ -170,4 +171,41 @@ func moveChunksToRegularMVPath(syncMvPath string, regMvPath string) error {
 	}
 
 	return nil
+}
+
+// create the rvID map from RVs present in the current node
+func getRvIDMap(rvs map[string]dcache.RawVolume) map[string]*rvInfo {
+	rvIDMap := make(map[string]*rvInfo)
+
+	for rvName, val := range rvs {
+		rvInfo := &rvInfo{
+			rvID:     val.RvId,
+			rvName:   rvName,
+			cacheDir: val.LocalCachePath,
+		}
+
+		rvIDMap[val.RvId] = rvInfo
+	}
+
+	return rvIDMap
+}
+
+// return mvs-per-rv from dcache config
+func getMVsPerRV() int64 {
+	return int64(dCacheConfig.MvsPerRv)
+}
+
+// return available disk space for the given path
+func getAvailableDiskSpace(path string) (int64, error) {
+	_, availableSpace, err := common.GetDiskSpaceMetricsFromStatfs(path)
+	common.Assert(err == nil, fmt.Sprintf("failed to get available disk space for path %s [%v]", path, err.Error()))
+	return int64(availableSpace), err
+}
+
+// return the node ID of this node
+func getMyNodeUUID() string {
+	nodeID, err := common.GetNodeUUID()
+	common.Assert(err == nil, "failed to get current node's UUID", err.Error())
+	common.Assert(common.IsValidUUID(nodeID), "current node's UUID is not valid", nodeID)
+	return nodeID
 }

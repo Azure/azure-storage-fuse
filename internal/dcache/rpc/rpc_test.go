@@ -37,6 +37,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 	rpc_server "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/server"
@@ -55,7 +56,7 @@ func (suite *rpcTestSuite) SetupTest() {
 
 func (suite *rpcTestSuite) TestHelloRPC() {
 	// start server
-	server, err := rpc_server.NewNodeServer("localhost:9090")
+	server, err := rpc_server.NewNodeServer("localhost:9090", make(map[string]dcache.RawVolume), &dcache.DCacheConfig{})
 	suite.assert.NoError(err)
 	suite.assert.NotNil(server)
 
