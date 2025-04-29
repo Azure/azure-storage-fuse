@@ -33,6 +33,8 @@
 
 package rpc
 
+import "errors"
+
 const (
 	InvalidRequest      = iota + 1 // invalid rpc request
 	InvalidRVID                    // RV does not have the rvID
@@ -48,17 +50,32 @@ const (
 )
 
 type ResponseError struct {
-	errCode int64
+	errCode int
 	errMsg  string
 }
 
-func NewResponseError(errorCode int64, errorMessage string) *ResponseError {
+func NewResponseError(errorCode int, errorMessage string) *ResponseError {
 	return &ResponseError{
 		errCode: errorCode,
 		errMsg:  errorMessage,
 	}
 }
 
+func (e *ResponseError) Code() int {
+	return e.errCode
+}
+
 func (e *ResponseError) Error() string {
 	return e.errMsg
+}
+
+// check if the error is of type ResponseError
+func GetRPCResponseError(err error) *ResponseError {
+	var respErr *ResponseError
+	ok := errors.As(err, &respErr)
+	if !ok {
+		return nil
+	}
+
+	return respErr
 }
