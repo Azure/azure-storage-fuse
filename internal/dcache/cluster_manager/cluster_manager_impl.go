@@ -656,6 +656,8 @@ func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, e
 	// a new MV.
 	//
 
+	log.Debug("updateMVList: updating the current MV list with the new RV list")
+
 	// Local types
 	type rv struct {
 		rvName string
@@ -726,7 +728,7 @@ func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, e
 			common.Assert(found, fmt.Sprintf("MV Map lists this as a online RV but the current RV %s was not found in node %s populated from RVMap", rvName, nodeId))
 		}
 	}
-
+	log.Debug("updateMVList: existing MV map after phase#1: %v", existingMVMap)
 	// Phase#2
 	for {
 		// Stored nodes in a slice as its wasy to shuffle
@@ -813,6 +815,7 @@ func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, e
 		// The nodeToRvs map is updated with reamining nodes and their RVs
 		// Only those RVs are left which have slots > 0
 	}
+	log.Debug("updateMVList: existing MV map after phase#2: %v", existingMVMap)
 	return existingMVMap
 }
 

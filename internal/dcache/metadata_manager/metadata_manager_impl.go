@@ -192,6 +192,7 @@ func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byt
 		log.Err("CreateFileInit :: Failed to put blob %s in storage: %v", path, err)
 		return err
 	}
+	log.Debug("CreateFileInit :: Created file %s in storage", path)
 	return nil
 }
 
@@ -212,7 +213,9 @@ func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata [
 	})
 	if err != nil {
 		log.Err("CreateFileFinalize :: Failed to put blob %s in storage: %v", path, err)
+		return err
 	}
+	log.Debug("CreateFileFinalize :: Finalized file %s in storage %v", path, err)
 	return err
 }
 
@@ -235,6 +238,7 @@ func (m *BlobMetadataManager) getFile(filePath string) (*dcache.FileMetadata, er
 		log.Debug("GetFile :: Failed to unmarshal JSON data: %v", err)
 		return nil, err
 	}
+	log.Debug("GetFile :: Successfully unmarshaled JSON data for file %s", path)
 	// Return the Metadata struct
 	return &metadata, nil
 }
@@ -251,7 +255,9 @@ func (m *BlobMetadataManager) deleteFile(filePath string) error {
 			return nil
 		}
 		log.Err("DeleteFile :: Failed to delete blob %s in storage: %v", path, err)
+		return err
 	}
+	log.Debug("DeleteFile :: Deleted blob %s in storage", path)
 	return err
 }
 
@@ -343,7 +349,7 @@ func (m *BlobMetadataManager) updateHandleCount(path string, increment bool) (in
 				// Check if retrying has exceeded a minute
 				if time.Since(retryTime) >= maxRetryTime {
 					log.Warn("updateHandleCount :: Retrying exceeded one minute for path %s, exiting...", path)
-					return -1, fmt.Errorf("Retrying exceeded one minute for path %s", path)
+					return -1, fmt.Errorf("retrying exceeded one minute for path %s", path)
 				}
 				continue
 			} else {
@@ -351,6 +357,7 @@ func (m *BlobMetadataManager) updateHandleCount(path string, increment bool) (in
 				return -1, err
 			}
 		} else {
+			log.Debug("updateHandleCount :: Updated metadata property for path %s : %d", path, openCount)
 			break
 		}
 	}
@@ -383,6 +390,7 @@ func (m *BlobMetadataManager) getFileOpenCount(filePath string) (int64, error) {
 		log.Warn("GetHandleCount :: Open count is negative for path %s : %d", path, count)
 	}
 
+	log.Debug("GetFileOpenCount :: Open count for path %s : %d", path, count)
 	return int64(count), nil
 }
 
@@ -399,7 +407,9 @@ func (m *BlobMetadataManager) updateHeartbeat(nodeId string, data []byte) error 
 	if err != nil {
 		log.Err("UpdateHeartbeat :: Failed to put heartbeat blob path %s in storage: %v", heartbeatFilePath, err)
 		common.Assert(false, fmt.Sprintf("Failed to put heartbeat blob path %s in storage: %v", heartbeatFilePath, err))
+		return err
 	}
+	log.Debug("UpdateHeartbeat :: Updated heartbeat blob path %s in storage", heartbeatFilePath)
 	return err
 }
 
@@ -416,7 +426,9 @@ func (m *BlobMetadataManager) deleteHeartbeat(nodeId string) error {
 		} else {
 			log.Err("DeleteHeartbeat :: Failed to delete heartbeat blob %s in storage: %v", heartbeatFilePath, err)
 		}
+		return err
 	}
+	log.Debug("DeleteHeartbeat :: Deleted heartbeat blob %s in storage", heartbeatFilePath)
 	return err
 }
 
@@ -431,8 +443,9 @@ func (m *BlobMetadataManager) getHeartbeat(nodeId string) ([]byte, error) {
 	if err != nil {
 		log.Err("GetHeartbeat :: Failed to get heartbeat file content for %s: %v", heartbeatFilePath, err)
 		common.Assert(false, fmt.Sprintf("Failed to get heartbeat file content for %s: %v", heartbeatFilePath, err))
+		return nil, err
 	}
-
+	log.Debug("GetHeartbeat :: Successfully got heartbeat file content for %s", heartbeatFilePath)
 	return data, err
 }
 
@@ -466,6 +479,7 @@ func (m *BlobMetadataManager) getAllNodes() ([]string, error) {
 		}
 	}
 
+	log.Debug("GetAllNodes :: Found %d nodes", len(nodes))
 	return nodes, nil
 }
 
@@ -491,7 +505,7 @@ func (m *BlobMetadataManager) createInitialClusterMap(clustermap []byte) error {
 		log.Err("CreateInitialClusterMap :: Failed to put blob %s in storage: %v", clustermapPath, err)
 		return err
 	}
-	log.Info("CreateInitialClusterMap :: Created initial clustermap with path %s", clustermapPath)
+	log.Debug("CreateInitialClusterMap :: Created initial clustermap with path %s", clustermapPath)
 	return nil
 }
 
@@ -515,6 +529,7 @@ func (m *BlobMetadataManager) updateClusterMapStart(clustermap []byte, etag *str
 			log.Err("UpdateClusterMapStart :: Failed to update clustermap %s : %v", clustermapPath, err)
 		}
 	}
+	log.Debug("UpdateClusterMapStart :: Updated clustermap with path %s", clustermapPath)
 	return err
 }
 
@@ -532,7 +547,7 @@ func (m *BlobMetadataManager) updateClusterMapEnd(clustermap []byte) error {
 	if err != nil {
 		log.Err("UpdateClusterMapEnd :: Failed to finalize clustermap update for %s: %v", clustermapPath, err)
 	}
-
+	log.Debug("UpdateClusterMapEnd :: Finalized clustermap update for %s", clustermapPath)
 	return err
 }
 
@@ -557,6 +572,7 @@ func (m *BlobMetadataManager) getClusterMap() ([]byte, *string, error) {
 		log.Err("GetClusterMap :: Failed to get cluster map content with path %s : %v", clustermapPath, err)
 		return nil, nil, err
 	}
+	log.Debug("GetClusterMap :: Successfully got cluster map content for %s", clustermapPath)
 	// Return the cluster map content and ETag
 	return data, &attr.ETag, nil
 }
