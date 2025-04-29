@@ -1916,6 +1916,10 @@ func (suite *fileCacheTestSuite) TestHardLimitOnSize() {
 func (suite *fileCacheTestSuite) TestDeleteDirectory() {
 	defer suite.cleanupTest()
 
+	config := fmt.Sprintf("file_cache:\n  path: %s\n  timeout-sec: 1000\n\nloopbackfs:\n  path: %s",
+		suite.cache_path, suite.fake_storage_path)
+	suite.setupTestHelper(config) // setup a new file cache with a custom config (teardown will occur after the test as usual)
+
 	// Create local and remote dir structures
 	suite.createLocalDirectoryStructure()
 	suite.createRemoteDirectoryStructure()
