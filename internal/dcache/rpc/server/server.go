@@ -57,6 +57,7 @@ func NewNodeServer(address string, rvs map[string]dcache.RawVolume, config *dcac
 	// TODO: add assert for IsValidIP
 	common.Assert(address != "", "node address cannot be empty")
 	common.Assert(rvs != nil, "raw volumes cannot be nil")
+	common.Assert(len(rvs) > 0, "raw volumes cannot be empty")
 	common.Assert(config != nil, "dCacheConfig cannot be nil")
 
 	log.Debug("NodeServer::NewNodeServer: Creating NodeServer with address: %s, RVs %+v, dcache config %+v", address, rvs, *config)
