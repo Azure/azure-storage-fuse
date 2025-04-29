@@ -554,6 +554,7 @@ func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, e
 	// Populate the RV struct and node struct
 	for rvName, rvInfo := range rvMap {
 		common.Assert(rvInfo.State == dcache.StateOnline || rvInfo.State == dcache.StateOffline, fmt.Sprintf("Invalid state %s for RV %s", rvInfo.State, rvName))
+		common.IsValidUUID(rvInfo.NodeId)
 		if rvInfo.State == dcache.StateOffline {
 			// Skip RVs that are offline as they cannot contribute to any MV
 			continue
@@ -590,15 +591,19 @@ func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, e
 				continue
 			}
 			nodeId := rvMap[rvName].NodeId
+			found := false
 			for i := range len(nodeToRvs[nodeId].rvs) {
 				if nodeToRvs[nodeId].rvs[i].rvName == rvName {
 					nodeToRvs[nodeId].rvs[i].slots--
+					found = true
+					break
 				}
 			}
+			common.Assert(!found, fmt.Sprintf("MV Map lists this as a online RV but the current RV %s was not found in node %s populated from RVMap", rvName, nodeId))
 		}
 	}
 
-	// Phase 2 : Generate new MVs
+	// Phase#2
 	for {
 		// Stored nodes in a slice as its wasy to shuffle
 		var availableNodes []node
@@ -607,10 +612,11 @@ func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, e
 
 		}
 
-		max := (len(rvMap) * MvsPerRv) / NumReplicas
+		maxMVsAllowed := (len(rvMap) * MvsPerRv) / NumReplicas
 
-		common.Assert(max > 0, fmt.Sprintf("Max number of MVs %d is less than 0", max))
-		common.Assert(len(availableNodes) < max, fmt.Sprintf("Number of available nodes %d is greater than max %d", len(availableNodes), max))
+		common.Assert(maxMVsAllowed > 0, fmt.Sprintf("Max number of MVs %d is less than 0", maxMVsAllowed))
+		// Check if we have reached the maximum number of MVs possible
+		common.Assert(len(availableNodes) < maxMVsAllowed, fmt.Sprintf("Number of available nodes %d is greater than max MVs Allowed %d", len(availableNodes), maxMVsAllowed))
 		// End of MV generation if we have enough MVs or if we have exhausted all the nodes
 		if len(availableNodes) < NumReplicas {
 			break
@@ -629,6 +635,8 @@ func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, e
 		// Select the first available RV from each selected node
 		for _, n := range selectedNodes {
 			for _, r := range n.rvs {
+				// We should not have a rv in the list with slots <= 0
+				common.Assert(r.slots > 0, fmt.Sprintf("RV %s has no slots left", r.rvName))
 				// Safe check for slots
 				if r.slots > 0 {
 					if _, exists := existingMVMap[mvName]; !exists {
@@ -644,13 +652,16 @@ func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, e
 						existingMVMap[mvName].RVsWithState[r.rvName] = dcache.StateOnline
 					}
 
+					found := false
 					// Decrease the slot count for the RV in nodeToRvs
 					for i := range nodeToRvs[n.nodeId].rvs {
 						if nodeToRvs[n.nodeId].rvs[i].rvName == r.rvName {
 							nodeToRvs[n.nodeId].rvs[i].slots--
+							found = true
 							break
 						}
 					}
+					common.Assert(!found, fmt.Sprintf("MV Map lists this as a online RV but the current RV %s was not found in node %s populated from RVMap", r.rvName, n.nodeId))
 					break
 				}
 			}
