@@ -45,6 +45,7 @@ var (
 	maxEpoch = 2524608000 // Jan 1 2050, safe upperlimit for epoch validity check
 )
 
+// TODO{Akku} : Return error instead of string
 func IsValidClusterMap(cm dcache.ClusterMap) (bool, string) {
 	// top‐level fields
 	if cm.CreatedAt < int64(minEpoch) || cm.CreatedAt > int64(maxEpoch) {
@@ -61,15 +62,15 @@ func IsValidClusterMap(cm dcache.ClusterMap) (bool, string) {
 	}
 
 	// config
-	isValidDcacheConfig, s := IsValidDcacheConfig(cm)
+	isValidDcacheConfig, errString := IsValidDcacheConfig(cm)
 	if !isValidDcacheConfig {
-		return isValidDcacheConfig, s
+		return false, errString
 	}
 
 	// RVMap
-	isValidRVMap, s := IsValidRVMap(cm.RVMap)
+	isValidRVMap, errString := IsValidRVMap(cm.RVMap)
 	if !isValidRVMap {
-		return isValidRVMap, s
+		return false, errString
 	}
 
 	// MVMap
