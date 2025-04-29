@@ -49,16 +49,16 @@ var (
 func IsValidClusterMap(cm dcache.ClusterMap) (bool, string) {
 	// top‐level fields
 	if cm.CreatedAt < int64(minEpoch) || cm.CreatedAt > int64(maxEpoch) {
-		return false, fmt.Sprintf("ClusterMap:: [%+v] Invalid CreatedAt: %d", cm, cm.CreatedAt)
+		return false, fmt.Sprintf("ClusterMap:: %+v Invalid CreatedAt: %d", cm, cm.CreatedAt)
 	}
 	if cm.LastUpdatedAt < int64(minEpoch) || cm.LastUpdatedAt > int64(maxEpoch) {
-		return false, fmt.Sprintf("ClusterMap:: [%+v] Invalid LastUpdatedAt: %d", cm, cm.LastUpdatedAt)
+		return false, fmt.Sprintf("ClusterMap:: %+v Invalid LastUpdatedAt: %d", cm, cm.LastUpdatedAt)
 	}
 	if cm.LastUpdatedAt < cm.CreatedAt {
-		return false, fmt.Sprintf("ClusterMap:: [%+v] LastUpdatedAt (%d) < CreatedAt (%d)", cm, cm.LastUpdatedAt, cm.CreatedAt)
+		return false, fmt.Sprintf("ClusterMap:: %+v LastUpdatedAt (%d) < CreatedAt (%d)", cm, cm.LastUpdatedAt, cm.CreatedAt)
 	}
 	if !common.IsValidUUID(cm.LastUpdatedBy) {
-		return false, fmt.Sprintf("ClusterMap:: [%+v] Invalid LastUpdatedBy UUID: %q", cm, cm.LastUpdatedBy)
+		return false, fmt.Sprintf("ClusterMap:: %+v Invalid LastUpdatedBy UUID: %q", cm, cm.LastUpdatedBy)
 	}
 
 	// config
@@ -80,32 +80,39 @@ func IsValidClusterMap(cm dcache.ClusterMap) (bool, string) {
 func IsValidDcacheConfig(cm dcache.ClusterMap) (bool, string) {
 	cfg := cm.Config
 	if cfg.HeartbeatSeconds <= 0 {
-		return false, fmt.Sprintf("ClusterMap:: [%+v] Invalid Config.HeartbeatSeconds: %d", cm, cfg.HeartbeatSeconds)
+		return false, fmt.Sprintf("ClusterMap:: %+v Invalid Config.HeartbeatSeconds: %d", cm, cfg.HeartbeatSeconds)
 	}
 	if cfg.ClustermapEpoch <= 0 {
-		return false, fmt.Sprintf("ClusterMap:: [%+v] Invalid Config.ClustermapEpoch: %d", cm, cfg.ClustermapEpoch)
+		return false, fmt.Sprintf("ClusterMap:: %+v Invalid Config.ClustermapEpoch: %d", cm, cfg.ClustermapEpoch)
 	}
 	return true, ""
 }
 
 func IsValidMvMap(cm dcache.ClusterMap) (bool, string) {
+	expectedReplicasCount := int(cm.Config.NumReplicas)
 	for name, mv := range cm.MVMap {
 		switch mv.State {
 		case dcache.StateOnline, dcache.StateOffline:
 		default:
-			return false, fmt.Sprintf("ClusterMap:: [%+v] MVMap[%q]: Invalid mv State: %q", cm, name, mv.State)
+			return false, fmt.Sprintf("ClusterMap:: %+v MVMap[%q]: Invalid mv State: %q", cm, name, mv.State)
 		}
 		if mv.Rvs == nil {
-			return false, fmt.Sprintf("ClusterMap:: [%+v] MVMap[%q]: Rvs is nil", cm, name)
+			return false, fmt.Sprintf("ClusterMap:: %+v MVMap[%q]: Rvs is nil", cm, name)
+		}
+		if len(mv.Rvs) != expectedReplicasCount {
+			return false, fmt.Sprintf(
+				"ClusterMap:: %+v MVMap[%q]: expected %d replicas, found %d",
+				cm, name, expectedReplicasCount, len(mv.Rvs),
+			)
 		}
 		for rvName, state := range mv.Rvs {
 			if rvName == "" {
-				return false, fmt.Sprintf("ClusterMap:: [%+v] MVMap[%q].Rvs: empty key", cm, name)
+				return false, fmt.Sprintf("ClusterMap:: %+v MVMap[%q].Rvs: empty key", cm, name)
 			}
 			switch state {
 			case dcache.StateOnline, dcache.StateOffline, dcache.StateSyncing:
 			default:
-				return false, fmt.Sprintf("ClusterMap:: [%+v] MVMap[%q].Rvs[%q]: Invalid RV state %q in MV ", cm, name, rvName, state)
+				return false, fmt.Sprintf("ClusterMap:: %+v MVMap[%q].Rvs[%q]: Invalid RV state %q in MV ", cm, name, rvName, state)
 			}
 		}
 	}
@@ -117,29 +124,29 @@ func IsValidRVMap(rVMap map[string]dcache.RawVolume) (bool, string) {
 	for rvName, rv := range rVMap {
 		if prev, ok := seen[rv.RvId]; ok {
 			return false, fmt.Sprintf(
-				"ClusterMap::RVMap [%+v] duplicate RvId %q found in RVMap entries %q and %q", rVMap, rv.RvId, prev, rvName,
+				"ClusterMap::RVMap %+v duplicate RvId %q found in RVMap entries %q and %q", rVMap, rv.RvId, prev, rvName,
 			)
 		}
 		seen[rv.RvId] = rvName
 		if !common.IsValidUUID(rv.RvId) {
-			return false, fmt.Sprintf("ClusterMap::RVMap [%+v] RVMap[%q]: invalid RvId UUID: %q", rVMap, rvName, rv.RvId)
+			return false, fmt.Sprintf("ClusterMap::RVMap %+v RVMap[%q]: invalid RvId UUID: %q", rVMap, rvName, rv.RvId)
 		}
 		if !common.IsValidUUID(rv.NodeId) {
-			return false, fmt.Sprintf("ClusterMap::RVMap [%+v] RVMap[%q]: invalid NodeId UUID: %q", rVMap, rvName, rv.NodeId)
+			return false, fmt.Sprintf("ClusterMap::RVMap %+v RVMap[%q]: invalid NodeId UUID: %q", rVMap, rvName, rv.NodeId)
 		}
 		if !common.IsValidIP(rv.IPAddress) {
-			return false, fmt.Sprintf("ClusterMap::RVMap [%+v] RVMap[%q]: invalid IPAddress: %q", rVMap, rvName, rv.IPAddress)
+			return false, fmt.Sprintf("ClusterMap::RVMap %+v RVMap[%q]: invalid IPAddress: %q", rVMap, rvName, rv.IPAddress)
 		}
 		if rv.TotalSpace <= 0 {
-			return false, fmt.Sprintf("ClusterMap::RVMap [%+v] RVMap[%q]: bad space metrics avail=%d total=%d", rVMap, rvName, rv.AvailableSpace, rv.TotalSpace)
+			return false, fmt.Sprintf("ClusterMap::RVMap %+v RVMap[%q]: bad space metrics avail=%d total=%d", rVMap, rvName, rv.AvailableSpace, rv.TotalSpace)
 		}
 		if rv.AvailableSpace > rv.TotalSpace {
-			return false, fmt.Sprintf("ClusterMap::RVMap [%+v] RVMap[%q]: AvailableSpace %d > TotalSpace %d", rVMap, rvName, rv.AvailableSpace, rv.TotalSpace)
+			return false, fmt.Sprintf("ClusterMap::RVMap %+v RVMap[%q]: AvailableSpace %d > TotalSpace %d", rVMap, rvName, rv.AvailableSpace, rv.TotalSpace)
 		}
 		switch rv.State {
 		case dcache.StateOnline, dcache.StateOffline:
 		default:
-			return false, fmt.Sprintf("ClusterMap::RVMap [%+v] RVMap[%q]: unknown State: %q", rVMap, rvName, rv.State)
+			return false, fmt.Sprintf("ClusterMap::RVMap %+v RVMap[%q]: unknown State: %q", rVMap, rvName, rv.State)
 		}
 	}
 	return true, ""
