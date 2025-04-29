@@ -187,7 +187,6 @@ func (cmi *ClusterManagerImpl) start(dCacheConfig *dcache.DCacheConfig, rvs []dc
 			log.Debug("Scheduled \"Cluster Map update\" task triggered")
 			cmi.updateStorageClusterMapIfRequired()
 			cmi.updateClusterMapLocalCopyIfRequired()
-			//Push to replication manager channel/inotify for a change in MV\RV mapping
 		}
 		log.Info("Scheduled task \"ClusterMap update\" stopped")
 	}()
