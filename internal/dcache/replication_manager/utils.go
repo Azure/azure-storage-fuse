@@ -34,14 +34,15 @@
 package replication_manager
 
 import (
-	"crypto/md5"
-	"encoding/hex"
 	"fmt"
 	"math/rand"
-	"strings"
+	"slices"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
+	rpc_server "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/server"
 )
 
 const (
@@ -49,76 +50,83 @@ const (
 	RPCClientTimeout = 2 // in seconds
 )
 
-func selectOnlineRVForMV(mvName string) (string, error) {
-	// TODO:: integration: call cluster manager to get the component RVs for the given MV
-	componentRVs := getComponentRVsForMV(mvName)
+func isComponentRVsValid(componentRVs []*models.RVNameAndState) bool {
 	if len(componentRVs) == 0 {
-		log.Err("utils::selectOnlineRVForMV: No component RVs found for the given MV %s", mvName)
-		common.Assert(false, "no component RVs found for the given MV", mvName)
-		return "", fmt.Errorf("no component RVs found for the given MV %s", mvName)
+		log.Err("utils::isComponentRVsValid: No component RVs found")
+		common.Assert(false, "no component RVs found")
+		return false
 	}
 
-	log.Debug("utils::selectOnlineRVForMV: Component RVs for the given MV %s are: %v", mvName, componentRVs)
+	common.Assert(len(componentRVs) == getNumReplicas())
+
+	for _, rv := range componentRVs {
+		if rv == nil || rv.Name == "" || rv.State == "" {
+			log.Err("utils::isComponentRVsValid: Invalid component RV found: %+v", rv)
+			common.Assert(false, fmt.Sprintf("invalid component RV found: %+v", rv))
+			return false
+		}
+	}
+
+	return true
+}
+
+func getReaderRV(componentRVs []*models.RVNameAndState, excluseRVs []string) *models.RVNameAndState {
+	log.Debug("utils::getReaderRV: Component RVs are: %v", rpc_server.ComponentRVsToString(componentRVs))
 
 	// TODO:: integration: call cluster manager to get the node ID of this node
 	myNodeID := getNodeUUID()
 
-	onlineRVs := make([]string, 0)
+	onlineRVs := make([]*models.RVNameAndState, 0)
 	for _, rv := range componentRVs {
-		if strings.Contains(rv, "=") {
-			// this is not an online RV if flags are present, so skip this RV
-			// For example, rv1=offline, rv5=outofsync, etc.
+		if rv.State != string(dcache.StateOnline) || slices.Contains(excluseRVs, rv.Name) {
+			// this is not an online RV or is present in the exclude list
+			// so skip this RV
 			continue
 		}
 
 		// TODO:: integration: call cluster manager to get the node ID for the given rv
-		nodeIDForRV := getNodeIDForRV(rv)
+		nodeIDForRV := getNodeIDForRV(rv.Name)
 		if nodeIDForRV == myNodeID {
 			// this is the local RV in this node
-			return rv, nil
+			return rv
 		}
 
 		onlineRVs = append(onlineRVs, rv)
 	}
 
 	if len(onlineRVs) == 0 {
-		return "", fmt.Errorf("no online RVs found for the given MV %s", mvName)
+		return nil
 	}
 
 	// select random online RV
 	// TODO: add logic for sending Hello RPC call to check if the node hosting this RV is online
 	// If not, select another RV from the list
 	index := rand.Intn(len(onlineRVs))
-	return onlineRVs[index], nil
+	return onlineRVs[index]
 }
 
-// check if all the component RVs are online
-// this is used to check if the MV is online or not
-func checkComponentRVsOnline(componentRVs []string) bool {
-	for _, rv := range componentRVs {
-		if strings.Contains(rv, "=") {
-			// this is not an online RV if flags are present
-			// For example, rv1=offline, rv5=outofsync, etc.
-			return false
-		}
-
-		// TODO: Hello RPC call can be used to check if the node hosting this RV is online
-	}
-
-	return true
-}
-
+// TODO: hash validation will be done later
 // TODO: should byte array be used for storing hash instead of string?
 // check is md5sum can be used for hash or crc should be used
-func getMD5Sum(data []byte) string {
-	hash := md5.Sum(data)
-	return hex.EncodeToString(hash[:])
-}
+// func getMD5Sum(data []byte) string {
+// 	hash := md5.Sum(data)
+// 	return hex.EncodeToString(hash[:])
+// }
 
 // TODO:: integration: sample method, will be later removed after integrating with cluster manager
 // call cluster manager helper method to get the component RVs for the given MV
-func getComponentRVsForMV(mvName string) []string {
-	return []string{"rv0", "rv1", "rv2"}
+func getComponentRVsForMV(mvName string) []*models.RVNameAndState {
+	return []*models.RVNameAndState{
+		&models.RVNameAndState{Name: "rv0", State: string(dcache.StateOnline)},
+		&models.RVNameAndState{Name: "rv1", State: string(dcache.StateOffline)},
+		&models.RVNameAndState{Name: "rv2", State: string(dcache.StateOnline)},
+	}
+}
+
+// TODO:: integration: sample method, will be later removed after integrating with cluster manager
+// call cluster manager helper method to get the number of replicas for the given MV
+func getNumReplicas() int {
+	return 3
 }
 
 // TODO:: integration: sample method, will be later removed after integrating with cluster manager

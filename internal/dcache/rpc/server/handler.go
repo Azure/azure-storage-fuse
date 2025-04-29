@@ -507,7 +507,7 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	common.Assert(err == nil, fmt.Sprintf("failed to block IO for MV %s", mvInfo.mvName))
 
 	// TODO: [Race] After blockIOIfMVQuiesced() decides to proceed and before we increment the ongoing IO count below,
-	// if quiesceIOsStart() is run it will succesfully mark the IOs as quiesced.
+	// if quiesceIOsStart() is run it will successfully mark the IOs as quiesced.
 	// This leads us to a state where IOs are running while they should be quiesced.
 
 	// increment the chunk operation count for this MV
@@ -590,7 +590,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 
 	startTime := time.Now()
 
-	log.Debug("ChunkServiceHandler::PutChunk: Received PutChunk request: chunk address %+v, data length %v, isSync %v, Component RV %v", *req.Chunk.Address, req.Length, req.IsSync, componentRVsToString(req.ComponentRV))
+	log.Debug("ChunkServiceHandler::PutChunk: Received PutChunk request: chunk address %+v, data length %v, isSync %v, Component RV %v", *req.Chunk.Address, req.Length, req.IsSync, ComponentRVsToString(req.ComponentRV))
 
 	// check if the chunk address is valid
 	err := h.checkValidChunkAddress(req.Chunk.Address)
@@ -872,7 +872,7 @@ func (h *ChunkServiceHandler) UpdateMV(ctx context.Context, req *models.UpdateMV
 	}
 
 	componentRVsInMV := mvInfo.getComponentRVs()
-	log.Debug("ChunkServiceHandler::UpdateMV: Current component RVs %v, updated component RVs %v", componentRVsToString(componentRVsInMV), componentRVsToString(req.ComponentRV))
+	log.Debug("ChunkServiceHandler::UpdateMV: Current component RVs %v, updated component RVs %v", ComponentRVsToString(componentRVsInMV), ComponentRVsToString(req.ComponentRV))
 
 	// update the component RVs list for this MV
 	mvInfo.updateComponentRVs(req.ComponentRV)
@@ -969,7 +969,7 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 
 	// check if the source RV is present in the component RVs list
 	if !isRVPresentInMV(componentRVsInMV, req.SourceRVName) {
-		rvsInMvStr := componentRVsToString(componentRVsInMV)
+		rvsInMvStr := ComponentRVsToString(componentRVsInMV)
 		log.Err("ChunkServiceHandler::StartSync: Source RV %s is not present in the component RVs list %v", req.SourceRVName, rvsInMvStr)
 		return nil, rpc.NewResponseError(rpc.InvalidRV, fmt.Sprintf("source RV %s is not present in the component RVs list %v", req.SourceRVName, rvsInMvStr))
 	}
@@ -1046,7 +1046,7 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 
 	// check if the source RV is present in the component RVs list
 	if !isRVPresentInMV(componentRVsInMV, req.SourceRVName) {
-		rvsInMvStr := componentRVsToString(componentRVsInMV)
+		rvsInMvStr := ComponentRVsToString(componentRVsInMV)
 		log.Err("ChunkServiceHandler::EndSync: Source RV %s is not present in the component RVs list %v", req.SourceRVName, rvsInMvStr)
 		return nil, rpc.NewResponseError(rpc.InvalidRV, fmt.Sprintf("source RV %s is not present in the component RVs list %v", req.SourceRVName, rvsInMvStr))
 	}
