@@ -285,7 +285,7 @@ func (cmi *ClusterManagerImpl) getDegradedMVs() map[string]dcache.MirroredVolume
 
 	degradedMVs := make(map[string]dcache.MirroredVolume)
 	for mvName, mv := range cmi.localMap.MVMap {
-		if mv.State != dcache.StateDown {
+		if mv.State == dcache.StateDegraded {
 			degradedMVs[mvName] = mv
 		}
 	}
