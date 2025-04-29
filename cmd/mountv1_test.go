@@ -92,6 +92,7 @@ func resetCLIFlags(cmd cobra.Command) {
 	// reset all CLI flags before next test
 	cmd.Flags().VisitAll(func(f *pflag.Flag) {
 		f.Changed = false
+		f.Value.Set(f.DefValue)
 	})
 	viper.Reset()
 }
