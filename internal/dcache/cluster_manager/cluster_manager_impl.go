@@ -237,6 +237,14 @@ func (cmi *ClusterManagerImpl) updateClusterMapLocalCopyIfRequired() {
 	//5. update in‑memory cache
 	cmi.localMap = &storageClusterMap
 	cmi.localMapETag = etag
+
+	//TODO{Akku}: Notify only if there is a change in the MVs/RVs
+	//6. fire an notification event
+	select {
+	case cmi.updatesChan <- dcache.ClusterManagerEvent{}:
+	default:
+		// drop if nobody is listening or buffer is full
+	}
 }
 
 func (cmi *ClusterManagerImpl) getNotificationChannel() <-chan dcache.ClusterManagerEvent {
@@ -623,15 +631,6 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 		common.Assert(false)
 	} else {
 		log.Info("updateStorageClusterMapIfRequired: cluster map %+v updated by %s at %d", clusterMap, cmi.nodeId, now)
-	}
-
-	if changed && err != nil {
-		//6. fire an notification event
-		select {
-		case cmi.updatesChan <- dcache.ClusterManagerEvent{}:
-		default:
-			// drop if nobody is listening or buffer is full
-		}
 	}
 }
 
