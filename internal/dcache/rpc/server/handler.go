@@ -87,6 +87,9 @@ type mvInfo struct {
 	mvName       string                   // mv0, mv1, etc.
 	componentRVs []*models.RVNameAndState // sorted list of component RVs for this MV
 
+	// TODO: add totalChunkBytes which is the total amount of space used up inside an MV by all the chunks stored in it.
+	// Refer, https://github.com/Azure/azure-storage-fuse/pull/1706#discussion_r2057388904
+
 	// count of in-progress chunk operations (get, put or remove) for this MV.
 	// This is used to block the end sync call till all the ongoing chunk operations are completed.
 	chunkIOInProgress atomic.Int64
@@ -111,6 +114,7 @@ type mvInfo struct {
 	syncInfo // sync info for this MV
 }
 
+// TODO: add reserve space which must be reduced from the available space of the RV to get true available space
 type syncInfo struct {
 	// Is the MV in syncing state?
 	// An MV enters syncing state after StartSync command is successfully executed.
@@ -186,6 +190,9 @@ func (rv *rvInfo) getMVInfo(mvName string) *mvInfo {
 
 // caller of this method must ensure that the RV is not part of the given MV
 func (rv *rvInfo) addToMVMap(mvName string, val *mvInfo) {
+	mvPath := filepath.Join(rv.cacheDir, mvName)
+	common.Assert(common.DirectoryExists(mvPath), fmt.Sprintf("mvPath %s MUST be present", mvPath))
+
 	rv.mvMap.Store(mvName, val)
 	rv.mvCount.Add(1)
 
@@ -499,6 +506,10 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	err = mvInfo.blockIOIfMVQuiesced()
 	common.Assert(err == nil, fmt.Sprintf("failed to block IO for MV %s", mvInfo.mvName))
 
+	// TODO: [Race] After blockIOIfMVQuiesced() decides to proceed and before we increment the ongoing IO count below,
+	// if quiesceIOsStart() is run it will succesfully mark the IOs as quiesced.
+	// This leads us to a state where IOs are running while they should be quiesced.
+
 	// increment the chunk operation count for this MV
 	mvInfo.incOngoingIOs()
 
@@ -675,6 +686,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	err = os.Rename(tmpChunkPath, chunkPath)
 	if err != nil {
 		log.Err("ChunkServiceHandler::PutChunk: Failed to rename chunk file %s to %s [%v]", tmpChunkPath, chunkPath, err.Error())
+		common.Assert(false, fmt.Sprintf("failed to rename chunk file %s to %s [%v]", tmpChunkPath, chunkPath, err.Error()))
 		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to rename chunk file %s to %s [%v]", tmpChunkPath, chunkPath, err.Error()))
 	}
 

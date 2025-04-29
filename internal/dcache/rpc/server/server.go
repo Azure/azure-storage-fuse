@@ -45,6 +45,8 @@ type NodeServer struct {
 	server  thrift.TServer
 }
 
+// TODO:: integration: we can have cluster manager call the start method of this server,
+// passing (dCacheConfig *dcache.DCacheConfig, rvs []dcache.RawVolume)
 func NewNodeServer(address string) (*NodeServer, error) {
 	log.Debug("NodeServer::NewNodeServer: Creating NodeServer with address: %s", address)
 
