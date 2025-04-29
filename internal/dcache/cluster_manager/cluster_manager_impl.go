@@ -552,8 +552,8 @@ func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, e
 	// Offline - Mark a mv as offline when all the rv's within it are offline [Done]
 
 	// Populate the RV struct and node struct
-	for rvId, rvInfo := range rvMap {
-		common.Assert(rvInfo.State == dcache.StateOnline || rvInfo.State == dcache.StateOffline, fmt.Sprintf("Invalid state %s for RV %s", rvInfo.State, rvId))
+	for rvName, rvInfo := range rvMap {
+		common.Assert(rvInfo.State == dcache.StateOnline || rvInfo.State == dcache.StateOffline, fmt.Sprintf("Invalid state %s for RV %s", rvInfo.State, rvName))
 		if rvInfo.State == dcache.StateOffline {
 			// Skip RVs that are offline as they cannot contribute to any MV
 			continue
@@ -561,7 +561,7 @@ func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, e
 		if nodeInfo, exists := nodeToRvs[rvInfo.NodeId]; exists {
 			// If the node already exists, append the RV to its list
 			nodeInfo.rvs = append(nodeInfo.rvs, rv{
-				rvName: rvId,
+				rvName: rvName,
 				slots:  MvsPerRv,
 			})
 			nodeToRvs[rvInfo.NodeId] = nodeInfo
@@ -569,12 +569,12 @@ func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, e
 			// Create a new node and add the RV to it
 			nodeToRvs[rvInfo.NodeId] = node{
 				nodeId: rvInfo.NodeId,
-				rvs:    []rv{{rvName: rvId, slots: MvsPerRv}},
+				rvs:    []rv{{rvName: rvName, slots: MvsPerRv}},
 			}
 		}
 	}
 
-	// Phase 1 : Check and update slots of Rv's used in existing MVs
+	// Phase#1
 	for mvName, mv := range existingMVMap {
 		offlineRv := 0
 		for rvName := range mv.RVsWithState {
