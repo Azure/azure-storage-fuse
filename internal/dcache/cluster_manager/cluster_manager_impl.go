@@ -821,7 +821,7 @@ func (cmi *ClusterManagerImpl) updateRVList(clusterMapRVMap map[string]dcache.Ra
 	if err != nil {
 		return false, fmt.Errorf("ClusterManagerImpl::updateRVList: Failed to get all nodes: error: %v", err)
 	}
-
+	log.Debug("ClusterManagerImpl::updateRVList: All nodes in the cluster: %v", nodeIds)
 	rVsByRvId := make(map[string]dcache.RawVolume)
 	changed := false
 	for _, nodeId := range nodeIds {
@@ -833,6 +833,7 @@ func (cmi *ClusterManagerImpl) updateRVList(clusterMapRVMap map[string]dcache.Ra
 		if err := json.Unmarshal(bytes, &hbData); err != nil {
 			return false, fmt.Errorf("ClusterManagerImpl::updateRVList: Failed to parse heartbeat bytes for node %s: %v", nodeId, err)
 		}
+		log.Debug("ClusterManagerImpl::updateRVList: Iterating node : %s", nodeId)
 		for _, rv := range hbData.RVList {
 			if _, exists := rVsByRvId[rv.RvId]; exists {
 				common.Assert(false, fmt.Sprintf("Duplicate RVId[%s] in heartbeats", rv.RvId))

@@ -450,6 +450,7 @@ func (m *BlobMetadataManager) getAllNodes() ([]string, error) {
 	// Extract the node IDs from the list of blobs
 	var nodes []string
 	for _, blob := range list {
+		log.Debug("GetAllNodes :: Found blob: %s", blob.Name)
 		if strings.HasSuffix(blob.Name, ".hb") {
 			nodeId := blob.Name[:len(blob.Name)-3] // Remove the ".hb" extension
 			if common.IsValidUUID(nodeId) {
@@ -458,6 +459,7 @@ func (m *BlobMetadataManager) getAllNodes() ([]string, error) {
 				log.Err("Invalid heartbeat blob: %s", blob.Name)
 				common.Assert(false, "Invalid heartbeat blob", blob.Name)
 			}
+			log.Debug("GetAllNodes :: If blob Found blob: %s", blob.Name)
 		} else {
 			log.Warn("GetAllNodes :: Unexpected blob found in Nodes folder: %s", blob.Name)
 			common.Assert(false, "Unexpected blob found in Nodes folder", blob.Name)
