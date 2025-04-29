@@ -53,8 +53,7 @@ const (
 	// TODO: chunk size lower and upper bounds can be modified later
 	ChunkSizeInMiBLowerBound = 0
 	ChunkSizeInMiBUpperBound = 256
-
-	ChunkIndexUpperBound = 10e8
+	ChunkIndexUpperBound     = 1e9
 )
 
 func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *models.RVNameAndState {

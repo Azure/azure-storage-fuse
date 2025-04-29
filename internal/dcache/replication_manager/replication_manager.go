@@ -98,7 +98,7 @@ retry:
 			goto retry
 		}
 
-		common.Assert(!slices.Contains(excludeRVs, readerRV.Name), fmt.Sprintf("readerRV %s is already present in the excludeRVs list", readerRV.Name))
+		common.Assert(!slices.Contains(excludeRVs, readerRV.Name), fmt.Sprintf("getReaderRV returned %s which is already present in the excludeRVs list %v", readerRV.Name, excludeRVs))
 
 		selectedRvID := getRvIDFromRvName(readerRV.Name)
 		common.Assert(common.IsValidUUID(selectedRvID))
