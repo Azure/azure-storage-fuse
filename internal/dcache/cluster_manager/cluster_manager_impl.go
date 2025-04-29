@@ -704,12 +704,12 @@ func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, e
 	// Phase#1
 	for mvName, mv := range existingMVMap {
 		offlineRv := 0
-		for rvName := range mv.RVsWithState {
+		for rvName := range mv.Rvs {
 			if rvMap[rvName].State == dcache.StateOffline {
 				offlineRv++
-				mv.RVsWithState[rvName] = dcache.StateOffline
+				mv.Rvs[rvName] = dcache.StateOffline
 				mv.State = dcache.StateDegraded
-				if offlineRv == len(mv.RVsWithState) {
+				if offlineRv == len(mv.Rvs) {
 					mv.State = dcache.StateOffline
 					// Update the MV state to offline
 				}
@@ -770,12 +770,12 @@ func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, e
 						rvwithstate[r.rvName] = dcache.StateOnline
 						// Create a new MV
 						existingMVMap[mvName] = dcache.MirroredVolume{
-							RVsWithState: rvwithstate,
-							State:        dcache.StateOnline,
+							Rvs:   rvwithstate,
+							State: dcache.StateOnline,
 						}
 					} else {
 						// Update the existing MV
-						existingMVMap[mvName].RVsWithState[r.rvName] = dcache.StateOnline
+						existingMVMap[mvName].Rvs[r.rvName] = dcache.StateOnline
 					}
 
 					found := false
