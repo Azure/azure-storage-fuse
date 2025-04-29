@@ -200,13 +200,16 @@ func (ncPool *nodeClientPool) createRPCClients(numClients uint32) {
 		}
 		ncPool.clientChan <- client
 	}
+
+	common.Assert(len(ncPool.clientChan) == int(numClients), "client channel is not full after creating RPC clients", len(ncPool.clientChan), numClients)
 }
 
 // closeRPCClients closes all RPC clients in the channel for the specified node ID
 func (ncPool *nodeClientPool) closeRPCClients() error {
 	log.Debug("nodeClientPool::closeRPCClients: Closing RPC clients for node %s", ncPool.nodeID)
 
-	// TODO: add assert to check that the length of the channel is maxPerNode, so that all clients are released back
+	// check that the length of the channel is maxPerNode, so that all clients are released back
+	common.Assert(len(ncPool.clientChan) == int(cp.maxPerNode), "client channel is not full before closing RPC clients", len(ncPool.clientChan), cp.maxPerNode)
 	close(ncPool.clientChan)
 
 	for client := range ncPool.clientChan {

@@ -42,6 +42,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 )
 
@@ -208,4 +209,34 @@ func GetMyNodeUUID() string {
 	common.Assert(err == nil, fmt.Sprintf("failed to get current node's UUID [%v]", err))
 	common.Assert(common.IsValidUUID(nodeID), "current node's UUID is not valid", nodeID)
 	return nodeID
+}
+
+// When an MV is in degraded state because one or more of its RV went offline,
+// the caller (lowest index online RV) can call this method to get the
+// disk usage of the MV. The caller will then send JoinMV RPC call to the
+// new RVs, passing the disk usage of the MV to them. On basis of this,
+// the new RVs will decide if they can join the MV or not.
+func GetDiskUsageOfMV(mvName string, rvName string) (int64, error) {
+	// TODO: should we block the IO operations on the MV while this is happening?
+	common.Assert(handler != nil, "chunk service handler is nil")
+
+	// TODO: replace with IsValidMV and IsValidRV
+	common.Assert(rvName != "")
+	common.Assert(mvName != "")
+
+	rvInfo := handler.getRVInfoFromRVName(rvName)
+	if rvInfo == nil {
+		log.Err("utils::GetDiskUsageOfMV: Invalid RV %s", rvName)
+		common.Assert(false, fmt.Sprintf("invalid RV %s", rvName))
+		return 0, rpc.NewResponseError(rpc.InvalidRV, fmt.Sprintf("invalid RV %s", rvName))
+	}
+
+	mvInfo := rvInfo.getMVInfo(mvName)
+	if mvInfo == nil {
+		log.Err("utils::GetDiskUsageOfMV: Invalid MV %s", mvName)
+		common.Assert(false, fmt.Sprintf("invalid MV %s", mvName))
+		return 0, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("invalid MV %s", mvName))
+	}
+
+	return mvInfo.totalChunkBytes.Load(), nil
 }

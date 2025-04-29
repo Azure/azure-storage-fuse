@@ -88,8 +88,7 @@ type mvInfo struct {
 	mvName       string                   // mv0, mv1, etc.
 	componentRVs []*models.RVNameAndState // sorted list of component RVs for this MV
 
-	// TODO: add totalChunkBytes which is the total amount of space used up inside an MV by all the chunks stored in it.
-	// Refer, https://github.com/Azure/azure-storage-fuse/pull/1706#discussion_r2057388904
+	totalChunkBytes atomic.Int64 // total amount of space used up inside an MV by all the chunks stored in it
 
 	// count of in-progress chunk operations (get, put or remove) for this MV.
 	// This is used to block the end sync call till all the ongoing chunk operations are completed.
@@ -115,8 +114,14 @@ type mvInfo struct {
 	syncInfo // sync info for this MV
 }
 
-// TODO: add reserve space which must be reduced from the available space of the RV to get true available space
 type syncInfo struct {
+	// TODO: discuss should reserveSpace be added in RVInfo or syncInfo
+	// as in JoinMV we calculate the available space in the RV
+
+	// reserveSpace is the amount of space reserved for this MV
+	// This must be reduced from the available space of the RV to get true available space
+	// reserveSpace atomic.Int64
+
 	// Is the MV in syncing state?
 	// An MV enters syncing state after StartSync command is successfully executed.
 	// In syncing state, PutChunk requests corresponding to client writes will be
@@ -286,6 +291,17 @@ func (mv *mvInfo) updateComponentRVs(componentRVs []*models.RVNameAndState) {
 	// componentRVs point to a thrift req member. Does thrift say anything about safety of that,
 	// or should we do a deep copy of the list.
 	mv.componentRVs = componentRVs
+}
+
+// increment the total chunk bytes for this MV
+func (mv *mvInfo) incTotalChunkBytes(bytes int64) {
+	mv.totalChunkBytes.Add(bytes)
+}
+
+// decrement the total chunk bytes for this MV
+func (mv *mvInfo) decTotalChunkBytes(bytes int64) {
+	mv.totalChunkBytes.Add(-bytes)
+	common.Assert(mv.totalChunkBytes.Load() >= 0, fmt.Sprintf("totalChunkBytes for MV %s is negative", mv.mvName))
 }
 
 // increment the in-progress chunk operation (get, put or remove) count for this MV
@@ -663,6 +679,10 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to rename chunk file %s to %s [%v]", tmpChunkPath, chunkPath, err.Error()))
 	}
 
+	// TODO: should we also consider the hash file size in the total chunk bytes
+	// increment the total chunk bytes for this MV
+	mvInfo.incTotalChunkBytes(req.Length)
+
 	resp := &models.PutChunkResponse{
 		TimeTaken:      time.Since(startTime).Microseconds(),
 		AvailableSpace: availableSpace,
@@ -721,23 +741,36 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 	chunkPath, hashPath := getChunkAndHashPath(cacheDir, req.Address.MvName, req.Address.FileID, req.Address.OffsetInMiB)
 	log.Debug("ChunkServiceHandler::RemoveChunk: chunk path %s, hash path %s", chunkPath, hashPath)
 
+	// check if the chunk is present
+	fInfo, err := os.Stat(chunkPath)
+	if err != nil {
+		log.Err("ChunkServiceHandler::RemoveChunk: Failed to stat chunk file %s [%v]", chunkPath, err.Error())
+		common.Assert(false, fmt.Sprintf("failed to stat chunk file %s [%v]", chunkPath, err.Error()))
+		return nil, rpc.NewResponseError(rpc.ChunkNotFound, fmt.Sprintf("failed to stat chunk file %s [%v]", chunkPath, err.Error()))
+	}
+
 	err = os.Remove(chunkPath)
 	if err != nil {
 		log.Err("ChunkServiceHandler::RemoveChunk: Failed to remove chunk file %s [%v]", chunkPath, err.Error())
 		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to remove chunk file %s [%v]", chunkPath, err.Error()))
 	}
 
-	err = os.Remove(hashPath)
-	if err != nil {
-		log.Err("ChunkServiceHandler::RemoveChunk: Failed to remove hash file %s [%v]", hashPath, err.Error())
-		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to remove hash file %s [%v]", hashPath, err.Error()))
-	}
+	// TODO: hash validation will be done later
+	// err = os.Remove(hashPath)
+	// if err != nil {
+	// 	log.Err("ChunkServiceHandler::RemoveChunk: Failed to remove hash file %s [%v]", hashPath, err.Error())
+	// 	return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to remove hash file %s [%v]", hashPath, err.Error()))
+	// }
 
 	availableSpace, err := getAvailableDiskSpace(cacheDir)
 	// TODO: add assert for available space
 	if err != nil {
 		log.Err("ChunkServiceHandler::RemoveChunk: Failed to get available disk space [%v]", err.Error())
 	}
+
+	// TODO: should we also consider the hash file size in the total chunk bytes
+	// decrement the total chunk bytes for this MV
+	mvInfo.decTotalChunkBytes(fInfo.Size())
 
 	resp := &models.RemoveChunkResponse{
 		TimeTaken:      time.Since(startTime).Microseconds(),
@@ -773,8 +806,8 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 	cacheDir := rvInfo.cacheDir
 
 	// check if RV is already part of the given MV
-	mvInf := rvInfo.getMVInfo(req.MV)
-	if mvInf != nil {
+	mvi := rvInfo.getMVInfo(req.MV)
+	if mvi != nil {
 		log.Err("ChunkServiceHandler::JoinMV: RV %s is already part of the given MV %s", req.RVName, req.MV)
 		return nil, rpc.NewResponseError(rpc.InvalidRequest, fmt.Sprintf("RV %s is already part of the given MV %s", req.RVName, req.MV))
 	}
