@@ -34,10 +34,11 @@
 package filemanager
 
 type StagedChunk struct {
-	Idx              int64      // chunk index
-	Buf              []byte     // buf size == chunkSize
-	Len              int64      // valid bytes in Buf
-	Err              chan error // Download/upload status, available after download/upload completes, nil means sucess.
-	ScheduleDownload chan struct{}
-	ScheduleUpload   chan struct{}
+	Idx              int64         // chunk index
+	Buf              []byte        // buf size == chunkSize
+	Len              int64         // valid bytes in Buf
+	Err              chan error    // Download/upload status, available after download/upload completes, nil means sucess.
+	ScheduleDownload chan struct{} // channel to schedule download only once per chunk
+	ScheduleUpload   chan struct{} // channel to schedule download only once per chunk
+	// todo : replace the above channels with the atomic flags.
 }

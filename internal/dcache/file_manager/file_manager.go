@@ -183,6 +183,8 @@ func (file *DcacheFile) ReleaseFile() error {
 	log.Debug("DistributedCache[FM]::ReleaseFile :Releasing buffers for File for %s", file.FileMetadata.Filename)
 	file.StagedChunks.Range(func(chunkIdx any, Ichunk any) bool {
 		chunk := Ichunk.(*StagedChunk)
+		// todo: assert for each chunk that err is closed. currently not doing it as readahead chunks
+		// error channel might be opened.
 		file.releaseChunk(chunk)
 		return true
 	})
