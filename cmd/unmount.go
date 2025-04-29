@@ -53,7 +53,8 @@ var unmountCmd = &cobra.Command{
 	SuggestFor:        []string{"unmount", "unmnt"},
 	Args:              cobra.ExactArgs(1),
 	FlagErrorHandling: cobra.ExitOnError,
-	RunE: func(_ *cobra.Command, args []string) error {
+	RunE: func(cmd *cobra.Command, args []string) error {
+		lazy, _ := cmd.Flags().GetBool("lazy")
 		if strings.Contains(args[0], "*") {
 			mntPathPrefix := args[0]
 
@@ -61,14 +62,14 @@ var unmountCmd = &cobra.Command{
 			for _, mntPath := range lstMnt {
 				match, _ := regexp.MatchString(mntPathPrefix, mntPath)
 				if match {
-					err := unmountBlobfuse2(mntPath)
+					err := unmountBlobfuse2(mntPath, lazy)
 					if err != nil {
 						return fmt.Errorf("failed to unmount %s [%s]", mntPath, err.Error())
 					}
 				}
 			}
 		} else {
-			err := unmountBlobfuse2(args[0])
+			err := unmountBlobfuse2(args[0], lazy)
 			if err != nil {
 				return err
 			}
@@ -86,13 +87,18 @@ var unmountCmd = &cobra.Command{
 }
 
 // Attempts to unmount the directory and returns true if the operation succeeded
-func unmountBlobfuse2(mntPath string) error {
+func unmountBlobfuse2(mntPath string, lazy bool) error {
 	unmountCmd := []string{"fusermount3", "fusermount"}
 
 	var errb bytes.Buffer
 	var err error
 	for _, umntCmd := range unmountCmd {
-		cliOut := exec.Command(umntCmd, "-u", mntPath)
+		var args []string
+		if lazy {
+			args = append(args, "-z")
+		}
+		args = append(args, "-u", mntPath)
+		cliOut := exec.Command(umntCmd, args...)
 		cliOut.Stderr = &errb
 		_, err = cliOut.Output()
 
@@ -113,4 +119,6 @@ func unmountBlobfuse2(mntPath string) error {
 func init() {
 	rootCmd.AddCommand(unmountCmd)
 	unmountCmd.AddCommand(umntAllCmd)
+
+	unmountCmd.PersistentFlags().BoolP("lazy", "z", false, "Use lazy unmount")
 }
