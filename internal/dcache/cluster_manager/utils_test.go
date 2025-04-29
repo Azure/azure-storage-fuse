@@ -143,7 +143,7 @@ func (suite *utilsTestSuite) TestIsValidClusterMap() {
 	}
 	invalidMVMap.MVMap["mv1"] = dcache.MirroredVolume{
 		State: "invalid-state",
-		Rvs:   map[string]dcache.StateEnum{},
+		RVs:   map[string]dcache.StateEnum{},
 	}
 	isValid, errMsg = IsValidClusterMap(invalidMVMap)
 	suite.False(isValid)

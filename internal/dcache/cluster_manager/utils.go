@@ -96,16 +96,16 @@ func IsValidMvMap(cm dcache.ClusterMap) (bool, string) {
 		default:
 			return false, fmt.Sprintf("ClusterMap:: %+v MVMap[%q]: Invalid mv State: %q", cm, name, mv.State)
 		}
-		if mv.Rvs == nil {
+		if mv.RVs == nil {
 			return false, fmt.Sprintf("ClusterMap:: %+v MVMap[%q]: Rvs is nil", cm, name)
 		}
-		if len(mv.Rvs) != expectedReplicasCount {
+		if len(mv.RVs) != expectedReplicasCount {
 			return false, fmt.Sprintf(
 				"ClusterMap:: %+v MVMap[%q]: expected %d replicas, found %d",
-				cm, name, expectedReplicasCount, len(mv.Rvs),
+				cm, name, expectedReplicasCount, len(mv.RVs),
 			)
 		}
-		for rvName, state := range mv.Rvs {
+		for rvName, state := range mv.RVs {
 			if rvName == "" {
 				return false, fmt.Sprintf("ClusterMap:: %+v MVMap[%q].Rvs: empty key", cm, name)
 			}

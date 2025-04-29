@@ -287,8 +287,8 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_OfflineMv() {
 
 func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_OfflineRv() {
 	mvMap := mockMvMap()
-	mvMap["mv0"].RVsWithState["rv6"] = dcache.StateOnline
-	mvMap["mv1"].RVsWithState["rv5"] = dcache.StateOnline
+	mvMap["mv0"].RVs["rv6"] = dcache.StateOnline
+	mvMap["mv1"].RVs["rv5"] = dcache.StateOnline
 	rvMap := mockRvMap()
 	rv := rvMap["rv4"]
 	rv.State = dcache.StateOffline
@@ -299,7 +299,7 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_OfflineRv() {
 	updated := suite.cmi.updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
 
 	for _, mv := range updated {
-		_, ok := mv.RVsWithState["rv4"]
+		_, ok := mv.RVs["rv4"]
 		suite.False(ok, "RV4 should not be present in any MV")
 	}
 	suite.TestUpdateMvList(updated, rvMap, numReplicas, mvPerRv)
@@ -326,7 +326,7 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateMvList(updated map[string]dc
 
 	// Check if all the mv's have numReplica rvs
 	for _, mv := range updated {
-		suite.Equal(numReplicas, len(mv.RVsWithState))
+		suite.Equal(numReplicas, len(mv.RVs))
 	}
 
 	// Iterate over mvMap and check if any rv is repeated more than mvsPerRv times overall
@@ -335,7 +335,7 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateMvList(updated map[string]dc
 		count[i] = mvPerRv
 	}
 	for _, mv := range updated {
-		for rv, _ := range mv.RVsWithState {
+		for rv, _ := range mv.RVs {
 			index, err := strconv.Atoi(rv[2:])
 			suite.Nil(err)
 			count[index]--
@@ -346,7 +346,7 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateMvList(updated map[string]dc
 	// Check if node diversity is maintained
 	for _, mv := range updated {
 		nodeMap := make(map[string]bool)
-		for rv, _ := range mv.RVsWithState {
+		for rv, _ := range mv.RVs {
 			nodeId := rvMap[rv].NodeId
 			_, ok := nodeMap[nodeId]
 			suite.False(ok, "Node diversity not maintained")
@@ -358,14 +358,14 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateMvList(updated map[string]dc
 func mockMvMap() map[string]dcache.MirroredVolume {
 	return map[string]dcache.MirroredVolume{
 		"mv0": {
-			RVsWithState: map[string]dcache.StateEnum{
+			RVs: map[string]dcache.StateEnum{
 				"rv0": dcache.StateOnline,
 				"rv1": dcache.StateOnline,
 			},
 			State: dcache.StateOnline,
 		},
 		"mv1": {
-			RVsWithState: map[string]dcache.StateEnum{
+			RVs: map[string]dcache.StateEnum{
 				"rv2": dcache.StateOnline,
 				"rv3": dcache.StateOnline,
 			},

@@ -321,7 +321,7 @@ func (cmi *ClusterManagerImpl) getRVs(mvName string) map[string]dcache.StateEnum
 		log.Debug("ClusterManagerImpl::getRVs: no mirrored volume named %s", mvName)
 		return nil
 	}
-	return mv.Rvs
+	return mv.RVs
 }
 
 func (cmi *ClusterManagerImpl) isOnline(nodeId string) bool {
@@ -702,12 +702,12 @@ func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, e
 	// Phase#1
 	for mvName, mv := range existingMVMap {
 		offlineRv := 0
-		for rvName := range mv.Rvs {
+		for rvName := range mv.RVs {
 			if rvMap[rvName].State == dcache.StateOffline {
 				offlineRv++
-				mv.Rvs[rvName] = dcache.StateOffline
+				mv.RVs[rvName] = dcache.StateOffline
 				mv.State = dcache.StateDegraded
-				if offlineRv == len(mv.Rvs) {
+				if offlineRv == len(mv.RVs) {
 					mv.State = dcache.StateOffline
 					// Update the MV state to offline
 				}
@@ -768,12 +768,12 @@ func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, e
 						rvwithstate[r.rvName] = dcache.StateOnline
 						// Create a new MV
 						existingMVMap[mvName] = dcache.MirroredVolume{
-							Rvs:   rvwithstate,
+							RVs:   rvwithstate,
 							State: dcache.StateOnline,
 						}
 					} else {
 						// Update the existing MV
-						existingMVMap[mvName].Rvs[r.rvName] = dcache.StateOnline
+						existingMVMap[mvName].RVs[r.rvName] = dcache.StateOnline
 					}
 
 					found := false
