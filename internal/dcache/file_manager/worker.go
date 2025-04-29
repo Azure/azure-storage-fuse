@@ -93,6 +93,15 @@ func (wp *workerPool) worker() {
 	}
 }
 
+func (wp *workerPool) queueWork(file *DcacheFile, chunk *StagedChunk, get_chunk bool) {
+	t := &task{
+		file:      file,
+		chunk:     chunk,
+		get_chunk: get_chunk,
+	}
+	fileIOMgr.wp.tasks <- t
+}
+
 func (wp *workerPool) readChunk(task *task) {
 	log.Info("DistributedCache::readChunk : Reading chunk idx : %d, file: %s", task.chunk.Idx, task.file.FileMetadata.Filename)
 	var err error

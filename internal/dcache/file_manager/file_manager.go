@@ -340,12 +340,7 @@ func scheduleDownload(chunk *StagedChunk, file *DcacheFile) {
 	case <-chunk.ScheduleDownload:
 	default:
 		close(chunk.ScheduleDownload)
-		t := &task{
-			file:      file,
-			chunk:     chunk,
-			get_chunk: true,
-		}
-		fileIOMgr.wp.tasks <- t
+		fileIOMgr.wp.queueWork(file, chunk, true)
 	}
 }
 
@@ -354,11 +349,6 @@ func scheduleUpload(chunk *StagedChunk, file *DcacheFile) {
 	case <-chunk.ScheduleUpload:
 	default:
 		close(chunk.ScheduleUpload)
-		t := &task{
-			file:      file,
-			chunk:     chunk,
-			get_chunk: false,
-		}
-		fileIOMgr.wp.tasks <- t
+		fileIOMgr.wp.queueWork(file, chunk, false)
 	}
 }
