@@ -599,7 +599,7 @@ func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, e
 					break
 				}
 			}
-			common.Assert(!found, fmt.Sprintf("MV Map lists this as a online RV but the current RV %s was not found in node %s populated from RVMap", rvName, nodeId))
+			common.Assert(found, fmt.Sprintf("MV Map lists this as a online RV but the current RV %s was not found in node %s populated from RVMap", rvName, nodeId))
 		}
 	}
 
@@ -661,7 +661,7 @@ func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, e
 							break
 						}
 					}
-					common.Assert(!found, fmt.Sprintf("MV Map lists this as a online RV but the current RV %s was not found in node %s populated from RVMap", r.rvName, n.nodeId))
+					common.Assert(found, fmt.Sprintf("MV Map lists this as a online RV but the current RV %s was not found in node %s populated from RVMap", r.rvName, n.nodeId))
 					break
 				}
 			}
