@@ -54,13 +54,13 @@ var _ = bytes.Equal
 //   - SenderNodeID
 //   - ReceiverNodeID
 //   - Time
-//   - RV
+//   - RVName
 //   - MV
 type HelloRequest struct {
 	SenderNodeID   string   `thrift:"senderNodeID,1" db:"senderNodeID" json:"senderNodeID"`
 	ReceiverNodeID string   `thrift:"receiverNodeID,2" db:"receiverNodeID" json:"receiverNodeID"`
 	Time           int64    `thrift:"time,3" db:"time" json:"time"`
-	RV             []string `thrift:"RV,4" db:"RV" json:"RV"`
+	RVName         []string `thrift:"RVName,4" db:"RVName" json:"RVName"`
 	MV             []string `thrift:"MV,5" db:"MV" json:"MV"`
 }
 
@@ -80,8 +80,8 @@ func (p *HelloRequest) GetTime() int64 {
 	return p.Time
 }
 
-func (p *HelloRequest) GetRV() []string {
-	return p.RV
+func (p *HelloRequest) GetRVName() []string {
+	return p.RVName
 }
 
 func (p *HelloRequest) GetMV() []string {
@@ -199,7 +199,7 @@ func (p *HelloRequest) ReadField4(ctx context.Context, iprot thrift.TProtocol) e
 		return thrift.PrependError("error reading list begin: ", err)
 	}
 	tSlice := make([]string, 0, size)
-	p.RV = tSlice
+	p.RVName = tSlice
 	for i := 0; i < size; i++ {
 		var _elem0 string
 		if v, err := iprot.ReadString(ctx); err != nil {
@@ -207,7 +207,7 @@ func (p *HelloRequest) ReadField4(ctx context.Context, iprot thrift.TProtocol) e
 		} else {
 			_elem0 = v
 		}
-		p.RV = append(p.RV, _elem0)
+		p.RVName = append(p.RVName, _elem0)
 	}
 	if err := iprot.ReadListEnd(ctx); err != nil {
 		return thrift.PrependError("error reading list end: ", err)
@@ -307,13 +307,13 @@ func (p *HelloRequest) writeField3(ctx context.Context, oprot thrift.TProtocol) 
 }
 
 func (p *HelloRequest) writeField4(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "RV", thrift.LIST, 4); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field begin error 4:RV: ", p), err)
+	if err := oprot.WriteFieldBegin(ctx, "RVName", thrift.LIST, 4); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 4:RVName: ", p), err)
 	}
-	if err := oprot.WriteListBegin(ctx, thrift.STRING, len(p.RV)); err != nil {
+	if err := oprot.WriteListBegin(ctx, thrift.STRING, len(p.RVName)); err != nil {
 		return thrift.PrependError("error writing list begin: ", err)
 	}
-	for _, v := range p.RV {
+	for _, v := range p.RVName {
 		if err := oprot.WriteString(ctx, string(v)); err != nil {
 			return thrift.PrependError(fmt.Sprintf("%T. (0) field write error: ", p), err)
 		}
@@ -322,7 +322,7 @@ func (p *HelloRequest) writeField4(ctx context.Context, oprot thrift.TProtocol) 
 		return thrift.PrependError("error writing list end: ", err)
 	}
 	if err := oprot.WriteFieldEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field end error 4:RV: ", p), err)
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 4:RVName: ", p), err)
 	}
 	return err
 }
@@ -363,11 +363,11 @@ func (p *HelloRequest) Equals(other *HelloRequest) bool {
 	if p.Time != other.Time {
 		return false
 	}
-	if len(p.RV) != len(other.RV) {
+	if len(p.RVName) != len(other.RVName) {
 		return false
 	}
-	for i, _tgt := range p.RV {
-		_src2 := other.RV[i]
+	for i, _tgt := range p.RVName {
+		_src2 := other.RVName[i]
 		if _tgt != _src2 {
 			return false
 		}
@@ -394,12 +394,12 @@ func (p *HelloRequest) String() string {
 // Attributes:
 //   - ReceiverNodeID
 //   - Time
-//   - RV
+//   - RVName
 //   - MV
 type HelloResponse struct {
 	ReceiverNodeID string   `thrift:"receiverNodeID,1" db:"receiverNodeID" json:"receiverNodeID"`
 	Time           int64    `thrift:"time,2" db:"time" json:"time"`
-	RV             []string `thrift:"RV,3" db:"RV" json:"RV"`
+	RVName         []string `thrift:"RVName,3" db:"RVName" json:"RVName"`
 	MV             []string `thrift:"MV,4" db:"MV" json:"MV"`
 }
 
@@ -415,8 +415,8 @@ func (p *HelloResponse) GetTime() int64 {
 	return p.Time
 }
 
-func (p *HelloResponse) GetRV() []string {
-	return p.RV
+func (p *HelloResponse) GetRVName() []string {
+	return p.RVName
 }
 
 func (p *HelloResponse) GetMV() []string {
@@ -515,7 +515,7 @@ func (p *HelloResponse) ReadField3(ctx context.Context, iprot thrift.TProtocol) 
 		return thrift.PrependError("error reading list begin: ", err)
 	}
 	tSlice := make([]string, 0, size)
-	p.RV = tSlice
+	p.RVName = tSlice
 	for i := 0; i < size; i++ {
 		var _elem4 string
 		if v, err := iprot.ReadString(ctx); err != nil {
@@ -523,7 +523,7 @@ func (p *HelloResponse) ReadField3(ctx context.Context, iprot thrift.TProtocol) 
 		} else {
 			_elem4 = v
 		}
-		p.RV = append(p.RV, _elem4)
+		p.RVName = append(p.RVName, _elem4)
 	}
 	if err := iprot.ReadListEnd(ctx); err != nil {
 		return thrift.PrependError("error reading list end: ", err)
@@ -607,13 +607,13 @@ func (p *HelloResponse) writeField2(ctx context.Context, oprot thrift.TProtocol)
 }
 
 func (p *HelloResponse) writeField3(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "RV", thrift.LIST, 3); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field begin error 3:RV: ", p), err)
+	if err := oprot.WriteFieldBegin(ctx, "RVName", thrift.LIST, 3); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 3:RVName: ", p), err)
 	}
-	if err := oprot.WriteListBegin(ctx, thrift.STRING, len(p.RV)); err != nil {
+	if err := oprot.WriteListBegin(ctx, thrift.STRING, len(p.RVName)); err != nil {
 		return thrift.PrependError("error writing list begin: ", err)
 	}
-	for _, v := range p.RV {
+	for _, v := range p.RVName {
 		if err := oprot.WriteString(ctx, string(v)); err != nil {
 			return thrift.PrependError(fmt.Sprintf("%T. (0) field write error: ", p), err)
 		}
@@ -622,7 +622,7 @@ func (p *HelloResponse) writeField3(ctx context.Context, oprot thrift.TProtocol)
 		return thrift.PrependError("error writing list end: ", err)
 	}
 	if err := oprot.WriteFieldEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field end error 3:RV: ", p), err)
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 3:RVName: ", p), err)
 	}
 	return err
 }
@@ -660,11 +660,11 @@ func (p *HelloResponse) Equals(other *HelloResponse) bool {
 	if p.Time != other.Time {
 		return false
 	}
-	if len(p.RV) != len(other.RV) {
+	if len(p.RVName) != len(other.RVName) {
 		return false
 	}
-	for i, _tgt := range p.RV {
-		_src6 := other.RV[i]
+	for i, _tgt := range p.RVName {
+		_src6 := other.RVName[i]
 		if _tgt != _src6 {
 			return false
 		}
@@ -690,14 +690,14 @@ func (p *HelloResponse) String() string {
 
 // Attributes:
 //   - FileID
-//   - FsID
-//   - MvID
-//   - OffsetInMB
+//   - RvID
+//   - MvName
+//   - OffsetInMiB
 type Address struct {
-	FileID     string `thrift:"fileID,1" db:"fileID" json:"fileID"`
-	FsID       string `thrift:"fsID,2" db:"fsID" json:"fsID"`
-	MvID       string `thrift:"mvID,3" db:"mvID" json:"mvID"`
-	OffsetInMB int64  `thrift:"offsetInMB,4" db:"offsetInMB" json:"offsetInMB"`
+	FileID      string `thrift:"fileID,1" db:"fileID" json:"fileID"`
+	RvID        string `thrift:"rvID,2" db:"rvID" json:"rvID"`
+	MvName      string `thrift:"mvName,3" db:"mvName" json:"mvName"`
+	OffsetInMiB int64  `thrift:"offsetInMiB,4" db:"offsetInMiB" json:"offsetInMiB"`
 }
 
 func NewAddress() *Address {
@@ -708,16 +708,16 @@ func (p *Address) GetFileID() string {
 	return p.FileID
 }
 
-func (p *Address) GetFsID() string {
-	return p.FsID
+func (p *Address) GetRvID() string {
+	return p.RvID
 }
 
-func (p *Address) GetMvID() string {
-	return p.MvID
+func (p *Address) GetMvName() string {
+	return p.MvName
 }
 
-func (p *Address) GetOffsetInMB() int64 {
-	return p.OffsetInMB
+func (p *Address) GetOffsetInMiB() int64 {
+	return p.OffsetInMiB
 }
 func (p *Address) Read(ctx context.Context, iprot thrift.TProtocol) error {
 	if _, err := iprot.ReadStructBegin(ctx); err != nil {
@@ -801,7 +801,7 @@ func (p *Address) ReadField2(ctx context.Context, iprot thrift.TProtocol) error 
 	if v, err := iprot.ReadString(ctx); err != nil {
 		return thrift.PrependError("error reading field 2: ", err)
 	} else {
-		p.FsID = v
+		p.RvID = v
 	}
 	return nil
 }
@@ -810,7 +810,7 @@ func (p *Address) ReadField3(ctx context.Context, iprot thrift.TProtocol) error 
 	if v, err := iprot.ReadString(ctx); err != nil {
 		return thrift.PrependError("error reading field 3: ", err)
 	} else {
-		p.MvID = v
+		p.MvName = v
 	}
 	return nil
 }
@@ -819,7 +819,7 @@ func (p *Address) ReadField4(ctx context.Context, iprot thrift.TProtocol) error 
 	if v, err := iprot.ReadI64(ctx); err != nil {
 		return thrift.PrependError("error reading field 4: ", err)
 	} else {
-		p.OffsetInMB = v
+		p.OffsetInMiB = v
 	}
 	return nil
 }
@@ -865,40 +865,40 @@ func (p *Address) writeField1(ctx context.Context, oprot thrift.TProtocol) (err 
 }
 
 func (p *Address) writeField2(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "fsID", thrift.STRING, 2); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field begin error 2:fsID: ", p), err)
+	if err := oprot.WriteFieldBegin(ctx, "rvID", thrift.STRING, 2); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 2:rvID: ", p), err)
 	}
-	if err := oprot.WriteString(ctx, string(p.FsID)); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T.fsID (2) field write error: ", p), err)
+	if err := oprot.WriteString(ctx, string(p.RvID)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.rvID (2) field write error: ", p), err)
 	}
 	if err := oprot.WriteFieldEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field end error 2:fsID: ", p), err)
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 2:rvID: ", p), err)
 	}
 	return err
 }
 
 func (p *Address) writeField3(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "mvID", thrift.STRING, 3); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field begin error 3:mvID: ", p), err)
+	if err := oprot.WriteFieldBegin(ctx, "mvName", thrift.STRING, 3); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 3:mvName: ", p), err)
 	}
-	if err := oprot.WriteString(ctx, string(p.MvID)); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T.mvID (3) field write error: ", p), err)
+	if err := oprot.WriteString(ctx, string(p.MvName)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.mvName (3) field write error: ", p), err)
 	}
 	if err := oprot.WriteFieldEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field end error 3:mvID: ", p), err)
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 3:mvName: ", p), err)
 	}
 	return err
 }
 
 func (p *Address) writeField4(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "offsetInMB", thrift.I64, 4); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field begin error 4:offsetInMB: ", p), err)
+	if err := oprot.WriteFieldBegin(ctx, "offsetInMiB", thrift.I64, 4); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 4:offsetInMiB: ", p), err)
 	}
-	if err := oprot.WriteI64(ctx, int64(p.OffsetInMB)); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T.offsetInMB (4) field write error: ", p), err)
+	if err := oprot.WriteI64(ctx, int64(p.OffsetInMiB)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.offsetInMiB (4) field write error: ", p), err)
 	}
 	if err := oprot.WriteFieldEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field end error 4:offsetInMB: ", p), err)
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 4:offsetInMiB: ", p), err)
 	}
 	return err
 }
@@ -912,13 +912,13 @@ func (p *Address) Equals(other *Address) bool {
 	if p.FileID != other.FileID {
 		return false
 	}
-	if p.FsID != other.FsID {
+	if p.RvID != other.RvID {
 		return false
 	}
-	if p.MvID != other.MvID {
+	if p.MvName != other.MvName {
 		return false
 	}
-	if p.OffsetInMB != other.OffsetInMB {
+	if p.OffsetInMiB != other.OffsetInMiB {
 		return false
 	}
 	return true
@@ -1139,13 +1139,170 @@ func (p *Chunk) String() string {
 }
 
 // Attributes:
+//   - Name
+//   - State
+type RVNameAndState struct {
+	Name  string `thrift:"name,1" db:"name" json:"name"`
+	State string `thrift:"state,2" db:"state" json:"state"`
+}
+
+func NewRVNameAndState() *RVNameAndState {
+	return &RVNameAndState{}
+}
+
+func (p *RVNameAndState) GetName() string {
+	return p.Name
+}
+
+func (p *RVNameAndState) GetState() string {
+	return p.State
+}
+func (p *RVNameAndState) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 1:
+			if fieldTypeId == thrift.STRING {
+				if err := p.ReadField1(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 2:
+			if fieldTypeId == thrift.STRING {
+				if err := p.ReadField2(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *RVNameAndState) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadString(ctx); err != nil {
+		return thrift.PrependError("error reading field 1: ", err)
+	} else {
+		p.Name = v
+	}
+	return nil
+}
+
+func (p *RVNameAndState) ReadField2(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadString(ctx); err != nil {
+		return thrift.PrependError("error reading field 2: ", err)
+	} else {
+		p.State = v
+	}
+	return nil
+}
+
+func (p *RVNameAndState) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "RVNameAndState"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField1(ctx, oprot); err != nil {
+			return err
+		}
+		if err := p.writeField2(ctx, oprot); err != nil {
+			return err
+		}
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *RVNameAndState) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "name", thrift.STRING, 1); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:name: ", p), err)
+	}
+	if err := oprot.WriteString(ctx, string(p.Name)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.name (1) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:name: ", p), err)
+	}
+	return err
+}
+
+func (p *RVNameAndState) writeField2(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "state", thrift.STRING, 2); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 2:state: ", p), err)
+	}
+	if err := oprot.WriteString(ctx, string(p.State)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.state (2) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 2:state: ", p), err)
+	}
+	return err
+}
+
+func (p *RVNameAndState) Equals(other *RVNameAndState) bool {
+	if p == other {
+		return true
+	} else if p == nil || other == nil {
+		return false
+	}
+	if p.Name != other.Name {
+		return false
+	}
+	if p.State != other.State {
+		return false
+	}
+	return true
+}
+
+func (p *RVNameAndState) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("RVNameAndState(%+v)", *p)
+}
+
+// Attributes:
 //   - Address
-//   - Offset
+//   - OffsetInChunk
 //   - Length
+//   - ComponentRV
 type GetChunkRequest struct {
-	Address *Address `thrift:"address,1" db:"address" json:"address"`
-	Offset  int64    `thrift:"offset,2" db:"offset" json:"offset"`
-	Length  int64    `thrift:"length,3" db:"length" json:"length"`
+	Address       *Address          `thrift:"address,1" db:"address" json:"address"`
+	OffsetInChunk int64             `thrift:"offsetInChunk,2" db:"offsetInChunk" json:"offsetInChunk"`
+	Length        int64             `thrift:"length,3" db:"length" json:"length"`
+	ComponentRV   []*RVNameAndState `thrift:"componentRV,4" db:"componentRV" json:"componentRV"`
 }
 
 func NewGetChunkRequest() *GetChunkRequest {
@@ -1161,12 +1318,16 @@ func (p *GetChunkRequest) GetAddress() *Address {
 	return p.Address
 }
 
-func (p *GetChunkRequest) GetOffset() int64 {
-	return p.Offset
+func (p *GetChunkRequest) GetOffsetInChunk() int64 {
+	return p.OffsetInChunk
 }
 
 func (p *GetChunkRequest) GetLength() int64 {
 	return p.Length
+}
+
+func (p *GetChunkRequest) GetComponentRV() []*RVNameAndState {
+	return p.ComponentRV
 }
 func (p *GetChunkRequest) IsSetAddress() bool {
 	return p.Address != nil
@@ -1216,6 +1377,16 @@ func (p *GetChunkRequest) Read(ctx context.Context, iprot thrift.TProtocol) erro
 					return err
 				}
 			}
+		case 4:
+			if fieldTypeId == thrift.LIST {
+				if err := p.ReadField4(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
 		default:
 			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
 				return err
@@ -1243,7 +1414,7 @@ func (p *GetChunkRequest) ReadField2(ctx context.Context, iprot thrift.TProtocol
 	if v, err := iprot.ReadI64(ctx); err != nil {
 		return thrift.PrependError("error reading field 2: ", err)
 	} else {
-		p.Offset = v
+		p.OffsetInChunk = v
 	}
 	return nil
 }
@@ -1253,6 +1424,26 @@ func (p *GetChunkRequest) ReadField3(ctx context.Context, iprot thrift.TProtocol
 		return thrift.PrependError("error reading field 3: ", err)
 	} else {
 		p.Length = v
+	}
+	return nil
+}
+
+func (p *GetChunkRequest) ReadField4(ctx context.Context, iprot thrift.TProtocol) error {
+	_, size, err := iprot.ReadListBegin(ctx)
+	if err != nil {
+		return thrift.PrependError("error reading list begin: ", err)
+	}
+	tSlice := make([]*RVNameAndState, 0, size)
+	p.ComponentRV = tSlice
+	for i := 0; i < size; i++ {
+		_elem8 := &RVNameAndState{}
+		if err := _elem8.Read(ctx, iprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", _elem8), err)
+		}
+		p.ComponentRV = append(p.ComponentRV, _elem8)
+	}
+	if err := iprot.ReadListEnd(ctx); err != nil {
+		return thrift.PrependError("error reading list end: ", err)
 	}
 	return nil
 }
@@ -1269,6 +1460,9 @@ func (p *GetChunkRequest) Write(ctx context.Context, oprot thrift.TProtocol) err
 			return err
 		}
 		if err := p.writeField3(ctx, oprot); err != nil {
+			return err
+		}
+		if err := p.writeField4(ctx, oprot); err != nil {
 			return err
 		}
 	}
@@ -1295,14 +1489,14 @@ func (p *GetChunkRequest) writeField1(ctx context.Context, oprot thrift.TProtoco
 }
 
 func (p *GetChunkRequest) writeField2(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "offset", thrift.I64, 2); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field begin error 2:offset: ", p), err)
+	if err := oprot.WriteFieldBegin(ctx, "offsetInChunk", thrift.I64, 2); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 2:offsetInChunk: ", p), err)
 	}
-	if err := oprot.WriteI64(ctx, int64(p.Offset)); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T.offset (2) field write error: ", p), err)
+	if err := oprot.WriteI64(ctx, int64(p.OffsetInChunk)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.offsetInChunk (2) field write error: ", p), err)
 	}
 	if err := oprot.WriteFieldEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field end error 2:offset: ", p), err)
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 2:offsetInChunk: ", p), err)
 	}
 	return err
 }
@@ -1320,6 +1514,27 @@ func (p *GetChunkRequest) writeField3(ctx context.Context, oprot thrift.TProtoco
 	return err
 }
 
+func (p *GetChunkRequest) writeField4(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "componentRV", thrift.LIST, 4); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 4:componentRV: ", p), err)
+	}
+	if err := oprot.WriteListBegin(ctx, thrift.STRUCT, len(p.ComponentRV)); err != nil {
+		return thrift.PrependError("error writing list begin: ", err)
+	}
+	for _, v := range p.ComponentRV {
+		if err := v.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", v), err)
+		}
+	}
+	if err := oprot.WriteListEnd(ctx); err != nil {
+		return thrift.PrependError("error writing list end: ", err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 4:componentRV: ", p), err)
+	}
+	return err
+}
+
 func (p *GetChunkRequest) Equals(other *GetChunkRequest) bool {
 	if p == other {
 		return true
@@ -1329,11 +1544,20 @@ func (p *GetChunkRequest) Equals(other *GetChunkRequest) bool {
 	if !p.Address.Equals(other.Address) {
 		return false
 	}
-	if p.Offset != other.Offset {
+	if p.OffsetInChunk != other.OffsetInChunk {
 		return false
 	}
 	if p.Length != other.Length {
 		return false
+	}
+	if len(p.ComponentRV) != len(other.ComponentRV) {
+		return false
+	}
+	for i, _tgt := range p.ComponentRV {
+		_src9 := other.ComponentRV[i]
+		if !_tgt.Equals(_src9) {
+			return false
+		}
 	}
 	return true
 }
@@ -1349,12 +1573,12 @@ func (p *GetChunkRequest) String() string {
 //   - Chunk
 //   - ChunkWriteTime
 //   - TimeTaken
-//   - PeerRV
+//   - ComponentRV
 type GetChunkResponse struct {
-	Chunk          *Chunk   `thrift:"chunk,1" db:"chunk" json:"chunk"`
-	ChunkWriteTime string   `thrift:"chunkWriteTime,2" db:"chunkWriteTime" json:"chunkWriteTime"`
-	TimeTaken      int64    `thrift:"timeTaken,3" db:"timeTaken" json:"timeTaken"`
-	PeerRV         []string `thrift:"peerRV,4" db:"peerRV" json:"peerRV"`
+	Chunk          *Chunk            `thrift:"chunk,1" db:"chunk" json:"chunk"`
+	ChunkWriteTime string            `thrift:"chunkWriteTime,2" db:"chunkWriteTime" json:"chunkWriteTime"`
+	TimeTaken      int64             `thrift:"timeTaken,3" db:"timeTaken" json:"timeTaken"`
+	ComponentRV    []*RVNameAndState `thrift:"componentRV,4" db:"componentRV" json:"componentRV"`
 }
 
 func NewGetChunkResponse() *GetChunkResponse {
@@ -1378,8 +1602,8 @@ func (p *GetChunkResponse) GetTimeTaken() int64 {
 	return p.TimeTaken
 }
 
-func (p *GetChunkResponse) GetPeerRV() []string {
-	return p.PeerRV
+func (p *GetChunkResponse) GetComponentRV() []*RVNameAndState {
+	return p.ComponentRV
 }
 func (p *GetChunkResponse) IsSetChunk() bool {
 	return p.Chunk != nil
@@ -1485,16 +1709,14 @@ func (p *GetChunkResponse) ReadField4(ctx context.Context, iprot thrift.TProtoco
 	if err != nil {
 		return thrift.PrependError("error reading list begin: ", err)
 	}
-	tSlice := make([]string, 0, size)
-	p.PeerRV = tSlice
+	tSlice := make([]*RVNameAndState, 0, size)
+	p.ComponentRV = tSlice
 	for i := 0; i < size; i++ {
-		var _elem8 string
-		if v, err := iprot.ReadString(ctx); err != nil {
-			return thrift.PrependError("error reading field 0: ", err)
-		} else {
-			_elem8 = v
+		_elem10 := &RVNameAndState{}
+		if err := _elem10.Read(ctx, iprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", _elem10), err)
 		}
-		p.PeerRV = append(p.PeerRV, _elem8)
+		p.ComponentRV = append(p.ComponentRV, _elem10)
 	}
 	if err := iprot.ReadListEnd(ctx); err != nil {
 		return thrift.PrependError("error reading list end: ", err)
@@ -1569,22 +1791,22 @@ func (p *GetChunkResponse) writeField3(ctx context.Context, oprot thrift.TProtoc
 }
 
 func (p *GetChunkResponse) writeField4(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "peerRV", thrift.LIST, 4); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field begin error 4:peerRV: ", p), err)
+	if err := oprot.WriteFieldBegin(ctx, "componentRV", thrift.LIST, 4); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 4:componentRV: ", p), err)
 	}
-	if err := oprot.WriteListBegin(ctx, thrift.STRING, len(p.PeerRV)); err != nil {
+	if err := oprot.WriteListBegin(ctx, thrift.STRUCT, len(p.ComponentRV)); err != nil {
 		return thrift.PrependError("error writing list begin: ", err)
 	}
-	for _, v := range p.PeerRV {
-		if err := oprot.WriteString(ctx, string(v)); err != nil {
-			return thrift.PrependError(fmt.Sprintf("%T. (0) field write error: ", p), err)
+	for _, v := range p.ComponentRV {
+		if err := v.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", v), err)
 		}
 	}
 	if err := oprot.WriteListEnd(ctx); err != nil {
 		return thrift.PrependError("error writing list end: ", err)
 	}
 	if err := oprot.WriteFieldEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field end error 4:peerRV: ", p), err)
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 4:componentRV: ", p), err)
 	}
 	return err
 }
@@ -1604,12 +1826,12 @@ func (p *GetChunkResponse) Equals(other *GetChunkResponse) bool {
 	if p.TimeTaken != other.TimeTaken {
 		return false
 	}
-	if len(p.PeerRV) != len(other.PeerRV) {
+	if len(p.ComponentRV) != len(other.ComponentRV) {
 		return false
 	}
-	for i, _tgt := range p.PeerRV {
-		_src9 := other.PeerRV[i]
-		if _tgt != _src9 {
+	for i, _tgt := range p.ComponentRV {
+		_src11 := other.ComponentRV[i]
+		if !_tgt.Equals(_src11) {
 			return false
 		}
 	}
@@ -1627,10 +1849,12 @@ func (p *GetChunkResponse) String() string {
 //   - Chunk
 //   - Length
 //   - IsSync
+//   - ComponentRV
 type PutChunkRequest struct {
-	Chunk  *Chunk `thrift:"chunk,1" db:"chunk" json:"chunk"`
-	Length int64  `thrift:"length,2" db:"length" json:"length"`
-	IsSync bool   `thrift:"isSync,3" db:"isSync" json:"isSync"`
+	Chunk       *Chunk            `thrift:"chunk,1" db:"chunk" json:"chunk"`
+	Length      int64             `thrift:"length,2" db:"length" json:"length"`
+	IsSync      bool              `thrift:"isSync,3" db:"isSync" json:"isSync"`
+	ComponentRV []*RVNameAndState `thrift:"componentRV,4" db:"componentRV" json:"componentRV"`
 }
 
 func NewPutChunkRequest() *PutChunkRequest {
@@ -1652,6 +1876,10 @@ func (p *PutChunkRequest) GetLength() int64 {
 
 func (p *PutChunkRequest) GetIsSync() bool {
 	return p.IsSync
+}
+
+func (p *PutChunkRequest) GetComponentRV() []*RVNameAndState {
+	return p.ComponentRV
 }
 func (p *PutChunkRequest) IsSetChunk() bool {
 	return p.Chunk != nil
@@ -1701,6 +1929,16 @@ func (p *PutChunkRequest) Read(ctx context.Context, iprot thrift.TProtocol) erro
 					return err
 				}
 			}
+		case 4:
+			if fieldTypeId == thrift.LIST {
+				if err := p.ReadField4(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
 		default:
 			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
 				return err
@@ -1742,6 +1980,26 @@ func (p *PutChunkRequest) ReadField3(ctx context.Context, iprot thrift.TProtocol
 	return nil
 }
 
+func (p *PutChunkRequest) ReadField4(ctx context.Context, iprot thrift.TProtocol) error {
+	_, size, err := iprot.ReadListBegin(ctx)
+	if err != nil {
+		return thrift.PrependError("error reading list begin: ", err)
+	}
+	tSlice := make([]*RVNameAndState, 0, size)
+	p.ComponentRV = tSlice
+	for i := 0; i < size; i++ {
+		_elem12 := &RVNameAndState{}
+		if err := _elem12.Read(ctx, iprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", _elem12), err)
+		}
+		p.ComponentRV = append(p.ComponentRV, _elem12)
+	}
+	if err := iprot.ReadListEnd(ctx); err != nil {
+		return thrift.PrependError("error reading list end: ", err)
+	}
+	return nil
+}
+
 func (p *PutChunkRequest) Write(ctx context.Context, oprot thrift.TProtocol) error {
 	if err := oprot.WriteStructBegin(ctx, "PutChunkRequest"); err != nil {
 		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
@@ -1754,6 +2012,9 @@ func (p *PutChunkRequest) Write(ctx context.Context, oprot thrift.TProtocol) err
 			return err
 		}
 		if err := p.writeField3(ctx, oprot); err != nil {
+			return err
+		}
+		if err := p.writeField4(ctx, oprot); err != nil {
 			return err
 		}
 	}
@@ -1805,6 +2066,27 @@ func (p *PutChunkRequest) writeField3(ctx context.Context, oprot thrift.TProtoco
 	return err
 }
 
+func (p *PutChunkRequest) writeField4(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "componentRV", thrift.LIST, 4); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 4:componentRV: ", p), err)
+	}
+	if err := oprot.WriteListBegin(ctx, thrift.STRUCT, len(p.ComponentRV)); err != nil {
+		return thrift.PrependError("error writing list begin: ", err)
+	}
+	for _, v := range p.ComponentRV {
+		if err := v.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", v), err)
+		}
+	}
+	if err := oprot.WriteListEnd(ctx); err != nil {
+		return thrift.PrependError("error writing list end: ", err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 4:componentRV: ", p), err)
+	}
+	return err
+}
+
 func (p *PutChunkRequest) Equals(other *PutChunkRequest) bool {
 	if p == other {
 		return true
@@ -1820,6 +2102,15 @@ func (p *PutChunkRequest) Equals(other *PutChunkRequest) bool {
 	if p.IsSync != other.IsSync {
 		return false
 	}
+	if len(p.ComponentRV) != len(other.ComponentRV) {
+		return false
+	}
+	for i, _tgt := range p.ComponentRV {
+		_src13 := other.ComponentRV[i]
+		if !_tgt.Equals(_src13) {
+			return false
+		}
+	}
 	return true
 }
 
@@ -1833,11 +2124,11 @@ func (p *PutChunkRequest) String() string {
 // Attributes:
 //   - TimeTaken
 //   - AvailableSpace
-//   - PeerRV
+//   - ComponentRV
 type PutChunkResponse struct {
-	TimeTaken      int64    `thrift:"timeTaken,1" db:"timeTaken" json:"timeTaken"`
-	AvailableSpace int64    `thrift:"availableSpace,2" db:"availableSpace" json:"availableSpace"`
-	PeerRV         []string `thrift:"peerRV,3" db:"peerRV" json:"peerRV"`
+	TimeTaken      int64             `thrift:"timeTaken,1" db:"timeTaken" json:"timeTaken"`
+	AvailableSpace int64             `thrift:"availableSpace,2" db:"availableSpace" json:"availableSpace"`
+	ComponentRV    []*RVNameAndState `thrift:"componentRV,3" db:"componentRV" json:"componentRV"`
 }
 
 func NewPutChunkResponse() *PutChunkResponse {
@@ -1852,8 +2143,8 @@ func (p *PutChunkResponse) GetAvailableSpace() int64 {
 	return p.AvailableSpace
 }
 
-func (p *PutChunkResponse) GetPeerRV() []string {
-	return p.PeerRV
+func (p *PutChunkResponse) GetComponentRV() []*RVNameAndState {
+	return p.ComponentRV
 }
 func (p *PutChunkResponse) Read(ctx context.Context, iprot thrift.TProtocol) error {
 	if _, err := iprot.ReadStructBegin(ctx); err != nil {
@@ -1937,16 +2228,14 @@ func (p *PutChunkResponse) ReadField3(ctx context.Context, iprot thrift.TProtoco
 	if err != nil {
 		return thrift.PrependError("error reading list begin: ", err)
 	}
-	tSlice := make([]string, 0, size)
-	p.PeerRV = tSlice
+	tSlice := make([]*RVNameAndState, 0, size)
+	p.ComponentRV = tSlice
 	for i := 0; i < size; i++ {
-		var _elem10 string
-		if v, err := iprot.ReadString(ctx); err != nil {
-			return thrift.PrependError("error reading field 0: ", err)
-		} else {
-			_elem10 = v
+		_elem14 := &RVNameAndState{}
+		if err := _elem14.Read(ctx, iprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", _elem14), err)
 		}
-		p.PeerRV = append(p.PeerRV, _elem10)
+		p.ComponentRV = append(p.ComponentRV, _elem14)
 	}
 	if err := iprot.ReadListEnd(ctx); err != nil {
 		return thrift.PrependError("error reading list end: ", err)
@@ -2005,22 +2294,22 @@ func (p *PutChunkResponse) writeField2(ctx context.Context, oprot thrift.TProtoc
 }
 
 func (p *PutChunkResponse) writeField3(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "peerRV", thrift.LIST, 3); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field begin error 3:peerRV: ", p), err)
+	if err := oprot.WriteFieldBegin(ctx, "componentRV", thrift.LIST, 3); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 3:componentRV: ", p), err)
 	}
-	if err := oprot.WriteListBegin(ctx, thrift.STRING, len(p.PeerRV)); err != nil {
+	if err := oprot.WriteListBegin(ctx, thrift.STRUCT, len(p.ComponentRV)); err != nil {
 		return thrift.PrependError("error writing list begin: ", err)
 	}
-	for _, v := range p.PeerRV {
-		if err := oprot.WriteString(ctx, string(v)); err != nil {
-			return thrift.PrependError(fmt.Sprintf("%T. (0) field write error: ", p), err)
+	for _, v := range p.ComponentRV {
+		if err := v.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", v), err)
 		}
 	}
 	if err := oprot.WriteListEnd(ctx); err != nil {
 		return thrift.PrependError("error writing list end: ", err)
 	}
 	if err := oprot.WriteFieldEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field end error 3:peerRV: ", p), err)
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 3:componentRV: ", p), err)
 	}
 	return err
 }
@@ -2037,12 +2326,12 @@ func (p *PutChunkResponse) Equals(other *PutChunkResponse) bool {
 	if p.AvailableSpace != other.AvailableSpace {
 		return false
 	}
-	if len(p.PeerRV) != len(other.PeerRV) {
+	if len(p.ComponentRV) != len(other.ComponentRV) {
 		return false
 	}
-	for i, _tgt := range p.PeerRV {
-		_src11 := other.PeerRV[i]
-		if _tgt != _src11 {
+	for i, _tgt := range p.ComponentRV {
+		_src15 := other.ComponentRV[i]
+		if !_tgt.Equals(_src15) {
 			return false
 		}
 	}
@@ -2058,8 +2347,10 @@ func (p *PutChunkResponse) String() string {
 
 // Attributes:
 //   - Address
+//   - ComponentRV
 type RemoveChunkRequest struct {
-	Address *Address `thrift:"address,1" db:"address" json:"address"`
+	Address     *Address          `thrift:"address,1" db:"address" json:"address"`
+	ComponentRV []*RVNameAndState `thrift:"componentRV,2" db:"componentRV" json:"componentRV"`
 }
 
 func NewRemoveChunkRequest() *RemoveChunkRequest {
@@ -2073,6 +2364,10 @@ func (p *RemoveChunkRequest) GetAddress() *Address {
 		return RemoveChunkRequest_Address_DEFAULT
 	}
 	return p.Address
+}
+
+func (p *RemoveChunkRequest) GetComponentRV() []*RVNameAndState {
+	return p.ComponentRV
 }
 func (p *RemoveChunkRequest) IsSetAddress() bool {
 	return p.Address != nil
@@ -2095,6 +2390,16 @@ func (p *RemoveChunkRequest) Read(ctx context.Context, iprot thrift.TProtocol) e
 		case 1:
 			if fieldTypeId == thrift.STRUCT {
 				if err := p.ReadField1(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 2:
+			if fieldTypeId == thrift.LIST {
+				if err := p.ReadField2(ctx, iprot); err != nil {
 					return err
 				}
 			} else {
@@ -2125,12 +2430,35 @@ func (p *RemoveChunkRequest) ReadField1(ctx context.Context, iprot thrift.TProto
 	return nil
 }
 
+func (p *RemoveChunkRequest) ReadField2(ctx context.Context, iprot thrift.TProtocol) error {
+	_, size, err := iprot.ReadListBegin(ctx)
+	if err != nil {
+		return thrift.PrependError("error reading list begin: ", err)
+	}
+	tSlice := make([]*RVNameAndState, 0, size)
+	p.ComponentRV = tSlice
+	for i := 0; i < size; i++ {
+		_elem16 := &RVNameAndState{}
+		if err := _elem16.Read(ctx, iprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", _elem16), err)
+		}
+		p.ComponentRV = append(p.ComponentRV, _elem16)
+	}
+	if err := iprot.ReadListEnd(ctx); err != nil {
+		return thrift.PrependError("error reading list end: ", err)
+	}
+	return nil
+}
+
 func (p *RemoveChunkRequest) Write(ctx context.Context, oprot thrift.TProtocol) error {
 	if err := oprot.WriteStructBegin(ctx, "RemoveChunkRequest"); err != nil {
 		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
 	}
 	if p != nil {
 		if err := p.writeField1(ctx, oprot); err != nil {
+			return err
+		}
+		if err := p.writeField2(ctx, oprot); err != nil {
 			return err
 		}
 	}
@@ -2156,6 +2484,27 @@ func (p *RemoveChunkRequest) writeField1(ctx context.Context, oprot thrift.TProt
 	return err
 }
 
+func (p *RemoveChunkRequest) writeField2(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "componentRV", thrift.LIST, 2); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 2:componentRV: ", p), err)
+	}
+	if err := oprot.WriteListBegin(ctx, thrift.STRUCT, len(p.ComponentRV)); err != nil {
+		return thrift.PrependError("error writing list begin: ", err)
+	}
+	for _, v := range p.ComponentRV {
+		if err := v.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", v), err)
+		}
+	}
+	if err := oprot.WriteListEnd(ctx); err != nil {
+		return thrift.PrependError("error writing list end: ", err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 2:componentRV: ", p), err)
+	}
+	return err
+}
+
 func (p *RemoveChunkRequest) Equals(other *RemoveChunkRequest) bool {
 	if p == other {
 		return true
@@ -2164,6 +2513,15 @@ func (p *RemoveChunkRequest) Equals(other *RemoveChunkRequest) bool {
 	}
 	if !p.Address.Equals(other.Address) {
 		return false
+	}
+	if len(p.ComponentRV) != len(other.ComponentRV) {
+		return false
+	}
+	for i, _tgt := range p.ComponentRV {
+		_src17 := other.ComponentRV[i]
+		if !_tgt.Equals(_src17) {
+			return false
+		}
 	}
 	return true
 }
@@ -2178,11 +2536,11 @@ func (p *RemoveChunkRequest) String() string {
 // Attributes:
 //   - TimeTaken
 //   - AvailableSpace
-//   - PeerRV
+//   - ComponentRV
 type RemoveChunkResponse struct {
-	TimeTaken      int64    `thrift:"timeTaken,1" db:"timeTaken" json:"timeTaken"`
-	AvailableSpace int64    `thrift:"availableSpace,2" db:"availableSpace" json:"availableSpace"`
-	PeerRV         []string `thrift:"peerRV,3" db:"peerRV" json:"peerRV"`
+	TimeTaken      int64             `thrift:"timeTaken,1" db:"timeTaken" json:"timeTaken"`
+	AvailableSpace int64             `thrift:"availableSpace,2" db:"availableSpace" json:"availableSpace"`
+	ComponentRV    []*RVNameAndState `thrift:"componentRV,3" db:"componentRV" json:"componentRV"`
 }
 
 func NewRemoveChunkResponse() *RemoveChunkResponse {
@@ -2197,8 +2555,8 @@ func (p *RemoveChunkResponse) GetAvailableSpace() int64 {
 	return p.AvailableSpace
 }
 
-func (p *RemoveChunkResponse) GetPeerRV() []string {
-	return p.PeerRV
+func (p *RemoveChunkResponse) GetComponentRV() []*RVNameAndState {
+	return p.ComponentRV
 }
 func (p *RemoveChunkResponse) Read(ctx context.Context, iprot thrift.TProtocol) error {
 	if _, err := iprot.ReadStructBegin(ctx); err != nil {
@@ -2282,16 +2640,14 @@ func (p *RemoveChunkResponse) ReadField3(ctx context.Context, iprot thrift.TProt
 	if err != nil {
 		return thrift.PrependError("error reading list begin: ", err)
 	}
-	tSlice := make([]string, 0, size)
-	p.PeerRV = tSlice
+	tSlice := make([]*RVNameAndState, 0, size)
+	p.ComponentRV = tSlice
 	for i := 0; i < size; i++ {
-		var _elem12 string
-		if v, err := iprot.ReadString(ctx); err != nil {
-			return thrift.PrependError("error reading field 0: ", err)
-		} else {
-			_elem12 = v
+		_elem18 := &RVNameAndState{}
+		if err := _elem18.Read(ctx, iprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", _elem18), err)
 		}
-		p.PeerRV = append(p.PeerRV, _elem12)
+		p.ComponentRV = append(p.ComponentRV, _elem18)
 	}
 	if err := iprot.ReadListEnd(ctx); err != nil {
 		return thrift.PrependError("error reading list end: ", err)
@@ -2350,22 +2706,22 @@ func (p *RemoveChunkResponse) writeField2(ctx context.Context, oprot thrift.TPro
 }
 
 func (p *RemoveChunkResponse) writeField3(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "peerRV", thrift.LIST, 3); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field begin error 3:peerRV: ", p), err)
+	if err := oprot.WriteFieldBegin(ctx, "componentRV", thrift.LIST, 3); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 3:componentRV: ", p), err)
 	}
-	if err := oprot.WriteListBegin(ctx, thrift.STRING, len(p.PeerRV)); err != nil {
+	if err := oprot.WriteListBegin(ctx, thrift.STRUCT, len(p.ComponentRV)); err != nil {
 		return thrift.PrependError("error writing list begin: ", err)
 	}
-	for _, v := range p.PeerRV {
-		if err := oprot.WriteString(ctx, string(v)); err != nil {
-			return thrift.PrependError(fmt.Sprintf("%T. (0) field write error: ", p), err)
+	for _, v := range p.ComponentRV {
+		if err := v.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", v), err)
 		}
 	}
 	if err := oprot.WriteListEnd(ctx); err != nil {
 		return thrift.PrependError("error writing list end: ", err)
 	}
 	if err := oprot.WriteFieldEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field end error 3:peerRV: ", p), err)
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 3:componentRV: ", p), err)
 	}
 	return err
 }
@@ -2382,12 +2738,12 @@ func (p *RemoveChunkResponse) Equals(other *RemoveChunkResponse) bool {
 	if p.AvailableSpace != other.AvailableSpace {
 		return false
 	}
-	if len(p.PeerRV) != len(other.PeerRV) {
+	if len(p.ComponentRV) != len(other.ComponentRV) {
 		return false
 	}
-	for i, _tgt := range p.PeerRV {
-		_src13 := other.PeerRV[i]
-		if _tgt != _src13 {
+	for i, _tgt := range p.ComponentRV {
+		_src19 := other.ComponentRV[i]
+		if !_tgt.Equals(_src19) {
 			return false
 		}
 	}
@@ -2403,14 +2759,14 @@ func (p *RemoveChunkResponse) String() string {
 
 // Attributes:
 //   - MV
-//   - RV
+//   - RVName
 //   - ReserveSpace
-//   - PeerRV
+//   - ComponentRV
 type JoinMVRequest struct {
-	MV           string   `thrift:"MV,1" db:"MV" json:"MV"`
-	RV           string   `thrift:"RV,2" db:"RV" json:"RV"`
-	ReserveSpace int64    `thrift:"reserveSpace,3" db:"reserveSpace" json:"reserveSpace"`
-	PeerRV       []string `thrift:"peerRV,4" db:"peerRV" json:"peerRV"`
+	MV           string            `thrift:"MV,1" db:"MV" json:"MV"`
+	RVName       string            `thrift:"RVName,2" db:"RVName" json:"RVName"`
+	ReserveSpace int64             `thrift:"reserveSpace,3" db:"reserveSpace" json:"reserveSpace"`
+	ComponentRV  []*RVNameAndState `thrift:"componentRV,4" db:"componentRV" json:"componentRV"`
 }
 
 func NewJoinMVRequest() *JoinMVRequest {
@@ -2421,16 +2777,16 @@ func (p *JoinMVRequest) GetMV() string {
 	return p.MV
 }
 
-func (p *JoinMVRequest) GetRV() string {
-	return p.RV
+func (p *JoinMVRequest) GetRVName() string {
+	return p.RVName
 }
 
 func (p *JoinMVRequest) GetReserveSpace() int64 {
 	return p.ReserveSpace
 }
 
-func (p *JoinMVRequest) GetPeerRV() []string {
-	return p.PeerRV
+func (p *JoinMVRequest) GetComponentRV() []*RVNameAndState {
+	return p.ComponentRV
 }
 func (p *JoinMVRequest) Read(ctx context.Context, iprot thrift.TProtocol) error {
 	if _, err := iprot.ReadStructBegin(ctx); err != nil {
@@ -2514,7 +2870,7 @@ func (p *JoinMVRequest) ReadField2(ctx context.Context, iprot thrift.TProtocol) 
 	if v, err := iprot.ReadString(ctx); err != nil {
 		return thrift.PrependError("error reading field 2: ", err)
 	} else {
-		p.RV = v
+		p.RVName = v
 	}
 	return nil
 }
@@ -2533,16 +2889,14 @@ func (p *JoinMVRequest) ReadField4(ctx context.Context, iprot thrift.TProtocol) 
 	if err != nil {
 		return thrift.PrependError("error reading list begin: ", err)
 	}
-	tSlice := make([]string, 0, size)
-	p.PeerRV = tSlice
+	tSlice := make([]*RVNameAndState, 0, size)
+	p.ComponentRV = tSlice
 	for i := 0; i < size; i++ {
-		var _elem14 string
-		if v, err := iprot.ReadString(ctx); err != nil {
-			return thrift.PrependError("error reading field 0: ", err)
-		} else {
-			_elem14 = v
+		_elem20 := &RVNameAndState{}
+		if err := _elem20.Read(ctx, iprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", _elem20), err)
 		}
-		p.PeerRV = append(p.PeerRV, _elem14)
+		p.ComponentRV = append(p.ComponentRV, _elem20)
 	}
 	if err := iprot.ReadListEnd(ctx); err != nil {
 		return thrift.PrependError("error reading list end: ", err)
@@ -2591,14 +2945,14 @@ func (p *JoinMVRequest) writeField1(ctx context.Context, oprot thrift.TProtocol)
 }
 
 func (p *JoinMVRequest) writeField2(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "RV", thrift.STRING, 2); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field begin error 2:RV: ", p), err)
+	if err := oprot.WriteFieldBegin(ctx, "RVName", thrift.STRING, 2); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 2:RVName: ", p), err)
 	}
-	if err := oprot.WriteString(ctx, string(p.RV)); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T.RV (2) field write error: ", p), err)
+	if err := oprot.WriteString(ctx, string(p.RVName)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.RVName (2) field write error: ", p), err)
 	}
 	if err := oprot.WriteFieldEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field end error 2:RV: ", p), err)
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 2:RVName: ", p), err)
 	}
 	return err
 }
@@ -2617,22 +2971,22 @@ func (p *JoinMVRequest) writeField3(ctx context.Context, oprot thrift.TProtocol)
 }
 
 func (p *JoinMVRequest) writeField4(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "peerRV", thrift.LIST, 4); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field begin error 4:peerRV: ", p), err)
+	if err := oprot.WriteFieldBegin(ctx, "componentRV", thrift.LIST, 4); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 4:componentRV: ", p), err)
 	}
-	if err := oprot.WriteListBegin(ctx, thrift.STRING, len(p.PeerRV)); err != nil {
+	if err := oprot.WriteListBegin(ctx, thrift.STRUCT, len(p.ComponentRV)); err != nil {
 		return thrift.PrependError("error writing list begin: ", err)
 	}
-	for _, v := range p.PeerRV {
-		if err := oprot.WriteString(ctx, string(v)); err != nil {
-			return thrift.PrependError(fmt.Sprintf("%T. (0) field write error: ", p), err)
+	for _, v := range p.ComponentRV {
+		if err := v.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", v), err)
 		}
 	}
 	if err := oprot.WriteListEnd(ctx); err != nil {
 		return thrift.PrependError("error writing list end: ", err)
 	}
 	if err := oprot.WriteFieldEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field end error 4:peerRV: ", p), err)
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 4:componentRV: ", p), err)
 	}
 	return err
 }
@@ -2646,18 +3000,18 @@ func (p *JoinMVRequest) Equals(other *JoinMVRequest) bool {
 	if p.MV != other.MV {
 		return false
 	}
-	if p.RV != other.RV {
+	if p.RVName != other.RVName {
 		return false
 	}
 	if p.ReserveSpace != other.ReserveSpace {
 		return false
 	}
-	if len(p.PeerRV) != len(other.PeerRV) {
+	if len(p.ComponentRV) != len(other.ComponentRV) {
 		return false
 	}
-	for i, _tgt := range p.PeerRV {
-		_src15 := other.PeerRV[i]
-		if _tgt != _src15 {
+	for i, _tgt := range p.ComponentRV {
+		_src21 := other.ComponentRV[i]
+		if !_tgt.Equals(_src21) {
 			return false
 		}
 	}
@@ -2737,12 +3091,300 @@ func (p *JoinMVResponse) String() string {
 
 // Attributes:
 //   - MV
-//   - RV
-//   - PeerRV
+//   - RVName
+//   - ComponentRV
+type UpdateMVRequest struct {
+	MV          string            `thrift:"MV,1" db:"MV" json:"MV"`
+	RVName      string            `thrift:"RVName,2" db:"RVName" json:"RVName"`
+	ComponentRV []*RVNameAndState `thrift:"componentRV,3" db:"componentRV" json:"componentRV"`
+}
+
+func NewUpdateMVRequest() *UpdateMVRequest {
+	return &UpdateMVRequest{}
+}
+
+func (p *UpdateMVRequest) GetMV() string {
+	return p.MV
+}
+
+func (p *UpdateMVRequest) GetRVName() string {
+	return p.RVName
+}
+
+func (p *UpdateMVRequest) GetComponentRV() []*RVNameAndState {
+	return p.ComponentRV
+}
+func (p *UpdateMVRequest) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 1:
+			if fieldTypeId == thrift.STRING {
+				if err := p.ReadField1(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 2:
+			if fieldTypeId == thrift.STRING {
+				if err := p.ReadField2(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 3:
+			if fieldTypeId == thrift.LIST {
+				if err := p.ReadField3(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *UpdateMVRequest) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadString(ctx); err != nil {
+		return thrift.PrependError("error reading field 1: ", err)
+	} else {
+		p.MV = v
+	}
+	return nil
+}
+
+func (p *UpdateMVRequest) ReadField2(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadString(ctx); err != nil {
+		return thrift.PrependError("error reading field 2: ", err)
+	} else {
+		p.RVName = v
+	}
+	return nil
+}
+
+func (p *UpdateMVRequest) ReadField3(ctx context.Context, iprot thrift.TProtocol) error {
+	_, size, err := iprot.ReadListBegin(ctx)
+	if err != nil {
+		return thrift.PrependError("error reading list begin: ", err)
+	}
+	tSlice := make([]*RVNameAndState, 0, size)
+	p.ComponentRV = tSlice
+	for i := 0; i < size; i++ {
+		_elem22 := &RVNameAndState{}
+		if err := _elem22.Read(ctx, iprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", _elem22), err)
+		}
+		p.ComponentRV = append(p.ComponentRV, _elem22)
+	}
+	if err := iprot.ReadListEnd(ctx); err != nil {
+		return thrift.PrependError("error reading list end: ", err)
+	}
+	return nil
+}
+
+func (p *UpdateMVRequest) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "UpdateMVRequest"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField1(ctx, oprot); err != nil {
+			return err
+		}
+		if err := p.writeField2(ctx, oprot); err != nil {
+			return err
+		}
+		if err := p.writeField3(ctx, oprot); err != nil {
+			return err
+		}
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *UpdateMVRequest) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "MV", thrift.STRING, 1); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:MV: ", p), err)
+	}
+	if err := oprot.WriteString(ctx, string(p.MV)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.MV (1) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:MV: ", p), err)
+	}
+	return err
+}
+
+func (p *UpdateMVRequest) writeField2(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "RVName", thrift.STRING, 2); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 2:RVName: ", p), err)
+	}
+	if err := oprot.WriteString(ctx, string(p.RVName)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.RVName (2) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 2:RVName: ", p), err)
+	}
+	return err
+}
+
+func (p *UpdateMVRequest) writeField3(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "componentRV", thrift.LIST, 3); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 3:componentRV: ", p), err)
+	}
+	if err := oprot.WriteListBegin(ctx, thrift.STRUCT, len(p.ComponentRV)); err != nil {
+		return thrift.PrependError("error writing list begin: ", err)
+	}
+	for _, v := range p.ComponentRV {
+		if err := v.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", v), err)
+		}
+	}
+	if err := oprot.WriteListEnd(ctx); err != nil {
+		return thrift.PrependError("error writing list end: ", err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 3:componentRV: ", p), err)
+	}
+	return err
+}
+
+func (p *UpdateMVRequest) Equals(other *UpdateMVRequest) bool {
+	if p == other {
+		return true
+	} else if p == nil || other == nil {
+		return false
+	}
+	if p.MV != other.MV {
+		return false
+	}
+	if p.RVName != other.RVName {
+		return false
+	}
+	if len(p.ComponentRV) != len(other.ComponentRV) {
+		return false
+	}
+	for i, _tgt := range p.ComponentRV {
+		_src23 := other.ComponentRV[i]
+		if !_tgt.Equals(_src23) {
+			return false
+		}
+	}
+	return true
+}
+
+func (p *UpdateMVRequest) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("UpdateMVRequest(%+v)", *p)
+}
+
+type UpdateMVResponse struct {
+}
+
+func NewUpdateMVResponse() *UpdateMVResponse {
+	return &UpdateMVResponse{}
+}
+
+func (p *UpdateMVResponse) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+			return err
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *UpdateMVResponse) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "UpdateMVResponse"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *UpdateMVResponse) Equals(other *UpdateMVResponse) bool {
+	if p == other {
+		return true
+	} else if p == nil || other == nil {
+		return false
+	}
+	return true
+}
+
+func (p *UpdateMVResponse) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("UpdateMVResponse(%+v)", *p)
+}
+
+// Attributes:
+//   - MV
+//   - RVName
+//   - ComponentRV
 type LeaveMVRequest struct {
-	MV     string   `thrift:"MV,1" db:"MV" json:"MV"`
-	RV     string   `thrift:"RV,2" db:"RV" json:"RV"`
-	PeerRV []string `thrift:"peerRV,3" db:"peerRV" json:"peerRV"`
+	MV          string            `thrift:"MV,1" db:"MV" json:"MV"`
+	RVName      string            `thrift:"RVName,2" db:"RVName" json:"RVName"`
+	ComponentRV []*RVNameAndState `thrift:"componentRV,3" db:"componentRV" json:"componentRV"`
 }
 
 func NewLeaveMVRequest() *LeaveMVRequest {
@@ -2753,12 +3395,12 @@ func (p *LeaveMVRequest) GetMV() string {
 	return p.MV
 }
 
-func (p *LeaveMVRequest) GetRV() string {
-	return p.RV
+func (p *LeaveMVRequest) GetRVName() string {
+	return p.RVName
 }
 
-func (p *LeaveMVRequest) GetPeerRV() []string {
-	return p.PeerRV
+func (p *LeaveMVRequest) GetComponentRV() []*RVNameAndState {
+	return p.ComponentRV
 }
 func (p *LeaveMVRequest) Read(ctx context.Context, iprot thrift.TProtocol) error {
 	if _, err := iprot.ReadStructBegin(ctx); err != nil {
@@ -2832,7 +3474,7 @@ func (p *LeaveMVRequest) ReadField2(ctx context.Context, iprot thrift.TProtocol)
 	if v, err := iprot.ReadString(ctx); err != nil {
 		return thrift.PrependError("error reading field 2: ", err)
 	} else {
-		p.RV = v
+		p.RVName = v
 	}
 	return nil
 }
@@ -2842,16 +3484,14 @@ func (p *LeaveMVRequest) ReadField3(ctx context.Context, iprot thrift.TProtocol)
 	if err != nil {
 		return thrift.PrependError("error reading list begin: ", err)
 	}
-	tSlice := make([]string, 0, size)
-	p.PeerRV = tSlice
+	tSlice := make([]*RVNameAndState, 0, size)
+	p.ComponentRV = tSlice
 	for i := 0; i < size; i++ {
-		var _elem16 string
-		if v, err := iprot.ReadString(ctx); err != nil {
-			return thrift.PrependError("error reading field 0: ", err)
-		} else {
-			_elem16 = v
+		_elem24 := &RVNameAndState{}
+		if err := _elem24.Read(ctx, iprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", _elem24), err)
 		}
-		p.PeerRV = append(p.PeerRV, _elem16)
+		p.ComponentRV = append(p.ComponentRV, _elem24)
 	}
 	if err := iprot.ReadListEnd(ctx); err != nil {
 		return thrift.PrependError("error reading list end: ", err)
@@ -2897,35 +3537,35 @@ func (p *LeaveMVRequest) writeField1(ctx context.Context, oprot thrift.TProtocol
 }
 
 func (p *LeaveMVRequest) writeField2(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "RV", thrift.STRING, 2); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field begin error 2:RV: ", p), err)
+	if err := oprot.WriteFieldBegin(ctx, "RVName", thrift.STRING, 2); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 2:RVName: ", p), err)
 	}
-	if err := oprot.WriteString(ctx, string(p.RV)); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T.RV (2) field write error: ", p), err)
+	if err := oprot.WriteString(ctx, string(p.RVName)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.RVName (2) field write error: ", p), err)
 	}
 	if err := oprot.WriteFieldEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field end error 2:RV: ", p), err)
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 2:RVName: ", p), err)
 	}
 	return err
 }
 
 func (p *LeaveMVRequest) writeField3(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "peerRV", thrift.LIST, 3); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field begin error 3:peerRV: ", p), err)
+	if err := oprot.WriteFieldBegin(ctx, "componentRV", thrift.LIST, 3); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 3:componentRV: ", p), err)
 	}
-	if err := oprot.WriteListBegin(ctx, thrift.STRING, len(p.PeerRV)); err != nil {
+	if err := oprot.WriteListBegin(ctx, thrift.STRUCT, len(p.ComponentRV)); err != nil {
 		return thrift.PrependError("error writing list begin: ", err)
 	}
-	for _, v := range p.PeerRV {
-		if err := oprot.WriteString(ctx, string(v)); err != nil {
-			return thrift.PrependError(fmt.Sprintf("%T. (0) field write error: ", p), err)
+	for _, v := range p.ComponentRV {
+		if err := v.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", v), err)
 		}
 	}
 	if err := oprot.WriteListEnd(ctx); err != nil {
 		return thrift.PrependError("error writing list end: ", err)
 	}
 	if err := oprot.WriteFieldEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field end error 3:peerRV: ", p), err)
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 3:componentRV: ", p), err)
 	}
 	return err
 }
@@ -2939,15 +3579,15 @@ func (p *LeaveMVRequest) Equals(other *LeaveMVRequest) bool {
 	if p.MV != other.MV {
 		return false
 	}
-	if p.RV != other.RV {
+	if p.RVName != other.RVName {
 		return false
 	}
-	if len(p.PeerRV) != len(other.PeerRV) {
+	if len(p.ComponentRV) != len(other.ComponentRV) {
 		return false
 	}
-	for i, _tgt := range p.PeerRV {
-		_src17 := other.PeerRV[i]
-		if _tgt != _src17 {
+	for i, _tgt := range p.ComponentRV {
+		_src25 := other.ComponentRV[i]
+		if !_tgt.Equals(_src25) {
 			return false
 		}
 	}
@@ -3027,16 +3667,16 @@ func (p *LeaveMVResponse) String() string {
 
 // Attributes:
 //   - MV
-//   - PeerRV
-//   - SourceRV
-//   - TargetRV
+//   - SourceRVName
+//   - TargetRVName
+//   - ComponentRV
 //   - DataLength
 type StartSyncRequest struct {
-	MV         string   `thrift:"MV,1" db:"MV" json:"MV"`
-	PeerRV     []string `thrift:"peerRV,2" db:"peerRV" json:"peerRV"`
-	SourceRV   string   `thrift:"sourceRV,3" db:"sourceRV" json:"sourceRV"`
-	TargetRV   string   `thrift:"targetRV,4" db:"targetRV" json:"targetRV"`
-	DataLength int64    `thrift:"dataLength,5" db:"dataLength" json:"dataLength"`
+	MV           string            `thrift:"MV,1" db:"MV" json:"MV"`
+	SourceRVName string            `thrift:"sourceRVName,2" db:"sourceRVName" json:"sourceRVName"`
+	TargetRVName string            `thrift:"targetRVName,3" db:"targetRVName" json:"targetRVName"`
+	ComponentRV  []*RVNameAndState `thrift:"componentRV,4" db:"componentRV" json:"componentRV"`
+	DataLength   int64             `thrift:"dataLength,5" db:"dataLength" json:"dataLength"`
 }
 
 func NewStartSyncRequest() *StartSyncRequest {
@@ -3047,16 +3687,16 @@ func (p *StartSyncRequest) GetMV() string {
 	return p.MV
 }
 
-func (p *StartSyncRequest) GetPeerRV() []string {
-	return p.PeerRV
+func (p *StartSyncRequest) GetSourceRVName() string {
+	return p.SourceRVName
 }
 
-func (p *StartSyncRequest) GetSourceRV() string {
-	return p.SourceRV
+func (p *StartSyncRequest) GetTargetRVName() string {
+	return p.TargetRVName
 }
 
-func (p *StartSyncRequest) GetTargetRV() string {
-	return p.TargetRV
+func (p *StartSyncRequest) GetComponentRV() []*RVNameAndState {
+	return p.ComponentRV
 }
 
 func (p *StartSyncRequest) GetDataLength() int64 {
@@ -3087,7 +3727,7 @@ func (p *StartSyncRequest) Read(ctx context.Context, iprot thrift.TProtocol) err
 				}
 			}
 		case 2:
-			if fieldTypeId == thrift.LIST {
+			if fieldTypeId == thrift.STRING {
 				if err := p.ReadField2(ctx, iprot); err != nil {
 					return err
 				}
@@ -3107,7 +3747,7 @@ func (p *StartSyncRequest) Read(ctx context.Context, iprot thrift.TProtocol) err
 				}
 			}
 		case 4:
-			if fieldTypeId == thrift.STRING {
+			if fieldTypeId == thrift.LIST {
 				if err := p.ReadField4(ctx, iprot); err != nil {
 					return err
 				}
@@ -3151,23 +3791,10 @@ func (p *StartSyncRequest) ReadField1(ctx context.Context, iprot thrift.TProtoco
 }
 
 func (p *StartSyncRequest) ReadField2(ctx context.Context, iprot thrift.TProtocol) error {
-	_, size, err := iprot.ReadListBegin(ctx)
-	if err != nil {
-		return thrift.PrependError("error reading list begin: ", err)
-	}
-	tSlice := make([]string, 0, size)
-	p.PeerRV = tSlice
-	for i := 0; i < size; i++ {
-		var _elem18 string
-		if v, err := iprot.ReadString(ctx); err != nil {
-			return thrift.PrependError("error reading field 0: ", err)
-		} else {
-			_elem18 = v
-		}
-		p.PeerRV = append(p.PeerRV, _elem18)
-	}
-	if err := iprot.ReadListEnd(ctx); err != nil {
-		return thrift.PrependError("error reading list end: ", err)
+	if v, err := iprot.ReadString(ctx); err != nil {
+		return thrift.PrependError("error reading field 2: ", err)
+	} else {
+		p.SourceRVName = v
 	}
 	return nil
 }
@@ -3176,16 +3803,27 @@ func (p *StartSyncRequest) ReadField3(ctx context.Context, iprot thrift.TProtoco
 	if v, err := iprot.ReadString(ctx); err != nil {
 		return thrift.PrependError("error reading field 3: ", err)
 	} else {
-		p.SourceRV = v
+		p.TargetRVName = v
 	}
 	return nil
 }
 
 func (p *StartSyncRequest) ReadField4(ctx context.Context, iprot thrift.TProtocol) error {
-	if v, err := iprot.ReadString(ctx); err != nil {
-		return thrift.PrependError("error reading field 4: ", err)
-	} else {
-		p.TargetRV = v
+	_, size, err := iprot.ReadListBegin(ctx)
+	if err != nil {
+		return thrift.PrependError("error reading list begin: ", err)
+	}
+	tSlice := make([]*RVNameAndState, 0, size)
+	p.ComponentRV = tSlice
+	for i := 0; i < size; i++ {
+		_elem26 := &RVNameAndState{}
+		if err := _elem26.Read(ctx, iprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", _elem26), err)
+		}
+		p.ComponentRV = append(p.ComponentRV, _elem26)
+	}
+	if err := iprot.ReadListEnd(ctx); err != nil {
+		return thrift.PrependError("error reading list end: ", err)
 	}
 	return nil
 }
@@ -3243,48 +3881,48 @@ func (p *StartSyncRequest) writeField1(ctx context.Context, oprot thrift.TProtoc
 }
 
 func (p *StartSyncRequest) writeField2(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "peerRV", thrift.LIST, 2); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field begin error 2:peerRV: ", p), err)
+	if err := oprot.WriteFieldBegin(ctx, "sourceRVName", thrift.STRING, 2); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 2:sourceRVName: ", p), err)
 	}
-	if err := oprot.WriteListBegin(ctx, thrift.STRING, len(p.PeerRV)); err != nil {
+	if err := oprot.WriteString(ctx, string(p.SourceRVName)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.sourceRVName (2) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 2:sourceRVName: ", p), err)
+	}
+	return err
+}
+
+func (p *StartSyncRequest) writeField3(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "targetRVName", thrift.STRING, 3); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 3:targetRVName: ", p), err)
+	}
+	if err := oprot.WriteString(ctx, string(p.TargetRVName)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.targetRVName (3) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 3:targetRVName: ", p), err)
+	}
+	return err
+}
+
+func (p *StartSyncRequest) writeField4(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "componentRV", thrift.LIST, 4); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 4:componentRV: ", p), err)
+	}
+	if err := oprot.WriteListBegin(ctx, thrift.STRUCT, len(p.ComponentRV)); err != nil {
 		return thrift.PrependError("error writing list begin: ", err)
 	}
-	for _, v := range p.PeerRV {
-		if err := oprot.WriteString(ctx, string(v)); err != nil {
-			return thrift.PrependError(fmt.Sprintf("%T. (0) field write error: ", p), err)
+	for _, v := range p.ComponentRV {
+		if err := v.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", v), err)
 		}
 	}
 	if err := oprot.WriteListEnd(ctx); err != nil {
 		return thrift.PrependError("error writing list end: ", err)
 	}
 	if err := oprot.WriteFieldEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field end error 2:peerRV: ", p), err)
-	}
-	return err
-}
-
-func (p *StartSyncRequest) writeField3(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "sourceRV", thrift.STRING, 3); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field begin error 3:sourceRV: ", p), err)
-	}
-	if err := oprot.WriteString(ctx, string(p.SourceRV)); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T.sourceRV (3) field write error: ", p), err)
-	}
-	if err := oprot.WriteFieldEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field end error 3:sourceRV: ", p), err)
-	}
-	return err
-}
-
-func (p *StartSyncRequest) writeField4(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "targetRV", thrift.STRING, 4); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field begin error 4:targetRV: ", p), err)
-	}
-	if err := oprot.WriteString(ctx, string(p.TargetRV)); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T.targetRV (4) field write error: ", p), err)
-	}
-	if err := oprot.WriteFieldEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field end error 4:targetRV: ", p), err)
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 4:componentRV: ", p), err)
 	}
 	return err
 }
@@ -3311,20 +3949,20 @@ func (p *StartSyncRequest) Equals(other *StartSyncRequest) bool {
 	if p.MV != other.MV {
 		return false
 	}
-	if len(p.PeerRV) != len(other.PeerRV) {
+	if p.SourceRVName != other.SourceRVName {
 		return false
 	}
-	for i, _tgt := range p.PeerRV {
-		_src19 := other.PeerRV[i]
-		if _tgt != _src19 {
+	if p.TargetRVName != other.TargetRVName {
+		return false
+	}
+	if len(p.ComponentRV) != len(other.ComponentRV) {
+		return false
+	}
+	for i, _tgt := range p.ComponentRV {
+		_src27 := other.ComponentRV[i]
+		if !_tgt.Equals(_src27) {
 			return false
 		}
-	}
-	if p.SourceRV != other.SourceRV {
-		return false
-	}
-	if p.TargetRV != other.TargetRV {
-		return false
 	}
 	if p.DataLength != other.DataLength {
 		return false
@@ -3453,17 +4091,17 @@ func (p *StartSyncResponse) String() string {
 // Attributes:
 //   - SyncID
 //   - MV
-//   - PeerRV
-//   - SourceRV
-//   - TargetRV
+//   - SourceRVName
+//   - TargetRVName
+//   - ComponentRV
 //   - DataLength
 type EndSyncRequest struct {
-	SyncID     string   `thrift:"syncID,1" db:"syncID" json:"syncID"`
-	MV         string   `thrift:"MV,2" db:"MV" json:"MV"`
-	PeerRV     []string `thrift:"peerRV,3" db:"peerRV" json:"peerRV"`
-	SourceRV   string   `thrift:"sourceRV,4" db:"sourceRV" json:"sourceRV"`
-	TargetRV   string   `thrift:"targetRV,5" db:"targetRV" json:"targetRV"`
-	DataLength int64    `thrift:"dataLength,6" db:"dataLength" json:"dataLength"`
+	SyncID       string            `thrift:"syncID,1" db:"syncID" json:"syncID"`
+	MV           string            `thrift:"MV,2" db:"MV" json:"MV"`
+	SourceRVName string            `thrift:"sourceRVName,3" db:"sourceRVName" json:"sourceRVName"`
+	TargetRVName string            `thrift:"targetRVName,4" db:"targetRVName" json:"targetRVName"`
+	ComponentRV  []*RVNameAndState `thrift:"componentRV,5" db:"componentRV" json:"componentRV"`
+	DataLength   int64             `thrift:"dataLength,6" db:"dataLength" json:"dataLength"`
 }
 
 func NewEndSyncRequest() *EndSyncRequest {
@@ -3478,16 +4116,16 @@ func (p *EndSyncRequest) GetMV() string {
 	return p.MV
 }
 
-func (p *EndSyncRequest) GetPeerRV() []string {
-	return p.PeerRV
+func (p *EndSyncRequest) GetSourceRVName() string {
+	return p.SourceRVName
 }
 
-func (p *EndSyncRequest) GetSourceRV() string {
-	return p.SourceRV
+func (p *EndSyncRequest) GetTargetRVName() string {
+	return p.TargetRVName
 }
 
-func (p *EndSyncRequest) GetTargetRV() string {
-	return p.TargetRV
+func (p *EndSyncRequest) GetComponentRV() []*RVNameAndState {
+	return p.ComponentRV
 }
 
 func (p *EndSyncRequest) GetDataLength() int64 {
@@ -3528,7 +4166,7 @@ func (p *EndSyncRequest) Read(ctx context.Context, iprot thrift.TProtocol) error
 				}
 			}
 		case 3:
-			if fieldTypeId == thrift.LIST {
+			if fieldTypeId == thrift.STRING {
 				if err := p.ReadField3(ctx, iprot); err != nil {
 					return err
 				}
@@ -3548,7 +4186,7 @@ func (p *EndSyncRequest) Read(ctx context.Context, iprot thrift.TProtocol) error
 				}
 			}
 		case 5:
-			if fieldTypeId == thrift.STRING {
+			if fieldTypeId == thrift.LIST {
 				if err := p.ReadField5(ctx, iprot); err != nil {
 					return err
 				}
@@ -3601,23 +4239,10 @@ func (p *EndSyncRequest) ReadField2(ctx context.Context, iprot thrift.TProtocol)
 }
 
 func (p *EndSyncRequest) ReadField3(ctx context.Context, iprot thrift.TProtocol) error {
-	_, size, err := iprot.ReadListBegin(ctx)
-	if err != nil {
-		return thrift.PrependError("error reading list begin: ", err)
-	}
-	tSlice := make([]string, 0, size)
-	p.PeerRV = tSlice
-	for i := 0; i < size; i++ {
-		var _elem20 string
-		if v, err := iprot.ReadString(ctx); err != nil {
-			return thrift.PrependError("error reading field 0: ", err)
-		} else {
-			_elem20 = v
-		}
-		p.PeerRV = append(p.PeerRV, _elem20)
-	}
-	if err := iprot.ReadListEnd(ctx); err != nil {
-		return thrift.PrependError("error reading list end: ", err)
+	if v, err := iprot.ReadString(ctx); err != nil {
+		return thrift.PrependError("error reading field 3: ", err)
+	} else {
+		p.SourceRVName = v
 	}
 	return nil
 }
@@ -3626,16 +4251,27 @@ func (p *EndSyncRequest) ReadField4(ctx context.Context, iprot thrift.TProtocol)
 	if v, err := iprot.ReadString(ctx); err != nil {
 		return thrift.PrependError("error reading field 4: ", err)
 	} else {
-		p.SourceRV = v
+		p.TargetRVName = v
 	}
 	return nil
 }
 
 func (p *EndSyncRequest) ReadField5(ctx context.Context, iprot thrift.TProtocol) error {
-	if v, err := iprot.ReadString(ctx); err != nil {
-		return thrift.PrependError("error reading field 5: ", err)
-	} else {
-		p.TargetRV = v
+	_, size, err := iprot.ReadListBegin(ctx)
+	if err != nil {
+		return thrift.PrependError("error reading list begin: ", err)
+	}
+	tSlice := make([]*RVNameAndState, 0, size)
+	p.ComponentRV = tSlice
+	for i := 0; i < size; i++ {
+		_elem28 := &RVNameAndState{}
+		if err := _elem28.Read(ctx, iprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", _elem28), err)
+		}
+		p.ComponentRV = append(p.ComponentRV, _elem28)
+	}
+	if err := iprot.ReadListEnd(ctx); err != nil {
+		return thrift.PrependError("error reading list end: ", err)
 	}
 	return nil
 }
@@ -3709,48 +4345,48 @@ func (p *EndSyncRequest) writeField2(ctx context.Context, oprot thrift.TProtocol
 }
 
 func (p *EndSyncRequest) writeField3(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "peerRV", thrift.LIST, 3); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field begin error 3:peerRV: ", p), err)
+	if err := oprot.WriteFieldBegin(ctx, "sourceRVName", thrift.STRING, 3); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 3:sourceRVName: ", p), err)
 	}
-	if err := oprot.WriteListBegin(ctx, thrift.STRING, len(p.PeerRV)); err != nil {
+	if err := oprot.WriteString(ctx, string(p.SourceRVName)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.sourceRVName (3) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 3:sourceRVName: ", p), err)
+	}
+	return err
+}
+
+func (p *EndSyncRequest) writeField4(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "targetRVName", thrift.STRING, 4); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 4:targetRVName: ", p), err)
+	}
+	if err := oprot.WriteString(ctx, string(p.TargetRVName)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.targetRVName (4) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 4:targetRVName: ", p), err)
+	}
+	return err
+}
+
+func (p *EndSyncRequest) writeField5(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "componentRV", thrift.LIST, 5); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 5:componentRV: ", p), err)
+	}
+	if err := oprot.WriteListBegin(ctx, thrift.STRUCT, len(p.ComponentRV)); err != nil {
 		return thrift.PrependError("error writing list begin: ", err)
 	}
-	for _, v := range p.PeerRV {
-		if err := oprot.WriteString(ctx, string(v)); err != nil {
-			return thrift.PrependError(fmt.Sprintf("%T. (0) field write error: ", p), err)
+	for _, v := range p.ComponentRV {
+		if err := v.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", v), err)
 		}
 	}
 	if err := oprot.WriteListEnd(ctx); err != nil {
 		return thrift.PrependError("error writing list end: ", err)
 	}
 	if err := oprot.WriteFieldEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field end error 3:peerRV: ", p), err)
-	}
-	return err
-}
-
-func (p *EndSyncRequest) writeField4(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "sourceRV", thrift.STRING, 4); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field begin error 4:sourceRV: ", p), err)
-	}
-	if err := oprot.WriteString(ctx, string(p.SourceRV)); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T.sourceRV (4) field write error: ", p), err)
-	}
-	if err := oprot.WriteFieldEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field end error 4:sourceRV: ", p), err)
-	}
-	return err
-}
-
-func (p *EndSyncRequest) writeField5(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "targetRV", thrift.STRING, 5); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field begin error 5:targetRV: ", p), err)
-	}
-	if err := oprot.WriteString(ctx, string(p.TargetRV)); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T.targetRV (5) field write error: ", p), err)
-	}
-	if err := oprot.WriteFieldEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field end error 5:targetRV: ", p), err)
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 5:componentRV: ", p), err)
 	}
 	return err
 }
@@ -3780,20 +4416,20 @@ func (p *EndSyncRequest) Equals(other *EndSyncRequest) bool {
 	if p.MV != other.MV {
 		return false
 	}
-	if len(p.PeerRV) != len(other.PeerRV) {
+	if p.SourceRVName != other.SourceRVName {
 		return false
 	}
-	for i, _tgt := range p.PeerRV {
-		_src21 := other.PeerRV[i]
-		if _tgt != _src21 {
+	if p.TargetRVName != other.TargetRVName {
+		return false
+	}
+	if len(p.ComponentRV) != len(other.ComponentRV) {
+		return false
+	}
+	for i, _tgt := range p.ComponentRV {
+		_src29 := other.ComponentRV[i]
+		if !_tgt.Equals(_src29) {
 			return false
 		}
-	}
-	if p.SourceRV != other.SourceRV {
-		return false
-	}
-	if p.TargetRV != other.TargetRV {
-		return false
 	}
 	if p.DataLength != other.DataLength {
 		return false

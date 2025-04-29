@@ -63,7 +63,6 @@ func Hello(ctx context.Context, targetNodeID string, req *models.HelloRequest) (
 	// get RPC client from the client pool
 	client, err := cp.getRPCClient(targetNodeID)
 	if err != nil {
-		// TODO: add %+v at end after error
 		log.Err("rpc_client::Hello: Failed to get RPC client for node %s [%v] : %+v", targetNodeID, err.Error(), *req)
 		return nil, err
 	}
@@ -187,6 +186,33 @@ func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest)
 	resp, err := client.svcClient.JoinMV(ctx, req)
 	if err != nil {
 		log.Err("rpc_client::JoinMV: Failed to send JoinMV request to node %s [%v] : %+v", targetNodeID, err.Error(), *req)
+		return nil, err
+	}
+
+	return resp, nil
+}
+
+func UpdateMV(ctx context.Context, targetNodeID string, req *models.UpdateMVRequest) (*models.UpdateMVResponse, error) {
+	log.Debug("rpc_client::UpdateMV: Sending UpdateMV request to node %s: %+v", targetNodeID, *req)
+
+	// get RPC client from the client pool
+	client, err := cp.getRPCClient(targetNodeID)
+	if err != nil {
+		log.Err("rpc_client::UpdateMV: Failed to get RPC client for node %s [%v] : %+v", targetNodeID, err.Error(), *req)
+		return nil, err
+	}
+	defer func() {
+		// release RPC client back to the pool
+		err = cp.releaseRPCClient(client)
+		if err != nil {
+			log.Err("rpc_client::UpdateMV: Failed to release RPC client for node %s [%v] : %+v", targetNodeID, err.Error(), *req)
+		}
+	}()
+
+	// call the rpc method
+	resp, err := client.svcClient.UpdateMV(ctx, req)
+	if err != nil {
+		log.Err("rpc_client::UpdateMV: Failed to send UpdateMV request to node %s [%v] : %+v", targetNodeID, err.Error(), *req)
 		return nil, err
 	}
 
