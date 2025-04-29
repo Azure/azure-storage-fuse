@@ -64,15 +64,12 @@ func NewFileIOManager(workers int, numReadAheadChunks int, numStagingChunks int,
 		numReadAheadChunks: numReadAheadChunks,
 		numStagingChunks:   numStagingChunks,
 	}
-	wp := NewWorkerPool(workers)
-	wp.startWorkerPool()
-	bp := NewBufferPool(bufSize, maxBuffers)
-	fileIOMgr.wp = wp
-	fileIOMgr.bp = bp
+	fileIOMgr.wp = NewWorkerPool(workers)
+	fileIOMgr.bp = NewBufferPool(bufSize, maxBuffers)
 }
 
 func EndFileIOManager() {
-	fileIOMgr.wp.endWorkerPool()
+	fileIOMgr.wp.destroyWorkerPool()
 }
 
 type DcacheFile struct {
@@ -92,6 +89,7 @@ func (file *DcacheFile) ReadFile(offset int64, buf []byte) (bytesRead int, err e
 	if offset >= file.FileMetadata.Size {
 		return 0, io.EOF
 	}
+	// endOffset is 1 + offset of the last byte to be read.
 	endOffset := min(offset+int64(len(buf)), file.FileMetadata.Size)
 	bufOffset := 0
 	for offset < endOffset {
@@ -100,7 +98,7 @@ func (file *DcacheFile) ReadFile(offset int64, buf []byte) (bytesRead int, err e
 		// todo : Support Partial read of chunk, useful for random read scenarios.
 		chunk, err := file.readChunkWithReadAhead(offset)
 		if err != nil {
-			return 0, nil
+			return 0, err
 		}
 		chunkOffset := getChunkOffsetFromFileOffset(offset, &file.FileMetadata.FileLayout)
 		copied := copy(buf[bufOffset:], chunk.Buf[chunkOffset:chunk.Len])
@@ -116,15 +114,19 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 	log.Debug("DistributedCache[FM]::WriteFile : offset : %d, bufSize : %d, file : %s", offset, len(buf), file.FileMetadata.Filename)
 
 	if offset < file.lastWriteOffset {
-		log.Info("DistributedCache[FM]::WriteFile: File handle is not writing in sequential manner, current Offset : %d, Prev Offset %d", offset, file.lastWriteOffset)
+		log.Err("DistributedCache[FM]::WriteFile: File handle is not writing in sequential manner, current Offset : %d, Prev Offset %d", offset, file.lastWriteOffset)
 		return syscall.ENOTSUP
 	}
 
+	// endOffset is 1 + offset of the last byte to be write.
 	endOffset := (offset + int64(len(buf)))
 	bufOffset := 0
 	for offset < endOffset {
 		chunk, err := file.CreateOrGetStagedChunk(offset)
 		if err != nil {
+			errMsg := fmt.Sprintf("DistributedCache[FM]::WriteFile: Failed to get the chunk for write, err : %s chnk idx : %d, file : %s",
+				err.Error(), getChunkIdxFromFileOffset(offset, &file.FileMetadata.FileLayout), file.FileMetadata.Filename)
+			common.Assert(false, errMsg)
 			return err
 		}
 		chunkOffset := getChunkOffsetFromFileOffset(offset, &file.FileMetadata.FileLayout)
@@ -145,8 +147,8 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 			fmt.Sprintf("Acutal Chunk Len : %d is modified incorrectly, Expected chunkLen : %d",
 				chunk.Len, getChunkStartOffsetFromFileOffset(offset, &file.FileMetadata.FileLayout)))
 
-		if chunk.Len == file.FileMetadata.FileLayout.ChunkSize {
-			// Schedule the upload
+		// Schedule the upload when staged chunk is fully written
+		if chunk.Len == int64(len(chunk.Buf)) {
 			// todo: This not always true. if some writes to this chunk were skipped then there should be a
 			// way to stage this block.
 			scheduleUpload(chunk, file)
@@ -165,6 +167,7 @@ func (file *DcacheFile) SyncFile() error {
 	var err error
 	file.StagedChunks.Range(func(chunkIdx any, Ichunk any) bool {
 		chunk := Ichunk.(*StagedChunk)
+		// todo: parallelize the uploads for the chunks
 		scheduleUpload(chunk, file)
 		err = <-chunk.Err
 		if err != nil {
@@ -196,7 +199,7 @@ func (file *DcacheFile) getChunk(chunkIdx int64) (*StagedChunk, bool, error) {
 	if chunk, ok := file.StagedChunks.Load(chunkIdx); ok {
 		return chunk.(*StagedChunk), true, nil
 	}
-	chunk, err := NewChunk(chunkIdx, file)
+	chunk, err := NewStagedChunk(chunkIdx, file)
 	if err != nil {
 		return nil, false, err
 	}

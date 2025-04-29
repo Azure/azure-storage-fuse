@@ -37,7 +37,7 @@ type StagedChunk struct {
 	Idx              int64      // chunk index
 	Buf              []byte     // buf size == chunkSize
 	Len              int64      // valid bytes in Buf
-	Err              chan error // Any Error while downloading/uploading
+	Err              chan error // Download/upload status, available after download/upload completes, nil means sucess.
 	ScheduleDownload chan struct{}
 	ScheduleUpload   chan struct{}
 }

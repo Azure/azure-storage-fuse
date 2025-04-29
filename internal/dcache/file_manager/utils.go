@@ -42,7 +42,7 @@ import (
 )
 
 func getChunkStartOffsetFromFileOffset(offset int64, fileLayout *dcache.FileLayout) int64 {
-	return (offset / fileLayout.ChunkSize) * fileLayout.ChunkSize
+	return getChunkIdxFromFileOffset(offset, fileLayout) * fileLayout.ChunkSize
 }
 
 func getChunkIdxFromFileOffset(offset int64, fileLayout *dcache.FileLayout) int64 {
@@ -92,7 +92,7 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 }
 
 // Creates the chunk and allocates the chunk buf
-func NewChunk(idx int64, file *DcacheFile) (*StagedChunk, error) {
+func NewStagedChunk(idx int64, file *DcacheFile) (*StagedChunk, error) {
 	buf, err := fileIOMgr.bp.getBuffer()
 	if err != nil {
 		return nil, err

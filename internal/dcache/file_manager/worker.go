@@ -36,6 +36,7 @@ package filemanager
 import (
 	"sync"
 
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
@@ -53,22 +54,25 @@ type workerPool struct {
 }
 
 func NewWorkerPool(workers int) *workerPool {
-	return &workerPool{
+	common.Assert(workers > 0)
+
+	// Create the worker pool.
+	wp := &workerPool{
 		workers: workers,
 		close:   make(chan struct{}),
 		tasks:   make(chan *task, workers*2),
 	}
-}
 
-func (wp *workerPool) startWorkerPool() {
+	// Start the workers.
 	log.Info("DistributedCache[FM]::startWorkerPool : Starting worker Pool, num workers : %d", wp.workers)
 	wp.wg.Add(wp.workers)
 	for range wp.workers {
 		go wp.worker()
 	}
+	return wp
 }
 
-func (wp *workerPool) endWorkerPool() {
+func (wp *workerPool) destroyWorkerPool() {
 	close(wp.close)
 	wp.wg.Wait()
 }
@@ -99,10 +103,11 @@ func (wp *workerPool) readChunk(task *task) {
 	if err == nil {
 		close(task.chunk.Err)
 		return
-	} else {
-		log.Info("DistrubuteCache[FM]::readChunk : Download of chunk to Dcache failed chnk idx : %d, file %s, err : %s",
-			task.chunk.Idx, task.file.FileMetadata.Filename, err.Error())
 	}
+
+	log.Err("DistrubuteCache[FM]::readChunk : Download of chunk to Dcache failed chnk idx : %d, file %s, err : %s",
+		task.chunk.Idx, task.file.FileMetadata.Filename, err.Error())
+
 	task.chunk.Err <- err
 }
 
@@ -115,9 +120,10 @@ func (wp *workerPool) writeChunk(task *task) {
 	if err == nil {
 		close(task.chunk.Err)
 		return
-	} else {
-		log.Info("DistrubuteCache[FM]::WriteChunk : Upload of chunk to DCache failed chnk idx : %d, file %s, err : %s",
-			task.chunk.Idx, task.file.FileMetadata.Filename, err.Error())
 	}
+
+	log.Err("DistrubuteCache[FM]::WriteChunk : Upload of chunk to DCache failed chnk idx : %d, file %s, err : %s",
+		task.chunk.Idx, task.file.FileMetadata.Filename, err.Error())
+
 	task.chunk.Err <- err
 }

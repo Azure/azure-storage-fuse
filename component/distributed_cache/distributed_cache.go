@@ -367,6 +367,7 @@ func (dc *DistributedCache) CreateFile(options internal.CreateFileOptions) (*han
 		}
 	} else if isDcachePath {
 		log.Debug("DistributedCache::CreateFile : Path is having Dcache subcomponent, path : %s", options.Name)
+		options.Name = rawPath
 		var err error
 		file, err = fm.NewDcacheFile(rawPath)
 		if err != nil {
@@ -374,12 +375,12 @@ func (dc *DistributedCache) CreateFile(options internal.CreateFileOptions) (*han
 		}
 	} else {
 		var err error
+		options.Name = rawPath
 		file, err = fm.NewDcacheFile(rawPath)
 		if err != nil {
 			return nil, err
 		}
 
-		options.Name = rawPath
 		_, err = dc.NextComponent().CreateFile(options)
 		if err != nil {
 			return nil, err
@@ -389,9 +390,8 @@ func (dc *DistributedCache) CreateFile(options internal.CreateFileOptions) (*han
 	}
 
 	handle := handlemap.NewHandle(options.Name)
-	if isDcachePath {
-		handle.IFObj = file
-	}
+
+	handle.IFObj = file
 
 	return handle, nil
 }
