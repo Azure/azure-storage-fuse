@@ -41,7 +41,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
-	clustermanager "github.com/Azure/azure-storage-fuse/v2/internal/dcache/cluster_manager"
+	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/cluster_manager"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 	rpc_server "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/server"
 )
@@ -49,17 +49,24 @@ import (
 const (
 	// TODO: discuss if this is a good value for RPC timeout
 	RPCClientTimeout = 2 // in seconds
+
+	// TODO: chunk size lower and upper bounds can be modified later
+	ChunkSizeInMiBLowerBound = 0
+	ChunkSizeInMiBUpperBound = 256
+
+	ChunkIndexUpperBound = 10e8
 )
 
-func getReaderRV(componentRVs []*models.RVNameAndState, excluseRVs []string) *models.RVNameAndState {
-	log.Debug("utils::getReaderRV: Component RVs are: %v", rpc_server.ComponentRVsToString(componentRVs))
+func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *models.RVNameAndState {
+	log.Debug("utils::getReaderRV: Component RVs are: %v, excludeRVs: %v", rpc_server.ComponentRVsToString(componentRVs), excludeRVs)
 
 	myNodeID := getMyNodeUUID()
 	onlineRVs := make([]*models.RVNameAndState, 0)
 	for _, rv := range componentRVs {
-		if rv.State != string(dcache.StateOnline) || slices.Contains(excluseRVs, rv.Name) {
+		if rv.State != string(dcache.StateOnline) || slices.Contains(excludeRVs, rv.Name) {
 			// this is not an online RV or is present in the exclude list
 			// so skip this RV
+			log.Debug("utils::getReaderRV: skipping RV %s with state %s", rv.Name, rv.State)
 			continue
 		}
 
@@ -74,6 +81,7 @@ func getReaderRV(componentRVs []*models.RVNameAndState, excluseRVs []string) *mo
 	}
 
 	if len(onlineRVs) == 0 {
+		log.Debug("utils::getReaderRV: no online RVs found for component RVs %v", rpc_server.ComponentRVsToString(componentRVs))
 		return nil
 	}
 
@@ -94,7 +102,7 @@ func getReaderRV(componentRVs []*models.RVNameAndState, excluseRVs []string) *mo
 
 // return the component RVs for the given MV
 func getComponentRVsForMV(mvName string) []*models.RVNameAndState {
-	rvMap := clustermanager.GetRVs(mvName)
+	rvMap := cm.GetRVs(mvName)
 
 	var componentRVs []*models.RVNameAndState
 	for rvName, rvState := range rvMap {
@@ -112,7 +120,7 @@ func getComponentRVsForMV(mvName string) []*models.RVNameAndState {
 
 // return the number of replicas
 func getNumReplicas() uint32 {
-	return clustermanager.GetCacheConfig().NumReplicas
+	return cm.GetCacheConfig().NumReplicas
 }
 
 // return the node ID of this node
@@ -125,10 +133,10 @@ func getMyNodeUUID() string {
 
 // return the RV ID for the given RV name
 func getRvIDFromRvName(rvName string) string {
-	return clustermanager.RvNameToId(rvName)
+	return cm.RvNameToId(rvName)
 }
 
 // return the node ID for the given rvName
 func getNodeIDFromRVName(rvName string) string {
-	return clustermanager.RVNameToNodeId(rvName)
+	return cm.RVNameToNodeId(rvName)
 }

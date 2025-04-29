@@ -81,6 +81,7 @@ func (req *ReadMvRequest) isValid() error {
 	reqStr := req.toString()
 
 	common.Assert(common.IsValidUUID(req.FileID))
+	common.Assert(req.MvName != "")
 	// TODO: add IsValidMVName check
 
 	// TODO: remove this after asserts are added
@@ -89,12 +90,13 @@ func (req *ReadMvRequest) isValid() error {
 		return fmt.Errorf("FileID or MvName is empty in request: %s", reqStr)
 	}
 
-	if req.ChunkSizeInMiB <= 0 {
+	// TODO: lower and upper bounds can be modified later
+	if req.ChunkSizeInMiB <= ChunkSizeInMiBLowerBound || req.ChunkSizeInMiB >= ChunkSizeInMiBUpperBound {
 		log.Err("ReadMvRequest::isValid: ChunkSizeInMiB is invalid in request: %s", reqStr)
 		return fmt.Errorf("ChunkSizeInMiB is invalid in request: %s", reqStr)
 	}
 
-	if req.ChunkIndex < 0 {
+	if req.ChunkIndex < 0 || req.ChunkIndex > ChunkIndexUpperBound {
 		log.Err("ReadMvRequest::isValid: ChunkIndex is invalid in request: %s", reqStr)
 		return fmt.Errorf("ChunkIndex is invalid in request: %s", reqStr)
 	}
@@ -114,11 +116,6 @@ func (req *ReadMvRequest) isValid() error {
 	if req.OffsetInChunk+req.Length > req.ChunkSizeInMiB*common.MbToBytes {
 		log.Err("ReadMvRequest::isValid: Length and OffsetInChunk are invalid in request: %s", reqStr)
 		return fmt.Errorf("length and OffsetInChunk are invalid in request: %s", reqStr)
-	}
-
-	if len(req.Data) == 0 || len(req.Data) > int(req.ChunkSizeInMiB*common.MbToBytes) {
-		log.Err("ReadMvRequest::isValid: Data buffer is invalid in request: %s", reqStr)
-		return fmt.Errorf("data buffer is invalid in request: %s", reqStr)
 	}
 
 	// check if the requested data size is less than the buffer size
@@ -173,6 +170,7 @@ func (req *WriteMvRequest) isValid() error {
 	reqStr := req.toString()
 
 	common.Assert(common.IsValidUUID(req.FileID))
+	common.Assert(req.MvName != "")
 	// TODO: add IsValidMVName check
 
 	// TODO: remove this after asserts are added
@@ -181,12 +179,13 @@ func (req *WriteMvRequest) isValid() error {
 		return fmt.Errorf("FileID or MvName is empty in request: %s", reqStr)
 	}
 
-	if req.ChunkSizeInMiB <= 0 {
+	// TODO: lower and upper bounds can be modified later
+	if req.ChunkSizeInMiB <= ChunkSizeInMiBLowerBound || req.ChunkSizeInMiB >= ChunkSizeInMiBUpperBound {
 		log.Err("WriteMvRequest::isValid: ChunkSizeInMiB is invalid in request: %s", reqStr)
 		return fmt.Errorf("ChunkSizeInMiB is invalid in request: %s", reqStr)
 	}
 
-	if req.ChunkIndex < 0 {
+	if req.ChunkIndex < 0 || req.ChunkIndex > ChunkIndexUpperBound {
 		log.Err("WriteMvRequest::isValid: ChunkIndex is invalid in request: %s", reqStr)
 		return fmt.Errorf("ChunkIndex is invalid in request: %s", reqStr)
 	}

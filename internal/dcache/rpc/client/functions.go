@@ -108,6 +108,9 @@ func GetChunk(ctx context.Context, targetNodeID string, req *models.GetChunkRequ
 		return nil, err
 	}
 
+	// TODO: add assert for error check in all RPC APIs
+	// TODO: if success, add assert that the componentRVs returned in response is same as the one sent in request
+
 	return resp, nil
 }
 

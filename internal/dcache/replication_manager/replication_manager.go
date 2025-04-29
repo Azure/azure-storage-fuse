@@ -36,6 +36,7 @@ package replication_manager
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -97,6 +98,8 @@ retry:
 			goto retry
 		}
 
+		common.Assert(!slices.Contains(excludeRVs, readerRV.Name), fmt.Sprintf("readerRV %s is already present in the excludeRVs list", readerRV.Name))
+
 		selectedRvID := getRvIDFromRvName(readerRV.Name)
 		common.Assert(common.IsValidUUID(selectedRvID))
 
@@ -118,6 +121,7 @@ retry:
 			ComponentRV:   componentRVs,
 		}
 
+		// TODO: how to handle timeouts in case when node is unreachable
 		ctx, cancel := context.WithTimeout(context.Background(), RPCClientTimeout*time.Second)
 		defer cancel()
 
@@ -136,13 +140,15 @@ retry:
 		// so if the target RV feels that the sender seems to have out-of-date clustermap,
 		// it can help him by failing the request with an appropriate error and then
 		// caller should fetch the latest clustermap and then try again.
-		log.Err("ReplicationManager::ReadMV: Failed to get chunk from node %s for request %+v [%v]", targetNodeID, *rpcReq, err)
+		log.Err("ReplicationManager::ReadMV: Failed to get chunk from node %s for request %+v [%v]", targetNodeID, *rpcReq, err.Error())
 	}
 
 	log.Debug("ReplicationManager::ReadMV: GetChunk RPC response: chunk lmt %v, time taken %v, component RVs %v, chunk address %+v",
 		rpcResp.ChunkWriteTime, rpcResp.TimeTaken, rpcResp.ComponentRV, *rpcResp.Chunk.Address)
 
-	req.Data = rpcResp.Chunk.Data
+	// TODO: this should be deep copy
+	n := copy(req.Data, rpcResp.Chunk.Data)
+	common.Assert(n == len(rpcResp.Chunk.Data), fmt.Sprintf("data copied %d is not same as data in the chunk length %d", n, len(rpcResp.Chunk.Data)))
 
 	// TODO: in GetChunk RPC request add data buffer to the request
 	// TODO: in GetChunk RPC response return bytes read
@@ -196,6 +202,7 @@ retry:
 		//  and hence won’t consider this chunk for resync, and hence those MUST have the chunks mandatorily copied to them.
 
 		if rv.State == string(dcache.StateOffline) || rv.State == string(dcache.StateOutOfSync) {
+			log.Debug("ReplicationManager::WriteMV: Skipping RV %s having state %s", rv.Name, rv.State)
 			continue
 		} else if rv.State == string(dcache.StateOnline) || rv.State == string(dcache.StateSyncing) {
 			rvID := getRvIDFromRvName(rv.Name)
@@ -217,20 +224,22 @@ retry:
 					Data: req.Data,
 					Hash: "", // TODO: hash validation will be done later
 				},
-				Length:      req.ChunkSizeInMiB * common.MbToBytes,
+				Length:      int64(len(req.Data)),
 				IsSync:      false, // this is regular client write
 				ComponentRV: componentRVs,
 			}
 
+			// TODO: how to handle timeouts in case when node is unreachable
 			ctx, cancel := context.WithTimeout(context.Background(), RPCClientTimeout*time.Second)
 			defer cancel()
 
 			rpcResp, err := rpc_client.PutChunk(ctx, targetNodeID, rpcReq)
 			if err != nil {
-				log.Err("ReplicationManager::WriteMV: Failed to put chunk to node %s [%v]", targetNodeID, err)
+				log.Err("ReplicationManager::WriteMV: Failed to put chunk to node %s [%v]", targetNodeID, err.Error())
 				rpcErr := rpc.GetRPCResponseError(err)
 				if rpcErr == nil {
 					// this error means that the node is not reachable
+					log.Err("ReplicationManager::WriteMV: Failed to reach node %s [%v]", targetNodeID, err.Error())
 					return nil, err
 				}
 
@@ -241,6 +250,7 @@ retry:
 					goto retry
 				} else {
 					// TODO: check if this is non-retriable error
+					log.Err("ReplicationManager::WriteMV: Got non-retriable error for put chunk to node %s [%v]", targetNodeID, err.Error())
 					return nil, err
 				}
 			}
