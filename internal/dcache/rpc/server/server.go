@@ -84,11 +84,13 @@ func NewNodeServer(address string) (*NodeServer, error) {
 
 func (ns *NodeServer) Start() error {
 	log.Debug("NodeServer::Start: Starting NodeServer on address: %s", ns.address)
-	err := ns.server.Serve()
-	if err != nil {
-		log.Err("NodeServer::Start: Failed to start server [%v]", err.Error())
-		return err
-	}
+
+	go func() {
+		err := ns.server.Serve()
+		if err != nil {
+			log.Err("NodeServer::Start: Failed to start server [%v]", err.Error())
+		}
+	}()
 
 	return nil
 }

@@ -300,6 +300,16 @@ func EndSync(ctx context.Context, targetNodeID string, req *models.EndSyncReques
 	return resp, nil
 }
 
+// cleanup closes all the RPC node client pools
+func Cleanup() error {
+	err := cp.closeAllNodeClientPools()
+	if err != nil {
+		log.Err("rpc_client::Cleanup: Failed to close all node client pools [%v]", err.Error())
+	}
+
+	return err
+}
+
 func init() {
 	log.Debug("rpc_client::init: package initialized, create client pool")
 	cp = newClientPool(defaultMaxPerNode, defaultMaxNodes, defaultTimeout)
