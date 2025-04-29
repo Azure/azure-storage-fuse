@@ -350,11 +350,12 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		log.Err("ParseAndValidateConfig : Failed to detect mount-all-container")
 	}
 
-	if !az.stConfig.mountAllContainers && opt.Container == "" {
+	az.stConfig.container = opt.Container
+
+	if opt.Container == "" && opt.PrefixPath != "" {
+		log.Err("ParseAndValidateConfig : Container name not provided")
 		return errors.New("container name not provided")
 	}
-
-	az.stConfig.container = opt.Container
 
 	if config.IsSet(compName + ".use-https") {
 		opt.UseHTTP = !opt.UseHTTPS

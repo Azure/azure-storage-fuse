@@ -226,7 +226,7 @@ func (s *blockBlobTestSuite) setupTestHelper(configuration string, container str
 	_ = s.az.Start(ctx) // Note: Start->TestValidation will fail but it doesn't matter. We are creating the container a few lines below anyway.
 	// We could create the container before but that requires rewriting the code to new up a service client.
 
-	s.serviceClient = s.az.storage.(*BlockBlob).Service // Grab the service client to do some validation
+	s.serviceClient = s.az.storage.(*BlockBlob).service // Grab the service client to do some validation
 	s.containerClient = s.serviceClient.NewContainerClient(s.container)
 	if create {
 		_, _ = s.containerClient.Create(ctx, nil)

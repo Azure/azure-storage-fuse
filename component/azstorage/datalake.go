@@ -58,11 +58,11 @@ import (
 
 type Datalake struct {
 	AzStorageConnection
-	Auth           azAuth
-	Service        *service.Client
-	Filesystem     *filesystem.Client
-	BlockBlob      BlockBlob
-	datalakeCPKOpt *file.CPKInfo
+	Auth             azAuth
+	service          *service.Client
+	filesystemClient FilesystemClient
+	blockBlob        BlockBlob
+	datalakeCPKOpt   *file.CPKInfo
 }
 
 // Verify that Datalake implements AzConnection interface
@@ -104,10 +104,10 @@ func (dl *Datalake) Configure(cfg AzStorageConfig) error {
 		}
 	}
 
-	err := dl.BlockBlob.Configure(transformConfig(cfg))
+	err := dl.blockBlob.Configure(transformConfig(cfg))
 
 	// List call shall always retrieved permissions for HNS accounts
-	dl.BlockBlob.listDetails.Permissions = true
+	dl.blockBlob.listDetails.Permissions = true
 
 	return err
 }
@@ -118,7 +118,7 @@ func (dl *Datalake) UpdateConfig(cfg AzStorageConfig) error {
 	dl.Config.maxConcurrency = cfg.maxConcurrency
 	dl.Config.defaultTier = cfg.defaultTier
 	dl.Config.ignoreAccessModifiers = cfg.ignoreAccessModifiers
-	return dl.BlockBlob.UpdateConfig(cfg)
+	return dl.blockBlob.UpdateConfig(cfg)
 }
 
 // UpdateServiceClient : Update the SAS specified by the user and create new service client
@@ -133,12 +133,12 @@ func (dl *Datalake) UpdateServiceClient(key, value string) (err error) {
 		}
 
 		// update the service client
-		dl.Service = svcClient.(*service.Client)
+		dl.service = svcClient.(*service.Client)
 
 		// Update the filesystem client
-		dl.Filesystem = dl.Service.NewFileSystemClient(dl.Config.container)
+		dl.filesystemClient.updateFilesystemClient()
 	}
-	return dl.BlockBlob.UpdateServiceClient(key, value)
+	return dl.blockBlob.UpdateServiceClient(key, value)
 }
 
 // createServiceClient : Create the service client
@@ -166,16 +166,19 @@ func (dl *Datalake) SetupPipeline() error {
 	var err error
 
 	// create the service client
-	dl.Service, err = dl.createServiceClient()
+	dl.service, err = dl.createServiceClient()
 	if err != nil {
 		log.Err("Datalake::SetupPipeline : Failed to get service client [%s]", err.Error())
 		return err
 	}
 
 	// create the filesystem client
-	dl.Filesystem = dl.Service.NewFileSystemClient(dl.Config.container)
+	dl.filesystemClient = newFileSystemClient(dl.service, dl.Config.container)
+	if dl.Config.container == "" {
+		log.Info("Datalake::SetupPipeline : Container name is empty, mounting entire account")
+	}
 
-	return dl.BlockBlob.SetupPipeline()
+	return dl.blockBlob.SetupPipeline()
 }
 
 // TestPipeline : Validate the credentials specified in the auth config
@@ -186,52 +189,57 @@ func (dl *Datalake) TestPipeline() error {
 		return nil
 	}
 
-	if dl.Filesystem == nil || dl.Filesystem.DFSURL() == "" || dl.Filesystem.BlobURL() == "" {
-		log.Err("Datalake::TestPipeline : Filesystem Client is not built, check your credentials")
-		return nil
-	}
+	if dl.Config.container != "" {
+		maxResults := int32(2)
+		fsc := dl.filesystemClient.getFilesystemClient(dl.Config.container)
+		listPathPager := fsc.NewListPathsPager(false, &filesystem.ListPathsOptions{
+			MaxResults: &maxResults,
+			Prefix:     &dl.Config.prefixPath,
+		})
 
-	maxResults := int32(2)
-	listPathPager := dl.Filesystem.NewListPathsPager(false, &filesystem.ListPathsOptions{
-		MaxResults: &maxResults,
-		Prefix:     &dl.Config.prefixPath,
-	})
-
-	// we are just validating the auth mode used. So, no need to iterate over the pages
-	_, err := listPathPager.NextPage(context.Background())
-	if err != nil {
-		log.Err("Datalake::TestPipeline : Failed to validate account with given auth %s", err.Error())
-		var respErr *azcore.ResponseError
-		errors.As(err, &respErr)
-		if respErr != nil {
-			return fmt.Errorf("Datalake::TestPipeline : [%s]", respErr.ErrorCode)
+		// we are just validating the auth mode used. So, no need to iterate over the pages
+		_, err := listPathPager.NextPage(context.Background())
+		if err != nil {
+			log.Err("Datalake::TestPipeline : Failed to validate account with given auth %s", err.Error())
+			var respErr *azcore.ResponseError
+			errors.As(err, &respErr)
+			if respErr != nil {
+				return fmt.Errorf("Datalake::TestPipeline : [%s]", respErr.ErrorCode)
+			}
+			return err
 		}
-		return err
+	} else {
+		// list the containers and validate we are able to access the list
+		_, err := dl.ListContainers()
+		if err != nil {
+			log.Err("Datalake::TestPipeline : Failed to list containers [%s]", err.Error())
+			return err
+		}
 	}
 
-	return dl.BlockBlob.TestPipeline()
+	return dl.blockBlob.TestPipeline()
 }
 
 // IsAccountADLS : Check account is ADLS or not
 func (dl *Datalake) IsAccountADLS() bool {
-	return dl.BlockBlob.IsAccountADLS()
+	return dl.blockBlob.IsAccountADLS()
 }
 
 func (dl *Datalake) ListContainers() ([]string, error) {
 	log.Trace("Datalake::ListContainers : Listing containers")
-	return dl.BlockBlob.ListContainers()
+	return dl.blockBlob.ListContainers()
 }
 
 func (dl *Datalake) SetPrefixPath(path string) error {
 	log.Trace("Datalake::SetPrefixPath : path %s", path)
 	dl.Config.prefixPath = path
-	return dl.BlockBlob.SetPrefixPath(path)
+	return dl.blockBlob.SetPrefixPath(path)
 }
 
 // CreateFile : Create a new file in the filesystem/directory
 func (dl *Datalake) CreateFile(name string, mode os.FileMode) error {
 	log.Trace("Datalake::CreateFile : name %s", name)
-	err := dl.BlockBlob.CreateFile(name, mode)
+	err := dl.blockBlob.CreateFile(name, mode)
 	if err != nil {
 		log.Err("Datalake::CreateFile : Failed to create file %s [%s]", name, err.Error())
 		return err
@@ -249,7 +257,30 @@ func (dl *Datalake) CreateFile(name string, mode os.FileMode) error {
 func (dl *Datalake) CreateDirectory(name string) error {
 	log.Trace("Datalake::CreateDirectory : name %s", name)
 
-	directoryURL := dl.Filesystem.NewDirectoryClient(filepath.Join(dl.Config.prefixPath, name))
+	fsc := dl.filesystemClient.getFilesystemClient(name)
+	if fsc == nil {
+		// This is a root path so we need to create a container here.
+		fsc = dl.service.NewFileSystemClient(name)
+
+		_, err := fsc.Create(context.Background(), nil)
+		if err != nil {
+			serr := storeDatalakeErrToErr(err)
+			if serr == InvalidPermission {
+				log.Err("Datalake::CreateDirectory : Insufficient permissions for %s [%s]", name, err.Error())
+				return syscall.EACCES
+			} else if serr == ErrFileAlreadyExists {
+				log.Err("Datalake::CreateDirectory : Container already exists for %s [%s]", name, err.Error())
+				return syscall.EEXIST
+			} else {
+				log.Err("Datalake::CreateDirectory : Failed to create Container %s [%s]", name, err.Error())
+				return err
+			}
+		}
+
+		return nil
+	}
+
+	directoryURL := fsc.NewDirectoryClient(filepath.Join(dl.Config.prefixPath, name))
 	_, err := directoryURL.Create(context.Background(), &directory.CreateOptions{
 		CPKInfo: dl.datalakeCPKOpt,
 		AccessConditions: &directory.AccessConditions{
@@ -279,13 +310,15 @@ func (dl *Datalake) CreateDirectory(name string) error {
 // CreateLink : Create a symlink in the filesystem/directory
 func (dl *Datalake) CreateLink(source string, target string) error {
 	log.Trace("Datalake::CreateLink : %s -> %s", source, target)
-	return dl.BlockBlob.CreateLink(source, target)
+	return dl.blockBlob.CreateLink(source, target)
 }
 
 // DeleteFile : Delete a file in the filesystem/directory
 func (dl *Datalake) DeleteFile(name string) (err error) {
 	log.Trace("Datalake::DeleteFile : name %s", name)
-	fileClient := dl.Filesystem.NewFileClient(filepath.Join(dl.Config.prefixPath, name))
+
+	fsc := dl.filesystemClient.getFilesystemClient(name)
+	fileClient := fsc.NewFileClient(filepath.Join(dl.Config.prefixPath, name))
 	_, err = fileClient.Delete(context.Background(), nil)
 	if err != nil {
 		serr := storeDatalakeErrToErr(err)
@@ -311,7 +344,8 @@ func (dl *Datalake) DeleteFile(name string) (err error) {
 func (dl *Datalake) DeleteDirectory(name string) (err error) {
 	log.Trace("Datalake::DeleteDirectory : name %s", name)
 
-	directoryClient := dl.Filesystem.NewDirectoryClient(filepath.Join(dl.Config.prefixPath, name))
+	fsc := dl.filesystemClient.getFilesystemClient(name)
+	directoryClient := fsc.NewDirectoryClient(filepath.Join(dl.Config.prefixPath, name))
 	_, err = directoryClient.Delete(context.Background(), nil)
 	// TODO : There is an ability to pass a continuation token here for recursive delete, should we implement this logic to follow continuation token? The SDK does not currently do this.
 	if err != nil {
@@ -334,7 +368,8 @@ func (dl *Datalake) DeleteDirectory(name string) (err error) {
 func (dl *Datalake) RenameFile(source string, target string, srcAttr *internal.ObjAttr) error {
 	log.Trace("Datalake::RenameFile : %s -> %s", source, target)
 
-	fileClient := dl.Filesystem.NewFileClient(url.PathEscape(filepath.Join(dl.Config.prefixPath, source)))
+	fsc := dl.filesystemClient.getFilesystemClient(source)
+	fileClient := fsc.NewFileClient(url.PathEscape(filepath.Join(dl.Config.prefixPath, source)))
 
 	renameResponse, err := fileClient.Rename(context.Background(), filepath.Join(dl.Config.prefixPath, target), &file.RenameOptions{
 		CPKInfo: dl.datalakeCPKOpt,
@@ -357,7 +392,8 @@ func (dl *Datalake) RenameFile(source string, target string, srcAttr *internal.O
 func (dl *Datalake) RenameDirectory(source string, target string) error {
 	log.Trace("Datalake::RenameDirectory : %s -> %s", source, target)
 
-	directoryClient := dl.Filesystem.NewDirectoryClient(url.PathEscape(filepath.Join(dl.Config.prefixPath, source)))
+	fsc := dl.filesystemClient.getFilesystemClient(source)
+	directoryClient := fsc.NewDirectoryClient(url.PathEscape(filepath.Join(dl.Config.prefixPath, source)))
 	_, err := directoryClient.Rename(context.Background(), filepath.Join(dl.Config.prefixPath, target), &directory.RenameOptions{
 		CPKInfo: dl.datalakeCPKOpt,
 	})
@@ -379,7 +415,8 @@ func (dl *Datalake) RenameDirectory(source string, target string) error {
 func (dl *Datalake) GetAttr(name string) (blobAttr *internal.ObjAttr, err error) {
 	log.Trace("Datalake::GetAttr : name %s", name)
 
-	fileClient := dl.Filesystem.NewFileClient(filepath.Join(dl.Config.prefixPath, name))
+	fsc := dl.filesystemClient.getFilesystemClient(name)
+	fileClient := fsc.NewFileClient(filepath.Join(dl.Config.prefixPath, name))
 	prop, err := fileClient.GetProperties(context.Background(), &file.GetPropertiesOptions{
 		CPKInfo: dl.datalakeCPKOpt,
 	})
@@ -454,22 +491,22 @@ func (dl *Datalake) GetAttr(name string) (blobAttr *internal.ObjAttr, err error)
 // This fetches the list using a marker so the caller code should handle marker logic
 // If count=0 - fetch max entries
 func (dl *Datalake) List(prefix string, marker *string, count int32) ([]*internal.ObjAttr, *string, error) {
-	return dl.BlockBlob.List(prefix, marker, count)
+	return dl.blockBlob.List(prefix, marker, count)
 }
 
 // ReadToFile : Download a file to a local file
 func (dl *Datalake) ReadToFile(name string, offset int64, count int64, fi *os.File) (err error) {
-	return dl.BlockBlob.ReadToFile(name, offset, count, fi)
+	return dl.blockBlob.ReadToFile(name, offset, count, fi)
 }
 
 // ReadBuffer : Download a specific range from a file to a buffer
 func (dl *Datalake) ReadBuffer(name string, offset int64, len int64) ([]byte, error) {
-	return dl.BlockBlob.ReadBuffer(name, offset, len)
+	return dl.blockBlob.ReadBuffer(name, offset, len)
 }
 
 // ReadInBuffer : Download specific range from a file to a user provided buffer
 func (dl *Datalake) ReadInBuffer(name string, offset int64, len int64, data []byte, etag *string) error {
-	return dl.BlockBlob.ReadInBuffer(name, offset, len, data, etag)
+	return dl.blockBlob.ReadInBuffer(name, offset, len, data, etag)
 }
 
 // WriteFromFile : Upload local file to file
@@ -481,7 +518,8 @@ func (dl *Datalake) WriteFromFile(name string, metadata map[string]*string, fi *
 	var fileClient *file.Client = nil
 
 	if dl.Config.preserveACL {
-		fileClient = dl.Filesystem.NewFileClient(filepath.Join(dl.Config.prefixPath, name))
+		fsc := dl.filesystemClient.getFilesystemClient(name)
+		fileClient = fsc.NewFileClient(filepath.Join(dl.Config.prefixPath, name))
 		resp, err := fileClient.GetAccessControl(context.Background(), nil)
 		if err != nil {
 			log.Err("Datalake::getACL : Failed to get ACLs for file %s [%s]", name, err.Error())
@@ -491,7 +529,7 @@ func (dl *Datalake) WriteFromFile(name string, metadata map[string]*string, fi *
 	}
 
 	// Upload the file, which will override the permissions and ACL
-	retCode := dl.BlockBlob.WriteFromFile(name, metadata, fi)
+	retCode := dl.blockBlob.WriteFromFile(name, metadata, fi)
 
 	if acl != "" {
 		// Cannot set both permissions and ACL in one call. ACL includes permission as well so just setting those back
@@ -512,30 +550,32 @@ func (dl *Datalake) WriteFromFile(name string, metadata map[string]*string, fi *
 
 // WriteFromBuffer : Upload from a buffer to a file
 func (dl *Datalake) WriteFromBuffer(name string, metadata map[string]*string, data []byte) error {
-	return dl.BlockBlob.WriteFromBuffer(name, metadata, data)
+	return dl.blockBlob.WriteFromBuffer(name, metadata, data)
 }
 
 // Write : Write to a file at given offset
 func (dl *Datalake) Write(options internal.WriteFileOptions) error {
-	return dl.BlockBlob.Write(options)
+	return dl.blockBlob.Write(options)
 }
 
 func (dl *Datalake) StageAndCommit(name string, bol *common.BlockOffsetList) error {
-	return dl.BlockBlob.StageAndCommit(name, bol)
+	return dl.blockBlob.StageAndCommit(name, bol)
 }
 
 func (dl *Datalake) GetFileBlockOffsets(name string) (*common.BlockOffsetList, error) {
-	return dl.BlockBlob.GetFileBlockOffsets(name)
+	return dl.blockBlob.GetFileBlockOffsets(name)
 }
 
 func (dl *Datalake) TruncateFile(name string, size int64) error {
-	return dl.BlockBlob.TruncateFile(name, size)
+	return dl.blockBlob.TruncateFile(name, size)
 }
 
 // ChangeMod : Change mode of a path
 func (dl *Datalake) ChangeMod(name string, mode os.FileMode) error {
 	log.Trace("Datalake::ChangeMod : Change mode of file %s to %s", name, mode)
-	fileClient := dl.Filesystem.NewFileClient(filepath.Join(dl.Config.prefixPath, name))
+
+	fsc := dl.filesystemClient.getFilesystemClient(name)
+	fileClient := fsc.NewFileClient(filepath.Join(dl.Config.prefixPath, name))
 
 	/*
 		// If we need to call the ACL set api then we need to get older acl string here
@@ -582,7 +622,7 @@ func (dl *Datalake) ChangeOwner(name string, _ int, _ int) error {
 	}
 
 	// TODO: This is not supported for now.
-	// fileURL := dl.Filesystem.NewRootDirectoryURL().NewFileURL(filepath.Join(dl.Config.prefixPath, name))
+	// fileURL := dl.filesystemClient.NewRootDirectoryURL().NewFileURL(filepath.Join(dl.Config.prefixPath, name))
 	// group := strconv.Itoa(gid)
 	// owner := strconv.Itoa(uid)
 	// _, err := fileURL.SetAccessControl(context.Background(), azbfs.BlobFSAccessControl{Group: group, Owner: owner})
@@ -598,17 +638,17 @@ func (dl *Datalake) ChangeOwner(name string, _ int, _ int) error {
 
 // GetCommittedBlockList : Get the list of committed blocks
 func (dl *Datalake) GetCommittedBlockList(name string) (*internal.CommittedBlockList, error) {
-	return dl.BlockBlob.GetCommittedBlockList(name)
+	return dl.blockBlob.GetCommittedBlockList(name)
 }
 
 // StageBlock : stages a block and returns its blockid
 func (dl *Datalake) StageBlock(name string, data []byte, id string) error {
-	return dl.BlockBlob.StageBlock(name, data, id)
+	return dl.blockBlob.StageBlock(name, data, id)
 }
 
 // CommitBlocks : persists the block list
 func (dl *Datalake) CommitBlocks(name string, blockList []string, newEtag *string) error {
-	return dl.BlockBlob.CommitBlocks(name, blockList, newEtag)
+	return dl.blockBlob.CommitBlocks(name, blockList, newEtag)
 }
 
 func (dl *Datalake) SetFilter(filter string) error {
@@ -622,5 +662,5 @@ func (dl *Datalake) SetFilter(filter string) error {
 		}
 	}
 
-	return dl.BlockBlob.SetFilter(filter)
+	return dl.blockBlob.SetFilter(filter)
 }

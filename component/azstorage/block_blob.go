@@ -70,8 +70,8 @@ const (
 type BlockBlob struct {
 	AzStorageConnection
 	Auth            azAuth
-	Service         *service.Client
-	Container       *container.Client
+	service         *service.Client
+	containerClient ContainerClient
 	blobCPKOpt      *blob.CPKInfo
 	downloadOptions *blob.DownloadFileOptions
 	listDetails     container.ListBlobsInclude
@@ -134,10 +134,10 @@ func (bb *BlockBlob) UpdateServiceClient(key, value string) (err error) {
 		}
 
 		// update the service client
-		bb.Service = svcClient.(*service.Client)
+		bb.service = svcClient.(*service.Client)
 
 		// Update the container client
-		bb.Container = bb.Service.NewContainerClient(bb.Config.container)
+		bb.containerClient.updateContainerClient()
 	}
 	return nil
 }
@@ -167,14 +167,19 @@ func (bb *BlockBlob) SetupPipeline() error {
 	var err error
 
 	// create the service client
-	bb.Service, err = bb.createServiceClient()
+	bb.service, err = bb.createServiceClient()
 	if err != nil {
 		log.Err("BlockBlob::SetupPipeline : Failed to get service client [%s]", err.Error())
 		return err
 	}
 
 	// create the container client
-	bb.Container = bb.Service.NewContainerClient(bb.Config.container)
+	// create the filesystem client
+	bb.containerClient = newContainerClient(bb.service, bb.Config.container)
+	if bb.Config.container == "" {
+		log.Info("BlockBlob::SetupPipeline : Container name is empty, mounting entire account")
+	}
+
 	return nil
 }
 
@@ -186,26 +191,31 @@ func (bb *BlockBlob) TestPipeline() error {
 		return nil
 	}
 
-	if bb.Container == nil || bb.Container.URL() == "" {
-		log.Err("BlockBlob::TestPipeline : Container Client is not built, check your credentials")
-		return nil
-	}
+	if bb.Config.container != "" {
+		cc := bb.containerClient.getContainerClient(bb.Config.container)
+		listBlobPager := cc.NewListBlobsHierarchyPager("/", &container.ListBlobsHierarchyOptions{
+			MaxResults: to.Ptr((int32)(2)),
+			Prefix:     &bb.Config.prefixPath,
+		})
 
-	listBlobPager := bb.Container.NewListBlobsHierarchyPager("/", &container.ListBlobsHierarchyOptions{
-		MaxResults: to.Ptr((int32)(2)),
-		Prefix:     &bb.Config.prefixPath,
-	})
-
-	// we are just validating the auth mode used. So, no need to iterate over the pages
-	_, err := listBlobPager.NextPage(context.Background())
-	if err != nil {
-		log.Err("BlockBlob::TestPipeline : Failed to validate account with given auth %s", err.Error())
-		var respErr *azcore.ResponseError
-		errors.As(err, &respErr)
-		if respErr != nil {
-			return fmt.Errorf("BlockBlob::TestPipeline : [%s]", respErr.ErrorCode)
+		// we are just validating the auth mode used. So, no need to iterate over the pages
+		_, err := listBlobPager.NextPage(context.Background())
+		if err != nil {
+			log.Err("BlockBlob::TestPipeline : Failed to validate account with given auth %s", err.Error())
+			var respErr *azcore.ResponseError
+			errors.As(err, &respErr)
+			if respErr != nil {
+				return fmt.Errorf("BlockBlob::TestPipeline : [%s]", respErr.ErrorCode)
+			}
+			return err
 		}
-		return err
+	} else {
+		// list the containers and validate we are able to access the list
+		_, err := bb.ListContainers()
+		if err != nil {
+			log.Err("BlockBlob::TestPipeline : Failed to list containers [%s]", err.Error())
+			return err
+		}
 	}
 
 	return nil
@@ -216,7 +226,24 @@ func (bb *BlockBlob) IsAccountADLS() bool {
 	includeFields := bb.listDetails
 	includeFields.Permissions = true // for FNS account this property will return back error
 
-	listBlobPager := bb.Container.NewListBlobsHierarchyPager("/", &container.ListBlobsHierarchyOptions{
+	containerName := bb.Config.container
+	if bb.Config.container == "" {
+		containers, err := bb.ListContainers()
+		if err != nil {
+			log.Err("BlockBlob::IsAccountADLS : Unable to list containers [%s]", err.Error())
+			return false
+		}
+
+		if len(containers) > 0 {
+			containerName = containers[0]
+		} else {
+			log.Err("BlockBlob::IsAccountADLS : No containers found in the account, unable to determine type")
+			return false
+		}
+	}
+
+	cc := bb.containerClient.getContainerClient(containerName)
+	listBlobPager := cc.NewListBlobsHierarchyPager("/", &container.ListBlobsHierarchyOptions{
 		MaxResults: to.Ptr((int32)(2)),
 		Prefix:     &bb.Config.prefixPath,
 		Include:    includeFields,
@@ -249,7 +276,7 @@ func (bb *BlockBlob) ListContainers() ([]string, error) {
 	log.Trace("BlockBlob::ListContainers : Listing containers")
 	cntList := make([]string, 0)
 
-	pager := bb.Service.NewListContainersPager(nil)
+	pager := bb.service.NewListContainersPager(nil)
 	for pager.More() {
 		resp, err := pager.NextPage(context.Background())
 		if err != nil {
@@ -301,7 +328,8 @@ func (bb *BlockBlob) CreateLink(source string, target string) error {
 func (bb *BlockBlob) DeleteFile(name string) (err error) {
 	log.Trace("BlockBlob::DeleteFile : name %s", name)
 
-	blobClient := bb.Container.NewBlobClient(filepath.Join(bb.Config.prefixPath, name))
+	cc := bb.containerClient.getContainerClient(name)
+	blobClient := cc.NewBlobClient(filepath.Join(bb.Config.prefixPath, name))
 	_, err = blobClient.Delete(context.Background(), &blob.DeleteOptions{
 		DeleteSnapshots: to.Ptr(blob.DeleteSnapshotsOptionTypeInclude),
 	})
@@ -344,8 +372,10 @@ func (bb *BlockBlob) DeleteDirectory(name string) (err error) {
 func (bb *BlockBlob) RenameFile(source string, target string, srcAttr *internal.ObjAttr) error {
 	log.Trace("BlockBlob::RenameFile : %s -> %s", source, target)
 
-	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, source))
-	newBlobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, target))
+	srccc := bb.containerClient.getContainerClient(source)
+	dstcc := bb.containerClient.getContainerClient(target)
+	blobClient := srccc.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, source))
+	newBlobClient := dstcc.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, target))
 
 	// not specifying source blob metadata, since passing empty metadata headers copies
 	// the source blob metadata to destination blob
@@ -419,7 +449,9 @@ func (bb *BlockBlob) RenameDirectory(source string, target string) error {
 	log.Trace("BlockBlob::RenameDirectory : %s -> %s", source, target)
 
 	srcDirPresent := false
-	pager := bb.Container.NewListBlobsFlatPager(&container.ListBlobsFlatOptions{
+	srccc := bb.containerClient.getContainerClient(source)
+
+	pager := srccc.NewListBlobsFlatPager(&container.ListBlobsFlatOptions{
 		Prefix: to.Ptr(filepath.Join(bb.Config.prefixPath, source) + "/"),
 	})
 	for pager.More() {
@@ -441,7 +473,7 @@ func (bb *BlockBlob) RenameDirectory(source string, target string) error {
 	}
 
 	// To rename source marker blob check its properties before calling rename on it.
-	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, source))
+	blobClient := srccc.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, source))
 	_, err := blobClient.GetProperties(context.Background(), &blob.GetPropertiesOptions{
 		CPKInfo: bb.blobCPKOpt,
 	})
@@ -465,7 +497,8 @@ func (bb *BlockBlob) RenameDirectory(source string, target string) error {
 func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err error) {
 	log.Trace("BlockBlob::getAttrUsingRest : name %s", name)
 
-	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
+	cc := bb.containerClient.getContainerClient(name)
+	blobClient := cc.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
 	prop, err := blobClient.GetProperties(context.Background(), &blob.GetPropertiesOptions{
 		CPKInfo: bb.blobCPKOpt,
 	})
@@ -597,8 +630,25 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 
 	listPath := bb.getListPath(prefix)
 
+	if listPath == "" && bb.Config.container == "" {
+		containers, err := bb.ListContainers()
+		if err != nil {
+			log.Err("BlockBlob::List : Failed to list containers [%s]", err.Error())
+			return nil, nil, err
+		}
+
+		blobList := make([]*internal.ObjAttr, 0)
+		for _, name := range containers {
+			attr := bb.createDirAttr(name)
+			blobList = append(blobList, attr)
+		}
+
+		return blobList, nil, nil
+	}
+
+	cc := bb.containerClient.getContainerClient(listPath)
 	// Get a result segment starting with the blob indicated by the current Marker.
-	pager := bb.Container.NewListBlobsHierarchyPager("/", &container.ListBlobsHierarchyOptions{
+	pager := cc.NewListBlobsHierarchyPager("/", &container.ListBlobsHierarchyOptions{
 		Marker:     marker,
 		MaxResults: &count,
 		Prefix:     &listPath,
@@ -826,7 +876,8 @@ func (bb *BlockBlob) ReadToFile(name string, offset int64, count int64, fi *os.F
 	log.Trace("BlockBlob::ReadToFile : name %s, offset : %d, count %d", name, offset, count)
 	//defer exectime.StatTimeCurrentBlock("BlockBlob::ReadToFile")()
 
-	blobClient := bb.Container.NewBlobClient(filepath.Join(bb.Config.prefixPath, name))
+	cc := bb.containerClient.getContainerClient(name)
+	blobClient := cc.NewBlobClient(filepath.Join(bb.Config.prefixPath, name))
 
 	downloadPtr := to.Ptr(int64(1))
 
@@ -904,7 +955,9 @@ func (bb *BlockBlob) ReadBuffer(name string, offset int64, len int64) ([]byte, e
 	}
 
 	buff = make([]byte, len)
-	blobClient := bb.Container.NewBlobClient(filepath.Join(bb.Config.prefixPath, name))
+
+	cc := bb.containerClient.getContainerClient(name)
+	blobClient := cc.NewBlobClient(filepath.Join(bb.Config.prefixPath, name))
 
 	dlOpts := (blob.DownloadBufferOptions)(*bb.downloadOptions)
 	dlOpts.Range = blob.HTTPRange{
@@ -936,7 +989,8 @@ func (bb *BlockBlob) ReadInBuffer(name string, offset int64, len int64, data []b
 		*etag = ""
 	}
 
-	blobClient := bb.Container.NewBlobClient(filepath.Join(bb.Config.prefixPath, name))
+	cc := bb.containerClient.getContainerClient(name)
+	blobClient := cc.NewBlobClient(filepath.Join(bb.Config.prefixPath, name))
 
 	ctx, cancel := context.WithTimeout(context.Background(), max_context_timeout*time.Minute)
 	defer cancel()
@@ -1043,7 +1097,8 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]*string, fi 
 	log.Trace("BlockBlob::WriteFromFile : name %s", name)
 	//defer exectime.StatTimeCurrentBlock("WriteFromFile::WriteFromFile")()
 
-	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
+	cc := bb.containerClient.getContainerClient(name)
+	blobClient := cc.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
 	defer log.TimeTrack(time.Now(), "BlockBlob::WriteFromFile", name)
 
 	uploadPtr := to.Ptr(int64(1))
@@ -1124,7 +1179,9 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]*string, fi 
 // WriteFromBuffer : Upload from a buffer to a blob
 func (bb *BlockBlob) WriteFromBuffer(name string, metadata map[string]*string, data []byte) error {
 	log.Trace("BlockBlob::WriteFromBuffer : name %s", name)
-	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
+
+	cc := bb.containerClient.getContainerClient(name)
+	blobClient := cc.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
 
 	defer log.TimeTrack(time.Now(), "BlockBlob::WriteFromBuffer", name)
 
@@ -1151,7 +1208,9 @@ func (bb *BlockBlob) WriteFromBuffer(name string, metadata map[string]*string, d
 func (bb *BlockBlob) GetFileBlockOffsets(name string) (*common.BlockOffsetList, error) {
 	var blockOffset int64 = 0
 	blockList := common.BlockOffsetList{}
-	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
+
+	cc := bb.containerClient.getContainerClient(name)
+	blobClient := cc.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
 
 	storageBlockList, err := blobClient.GetBlockList(context.Background(), blockblob.BlockListTypeCommitted, nil)
 
@@ -1262,7 +1321,8 @@ func (bb *BlockBlob) TruncateFile(name string, size int64) error {
 		if size > 1*common.GbToBytes {
 			blkSize := int64(16 * common.MbToBytes)
 			blobName := filepath.Join(bb.Config.prefixPath, name)
-			blobClient := bb.Container.NewBlockBlobClient(blobName)
+			cc := bb.containerClient.getContainerClient(blobName)
+			blobClient := cc.NewBlockBlobClient(blobName)
 
 			blkList := make([]string, 0)
 			id := common.GetBlockID(common.BlockIDLength)
@@ -1455,7 +1515,8 @@ func (bb *BlockBlob) Write(options internal.WriteFileOptions) error {
 
 // TODO: make a similar method facing stream that would enable us to write to cached blocks then stage and commit
 func (bb *BlockBlob) stageAndCommitModifiedBlocks(name string, data []byte, offsetList *common.BlockOffsetList) error {
-	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
+	cc := bb.containerClient.getContainerClient(name)
+	blobClient := cc.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
 	blockOffset := int64(0)
 	var blockIDList []string
 	for _, blk := range offsetList.BlockList {
@@ -1497,7 +1558,9 @@ func (bb *BlockBlob) StageAndCommit(name string, bol *common.BlockOffsetList) er
 	blobMtx := bb.blockLocks.GetLock(name)
 	blobMtx.Lock()
 	defer blobMtx.Unlock()
-	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
+
+	cc := bb.containerClient.getContainerClient(name)
+	blobClient := cc.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
 	var blockIDList []string
 	var data []byte
 	staged := false
@@ -1577,7 +1640,8 @@ func (bb *BlockBlob) ChangeOwner(name string, _ int, _ int) error {
 
 // GetCommittedBlockList : Get the list of committed blocks
 func (bb *BlockBlob) GetCommittedBlockList(name string) (*internal.CommittedBlockList, error) {
-	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
+	cc := bb.containerClient.getContainerClient(name)
+	blobClient := cc.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
 
 	storageBlockList, err := blobClient.GetBlockList(context.Background(), blockblob.BlockListTypeCommitted, nil)
 
@@ -1613,7 +1677,8 @@ func (bb *BlockBlob) StageBlock(name string, data []byte, id string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), max_context_timeout*time.Minute)
 	defer cancel()
 
-	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
+	cc := bb.containerClient.getContainerClient(name)
+	blobClient := cc.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
 	_, err := blobClient.StageBlock(ctx,
 		id,
 		streaming.NopCloser(bytes.NewReader(data)),
@@ -1636,7 +1701,8 @@ func (bb *BlockBlob) CommitBlocks(name string, blockList []string, newEtag *stri
 	ctx, cancel := context.WithTimeout(context.Background(), max_context_timeout*time.Minute)
 	defer cancel()
 
-	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
+	cc := bb.containerClient.getContainerClient(name)
+	blobClient := cc.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
 	resp, err := blobClient.CommitBlockList(ctx,
 		blockList,
 		&blockblob.CommitBlockListOptions{
