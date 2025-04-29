@@ -31,54 +31,34 @@
    SOFTWARE
 */
 
-package cmd
+package rpc
 
-import (
-	"errors"
-	"fmt"
-
-	"github.com/Azure/azure-storage-fuse/v2/common"
-
-	"github.com/spf13/cobra"
+const (
+	InvalidRequest      = iota + 1 // invalid rpc request
+	InvalidRVID                    // RV does not have the rvID
+	InvalidRV                      // RV is invalid for the given node
+	InternalServerError            // Miscellaneous errors
+	ChunkNotFound                  // Chunk not found
+	ChunkAlreadyExists             // Chunk already exists
+	MaxMVsExceeded                 // Max number of MVs exceeded for the RV
+	// Component RVs are invalid for the MV.
+	// This indicates the client that its copy of clustermap is stale.
+	// So, it should fetch the latest clustermap copy and retry.
+	NeedToRefreshClusterMap
 )
 
-var umntAllCmd = &cobra.Command{
-	Use:               "all",
-	Short:             "Unmount all instances of Blobfuse2",
-	Long:              "Unmount all instances of Blobfuse2",
-	SuggestFor:        []string{"al", "all"},
-	FlagErrorHandling: cobra.ExitOnError,
-	RunE: func(cmd *cobra.Command, _ []string) error {
-		lazy, _ := cmd.Flags().GetBool("lazy")
-		lstMnt, err := common.ListMountPoints()
-		if err != nil {
-			return fmt.Errorf("failed to list mount points [%s]", err.Error())
-		}
+type ResponseError struct {
+	errCode int64
+	errMsg  string
+}
 
-		mountfound := 0
-		unmounted := 0
-		errMsg := "failed to unmount - \n"
+func NewResponseError(errorCode int64, errorMessage string) *ResponseError {
+	return &ResponseError{
+		errCode: errorCode,
+		errMsg:  errorMessage,
+	}
+}
 
-		for _, mntPath := range lstMnt {
-			mountfound += 1
-			err := unmountBlobfuse2(mntPath, lazy)
-			if err == nil {
-				unmounted += 1
-			} else {
-				errMsg += " " + mntPath + " - [" + err.Error() + "]\n"
-			}
-		}
-
-		if mountfound == 0 {
-			fmt.Println("Nothing to unmount")
-		} else {
-			fmt.Printf("%d of %d mounts were successfully unmounted\n", unmounted, mountfound)
-		}
-
-		if unmounted < mountfound {
-			return errors.New(errMsg)
-		}
-
-		return nil
-	},
+func (e *ResponseError) Error() string {
+	return e.errMsg
 }

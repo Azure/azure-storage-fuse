@@ -36,6 +36,7 @@ package distributed_cache
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -46,6 +47,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/cluster_manager"
+	fm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/file_manager"
 	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
@@ -353,7 +355,52 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 	return dirList, token, nil
 }
 
+func (dc *DistributedCache) CreateFile(options internal.CreateFileOptions) (*handlemap.Handle, error) {
+	isAzurePath, isDcachePath, rawPath := getFS(options.Name)
+	var file *fm.DcacheFile
+	if isAzurePath {
+		log.Debug("DistributedCache::CreateFile : Path is having Azure subcomponent, path : %s", options.Name)
+		options.Name = rawPath
+		_, err := dc.NextComponent().CreateFile(options)
+		if err != nil {
+			return nil, err
+		}
+	} else if isDcachePath {
+		log.Debug("DistributedCache::CreateFile : Path is having Dcache subcomponent, path : %s", options.Name)
+		options.Name = rawPath
+		var err error
+		file, err = fm.NewDcacheFile(rawPath)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		var err error
+		options.Name = rawPath
+		file, err = fm.NewDcacheFile(rawPath)
+		if err != nil {
+			return nil, err
+		}
+
+		_, err = dc.NextComponent().CreateFile(options)
+		if err != nil {
+			return nil, err
+		}
+		// todo : if one is success and other is failure, get to the previous state by removing the
+		// created entries for the files.
+	}
+
+	handle := handlemap.NewHandle(options.Name)
+
+	handle.IFObj = file
+
+	return handle, nil
+}
 func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
+	if options.Flags&os.O_WRONLY != 0 || options.Flags&os.O_RDWR != 0 {
+		log.Info("DistributedCache::OpenFile: Writing to an exisiting File is not allowed, file : %s", options.Name)
+		return nil, syscall.EACCES
+	}
+
 	return nil, syscall.ENOTSUP
 }
 

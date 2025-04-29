@@ -1,6 +1,7 @@
 ## 2.5.0~preview.1 (Unreleased)
 **Features**
 - Preload feature added to download entire dataset on mount, to accelerate model training.
+- Added support for lazy unmounts. Lazy unmount will wait for device to be free and unmount automatically, instead of giving "device or resource busy" on executing unmount. `--lazy` CLI option in unmount command will enable lazy unmount.
 
 ## 2.4.2 (2025-04-08)
 **Bug Fixes**

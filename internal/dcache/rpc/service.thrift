@@ -7,17 +7,21 @@ service ChunkService {
     // check if the node is reachable
     models.HelloResponse Hello(1: models.HelloRequest request)
 
-    // fetch the chunk from the node from the given fsid
+    // fetch the chunk from the node from the given rvID
     models.GetChunkResponse GetChunk(1: models.GetChunkRequest request)
 
-    // store the chunk on the node on the given fsid
+    // store the chunk on the node on the given rvID
     models.PutChunkResponse PutChunk(1: models.PutChunkRequest request)
 
-    // delete the chunk from the node from the given fsid
+    // delete the chunk from the node from the given rvID
     models.RemoveChunkResponse RemoveChunk(1: models.RemoveChunkRequest request)
 
     // add RV to the given MV
     models.JoinMVResponse JoinMV(1: models.JoinMVRequest request)
+
+    // update the component RVs for the given MV
+    // this call is sent after the JoinMV call to the online RVs to update their component RVs list
+    models.UpdateMVResponse UpdateMV(1: models.UpdateMVRequest request)
 
     // remove RV from the given MV
     models.LeaveMVResponse LeaveMV(1: models.LeaveMVRequest request)

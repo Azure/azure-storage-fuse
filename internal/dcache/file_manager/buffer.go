@@ -31,54 +31,49 @@
    SOFTWARE
 */
 
-package cmd
+package filemanager
 
 import (
 	"errors"
 	"fmt"
+	"sync"
+	"sync/atomic"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
-
-	"github.com/spf13/cobra"
 )
 
-var umntAllCmd = &cobra.Command{
-	Use:               "all",
-	Short:             "Unmount all instances of Blobfuse2",
-	Long:              "Unmount all instances of Blobfuse2",
-	SuggestFor:        []string{"al", "all"},
-	FlagErrorHandling: cobra.ExitOnError,
-	RunE: func(cmd *cobra.Command, _ []string) error {
-		lazy, _ := cmd.Flags().GetBool("lazy")
-		lstMnt, err := common.ListMountPoints()
-		if err != nil {
-			return fmt.Errorf("failed to list mount points [%s]", err.Error())
-		}
+type bufferPool struct {
+	pool       sync.Pool    // sync.Pool to relieve GC
+	bufSize    int          // size of buffers in this pool
+	maxBuffers int64        // max allocated buffers allowed
+	curBuffers atomic.Int64 // buffers currently allocated
+}
 
-		mountfound := 0
-		unmounted := 0
-		errMsg := "failed to unmount - \n"
+func NewBufferPool(bufSize int, maxBuffers int) *bufferPool {
+	return &bufferPool{
+		pool: sync.Pool{
+			New: func() any {
+				return make([]byte, bufSize)
+			},
+		},
+		bufSize:    bufSize,
+		maxBuffers: int64(maxBuffers),
+	}
+}
 
-		for _, mntPath := range lstMnt {
-			mountfound += 1
-			err := unmountBlobfuse2(mntPath, lazy)
-			if err == nil {
-				unmounted += 1
-			} else {
-				errMsg += " " + mntPath + " - [" + err.Error() + "]\n"
-			}
-		}
+func (bp *bufferPool) getBuffer() ([]byte, error) {
+	if bp.curBuffers.Load() > bp.maxBuffers {
+		return nil, errors.New("Buffers Exhausted")
+	}
 
-		if mountfound == 0 {
-			fmt.Println("Nothing to unmount")
-		} else {
-			fmt.Printf("%d of %d mounts were successfully unmounted\n", unmounted, mountfound)
-		}
+	buf := bp.pool.Get().([]byte)
+	common.Assert(len(buf) == bp.bufSize, fmt.Sprintf("Allocated Buf Size %d != Required Buf Size %d", len(buf), bp.bufSize))
+	bp.curBuffers.Add(1)
+	return buf, nil
+}
 
-		if unmounted < mountfound {
-			return errors.New(errMsg)
-		}
-
-		return nil
-	},
+func (bp *bufferPool) putBuffer(buf []byte) {
+	bp.pool.Put(buf)
+	common.Assert(bp.curBuffers.Load() > 0, fmt.Sprintf("Number of buffers are less than zero:  %d", bp.curBuffers.Load()))
+	bp.curBuffers.Add(-1)
 }
