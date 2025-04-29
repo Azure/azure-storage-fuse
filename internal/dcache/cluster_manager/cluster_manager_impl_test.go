@@ -267,10 +267,6 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_MaxMVs() {
 
 func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_OfflineMv() {
 	mvMap := mockMvMap()
-	// Remove rv1 from mv0
-	// delete(mvMap["mv0"].RVWithStateMap, "rv1")
-	// // Remove rv3 from mv1
-	// delete(mvMap["mv1"].RVWithStateMap, "rv3")
 	rvMap := mockRvMap()
 
 	rv := rvMap["rv0"]
@@ -291,8 +287,8 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_OfflineMv() {
 
 func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_OfflineRv() {
 	mvMap := mockMvMap()
-	mvMap["mv0"].RVWithStateMap["rv6"] = string(dcache.StateOnline)
-	mvMap["mv1"].RVWithStateMap["rv5"] = string(dcache.StateOnline)
+	mvMap["mv0"].RVsWithState["rv6"] = string(dcache.StateOnline)
+	mvMap["mv1"].RVsWithState["rv5"] = string(dcache.StateOnline)
 	rvMap := mockRvMap()
 	rv := rvMap["rv4"]
 	rv.State = dcache.StateOffline
@@ -303,7 +299,7 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_OfflineRv() {
 	updated := suite.cmi.updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
 
 	for _, mv := range updated {
-		_, ok := mv.RVWithStateMap["rv4"]
+		_, ok := mv.RVsWithState["rv4"]
 		suite.False(ok, "RV4 should not be present in any MV")
 	}
 	suite.TestUpdateMvList(updated, rvMap, numReplicas, mvPerRv)
@@ -330,7 +326,7 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateMvList(updated map[string]dc
 
 	// Check if all the mv's have numReplica rvs
 	for _, mv := range updated {
-		suite.Equal(numReplicas, len(mv.RVWithStateMap))
+		suite.Equal(numReplicas, len(mv.RVsWithState))
 	}
 
 	// Iterate over mvMap and check if any rv is repeated more than mvsPerRv times overall
@@ -339,7 +335,7 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateMvList(updated map[string]dc
 		count[i] = mvPerRv
 	}
 	for _, mv := range updated {
-		for rv, _ := range mv.RVWithStateMap {
+		for rv, _ := range mv.RVsWithState {
 			index, err := strconv.Atoi(rv[2:])
 			suite.Nil(err)
 			count[index]--
@@ -350,7 +346,7 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateMvList(updated map[string]dc
 	// Check if node diversity is maintained
 	for _, mv := range updated {
 		nodeMap := make(map[string]bool)
-		for rv, _ := range mv.RVWithStateMap {
+		for rv, _ := range mv.RVsWithState {
 			nodeId := rvMap[rv].NodeId
 			_, ok := nodeMap[nodeId]
 			suite.False(ok, "Node diversity not maintained")
@@ -362,14 +358,14 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateMvList(updated map[string]dc
 func mockMvMap() map[string]dcache.MirroredVolume {
 	return map[string]dcache.MirroredVolume{
 		"mv0": {
-			RVWithStateMap: map[string]string{
+			RVsWithState: map[string]string{
 				"rv0": string(dcache.StateOnline),
 				"rv1": string(dcache.StateOnline),
 			},
 			State: dcache.StateOnline,
 		},
 		"mv1": {
-			RVWithStateMap: map[string]string{
+			RVsWithState: map[string]string{
 				"rv2": string(dcache.StateOnline),
 				"rv3": string(dcache.StateOnline),
 			},

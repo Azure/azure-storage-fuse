@@ -512,6 +512,26 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 
 func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, existingMVMap map[string]dcache.MirroredVolume, NumReplicas int, MvsPerRv int) map[string]dcache.MirroredVolume {
 
+	//
+	// Approach:
+	//
+	// We make a list of nodes each having a list of RVs hosted by that node. This is
+	// typically one RV per node, but it can be higher.
+	// Each RV starts with a slot count equal to MvsPerRv. This is done so that we can
+	// assign one RV to MvsPerRv MVs.
+	// In Phase#1 we go over existing MVs and deduct slot count for all the RVs used
+	// by the existing MVs. After that's done, we are left with RVs with updated slot
+	// count signifying how many more MVs they can host.
+	// In this phase we also check if any of the RVs used in existing MVs are offline
+	// and mark the MVs as degraded. If all the RVs in a MV are offline, we mark the
+	// MV as offline.
+	// Now in Phase#2 we create as many new MVs as we can, continuing with the next
+	// available MV name, each MV is assigned one RV from a different node, upto
+	// NumReplicas for each MV.
+	// This continues till we do not have enough RVs (from distinct nodes) for creating
+	// a new MV.
+	//
+
 	// Local types
 	type rv struct {
 		rvName string
@@ -525,7 +545,7 @@ func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, e
 
 	nodeToRvs := make(map[string]node)
 
-	// TODO :: Handle scenarios for degraded and fix scenarios
+	// TODO :: Handle scenarios for fix scenarios
 	// Degraded - When any of the rv's in a mv is offline make mv as degraded [Done]
 	// Fix - Replace any rv which is offline with an available rv and mark rv as out-of-sync while mv's state will be degraded
 	// Sync - This will be handled by replica manager and it will change mv state to syncing
@@ -533,18 +553,18 @@ func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, e
 
 	// Populate the RV struct and node struct
 	for rvId, rvInfo := range rvMap {
+		common.Assert(rvInfo.State == dcache.StateOnline || rvInfo.State == dcache.StateOffline, fmt.Sprintf("Invalid state %s for RV %s", rvInfo.State, rvId))
 		if rvInfo.State == dcache.StateOffline {
-			// Skip RVs that are offline
+			// Skip RVs that are offline as they cannot contribute to any MV
 			continue
 		}
-		if _, exists := nodeToRvs[rvInfo.NodeId]; exists {
+		if nodeInfo, exists := nodeToRvs[rvInfo.NodeId]; exists {
 			// If the node already exists, append the RV to its list
-			node := nodeToRvs[rvInfo.NodeId]
-			node.rvs = append(node.rvs, rv{
+			nodeInfo.rvs = append(nodeInfo.rvs, rv{
 				rvName: rvId,
 				slots:  MvsPerRv,
 			})
-			nodeToRvs[rvInfo.NodeId] = node
+			nodeToRvs[rvInfo.NodeId] = nodeInfo
 		} else {
 			// Create a new node and add the RV to it
 			nodeToRvs[rvInfo.NodeId] = node{
@@ -557,12 +577,12 @@ func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, e
 	// Phase 1 : Check and update slots of Rv's used in existing MVs
 	for mvName, mv := range existingMVMap {
 		offlineRv := 0
-		for rvName := range mv.RVWithStateMap {
+		for rvName := range mv.RVsWithState {
 			if rvMap[rvName].State == dcache.StateOffline {
 				offlineRv++
-				mv.RVWithStateMap[rvName] = string(dcache.StateOffline)
+				mv.RVsWithState[rvName] = string(dcache.StateOffline)
 				mv.State = dcache.StateDegraded
-				if offlineRv == len(mv.RVWithStateMap) {
+				if offlineRv == len(mv.RVsWithState) {
 					mv.State = dcache.StateOffline
 					// Update the MV state to offline
 				}
@@ -616,12 +636,12 @@ func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, e
 						rvwithstate[r.rvName] = string(dcache.StateOnline)
 						// Create a new MV
 						existingMVMap[mvName] = dcache.MirroredVolume{
-							RVWithStateMap: rvwithstate,
-							State:          dcache.StateOnline,
+							RVsWithState: rvwithstate,
+							State:        dcache.StateOnline,
 						}
 					} else {
 						// Update the existing MV
-						existingMVMap[mvName].RVWithStateMap[r.rvName] = string(dcache.StateOnline)
+						existingMVMap[mvName].RVsWithState[r.rvName] = string(dcache.StateOnline)
 					}
 
 					// Decrease the slot count for the RV in nodeToRvs

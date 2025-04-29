@@ -34,8 +34,8 @@
 package dcache
 
 type MirroredVolume struct {
-	RVWithStateMap map[string]string `json:"rv_with_state_map,omitempty"`
-	State          StateEnum         `json:"state,omitempty"`
+	RVsWithState map[string]string `json:"rvs,omitempty"`
+	State        StateEnum         `json:"state,omitempty"`
 }
 
 type RawVolume struct {
