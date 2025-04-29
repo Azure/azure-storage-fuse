@@ -858,6 +858,7 @@ func (cmi *ClusterManagerImpl) updateRVList(clusterMapRVMap map[string]dcache.Ra
 				clusterMapRVMap[rvName] = rvInClusterMap
 			}
 			delete(rVsByRvId, rvHb.RvId)
+
 		} else {
 			log.Debug("ClusterManagerImpl::updateRVList: RvName=%s missing in new heartbeats", rvName)
 			rvInClusterMap.State = dcache.StateOffline
@@ -867,6 +868,7 @@ func (cmi *ClusterManagerImpl) updateRVList(clusterMapRVMap map[string]dcache.Ra
 		}
 	}
 
+	log.Info("updateRVList: rVsByRvId %+v ", rVsByRvId)
 	// add any new RVs
 	if len(rVsByRvId) != 0 {
 
