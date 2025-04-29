@@ -71,6 +71,9 @@ type ChunkService interface {
 	JoinMV(ctx context.Context, request *models.JoinMVRequest) (_r *models.JoinMVResponse, _err error)
 	// Parameters:
 	//  - Request
+	UpdateMV(ctx context.Context, request *models.UpdateMVRequest) (_r *models.UpdateMVResponse, _err error)
+	// Parameters:
+	//  - Request
 	LeaveMV(ctx context.Context, request *models.LeaveMVRequest) (_r *models.LeaveMVResponse, _err error)
 	// Parameters:
 	//  - Request
@@ -207,12 +210,12 @@ func (p *ChunkServiceClient) JoinMV(ctx context.Context, request *models.JoinMVR
 
 // Parameters:
 //   - Request
-func (p *ChunkServiceClient) LeaveMV(ctx context.Context, request *models.LeaveMVRequest) (_r *models.LeaveMVResponse, _err error) {
-	var _args20 ChunkServiceLeaveMVArgs
+func (p *ChunkServiceClient) UpdateMV(ctx context.Context, request *models.UpdateMVRequest) (_r *models.UpdateMVResponse, _err error) {
+	var _args20 ChunkServiceUpdateMVArgs
 	_args20.Request = request
-	var _result22 ChunkServiceLeaveMVResult
+	var _result22 ChunkServiceUpdateMVResult
 	var _meta21 thrift.ResponseMeta
-	_meta21, _err = p.Client_().Call(ctx, "LeaveMV", &_args20, &_result22)
+	_meta21, _err = p.Client_().Call(ctx, "UpdateMV", &_args20, &_result22)
 	p.SetLastResponseMeta_(_meta21)
 	if _err != nil {
 		return
@@ -220,17 +223,17 @@ func (p *ChunkServiceClient) LeaveMV(ctx context.Context, request *models.LeaveM
 	if _ret23 := _result22.GetSuccess(); _ret23 != nil {
 		return _ret23, nil
 	}
-	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "LeaveMV failed: unknown result")
+	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "UpdateMV failed: unknown result")
 }
 
 // Parameters:
 //   - Request
-func (p *ChunkServiceClient) StartSync(ctx context.Context, request *models.StartSyncRequest) (_r *models.StartSyncResponse, _err error) {
-	var _args24 ChunkServiceStartSyncArgs
+func (p *ChunkServiceClient) LeaveMV(ctx context.Context, request *models.LeaveMVRequest) (_r *models.LeaveMVResponse, _err error) {
+	var _args24 ChunkServiceLeaveMVArgs
 	_args24.Request = request
-	var _result26 ChunkServiceStartSyncResult
+	var _result26 ChunkServiceLeaveMVResult
 	var _meta25 thrift.ResponseMeta
-	_meta25, _err = p.Client_().Call(ctx, "StartSync", &_args24, &_result26)
+	_meta25, _err = p.Client_().Call(ctx, "LeaveMV", &_args24, &_result26)
 	p.SetLastResponseMeta_(_meta25)
 	if _err != nil {
 		return
@@ -238,23 +241,41 @@ func (p *ChunkServiceClient) StartSync(ctx context.Context, request *models.Star
 	if _ret27 := _result26.GetSuccess(); _ret27 != nil {
 		return _ret27, nil
 	}
-	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "StartSync failed: unknown result")
+	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "LeaveMV failed: unknown result")
 }
 
 // Parameters:
 //   - Request
-func (p *ChunkServiceClient) EndSync(ctx context.Context, request *models.EndSyncRequest) (_r *models.EndSyncResponse, _err error) {
-	var _args28 ChunkServiceEndSyncArgs
+func (p *ChunkServiceClient) StartSync(ctx context.Context, request *models.StartSyncRequest) (_r *models.StartSyncResponse, _err error) {
+	var _args28 ChunkServiceStartSyncArgs
 	_args28.Request = request
-	var _result30 ChunkServiceEndSyncResult
+	var _result30 ChunkServiceStartSyncResult
 	var _meta29 thrift.ResponseMeta
-	_meta29, _err = p.Client_().Call(ctx, "EndSync", &_args28, &_result30)
+	_meta29, _err = p.Client_().Call(ctx, "StartSync", &_args28, &_result30)
 	p.SetLastResponseMeta_(_meta29)
 	if _err != nil {
 		return
 	}
 	if _ret31 := _result30.GetSuccess(); _ret31 != nil {
 		return _ret31, nil
+	}
+	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "StartSync failed: unknown result")
+}
+
+// Parameters:
+//   - Request
+func (p *ChunkServiceClient) EndSync(ctx context.Context, request *models.EndSyncRequest) (_r *models.EndSyncResponse, _err error) {
+	var _args32 ChunkServiceEndSyncArgs
+	_args32.Request = request
+	var _result34 ChunkServiceEndSyncResult
+	var _meta33 thrift.ResponseMeta
+	_meta33, _err = p.Client_().Call(ctx, "EndSync", &_args32, &_result34)
+	p.SetLastResponseMeta_(_meta33)
+	if _err != nil {
+		return
+	}
+	if _ret35 := _result34.GetSuccess(); _ret35 != nil {
+		return _ret35, nil
 	}
 	return nil, thrift.NewTApplicationException(thrift.MISSING_RESULT, "EndSync failed: unknown result")
 }
@@ -279,16 +300,17 @@ func (p *ChunkServiceProcessor) ProcessorMap() map[string]thrift.TProcessorFunct
 
 func NewChunkServiceProcessor(handler ChunkService) *ChunkServiceProcessor {
 
-	self32 := &ChunkServiceProcessor{handler: handler, processorMap: make(map[string]thrift.TProcessorFunction)}
-	self32.processorMap["Hello"] = &chunkServiceProcessorHello{handler: handler}
-	self32.processorMap["GetChunk"] = &chunkServiceProcessorGetChunk{handler: handler}
-	self32.processorMap["PutChunk"] = &chunkServiceProcessorPutChunk{handler: handler}
-	self32.processorMap["RemoveChunk"] = &chunkServiceProcessorRemoveChunk{handler: handler}
-	self32.processorMap["JoinMV"] = &chunkServiceProcessorJoinMV{handler: handler}
-	self32.processorMap["LeaveMV"] = &chunkServiceProcessorLeaveMV{handler: handler}
-	self32.processorMap["StartSync"] = &chunkServiceProcessorStartSync{handler: handler}
-	self32.processorMap["EndSync"] = &chunkServiceProcessorEndSync{handler: handler}
-	return self32
+	self36 := &ChunkServiceProcessor{handler: handler, processorMap: make(map[string]thrift.TProcessorFunction)}
+	self36.processorMap["Hello"] = &chunkServiceProcessorHello{handler: handler}
+	self36.processorMap["GetChunk"] = &chunkServiceProcessorGetChunk{handler: handler}
+	self36.processorMap["PutChunk"] = &chunkServiceProcessorPutChunk{handler: handler}
+	self36.processorMap["RemoveChunk"] = &chunkServiceProcessorRemoveChunk{handler: handler}
+	self36.processorMap["JoinMV"] = &chunkServiceProcessorJoinMV{handler: handler}
+	self36.processorMap["UpdateMV"] = &chunkServiceProcessorUpdateMV{handler: handler}
+	self36.processorMap["LeaveMV"] = &chunkServiceProcessorLeaveMV{handler: handler}
+	self36.processorMap["StartSync"] = &chunkServiceProcessorStartSync{handler: handler}
+	self36.processorMap["EndSync"] = &chunkServiceProcessorEndSync{handler: handler}
+	return self36
 }
 
 func (p *ChunkServiceProcessor) Process(ctx context.Context, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
@@ -301,12 +323,12 @@ func (p *ChunkServiceProcessor) Process(ctx context.Context, iprot, oprot thrift
 	}
 	iprot.Skip(ctx, thrift.STRUCT)
 	iprot.ReadMessageEnd(ctx)
-	x33 := thrift.NewTApplicationException(thrift.UNKNOWN_METHOD, "Unknown function "+name)
+	x37 := thrift.NewTApplicationException(thrift.UNKNOWN_METHOD, "Unknown function "+name)
 	oprot.WriteMessageBegin(ctx, name, thrift.EXCEPTION, seqId)
-	x33.Write(ctx, oprot)
+	x37.Write(ctx, oprot)
 	oprot.WriteMessageEnd(ctx)
 	oprot.Flush(ctx)
-	return false, x33
+	return false, x37
 
 }
 
@@ -688,6 +710,85 @@ func (p *chunkServiceProcessorJoinMV) Process(ctx context.Context, seqId int32, 
 	}
 	tickerCancel()
 	if err2 = oprot.WriteMessageBegin(ctx, "JoinMV", thrift.REPLY, seqId); err2 != nil {
+		err = thrift.WrapTException(err2)
+	}
+	if err2 = result.Write(ctx, oprot); err == nil && err2 != nil {
+		err = thrift.WrapTException(err2)
+	}
+	if err2 = oprot.WriteMessageEnd(ctx); err == nil && err2 != nil {
+		err = thrift.WrapTException(err2)
+	}
+	if err2 = oprot.Flush(ctx); err == nil && err2 != nil {
+		err = thrift.WrapTException(err2)
+	}
+	if err != nil {
+		return
+	}
+	return true, err
+}
+
+type chunkServiceProcessorUpdateMV struct {
+	handler ChunkService
+}
+
+func (p *chunkServiceProcessorUpdateMV) Process(ctx context.Context, seqId int32, iprot, oprot thrift.TProtocol) (success bool, err thrift.TException) {
+	args := ChunkServiceUpdateMVArgs{}
+	var err2 error
+	if err2 = args.Read(ctx, iprot); err2 != nil {
+		iprot.ReadMessageEnd(ctx)
+		x := thrift.NewTApplicationException(thrift.PROTOCOL_ERROR, err2.Error())
+		oprot.WriteMessageBegin(ctx, "UpdateMV", thrift.EXCEPTION, seqId)
+		x.Write(ctx, oprot)
+		oprot.WriteMessageEnd(ctx)
+		oprot.Flush(ctx)
+		return false, thrift.WrapTException(err2)
+	}
+	iprot.ReadMessageEnd(ctx)
+
+	tickerCancel := func() {}
+	// Start a goroutine to do server side connectivity check.
+	if thrift.ServerConnectivityCheckInterval > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithCancel(ctx)
+		defer cancel()
+		var tickerCtx context.Context
+		tickerCtx, tickerCancel = context.WithCancel(context.Background())
+		defer tickerCancel()
+		go func(ctx context.Context, cancel context.CancelFunc) {
+			ticker := time.NewTicker(thrift.ServerConnectivityCheckInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if !iprot.Transport().IsOpen() {
+						cancel()
+						return
+					}
+				}
+			}
+		}(tickerCtx, cancel)
+	}
+
+	result := ChunkServiceUpdateMVResult{}
+	var retval *models.UpdateMVResponse
+	if retval, err2 = p.handler.UpdateMV(ctx, args.Request); err2 != nil {
+		tickerCancel()
+		if err2 == thrift.ErrAbandonRequest {
+			return false, thrift.WrapTException(err2)
+		}
+		x := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing UpdateMV: "+err2.Error())
+		oprot.WriteMessageBegin(ctx, "UpdateMV", thrift.EXCEPTION, seqId)
+		x.Write(ctx, oprot)
+		oprot.WriteMessageEnd(ctx)
+		oprot.Flush(ctx)
+		return true, thrift.WrapTException(err2)
+	} else {
+		result.Success = retval
+	}
+	tickerCancel()
+	if err2 = oprot.WriteMessageBegin(ctx, "UpdateMV", thrift.REPLY, seqId); err2 != nil {
 		err = thrift.WrapTException(err2)
 	}
 	if err2 = result.Write(ctx, oprot); err == nil && err2 != nil {
@@ -2022,6 +2123,222 @@ func (p *ChunkServiceJoinMVResult) String() string {
 		return "<nil>"
 	}
 	return fmt.Sprintf("ChunkServiceJoinMVResult(%+v)", *p)
+}
+
+// Attributes:
+//   - Request
+type ChunkServiceUpdateMVArgs struct {
+	Request *models.UpdateMVRequest `thrift:"request,1" db:"request" json:"request"`
+}
+
+func NewChunkServiceUpdateMVArgs() *ChunkServiceUpdateMVArgs {
+	return &ChunkServiceUpdateMVArgs{}
+}
+
+var ChunkServiceUpdateMVArgs_Request_DEFAULT *models.UpdateMVRequest
+
+func (p *ChunkServiceUpdateMVArgs) GetRequest() *models.UpdateMVRequest {
+	if !p.IsSetRequest() {
+		return ChunkServiceUpdateMVArgs_Request_DEFAULT
+	}
+	return p.Request
+}
+func (p *ChunkServiceUpdateMVArgs) IsSetRequest() bool {
+	return p.Request != nil
+}
+
+func (p *ChunkServiceUpdateMVArgs) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 1:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField1(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ChunkServiceUpdateMVArgs) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Request = &models.UpdateMVRequest{}
+	if err := p.Request.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Request), err)
+	}
+	return nil
+}
+
+func (p *ChunkServiceUpdateMVArgs) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "UpdateMV_args"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField1(ctx, oprot); err != nil {
+			return err
+		}
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ChunkServiceUpdateMVArgs) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "request", thrift.STRUCT, 1); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:request: ", p), err)
+	}
+	if err := p.Request.Write(ctx, oprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Request), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:request: ", p), err)
+	}
+	return err
+}
+
+func (p *ChunkServiceUpdateMVArgs) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ChunkServiceUpdateMVArgs(%+v)", *p)
+}
+
+// Attributes:
+//   - Success
+type ChunkServiceUpdateMVResult struct {
+	Success *models.UpdateMVResponse `thrift:"success,0" db:"success" json:"success,omitempty"`
+}
+
+func NewChunkServiceUpdateMVResult() *ChunkServiceUpdateMVResult {
+	return &ChunkServiceUpdateMVResult{}
+}
+
+var ChunkServiceUpdateMVResult_Success_DEFAULT *models.UpdateMVResponse
+
+func (p *ChunkServiceUpdateMVResult) GetSuccess() *models.UpdateMVResponse {
+	if !p.IsSetSuccess() {
+		return ChunkServiceUpdateMVResult_Success_DEFAULT
+	}
+	return p.Success
+}
+func (p *ChunkServiceUpdateMVResult) IsSetSuccess() bool {
+	return p.Success != nil
+}
+
+func (p *ChunkServiceUpdateMVResult) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 0:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField0(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ChunkServiceUpdateMVResult) ReadField0(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Success = &models.UpdateMVResponse{}
+	if err := p.Success.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Success), err)
+	}
+	return nil
+}
+
+func (p *ChunkServiceUpdateMVResult) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "UpdateMV_result"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField0(ctx, oprot); err != nil {
+			return err
+		}
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ChunkServiceUpdateMVResult) writeField0(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetSuccess() {
+		if err := oprot.WriteFieldBegin(ctx, "success", thrift.STRUCT, 0); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 0:success: ", p), err)
+		}
+		if err := p.Success.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Success), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 0:success: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *ChunkServiceUpdateMVResult) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ChunkServiceUpdateMVResult(%+v)", *p)
 }
 
 // Attributes:

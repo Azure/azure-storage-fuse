@@ -37,6 +37,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -46,6 +47,7 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
 )
@@ -603,7 +605,7 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 		return
 	}
 	if changed {
-		cmi.updateMVList(clusterMap.RVMap, clusterMap.MVMap)
+		cmi.updateMVList(clusterMap.RVMap, clusterMap.MVMap, int(GetCacheConfig().NumReplicas), int(GetCacheConfig().MvsPerRv))
 	} else {
 		log.Debug("updateStorageClusterMapIfRequired: No changes in RV mapping")
 	}
@@ -634,7 +636,186 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 	}
 }
 
-func (cmi *ClusterManagerImpl) updateMVList(clusterMapRVMap map[string]dcache.RawVolume, clusterMapMVMap map[string]dcache.MirroredVolume) {
+func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, existingMVMap map[string]dcache.MirroredVolume, NumReplicas int, MvsPerRv int) map[string]dcache.MirroredVolume {
+
+	//
+	// Approach:
+	//
+	// We make a list of nodes each having a list of RVs hosted by that node. This is
+	// typically one RV per node, but it can be higher.
+	// Each RV starts with a slot count equal to MvsPerRv. This is done so that we can
+	// assign one RV to MvsPerRv MVs.
+	// In Phase#1 we go over existing MVs and deduct slot count for all the RVs used
+	// by the existing MVs. After that's done, we are left with RVs with updated slot
+	// count signifying how many more MVs they can host.
+	// In this phase we also check if any of the RVs used in existing MVs are offline
+	// and mark the MVs as degraded. If all the RVs in a MV are offline, we mark the
+	// MV as offline.
+	// Now in Phase#2 we create as many new MVs as we can, continuing with the next
+	// available MV name, each MV is assigned one RV from a different node, upto
+	// NumReplicas for each MV.
+	// This continues till we do not have enough RVs (from distinct nodes) for creating
+	// a new MV.
+	//
+
+	// Local types
+	type rv struct {
+		rvName string
+		slots  int //MvsPerRv
+	}
+
+	type node struct {
+		nodeId string
+		rvs    []rv
+	}
+
+	nodeToRvs := make(map[string]node)
+
+	// TODO :: Handle scenarios for fix scenarios
+	// Degraded - When any of the rv's in a mv is offline make mv as degraded [Done]
+	// Fix - Replace any rv which is offline with an available rv and mark rv as out-of-sync while mv's state will be degraded
+	// Sync - This will be handled by replica manager and it will change mv state to syncing
+	// Offline - Mark a mv as offline when all the rv's within it are offline [Done]
+
+	// Populate the RV struct and node struct
+	for rvName, rvInfo := range rvMap {
+		common.Assert(rvInfo.State == dcache.StateOnline || rvInfo.State == dcache.StateOffline, fmt.Sprintf("Invalid state %s for RV %s", rvInfo.State, rvName))
+		common.IsValidUUID(rvInfo.NodeId)
+		if rvInfo.State == dcache.StateOffline {
+			// Skip RVs that are offline as they cannot contribute to any MV
+			continue
+		}
+		if nodeInfo, exists := nodeToRvs[rvInfo.NodeId]; exists {
+			// If the node already exists, append the RV to its list
+			nodeInfo.rvs = append(nodeInfo.rvs, rv{
+				rvName: rvName,
+				slots:  MvsPerRv,
+			})
+			nodeToRvs[rvInfo.NodeId] = nodeInfo
+		} else {
+			// Create a new node and add the RV to it
+			nodeToRvs[rvInfo.NodeId] = node{
+				nodeId: rvInfo.NodeId,
+				rvs:    []rv{{rvName: rvName, slots: MvsPerRv}},
+			}
+		}
+	}
+
+	// Phase#1
+	for mvName, mv := range existingMVMap {
+		offlineRv := 0
+		for rvName := range mv.RVsWithState {
+			if rvMap[rvName].State == dcache.StateOffline {
+				offlineRv++
+				mv.RVsWithState[rvName] = dcache.StateOffline
+				mv.State = dcache.StateDegraded
+				if offlineRv == len(mv.RVsWithState) {
+					mv.State = dcache.StateOffline
+					// Update the MV state to offline
+				}
+				existingMVMap[mvName] = mv
+				continue
+			}
+			nodeId := rvMap[rvName].NodeId
+			found := false
+			for i := range len(nodeToRvs[nodeId].rvs) {
+				if nodeToRvs[nodeId].rvs[i].rvName == rvName {
+					nodeToRvs[nodeId].rvs[i].slots--
+					found = true
+					break
+				}
+			}
+			common.Assert(found, fmt.Sprintf("MV Map lists this as a online RV but the current RV %s was not found in node %s populated from RVMap", rvName, nodeId))
+		}
+	}
+
+	// Phase#2
+	for {
+		// Stored nodes in a slice as its wasy to shuffle
+		var availableNodes []node
+		for _, n := range nodeToRvs {
+			availableNodes = append(availableNodes, n)
+
+		}
+
+		maxMVsAllowed := (len(rvMap) * MvsPerRv) / NumReplicas
+
+		common.Assert(maxMVsAllowed > 0, fmt.Sprintf("Max number of MVs %d is less than 0", maxMVsAllowed))
+		// Check if we have reached the maximum number of MVs possible
+		common.Assert(len(availableNodes) < maxMVsAllowed, fmt.Sprintf("Number of available nodes %d is greater than max MVs Allowed %d", len(availableNodes), maxMVsAllowed))
+		// End of MV generation if we have enough MVs or if we have exhausted all the nodes
+		if len(availableNodes) < NumReplicas {
+			break
+		}
+
+		// Shuffle the available nodes to randomize selection
+		rand.Shuffle(len(availableNodes), func(i, j int) {
+			availableNodes[i], availableNodes[j] = availableNodes[j], availableNodes[i]
+		})
+
+		// Take the first NumReplicas nodes
+		selectedNodes := availableNodes[:NumReplicas]
+
+		mvName := fmt.Sprintf("mv%d", len(existingMVMap)) // starting from index 0
+
+		// Select the first available RV from each selected node
+		for _, n := range selectedNodes {
+			for _, r := range n.rvs {
+				// We should not have a rv in the list with slots <= 0
+				common.Assert(r.slots > 0, fmt.Sprintf("RV %s has no slots left", r.rvName))
+				// Safe check for slots
+				if r.slots > 0 {
+					if _, exists := existingMVMap[mvName]; !exists {
+						rvwithstate := make(map[string]dcache.StateEnum)
+						rvwithstate[r.rvName] = dcache.StateOnline
+						// Create a new MV
+						existingMVMap[mvName] = dcache.MirroredVolume{
+							RVsWithState: rvwithstate,
+							State:        dcache.StateOnline,
+						}
+					} else {
+						// Update the existing MV
+						existingMVMap[mvName].RVsWithState[r.rvName] = dcache.StateOnline
+					}
+
+					found := false
+					// Decrease the slot count for the RV in nodeToRvs
+					for i := range nodeToRvs[n.nodeId].rvs {
+						if nodeToRvs[n.nodeId].rvs[i].rvName == r.rvName {
+							nodeToRvs[n.nodeId].rvs[i].slots--
+							found = true
+							break
+						}
+					}
+					common.Assert(found, fmt.Sprintf("MV Map lists this as a online RV but the current RV %s was not found in node %s populated from RVMap", r.rvName, n.nodeId))
+					break
+				}
+			}
+		}
+
+		// Check if any node has exhausted all its rv's
+		// Remove the node from the map if it has no RVs left
+		for nodeId, node := range nodeToRvs {
+			for j := 0; j < len(node.rvs); {
+				// Remove a RV if its slots value is 0
+				if node.rvs[j].slots == 0 {
+					node.rvs = append(node.rvs[:j], node.rvs[j+1:]...)
+				} else {
+					j++
+				}
+			}
+
+			// If the node has no RVs left, remove it from the map
+			if len(node.rvs) == 0 {
+				delete(nodeToRvs, nodeId)
+			} else {
+				nodeToRvs[nodeId] = node
+			}
+		}
+		// The nodeToRvs map is updated with reamining nodes and their RVs
+		// Only those RVs are left which have slots > 0
+	}
+	return existingMVMap
 }
 
 func (cmi *ClusterManagerImpl) updateRVList(clusterMapRVMap map[string]dcache.RawVolume) (bool, error) {
