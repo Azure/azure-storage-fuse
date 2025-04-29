@@ -198,14 +198,14 @@ func getMVsPerRV() int64 {
 // return available disk space for the given path
 func getAvailableDiskSpace(path string) (int64, error) {
 	_, availableSpace, err := common.GetDiskSpaceMetricsFromStatfs(path)
-	common.Assert(err == nil, fmt.Sprintf("failed to get available disk space for path %s [%v]", path, err.Error()))
+	common.Assert(err == nil, fmt.Sprintf("failed to get available disk space for path %s [%v]", path, err))
 	return int64(availableSpace), err
 }
 
 // return the node ID of this node
-func getMyNodeUUID() string {
+func GetMyNodeUUID() string {
 	nodeID, err := common.GetNodeUUID()
-	common.Assert(err == nil, "failed to get current node's UUID", err.Error())
+	common.Assert(err == nil, fmt.Sprintf("failed to get current node's UUID [%v]", err))
 	common.Assert(common.IsValidUUID(nodeID), "current node's UUID is not valid", nodeID)
 	return nodeID
 }

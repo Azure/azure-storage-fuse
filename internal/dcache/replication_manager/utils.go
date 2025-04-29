@@ -59,7 +59,7 @@ const (
 func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *models.RVNameAndState {
 	log.Debug("utils::getReaderRV: Component RVs are: %v, excludeRVs: %v", rpc_server.ComponentRVsToString(componentRVs), excludeRVs)
 
-	myNodeID := getMyNodeUUID()
+	myNodeID := rpc_server.GetMyNodeUUID()
 	onlineRVs := make([]*models.RVNameAndState, 0)
 	for _, rv := range componentRVs {
 		if rv.State != string(dcache.StateOnline) || slices.Contains(excludeRVs, rv.Name) {
@@ -120,14 +120,6 @@ func getComponentRVsForMV(mvName string) []*models.RVNameAndState {
 // return the number of replicas
 func getNumReplicas() uint32 {
 	return cm.GetCacheConfig().NumReplicas
-}
-
-// return the node ID of this node
-func getMyNodeUUID() string {
-	nodeID, err := common.GetNodeUUID()
-	common.Assert(err == nil, "failed to get current node's UUID")
-	common.Assert(common.IsValidUUID(nodeID), "current node's UUID is not valid", nodeID)
-	return nodeID
 }
 
 // return the RV ID for the given RV name

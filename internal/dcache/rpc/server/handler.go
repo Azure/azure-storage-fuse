@@ -431,7 +431,7 @@ func (h *ChunkServiceHandler) Hello(ctx context.Context, req *models.HelloReques
 
 	// TODO: send more information in response on Hello RPC
 
-	myNodeID := getMyNodeUUID()
+	myNodeID := GetMyNodeUUID()
 	common.Assert(req.ReceiverNodeID == myNodeID, "Received Hello RPC destined for another node", req.ReceiverNodeID, myNodeID)
 
 	// get all the RVs exported by this node
@@ -955,7 +955,7 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 	// Set IO quiescing in the mv. Now GetChunk, PutChunk, will not allow any new IO.
 	// Also wait for any ongoing IOs to complete.
 	err := mvInfo.quiesceIOsStart()
-	common.Assert(err == nil, fmt.Sprintf("failed to quiesce IOs for MV %s [%v]", req.MV, err.Error()))
+	common.Assert(err == nil, fmt.Sprintf("failed to quiesce IOs for MV %s [%v]", req.MV, err))
 
 	// disable block chunk operations flag for this MV when the function returns
 	defer mvInfo.quiesceIOsEnd()
@@ -1032,7 +1032,7 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 	// Set IO quiescing in the mv. Now GetChunk, PutChunk, will not allow any new IO.
 	// Also wait for any ongoing IOs to complete.
 	err := mvInfo.quiesceIOsStart()
-	common.Assert(err == nil, fmt.Sprintf("failed to quiesce IOs for MV %s [%v]", req.MV, err.Error()))
+	common.Assert(err == nil, fmt.Sprintf("failed to quiesce IOs for MV %s [%v]", req.MV, err))
 
 	// disable block chunk operations flag for this MV when the function returns
 	defer mvInfo.quiesceIOsEnd()
@@ -1057,7 +1057,7 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 
 	// delete the sync directory
 	err = os.RemoveAll(syncMvPath)
-	common.Assert(err == nil, fmt.Sprintf("failed to remove sync directory %s [%v]", syncMvPath, err.Error()))
+	common.Assert(err == nil, fmt.Sprintf("failed to remove sync directory %s [%v]", syncMvPath, err))
 
 	return &models.EndSyncResponse{}, nil
 }
