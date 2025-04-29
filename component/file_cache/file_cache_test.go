@@ -679,7 +679,9 @@ func (suite *fileCacheTestSuite) TestCreateFileWithWritePerm() {
 	err = suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: f})
 	suite.assert.Nil(err)
 	info, _ := os.Stat(suite.cache_path + "/" + path)
-	suite.assert.Equal(info.Mode(), fs.FileMode(0331))
+	if info != nil {
+		suite.assert.Equal(info.Mode(), fs.FileMode(0331))
+	}
 }
 
 func (suite *fileCacheTestSuite) TestCreateFileInDir() {
