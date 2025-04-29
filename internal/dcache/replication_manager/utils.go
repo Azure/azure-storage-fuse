@@ -41,6 +41,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
+	clustermanager "github.com/Azure/azure-storage-fuse/v2/internal/dcache/cluster_manager"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 	rpc_server "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/server"
 )
@@ -50,32 +51,10 @@ const (
 	RPCClientTimeout = 2 // in seconds
 )
 
-func isComponentRVsValid(componentRVs []*models.RVNameAndState) bool {
-	if len(componentRVs) == 0 {
-		log.Err("utils::isComponentRVsValid: No component RVs found")
-		common.Assert(false, "no component RVs found")
-		return false
-	}
-
-	common.Assert(len(componentRVs) == getNumReplicas())
-
-	for _, rv := range componentRVs {
-		if rv == nil || rv.Name == "" || rv.State == "" {
-			log.Err("utils::isComponentRVsValid: Invalid component RV found: %+v", rv)
-			common.Assert(false, fmt.Sprintf("invalid component RV found: %+v", rv))
-			return false
-		}
-	}
-
-	return true
-}
-
 func getReaderRV(componentRVs []*models.RVNameAndState, excluseRVs []string) *models.RVNameAndState {
 	log.Debug("utils::getReaderRV: Component RVs are: %v", rpc_server.ComponentRVsToString(componentRVs))
 
-	// TODO:: integration: call cluster manager to get the node ID of this node
-	myNodeID := getNodeUUID()
-
+	myNodeID := getMyNodeUUID()
 	onlineRVs := make([]*models.RVNameAndState, 0)
 	for _, rv := range componentRVs {
 		if rv.State != string(dcache.StateOnline) || slices.Contains(excluseRVs, rv.Name) {
@@ -84,8 +63,8 @@ func getReaderRV(componentRVs []*models.RVNameAndState, excluseRVs []string) *mo
 			continue
 		}
 
-		// TODO:: integration: call cluster manager to get the node ID for the given rv
-		nodeIDForRV := getNodeIDForRV(rv.Name)
+		nodeIDForRV := getNodeIDFromRVName(rv.Name)
+		common.Assert(common.IsValidUUID(nodeIDForRV))
 		if nodeIDForRV == myNodeID {
 			// this is the local RV in this node
 			return rv
@@ -113,45 +92,43 @@ func getReaderRV(componentRVs []*models.RVNameAndState, excluseRVs []string) *mo
 // 	return hex.EncodeToString(hash[:])
 // }
 
-// TODO:: integration: sample method, will be later removed after integrating with cluster manager
-// call cluster manager helper method to get the component RVs for the given MV
+// return the component RVs for the given MV
 func getComponentRVsForMV(mvName string) []*models.RVNameAndState {
-	return []*models.RVNameAndState{
-		&models.RVNameAndState{Name: "rv0", State: string(dcache.StateOnline)},
-		&models.RVNameAndState{Name: "rv1", State: string(dcache.StateOffline)},
-		&models.RVNameAndState{Name: "rv2", State: string(dcache.StateOnline)},
+	rvMap := clustermanager.GetRVs(mvName)
+
+	var componentRVs []*models.RVNameAndState
+	for rvName, rvState := range rvMap {
+		common.Assert(rvName != "", "RV name is empty")
+		common.Assert(rvState != "", "RV state is empty")
+
+		componentRVs = append(componentRVs, &models.RVNameAndState{Name: rvName, State: string(rvState)})
 	}
+
+	common.Assert(len(componentRVs) == int(getNumReplicas()),
+		fmt.Sprintf("number of component RVs %d is not same as number of replicas %d for MV %s : %v", len(componentRVs), getNumReplicas(), mvName, rpc_server.ComponentRVsToString(componentRVs)))
+
+	return componentRVs
 }
 
-// TODO:: integration: sample method, will be later removed after integrating with cluster manager
-// call cluster manager helper method to get the number of replicas for the given MV
-func getNumReplicas() int {
-	return 3
+// return the number of replicas
+func getNumReplicas() uint32 {
+	return clustermanager.GetCacheConfig().NumReplicas
 }
 
-// TODO:: integration: sample method, will be later removed after integrating with cluster manager
-// call cluster manager helper method to get the node ID of this node
-func getNodeUUID() string {
-	return "node-uuid" // TODO: get the node uuid from the config
+// return the node ID of this node
+func getMyNodeUUID() string {
+	nodeID, err := common.GetNodeUUID()
+	common.Assert(err == nil, "failed to get current node's UUID")
+	common.Assert(common.IsValidUUID(nodeID), "current node's UUID is not valid", nodeID)
+	return nodeID
 }
 
-// TODO:: integration: sample method, will be later removed after integrating with cluster manager
-// call cluster manager helper method to get the node ID for the given rv
-// this might not be needed if the "getComponentRVsForMV" method returns struct where all information of a RV is present
-func getNodeIDForRV(rv string) string {
-	return "node-uuid" // TODO: get the node uuid from the config
-}
-
-// TODO:: integration: sample method, will be later removed after integrating with cluster manager
-// call cluster manager helper method to get the RV ID for the given RV name
-// this might not be needed if the "getComponentRVsForMV" method returns struct where all information of a RV is present
+// return the RV ID for the given RV name
 func getRvIDFromRvName(rvName string) string {
-	return "rvID"
+	return clustermanager.RvNameToId(rvName)
 }
 
-// TODO:: integration: sample method, will be later removed after integrating with cluster manager
-// call cluster manager helper method to get the node ID for the given RV name
-// this might not be needed if the "getComponentRVsForMV" method returns struct where all information of a RV is present
-func getNodeIDForRVName(rvName string) string {
-	return "nodeID"
+// return the node ID for the given rvName
+func getNodeIDFromRVName(rvName string) string {
+	return clustermanager.RVNameToNodeId(rvName)
 }

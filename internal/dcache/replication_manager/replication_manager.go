@@ -69,10 +69,7 @@ func ReadMV(req *ReadMvRequest) (*ReadMvResponse, error) {
 
 retry:
 	componentRVs := getComponentRVsForMV(req.MvName)
-	if !isComponentRVsValid(componentRVs) {
-		log.Err("ReplicationManager::ReadMV: component RVs are invalid for given MV %s", req.MvName)
-		return nil, fmt.Errorf("component RVs are invalid for given MV %s", req.MvName)
-	}
+	log.Debug("ReplicationManager::ReadMV: Component RVs for the given MV %s are: %v", req.MvName, rpc_server.ComponentRVsToString(componentRVs))
 
 	// Get the most suitable RV from the list of component RVs,
 	// from which we should read the chunk. Selecting most
@@ -100,14 +97,10 @@ retry:
 			goto retry
 		}
 
-		// TODO:: integration: call cluster manager to get the RV ID for the given RV name
-		// this might not be needed if the RV struct is returned containing the RV ID
 		selectedRvID := getRvIDFromRvName(readerRV.Name)
 		common.Assert(common.IsValidUUID(selectedRvID))
 
-		// TODO:: integration: call cluster manager to get the node ID hosting the given RV
-		// this might not be needed if the RV struct is returned containing the node ID
-		targetNodeID := getNodeIDForRVName(readerRV.Name)
+		targetNodeID := getNodeIDFromRVName(readerRV.Name)
 		common.Assert(common.IsValidUUID(targetNodeID))
 
 		log.Debug("ReplicationManager::ReadMV: Selected online RV for MV %s is %s having RV id %s and is hosted in node id %s", req.MvName, readerRV.Name, selectedRvID, targetNodeID)
@@ -192,11 +185,6 @@ func WriteMV(req *WriteMvRequest) (*WriteMvResponse, error) {
 
 retry:
 	componentRVs := getComponentRVsForMV(req.MvName)
-	if !isComponentRVsValid(componentRVs) {
-		log.Err("ReplicationManager::WriteMV: component RVs are invalid for given MV %s", req.MvName)
-		return nil, fmt.Errorf("component RVs are invalid for given MV %s", req.MvName)
-	}
-
 	log.Debug("ReplicationManager::WriteMV: Component RVs for the given MV %s are: %v", req.MvName, rpc_server.ComponentRVsToString(componentRVs))
 
 	// TODO: put chunk to each component RV can be done in parallel
@@ -207,18 +195,13 @@ retry:
 		//  ongoing resync operation as the source RV may have been already gone past the enumeration stage
 		//  and hence won’t consider this chunk for resync, and hence those MUST have the chunks mandatorily copied to them.
 
-		// TODO: add "outofsync" to dcache.States
-		if rv.State == string(dcache.StateOffline) || rv.State == "outofsync" {
+		if rv.State == string(dcache.StateOffline) || rv.State == string(dcache.StateOutOfSync) {
 			continue
 		} else if rv.State == string(dcache.StateOnline) || rv.State == string(dcache.StateSyncing) {
-			// TODO:: integration: call cluster manager to get the RV ID for the given RV name
-			// this might not be needed if the RV struct is returned containing the RV ID
 			rvID := getRvIDFromRvName(rv.Name)
 			common.Assert(common.IsValidUUID(rvID))
 
-			// TODO:: integration: call cluster manager to get the node ID hosting the given RV
-			// this might not be needed if the RV struct is returned containing the node ID
-			targetNodeID := getNodeIDForRVName(rv.Name)
+			targetNodeID := getNodeIDFromRVName(rv.Name)
 			common.Assert(common.IsValidUUID(targetNodeID))
 
 			log.Debug("ReplicationManager::WriteMV: Writing to RV %s having RV id %s and is hosted in node id %s", rv, rvID, targetNodeID)
