@@ -610,8 +610,8 @@ func GetNodeUUID() (string, error) {
 			return "", fmt.Errorf("fail to read UUID File at :%s with error %s", uuidFilePath, err)
 		}
 		stringData := string(data)
-		isValidGUID := IsValidUUID(stringData)
-		if !isValidGUID {
+		isValidUUID := IsValidUUID(stringData)
+		if !isValidUUID {
 			return "", fmt.Errorf("not a valid UUID in UUID File at :%s UUID - %s", uuidFilePath, string(data))
 		}
 		return stringData, nil
@@ -629,11 +629,17 @@ func GetNodeUUID() (string, error) {
 	return "", fmt.Errorf("failed to read node UUID from file at %s with error %s", uuidFilePath, err)
 }
 
-// isValidGUID returns true if the string is a valid guid in the 8-4-4-4-12 format.
+var (
+	// pre‑compile once at init
+	uuidRegex = regexp.MustCompile(
+		`^[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}$`,
+	)
+)
+
+// IsValidUUID returns true if the string is a valid UUID in the
+// 8-4-4-4-12 format.
 func IsValidUUID(guid string) bool {
-	valid, _ := regexp.MatchString(
-		"^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$", guid)
-	return valid
+	return uuidRegex.MatchString(guid)
 }
 
 func IsValidIP(ipAddress string) bool {

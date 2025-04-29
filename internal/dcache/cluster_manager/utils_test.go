@@ -136,20 +136,6 @@ func (suite *utilsTestSuite) TestIsValidClusterMap() {
 	suite.False(isValid)
 	suite.Contains(errMsg, "duplicate RvId")
 
-	// Test case: Invalid RVMap entry
-	invalidRVMap := cloneClusterMap(validClusterMap)
-	invalidRVMap.RVMap["rv1"] = dcache.RawVolume{
-		RvId:           "",
-		NodeId:         "550e8400-e29b-41d4-a716-446655440002",
-		IPAddress:      "192.168.1.1",
-		TotalSpace:     100,
-		AvailableSpace: 50,
-		State:          dcache.StateOnline,
-	}
-	isValid, errMsg = IsValidClusterMap(invalidRVMap)
-	suite.False(isValid)
-	suite.Contains(errMsg, "empty RvId")
-
 	// Test case: Invalid MVMap entry
 	invalidMVMap := cloneClusterMap(validClusterMap)
 	for k, v := range validClusterMap.MVMap {
@@ -157,7 +143,7 @@ func (suite *utilsTestSuite) TestIsValidClusterMap() {
 	}
 	invalidMVMap.MVMap["mv1"] = dcache.MirroredVolume{
 		State: "invalid-state",
-		Rvs:   map[string]string{},
+		Rvs:   map[string]dcache.StateEnum{},
 	}
 	isValid, errMsg = IsValidClusterMap(invalidMVMap)
 	suite.False(isValid)

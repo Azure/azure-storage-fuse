@@ -40,12 +40,17 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 )
 
+var (
+	minEpoch = 1735689600 // Jan 1 2025, safe lowerlimit for epoch validity check
+	maxEpoch = 2524608000 // Jan 1 2050, safe upperlimit for epoch validity check
+)
+
 func IsValidClusterMap(cm dcache.ClusterMap) (bool, string) {
 	// top‐level fields
-	if cm.CreatedAt <= 0 {
+	if cm.CreatedAt < int64(minEpoch) || cm.CreatedAt > int64(maxEpoch) {
 		return false, fmt.Sprintf("ClusterMap:: [%+v] Invalid CreatedAt: %d", cm, cm.CreatedAt)
 	}
-	if cm.LastUpdatedAt <= 0 {
+	if cm.LastUpdatedAt < int64(minEpoch) || cm.LastUpdatedAt > int64(maxEpoch) {
 		return false, fmt.Sprintf("ClusterMap:: [%+v] Invalid LastUpdatedAt: %d", cm, cm.LastUpdatedAt)
 	}
 	if cm.LastUpdatedAt < cm.CreatedAt {
@@ -56,6 +61,22 @@ func IsValidClusterMap(cm dcache.ClusterMap) (bool, string) {
 	}
 
 	// config
+	isValidDcacheConfig, s := IsValidDcacheConfig(cm)
+	if !isValidDcacheConfig {
+		return isValidDcacheConfig, s
+	}
+
+	// RVMap
+	isValidRVMap, s := IsValidRVMap(cm.RVMap)
+	if !isValidRVMap {
+		return isValidRVMap, s
+	}
+
+	// MVMap
+	return IsValidMvMap(cm)
+}
+
+func IsValidDcacheConfig(cm dcache.ClusterMap) (bool, string) {
 	cfg := cm.Config
 	if cfg.HeartbeatSeconds <= 0 {
 		return false, fmt.Sprintf("ClusterMap:: [%+v] Invalid Config.HeartbeatSeconds: %d", cm, cfg.HeartbeatSeconds)
@@ -63,19 +84,11 @@ func IsValidClusterMap(cm dcache.ClusterMap) (bool, string) {
 	if cfg.ClustermapEpoch <= 0 {
 		return false, fmt.Sprintf("ClusterMap:: [%+v] Invalid Config.ClustermapEpoch: %d", cm, cfg.ClustermapEpoch)
 	}
+	return true, ""
+}
 
-	// RVMap
-
-	shouldReturn, b, s := IsValidRVMap(cm.RVMap)
-	if shouldReturn {
-		return b, s
-	}
-
-	// MVMap
+func IsValidMvMap(cm dcache.ClusterMap) (bool, string) {
 	for name, mv := range cm.MVMap {
-		if name == "" {
-			return false, fmt.Sprintf("ClusterMap:: [%+v] MVMap: empty key", cm)
-		}
 		switch mv.State {
 		case dcache.StateOnline, dcache.StateOffline:
 		default:
@@ -89,48 +102,44 @@ func IsValidClusterMap(cm dcache.ClusterMap) (bool, string) {
 				return false, fmt.Sprintf("ClusterMap:: [%+v] MVMap[%q].Rvs: empty key", cm, name)
 			}
 			switch state {
-			case string(dcache.StateOnline), string(dcache.StateOffline):
+			case dcache.StateOnline, dcache.StateOffline, dcache.StateSyncing:
 			default:
 				return false, fmt.Sprintf("ClusterMap:: [%+v] MVMap[%q].Rvs[%q]: Invalid RV state %q in MV ", cm, name, rvName, state)
 			}
 		}
 	}
-
 	return true, ""
 }
 
-func IsValidRVMap(rVMap map[string]dcache.RawVolume) (bool, bool, string) {
+func IsValidRVMap(rVMap map[string]dcache.RawVolume) (bool, string) {
 	seen := make(map[string]string, len(rVMap))
 	for rvName, rv := range rVMap {
 		if prev, ok := seen[rv.RvId]; ok {
-			return true, false, fmt.Sprintf(
+			return false, fmt.Sprintf(
 				"ClusterMap::RVMap [%+v] duplicate RvId %q found in RVMap entries %q and %q", rVMap, rv.RvId, prev, rvName,
 			)
 		}
 		seen[rv.RvId] = rvName
-		if rv.RvId == "" {
-			return true, false, fmt.Sprintf("ClusterMap::RVMap [%+v] RVMap[%q]: empty RvId", rVMap, rvName)
-		}
 		if !common.IsValidUUID(rv.RvId) {
-			return true, false, fmt.Sprintf("ClusterMap::RVMap [%+v] RVMap[%q]: invalid RvId UUID: %q", rVMap, rvName, rv.RvId)
+			return false, fmt.Sprintf("ClusterMap::RVMap [%+v] RVMap[%q]: invalid RvId UUID: %q", rVMap, rvName, rv.RvId)
 		}
 		if !common.IsValidUUID(rv.NodeId) {
-			return true, false, fmt.Sprintf("ClusterMap::RVMap [%+v] RVMap[%q]: invalid NodeId UUID: %q", rVMap, rvName, rv.NodeId)
+			return false, fmt.Sprintf("ClusterMap::RVMap [%+v] RVMap[%q]: invalid NodeId UUID: %q", rVMap, rvName, rv.NodeId)
 		}
 		if !common.IsValidIP(rv.IPAddress) {
-			return true, false, fmt.Sprintf("ClusterMap::RVMap [%+v] RVMap[%q]: invalid IPAddress: %q", rVMap, rvName, rv.IPAddress)
+			return false, fmt.Sprintf("ClusterMap::RVMap [%+v] RVMap[%q]: invalid IPAddress: %q", rVMap, rvName, rv.IPAddress)
 		}
 		if rv.TotalSpace <= 0 {
-			return true, false, fmt.Sprintf("ClusterMap::RVMap [%+v] RVMap[%q]: bad space metrics avail=%d total=%d", rVMap, rvName, rv.AvailableSpace, rv.TotalSpace)
+			return false, fmt.Sprintf("ClusterMap::RVMap [%+v] RVMap[%q]: bad space metrics avail=%d total=%d", rVMap, rvName, rv.AvailableSpace, rv.TotalSpace)
 		}
 		if rv.AvailableSpace > rv.TotalSpace {
-			return true, false, fmt.Sprintf("ClusterMap::RVMap [%+v] RVMap[%q]: AvailableSpace %d > TotalSpace %d", rVMap, rvName, rv.AvailableSpace, rv.TotalSpace)
+			return false, fmt.Sprintf("ClusterMap::RVMap [%+v] RVMap[%q]: AvailableSpace %d > TotalSpace %d", rVMap, rvName, rv.AvailableSpace, rv.TotalSpace)
 		}
 		switch rv.State {
 		case dcache.StateOnline, dcache.StateOffline:
 		default:
-			return true, false, fmt.Sprintf("ClusterMap::RVMap [%+v] RVMap[%q]: unknown State: %q", rVMap, rvName, rv.State)
+			return false, fmt.Sprintf("ClusterMap::RVMap [%+v] RVMap[%q]: unknown State: %q", rVMap, rvName, rv.State)
 		}
 	}
-	return false, false, ""
+	return true, ""
 }

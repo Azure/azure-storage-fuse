@@ -63,7 +63,7 @@ type ClusterManager interface {
 	getMyRVs() map[string]dcache.RawVolume
 
 	//It will return all the RVs for particular mv name as per local cache copy of cluster map
-	getRVs(mvName string) map[string]string
+	getRVs(mvName string) map[string]dcache.StateEnum
 
 	//It will check if the given nodeId is online as per local cache copy of cluster map
 	isOnline(nodeId string) bool
@@ -93,5 +93,5 @@ type ClusterManager interface {
 	reportRVFull(rvName string) error
 
 	//Notify consumer about cluster manager Event
-	notifyUpdates() <-chan dcache.ClusterManagerEvent
+	getNotificationChannel() <-chan dcache.ClusterManagerEvent
 }
