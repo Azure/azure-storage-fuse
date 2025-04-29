@@ -111,7 +111,7 @@ retry:
 				FileID:      req.FileID,
 				RvID:        selectedRvID,
 				MvName:      req.MvName,
-				OffsetInMiB: req.ChunkIndex,
+				OffsetInMiB: req.ChunkIndex * req.ChunkSizeInMiB,
 			},
 			OffsetInChunk: req.OffsetInChunk,
 			Length:        req.Length,
@@ -212,7 +212,7 @@ retry:
 						FileID:      req.FileID,
 						RvID:        rvID,
 						MvName:      req.MvName,
-						OffsetInMiB: req.ChunkIndex,
+						OffsetInMiB: req.ChunkIndex * req.ChunkSizeInMiB,
 					},
 					Data: req.Data,
 					Hash: "", // TODO: hash validation will be done later
