@@ -580,7 +580,7 @@ func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, e
 		for rvName := range mv.RVsWithState {
 			if rvMap[rvName].State == dcache.StateOffline {
 				offlineRv++
-				mv.RVsWithState[rvName] = string(dcache.StateOffline)
+				mv.RVsWithState[rvName] = dcache.StateOffline
 				mv.State = dcache.StateDegraded
 				if offlineRv == len(mv.RVsWithState) {
 					mv.State = dcache.StateOffline
@@ -632,8 +632,8 @@ func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, e
 				// Safe check for slots
 				if r.slots > 0 {
 					if _, exists := existingMVMap[mvName]; !exists {
-						rvwithstate := make(map[string]string)
-						rvwithstate[r.rvName] = string(dcache.StateOnline)
+						rvwithstate := make(map[string]dcache.StateEnum)
+						rvwithstate[r.rvName] = dcache.StateOnline
 						// Create a new MV
 						existingMVMap[mvName] = dcache.MirroredVolume{
 							RVsWithState: rvwithstate,
@@ -641,7 +641,7 @@ func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, e
 						}
 					} else {
 						// Update the existing MV
-						existingMVMap[mvName].RVsWithState[r.rvName] = string(dcache.StateOnline)
+						existingMVMap[mvName].RVsWithState[r.rvName] = dcache.StateOnline
 					}
 
 					// Decrease the slot count for the RV in nodeToRvs

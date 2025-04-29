@@ -287,8 +287,8 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_OfflineMv() {
 
 func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_OfflineRv() {
 	mvMap := mockMvMap()
-	mvMap["mv0"].RVsWithState["rv6"] = string(dcache.StateOnline)
-	mvMap["mv1"].RVsWithState["rv5"] = string(dcache.StateOnline)
+	mvMap["mv0"].RVsWithState["rv6"] = dcache.StateOnline
+	mvMap["mv1"].RVsWithState["rv5"] = dcache.StateOnline
 	rvMap := mockRvMap()
 	rv := rvMap["rv4"]
 	rv.State = dcache.StateOffline
@@ -358,16 +358,16 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateMvList(updated map[string]dc
 func mockMvMap() map[string]dcache.MirroredVolume {
 	return map[string]dcache.MirroredVolume{
 		"mv0": {
-			RVsWithState: map[string]string{
-				"rv0": string(dcache.StateOnline),
-				"rv1": string(dcache.StateOnline),
+			RVsWithState: map[string]dcache.StateEnum{
+				"rv0": dcache.StateOnline,
+				"rv1": dcache.StateOnline,
 			},
 			State: dcache.StateOnline,
 		},
 		"mv1": {
-			RVsWithState: map[string]string{
-				"rv2": string(dcache.StateOnline),
-				"rv3": string(dcache.StateOnline),
+			RVsWithState: map[string]dcache.StateEnum{
+				"rv2": dcache.StateOnline,
+				"rv3": dcache.StateOnline,
 			},
 			State: dcache.StateOnline,
 		},
