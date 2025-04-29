@@ -69,18 +69,24 @@ func getBlockDeviceUUId(path string) (string, error) {
 
 func findMountDevice(path string) (string, error) {
 	// Call: df --output=source <path>
-	out, err := exec.Command("df", "--output=source", path).Output()
+	// out, err := exec.Command("df", "--output=source", path).Output()
+	// Call: findmnt -n -o SOURCE --target <path>
+	out, err := exec.Command(
+		"findmnt", "-n", "-o", "SOURCE", "--target", path,
+	).Output()
 	if err != nil {
-		return "", fmt.Errorf("failed to run df on %s: %v", path, err)
+		// return "", fmt.Errorf("failed to run df on %s: %v", path, err)
+		return "", fmt.Errorf("failed to run findmnt on %s: %v", path, err)
 	}
-	// df prints a header line, then the device
-	dfOutString := string(out)
-	lines := strings.Split(strings.TrimSpace(dfOutString), "\n")
-	common.Assert(len(lines) == 2, fmt.Sprintf("df output for mount device must return 2 lines %s", out))
-	if len(lines) != 2 {
-		return "", fmt.Errorf("unexpected df output for %s: %q", path, out)
-	}
-	device := strings.TrimSpace(lines[1])
+	// // df prints a header line, then the device
+	// dfOutString := string(out)
+	// lines := strings.Split(strings.TrimSpace(dfOutString), "\n")
+	// common.Assert(len(lines) == 2, fmt.Sprintf("df output for mount device must return 2 lines %s", out))
+	// if len(lines) != 2 {
+	// 	return "", fmt.Errorf("unexpected df output for %s: %q", path, out)
+	// }
+	// device := strings.TrimSpace(lines[1])
+	device := strings.TrimSpace(string(out))
 	if device == "" {
 		return "", fmt.Errorf("no device found in df output for %s", path)
 	}
