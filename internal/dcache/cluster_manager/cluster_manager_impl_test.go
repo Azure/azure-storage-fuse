@@ -250,7 +250,7 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_EmptyMvMap() {
 	mvPerRv := 2
 	updated := suite.cmi.updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
 
-	suite.TestUpdateMvList(updated, rvMap, numReplicas, mvPerRv)
+	suite.updateMvList(updated, rvMap, numReplicas, mvPerRv)
 }
 
 func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_MaxMVs() {
@@ -262,7 +262,7 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_MaxMVs() {
 	updated := suite.cmi.updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
 
 	suite.Equal(len(updated), len(rvMap), "Number of updated MVs should be equal to number of RVs")
-	suite.TestUpdateMvList(updated, rvMap, numReplicas, mvPerRv)
+	suite.updateMvList(updated, rvMap, numReplicas, mvPerRv)
 }
 
 func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_OfflineMv() {
@@ -282,7 +282,7 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_OfflineMv() {
 	updated := suite.cmi.updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
 
 	suite.Equal(updated["mv0"].State, dcache.StateOffline, "Updated MV0 should be offline")
-	suite.TestUpdateMvList(updated, rvMap, numReplicas, mvPerRv)
+	suite.updateMvList(updated, rvMap, numReplicas, mvPerRv)
 }
 
 func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_OfflineRv() {
@@ -302,7 +302,7 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_OfflineRv() {
 		_, ok := mv.RVs["rv4"]
 		suite.False(ok, "RV4 should not be present in any MV")
 	}
-	suite.TestUpdateMvList(updated, rvMap, numReplicas, mvPerRv)
+	suite.updateMvList(updated, rvMap, numReplicas, mvPerRv)
 }
 
 func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_DegradedMv() {
@@ -318,10 +318,10 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_DegradedMv() {
 	updated := suite.cmi.updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
 
 	suite.Equal(updated["mv0"].State, dcache.StateDegraded, "Updated MV0 should be degraded")
-	suite.TestUpdateMvList(updated, rvMap, numReplicas, mvPerRv)
+	suite.updateMvList(updated, rvMap, numReplicas, mvPerRv)
 }
 
-func (suite *ClusterManagerImplTestSuite) TestUpdateMvList(updated map[string]dcache.MirroredVolume, rvMap map[string]dcache.RawVolume, numReplicas int, mvPerRv int) {
+func (suite *ClusterManagerImplTestSuite) updateMvList(updated map[string]dcache.MirroredVolume, rvMap map[string]dcache.RawVolume, numReplicas int, mvPerRv int) {
 	suite.True(len(updated) > 0)
 
 	// Check if all the mv's have numReplica rvs

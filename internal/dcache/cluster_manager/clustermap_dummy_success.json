@@ -9,7 +9,7 @@
 		"min-nodes": 1,
 		"chunk-size": 1073741824,
         "stripe-size": 16777216,
-        "num-replicas": 1,
+        "num-replicas": 2,
         "mvs-per-rv": 1,
         "heartbeat-seconds": 60,
 		"heartbeats-till-node-down": 3,
