@@ -826,6 +826,7 @@ func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, e
 		sortedMVMap[mvName] = existingMVMap[mvName]
 	}
 
+	existingMVMap = sortedMVMap
 	return sortedMVMap
 }
 
