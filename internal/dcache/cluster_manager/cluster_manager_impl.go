@@ -547,8 +547,9 @@ func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, e
 		// Select the first available RV from each selected node
 		for _, n := range selectedNodes {
 			for _, r := range n.rvs {
-				// We should not have a rv in the list with slots <= 0
-				common.Assert(r.slots > 0, fmt.Sprintf("RV %s has no slots left", r.rvName))
+				// We should not have a rv in the list with slots < 0 because for next epoch updateMVList
+				// nodeToRvs will have rv with slot zero and it will be removed from the list at the end of the loop
+				common.Assert(r.slots >= 0, fmt.Sprintf("RV %s has no slots left", r.rvName))
 				// Safe check for slots
 				if r.slots > 0 {
 					if _, exists := existingMVMap[mvName]; !exists {
