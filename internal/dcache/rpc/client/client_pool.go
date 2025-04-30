@@ -40,7 +40,7 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	cmap "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 )
 
 // clientPool manages multiple rpc clients efficiently
@@ -230,7 +230,7 @@ func (ncPool *nodeClientPool) closeRPCClients() error {
 // return the node address for the given node ID
 // the node address is of the form <ip>:<port>
 func getNodeAddressFromID(nodeID string) string {
-	nodeAddress := cmap.NodeIdToIP(nodeID)
+	nodeAddress := fmt.Sprintf("%s:%d", clustermap.NodeIdToIP(nodeID), defaultPort)
 	common.Assert(common.IsValidHostPort(nodeAddress), fmt.Sprintf("node address is not valid: %s", nodeAddress))
 	return nodeAddress
 }

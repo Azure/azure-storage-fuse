@@ -41,7 +41,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
-	cmap "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 	rpc_server "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/server"
 )
@@ -101,7 +101,7 @@ func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *mo
 
 // return the component RVs for the given MV
 func getComponentRVsForMV(mvName string) []*models.RVNameAndState {
-	rvMap := cmap.GetRVs(mvName)
+	rvMap := clustermap.GetRVs(mvName)
 
 	var componentRVs []*models.RVNameAndState
 	for rvName, rvState := range rvMap {
@@ -119,15 +119,15 @@ func getComponentRVsForMV(mvName string) []*models.RVNameAndState {
 
 // return the number of replicas
 func getNumReplicas() uint32 {
-	return cmap.GetCacheConfig().NumReplicas
+	return clustermap.GetCacheConfig().NumReplicas
 }
 
 // return the RV ID for the given RV name
 func getRvIDFromRvName(rvName string) string {
-	return cmap.RvNameToId(rvName)
+	return clustermap.RvNameToId(rvName)
 }
 
 // return the node ID for the given rvName
 func getNodeIDFromRVName(rvName string) string {
-	return cmap.RVNameToNodeId(rvName)
+	return clustermap.RVNameToNodeId(rvName)
 }
