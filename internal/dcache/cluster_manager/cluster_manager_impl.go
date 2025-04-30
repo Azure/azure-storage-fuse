@@ -36,6 +36,8 @@ package clustermanager
 import (
 	"encoding/json"
 	"fmt"
+	"math"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -45,6 +47,7 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
 )
@@ -59,10 +62,11 @@ type ClusterManagerImpl struct {
 
 	localMap     *dcache.ClusterMap
 	localMapETag *string
+	updatesChan  chan dcache.ClusterManagerEvent
 }
 
 // It will return online MVs as per local cache copy of cluster map
-func GetActiveMVs() []dcache.MirroredVolume {
+func GetActiveMVs() map[string]dcache.MirroredVolume {
 	return clusterManagerInstance.getActiveMVs()
 }
 
@@ -72,12 +76,17 @@ func GetCacheConfig() *dcache.DCacheConfig {
 }
 
 // It will return offline/down MVs as per local cache copy of cluster map
-func GetDegradedMVs() []dcache.MirroredVolume {
+func GetDegradedMVs() map[string]dcache.MirroredVolume {
 	return clusterManagerInstance.getDegradedMVs()
 }
 
+// It will return all the RVs for this particular node as per local cache copy of cluster map
+func GetMyRVs() map[string]dcache.RawVolume {
+	return clusterManagerInstance.getMyRVs()
+}
+
 // It will return all the RVs for particular mv name as per local cache copy of cluster map
-func GetRVs(mvName string) []dcache.RawVolume {
+func GetRVs(mvName string) map[string]dcache.StateEnum {
 	return clusterManagerInstance.getRVs(mvName)
 }
 
@@ -86,8 +95,8 @@ func IsOnline(nodeId string) bool {
 	return clusterManagerInstance.isOnline(nodeId)
 }
 
-// It will evaluate the lowest number of RVs for given rv Names
-func LowestNumberRV(rvNames []string) []string {
+// It will evaluate the lowest number of RV for given rv Names
+func LowestNumberRV(rvNames []string) string {
 	return clusterManagerInstance.lowestNumberRV(rvNames)
 }
 
@@ -130,12 +139,15 @@ func Stop() error {
 	return clusterManagerInstance.stop()
 }
 
+func GetNotificationChannel() <-chan dcache.ClusterManagerEvent {
+	return clusterManagerInstance.getNotificationChannel()
+}
+
 // start implements ClusterManager.
 func (cmi *ClusterManagerImpl) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache.RawVolume) error {
 	cmi.nodeId = rvs[0].NodeId
 
-	//TODO{Akku}: fix this assert to just work with 1 return value
-	common.Assert(common.IsValidUUID(cmi.nodeId))
+	common.Assert(common.IsValidUUID(cmi.nodeId), fmt.Sprintf("Invalid nodeId[%s]", cmi.nodeId))
 	err := cmi.checkAndCreateInitialClusterMap(dCacheConfig)
 	if err != nil {
 		return err
@@ -147,8 +159,15 @@ func (cmi *ClusterManagerImpl) start(dCacheConfig *dcache.DCacheConfig, rvs []dc
 	cmi.ipAddress = rvs[0].IPAddress
 	common.Assert(common.IsValidIP(cmi.ipAddress), fmt.Sprintf("Invalid Ip[%s] for nodeId[%s]", cmi.ipAddress, cmi.nodeId))
 
-	//TODO{Akku}: Start punching heartbeat right away and store the full fledged cluster map if present at storage
+	// allocate notifyUpdates channel with small buffer
+	cmi.updatesChan = make(chan dcache.ClusterManagerEvent, 5)
+
 	cmi.hbTicker = time.NewTicker(time.Duration(dCacheConfig.HeartbeatSeconds) * time.Second)
+
+	//Initial punch heartbeat triggering in a sync way to make this node available to detect as soon as possible
+	log.Debug("Task \"Heartbeat Punch\" triggered (initial)")
+	cmi.punchHeartBeat(rvs)
+
 	go func() {
 		for range cmi.hbTicker.C {
 			log.Debug("Scheduled task \"Heartbeat Punch\" triggered")
@@ -156,17 +175,22 @@ func (cmi *ClusterManagerImpl) start(dCacheConfig *dcache.DCacheConfig, rvs []dc
 		}
 		log.Info("Scheduled task \"Heartbeat Punch\" stopped")
 	}()
+
 	cmi.localClusterMapPath = filepath.Join(common.DefaultWorkDir, "clustermap.json")
 	cmi.clusterMapticker = time.NewTicker(time.Duration(dCacheConfig.ClustermapEpoch) * time.Second)
+
+	//Initial local copy update triggered in a sync way to make this node at least available with existing clusterMap configuration
+	log.Debug("Task \"Cluster Map update\" (initial) task triggered")
+	cmi.updateClusterMapLocalCopyIfRequired()
 	go func() {
 		for range cmi.clusterMapticker.C {
 			log.Debug("Scheduled \"Cluster Map update\" task triggered")
 			cmi.updateStorageClusterMapIfRequired()
 			cmi.updateClusterMapLocalCopyIfRequired()
-			//Push to replication manager channel/inotify for a change in MV\RV mapping
 		}
 		log.Info("Scheduled task \"ClusterMap update\" stopped")
 	}()
+
 	return nil
 }
 
@@ -198,10 +222,7 @@ func (cmi *ClusterManagerImpl) updateClusterMapLocalCopyIfRequired() {
 		return
 	}
 
-	//TODO{Akku}: Add IsValidClusterMap and do extinsive validation over all the fields
-	common.Assert(storageClusterMap.LastUpdatedAt > 0,
-		fmt.Sprintf("invalid LastUpdatedAt (%d) in clusterMap for node %s",
-			storageClusterMap.LastUpdatedAt, cmi.nodeId))
+	common.Assert(IsValidClusterMap(storageClusterMap))
 
 	//4. atomically write new local file
 	tmp := cmi.localClusterMapPath + ".tmp"
@@ -216,6 +237,18 @@ func (cmi *ClusterManagerImpl) updateClusterMapLocalCopyIfRequired() {
 	//5. update in‑memory cache
 	cmi.localMap = &storageClusterMap
 	cmi.localMapETag = etag
+
+	//TODO{Akku}: Notify only if there is a change in the MVs/RVs
+	//6. fire an notification event
+	select {
+	case cmi.updatesChan <- dcache.ClusterManagerEvent{}:
+	default:
+		// drop if nobody is listening or buffer is full
+	}
+}
+
+func (cmi *ClusterManagerImpl) getNotificationChannel() <-chan dcache.ClusterManagerEvent {
+	return cmi.updatesChan
 }
 
 // Stop implements ClusterManager.
@@ -228,61 +261,157 @@ func (cmi *ClusterManagerImpl) stop() error {
 	if cmi.clusterMapticker != nil {
 		cmi.clusterMapticker.Stop()
 	}
+	if cmi.updatesChan != nil {
+		close(cmi.updatesChan)
+	}
 	return nil
 }
 
 // getActiveMVs implements ClusterManager.
-func (c *ClusterManagerImpl) getActiveMVs() []dcache.MirroredVolume {
-	return make([]dcache.MirroredVolume, 0)
+func (cmi *ClusterManagerImpl) getActiveMVs() map[string]dcache.MirroredVolume {
+	common.Assert(cmi.localMap != nil)
+
+	activeMVs := make(map[string]dcache.MirroredVolume)
+	for mvName, mv := range cmi.localMap.MVMap {
+		if mv.State == dcache.StateOnline {
+			activeMVs[mvName] = mv
+		}
+	}
+	return activeMVs
 }
 
 // getCacheConfig implements ClusterManager.
 func (cmi *ClusterManagerImpl) getCacheConfig() *dcache.DCacheConfig {
-	return nil
+	common.Assert(cmi.localMap != nil)
+
+	return &cmi.localMap.Config
 }
 
 // getDegradedMVs implements ClusterManager.
-func (c *ClusterManagerImpl) getDegradedMVs() []dcache.MirroredVolume {
-	return make([]dcache.MirroredVolume, 0)
+func (cmi *ClusterManagerImpl) getDegradedMVs() map[string]dcache.MirroredVolume {
+	common.Assert(cmi.localMap != nil)
+
+	degradedMVs := make(map[string]dcache.MirroredVolume)
+	for mvName, mv := range cmi.localMap.MVMap {
+		if mv.State == dcache.StateDegraded {
+			degradedMVs[mvName] = mv
+		}
+	}
+	return degradedMVs
+}
+
+// getMyRVs implements ClusterManager
+func (cmi *ClusterManagerImpl) getMyRVs() map[string]dcache.RawVolume {
+	common.Assert(cmi.localMap != nil)
+
+	myRvs := make(map[string]dcache.RawVolume)
+	for name, rv := range cmi.localMap.RVMap {
+		if rv.NodeId == cmi.nodeId {
+			myRvs[name] = rv
+		}
+	}
+	return myRvs
 }
 
 // getRVs implements ClusterManager.
-func (c *ClusterManagerImpl) getRVs(mvName string) []dcache.RawVolume {
-	return make([]dcache.RawVolume, 0)
+func (cmi *ClusterManagerImpl) getRVs(mvName string) map[string]dcache.StateEnum {
+
+	mv, ok := cmi.localMap.MVMap[mvName]
+	if !ok {
+		log.Debug("ClusterManagerImpl::getRVs: no mirrored volume named %s", mvName)
+		return nil
+	}
+	return mv.RVs
 }
 
-func (c *ClusterManagerImpl) isOnline(nodeId string) bool {
+func (cmi *ClusterManagerImpl) isOnline(nodeId string) bool {
+	common.Assert(cmi.localMap != nil)
+
+	for _, rv := range cmi.localMap.RVMap {
+		if rv.NodeId == nodeId {
+			return rv.State == dcache.StateOnline
+		}
+	}
+	log.Debug("ClusterManagerImpl::isOnline: node %s not found", nodeId)
 	return false
 }
 
 // lowestNumberRV implements ClusterManager.
-func (c *ClusterManagerImpl) lowestNumberRV(rvNames []string) []string {
-	return make([]string, 0)
+func (c *ClusterManagerImpl) lowestNumberRV(rvNames []string) string {
+	lowestNumberRv := ""
+	min := math.MaxInt32
+	for _, rvName := range rvNames {
+		num, err := strconv.Atoi(strings.TrimPrefix(rvName, "rv"))
+		common.Assert(err == nil, fmt.Sprintf("Error converting rvName Suffix %s to int: %v", rvName, err))
+		if num < min {
+			min = num
+			lowestNumberRv = rvName
+		}
+	}
+	log.Debug("ClusterManagerImpl::lowestNumberRV: lowest number rvName in %v is %s", rvNames, lowestNumberRv)
+	return lowestNumberRv
 }
 
 // nodeIdToIP implements ClusterManager.
-func (c *ClusterManagerImpl) nodeIdToIP(nodeId string) string {
+func (cmi *ClusterManagerImpl) nodeIdToIP(nodeId string) string {
+	common.Assert(cmi.localMap != nil)
+
+	for _, rv := range cmi.localMap.RVMap {
+		if rv.NodeId == nodeId {
+			return rv.IPAddress
+		}
+	}
+	log.Debug("ClusterManagerImpl::nodeIdToIP: node %s not found", nodeId)
 	return ""
 }
 
 // rvIdToName implements ClusterManager.
-func (c *ClusterManagerImpl) rvIdToName(rvId string) string {
+func (cmi *ClusterManagerImpl) rvIdToName(rvId string) string {
+	common.Assert(cmi.localMap != nil)
+
+	for rvName, rv := range cmi.localMap.RVMap {
+		if rv.RvId == rvId {
+			return rvName
+		}
+	}
+	log.Debug("ClusterManagerImpl::rvIdToName: rvID %s not found", rvId)
 	return ""
 }
 
 // rvNameToId implements ClusterManager.
-func (c *ClusterManagerImpl) rvNameToId(rvName string) string {
-	return ""
+func (cmi *ClusterManagerImpl) rvNameToId(rvName string) string {
+	common.Assert(cmi.localMap != nil)
+
+	rv, ok := cmi.localMap.RVMap[rvName]
+	if !ok {
+		log.Debug("ClusterManagerImpl::rvNameToId: rvName %s not found", rvName)
+		return ""
+	}
+	return rv.RvId
 }
 
 // rVNameToIp implements ClusterManager.
-func (c *ClusterManagerImpl) rVNameToIp(rvName string) string {
-	return ""
+func (cmi *ClusterManagerImpl) rVNameToIp(rvName string) string {
+	common.Assert(cmi.localMap != nil)
+
+	rv, ok := cmi.localMap.RVMap[rvName]
+	if !ok {
+		log.Debug("ClusterManagerImpl::rVNameToIp: rvName %s not found", rvName)
+		return ""
+	}
+	return rv.IPAddress
 }
 
 // rVNameToNodeId implements ClusterManager.
-func (c *ClusterManagerImpl) rVNameToNodeId(rvName string) string {
-	return ""
+func (cmi *ClusterManagerImpl) rVNameToNodeId(rvName string) string {
+	common.Assert(cmi.localMap != nil)
+
+	rv, ok := cmi.localMap.RVMap[rvName]
+	if !ok {
+		log.Debug("ClusterManagerImpl::rVNameToNodeId: rvName %s not found", rvName)
+		return ""
+	}
+	return rv.NodeId
 }
 
 // reportRVDown implements ClusterManager.
@@ -400,7 +529,7 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 		return
 	}
 	// LastUpdatedBy must be a valid nodeid.
-	common.Assert(common.IsValidUUID(clusterMap.LastUpdatedBy))
+	common.Assert(IsValidClusterMap(clusterMap))
 
 	//
 	// The node that updated the clusterMap last is preferred over others, for updating the clusterMap.
@@ -483,7 +612,7 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 		return
 	}
 	if changed {
-		cmi.updateMVList(clusterMap.RVMap, clusterMap.MVMap)
+		cmi.updateMVList(clusterMap.RVMap, clusterMap.MVMap, int(GetCacheConfig().NumReplicas), int(GetCacheConfig().MvsPerRv))
 	} else {
 		log.Debug("updateStorageClusterMapIfRequired: No changes in RV mapping")
 	}
@@ -503,12 +632,188 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 	} else {
 		log.Info("updateStorageClusterMapIfRequired: cluster map %+v updated by %s at %d", clusterMap, cmi.nodeId, now)
 	}
-
-	//iNotify replication manager
-
 }
 
-func (cmi *ClusterManagerImpl) updateMVList(clusterMapRVMap map[string]dcache.RawVolume, clusterMapMVMap map[string]dcache.MirroredVolume) {
+func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, existingMVMap map[string]dcache.MirroredVolume, NumReplicas int, MvsPerRv int) map[string]dcache.MirroredVolume {
+
+	//
+	// Approach:
+	//
+	// We make a list of nodes each having a list of RVs hosted by that node. This is
+	// typically one RV per node, but it can be higher.
+	// Each RV starts with a slot count equal to MvsPerRv. This is done so that we can
+	// assign one RV to MvsPerRv MVs.
+	// In Phase#1 we go over existing MVs and deduct slot count for all the RVs used
+	// by the existing MVs. After that's done, we are left with RVs with updated slot
+	// count signifying how many more MVs they can host.
+	// In this phase we also check if any of the RVs used in existing MVs are offline
+	// and mark the MVs as degraded. If all the RVs in a MV are offline, we mark the
+	// MV as offline.
+	// Now in Phase#2 we create as many new MVs as we can, continuing with the next
+	// available MV name, each MV is assigned one RV from a different node, upto
+	// NumReplicas for each MV.
+	// This continues till we do not have enough RVs (from distinct nodes) for creating
+	// a new MV.
+	//
+
+	// Local types
+	type rv struct {
+		rvName string
+		slots  int //MvsPerRv
+	}
+
+	type node struct {
+		nodeId string
+		rvs    []rv
+	}
+
+	nodeToRvs := make(map[string]node)
+
+	// TODO :: Handle scenarios for fix scenarios
+	// Degraded - When any of the rv's in a mv is offline make mv as degraded [Done]
+	// Fix - Replace any rv which is offline with an available rv and mark rv as out-of-sync while mv's state will be degraded
+	// Sync - This will be handled by replica manager and it will change mv state to syncing
+	// Offline - Mark a mv as offline when all the rv's within it are offline [Done]
+
+	// Populate the RV struct and node struct
+	for rvName, rvInfo := range rvMap {
+		common.Assert(rvInfo.State == dcache.StateOnline || rvInfo.State == dcache.StateOffline, fmt.Sprintf("Invalid state %s for RV %s", rvInfo.State, rvName))
+		common.IsValidUUID(rvInfo.NodeId)
+		if rvInfo.State == dcache.StateOffline {
+			// Skip RVs that are offline as they cannot contribute to any MV
+			continue
+		}
+		if nodeInfo, exists := nodeToRvs[rvInfo.NodeId]; exists {
+			// If the node already exists, append the RV to its list
+			nodeInfo.rvs = append(nodeInfo.rvs, rv{
+				rvName: rvName,
+				slots:  MvsPerRv,
+			})
+			nodeToRvs[rvInfo.NodeId] = nodeInfo
+		} else {
+			// Create a new node and add the RV to it
+			nodeToRvs[rvInfo.NodeId] = node{
+				nodeId: rvInfo.NodeId,
+				rvs:    []rv{{rvName: rvName, slots: MvsPerRv}},
+			}
+		}
+	}
+
+	// Phase#1
+	for mvName, mv := range existingMVMap {
+		offlineRv := 0
+		for rvName := range mv.RVs {
+			if rvMap[rvName].State == dcache.StateOffline {
+				offlineRv++
+				mv.RVs[rvName] = dcache.StateOffline
+				mv.State = dcache.StateDegraded
+				if offlineRv == len(mv.RVs) {
+					mv.State = dcache.StateOffline
+					// Update the MV state to offline
+				}
+				existingMVMap[mvName] = mv
+				continue
+			}
+			nodeId := rvMap[rvName].NodeId
+			found := false
+			for i := range len(nodeToRvs[nodeId].rvs) {
+				if nodeToRvs[nodeId].rvs[i].rvName == rvName {
+					nodeToRvs[nodeId].rvs[i].slots--
+					found = true
+					break
+				}
+			}
+			common.Assert(found, fmt.Sprintf("MV Map lists this as a online RV but the current RV %s was not found in node %s populated from RVMap", rvName, nodeId))
+		}
+	}
+
+	// Phase#2
+	for {
+		// Stored nodes in a slice as its wasy to shuffle
+		var availableNodes []node
+		for _, n := range nodeToRvs {
+			availableNodes = append(availableNodes, n)
+
+		}
+
+		maxMVsAllowed := (len(rvMap) * MvsPerRv) / NumReplicas
+
+		common.Assert(maxMVsAllowed > 0, fmt.Sprintf("Max number of MVs %d is less than 0", maxMVsAllowed))
+		// Check if we have reached the maximum number of MVs possible
+		common.Assert(len(availableNodes) < maxMVsAllowed, fmt.Sprintf("Number of available nodes %d is greater than max MVs Allowed %d", len(availableNodes), maxMVsAllowed))
+		// End of MV generation if we have enough MVs or if we have exhausted all the nodes
+		if len(availableNodes) < NumReplicas {
+			break
+		}
+
+		// Shuffle the available nodes to randomize selection
+		rand.Shuffle(len(availableNodes), func(i, j int) {
+			availableNodes[i], availableNodes[j] = availableNodes[j], availableNodes[i]
+		})
+
+		// Take the first NumReplicas nodes
+		selectedNodes := availableNodes[:NumReplicas]
+
+		mvName := fmt.Sprintf("mv%d", len(existingMVMap)) // starting from index 0
+
+		// Select the first available RV from each selected node
+		for _, n := range selectedNodes {
+			for _, r := range n.rvs {
+				// We should not have a rv in the list with slots <= 0
+				common.Assert(r.slots > 0, fmt.Sprintf("RV %s has no slots left", r.rvName))
+				// Safe check for slots
+				if r.slots > 0 {
+					if _, exists := existingMVMap[mvName]; !exists {
+						rvwithstate := make(map[string]dcache.StateEnum)
+						rvwithstate[r.rvName] = dcache.StateOnline
+						// Create a new MV
+						existingMVMap[mvName] = dcache.MirroredVolume{
+							RVs:   rvwithstate,
+							State: dcache.StateOnline,
+						}
+					} else {
+						// Update the existing MV
+						existingMVMap[mvName].RVs[r.rvName] = dcache.StateOnline
+					}
+
+					found := false
+					// Decrease the slot count for the RV in nodeToRvs
+					for i := range nodeToRvs[n.nodeId].rvs {
+						if nodeToRvs[n.nodeId].rvs[i].rvName == r.rvName {
+							nodeToRvs[n.nodeId].rvs[i].slots--
+							found = true
+							break
+						}
+					}
+					common.Assert(found, fmt.Sprintf("MV Map lists this as a online RV but the current RV %s was not found in node %s populated from RVMap", r.rvName, n.nodeId))
+					break
+				}
+			}
+		}
+
+		// Check if any node has exhausted all its rv's
+		// Remove the node from the map if it has no RVs left
+		for nodeId, node := range nodeToRvs {
+			for j := 0; j < len(node.rvs); {
+				// Remove a RV if its slots value is 0
+				if node.rvs[j].slots == 0 {
+					node.rvs = append(node.rvs[:j], node.rvs[j+1:]...)
+				} else {
+					j++
+				}
+			}
+
+			// If the node has no RVs left, remove it from the map
+			if len(node.rvs) == 0 {
+				delete(nodeToRvs, nodeId)
+			} else {
+				nodeToRvs[nodeId] = node
+			}
+		}
+		// The nodeToRvs map is updated with reamining nodes and their RVs
+		// Only those RVs are left which have slots > 0
+	}
+	return existingMVMap
 }
 
 func (cmi *ClusterManagerImpl) updateRVList(clusterMapRVMap map[string]dcache.RawVolume) (bool, error) {
@@ -533,7 +838,7 @@ func (cmi *ClusterManagerImpl) updateRVList(clusterMapRVMap map[string]dcache.Ra
 				common.Assert(false, fmt.Sprintf("Duplicate RVId[%s] in heartbeats", rv.RvId))
 			}
 			common.Assert(rv.AvailableSpace <= rv.TotalSpace, fmt.Sprintf("Available space %d is greater than total space %d for RVId %s", rv.AvailableSpace, rv.TotalSpace, rv.RvId))
-			common.Assert(common.IsValidUUID(rv.RvId))
+			common.Assert(common.IsValidUUID(rv.RvId), fmt.Sprintf("Invalid RvId[%s]", rv.RvId))
 			rVsByRvId[rv.RvId] = rv
 		}
 	}
