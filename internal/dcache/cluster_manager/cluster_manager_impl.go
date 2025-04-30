@@ -614,7 +614,9 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 	}
 
 	log.Debug("ClusterManagerImpl::updateStorageClusterMapIfRequired: updating RV list")
-	changed, err := cmi.updateRVList(clusterMap.RVMap)
+	changed, err := cmi.updateRVList(clusterMap.RVMap,
+		int(GetCacheConfig().HeartbeatsTillNodeDown),
+		int(GetCacheConfig().HeartbeatSeconds))
 	if err != nil {
 		log.Err("ClusterManagerImpl::updateStorageClusterMapIfRequired: failed to reconcile RV mapping: %v", err)
 		common.Assert(false)
@@ -830,13 +832,14 @@ func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, e
 	return existingMVMap
 }
 
-func (cmi *ClusterManagerImpl) updateRVList(clusterMapRVMap map[string]dcache.RawVolume) (bool, error) {
+func (cmi *ClusterManagerImpl) updateRVList(clusterMapRVMap map[string]dcache.RawVolume, hbTillNodeDown int, hbSeconds int) (bool, error) {
 	nodeIds, err := getAllNodes()
 	if err != nil {
 		return false, fmt.Errorf("ClusterManagerImpl::updateRVList: Failed to get all nodes: error: %v", err)
 	}
 	log.Debug("ClusterManagerImpl::updateRVList: found %d nodes: %v in cluster.", len(nodeIds), nodeIds)
 	rVsByRvId := make(map[string]dcache.RawVolume)
+	rvLastHB := make(map[string]uint64)
 	changed := false
 	for _, nodeId := range nodeIds {
 		bytes, err := getHeartbeat(nodeId)
@@ -855,6 +858,7 @@ func (cmi *ClusterManagerImpl) updateRVList(clusterMapRVMap map[string]dcache.Ra
 			common.Assert(rv.AvailableSpace <= rv.TotalSpace, fmt.Sprintf("Available space %d is greater than total space %d for RVId %s", rv.AvailableSpace, rv.TotalSpace, rv.RvId))
 			common.Assert(common.IsValidUUID(rv.RvId), fmt.Sprintf("Invalid RvId[%s]", rv.RvId))
 			rVsByRvId[rv.RvId] = rv
+			rvLastHB[rv.RvId] = hbData.LastHeartbeat
 		}
 	}
 	//There can be 3 scenarios
@@ -862,14 +866,27 @@ func (cmi *ClusterManagerImpl) updateRVList(clusterMapRVMap map[string]dcache.Ra
 	//2. There is something in clusterMap which needs to be updated
 	//3. There is something in heartbeat which needs to be added to clusterMap
 
+	// compute heartbeat threshold
+	now := uint64(time.Now().Unix())
+	thresh := uint64(hbTillNodeDown * hbSeconds)
 	for rvName, rvInClusterMap := range clusterMapRVMap {
 		if rvHb, found := rVsByRvId[rvInClusterMap.RvId]; found {
-			if (rvInClusterMap.State != rvHb.State) || (rvInClusterMap.AvailableSpace != rvHb.AvailableSpace) {
-				changed = true
-				rvInClusterMap.State = rvHb.State
-				rvInClusterMap.AvailableSpace = rvHb.AvailableSpace
-				//TODO{Akku}: IF available space is less than 10% of total space, we might need to update the state
+			lastHB := rvLastHB[rvHb.RvId]
+			if now > lastHB && now-lastHB > thresh {
+				log.Info("ClusterManagerImpl::updateRVList: RV %s lastHeartbeat (%d) is expired. now (%d). marking RV offline",
+					rvName, lastHB, thresh)
+				rvInClusterMap.State = dcache.StateOffline
 				clusterMapRVMap[rvName] = rvInClusterMap
+				changed = true
+
+			} else {
+				if (rvInClusterMap.State != rvHb.State) || (rvInClusterMap.AvailableSpace != rvHb.AvailableSpace) {
+					changed = true
+					rvInClusterMap.State = rvHb.State
+					rvInClusterMap.AvailableSpace = rvHb.AvailableSpace
+					//TODO{Akku}: IF available space is less than 10% of total space, we might need to update the state
+					clusterMapRVMap[rvName] = rvInClusterMap
+				}
 			}
 			delete(rVsByRvId, rvHb.RvId)
 
