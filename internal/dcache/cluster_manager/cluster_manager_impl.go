@@ -146,8 +146,10 @@ func GetNotificationChannel() <-chan dcache.ClusterManagerEvent {
 // start implements ClusterManager.
 func (cmi *ClusterManagerImpl) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache.RawVolume) error {
 	cmi.nodeId = rvs[0].NodeId
-
+	log.Info("ClusterManager::start: nodeId=%s, heartbeatSeconds=%d, epochSeconds=%d",
+		cmi.nodeId, dCacheConfig.HeartbeatSeconds, dCacheConfig.ClustermapEpoch)
 	common.Assert(common.IsValidUUID(cmi.nodeId), fmt.Sprintf("Invalid nodeId[%s]", cmi.nodeId))
+	log.Debug("ClusterManager::start: ensuring initial cluster map exists")
 	err := cmi.checkAndCreateInitialClusterMap(dCacheConfig)
 	if err != nil {
 		return err
@@ -165,7 +167,7 @@ func (cmi *ClusterManagerImpl) start(dCacheConfig *dcache.DCacheConfig, rvs []dc
 	cmi.hbTicker = time.NewTicker(time.Duration(dCacheConfig.HeartbeatSeconds) * time.Second)
 
 	//Initial punch heartbeat triggering in a sync way to make this node available to detect as soon as possible
-	log.Debug("Task \"Heartbeat Punch\" triggered (initial)")
+	log.Debug("Initial \"Heartbeat Punch\" triggered")
 	cmi.punchHeartBeat(rvs)
 
 	go func() {
@@ -197,6 +199,7 @@ func (cmi *ClusterManagerImpl) start(dCacheConfig *dcache.DCacheConfig, rvs []dc
 func (cmi *ClusterManagerImpl) updateClusterMapLocalCopyIfRequired() {
 	// 1. Fetch the latest from storage
 	storageBytes, etag, err := getClusterMap()
+	log.Debug("ClusterManagerImpl::updateClusterMapLocalCopyIfRequired: fetched %d bytes, etag=%v, err=%v", len(storageBytes), etag, err)
 	if err != nil {
 		log.Err("ClusterManagerImpl::updateClusterMapLocalCopyIfRequired: failed to fetch cluster map for nodeId %s: %v", cmi.nodeId, err)
 		common.Assert(false)
@@ -210,7 +213,7 @@ func (cmi *ClusterManagerImpl) updateClusterMapLocalCopyIfRequired() {
 
 	//2. if we've already loaded this exact version, skip the update
 	if cmi.localMap != nil && etag != nil && cmi.localMapETag != nil && *etag == *cmi.localMapETag {
-		log.Debug("ClusterManagerImpl::updateClusterMapLocalCopyIfRequired: earlier and new etag matching, skipping update")
+		log.Debug("ClusterManagerImpl::updateClusterMapLocalCopyIfRequired: ETag unchanged, skipping update in localMap")
 		return
 	}
 
@@ -237,6 +240,7 @@ func (cmi *ClusterManagerImpl) updateClusterMapLocalCopyIfRequired() {
 	//5. update in‑memory cache
 	cmi.localMap = &storageClusterMap
 	cmi.localMapETag = etag
+	log.Info("ClusterManagerImpl::updateClusterMapLocalCopyIfRequired: localMap updated, new ETag=%s", *etag)
 
 	//TODO{Akku}: Notify only if there is a change in the MVs/RVs
 	//6. fire an notification event
@@ -253,6 +257,7 @@ func (cmi *ClusterManagerImpl) getNotificationChannel() <-chan dcache.ClusterMan
 
 // Stop implements ClusterManager.
 func (cmi *ClusterManagerImpl) stop() error {
+	log.Info("ClusterManager::stop: stopping tickers and closing channel")
 	if cmi.hbTicker != nil {
 		cmi.hbTicker.Stop()
 	}
@@ -510,21 +515,22 @@ func (cmi *ClusterManagerImpl) punchHeartBeat(rvList []dcache.RawVolume) {
 		// Create and update heartbeat file in storage with <nodeId>.hb
 		err = mm.UpdateHeartbeat(cmi.nodeId, data)
 		common.Assert(err == nil, fmt.Sprintf("Error updating heartbeat file with nodeId %s in storage: %v", cmi.nodeId, err))
-		log.Debug("AddHeartBeat: Heartbeat file updated successfully %+v", hbData)
+		log.Debug("ClusterManagerImpl::AddHeartBeat: heartbeat updated for node %+v", hbData)
 	} else {
-		log.Warn("Error Updating heartbeat for nodeId %s with data %+v : error - %v", cmi.nodeId, hbData, err)
+		log.Err("ClusterManagerImpl::failed to update heartbeat for node %s: with data %+v : error - %v", cmi.nodeId, hbData, err)
 	}
 }
 
 func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 	clusterMapBytes, etag, err := getClusterMap()
+	log.Debug("ClusterManagerImpl::updateStorageClusterMapIfRequired: fetched clusterMap bytes=%d, etag=%v", len(clusterMapBytes), etag)
 	if err != nil {
-		log.Err("updateStorageClusterMapIfRequired: GetClusterMap failed. err %v", err)
+		log.Err("ClusterManagerImpl::updateStorageClusterMapIfRequired: GetClusterMap failed. err %v", err)
 		return
 	}
 	var clusterMap dcache.ClusterMap
 	if err := json.Unmarshal(clusterMapBytes, &clusterMap); err != nil {
-		log.Err("updateStorageClusterMapIfRequired: failed to unmarshal clusterMapBytes(%d), error: %v",
+		log.Err("ClusterManagerImpl::updateStorageClusterMapIfRequired: failed to unmarshal clusterMapBytes(%d), error: %v",
 			len(clusterMapBytes), err)
 		return
 	}
@@ -554,7 +560,7 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 
 	now := time.Now().Unix()
 	if clusterMap.LastUpdatedAt > now {
-		log.Warn("updateStorageClusterMapIfRequired: LastUpdatedAt(%d) in future, now(%d), skipping update",
+		log.Warn("ClusterManagerImpl::updateStorageClusterMapIfRequired: LastUpdatedAt(%d) in future, now(%d), skipping update",
 			clusterMap.LastUpdatedAt, now)
 
 		// Assert, taking into account potential clock skew.
@@ -576,7 +582,7 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 	// TODO{Akku}: update stale calculation for checking state
 	// Skip if clustermap already in checking state
 	if clusterMap.State == dcache.StateChecking && !stale {
-		log.Debug("updateStorageClusterMapIfRequired: skipping,  Cluster map is under update by (leader %s). current node (%s)", clusterMap.LastUpdatedBy, cmi.nodeId)
+		log.Debug("ClusterManagerImpl::updateStorageClusterMapIfRequired: skipping,  Cluster map is under update by (leader %s). current node (%s)", clusterMap.LastUpdatedBy, cmi.nodeId)
 
 		//Leader node should have updated the state to checking and it should not find the state to checking.
 		common.Assert(!leader, "We don't expect leader to see the clustermap in checking state")
@@ -585,7 +591,7 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 
 	// Skip if we're neither leader nor the clustermap is stale
 	if !leader && !stale {
-		log.Info("updateStorageClusterMapIfRequired: skipping, node (%s) is not leader (leader is %s) and clusterMap is fresh (last updated at epoch %d, now %d).",
+		log.Info("ClusterManagerImpl::updateStorageClusterMapIfRequired: skipping, node (%s) is not leader (leader is %s) and clusterMap is fresh (last updated at epoch %d, now %d).",
 			cmi.nodeId, clusterMap.LastUpdatedBy, clusterMap.LastUpdatedAt, now)
 		return
 	}
@@ -595,42 +601,45 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 	updatedClusterMapBytes, err := json.Marshal(clusterMap)
 
 	if err != nil {
-		log.Err("updateStorageClusterMapIfRequired: Marshal failed for clustermap %+v: %v", clusterMap, err)
+		log.Err("ClusterManagerImpl::updateStorageClusterMapIfRequired: Marshal failed for clustermap %+v: %v", clusterMap, err)
 		return
 	}
 
 	if err = mm.UpdateClusterMapStart(updatedClusterMapBytes, etag); err != nil {
-		log.Err("updateStorageClusterMapIfRequired: start Clustermap update failed for nodeId %s: %v", cmi.nodeId, err)
+		log.Err("ClusterManagerImpl::updateStorageClusterMapIfRequired: start Clustermap update failed for nodeId %s: %v", cmi.nodeId, err)
 		common.Assert(false)
 		return
+	} else {
+		log.Info("ClusterManagerImpl::updateStorageClusterMapIfRequired: UpdateClusterMapStart succeeded by nodeId %s", cmi.nodeId)
 	}
 
+	log.Debug("ClusterManagerImpl::updateStorageClusterMapIfRequired: updating RV list")
 	changed, err := cmi.updateRVList(clusterMap.RVMap)
 	if err != nil {
-		log.Err("updateStorageClusterMapIfRequired: failed to reconcile RV mapping: %v", err)
+		log.Err("ClusterManagerImpl::updateStorageClusterMapIfRequired: failed to reconcile RV mapping: %v", err)
 		common.Assert(false)
 		return
 	}
 	if changed {
 		cmi.updateMVList(clusterMap.RVMap, clusterMap.MVMap, int(GetCacheConfig().NumReplicas), int(GetCacheConfig().MvsPerRv))
 	} else {
-		log.Debug("updateStorageClusterMapIfRequired: No changes in RV mapping")
+		log.Debug("ClusterManagerImpl::updateStorageClusterMapIfRequired: No changes in RV mapping")
 	}
 
 	clusterMap.LastUpdatedAt = time.Now().Unix()
 	clusterMap.State = dcache.StateReady
 	updatedClusterMapBytes, err = json.Marshal(clusterMap)
 	if err != nil {
-		log.Err("updateStorageClusterMapIfRequired: Marshal failed for clustermap %+v: %v", clusterMap, err)
+		log.Err("ClusterManagerImpl::updateStorageClusterMapIfRequired: Marshal failed for clustermap %+v: %v", clusterMap, err)
 		return
 	}
 
 	//TODO{Akku}: Make sure end update is happing with the same node as of start update
 	if err = mm.UpdateClusterMapEnd(updatedClusterMapBytes); err != nil {
-		log.Err("updateStorageClusterMapIfRequired: end failed to update cluster map %+v, error: %v", clusterMap, err)
+		log.Err("ClusterManagerImpl::updateStorageClusterMapIfRequired: end failed to update cluster map %+v, error: %v", clusterMap, err)
 		common.Assert(false)
 	} else {
-		log.Info("updateStorageClusterMapIfRequired: cluster map %+v updated by %s at %d", clusterMap, cmi.nodeId, now)
+		log.Info("ClusterManagerImpl::updateStorageClusterMapIfRequired: cluster map %+v updated by %s at %d", clusterMap, cmi.nodeId, now)
 	}
 }
 
@@ -826,7 +835,7 @@ func (cmi *ClusterManagerImpl) updateRVList(clusterMapRVMap map[string]dcache.Ra
 	if err != nil {
 		return false, fmt.Errorf("ClusterManagerImpl::updateRVList: Failed to get all nodes: error: %v", err)
 	}
-	log.Debug("ClusterManagerImpl::updateRVList: All nodes in the cluster: %v", nodeIds)
+	log.Debug("ClusterManagerImpl::updateRVList: found %d nodes: %v in cluster.", len(nodeIds), nodeIds)
 	rVsByRvId := make(map[string]dcache.RawVolume)
 	changed := false
 	for _, nodeId := range nodeIds {
@@ -838,7 +847,7 @@ func (cmi *ClusterManagerImpl) updateRVList(clusterMapRVMap map[string]dcache.Ra
 		if err := json.Unmarshal(bytes, &hbData); err != nil {
 			return false, fmt.Errorf("ClusterManagerImpl::updateRVList: Failed to parse heartbeat bytes for node %s: %v", nodeId, err)
 		}
-		log.Debug("ClusterManagerImpl::updateRVList: Iterating node : %s", nodeId)
+		log.Debug("ClusterManagerImpl::updateRVList: reading heartbeat for node : %s", nodeId)
 		for _, rv := range hbData.RVList {
 			if _, exists := rVsByRvId[rv.RvId]; exists {
 				common.Assert(false, fmt.Sprintf("Duplicate RVId[%s] in heartbeats", rv.RvId))
@@ -873,9 +882,12 @@ func (cmi *ClusterManagerImpl) updateRVList(clusterMapRVMap map[string]dcache.Ra
 		}
 	}
 
-	log.Info("updateRVList: rVsByRvId %+v ", rVsByRvId)
 	// add any new RVs
 	if len(rVsByRvId) != 0 {
+		log.Info(
+			"ClusterManagerImpl::updateRVList: %d new RV(s) to add to clusterMap: %v",
+			len(rVsByRvId), rVsByRvId,
+		)
 
 		// find max index RV
 		maxIdx := -1
@@ -892,7 +904,7 @@ func (cmi *ClusterManagerImpl) updateRVList(clusterMapRVMap map[string]dcache.Ra
 			clusterMapRVMap[rvName] = rv
 			idx++
 			changed = true
-			log.Info("updateRVList: Adding new RV %+v by rvName %s to cluster map.", rv, rvName)
+			log.Info("ClusterManagerImpl::updateRVList: Adding new RV %+v by rvName %s to cluster map.", rv, rvName)
 		}
 	}
 	return changed, nil
