@@ -619,14 +619,14 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 	}
 
 	// Sort the Map in lexicographical order
-	sortedMVMap := cmi.sortMap(clusterMap)
+	sortedMVMap, _ := cmi.sortMap(clusterMap)
 	clusterMap.MVMap = nil
 
 	clusterMap.LastUpdatedAt = time.Now().Unix()
 	clusterMap.State = dcache.StateReady
 	updatedClusterMapBytes, err = json.Marshal(clusterMap)
-	updateMVMap, _ := json.Marshal(sortedMVMap)
-	updatedClusterMapBytes = append(updatedClusterMapBytes, updateMVMap...)
+	// updateMVMap, _ := json.Marshal(sortedMVMap)
+	updatedClusterMapBytes = append(updatedClusterMapBytes, sortedMVMap...)
 	if err != nil {
 		log.Err("updateStorageClusterMapIfRequired: Marshal failed for clustermap %+v: %v", clusterMap, err)
 		return
@@ -641,7 +641,7 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 	}
 }
 
-func (cmi *ClusterManagerImpl) sortMap(clustermap dcache.ClusterMap) map[string]any {
+func (cmi *ClusterManagerImpl) sortMap(clustermap dcache.ClusterMap) ([]byte, error) {
 	// Sort the map by keys
 	// Create a temporary map for our JSON output
 	output := make(map[string]interface{})
@@ -661,7 +661,10 @@ func (cmi *ClusterManagerImpl) sortMap(clustermap dcache.ClusterMap) map[string]
 	}
 	output["mv"] = orderedMV
 
-	return output
+	// Marshal the ordered map to JSON
+	return json.MarshalIndent(map[string]interface{}{
+		"mv": orderedMV,
+	}, "", "  ")
 }
 
 func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, existingMVMap map[string]dcache.MirroredVolume, NumReplicas int, MvsPerRv int) map[string]dcache.MirroredVolume {
