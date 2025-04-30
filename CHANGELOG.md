@@ -3,6 +3,9 @@
 - Preload feature added to download entire dataset on mount, to accelerate model training.
 - Added support for lazy unmounts. Lazy unmount will wait for device to be free and unmount automatically, instead of giving "device or resource busy" on executing unmount. `--lazy` CLI option in unmount command will enable lazy unmount.
 
+**Bug Fixes**
+- [#1687](https://github.com/Azure/azure-storage-fuse/issues/1687) `rmdir` will not allow to delete non-empty directories.
+
 ## 2.4.2 (2025-04-08)
 **Bug Fixes**
 - [#1630](https://github.com/Azure/azure-storage-fuse/issues/1426) Added support to mount special containers in `mount all` command.
