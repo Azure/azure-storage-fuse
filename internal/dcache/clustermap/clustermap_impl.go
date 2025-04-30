@@ -51,11 +51,6 @@ func Stop() {
 	clustermapImpl.stop()
 }
 
-// GetNotificationChannel returns a read‐only channel of events.
-func GetNotificationChannel() <-chan dcache.ClusterMapEvent {
-	return clustermapImpl.getNotificationChannel()
-}
-
 // Update is used by publishers to push ClusterManagerEvent events.
 func Update() {
 	clustermapImpl.update()
@@ -163,11 +158,6 @@ func (c *ClusterMapImpl) consume() {
 		_ = evt
 	}
 	// once CloseNotificationChannel() is called, the loop exits cleanly
-}
-
-// getNotificationChannel implements ClusterMap.
-func (c *ClusterMapImpl) getNotificationChannel() <-chan dcache.ClusterMapEvent {
-	return c.updatesChan
 }
 
 // update implements ClusterMap.

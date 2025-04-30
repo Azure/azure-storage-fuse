@@ -442,7 +442,7 @@ func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, e
 	// a new MV.
 	//
 
-	log.Debug("updateMVList: updating the current MV list with the new RV list")
+	log.Debug("ClusterManagerImpl::updateMVList: Updating the current MV list with the updated RV list.")
 
 	// Local types
 	type rv struct {
@@ -514,7 +514,7 @@ func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, e
 			common.Assert(found, fmt.Sprintf("MV Map lists this as a online RV but the current RV %s was not found in node %s populated from RVMap", rvName, nodeId))
 		}
 	}
-	log.Debug("updateMVList: existing MV map after phase#1: %v", existingMVMap)
+	log.Debug("ClusterManagerImpl::updateMVList: existing MV map after phase#1: %v", existingMVMap)
 	// Phase#2
 	for {
 		// Stored nodes in a slice as its wasy to shuffle
@@ -602,22 +602,23 @@ func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, e
 		// The nodeToRvs map is updated with remaining nodes and their RVs
 		// Only those RVs are left which have slots > 0
 	}
-	log.Debug("updateMVList: existing MV map after phase#2: %v", existingMVMap)
+	log.Debug("ClusterManagerImpl::updateMVList: existing MV map after phase#2: %v", existingMVMap)
 	// TODO :: arrrange the map entries in lexicographical order
 
 	return existingMVMap
 }
 
-func (cmi *ClusterManagerImpl) updateRVList(clusterMapRVMap map[string]dcache.RawVolume, hbTillNodeDown int, hbSeconds int) (bool, error) {
+func (cmi *ClusterManagerImpl) updateRVList(existingRVMap map[string]dcache.RawVolume, hbTillNodeDown int, hbSeconds int) (bool, error) {
 	nodeIds, err := getAllNodes()
 	if err != nil {
 		return false, fmt.Errorf("ClusterManagerImpl::updateRVList: Failed to get all nodes: error: %v", err)
 	}
 	log.Debug("ClusterManagerImpl::updateRVList: found %d nodes: %v in cluster.", len(nodeIds), nodeIds)
-	rVsByRvId := make(map[string]dcache.RawVolume)
+	rVsByRvIdFromHB := make(map[string]dcache.RawVolume)
 	rvLastHB := make(map[string]uint64)
 	changed := false
 	for _, nodeId := range nodeIds {
+		log.Debug("ClusterManagerImpl::updateRVList: reading heartbeat for node : %s", nodeId)
 		bytes, err := getHeartbeat(nodeId)
 		if err != nil {
 			return false, fmt.Errorf("ClusterManagerImpl::updateRVList: Failed to read heartbeat file for node %s: %v", nodeId, err)
@@ -626,14 +627,13 @@ func (cmi *ClusterManagerImpl) updateRVList(clusterMapRVMap map[string]dcache.Ra
 		if err := json.Unmarshal(bytes, &hbData); err != nil {
 			return false, fmt.Errorf("ClusterManagerImpl::updateRVList: Failed to parse heartbeat bytes for node %s: %v", nodeId, err)
 		}
-		log.Debug("ClusterManagerImpl::updateRVList: reading heartbeat for node : %s", nodeId)
 		for _, rv := range hbData.RVList {
-			if _, exists := rVsByRvId[rv.RvId]; exists {
+			if _, exists := rVsByRvIdFromHB[rv.RvId]; exists {
 				common.Assert(false, fmt.Sprintf("Duplicate RVId[%s] in heartbeats", rv.RvId))
 			}
 			common.Assert(rv.AvailableSpace <= rv.TotalSpace, fmt.Sprintf("Available space %d is greater than total space %d for RVId %s", rv.AvailableSpace, rv.TotalSpace, rv.RvId))
 			common.Assert(common.IsValidUUID(rv.RvId), fmt.Sprintf("Invalid RvId[%s]", rv.RvId))
-			rVsByRvId[rv.RvId] = rv
+			rVsByRvIdFromHB[rv.RvId] = rv
 			rvLastHB[rv.RvId] = hbData.LastHeartbeat
 		}
 	}
@@ -644,15 +644,18 @@ func (cmi *ClusterManagerImpl) updateRVList(clusterMapRVMap map[string]dcache.Ra
 
 	// compute heartbeat threshold
 	now := uint64(time.Now().Unix())
-	thresh := uint64(hbTillNodeDown * hbSeconds)
-	for rvName, rvInClusterMap := range clusterMapRVMap {
-		if rvHb, found := rVsByRvId[rvInClusterMap.RvId]; found {
+	hbThresh := now - uint64(hbTillNodeDown*hbSeconds)
+
+	for rvName, rvInClusterMap := range existingRVMap {
+
+		if rvHb, found := rVsByRvIdFromHB[rvInClusterMap.RvId]; found {
 			lastHB := rvLastHB[rvHb.RvId]
-			if now > lastHB && now-lastHB > thresh {
-				log.Info("ClusterManagerImpl::updateRVList: RV %s lastHeartbeat (%d) is expired. now (%d). marking RV offline",
-					rvName, lastHB, thresh)
+
+			if lastHB < hbThresh {
+				log.Warn("ClusterManagerImpl::updateRVList: RV %s lastHeartbeat (%d) is expired. hbThresh (%d). marking RV offline",
+					rvName, lastHB, hbThresh)
 				rvInClusterMap.State = dcache.StateOffline
-				clusterMapRVMap[rvName] = rvInClusterMap
+				existingRVMap[rvName] = rvInClusterMap
 				changed = true
 
 			} else {
@@ -661,30 +664,30 @@ func (cmi *ClusterManagerImpl) updateRVList(clusterMapRVMap map[string]dcache.Ra
 					rvInClusterMap.State = rvHb.State
 					rvInClusterMap.AvailableSpace = rvHb.AvailableSpace
 					//TODO{Akku}: IF available space is less than 10% of total space, we might need to update the state
-					clusterMapRVMap[rvName] = rvInClusterMap
+					existingRVMap[rvName] = rvInClusterMap
 				}
 			}
-			delete(rVsByRvId, rvHb.RvId)
+			delete(rVsByRvIdFromHB, rvHb.RvId)
 
 		} else {
 			log.Debug("ClusterManagerImpl::updateRVList: RvName=%s missing in new heartbeats", rvName)
 			rvInClusterMap.State = dcache.StateOffline
-			clusterMapRVMap[rvName] = rvInClusterMap
+			existingRVMap[rvName] = rvInClusterMap
 			changed = true
 
 		}
 	}
 
 	// add any new RVs
-	if len(rVsByRvId) != 0 {
+	if len(rVsByRvIdFromHB) != 0 {
 		log.Info(
 			"ClusterManagerImpl::updateRVList: %d new RV(s) to add to clusterMap: %v",
-			len(rVsByRvId), rVsByRvId,
+			len(rVsByRvIdFromHB), rVsByRvIdFromHB,
 		)
 
 		// find max index RV
 		maxIdx := -1
-		for name := range clusterMapRVMap {
+		for name := range existingRVMap {
 			if i, err := strconv.Atoi(strings.TrimPrefix(name, "rv")); err == nil && i > maxIdx {
 				maxIdx = i
 			}
@@ -692,9 +695,9 @@ func (cmi *ClusterManagerImpl) updateRVList(clusterMapRVMap map[string]dcache.Ra
 
 		// Add new RV into clusterMap
 		idx := maxIdx + 1
-		for _, rv := range rVsByRvId {
+		for _, rv := range rVsByRvIdFromHB {
 			rvName := fmt.Sprintf("rv%d", idx)
-			clusterMapRVMap[rvName] = rv
+			existingRVMap[rvName] = rv
 			idx++
 			changed = true
 			log.Info("ClusterManagerImpl::updateRVList: Adding new RV %+v by rvName %s to cluster map.", rv, rvName)
@@ -710,7 +713,7 @@ func listMyRVs(rvList []dcache.RawVolume) {
 		if err != nil {
 			availableSpace = 0
 
-			log.Warn("Error getting disk space metrics for path %s for punching heartbeat that's why forcing available Space to set to zero : %v", rv.LocalCachePath, err)
+			log.Warn("ClusterManagerImpl::listMyRVs: Error getting disk space metrics for path %s for punching heartbeat that's why forcing available Space to set to zero : %v", rv.LocalCachePath, err)
 		}
 		rvList[index].AvailableSpace = availableSpace
 		rvList[index].State = dcache.StateOnline

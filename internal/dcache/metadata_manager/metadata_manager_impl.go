@@ -472,7 +472,6 @@ func (m *BlobMetadataManager) getAllNodes() ([]string, error) {
 				log.Err("Invalid heartbeat blob: %s", blob.Name)
 				common.Assert(false, "Invalid heartbeat blob", blob.Name)
 			}
-			log.Debug("GetAllNodes :: If blob Found blob: %s", blob.Name)
 		} else {
 			log.Warn("GetAllNodes :: Unexpected blob found in Nodes folder: %s", blob.Name)
 			common.Assert(false, "Unexpected blob found in Nodes folder", blob.Name)
@@ -505,7 +504,7 @@ func (m *BlobMetadataManager) createInitialClusterMap(clustermap []byte) error {
 		log.Err("CreateInitialClusterMap :: Failed to put blob %s in storage: %v", clustermapPath, err)
 		return err
 	}
-	log.Debug("CreateInitialClusterMap :: Created initial clustermap with path %s", clustermapPath)
+	log.Info("CreateInitialClusterMap :: Created initial clustermap with path %s", clustermapPath)
 	return nil
 }
 
