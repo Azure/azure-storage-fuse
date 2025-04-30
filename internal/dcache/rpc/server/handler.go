@@ -221,7 +221,7 @@ func (rv *rvInfo) deleteFromMVMap(mvName string) {
 }
 
 // return available space for the given RV.
-// This is calculated after substracting the reserved space for this RV
+// This is calculated after subtracting the reserved space for this RV
 // from the actual disk space available in the cache directory.
 func (rv *rvInfo) getAvailableSpace() (int64, error) {
 	cacheDir := rv.cacheDir

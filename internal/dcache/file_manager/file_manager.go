@@ -109,7 +109,7 @@ func (file *DcacheFile) ReadFile(offset int64, buf []byte) (bytesRead int, err e
 	return bufOffset, nil
 }
 
-// Writes the file to the corresponing chunk(s) from the buf.
+// Writes the file to the corresponding chunk(s) from the buf.
 func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 	log.Debug("DistributedCache[FM]::WriteFile : offset : %d, bufSize : %d, file : %s", offset, len(buf), file.FileMetadata.Filename)
 
@@ -144,7 +144,7 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 		chunk.Len += int64(copied)
 
 		common.Assert(chunk.Len == getChunkOffsetFromFileOffset(offset, &file.FileMetadata.FileLayout),
-			fmt.Sprintf("Acutal Chunk Len : %d is modified incorrectly, Expected chunkLen : %d",
+			fmt.Sprintf("Actual Chunk Len : %d is modified incorrectly, Expected chunkLen : %d",
 				chunk.Len, getChunkStartOffsetFromFileOffset(offset, &file.FileMetadata.FileLayout)))
 
 		// Schedule the upload when staged chunk is fully written
@@ -191,7 +191,7 @@ func (file *DcacheFile) ReleaseFile() error {
 	return nil
 }
 
-// Get's the existing chunk from the chunks
+// Gets the existing chunk from the chunks
 // or Create a new one and add it to the the chunks
 func (file *DcacheFile) getChunk(chunkIdx int64) (*StagedChunk, bool, error) {
 	log.Debug("DistributedCache::getChunk : getChunk for chunkIdx : %d, file : %s", chunkIdx, file.FileMetadata.Filename)
