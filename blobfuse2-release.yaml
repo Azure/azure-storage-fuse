@@ -1565,7 +1565,7 @@ stages:
               # add release tags & push to github
               - task: GithubRelease@1
                 inputs:
-                  githubConnection: 'blobfuse-git-rel'
+                  githubConnection: 'Azure'
                   repositoryName: 'Azure/azure-storage-fuse'
                   action: 'edit'
 
