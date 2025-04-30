@@ -115,5 +115,5 @@ type FileLayout struct {
 	MVList     []string `json:"mv_list"`
 }
 
-type ClusterManagerEvent struct {
+type ClusterMapEvent struct {
 }
