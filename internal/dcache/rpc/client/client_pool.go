@@ -118,7 +118,7 @@ func (cp *clientPool) releaseRPCClient(client *rpcClient) error {
 	}
 
 	log.Debug("clientPool::releaseRPCClient: node = %s, current node client pool size = %v, max connections per node = %v ", client.nodeID, len(ncPool.clientChan), cp.maxPerNode)
-	common.Assert(len(ncPool.clientChan) < int(cp.maxPerNode), "node client pool is full, cannot release client")
+	common.Assert(len(ncPool.clientChan) < int(cp.maxPerNode), fmt.Sprintf("node client pool is full, cannot release client: node = %s, current node client pool size = %v, max connections per node = %v ", client.nodeID, len(ncPool.clientChan), cp.maxPerNode))
 	ncPool.clientChan <- client
 	return nil
 }
