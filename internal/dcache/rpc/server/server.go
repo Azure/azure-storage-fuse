@@ -34,10 +34,14 @@
 package rpc_server
 
 import (
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/service"
 	"github.com/apache/thrift/lib/go/thrift"
 )
+
+var dCacheConfig *dcache.DCacheConfig
 
 // NodeServer struct holds the Thrift server
 type NodeServer struct {
@@ -45,10 +49,20 @@ type NodeServer struct {
 	server  thrift.TServer
 }
 
-// TODO:: integration: we can have cluster manager call the start method of this server,
-// passing (dCacheConfig *dcache.DCacheConfig, rvs []dcache.RawVolume)
-func NewNodeServer(address string) (*NodeServer, error) {
-	log.Debug("NodeServer::NewNodeServer: Creating NodeServer with address: %s", address)
+// NewNodeServer creates a Thrift server for the node. It takes following parameters:
+// - address: address of the node having the format <ip>:<port>
+// - rvs: map of raw volumes of this node
+// - dCacheConfig: dCache configuration
+func NewNodeServer(address string, rvs map[string]dcache.RawVolume, config *dcache.DCacheConfig) (*NodeServer, error) {
+	// TODO: add assert for IsValidIP
+	common.Assert(address != "", "node address cannot be empty")
+	common.Assert(rvs != nil, "raw volumes cannot be nil")
+	common.Assert(len(rvs) > 0, "raw volumes cannot be empty")
+	common.Assert(config != nil, "dCacheConfig cannot be nil")
+
+	log.Debug("NodeServer::NewNodeServer: Creating NodeServer with address: %s, RVs %+v, dcache config %+v", address, rvs, *config)
+
+	dCacheConfig = config
 
 	protocolFactory := thrift.NewTBinaryProtocolFactoryConf(nil)
 	transportFactory := thrift.NewTTransportFactory()
@@ -72,7 +86,7 @@ func NewNodeServer(address string) (*NodeServer, error) {
 		return nil, err
 	}
 
-	handler := NewChunkServiceHandler()
+	handler := NewChunkServiceHandler(rvs)
 	processor := service.NewChunkServiceProcessor(handler)
 	server := thrift.NewTSimpleServer4(processor, transport, transportFactory, protocolFactory)
 
@@ -84,11 +98,14 @@ func NewNodeServer(address string) (*NodeServer, error) {
 
 func (ns *NodeServer) Start() error {
 	log.Debug("NodeServer::Start: Starting NodeServer on address: %s", ns.address)
-	err := ns.server.Serve()
-	if err != nil {
-		log.Err("NodeServer::Start: Failed to start server [%v]", err.Error())
-		return err
-	}
+
+	go func() {
+		err := ns.server.Serve()
+		if err != nil {
+			log.Err("NodeServer::Start: PANIC: failed to start server [%v]", err.Error())
+			log.GetLoggerObj().Panicf("PANIC: failed to start server [%v]", err.Error())
+		}
+	}()
 
 	return nil
 }
