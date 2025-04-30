@@ -98,8 +98,17 @@ type DCacheConfig struct {
 	CacheAccess            string `json:"cache-access,omitempty"`
 }
 
+type fileState int
+
+const (
+	Ready fileState = iota
+	Writing
+	Deleting
+)
+
 type FileMetadata struct {
 	Filename        string     `json:"filename"`
+	State           fileState  `json:"state"`
 	FileID          string     `json:"file_id"`
 	Size            int64      `json:"size"`
 	ClusterMapEpoch int64      `json:"cluster_map_epoch"`

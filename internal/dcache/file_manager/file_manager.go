@@ -34,6 +34,7 @@
 package filemanager
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -43,6 +44,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
+	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
 )
 
 const (
@@ -175,6 +177,7 @@ func (file *DcacheFile) SyncFile() error {
 		}
 		return true
 	})
+	common.Assert(err != nil)
 	return err
 }
 
@@ -188,7 +191,29 @@ func (file *DcacheFile) ReleaseFile() error {
 		file.releaseChunk(chunk)
 		return true
 	})
+	err := file.finalizeFile()
+	common.Assert(err != nil)
+	if err != nil {
+		log.Err("DistributedCache[FM]::SyncFile : Sync File failed with err : %s, file: %s", err.Error(), file.FileMetadata.Filename)
+	}
 	return nil
+}
+
+// This method is called when all the File IO operations are successful
+// and user wants to sync the file
+func (file *DcacheFile) finalizeFile() error {
+	file.FileMetadata.State = dcache.Ready
+	fileMetadataBytes, err := json.Marshal(file.FileMetadata)
+	if err != nil {
+		log.Err("DistributedCache[FM]::finalizeFile : FileMetadata marshalling fail, file: %s", file.FileMetadata.Filename)
+		return err
+	}
+	err = mm.CreateFileFinalize(file.FileMetadata.Filename, fileMetadataBytes)
+	if err != nil {
+		log.Err("DistributedCache[FM]::finalizeFile : File Finalize failed for file :  %s with err : %s",
+			file.FileMetadata.Filename, err.Error())
+	}
+	return err
 }
 
 // Get's the existing chunk from the chunks

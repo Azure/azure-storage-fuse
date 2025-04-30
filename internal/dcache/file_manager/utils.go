@@ -67,6 +67,7 @@ func isOffsetChunkStarting(offset int64, fileLayout *dcache.FileLayout) bool {
 func NewDcacheFile(fileName string) (*DcacheFile, error) {
 	fileMetadata := &dcache.FileMetadata{
 		Filename: fileName,
+		State:    dcache.Writing,
 	}
 	// todo : assign uuid for fileID
 	// todo : get chunkSize and Stripe Size from the config and assign.
@@ -83,7 +84,18 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 	}
 	err = mm.CreateFileInit(fileName, fileMetadataBytes)
 	if err != nil {
-		log.Debug("DistributedCache::NewDcacheFile : File Creation failed for file :  %s with err : %s", fileName, err.Error())
+		log.Err("DistributedCache::NewDcacheFile : File Creation failed for file :  %s with err : %s", fileName, err.Error())
+		return nil, err
+	}
+	return &DcacheFile{
+		FileMetadata: fileMetadata,
+	}, nil
+}
+
+// Does all init process for opening the file.
+func OpenDcacheFile(fileName string) (*DcacheFile, error) {
+	fileMetadata, err := mm.GetFile(fileName)
+	if err != nil {
 		return nil, err
 	}
 	return &DcacheFile{

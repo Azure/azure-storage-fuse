@@ -35,6 +35,7 @@ package metadata_manager
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -234,6 +235,10 @@ func (m *BlobMetadataManager) getFile(filePath string) (*dcache.FileMetadata, er
 	if err != nil {
 		log.Debug("GetFile :: Failed to unmarshal JSON data: %v", err)
 		return nil, err
+	}
+
+	if metadata.State == dcache.Writing || metadata.State == dcache.Deleting {
+		return nil, errors.New(fmt.Sprintf("File is in %d state", metadata.State))
 	}
 	// Return the Metadata struct
 	return &metadata, nil
