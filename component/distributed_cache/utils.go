@@ -75,7 +75,7 @@ func findMountDevice(path string) (string, error) {
 	}
 	device := strings.TrimSpace(string(out))
 	if device == "" {
-		return "", fmt.Errorf("no device found in df output for %s", path)
+		return "", fmt.Errorf("no device found in findmnt output for %s", path)
 	}
 	err = common.IsValidBlkDevice(device)
 	common.Assert(err == nil, fmt.Sprintf("Device is not a valid Block device. Device Name %s path %s: %v", device, path, err))
