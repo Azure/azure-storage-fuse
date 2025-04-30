@@ -69,8 +69,7 @@ func getBlockDeviceUUId(path string) (string, error) {
 
 func findMountDevice(path string) (string, error) {
 	// Call: findmnt -n -o SOURCE --target <path>
-	out, err := exec.Command(
-		"findmnt", "-n", "-o", "SOURCE", "--target", path).Output()
+	out, err := exec.Command("findmnt", "-n", "-o", "SOURCE", "--target", path).Output()
 	if err != nil {
 		return "", fmt.Errorf("failed to run findmnt on %s: %v", path, err)
 	}
