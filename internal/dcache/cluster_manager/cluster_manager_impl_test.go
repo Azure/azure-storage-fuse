@@ -253,6 +253,17 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_EmptyMvMap() {
 	suite.updateMvList(updated, rvMap, numReplicas, mvPerRv)
 }
 
+func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_MockMvRvMap() {
+	mvMap := mockMvMap()
+	rvMap := mockRvMap()
+
+	numReplicas := 2
+	mvPerRv := 2
+
+	updated := suite.cmi.updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
+	suite.Equal(len(updated), len(mvMap), "Number of updated MVs should be equal to number of MVs")
+}
+
 func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_MaxMVs() {
 	mvMap := map[string]dcache.MirroredVolume{}
 	rvMap := mockRvMap()
