@@ -50,6 +50,8 @@ const (
 	defaultMaxNodes = 100
 	// defaultTimeout is the default duration in seconds after which a RPC client is closed
 	defaultTimeout = 60
+	// defaultPort is the default port for the RPC server
+	defaultPort = 9090
 )
 
 // TODO: add asserts for function arguments and return values
