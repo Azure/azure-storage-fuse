@@ -618,15 +618,9 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 		log.Debug("updateStorageClusterMapIfRequired: No changes in RV mapping")
 	}
 
-	// Sort the Map in lexicographical order
-	sortedMVMap, _ := cmi.sortMap(clusterMap)
-	clusterMap.MVMap = nil
-
 	clusterMap.LastUpdatedAt = time.Now().Unix()
 	clusterMap.State = dcache.StateReady
-	updatedClusterMapBytes, err = json.Marshal(clusterMap)
-	// updateMVMap, _ := json.Marshal(sortedMVMap)
-	updatedClusterMapBytes = append(updatedClusterMapBytes, sortedMVMap...)
+
 	if err != nil {
 		log.Err("updateStorageClusterMapIfRequired: Marshal failed for clustermap %+v: %v", clusterMap, err)
 		return
@@ -639,32 +633,6 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 	} else {
 		log.Info("updateStorageClusterMapIfRequired: cluster map %+v updated by %s at %d", clusterMap, cmi.nodeId, now)
 	}
-}
-
-func (cmi *ClusterManagerImpl) sortMap(clustermap dcache.ClusterMap) ([]byte, error) {
-	// Sort the map by keys
-	// Create a temporary map for our JSON output
-	output := make(map[string]interface{})
-	mvMap := clustermap.MVMap
-
-	// Handle MVMap
-	mvKeys := make([]string, 0, len(mvMap))
-	for k := range mvMap {
-		mvKeys = append(mvKeys, k)
-	}
-	sort.Strings(mvKeys)
-
-	// Create ordered MVMap
-	orderedMV := make(map[string]dcache.MirroredVolume)
-	for _, k := range mvKeys {
-		orderedMV[k] = mvMap[k]
-	}
-	output["mv"] = orderedMV
-
-	// Marshal the ordered map to JSON
-	return json.MarshalIndent(map[string]interface{}{
-		"mv": orderedMV,
-	}, "", "  ")
 }
 
 func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, existingMVMap map[string]dcache.MirroredVolume, NumReplicas int, MvsPerRv int) map[string]dcache.MirroredVolume {
@@ -846,7 +814,19 @@ func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, e
 		// The nodeToRvs map is updated with reamining nodes and their RVs
 		// Only those RVs are left which have slots > 0
 	}
-	return existingMVMap
+
+	mvOrder := make([]string, 0, len(existingMVMap))
+	for mvName, _ := range existingMVMap {
+		mvOrder = append(mvOrder, mvName)
+	}
+	sort.Strings(mvOrder)
+	// Sort the existingMVMap by keys
+	sortedMVMap := make(map[string]dcache.MirroredVolume)
+	for _, mvName := range mvOrder {
+		sortedMVMap[mvName] = existingMVMap[mvName]
+	}
+
+	return sortedMVMap
 }
 
 func (cmi *ClusterManagerImpl) updateRVList(clusterMapRVMap map[string]dcache.RawVolume) (bool, error) {

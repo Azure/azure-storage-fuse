@@ -255,13 +255,18 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_EmptyMvMap() {
 
 func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_MockMvRvMap() {
 	mvMap := mockMvMap()
-	rvMap := mockRvMap()
+	rvMap := map[string]dcache.RawVolume{
+		"rv0": {RvId: "rv0", NodeId: "node0", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
+	}
 
 	numReplicas := 2
-	mvPerRv := 2
+	mvPerRv := 10
 
 	updated := suite.cmi.updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
-	suite.Equal(len(updated), len(mvMap), "Number of updated MVs should be equal to number of MVs")
+	updated2 := suite.cmi.updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
+	print(updated2)
+	suite.updateMvList(updated, rvMap, numReplicas, mvPerRv)
+	suite.updateMvList(updated2, rvMap, numReplicas, mvPerRv)
 }
 
 func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_MaxMVs() {
