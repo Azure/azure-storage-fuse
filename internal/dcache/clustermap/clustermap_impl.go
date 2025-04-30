@@ -47,19 +47,18 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 )
 
-// It will be used to close the notification channel
-func CloseNotificationChannel() {
-	clustermapImpl.closeNotificationChannel()
+func Stop() {
+	clustermapImpl.stop()
 }
 
 // GetNotificationChannel returns a read‐only channel of events.
-func GetNotificationChannel() <-chan dcache.ClustermapEvent {
+func GetNotificationChannel() <-chan dcache.ClusterMapEvent {
 	return clustermapImpl.getNotificationChannel()
 }
 
-// PublishEvent is used by publishers to push ClusterManagerEvent events.
-func PublishEvent(evt dcache.ClustermapEvent) {
-	clustermapImpl.publishEvent(evt)
+// Update is used by publishers to push ClusterManagerEvent events.
+func Update() {
+	clustermapImpl.update()
 }
 
 // It will return online MVs Map <mvName, MV> as per local cache copy of cluster map
@@ -123,38 +122,40 @@ func RVNameToIp(rvName string) string {
 }
 
 var (
-	clustermapImpl Clustermap = &ClustermapImpl{
-		updatesChan:         make(chan dcache.ClustermapEvent, 8),
+	clustermapImpl ClusterMap = &ClusterMapImpl{
+		updatesChan:         make(chan dcache.ClusterMapEvent, 8),
 		localClusterMapPath: filepath.Join(common.DefaultWorkDir, "clustermap.json"),
 	}
 )
 
-type ClustermapImpl struct {
-	updatesChan         chan dcache.ClustermapEvent
+type ClusterMapImpl struct {
+	updatesChan         chan dcache.ClusterMapEvent
 	localMap            *dcache.ClusterMap
 	localClusterMapPath string
 }
 
-// closeNotificationChannel implements Clustermap.
-func (c *ClustermapImpl) closeNotificationChannel() {
+// stop implements ClusterMap.
+func (c *ClusterMapImpl) stop() {
+
+	// close the notification channel
 	if c.updatesChan != nil {
 		close(c.updatesChan)
 	}
 }
 
-func (c *ClustermapImpl) consume() {
-	for evt := range GetNotificationChannel() {
-		log.Debug("ClustermapImpl::consume: received dcache.ClusterManagerEvent")
+func (c *ClusterMapImpl) consume() {
+	for evt := range c.updatesChan {
+		log.Debug("ClusterMapImpl::consume: received dcache.ClusterManagerEvent")
 
 		// On every cluster‐map update event, reload localMap from the JSON file
 		data, err := os.ReadFile(c.localClusterMapPath)
 		if err != nil {
-			log.Err("ClustermapImpl::consume: failed to read %s: %v", c.localClusterMapPath, err)
+			log.Err("ClusterMapImpl::consume: failed to read %s: %v", c.localClusterMapPath, err)
 			continue
 		}
 		var newClusterMap dcache.ClusterMap
 		if err := json.Unmarshal(data, &newClusterMap); err != nil {
-			log.Err("ClustermapImpl::consume: invalid JSON in %s: %v", c.localClusterMapPath, err)
+			log.Err("ClusterMapImpl::consume: invalid JSON in %s: %v", c.localClusterMapPath, err)
 			continue
 		}
 		c.localMap = &newClusterMap
@@ -164,21 +165,21 @@ func (c *ClustermapImpl) consume() {
 	// once CloseNotificationChannel() is called, the loop exits cleanly
 }
 
-// getNotificationChannel implements Clustermap.
-func (c *ClustermapImpl) getNotificationChannel() <-chan dcache.ClustermapEvent {
+// getNotificationChannel implements ClusterMap.
+func (c *ClusterMapImpl) getNotificationChannel() <-chan dcache.ClusterMapEvent {
 	return c.updatesChan
 }
 
-// publishEvent implements Clustermap.
-func (c *ClustermapImpl) publishEvent(evt dcache.ClustermapEvent) {
+// update implements ClusterMap.
+func (c *ClusterMapImpl) update() {
 	select {
-	case c.updatesChan <- evt:
+	case c.updatesChan <- dcache.ClusterMapEvent{}:
 	default:
 	}
 }
 
-// getActiveMVs implements Clustermap.
-func (c *ClustermapImpl) getActiveMVs() map[string]dcache.MirroredVolume {
+// getActiveMVs implements ClusterMap.
+func (c *ClusterMapImpl) getActiveMVs() map[string]dcache.MirroredVolume {
 	common.Assert(c.localMap != nil)
 
 	activeMVs := make(map[string]dcache.MirroredVolume)
@@ -190,15 +191,15 @@ func (c *ClustermapImpl) getActiveMVs() map[string]dcache.MirroredVolume {
 	return activeMVs
 }
 
-// getCacheConfig implements Clustermap.
-func (c *ClustermapImpl) getCacheConfig() *dcache.DCacheConfig {
+// getCacheConfig implements ClusterMap.
+func (c *ClusterMapImpl) getCacheConfig() *dcache.DCacheConfig {
 	common.Assert(c.localMap != nil)
 
 	return &c.localMap.Config
 }
 
-// getDegradedMVs implements Clustermap.
-func (c *ClustermapImpl) getDegradedMVs() map[string]dcache.MirroredVolume {
+// getDegradedMVs implements ClusterMap.
+func (c *ClusterMapImpl) getDegradedMVs() map[string]dcache.MirroredVolume {
 	common.Assert(c.localMap != nil)
 
 	degradedMVs := make(map[string]dcache.MirroredVolume)
@@ -210,8 +211,8 @@ func (c *ClustermapImpl) getDegradedMVs() map[string]dcache.MirroredVolume {
 	return degradedMVs
 }
 
-// getMyRVs implements Clustermap.
-func (c *ClustermapImpl) getMyRVs() map[string]dcache.RawVolume {
+// getMyRVs implements ClusterMap.
+func (c *ClusterMapImpl) getMyRVs() map[string]dcache.RawVolume {
 	common.Assert(c.localMap != nil)
 
 	nodeId, err := common.GetNodeUUID()
@@ -225,18 +226,18 @@ func (c *ClustermapImpl) getMyRVs() map[string]dcache.RawVolume {
 	return myRvs
 }
 
-// getRVs implements Clustermap.
-func (c *ClustermapImpl) getRVs(mvName string) map[string]dcache.StateEnum {
+// getRVs implements ClusterMap.
+func (c *ClusterMapImpl) getRVs(mvName string) map[string]dcache.StateEnum {
 	mv, ok := c.localMap.MVMap[mvName]
 	if !ok {
-		log.Debug("ClustermapImpl::getRVs: no mirrored volume named %s", mvName)
+		log.Debug("ClusterMapImpl::getRVs: no mirrored volume named %s", mvName)
 		return nil
 	}
 	return mv.RVs
 }
 
-// isOnline implements Clustermap.
-func (c *ClustermapImpl) isOnline(nodeId string) bool {
+// isOnline implements ClusterMap.
+func (c *ClusterMapImpl) isOnline(nodeId string) bool {
 	common.Assert(c.localMap != nil)
 
 	for _, rv := range c.localMap.RVMap {
@@ -244,12 +245,12 @@ func (c *ClustermapImpl) isOnline(nodeId string) bool {
 			return rv.State == dcache.StateOnline
 		}
 	}
-	log.Debug("ClustermapImpl::isOnline: node %s not found", nodeId)
+	log.Debug("ClusterMapImpl::isOnline: node %s not found", nodeId)
 	return false
 }
 
-// lowestNumberRV implements Clustermap.
-func (c *ClustermapImpl) lowestNumberRV(rvNames []string) string {
+// lowestNumberRV implements ClusterMap.
+func (c *ClusterMapImpl) lowestNumberRV(rvNames []string) string {
 	lowestNumberRv := ""
 	min := math.MaxInt32
 	for _, rvName := range rvNames {
@@ -260,12 +261,12 @@ func (c *ClustermapImpl) lowestNumberRV(rvNames []string) string {
 			lowestNumberRv = rvName
 		}
 	}
-	log.Debug("ClustermapImpl::lowestNumberRV: lowest number rvName in %v is %s", rvNames, lowestNumberRv)
+	log.Debug("ClusterMapImpl::lowestNumberRV: lowest number rvName in %v is %s", rvNames, lowestNumberRv)
 	return lowestNumberRv
 }
 
-// nodeIdToIP implements Clustermap.
-func (c *ClustermapImpl) nodeIdToIP(nodeId string) string {
+// nodeIdToIP implements ClusterMap.
+func (c *ClusterMapImpl) nodeIdToIP(nodeId string) string {
 	common.Assert(c.localMap != nil)
 
 	for _, rv := range c.localMap.RVMap {
@@ -273,24 +274,24 @@ func (c *ClustermapImpl) nodeIdToIP(nodeId string) string {
 			return rv.IPAddress
 		}
 	}
-	log.Debug("ClustermapImpl::nodeIdToIP: node %s not found", nodeId)
+	log.Debug("ClusterMapImpl::nodeIdToIP: node %s not found", nodeId)
 	return ""
 }
 
-// rVNameToNodeId implements Clustermap.
-func (c *ClustermapImpl) rVNameToNodeId(rvName string) string {
+// rVNameToNodeId implements ClusterMap.
+func (c *ClusterMapImpl) rVNameToNodeId(rvName string) string {
 	common.Assert(c.localMap != nil)
 
 	rv, ok := c.localMap.RVMap[rvName]
 	if !ok {
-		log.Debug("ClustermapImpl::rvNameToId: rvName %s not found", rvName)
+		log.Debug("ClusterMapImpl::rvNameToId: rvName %s not found", rvName)
 		return ""
 	}
 	return rv.NodeId
 }
 
-// rvIdToName implements Clustermap.
-func (c *ClustermapImpl) rvIdToName(rvId string) string {
+// rvIdToName implements ClusterMap.
+func (c *ClusterMapImpl) rvIdToName(rvId string) string {
 	common.Assert(c.localMap != nil)
 
 	for rvName, rv := range c.localMap.RVMap {
@@ -298,29 +299,29 @@ func (c *ClustermapImpl) rvIdToName(rvId string) string {
 			return rvName
 		}
 	}
-	log.Debug("ClustermapImpl::rvIdToName: rvID %s not found", rvId)
+	log.Debug("ClusterMapImpl::rvIdToName: rvID %s not found", rvId)
 	return ""
 }
 
-// rvNameToId implements Clustermap.
-func (c *ClustermapImpl) rvNameToId(rvName string) string {
+// rvNameToId implements ClusterMap.
+func (c *ClusterMapImpl) rvNameToId(rvName string) string {
 	common.Assert(c.localMap != nil)
 
 	rv, ok := c.localMap.RVMap[rvName]
 	if !ok {
-		log.Debug("ClustermapImpl::rvNameToId: rvName %s not found", rvName)
+		log.Debug("ClusterMapImpl::rvNameToId: rvName %s not found", rvName)
 		return ""
 	}
 	return rv.RvId
 }
 
-// rVNameToIp implements Clustermap.
-func (c *ClustermapImpl) rVNameToIp(rvName string) string {
+// rVNameToIp implements ClusterMap.
+func (c *ClusterMapImpl) rVNameToIp(rvName string) string {
 	common.Assert(c.localMap != nil)
 
 	rv, ok := c.localMap.RVMap[rvName]
 	if !ok {
-		log.Debug("ClustermapImpl::rVNameToIp: rvName %s not found", rvName)
+		log.Debug("ClusterMapImpl::rVNameToIp: rvName %s not found", rvName)
 		return ""
 	}
 	return rv.IPAddress

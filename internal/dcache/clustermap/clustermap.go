@@ -35,19 +35,19 @@ package clustermap
 
 import "github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 
-type Clustermap interface {
+type ClusterMap interface {
 
 	//It will be used to close the notification channel
-	closeNotificationChannel()
+	stop()
 
 	//It will be used to consumer the event from the channel getNotificationChannel
 	consume()
 
 	//GetNotificationChannel returns a read‐only channel of events.
-	getNotificationChannel() <-chan dcache.ClustermapEvent
+	getNotificationChannel() <-chan dcache.ClusterMapEvent
 
 	//It is used by publishers to push ClusterManagerEvent events.
-	publishEvent(evt dcache.ClustermapEvent)
+	update()
 
 	//It will return online MVs Map <mvName, MV> as per local cache copy of cluster map
 	getActiveMVs() map[string]dcache.MirroredVolume

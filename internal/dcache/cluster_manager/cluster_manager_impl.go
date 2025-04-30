@@ -81,7 +81,7 @@ func Stop() error {
 // start implements ClusterManager.
 func (cmi *ClusterManagerImpl) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache.RawVolume) error {
 	cmi.nodeId = rvs[0].NodeId
-	log.Info("ClusterManager::start: nodeId=%s, heartbeatSeconds=%d, epochSeconds=%d",
+	log.Info("ClusterManager::start: nodeId=%s, HeartbeatSeconds=%d, ClustermapEpoch=%d",
 		cmi.nodeId, dCacheConfig.HeartbeatSeconds, dCacheConfig.ClustermapEpoch)
 	common.Assert(common.IsValidUUID(cmi.nodeId), fmt.Sprintf("Invalid nodeId[%s]", cmi.nodeId))
 	log.Debug("ClusterManager::start: ensuring initial cluster map exists")
@@ -99,30 +99,30 @@ func (cmi *ClusterManagerImpl) start(dCacheConfig *dcache.DCacheConfig, rvs []dc
 	cmi.hbTicker = time.NewTicker(time.Duration(dCacheConfig.HeartbeatSeconds) * time.Second)
 
 	//Initial punch heartbeat triggering in a sync way to make this node available to detect as soon as possible
-	log.Debug("Initial \"Heartbeat Punch\" triggered")
+	log.Debug("ClusterManager::start: Initial Heartbeat punched")
 	cmi.punchHeartBeat(rvs)
 
 	go func() {
 		for range cmi.hbTicker.C {
-			log.Debug("Scheduled task \"Heartbeat Punch\" triggered")
+			log.Debug("ClusterManager::start: Scheduled task \"Heartbeat Punch\" triggered")
 			cmi.punchHeartBeat(rvs)
 		}
-		log.Info("Scheduled task \"Heartbeat Punch\" stopped")
+		log.Info("ClusterManager::start: Scheduled task \"Heartbeat Punch\" stopped")
 	}()
 
 	cmi.localClusterMapPath = filepath.Join(common.DefaultWorkDir, "clustermap.json")
 	cmi.clusterMapticker = time.NewTicker(time.Duration(dCacheConfig.ClustermapEpoch) * time.Second)
 
 	//Initial local copy update triggered in a sync way to make this node at least available with existing clusterMap configuration
-	log.Debug("Task \"Cluster Map update\" (initial) task triggered")
+	log.Debug("ClusterManager::start: Initial Cluster Map update triggered")
 	cmi.updateClusterMapLocalCopyIfRequired()
 	go func() {
 		for range cmi.clusterMapticker.C {
-			log.Debug("Scheduled \"Cluster Map update\" task triggered")
+			log.Debug("ClusterManager::start: Scheduled \"Cluster Map update\" task triggered")
 			cmi.updateStorageClusterMapIfRequired()
 			cmi.updateClusterMapLocalCopyIfRequired()
 		}
-		log.Info("Scheduled task \"ClusterMap update\" stopped")
+		log.Info("ClusterManager::start: Scheduled task \"ClusterMap update\" stopped")
 	}()
 
 	return nil
@@ -176,7 +176,7 @@ func (cmi *ClusterManagerImpl) updateClusterMapLocalCopyIfRequired() {
 
 	//TODO{Akku}: Notify only if there is a change in the MVs/RVs
 	//6. fire an notification event
-	clustermap.PublishEvent(dcache.ClustermapEvent{ /*…*/ })
+	clustermap.Update()
 }
 
 // Stop implements ClusterManager.
@@ -190,7 +190,7 @@ func (cmi *ClusterManagerImpl) stop() error {
 	if cmi.clusterMapticker != nil {
 		cmi.clusterMapticker.Stop()
 	}
-	clustermap.CloseNotificationChannel()
+	clustermap.Stop()
 	return nil
 }
 
@@ -290,9 +290,9 @@ func (cmi *ClusterManagerImpl) punchHeartBeat(rvList []dcache.RawVolume) {
 		// Create and update heartbeat file in storage with <nodeId>.hb
 		err = mm.UpdateHeartbeat(cmi.nodeId, data)
 		common.Assert(err == nil, fmt.Sprintf("Error updating heartbeat file with nodeId %s in storage: %v", cmi.nodeId, err))
-		log.Debug("ClusterManagerImpl::AddHeartBeat: heartbeat updated for node %+v", hbData)
+		log.Debug("ClusterManagerImpl::punchHeartBeat: heartbeat updated for node %+v", hbData)
 	} else {
-		log.Err("ClusterManagerImpl::failed to update heartbeat for node %s: with data %+v : error - %v", cmi.nodeId, hbData, err)
+		log.Err("ClusterManagerImpl::punchHeartBeat: failed to update heartbeat for node %s: with data %+v : error - %v", cmi.nodeId, hbData, err)
 	}
 }
 
