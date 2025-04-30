@@ -439,7 +439,7 @@ func GetDiskUsageFromStatfs(path string) (float64, float64, error) {
 	return usedSpace, (usedSpace / float64(totalSpace)) * 100, nil
 }
 
-// It will return totalSpace, availableSpace, and error if any while evaluting the Current disk usage of path using statfs
+// It will return totalSpace, availableSpace, and error if any while evaluating the Current disk usage of path using statfs
 func GetDiskSpaceMetricsFromStatfs(path string) (uint64, uint64, error) {
 	var stat syscall.Statfs_t
 	err := syscall.Statfs(path, &stat)

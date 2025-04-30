@@ -397,7 +397,7 @@ func (dc *DistributedCache) CreateFile(options internal.CreateFileOptions) (*han
 }
 func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
 	if options.Flags&os.O_WRONLY != 0 || options.Flags&os.O_RDWR != 0 {
-		log.Info("DistributedCache::OpenFile: Writing to an exisiting File is not allowed, file : %s", options.Name)
+		log.Info("DistributedCache::OpenFile: Writing to an existing File is not allowed, file : %s", options.Name)
 		return nil, syscall.EACCES
 	}
 

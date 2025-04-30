@@ -625,7 +625,7 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 		return
 	}
 
-	//TODO{Akku}: Make sure end update is happing with the same node as of start update
+	//TODO{Akku}: Make sure end update is happening with the same node as of start update
 	if err = mm.UpdateClusterMapEnd(updatedClusterMapBytes); err != nil {
 		log.Err("updateStorageClusterMapIfRequired: end failed to update cluster map %+v, error: %v", clusterMap, err)
 		common.Assert(false)
@@ -810,7 +810,7 @@ func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, e
 				nodeToRvs[nodeId] = node
 			}
 		}
-		// The nodeToRvs map is updated with reamining nodes and their RVs
+		// The nodeToRvs map is updated with remaining nodes and their RVs
 		// Only those RVs are left which have slots > 0
 	}
 	return existingMVMap
