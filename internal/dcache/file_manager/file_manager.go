@@ -181,6 +181,21 @@ func (file *DcacheFile) SyncFile() error {
 	return err
 }
 
+// Close and Finalize the file. writes are failed after this operation
+func (file *DcacheFile) CloseFile() error {
+	log.Debug("DistributedCache[FM]::CloseFilee : Close File for %s", file.FileMetadata.Filename)
+	err := file.SyncFile()
+	common.Assert(err == nil)
+	if err == nil {
+		err := file.finalizeFile()
+		common.Assert(err != nil)
+		if err != nil {
+			log.Err("DistributedCache[FM]::Close : finalize file failed with err : %s, file: %s", err.Error(), file.FileMetadata.Filename)
+		}
+	}
+	return err
+}
+
 // Release all allocated buffers for the file
 func (file *DcacheFile) ReleaseFile() error {
 	log.Debug("DistributedCache[FM]::ReleaseFile :Releasing buffers for File for %s", file.FileMetadata.Filename)
@@ -191,11 +206,6 @@ func (file *DcacheFile) ReleaseFile() error {
 		file.releaseChunk(chunk)
 		return true
 	})
-	err := file.finalizeFile()
-	common.Assert(err != nil)
-	if err != nil {
-		log.Err("DistributedCache[FM]::SyncFile : Sync File failed with err : %s, file: %s", err.Error(), file.FileMetadata.Filename)
-	}
 	return nil
 }
 

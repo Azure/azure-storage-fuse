@@ -55,6 +55,10 @@ const (
 	HandleFlagDirty          // File has been modified with write operation or is a new file
 	HandleFlagFSynced        // User has called fsync on the file explicitly
 	HandleFlagCached         // File is cached in the local system by blobfuse2
+	// Following are the Dcache Flags
+	HandleFSAzure
+	HandleFSDcache
+	HandleFlagDcacheAllowWrites // Handle can only write If this flag is set
 )
 
 // Structure to hold in memory cache for streaming layer
@@ -155,6 +159,30 @@ func (handle *Handle) Cleanup() {
 		delete(handle.values, key)
 	}
 }
+
+// **********************Dcache Related Methods Start******************************
+func (handle *Handle) SetFsAzure() {
+	handle.Flags.Set(HandleFSAzure)
+}
+
+func (handle *Handle) SetFsDcache() {
+	handle.Flags.Set(HandleFSDcache)
+}
+
+func (handle *Handle) SetFsDefault() {
+	handle.Flags.Set(HandleFSAzure)
+	handle.Flags.Set(HandleFSDcache)
+}
+
+func (handle *Handle) IsFsAzure() bool {
+	return handle.Flags.IsSet(HandleFSAzure)
+}
+
+func (handle *Handle) IsFsDcache() bool {
+	return handle.Flags.IsSet(HandleFSDcache)
+}
+
+// **********************Dcache Related Methods End******************************
 
 // defaultHandleMap holds a synchronized map[ HandleID ]*Handle
 var defaultHandleMap sync.Map
