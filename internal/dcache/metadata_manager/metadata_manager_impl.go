@@ -79,7 +79,7 @@ func Init(storageCallback dcache.StorageCallbacks, cacheId string) error {
 		if os.IsNotExist(err) || err == syscall.ENOENT {
 			directories := []string{metadataManagerInstance.mdRoot, metadataManagerInstance.mdRoot + "/Nodes", metadataManagerInstance.mdRoot + "/Objects"}
 			for _, dir := range directories {
-				if err := storageCallback.CreateDir(internal.CreateDirOptions{Name: dir, ForceDirCreationDisabled: true}); err != nil {
+				if err = storageCallback.CreateDir(internal.CreateDirOptions{Name: dir, ForceDirCreationDisabled: true}); err != nil {
 
 					if !bloberror.HasCode(err, bloberror.BlobAlreadyExists) {
 						log.Err("BlobMetadataManager :: Init error [failed to create directory %s: %v]", dir, err)
