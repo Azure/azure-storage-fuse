@@ -35,10 +35,14 @@ package filemanager
 
 import (
 	"encoding/json"
+	"fmt"
 
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
+	gouuid "github.com/google/uuid"
 )
 
 func getChunkStartOffsetFromFileOffset(offset int64, fileLayout *dcache.FileLayout) int64 {
@@ -63,20 +67,48 @@ func isOffsetChunkStarting(offset int64, fileLayout *dcache.FileLayout) bool {
 	return (offset%fileLayout.ChunkSize == 0)
 }
 
+func getMVForChunk(chunk *StagedChunk, fileLayout *dcache.FileLayout) string {
+	numMvs := int64(len(fileLayout.MVList))
+	return fileLayout.MVList[chunk.Idx%numMvs]
+}
+
 // Does all file Init Process for creation of the file.
 func NewDcacheFile(fileName string) (*DcacheFile, error) {
 	fileMetadata := &dcache.FileMetadata{
 		Filename: fileName,
 		State:    dcache.Writing,
 	}
-	// todo : assign uuid for fileID
-	// todo : get chunkSize and Stripe Size from the config and assign.
-	// todo : Choose appropriate MV's from the online mv's returned by the clustermap
+	fileMetadata.FileID = gouuid.New().String()
+	common.Assert(common.IsValidUUID(fileMetadata.FileID))
+
+	chunkSize := clustermap.GetCacheConfig().ChunkSize
+	stripeSize := clustermap.GetCacheConfig().StripeSize
+
+	common.Assert(stripeSize%chunkSize == 0, fmt.Sprintf("Stripe Size %d is not divisibe by chunkSize %d", stripeSize, chunkSize))
+	numMVs := stripeSize / chunkSize
+
 	fileMetadata.FileLayout = dcache.FileLayout{
-		ChunkSize:  4 * 1024 * 1024,
-		StripeSize: 16 * 1024 * 1024,
-		MVList:     []string{"mv0", "mv1", "mv2"},
+		ChunkSize:  int64(chunkSize),
+		StripeSize: int64(stripeSize),
+		MVList:     make([]string, numMVs),
 	}
+
+	// Get active MV's from the clustermap
+	activeMvs := clustermap.GetActiveMVs()
+	common.Assert(len(activeMvs) >= int(numMVs))
+	// todo : is there any better policy to pick?
+	i := 0
+	for k, _ := range activeMvs {
+		fileMetadata.FileLayout.MVList[i] = k
+		i++
+		if i == int(numMVs) {
+			break
+		}
+	}
+
+	log.Debug("DistributedCache[FM]::NewDcacheFile : Choose MV's are %s, %s, %s,  file: %s",
+		fileMetadata.FileLayout.MVList[0], fileMetadata.FileLayout.MVList[1], fileMetadata.FileLayout.MVList[2], fileName)
+
 	fileMetadataBytes, err := json.Marshal(fileMetadata)
 	if err != nil {
 		log.Err("DistributedCache[FM]::NewDcacheFile : FileMetadata marshalling fail, file: %s", fileName)

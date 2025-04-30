@@ -38,6 +38,7 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	rm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/replication_manager"
 )
 
 type task struct {
@@ -104,11 +105,21 @@ func (wp *workerPool) queueWork(file *DcacheFile, chunk *StagedChunk, get_chunk 
 
 func (wp *workerPool) readChunk(task *task) {
 	log.Info("DistributedCache::readChunk : Reading chunk idx : %d, file: %s", task.chunk.Idx, task.file.FileMetadata.Filename)
-	var err error
-
 	// Read From the Dcache
-	//Call MvRead method for reading the chunk.
-	// err = rm.MVRead()
+	readMVReq := &rm.ReadMvRequest{
+		FileID:         task.file.FileMetadata.FileID,
+		MvName:         getMVForChunk(task.chunk, &task.file.FileMetadata.FileLayout),
+		ChunkIndex:     task.chunk.Idx,
+		OffsetInChunk:  task.chunk.Idx * task.file.FileMetadata.FileLayout.ChunkSize,
+		Length:         task.chunk.Len,
+		ChunkSizeInMiB: int64(len(task.chunk.Buf)),
+		Data:           task.chunk.Buf,
+	}
+
+	readMVresp, err := rm.ReadMV(readMVReq)
+	common.Assert(err == nil)
+	common.Assert(readMVresp.BytesRead == task.chunk.Len)
+
 	if err == nil {
 		close(task.chunk.Err)
 		return
@@ -122,10 +133,21 @@ func (wp *workerPool) readChunk(task *task) {
 
 func (wp *workerPool) writeChunk(task *task) {
 	log.Info("DistributedCache::writeChunk : Writing chunk idx : %d, file: %s", task.chunk.Idx, task.file.FileMetadata.Filename)
-	var err error
+	isLastChunk := task.chunk.Len%int64(len(task.chunk.Buf)) == 0
+
+	writeMVReq := &rm.WriteMvRequest{
+		FileID:         task.file.FileMetadata.FileID,
+		MvName:         getMVForChunk(task.chunk, &task.file.FileMetadata.FileLayout),
+		ChunkIndex:     task.chunk.Idx,
+		Data:           task.chunk.Buf,
+		ChunkSizeInMiB: int64(len(task.chunk.Buf)),
+		IsLastChunk:    isLastChunk,
+	}
 
 	//Call MvWrite method for reading the chunk.
-	// err = rm.MVWrite()
+	_, err := rm.WriteMV(writeMVReq)
+	common.Assert(err == nil)
+
 	if err == nil {
 		close(task.chunk.Err)
 		return
