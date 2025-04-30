@@ -405,7 +405,7 @@ func (dc *DistributedCache) CreateFile(options internal.CreateFileOptions) (*han
 	if isAzurePath {
 		handle.SetFsAzure()
 	} else if isDcachePath {
-		handle.SetFsAzure()
+		handle.SetFsDcache()
 	} else {
 		handle.SetFsDefault()
 	}
@@ -467,7 +467,7 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 	if isAzurePath {
 		handle.SetFsAzure()
 	} else if isDcachePath {
-		handle.SetFsAzure()
+		handle.SetFsDcache()
 	} else {
 		handle.SetFsDefault()
 	}
