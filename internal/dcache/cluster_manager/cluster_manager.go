@@ -35,7 +35,7 @@ package clustermanager
 
 import "github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 
-// ClusterManager defines the interface for managing distributed cache, cluster configuration and hearbeat related APIs.
+// ClusterManager defines the interface for managing distributed cache, cluster configuration and heartbeat related APIs.
 type ClusterManager interface {
 
 	// Start cluster manager which expects cluster config and list of raw volumes.

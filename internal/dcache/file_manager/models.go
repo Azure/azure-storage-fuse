@@ -37,7 +37,7 @@ type StagedChunk struct {
 	Idx              int64         // chunk index
 	Buf              []byte        // buf size == chunkSize
 	Len              int64         // valid bytes in Buf
-	Err              chan error    // Download/upload status, available after download/upload completes, nil means sucess.
+	Err              chan error    // Download/upload status, available after download/upload completes, nil means success.
 	ScheduleDownload chan struct{} // channel to schedule download only once per chunk
 	ScheduleUpload   chan struct{} // channel to schedule download only once per chunk
 	// todo : replace the above channels with the atomic flags.
