@@ -174,6 +174,10 @@ func moveChunksToRegularMVPath(syncMvPath string, regMvPath string) error {
 	return nil
 }
 
+// TODO: apart from just populating the rv related info, it should also update the mvinfo.
+// For that it'll need to find the mv folders inside the rv, enumerate and stat all chunks
+// to find the totalChunkBytes, etc. This is needed when a node with data, restarts
+
 // create the rvID map from RVs present in the current node
 func getRvIDMap(rvs map[string]dcache.RawVolume) map[string]*rvInfo {
 	rvIDMap := make(map[string]*rvInfo)
@@ -194,13 +198,6 @@ func getRvIDMap(rvs map[string]dcache.RawVolume) map[string]*rvInfo {
 // return mvs-per-rv from dcache config
 func getMVsPerRV() int64 {
 	return int64(dCacheConfig.MvsPerRv)
-}
-
-// return available disk space for the given path
-func getAvailableDiskSpace(path string) (int64, error) {
-	_, availableSpace, err := common.GetDiskSpaceMetricsFromStatfs(path)
-	common.Assert(err == nil, fmt.Sprintf("failed to get available disk space for path %s [%v]", path, err))
-	return int64(availableSpace), err
 }
 
 // return the node ID of this node

@@ -34,6 +34,8 @@
 package rpc_server
 
 import (
+	"os"
+
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
@@ -102,7 +104,8 @@ func (ns *NodeServer) Start() error {
 	go func() {
 		err := ns.server.Serve()
 		if err != nil {
-			log.Err("NodeServer::Start: Failed to start server [%v]", err.Error())
+			log.Err("NodeServer::Start: PANIC: failed to start server [%v]", err.Error())
+			os.Exit(1)
 		}
 	}()
 

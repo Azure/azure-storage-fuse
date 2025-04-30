@@ -88,7 +88,11 @@ type mvInfo struct {
 	mvName       string                   // mv0, mv1, etc.
 	componentRVs []*models.RVNameAndState // sorted list of component RVs for this MV
 
-	totalChunkBytes atomic.Int64 // total amount of space used up inside an MV by all the chunks stored in it
+	// total amount of space used up inside an MV by all the chunks stored in it.
+	// Any RV that has to replace one of the existing component RVs needs to have
+	// at least this much space. JoinMV() requests this much space to be reserved
+	// in the new-to-be-inducted RV.
+	totalChunkBytes atomic.Int64
 
 	// count of in-progress chunk operations (get, put or remove) for this MV.
 	// This is used to block the end sync call till all the ongoing chunk operations are completed.
@@ -117,6 +121,7 @@ type mvInfo struct {
 type syncInfo struct {
 	// TODO: discuss should reserveSpace be added in RVInfo or syncInfo
 	// as in JoinMV we calculate the available space in the RV
+	// Refer, https://github.com/Azure/azure-storage-fuse/pull/1717#discussion_r2067636826
 
 	// reserveSpace is the amount of space reserved for this MV
 	// This must be reduced from the available space of the RV to get true available space
@@ -145,20 +150,22 @@ type syncInfo struct {
 
 var handler *ChunkServiceHandler
 
-// NewChunkServiceHandler creates a new ChunkServiceHandler instance
-// This is a singleton instance and is created only once.
-// Subsequent calls to this function will return the same instance.
+// NewChunkServiceHandler creates a new ChunkServiceHandler instance.
+// This MUST be called only once by the RPC server, on startup.
 func NewChunkServiceHandler(rvs map[string]dcache.RawVolume) *ChunkServiceHandler {
-	if handler != nil {
-		return handler
-	}
+	common.Assert(handler == nil, "NewChunkServiceHandler called more than once")
 
-	rvIDMap := getRvIDMap(rvs)
-
-	return &ChunkServiceHandler{
+	handler = &ChunkServiceHandler{
 		locks:   common.NewLockMap(),
-		rvIDMap: rvIDMap,
+		rvIDMap: getRvIDMap(rvs),
 	}
+
+	// Every node MUST contribute at least one RV.
+	// Note: We can probably relax this later if we want to support nodes which do not
+	//       contribute any storage.
+	common.Assert(len(handler.rvIDMap) > 0)
+
+	return handler
 }
 
 // check if the given mv is valid
@@ -211,6 +218,22 @@ func (rv *rvInfo) deleteFromMVMap(mvName string) {
 	rv.mvCount.Add(-1)
 
 	common.Assert(rv.mvCount.Load() >= 0, fmt.Sprintf("mvCount for RV %s is negative", rv.rvName))
+}
+
+// return available space for the given RV.
+// This is calculated after substracting the reserved space for this RV
+// from the actual disk space available in the cache directory.
+func (rv *rvInfo) getAvailableSpace() (int64, error) {
+	cacheDir := rv.cacheDir
+	_, availableSpace, err := common.GetDiskSpaceMetricsFromStatfs(cacheDir)
+	common.Assert(err == nil, fmt.Sprintf("failed to get available disk space for path %s [%v]", cacheDir, err))
+
+	// TODO: decrement this by the reserved space for this RV
+	// availableSpace -= rvInfo.reservedSpace.Load()
+
+	log.Debug("rvInfo::getAvailableSpace: available space for RV %s is %d", rv.rvName, availableSpace)
+
+	return int64(availableSpace), err
 }
 
 // return the current sync state of the MV
@@ -296,11 +319,13 @@ func (mv *mvInfo) updateComponentRVs(componentRVs []*models.RVNameAndState) {
 // increment the total chunk bytes for this MV
 func (mv *mvInfo) incTotalChunkBytes(bytes int64) {
 	mv.totalChunkBytes.Add(bytes)
+	log.Debug("mvInfo::incTotalChunkBytes: totalChunkBytes for MV %s is %d", mv.mvName, mv.totalChunkBytes.Load())
 }
 
 // decrement the total chunk bytes for this MV
 func (mv *mvInfo) decTotalChunkBytes(bytes int64) {
 	mv.totalChunkBytes.Add(-bytes)
+	log.Debug("mvInfo::decTotalChunkBytes: totalChunkBytes for MV %s is %d", mv.mvName, mv.totalChunkBytes.Load())
 	common.Assert(mv.totalChunkBytes.Load() >= 0, fmt.Sprintf("totalChunkBytes for MV %s is negative", mv.mvName))
 }
 
@@ -363,7 +388,7 @@ func (mv *mvInfo) quiesceIOsStart() error {
 				return fmt.Errorf("%s", msg)
 			}
 		} else {
-			log.Info("%s quiesced successfully!", mv.mvName)
+			log.Debug("mvInfo::quiesceIOsStart: %s quiesced successfully!", mv.mvName)
 			break
 		}
 	}
@@ -663,7 +688,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	// 	return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to write hash file %s [%v]", hashPath, err.Error()))
 	// }
 
-	availableSpace, err := getAvailableDiskSpace(cacheDir)
+	availableSpace, err := rvInfo.getAvailableSpace()
 	// TODO: add assert for available space
 	if err != nil {
 		log.Err("ChunkServiceHandler::PutChunk: Failed to get available disk space [%v]", err.Error())
@@ -680,6 +705,10 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	}
 
 	// TODO: should we also consider the hash file size in the total chunk bytes
+	//       For accurate accounting we can, but we should not do an extra stat() call for the hash file
+	//       but instead use a hardcoded value which will be true for a given hash algo.
+	//       Also we need to be sure that hash is calculated uniformly (either always or never)
+
 	// increment the total chunk bytes for this MV
 	mvInfo.incTotalChunkBytes(req.Length)
 
@@ -762,13 +791,17 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 	// 	return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to remove hash file %s [%v]", hashPath, err.Error()))
 	// }
 
-	availableSpace, err := getAvailableDiskSpace(cacheDir)
+	availableSpace, err := rvInfo.getAvailableSpace()
 	// TODO: add assert for available space
 	if err != nil {
 		log.Err("ChunkServiceHandler::RemoveChunk: Failed to get available disk space [%v]", err.Error())
 	}
 
 	// TODO: should we also consider the hash file size in the total chunk bytes
+	//       For accurate accounting we can, but we should not do an extra stat() call for the hash file
+	//       but instead use a hardcoded value which will be true for a given hash algo.
+	//       Also we need to be sure that hash is calculated uniformly (either always or never)
+
 	// decrement the total chunk bytes for this MV
 	mvInfo.decTotalChunkBytes(fInfo.Size())
 
@@ -822,7 +855,7 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 	// RV is being added to an already existing MV
 	// check if the RV has enough space to store the new MV data
 	if req.ReserveSpace != 0 {
-		availableSpace, err := getAvailableDiskSpace(cacheDir)
+		availableSpace, err := rvInfo.getAvailableSpace()
 		// TODO: add assert for available space
 		if err != nil {
 			log.Err("ChunkServiceHandler::JoinMV: Failed to get available disk space for RV %v [%v]", req.RVName, err.Error())

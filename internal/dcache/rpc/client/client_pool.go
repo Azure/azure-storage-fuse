@@ -117,6 +117,7 @@ func (cp *clientPool) releaseRPCClient(client *rpcClient) error {
 		return fmt.Errorf("no client pool found for node %s", client.nodeID)
 	}
 
+	log.Debug("clientPool::releaseRPCClient: node = %s, current node client pool size = %v, max connections per node = %v ", client.nodeID, len(ncPool.clientChan), cp.maxPerNode)
 	common.Assert(len(ncPool.clientChan) < int(cp.maxPerNode), "node client pool is full, cannot release client")
 	ncPool.clientChan <- client
 	return nil
@@ -137,7 +138,9 @@ func (cp *clientPool) closeLRUCNodeClientPool() error {
 		}
 	}
 
-	common.Assert(lruNcPool != nil, "lruNcPool is nil")
+	// closeLRUCNodeClientPool() MUST never be called with no active RPC client.
+	common.Assert(lruNcPool != nil)
+
 	err := lruNcPool.closeRPCClients()
 	if err != nil {
 		log.Err("clientPool::closeLRUCNodeClientPool: Failed to close LRU node client pool for node %s [%v]", lruNodeID, err.Error())
