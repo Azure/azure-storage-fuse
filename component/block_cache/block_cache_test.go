@@ -413,12 +413,12 @@ func (suite *blockCacheTestSuite) TestFileOpenClose() {
 }
 
 func (suite *blockCacheTestSuite) TestValidateBlockList() {
-	config := "read-only: true\n\nblock_cache:\n  block-size-mb: 20"
+	config := "read-only: true\n\nblock_cache:\n  block-size-mb: 2"
 	tobj, err := setupPipeline(config)
 	defer tobj.cleanupPipeline()
 	suite.assert.Nil(err)
 	suite.assert.NotNil(tobj.blockCache)
-	suite.assert.Equal(tobj.blockCache.blockSize, 20*_1MB)
+	suite.assert.Equal(tobj.blockCache.blockSize, 2*_1MB)
 
 	fileName := getTestFileName(suite.T().Name())
 	storagePath := filepath.Join(tobj.fake_storage_path, fileName)
@@ -2661,15 +2661,15 @@ func (suite *blockCacheTestSuite) TestReadWriteBlockInParallel() {
 
 func (suite *blockCacheTestSuite) TestZZZZZStreamToBlockCacheConfig() {
 	common.IsStream = true
-	config := "read-only: true\n\nstream:\n  block-size-mb: 2\n  max-buffers: 30\n  buffer-size-mb: 8\n"
+	config := "read-only: true\n\nstream:\n  block-size-mb: 1\n  max-buffers: 12\n  buffer-size-mb: 1\n"
 	tobj, err := setupPipeline(config)
 	defer tobj.cleanupPipeline()
 
 	suite.assert.Nil(err)
 	if err == nil {
 		suite.assert.Equal(tobj.blockCache.Name(), "block_cache")
-		suite.assert.EqualValues(tobj.blockCache.blockSize, 2*_1MB)
-		suite.assert.EqualValues(tobj.blockCache.memSize, 8*_1MB*30)
+		suite.assert.EqualValues(tobj.blockCache.blockSize, 1*_1MB)
+		suite.assert.EqualValues(tobj.blockCache.memSize, 1*_1MB*12)
 	}
 }
 
