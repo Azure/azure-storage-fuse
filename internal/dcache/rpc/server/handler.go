@@ -44,6 +44,7 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/service"
@@ -87,8 +88,11 @@ type mvInfo struct {
 	mvName       string                   // mv0, mv1, etc.
 	componentRVs []*models.RVNameAndState // sorted list of component RVs for this MV
 
-	// TODO: add totalChunkBytes which is the total amount of space used up inside an MV by all the chunks stored in it.
-	// Refer, https://github.com/Azure/azure-storage-fuse/pull/1706#discussion_r2057388904
+	// total amount of space used up inside an MV by all the chunks stored in it.
+	// Any RV that has to replace one of the existing component RVs needs to have
+	// at least this much space. JoinMV() requests this much space to be reserved
+	// in the new-to-be-inducted RV.
+	totalChunkBytes atomic.Int64
 
 	// count of in-progress chunk operations (get, put or remove) for this MV.
 	// This is used to block the end sync call till all the ongoing chunk operations are completed.
@@ -114,8 +118,15 @@ type mvInfo struct {
 	syncInfo // sync info for this MV
 }
 
-// TODO: add reserve space which must be reduced from the available space of the RV to get true available space
 type syncInfo struct {
+	// TODO: discuss should reserveSpace be added in RVInfo or syncInfo
+	// as in JoinMV we calculate the available space in the RV
+	// Refer, https://github.com/Azure/azure-storage-fuse/pull/1717#discussion_r2067636826
+
+	// reserveSpace is the amount of space reserved for this MV
+	// This must be reduced from the available space of the RV to get true available space
+	// reserveSpace atomic.Int64
+
 	// Is the MV in syncing state?
 	// An MV enters syncing state after StartSync command is successfully executed.
 	// In syncing state, PutChunk requests corresponding to client writes will be
@@ -139,22 +150,22 @@ type syncInfo struct {
 
 var handler *ChunkServiceHandler
 
-// NewChunkServiceHandler creates a new ChunkServiceHandler instance
-// This is a singleton instance and is created only once.
-// Subsequent calls to this function will return the same instance.
-func NewChunkServiceHandler() *ChunkServiceHandler {
-	if handler != nil {
-		return handler
-	}
+// NewChunkServiceHandler creates a new ChunkServiceHandler instance.
+// This MUST be called only once by the RPC server, on startup.
+func NewChunkServiceHandler(rvs map[string]dcache.RawVolume) *ChunkServiceHandler {
+	common.Assert(handler == nil, "NewChunkServiceHandler called more than once")
 
-	// TODO:: integration: get rvID, rvName and cache dir path for different RVs for the node from cluster manager
-	// below will be call to cluster manager to get the information
-	rvIDMap := getRvIDMap()
-
-	return &ChunkServiceHandler{
+	handler = &ChunkServiceHandler{
 		locks:   common.NewLockMap(),
-		rvIDMap: rvIDMap,
+		rvIDMap: getRvIDMap(rvs),
 	}
+
+	// Every node MUST contribute at least one RV.
+	// Note: We can probably relax this later if we want to support nodes which do not
+	//       contribute any storage.
+	common.Assert(len(handler.rvIDMap) > 0)
+
+	return handler
 }
 
 // check if the given mv is valid
@@ -196,7 +207,6 @@ func (rv *rvInfo) addToMVMap(mvName string, val *mvInfo) {
 	rv.mvMap.Store(mvName, val)
 	rv.mvCount.Add(1)
 
-	// TODO:: integration: call cluster manager to get mvs-per-rv from config
 	common.Assert(rv.mvCount.Load() <= getMVsPerRV(), fmt.Sprintf("mvCount for RV %s is greater than max MVs %d", rv.rvName, getMVsPerRV()))
 }
 
@@ -208,6 +218,22 @@ func (rv *rvInfo) deleteFromMVMap(mvName string) {
 	rv.mvCount.Add(-1)
 
 	common.Assert(rv.mvCount.Load() >= 0, fmt.Sprintf("mvCount for RV %s is negative", rv.rvName))
+}
+
+// return available space for the given RV.
+// This is calculated after subtracting the reserved space for this RV
+// from the actual disk space available in the cache directory.
+func (rv *rvInfo) getAvailableSpace() (int64, error) {
+	cacheDir := rv.cacheDir
+	_, availableSpace, err := common.GetDiskSpaceMetricsFromStatfs(cacheDir)
+	common.Assert(err == nil, fmt.Sprintf("failed to get available disk space for path %s [%v]", cacheDir, err))
+
+	// TODO: decrement this by the reserved space for this RV
+	// availableSpace -= rvInfo.reservedSpace.Load()
+
+	log.Debug("rvInfo::getAvailableSpace: available space for RV %s is %d", rv.rvName, availableSpace)
+
+	return int64(availableSpace), err
 }
 
 // return the current sync state of the MV
@@ -290,6 +316,19 @@ func (mv *mvInfo) updateComponentRVs(componentRVs []*models.RVNameAndState) {
 	mv.componentRVs = componentRVs
 }
 
+// increment the total chunk bytes for this MV
+func (mv *mvInfo) incTotalChunkBytes(bytes int64) {
+	mv.totalChunkBytes.Add(bytes)
+	log.Debug("mvInfo::incTotalChunkBytes: totalChunkBytes for MV %s is %d", mv.mvName, mv.totalChunkBytes.Load())
+}
+
+// decrement the total chunk bytes for this MV
+func (mv *mvInfo) decTotalChunkBytes(bytes int64) {
+	mv.totalChunkBytes.Add(-bytes)
+	log.Debug("mvInfo::decTotalChunkBytes: totalChunkBytes for MV %s is %d", mv.mvName, mv.totalChunkBytes.Load())
+	common.Assert(mv.totalChunkBytes.Load() >= 0, fmt.Sprintf("totalChunkBytes for MV %s is %d", mv.mvName, mv.totalChunkBytes.Load()))
+}
+
 // increment the in-progress chunk operation (get, put or remove) count for this MV
 func (mv *mvInfo) incOngoingIOs() {
 	mv.chunkIOInProgress.Add(1)
@@ -349,7 +388,7 @@ func (mv *mvInfo) quiesceIOsStart() error {
 				return fmt.Errorf("%s", msg)
 			}
 		} else {
-			log.Info("%s quiesced successfully!", mv.mvName)
+			log.Debug("mvInfo::quiesceIOsStart: %s quiesced successfully!", mv.mvName)
 			break
 		}
 	}
@@ -362,30 +401,6 @@ func (mv *mvInfo) quiesceIOsStart() error {
 func (mv *mvInfo) quiesceIOsEnd() {
 	common.Assert(mv.quiesceIOs.Load(), fmt.Sprintf("quiesceIOsEnd() called without quiesceIOsStart() for MV %s", mv.mvName))
 	mv.quiesceIOs.Store(false)
-}
-
-// TODO:: integration: sample method, will be later removed after integrating with cluster manager
-// call cluster manager to create the rvID map from config
-func getRvIDMap() map[string]*rvInfo {
-	return make(map[string]*rvInfo)
-}
-
-// TODO:: integration: sample method, will be later removed after integrating with cluster manager
-// call cluster manager to get mvs-per-rv from config
-func getMVsPerRV() int64 {
-	return 10
-}
-
-// TODO:: integration: sample method, will be later removed after integrating with cluster manager
-// call cluster manager helper method to get available disk space for the given path
-func getAvailableDiskSpace(path string) (int64, error) {
-	return 0, nil
-}
-
-// TODO:: integration: sample method, will be later removed after integrating with cluster manager
-// call cluster manager helper method to get the node ID of this node
-func getNodeUUID() string {
-	return "node-uuid" // TODO: get the node uuid from the config
 }
 
 // check the if the chunk address is valid
@@ -457,8 +472,7 @@ func (h *ChunkServiceHandler) Hello(ctx context.Context, req *models.HelloReques
 
 	// TODO: send more information in response on Hello RPC
 
-	// TODO:: integration: call cluster manager to get the node ID of this node
-	myNodeID := getNodeUUID()
+	myNodeID := GetMyNodeUUID()
 	common.Assert(req.ReceiverNodeID == myNodeID, "Received Hello RPC destined for another node", req.ReceiverNodeID, myNodeID)
 
 	// get all the RVs exported by this node
@@ -674,8 +688,8 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	// 	return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to write hash file %s [%v]", hashPath, err.Error()))
 	// }
 
-	// TODO:: integration: call cluster manager to get the available disk space
-	availableSpace, err := getAvailableDiskSpace(cacheDir)
+	availableSpace, err := rvInfo.getAvailableSpace()
+	// TODO: add assert for available space
 	if err != nil {
 		log.Err("ChunkServiceHandler::PutChunk: Failed to get available disk space [%v]", err.Error())
 	}
@@ -689,6 +703,14 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 		common.Assert(false, fmt.Sprintf("failed to rename chunk file %s to %s [%v]", tmpChunkPath, chunkPath, err.Error()))
 		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to rename chunk file %s to %s [%v]", tmpChunkPath, chunkPath, err.Error()))
 	}
+
+	// TODO: should we also consider the hash file size in the total chunk bytes
+	//       For accurate accounting we can, but we should not do an extra stat() call for the hash file
+	//       but instead use a hardcoded value which will be true for a given hash algo.
+	//       Also we need to be sure that hash is calculated uniformly (either always or never)
+
+	// increment the total chunk bytes for this MV
+	mvInfo.incTotalChunkBytes(req.Length)
 
 	resp := &models.PutChunkResponse{
 		TimeTaken:      time.Since(startTime).Microseconds(),
@@ -748,23 +770,40 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 	chunkPath, hashPath := getChunkAndHashPath(cacheDir, req.Address.MvName, req.Address.FileID, req.Address.OffsetInMiB)
 	log.Debug("ChunkServiceHandler::RemoveChunk: chunk path %s, hash path %s", chunkPath, hashPath)
 
+	// check if the chunk is present
+	fInfo, err := os.Stat(chunkPath)
+	if err != nil {
+		log.Err("ChunkServiceHandler::RemoveChunk: Failed to stat chunk file %s [%v]", chunkPath, err.Error())
+		common.Assert(false, fmt.Sprintf("failed to stat chunk file %s [%v]", chunkPath, err.Error()))
+		return nil, rpc.NewResponseError(rpc.ChunkNotFound, fmt.Sprintf("failed to stat chunk file %s [%v]", chunkPath, err.Error()))
+	}
+
 	err = os.Remove(chunkPath)
 	if err != nil {
 		log.Err("ChunkServiceHandler::RemoveChunk: Failed to remove chunk file %s [%v]", chunkPath, err.Error())
 		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to remove chunk file %s [%v]", chunkPath, err.Error()))
 	}
 
-	err = os.Remove(hashPath)
-	if err != nil {
-		log.Err("ChunkServiceHandler::RemoveChunk: Failed to remove hash file %s [%v]", hashPath, err.Error())
-		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to remove hash file %s [%v]", hashPath, err.Error()))
-	}
+	// TODO: hash validation will be done later
+	// err = os.Remove(hashPath)
+	// if err != nil {
+	// 	log.Err("ChunkServiceHandler::RemoveChunk: Failed to remove hash file %s [%v]", hashPath, err.Error())
+	// 	return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to remove hash file %s [%v]", hashPath, err.Error()))
+	// }
 
-	// TODO:: integration: call cluster manager to get the available disk space
-	availableSpace, err := getAvailableDiskSpace(cacheDir)
+	availableSpace, err := rvInfo.getAvailableSpace()
+	// TODO: add assert for available space
 	if err != nil {
 		log.Err("ChunkServiceHandler::RemoveChunk: Failed to get available disk space [%v]", err.Error())
 	}
+
+	// TODO: should we also consider the hash file size in the total chunk bytes
+	//       For accurate accounting we can, but we should not do an extra stat() call for the hash file
+	//       but instead use a hardcoded value which will be true for a given hash algo.
+	//       Also we need to be sure that hash is calculated uniformly (either always or never)
+
+	// decrement the total chunk bytes for this MV
+	mvInfo.decTotalChunkBytes(fInfo.Size())
 
 	resp := &models.RemoveChunkResponse{
 		TimeTaken:      time.Since(startTime).Microseconds(),
@@ -800,13 +839,12 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 	cacheDir := rvInfo.cacheDir
 
 	// check if RV is already part of the given MV
-	mvInf := rvInfo.getMVInfo(req.MV)
-	if mvInf != nil {
+	mvi := rvInfo.getMVInfo(req.MV)
+	if mvi != nil {
 		log.Err("ChunkServiceHandler::JoinMV: RV %s is already part of the given MV %s", req.RVName, req.MV)
 		return nil, rpc.NewResponseError(rpc.InvalidRequest, fmt.Sprintf("RV %s is already part of the given MV %s", req.RVName, req.MV))
 	}
 
-	// TODO:: integration: call cluster manager to get mvs-per-rv from config
 	mvLimit := getMVsPerRV()
 	if rvInfo.mvCount.Load() >= mvLimit {
 		log.Err("ChunkServiceHandler::JoinMV: RV %s has reached the maximum number of MVs %d", req.RVName, mvLimit)
@@ -817,8 +855,8 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 	// RV is being added to an already existing MV
 	// check if the RV has enough space to store the new MV data
 	if req.ReserveSpace != 0 {
-		// TODO:: integration: call cluster manager to get the available disk space
-		availableSpace, err := getAvailableDiskSpace(cacheDir)
+		availableSpace, err := rvInfo.getAvailableSpace()
+		// TODO: add assert for available space
 		if err != nil {
 			log.Err("ChunkServiceHandler::JoinMV: Failed to get available disk space for RV %v [%v]", req.RVName, err.Error())
 			return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to get available disk space for RV %v [%v]", req.RVName, err.Error()))
@@ -983,7 +1021,7 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 	// Set IO quiescing in the mv. Now GetChunk, PutChunk, will not allow any new IO.
 	// Also wait for any ongoing IOs to complete.
 	err := mvInfo.quiesceIOsStart()
-	common.Assert(err == nil, fmt.Sprintf("failed to quiesce IOs for MV %s [%v]", req.MV, err.Error()))
+	common.Assert(err == nil, fmt.Sprintf("failed to quiesce IOs for MV %s [%v]", req.MV, err))
 
 	// disable block chunk operations flag for this MV when the function returns
 	defer mvInfo.quiesceIOsEnd()
@@ -1060,7 +1098,7 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 	// Set IO quiescing in the mv. Now GetChunk, PutChunk, will not allow any new IO.
 	// Also wait for any ongoing IOs to complete.
 	err := mvInfo.quiesceIOsStart()
-	common.Assert(err == nil, fmt.Sprintf("failed to quiesce IOs for MV %s [%v]", req.MV, err.Error()))
+	common.Assert(err == nil, fmt.Sprintf("failed to quiesce IOs for MV %s [%v]", req.MV, err))
 
 	// disable block chunk operations flag for this MV when the function returns
 	defer mvInfo.quiesceIOsEnd()
@@ -1085,7 +1123,7 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 
 	// delete the sync directory
 	err = os.RemoveAll(syncMvPath)
-	common.Assert(err == nil, fmt.Sprintf("failed to remove sync directory %s [%v]", syncMvPath, err.Error()))
+	common.Assert(err == nil, fmt.Sprintf("failed to remove sync directory %s [%v]", syncMvPath, err))
 
 	return &models.EndSyncResponse{}, nil
 }

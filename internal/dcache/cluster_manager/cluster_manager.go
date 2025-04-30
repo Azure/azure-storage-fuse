@@ -35,7 +35,7 @@ package clustermanager
 
 import "github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 
-// ClusterManager defines the interface for managing distributed cache, cluster configuration and hearbeat related APIs.
+// ClusterManager defines the interface for managing distributed cache, cluster configuration and heartbeat related APIs.
 type ClusterManager interface {
 
 	// Start cluster manager which expects cluster config and list of raw volumes.
@@ -50,48 +50,9 @@ type ClusterManager interface {
 	//2. Cancel schedule of heartbeat punching
 	stop() error
 
-	//It will return online MVs as per local cache copy of cluster map
-	getActiveMVs() map[string]dcache.MirroredVolume
-
-	//It will return the cache config as per local cache copy of cluster map
-	getCacheConfig() *dcache.DCacheConfig
-
-	//It will return offline/down MVs as per local cache copy of cluster map
-	getDegradedMVs() map[string]dcache.MirroredVolume
-
-	//It will return all the RVs for this particular node as per local cache copy of cluster map
-	getMyRVs() map[string]dcache.RawVolume
-
-	//It will return all the RVs for particular mv name as per local cache copy of cluster map
-	getRVs(mvName string) map[string]dcache.StateEnum
-
-	//It will check if the given nodeId is online as per local cache copy of cluster map
-	isOnline(nodeId string) bool
-
-	//It will evaluate the lowest number of RV for given rv Names
-	lowestNumberRV(rvNames []string) string
-
-	//It will return the IP address of the given nodeId as per local cache copy of cluster map
-	nodeIdToIP(nodeId string) string
-
-	//It will return the name of RV for the given RV FSID/Blkid as per local cache copy of cluster map
-	rvIdToName(rvId string) string
-
-	//It will return the RV FSID/Blkid of the given RV name as per local cache copy of cluster map
-	rvNameToId(rvName string) string
-
-	//It will return the nodeId/node uuid of the given RV name as per local cache copy of cluster map
-	rVNameToNodeId(rvName string) string
-
-	//It will return the IP address of the given RV name as per local cache copy of cluster map
-	rVNameToIp(rvName string) string
-
 	//Update RV state to down and update MVs
 	reportRVDown(rvName string) error
 
 	//Update RV state to offline and update MVs
 	reportRVFull(rvName string) error
-
-	//Notify consumer about cluster manager Event
-	getNotificationChannel() <-chan dcache.ClusterManagerEvent
 }
