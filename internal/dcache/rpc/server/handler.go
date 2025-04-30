@@ -81,6 +81,14 @@ type rvInfo struct {
 	cacheDir string       // cache dir path for this RV [readonly]
 	mvMap    sync.Map     // all MVs this RV is part of, indexed by MV name (e.g., "mv0"), updated by JoinMV, UpdateMV and LeaveMV
 	mvCount  atomic.Int64 // count of MVs for this RV, this should be updated whenever a MV is added or removed from the sync map
+
+	// reserved space for the RV is the space reserved for chunks which will be synced
+	// to the RV after the StartSync() call. This is used to calculate the available space
+	// in the RV after subtracting the reserved space from the actual disk space available.
+	// JoinMV() will increment this space indicating that new MV is being added to this RV.
+	// On the other hand, PutChunk() sync RPC call will decrement this space indicating
+	// that the chunk has been written to the RV.
+	reservedSpace atomic.Int64
 }
 
 type mvInfo struct {
@@ -119,14 +127,6 @@ type mvInfo struct {
 }
 
 type syncInfo struct {
-	// TODO: discuss should reserveSpace be added in RVInfo or syncInfo
-	// as in JoinMV we calculate the available space in the RV
-	// Refer, https://github.com/Azure/azure-storage-fuse/pull/1717#discussion_r2067636826
-
-	// reserveSpace is the amount of space reserved for this MV
-	// This must be reduced from the available space of the RV to get true available space
-	// reserveSpace atomic.Int64
-
 	// Is the MV in syncing state?
 	// An MV enters syncing state after StartSync command is successfully executed.
 	// In syncing state, PutChunk requests corresponding to client writes will be
@@ -199,6 +199,25 @@ func (rv *rvInfo) getMVInfo(mvName string) *mvInfo {
 	return nil
 }
 
+// return the list of MVs for this RV
+func (rv *rvInfo) getMVs() []string {
+	mvs := make([]string, 0)
+	rv.mvMap.Range(func(mvName, val interface{}) bool {
+		mvInfo, ok := val.(*mvInfo)
+		if ok {
+			common.Assert(mvInfo != nil, fmt.Sprintf("mvMap[%s] has nil value", mvName))
+			common.Assert(mvName == mvInfo.mvName, "MV name mismatch in mv", mvName, mvInfo.mvName)
+		} else {
+			common.Assert(false, fmt.Sprintf("mvMap[%s] has value which is not of type *mvInfo", mvName))
+		}
+
+		mvs = append(mvs, mvInfo.mvName)
+		return true
+	})
+
+	return mvs
+}
+
 // caller of this method must ensure that the RV is not part of the given MV
 func (rv *rvInfo) addToMVMap(mvName string, val *mvInfo) {
 	mvPath := filepath.Join(rv.cacheDir, mvName)
@@ -220,20 +239,35 @@ func (rv *rvInfo) deleteFromMVMap(mvName string) {
 	common.Assert(rv.mvCount.Load() >= 0, fmt.Sprintf("mvCount for RV %s is negative", rv.rvName))
 }
 
+// increment the reserved space for this RV
+func (rv *rvInfo) incReservedSpace(bytes int64) {
+	rv.reservedSpace.Add(bytes)
+	log.Debug("rvInfo::incReservedSpace: reserved space for RV %s is %d", rv.rvName, rv.reservedSpace.Load())
+}
+
+// decrement the reserved space for this RV
+func (rv *rvInfo) decReservedSpace(bytes int64) {
+	rv.reservedSpace.Add(-bytes)
+	common.Assert(rv.reservedSpace.Load() >= 0, fmt.Sprintf("reserved space for RV %s is %d", rv.rvName, rv.reservedSpace.Load()))
+	log.Debug("rvInfo::decReservedSpace: reserved space for RV %s is %d", rv.rvName, rv.reservedSpace.Load())
+}
+
 // return available space for the given RV.
 // This is calculated after subtracting the reserved space for this RV
 // from the actual disk space available in the cache directory.
 func (rv *rvInfo) getAvailableSpace() (int64, error) {
 	cacheDir := rv.cacheDir
-	_, availableSpace, err := common.GetDiskSpaceMetricsFromStatfs(cacheDir)
+	_, diskSpaceAvailable, err := common.GetDiskSpaceMetricsFromStatfs(cacheDir)
 	common.Assert(err == nil, fmt.Sprintf("failed to get available disk space for path %s [%v]", cacheDir, err))
 
-	// TODO: decrement this by the reserved space for this RV
-	// availableSpace -= rvInfo.reservedSpace.Load()
+	// decrement this by the reserved space for this RV
+	availableSpace := int64(diskSpaceAvailable) - rv.reservedSpace.Load()
 
-	log.Debug("rvInfo::getAvailableSpace: available space for RV %s is %d", rv.rvName, availableSpace)
+	log.Debug("rvInfo::getAvailableSpace: available space for RV %s is %d, total disk space available is %d and reserved space is %d",
+		rv.rvName, availableSpace, diskSpaceAvailable, rv.reservedSpace.Load())
+	common.Assert(availableSpace >= 0, fmt.Sprintf("available space for RV %s is %d", rv.rvName, availableSpace))
 
-	return int64(availableSpace), err
+	return availableSpace, err
 }
 
 // return the current sync state of the MV
@@ -477,15 +511,17 @@ func (h *ChunkServiceHandler) Hello(ctx context.Context, req *models.HelloReques
 
 	// get all the RVs exported by this node
 	myRvList := make([]string, 0)
-	for _, info := range h.rvIDMap {
-		myRvList = append(myRvList, info.rvName)
+	myMvList := make([]string, 0)
+	for _, rvInfo := range h.rvIDMap {
+		myRvList = append(myRvList, rvInfo.rvName)
+		myMvList = append(myMvList, rvInfo.getMVs()...)
 	}
 
 	return &models.HelloResponse{
 		ReceiverNodeID: myNodeID,
 		Time:           time.Now().UnixMicro(),
 		RVName:         myRvList,
-		MV:             req.MV, // TODO:: discuss: how to fetch the MV list receiver shares with the sender
+		MV:             myMvList,
 	}, nil
 }
 
@@ -689,7 +725,6 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	// }
 
 	availableSpace, err := rvInfo.getAvailableSpace()
-	// TODO: add assert for available space
 	if err != nil {
 		log.Err("ChunkServiceHandler::PutChunk: Failed to get available disk space [%v]", err.Error())
 	}
@@ -711,6 +746,11 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 
 	// increment the total chunk bytes for this MV
 	mvInfo.incTotalChunkBytes(req.Length)
+
+	// for successful sync PutChunk calls, decrement the reserved space for this RV
+	if req.IsSync {
+		rvInfo.decReservedSpace(req.Length)
+	}
 
 	resp := &models.PutChunkResponse{
 		TimeTaken:      time.Since(startTime).Microseconds(),
@@ -792,7 +832,6 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 	// }
 
 	availableSpace, err := rvInfo.getAvailableSpace()
-	// TODO: add assert for available space
 	if err != nil {
 		log.Err("ChunkServiceHandler::RemoveChunk: Failed to get available disk space [%v]", err.Error())
 	}
@@ -838,6 +877,11 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 
 	cacheDir := rvInfo.cacheDir
 
+	// acquire lock for the RV to prevent concurrent JoinMV calls for different MVs
+	flock := h.locks.Get(rvInfo.rvID)
+	flock.Lock()
+	defer flock.Unlock()
+
 	// check if RV is already part of the given MV
 	mvi := rvInfo.getMVInfo(req.MV)
 	if mvi != nil {
@@ -851,12 +895,10 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 		return nil, rpc.NewResponseError(rpc.MaxMVsExceeded, fmt.Sprintf("RV %s has reached the maximum number of MVs %d", req.RVName, mvLimit))
 	}
 
-	// TODO: need to take care of multiple RVs joining the same MV
 	// RV is being added to an already existing MV
 	// check if the RV has enough space to store the new MV data
 	if req.ReserveSpace != 0 {
 		availableSpace, err := rvInfo.getAvailableSpace()
-		// TODO: add assert for available space
 		if err != nil {
 			log.Err("ChunkServiceHandler::JoinMV: Failed to get available disk space for RV %v [%v]", req.RVName, err.Error())
 			return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to get available disk space for RV %v [%v]", req.RVName, err.Error()))
@@ -879,6 +921,9 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 	// add in sync map
 	sortComponentRVs(req.ComponentRV)
 	rvInfo.addToMVMap(req.MV, &mvInfo{mvName: req.MV, componentRVs: req.ComponentRV})
+
+	// increment the reserved space for this RV
+	rvInfo.incReservedSpace(req.ReserveSpace)
 
 	return &models.JoinMVResponse{}, nil
 }
