@@ -816,6 +816,8 @@ func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, e
 		// Only those RVs are left which have slots > 0
 	}
 	log.Debug("updateMVList: existing MV map after phase#2: %v", existingMVMap)
+	// TODO :: arrrange the map entries in lexicographical order
+
 	return existingMVMap
 }
 
