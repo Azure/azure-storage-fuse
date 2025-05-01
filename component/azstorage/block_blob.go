@@ -1567,7 +1567,6 @@ func (bb *BlockBlob) ChangeMod(name string, mode os.FileMode) error {
 	prop, err := blobClient.GetProperties(context.Background(), &blob.GetPropertiesOptions{
 		CPKInfo: bb.blobCPKOpt,
 	})
-
 	if err != nil {
 		serr := storeBlobErrToErr(err)
 		if serr == ErrFileNotFound {
@@ -1580,9 +1579,11 @@ func (bb *BlockBlob) ChangeMod(name string, mode os.FileMode) error {
 			return err
 		}
 	}
+
 	if prop.Metadata == nil {
 		prop.Metadata = make(map[string]*string)
 	}
+
 	updatedMode := AddMetadata(prop.Metadata, common.POSIXModeMeta, mode.String()[1:])
 
 	// Apply metadata update
@@ -1595,6 +1596,7 @@ func (bb *BlockBlob) ChangeMod(name string, mode os.FileMode) error {
 			return err
 		}
 	}
+
 	log.Info("BlockBlob::ChangeMod: Mod updated for %s - %v", name, mode)
 	return nil
 }
@@ -1621,9 +1623,11 @@ func (bb *BlockBlob) ChangeOwner(name string, uid int, gid int) error {
 			return err
 		}
 	}
+
 	if prop.Metadata == nil {
 		prop.Metadata = make(map[string]*string)
 	}
+
 	updatedOwner := AddMetadata(prop.Metadata, common.POSIXOwnerMeta, strconv.FormatUint(uint64(uid), 10))
 	updatedGroup := AddMetadata(prop.Metadata, common.POSIXGroupMeta, strconv.FormatUint(uint64(gid), 10))
 
@@ -1632,11 +1636,19 @@ func (bb *BlockBlob) ChangeOwner(name string, uid int, gid int) error {
 		_, err := blobClient.SetMetadata(context.Background(), prop.Metadata, &blob.SetMetadataOptions{
 			CPKInfo: bb.blobCPKOpt,
 		})
-		if err != nil {
-			log.Err("BlockBlob::ChangeOwner : Failed to update Blob Metadata %s [%s]", name, err.Error())
+
+		serr := storeBlobErrToErr(err)
+		if serr == ErrFileNotFound {
+			return syscall.ENOENT
+		} else if serr == InvalidPermission {
+			log.Err("BlockBlob::ChangeOwner : Insufficient permissions for %s [%s]", name, err.Error())
+			return syscall.EACCES
+		} else {
+			log.Err("BlockBlob::ChangeOwner : Failed to set blob properties for %s [%s]", name, err.Error())
 			return err
 		}
 	}
+
 	log.Info("BlockBlob::ChangeOwner: Owner updated for %s - %v", name, prop.Metadata)
 	return nil
 }

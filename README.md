@@ -102,6 +102,7 @@ The general format of the Blobfuse2 commands is `blobfuse2 [command] [arguments]
 * `secure set` - Updates value of a config parameter.
 * `unmount` - Unmounts the Blobfuse2 filesystem.
 * `unmount all` - Unmounts all Blobfuse2 filesystems.
+* `unmount all --lazy` - Unmounts all Blobfuse2 filesystems in lazy unmount mode.
 * `gen-config` -  Auto generate recommended blobfuse2 config file.
 
 ## Find help from your command prompt
@@ -119,6 +120,8 @@ To learn about a specific command, just include the name of the command (For exa
     * blobfuse2 mount list
 - Unmount blobfuse2
     * sudo fusermount3 -u \<mount path\>
+- Unmount blobfuse2 in lazy mode
+    * sudo fusermount3 -u \<mount path\> --lazy
 - Unmount all blobfuse2 instances
     * blobfuse2 unmount all 
 - Auto generate config file
@@ -141,6 +144,7 @@ To learn about a specific command, just include the name of the command (For exa
     * `--block-cache` : To enable block-cache instead of file-cache. This works only when mounted without any config file.
     * `--lazy-write` : To enable async close file handle call and schedule the upload in background.
     * `--filter=<STRING>`: Enable blob filters for read-only mount to restrict the view on what all blobs user can see or read.
+    * `--preload`: Enable preload for read-only mount to start downloading all blobs from container when mount succeeds.
 - Attribute cache options
     * `--attr-cache-timeout=<TIMEOUT IN SECONDS>`: The timeout for the attribute cache entries.
     * `--no-symlinks=false`: By default symlinks will be supported and the performance overhead, that earlier existed, has been resolved.
@@ -250,6 +254,29 @@ Below diagrams guide you to choose right configuration for your workloads.
 - [Sample File Cache Config](./sampleFileCacheConfig.yaml)
 - [Sample Block-Cache Config](./sampleBlockCacheConfig.yaml)
 - [All Config options](./setup/baseConfig.yaml) 
+
+## Preload (Preview)
+
+In file caching mode, Blobfuse waits for open file system call. On receiving the open call it downloads entire file to a local cache before using them. This can make the initial load slower, especially for AI/ML tasks, where application is processing many files.The Preload feature helps by downloading entire containers or sub-directories to the local cache when you mount it. Preload enhances data availability, boosting efficiency and reducing wait times. This is vital for AI training with large datasets as it prepares all necessary files in advance, saving GPU time and cutting costs. Combining preload with our blob filter feature allows customers to access specific files in a container or sub-directory, offering extensive flexibility and optimizing GPU cycles.
+
+To enable preload with file-cache mode, use `--preload` parameter. Below is a sample command for reference:
+```
+blobfuse2 mount --preload /mnt/blobfuse_mnt --tmp-path=/home/temp_path 
+```
+/mnt/blobfuse_mnt is where the blob data can be accessed, and /home/temp_path serves as the cache for the Blobfuse mount.
+
+
+Preloading blob data makes the mount read-only and prevents file eviction. To access updated files, unmount and remount the volume. Newly added files can still be accessed by reading them. If blob filter is used along with preload, only the filtered files are pre-loaded and accessible via the Blobfuse mount.
+
+### Considerations when using preload 
+- Enabling preload makes the Blobfuse mount read-only.
+- All file-caching options in CLI and config file are ignored except for the temporary path setting.
+- Ensure enough disk space for all or filtered contents in the container; insufficient space may cause partial loading and block new file access until manual deletion from the local cache.
+- Accessing a file immediately after mounting prioritizes it for download while preloading continues in the background.
+- Blobfuse logs show preload status and disk warnings.
+- Blobfuse mount refreshes preloaded or opened files only if they are manually deleted from the local cache and reopened.
+- Blobs added to the Storage container after preload are not automatically downloaded by Blobfuse but can be accessed by reading.
+
 
 ## Blob Filter
 - In case of read-only mount, user can configure a filter to restrict what all blobs a mount can see or operate on.
