@@ -474,13 +474,13 @@ var mountCmd = &cobra.Command{
 			}
 		}
 
+		common.ForegroundMount = options.Foreground
+
 		pipeline, err = internal.NewPipeline(options.Components, !daemon.WasReborn())
 		if err != nil {
 			log.Err("mount : failed to initialize new pipeline [%v]", err)
 			return Destroy(fmt.Sprintf("failed to initialize new pipeline [%s]", err.Error()))
 		}
-
-		common.ForegroundMount = options.Foreground
 
 		log.Info("mount: Mounting blobfuse2 on %s", options.MountPath)
 		if !options.Foreground {
