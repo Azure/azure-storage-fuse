@@ -333,7 +333,7 @@ func (lf *Libfuse) Configure(_ bool) error {
 	}
 
 	// Disable libfuse logs if the mount is not running in foreground.
-	// Currently as of 01-05-2025, we emmit the libfuse logs only to the stdout.
+	// Currently as of 01-05-2025, we emit the libfuse logs only to the stdout.
 	if !common.ForegroundMount {
 		if lf.traceEnable {
 			lf.traceEnable = false
