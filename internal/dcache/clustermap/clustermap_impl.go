@@ -201,6 +201,7 @@ func (c *ClusterMapImpl) getDegradedMVs() map[string]dcache.MirroredVolume {
 	return degradedMVs
 }
 
+// TODO: should not be using localMap
 // getMyRVs implements ClusterMap.
 func (c *ClusterMapImpl) getMyRVs() map[string]dcache.RawVolume {
 	common.Assert(c.localMap != nil)

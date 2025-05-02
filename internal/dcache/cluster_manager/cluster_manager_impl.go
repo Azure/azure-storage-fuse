@@ -41,6 +41,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -50,7 +51,10 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
+	rpc_server "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/server"
 )
+
+var rpcServerStarted atomic.Bool
 
 type ClusterManagerImpl struct {
 	hbTicker            *time.Ticker
@@ -62,6 +66,8 @@ type ClusterManagerImpl struct {
 
 	localMap     *dcache.ClusterMap
 	localMapETag *string
+
+	rpcServer *rpc_server.NodeServer
 }
 
 // Update RV state to down and update MVs
@@ -121,6 +127,23 @@ func (cmi *ClusterManagerImpl) start(dCacheConfig *dcache.DCacheConfig, rvs []dc
 			log.Debug("ClusterManager::start: Scheduled \"Cluster Map update\" task triggered")
 			cmi.updateStorageClusterMapIfRequired()
 			cmi.updateClusterMapLocalCopyIfRequired()
+
+			// TODO: should be removed later
+			time.Sleep(2 * time.Second)
+
+			// start RPC server
+			if !rpcServerStarted.Load() {
+				log.Debug("ClusterManager::start: Starting RPC server")
+
+				// Start RPC server
+				cmi.rpcServer, err = rpc_server.NewNodeServer()
+				common.Assert(err == nil, fmt.Sprintf("failed to create RPC server: %v", err))
+
+				err = cmi.rpcServer.Start()
+				common.Assert(err == nil, fmt.Sprintf("failed to start RPC server: %v", err))
+
+				rpcServerStarted.Store(true)
+			}
 		}
 		log.Info("ClusterManager::start: Scheduled task \"ClusterMap update\" stopped")
 	}()

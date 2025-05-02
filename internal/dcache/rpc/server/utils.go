@@ -42,6 +42,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 )
@@ -197,7 +198,7 @@ func getRvIDMap(rvs map[string]dcache.RawVolume) map[string]*rvInfo {
 
 // return mvs-per-rv from dcache config
 func getMVsPerRV() int64 {
-	return int64(dCacheConfig.MvsPerRv)
+	return int64(clustermap.GetCacheConfig().MvsPerRv)
 }
 
 // return the node ID of this node
