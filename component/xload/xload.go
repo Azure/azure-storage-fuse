@@ -63,6 +63,7 @@ type Xload struct {
 	comps             []XComponent    // list of components in xload
 	statsMgr          *StatsManager   // stats manager
 	fileLocks         *common.LockMap // lock to take on a file if one thread is processing it
+	poolSize          uint32          // Number of blocks in the pool
 }
 
 // Structure defining your config parameters
@@ -73,6 +74,7 @@ type XloadOptions struct {
 	ExportProgress bool    `config:"export-progress" yaml:"path,omitempty"`
 	ValidateMD5    bool    `config:"validate-md5" yaml:"validate-md5,omitempty"`
 	Workers        int32   `config:"workers" yaml:"workers,omitempty"`
+	PoolSize       uint32  `config:"pool-size" yaml:"pool-size,omitempty"`
 	// TODO:: xload : add parallelism parameter
 }
 
@@ -133,8 +135,6 @@ func (xl *Xload) Configure(_ bool) error {
 			log.Err("Xload::Configure : Failed to unmarshal block-size-mb [%s]", err.Error())
 		}
 	}
-
-	xl.blockSize = uint64(blockSize * float64(MB))
 
 	localPath := strings.TrimSpace(conf.Path)
 	if localPath == "" {
@@ -216,6 +216,12 @@ func (xl *Xload) Configure(_ bool) error {
 		xl.workerCount = uint32(math.Min(float64(conf.Workers), float64(MAX_WORKER_COUNT)))
 	}
 
+	xl.blockSize = uint64(blockSize * float64(MB))
+	xl.poolSize = xl.workerCount * 3
+	if config.IsSet(compName + ".pool-size") {
+		xl.poolSize = conf.PoolSize
+	}
+
 	log.Crit("Xload::Configure : block size %v, mode %v, path %v, default permission %v, export progress %v, validate md5 %v", xl.blockSize,
 		xl.mode.String(), xl.path, xl.defaultPermission, xl.exportProgress, xl.validateMD5)
 
@@ -226,7 +232,7 @@ func (xl *Xload) Configure(_ bool) error {
 func (xl *Xload) Start(ctx context.Context) error {
 	log.Trace("Xload::Start : Starting component %s", xl.Name())
 
-	xl.blockPool = NewBlockPool(xl.blockSize, xl.workerCount*3)
+	xl.blockPool = NewBlockPool(xl.blockSize, xl.poolSize)
 	if xl.blockPool == nil {
 		log.Err("Xload::Start : Failed to create block pool")
 		return fmt.Errorf("failed to create block pool")
@@ -488,4 +494,7 @@ func init() {
 
 	workers := config.AddInt32Flag("workers", 100, "number of workers to execute parallel download during preload")
 	config.BindPFlag(compName+".workers", workers)
+
+	poolSize := config.AddInt32Flag("pool-size", 300, "number of blocks in the blockpool for preload")
+	config.BindPFlag(compName+".pool-size", poolSize)
 }
