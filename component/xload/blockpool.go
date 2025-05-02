@@ -112,6 +112,10 @@ func (pool *BlockPool) Usage() uint32 {
 	return ((pool.maxBlocks - (uint32)(len(pool.blocksCh)+len(pool.priorityCh))) * 100) / pool.maxBlocks
 }
 
+func (pool *BlockPool) GetUsageDetails() (uint32, uint32, uint32) {
+	return pool.maxBlocks, uint32(len(pool.priorityCh)), uint32(len(pool.blocksCh))
+}
+
 func (pool *BlockPool) GetBlockSize() uint64 {
 	return pool.blockSize
 }

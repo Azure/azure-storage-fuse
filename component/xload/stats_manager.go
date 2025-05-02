@@ -59,6 +59,7 @@ type StatsManager struct {
 	waitGroup       sync.WaitGroup  // wait group to wait for stats manager thread to finish
 	items           chan *StatsItem // channel to hold the stats items
 	done            chan bool       // channel to indicate if the stats manager has completed or not
+	pool            *BlockPool      // Object of block pool
 }
 
 type StatsItem struct {
@@ -88,7 +89,7 @@ const (
 	JSON_FILE_NAME = "xload_stats_{PID}.json" // json file name where the stats manager will dump the stats
 )
 
-func NewStatsManager(count uint32, isExportEnabled bool) (*StatsManager, error) {
+func NewStatsManager(count uint32, isExportEnabled bool, pool *BlockPool) (*StatsManager, error) {
 	var fh *os.File
 	var err error
 	if isExportEnabled {
@@ -106,6 +107,7 @@ func NewStatsManager(count uint32, isExportEnabled bool) (*StatsManager, error) 
 		fileHandle: fh,
 		items:      make(chan *StatsItem, count*2),
 		done:       make(chan bool, 1),
+		pool:       pool,
 	}, nil
 }
 
@@ -211,10 +213,12 @@ func (sm *StatsManager) calculateBandwidth() {
 	percentCompleted := (float64(filesProcessed) / float64(sm.totalFiles)) * 100
 	bandwidthMbps := float64(bytesTransferred*8) / (timeLapsed * float64(MB))
 
+	max, pr, reg := sm.pool.GetUsageDetails()
 	log.Crit("statsManager::calculateBandwidth : timestamp %v, %.2f%%, %v Done, %v Failed, "+
-		"%v Pending, %v Total, Bytes transferred %v, Throughput (Mbps): %.2f",
+		"%v Pending, %v Total, Bytes transferred %v, Throughput (Mbps): %.2f, Cache usage: %v%%, (%v / %v / %v)",
 		currTime.Format(time.RFC1123), percentCompleted, sm.success, sm.failed,
-		filesPending, sm.totalFiles, bytesTransferred, bandwidthMbps)
+		filesPending, sm.totalFiles, bytesTransferred, bandwidthMbps, sm.pool.Usage(),
+		max, pr, reg)
 
 	if sm.fileHandle != nil {
 		err := sm.marshalStatsData(&statsJSONData{
