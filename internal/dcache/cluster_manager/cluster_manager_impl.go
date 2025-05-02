@@ -450,6 +450,9 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 	}
 }
 
+// TODO :: Empty cachedir on startup
+// TODO :: Handle the case when joinMV fails
+// Remember to give permissions to cachedir otherwise joinMv will fail
 func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, existingMVMap map[string]dcache.MirroredVolume, NumReplicas int, MvsPerRv int) (map[string]dcache.MirroredVolume, error) {
 
 	//
