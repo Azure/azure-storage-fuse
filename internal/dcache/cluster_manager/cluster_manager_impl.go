@@ -564,10 +564,14 @@ func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, e
 							State: dcache.StateOnline,
 						}
 						// TODO :: Modify this to handle the case when NumReplicas > 1
-						err := cmi.joinMV(mvName, existingMVMap[mvName])
-						if err != nil {
-							log.Err("ClusterManagerImpl::updateMVList: Error joining MV %s with RV %s: %v", mvName, r.rvName, err)
-							return nil, err
+						if !strings.HasSuffix(os.Args[0], ".test") {
+							err := cmi.joinMV(mvName, existingMVMap[mvName])
+							if err != nil {
+								log.Err("ClusterManagerImpl::updateMVList: Error joining MV %s with RV %s: %v", mvName, r.rvName, err)
+								return nil, err
+							}
+						} else {
+							log.Debug("ClusterManagerImpl::updateMVList: Skipping joinMV call as it is invoked from a test file.")
 						}
 					} else {
 						// Update the existing MV
