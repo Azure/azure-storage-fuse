@@ -593,6 +593,7 @@ func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, e
 							if strings.Contains(err.Error(), "RPC server not started") {
 								log.Err("ClusterManagerImpl::updateMVList: RPC server not started, cannot join MV %s with RV %s", mvName, r.rvName)
 								delete(existingMVMap, mvName)
+								delete(nodeToRvs, n.nodeId)
 								continue
 							} else {
 								log.Err("ClusterManagerImpl::updateMVList: Error joining MV %s with RV %s: %v", mvName, r.rvName, err)
