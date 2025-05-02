@@ -37,6 +37,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
+	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/service"
 	"github.com/apache/thrift/lib/go/thrift"
 )
@@ -52,7 +53,7 @@ func NewNodeServer() (*NodeServer, error) {
 	nodeID, err := common.GetNodeUUID()
 	common.Assert(err == nil, "failed to get node ID: %v", err)
 
-	address := clustermap.NodeIdToIP(nodeID)
+	address := rpc_client.GetNodeAddressFromID(nodeID)
 	rvs := clustermap.GetMyRVs()
 
 	// TODO: add assert for IsValidIP

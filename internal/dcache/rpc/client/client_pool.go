@@ -196,7 +196,7 @@ func (ncPool *nodeClientPool) createRPCClients(numClients uint32) {
 
 	// Create RPC clients and add them to the channel
 	for i := 0; i < int(numClients); i++ {
-		client, err := newRPCClient(ncPool.nodeID, getNodeAddressFromID(ncPool.nodeID))
+		client, err := newRPCClient(ncPool.nodeID, GetNodeAddressFromID(ncPool.nodeID))
 		if err != nil {
 			log.Err("nodeClientPool::createRPCClients: Failed to create RPC client for node %s [%v]", ncPool.nodeID, err.Error())
 			continue // skip this client
@@ -229,7 +229,7 @@ func (ncPool *nodeClientPool) closeRPCClients() error {
 
 // return the node address for the given node ID
 // the node address is of the form <ip>:<port>
-func getNodeAddressFromID(nodeID string) string {
+func GetNodeAddressFromID(nodeID string) string {
 	nodeAddress := fmt.Sprintf("%s:%d", clustermap.NodeIdToIP(nodeID), defaultPort)
 	common.Assert(common.IsValidHostPort(nodeAddress), fmt.Sprintf("node address is not valid: %s", nodeAddress))
 	return nodeAddress
