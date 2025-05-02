@@ -36,6 +36,7 @@ package filemanager
 import (
 	"encoding/json"
 	"fmt"
+	"syscall"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -67,9 +68,15 @@ func isOffsetChunkStarting(offset int64, fileLayout *dcache.FileLayout) bool {
 	return (offset%fileLayout.ChunkSize == 0)
 }
 
-func getMVForChunk(chunk *StagedChunk, fileLayout *dcache.FileLayout) string {
-	numMvs := int64(len(fileLayout.MVList))
-	return fileLayout.MVList[chunk.Idx%numMvs]
+func getMVForChunk(chunk *StagedChunk, fileMetadata *dcache.FileMetadata) string {
+	numMvs := int64(len(fileMetadata.FileLayout.MVList))
+	// Must have full strip worth of MVs.
+	common.Assert(numMvs == (fileMetadata.FileLayout.StripeSize / fileMetadata.FileLayout.ChunkSize))
+	// For writes file size won't be set yet, for reads we must be reading within the file.
+	common.Assert((fileMetadata.Size == -1) ||
+		((chunk.Idx * fileMetadata.FileLayout.ChunkSize) < fileMetadata.Size))
+
+	return fileMetadata.FileLayout.MVList[chunk.Idx%numMvs]
 }
 
 // Does all file Init Process for creation of the file.
@@ -77,6 +84,7 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 	fileMetadata := &dcache.FileMetadata{
 		Filename: fileName,
 		State:    dcache.Writing,
+		Size:     -1,
 	}
 	fileMetadata.FileID = gouuid.New().String()
 	common.Assert(common.IsValidUUID(fileMetadata.FileID))
@@ -94,11 +102,11 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 	}
 
 	// Get active MV's from the clustermap
-	activeMvs := clustermap.GetActiveMVs()
-	common.Assert(len(activeMvs) >= int(numMVs))
+	activeMVs := clustermap.GetActiveMVs()
+	common.Assert(len(activeMVs) >= int(numMVs))
 	// todo : is there any better policy to pick?
 	i := 0
-	for k, _ := range activeMvs {
+	for k, _ := range activeMVs {
 		fileMetadata.FileLayout.MVList[i] = k
 		i++
 		if i == int(numMVs) {
@@ -106,8 +114,8 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 		}
 	}
 
-	log.Debug("DistributedCache[FM]::NewDcacheFile : Choose MV's are %s, %s, %s,  file: %s",
-		fileMetadata.FileLayout.MVList[0], fileMetadata.FileLayout.MVList[1], fileMetadata.FileLayout.MVList[2], fileName)
+	log.Debug("DistributedCache[FM]::NewDcacheFile : Initial metadata for file: %s, %+v",
+		fileName, fileMetadata)
 
 	fileMetadataBytes, err := json.Marshal(fileMetadata)
 	if err != nil {
@@ -129,6 +137,12 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 	fileMetadata, err := mm.GetFile(fileName)
 	if err != nil {
 		return nil, err
+	} else {
+		if fileMetadata.State != dcache.Ready {
+			log.Info("DistributedCache[FM]::OpenDcacheFile : File : %s is not in ready state, metadata: %+v",
+				fileName, fileMetadata)
+			return nil, syscall.ENOENT
+		}
 	}
 	return &DcacheFile{
 		FileMetadata: fileMetadata,

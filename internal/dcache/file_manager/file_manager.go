@@ -170,6 +170,8 @@ func (file *DcacheFile) SyncFile() error {
 	file.StagedChunks.Range(func(chunkIdx any, Ichunk any) bool {
 		chunk := Ichunk.(*StagedChunk)
 		// todo: parallelize the uploads for the chunks
+		log.Debug("DistributedCache[FM]::SyncFile : chunkIdx : %d, chunkLen : %d, file : %s",
+			chunk.Idx, chunk.Len, file.FileMetadata.Filename)
 		scheduleUpload(chunk, file)
 		err = <-chunk.Err
 		if err != nil {
@@ -183,7 +185,9 @@ func (file *DcacheFile) SyncFile() error {
 
 // Close and Finalize the file. writes are failed after this operation
 func (file *DcacheFile) CloseFile() error {
-	log.Debug("DistributedCache[FM]::CloseFilee : Close File for %s", file.FileMetadata.Filename)
+	log.Debug("DistributedCache[FM]::CloseFile : Close File for %s", file.FileMetadata.Filename)
+	// We stage application writes into StagedChunk and upload only when we have a full chunk.
+	// In case of last chunk being partial, we need to upload it now.
 	err := file.SyncFile()
 	common.Assert(err == nil)
 	if err == nil {
@@ -212,18 +216,25 @@ func (file *DcacheFile) ReleaseFile() error {
 // This method is called when all the File IO operations are successful
 // and user wants to sync the file
 func (file *DcacheFile) finalizeFile() error {
+	common.Assert(file.FileMetadata.State == dcache.Writing)
 	file.FileMetadata.State = dcache.Ready
+	file.FileMetadata.Size = file.lastWriteOffset
+	common.Assert(file.FileMetadata.Size != 0)
 	fileMetadataBytes, err := json.Marshal(file.FileMetadata)
 	if err != nil {
-		log.Err("DistributedCache[FM]::finalizeFile : FileMetadata marshalling fail, file: %s", file.FileMetadata.Filename)
+		log.Err("DistributedCache[FM]::finalizeFile : FileMetadata marshalling fail, file: %s, %+v",
+			file.FileMetadata.Filename, file.FileMetadata)
 		return err
 	}
 	err = mm.CreateFileFinalize(file.FileMetadata.Filename, fileMetadataBytes)
 	if err != nil {
-		log.Err("DistributedCache[FM]::finalizeFile : File Finalize failed for file :  %s with err : %s",
-			file.FileMetadata.Filename, err.Error())
+		log.Err("DistributedCache[FM]::finalizeFile : File Finalize failed for file : %s, %+v with err : %s",
+			file.FileMetadata.Filename, file.FileMetadata, err.Error())
+		return err
 	}
-	return err
+	log.Debug("DistributedCache[FM]::finalizeFile : Final metadata for file %s, : %+v",
+		file.FileMetadata.Filename, file.FileMetadata)
+	return nil
 }
 
 // Get's the existing chunk from the chunks

@@ -56,9 +56,12 @@ const (
 	HandleFlagFSynced        // User has called fsync on the file explicitly
 	HandleFlagCached         // File is cached in the local system by blobfuse2
 	// Following are the Dcache Flags
-	HandleFSAzure
-	HandleFSDcache
-	HandleFlagDcacheAllowWrites // Handle can only write If this flag is set
+	HandleFSAzure  // Handle refers to a file in Azure
+	HandleFSDcache // Handle refers to a file in Distributed Cache.
+	// Both HandleFSAzure and HandleFSDcache will be set for handles corresponding
+	// to file paths without an explicit fs=azure/fs=dcache namespace specified.
+	HandleFlagDcacheAllowWrites // Write to Distributed Cache through this handle is only allowed if this flag is set
+	HandleFlagDcacheAllowReads  // Read from Distributed Cache through this handle is only allowed if this flag is set
 )
 
 // Structure to hold in memory cache for streaming layer
@@ -162,14 +165,23 @@ func (handle *Handle) Cleanup() {
 
 // **********************Dcache Related Methods Start******************************
 func (handle *Handle) SetFsAzure() {
+	// Must be set once and only once.
+	common.Assert(!handle.IsFsAzure())
+	common.Assert(!handle.IsFsDcache())
 	handle.Flags.Set(HandleFSAzure)
 }
 
 func (handle *Handle) SetFsDcache() {
+	// Must be set once and only once.
+	common.Assert(!handle.IsFsAzure())
+	common.Assert(!handle.IsFsDcache())
 	handle.Flags.Set(HandleFSDcache)
 }
 
 func (handle *Handle) SetFsDefault() {
+	// Must be set once and only once.
+	common.Assert(!handle.IsFsAzure())
+	common.Assert(!handle.IsFsDcache())
 	handle.Flags.Set(HandleFSAzure)
 	handle.Flags.Set(HandleFSDcache)
 }
@@ -180,6 +192,53 @@ func (handle *Handle) IsFsAzure() bool {
 
 func (handle *Handle) IsFsDcache() bool {
 	return handle.Flags.IsSet(HandleFSDcache)
+}
+
+func (handle *Handle) SetDcacheAllowWrites() {
+	// Must be set only once.
+	common.Assert(!handle.IsDcacheAllowWrites())
+	// Read and write to dcache are not allowed from the same handle.
+	common.Assert(!handle.IsDcacheAllowReads())
+	// Using a handle we can write to Azure, DCache or both.
+	common.Assert(handle.IsFsAzure() || handle.IsFsDcache())
+
+	handle.Flags.Set(HandleFlagDcacheAllowWrites)
+}
+
+func (handle *Handle) SetDcacheAllowReads() {
+	// Must be set only once.
+	common.Assert(!handle.IsDcacheAllowReads())
+	// Read and write to dcache are not allowed from the same handle.
+	common.Assert(!handle.IsDcacheAllowWrites())
+	// Using a handle we can read from Azure or DCache but never both.
+	common.Assert(handle.IsFsAzure() || handle.IsFsDcache())
+	common.Assert(!(handle.IsFsAzure() && handle.IsFsDcache()))
+
+	handle.Flags.Set(HandleFlagDcacheAllowReads)
+}
+
+func (handle *Handle) IsDcacheAllowWrites() bool {
+	allowWrites := handle.Flags.IsSet(HandleFlagDcacheAllowWrites)
+	allowReads := handle.Flags.IsSet(HandleFlagDcacheAllowReads)
+	// Read and write to dcache are not allowed from the same handle.
+	common.Assert(!(allowWrites && allowReads))
+	return allowWrites
+}
+
+func (handle *Handle) IsDcacheAllowReads() bool {
+	allowReads := handle.Flags.IsSet(HandleFlagDcacheAllowReads)
+	allowWrites := handle.Flags.IsSet(HandleFlagDcacheAllowWrites)
+	// Read and write to dcache are not allowed from the same handle.
+	common.Assert(!(allowWrites && allowReads))
+	return allowReads
+}
+
+func (handle *Handle) SetDcacheStopWrites() {
+	// Close has come to the handle and success, no more writes to this handle
+	// from now.
+	handle.Flags.Clear(HandleFlagDcacheAllowWrites)
+	// From this point there cannot be any IO on this handle.
+	common.Assert(!handle.IsDcacheAllowReads() && !handle.IsDcacheAllowWrites())
 }
 
 // **********************Dcache Related Methods End******************************

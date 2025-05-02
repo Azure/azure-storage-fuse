@@ -100,12 +100,12 @@ type DCacheConfig struct {
 	CacheAccess            string `json:"cache-access,omitempty"`
 }
 
-type fileState int
+type fileState string
 
 const (
-	Ready fileState = iota
-	Writing
-	Deleting
+	Ready    fileState = "ready"
+	Writing  fileState = "writing"
+	Deleting fileState = "deleting"
 )
 
 type FileMetadata struct {
