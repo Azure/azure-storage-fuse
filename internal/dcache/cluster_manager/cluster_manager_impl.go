@@ -415,7 +415,7 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 	}
 
 	log.Debug("ClusterManagerImpl::updateStorageClusterMapIfRequired: updating RV list")
-	changed, err := cmi.updateRVList(clusterMap.RVMap,
+	_, err = cmi.updateRVList(clusterMap.RVMap,
 		int(clusterMap.Config.HeartbeatsTillNodeDown),
 		int(clusterMap.Config.HeartbeatSeconds))
 	if err != nil {
@@ -423,11 +423,15 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 		common.Assert(false)
 		return
 	}
-	if changed {
-		cmi.updateMVList(clusterMap.RVMap, clusterMap.MVMap, int(clusterMap.Config.NumReplicas), int(clusterMap.Config.MvsPerRv))
-	} else {
-		log.Debug("ClusterManagerImpl::updateStorageClusterMapIfRequired: No changes in RV mapping")
-	}
+	cmi.updateMVList(clusterMap.RVMap, clusterMap.MVMap, int(clusterMap.Config.NumReplicas), int(clusterMap.Config.MvsPerRv))
+
+	// TODO :: Uncomment this when we have a better solution to update RV state as offline in RVMap
+	// when server is not up yet.
+	// if changed {
+	// 	cmi.updateMVList(clusterMap.RVMap, clusterMap.MVMap, int(clusterMap.Config.NumReplicas), int(clusterMap.Config.MvsPerRv))
+	// } else {
+	// 	log.Debug("ClusterManagerImpl::updateStorageClusterMapIfRequired: No changes in RV mapping")
+	// }
 
 	clusterMap.LastUpdatedAt = time.Now().Unix()
 	clusterMap.State = dcache.StateReady
