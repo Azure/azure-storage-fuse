@@ -116,6 +116,10 @@ func RVNameToIp(rvName string) string {
 	return clustermapImpl.rVNameToIp(rvName)
 }
 
+func GetActiveMVNames() []string {
+	return clustermapImpl.getActiveMVNames()
+}
+
 var (
 	clustermapImpl ClusterMap = &ClusterMapImpl{
 		updatesChan:         make(chan dcache.ClusterMapEvent, 8),
@@ -179,6 +183,20 @@ func (c *ClusterMapImpl) getActiveMVs() map[string]dcache.MirroredVolume {
 		}
 	}
 	return activeMVs
+}
+
+func (c *ClusterMapImpl) getActiveMVNames() []string {
+	common.Assert(c.localMap != nil)
+
+	i := 0
+	activeMVNames := make([]string, len(c.localMap.MVMap))
+	for mvName, mv := range c.localMap.MVMap {
+		if mv.State == dcache.StateOnline {
+			activeMVNames[i] = mvName
+			i++
+		}
+	}
+	return activeMVNames[:i]
 }
 
 // getCacheConfig implements ClusterMap.

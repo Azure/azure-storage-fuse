@@ -81,4 +81,7 @@ type ClusterMap interface {
 
 	//It will return the IP address of the given RV name as per local cache copy of cluster map
 	rVNameToIp(rvName string) string
+
+	//It will return the list of all active MVs names as per local cache copy of cluster map
+	getActiveMVNames() []string
 }

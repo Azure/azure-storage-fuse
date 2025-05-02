@@ -34,6 +34,7 @@
 package clustermanager
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math/rand"
@@ -51,6 +52,8 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
+	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 	rpc_server "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/server"
 )
 
@@ -443,7 +446,7 @@ func (cmi *ClusterManagerImpl) updateStorageClusterMapIfRequired() {
 	}
 }
 
-func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, existingMVMap map[string]dcache.MirroredVolume, NumReplicas int, MvsPerRv int) map[string]dcache.MirroredVolume {
+func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, existingMVMap map[string]dcache.MirroredVolume, NumReplicas int, MvsPerRv int) (map[string]dcache.MirroredVolume, error) {
 
 	//
 	// Approach:
@@ -583,6 +586,13 @@ func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, e
 							RVs:   rvwithstate,
 							State: dcache.StateOnline,
 						}
+						// TODO :: Modify this to handle the case when NumReplicas > 1
+						err := cmi.joinMV(mvName, existingMVMap[mvName])
+						if err != nil {
+							log.Err("ClusterManagerImpl::updateMVList: Error joining MV %s with RV %s: %v", mvName, r.rvName, err)
+							common.Assert(false, fmt.Sprintf("Error joining MV %s with RV %s: %v", mvName, r.rvName, err))
+							return nil, err
+						}
 					} else {
 						// Update the existing MV
 						existingMVMap[mvName].RVs[r.rvName] = dcache.StateOnline
@@ -628,7 +638,52 @@ func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, e
 	log.Debug("ClusterManagerImpl::updateMVList: existing MV map after phase#2: %v", existingMVMap)
 	// TODO :: arrange the map entries in lexicographical order
 
-	return existingMVMap
+	return existingMVMap, nil
+}
+
+// TODO :: Update this method to handle the case when NumReplicas > 1
+func (cmi *ClusterManagerImpl) joinMV(mvName string, rvs dcache.MirroredVolume) error {
+	log.Debug("ClusterManagerImpl::joinMV: Joining MV %s with rv list %+v", mvName, rvs)
+
+	if !rpcServerStarted.Load() {
+		log.Debug("ClusterManagerImpl::joinMV: RPC server not started, cannot join MV %s", mvName)
+		return nil
+	}
+
+	var componentRVs []*models.RVNameAndState
+
+	for rvName, rvState := range rvs.RVs {
+		log.Debug("ClusterManagerImpl::joinMV: Populating componentRVs list MV %s with RV %s", mvName, rvName)
+		if rvState != dcache.StateOnline {
+			log.Err("ClusterManagerImpl::joinMV: Populating componentRVs list RV %s is %v, skipping list", rvName, rvs.State)
+			return fmt.Errorf("RV %s is %v, skipping join", rvName, rvs.State)
+		}
+		componentRVs = append(componentRVs, &models.RVNameAndState{
+			Name:  rvName,
+			State: string(rvState),
+		})
+	}
+
+	for _, rv := range componentRVs {
+		log.Debug("ClusterManagerImpl::joiningMV: Joining MV %s with RV %s", mvName, rv.Name)
+
+		joinMvReq := &models.JoinMVRequest{
+			MV:           mvName,
+			RVName:       rv.Name,
+			ReserveSpace: 0,
+			ComponentRV:  componentRVs,
+		}
+		// TODO :: Change 2 seconds to a configurable value
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_, err := rpc_client.JoinMV(ctx, clustermap.RVNameToNodeId(rv.Name), joinMvReq)
+		common.Assert(err == nil, fmt.Sprintf("Error joining MV %s with RV %s: %v", mvName, rv.Name, err))
+		if err != nil {
+			log.Err("ClusterManagerImpl::joinMV: Error joining MV %s with RV %s: %v", mvName, rv.Name, err)
+			return err
+		}
+	}
+	return nil
 }
 
 func (cmi *ClusterManagerImpl) updateRVList(existingRVMap map[string]dcache.RawVolume, hbTillNodeDown int, hbSeconds int) (bool, error) {
