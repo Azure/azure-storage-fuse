@@ -34,6 +34,7 @@
 package filemanager
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -43,6 +44,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
+	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
 )
 
 const (
@@ -168,6 +170,8 @@ func (file *DcacheFile) SyncFile() error {
 	file.StagedChunks.Range(func(chunkIdx any, Ichunk any) bool {
 		chunk := Ichunk.(*StagedChunk)
 		// todo: parallelize the uploads for the chunks
+		log.Debug("DistributedCache[FM]::SyncFile : chunkIdx : %d, chunkLen : %d, file : %s",
+			chunk.Idx, chunk.Len, file.FileMetadata.Filename)
 		scheduleUpload(chunk, file)
 		err = <-chunk.Err
 		if err != nil {
@@ -175,6 +179,24 @@ func (file *DcacheFile) SyncFile() error {
 		}
 		return true
 	})
+	common.Assert(err != nil)
+	return err
+}
+
+// Close and Finalize the file. writes are failed after this operation
+func (file *DcacheFile) CloseFile() error {
+	log.Debug("DistributedCache[FM]::CloseFile : Close File for %s", file.FileMetadata.Filename)
+	// We stage application writes into StagedChunk and upload only when we have a full chunk.
+	// In case of last chunk being partial, we need to upload it now.
+	err := file.SyncFile()
+	common.Assert(err == nil)
+	if err == nil {
+		err := file.finalizeFile()
+		common.Assert(err != nil)
+		if err != nil {
+			log.Err("DistributedCache[FM]::Close : finalize file failed with err : %s, file: %s", err.Error(), file.FileMetadata.Filename)
+		}
+	}
 	return err
 }
 
@@ -191,7 +213,31 @@ func (file *DcacheFile) ReleaseFile() error {
 	return nil
 }
 
-// Gets the existing chunk from the chunks
+// This method is called when all the File IO operations are successful
+// and user wants to sync the file
+func (file *DcacheFile) finalizeFile() error {
+	common.Assert(file.FileMetadata.State == dcache.Writing)
+	file.FileMetadata.State = dcache.Ready
+	file.FileMetadata.Size = file.lastWriteOffset
+	common.Assert(file.FileMetadata.Size != 0)
+	fileMetadataBytes, err := json.Marshal(file.FileMetadata)
+	if err != nil {
+		log.Err("DistributedCache[FM]::finalizeFile : FileMetadata marshalling fail, file: %s, %+v",
+			file.FileMetadata.Filename, file.FileMetadata)
+		return err
+	}
+	err = mm.CreateFileFinalize(file.FileMetadata.Filename, fileMetadataBytes)
+	if err != nil {
+		log.Err("DistributedCache[FM]::finalizeFile : File Finalize failed for file : %s, %+v with err : %s",
+			file.FileMetadata.Filename, file.FileMetadata, err.Error())
+		return err
+	}
+	log.Debug("DistributedCache[FM]::finalizeFile : Final metadata for file %s, : %+v",
+		file.FileMetadata.Filename, file.FileMetadata)
+	return nil
+}
+
+// Get's the existing chunk from the chunks
 // or Create a new one and add it to the the chunks
 func (file *DcacheFile) getChunk(chunkIdx int64) (*StagedChunk, bool, error) {
 	log.Debug("DistributedCache::getChunk : getChunk for chunkIdx : %d, file : %s", chunkIdx, file.FileMetadata.Filename)
