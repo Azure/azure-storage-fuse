@@ -436,7 +436,8 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 	var err error
 
 	isAzurePath, isDcachePath, rawPath := getFS(options.Name)
-	if isDcachePath && (options.Flags&os.O_WRONLY != 0 || options.Flags&os.O_RDWR != 0) {
+	// todo: We should only support write if the file is only in Azure.
+	if options.Flags&os.O_WRONLY != 0 || options.Flags&os.O_RDWR != 0 {
 		log.Err("DistributedCache::OpenFile: Dcache file cannot open with flags: %X, file : %s", options.Flags, options.Name)
 		return nil, syscall.EACCES
 	}
@@ -468,6 +469,7 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 			handle = handlemap.NewHandle(options.Name)
 			handle.SetFsDcache()
 		} else {
+			// todo: make sure we come here when opening dcache file is returning ENOENT
 			log.Err("DistributedCache::OpenFile : Dcache File Open failed with err : %s, path : %s, Trying to Open the file in Azure", err.Error(), options.Name)
 			handle, err = dc.NextComponent().OpenFile(options)
 			if err != nil {

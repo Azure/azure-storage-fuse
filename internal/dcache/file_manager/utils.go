@@ -85,8 +85,8 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 		Filename: fileName,
 		State:    dcache.Writing,
 		Size:     -1,
+		FileID:   gouuid.New().String(),
 	}
-	fileMetadata.FileID = gouuid.New().String()
 	common.Assert(common.IsValidUUID(fileMetadata.FileID))
 
 	chunkSize := clustermap.GetCacheConfig().ChunkSize
@@ -136,6 +136,7 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 	fileMetadata, err := mm.GetFile(fileName)
 	if err != nil {
+		//todo : See if we can have error other that ENOENT here.
 		return nil, err
 	} else {
 		if fileMetadata.State != dcache.Ready {

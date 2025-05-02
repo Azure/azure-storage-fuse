@@ -104,7 +104,8 @@ func (wp *workerPool) queueWork(file *DcacheFile, chunk *StagedChunk, get_chunk 
 }
 
 func (wp *workerPool) readChunk(task *task) {
-	log.Debug("DistributedCache::readChunk : Reading chunk idx : %d, file: %s", task.chunk.Idx, task.file.FileMetadata.Filename)
+	log.Debug("DistributedCache::readChunk : Reading chunk idx : %d, chunk Len : %d, file: %s",
+		task.chunk.Idx, task.chunk.Len, task.file.FileMetadata.Filename)
 	// Read From the Dcache
 	readMVReq := &rm.ReadMvRequest{
 		FileID:         task.file.FileMetadata.FileID,
@@ -112,7 +113,7 @@ func (wp *workerPool) readChunk(task *task) {
 		ChunkIndex:     task.chunk.Idx,
 		OffsetInChunk:  0,
 		Length:         task.chunk.Len,
-		ChunkSizeInMiB: int64(len(task.chunk.Buf)),
+		ChunkSizeInMiB: task.file.FileMetadata.FileLayout.ChunkSize / common.MbToBytes,
 		Data:           task.chunk.Buf,
 	}
 
@@ -131,15 +132,14 @@ func (wp *workerPool) readChunk(task *task) {
 
 func (wp *workerPool) writeChunk(task *task) {
 	log.Debug("DistributedCache::writeChunk : Writing chunk idx : %d, file: %s", task.chunk.Idx, task.file.FileMetadata.Filename)
-	isLastChunk := task.chunk.Len%int64(len(task.chunk.Buf)) == 0
 
 	writeMVReq := &rm.WriteMvRequest{
 		FileID:         task.file.FileMetadata.FileID,
 		MvName:         getMVForChunk(task.chunk, task.file.FileMetadata),
 		ChunkIndex:     task.chunk.Idx,
 		Data:           task.chunk.Buf,
-		ChunkSizeInMiB: int64(len(task.chunk.Buf)),
-		IsLastChunk:    isLastChunk,
+		ChunkSizeInMiB: task.file.FileMetadata.FileLayout.ChunkSize / common.MbToBytes,
+		IsLastChunk:    task.chunk.Len != int64(len(task.chunk.Buf)),
 	}
 
 	//Call MvWrite method for reading the chunk.
