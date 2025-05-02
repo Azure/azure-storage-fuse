@@ -307,6 +307,7 @@ func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.
 			return getPlaceholderDirForRoot("fs=dcache"), nil
 		}
 	}
+	var dcacheSize int64 = -1
 	if isAzurePath {
 		// properties should be fetched from Azure
 		log.Debug("DistributedCache::GetAttr : Path is having Azure subcomponent, path : %s", options.Name)
@@ -314,6 +315,10 @@ func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.
 		// properties should be fetched from Dcache
 		log.Debug("DistributedCache::GetAttr : Path is having Dcache subcomponent, path : %s", options.Name)
 		// todo :: call GetMdRoot() from metadata manager
+		dcFile, err := fm.OpenDcacheFile(rawPath)
+		if err == nil {
+			dcacheSize = dcFile.FileMetadata.Size
+		}
 		rawPath = filepath.Join("__CACHE__"+dc.cfg.CacheID, "Objects", rawPath)
 	} else {
 		common.Assert(rawPath == options.Name, rawPath, options.Name)
@@ -322,6 +327,10 @@ func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.
 	attr, err := dc.NextComponent().GetAttr(internal.GetAttrOptions{Name: rawPath})
 	if err != nil {
 		return nil, err
+	}
+
+	if isDcachePath && dcacheSize != -1 {
+		attr.Size = dcacheSize
 	}
 	// Modify the attr if it came from specific virtual component.
 	// todo : if the path is fs=dcache/*, then populate size, times from the fileLayout
