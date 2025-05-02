@@ -262,8 +262,8 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_EmptyRvMap() {
 
 	numReplicas := 2
 	mvPerRv := 2
-	updated := suite.cmi.updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
-
+	updated, err := suite.cmi.updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
+	suite.Nil(err)
 	suite.True(len(updated) == len(mvMap), "No MVs should be updated when rvMap is empty")
 }
 
@@ -273,8 +273,8 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_EmptyMvMap() {
 
 	numReplicas := 2
 	mvPerRv := 2
-	updated := suite.cmi.updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
-
+	updated, err := suite.cmi.updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
+	suite.Nil(err)
 	suite.updateMvList(updated, rvMap, numReplicas, mvPerRv)
 }
 
@@ -284,8 +284,8 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_MaxMVs() {
 
 	numReplicas := 1
 	mvPerRv := 1
-	updated := suite.cmi.updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
-
+	updated, err := suite.cmi.updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
+	suite.Nil(err)
 	suite.Equal(len(updated), len(rvMap), "Number of updated MVs should be equal to number of RVs")
 	suite.updateMvList(updated, rvMap, numReplicas, mvPerRv)
 }
@@ -304,8 +304,8 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_OfflineMv() {
 
 	numReplicas := 2
 	mvPerRv := 2
-	updated := suite.cmi.updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
-
+	updated, err := suite.cmi.updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
+	suite.Nil(err)
 	suite.Equal(updated["mv0"].State, dcache.StateOffline, "Updated MV0 should be offline")
 	suite.updateMvList(updated, rvMap, numReplicas, mvPerRv)
 }
@@ -321,8 +321,8 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_OfflineRv() {
 
 	numReplicas := 3
 	mvPerRv := 5
-	updated := suite.cmi.updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
-
+	updated, err := suite.cmi.updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
+	suite.Nil(err)
 	for _, mv := range updated {
 		_, ok := mv.RVs["rv4"]
 		suite.False(ok, "RV4 should not be present in any MV")
@@ -340,8 +340,8 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_DegradedMv() {
 
 	numReplicas := 2
 	mvPerRv := 2
-	updated := suite.cmi.updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
-
+	updated, err := suite.cmi.updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
+	suite.Nil(err)
 	suite.Equal(updated["mv0"].State, dcache.StateDegraded, "Updated MV0 should be degraded")
 	suite.updateMvList(updated, rvMap, numReplicas, mvPerRv)
 }
