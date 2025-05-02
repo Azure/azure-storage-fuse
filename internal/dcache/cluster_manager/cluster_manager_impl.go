@@ -586,17 +586,19 @@ func (cmi *ClusterManagerImpl) updateMVList(rvMap map[string]dcache.RawVolume, e
 							RVs:   rvwithstate,
 							State: dcache.StateOnline,
 						}
+
 						// TODO :: Modify this to handle the case when NumReplicas > 1
-						// TODO: remove this .test check
-						if !strings.HasSuffix(os.Args[0], ".test") {
-							err := cmi.joinMV(mvName, existingMVMap[mvName])
-							if err != nil {
+						err := cmi.joinMV(mvName, existingMVMap[mvName])
+						if err != nil {
+							if strings.Contains(err.Error(), "RPC server not started") {
+								log.Err("ClusterManagerImpl::updateMVList: RPC server not started, cannot join MV %s with RV %s", mvName, r.rvName)
+								delete(existingMVMap, mvName)
+							} else {
 								log.Err("ClusterManagerImpl::updateMVList: Error joining MV %s with RV %s: %v", mvName, r.rvName, err)
 								return nil, err
 							}
-						} else {
-							log.Debug("ClusterManagerImpl::updateMVList: Skipping joinMV call as it is invoked from a test file.")
 						}
+
 					} else {
 						// Update the existing MV
 						existingMVMap[mvName].RVs[r.rvName] = dcache.StateOnline
@@ -650,8 +652,8 @@ func (cmi *ClusterManagerImpl) joinMV(mvName string, rvs dcache.MirroredVolume) 
 	log.Debug("ClusterManagerImpl::joinMV: Joining MV %s with rv list %+v", mvName, rvs)
 
 	if !rpcServerStarted.Load() {
-		log.Debug("ClusterManagerImpl::joinMV: RPC server not started, cannot join MV %s", mvName)
-		return nil
+		log.Err("ClusterManagerImpl::joinMV: RPC server not started, cannot join MV %s", mvName)
+		return fmt.Errorf("RPC server not started, cannot join MV %s", mvName)
 	}
 
 	var componentRVs []*models.RVNameAndState
