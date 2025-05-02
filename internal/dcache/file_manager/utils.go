@@ -106,10 +106,9 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 	activeMVs := clustermap.GetActiveMVNames()
 	common.Assert(len(activeMVs) >= int(numMVs))
 	// shuffle the slice and pick starting 3.
-	for i := range activeMVs {
-		j := rand.Intn(i + 1)
+	rand.Shuffle(len(activeMVs), func(i, j int) {
 		activeMVs[i], activeMVs[j] = activeMVs[j], activeMVs[i]
-	}
+	})
 	// Pick starting numMVs from the active MVs
 	for i := range numMVs {
 		fileMetadata.FileLayout.MVList[i] = activeMVs[i]
