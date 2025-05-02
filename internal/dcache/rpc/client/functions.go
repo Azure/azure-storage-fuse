@@ -117,7 +117,7 @@ func GetChunk(ctx context.Context, targetNodeID string, req *models.GetChunkRequ
 }
 
 func PutChunk(ctx context.Context, targetNodeID string, req *models.PutChunkRequest) (*models.PutChunkResponse, error) {
-	log.Debug("rpc_client::PutChunk: Sending PutChunk request to node %s: %+v", targetNodeID, *req)
+	log.Debug("rpc_client::PutChunk: Sending PutChunk request to node %s: chunk address %+v, data length %v, isSync %v", targetNodeID, *req.Chunk.Address, req.Length, req.IsSync)
 
 	// get RPC client from the client pool
 	client, err := cp.getRPCClient(targetNodeID)
