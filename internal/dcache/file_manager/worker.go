@@ -38,6 +38,7 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	rm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/replication_manager"
 )
 
 type task struct {
@@ -103,29 +104,47 @@ func (wp *workerPool) queueWork(file *DcacheFile, chunk *StagedChunk, get_chunk 
 }
 
 func (wp *workerPool) readChunk(task *task) {
-	log.Info("DistributedCache::readChunk : Reading chunk idx : %d, file: %s", task.chunk.Idx, task.file.FileMetadata.Filename)
-	var err error
-
+	log.Debug("DistributedCache::readChunk : Reading chunk idx : %d, chunk Len : %d, file: %s",
+		task.chunk.Idx, task.chunk.Len, task.file.FileMetadata.Filename)
 	// Read From the Dcache
-	//Call MvRead method for reading the chunk.
-	// err = rm.MVRead()
+	readMVReq := &rm.ReadMvRequest{
+		FileID:         task.file.FileMetadata.FileID,
+		MvName:         getMVForChunk(task.chunk, task.file.FileMetadata),
+		ChunkIndex:     task.chunk.Idx,
+		OffsetInChunk:  0,
+		Length:         task.chunk.Len,
+		ChunkSizeInMiB: task.file.FileMetadata.FileLayout.ChunkSize / common.MbToBytes,
+		Data:           task.chunk.Buf,
+	}
+
+	readMVresp, err := rm.ReadMV(readMVReq)
+
 	if err == nil {
 		close(task.chunk.Err)
 		return
 	}
-
 	log.Err("DistrubuteCache[FM]::readChunk : Download of chunk to Dcache failed chnk idx : %d, file %s, err : %s",
 		task.chunk.Idx, task.file.FileMetadata.Filename, err.Error())
+	common.Assert(err == nil && readMVresp.BytesRead == task.chunk.Len)
 
 	task.chunk.Err <- err
 }
 
 func (wp *workerPool) writeChunk(task *task) {
-	log.Info("DistributedCache::writeChunk : Writing chunk idx : %d, file: %s", task.chunk.Idx, task.file.FileMetadata.Filename)
-	var err error
+	log.Debug("DistributedCache::writeChunk : Writing chunk idx : %d, file: %s", task.chunk.Idx, task.file.FileMetadata.Filename)
+
+	writeMVReq := &rm.WriteMvRequest{
+		FileID:         task.file.FileMetadata.FileID,
+		MvName:         getMVForChunk(task.chunk, task.file.FileMetadata),
+		ChunkIndex:     task.chunk.Idx,
+		Data:           task.chunk.Buf,
+		ChunkSizeInMiB: task.file.FileMetadata.FileLayout.ChunkSize / common.MbToBytes,
+		IsLastChunk:    task.chunk.Len != int64(len(task.chunk.Buf)),
+	}
 
 	//Call MvWrite method for reading the chunk.
-	// err = rm.MVWrite()
+	_, err := rm.WriteMV(writeMVReq)
+
 	if err == nil {
 		close(task.chunk.Err)
 		return
@@ -133,6 +152,7 @@ func (wp *workerPool) writeChunk(task *task) {
 
 	log.Err("DistrubuteCache[FM]::WriteChunk : Upload of chunk to DCache failed chnk idx : %d, file %s, err : %s",
 		task.chunk.Idx, task.file.FileMetadata.Filename, err.Error())
+	common.Assert(err == nil)
 
 	task.chunk.Err <- err
 }
