@@ -462,7 +462,7 @@ func (h *ChunkServiceHandler) checkValidChunkAddress(address *models.Address) er
 
 	// check if the MV is valid
 	mvPath := filepath.Join(cacheDir, address.MvName)
-	if rvInfo.isMvPathValid(mvPath) {
+	if !rvInfo.isMvPathValid(mvPath) {
 		log.Err("ChunkServiceHandler::checkValidChunkAddress: MV %s is not hosted by RV %s", address.MvName, rvInfo.rvName)
 		return rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("MV %s is not hosted by RV %s", address.MvName, rvInfo.rvName))
 	}
