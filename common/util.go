@@ -646,6 +646,25 @@ func IsValidIP(ipAddress string) bool {
 	return net.ParseIP(ipAddress) != nil
 }
 
+// IsValidHostPort checks if the given address is a valid host:port combination
+func IsValidHostPort(address string) bool {
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return false
+	}
+
+	if !IsValidIP(host) {
+		return false
+	}
+
+	p, err := strconv.Atoi(port)
+	if err != nil || p < 1 || p > 65535 {
+		return false
+	}
+
+	return true
+}
+
 func IsValidBlkDevice(device string) error {
 	fi, err := os.Stat(device)
 	if err != nil {
