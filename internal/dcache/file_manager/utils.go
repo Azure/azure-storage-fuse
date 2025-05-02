@@ -36,6 +36,7 @@ package filemanager
 import (
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"syscall"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -102,16 +103,16 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 	}
 
 	// Get active MV's from the clustermap
-	activeMVs := clustermap.GetActiveMVs()
+	activeMVs := clustermap.GetActiveMVNames()
 	common.Assert(len(activeMVs) >= int(numMVs))
-	// todo : is there any better policy to pick?
-	i := 0
-	for k, _ := range activeMVs {
-		fileMetadata.FileLayout.MVList[i] = k
-		i++
-		if i == int(numMVs) {
-			break
-		}
+	// shuffle the slice and pick starting 3.
+	for i := range activeMVs {
+		j := rand.Intn(i + 1)
+		activeMVs[i], activeMVs[j] = activeMVs[j], activeMVs[i]
+	}
+	// Pick starting numMVs from the active MVs
+	for i := range numMVs {
+		fileMetadata.FileLayout.MVList[i] = activeMVs[i]
 	}
 
 	log.Debug("DistributedCache[FM]::NewDcacheFile : Initial metadata for file: %s, %+v",
