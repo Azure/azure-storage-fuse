@@ -1,4 +1,8 @@
-## 2.5.0~preview.1 (Unreleased)
+## 2.5.0 (Unreleased)
+**Features**
+- Added support for `chmod` and `chown` file system capabilities for blockblob accounts, and `chown` capability for Datalake accounts.
+
+## 2.5.0~preview.1 (2025-04-30)
 **Features**
 - Preload feature added to download entire dataset on mount, to accelerate model training.
 - Added support for lazy unmounts. Lazy unmount will wait for device to be free and unmount automatically, instead of giving "device or resource busy" on executing unmount. `--lazy` CLI option in unmount command will enable lazy unmount.
