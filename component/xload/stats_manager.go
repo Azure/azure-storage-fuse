@@ -225,10 +225,10 @@ func (sm *StatsManager) calculateBandwidth() {
 
 	max, pr, reg, waiting := sm.pool.GetUsageDetails()
 	log.Crit("statsManager::calculateBandwidth : timestamp %v, %.2f%%, %v Done, %v Failed, "+
-		"%v Pending, %v Total, Bytes transferred %v, Throughput (Mbps): %.2f, Disk Speed (Mbps): %.2f, Cache usage: %v%%, (%v / %v / %v : %v)",
+		"%v Pending, %v Total, Bytes transferred %v, Throughput (Mbps): %.2f, Disk Speed (Mbps): %.2f, Cache usage: %v%%, (%v / %v / %v : %v), Time: %.2f",
 		currTime.Format(time.RFC1123), percentCompleted, sm.success, sm.failed,
 		filesPending, sm.totalFiles, bytesTransferred, bandwidthMbps, diskSpeedMbps, sm.pool.Usage(),
-		max, pr, reg, waiting)
+		max, pr, reg, waiting, timeLapsed)
 
 	if sm.fileHandle != nil {
 		err := sm.marshalStatsData(&statsJSONData{
