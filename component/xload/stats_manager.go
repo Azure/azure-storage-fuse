@@ -54,6 +54,7 @@ type StatsManager struct {
 	dirs            uint64          // number of directories processed
 	bytesDownloaded uint64          // total number of bytes downloaded
 	bytesUploaded   uint64          // total number of bytes uploaded
+	bytesWritten    uint64          // total number of bytes written to disk
 	startTime       time.Time       // variable indicating the time at which the stats manager started
 	fileHandle      *os.File        // file where stats will be dumped
 	waitGroup       sync.WaitGroup  // wait group to wait for stats manager thread to finish
@@ -147,6 +148,10 @@ func (sm *StatsManager) updateSuccessFailedCtr(isSuccess bool) {
 	}
 }
 
+func (sm *StatsManager) updateDiskStats(count uint64) {
+	sm.bytesWritten += count
+}
+
 func (sm *StatsManager) statsProcessor() {
 	defer sm.waitGroup.Done()
 
@@ -162,7 +167,11 @@ func (sm *StatsManager) statsProcessor() {
 
 		case SPLITTER:
 			// log.Debug("statsManager::statsProcessor : splitter: Name %v, success %v, download %v", item.name, item.success, item.download)
-			sm.updateSuccessFailedCtr(item.Success)
+			if item.Download {
+				sm.updateSuccessFailedCtr(item.Success)
+			} else {
+				sm.updateDiskStats(item.BytesTransferred)
+			}
 
 		case DATA_MANAGER:
 			// log.Debug("statsManager::statsProcessor : data manager: Name %v, success %v, download %v, bytes transferred %v", item.name, item.success, item.download, item.bytesTransferred)
@@ -212,12 +221,13 @@ func (sm *StatsManager) calculateBandwidth() {
 	filesPending := sm.totalFiles - filesProcessed
 	percentCompleted := (float64(filesProcessed) / float64(sm.totalFiles)) * 100
 	bandwidthMbps := float64(bytesTransferred*8) / (timeLapsed * float64(MB))
+	diskSpeedMbps := float64(sm.bytesWritten*8) / (timeLapsed * float64(MB))
 
 	max, pr, reg, waiting := sm.pool.GetUsageDetails()
 	log.Crit("statsManager::calculateBandwidth : timestamp %v, %.2f%%, %v Done, %v Failed, "+
-		"%v Pending, %v Total, Bytes transferred %v, Throughput (Mbps): %.2f, Cache usage: %v%%, (%v / %v / %v : %v)",
+		"%v Pending, %v Total, Bytes transferred %v, Throughput (Mbps): %.2f, Disk Speed (Mbps): %.2f, Cache usage: %v%%, (%v / %v / %v : %v)",
 		currTime.Format(time.RFC1123), percentCompleted, sm.success, sm.failed,
-		filesPending, sm.totalFiles, bytesTransferred, bandwidthMbps, sm.pool.Usage(),
+		filesPending, sm.totalFiles, bytesTransferred, bandwidthMbps, diskSpeedMbps, sm.pool.Usage(),
 		max, pr, reg, waiting)
 
 	if sm.fileHandle != nil {
