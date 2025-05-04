@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1745746929292,
+  "lastUpdate": 1746352325453,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -303,6 +303,43 @@ window.BENCHMARK_DATA = {
           {
             "name": "rand_read_128_thread",
             "value": 9098.042149167266,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "syeleti-msft",
+            "username": "syeleti-msft",
+            "email": "syeleti@microsoft.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "4ddfcd4b776650ae5172663c04db2a0fb791cbd6",
+          "message": "Fix logs using up all the space of /tmp folder (#1723)",
+          "timestamp": "2025-05-03T08:50:17Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/4ddfcd4b776650ae5172663c04db2a0fb791cbd6"
+        },
+        "date": 1746352325153,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "seq_write_112_thread",
+            "value": 194.33385690004465,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "seq_read_128_thread",
+            "value": 169.62808749616502,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "rand_read_128_thread",
+            "value": 9419.99851899901,
             "unit": "milliseconds"
           }
         ]
