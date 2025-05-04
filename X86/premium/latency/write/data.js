@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1745729661167,
+  "lastUpdate": 1746334552461,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -632,6 +632,53 @@ window.BENCHMARK_DATA = {
           {
             "name": "sequential_write_16_threads",
             "value": 0.12927985564266667,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "syeleti-msft",
+            "username": "syeleti-msft",
+            "email": "syeleti@microsoft.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "4ddfcd4b776650ae5172663c04db2a0fb791cbd6",
+          "message": "Fix logs using up all the space of /tmp folder (#1723)",
+          "timestamp": "2025-05-03T08:50:17Z",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/4ddfcd4b776650ae5172663c04db2a0fb791cbd6"
+        },
+        "date": 1746334552191,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "test",
+            "value": 3.6818487,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_write",
+            "value": 0.12244763739033332,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_write_directio",
+            "value": 0.127493093683,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_write_4_threads",
+            "value": 0.12135607793066666,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_write_16_threads",
+            "value": 0.12035338910866668,
             "unit": "milliseconds"
           }
         ]
