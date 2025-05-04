@@ -210,10 +210,19 @@ func (ds *downloadSplitter) Process(item *WorkItem) (int, error) {
 			} else {
 				_, err := item.FileHandle.WriteAt(respSplitItem.Block.Data[:respSplitItem.DataLen], respSplitItem.Block.Offset)
 				if err != nil {
-					log.Err("downloadSplitter::Process : Failed to write data to file %s", item.Path)
+					log.Err("downloadSplitter::Process : Failed to write data to file %s [%s]", item.Path, err.Error())
 					operationSuccess = false
 					cancel() // cancel the context to stop download of other chunks
 				}
+
+				// send the download status to stats manager
+				ds.GetStatsManager().AddStats(&StatsItem{
+					Component:        SPLITTER,
+					Name:             item.Path,
+					Success:          false,
+					Download:         false,
+					BytesTransferred: respSplitItem.DataLen,
+				})
 			}
 
 			if respSplitItem.Block != nil {
