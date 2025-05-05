@@ -50,6 +50,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
+	rpc_server "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/server"
 )
 
 // Cluster manager's job is twofold:
@@ -72,6 +73,9 @@ type ClusterManager struct {
 	localClusterMapPath string
 	// ETag of the most recent clustermap saved in localClusterMapPath.
 	localMapETag *string
+	// RPC server running on this node.
+	// It'll respond to RPC queries made from other nodes.
+	rpcServer *rpc_server.NodeServer
 }
 
 // Error return from here would cause clustermanager startup to fail which will prevent this node from
@@ -145,6 +149,34 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 	// Now we should have a valid local clustermap with all our RVs present in the RV list.
 	// TODO: Assert this expected state.
 	//
+	// Now we can start the RPC server.
+	//
+	// TODO: Since ensureInitialClusterMap() would send the heartbeat and make the cluster aware of this
+	//       node, it's possible that some other cluster node runs the new-mv workflow and sends a JoinMV
+	//       RPC request to this node, before we can start the RPC server. We should add resiliency for this.
+	//
+
+	// TODO: Uncommment this when we update NewNodeServer() to not take any args.
+	/*
+	   log.Info("ClusterManager::start: Starting RPC server")
+
+	   common.Assert(cmi.rpcServer == nil)
+	   cmi.rpcServer, err = rpc_server.NewNodeServer()
+	   if err != nil {
+	           log.Err("ClusterManager::start: Failed to create RPC server")
+	           common.Assert(false, err)
+	           return err
+	   }
+
+	   err = cmi.rpcServer.Start()
+	   if err != nil {
+	           log.Err("ClusterManager::start: Failed to start RPC server")
+	           common.Assert(false, err)
+	           return err
+	   }
+
+	   log.Info("ClusterManager::start: Started RPC server on node %s IP %s", cmi.myNodeId, cmi.myIPAddress)
+	*/
 
 	// We don't intend to have different configs in different nodes, so assert.
 	common.Assert(dCacheConfig.HeartbeatSeconds == cmi.config.HeartbeatSeconds,
