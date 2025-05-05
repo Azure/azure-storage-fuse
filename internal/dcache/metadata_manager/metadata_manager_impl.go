@@ -199,7 +199,7 @@ func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata [
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
 	// Store the open-count and file size in the metadata blob property
 	openCount := "0"
-	sizeStr := strconv.Itoa(int(fileSize))
+	sizeStr := strconv.Itoa(fileSize)
 	metadata := map[string]*string{
 		"opencount": &openCount,
 		"size":      &sizeStr,
@@ -241,21 +241,25 @@ func (m *BlobMetadataManager) getFile(filePath string) ([]byte, int, error) {
 	}
 	// Extract the size from the metadata properties
 	size, ok := prop.Metadata["size"]
+	common.Assert(ok, fmt.Sprintf("size not found in metadata for path %s", path))
 	if !ok {
 		log.Err("GetFile :: size not found in metadata for path %s", path)
-		common.Assert(false, fmt.Sprintf("size not found in metadata for path %s", path))
 		return nil, -1, err
 	}
+
 	sizeInt, err := strconv.Atoi(*size)
 	if err != nil {
 		log.Err("GetFile :: Failed to parse size for path %s with value %s : %v", path, *size, err)
 		return nil, -1, err
 	}
+
+	common.Assert(sizeInt >= 0, "size cannot be negative", sizeInt)
 	if sizeInt < 0 {
 		log.Warn("GetFile :: Size is negative for path %s : %d", path, sizeInt)
 		return nil, -1, fmt.Errorf("size is negative for path %s : %d", path, sizeInt)
 	}
 
+	log.Debug("GetFile :: Size for path %s : %d", path, sizeInt)
 	return data, sizeInt, nil
 }
 
