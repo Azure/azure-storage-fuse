@@ -47,11 +47,6 @@ import (
 	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
 )
 
-const (
-	cacheAccessAzure uint16 = iota
-	cacheAccessDcache
-)
-
 type fileIOManager struct {
 	numReadAheadChunks int // Number of chunks to readahead from the current chunk.
 	numStagingChunks   int // Max Number of chunks per file that can be staging area at any time.
@@ -145,9 +140,9 @@ func (file *DcacheFile) WriteFile(offset int64, buf []byte) error {
 		bufOffset += copied
 		chunk.Len += int64(copied)
 
-		common.Assert(chunk.Len == getChunkOffsetFromFileOffset(offset, &file.FileMetadata.FileLayout),
+		common.Assert(chunk.Len == getChunkOffsetFromFileOffset(offset-1, &file.FileMetadata.FileLayout)+1,
 			fmt.Sprintf("Actual Chunk Len : %d is modified incorrectly, Expected chunkLen : %d",
-				chunk.Len, getChunkStartOffsetFromFileOffset(offset, &file.FileMetadata.FileLayout)))
+				chunk.Len, getChunkOffsetFromFileOffset(offset-1, &file.FileMetadata.FileLayout)+1))
 
 		// Schedule the upload when staged chunk is fully written
 		if chunk.Len == int64(len(chunk.Buf)) {
@@ -179,7 +174,8 @@ func (file *DcacheFile) SyncFile() error {
 		}
 		return true
 	})
-	common.Assert(err != nil)
+	common.Assert(err == nil, fmt.Sprintf("Filemanager::SyncFile failed, file : %s, err : %s",
+		file.FileMetadata.Filename, err.Error()))
 	return err
 }
 
@@ -189,10 +185,12 @@ func (file *DcacheFile) CloseFile() error {
 	// We stage application writes into StagedChunk and upload only when we have a full chunk.
 	// In case of last chunk being partial, we need to upload it now.
 	err := file.SyncFile()
-	common.Assert(err == nil)
+	common.Assert(err == nil, fmt.Sprintf("Filemanager::CloseFile failed, file : %s, err : %s",
+		file.FileMetadata.Filename, err.Error()))
 	if err == nil {
 		err := file.finalizeFile()
-		common.Assert(err != nil)
+		common.Assert(err == nil, fmt.Sprintf("Filemanager::CloseFile failed, file : %s, err : %s",
+			file.FileMetadata.Filename, err.Error()))
 		if err != nil {
 			log.Err("DistributedCache[FM]::Close : finalize file failed with err : %s, file: %s", err.Error(), file.FileMetadata.Filename)
 		}

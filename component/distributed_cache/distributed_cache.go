@@ -618,7 +618,7 @@ func (dc *DistributedCache) FlushFile(options internal.FlushFileOptions) error {
 	var dcacheErr, azureErr error
 
 	if options.Handle.IsFsDcache() {
-		common.Assert(options.Handle.FObj != nil)
+		common.Assert(options.Handle.IFObj != nil)
 		common.Assert(options.Handle.IsDcacheAllowWrites())
 		if !options.Handle.IsDcacheAllowWrites() {
 			return nil
@@ -651,7 +651,7 @@ func (dc *DistributedCache) CloseFile(options internal.CloseFileOptions) error {
 
 	var dcacheErr, azureErr error
 	if options.Handle.IsFsDcache() {
-		common.Assert(options.Handle.FObj != nil)
+		common.Assert(options.Handle.IFObj != nil)
 		dcFile := options.Handle.IFObj.(*fm.DcacheFile)
 		dcacheErr = dcFile.ReleaseFile()
 		if dcacheErr != nil {
