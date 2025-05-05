@@ -224,7 +224,7 @@ func (file *DcacheFile) finalizeFile() error {
 			file.FileMetadata.Filename, file.FileMetadata)
 		return err
 	}
-	err = mm.CreateFileFinalize(file.FileMetadata.Filename, fileMetadataBytes)
+	err = mm.CreateFileFinalize(file.FileMetadata.Filename, fileMetadataBytes, file.FileMetadata.Size)
 	if err != nil {
 		log.Err("DistributedCache[FM]::finalizeFile : File Finalize failed for file : %s, %+v with err : %s",
 			file.FileMetadata.Filename, file.FileMetadata, err.Error())

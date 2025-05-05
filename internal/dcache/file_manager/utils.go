@@ -134,19 +134,32 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 
 // Does all init process for opening the file.
 func OpenDcacheFile(fileName string) (*DcacheFile, error) {
-	fileMetadata, err := mm.GetFile(fileName)
+	fileMetadataBytes, fileSize, err := mm.GetFile(fileName)
 	if err != nil {
 		//todo : See if we can have error other that ENOENT here.
 		return nil, err
-	} else {
-		if fileMetadata.State != dcache.Ready {
-			log.Info("DistributedCache[FM]::OpenDcacheFile : File : %s is not in ready state, metadata: %+v",
-				fileName, fileMetadata)
-			return nil, syscall.ENOENT
-		}
 	}
+
+	var fileMetadata dcache.FileMetadata
+	err = json.Unmarshal(fileMetadataBytes, fileMetadata)
+	if err != nil {
+		log.Err("DistributedCache[FM]::OpenDcacheFile : failed to unmarshal filemetadata file: %s, err: %s",
+			fileName, err.Error())
+	}
+	common.Assert(!(fileMetadata.State == dcache.Ready && fileSize == -1),
+		fmt.Sprintf("file : %s, file metadata: %+v, fileSize: %d", fileName, fileMetadata, fileSize))
+
+	// Return ENOENT if the file is not in ready state.
+	if fileMetadata.State != dcache.Ready {
+		log.Info("DistributedCache[FM]::OpenDcacheFile : File : %s is not in ready state, metadata: %+v",
+			fileName, fileMetadata)
+		return nil, syscall.ENOENT
+	}
+
+	fileMetadata.Size = fileSize
+
 	return &DcacheFile{
-		FileMetadata: fileMetadata,
+		FileMetadata: &fileMetadata,
 	}, nil
 }
 
