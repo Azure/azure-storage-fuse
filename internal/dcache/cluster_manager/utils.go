@@ -178,8 +178,8 @@ func IsValidDcacheConfig(cfg *dcache.DCacheConfig) (bool, error) {
 	}
 
 	// Updating clustermap sooner than one heartbeat is usually pointless.
-	if uint64(cfg.HeartbeatSeconds) < cfg.ClustermapEpoch {
-		return false, fmt.Errorf("DCacheConfig: HeartbeatSeconds (%d) < ClustermapEpoch (%d) %+v", cfg.HeartbeatSeconds, cfg.ClustermapEpoch, *cfg)
+	if uint64(cfg.HeartbeatSeconds) > cfg.ClustermapEpoch {
+		return false, fmt.Errorf("DCacheConfig: HeartbeatSeconds (%d) > ClustermapEpoch (%d) %+v", cfg.HeartbeatSeconds, cfg.ClustermapEpoch, *cfg)
 	}
 
 	if int64(cfg.ChunkSize) < minChunkSize || int64(cfg.ChunkSize) > maxChunkSize {
