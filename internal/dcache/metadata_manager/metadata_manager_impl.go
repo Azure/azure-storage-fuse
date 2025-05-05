@@ -39,7 +39,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
@@ -53,56 +52,95 @@ import (
 )
 
 var (
-	// MetadataManagerInstance is the singleton instance of BlobMetadataManager
+	// MetadataManagerInstance is the singleton instance of BlobMetadataManager.
 	metadataManagerInstance *BlobMetadataManager
-	once                    sync.Once
 )
 
-// BlobMetadataManager is the implementation of MetadataManager interface
+// BlobMetadataManager is the implementation of MetadataManager interface.
+// It stores metadata as Blobs in a top level folder with prefix __CACHE__ inside the same container where
+// Blobfuse stores the data.
 type BlobMetadataManager struct {
+	// BlobMetadataManager stores the metadata in special Blobs.
+	// This is the root folder under which all the metadata Blobs are stored.
 	mdRoot          string
 	storageCallback dcache.StorageCallbacks
 }
 
-// init initializes the singleton instance of BlobMetadataManager
+// This must be called from DistributedCache component's Start() method.
+// If it fails this node will fail to join the cluster.
 func Init(storageCallback dcache.StorageCallbacks, cacheId string) error {
-	once.Do(func() {
-		metadataManagerInstance = &BlobMetadataManager{
-			mdRoot:          "__CACHE__" + cacheId, // Set a default cache directory
-			storageCallback: storageCallback,       // Initialize storage callback
+	common.Assert(metadataManagerInstance == nil, "MetadataManager Init must be called only once")
+	common.Assert(len(cacheId) > 0)
+
+	metadataManagerInstance = &BlobMetadataManager{
+		mdRoot:          "__CACHE__" + cacheId, // Set a default cache directory
+		storageCallback: storageCallback,       // Initialize storage callback
+	}
+
+	_, err := storageCallback.GetPropertiesFromStorage(
+		internal.GetAttrOptions{Name: metadataManagerInstance.mdRoot + "/Objects"})
+	if err == nil {
+		//
+		// Node that would have created the Objects folder must have created the Node folder too,
+		// so nothing to do.
+		//
+		log.Info("BlobMetadataManager::Init %s already present, nothing to do!",
+			metadataManagerInstance.mdRoot+"/Objects")
+
+		// In debug env, make sure Nodes folder is also present.
+		if common.IsDebugBuild() {
+			_, err = storageCallback.GetPropertiesFromStorage(
+				internal.GetAttrOptions{Name: metadataManagerInstance.mdRoot + "/Nodes"})
+			common.Assert(err == nil, err)
 		}
-	})
 
-	_, err := storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{Name: metadataManagerInstance.mdRoot + "/Objects"})
-	if err != nil {
-		if os.IsNotExist(err) || err == syscall.ENOENT {
-			directories := []string{metadataManagerInstance.mdRoot, metadataManagerInstance.mdRoot + "/Nodes", metadataManagerInstance.mdRoot + "/Objects"}
-			for _, dir := range directories {
-				if err = storageCallback.CreateDir(internal.CreateDirOptions{Name: dir, ForceDirCreationDisabled: true}); err != nil {
+		return nil
+	}
 
-					if !bloberror.HasCode(err, bloberror.BlobAlreadyExists) {
-						log.Err("BlobMetadataManager :: Init error [failed to create directory %s: %v]", dir, err)
-						return err
-					} else {
-						log.Info("BlobMetadataManager :: Init [directory %s already exists]", dir)
-					}
-				} else {
-					log.Info("BlobMetadataManager :: Init [created directory %s]", dir)
-				}
+	//
+	// Not-exist failure is fine as this may be the first node of the cluster coming up,
+	// any other error is fatal.
+	//
+	if !os.IsNotExist(err) && err != syscall.ENOENT {
+		log.Err("BlobMetadataManager::Init Failed to get properties for %s: %v",
+			metadataManagerInstance.mdRoot+"/Objects", err)
+		common.Assert(false, err)
+		return err
+	}
+
+	//
+	// Create all the required directories.
+	// Create /Objects in the end as other nodes treat presence of /Objects folder to mean all the
+	// required folders are there.
+	//
+	directories := []string{metadataManagerInstance.mdRoot,
+		metadataManagerInstance.mdRoot + "/Nodes",
+		metadataManagerInstance.mdRoot + "/Objects"}
+	for _, dir := range directories {
+		if err = storageCallback.CreateDir(
+			internal.CreateDirOptions{Name: dir, ForceDirCreationDisabled: true}); err != nil {
+
+			// Not-exists is fine as we may race with some other node, any other error is fatal.
+			if !bloberror.HasCode(err, bloberror.BlobAlreadyExists) {
+				log.Err("BlobMetadataManager::Init Failed to create directory %s: %v", dir, err)
+				common.Assert(false, err)
+				return err
+			} else {
+				log.Info("BlobMetadataManager::Init Directory %s already exists!", dir)
 			}
-
 		} else {
-			log.Err("BlobMetadataManager :: Init error [failed to get properties for %s: %v]", metadataManagerInstance.mdRoot, err)
-			return err
+			log.Info("BlobMetadataManager::Init Created directory %s", dir)
 		}
 	}
+
 	common.Assert(err == nil, "Failed to create directories", err)
 	return nil
 }
 
-// Package-level functions that delegate to the singleton instance
+// Package-level functions that delegate to the singleton instance.
 
 func GetMdRoot() string {
+	common.Assert(len(metadataManagerInstance.mdRoot) > len("__CACHE__"))
 	return metadataManagerInstance.mdRoot
 }
 
@@ -166,10 +204,19 @@ func GetClusterMap() ([]byte, *string, error) {
 	return metadataManagerInstance.getClusterMap()
 }
 
-// CreateFileInit creates the initial metadata for a file
-// TODO :: Return etag value to use for CreateFileFinalize
-// Can help ensure cases where the initial node went down before finalizing and tried to finalize later
+// CreateFileInit() creates the initial metadata for a file.
+// It ensures that in case two nodes race to create the same file only one succeeds.
+// The node that wins the race, then goes ahead writing the data chunks for the file and once done calls
+// CreateFileFinalize() to make the file visible to readers.
+//
+// TODO: Return etag value to use for CreateFileFinalize() so that we can be assured that the same node
+//
+//	that started file creation, does the finalize. This can help prevent cases where the initial node
+//	went down before finalizing and tries to finalize later
 func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byte) error {
+	common.Assert(len(filePath) > 0)
+	common.Assert(len(fileMetadata) > 0)
+
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
 
 	err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
@@ -178,27 +225,56 @@ func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byt
 		IsNoneMatchEtagEnabled: true,
 		EtagMatchConditions:    "",
 	})
-	// If the node is able to create a file it succeeds
-	// If it fails with ETag mismatch, it means the file was already created by another node
-	// and the current node should check the error code to ascertain the reason
-	// If the error is not ETag mismatch, it means the file creation failed due to some other reason
-	// and createFileInit should not proceed.
+
+	//
+	// PutBlobInStorage() can complete with following possible results:
+	// 1. Success, blob created
+	// 2. Blob already exists
+	// 3. Some other failure
+	//
+	// Both (2) and (3) must be considered failure as CreateFileInit() semantics demand exclusive
+	// creation of file metadata blob.
+	//
 	if err != nil {
 		if bloberror.HasCode(err, bloberror.ConditionNotMet) {
-			log.Err("CreateFileInit :: PutBlobInStorage for %s failed due to ETag mismatch", path)
+			log.Err("CreateFileInit:: PutBlobInStorage for %s failed as blob was already present: %v",
+				path, err)
 			return err
 		}
-		log.Err("CreateFileInit :: Failed to put blob %s in storage: %v", path, err)
+
+		log.Err("CreateFileInit:: Failed to put blob %s in storage: %v", path, err)
+		common.Assert(false, err)
 		return err
 	}
-	log.Debug("CreateFileInit :: Created file %s in storage", path)
+
+	log.Debug("CreateFileInit:: Created file %s in storage", path)
 	return nil
 }
 
-// CreateFileFinalize finalizes the metadata for a file
+// CreateFileFinalize() finalizes the metadata for a file.
+// Must be called only after prior call to CreateFileInit() suceeded.
 func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata []byte, fileSize int64) error {
+	common.Assert(len(filePath) > 0)
+	common.Assert(len(fileMetadata) > 0)
+	common.Assert(fileSize >= 0)
+	common.Assert(fileSize < (1000 * 1000 * 1000 * common.GbToBytes)) // Sanity check.
+
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
-	// Store the open-count and file size in the metadata blob property
+
+	//
+	// In debug env, make sure the metadata file is present, it must have been created by a prior call
+	// to CreateFileInit().
+	//
+	// TODO: See if can do the PutBlobInStorage condtionally with an If-Match condition to fail for cases
+	//       where CreateFileFinalize() is incorrectly called without a prior successful CreateFileInit() call.
+	//
+	if common.IsDebugBuild() {
+		_, err := m.storageCallback.GetPropertiesFromStorage(
+			internal.GetAttrOptions{Name: path})
+		common.Assert(err == nil, err)
+	}
+
+	// Store the open-count and file size in the metadata blob property.
 	openCount := "0"
 	sizeStr := strconv.FormatInt(fileSize, 10)
 	metadata := map[string]*string{
@@ -213,141 +289,182 @@ func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata [
 		IsNoneMatchEtagEnabled: false,
 		EtagMatchConditions:    "",
 	})
+
 	if err != nil {
-		log.Err("CreateFileFinalize :: Failed to put blob %s in storage: %v", path, err)
+		log.Err("CreateFileFinalize:: Failed to put blob %s in storage: %v", path, err)
+		common.Assert(false, err)
 		return err
 	}
-	log.Debug("CreateFileFinalize :: Finalized file %s in storage %v", path, err)
-	return err
+
+	log.Debug("CreateFileFinalize:: Finalized file %s in storage", path)
+	return nil
 }
 
-// TODO :: Replace the two REST API calls with a single call to DownloadStream
-// GetFile reads and returns the content of metadata for a file
+// GetFile reads and returns the content of metadata for a file.
+// TODO: Replace the two REST API calls with a single call to DownloadStream.
 func (m *BlobMetadataManager) getFile(filePath string) ([]byte, int64, error) {
+	common.Assert(len(filePath) > 0)
+
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
-	// Get the file content from storage
+	// Get the metadata content from storage.
 	data, err := m.storageCallback.GetBlobFromStorage(internal.ReadFileWithNameOptions{
 		Path: path,
 	})
 	if err != nil {
-		log.Debug("GetFile :: Failed to get metadata file content for file %s : %v", path, err)
+		log.Debug("GetFile:: Failed to get metadata file content for file %s: %v", path, err)
 		return nil, -1, err
 	}
-	// Get the file size from the metadata properties
+
+	// Get the file size from the metadata properties.
 	prop, err := m.storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{
 		Name: path,
 	})
 	if err != nil {
-		log.Err("GetFile :: Failed to get properties for path %s : %v", path, err)
+		log.Err("GetFile:: Failed to get properties for path %s: %v", path, err)
+		common.Assert(false, err)
 		return nil, -1, err
 	}
-	// Extract the size from the metadata properties
+
+	// Extract the size from the metadata properties.
 	size, ok := prop.Metadata["cache-object-length"]
-	common.Assert(ok, fmt.Sprintf("size not found in metadata for path %s", path))
 	if !ok {
-		log.Err("GetFile :: size not found in metadata for path %s", path)
+		log.Err("GetFile:: size not found in metadata for path %s", path)
+		common.Assert(false, fmt.Sprintf("size not found in metadata for path %s", path))
 		return nil, -1, err
 	}
 
 	fileSize, err := strconv.ParseInt(*size, 10, 64)
 	if err != nil {
-		log.Err("GetFile :: Failed to parse size for path %s with value %s : %v", path, *size, err)
+		log.Err("GetFile:: Failed to parse size for path %s with value %s: %v", path, *size, err)
+		common.Assert(false, err)
 		return nil, -1, err
 	}
 
 	common.Assert(fileSize >= 0, "size cannot be negative", fileSize)
+
 	if fileSize < 0 {
-		log.Warn("GetFile :: Size is negative for path %s : %d", path, fileSize)
+		log.Warn("GetFile:: Size is negative for path %s: %d", path, fileSize)
 		return nil, -1, fmt.Errorf("size is negative for path %s : %d", path, fileSize)
 	}
 
-	log.Debug("GetFile :: Size for path %s : %d", path, fileSize)
+	log.Debug("GetFile:: Size for path %s: %d", path, fileSize)
 	return data, fileSize, nil
 }
 
-// DeleteFile removes metadata for a file
+// DeleteFile removes metadata for a file.
 func (m *BlobMetadataManager) deleteFile(filePath string) error {
+	common.Assert(len(filePath) > 0)
+
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
 	err := m.storageCallback.DeleteBlobInStorage(internal.DeleteFileOptions{
 		Name: path,
 	})
 	if err != nil {
+		// Treat BlobNotFound as success.
 		if bloberror.HasCode(err, bloberror.BlobNotFound) {
-			log.Warn("DeleteFile :: DeleteBlobInStorage failed since blob %s is already deleted", path)
+			log.Warn("DeleteFile:: DeleteBlobInStorage failed since blob %s is already deleted: %v",
+				path, err)
 			return nil
 		}
-		log.Err("DeleteFile :: Failed to delete blob %s in storage: %v", path, err)
+
+		log.Err("DeleteFile:: Failed to delete blob %s in storage: %v", path, err)
+		common.Assert(false, err)
 		return err
 	}
-	log.Debug("DeleteFile :: Deleted blob %s in storage", path)
+
+	log.Debug("DeleteFile:: Deleted blob %s in storage", path)
 	return err
 }
 
 // OpenFile increments the open count for a file and returns the updated count
 func (m *BlobMetadataManager) openFile(filePath string) (int64, error) {
+	common.Assert(len(filePath) > 0)
+
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
 	count, err := m.updateHandleCount(path, true)
 	if err != nil {
-		log.Err("OpenFile :: Failed to update file open count for path %s : %v", path, err)
+		log.Err("OpenFile:: Failed to update file open count for path %s: %v", path, err)
+		common.Assert(false, err)
 		return -1, err
 	}
-	log.Debug("OpenFile :: Updated file open count for path %s : %d", path, count)
+
+	log.Debug("OpenFile:: Updated file open count for path %s: %d", path, count)
 	common.Assert(count > 0, "Open file cannot have count <= 0", count)
+	common.Assert(count < 1000000) // Sanity check.
+
 	return count, nil
 }
 
 // CloseFile decrements the open count for a file and returns the updated count
 func (m *BlobMetadataManager) closeFile(filePath string) (int64, error) {
+	common.Assert(len(filePath) > 0)
+
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
 	count, err := m.updateHandleCount(path, false)
 	if err != nil {
-		log.Err("CloseFile :: Failed to update file open count for path %s : %v", path, err)
+		log.Err("CloseFile:: Failed to update file open count for path %s: %v", path, err)
 		return -1, err
 	}
-	log.Debug("CloseFile :: Updated file open count for path %s : %d", path, count)
+
+	log.Debug("CloseFile:: Updated file open count for path %s: %d", path, count)
 	common.Assert(count >= 0, "File cannot have -ve opencount", count)
+
 	return count, nil
 }
 
+// Helper function used by openFile() and closeFile() to atomically update the value of the "opencount"
+// metadata variable.
 func (m *BlobMetadataManager) updateHandleCount(path string, increment bool) (int64, error) {
+	common.Assert(len(path) > 0)
+
 	const maxRetryTime = 1 * time.Minute // Maximum Retry time in minutes
-	const maxBackoff = 1 * time.Second   // Maximum Retry time in seconds
+	const maxBackoff = 1 * time.Second   // Maximum backoff time in seconds
 	backoff := 1 * time.Millisecond      // Initial backoff time in milliseconds
 	var openCount int
 	retryTime := time.Now()
+
 	for {
-		// Get the current open count
+		// Get the current open count.
 		attr, err := m.storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{
 			Name: path,
 		})
 		if err != nil {
-			log.Err("updateHandleCount :: Failed to get handle count for %s : %v", path, err)
+			log.Err("updateHandleCount:: Failed to get open count for %s: %v", path, err)
 			return -1, err
 		}
 
 		// We never create file metadata blob w/o opencount property set.
 		if attr.Metadata["opencount"] == nil {
-			log.Err("updateHandleCount :: File metadata blob found w/o opencount property: %s", path)
-			return -1, fmt.Errorf("opencount property not found in metadata for path %s. Issue needs to be debugged", path)
+			log.Err("updateHandleCount:: File metadata blob found w/o opencount property: %s", path)
+			common.Assert(false)
+			return -1, fmt.Errorf("[BUG] opencount property not found in metadata for path %s", path)
 		}
+
 		openCount, err = strconv.Atoi(*attr.Metadata["opencount"])
 		if err != nil {
-			log.Err("GetFileOpenCount :: Failed to parse handle count for path %s with value %s : %v", path, *attr.Metadata["opencount"], err)
+			// This is unexpected as we always set opencount to an integer value.
+			log.Err("GetFileOpenCount:: Failed to parse open count for path %s with value %s: %v",
+				path, *attr.Metadata["opencount"], err)
+			common.Assert(false, err)
 			return -1, err
 		}
+
 		if increment {
 			openCount++
 		} else {
 			openCount--
 		}
+
 		if openCount < 0 {
-			log.Err("updateHandleCount :: Handle count is negative for path %s : %d", path, openCount)
-			return -1, fmt.Errorf("handle count is negative for path %s : %d", path, openCount)
+			log.Err("updateHandleCount:: open count is negative for path %s: %d", path, openCount)
+			common.Assert(false)
+			return -1, fmt.Errorf("open count is negative for path %s: %d", path, openCount)
 		}
+
 		openCountStr := strconv.Itoa(openCount)
 		attr.Metadata["opencount"] = &openCountStr
 
-		// Set the new metadata in storage
+		// Set the new metadata in storage with etag conditional.
 		err = m.storageCallback.SetMetaPropertiesInStorage(internal.SetMetadataOptions{
 			Path:      path,
 			Metadata:  attr.Metadata,
@@ -356,69 +473,85 @@ func (m *BlobMetadataManager) updateHandleCount(path string, increment bool) (in
 		})
 		if err != nil {
 			if bloberror.HasCode(err, bloberror.ConditionNotMet) {
-				log.Warn("updateHandleCount :: SetPropertiesInStorage failed for path %s due to ETag mismatch, retrying...", path)
+				log.Warn("updateHandleCount:: SetPropertiesInStorage failed for path %s due to ETag mismatch, retrying...", path)
 
-				// Apply exponential backoff
-				log.Debug("updateHandleCount :: Retrying in %d milliseconds...", backoff)
+				// Apply exponential backoff.
+				log.Debug("updateHandleCount:: Retrying in %d milliseconds...", backoff)
 				time.Sleep(backoff)
 
-				// Double the backoff time, but cap it at maxBackoff
+				// Double the backoff time, but cap it at maxBackoff.
 				backoff *= 2
 				if backoff > maxBackoff {
 					backoff = maxBackoff
 				}
 
-				// Check if retrying has exceeded a minute
+				//
+				// Multiple nodes trying to read the same file simultaneously may result in
+				// etag mismatch failures, few of them is fine but if it fails beyond a reasonable
+				// time it indicates some issue, bail out.
+				//
 				if time.Since(retryTime) >= maxRetryTime {
-					log.Warn("updateHandleCount :: Retrying exceeded one minute for path %s, exiting...", path)
-					return -1, fmt.Errorf("retrying exceeded one minute for path %s", path)
+					log.Warn("updateHandleCount:: Retrying exceeded %s for path %s, exiting...",
+						maxRetryTime, path)
+					common.Assert(false, err)
+					return -1, fmt.Errorf("retrying exceeded %s for path %s", maxRetryTime, path)
 				}
 				continue
 			} else {
-				log.Err("updateHandleCount :: Failed to update metadata property for path %s : %v", path, err)
+				log.Err("updateHandleCount:: Failed to update metadata property for path %s: %v",
+					path, err)
+				common.Assert(false, err)
 				return -1, err
 			}
 		} else {
-			log.Debug("updateHandleCount :: Updated metadata property for path %s : %d", path, openCount)
+			log.Debug("updateHandleCount:: Updated metadata property for path %s: %d", path, openCount)
 			break
 		}
 	}
+
 	return int64(openCount), nil
 }
 
-// GetFileOpenCount returns the current open count for a file
+// GetFileOpenCount returns the current open count for a file.
 func (m *BlobMetadataManager) getFileOpenCount(filePath string) (int64, error) {
+	common.Assert(len(filePath) > 0)
+
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
 	prop, err := m.storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{
 		Name: path,
 	})
 	if err != nil {
-		log.Err("GetFileOpenCount :: Failed to get open count for path %s : %v", path, err)
+		log.Err("GetFileOpenCount:: Failed to get properties for path %s: %v", path, err)
 		return -1, err
 	}
+
 	openCount, ok := prop.Metadata["opencount"]
 	if !ok {
-		log.Err("GetFileOpenCount :: openCount not found in metadata for path %s", path)
+		log.Err("GetFileOpenCount:: openCount not found in metadata for path %s", path)
 		common.Assert(false, fmt.Sprintf("openCount not found in metadata for path %s", path))
 		return -1, err
 	}
-	count, err := strconv.Atoi(*openCount)
 
+	count, err := strconv.Atoi(*openCount)
 	if err != nil {
-		log.Err("GetFileOpenCount :: Failed to parse open count for path %s with value %s : %v", path, *openCount, err)
+		log.Err("GetFileOpenCount:: Failed to parse open count for path %s with value %s: %v",
+			path, *openCount, err)
+		common.Assert(false, err)
 		return -1, err
 	}
-	if count < 0 {
-		log.Warn("GetHandleCount :: Open count is negative for path %s : %d", path, count)
-	}
 
-	log.Debug("GetFileOpenCount :: Open count for path %s : %d", path, count)
+	common.Assert(count >= 0, fmt.Sprintf("GetHandleCount:: Open count is negative for path %s: %d", path, count))
+
+	log.Debug("GetFileOpenCount:: Open count for path %s: %d", path, count)
 	return int64(count), nil
 }
 
-// UpdateHeartbeat creates or updates the heartbeat file
+// UpdateHeartbeat creates or updates the heartbeat file.
 func (m *BlobMetadataManager) updateHeartbeat(nodeId string, data []byte) error {
-	// Create the heartbeat file path
+	common.Assert(common.IsValidUUID(nodeId))
+	common.Assert(len(data) > 0)
+
+	// Create the heartbeat file path.
 	heartbeatFilePath := filepath.Join(m.mdRoot, "Nodes", nodeId+".hb")
 	err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
 		Name:                   heartbeatFilePath,
@@ -427,35 +560,45 @@ func (m *BlobMetadataManager) updateHeartbeat(nodeId string, data []byte) error 
 		EtagMatchConditions:    "",
 	})
 	if err != nil {
-		log.Err("UpdateHeartbeat :: Failed to put heartbeat blob path %s in storage: %v", heartbeatFilePath, err)
-		common.Assert(false, fmt.Sprintf("Failed to put heartbeat blob path %s in storage: %v", heartbeatFilePath, err))
+		log.Err("UpdateHeartbeat:: Failed to put heartbeat blob path %s in storage: %v", heartbeatFilePath, err)
+		common.Assert(false, fmt.Sprintf("Failed to put heartbeat blob path %s in storage: %v",
+			heartbeatFilePath, err))
 		return err
 	}
-	log.Debug("UpdateHeartbeat :: Updated heartbeat blob path %s in storage", heartbeatFilePath)
-	return err
+
+	log.Debug("UpdateHeartbeat:: Updated heartbeat blob path %s in storage", heartbeatFilePath)
+	return nil
 }
 
 // DeleteHeartbeat deletes the heartbeat file
 func (m *BlobMetadataManager) deleteHeartbeat(nodeId string) error {
-	// Create the heartbeat file path
+	common.Assert(common.IsValidUUID(nodeId))
+
+	// Create the heartbeat file path.
 	heartbeatFilePath := filepath.Join(m.mdRoot, "Nodes", nodeId+".hb")
 	err := m.storageCallback.DeleteBlobInStorage(internal.DeleteFileOptions{
 		Name: heartbeatFilePath,
 	})
 	if err != nil {
 		if os.IsNotExist(err) || err == syscall.ENOENT {
-			log.Err("DeleteHeartbeat :: DeleteBlobInStorage failed since blob %s is already deleted", heartbeatFilePath)
+			log.Err("DeleteHeartbeat:: DeleteBlobInStorage failed since blob %s is already deleted: %v",
+				heartbeatFilePath, err)
 		} else {
-			log.Err("DeleteHeartbeat :: Failed to delete heartbeat blob %s in storage: %v", heartbeatFilePath, err)
+			log.Err("DeleteHeartbeat:: Failed to delete heartbeat blob %s in storage: %v",
+				heartbeatFilePath, err)
+			common.Assert(false, err)
 		}
 		return err
 	}
-	log.Debug("DeleteHeartbeat :: Deleted heartbeat blob %s in storage", heartbeatFilePath)
-	return err
+
+	log.Debug("DeleteHeartbeat:: Deleted heartbeat blob %s in storage", heartbeatFilePath)
+	return nil
 }
 
-// GetHeartbeat reads and returns the content of the heartbeat file
+// GetHeartbeat reads and returns the content of the heartbeat file.
 func (m *BlobMetadataManager) getHeartbeat(nodeId string) ([]byte, error) {
+	common.Assert(common.IsValidUUID(nodeId))
+
 	// Create the heartbeat file path
 	heartbeatFilePath := filepath.Join(m.mdRoot, "Nodes", nodeId+".hb")
 	// Get the heartbeat content from storage
@@ -463,29 +606,33 @@ func (m *BlobMetadataManager) getHeartbeat(nodeId string) ([]byte, error) {
 		Path: heartbeatFilePath,
 	})
 	if err != nil {
-		log.Err("GetHeartbeat :: Failed to get heartbeat file content for %s: %v", heartbeatFilePath, err)
-		common.Assert(false, fmt.Sprintf("Failed to get heartbeat file content for %s: %v", heartbeatFilePath, err))
+		log.Err("GetHeartbeat:: Failed to get heartbeat file content for %s: %v", heartbeatFilePath, err)
+		common.Assert(false, fmt.Sprintf("Failed to get heartbeat file content for %s: %v",
+			heartbeatFilePath, err))
 		return nil, err
 	}
-	log.Debug("GetHeartbeat :: Successfully got heartbeat file content for %s", heartbeatFilePath)
-	return data, err
+
+	log.Debug("GetHeartbeat:: Successfully got heartbeat file content for %s", heartbeatFilePath)
+	return data, nil
 }
 
-// GetAllNodes enumerates and returns the list of all nodes with a heartbeat
+// GetAllNodes enumerates and returns the list of all nodes that have ever punched a heartbeat.
 func (m *BlobMetadataManager) getAllNodes() ([]string, error) {
 	path := filepath.Join(m.mdRoot, "Nodes")
 	list, err := m.storageCallback.ReadDirFromStorage(internal.ReadDirOptions{
 		Name: path,
 	})
 	if err != nil {
-		log.Err("GetAllNodes :: Failed to enumerate nodes list from %s : %v", path, err)
-		common.Assert(false, fmt.Sprintf("Failed to enumerate nodes list from %s : %v", path, err))
+		log.Err("GetAllNodes:: Failed to enumerate nodes list from %s: %v", path, err)
+		common.Assert(false, fmt.Sprintf("Failed to enumerate nodes list from %s: %v", path, err))
 		return nil, err
 	}
-	// Extract the node IDs from the list of blobs
+
+	// Extract the node IDs from the list of blobs.
 	var nodes []string
 	for _, blob := range list {
-		log.Debug("GetAllNodes :: Found blob: %s", blob.Name)
+		log.Debug("GetAllNodes:: Found blob: %s", blob.Name)
+
 		if strings.HasSuffix(blob.Name, ".hb") {
 			nodeId := blob.Name[:len(blob.Name)-3] // Remove the ".hb" extension
 			if common.IsValidUUID(nodeId) {
@@ -495,18 +642,20 @@ func (m *BlobMetadataManager) getAllNodes() ([]string, error) {
 				common.Assert(false, "Invalid heartbeat blob", blob.Name)
 			}
 		} else {
-			log.Warn("GetAllNodes :: Unexpected blob found in Nodes folder: %s", blob.Name)
+			log.Warn("GetAllNodes:: Unexpected blob found in Nodes folder: %s", blob.Name)
 			common.Assert(false, "Unexpected blob found in Nodes folder", blob.Name)
 		}
 	}
 
-	log.Debug("GetAllNodes :: Found %d nodes", len(nodes))
+	log.Debug("GetAllNodes:: Found %d nodes", len(nodes))
 	return nodes, nil
 }
 
-// CreateInitialClusterMap creates the initial cluster map
+// CreateInitialClusterMap creates the initial cluster map.
 func (m *BlobMetadataManager) createInitialClusterMap(clustermap []byte) error {
-	// Create the clustermap file path
+	common.Assert(len(clustermap) > 0)
+
+	// Create the clustermap file path.
 	clustermapPath := filepath.Join(m.mdRoot, "clustermap.json")
 	err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
 		Name:                   clustermapPath,
@@ -514,52 +663,87 @@ func (m *BlobMetadataManager) createInitialClusterMap(clustermap []byte) error {
 		IsNoneMatchEtagEnabled: true,
 		EtagMatchConditions:    "",
 	})
+
+	//
+	// TODO:
 	// Caller has to check if the error is ConditionNotMet or something else
 	// and take appropriate action.
 	// If the error is ConditionNotMet, it means the clustermap already exists
 	// and the caller should not overwrite it.
+	// For now we treat "already exists" as success.
+	//
 	if err != nil {
 		if bloberror.HasCode(err, bloberror.ConditionNotMet) {
-			// Log the reason for failure and return the error for caller to handle
-			log.Info("CreateInitialClusterMap :: PutBlobInStorage failed for %s due to ETag mismatch", clustermapPath)
-			return err
+			log.Info("CreateInitialClusterMap:: PutBlobInStorage failed for %s due to ETag mismatch: %v",
+				clustermapPath, err)
+			return nil
 		}
-		log.Err("CreateInitialClusterMap :: Failed to put blob %s in storage: %v", clustermapPath, err)
+
+		log.Err("CreateInitialClusterMap:: Failed to put blob %s in storage: %v", clustermapPath, err)
+		common.Assert(false, err)
 		return err
 	}
-	log.Info("CreateInitialClusterMap :: Created initial clustermap with path %s", clustermapPath)
+
+	log.Info("CreateInitialClusterMap:: Created initial clustermap with path %s", clustermapPath)
 	return nil
 }
 
-// UpdateClusterMapStart claims update ownership of the cluster map
+// UpdateClusterMapStart claims update ownership of the cluster map.
 func (m *BlobMetadataManager) updateClusterMapStart(clustermap []byte, etag *string) error {
+	common.Assert(len(clustermap) > 0)
+	common.Assert(etag != nil)
+
 	clustermapPath := filepath.Join(m.mdRoot, "clustermap.json")
+
+	// In debug env make sure clustermap.json is already present.
+	// Caller must call us only to update an existing clustermap.json.
+	if common.IsDebugBuild() {
+		_, err := m.storageCallback.GetPropertiesFromStorage(
+			internal.GetAttrOptions{Name: clustermapPath})
+		common.Assert(err == nil, err)
+	}
+
 	err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
 		Name:                   clustermapPath,
 		Data:                   clustermap,
 		IsNoneMatchEtagEnabled: false,
 		EtagMatchConditions:    *etag,
 	})
+
+	//
 	// Caller should add a check to identify the error is ConditionNotMet or something else
 	// and take appropriate action.
 	// If the error is ConditionNotMet, it means the clustermap is already being updated
 	// and the caller should not overwrite it.
+	//
 	if err != nil {
 		if bloberror.HasCode(err, bloberror.ConditionNotMet) {
-			log.Warn("UpdateClusterMapStart :: ETag mismatch some other node has taken ownership for updating clustermap with path %s", clustermapPath)
+			log.Warn("UpdateClusterMapStart:: ETag mismatch some other node has taken ownership for updating clustermap with path %s, etag %s: %v", clustermapPath, *etag, err)
 		} else {
-			log.Err("UpdateClusterMapStart :: Failed to update clustermap %s : %v", clustermapPath, err)
+			log.Err("UpdateClusterMapStart:: Failed to update clustermap %s: %v", clustermapPath, err)
+			common.Assert(false, err)
 		}
 	}
-	log.Debug("UpdateClusterMapStart :: Updated clustermap with path %s", clustermapPath)
-	return err
+
+	log.Debug("UpdateClusterMapStart:: Updated clustermap with path %s", clustermapPath)
+	return nil
 }
 
-// TODO :: for safe update  updateClusterMapStart should return a Etag
-// value to be used for updateClusterMapEnd
-// UpdateClusterMapEnd finalizes the cluster map update
+// UpdateClusterMapEnd finalizes the cluster map update.
+// TODO: For safe update updateClusterMapStart() should return a Etag which must be passed to updateClusterMapEnd()
 func (m *BlobMetadataManager) updateClusterMapEnd(clustermap []byte) error {
+	common.Assert(len(clustermap) > 0)
+
 	clustermapPath := filepath.Join(m.mdRoot, "clustermap.json")
+
+	// In debug env make sure clustermap.json is already present.
+	// Caller must call us only to update an existing clustermap.json.
+	if common.IsDebugBuild() {
+		_, err := m.storageCallback.GetPropertiesFromStorage(
+			internal.GetAttrOptions{Name: clustermapPath})
+		common.Assert(err == nil, err)
+	}
+
 	err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
 		Name:                   clustermapPath,
 		Data:                   clustermap,
@@ -567,9 +751,11 @@ func (m *BlobMetadataManager) updateClusterMapEnd(clustermap []byte) error {
 		EtagMatchConditions:    "",
 	})
 	if err != nil {
-		log.Err("UpdateClusterMapEnd :: Failed to finalize clustermap update for %s: %v", clustermapPath, err)
+		log.Err("UpdateClusterMapEnd:: Failed to finalize clustermap update for %s: %v", clustermapPath, err)
+		common.Assert(false, err)
 	}
-	log.Debug("UpdateClusterMapEnd :: Finalized clustermap update for %s", clustermapPath)
+
+	log.Debug("UpdateClusterMapEnd:: Finalized clustermap update for %s", clustermapPath)
 	return err
 }
 
@@ -580,10 +766,12 @@ func (m *BlobMetadataManager) getClusterMap() ([]byte, *string, error) {
 		Name: clustermapPath,
 	})
 	if err != nil {
-		log.Err("GetClusterMap :: Failed to get cluster map properties %s : %v", clustermapPath, err)
+		log.Err("GetClusterMap:: Failed to get cluster map properties %s: %v", clustermapPath, err)
+		common.Assert(false, err)
 		return nil, nil, err
 	}
-	// TODO :: If some node updates the clustermap between GetProperties and GetBlobFromStorage
+
+	// TODO:: If some node updates the clustermap between GetProperties and GetBlobFromStorage
 	// then updateClusterMapStart will fail with ETag mismatch.
 	// In that case we can create a new function to call doawnloadStream directly for content and etag.
 	// Get the cluster map content from storage
@@ -591,10 +779,13 @@ func (m *BlobMetadataManager) getClusterMap() ([]byte, *string, error) {
 		Path: clustermapPath,
 	})
 	if err != nil {
-		log.Err("GetClusterMap :: Failed to get cluster map content with path %s : %v", clustermapPath, err)
+		log.Err("GetClusterMap:: Failed to get cluster map content with path %s: %v", clustermapPath, err)
+		common.Assert(false, err)
 		return nil, nil, err
 	}
-	log.Debug("GetClusterMap :: Successfully got cluster map content for %s", clustermapPath)
+
+	log.Debug("GetClusterMap:: Successfully got cluster map content for %s", clustermapPath)
+
 	// Return the cluster map content and ETag
 	return data, &attr.ETag, nil
 }
