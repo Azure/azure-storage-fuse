@@ -439,7 +439,7 @@ func GetDiskUsageFromStatfs(path string) (float64, float64, error) {
 	return usedSpace, (usedSpace / float64(totalSpace)) * 100, nil
 }
 
-// It will return totalSpace, availableSpace, and error if any while evaluting the Current disk usage of path using statfs
+// It will return totalSpace, availableSpace, and error if any while evaluating the Current disk usage of path using statfs
 func GetDiskSpaceMetricsFromStatfs(path string) (uint64, uint64, error) {
 	var stat syscall.Statfs_t
 	err := syscall.Statfs(path, &stat)
@@ -644,6 +644,25 @@ func IsValidUUID(guid string) bool {
 
 func IsValidIP(ipAddress string) bool {
 	return net.ParseIP(ipAddress) != nil
+}
+
+// IsValidHostPort checks if the given address is a valid host:port combination
+func IsValidHostPort(address string) bool {
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return false
+	}
+
+	if !IsValidIP(host) {
+		return false
+	}
+
+	p, err := strconv.Atoi(port)
+	if err != nil || p < 1 || p > 65535 {
+		return false
+	}
+
+	return true
 }
 
 func IsValidBlkDevice(device string) error {

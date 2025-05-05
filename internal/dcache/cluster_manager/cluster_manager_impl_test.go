@@ -41,6 +41,7 @@ import (
 	"strconv"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	"github.com/stretchr/testify/suite"
@@ -111,9 +112,10 @@ func (suite *ClusterManagerImplTestSuite) TestCheckIfClusterMapExists() {
 }
 
 // replace the old mockHeartbeat with this:
-func mockHeartbeat(nodeID, rvId string, available, total uint64) {
+func mockHeartbeat(nodeID, rvId string, available, total uint64, staleHbduration uint64) {
 	hb := dcache.HeartbeatData{
-		NodeID: nodeID,
+		NodeID:        nodeID,
+		LastHeartbeat: uint64(time.Now().Unix()) - staleHbduration,
 		RVList: []dcache.RawVolume{
 			{RvId: rvId, State: dcache.StateOnline, AvailableSpace: available, TotalSpace: total},
 		},
@@ -126,7 +128,7 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateRVList_AddNewRV() {
 
 	// Mock data
 	mockNodeIDs := []string{"node1"}
-	mockHeartbeat("node1", "rv1", 50, 100)
+	mockHeartbeat("node1", "rv1", 50, 100, 0)
 	getAllNodes = func() ([]string, error) {
 		return mockNodeIDs, nil
 	}
@@ -136,18 +138,18 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateRVList_AddNewRV() {
 		"rv0": {RvId: "rv1", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
 	}
 
-	changed, err := suite.cmi.updateRVList(initialClusterMap)
+	changed, err := suite.cmi.updateRVList(initialClusterMap, 3, 30)
 	suite.NoError(err)
 	suite.True(changed)
 	suite.Equal(expectedClusterMap, initialClusterMap)
 }
 
-func (suite *ClusterManagerImplTestSuite) TestUpdateRVList_AddNewRVWithExisting() {
+func (suite *ClusterManagerImplTestSuite) TestUpdateRVList_AddNewRVWithExistingRVUpdated() {
 
 	// Mock data
 	mockNodeIDs := []string{"node1", "node2"}
-	mockHeartbeat("node1", "rvId0", 50, 100)
-	mockHeartbeat("node2", "rvId1", 50, 100)
+	mockHeartbeat("node1", "rvId0", 50, 100, 0)
+	mockHeartbeat("node2", "rvId1", 50, 100, 0)
 	getAllNodes = func() ([]string, error) {
 		return mockNodeIDs, nil
 	}
@@ -160,7 +162,7 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateRVList_AddNewRVWithExisting(
 		"rv1": {RvId: "rvId1", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
 	}
 
-	changed, err := suite.cmi.updateRVList(initialClusterMap)
+	changed, err := suite.cmi.updateRVList(initialClusterMap, 3, 30)
 	suite.NoError(err)
 	suite.True(changed)
 	suite.Equal(expectedClusterMap, initialClusterMap)
@@ -170,7 +172,7 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateRVList_UpdateExistingRV() {
 
 	// Mock data
 	mockNodeIDs := []string{"node1"}
-	mockHeartbeat("node1", "rv1", 50, 100)
+	mockHeartbeat("node1", "rv1", 50, 100, 0)
 
 	// Mock functions
 	getAllNodes = func() ([]string, error) {
@@ -184,7 +186,7 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateRVList_UpdateExistingRV() {
 		"rv0": {RvId: "rv1", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
 	}
 
-	changed, err := suite.cmi.updateRVList(initialClusterMap)
+	changed, err := suite.cmi.updateRVList(initialClusterMap, 3, 30)
 	suite.NoError(err)
 	suite.True(changed)
 	suite.Equal(expectedClusterMap, initialClusterMap)
@@ -202,7 +204,7 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateRVList_MarkMissingRVOffline(
 		"rv0": {RvId: "rv1", State: dcache.StateOffline, AvailableSpace: 50, TotalSpace: 100},
 	}
 
-	changed, err := suite.cmi.updateRVList(initialClusterMap)
+	changed, err := suite.cmi.updateRVList(initialClusterMap, 3, 30)
 	suite.NoError(err)
 	suite.True(changed)
 	suite.Equal(expectedClusterMap, initialClusterMap)
@@ -213,7 +215,7 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateRVList_NoChangesRequired() {
 	mockNodeIDs := []string{"node1"}
 
 	// Mock functions
-	mockHeartbeat("node1", "rv1", 50, 100)
+	mockHeartbeat("node1", "rv1", 50, 100, 0)
 	getAllNodes = func() ([]string, error) {
 		return mockNodeIDs, nil
 	}
@@ -225,9 +227,32 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateRVList_NoChangesRequired() {
 		"rv0": {RvId: "rv1", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
 	}
 
-	changed, err := suite.cmi.updateRVList(initialClusterMap)
+	changed, err := suite.cmi.updateRVList(initialClusterMap, 3, 30)
 	suite.NoError(err)
 	suite.False(changed)
+	suite.Equal(expectedClusterMap, initialClusterMap)
+}
+
+func (suite *ClusterManagerImplTestSuite) TestUpdateRVList_MarksStaleHeartbeatOffline() {
+	// Mock data
+	mockNodeIDs := []string{"node1"}
+
+	// Mock functions
+	mockHeartbeat("node1", "rv1", 50, 100, 3*60)
+	getAllNodes = func() ([]string, error) {
+		return mockNodeIDs, nil
+	}
+
+	initialClusterMap := map[string]dcache.RawVolume{
+		"rv0": {RvId: "rv1", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
+	}
+	expectedClusterMap := map[string]dcache.RawVolume{
+		"rv0": {RvId: "rv1", State: dcache.StateOffline, AvailableSpace: 50, TotalSpace: 100},
+	}
+
+	changed, err := suite.cmi.updateRVList(initialClusterMap, 3, 30)
+	suite.NoError(err)
+	suite.True(changed)
 	suite.Equal(expectedClusterMap, initialClusterMap)
 }
 

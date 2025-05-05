@@ -38,7 +38,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 )
 
 // clientPool manages multiple rpc clients efficiently
@@ -116,7 +118,8 @@ func (cp *clientPool) releaseRPCClient(client *rpcClient) error {
 		return fmt.Errorf("no client pool found for node %s", client.nodeID)
 	}
 
-	// TODO: add assert to check the length of the channel is less than maxPerNode
+	log.Debug("clientPool::releaseRPCClient: node = %s, current node client pool size = %v, max connections per node = %v ", client.nodeID, len(ncPool.clientChan), cp.maxPerNode)
+	common.Assert(len(ncPool.clientChan) < int(cp.maxPerNode), fmt.Sprintf("node client pool is full, cannot release client: node = %s, current node client pool size = %v, max connections per node = %v ", client.nodeID, len(ncPool.clientChan), cp.maxPerNode))
 	ncPool.clientChan <- client
 	return nil
 }
@@ -136,7 +139,9 @@ func (cp *clientPool) closeLRUCNodeClientPool() error {
 		}
 	}
 
-	// TODO: add assert that lruNcPool is not nil
+	// closeLRUCNodeClientPool() MUST never be called with no active RPC client.
+	common.Assert(lruNcPool != nil)
+
 	err := lruNcPool.closeRPCClients()
 	if err != nil {
 		log.Err("clientPool::closeLRUCNodeClientPool: Failed to close LRU node client pool for node %s [%v]", lruNodeID, err.Error())
@@ -168,9 +173,7 @@ func (cp *clientPool) closeAllNodeClientPools() error {
 		delete(cp.clients, key)
 	}
 
-	// TODO: add assert to check that the length of the map is 0
-	// see if this is needed
-	// cp.clients = make(map[string]*nodeClientPool)
+	common.Assert(len(cp.clients) == 0, "client pool is not empty after closing all node client pools")
 	return nil
 }
 
@@ -193,7 +196,6 @@ func (ncPool *nodeClientPool) createRPCClients(numClients uint32) {
 
 	// Create RPC clients and add them to the channel
 	for i := 0; i < int(numClients); i++ {
-		// TODO:: integration: getNodeAddressFromID should be replaced with a function to get the node address from the config
 		client, err := newRPCClient(ncPool.nodeID, getNodeAddressFromID(ncPool.nodeID))
 		if err != nil {
 			log.Err("nodeClientPool::createRPCClients: Failed to create RPC client for node %s [%v]", ncPool.nodeID, err.Error())
@@ -201,13 +203,16 @@ func (ncPool *nodeClientPool) createRPCClients(numClients uint32) {
 		}
 		ncPool.clientChan <- client
 	}
+
+	common.Assert(len(ncPool.clientChan) == int(numClients), "client channel is not full after creating RPC clients", len(ncPool.clientChan), numClients)
 }
 
 // closeRPCClients closes all RPC clients in the channel for the specified node ID
 func (ncPool *nodeClientPool) closeRPCClients() error {
 	log.Debug("nodeClientPool::closeRPCClients: Closing RPC clients for node %s", ncPool.nodeID)
 
-	// TODO: add assert to check that the length of the channel is maxPerNode, so that all clients are released back
+	// check that the length of the channel is maxPerNode, so that all clients are released back
+	common.Assert(len(ncPool.clientChan) == int(cp.maxPerNode), "client channel is not full before closing RPC clients", len(ncPool.clientChan), cp.maxPerNode)
 	close(ncPool.clientChan)
 
 	for client := range ncPool.clientChan {
@@ -218,12 +223,14 @@ func (ncPool *nodeClientPool) closeRPCClients() error {
 		}
 	}
 
-	// TODO: add assert to check that the channel empty
+	common.Assert(len(ncPool.clientChan) == 0, "client channel is not empty after closing all RPC clients")
 	return nil
 }
 
-// TODO:: integration: call cluster manager to get the node address for the given node ID
-// TODO: add assert to check if the node address of the form addr:port - IsValidHostPort(string)
+// return the node address for the given node ID
+// the node address is of the form <ip>:<port>
 func getNodeAddressFromID(nodeID string) string {
-	return "localhost:9090"
+	nodeAddress := fmt.Sprintf("%s:%d", clustermap.NodeIdToIP(nodeID), defaultPort)
+	common.Assert(common.IsValidHostPort(nodeAddress), fmt.Sprintf("node address is not valid: %s", nodeAddress))
+	return nodeAddress
 }

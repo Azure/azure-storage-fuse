@@ -100,8 +100,17 @@ type DCacheConfig struct {
 	CacheAccess            string `json:"cache-access,omitempty"`
 }
 
+type fileState string
+
+const (
+	Ready    fileState = "ready"
+	Writing  fileState = "writing"
+	Deleting fileState = "deleting"
+)
+
 type FileMetadata struct {
 	Filename        string     `json:"filename"`
+	State           fileState  `json:"state"`
 	FileID          string     `json:"file_id"`
 	Size            int64      `json:"size"`
 	ClusterMapEpoch int64      `json:"cluster_map_epoch"`
@@ -115,5 +124,5 @@ type FileLayout struct {
 	MVList     []string `json:"mv_list"`
 }
 
-type ClusterManagerEvent struct {
+type ClusterMapEvent struct {
 }

@@ -31,14 +31,49 @@
    SOFTWARE
 */
 
-package filemanager
+package rpc_test
 
-type StagedChunk struct {
-	Idx              int64         // chunk index
-	Buf              []byte        // buf size == chunkSize
-	Len              int64         // valid bytes in Buf
-	Err              chan error    // Download/upload status, available after download/upload completes, nil means success.
-	ScheduleDownload chan struct{} // channel to schedule download only once per chunk
-	ScheduleUpload   chan struct{} // channel to schedule download only once per chunk
-	// todo : replace the above channels with the atomic flags.
+import (
+	"context"
+	"testing"
+
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
+	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
+	rpc_server "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/server"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/suite"
+)
+
+type rpcTestSuite struct {
+	suite.Suite
+	assert *assert.Assertions
+}
+
+func (suite *rpcTestSuite) SetupTest() {
+	suite.assert = assert.New(suite.T())
+}
+
+func (suite *rpcTestSuite) TestHelloRPC() {
+	// start server
+	server, err := rpc_server.NewNodeServer("localhost:9090", make(map[string]dcache.RawVolume), &dcache.DCacheConfig{})
+	suite.assert.NoError(err)
+	suite.assert.NotNil(server)
+
+	err = server.Start()
+	suite.assert.NoError(err)
+
+	resp, err := rpc_client.Hello(context.Background(), "nodeID", &models.HelloRequest{})
+	suite.assert.NoError(err)
+	suite.assert.NotNil(resp)
+
+	err = rpc_client.Cleanup()
+	suite.assert.NoError(err)
+
+	err = server.Stop()
+	suite.assert.NoError(err)
+}
+
+func TestRPCTestSuite(t *testing.T) {
+	suite.Run(t, new(rpcTestSuite))
 }
