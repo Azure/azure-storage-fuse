@@ -190,14 +190,6 @@ func getMVsPerRV() int64 {
 	return int64(clustermap.GetCacheConfig().MvsPerRv)
 }
 
-// return the node ID of this node
-func GetMyNodeUUID() string {
-	nodeID, err := common.GetNodeUUID()
-	common.Assert(err == nil, fmt.Sprintf("failed to get current node's UUID [%v]", err))
-	common.Assert(common.IsValidUUID(nodeID), "current node's UUID is not valid", nodeID)
-	return nodeID
-}
-
 // When an MV is in degraded state because one or more of its RV went offline,
 // the caller (lowest index online RV) can call this method to get the
 // disk usage of the MV. The caller will then send JoinMV RPC call to the

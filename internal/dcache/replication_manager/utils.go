@@ -44,7 +44,6 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
-	rpc_server "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/server"
 )
 
 const (
@@ -60,7 +59,7 @@ const (
 func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *models.RVNameAndState {
 	log.Debug("utils::getReaderRV: Component RVs are: %v, excludeRVs: %v", rpc.ComponentRVsToString(componentRVs), excludeRVs)
 
-	myNodeID := rpc_server.GetMyNodeUUID()
+	myNodeID := rpc.GetMyNodeUUID()
 	onlineRVs := make([]*models.RVNameAndState, 0)
 	for _, rv := range componentRVs {
 		if rv.State != string(dcache.StateOnline) || slices.Contains(excludeRVs, rv.Name) {

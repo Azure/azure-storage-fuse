@@ -502,11 +502,11 @@ func (h *ChunkServiceHandler) Hello(ctx context.Context, req *models.HelloReques
 		return nil, rpc.NewResponseError(rpc.InvalidRequest, "received nil Hello request")
 	}
 
-	log.Debug("ChunkServiceHandler::Hello: Received Hello request: %+v", *req)
+	log.Debug("ChunkServiceHandler::Hello: Received Hello request: %v", req.String())
 
 	// TODO: send more information in response on Hello RPC
 
-	myNodeID := GetMyNodeUUID()
+	myNodeID := rpc.GetMyNodeUUID()
 	common.Assert(req.ReceiverNodeID == myNodeID, "Received Hello RPC destined for another node", req.ReceiverNodeID, myNodeID)
 
 	// get all the RVs exported by this node
@@ -534,12 +534,12 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 
 	startTime := time.Now()
 
-	log.Debug("ChunkServiceHandler::GetChunk: Received GetChunk request: %+v", *req)
+	log.Debug("ChunkServiceHandler::GetChunk: Received GetChunk request: %v", rpc.GetChunkRequestToString(req))
 
 	// check if the chunk address is valid
 	err := h.checkValidChunkAddress(req.Address)
 	if err != nil {
-		log.Err("ChunkServiceHandler::GetChunk: Invalid chunk address %+v [%s]", *req.Address, err.Error())
+		log.Err("ChunkServiceHandler::GetChunk: Invalid chunk address %v [%s]", req.Address.String(), err.Error())
 		return nil, err
 	}
 
@@ -645,7 +645,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	// check if the chunk address is valid
 	err := h.checkValidChunkAddress(req.Chunk.Address)
 	if err != nil {
-		log.Err("ChunkServiceHandler::PutChunk: Invalid chunk address [%s]", err.Error())
+		log.Err("ChunkServiceHandler::PutChunk: Invalid chunk address %v [%s]", req.Chunk.Address.String(), err.Error())
 		return nil, err
 	}
 
@@ -770,12 +770,12 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 
 	startTime := time.Now()
 
-	log.Debug("ChunkServiceHandler::RemoveChunk: Received RemoveChunk request %+v", *req)
+	log.Debug("ChunkServiceHandler::RemoveChunk: Received RemoveChunk request %v", rpc.RemoveChunkRequestToString(req))
 
 	// check if the chunk address is valid
 	err := h.checkValidChunkAddress(req.Address)
 	if err != nil {
-		log.Err("ChunkServiceHandler::RemoveChunk: Invalid chunk address [%s]", err.Error())
+		log.Err("ChunkServiceHandler::RemoveChunk: Invalid chunk address %v [%s]", req.Address.String(), err.Error())
 		return nil, err
 	}
 
@@ -862,7 +862,7 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 
 	// TODO:: discuss: changing type of component RV from string to RVNameAndState
 	// requires to call componentRVsToString method as it is of type []*models.RVNameAndState
-	log.Debug("ChunkServiceHandler::JoinMV: Received JoinMV request: %+v", *req)
+	log.Debug("ChunkServiceHandler::JoinMV: Received JoinMV request: %v", rpc.JoinMVRequestToString(req))
 
 	if req.MV == "" || req.RVName == "" || len(req.ComponentRV) == 0 {
 		log.Err("ChunkServiceHandler::JoinMV: MV, RV or ComponentRV is empty")
@@ -935,7 +935,7 @@ func (h *ChunkServiceHandler) UpdateMV(ctx context.Context, req *models.UpdateMV
 		return nil, rpc.NewResponseError(rpc.InvalidRequest, "received nil UpdateMV request")
 	}
 
-	log.Debug("ChunkServiceHandler::UpdateMV: Received UpdateMV request: %+v", *req)
+	log.Debug("ChunkServiceHandler::UpdateMV: Received UpdateMV request: %v", rpc.UpdateMVRequestToString(req))
 
 	if req.MV == "" || req.RVName == "" || len(req.ComponentRV) == 0 {
 		log.Err("ChunkServiceHandler::UpdateMV: MV, RV or ComponentRV is empty")
@@ -973,7 +973,7 @@ func (h *ChunkServiceHandler) LeaveMV(ctx context.Context, req *models.LeaveMVRe
 		return nil, rpc.NewResponseError(rpc.InvalidRequest, "received nil LeaveMV request")
 	}
 
-	log.Debug("ChunkServiceHandler::LeaveMV: Received LeaveMV request: %+v", *req)
+	log.Debug("ChunkServiceHandler::LeaveMV: Received LeaveMV request: %v", rpc.LeaveMVRequestToString(req))
 
 	if req.MV == "" || req.RVName == "" || len(req.ComponentRV) == 0 {
 		log.Err("ChunkServiceHandler::LeaveMV: MV, RV or ComponentRV is empty")
@@ -1026,7 +1026,7 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 		return nil, rpc.NewResponseError(rpc.InvalidRequest, "received nil StartSync request")
 	}
 
-	log.Debug("ChunkServiceHandler::StartSync: Received StartSync request: %+v", *req)
+	log.Debug("ChunkServiceHandler::StartSync: Received StartSync request: %v", rpc.StartSyncRequestToString(req))
 
 	if req.MV == "" || req.SourceRVName == "" || req.TargetRVName == "" || len(req.ComponentRV) == 0 {
 		log.Err("ChunkServiceHandler::StartSync: MV, SourceRV, TargetRV or ComponentRVs is empty")
@@ -1098,7 +1098,7 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 		return nil, rpc.NewResponseError(rpc.InvalidRequest, "received nil EndSync request")
 	}
 
-	log.Debug("ChunkServiceHandler::EndSync: Received EndSync request: %+v", *req)
+	log.Debug("ChunkServiceHandler::EndSync: Received EndSync request: %v", rpc.EndSyncRequestToString(req))
 
 	if req.SyncID == "" || req.MV == "" || req.SourceRVName == "" || req.TargetRVName == "" || len(req.ComponentRV) == 0 {
 		log.Err("ChunkServiceHandler::EndSync: MV, SourceRV, TargetRV or ComponentRVs is empty")

@@ -126,11 +126,12 @@ retry:
 
 		rpcResp, err = rpc_client.GetChunk(ctx, targetNodeID, rpcReq)
 		excludeRVs = append(excludeRVs, readerRV.Name)
+		rpcReqStr := rpc.GetChunkRequestToString(rpcReq)
 		if err == nil {
 			// success
-			common.Assert(rpcResp != nil, fmt.Sprintf("GetChunk RPC response is nil for request %+v", *rpcReq))
-			common.Assert(rpcResp.Chunk != nil, fmt.Sprintf("chunk in GetChunk RPC response is nil for request %+v", *rpcReq))
-			common.Assert(rpcResp.Chunk.Address != nil, fmt.Sprintf("address of chunk in GetChunk RPC response is nil for request %+v", *rpcReq))
+			common.Assert(rpcResp != nil, fmt.Sprintf("GetChunk RPC response is nil for request %v", rpcReqStr))
+			common.Assert(rpcResp.Chunk != nil, fmt.Sprintf("chunk in GetChunk RPC response is nil for request %v", rpcReqStr))
+			common.Assert(rpcResp.Chunk.Address != nil, fmt.Sprintf("address of chunk in GetChunk RPC response is nil for request %v", rpcReqStr))
 			break
 		}
 
@@ -139,7 +140,7 @@ retry:
 		// so if the target RV feels that the sender seems to have out-of-date clustermap,
 		// it can help him by failing the request with an appropriate error and then
 		// caller should fetch the latest clustermap and then try again.
-		log.Err("ReplicationManager::ReadMV: Failed to get chunk from node %s for request %+v [%v]", targetNodeID, *rpcReq, err.Error())
+		log.Err("ReplicationManager::ReadMV: Failed to get chunk from node %s for request %v [%v]", targetNodeID, rpcReqStr, err.Error())
 	}
 
 	log.Debug("ReplicationManager::ReadMV: GetChunk RPC response: chunk lmt %v, time taken %v, component RVs %v, chunk address %+v",
@@ -156,9 +157,9 @@ retry:
 	// TODO: should we validate the hash of the chunk here?
 	// hash := getMD5Sum(rpcResp.Chunk.Data)
 	// if hash != rpcResp.Chunk.Hash {
-	// 	log.Err("ReplicationManager::ReadMV: Hash mismatch for the chunk read from node %s for request %+v", targetNodeID, *rpcReq)
-	// 	common.Assert(false, fmt.Sprintf("hash mismatch for the chunk read from node %s for request %+v", targetNodeID, *rpcReq))
-	// 	return nil, fmt.Errorf("hash mismatch for the chunk read from node %s for request %+v", targetNodeID, *rpcReq)
+	// 	log.Err("ReplicationManager::ReadMV: Hash mismatch for the chunk read from node %s for request %v", targetNodeID, rpcReqStr)
+	// 	common.Assert(false, fmt.Sprintf("hash mismatch for the chunk read from node %s for request %v", targetNodeID, rpcReqStr))
+	// 	return nil, fmt.Errorf("hash mismatch for the chunk read from node %s for request %v", targetNodeID, rpcReqStr)
 	// }
 
 	resp := &ReadMvResponse{
