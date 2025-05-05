@@ -444,8 +444,8 @@ func (mv *mvInfo) quiesceIOsEnd() {
 func (h *ChunkServiceHandler) checkValidChunkAddress(address *models.Address) error {
 	// TODO: add assert for IsValidUUID(), IsValidMVName()
 	if address == nil || address.FileID == "" || address.RvID == "" || address.MvName == "" {
-		log.Err("ChunkServiceHandler::checkValidChunkAddress: Invalid chunk address %+v", *address)
-		return rpc.NewResponseError(rpc.InvalidRequest, fmt.Sprintf("invalid chunk address %+v", *address))
+		log.Err("ChunkServiceHandler::checkValidChunkAddress: Invalid chunk address %v", address.String())
+		return rpc.NewResponseError(rpc.InvalidRequest, fmt.Sprintf("invalid chunk address %v", address.String()))
 	}
 
 	// check if the rvID is valid
@@ -462,7 +462,7 @@ func (h *ChunkServiceHandler) checkValidChunkAddress(address *models.Address) er
 
 	// check if the MV is valid
 	mvPath := filepath.Join(cacheDir, address.MvName)
-	if rvInfo.isMvPathValid(mvPath) {
+	if !rvInfo.isMvPathValid(mvPath) {
 		log.Err("ChunkServiceHandler::checkValidChunkAddress: MV %s is not hosted by RV %s", address.MvName, rvInfo.rvName)
 		return rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("MV %s is not hosted by RV %s", address.MvName, rvInfo.rvName))
 	}
@@ -640,7 +640,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 
 	startTime := time.Now()
 
-	log.Debug("ChunkServiceHandler::PutChunk: Received PutChunk request: chunk address %+v, data length %v, isSync %v, Component RV %v", *req.Chunk.Address, req.Length, req.IsSync, ComponentRVsToString(req.ComponentRV))
+	log.Debug("ChunkServiceHandler::PutChunk: Received PutChunk request: %v", rpc.PutChunkRequestToString(req))
 
 	// check if the chunk address is valid
 	err := h.checkValidChunkAddress(req.Chunk.Address)
@@ -955,7 +955,7 @@ func (h *ChunkServiceHandler) UpdateMV(ctx context.Context, req *models.UpdateMV
 	}
 
 	componentRVsInMV := mvInfo.getComponentRVs()
-	log.Debug("ChunkServiceHandler::UpdateMV: Current component RVs %v, updated component RVs %v", ComponentRVsToString(componentRVsInMV), ComponentRVsToString(req.ComponentRV))
+	log.Debug("ChunkServiceHandler::UpdateMV: Current component RVs %v, updated component RVs %v", rpc.ComponentRVsToString(componentRVsInMV), rpc.ComponentRVsToString(req.ComponentRV))
 
 	// update the component RVs list for this MV
 	mvInfo.updateComponentRVs(req.ComponentRV)
@@ -1052,7 +1052,7 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 
 	// check if the source RV is present in the component RVs list
 	if !isRVPresentInMV(componentRVsInMV, req.SourceRVName) {
-		rvsInMvStr := ComponentRVsToString(componentRVsInMV)
+		rvsInMvStr := rpc.ComponentRVsToString(componentRVsInMV)
 		log.Err("ChunkServiceHandler::StartSync: Source RV %s is not present in the component RVs list %v", req.SourceRVName, rvsInMvStr)
 		return nil, rpc.NewResponseError(rpc.InvalidRV, fmt.Sprintf("source RV %s is not present in the component RVs list %v", req.SourceRVName, rvsInMvStr))
 	}
@@ -1129,7 +1129,7 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 
 	// check if the source RV is present in the component RVs list
 	if !isRVPresentInMV(componentRVsInMV, req.SourceRVName) {
-		rvsInMvStr := ComponentRVsToString(componentRVsInMV)
+		rvsInMvStr := rpc.ComponentRVsToString(componentRVsInMV)
 		log.Err("ChunkServiceHandler::EndSync: Source RV %s is not present in the component RVs list %v", req.SourceRVName, rvsInMvStr)
 		return nil, rpc.NewResponseError(rpc.InvalidRV, fmt.Sprintf("source RV %s is not present in the component RVs list %v", req.SourceRVName, rvsInMvStr))
 	}

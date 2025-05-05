@@ -31,46 +31,43 @@
    SOFTWARE
 */
 
-package rpc_test
+package rpc
 
 import (
-	"testing"
+	"fmt"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/suite"
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 )
 
-type rpcTestSuite struct {
-	suite.Suite
-	assert *assert.Assertions
+const (
+	// defaultPort is the default port for the RPC server
+	defaultPort = 9090
+)
+
+// return the node address for the given node ID
+// the node address is of the form <ip>:<port>
+func GetNodeAddressFromID(nodeID string) string {
+	nodeAddress := fmt.Sprintf("%s:%d", clustermap.NodeIdToIP(nodeID), defaultPort)
+	common.Assert(common.IsValidHostPort(nodeAddress), fmt.Sprintf("node address is not valid: %s", nodeAddress))
+	return nodeAddress
 }
 
-func (suite *rpcTestSuite) SetupTest() {
-	suite.assert = assert.New(suite.T())
+// convert *models.RVNameAndState to string
+// used for logging
+func ComponentRVsToString(rvs []*models.RVNameAndState) string {
+	var arr []models.RVNameAndState
+	for _, rv := range rvs {
+		common.Assert(rv != nil, "Component RV is nil")
+		arr = append(arr, *rv)
+	}
+	return fmt.Sprintf("%+v", arr)
 }
 
-/*
-func (suite *rpcTestSuite) TestHelloRPC() {
-	// start server
-	server, err := rpc_server.NewNodeServer("localhost:9090", make(map[string]dcache.RawVolume), &dcache.DCacheConfig{})
-	suite.assert.NoError(err)
-	suite.assert.NotNil(server)
-
-	err = server.Start()
-	suite.assert.NoError(err)
-
-	resp, err := rpc_client.Hello(context.Background(), "nodeID", &models.HelloRequest{})
-	suite.assert.NoError(err)
-	suite.assert.NotNil(resp)
-
-	err = rpc_client.Cleanup()
-	suite.assert.NoError(err)
-
-	err = server.Stop()
-	suite.assert.NoError(err)
-}
-*/
-
-func TestRPCTestSuite(t *testing.T) {
-	suite.Run(t, new(rpcTestSuite))
+// convert *models.RVNameAndState to string
+// exculde data and hash from the string to prevent it from being logged
+func PutChunkRequestToString(req *models.PutChunkRequest) string {
+	return fmt.Sprintf("Chunk address %+v, data length %v, isSync %v, Component RV %v",
+		*req.Chunk.Address, req.Length, req.IsSync, ComponentRVsToString(req.ComponentRV))
 }

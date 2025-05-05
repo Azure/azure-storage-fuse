@@ -37,6 +37,7 @@ import (
 	"context"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 )
 
@@ -50,8 +51,6 @@ const (
 	defaultMaxNodes = 100
 	// defaultTimeout is the default duration in seconds after which a RPC client is closed
 	defaultTimeout = 60
-	// defaultPort is the default port for the RPC server
-	defaultPort = 9090
 )
 
 // TODO: add asserts for function arguments and return values
@@ -117,26 +116,27 @@ func GetChunk(ctx context.Context, targetNodeID string, req *models.GetChunkRequ
 }
 
 func PutChunk(ctx context.Context, targetNodeID string, req *models.PutChunkRequest) (*models.PutChunkResponse, error) {
-	log.Debug("rpc_client::PutChunk: Sending PutChunk request to node %s: %+v", targetNodeID, *req)
+	reqStr := rpc.PutChunkRequestToString(req)
+	log.Debug("rpc_client::PutChunk: Sending PutChunk request to node %s: %v", targetNodeID, reqStr)
 
 	// get RPC client from the client pool
 	client, err := cp.getRPCClient(targetNodeID)
 	if err != nil {
-		log.Err("rpc_client::PutChunk: Failed to get RPC client for node %s [%v] : %+v", targetNodeID, err.Error(), *req)
+		log.Err("rpc_client::PutChunk: Failed to get RPC client for node %s [%v] : %v", targetNodeID, err.Error(), reqStr)
 		return nil, err
 	}
 	defer func() {
 		// release RPC client back to the pool
 		err = cp.releaseRPCClient(client)
 		if err != nil {
-			log.Err("rpc_client::PutChunk: Failed to release RPC client for node %s [%v] : %+v", targetNodeID, err.Error(), *req)
+			log.Err("rpc_client::PutChunk: Failed to release RPC client for node %s [%v] : %v", targetNodeID, err.Error(), reqStr)
 		}
 	}()
 
 	// call the rpc method
 	resp, err := client.svcClient.PutChunk(ctx, req)
 	if err != nil {
-		log.Err("rpc_client::PutChunk: Failed to send PutChunk request to node %s [%v] : %+v", targetNodeID, err.Error(), *req)
+		log.Err("rpc_client::PutChunk: Failed to send PutChunk request to node %s [%v] : %v", targetNodeID, err.Error(), reqStr)
 		return nil, err
 	}
 

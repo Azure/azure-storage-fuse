@@ -45,7 +45,6 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
-	rpc_server "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/server"
 )
 
 func ReadMV(req *ReadMvRequest) (*ReadMvResponse, error) {
@@ -70,7 +69,7 @@ func ReadMV(req *ReadMvRequest) (*ReadMvResponse, error) {
 
 retry:
 	componentRVs := getComponentRVsForMV(req.MvName)
-	log.Debug("ReplicationManager::ReadMV: Component RVs for the given MV %s are: %v", req.MvName, rpc_server.ComponentRVsToString(componentRVs))
+	log.Debug("ReplicationManager::ReadMV: Component RVs for the given MV %s are: %v", req.MvName, rpc.ComponentRVsToString(componentRVs))
 
 	// Get the most suitable RV from the list of component RVs,
 	// from which we should read the chunk. Selecting most
@@ -191,7 +190,7 @@ func WriteMV(req *WriteMvRequest) (*WriteMvResponse, error) {
 
 retry:
 	componentRVs := getComponentRVsForMV(req.MvName)
-	log.Debug("ReplicationManager::WriteMV: Component RVs for the given MV %s are: %v", req.MvName, rpc_server.ComponentRVsToString(componentRVs))
+	log.Debug("ReplicationManager::WriteMV: Component RVs for the given MV %s are: %v", req.MvName, rpc.ComponentRVsToString(componentRVs))
 
 	// TODO: put chunk to each component RV can be done in parallel
 	for _, rv := range componentRVs {

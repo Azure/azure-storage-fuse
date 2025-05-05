@@ -42,6 +42,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 	rpc_server "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/server"
 )
@@ -57,7 +58,7 @@ const (
 )
 
 func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *models.RVNameAndState {
-	log.Debug("utils::getReaderRV: Component RVs are: %v, excludeRVs: %v", rpc_server.ComponentRVsToString(componentRVs), excludeRVs)
+	log.Debug("utils::getReaderRV: Component RVs are: %v, excludeRVs: %v", rpc.ComponentRVsToString(componentRVs), excludeRVs)
 
 	myNodeID := rpc_server.GetMyNodeUUID()
 	onlineRVs := make([]*models.RVNameAndState, 0)
@@ -80,7 +81,7 @@ func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *mo
 	}
 
 	if len(onlineRVs) == 0 {
-		log.Debug("utils::getReaderRV: no online RVs found for component RVs %v", rpc_server.ComponentRVsToString(componentRVs))
+		log.Debug("utils::getReaderRV: no online RVs found for component RVs %v", rpc.ComponentRVsToString(componentRVs))
 		return nil
 	}
 
@@ -112,7 +113,7 @@ func getComponentRVsForMV(mvName string) []*models.RVNameAndState {
 	}
 
 	common.Assert(len(componentRVs) == int(getNumReplicas()),
-		fmt.Sprintf("number of component RVs %d is not same as number of replicas %d for MV %s : %v", len(componentRVs), getNumReplicas(), mvName, rpc_server.ComponentRVsToString(componentRVs)))
+		fmt.Sprintf("number of component RVs %d is not same as number of replicas %d for MV %s : %v", len(componentRVs), getNumReplicas(), mvName, rpc.ComponentRVsToString(componentRVs)))
 
 	return componentRVs
 }
