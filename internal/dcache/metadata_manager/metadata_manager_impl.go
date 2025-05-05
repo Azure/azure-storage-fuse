@@ -135,6 +135,14 @@ func GetFileOpenCount(filePath string) (int64, error) {
 	return metadataManagerInstance.getFileOpenCount(filePath)
 }
 
+func SetFileSize(filePath string, size int64) error {
+	return metadataManagerInstance.setFileSize(filePath, size)
+}
+
+func GetFileSize(filePath string) (int64, error) {
+	return metadataManagerInstance.getFileSize(filePath)
+}
+
 func UpdateHeartbeat(nodeId string, data []byte) error {
 	return metadataManagerInstance.updateHeartbeat(nodeId, data)
 }
@@ -386,6 +394,61 @@ func (m *BlobMetadataManager) getFileOpenCount(filePath string) (int64, error) {
 	return int64(count), nil
 }
 
+func (m *BlobMetadataManager) setFileSize(filePath string, size int64) error {
+	path := filepath.Join(m.mdRoot, "Objects", filePath)
+	// Get the current metadata properties
+	attr, err := m.storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{
+		Name: path,
+	})
+	if err != nil {
+		log.Err("SetFileSize :: Failed to get properties for path %s : %v", path, err)
+	}
+	// Set the new size in the metadata properties
+	sizeStr := strconv.Itoa(int(size))
+	common.Assert(attr.Metadata["size"] == nil, "size property already found in metadata for path %s", path)
+	attr.Metadata["size"] = &sizeStr
+	// Set the new metadata in storage
+	err = m.storageCallback.SetMetaPropertiesInStorage(internal.SetMetadataOptions{
+		Path:      path,
+		Metadata:  attr.Metadata,
+		Etag:      to.Ptr(azcore.ETag(attr.ETag)),
+		Overwrite: true,
+	})
+	if err != nil {
+		log.Err("SetFileSize :: Failed to set size property for path %s : %v", path, err)
+	}
+	log.Debug("SetFileSize :: Set size property for path %s : %d", path, size)
+	return err
+}
+
+func (m *BlobMetadataManager) getFileSize(filePath string) (int64, error) {
+	path := filepath.Join(m.mdRoot, "Objects", filePath)
+	prop, err := m.storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{
+		Name: path,
+	})
+	if err != nil {
+		log.Err("GetFileSize :: Failed to get properties for path %s : %v", path, err)
+		return -1, err
+	}
+	size, ok := prop.Metadata["size"]
+	if !ok {
+		log.Err("GetFileSize :: size not found in metadata for path %s", path)
+		common.Assert(false, fmt.Sprintf("size not found in metadata for path %s", path))
+		return -1, err
+	}
+	sizeInt, err := strconv.Atoi(*size)
+	if err != nil {
+		log.Err("GetFileSize :: Failed to parse size for path %s with value %s : %v", path, *size, err)
+		return -1, err
+	}
+	if sizeInt < 0 {
+		log.Warn("GetFileSize :: Size is negative for path %s : %d", path, sizeInt)
+		return -1, fmt.Errorf("size is negative for path %s : %d", path, sizeInt)
+	}
+	log.Debug("GetFileSize :: Size for path %s : %d", path, sizeInt)
+	return int64(sizeInt), nil
+}
+
 // UpdateHeartbeat creates or updates the heartbeat file
 func (m *BlobMetadataManager) updateHeartbeat(nodeId string, data []byte) error {
 	// Create the heartbeat file path
@@ -483,8 +546,9 @@ func (m *BlobMetadataManager) createInitialClusterMap(clustermap []byte) error {
 	// and the caller should not overwrite it.
 	if err != nil {
 		if bloberror.HasCode(err, bloberror.ConditionNotMet) {
+			// Log the reason for failure and return the error for caller to handle
 			log.Info("CreateInitialClusterMap :: PutBlobInStorage failed for %s due to ETag mismatch", clustermapPath)
-			return nil
+			return err
 		}
 		log.Err("CreateInitialClusterMap :: Failed to put blob %s in storage: %v", clustermapPath, err)
 		return err

@@ -77,6 +77,12 @@ type MetadataManager interface {
 	// GetFileOpenCount returns the current open count for a file.
 	getFileOpenCount(filePath string) (int64, error)
 
+	// SetFileSize sets the size of the file in the metadata property of blob.
+	setFileSize(filePath string, size int64) error
+
+	// GetFileSize returns the size of the file in the metadata property of blob.
+	getFileSize(filePath string) (int64, error)
+
 	//
 	// Following APIs are used to manage internal files in the distributed cache.
 	//
