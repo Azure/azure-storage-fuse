@@ -110,11 +110,11 @@ func CreateFileInit(filePath string, fileMetadata []byte) error {
 	return metadataManagerInstance.createFileInit(filePath, fileMetadata)
 }
 
-func CreateFileFinalize(filePath string, fileMetadata []byte, fileSize int) error {
+func CreateFileFinalize(filePath string, fileMetadata []byte, fileSize int64) error {
 	return metadataManagerInstance.createFileFinalize(filePath, fileMetadata, fileSize)
 }
 
-func GetFile(filePath string) ([]byte, int, error) {
+func GetFile(filePath string) ([]byte, int64, error) {
 	return metadataManagerInstance.getFile(filePath)
 }
 
@@ -196,11 +196,11 @@ func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byt
 }
 
 // CreateFileFinalize finalizes the metadata for a file
-func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata []byte, fileSize int) error {
+func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata []byte, fileSize int64) error {
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
 	// Store the open-count and file size in the metadata blob property
 	openCount := "0"
-	sizeStr := strconv.Itoa(fileSize)
+	sizeStr := strconv.FormatInt(fileSize, 10)
 	metadata := map[string]*string{
 		"opencount":           &openCount,
 		"cache-object-length": &sizeStr,
@@ -221,8 +221,9 @@ func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata [
 	return err
 }
 
+// TODO :: Replace the two REST API calls with a single call to DownloadStream
 // GetFile reads and returns the content of metadata for a file
-func (m *BlobMetadataManager) getFile(filePath string) ([]byte, int, error) {
+func (m *BlobMetadataManager) getFile(filePath string) ([]byte, int64, error) {
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
 	// Get the file content from storage
 	data, err := m.storageCallback.GetBlobFromStorage(internal.ReadFileWithNameOptions{
@@ -248,7 +249,7 @@ func (m *BlobMetadataManager) getFile(filePath string) ([]byte, int, error) {
 		return nil, -1, err
 	}
 
-	sizeInt, err := strconv.Atoi(*size)
+	sizeInt, err := strconv.ParseInt(*size, 10, 64)
 	if err != nil {
 		log.Err("GetFile :: Failed to parse size for path %s with value %s : %v", path, *size, err)
 		return nil, -1, err
