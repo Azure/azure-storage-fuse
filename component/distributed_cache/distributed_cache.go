@@ -313,8 +313,7 @@ func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.
 	} else if isDcachePath {
 		// properties should be fetched from Dcache
 		log.Debug("DistributedCache::GetAttr : Path is having Dcache subcomponent, path : %s", options.Name)
-		// todo :: call GetMdRoot() from metadata manager
-		rawPath = filepath.Join("__CACHE__"+dc.cfg.CacheID, "Objects", rawPath)
+		rawPath = filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
 	} else {
 		common.Assert(rawPath == options.Name, rawPath, options.Name)
 	}
@@ -323,11 +322,17 @@ func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.
 	if err != nil {
 		return nil, err
 	}
+
 	// Modify the attr if it came from specific virtual component.
-	// todo : if the path is fs=dcache/*, then populate size, times from the fileLayout
 	if isAzurePath || isDcachePath {
 		attr.Path = options.Name
 		attr.Name = filepath.Base(options.Name)
+		if isDcachePath {
+			err := parseDcacheMetadata(attr)
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
 	return attr, nil
 }
@@ -340,8 +345,7 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 	} else if isDcachePath {
 		// properties should be fetched from Dcache
 		log.Debug("DistributedCache::StreamDir : Path is having Dcache subcomponent, path : %s", options.Name)
-		// todo :: call GetMdRoot() from metadata manager
-		rawPath = filepath.Join("__CACHE__"+dc.cfg.CacheID, "Objects", rawPath)
+		rawPath = filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
 	} else {
 		// properties should be fetched from Azure
 		common.Assert(rawPath == options.Name, rawPath, options.Name)
@@ -351,12 +355,19 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 	if err != nil {
 		return dirList, token, err
 	}
-	// todo : parse the attributes of the file like size,etc.. from the file layout.
+
+	// parse the fileSize from the metadata property of the attribute.
+	// Allow the files which are in ready state/writing state.
+	// todo: exclude the files which are in deleting state.
+	if isDcachePath {
+		dirList = parseDcacheMetadataForDirEntries(dirList)
+	}
+
 	// If the attributes come for the dcache virtual component.
 	if isMountPointRoot(rawPath) {
-		// todo : Show cache metadata when debug is enabled.
 		dirList = hideCacheMetadata(dirList)
 	}
+
 	return dirList, token, nil
 }
 

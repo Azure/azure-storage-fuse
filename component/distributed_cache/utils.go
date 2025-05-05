@@ -38,10 +38,12 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
@@ -186,4 +188,52 @@ func isMountPointRoot(path string) bool {
 		return true
 	}
 	return false
+}
+
+// Get Dcache File size from the blob metadata property.
+func parseDcacheMetadata(attr *internal.ObjAttr) error {
+	log.Debug("DistributedCache::parseDcacheMetadata: file: %s", attr.Name)
+	var fileSize int64
+	var err error
+
+	if val, ok := attr.Metadata["cache-object-length"]; ok {
+		fileSize, err = strconv.ParseInt(*val, 10, 64)
+		if err == nil {
+			if fileSize >= 0 {
+				attr.Size = fileSize
+			} else if fileSize == -1 {
+				// FileSize can be negative in two cases:
+				// case1 : file is in writing state by the current node/ some other node in dcache. in which case we don't know
+				// the final size hence we return size to be zero.
+				// case2 : file got created and before the closing the fd of create, blobfuse got crashed. In that case we'll be
+				// having a stale entry which takes up the path and disallows the further file creations on that path.
+				// Now such files would be having the file size 0. but now when user tries to do the stat of this file they get
+				// the file size to be 0, Now how can they distiguish this file from the file which was actually of fileSize 0?
+				// Todo : is it a good idea to return file Size to be of INT64_MAX to distinguish these files?
+				attr.Size = 0
+			}
+		}
+	} else {
+		log.Err("DistributedCache::GetAttr : Dcache file Size cannot be found in the metadata field of the blob, file: %s", attr.Name)
+		common.Assert(false, fmt.Sprintf("Dcache file Size cannot be found in the blob metadata property, file: %s", attr.Name))
+		err = fmt.Errorf("Could not find Size property in blob metadata")
+	}
+
+	return err
+}
+
+func parseDcacheMetadataForDirEntries(dirList []*internal.ObjAttr) []*internal.ObjAttr {
+	newDirList := make([]*internal.ObjAttr, len(dirList))
+	i := 0
+	for _, attr := range dirList {
+		err := parseDcacheMetadata(attr)
+		if err == nil {
+			newDirList[i] = attr
+			i++
+		} else {
+			log.Err("DistributedCache::parseDcacheMetadataForDirEntries: skipping the dir entry , file: %s, err: %s", attr.Name, err.Error())
+		}
+	}
+	return newDirList[:i]
+
 }

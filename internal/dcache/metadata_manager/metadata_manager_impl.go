@@ -172,9 +172,16 @@ func GetClusterMap() ([]byte, *string, error) {
 func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byte) error {
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
 
+	// The size of the file is set to -1 to represent the file is not finalized
+	var fileSize int64 = -1
+	sizeStr := strconv.FormatInt(fileSize, 10)
+	metadata := map[string]*string{
+		"cache-object-length": &sizeStr,
+	}
 	err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
 		Name:                   path,
 		Data:                   fileMetadata,
+		Metadata:               metadata,
 		IsNoneMatchEtagEnabled: true,
 		EtagMatchConditions:    "",
 	})
