@@ -34,7 +34,6 @@
 package metadata_manager
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -111,11 +110,11 @@ func CreateFileInit(filePath string, fileMetadata []byte) error {
 	return metadataManagerInstance.createFileInit(filePath, fileMetadata)
 }
 
-func CreateFileFinalize(filePath string, fileMetadata []byte) error {
-	return metadataManagerInstance.createFileFinalize(filePath, fileMetadata)
+func CreateFileFinalize(filePath string, fileMetadata []byte, fileSize int) error {
+	return metadataManagerInstance.createFileFinalize(filePath, fileMetadata, fileSize)
 }
 
-func GetFile(filePath string) (*dcache.FileMetadata, error) {
+func GetFile(filePath string) ([]byte, int, error) {
 	return metadataManagerInstance.getFile(filePath)
 }
 
@@ -133,14 +132,6 @@ func CloseFile(filePath string) (int64, error) {
 
 func GetFileOpenCount(filePath string) (int64, error) {
 	return metadataManagerInstance.getFileOpenCount(filePath)
-}
-
-func SetFileSize(filePath string, size int64) error {
-	return metadataManagerInstance.setFileSize(filePath, size)
-}
-
-func GetFileSize(filePath string) (int64, error) {
-	return metadataManagerInstance.getFileSize(filePath)
 }
 
 func UpdateHeartbeat(nodeId string, data []byte) error {
@@ -204,13 +195,16 @@ func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byt
 }
 
 // CreateFileFinalize finalizes the metadata for a file
-func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata []byte) error {
+func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata []byte, fileSize int) error {
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
-	// Store the open-count in the metadata blob property
+	// Store the open-count and file size in the metadata blob property
 	openCount := "0"
+	sizeStr := strconv.Itoa(int(fileSize))
 	metadata := map[string]*string{
 		"opencount": &openCount,
+		"size":      &sizeStr,
 	}
+
 	err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
 		Name:                   path,
 		Data:                   fileMetadata,
@@ -220,31 +214,49 @@ func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata [
 	})
 	if err != nil {
 		log.Err("CreateFileFinalize :: Failed to put blob %s in storage: %v", path, err)
+		return err
 	}
+	log.Debug("CreateFileFinalize :: Created file metadata blob %s with size %d", path, fileSize)
 	return err
 }
 
 // GetFile reads and returns the content of metadata for a file
-// TODO :: Check if we can return []byte to make this function symmetric with others
-func (m *BlobMetadataManager) getFile(filePath string) (*dcache.FileMetadata, error) {
+func (m *BlobMetadataManager) getFile(filePath string) ([]byte, int, error) {
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
-	// Get the metadata content from storage
+	// Get the file content from storage
 	data, err := m.storageCallback.GetBlobFromStorage(internal.ReadFileWithNameOptions{
 		Path: path,
 	})
 	if err != nil {
 		log.Debug("GetFile :: Failed to get metadata file content for file %s : %v", path, err)
-		return nil, err
+		return nil, -1, err
 	}
-	// Unmarshal the JSON data into the Metadata struct
-	var metadata dcache.FileMetadata
-	err = json.Unmarshal(data, &metadata)
+	// Get the file size from the metadata properties
+	prop, err := m.storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{
+		Name: path,
+	})
 	if err != nil {
-		log.Debug("GetFile :: Failed to unmarshal JSON data: %v", err)
-		return nil, err
+		log.Err("GetFile :: Failed to get properties for path %s : %v", path, err)
+		return nil, -1, err
 	}
-	// Return the Metadata struct
-	return &metadata, nil
+	// Extract the size from the metadata properties
+	size, ok := prop.Metadata["size"]
+	if !ok {
+		log.Err("GetFile :: size not found in metadata for path %s", path)
+		common.Assert(false, fmt.Sprintf("size not found in metadata for path %s", path))
+		return nil, -1, err
+	}
+	sizeInt, err := strconv.Atoi(*size)
+	if err != nil {
+		log.Err("GetFile :: Failed to parse size for path %s with value %s : %v", path, *size, err)
+		return nil, -1, err
+	}
+	if sizeInt < 0 {
+		log.Warn("GetFile :: Size is negative for path %s : %d", path, sizeInt)
+		return nil, -1, fmt.Errorf("size is negative for path %s : %d", path, sizeInt)
+	}
+
+	return data, sizeInt, nil
 }
 
 // DeleteFile removes metadata for a file
