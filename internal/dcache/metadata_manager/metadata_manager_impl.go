@@ -249,20 +249,20 @@ func (m *BlobMetadataManager) getFile(filePath string) ([]byte, int64, error) {
 		return nil, -1, err
 	}
 
-	sizeInt, err := strconv.ParseInt(*size, 10, 64)
+	fileSize, err := strconv.ParseInt(*size, 10, 64)
 	if err != nil {
 		log.Err("GetFile :: Failed to parse size for path %s with value %s : %v", path, *size, err)
 		return nil, -1, err
 	}
 
-	common.Assert(sizeInt >= 0, "size cannot be negative", sizeInt)
-	if sizeInt < 0 {
-		log.Warn("GetFile :: Size is negative for path %s : %d", path, sizeInt)
-		return nil, -1, fmt.Errorf("size is negative for path %s : %d", path, sizeInt)
+	common.Assert(fileSize >= 0, "size cannot be negative", fileSize)
+	if fileSize < 0 {
+		log.Warn("GetFile :: Size is negative for path %s : %d", path, fileSize)
+		return nil, -1, fmt.Errorf("size is negative for path %s : %d", path, fileSize)
 	}
 
-	log.Debug("GetFile :: Size for path %s : %d", path, sizeInt)
-	return data, sizeInt, nil
+	log.Debug("GetFile :: Size for path %s : %d", path, fileSize)
+	return data, fileSize, nil
 }
 
 // DeleteFile removes metadata for a file
