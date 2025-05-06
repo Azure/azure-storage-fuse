@@ -180,7 +180,7 @@ func (dc *DistributedCache) startClusterManager() string {
 	if err != nil {
 		return fmt.Sprintf("DistributedCache::Start error [Failed to create RV List for cluster manager : %v]", err)
 	}
-	if cm.Init(dCacheConfig, rvList) != nil {
+	if cm.Start(dCacheConfig, rvList) != nil {
 		return fmt.Sprintf("DistributedCache::Start error [Failed to start cluster manager : %v]", err)
 	}
 	return ""
@@ -214,6 +214,7 @@ func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
 			IPAddress:      ipaddr,
 			RvId:           rvId,
 			FDID:           "0",
+			State:          dcache.StateOnline,
 			TotalSpace:     totalSpace,
 			AvailableSpace: availableSpace,
 			LocalCachePath: path,
