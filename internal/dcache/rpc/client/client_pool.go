@@ -40,7 +40,7 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 )
 
 // clientPool manages multiple rpc clients efficiently
@@ -196,7 +196,7 @@ func (ncPool *nodeClientPool) createRPCClients(numClients uint32) {
 
 	// Create RPC clients and add them to the channel
 	for i := 0; i < int(numClients); i++ {
-		client, err := newRPCClient(ncPool.nodeID, getNodeAddressFromID(ncPool.nodeID))
+		client, err := newRPCClient(ncPool.nodeID, rpc.GetNodeAddressFromID(ncPool.nodeID))
 		if err != nil {
 			log.Err("nodeClientPool::createRPCClients: Failed to create RPC client for node %s [%v]", ncPool.nodeID, err.Error())
 			continue // skip this client
@@ -225,12 +225,4 @@ func (ncPool *nodeClientPool) closeRPCClients() error {
 
 	common.Assert(len(ncPool.clientChan) == 0, "client channel is not empty after closing all RPC clients")
 	return nil
-}
-
-// return the node address for the given node ID
-// the node address is of the form <ip>:<port>
-func getNodeAddressFromID(nodeID string) string {
-	nodeAddress := fmt.Sprintf("%s:%d", clustermap.NodeIdToIP(nodeID), defaultPort)
-	common.Assert(common.IsValidHostPort(nodeAddress), fmt.Sprintf("node address is not valid: %s", nodeAddress))
-	return nodeAddress
 }

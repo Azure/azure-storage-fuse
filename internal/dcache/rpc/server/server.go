@@ -34,14 +34,15 @@
 package rpc_server
 
 import (
+	"fmt"
+
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/service"
 	"github.com/apache/thrift/lib/go/thrift"
 )
-
-var dCacheConfig *dcache.DCacheConfig
 
 // NodeServer struct holds the Thrift server
 type NodeServer struct {
@@ -49,26 +50,34 @@ type NodeServer struct {
 	server  thrift.TServer
 }
 
-// NewNodeServer creates a Thrift server for the node. It takes following parameters:
-// - address: address of the node having the format <ip>:<port>
-// - rvs: map of raw volumes of this node
-// - dCacheConfig: dCache configuration
-func NewNodeServer(address string, rvs map[string]dcache.RawVolume, config *dcache.DCacheConfig) (*NodeServer, error) {
-	// TODO: add assert for IsValidIP
-	common.Assert(address != "", "node address cannot be empty")
+// NewNodeServer creates a Thrift server for the node
+func NewNodeServer() (*NodeServer, error) {
+	nodeID, err := common.GetNodeUUID()
+	if err != nil {
+		common.Assert(false, "failed to get node ID [%v]", err.Error())
+		log.Err("NodeServer::NewNodeServer: Failed to get node ID [%v]", err.Error())
+		return nil, err
+	}
+
+	address := rpc.GetNodeAddressFromID(nodeID)
+	rvs := clustermap.GetMyRVs()
+
+	if !common.IsValidHostPort(address) {
+		common.Assert(false, "invalid node address %s", address)
+		log.Err("NodeServer::NewNodeServer: Invalid node address %s", address)
+		return nil, fmt.Errorf("invalid node address %s", address)
+	}
+
+	// TODO: add assert for IsValidRVMap()
 	common.Assert(rvs != nil, "raw volumes cannot be nil")
 	common.Assert(len(rvs) > 0, "raw volumes cannot be empty")
-	common.Assert(config != nil, "dCacheConfig cannot be nil")
 
-	log.Debug("NodeServer::NewNodeServer: Creating NodeServer with address: %s, RVs %+v, dcache config %+v", address, rvs, *config)
-
-	dCacheConfig = config
+	log.Debug("NodeServer::NewNodeServer: Creating NodeServer with address: %s, RVs %+v", address, rvs)
 
 	protocolFactory := thrift.NewTBinaryProtocolFactoryConf(nil)
 	transportFactory := thrift.NewTTransportFactory()
 
 	var transport thrift.TServerTransport
-	var err error
 
 	// if secure {
 	// 	cfg := new(tls.Config)

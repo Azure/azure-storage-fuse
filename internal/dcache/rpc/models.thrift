@@ -109,7 +109,7 @@ struct StartSyncRequest {
     2: string sourceRVName, // source RV is the lowest index online RV. The node hosting this RV will send the start sync call to the component RVs
     3: string targetRVName // target RV is the target of the start sync request
     4: list<RVNameAndState> componentRV,
-    5: i64 dataLength
+    5: i64 syncSize
 }
 
 struct StartSyncResponse {
@@ -123,7 +123,7 @@ struct EndSyncRequest {
     3: string sourceRVName, // source RV is the lowest index online RV. The node hosting this RV will send the end sync call to the component RVs
     4: string targetRVName, // target RV is the RV which has to stop the sync marking it as completed
     5: list<RVNameAndState> componentRV,
-    6: i64 dataLength
+    6: i64 syncSize
 }
 
 struct EndSyncResponse {

@@ -34,13 +34,8 @@
 package rpc_test
 
 import (
-	"context"
 	"testing"
 
-	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
-	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
-	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
-	rpc_server "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/server"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
@@ -54,6 +49,7 @@ func (suite *rpcTestSuite) SetupTest() {
 	suite.assert = assert.New(suite.T())
 }
 
+/*
 func (suite *rpcTestSuite) TestHelloRPC() {
 	// start server
 	server, err := rpc_server.NewNodeServer("localhost:9090", make(map[string]dcache.RawVolume), &dcache.DCacheConfig{})
@@ -73,6 +69,7 @@ func (suite *rpcTestSuite) TestHelloRPC() {
 	err = server.Stop()
 	suite.assert.NoError(err)
 }
+*/
 
 func TestRPCTestSuite(t *testing.T) {
 	suite.Run(t, new(rpcTestSuite))

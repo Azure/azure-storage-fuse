@@ -42,6 +42,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 )
@@ -98,7 +99,7 @@ func sortComponentRVs(rvs []*models.RVNameAndState) {
 // ]
 func isComponentRVsValid(rvInMV []*models.RVNameAndState, rvInReq []*models.RVNameAndState) error {
 	if len(rvInMV) != len(rvInReq) {
-		return fmt.Errorf("request component RVs %s is not same as MV component RVs %s", ComponentRVsToString(rvInReq), ComponentRVsToString(rvInMV))
+		return fmt.Errorf("request component RVs %s is not same as MV component RVs %s", rpc.ComponentRVsToString(rvInReq), rpc.ComponentRVsToString(rvInMV))
 	}
 
 	sortComponentRVs(rvInReq)
@@ -115,25 +116,14 @@ func isComponentRVsValid(rvInMV []*models.RVNameAndState, rvInReq []*models.RVNa
 	}
 
 	if !isValid {
-		rvInMvStr := ComponentRVsToString(rvInMV)
-		rvInReqStr := ComponentRVsToString(rvInReq)
+		rvInMvStr := rpc.ComponentRVsToString(rvInMV)
+		rvInReqStr := rpc.ComponentRVsToString(rvInReq)
 		log.Err("utils::isComponentRVsValid: Request component RVs %s is not same as MV component RVs %s", rvInReqStr, rvInMvStr)
 		common.Assert(false, fmt.Sprintf("request component RVs %s is not same as MV component RVs %s", rvInReqStr, rvInMvStr))
 		return fmt.Errorf("request component RVs %s is not same as MV component RVs %s", rvInReqStr, rvInMvStr)
 	}
 
 	return nil
-}
-
-// convert *models.RVNameAndState to string
-// used for logging
-func ComponentRVsToString(rvs []*models.RVNameAndState) string {
-	var arr []models.RVNameAndState
-	for _, rv := range rvs {
-		common.Assert(rv != nil, "Component RV is nil")
-		arr = append(arr, *rv)
-	}
-	return fmt.Sprintf("%+v", arr)
 }
 
 // check if the RV is present in the component RVs of the MV
@@ -197,15 +187,7 @@ func getRvIDMap(rvs map[string]dcache.RawVolume) map[string]*rvInfo {
 
 // return mvs-per-rv from dcache config
 func getMVsPerRV() int64 {
-	return int64(dCacheConfig.MvsPerRv)
-}
-
-// return the node ID of this node
-func GetMyNodeUUID() string {
-	nodeID, err := common.GetNodeUUID()
-	common.Assert(err == nil, fmt.Sprintf("failed to get current node's UUID [%v]", err))
-	common.Assert(common.IsValidUUID(nodeID), "current node's UUID is not valid", nodeID)
-	return nodeID
+	return int64(clustermap.GetCacheConfig().MvsPerRv)
 }
 
 // When an MV is in degraded state because one or more of its RV went offline,
