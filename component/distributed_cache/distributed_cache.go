@@ -175,6 +175,8 @@ func (dc *DistributedCache) startClusterManager() string {
 		RebalancePercentage:    dc.cfg.RebalancePercentage,
 		SafeDeletes:            dc.cfg.SafeDeletes,
 		CacheAccess:            dc.cfg.CacheAccess,
+		RvFullThreshold:        dc.cfg.RVFullThreshold,
+		RvNearfullThreshold:    dc.cfg.RVNearfullThreshold,
 	}
 	rvList, err := dc.createRVList()
 	if err != nil {
@@ -555,7 +557,7 @@ func (dc *DistributedCache) WriteFile(options internal.WriteFileOptions) (int, e
 	common.Assert(len(options.Data) != 0)
 
 	// When user wants to write to a default path (no explicit fs=azure/fs=dcache namespace specified)
-	// we have mulitple possible semantics:
+	// we have multiple possible semantics:
 	// 1. Write through
 	//    In this mode every application write is written to both the dcache as well as Azure, as if
 	//    user explicitly wrote to either of them. If any of these write fails, the application write

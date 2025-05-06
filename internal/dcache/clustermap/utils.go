@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package clustermanager
+package clustermap
 
 import (
 	"fmt"
@@ -60,11 +60,11 @@ var (
 	minStripeWidth int64 = 4
 	maxStripeWidth int64 = 256
 
-	minNumReplicas int64 = 1
-	maxNumReplicas int64 = 256
+	MinNumReplicas int64 = 1
+	MaxNumReplicas int64 = 256
 
-	minMvsPerRv int64 = 10
-	maxMvsPerRv int64 = 100
+	MinMvsPerRv int64 = 10
+	MaxMvsPerRv int64 = 100
 
 	minRvFullThreshold int64 = 80
 	maxRvFullThreshold int64 = 100
@@ -187,11 +187,11 @@ func IsValidDcacheConfig(cfg *dcache.DCacheConfig) (bool, error) {
 		return false, fmt.Errorf("DCacheConfig: Invalid StripeSize: %d %+v", cfg.StripeSize, *cfg)
 	}
 
-	if int64(cfg.NumReplicas) < minNumReplicas || int64(cfg.NumReplicas) > maxNumReplicas {
+	if int64(cfg.NumReplicas) < MinNumReplicas || int64(cfg.NumReplicas) > MaxNumReplicas {
 		return false, fmt.Errorf("DCacheConfig: Invalid NumReplicas: %d %+v", cfg.NumReplicas, *cfg)
 	}
 
-	if int64(cfg.MvsPerRv) < minMvsPerRv || int64(cfg.MvsPerRv) > maxMvsPerRv {
+	if int64(cfg.MvsPerRv) < MinMvsPerRv || int64(cfg.MvsPerRv) > MaxMvsPerRv {
 		return false, fmt.Errorf("DCacheConfig: Invalid MvsPerRv: %d %+v", cfg.MvsPerRv, *cfg)
 	}
 
