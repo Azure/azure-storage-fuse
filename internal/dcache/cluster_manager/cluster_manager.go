@@ -818,11 +818,11 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	//       when the clustermap is actually updated and LastProcessedAt can be used for leader down
 	//       handling.
 	//
-	if changed {
-		cmi.updateMVList(clusterMap.RVMap, clusterMap.MVMap)
-	} else {
-		log.Debug("ClusterManager::updateStorageClusterMapIfRequired: No changes in RV mapping")
-	}
+	// if changed {
+	cmi.updateMVList(clusterMap.RVMap, clusterMap.MVMap)
+	// } else {
+	// log.Debug("ClusterManager::updateStorageClusterMapIfRequired: No changes in RV mapping")
+	// }
 
 	clusterMap.LastUpdatedAt = time.Now().Unix()
 	clusterMap.State = dcache.StateReady
