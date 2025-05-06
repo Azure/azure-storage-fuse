@@ -97,10 +97,6 @@ func IsValidClusterMap(cm *dcache.ClusterMap) (bool, error) {
 		return false, fmt.Errorf("ClusterMap: Invalid State: %s %+v", cm.State, *cm)
 	}
 
-	if cm.Epoch < minClusterMapEpoch || cm.Epoch > maxClusterMapEpoch {
-		return false, fmt.Errorf("ClusterMap: Invalid Epoch: %d %+v", cm.Epoch, *cm)
-	}
-
 	if cm.CreatedAt < minUnixEpoch || cm.CreatedAt > maxUnixEpoch {
 		return false, fmt.Errorf("ClusterMap: Invalid CreatedAt: %d %+v", cm.CreatedAt, *cm)
 	}

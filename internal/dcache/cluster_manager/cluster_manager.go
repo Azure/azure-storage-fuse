@@ -532,6 +532,9 @@ func (cmi *ClusterManager) updateStorageClusterMapWithMyRVs() error {
 		// Now we want to add our RVs to the clustermap RV list.
 		// If some other node is currently updating the clustermap, we need to wait and retry.
 		//
+		// TODO: Add support for checking if the node that set the state to StateChecking dies
+		//       and hence it doesn't come out of that state.
+		//
 		if clusterMap.State == dcache.StateChecking {
 			log.Info("ClusterManager::updateStorageClusterMapWithMyRVs: clustermap being updated by node %s, waiting a bit before retry",
 				clusterMap.LastUpdatedBy)
@@ -765,6 +768,8 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 			cmi.myNodeId, clusterMap.LastUpdatedBy, clusterMap.LastUpdatedAt, now)
 		return nil
 	}
+
+	// TODO: We need to update clusterMap.Epoch to contain the next higher number.
 
 	clusterMap.LastUpdatedBy = cmi.myNodeId
 	clusterMap.State = dcache.StateChecking
