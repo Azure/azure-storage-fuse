@@ -3670,13 +3670,13 @@ func (p *LeaveMVResponse) String() string {
 //   - SourceRVName
 //   - TargetRVName
 //   - ComponentRV
-//   - DataLength
+//   - SyncSize
 type StartSyncRequest struct {
 	MV           string            `thrift:"MV,1" db:"MV" json:"MV"`
 	SourceRVName string            `thrift:"sourceRVName,2" db:"sourceRVName" json:"sourceRVName"`
 	TargetRVName string            `thrift:"targetRVName,3" db:"targetRVName" json:"targetRVName"`
 	ComponentRV  []*RVNameAndState `thrift:"componentRV,4" db:"componentRV" json:"componentRV"`
-	DataLength   int64             `thrift:"dataLength,5" db:"dataLength" json:"dataLength"`
+	SyncSize     int64             `thrift:"syncSize,5" db:"syncSize" json:"syncSize"`
 }
 
 func NewStartSyncRequest() *StartSyncRequest {
@@ -3699,8 +3699,8 @@ func (p *StartSyncRequest) GetComponentRV() []*RVNameAndState {
 	return p.ComponentRV
 }
 
-func (p *StartSyncRequest) GetDataLength() int64 {
-	return p.DataLength
+func (p *StartSyncRequest) GetSyncSize() int64 {
+	return p.SyncSize
 }
 func (p *StartSyncRequest) Read(ctx context.Context, iprot thrift.TProtocol) error {
 	if _, err := iprot.ReadStructBegin(ctx); err != nil {
@@ -3832,7 +3832,7 @@ func (p *StartSyncRequest) ReadField5(ctx context.Context, iprot thrift.TProtoco
 	if v, err := iprot.ReadI64(ctx); err != nil {
 		return thrift.PrependError("error reading field 5: ", err)
 	} else {
-		p.DataLength = v
+		p.SyncSize = v
 	}
 	return nil
 }
@@ -3928,14 +3928,14 @@ func (p *StartSyncRequest) writeField4(ctx context.Context, oprot thrift.TProtoc
 }
 
 func (p *StartSyncRequest) writeField5(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "dataLength", thrift.I64, 5); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field begin error 5:dataLength: ", p), err)
+	if err := oprot.WriteFieldBegin(ctx, "syncSize", thrift.I64, 5); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 5:syncSize: ", p), err)
 	}
-	if err := oprot.WriteI64(ctx, int64(p.DataLength)); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T.dataLength (5) field write error: ", p), err)
+	if err := oprot.WriteI64(ctx, int64(p.SyncSize)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.syncSize (5) field write error: ", p), err)
 	}
 	if err := oprot.WriteFieldEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field end error 5:dataLength: ", p), err)
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 5:syncSize: ", p), err)
 	}
 	return err
 }
@@ -3964,7 +3964,7 @@ func (p *StartSyncRequest) Equals(other *StartSyncRequest) bool {
 			return false
 		}
 	}
-	if p.DataLength != other.DataLength {
+	if p.SyncSize != other.SyncSize {
 		return false
 	}
 	return true
@@ -4094,14 +4094,14 @@ func (p *StartSyncResponse) String() string {
 //   - SourceRVName
 //   - TargetRVName
 //   - ComponentRV
-//   - DataLength
+//   - SyncSize
 type EndSyncRequest struct {
 	SyncID       string            `thrift:"syncID,1" db:"syncID" json:"syncID"`
 	MV           string            `thrift:"MV,2" db:"MV" json:"MV"`
 	SourceRVName string            `thrift:"sourceRVName,3" db:"sourceRVName" json:"sourceRVName"`
 	TargetRVName string            `thrift:"targetRVName,4" db:"targetRVName" json:"targetRVName"`
 	ComponentRV  []*RVNameAndState `thrift:"componentRV,5" db:"componentRV" json:"componentRV"`
-	DataLength   int64             `thrift:"dataLength,6" db:"dataLength" json:"dataLength"`
+	SyncSize     int64             `thrift:"syncSize,6" db:"syncSize" json:"syncSize"`
 }
 
 func NewEndSyncRequest() *EndSyncRequest {
@@ -4128,8 +4128,8 @@ func (p *EndSyncRequest) GetComponentRV() []*RVNameAndState {
 	return p.ComponentRV
 }
 
-func (p *EndSyncRequest) GetDataLength() int64 {
-	return p.DataLength
+func (p *EndSyncRequest) GetSyncSize() int64 {
+	return p.SyncSize
 }
 func (p *EndSyncRequest) Read(ctx context.Context, iprot thrift.TProtocol) error {
 	if _, err := iprot.ReadStructBegin(ctx); err != nil {
@@ -4280,7 +4280,7 @@ func (p *EndSyncRequest) ReadField6(ctx context.Context, iprot thrift.TProtocol)
 	if v, err := iprot.ReadI64(ctx); err != nil {
 		return thrift.PrependError("error reading field 6: ", err)
 	} else {
-		p.DataLength = v
+		p.SyncSize = v
 	}
 	return nil
 }
@@ -4392,14 +4392,14 @@ func (p *EndSyncRequest) writeField5(ctx context.Context, oprot thrift.TProtocol
 }
 
 func (p *EndSyncRequest) writeField6(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "dataLength", thrift.I64, 6); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field begin error 6:dataLength: ", p), err)
+	if err := oprot.WriteFieldBegin(ctx, "syncSize", thrift.I64, 6); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 6:syncSize: ", p), err)
 	}
-	if err := oprot.WriteI64(ctx, int64(p.DataLength)); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T.dataLength (6) field write error: ", p), err)
+	if err := oprot.WriteI64(ctx, int64(p.SyncSize)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.syncSize (6) field write error: ", p), err)
 	}
 	if err := oprot.WriteFieldEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field end error 6:dataLength: ", p), err)
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 6:syncSize: ", p), err)
 	}
 	return err
 }
@@ -4431,7 +4431,7 @@ func (p *EndSyncRequest) Equals(other *EndSyncRequest) bool {
 			return false
 		}
 	}
-	if p.DataLength != other.DataLength {
+	if p.SyncSize != other.SyncSize {
 		return false
 	}
 	return true

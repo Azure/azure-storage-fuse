@@ -34,6 +34,8 @@
 package rpc_server
 
 import (
+	"fmt"
+
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
@@ -51,11 +53,22 @@ type NodeServer struct {
 // NewNodeServer creates a Thrift server for the node
 func NewNodeServer() (*NodeServer, error) {
 	nodeID, err := common.GetNodeUUID()
-	common.Assert(err == nil, "failed to get node ID: %v", err)
+	if err != nil {
+		common.Assert(false, "failed to get node ID [%v]", err.Error())
+		log.Err("NodeServer::NewNodeServer: Failed to get node ID [%v]", err.Error())
+		return nil, err
+	}
 
 	address := rpc.GetNodeAddressFromID(nodeID)
 	rvs := clustermap.GetMyRVs()
 
+	if !common.IsValidHostPort(address) {
+		common.Assert(false, "invalid node address %s", address)
+		log.Err("NodeServer::NewNodeServer: Invalid node address %s", address)
+		return nil, fmt.Errorf("invalid node address %s", address)
+	}
+
+	// TODO: add assert for IsValidRVMap()
 	common.Assert(rvs != nil, "raw volumes cannot be nil")
 	common.Assert(len(rvs) > 0, "raw volumes cannot be empty")
 
