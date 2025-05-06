@@ -35,6 +35,7 @@ package distributed_cache
 
 import (
 	"fmt"
+	"math"
 	"net"
 	"os"
 	"os/exec"
@@ -207,16 +208,17 @@ func parseDcacheMetadata(attr *internal.ObjAttr) error {
 				// the final size hence we return size to be zero.
 				// case2 : file got created and before the closing the fd of create, blobfuse got crashed. In that case we'll be
 				// having a stale entry which takes up the path and disallows the further file creations on that path.
-				// Now such files would be having the file size 0. but now when user tries to do the stat of this file they get
-				// the file size to be 0, Now how can they distiguish this file from the file which was actually of fileSize 0?
-				// Todo : is it a good idea to return file Size to be of INT64_MAX to distinguish these files?
-				attr.Size = 0
+				// These files are distinguished from the rest of the files by their size. While getting the attr/listing the dir.
+				attr.Size = math.MaxInt64
 			}
+		} else {
+			log.Err("DistributedCache::GetAttr : strconv failed for size string: %s, file: %s, error: %s", val, attr.Name, err.Error())
+			common.Assert(false, err)
 		}
 	} else {
-		log.Err("DistributedCache::GetAttr : Dcache file Size cannot be found in the metadata field of the blob, file: %s", attr.Name)
-		common.Assert(false, fmt.Sprintf("Dcache file Size cannot be found in the blob metadata property, file: %s", attr.Name))
-		err = fmt.Errorf("Could not find Size property in blob metadata")
+		err = fmt.Errorf("Blob metadata for %s doesn't have cache-object-length property", attr.Name)
+		log.Err("DistributedCache::GetAttr: %v", err)
+		common.Assert(false, err)
 	}
 
 	return err

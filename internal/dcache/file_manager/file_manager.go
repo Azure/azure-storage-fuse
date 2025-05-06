@@ -174,7 +174,7 @@ func (file *DcacheFile) SyncFile() error {
 		}
 		return true
 	})
-	common.Assert(err == nil, fmt.Sprintf("Filemanager::SyncFile failed, file : %s, err : %s",
+	common.Assert(err == nil, fmt.Sprintf("Filemanager::SyncFile failed, file: %s, err: %s",
 		file.FileMetadata.Filename, err.Error()))
 	return err
 }
@@ -185,14 +185,14 @@ func (file *DcacheFile) CloseFile() error {
 	// We stage application writes into StagedChunk and upload only when we have a full chunk.
 	// In case of last chunk being partial, we need to upload it now.
 	err := file.SyncFile()
-	common.Assert(err == nil, fmt.Sprintf("Filemanager::CloseFile failed, file : %s, err : %s",
+	common.Assert(err == nil, fmt.Sprintf("Filemanager::CloseFile failed, file: %s, err: %s",
 		file.FileMetadata.Filename, err.Error()))
 	if err == nil {
 		err := file.finalizeFile()
-		common.Assert(err == nil, fmt.Sprintf("Filemanager::CloseFile failed, file : %s, err : %s",
+		common.Assert(err == nil, fmt.Sprintf("Filemanager::CloseFile failed, file: %s, err: %s",
 			file.FileMetadata.Filename, err.Error()))
 		if err != nil {
-			log.Err("DistributedCache[FM]::Close : finalize file failed with err : %s, file: %s", err.Error(), file.FileMetadata.Filename)
+			log.Err("DistributedCache[FM]::Close : finalize file failed with err: %s, file: %s", err.Error(), file.FileMetadata.Filename)
 		}
 	}
 	return err
@@ -226,7 +226,7 @@ func (file *DcacheFile) finalizeFile() error {
 	}
 	err = mm.CreateFileFinalize(file.FileMetadata.Filename, fileMetadataBytes, file.FileMetadata.Size)
 	if err != nil {
-		log.Err("DistributedCache[FM]::finalizeFile : File Finalize failed for file : %s, %+v with err : %s",
+		log.Err("DistributedCache[FM]::finalizeFile : File Finalize failed for file: %s, %+v with err: %s",
 			file.FileMetadata.Filename, file.FileMetadata, err.Error())
 		return err
 	}
@@ -238,7 +238,7 @@ func (file *DcacheFile) finalizeFile() error {
 // Get's the existing chunk from the chunks
 // or Create a new one and add it to the the chunks
 func (file *DcacheFile) getChunk(chunkIdx int64) (*StagedChunk, bool, error) {
-	log.Debug("DistributedCache::getChunk : getChunk for chunkIdx : %d, file : %s", chunkIdx, file.FileMetadata.Filename)
+	log.Debug("DistributedCache::getChunk : getChunk for chunkIdx: %d, file: %s", chunkIdx, file.FileMetadata.Filename)
 	if chunkIdx < 0 {
 		return nil, false, errors.New("ChunkIdx is less than 0")
 	}
@@ -254,7 +254,7 @@ func (file *DcacheFile) getChunk(chunkIdx int64) (*StagedChunk, bool, error) {
 }
 
 func (file *DcacheFile) getChunkForRead(chunkIdx int64) (*StagedChunk, error) {
-	log.Debug("DistributedCache::getChunkForRead : getChunk for Read chunkIdx : %d, file : %s", chunkIdx, file.FileMetadata.Filename)
+	log.Debug("DistributedCache::getChunkForRead : getChunk for Read chunkIdx: %d, file: %s", chunkIdx, file.FileMetadata.Filename)
 	chunk, loaded, err := file.getChunk(chunkIdx)
 	if err == nil && !loaded {
 		close(chunk.ScheduleUpload)
@@ -264,7 +264,7 @@ func (file *DcacheFile) getChunkForRead(chunkIdx int64) (*StagedChunk, error) {
 }
 
 func (file *DcacheFile) getChunkForWrite(chunkIdx int64) (*StagedChunk, error) {
-	log.Debug("DistributedCache::getChunkForWrite : getChunk for Write chunkIdx : %d, file : %s", chunkIdx, file.FileMetadata.Filename)
+	log.Debug("DistributedCache::getChunkForWrite : getChunk for Write chunkIdx: %d, file: %s", chunkIdx, file.FileMetadata.Filename)
 	chunk, loaded, err := file.getChunk(chunkIdx)
 	if err == nil && !loaded {
 		close(chunk.ScheduleDownload)
@@ -285,7 +285,7 @@ func (file *DcacheFile) loadChunk(chunkIdx int64) (*StagedChunk, error) {
 
 // remove chunk from the file chunks
 func (file *DcacheFile) removeChunk(chunkIdx int64) {
-	log.Debug("DisttributedCache::removeChunk : removing chunk from the chunks, chunk idx : %d, file : %s",
+	log.Debug("DisttributedCache::removeChunk : removing chunk from the chunks, chunk idx: %d, file: %s",
 		chunkIdx, file.FileMetadata.Filename)
 	Ichunk, loaded := file.StagedChunks.LoadAndDelete(chunkIdx)
 	if loaded {
@@ -296,7 +296,7 @@ func (file *DcacheFile) removeChunk(chunkIdx int64) {
 
 // release the buffer for chunk
 func (file *DcacheFile) releaseChunk(chunk *StagedChunk) {
-	log.Debug("DisttributedCache::releaseChunk : releasing buffer for chunk, chunk idx : %d, file : %s",
+	log.Debug("DisttributedCache::releaseChunk : releasing buffer for chunk, chunk idx: %d, file: %s",
 		chunk.Idx, file.FileMetadata.Filename)
 	fileIOMgr.bp.putBuffer(chunk.Buf)
 }

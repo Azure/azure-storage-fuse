@@ -143,11 +143,22 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 	var fileMetadata dcache.FileMetadata
 	err = json.Unmarshal(fileMetadataBytes, fileMetadata)
 	if err != nil {
-		log.Err("DistributedCache[FM]::OpenDcacheFile : failed to unmarshal filemetadata file: %s, err: %s",
+		err = fmt.Errorf("DistributedCache[FM]::OpenDcacheFile : failed to unmarshal filemetadata file: %s, err: %s",
 			fileName, err.Error())
+		common.Assert(false, err)
+		return nil, err
 	}
-	common.Assert(!(fileMetadata.State == dcache.Ready && fileSize == -1),
-		fmt.Sprintf("file : %s, file metadata: %+v, fileSize: %d", fileName, fileMetadata, fileSize))
+
+	//
+	// Filesize can be following under various file states:
+	// - When file is being written, it must be -1.
+	// - When file is ready, it must be >= 0.
+	// - A file can be deleted from ready or writing state, so in deleting state fileSize can be anything.
+	//
+	common.Assert((fileMetadata.State == dcache.Writing && fileSize == -1) ||
+		(fileMetadata.State == dcache.Ready && fileSize >= 0) ||
+		(fileMetadata.State == dcache.Deleting),
+		fmt.Sprintf("file: %s, file metadata: %+v, fileSize: %d", fileName, fileMetadata, fileSize))
 
 	// Return ENOENT if the file is not in ready state.
 	if fileMetadata.State != dcache.Ready {
