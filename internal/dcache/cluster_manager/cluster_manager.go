@@ -800,7 +800,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 
 	log.Debug("ClusterManager::updateStorageClusterMapIfRequired: updating RV list")
 
-	changed, err := cmi.updateRVList(clusterMap.RVMap, false /* onlyMyRVs */)
+	_, err = cmi.updateRVList(clusterMap.RVMap, false /* onlyMyRVs */)
 	if err != nil {
 		err = fmt.Errorf("Failed to reconcile RV mapping: %v", err)
 		log.Err("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
