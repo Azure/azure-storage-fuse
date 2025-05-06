@@ -120,14 +120,13 @@ func Init(storageCallback dcache.StorageCallbacks, cacheId string) error {
 		if err = storageCallback.CreateDir(
 			internal.CreateDirOptions{Name: dir, ForceDirCreationDisabled: true}); err != nil {
 
-			// Not-exists is fine as we may race with some other node, any other error is fatal.
+			// Already-exists is fine as we may race with some other node, any other error is fatal.
 			if !bloberror.HasCode(err, bloberror.BlobAlreadyExists) {
 				log.Err("BlobMetadataManager::Init Failed to create directory %s: %v", dir, err)
 				common.Assert(false, err)
 				return err
-			} else {
-				log.Info("BlobMetadataManager::Init Directory %s already exists!", dir)
 			}
+			log.Info("BlobMetadataManager::Init Directory %s already exists!", dir)
 		} else {
 			log.Info("BlobMetadataManager::Init Created directory %s", dir)
 		}
@@ -220,8 +219,7 @@ func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byt
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
 
 	// The size of the file is set to -1 to represent the file is not finalized.
-	var fileSize int64 = -1
-	sizeStr := strconv.FormatInt(fileSize, 10)
+	sizeStr := "-1"
 	metadata := map[string]*string{
 		"cache-object-length": &sizeStr,
 	}
@@ -277,9 +275,13 @@ func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata [
 	//       where CreateFileFinalize() is incorrectly called without a prior successful CreateFileInit() call.
 	//
 	if common.IsDebugBuild() {
-		_, err := m.storageCallback.GetPropertiesFromStorage(
+		prop, err := m.storageCallback.GetPropertiesFromStorage(
 			internal.GetAttrOptions{Name: path})
 		common.Assert(err == nil, err)
+
+		// Extract the size from the metadata properties.
+		size, ok := prop.Metadata["cache-object-length"]
+		common.Assert(ok && *size == "-1", ok, *size)
 	}
 
 	// Store the open-count and file size in the metadata blob property.
@@ -304,7 +306,7 @@ func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata [
 		return err
 	}
 
-	log.Debug("CreateFileFinalize:: Finalized file %s in storage", path)
+	log.Debug("CreateFileFinalize:: Finalized file %s in storage with size %d bytes", path, fileSize)
 	return nil
 }
 
@@ -348,11 +350,15 @@ func (m *BlobMetadataManager) getFile(filePath string) ([]byte, int64, error) {
 		return nil, -1, err
 	}
 
-	common.Assert(fileSize >= 0, "size cannot be negative", fileSize)
+	//
+	// Size can be -1 for files which are not in Ready state.
+	//
 
-	if fileSize < 0 {
+	//if fileSize < 0 {
+	if fileSize < -1 {
 		log.Warn("GetFile:: Size is negative for path %s: %d", path, fileSize)
-		return nil, -1, fmt.Errorf("size is negative for path %s : %d", path, fileSize)
+		common.Assert(false, "size cannot be negative", fileSize)
+		return nil, -1, fmt.Errorf("size is negative for path %s: %d", path, fileSize)
 	}
 
 	log.Debug("GetFile:: Size for path %s: %d", path, fileSize)
@@ -389,7 +395,7 @@ func (m *BlobMetadataManager) openFile(filePath string) (int64, error) {
 	common.Assert(len(filePath) > 0)
 
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
-	count, err := m.updateHandleCount(path, true)
+	count, err := m.updateHandleCount(path, true /* increment */)
 	if err != nil {
 		log.Err("OpenFile:: Failed to update file open count for path %s: %v", path, err)
 		common.Assert(false, err)
@@ -408,7 +414,7 @@ func (m *BlobMetadataManager) closeFile(filePath string) (int64, error) {
 	common.Assert(len(filePath) > 0)
 
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
-	count, err := m.updateHandleCount(path, false)
+	count, err := m.updateHandleCount(path, false /* increment */)
 	if err != nil {
 		log.Err("CloseFile:: Failed to update file open count for path %s: %v", path, err)
 		return -1, err
@@ -429,7 +435,7 @@ func (m *BlobMetadataManager) updateHandleCount(path string, increment bool) (in
 	const maxBackoff = 1 * time.Second   // Maximum backoff time in seconds
 	backoff := 1 * time.Millisecond      // Initial backoff time in milliseconds
 	var openCount int
-	retryTime := time.Now()
+	startTime := time.Now()
 
 	for {
 		// Get the current open count.
@@ -498,7 +504,7 @@ func (m *BlobMetadataManager) updateHandleCount(path string, increment bool) (in
 				// etag mismatch failures, few of them is fine but if it fails beyond a reasonable
 				// time it indicates some issue, bail out.
 				//
-				if time.Since(retryTime) >= maxRetryTime {
+				if time.Since(startTime) >= maxRetryTime {
 					log.Warn("updateHandleCount:: Retrying exceeded %s for path %s, exiting...",
 						maxRetryTime, path)
 					common.Assert(false, err)
@@ -620,7 +626,10 @@ func (m *BlobMetadataManager) getHeartbeat(nodeId string) ([]byte, error) {
 		return nil, err
 	}
 
-	log.Debug("GetHeartbeat:: Successfully got heartbeat file content for %s", heartbeatFilePath)
+	common.Assert(len(data) > 0)
+
+	log.Debug("GetHeartbeat:: Successfully got heartbeat file content for %s, %d bytes",
+		heartbeatFilePath, len(data))
 	return data, nil
 }
 
@@ -682,7 +691,7 @@ func (m *BlobMetadataManager) createInitialClusterMap(clustermap []byte) error {
 	//
 	if err != nil {
 		if bloberror.HasCode(err, bloberror.ConditionNotMet) {
-			log.Info("CreateInitialClusterMap:: PutBlobInStorage failed for %s due to ETag mismatch: %v",
+			log.Info("CreateInitialClusterMap:: PutBlobInStorage failed for %s due to ETag mismatch, treating as success: %v",
 				clustermapPath, err)
 			return nil
 		}
@@ -734,7 +743,7 @@ func (m *BlobMetadataManager) updateClusterMapStart(clustermap []byte, etag *str
 	}
 
 	log.Debug("UpdateClusterMapStart:: Updated clustermap with path %s", clustermapPath)
-	return nil
+	return err
 }
 
 // UpdateClusterMapEnd finalizes the cluster map update.
@@ -761,10 +770,11 @@ func (m *BlobMetadataManager) updateClusterMapEnd(clustermap []byte) error {
 	if err != nil {
 		log.Err("UpdateClusterMapEnd:: Failed to finalize clustermap update for %s: %v", clustermapPath, err)
 		common.Assert(false, err)
+		return err
 	}
 
 	log.Debug("UpdateClusterMapEnd:: Finalized clustermap update for %s", clustermapPath)
-	return err
+	return nil
 }
 
 // GetClusterMap reads and returns the content of the cluster map as a byte array, the current Etag value and error if any
@@ -779,6 +789,9 @@ func (m *BlobMetadataManager) getClusterMap() ([]byte, *string, error) {
 		return nil, nil, err
 	}
 
+	// Must have a valid etag.
+	common.Assert(len(attr.ETag) > 0)
+
 	// TODO:: If some node updates the clustermap between GetProperties and GetBlobFromStorage
 	// then updateClusterMapStart will fail with ETag mismatch.
 	// In that case we can create a new function to call doawnloadStream directly for content and etag.
@@ -792,7 +805,8 @@ func (m *BlobMetadataManager) getClusterMap() ([]byte, *string, error) {
 		return nil, nil, err
 	}
 
-	log.Debug("GetClusterMap:: Successfully got cluster map content for %s", clustermapPath)
+	log.Debug("GetClusterMap:: Successfully got cluster map content for %s, %d bytes, Etag: %s",
+		clustermapPath, len(data), attr.ETag)
 
 	// Return the cluster map content and ETag
 	return data, &attr.ETag, nil
