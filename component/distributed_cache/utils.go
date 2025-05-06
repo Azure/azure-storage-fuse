@@ -197,7 +197,7 @@ func parseDcacheMetadata(attr *internal.ObjAttr) error {
 	var fileSize int64
 	var err error
 
-	if val, ok := attr.Metadata["cache-object-length"]; ok {
+	if val, ok := attr.Metadata["cache_object_length"]; ok {
 		fileSize, err = strconv.ParseInt(*val, 10, 64)
 		if err == nil {
 			if fileSize >= 0 {
@@ -217,7 +217,7 @@ func parseDcacheMetadata(attr *internal.ObjAttr) error {
 			common.Assert(false, err)
 		}
 	} else {
-		err = fmt.Errorf("Blob metadata for %s doesn't have cache-object-length property", attr.Name)
+		err = fmt.Errorf("Blob metadata for %s doesn't have cache_object_length property", attr.Name)
 		log.Err("DistributedCache::GetAttr: %v", err)
 		common.Assert(false, err)
 	}
