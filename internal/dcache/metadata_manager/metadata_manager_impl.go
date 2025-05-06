@@ -206,7 +206,7 @@ func GetClusterMap() ([]byte, *string, error) {
 // CreateFileInit() creates the initial metadata for a file.
 // It ensures that in case two nodes race to create the same file only one succeeds.
 // The node that wins the race, then goes ahead writing the data chunks for the file and once done calls
-// CreateFileFinalize() to make the file visible to readers.
+// CreateFileFinalize() to make the file accessible to readers.
 //
 // TODO: Return etag value to use for CreateFileFinalize() so that we can be assured that the same node
 //
