@@ -115,11 +115,12 @@ type mvInfo struct {
 	// Both StartSync and EndSync will quiesce IOs just before they move the mv into and out of syncing state, and
 	// resume IOs once the MV is safely moved into the new state.
 	//
-	// opMutex is used to ensure that only one operation, chunk IO (get, put or remove chunk) or sync (start sync or end sync)
-	// is in progress at a time. Whereas syncOpMutex is rw mutex. IO operations like get, put or remove chunk takes
+	// opMutex is used to ensure that only one operation, chunk IO (get, put or remove chunk) or
+	// sync (start sync or end sync) is in progress at a time.
+	// syncOpMutex is rw mutex. IO operations like get, put or remove chunk takes
 	// read lock on syncOpMutex, and sync operations like StartSync or EndSync takes write lock on it.
 	// opMutex is released immediately after acquiring the syncOpMutex.
-	// This ensures that the sync operation waits for the ongoing IO operation to complete.
+	// This ensures that the sync operation waits for the ongoing IO operations to complete.
 	// It also makes sure that no new IO operations will start as it has already acquired the opMutex.
 	opMutex     sync.Mutex
 	syncOpMutex sync.RWMutex
