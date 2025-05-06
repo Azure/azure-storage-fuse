@@ -134,19 +134,43 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 
 // Does all init process for opening the file.
 func OpenDcacheFile(fileName string) (*DcacheFile, error) {
-	fileMetadata, err := mm.GetFile(fileName)
+	fileMetadataBytes, fileSize, err := mm.GetFile(fileName)
 	if err != nil {
 		//todo : See if we can have error other that ENOENT here.
 		return nil, err
-	} else {
-		if fileMetadata.State != dcache.Ready {
-			log.Info("DistributedCache[FM]::OpenDcacheFile : File : %s is not in ready state, metadata: %+v",
-				fileName, fileMetadata)
-			return nil, syscall.ENOENT
-		}
 	}
+
+	var fileMetadata dcache.FileMetadata
+	err = json.Unmarshal(fileMetadataBytes, fileMetadata)
+	if err != nil {
+		err = fmt.Errorf("DistributedCache[FM]::OpenDcacheFile : failed to unmarshal filemetadata file: %s, err: %s",
+			fileName, err.Error())
+		common.Assert(false, err)
+		return nil, err
+	}
+
+	//
+	// Filesize can be following under various file states:
+	// - When file is being written, it must be -1.
+	// - When file is ready, it must be >= 0.
+	// - A file can be deleted from ready or writing state, so in deleting state fileSize can be anything.
+	//
+	common.Assert((fileMetadata.State == dcache.Writing && fileSize == -1) ||
+		(fileMetadata.State == dcache.Ready && fileSize >= 0) ||
+		(fileMetadata.State == dcache.Deleting),
+		fmt.Sprintf("file: %s, file metadata: %+v, fileSize: %d", fileName, fileMetadata, fileSize))
+
+	// Return ENOENT if the file is not in ready state.
+	if fileMetadata.State != dcache.Ready {
+		log.Info("DistributedCache[FM]::OpenDcacheFile : File : %s is not in ready state, metadata: %+v",
+			fileName, fileMetadata)
+		return nil, syscall.ENOENT
+	}
+
+	fileMetadata.Size = fileSize
+
 	return &DcacheFile{
-		FileMetadata: fileMetadata,
+		FileMetadata: &fileMetadata,
 	}, nil
 }
 

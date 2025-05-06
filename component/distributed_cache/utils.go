@@ -35,13 +35,16 @@ package distributed_cache
 
 import (
 	"fmt"
+	"math"
 	"net"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
@@ -186,4 +189,54 @@ func isMountPointRoot(path string) bool {
 		return true
 	}
 	return false
+}
+
+// Get Dcache File size from the blob metadata property.
+func parseDcacheMetadata(attr *internal.ObjAttr) error {
+	log.Debug("DistributedCache::parseDcacheMetadata: file: %s", attr.Name)
+	var fileSize int64
+	var err error
+
+	if val, ok := attr.Metadata["cache-object-length"]; ok {
+		fileSize, err = strconv.ParseInt(*val, 10, 64)
+		if err == nil {
+			if fileSize >= 0 {
+				attr.Size = fileSize
+				common.Assert(attr.Size != math.MaxInt64)
+			} else if fileSize == -1 {
+				// FileSize can be negative in two cases:
+				// case1 : file is in writing state by the current node/ some other node in dcache. in which case we don't know
+				// the final size hence we return size to be zero.
+				// case2 : file got created and before the closing the fd of create, blobfuse got crashed. In that case we'll be
+				// having a stale entry which takes up the path and disallows the further file creations on that path.
+				// These files are distinguished from the rest of the files by their size. While getting the attr/listing the dir.
+				attr.Size = math.MaxInt64
+			}
+		} else {
+			log.Err("DistributedCache::GetAttr : strconv failed for size string: %s, file: %s, error: %s", *val, attr.Name, err.Error())
+			common.Assert(false, err)
+		}
+	} else {
+		err = fmt.Errorf("Blob metadata for %s doesn't have cache-object-length property", attr.Name)
+		log.Err("DistributedCache::GetAttr: %v", err)
+		common.Assert(false, err)
+	}
+
+	return err
+}
+
+func parseDcacheMetadataForDirEntries(dirList []*internal.ObjAttr) []*internal.ObjAttr {
+	newDirList := make([]*internal.ObjAttr, len(dirList))
+	i := 0
+	for _, attr := range dirList {
+		err := parseDcacheMetadata(attr)
+		if err == nil {
+			newDirList[i] = attr
+			i++
+		} else {
+			log.Err("DistributedCache::parseDcacheMetadataForDirEntries: skipping the dir entry , file: %s, err: %s", attr.Name, err.Error())
+		}
+	}
+	return newDirList[:i]
+
 }
