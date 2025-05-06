@@ -221,7 +221,7 @@ func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byt
 	// The size of the file is set to -1 to represent the file is not finalized.
 	sizeStr := "-1"
 	metadata := map[string]*string{
-		"cache-object-length": &sizeStr,
+		"cache_object_length": &sizeStr,
 	}
 
 	err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
@@ -280,7 +280,7 @@ func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata [
 		common.Assert(err == nil, err)
 
 		// Extract the size from the metadata properties.
-		size, ok := prop.Metadata["cache-object-length"]
+		size, ok := prop.Metadata["cache_object_length"]
 		common.Assert(ok && *size == "-1", ok, *size)
 	}
 
@@ -289,7 +289,7 @@ func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata [
 	sizeStr := strconv.FormatInt(fileSize, 10)
 	metadata := map[string]*string{
 		"opencount":           &openCount,
-		"cache-object-length": &sizeStr,
+		"cache_object_length": &sizeStr,
 	}
 
 	err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
@@ -336,7 +336,7 @@ func (m *BlobMetadataManager) getFile(filePath string) ([]byte, int64, error) {
 	}
 
 	// Extract the size from the metadata properties.
-	size, ok := prop.Metadata["cache-object-length"]
+	size, ok := prop.Metadata["cache_object_length"]
 	if !ok {
 		log.Err("GetFile:: size not found in metadata for path %s", path)
 		common.Assert(false, fmt.Sprintf("size not found in metadata for path %s", path))
