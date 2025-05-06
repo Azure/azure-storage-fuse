@@ -102,10 +102,6 @@ type mvInfo struct {
 	// in the new-to-be-inducted RV.
 	totalChunkBytes atomic.Int64
 
-	// count of in-progress chunk operations (get, put or remove) for this MV.
-	// This is used to block the end sync call till all the ongoing chunk operations are completed.
-	chunkIOInProgress atomic.Int64
-
 	// Two MV states are interesting from an IO standpoint.
 	// An online MV is the happy case where all RVs are online and sync'ed. In this state there won't be any
 	// resync Writes, and client Writes if any will be replicated to all the RVs, each of them storing the chunks
@@ -119,9 +115,14 @@ type mvInfo struct {
 	// Both StartSync and EndSync will quiesce IOs just before they move the mv into and out of syncing state, and
 	// resume IOs once the MV is safely moved into the new state.
 	//
-	// This boolean flag will be set by StartSync and EndSync to put the mv in quiesce state and it'll be read
-	// and honored by the various chunk related APIs - GetChunk, PutChunk, etc.
-	quiesceIOs atomic.Bool
+	// opMutex is used to ensure that only one operation, chunk IO (get, put or remove chunk) or sync (start sync or end sync)
+	// is in progress at a time. Whereas syncOpMutex is rw mutex. IO operations like get, put or remove chunk takes
+	// read lock on syncOpMutex, and sync operations like StartSync or EndSync takes write lock on it.
+	// opMutex is released immediately after acquiring the syncOpMutex.
+	// This ensures that the sync operation waits for the ongoing IO operation to complete.
+	// It also makes sure that no new IO operations will start as it has already acquired the opMutex.
+	opMutex     sync.Mutex
+	syncOpMutex sync.RWMutex
 
 	syncInfo // sync info for this MV
 }
@@ -363,78 +364,34 @@ func (mv *mvInfo) decTotalChunkBytes(bytes int64) {
 	common.Assert(mv.totalChunkBytes.Load() >= 0, fmt.Sprintf("totalChunkBytes for MV %s is %d", mv.mvName, mv.totalChunkBytes.Load()))
 }
 
-// increment the in-progress chunk operation (get, put or remove) count for this MV
-func (mv *mvInfo) incOngoingIOs() {
-	mv.chunkIOInProgress.Add(1)
+// acquire read lock on the syncOpMutex.
+// This will allow other ongoing chunk IO operations to proceed in parallel
+// but will block sync operations like StartSync or EndSync,
+// until the read lock is released.
+func (mv *mvInfo) acquireSyncOpReadLock() {
+	mv.opMutex.Lock()
+	mv.syncOpMutex.RLock()
+	mv.opMutex.Unlock()
 }
 
-// ddecrement the in-progress chunk operation (get, put or remove) count for this MV after it has completed
-func (mv *mvInfo) decOngoingIOs() {
-	common.Assert(mv.chunkIOInProgress.Load() > 0, fmt.Sprintf("chunkOpsInProgress for MV %s is <= 0", mv.mvName))
-	mv.chunkIOInProgress.Add(-1)
+// release the read lock on the syncOpMutex
+func (mv *mvInfo) releaseSyncOpReadLock() {
+	mv.syncOpMutex.RUnlock()
 }
 
-// Block the calling thread if this MV is currently quiesced, by StartSync or EndSync.
-func (mv *mvInfo) blockIOIfMVQuiesced() error {
-	if !mv.quiesceIOs.Load() {
-		return nil
-	}
-
-	// Wait till MV is quiesced.
-	now := time.Now()
-	maxWait := 30 * time.Second
-
-	for {
-		if mv.quiesceIOs.Load() {
-			time.Sleep(1 * time.Millisecond)
-
-			elapsed := time.Since(now)
-			if elapsed > maxWait {
-				msg := fmt.Sprintf("%s still quiesced after %s", mv.mvName, maxWait)
-				common.Assert(false, msg)
-				return fmt.Errorf("%s", msg)
-			}
-		} else {
-			break
-		}
-	}
-
-	return nil
+// acquire write lock on the syncOpMutex.
+// This will wait till all the ongoing chunk IO operations are completed
+// and will block any new chunk IO operations.
+// This is used in StartSync and EndSync RPC calls.
+func (mv *mvInfo) acquireSyncOpWriteLock() {
+	mv.opMutex.Lock()
+	mv.syncOpMutex.Lock()
+	mv.opMutex.Unlock()
 }
 
-// Set IO quiescing in the mv. Now GetChunk, PutChunk, will not allow any new IO.
-// Also, wait for any ongoing IOs to complete.
-func (mv *mvInfo) quiesceIOsStart() error {
-	mv.quiesceIOs.Store(true)
-
-	// Wait for any ongoing IOs to complete.
-	now := time.Now()
-	maxWait := 30 * time.Second
-
-	for {
-		if mv.chunkIOInProgress.Load() > 0 {
-			time.Sleep(1 * time.Millisecond)
-
-			elapsed := time.Since(now)
-			if elapsed > maxWait {
-				msg := fmt.Sprintf("%d ongoing IOs still pending after waiting for %s", mv.chunkIOInProgress.Load(), maxWait)
-				common.Assert(false, msg)
-				return fmt.Errorf("%s", msg)
-			}
-		} else {
-			log.Debug("mvInfo::quiesceIOsStart: %s quiesced successfully!", mv.mvName)
-			break
-		}
-	}
-
-	// Quiesced successfully, no ongoing IOs and no new IOs will be allowed.
-	return nil
-}
-
-// quiesceIOsEnd() must be called only after quiesceIOsStart().
-func (mv *mvInfo) quiesceIOsEnd() {
-	common.Assert(mv.quiesceIOs.Load(), fmt.Sprintf("quiesceIOsEnd() called without quiesceIOsStart() for MV %s", mv.mvName))
-	mv.quiesceIOs.Store(false)
+// release the write lock on the syncOpMutex
+func (mv *mvInfo) releaseSyncOpWriteLock() {
+	mv.syncOpMutex.Unlock()
 }
 
 // check the if the chunk address is valid
@@ -552,19 +509,11 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("request component RVs are invalid for MV %s [%v]", req.Address.MvName, err.Error()))
 	}
 
-	// Block the calling thread if this MV is currently quiesced
-	err = mvInfo.blockIOIfMVQuiesced()
-	common.Assert(err == nil, fmt.Sprintf("failed to block IO for MV %s", mvInfo.mvName))
+	// acquire read lock on the syncOpMutex for this MV
+	mvInfo.acquireSyncOpReadLock()
 
-	// TODO: [Race] After blockIOIfMVQuiesced() decides to proceed and before we increment the ongoing IO count below,
-	// if quiesceIOsStart() is run it will successfully mark the IOs as quiesced.
-	// This leads us to a state where IOs are running while they should be quiesced.
-
-	// increment the chunk operation count for this MV
-	mvInfo.incOngoingIOs()
-
-	// decrement the chunk operation count for this MV when the function returns
-	defer mvInfo.decOngoingIOs()
+	// release the read lock on the syncOpMutex for this MV when the function returns
+	defer mvInfo.releaseSyncOpReadLock()
 
 	// TODO: check if lock is needed for GetChunk
 	// check if the chunk file is being updated in parallel by some other thread
@@ -658,15 +607,11 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("request component RVs are invalid for MV %s [%v]", req.Chunk.Address.MvName, err.Error()))
 	}
 
-	// Block the calling thread if this MV is currently quiesced
-	err = mvInfo.blockIOIfMVQuiesced()
-	common.Assert(err == nil, fmt.Sprintf("failed to block IO for MV %s", mvInfo.mvName))
+	// acquire read lock on the syncOpMutex for this MV
+	mvInfo.acquireSyncOpReadLock()
 
-	// increment the chunk operation count for this MV
-	mvInfo.incOngoingIOs()
-
-	// decrement the chunk operation count for this MV when the function returns
-	defer mvInfo.decOngoingIOs()
+	// release the read lock on the syncOpMutex for this MV when the function returns
+	defer mvInfo.releaseSyncOpReadLock()
 
 	// TODO: check later if lock is needed
 	// acquire lock for the chunk address to prevent concurrent writes
@@ -788,15 +733,11 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("request component RVs are invalid for MV %s [%v]", req.Address.MvName, err.Error()))
 	}
 
-	// Block the calling thread if this MV is currently quiesced
-	err = mvInfo.blockIOIfMVQuiesced()
-	common.Assert(err == nil, fmt.Sprintf("failed to block IO for MV %s", mvInfo.mvName))
+	// acquire read lock on the syncOpMutex for this MV
+	mvInfo.acquireSyncOpReadLock()
 
-	// increment the chunk operation count for this MV
-	mvInfo.incOngoingIOs()
-
-	// decrement the chunk operation count for this MV when the function returns
-	defer mvInfo.decOngoingIOs()
+	// release the read lock on the syncOpMutex for this MV when the function returns
+	defer mvInfo.releaseSyncOpReadLock()
 
 	// TODO: check if lock is needed for RemoveChunk
 	// acquire lock for the chunk address to prevent concurrent delete operations
@@ -1063,17 +1004,16 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("request component RVs are invalid for MV %s [%v]", req.MV, err.Error()))
 	}
 
-	// Set IO quiescing in the mv. Now GetChunk, PutChunk, will not allow any new IO.
+	// acquire write lock on the syncOpMutex for this MV. Now GetChunk, PutChunk and RemoveChunk will not allow any new IO.
 	// Also wait for any ongoing IOs to complete.
-	err := mvInfo.quiesceIOsStart()
-	common.Assert(err == nil, fmt.Sprintf("failed to quiesce IOs for MV %s [%v]", req.MV, err))
+	mvInfo.acquireSyncOpWriteLock()
 
-	// disable block chunk operations flag for this MV when the function returns
-	defer mvInfo.quiesceIOsEnd()
+	// release the write lock on the syncOpMutex for this MV when the function returns
+	defer mvInfo.releaseSyncOpWriteLock()
 
 	// create the MV sync directory
 	syncDir := filepath.Join(rvInfo.cacheDir, req.MV+".sync")
-	err = h.createMVDirectory(syncDir)
+	err := h.createMVDirectory(syncDir)
 	if err != nil {
 		log.Err("ChunkServiceHandler::StartSync: Failed to create sync directory %s [%v]", syncDir, err.Error())
 		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to create sync directory %s [%v]", syncDir, err.Error()))
@@ -1140,16 +1080,15 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("request component RVs are invalid for MV %s [%v]", req.MV, err.Error()))
 	}
 
-	// Set IO quiescing in the mv. Now GetChunk, PutChunk, will not allow any new IO.
+	// acquire write lock on the syncOpMutex for this MV. Now GetChunk, PutChunk and RemoveChunk will not allow any new IO.
 	// Also wait for any ongoing IOs to complete.
-	err := mvInfo.quiesceIOsStart()
-	common.Assert(err == nil, fmt.Sprintf("failed to quiesce IOs for MV %s [%v]", req.MV, err))
+	mvInfo.acquireSyncOpWriteLock()
 
-	// disable block chunk operations flag for this MV when the function returns
-	defer mvInfo.quiesceIOsEnd()
+	// release the write lock on the syncOpMutex for this MV when the function returns
+	defer mvInfo.releaseSyncOpWriteLock()
 
 	// update the sync state and sync id of the MV
-	err = mvInfo.updateSyncState(false, req.SyncID, req.SourceRVName)
+	err := mvInfo.updateSyncState(false, req.SyncID, req.SourceRVName)
 	if err != nil {
 		log.Err("ChunkServiceHandler::StartSync: Failed to mark sync completion state in MV %s [%v]", req.MV, err.Error())
 		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to mark sync completion state in MV %s [%v]", req.MV, err.Error()))
