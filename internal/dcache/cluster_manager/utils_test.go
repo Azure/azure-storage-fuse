@@ -83,56 +83,56 @@ func cloneClusterMap(src dcache.ClusterMap) dcache.ClusterMap {
 func (suite *utilsTestSuite) TestIsValidClusterMap() {
 	// Test case: Valid ClusterMap
 	validClusterMap := LoadAndValidateClusterMapFromFile("")
-	isValid, errMsg := IsValidClusterMap(validClusterMap)
+	isValid, errMsg := IsValidClusterMap(&validClusterMap)
 	suite.True(isValid)
 	suite.Empty(errMsg)
 
 	// Test case: Invalid CreatedAt
 	invalidCreatedAt := validClusterMap
 	invalidCreatedAt.CreatedAt = 0
-	isValid, errMsg = IsValidClusterMap(invalidCreatedAt)
+	isValid, errMsg = IsValidClusterMap(&invalidCreatedAt)
 	suite.False(isValid)
 	suite.Contains(errMsg, "Invalid CreatedAt")
 
 	// Test case: Invalid LastUpdatedAt
 	invalidLastUpdatedAt := validClusterMap
 	invalidLastUpdatedAt.LastUpdatedAt = 0
-	isValid, errMsg = IsValidClusterMap(invalidLastUpdatedAt)
+	isValid, errMsg = IsValidClusterMap(&invalidLastUpdatedAt)
 	suite.False(isValid)
 	suite.Contains(errMsg, "Invalid LastUpdatedAt")
 
 	// Test case: LastUpdatedAt < CreatedAt
 	invalidTimestamps := validClusterMap
 	invalidTimestamps.LastUpdatedAt = invalidTimestamps.CreatedAt - 1
-	isValid, errMsg = IsValidClusterMap(invalidTimestamps)
+	isValid, errMsg = IsValidClusterMap(&invalidTimestamps)
 	suite.False(isValid)
 	suite.Contains(errMsg, "LastUpdatedAt")
 
 	// Test case: Invalid LastUpdatedBy UUID
 	invalidLastUpdatedBy := validClusterMap
 	invalidLastUpdatedBy.LastUpdatedBy = "invalid-uuid"
-	isValid, errMsg = IsValidClusterMap(invalidLastUpdatedBy)
+	isValid, errMsg = IsValidClusterMap(&invalidLastUpdatedBy)
 	suite.False(isValid)
 	suite.Contains(errMsg, "Invalid LastUpdatedBy UUID")
 
 	// Test case: Invalid Config.HeartbeatSeconds
 	invalidHeartbeatSeconds := validClusterMap
 	invalidHeartbeatSeconds.Config.HeartbeatSeconds = 0
-	isValid, errMsg = IsValidClusterMap(invalidHeartbeatSeconds)
+	isValid, errMsg = IsValidClusterMap(&invalidHeartbeatSeconds)
 	suite.False(isValid)
 	suite.Contains(errMsg, "Invalid Config.HeartbeatSeconds")
 
 	// Test case: Invalid Config.ClustermapEpoch
 	invalidClustermapEpoch := validClusterMap
 	invalidClustermapEpoch.Config.ClustermapEpoch = 0
-	isValid, errMsg = IsValidClusterMap(invalidClustermapEpoch)
+	isValid, errMsg = IsValidClusterMap(&invalidClustermapEpoch)
 	suite.False(isValid)
 	suite.Contains(errMsg, "Invalid Config.ClustermapEpoch")
 
 	// Test case: Duplicate RvId in RVMap
 	duplicateRvId := cloneClusterMap(validClusterMap)
 	duplicateRvId.RVMap["rv2"] = duplicateRvId.RVMap["rv1"]
-	isValid, errMsg = IsValidClusterMap(duplicateRvId)
+	isValid, errMsg = IsValidClusterMap(&duplicateRvId)
 	suite.False(isValid)
 	suite.Contains(errMsg, "duplicate RvId")
 
@@ -145,7 +145,7 @@ func (suite *utilsTestSuite) TestIsValidClusterMap() {
 		State: "invalid-state",
 		RVs:   map[string]dcache.StateEnum{},
 	}
-	isValid, errMsg = IsValidClusterMap(invalidMVMap)
+	isValid, errMsg = IsValidClusterMap(&invalidMVMap)
 	suite.False(isValid)
 	suite.Contains(errMsg, "Invalid mv State")
 }

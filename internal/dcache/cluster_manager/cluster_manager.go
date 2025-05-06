@@ -847,6 +847,37 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	return nil
 }
 
+func (cmi *ClusterManager) fixMV(rvToDelete string, mvName string, existingMVMap map[string]dcache.MirroredVolume, rvMap map[string]dcache.RawVolume, updatedRvMap map[string]dcache.StateEnum) string {
+	log.Debug("ClusterManager::fixMV: Replacing RV %s in MV %s", rvToDelete, mvName)
+
+	// Store all node ids of component Rvs in a map.
+	// This is done to ensure that we do not pick a new RV from a node already present in Mv.
+	nodeList := make(map[string]bool)
+	for rVName := range existingMVMap[mvName].RVs {
+		nodeList[rvMap[rVName].NodeId] = true
+	}
+	// Ensure the node of newly selected Rv's is not used again
+	for rvName := range updatedRvMap {
+		nodeList[rvMap[rvName].NodeId] = true
+	}
+
+	maxAvailableSpace := uint64(0)
+	replaceRv := ""
+	for rvName, rvInfo := range rvMap {
+		if rvInfo.State == dcache.StateOnline {
+			if _, ok := nodeList[rvInfo.NodeId]; !ok {
+				if maxAvailableSpace < rvInfo.AvailableSpace {
+					maxAvailableSpace = rvInfo.AvailableSpace
+					replaceRv = rvName
+				}
+			}
+		}
+	}
+
+	updatedRvMap[replaceRv] = dcache.StateOutOfSync
+	return replaceRv
+}
+
 // Takes rvMap which is a set of all known RVs (existing RV list from clustermap, and updated as per the most recent
 // heartbeats), it is indexed by RV name and contains complete info about the RV, and existingMVMap which is the set
 // of MVs present in the clustermap, indexed by MV name and contains complete info about the MV.
@@ -969,6 +1000,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 	//
 	for mvName, mv := range existingMVMap {
 		offlineRv := 0
+		updatedRvMap := make(map[string]dcache.StateEnum)
 		for rvName := range mv.RVs {
 			// Only valid RVs can be used as component RVs for an MV.
 			_, exists := rvMap[rvName]
@@ -977,6 +1009,9 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 			if rvMap[rvName].State == dcache.StateOffline {
 				offlineRv++
 				mv.RVs[rvName] = dcache.StateOffline
+				// Run the fix-mv workflow to replace the offline rv with an online rv
+				// Storing newly selected rv as rvName so slot count for it is updated
+				rvName = cmi.fixMV(rvName, mvName, existingMVMap, rvMap, updatedRvMap)
 				if offlineRv == len(mv.RVs) {
 					// offline-mv.
 					mv.State = dcache.StateOffline
@@ -985,9 +1020,9 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 					mv.State = dcache.StateDegraded
 				}
 				existingMVMap[mvName] = mv
-				continue
+			} else {
+				updatedRvMap[rvName] = dcache.StateOnline
 			}
-
 			//
 			// This component RV is online. Reduce its slot count, so that we don't use a component RV
 			// more than MvsPerRv times across different MVs.
@@ -1007,6 +1042,9 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 			common.Assert(found, fmt.Sprintf("Component RV %s for MV %s not found in node %s",
 				rvName, mvName, nodeId))
 		}
+		mv := existingMVMap[mvName]
+		mv.RVs = updatedRvMap
+		existingMVMap[mvName] = mv
 	}
 
 	log.Debug("ClusterManager::updateMVList: existingMVMap after phase#1: %v", existingMVMap)
