@@ -34,7 +34,6 @@
 package metadata_manager
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -111,11 +110,11 @@ func CreateFileInit(filePath string, fileMetadata []byte) error {
 	return metadataManagerInstance.createFileInit(filePath, fileMetadata)
 }
 
-func CreateFileFinalize(filePath string, fileMetadata []byte) error {
-	return metadataManagerInstance.createFileFinalize(filePath, fileMetadata)
+func CreateFileFinalize(filePath string, fileMetadata []byte, fileSize int64) error {
+	return metadataManagerInstance.createFileFinalize(filePath, fileMetadata, fileSize)
 }
 
-func GetFile(filePath string) (*dcache.FileMetadata, error) {
+func GetFile(filePath string) ([]byte, int64, error) {
 	return metadataManagerInstance.getFile(filePath)
 }
 
@@ -197,13 +196,16 @@ func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byt
 }
 
 // CreateFileFinalize finalizes the metadata for a file
-func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata []byte) error {
+func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata []byte, fileSize int64) error {
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
-	// Store the open-count in the metadata blob property
+	// Store the open-count and file size in the metadata blob property
 	openCount := "0"
+	sizeStr := strconv.FormatInt(fileSize, 10)
 	metadata := map[string]*string{
-		"opencount": &openCount,
+		"opencount":           &openCount,
+		"cache-object-length": &sizeStr,
 	}
+
 	err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
 		Name:                   path,
 		Data:                   fileMetadata,
@@ -219,28 +221,48 @@ func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata [
 	return err
 }
 
+// TODO :: Replace the two REST API calls with a single call to DownloadStream
 // GetFile reads and returns the content of metadata for a file
-// TODO :: Check if we can return []byte to make this function symmetric with others
-func (m *BlobMetadataManager) getFile(filePath string) (*dcache.FileMetadata, error) {
+func (m *BlobMetadataManager) getFile(filePath string) ([]byte, int64, error) {
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
-	// Get the metadata content from storage
+	// Get the file content from storage
 	data, err := m.storageCallback.GetBlobFromStorage(internal.ReadFileWithNameOptions{
 		Path: path,
 	})
 	if err != nil {
 		log.Debug("GetFile :: Failed to get metadata file content for file %s : %v", path, err)
-		return nil, err
+		return nil, -1, err
 	}
-	// Unmarshal the JSON data into the Metadata struct
-	var metadata dcache.FileMetadata
-	err = json.Unmarshal(data, &metadata)
+	// Get the file size from the metadata properties
+	prop, err := m.storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{
+		Name: path,
+	})
 	if err != nil {
-		log.Debug("GetFile :: Failed to unmarshal JSON data: %v", err)
-		return nil, err
+		log.Err("GetFile :: Failed to get properties for path %s : %v", path, err)
+		return nil, -1, err
 	}
-	log.Debug("GetFile :: Successfully unmarshaled JSON data for file %s", path)
-	// Return the Metadata struct
-	return &metadata, nil
+	// Extract the size from the metadata properties
+	size, ok := prop.Metadata["cache-object-length"]
+	common.Assert(ok, fmt.Sprintf("size not found in metadata for path %s", path))
+	if !ok {
+		log.Err("GetFile :: size not found in metadata for path %s", path)
+		return nil, -1, err
+	}
+
+	fileSize, err := strconv.ParseInt(*size, 10, 64)
+	if err != nil {
+		log.Err("GetFile :: Failed to parse size for path %s with value %s : %v", path, *size, err)
+		return nil, -1, err
+	}
+
+	common.Assert(fileSize >= 0, "size cannot be negative", fileSize)
+	if fileSize < 0 {
+		log.Warn("GetFile :: Size is negative for path %s : %d", path, fileSize)
+		return nil, -1, fmt.Errorf("size is negative for path %s : %d", path, fileSize)
+	}
+
+	log.Debug("GetFile :: Size for path %s : %d", path, fileSize)
+	return data, fileSize, nil
 }
 
 // DeleteFile removes metadata for a file
@@ -498,8 +520,9 @@ func (m *BlobMetadataManager) createInitialClusterMap(clustermap []byte) error {
 	// and the caller should not overwrite it.
 	if err != nil {
 		if bloberror.HasCode(err, bloberror.ConditionNotMet) {
+			// Log the reason for failure and return the error for caller to handle
 			log.Info("CreateInitialClusterMap :: PutBlobInStorage failed for %s due to ETag mismatch", clustermapPath)
-			return nil
+			return err
 		}
 		log.Err("CreateInitialClusterMap :: Failed to put blob %s in storage: %v", clustermapPath, err)
 		return err
