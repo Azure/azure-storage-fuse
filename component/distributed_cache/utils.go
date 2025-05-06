@@ -202,6 +202,7 @@ func parseDcacheMetadata(attr *internal.ObjAttr) error {
 		if err == nil {
 			if fileSize >= 0 {
 				attr.Size = fileSize
+				common.Assert(attr.Size != math.MaxInt64)
 			} else if fileSize == -1 {
 				// FileSize can be negative in two cases:
 				// case1 : file is in writing state by the current node/ some other node in dcache. in which case we don't know
@@ -212,7 +213,7 @@ func parseDcacheMetadata(attr *internal.ObjAttr) error {
 				attr.Size = math.MaxInt64
 			}
 		} else {
-			log.Err("DistributedCache::GetAttr : strconv failed for size string: %s, file: %s, error: %s", val, attr.Name, err.Error())
+			log.Err("DistributedCache::GetAttr : strconv failed for size string: %s, file: %s, error: %s", *val, attr.Name, err.Error())
 			common.Assert(false, err)
 		}
 	} else {
