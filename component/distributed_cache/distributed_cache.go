@@ -214,6 +214,7 @@ func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
 			IPAddress:      ipaddr,
 			RvId:           rvId,
 			FDID:           "0",
+			State:          dcache.StateOnline,
 			TotalSpace:     totalSpace,
 			AvailableSpace: availableSpace,
 			LocalCachePath: path,
