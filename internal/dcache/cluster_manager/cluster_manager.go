@@ -863,10 +863,6 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 //     that more than one component RVs for an MV do not come from the same node and the same fault domain.
 //
 // existingMVMap is updated in-place, the caller will then publish it in the updated clustermap.
-// TODO :: Empty cachedir on startup
-// TODO :: Handle the case when joinMV fails
-// TODO :: Create cachedir if not present
-// Remember to give permissions to cachedir otherwise joinMv will fail
 func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, existingMVMap map[string]dcache.MirroredVolume) {
 	// We should not be called for an empty rvMap.
 	common.Assert(len(rvMap) > 0)
@@ -1130,7 +1126,8 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 		}
 
 		// Call join mv and check if all rv's are able to join the mv with rv list.
-		deleteRv, err := cmi.joinMV(mvName, existingMVMap[mvName])
+		mv := existingMVMap[mvName]
+		deleteRv, err := cmi.joinMV(mvName, &mv)
 		if err != nil {
 			// TODO :: Should try reallocating the RVs to the MV a certain number of times
 			// before giving up and deleting the MV.
@@ -1161,17 +1158,17 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 	}
 
 	log.Debug("ClusterManager::updateMVList: existing MV map after phase#2: %v", existingMVMap)
-	// TODO :: arrange the map entries in lexicographical order
+	// TODO :: arrange the map entries in lexicographical order.
 }
 
-func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) (string, error) {
+func (cmi *ClusterManager) joinMV(mvName string, mv *dcache.MirroredVolume) (string, error) {
 	log.Debug("ClusterManagerImpl::joinMV: Joining MV %s with rv list %+v", mvName, mv.RVs)
 
 	var componentRVs []*models.RVNameAndState
 
 	for rvName, rvState := range mv.RVs {
 		log.Debug("ClusterManagerImpl::joinMV: Populating componentRVs list MV %s with RV %s", mvName, rvName)
-		// TODO :: Add check for StateOutOfSync
+		// TODO :: Add check for StateOutOfSync.
 		common.Assert(rvState == dcache.StateOnline, fmt.Sprintf("ClusterManagerImpl::joinMV: Populating componentRVs list RV %s is %v, skipping list", rvName, mv.State))
 		componentRVs = append(componentRVs, &models.RVNameAndState{
 			Name:  rvName,
@@ -1179,7 +1176,7 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) (stri
 		})
 	}
 
-	// TODO :: Call joinMV on all RVs in parallel
+	// TODO :: Call joinMV on all RVs in parallel.
 	for _, rv := range componentRVs {
 		log.Debug("ClusterManagerImpl::joiningMV: Joining MV %s with RV %s", mvName, rv.Name)
 
