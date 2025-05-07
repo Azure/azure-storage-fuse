@@ -1155,6 +1155,9 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 	// Both these maps are indexed by RV id.
 	rVsByRvIdFromHB, rvLastHB, err := collectHBForGivenNodeIds(nodeIds)
 	if err != nil {
+		// For onlyMyRVs==true caller would call us only after punching our hb, so we must find the hb.
+		common.Assert(false, "[BUG] Did not find our own heartbeat")
+
 		return false, err
 	}
 	// Both the RV and the RV HB map must have the exact same RVs.
