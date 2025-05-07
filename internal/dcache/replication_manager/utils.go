@@ -37,6 +37,7 @@ import (
 	"fmt"
 	"math/rand"
 	"slices"
+	"strings"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -102,9 +103,13 @@ func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *mo
 // return the component RVs for the given MV
 func getComponentRVsForMV(mvName string) []*models.RVNameAndState {
 	rvMap := clustermap.GetRVs(mvName)
+	return convertRVMapToList(rvMap)
+}
 
+func convertRVMapToList(rvMap map[string]dcache.StateEnum) []*models.RVNameAndState {
 	var componentRVs []*models.RVNameAndState
 	for rvName, rvState := range rvMap {
+		// TODO: add assert for isValidRVName
 		common.Assert(rvName != "", "RV name is empty")
 		common.Assert(rvState != "", "RV state is empty")
 
@@ -112,7 +117,7 @@ func getComponentRVsForMV(mvName string) []*models.RVNameAndState {
 	}
 
 	common.Assert(len(componentRVs) == int(getNumReplicas()),
-		fmt.Sprintf("number of component RVs %d is not same as number of replicas %d for MV %s : %v", len(componentRVs), getNumReplicas(), mvName, rpc.ComponentRVsToString(componentRVs)))
+		fmt.Sprintf("number of component RVs %d is not same as number of replicas %d : %v", len(componentRVs), getNumReplicas(), rpc.ComponentRVsToString(componentRVs)))
 
 	return componentRVs
 }
@@ -130,4 +135,39 @@ func getRvIDFromRvName(rvName string) string {
 // return the node ID for the given rvName
 func getNodeIDFromRVName(rvName string) string {
 	return clustermap.RVNameToNodeId(rvName)
+}
+
+// returns the lowest index online RV from the component RVs
+func getLowestIndexOnlineRV(rvs map[string]dcache.StateEnum) string {
+	lowestIdxRVName := ""
+	for rvName, state := range rvs {
+		if state != dcache.StateOnline {
+			// this is not an online RV
+			continue
+		}
+
+		if lowestIdxRVName == "" || strings.Compare(rvName, lowestIdxRVName) < 0 {
+			lowestIdxRVName = rvName
+		}
+	}
+
+	// TODO: add assert for isValidRVName
+	if lowestIdxRVName == "" {
+		log.Debug("utils::isHostingLowestIndexRV: no online RVs found for component RVs %+v", rvs)
+		return ""
+	}
+
+	return lowestIdxRVName
+}
+
+// check if the given RV is hosted in current node
+func isRVHostedInCurrentNode(rvName string) bool {
+	myRVs := clustermap.GetMyRVs()
+	_, ok := myRVs[rvName]
+	return ok
+}
+
+// TODO:: integration: update this after RvNameToCachePath() API is added in clustermap
+func getCachePathForRVName(rvName string) string {
+	return "/home/user/tmpcache"
 }
