@@ -348,17 +348,20 @@ func IsValidRVMap(rVMap map[string]dcache.RawVolume) (bool, error) {
 func IsValidHeartbeat(hb *dcache.HeartbeatData) (bool, error) {
 
 	// NodeID
-	if len(hb.NodeID) == 0 {
-		return false, fmt.Errorf("HeartbeatData: Empty NodeId %+v", *hb)
+	if !common.IsValidUUID(hb.NodeID) {
+		return false, fmt.Errorf("HeartbeatData: Invalid NodeId %s %+v", hb.NodeID, *hb)
 	}
+
 	// HostName
 	if len(hb.Hostname) == 0 {
 		return false, fmt.Errorf("HeartbeatData: Empty HostName %+v", *hb)
 	}
+
 	// IPAddress
 	if !common.IsValidIP(hb.IPAddr) {
 		return false, fmt.Errorf("HeartbeatData: Invalid IPAddress: %s: %+v", hb.IPAddr, *hb)
 	}
+
 	// LastHeartbeat
 	if hb.LastHeartbeat < uint64(MinUnixEpoch) || hb.LastHeartbeat > uint64(MaxUnixEpoch) {
 		return false, fmt.Errorf("HeartbeatData: Invalid LastHeartbeat: %d: %+v", hb.LastHeartbeat, *hb)
@@ -369,14 +372,17 @@ func IsValidHeartbeat(hb *dcache.HeartbeatData) (bool, error) {
 	if len(hb.RVList) == 0 {
 		return false, fmt.Errorf("HeartbeatData: no RawVolumes %+v", *hb)
 	}
+
 	// Validate each RV
 	for _, rv := range hb.RVList {
 		if valid, err := IsValidRV(&rv); !valid {
 			return false, fmt.Errorf("HeartbeatData: Invalid RV: %v", err)
 		}
+
 		if hb.NodeID != rv.NodeId {
 			return false, fmt.Errorf("HeartbeatData: HB & RV NodeId mismatch: %s: %s: %+v", hb.NodeID, rv.NodeId, *hb)
 		}
+
 		if hb.IPAddr != rv.IPAddress {
 			return false, fmt.Errorf("HeartbeatData: HB & RV IPAddr mismatch: %s: %s: %+v", hb.IPAddr, rv.IPAddress, *hb)
 		}

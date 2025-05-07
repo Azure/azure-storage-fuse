@@ -1371,8 +1371,12 @@ func collectHBForGivenNodeIds(nodeIds []string) (map[string]dcache.RawVolume, ma
 			return nil, nil, fmt.Errorf("ClusterManager::collectHBForGivenNodeIds: Failed to parse heartbeat bytes (%d) for node %s: %v",
 				len(bytes), nodeId, err)
 		}
-
-		common.Assert(cm.IsValidHeartbeat(&hbData))
+		isValidHb, err := cm.IsValidHeartbeat(&hbData)
+		if !isValidHb {
+			common.Assert(isValidHb, err)
+			return nil, nil, fmt.Errorf("ClusterManager::collectHBForGivenNodeIds: invalid heartbeart for node %s: %v",
+				nodeId, err)
+		}
 
 		// Go over all RVs exported by this node, and add them to rVsByRvIdFromHB, to be processed later.
 		for _, rv := range hbData.RVList {
