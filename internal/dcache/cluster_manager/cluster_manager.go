@@ -1141,12 +1141,11 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 						rvList.rvs = append(rvList.rvs[:i], rvList.rvs[i+1:]...)
 						nodeToRvs[rvMap[rvName].NodeId] = rvList
 						break
-					} else {
-						if node.rvName == rvName {
-							node.slots++
-							break
-						}
+					} else if node.rvName == rvName {
+						node.slots++
+						break
 					}
+
 				}
 			}
 
