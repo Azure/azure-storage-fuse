@@ -115,14 +115,12 @@ type mvInfo struct {
 	// Both StartSync and EndSync will quiesce IOs just before they move the mv into and out of syncing state, and
 	// resume IOs once the MV is safely moved into the new state.
 	//
-	// opMutex is used to ensure that only one operation, chunk IO (get, put or remove chunk) or
+	// syncOpMutex is used to ensure that only one operation, chunk IO (get, put or remove chunk) or
 	// sync (start sync or end sync) is in progress at a time.
-	// syncOpMutex is rw mutex. IO operations like get, put or remove chunk takes
-	// read lock on syncOpMutex, and sync operations like StartSync or EndSync takes write lock on it.
-	// opMutex is released immediately after acquiring the syncOpMutex.
+	// IO operations like get, put or remove chunk takes read lock on syncOpMutex, and sync operations
+	// like StartSync or EndSync takes write lock on it.
 	// This ensures that the sync operation waits for the ongoing IO operations to complete.
-	// It also makes sure that no new IO operations will start as it has already acquired the opMutex.
-	opMutex     sync.Mutex
+	// It also makes sure that no new IO operations till the sync is complete.
 	syncOpMutex sync.RWMutex
 
 	syncInfo // sync info for this MV
@@ -370,9 +368,7 @@ func (mv *mvInfo) decTotalChunkBytes(bytes int64) {
 // but will block sync operations like StartSync or EndSync,
 // until the read lock is released.
 func (mv *mvInfo) acquireSyncOpReadLock() {
-	mv.opMutex.Lock()
 	mv.syncOpMutex.RLock()
-	mv.opMutex.Unlock()
 }
 
 // release the read lock on the syncOpMutex
@@ -385,9 +381,7 @@ func (mv *mvInfo) releaseSyncOpReadLock() {
 // and will block any new chunk IO operations.
 // This is used in StartSync and EndSync RPC calls.
 func (mv *mvInfo) acquireSyncOpWriteLock() {
-	mv.opMutex.Lock()
 	mv.syncOpMutex.Lock()
-	mv.opMutex.Unlock()
 }
 
 // release the write lock on the syncOpMutex
