@@ -1134,19 +1134,22 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 			log.Err("ClusterManagerImpl::updateMVList: Error joining MV %s with RV %s: %v", mvName, deleteRv, err)
 
 			for rvName := range existingMVMap[mvName].RVs {
+				found := false
 				for i, node := range nodeToRvs[rvMap[rvName].NodeId].rvs {
 					if node.rvName == deleteRv {
 						// Delete rv from the list of RVs for the node.
 						rvList := nodeToRvs[rvMap[rvName].NodeId]
 						rvList.rvs = append(rvList.rvs[:i], rvList.rvs[i+1:]...)
 						nodeToRvs[rvMap[rvName].NodeId] = rvList
+						found = true
 						break
 					} else if node.rvName == rvName {
 						node.slots++
+						found = true
 						break
 					}
-
 				}
+				common.Assert(found, fmt.Sprintf("Component RV %s for MV %s not found in node %s", rvName, mvName, rvMap[rvName].NodeId))
 			}
 
 			// Delete the MV from the existingMVMap.
