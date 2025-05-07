@@ -72,18 +72,18 @@ var (
 	MinRvNearFullThreshold int64 = 80
 	MaxRvNearFullThreshold int64 = 100
 
-	RvNameRegex = regexp.MustCompile("^rv[0-9]+$")
-	MvNameRegex = regexp.MustCompile("^mv[0-9]+$")
+	rvNameRegex = regexp.MustCompile("^rv[0-9]+$")
+	mvNameRegex = regexp.MustCompile("^mv[0-9]+$")
 )
 
 // Valid RV name is of the form "rv0", "rv99", etc.
 func IsValidRVName(rvName string) bool {
-	return RvNameRegex.MatchString(rvName)
+	return rvNameRegex.MatchString(rvName)
 }
 
 // Valid MV name is of the form "mv0", "mv99", etc.
 func IsValidMVName(mvName string) bool {
-	return MvNameRegex.MatchString(mvName)
+	return mvNameRegex.MatchString(mvName)
 }
 
 // Check all clustermap components for validity.
