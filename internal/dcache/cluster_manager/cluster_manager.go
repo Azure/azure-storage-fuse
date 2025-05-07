@@ -155,7 +155,7 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 	//
 
 	log.Info("ClusterManager::start: Starting RPC server")
-
+	time.Sleep(2 * time.Second)
 	common.Assert(cmi.rpcServer == nil)
 	cmi.rpcServer, err = rpc_server.NewNodeServer()
 	if err != nil {
