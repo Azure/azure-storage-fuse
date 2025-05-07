@@ -730,9 +730,9 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 	fi.fh = C.ulong(uintptr(unsafe.Pointer(ret_val)))
 
 	if handle.IsFsDebug() {
-		// This is not an actual file i.e., present in the filesytem but a file which was implemented by respected component
-		// to emmit metrics/state of the filesystem. Hence the size of the file is not known at the stat and also the stat
-		// must recieve the file size to be zero for such files. But If page-cache is enabled, the file size is checked before
+		// This is not an actual file i.e., present in the filesystem but a file which was implemented by respected component
+		// to emit metrics/state of the filesystem. Hence the size of the file is not known at the stat and also the stat
+		// must receive the file size to be zero for such files. But If page-cache is enabled, the file size is checked before
 		// making a read call. As we're returning the file size to be zero, we don't get the read calls if the page cache is
 		// turned on for the mount point. Hence we make the handle to be direct-io, so that we get read calls regardless of
 		// it's size.
