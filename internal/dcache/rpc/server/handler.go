@@ -120,7 +120,9 @@ type mvInfo struct {
 	// IO operations like get, put or remove chunk takes read lock on opMutex, and sync operations
 	// like StartSync or EndSync takes write lock on it.
 	// This ensures that the sync operation waits for the ongoing IO operations to complete.
-	// It also makes sure that no new IO operations till the sync is complete.
+	// It also makes sure that if start/end sync is waiting for the write lock,
+	// no new IO operations are started till the start/end sync gets the write lock and completes.
+	// This ensures that a continuous flow of IOs will not delay the start/end sync indefinitely.
 	opMutex sync.RWMutex
 
 	syncInfo // sync info for this MV
@@ -382,11 +384,13 @@ func (mv *mvInfo) releaseSyncOpReadLock() {
 // This is used in StartSync and EndSync RPC calls.
 func (mv *mvInfo) acquireSyncOpWriteLock() {
 	mv.opMutex.Lock()
+	log.Debug("mvInfo::acquireSyncOpWriteLock: acquired write lock by sync operation in MV %s", mv.mvName)
 }
 
 // release the write lock on the opMutex
 func (mv *mvInfo) releaseSyncOpWriteLock() {
 	mv.opMutex.Unlock()
+	log.Debug("mvInfo::releaseSyncOpWriteLock: released write lock by sync operation in MV %s", mv.mvName)
 }
 
 // check the if the chunk address is valid
