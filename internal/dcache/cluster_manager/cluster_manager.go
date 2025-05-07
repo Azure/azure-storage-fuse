@@ -1131,7 +1131,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 		if err != nil {
 			// TODO :: Should try reallocating the RVs to the MV a certain number of times
 			// before giving up and deleting the MV.
-			log.Err("ClusterManagerImpl::updateMVList: Error joining MV %s with RV %s: %v", mvName, deleteRv, err)
+			log.Err("ClusterManager::updateMVList: Error joining MV %s with RV %s: %v", mvName, deleteRv, err)
 
 			for rvName := range existingMVMap[mvName].RVs {
 				found := false
@@ -1142,10 +1142,13 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 						rvList.rvs = append(rvList.rvs[:i], rvList.rvs[i+1:]...)
 						nodeToRvs[rvMap[rvName].NodeId] = rvList
 						found = true
+						log.Debug("ClusterManager::updateMVList: Deleted RV %s for which joinmv failed from node %s", deleteRv, rvMap[rvName].NodeId)
 						break
 					} else if node.rvName == rvName {
+						common.Assert(node.slots < MvsPerRv)
 						node.slots++
 						found = true
+						log.Debug("ClusterManager::updateMVList: Giving back RV %s in node %s", rvName, rvMap[rvName].NodeId)
 						break
 					}
 				}
@@ -1155,7 +1158,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 			// Delete the MV from the existingMVMap.
 			delete(existingMVMap, mvName)
 		} else {
-			log.Info("ClusterManagerImpl::updateMVList: Successfully joined all componentRV's to MV %s", mvName)
+			log.Info("ClusterManager::updateMVList: Successfully joined all componentRV's to MV %s", mvName)
 		}
 	}
 
