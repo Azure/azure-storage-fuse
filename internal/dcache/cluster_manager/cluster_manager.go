@@ -1137,8 +1137,9 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 			log.Err("ClusterManagerImpl::updateMVList: Error joining MV %s with RV %s: %v", mvName, deleteRv, err)
 			delete(existingMVMap, mvName)
 			delete(nodeToRvs, rvMap[deleteRv].NodeId)
+		} else {
+			log.Info("ClusterManagerImpl::updateMVList: Successfully joined all componentRV's to MV %s", mvName)
 		}
-		log.Info("ClusterManagerImpl::updateMVList: Successfully joined MV %s with RV %s", mvName, deleteRv)
 	}
 
 	log.Debug("ClusterManager::updateMVList: existing MV map after phase#2: %v", existingMVMap)
@@ -1146,7 +1147,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 }
 
 func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) (string, error) {
-	log.Debug("ClusterManagerImpl::joinMV: Joining MV %s with rv list %+v", mvName, mv)
+	log.Debug("ClusterManagerImpl::joinMV: Joining MV %s with rv list %+v", mvName, mv.RVs)
 	var componentRVs []*models.RVNameAndState
 
 	for rvName, rvState := range mv.RVs {
@@ -1173,7 +1174,6 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) (stri
 		timeout := 2 * time.Second
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
-		// TODO :: Check if this call is correct
 		_, err := rpc_client.JoinMV(ctx, clustermap.RVNameToNodeId(rv.Name), joinMvReq)
 		common.Assert(err == nil, fmt.Sprintf("Error joining MV %s with RV %s: %v", mvName, rv.Name, err))
 		if err != nil {
