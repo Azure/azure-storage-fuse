@@ -1126,8 +1126,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 		}
 
 		// Call join mv and check if all rv's are able to join the mv with rv list.
-		mv := existingMVMap[mvName]
-		deleteRv, err := cmi.joinMV(mvName, &mv)
+		deleteRv, err := cmi.joinMV(mvName, existingMVMap[mvName])
 		if err != nil {
 			// TODO :: Should try reallocating the RVs to the MV a certain number of times
 			// before giving up and deleting the MV.
@@ -1166,7 +1165,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 	// TODO :: arrange the map entries in lexicographical order.
 }
 
-func (cmi *ClusterManager) joinMV(mvName string, mv *dcache.MirroredVolume) (string, error) {
+func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) (string, error) {
 	log.Debug("ClusterManagerImpl::joinMV: Joining MV %s with rv list %+v", mvName, mv.RVs)
 
 	var componentRVs []*models.RVNameAndState
