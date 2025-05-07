@@ -115,13 +115,13 @@ type mvInfo struct {
 	// Both StartSync and EndSync will quiesce IOs just before they move the mv into and out of syncing state, and
 	// resume IOs once the MV is safely moved into the new state.
 	//
-	// syncOpMutex is used to ensure that only one operation, chunk IO (get, put or remove chunk) or
+	// opMutex is used to ensure that only one operation, chunk IO (get, put or remove chunk) or
 	// sync (start sync or end sync) is in progress at a time.
-	// IO operations like get, put or remove chunk takes read lock on syncOpMutex, and sync operations
+	// IO operations like get, put or remove chunk takes read lock on opMutex, and sync operations
 	// like StartSync or EndSync takes write lock on it.
 	// This ensures that the sync operation waits for the ongoing IO operations to complete.
 	// It also makes sure that no new IO operations till the sync is complete.
-	syncOpMutex sync.RWMutex
+	opMutex sync.RWMutex
 
 	syncInfo // sync info for this MV
 }
@@ -363,30 +363,30 @@ func (mv *mvInfo) decTotalChunkBytes(bytes int64) {
 	common.Assert(mv.totalChunkBytes.Load() >= 0, fmt.Sprintf("totalChunkBytes for MV %s is %d", mv.mvName, mv.totalChunkBytes.Load()))
 }
 
-// acquire read lock on the syncOpMutex.
+// acquire read lock on the opMutex.
 // This will allow other ongoing chunk IO operations to proceed in parallel
 // but will block sync operations like StartSync or EndSync,
 // until the read lock is released.
 func (mv *mvInfo) acquireSyncOpReadLock() {
-	mv.syncOpMutex.RLock()
+	mv.opMutex.RLock()
 }
 
-// release the read lock on the syncOpMutex
+// release the read lock on the opMutex
 func (mv *mvInfo) releaseSyncOpReadLock() {
-	mv.syncOpMutex.RUnlock()
+	mv.opMutex.RUnlock()
 }
 
-// acquire write lock on the syncOpMutex.
+// acquire write lock on the opMutex.
 // This will wait till all the ongoing chunk IO operations are completed
 // and will block any new chunk IO operations.
 // This is used in StartSync and EndSync RPC calls.
 func (mv *mvInfo) acquireSyncOpWriteLock() {
-	mv.syncOpMutex.Lock()
+	mv.opMutex.Lock()
 }
 
-// release the write lock on the syncOpMutex
+// release the write lock on the opMutex
 func (mv *mvInfo) releaseSyncOpWriteLock() {
-	mv.syncOpMutex.Unlock()
+	mv.opMutex.Unlock()
 }
 
 // check the if the chunk address is valid
@@ -504,10 +504,10 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("request component RVs are invalid for MV %s [%v]", req.Address.MvName, err.Error()))
 	}
 
-	// acquire read lock on the syncOpMutex for this MV
+	// acquire read lock on the opMutex for this MV
 	mvInfo.acquireSyncOpReadLock()
 
-	// release the read lock on the syncOpMutex for this MV when the function returns
+	// release the read lock on the opMutex for this MV when the function returns
 	defer mvInfo.releaseSyncOpReadLock()
 
 	// TODO: check if lock is needed for GetChunk
@@ -602,10 +602,10 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("request component RVs are invalid for MV %s [%v]", req.Chunk.Address.MvName, err.Error()))
 	}
 
-	// acquire read lock on the syncOpMutex for this MV
+	// acquire read lock on the opMutex for this MV
 	mvInfo.acquireSyncOpReadLock()
 
-	// release the read lock on the syncOpMutex for this MV when the function returns
+	// release the read lock on the opMutex for this MV when the function returns
 	defer mvInfo.releaseSyncOpReadLock()
 
 	// TODO: check later if lock is needed
@@ -728,10 +728,10 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("request component RVs are invalid for MV %s [%v]", req.Address.MvName, err.Error()))
 	}
 
-	// acquire read lock on the syncOpMutex for this MV
+	// acquire read lock on the opMutex for this MV
 	mvInfo.acquireSyncOpReadLock()
 
-	// release the read lock on the syncOpMutex for this MV when the function returns
+	// release the read lock on the opMutex for this MV when the function returns
 	defer mvInfo.releaseSyncOpReadLock()
 
 	// TODO: check if lock is needed for RemoveChunk
@@ -999,11 +999,11 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("request component RVs are invalid for MV %s [%v]", req.MV, err.Error()))
 	}
 
-	// acquire write lock on the syncOpMutex for this MV. Now GetChunk, PutChunk and RemoveChunk will not allow any new IO.
+	// acquire write lock on the opMutex for this MV. Now GetChunk, PutChunk and RemoveChunk will not allow any new IO.
 	// Also wait for any ongoing IOs to complete.
 	mvInfo.acquireSyncOpWriteLock()
 
-	// release the write lock on the syncOpMutex for this MV when the function returns
+	// release the write lock on the opMutex for this MV when the function returns
 	defer mvInfo.releaseSyncOpWriteLock()
 
 	// create the MV sync directory
@@ -1075,11 +1075,11 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("request component RVs are invalid for MV %s [%v]", req.MV, err.Error()))
 	}
 
-	// acquire write lock on the syncOpMutex for this MV. Now GetChunk, PutChunk and RemoveChunk will not allow any new IO.
+	// acquire write lock on the opMutex for this MV. Now GetChunk, PutChunk and RemoveChunk will not allow any new IO.
 	// Also wait for any ongoing IOs to complete.
 	mvInfo.acquireSyncOpWriteLock()
 
-	// release the write lock on the syncOpMutex for this MV when the function returns
+	// release the write lock on the opMutex for this MV when the function returns
 	defer mvInfo.releaseSyncOpWriteLock()
 
 	// update the sync state and sync id of the MV
