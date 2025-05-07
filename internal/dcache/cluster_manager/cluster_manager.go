@@ -1158,7 +1158,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 			// Delete the MV from the existingMVMap.
 			delete(existingMVMap, mvName)
 		} else {
-			log.Info("ClusterManager::updateMVList: Successfully joined all componentRV's to MV %s", mvName)
+			log.Info("ClusterManager::updateMVList: Successfully joined all componentRV's %+v to MV %s", existingMVMap[mvName].RVs, mvName)
 		}
 	}
 
