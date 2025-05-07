@@ -1269,15 +1269,17 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 			// If an RV is present in rVsByRvIdFromHB, it MUST have a valid HB in rvLastHB.
 			common.Assert(found)
 
-			//We just came here after punching the heartbeat, which indicates this is online RV
+			//We just came here after punching the heartbeat, which indicates this is online RV.
 			common.Assert(!onlyMyRVs || rvHb.State == dcache.StateOnline)
+
 			if lastHB < hbExpiry {
 				//
 				// HB expired, mark RV offline if not already offline.
 				//
 
-				//We just came here after punching the heartbeat, which must not expired
+				//We just came here after punching the heartbeat, which must not expired.
 				common.Assert(!onlyMyRVs)
+
 				if rvInClusterMap.State != dcache.StateOffline {
 					log.Warn("ClusterManager::updateRVList: Online RV %s lastHeartbeat (%d) is expired, hbExpiry (%d), marking RV offline",
 						rvName, lastHB, hbExpiry)
@@ -1291,8 +1293,8 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 				// If either the State or AvailableSpace from HB is different from what is stored
 				// in existingRVMap, update it.
 				//
-				if !onlyMyRVs && ((rvInClusterMap.State != rvHb.State) ||
-					(rvInClusterMap.AvailableSpace != rvHb.AvailableSpace)) {
+				if (rvInClusterMap.State != rvHb.State) ||
+					(rvInClusterMap.AvailableSpace != rvHb.AvailableSpace) {
 					rvInClusterMap.State = rvHb.State
 					rvInClusterMap.AvailableSpace = rvHb.AvailableSpace
 					//TODO{Akku}: IF available space is less than 10% of total space, we might need to update the state
@@ -1303,7 +1305,7 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 
 			// rVsByRvIdFromHB must only contain new RVs, delete this as it is in existingRVMap.
 			delete(rVsByRvIdFromHB, rvHb.RvId)
-		} else {
+		} else if !onlyMyRVs {
 			//
 			// RV present in existingRVMap, but missing from rVsByRvIdFromHB.
 			// This is not a common occurrence, emit a warning log.
