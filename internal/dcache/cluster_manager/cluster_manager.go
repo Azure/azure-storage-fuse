@@ -34,6 +34,7 @@
 package clustermanager
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math/rand"
@@ -50,6 +51,8 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
+	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 	rpc_server "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/server"
 )
 
@@ -151,27 +154,24 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 	//       RPC request to this node, before we can start the RPC server. We should add resiliency for this.
 	//
 
-	// TODO: Uncommment this when we update NewNodeServer() to not take any args.
-	/*
-	   log.Info("ClusterManager::start: Starting RPC server")
+	log.Info("ClusterManager::start: Starting RPC server")
 
-	   common.Assert(cmi.rpcServer == nil)
-	   cmi.rpcServer, err = rpc_server.NewNodeServer()
-	   if err != nil {
-	           log.Err("ClusterManager::start: Failed to create RPC server")
-	           common.Assert(false, err)
-	           return err
-	   }
+	common.Assert(cmi.rpcServer == nil)
+	cmi.rpcServer, err = rpc_server.NewNodeServer()
+	if err != nil {
+		log.Err("ClusterManager::start: Failed to create RPC server")
+		common.Assert(false, err)
+		return err
+	}
 
-	   err = cmi.rpcServer.Start()
-	   if err != nil {
-	           log.Err("ClusterManager::start: Failed to start RPC server")
-	           common.Assert(false, err)
-	           return err
-	   }
+	err = cmi.rpcServer.Start()
+	if err != nil {
+		log.Err("ClusterManager::start: Failed to start RPC server")
+		common.Assert(false, err)
+		return err
+	}
 
-	   log.Info("ClusterManager::start: Started RPC server on node %s IP %s", cmi.myNodeId, cmi.myIPAddress)
-	*/
+	log.Info("ClusterManager::start: Started RPC server on node %s IP %s", cmi.myNodeId, cmi.myIPAddress)
 
 	// We don't intend to have different configs in different nodes, so assert.
 	common.Assert(dCacheConfig.HeartbeatSeconds == cmi.config.HeartbeatSeconds,
@@ -863,6 +863,10 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 //     that more than one component RVs for an MV do not come from the same node and the same fault domain.
 //
 // existingMVMap is updated in-place, the caller will then publish it in the updated clustermap.
+// TODO :: Empty cachedir on startup
+// TODO :: Handle the case when joinMV fails
+// TODO :: Create cachedir if not present
+// Remember to give permissions to cachedir otherwise joinMv will fail
 func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, existingMVMap map[string]dcache.MirroredVolume) {
 	// We should not be called for an empty rvMap.
 	common.Assert(len(rvMap) > 0)
@@ -1124,10 +1128,60 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 				break
 			}
 		}
+
+		// Call join mv and check if all rv's are able to join the mv with rv list
+		deleteRv, err := cmi.joinMV(mvName, existingMVMap[mvName])
+		if err != nil {
+			// TODO :: Should try reallocating the RVs to the MV a certain number of times
+			// before giving up and deleting the MV.
+			log.Err("ClusterManagerImpl::updateMVList: Error joining MV %s with RV %s: %v", mvName, deleteRv, err)
+			delete(existingMVMap, mvName)
+			delete(nodeToRvs, rvMap[deleteRv].NodeId)
+		}
+		log.Info("ClusterManagerImpl::updateMVList: Successfully joined MV %s with RV %s", mvName, deleteRv)
 	}
 
 	log.Debug("ClusterManager::updateMVList: existing MV map after phase#2: %v", existingMVMap)
 	// TODO :: arrange the map entries in lexicographical order
+}
+
+func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) (string, error) {
+	log.Debug("ClusterManagerImpl::joinMV: Joining MV %s with rv list %+v", mvName, mv)
+	var componentRVs []*models.RVNameAndState
+
+	for rvName, rvState := range mv.RVs {
+		log.Debug("ClusterManagerImpl::joinMV: Populating componentRVs list MV %s with RV %s", mvName, rvName)
+		if rvState != dcache.StateOnline {
+			log.Err("ClusterManagerImpl::joinMV: Populating componentRVs list RV %s is %v, skipping list", rvName, mv.State)
+			return "", fmt.Errorf("RV %s is %v, skipping join", rvName, mv.State)
+		}
+		componentRVs = append(componentRVs, &models.RVNameAndState{
+			Name:  rvName,
+			State: string(rvState),
+		})
+	}
+
+	for _, rv := range componentRVs {
+		log.Debug("ClusterManagerImpl::joiningMV: Joining MV %s with RV %s", mvName, rv.Name)
+
+		joinMvReq := &models.JoinMVRequest{
+			MV:           mvName,
+			RVName:       rv.Name,
+			ReserveSpace: 0,
+			ComponentRV:  componentRVs,
+		}
+		timeout := 2 * time.Second
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		// TODO :: Check if this call is correct
+		_, err := rpc_client.JoinMV(ctx, clustermap.RVNameToNodeId(rv.Name), joinMvReq)
+		common.Assert(err == nil, fmt.Sprintf("Error joining MV %s with RV %s: %v", mvName, rv.Name, err))
+		if err != nil {
+			log.Err("ClusterManagerImpl::joinMV: Error joining MV %s with RV %s: %v", mvName, rv.Name, err)
+			return rv.Name, err
+		}
+	}
+	return "", nil
 }
 
 // Given the list of existing RVs in clusterMap, add any new RVs available.
