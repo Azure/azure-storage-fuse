@@ -153,8 +153,12 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 	//       node, it's possible that some other cluster node runs the new-mv workflow and sends a JoinMV
 	//       RPC request to this node, before we can start the RPC server. We should add resiliency for this.
 	//
-
 	log.Info("ClusterManager::start: Starting RPC server")
+
+	// Loading of localCopy of clustermap is taking some time,
+	// that updated copy is required immediately to RPC server, so just added a sleep of 2 seconds
+	// that might fail for degraded workflow where we have to wait for an epoch or clearing the cache directory.
+	// TODO: Remove this sleep and add a better way to ensure that the local copy is loaded with this current node RVs.
 	time.Sleep(2 * time.Second)
 	common.Assert(cmi.rpcServer == nil)
 	cmi.rpcServer, err = rpc_server.NewNodeServer()
