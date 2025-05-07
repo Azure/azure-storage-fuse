@@ -1174,7 +1174,7 @@ func (cmi *ClusterManager) joinMV(mvName string, mv *dcache.MirroredVolume) (str
 	for rvName, rvState := range mv.RVs {
 		log.Debug("ClusterManagerImpl::joinMV: Populating componentRVs list MV %s with RV %s", mvName, rvName)
 		// TODO :: Add check for StateOutOfSync.
-		common.Assert(rvState == dcache.StateOnline, fmt.Sprintf("RV %s state: %v", rvName, rvState))
+		common.Assert(rvState == dcache.StateOnline, rvName, rvState)
 		componentRVs = append(componentRVs, &models.RVNameAndState{
 			Name:  rvName,
 			State: string(rvState),
