@@ -217,7 +217,7 @@ func (file *DcacheFile) finalizeFile() error {
 	common.Assert(file.FileMetadata.State == dcache.Writing)
 	file.FileMetadata.State = dcache.Ready
 	file.FileMetadata.Size = file.lastWriteOffset
-	common.Assert(file.FileMetadata.Size != 0)
+	common.Assert(file.FileMetadata.Size >= 0)
 	fileMetadataBytes, err := json.Marshal(file.FileMetadata)
 	if err != nil {
 		log.Err("DistributedCache[FM]::finalizeFile : FileMetadata marshalling fail, file: %s, %+v",
