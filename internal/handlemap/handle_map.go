@@ -55,6 +55,13 @@ const (
 	HandleFlagDirty          // File has been modified with write operation or is a new file
 	HandleFlagFSynced        // User has called fsync on the file explicitly
 	HandleFlagCached         // File is cached in the local system by blobfuse2
+	HandleFlagFSDebug
+	// Handle with HandleFSDebug is analogous to opening the proc files in linux, represents the file that was opened is
+	// for some dubugging/metrics for the user and this handle can only be read. only allow if the open flags are O_RDONLY.
+	// The flag is only valid in the context of open callback. If the component implements any proc files for the fs then
+	// those files must return file size to be zero in getattr/readdir, as the files are generated on fly the size maynot
+	// be known at the stat/open, but "read" must return EOF error when the size of the file has reached.
+
 	// Following are the Dcache Flags
 	HandleFSAzure  // Handle refers to a file in Azure
 	HandleFSDcache // Handle refers to a file in Distributed Cache.
@@ -161,6 +168,16 @@ func (handle *Handle) Cleanup() {
 	for key := range handle.values {
 		delete(handle.values, key)
 	}
+}
+
+// Set's the Flag that handle is pointing to a debug/proc File.
+// Refer the flag to see more info.
+func (handle *Handle) SetFsDebug() {
+	handle.Flags.Set(HandleFlagFSDebug)
+}
+
+func (handle *Handle) IsFsDebug() bool {
+	return handle.Flags.IsSet(HandleFlagFSDebug)
 }
 
 // **********************Dcache Related Methods Start******************************

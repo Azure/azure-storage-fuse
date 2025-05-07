@@ -175,4 +175,8 @@ static int fill_dir_entry(fuse_fill_dir_t filler, void *buf, char *name, stat_t 
     );
 }
 
+static void make_file_handle_direct_io(fuse_file_info_t *fi) {
+  fi->direct_io = 1;
+}
+
 #endif //__LIBFUSE_H__

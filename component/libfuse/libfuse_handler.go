@@ -687,6 +687,7 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 		fi.flags = fi.flags &^ C.O_SYNC
 		fi.flags = fi.flags &^ C.__O_DIRECT
 	}
+
 	if !fuseFS.disableWritebackCache {
 		if fi.flags&C.O_ACCMODE == C.O_WRONLY || fi.flags&C.O_APPEND != 0 {
 			if fuseFS.ignoreOpenFlags {
@@ -727,6 +728,16 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 	}
 	log.Trace("Libfuse::libfuse_open : %s, handle %d", name, handle.ID)
 	fi.fh = C.ulong(uintptr(unsafe.Pointer(ret_val)))
+
+	if handle.IsFsDebug() {
+		// This is not an actual file i.e., present in the filesytem but a file which was implemented by respected component
+		// to emmit metrics/state of the filesystem. Hence the size of the file is not known at the stat and also the stat
+		// must recieve the file size to be zero for such files. But If page-cache is enabled, the file size is checked before
+		// making a read call. As we're returning the file size to be zero, we don't get the read calls if the page cache is
+		// turned on for the mount point. Hence we make the handle to be direct-io, so that we get read calls regardless of
+		// it's size.
+		C.make_file_handle_direct_io(fi)
+	}
 
 	// increment open file handles count
 	libfuseStatsCollector.UpdateStats(stats_manager.Increment, openHandles, (int64)(1))
