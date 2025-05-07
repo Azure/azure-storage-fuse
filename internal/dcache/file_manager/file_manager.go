@@ -174,8 +174,8 @@ func (file *DcacheFile) SyncFile() error {
 		}
 		return true
 	})
-	common.Assert(err == nil, fmt.Sprintf("Filemanager::SyncFile failed, file: %s, err: %s",
-		file.FileMetadata.Filename, err.Error()))
+	common.Assert(err == nil, fmt.Sprintf("Filemanager::SyncFile failed, file: %s, err: %v",
+		file.FileMetadata.Filename, err))
 	return err
 }
 
@@ -185,12 +185,12 @@ func (file *DcacheFile) CloseFile() error {
 	// We stage application writes into StagedChunk and upload only when we have a full chunk.
 	// In case of last chunk being partial, we need to upload it now.
 	err := file.SyncFile()
-	common.Assert(err == nil, fmt.Sprintf("Filemanager::CloseFile failed, file: %s, err: %s",
-		file.FileMetadata.Filename, err.Error()))
+	common.Assert(err == nil, fmt.Sprintf("Filemanager::CloseFile failed, file: %s, err: %v ",
+		file.FileMetadata.Filename, err))
 	if err == nil {
 		err := file.finalizeFile()
-		common.Assert(err == nil, fmt.Sprintf("Filemanager::CloseFile failed, file: %s, err: %s",
-			file.FileMetadata.Filename, err.Error()))
+		common.Assert(err == nil, fmt.Sprintf("Filemanager::CloseFile failed, file: %s, err: %v",
+			file.FileMetadata.Filename, err))
 		if err != nil {
 			log.Err("DistributedCache[FM]::Close : finalize file failed with err: %s, file: %s", err.Error(), file.FileMetadata.Filename)
 		}
