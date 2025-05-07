@@ -668,6 +668,15 @@ func (dc *DistributedCache) CloseFile(options internal.CloseFileOptions) error {
 	if options.Handle.IsFsDcache() {
 		common.Assert(options.Handle.IFObj != nil)
 		dcFile := options.Handle.IFObj.(*fm.DcacheFile)
+		// While creating the file and closing the file immediately, we don't get the flush call, as libfuse component only
+		// send it when there is some write on the handle. Hence here we should take care of such cases as we should always
+		// finalize the file. The following flag is unset when there is flush file on the handle.
+		if options.Handle.IsDcacheAllowWrites() {
+			dcacheErr = dc.FlushFile(internal.FlushFileOptions{
+				Handle: options.Handle,
+			})
+			common.Assert(dcacheErr == nil, dcacheErr)
+		}
 		dcacheErr = dcFile.ReleaseFile()
 		if dcacheErr != nil {
 			log.Err("DistributedCache::CloseFile : Failed to ReleaseFile for Dcache file : %s", options.Handle.Path)
