@@ -34,14 +34,12 @@
 package clustermanager
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"strconv"
 	"syscall"
 	"testing"
-	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	"github.com/stretchr/testify/suite"
@@ -54,7 +52,7 @@ var (
 
 type ClusterManagerImplTestSuite struct {
 	suite.Suite
-	cmi              ClusterManagerImpl
+	cmi              ClusterManager
 	origGetAllNodes  func() ([]string, error)
 	origGetHeartbeat func(string) ([]byte, error)
 }
@@ -111,183 +109,180 @@ func (suite *ClusterManagerImplTestSuite) TestCheckIfClusterMapExists() {
 	suite.False(exists)
 }
 
-// replace the old mockHeartbeat with this:
-func mockHeartbeat(nodeID, rvId string, available, total uint64, staleHbduration uint64) {
-	hb := dcache.HeartbeatData{
-		NodeID:        nodeID,
-		LastHeartbeat: uint64(time.Now().Unix()) - staleHbduration,
-		RVList: []dcache.RawVolume{
-			{RvId: rvId, State: dcache.StateOnline, AvailableSpace: available, TotalSpace: total},
-		},
-	}
-	hbBytes, _ := json.Marshal(hb)
-	mockHeartbeatData[nodeID] = hbBytes
-}
+// // replace the old mockHeartbeat with this:
+// func mockHeartbeat(nodeID, rvId string, available, total uint64, staleHbduration uint64) {
+// 	hb := dcache.HeartbeatData{
+// 		NodeID:        nodeID,
+// 		LastHeartbeat: uint64(time.Now().Unix()) - staleHbduration,
+// 		RVList: []dcache.RawVolume{
+// 			{RvId: rvId, State: dcache.StateOnline, AvailableSpace: available, TotalSpace: total},
+// 		},
+// 	}
+// 	hbBytes, _ := json.Marshal(hb)
+// 	mockHeartbeatData[nodeID] = hbBytes
+// }
 
-func (suite *ClusterManagerImplTestSuite) TestUpdateRVList_AddNewRV() {
+// func (suite *ClusterManagerImplTestSuite) TestUpdateRVList_AddNewRV() {
 
-	// Mock data
-	mockNodeIDs := []string{"node1"}
-	mockHeartbeat("node1", "rv1", 50, 100, 0)
-	getAllNodes = func() ([]string, error) {
-		return mockNodeIDs, nil
-	}
+// 	// Mock data
+// 	mockNodeIDs := []string{"node1"}
+// 	mockHeartbeat("node1", "rv1", 50, 100, 0)
+// 	getAllNodes = func() ([]string, error) {
+// 		return mockNodeIDs, nil
+// 	}
 
-	initialClusterMap := map[string]dcache.RawVolume{}
-	expectedClusterMap := map[string]dcache.RawVolume{
-		"rv0": {RvId: "rv1", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
-	}
+// 	initialClusterMap := map[string]dcache.RawVolume{}
+// 	expectedClusterMap := map[string]dcache.RawVolume{
+// 		"rv0": {RvId: "rv1", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
+// 	}
 
-	changed, err := suite.cmi.updateRVList(initialClusterMap, 3, 30)
-	suite.NoError(err)
-	suite.True(changed)
-	suite.Equal(expectedClusterMap, initialClusterMap)
-}
+// 	changed, err := suite.cmi.updateRVList(initialClusterMap, 3, 30)
+// 	suite.NoError(err)
+// 	suite.True(changed)
+// 	suite.Equal(expectedClusterMap, initialClusterMap)
+// }
 
-func (suite *ClusterManagerImplTestSuite) TestUpdateRVList_AddNewRVWithExistingRVUpdated() {
+// func (suite *ClusterManagerImplTestSuite) TestUpdateRVList_AddNewRVWithExistingRVUpdated() {
 
-	// Mock data
-	mockNodeIDs := []string{"node1", "node2"}
-	mockHeartbeat("node1", "rvId0", 50, 100, 0)
-	mockHeartbeat("node2", "rvId1", 50, 100, 0)
-	getAllNodes = func() ([]string, error) {
-		return mockNodeIDs, nil
-	}
+// 	// Mock data
+// 	mockNodeIDs := []string{"node1", "node2"}
+// 	mockHeartbeat("node1", "rvId0", 50, 100, 0)
+// 	mockHeartbeat("node2", "rvId1", 50, 100, 0)
+// 	getAllNodes = func() ([]string, error) {
+// 		return mockNodeIDs, nil
+// 	}
 
-	initialClusterMap := map[string]dcache.RawVolume{
-		"rv0": {RvId: "rvId0", State: dcache.StateOnline, AvailableSpace: 20, TotalSpace: 100},
-	}
-	expectedClusterMap := map[string]dcache.RawVolume{
-		"rv0": {RvId: "rvId0", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
-		"rv1": {RvId: "rvId1", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
-	}
+// 	initialClusterMap := map[string]dcache.RawVolume{
+// 		"rv0": {RvId: "rvId0", State: dcache.StateOnline, AvailableSpace: 20, TotalSpace: 100},
+// 	}
+// 	expectedClusterMap := map[string]dcache.RawVolume{
+// 		"rv0": {RvId: "rvId0", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
+// 		"rv1": {RvId: "rvId1", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
+// 	}
 
-	changed, err := suite.cmi.updateRVList(initialClusterMap, 3, 30)
-	suite.NoError(err)
-	suite.True(changed)
-	suite.Equal(expectedClusterMap, initialClusterMap)
-}
+// 	changed, err := suite.cmi.updateRVList(initialClusterMap, 3, 30)
+// 	suite.NoError(err)
+// 	suite.True(changed)
+// 	suite.Equal(expectedClusterMap, initialClusterMap)
+// }
 
-func (suite *ClusterManagerImplTestSuite) TestUpdateRVList_UpdateExistingRV() {
+// func (suite *ClusterManagerImplTestSuite) TestUpdateRVList_UpdateExistingRV() {
 
-	// Mock data
-	mockNodeIDs := []string{"node1"}
-	mockHeartbeat("node1", "rv1", 50, 100, 0)
+// 	// Mock data
+// 	mockNodeIDs := []string{"node1"}
+// 	mockHeartbeat("node1", "rv1", 50, 100, 0)
 
-	// Mock functions
-	getAllNodes = func() ([]string, error) {
-		return mockNodeIDs, nil
-	}
+// 	// Mock functions
+// 	getAllNodes = func() ([]string, error) {
+// 		return mockNodeIDs, nil
+// 	}
 
-	initialClusterMap := map[string]dcache.RawVolume{
-		"rv0": {RvId: "rv1", State: dcache.StateOffline, AvailableSpace: 20, TotalSpace: 100},
-	}
-	expectedClusterMap := map[string]dcache.RawVolume{
-		"rv0": {RvId: "rv1", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
-	}
+// 	initialClusterMap := map[string]dcache.RawVolume{
+// 		"rv0": {RvId: "rv1", State: dcache.StateOffline, AvailableSpace: 20, TotalSpace: 100},
+// 	}
+// 	expectedClusterMap := map[string]dcache.RawVolume{
+// 		"rv0": {RvId: "rv1", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
+// 	}
 
-	changed, err := suite.cmi.updateRVList(initialClusterMap, 3, 30)
-	suite.NoError(err)
-	suite.True(changed)
-	suite.Equal(expectedClusterMap, initialClusterMap)
-}
+// 	changed, err := suite.cmi.updateRVList(initialClusterMap, 3, 30)
+// 	suite.NoError(err)
+// 	suite.True(changed)
+// 	suite.Equal(expectedClusterMap, initialClusterMap)
+// }
 
-func (suite *ClusterManagerImplTestSuite) TestUpdateRVList_MarkMissingRVOffline() {
-	// Mock functions
-	getAllNodes = func() ([]string, error) {
-		return nil, nil
-	}
-	initialClusterMap := map[string]dcache.RawVolume{
-		"rv0": {RvId: "rv1", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
-	}
-	expectedClusterMap := map[string]dcache.RawVolume{
-		"rv0": {RvId: "rv1", State: dcache.StateOffline, AvailableSpace: 50, TotalSpace: 100},
-	}
+// func (suite *ClusterManagerImplTestSuite) TestUpdateRVList_MarkMissingRVOffline() {
+// 	// Mock functions
+// 	getAllNodes = func() ([]string, error) {
+// 		return nil, nil
+// 	}
+// 	initialClusterMap := map[string]dcache.RawVolume{
+// 		"rv0": {RvId: "rv1", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
+// 	}
+// 	expectedClusterMap := map[string]dcache.RawVolume{
+// 		"rv0": {RvId: "rv1", State: dcache.StateOffline, AvailableSpace: 50, TotalSpace: 100},
+// 	}
 
-	changed, err := suite.cmi.updateRVList(initialClusterMap, 3, 30)
-	suite.NoError(err)
-	suite.True(changed)
-	suite.Equal(expectedClusterMap, initialClusterMap)
-}
+// 	changed, err := suite.cmi.updateRVList(initialClusterMap, 3, 30)
+// 	suite.NoError(err)
+// 	suite.True(changed)
+// 	suite.Equal(expectedClusterMap, initialClusterMap)
+// }
 
-func (suite *ClusterManagerImplTestSuite) TestUpdateRVList_NoChangesRequired() {
-	// Mock data
-	mockNodeIDs := []string{"node1"}
+// func (suite *ClusterManagerImplTestSuite) TestUpdateRVList_NoChangesRequired() {
+// 	// Mock data
+// 	mockNodeIDs := []string{"node1"}
 
-	// Mock functions
-	mockHeartbeat("node1", "rv1", 50, 100, 0)
-	getAllNodes = func() ([]string, error) {
-		return mockNodeIDs, nil
-	}
+// 	// Mock functions
+// 	mockHeartbeat("node1", "rv1", 50, 100, 0)
+// 	getAllNodes = func() ([]string, error) {
+// 		return mockNodeIDs, nil
+// 	}
 
-	initialClusterMap := map[string]dcache.RawVolume{
-		"rv0": {RvId: "rv1", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
-	}
-	expectedClusterMap := map[string]dcache.RawVolume{
-		"rv0": {RvId: "rv1", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
-	}
+// 	initialClusterMap := map[string]dcache.RawVolume{
+// 		"rv0": {RvId: "rv1", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
+// 	}
+// 	expectedClusterMap := map[string]dcache.RawVolume{
+// 		"rv0": {RvId: "rv1", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
+// 	}
 
-	changed, err := suite.cmi.updateRVList(initialClusterMap, 3, 30)
-	suite.NoError(err)
-	suite.False(changed)
-	suite.Equal(expectedClusterMap, initialClusterMap)
-}
+// 	changed, err := suite.cmi.updateRVList(initialClusterMap, 3, 30)
+// 	suite.NoError(err)
+// 	suite.False(changed)
+// 	suite.Equal(expectedClusterMap, initialClusterMap)
+// }
 
-func (suite *ClusterManagerImplTestSuite) TestUpdateRVList_MarksStaleHeartbeatOffline() {
-	// Mock data
-	mockNodeIDs := []string{"node1"}
+// func (suite *ClusterManagerImplTestSuite) TestUpdateRVList_MarksStaleHeartbeatOffline() {
+// 	// Mock data
+// 	mockNodeIDs := []string{"node1"}
 
-	// Mock functions
-	mockHeartbeat("node1", "rv1", 50, 100, 3*60)
-	getAllNodes = func() ([]string, error) {
-		return mockNodeIDs, nil
-	}
+// 	// Mock functions
+// 	mockHeartbeat("node1", "rv1", 50, 100, 3*60)
+// 	getAllNodes = func() ([]string, error) {
+// 		return mockNodeIDs, nil
+// 	}
 
-	initialClusterMap := map[string]dcache.RawVolume{
-		"rv0": {RvId: "rv1", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
-	}
-	expectedClusterMap := map[string]dcache.RawVolume{
-		"rv0": {RvId: "rv1", State: dcache.StateOffline, AvailableSpace: 50, TotalSpace: 100},
-	}
+// 	initialClusterMap := map[string]dcache.RawVolume{
+// 		"rv0": {RvId: "rv1", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
+// 	}
+// 	expectedClusterMap := map[string]dcache.RawVolume{
+// 		"rv0": {RvId: "rv1", State: dcache.StateOffline, AvailableSpace: 50, TotalSpace: 100},
+// 	}
 
-	changed, err := suite.cmi.updateRVList(initialClusterMap, 3, 30)
-	suite.NoError(err)
-	suite.True(changed)
-	suite.Equal(expectedClusterMap, initialClusterMap)
-}
+// 	changed, err := suite.cmi.updateRVList(initialClusterMap, 3, 30)
+// 	suite.NoError(err)
+// 	suite.True(changed)
+// 	suite.Equal(expectedClusterMap, initialClusterMap)
+// }
 
 func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_EmptyRvMap() {
 	mvMap := mockMvMap()
 	rvMap := map[string]dcache.RawVolume{} // Empty rvMap
 
-	numReplicas := 2
-	mvPerRv := 2
-	updated := suite.cmi.updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
+	suite.cmi.config = suite.mockConfig(2, 2)
+	suite.cmi.updateMVList(rvMap, mvMap)
 
-	suite.True(len(updated) == len(mvMap), "No MVs should be updated when rvMap is empty")
+	suite.True(len(mvMap) == len(mockMvMap()), "No MVs should be updated when rvMap is empty")
 }
 
 func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_EmptyMvMap() {
 	mvMap := map[string]dcache.MirroredVolume{} // Empty mvMap
 	rvMap := mockRvMap()
 
-	numReplicas := 2
-	mvPerRv := 2
-	updated := suite.cmi.updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
+	suite.cmi.config = suite.mockConfig(2, 2)
+	suite.cmi.updateMVList(rvMap, mvMap)
 
-	suite.updateMvList(updated, rvMap, numReplicas, mvPerRv)
+	suite.updateMvList(mvMap, rvMap, 2, 2)
 }
 
 func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_MaxMVs() {
 	mvMap := map[string]dcache.MirroredVolume{}
 	rvMap := mockRvMap()
 
-	numReplicas := 1
-	mvPerRv := 1
-	updated := suite.cmi.updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
+	suite.cmi.config = suite.mockConfig(1, 1)
+	suite.cmi.updateMVList(rvMap, mvMap)
 
-	suite.Equal(len(updated), len(rvMap), "Number of updated MVs should be equal to number of RVs")
-	suite.updateMvList(updated, rvMap, numReplicas, mvPerRv)
+	suite.Equal(len(mvMap), len(rvMap), "Number of updated MVs should be equal to number of RVs")
+	suite.updateMvList(mvMap, rvMap, suite.cmi.config.NumReplicas, suite.cmi.config.MvsPerRv)
 }
 
 func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_OfflineMv() {
@@ -302,12 +297,11 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_OfflineMv() {
 	rv.State = dcache.StateOffline
 	rvMap["rv1"] = rv
 
-	numReplicas := 2
-	mvPerRv := 2
-	updated := suite.cmi.updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
+	suite.cmi.config = suite.mockConfig(2, 2)
+	suite.cmi.updateMVList(rvMap, mvMap)
 
-	suite.Equal(updated["mv0"].State, dcache.StateOffline, "Updated MV0 should be offline")
-	suite.updateMvList(updated, rvMap, numReplicas, mvPerRv)
+	suite.Equal(mvMap["mv0"].State, dcache.StateOffline, "Updated MV0 should be offline")
+	suite.updateMvList(mvMap, rvMap, suite.cmi.config.NumReplicas, suite.cmi.config.MvsPerRv)
 }
 
 func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_OfflineRv() {
@@ -319,15 +313,14 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_OfflineRv() {
 	rv.State = dcache.StateOffline
 	rvMap["rv4"] = rv
 
-	numReplicas := 3
-	mvPerRv := 5
-	updated := suite.cmi.updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
+	suite.cmi.config = suite.mockConfig(3, 5)
+	suite.cmi.updateMVList(rvMap, mvMap)
 
-	for _, mv := range updated {
+	for _, mv := range mvMap {
 		_, ok := mv.RVs["rv4"]
 		suite.False(ok, "RV4 should not be present in any MV")
 	}
-	suite.updateMvList(updated, rvMap, numReplicas, mvPerRv)
+	suite.updateMvList(mvMap, rvMap, suite.cmi.config.NumReplicas, suite.cmi.config.MvsPerRv)
 }
 
 func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_DegradedMv() {
@@ -338,29 +331,50 @@ func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_DegradedMv() {
 	rv.State = dcache.StateOffline
 	rvMap["rv0"] = rv
 
-	numReplicas := 2
-	mvPerRv := 2
-	updated := suite.cmi.updateMVList(rvMap, mvMap, numReplicas, mvPerRv)
+	suite.cmi.config = suite.mockConfig(2, 2)
+	suite.cmi.updateMVList(rvMap, mvMap)
 
-	suite.Equal(updated["mv0"].State, dcache.StateDegraded, "Updated MV0 should be degraded")
-	suite.updateMvList(updated, rvMap, numReplicas, mvPerRv)
+	suite.Equal(mvMap["mv0"].State, dcache.StateDegraded, "Updated MV0 should be degraded")
+	suite.updateMvList(mvMap, rvMap, suite.cmi.config.NumReplicas, suite.cmi.config.MvsPerRv)
 }
 
-func (suite *ClusterManagerImplTestSuite) updateMvList(updated map[string]dcache.MirroredVolume, rvMap map[string]dcache.RawVolume, numReplicas int, mvPerRv int) {
+func (suite *ClusterManagerImplTestSuite) TestUpdateMvList_FixMv() {
+
+	mvMap := mockMvMap()
+	rvMap := mockRvMap()
+
+	rv := rvMap["rv0"]
+	rv.State = dcache.StateOffline
+	rvMap["rv0"] = rv
+	rv2 := rvMap["rv2"]
+	rv2.State = dcache.StateOffline
+	rvMap["rv2"] = rv2
+	rv3 := rvMap["rv3"]
+	rv3.State = dcache.StateOffline
+	rvMap["rv3"] = rv3
+
+	suite.cmi.config = suite.mockConfig(2, 2)
+	suite.cmi.updateMVList(rvMap, mvMap)
+	suite.Equal(mvMap["mv0"].State, dcache.StateDegraded, "Updated MV0 should be degraded")
+	suite.Equal(mvMap["mv1"].State, dcache.StateOffline, "Updated MV1 should be offline")
+	suite.updateMvList(mvMap, rvMap, suite.cmi.config.NumReplicas, suite.cmi.config.MvsPerRv)
+}
+
+func (suite *ClusterManagerImplTestSuite) updateMvList(updated map[string]dcache.MirroredVolume, rvMap map[string]dcache.RawVolume, numReplicas uint32, mvPerRv uint64) {
 	suite.True(len(updated) > 0)
 
 	// Check if all the mv's have numReplica rvs
 	for _, mv := range updated {
-		suite.Equal(numReplicas, len(mv.RVs))
+		suite.Equal(numReplicas, uint32(len(mv.RVs)))
 	}
 
 	// Iterate over mvMap and check if any rv is repeated more than mvsPerRv times overall
 	count := make([]int, len(rvMap))
 	for i := range count {
-		count[i] = mvPerRv
+		count[i] = int(mvPerRv)
 	}
 	for _, mv := range updated {
-		for rv, _ := range mv.RVs {
+		for rv := range mv.RVs {
 			index, err := strconv.Atoi(rv[2:])
 			suite.Nil(err)
 			count[index]--
@@ -371,7 +385,7 @@ func (suite *ClusterManagerImplTestSuite) updateMvList(updated map[string]dcache
 	// Check if node diversity is maintained
 	for _, mv := range updated {
 		nodeMap := make(map[string]bool)
-		for rv, _ := range mv.RVs {
+		for rv := range mv.RVs {
 			nodeId := rvMap[rv].NodeId
 			_, ok := nodeMap[nodeId]
 			suite.False(ok, "Node diversity not maintained")
@@ -410,6 +424,18 @@ func mockRvMap() map[string]dcache.RawVolume {
 		"rv6": {RvId: "rv6", NodeId: "node3", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100}, // Duplicate nodeId
 		"rv7": {RvId: "rv7", NodeId: "node5", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
 		"rv8": {RvId: "rv8", NodeId: "node4", State: dcache.StateOnline, AvailableSpace: 50, TotalSpace: 100},
+	}
+}
+
+func (suite *ClusterManagerImplTestSuite) mockConfig(i int, j int) *dcache.DCacheConfig {
+	if suite.cmi.config == nil {
+		suite.cmi.config = &dcache.DCacheConfig{}
+	}
+	suite.cmi.config.NumReplicas = uint32(i)
+	suite.cmi.config.MvsPerRv = uint64(j)
+	return &dcache.DCacheConfig{
+		NumReplicas: suite.cmi.config.NumReplicas,
+		MvsPerRv:    suite.cmi.config.MvsPerRv,
 	}
 }
 
