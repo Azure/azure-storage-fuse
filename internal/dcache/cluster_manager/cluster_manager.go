@@ -1310,7 +1310,7 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 			// RV present in existingRVMap, but missing from rVsByRvIdFromHB.
 			// This is not a common occurrence, emit a warning log.
 			//
-			// For onlyMyRV =true,  case we cannot perfrom this operation as we don't have the exhaustive list of  HBs.
+			// For onlyMyRV==true, case we cannot perfrom this operation as we don't have the exhaustive list of  HBs.
 			if rvInClusterMap.State != dcache.StateOffline {
 				log.Warn("ClusterManager::updateRVList: Online Rv %s missing in new heartbeats", rvName)
 				rvInClusterMap.State = dcache.StateOffline
@@ -1373,7 +1373,7 @@ func collectHBForGivenNodeIds(nodeIds []string) (map[string]dcache.RawVolume, ma
 		}
 		isValidHb, err := cm.IsValidHeartbeat(&hbData)
 		if !isValidHb {
-			common.Assert(isValidHb, err)
+			common.Assert(false, err)
 			return nil, nil, fmt.Errorf("ClusterManager::collectHBForGivenNodeIds: invalid heartbeart for node %s: %v",
 				nodeId, err)
 		}
