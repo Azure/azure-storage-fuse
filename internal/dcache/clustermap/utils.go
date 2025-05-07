@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package clustermanager
+package clustermap
 
 import (
 	"fmt"
@@ -43,47 +43,47 @@ import (
 )
 
 var (
-	minUnixEpoch int64 = 1735689600 // Jan 1 2025, safe lowerlimit for Unix epoch validity check
-	maxUnixEpoch int64 = 2524608000 // Jan 1 2050, safe upperlimit for Unix epoch validity check
+	MinUnixEpoch int64 = 1735689600 // Jan 1 2025, safe lowerlimit for Unix epoch validity check
+	MaxUnixEpoch int64 = 2524608000 // Jan 1 2050, safe upperlimit for Unix epoch validity check
 
-	minClusterMapEpoch int64 = 30
-	maxClusterMapEpoch int64 = 300
+	MinClusterMapEpoch int64 = 30
+	MaxClusterMapEpoch int64 = 300
 
-	minHeartbeatFrequency int64 = 5
-	maxHeartbeatFrequency int64 = 60
+	MinHeartbeatFrequency int64 = 5
+	MaxHeartbeatFrequency int64 = 60
 
 	// TODO: chunk and stripe sizes must be expressed in units of MiB, in the config.
-	minChunkSize int64 = 4 * common.MbToBytes
-	maxChunkSize int64 = 64 * common.MbToBytes
+	MinChunkSize int64 = 4 * common.MbToBytes
+	MaxChunkSize int64 = 64 * common.MbToBytes
 
 	// StripeSize = ChunkSize * StripeWidth
-	minStripeWidth int64 = 4
-	maxStripeWidth int64 = 256
+	MinStripeWidth int64 = 4
+	MaxStripeWidth int64 = 256
 
-	minNumReplicas int64 = 1
-	maxNumReplicas int64 = 256
+	MinNumReplicas int64 = 1
+	MaxNumReplicas int64 = 256
 
-	minMvsPerRv int64 = 10
-	maxMvsPerRv int64 = 100
+	MinMvsPerRv int64 = 10
+	MaxMvsPerRv int64 = 100
 
-	minRvFullThreshold int64 = 80
-	maxRvFullThreshold int64 = 100
+	MinRvFullThreshold int64 = 80
+	MaxRvFullThreshold int64 = 100
 
-	minRvNearFullThreshold int64 = 80
-	maxRvNearFullThreshold int64 = 100
+	MinRvNearFullThreshold int64 = 80
+	MaxRvNearFullThreshold int64 = 100
 
-	rvNameRegex = regexp.MustCompile("^rv[0-9]+$")
-	mvNameRegex = regexp.MustCompile("^mv[0-9]+$")
+	RvNameRegex = regexp.MustCompile("^rv[0-9]+$")
+	MvNameRegex = regexp.MustCompile("^mv[0-9]+$")
 )
 
 // Valid RV name is of the form "rv0", "rv99", etc.
 func IsValidRVName(rvName string) bool {
-	return rvNameRegex.MatchString(rvName)
+	return RvNameRegex.MatchString(rvName)
 }
 
 // Valid MV name is of the form "mv0", "mv99", etc.
 func IsValidMVName(mvName string) bool {
-	return mvNameRegex.MatchString(mvName)
+	return MvNameRegex.MatchString(mvName)
 }
 
 // Check all clustermap components for validity.
@@ -97,11 +97,11 @@ func IsValidClusterMap(cm *dcache.ClusterMap) (bool, error) {
 		return false, fmt.Errorf("ClusterMap: Invalid State: %s %+v", cm.State, *cm)
 	}
 
-	if cm.CreatedAt < minUnixEpoch || cm.CreatedAt > maxUnixEpoch {
+	if cm.CreatedAt < MinUnixEpoch || cm.CreatedAt > MaxUnixEpoch {
 		return false, fmt.Errorf("ClusterMap: Invalid CreatedAt: %d %+v", cm.CreatedAt, *cm)
 	}
 
-	if cm.LastUpdatedAt < minUnixEpoch || cm.LastUpdatedAt > maxUnixEpoch {
+	if cm.LastUpdatedAt < MinUnixEpoch || cm.LastUpdatedAt > MaxUnixEpoch {
 		return false, fmt.Errorf("ClusterMap: Invalid LastUpdatedAt: %d %+v", cm.LastUpdatedAt, *cm)
 	}
 
@@ -158,8 +158,8 @@ func IsValidDcacheConfig(cfg *dcache.DCacheConfig) (bool, error) {
 		return false, fmt.Errorf("DCacheConfig: Invalid MinNodes: %d +%v", cfg.MinNodes, *cfg)
 	}
 
-	if int64(cfg.HeartbeatSeconds) < minHeartbeatFrequency ||
-		int64(cfg.HeartbeatSeconds) > maxHeartbeatFrequency {
+	if int64(cfg.HeartbeatSeconds) < MinHeartbeatFrequency ||
+		int64(cfg.HeartbeatSeconds) > MaxHeartbeatFrequency {
 		return false, fmt.Errorf("DCacheConfig: Invalid HeartbeatSeconds: %d %+v", cfg.HeartbeatSeconds, *cfg)
 	}
 
@@ -169,7 +169,7 @@ func IsValidDcacheConfig(cfg *dcache.DCacheConfig) (bool, error) {
 			cfg.HeartbeatsTillNodeDown, *cfg)
 	}
 
-	if int64(cfg.ClustermapEpoch) < minClusterMapEpoch || int64(cfg.ClustermapEpoch) > maxClusterMapEpoch {
+	if int64(cfg.ClustermapEpoch) < MinClusterMapEpoch || int64(cfg.ClustermapEpoch) > MaxClusterMapEpoch {
 		return false, fmt.Errorf("DCacheConfig: Invalid ClustermapEpoch: %d %+v", cfg.ClustermapEpoch, *cfg)
 	}
 
@@ -178,20 +178,20 @@ func IsValidDcacheConfig(cfg *dcache.DCacheConfig) (bool, error) {
 		return false, fmt.Errorf("DCacheConfig: HeartbeatSeconds (%d) > ClustermapEpoch (%d) %+v", cfg.HeartbeatSeconds, cfg.ClustermapEpoch, *cfg)
 	}
 
-	if int64(cfg.ChunkSize) < minChunkSize || int64(cfg.ChunkSize) > maxChunkSize {
+	if int64(cfg.ChunkSize) < MinChunkSize || int64(cfg.ChunkSize) > MaxChunkSize {
 		return false, fmt.Errorf("DCacheConfig: Invalid ChunkSize: %d %+v", cfg.ChunkSize, *cfg)
 	}
 
-	if int64(cfg.StripeSize) < (int64(cfg.ChunkSize)*minStripeWidth) ||
-		int64(cfg.StripeSize) > (int64(cfg.ChunkSize)*maxStripeWidth) {
+	if int64(cfg.StripeSize) < (int64(cfg.ChunkSize)*MinStripeWidth) ||
+		int64(cfg.StripeSize) > (int64(cfg.ChunkSize)*MaxStripeWidth) {
 		return false, fmt.Errorf("DCacheConfig: Invalid StripeSize: %d %+v", cfg.StripeSize, *cfg)
 	}
 
-	if int64(cfg.NumReplicas) < minNumReplicas || int64(cfg.NumReplicas) > maxNumReplicas {
+	if int64(cfg.NumReplicas) < MinNumReplicas || int64(cfg.NumReplicas) > MaxNumReplicas {
 		return false, fmt.Errorf("DCacheConfig: Invalid NumReplicas: %d %+v", cfg.NumReplicas, *cfg)
 	}
 
-	if int64(cfg.MvsPerRv) < minMvsPerRv || int64(cfg.MvsPerRv) > maxMvsPerRv {
+	if int64(cfg.MvsPerRv) < MinMvsPerRv || int64(cfg.MvsPerRv) > MaxMvsPerRv {
 		return false, fmt.Errorf("DCacheConfig: Invalid MvsPerRv: %d %+v", cfg.MvsPerRv, *cfg)
 	}
 
@@ -201,12 +201,12 @@ func IsValidDcacheConfig(cfg *dcache.DCacheConfig) (bool, error) {
 			cfg.MvsPerRv, cfg.NumReplicas, *cfg)
 	}
 
-	if int64(cfg.RvFullThreshold) < minRvFullThreshold || int64(cfg.RvFullThreshold) > maxRvFullThreshold {
+	if int64(cfg.RvFullThreshold) < MinRvFullThreshold || int64(cfg.RvFullThreshold) > MaxRvFullThreshold {
 		return false, fmt.Errorf("DCacheConfig: Invalid RvFullThreshold: %d %+v", cfg.RvFullThreshold, *cfg)
 	}
 
-	if int64(cfg.RvNearfullThreshold) < minRvNearFullThreshold ||
-		int64(cfg.RvNearfullThreshold) > maxRvNearFullThreshold {
+	if int64(cfg.RvNearfullThreshold) < MinRvNearFullThreshold ||
+		int64(cfg.RvNearfullThreshold) > MaxRvNearFullThreshold {
 		return false, fmt.Errorf("DCacheConfig: Invalid RvNearfullThreshold: %d %+v", cfg.RvFullThreshold, *cfg)
 	}
 
@@ -342,5 +342,50 @@ func IsValidRVMap(rVMap map[string]dcache.RawVolume) (bool, error) {
 		}
 	}
 
+	return true, nil
+}
+
+func IsValidHeartbeat(hb *dcache.HeartbeatData) (bool, error) {
+
+	// NodeID
+	if !common.IsValidUUID(hb.NodeID) {
+		return false, fmt.Errorf("HeartbeatData: Invalid NodeId %s %+v", hb.NodeID, *hb)
+	}
+
+	// HostName
+	if len(hb.Hostname) == 0 {
+		return false, fmt.Errorf("HeartbeatData: Empty HostName %+v", *hb)
+	}
+
+	// IPAddress
+	if !common.IsValidIP(hb.IPAddr) {
+		return false, fmt.Errorf("HeartbeatData: Invalid IPAddress: %s: %+v", hb.IPAddr, *hb)
+	}
+
+	// LastHeartbeat
+	if hb.LastHeartbeat < uint64(MinUnixEpoch) || hb.LastHeartbeat > uint64(MaxUnixEpoch) {
+		return false, fmt.Errorf("HeartbeatData: Invalid LastHeartbeat: %d: %+v", hb.LastHeartbeat, *hb)
+	}
+
+	// At least one RV
+	//TODO: Have to support nodes with no RVs
+	if len(hb.RVList) == 0 {
+		return false, fmt.Errorf("HeartbeatData: no RawVolumes %+v", *hb)
+	}
+
+	// Validate each RV
+	for _, rv := range hb.RVList {
+		if valid, err := IsValidRV(&rv); !valid {
+			return false, fmt.Errorf("HeartbeatData: Invalid RV: %v", err)
+		}
+
+		if hb.NodeID != rv.NodeId {
+			return false, fmt.Errorf("HeartbeatData: HB & RV NodeId mismatch: %s: %s: %+v", hb.NodeID, rv.NodeId, *hb)
+		}
+
+		if hb.IPAddr != rv.IPAddress {
+			return false, fmt.Errorf("HeartbeatData: HB & RV IPAddr mismatch: %s: %s: %+v", hb.IPAddr, rv.IPAddress, *hb)
+		}
+	}
 	return true, nil
 }

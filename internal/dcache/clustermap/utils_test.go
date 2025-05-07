@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package clustermanager
+package clustermap
 
 import (
 	"encoding/json"
@@ -83,58 +83,74 @@ func cloneClusterMap(src dcache.ClusterMap) dcache.ClusterMap {
 func (suite *utilsTestSuite) TestIsValidClusterMap() {
 	// Test case: Valid ClusterMap
 	validClusterMap := LoadAndValidateClusterMapFromFile("")
-	isValid, errMsg := IsValidClusterMap(validClusterMap)
+	isValid, err := IsValidClusterMap(&validClusterMap)
 	suite.True(isValid)
-	suite.Empty(errMsg)
+	suite.Empty(err)
 
 	// Test case: Invalid CreatedAt
 	invalidCreatedAt := validClusterMap
 	invalidCreatedAt.CreatedAt = 0
-	isValid, errMsg = IsValidClusterMap(invalidCreatedAt)
+	isValid, err = IsValidClusterMap(&invalidCreatedAt)
 	suite.False(isValid)
-	suite.Contains(errMsg, "Invalid CreatedAt")
+	suite.Contains(err.Error(), "Invalid CreatedAt")
 
 	// Test case: Invalid LastUpdatedAt
 	invalidLastUpdatedAt := validClusterMap
 	invalidLastUpdatedAt.LastUpdatedAt = 0
-	isValid, errMsg = IsValidClusterMap(invalidLastUpdatedAt)
+	isValid, err = IsValidClusterMap(&invalidLastUpdatedAt)
 	suite.False(isValid)
-	suite.Contains(errMsg, "Invalid LastUpdatedAt")
+	suite.Contains(err.Error(), "Invalid LastUpdatedAt")
 
 	// Test case: LastUpdatedAt < CreatedAt
 	invalidTimestamps := validClusterMap
 	invalidTimestamps.LastUpdatedAt = invalidTimestamps.CreatedAt - 1
-	isValid, errMsg = IsValidClusterMap(invalidTimestamps)
+	isValid, err = IsValidClusterMap(&invalidTimestamps)
 	suite.False(isValid)
-	suite.Contains(errMsg, "LastUpdatedAt")
+	suite.Contains(err.Error(), "LastUpdatedAt")
 
 	// Test case: Invalid LastUpdatedBy UUID
 	invalidLastUpdatedBy := validClusterMap
 	invalidLastUpdatedBy.LastUpdatedBy = "invalid-uuid"
-	isValid, errMsg = IsValidClusterMap(invalidLastUpdatedBy)
+	isValid, err = IsValidClusterMap(&invalidLastUpdatedBy)
 	suite.False(isValid)
-	suite.Contains(errMsg, "Invalid LastUpdatedBy UUID")
+	suite.Contains(err.Error(), "Invalid LastUpdatedBy: invalid-uuid")
 
 	// Test case: Invalid Config.HeartbeatSeconds
 	invalidHeartbeatSeconds := validClusterMap
 	invalidHeartbeatSeconds.Config.HeartbeatSeconds = 0
-	isValid, errMsg = IsValidClusterMap(invalidHeartbeatSeconds)
+	isValid, err = IsValidClusterMap(&invalidHeartbeatSeconds)
 	suite.False(isValid)
-	suite.Contains(errMsg, "Invalid Config.HeartbeatSeconds")
+	suite.Contains(err.Error(), "Invalid Config: DCacheConfig: Invalid HeartbeatSeconds")
+
+	// Test case: Invalid Config.HeartbeatsTillNodeDown
+	invalidHBCount := validClusterMap
+	invalidHBCount.Config.HeartbeatsTillNodeDown = 0
+	isValid, err = IsValidClusterMap(&invalidHBCount)
+	suite.False(isValid)
+	suite.Contains(err.Error(), "Invalid Config: DCacheConfig: Invalid HeartbeatsTillNodeDown")
 
 	// Test case: Invalid Config.ClustermapEpoch
 	invalidClustermapEpoch := validClusterMap
 	invalidClustermapEpoch.Config.ClustermapEpoch = 0
-	isValid, errMsg = IsValidClusterMap(invalidClustermapEpoch)
+	isValid, err = IsValidClusterMap(&invalidClustermapEpoch)
 	suite.False(isValid)
-	suite.Contains(errMsg, "Invalid Config.ClustermapEpoch")
+	suite.Contains(err.Error(), "Invalid Config: DCacheConfig: Invalid ClustermapEpoch")
 
 	// Test case: Duplicate RvId in RVMap
 	duplicateRvId := cloneClusterMap(validClusterMap)
 	duplicateRvId.RVMap["rv2"] = duplicateRvId.RVMap["rv1"]
-	isValid, errMsg = IsValidClusterMap(duplicateRvId)
+	isValid, err = IsValidClusterMap(&duplicateRvId)
 	suite.False(isValid)
-	suite.Contains(errMsg, "duplicate RvId")
+	suite.Contains(err.Error(), "Invalid RVMap: ClusterMap::RVMap Duplicate RvId ")
+
+	// Test case: Invalid RVMap entry (bad State)
+	invalidRVState := cloneClusterMap(validClusterMap)
+	badRV := invalidRVState.RVMap["rv1"]
+	badRV.State = "invalid-state"
+	invalidRVState.RVMap["rv1"] = badRV
+	isValid, err = IsValidClusterMap(&invalidRVState)
+	suite.False(isValid)
+	suite.Contains(err.Error(), "Invalid RVMap: ClusterMap::RVMap Invalid RV rv1")
 
 	// Test case: Invalid MVMap entry
 	invalidMVMap := cloneClusterMap(validClusterMap)
@@ -145,7 +161,17 @@ func (suite *utilsTestSuite) TestIsValidClusterMap() {
 		State: "invalid-state",
 		RVs:   map[string]dcache.StateEnum{},
 	}
-	isValid, errMsg = IsValidClusterMap(invalidMVMap)
+	isValid, err = IsValidClusterMap(&invalidMVMap)
 	suite.False(isValid)
-	suite.Contains(errMsg, "Invalid mv State")
+	suite.Contains(err.Error(), "Invalid MVMap: MVMap: MV mv1 has invalid State")
+
+	// Test case: MVMap references unknown RV or invalida replica count
+	invalidMVRef := cloneClusterMap(validClusterMap)
+	// inject a bogus RV id into mv1.RVs
+	mm := invalidMVRef.MVMap["mv1"]
+	mm.RVs["does-not-exist"] = dcache.StateOnline
+	invalidMVRef.MVMap["mv1"] = mm
+	isValid, err = IsValidClusterMap(&invalidMVRef)
+	suite.False(isValid)
+	suite.Contains(err.Error(), "Invalid MVMap: MVMap: MV mv1 has unexpected replica count, expected (2), found (3)")
 }

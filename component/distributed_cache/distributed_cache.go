@@ -48,7 +48,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
-	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/cluster_manager"
+	clustermanager "github.com/Azure/azure-storage-fuse/v2/internal/dcache/cluster_manager"
 	fm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/file_manager"
 	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
@@ -175,12 +175,14 @@ func (dc *DistributedCache) startClusterManager() string {
 		RebalancePercentage:    dc.cfg.RebalancePercentage,
 		SafeDeletes:            dc.cfg.SafeDeletes,
 		CacheAccess:            dc.cfg.CacheAccess,
+		RvFullThreshold:        dc.cfg.RVFullThreshold,
+		RvNearfullThreshold:    dc.cfg.RVNearfullThreshold,
 	}
 	rvList, err := dc.createRVList()
 	if err != nil {
 		return fmt.Sprintf("DistributedCache::Start error [Failed to create RV List for cluster manager : %v]", err)
 	}
-	if cm.Start(dCacheConfig, rvList) != nil {
+	if clustermanager.Start(dCacheConfig, rvList) != nil {
 		return fmt.Sprintf("DistributedCache::Start error [Failed to start cluster manager : %v]", err)
 	}
 	return ""
@@ -227,6 +229,7 @@ func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
 func (dc *DistributedCache) Stop() error {
 	log.Trace("DistributedCache::Stop : Stopping component %s", dc.Name())
 	fm.EndFileIOManager()
+	clustermanager.Stop()
 	return nil
 }
 
@@ -555,7 +558,7 @@ func (dc *DistributedCache) WriteFile(options internal.WriteFileOptions) (int, e
 	common.Assert(len(options.Data) != 0)
 
 	// When user wants to write to a default path (no explicit fs=azure/fs=dcache namespace specified)
-	// we have mulitple possible semantics:
+	// we have multiple possible semantics:
 	// 1. Write through
 	//    In this mode every application write is written to both the dcache as well as Azure, as if
 	//    user explicitly wrote to either of them. If any of these write fails, the application write
