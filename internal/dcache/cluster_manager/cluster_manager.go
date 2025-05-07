@@ -1269,7 +1269,7 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 			// If an RV is present in rVsByRvIdFromHB, it MUST have a valid HB in rvLastHB.
 			common.Assert(found)
 
-			//We just came here after punching the heartbeat, which indicates this is online RV.
+			// We just came here after punching the heartbeat, which indicates this is online RV.
 			common.Assert(!onlyMyRVs || rvHb.State == dcache.StateOnline)
 
 			if lastHB < hbExpiry {
@@ -1277,7 +1277,7 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 				// HB expired, mark RV offline if not already offline.
 				//
 
-				//We just came here after punching the heartbeat, which must not expired.
+				// We just came here after punching the heartbeat, which must not expired.
 				common.Assert(!onlyMyRVs)
 
 				if rvInClusterMap.State != dcache.StateOffline {
@@ -1310,6 +1310,7 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 			// RV present in existingRVMap, but missing from rVsByRvIdFromHB.
 			// This is not a common occurrence, emit a warning log.
 			//
+			// For onlyMyRV =true,  case we cannot perfrom this operation as we don't have the exhaustive list of  HBs.
 			if rvInClusterMap.State != dcache.StateOffline {
 				log.Warn("ClusterManager::updateRVList: Online Rv %s missing in new heartbeats", rvName)
 				rvInClusterMap.State = dcache.StateOffline
