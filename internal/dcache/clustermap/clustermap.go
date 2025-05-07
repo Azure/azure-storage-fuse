@@ -56,6 +56,11 @@ func Update() {
 	clusterMap.update()
 }
 
+// UpdateSync will load the local clustermap synchronously.
+func UpdateSync() {
+	clusterMap.loadLocalMap()
+}
+
 // It will return online MVs Map <mvName, MV> as per local cache copy of cluster map.
 func GetActiveMVs() map[string]dcache.MirroredVolume {
 	return clusterMap.getActiveMVs()
@@ -173,27 +178,31 @@ func (c *ClusterMap) processEvents() {
 		log.Debug("ClusterMap::processEvents: Received dcache.ClusterManagerEvent")
 
 		// On every cluster‐map update event, reload localMap from the JSON file.
-		data, err := os.ReadFile(c.localClusterMapPath)
-		if err != nil {
-			log.Err("ClusterMap::processEvents: Failed to read %s: %v", c.localClusterMapPath, err)
-			common.Assert(false, err)
-			continue
-		}
-
-		var newClusterMap dcache.ClusterMap
-		if err := json.Unmarshal(data, &newClusterMap); err != nil {
-			log.Err("ClusterMap::processEvents: Invalid JSON in %s: %v", c.localClusterMapPath, err)
-			common.Assert(false, err)
-			continue
-		}
-
-		c.localMap = &newClusterMap
+		c.loadLocalMap()
 		// evt can carry metadata if needed
 		_ = evt
 	}
 
 	// once CloseNotificationChannel() is called, the loop exits cleanly
 	log.Info("ClusterMap::processEvents: Event processor thread exited")
+}
+
+func (c *ClusterMap) loadLocalMap() {
+	data, err := os.ReadFile(c.localClusterMapPath)
+	if err != nil {
+		log.Err("ClusterMap::processEvents: Failed to read %s: %v", c.localClusterMapPath, err)
+		common.Assert(false, err)
+		return
+	}
+
+	var newClusterMap dcache.ClusterMap
+	if err := json.Unmarshal(data, &newClusterMap); err != nil {
+		log.Err("ClusterMap::processEvents: Invalid JSON in %s: %v", c.localClusterMapPath, err)
+		common.Assert(false, err)
+		return
+	}
+
+	c.localMap = &newClusterMap
 }
 
 func (c *ClusterMap) update() {

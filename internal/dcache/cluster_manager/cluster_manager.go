@@ -155,11 +155,6 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 	//
 	log.Info("ClusterManager::start: Starting RPC server")
 
-	// Loading of localCopy of clustermap is taking some time,
-	// that updated copy is required immediately to RPC server, so just added a sleep of 2 seconds
-	// that might fail for degraded workflow where we have to wait for an epoch or clearing the cache directory.
-	// TODO: Remove this sleep and add a better way to ensure that the local copy is loaded with this current node RVs.
-	time.Sleep(2 * time.Second)
 	common.Assert(cmi.rpcServer == nil)
 	cmi.rpcServer, err = rpc_server.NewNodeServer()
 	if err != nil {
@@ -237,6 +232,10 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 			err = cmi.updateClusterMapLocalCopyIfRequired()
 			if err == nil {
 				consecutiveFailures = 0
+				//TODO{Akku}: Notify only if there is a change in the MVs/RVs
+				// Notify clustermap package. It'll refresh its in-memory copy for serving its users.
+				cm.Update()
+
 			} else {
 				log.Err("ClusterManager::start: updateClusterMapLocalCopyIfRequired failed: %v", err)
 				consecutiveFailures++
@@ -334,10 +333,6 @@ func (cmi *ClusterManager) updateClusterMapLocalCopyIfRequired() error {
 
 	log.Info("ClusterManager::updateClusterMapLocalCopyIfRequired: Local clustermap updated (bytes: %d, etag: %s)",
 		len(storageBytes), *etag)
-
-	//TODO{Akku}: Notify only if there is a change in the MVs/RVs
-	// 6. Notify clustermap package. It'll refresh its in-memory copy for serving its users.
-	cm.Update()
 
 	return nil
 }
@@ -481,6 +476,9 @@ UpdateLocalClusterMapAndPunchInitialHeartbeat:
 
 	// Save local copy of the clustermap.
 	cmi.updateClusterMapLocalCopyIfRequired()
+
+	// Call clusterMap package to load in-memory copy for serving its users.
+	cm.UpdateSync()
 
 	// TODO: Assert that clustermap has our local RVs.
 	common.Assert(cmi.config != nil)
