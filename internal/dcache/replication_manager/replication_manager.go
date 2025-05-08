@@ -268,6 +268,7 @@ retry:
 	return &WriteMvResponse{}, nil
 }
 
+// TODO: this will be triggered after the replication manager gets the event of the cluster map update
 // ResyncDegradedMVs will be triggered if there is any change in the clustermap.
 // Cluster manager's DegradeMV and FixMV workflow will update the clustermap replacing the offline RVs
 // with new online RVs and also marking the MV as degraded. It then publishes the updated clustermap
