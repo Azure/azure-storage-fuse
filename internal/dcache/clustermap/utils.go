@@ -391,18 +391,21 @@ func IsValidHeartbeat(hb *dcache.HeartbeatData) (bool, error) {
 	return true, nil
 }
 
+// This function is used to export the clustermap for better viewing.
 func ExportClusterMap(cm *dcache.ClusterMap) *dcache.ClusterMapExport {
 	// Sort keys
 	rvKeys := make([]string, 0, len(cm.RVMap))
 	for k := range cm.RVMap {
 		rvKeys = append(rvKeys, k)
 	}
+	// TODO: The following sorting is lexigographic, should be changed to human sort.
 	sort.Strings(rvKeys)
 
 	mvKeys := make([]string, 0, len(cm.MVMap))
 	for k := range cm.MVMap {
 		mvKeys = append(mvKeys, k)
 	}
+	// TODO: The following sorting is lexigographic, should be changed to human sort.
 	sort.Strings(mvKeys)
 
 	// Create sorted slices
