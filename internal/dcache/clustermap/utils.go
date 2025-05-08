@@ -393,6 +393,7 @@ func IsValidHeartbeat(hb *dcache.HeartbeatData) (bool, error) {
 
 // This function is used to export the clustermap for better viewing.
 func ExportClusterMap(cm *dcache.ClusterMap) *dcache.ClusterMapExport {
+	common.Assert(IsValidClusterMap(cm))
 	// Sort keys
 	rvKeys := make([]string, 0, len(cm.RVMap))
 	for k := range cm.RVMap {
