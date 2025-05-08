@@ -167,7 +167,18 @@ func isRVHostedInCurrentNode(rvName string) bool {
 	return ok
 }
 
-// TODO:: integration: update this after RvNameToCachePath() API is added in clustermap
+// return the local cache path for the given RV name
+// Note: this RV should be hosted by the current node
 func getCachePathForRVName(rvName string) string {
-	return "/home/user/tmpcache"
+	myRVs := clustermap.GetMyRVs()
+	common.Assert(myRVs != nil, "nodes's raw volumes cannot be nil")
+	common.Assert(len(myRVs) > 0, "nodes's raw volumes cannot be empty")
+
+	rv, ok := myRVs[rvName]
+	common.Assert(ok, fmt.Sprintf("RV %s is not hosted by the node. Raw volumes: %+v", rvName, myRVs))
+	common.Assert(rv.LocalCachePath != "", fmt.Sprintf("RV %s local cache path is empty", rvName))
+	common.Assert(common.DirectoryExists(rv.LocalCachePath),
+		fmt.Sprintf("RV %s local cache path %s does not exist", rvName, rv.LocalCachePath))
+
+	return rv.LocalCachePath
 }

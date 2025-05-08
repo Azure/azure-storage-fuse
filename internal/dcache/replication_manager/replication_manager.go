@@ -355,7 +355,7 @@ func ResyncMV(mvName string, mvInfo dcache.MirroredVolume) error {
 		return fmt.Errorf("failed to end sync for MV %s [%v]", mvName, err.Error())
 	}
 
-	// TODO:: integration call cluster manager API to update the syncing RVs to online state
+	// TODO:: integration: call cluster manager API to update the syncing RVs to online state
 	// and also mark the MV as online if all the RVs are online
 
 	log.Debug("ReplicationManager::ResyncMV: Successfully resynced MV %s", mvName)
@@ -423,7 +423,6 @@ func copyOutOfSyncChunks(mvName string, srcRVName string, destRVName string, com
 
 	common.Assert(srcRVName != destRVName, "source and destination RV names are same")
 
-	// TODO:: integration: update this after RvNameToCachePath() API is added in clustermap
 	sourceMVPath := filepath.Join(getCachePathForRVName(srcRVName), mvName)
 	common.Assert(common.DirectoryExists(sourceMVPath), fmt.Sprintf("source MV path %s does not exist in current node", sourceMVPath))
 
