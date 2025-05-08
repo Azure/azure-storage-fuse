@@ -37,6 +37,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"sort"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
@@ -388,4 +389,42 @@ func IsValidHeartbeat(hb *dcache.HeartbeatData) (bool, error) {
 		}
 	}
 	return true, nil
+}
+
+func ExportClusterMap(cm *dcache.ClusterMap) *dcache.ClusterMapExport {
+	// Sort keys
+	rvKeys := make([]string, 0, len(cm.RVMap))
+	for k := range cm.RVMap {
+		rvKeys = append(rvKeys, k)
+	}
+	sort.Strings(rvKeys)
+
+	mvKeys := make([]string, 0, len(cm.MVMap))
+	for k := range cm.MVMap {
+		mvKeys = append(mvKeys, k)
+	}
+	sort.Strings(mvKeys)
+
+	// Create sorted slices
+	rvList := make([]dcache.KeyedRawVolume, 0, len(rvKeys))
+	for _, k := range rvKeys {
+		rvList = append(rvList, dcache.KeyedRawVolume{Key: k, Value: cm.RVMap[k]})
+	}
+
+	mvList := make([]dcache.KeyedMirroredVolume, 0, len(mvKeys))
+	for _, k := range mvKeys {
+		mvList = append(mvList, dcache.KeyedMirroredVolume{Key: k, Value: cm.MVMap[k]})
+	}
+
+	return &dcache.ClusterMapExport{
+		Readonly:      cm.Readonly,
+		State:         cm.State,
+		Epoch:         cm.Epoch,
+		CreatedAt:     cm.CreatedAt,
+		LastUpdatedAt: cm.LastUpdatedAt,
+		LastUpdatedBy: cm.LastUpdatedBy,
+		Config:        cm.Config,
+		RVList:        rvList,
+		MVList:        mvList,
+	}
 }

@@ -75,6 +75,30 @@ type ClusterMap struct {
 	MVMap         map[string]MirroredVolume `json:"mv-map"`
 }
 
+// This struct is used for better interpreting the ClusterMap struct while reading the data as json.
+// RVList and MVList are sorted by their names
+type ClusterMapExport struct {
+	Readonly      bool                  `json:"readonly,omitempty"`
+	State         StateEnum             `json:"state,omitempty"`
+	Epoch         int64                 `json:"epoch,omitempty"`
+	CreatedAt     int64                 `json:"created-at,omitempty"`
+	LastUpdatedAt int64                 `json:"last_updated_at,omitempty"`
+	LastUpdatedBy string                `json:"last_updated_by,omitempty"`
+	Config        DCacheConfig          `json:"config"`
+	RVList        []KeyedRawVolume      `json:"rv-map"`
+	MVList        []KeyedMirroredVolume `json:"mv-map"`
+}
+
+type KeyedRawVolume struct {
+	Key   string    `json:"key"`
+	Value RawVolume `json:"value"`
+}
+
+type KeyedMirroredVolume struct {
+	Key   string         `json:"key"`
+	Value MirroredVolume `json:"value"`
+}
+
 type HeartbeatData struct {
 	Hostname      string      `json:"hostname"`
 	IPAddr        string      `json:"ipaddr"`

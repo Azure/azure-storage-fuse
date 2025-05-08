@@ -47,9 +47,9 @@ import (
 // proc file: clustermap
 func readClusterMapCallback(pFile *procFile) error {
 	var err error
-	localClusterMap := cm.GetClusterMap()
-	// TODO: make the rv, mv names sorted for better interpretation of the data.
-	pFile.buf, err = json.Marshal(&localClusterMap)
+	localCMap := cm.GetClusterMap()
+	exportedCMap := cm.ExportClusterMap(&localCMap)
+	pFile.buf, err = json.MarshalIndent(exportedCMap, "", "\t")
 
 	if err != nil {
 		log.Err("DebugFS::readclusterMapCallback, err: %v", err)
