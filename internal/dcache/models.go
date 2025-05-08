@@ -34,8 +34,8 @@
 package dcache
 
 type MirroredVolume struct {
-	RVs   map[string]StateEnum `json:"rvs,omitempty"`
 	State StateEnum            `json:"state,omitempty"`
+	RVs   map[string]StateEnum `json:"rvs,omitempty"`
 }
 
 type RawVolume struct {
@@ -63,6 +63,7 @@ const (
 	StateChecking  StateEnum = "checking"
 )
 
+// Please change the ClusterMapExport struct if you change this struct.
 type ClusterMap struct {
 	Readonly      bool                      `json:"readonly,omitempty"`
 	State         StateEnum                 `json:"state,omitempty"`
@@ -73,6 +74,21 @@ type ClusterMap struct {
 	Config        DCacheConfig              `json:"config"`
 	RVMap         map[string]RawVolume      `json:"rv-map"`
 	MVMap         map[string]MirroredVolume `json:"mv-map"`
+}
+
+// This struct is used for better interpreting the ClusterMap struct while reading the data as json.
+// RVList and MVList are sorted by their names
+// Refer to ClusterMap before making any changes to this struct.
+type ClusterMapExport struct {
+	Readonly      bool                        `json:"readonly,omitempty"`
+	State         StateEnum                   `json:"state,omitempty"`
+	Epoch         int64                       `json:"epoch,omitempty"`
+	CreatedAt     int64                       `json:"created-at,omitempty"`
+	LastUpdatedAt int64                       `json:"last_updated_at,omitempty"`
+	LastUpdatedBy string                      `json:"last_updated_by,omitempty"`
+	Config        DCacheConfig                `json:"config"`
+	RVList        []map[string]RawVolume      `json:"rv-list"` // Used single element map for more readable clustermap output.
+	MVList        []map[string]MirroredVolume `json:"mv-list"` // Used single element map for more readable clustermap output.
 }
 
 type HeartbeatData struct {

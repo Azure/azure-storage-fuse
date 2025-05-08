@@ -37,6 +37,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"sort"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
@@ -388,4 +389,46 @@ func IsValidHeartbeat(hb *dcache.HeartbeatData) (bool, error) {
 		}
 	}
 	return true, nil
+}
+
+// This function is used to export the clustermap for better viewing.
+func ExportClusterMap(cm *dcache.ClusterMap) *dcache.ClusterMapExport {
+	common.Assert(IsValidClusterMap(cm))
+	// Sort keys
+	rvKeys := make([]string, 0, len(cm.RVMap))
+	for k := range cm.RVMap {
+		rvKeys = append(rvKeys, k)
+	}
+	// TODO: The following sorting is lexigographic, should be changed to human sort.
+	sort.Strings(rvKeys)
+
+	mvKeys := make([]string, 0, len(cm.MVMap))
+	for k := range cm.MVMap {
+		mvKeys = append(mvKeys, k)
+	}
+	// TODO: The following sorting is lexigographic, should be changed to human sort.
+	sort.Strings(mvKeys)
+
+	// Create sorted slices
+	rvList := make([]map[string]dcache.RawVolume, 0, len(rvKeys))
+	for _, k := range rvKeys {
+		rvList = append(rvList, map[string]dcache.RawVolume{k: cm.RVMap[k]})
+	}
+
+	mvList := make([]map[string]dcache.MirroredVolume, 0, len(mvKeys))
+	for _, k := range mvKeys {
+		mvList = append(mvList, map[string]dcache.MirroredVolume{k: cm.MVMap[k]})
+	}
+
+	return &dcache.ClusterMapExport{
+		Readonly:      cm.Readonly,
+		State:         cm.State,
+		Epoch:         cm.Epoch,
+		CreatedAt:     cm.CreatedAt,
+		LastUpdatedAt: cm.LastUpdatedAt,
+		LastUpdatedBy: cm.LastUpdatedBy,
+		Config:        cm.Config,
+		RVList:        rvList,
+		MVList:        mvList,
+	}
 }

@@ -134,20 +134,29 @@ func getPlaceholderDirForRoot(path string) *internal.ObjAttr {
 
 // returns true for isAzurePath, if path has "fs=azure" as its first subdir.
 // return true for isDcachPath, if path has "fs=dcache" as its first subdir.
+// return true for isDebugPath, if path has "fs=debug" as its first subdir
 // rawPath is the resultant path after removing virtual dirs like "fs=azure/dcache"
 // returns path if it dont find any virtual dirs.
-func getFS(path string) (isAzurePath bool, isDcachePath bool, rawPath string) {
+func getFS(path string) (isAzurePath bool, isDcachePath bool, isDebugPath bool, rawPath string) {
 	rawPath = path
-	isAzurePath, tempPath := isPathContainsSubDir(path, "fs=azure")
+	isDcachePath, tempPath := isPathContainsSubDir(path, "fs=dcache")
+	if isDcachePath {
+		rawPath = tempPath
+		return
+	}
+
+	isAzurePath, tempPath = isPathContainsSubDir(path, "fs=azure")
 	if isAzurePath {
 		rawPath = tempPath
-	} else {
-		isDcachePath, tempPath = isPathContainsSubDir(path, "fs=dcache")
-		if isDcachePath {
-			rawPath = tempPath
-		}
+		return
 	}
-	return isAzurePath, isDcachePath, rawPath
+
+	isDebugPath, tempPath = isPathContainsSubDir(path, "fs=debug")
+	if isDebugPath {
+		rawPath = tempPath
+		return
+	}
+	return
 }
 
 // function to know path consists of given subdir at it's root

@@ -49,6 +49,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	clustermanager "github.com/Azure/azure-storage-fuse/v2/internal/dcache/cluster_manager"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/debug"
 	fm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/file_manager"
 	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
@@ -303,21 +304,30 @@ func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.
 		return nil, syscall.ENOENT
 	}
 
-	isAzurePath, isDcachePath, rawPath := getFS(options.Name)
+	isAzurePath, isDcachePath, isDebugPath, rawPath := getFS(options.Name)
+
 	if isMountPointRoot(rawPath) {
 		if isAzurePath {
 			return getPlaceholderDirForRoot("fs=azure"), nil
 		} else if isDcachePath {
 			return getPlaceholderDirForRoot("fs=dcache"), nil
+		} else if isDebugPath {
+			return getPlaceholderDirForRoot("fs=debug"), nil
 		}
 	}
-	if isAzurePath {
-		// properties should be fetched from Azure
-		log.Debug("DistributedCache::GetAttr : Path is having Azure subcomponent, path : %s", options.Name)
-	} else if isDcachePath {
+
+	if isDcachePath {
 		// properties should be fetched from Dcache
 		log.Debug("DistributedCache::GetAttr : Path is having Dcache subcomponent, path : %s", options.Name)
 		rawPath = filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
+	} else if isAzurePath {
+		// properties should be fetched from Azure
+		log.Debug("DistributedCache::GetAttr : Path is having Azure subcomponent, path : %s", options.Name)
+	} else if isDebugPath {
+		// properties should be fetched from debugfs
+		options.Name = rawPath
+		// TODO: check if attr.path need to be chaged.
+		return debug.GetAttr(options)
 	} else {
 		common.Assert(rawPath == options.Name, rawPath, options.Name)
 	}
@@ -342,18 +352,20 @@ func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.
 }
 
 func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*internal.ObjAttr, string, error) {
-	isAzurePath, isDcachePath, rawPath := getFS(options.Name)
-	if isAzurePath {
-		// properties should be fetched from Azure
-		log.Debug("DistributedCache::StreamDir : Path is having Azure subcomponent, path : %s", options.Name)
-	} else if isDcachePath {
-		// properties should be fetched from Dcache
+	isAzurePath, isDcachePath, isDebugPath, rawPath := getFS(options.Name)
+
+	if isDcachePath {
 		log.Debug("DistributedCache::StreamDir : Path is having Dcache subcomponent, path : %s", options.Name)
 		rawPath = filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
+	} else if isAzurePath {
+		log.Debug("DistributedCache::StreamDir : Path is having Azure subcomponent, path : %s", options.Name)
+	} else if isDebugPath {
+		return debug.StreamDir(options)
 	} else {
 		// properties should be fetched from Azure
 		common.Assert(rawPath == options.Name, rawPath, options.Name)
 	}
+
 	options.Name = rawPath
 	dirList, token, err := dc.NextComponent().StreamDir(options)
 	if err != nil {
@@ -379,16 +391,9 @@ func (dc *DistributedCache) CreateFile(options internal.CreateFileOptions) (*han
 	var dcFile *fm.DcacheFile
 	var handle *handlemap.Handle
 	var err error
-	isAzurePath, isDcachePath, rawPath := getFS(options.Name)
-	if isAzurePath {
-		log.Debug("DistributedCache::CreateFile : Path is having Azure subcomponent, path : %s", options.Name)
-		options.Name = rawPath
-		handle, err = dc.NextComponent().CreateFile(options)
-		if err != nil {
-			log.Err("DistributedCache::CreateFile : Azure File Creation failed with err : %s, path : %s", err.Error(), options.Name)
-			return nil, err
-		}
-	} else if isDcachePath {
+	isAzurePath, isDcachePath, isDebugPath, rawPath := getFS(options.Name)
+
+	if isDcachePath {
 		log.Debug("DistributedCache::CreateFile : Path is having Dcache subcomponent, path : %s", options.Name)
 		options.Name = rawPath
 		dcFile, err = fm.NewDcacheFile(rawPath)
@@ -396,6 +401,17 @@ func (dc *DistributedCache) CreateFile(options internal.CreateFileOptions) (*han
 			log.Err("DistributedCache::CreateFile : Dcache File Creation failed with err : %s, path : %s", err.Error(), options.Name)
 			return nil, err
 		}
+	} else if isAzurePath {
+		log.Debug("DistributedCache::CreateFile : Path is having Azure subcomponent, path : %s", options.Name)
+		options.Name = rawPath
+		handle, err = dc.NextComponent().CreateFile(options)
+		if err != nil {
+			log.Err("DistributedCache::CreateFile : Azure File Creation failed with err : %s, path : %s", err.Error(), options.Name)
+			return nil, err
+		}
+	} else if isDebugPath {
+		// Don't permit to create files inside the debug directory.
+		return nil, syscall.EACCES
 	} else {
 		common.Assert(rawPath == options.Name, rawPath, options.Name)
 		// semantics for creating a file for write with out any explicit namespace
@@ -445,27 +461,21 @@ func (dc *DistributedCache) CreateFile(options internal.CreateFileOptions) (*han
 
 	return handle, nil
 }
+
 func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
 	var dcFile *fm.DcacheFile
 	var handle *handlemap.Handle
 	var err error
 
-	isAzurePath, isDcachePath, rawPath := getFS(options.Name)
+	isAzurePath, isDcachePath, isDebugPath, rawPath := getFS(options.Name)
+
 	// todo: We should only support write if the file is only in Azure.
 	if options.Flags&os.O_WRONLY != 0 || options.Flags&os.O_RDWR != 0 {
 		log.Err("DistributedCache::OpenFile: Dcache file cannot open with flags: %X, file : %s", options.Flags, options.Name)
 		return nil, syscall.EACCES
 	}
 
-	if isAzurePath {
-		log.Debug("DistributedCache::OpenFile : Path is having Azure subcomponent, path : %s", options.Name)
-		options.Name = rawPath
-		handle, err = dc.NextComponent().OpenFile(options)
-		if err != nil {
-			log.Err("DistributedCache::OpenFile : Azure File Open failed with err : %s, path : %s", err.Error(), options.Name)
-			return nil, err
-		}
-	} else if isDcachePath {
+	if isDcachePath {
 		log.Debug("DistributedCache::OpenFile : Path is having Dcache subcomponent, path : %s", options.Name)
 		options.Name = rawPath
 		dcFile, err = fm.OpenDcacheFile(options.Name)
@@ -473,6 +483,17 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 			log.Err("DistributedCache::OpenFile : Dcache File Open failed with err : %s, path : %s", err.Error(), options.Name)
 			return nil, err
 		}
+	} else if isAzurePath {
+		log.Debug("DistributedCache::OpenFile : Path is having Azure subcomponent, path : %s", options.Name)
+		options.Name = rawPath
+		handle, err = dc.NextComponent().OpenFile(options)
+		if err != nil {
+			log.Err("DistributedCache::OpenFile : Azure File Open failed with err : %s, path : %s", err.Error(), options.Name)
+			return nil, err
+		}
+	} else if isDebugPath {
+		options.Name = rawPath
+		return debug.OpenFile(options)
 	} else {
 		// If the path don't come with no explicit namespace
 		// It should first check the file in dcache, if present, read from dcache,
@@ -546,9 +567,12 @@ func (dc *DistributedCache) ReadInBuffer(options internal.ReadInBufferOptions) (
 		common.Assert(bytesRead == 0)
 		log.Err("DistributedCache::ReadInBuffer : Failed to read the file from the Azure, offset : %d, file : %s",
 			options.Offset, options.Handle.Path)
+	} else if options.Handle.IsFsDebug() {
+		return debug.ReadFile(options)
 	} else {
 		common.Assert(false)
 	}
+
 	return 0, err
 }
 
@@ -556,6 +580,8 @@ func (dc *DistributedCache) WriteFile(options internal.WriteFileOptions) (int, e
 	log.Debug("DistributedCache::WriteFile : WriteFile, offset : %d, buf size : %d, file : %s",
 		options.Offset, len(options.Data), options.Handle.Path)
 	common.Assert(len(options.Data) != 0)
+	// Debug files are readonly.
+	common.Assert(!options.Handle.IsFsDebug(), options.Handle.Path)
 
 	// When user wants to write to a default path (no explicit fs=azure/fs=dcache namespace specified)
 	// we have multiple possible semantics:
@@ -663,6 +689,8 @@ func (dc *DistributedCache) FlushFile(options internal.FlushFileOptions) error {
 // Deallocate all the buffers for the file. This is an async call.
 func (dc *DistributedCache) CloseFile(options internal.CloseFileOptions) error {
 	log.Debug("DistributedCache::CloseFile : Release file : %s", options.Handle.Path)
+	// Debug is exclusive, if debug is set dcache and azure flags cannot be set.
+	common.Assert(!options.Handle.IsFsDebug() || (!options.Handle.IsFsDcache() && !options.Handle.IsFsAzure()))
 
 	var dcacheErr, azureErr error
 	if options.Handle.IsFsDcache() {
@@ -689,6 +717,11 @@ func (dc *DistributedCache) CloseFile(options internal.CloseFileOptions) error {
 			log.Err("DistributedCache::SyncFile : Failed to ReleaseFile for Azure file : %s", options.Handle.Path)
 		}
 	}
+
+	if options.Handle.IsFsDebug() {
+		return debug.CloseFile(options)
+	}
+
 	return errors.Join(dcacheErr, azureErr)
 }
 
