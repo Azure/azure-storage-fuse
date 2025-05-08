@@ -138,8 +138,14 @@ func RVNameToIp(rvName string) string {
 	return clusterMap.rVNameToIp(rvName)
 }
 
+// It will return all the online mvNames as per local cache copy of cluster map.
 func GetActiveMVNames() []string {
 	return clusterMap.getActiveMVNames()
+}
+
+// It will return the configured RV Dcache directory for given RV name as per local cache copy of cluster map.
+func RvNameToDCacheDir(rvName string) string {
+	return clusterMap.rvNameToDCacheDir(rvName)
 }
 
 // Refresh clustermap local copy from the metadata store synchronously.
@@ -174,6 +180,19 @@ type ClusterMap struct {
 	updatesChan         chan dcache.ClusterMapEvent
 	localMap            *dcache.ClusterMap
 	localClusterMapPath string
+}
+
+func (c *ClusterMap) rvNameToDCacheDir(rvName string) string {
+	common.Assert(c.localMap != nil)
+
+	// Validate Input RVname format
+	common.Assert(IsValidRVName(rvName), rvName)
+
+	rv, found := c.localMap.RVMap[rvName]
+
+	// Validate the RawVolume existance in the clustermap.
+	common.Assert(found, rvName)
+	return rv.LocalCachePath
 }
 
 func (c *ClusterMap) stop() {
