@@ -83,11 +83,21 @@ func GetChunkRequestToString(req *models.GetChunkRequest) string {
 		*req.Address, req.OffsetInChunk, req.Length, ComponentRVsToString(req.ComponentRV))
 }
 
+func GetChunkResponseToString(resp *models.GetChunkResponse) string {
+	return fmt.Sprintf("{Address %+v, DataLength: %v, ChunkWriteTime %v, TimeTaken %v, ComponentRV %v}",
+		*resp.Chunk.Address, len(resp.Chunk.Data), resp.ChunkWriteTime, resp.TimeTaken, ComponentRVsToString(resp.ComponentRV))
+}
+
 // convert *models.PutChunkRequest to string
 // exculde data and hash from the string to prevent it from being logged
 func PutChunkRequestToString(req *models.PutChunkRequest) string {
 	return fmt.Sprintf("{Address %+v, Length %v, IsSync %v, ComponentRV %v}",
 		*req.Chunk.Address, req.Length, req.IsSync, ComponentRVsToString(req.ComponentRV))
+}
+
+func PutChunkResponseToString(resp *models.PutChunkResponse) string {
+	return fmt.Sprintf("{TimeTaken %v, AvailableSpace %v, ComponentRV %v}",
+		resp.TimeTaken, resp.AvailableSpace, ComponentRVsToString(resp.ComponentRV))
 }
 
 // convert *models.RemoveChunkRequest to string

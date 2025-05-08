@@ -154,7 +154,7 @@ var handler *ChunkServiceHandler
 
 // NewChunkServiceHandler creates a new ChunkServiceHandler instance.
 // This MUST be called only once by the RPC server, on startup.
-func NewChunkServiceHandler(rvs map[string]dcache.RawVolume) *ChunkServiceHandler {
+func NewChunkServiceHandler(rvs map[string]dcache.RawVolume) {
 	common.Assert(handler == nil, "NewChunkServiceHandler called more than once")
 
 	handler = &ChunkServiceHandler{
@@ -166,8 +166,6 @@ func NewChunkServiceHandler(rvs map[string]dcache.RawVolume) *ChunkServiceHandle
 	// Note: We can probably relax this later if we want to support nodes which do not
 	//       contribute any storage.
 	common.Assert(len(handler.rvIDMap) > 0)
-
-	return handler
 }
 
 // check if the given mv is valid
