@@ -326,6 +326,7 @@ func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.
 	} else if isDebugPath {
 		// properties should be fetched from debugfs
 		options.Name = rawPath
+		// TODO: check if attr.path need to be chaged.
 		return debug.GetAttr(options)
 	} else {
 		common.Assert(rawPath == options.Name, rawPath, options.Name)
@@ -688,6 +689,8 @@ func (dc *DistributedCache) FlushFile(options internal.FlushFileOptions) error {
 // Deallocate all the buffers for the file. This is an async call.
 func (dc *DistributedCache) CloseFile(options internal.CloseFileOptions) error {
 	log.Debug("DistributedCache::CloseFile : Release file : %s", options.Handle.Path)
+	// Debug is exclusive, if debug is set dcache and azure flags cannot be set.
+	common.Assert(!options.Handle.IsFsDebug() || (!options.Handle.IsFsDcache() && !options.Handle.IsFsAzure()))
 
 	var dcacheErr, azureErr error
 	if options.Handle.IsFsDcache() {

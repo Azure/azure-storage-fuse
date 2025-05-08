@@ -151,7 +151,7 @@ func getFS(path string) (isAzurePath bool, isDcachePath bool, isDebugPath bool, 
 		return
 	}
 
-	isDebugPath, tempPath = isPathContainsSubDir(path, "fs=debug")
+	isDebugPath, tempPath = isPathContainsSubvDir(path, "fs=debug")
 	if isDebugPath {
 		rawPath = tempPath
 		return

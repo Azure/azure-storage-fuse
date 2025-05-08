@@ -49,7 +49,7 @@ func readClusterMapCallback(pFile *procFile) error {
 	var err error
 	localCMap := cm.GetClusterMap()
 	exportedCMap := cm.ExportClusterMap(&localCMap)
-	pFile.buf, err = json.MarshalIndent(exportedCMap, "", "\t")
+	pFile.buf, err = json.MarshalIndent(exportedCMap, "", "    ")
 
 	if err != nil {
 		log.Err("DebugFS::readclusterMapCallback, err: %v", err)
