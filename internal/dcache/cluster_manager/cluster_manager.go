@@ -141,7 +141,12 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 		return err
 	}
 
-	log.Info("ClusterManager::start: Initial cluster map now ready")
+	//
+	// clustermap MUST now have the in-core clustermap copy.
+	// We call the cm.GetCacheConfig() below to validate that.
+	//
+	log.Info("ClusterManager::start: Initial cluster map now ready with config %+v",
+		*cm.GetCacheConfig())
 
 	//
 	// Now we should have a valid local clustermap with all our RVs present in the RV list.
@@ -151,15 +156,11 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 	//
 	// TODO: Since ensureInitialClusterMap() would send the heartbeat and make the cluster aware of this
 	//       node, it's possible that some other cluster node runs the new-mv workflow and sends a JoinMV
-	//       RPC request to this node, before we can start the RPC server. We should add resiliency for this.
+	//       RPC request to this node, before we can start the RPC server. We should add resiliency for this
+	//       by trying JoinMV RPC a few times.
 	//
 	log.Info("ClusterManager::start: Starting RPC server")
 
-	// Loading of localCopy of clustermap is taking some time,
-	// that updated copy is required immediately to RPC server, so just added a sleep of 2 seconds
-	// that might fail for degraded workflow where we have to wait for an epoch or clearing the cache directory.
-	// TODO: Remove this sleep and add a better way to ensure that the local copy is loaded with this current node RVs.
-	time.Sleep(2 * time.Second)
 	common.Assert(cmi.rpcServer == nil)
 	cmi.rpcServer, err = rpc_server.NewNodeServer()
 	if err != nil {
@@ -234,11 +235,12 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 				log.Err("ClusterManager::start: updateStorageClusterMapIfRequired failed: %v", err)
 			}
 
-			err = cmi.updateClusterMapLocalCopyIfRequired()
+			err = cmi.updateClusterMapLocalCopyIfRequired(false /* sync */)
 			if err == nil {
 				consecutiveFailures = 0
 			} else {
-				log.Err("ClusterManager::start: updateClusterMapLocalCopyIfRequired failed: %v", err)
+				log.Err("ClusterManager::start: updateClusterMapLocalCopyIfRequired failed: %v",
+					err)
 				consecutiveFailures++
 				//
 				// Otoh, failing to update the local cluster copy is a serious issue, since this
@@ -261,8 +263,12 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 // Fetch the global clustermap from metadata store and save a local copy.
 // This local copy will be used by the clustermap package to answer various queries on clustermap.
 //
+// 'sync' parameter decides if the update to the clustermap package is done synchronously. This is required when
+// called from ensureInitialClusterMap() as we want to make sure that before ensureInitialClusterMap() completes
+// the local copy of clustermap is updated in clustermap package, as callers start querying clustermap rightaway.
+//
 // TODO: Add stats for measuring time taken to download the clustermap, how many times it's downloaded, etc.
-func (cmi *ClusterManager) updateClusterMapLocalCopyIfRequired() error {
+func (cmi *ClusterManager) updateClusterMapLocalCopyIfRequired(sync bool) error {
 	// 1. Fetch the latest clustermap from metadata store.
 	storageBytes, etag, err := getClusterMap()
 	if err != nil {
@@ -335,9 +341,21 @@ func (cmi *ClusterManager) updateClusterMapLocalCopyIfRequired() error {
 	log.Info("ClusterManager::updateClusterMapLocalCopyIfRequired: Local clustermap updated (bytes: %d, etag: %s)",
 		len(storageBytes), *etag)
 
-	//TODO{Akku}: Notify only if there is a change in the MVs/RVs
+	//
 	// 6. Notify clustermap package. It'll refresh its in-memory copy for serving its users.
-	cm.Update()
+	//    Caller can ask us to notify clustermap synchronously or asynchronously.
+	//    ensureInitialClusterMap() calls us with sync==true as it wants clustermap package's
+	//    local clustermap copy to be updated before it returns as callers will start querying
+	//    clustermap as soon as ensureInitialClusterMap() returns.
+	//    Later when called after periodic clustermap update, async notification is fine as we
+	//    are ok if clustermap package reads the local clustermap after a few usecs.
+	//
+	if sync {
+		cm.UpdateSync()
+	} else {
+		//TODO{Akku}: Notify only if there is a change in the MVs/RVs.
+		cm.Update()
+	}
 
 	return nil
 }
@@ -479,8 +497,12 @@ UpdateLocalClusterMapAndPunchInitialHeartbeat:
 		return err
 	}
 
+	//
 	// Save local copy of the clustermap.
-	cmi.updateClusterMapLocalCopyIfRequired()
+	// We ask for sync notification to clustermap package as we want to be sure that clustermap
+	// package is ready for responding to queries on clustermap, as soon as we return from here.
+	//
+	cmi.updateClusterMapLocalCopyIfRequired(true /* sync */)
 
 	// TODO: Assert that clustermap has our local RVs.
 	common.Assert(cmi.config != nil)

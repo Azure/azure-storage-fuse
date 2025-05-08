@@ -53,7 +53,24 @@ func Stop() {
 
 // Update is used by ClusterManager to notify clustermap whenever there's an updated local clustermap.
 func Update() {
+	//
+	// You don't want to call the async update in the beginning when setting localMap for the first time.
+	// That time you call the sync update function UpdateSync(), catch inadvertent bad callers.
+	//
+	common.Assert(clusterMap.localMap != nil)
+
 	clusterMap.update()
+}
+
+// UpdateSync will load the local clustermap synchronously.
+func UpdateSync() {
+	//
+	// Sync update is called only once in the beginning, when we don't have the localMap set.
+	// It can technically be called later, but we should not call, catch inadvertent bad callers.
+	//
+	common.Assert(clusterMap.localMap == nil)
+
+	clusterMap.loadLocalMap()
 }
 
 // It will return online MVs Map <mvName, MV> as per local cache copy of cluster map.
@@ -173,27 +190,31 @@ func (c *ClusterMap) processEvents() {
 		log.Debug("ClusterMap::processEvents: Received dcache.ClusterManagerEvent")
 
 		// On every cluster‐map update event, reload localMap from the JSON file.
-		data, err := os.ReadFile(c.localClusterMapPath)
-		if err != nil {
-			log.Err("ClusterMap::processEvents: Failed to read %s: %v", c.localClusterMapPath, err)
-			common.Assert(false, err)
-			continue
-		}
-
-		var newClusterMap dcache.ClusterMap
-		if err := json.Unmarshal(data, &newClusterMap); err != nil {
-			log.Err("ClusterMap::processEvents: Invalid JSON in %s: %v", c.localClusterMapPath, err)
-			common.Assert(false, err)
-			continue
-		}
-
-		c.localMap = &newClusterMap
+		c.loadLocalMap()
 		// evt can carry metadata if needed
 		_ = evt
 	}
 
 	// once CloseNotificationChannel() is called, the loop exits cleanly
 	log.Info("ClusterMap::processEvents: Event processor thread exited")
+}
+
+func (c *ClusterMap) loadLocalMap() {
+	data, err := os.ReadFile(c.localClusterMapPath)
+	if err != nil {
+		log.Err("ClusterMap::loadLocalMap: Failed to read %s: %v", c.localClusterMapPath, err)
+		common.Assert(false, err)
+		return
+	}
+
+	var newClusterMap dcache.ClusterMap
+	if err := json.Unmarshal(data, &newClusterMap); err != nil {
+		log.Err("ClusterMap::loadLocalMap: Invalid JSON in %s: %v", c.localClusterMapPath, err)
+		common.Assert(false, err)
+		return
+	}
+
+	c.localMap = &newClusterMap
 }
 
 func (c *ClusterMap) update() {
