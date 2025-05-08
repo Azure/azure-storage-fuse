@@ -193,6 +193,13 @@ func (base *BaseComponent) ReadFile(options ReadFileOptions) (b []byte, err erro
 	return b, err
 }
 
+func (base *BaseComponent) ReadFileWithName(options ReadFileWithNameOptions) (b []byte, err error) {
+	if base.next != nil {
+		return base.next.ReadFileWithName(options)
+	}
+	return b, err
+}
+
 func (base *BaseComponent) ReadInBuffer(options ReadInBufferOptions) (int, error) {
 	if base.next != nil {
 		return base.next.ReadInBuffer(options)
@@ -293,9 +300,9 @@ func (base *BaseComponent) GetFileBlockOffsets(options GetFileBlockOffsetsOption
 	return &common.BlockOffsetList{}, nil
 }
 
-func (base *BaseComponent) SetAttr(options SetAttrOptions) error {
+func (base *BaseComponent) SetMetadata(options SetMetadataOptions) error {
 	if base.next != nil {
-		return base.next.SetAttr(options)
+		return base.next.SetMetadata(options)
 	}
 	return nil
 }
@@ -346,6 +353,13 @@ func (base *BaseComponent) StageData(opt StageDataOptions) error {
 func (base *BaseComponent) CommitData(opt CommitDataOptions) error {
 	if base.next != nil {
 		return base.next.CommitData(opt)
+	}
+	return nil
+}
+
+func (base *BaseComponent) WriteFromBuffer(opt WriteFromBufferOptions) error {
+	if base.next != nil {
+		return base.next.WriteFromBuffer(opt)
 	}
 	return nil
 }
