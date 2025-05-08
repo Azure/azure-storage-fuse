@@ -33,11 +33,28 @@
 
 package debug
 
+import (
+	"encoding/json"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
+)
+
 // The functions that were implemented inside this file should have Callback as the suffix for their functionName.
 // The function should have this decl func(*procFile) error.
 
 // proc file: clustermap
 func readClusterMapCallback(pFile *procFile) error {
-	pFile.buf = []byte("Hello, World!!")
+	var err error
+	localClusterMap := cm.GetClusterMap()
+	// TODO: make the rv, mv names sorted for better interpretation of the data.
+	pFile.buf, err = json.Marshal(&localClusterMap)
+
+	if err != nil {
+		log.Err("DebugFS::readclusterMapCallback, err: %v", err)
+		common.Assert(false, err)
+	}
+
 	return nil
 }
