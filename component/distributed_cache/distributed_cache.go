@@ -48,7 +48,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
-	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/cluster_manager"
+	clustermanager "github.com/Azure/azure-storage-fuse/v2/internal/dcache/cluster_manager"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/debug"
 	fm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/file_manager"
 	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
@@ -176,12 +176,14 @@ func (dc *DistributedCache) startClusterManager() string {
 		RebalancePercentage:    dc.cfg.RebalancePercentage,
 		SafeDeletes:            dc.cfg.SafeDeletes,
 		CacheAccess:            dc.cfg.CacheAccess,
+		RvFullThreshold:        dc.cfg.RVFullThreshold,
+		RvNearfullThreshold:    dc.cfg.RVNearfullThreshold,
 	}
 	rvList, err := dc.createRVList()
 	if err != nil {
 		return fmt.Sprintf("DistributedCache::Start error [Failed to create RV List for cluster manager : %v]", err)
 	}
-	if cm.Start(dCacheConfig, rvList) != nil {
+	if clustermanager.Start(dCacheConfig, rvList) != nil {
 		return fmt.Sprintf("DistributedCache::Start error [Failed to start cluster manager : %v]", err)
 	}
 	return ""
@@ -228,6 +230,7 @@ func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
 func (dc *DistributedCache) Stop() error {
 	log.Trace("DistributedCache::Stop : Stopping component %s", dc.Name())
 	fm.EndFileIOManager()
+	clustermanager.Stop()
 	return nil
 }
 
@@ -702,6 +705,15 @@ func (dc *DistributedCache) CloseFile(options internal.CloseFileOptions) error {
 	if options.Handle.IsFsDcache() {
 		common.Assert(options.Handle.IFObj != nil)
 		dcFile := options.Handle.IFObj.(*fm.DcacheFile)
+		// While creating the file and closing the file immediately, we don't get the flush call, as libfuse component only
+		// send it when there is some write on the handle. Hence here we should take care of such cases as we should always
+		// finalize the file. The following flag is unset when there is flush file on the handle.
+		if options.Handle.IsDcacheAllowWrites() {
+			dcacheErr = dc.FlushFile(internal.FlushFileOptions{
+				Handle: options.Handle,
+			})
+			common.Assert(dcacheErr == nil, dcacheErr)
+		}
 		dcacheErr = dcFile.ReleaseFile()
 		if dcacheErr != nil {
 			log.Err("DistributedCache::CloseFile : Failed to ReleaseFile for Dcache file : %s", options.Handle.Path)

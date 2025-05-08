@@ -1,5 +1,5 @@
 {
-	"state": "offline",
+	"state": "ready",
 	"epoch": 1,
 	"created-at": 1744722356,
 	"last_updated_at": 1744894648,
@@ -7,10 +7,12 @@
 	"config": {
         "cache-id":"mycache1",
 		"min-nodes": 1,
-		"chunk-size": 1073741824,
+		"chunk-size": 4194304,
         "stripe-size": 16777216,
         "num-replicas": 2,
-        "mvs-per-rv": 1,
+        "mvs-per-rv": 10,
+		"rv-full-threshold": 95,
+		"rv-nearfull-threshold": 80,
         "heartbeat-seconds": 60,
 		"heartbeats-till-node-down": 3,
 		"clustermap-epoch": 300,

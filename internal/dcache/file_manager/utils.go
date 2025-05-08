@@ -141,7 +141,7 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 	}
 
 	var fileMetadata dcache.FileMetadata
-	err = json.Unmarshal(fileMetadataBytes, fileMetadata)
+	err = json.Unmarshal(fileMetadataBytes, &fileMetadata)
 	if err != nil {
 		err = fmt.Errorf("DistributedCache[FM]::OpenDcacheFile : failed to unmarshal filemetadata file: %s, err: %s",
 			fileName, err.Error())

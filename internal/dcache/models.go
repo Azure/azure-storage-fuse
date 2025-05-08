@@ -109,10 +109,10 @@ const (
 )
 
 type FileMetadata struct {
-	Filename        string    `json:"filename"`
-	State           fileState `json:"state"`
-	FileID          string    `json:"file_id"`
-	Size            int64
+	Filename        string     `json:"filename"`
+	State           fileState  `json:"state"`
+	FileID          string     `json:"file_id"`
+	Size            int64      `json:"-"`
 	ClusterMapEpoch int64      `json:"cluster_map_epoch"`
 	FileLayout      FileLayout `json:"file_layout"`
 	Sha1hash        []byte     `json:"sha256"`

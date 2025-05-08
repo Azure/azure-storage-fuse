@@ -174,8 +174,8 @@ func (file *DcacheFile) SyncFile() error {
 		}
 		return true
 	})
-	common.Assert(err == nil, fmt.Sprintf("Filemanager::SyncFile failed, file: %s, err: %s",
-		file.FileMetadata.Filename, err.Error()))
+	common.Assert(err == nil, fmt.Sprintf("Filemanager::SyncFile failed, file: %s, err: %v",
+		file.FileMetadata.Filename, err))
 	return err
 }
 
@@ -185,12 +185,12 @@ func (file *DcacheFile) CloseFile() error {
 	// We stage application writes into StagedChunk and upload only when we have a full chunk.
 	// In case of last chunk being partial, we need to upload it now.
 	err := file.SyncFile()
-	common.Assert(err == nil, fmt.Sprintf("Filemanager::CloseFile failed, file: %s, err: %s",
-		file.FileMetadata.Filename, err.Error()))
+	common.Assert(err == nil, fmt.Sprintf("Filemanager::CloseFile failed, file: %s, err: %v ",
+		file.FileMetadata.Filename, err))
 	if err == nil {
 		err := file.finalizeFile()
-		common.Assert(err == nil, fmt.Sprintf("Filemanager::CloseFile failed, file: %s, err: %s",
-			file.FileMetadata.Filename, err.Error()))
+		common.Assert(err == nil, fmt.Sprintf("Filemanager::CloseFile failed, file: %s, err: %v",
+			file.FileMetadata.Filename, err))
 		if err != nil {
 			log.Err("DistributedCache[FM]::Close : finalize file failed with err: %s, file: %s", err.Error(), file.FileMetadata.Filename)
 		}
@@ -217,7 +217,7 @@ func (file *DcacheFile) finalizeFile() error {
 	common.Assert(file.FileMetadata.State == dcache.Writing)
 	file.FileMetadata.State = dcache.Ready
 	file.FileMetadata.Size = file.lastWriteOffset
-	common.Assert(file.FileMetadata.Size != 0)
+	common.Assert(file.FileMetadata.Size >= 0)
 	fileMetadataBytes, err := json.Marshal(file.FileMetadata)
 	if err != nil {
 		log.Err("DistributedCache[FM]::finalizeFile : FileMetadata marshalling fail, file: %s, %+v",

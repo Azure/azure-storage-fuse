@@ -785,7 +785,6 @@ func (m *BlobMetadataManager) getClusterMap() ([]byte, *string, error) {
 	})
 	if err != nil {
 		log.Err("GetClusterMap:: Failed to get cluster map properties %s: %v", clustermapPath, err)
-		common.Assert(false, err)
 		return nil, nil, err
 	}
 
