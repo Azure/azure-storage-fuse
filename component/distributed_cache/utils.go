@@ -139,14 +139,14 @@ func getPlaceholderDirForRoot(path string) *internal.ObjAttr {
 // returns path if it dont find any virtual dirs.
 func getFS(path string) (isAzurePath bool, isDcachePath bool, isDebugPath bool, rawPath string) {
 	rawPath = path
-	isAzurePath, tempPath := isPathContainsSubDir(path, "fs=azure")
-	if isAzurePath {
+	isDcachePath, tempPath := isPathContainsSubDir(path, "fs=dcache")
+	if isDcachePath {
 		rawPath = tempPath
 		return
 	}
 
-	isDcachePath, tempPath = isPathContainsSubDir(path, "fs=dcache")
-	if isDcachePath {
+	isAzurePath, tempPath = isPathContainsSubDir(path, "fs=azure")
+	if isAzurePath {
 		rawPath = tempPath
 		return
 	}

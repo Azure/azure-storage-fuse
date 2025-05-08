@@ -37,6 +37,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"sync/atomic"
 	"syscall"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -55,7 +56,7 @@ var procFiles map[string]*procFile
 type procFile struct {
 	mu            sync.Mutex            // lock for updating the openCnt and refreshing the buffer.
 	buf           []byte                // Contents of the file.
-	openCnt       int                   // Open handles for this file.
+	openCnt       int32                 // Open handles for this file.
 	refreshBuffer func(*procFile) error // Refresh the contents of the file.
 }
 
@@ -65,12 +66,13 @@ var procDirList []*internal.ObjAttr
 func init() {
 	// Register the callbacks for the procFiles.
 	procFiles = map[string]*procFile{
-		"clusterMap.json": &procFile{
+		"clustermap": &procFile{
 			buf:           make([]byte, 0, 4096),
 			openCnt:       0,
 			refreshBuffer: readClusterMapCallback,
 		}, // Show clusterInfo about dcache.
 	}
+
 	procDirList = make([]*internal.ObjAttr, 0, len(procFiles))
 	for path, _ := range procFiles {
 		attr := &internal.ObjAttr{
@@ -122,6 +124,7 @@ func OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
 func ReadFile(options internal.ReadInBufferOptions) (int, error) {
 	common.Assert(options.Handle.IFObj != nil)
 	pFile := options.Handle.IFObj.(*procFile)
+	common.Assert(atomic.LoadInt32(&pFile.openCnt) > 0)
 	if options.Offset >= int64(len(pFile.buf)) {
 		return 0, io.EOF
 	}
@@ -160,5 +163,6 @@ func openProcFile(path string) (*procFile, error) {
 func closeProcFile(pFile *procFile) {
 	pFile.mu.Lock()
 	defer pFile.mu.Unlock()
+	common.Assert(pFile.openCnt > 0)
 	pFile.openCnt--
 }
