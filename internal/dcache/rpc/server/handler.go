@@ -430,6 +430,35 @@ func (mv *mvInfo) releaseSyncOpWriteLock() {
 	log.Debug("mvInfo::releaseSyncOpWriteLock: released write lock by sync operation in MV %s", mv.mvName)
 }
 
+// check if the given component RVs are valid
+//   - check if the component RVs are same as the MV component RVs
+//   - check if the source and target RVs are present in the component RVs list
+func (mv *mvInfo) validateComponentRVsInSync(componentRV []*models.RVNameAndState, srcRVName string, targetRVName string) error {
+	componentRVsInMV := mv.getComponentRVs()
+
+	// validate the component RVs list
+	if err := isComponentRVsValid(componentRVsInMV, componentRV); err != nil {
+		log.Err("ChunkServiceHandler::validateComponentRVsInSync: Request component RVs are invalid for MV %s [%v]", mv.mvName, err.Error())
+		return rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("request component RVs are invalid for MV %s [%v]", mv.mvName, err.Error()))
+	}
+
+	// check if the source RV is present in the component RVs list
+	if !isRVPresentInMV(componentRVsInMV, srcRVName) {
+		rvsInMvStr := rpc.ComponentRVsToString(componentRVsInMV)
+		log.Err("ChunkServiceHandler::validateComponentRVsInSync: Source RV %s is not present in the component RVs list %v", srcRVName, rvsInMvStr)
+		return rpc.NewResponseError(rpc.InvalidRV, fmt.Sprintf("source RV %s is not present in the component RVs list %v", srcRVName, rvsInMvStr))
+	}
+
+	// check if the target RV is present in the component RVs list
+	if !isRVPresentInMV(componentRVsInMV, targetRVName) {
+		rvsInMvStr := rpc.ComponentRVsToString(componentRVsInMV)
+		log.Err("ChunkServiceHandler::validateComponentRVsInSync: Target RV %s is not present in the component RVs list %v", targetRVName, rvsInMvStr)
+		return rpc.NewResponseError(rpc.InvalidRV, fmt.Sprintf("target RV %s is not present in the component RVs list %v", targetRVName, rvsInMvStr))
+	}
+
+	return nil
+}
+
 // check the if the chunk address is valid
 // - check if the rvID is valid
 // - check if the cache dir exists
@@ -689,7 +718,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 		// from the online RV (lowest index RV) to the new out of sync RV.
 		// In this case the chunks must be written to the regular mv directory, i.e. rv0/mv0
 		//
-		// sync write RPC call will be made in the ResyncMV() workflow, and will only be sent to the target RVs.
+		// sync write RPC call will be made in the ResyncMV() workflow, and should only be sent to the target RVs.
 		// If sent to the source RV, return error.
 		if isSrcOfSync {
 			log.Err("ChunkServiceHandler::PutChunk: RV %s hosting the MV %s is the source of sync job, whereas the client request is sync write call", rvInfo.rvName, req.Chunk.Address.MvName)
@@ -1062,26 +1091,10 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("MV %s is invalid for RV %s", req.MV, req.TargetRVName))
 	}
 
-	componentRVsInMV := mvInfo.getComponentRVs()
-
-	// validate the component RVs list
-	if err := isComponentRVsValid(componentRVsInMV, req.ComponentRV); err != nil {
-		log.Err("ChunkServiceHandler::StartSync: Request component RVs are invalid for MV %s [%v]", req.MV, err.Error())
-		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("request component RVs are invalid for MV %s [%v]", req.MV, err.Error()))
-	}
-
-	// check if the source RV is present in the component RVs list
-	if !isRVPresentInMV(componentRVsInMV, req.SourceRVName) {
-		rvsInMvStr := rpc.ComponentRVsToString(componentRVsInMV)
-		log.Err("ChunkServiceHandler::StartSync: Source RV %s is not present in the component RVs list %v", req.SourceRVName, rvsInMvStr)
-		return nil, rpc.NewResponseError(rpc.InvalidRV, fmt.Sprintf("source RV %s is not present in the component RVs list %v", req.SourceRVName, rvsInMvStr))
-	}
-
-	// check if the target RV is present in the component RVs list
-	if !isRVPresentInMV(componentRVsInMV, req.TargetRVName) {
-		rvsInMvStr := rpc.ComponentRVsToString(componentRVsInMV)
-		log.Err("ChunkServiceHandler::StartSync: Target RV %s is not present in the component RVs list %v", req.TargetRVName, rvsInMvStr)
-		return nil, rpc.NewResponseError(rpc.InvalidRV, fmt.Sprintf("target RV %s is not present in the component RVs list %v", req.TargetRVName, rvsInMvStr))
+	err = mvInfo.validateComponentRVsInSync(req.ComponentRV, req.SourceRVName, req.TargetRVName)
+	if err != nil {
+		log.Err("ChunkServiceHandler::StartSync: Failed to validate component RVs in sync [%v]", err.Error())
+		return nil, rpc.NewResponseError(rpc.InvalidRequest, fmt.Sprintf("failed to validate component RVs in sync [%v]", err.Error()))
 	}
 
 	// acquire write lock on the opMutex for this MV. Now GetChunk, PutChunk and RemoveChunk will not allow any new IO.
@@ -1163,26 +1176,10 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("MV %s is invalid for RV %s", req.MV, req.TargetRVName))
 	}
 
-	componentRVsInMV := mvInfo.getComponentRVs()
-
-	// validate the component RVs list
-	if err := isComponentRVsValid(componentRVsInMV, req.ComponentRV); err != nil {
-		log.Err("ChunkServiceHandler::EndSync: Request component RVs are invalid for MV %s [%v]", req.MV, err.Error())
-		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("request component RVs are invalid for MV %s [%v]", req.MV, err.Error()))
-	}
-
-	// check if the source RV is present in the component RVs list
-	if !isRVPresentInMV(componentRVsInMV, req.SourceRVName) {
-		rvsInMvStr := rpc.ComponentRVsToString(componentRVsInMV)
-		log.Err("ChunkServiceHandler::EndSync: Source RV %s is not present in the component RVs list %v", req.SourceRVName, rvsInMvStr)
-		return nil, rpc.NewResponseError(rpc.InvalidRV, fmt.Sprintf("source RV %s is not present in the component RVs list %v", req.SourceRVName, rvsInMvStr))
-	}
-
-	// check if the target RV is present in the component RVs list
-	if !isRVPresentInMV(componentRVsInMV, req.TargetRVName) {
-		rvsInMvStr := rpc.ComponentRVsToString(componentRVsInMV)
-		log.Err("ChunkServiceHandler::EndSync: Target RV %s is not present in the component RVs list %v", req.TargetRVName, rvsInMvStr)
-		return nil, rpc.NewResponseError(rpc.InvalidRV, fmt.Sprintf("target RV %s is not present in the component RVs list %v", req.TargetRVName, rvsInMvStr))
+	err = mvInfo.validateComponentRVsInSync(req.ComponentRV, req.SourceRVName, req.TargetRVName)
+	if err != nil {
+		log.Err("ChunkServiceHandler::EndSync: Failed to validate component RVs in sync [%v]", err.Error())
+		return nil, rpc.NewResponseError(rpc.InvalidRequest, fmt.Sprintf("failed to validate component RVs in sync [%v]", err.Error()))
 	}
 
 	// acquire write lock on the opMutex for this MV. Now GetChunk, PutChunk and RemoveChunk will not allow any new IO.
@@ -1207,6 +1204,7 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 	// and delete the sync folder.
 	// This is done to avoid moving chunks from the sync folder to the regular MV folder if there are other sync jobs in progress.
 	if mvInfo.isSyncing() {
+		// more than one sync job can only be present if the RV hosting the MV is the source of sync.
 		common.Assert(isSrcOfSync, fmt.Sprintf("More than one sync job is present in target RV %s for MV %s", req.TargetRVName, req.MV))
 		log.Debug("ChunkServiceHandler::EndSync: Sync job is still in progress for MV %s : %+v", req.MV, mvInfo.syncJobs)
 		return &models.EndSyncResponse{}, nil
