@@ -387,6 +387,49 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 	return dirList, token, nil
 }
 
+func (dc *DistributedCache) CreateDir(options internal.CreateDirOptions) error {
+	isAzurePath, isDcachePath, isDebugPath, rawPath := getFS(options.Name)
+
+	if isDcachePath {
+		// Create Directory inside Dcache
+		log.Debug("DistributedCache::CreateDir : Path is having Dcache subcomponent, path : %s", options.Name)
+		rawPath = filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
+		options.Name = rawPath
+		return dc.NextComponent().CreateDir(options)
+	} else if isAzurePath {
+		// Create Directory inside Azure
+		log.Debug("DistributedCache::CreateDir : Path is having Azure subcomponent, path : %s", options.Name)
+		options.Name = rawPath
+		return dc.NextComponent().CreateDir(options)
+	} else if isDebugPath {
+		// No Permission to  create directories inside debug path
+		return syscall.EACCES
+	} else {
+		common.Assert(rawPath == options.Name, rawPath, options.Name)
+		// semantics for creating a directory, when path doesnt have explicit namespace.
+		// Create in Azure and Dcache, fail the call if any one of them fail.
+
+		// Create Dir in Azure
+		err := dc.NextComponent().CreateDir(options)
+		if err != nil {
+			log.Err("DistributedCache::CreateDir : Azure Dir Creation failed with err : %s, path : %s", err.Error(), options.Name)
+			return err
+		}
+
+		// Create Dir in Dcache
+		rawPath = filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
+		err = dc.NextComponent().CreateDir(options)
+		if err != nil {
+			log.Err("DistributedCache::CreateFile : Dcache Dir Creation failed with err : %s, path : %s", err.Error(), options.Name)
+			return err
+		}
+		// todo : if one is success and other is failure, get to the previous state by removing the
+		// created entries for the files.
+	}
+
+	return nil
+}
+
 func (dc *DistributedCache) CreateFile(options internal.CreateFileOptions) (*handlemap.Handle, error) {
 	var dcFile *fm.DcacheFile
 	var handle *handlemap.Handle
