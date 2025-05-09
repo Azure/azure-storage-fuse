@@ -1768,7 +1768,7 @@ func refreshMyRVs(myRVs []dcache.RawVolume) {
 }
 
 // This will update the existing MV view in cluster Map.
-func (cmi *ClusterManager) updateMVState(mvName string, mv dcache.MirroredVolume) error {
+func (cmi *ClusterManager) updateMV(mvName string, mv dcache.MirroredVolume) error {
 	log.Info("ClusterManager::updateMVState: updating MV %s , components=%+v",
 		mvName, mv.RVs)
 	common.Assert(cm.IsValidMVName(mvName))
@@ -1873,7 +1873,7 @@ func Start(dCacheConfig *dcache.DCacheConfig, rvs []dcache.RawVolume) error {
 	clusterManager = &ClusterManager{}
 
 	// Register the hook for updating the MV state through clustermap package.
-	cm.RegisterMVStateUpdater(clusterManager.updateMVState)
+	cm.RegisterMVUpdater(clusterManager.updateMV)
 
 	return clusterManager.start(dCacheConfig, rvs)
 }
