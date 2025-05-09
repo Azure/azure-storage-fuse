@@ -298,38 +298,6 @@ func (mv *mvInfo) isSyncing() bool {
 	return len(mv.syncJobs) > 0
 }
 
-// return if the RV hosting this MV replica is the source of the sync job.
-// If there are more two or more entries in the syncJobs map, it means that the RV hosting this MV
-// is the source of the sync job. Return true in this case. It implies that all client PutChunk requests
-// should be written to the .sync directory, whereas the sync writes will be written to the regular MV directory.
-// If there is exaclty one entry in the syncJobs map, it means that the RV hosting this MV can either be the source or target
-// of the sync job. If it is the source, return true. If it is the target, return false.
-//
-// caller of this method must ensure that the opMutex lock is held, either by acquireSyncOpReadLock() or acquireSyncOpWriteLock().
-func (mv *mvInfo) isSourceOfSync() bool {
-	// if there are more than one entries in the syncJobs map, it means that the RV hosting this MV
-	// is the source of the sync job. Return true in this case.
-	if len(mv.syncJobs) > 1 {
-		return true
-	}
-
-	for _, job := range mv.syncJobs {
-		common.Assert(job.sourceRVName != "" || job.targetRVName != "", fmt.Sprintf("both source and target RV names are not set in syncJob %+v", job))
-		common.Assert(job.sourceRVName == "" || job.targetRVName == "", fmt.Sprintf("both source and target RV names are set in syncJob %+v", job))
-
-		// If sourceRVName is set that means this MV Replica is the target of this sync job,
-		// while if targetRVName is set it means this MV Replica is the source of this sync job.
-		if job.sourceRVName != "" {
-			return false
-		} else {
-			return true
-		}
-	}
-
-	// no entry in syncJobs map means that the MV is not in syncing state
-	return false
-}
-
 // add sync job entry to the syncJobs map for the MV.
 //
 // caller of this method must ensure that the opMutex lock is held, either by acquireSyncOpReadLock() or acquireSyncOpWriteLock().
@@ -368,63 +336,39 @@ func (mv *mvInfo) deleteSyncJob(syncID string) {
 	delete(mv.syncJobs, syncID)
 }
 
-/*
-// update the sync state of the MV
-func (mv *mvInfo) updateSyncState(isSyncing bool, syncID string, sourceRVName string) error {
-	mv.rwMutex.Lock()
-	defer mv.rwMutex.Unlock()
-
-	//
-	// EndSync.
-	// Must be received after a matching StartSync, i.e., with the same syncID.
-	// Due to connectivity issues we may miss some of the requests, but we still assert in debug builds
-	// as those are not common and we would like to understand, to handle those better.
-	//
-	if !isSyncing {
-		if mv.syncID == "" {
-			msg := fmt.Sprintf("EndSync(%s) received w/o StartSync", syncID)
-			common.Assert(false, msg)
-			return fmt.Errorf("%s", msg)
-		}
-
-		if mv.syncID != syncID {
-			msg := fmt.Sprintf("Unexpected EndSync(%s) received, expected syncID %s ", syncID, mv.syncID)
-			common.Assert(false, msg)
-			return fmt.Errorf("%s", msg)
-		}
-
-		// sourceRV must be valid.
-		// TODO: add assert for IsValidRVName
-		common.Assert(mv.sourceRVName != "")
-
-		mv.isSyncing.Store(false)
-		mv.syncID = ""
-		mv.sourceRVName = ""
-
-		return nil
+// return if the RV hosting this MV replica is the source of the sync job.
+// If there are more two or more entries in the syncJobs map, it means that the RV hosting this MV
+// is the source of the sync job. Return true in this case. It implies that all client PutChunk requests
+// should be written to the .sync directory, whereas the sync writes will be written to the regular MV directory.
+// If there is exaclty one entry in the syncJobs map, it means that the RV hosting this MV can either be the source or target
+// of the sync job. If it is the source, return true. Else, return false. This implies that the RV is target RV of the sync job.
+// So, all PutChunk requests should be written to the regular MV directory.
+// This method is used by the PutChunk RPC to determine whether the chunks should be written to the .sync or regular MV directory.
+//
+// caller of this method must ensure that the opMutex lock is held, either by acquireSyncOpReadLock() or acquireSyncOpWriteLock().
+func (mv *mvInfo) isSourceOfSync() bool {
+	// if there are more than one entries in the syncJobs map, it means that the RV hosting this MV
+	// is the source of the sync job. Return true in this case.
+	if len(mv.syncJobs) > 1 {
+		return true
 	}
 
-	// StartSync
-	common.Assert(common.IsValidUUID(syncID))
-	common.Assert(sourceRVName != "")
+	for _, job := range mv.syncJobs {
+		common.Assert(job.sourceRVName != "" || job.targetRVName != "", fmt.Sprintf("both source and target RV names are not set in syncJob %+v", job))
+		common.Assert(job.sourceRVName == "" || job.targetRVName == "", fmt.Sprintf("both source and target RV names are set in syncJob %+v", job))
 
-	if mv.isSyncing.Load() {
-		msg := fmt.Sprintf("Got StartSync(%s) while already in syncing state with syncID %s", syncID, mv.syncID)
-		common.Assert(false, msg)
-		return fmt.Errorf("%s", msg)
+		// If sourceRVName is set that means this MV Replica is the target of this sync job,
+		// while if targetRVName is set it means this MV Replica is the source of this sync job.
+		if job.sourceRVName != "" {
+			return false
+		} else {
+			return true
+		}
 	}
 
-	// Must not already be in syncing state.
-	common.Assert(mv.syncID == "")
-	common.Assert(mv.sourceRVName == "")
-
-	mv.isSyncing.Store(isSyncing)
-	mv.syncID = syncID
-	mv.sourceRVName = sourceRVName
-
-	return nil
+	// no entry in syncJobs map means that the MV is not in syncing state
+	return false
 }
-*/
 
 // get component RVs for this MV
 func (mv *mvInfo) getComponentRVs() []*models.RVNameAndState {
@@ -1273,7 +1217,7 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 	syncMvPath := filepath.Join(rvInfo.cacheDir, req.MV+".sync")
 
 	log.Debug("ChunkServiceHandler::EndSync: Moving chunks from sync folder %s to regular MV folder %s", syncMvPath, regMVPath)
-	err := moveChunksToRegularMVPath(syncMvPath, regMVPath)
+	err = moveChunksToRegularMVPath(syncMvPath, regMVPath)
 	if err != nil {
 		log.Err("ChunkServiceHandler::EndSync: Failed to move chunks from sync folder %s to regular MV folder %s [%v]", syncMvPath, regMVPath, err.Error())
 		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to move chunks from sync folder %s to regular MV folder %s [%v]", syncMvPath, regMVPath, err.Error()))
