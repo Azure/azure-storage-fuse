@@ -160,7 +160,20 @@ func MarkComponentRVOffline(mvName, rvName string) error {
 	return nil
 }
 
+func UpdateMV(mvName string, mv dcache.MirroredVolume) error {
+	if mvUpdater == nil {
+		return fmt.Errorf("ClusterMap::updateMVState: mvStateUpdater is not registered")
+	}
+	return mvUpdater(mvName, mv)
+}
+
+// RegisterMVUpdater is how the cluster_manager registers its real implementation.
+func RegisterMVUpdater(fn func(mvName string, mv dcache.MirroredVolume) error) {
+	mvUpdater = fn
+}
+
 var (
+	mvUpdater  func(mvName string, mv dcache.MirroredVolume) error
 	clusterMap = &ClusterMap{
 		updatesChan: make(chan dcache.ClusterMapEvent, 8),
 		// This MUST match localClusterMapPath in clustermanager.
