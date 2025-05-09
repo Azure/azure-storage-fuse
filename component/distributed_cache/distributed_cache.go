@@ -341,7 +341,7 @@ func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.
 	if isAzurePath || isDcachePath {
 		attr.Path = options.Name
 		attr.Name = filepath.Base(options.Name)
-		if isDcachePath {
+		if isDcachePath && !attr.IsDir() {
 			err := parseDcacheMetadata(attr)
 			if err != nil {
 				return nil, err
