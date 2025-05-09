@@ -1767,6 +1767,97 @@ func refreshMyRVs(myRVs []dcache.RawVolume) {
 	}
 }
 
+// This will update the existing MV view in cluster Map.
+func (c *ClusterManager) updateMVState(mvName string, mv dcache.MirroredVolume) error {
+	log.Info("ClusterManager::updateMVState: updating MV %s , components=%+v",
+		mvName, mv.RVs)
+	common.Assert(cm.IsValidMVName(mvName))
+	common.Assert(cm.IsValidMV(mv, int(c.config.NumReplicas)))
+
+	startTime := time.Now()
+	maxWait := 120 * time.Second
+
+	for {
+
+		// Time check.
+		elapsed := time.Since(startTime)
+		if elapsed > maxWait {
+			common.Assert(false)
+			return fmt.Errorf("ClusterManager::updateMVState: Exceeded maxWait")
+		}
+
+		clusterMapBytes, etag, err := getClusterMap()
+		if err != nil {
+			log.Err("ClusterManager::updateMVState: getClusterMap() failed: %v", err)
+			common.Assert(false, err)
+			return err
+		}
+
+		common.Assert(err == nil)
+		common.Assert(len(clusterMapBytes) > 0)
+		common.Assert(etag != nil && len(*etag) > 0)
+
+		var clusterMap dcache.ClusterMap
+		if err := json.Unmarshal(clusterMapBytes, &clusterMap); err != nil {
+			log.Err("ClusterManager::updateMVState: Failed to unmarshal clusterMapBytes: %d, error: %v",
+				len(clusterMapBytes), err)
+			common.Assert(false, err)
+			return err
+		}
+		common.Assert(clusterMap.MVMap != nil)
+
+		clusterMap.LastUpdatedBy = c.myNodeId
+		clusterMap.State = dcache.StateChecking
+
+		body, err := json.Marshal(clusterMap)
+		if err != nil {
+			log.Err("ClusterManager::updateMVState: Marshal failed for clustermap: %v %+v",
+				err, clusterMap)
+			common.Assert(false, err)
+			return err
+		}
+
+		if err := mm.UpdateClusterMapStart(body, etag); err != nil {
+			log.Warn("ClusterManager::updateMVState: Start Clustermap update failed for nodeId %s: %v, retrying",
+				c.myNodeId, err)
+			continue
+		}
+
+		//Update recevied Mv over cluster Map
+		clusterMap.MVMap[mvName] = mv
+		clusterMap.State = dcache.StateReady
+		clusterMap.LastUpdatedAt = time.Now().Unix()
+
+		body, err = json.Marshal(clusterMap)
+		if err != nil {
+			log.Err("ClusterManager::updateMVState: Marshal failed for clustermap: %v %+v",
+				err, clusterMap)
+			common.Assert(false, err)
+			return err
+		}
+		if err := mm.UpdateClusterMapEnd(body); err != nil {
+			log.Err("ClusterManager::updateMVState: UpdateClusterMapEnd() failed: %v %+v",
+				err, clusterMap)
+			common.Assert(false, err)
+			return err
+		}
+
+		common.Assert(clusterMap.MVMap[mvName].State == mv.State,
+			"ClusterManager::updateMVState: MVMap[%s].State=%v, want=%v",
+			mvName, clusterMap.MVMap[mvName].State, mv.State,
+		)
+
+		// The clustermap must now have update RV view in MV.
+		log.Info("ClusterManager::updateMVState: clustermap MV is updated by %s at %d %+v",
+			c.myNodeId, clusterMap.LastUpdatedAt, clusterMap)
+
+		break
+	}
+
+	// update local copy
+	return c.updateClusterMapLocalCopyIfRequired(false)
+}
+
 var (
 	// clusterManager is the singleton instance of the ClusterManager
 	clusterManager *ClusterManager = nil
@@ -1786,4 +1877,10 @@ func Start(dCacheConfig *dcache.DCacheConfig, rvs []dcache.RawVolume) error {
 func Stop() error {
 	common.Assert(clusterManager != nil, "ClusterManager not started")
 	return clusterManager.stop()
+}
+
+func init() {
+
+	// Register the hook for updating the MV state through clusterMap package.
+	cm.RegisterMVStateUpdater(clusterManager.updateMVState)
 }
