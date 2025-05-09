@@ -1768,11 +1768,11 @@ func refreshMyRVs(myRVs []dcache.RawVolume) {
 }
 
 // This will update the existing MV view in cluster Map.
-func (c *ClusterManager) updateMVState(mvName string, mv dcache.MirroredVolume) error {
+func (cmi *ClusterManager) updateMVState(mvName string, mv dcache.MirroredVolume) error {
 	log.Info("ClusterManager::updateMVState: updating MV %s , components=%+v",
 		mvName, mv.RVs)
 	common.Assert(cm.IsValidMVName(mvName))
-	common.Assert(cm.IsValidMV(mv, int(c.config.NumReplicas)))
+	common.Assert(cm.IsValidMV(mv, int(cmi.config.NumReplicas)))
 
 	startTime := time.Now()
 	maxWait := 120 * time.Second
@@ -1806,7 +1806,7 @@ func (c *ClusterManager) updateMVState(mvName string, mv dcache.MirroredVolume) 
 		}
 		common.Assert(clusterMap.MVMap != nil)
 
-		clusterMap.LastUpdatedBy = c.myNodeId
+		clusterMap.LastUpdatedBy = cmi.myNodeId
 		clusterMap.State = dcache.StateChecking
 
 		body, err := json.Marshal(clusterMap)
@@ -1819,7 +1819,7 @@ func (c *ClusterManager) updateMVState(mvName string, mv dcache.MirroredVolume) 
 
 		if err := mm.UpdateClusterMapStart(body, etag); err != nil {
 			log.Warn("ClusterManager::updateMVState: Start Clustermap update failed for nodeId %s: %v, retrying",
-				c.myNodeId, err)
+				cmi.myNodeId, err)
 			continue
 		}
 
@@ -1849,13 +1849,13 @@ func (c *ClusterManager) updateMVState(mvName string, mv dcache.MirroredVolume) 
 
 		// The clustermap must now have update RV view in MV.
 		log.Info("ClusterManager::updateMVState: clustermap MV is updated by %s at %d %+v",
-			c.myNodeId, clusterMap.LastUpdatedAt, clusterMap)
+			cmi.myNodeId, clusterMap.LastUpdatedAt, clusterMap)
 
 		break
 	}
 
 	// update local copy
-	return c.updateClusterMapLocalCopyIfRequired(false)
+	return cmi.updateClusterMapLocalCopyIfRequired(false)
 }
 
 var (
@@ -1871,16 +1871,14 @@ func Start(dCacheConfig *dcache.DCacheConfig, rvs []dcache.RawVolume) error {
 	common.Assert(len(rvs) > 0)
 
 	clusterManager = &ClusterManager{}
+
+	// Register the hook for updating the MV state through clustermap package.
+	cm.RegisterMVStateUpdater(clusterManager.updateMVState)
+
 	return clusterManager.start(dCacheConfig, rvs)
 }
 
 func Stop() error {
 	common.Assert(clusterManager != nil, "ClusterManager not started")
 	return clusterManager.stop()
-}
-
-func init() {
-
-	// Register the hook for updating the MV state through clusterMap package.
-	cm.RegisterMVStateUpdater(clusterManager.updateMVState)
 }

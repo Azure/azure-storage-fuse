@@ -160,7 +160,7 @@ func MarkComponentRVOffline(mvName, rvName string) error {
 	return nil
 }
 
-func UpdateMVState(mvName string, mv dcache.MirroredVolume, state dcache.StateEnum) error {
+func UpdateMVState(mvName string, mv dcache.MirroredVolume) error {
 	if mvStateUpdater == nil {
 		return fmt.Errorf("ClusterMap::updateMVState: mvStateUpdater is not registered")
 	}
