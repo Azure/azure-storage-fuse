@@ -60,12 +60,12 @@ type ChunkServiceHandler struct {
 
 	// map to store the rvID to rvInfo mapping
 	// rvIDMap contains any and all cluster awareness information that a node needs to have,
-	// things like what all RVs are hosted by this node, state of each of those RVs,
+	// things like, what all RVs are hosted by this node, state of each of those RVs,
 	// what all MVs are hosted by these RVs, state of those MVs, etc.
 	// It is initially created from the clustermap which is the source of truth regarding cluster information,
-	// and once the cluster is working it's updated using various RPCs.
+	// and once the cluster is working it's updated using various RPCs received from vaious nodes.
 	// Note that any time Cluster Manager needs to update clustermap, before publishing the updated clustermap,
-	// it'll send our one or more RPCs to update the rvIDMap info in all the affected nodes,
+	// it'll send out one or more RPCs to update the rvIDMap info in all the affected nodes,
 	// thus rvIDMap always contains the latest info and hence is used by RVs to fail requests
 	// which might be sent by nodes having a stale clustermap.
 	//
@@ -75,11 +75,13 @@ type ChunkServiceHandler struct {
 	rvIDMap map[string]*rvInfo
 }
 
+// This holds information on one of our local RV.
+// ChunkServiceHandler.rvIDMap contains one such struct for each RV that this node contributes to the cluster.
 type rvInfo struct {
 	rvID     string       // id for this RV [readonly]
 	rvName   string       // rv0, rv1, etc. [readonly]
 	cacheDir string       // cache dir path for this RV [readonly]
-	mvMap    sync.Map     // all MVs this RV is part of, indexed by MV name (e.g., "mv0"), updated by JoinMV, UpdateMV and LeaveMV
+	mvMap    sync.Map     // all MVs hosted by this RV, indexed by MV name (e.g., "mv0"), updated by JoinMV, UpdateMV and LeaveMV
 	mvCount  atomic.Int64 // count of MVs for this RV, this should be updated whenever a MV is added or removed from the sync map
 
 	// reserved space for the RV is the space reserved for chunks which will be synced
@@ -91,12 +93,16 @@ type rvInfo struct {
 	reservedSpace atomic.Int64
 }
 
+// This holds information about one MV hosted by our local RV. This is known as "MV Replica".
+// rvInfo.mvMap contains one such struct for each MV Replica that the RV hosts.
+// Note that this is not information about the entire MV. One MV is replicated across multiple RVs and this holds
+// only the information about the "MV Replica" that our RV hosts.
 type mvInfo struct {
 	rwMutex      sync.RWMutex
 	mvName       string                   // mv0, mv1, etc.
 	componentRVs []*models.RVNameAndState // sorted list of component RVs for this MV
 
-	// total amount of space used up inside an MV by all the chunks stored in it.
+	// total amount of space used up inside the MV by all the chunks stored in it.
 	// Any RV that has to replace one of the existing component RVs needs to have
 	// at least this much space. JoinMV() requests this much space to be reserved
 	// in the new-to-be-inducted RV.
@@ -125,29 +131,41 @@ type mvInfo struct {
 	// This ensures that a continuous flow of IOs will not delay the start/end sync indefinitely.
 	opMutex sync.RWMutex
 
-	syncInfo // sync info for this MV
+	// Zero or more sync jobs this MV Replica is participating in.
+	// If this is an empty slice it means the MV Replica is currently not participating in any sync job.
+	// If non empty, these are all the sync jobs that this MV Replica is currently participating in.
+	// The information on each sync job is held inside the syncJob struct. Since an MV Replica can be the
+	// source of multiple sync jobs but can be a target for only one sync job, if this contains more than
+	// one sync jobs, all of them MUST be source sync jobs.
+	syncJobs []syncJob
 }
 
-type syncInfo struct {
-	// Is the MV in syncing state?
-	// An MV enters syncing state after StartSync command is successfully executed.
-	// In syncing state, PutChunk requests corresponding to client writes will be
-	// saved in the mv#.sync folder. Similarly a successful EndSync will take an
-	// MV out of syncing state.
-	isSyncing atomic.Bool
-
-	// sync ID for this MV if it is in syncing state.
+// A sync job syncs data between an online component RV to an outofsync component RV of the same MV.
+// Note that in an MV the Lowest Index Online RV ("rv0" < "rv1") is the one that is responsible for performing the
+// data copy, hence Replication Manager on the node hosting the Lowest Index Online RV (LIO RV) sets up a sync job
+// and orchestrates the copy. It sends the StartSync RPC request to the source and the target RV, performs the chunk
+// transfer and ends with an EndSync request.
+//
+// This syncJob structure holds information on each sync job that a particular "MV Replica" is participating in.
+// Note that an MV Replica can be taking part in multiple simultaneous sync jobs, with the following rules:
+//   - An MV Replica can either be the source or target of a sync job.
+//   - Online MV Replicas will act as sources while OutOfSyc MV Replicas will act as targets.
+//   - An MV Replica can be source to multiple sync jobs while it can be target to one and only one sync job.
+//   - Every sync job has an id, called the SyncId. This is returned by a successful StartSync call and must be provided
+//     in the EndSync call to end that sync job.
+//   - When an MV Replica is acting as the source of a sync job any client writes targeted to that MV Replica will be
+//     stored in the ".sync" folder.
+type syncJob struct {
+	// sync ID for this sync job.
 	// This is returned in the StartSync response and EndSync should carry this.
 	syncID string
 
-	// sourceRV is the RV that is syncing a (local) target RV in this MV.
-	// Since not more than one component RVs of an MV will be from the same node, there will be one and only
-	// one local RV as the target RV.
-	// Communicated using the StartSync message sent by the Replication Manager as part of the resync-mv workflow.
-	// We will only accept PutChunk(isSync=true) requests only with source RV value matching this.
-	// This is used when the source RV goes offline and is replaced by the cluster manager with a new RV.
-	// In this case, the sync will need to be restarted from the new RV.
-	sourceRVName string // source RV name for syncing this MV
+	// Source and target RVs for this sync job.
+	// An MV Replica can either act as source or target in a sync job, so one and only one of these will be set.
+	// If sourceRVName is set that means this MV Replica is the target of this sync job, while if
+	// targetRVName is set it means this MV Replica is the source of this sync job.
+	sourceRVName string
+	targetRVName string
 }
 
 var handler *ChunkServiceHandler
@@ -557,12 +575,12 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	// get hash if requested for entire chunk
 	// hash := ""
 	// if req.OffsetInChunk == 0 && req.Length == chunkSize {
-	// 	hashData, err := os.ReadFile(hashPath)
-	// 	if err != nil {
-	// 		log.Err("ChunkServiceHandler::GetChunk: Failed to read hash file %s [%v]", hashPath, err.Error())
-	// 		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to read hash file %s [%v]", hashPath, err.Error()))
-	// 	}
-	// 	hash = string(hashData)
+	//      hashData, err := os.ReadFile(hashPath)
+	//      if err != nil {
+	//              log.Err("ChunkServiceHandler::GetChunk: Failed to read hash file %s [%v]", hashPath, err.Error())
+	//              return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to read hash file %s [%v]", hashPath, err.Error()))
+	//      }
+	//      hash = string(hashData)
 	// }
 
 	resp := &models.GetChunkResponse{
@@ -664,8 +682,8 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	// TODO: hash validation will be done later
 	// err = os.WriteFile(hashPath, []byte(req.Chunk.Hash), 0400)
 	// if err != nil {
-	// 	log.Err("ChunkServiceHandler::PutChunk: Failed to write hash file %s [%v]", hashPath, err.Error())
-	// 	return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to write hash file %s [%v]", hashPath, err.Error()))
+	//      log.Err("ChunkServiceHandler::PutChunk: Failed to write hash file %s [%v]", hashPath, err.Error())
+	//      return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to write hash file %s [%v]", hashPath, err.Error()))
 	// }
 
 	availableSpace, err := rvInfo.getAvailableSpace()
@@ -767,8 +785,8 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 	// TODO: hash validation will be done later
 	// err = os.Remove(hashPath)
 	// if err != nil {
-	// 	log.Err("ChunkServiceHandler::RemoveChunk: Failed to remove hash file %s [%v]", hashPath, err.Error())
-	// 	return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to remove hash file %s [%v]", hashPath, err.Error()))
+	//      log.Err("ChunkServiceHandler::RemoveChunk: Failed to remove hash file %s [%v]", hashPath, err.Error())
+	//      return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to remove hash file %s [%v]", hashPath, err.Error()))
 	// }
 
 	availableSpace, err := rvInfo.getAvailableSpace()
