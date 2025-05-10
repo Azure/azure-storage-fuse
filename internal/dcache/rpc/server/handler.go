@@ -422,6 +422,7 @@ func (mv *mvInfo) updateComponentRVs(componentRVs []*models.RVNameAndState) {
 	// componentRVs point to a thrift req member. Does thrift say anything about safety of that,
 	// or should we do a deep copy of the list.
 	mv.componentRVs = componentRVs
+	sortComponentRVs(mv.componentRVs)
 }
 
 // increment the total chunk bytes for this MV
