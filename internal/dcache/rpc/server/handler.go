@@ -45,6 +45,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
+	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/service"
@@ -81,8 +82,8 @@ type rvInfo struct {
 	rvID     string       // id for this RV [readonly]
 	rvName   string       // rv0, rv1, etc. [readonly]
 	cacheDir string       // cache dir path for this RV [readonly]
-	mvMap    sync.Map     // all MVs hosted by this RV, indexed by MV name (e.g., "mv0"), updated by JoinMV, UpdateMV and LeaveMV
-	mvCount  atomic.Int64 // count of MVs for this RV, this should be updated whenever a MV is added or removed from the sync map
+	mvMap    sync.Map     // all MV replicas hosted by this RV, indexed by MV name (e.g., "mv0"), updated by JoinMV, UpdateMV and LeaveMV.
+	mvCount  atomic.Int64 // count of MV replicas hosted by this RV, this should be updated whenever an MV is added or removed from the mvMap.
 
 	// reserved space for the RV is the space reserved for chunks which will be synced
 	// to the RV after the StartSync() call. This is used to calculate the available space
@@ -130,6 +131,10 @@ type mvInfo struct {
 	// no new IO operations are started till the start/end sync gets the write lock and completes.
 	// This ensures that a continuous flow of IOs will not delay the start/end sync indefinitely.
 	opMutex sync.RWMutex
+
+	// Companion counter to opMutex for performing various locking related assertions.
+	// [DEBUG ONLY]
+	opMutexDbgCntr atomic.Int64
 
 	// Zero or more sync jobs this MV Replica is participating in.
 	// If this is an empty slice it means the MV Replica is currently not participating in any sync job.
@@ -290,22 +295,25 @@ func (rv *rvInfo) getAvailableSpace() (int64, error) {
 	return availableSpace, err
 }
 
-// return if the MV is in syncing state.
-// If there are more than one entries in the syncJobs map, it means that the MV is in syncing state
+// Return if the MV is in syncing state.
+// If there are more than one entries in the syncJobs map, it means that the MV is in syncing state.
 //
-// caller of this method must ensure that the opMutex lock is held, either by acquireSyncOpReadLock() or acquireSyncOpWriteLock().
+// Caller must hold opMutex write lock.
 func (mv *mvInfo) isSyncing() bool {
+	common.Assert(mv.isSyncOpWriteLocked(), mv.opMutexDbgCntr.Load())
 	return len(mv.syncJobs) > 0
 }
 
-// add sync job entry to the syncJobs map for the MV.
+// Add a new sync job entry to the syncJobs map for this MV replica.
 //
-// caller of this method must ensure that the opMutex lock is held, either by acquireSyncOpReadLock() or acquireSyncOpWriteLock().
-func (mv *mvInfo) addSyncJob(syncID string, sourceRVName string, targetRVName string) {
-	common.Assert(common.IsValidUUID(syncID))
-	common.Assert(sourceRVName != "") // TODO: add assert for IsValidRVName for both source and target RV names
-	common.Assert(targetRVName != "")
+// Caller must hold opMutex write lock.
+func (mv *mvInfo) addSyncJob(sourceRVName string, targetRVName string) string {
+	common.Assert(mv.isSyncOpWriteLocked(), mv.opMutexDbgCntr.Load())
+	// One and only one of sourceRVName and targetRVName can be valid.
+	common.Assert(sourceRVName == "" || targetRVName == "", sourceRVName, targetRVName)
+	common.Assert(cm.IsValidRVName(sourceRVName) || cm.IsValidRVName(targetRVName), sourceRVName, targetRVName)
 
+	syncID := gouuid.New().String()
 	_, ok := mv.syncJobs[syncID]
 	common.Assert(!ok, fmt.Sprintf("syncJob with syncID %s already exists : %+v", syncID, mv.syncJobs))
 
@@ -314,72 +322,99 @@ func (mv *mvInfo) addSyncJob(syncID string, sourceRVName string, targetRVName st
 		sourceRVName: sourceRVName,
 		targetRVName: targetRVName,
 	}
+
+	return syncID
 }
 
-// check if the syncID is valid for this MV.
+// Check if the syncID is valid for this MV replica, i.e., there is currently a syncJob running with this syncID.
 //
-// caller of this method must ensure that the opMutex lock is held, either by acquireSyncOpReadLock() or acquireSyncOpWriteLock().
+// Caller must hold opMutex write lock.
+//
+// TODO: Later when we add syncIds to PutChunk request then we will need to call this with opMutex read lock too.
 func (mv *mvInfo) isSyncIDValid(syncID string) bool {
+	common.Assert(mv.isSyncOpWriteLocked(), mv.opMutexDbgCntr.Load())
 	common.Assert(common.IsValidUUID(syncID))
 
 	_, ok := mv.syncJobs[syncID]
 	return ok
 }
 
-// delete sync job entry from the syncJobs map for the MV.
+// Delete sync job entry from the syncJobs map for this MV replica.
 //
-// caller of this method must ensure that the opMutex lock is held, either by acquireSyncOpReadLock() or acquireSyncOpWriteLock().
+// Caller must hold opMutex write lock.
 func (mv *mvInfo) deleteSyncJob(syncID string) {
+	common.Assert(mv.isSyncOpWriteLocked(), mv.opMutexDbgCntr.Load())
+
 	_, ok := mv.syncJobs[syncID]
-	common.Assert(ok, fmt.Sprintf("syncJob with syncID %s not found : %+v", syncID, mv.syncJobs))
+	common.Assert(ok, fmt.Sprintf("syncJob with syncID %s not found: %+v", syncID, mv.syncJobs))
 
 	delete(mv.syncJobs, syncID)
 }
 
-// return if the RV hosting this MV replica is the source of the sync job.
-// If there are more two or more entries in the syncJobs map, it means that the RV hosting this MV
-// is the source of the sync job. Return true in this case. It implies that all client PutChunk requests
-// should be written to the .sync directory, whereas the sync writes will be written to the regular MV directory.
-// If there is exaclty one entry in the syncJobs map, it means that the RV hosting this MV can either be the source or target
-// of the sync job. If it is the source, return true. Else, return false. This implies that the RV is target RV of the sync job.
-// So, all PutChunk requests should be written to the regular MV directory.
-// This method is used by the PutChunk RPC to determine whether the chunks should be written to the .sync or regular MV directory.
+// Return if the RV hosting this MV replica is the source or target of a sync job.
+// An MV replica can act as source for multiple simultaneous sync jobs (each of which would be resyncing one distinct
+// MV replica for the MV) but can act as target for one and only one sync job.
+// For MV replicas acting as source, the target MV replica will be outside this node and targetRVName contains the
+// name of the RV on which the target MV replica resides, similarly for MV replicas acting as target, the source
+// MV replica will be outside this node and sourceRVName contains the name of the RV on which the source MV replica
+// resides.
+// Source MV replicas MUST have a <mv>.sync folder and all client PutChunk requests must write chunks to this folder
+// while resync PutChunk requests must be written to the regular mv folder.
+// Target MV replicas MUST write both client and resync PutChunk chunks to the regular mv folder.
 //
-// caller of this method must ensure that the opMutex lock is held, either by acquireSyncOpReadLock() or acquireSyncOpWriteLock().
-func (mv *mvInfo) isSourceOfSync() bool {
-	// if there are more than one entries in the syncJobs map, it means that the RV hosting this MV
-	// is the source of the sync job. Return true in this case.
+// Caller must hold opMutex read lock.
+func (mv *mvInfo) isSourceOrTargetOfSync() (isSource bool, isTarget bool) {
+	common.Assert(mv.isSyncOpReadLocked(), mv.opMutexDbgCntr.Load())
+
+	// No entry in syncJobs map means that the MV is not in syncing state.
+	// This is the common case.
+	if len(mv.syncJobs) == 0 {
+		return false, false /* MV replica is not syncing */
+	}
+
+	// If there are more than one entries in the syncJobs map, it means that this MV replica is the source of
+	// all those sync jobs. Note that an MV replica can be target to one and only one sync job.
 	if len(mv.syncJobs) > 1 {
-		return true
+		return true, false /* MV replica is source for more than one sync jobs */
 	}
 
 	for _, job := range mv.syncJobs {
-		common.Assert(job.sourceRVName != "" || job.targetRVName != "", fmt.Sprintf("both source and target RV names are not set in syncJob %+v", job))
-		common.Assert(job.sourceRVName == "" || job.targetRVName == "", fmt.Sprintf("both source and target RV names are set in syncJob %+v", job))
+		common.Assert(job.sourceRVName == "" || job.targetRVName == "",
+			fmt.Sprintf("Both source and target RV names cannot be set in a syncJob %+v", job))
+		common.Assert(cm.IsValidRVName(job.sourceRVName) || cm.IsValidRVName(job.targetRVName),
+			fmt.Sprintf("One of source or target RV name must be set in a syncJob %+v", job))
 
 		// If sourceRVName is set that means this MV Replica is the target of this sync job,
 		// while if targetRVName is set it means this MV Replica is the source of this sync job.
 		if job.sourceRVName != "" {
-			return false
+			return false, true /* MV replica is target for one sync job */
 		} else {
-			return true
+			return true, false /* MV replica is source for one sync job */
 		}
 	}
 
-	// no entry in syncJobs map means that the MV is not in syncing state
-	return false
+	// Unreachable code.
+	common.Assert(false)
+
+	return false, false
 }
 
-// get component RVs for this MV
+// Get component RVs for this MV.
 func (mv *mvInfo) getComponentRVs() []*models.RVNameAndState {
 	mv.rwMutex.RLock()
 	defer mv.rwMutex.RUnlock()
 
+	common.Assert(len(mv.componentRVs) == int(cm.GetCacheConfig().NumReplicas),
+		len(mv.componentRVs), cm.GetCacheConfig().NumReplicas)
+
 	return mv.componentRVs
 }
 
-// update the component RVs for the MV
+// Update the component RVs for the MV.
 func (mv *mvInfo) updateComponentRVs(componentRVs []*models.RVNameAndState) {
+	common.Assert(len(mv.componentRVs) == int(cm.GetCacheConfig().NumReplicas),
+		len(mv.componentRVs), cm.GetCacheConfig().NumReplicas)
+
 	mv.rwMutex.Lock()
 	defer mv.rwMutex.Unlock()
 
@@ -408,10 +443,16 @@ func (mv *mvInfo) decTotalChunkBytes(bytes int64) {
 // until the read lock is released.
 func (mv *mvInfo) acquireSyncOpReadLock() {
 	mv.opMutex.RLock()
+
+	common.Assert(mv.opMutexDbgCntr.Load() >= 0, mv.opMutexDbgCntr.Load())
+	mv.opMutexDbgCntr.Add(1)
 }
 
 // release the read lock on the opMutex
 func (mv *mvInfo) releaseSyncOpReadLock() {
+	common.Assert(mv.opMutexDbgCntr.Load() > 0, mv.opMutexDbgCntr.Load())
+	mv.opMutexDbgCntr.Add(-1)
+
 	mv.opMutex.RUnlock()
 }
 
@@ -422,38 +463,63 @@ func (mv *mvInfo) releaseSyncOpReadLock() {
 func (mv *mvInfo) acquireSyncOpWriteLock() {
 	mv.opMutex.Lock()
 	log.Debug("mvInfo::acquireSyncOpWriteLock: acquired write lock by sync operation in MV %s", mv.mvName)
+
+	common.Assert(mv.opMutexDbgCntr.Load() == 0, mv.opMutexDbgCntr.Load())
+	mv.opMutexDbgCntr.Store(-12345) // Special value to signify write lock.
+
 }
 
 // release the write lock on the opMutex
 func (mv *mvInfo) releaseSyncOpWriteLock() {
+	common.Assert(mv.opMutexDbgCntr.Load() == -12345, mv.opMutexDbgCntr.Load())
+	mv.opMutexDbgCntr.Store(0)
+
 	mv.opMutex.Unlock()
 	log.Debug("mvInfo::releaseSyncOpWriteLock: released write lock by sync operation in MV %s", mv.mvName)
 }
 
-// check if the given component RVs are valid
-//   - check if the component RVs are same as the MV component RVs
-//   - check if the source and target RVs are present in the component RVs list
-func (mv *mvInfo) validateComponentRVsInSync(componentRV []*models.RVNameAndState, srcRVName string, targetRVName string) error {
+// Check if read/shared lock is held on opMutex.
+// [DEBUG ONLY]
+func (mv *mvInfo) isSyncOpReadLocked() bool {
+	return mv.opMutexDbgCntr.Load() > 0
+}
+
+// Check if write/exclusive lock is held on opMutex.
+// [DEBUG ONLY]
+func (mv *mvInfo) isSyncOpWriteLocked() bool {
+	return mv.opMutexDbgCntr.Load() == -12345
+}
+
+// Given component RVs and source and target RV names received in a StartSync/EndSync request, check their validity.
+// It checks the following:
+//   - Component RVs received in req are exactly same (name and state) as component RVs list for this MV replica.
+//   - Source and target RVs are indeed present in the component RVs list for this MV replica.
+func (mv *mvInfo) validateComponentRVsInSync(componentRVsInReq []*models.RVNameAndState, sourceRVName string, targetRVName string) error {
 	componentRVsInMV := mv.getComponentRVs()
 
-	// validate the component RVs list
-	if err := isComponentRVsValid(componentRVsInMV, componentRV); err != nil {
-		log.Err("ChunkServiceHandler::validateComponentRVsInSync: Request component RVs are invalid for MV %s [%v]", mv.mvName, err.Error())
-		return rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("request component RVs are invalid for MV %s [%v]", mv.mvName, err.Error()))
+	// Component RVs received in req must be exactly same as component RVs list for this MV replica.
+	if err := isComponentRVsValid(componentRVsInMV, componentRVsInReq); err != nil {
+		errStr := fmt.Sprintf("Request component RVs are invalid for MV %s [%v]", mv.mvName, err)
+		log.Err("ChunkServiceHandler::validateComponentRVsInSync: %s", errStr)
+		return rpc.NewResponseError(rpc.NeedToRefreshClusterMap, errStr)
 	}
 
-	// check if the source RV is present in the component RVs list
-	if !isRVPresentInMV(componentRVsInMV, srcRVName) {
+	// Source RV must be present in the component RVs list for this MV replica.
+	if !isRVPresentInMV(componentRVsInMV, sourceRVName) {
 		rvsInMvStr := rpc.ComponentRVsToString(componentRVsInMV)
-		log.Err("ChunkServiceHandler::validateComponentRVsInSync: Source RV %s is not present in the component RVs list %v", srcRVName, rvsInMvStr)
-		return rpc.NewResponseError(rpc.InvalidRV, fmt.Sprintf("source RV %s is not present in the component RVs list %v", srcRVName, rvsInMvStr))
+		errStr := fmt.Sprintf("Source RV %s is not a valid component RV for MV %s %s",
+			sourceRVName, mv.mvName, rvsInMvStr)
+		log.Err("ChunkServiceHandler::validateComponentRVsInSync: %s", errStr)
+		return rpc.NewResponseError(rpc.InvalidRV, errStr)
 	}
 
-	// check if the target RV is present in the component RVs list
+	// Target RV must be present in the component RVs list for this MV replica.
 	if !isRVPresentInMV(componentRVsInMV, targetRVName) {
 		rvsInMvStr := rpc.ComponentRVsToString(componentRVsInMV)
-		log.Err("ChunkServiceHandler::validateComponentRVsInSync: Target RV %s is not present in the component RVs list %v", targetRVName, rvsInMvStr)
-		return rpc.NewResponseError(rpc.InvalidRV, fmt.Sprintf("target RV %s is not present in the component RVs list %v", targetRVName, rvsInMvStr))
+		errStr := fmt.Sprintf("Target RV %s is not a valid component RV for MV %s %s",
+			targetRVName, mv.mvName, rvsInMvStr)
+		log.Err("ChunkServiceHandler::validateComponentRVsInSync: %s", errStr)
+		return rpc.NewResponseError(rpc.InvalidRV, errStr)
 	}
 
 	return nil
@@ -517,23 +583,28 @@ func (h *ChunkServiceHandler) createMVDirectory(path string) error {
 	return nil
 }
 
-// return source and target RV info for the sync operation. Only one of the source or target RV is hosted by this node.
-// - if both source and target RVs are not hosted by this node, return error
-// - if both source and target RVs are hosted by this node, return error
+// Return source or target RV info for the sync operation. Only one of the source or target RV can be hosted by this
+// node, so one and only one of source or target rvInfo will be non-nil.
+// - If neither source nor target RVs is hosted by this node, return error.
+// - If both source and target RVs are hosted by this node, return error.
 func (h *ChunkServiceHandler) getSrcAndDestRVInfoForSync(sourceRVName string, targetRVName string) (*rvInfo, *rvInfo, error) {
 	srcRVInfo := h.getRVInfoFromRVName(sourceRVName)
 	targetRVInfo := h.getRVInfoFromRVName(targetRVName)
 
 	if srcRVInfo == nil && targetRVInfo == nil {
-		log.Err("ChunkServiceHandler::getSrcAndDestRVInfoForSync: Both source RV %s and target RV %s is not hosted by the node", sourceRVName, targetRVName)
-		common.Assert(false, fmt.Sprintf("both source RV %s and target RV %s is not hosted by the node", sourceRVName, targetRVName))
-		return nil, nil, rpc.NewResponseError(rpc.InvalidRV, fmt.Sprintf("both source RV %s and target RV %s is not hosted by the node", sourceRVName, targetRVName))
+		errStr := fmt.Sprintf("Neither source RV %s nor target RV %s is hosted by this node",
+			sourceRVName, targetRVName)
+		log.Err("ChunkServiceHandler::getSrcAndDestRVInfoForSync: %s", errStr)
+		common.Assert(false, errStr)
+		return nil, nil, rpc.NewResponseError(rpc.InvalidRV, errStr)
 	}
 
 	if srcRVInfo != nil && targetRVInfo != nil {
-		log.Err("ChunkServiceHandler::getSrcAndDestRVInfoForSync: Both source RV %s and target RV %s is hosted by the node", sourceRVName, targetRVName)
-		common.Assert(false, fmt.Sprintf("both source RV %s and target RV %s is hosted by the node", sourceRVName, targetRVName))
-		return srcRVInfo, targetRVInfo, rpc.NewResponseError(rpc.InvalidRV, fmt.Sprintf("both source RV %s and target RV %s is hosted by the node", sourceRVName, targetRVName))
+		errStr := fmt.Sprintf("Both source RV %s and target RV %s are hosted by this node",
+			sourceRVName, targetRVName)
+		log.Err("ChunkServiceHandler::getSrcAndDestRVInfoForSync: %s", errStr)
+		common.Assert(false, errStr)
+		return nil, nil, rpc.NewResponseError(rpc.InvalidRV, errStr)
 	}
 
 	return srcRVInfo, targetRVInfo, nil
@@ -670,36 +741,48 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 
 func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunkRequest) (*models.PutChunkResponse, error) {
 	if req == nil || req.Chunk == nil || req.Chunk.Address == nil {
-		log.Err("ChunkServiceHandler::PutChunk: Received nil PutChunk request")
-		common.Assert(false, "received nil PutChunk request")
-		return nil, rpc.NewResponseError(rpc.InvalidRequest, "received nil PutChunk request")
+		errStr := "ChunkServiceHandler::PutChunk: Received nil PutChunk request"
+		log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
+		common.Assert(false, errStr)
+		return nil, rpc.NewResponseError(rpc.InvalidRequest, errStr)
 	}
 
 	startTime := time.Now()
 
 	log.Debug("ChunkServiceHandler::PutChunk: Received PutChunk request: %v", rpc.PutChunkRequestToString(req))
 
-	// check if the chunk address is valid
+	// Check if the chunk address is valid.
 	err := h.checkValidChunkAddress(req.Chunk.Address)
 	if err != nil {
-		log.Err("ChunkServiceHandler::PutChunk: Invalid chunk address %v [%s]", req.Chunk.Address.String(), err.Error())
+		log.Err("ChunkServiceHandler::PutChunk: Invalid chunk address %v [%v]",
+			req.Chunk.Address.String(), err)
 		return nil, err
 	}
 
 	rvInfo := h.rvIDMap[req.Chunk.Address.RvID]
 	mvInfo := rvInfo.getMVInfo(req.Chunk.Address.MvName)
 
-	// validate the component RVs list
+	//
+	// Component RVs list received in the PutChunk request must match our local rvInfo.
+	// This is important for checking if the client is having a stale clustermap.
+	// Note that rvInfo holds most uptodate cluster membership info, so we let the caller know if he has a stale
+	// clustermap copy by failing with rpc.NeedToRefreshClusterMap error. Client will then refresh his clustermap
+	// copy and try again.
+	//
 	componentRVsInMV := mvInfo.getComponentRVs()
 	if err := isComponentRVsValid(componentRVsInMV, req.ComponentRV); err != nil {
-		log.Err("ChunkServiceHandler::PutChunk: Request component RVs are invalid for MV %s [%v]", req.Chunk.Address.MvName, err.Error())
-		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("request component RVs are invalid for MV %s [%v]", req.Chunk.Address.MvName, err.Error()))
+		errStr := fmt.Sprintf("Request component RVs are invalid for MV %s [%v]",
+			req.Chunk.Address.MvName, err)
+		log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
+		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, errStr)
 	}
 
-	// acquire read lock on the opMutex for this MV
+	//
+	// Acquire read lock on the opMutex for this MV to block any StartSync request from updating rvInfo while
+	// we are accessing it. Note that depending on the sync state of an MV replica, the client PutChunk requests
+	// may need to be saved in regular or the sync mv folder. This read lock prevents any races in that.
+	//
 	mvInfo.acquireSyncOpReadLock()
-
-	// release the read lock on the opMutex for this MV when the function returns
 	defer mvInfo.releaseSyncOpReadLock()
 
 	// TODO: check later if lock is needed
@@ -710,30 +793,42 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	// defer flock.Unlock()
 
 	cacheDir := rvInfo.cacheDir
-	isSrcOfSync := mvInfo.isSourceOfSync()
+	isSrcOfSync, isTgtOfSync := mvInfo.isSourceOrTargetOfSync()
 
 	var chunkPath, hashPath string
 	if req.IsSync {
-		// sync write RPC call. This is called after the StartSync RPC to copy the contents
-		// from the online RV (lowest index RV) to the new out of sync RV.
+		//
+		// Sync PutChunk call (as opposed to a client write PutChunk call).
+		// This is called after the StartSync RPC to synchronize an OutOfSyc MV replica from a healthy MV
+		// replica.
 		// In this case the chunks must be written to the regular mv directory, i.e. rv0/mv0
 		//
-		// sync write RPC call will be made in the ResyncMV() workflow, and should only be sent to the target RVs.
-		// If sent to the source RV, return error.
-		if isSrcOfSync {
-			log.Err("ChunkServiceHandler::PutChunk: RV %s hosting the MV %s is the source of sync job, whereas the client request is sync write call", rvInfo.rvName, req.Chunk.Address.MvName)
-			common.Assert(false, fmt.Sprintf("RV %s hosting the MV %s is the source of sync job, whereas the client request is sync write call", rvInfo.rvName, req.Chunk.Address.MvName))
-			return nil, rpc.NewResponseError(rpc.InvalidRequest, fmt.Sprintf("RV %s hosting the MV %s is the source of sync job, whereas the client request is sync call", rvInfo.rvName, req.Chunk.Address.MvName))
+		// Sync PutChunk call will be made in the ResyncMV() workflow, and should only be sent to RVs which
+		// are target of a sync job.
+		//
+		if !isTgtOfSync {
+			errStr := fmt.Sprintf("Sync PutChunk call received for RV %s hosting MV %s, which is currently not the target of any sync job",
+				rvInfo.rvName, req.Chunk.Address.MvName)
+
+			log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
+			common.Assert(false, errStr)
+			return nil, rpc.NewResponseError(rpc.InvalidRequest, errStr)
 		}
 
-		chunkPath, hashPath = getRegularMVPath(cacheDir, req.Chunk.Address.MvName, req.Chunk.Address.FileID, req.Chunk.Address.OffsetInMiB)
+		chunkPath, hashPath = getRegularMVPath(cacheDir, req.Chunk.Address.MvName,
+			req.Chunk.Address.FileID, req.Chunk.Address.OffsetInMiB)
 	} else {
-		// client write RPC call. If the MV is in sync state, the chunks must be written to the sync directory, i.e. rv0/mv0.sync
-		// If the MV is not in sync state, the chunks must be written to the regular mv directory, i.e. rv0/mv0
+		//
+		// Client write PutChunk call. If this MV replica is currently acting as the source for any sync job,
+		// the chunks must be written to the sync directory, i.e. rv0/mv0.sync, else they must be written
+		// to the regular mv directory, i.e. rv0/mv0.
+		//
 		if isSrcOfSync {
-			chunkPath, hashPath = getSyncMVPath(cacheDir, req.Chunk.Address.MvName, req.Chunk.Address.FileID, req.Chunk.Address.OffsetInMiB)
+			chunkPath, hashPath = getSyncMVPath(cacheDir, req.Chunk.Address.MvName,
+				req.Chunk.Address.FileID, req.Chunk.Address.OffsetInMiB)
 		} else {
-			chunkPath, hashPath = getRegularMVPath(cacheDir, req.Chunk.Address.MvName, req.Chunk.Address.FileID, req.Chunk.Address.OffsetInMiB)
+			chunkPath, hashPath = getRegularMVPath(cacheDir, req.Chunk.Address.MvName,
+				req.Chunk.Address.FileID, req.Chunk.Address.OffsetInMiB)
 		}
 	}
 
@@ -742,16 +837,18 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	// check if the chunk file is already present
 	_, err = os.Stat(chunkPath)
 	if err == nil {
-		log.Err("ChunkServiceHandler::PutChunk: chunk file %s already exists", chunkPath)
-		return nil, rpc.NewResponseError(rpc.ChunkAlreadyExists, fmt.Sprintf("chunk file %s already exists", chunkPath))
+		errStr := fmt.Sprintf("Chunk file %s already exists", chunkPath)
+		log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
+		return nil, rpc.NewResponseError(rpc.ChunkAlreadyExists, errStr)
 	}
 
 	// write to .tmp file first and rename it to the final file
 	tmpChunkPath := fmt.Sprintf("%s.tmp", chunkPath)
 	err = os.WriteFile(tmpChunkPath, req.Chunk.Data, 0400)
 	if err != nil {
-		log.Err("ChunkServiceHandler::PutChunk: Failed to write chunk file %s [%v]", chunkPath, err.Error())
-		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to write chunk file %s [%v]", chunkPath, err.Error()))
+		errStr := fmt.Sprintf("Failed to write chunk file %s [%v]", chunkPath, err)
+		log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
+		return nil, rpc.NewResponseError(rpc.InternalServerError, errStr)
 	}
 
 	// TODO: hash validation will be done later
@@ -771,9 +868,11 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	// rename the .tmp file to the final file
 	err = os.Rename(tmpChunkPath, chunkPath)
 	if err != nil {
-		log.Err("ChunkServiceHandler::PutChunk: Failed to rename chunk file %s to %s [%v]", tmpChunkPath, chunkPath, err.Error())
-		common.Assert(false, fmt.Sprintf("failed to rename chunk file %s to %s [%v]", tmpChunkPath, chunkPath, err.Error()))
-		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to rename chunk file %s to %s [%v]", tmpChunkPath, chunkPath, err.Error()))
+		errStr := fmt.Sprintf("Failed to rename chunk file %s to %s [%v]",
+			tmpChunkPath, chunkPath, err.Error())
+		log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
+		common.Assert(false, errStr)
+		return nil, rpc.NewResponseError(rpc.InternalServerError, errStr)
 	}
 
 	// TODO: should we also consider the hash file size in the total chunk bytes
@@ -1055,83 +1154,103 @@ func (h *ChunkServiceHandler) LeaveMV(ctx context.Context, req *models.LeaveMVRe
 
 func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSyncRequest) (*models.StartSyncResponse, error) {
 	if req == nil {
-		log.Err("ChunkServiceHandler::StartSync: Received nil StartSync request")
-		common.Assert(false, "received nil StartSync request")
-		return nil, rpc.NewResponseError(rpc.InvalidRequest, "received nil StartSync request")
+		errStr := "Received nil StartSync request"
+		log.Err("ChunkServiceHandler::StartSync: %s", errStr)
+		common.Assert(false, errStr)
+		return nil, rpc.NewResponseError(rpc.InvalidRequest, errStr)
 	}
 
 	log.Debug("ChunkServiceHandler::StartSync: Received StartSync request: %v", rpc.StartSyncRequestToString(req))
 
-	if req.MV == "" || req.SourceRVName == "" || req.TargetRVName == "" || len(req.ComponentRV) == 0 {
-		log.Err("ChunkServiceHandler::StartSync: MV, SourceRV, TargetRV or ComponentRVs is empty")
-		return nil, rpc.NewResponseError(rpc.InvalidRequest, "MV, SourceRV, TargetRV or ComponentRVs is empty")
+	if !cm.IsValidMVName(req.MV) ||
+		!cm.IsValidRVName(req.SourceRVName) ||
+		!cm.IsValidRVName(req.TargetRVName) ||
+		len(req.ComponentRV) == 0 {
+		errStr := fmt.Sprintf("MV (%s), SourceRV (%s), TargetRV (%s) or ComponentRVs (%d) invalid",
+			req.MV, req.SourceRVName, req.TargetRVName, len(req.ComponentRV))
+		log.Err("ChunkServiceHandler::StartSync: %s", errStr)
+		common.Assert(false, errStr)
+		return nil, rpc.NewResponseError(rpc.InvalidRequest, errStr)
 	}
 
-	// source RV is the lowest index online RV. The node hosting this RV will send the start sync call
+	//
+	// Source RV is the lowest index online RV. The node hosting this RV will send the start sync call
 	// to the outofsync component RVs.
+	//
 	srcRVInfo, targetRVInfo, err := h.getSrcAndDestRVInfoForSync(req.SourceRVName, req.TargetRVName)
 	if err != nil {
-		log.Err("ChunkServiceHandler::StartSync: Failed to get source and target RV info for sync [%v]", err.Error())
+		log.Err("ChunkServiceHandler::StartSync: Failed to get source and target RV info [%v]", err)
+		common.Assert(false, err)
 		return nil, err
 	}
 
 	var rvInfo *rvInfo
 	var isSrcOfSync bool
+
 	if srcRVInfo != nil {
+		common.Assert(targetRVInfo == nil)
 		rvInfo = srcRVInfo
 		isSrcOfSync = true
 	} else {
+		common.Assert(targetRVInfo != nil)
 		rvInfo = targetRVInfo
 	}
 
-	// check if MV is valid
+	// Check if we are hosting the requested MV replica.
 	mvInfo := rvInfo.getMVInfo(req.MV)
 	if mvInfo == nil {
-		log.Err("ChunkServiceHandler::StartSync: MV %s is invalid for RV %s", req.MV, req.TargetRVName)
-		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("MV %s is invalid for RV %s", req.MV, req.TargetRVName))
+		errStr := fmt.Sprintf("MV %s is invalid for RV %s", req.MV, req.TargetRVName)
+		log.Err("ChunkServiceHandler::StartSync: %s", errStr)
+		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, errStr)
 	}
 
 	err = mvInfo.validateComponentRVsInSync(req.ComponentRV, req.SourceRVName, req.TargetRVName)
 	if err != nil {
-		log.Err("ChunkServiceHandler::StartSync: Failed to validate component RVs in sync [%v]", err.Error())
-		return nil, rpc.NewResponseError(rpc.InvalidRequest, fmt.Sprintf("failed to validate component RVs in sync [%v]", err.Error()))
+		errStr := fmt.Sprintf("Failed to validate component RVs in sync [%v]", err.Error())
+		log.Err("ChunkServiceHandler::StartSync: %s", errStr)
+		return nil, err
 	}
 
-	// acquire write lock on the opMutex for this MV. Now GetChunk, PutChunk and RemoveChunk will not allow any new IO.
-	// Also wait for any ongoing IOs to complete.
+	//
+	// Ok, it's a valid StartSync request for one of our MV replicas.
+	// We synchronize chunk IO requests (GetChunk/PutChunk/RemoveChunk) with StartSync requests.
+	// Acquire write lock on the opMutex for this MV. Now GetChunk, PutChunk and RemoveChunk will not allow
+	// any new IO. It will also wait for any ongoing IOs to complete.
+	//
 	mvInfo.acquireSyncOpWriteLock()
-
-	// release the write lock on the opMutex for this MV when the function returns
 	defer mvInfo.releaseSyncOpWriteLock()
 
-	// if mv is not in syning state, then create the MV sync directory.
-	// If it is already in syncing state, it means that there is already a sync job in progress for this MV,
-	// which would have created the sync directory, so we don't need to create it again.
+	//
+	// If this MV replica is currently not syncing (neither source nor target of any sync job), then create the
+	// MV sync directory. If it's already in syncing state, it means that there is already a sync job in progress
+	// for this MV replica, which would have created the sync directory, so we don't need to create it again.
+	//
 	if !mvInfo.isSyncing() {
-		// create the MV sync directory
+		// create the MV sync directory.
 		syncDir := filepath.Join(rvInfo.cacheDir, req.MV+".sync")
 		err := h.createMVDirectory(syncDir)
 		if err != nil {
-			log.Err("ChunkServiceHandler::StartSync: Failed to create sync directory %s [%v]", syncDir, err.Error())
-			return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to create sync directory %s [%v]", syncDir, err.Error()))
+			errStr := fmt.Sprintf("Failed to create sync directory %s [%v]", syncDir, err)
+			log.Err("ChunkServiceHandler::StartSync: %s", errStr)
+			common.Assert(false, errStr)
+			return nil, rpc.NewResponseError(rpc.InternalServerError, errStr)
 		}
 	}
 
+	//
 	// If sourceRVName is set that means this MV Replica is the target of this sync job, while if
 	// targetRVName is set it means this MV Replica is the source of this sync job.
-	var srcRVName, destRVName string
+	//
+	var sourceRVName, targetRVName string
+
 	if isSrcOfSync {
-		srcRVName = ""
-		destRVName = req.TargetRVName
+		targetRVName = req.TargetRVName
 	} else {
-		srcRVName = req.SourceRVName
-		destRVName = ""
+		sourceRVName = req.SourceRVName
 	}
 
-	syncID := gouuid.New().String()
-
-	// add the sync job to the syncJobs map
-	mvInfo.addSyncJob(syncID, srcRVName, destRVName)
+	// Add this sync job to the syncJobs map.
+	syncID := mvInfo.addSyncJob(sourceRVName, targetRVName)
 
 	return &models.StartSyncResponse{
 		SyncID: syncID,
@@ -1140,88 +1259,117 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 
 func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRequest) (*models.EndSyncResponse, error) {
 	if req == nil {
-		log.Err("ChunkServiceHandler::EndSync: Received nil EndSync request")
-		common.Assert(false, "received nil EndSync request")
-		return nil, rpc.NewResponseError(rpc.InvalidRequest, "received nil EndSync request")
+		errStr := fmt.Sprintf("Received nil EndSync request")
+		log.Err("ChunkServiceHandler::EndSync: %s", errStr)
+		common.Assert(false, errStr)
+		return nil, rpc.NewResponseError(rpc.InvalidRequest, errStr)
 	}
 
 	log.Debug("ChunkServiceHandler::EndSync: Received EndSync request: %v", rpc.EndSyncRequestToString(req))
 
-	if req.SyncID == "" || req.MV == "" || req.SourceRVName == "" || req.TargetRVName == "" || len(req.ComponentRV) == 0 {
-		log.Err("ChunkServiceHandler::EndSync: MV, SourceRV, TargetRV or ComponentRVs is empty")
-		return nil, rpc.NewResponseError(rpc.InvalidRequest, "MV, SourceRV, TargetRV or ComponentRVs is empty")
+	if !common.IsValidUUID(req.SyncID) ||
+		!cm.IsValidMVName(req.MV) ||
+		!cm.IsValidRVName(req.SourceRVName) ||
+		!cm.IsValidRVName(req.TargetRVName) ||
+		len(req.ComponentRV) == 0 {
+		errStr := fmt.Sprintf("SyncID (%s) MV (%s), SourceRV (%s), TargetRV (%s) or ComponentRVs (%d) invalid",
+			req.SyncID, req.MV, req.SourceRVName, req.TargetRVName, len(req.ComponentRV))
+		log.Err("ChunkServiceHandler::EndSync: %s", errStr)
+		common.Assert(false, errStr)
+		return nil, rpc.NewResponseError(rpc.InvalidRequest, errStr)
 	}
 
-	// source RV is the lowest index online RV. The node hosting this RV will send the start sync call
+	//
+	// Source RV is the lowest index online RV. The node hosting this RV will send the start sync call
 	// to the outofsync component RVs.
+	//
 	srcRVInfo, targetRVInfo, err := h.getSrcAndDestRVInfoForSync(req.SourceRVName, req.TargetRVName)
 	if err != nil {
-		log.Err("ChunkServiceHandler::EndSync: Failed to get source and target RV info for sync [%v]", err.Error())
+		log.Err("ChunkServiceHandler::EndSync: Failed to get source and target RV info [%v]", err)
+		common.Assert(false, err)
 		return nil, err
 	}
 
 	var rvInfo *rvInfo
 	var isSrcOfSync bool
+
 	if srcRVInfo != nil {
+		common.Assert(targetRVInfo == nil)
 		rvInfo = srcRVInfo
 		isSrcOfSync = true
 	} else {
+		common.Assert(targetRVInfo != nil)
 		rvInfo = targetRVInfo
 	}
 
-	// check if MV is valid
+	// Check if we are hosting the requested MV replica.
 	mvInfo := rvInfo.getMVInfo(req.MV)
 	if mvInfo == nil {
-		log.Err("ChunkServiceHandler::EndSync: MV %s is invalid for RV %s", req.MV, req.TargetRVName)
-		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("MV %s is invalid for RV %s", req.MV, req.TargetRVName))
+		errStr := fmt.Sprintf("MV %s is invalid for RV %s", req.MV, req.TargetRVName)
+		log.Err("ChunkServiceHandler::EndSync: %s", errStr)
+		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, errStr)
 	}
 
 	err = mvInfo.validateComponentRVsInSync(req.ComponentRV, req.SourceRVName, req.TargetRVName)
 	if err != nil {
-		log.Err("ChunkServiceHandler::EndSync: Failed to validate component RVs in sync [%v]", err.Error())
-		return nil, rpc.NewResponseError(rpc.InvalidRequest, fmt.Sprintf("failed to validate component RVs in sync [%v]", err.Error()))
+		errStr := fmt.Sprintf("Failed to validate component RVs in sync [%v]", err.Error())
+		log.Err("ChunkServiceHandler::EndSync: %s", errStr)
+		return nil, err
 	}
 
-	// acquire write lock on the opMutex for this MV. Now GetChunk, PutChunk and RemoveChunk will not allow any new IO.
-	// Also wait for any ongoing IOs to complete.
+	//
+	// Ok, it's a valid StartSync request for one of our MV replicas.
+	// We synchronize chunk IO requests (GetChunk/PutChunk/RemoveChunk) with StartSync requests.
+	// Acquire write lock on the opMutex for this MV. Now GetChunk, PutChunk and RemoveChunk will not allow
+	// any new IO. It will also wait for any ongoing IOs to complete.
+	//
 	mvInfo.acquireSyncOpWriteLock()
-
-	// release the write lock on the opMutex for this MV when the function returns
 	defer mvInfo.releaseSyncOpWriteLock()
 
-	// check if the sync ID is valid
+	//
+	// EndSync must carry a valid syncID returned by a prior StartSync call.
+	//
 	if !mvInfo.isSyncIDValid(req.SyncID) {
-		log.Err("ChunkServiceHandler::EndSync: SyncID %s is invalid for MV %s", req.SyncID, req.MV)
-		return nil, rpc.NewResponseError(rpc.InvalidRequest, fmt.Sprintf("syncID %s is invalid for MV %s", req.SyncID, req.MV))
+		errStr := fmt.Sprintf("SyncID %s is invalid for MV %s", req.SyncID, req.MV)
+		log.Err("ChunkServiceHandler::EndSync: %s", errStr)
+		return nil, rpc.NewResponseError(rpc.InvalidRequest, errStr)
 	}
 
-	// delete the sync job from the syncJobs map
+	// Delete the sync job from the syncJobs map.
 	mvInfo.deleteSyncJob(req.SyncID)
 
-	// after deleting the sync job entry from the map, check if there are any other sync jobs in progress for this MV.
+	//
+	// After deleting this sync job, check if there are any other sync jobs in progress for this MV replica.
 	// If yes, then return success for this EndSync call.
-	// Else, this is the last EndSync call. So, move the chunks from the sync folder to the regular MV folder
-	// and delete the sync folder.
-	// This is done to avoid moving chunks from the sync folder to the regular MV folder if there are other sync jobs in progress.
+	// Else, this EndSync call is for the last running syncJob for this MV replica. So, move the chunks from
+	// the sync folder to the regular MV folder and delete the sync folder.
+	// This is done to avoid moving chunks from the sync folder to the regular MV folder if there are other
+	// sync jobs in progress for this MV replica.
+	//
 	if mvInfo.isSyncing() {
-		// more than one sync job can only be present if the RV hosting the MV is the source of sync.
-		common.Assert(isSrcOfSync, fmt.Sprintf("More than one sync job is present in target RV %s for MV %s", req.TargetRVName, req.MV))
-		log.Debug("ChunkServiceHandler::EndSync: Sync job is still in progress for MV %s : %+v", req.MV, mvInfo.syncJobs)
+		// More than one sync job can only be present if the RV hosting the MV is the source of sync.
+		common.Assert(isSrcOfSync, fmt.Sprintf("Target sync job found along with other sync jobs for RV %s MV %s", req.TargetRVName, req.MV))
+		log.Debug("ChunkServiceHandler::EndSync: Sync job is still in progress for MV %s: %+v",
+			req.MV, mvInfo.syncJobs)
 		return &models.EndSyncResponse{}, nil
 	}
 
-	// move all chunks from sync folder to the regular MV folder and then resume processing.
+	// Move all chunks from sync folder to the regular MV folder and then resume processing.
 	regMVPath := filepath.Join(rvInfo.cacheDir, req.MV)
 	syncMvPath := filepath.Join(rvInfo.cacheDir, req.MV+".sync")
 
-	log.Debug("ChunkServiceHandler::EndSync: Moving chunks from sync folder %s to regular MV folder %s", syncMvPath, regMVPath)
+	log.Debug("ChunkServiceHandler::EndSync: Moving chunks from sync folder %s to regular MV folder %s",
+		syncMvPath, regMVPath)
 	err = moveChunksToRegularMVPath(syncMvPath, regMVPath)
 	if err != nil {
-		log.Err("ChunkServiceHandler::EndSync: Failed to move chunks from sync folder %s to regular MV folder %s [%v]", syncMvPath, regMVPath, err.Error())
-		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to move chunks from sync folder %s to regular MV folder %s [%v]", syncMvPath, regMVPath, err.Error()))
+		errStr := fmt.Sprintf("Failed to move chunks from sync folder %s to regular MV folder %s [%v]",
+			syncMvPath, regMVPath, err)
+		log.Err("ChunkServiceHandler::EndSync: %s", errStr)
+		common.Assert(false, errStr)
+		return nil, rpc.NewResponseError(rpc.InternalServerError, errStr)
 	}
 
-	// delete the sync directory
+	// Delete the sync directory
 	err = os.RemoveAll(syncMvPath)
 	common.Assert(err == nil, fmt.Sprintf("failed to remove sync directory %s [%v]", syncMvPath, err))
 
