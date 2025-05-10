@@ -41,7 +41,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
-	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
+	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 )
@@ -50,10 +50,7 @@ const (
 	// TODO: discuss if this is a good value for RPC timeout
 	RPCClientTimeout = 2 // in seconds
 
-	// TODO: chunk size lower and upper bounds can be modified later
-	ChunkSizeInMiBLowerBound = 0
-	ChunkSizeInMiBUpperBound = 256
-	ChunkIndexUpperBound     = 1e9
+	ChunkIndexUpperBound = 1e9
 )
 
 func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *models.RVNameAndState {
@@ -99,35 +96,40 @@ func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *mo
 // 	return hex.EncodeToString(hash[:])
 // }
 
-// return the component RVs for the given MV
+// Return list of component RVs (name and state) for the given MV.
 func getComponentRVsForMV(mvName string) []*models.RVNameAndState {
-	rvMap := clustermap.GetRVs(mvName)
+	rvMap := cm.GetRVs(mvName)
 
 	var componentRVs []*models.RVNameAndState
 	for rvName, rvState := range rvMap {
-		common.Assert(rvName != "", "RV name is empty")
-		common.Assert(rvState != "", "RV state is empty")
+		common.Assert(cm.IsValidRVName(rvName), rvName)
+		common.Assert(rvState == dcache.StateOnline ||
+			rvState == dcache.StateOffline ||
+			rvState == dcache.StateOutOfSync ||
+			rvState == dcache.StateSyncing, rvName, rvState)
 
-		componentRVs = append(componentRVs, &models.RVNameAndState{Name: rvName, State: string(rvState)})
+		componentRVs = append(componentRVs,
+			&models.RVNameAndState{Name: rvName, State: string(rvState)})
 	}
 
 	common.Assert(len(componentRVs) == int(getNumReplicas()),
-		fmt.Sprintf("number of component RVs %d is not same as number of replicas %d for MV %s : %v", len(componentRVs), getNumReplicas(), mvName, rpc.ComponentRVsToString(componentRVs)))
+		fmt.Sprintf("number of component RVs %d is not same as number of replicas %d for MV %s: %v",
+			len(componentRVs), getNumReplicas(), mvName, rpc.ComponentRVsToString(componentRVs)))
 
 	return componentRVs
 }
 
 // return the number of replicas
 func getNumReplicas() uint32 {
-	return clustermap.GetCacheConfig().NumReplicas
+	return cm.GetCacheConfig().NumReplicas
 }
 
 // return the RV ID for the given RV name
 func getRvIDFromRvName(rvName string) string {
-	return clustermap.RvNameToId(rvName)
+	return cm.RvNameToId(rvName)
 }
 
 // return the node ID for the given rvName
 func getNodeIDFromRVName(rvName string) string {
-	return clustermap.RVNameToNodeId(rvName)
+	return cm.RVNameToNodeId(rvName)
 }
