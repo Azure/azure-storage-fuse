@@ -193,15 +193,18 @@ func NewChunkServiceHandler(rvs map[string]dcache.RawVolume) *ChunkServiceHandle
 	return handler
 }
 
-// check if the given mv is valid
+// Check if the given mvPath is valid on this node.
 func (rv *rvInfo) isMvPathValid(mvPath string) bool {
 	mvName := filepath.Base(mvPath)
 	mvInfo := rv.getMVInfo(mvName)
-	common.Assert(mvInfo == nil || common.DirectoryExists(mvPath), fmt.Sprintf("mvPath %s MUST be present", mvPath))
+
+	// If we are hosting MV replica mvName, directory mvPath must exist.
+	common.Assert(mvInfo == nil || common.DirectoryExists(mvPath), mvPath, mvName)
+
 	return mvInfo != nil
 }
 
-// getMVInfo returns the mvInfo for the given mvName
+// Get MV replica infor for the given MV on rv.
 func (rv *rvInfo) getMVInfo(mvName string) *mvInfo {
 	val, ok := rv.mvMap.Load(mvName)
 
@@ -213,13 +216,14 @@ func (rv *rvInfo) getMVInfo(mvName string) *mvInfo {
 	// Found, value must be of type *mvInfo.
 	mvInfo, ok := val.(*mvInfo)
 	if ok {
-		common.Assert(mvInfo != nil, fmt.Sprintf("mvMap[%s] has nil value", mvName))
-		common.Assert(mvName == mvInfo.mvName, "MV name mismatch in mv", mvName, mvInfo.mvName)
+		common.Assert(mvInfo != nil, mvName, rv.rvName)
+		common.Assert(mvName == mvInfo.mvName, mvName, mvInfo.mvName, rv.rvName)
 
 		return mvInfo
 	}
 
-	common.Assert(false, fmt.Sprintf("mvMap[%s] has value which is not of type *mvInfo", mvName))
+	// Value not of type mvInfo.
+	common.Assert(false, mvName, rv.rvName)
 
 	return nil
 }
@@ -264,33 +268,35 @@ func (rv *rvInfo) deleteFromMVMap(mvName string) {
 	common.Assert(rv.mvCount.Load() >= 0, fmt.Sprintf("mvCount for RV %s is negative", rv.rvName))
 }
 
-// increment the reserved space for this RV
+// Increment the reserved space for this RV.
 func (rv *rvInfo) incReservedSpace(bytes int64) {
+	common.Assert(bytes > 0)
 	rv.reservedSpace.Add(bytes)
 	log.Debug("rvInfo::incReservedSpace: reserved space for RV %s is %d", rv.rvName, rv.reservedSpace.Load())
 }
 
-// decrement the reserved space for this RV
+// Decrement the reserved space for this RV.
 func (rv *rvInfo) decReservedSpace(bytes int64) {
+	common.Assert(bytes > 0)
 	rv.reservedSpace.Add(-bytes)
-	common.Assert(rv.reservedSpace.Load() >= 0, fmt.Sprintf("reserved space for RV %s is %d", rv.rvName, rv.reservedSpace.Load()))
+	common.Assert(rv.reservedSpace.Load() >= 0, rv.rvName, rv.reservedSpace.Load())
 	log.Debug("rvInfo::decReservedSpace: reserved space for RV %s is %d", rv.rvName, rv.reservedSpace.Load())
 }
 
-// return available space for the given RV.
+// Return available space for the given RV.
 // This is calculated after subtracting the reserved space for this RV
 // from the actual disk space available in the cache directory.
 func (rv *rvInfo) getAvailableSpace() (int64, error) {
 	cacheDir := rv.cacheDir
 	_, diskSpaceAvailable, err := common.GetDiskSpaceMetricsFromStatfs(cacheDir)
-	common.Assert(err == nil, fmt.Sprintf("failed to get available disk space for path %s [%v]", cacheDir, err))
+	common.Assert(err == nil, cacheDir, err)
 
-	// decrement this by the reserved space for this RV
+	// Subtract the reserved space for this RV.
 	availableSpace := int64(diskSpaceAvailable) - rv.reservedSpace.Load()
+	common.Assert(availableSpace >= 0, rv.rvName, availableSpace, diskSpaceAvailable, rv.reservedSpace.Load())
 
 	log.Debug("rvInfo::getAvailableSpace: available space for RV %s is %d, total disk space available is %d and reserved space is %d",
 		rv.rvName, availableSpace, diskSpaceAvailable, rv.reservedSpace.Load())
-	common.Assert(availableSpace >= 0, fmt.Sprintf("available space for RV %s is %d", rv.rvName, availableSpace))
 
 	return availableSpace, err
 }
@@ -315,7 +321,7 @@ func (mv *mvInfo) addSyncJob(sourceRVName string, targetRVName string) string {
 
 	syncID := gouuid.New().String()
 	_, ok := mv.syncJobs[syncID]
-	common.Assert(!ok, fmt.Sprintf("syncJob with syncID %s already exists : %+v", syncID, mv.syncJobs))
+	common.Assert(!ok, fmt.Sprintf("%s already has syncJob with syncID %s: %+v", mv.mvName, syncID, mv.syncJobs))
 
 	mv.syncJobs[syncID] = syncJob{
 		syncID:       syncID,
@@ -346,12 +352,12 @@ func (mv *mvInfo) deleteSyncJob(syncID string) {
 	common.Assert(mv.isSyncOpWriteLocked(), mv.opMutexDbgCntr.Load())
 
 	_, ok := mv.syncJobs[syncID]
-	common.Assert(ok, fmt.Sprintf("syncJob with syncID %s not found: %+v", syncID, mv.syncJobs))
+	common.Assert(ok, fmt.Sprintf("%s does not have syncJob with syncID %s: %+v", mv.mvName, syncID, mv.syncJobs))
 
 	delete(mv.syncJobs, syncID)
 }
 
-// Return if the RV hosting this MV replica is the source or target of a sync job.
+// Return if this MV replica is the source or target of a sync job.
 // An MV replica can act as source for multiple simultaneous sync jobs (each of which would be resyncing one distinct
 // MV replica for the MV) but can act as target for one and only one sync job.
 // For MV replicas acting as source, the target MV replica will be outside this node and targetRVName contains the
@@ -421,8 +427,8 @@ func (mv *mvInfo) updateComponentRVs(componentRVs []*models.RVNameAndState) {
 	// TODO: check if this is safe
 	// componentRVs point to a thrift req member. Does thrift say anything about safety of that,
 	// or should we do a deep copy of the list.
+	sortComponentRVs(componentRVs)
 	mv.componentRVs = componentRVs
-	sortComponentRVs(mv.componentRVs)
 }
 
 // increment the total chunk bytes for this MV
@@ -495,6 +501,11 @@ func (mv *mvInfo) isSyncOpWriteLocked() bool {
 // It checks the following:
 //   - Component RVs received in req are exactly same (name and state) as component RVs list for this MV replica.
 //   - Source and target RVs are indeed present in the component RVs list for this MV replica.
+//
+// Note: This is a very critical correctness check used by dcache. Since client may be using a stale clustermap,
+//
+//	it's important for server (which always has the latest cluster membership info) to let client know if
+//	its clustermap copy is stale and it needs to refresh it.
 func (mv *mvInfo) validateComponentRVsInSync(componentRVsInReq []*models.RVNameAndState, sourceRVName string, targetRVName string) error {
 	componentRVsInMV := mv.getComponentRVs()
 
@@ -531,29 +542,30 @@ func (mv *mvInfo) validateComponentRVsInSync(componentRVsInReq []*models.RVNameA
 // - check if the cache dir exists
 // - check if the MV is valid
 func (h *ChunkServiceHandler) checkValidChunkAddress(address *models.Address) error {
-	// TODO: add assert for IsValidUUID(), IsValidMVName()
-	if address == nil || address.FileID == "" || address.RvID == "" || address.MvName == "" {
-		log.Err("ChunkServiceHandler::checkValidChunkAddress: Invalid chunk address %v", address.String())
-		return rpc.NewResponseError(rpc.InvalidRequest, fmt.Sprintf("invalid chunk address %v", address.String()))
-	}
+	common.Assert(address != nil)
+	common.Assert(common.IsValidUUID(address.FileID), address.FileID)
+	common.Assert(common.IsValidUUID(address.RvID), address.RvID)
+	common.Assert(cm.IsValidMVName(address.MvName), address.MvName)
 
-	// check if the rvID is valid
+	// rvID must refer to one of of out local RVs.
 	rvInfo, ok := h.rvIDMap[address.RvID]
-	common.Assert(ok && rvInfo != nil, fmt.Sprintf("rvInfo nil for rvID %s", address.RvID))
-	if !ok || rvInfo == nil {
-		log.Err("ChunkServiceHandler::checkValidChunkAddress: Invalid rvID %s", address.RvID)
-		return rpc.NewResponseError(rpc.InvalidRVID, fmt.Sprintf("invalid rvID %s", address.RvID))
+	common.Assert(!ok || rvInfo != nil, address.RvID)
+	if !ok {
+		errStr := fmt.Sprintf("Invalid rvID %s", address.RvID)
+		log.Err("ChunkServiceHandler::checkValidChunkAddress: %s", errStr)
+		return rpc.NewResponseError(rpc.InvalidRVID, errStr)
 	}
 
 	cacheDir := rvInfo.cacheDir
-	common.Assert(cacheDir != "", fmt.Sprintf("cacheDir is empty for RV %s", rvInfo.rvName))
-	common.Assert(common.DirectoryExists(cacheDir), fmt.Sprintf("cacheDir %s does not exist for RV %s", cacheDir, rvInfo.rvName))
+	common.Assert(cacheDir != "", rvInfo.rvName)
+	common.Assert(common.DirectoryExists(cacheDir), cacheDir, rvInfo.rvName)
 
-	// check if the MV is valid
+	// MV replica must exist.
 	mvPath := filepath.Join(cacheDir, address.MvName)
 	if !rvInfo.isMvPathValid(mvPath) {
-		log.Err("ChunkServiceHandler::checkValidChunkAddress: MV %s is not hosted by RV %s", address.MvName, rvInfo.rvName)
-		return rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("MV %s is not hosted by RV %s", address.MvName, rvInfo.rvName))
+		errStr := fmt.Sprintf("MV %s is not hosted by RV %s", address.MvName, rvInfo.rvName)
+		log.Err("ChunkServiceHandler::checkValidChunkAddress: %s", errStr)
+		return rpc.NewResponseError(rpc.NeedToRefreshClusterMap, errStr)
 	}
 
 	return nil
@@ -575,11 +587,11 @@ func (h *ChunkServiceHandler) getRVInfoFromRVName(rvName string) *rvInfo {
 }
 
 func (h *ChunkServiceHandler) createMVDirectory(path string) error {
-	log.Debug("ChunkServiceHandler::createMVDirectory: Creating MV directory %s", path)
-
 	if err := os.MkdirAll(path, 0700); err != nil && !os.IsExist(err) {
 		return fmt.Errorf("MkdirAll(%s) failed: %v", path, err)
 	}
+
+	log.Debug("ChunkServiceHandler::createMVDirectory: Created MV directory %s", path)
 
 	return nil
 }
@@ -612,18 +624,16 @@ func (h *ChunkServiceHandler) getSrcAndDestRVInfoForSync(sourceRVName string, ta
 }
 
 func (h *ChunkServiceHandler) Hello(ctx context.Context, req *models.HelloRequest) (*models.HelloResponse, error) {
-	if req == nil {
-		log.Err("ChunkServiceHandler::Hello: Received nil Hello request")
-		common.Assert(false, "received nil Hello request")
-		return nil, rpc.NewResponseError(rpc.InvalidRequest, "received nil Hello request")
-	}
+	// Thrift should not be calling us with nil req.
+	common.Assert(req != nil)
 
 	log.Debug("ChunkServiceHandler::Hello: Received Hello request: %v", req.String())
 
 	// TODO: send more information in response on Hello RPC
 
 	myNodeID := rpc.GetMyNodeUUID()
-	common.Assert(req.ReceiverNodeID == myNodeID, "Received Hello RPC destined for another node", req.ReceiverNodeID, myNodeID)
+	common.Assert(req.ReceiverNodeID == myNodeID,
+		"Received Hello RPC destined for another node", req.ReceiverNodeID, myNodeID)
 
 	// get all the RVs exported by this node
 	myRvList := make([]string, 0)
@@ -642,11 +652,10 @@ func (h *ChunkServiceHandler) Hello(ctx context.Context, req *models.HelloReques
 }
 
 func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunkRequest) (*models.GetChunkResponse, error) {
-	if req == nil || req.Address == nil {
-		log.Err("ChunkServiceHandler::GetChunk: Received nil GetChunk request")
-		common.Assert(false, "received nil GetChunk request")
-		return nil, rpc.NewResponseError(rpc.InvalidRequest, "received nil GetChunk request")
-	}
+	// Thrift should not be calling us with nil req.
+	common.Assert(req != nil)
+	// Thrift should not be calling us with nil Address.
+	common.Assert(req.Address != nil)
 
 	startTime := time.Now()
 
@@ -741,12 +750,11 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 }
 
 func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunkRequest) (*models.PutChunkResponse, error) {
-	if req == nil || req.Chunk == nil || req.Chunk.Address == nil {
-		errStr := "ChunkServiceHandler::PutChunk: Received nil PutChunk request"
-		log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
-		common.Assert(false, errStr)
-		return nil, rpc.NewResponseError(rpc.InvalidRequest, errStr)
-	}
+	// Thrift should not be calling us with nil req.
+	common.Assert(req != nil)
+	// Thrift should not be calling us with nil Address.
+	common.Assert(req.Chunk != nil)
+	common.Assert(req.Chunk.Address != nil)
 
 	startTime := time.Now()
 
@@ -808,7 +816,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 		// are target of a sync job.
 		//
 		if !isTgtOfSync {
-			errStr := fmt.Sprintf("Sync PutChunk call received for RV %s hosting MV %s, which is currently not the target of any sync job",
+			errStr := fmt.Sprintf("Sync PutChunk call received for %s/%s, which is currently not the target of any sync job",
 				rvInfo.rvName, req.Chunk.Address.MvName)
 
 			log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
@@ -835,7 +843,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 
 	log.Debug("ChunkServiceHandler::PutChunk: chunk path %s, hash path %s", chunkPath, hashPath)
 
-	// check if the chunk file is already present
+	// Chunk file must not be present.
 	_, err = os.Stat(chunkPath)
 	if err == nil {
 		errStr := fmt.Sprintf("Chunk file %s already exists", chunkPath)
@@ -843,7 +851,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 		return nil, rpc.NewResponseError(rpc.ChunkAlreadyExists, errStr)
 	}
 
-	// write to .tmp file first and rename it to the final file
+	// Write to .tmp file first and rename it to the final file.
 	tmpChunkPath := fmt.Sprintf("%s.tmp", chunkPath)
 	err = os.WriteFile(tmpChunkPath, req.Chunk.Data, 0400)
 	if err != nil {
@@ -861,7 +869,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 
 	availableSpace, err := rvInfo.getAvailableSpace()
 	if err != nil {
-		log.Err("ChunkServiceHandler::PutChunk: Failed to get available disk space [%v]", err.Error())
+		log.Err("ChunkServiceHandler::PutChunk: Failed to get available disk space [%v]", err)
 	}
 
 	// TODO: should we verify the hash after writing the chunk
@@ -869,8 +877,8 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	// rename the .tmp file to the final file
 	err = os.Rename(tmpChunkPath, chunkPath)
 	if err != nil {
-		errStr := fmt.Sprintf("Failed to rename chunk file %s to %s [%v]",
-			tmpChunkPath, chunkPath, err.Error())
+		errStr := fmt.Sprintf("Failed to rename chunk file %s -> %s [%v]",
+			tmpChunkPath, chunkPath, err)
 		log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
 		common.Assert(false, errStr)
 		return nil, rpc.NewResponseError(rpc.InternalServerError, errStr)
@@ -881,10 +889,13 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	//       but instead use a hardcoded value which will be true for a given hash algo.
 	//       Also we need to be sure that hash is calculated uniformly (either always or never)
 
-	// increment the total chunk bytes for this MV
+	// Increment the total chunk bytes for this MV.
 	mvInfo.incTotalChunkBytes(req.Length)
 
-	// for successful sync PutChunk calls, decrement the reserved space for this RV
+	//
+	// For successful sync PutChunk calls, decrement the reserved space for this RV.
+	// JoinMV would have reserved this space before starting sync.
+	//
 	if req.IsSync {
 		rvInfo.decReservedSpace(req.Length)
 	}
@@ -899,11 +910,10 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 }
 
 func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.RemoveChunkRequest) (*models.RemoveChunkResponse, error) {
-	if req == nil || req.Address == nil {
-		log.Err("ChunkServiceHandler::RemoveChunk: Received nil RemoveChunk request")
-		common.Assert(false, "received nil RemoveChunk request")
-		return nil, rpc.NewResponseError(rpc.InvalidRequest, "received nil RemoveChunk request")
-	}
+	// Thrift should not be calling us with nil req.
+	common.Assert(req != nil)
+	// Thrift should not be calling us with nil Address.
+	common.Assert(req.Address != nil)
 
 	startTime := time.Now()
 
@@ -988,11 +998,8 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 }
 
 func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequest) (*models.JoinMVResponse, error) {
-	if req == nil {
-		log.Err("ChunkServiceHandler::JoinMV: Received nil JoinMV request")
-		common.Assert(false, "received nil JoinMV request")
-		return nil, rpc.NewResponseError(rpc.InvalidRequest, "received nil JoinMV request")
-	}
+	// Thrift should not be calling us with nil req.
+	common.Assert(req != nil)
 
 	// TODO:: discuss: changing type of component RV from string to RVNameAndState
 	// requires to call componentRVsToString method as it is of type []*models.RVNameAndState
@@ -1063,11 +1070,8 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 }
 
 func (h *ChunkServiceHandler) UpdateMV(ctx context.Context, req *models.UpdateMVRequest) (*models.UpdateMVResponse, error) {
-	if req == nil {
-		log.Err("ChunkServiceHandler::UpdateMV: Received nil UpdateMV request")
-		common.Assert(false, "received nil UpdateMV request")
-		return nil, rpc.NewResponseError(rpc.InvalidRequest, "received nil UpdateMV request")
-	}
+	// Thrift should not be calling us with nil req.
+	common.Assert(req != nil)
 
 	log.Debug("ChunkServiceHandler::UpdateMV: Received UpdateMV request: %v", rpc.UpdateMVRequestToString(req))
 
@@ -1101,11 +1105,8 @@ func (h *ChunkServiceHandler) UpdateMV(ctx context.Context, req *models.UpdateMV
 }
 
 func (h *ChunkServiceHandler) LeaveMV(ctx context.Context, req *models.LeaveMVRequest) (*models.LeaveMVResponse, error) {
-	if req == nil {
-		log.Err("ChunkServiceHandler::LeaveMV: Received nil LeaveMV request")
-		common.Assert(false, "received nil LeaveMV request")
-		return nil, rpc.NewResponseError(rpc.InvalidRequest, "received nil LeaveMV request")
-	}
+	// Thrift should not be calling us with nil req.
+	common.Assert(req != nil)
 
 	log.Debug("ChunkServiceHandler::LeaveMV: Received LeaveMV request: %v", rpc.LeaveMVRequestToString(req))
 
@@ -1154,12 +1155,8 @@ func (h *ChunkServiceHandler) LeaveMV(ctx context.Context, req *models.LeaveMVRe
 }
 
 func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSyncRequest) (*models.StartSyncResponse, error) {
-	if req == nil {
-		errStr := "Received nil StartSync request"
-		log.Err("ChunkServiceHandler::StartSync: %s", errStr)
-		common.Assert(false, errStr)
-		return nil, rpc.NewResponseError(rpc.InvalidRequest, errStr)
-	}
+	// Thrift should not be calling us with nil req.
+	common.Assert(req != nil)
 
 	log.Debug("ChunkServiceHandler::StartSync: Received StartSync request: %v", rpc.StartSyncRequestToString(req))
 
@@ -1200,14 +1197,14 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 	// Check if we are hosting the requested MV replica.
 	mvInfo := rvInfo.getMVInfo(req.MV)
 	if mvInfo == nil {
-		errStr := fmt.Sprintf("MV %s is invalid for RV %s", req.MV, req.TargetRVName)
+		errStr := fmt.Sprintf("%s/%s not hosted by this node", rvInfo.rvName, req.MV)
 		log.Err("ChunkServiceHandler::StartSync: %s", errStr)
 		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, errStr)
 	}
 
 	err = mvInfo.validateComponentRVsInSync(req.ComponentRV, req.SourceRVName, req.TargetRVName)
 	if err != nil {
-		errStr := fmt.Sprintf("Failed to validate component RVs in sync [%v]", err.Error())
+		errStr := fmt.Sprintf("Failed to validate component RVs in sync [%v]", err)
 		log.Err("ChunkServiceHandler::StartSync: %s", errStr)
 		return nil, err
 	}
@@ -1222,12 +1219,11 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 	defer mvInfo.releaseSyncOpWriteLock()
 
 	//
-	// If this MV replica is currently not syncing (neither source nor target of any sync job), then create the
-	// MV sync directory. If it's already in syncing state, it means that there is already a sync job in progress
-	// for this MV replica, which would have created the sync directory, so we don't need to create it again.
+	// If this MV replica is the source of this sync job, we will need the .sync directory,
+	// create if it doesn't exist.
 	//
-	if !mvInfo.isSyncing() {
-		// create the MV sync directory.
+	if isSrcOfSync {
+		// Create MV sync directory if it doesn't exist.
 		syncDir := filepath.Join(rvInfo.cacheDir, req.MV+".sync")
 		err := h.createMVDirectory(syncDir)
 		if err != nil {
@@ -1259,12 +1255,8 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 }
 
 func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRequest) (*models.EndSyncResponse, error) {
-	if req == nil {
-		errStr := fmt.Sprintf("Received nil EndSync request")
-		log.Err("ChunkServiceHandler::EndSync: %s", errStr)
-		common.Assert(false, errStr)
-		return nil, rpc.NewResponseError(rpc.InvalidRequest, errStr)
-	}
+	// Thrift should not be calling us with nil req.
+	common.Assert(req != nil)
 
 	log.Debug("ChunkServiceHandler::EndSync: Received EndSync request: %v", rpc.EndSyncRequestToString(req))
 
@@ -1306,14 +1298,14 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 	// Check if we are hosting the requested MV replica.
 	mvInfo := rvInfo.getMVInfo(req.MV)
 	if mvInfo == nil {
-		errStr := fmt.Sprintf("MV %s is invalid for RV %s", req.MV, req.TargetRVName)
+		errStr := fmt.Sprintf("%s/%s not hosted by this node", rvInfo.rvName, req.MV)
 		log.Err("ChunkServiceHandler::EndSync: %s", errStr)
 		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, errStr)
 	}
 
 	err = mvInfo.validateComponentRVsInSync(req.ComponentRV, req.SourceRVName, req.TargetRVName)
 	if err != nil {
-		errStr := fmt.Sprintf("Failed to validate component RVs in sync [%v]", err.Error())
+		errStr := fmt.Sprintf("Failed to validate component RVs in sync [%v]", err)
 		log.Err("ChunkServiceHandler::EndSync: %s", errStr)
 		return nil, err
 	}
@@ -1331,13 +1323,23 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 	// EndSync must carry a valid syncID returned by a prior StartSync call.
 	//
 	if !mvInfo.isSyncIDValid(req.SyncID) {
-		errStr := fmt.Sprintf("SyncID %s is invalid for MV %s", req.SyncID, req.MV)
+		errStr := fmt.Sprintf("SyncID %s is invalid for %s/%s", req.SyncID, rvInfo.rvName, req.MV)
 		log.Err("ChunkServiceHandler::EndSync: %s", errStr)
 		return nil, rpc.NewResponseError(rpc.InvalidRequest, errStr)
 	}
 
 	// Delete the sync job from the syncJobs map.
 	mvInfo.deleteSyncJob(req.SyncID)
+
+	//
+	// If we were the target of this sync job, then nothing else to do, else if it's the last sync
+	// job, then we will need to move chunks from .sync folder and delete it.
+	//
+	if !isSrcOfSync {
+		// An MV replica can be the target of only one sync job at a time.
+		common.Assert(!mvInfo.isSyncing())
+		return &models.EndSyncResponse{}, nil
+	}
 
 	//
 	// After deleting this sync job, check if there are any other sync jobs in progress for this MV replica.
@@ -1348,10 +1350,8 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 	// sync jobs in progress for this MV replica.
 	//
 	if mvInfo.isSyncing() {
-		// More than one sync job can only be present if the RV hosting the MV is the source of sync.
-		common.Assert(isSrcOfSync, fmt.Sprintf("Target sync job found along with other sync jobs for RV %s MV %s", req.TargetRVName, req.MV))
-		log.Debug("ChunkServiceHandler::EndSync: Sync job is still in progress for MV %s: %+v",
-			req.MV, mvInfo.syncJobs)
+		log.Debug("ChunkServiceHandler::EndSync: %s/%s is source replica for %d running sync job(s): %+v",
+			rvInfo.rvName, req.MV, len(mvInfo.syncJobs), mvInfo.syncJobs)
 		return &models.EndSyncResponse{}, nil
 	}
 
@@ -1359,19 +1359,19 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 	regMVPath := filepath.Join(rvInfo.cacheDir, req.MV)
 	syncMvPath := filepath.Join(rvInfo.cacheDir, req.MV+".sync")
 
-	log.Debug("ChunkServiceHandler::EndSync: Moving chunks from sync folder %s to regular MV folder %s",
-		syncMvPath, regMVPath)
+	log.Debug("ChunkServiceHandler::EndSync: Moving chunks from %s -> %s", syncMvPath, regMVPath)
+
 	err = moveChunksToRegularMVPath(syncMvPath, regMVPath)
 	if err != nil {
-		errStr := fmt.Sprintf("Failed to move chunks from sync folder %s to regular MV folder %s [%v]",
+		errStr := fmt.Sprintf("Failed to move chunks from %s -> %s [%v]",
 			syncMvPath, regMVPath, err)
 		log.Err("ChunkServiceHandler::EndSync: %s", errStr)
 		common.Assert(false, errStr)
 		return nil, rpc.NewResponseError(rpc.InternalServerError, errStr)
 	}
 
-	// Delete the sync directory
-	err = os.RemoveAll(syncMvPath)
+	// Delete the sync directory. It must be empty now.
+	err = os.Remove(syncMvPath)
 	common.Assert(err == nil, fmt.Sprintf("failed to remove sync directory %s [%v]", syncMvPath, err))
 
 	return &models.EndSyncResponse{}, nil
