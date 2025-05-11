@@ -37,6 +37,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
+	"sync/atomic"
 	"syscall"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -60,9 +61,13 @@ func getChunkOffsetFromFileOffset(offset int64, fileLayout *dcache.FileLayout) i
 }
 
 func getChunkSize(offset int64, file *DcacheFile) int64 {
-	return min(file.FileMetadata.Size-
+	// getChunkSize() must be called for a finalized file which will have size >= 0.
+	common.Assert(file.FileMetadata.Size >= 0, file.FileMetadata.Size)
+	size := min(file.FileMetadata.Size-
 		getChunkStartOffsetFromFileOffset(offset, &file.FileMetadata.FileLayout),
 		file.FileMetadata.FileLayout.ChunkSize)
+	common.Assert(size >= 0, size)
+	return size
 }
 
 func isOffsetChunkStarting(offset int64, fileLayout *dcache.FileLayout) bool {
@@ -71,8 +76,11 @@ func isOffsetChunkStarting(offset int64, fileLayout *dcache.FileLayout) bool {
 
 func getMVForChunk(chunk *StagedChunk, fileMetadata *dcache.FileMetadata) string {
 	numMvs := int64(len(fileMetadata.FileLayout.MVList))
+
 	// Must have full strip worth of MVs.
-	common.Assert(numMvs == (fileMetadata.FileLayout.StripeSize / fileMetadata.FileLayout.ChunkSize))
+	common.Assert(numMvs == (fileMetadata.FileLayout.StripeSize/fileMetadata.FileLayout.ChunkSize),
+		numMvs, fileMetadata.FileLayout.StripeSize, fileMetadata.FileLayout.ChunkSize)
+	common.Assert(numMvs > 0, numMvs)
 	// For writes file size won't be set yet, for reads we must be reading within the file.
 	common.Assert((fileMetadata.Size == -1) ||
 		((chunk.Idx * fileMetadata.FileLayout.ChunkSize) < fileMetadata.Size))
@@ -93,7 +101,7 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 	chunkSize := clustermap.GetCacheConfig().ChunkSize
 	stripeSize := clustermap.GetCacheConfig().StripeSize
 
-	common.Assert(stripeSize%chunkSize == 0, fmt.Sprintf("Stripe Size %d is not divisibe by chunkSize %d", stripeSize, chunkSize))
+	common.Assert(stripeSize%chunkSize == 0, stripeSize, chunkSize)
 	numMVs := stripeSize / chunkSize
 
 	fileMetadata.FileLayout = dcache.FileLayout{
@@ -104,29 +112,48 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 
 	// Get active MV's from the clustermap
 	activeMVs := clustermap.GetActiveMVNames()
-	common.Assert(len(activeMVs) >= int(numMVs))
-	// shuffle the slice and pick starting 3.
+
+	//
+	// Cannot create file if we don't have enough active MVs.
+	//
+	if len(activeMVs) < int(numMVs) {
+		err := fmt.Errorf("Cannot create file %s, active MVs (%d) < numMVs (%d)",
+			fileName, len(activeMVs), numMVs)
+		log.Err("DistributedCache[FM]::NewDcacheFile: %v", err)
+		return nil, err
+	}
+
+	//
+	// Shuffle the slice and pick starting numMVs.
+	//
+	// TODO: For very large number of MVs, we can avoid shuffling all and just picking numMVs randomly.
+	//
 	rand.Shuffle(len(activeMVs), func(i, j int) {
 		activeMVs[i], activeMVs[j] = activeMVs[j], activeMVs[i]
 	})
-	// Pick starting numMVs from the active MVs
+
+	// Pick starting numMVs from the active MVs.
 	for i := range numMVs {
 		fileMetadata.FileLayout.MVList[i] = activeMVs[i]
 	}
 
-	log.Debug("DistributedCache[FM]::NewDcacheFile : Initial metadata for file: %s, %+v",
+	log.Debug("DistributedCache[FM]::NewDcacheFile: Initial metadata for file %s %+v",
 		fileName, fileMetadata)
 
 	fileMetadataBytes, err := json.Marshal(fileMetadata)
 	if err != nil {
-		log.Err("DistributedCache[FM]::NewDcacheFile : FileMetadata marshalling fail, file: %s", fileName)
+		log.Err("DistributedCache[FM]::NewDcacheFile: FileMetadata marshalling failed for file %s %+v: %v",
+			fileName, fileMetadata, err)
 		return nil, err
 	}
+
 	err = mm.CreateFileInit(fileName, fileMetadataBytes)
 	if err != nil {
-		log.Err("DistributedCache::NewDcacheFile : File Creation failed for file :  %s with err : %s", fileName, err.Error())
+		log.Err("DistributedCache::NewDcacheFile: CreateFileInit failed for file %s: %v",
+			fileName, err)
 		return nil, err
 	}
+
 	return &DcacheFile{
 		FileMetadata: fileMetadata,
 	}, nil
@@ -134,6 +161,7 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 
 // Does all init process for opening the file.
 func OpenDcacheFile(fileName string) (*DcacheFile, error) {
+	// Fetch file metadata from metadata store.
 	fileMetadataBytes, fileSize, err := mm.GetFile(fileName)
 	if err != nil {
 		//todo : See if we can have error other that ENOENT here.
@@ -143,8 +171,8 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 	var fileMetadata dcache.FileMetadata
 	err = json.Unmarshal(fileMetadataBytes, &fileMetadata)
 	if err != nil {
-		err = fmt.Errorf("DistributedCache[FM]::OpenDcacheFile : failed to unmarshal filemetadata file: %s, err: %s",
-			fileName, err.Error())
+		err = fmt.Errorf("DistributedCache[FM]::OpenDcacheFile: File metadata unmarshal failed for file %s: %v",
+			fileName, err)
 		common.Assert(false, err)
 		return nil, err
 	}
@@ -162,11 +190,13 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 
 	// Return ENOENT if the file is not in ready state.
 	if fileMetadata.State != dcache.Ready {
-		log.Info("DistributedCache[FM]::OpenDcacheFile : File : %s is not in ready state, metadata: %+v",
+		log.Info("DistributedCache[FM]::OpenDcacheFile: File %s is not in ready state, metadata: %+v",
 			fileName, fileMetadata)
 		return nil, syscall.ENOENT
 	}
 
+	// Finalized files must have size >= 0.
+	common.Assert(fileSize >= 0, fileSize)
 	fileMetadata.Size = fileSize
 
 	return &DcacheFile{
@@ -181,11 +211,12 @@ func NewStagedChunk(idx int64, file *DcacheFile) (*StagedChunk, error) {
 		return nil, err
 	}
 	return &StagedChunk{
-		Idx:              idx,
-		Len:              0,
-		Buf:              buf,
-		Err:              make(chan error),
-		ScheduleDownload: make(chan struct{}),
-		ScheduleUpload:   make(chan struct{}),
+		Idx:           idx,
+		Len:           0,
+		Buf:           buf,
+		Err:           make(chan error),
+		Dirty:         atomic.Bool{},
+		Uptodate:      atomic.Bool{},
+		XferScheduled: atomic.Bool{},
 	}, nil
 }
