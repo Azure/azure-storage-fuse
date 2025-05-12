@@ -1767,12 +1767,13 @@ func refreshMyRVs(myRVs []dcache.RawVolume) {
 	}
 }
 
-// This will update the existing MV view in cluster Map.
-func (cmi *ClusterManager) updateMV(mvName string, mv dcache.MirroredVolume) error {
-	log.Info("ClusterManager::updateMVState: updating MV %s , components=%+v",
+// This will update the state of one or more component RVs
+// for an MV (component RVs remaining the same).
+func (cmi *ClusterManager) updateComponentRVState(mvName string, mv dcache.MirroredVolume) error {
+	log.Info("ClusterManager::updateComponentRVState: updating MV %s , components=%+v",
 		mvName, mv.RVs)
 	common.Assert(cm.IsValidMVName(mvName))
-	common.Assert(cm.IsValidMV(mv, int(cmi.config.NumReplicas)))
+	common.Assert(cm.IsValidMV(&mv, int(cmi.config.NumReplicas)))
 
 	startTime := time.Now()
 	maxWait := 120 * time.Second
@@ -1783,79 +1784,121 @@ func (cmi *ClusterManager) updateMV(mvName string, mv dcache.MirroredVolume) err
 		elapsed := time.Since(startTime)
 		if elapsed > maxWait {
 			common.Assert(false)
-			return fmt.Errorf("ClusterManager::updateMVState: Exceeded maxWait")
+			return fmt.Errorf("ClusterManager::updateComponentRVState: Exceeded maxWait")
 		}
 
 		clusterMapBytes, etag, err := getClusterMap()
 		if err != nil {
-			log.Err("ClusterManager::updateMVState: getClusterMap() failed: %v", err)
+			log.Err("ClusterManager::updateComponentRVState: getClusterMap() failed: %v", err)
 			common.Assert(false, err)
 			return err
 		}
 
-		common.Assert(err == nil)
 		common.Assert(len(clusterMapBytes) > 0)
 		common.Assert(etag != nil && len(*etag) > 0)
 
 		var clusterMap dcache.ClusterMap
 		if err := json.Unmarshal(clusterMapBytes, &clusterMap); err != nil {
-			log.Err("ClusterManager::updateMVState: Failed to unmarshal clusterMapBytes: %d, error: %v",
+			log.Err("ClusterManager::updateComponentRVState: Failed to unmarshal clusterMapBytes: %d, error: %v",
 				len(clusterMapBytes), err)
 			common.Assert(false, err)
 			return err
 		}
-		common.Assert(clusterMap.MVMap != nil)
+
+		// Must be a valid clustermap.
+		common.Assert(cm.IsValidClusterMap(&clusterMap))
+
+		// Validate that retrieved clustermap is not in the process of being updated.
+		if clusterMap.State == dcache.StateChecking {
+			log.Info("ClusterManager::updateComponentRVState: clustermap being updated by node %s, waiting a bit before retry",
+				clusterMap.LastUpdatedBy)
+
+			// TODO: Add some backoff and randomness?
+			time.Sleep(10 * time.Millisecond)
+			continue
+		}
+
+		// validate that the unmarshaled clusterMap have the  given MV
+		clusterMapMV, found := clusterMap.MVMap[mvName]
+		if !found {
+			common.Assert(false)
+			return fmt.Errorf(
+				"ClusterManager::updateComponentRVState: MV %s not found in clusterMap mvList %+v",
+				mvName, clusterMap.MVMap)
+		}
+
+		common.Assert(len(clusterMapMV.RVs) == len(mv.RVs),
+			"ClusterManager::updateComponentRVState: RV count mismatch for MV",
+			mvName, len(mv.RVs), len(clusterMapMV.RVs))
+
+		// Validate input MV's RVList is matching with Stored MV's RVList
+		for rvName := range clusterMapMV.RVs {
+			_, found := mv.RVs[rvName]
+			if !found {
+				common.Assert(false)
+				return fmt.Errorf(
+					"ClusterManager::updateComponentRVState: RV %s missing in input MV %+v",
+					rvName, mv)
+			}
+		}
 
 		clusterMap.LastUpdatedBy = cmi.myNodeId
 		clusterMap.State = dcache.StateChecking
 
 		body, err := json.Marshal(clusterMap)
 		if err != nil {
-			log.Err("ClusterManager::updateMVState: Marshal failed for clustermap: %v %+v",
+			log.Err("ClusterManager::updateComponentRVState: Marshal failed for clustermap: %v %+v",
 				err, clusterMap)
 			common.Assert(false, err)
 			return err
 		}
 
+		//
+		// Claim ownership of clustermap.
+		// If some other node gets there before us, we retry. Note that we don't add a wait before
+		// the retry as that other node is not updating the clustermap, it's done updating.
+		//
+		// TODO: Check err to see if the failure is due to etag mismatch, if not retrying may not help.
+		//
 		if err := mm.UpdateClusterMapStart(body, etag); err != nil {
-			log.Warn("ClusterManager::updateMVState: Start Clustermap update failed for nodeId %s: %v, retrying",
+			log.Warn("ClusterManager::updateComponentRVState: Start Clustermap update failed for nodeId %s: %v, retrying",
 				cmi.myNodeId, err)
 			continue
 		}
 
 		//Update recevied Mv over cluster Map
-		clusterMap.MVMap[mvName] = mv
+		clusterMap.MVMap[mvName] = clusterMapMV
+
+		cmi.updateMVList(clusterMap.RVMap, clusterMap.MVMap)
+
 		clusterMap.State = dcache.StateReady
 		clusterMap.LastUpdatedAt = time.Now().Unix()
 
 		body, err = json.Marshal(clusterMap)
 		if err != nil {
-			log.Err("ClusterManager::updateMVState: Marshal failed for clustermap: %v %+v",
+			log.Err("ClusterManager::updateComponentRVState: Marshal failed for clustermap: %v %+v",
 				err, clusterMap)
 			common.Assert(false, err)
 			return err
 		}
 		if err := mm.UpdateClusterMapEnd(body); err != nil {
-			log.Err("ClusterManager::updateMVState: UpdateClusterMapEnd() failed: %v %+v",
+			log.Err("ClusterManager::updateComponentRVState: UpdateClusterMapEnd() failed: %v %+v",
 				err, clusterMap)
 			common.Assert(false, err)
 			return err
 		}
 
-		common.Assert(clusterMap.MVMap[mvName].State == mv.State,
-			"ClusterManager::updateMVState: MVMap[%s].State=%v, want=%v",
-			mvName, clusterMap.MVMap[mvName].State, mv.State,
-		)
+		common.Assert(clusterMap.MVMap[mvName].State == mv.State, mvName, clusterMap.MVMap[mvName].State, mv.State)
 
 		// The clustermap must now have update RV view in MV.
-		log.Info("ClusterManager::updateMVState: clustermap MV is updated by %s at %d %+v",
-			cmi.myNodeId, clusterMap.LastUpdatedAt, clusterMap)
+		log.Info("ClusterManager::updateComponentRVState: clustermap MV is updated by %s at %d %+v",
+			cmi.myNodeId, clusterMap.LastUpdatedAt, clusterMap.MVMap)
 
 		break
 	}
 
 	// update local copy
-	return cmi.updateClusterMapLocalCopyIfRequired(false)
+	return cmi.updateClusterMapLocalCopyIfRequired(false /* sync */)
 }
 
 var (
@@ -1873,7 +1916,7 @@ func Start(dCacheConfig *dcache.DCacheConfig, rvs []dcache.RawVolume) error {
 	clusterManager = &ClusterManager{}
 
 	// Register the hook for updating the MV state through clustermap package.
-	cm.RegisterMVUpdater(clusterManager.updateMV)
+	cm.RegisterComponentRVStateUpdater(clusterManager.updateComponentRVState)
 
 	return clusterManager.start(dCacheConfig, rvs)
 }

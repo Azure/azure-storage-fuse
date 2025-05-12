@@ -223,7 +223,7 @@ func IsValidMvMap(mvMap map[string]dcache.MirroredVolume, expectedReplicasCount 
 	common.Assert(expectedReplicasCount > 0)
 
 	for mvName, mv := range mvMap {
-		isValid, err := IsValidMV(mv, expectedReplicasCount)
+		isValid, err := IsValidMV(&mv, expectedReplicasCount)
 		if !isValid {
 			return false, fmt.Errorf("MVList: Invalid MV: %v +%v", mvName, err)
 		}
@@ -233,7 +233,7 @@ func IsValidMvMap(mvMap map[string]dcache.MirroredVolume, expectedReplicasCount 
 	return true, nil
 }
 
-func IsValidMV(mv dcache.MirroredVolume, expectedReplicasCount int) (bool, error) {
+func IsValidMV(mv *dcache.MirroredVolume, expectedReplicasCount int) (bool, error) {
 	if mv.State != dcache.StateOnline &&
 		mv.State != dcache.StateOffline &&
 		mv.State != dcache.StateDegraded {
