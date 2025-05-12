@@ -249,7 +249,6 @@ func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byt
 		}
 
 		log.Err("CreateFileInit:: Failed to put blob %s in storage: %v", path, err)
-		common.Assert(false, err)
 		return err
 	}
 
