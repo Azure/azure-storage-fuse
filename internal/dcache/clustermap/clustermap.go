@@ -146,6 +146,10 @@ func GetAllNodes() map[string]struct{} {
 	return clusterMap.getAllNodes()
 }
 
+func IsClusterReadonly() bool {
+	return clusterMap.isClusterReadonly()
+}
+
 // Refresh clustermap local copy from the metadata store synchronously.
 // The call blocks till the clustermap is refreshed.
 // Once RefreshClusterMapSync() completes successfully, any clustermap call made would return results from the
@@ -265,6 +269,12 @@ func (c *ClusterMap) getAllNodes() map[string]struct{} {
 	}
 
 	return nodesMap
+}
+
+func (c *ClusterMap) isClusterReadonly() bool {
+	common.Assert(c.localMap != nil)
+
+	return c.localMap.Readonly
 }
 
 func (c *ClusterMap) getCacheConfig() *dcache.DCacheConfig {
