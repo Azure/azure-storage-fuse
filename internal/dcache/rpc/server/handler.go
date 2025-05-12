@@ -204,7 +204,7 @@ func (rv *rvInfo) isMvPathValid(mvPath string) bool {
 	return mvInfo != nil
 }
 
-// Get MV replica infor for the given MV on rv.
+// Get MV replica info for the given MV on rv.
 func (rv *rvInfo) getMVInfo(mvName string) *mvInfo {
 	val, ok := rv.mvMap.Load(mvName)
 
