@@ -1796,7 +1796,7 @@ func refreshMyRVs(myRVs []dcache.RawVolume) {
 // This will update the state of one or more component RVs
 // for an MV (component RVs remaining the same).
 func (cmi *ClusterManager) updateComponentRVState(mvName string, mv dcache.MirroredVolume) error {
-	log.Info("ClusterManager::updateComponentRVState: updating MV %s , components=%+v",
+	log.Info("ClusterManager::updateComponentRVState: updating MV: %s, component RVs: %+v",
 		mvName, mv.RVs)
 	common.Assert(cm.IsValidMVName(mvName))
 	common.Assert(cm.IsValidMV(&mv, int(cmi.config.NumReplicas)))
@@ -1836,8 +1836,11 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, mv dcache.Mirro
 
 		// Validate that retrieved clustermap is not in the process of being updated.
 		if clusterMap.State == dcache.StateChecking {
-			log.Info("ClusterManager::updateComponentRVState: clustermap being updated by node %s, waiting a bit before retry",
-				clusterMap.LastUpdatedBy)
+			log.Info(
+				"ClusterManager::updateComponentRVState: clustermap being updated by node %s,"+
+					" waiting a bit before retry.",
+				clusterMap.LastUpdatedBy,
+			)
 
 			// TODO: Add some backoff and randomness?
 			time.Sleep(10 * time.Millisecond)
@@ -1849,13 +1852,15 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, mv dcache.Mirro
 		if !found {
 			common.Assert(false)
 			return fmt.Errorf(
-				"ClusterManager::updateComponentRVState: MV %s not found in clusterMap mvList %+v",
+				"ClusterManager::updateComponentRVState: MV %s not found in stored clusterMap mvList %+v",
 				mvName, clusterMap.MVMap)
 		}
 
 		common.Assert(len(clusterMapMV.RVs) == len(mv.RVs),
 			"ClusterManager::updateComponentRVState: RV count mismatch for MV",
 			mvName, len(mv.RVs), len(clusterMapMV.RVs))
+
+		common.Assert(clusterMapMV.State == mv.State, mvName, clusterMapMV.State, mv.State)
 
 		// Validate input MV's RVList is matching with Stored MV's RVList
 		for rvName := range clusterMapMV.RVs {
@@ -1871,7 +1876,7 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, mv dcache.Mirro
 		clusterMap.LastUpdatedBy = cmi.myNodeId
 		clusterMap.State = dcache.StateChecking
 
-		body, err := json.Marshal(clusterMap)
+		clusterMapByte, err := json.Marshal(clusterMap)
 		if err != nil {
 			log.Err("ClusterManager::updateComponentRVState: Marshal failed for clustermap: %v %+v",
 				err, clusterMap)
@@ -1886,35 +1891,33 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, mv dcache.Mirro
 		//
 		// TODO: Check err to see if the failure is due to etag mismatch, if not retrying may not help.
 		//
-		if err := mm.UpdateClusterMapStart(body, etag); err != nil {
+		if err := mm.UpdateClusterMapStart(clusterMapByte, etag); err != nil {
 			log.Warn("ClusterManager::updateComponentRVState: Start Clustermap update failed for nodeId %s: %v, retrying",
 				cmi.myNodeId, err)
 			continue
 		}
 
 		//Update recevied Mv over cluster Map
-		clusterMap.MVMap[mvName] = clusterMapMV
+		clusterMap.MVMap[mvName] = mv
 
 		cmi.updateMVList(clusterMap.RVMap, clusterMap.MVMap)
 
 		clusterMap.State = dcache.StateReady
 		clusterMap.LastUpdatedAt = time.Now().Unix()
 
-		body, err = json.Marshal(clusterMap)
+		clusterMapByte, err = json.Marshal(clusterMap)
 		if err != nil {
 			log.Err("ClusterManager::updateComponentRVState: Marshal failed for clustermap: %v %+v",
 				err, clusterMap)
 			common.Assert(false, err)
 			return err
 		}
-		if err := mm.UpdateClusterMapEnd(body); err != nil {
+		if err := mm.UpdateClusterMapEnd(clusterMapByte); err != nil {
 			log.Err("ClusterManager::updateComponentRVState: UpdateClusterMapEnd() failed: %v %+v",
 				err, clusterMap)
 			common.Assert(false, err)
 			return err
 		}
-
-		common.Assert(clusterMap.MVMap[mvName].State == mv.State, mvName, clusterMap.MVMap[mvName].State, mv.State)
 
 		// The clustermap must now have update RV view in MV.
 		log.Info("ClusterManager::updateComponentRVState: clustermap MV is updated by %s at %d %+v",
@@ -1924,7 +1927,7 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, mv dcache.Mirro
 	}
 
 	// update local copy
-	return cmi.updateClusterMapLocalCopyIfRequired(false /* sync */)
+	return cmi.updateClusterMapLocalCopyIfRequired(false /* not sync */)
 }
 
 var (
