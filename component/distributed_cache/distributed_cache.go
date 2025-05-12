@@ -457,7 +457,7 @@ func (dc *DistributedCache) CreateFile(options internal.CreateFileOptions) (*han
 		handle.SetDcacheAllowWrites()
 	}
 	// handle.IFObj must be set IFF DCache access is allowed through this handle.
-	common.Assert(handle.IsFsDcache() == (handle.IFObj != nil))
+	common.Assert(handle.IsFsDcache() == (handle.IFObj.(*fm.DcacheFile) != nil))
 
 	return handle, nil
 }
@@ -536,7 +536,7 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 	}
 
 	// handle.IFObj must be set IFF DCache access is allowed through this handle.
-	common.Assert(handle.IsFsDcache() == (handle.IFObj != nil))
+	common.Assert(handle.IsFsDcache() == (handle.IFObj.(*fm.DcacheFile) != nil))
 	return handle, nil
 }
 
