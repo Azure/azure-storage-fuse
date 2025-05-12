@@ -1918,6 +1918,8 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, mv dcache.Mirro
 				syncingRVs++
 			}
 		}
+
+		// Sequence of conditions is important here.
 		if offlineRVs > 0 {
 			mvState = dcache.StateDegraded
 		} else if syncingRVs > 0 {
