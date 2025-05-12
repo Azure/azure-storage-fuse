@@ -97,7 +97,6 @@ func NewFileIOManager(workers int, numReadAheadChunks int, numStagingChunks int,
 }
 
 func EndFileIOManager() {
-	// TODO: Will a component's End method be called on a failed startup?
 	common.Assert(fileIOMgr.wp != nil)
 	common.Assert(fileIOMgr.bp != nil)
 
@@ -447,15 +446,14 @@ func (file *DcacheFile) getChunkForRead(chunkIdx int64) (*StagedChunk, error) {
 
 	chunk, loaded, err := file.getChunk(chunkIdx)
 	if err == nil {
-		// There's no point in having a chunk and not reading anything on to it.
-		common.Assert(chunk.Len > 0, chunk.Len)
-
 		if !loaded {
 			// Brand new staged chunk, could not have been scheduled for read already.
 			common.Assert(!chunk.XferScheduled.Load())
 			// For read chunks chunk.Len is the amount of data that must be read into this chunk.
 			chunk.Len = getChunkSize(chunkIdx*file.FileMetadata.FileLayout.ChunkSize, file)
 		}
+		// There's no point in having a chunk and not reading anything on to it.
+		common.Assert(chunk.Len > 0, chunk.Len)
 	}
 	// TODO: Assert that number of staged chunks is less than fileIOManager.numReadAheadChunks.
 
