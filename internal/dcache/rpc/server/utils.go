@@ -141,24 +141,31 @@ func isRVPresentInMV(rvs []*models.RVNameAndState, rvName string) bool {
 func moveChunksToRegularMVPath(syncMvPath string, regMvPath string) error {
 	entries, err := os.ReadDir(syncMvPath)
 	if err != nil {
-		log.Err("utils::moveChunksToRegularMVPath: Failed to read directory %s [%v]", syncMvPath, err.Error())
+		log.Err("utils::moveChunksToRegularMVPath: Failed to read directory %s [%v]", syncMvPath, err)
 		return err
 	}
 
 	for _, entry := range entries {
 		if entry.IsDir() {
 			log.Warn("utils::moveChunksToRegularMVPath: Skipping directory %s", entry.Name())
+			// We only save chunks in the .sync folder.
+			common.Assert(false)
 			continue
 		}
+
+		// TODO: Check and assert that all entries are valid chunk names.
 
 		src := filepath.Join(syncMvPath, entry.Name())
 		dest := filepath.Join(regMvPath, entry.Name())
 
 		err = os.Rename(src, dest)
 		if err != nil {
-			log.Err("utils::moveChunksToRegularMVPath: Failed to move chunk %s to %s [%v]", src, dest, err.Error())
+			log.Err("utils::moveChunksToRegularMVPath: Failed to move chunk %s -> %s [%v]",
+				src, dest, err.Error())
 			return err
 		}
+
+		log.Debug("utils::moveChunksToRegularMVPath: Moved chunk %s -> %s", src, dest)
 	}
 
 	return nil
