@@ -54,6 +54,9 @@ const (
 
 	// This is a practically infeasible chunk index, for sanity checks.
 	ChunkIndexUpperBound = 1e9
+
+	// Time interval in seconds for resyncing the degraded MV.
+	ResyncInterval = 30
 )
 
 func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *models.RVNameAndState {
@@ -169,15 +172,15 @@ func getLowestIndexOnlineRV(rvs map[string]dcache.StateEnum) string {
 	return lowestIdxRVName
 }
 
-// check if the given RV is hosted in current node
-func isRVHostedInCurrentNode(rvName string) bool {
+// check if the given RV is hosted in this node
+func isRVHostedInThisNode(rvName string) bool {
 	myRVs := cm.GetMyRVs()
 	_, ok := myRVs[rvName]
 	return ok
 }
 
 // return the local cache path for the given RV name
-// Note: this RV should be hosted by the current node
+// Note: this RV should be hosted by the this node
 func getCachePathForRVName(rvName string) string {
 	myRVs := cm.GetMyRVs()
 	common.Assert(myRVs != nil, "nodes's raw volumes cannot be nil")
