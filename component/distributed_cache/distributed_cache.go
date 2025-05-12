@@ -392,13 +392,13 @@ func (dc *DistributedCache) CreateDir(options internal.CreateDirOptions) error {
 
 	if isDcachePath {
 		// Create Directory inside Dcache
-		log.Debug("DistributedCache::CreateDir : Path is having Dcache subcomponent, path : %s", options.Name)
+		log.Debug("DistributedCache::CreateDir: Path is having Dcache subcomponent, path: %s", options.Name)
 		rawPath = filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
 		options.Name = rawPath
 		return dc.NextComponent().CreateDir(options)
 	} else if isAzurePath {
 		// Create Directory inside Azure
-		log.Debug("DistributedCache::CreateDir : Path is having Azure subcomponent, path : %s", options.Name)
+		log.Debug("DistributedCache::CreateDir: Path is having Azure subcomponent, path: %s", options.Name)
 		options.Name = rawPath
 		return dc.NextComponent().CreateDir(options)
 	} else if isDebugPath {
@@ -406,13 +406,13 @@ func (dc *DistributedCache) CreateDir(options internal.CreateDirOptions) error {
 		return syscall.EACCES
 	} else {
 		common.Assert(rawPath == options.Name, rawPath, options.Name)
-		// semantics for creating a directory, when path doesnt have explicit namespace.
+		// Semantics for creating a directory, when path doesnt have explicit namespace.
 		// Create in Azure and Dcache, fail the call if any one of them fail.
 
 		// Create Dir in Azure
 		err := dc.NextComponent().CreateDir(options)
 		if err != nil {
-			log.Err("DistributedCache::CreateDir : Azure Dir Creation failed with err : %s, path : %s", err.Error(), options.Name)
+			log.Err("DistributedCache::CreateDir: Failed to create Azure directory %s: %v", options.Name, err)
 			return err
 		}
 
@@ -420,7 +420,7 @@ func (dc *DistributedCache) CreateDir(options internal.CreateDirOptions) error {
 		rawPath = filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
 		err = dc.NextComponent().CreateDir(options)
 		if err != nil {
-			log.Err("DistributedCache::CreateFile : Dcache Dir Creation failed with err : %s, path : %s", err.Error(), options.Name)
+			log.Err("DistributedCache::CreateDir: Failed to create Dcache directory %s: %v", options.Name, err)
 			return err
 		}
 		// todo : if one is success and other is failure, get to the previous state by removing the
