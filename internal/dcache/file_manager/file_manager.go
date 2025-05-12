@@ -614,17 +614,19 @@ func (file *DcacheFile) CreateOrGetStagedChunk(offset int64) (*StagedChunk, erro
 	if isOffsetChunkStarting(offset, &file.FileMetadata.FileLayout) {
 		// Release the buffer if it falls out of staging area.
 		releaseChunkIdx := chunkIdx - int64(fileIOMgr.numStagingChunks)
-		releaseChunk, err := file.loadChunk(releaseChunkIdx)
-		if err == nil {
-			err := <-releaseChunk.Err
-			if err != nil {
-				// If there is an error while uploading the block.
-				// As we are using writeback policy to upload the data.
-				// Better to fail early.
-				releaseChunk.Err <- err
-				return nil, errors.New("DistributedCache::WriteChunk: failed to upload the previous chunk")
+		if releaseChunkIdx >= 0 {
+			releaseChunk, err := file.loadChunk(releaseChunkIdx)
+			if err == nil {
+				err := <-releaseChunk.Err
+				if err != nil {
+					// If there is an error while uploading the block.
+					// As we are using writeback policy to upload the data.
+					// Better to fail early.
+					releaseChunk.Err <- err
+					return nil, errors.New("DistributedCache::WriteChunk: failed to upload the previous chunk")
+				}
+				file.removeChunk(releaseChunkIdx)
 			}
-			file.removeChunk(releaseChunkIdx)
 		}
 	}
 	return chunk, nil
