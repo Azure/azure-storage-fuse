@@ -42,30 +42,34 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
-	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
+	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 )
 
 const (
-	// TODO: discuss if this is a good value for RPC timeout
+	// TODO: For prod we should increase it for resilience, but not too much as to affect
+	// our responsiveness.
 	RPCClientTimeout = 2 // in seconds
 
-	// TODO: chunk size lower and upper bounds can be modified later
-	ChunkSizeInMiBLowerBound = 0
-	ChunkSizeInMiBUpperBound = 256
-	ChunkIndexUpperBound     = 1e9
+	// This is a practically infeasible chunk index, for sanity checks.
+	ChunkIndexUpperBound = 1e9
 )
 
 func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *models.RVNameAndState {
-	log.Debug("utils::getReaderRV: Component RVs are: %v, excludeRVs: %v", rpc.ComponentRVsToString(componentRVs), excludeRVs)
+	log.Debug("utils::getReaderRV: Component RVs are: %v, excludeRVs: %v",
+		rpc.ComponentRVsToString(componentRVs), excludeRVs)
+
+	// componentRVs must have exactly NumReplicas RVs.
+	common.Assert(len(componentRVs) == int(getNumReplicas()), len(componentRVs), getNumReplicas())
+	// excludeRVs can have at max all the RVs in componentRVs.
+	common.Assert(len(excludeRVs) <= len(componentRVs), len(excludeRVs), len(componentRVs))
 
 	myNodeID := rpc.GetMyNodeUUID()
 	onlineRVs := make([]*models.RVNameAndState, 0)
 	for _, rv := range componentRVs {
 		if rv.State != string(dcache.StateOnline) || slices.Contains(excludeRVs, rv.Name) {
-			// this is not an online RV or is present in the exclude list
-			// so skip this RV
+			// Not an online RV or present in the exclude list, skip.
 			log.Debug("utils::getReaderRV: skipping RV %s with state %s", rv.Name, rv.State)
 			continue
 		}
@@ -73,7 +77,7 @@ func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *mo
 		nodeIDForRV := getNodeIDFromRVName(rv.Name)
 		common.Assert(common.IsValidUUID(nodeIDForRV))
 		if nodeIDForRV == myNodeID {
-			// this is the local RV in this node
+			// Prefer local RV.
 			return rv
 		}
 
@@ -81,7 +85,8 @@ func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *mo
 	}
 
 	if len(onlineRVs) == 0 {
-		log.Debug("utils::getReaderRV: no online RVs found for component RVs %v", rpc.ComponentRVsToString(componentRVs))
+		log.Debug("utils::getReaderRV: no suitable RVs found for component RVs %v",
+			rpc.ComponentRVsToString(componentRVs))
 		return nil
 	}
 
@@ -100,41 +105,45 @@ func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *mo
 // 	return hex.EncodeToString(hash[:])
 // }
 
-// return the component RVs for the given MV
+// Return list of component RVs (name and state) for the given MV.
 func getComponentRVsForMV(mvName string) []*models.RVNameAndState {
-	rvMap := clustermap.GetRVs(mvName)
-	return convertRVMapToList(rvMap)
+	rvMap := cm.GetRVs(mvName)
+	return convertRVMapToList(mvName, rvMap)
 }
 
-func convertRVMapToList(rvMap map[string]dcache.StateEnum) []*models.RVNameAndState {
+func convertRVMapToList(mvName string, rvMap map[string]dcache.StateEnum) []*models.RVNameAndState {
 	var componentRVs []*models.RVNameAndState
 	for rvName, rvState := range rvMap {
-		// TODO: add assert for isValidRVName
-		common.Assert(rvName != "", "RV name is empty")
-		common.Assert(rvState != "", "RV state is empty")
+		common.Assert(cm.IsValidRVName(rvName), rvName)
+		common.Assert(rvState == dcache.StateOnline ||
+			rvState == dcache.StateOffline ||
+			rvState == dcache.StateOutOfSync ||
+			rvState == dcache.StateSyncing, rvName, rvState)
 
-		componentRVs = append(componentRVs, &models.RVNameAndState{Name: rvName, State: string(rvState)})
+		componentRVs = append(componentRVs,
+			&models.RVNameAndState{Name: rvName, State: string(rvState)})
 	}
 
 	common.Assert(len(componentRVs) == int(getNumReplicas()),
-		fmt.Sprintf("number of component RVs %d is not same as number of replicas %d : %v", len(componentRVs), getNumReplicas(), rpc.ComponentRVsToString(componentRVs)))
+		fmt.Sprintf("number of component RVs %d is not same as number of replicas %d for MV %s: %v",
+			len(componentRVs), getNumReplicas(), mvName, rpc.ComponentRVsToString(componentRVs)))
 
 	return componentRVs
 }
 
 // return the number of replicas
 func getNumReplicas() uint32 {
-	return clustermap.GetCacheConfig().NumReplicas
+	return cm.GetCacheConfig().NumReplicas
 }
 
 // return the RV ID for the given RV name
 func getRvIDFromRvName(rvName string) string {
-	return clustermap.RvNameToId(rvName)
+	return cm.RvNameToId(rvName)
 }
 
 // return the node ID for the given rvName
 func getNodeIDFromRVName(rvName string) string {
-	return clustermap.RVNameToNodeId(rvName)
+	return cm.RVNameToNodeId(rvName)
 }
 
 // returns the lowest index online RV from the component RVs
@@ -162,7 +171,7 @@ func getLowestIndexOnlineRV(rvs map[string]dcache.StateEnum) string {
 
 // check if the given RV is hosted in current node
 func isRVHostedInCurrentNode(rvName string) bool {
-	myRVs := clustermap.GetMyRVs()
+	myRVs := cm.GetMyRVs()
 	_, ok := myRVs[rvName]
 	return ok
 }
@@ -170,7 +179,7 @@ func isRVHostedInCurrentNode(rvName string) bool {
 // return the local cache path for the given RV name
 // Note: this RV should be hosted by the current node
 func getCachePathForRVName(rvName string) string {
-	myRVs := clustermap.GetMyRVs()
+	myRVs := cm.GetMyRVs()
 	common.Assert(myRVs != nil, "nodes's raw volumes cannot be nil")
 	common.Assert(len(myRVs) > 0, "nodes's raw volumes cannot be empty")
 

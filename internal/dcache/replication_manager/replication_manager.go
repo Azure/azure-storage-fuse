@@ -54,17 +54,14 @@ import (
 )
 
 func ReadMV(req *ReadMvRequest) (*ReadMvResponse, error) {
-	if req == nil {
-		log.Err("ReplicationManager::ReadMV: Received nil ReadMV request")
-		common.Assert(false, "received nil ReadMV request")
-		return nil, fmt.Errorf("received nil ReadMV request")
-	}
+	common.Assert(req != nil)
 
 	log.Debug("ReplicationManager::ReadMV: Received ReadMV request: %v", req.toString())
 
 	if err := req.isValid(); err != nil {
-		log.Err("ReplicationManager::ReadMV: Invalid ReadMV request parameters [%v]", err.Error())
-		common.Assert(false, fmt.Sprintf("invalid ReadMV request parameters [%v]", err.Error()))
+		err = fmt.Errorf("Invalid ReadMV request parameters [%v]", err)
+		log.Err("ReplicationManager::ReadMV: %v", err)
+		common.Assert(false, err)
 		return nil, err
 	}
 
@@ -74,9 +71,13 @@ func ReadMV(req *ReadMvRequest) (*ReadMvResponse, error) {
 	clusterMapRefreshed := false
 
 retry:
+	// Get component RVs for MV, from clustermap.
 	componentRVs := getComponentRVsForMV(req.MvName)
-	log.Debug("ReplicationManager::ReadMV: Component RVs for the given MV %s are: %v", req.MvName, rpc.ComponentRVsToString(componentRVs))
 
+	log.Debug("ReplicationManager::ReadMV: Component RVs for %s are: %v",
+		req.MvName, rpc.ComponentRVsToString(componentRVs))
+
+	//
 	// Get the most suitable RV from the list of component RVs,
 	// from which we should read the chunk. Selecting most
 	// suitable RV is mostly a heuristical process which might
@@ -85,25 +86,34 @@ retry:
 	// - Local RV must be preferred.
 	// - Prefer a node that has recently responded successfully to any of our RPCs.
 	// - Pick a random one.
+	//
+	// excludeRVs is the list of component RVs to omit, used when retrying after prev attempts to read from
+	// certain RV(s) failed. Those RVs are added to excludeRVs list.
+	//
 	var excludeRVs []string
 	for {
 		readerRV := getReaderRV(componentRVs, excludeRVs)
 		if readerRV == nil {
+			//
+			// Even after refreshing clustermap if we cannot get a valid MV replica to read from,
+			// alas we need to fail the read.
+			//
 			if clusterMapRefreshed {
-				log.Err("ReplicationManager::ReadMV: No suitable RV found for the given MV %s", req.MvName)
-				return nil, fmt.Errorf("no suitable RV found for the given MV %s", req.MvName)
+				err = fmt.Errorf("No suitable RV found for MV %s", req.MvName)
+				log.Err("ReplicationManager::ReadMV: %v", err)
+				return nil, err
 			}
 
 			// This is very unlikely and it would most likely indicate that we have a “very stale”
 			// clustermap where all/most of the component RVs have been replaced.
 
 			// TODO: will be done later
-			// refreshClusterMap()
+			// err = cm.RefreshClusterMapSync()
 			clusterMapRefreshed = true
 			goto retry
 		}
 
-		common.Assert(!slices.Contains(excludeRVs, readerRV.Name), fmt.Sprintf("getReaderRV returned %s which is already present in the excludeRVs list %v", readerRV.Name, excludeRVs))
+		common.Assert(!slices.Contains(excludeRVs, readerRV.Name), readerRV.Name, excludeRVs)
 
 		selectedRvID := getRvIDFromRvName(readerRV.Name)
 		common.Assert(common.IsValidUUID(selectedRvID))
@@ -111,7 +121,8 @@ retry:
 		targetNodeID := getNodeIDFromRVName(readerRV.Name)
 		common.Assert(common.IsValidUUID(targetNodeID))
 
-		log.Debug("ReplicationManager::ReadMV: Selected online RV for MV %s is %s having RV id %s and is hosted in node id %s", req.MvName, readerRV.Name, selectedRvID, targetNodeID)
+		log.Debug("ReplicationManager::ReadMV: Selected %s for %s RV id %s hosted by node %s",
+			readerRV.Name, req.MvName, selectedRvID, targetNodeID)
 
 		// TODO: optimization, should we send buffer also in the GetChunk request?
 		rpcReq := &models.GetChunkRequest{
@@ -131,13 +142,17 @@ retry:
 		defer cancel()
 
 		rpcResp, err = rpc_client.GetChunk(ctx, targetNodeID, rpcReq)
+
+		// Exclude this RV from further iterations (if any).
 		excludeRVs = append(excludeRVs, readerRV.Name)
-		rpcReqStr := rpc.GetChunkRequestToString(rpcReq)
+
 		if err == nil {
-			// success
-			common.Assert(rpcResp != nil, fmt.Sprintf("GetChunk RPC response is nil for request %v", rpcReqStr))
-			common.Assert(rpcResp.Chunk != nil, fmt.Sprintf("chunk in GetChunk RPC response is nil for request %v", rpcReqStr))
-			common.Assert(rpcResp.Chunk.Address != nil, fmt.Sprintf("address of chunk in GetChunk RPC response is nil for request %v", rpcReqStr))
+			// Success.
+			common.Assert((rpcResp != nil &&
+				rpcResp.Chunk != nil &&
+				rpcResp.Chunk.Address != nil),
+				rpc.GetChunkRequestToString(rpcReq))
+			// TODO: Validate other rpcResp fields.
 			break
 		}
 
@@ -146,14 +161,16 @@ retry:
 		// so if the target RV feels that the sender seems to have out-of-date clustermap,
 		// it can help him by failing the request with an appropriate error and then
 		// caller should fetch the latest clustermap and then try again.
-		log.Err("ReplicationManager::ReadMV: Failed to get chunk from node %s for request %v [%v]", targetNodeID, rpcReqStr, err.Error())
+
+		log.Err("ReplicationManager::ReadMV: Failed to get chunk from node %s for request %v [%v]",
+			targetNodeID, rpc.GetChunkRequestToString(rpcReq), err)
 	}
 
 	log.Debug("ReplicationManager::ReadMV: GetChunk RPC response: %v", rpc.GetChunkResponseToString(rpcResp))
 
-	// TODO: this should be deep copy
 	n := copy(req.Data, rpcResp.Chunk.Data)
-	common.Assert(n == len(rpcResp.Chunk.Data), fmt.Sprintf("data copied %d is not same as data in the chunk length %d", n, len(rpcResp.Chunk.Data)))
+	// req.Data must be large enough to copy entire rpcResp.Chunk.Data.
+	common.Assert(n == len(rpcResp.Chunk.Data), n, len(rpcResp.Chunk.Data))
 
 	// TODO: in GetChunk RPC request add data buffer to the request
 	// TODO: in GetChunk RPC response return bytes read
@@ -162,13 +179,13 @@ retry:
 	// TODO: should we validate the hash of the chunk here?
 	// hash := getMD5Sum(rpcResp.Chunk.Data)
 	// if hash != rpcResp.Chunk.Hash {
-	// 	log.Err("ReplicationManager::ReadMV: Hash mismatch for the chunk read from node %s for request %v", targetNodeID, rpcReqStr)
-	// 	common.Assert(false, fmt.Sprintf("hash mismatch for the chunk read from node %s for request %v", targetNodeID, rpcReqStr))
-	// 	return nil, fmt.Errorf("hash mismatch for the chunk read from node %s for request %v", targetNodeID, rpcReqStr)
+	//      log.Err("ReplicationManager::ReadMV: Hash mismatch for the chunk read from node %s for request %v", targetNodeID, rpcReqStr)
+	//      common.Assert(false, fmt.Sprintf("hash mismatch for the chunk read from node %s for request %v", targetNodeID, rpcReqStr))
+	//      return nil, fmt.Errorf("hash mismatch for the chunk read from node %s for request %v", targetNodeID, rpcReqStr)
 	// }
 
 	resp := &ReadMvResponse{
-		// TODO: update this filed after bytes read in response
+		// TODO: update this field after bytes read in response.
 		BytesRead: int64(len(rpcResp.Chunk.Data)),
 	}
 
@@ -176,38 +193,44 @@ retry:
 }
 
 func WriteMV(req *WriteMvRequest) (*WriteMvResponse, error) {
-	if req == nil {
-		log.Err("ReplicationManager::WriteMV: Received nil WriteMV request")
-		common.Assert(false, "received nil WriteMV request")
-		return nil, fmt.Errorf("received nil WriteMV request")
-	}
+	common.Assert(req != nil)
 
 	log.Debug("ReplicationManager::WriteMV: Received WriteMV request: %v", req.toString())
 
 	if err := req.isValid(); err != nil {
-		log.Err("ReplicationManager::WriteMV: Invalid WriteMV request parameters [%v]", err.Error())
-		common.Assert(false, fmt.Sprintf("invalid WriteMV request parameters [%v]", err.Error()))
+		err = fmt.Errorf("Invalid WriteMV request parameters [%v]", err)
+		log.Err("ReplicationManager::WriteMV: %v", err)
+		common.Assert(false, err)
 		return nil, err
 	}
+
+	clusterMapRefreshed := 0
 
 	// TODO: TODO: hash validation will be done later
 	// get hash of the data in the request
 	// hash := getMD5Sum(req.Data)
 
 retry:
+	// Get component RVs for MV, from clustermap.
 	componentRVs := getComponentRVsForMV(req.MvName)
-	log.Debug("ReplicationManager::WriteMV: Component RVs for the given MV %s are: %v", req.MvName, rpc.ComponentRVsToString(componentRVs))
 
-	// TODO: put chunk to each component RV can be done in parallel
+	log.Debug("ReplicationManager::WriteMV: Component RVs for %s are: %v",
+		req.MvName, rpc.ComponentRVsToString(componentRVs))
+
+	// TODO: put chunk to each component RV should be done in parallel
 	for _, rv := range componentRVs {
-		//  Omit RVs in “offline” or “outofsync” state. It’s ok to omit them as the chunks not written
-		//  to them will be copied to them when the mv is (soon) resynced.
-		//  Otoh if an RV is in “syncing” state then any new chunk written to it may not be copied by the
-		//  ongoing resync operation as the source RV may have been already gone past the enumeration stage
-		//  and hence won’t consider this chunk for resync, and hence those MUST have the chunks mandatorily copied to them.
+		//
+		// Omit writing to RVs in “offline” or “outofsync” state. It’s ok to omit them as the chunks not
+		// written to them will be copied to them when the mv is (soon) resynced.
+		// Otoh if an RV is in “syncing” state then any new chunk written to it may not be copied by the
+		// ongoing resync operation as the source RV may have been already gone past the enumeration stage
+		// and hence won’t consider this chunk for resync, and hence those MUST have the chunks mandatorily
+		// copied to them.
+		//
 
 		if rv.State == string(dcache.StateOffline) || rv.State == string(dcache.StateOutOfSync) {
-			log.Debug("ReplicationManager::WriteMV: Skipping RV %s having state %s", rv.Name, rv.State)
+			log.Debug("ReplicationManager::WriteMV: Skipping RV %s (state %s) for %s",
+				rv.Name, rv.State, req.MvName)
 			continue
 		} else if rv.State == string(dcache.StateOnline) || rv.State == string(dcache.StateSyncing) {
 			rvID := getRvIDFromRvName(rv.Name)
@@ -216,7 +239,8 @@ retry:
 			targetNodeID := getNodeIDFromRVName(rv.Name)
 			common.Assert(common.IsValidUUID(targetNodeID))
 
-			log.Debug("ReplicationManager::WriteMV: Writing to RV %s having RV id %s and is hosted in node id %s", rv, rvID, targetNodeID)
+			log.Debug("ReplicationManager::WriteMV: %s writing to %s RV id %s hosted by node %s",
+				req.MvName, rv.Name, rvID, targetNodeID)
 
 			rpcReq := &models.PutChunkRequest{
 				Chunk: &models.Chunk{
@@ -240,28 +264,47 @@ retry:
 
 			rpcResp, err := rpc_client.PutChunk(ctx, targetNodeID, rpcReq)
 			if err != nil {
-				log.Err("ReplicationManager::WriteMV: Failed to put chunk to node %s [%v]", targetNodeID, err.Error())
+				log.Err("ReplicationManager::WriteMV: PutChunk to node %s failed [%v]",
+					targetNodeID, err)
 				rpcErr := rpc.GetRPCResponseError(err)
 				if rpcErr == nil {
-					// this error means that the node is not reachable
-					log.Err("ReplicationManager::WriteMV: Failed to reach node %s [%v]", targetNodeID, err.Error())
+					//
+					// This error means that the node is not reachable.
+					// TODO:
+					// We should now run the inband RV offline detection workflow, basically we
+					// call the clustermap's updateComponentRVState() API to mark this
+					// component RV as offline and force the fix-mv workflow which will finally
+					// trigger the resync-mv workflow.
+					//
+					log.Err("ReplicationManager::WriteMV: Failed to reach node %s [%v]",
+						targetNodeID, err)
 					return nil, err
 				}
 
-				// the error is RPC error of type *rpc.ResponseError
+				// The error is RPC error of type *rpc.ResponseError.
 				if rpcErr.Code() == rpc.NeedToRefreshClusterMap {
+					// TODO: Should we allow more than one clustermap refresh?
+					if clusterMapRefreshed > 0 {
+						log.Err("ReplicationManager::WriteMV: Failed after refreshing clustermap")
+						return nil, err
+					}
+
 					// TODO: will be done later
-					// refreshClusterMap()
+					// err = cm.RefreshClusterMapSync()
+					clusterMapRefreshed++
 					goto retry
 				} else {
-					// TODO: check if this is non-retriable error
-					log.Err("ReplicationManager::WriteMV: Got non-retriable error for put chunk to node %s [%v]", targetNodeID, err.Error())
+					// TODO: check if this is non-retriable error.
+					log.Err("ReplicationManager::WriteMV: Got non-retriable error for put chunk to node %s [%v]",
+						targetNodeID, err)
 					return nil, err
 				}
 			}
 
 			common.Assert(rpcResp != nil, "PutChunk RPC response is nil")
-			log.Debug("ReplicationManager::WriteMV: PutChunk RPC response: %v", rpc.PutChunkResponseToString(rpcResp))
+			log.Debug("ReplicationManager::WriteMV: PutChunk successful RPC response: %v", rpc.PutChunkResponseToString(rpcResp))
+		} else {
+			common.Assert(false, "Unexpected RV state", rv.State, rv.Name)
 		}
 	}
 
@@ -317,7 +360,7 @@ func ResyncMV(mvName string, mvInfo dcache.MirroredVolume) error {
 		return nil
 	}
 
-	componentRVs := convertRVMapToList(mvInfo.RVs)
+	componentRVs := convertRVMapToList(mvName, mvInfo.RVs)
 	log.Debug("ReplicationManager::ResyncMV: Component RVs for the given MV %s are: %v", mvName, rpc.ComponentRVsToString(componentRVs))
 
 	// TODO: check if this is correctly returning the sync size of MV
