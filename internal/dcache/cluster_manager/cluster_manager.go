@@ -1799,13 +1799,15 @@ func refreshMyRVs(myRVs []dcache.RawVolume) {
 // requested change to the specified MV (retrying if some other node is updating the clustermap simultaneously) and
 // returns only after it's able to successfully make the requested change, or there's some error.
 //
-// Only following RV state transitions are valid, for anything else it errors out.
+// Only following RV state transitions are valid, for anything else it errors out. Additionally, while multiple RV
+// states can be changed in a single updateComponentRVState() call but all those changes MUST be of the same type.
 // StateOutOfSync   -> StateSyncing     [Resync start]
 // StateSyncing     -> StateOnline      [Resync end]
 // StateSyncing     -> StateOutOfSync   [Resync revert]
 // StateOutOfSync   -> StateOutOfSync   [Resync defer]
 // StateOnline      -> StateOnline      [Resync skip good RVs]
-// <<any state>>    -> StateOffline     [RV offline detected inband]
+// StateOnline      -> StateOffline     [Inband detection of offline RV during PutChunk(client)]
+// StateSyncing     -> StateOffline     [Inband detection of offline RV during PutChunk(sync)]
 //
 // The MV state passed in mv.State is ignored and the function instead sets mv.State based on the state of all the
 // component RVs as follows:
@@ -1886,6 +1888,8 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, mv dcache.Mirro
 		offlineRVs := 0
 		syncingRVs := 0
 		outofsyncRVs := 0
+		prevTransition := ""
+		curTransition := ""
 
 		for rvName, rvState := range clusterMapMV.RVs {
 			newState, found := mv.RVs[rvName]
@@ -1898,24 +1902,45 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, mv dcache.Mirro
 			log.Debug("ClusterManager::updateComponentRVState: MV %s, RV %s, state change (%s -> %s)",
 				mvName, rvName, rvState, newState)
 
+			//
 			// For each RV make sure the new state requested is valid.
+			// Additionally make sure that all RVs which are changing state undergo the same state transition.
+			// This is to catch accidental state changes, f.e., if a component RV is marked as syncing by one node
+			// while other node has an older clustermap which has that component RV as online and it wants to set
+			// some other RV as syncing, it should not accidentally be allowed to change the state of the prev RV
+			// from syncing to online.
+			//
 			if rvState == dcache.StateOutOfSync && newState == dcache.StateSyncing {
+				curTransition = "StateOutOfSync->StateSyncing"
 				syncingRVs++
 			} else if rvState == dcache.StateSyncing && newState == dcache.StateOnline {
+				curTransition = "StateSyncing->StateOnline"
 				onlineRVs++
 			} else if rvState == dcache.StateSyncing && newState == dcache.StateOutOfSync {
+				curTransition = "StateSyncing->StateOutOfSync"
 				outofsyncRVs++
 			} else if rvState == dcache.StateOnline && newState == dcache.StateOnline {
 				onlineRVs++
 			} else if rvState == dcache.StateOutOfSync && newState == dcache.StateOutOfSync {
 				outofsyncRVs++
-			} else if newState == dcache.StateOffline {
+			} else if rvState == dcache.StateOnline && newState == dcache.StateOffline {
+				curTransition = "StateOnline->StateOffline"
+				offlineRVs++
+			} else if rvState == dcache.StateSyncing && newState == dcache.StateOffline {
+				curTransition = "StateSyncing->StateOffline"
 				offlineRVs++
 			} else {
 				common.Assert(false)
 				return fmt.Errorf("ClusterManager::updateComponentRVState: RV %s invalid state change (%s -> %s) in input MV %+v",
 					rvName, rvState, newState, mv)
 			}
+
+			if prevTransition != "" && curTransition != prevTransition {
+				return fmt.Errorf("ClusterManager::updateComponentRVState: RV %s inconsistent state change (%s, %s) in input MV %+v",
+					rvName, prevTransition, curTransition, mv)
+			}
+
+			prevTransition = curTransition
 		}
 
 		//
