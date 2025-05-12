@@ -1793,8 +1793,13 @@ func refreshMyRVs(myRVs []dcache.RawVolume) {
 	}
 }
 
-// This will update the state of one or more component RVs
-// for an MV (component RVs remaining the same).
+// This will update the state of one or more component RVs for an MV (component RVs remaining the same)
+// into global clustermap. The function returns after the clustermap is updated successfully.
+// Caller can only change the RV's state to Offline/Syncing/Online.
+// We will decide the MV state based on all the RV states.
+// 1. All the RV's are online, MV.State => Online
+// 2. Any one of RV is offline, MV.State => Degraded
+// 3. No RV is offline and any RV is in syncing, MV.State => Syncing
 func (cmi *ClusterManager) updateComponentRVState(mvName string, mv dcache.MirroredVolume) error {
 	log.Info("ClusterManager::updateComponentRVState: updating MV: %s, component RVs: %+v",
 		mvName, mv.RVs)
@@ -1860,8 +1865,6 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, mv dcache.Mirro
 			"ClusterManager::updateComponentRVState: RV count mismatch for MV",
 			mvName, len(mv.RVs), len(clusterMapMV.RVs))
 
-		common.Assert(clusterMapMV.State == mv.State, mvName, clusterMapMV.State, mv.State)
-
 		// Validate input MV's RVList is matching with Stored MV's RVList
 		for rvName := range clusterMapMV.RVs {
 			_, found := mv.RVs[rvName]
@@ -1897,7 +1900,34 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, mv dcache.Mirro
 			continue
 		}
 
-		//Update recevied Mv over cluster Map
+		// Decide the MV state based on all the RV states.
+		// 1. All the RV's are online, MV.State => Online
+		// 2. Any one of RV is offline, MV.State => Degraded
+		// 3. No RV is offline and any RV is in syncing, MV.State => Syncing
+		var mvState dcache.StateEnum
+		onlineRVs := 0
+		offlineRVs := 0
+		syncingRVs := 0
+		for _, state := range mv.RVs {
+			if state == dcache.StateOnline {
+				onlineRVs++
+			} else if state == dcache.StateOffline {
+				offlineRVs++
+				break
+			} else if state == dcache.StateSyncing {
+				syncingRVs++
+			}
+		}
+		if offlineRVs > 0 {
+			mvState = dcache.StateDegraded
+		} else if syncingRVs > 0 {
+			mvState = dcache.StateSyncing
+		} else if onlineRVs == len(mv.RVs) {
+			mvState = dcache.StateOnline
+		}
+
+		// Update recevied Mv over cluster Map
+		mv.State = mvState
 		clusterMap.MVMap[mvName] = mv
 
 		cmi.updateMVList(clusterMap.RVMap, clusterMap.MVMap)
@@ -1921,7 +1951,7 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, mv dcache.Mirro
 
 		// The clustermap must now have update RV view in MV.
 		log.Info("ClusterManager::updateComponentRVState: clustermap MV is updated by %s at %d %+v",
-			cmi.myNodeId, clusterMap.LastUpdatedAt, clusterMap.MVMap)
+			cmi.myNodeId, clusterMap.LastUpdatedAt, mv)
 
 		break
 	}
