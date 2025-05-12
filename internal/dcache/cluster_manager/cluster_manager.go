@@ -605,7 +605,6 @@ func (cmi *ClusterManager) updateStorageClusterMapWithMyRVs() error {
 		}
 
 		clusterMap.LastUpdatedAt = time.Now().Unix()
-		// TODO: Set StateReady iff MinNodes nodes are online.
 		clusterMap.State = dcache.StateReady
 		updatedClusterMapBytes, err = json.Marshal(clusterMap)
 		if err != nil {
@@ -851,8 +850,23 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	// log.Debug("ClusterManager::updateStorageClusterMapIfRequired: No changes in RV mapping")
 	// }
 
+	//
+	// If we have discovered enough nodes (more than the MinNodes config value), clear the clustermap
+	// Readonly status. Once clusterMap Readonly is cleared, it remains cleared.
+	// Keeping cluster readonly till enough number of nodes have joined the cluster, may help to prevent
+	// concentration of data on few early nodes.
+	//
+	nodeCount := len(getAllNodesFromRVMap(clusterMap.RVMap))
+	if clusterMap.Readonly && nodeCount >= int(cmi.config.MinNodes) {
+		log.Info("ClusterManager::updateStorageClusterMapIfRequired: Discovered node count %d greater than MinNodes (%d), clearing clusterMap Readonly status. New files can be created now!",
+			nodeCount, cmi.config.MinNodes)
+
+		clusterMap.Readonly = false
+	}
+
 	clusterMap.LastUpdatedAt = time.Now().Unix()
 	clusterMap.State = dcache.StateReady
+
 	updatedClusterMapBytes, err = json.Marshal(clusterMap)
 	if err != nil {
 		err = fmt.Errorf("Marshal failed for clustermap: %v %+v", err, clusterMap)
@@ -869,8 +883,8 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 		return err
 	}
 
-	log.Info("ClusterManager::updateStorageClusterMapIfRequired: cluster map updated by %s at %d: %+v",
-		cmi.myNodeId, now, clusterMap)
+	log.Info("ClusterManager::updateStorageClusterMapIfRequired: cluster map (%d nodes) updated by %s at %d: %+v",
+		nodeCount, cmi.myNodeId, now, clusterMap)
 	return nil
 }
 
@@ -1705,6 +1719,18 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 	}
 
 	return changed, nil
+}
+
+// Utility function that scans through the RV list in the given rvMap and returns the set of all nodes which
+// have contributed at least one RV.
+func getAllNodesFromRVMap(rvMap map[string]dcache.RawVolume) map[string]struct{} {
+	nodesMap := make(map[string]struct{})
+
+	for _, rv := range rvMap {
+		nodesMap[rv.NodeId] = struct{}{}
+	}
+
+	return nodesMap
 }
 
 // For all the given NodeIds, fetch the heartbeat and return the map of RVs and map of their last heartbeat by RVId.
