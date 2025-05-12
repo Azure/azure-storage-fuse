@@ -43,7 +43,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
-	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
+	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
 	gouuid "github.com/google/uuid"
 )
@@ -90,6 +90,15 @@ func getMVForChunk(chunk *StagedChunk, fileMetadata *dcache.FileMetadata) string
 
 // Does all file Init Process for creation of the file.
 func NewDcacheFile(fileName string) (*DcacheFile, error) {
+	//
+	// Do not allow file creation in a readonly cluster.
+	//
+	if cm.IsClusterReadonly() {
+		err := fmt.Errorf("Cannot create file %s, cluster is readonly!", fileName)
+		log.Err("DistributedCache[FM]::NewDcacheFile: %v", err)
+		return nil, syscall.EROFS
+	}
+
 	fileMetadata := &dcache.FileMetadata{
 		Filename: fileName,
 		State:    dcache.Writing,
@@ -98,8 +107,8 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 	}
 	common.Assert(common.IsValidUUID(fileMetadata.FileID))
 
-	chunkSize := clustermap.GetCacheConfig().ChunkSize
-	stripeSize := clustermap.GetCacheConfig().StripeSize
+	chunkSize := cm.GetCacheConfig().ChunkSize
+	stripeSize := cm.GetCacheConfig().StripeSize
 
 	common.Assert(stripeSize%chunkSize == 0, stripeSize, chunkSize)
 	numMVs := stripeSize / chunkSize
@@ -111,7 +120,7 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 	}
 
 	// Get active MV's from the clustermap
-	activeMVs := clustermap.GetActiveMVNames()
+	activeMVs := cm.GetActiveMVNames()
 
 	//
 	// Cannot create file if we don't have enough active MVs.
