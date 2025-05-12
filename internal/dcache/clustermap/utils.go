@@ -236,7 +236,8 @@ func IsValidMvMap(mvMap map[string]dcache.MirroredVolume, expectedReplicasCount 
 func IsValidMV(mv *dcache.MirroredVolume, expectedReplicasCount int) (bool, error) {
 	if mv.State != dcache.StateOnline &&
 		mv.State != dcache.StateOffline &&
-		mv.State != dcache.StateDegraded {
+		mv.State != dcache.StateDegraded &&
+		mv.State != dcache.StateSyncing {
 		return false, fmt.Errorf("MirroredVolume: Invalid State: %s %+v", mv.State, mv)
 	}
 

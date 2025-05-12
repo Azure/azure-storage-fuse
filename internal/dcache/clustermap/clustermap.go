@@ -171,7 +171,6 @@ func MarkComponentRVOffline(mvName, rvName string) error {
 // Tell clustermanager the updated state of one or more component RVs for
 // an MV (component RVs remaining the same).
 func UpdateComponentRVState(mvName string, mv dcache.MirroredVolume) error {
-
 	// Clustermanager must call RegisterMVUpdater() in startup, so we don't expect this to be nil.
 	common.Assert(componentRVStateUpdater != nil)
 	return componentRVStateUpdater(mvName, mv)
