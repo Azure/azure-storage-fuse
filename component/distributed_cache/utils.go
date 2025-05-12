@@ -202,7 +202,12 @@ func isMountPointRoot(path string) bool {
 
 // Get Dcache File size from the blob metadata property.
 func parseDcacheMetadata(attr *internal.ObjAttr) error {
+	// No need to parse the metadata for directories.
+	if attr.IsDir() {
+		return nil
+	}
 	log.Debug("DistributedCache::parseDcacheMetadata: file: %s", attr.Name)
+
 	var fileSize int64
 	var err error
 

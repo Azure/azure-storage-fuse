@@ -38,6 +38,8 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+
+	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 )
 
 type ReadMvRequest struct {
@@ -72,56 +74,60 @@ type ReadMvRequest struct {
 // helper method which can be used for logging the request contents except the data buffer
 // Use this instead of %+v to avoid printing the data buffer
 func (req *ReadMvRequest) toString() string {
-	return fmt.Sprintf("FileID: %s, MvName: %s, ChunkIndex: %d, OffsetInChunk: %d, Length: %d, ChunkSizeInMiB: %d, Data buffer size: %d",
-		req.FileID, req.MvName, req.ChunkIndex, req.OffsetInChunk, req.Length, req.ChunkSizeInMiB, len(req.Data))
+	return fmt.Sprintf("{FileID: %s, MvName: %s, ChunkIndex: %d, OffsetInChunk: %d, Length: %d, ChunkSizeInMiB: %d, Data buffer size: %d}",
+		req.FileID, req.MvName, req.ChunkIndex, req.OffsetInChunk, req.Length,
+		req.ChunkSizeInMiB, len(req.Data))
 }
 
 // check if the request is valid
 func (req *ReadMvRequest) isValid() error {
-	reqStr := req.toString()
-
 	common.Assert(common.IsValidUUID(req.FileID))
-	common.Assert(req.MvName != "")
-	// TODO: add IsValidMVName check
+	common.Assert(cm.IsValidMVName(req.MvName))
 
-	// TODO: remove this after asserts are added
-	if req.FileID == "" || req.MvName == "" {
-		log.Err("ReadMvRequest::isValid: FileID or MvName is empty in request: %s", reqStr)
-		return fmt.Errorf("FileID or MvName is empty in request: %s", reqStr)
-	}
-
-	// TODO: lower and upper bounds can be modified later
-	if req.ChunkSizeInMiB <= ChunkSizeInMiBLowerBound || req.ChunkSizeInMiB >= ChunkSizeInMiBUpperBound {
-		log.Err("ReadMvRequest::isValid: ChunkSizeInMiB is invalid in request: %s", reqStr)
-		return fmt.Errorf("ChunkSizeInMiB is invalid in request: %s", reqStr)
+	if (req.ChunkSizeInMiB*common.MbToBytes) < cm.MinChunkSize ||
+		(req.ChunkSizeInMiB*common.MbToBytes) > cm.MaxChunkSize {
+		reqStr := req.toString()
+		err := fmt.Errorf("ChunkSizeInMiB is invalid in request: %s", reqStr)
+		log.Err("ReadMvRequest::isValid: %v", err)
+		return err
 	}
 
 	if req.ChunkIndex < 0 || req.ChunkIndex > ChunkIndexUpperBound {
-		log.Err("ReadMvRequest::isValid: ChunkIndex is invalid in request: %s", reqStr)
-		return fmt.Errorf("ChunkIndex is invalid in request: %s", reqStr)
+		reqStr := req.toString()
+		err := fmt.Errorf("ChunkIndex is invalid in request: %s", reqStr)
+		log.Err("ReadMvRequest::isValid: %v", err)
+		return err
 	}
 
 	if req.OffsetInChunk < 0 || req.OffsetInChunk >= req.ChunkSizeInMiB*common.MbToBytes {
-		log.Err("ReadMvRequest::isValid: OffsetInChunk is invalid in request: %s", reqStr)
-		return fmt.Errorf("OffsetInChunk is invalid in request: %s", reqStr)
+		reqStr := req.toString()
+		err := fmt.Errorf("OffsetInChunk is invalid in request: %s", reqStr)
+		log.Err("ReadMvRequest::isValid: %v", err)
+		return err
 	}
 
 	if req.Length <= 0 || req.Length > req.ChunkSizeInMiB*common.MbToBytes {
-		log.Err("ReadMvRequest::isValid: Length is invalid in request: %s", reqStr)
-		return fmt.Errorf("length is invalid in request: %s", reqStr)
+		reqStr := req.toString()
+		err := fmt.Errorf("length is invalid in request: %s", reqStr)
+		log.Err("ReadMvRequest::isValid: %v", err)
+		return err
 	}
 
 	// check if the requested data is not overlapping between two chunks
 	// For example, if chunk size is 4MB and offset is 3MB, then length should be less than 1MB
 	if req.OffsetInChunk+req.Length > req.ChunkSizeInMiB*common.MbToBytes {
-		log.Err("ReadMvRequest::isValid: Length and OffsetInChunk are invalid in request: %s", reqStr)
-		return fmt.Errorf("length and OffsetInChunk are invalid in request: %s", reqStr)
+		reqStr := req.toString()
+		err := fmt.Errorf("length and OffsetInChunk are invalid in request: %s", reqStr)
+		log.Err("ReadMvRequest::isValid: %v", err)
+		return err
 	}
 
-	// check if the requested data size is less than the buffer size
+	// check if the requested data size is greater than the buffer provided
 	if len(req.Data) < int(req.Length) {
-		log.Err("ReadMvRequest::isValid: Data buffer size is less than requested data size in request: %s", reqStr)
-		return fmt.Errorf("data buffer size is less than requested data size in request: %s", reqStr)
+		reqStr := req.toString()
+		err := fmt.Errorf("data buffer size is less than requested data size in request: %s", reqStr)
+		log.Err("ReadMvRequest::isValid: %v", err)
+		return err
 	}
 
 	return nil
@@ -161,43 +167,42 @@ type WriteMvRequest struct {
 // helper method which can be used for logging the request contents except the data buffer
 // Use this instead of %+v to avoid printing the data buffer
 func (req *WriteMvRequest) toString() string {
-	return fmt.Sprintf("FileID: %s, MvName: %s, ChunkIndex: %d, ChunkSizeInMiB: %d, IsLastChunk: %v, Data buffer size: %d",
+	return fmt.Sprintf("{FileID: %s, MvName: %s, ChunkIndex: %d, ChunkSizeInMiB: %d, IsLastChunk: %v, Data buffer size: %d}",
 		req.FileID, req.MvName, req.ChunkIndex, req.ChunkSizeInMiB, req.IsLastChunk, len(req.Data))
 }
 
 // check if the request is valid
 func (req *WriteMvRequest) isValid() error {
-	reqStr := req.toString()
-
 	common.Assert(common.IsValidUUID(req.FileID))
-	common.Assert(req.MvName != "")
-	// TODO: add IsValidMVName check
+	common.Assert(cm.IsValidMVName(req.MvName))
 
-	// TODO: remove this after asserts are added
-	if req.FileID == "" || req.MvName == "" {
-		log.Err("WriteMvRequest::isValid: FileID or MvName is empty in request: %s", reqStr)
-		return fmt.Errorf("FileID or MvName is empty in request: %s", reqStr)
-	}
-
-	// TODO: lower and upper bounds can be modified later
-	if req.ChunkSizeInMiB <= ChunkSizeInMiBLowerBound || req.ChunkSizeInMiB >= ChunkSizeInMiBUpperBound {
-		log.Err("WriteMvRequest::isValid: ChunkSizeInMiB is invalid in request: %s", reqStr)
-		return fmt.Errorf("ChunkSizeInMiB is invalid in request: %s", reqStr)
+	if (req.ChunkSizeInMiB*common.MbToBytes) < cm.MinChunkSize ||
+		(req.ChunkSizeInMiB*common.MbToBytes) > cm.MaxChunkSize {
+		reqStr := req.toString()
+		err := fmt.Errorf("ChunkSizeInMiB is invalid in request: %s", reqStr)
+		log.Err("WriteMvRequest::isValid: %v", err)
+		return err
 	}
 
 	if req.ChunkIndex < 0 || req.ChunkIndex > ChunkIndexUpperBound {
-		log.Err("WriteMvRequest::isValid: ChunkIndex is invalid in request: %s", reqStr)
-		return fmt.Errorf("ChunkIndex is invalid in request: %s", reqStr)
+		reqStr := req.toString()
+		err := fmt.Errorf("ChunkIndex is invalid in request: %s", reqStr)
+		log.Err("WriteMvRequest::isValid: %v", err)
+		return err
 	}
 
 	if len(req.Data) == 0 || len(req.Data) > int(req.ChunkSizeInMiB*common.MbToBytes) {
-		log.Err("WriteMvRequest::isValid: Data buffer is invalid in request: %s", reqStr)
-		return fmt.Errorf("data buffer is invalid in request: %s", reqStr)
+		reqStr := req.toString()
+		err := fmt.Errorf("data buffer is invalid in request: %s", reqStr)
+		log.Err("WriteMvRequest::isValid: %v", err)
+		return err
 	}
 
 	if !req.IsLastChunk && len(req.Data) != int(req.ChunkSizeInMiB*common.MbToBytes) {
-		log.Err("WriteMvRequest::isValid: Data buffer length is not equal to chunk size in request: %s", reqStr)
-		return fmt.Errorf("data buffer length is not equal to chunk size in request: %s", reqStr)
+		reqStr := req.toString()
+		err := fmt.Errorf("data buffer length is not equal to chunk size in request: %s", reqStr)
+		log.Err("WriteMvRequest::isValid: %v", err)
+		return err
 	}
 
 	return nil

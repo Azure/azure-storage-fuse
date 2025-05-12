@@ -142,6 +142,14 @@ func GetActiveMVNames() []string {
 	return clusterMap.getActiveMVNames()
 }
 
+func GetAllNodes() map[string]struct{} {
+	return clusterMap.getAllNodes()
+}
+
+func IsClusterReadonly() bool {
+	return clusterMap.isClusterReadonly()
+}
+
 // Refresh clustermap local copy from the metadata store synchronously.
 // The call blocks till the clustermap is refreshed.
 // Once RefreshClusterMapSync() completes successfully, any clustermap call made would return results from the
@@ -263,6 +271,25 @@ func (c *ClusterMap) getActiveMVNames() []string {
 		}
 	}
 	return activeMVNames[:i]
+}
+
+// Scan through the RV list and return the set of all nodes which have contributed at least one RV.
+func (c *ClusterMap) getAllNodes() map[string]struct{} {
+	common.Assert(c.localMap != nil)
+
+	nodesMap := make(map[string]struct{})
+
+	for _, rv := range c.localMap.RVMap {
+		nodesMap[rv.NodeId] = struct{}{}
+	}
+
+	return nodesMap
+}
+
+func (c *ClusterMap) isClusterReadonly() bool {
+	common.Assert(c.localMap != nil)
+
+	return c.localMap.Readonly
 }
 
 func (c *ClusterMap) getCacheConfig() *dcache.DCacheConfig {
