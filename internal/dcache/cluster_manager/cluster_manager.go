@@ -894,6 +894,15 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 	// We should not be called for an empty rvMap.
 	common.Assert(len(rvMap) > 0)
 
+	NumReplicas := int(cmi.config.NumReplicas)
+	MvsPerRv := int(cmi.config.MvsPerRv)
+
+	common.Assert(NumReplicas >= int(cm.MinNumReplicas) && NumReplicas <= int(cm.MaxNumReplicas), NumReplicas)
+	common.Assert(MvsPerRv >= int(cm.MinMvsPerRv) && MvsPerRv <= int(cm.MaxMvsPerRv), MvsPerRv)
+	common.Assert(cm.IsValidRVMap(rvMap))
+	common.Assert(cm.IsValidMvMap(existingMVMap, NumReplicas))
+
+	//
 	//
 	// Approach:
 	//
@@ -914,14 +923,16 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 	// This continues till we do not have enough RVs (from distinct nodes) for creating
 	// a new MV.
 	//
+	// TODO: Pick component RVs across fault domains and not just across nodes.
+	//
 
-	log.Debug("ClusterManager::updateMVList: Updating current MV list according to the updated RV list.")
+	log.Debug("ClusterManager::updateMVList: Updating current MV list according to the latest RV list.")
 
 	//
 	// Represents an RV.
 	// An RV has a name and slots to indicate how many times the RV has been used up in various MVs.
 	// One MV can use an RV at most once. slots is initialized with MvsPerRv and then decremented by
-	// one everytime an RV is found as component RV to an MV.
+	// one everytime an RV is found/selected as component RV to an MV.
 	//
 	type rv struct {
 		rvName string
@@ -937,19 +948,273 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 		rvs    []rv
 	}
 
-	NumReplicas := int(cmi.config.NumReplicas)
-	MvsPerRv := int(cmi.config.MvsPerRv)
+	//
+	// All nodes with their RVs, indexed by nodeid.
+	//
+	nodeToRvs := make(map[string]node)
 
-	common.Assert(NumReplicas >= int(cm.MinNumReplicas) && NumReplicas <= int(cm.MaxNumReplicas), NumReplicas)
-	common.Assert(MvsPerRv >= int(cm.MinMvsPerRv) && MvsPerRv <= int(cm.MaxMvsPerRv), MvsPerRv)
-	common.Assert(cm.IsValidRVMap(rvMap))
-	common.Assert(cm.IsValidMvMap(existingMVMap, NumReplicas))
+	//
+	// Helper function to consume an rv slot when rvName is allotted to mvName.
+	//
+	// This updates nodeToRvs.
+	//
+	consumeRVSlot := func(mvName, rvName string) {
+		nodeId := rvMap[rvName].NodeId
+		// Simple assert to make sure rvName is present in rvMap.
+		common.Assert(len(nodeId) > 0)
+		found := false
+
+		// Decrease the slot count for the RV in nodeToRvs
+		for i := range nodeToRvs[nodeId].rvs {
+			if nodeToRvs[nodeId].rvs[i].rvName == rvName {
+				common.Assert(nodeToRvs[nodeId].rvs[i].slots > 0)
+				nodeToRvs[nodeId].rvs[i].slots--
+				found = true
+				break
+			}
+		}
+
+		common.Assert(found, fmt.Sprintf("Component RV %s for MV %s not found in node %s",
+			rvName, mvName, nodeId))
+	}
+
+	//
+	// Helper function to remove an RV from a given node.
+	// This is called when an RV is found to be "bad" and we don't want to use it for subsequent RV
+	// allocations.
+	//
+	// This updates nodeToRvs.
+	//
+	deleteRVFromNode := func(deleteRvName string) {
+		nodeId := rvMap[deleteRvName].NodeId
+		// Simple assert to make sure deleteRvName is present in rvMap.
+		common.Assert(len(nodeId) > 0)
+		found := false
+
+		for i, rv := range nodeToRvs[nodeId].rvs {
+			if rv.rvName != deleteRvName {
+				continue
+			}
+
+			// Delete rv from the list of RVs for the node.
+			node := nodeToRvs[nodeId]
+			node.rvs = append(node.rvs[:i], node.rvs[i+1:]...)
+			nodeToRvs[nodeId] = node
+
+			found = true
+			log.Debug("ClusterManager::deleteRVFromNode: Deleted RV %s from node %s", deleteRvName, nodeId)
+			break
+		}
+
+		common.Assert(found, fmt.Sprintf("RV %s not found in node %s", deleteRvName, nodeId))
+	}
+
+	//
+	// Helper function to perform nodeToRvs trimming. It does the following:
+	// - Remove RVs whose slot count have reached 0.
+	// - Remove nodes with no RVs left.
+	//
+	// This must be called after one or more RVs are assigned to an MV (fix-mv or new-mv).
+	//
+	// This updates nodeToRvs.
+	//
+	trimNodeToRvs := func() {
+		//
+		// Check if any node has exhausted all its RV's, remove such nodes from the nodeToRvs map.
+		//
+		for nodeId, node := range nodeToRvs {
+			for j := 0; j < len(node.rvs); {
+				// Remove an RV if it has no free slots left.
+				if node.rvs[j].slots == 0 {
+					node.rvs = append(node.rvs[:j], node.rvs[j+1:]...)
+				} else {
+					j++
+				}
+			}
+
+			// If the node has no RVs left, remove it from the map.
+			if len(node.rvs) == 0 {
+				delete(nodeToRvs, nodeId)
+			} else {
+				nodeToRvs[nodeId] = node
+			}
+		}
+	}
+
+	//
+	// Helper function to replace offline RVs of an MV with suitable good RVs. If successful it fixes the
+	// MV stored in existingMVMap[mvName], else if it fails it leaves existingMVMap[mvName] unchanged.
+	// This implements the fix-mv workflow.
+	// This must be called after the degrade-mv workflow has run and the state of component RVs have been
+	// duly updated.
+	//
+	fixMV := func(mvName string, mv dcache.MirroredVolume) {
+		//
+		// Fix-mv must be run only for degraded MVs.
+		// A degraded MV has one or more (but not all) component RVs as offline.
+		//
+		common.Assert(mv.State == dcache.StateDegraded, mvName, mv.State)
+
+		// MV must have all the component RVs set.
+		common.Assert(len(mv.RVs) == NumReplicas, len(mv.RVs), NumReplicas)
+
+		offlineRv := 0
+		excludeNodes := make(map[string]struct{})
+		excludeRVNames := make(map[string]struct{})
+
+		//
+		// Pass 1: Make a list of nodes and RVs to be excluded when picking "good" RVs in the later part.
+		//         Those nodes are excluded which contribute at least one good component RV.
+		//         Those component RVs are excluded which are offline.
+		//
+		for rvName := range mv.RVs {
+			// Only valid RVs can be used as component RVs for an MV.
+			_, exists := rvMap[rvName]
+			common.Assert(exists)
+
+			//
+			// Fix-mv workflow is run after degrade-mv/offline-mv workflows, so component RV states
+			// must have been correctly updated. Also component RV state must be online, offline or
+			// syncing.
+			//
+
+			// If state of RV in rvMap is offline, state of component RV in MV MUST be offline.
+			// Note that we can have an RV as online in rvMap but still not online in MV, since once
+			// an RV goes offline and comes back it cannot simply be marked online in the MV, it has
+			// to go through degrade-mv/fix-mv workflows.
+			common.Assert(rvMap[rvName].State == dcache.StateOnline ||
+				mv.RVs[rvName] == dcache.StateOffline,
+				rvName, rvMap[rvName].State, mv.RVs[rvName])
+
+			common.Assert(mv.RVs[rvName] == dcache.StateOnline ||
+				mv.RVs[rvName] == dcache.StateOffline ||
+				mv.RVs[rvName] == dcache.StateSyncing,
+				rvName, mv.RVs[rvName])
+
+			// If this RV is not offline, its containing node must be excluded for replacement RV(s).
+			if mv.RVs[rvName] != dcache.StateOffline {
+				excludeNodes[rvMap[rvName].NodeId] = struct{}{}
+				continue
+			}
+
+			// Offline RVs must be excluded.
+			excludeRVNames[rvName] = struct{}{}
+
+			offlineRv++
+		}
+
+		// Degraded MVs must have one or more but not all component RVs as offline.
+		common.Assert(offlineRv != 0 && offlineRv < NumReplicas, offlineRv, NumReplicas)
+
+		//
+		// Pass 2: For all component RVs that are offline, find a suitable RV.
+		//         A suitable RV is one, that:
+		//         - Does not come from any node in excludeNodes list.
+		//         - Is not one of excludeRVNames.
+		//         - Has the higher availableSpace/
+		//
+		// Shuffle the nodes to encourage random selection of replacement RV(s).
+		// We then iterate over the availableNodes list and pick the 1st suitable RV.
+		//
+		var availableNodes []node
+		for _, n := range nodeToRvs {
+			availableNodes = append(availableNodes, n)
+
+		}
+
+		rand.Shuffle(len(availableNodes), func(i, j int) {
+			availableNodes[i], availableNodes[j] = availableNodes[j], availableNodes[i]
+		})
+
+		for rvName := range mv.RVs {
+			// Only offline component RVs need to be "fixed" (aka replaced).
+			if mv.RVs[rvName] != dcache.StateOffline {
+				continue
+			}
+
+			foundReplacement := false
+			// Iterate over the shuffled nodes list and pick the first suitable RV.
+			for _, node := range availableNodes {
+				_, ok := excludeNodes[node.nodeId]
+				if ok {
+					// Skip excluded nodes.
+					continue
+				}
+
+				// Potential node, pick first suitable RV.
+				for idx := range node.rvs {
+					newRvName := node.rvs[idx].rvName
+					_, ok := excludeRVNames[newRvName]
+					if ok {
+						// Skip excluded RVs.
+						continue
+					}
+
+					common.Assert(rvName != newRvName)
+
+					// TODO: Need to find out space requirement for the MV and exclude RVs
+					//       which do not have enough availableSpace.
+
+					// Use this RV to replace older RV.
+					mv.RVs[newRvName] = dcache.StateOutOfSync
+					// Remove the bad RV from MV.
+					delete(mv.RVs, rvName)
+
+					//
+					// Now mv is updated to correctly reflect new selected RV, with bad RV removed.
+					// We don't yet update existingMVMap, we will do it once joinMV() returns
+					// successfully.
+					//
+
+					log.Debug("ClusterManager::fixMV: Replacing (%s -> %s) for %s",
+						rvName, newRvName, mvName)
+					foundReplacement = true
+					break
+				}
+
+				// Once we pick an RV from a node, it cannot be used again for another RV for the MV.
+				excludeNodes[node.nodeId] = struct{}{}
+
+				if foundReplacement {
+					break
+				}
+			}
+
+		}
+
+		//
+		// Ok, we have selected a replacement RV for each offline component RV, but before we can finalize
+		// the selection, we need to check with the RV.
+		// Call joinMV() and check if all component RVs are able to join successfully.
+		//
+		// Iff joinMV() is successful, consume one slot for each component RV and update existingMVMap.
+		//
+		// TODO: Set reserveBytes correctly, querying it from our in-core RV info maintained by RPC server.
+		//
+		failedRV, err := cmi.joinMV(mvName, mv, 0 /* reserveBytes */)
+		if err == nil {
+			log.Info("ClusterManager::fixMV: Successfully joined all component RVs %+v to MV %s",
+				mv.RVs, mvName)
+			for rvName := range mv.RVs {
+				if mv.RVs[rvName] == dcache.StateOutOfSync {
+					consumeRVSlot(mvName, rvName)
+				}
+			}
+			existingMVMap[mvName] = mv
+		} else {
+			//
+			// If we fail to fix the MV we simply return leaving the broken MV in existingMVMap.
+			// TODO: We should add retries here.
+			//
+			log.Err("ClusterManager::fixMV: Error joining RV %s with MV %s: %v",
+				failedRV, mvName, err)
+		}
+	}
 
 	//
 	// Populate the node map (indexed by nodeid) with each node representing all its RVs.
-	// This is the nodeToRvs.
+	// This is the nodeToRvs map.
 	//
-	nodeToRvs := make(map[string]node)
 	for rvName, rvInfo := range rvMap {
 		common.Assert(cm.IsValidRV(&rvInfo))
 
@@ -1021,25 +1286,43 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 			// Note that offline RVs are not considered as component RVs so we don't bother updating
 			// their slot count.
 			//
-			nodeId := rvMap[rvName].NodeId
-			found := false
-			for i := range len(nodeToRvs[nodeId].rvs) {
-				if nodeToRvs[nodeId].rvs[i].rvName == rvName {
-					common.Assert(nodeToRvs[nodeId].rvs[i].slots > 0)
-					nodeToRvs[nodeId].rvs[i].slots--
-					found = true
-					break
-				}
-			}
-			common.Assert(found, fmt.Sprintf("Component RV %s for MV %s not found in node %s",
-				rvName, mvName, nodeId))
+			consumeRVSlot(mvName, rvName)
 		}
 	}
+
+	//
+	// Check if any node has exhausted all its RV's, remove such nodes from the nodeToRvs map.
+	// Also remove RVs which are fully consumed (no free slots left).
+	//
+	trimNodeToRvs()
 
 	log.Debug("ClusterManager::updateMVList: existingMVMap after phase#1: %v", existingMVMap)
 
 	//
 	// Phase 2:
+	//
+	// Fix the degraded MVs by replacing their offline RVs with good ones.
+	// This is the fix-mv workflow.
+	//
+	// Note that we can/must only fix degraded MVs, offline MVs cannot be fixed as there's no good component
+	// RV to copy chunks from. Once an MV is offline it won't be used by File Manager to put any file's data.
+	// Offline MVs will just be lying around like satelite debris in space.
+	//
+	// TODO: See if we need delete-mv workflow to clean those up.
+	//
+
+	for mvName, mv := range existingMVMap {
+		if mv.State != dcache.StateDegraded {
+			continue
+		}
+
+		fixMV(mvName, mv)
+	}
+
+	log.Debug("ClusterManager::updateMVList: existing MV map after phase#2: %v", existingMVMap)
+
+	//
+	// Phase 3:
 	//
 	// Here we run the new-mv workflow, where we add as many new MVs as we can with the available RVs, picking
 	// NumReplicas RVs for each new MV under the following conditions:
@@ -1050,24 +1333,9 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 	for {
 		//
 		// Check if any node has exhausted all its RV's, remove such nodes from the nodeToRvs map.
+		// Also remove RVs which are fully consumed (no free slots left).
 		//
-		for nodeId, node := range nodeToRvs {
-			for j := 0; j < len(node.rvs); {
-				// Remove a RV if its slots value is 0.
-				if node.rvs[j].slots == 0 {
-					node.rvs = append(node.rvs[:j], node.rvs[j+1:]...)
-				} else {
-					j++
-				}
-			}
-
-			// If the node has no RVs left, remove it from the map.
-			if len(node.rvs) == 0 {
-				delete(nodeToRvs, nodeId)
-			} else {
-				nodeToRvs[nodeId] = node
-			}
-		}
+		trimNodeToRvs()
 
 		//
 		// The nodeToRvs map is now updated with remaining nodes and their RVs.
@@ -1112,7 +1380,12 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 		common.Assert(len(selectedNodes) == NumReplicas)
 
 		for _, n := range selectedNodes {
+			// Only nodes with at least one RV will be present in selectedNodes.
+			common.Assert(len(n.rvs) > 0)
+
 			for _, r := range n.rvs {
+				common.Assert(n.nodeId == rvMap[r.rvName].NodeId, n.nodeId, rvMap[r.rvName].NodeId)
+
 				//
 				// At the beginning of this iteration we sanitized nodeToRvs map to contain
 				// only those nodes (and only those RVs) which can contribute at least one RV,
@@ -1135,104 +1408,162 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 					common.Assert(len(existingMVMap[mvName].RVs) <= NumReplicas)
 				}
 
-				found := false
-				// Decrease the slot count for the RV in nodeToRvs
-				for i := range nodeToRvs[n.nodeId].rvs {
-					if nodeToRvs[n.nodeId].rvs[i].rvName == r.rvName {
-						common.Assert(nodeToRvs[n.nodeId].rvs[i].slots > 0)
-						nodeToRvs[n.nodeId].rvs[i].slots--
-						found = true
-						break
-					}
-				}
+				//
+				// We decrease the slot count for the RV in nodeToRvs, only after a successful
+				// joinMV() call. Note that it's ok to defer slot count adjustment as one RV will
+				// be used not more than once as component RV for an MV.
+				//
 
-				common.Assert(found, fmt.Sprintf("Component RV %s for MV %s not found in node %s",
-					r.rvName, mvName, n.nodeId))
 				break
 			}
 		}
 
-		// Call join mv and check if all rv's are able to join the mv with rv list.
-		deleteRv, err := cmi.joinMV(mvName, existingMVMap[mvName])
-		if err != nil {
-			// TODO :: Should try reallocating the RVs to the MV a certain number of times
-			// before giving up and deleting the MV.
-			log.Err("ClusterManager::updateMVList: Error joining MV %s with RV %s: %v", mvName, deleteRv, err)
-
+		//
+		// Call joinMV() and check if all component RVs are able to join successfully.
+		// reserveBytes is 0 for a new-mv workflow.
+		//
+		// Iff joinMV() is successful, consume one slot for each component RV, else if joinMV() fails
+		// delete the failed RV fom nodeToRvs to prevent this RV from being picked again and failing.
+		// Also we need to remove mv frome existingMVMap.
+		//
+		failedRV, err := cmi.joinMV(mvName, existingMVMap[mvName], 0 /* reserveBytes */)
+		if err == nil {
+			log.Info("ClusterManager::updateMVList: Successfully joined all component RVs %+v to MV %s",
+				existingMVMap[mvName].RVs, mvName)
 			for rvName := range existingMVMap[mvName].RVs {
-				found := false
-				for i, node := range nodeToRvs[rvMap[rvName].NodeId].rvs {
-					if node.rvName == deleteRv {
-						// Delete rv from the list of RVs for the node.
-						rvList := nodeToRvs[rvMap[rvName].NodeId]
-						rvList.rvs = append(rvList.rvs[:i], rvList.rvs[i+1:]...)
-						nodeToRvs[rvMap[rvName].NodeId] = rvList
-						found = true
-						log.Debug("ClusterManager::updateMVList: Deleted RV %s for which joinmv failed from node %s", deleteRv, rvMap[rvName].NodeId)
-						break
-					} else if node.rvName == rvName {
-						common.Assert(node.slots < MvsPerRv)
-						node.slots++
-						found = true
-						log.Debug("ClusterManager::updateMVList: Giving back RV %s in node %s", rvName, rvMap[rvName].NodeId)
-						break
-					}
-				}
-				common.Assert(found, fmt.Sprintf("Component RV %s for MV %s not found in node %s", rvName, mvName, rvMap[rvName].NodeId))
+				consumeRVSlot(mvName, rvName)
 			}
+		} else {
+			// TODO: Give up reallocating RVs after a few failed attempts.
+			log.Err("ClusterManager::updateMVList: Error joining RV %s with MV %s: %v",
+				failedRV, mvName, err)
 
+			deleteRVFromNode(failedRV)
 			// Delete the MV from the existingMVMap.
 			delete(existingMVMap, mvName)
-		} else {
-			log.Info("ClusterManager::updateMVList: Successfully joined all componentRV's %+v to MV %s", existingMVMap[mvName].RVs, mvName)
 		}
 	}
 
-	log.Debug("ClusterManager::updateMVList: existing MV map after phase#2: %v", existingMVMap)
-	// TODO :: arrange the map entries in lexicographical order.
+	log.Debug("ClusterManager::updateMVList: existing MV map after phase#3: %v", existingMVMap)
+
 }
 
-func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) (string, error) {
-	log.Debug("ClusterManagerImpl::joinMV: Joining MV %s with rv list %+v", mvName, mv.RVs)
+// Given an MV, send JoinMV or UpdateMV RPC to all its component RVs. It fails if any of the RV fails the call.
+// This must be called from new-mv or fix-mv workflow to let the component RVs know about the new membership details.
+// It calls JoinMV for RVs joining the MV newly and UpdateMV for existing component RVs which need to be informed of
+// the updated membership details. For JoinMV RPC requests it sets the ReserveSpace to reserveBytes.
+// The caller must have updated 'mv' with the correct component RVs and their state before calling this.
+// 'reserveBytes' is the amount of space to reserve in the RV. This will be 0 when joinMV() is called from the
+// new-mv workflow, but can be non-zero when called from the fix-mv workflow for replacing an offline RV with
+// a new good RV. The new RV must need enough space to store the chunks for this MV.
+//
+// It sends JoinMV/UpdateMV based on following:
+//   - It sends JoinMV RPC to all RVs of a new MV. A new MV is one which has state of online, because we will not be
+//     called o/w for an online MV.
+//   - For existing MVs, it sends JoinMV for those RVs which have StateOutOfSync state. These are new RVs selected by
+//     fix-mv workflow.
+//   - For existing MVs, it sends UpdateMV for online component RVs.
+//
+// TODO: joinMV() should technically return more than one failed RVs.
+func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume, reserveBytes int64) (string, error) {
+	log.Debug("ClusterManagerImpl::joinMV: JoinMV(%s, %+v, reserveBytes: %d)", mvName, mv, reserveBytes)
 
 	var componentRVs []*models.RVNameAndState
+	var numRVsOnline int
+
+	// Are we called from new-mv workflow? If not, then we are called from fix-mv workflow.
+	newMV := (mv.State == dcache.StateOnline)
+
+	//
+	// JoinMV/UpdateMV RPC can only be sent in the following two cases:
+	// 1. From new-mv workflow - MV state must be online in this case.
+	// 2. From fix-mv workflow - MV state must be degraded in this case.
+	//
+	common.Assert(mv.State == dcache.StateOnline || mv.State == dcache.StateDegraded, mv.State)
+
+	// Caller must call us only with all component RVs set.
+	common.Assert(len(mv.RVs) == int(cmi.config.NumReplicas))
+
+	// reserveBytes must be non-zero only for degraded MV, for new-mv it'll be 0.
+	common.Assert(reserveBytes == 0 || mv.State == dcache.StateDegraded, reserveBytes, mv.State)
 
 	for rvName, rvState := range mv.RVs {
 		log.Debug("ClusterManagerImpl::joinMV: Populating componentRVs list MV %s with RV %s", mvName, rvName)
-		// TODO :: Add check for StateOutOfSync.
-		common.Assert(rvState == dcache.StateOnline, rvName, rvState)
+
+		//
+		// One or more (but not all) RVs will have state StateOutOfSync when joinMV() is called from
+		// fix-mv workflow.
+		//
+		common.Assert(rvState == dcache.StateOnline || rvState == dcache.StateOutOfSync,
+			mvName, rvName, rvState)
+
+		if rvState == dcache.StateOnline {
+			numRVsOnline++
+		}
+
 		componentRVs = append(componentRVs, &models.RVNameAndState{
 			Name:  rvName,
 			State: string(rvState),
 		})
 	}
 
-	// TODO :: Call joinMV on all RVs in parallel.
+	// If all component RVs are online, MV must be online, else it must be degraded.
+	common.Assert((numRVsOnline == len(mv.RVs)) == (mv.State == dcache.StateOnline), mv.State, numRVsOnline)
+
+	//
+	// TODO: Call JoinMV/UpdateMV on all RVs in parallel.
+	// TODO: If JoinMV() fails to any RV, need to send LeaveMV() to the RVs which succeeded for undoing the
+	//       reserveBytes. We can also achieve the same result in a better way by the target RV automatically
+	//       undoing the reserveBytes (and the JoinMV) if it doesn't get a SyncMV within certain timeout period.
+	//
 	for _, rv := range componentRVs {
-		log.Debug("ClusterManagerImpl::joiningMV: Joining MV %s with RV %s", mvName, rv.Name)
+		log.Debug("ClusterManagerImpl::joinMV: Joining MV %s with RV %s", mvName, rv.Name)
 
 		joinMvReq := &models.JoinMVRequest{
-			MV:     mvName,
-			RVName: rv.Name,
-			// TODO :: When fix mv workflow is implemented, we need to set the
-			// ReserveSpace to the amount of space that is needed to be
-			// allocated to the RV.
-			ReserveSpace: 0,
+			MV:           mvName,
+			RVName:       rv.Name,
+			ReserveSpace: reserveBytes,
 			ComponentRV:  componentRVs,
 		}
 
+		updateMvReq := &models.UpdateMVRequest{
+			MV:          mvName,
+			RVName:      rv.Name,
+			ComponentRV: componentRVs,
+		}
+
+		// TODO: Use timeout from some global variable.
 		timeout := 2 * time.Second
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
 
-		_, err := rpc_client.JoinMV(ctx, cm.RVNameToNodeId(rv.Name), joinMvReq)
-		common.Assert(err == nil, fmt.Sprintf("Error joining MV %s with RV %s: %v", mvName, rv.Name, err))
+		var err error
+		var action string
+
+		if newMV || mv.RVs[rv.Name] == dcache.StateOutOfSync {
+			//
+			// All RVs of a new MV are sent JoinMV RPC.
+			// else for fix-mv case outofsync component RVs are sent JoinMV RPC.
+			//
+			_, err = rpc_client.JoinMV(ctx, cm.RVNameToNodeId(rv.Name), joinMvReq)
+			action = "joining"
+		} else {
+			//
+			// Else, fix-mv and online RV, send UpdateMV.
+			//
+			common.Assert(mv.RVs[rv.Name] == dcache.StateOnline)
+			_, err = rpc_client.UpdateMV(ctx, cm.RVNameToNodeId(rv.Name), updateMvReq)
+			action = "updating"
+		}
 
 		if err != nil {
-			log.Err("ClusterManagerImpl::joinMV: Error joining MV %s with RV %s: %v", mvName, rv.Name, err)
+			err = fmt.Errorf("Error %s MV %s with RV %s: %v", action, mvName, rv.Name, err)
+			log.Err("ClusterManagerImpl::joinMV: %v", err)
+			common.Assert(false, err)
 			return rv.Name, err
 		}
 	}
+
 	return "", nil
 }
 
