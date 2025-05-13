@@ -487,13 +487,13 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 	//
 	// TODO: If we encounter some failure before we send EndSync, we need to undo this StartSync?
 	//
-	srcResp, err := sendStartSyncRequest(lioRV, sourceNodeID, startSyncReq)
+	srcSyncId, err := sendStartSyncRequest(lioRV, sourceNodeID, startSyncReq)
 	if err != nil {
 		log.Err("ReplicationManager::syncComponentRV: %v", err)
 		return
 	}
 
-	destResp, err := sendStartSyncRequest(targetRVName, targetNodeID, startSyncReq)
+	dstSyncId, err := sendStartSyncRequest(targetRVName, targetNodeID, startSyncReq)
 	if err != nil {
 		log.Err("ReplicationManager::syncComponentRV: %v", err)
 		return
@@ -505,9 +505,9 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 	syncJob := &syncJob{
 		mvName:       mvName,
 		srcRVName:    lioRV,
-		srcSyncID:    srcResp.SyncID,
+		srcSyncID:    srcSyncId,
 		destRVName:   targetRVName,
-		destSyncID:   destResp.SyncID,
+		destSyncID:   dstSyncId,
 		syncSize:     syncSize,
 		componentRVs: componentRVs,
 	}
@@ -515,7 +515,7 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 	log.Debug("ReplicationManager::syncComponentRV: Sync job created: %s", syncJob.toString())
 
 	//
-	// Copy the chunks followed by EndSync
+	// Copy all chunks from source to target replica followed by EndSync to both.
 	//
 	err = performSyncJob(syncJob)
 	if err != nil {
@@ -527,8 +527,8 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 
 // sendStartSyncRequest sends the StartSync() RPC call to the target node.
 // rvName is the RV hosted in the target node, to which the StartSync() RPC call is sent.
-func sendStartSyncRequest(rvName string, targetNodeID string, req *models.StartSyncRequest) (*models.StartSyncResponse, error) {
-	log.Debug("ReplicationManager::sendStartSyncRequest: Sending StartSync RPC call to %s/%s, target node ID %s : %v",
+func sendStartSyncRequest(rvName string, targetNodeID string, req *models.StartSyncRequest) (string, error) {
+	log.Debug("ReplicationManager::sendStartSyncRequest: Sending StartSync RPC call to %s/%s, node %s %v",
 		rvName, req.MV, targetNodeID, rpc.StartSyncRequestToString(req))
 
 	common.Assert(common.IsValidUUID(targetNodeID))
@@ -538,26 +538,28 @@ func sendStartSyncRequest(rvName string, targetNodeID string, req *models.StartS
 
 	resp, err := rpc_client.StartSync(ctx, targetNodeID, req)
 	if err != nil {
-		log.Err("ReplicationManager::sendStartSyncRequest: Failed to start sync for %s/%s [%v] : %v",
-			rvName, req.MV, err.Error(), rpc.StartSyncRequestToString(req))
-		return nil, err
+		log.Err("ReplicationManager::sendStartSyncRequest: Failed to start sync for %s/%s %v: %v",
+			rvName, req.MV, rpc.StartSyncRequestToString(req), err)
+		return "", err
 	}
 
 	common.Assert((resp != nil && common.IsValidUUID(resp.SyncID)),
 		rpc.StartSyncRequestToString(req))
 
-	log.Debug("ReplicationManager::sendStartSyncRequest: StartSync RPC response for %s/%s : %+v",
+	log.Debug("ReplicationManager::sendStartSyncRequest: StartSync RPC response for %s/%s: %+v",
 		rvName, req.MV, *resp)
 
-	return resp, nil
+	return resp.SyncID, nil
 }
 
-// This method copies the out of sync chunks from the source RV to the target RV.
+// This method copies all chunks from the source replica to the target replica.
 // Then it sends the EndSync() RPC call to both source and target nodes.
 func performSyncJob(job *syncJob) error {
 	log.Debug("ReplicationManager::performSyncJob: Sync job: %s", job.toString())
 
-	common.Assert(job.srcRVName != job.destRVName, job.srcRVName, job.destRVName)
+	common.Assert((job.srcRVName != job.destRVName) &&
+		cm.IsValidRVName(job.srcRVName) &&
+		cm.IsValidRVName(job.destRVName), job.srcRVName, job.destRVName)
 	common.Assert((job.srcSyncID != job.destSyncID &&
 		common.IsValidUUID(job.srcSyncID) &&
 		common.IsValidUUID(job.destSyncID)),
@@ -565,11 +567,12 @@ func performSyncJob(job *syncJob) error {
 
 	err := copyOutOfSyncChunks(job)
 	if err != nil {
-		log.Err("ReplicationManager::performSyncJob: Failed to copy out of sync chunks for job %s [%v]", job.toString(), err.Error())
-		return fmt.Errorf("failed to copy out of sync chunks for job %s [%v]", job.toString(), err.Error())
+		err = fmt.Errorf("failed to copy out of sync chunks for job %s [%v]", job.toString(), err)
+		log.Err("ReplicationManager::performSyncJob: %v", err)
+		return err
 	}
 
-	// call EndSync() RPC call to the source node which is hosting the source RV.
+	// Call EndSync() RPC call to the source node which is hosting the source RV.
 	srcNodeID := getNodeIDFromRVName(job.srcRVName)
 	common.Assert(common.IsValidUUID(srcNodeID))
 
@@ -582,24 +585,20 @@ func performSyncJob(job *syncJob) error {
 		SyncSize:     job.syncSize,
 	}
 
-	_, err = sendEndSyncRequest(job.srcRVName, srcNodeID, endSyncReq)
+	err = sendEndSyncRequest(job.srcRVName, srcNodeID, endSyncReq)
 	if err != nil {
-		errStr := fmt.Sprintf("Failed to end sync for %s/%s [%v] : %v",
-			job.srcRVName, job.mvName, err.Error(), rpc.EndSyncRequestToString(endSyncReq))
-		log.Err("ReplicationManager::performSyncJob: %v", errStr)
+		log.Err("ReplicationManager::performSyncJob: %v", err)
 		return err
 	}
 
-	// call EndSync() RPC call to the target node which is hosting the target RV.
+	// Call EndSync() RPC call to the target node which is hosting the target RV.
 	destNodeID := getNodeIDFromRVName(job.destRVName)
 	common.Assert(common.IsValidUUID(destNodeID))
 
 	endSyncReq.SyncID = job.destSyncID
-	_, err = sendEndSyncRequest(job.destRVName, destNodeID, endSyncReq)
+	err = sendEndSyncRequest(job.destRVName, destNodeID, endSyncReq)
 	if err != nil {
-		errStr := fmt.Sprintf("Failed to end sync for %s/%s [%v] : %v",
-			job.destRVName, job.mvName, err.Error(), rpc.EndSyncRequestToString(endSyncReq))
-		log.Err("ReplicationManager::performSyncJob: %v", errStr)
+		log.Err("ReplicationManager::performSyncJob: %v", err)
 		return err
 	}
 
@@ -743,8 +742,8 @@ func copyOutOfSyncChunks(job *syncJob) error {
 
 // sendEndSyncRequest sends the EndSync() RPC call to the target node.
 // rvName is the RV hosted in the target node, to which the EndSync() RPC call is sent.
-func sendEndSyncRequest(rvName string, targetNodeID string, req *models.EndSyncRequest) (*models.EndSyncResponse, error) {
-	log.Debug("ReplicationManager::sendEndSyncRequest: Sending EndSync RPC call to %s/%s, target node ID %s : %v",
+func sendEndSyncRequest(rvName string, targetNodeID string, req *models.EndSyncRequest) error {
+	log.Debug("ReplicationManager::sendEndSyncRequest: Sending EndSync RPC call to %s/%s, node %s %v",
 		rvName, req.MV, targetNodeID, rpc.EndSyncRequestToString(req))
 
 	common.Assert(common.IsValidUUID(targetNodeID))
@@ -754,8 +753,8 @@ func sendEndSyncRequest(rvName string, targetNodeID string, req *models.EndSyncR
 
 	resp, err := rpc_client.EndSync(ctx, targetNodeID, req)
 	if err != nil {
-		log.Err("ReplicationManager::sendEndSyncRequest: Failed to end sync for %s/%s [%v] : %v",
-			rvName, req.MV, err.Error(), rpc.EndSyncRequestToString(req))
+		log.Err("ReplicationManager::sendEndSyncRequest: Failed to end sync for %s/%s %v: %v",
+			rvName, req.MV, rpc.EndSyncRequestToString(req), err)
 
 		rpcErr := rpc.GetRPCResponseError(err)
 		if rpcErr == nil {
@@ -778,15 +777,15 @@ func sendEndSyncRequest(rvName string, targetNodeID string, req *models.EndSyncR
 			// and mark the MV as degraded. The periodic resyncMVs() will take care of resyncing the new outofsync RV.
 		}
 
-		return nil, err
+		return err
 	}
 
 	common.Assert(resp != nil, rpc.EndSyncRequestToString(req))
 
-	log.Debug("ReplicationManager::sendEndSyncRequest: EndSync RPC response for %s/%s : %+v",
+	log.Debug("ReplicationManager::sendEndSyncRequest: EndSync RPC response for %s/%s %+v",
 		rvName, req.MV, *resp)
 
-	return resp, nil
+	return nil
 }
 
 func init() {
