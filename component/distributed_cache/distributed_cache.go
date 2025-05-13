@@ -109,6 +109,7 @@ const (
 	defaultRebalancePercentage       = 80
 	defaultSafeDeletes               = false
 	defaultCacheAccess               = "automatic"
+	dcacheDirCont                    = "__DCDIRENT__"
 )
 
 // Verification to check satisfaction criteria with Component Interface
@@ -342,14 +343,13 @@ func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.
 		//
 		// Semantics for unqualified path is, if the attr exist in dcache, serve from there else get from azure.
 		//
-		dcachePath := filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
-		options.Name = dcachePath
+		options.Name = filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
 		log.Debug("DistributedCache::GetAttr : Unquailified Path getting attr from dcache, path : %s", options.Name)
 
 		if attr, err = dc.NextComponent().GetAttr(options); err != nil {
+			options.Name = rawPath
 			log.Debug("DistributedCache::GetAttr :  Unquailified Path, Failed to get attr from dcache, getting attr from Azure, path : %s",
 				options.Name)
-			options.Name = rawPath
 			return dc.NextComponent().GetAttr(options)
 		}
 	}
@@ -365,36 +365,52 @@ func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.
 }
 
 func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*internal.ObjAttr, string, error) {
+	var dirList []*internal.ObjAttr
+	var token string
+	var err error
 	isAzurePath, isDcachePath, isDebugPath, rawPath := getFS(options.Name)
 
 	if isDcachePath {
 		log.Debug("DistributedCache::StreamDir : Path is having Dcache subcomponent, path : %s", options.Name)
 		rawPath = filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
+		options.Name = rawPath
+		if dirList, token, err = dc.NextComponent().StreamDir(options); err != nil {
+			return dirList, token, err
+		}
+		dirList = parseDcacheMetadataForDirEntries(dirList)
 	} else if isAzurePath {
 		log.Debug("DistributedCache::StreamDir : Path is having Azure subcomponent, path : %s", options.Name)
+		options.Name = rawPath
+		if dirList, token, err = dc.NextComponent().StreamDir(options); err != nil {
+			return dirList, token, err
+		}
 	} else if isDebugPath {
 		log.Debug("DistributedCache::StreamDir : Path is having Debug subcomponent, path : %s", options.Name)
 		return debug.StreamDir(options)
 	} else {
+		common.Assert(rawPath == options.Name, rawPath, options.Name)
 		//
 		// Semantics for Readdir for unquailified path, If the dirent exist in both Dcache and Azure filesystem, then dirent
-		// present in the dcache takes the precedence.
+		// present in the dcache takes the precedence in the list and both the entries would be present in the listing.
+		// To findout the call come for dcache/azure, we use dcachDirCont as a prefix for tokens that come for Azure listing.
 		//
-		// TODO: Implement this, rn serving from Azure.
-		common.Assert(rawPath == options.Name, rawPath, options.Name)
-	}
-
-	options.Name = rawPath
-	dirList, token, err := dc.NextComponent().StreamDir(options)
-	if err != nil {
-		return dirList, token, err
-	}
-
-	// parse the fileSize from the metadata property of the attribute.
-	// Allow the files which are in ready state/writing state.
-	// todo: exclude the files which are in deleting state.
-	if isDcachePath {
-		dirList = parseDcacheMetadataForDirEntries(dirList)
+		var found bool
+		options.Token, found = strings.CutPrefix(options.Token, dcacheDirCont)
+		if !found {
+			log.Debug("DistributedCache::StreamDir : Listing on Unquailified path, listing from dcache, path : %s", options.Name)
+			options.Name = filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
+			if dirList, token, err = dc.NextComponent().StreamDir(options); err != nil {
+				return dirList, token, err
+			}
+			dirList = parseDcacheMetadataForDirEntries(dirList)
+		} else {
+			log.Debug("DistributedCache::StreamDir : Listing on Unquailified path, listing from Azure, path : %s", options.Name)
+			options.Name = rawPath
+			if dirList, token, err = dc.NextComponent().StreamDir(options); err != nil {
+				return dirList, token, err
+			}
+			token = dcacheDirCont + token
+		}
 	}
 
 	// If the attributes come for the dcache virtual component.
