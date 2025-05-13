@@ -95,14 +95,10 @@ func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
 		cp.clients[nodeID] = ncPool
 	}
 
-	select {
-	case client := <-ncPool.clientChan:
-		ncPool.lastUsed = time.Now()
-		return client, nil
-	default:
-		log.Err("clientPool::getRPCClient: No available RPC client in the pool for node %s", nodeID)
-		return nil, fmt.Errorf("no available RPC client in the pool for node %s", nodeID)
-	}
+	// If no client is available in the channel, then wait for a client to be released
+	client := <-ncPool.clientChan
+	ncPool.lastUsed = time.Now()
+	return client, nil
 }
 
 // releaseRPCClient releases a RPC client back to the pool
