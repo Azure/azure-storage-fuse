@@ -37,7 +37,6 @@ import (
 	"fmt"
 	"math/rand"
 	"slices"
-	"strings"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -147,36 +146,6 @@ func getRvIDFromRvName(rvName string) string {
 // return the node ID for the given rvName
 func getNodeIDFromRVName(rvName string) string {
 	return cm.RVNameToNodeId(rvName)
-}
-
-// returns the lowest index online RV from the component RVs
-func getLowestIndexOnlineRV(rvs map[string]dcache.StateEnum) string {
-	lowestIdxRVName := ""
-	for rvName, state := range rvs {
-		if state != dcache.StateOnline {
-			// this is not an online RV
-			continue
-		}
-
-		if lowestIdxRVName == "" || strings.Compare(rvName, lowestIdxRVName) < 0 {
-			lowestIdxRVName = rvName
-		}
-	}
-
-	// TODO: add assert for isValidRVName
-	if lowestIdxRVName == "" {
-		log.Debug("utils::isHostingLowestIndexRV: no online RVs found for component RVs %+v", rvs)
-		return ""
-	}
-
-	return lowestIdxRVName
-}
-
-// check if the given RV is hosted in this node
-func isRVHostedInThisNode(rvName string) bool {
-	myRVs := cm.GetMyRVs()
-	_, ok := myRVs[rvName]
-	return ok
 }
 
 // return the local cache path for the given RV name

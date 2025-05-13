@@ -59,7 +59,7 @@ func ReadMV(req *ReadMvRequest) (*ReadMvResponse, error) {
 	log.Debug("ReplicationManager::ReadMV: Received ReadMV request: %v", req.toString())
 
 	if err := req.isValid(); err != nil {
-		err = fmt.Errorf("Invalid ReadMV request parameters [%v]", err)
+		err = fmt.Errorf("invalid ReadMV request parameters [%v]", err)
 		log.Err("ReplicationManager::ReadMV: %v", err)
 		common.Assert(false, err)
 		return nil, err
@@ -99,7 +99,7 @@ retry:
 			// alas we need to fail the read.
 			//
 			if clusterMapRefreshed {
-				err = fmt.Errorf("No suitable RV found for MV %s", req.MvName)
+				err = fmt.Errorf("no suitable RV found for MV %s", req.MvName)
 				log.Err("ReplicationManager::ReadMV: %v", err)
 				return nil, err
 			}
@@ -198,7 +198,7 @@ func WriteMV(req *WriteMvRequest) (*WriteMvResponse, error) {
 	log.Debug("ReplicationManager::WriteMV: Received WriteMV request: %v", req.toString())
 
 	if err := req.isValid(); err != nil {
-		err = fmt.Errorf("Invalid WriteMV request parameters [%v]", err)
+		err = fmt.Errorf("invalid WriteMV request parameters [%v]", err)
 		log.Err("ReplicationManager::WriteMV: %v", err)
 		common.Assert(false, err)
 		return nil, err
@@ -366,7 +366,7 @@ func resyncDegradedMVs() {
 //   - Update MV in the global clustermap, marking the RV state as "online" (from "syncing") and MV state as
 //     "online" if this was the last/only sync, else leaves the MV state unchanged.
 func syncMV(mvName string, mvInfo dcache.MirroredVolume) {
-	log.Debug("ReplicationManager::ResyncMV: Resyncing MV %s %+v", mvName, mvInfo)
+	log.Debug("ReplicationManager::syncMV: Resyncing MV %s %+v", mvName, mvInfo)
 
 	common.Assert(mvInfo.State == dcache.StateDegraded, mvName, mvInfo.State)
 
@@ -374,7 +374,7 @@ func syncMV(mvName string, mvInfo dcache.MirroredVolume) {
 	// For a degraded MV, we must have a lowest index online RV.
 	common.Assert(cm.IsValidRVName(lioRV))
 
-	log.Debug("ReplicationManager::ResyncMV: Lowest index online RV for MV %s is %s", mvName, lioRV)
+	log.Debug("ReplicationManager::syncMV: Lowest index online RV for MV %s is %s", mvName, lioRV)
 
 	//
 	// Only the node hosting the lowest index online RV performs the resync.
@@ -382,14 +382,14 @@ func syncMV(mvName string, mvInfo dcache.MirroredVolume) {
 	// TODO: See if this puts pressure on the single source replica.
 	//
 	if !cm.IsMyRV(lioRV) {
-		log.Debug("ReplicationManager::ResyncMV: Lowest index online RV %s for MV %s, not hosted by us",
+		log.Debug("ReplicationManager::syncMV: Lowest index online RV %s for MV %s, not hosted by us",
 			lioRV, mvName)
 		return
 	}
 
 	componentRVs := convertRVMapToList(mvName, mvInfo.RVs)
 
-	log.Debug("ReplicationManager::ResyncMV: Component RVs for MV %s are %v",
+	log.Debug("ReplicationManager::syncMV: Component RVs for MV %s are %v",
 		mvName, rpc.ComponentRVsToString(componentRVs))
 
 	//
@@ -402,8 +402,8 @@ func syncMV(mvName string, mvInfo dcache.MirroredVolume) {
 	//
 	syncSize, err := rpc_server.GetDiskUsageOfMV(mvName, lioRV)
 	if err != nil {
-		err = fmt.Errorf("Failed to get disk usage of %s/%s [%v]", lioRV, mvName, err)
-		log.Err("ReplicationManager::ResyncMV: %v", err)
+		err = fmt.Errorf("failed to get disk usage of %s/%s [%v]", lioRV, mvName, err)
+		log.Err("ReplicationManager::syncMV: %v", err)
 		common.Assert(false, err)
 		return
 	}
@@ -414,7 +414,7 @@ func syncMV(mvName string, mvInfo dcache.MirroredVolume) {
 			continue
 		}
 
-		log.Info("ReplicationManager::ResyncMV: Starting sync job (%s/%s -> %s/%s) for syncing %d bytes",
+		log.Info("ReplicationManager::syncMV: Starting sync job (%s/%s -> %s/%s) for syncing %d bytes",
 			lioRV, mvName, rv.Name, mvName, syncSize)
 
 		go syncComponentRV(mvName, lioRV, rv.Name, syncSize, componentRVs)
@@ -490,8 +490,6 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 		log.Err("ReplicationManager::syncComponentRV: %s", errStr)
 		return
 	}
-
-	return
 }
 
 // sendStartSyncRequest sends the StartSync() RPC call to the target node.
