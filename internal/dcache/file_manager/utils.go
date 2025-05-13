@@ -93,14 +93,11 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 	//
 	// Do not allow file creation in a readonly cluster.
 	//
-	// TODO: Uncomment once the corresponding clustermap change is merged.
-	/*
-		if cm.IsClusterReadonly() {
-			err := fmt.Errorf("Cannot create file %s, cluster is readonly!", fileName)
-			log.Err("DistributedCache[FM]::NewDcacheFile: %v", err)
-			return nil, syscall.EROFS
-		}
-	*/
+	if cm.IsClusterReadonly() {
+		err := fmt.Errorf("Cannot create file %s, cluster is readonly!", fileName)
+		log.Err("DistributedCache[FM]::NewDcacheFile: %v", err)
+		return nil, syscall.EROFS
+	}
 
 	fileMetadata := &dcache.FileMetadata{
 		Filename: fileName,
