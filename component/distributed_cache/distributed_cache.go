@@ -392,7 +392,9 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 	} else {
 		//
 		// Semantics for Readdir for unquailified path, If the dirent exist in both Dcache and Azure filesystem, then dirent
-		// present in the dcache takes the precedence.
+		// present in the dcache takes the precedence over azure, also both the entries would be listed.
+		// To know which virtual fs we are currently in we use dcacheDirContToken as prefix for the tokens that get from the
+		// azure listing.
 		//
 		var found bool
 		options.Token, found = strings.CutPrefix(options.Token, dcacheDirContToken)
