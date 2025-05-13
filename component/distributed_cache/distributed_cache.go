@@ -109,6 +109,7 @@ const (
 	defaultRebalancePercentage       = 80
 	defaultSafeDeletes               = false
 	defaultCacheAccess               = "automatic"
+	dcacheDirContToken               = "__DCDIRENT__"
 )
 
 // Verification to check satisfaction criteria with Component Interface
@@ -405,6 +406,7 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 			if token == "" {
 				// Now start listing from the Azure.
 				*options.IsFsDcache = false
+				token = dcacheDirContToken
 			}
 		} else {
 			log.Debug("DistributedCache::StreamDir : Listing on Unquailified path, listing from Azure, path : %s", options.Name)
