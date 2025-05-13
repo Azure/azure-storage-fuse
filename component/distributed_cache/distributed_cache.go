@@ -343,12 +343,14 @@ func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.
 		// Semantics for unqualified path is, if the attr exist in dcache, serve from there else get from azure.
 		//
 		dcachePath := filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
+		options.Name = dcachePath
 		log.Debug("DistributedCache::GetAttr : Unquailified Path getting attr from dcache, path : %s", options.Name)
 
-		if attr, err = dc.NextComponent().GetAttr(internal.GetAttrOptions{Name: dcachePath}); err != nil {
+		if attr, err = dc.NextComponent().GetAttr(options); err != nil {
 			log.Debug("DistributedCache::GetAttr :  Unquailified Path, Failed to get attr from dcache, getting attr from Azure, path : %s",
 				options.Name)
-			return dc.NextComponent().GetAttr(internal.GetAttrOptions{Name: rawPath})
+			options.Name = rawPath
+			return dc.NextComponent().GetAttr(options)
 		}
 	}
 
