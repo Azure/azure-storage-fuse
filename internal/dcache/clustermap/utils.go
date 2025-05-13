@@ -223,37 +223,46 @@ func IsValidMvMap(mvMap map[string]dcache.MirroredVolume, expectedReplicasCount 
 	common.Assert(expectedReplicasCount > 0)
 
 	for mvName, mv := range mvMap {
-		if mv.State != dcache.StateOnline &&
-			mv.State != dcache.StateOffline &&
-			mv.State != dcache.StateDegraded {
-			return false, fmt.Errorf("MVMap: MV %s has invalid State: %s %+v", mvName, mv.State, mvMap)
+		isValid, err := IsValidMV(&mv, expectedReplicasCount)
+		if !isValid {
+			return false, fmt.Errorf("MVList: Invalid MV: %v +%v", mvName, err)
 		}
 
-		if mv.RVs == nil {
-			return false, fmt.Errorf("MVMap: MV %s has nil RVs %+v", mvName, mvMap)
-		}
-
-		if len(mv.RVs) != expectedReplicasCount {
-			return false, fmt.Errorf("MVMap: MV %s has unexpected replica count, expected (%d), found (%d) %+v",
-				mvName, expectedReplicasCount, len(mv.RVs), mvMap)
-		}
-
-		for rvName, state := range mv.RVs {
-			if !IsValidRVName(rvName) {
-				return false, fmt.Errorf("MVMap: MV %s has RV with invalid name %s %+v",
-					mvName, rvName, mvMap)
-			}
-
-			if state != dcache.StateOnline &&
-				state != dcache.StateOffline &&
-				state != dcache.StateOutOfSync &&
-				state != dcache.StateSyncing {
-				return false, fmt.Errorf("MVMap: MV %s has RV with invalid state %s %+v",
-					mvName, state, mvMap)
-			}
-		}
 	}
 
+	return true, nil
+}
+
+func IsValidMV(mv *dcache.MirroredVolume, expectedReplicasCount int) (bool, error) {
+	if mv.State != dcache.StateOnline &&
+		mv.State != dcache.StateOffline &&
+		mv.State != dcache.StateDegraded &&
+		mv.State != dcache.StateSyncing {
+		return false, fmt.Errorf("MirroredVolume: Invalid State: %s %+v", mv.State, mv)
+	}
+
+	if mv.RVs == nil {
+		return false, fmt.Errorf("MirroredVolume: Nil RVs %+v", mv)
+	}
+
+	if len(mv.RVs) != expectedReplicasCount {
+		return false, fmt.Errorf("MirroredVolume: Unexpected replica count, expected (%d), found (%d) %+v",
+			expectedReplicasCount, len(mv.RVs), mv)
+	}
+
+	for rvName, state := range mv.RVs {
+		if !IsValidRVName(rvName) {
+			return false, fmt.Errorf("MirroredVolume: RV with invalid name %s %+v",
+				rvName, mv)
+		}
+
+		if state != dcache.StateOnline &&
+			state != dcache.StateOffline &&
+			state != dcache.StateOutOfSync &&
+			state != dcache.StateSyncing {
+			return false, fmt.Errorf("MirroredVolume: RV with invalid state %s %+v", state, mv)
+		}
+	}
 	return true, nil
 }
 
