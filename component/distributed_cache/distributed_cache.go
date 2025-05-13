@@ -473,6 +473,7 @@ func (dc *DistributedCache) CreateDir(options internal.CreateDirOptions) error {
 
 		// Create Dir in Dcache
 		rawPath = filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
+		options.Name = rawPath
 		err = dc.NextComponent().CreateDir(options)
 		if err != nil {
 			log.Err("DistributedCache::CreateDir: Failed to create Dcache directory %s: %v", options.Name, err)
