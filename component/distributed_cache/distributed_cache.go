@@ -354,11 +354,9 @@ func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.
 
 	// Parse the metadata info for dcache specific files.
 	if !isAzurePath && !isDebugPath {
-		if isDcachePath {
-			err := parseDcacheMetadata(attr)
-			if err != nil {
-				return nil, err
-			}
+		err := parseDcacheMetadata(attr)
+		if err != nil {
+			return nil, err
 		}
 	}
 	return attr, nil
