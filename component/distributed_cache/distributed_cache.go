@@ -304,6 +304,8 @@ func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.
 		return nil, syscall.ENOENT
 	}
 
+	var attr *internal.ObjAttr
+	var err error
 	isAzurePath, isDcachePath, isDebugPath, rawPath := getFS(options.Name)
 
 	if isMountPointRoot(rawPath) {
@@ -320,32 +322,43 @@ func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.
 		// properties should be fetched from Dcache
 		log.Debug("DistributedCache::GetAttr : Path is having Dcache subcomponent, path : %s", options.Name)
 		rawPath = filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
+		options.Name = rawPath
+		if attr, err = dc.NextComponent().GetAttr(options); err != nil {
+			return nil, err
+		}
 	} else if isAzurePath {
 		// properties should be fetched from Azure
 		log.Debug("DistributedCache::GetAttr : Path is having Azure subcomponent, path : %s", options.Name)
+		options.Name = rawPath
+		if attr, err = dc.NextComponent().GetAttr(options); err != nil {
+			return nil, err
+		}
 	} else if isDebugPath {
 		// properties should be fetched from debugfs
 		options.Name = rawPath
-		// TODO: check if attr.path need to be chaged.
 		return debug.GetAttr(options)
 	} else {
 		common.Assert(rawPath == options.Name, rawPath, options.Name)
+		//
+		// Semantics for unqualified path is, if the attr exist in dcache, serve from there else get from azure.
+		//
+		dcachePath := filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
+		options.Name = dcachePath
+		log.Debug("DistributedCache::GetAttr : Unquailified Path getting attr from dcache, path : %s", options.Name)
+
+		if attr, err = dc.NextComponent().GetAttr(options); err != nil {
+			log.Debug("DistributedCache::GetAttr :  Unquailified Path, Failed to get attr from dcache, getting attr from Azure, path : %s",
+				options.Name)
+			options.Name = rawPath
+			return dc.NextComponent().GetAttr(options)
+		}
 	}
 
-	attr, err := dc.NextComponent().GetAttr(internal.GetAttrOptions{Name: rawPath})
-	if err != nil {
-		return nil, err
-	}
-
-	// Modify the attr if it came from specific virtual component.
-	if isAzurePath || isDcachePath {
-		attr.Path = options.Name
-		attr.Name = filepath.Base(options.Name)
-		if isDcachePath {
-			err := parseDcacheMetadata(attr)
-			if err != nil {
-				return nil, err
-			}
+	// Parse the metadata info for dcache specific files.
+	if !isAzurePath && !isDebugPath {
+		err := parseDcacheMetadata(attr)
+		if err != nil {
+			return nil, err
 		}
 	}
 	return attr, nil
@@ -360,9 +373,14 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 	} else if isAzurePath {
 		log.Debug("DistributedCache::StreamDir : Path is having Azure subcomponent, path : %s", options.Name)
 	} else if isDebugPath {
+		log.Debug("DistributedCache::StreamDir : Path is having Debug subcomponent, path : %s", options.Name)
 		return debug.StreamDir(options)
 	} else {
-		// properties should be fetched from Azure
+		//
+		// Semantics for Readdir for unquailified path, If the dirent exist in both Dcache and Azure filesystem, then dirent
+		// present in the dcache takes the precedence.
+		//
+		// TODO: Implement this, rn serving from Azure.
 		common.Assert(rawPath == options.Name, rawPath, options.Name)
 	}
 
@@ -385,6 +403,49 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 	}
 
 	return dirList, token, nil
+}
+
+func (dc *DistributedCache) CreateDir(options internal.CreateDirOptions) error {
+	isAzurePath, isDcachePath, isDebugPath, rawPath := getFS(options.Name)
+
+	if isDcachePath {
+		// Create Directory inside Dcache
+		log.Debug("DistributedCache::CreateDir: Path is having Dcache subcomponent, path: %s", options.Name)
+		rawPath = filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
+		options.Name = rawPath
+		return dc.NextComponent().CreateDir(options)
+	} else if isAzurePath {
+		// Create Directory inside Azure
+		log.Debug("DistributedCache::CreateDir: Path is having Azure subcomponent, path: %s", options.Name)
+		options.Name = rawPath
+		return dc.NextComponent().CreateDir(options)
+	} else if isDebugPath {
+		// No Permission to  create directories inside debug path
+		return syscall.EACCES
+	} else {
+		common.Assert(rawPath == options.Name, rawPath, options.Name)
+		// Semantics for creating a directory, when path doesnt have explicit namespace.
+		// Create in Azure and Dcache, fail the call if any one of them fail.
+
+		// Create Dir in Azure
+		err := dc.NextComponent().CreateDir(options)
+		if err != nil {
+			log.Err("DistributedCache::CreateDir: Failed to create Azure directory %s: %v", options.Name, err)
+			return err
+		}
+
+		// Create Dir in Dcache
+		rawPath = filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
+		err = dc.NextComponent().CreateDir(options)
+		if err != nil {
+			log.Err("DistributedCache::CreateDir: Failed to create Dcache directory %s: %v", options.Name, err)
+			return err
+		}
+		// todo : if one is success and other is failure, get to the previous state by removing the
+		// created entries for the files.
+	}
+
+	return nil
 }
 
 func (dc *DistributedCache) CreateFile(options internal.CreateFileOptions) (*handlemap.Handle, error) {
@@ -457,7 +518,7 @@ func (dc *DistributedCache) CreateFile(options internal.CreateFileOptions) (*han
 		handle.SetDcacheAllowWrites()
 	}
 	// handle.IFObj must be set IFF DCache access is allowed through this handle.
-	common.Assert(handle.IsFsDcache() == (handle.IFObj != nil))
+	common.Assert(handle.IsFsDcache() == (handle.IFObj.(*fm.DcacheFile) != nil))
 
 	return handle, nil
 }
@@ -536,7 +597,7 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 	}
 
 	// handle.IFObj must be set IFF DCache access is allowed through this handle.
-	common.Assert(handle.IsFsDcache() == (handle.IFObj != nil))
+	common.Assert(handle.IsFsDcache() == (handle.IFObj.(*fm.DcacheFile) != nil))
 	return handle, nil
 }
 

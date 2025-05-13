@@ -65,7 +65,8 @@ func NewWorkerPool(workers int) *workerPool {
 	}
 
 	// Start the workers.
-	log.Info("DistributedCache[FM]::startWorkerPool : Starting worker Pool, num workers : %d", wp.workers)
+	log.Info("DistributedCache[FM]::startWorkerPool: Starting worker Pool, num workers: %d", wp.workers)
+
 	wp.wg.Add(wp.workers)
 	for range wp.workers {
 		go wp.worker()
@@ -104,9 +105,10 @@ func (wp *workerPool) queueWork(file *DcacheFile, chunk *StagedChunk, get_chunk 
 }
 
 func (wp *workerPool) readChunk(task *task) {
-	log.Debug("DistributedCache::readChunk : Reading chunk idx : %d, chunk Len : %d, file: %s",
+	log.Debug("DistributedCache::readChunk: Reading chunk idx: %d, chunk Len: %d, file: %s",
 		task.chunk.Idx, task.chunk.Len, task.file.FileMetadata.Filename)
-	// Read From the Dcache
+
+	// Read From the Dcache.
 	readMVReq := &rm.ReadMvRequest{
 		FileID:         task.file.FileMetadata.FileID,
 		MvName:         getMVForChunk(task.chunk, task.file.FileMetadata),
@@ -120,39 +122,55 @@ func (wp *workerPool) readChunk(task *task) {
 	readMVresp, err := rm.ReadMV(readMVReq)
 
 	if err == nil {
+		// ReadMV() must read all that we asked for.
+		common.Assert(readMVresp.BytesRead == task.chunk.Len)
+
+		//
+		// ReadMV completed successfully, staged chunk is now uptodate.
+		// We should copy data to user buffer only from uptodate staged chunks.
+		//
+		common.Assert(!task.chunk.Uptodate.Load())
+		task.chunk.Uptodate.Store(true)
+
+		// Close the Err channel to indicate "no error".
 		close(task.chunk.Err)
 		return
 	}
-	log.Err("DistrubuteCache[FM]::readChunk : Download of chunk to Dcache failed chnk idx : %d, file %s, err : %s",
-		task.chunk.Idx, task.file.FileMetadata.Filename, err.Error())
-	common.Assert(err == nil && readMVresp.BytesRead == task.chunk.Len)
+
+	log.Err("DistrubuteCache[FM]::readChunk: Reading chunk from Dcache failed, chnk idx: %d, file: %s: %v",
+		task.chunk.Idx, task.file.FileMetadata.Filename, err)
 
 	task.chunk.Err <- err
 }
 
 func (wp *workerPool) writeChunk(task *task) {
-	log.Debug("DistributedCache::writeChunk : Writing chunk idx : %d, file: %s", task.chunk.Idx, task.file.FileMetadata.Filename)
+	log.Debug("DistributedCache::writeChunk: Writing chunk idx: %d, file: %s",
+		task.chunk.Idx, task.file.FileMetadata.Filename)
+
+	// Only dirty StagedChunk must be written.
+	common.Assert(task.chunk.Dirty.Load())
 
 	writeMVReq := &rm.WriteMvRequest{
 		FileID:         task.file.FileMetadata.FileID,
 		MvName:         getMVForChunk(task.chunk, task.file.FileMetadata),
 		ChunkIndex:     task.chunk.Idx,
-		Data:           task.chunk.Buf,
+		Data:           task.chunk.Buf[:task.chunk.Len],
 		ChunkSizeInMiB: task.file.FileMetadata.FileLayout.ChunkSize / common.MbToBytes,
 		IsLastChunk:    task.chunk.Len != int64(len(task.chunk.Buf)),
 	}
 
-	//Call MvWrite method for reading the chunk.
+	// Call MvWrite method for writing the chunk.
 	_, err := rm.WriteMV(writeMVReq)
-
 	if err == nil {
+		// WriteMV completed successfully, staged chunk is now no more dirty.
+		common.Assert(task.chunk.Dirty.Load())
+		task.chunk.Dirty.Store(false)
 		close(task.chunk.Err)
 		return
 	}
 
-	log.Err("DistrubuteCache[FM]::WriteChunk : Upload of chunk to DCache failed chnk idx : %d, file %s, err : %s",
-		task.chunk.Idx, task.file.FileMetadata.Filename, err.Error())
-	common.Assert(err == nil)
+	log.Err("DistrubuteCache[FM]::WriteChunk: Writing chunk to DCache failed, chnk idx: %d, file: %s: %v",
+		task.chunk.Idx, task.file.FileMetadata.Filename, err)
 
 	task.chunk.Err <- err
 }

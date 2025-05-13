@@ -145,6 +145,14 @@ func GetActiveMVNames() []string {
 	return clusterMap.getActiveMVNames()
 }
 
+func GetAllNodes() map[string]struct{} {
+	return clusterMap.getAllNodes()
+}
+
+func IsClusterReadonly() bool {
+	return clusterMap.isClusterReadonly()
+}
+
 // Refresh clustermap local copy from the metadata store synchronously.
 // The call blocks till the clustermap is refreshed.
 // Once RefreshClusterMapSync() completes successfully, any clustermap call made would return results from the
@@ -163,8 +171,22 @@ func MarkComponentRVOffline(mvName, rvName string) error {
 	return nil
 }
 
+// Tell clustermanager the updated state of one or more component RVs for
+// an MV (component RVs remaining the same).
+func UpdateComponentRVState(mvName string, mv dcache.MirroredVolume) error {
+	// Clustermanager must call RegisterMVUpdater() in startup, so we don't expect this to be nil.
+	common.Assert(componentRVStateUpdater != nil)
+	return componentRVStateUpdater(mvName, mv)
+}
+
+// RegisterComponentRVStateUpdater is how the cluster_manager registers its real implementation.
+func RegisterComponentRVStateUpdater(fn func(mvName string, mv dcache.MirroredVolume) error) {
+	componentRVStateUpdater = fn
+}
+
 var (
-	clusterMap = &ClusterMap{
+	componentRVStateUpdater func(mvName string, mv dcache.MirroredVolume) error
+	clusterMap              = &ClusterMap{
 		updatesChan: make(chan dcache.ClusterMapEvent, 8),
 		// This MUST match localClusterMapPath in clustermanager.
 		localClusterMapPath: filepath.Join(common.DefaultWorkDir, "clustermap.json"),
@@ -251,6 +273,25 @@ func (c *ClusterMap) getActiveMVNames() []string {
 		}
 	}
 	return activeMVNames[:i]
+}
+
+// Scan through the RV list and return the set of all nodes which have contributed at least one RV.
+func (c *ClusterMap) getAllNodes() map[string]struct{} {
+	common.Assert(c.localMap != nil)
+
+	nodesMap := make(map[string]struct{})
+
+	for _, rv := range c.localMap.RVMap {
+		nodesMap[rv.NodeId] = struct{}{}
+	}
+
+	return nodesMap
+}
+
+func (c *ClusterMap) isClusterReadonly() bool {
+	common.Assert(c.localMap != nil)
+
+	return c.localMap.Readonly
 }
 
 func (c *ClusterMap) getCacheConfig() *dcache.DCacheConfig {

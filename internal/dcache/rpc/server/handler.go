@@ -268,7 +268,7 @@ func (rv *rvInfo) deleteFromMVMap(mvName string) {
 
 // Increment the reserved space for this RV.
 func (rv *rvInfo) incReservedSpace(bytes int64) {
-	common.Assert(bytes > 0)
+	common.Assert(bytes >= 0)
 	rv.reservedSpace.Add(bytes)
 	log.Debug("rvInfo::incReservedSpace: reserved space for RV %s is %d", rv.rvName, rv.reservedSpace.Load())
 }
