@@ -67,6 +67,9 @@ type StreamDirOptions struct {
 	Offset uint64
 	Token  string
 	Count  int32
+	// If IsFsDcache is true, we will  enumerate this streamdir call from dcache FS.
+	// else we enumerate from Azure FS. This is used when user enumerates through an unqualified path.
+	IsFsDcache *bool
 }
 
 type CloseDirOptions struct {

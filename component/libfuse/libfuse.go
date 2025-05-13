@@ -84,6 +84,9 @@ type dirChildCache struct {
 	length   uint64              // Length of the children list
 	token    string              // Token to get next block of items from container
 	children []*internal.ObjAttr // Slice holding current block of children
+	// If IsFsDcache is true, we will  enumerate this streamdir call from dcache FS.
+	// else we enumerate from Azure FS. This is used when user enumerates through an unqualified path.
+	isFsDcache bool
 }
 
 // Structure defining your config parameters

@@ -109,7 +109,6 @@ const (
 	defaultRebalancePercentage       = 80
 	defaultSafeDeletes               = false
 	defaultCacheAccess               = "automatic"
-	dcacheDirContToken               = "__DCDIRENT__"
 )
 
 // Verification to check satisfaction criteria with Component Interface
@@ -393,12 +392,9 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 		//
 		// Semantics for Readdir for unquailified path, If the dirent exist in both Dcache and Azure filesystem, then dirent
 		// present in the dcache takes the precedence over azure, also both the entries would be listed.
-		// To know which virtual fs we are currently in we use dcacheDirContToken as prefix for the tokens that get from the
-		// azure listing.
+		// To know which virtual fs we are currently in we use options.IsFsDcache.
 		//
-		var found bool
-		options.Token, found = strings.CutPrefix(options.Token, dcacheDirContToken)
-		if !found {
+		if *options.IsFsDcache {
 			log.Debug("DistributedCache::StreamDir : Listing on Unquailified path, listing from dcache, path : %s", options.Name)
 			rawPath = filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
 			options.Name = rawPath
@@ -408,16 +404,13 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 			dirList = parseDcacheMetadataForDirEntries(dirList)
 			if token == "" {
 				// Now start listing from the Azure.
-				token = dcacheDirContToken
+				*options.IsFsDcache = false
 			}
 		} else {
 			log.Debug("DistributedCache::StreamDir : Listing on Unquailified path, listing from Azure, path : %s", options.Name)
 			options.Name = rawPath
 			if dirList, token, err = dc.NextComponent().StreamDir(options); err != nil {
 				return dirList, token, err
-			}
-			if token != "" {
-				token = dcacheDirContToken + token
 			}
 		}
 	}
