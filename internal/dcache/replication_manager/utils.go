@@ -133,6 +133,26 @@ func convertRVMapToList(mvName string, rvMap map[string]dcache.StateEnum) []*mod
 	return componentRVs
 }
 
+func convertRVListToMap(mvName string, componentRVs []*models.RVNameAndState) map[string]dcache.StateEnum {
+	rvMap := make(map[string]dcache.StateEnum)
+	for _, rv := range componentRVs {
+		common.Assert(rv != nil, "Component RV is nil")
+		common.Assert(cm.IsValidRVName(rv.Name), rv.Name)
+		common.Assert(rv.State == string(dcache.StateOnline) ||
+			rv.State == string(dcache.StateOffline) ||
+			rv.State == string(dcache.StateOutOfSync) ||
+			rv.State == string(dcache.StateSyncing), rv.Name, rv.State)
+
+		rvMap[rv.Name] = dcache.StateEnum(rv.State)
+	}
+
+	common.Assert(len(rvMap) == int(getNumReplicas()),
+		fmt.Sprintf("number of component RVs %d is not same as number of replicas %d for MV %s: %v",
+			len(rvMap), getNumReplicas(), mvName, rvMap))
+
+	return rvMap
+}
+
 // return the number of replicas
 func getNumReplicas() uint32 {
 	return cm.GetCacheConfig().NumReplicas
@@ -162,4 +182,35 @@ func getCachePathForRVName(rvName string) string {
 		fmt.Sprintf("RV %s local cache path %s does not exist", rvName, rv.LocalCachePath))
 
 	return rv.LocalCachePath
+}
+
+// Update the state of the target RV in the cluster map.
+func updateComponentRVState(mvName string, targetRVName string, targetRVState dcache.StateEnum, componentRVs []*models.RVNameAndState) error {
+	common.Assert(cm.IsValidMVName(mvName), mvName)
+	common.Assert(cm.IsValidRVName(targetRVName), targetRVName)
+	common.Assert(targetRVState == dcache.StateOnline ||
+		targetRVState == dcache.StateOffline ||
+		targetRVState == dcache.StateOutOfSync ||
+		targetRVState == dcache.StateSyncing, targetRVName, targetRVState)
+
+	rvMap := convertRVListToMap(mvName, componentRVs)
+
+	common.Assert(rvMap[targetRVName] != targetRVState,
+		fmt.Sprintf("target RV %s state is already %s", targetRVName, targetRVState))
+
+	// update the state of the target RV in the map
+	rvMap[targetRVName] = targetRVState
+
+	err := cm.UpdateComponentRVState(mvName, dcache.MirroredVolume{
+		RVs: rvMap, // no need to pass the state of MV as it is taken care by the UpdateComponentRVState method
+	})
+	if err != nil {
+		errStr := fmt.Sprintf("failed to update component RV state for MV %s, RV %s, state %s: %v",
+			mvName, targetRVName, targetRVState, err)
+		log.Err("utils::updateComponentRVState: %v", errStr)
+		common.Assert(false, errStr)
+		return err
+	}
+
+	return nil
 }
