@@ -193,7 +193,7 @@ func updateComponentRVState(mvName string, targetRVName string, targetRVState dc
 		targetRVState == dcache.StateOutOfSync ||
 		targetRVState == dcache.StateSyncing, targetRVName, targetRVState)
 
-	log.Debug("utils::updateComponentRVState: updating component RV state for MV %s, target RV %s, state %s, component RVs: %v",
+	log.Debug("utils::updateComponentRVState: MV %s, target RV %s, state %s, component RVs %v",
 		mvName, targetRVName, targetRVState, rpc.ComponentRVsToString(componentRVs))
 
 	rvMap := convertRVListToMap(mvName, componentRVs)
