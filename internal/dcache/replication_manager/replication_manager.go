@@ -483,7 +483,7 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 		mvName, lioRV, targetRVName, syncSize, rpc.ComponentRVsToString(componentRVs))
 
 	common.Assert(lioRV != targetRVName, lioRV, targetRVName)
-	common.Assert(syncSize > 0, syncSize)
+	common.Assert(syncSize >= 0, syncSize)
 
 	sourceNodeID := getNodeIDFromRVName(lioRV)
 	common.Assert(common.IsValidUUID(sourceNodeID))
