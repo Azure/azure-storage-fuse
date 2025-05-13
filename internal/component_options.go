@@ -69,7 +69,9 @@ type StreamDirOptions struct {
 	Count  int32
 	// If IsFsDcache is true, we will  enumerate this streamdir call from dcache FS.
 	// else we enumerate from Azure FS. This is used when user enumerates through an unqualified path.
-	IsFsDcache    *bool
+	IsFsDcache *bool
+	// This is used when reading the directory for unqualified path. Initially all the entries from the dcache are put
+	// into the map to later compare them with the Azure entries to avoid double occurance of the same entry.
 	DcacheEntries map[string]struct{}
 }
 
