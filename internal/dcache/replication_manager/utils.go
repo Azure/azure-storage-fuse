@@ -193,6 +193,9 @@ func updateComponentRVState(mvName string, targetRVName string, targetRVState dc
 		targetRVState == dcache.StateOutOfSync ||
 		targetRVState == dcache.StateSyncing, targetRVName, targetRVState)
 
+	log.Debug("utils::updateComponentRVState: updating component RV state for MV %s, target RV %s, state %s, component RVs: %v",
+		mvName, targetRVName, targetRVState, rpc.ComponentRVsToString(componentRVs))
+
 	rvMap := convertRVListToMap(mvName, componentRVs)
 
 	common.Assert(rvMap[targetRVName] != targetRVState,
@@ -201,8 +204,12 @@ func updateComponentRVState(mvName string, targetRVName string, targetRVState dc
 	// update the state of the target RV in the map
 	rvMap[targetRVName] = targetRVState
 
+	log.Debug("utils::updateComponentRVState: MV %s, updated component RVs : %v",
+		mvName, rvMap)
+
 	err := cm.UpdateComponentRVState(mvName, dcache.MirroredVolume{
-		RVs: rvMap, // no need to pass the state of MV as it is taken care by the UpdateComponentRVState method
+		State: dcache.StateDegraded, // NOTE: state of MV is ignored, as it is taken care by the UpdateComponentRVState() method in cluster manager
+		RVs:   rvMap,
 	})
 	if err != nil {
 		errStr := fmt.Sprintf("failed to update component RV state for MV %s, RV %s, state %s: %v",
