@@ -168,8 +168,22 @@ func MarkComponentRVOffline(mvName, rvName string) error {
 	return nil
 }
 
+// Tell clustermanager the updated state of one or more component RVs for
+// an MV (component RVs remaining the same).
+func UpdateComponentRVState(mvName string, mv dcache.MirroredVolume) error {
+	// Clustermanager must call RegisterMVUpdater() in startup, so we don't expect this to be nil.
+	common.Assert(componentRVStateUpdater != nil)
+	return componentRVStateUpdater(mvName, mv)
+}
+
+// RegisterComponentRVStateUpdater is how the cluster_manager registers its real implementation.
+func RegisterComponentRVStateUpdater(fn func(mvName string, mv dcache.MirroredVolume) error) {
+	componentRVStateUpdater = fn
+}
+
 var (
-	clusterMap = &ClusterMap{
+	componentRVStateUpdater func(mvName string, mv dcache.MirroredVolume) error
+	clusterMap              = &ClusterMap{
 		updatesChan: make(chan dcache.ClusterMapEvent, 8),
 		// This MUST match localClusterMapPath in clustermanager.
 		localClusterMapPath: filepath.Join(common.DefaultWorkDir, "clustermap.json"),
