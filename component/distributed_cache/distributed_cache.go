@@ -414,7 +414,9 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 			if dirList, token, err = dc.NextComponent().StreamDir(options); err != nil {
 				return dirList, token, err
 			}
-			token = dcacheDirContToken + token
+			if token != "" {
+				token = dcacheDirContToken + token
+			}
 		}
 	}
 
