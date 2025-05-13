@@ -95,7 +95,7 @@ func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
 		cp.clients[nodeID] = ncPool
 	}
 
-	// If no client is available in the channel, then wait for a client to be released
+	// If no client is available in the channel, then wait till a client is released back to the channel.
 	client := <-ncPool.clientChan
 	ncPool.lastUsed = time.Now()
 	return client, nil
