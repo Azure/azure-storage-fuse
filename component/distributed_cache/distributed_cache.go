@@ -395,7 +395,7 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 		// present in the dcache takes the precedence over azure, also both the entries would be listed.
 		// To know which virtual fs we are currently in we use options.IsFsDcache.
 		//
-		if *options.IsFsDcache {
+		if *options.IsFsDcache { // List from dcache.
 			log.Debug("DistributedCache::StreamDir : Listing on Unquailified path, listing from dcache, path : %s", options.Name)
 			rawPath = filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
 			options.Name = rawPath
@@ -411,15 +411,19 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 				*options.IsFsDcache = false
 				token = dcacheDirContToken
 			}
-		} else {
+		} else { // List from Azure.
 			log.Debug("DistributedCache::StreamDir : Listing on Unquailified path, listing from Azure, path : %s", options.Name)
-			if token == dcacheDirContToken {
-				token = ""
+			// Reset the token if it's starting to iterate from start.
+			if options.Token == dcacheDirContToken {
+				options.Token = ""
 			}
+
 			options.Name = rawPath
 			if dirList, token, err = dc.NextComponent().StreamDir(options); err != nil {
 				return dirList, token, err
 			}
+
+			// Ignore the dirent if it's already retured by the dcache listing.
 			var modifiedDirList []*internal.ObjAttr = make([]*internal.ObjAttr, 0, len(dirList))
 			for _, attr := range dirList {
 				if _, ok := options.DcacheEntries[attr.Name]; !ok {
