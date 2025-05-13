@@ -191,6 +191,15 @@ func NewChunkServiceHandler(rvs map[string]dcache.RawVolume) {
 	common.Assert(len(handler.rvIDMap) > 0)
 }
 
+// Create new mvInfo instance. This is used by the JoinMV() RPC call to create a new mvInfo.
+func newMVInfo(mvName string, componentRVs []*models.RVNameAndState) *mvInfo {
+	return &mvInfo{
+		mvName:       mvName,
+		componentRVs: componentRVs,
+		syncJobs:     make(map[string]syncJob),
+	}
+}
+
 // Check if the given mvPath is valid on this node.
 func (rv *rvInfo) isMvPathValid(mvPath string) bool {
 	mvName := filepath.Base(mvPath)
@@ -1061,7 +1070,7 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 
 	// add in sync map
 	sortComponentRVs(req.ComponentRV)
-	rvInfo.addToMVMap(req.MV, &mvInfo{mvName: req.MV, componentRVs: req.ComponentRV})
+	rvInfo.addToMVMap(req.MV, newMVInfo(req.MV, req.ComponentRV))
 
 	// increment the reserved space for this RV
 	rvInfo.incReservedSpace(req.ReserveSpace)
