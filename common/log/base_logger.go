@@ -34,12 +34,14 @@
 package log
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"log"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"sync"
 	"time"
 
@@ -219,16 +221,32 @@ func (l *BaseLogger) logEvent(lvl string, format string, args ...interface{}) {
 	// Only log if the log level matches the log request
 	_, fn, ln, _ := runtime.Caller(3)
 	msg := fmt.Sprintf(format, args...)
-	msg = fmt.Sprintf("%s : %s[%d] : [%s] %s [%s (%d)]: %s",
+	msg = fmt.Sprintf("%s : %s[%d][%d] : [%s] %s [%s (%d)]: %s",
 		time.Now().Format(time.UnixDate),
 		l.fileConfig.LogTag,
 		l.procPID,
+		getGID(),
 		common.MountPath,
 		lvl,
 		filepath.Base(fn), ln,
 		msg)
 
 	l.channel <- msg
+}
+
+func getGID() uint64 {
+	b := make([]byte, 64)
+	b = b[:runtime.Stack(b, false)]
+	b = bytes.TrimPrefix(b, []byte("goroutine "))
+	i := bytes.IndexByte(b, ' ')
+	if i < 0 {
+		return 0
+	}
+	gid, err := strconv.ParseUint(string(b[:i]), 10, 64)
+	if err != nil {
+		return 0
+	}
+	return gid
 }
 
 // logDumper : logEvent just enqueues an event in the channel, this thread dumps that log to the file
