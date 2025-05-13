@@ -36,10 +36,8 @@ package clustermap
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -98,6 +96,11 @@ func GetMyRVs() map[string]dcache.RawVolume {
 	return clusterMap.getMyRVs()
 }
 
+// Is rvName hosted on this node.
+func IsMyRV(rvName string) bool {
+	return clusterMap.isMyRV(rvName)
+}
+
 // It will return all the RVs Map <rvName, rvState> for the particular mvName as per local cache copy of cluster map.
 func GetRVs(mvName string) map[string]dcache.StateEnum {
 	return clusterMap.getRVs(mvName)
@@ -108,9 +111,9 @@ func IsOnline(nodeId string) bool {
 	return clusterMap.isOnline(nodeId)
 }
 
-// It will evaluate the lowest number of RV for given rv Names
-func LowestNumberRV(rvNames []string) string {
-	return clusterMap.lowestNumberRV(rvNames)
+// For a given MirroredVolume return the component RV that's online and has the lowest index.
+func LowestIndexOnlineRV(mv dcache.MirroredVolume) string {
+	return clusterMap.lowestIndexOnlineRV(mv)
 }
 
 // It will return the IP address of the given nodeId as per local cache copy of cluster map.
@@ -289,6 +292,14 @@ func (c *ClusterMap) getMyRVs() map[string]dcache.RawVolume {
 	return myRvs
 }
 
+func (c *ClusterMap) isMyRV(rvName string) bool {
+	myNodeID, err := common.GetNodeUUID()
+	common.Assert(err == nil, err)
+
+	return c.rVNameToNodeId(rvName) == myNodeID
+}
+
+
 // Get component RVs for the given MV.
 func (c *ClusterMap) getRVs(mvName string) map[string]dcache.StateEnum {
 	mv, ok := c.localMap.MVMap[mvName]
@@ -315,24 +326,27 @@ func (c *ClusterMap) isOnline(nodeId string) bool {
 	return false
 }
 
-func (c *ClusterMap) lowestNumberRV(rvNames []string) string {
-	// TODO: Uncomment once we move IsValidRVName() and other utility functions to clustermap package.
-	//common.Assert(IsValidRVName(rvNames))
+func (c *ClusterMap) lowestIndexOnlineRV(mv dcache.MirroredVolume) string {
+	// We should be called only for a degraded MV>
+	common.Assert(mv.State == dcache.StateDegraded)
 
-	lowestNumberRv := ""
-	min := math.MaxInt32
-	for _, rvName := range rvNames {
-		num, err := strconv.Atoi(strings.TrimPrefix(rvName, "rv"))
-		common.Assert(err == nil, fmt.Sprintf("Error converting rvName Suffix %s to int: %v", rvName, err))
+	lowestIdxRVName := ""
 
-		if num < min {
-			min = num
-			lowestNumberRv = rvName
+	for rvName, state := range mv.RVs {
+		if state != dcache.StateOnline {
+			continue
+		}
+
+		if lowestIdxRVName == "" || strings.Compare(rvName, lowestIdxRVName) < 0 {
+			lowestIdxRVName = rvName
 		}
 	}
 
-	log.Debug("ClusterMap::lowestNumberRV: lowest number rvName in %v is %s", rvNames, lowestNumberRv)
-	return lowestNumberRv
+	// For a degraded MV we must find the lowest index online RV,
+	common.Assert(lowestIdxRVName != "")
+	common.Assert(IsValidRVName(lowestIdxRVName))
+
+	return lowestIdxRVName
 }
 
 func (c *ClusterMap) nodeIdToIP(nodeId string) string {
