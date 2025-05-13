@@ -374,7 +374,8 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 
 	if isDcachePath {
 		log.Debug("DistributedCache::StreamDir : Path is having Dcache subcomponent, path : %s", options.Name)
-		options.Name = filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
+		rawPath = filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
+		options.Name = rawPath
 		if dirList, token, err = dc.NextComponent().StreamDir(options); err != nil {
 			return dirList, token, err
 		}
@@ -397,7 +398,8 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 		options.Token, found = strings.CutPrefix(options.Token, dcacheDirContToken)
 		if !found {
 			log.Debug("DistributedCache::StreamDir : Listing on Unquailified path, listing from dcache, path : %s", options.Name)
-			options.Name = filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
+			rawPath = filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
+			options.Name = rawPath
 			if dirList, token, err = dc.NextComponent().StreamDir(options); err != nil {
 				return dirList, token, err
 			}
