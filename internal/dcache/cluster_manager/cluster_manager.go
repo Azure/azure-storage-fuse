@@ -1205,6 +1205,10 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 					break
 				}
 			}
+			if !foundReplacement {
+				log.Debug("ClusterManager::fixMV: No replacement RV found for %s", rvName)
+				log.Debug("ClusterManager::fixMV: availableNodes %v, excludeNodes %v", availableNodes, excludeNodes)
+			}
 
 		}
 
