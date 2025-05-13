@@ -69,6 +69,8 @@ var rm *replicationMgr
 func Start() error {
 	common.Assert(rm == nil, "Replication manager already exists")
 
+	log.Debug("ReplicationManager::Start: Starting replication manager")
+
 	rm = &replicationMgr{
 		ticker: time.NewTicker(ResyncInterval * time.Second),
 		done:   make(chan bool),
@@ -84,6 +86,8 @@ func Start() error {
 // This will stop the periodic resync of degraded MVs.
 func Stop() {
 	common.Assert(rm != nil, "Replication manager does not exist")
+
+	log.Debug("ReplicationManager::Stop: Stopping replication manager")
 
 	rm.ticker.Stop()
 	rm.done <- true
