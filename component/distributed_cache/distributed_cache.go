@@ -403,6 +403,9 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 				return dirList, token, err
 			}
 			dirList = parseDcacheMetadataForDirEntries(dirList)
+			for _, attr := range dirList {
+				options.DcacheEntries[attr.Name] = struct{}{}
+			}
 			if token == "" {
 				// Now start listing from the Azure.
 				*options.IsFsDcache = false
@@ -417,6 +420,13 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 			if dirList, token, err = dc.NextComponent().StreamDir(options); err != nil {
 				return dirList, token, err
 			}
+			var modifiedDirList []*internal.ObjAttr = make([]*internal.ObjAttr, 0, len(dirList))
+			for _, attr := range dirList {
+				if _, ok := options.DcacheEntries[attr.Name]; !ok {
+					modifiedDirList = append(modifiedDirList, attr)
+				}
+			}
+			dirList = modifiedDirList
 		}
 	}
 
