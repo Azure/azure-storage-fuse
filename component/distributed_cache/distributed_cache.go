@@ -410,6 +410,9 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 			}
 		} else {
 			log.Debug("DistributedCache::StreamDir : Listing on Unquailified path, listing from Azure, path : %s", options.Name)
+			if token == dcacheDirContToken {
+				token = ""
+			}
 			options.Name = rawPath
 			if dirList, token, err = dc.NextComponent().StreamDir(options); err != nil {
 				return dirList, token, err
