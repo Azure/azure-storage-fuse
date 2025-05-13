@@ -226,6 +226,7 @@ type syncJob struct {
 // helper method which can be used for logging the request contents except the data buffer
 // Use this instead of %+v to avoid printing the data buffer
 func (job *syncJob) toString() string {
-	return fmt.Sprintf("{mvName: %s, srcRVName: %s, srcSyncID: %s, destRVName: %s, destSyncID: %s, syncSize: %d componentRVs: %v}",
-		job.mvName, job.srcRVName, job.srcSyncID, job.destRVName, job.destSyncID, job.syncSize, rpc.ComponentRVsToString(job.componentRVs))
+	return fmt.Sprintf("{%s/%s -> %s/%s, srcSyncID: %s, destSyncID: %s, syncSize: %d bytes, componentRVs: %v}",
+		job.srcRVName, job.mvName, job.destRVName, job.mvName, job.srcSyncID, job.destSyncID,
+		job.syncSize, rpc.ComponentRVsToString(job.componentRVs))
 }

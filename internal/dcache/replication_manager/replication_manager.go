@@ -53,6 +53,37 @@ import (
 	rpc_server "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/server"
 )
 
+type replicationMgr struct {
+	ticker *time.Ticker // ticker for periodic resync of degraded MVs
+
+	// Channel to signal when the replication manager is done.
+	// This is used to stop the thread doing the periodic resync of degraded MVs.
+	done chan bool
+
+	// TODO: add fields like channel for sync jobs, etc.
+}
+
+var rm *replicationMgr
+
+// Create a new replication manager instance.
+func newReplicationMgr() {
+	common.Assert(rm == nil, "Replication manager already exists")
+
+	rm = &replicationMgr{
+		ticker: time.NewTicker(ResyncInterval * time.Second),
+		done:   make(chan bool),
+	}
+}
+
+// Stop the replication manager instance.
+// This will stop the periodic resync of degraded MVs.
+func Stop() {
+	common.Assert(rm != nil, "Replication manager does not exist")
+
+	rm.ticker.Stop()
+	rm.done <- true
+}
+
 func ReadMV(req *ReadMvRequest) (*ReadMvResponse, error) {
 	common.Assert(req != nil)
 
@@ -312,12 +343,14 @@ retry:
 }
 
 func periodicResyncMVs() {
-	// TODO: Stop this ticker from Stop() method of RM.
-	ticker := time.NewTicker(ResyncInterval * time.Second)
-
-	for range ticker.C {
-		log.Debug("ReplicationManager::periodicResyncMVs: Resync of degraded MVs triggered")
-		resyncDegradedMVs()
+	for {
+		select {
+		case <-rm.done:
+			log.Info("ReplicationManager::periodicResyncMVs: stopping periodic resync of degraded MVs")
+		case <-rm.ticker.C:
+			log.Debug("ReplicationManager::periodicResyncMVs: Resync of degraded MVs triggered")
+			resyncDegradedMVs()
+		}
 	}
 }
 
@@ -672,9 +705,30 @@ func copyOutOfSyncChunks(job *syncJob) error {
 
 		putChunkResp, err := rpc_client.PutChunk(ctx, destNodeID, putChunkReq)
 		if err != nil {
-			// TODO: discuss error handling in this scenario
-			log.Err("ReplicationManager::copyOutOfSyncChunks: Failed to put chunk to RV %s [%v] : %v",
-				job.destRVName, err.Error(), rpc.PutChunkRequestToString(putChunkReq))
+			log.Err("ReplicationManager::copyOutOfSyncChunks: Failed to put chunk to %s/%s [%v] : %v",
+				job.destRVName, job.mvName, err, rpc.PutChunkRequestToString(putChunkReq))
+
+			rpcErr := rpc.GetRPCResponseError(err)
+			if rpcErr == nil {
+				//
+				// This error means that the node is not reachable.
+				// TODO:
+				// We should now run the inband RV offline detection workflow, basically we
+				// call the clustermap's updateComponentRVState() API to mark this
+				// component RV as offline and force the fix-mv workflow which will finally
+				// trigger the resync-mv workflow.
+				//
+				log.Err("ReplicationManager::copyOutOfSyncChunks: Failed to reach node %s [%v]",
+					destNodeID, err)
+
+				// TODO:: integration: call cluster manager API to update the RV from syncing to offline state,
+				// and mark the MV as degraded. FixMV workflow will take care of replacing the offline RV to
+				// an online RV. After that, the periodic resyncMVs() will take care of resyncing the new outofsync RV.
+			} else {
+				// TODO:: integration: call cluster manager API to update the RV from syncing to outofsync state,
+				// and mark the MV as degraded. The periodic resyncMVs() will take care of resyncing the new outofsync RV.
+			}
+
 			return err
 		}
 
@@ -702,6 +756,28 @@ func sendEndSyncRequest(rvName string, targetNodeID string, req *models.EndSyncR
 	if err != nil {
 		log.Err("ReplicationManager::sendEndSyncRequest: Failed to end sync for %s/%s [%v] : %v",
 			rvName, req.MV, err.Error(), rpc.EndSyncRequestToString(req))
+
+		rpcErr := rpc.GetRPCResponseError(err)
+		if rpcErr == nil {
+			//
+			// This error means that the node is not reachable.
+			// TODO:
+			// We should now run the inband RV offline detection workflow, basically we
+			// call the clustermap's updateComponentRVState() API to mark this
+			// component RV as offline and force the fix-mv workflow which will finally
+			// trigger the resync-mv workflow.
+			//
+			log.Err("ReplicationManager::copyOutOfSyncChunks: Failed to reach node %s [%v]",
+				targetNodeID, err)
+
+			// TODO:: integration: call cluster manager API to update the RV from syncing to offline state,
+			// and mark the MV as degraded. FixMV workflow will take care of replacing the offline RV to
+			// an online RV. After that, the periodic resyncMVs() will take care of resyncing the new outofsync RV.
+		} else {
+			// TODO:: integration: call cluster manager API to update the RV from syncing to outofsync state,
+			// and mark the MV as degraded. The periodic resyncMVs() will take care of resyncing the new outofsync RV.
+		}
+
 		return nil, err
 	}
 
@@ -714,5 +790,6 @@ func sendEndSyncRequest(rvName string, targetNodeID string, req *models.EndSyncR
 }
 
 func init() {
+	newReplicationMgr()
 	go periodicResyncMVs()
 }

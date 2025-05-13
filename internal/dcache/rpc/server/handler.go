@@ -103,10 +103,10 @@ type mvInfo struct {
 	mvName       string                   // mv0, mv1, etc.
 	componentRVs []*models.RVNameAndState // sorted list of component RVs for this MV
 
-	// total amount of space used up inside the MV by all the chunks stored in it.
-	// Any RV that has to replace one of the existing component RVs needs to have
-	// at least this much space. JoinMV() requests this much space to be reserved
-	// in the new-to-be-inducted RV.
+	// Total amount of space used up inside the MV directory (both MV and .sync directory),
+	// by all the chunks stored in it. Any RV that has to replace one of the existing component
+	// RVs needs to have at least this much space.
+	// JoinMV() requests this much space to be reserved in the new-to-be-inducted RV.
 	totalChunkBytes atomic.Int64
 
 	// Two MV states are interesting from an IO standpoint.
@@ -1043,6 +1043,8 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 			return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to get available disk space for RV %v [%v]", req.RVName, err.Error()))
 		}
 
+		// TODO: should we keep some buffer space for the MV,
+		// like reserve space should be 20% less than available space
 		if availableSpace < req.ReserveSpace {
 			log.Err("ChunkServiceHandler::JoinMV: Not enough space to reserve %v bytes for joining MV %v", req.ReserveSpace, req.MV)
 			return nil, rpc.NewResponseError(rpc.InvalidRequest, fmt.Sprintf("not enough space to reserve %v bytes for joining MV %v", req.ReserveSpace, req.MV))
