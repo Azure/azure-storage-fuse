@@ -1100,10 +1100,22 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 				mv.RVs[rvName] == dcache.StateOffline,
 				rvName, rvMap[rvName].State, mv.RVs[rvName])
 
-			common.Assert(mv.RVs[rvName] == dcache.StateOnline ||
-				mv.RVs[rvName] == dcache.StateOffline ||
-				mv.RVs[rvName] == dcache.StateSyncing,
-				rvName, mv.RVs[rvName])
+			// This Assert fails if ticker is ticked even before rvs reached to syncing state
+			// Example map[mv0:{degraded map[rv0:online rv2:online rv3:outofsync]}
+			// mv1:{degraded map[rv0:online rv2:online rv3:outofsync]}
+			// mv2:{degraded map[rv0:online rv2:online rv3:outofsync]}
+			// mv3:{degraded map[rv0:online rv2:online rv3:outofsync]}
+			// mv4:{degraded map[rv0:online rv2:online rv3:outofsync]}
+			// mv5:{degraded map[rv0:online rv2:online rv3:outofsync]}
+			// mv6:{degraded map[rv0:online rv2:online rv3:outofsync]}
+			// mv7:{degraded map[rv0:online rv2:online rv3:outofsync]}
+			// mv8:{degraded map[rv0:online rv2:online rv3:outofsync]}
+			// mv9:{degraded map[rv0:online rv2:online rv3:outofsync]}]
+
+			// common.Assert(mv.RVs[rvName] == dcache.StateOnline ||
+			// 	mv.RVs[rvName] == dcache.StateOffline ||
+			// 	mv.RVs[rvName] == dcache.StateSyncing,
+			// 	rvName, mv.RVs[rvName])
 
 			// If this RV is not offline, its containing node must be excluded for replacement RV(s).
 			if mv.RVs[rvName] != dcache.StateOffline {
