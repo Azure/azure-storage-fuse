@@ -1110,17 +1110,13 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 			// mv2:{degraded map[rv0:offline rv2:online rv3:outofsync]}
 			// mv3:{degraded map[rv0:offline rv2:online rv3:outofsync]}
 			// mv4:{degraded map[rv0:offline rv2:online rv3:outofsync]}
-			// mv5:{degraded map[rv0:offline rv2:online rv3:outofsync]}
+			// mv5:{syncing map[rv0:offline rv2:online rv3:syncing]}
 			// mv6:{degraded map[rv0:offline rv2:online rv3:outofsync]}
 			// mv7:{degraded map[rv0:offline rv2:online rv3:outofsync]}
 			// mv8:{degraded map[rv0:offline rv2:online rv3:outofsync]}
 			// mv9:{degraded map[rv0:offline rv2:online rv3:outofsync]}].
 
 			//  ClusterManager::updateMVList: existingMVMap after phase#1: map[mv0:{degraded map[rv0:online rv2:online rv3:outofsync]} mv1:{degraded map[rv0:online rv2:online rv3:outofsync]} mv2:{degraded map[rv0:online rv2:online rv3:outofsync]} mv3:{degraded map[rv0:online rv2:online rv3:outofsync]} mv4:{degraded map[rv0:online rv2:online rv3:outofsync]} mv5:{degraded map[rv0:online rv2:online rv3:outofsync]} mv6:{degraded map[rv0:online rv2:online rv3:outofsync]} mv7:{degraded map[rv0:online rv2:online rv3:outofsync]} mv8:{degraded map[rv0:online rv2:online rv3:outofsync]} mv9:{syncing map[rv0:online rv2:online rv3:syncing]}]
-			common.Assert(mv.RVs[rvName] == dcache.StateOnline ||
-				mv.RVs[rvName] == dcache.StateOffline ||
-				mv.RVs[rvName] == dcache.StateSyncing,
-				rvName, mv.RVs[rvName])
 
 			// If this RV is not offline, its containing node must be excluded for replacement RV(s).
 			if mv.RVs[rvName] != dcache.StateOffline {
@@ -2068,8 +2064,8 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, mv dcache.Mirro
 		}
 
 		// The clustermap must now have update RV states in MV.
-		log.Info("ClusterManager::updateComponentRVState: clustermap MV is updated by %s at %d %+v",
-			cmi.myNodeId, clusterMap.LastUpdatedAt, mv)
+		log.Info("ClusterManager::updateComponentRVState: clustermap MV is updated by %s at %d %+v: Raw Data %x",
+			cmi.myNodeId, clusterMap.LastUpdatedAt, clusterMap, clusterMapByte)
 
 		break
 	}
