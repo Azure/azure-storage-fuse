@@ -463,8 +463,8 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 		// Cond2: After server has returned <= 5000 entries for dcache fs, we filter some entries. Now if the resultant len
 		// of dirents is zero, then retry to get the next list by updating the token.
 		//
-		if (len(dirList) == 0) && (token == dcacheDirContToken || *options.IsFsDcache) {
-			options.Token = dcacheDirContToken
+		if (len(dirList) == 0) && token != "" {
+			options.Token = token
 			goto listUnqualifiedPath
 		}
 	}
