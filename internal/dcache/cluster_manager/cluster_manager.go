@@ -1889,6 +1889,8 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, mv dcache.Mirro
 			common.Assert(false, err)
 			return err
 		}
+		log.Info("ClusterManager::updateComponentRVState: Fetched clusterMapBytes (%d) with etag %s., Raw data: %x",
+			len(clusterMapBytes), etag, clusterMapBytes)
 
 		common.Assert(len(clusterMapBytes) > 0)
 		common.Assert(etag != nil && len(*etag) > 0)
@@ -1896,8 +1898,8 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, mv dcache.Mirro
 		var clusterMap dcache.ClusterMap
 		err = json.Unmarshal(clusterMapBytes, &clusterMap)
 		if err != nil {
-			log.Err("ClusterManager::updateComponentRVState: Failed to unmarshal clusterMapBytes (%d): %v, Raw data: %x",
-				len(clusterMapBytes), err, clusterMapBytes)
+			log.Err("ClusterManager::updateComponentRVState: Failed to unmarshal clusterMapBytes (%d) with etag %s. Error: %v, Raw data: %x",
+				len(clusterMapBytes), etag, err, clusterMapBytes)
 			common.Assert(false, err)
 			return err
 		}
