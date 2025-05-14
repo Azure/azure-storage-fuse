@@ -409,8 +409,8 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 		//
 		if *options.IsFsDcache { // List from dcache.
 			log.Debug("DistributedCache::StreamDir : Listing on Unqualified path, listing from dcache, path : %s", options.Name)
-			rawPath = filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
-			options.Name = rawPath
+			dcachePath := filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
+			options.Name = dcachePath
 			if dirList, token, err = dc.NextComponent().StreamDir(options); err != nil {
 				return dirList, token, err
 			}
@@ -426,6 +426,12 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 				// end-of-directory.
 				*options.IsFsDcache = false
 				token = dcacheDirContToken
+			}
+
+			// If length of dirent == 0, then there might be a subsequent retry for azure/dcache fs. so rawPath in that case
+			// must not be changed.
+			if len(dirList) != 0 {
+				rawPath = dcachePath
 			}
 		} else { // List from Azure.
 			log.Debug("DistributedCache::StreamDir : Listing on Unqualified path, listing from Azure, path : %s", options.Name)
