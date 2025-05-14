@@ -42,6 +42,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -79,6 +80,9 @@ type ClusterManager struct {
 	// RPC server running on this node.
 	// It'll respond to RPC queries made from other nodes.
 	rpcServer *rpc_server.NodeServer
+
+	//  This will protect getClusterMap()+Unmarshal to not get updated by 2 threads at the same time.
+	lockClusterMap sync.Mutex
 }
 
 // Error return from here would cause clustermanager startup to fail which will prevent this node from
@@ -1346,17 +1350,6 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 			continue
 		}
 
-		// skip fixMV call if there are no offline component RVs, that means degraded Mvs are already fixed in earlier ticker
-		hasOffline := false
-		for _, rvState := range mv.RVs {
-			if rvState == dcache.StateOffline {
-				hasOffline = true
-				break
-			}
-		}
-		if !hasOffline {
-			continue
-		}
 		fixMV(mvName, mv)
 	}
 
@@ -1862,8 +1855,10 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, mv dcache.Mirro
 		}
 
 		// Get most recent clustermap copy, then we will update the requested MV and publish it.
+		cmi.lockClusterMap.Lock()
 		clusterMapBytes, etag, err := getClusterMap()
 		if err != nil {
+			cmi.lockClusterMap.Unlock()
 			log.Err("ClusterManager::updateComponentRVState: getClusterMap() failed: %v", err)
 			common.Assert(false, err)
 			return err
@@ -1873,7 +1868,9 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, mv dcache.Mirro
 		common.Assert(etag != nil && len(*etag) > 0)
 
 		var clusterMap dcache.ClusterMap
-		if err := json.Unmarshal(clusterMapBytes, &clusterMap); err != nil {
+		err = json.Unmarshal(clusterMapBytes, &clusterMap)
+		cmi.lockClusterMap.Unlock()
+		if err != nil {
 			log.Err("ClusterManager::updateComponentRVState: Failed to unmarshal clusterMapBytes (%d): %v",
 				len(clusterMapBytes), err)
 			common.Assert(false, err)
