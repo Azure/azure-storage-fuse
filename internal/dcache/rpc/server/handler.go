@@ -843,7 +843,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	mvInfo.acquireSyncOpReadLock()
 	defer mvInfo.releaseSyncOpReadLock()
 
-	if len(req.SyncId) == 0 {
+	if len(req.SyncID) == 0 {
 		//
 		// PutChunk(client) - Make sure caller only skipped offline or outofsync component RVs.
 		//
@@ -881,10 +881,10 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 		//
 		// PutChunk(sync) - Make sure the target MV replica is indeed target of this sync job.
 		//
-		syncJob, ok := mvInfo.syncJobs[req.SyncId]
+		syncJob, ok := mvInfo.syncJobs[req.SyncID]
 		if !ok {
 			errStr := fmt.Sprintf("PutChunk(sync) syncId %s not valid for %s/%s",
-				req.SyncId, rvInfo.rvName, req.Chunk.Address.MvName)
+				req.SyncID, rvInfo.rvName, req.Chunk.Address.MvName)
 			log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
 			common.Assert(false, errStr)
 			return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, errStr)
@@ -905,7 +905,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	isSrcOfSync, isTgtOfSync := mvInfo.isSourceOrTargetOfSync()
 
 	var chunkPath, hashPath string
-	if len(req.SyncId) > 0 {
+	if len(req.SyncID) > 0 {
 		//
 		// Sync PutChunk call (as opposed to a client write PutChunk call).
 		// This is called after the StartSync RPC to synchronize an OutOfSyc MV replica from a healthy MV
@@ -996,7 +996,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	// For successful sync PutChunk calls, decrement the reserved space for this RV.
 	// JoinMV would have reserved this space before starting sync.
 	//
-	if len(req.SyncId) > 0 {
+	if len(req.SyncID) > 0 {
 		rvInfo.decReservedSpace(req.Length)
 	}
 
