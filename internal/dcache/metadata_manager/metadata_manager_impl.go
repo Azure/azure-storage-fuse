@@ -742,7 +742,7 @@ func (m *BlobMetadataManager) updateClusterMapStart(clustermap []byte, etag *str
 		}
 	}
 
-	log.Debug("UpdateClusterMapStart:: Updated clustermap with path %s clustermapbytes (%d) with etag (%s)", clustermapPath, len(clustermap), etag)
+	log.Debug("UpdateClusterMapStart:: Updated clustermap with path %s clustermapbytes (%d) with etag (%s)", clustermapPath, len(clustermap), *etag)
 	return err
 }
 
