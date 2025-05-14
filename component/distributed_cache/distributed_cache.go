@@ -109,6 +109,7 @@ const (
 	defaultRebalancePercentage       = 80
 	defaultSafeDeletes               = false
 	defaultCacheAccess               = "automatic"
+	dcacheDirContToken               = "__DCDIRENT__"
 )
 
 // Verification to check satisfaction criteria with Component Interface
@@ -347,9 +348,9 @@ func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.
 		log.Debug("DistributedCache::GetAttr : Unquailified Path getting attr from dcache, path : %s", options.Name)
 
 		if attr, err = dc.NextComponent().GetAttr(options); err != nil {
+			options.Name = rawPath
 			log.Debug("DistributedCache::GetAttr :  Unquailified Path, Failed to get attr from dcache, getting attr from Azure, path : %s",
 				options.Name)
-			options.Name = rawPath
 			return dc.NextComponent().GetAttr(options)
 		}
 	}
@@ -365,39 +366,92 @@ func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.
 }
 
 func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*internal.ObjAttr, string, error) {
+	var dirList []*internal.ObjAttr
+	var token string
+	var err error
+
 	isAzurePath, isDcachePath, isDebugPath, rawPath := getFS(options.Name)
 
 	if isDcachePath {
 		log.Debug("DistributedCache::StreamDir : Path is having Dcache subcomponent, path : %s", options.Name)
 		rawPath = filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
+		options.Name = rawPath
+		if dirList, token, err = dc.NextComponent().StreamDir(options); err != nil {
+			return dirList, token, err
+		}
+		dirList = parseDcacheMetadataForDirEntries(dirList)
 	} else if isAzurePath {
 		log.Debug("DistributedCache::StreamDir : Path is having Azure subcomponent, path : %s", options.Name)
+		options.Name = rawPath
+		if dirList, token, err = dc.NextComponent().StreamDir(options); err != nil {
+			return dirList, token, err
+		}
 	} else if isDebugPath {
 		log.Debug("DistributedCache::StreamDir : Path is having Debug subcomponent, path : %s", options.Name)
 		return debug.StreamDir(options)
 	} else {
+		// When enumerating a fresh directory, options.IsFsDcache must be true.
+		common.Assert(token != "" || *options.IsFsDcache == true)
+
+		// When enumerating a fresh directory, options.DcacheEntries must be empty.
+		common.Assert(token != "" || len(options.DcacheEntries) == 0)
 		//
-		// Semantics for Readdir for unquailified path, If the dirent exist in both Dcache and Azure filesystem, then dirent
-		// present in the dcache takes the precedence.
+		// Semantics for Readdir for unquailified path, if a dirent exists in both Dcache and Azure filesystem,
+		// then dirent present in the dcache takes the precedence over Azure and the entry in Azure is masked and
+		// only the entry in dcache is listed. This is to match user expectation when they actually read such a
+		// file, the file from dcache is read, hence it makes sense to list the same.
+		// To know which virtual fs we are currently in we use options.IsFsDcache. This is set to true in opendir()
+		// and thus we start by enumerating from dcache. Once dcache enumeration hits eod (signified by empty token
+		// return) we set options.IsFsDcache to false so that on receiving the next Streamdir() call from fuse we
+		// start enumerating from Azure. We store all the entries enumerated from dcache in options.DcacheEntries
+		// map which allows us to skip any entry already listed from dcache from Azure's listing.
 		//
-		// TODO: Implement this, rn serving from Azure.
-		common.Assert(rawPath == options.Name, rawPath, options.Name)
+		if *options.IsFsDcache { // List from dcache.
+			log.Debug("DistributedCache::StreamDir : Listing on Unqualified path, listing from dcache, path : %s", options.Name)
+			rawPath = filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
+			options.Name = rawPath
+			if dirList, token, err = dc.NextComponent().StreamDir(options); err != nil {
+				return dirList, token, err
+			}
+
+			dirList = parseDcacheMetadataForDirEntries(dirList)
+			for _, attr := range dirList {
+				options.DcacheEntries[attr.Name] = struct{}{}
+			}
+
+			if token == "" {
+				// Empty token signifies end-of-directory for dcache listing, start listing from Azure.
+				// We set token to the special non-empty value to prevent fuse from treating this as
+				// end-of-directory.
+				*options.IsFsDcache = false
+				token = dcacheDirContToken
+			}
+		} else { // List from Azure.
+			// TODO: Make sure the entries are getting returned completly when the transition happens. else readdir might
+			// assume EOD before the complete listing happens.
+			log.Debug("DistributedCache::StreamDir : Listing on Unqualified path, listing from Azure, path : %s", options.Name)
+			// Reset the token if it's starting to iterate from start.
+			if options.Token == dcacheDirContToken {
+				options.Token = ""
+			}
+
+			options.Name = rawPath
+			if dirList, token, err = dc.NextComponent().StreamDir(options); err != nil {
+				return dirList, token, err
+			}
+
+			// Ignore the dirent if it's already retured by the dcache listing.
+			var modifiedDirList []*internal.ObjAttr = make([]*internal.ObjAttr, 0, len(dirList))
+			for _, attr := range dirList {
+				if _, ok := options.DcacheEntries[attr.Name]; !ok {
+					modifiedDirList = append(modifiedDirList, attr)
+				}
+			}
+			dirList = modifiedDirList
+		}
 	}
 
-	options.Name = rawPath
-	dirList, token, err := dc.NextComponent().StreamDir(options)
-	if err != nil {
-		return dirList, token, err
-	}
-
-	// parse the fileSize from the metadata property of the attribute.
-	// Allow the files which are in ready state/writing state.
-	// todo: exclude the files which are in deleting state.
-	if isDcachePath {
-		dirList = parseDcacheMetadataForDirEntries(dirList)
-	}
-
-	// If the attributes come for the dcache virtual component.
+	// While iterating the entries of the root of the container skip the cache folder.
 	if isMountPointRoot(rawPath) {
 		dirList = hideCacheMetadata(dirList)
 	}
@@ -436,6 +490,7 @@ func (dc *DistributedCache) CreateDir(options internal.CreateDirOptions) error {
 
 		// Create Dir in Dcache
 		rawPath = filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
+		options.Name = rawPath
 		err = dc.NextComponent().CreateDir(options)
 		if err != nil {
 			log.Err("DistributedCache::CreateDir: Failed to create Dcache directory %s: %v", options.Name, err)
