@@ -390,29 +390,44 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 		log.Debug("DistributedCache::StreamDir : Path is having Debug subcomponent, path : %s", options.Name)
 		return debug.StreamDir(options)
 	} else {
+		// When enumerating a fresh directory, options.IsFsDcache must be true.
+		common.Assert(token != "" || *options.IsFsDcache == true)
+
+		// When enumerating a fresh directory, options.DcacheEntries must be empty.
+		common.Assert(token != "" || len(options.DcacheEntries) == 0)
 		//
-		// Semantics for Readdir for unquailified path, If the dirent exist in both Dcache and Azure filesystem, then dirent
-		// present in the dcache takes the precedence over azure, also both the entries would be listed.
-		// To know which virtual fs we are currently in we use options.IsFsDcache.
+		// Semantics for Readdir for unquailified path, if a dirent exists in both Dcache and Azure filesystem,
+		// then dirent present in the dcache takes the precedence over Azure and the entry in Azure is masked and
+		// only the entry in dcache is listed. This is to match user expectation when they actually read such a
+		// file, the file from dcache is read, hence it makes sense to list the same.
+		// To know which virtual fs we are currently in we use options.IsFsDcache. This is set to true in opendir()
+		// and thus we start by enumerating from dcache. Once dcache enumeration hits eod (signified by empty token
+		// return) we set options.IsFsDcache to false so that on receiving the next Streamdir() call from fuse we
+		// start enumerating from Azure. We store all the entries enumerated from dcache in options.DcacheEntries
+		// map which allows us to skip any entry already listed from dcache from Azure's listing.
 		//
 		if *options.IsFsDcache { // List from dcache.
-			log.Debug("DistributedCache::StreamDir : Listing on Unquailified path, listing from dcache, path : %s", options.Name)
+			log.Debug("DistributedCache::StreamDir : Listing on Unqualified path, listing from dcache, path : %s", options.Name)
 			rawPath = filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
 			options.Name = rawPath
 			if dirList, token, err = dc.NextComponent().StreamDir(options); err != nil {
 				return dirList, token, err
 			}
+
 			dirList = parseDcacheMetadataForDirEntries(dirList)
 			for _, attr := range dirList {
 				options.DcacheEntries[attr.Name] = struct{}{}
 			}
+
 			if token == "" {
-				// Now start listing from the Azure.
+				// Empty token signifies end-of-directory for dcache listing, start listing from Azure.
+				// We set token to the special non-empty value to prevent fuse from treating this as
+				// end-of-directory.
 				*options.IsFsDcache = false
 				token = dcacheDirContToken
 			}
 		} else { // List from Azure.
-			log.Debug("DistributedCache::StreamDir : Listing on Unquailified path, listing from Azure, path : %s", options.Name)
+			log.Debug("DistributedCache::StreamDir : Listing on Unqualified path, listing from Azure, path : %s", options.Name)
 			// Reset the token if it's starting to iterate from start.
 			if options.Token == dcacheDirContToken {
 				options.Token = ""
