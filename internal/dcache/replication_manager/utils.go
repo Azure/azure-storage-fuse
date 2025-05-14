@@ -55,7 +55,7 @@ const (
 	ChunkIndexUpperBound = 1e9
 
 	// Time interval in seconds for resyncing the degraded MV.
-	ResyncInterval = 30
+	ResyncInterval = 10
 )
 
 func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *models.RVNameAndState {
