@@ -704,9 +704,9 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	//	 refresh.
 	// TODO: See if going ahead and checking the chunk anyways is better.
 	//
-	if rvNameAndState.State != dcache.StateOnline {
+	if rvNameAndState.State != string(dcache.StateOnline) {
 		errStr := fmt.Sprintf("GetChunk request for %s cannot be satisfied by component RV %s in state %s",
-				  req.Address.MvName, rvInfo.rvName, rvNameAndState.State)
+			req.Address.MvName, rvInfo.rvName, rvNameAndState.State)
 		log.Err("ChunkServiceHandler::GetChunk: %s", errStr)
 		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, errStr)
 	}
@@ -828,35 +828,43 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 
 	componentRVsInMV := mvInfo.getComponentRVs()
 
+	//
+	// Acquire read lock on the opMutex for this MV to block any StartSync request from updating rvInfo while
+	// we are accessing it. Note that depending on the sync state of an MV replica, the client PutChunk requests
+	// may need to be saved in regular or the sync mv folder. This read lock prevents any races in that.
+	//
+	mvInfo.acquireSyncOpReadLock()
+	defer mvInfo.releaseSyncOpReadLock()
+
 	if len(req.SyncId) == 0 {
 		//
 		// PutChunk(client) - Make sure caller only skipped offline or outofsync component RVs.
 		//
-	 	common.Assert(len(req.ComponentRV) == len(componentRVsInMV),
-				len(req.ComponentRV), len(componentRVsInMV))
+		common.Assert(len(req.ComponentRV) == len(componentRVsInMV),
+			len(req.ComponentRV), len(componentRVsInMV))
 
 		for _, rv := range req.ComponentRV {
 			common.Assert(rv != nil, "Component RV is nil")
-			rvNameAndState := getComponentRVState(componentRVsInMV, rv.rvName)
+			rvNameAndState := getComponentRVState(componentRVsInMV, rv.Name)
 
 			// Sender's clustermap has a component RV which is not part of this MV.
 			if rvNameAndState == nil {
 				errStr := fmt.Sprintf("PutChunk(client) sender has a non-existent RV %s/%s",
-					rv.rvName, req.Chunk.Address.MvName)
+					rv.Name, req.Chunk.Address.MvName)
 				log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
 				common.Assert(false, errStr)
 				return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, errStr)
 			}
 
 			// Sender would skip component RVs which are either offline or outofsync.
-			senderSkippedRV := (rv.State == dcache.StateOffline || rv.State == dcache.StateOutOfSync)
+			senderSkippedRV := (rv.State == string(dcache.StateOffline) || rv.State == string(dcache.StateOutOfSync))
 			// If RV info has the RV as offline or outofsync it'll be properly sync'ed later.
-			isRVSafeToSkip := (rvNameAndState.State == dcache.StateOffline ||
-						rvNameAndState.State == dcache.StateOutOfSync)
+			isRVSafeToSkip := (rvNameAndState.State == string(dcache.StateOffline) ||
+				rvNameAndState.State == string(dcache.StateOutOfSync))
 
 			if senderSkippedRV && !isRVSafeToSkip {
 				errStr := fmt.Sprintf("PutChunk(client) sender skipped RV %s/%s in invalid state %s",
-					rv.rvName, req.Chunk.Address.MvName, rvNameAndState.State)
+					rv.Name, req.Chunk.Address.MvName, rvNameAndState.State)
 				log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
 				common.Assert(false, errStr)
 				return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, errStr)
@@ -869,7 +877,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 		syncJob, ok := mvInfo.syncJobs[req.SyncId]
 		if !ok {
 			errStr := fmt.Sprintf("PutChunk(sync) syncId %s not valid for %s/%s",
-				req.SyncId, rv.rvName, req.Chunk.Address.MvName)
+				req.SyncId, rvInfo.rvName, req.Chunk.Address.MvName)
 			log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
 			common.Assert(false, errStr)
 			return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, errStr)
@@ -878,14 +886,6 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 		common.Assert(syncJob.targetRVName == "")
 		common.Assert(syncJob.sourceRVName != "")
 	}
-
-	//
-	// Acquire read lock on the opMutex for this MV to block any StartSync request from updating rvInfo while
-	// we are accessing it. Note that depending on the sync state of an MV replica, the client PutChunk requests
-	// may need to be saved in regular or the sync mv folder. This read lock prevents any races in that.
-	//
-	mvInfo.acquireSyncOpReadLock()
-	defer mvInfo.releaseSyncOpReadLock()
 
 	// TODO: check later if lock is needed
 	// acquire lock for the chunk address to prevent concurrent writes

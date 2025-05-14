@@ -255,7 +255,7 @@ retry:
 					Hash: "", // TODO: hash validation will be done later
 				},
 				Length:      int64(len(req.Data)),
-				IsSync:      false, // this is regular client write
+				SyncId:      "", // this is regular client write
 				ComponentRV: componentRVs,
 			}
 
