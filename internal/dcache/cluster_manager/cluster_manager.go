@@ -1116,6 +1116,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 			// mv8:{degraded map[rv0:offline rv2:online rv3:outofsync]}
 			// mv9:{degraded map[rv0:offline rv2:online rv3:outofsync]}].
 
+			//  ClusterManager::updateMVList: existingMVMap after phase#1: map[mv0:{degraded map[rv0:online rv2:online rv3:outofsync]} mv1:{degraded map[rv0:online rv2:online rv3:outofsync]} mv2:{degraded map[rv0:online rv2:online rv3:outofsync]} mv3:{degraded map[rv0:online rv2:online rv3:outofsync]} mv4:{degraded map[rv0:online rv2:online rv3:outofsync]} mv5:{degraded map[rv0:online rv2:online rv3:outofsync]} mv6:{degraded map[rv0:online rv2:online rv3:outofsync]} mv7:{degraded map[rv0:online rv2:online rv3:outofsync]} mv8:{degraded map[rv0:online rv2:online rv3:outofsync]} mv9:{syncing map[rv0:online rv2:online rv3:syncing]}]
 			common.Assert(mv.RVs[rvName] == dcache.StateOnline ||
 				mv.RVs[rvName] == dcache.StateOffline ||
 				mv.RVs[rvName] == dcache.StateSyncing,
@@ -1358,6 +1359,29 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 			continue
 		}
 
+		// skip fixMV call if there are no offline component RVs, that means degraded Mvs are already fixed in earlier ticker
+		// Why - This is also get called from
+		// 		 /home/dcacheuser/azure-storage-fuse/common/assert.go:57 +0x99
+		// github.com/Azure/azure-storage-fuse/v2/internal/dcache/cluster_manager.(*ClusterManager).updateMVList.func4({0xc0022a5d3c, 0x3}, {{0xc0022a5d10?, 0xc002401dc0?}, 0xc0022ab020?})
+		//         /home/dcacheuser/azure-storage-fuse/internal/dcache/cluster_manager/cluster_manager.go:1119 +0x102f
+		// github.com/Azure/azure-storage-fuse/v2/internal/dcache/cluster_manager.(*ClusterManager).updateMVList(0xc0001ea380, 0xc0022aaf90, 0xc0022aafc0)
+		//         /home/dcacheuser/azure-storage-fuse/internal/dcache/cluster_manager/cluster_manager.go:1361 +0xc5a
+		// github.com/Azure/azure-storage-fuse/v2/internal/dcache/cluster_manager.(*ClusterManager).updateComponentRVState(0xc0001ea380, {0xc005001c6c, 0x3}, {{0x125cbf5, 0x8}, 0xc00080e930})
+		//         /home/dcacheuser/azure-storage-fuse/internal/dcache/cluster_manager/cluster_manager.go:2026 +0x178f
+		// github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap.UpdateComponentRVState({0xc005001c6c, 0x3}, {{0x125cbf5?, 0xc0008298c0?}, 0xc00080e930?})
+		//         /home/dcacheuser/azure-storage-fuse/internal/dcache/clustermap/clustermap.go:179 +0x71
+		// github.com/Azure/azure-storage-fuse/v2/internal/dcache/replication_manager.updateComponentRVState({0xc005001c6c, 0x3}, {0xc005001c69, 0x3}, {0x125ab44, 0x7}, {0xc0008282c0, 0x3, 0x4})
+		// And at that time only 1 mv is fixed from degraded to syncing with rv fixed from outofSync -> syncing, other MVs are still pending
+		hasOffline := false
+		for _, rvState := range mv.RVs {
+			if rvState == dcache.StateOffline {
+				hasOffline = true
+				break
+			}
+		}
+		if !hasOffline {
+			continue
+		}
 		fixMV(mvName, mv)
 	}
 
