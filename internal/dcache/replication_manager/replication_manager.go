@@ -196,11 +196,15 @@ retry:
 			break
 		}
 
-		// TODO: we should handle errors that indicate retrying from a different RV would help.
-		// RVs are the final source of truth wrt MV membership (and anything else),
-		// so if the target RV feels that the sender seems to have out-of-date clustermap,
-		// it can help him by failing the request with an appropriate error and then
-		// caller should fetch the latest clustermap and then try again.
+		//
+		// TODO: We should handle errors that indicate retrying from a different RV would help.
+		// 	 RVs are the final source of truth wrt MV membership (and anything else),
+		// 	 so if the target RV feels that the sender seems to have out-of-date clustermap,
+		// 	 it can help him by failing the request with an appropriate error and then
+		// 	 caller should fetch the latest clustermap and then try again.
+		//       Note that the current code will also work as it'll refresh the clustermap after
+		//	 read attempts from all current component RVs fail, but we can be more efficient.
+		//
 
 		log.Err("ReplicationManager::ReadMV: Failed to get chunk from node %s for request %v [%v]",
 			targetNodeID, rpc.GetChunkRequestToString(rpcReq), err)
@@ -254,6 +258,8 @@ retry:
 	// Get component RVs for MV, from clustermap.
 	componentRVs := getComponentRVsForMV(req.MvName)
 
+	numReplicaWrites := 0
+
 	log.Debug("ReplicationManager::WriteMV: Component RVs for %s are: %v",
 		req.MvName, rpc.ComponentRVsToString(componentRVs))
 
@@ -294,7 +300,7 @@ retry:
 					Hash: "", // TODO: hash validation will be done later
 				},
 				Length:      int64(len(req.Data)),
-				IsSync:      false, // this is regular client write
+				SyncId:      "", // this is regular client write
 				ComponentRV: componentRVs,
 			}
 
@@ -352,9 +358,19 @@ retry:
 
 			common.Assert(rpcResp != nil, "PutChunk RPC response is nil")
 			log.Debug("ReplicationManager::WriteMV: PutChunk successful RPC response: %v", rpc.PutChunkResponseToString(rpcResp))
+
+			numReplicaWrites++
 		} else {
 			common.Assert(false, "Unexpected RV state", rv.State, rv.Name)
 		}
+	}
+
+	// For a non-offline MV, at least one replica write should succeed.
+	if numReplicaWrites == 0 {
+		err := fmt.Errorf("WriteMV could not write to any replica: %v", req.toString())
+		log.Err("ReplicationManager::WriteMV: %v", err)
+		common.Assert(false, err)
+		return nil, err
 	}
 
 	return &WriteMvResponse{}, nil
@@ -757,7 +773,7 @@ func copyOutOfSyncChunks(job *syncJob) error {
 				Hash: "", // TODO: hash validation will be done later
 			},
 			Length:      int64(len(srcData)),
-			IsSync:      true, // this is sync write RPC call
+			SyncId:      job.destSyncID, // this is sync write RPC call, so we send the sync ID of the target RV
 			ComponentRV: job.componentRVs,
 		}
 
