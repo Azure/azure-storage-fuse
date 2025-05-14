@@ -34,19 +34,19 @@
 package dcache
 
 type MirroredVolume struct {
-	State StateEnum            `json:"state,omitempty"`
-	RVs   map[string]StateEnum `json:"rvs,omitempty"`
+	State StateEnum            `json:"state"`
+	RVs   map[string]StateEnum `json:"rvs"`
 }
 
 type RawVolume struct {
-	NodeId         string    `json:"node_id,omitempty"`
-	IPAddress      string    `json:"ipaddr,omitempty"`
-	RvId           string    `json:"rvid,omitempty"`
-	FDID           string    `json:"fdid,omitempty"`
-	State          StateEnum `json:"state,omitempty"`
-	TotalSpace     uint64    `json:"total_space,omitempty"`
-	AvailableSpace uint64    `json:"available_space,omitempty"`
-	LocalCachePath string    `json:"local_cache_path,omitempty"`
+	NodeId         string    `json:"node_id"`
+	IPAddress      string    `json:"ipaddr"`
+	RvId           string    `json:"rvid"`
+	FDID           string    `json:"fdid"`
+	State          StateEnum `json:"state"`
+	TotalSpace     uint64    `json:"total_space"`
+	AvailableSpace uint64    `json:"available_space"`
+	LocalCachePath string    `json:"local_cache_path"`
 }
 
 type StateEnum string
@@ -65,12 +65,12 @@ const (
 
 // Please change the ClusterMapExport struct if you change this struct.
 type ClusterMap struct {
-	Readonly      bool                      `json:"readonly,omitempty"`
-	State         StateEnum                 `json:"state,omitempty"`
-	Epoch         int64                     `json:"epoch,omitempty"`
-	CreatedAt     int64                     `json:"created-at,omitempty"`
-	LastUpdatedAt int64                     `json:"last_updated_at,omitempty"`
-	LastUpdatedBy string                    `json:"last_updated_by,omitempty"`
+	Readonly      bool                      `json:"readonly"`
+	State         StateEnum                 `json:"state"`
+	Epoch         int64                     `json:"epoch"`
+	CreatedAt     int64                     `json:"created-at"`
+	LastUpdatedAt int64                     `json:"last_updated_at"`
+	LastUpdatedBy string                    `json:"last_updated_by"`
 	Config        DCacheConfig              `json:"config"`
 	RVMap         map[string]RawVolume      `json:"rv-map"`
 	MVMap         map[string]MirroredVolume `json:"mv-map"`
@@ -80,12 +80,12 @@ type ClusterMap struct {
 // RVList and MVList are sorted by their names
 // Refer to ClusterMap before making any changes to this struct.
 type ClusterMapExport struct {
-	Readonly      bool                        `json:"readonly,omitempty"`
-	State         StateEnum                   `json:"state,omitempty"`
-	Epoch         int64                       `json:"epoch,omitempty"`
-	CreatedAt     int64                       `json:"created-at,omitempty"`
-	LastUpdatedAt int64                       `json:"last_updated_at,omitempty"`
-	LastUpdatedBy string                      `json:"last_updated_by,omitempty"`
+	Readonly      bool                        `json:"readonly"`
+	State         StateEnum                   `json:"state"`
+	Epoch         int64                       `json:"epoch"`
+	CreatedAt     int64                       `json:"created-at"`
+	LastUpdatedAt int64                       `json:"last_updated_at"`
+	LastUpdatedBy string                      `json:"last_updated_by"`
 	Config        DCacheConfig                `json:"config"`
 	RVList        []map[string]RawVolume      `json:"rv-list"` // Used single element map for more readable clustermap output.
 	MVList        []map[string]MirroredVolume `json:"mv-list"` // Used single element map for more readable clustermap output.
@@ -100,20 +100,20 @@ type HeartbeatData struct {
 }
 
 type DCacheConfig struct {
-	CacheId                string `json:"cache-id,omitempty"`
-	MinNodes               uint32 `json:"min-nodes,omitempty"`
-	ChunkSize              uint64 `json:"chunk-size,omitempty"`
-	StripeSize             uint64 `json:"stripe-size,omitempty"`
-	NumReplicas            uint32 `json:"num-replicas,omitempty"`
-	MvsPerRv               uint64 `json:"mvs-per-rv,omitempty"`
-	RvFullThreshold        uint64 `json:"rv-full-threshold,omitempty"`
-	RvNearfullThreshold    uint64 `json:"rv-nearfull-threshold,omitempty"`
-	HeartbeatSeconds       uint16 `json:"heartbeat-seconds,omitempty"`
-	HeartbeatsTillNodeDown uint8  `json:"heartbeats-till-node-down,omitempty"`
-	ClustermapEpoch        uint64 `json:"clustermap-epoch,omitempty"`
-	RebalancePercentage    uint8  `json:"rebalance-percentage,omitempty"`
-	SafeDeletes            bool   `json:"safe-deletes,omitempty"`
-	CacheAccess            string `json:"cache-access,omitempty"`
+	CacheId                string `json:"cache-id"`
+	MinNodes               uint32 `json:"min-nodes"`
+	ChunkSize              uint64 `json:"chunk-size"`
+	StripeSize             uint64 `json:"stripe-size"`
+	NumReplicas            uint32 `json:"num-replicas"`
+	MvsPerRv               uint64 `json:"mvs-per-rv"`
+	RvFullThreshold        uint64 `json:"rv-full-threshold"`
+	RvNearfullThreshold    uint64 `json:"rv-nearfull-threshold"`
+	HeartbeatSeconds       uint16 `json:"heartbeat-seconds"`
+	HeartbeatsTillNodeDown uint8  `json:"heartbeats-till-node-down"`
+	ClustermapEpoch        uint64 `json:"clustermap-epoch"`
+	RebalancePercentage    uint8  `json:"rebalance-percentage"`
+	SafeDeletes            bool   `json:"safe-deletes"`
+	CacheAccess            string `json:"cache-access"`
 }
 
 type fileState string
