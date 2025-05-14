@@ -471,11 +471,13 @@ func libfuse_opendir(path *C.char, fi *C.fuse_file_info_t) C.int {
 	// For each handle created using opendir we create
 	// this structure here to hold current block of children to serve readdir
 	handle.SetValue("cache", &dirChildCache{
-		sIndex:   0,
-		eIndex:   0,
-		token:    "",
-		length:   0,
-		children: make([]*internal.ObjAttr, 0),
+		sIndex:        0,
+		eIndex:        0,
+		token:         "",
+		length:        0,
+		children:      make([]*internal.ObjAttr, 0),
+		isFsDcache:    true,
+		dcacheEntries: make(map[string]struct{}),
 	})
 
 	handlemap.Add(handle)
@@ -516,10 +518,12 @@ func libfuse_readdir(_ *C.char, buf unsafe.Pointer, filler C.fuse_fill_dir_t, of
 	if off_64 == 0 ||
 		(off_64 >= cacheInfo.eIndex && cacheInfo.token != "") {
 		attrs, token, err := fuseFS.NextComponent().StreamDir(internal.StreamDirOptions{
-			Name:   handle.Path,
-			Offset: off_64,
-			Token:  cacheInfo.token,
-			Count:  common.MaxDirListCount,
+			Name:          handle.Path,
+			Offset:        off_64,
+			Token:         cacheInfo.token,
+			Count:         common.MaxDirListCount,
+			IsFsDcache:    &cacheInfo.isFsDcache,
+			DcacheEntries: cacheInfo.dcacheEntries,
 		})
 
 		if err != nil {
