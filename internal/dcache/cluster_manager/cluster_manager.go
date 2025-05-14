@@ -1855,10 +1855,8 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, mv dcache.Mirro
 		}
 
 		// Get most recent clustermap copy, then we will update the requested MV and publish it.
-		cmi.lockClusterMap.Lock()
 		clusterMapBytes, etag, err := getClusterMap()
 		if err != nil {
-			cmi.lockClusterMap.Unlock()
 			log.Err("ClusterManager::updateComponentRVState: getClusterMap() failed: %v", err)
 			common.Assert(false, err)
 			return err
@@ -1869,10 +1867,9 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, mv dcache.Mirro
 
 		var clusterMap dcache.ClusterMap
 		err = json.Unmarshal(clusterMapBytes, &clusterMap)
-		cmi.lockClusterMap.Unlock()
 		if err != nil {
-			log.Err("ClusterManager::updateComponentRVState: Failed to unmarshal clusterMapBytes (%d): %v",
-				len(clusterMapBytes), err)
+			log.Err("ClusterManager::updateComponentRVState: Failed to unmarshal clusterMapBytes (%d): %v, Raw data: %x",
+				len(clusterMapBytes), err, clusterMapBytes)
 			common.Assert(false, err)
 			return err
 		}
