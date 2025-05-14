@@ -126,6 +126,18 @@ func isComponentRVsValid(rvInMV []*models.RVNameAndState, rvInReq []*models.RVNa
 	return nil
 }
 
+// From the list of component RVs return RVNameAndState for the requested RV, if not found returns nil.
+func getComponentRVState(rvs []*models.RVNameAndState, rvName string) *models.RVNameAndState {
+	for _, rv := range rvs {
+		common.Assert(rv != nil, "Component RV is nil")
+		if rv.Name == rvName {
+			return rv
+		}
+	}
+
+	return nil
+}
+
 // check if the RV is present in the component RVs of the MV
 func isRVPresentInMV(rvs []*models.RVNameAndState, rvName string) bool {
 	for _, rv := range rvs {
@@ -134,6 +146,7 @@ func isRVPresentInMV(rvs []*models.RVNameAndState, rvName string) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
