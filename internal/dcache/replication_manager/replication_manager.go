@@ -484,7 +484,7 @@ func syncMV(mvName string, mvInfo dcache.MirroredVolume) {
 		log.Info("ReplicationManager::syncMV: Starting sync job (%s/%s -> %s/%s) for syncing %d bytes",
 			lioRV, mvName, rv.Name, mvName, syncSize)
 
-		syncComponentRV(mvName, lioRV, rv.Name, syncSize, componentRVs)
+		go syncComponentRV(mvName, lioRV, rv.Name, syncSize, componentRVs)
 	}
 }
 
