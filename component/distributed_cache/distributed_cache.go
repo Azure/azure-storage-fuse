@@ -368,6 +368,7 @@ func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.
 func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*internal.ObjAttr, string, error) {
 	var dirList []*internal.ObjAttr
 	var token string
+	var isEnumeratingAzureRoot bool // When enumerating root of the container this flag is set to true.
 	var err error
 
 	isAzurePath, isDcachePath, isDebugPath, rawPath := getFS(options.Name)
@@ -385,6 +386,10 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 		options.Name = rawPath
 		if dirList, token, err = dc.NextComponent().StreamDir(options); err != nil {
 			return dirList, token, err
+		}
+
+		if isMountPointRoot(rawPath) {
+			isEnumeratingAzureRoot = true
 		}
 	} else if isDebugPath {
 		log.Debug("DistributedCache::StreamDir : Path is having Debug subcomponent, path : %s", options.Name)
@@ -427,12 +432,6 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 				*options.IsFsDcache = false
 				token = dcacheDirContToken
 			}
-
-			// If length of dirent == 0, then there might be a subsequent retry for azure/dcache fs. so rawPath in that case
-			// must not be changed.
-			if len(dirList) != 0 {
-				rawPath = dcachePath
-			}
 		} else { // List from Azure.
 			log.Debug("DistributedCache::StreamDir : Listing on Unqualified path, listing from Azure, path : %s", options.Name)
 			// Reset the token if it's starting to iterate from start.
@@ -453,6 +452,10 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 				}
 			}
 			dirList = modifiedDirList
+
+			if isMountPointRoot(rawPath) {
+				isEnumeratingAzureRoot = true
+			}
 		}
 		//
 		// Cond1: When dcache has no entries, then we don't get the following StreamDir call from FUSE for Azure FS if we
@@ -467,7 +470,7 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 	}
 
 	// While iterating the entries of the root of the container skip the cache folder.
-	if isMountPointRoot(rawPath) {
+	if isEnumeratingAzureRoot {
 		dirList = hideCacheMetadata(dirList)
 	}
 
