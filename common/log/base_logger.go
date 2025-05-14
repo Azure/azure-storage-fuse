@@ -222,7 +222,7 @@ func (l *BaseLogger) logEvent(lvl string, format string, args ...interface{}) {
 	_, fn, ln, _ := runtime.Caller(3)
 	msg := fmt.Sprintf(format, args...)
 	msg = fmt.Sprintf("%s : %s[%d][%d] : [%s] %s [%s (%d)]: %s",
-		time.Now().Format(time.UnixDate),
+		time.Now().Format("Mon Jan _2 15:04:05.000 MST 2006"),
 		l.fileConfig.LogTag,
 		l.procPID,
 		getGID(),
