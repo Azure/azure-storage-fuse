@@ -1848,12 +1848,12 @@ func (p *GetChunkResponse) String() string {
 // Attributes:
 //   - Chunk
 //   - Length
-//   - IsSync
+//   - SyncId
 //   - ComponentRV
 type PutChunkRequest struct {
 	Chunk       *Chunk            `thrift:"chunk,1" db:"chunk" json:"chunk"`
 	Length      int64             `thrift:"length,2" db:"length" json:"length"`
-	IsSync      bool              `thrift:"isSync,3" db:"isSync" json:"isSync"`
+	SyncId      string            `thrift:"syncId,3" db:"syncId" json:"syncId"`
 	ComponentRV []*RVNameAndState `thrift:"componentRV,4" db:"componentRV" json:"componentRV"`
 }
 
@@ -1874,8 +1874,8 @@ func (p *PutChunkRequest) GetLength() int64 {
 	return p.Length
 }
 
-func (p *PutChunkRequest) GetIsSync() bool {
-	return p.IsSync
+func (p *PutChunkRequest) GetSyncId() string {
+	return p.SyncId
 }
 
 func (p *PutChunkRequest) GetComponentRV() []*RVNameAndState {
@@ -1920,7 +1920,7 @@ func (p *PutChunkRequest) Read(ctx context.Context, iprot thrift.TProtocol) erro
 				}
 			}
 		case 3:
-			if fieldTypeId == thrift.BOOL {
+			if fieldTypeId == thrift.STRING {
 				if err := p.ReadField3(ctx, iprot); err != nil {
 					return err
 				}
@@ -1972,10 +1972,10 @@ func (p *PutChunkRequest) ReadField2(ctx context.Context, iprot thrift.TProtocol
 }
 
 func (p *PutChunkRequest) ReadField3(ctx context.Context, iprot thrift.TProtocol) error {
-	if v, err := iprot.ReadBool(ctx); err != nil {
+	if v, err := iprot.ReadString(ctx); err != nil {
 		return thrift.PrependError("error reading field 3: ", err)
 	} else {
-		p.IsSync = v
+		p.SyncId = v
 	}
 	return nil
 }
@@ -2054,14 +2054,14 @@ func (p *PutChunkRequest) writeField2(ctx context.Context, oprot thrift.TProtoco
 }
 
 func (p *PutChunkRequest) writeField3(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "isSync", thrift.BOOL, 3); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field begin error 3:isSync: ", p), err)
+	if err := oprot.WriteFieldBegin(ctx, "syncId", thrift.STRING, 3); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 3:syncId: ", p), err)
 	}
-	if err := oprot.WriteBool(ctx, bool(p.IsSync)); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T.isSync (3) field write error: ", p), err)
+	if err := oprot.WriteString(ctx, string(p.SyncId)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.syncId (3) field write error: ", p), err)
 	}
 	if err := oprot.WriteFieldEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field end error 3:isSync: ", p), err)
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 3:syncId: ", p), err)
 	}
 	return err
 }
@@ -2099,7 +2099,7 @@ func (p *PutChunkRequest) Equals(other *PutChunkRequest) bool {
 	if p.Length != other.Length {
 		return false
 	}
-	if p.IsSync != other.IsSync {
+	if p.SyncId != other.SyncId {
 		return false
 	}
 	if len(p.ComponentRV) != len(other.ComponentRV) {

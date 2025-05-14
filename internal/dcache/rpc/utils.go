@@ -92,7 +92,7 @@ func GetChunkResponseToString(resp *models.GetChunkResponse) string {
 // exculde data and hash from the string to prevent it from being logged
 func PutChunkRequestToString(req *models.PutChunkRequest) string {
 	return fmt.Sprintf("{Address %+v, Length %v, IsSync %v, ComponentRV %v}",
-		*req.Chunk.Address, req.Length, req.IsSync, ComponentRVsToString(req.ComponentRV))
+		*req.Chunk.Address, req.Length, req.SyncId, ComponentRVsToString(req.ComponentRV))
 }
 
 func PutChunkResponseToString(resp *models.PutChunkResponse) string {
