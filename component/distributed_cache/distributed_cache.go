@@ -427,6 +427,8 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 				token = dcacheDirContToken
 			}
 		} else { // List from Azure.
+			// TODO: Make sure the entries are getting returned completly when the transition happens. else readdir might
+			// assume EOD before the complete listing happens.
 			log.Debug("DistributedCache::StreamDir : Listing on Unqualified path, listing from Azure, path : %s", options.Name)
 			// Reset the token if it's starting to iterate from start.
 			if options.Token == dcacheDirContToken {
