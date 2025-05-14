@@ -1889,8 +1889,8 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, mv dcache.Mirro
 			common.Assert(false, err)
 			return err
 		}
-		log.Info("ClusterManager::updateComponentRVState: Fetched clusterMapBytes (%d) with etag %s., Raw data: %x",
-			len(clusterMapBytes), etag, clusterMapBytes)
+		log.Info("ClusterManager::updateComponentRVState: Fetched clusterMapBytes (%d) with etag (%s)., Raw data: %x",
+			len(clusterMapBytes), *etag, clusterMapBytes)
 
 		common.Assert(len(clusterMapBytes) > 0)
 		common.Assert(etag != nil && len(*etag) > 0)
@@ -1899,7 +1899,7 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, mv dcache.Mirro
 		err = json.Unmarshal(clusterMapBytes, &clusterMap)
 		if err != nil {
 			log.Err("ClusterManager::updateComponentRVState: Failed to unmarshal clusterMapBytes (%d) with etag %s. Error: %v, Raw data: %x",
-				len(clusterMapBytes), etag, err, clusterMapBytes)
+				len(clusterMapBytes), *etag, err, clusterMapBytes)
 			common.Assert(false, err)
 			return err
 		}
@@ -1914,6 +1914,7 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, mv dcache.Mirro
 
 			// TODO: Add some backoff and randomness?
 			time.Sleep(10 * time.Millisecond)
+			clusterMapBytes = make([]byte, 0)
 			continue
 		}
 
@@ -2037,6 +2038,7 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, mv dcache.Mirro
 		if err := mm.UpdateClusterMapStart(clusterMapByte, etag); err != nil {
 			log.Warn("ClusterManager::updateComponentRVState: Start Clustermap update failed for nodeId %s: %v, retrying",
 				cmi.myNodeId, err)
+			clusterMapByte = make([]byte, 0)
 			continue
 		}
 
