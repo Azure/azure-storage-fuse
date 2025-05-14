@@ -300,7 +300,7 @@ retry:
 					Hash: "", // TODO: hash validation will be done later
 				},
 				Length:      int64(len(req.Data)),
-				SyncId:      "", // this is regular client write
+				SyncID:      "", // this is regular client write
 				ComponentRV: componentRVs,
 			}
 
@@ -773,7 +773,7 @@ func copyOutOfSyncChunks(job *syncJob) error {
 				Hash: "", // TODO: hash validation will be done later
 			},
 			Length:      int64(len(srcData)),
-			SyncId:      job.destSyncID, // this is sync write RPC call, so we send the sync ID of the target RV
+			SyncID:      job.destSyncID, // this is sync write RPC call, so we send the sync ID of the target RV
 			ComponentRV: job.componentRVs,
 		}
 
