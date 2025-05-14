@@ -390,11 +390,12 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 		log.Debug("DistributedCache::StreamDir : Path is having Debug subcomponent, path : %s", options.Name)
 		return debug.StreamDir(options)
 	} else {
+	listUnqualifiedPath:
 		// When enumerating a fresh directory, options.IsFsDcache must be true.
-		common.Assert(token != "" || *options.IsFsDcache == true)
+		common.Assert(options.Token != "" || *options.IsFsDcache == true)
 
 		// When enumerating a fresh directory, options.DcacheEntries must be empty.
-		common.Assert(token != "" || len(options.DcacheEntries) == 0)
+		common.Assert(options.Token != "" || len(options.DcacheEntries) == 0)
 		//
 		// Semantics for Readdir for unquailified path, if a dirent exists in both Dcache and Azure filesystem,
 		// then dirent present in the dcache takes the precedence over Azure and the entry in Azure is masked and
@@ -427,8 +428,6 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 				token = dcacheDirContToken
 			}
 		} else { // List from Azure.
-			// TODO: Make sure the entries are getting returned completly when the transition happens. else readdir might
-			// assume EOD before the complete listing happens.
 			log.Debug("DistributedCache::StreamDir : Listing on Unqualified path, listing from Azure, path : %s", options.Name)
 			// Reset the token if it's starting to iterate from start.
 			if options.Token == dcacheDirContToken {
@@ -448,6 +447,16 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 				}
 			}
 			dirList = modifiedDirList
+		}
+		//
+		// Cond1: When dcache has no entries, then we don't get the following StreamDir call from FUSE for Azure FS if we
+		// return no entries here. So here we start the listing again for azure FS.
+		// Cond2: After server has returned <= 5000 entries for dcache fs, we filter some entries. Now if the resultant len
+		// of dirents is zero, then retry to get the next list by updating the token.
+		//
+		if (len(dirList) == 0) && (token == dcacheDirContToken || *options.IsFsDcache) {
+			options.Token = dcacheDirContToken
+			goto listUnqualifiedPath
 		}
 	}
 
