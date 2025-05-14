@@ -742,7 +742,7 @@ func (m *BlobMetadataManager) updateClusterMapStart(clustermap []byte, etag *str
 		}
 	}
 
-	log.Debug("UpdateClusterMapStart:: Updated clustermap with path %s", clustermapPath)
+	log.Debug("UpdateClusterMapStart:: Updated clustermap with path %s clustermapbytes (%d) with etag (%s)", clustermapPath, len(clustermap), etag)
 	return err
 }
 
@@ -773,7 +773,7 @@ func (m *BlobMetadataManager) updateClusterMapEnd(clustermap []byte) error {
 		return err
 	}
 
-	log.Debug("UpdateClusterMapEnd:: Finalized clustermap update for %s", clustermapPath)
+	log.Debug("UpdateClusterMapEnd:: Finalized clustermap update for %s, clustermapbytes (%d)", clustermapPath, len(clustermap))
 	return nil
 }
 
