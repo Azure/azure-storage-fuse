@@ -203,6 +203,80 @@ func GetClusterMap() ([]byte, *string, error) {
 	return metadataManagerInstance.getClusterMap()
 }
 
+// Helper function to read and return the content of the blob identifed by blobPath, safe from simultaneous
+// read/write, as a byte array and the attributes corresponding to the returned blob, returns error on failure.
+// It's resilient against changes to the Blob between GetProperties and GetBlob.
+func (m *BlobMetadataManager) getBlobSafe(blobPath string) ([]byte, *internal.ObjAttr, error) {
+	//
+	// Note: Since GetBlobFromStorage() doesn't accept an If-Match Etag condition, we sandwich the GetBlob
+	//       call between two GetProperties calls and only if the ETag returned in both the GetProperties
+	//       calls is same we consider it a successful read, else the Blob could have changed after the
+	//       first GetProperties call, in which case the ETag returned won't correspond to the returned
+	//       clustermap. Also it can even cause inconsistent data to be returned if the Blob is updated
+	//       after the GetProperties call to query the size, since GetBlobFromStorage() assumes that the
+	//       Blob won't be changed after GetProperties and GetBlob.
+	//       The second GetProperties call solves both these problems.
+	//       We retry 50 times, that should provide suffcient resilience even with very large clusters.
+	//
+	// TODO: See if this can be improved.
+	//
+	var i int
+	for i = 0; i < 50; i++ {
+		attr, err := m.storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{
+			Name: blobPath,
+		})
+		if err != nil {
+			log.Err("getBlobSafe:: Failed to get Blob properties for %s: %v", blobPath, err)
+			return nil, nil, err
+		}
+
+		// Must have a valid etag.
+		common.Assert(len(attr.ETag) > 0)
+		common.Assert(attr.Size > 0)
+
+		data, err := m.storageCallback.GetBlobFromStorage(internal.ReadFileWithNameOptions{
+			Path: blobPath,
+		})
+		if err != nil {
+			log.Err("getBlobSafe:: Failed to get Blob content for %s: %v", blobPath, err)
+			common.Assert(false, err)
+			return nil, nil, err
+		}
+
+		attr1, err := m.storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{
+			Name: blobPath,
+		})
+		if err != nil {
+			log.Err("getBlobSafe:: Failed to get Blob properties for %s: %v", blobPath, err)
+			return nil, nil, err
+		}
+
+		// Must have a valid etag.
+		common.Assert(len(attr1.ETag) > 0)
+		common.Assert(attr1.Size > 0)
+
+		if attr.ETag != attr1.ETag {
+			log.Warn("getBlobSafe:: Blob %s ETag changed (%s -> %s), size changed (%s -> %s), retrying!",
+				blobPath, attr.ETag, attr1.ETag, attr.Size, attr1.Size)
+			continue
+		}
+
+		// For successful read, both these asserts should be valid.
+		common.Assert(attr.Size == attr1.Size, attr.Size, attr1.Size)
+		common.Assert(int(attr.Size) == len(data), attr.Size, len(data))
+
+		log.Debug("getBlobSafe:: Successfully read Blob %s (bytes: %d, Etag: %s), with %d retry(s)!",
+			blobPath, len(data), attr1.ETag, i)
+
+		// Return the cluster map content and ETag
+		return data, attr1, nil
+	}
+
+	err := fmt.Errorf("Could not read Blob %s even after %d retries!", blobPath, i)
+
+	return nil, nil, err
+}
+
 // CreateFileInit() creates the initial metadata for a file.
 // It ensures that in case two nodes race to create the same file only one succeeds.
 // The node that wins the race, then goes ahead writing the data chunks for the file and once done calls
@@ -317,21 +391,9 @@ func (m *BlobMetadataManager) getFile(filePath string) ([]byte, int64, error) {
 
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
 	// Get the metadata content from storage.
-	data, err := m.storageCallback.GetBlobFromStorage(internal.ReadFileWithNameOptions{
-		Path: path,
-	})
+	data, prop, err := m.getBlobSafe(path)
 	if err != nil {
 		log.Debug("GetFile:: Failed to get metadata file content for file %s: %v", path, err)
-		return nil, -1, err
-	}
-
-	// Get the file size from the metadata properties.
-	prop, err := m.storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{
-		Name: path,
-	})
-	if err != nil {
-		log.Err("GetFile:: Failed to get properties for path %s: %v", path, err)
-		common.Assert(false, err)
 		return nil, -1, err
 	}
 
@@ -615,10 +677,9 @@ func (m *BlobMetadataManager) getHeartbeat(nodeId string) ([]byte, error) {
 
 	// Create the heartbeat file path
 	heartbeatFilePath := filepath.Join(m.mdRoot, "Nodes", nodeId+".hb")
+
 	// Get the heartbeat content from storage
-	data, err := m.storageCallback.GetBlobFromStorage(internal.ReadFileWithNameOptions{
-		Path: heartbeatFilePath,
-	})
+	data, _, err := m.getBlobSafe(heartbeatFilePath)
 	if err != nil {
 		log.Err("GetHeartbeat:: Failed to get heartbeat file content for %s: %v", heartbeatFilePath, err)
 		common.Assert(false, fmt.Sprintf("Failed to get heartbeat file content for %s: %v",
@@ -778,36 +839,9 @@ func (m *BlobMetadataManager) updateClusterMapEnd(clustermap []byte) error {
 	return nil
 }
 
-// GetClusterMap reads and returns the content of the cluster map as a byte array, the current Etag value and error if any
+// GetClusterMap reads and returns the content of the cluster map as a byte array and the Etag value corresponding
+// to the returned clustermap blob, returns error on failure.
 func (m *BlobMetadataManager) getClusterMap() ([]byte, *string, error) {
-	clustermapPath := filepath.Join(m.mdRoot, "clustermap.json")
-	attr, err := m.storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{
-		Name: clustermapPath,
-	})
-	if err != nil {
-		log.Err("GetClusterMap:: Failed to get cluster map properties %s: %v", clustermapPath, err)
-		return nil, nil, err
-	}
-
-	// Must have a valid etag.
-	common.Assert(len(attr.ETag) > 0)
-
-	// TODO:: If some node updates the clustermap between GetProperties and GetBlobFromStorage
-	// then updateClusterMapStart will fail with ETag mismatch.
-	// In that case we can create a new function to call doawnloadStream directly for content and etag.
-	// Get the cluster map content from storage
-	data, err := m.storageCallback.GetBlobFromStorage(internal.ReadFileWithNameOptions{
-		Path: clustermapPath,
-	})
-	if err != nil {
-		log.Err("GetClusterMap:: Failed to get cluster map content with path %s: %v", clustermapPath, err)
-		common.Assert(false, err)
-		return nil, nil, err
-	}
-
-	log.Debug("GetClusterMap:: Successfully got cluster map content for %s, %d bytes, Etag: %s",
-		clustermapPath, len(data), attr.ETag)
-
-	// Return the cluster map content and ETag
-	return data, &attr.ETag, nil
+	data, attr, err := m.getBlobSafe(filepath.Join(m.mdRoot, "clustermap.json"))
+	return data, &attr.ETag, err
 }
