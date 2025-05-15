@@ -213,18 +213,19 @@ func (req *WriteMvRequest) isValid() error {
 type WriteMvResponse struct {
 }
 
+// syncJob tracks resync of one MV replica, srcRVName/mvName -> destRVName/mvName.
 type syncJob struct {
 	mvName       string                   // name of the MV to be synced
 	srcRVName    string                   // name of the source RV
 	srcSyncID    string                   // sync ID of the StartSync() RPC call made to the node hosting the source RV
 	destRVName   string                   // name of the destination RV
 	destSyncID   string                   // sync ID of the StartSync() RPC call made to the node hosting the destination RV
-	syncSize     int64                    // size of the sync job in bytes
+	syncSize     int64                    // total number of bytes to be synced
 	componentRVs []*models.RVNameAndState // list of component RVs for the MV
 }
 
-// helper method which can be used for logging the request contents except the data buffer
-// Use this instead of %+v to avoid printing the data buffer
+// helper method which can be used for logging the request contents except the data buffer.
+// Use this instead of %+v to avoid printing the data buffer.
 func (job *syncJob) toString() string {
 	return fmt.Sprintf("{%s/%s -> %s/%s, srcSyncID: %s, destSyncID: %s, syncSize: %d bytes, componentRVs: %v}",
 		job.srcRVName, job.mvName, job.destRVName, job.mvName, job.srcSyncID, job.destSyncID,

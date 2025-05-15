@@ -95,9 +95,12 @@ func NewNodeServer() (*NodeServer, error) {
 		return nil, err
 	}
 
-	// create the chunk service handler
+	//
+	// Create the chunk service handler.
+	// This must set the global var handler.
+	//
 	NewChunkServiceHandler(rvs)
-	common.Assert(handler != nil, "chunk service handler cannot be nil")
+	common.Assert(handler != nil)
 
 	processor := service.NewChunkServiceProcessor(handler)
 	server := thrift.NewTSimpleServer4(processor, transport, transportFactory, protocolFactory)

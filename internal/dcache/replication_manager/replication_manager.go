@@ -328,8 +328,8 @@ retry:
 
 					errRV := updateComponentRVState(req.MvName, rv.Name, dcache.StateOffline, componentRVs)
 					if errRV != nil {
-						errStr := fmt.Sprintf("Failed to update component RV %s to %s state for MV %s [%v]",
-							rv.Name, string(dcache.StateOffline), req.MvName, errRV)
+						errStr := fmt.Sprintf("Failed to update %s/%s state to offline [%v]",
+							rv.Name, req.MvName, req.MvName, errRV)
 						log.Err("ReplicationManager::WriteMV: %s", errStr)
 					}
 
@@ -488,15 +488,16 @@ func syncMV(mvName string, mvInfo dcache.MirroredVolume) {
 	}
 }
 
-// syncComponentRV is used for syncing the target RV with the lowest index online RV (or source RV).
+// syncComponentRV is used for syncing the target RV from the lowest index online RV (or source RV).
 // It sends the StartSync() RPC call to both source and target nodes. The source node is the one
 // hosting the lowest index online RV and the target node is the one hosting the target RV.
 // It then updates the state from "outofsync" to "syncing" for the target RV and MV (if all RVs are syncing).
 // After this, a sync job is created which is responsible for copying the out of sync chunks from the source RV
 // to the target RV, and also sending the EndSync() RPC call to both source and target nodes.
-func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize int64, componentRVs []*models.RVNameAndState) {
-	log.Debug("ReplicationManager::syncComponentRV: MV %s, LIORV %s, target RV %s, sync size %d, component RVs %v",
-		mvName, lioRV, targetRVName, syncSize, rpc.ComponentRVsToString(componentRVs))
+func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize int64,
+	componentRVs []*models.RVNameAndState) {
+	log.Debug("ReplicationManager::syncComponentRV: %s/%s -> %s/%s, sync size %d bytes, component RVs %v",
+		lioRV, mvName, targetRVName, mvName, syncSize, rpc.ComponentRVsToString(componentRVs))
 
 	common.Assert(lioRV != targetRVName, lioRV, targetRVName)
 	common.Assert(syncSize >= 0, syncSize)
@@ -519,6 +520,10 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 	//
 	// Send StartSync() RPC call to the source and target RVs.
 	//
+	// TODO: Send StartSync() to all the component RVs, since it changes the RV state from outofsync
+	//       to syncing, every component RV needs to know the change, not just the source and target.
+	//       This will matter when an MB starts syncing during client write.
+	//
 	// TODO: If we encounter some failure before we send EndSync, we need to undo this StartSync?
 	//
 	srcSyncId, err := sendStartSyncRequest(lioRV, sourceNodeID, startSyncReq)
@@ -533,12 +538,14 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 		return
 	}
 
+	//
 	// Update the destination RV from outofsync to syncing state. The cluster manager will take care of
 	// updating the MV state to syncing if all component RVs have either online or syncing state.
+	//
 	err = updateComponentRVState(mvName, targetRVName, dcache.StateSyncing, componentRVs)
 	if err != nil {
-		errStr := fmt.Sprintf("Failed to update component RV %s to %s state for MV %s [%v]",
-			targetRVName, string(dcache.StateSyncing), mvName, err)
+		errStr := fmt.Sprintf("Failed to update component RV %s/%s state to syncing [%v]",
+			targetRVName, mvName, err)
 		log.Err("ReplicationManager::syncComponentRV: %s", errStr)
 		return
 	}
@@ -558,9 +565,9 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 	//
 	// Copy all chunks from source to target replica followed by EndSync to both.
 	//
-	err = performSyncJob(syncJob)
+	err = runSyncJob(syncJob)
 	if err != nil {
-		errStr := fmt.Sprintf("Failed to perform sync job for %s [%v]", syncJob.toString(), err.Error())
+		errStr := fmt.Sprintf("Failed to run sync job %s [%v]", syncJob.toString(), err)
 		log.Err("ReplicationManager::syncComponentRV: %s", errStr)
 		return
 	}
@@ -568,6 +575,7 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 
 // sendStartSyncRequest sends the StartSync() RPC call to the target node.
 // rvName is the RV hosted in the target node, to which the StartSync() RPC call is sent.
+// Note that we send StartSync to every component RV of an MV.
 func sendStartSyncRequest(rvName string, targetNodeID string, req *models.StartSyncRequest) (string, error) {
 	log.Debug("ReplicationManager::sendStartSyncRequest: Sending StartSync RPC call to %s/%s, node %s %v",
 		rvName, req.MV, targetNodeID, rpc.StartSyncRequestToString(req))
@@ -579,7 +587,7 @@ func sendStartSyncRequest(rvName string, targetNodeID string, req *models.StartS
 
 	resp, err := rpc_client.StartSync(ctx, targetNodeID, req)
 	if err != nil {
-		log.Err("ReplicationManager::sendStartSyncRequest: Failed to start sync for %s/%s %v: %v",
+		log.Err("ReplicationManager::sendStartSyncRequest: StartSync failed for %s/%s %v: %v",
 			rvName, req.MV, rpc.StartSyncRequestToString(req), err)
 		return "", err
 	}
@@ -593,10 +601,11 @@ func sendStartSyncRequest(rvName string, targetNodeID string, req *models.StartS
 	return resp.SyncID, nil
 }
 
-// This method copies all chunks from the source replica to the target replica.
+// This method runs one sync job that synchronizes one MV replica.
+// It copies all chunks from the source replica to the target replica.
 // Then it sends the EndSync() RPC call to both source and target nodes.
-func performSyncJob(job *syncJob) error {
-	log.Debug("ReplicationManager::performSyncJob: Sync job: %s", job.toString())
+func runSyncJob(job *syncJob) error {
+	log.Debug("ReplicationManager::runSyncJob: Sync job: %s", job.toString())
 
 	common.Assert((job.srcRVName != job.destRVName) &&
 		cm.IsValidRVName(job.srcRVName) &&
@@ -609,7 +618,7 @@ func performSyncJob(job *syncJob) error {
 	err := copyOutOfSyncChunks(job)
 	if err != nil {
 		err = fmt.Errorf("failed to copy out of sync chunks for job %s [%v]", job.toString(), err)
-		log.Err("ReplicationManager::performSyncJob: %v", err)
+		log.Err("ReplicationManager::runSyncJob: %v", err)
 		return err
 	}
 
@@ -626,9 +635,15 @@ func performSyncJob(job *syncJob) error {
 		SyncSize:     job.syncSize,
 	}
 
+	//
+	// TODO: Send EndSync to all the component RVs, since it changes the RV state from syncing
+	//       to online, every component RV needs to know the change, not just the source and target.
+	//       This will matter when an MB starts syncing during client write.
+	//
 	err = sendEndSyncRequest(job.srcRVName, srcNodeID, endSyncReq)
 	if err != nil {
-		log.Err("ReplicationManager::performSyncJob: %v", err)
+		// TODO: We need to check the error extensively as we do for the dest RV below.
+		log.Err("ReplicationManager::runSyncJob: %v", err)
 		return err
 	}
 
@@ -639,7 +654,7 @@ func performSyncJob(job *syncJob) error {
 	endSyncReq.SyncID = job.destSyncID
 	err = sendEndSyncRequest(job.destRVName, destNodeID, endSyncReq)
 	if err != nil {
-		log.Err("ReplicationManager::performSyncJob: %v", err)
+		log.Err("ReplicationManager::runSyncJob: %v", err)
 
 		rpcErr := rpc.GetRPCResponseError(err)
 		if rpcErr == nil {
@@ -651,23 +666,27 @@ func performSyncJob(job *syncJob) error {
 			// component RV as offline and force the fix-mv workflow which will finally
 			// trigger the resync-mv workflow.
 			//
-			log.Err("ReplicationManager::performSyncJob: Failed to reach node %s [%v]",
+			log.Err("ReplicationManager::runSyncJob: Failed to reach node %s [%v]",
 				destNodeID, err)
 
-			errRV := updateComponentRVState(job.mvName, job.destRVName, dcache.StateOffline, job.componentRVs)
+			errRV := updateComponentRVState(job.mvName, job.destRVName,
+				dcache.StateOffline, job.componentRVs)
 			if errRV != nil {
-				errStr := fmt.Sprintf("Failed to update component RV %s to %s state for MV %s [%v]",
-					job.destRVName, string(dcache.StateOffline), job.mvName, errRV)
-				log.Err("ReplicationManager::performSyncJob: %s", errStr)
+				errStr := fmt.Sprintf("Failed to mark %s/%s as offline [%v]",
+					job.destRVName, job.mvName, errRV)
+				log.Err("ReplicationManager::runSyncJob: %s", errStr)
 			}
 		} else {
-			// Update the destination RV from syncing to outofsync state. The cluster manager method will take care of
-			// updating the MV state to degraded.
+			//
+			// Update the destination RV from syncing to outofsync state. The cluster manager will
+			// take care of updating the MV state to degraded.
 			// The periodic resyncMVs() will take care of resyncing this outofsync RV in next iteration.
-			errRV := updateComponentRVState(job.mvName, job.destRVName, dcache.StateOutOfSync, job.componentRVs)
+			//
+			errRV := updateComponentRVState(job.mvName, job.destRVName,
+				dcache.StateOutOfSync, job.componentRVs)
 			if errRV != nil {
-				errStr := fmt.Sprintf("Failed to update component RV %s to %s state for MV %s [%v]",
-					job.destRVName, string(dcache.StateOutOfSync), job.mvName, errRV)
+				errStr := fmt.Sprintf("Failed to mark %s/%s as outofsync [%v]",
+					job.destRVName, job.mvName, errRV)
 				log.Err("ReplicationManager::copyOutOfSyncChunks: %s", errStr)
 			}
 		}
@@ -675,13 +694,16 @@ func performSyncJob(job *syncJob) error {
 		return err
 	}
 
-	// Update the destination RV from syncing to online state. The cluster manager will take care of
+	//
+	// Now that we have successfully copied all chunks from source to target replica, update the
+	// destination RV from syncing to online state. The cluster manager will take care of
 	// updating the MV state to online if all component RVs have online state.
+	//
 	err = updateComponentRVState(job.mvName, job.destRVName, dcache.StateOnline, job.componentRVs)
 	if err != nil {
-		errStr := fmt.Sprintf("Failed to update component RV %s to %s state for MV %s [%v]",
-			job.destRVName, string(dcache.StateOnline), job.mvName, err)
-		log.Err("ReplicationManager::performSyncJob: %s", errStr)
+		errStr := fmt.Sprintf("Failed to mark %s/%s as online [%v]",
+			job.destRVName, job.mvName, err)
+		log.Err("ReplicationManager::runSyncJob: %s", errStr)
 		return err
 	}
 
@@ -691,14 +713,14 @@ func performSyncJob(job *syncJob) error {
 	return nil
 }
 
-// copyOutOfSyncChunks copies the out of sync chunks from the source RV to the target RV.
+// copyOutOfSyncChunks copies the out of sync chunks from the source to target MV replica.
 // It enumerates the chunks in the source MV path and copies them to the target RV.
 // The chunks are copied using the sync PutChunk() RPC call to the target RV.
 func copyOutOfSyncChunks(job *syncJob) error {
 	log.Debug("ReplicationManager::copyOutOfSyncChunks: Sync job: %s", job.toString())
 
 	sourceMVPath := filepath.Join(getCachePathForRVName(job.srcRVName), job.mvName)
-	common.Assert(common.DirectoryExists(sourceMVPath), fmt.Sprintf("source MV path %s does not exist in this node", sourceMVPath))
+	common.Assert(common.DirectoryExists(sourceMVPath), sourceMVPath)
 
 	destRvID := getRvIDFromRvName(job.destRVName)
 	common.Assert(common.IsValidUUID(destRvID))
@@ -706,30 +728,39 @@ func copyOutOfSyncChunks(job *syncJob) error {
 	destNodeID := getNodeIDFromRVName(job.destRVName)
 	common.Assert(common.IsValidUUID(destNodeID))
 
-	// enumerate the chunks in the source MV path
-	// TODO: use new API to get the dir contents in pages
+	//
+	// Enumerate the chunks in the source MV path
+	// TODO: os.ReadDir() will returns all enumerated chunks. For really large number of chunk, consider
+	//       using getdents() kind of streaming API.
+	//
 	entries, err := os.ReadDir(sourceMVPath)
 	if err != nil {
-		log.Err("ReplicationManager::copyOutOfSyncChunks: Failed to read directory %s [%v]", sourceMVPath, err.Error())
+		log.Err("ReplicationManager::copyOutOfSyncChunks: os.ReadDir(%s) failed: [%v]",
+			sourceMVPath, err)
 		return err
 	}
 
 	// TODO: make this parallel
 	for _, entry := range entries {
 		if entry.IsDir() {
-			common.Assert(false, fmt.Sprintf("Found directory %s while enumerating chunks in %s", entry.Name(), sourceMVPath))
-			log.Warn("ReplicationManager::copyOutOfSyncChunks: Skipping directory %s", entry.Name())
+			log.Warn("ReplicationManager::copyOutOfSyncChunks: Skipping directory %s/%s",
+				sourceMVPath, entry.Name())
+			// We don't expect dirs in our MV replicas.
+			common.Assert(false, entry.Name(), sourceMVPath)
 			continue
 		}
 
+		//
 		// chunks are stored in MV as,
 		// <MvName>/<FileID>.<OffsetInMiB>.data and
 		// <MvName>/<FileID>.<OffsetInMiB>.hash
+		//
 		chunkParts := strings.Split(entry.Name(), ".")
 		if len(chunkParts) != 3 {
 			// TODO: should we return error in this case?
-			log.Err("ReplicationManager::copyOutOfSyncChunks: Chunk name %s is not in the expected format", entry.Name())
-			common.Assert(false, fmt.Sprintf("chunk name %s is not in the expected format", entry.Name()))
+			errStr := fmt.Sprintf("Invalid chunk name %s", entry.Name())
+			log.Err("ReplicationManager::copyOutOfSyncChunks: %s", errStr)
+			common.Assert(false, errStr)
 			continue
 		}
 
@@ -748,8 +779,9 @@ func copyOutOfSyncChunks(job *syncJob) error {
 		offsetInMiB, err := strconv.ParseInt(chunkParts[1], 10, 64)
 		if err != nil {
 			// TODO: should we return error in this case?
-			log.Err("ReplicationManager::copyOutOfSyncChunks: Failed to convert offset %s to int64 [%v]", chunkParts[1], err.Error())
-			common.Assert(false, fmt.Sprintf("failed to convert offset %s to int64 [%v]", chunkParts[1], err.Error()))
+			errStr := fmt.Sprintf("Invalid offset for chunk %s [%v]", entry.Name(), err)
+			log.Err("ReplicationManager::copyOutOfSyncChunks: %s", errStr)
+			common.Assert(false, errStr)
 			continue
 		}
 
@@ -757,7 +789,9 @@ func copyOutOfSyncChunks(job *syncJob) error {
 		srcData, err := os.ReadFile(srcChunkPath)
 		if err != nil {
 			// TODO: should we return error in this case?
-			log.Err("ReplicationManager::copyOutOfSyncChunks: Failed to read file %s [%v]", srcChunkPath, err.Error())
+			errStr := fmt.Sprintf("os.ReadFile(%s) failed [%v]", srcChunkPath, err.Error())
+			log.Err("ReplicationManager::copyOutOfSyncChunks: %s", errStr)
+			common.Assert(false, errStr)
 			continue
 		}
 
@@ -772,20 +806,21 @@ func copyOutOfSyncChunks(job *syncJob) error {
 				Data: srcData,
 				Hash: "", // TODO: hash validation will be done later
 			},
-			Length:      int64(len(srcData)),
-			SyncID:      job.destSyncID, // this is sync write RPC call, so we send the sync ID of the target RV
+			Length: int64(len(srcData)),
+			// this is sync write RPC call, so the sync ID should be that of the target RV.
+			SyncID:      job.destSyncID,
 			ComponentRV: job.componentRVs,
 		}
 
-		log.Debug("ReplicationManager::copyOutOfSyncChunks: Copying chunk %s to RV %s : %v",
-			srcChunkPath, job.destRVName, rpc.PutChunkRequestToString(putChunkReq))
+		log.Debug("ReplicationManager::copyOutOfSyncChunks: Copying chunk %s to %s/%s: %v",
+			srcChunkPath, job.destRVName, job.mvName, rpc.PutChunkRequestToString(putChunkReq))
 
 		ctx, cancel := context.WithTimeout(context.Background(), RPCClientTimeout*time.Second)
 		defer cancel()
 
 		putChunkResp, err := rpc_client.PutChunk(ctx, destNodeID, putChunkReq)
 		if err != nil {
-			log.Err("ReplicationManager::copyOutOfSyncChunks: Failed to put chunk to %s/%s [%v] : %v",
+			log.Err("ReplicationManager::copyOutOfSyncChunks: Failed to put chunk to %s/%s [%v]: %v",
 				job.destRVName, job.mvName, err, rpc.PutChunkRequestToString(putChunkReq))
 
 			rpcErr := rpc.GetRPCResponseError(err)
@@ -801,32 +836,38 @@ func copyOutOfSyncChunks(job *syncJob) error {
 				log.Err("ReplicationManager::copyOutOfSyncChunks: Failed to reach node %s [%v]",
 					destNodeID, err)
 
-				errRV := updateComponentRVState(job.mvName, job.destRVName, dcache.StateOffline, job.componentRVs)
+				errRV := updateComponentRVState(job.mvName, job.destRVName,
+					dcache.StateOffline, job.componentRVs)
 				if errRV != nil {
-					errStr := fmt.Sprintf("Failed to update component RV %s to %s state for MV %s [%v]",
-						job.destRVName, string(dcache.StateOffline), job.mvName, errRV)
+					errStr := fmt.Sprintf("Failed to mark %s/%s as offline [%v]",
+						job.destRVName, job.mvName, errRV)
 					log.Err("ReplicationManager::copyOutOfSyncChunks: %s", errStr)
+					common.Assert(false, errStr)
 				}
-
 			} else {
-				// Update the destination RV from syncing to outofsync state. The cluster manager method will take care of
-				// updating the MV state to degraded.
-				// The periodic resyncMVs() will take care of resyncing this outofsync RV in next iteration.
-				errRV := updateComponentRVState(job.mvName, job.destRVName, dcache.StateOutOfSync, job.componentRVs)
+				//
+				// Update the destination RV from syncing to outofsync state. The cluster manager
+				// will take care of updating the MV state to degraded.
+				// The periodic resyncMVs() will take care of resyncing this outofsync RV in next
+				// iteration.
+				//
+				errRV := updateComponentRVState(job.mvName, job.destRVName,
+					dcache.StateOutOfSync, job.componentRVs)
 				if errRV != nil {
-					errStr := fmt.Sprintf("Failed to update component RV %s to %s state for MV %s [%v]",
-						job.destRVName, string(dcache.StateOutOfSync), job.mvName, errRV)
+					errStr := fmt.Sprintf("Failed to mark %s/%s as outofsync [%v]",
+						job.destRVName, job.mvName, errRV)
 					log.Err("ReplicationManager::copyOutOfSyncChunks: %s", errStr)
+					common.Assert(false, errStr)
 				}
 			}
 
 			return err
 		}
 
-		common.Assert(putChunkResp != nil, "PutChunk RPC response is nil")
+		common.Assert(putChunkResp != nil)
 
-		log.Debug("ReplicationManager::copyOutOfSyncChunks: PutChunk RPC response for chunk %s to RV %s : %v",
-			srcChunkPath, job.destRVName, rpc.PutChunkResponseToString(putChunkResp))
+		log.Debug("ReplicationManager::copyOutOfSyncChunks: Successfully copied chunk %s to %s/%s: %v",
+			srcChunkPath, job.destRVName, job.mvName, rpc.PutChunkResponseToString(putChunkResp))
 	}
 
 	return nil
@@ -834,6 +875,7 @@ func copyOutOfSyncChunks(job *syncJob) error {
 
 // sendEndSyncRequest sends the EndSync() RPC call to the target node.
 // rvName is the RV hosted in the target node, to which the EndSync() RPC call is sent.
+// Note that we send EndSync to every component RV of an MV.
 func sendEndSyncRequest(rvName string, targetNodeID string, req *models.EndSyncRequest) error {
 	log.Debug("ReplicationManager::sendEndSyncRequest: Sending EndSync RPC call to %s/%s, node %s %v",
 		rvName, req.MV, targetNodeID, rpc.EndSyncRequestToString(req))
@@ -845,7 +887,7 @@ func sendEndSyncRequest(rvName string, targetNodeID string, req *models.EndSyncR
 
 	resp, err := rpc_client.EndSync(ctx, targetNodeID, req)
 	if err != nil {
-		log.Err("ReplicationManager::sendEndSyncRequest: Failed to end sync for %s/%s %v: %v",
+		log.Err("ReplicationManager::sendEndSyncRequest: EndSync failed for %s/%s %v: %v",
 			rvName, req.MV, rpc.EndSyncRequestToString(req), err)
 		return err
 	}
