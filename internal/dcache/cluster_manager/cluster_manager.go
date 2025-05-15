@@ -1370,17 +1370,6 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 			continue
 		}
 
-		// skip fixMV call if there are no offline component RVs, that means degraded Mvs are already fixed in earlier ticker
-		hasOffline := false
-		for _, rvState := range mv.RVs {
-			if rvState == dcache.StateOffline {
-				hasOffline = true
-				break
-			}
-		}
-		if !hasOffline {
-			continue
-		}
 		fixMV(mvName, mv)
 	}
 
