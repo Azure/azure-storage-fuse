@@ -1101,7 +1101,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 			//
 			common.Assert(rvMap[rvName].State == dcache.StateOnline ||
 				mv.RVs[rvName] == dcache.StateOffline,
-				rvName, rvMap[rvName].State, mv.RVs[rvName])
+				rvName, mvName, rvMap[rvName].State, mv.RVs[rvName])
 
 			//
 			// fixMV() is called after degrade-mv/offline-mv workflow has run. That would only result in
