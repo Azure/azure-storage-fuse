@@ -1323,6 +1323,11 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 			if rvMap[rvName].State == dcache.StateOffline {
 				offlineRVs++
 				mv.RVs[rvName] = dcache.StateOffline
+			} else if mv.RVs[rvName] != dcache.StateOnline {
+				offlineRVs++
+			}
+
+			if mv.RVs[rvName] != dcache.StateOnline {
 				if offlineRVs == len(mv.RVs) {
 					// offline-mv.
 					mv.State = dcache.StateOffline
@@ -1331,7 +1336,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 					mv.State = dcache.StateDegraded
 				}
 				existingMVMap[mvName] = mv
-				continue
+				// continue
 			}
 
 			//
