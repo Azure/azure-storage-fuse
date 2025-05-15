@@ -1565,8 +1565,9 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume, reser
 		// One or more (but not all) RVs will have state StateOutOfSync when joinMV() is called from
 		// fix-mv workflow.
 		//
-		common.Assert(rvState == dcache.StateOnline || rvState == dcache.StateOutOfSync,
-			mvName, rvName, rvState)
+		// mv5, rv0, offline
+		// common.Assert(rvState == dcache.StateOnline || rvState == dcache.StateOutOfSync,
+		// 	mvName, rvName, rvState)
 
 		if rvState == dcache.StateOnline {
 			numRVsOnline++
@@ -1601,6 +1602,9 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume, reser
 			MV:          mvName,
 			RVName:      rv.Name,
 			ComponentRV: componentRVs,
+		}
+		if mv.RVs[rv.Name] == dcache.StateOffline {
+			continue
 		}
 
 		// TODO: Use timeout from some global variable.
