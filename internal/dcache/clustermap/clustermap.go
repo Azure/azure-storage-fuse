@@ -340,7 +340,6 @@ func (c *ClusterMap) isMyRV(rvName string) bool {
 	return c.rVNameToNodeId(rvName) == myNodeID
 }
 
-
 // Get component RVs for the given MV.
 func (c *ClusterMap) getRVs(mvName string) map[string]dcache.StateEnum {
 	mv, ok := c.localMap.MVMap[mvName]
@@ -384,8 +383,8 @@ func (c *ClusterMap) lowestIndexOnlineRV(mv dcache.MirroredVolume) string {
 	}
 
 	// For a degraded MV we must find the lowest index online RV,
-	common.Assert(lowestIdxRVName != "")
-	common.Assert(IsValidRVName(lowestIdxRVName))
+	common.Assert(lowestIdxRVName != "", mv)
+	common.Assert(IsValidRVName(lowestIdxRVName), lowestIdxRVName, mv)
 
 	return lowestIdxRVName
 }
