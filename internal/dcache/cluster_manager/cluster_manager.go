@@ -1959,13 +1959,17 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, rvName string, 
 		outofsyncRVs := 0
 
 		for clusterMapRvName, rvState := range clusterMapMV.RVs {
-			if (clusterMapRvName == rvName && rvNewState == dcache.StateSyncing) || rvState == dcache.StateSyncing {
+			if clusterMapRvName == rvName {
+				rvState = rvNewState
+			}
+
+			if rvState == dcache.StateSyncing {
 				syncingRVs++
-			} else if (clusterMapRvName == rvName && rvNewState == dcache.StateOnline) || rvState == dcache.StateOnline {
+			} else if rvState == dcache.StateOnline {
 				onlineRVs++
-			} else if (clusterMapRvName == rvName && rvNewState == dcache.StateOutOfSync) || rvState == dcache.StateOutOfSync {
+			} else if rvState == dcache.StateOutOfSync {
 				outofsyncRVs++
-			} else if (clusterMapRvName == rvName && rvNewState == dcache.StateOffline) || rvState == dcache.StateOffline {
+			} else if rvState == dcache.StateOffline {
 				offlineRVs++
 			}
 		}
