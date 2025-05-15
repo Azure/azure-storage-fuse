@@ -221,6 +221,7 @@ func (ds *downloadSplitter) Process(item *WorkItem) (int, error) {
 					Name:             item.Path,
 					Success:          false,
 					Download:         false,
+					DiskIO:           true,
 					BytesTransferred: respSplitItem.DataLen,
 				})
 			}

@@ -159,6 +159,10 @@ func getSDKLogOptions() policy.LogOptions {
 //   - logging type is silent
 //   - logging level is less than debug
 func setSDKLogListener() {
+	if os.Getenv("BLOBFUSE_DISABLE_SDK_LOG") == "true" {
+		return
+	}
+
 	if log.GetType() == "silent" || log.GetLogLevel() < common.ELogLevel.LOG_DEBUG() {
 		// reset listener
 		azlog.SetListener(nil)

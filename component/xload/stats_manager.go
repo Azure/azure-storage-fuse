@@ -54,7 +54,7 @@ type StatsManager struct {
 	dirs            uint64          // number of directories processed
 	bytesDownloaded uint64          // total number of bytes downloaded
 	bytesUploaded   uint64          // total number of bytes uploaded
-	bytesWritten    uint64          // total number of bytes written to disk
+	diskIOBytes     uint64          // total number of bytes written to disk
 	startTime       time.Time       // variable indicating the time at which the stats manager started
 	fileHandle      *os.File        // file where stats will be dumped
 	waitGroup       sync.WaitGroup  // wait group to wait for stats manager thread to finish
@@ -70,6 +70,7 @@ type StatsItem struct {
 	Dir              bool   // flag to indicate if the item is a directory
 	Success          bool   // flag to indicate if the file has been processed successfully or not
 	Download         bool   // flag to denote upload or download
+	DiskIO           bool   // flag to denote if the item is a disk IO
 	BytesTransferred uint64 // bytes uploaded or downloaded for this file
 }
 
@@ -149,7 +150,7 @@ func (sm *StatsManager) updateSuccessFailedCtr(isSuccess bool) {
 }
 
 func (sm *StatsManager) updateDiskStats(count uint64) {
-	sm.bytesWritten += count
+	sm.diskIOBytes += count
 }
 
 func (sm *StatsManager) statsProcessor() {
@@ -167,10 +168,10 @@ func (sm *StatsManager) statsProcessor() {
 
 		case SPLITTER:
 			// log.Debug("statsManager::statsProcessor : splitter: Name %v, success %v, download %v", item.name, item.success, item.download)
-			if item.Download {
-				sm.updateSuccessFailedCtr(item.Success)
-			} else {
+			if item.DiskIO {
 				sm.updateDiskStats(item.BytesTransferred)
+			} else {
+				sm.updateSuccessFailedCtr(item.Success)
 			}
 
 		case DATA_MANAGER:
@@ -221,7 +222,7 @@ func (sm *StatsManager) calculateBandwidth() {
 	filesPending := sm.totalFiles - filesProcessed
 	percentCompleted := (float64(filesProcessed) / float64(sm.totalFiles)) * 100
 	bandwidthMbps := float64(bytesTransferred*8) / (timeLapsed * float64(MB))
-	diskSpeedMbps := float64(sm.bytesWritten*8) / (timeLapsed * float64(MB))
+	diskSpeedMbps := float64(sm.diskIOBytes*8) / (timeLapsed * float64(MB))
 
 	max, pr, reg, waiting := sm.pool.GetUsageDetails()
 	log.Crit("statsManager::calculateBandwidth : timestamp %v, %.2f%%, %v Done, %v Failed, "+
