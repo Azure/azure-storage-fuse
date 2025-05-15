@@ -107,9 +107,9 @@ func (ds *downloadSplitter) Init() {
 	}
 }
 
-func (ds *downloadSplitter) Start() {
+func (ds *downloadSplitter) Start(ctx context.Context) {
 	log.Debug("downloadSplitter::Start : start download splitter for %s", ds.path)
-	ds.GetThreadPool().Start()
+	ds.GetThreadPool().Start(ctx)
 }
 
 func (ds *downloadSplitter) Stop() {
@@ -117,7 +117,7 @@ func (ds *downloadSplitter) Stop() {
 	if ds.GetThreadPool() != nil {
 		ds.GetThreadPool().Stop()
 	}
-	ds.GetNext().Stop()
+	log.Debug("downloadSplitter::Stop : stop successful")
 }
 
 // download data in chunks and then write to the local file
@@ -254,7 +254,11 @@ func (ds *downloadSplitter) Process(item *WorkItem) (int, error) {
 				Ctx:             ctx,
 			}
 			// log.Debug("downloadSplitter::Process : Scheduling download for %s offset %v", item.Path, offset)
-			ds.GetNext().Schedule(splitItem)
+			err := ds.GetNext().Schedule(splitItem)
+			if err != nil {
+				log.Err("downloadSplitter::Process : Failed to schedule download for %s [%s]", item.Path, err.Error())
+				responseChannel <- &WorkItem{Err: fmt.Errorf("failed to schedule download for %s [%s]", item.Path, err.Error())}
+			}
 		}
 
 		offset += int64(ds.blockPool.GetBlockSize())

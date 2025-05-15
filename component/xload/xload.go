@@ -52,18 +52,20 @@ import (
 // Common structure for Component
 type Xload struct {
 	internal.BaseComponent
-	blockSize         uint64          // Size of each block to be cached
-	mode              Mode            // Mode of the Xload component
-	exportProgress    bool            // Export the progress of xload operation to json file
-	validateMD5       bool            // validate md5sum on download, if md5sum is set on blob
-	workerCount       uint32          // Number of workers running
-	blockPool         *BlockPool      // Pool of blocks
-	path              string          // Path on local disk where Xload will operate
-	defaultPermission os.FileMode     // Default permissions of files and directories in the xload path
-	comps             []XComponent    // list of components in xload
-	statsMgr          *StatsManager   // stats manager
-	fileLocks         *common.LockMap // lock to take on a file if one thread is processing it
-	poolSize          uint32          // Number of blocks in the pool
+	blockSize         uint64             // Size of each block to be cached
+	mode              Mode               // Mode of the Xload component
+	exportProgress    bool               // Export the progress of xload operation to json file
+	validateMD5       bool               // validate md5sum on download, if md5sum is set on blob
+	workerCount       uint32             // Number of workers running
+	blockPool         *BlockPool         // Pool of blocks
+	path              string             // Path on local disk where Xload will operate
+	defaultPermission os.FileMode        // Default permissions of files and directories in the xload path
+	comps             []XComponent       // list of components in xload
+	statsMgr          *StatsManager      // stats manager
+	fileLocks         *common.LockMap    // lock to take on a file if one thread is processing it
+	poolSize          uint32             // Number of blocks in the pool
+	poolctx           context.Context    // context for the thread pool
+	poolCancelFunc    context.CancelFunc // cancel function for the thread pool
 }
 
 // Structure defining your config parameters
@@ -222,6 +224,8 @@ func (xl *Xload) Configure(_ bool) error {
 		xl.poolSize = conf.PoolSize
 	}
 
+	xl.poolctx, xl.poolCancelFunc = context.WithCancel(context.Background())
+
 	log.Crit("Xload::Configure : block size %v, mode %v, path %v, default permission %v, export progress %v, validate md5 %v", xl.blockSize,
 		xl.mode.String(), xl.path, xl.defaultPermission, xl.exportProgress, xl.validateMD5)
 
@@ -275,7 +279,12 @@ func (xl *Xload) Start(ctx context.Context) error {
 func (xl *Xload) Stop() error {
 	log.Trace("Xload::Stop : Stopping component %s", xl.Name())
 
-	xl.comps[0].Stop()
+	xl.poolCancelFunc()
+
+	for i := 0; i < len(xl.comps); i++ {
+		xl.comps[i].Stop()
+	}
+
 	xl.statsMgr.Stop()
 	xl.blockPool.Terminate()
 
@@ -358,7 +367,7 @@ func (xl *Xload) startComponents() error {
 	}
 
 	for i := len(xl.comps) - 1; i >= 0; i-- {
-		xl.comps[i].Start()
+		xl.comps[i].Start(xl.poolctx)
 	}
 
 	return nil

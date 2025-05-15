@@ -120,6 +120,7 @@ func (sm *StatsManager) Start() {
 	_ = sm.writeToJSON([]byte("[\n"), false)
 	_ = sm.marshalStatsData(&statsJSONData{Timestamp: sm.startTime.Format(time.RFC1123)}, false)
 	_ = sm.writeToJSON([]byte("\n]"), false)
+
 	go sm.statsProcessor()
 	go sm.statsExporter()
 }
@@ -224,11 +225,19 @@ func (sm *StatsManager) calculateBandwidth() {
 	bandwidthMbps := float64(bytesTransferred*8) / (timeLapsed * float64(MB))
 	diskSpeedMbps := float64(sm.diskIOBytes*8) / (timeLapsed * float64(MB))
 
-	max, pr, reg, waiting := sm.pool.GetUsageDetails()
+	var max, pr, reg uint32
+	var waiting int32
+	var poolusage uint32
+
+	if sm.pool != nil {
+		max, pr, reg, waiting = sm.pool.GetUsageDetails()
+		sm.pool.Usage()
+	}
+
 	log.Crit("statsManager::calculateBandwidth : timestamp %v, %.2f%%, %v Done, %v Failed, "+
 		"%v Pending, %v Total, Bytes transferred %v, Throughput (Mbps): %.2f, Disk Speed (Mbps): %.2f, Blockpool usage: %v%%, (%v / %v / %v : %v), Time: %.2f",
 		currTime.Format(time.RFC1123), percentCompleted, sm.success, sm.failed,
-		filesPending, sm.totalFiles, bytesTransferred, bandwidthMbps, diskSpeedMbps, sm.pool.Usage(),
+		filesPending, sm.totalFiles, bytesTransferred, bandwidthMbps, diskSpeedMbps, poolusage,
 		max, pr, reg, waiting, timeLapsed)
 
 	if sm.fileHandle != nil {
