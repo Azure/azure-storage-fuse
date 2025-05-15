@@ -843,5 +843,8 @@ func (m *BlobMetadataManager) updateClusterMapEnd(clustermap []byte) error {
 // to the returned clustermap blob, returns error on failure.
 func (m *BlobMetadataManager) getClusterMap() ([]byte, *string, error) {
 	data, attr, err := m.getBlobSafe(filepath.Join(m.mdRoot, "clustermap.json"))
+	if err != nil {
+		return nil, nil, err
+	}
 	return data, &attr.ETag, err
 }
