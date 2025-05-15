@@ -522,7 +522,7 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 	//
 	// TODO: Send StartSync() to all the component RVs, since it changes the RV state from outofsync
 	//       to syncing, every component RV needs to know the change, not just the source and target.
-	//       This will matter when an MB starts syncing during client write.
+	//       This will matter when an MV starts syncing during client write.
 	//
 	// TODO: If we encounter some failure before we send EndSync, we need to undo this StartSync?
 	//
@@ -638,7 +638,7 @@ func runSyncJob(job *syncJob) error {
 	//
 	// TODO: Send EndSync to all the component RVs, since it changes the RV state from syncing
 	//       to online, every component RV needs to know the change, not just the source and target.
-	//       This will matter when an MB starts syncing during client write.
+	//       This will matter when an MV starts syncing during client write.
 	//
 	err = sendEndSyncRequest(job.srcRVName, srcNodeID, endSyncReq)
 	if err != nil {

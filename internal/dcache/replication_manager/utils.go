@@ -129,7 +129,7 @@ func convertRVMapToList(mvName string, rvMap map[string]dcache.StateEnum) []*mod
 	}
 
 	common.Assert(len(componentRVs) == int(getNumReplicas()),
-		mvName, len(componentRVs), getNumReplicas(), componentRVs)
+		mvName, len(componentRVs), getNumReplicas(), rpc.ComponentRVsToString(componentRVs))
 
 	return componentRVs
 }

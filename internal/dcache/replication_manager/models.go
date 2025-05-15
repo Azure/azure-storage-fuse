@@ -224,8 +224,7 @@ type syncJob struct {
 	componentRVs []*models.RVNameAndState // list of component RVs for the MV
 }
 
-// helper method which can be used for logging the request contents except the data buffer.
-// Use this instead of %+v to avoid printing the data buffer.
+// Helper method which can be used for logging the syncJob.
 func (job *syncJob) toString() string {
 	return fmt.Sprintf("{%s/%s -> %s/%s, srcSyncID: %s, destSyncID: %s, syncSize: %d bytes, componentRVs: %v}",
 		job.srcRVName, job.mvName, job.destRVName, job.mvName, job.srcSyncID, job.destSyncID,
