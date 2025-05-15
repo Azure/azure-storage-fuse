@@ -63,7 +63,7 @@ func (suite *dataManagerTestSuite) TestNewRemoteDataManager() {
 	suite.assert.Contains(err.Error(), "invalid parameters sent to create remote data manager")
 
 	remote := loopback.NewLoopbackFSComponent()
-	statsMgr, err := NewStatsManager(1, false)
+	statsMgr, err := NewStatsManager(1, false, nil)
 	suite.assert.Nil(err)
 	suite.assert.NotNil(statsMgr)
 

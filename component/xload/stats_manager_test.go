@@ -58,12 +58,12 @@ func (suite *statsMgrTestSuite) SetupSuite() {
 }
 
 func (suite *statsMgrTestSuite) TestNewStatsManager() {
-	sm, err := NewStatsManager(5, false)
+	sm, err := NewStatsManager(5, false, nil)
 	suite.assert.Nil(err)
 	suite.assert.NotNil(sm)
 	suite.assert.Nil(sm.fileHandle)
 
-	sm, err = NewStatsManager(5, true)
+	sm, err = NewStatsManager(5, true, nil)
 	suite.assert.Nil(err)
 	suite.assert.NotNil(sm)
 	suite.assert.NotNil(sm.fileHandle)
@@ -73,7 +73,7 @@ func (suite *statsMgrTestSuite) TestNewStatsManager() {
 }
 
 func (suite *statsMgrTestSuite) TestStatsManagerStartStop() {
-	sm, err := NewStatsManager(10, true)
+	sm, err := NewStatsManager(10, true, nil)
 	suite.assert.Nil(err)
 	suite.assert.NotNil(sm)
 	suite.assert.NotNil(sm.fileHandle)

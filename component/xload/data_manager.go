@@ -34,6 +34,7 @@
 package xload
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -85,9 +86,9 @@ func (rdm *remoteDataManager) Init() {
 	}
 }
 
-func (rdm *remoteDataManager) Start() {
+func (rdm *remoteDataManager) Start(ctx context.Context) {
 	log.Debug("remoteDataManager::Start : start remote data manager")
-	rdm.GetThreadPool().Start()
+	rdm.GetThreadPool().Start(ctx)
 }
 
 func (rdm *remoteDataManager) Stop() {
@@ -95,6 +96,7 @@ func (rdm *remoteDataManager) Stop() {
 	if rdm.GetThreadPool() != nil {
 		rdm.GetThreadPool().Stop()
 	}
+	log.Debug("remoteDataManager::Stop : stop successful")
 }
 
 // upload or download block
