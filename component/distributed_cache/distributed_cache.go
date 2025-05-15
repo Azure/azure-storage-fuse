@@ -52,6 +52,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/debug"
 	fm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/file_manager"
 	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
+	rm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/replication_manager"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
 
@@ -155,7 +156,14 @@ func (dc *DistributedCache) Start(ctx context.Context) error {
 	if errString != "" {
 		return log.LogAndReturnError(errString)
 	}
+
+	err = rm.Start()
+	if err != nil {
+		return log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to start replication manager : %v]", err))
+	}
+
 	log.Info("DistributedCache::Start : component started successfully")
+
 	// todo : Replace the hardcoded values with user config values.
 	// todo:  Add Init function to fileIOmanager to initialize the defaults.
 	fm.NewFileIOManager(10, 4, 4, 4*1024*1024, 100)
@@ -231,6 +239,7 @@ func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
 func (dc *DistributedCache) Stop() error {
 	log.Trace("DistributedCache::Stop : Stopping component %s", dc.Name())
 	fm.EndFileIOManager()
+	rm.Stop()
 	clustermanager.Stop()
 	return nil
 }

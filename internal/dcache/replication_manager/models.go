@@ -40,6 +40,8 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 )
 
 type ReadMvRequest struct {
@@ -209,4 +211,22 @@ func (req *WriteMvRequest) isValid() error {
 }
 
 type WriteMvResponse struct {
+}
+
+// syncJob tracks resync of one MV replica, srcRVName/mvName -> destRVName/mvName.
+type syncJob struct {
+	mvName       string                   // name of the MV to be synced
+	srcRVName    string                   // name of the source RV
+	srcSyncID    string                   // sync ID of the StartSync() RPC call made to the node hosting the source RV
+	destRVName   string                   // name of the destination RV
+	destSyncID   string                   // sync ID of the StartSync() RPC call made to the node hosting the destination RV
+	syncSize     int64                    // total number of bytes to be synced
+	componentRVs []*models.RVNameAndState // list of component RVs for the MV
+}
+
+// Helper method which can be used for logging the syncJob.
+func (job *syncJob) toString() string {
+	return fmt.Sprintf("{%s/%s -> %s/%s, srcSyncID: %s, destSyncID: %s, syncSize: %d bytes, componentRVs: %v}",
+		job.srcRVName, job.mvName, job.destRVName, job.mvName, job.srcSyncID, job.destSyncID,
+		job.syncSize, rpc.ComponentRVsToString(job.componentRVs))
 }

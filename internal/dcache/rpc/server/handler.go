@@ -103,10 +103,10 @@ type mvInfo struct {
 	mvName       string                   // mv0, mv1, etc.
 	componentRVs []*models.RVNameAndState // sorted list of component RVs for this MV
 
-	// total amount of space used up inside the MV by all the chunks stored in it.
-	// Any RV that has to replace one of the existing component RVs needs to have
-	// at least this much space. JoinMV() requests this much space to be reserved
-	// in the new-to-be-inducted RV.
+	// Total amount of space used up inside the MV directory (both MV and .sync directory),
+	// by all the chunks stored in it. Any RV that has to replace one of the existing component
+	// RVs needs to have at least this much space.
+	// JoinMV() requests this much space to be reserved in the new-to-be-inducted RV.
 	totalChunkBytes atomic.Int64
 
 	// Two MV states are interesting from an IO standpoint.
@@ -177,7 +177,7 @@ var handler *ChunkServiceHandler
 
 // NewChunkServiceHandler creates a new ChunkServiceHandler instance.
 // This MUST be called only once by the RPC server, on startup.
-func NewChunkServiceHandler(rvs map[string]dcache.RawVolume) *ChunkServiceHandler {
+func NewChunkServiceHandler(rvs map[string]dcache.RawVolume) {
 	common.Assert(handler == nil, "NewChunkServiceHandler called more than once")
 
 	handler = &ChunkServiceHandler{
@@ -189,8 +189,15 @@ func NewChunkServiceHandler(rvs map[string]dcache.RawVolume) *ChunkServiceHandle
 	// Note: We can probably relax this later if we want to support nodes which do not
 	//       contribute any storage.
 	common.Assert(len(handler.rvIDMap) > 0)
+}
 
-	return handler
+// Create new mvInfo instance. This is used by the JoinMV() RPC call to create a new mvInfo.
+func newMVInfo(mvName string, componentRVs []*models.RVNameAndState) *mvInfo {
+	return &mvInfo{
+		mvName:       mvName,
+		componentRVs: componentRVs,
+		syncJobs:     make(map[string]syncJob),
+	}
 }
 
 // Check if the given mvPath is valid on this node.
@@ -278,8 +285,11 @@ func (rv *rvInfo) incReservedSpace(bytes int64) {
 // Decrement the reserved space for this RV.
 func (rv *rvInfo) decReservedSpace(bytes int64) {
 	common.Assert(bytes > 0)
-	rv.reservedSpace.Add(-bytes)
-	common.Assert(rv.reservedSpace.Load() >= 0, rv.rvName, rv.reservedSpace.Load())
+	//
+	// TODO: Uncomment this only after clustermanager joinMV() correctly reserves space for MV replica.
+	//
+	// rv.reservedSpace.Add(-bytes)
+	// common.Assert(rv.reservedSpace.Load() >= 0, rv.rvName, rv.reservedSpace.Load())
 	log.Debug("rvInfo::decReservedSpace: reserved space for RV %s is %d", rv.rvName, rv.reservedSpace.Load())
 }
 
@@ -661,21 +671,54 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 
 	log.Debug("ChunkServiceHandler::GetChunk: Received GetChunk request: %v", rpc.GetChunkRequestToString(req))
 
-	// check if the chunk address is valid
+	//
+	// Check if the chunk address is valid. We basically check for the following:
+	// - RV id in the chunk address is one of our local RVs.
+	// - MV name in the chunk address is indeed hosted by that RV.
+	//
 	err := h.checkValidChunkAddress(req.Address)
 	if err != nil {
-		log.Err("ChunkServiceHandler::GetChunk: Invalid chunk address %v [%s]", req.Address.String(), err.Error())
+		log.Err("ChunkServiceHandler::GetChunk: Invalid chunk address %v [%s]",
+			req.Address.String(), err.Error())
 		return nil, err
 	}
 
 	rvInfo := h.rvIDMap[req.Address.RvID]
 	mvInfo := rvInfo.getMVInfo(req.Address.MvName)
 
-	// validate the component RVs list
+	//
+	// RVInfo validation.
+	// The only RVInfo validation needed for GetChunk request is that the target RV is indeed a valid
+	// component RV for this MV and it's in a valid state for serving chunks. "online" is the only valid state
+	// when a component RV can serve chunks. offline/outofsync RVs cannot serve the chunks so sender should
+	// not have requested the GetChunk to those, if we get a GetChunk for those RVs it means client has a
+	// stale clustermap and hence we must help the client by failing with NeedToRefreshClusterMap.
+	// Similarly "syncing" RV may or may not have the chunk yet, and client should not be asking a chunk from
+	// a syncing component RV, so again we play safe and let the client know about it.
+	//
+	// checkValidChunkAddress() has already done the membership check, so we just need to do the state
+	// check.
+	//
 	componentRVsInMV := mvInfo.getComponentRVs()
-	if err := isComponentRVsValid(componentRVsInMV, req.ComponentRV); err != nil {
-		log.Err("ChunkServiceHandler::GetChunk: Request component RVs are invalid for MV %s [%v]", req.Address.MvName, err.Error())
-		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("request component RVs are invalid for MV %s [%v]", req.Address.MvName, err.Error()))
+	common.Assert(len(componentRVsInMV) == len(req.ComponentRV))
+
+	rvNameAndState := getComponentRVState(componentRVsInMV, rvInfo.rvName)
+
+	// checkValidChunkAddress() had succeeded above, so RV must exist.
+	common.Assert(rvNameAndState != nil)
+
+	//
+	// We allow reading only from "online" component RVs.
+	// Note: Though we may be able to serve the chunk from a component RV in "syncing" or even "offline"
+	//       state, it usually indicates client using an older clustermap so we rather ask the client to
+	//	 refresh.
+	// TODO: See if going ahead and checking the chunk anyways is better.
+	//
+	if rvNameAndState.State != string(dcache.StateOnline) {
+		errStr := fmt.Sprintf("GetChunk request for %s cannot be satisfied by component RV %s in state %s",
+			req.Address.MvName, rvInfo.rvName, rvNameAndState.State)
+		log.Err("ChunkServiceHandler::GetChunk: %s", errStr)
+		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, errStr)
 	}
 
 	// acquire read lock on the opMutex for this MV
@@ -772,19 +815,28 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	mvInfo := rvInfo.getMVInfo(req.Chunk.Address.MvName)
 
 	//
-	// Component RVs list received in the PutChunk request must match our local rvInfo.
-	// This is important for checking if the client is having a stale clustermap.
-	// Note that rvInfo holds most uptodate cluster membership info, so we let the caller know if he has a stale
-	// clustermap copy by failing with rpc.NeedToRefreshClusterMap error. Client will then refresh his clustermap
-	// copy and try again.
+	// RVInfo validation. PutChunk(client) and PutChunk(sync) need different validations.
 	//
+	// For a PutChunk(client) we need to do the following validation.
+	// For all component RVs specified in the PutChunk request, ensure:
+	// - If the component RV is offline/outofsync it's offline/outofsync in the RV Info's component RV list too.
+	//   This is required to ensure that client/sender didn't skip PutChunk to a component RV which won't be
+	//   sync'ed later.
+	// - If the component RV is either online/syncing it's present in the RV Info's component RV list and has
+	//   state either online or syncing.
+	//   This is required to ensure that client/sender is not writing to different set of component RVs which
+	//   may be futile and may result in missing writing chunks to some valid component RVs.
+	// - There should not be any component RV different between the two lists. This is a corollary to the
+	//   above two.
+	//
+	// For a PutChunk(sync) we need to do the following validation.
+	// PutChunk(sync) is only concerned about a specific sync job, from one (online) source RV to one
+	// (outofsync) target RV. We just need to ensure sanity of that specific PutChunk.
+	// We need to check if the SyncId carried in the PutChunk(sync) request indeed refers to an active
+	// sync job and this MV replica is indeed the target of that sync job.
+	//
+
 	componentRVsInMV := mvInfo.getComponentRVs()
-	if err := isComponentRVsValid(componentRVsInMV, req.ComponentRV); err != nil {
-		errStr := fmt.Sprintf("Request component RVs are invalid for MV %s [%v]",
-			req.Chunk.Address.MvName, err)
-		log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
-		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, errStr)
-	}
 
 	//
 	// Acquire read lock on the opMutex for this MV to block any StartSync request from updating rvInfo while
@@ -793,6 +845,57 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	//
 	mvInfo.acquireSyncOpReadLock()
 	defer mvInfo.releaseSyncOpReadLock()
+
+	if len(req.SyncID) == 0 {
+		//
+		// PutChunk(client) - Make sure caller only skipped offline or outofsync component RVs.
+		//
+		common.Assert(len(req.ComponentRV) == len(componentRVsInMV),
+			len(req.ComponentRV), len(componentRVsInMV))
+
+		for _, rv := range req.ComponentRV {
+			common.Assert(rv != nil, "Component RV is nil")
+			rvNameAndState := getComponentRVState(componentRVsInMV, rv.Name)
+
+			// Sender's clustermap has a component RV which is not part of this MV.
+			if rvNameAndState == nil {
+				errStr := fmt.Sprintf("PutChunk(client) sender has a non-existent RV %s/%s",
+					rv.Name, req.Chunk.Address.MvName)
+				log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
+				common.Assert(false, errStr)
+				return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, errStr)
+			}
+
+			// Sender would skip component RVs which are either offline or outofsync.
+			senderSkippedRV := (rv.State == string(dcache.StateOffline) || rv.State == string(dcache.StateOutOfSync))
+			// If RV info has the RV as offline or outofsync it'll be properly sync'ed later.
+			isRVSafeToSkip := (rvNameAndState.State == string(dcache.StateOffline) ||
+				rvNameAndState.State == string(dcache.StateOutOfSync))
+
+			if senderSkippedRV && !isRVSafeToSkip {
+				errStr := fmt.Sprintf("PutChunk(client) sender skipped RV %s/%s in invalid state %s",
+					rv.Name, req.Chunk.Address.MvName, rvNameAndState.State)
+				log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
+				common.Assert(false, errStr)
+				return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, errStr)
+			}
+		}
+	} else {
+		//
+		// PutChunk(sync) - Make sure the target MV replica is indeed target of this sync job.
+		//
+		syncJob, ok := mvInfo.syncJobs[req.SyncID]
+		if !ok {
+			errStr := fmt.Sprintf("PutChunk(sync) syncId %s not valid for %s/%s",
+				req.SyncID, rvInfo.rvName, req.Chunk.Address.MvName)
+			log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
+			common.Assert(false, errStr)
+			return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, errStr)
+		}
+
+		common.Assert(syncJob.targetRVName == "")
+		common.Assert(syncJob.sourceRVName != "")
+	}
 
 	// TODO: check later if lock is needed
 	// acquire lock for the chunk address to prevent concurrent writes
@@ -805,7 +908,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	isSrcOfSync, isTgtOfSync := mvInfo.isSourceOrTargetOfSync()
 
 	var chunkPath, hashPath string
-	if req.IsSync {
+	if len(req.SyncID) > 0 {
 		//
 		// Sync PutChunk call (as opposed to a client write PutChunk call).
 		// This is called after the StartSync RPC to synchronize an OutOfSyc MV replica from a healthy MV
@@ -896,7 +999,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	// For successful sync PutChunk calls, decrement the reserved space for this RV.
 	// JoinMV would have reserved this space before starting sync.
 	//
-	if req.IsSync {
+	if len(req.SyncID) > 0 {
 		rvInfo.decReservedSpace(req.Length)
 	}
 
@@ -1045,6 +1148,8 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 			return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to get available disk space for RV %v [%v]", req.RVName, err.Error()))
 		}
 
+		// TODO: should we keep some buffer space for the MV,
+		// like reserve space should be 20% less than available space
 		if availableSpace < req.ReserveSpace {
 			log.Err("ChunkServiceHandler::JoinMV: Not enough space to reserve %v bytes for joining MV %v", req.ReserveSpace, req.MV)
 			return nil, rpc.NewResponseError(rpc.InvalidRequest, fmt.Sprintf("not enough space to reserve %v bytes for joining MV %v", req.ReserveSpace, req.MV))
@@ -1061,7 +1166,7 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 
 	// add in sync map
 	sortComponentRVs(req.ComponentRV)
-	rvInfo.addToMVMap(req.MV, &mvInfo{mvName: req.MV, componentRVs: req.ComponentRV})
+	rvInfo.addToMVMap(req.MV, newMVInfo(req.MV, req.ComponentRV))
 
 	// increment the reserved space for this RV
 	rvInfo.incReservedSpace(req.ReserveSpace)

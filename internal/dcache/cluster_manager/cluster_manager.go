@@ -1072,7 +1072,8 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 		// MV must have all the component RVs set.
 		common.Assert(len(mv.RVs) == NumReplicas, len(mv.RVs), NumReplicas)
 
-		offlineRv := 0
+		offlineRVs := 0
+		outofsyncRVs := 0
 		excludeNodes := make(map[string]struct{})
 		excludeRVNames := make(map[string]struct{})
 
@@ -1092,18 +1093,37 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 			// syncing.
 			//
 
+			//
 			// If state of RV in rvMap is offline, state of component RV in MV MUST be offline.
 			// Note that we can have an RV as online in rvMap but still not online in MV, since once
 			// an RV goes offline and comes back it cannot simply be marked online in the MV, it has
 			// to go through degrade-mv/fix-mv workflows.
+			//
 			common.Assert(rvMap[rvName].State == dcache.StateOnline ||
 				mv.RVs[rvName] == dcache.StateOffline,
 				rvName, rvMap[rvName].State, mv.RVs[rvName])
 
-			common.Assert(mv.RVs[rvName] == dcache.StateOnline ||
-				mv.RVs[rvName] == dcache.StateOffline ||
-				mv.RVs[rvName] == dcache.StateSyncing,
-				rvName, mv.RVs[rvName])
+			//
+			// fixMV() is called after degrade-mv/offline-mv workflow has run. That would only result in
+			// one or more (but not all) offline component RVs for an MV, so we should not have component
+			// RVs in "outofsync" state (fixMV() is the one who moves component RVs from offline to outofsync)
+			// when fixMV() is called. Once fixMV() marks component RVs as outofsync, it should be soon followed
+			// by ResyncMV() from Replication Manager which will change outofsync to syncing.
+			// BUT, in the following scenario we CAN HAVE outofsync component RVs when fixMV() is called:
+			// - Between the last fixMV() call that set a component RVs state as outofsync, and this call,
+			//   ResyncMV didn't get a chance to run. This is unlikely but possible.
+			// - ResyncMV did run, but since ResyncMV fixes one degraded MV and in one degraded MV one outofsync
+			//   RV, at a time, if there are more than one degraded MVs and/or more than one outofsync RVs for an
+			//   MV, when updateMVList()->fixMV() is called from updateComponentRVState(), we can have component
+			//   RVs still in outofsync state.
+			//
+			// Leave this assert commented to highlight the above.
+			//
+			// common.Assert(mv.RVs[rvName] != dcache.StateOutOfSync, rvName, mv.RVs[rvName])
+
+			if mv.RVs[rvName] == dcache.StateOutOfSync {
+				outofsyncRVs++
+			}
 
 			// If this RV is not offline, its containing node must be excluded for replacement RV(s).
 			if mv.RVs[rvName] != dcache.StateOffline {
@@ -1111,14 +1131,24 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 				continue
 			}
 
-			// Offline RVs must be excluded.
+			// Offline RVs must be excluded. Those are the ones we need to replace with good ones.
 			excludeRVNames[rvName] = struct{}{}
 
-			offlineRv++
+			offlineRVs++
 		}
 
-		// Degraded MVs must have one or more but not all component RVs as offline.
-		common.Assert(offlineRv != 0 && offlineRv < NumReplicas, offlineRv, NumReplicas)
+		// Degraded MVs must have one or more but not all component RVs as offline/outofsync.
+		common.Assert((offlineRVs+outofsyncRVs) != 0 && (offlineRVs+outofsyncRVs) < NumReplicas,
+			mvName, offlineRVs, outofsyncRVs, NumReplicas)
+
+		// No component RV is offline, nothing to fix, return.
+		if offlineRVs == 0 {
+			// If not offline, must have at least one outofsync, else why the MV is degraded.
+			common.Assert(outofsyncRVs > 0, mvName)
+			log.Debug("ClusterManager::fixMV: %s has no offline component RV, nothing to fix %+v",
+				mvName, mv.RVs)
+			return
+		}
 
 		//
 		// Pass 2: For all component RVs that are offline, find a suitable RV.
@@ -1194,6 +1224,16 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 				}
 			}
 
+			//
+			// If we could not find a replacement RV for an offline RV, it's a matter of concern as the MV
+			// will be forced to run degraded for a longer period risking data loss.
+			//
+			// TODO: For huge clusters availableNodes could be a lot of log.
+			//
+			if !foundReplacement {
+				log.Warn("ClusterManager::fixMV: No replacement RV found for %s/%s, availableNodes: %+v, excludeNodes: +%v",
+					rvName, mvName, availableNodes, excludeNodes)
+			}
 		}
 
 		//
@@ -1274,16 +1314,16 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 	//   This is the offline-mv workflow.
 	//
 	for mvName, mv := range existingMVMap {
-		offlineRv := 0
+		offlineRVs := 0
 		for rvName := range mv.RVs {
 			// Only valid RVs can be used as component RVs for an MV.
 			_, exists := rvMap[rvName]
 			common.Assert(exists)
 
 			if rvMap[rvName].State == dcache.StateOffline {
-				offlineRv++
+				offlineRVs++
 				mv.RVs[rvName] = dcache.StateOffline
-				if offlineRv == len(mv.RVs) {
+				if offlineRVs == len(mv.RVs) {
 					// offline-mv.
 					mv.State = dcache.StateOffline
 				} else {
@@ -1847,8 +1887,8 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, mv dcache.Mirro
 
 		var clusterMap dcache.ClusterMap
 		if err := json.Unmarshal(clusterMapBytes, &clusterMap); err != nil {
-			log.Err("ClusterManager::updateComponentRVState: Failed to unmarshal clusterMapBytes (%d): %v",
-				len(clusterMapBytes), err)
+			log.Err("ClusterManager::updateComponentRVState: Failed to unmarshal clusterMapBytes (%d): %v [%x]",
+				len(clusterMapBytes), err, clusterMapBytes)
 			common.Assert(false, err)
 			return err
 		}
