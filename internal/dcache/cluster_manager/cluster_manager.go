@@ -1315,31 +1315,28 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 	//
 	for mvName, mv := range existingMVMap {
 		offlineRVs := 0
+		syncingRVs := 0
+		onlineRVs := 0
+		outofsyncRVs := 0
 		for rvName := range mv.RVs {
 			// Only valid RVs can be used as component RVs for an MV.
 			_, exists := rvMap[rvName]
 			common.Assert(exists)
 
 			if rvMap[rvName].State == dcache.StateOffline {
-				offlineRVs++
 				mv.RVs[rvName] = dcache.StateOffline
-			} else if mv.RVs[rvName] != dcache.StateOnline {
+			}
+
+			if mv.RVs[rvName] == dcache.StateOffline {
 				offlineRVs++
+			} else if mv.RVs[rvName] == dcache.StateSyncing {
+				syncingRVs++
+			} else if mv.RVs[rvName] == dcache.StateOnline {
+				onlineRVs++
+			} else if mv.RVs[rvName] == dcache.StateOutOfSync {
+				outofsyncRVs++
 			}
 
-			if mv.RVs[rvName] != dcache.StateOnline {
-				if offlineRVs == len(mv.RVs) {
-					// offline-mv.
-					mv.State = dcache.StateOffline
-				} else {
-					// degrade-mv.
-					mv.State = dcache.StateDegraded
-				}
-				existingMVMap[mvName] = mv
-				// continue
-			}
-
-			//
 			// This component RV is online. Reduce its slot count, so that we don't use a component RV
 			// more than MvsPerRv times across different MVs.
 			// Note that offline RVs are not considered as component RVs so we don't bother updating
@@ -1347,6 +1344,20 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 			//
 			consumeRVSlot(mvName, rvName)
 		}
+
+		if offlineRVs+outofsyncRVs == len(mv.RVs) {
+			// offline-mv.
+			mv.State = dcache.StateOffline
+		} else if onlineRVs == len(mv.RVs) {
+			mv.State = dcache.StateOnline
+		} else if offlineRVs > 0 || outofsyncRVs > 0 {
+			mv.State = dcache.StateDegraded
+		} else if syncingRVs > 0 {
+			common.Assert((syncingRVs+onlineRVs) == len(mv.RVs), syncingRVs, onlineRVs, len(mv.RVs))
+			mv.State = dcache.StateSyncing
+		}
+
+		existingMVMap[mvName] = mv
 	}
 
 	//
