@@ -1973,7 +1973,6 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, rvName string, 
 				offlineRVs++
 			}
 		}
-		common.Assert(rvNewState == dcache.StateOutOfSync && onlineRVs > 0)
 
 		//
 		// Set the MV state based on the component RV states.
