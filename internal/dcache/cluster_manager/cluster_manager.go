@@ -1329,6 +1329,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 
 			if mv.RVs[rvName] == dcache.StateOffline {
 				offlineRVs++
+				continue
 			} else if mv.RVs[rvName] == dcache.StateSyncing {
 				syncingRVs++
 			} else if mv.RVs[rvName] == dcache.StateOnline {
