@@ -95,6 +95,8 @@ func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
 		cp.clients[nodeID] = ncPool
 	}
 
+	// TODO: this should be a blocking call, if a caller does not get the client for a node,
+	// it should wait for a client to be released back to the pool
 	select {
 	case client := <-ncPool.clientChan:
 		ncPool.lastUsed = time.Now()

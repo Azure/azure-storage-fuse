@@ -46,7 +46,7 @@ var cp *clientPool
 const (
 	// TODO: discuss with the team about these values
 	// defaultMaxPerNode is the default maximum number of RPC clients created per node
-	defaultMaxPerNode = 5
+	defaultMaxPerNode = 20
 	// defaultMaxNodes is the default maximum number of nodes for which RPC clients are created
 	defaultMaxNodes = 100
 	// defaultTimeout is the default duration in seconds after which a RPC client is closed
