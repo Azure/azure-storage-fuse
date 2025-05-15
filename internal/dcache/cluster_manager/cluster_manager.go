@@ -1121,7 +1121,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 			//
 			// common.Assert(mv.RVs[rvName] != dcache.StateOutOfSync, rvName, mv.RVs[rvName])
 
-			if mv.RVs[rvName] != dcache.StateOutOfSync {
+			if mv.RVs[rvName] == dcache.StateOutOfSync {
 				outofsyncRVs++
 			}
 
@@ -1231,8 +1231,8 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 			// TODO: For huge clusters availableNodes could be a lot of log.
 			//
 			if !foundReplacement {
-				log.Warn("ClusterManager::fixMV: No replacement RV found for %s, availableNodes: %+v, excludeNodes: +%v",
-					rvName, availableNodes, excludeNodes)
+				log.Warn("ClusterManager::fixMV: No replacement RV found for %s/%s, availableNodes: %+v, excludeNodes: +%v",
+					rvName, mvName, availableNodes, excludeNodes)
 			}
 		}
 
