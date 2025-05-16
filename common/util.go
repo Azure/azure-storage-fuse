@@ -44,15 +44,18 @@ import (
 	"fmt"
 	"hash/crc64"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 
+	gouuid "github.com/google/uuid"
 	"gopkg.in/ini.v1"
 )
 
@@ -428,6 +431,16 @@ var currentUID int = -1
 // GetDiskUsageFromStatfs: Current disk usage of temp path
 func GetDiskUsageFromStatfs(path string) (float64, float64, error) {
 	// We need to compute the disk usage percentage for the temp path
+	totalSpace, availableSpace, err := GetDiskSpaceMetricsFromStatfs(path)
+	if err != nil || totalSpace == 0 {
+		return 0, 0, err
+	}
+	usedSpace := float64(totalSpace - availableSpace)
+	return usedSpace, (usedSpace / float64(totalSpace)) * 100, nil
+}
+
+// It will return totalSpace, availableSpace, and error if any while evaluating the Current disk usage of path using statfs
+func GetDiskSpaceMetricsFromStatfs(path string) (uint64, uint64, error) {
 	var stat syscall.Statfs_t
 	err := syscall.Statfs(path, &stat)
 	if err != nil {
@@ -448,8 +461,7 @@ func GetDiskUsageFromStatfs(path string) (float64, float64, error) {
 	}
 
 	totalSpace := stat.Blocks * uint64(stat.Frsize)
-	usedSpace := float64(totalSpace - availableSpace)
-	return usedSpace, float64(usedSpace) / float64(totalSpace) * 100, nil
+	return totalSpace, availableSpace, nil
 }
 
 func GetFuseMinorVersion() int {
@@ -586,4 +598,81 @@ func UpdatePipeline(pipeline []string, component string) []string {
 	}
 
 	return pipeline
+}
+
+func GetNodeUUID() (string, error) {
+	uuidFilePath := filepath.Join(DefaultWorkDir, "blobfuse_node_uuid")
+	_, err := os.Stat(uuidFilePath)
+	if err == nil {
+		// File exists, read its content
+		data, err := os.ReadFile(uuidFilePath)
+		if err != nil {
+			return "", fmt.Errorf("fail to read UUID File at :%s with error %s", uuidFilePath, err)
+		}
+		stringData := string(data)
+		isValidUUID := IsValidUUID(stringData)
+		if !isValidUUID {
+			return "", fmt.Errorf("not a valid UUID in UUID File at :%s UUID - %s", uuidFilePath, string(data))
+		}
+		return stringData, nil
+	}
+	if os.IsNotExist(err) {
+		// File doesn't exist, generate a new UUID
+		newUuid := gouuid.New().String()
+		Assert(IsValidUUID(newUuid), fmt.Sprintf("Generated UUID %s is not valid", newUuid))
+		if err := os.WriteFile(uuidFilePath, []byte(newUuid), 0400); err != nil {
+			return "", err
+		}
+
+		return newUuid, nil
+	}
+	return "", fmt.Errorf("failed to read node UUID from file at %s with error %s", uuidFilePath, err)
+}
+
+var (
+	// pre‑compile once at init
+	uuidRegex = regexp.MustCompile(
+		`^[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}$`,
+	)
+)
+
+// IsValidUUID returns true if the string is a valid UUID in the
+// 8-4-4-4-12 format.
+func IsValidUUID(guid string) bool {
+	return uuidRegex.MatchString(guid)
+}
+
+func IsValidIP(ipAddress string) bool {
+	return net.ParseIP(ipAddress) != nil
+}
+
+// IsValidHostPort checks if the given address is a valid host:port combination
+func IsValidHostPort(address string) bool {
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return false
+	}
+
+	if !IsValidIP(host) {
+		return false
+	}
+
+	p, err := strconv.Atoi(port)
+	if err != nil || p < 1 || p > 65535 {
+		return false
+	}
+
+	return true
+}
+
+func IsValidBlkDevice(device string) error {
+	fi, err := os.Stat(device)
+	if err != nil {
+		return fmt.Errorf("error stating device %s: %v", device, err)
+	}
+	mode := fi.Mode()
+	if mode&os.ModeDevice == 0 || mode&os.ModeCharDevice != 0 {
+		return fmt.Errorf("not a block device: %s having mode bits 0%4o", device, mode)
+	}
+	return nil
 }

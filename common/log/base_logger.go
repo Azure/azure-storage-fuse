@@ -34,12 +34,14 @@
 package log
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"log"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"sync"
 	"time"
 
@@ -219,16 +221,45 @@ func (l *BaseLogger) logEvent(lvl string, format string, args ...interface{}) {
 	// Only log if the log level matches the log request
 	_, fn, ln, _ := runtime.Caller(3)
 	msg := fmt.Sprintf(format, args...)
-	msg = fmt.Sprintf("%s : %s[%d] : [%s] %s [%s (%d)]: %s",
-		time.Now().Format(time.UnixDate),
+	msg = fmt.Sprintf("%s : %s[%d][%d] : [%s] %s [%s (%d)]: %s",
+		time.Now().Format("Mon Jan _2 15:04:05.000 MST 2006"),
 		l.fileConfig.LogTag,
 		l.procPID,
+		getGoRoutineID(),
 		common.MountPath,
 		lvl,
 		filepath.Base(fn), ln,
 		msg)
 
 	l.channel <- msg
+}
+
+// Example goroutine 17 [running]: => This method will return 17
+func getGoRoutineID() uint64 {
+	// Grab up to 64 bytes of the current goroutine’s stack
+	b := make([]byte, 64)
+
+	// Write the current goroutine’s stack trace into the byte buffer.
+	// Reslices bytes to only those n bytes (b = b[:n]), so you drop any unused capacity at the end of the buffer
+	// and work only with the real stack‐trace bytes.
+	b = b[:runtime.Stack(b, false)]
+
+	// Strip the literal “goroutine ” prefix
+	b = bytes.TrimPrefix(b, []byte("goroutine "))
+
+	// Find the first space (everything before it is the ID)
+	i := bytes.IndexByte(b, ' ')
+	if i < 0 {
+		return 0
+	}
+
+	// Parse those digits into a number
+	goRoutineId, err := strconv.ParseUint(string(b[:i]), 10, 64)
+	if err != nil {
+		return 0
+	}
+
+	return goRoutineId
 }
 
 // logDumper : logEvent just enqueues an event in the channel, this thread dumps that log to the file
