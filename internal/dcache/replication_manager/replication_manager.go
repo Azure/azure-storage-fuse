@@ -144,11 +144,19 @@ retry:
 				return nil, err
 			}
 
+			//
 			// This is very unlikely and it would most likely indicate that we have a “very stale”
 			// clustermap where all/most of the component RVs have been replaced.
+			//
 
-			// TODO: will be done later
-			// err = cm.RefreshClusterMapSync()
+			err = cm.RefreshClusterMapSync()
+			if err != nil {
+				err = fmt.Errorf("RefreshClusterMapSync() failed, failing read %s",
+					req.toString())
+				log.Warn("ReplicationManager::ReadMV: %v", err)
+				return nil, err
+			}
+
 			clusterMapRefreshed = true
 			goto retry
 		}
@@ -285,8 +293,8 @@ retry:
 			targetNodeID := getNodeIDFromRVName(rv.Name)
 			common.Assert(common.IsValidUUID(targetNodeID))
 
-			log.Debug("ReplicationManager::WriteMV: %s writing to %s RV id %s hosted by node %s",
-				req.MvName, rv.Name, rvID, targetNodeID)
+			log.Debug("ReplicationManager::WriteMV: Writing to %s/%s (RV id %s) hosted by node %s",
+				rv.Name, req.MvName, rvID, targetNodeID)
 
 			rpcReq := &models.PutChunkRequest{
 				Chunk: &models.Chunk{
@@ -320,7 +328,7 @@ retry:
 					//
 					// We should now run the inband RV offline detection workflow, basically we
 					// call the clustermap's UpdateComponentRVState() API to mark this
-					// component RV as offline and force the fix-mv workflow which will finally
+					// component RV as offline and force the fix-mv workflow which will eventually
 					// trigger the resync-mv workflow.
 					//
 					log.Err("ReplicationManager::WriteMV: Failed to reach node %s [%v]",
@@ -331,9 +339,18 @@ retry:
 						errStr := fmt.Sprintf("Failed to update %s/%s state to offline [%v]",
 							rv.Name, req.MvName, req.MvName, errRV)
 						log.Err("ReplicationManager::WriteMV: %s", errStr)
+						return nil, err
 					}
 
-					return nil, err
+					//
+					// If UpdateComponentRVState() succeeds, marking this component RV as offline,
+					// we can safely carry on with the write since we are guaranteed that these
+					// chunks which we could not write to this component RV will be later sync'ed
+					// from one of the good component RVs.
+					//
+					log.Warn("ReplicationManager::WriteMV: Writing to %s/%s (RV id %s) on node %s failed, marked RV offline",
+						rv.Name, req.MvName, rvID, targetNodeID)
+					continue
 				}
 
 				// The error is RPC error of type *rpc.ResponseError.
@@ -344,8 +361,14 @@ retry:
 						return nil, err
 					}
 
-					// TODO: will be done later
-					// err = cm.RefreshClusterMapSync()
+					err = cm.RefreshClusterMapSync()
+					if err != nil {
+						err = fmt.Errorf("RefreshClusterMapSync() failed, failing write %s",
+							req.toString())
+						log.Warn("ReplicationManager::WriteMV: %v", err)
+						return nil, err
+					}
+
 					clusterMapRefreshed++
 					goto retry
 				} else {
@@ -356,8 +379,10 @@ retry:
 				}
 			}
 
-			common.Assert(rpcResp != nil, "PutChunk RPC response is nil")
-			log.Debug("ReplicationManager::WriteMV: PutChunk successful RPC response: %v", rpc.PutChunkResponseToString(rpcResp))
+			common.Assert(rpcResp != nil)
+
+			log.Debug("ReplicationManager::WriteMV: PutChunk successful RPC response: %v",
+				rpc.PutChunkResponseToString(rpcResp))
 
 			numReplicaWrites++
 		} else {
