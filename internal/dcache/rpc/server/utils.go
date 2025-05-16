@@ -138,7 +138,7 @@ func getComponentRVState(rvs []*models.RVNameAndState, rvName string) *models.RV
 	return nil
 }
 
-// check if the RV is present in the component RVs of the MV
+// Check if the RV is present in the component RVs of the MV.
 func isRVPresentInMV(rvs []*models.RVNameAndState, rvName string) bool {
 	for _, rv := range rvs {
 		common.Assert(rv != nil, "Component RV is nil")
@@ -148,6 +148,19 @@ func isRVPresentInMV(rvs []*models.RVNameAndState, rvName string) bool {
 	}
 
 	return false
+}
+
+// Update the state of the RV in the given component RVs list.
+func updateComponentRVState(rvs []*models.RVNameAndState, rvName string, rvState dcache.StateEnum) {
+	for _, rv := range rvs {
+		common.Assert(rv != nil, "Component RV is nil")
+		if rv.Name == rvName {
+			rv.State = string(rvState)
+			break
+		}
+	}
+
+	common.Assert(false, rpc.ComponentRVsToString(rvs), rvName, rvState)
 }
 
 // end sync operation will call this method to move all the chunks from the sync MV path to the regular MV path

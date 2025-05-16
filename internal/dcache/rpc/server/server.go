@@ -62,6 +62,10 @@ func NewNodeServer() (*NodeServer, error) {
 	address := rpc.GetNodeAddressFromID(nodeID)
 	rvs := clustermap.GetMyRVs()
 
+	// TODO: if this node came back up and it is a member of few MVs,
+	// it should also read the MV info from the cluster map for the given RV
+	// and create the rvInfo object based on that.
+
 	if !common.IsValidHostPort(address) {
 		common.Assert(false, "invalid node address %s", address)
 		log.Err("NodeServer::NewNodeServer: Invalid node address %s", address)

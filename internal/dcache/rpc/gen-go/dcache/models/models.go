@@ -3669,14 +3669,12 @@ func (p *LeaveMVResponse) String() string {
 //   - MV
 //   - SourceRVName
 //   - TargetRVName
-//   - ComponentRV
 //   - SyncSize
 type StartSyncRequest struct {
-	MV           string            `thrift:"MV,1" db:"MV" json:"MV"`
-	SourceRVName string            `thrift:"sourceRVName,2" db:"sourceRVName" json:"sourceRVName"`
-	TargetRVName string            `thrift:"targetRVName,3" db:"targetRVName" json:"targetRVName"`
-	ComponentRV  []*RVNameAndState `thrift:"componentRV,4" db:"componentRV" json:"componentRV"`
-	SyncSize     int64             `thrift:"syncSize,5" db:"syncSize" json:"syncSize"`
+	MV           string `thrift:"MV,1" db:"MV" json:"MV"`
+	SourceRVName string `thrift:"sourceRVName,2" db:"sourceRVName" json:"sourceRVName"`
+	TargetRVName string `thrift:"targetRVName,3" db:"targetRVName" json:"targetRVName"`
+	SyncSize     int64  `thrift:"syncSize,4" db:"syncSize" json:"syncSize"`
 }
 
 func NewStartSyncRequest() *StartSyncRequest {
@@ -3693,10 +3691,6 @@ func (p *StartSyncRequest) GetSourceRVName() string {
 
 func (p *StartSyncRequest) GetTargetRVName() string {
 	return p.TargetRVName
-}
-
-func (p *StartSyncRequest) GetComponentRV() []*RVNameAndState {
-	return p.ComponentRV
 }
 
 func (p *StartSyncRequest) GetSyncSize() int64 {
@@ -3747,18 +3741,8 @@ func (p *StartSyncRequest) Read(ctx context.Context, iprot thrift.TProtocol) err
 				}
 			}
 		case 4:
-			if fieldTypeId == thrift.LIST {
-				if err := p.ReadField4(ctx, iprot); err != nil {
-					return err
-				}
-			} else {
-				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
-					return err
-				}
-			}
-		case 5:
 			if fieldTypeId == thrift.I64 {
-				if err := p.ReadField5(ctx, iprot); err != nil {
+				if err := p.ReadField4(ctx, iprot); err != nil {
 					return err
 				}
 			} else {
@@ -3809,28 +3793,8 @@ func (p *StartSyncRequest) ReadField3(ctx context.Context, iprot thrift.TProtoco
 }
 
 func (p *StartSyncRequest) ReadField4(ctx context.Context, iprot thrift.TProtocol) error {
-	_, size, err := iprot.ReadListBegin(ctx)
-	if err != nil {
-		return thrift.PrependError("error reading list begin: ", err)
-	}
-	tSlice := make([]*RVNameAndState, 0, size)
-	p.ComponentRV = tSlice
-	for i := 0; i < size; i++ {
-		_elem26 := &RVNameAndState{}
-		if err := _elem26.Read(ctx, iprot); err != nil {
-			return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", _elem26), err)
-		}
-		p.ComponentRV = append(p.ComponentRV, _elem26)
-	}
-	if err := iprot.ReadListEnd(ctx); err != nil {
-		return thrift.PrependError("error reading list end: ", err)
-	}
-	return nil
-}
-
-func (p *StartSyncRequest) ReadField5(ctx context.Context, iprot thrift.TProtocol) error {
 	if v, err := iprot.ReadI64(ctx); err != nil {
-		return thrift.PrependError("error reading field 5: ", err)
+		return thrift.PrependError("error reading field 4: ", err)
 	} else {
 		p.SyncSize = v
 	}
@@ -3852,9 +3816,6 @@ func (p *StartSyncRequest) Write(ctx context.Context, oprot thrift.TProtocol) er
 			return err
 		}
 		if err := p.writeField4(ctx, oprot); err != nil {
-			return err
-		}
-		if err := p.writeField5(ctx, oprot); err != nil {
 			return err
 		}
 	}
@@ -3907,35 +3868,14 @@ func (p *StartSyncRequest) writeField3(ctx context.Context, oprot thrift.TProtoc
 }
 
 func (p *StartSyncRequest) writeField4(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "componentRV", thrift.LIST, 4); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field begin error 4:componentRV: ", p), err)
-	}
-	if err := oprot.WriteListBegin(ctx, thrift.STRUCT, len(p.ComponentRV)); err != nil {
-		return thrift.PrependError("error writing list begin: ", err)
-	}
-	for _, v := range p.ComponentRV {
-		if err := v.Write(ctx, oprot); err != nil {
-			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", v), err)
-		}
-	}
-	if err := oprot.WriteListEnd(ctx); err != nil {
-		return thrift.PrependError("error writing list end: ", err)
-	}
-	if err := oprot.WriteFieldEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field end error 4:componentRV: ", p), err)
-	}
-	return err
-}
-
-func (p *StartSyncRequest) writeField5(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "syncSize", thrift.I64, 5); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field begin error 5:syncSize: ", p), err)
+	if err := oprot.WriteFieldBegin(ctx, "syncSize", thrift.I64, 4); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 4:syncSize: ", p), err)
 	}
 	if err := oprot.WriteI64(ctx, int64(p.SyncSize)); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T.syncSize (5) field write error: ", p), err)
+		return thrift.PrependError(fmt.Sprintf("%T.syncSize (4) field write error: ", p), err)
 	}
 	if err := oprot.WriteFieldEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field end error 5:syncSize: ", p), err)
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 4:syncSize: ", p), err)
 	}
 	return err
 }
@@ -3954,15 +3894,6 @@ func (p *StartSyncRequest) Equals(other *StartSyncRequest) bool {
 	}
 	if p.TargetRVName != other.TargetRVName {
 		return false
-	}
-	if len(p.ComponentRV) != len(other.ComponentRV) {
-		return false
-	}
-	for i, _tgt := range p.ComponentRV {
-		_src27 := other.ComponentRV[i]
-		if !_tgt.Equals(_src27) {
-			return false
-		}
 	}
 	if p.SyncSize != other.SyncSize {
 		return false
@@ -4093,15 +4024,13 @@ func (p *StartSyncResponse) String() string {
 //   - MV
 //   - SourceRVName
 //   - TargetRVName
-//   - ComponentRV
 //   - SyncSize
 type EndSyncRequest struct {
-	SyncID       string            `thrift:"syncID,1" db:"syncID" json:"syncID"`
-	MV           string            `thrift:"MV,2" db:"MV" json:"MV"`
-	SourceRVName string            `thrift:"sourceRVName,3" db:"sourceRVName" json:"sourceRVName"`
-	TargetRVName string            `thrift:"targetRVName,4" db:"targetRVName" json:"targetRVName"`
-	ComponentRV  []*RVNameAndState `thrift:"componentRV,5" db:"componentRV" json:"componentRV"`
-	SyncSize     int64             `thrift:"syncSize,6" db:"syncSize" json:"syncSize"`
+	SyncID       string `thrift:"syncID,1" db:"syncID" json:"syncID"`
+	MV           string `thrift:"MV,2" db:"MV" json:"MV"`
+	SourceRVName string `thrift:"sourceRVName,3" db:"sourceRVName" json:"sourceRVName"`
+	TargetRVName string `thrift:"targetRVName,4" db:"targetRVName" json:"targetRVName"`
+	SyncSize     int64  `thrift:"syncSize,5" db:"syncSize" json:"syncSize"`
 }
 
 func NewEndSyncRequest() *EndSyncRequest {
@@ -4122,10 +4051,6 @@ func (p *EndSyncRequest) GetSourceRVName() string {
 
 func (p *EndSyncRequest) GetTargetRVName() string {
 	return p.TargetRVName
-}
-
-func (p *EndSyncRequest) GetComponentRV() []*RVNameAndState {
-	return p.ComponentRV
 }
 
 func (p *EndSyncRequest) GetSyncSize() int64 {
@@ -4186,18 +4111,8 @@ func (p *EndSyncRequest) Read(ctx context.Context, iprot thrift.TProtocol) error
 				}
 			}
 		case 5:
-			if fieldTypeId == thrift.LIST {
-				if err := p.ReadField5(ctx, iprot); err != nil {
-					return err
-				}
-			} else {
-				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
-					return err
-				}
-			}
-		case 6:
 			if fieldTypeId == thrift.I64 {
-				if err := p.ReadField6(ctx, iprot); err != nil {
+				if err := p.ReadField5(ctx, iprot); err != nil {
 					return err
 				}
 			} else {
@@ -4257,28 +4172,8 @@ func (p *EndSyncRequest) ReadField4(ctx context.Context, iprot thrift.TProtocol)
 }
 
 func (p *EndSyncRequest) ReadField5(ctx context.Context, iprot thrift.TProtocol) error {
-	_, size, err := iprot.ReadListBegin(ctx)
-	if err != nil {
-		return thrift.PrependError("error reading list begin: ", err)
-	}
-	tSlice := make([]*RVNameAndState, 0, size)
-	p.ComponentRV = tSlice
-	for i := 0; i < size; i++ {
-		_elem28 := &RVNameAndState{}
-		if err := _elem28.Read(ctx, iprot); err != nil {
-			return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", _elem28), err)
-		}
-		p.ComponentRV = append(p.ComponentRV, _elem28)
-	}
-	if err := iprot.ReadListEnd(ctx); err != nil {
-		return thrift.PrependError("error reading list end: ", err)
-	}
-	return nil
-}
-
-func (p *EndSyncRequest) ReadField6(ctx context.Context, iprot thrift.TProtocol) error {
 	if v, err := iprot.ReadI64(ctx); err != nil {
-		return thrift.PrependError("error reading field 6: ", err)
+		return thrift.PrependError("error reading field 5: ", err)
 	} else {
 		p.SyncSize = v
 	}
@@ -4303,9 +4198,6 @@ func (p *EndSyncRequest) Write(ctx context.Context, oprot thrift.TProtocol) erro
 			return err
 		}
 		if err := p.writeField5(ctx, oprot); err != nil {
-			return err
-		}
-		if err := p.writeField6(ctx, oprot); err != nil {
 			return err
 		}
 	}
@@ -4371,35 +4263,14 @@ func (p *EndSyncRequest) writeField4(ctx context.Context, oprot thrift.TProtocol
 }
 
 func (p *EndSyncRequest) writeField5(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "componentRV", thrift.LIST, 5); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field begin error 5:componentRV: ", p), err)
-	}
-	if err := oprot.WriteListBegin(ctx, thrift.STRUCT, len(p.ComponentRV)); err != nil {
-		return thrift.PrependError("error writing list begin: ", err)
-	}
-	for _, v := range p.ComponentRV {
-		if err := v.Write(ctx, oprot); err != nil {
-			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", v), err)
-		}
-	}
-	if err := oprot.WriteListEnd(ctx); err != nil {
-		return thrift.PrependError("error writing list end: ", err)
-	}
-	if err := oprot.WriteFieldEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field end error 5:componentRV: ", p), err)
-	}
-	return err
-}
-
-func (p *EndSyncRequest) writeField6(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "syncSize", thrift.I64, 6); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field begin error 6:syncSize: ", p), err)
+	if err := oprot.WriteFieldBegin(ctx, "syncSize", thrift.I64, 5); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 5:syncSize: ", p), err)
 	}
 	if err := oprot.WriteI64(ctx, int64(p.SyncSize)); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T.syncSize (6) field write error: ", p), err)
+		return thrift.PrependError(fmt.Sprintf("%T.syncSize (5) field write error: ", p), err)
 	}
 	if err := oprot.WriteFieldEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field end error 6:syncSize: ", p), err)
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 5:syncSize: ", p), err)
 	}
 	return err
 }
@@ -4421,15 +4292,6 @@ func (p *EndSyncRequest) Equals(other *EndSyncRequest) bool {
 	}
 	if p.TargetRVName != other.TargetRVName {
 		return false
-	}
-	if len(p.ComponentRV) != len(other.ComponentRV) {
-		return false
-	}
-	for i, _tgt := range p.ComponentRV {
-		_src29 := other.ComponentRV[i]
-		if !_tgt.Equals(_src29) {
-			return false
-		}
 	}
 	if p.SyncSize != other.SyncSize {
 		return false

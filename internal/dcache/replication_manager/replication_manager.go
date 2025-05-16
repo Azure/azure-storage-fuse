@@ -328,8 +328,8 @@ retry:
 
 					errRV := updateComponentRVState(req.MvName, rv.Name, dcache.StateOffline, componentRVs)
 					if errRV != nil {
-						errStr := fmt.Sprintf("Failed to update %s/%s state to offline [%v]",
-							rv.Name, req.MvName, req.MvName, errRV)
+						errStr := fmt.Sprintf("failed to update %s/%s state to offline [%v]",
+							rv.Name, req.MvName, errRV)
 						log.Err("ReplicationManager::WriteMV: %s", errStr)
 					}
 
@@ -513,7 +513,6 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 		MV:           mvName,
 		SourceRVName: lioRV,
 		TargetRVName: targetRVName,
-		ComponentRV:  componentRVs,
 		SyncSize:     syncSize,
 	}
 
@@ -631,7 +630,6 @@ func runSyncJob(job *syncJob) error {
 		MV:           job.mvName,
 		SourceRVName: job.srcRVName,
 		TargetRVName: job.destRVName,
-		ComponentRV:  job.componentRVs,
 		SyncSize:     job.syncSize,
 	}
 

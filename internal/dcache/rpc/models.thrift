@@ -25,7 +25,7 @@ struct Address {
 struct Chunk {
     1: Address address,
     2: binary data,
-    3: string hash,
+    3: string hash
 }
 
 struct RVNameAndState {
@@ -48,9 +48,9 @@ struct GetChunkResponse {
 }
 
 struct PutChunkRequest {
-    1: Chunk chunk
+    1: Chunk chunk,
     2: i64 length,
-    3: string syncID
+    3: string syncID,
     4: list<RVNameAndState> componentRV // used to validate the component RV for the MV
 }
 
@@ -107,9 +107,8 @@ struct LeaveMVResponse {
 struct StartSyncRequest {
     1: string MV,
     2: string sourceRVName, // source RV is the lowest index online RV. The node hosting this RV will send the start sync call to the component RVs
-    3: string targetRVName // target RV is the target of the start sync request
-    4: list<RVNameAndState> componentRV,
-    5: i64 syncSize
+    3: string targetRVName, // target RV is the target of the start sync request
+    4: i64 syncSize
 }
 
 struct StartSyncResponse {
@@ -122,8 +121,7 @@ struct EndSyncRequest {
     2: string MV,
     3: string sourceRVName, // source RV is the lowest index online RV. The node hosting this RV will send the end sync call to the component RVs
     4: string targetRVName, // target RV is the RV which has to stop the sync marking it as completed
-    5: list<RVNameAndState> componentRV,
-    6: i64 syncSize
+    5: i64 syncSize
 }
 
 struct EndSyncResponse {
