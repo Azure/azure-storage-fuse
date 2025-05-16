@@ -574,6 +574,10 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 		return
 	}
 
+	// Update the state of target RV from outofsync to syncing in local component RVs list.
+	// The updated component RVs list will be later used in the sync PutChunk RPC calls to the target RV.
+	updateLocalComponentRVState(componentRVs, targetRVName, dcache.StateOutOfSync, dcache.StateSyncing)
+
 	syncJob := &syncJob{
 		mvName:       mvName,
 		srcRVName:    lioRV,

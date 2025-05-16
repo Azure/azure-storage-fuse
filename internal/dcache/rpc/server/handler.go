@@ -507,9 +507,8 @@ func (mv *mvInfo) isSyncOpWriteLocked() bool {
 	return mv.opMutexDbgCntr.Load() == -12345
 }
 
-// Given component RVs in the given MV and source and target RV names received in a StartSync/EndSync request,
-// check their validity.
-// It checks if the source and target RVs are indeed present in the component RVs list for this MV replica.
+// Given component RVs in the MV and source and target RV names received in a StartSync/EndSync request,
+// check if the source and target RVs are indeed present in the component RVs list for this MV replica.
 //
 // Note: This is a very critical correctness check used by dcache. Since client may be using a stale clustermap,
 //
