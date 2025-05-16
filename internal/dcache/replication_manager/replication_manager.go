@@ -144,11 +144,19 @@ retry:
 				return nil, err
 			}
 
+			//
 			// This is very unlikely and it would most likely indicate that we have a “very stale”
 			// clustermap where all/most of the component RVs have been replaced.
+			//
 
-			// TODO: will be done later
-			// err = cm.RefreshClusterMapSync()
+			err = cm.RefreshClusterMapSync()
+			if err != nil {
+				err = fmt.Errorf("RefreshClusterMapSync() failed, failing read %s",
+					req.toString())
+				log.Warn("ReplicationManager::ReadMV: %v", err)
+				return nil, err
+			}
+
 			clusterMapRefreshed = true
 			goto retry
 		}
@@ -285,8 +293,8 @@ retry:
 			targetNodeID := getNodeIDFromRVName(rv.Name)
 			common.Assert(common.IsValidUUID(targetNodeID))
 
-			log.Debug("ReplicationManager::WriteMV: %s writing to %s RV id %s hosted by node %s",
-				req.MvName, rv.Name, rvID, targetNodeID)
+			log.Debug("ReplicationManager::WriteMV: Writing to %s/%s (RV id %s) hosted by node %s",
+				rv.Name, req.MvName, rvID, targetNodeID)
 
 			rpcReq := &models.PutChunkRequest{
 				Chunk: &models.Chunk{
@@ -319,21 +327,30 @@ retry:
 					// This error means that the node is not reachable.
 					//
 					// We should now run the inband RV offline detection workflow, basically we
-					// call the clustermap's updateComponentRVState() API to mark this
-					// component RV as offline and force the fix-mv workflow which will finally
+					// call the clustermap's UpdateComponentRVState() API to mark this
+					// component RV as offline and force the fix-mv workflow which will eventually
 					// trigger the resync-mv workflow.
 					//
 					log.Err("ReplicationManager::WriteMV: Failed to reach node %s [%v]",
 						targetNodeID, err)
 
-					errRV := updateComponentRVState(req.MvName, rv.Name, dcache.StateOffline, componentRVs)
+					errRV := cm.UpdateComponentRVState(req.MvName, rv.Name, dcache.StateOffline)
 					if errRV != nil {
 						errStr := fmt.Sprintf("Failed to update %s/%s state to offline [%v]",
 							rv.Name, req.MvName, req.MvName, errRV)
 						log.Err("ReplicationManager::WriteMV: %s", errStr)
+						return nil, err
 					}
 
-					return nil, err
+					//
+					// If UpdateComponentRVState() succeeds, marking this component RV as offline,
+					// we can safely carry on with the write since we are guaranteed that these
+					// chunks which we could not write to this component RV will be later sync'ed
+					// from one of the good component RVs.
+					//
+					log.Warn("ReplicationManager::WriteMV: Writing to %s/%s (RV id %s) on node %s failed, marked RV offline",
+						rv.Name, req.MvName, rvID, targetNodeID)
+					continue
 				}
 
 				// The error is RPC error of type *rpc.ResponseError.
@@ -344,8 +361,14 @@ retry:
 						return nil, err
 					}
 
-					// TODO: will be done later
-					// err = cm.RefreshClusterMapSync()
+					err = cm.RefreshClusterMapSync()
+					if err != nil {
+						err = fmt.Errorf("RefreshClusterMapSync() failed, failing write %s",
+							req.toString())
+						log.Warn("ReplicationManager::WriteMV: %v", err)
+						return nil, err
+					}
+
 					clusterMapRefreshed++
 					goto retry
 				} else {
@@ -356,8 +379,10 @@ retry:
 				}
 			}
 
-			common.Assert(rpcResp != nil, "PutChunk RPC response is nil")
-			log.Debug("ReplicationManager::WriteMV: PutChunk successful RPC response: %v", rpc.PutChunkResponseToString(rpcResp))
+			common.Assert(rpcResp != nil)
+
+			log.Debug("ReplicationManager::WriteMV: PutChunk successful RPC response: %v",
+				rpc.PutChunkResponseToString(rpcResp))
 
 			numReplicaWrites++
 		} else {
@@ -542,7 +567,7 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 	// Update the destination RV from outofsync to syncing state. The cluster manager will take care of
 	// updating the MV state to syncing if all component RVs have either online or syncing state.
 	//
-	err = updateComponentRVState(mvName, targetRVName, dcache.StateSyncing, componentRVs)
+	err = cm.UpdateComponentRVState(mvName, targetRVName, dcache.StateSyncing)
 	if err != nil {
 		errStr := fmt.Sprintf("Failed to update component RV %s/%s state to syncing [%v]",
 			targetRVName, mvName, err)
@@ -662,15 +687,14 @@ func runSyncJob(job *syncJob) error {
 			// This error means that the node is not reachable.
 			//
 			// We should now run the inband RV offline detection workflow, basically we
-			// call the clustermap's updateComponentRVState() API to mark this
+			// call the clustermap's UpdateComponentRVState() API to mark this
 			// component RV as offline and force the fix-mv workflow which will finally
 			// trigger the resync-mv workflow.
 			//
 			log.Err("ReplicationManager::runSyncJob: Failed to reach node %s [%v]",
 				destNodeID, err)
 
-			errRV := updateComponentRVState(job.mvName, job.destRVName,
-				dcache.StateOffline, job.componentRVs)
+			errRV := cm.UpdateComponentRVState(job.mvName, job.destRVName, dcache.StateOffline)
 			if errRV != nil {
 				errStr := fmt.Sprintf("Failed to mark %s/%s as offline [%v]",
 					job.destRVName, job.mvName, errRV)
@@ -682,8 +706,7 @@ func runSyncJob(job *syncJob) error {
 			// take care of updating the MV state to degraded.
 			// The periodic resyncMVs() will take care of resyncing this outofsync RV in next iteration.
 			//
-			errRV := updateComponentRVState(job.mvName, job.destRVName,
-				dcache.StateOutOfSync, job.componentRVs)
+			errRV := cm.UpdateComponentRVState(job.mvName, job.destRVName, dcache.StateOutOfSync)
 			if errRV != nil {
 				errStr := fmt.Sprintf("Failed to mark %s/%s as outofsync [%v]",
 					job.destRVName, job.mvName, errRV)
@@ -699,7 +722,7 @@ func runSyncJob(job *syncJob) error {
 	// destination RV from syncing to online state. The cluster manager will take care of
 	// updating the MV state to online if all component RVs have online state.
 	//
-	err = updateComponentRVState(job.mvName, job.destRVName, dcache.StateOnline, job.componentRVs)
+	err = cm.UpdateComponentRVState(job.mvName, job.destRVName, dcache.StateOnline)
 	if err != nil {
 		errStr := fmt.Sprintf("Failed to mark %s/%s as online [%v]",
 			job.destRVName, job.mvName, err)
@@ -829,15 +852,15 @@ func copyOutOfSyncChunks(job *syncJob) error {
 				// This error means that the node is not reachable.
 				//
 				// We should now run the inband RV offline detection workflow, basically we
-				// call the clustermap's updateComponentRVState() API to mark this
+				// call the clustermap's UpdateComponentRVState() API to mark this
 				// component RV as offline and force the fix-mv workflow which will finally
 				// trigger the resync-mv workflow.
 				//
 				log.Err("ReplicationManager::copyOutOfSyncChunks: Failed to reach node %s [%v]",
 					destNodeID, err)
 
-				errRV := updateComponentRVState(job.mvName, job.destRVName,
-					dcache.StateOffline, job.componentRVs)
+				errRV := cm.UpdateComponentRVState(job.mvName, job.destRVName,
+					dcache.StateOffline)
 				if errRV != nil {
 					errStr := fmt.Sprintf("Failed to mark %s/%s as offline [%v]",
 						job.destRVName, job.mvName, errRV)
@@ -851,8 +874,8 @@ func copyOutOfSyncChunks(job *syncJob) error {
 				// The periodic resyncMVs() will take care of resyncing this outofsync RV in next
 				// iteration.
 				//
-				errRV := updateComponentRVState(job.mvName, job.destRVName,
-					dcache.StateOutOfSync, job.componentRVs)
+				errRV := cm.UpdateComponentRVState(job.mvName, job.destRVName,
+					dcache.StateOutOfSync)
 				if errRV != nil {
 					errStr := fmt.Sprintf("Failed to mark %s/%s as outofsync [%v]",
 						job.destRVName, job.mvName, errRV)

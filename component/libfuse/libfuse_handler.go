@@ -290,9 +290,12 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 	}
 
 	// Allow fuse to read a file in parallel on different offsets
+	// TODO: turning of this capability to make the readahead simpler in dcache.
+	// Make the kernel readahead synchronous, that would make the readahead implementation inside the blobfuse easier.
+	// Default behaviour for FUSE is to do asynchronous readahead if its capable.
 	if (conn.capable & C.FUSE_CAP_ASYNC_READ) != 0 {
-		log.Info("Libfuse::libfuse_init : Enable Capability : FUSE_CAP_ASYNC_READ")
-		conn.want |= C.FUSE_CAP_ASYNC_READ
+		log.Info("Libfuse::libfuse_init : Disable Capability : FUSE_CAP_ASYNC_READ")
+		conn.want &= ^C.uint(C.FUSE_CAP_ASYNC_READ)
 	}
 
 	if (conn.capable & C.FUSE_CAP_SPLICE_WRITE) != 0 {

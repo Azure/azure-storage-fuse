@@ -82,6 +82,18 @@ func IsValidRVName(rvName string) bool {
 	return rvNameRegex.MatchString(rvName)
 }
 
+// Valid component RV states are online, offline, outofsync, syncing.
+func IsValidComponentRVState(rvState dcache.StateEnum) bool {
+	switch rvState {
+	case dcache.StateOnline,
+		dcache.StateOffline,
+		dcache.StateOutOfSync,
+		dcache.StateSyncing:
+		return true
+	}
+	return false
+}
+
 // Valid MV name is of the form "mv0", "mv99", etc.
 func IsValidMVName(mvName string) bool {
 	return mvNameRegex.MatchString(mvName)
@@ -255,13 +267,10 @@ func IsValidMV(mv *dcache.MirroredVolume, expectedReplicasCount int) (bool, erro
 			return false, fmt.Errorf("MirroredVolume: RV with invalid name %s %+v",
 				rvName, mv)
 		}
-
-		if state != dcache.StateOnline &&
-			state != dcache.StateOffline &&
-			state != dcache.StateOutOfSync &&
-			state != dcache.StateSyncing {
+		if !IsValidComponentRVState(state) {
 			return false, fmt.Errorf("MirroredVolume: RV with invalid state %s %+v", state, mv)
 		}
+
 	}
 	return true, nil
 }

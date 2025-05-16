@@ -360,6 +360,10 @@ func (cmi *ClusterManager) updateClusterMapLocalCopyIfRequired(sync bool) error 
 	return nil
 }
 
+func (cmi *ClusterManager) updateClusterMapLocalCopySync() error {
+	return cmi.updateClusterMapLocalCopyIfRequired(true /* sync */)
+}
+
 // Stop ClusterManager.
 func (cmi *ClusterManager) stop() error {
 	log.Info("ClusterManager::stop: stopping tickers and closing channel")
@@ -888,9 +892,19 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	return nil
 }
 
-// Takes rvMap which is a set of all known RVs (existing RV list from clustermap, and updated as per the most recent
-// heartbeats), it is indexed by RV name and contains complete info about the RV, and existingMVMap which is the set
-// of MVs present in the clustermap, indexed by MV name and contains complete info about the MV.
+// Given an rvMap which holds most uptodate status of all known RVs, whether they are "online" or "offline" (this
+// information is mostly derived from the heartbeats, by a prior call to updateRVList(), but it can be known through
+// some other mechanism, f.e., inband detection of RV offline status by RPC calls made to nodes), and existingMVMap
+// which is the set of MVs present in the clustermap, indexed by MV name and contains complete info about the MV,
+// updateMVList() correctly updates all MVs' component RVs state and the derived MV state.
+// It can be called from two workflows:
+//  1. From updateStorageClusterMapIfRequired() (periodic clustermap update thread) after it infers some change in
+//     rvMap as per the latest heartbeats received.
+//  2. From updateComponentRVState(), when some other workflow wants to explicitly update component RV state for some
+//     MV, f.e., resync workflow may want to change an "outofsync" component RV to "syncing" or a failed PutChunk call
+//     may indicate an RV as down and hence we would want to change the component RV state to "offline". There could
+//     be more such examles of inband RV state detection resulting in MV list update.
+//
 // It runs the following workflows:
 //  1. degrade-mv: It goes over all the MVs in existingMVMap to see if any (but not all) of their component RVs which
 //     was previously online has gone offline. It marks those MVs as degraded and the component RV as
@@ -903,8 +917,12 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 //  4. new-mv:     This adds new MVs to the MV list, made from unused RVs. The component RVs are added in such a way
 //     that more than one component RVs for an MV do not come from the same node and the same fault domain.
 //
+// Note that when setting MV state based on component RV state, a component RV in "outofsync" or "syncing" state is
+// treated as an offline component RV, basically any component RV which does not have valid data.
+//
 // existingMVMap is updated in-place, the caller will then publish it in the updated clustermap.
-func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, existingMVMap map[string]dcache.MirroredVolume) {
+func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
+	existingMVMap map[string]dcache.MirroredVolume) {
 	// We should not be called for an empty rvMap.
 	common.Assert(len(rvMap) > 0)
 
@@ -976,6 +994,8 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 		nodeId := rvMap[rvName].NodeId
 		// Simple assert to make sure rvName is present in rvMap.
 		common.Assert(len(nodeId) > 0)
+		// We don't add offline RVs to nodeToRvs, so we must not update their slot count.
+		common.Assert(rvMap[rvName].State == dcache.StateOnline, mvName, rvName, rvMap[rvName].State)
 		found := false
 
 		// Decrease the slot count for the RV in nodeToRvs
@@ -988,8 +1008,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 			}
 		}
 
-		common.Assert(found, fmt.Sprintf("Component RV %s for MV %s not found in node %s",
-			rvName, mvName, nodeId))
+		common.Assert(found, mvName, rvName, nodeId)
 	}
 
 	//
@@ -1003,6 +1022,8 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 		nodeId := rvMap[deleteRvName].NodeId
 		// Simple assert to make sure deleteRvName is present in rvMap.
 		common.Assert(len(nodeId) > 0)
+		// We don't add offline RVs to nodeToRvs, so we must not be deleting them from nodeToRvs.
+		common.Assert(rvMap[deleteRvName].State == dcache.StateOnline, deleteRvName, rvMap[deleteRvName].State)
 		found := false
 
 		for i, rv := range nodeToRvs[nodeId].rvs {
@@ -1020,7 +1041,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 			break
 		}
 
-		common.Assert(found, fmt.Sprintf("RV %s not found in node %s", deleteRvName, nodeId))
+		common.Assert(found, deleteRvName, nodeId)
 	}
 
 	//
@@ -1065,7 +1086,8 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 	fixMV := func(mvName string, mv dcache.MirroredVolume) {
 		//
 		// Fix-mv must be run only for degraded MVs.
-		// A degraded MV has one or more (but not all) component RVs as offline.
+		// A degraded MV has one or more (but not all) component RVs as offline (which need to be replaced by
+		// a good RV).
 		//
 		common.Assert(mv.State == dcache.StateDegraded, mvName, mv.State)
 
@@ -1101,7 +1123,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 			//
 			common.Assert(rvMap[rvName].State == dcache.StateOnline ||
 				mv.RVs[rvName] == dcache.StateOffline,
-				rvName, rvMap[rvName].State, mv.RVs[rvName])
+				rvName, mvName, rvMap[rvName].State, mv.RVs[rvName])
 
 			//
 			// fixMV() is called after degrade-mv/offline-mv workflow has run. That would only result in
@@ -1131,7 +1153,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 				continue
 			}
 
-			// Offline RVs must be excluded. Those are the ones we need to replace with good ones.
+			// Offline RVs themselves must be excluded. Those are the ones we need to replace with good ones.
 			excludeRVNames[rvName] = struct{}{}
 
 			offlineRVs++
@@ -1194,12 +1216,15 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 						continue
 					}
 
-					common.Assert(rvName != newRvName)
+					common.Assert(rvName != newRvName, rvName)
 
 					// TODO: Need to find out space requirement for the MV and exclude RVs
 					//       which do not have enough availableSpace.
 
-					// Use this RV to replace older RV.
+					//
+					// Use this RV to replace older RV, a newly replaced RV starts as "outofsync" to indicate
+					// that the RV is good but needs to be sync'ed (from a good component RV).
+					//
 					mv.RVs[newRvName] = dcache.StateOutOfSync
 					// Remove the bad RV from MV.
 					delete(mv.RVs, rvName)
@@ -1210,8 +1235,8 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 					// successfully.
 					//
 
-					log.Debug("ClusterManager::fixMV: Replacing (%s -> %s) for %s",
-						rvName, newRvName, mvName)
+					log.Debug("ClusterManager::fixMV: Replacing (%s/%s -> %s/%s)",
+						rvName, mvName, newRvName, mvName)
 					foundReplacement = true
 					break
 				}
@@ -1231,7 +1256,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 			// TODO: For huge clusters availableNodes could be a lot of log.
 			//
 			if !foundReplacement {
-				log.Warn("ClusterManager::fixMV: No replacement RV found for %s/%s, availableNodes: %+v, excludeNodes: +%v",
+				log.Warn("ClusterManager::fixMV: No replacement RV found for %s/%s, availableNodes: %+v, excludeNodes: %+v",
 					rvName, mvName, availableNodes, excludeNodes)
 			}
 		}
@@ -1240,6 +1265,10 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 		// Ok, we have selected a replacement RV for each offline component RV, but before we can finalize
 		// the selection, we need to check with the RV.
 		// Call joinMV() and check if all component RVs are able to join successfully.
+		// Note that though it's called joinMV(), it sends both JoinMV and UpdateMV RPC depending on the
+		// RV state. An RV which is being added to an MV for the first time (either new MV or replacing a
+		// bad component RV) is sent the JoinMV RPC while an existing component RV which just needs to be
+		// made aware of the component RVs is sent the UpdateMV RPC>
 		//
 		// Iff joinMV() is successful, consume one slot for each component RV and update existingMVMap.
 		//
@@ -1247,7 +1276,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 		//
 		failedRV, err := cmi.joinMV(mvName, mv, 0 /* reserveBytes */)
 		if err == nil {
-			log.Info("ClusterManager::fixMV: Successfully joined all component RVs %+v to MV %s",
+			log.Info("ClusterManager::fixMV: Successfully joined/updated all component RVs %+v to MV %s",
 				mv.RVs, mvName)
 			for rvName := range mv.RVs {
 				if mv.RVs[rvName] == dcache.StateOutOfSync {
@@ -1306,42 +1335,73 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume, exist
 	//
 	// Phase 1:
 	//
-	// Go over all MVs in existingMVMap and all component RVs for each of them and do the following:
-	// - Reduce slots from the corresponding RV in nodeToRvs map.
-	// - If any (not not all) component RV of an MV is offline, mark the MV as degraded and the
-	//   component RV as offline. This is the degrade-mv workflow.
-	// - If all component RVs of an MV are offline, mark the MV as offline.
-	//   This is the offline-mv workflow.
+	// Go over all MVs in existingMVMap and correctly set their state based on the state of all the
+	// component RVs. If a component RV is found to be offline as per rvMap, then the component RV
+	// is force marked offline. The it sets the MV state based on RV state as follows:
+	// - If all component RVs of an MV are online, the MV is marked as online, else
+	// - If no component RV of an MV is online (they are either offline, outofsync or syncing), the MV
+	//   is marked as offline, else
+	// - If at least one component RV is online, the MV is marked as degraded, else
+	// - All component RVs are either online or syncing, then MV is marked as syncing.
+	//
+	// If we mark an MV as degraded or offline we say we have run the degrade-mv or offline-mv workflow.
 	//
 	for mvName, mv := range existingMVMap {
 		offlineRVs := 0
+		syncingRVs := 0
+		onlineRVs := 0
+		outofsyncRVs := 0
+
 		for rvName := range mv.RVs {
 			// Only valid RVs can be used as component RVs for an MV.
 			_, exists := rvMap[rvName]
 			common.Assert(exists)
 
+			// First things first, an offline RV MUST be marked as an offline component RV.
 			if rvMap[rvName].State == dcache.StateOffline {
-				offlineRVs++
 				mv.RVs[rvName] = dcache.StateOffline
-				if offlineRVs == len(mv.RVs) {
-					// offline-mv.
-					mv.State = dcache.StateOffline
-				} else {
-					// degrade-mv.
-					mv.State = dcache.StateDegraded
-				}
-				existingMVMap[mvName] = mv
-				continue
+			}
+
+			if mv.RVs[rvName] == dcache.StateOnline {
+				onlineRVs++
+			} else if mv.RVs[rvName] == dcache.StateOffline {
+				offlineRVs++
+			} else if mv.RVs[rvName] == dcache.StateOutOfSync {
+				outofsyncRVs++
+			} else if mv.RVs[rvName] == dcache.StateSyncing {
+				syncingRVs++
 			}
 
 			//
-			// This component RV is online. Reduce its slot count, so that we don't use a component RV
-			// more than MvsPerRv times across different MVs.
-			// Note that offline RVs are not considered as component RVs so we don't bother updating
-			// their slot count.
+			// This RV is not offline and is used as a component RV by this MV.
+			// Reduce its slot count, so that we don't use a component RV more than MvsPerRv times across all MVs.
+			// Note that offline RVs are not included in nodeToRvs so we should not be updating their slot count.
 			//
-			consumeRVSlot(mvName, rvName)
+			if rvMap[rvName].State != dcache.StateOffline {
+				consumeRVSlot(mvName, rvName)
+			}
 		}
+
+		common.Assert((onlineRVs+offlineRVs+outofsyncRVs+syncingRVs) == len(mv.RVs),
+			onlineRVs, offlineRVs, outofsyncRVs, syncingRVs, len(mv.RVs))
+
+		if (offlineRVs + outofsyncRVs + syncingRVs) == len(mv.RVs) {
+			// No component RV is online, offline-mv.
+			mv.State = dcache.StateOffline
+		} else if onlineRVs == len(mv.RVs) {
+			mv.State = dcache.StateOnline
+		} else if offlineRVs > 0 || outofsyncRVs > 0 {
+			common.Assert(onlineRVs > 0 && onlineRVs < len(mv.RVs), onlineRVs, len(mv.RVs))
+			// At least one component RV is not online but at least one is online, degrade-mv.
+			mv.State = dcache.StateDegraded
+		} else if syncingRVs > 0 {
+			common.Assert((syncingRVs+onlineRVs) == len(mv.RVs), syncingRVs, onlineRVs, len(mv.RVs))
+			mv.State = dcache.StateSyncing
+		} else {
+			common.Assert(false)
+		}
+
+		existingMVMap[mvName] = mv
 	}
 
 	//
@@ -1545,11 +1605,14 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume, reser
 		log.Debug("ClusterManagerImpl::joinMV: Populating componentRVs list MV %s with RV %s", mvName, rvName)
 
 		//
-		// One or more (but not all) RVs will have state StateOutOfSync when joinMV() is called from
-		// fix-mv workflow.
+		// For new-mv all component RVs must be online, for fix-mv we can have the following component RV states:
+		// - outofsync: These are the ones which were offline and have been fixed by the fix-mv workflow.
+		// - offline: These were offline RVs, went to fix-mv but fix-mv could not find a replacement RV for these.
+		// - online: These are the online component RVs. One or more component RVs must be offline/outofsync else
+		//           MV won't be degraded and we won't run fix-mv.
+		// - syncing: These are the component RVs currently syncing. One or more component RVs must be
+		//            offline/outofsync else MV won't be degraded and we won't run fix-mv.
 		//
-		common.Assert(rvState == dcache.StateOnline || rvState == dcache.StateOutOfSync,
-			mvName, rvName, rvState)
 
 		if rvState == dcache.StateOnline {
 			numRVsOnline++
@@ -1561,8 +1624,8 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume, reser
 		})
 	}
 
-	// If all component RVs are online, MV must be online, else it must be degraded.
-	common.Assert((numRVsOnline == len(mv.RVs)) == (mv.State == dcache.StateOnline), mv.State, numRVsOnline)
+	// For newMV case, *all* component RVs must be online.
+	common.Assert(newMV == (numRVsOnline == len(mv.RVs)), mvName, mv.State, numRVsOnline)
 
 	//
 	// TODO: Call JoinMV/UpdateMV on all RVs in parallel.
@@ -1571,6 +1634,14 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume, reser
 	//       undoing the reserveBytes (and the JoinMV) if it doesn't get a SyncMV within certain timeout period.
 	//
 	for _, rv := range componentRVs {
+		//
+		// Offline component RVs need not be sent JoinMV/UpdateMV RPC.
+		// TODO: Shall we send them LeaveMV RPC?
+		//
+		if mv.RVs[rv.Name] == dcache.StateOffline {
+			continue
+		}
+
 		log.Debug("ClusterManagerImpl::joinMV: Joining MV %s with RV %s", mvName, rv.Name)
 
 		joinMvReq := &models.JoinMVRequest{
@@ -1833,14 +1904,12 @@ func refreshMyRVs(myRVs []dcache.RawVolume) {
 	}
 }
 
-// This function can be used to update the state of one or more component RVs for an MV in the global clustermap.
-// Note that caller cannot change the component RVs themselves (only their states), the function will fail if the
-// component RVs provided for the MV do not match those present in the clustermap. The function atomically makes the
-// requested change to the specified MV (retrying if some other node is updating the clustermap simultaneously) and
-// returns only after it's able to successfully make the requested change, or there's some error.
+// This function can be used to update the state of the given component RV for an MV in the global clustermap.
+// The function atomically makes the requested change to the specified MV (retrying if some other node is updating
+// the clustermap simultaneously) and returns only after it's able to successfully make the requested change, or
+// there's some error.
 //
-// Only following RV state transitions are valid, for anything else it errors out. Additionally, while multiple RV
-// states can be changed in a single updateComponentRVState() call but all those changes MUST be of the same type.
+// Only following RV state transitions are valid, for anything else it errors out.
 // StateOutOfSync   -> StateSyncing     [Resync start]
 // StateSyncing     -> StateOnline      [Resync end]
 // StateSyncing     -> StateOutOfSync   [Resync revert]
@@ -1849,24 +1918,21 @@ func refreshMyRVs(myRVs []dcache.RawVolume) {
 // StateOnline      -> StateOffline     [Inband detection of offline RV during PutChunk(client)]
 // StateSyncing     -> StateOffline     [Inband detection of offline RV during PutChunk(sync)]
 //
-// The MV state passed in mv.State is ignored and the function instead sets mv.State based on the state of all the
-// component RVs as follows:
-// 1. If any of the RV has new state StateOffline or StateOutOfSync, mv.State is set to StateDegraded.
-// 2. If all the RVs have new state StateOnline, mv.State is set to StateOnline.
-// 3. If all RVs have new state either StateOnline or StateSyncing, mv.State is set to StateSyncing.
+// After setting the component RV state correctly in the clustermap, it calls updateMVList() which will set the
+// MV state appropriately. See updateMVList() for how MV state is set based on component RVs state.
 //
 // Note: If this fails the caller should typically retry after sometime with the refreshed clustermap.
-func (cmi *ClusterManager) updateComponentRVState(mvName string, mv dcache.MirroredVolume) error {
-	log.Info("ClusterManager::updateComponentRVState: MV: %s (%s), component RVs: %+v", mvName, mv.State, mv.RVs)
+func (cmi *ClusterManager) updateComponentRVState(mvName string, rvName string, rvNewState dcache.StateEnum) error {
+	log.Info("ClusterManager::updateComponentRVState: Set %s/%s to %s", rvName, mvName, rvNewState)
 
 	common.Assert(cm.IsValidMVName(mvName))
-	common.Assert(cm.IsValidMV(&mv, int(cmi.config.NumReplicas)))
+	common.Assert(cm.IsValidRVName(rvName))
+	common.Assert(cm.IsValidComponentRVState(rvNewState))
 
 	startTime := time.Now()
 	maxWait := 120 * time.Second
 
 	for {
-
 		// Time check.
 		elapsed := time.Since(startTime)
 		if elapsed > maxWait {
@@ -1914,96 +1980,36 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, mv dcache.Mirro
 				mvName, clusterMap.MVMap)
 		}
 
-		//
-		// Caller must pass the exact same component RVs as present in the clustermap and they can only request
-		// supported transitions in the component RV state.
-		//
-		if len(clusterMapMV.RVs) != len(mv.RVs) {
-			common.Assert(false)
-			return fmt.Errorf("ClusterManager::updateComponentRVState: %d RVs passed for %s whereas clustermap has %d",
-				len(mv.RVs), mvName, len(clusterMapMV.RVs))
-		}
-
-		onlineRVs := 0
-		offlineRVs := 0
-		syncingRVs := 0
-		outofsyncRVs := 0
-		prevTransition := ""
-		curTransition := ""
-
-		for rvName, rvState := range clusterMapMV.RVs {
-			newState, found := mv.RVs[rvName]
-			if !found {
-				common.Assert(false)
-				return fmt.Errorf("ClusterManager::updateComponentRVState: RV %s missing in input MV %+v",
-					rvName, mv)
-			}
-
-			log.Debug("ClusterManager::updateComponentRVState: MV %s, RV %s, state change (%s -> %s)",
-				mvName, rvName, rvState, newState)
-
-			//
-			// For each RV make sure the new state requested is valid.
-			// Additionally make sure that all RVs which are changing state undergo the same state transition.
-			// This is to catch accidental state changes, f.e., if a component RV is marked as syncing by one node
-			// while other node has an older clustermap which has that component RV as online and it wants to set
-			// some other RV as syncing, it should not accidentally be allowed to change the state of the prev RV
-			// from syncing to online.
-			//
-			if rvState == dcache.StateOutOfSync && newState == dcache.StateSyncing {
-				curTransition = "StateOutOfSync->StateSyncing"
-				syncingRVs++
-			} else if rvState == dcache.StateSyncing && newState == dcache.StateOnline {
-				curTransition = "StateSyncing->StateOnline"
-				onlineRVs++
-			} else if rvState == dcache.StateSyncing && newState == dcache.StateOutOfSync {
-				curTransition = "StateSyncing->StateOutOfSync"
-				outofsyncRVs++
-			} else if rvState == dcache.StateOnline && newState == dcache.StateOnline {
-				onlineRVs++
-			} else if rvState == dcache.StateOutOfSync && newState == dcache.StateOutOfSync {
-				outofsyncRVs++
-			} else if rvState == dcache.StateOnline && newState == dcache.StateOffline {
-				curTransition = "StateOnline->StateOffline"
-				offlineRVs++
-			} else if rvState == dcache.StateSyncing && newState == dcache.StateOffline {
-				curTransition = "StateSyncing->StateOffline"
-				offlineRVs++
-			} else {
-				common.Assert(false)
-				return fmt.Errorf("ClusterManager::updateComponentRVState: RV %s invalid state change (%s -> %s) in input MV %+v",
-					rvName, rvState, newState, mv)
-			}
-
-			if prevTransition != "" && curTransition != prevTransition {
-				return fmt.Errorf("ClusterManager::updateComponentRVState: RV %s inconsistent state change (%s, %s) in input MV %+v",
-					rvName, prevTransition, curTransition, mv)
-			}
-
-			prevTransition = curTransition
+		// and the RV passed must be a valid component RV for that MV.
+		currentState, found := clusterMapMV.RVs[rvName]
+		if !found {
+			return fmt.Errorf("ClusterManager::updateComponentRVState: RV %s/%s is not present in clustermap MV %v",
+				rvName, mvName, clusterMapMV)
 		}
 
 		//
-		// Set the MV state based on the component RV states.
-		// 1. If any of the RV has state StateOffline or StateOutOfSync, mv.State is set to StateDegraded.
-		// 2. If all the RVs have state StateOnline, mv.State is set to StateOnline.
-		// 3. If all RVs have state either StateOnline or StateSyncing, mv.State is set to StateSyncing.
+		// and the new state requested must be valid.
+		// Note that we support only few distinct state transitions.
 		//
-		var mvState dcache.StateEnum
+		if currentState == dcache.StateOutOfSync && rvNewState == dcache.StateSyncing ||
+			currentState == dcache.StateSyncing && rvNewState == dcache.StateOnline ||
+			currentState == dcache.StateSyncing && rvNewState == dcache.StateOutOfSync ||
+			currentState == dcache.StateSyncing && rvNewState == dcache.StateOffline ||
+			currentState == dcache.StateOnline && rvNewState == dcache.StateOffline {
 
-		// Sequence of conditions is important here.
-		if offlineRVs > 0 || outofsyncRVs > 0 {
-			mvState = dcache.StateDegraded
-		} else if onlineRVs == len(mv.RVs) {
-			mvState = dcache.StateOnline
-		} else if syncingRVs > 0 {
-			common.Assert((syncingRVs+onlineRVs) == len(mv.RVs), syncingRVs, onlineRVs, len(mv.RVs))
-			mvState = dcache.StateSyncing
+			log.Debug("ClusterManager::updateComponentRVState:  %s/%s, state change (%s -> %s)",
+				rvName, mvName, currentState, rvNewState)
+
+		} else {
+			common.Assert(false, rvName, mvName, currentState, rvNewState)
+			return fmt.Errorf("ClusterManager::updateComponentRVState: %s/%s invalid state change request (%s -> %s)",
+				rvName, mvName, currentState, rvNewState)
 		}
 
 		//
 		// Ok, component RVs passed by caller match those in the clustermap and all RV state change requested
-		// are valid.
+		// are valid. Update component RVs and call updateMVList() which will set the MV state correctly, and
+		// run various mv workflows as needed after the current RV state change.
 		//
 		clusterMap.LastUpdatedBy = cmi.myNodeId
 		clusterMap.State = dcache.StateChecking
@@ -2029,11 +2035,16 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, mv dcache.Mirro
 			continue
 		}
 
+		//
 		// Update requested Mv in the cluster Map.
-		mv.State = mvState
-		clusterMap.MVMap[mvName] = mv
+		// MV state is not important as it'll be correctly set by updateMVList().
+		// We force it to a StateOffline to catch any bug in setting the MV state correctly.
+		//
+		clusterMapMV.State = dcache.StateOffline
+		clusterMapMV.RVs[rvName] = rvNewState
+		clusterMap.MVMap[mvName] = clusterMapMV
 
-		// Call updateMVList() to run the various mv workflows.
+		// Call updateMVList() to update MV state and run the various mv workflows.
 		cmi.updateMVList(clusterMap.RVMap, clusterMap.MVMap)
 
 		clusterMap.State = dcache.StateReady
@@ -2056,7 +2067,7 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, mv dcache.Mirro
 
 		// The clustermap must now have update RV states in MV.
 		log.Info("ClusterManager::updateComponentRVState: clustermap MV is updated by %s at %d %+v",
-			cmi.myNodeId, clusterMap.LastUpdatedAt, mv)
+			cmi.myNodeId, clusterMap.LastUpdatedAt, clusterMapMV)
 
 		break
 	}
@@ -2079,8 +2090,11 @@ func Start(dCacheConfig *dcache.DCacheConfig, rvs []dcache.RawVolume) error {
 
 	clusterManager = &ClusterManager{}
 
-	// Register the hook for updating the MV state through clustermap package.
+	// Register hook for updating the component RV state for an MV, through clustermap package.
 	cm.RegisterComponentRVStateUpdater(clusterManager.updateComponentRVState)
+
+	// Register hook for synchronously refreshing the clustermap from the metadata store, through clustermap package.
+	cm.RegisterClusterMapSyncRefresher(clusterManager.updateClusterMapLocalCopySync)
 
 	return clusterManager.start(dCacheConfig, rvs)
 }

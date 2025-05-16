@@ -134,30 +134,6 @@ func convertRVMapToList(mvName string, rvMap map[string]dcache.StateEnum) []*mod
 	return componentRVs
 }
 
-func convertRVListToMap(mvName string, componentRVs []*models.RVNameAndState) map[string]dcache.StateEnum {
-	common.Assert(len(componentRVs) == int(getNumReplicas()),
-		len(componentRVs), getNumReplicas(), rpc.ComponentRVsToString(componentRVs))
-
-	rvMap := make(map[string]dcache.StateEnum)
-
-	for _, rv := range componentRVs {
-		common.Assert(rv != nil)
-		common.Assert(cm.IsValidRVName(rv.Name), rv.Name)
-		common.Assert(rv.State == string(dcache.StateOnline) ||
-			rv.State == string(dcache.StateOffline) ||
-			rv.State == string(dcache.StateOutOfSync) ||
-			rv.State == string(dcache.StateSyncing), rv.Name, rv.State)
-
-		rvMap[rv.Name] = dcache.StateEnum(rv.State)
-	}
-
-	// Ensure there were no dups in componentRVs.
-	common.Assert(len(rvMap) == int(getNumReplicas()),
-		mvName, len(rvMap), getNumReplicas(), rvMap)
-
-	return rvMap
-}
-
 // return the number of replicas
 func getNumReplicas() uint32 {
 	return cm.GetCacheConfig().NumReplicas
@@ -188,49 +164,4 @@ func getCachePathForRVName(rvName string) string {
 	common.Assert(common.DirectoryExists(rv.LocalCachePath), rv.LocalCachePath)
 
 	return rv.LocalCachePath
-}
-
-// Given an MV and its componentRVs, update the state of one component RV.
-// This is the simplified API for updating state of a single component RV, it calls the generic
-// cm.UpdateComponentRVState() to execute the requested change.
-// If the componentRVs passed doesn't match the current component RVs for mvName in the clustermap,
-// then the call will fail. It'll only succeed if the component RVs match and the requested state
-// transition is a supported one.
-// See cluster_manager.updateComponentRVState() for a list of supported transitions and other details.
-func updateComponentRVState(mvName string, rvName string, rvState dcache.StateEnum,
-	componentRVs []*models.RVNameAndState) error {
-	common.Assert(cm.IsValidMVName(mvName), mvName)
-	common.Assert(cm.IsValidRVName(rvName), rvName)
-	common.Assert(rvState == dcache.StateOnline ||
-		rvState == dcache.StateOffline ||
-		rvState == dcache.StateOutOfSync ||
-		rvState == dcache.StateSyncing, mvName, rvName, rvState)
-	common.Assert(len(componentRVs) == int(getNumReplicas()), mvName, len(componentRVs), getNumReplicas())
-
-	rvMap := convertRVListToMap(mvName, componentRVs)
-
-	log.Debug("utils::updateComponentRVState: %s/%s, %s -> %s: %s",
-		rvName, mvName, rvMap[rvName], rvState, rpc.ComponentRVsToString(componentRVs))
-
-	// Must not already be the desired state.
-	common.Assert(rvMap[rvName] != rvState, rvName, rvState)
-
-	// Update the state of the target RV in the map.
-	rvMap[rvName] = rvState
-
-	err := cm.UpdateComponentRVState(mvName, dcache.MirroredVolume{
-		// Note: MV state is ignored by UpdateComponentRVState().
-		State: dcache.StateDegraded,
-		RVs:   rvMap,
-	})
-
-	if err != nil {
-		errStr := fmt.Sprintf("failed to update %s/%s to %s: %v",
-			rvName, mvName, rvState, err)
-		log.Err("utils::updateComponentRVState: %v", errStr)
-		common.Assert(false, errStr)
-		return err
-	}
-
-	return nil
 }
