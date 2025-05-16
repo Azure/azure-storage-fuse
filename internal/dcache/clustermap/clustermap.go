@@ -157,10 +157,23 @@ func IsClusterReadonly() bool {
 // The call blocks till the clustermap is refreshed.
 // Once RefreshClusterMapSync() completes successfully, any clustermap call made would return results from the
 // updated clustermap.
+//
+// Note: Usually you will not need to work on the most uptodate clustermap, the last periodically refreshed copy
+//
+//	of clustermap should be fine for most users. This API must be used by callers which cannot safely proceed
+//	w/o knowing the latest clustermap. This should not be a common requirement and codepaths calling it should
+//	be very infrequently executed.
 func RefreshClusterMapSync() error {
-	// TODO: Implement it.
-	common.Assert(false, "Not implemented")
-	return nil
+	// Clustermanager must call RegisterClusterMapSyncRefresher() in startup, so we don't expect this to be nil.
+	common.Assert(clusterMapSyncRefresher != nil)
+	log.Debug("RefreshClusterMapSync: Fetching latest clustermap from metadata store")
+
+	return clusterMapSyncRefresher()
+}
+
+// RegisterClusterMapSyncRefresher is how the cluster_manager registers its real implementation.
+func RegisterClusterMapSyncRefresher(fn func() error) {
+	clusterMapSyncRefresher = fn
 }
 
 // Mark component RV in an MV, offline.
@@ -171,21 +184,21 @@ func MarkComponentRVOffline(mvName, rvName string) error {
 	return nil
 }
 
-// Tell clustermanager the updated state of one or more component RVs for
-// an MV (component RVs remaining the same).
-func UpdateComponentRVState(mvName string, mv dcache.MirroredVolume) error {
-	// Clustermanager must call RegisterMVUpdater() in startup, so we don't expect this to be nil.
+// Tell clustermanager to update the state of a component RV for an MV.
+func UpdateComponentRVState(mvName string, rvName string, rvNewState dcache.StateEnum) error {
+	// Clustermanager must call RegisterComponentRVStateUpdater() in startup, so we don't expect this to be nil.
 	common.Assert(componentRVStateUpdater != nil)
-	return componentRVStateUpdater(mvName, mv)
+	return componentRVStateUpdater(mvName, rvName, rvNewState)
 }
 
 // RegisterComponentRVStateUpdater is how the cluster_manager registers its real implementation.
-func RegisterComponentRVStateUpdater(fn func(mvName string, mv dcache.MirroredVolume) error) {
+func RegisterComponentRVStateUpdater(fn func(mvName string, rvName string, rvNewState dcache.StateEnum) error) {
 	componentRVStateUpdater = fn
 }
 
 var (
-	componentRVStateUpdater func(mvName string, mv dcache.MirroredVolume) error
+	componentRVStateUpdater func(mvName string, rvName string, rvNewState dcache.StateEnum) error
+	clusterMapSyncRefresher func() error
 	clusterMap              = &ClusterMap{
 		updatesChan: make(chan dcache.ClusterMapEvent, 8),
 		// This MUST match localClusterMapPath in clustermanager.
