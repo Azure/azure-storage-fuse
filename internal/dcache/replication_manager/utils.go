@@ -165,36 +165,3 @@ func getCachePathForRVName(rvName string) string {
 
 	return rv.LocalCachePath
 }
-
-// Given an MV and its componentRVs, update the state of one component RV.
-// This is the simplified API for updating state of a single component RV, it calls the generic
-// cm.UpdateComponentRVState() to execute the requested change.
-// If the componentRVs passed doesn't match the current component RVs for mvName in the clustermap,
-// then the call will fail. It'll only succeed if the component RVs match and the requested state
-// transition is a supported one.
-// See cluster_manager.updateComponentRVState() for a list of supported transitions and other details.
-func updateComponentRVState(mvName string, rvName string, rvState dcache.StateEnum,
-	componentRVs []*models.RVNameAndState) error {
-	common.Assert(cm.IsValidMVName(mvName), mvName)
-	common.Assert(cm.IsValidRVName(rvName), rvName)
-	common.Assert(rvState == dcache.StateOnline ||
-		rvState == dcache.StateOffline ||
-		rvState == dcache.StateOutOfSync ||
-		rvState == dcache.StateSyncing, mvName, rvName, rvState)
-	common.Assert(len(componentRVs) == int(getNumReplicas()), mvName, len(componentRVs), getNumReplicas())
-
-	log.Debug("utils::updateComponentRVState: %s/%s -> %s: %s",
-		rvName, mvName, rvState, rpc.ComponentRVsToString(componentRVs))
-
-	err := cm.UpdateComponentRVState(mvName, rvName, rvState)
-
-	if err != nil {
-		errStr := fmt.Sprintf("failed to update %s/%s to %s: %v",
-			rvName, mvName, rvState, err)
-		log.Err("utils::updateComponentRVState: %v", errStr)
-		common.Assert(false, errStr)
-		return err
-	}
-
-	return nil
-}
