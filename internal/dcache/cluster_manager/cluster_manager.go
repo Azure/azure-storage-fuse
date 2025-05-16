@@ -360,6 +360,10 @@ func (cmi *ClusterManager) updateClusterMapLocalCopyIfRequired(sync bool) error 
 	return nil
 }
 
+func (cmi *ClusterManager) updateClusterMapLocalCopySync() error {
+	return cmi.updateClusterMapLocalCopyIfRequired(true /* sync */)
+}
+
 // Stop ClusterManager.
 func (cmi *ClusterManager) stop() error {
 	log.Info("ClusterManager::stop: stopping tickers and closing channel")
@@ -2086,8 +2090,11 @@ func Start(dCacheConfig *dcache.DCacheConfig, rvs []dcache.RawVolume) error {
 
 	clusterManager = &ClusterManager{}
 
-	// Register the hook for updating the MV state through clustermap package.
+	// Register hook for updating the component RV state for an MV, through clustermap package.
 	cm.RegisterComponentRVStateUpdater(clusterManager.updateComponentRVState)
+
+	// Register hook for synchronously refreshing the clustermap from the metadata store, through clustermap package.
+	cm.RegisterClusterMapSyncRefresher(clusterManager.updateClusterMapLocalCopySync)
 
 	return clusterManager.start(dCacheConfig, rvs)
 }
