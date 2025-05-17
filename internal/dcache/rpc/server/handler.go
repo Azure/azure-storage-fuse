@@ -99,8 +99,15 @@ type rvInfo struct {
 // Note that this is not information about the entire MV. One MV is replicated across multiple RVs and this holds
 // only the information about the "MV Replica" that our RV hosts.
 type mvInfo struct {
-	rwMutex      sync.RWMutex
-	mvName       string                   // mv0, mv1, etc.
+	rwMutex sync.RWMutex
+	mvName  string // mv0, mv1, etc.
+
+	// RV this MV is part of.
+	// Note that mvInfo is referenced via rvInfo.mvMap so when we have rvInfo we already know the
+	// RV name. This is for making the RV name available to functions that operate on mvInfo and do
+	// not have the rvInfo.
+	rvName string
+
 	componentRVs []*models.RVNameAndState // sorted list of component RVs for this MV
 
 	// Total amount of space used up inside the MV directory (both MV and .sync directory),
@@ -192,8 +199,9 @@ func NewChunkServiceHandler(rvs map[string]dcache.RawVolume) {
 }
 
 // Create new mvInfo instance. This is used by the JoinMV() RPC call to create a new mvInfo.
-func newMVInfo(mvName string, componentRVs []*models.RVNameAndState) *mvInfo {
+func newMVInfo(rvName, mvName string, componentRVs []*models.RVNameAndState) *mvInfo {
 	return &mvInfo{
+		rvName:       rvName,
 		mvName:       mvName,
 		componentRVs: componentRVs,
 		syncJobs:     make(map[string]syncJob),
@@ -225,6 +233,7 @@ func (rv *rvInfo) getMVInfo(mvName string) *mvInfo {
 	if ok {
 		common.Assert(mvInfo != nil, mvName, rv.rvName)
 		common.Assert(mvName == mvInfo.mvName, mvName, mvInfo.mvName, rv.rvName)
+		common.Assert(rv.rvName == mvInfo.rvName, rv.rvName, mvInfo.rvName, mvName)
 
 		return mvInfo
 	}
@@ -243,6 +252,7 @@ func (rv *rvInfo) getMVs() []string {
 		if ok {
 			common.Assert(mvInfo != nil, fmt.Sprintf("mvMap[%s] has nil value", mvName))
 			common.Assert(mvName == mvInfo.mvName, "MV name mismatch in mv", mvName, mvInfo.mvName)
+			common.Assert(rv.rvName == mvInfo.rvName, rv.rvName, mvInfo.rvName, mvInfo.mvName)
 		} else {
 			common.Assert(false, fmt.Sprintf("mvMap[%s] has value which is not of type *mvInfo", mvName))
 		}
@@ -257,12 +267,13 @@ func (rv *rvInfo) getMVs() []string {
 // caller of this method must ensure that the RV is not part of the given MV
 func (rv *rvInfo) addToMVMap(mvName string, val *mvInfo) {
 	mvPath := filepath.Join(rv.cacheDir, mvName)
-	common.Assert(common.DirectoryExists(mvPath), fmt.Sprintf("mvPath %s MUST be present", mvPath))
+	common.Assert(common.DirectoryExists(mvPath), mvPath)
 
 	rv.mvMap.Store(mvName, val)
 	rv.mvCount.Add(1)
 
-	common.Assert(rv.mvCount.Load() <= getMVsPerRV(), fmt.Sprintf("mvCount for RV %s is greater than max MVs %d", rv.rvName, getMVsPerRV()))
+	common.Assert(val.rvName == rv.rvName, val.rvName, rv.rvName)
+	common.Assert(rv.mvCount.Load() <= getMVsPerRV(), rv.rvName, rv.mvCount.Load(), getMVsPerRV())
 }
 
 func (rv *rvInfo) deleteFromMVMap(mvName string) {
@@ -428,17 +439,88 @@ func (mv *mvInfo) getComponentRVs() []*models.RVNameAndState {
 
 // Update the component RVs for the MV.
 func (mv *mvInfo) updateComponentRVs(componentRVs []*models.RVNameAndState) {
-	common.Assert(len(mv.componentRVs) == int(cm.GetCacheConfig().NumReplicas),
-		len(mv.componentRVs), cm.GetCacheConfig().NumReplicas)
+	common.Assert(len(componentRVs) == int(cm.GetCacheConfig().NumReplicas),
+		len(componentRVs), cm.GetCacheConfig().NumReplicas)
 
 	mv.rwMutex.Lock()
 	defer mv.rwMutex.Unlock()
 
+	// Update must be called only to update not to add.
+	common.Assert(mv.componentRVs != nil)
+	common.Assert(len(mv.componentRVs) == len(componentRVs), len(mv.componentRVs), len(componentRVs))
+
 	// TODO: check if this is safe
 	// componentRVs point to a thrift req member. Does thrift say anything about safety of that,
 	// or should we do a deep copy of the list.
+
+	// mvInfo.componentRVs is a sorted list.
 	sortComponentRVs(componentRVs)
+
+	log.Debug("mvInfo::updateComponentRVs: %s -> %s",
+		rpc.ComponentRVsToString(mv.componentRVs), rpc.ComponentRVsToString(componentRVs))
+
 	mv.componentRVs = componentRVs
+}
+
+// Refresh componentRVs for the MV.
+//
+// Description:
+// Any workflow that updates an MV's membership information (either component RVs and/or their states)
+// first updates the membership in the node's rvInfo data, by an UpdateMV/StartSync/EndSync RPC message.
+// Once all involved component RVs respond with a success the sender commits the change in the clustermap.
+// If one or more component RVs fail the request while some other succeed, the membership details might
+// become inconsistent. Since the sender will only update the clustermap after *all* the component RVs
+// respond with a success, in this case those component RVs which did make the change have information
+// that is different from the clustermap.
+//
+// Thus, an incoming request's component RVs may not match the rvInfo's component RVs for one of two reasons:
+// 1. The sender has a stale clustermap.
+// 2. rvInfo has inconsistent info due to the partially applied change.
+//
+// So, whenever a request and rvInfo's component RV details don't match, the server needs to refresh its
+// membership details from the clustermap and then fail the call with NeedToRefreshClusterMap asking the
+// sender to refresh too. This function helps to refresh the rvInfo component RV details.
+func (mv *mvInfo) refreshFromClustermap() error {
+	log.Debug("mvInfo::refreshFromClustermap: %s/%s", mv.rvName, mv.mvName)
+
+	//
+	// Refresh the clustermap synchronously. Once this returns clustermap package has the updated
+	// clustermap.
+	//
+	err := cm.RefreshClusterMapSync()
+	if err != nil {
+		err := fmt.Errorf("mvInfo::refreshFromClustermap: %s/%s, failed: %v", mv.rvName, mv.mvName, err)
+		log.Err("%v", err)
+		common.Assert(false, err)
+		return err
+	}
+
+	// Get component RV details from the just refreshed clustermap.
+	newRVs := cm.GetRVs(mv.mvName)
+	if newRVs == nil {
+		err := fmt.Errorf("mvInfo::refreshFromClustermap: GetRVs(%s) failed", mv.mvName)
+		log.Err("%v", err)
+		common.Assert(false, err)
+		return err
+	}
+
+	// Convert newRVs from RV Name->State map, to RVNameAndState slice.
+	var newComponentRVs []*models.RVNameAndState
+	for rvName, rvState := range newRVs {
+		newComponentRVs = append(newComponentRVs, &models.RVNameAndState{
+			Name:  rvName,
+			State: string(rvState),
+		})
+	}
+
+	// Update unconditionally, even if it may not have changed, doesn't matter.
+	mv.updateComponentRVs(newComponentRVs)
+
+	//
+	// TODO: Remove any syncJobs which are no longer running.
+	//
+
+	return nil
 }
 
 // increment the total chunk bytes for this MV
@@ -517,13 +599,29 @@ func (mv *mvInfo) isSyncOpWriteLocked() bool {
 //	it's important for server (which always has the latest cluster membership info) to let client know if
 //	its clustermap copy is stale and it needs to refresh it.
 func (mv *mvInfo) validateComponentRVsInSync(componentRVsInReq []*models.RVNameAndState, sourceRVName string, targetRVName string) error {
-	componentRVsInMV := mv.getComponentRVs()
 
-	// Component RVs received in req must be exactly same as component RVs list for this MV replica.
-	if err := isComponentRVsValid(componentRVsInMV, componentRVsInReq); err != nil {
-		errStr := fmt.Sprintf("Request component RVs are invalid for MV %s [%v]", mv.mvName, err)
-		log.Err("ChunkServiceHandler::validateComponentRVsInSync: %s", errStr)
-		return rpc.NewResponseError(rpc.NeedToRefreshClusterMap, errStr)
+	var componentRVsInMV []*models.RVNameAndState
+	clustermapRefreshed := false
+
+	for {
+		componentRVsInMV = mv.getComponentRVs()
+
+		//
+		// Component RVs received in req must be exactly same as component RVs list for this MV replica.
+		// We may fail once due to out-of-date cluster membership info, refresh clustermap and try once more.
+		//
+		err := isComponentRVsValid(componentRVsInMV, componentRVsInReq)
+		if err != nil {
+			if !clustermapRefreshed {
+				mv.refreshFromClustermap()
+				clustermapRefreshed = true
+				continue
+			}
+
+			errStr := fmt.Sprintf("Request component RVs are invalid for MV %s [%v]", mv.mvName, err)
+			log.Err("ChunkServiceHandler::validateComponentRVsInSync: %s", errStr)
+			return rpc.NewResponseError(rpc.NeedToRefreshClusterMap, errStr)
+		}
 	}
 
 	// Source RV must be present in the component RVs list for this MV replica.
@@ -1166,7 +1264,7 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 
 	// add in sync map
 	sortComponentRVs(req.ComponentRV)
-	rvInfo.addToMVMap(req.MV, newMVInfo(req.MV, req.ComponentRV))
+	rvInfo.addToMVMap(req.MV, newMVInfo(rvInfo.rvName, req.MV, req.ComponentRV))
 
 	// increment the reserved space for this RV
 	rvInfo.incReservedSpace(req.ReserveSpace)

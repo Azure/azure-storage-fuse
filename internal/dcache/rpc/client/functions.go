@@ -260,24 +260,28 @@ func StartSync(ctx context.Context, targetNodeID string, req *models.StartSyncRe
 	reqStr := rpc.StartSyncRequestToString(req)
 	log.Debug("rpc_client::StartSync: Sending StartSync request to node %s: %v", targetNodeID, reqStr)
 
-	// get RPC client from the client pool
+	// Get an RPC client from the client pool, for making the StartSync RPC call.
 	client, err := cp.getRPCClient(targetNodeID)
 	if err != nil {
-		log.Err("rpc_client::StartSync: Failed to get RPC client for node %s [%v] : %v", targetNodeID, err.Error(), reqStr)
+		log.Err("rpc_client::StartSync: Failed to get RPC client for node %s [%v] : %v",
+			targetNodeID, err.Error(), reqStr)
 		return nil, err
 	}
+
 	defer func() {
-		// release RPC client back to the pool
+		// Release RPC client back to the pool.
 		err = cp.releaseRPCClient(client)
 		if err != nil {
-			log.Err("rpc_client::StartSync: Failed to release RPC client for node %s [%v] : %v", targetNodeID, err.Error(), reqStr)
+			log.Err("rpc_client::StartSync: Failed to release RPC client for node %s [%v] : %v",
+				targetNodeID, err.Error(), reqStr)
 		}
 	}()
 
-	// call the rpc method
+	// Call the rpc method.
 	resp, err := client.svcClient.StartSync(ctx, req)
 	if err != nil {
-		log.Err("rpc_client::StartSync: Failed to send StartSync request to node %s [%v] : %v", targetNodeID, err.Error(), reqStr)
+		log.Err("rpc_client::StartSync: Failed to send StartSync request to node %s [%v] : %v",
+			targetNodeID, err.Error(), reqStr)
 		return nil, err
 	}
 

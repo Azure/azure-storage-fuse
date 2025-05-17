@@ -639,6 +639,16 @@ func sendStartSyncRequest(rvName string, targetNodeID string, req *models.StartS
 	if err != nil {
 		log.Err("ReplicationManager::sendStartSyncRequest: StartSync failed for %s/%s %v: %v",
 			rvName, req.MV, rpc.StartSyncRequestToString(req), err)
+
+		//
+		// Right now we treat all StartSync failures as being caused by stale clustermap.
+		// TODO: Check for NeedToRefreshClusterMap and only on that error, refresh the clustermap.
+		//
+		err1 := cm.RefreshClusterMapSync()
+		if err1 != nil {
+			log.Err("ReplicationManager::sendStartSyncRequest: RefreshClusterMapSync failed: %v", err1)
+		}
+
 		return "", err
 	}
 
