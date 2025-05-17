@@ -1396,14 +1396,20 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 				outofsyncRVs++
 			}
 
-			// If this RV is not offline, its containing node must be excluded for replacement RV(s).
+			// If this component RV is not offline, its containing node must be excluded for replacement RV(s).
 			if mv.RVs[rvName] != dcache.StateOffline {
 				excludeNodes[rvMap[rvName].NodeId] = struct{}{}
 				continue
 			}
 
+			//
 			// Offline RVs themselves must be excluded. Those are the ones we need to replace with good ones.
-			excludeRVNames[rvName] = struct{}{}
+			// Note that it's possible that the same RV has now come back online, in which case it can be
+			// reused.
+			//
+			if rvMap[rvName].State == dcache.StateOffline {
+				excludeRVNames[rvName] = struct{}{}
+			}
 
 			offlineRVs++
 		}
@@ -1465,8 +1471,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 						continue
 					}
 
-					common.Assert(rvName != newRvName, rvName)
-
+					//
 					// TODO: Need to find out space requirement for the MV and exclude RVs
 					//       which do not have enough availableSpace.
 
@@ -1474,9 +1479,11 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 					// Use this RV to replace older RV, a newly replaced RV starts as "outofsync" to indicate
 					// that the RV is good but needs to be sync'ed (from a good component RV).
 					//
-					mv.RVs[newRvName] = dcache.StateOutOfSync
-					// Remove the bad RV from MV.
+					// Remove the bad RV from MV. Do this before assigning the replacement RV, in case both
+					// are same.
+					//
 					delete(mv.RVs, rvName)
+					mv.RVs[newRvName] = dcache.StateOutOfSync
 
 					//
 					// Now mv is updated to correctly reflect new selected RV, with bad RV removed.
