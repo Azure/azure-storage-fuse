@@ -966,7 +966,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	}
 
 	// Successful getClusterMap() must return a valid etag.
-	common.Assert(etag != nil, fmt.Sprintf("expected non-nil ETag on node %s", cmi.myNodeId))
+	common.Assert(etag != nil, cmi.myNodeId, len(clusterMapBytes))
 
 	log.Debug("ClusterManager::updateStorageClusterMapIfRequired: Fetched global clustermap (bytes: %d, etag: %v)",
 		len(clusterMapBytes), *etag)
@@ -1007,7 +1007,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 		err = fmt.Errorf("LastUpdatedAt(%d) in future, now(%d), skipping update", clusterMap.LastUpdatedAt, now)
 		log.Warn("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
 
-		// Be soft if it could be do to clock skew.
+		// Be soft if it could be due to clock skew.
 		if (clusterMap.LastUpdatedAt - now) < 300 {
 			return nil
 		}
@@ -1018,10 +1018,18 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	}
 
 	clusterMapAge := now - clusterMap.LastUpdatedAt
-	// Assert if clusterMap is not updated for 3 consecutive epochs.
-	// That might indicate some bug.
-	common.Assert(clusterMapAge < int64(clusterMap.Config.ClustermapEpoch*3),
-		fmt.Sprintf("clusterMapAge (%d) >= %d", clusterMapAge, clusterMap.Config.ClustermapEpoch*3))
+	//
+	// Assert if clusterMap is not updated for 3 consecutive epochs, it might indicate some bug.
+	// For very small ClustermapEpoch values, 3 times the value will not be sufficient as the thresholdEpochTime
+	// is set to 60, so limit it to 180.
+	// The max time till which the clusterMap may not be updated in the event of leader going down is
+	// 2*ClustermapEpoch + thresholdEpochTime, so for values of ClustermapEpoch above 60 seconds, 3 times
+	// ClustermapEpoch is suffcient but for smaller ClustermapEpoch values we have to cap to 180, with a margin
+	// of 20 seconds.
+	//
+	common.Assert(clusterMapAge < int64(max(clusterMap.Config.ClustermapEpoch*3, 200)),
+		fmt.Sprintf("clusterMapAge (%d) >= %d",
+			clusterMapAge, int64(max(clusterMap.Config.ClustermapEpoch*3, 200))))
 
 	const thresholdEpochTime = 60
 	// Staleness check for non-leader.
