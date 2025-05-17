@@ -611,10 +611,12 @@ func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, err
 			}(rv)
 		}
 
-		if rvStillOnline {
-			time.Sleep(10 * time.Second)
-			continue
+		// No my RV online, done.
+		if !rvStillOnline {
+			break
 		}
+
+		time.Sleep(10 * time.Second)
 	}
 
 	// Wait for all RVs to complete cleanup.
@@ -802,8 +804,6 @@ func (cmi *ClusterManager) updateStorageClusterMapWithMyRVs() error {
 		// Must be a valid clustermap.
 		common.Assert(cm.IsValidClusterMap(&clusterMap))
 
-		// This is the first time we should be saving the global config.
-		common.Assert(cmi.config == nil)
 		cmi.config = &clusterMap.Config
 		common.Assert(cm.IsValidDcacheConfig(cmi.config))
 
@@ -1405,7 +1405,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			//
 			// Offline RVs themselves must be excluded. Those are the ones we need to replace with good ones.
 			// Note that it's possible that the same RV has now come back online, in which case it can be
-			// reused.
+			// reused and hence must not be excluded.
 			//
 			if rvMap[rvName].State == dcache.StateOffline {
 				excludeRVNames[rvName] = struct{}{}
@@ -1512,8 +1512,8 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			// TODO: For huge clusters availableNodes could be a lot of log.
 			//
 			if !foundReplacement {
-				log.Warn("ClusterManager::fixMV: No replacement RV found for %s/%s, availableNodes: %+v, excludeNodes: %+v",
-					rvName, mvName, availableNodes, excludeNodes)
+				log.Warn("ClusterManager::fixMV: No replacement RV found for %s/%s, availableNodes: %+v, excludeNodes: %+v, excludeRVNames: %+v",
+					rvName, mvName, availableNodes, excludeNodes, excludeRVNames)
 			}
 		}
 
@@ -1633,8 +1633,16 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			// Reduce its slot count, so that we don't use a component RV more than MvsPerRv times across all MVs.
 			// Note that offline RVs are not included in nodeToRvs so we should not be updating their slot count.
 			//
+			// We don't reduce slot count if the component RV itself is marked offline. This is because an offline
+			// component RV for all purposes can be treated as non-existent. Soon after this we will run the fix-mv
+			// workflow which will replace these offline RVs with some online RV (it could be the same RV if it has
+			// come back up online) and at that time we will not increase the slot count of the outgoing component
+			// RV, so we don't reduce it now.
+			//
 			if rvMap[rvName].State != dcache.StateOffline {
-				consumeRVSlot(mvName, rvName)
+				if mv.RVs[rvName] != dcache.StateOffline {
+					consumeRVSlot(mvName, rvName)
+				}
 			}
 		}
 
