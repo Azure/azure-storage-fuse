@@ -41,6 +41,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -64,6 +65,11 @@ type replicationMgr struct {
 }
 
 var rm *replicationMgr
+
+// Set of currently running sync jobs, indexed by target replica ("rvX/mvY") and the value stored is the
+// source replica.
+// Note that there can be a single sync job for a given target replica.
+var runningJobs sync.Map
 
 // Create a new replication manager instance and start the periodic resync of degraded MVs.
 func Start() error {
@@ -506,10 +512,29 @@ func syncMV(mvName string, mvInfo dcache.MirroredVolume) {
 			continue
 		}
 
+		srcReplica := fmt.Sprintf("%s/%s", lioRV, mvName)
+		tgtReplica := fmt.Sprintf("%s/%s", rv.Name, mvName)
+
+		// Don't run more than one sync job for the same target replica.
+		val, ok := runningJobs.Load(tgtReplica)
+		if ok {
+			log.Info("ReplicationManager::syncMV: Not starting sync job (%s/%s -> %s/%s), %s -> %s already running",
+				lioRV, mvName, rv.Name, mvName, val.(string), tgtReplica)
+			continue
+		}
+
 		log.Info("ReplicationManager::syncMV: Starting sync job (%s/%s -> %s/%s) for syncing %d bytes",
 			lioRV, mvName, rv.Name, mvName, syncSize)
 
-		go syncComponentRV(mvName, lioRV, rv.Name, syncSize, componentRVs)
+		// Store it in the map to avoid multiple sync jobs for the same target.
+		runningJobs.Store(tgtReplica, srcReplica)
+
+		go func() {
+			// Remove from the map, once the syncjob completes (success or failure).
+			defer runningJobs.Delete(tgtReplica)
+
+			syncComponentRV(mvName, lioRV, rv.Name, syncSize, componentRVs)
+		}()
 	}
 }
 
