@@ -42,6 +42,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -379,6 +381,227 @@ func (cmi *ClusterManager) stop() error {
 	return nil
 }
 
+// Cleanup one RV directory.
+// It returns success only if it's able to delete all the MV directories found in the RV, else if it's not able
+// to delete even one MV dir it'll return an error.
+func cleanupRV(rv dcache.RawVolume) error {
+	var wg sync.WaitGroup
+	var deleteSuccess atomic.Int64
+	var deleteFailures atomic.Int64
+	const maxParallelDeletes = 32
+	var tokens = make(chan struct{}, maxParallelDeletes)
+
+	entries, err := os.ReadDir(rv.LocalCachePath)
+	if err != nil {
+		common.Assert(false, err)
+		return fmt.Errorf("ClusterManager::cleanupRV os.ReadDir(%s) failed: %v", rv.LocalCachePath, err)
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			return fmt.Errorf("ClusterManager::cleanupRV %s/%s is not a directory %+v",
+				rv.LocalCachePath, entry.Name(), entry)
+		}
+
+		mvName := entry.Name()
+		parts := strings.Split(mvName, ".")
+		if len(parts) > 0 {
+			mvName = parts[0]
+			if len(parts) > 2 && parts[1] != "sync" {
+				return fmt.Errorf("ClusterManager::cleanupRV %s/%s is not a valid MV directory %+v",
+					rv.LocalCachePath, entry.Name(), entry)
+			}
+		}
+
+		if !cm.IsValidMVName(mvName) {
+			return fmt.Errorf("ClusterManager::cleanupRV %s/%s is not a valid MV directory %+v",
+				rv.LocalCachePath, entry.Name(), entry)
+		}
+
+		wg.Add(1)
+
+		go func(dir string) {
+			tokens <- struct{}{}
+			defer func() {
+				<-tokens
+				wg.Done()
+			}()
+			log.Info("ClusterManager::cleanupRV: Async remove: %s", dir)
+
+			err := os.RemoveAll(dir)
+			if err != nil {
+				log.Err("ClusterManager::cleanupRV: os.RemoveAll(%s) failed: %v", dir, err)
+				deleteFailures.Add(1)
+			} else {
+				log.Info("ClusterManager::cleanupRV: Deleted dir %s/%s", rv.LocalCachePath, dir)
+				deleteSuccess.Add(1)
+			}
+		}(entry.Name())
+	}
+
+	wg.Wait()
+
+	if deleteFailures.Load() != 0 {
+		return fmt.Errorf("ClusterManager::cleanupRV: RV dir %s, failed to delete %d MVs (deleted %d)",
+			rv.LocalCachePath, deleteFailures.Load(), deleteSuccess.Load())
+	}
+
+	log.Info("ClusterManager::cleanupRV: RV dir %s, deleted %d MVs",
+		rv.LocalCachePath, deleteSuccess.Load())
+	return nil
+}
+
+// Cleanup all my local RVs deleting any chunks and/or mv folders created if/when the RV was part of the cluster
+// in the past. Note that this cleans up the local RV directory only after making sure it's safe to clean, and
+// an RV is safe to clean when it's either not present in the clusterMap RV list or it's marked as offline.
+// An RV that's offline in the RV list is guaranteed to be offline in the MV list also, i.e., no MV will contact
+// this RV for for chunk IO (read or write).
+//
+// In case of nil error the boolean return value indicates the following:
+// true  -> Found a clustermap and RV(s) were either not present in the RV list or waited for RV(s) to be marked
+//
+//	offline and then cleaned up the RVs if any.
+//
+// false -> Did not find clustermap, cleaned up the RVs if any.
+//
+// If it doesn't return an error, it'll return only after all RV directories are fully deleted.
+// If it finds any unexpected file/dir in the RV it complains and bails out. Note that this is the only place where
+// we check if RV contains any unexpected file/dir.
+func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, error) {
+	log.Info("ClusterManager::safeCleanupMyRVs: Cleaning up %d RV(s) %v", len(myRVs), myRVs)
+
+	//
+	// maxWait is the amount of time we will wait for RVs to be marked offline in clustermap.
+	// Once we have the config it's set to minimum of 5 minutes and thrice the clustermap epoch to make sure
+	// the clusterManager gets a chance to notice loss of heartbeat and mark the RV offline.
+	//
+	startTime := time.Now()
+	maxWait := 300 * time.Second
+	var wg sync.WaitGroup
+	var failedRV atomic.Int64
+
+	for {
+		elapsed := time.Since(startTime)
+		if elapsed > maxWait {
+			common.Assert(false)
+			return true, fmt.Errorf("ClusterManager::safeCleanupMyRVs: Exceeded maxWait %s", maxWait)
+		}
+
+		//
+		// Fetch clustermap and update the local copy.
+		// This allows us to use clustermap APIs for querying clustermap.
+		//
+		err := cmi.updateClusterMapLocalCopyIfRequired(true /* sync */)
+		if err != nil {
+			isClusterMapExists, err1 := cmi.checkIfClusterMapExists()
+			if err1 != nil {
+				//
+				// Fail to fetch clustermap, not safe to proceed.
+				//
+				common.Assert(false)
+				return false, fmt.Errorf("ClusterManager::safeCleanupMyRVs: Failed to fetch clustermap: %v", err1)
+			}
+
+			//
+			// This implies some other error in updateClusterMapLocalCopyIfRequired(), maybe clustermap
+			// unmarshal failed, or some other error. In any case we cannot query clustermap and hence not
+			// safe to proceed.
+			//
+			if isClusterMapExists {
+				return false, fmt.Errorf("ClusterManager::safeCleanupMyRVs: Failed to query clustermap: %v", err)
+				continue
+			}
+
+			//
+			// clustermap is not present, we can safely cleanup all our RVs
+			//
+			common.Assert(failedRV.Load() == 0, failedRV.Load())
+			for _, rv := range myRVs {
+				//
+				// Each RV is most likely a separate filesystem/device, so we can delete them all in parallel.
+				//
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+
+					err := cleanupRV(rv)
+					if err != nil {
+						log.Err("ClusterManager::safeCleanupMyRVs: cleanupRV (%s) failed: %v",
+							rv.LocalCachePath, err)
+						failedRV.Add(1)
+					}
+				}()
+			}
+
+			wg.Wait()
+
+			if failedRV.Load() != 0 {
+				return false, fmt.Errorf("ClusterManager::safeCleanupMyRVs: Failed to cleanup %d RV(s)",
+					failedRV.Load())
+			}
+
+			// Successfully cleaned up all RVs.
+			return false, nil
+		}
+
+		//
+		// Ok, clustermap is present, we need to wait for our RVs to be marked offline in the RV list,
+		// before we can safely clean them up. To be safe we wait for 3 times the clustermap epoch.
+		// This is suffcient to be safe even in the event of clusterManager leader going down.
+		// For very small clustermap epoch, we wait for 5 mins minimum.
+		//
+		maxWait = min(maxWait, time.Duration(cm.GetCacheConfig().ClustermapEpoch*3)*time.Second)
+
+		//
+		// Check status of all our RVs in the clustermap.
+		//
+		myRVsFromClustermap := cm.GetMyRVs()
+		rvStillOnline := false
+
+		for _, rv := range myRVs {
+			log.Debug("ClusterManager::safeCleanupMyRVs: Checking RV %s", rv.RvId)
+
+			for rvName, rvInfo := range myRVsFromClustermap {
+				log.Debug("ClusterManager::safeCleanupMyRVs: %s has id %s in clustermap",
+					rvName, rvInfo.RvId)
+
+				if rv.RvId != rvInfo.RvId {
+					continue
+				}
+
+				if rvInfo.State != dcache.StateOffline {
+					rvStillOnline = true
+				}
+
+				break
+			}
+
+			if rvStillOnline {
+				break
+			}
+
+			// Offline RV (or RV not present in clustermap), clean up.
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				cleanupRV(rv)
+
+			}()
+		}
+
+		if rvStillOnline {
+			time.Sleep(10 * time.Second)
+			continue
+		}
+	}
+
+	// Wait for all RVs to complete cleanup.
+	wg.Wait()
+
+	log.Info("ClusterManager::safeCleanupMyRVs: Done")
+	return true, nil
+}
+
 // This is a key function that correctly synchronizes node startup.
 // If this fails, clustermanager startup fails and current node won't join the cluster.
 // It ensures the following:
@@ -407,13 +630,14 @@ func (cmi *ClusterManager) ensureInitialClusterMap(dCacheConfig *dcache.DCacheCo
 	//    It's safest to let these RVs be marked offline and removed from any MVs. For that the node may
 	//    have to wait for one or more ClustermapEpoch before the current leader clustermanager detects
 	//    the node as offline and updates the global clustermap. Post that we can purge our RVs and continue
-	//    startup after emitting the first heartbeat. (TODO)
+	//    startup after emitting the first heartbeat.
 	//
 	var currentTime int64
 	var clusterMap dcache.ClusterMap
 	var clusterMapBytes []byte
 
-	isClusterMapExists, err := cmi.checkIfClusterMapExists()
+	// safeCleanupMyRVs() cleans up all our RVs, after performing the safe checks described above.
+	isClusterMapExists, err := cmi.safeCleanupMyRVs(rvs)
 	if err != nil {
 		log.Err("ClusterManager::ensureInitialClusterMap: Failed to check clustermap: %v", err)
 		common.Assert(false)
@@ -477,6 +701,9 @@ func (cmi *ClusterManager) ensureInitialClusterMap(dCacheConfig *dcache.DCacheCo
 	//
 	// Now we have the initial clustermap. Our next task is to update the clustermap with our local RVs and
 	// finally save a local copy of the updated clustermap.
+	//
+	// safeCleanupMyRVs() would have waited for any of our RVs present in clustermap to be marked offline,
+	// so it's safe to announce our presence by punching the first heartbeat.
 	//
 UpdateLocalClusterMapAndPunchInitialHeartbeat:
 
