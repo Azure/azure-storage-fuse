@@ -478,13 +478,14 @@ func (mv *mvInfo) updateComponentRVs(componentRVs []*models.RVNameAndState) {
 // 2. rvInfo has inconsistent info due to the partially applied change.
 //
 // So, whenever a request and rvInfo's component RV details don't match, the server needs to refresh its
-// membership details from the clustermap and then fail the call with NeedToRefreshClusterMap asking the
-// sender to refresh too. This function helps to refresh the rvInfo component RV details.
+// membership details from the clustermap and if there still is a mismatch indicating client using stale
+// clustermap, fail the call with NeedToRefreshClusterMap asking the sender to refresh too. This function
+// helps to refresh the rvInfo component RV details.
 func (mv *mvInfo) refreshFromClustermap() error {
 	log.Debug("mvInfo::refreshFromClustermap: %s/%s", mv.rvName, mv.mvName)
 
 	//
-	// Refresh the clustermap synchronously. Once this returns clustermap package has the updated
+	// Refresh the clustermap synchronously. Once this returns, clustermap package has the updated
 	// clustermap.
 	//
 	err := cm.RefreshClusterMapSync()
@@ -608,7 +609,8 @@ func (mv *mvInfo) validateComponentRVsInSync(componentRVsInReq []*models.RVNameA
 
 		//
 		// Component RVs received in req must be exactly same as component RVs list for this MV replica.
-		// We may fail once due to out-of-date cluster membership info, refresh clustermap and try once more.
+		// We may fail once due to out-of-date cluster membership info, refresh clustermap and try once
+		// more.
 		//
 		err := isComponentRVsValid(componentRVsInMV, componentRVsInReq)
 		if err != nil {

@@ -67,8 +67,8 @@ type replicationMgr struct {
 var rm *replicationMgr
 
 // Set of currently running sync jobs, indexed by target replica ("rvX/mvY") and the value stored is the
-// source replica.
-// Note that there can be a single sync job for a given target replica.
+// source replica in "rvX/mvY" format.
+// Note that there can only be a single sync job for a given target replica.
 var runningJobs sync.Map
 
 // Create a new replication manager instance and start the periodic resync of degraded MVs.
@@ -515,7 +515,11 @@ func syncMV(mvName string, mvInfo dcache.MirroredVolume) {
 		srcReplica := fmt.Sprintf("%s/%s", lioRV, mvName)
 		tgtReplica := fmt.Sprintf("%s/%s", rv.Name, mvName)
 
+		//
 		// Don't run more than one sync job for the same target replica.
+		// This is to prevent periodic calls to resyncDegradedMVs() from starting replication
+		// for a target replica, that's already running.
+		//
 		val, ok := runningJobs.Load(tgtReplica)
 		if ok {
 			log.Info("ReplicationManager::syncMV: Not starting sync job (%s/%s -> %s/%s), %s -> %s already running",
@@ -642,6 +646,8 @@ func sendStartSyncRequest(rvName string, targetNodeID string, req *models.StartS
 
 		//
 		// Right now we treat all StartSync failures as being caused by stale clustermap.
+		// Refresh the clustermap and fail the job. This target replica will be picked up
+		// in the next periodic call to syncMV().
 		// TODO: Check for NeedToRefreshClusterMap and only on that error, refresh the clustermap.
 		//
 		err1 := cm.RefreshClusterMapSync()
