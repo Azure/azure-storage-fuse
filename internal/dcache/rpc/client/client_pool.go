@@ -147,6 +147,42 @@ func (cp *clientPool) closeRPCClient(client *rpcClient) error {
 	return nil
 }
 
+func (cp *clientPool) resetRPCClient(client *rpcClient) error {
+	log.Debug("clientPool::resetRPCClient: Closing RPC client %s for node %s",
+		client.nodeAddress, client.nodeID)
+
+	err := client.close()
+	if err != nil {
+		err = fmt.Errorf("Failed to close RPC client %s for node %s [%v]",
+			client.nodeAddress, client.nodeID, err)
+		log.Err("nodeClientPool::resetRPCClient: %v", err)
+		common.Assert(false, err)
+		return err
+	}
+
+	log.Info("clientPool::resetRPCClient: Closed RPC client %s for node %s",
+		client.nodeAddress, client.nodeID)
+
+	log.Info("clientPool::resetRPCClient: Creating RPC client %s for node %s",
+		client.nodeAddress, client.nodeID)
+
+	cp.mu.Lock()
+	defer cp.mu.Unlock()
+
+	ncPool, exists := cp.clients[client.nodeID]
+	common.Assert(exists)
+
+	newClient, err := newRPCClient(client.nodeID, rpc.GetNodeAddressFromID(client.nodeID))
+	if err != nil {
+		log.Err("clientPool::resetRPCClient: Failed to create RPC client for node %s [%v]", client.nodeID, err)
+		common.Assert(false, err)
+		return err
+	}
+	ncPool.clientChan <- newClient
+
+	return nil
+}
+
 // Close all clients currently active for the given node.
 func (cp *clientPool) closeAllRPClientsForNode(nodeID string) error {
 	log.Debug("clientPool::getRPCClient: Closing all RPC clients for node %s", nodeID)

@@ -286,7 +286,7 @@ func StartSync(ctx context.Context, targetNodeID string, req *models.StartSyncRe
 		} else {
 			// close client should not fail.
 			//err = cp.closeAllRPClientsForNode(targetNodeID)
-			err = cp.closeRPCClient(client)
+			err = cp.resetRPCClient(client)
 			common.Assert(err == nil, err)
 		}
 	}()
