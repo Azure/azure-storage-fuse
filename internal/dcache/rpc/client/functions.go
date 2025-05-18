@@ -36,6 +36,7 @@ package rpc_client
 import (
 	"context"
 
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
@@ -269,11 +270,23 @@ func StartSync(ctx context.Context, targetNodeID string, req *models.StartSyncRe
 	}
 
 	defer func() {
-		// Release RPC client back to the pool.
-		err = cp.releaseRPCClient(client)
-		if err != nil {
-			log.Err("rpc_client::StartSync: Failed to release RPC client for node %s [%v] : %v",
-				targetNodeID, err.Error(), reqStr)
+		//
+		// If the RPC call failed with an error we assume something wrong with the client and close
+		// it, else release it back to the pool.
+		//
+		// TODO: See if we should close only on TCP error signifying socket is not connected.
+		//
+		if err == nil {
+			// Release RPC client back to the pool.
+			err = cp.releaseRPCClient(client)
+			if err != nil {
+				log.Err("rpc_client::StartSync: Failed to release RPC client for node %s [%v] : %v",
+					targetNodeID, err.Error(), reqStr)
+			}
+		} else {
+			// close client should not fail.
+			err = cp.closeAllRPClientsForNode(targetNodeID)
+			common.Assert(err == nil, err)
 		}
 	}()
 

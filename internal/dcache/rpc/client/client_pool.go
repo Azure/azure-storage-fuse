@@ -126,6 +126,55 @@ func (cp *clientPool) releaseRPCClient(client *rpcClient) error {
 	return nil
 }
 
+// closeRPCClient closes an RPC client.
+// The client must have been removed from the pool using a prior getRPCClient() call.
+func (cp *clientPool) closeRPCClient(client *rpcClient) error {
+	log.Debug("clientPool::closeRPCClient: Closing RPC client %s for node %s",
+		client.nodeAddress, client.nodeID)
+
+	err := client.close()
+	if err != nil {
+		err = fmt.Errorf("Failed to close RPC client %s for node %s [%v]",
+			client.nodeAddress, client.nodeID, err)
+		log.Err("nodeClientPool::closeRPCClient: %v", err)
+		common.Assert(false, err)
+		return err
+	}
+
+	log.Info("clientPool::closeRPCClient: Closed RPC client %s for node %s",
+		client.nodeAddress, client.nodeID)
+
+	return nil
+}
+
+// Close all clients currently active for the given node.
+func (cp *clientPool) closeAllRPClientsForNode(nodeID string) error {
+	log.Debug("clientPool::getRPCClient: Closing all RPC clients for node %s", nodeID)
+
+	cp.mu.Lock()
+	defer cp.mu.Unlock()
+
+	var ncPool *nodeClientPool
+	ncPool, exists := cp.clients[nodeID]
+	if !exists {
+		err := fmt.Errorf("clientPool::closeAllRPClientsForNode: nodeClientPool not found for node %s",
+			nodeID)
+		return err
+	}
+
+	err := ncPool.closeRPCClients()
+	if err != nil {
+		log.Err("clientPool::closeAllRPClientsForNode: Failed to close all RPC client for node %s [%v]",
+			nodeID, err)
+		return err
+	}
+	delete(cp.clients, nodeID)
+
+	log.Debug("clientPool::getRPCClient: Closed all RPC clients for node %s", nodeID)
+
+	return nil
+}
+
 // Close the least recently used node client pool from the client pool
 // caller of this method should hold the lock
 func (cp *clientPool) closeLRUCNodeClientPool() error {
