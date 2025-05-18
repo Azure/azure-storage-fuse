@@ -622,6 +622,8 @@ func (mv *mvInfo) validateComponentRVsInSync(componentRVsInReq []*models.RVNameA
 			log.Err("ChunkServiceHandler::validateComponentRVsInSync: %s", errStr)
 			return rpc.NewResponseError(rpc.NeedToRefreshClusterMap, errStr)
 		}
+
+		break
 	}
 
 	// Source RV must be present in the component RVs list for this MV replica.
@@ -683,7 +685,7 @@ func (h *ChunkServiceHandler) checkValidChunkAddress(address *models.Address) er
 func (h *ChunkServiceHandler) getRVInfoFromRVName(rvName string) *rvInfo {
 	var rvInfo *rvInfo
 	for rvID, info := range h.rvIDMap {
-		common.Assert(info != nil, fmt.Sprintf("rvInfo nil for rvID %s", rvID))
+		common.Assert(info != nil, rvID)
 
 		if info.rvName == rvName {
 			rvInfo = info
@@ -1361,7 +1363,8 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 	// Thrift should not be calling us with nil req.
 	common.Assert(req != nil)
 
-	log.Debug("ChunkServiceHandler::StartSync: Received StartSync request: %v", rpc.StartSyncRequestToString(req))
+	log.Debug("ChunkServiceHandler::StartSync: Received StartSync request: %s",
+		rpc.StartSyncRequestToString(req))
 
 	if !cm.IsValidMVName(req.MV) ||
 		!cm.IsValidRVName(req.SourceRVName) ||
@@ -1380,7 +1383,8 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 	//
 	srcRVInfo, targetRVInfo, err := h.getSrcAndDestRVInfoForSync(req.SourceRVName, req.TargetRVName)
 	if err != nil {
-		log.Err("ChunkServiceHandler::StartSync: Failed to get source and target RV info [%v]", err)
+		log.Err("ChunkServiceHandler::StartSync: Failed to get source and target RV info [%v]",
+			err)
 		common.Assert(false, err)
 		return nil, err
 	}
