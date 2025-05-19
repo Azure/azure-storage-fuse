@@ -33,7 +33,12 @@
 
 package rpc
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/apache/thrift/lib/go/thrift"
+)
 
 const (
 	InvalidRequest      = iota + 1 // invalid rpc request
@@ -71,6 +76,8 @@ func (e *ResponseError) Error() string {
 
 // check if the error is of type ResponseError
 func GetRPCResponseError(err error) *ResponseError {
+	common.Assert(err != nil)
+
 	var respErr *ResponseError
 	ok := errors.As(err, &respErr)
 	if !ok {
@@ -78,4 +85,30 @@ func GetRPCResponseError(err error) *ResponseError {
 	}
 
 	return respErr
+}
+
+// Check if the error returned by thrift indicates connection closed by server.
+func IsConnectionClosed(err error) bool {
+	common.Assert(err != nil)
+
+	// RPC error, cannot be a connection reset error.
+	if GetRPCResponseError(err) != nil {
+		return false
+	}
+
+	te := thrift.NewTTransportExceptionFromError(err)
+	return te.TypeId() == thrift.NOT_OPEN
+}
+
+// Check if the error returned by thrift indicates timeout.
+func IsTimedOut(err error) bool {
+	common.Assert(err != nil)
+
+	// RPC error, cannot be a connection reset error.
+	if GetRPCResponseError(err) != nil {
+		return false
+	}
+
+	te := thrift.NewTTransportExceptionFromError(err)
+	return te.TypeId() == thrift.TIMED_OUT
 }

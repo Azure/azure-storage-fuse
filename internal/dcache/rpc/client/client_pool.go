@@ -68,13 +68,15 @@ func newClientPool(maxPerNode uint32, maxNodes uint32, timeout uint32) *clientPo
 	// TODO: start a goroutine to periodically close inactive RPC clients
 }
 
-// getRPCClient retrieves a RPC client from the pool for the specified node ID
-// If no client is available, a new one is created
-func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
+// getRPCClient retrieves an RPC client from the pool for the specified node ID.
+// If the client pool for nodeID is not is not available (not created yet or was cleaned up due to pressure),
+// a new pool is created, replenished with cp.maxPerNode clients and a client returned.
+//
+// Note: This is an internal functional that expects the caller to hold the clientPool lock.
+//
+//	You may want to use getRPCClient().
+func (cp *clientPool) getRPCClientNoLock(nodeID string) (*rpcClient, error) {
 	log.Debug("clientPool::getRPCClient: Retrieving rpc client for node %s", nodeID)
-
-	cp.mu.Lock()
-	defer cp.mu.Unlock()
 
 	var ncPool *nodeClientPool
 	ncPool, exists := cp.clients[nodeID]
@@ -85,7 +87,8 @@ func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
 			log.Debug("clientPool::getRPCClient: Maximum number of nodes reached, evict LRU node client pool")
 			err := cp.closeLRUCNodeClientPool()
 			if err != nil {
-				log.Err("clientPool::getRPCClient: Failed to close LRU node client pool [%v]", err.Error())
+				log.Err("clientPool::getRPCClient: Failed to close LRU node client pool: %v",
+					err)
 				return nil, err
 			}
 		}
@@ -100,11 +103,19 @@ func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
 	select {
 	case client := <-ncPool.clientChan:
 		ncPool.lastUsed = time.Now()
+		common.Assert(client.nodeID == nodeID, client.nodeID, nodeID)
 		return client, nil
 	default:
 		log.Err("clientPool::getRPCClient: No available RPC client in the pool for node %s", nodeID)
 		return nil, fmt.Errorf("no available RPC client in the pool for node %s", nodeID)
 	}
+}
+
+func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
+	cp.mu.Lock()
+	defer cp.mu.Unlock()
+
+	return cp.getRPCClientNoLock(nodeID)
 }
 
 // releaseRPCClient releases a RPC client back to the pool
@@ -148,12 +159,12 @@ func (cp *clientPool) closeRPCClient(client *rpcClient) error {
 }
 
 // Close client and create a new one to the same target/node as client.
-// This is typically used when a node goes down and comes back up, rendering all existing clients
-// "broken", they need to be replaced with a brand new connection/client.
 //
-// TODO: Add a function to reset all clients, since all clients to a node go bad when node restarts.
-func (cp *clientPool) resetRPCClient(client *rpcClient) error {
-	log.Debug("clientPool::resetRPCClient: client %s for node %s",
+// Note: This is an internal function, use resetRPCClient() for resetting one connection and
+//
+//	resetAllRPCClients() for resetting all connections.
+func (cp *clientPool) resetRPCClientInternal(client *rpcClient, needLock bool) error {
+	log.Debug("clientPool::resetRPCClientInternal: client %s for node %s",
 		client.nodeAddress, client.nodeID)
 
 	//
@@ -164,16 +175,18 @@ func (cp *clientPool) resetRPCClient(client *rpcClient) error {
 		return err
 	}
 
-	log.Info("clientPool::resetRPCClient: Creating new RPC client to %s node %s",
+	log.Info("clientPool::resetRPCClientInternal: Creating new RPC client to %s node %s",
 		client.nodeAddress, client.nodeID)
 
-	cp.mu.Lock()
-	defer cp.mu.Unlock()
+	if needLock {
+		cp.mu.Lock()
+		defer cp.mu.Unlock()
+	}
 
 	ncPool, exists := cp.clients[client.nodeID]
 	common.Assert(exists)
 	//
-	// resetRPCClient() MUST be called after removing client from the client pool, so
+	// resetRPCClientInternal() MUST be called after removing client from the client pool, so
 	// the pool must have space for a new client.
 	//
 	common.Assert(len(ncPool.clientChan) < int(cp.maxPerNode),
@@ -181,7 +194,7 @@ func (cp *clientPool) resetRPCClient(client *rpcClient) error {
 
 	newClient, err := newRPCClient(client.nodeID, rpc.GetNodeAddressFromID(client.nodeID))
 	if err != nil {
-		log.Err("clientPool::resetRPCClient: Failed to create RPC client to %s node %s: %v",
+		log.Err("clientPool::resetRPCClientInternal: Failed to create RPC client to %s node %s: %v",
 			client.nodeAddress, client.nodeID, err)
 		common.Assert(false, err)
 		return err
@@ -189,6 +202,87 @@ func (cp *clientPool) resetRPCClient(client *rpcClient) error {
 
 	// Add the new client to the client pool for this node.
 	ncPool.clientChan <- newClient
+
+	return nil
+}
+
+// Close client and create a new one to the same target/node as 'client'.
+// This is typically used when a node goes down and comes back up, rendering all existing clients
+// "broken", they need to be replaced with a brand new connection/client.
+func (cp *clientPool) resetRPCClient(client *rpcClient) error {
+	return cp.resetRPCClientInternal(client, true /* needLock */)
+}
+
+// Reset all connections in the client pool corresponding to 'client'. This client would have been allocated
+// using a prior call to getRPCClient().
+// This is used for draining and fixing all old/bad connections in the connection pool in case of the target
+// node restarting. It closes the passed in connection and all existing connections in the pool and replaces
+// them with newly created ones.
+func (cp *clientPool) resetAllRPCClients(client *rpcClient) error {
+	//
+	// resetAllRPCClients() will be called only when we know for sure that an RPC request made using 'client'
+	// failed with a "connection reset by peer" error, we reset that client and all others in the pool.
+	//
+	cp.mu.Lock()
+	defer cp.mu.Unlock()
+
+	numConnReset := 0
+	ncPool, exists := cp.clients[client.nodeID]
+
+	// client is allocated from the pool, so pool must exist.
+	common.Assert(exists)
+	common.Assert(ncPool.nodeID == client.nodeID, ncPool.nodeID, client.nodeID)
+
+	//
+	// Clients present in the pool If it's less than cp.maxPerNode, rest are currently allocated to other
+	// callers. We cannot replenish those. Those will be reset by their respective caller when their RPC
+	// requests fail with "connection reset by peer" error.
+	//
+	numClients := len(ncPool.clientChan)
+	// At least 'client' is allocated from the pool.
+	common.Assert(numClients < int(cp.maxPerNode), numClients, cp.maxPerNode)
+
+	//
+	// Reset this client. This closes this client, creates a new one and adds it to the pool.
+	// It can only fail if thrift fails to create a new connection. Though it can happen, but
+	// it's unlikely as we are called only when we get a "connection reset by peer" error which
+	// means the target node exists (was restarted), so new connection must not fail.
+	//
+	err := cp.resetRPCClientInternal(client, false /* needLock */)
+	if err != nil {
+		err = fmt.Errorf("Failed to reset RPC client to %s node %s: %v",
+			client.nodeAddress, client.nodeID, err)
+		log.Err("clientPool::resetAllRPCClients: %v", err)
+		common.Assert(false, err)
+		return err
+	}
+
+	numConnReset++
+
+	//
+	// And all remaining. We try to reset as many as we can.
+	//
+	for i := 0; i < numClients; i++ {
+		client, err = cp.getRPCClientNoLock(client.nodeID)
+		// getRPCClientNoLock should not fail, because we have the clientPool for this client.
+		common.Assert(false, err)
+
+		err = cp.resetRPCClientInternal(client, false /* needLock */)
+		if err != nil {
+			//
+			// We have reset at least one connection, so we don't fail the resetAllRPCClients()
+			// call, log an error and proceed.
+			//
+			log.Err("clientPool::resetAllRPCClients: Failed to reset RPC client to %s node %s: %v",
+				client.nodeAddress, client.nodeID, err)
+			common.Assert(false, err)
+		} else {
+			numConnReset++
+		}
+	}
+
+	log.Debug("clientPool::resetAllRPCClients: Reset %d RPC clients to %s node %s, now available (%d / %d)",
+		numConnReset, client.nodeAddress, client.nodeID, len(ncPool.clientChan), cp.maxPerNode)
 
 	return nil
 }
