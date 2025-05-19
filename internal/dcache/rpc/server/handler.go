@@ -477,7 +477,7 @@ func (mv *mvInfo) updateComponentRVs(componentRVs []*models.RVNameAndState) {
 // 1. The sender has a stale clustermap.
 // 2. rvInfo has inconsistent info due to the partially applied change.
 //
-// So, whenever a request and rvInfo's component RV details don't match, the server needs to refresh its
+// So, whenever a request and mvInfo's component RV details don't match, the server needs to refresh its
 // membership details from the clustermap and if there still is a mismatch indicating client using stale
 // clustermap, fail the call with NeedToRefreshClusterMap asking the sender to refresh too. This function
 // helps to refresh the rvInfo component RV details.
@@ -514,8 +514,8 @@ func (mv *mvInfo) refreshFromClustermap() error {
 		})
 
 		//
-		// TOD: If an RV is being added in "outofsync" or "syncing" state (and it was in a different
-		//	state earlier) we must also update rvInfo.reservedSpace.
+		// TODO: If an RV is being added in "outofsync" or "syncing" state (and it was in a different
+		// 	 state earlier) we must also update rvInfo.reservedSpace.
 		//
 	}
 

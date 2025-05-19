@@ -61,15 +61,15 @@ type replicationMgr struct {
 	// This is used to stop the thread doing the periodic resync of degraded MVs.
 	done chan bool
 
+	// Set of currently running sync jobs, indexed by target replica ("rvX/mvY") and the value
+	// stored is the source replica in "rvX/mvY" format.
+	// Note that there can only be a single sync job for a given target replica.
+	runningJobs sync.Map
+
 	// TODO: add fields like channel for sync jobs, etc.
 }
 
 var rm *replicationMgr
-
-// Set of currently running sync jobs, indexed by target replica ("rvX/mvY") and the value stored is the
-// source replica in "rvX/mvY" format.
-// Note that there can only be a single sync job for a given target replica.
-var runningJobs sync.Map
 
 // Create a new replication manager instance and start the periodic resync of degraded MVs.
 func Start() error {
@@ -520,7 +520,7 @@ func syncMV(mvName string, mvInfo dcache.MirroredVolume) {
 		// This is to prevent periodic calls to resyncDegradedMVs() from starting replication
 		// for a target replica, that's already running.
 		//
-		val, ok := runningJobs.Load(tgtReplica)
+		val, ok := rm.runningJobs.Load(tgtReplica)
 		if ok {
 			log.Info("ReplicationManager::syncMV: Not starting sync job (%s/%s -> %s/%s), %s -> %s already running",
 				lioRV, mvName, rv.Name, mvName, val.(string), tgtReplica)
@@ -531,11 +531,11 @@ func syncMV(mvName string, mvInfo dcache.MirroredVolume) {
 			lioRV, mvName, rv.Name, mvName, syncSize)
 
 		// Store it in the map to avoid multiple sync jobs for the same target.
-		runningJobs.Store(tgtReplica, srcReplica)
+		rm.runningJobs.Store(tgtReplica, srcReplica)
 
 		go func() {
 			// Remove from the map, once the syncjob completes (success or failure).
-			defer runningJobs.Delete(tgtReplica)
+			defer rm.runningJobs.Delete(tgtReplica)
 
 			syncComponentRV(mvName, lioRV, rv.Name, syncSize, componentRVs)
 		}()
