@@ -1242,8 +1242,9 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 	log.Debug("ChunkServiceHandler::JoinMV: Received JoinMV request: %v", rpc.JoinMVRequestToString(req))
 
 	if cm.IsValidMVName(req.MV) || cm.IsValidRVName(req.RVName) || len(req.ComponentRV) == 0 {
-		log.Err("ChunkServiceHandler::JoinMV: MV, RV or ComponentRV is empty")
-		return nil, rpc.NewResponseError(rpc.InvalidRequest, "MV, RV or ComponentRV is empty")
+		errStr := fmt.Sprintf("Invalid MV, RV or ComponentRV: %v", rpc.JoinMVRequestToString(req))
+		log.Err("ChunkServiceHandler::JoinMV: %s", errStr)
+		return nil, rpc.NewResponseError(rpc.InvalidRequest, errStr)
 	}
 
 	rvInfo := h.getRVInfoFromRVName(req.RVName)
@@ -1276,8 +1277,6 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 		log.Warn("ChunkServiceHandler::JoinMV: RV %s is already part of the given MV %s, ignoring",
 			req.RVName, req.MV)
 		return &models.JoinMVResponse{}, nil
-		//log.Err("ChunkServiceHandler::JoinMV: RV %s is already part of the given MV %s", req.RVName, req.MV)
-		//return nil, rpc.NewResponseError(rpc.InvalidRequest, fmt.Sprintf("RV %s is already part of the given MV %s", req.RVName, req.MV))
 	}
 
 	mvLimit := getMVsPerRV()
@@ -1328,8 +1327,9 @@ func (h *ChunkServiceHandler) UpdateMV(ctx context.Context, req *models.UpdateMV
 	log.Debug("ChunkServiceHandler::UpdateMV: Received UpdateMV request: %v", rpc.UpdateMVRequestToString(req))
 
 	if cm.IsValidMVName(req.MV) || cm.IsValidRVName(req.RVName) || len(req.ComponentRV) == 0 {
-		log.Err("ChunkServiceHandler::UpdateMV: MV, RV or ComponentRV is empty")
-		return nil, rpc.NewResponseError(rpc.InvalidRequest, "MV, RV or ComponentRV is empty")
+		errStr := fmt.Sprintf("Invalid MV, RV or ComponentRV: %v", rpc.UpdateMVRequestToString(req))
+		log.Err("ChunkServiceHandler::UpdateMV: %s", errStr)
+		return nil, rpc.NewResponseError(rpc.InvalidRequest, errStr)
 	}
 
 	rvInfo := h.getRVInfoFromRVName(req.RVName)
