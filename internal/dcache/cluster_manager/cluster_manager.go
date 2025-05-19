@@ -569,7 +569,7 @@ func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, err
 		// Fetch clustermap and update the local copy.
 		// Once this succeeds, clustermap APIs can be used for querying clustermap.
 		//
-		err := cmi.updateClusterMapLocalCopyIfRequired(true /* sync */)
+		err := cmi.updateClusterMapLocalCopySync()
 		if err != nil {
 			isClusterMapExists, err1 := cmi.checkIfClusterMapExists()
 			if err1 != nil {
@@ -643,18 +643,6 @@ func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, err
 				break
 			}
 
-			// Offline RV (or RV not present in clustermap), clean up.
-			wg.Add(1)
-			go func(rv dcache.RawVolume) {
-				defer wg.Done()
-
-				err := cleanupRV(rv)
-				if err != nil {
-					log.Err("ClusterManager::safeCleanupMyRVs: cleanupRV (%s) failed: %v",
-						rv.LocalCachePath, err)
-					failedRV.Add(1)
-				}
-			}(rv)
 		}
 
 		// None of my RV online, done.
@@ -665,6 +653,20 @@ func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, err
 		time.Sleep(30 * time.Second)
 	}
 
+	// Offline RV (or RV not present in clustermap), clean up.
+	for _, rv := range myRVs {
+		wg.Add(1)
+		go func(rv dcache.RawVolume) {
+			defer wg.Done()
+
+			err := cleanupRV(rv)
+			if err != nil {
+				log.Err("ClusterManager::safeCleanupMyRVs: cleanupRV (%s) failed: %v",
+					rv.LocalCachePath, err)
+				failedRV.Add(1)
+			}
+		}(rv)
+	}
 	// Wait for all RVs to complete cleanup.
 	wg.Wait()
 
@@ -698,7 +700,7 @@ func (cmi *ClusterManager) ensureInitialClusterMap(dCacheConfig *dcache.DCacheCo
 	//    the node is joining this cluster. It cannot be contributing any storage to any of the MVs in
 	//    the cluster.
 	//    The node can safely emit its first heartbeat and continue startup.
-	// 2. If one or more of the node's RVs are present in the RV list, it implies that this node was
+	// 2. If one or more of this node's RVs are present in the RV list, it implies that this node was
 	//    part of this cluster and is coming back up after restarting.
 	//    Since this node was not part of the cluster for some time, it may be missing some data that might
 	//    have been written while the node was down.
@@ -712,7 +714,7 @@ func (cmi *ClusterManager) ensureInitialClusterMap(dCacheConfig *dcache.DCacheCo
 	var clusterMapBytes []byte
 
 	//
-	// safeCleanupMyRVs() cleans up all our RVs, after performing the safe checks described above.
+	// safeCleanupMyRVs() cleans up all of my RVs, after performing the safe checks described above.
 	// Once it returns we are guaranteed that it's safe to join the cluster.
 	//
 	isClusterMapExists, err := cmi.safeCleanupMyRVs(rvs)
@@ -724,7 +726,7 @@ func (cmi *ClusterManager) ensureInitialClusterMap(dCacheConfig *dcache.DCacheCo
 
 	if isClusterMapExists {
 		//
-		// TODO: Need to check if we must purge our RVs, before punching the initial heartbeat.
+		// TODO: Need to check if we must purge all of my RVs, before punching the initial heartbeat.
 		//       See comments in ClusterManager::start().
 		//
 		log.Info("ClusterManager::ensureInitialClusterMap : clustermap already exists")
@@ -1319,6 +1321,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			}
 		}
 
+		// Component RV for MV must be present in nodeToRvs.
 		common.Assert(found, mvName, rvName, nodeId)
 	}
 
@@ -1352,6 +1355,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			break
 		}
 
+		// Component RV for MV must be present in nodeToRvs.
 		common.Assert(found, deleteRvName, nodeId)
 	}
 
@@ -1692,14 +1696,16 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	//
 	// Phase 1:
 	//
-	// Go over all MVs in existingMVMap and correctly set their state based on the state of all the
-	// component RVs. If a component RV is found to be offline as per rvMap, then the component RV
-	// is force marked offline. The it sets the MV state based on RV state as follows:
-	// - If all component RVs of an MV are online, the MV is marked as online, else
-	// - If no component RV of an MV is online (they are either offline, outofsync or syncing), the MV
-	//   is marked as offline, else
-	// - If at least one component RV is online, the MV is marked as degraded, else
-	// - All component RVs are either online or syncing, then MV is marked as syncing.
+	// Go over all MVs in existingMVMap and correctly set MV's state based on the state of all the
+	// component RVs and consume RV slots for all used component RVs. If a component RV is found to be offline as per rvMap, then the component RV
+	// is force marked offline in existingMVMap.
+	// Then, determine the MV state using the following rules:
+	// 1. If all component RVs are online,         → MV is marked as online.
+	// 2. If none of the component RVs are online, → MV is marked as offline.
+	// 		(i.e., all RVs are either offline, syncing, or outofsync)
+	// 3. If at least one component RV is online:
+	//  - If any non-online RV is outOfSync/offline, → MV is marked as degraded.
+	//  - else If any component RV is syncing  → MV is marked as syncing.
 	//
 	// If we mark an MV as degraded or offline we say we have run the degrade-mv or offline-mv workflow.
 	//
