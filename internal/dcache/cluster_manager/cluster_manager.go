@@ -42,6 +42,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -277,7 +279,11 @@ func (cmi *ClusterManager) updateClusterMapLocalCopyIfRequired(sync bool) error 
 
 		common.Assert(len(storageBytes) == 0)
 		common.Assert(etag == nil)
-		common.Assert(false, err)
+		//
+		// Only when called from safeCleanupMyRVs(), we may not have the global clustermap yet.
+		// Post that, once cmi.config is set, it should never fail.
+		//
+		common.Assert(cmi.config == nil, err)
 		return err
 	}
 
@@ -332,9 +338,11 @@ func (cmi *ClusterManager) updateClusterMapLocalCopyIfRequired(sync bool) error 
 	cmi.localMapETag = etag
 
 	// Once saved, config should not change.
-	common.Assert((cmi.config == nil) || (*cmi.config == storageClusterMap.Config),
-		fmt.Sprintf("Saved config does not match the one received in clustermap: %+v -> %+v",
-			*cmi.config, storageClusterMap.Config))
+	if cmi.config != nil {
+		common.Assert(*cmi.config == storageClusterMap.Config,
+			fmt.Sprintf("Saved config does not match the one received in clustermap: %+v -> %+v",
+				*cmi.config, storageClusterMap.Config))
+	}
 
 	cmi.config = &storageClusterMap.Config
 
@@ -379,6 +387,298 @@ func (cmi *ClusterManager) stop() error {
 	return nil
 }
 
+// Cleanup one RV directory.
+// It returns success only if it's able to delete all the MV directories found in the RV, else if it's not able
+// to delete even one MV dir it'll return an error to prevent this node from joining the cluster.
+//
+// TODO: Once we have sufficient runin we can let it join the cluster even on partial cleanup.
+func cleanupRV(rv dcache.RawVolume) error {
+	var wg sync.WaitGroup
+	var deleteSuccess atomic.Int64
+	var deleteFailures atomic.Int64
+
+	// More than a few parallel deletes may be counter productive.
+	const maxParallelDeletes = 32
+	var tokens = make(chan struct{}, maxParallelDeletes)
+
+	//
+	// TODO: Replace this with chunked readdir to support huge number of MVs
+	//
+	entries, err := os.ReadDir(rv.LocalCachePath)
+	if err != nil {
+		common.Assert(false, err)
+		return fmt.Errorf("ClusterManager::cleanupRV os.ReadDir(%s) failed: %v", rv.LocalCachePath, err)
+	}
+
+	//
+	// Cache dir must contain only MV directories (containing chunks), go over each and delete them recursively.
+	//
+	for _, entry := range entries {
+		log.Debug("ClusterManager::cleanupRV Got %s/%s", rv.LocalCachePath, entry.Name())
+
+		if !entry.IsDir() {
+			common.Assert(false, rv.LocalCachePath, entry.Name())
+			return fmt.Errorf("ClusterManager::cleanupRV %s/%s is not a directory %+v",
+				rv.LocalCachePath, entry.Name(), entry)
+		}
+
+		//
+		// TODO: Once we remove .sync directory support, then we can remove the .sync related code.
+		//
+		mvName := entry.Name()
+		parts := strings.Split(mvName, ".")
+		if len(parts) > 1 {
+			mvName = parts[0]
+			if len(parts) > 2 || parts[1] != "sync" {
+				common.Assert(false, rv.LocalCachePath, entry.Name())
+				return fmt.Errorf("ClusterManager::cleanupRV %s/%s is not a valid MV directory %+v",
+					rv.LocalCachePath, entry.Name(), entry)
+			}
+		}
+
+		if !cm.IsValidMVName(mvName) {
+			common.Assert(false, rv.LocalCachePath, entry.Name())
+			return fmt.Errorf("ClusterManager::cleanupRV %s/%s is not a valid MV directory %+v",
+				rv.LocalCachePath, entry.Name(), entry)
+		}
+
+		//
+		// Delete MV folders in parallel, but not more than maxParallelDeletes.
+		//
+		wg.Add(1)
+		go func(dir string) {
+			tokens <- struct{}{}
+			defer func() {
+				<-tokens
+				wg.Done()
+			}()
+			log.Info("ClusterManager::cleanupRV: Async remove: %s", dir)
+
+			//
+			// Delete all files in MV directory, and the MV directory itself.
+			// TODO: Make sure this works ok for very large number of chunks (2+ million)
+			//
+			err := os.RemoveAll(dir)
+			if err != nil {
+				log.Err("ClusterManager::cleanupRV: os.RemoveAll (%s) failed: %v", dir, err)
+				deleteFailures.Add(1)
+			} else {
+				log.Info("ClusterManager::cleanupRV: Deleted MV dir %s/%s", rv.LocalCachePath, dir)
+				deleteSuccess.Add(1)
+			}
+		}(filepath.Join(rv.LocalCachePath, entry.Name()))
+	}
+
+	// Wait for all running deletes to finish.
+	wg.Wait()
+
+	//
+	// Fail the call if at least one MV dir delete failed.
+	//
+	if deleteFailures.Load() != 0 {
+		common.Assert(false, rv.LocalCachePath, deleteFailures.Load(), deleteSuccess.Load())
+		return fmt.Errorf("ClusterManager::cleanupRV: RV dir %s, failed to delete %d MV(s) (deleted %d)",
+			rv.LocalCachePath, deleteFailures.Load(), deleteSuccess.Load())
+	}
+
+	log.Info("ClusterManager::cleanupRV: Successfully cleaned up RV dir %s, deleted %d MV(s)",
+		rv.LocalCachePath, deleteSuccess.Load())
+
+	return nil
+}
+
+// Cleanup all my local RVs, deleting any mv folders (and the stored chunks if any) created if/when the RV was part
+// of the cluster in the past. Note that this cleans up the local RV directory only after making sure it's safe to
+// clean, and an RV is safe to clean when it's either not present in the clusterMap RV list or it's marked as offline.
+// An RV that's offline in the RV list is guaranteed to be offline in the MV list also, i.e., no MV will contact
+// this RV for for chunk IO (read or write).
+//
+// In case of success the boolean return value indicates the following:
+// true  -> Found a clustermap and RV(s) were either not present in the RV list or waited for RV(s) to be marked
+//
+//	offline and then cleaned up the RVs if any.
+//
+// false -> Did not find clustermap, cleaned up the RVs if any.
+//
+// In case of success it'll return only after all RV directories are fully cleaned up.
+// If it finds any unexpected file/dir in the RV it complains and bails out. Note that this is the only place where
+// we check if RV contains any unexpected file/dir.
+func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, error) {
+	log.Info("ClusterManager::safeCleanupMyRVs: Cleaning up %d RV(s) %v", len(myRVs), myRVs)
+
+	//
+	// maxWait is the amount of time we will wait for RVs to be marked offline in clustermap.
+	// Once we have the config it's set to minimum of 5 minutes and thrice the clustermap epoch to make sure
+	// the clusterManager gets a chance to notice loss of heartbeat and mark the RV offline.
+	//
+	startTime := time.Now()
+	maxWait := 300 * time.Second
+	var wg sync.WaitGroup
+	var failedRV atomic.Int64
+
+	//
+	// Helper function for cleaning up all my RV, once we know they are not being used by the cluster.
+	//
+	cleanupAllMyOfflineRVs := func() error {
+		for _, rv := range myRVs {
+			//
+			// Each RV is most likely a separate filesystem/device, so we can delete them all in parallel.
+			//
+			wg.Add(1)
+			go func(rv dcache.RawVolume) {
+				defer wg.Done()
+
+				err := cleanupRV(rv)
+				if err != nil {
+					log.Err("ClusterManager::safeCleanupMyRVs: cleanupRV (%s) failed: %v",
+						rv.LocalCachePath, err)
+					failedRV.Add(1)
+				}
+			}(rv)
+		}
+
+		wg.Wait()
+
+		if failedRV.Load() != 0 {
+			return fmt.Errorf("ClusterManager::safeCleanupMyRVs: Failed to cleanup %d RV(s)",
+				failedRV.Load())
+		}
+
+		// Successfully cleaned up all RVs.
+		log.Info("ClusterManager::safeCleanupMyRVs: Successfully cleaned up %d RV(s) %v", len(myRVs), myRVs)
+
+		return nil
+	}
+
+	for {
+		elapsed := time.Since(startTime)
+		if elapsed > maxWait {
+			//
+			// We have waited enough (3 x clustermap epochs).
+			// Most likely it's the case of reviving a dead cluster with a clustermap that has not been updated
+			// for a long time, but play safe and bail out and let the user delete the clustermap by hand before
+			// retrying.
+			//
+			err := fmt.Errorf("ClusterManager::safeCleanupMyRVs: Exceeded maxWait %s. If you are reviving a dead cluster, delete clustermap manually and then try again.", maxWait)
+			log.Err("%v", err)
+			common.Assert(false, elapsed, maxWait)
+			return true, err
+		}
+
+		//
+		// Fetch clustermap and update the local copy.
+		// Once this succeeds, clustermap APIs can be used for querying clustermap.
+		//
+		err := cmi.updateClusterMapLocalCopySync()
+		if err != nil {
+			isClusterMapExists, err1 := cmi.checkIfClusterMapExists()
+			if err1 != nil {
+				//
+				// Fail to fetch clustermap, not safe to proceed.
+				//
+				common.Assert(false, err1, err)
+				return false, fmt.Errorf("ClusterManager::safeCleanupMyRVs: Failed to fetch clustermap: %v, %v",
+					err1, err)
+			}
+
+			//
+			// This implies some other error in updateClusterMapLocalCopyIfRequired(), maybe clustermap
+			// unmarshal failed, or some other error. In any case we cannot query clustermap and hence not
+			// safe to proceed.
+			//
+			if isClusterMapExists {
+				common.Assert(false, err)
+				return false, fmt.Errorf("ClusterManager::safeCleanupMyRVs: Failed to query clustermap: %v", err)
+			}
+
+			//
+			// clustermap is not present, we can safely cleanup all our RVs
+			//
+			common.Assert(failedRV.Load() == 0, failedRV.Load())
+			return false, cleanupAllMyOfflineRVs()
+		}
+
+		//
+		// Ok, clustermap is present, we need to wait for our RVs to be marked offline in the RV list,
+		// before we can safely clean them up. To be safe we wait for 3 times the clustermap epoch.
+		// This is suffcient to be safe even in the event of clusterManager leader going down.
+		// For very small clustermap epoch, we wait for 5 mins minimum.
+		//
+		maxWait = max(maxWait, time.Duration(cm.GetCacheConfig().ClustermapEpoch*3)*time.Second)
+
+		//
+		// Check status of all our RVs in the clustermap.
+		//
+		myRVsFromClustermap := cm.GetMyRVs()
+
+		if len(myRVsFromClustermap) > 0 {
+			log.Info("ClusterManager::safeCleanupMyRVs: Got %d of my RV(s) from clustermap %+v",
+				len(myRVsFromClustermap), myRVsFromClustermap)
+		} else {
+			log.Info("ClusterManager::safeCleanupMyRVs: No my RV(s) in clustermap")
+		}
+
+		rvStillOnline := false
+		for _, rv := range myRVs {
+			log.Info("ClusterManager::safeCleanupMyRVs: Checking my RV %+v", rv)
+
+			// Check online status for this RV.
+			for rvName, rvInfo := range myRVsFromClustermap {
+				log.Info("ClusterManager::safeCleanupMyRVs: My RV %s has id %s in clustermap",
+					rvName, rvInfo.RvId)
+
+				if rv.RvId != rvInfo.RvId {
+					continue
+				}
+
+				if rvInfo.State != dcache.StateOffline {
+					log.Info("ClusterManager::safeCleanupMyRVs: My RV %+v still online, retry in 30sec", rv)
+					rvStillOnline = true
+				}
+
+				break
+			}
+
+			if rvStillOnline {
+				break
+			}
+
+		}
+
+		// None of my RV online, done.
+		if !rvStillOnline {
+			break
+		}
+
+		time.Sleep(30 * time.Second)
+	}
+
+	// Offline RV (or RV not present in clustermap), clean up.
+	for _, rv := range myRVs {
+		wg.Add(1)
+		go func(rv dcache.RawVolume) {
+			defer wg.Done()
+
+			err := cleanupRV(rv)
+			if err != nil {
+				log.Err("ClusterManager::safeCleanupMyRVs: cleanupRV (%s) failed: %v",
+					rv.LocalCachePath, err)
+				failedRV.Add(1)
+			}
+		}(rv)
+	}
+	// Wait for all RVs to complete cleanup.
+	wg.Wait()
+
+	if failedRV.Load() != 0 {
+		return false, fmt.Errorf("ClusterManager::safeCleanupMyRVs: Failed to cleanup %d RV(s)",
+			failedRV.Load())
+	}
+
+	log.Info("ClusterManager::safeCleanupMyRVs: Successfully cleaned up %d RV(s) %v", len(myRVs), myRVs)
+	return true, nil
+}
+
 // This is a key function that correctly synchronizes node startup.
 // If this fails, clustermanager startup fails and current node won't join the cluster.
 // It ensures the following:
@@ -400,20 +700,24 @@ func (cmi *ClusterManager) ensureInitialClusterMap(dCacheConfig *dcache.DCacheCo
 	//    the node is joining this cluster. It cannot be contributing any storage to any of the MVs in
 	//    the cluster.
 	//    The node can safely emit its first heartbeat and continue startup.
-	// 2. If one or more of the node's RVs are present in the RV list, it implies that this node was
+	// 2. If one or more of this node's RVs are present in the RV list, it implies that this node was
 	//    part of this cluster and is coming back up after restarting.
 	//    Since this node was not part of the cluster for some time, it may be missing some data that might
 	//    have been written while the node was down.
 	//    It's safest to let these RVs be marked offline and removed from any MVs. For that the node may
 	//    have to wait for one or more ClustermapEpoch before the current leader clustermanager detects
 	//    the node as offline and updates the global clustermap. Post that we can purge our RVs and continue
-	//    startup after emitting the first heartbeat. (TODO)
+	//    startup after emitting the first heartbeat.
 	//
 	var currentTime int64
 	var clusterMap dcache.ClusterMap
 	var clusterMapBytes []byte
 
-	isClusterMapExists, err := cmi.checkIfClusterMapExists()
+	//
+	// safeCleanupMyRVs() cleans up all of my RVs, after performing the safe checks described above.
+	// Once it returns we are guaranteed that it's safe to join the cluster.
+	//
+	isClusterMapExists, err := cmi.safeCleanupMyRVs(rvs)
 	if err != nil {
 		log.Err("ClusterManager::ensureInitialClusterMap: Failed to check clustermap: %v", err)
 		common.Assert(false)
@@ -422,7 +726,7 @@ func (cmi *ClusterManager) ensureInitialClusterMap(dCacheConfig *dcache.DCacheCo
 
 	if isClusterMapExists {
 		//
-		// TODO: Need to check if we must purge our RVs, before punching the initial heartbeat.
+		// TODO: Need to check if we must purge all of my RVs, before punching the initial heartbeat.
 		//       See comments in ClusterManager::start().
 		//
 		log.Info("ClusterManager::ensureInitialClusterMap : clustermap already exists")
@@ -477,6 +781,9 @@ func (cmi *ClusterManager) ensureInitialClusterMap(dCacheConfig *dcache.DCacheCo
 	//
 	// Now we have the initial clustermap. Our next task is to update the clustermap with our local RVs and
 	// finally save a local copy of the updated clustermap.
+	//
+	// safeCleanupMyRVs() would have waited for any of our RVs present in clustermap to be marked offline,
+	// so it's safe to announce our presence by punching the first heartbeat.
 	//
 UpdateLocalClusterMapAndPunchInitialHeartbeat:
 
@@ -553,8 +860,6 @@ func (cmi *ClusterManager) updateStorageClusterMapWithMyRVs() error {
 		// Must be a valid clustermap.
 		common.Assert(cm.IsValidClusterMap(&clusterMap))
 
-		// This is the first time we should be saving the global config.
-		common.Assert(cmi.config == nil)
 		cmi.config = &clusterMap.Config
 		common.Assert(cm.IsValidDcacheConfig(cmi.config))
 
@@ -717,7 +1022,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	}
 
 	// Successful getClusterMap() must return a valid etag.
-	common.Assert(etag != nil, fmt.Sprintf("expected non-nil ETag on node %s", cmi.myNodeId))
+	common.Assert(etag != nil, cmi.myNodeId, len(clusterMapBytes))
 
 	log.Debug("ClusterManager::updateStorageClusterMapIfRequired: Fetched global clustermap (bytes: %d, etag: %v)",
 		len(clusterMapBytes), *etag)
@@ -758,7 +1063,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 		err = fmt.Errorf("LastUpdatedAt(%d) in future, now(%d), skipping update", clusterMap.LastUpdatedAt, now)
 		log.Warn("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
 
-		// Be soft if it could be do to clock skew.
+		// Be soft if it could be due to clock skew.
 		if (clusterMap.LastUpdatedAt - now) < 300 {
 			return nil
 		}
@@ -769,10 +1074,18 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	}
 
 	clusterMapAge := now - clusterMap.LastUpdatedAt
-	// Assert if clusterMap is not updated for 3 consecutive epochs.
-	// That might indicate some bug.
-	common.Assert(clusterMapAge < int64(clusterMap.Config.ClustermapEpoch*3),
-		fmt.Sprintf("clusterMapAge (%d) >= %d", clusterMapAge, clusterMap.Config.ClustermapEpoch*3))
+	//
+	// Assert if clusterMap is not updated for 3 consecutive epochs, it might indicate some bug.
+	// For very small ClustermapEpoch values, 3 times the value will not be sufficient as the thresholdEpochTime
+	// is set to 60, so limit it to 180.
+	// The max time till which the clusterMap may not be updated in the event of leader going down is
+	// 2*ClustermapEpoch + thresholdEpochTime, so for values of ClustermapEpoch above 60 seconds, 3 times
+	// ClustermapEpoch is suffcient but for smaller ClustermapEpoch values we have to cap to 180, with a margin
+	// of 20 seconds.
+	//
+	common.Assert(clusterMapAge < int64(max(clusterMap.Config.ClustermapEpoch*3, 200)),
+		fmt.Sprintf("clusterMapAge (%d) >= %d",
+			clusterMapAge, int64(max(clusterMap.Config.ClustermapEpoch*3, 200))))
 
 	const thresholdEpochTime = 60
 	// Staleness check for non-leader.
@@ -1008,6 +1321,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			}
 		}
 
+		// Component RV for MV must be present in nodeToRvs.
 		common.Assert(found, mvName, rvName, nodeId)
 	}
 
@@ -1041,6 +1355,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			break
 		}
 
+		// Component RV for MV must be present in nodeToRvs.
 		common.Assert(found, deleteRvName, nodeId)
 	}
 
@@ -1147,14 +1462,25 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 				outofsyncRVs++
 			}
 
-			// If this RV is not offline, its containing node must be excluded for replacement RV(s).
+			//
+			// If this component RV is not offline, its containing node must be excluded for replacement RV(s).
+			// We don't exclude the node if the component RV is offline to support the case where the same node
+			// comes back up online and we may want to use the same RV or another RV from the same node, as
+			// replacement RV.
+			//
 			if mv.RVs[rvName] != dcache.StateOffline {
 				excludeNodes[rvMap[rvName].NodeId] = struct{}{}
 				continue
 			}
 
+			//
 			// Offline RVs themselves must be excluded. Those are the ones we need to replace with good ones.
-			excludeRVNames[rvName] = struct{}{}
+			// Note that it's possible that the same RV has now come back online, in which case it can be
+			// reused and hence must not be excluded.
+			//
+			if rvMap[rvName].State == dcache.StateOffline {
+				excludeRVNames[rvName] = struct{}{}
+			}
 
 			offlineRVs++
 		}
@@ -1192,6 +1518,12 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			availableNodes[i], availableNodes[j] = availableNodes[j], availableNodes[i]
 		})
 
+		//
+		// Number of component RVs we are actually able to fix for this MV.
+		// If we cannot fix anything, skip the joinMV().
+		//
+		fixedRVs := 0
+
 		for rvName := range mv.RVs {
 			// Only offline component RVs need to be "fixed" (aka replaced).
 			if mv.RVs[rvName] != dcache.StateOffline {
@@ -1216,8 +1548,26 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 						continue
 					}
 
-					common.Assert(rvName != newRvName, rvName)
+					//
+					// Do not pick another offline component RV as replacement, else mv.RVs[] will have fewer
+					// than NumReplicas RVs.
+					// e.g., let's say we enter fixMV() with the following mv0 composition,
+					// mv0: {rv0: offline, rv1: online, rv2: offline}
+					//
+					// if we don't disallow the following, we can pick rv2 as a replacement for rv0, resulting in
+					// mv0: {rv2: outofsync, rv1: online}
+					//
+					// But, it's ok to reuse the same RV if it's now online, so following is a valid replacement.
+					// mv0: {rv0: outofsync, rv1: online, rv2: outofsync}
+					//
+					if newRvName != rvName {
+						_, ok := mv.RVs[newRvName]
+						if ok {
+							continue
+						}
+					}
 
+					//
 					// TODO: Need to find out space requirement for the MV and exclude RVs
 					//       which do not have enough availableSpace.
 
@@ -1225,9 +1575,11 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 					// Use this RV to replace older RV, a newly replaced RV starts as "outofsync" to indicate
 					// that the RV is good but needs to be sync'ed (from a good component RV).
 					//
-					mv.RVs[newRvName] = dcache.StateOutOfSync
-					// Remove the bad RV from MV.
+					// Remove the bad RV from MV. Do this before assigning the replacement RV, in case both
+					// are same.
+					//
 					delete(mv.RVs, rvName)
+					mv.RVs[newRvName] = dcache.StateOutOfSync
 
 					//
 					// Now mv is updated to correctly reflect new selected RV, with bad RV removed.
@@ -1238,13 +1590,13 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 					log.Debug("ClusterManager::fixMV: Replacing (%s/%s -> %s/%s)",
 						rvName, mvName, newRvName, mvName)
 					foundReplacement = true
+					fixedRVs++
 					break
 				}
 
-				// Once we pick an RV from a node, it cannot be used again for another RV for the MV.
-				excludeNodes[node.nodeId] = struct{}{}
-
 				if foundReplacement {
+					// Once we pick an RV from a node, it cannot be used again for another RV for the MV.
+					excludeNodes[node.nodeId] = struct{}{}
 					break
 				}
 			}
@@ -1256,9 +1608,18 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			// TODO: For huge clusters availableNodes could be a lot of log.
 			//
 			if !foundReplacement {
-				log.Warn("ClusterManager::fixMV: No replacement RV found for %s/%s, availableNodes: %+v, excludeNodes: %+v",
-					rvName, mvName, availableNodes, excludeNodes)
+				log.Warn("ClusterManager::fixMV: No replacement RV found for %s/%s, availableNodes: %+v, excludeNodes: %+v, excludeRVNames: %+v",
+					rvName, mvName, availableNodes, excludeNodes, excludeRVNames)
 			}
+		}
+
+		// We should be fixing no more than offlineRVs RVs.
+		common.Assert(fixedRVs <= offlineRVs, fixedRVs, offlineRVs)
+
+		// Skip joinMV() if nothing changed in clustermap.
+		if fixedRVs == 0 {
+			log.Warn("ClusterManager::fixMV: Could not fix any RV for MV %s", mvName)
+			return
 		}
 
 		//
@@ -1335,14 +1696,16 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	//
 	// Phase 1:
 	//
-	// Go over all MVs in existingMVMap and correctly set their state based on the state of all the
-	// component RVs. If a component RV is found to be offline as per rvMap, then the component RV
-	// is force marked offline. The it sets the MV state based on RV state as follows:
-	// - If all component RVs of an MV are online, the MV is marked as online, else
-	// - If no component RV of an MV is online (they are either offline, outofsync or syncing), the MV
-	//   is marked as offline, else
-	// - If at least one component RV is online, the MV is marked as degraded, else
-	// - All component RVs are either online or syncing, then MV is marked as syncing.
+	// Go over all MVs in existingMVMap and correctly set MV's state based on the state of all the
+	// component RVs and consume RV slots for all used component RVs. If a component RV is found to be offline as per rvMap, then the component RV
+	// is force marked offline in existingMVMap.
+	// Then, determine the MV state using the following rules:
+	// 1. If all component RVs are online,         → MV is marked as online.
+	// 2. If none of the component RVs are online, → MV is marked as offline.
+	// 		(i.e., all RVs are either offline, syncing, or outofsync)
+	// 3. If at least one component RV is online:
+	//  - If any non-online RV is outOfSync/offline, → MV is marked as degraded.
+	//  - else If any component RV is syncing  → MV is marked as syncing.
 	//
 	// If we mark an MV as degraded or offline we say we have run the degrade-mv or offline-mv workflow.
 	//
@@ -1377,8 +1740,16 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			// Reduce its slot count, so that we don't use a component RV more than MvsPerRv times across all MVs.
 			// Note that offline RVs are not included in nodeToRvs so we should not be updating their slot count.
 			//
+			// We don't reduce slot count if the component RV itself is marked offline. This is because an offline
+			// component RV for all purposes can be treated as non-existent. Soon after this we will run the fix-mv
+			// workflow which will replace these offline RVs with some online RV (it could be the same RV if it has
+			// come back up online) and at that time we will not increase the slot count of the outgoing component
+			// RV, so we don't reduce it now.
+			//
 			if rvMap[rvName].State != dcache.StateOffline {
-				consumeRVSlot(mvName, rvName)
+				if mv.RVs[rvName] != dcache.StateOffline {
+					consumeRVSlot(mvName, rvName)
+				}
 			}
 		}
 
@@ -1596,7 +1967,7 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume, reser
 	common.Assert(mv.State == dcache.StateOnline || mv.State == dcache.StateDegraded, mv.State)
 
 	// Caller must call us only with all component RVs set.
-	common.Assert(len(mv.RVs) == int(cmi.config.NumReplicas))
+	common.Assert(len(mv.RVs) == int(cmi.config.NumReplicas), len(mv.RVs), cmi.config.NumReplicas)
 
 	// reserveBytes must be non-zero only for degraded MV, for new-mv it'll be 0.
 	common.Assert(reserveBytes == 0 || mv.State == dcache.StateDegraded, reserveBytes, mv.State)

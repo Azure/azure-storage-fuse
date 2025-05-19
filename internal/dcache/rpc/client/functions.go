@@ -36,6 +36,7 @@ package rpc_client
 import (
 	"context"
 
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
@@ -260,24 +261,39 @@ func StartSync(ctx context.Context, targetNodeID string, req *models.StartSyncRe
 	reqStr := rpc.StartSyncRequestToString(req)
 	log.Debug("rpc_client::StartSync: Sending StartSync request to node %s: %v", targetNodeID, reqStr)
 
-	// get RPC client from the client pool
+	// Get an RPC client from the client pool, for making the StartSync RPC call.
 	client, err := cp.getRPCClient(targetNodeID)
 	if err != nil {
-		log.Err("rpc_client::StartSync: Failed to get RPC client for node %s [%v] : %v", targetNodeID, err.Error(), reqStr)
+		log.Err("rpc_client::StartSync: Failed to get RPC client for node %s [%v] : %v",
+			targetNodeID, err.Error(), reqStr)
 		return nil, err
 	}
+
 	defer func() {
-		// release RPC client back to the pool
-		err = cp.releaseRPCClient(client)
-		if err != nil {
-			log.Err("rpc_client::StartSync: Failed to release RPC client for node %s [%v] : %v", targetNodeID, err.Error(), reqStr)
+		//
+		// If the RPC call failed with an error we assume something wrong with the client and close
+		// it, else release it back to the pool.
+		//
+		// TODO: See if we should close only on TCP error signifying socket is not connected.
+		// TODO: Do this for other RPC messages too.
+		//
+		if err == nil {
+			// Release RPC client back to the pool.
+			err1 := cp.releaseRPCClient(client)
+			// Release client should not fail.
+			common.Assert(err1 == nil, err1)
+		} else {
+			err1 := cp.resetRPCClient(client)
+			// Reset client should not fail.
+			common.Assert(err1 == nil, err1)
 		}
 	}()
 
-	// call the rpc method
+	// Call the rpc method.
 	resp, err := client.svcClient.StartSync(ctx, req)
 	if err != nil {
-		log.Err("rpc_client::StartSync: Failed to send StartSync request to node %s [%v] : %v", targetNodeID, err.Error(), reqStr)
+		log.Err("rpc_client::StartSync: Failed to send StartSync request to node %s [%v]: %v",
+			targetNodeID, err, reqStr)
 		return nil, err
 	}
 

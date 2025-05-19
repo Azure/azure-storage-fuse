@@ -62,12 +62,6 @@ func Update() {
 
 // UpdateSync will load the local clustermap synchronously.
 func UpdateSync() {
-	//
-	// Sync update is called only once in the beginning, when we don't have the localMap set.
-	// It can technically be called later, but we should not call, catch inadvertent bad callers.
-	//
-	common.Assert(clusterMap.localMap == nil)
-
 	clusterMap.loadLocalMap()
 }
 

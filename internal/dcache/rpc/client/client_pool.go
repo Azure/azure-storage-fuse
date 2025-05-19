@@ -126,6 +126,73 @@ func (cp *clientPool) releaseRPCClient(client *rpcClient) error {
 	return nil
 }
 
+// closeRPCClient closes an RPC client.
+// The client MUST have been removed from the pool using a prior getRPCClient() call.
+func (cp *clientPool) closeRPCClient(client *rpcClient) error {
+	log.Debug("clientPool::closeRPCClient: Closing RPC client to %s node %s",
+		client.nodeAddress, client.nodeID)
+
+	err := client.close()
+	if err != nil {
+		err = fmt.Errorf("Failed to close RPC client to %s node %s: %v",
+			client.nodeAddress, client.nodeID, err)
+		log.Err("nodeClientPool::closeRPCClient: %v", err)
+		common.Assert(false, err)
+		return err
+	}
+
+	log.Info("clientPool::closeRPCClient: Closed RPC client to %s node %s",
+		client.nodeAddress, client.nodeID)
+
+	return nil
+}
+
+// Close client and create a new one to the same target/node as client.
+// This is typically used when a node goes down and comes back up, rendering all existing clients
+// "broken", they need to be replaced with a brand new connection/client.
+//
+// TODO: Add a function to reset all clients, since all clients to a node go bad when node restarts.
+func (cp *clientPool) resetRPCClient(client *rpcClient) error {
+	log.Debug("clientPool::resetRPCClient: client %s for node %s",
+		client.nodeAddress, client.nodeID)
+
+	//
+	// First close the client and then create a new one and add that to the pool.
+	//
+	err := cp.closeRPCClient(client)
+	if err != nil {
+		return err
+	}
+
+	log.Info("clientPool::resetRPCClient: Creating new RPC client to %s node %s",
+		client.nodeAddress, client.nodeID)
+
+	cp.mu.Lock()
+	defer cp.mu.Unlock()
+
+	ncPool, exists := cp.clients[client.nodeID]
+	common.Assert(exists)
+	//
+	// resetRPCClient() MUST be called after removing client from the client pool, so
+	// the pool must have space for a new client.
+	//
+	common.Assert(len(ncPool.clientChan) < int(cp.maxPerNode),
+		len(ncPool.clientChan), cp.maxPerNode)
+
+	newClient, err := newRPCClient(client.nodeID, rpc.GetNodeAddressFromID(client.nodeID))
+	if err != nil {
+		log.Err("clientPool::resetRPCClient: Failed to create RPC client to %s node %s: %v",
+			client.nodeAddress, client.nodeID, err)
+		common.Assert(false, err)
+		return err
+	}
+
+	// Add the new client to the client pool for this node.
+	ncPool.clientChan <- newClient
+
+	return nil
+}
+
 // Close the least recently used node client pool from the client pool
 // caller of this method should hold the lock
 func (cp *clientPool) closeLRUCNodeClientPool() error {
@@ -135,14 +202,26 @@ func (cp *clientPool) closeLRUCNodeClientPool() error {
 	var lruNcPool *nodeClientPool
 	lruNodeID := ""
 	for nodeID, ncPool := range cp.clients {
+		common.Assert(len(ncPool.clientChan) <= int(cp.maxPerNode),
+			len(ncPool.clientChan), cp.maxPerNode)
+		//
+		// Omit the nodeClientPool if it has any client currently in use.
+		//
+		if len(ncPool.clientChan) != int(cp.maxPerNode) {
+			log.Debug("clientPool::closeLRUCNodeClientPool: Skipping %s (%d < %d)",
+				ncPool.nodeID, len(ncPool.clientChan), cp.maxPerNode)
+			continue
+		}
+
 		if lruNcPool == nil || ncPool.lastUsed.Before(lruNcPool.lastUsed) {
 			lruNcPool = ncPool
 			lruNodeID = nodeID
 		}
 	}
 
-	// closeLRUCNodeClientPool() MUST never be called with no active RPC client.
-	common.Assert(lruNcPool != nil)
+	if lruNcPool == nil {
+		return fmt.Errorf("clientPool::closeLRUCNodeClientPool: No free nodeClientPool")
+	}
 
 	err := lruNcPool.closeRPCClients()
 	if err != nil {
