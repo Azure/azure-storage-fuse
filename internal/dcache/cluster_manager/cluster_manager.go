@@ -1514,6 +1514,12 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			availableNodes[i], availableNodes[j] = availableNodes[j], availableNodes[i]
 		})
 
+		//
+		// Number of component RVs we are actually able to fix for this MV.
+		// If we cannot fix anything, skip the joinMV().
+		//
+		fixedRVs := 0
+
 		for rvName := range mv.RVs {
 			// Only offline component RVs need to be "fixed" (aka replaced).
 			if mv.RVs[rvName] != dcache.StateOffline {
@@ -1561,6 +1567,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 					log.Debug("ClusterManager::fixMV: Replacing (%s/%s -> %s/%s)",
 						rvName, mvName, newRvName, mvName)
 					foundReplacement = true
+					fixedRVs++
 					break
 				}
 
@@ -1582,6 +1589,15 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 				log.Warn("ClusterManager::fixMV: No replacement RV found for %s/%s, availableNodes: %+v, excludeNodes: %+v, excludeRVNames: %+v",
 					rvName, mvName, availableNodes, excludeNodes, excludeRVNames)
 			}
+		}
+
+		// We should be fixing no more than offlineRVs RVs.
+		common.Assert(fixedRVs <= offlineRVs, fixedRVs, offlineRVs)
+
+		// Skip joinMV() if nothing changed in clustermap.
+		if fixedRVs == 0 {
+			log.Warn("ClusterManager::fixMV: Could not fix any RV for MV %s", mvName)
+			return
 		}
 
 		//
