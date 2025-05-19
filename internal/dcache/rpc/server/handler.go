@@ -512,6 +512,11 @@ func (mv *mvInfo) refreshFromClustermap() error {
 			Name:  rvName,
 			State: string(rvState),
 		})
+
+		//
+		// TOD: If an RV is being added in "outofsync" or "syncing" state (and it was in a different
+		//	state earlier) we must also update rvInfo.reservedSpace.
+		//
 	}
 
 	// Update unconditionally, even if it may not have changed, doesn't matter.
@@ -1231,8 +1236,22 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 	// check if RV is already part of the given MV
 	mvi := rvInfo.getMVInfo(req.MV)
 	if mvi != nil {
-		log.Err("ChunkServiceHandler::JoinMV: RV %s is already part of the given MV %s", req.RVName, req.MV)
-		return nil, rpc.NewResponseError(rpc.InvalidRequest, fmt.Sprintf("RV %s is already part of the given MV %s", req.RVName, req.MV))
+		//
+		// TODO: Till Sourav formally implements idempotent handling of JoinMV and UpdateMV RPCs,
+		//	 we have the following to not treat "double join" as failure.
+		//	 Double join can happen when let's say we have two or more outofsync component RVs
+		//	 for an MV and fixMV() sends JoinMV request to each of the outofsync RVs. If one or
+		//	 more of these fail, the joinMV() will treat it has failure and not update clustermap.
+		//	 Next time when fixMV() is called it'll again attempt fixing and again send JoinMV.
+		//	 Note that for proper handling we need to ensure that the reservedSpace remains
+		//	 same across both calls. Also if an RV is joined but never used later (maybe joinMV()
+		//	 picked a new RV in the next iteration), we should time out and undo the reservedSpace.
+		//
+		log.Warn("ChunkServiceHandler::JoinMV: RV %s is already part of the given MV %s, ignoring",
+			req.RVName, req.MV)
+		return &models.JoinMVResponse{}, nil
+		//log.Err("ChunkServiceHandler::JoinMV: RV %s is already part of the given MV %s", req.RVName, req.MV)
+		//return nil, rpc.NewResponseError(rpc.InvalidRequest, fmt.Sprintf("RV %s is already part of the given MV %s", req.RVName, req.MV))
 	}
 
 	mvLimit := getMVsPerRV()
