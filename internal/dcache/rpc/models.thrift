@@ -129,3 +129,21 @@ struct EndSyncRequest {
 struct EndSyncResponse {
     // status will be returned in the error
 }
+
+// Custom error codes returned by the ChunkServiceHandler
+enum ErrorCode {
+    InvalidRequest = 1,
+    InvalidRVID = 2,
+    InvalidRV = 3,
+    InternalServerError = 4,
+    ChunkNotFound = 5,
+    ChunkAlreadyExists = 6,
+    MaxMVsExceeded = 7,
+    NeedToRefreshClusterMap = 8
+}
+
+// Custom error returned by the RPC APIs
+exception ResponseError {
+    1: ErrorCode code,
+    2: string message
+}
