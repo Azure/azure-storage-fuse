@@ -643,6 +643,19 @@ func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, err
 				break
 			}
 
+			// Offline RV (or RV not present in clustermap), clean up.
+			wg.Add(1)
+			go func(rv dcache.RawVolume) {
+				defer wg.Done()
+
+				err := cleanupRV(rv)
+				if err != nil {
+					log.Err("ClusterManager::safeCleanupMyRVs: cleanupRV (%s) failed: %v",
+						rv.LocalCachePath, err)
+					failedRV.Add(1)
+				}
+			}(rv)
+
 		}
 
 		// None of my RV online, done.
@@ -653,20 +666,6 @@ func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, err
 		time.Sleep(30 * time.Second)
 	}
 
-	// Offline RV (or RV not present in clustermap), clean up.
-	for _, rv := range myRVs {
-		wg.Add(1)
-		go func(rv dcache.RawVolume) {
-			defer wg.Done()
-
-			err := cleanupRV(rv)
-			if err != nil {
-				log.Err("ClusterManager::safeCleanupMyRVs: cleanupRV (%s) failed: %v",
-					rv.LocalCachePath, err)
-				failedRV.Add(1)
-			}
-		}(rv)
-	}
 	// Wait for all RVs to complete cleanup.
 	wg.Wait()
 
@@ -1698,16 +1697,25 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	//
 	// Go over all MVs in existingMVMap and correctly set MV's state based on the state of all the
 	// component RVs and consume RV slots for all used component RVs. If a component RV is found to be offline as per rvMap, then the component RV
-	// is force marked offline in existingMVMap.
-	// Then, determine the MV state using the following rules:
-	// 1. If all component RVs are online,         → MV is marked as online.
-	// 2. If none of the component RVs are online, → MV is marked as offline.
-	// 		(i.e., all RVs are either offline, syncing, or outofsync)
-	// 3. If at least one component RV is online:
-	//  - If any non-online RV is outOfSync/offline, → MV is marked as degraded.
-	//  - else If any component RV is syncing  → MV is marked as syncing.
+	// is force marked offline. Then it sets the MV state based on the cumulative state of all of it's component RVs as follows:
+	// - If all component RVs of an MV are online, the MV is marked as online, else
+	// - If no component RV of an MV is online (they are either offline, outofsync or syncing), the MV
+	//   is marked as offline, else
+	// - If at least one component RV is online, the MV is marked as degraded, else
+	// - All component RVs are either online or syncing, then MV is marked as syncing.
 	//
-	// If we mark an MV as degraded or offline we say we have run the degrade-mv or offline-mv workflow.
+	// Few examples:
+	// online, online, online => online
+	// online, online, offline => degraded
+	// online, online, outofsync => degraded
+	// online, outofsync, outofsync => degraded
+	// online, syncing, outofsync => degraded
+	// online, syncing, syncing => syncing
+	// online, online, syncing => syncing
+	// offline, syncing, syncing => offline
+	// offline, outofsync, syncing => offline
+	// offline, outofsync, outofsync => offline
+	// offline, offline, offline => offline
 	//
 	for mvName, mv := range existingMVMap {
 		offlineRVs := 0
