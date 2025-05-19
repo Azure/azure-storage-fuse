@@ -305,9 +305,17 @@ func IsValidRV(rv *dcache.RawVolume) (bool, error) {
 			rv.AvailableSpace, rv.TotalSpace, *rv)
 	}
 
-	_, err := os.Stat(rv.LocalCachePath)
+	// TODO: Check for some minimum amount of total/free space.
+
+	stat, err := os.Stat(rv.LocalCachePath)
 	if os.IsNotExist(err) {
-		return false, fmt.Errorf("RawVolume: Non-existent LocalCachePath: %s: %+v", rv.LocalCachePath, *rv)
+		return false, fmt.Errorf("RawVolume: Non-existent LocalCachePath: %s: %+v",
+			rv.LocalCachePath, *rv)
+	}
+
+	if !stat.IsDir() {
+		return false, fmt.Errorf("RawVolume: LocalCachePath (%s) is not a directory: %+v",
+			rv.LocalCachePath, stat)
 	}
 
 	return true, nil

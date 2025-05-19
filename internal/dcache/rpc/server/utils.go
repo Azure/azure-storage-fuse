@@ -99,15 +99,16 @@ func sortComponentRVs(rvs []*models.RVNameAndState) {
 // ]
 func isComponentRVsValid(rvInMV []*models.RVNameAndState, rvInReq []*models.RVNameAndState) error {
 	if len(rvInMV) != len(rvInReq) {
-		return fmt.Errorf("request component RVs %s is not same as MV component RVs %s", rpc.ComponentRVsToString(rvInReq), rpc.ComponentRVsToString(rvInMV))
+		return fmt.Errorf("request component RVs %s is not same as MV component RVs %s",
+			rpc.ComponentRVsToString(rvInReq), rpc.ComponentRVsToString(rvInMV))
 	}
 
 	sortComponentRVs(rvInReq)
 
 	isValid := true
 	for i := 0; i < len(rvInMV); i++ {
-		common.Assert(rvInMV[i] != nil, "Component RV is nil")
-		common.Assert(rvInReq[i] != nil, "Component RV is nil")
+		common.Assert(rvInMV[i] != nil)
+		common.Assert(rvInReq[i] != nil)
 
 		if rvInMV[i].Name != rvInReq[i].Name || rvInMV[i].State != rvInReq[i].State {
 			isValid = false
@@ -118,9 +119,10 @@ func isComponentRVsValid(rvInMV []*models.RVNameAndState, rvInReq []*models.RVNa
 	if !isValid {
 		rvInMvStr := rpc.ComponentRVsToString(rvInMV)
 		rvInReqStr := rpc.ComponentRVsToString(rvInReq)
-		log.Err("utils::isComponentRVsValid: Request component RVs %s is not same as MV component RVs %s", rvInReqStr, rvInMvStr)
-		common.Assert(false, fmt.Sprintf("request component RVs %s is not same as MV component RVs %s", rvInReqStr, rvInMvStr))
-		return fmt.Errorf("request component RVs %s is not same as MV component RVs %s", rvInReqStr, rvInMvStr)
+		err := fmt.Errorf("request component RVs %s is not same as MV component RVs %s",
+			rvInReqStr, rvInMvStr)
+		log.Err("utils::isComponentRVsValid: %v", err)
+		return err
 	}
 
 	return nil

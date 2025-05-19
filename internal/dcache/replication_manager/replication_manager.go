@@ -41,6 +41,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -59,6 +60,11 @@ type replicationMgr struct {
 	// Channel to signal when the replication manager is done.
 	// This is used to stop the thread doing the periodic resync of degraded MVs.
 	done chan bool
+
+	// Set of currently running sync jobs, indexed by target replica ("rvX/mvY") and the value
+	// stored is the source replica in "rvX/mvY" format.
+	// Note that there can only be a single sync job for a given target replica.
+	runningJobs sync.Map
 
 	// TODO: add fields like channel for sync jobs, etc.
 }
@@ -506,10 +512,33 @@ func syncMV(mvName string, mvInfo dcache.MirroredVolume) {
 			continue
 		}
 
+		srcReplica := fmt.Sprintf("%s/%s", lioRV, mvName)
+		tgtReplica := fmt.Sprintf("%s/%s", rv.Name, mvName)
+
+		//
+		// Don't run more than one sync job for the same target replica.
+		// This is to prevent periodic calls to resyncDegradedMVs() from starting replication
+		// for a target replica, that's already running.
+		//
+		val, ok := rm.runningJobs.Load(tgtReplica)
+		if ok {
+			log.Info("ReplicationManager::syncMV: Not starting sync job (%s/%s -> %s/%s), %s -> %s already running",
+				lioRV, mvName, rv.Name, mvName, val.(string), tgtReplica)
+			continue
+		}
+
 		log.Info("ReplicationManager::syncMV: Starting sync job (%s/%s -> %s/%s) for syncing %d bytes",
 			lioRV, mvName, rv.Name, mvName, syncSize)
 
-		go syncComponentRV(mvName, lioRV, rv.Name, syncSize, componentRVs)
+		// Store it in the map to avoid multiple sync jobs for the same target.
+		rm.runningJobs.Store(tgtReplica, srcReplica)
+
+		go func() {
+			// Remove from the map, once the syncjob completes (success or failure).
+			defer rm.runningJobs.Delete(tgtReplica)
+
+			syncComponentRV(mvName, lioRV, rv.Name, syncSize, componentRVs)
+		}()
 	}
 }
 
@@ -614,6 +643,18 @@ func sendStartSyncRequest(rvName string, targetNodeID string, req *models.StartS
 	if err != nil {
 		log.Err("ReplicationManager::sendStartSyncRequest: StartSync failed for %s/%s %v: %v",
 			rvName, req.MV, rpc.StartSyncRequestToString(req), err)
+
+		//
+		// Right now we treat all StartSync failures as being caused by stale clustermap.
+		// Refresh the clustermap and fail the job. This target replica will be picked up
+		// in the next periodic call to syncMV().
+		// TODO: Check for NeedToRefreshClusterMap and only on that error, refresh the clustermap.
+		//
+		err1 := cm.RefreshClusterMapSync()
+		if err1 != nil {
+			log.Err("ReplicationManager::sendStartSyncRequest: RefreshClusterMapSync failed: %v", err1)
+		}
+
 		return "", err
 	}
 
