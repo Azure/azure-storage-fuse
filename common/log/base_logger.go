@@ -42,6 +42,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -219,19 +220,32 @@ func (l *BaseLogger) Destroy() error {
 // logEvent : Enqueue the log to the channel
 func (l *BaseLogger) logEvent(lvl string, format string, args ...interface{}) {
 	// Only log if the log level matches the log request
-	_, fn, ln, _ := runtime.Caller(3)
-	msg := fmt.Sprintf(format, args...)
-	msg = fmt.Sprintf("%s : %s[%d][%d] : [%s] %s [%s (%d)]: %s",
+	pc, fn, ln, _ := runtime.Caller(3)
+
+	// full func name: e.g. github.com/Azure/…/common/log.(*BaseLogger).Info
+	fullName := runtime.FuncForPC(pc).Name()
+
+	pkgName := ""
+	if strings.Contains(fullName, "distributed_cache") || strings.Contains(fullName, "dcache") {
+		pkgName = "DCACHE"
+	}
+
+	base := fmt.Sprintf("%s : %s[%d][%d] : [%s] %s",
 		time.Now().Format("Mon Jan _2 15:04:05.000 MST 2006"),
 		l.fileConfig.LogTag,
 		l.procPID,
 		getGoRoutineID(),
 		common.MountPath,
-		lvl,
-		filepath.Base(fn), ln,
-		msg)
+		lvl)
+	fileLine := fmt.Sprintf("[%s (%d)]", filepath.Base(fn), ln)
+	msg := fmt.Sprintf(format, args...)
 
-	l.channel <- msg
+	if pkgName != "" {
+		l.channel <- fmt.Sprintf("%s [%s] %s: %s", base, pkgName, fileLine, msg)
+	} else {
+		l.channel <- fmt.Sprintf("%s %s: %s", base, fileLine, msg)
+	}
+
 }
 
 // Example goroutine 17 [running]: => This method will return 17
