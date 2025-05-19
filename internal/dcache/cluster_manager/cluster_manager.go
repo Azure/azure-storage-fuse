@@ -1545,6 +1545,25 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 					}
 
 					//
+					// Do not pick another offline component RV as replacement, else mv.RVs[] will have fewer
+					// than NumReplicas RVs.
+					// e.g., let's say we enter fixMV() with the following mv0 composition,
+					// mv0: {rv0: offline, rv1: online, rv2: offline}
+					//
+					// if we don't disallow the following, we can pick rv2 as a replacement for rv0, resulting in
+					// mv0: {rv2: outofsync, rv1: online}
+					//
+					// But, it's ok to reuse the same RV if it's now online, so following is a valid replacement.
+					// mv0: {rv0: outofsync, rv1: online, rv2: outofsync}
+					//
+					if newRvName != rvName {
+						_, ok := mv.RVs[newRvName]
+						if ok {
+							continue
+						}
+					}
+
+					//
 					// TODO: Need to find out space requirement for the MV and exclude RVs
 					//       which do not have enough availableSpace.
 
@@ -1571,10 +1590,9 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 					break
 				}
 
-				// Once we pick an RV from a node, it cannot be used again for another RV for the MV.
-				excludeNodes[node.nodeId] = struct{}{}
-
 				if foundReplacement {
+					// Once we pick an RV from a node, it cannot be used again for another RV for the MV.
+					excludeNodes[node.nodeId] = struct{}{}
 					break
 				}
 			}
@@ -1943,7 +1961,7 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume, reser
 	common.Assert(mv.State == dcache.StateOnline || mv.State == dcache.StateDegraded, mv.State)
 
 	// Caller must call us only with all component RVs set.
-	common.Assert(len(mv.RVs) == int(cmi.config.NumReplicas))
+	common.Assert(len(mv.RVs) == int(cmi.config.NumReplicas), len(mv.RVs), cmi.config.NumReplicas)
 
 	// reserveBytes must be non-zero only for degraded MV, for new-mv it'll be 0.
 	common.Assert(reserveBytes == 0 || mv.State == dcache.StateDegraded, reserveBytes, mv.State)
