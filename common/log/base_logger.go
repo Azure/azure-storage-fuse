@@ -227,7 +227,7 @@ func (l *BaseLogger) logEvent(lvl string, format string, args ...interface{}) {
 
 	pkgName := ""
 	if strings.Contains(fullName, "distributed_cache") || strings.Contains(fullName, "dcache") {
-		pkgName = "Dcache"
+		pkgName = "DCACHE"
 	}
 
 	base := fmt.Sprintf("%s : %s[%d][%d] : [%s] %s",
