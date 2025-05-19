@@ -53,6 +53,7 @@ import (
 	fm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/file_manager"
 	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
 	rm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/replication_manager"
+	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
 
@@ -241,6 +242,14 @@ func (dc *DistributedCache) Stop() error {
 	fm.EndFileIOManager()
 	rm.Stop()
 	clustermanager.Stop()
+
+	// close all the RPC node client pools
+	err := rpc_client.Cleanup()
+	if err != nil {
+		log.Err("DistributedCache::Stop : Failed to cleanup RPC client pools: %v", err)
+		return err
+	}
+
 	return nil
 }
 

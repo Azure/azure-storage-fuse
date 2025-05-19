@@ -595,17 +595,19 @@ func (mv *mvInfo) isSyncOpWriteLocked() bool {
 	return mv.opMutexDbgCntr.Load() == -12345
 }
 
-// Given component RVs and source and target RV names received in a StartSync/EndSync request, check their validity.
-// It checks the following:
-//   - Component RVs received in req are exactly same (name and state) as component RVs list for this MV replica.
-//   - Source and target RVs are indeed present in the component RVs list for this MV replica.
+// Check if the component RVs in the request is valid for the given MV replica.
+// If the the request's component RVs match with the node's mvInfo data, then it means that the
+// request is valid and the mvInfo data is up to date.
 //
-// Note: This is a very critical correctness check used by dcache. Since client may be using a stale clustermap,
+// If the request's component RVs do not match with the mvInfo data, it means that either,
+//   - The sender has a stale clustermap.
+//   - mvInfo has inconsistent info due to the partially applied change.
 //
-//	it's important for server (which always has the latest cluster membership info) to let client know if
-//	its clustermap copy is stale and it needs to refresh it.
-func (mv *mvInfo) validateComponentRVsInSync(componentRVsInReq []*models.RVNameAndState, sourceRVName string, targetRVName string) error {
-
+// In this case, the server needs to refresh its membership details from the clustermap and
+// if there still is a mismatch indicating client using stale clustermap, fail the call with
+// NeedToRefreshClusterMap asking the sender to refresh too.
+// This function helps to refresh the rvInfo component RV details.
+func (mv *mvInfo) isComponentRVsValid(componentRVsInReq []*models.RVNameAndState) error {
 	var componentRVsInMV []*models.RVNameAndState
 	clustermapRefreshed := false
 
@@ -626,12 +628,35 @@ func (mv *mvInfo) validateComponentRVsInSync(componentRVsInReq []*models.RVNameA
 			}
 
 			errStr := fmt.Sprintf("Request component RVs are invalid for MV %s [%v]", mv.mvName, err)
-			log.Err("ChunkServiceHandler::validateComponentRVsInSync: %s", errStr)
+			log.Err("ChunkServiceHandler::isComponentRVsValid: %s", errStr)
 			return rpc.NewResponseError(rpc.NeedToRefreshClusterMap, errStr)
 		}
 
 		break
 	}
+
+	return nil
+}
+
+// Given component RVs and source and target RV names received in a StartSync/EndSync request, check their validity.
+// It checks the following:
+//   - Component RVs received in req are exactly same (name and state) as component RVs list for this MV replica.
+//   - Source and target RVs are indeed present in the component RVs list for this MV replica.
+//
+// Note: This is a very critical correctness check used by dcache. Since client may be using a stale clustermap,
+//
+//	it's important for server (which always has the latest cluster membership info) to let client know if
+//	its clustermap copy is stale and it needs to refresh it.
+func (mv *mvInfo) validateComponentRVsInSync(componentRVsInReq []*models.RVNameAndState, sourceRVName string, targetRVName string) error {
+
+	err := mv.isComponentRVsValid(componentRVsInReq)
+	if err != nil {
+		errStr := fmt.Sprintf("Component RVs are invalid for MV %s [%v]", mv.mvName, err)
+		log.Err("ChunkServiceHandler::validateComponentRVsInSync: %s", errStr)
+		return err
+	}
+
+	componentRVsInMV := mv.getComponentRVs()
 
 	// Source RV must be present in the component RVs list for this MV replica.
 	if !isRVPresentInMV(componentRVsInMV, sourceRVName) {
@@ -1140,10 +1165,11 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 	mvInfo := rvInfo.getMVInfo(req.Address.MvName)
 
 	// validate the component RVs list
-	componentRVsInMV := mvInfo.getComponentRVs()
-	if err := isComponentRVsValid(componentRVsInMV, req.ComponentRV); err != nil {
-		log.Err("ChunkServiceHandler::RemoveChunk: Request component RVs are invalid for MV %s [%v]", req.Address.MvName, err.Error())
-		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("request component RVs are invalid for MV %s [%v]", req.Address.MvName, err.Error()))
+	err = mvInfo.isComponentRVsValid(req.ComponentRV)
+	if err != nil {
+		errStr := fmt.Sprintf("Component RVs are invalid for MV %s [%v]", req.Address.MvName, err)
+		log.Err("ChunkServiceHandler::RemoveChunk: %s", errStr)
+		return nil, err
 	}
 
 	// acquire read lock on the opMutex for this MV
@@ -1201,7 +1227,7 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 	resp := &models.RemoveChunkResponse{
 		TimeTaken:      time.Since(startTime).Microseconds(),
 		AvailableSpace: availableSpace,
-		ComponentRV:    componentRVsInMV,
+		ComponentRV:    mvInfo.getComponentRVs(),
 	}
 
 	return resp, nil
@@ -1215,7 +1241,7 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 	// requires to call componentRVsToString method as it is of type []*models.RVNameAndState
 	log.Debug("ChunkServiceHandler::JoinMV: Received JoinMV request: %v", rpc.JoinMVRequestToString(req))
 
-	if req.MV == "" || req.RVName == "" || len(req.ComponentRV) == 0 {
+	if cm.IsValidMVName(req.MV) || cm.IsValidRVName(req.RVName) || len(req.ComponentRV) == 0 {
 		log.Err("ChunkServiceHandler::JoinMV: MV, RV or ComponentRV is empty")
 		return nil, rpc.NewResponseError(rpc.InvalidRequest, "MV, RV or ComponentRV is empty")
 	}
@@ -1301,7 +1327,7 @@ func (h *ChunkServiceHandler) UpdateMV(ctx context.Context, req *models.UpdateMV
 
 	log.Debug("ChunkServiceHandler::UpdateMV: Received UpdateMV request: %v", rpc.UpdateMVRequestToString(req))
 
-	if req.MV == "" || req.RVName == "" || len(req.ComponentRV) == 0 {
+	if cm.IsValidMVName(req.MV) || cm.IsValidRVName(req.RVName) || len(req.ComponentRV) == 0 {
 		log.Err("ChunkServiceHandler::UpdateMV: MV, RV or ComponentRV is empty")
 		return nil, rpc.NewResponseError(rpc.InvalidRequest, "MV, RV or ComponentRV is empty")
 	}
@@ -1336,7 +1362,7 @@ func (h *ChunkServiceHandler) LeaveMV(ctx context.Context, req *models.LeaveMVRe
 
 	log.Debug("ChunkServiceHandler::LeaveMV: Received LeaveMV request: %v", rpc.LeaveMVRequestToString(req))
 
-	if req.MV == "" || req.RVName == "" || len(req.ComponentRV) == 0 {
+	if cm.IsValidMVName(req.MV) || cm.IsValidRVName(req.RVName) || len(req.ComponentRV) == 0 {
 		log.Err("ChunkServiceHandler::LeaveMV: MV, RV or ComponentRV is empty")
 		return nil, rpc.NewResponseError(rpc.InvalidRequest, "MV, RV or ComponentRV is empty")
 	}
@@ -1357,9 +1383,10 @@ func (h *ChunkServiceHandler) LeaveMV(ctx context.Context, req *models.LeaveMVRe
 	}
 
 	// validate the component RVs list
-	if err := isComponentRVsValid(mvInfo.getComponentRVs(), req.ComponentRV); err != nil {
-		log.Err("ChunkServiceHandler::LeaveMV: Request component RVs are invalid for MV %s [%v]", req.MV, err.Error())
-		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("request component RVs are invalid for MV %s [%v]", req.MV, err.Error()))
+	if err := mvInfo.isComponentRVsValid(req.ComponentRV); err != nil {
+		errStr := fmt.Sprintf("Component RVs are invalid for MV %s [%v]", req.MV, err)
+		log.Err("ChunkServiceHandler::RemoveChunk: %s", errStr)
+		return nil, err
 	}
 
 	// delete the MV directory
@@ -1437,6 +1464,22 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 		return nil, err
 	}
 
+	componentRVsInMV := mvInfo.getComponentRVs()
+
+	// The validateComponentRVsInSync() confirms that the target RV is present in the component RVs list.
+	// for this MV replica. StartSync() call is made after the fix-mv workflow has replaced the offline
+	// RVs to outofsync state.
+	//
+	// Check if the target RV is in outofsync state.
+	targetRVNameAndState := getComponentRVState(componentRVsInMV, req.TargetRVName)
+	if targetRVNameAndState.State != string(dcache.StateOutOfSync) {
+		errStr := fmt.Sprintf("Target RV %s is not in outofsync state: %s",
+			req.TargetRVName, rpc.ComponentRVsToString(componentRVsInMV))
+		log.Err("ChunkServiceHandler::StartSync: %s", errStr)
+		common.Assert(false, errStr)
+		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, errStr)
+	}
+
 	//
 	// Ok, it's a valid StartSync request for one of our MV replicas.
 	// We synchronize chunk IO requests (GetChunk/PutChunk/RemoveChunk) with StartSync requests.
@@ -1476,6 +1519,10 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 
 	// Add this sync job to the syncJobs map.
 	syncID := mvInfo.addSyncJob(sourceRVName, targetRVName)
+
+	// update the state of target RV in this MV replica from outofsync to syncing
+	updateComponentRVState(componentRVsInMV, req.TargetRVName, dcache.StateSyncing)
+	mvInfo.updateComponentRVs(componentRVsInMV)
 
 	return &models.StartSyncResponse{
 		SyncID: syncID,
@@ -1538,6 +1585,22 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 		return nil, err
 	}
 
+	componentRVsInMV := mvInfo.getComponentRVs()
+
+	// The isSyncSrcDestRVsValid() confirms that the target RV is present in the component RVs list.
+	// for this MV replica. EndSync() RPC call is made only after the StartSync() call, which marks the
+	// target RV state to syncing.
+	//
+	// Check if the target RV is in syncing state.
+	targetRVNameAndState := getComponentRVState(componentRVsInMV, req.TargetRVName)
+	if targetRVNameAndState.State != string(dcache.StateSyncing) {
+		errStr := fmt.Sprintf("Target RV %s is not in syncing state: %s",
+			req.TargetRVName, rpc.ComponentRVsToString(componentRVsInMV))
+		log.Err("ChunkServiceHandler::StartSync: %s", errStr)
+		common.Assert(false, errStr)
+		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, errStr)
+	}
+
 	//
 	// Ok, it's a valid StartSync request for one of our MV replicas.
 	// We synchronize chunk IO requests (GetChunk/PutChunk/RemoveChunk) with StartSync requests.
@@ -1558,6 +1621,10 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 
 	// Delete the sync job from the syncJobs map.
 	mvInfo.deleteSyncJob(req.SyncID)
+
+	// update the state of target RV in this MV replica from syncing to online
+	updateComponentRVState(componentRVsInMV, req.TargetRVName, dcache.StateOnline)
+	mvInfo.updateComponentRVs(componentRVsInMV)
 
 	//
 	// If we were the target of this sync job, then nothing else to do, else if it's the last sync

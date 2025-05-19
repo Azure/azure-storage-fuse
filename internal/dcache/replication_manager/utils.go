@@ -118,11 +118,7 @@ func convertRVMapToList(mvName string, rvMap map[string]dcache.StateEnum) []*mod
 
 	for rvName, rvState := range rvMap {
 		common.Assert(cm.IsValidRVName(rvName), rvName)
-		// Only valid states for a component RV.
-		common.Assert(rvState == dcache.StateOnline ||
-			rvState == dcache.StateOffline ||
-			rvState == dcache.StateOutOfSync ||
-			rvState == dcache.StateSyncing, rvName, rvState)
+		common.Assert(cm.IsValidComponentRVState(rvState), rvName, rvState)
 
 		componentRVs = append(componentRVs,
 			&models.RVNameAndState{Name: rvName, State: string(rvState)})
@@ -164,4 +160,26 @@ func getCachePathForRVName(rvName string) string {
 	common.Assert(common.DirectoryExists(rv.LocalCachePath), rv.LocalCachePath)
 
 	return rv.LocalCachePath
+}
+
+// Update the state of the RV in the given component RVs list.
+func updateLocalComponentRVState(rvs []*models.RVNameAndState, rvName string,
+	oldState dcache.StateEnum, newState dcache.StateEnum) {
+	common.Assert(len(rvs) == int(getNumReplicas()), len(rvs), getNumReplicas())
+	common.Assert(cm.IsValidRVName(rvName), rvName)
+	common.Assert(oldState != newState &&
+		cm.IsValidComponentRVState(oldState) &&
+		cm.IsValidComponentRVState(newState), rvName, oldState, newState)
+
+	for _, rv := range rvs {
+		common.Assert(rv != nil, "Component RV is nil")
+		if rv.Name == rvName {
+			common.Assert(rv.State == string(oldState), rvName, rv.State, oldState)
+			rv.State = string(newState)
+			break
+		}
+	}
+
+	// RV is not present in the list.
+	common.Assert(false, rpc.ComponentRVsToString(rvs), rvName)
 }

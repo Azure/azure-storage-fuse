@@ -180,6 +180,7 @@ retry:
 
 		// TODO: optimization, should we send buffer also in the GetChunk request?
 		rpcReq := &models.GetChunkRequest{
+			SenderNodeID: rpc.GetMyNodeUUID(),
 			Address: &models.Address{
 				FileID:      req.FileID,
 				RvID:        selectedRvID,
@@ -303,6 +304,7 @@ retry:
 				rv.Name, req.MvName, rvID, targetNodeID)
 
 			rpcReq := &models.PutChunkRequest{
+				SenderNodeID: rpc.GetMyNodeUUID(),
 				Chunk: &models.Chunk{
 					Address: &models.Address{
 						FileID:      req.FileID,
@@ -342,8 +344,8 @@ retry:
 
 					errRV := cm.UpdateComponentRVState(req.MvName, rv.Name, dcache.StateOffline)
 					if errRV != nil {
-						errStr := fmt.Sprintf("Failed to update %s/%s state to offline [%v]",
-							rv.Name, req.MvName, req.MvName, errRV)
+						errStr := fmt.Sprintf("failed to update %s/%s state to offline [%v]",
+							rv.Name, req.MvName, errRV)
 						log.Err("ReplicationManager::WriteMV: %s", errStr)
 						return nil, err
 					}
@@ -564,6 +566,7 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 
 	// Create StartSyncRequest. Same request will be sent to both source and target nodes.
 	startSyncReq := &models.StartSyncRequest{
+		SenderNodeID: rpc.GetMyNodeUUID(),
 		MV:           mvName,
 		SourceRVName: lioRV,
 		TargetRVName: targetRVName,
@@ -603,6 +606,10 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 		log.Err("ReplicationManager::syncComponentRV: %s", errStr)
 		return
 	}
+
+	// Update the state of target RV from outofsync to syncing in local component RVs list.
+	// The updated component RVs list will be later used in the sync PutChunk RPC calls to the target RV.
+	updateLocalComponentRVState(componentRVs, targetRVName, dcache.StateOutOfSync, dcache.StateSyncing)
 
 	syncJob := &syncJob{
 		mvName:       mvName,
@@ -693,6 +700,7 @@ func runSyncJob(job *syncJob) error {
 	common.Assert(common.IsValidUUID(srcNodeID))
 
 	endSyncReq := &models.EndSyncRequest{
+		SenderNodeID: rpc.GetMyNodeUUID(),
 		SyncID:       job.srcSyncID,
 		MV:           job.mvName,
 		SourceRVName: job.srcRVName,
@@ -860,6 +868,7 @@ func copyOutOfSyncChunks(job *syncJob) error {
 		}
 
 		putChunkReq := &models.PutChunkRequest{
+			SenderNodeID: rpc.GetMyNodeUUID(),
 			Chunk: &models.Chunk{
 				Address: &models.Address{
 					FileID:      fileID,
