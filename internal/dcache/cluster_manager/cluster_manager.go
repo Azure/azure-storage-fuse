@@ -655,7 +655,6 @@ func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, err
 					failedRV.Add(1)
 				}
 			}(rv)
-
 		}
 
 		// None of my RV online, done.
