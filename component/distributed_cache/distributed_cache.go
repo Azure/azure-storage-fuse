@@ -386,7 +386,6 @@ func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.
 func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*internal.ObjAttr, string, error) {
 	var dirList []*internal.ObjAttr
 	var token string
-	var isEnumeratingAzureRoot bool // When enumerating root of the container this flag is set to true.
 	var err error
 
 	isAzurePath, isDcachePath, isDebugPath, rawPath := getFS(options.Name)
@@ -406,8 +405,9 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 			return dirList, token, err
 		}
 
+		// While iterating the entries of the root of the container skip the cache folder.
 		if isMountPointRoot(rawPath) {
-			isEnumeratingAzureRoot = true
+			dirList = hideCacheMetadata(dirList)
 		}
 	} else if isDebugPath {
 		log.Debug("DistributedCache::StreamDir : Path is having Debug subcomponent, path : %s", options.Name)
@@ -471,8 +471,9 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 			}
 			dirList = modifiedDirList
 
+			// While iterating the entries of the root of the container skip the cache folder.
 			if isMountPointRoot(rawPath) {
-				isEnumeratingAzureRoot = true
+				dirList = hideCacheMetadata(dirList)
 			}
 		}
 		//
@@ -485,11 +486,6 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 			options.Token = token
 			goto listUnqualifiedPath
 		}
-	}
-
-	// While iterating the entries of the root of the container skip the cache folder.
-	if isEnumeratingAzureRoot {
-		dirList = hideCacheMetadata(dirList)
 	}
 
 	return dirList, token, nil
