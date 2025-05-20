@@ -231,13 +231,13 @@ func parseDcacheMetadata(attr *internal.ObjAttr) error {
 		} else {
 			log.Err("DistributedCache::GetAttr : strconv failed for size string: %s, file: %s, error: %s", *val, attr.Name, err.Error())
 			common.Assert(false, err)
-			return syscall.ENOENT
+			return err
 		}
 	} else {
 		err = fmt.Errorf("Blob metadata for %s doesn't have cache_object_length property", attr.Name)
 		log.Err("DistributedCache::GetAttr: %v", err)
 		common.Assert(false, err)
-		return syscall.ENOENT
+		return err
 	}
 
 	// parse file state.
@@ -250,13 +250,13 @@ func parseDcacheMetadata(attr *internal.ObjAttr) error {
 			err = fmt.Errorf("File: %s, has invalid state:  [%s] metadata property", attr.Name, *state)
 			log.Err("DistributedCache::GetAttr: %v", err)
 			common.Assert(false, err)
-			return syscall.ENOENT
+			return err
 		}
 	} else {
 		err = fmt.Errorf("Blob metadata for %s doesn't have state property", attr.Name)
 		log.Err("DistributedCache::GetAttr: %v", err)
 		common.Assert(false, err)
-		return syscall.ENOENT
+		return err
 	}
 
 	return err
