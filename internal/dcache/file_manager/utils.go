@@ -216,7 +216,7 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 }
 
 func DeleteDcacheFile(fileName string) error {
-	return mm.DeleteFile(fileName)
+	return mm.UpdateFileStateToDeleting(fileName)
 }
 
 // Creates the chunk and allocates the chunk buf

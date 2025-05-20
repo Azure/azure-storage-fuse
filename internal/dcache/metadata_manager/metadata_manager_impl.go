@@ -156,6 +156,10 @@ func GetFile(filePath string) ([]byte, int64, dcache.FileState, error) {
 	return metadataManagerInstance.getFile(filePath)
 }
 
+func UpdateFileStateToDeleting(filePath string) error {
+	return metadataManagerInstance.updateFileStateToDeleting(filePath)
+}
+
 func DeleteFile(filePath string) error {
 	return metadataManagerInstance.deleteFile(filePath)
 }
@@ -459,8 +463,7 @@ func (m *BlobMetadataManager) getFile(filePath string) ([]byte, int64, dcache.Fi
 	return data, fileSize, fileState, nil
 }
 
-// DeleteFile removes metadata for a file.
-func (m *BlobMetadataManager) deleteFile(filePath string) error {
+func (m *BlobMetadataManager) updateFileStateToDeleting(filePath string) error {
 	common.Assert(len(filePath) > 0)
 
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
@@ -511,6 +514,31 @@ func (m *BlobMetadataManager) deleteFile(filePath string) error {
 
 	log.Debug("DeleteFile:: Deleted blob %s in storage", path)
 	return nil
+}
+
+// DeleteFile removes metadata for a file.
+func (m *BlobMetadataManager) deleteFile(filePath string) error {
+	common.Assert(len(filePath) > 0)
+
+	path := filepath.Join(m.mdRoot, "Objects", filePath)
+	err := m.storageCallback.DeleteBlobInStorage(internal.DeleteFileOptions{
+		Name: path,
+	})
+	if err != nil {
+		// Treat BlobNotFound as success.
+		if bloberror.HasCode(err, bloberror.BlobNotFound) {
+			log.Warn("DeleteFile:: DeleteBlobInStorage failed since blob %s is already deleted: %v",
+				path, err)
+			return nil
+		}
+
+		log.Err("DeleteFile:: Failed to delete blob %s in storage: %v", path, err)
+		common.Assert(false, err)
+		return err
+	}
+
+	log.Debug("DeleteFile:: Deleted blob %s in storage", path)
+	return err
 }
 
 // OpenFile increments the open count for a file and returns the updated count
