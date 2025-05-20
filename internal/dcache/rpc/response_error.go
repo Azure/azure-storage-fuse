@@ -35,6 +35,7 @@ package rpc
 
 import (
 	"errors"
+	"strings"
 	"syscall"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -102,9 +103,12 @@ func IsConnectionClosed(err error) bool {
 		return false
 	}
 
-	te := thrift.NewTTransportExceptionFromError(err)
-	log.Debug("IsConnectionClosed: te: %v, %+v, %T, te.TypeId=%v", te, te, te, te.TypeId())
-	return te.TypeId() == thrift.NOT_OPEN
+	brokenPipeString := "broken pipe"
+	return strings.Contains(err.Error(), brokenPipeString)
+
+	// TODO: This doesn't work, try out more for a better check.
+	//te := thrift.NewTTransportExceptionFromError(err)
+	//return te.TypeId() == thrift.NOT_OPEN
 }
 
 // Check if the error returned by thrift indicates timeout.
