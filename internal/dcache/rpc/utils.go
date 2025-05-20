@@ -76,6 +76,18 @@ func ComponentRVsToString(rvs []*models.RVNameAndState) string {
 	return str.String()
 }
 
+// convert *models.HelloRequest to string
+// used for logging
+func HelloRequestToString(req *models.HelloRequest) string {
+	return fmt.Sprintf("{SenderNodeID %s, ReceiverNodeID %s, Time %d, RVName %v, MV %v}",
+		req.SenderNodeID, req.ReceiverNodeID, req.Time, req.RVName, req.MV)
+}
+
+func HelloResponseToString(resp *models.HelloResponse) string {
+	return fmt.Sprintf("{ReceiverNodeID %s, Time %d, RVName %v, MV %v}",
+		resp.ReceiverNodeID, resp.Time, resp.RVName, resp.MV)
+}
+
 // convert *models.GetChunkRequest to string
 // used for logging
 func GetChunkRequestToString(req *models.GetChunkRequest) string {
