@@ -35,6 +35,7 @@ package rpc
 
 import (
 	"errors"
+	"strings"
 	"syscall"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -116,7 +117,18 @@ func IsConnectionRefused(err error) bool {
 		return false
 	}
 
-	return errors.Is(err, syscall.ECONNREFUSED)
+	log.Debug("IsConnectionRefused: err: %v, err: %T", err, err)
+
+	//
+	// TODO: This does not seem to match when we get the following error from thrift.
+	// [dial tcp 10.0.0.5:9090: connect: connection refused]
+	//
+	// Doing string match for now.
+	//
+	//return errors.Is(err, syscall.ECONNREFUSED)
+
+	connectionRefused := "connection refused"
+	return strings.Contains(err.Error(), connectionRefused)
 }
 
 // Check if the error returned by thrift indicates timeout.
