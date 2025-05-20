@@ -359,6 +359,10 @@ func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata [
 		// Extract the size from the metadata properties.
 		size, ok := prop.Metadata["cache_object_length"]
 		common.Assert(ok && *size == "-1", ok, *size)
+
+		// Extract the state form the metadata properties.
+		state, ok := prop.Metadata["state"]
+		common.Assert(ok && *state == string(dcache.Writing))
 	}
 
 	// Store the open-count and file size in the metadata blob property.
