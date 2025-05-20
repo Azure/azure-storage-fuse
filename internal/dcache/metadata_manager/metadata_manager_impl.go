@@ -34,7 +34,6 @@
 package metadata_manager
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -156,8 +155,8 @@ func GetFile(filePath string) ([]byte, int64, dcache.FileState, error) {
 	return metadataManagerInstance.getFile(filePath)
 }
 
-func UpdateFileStateToDeleting(filePath string) error {
-	return metadataManagerInstance.updateFileStateToDeleting(filePath)
+func UpdateFileStateToDeleting(filePath string, fileMetaData []byte, fileSize int64) error {
+	return metadataManagerInstance.updateFileStateToDeleting(filePath, fileMetaData, fileSize)
 }
 
 func DeleteFile(filePath string) error {
@@ -463,56 +462,33 @@ func (m *BlobMetadataManager) getFile(filePath string) ([]byte, int64, dcache.Fi
 	return data, fileSize, fileState, nil
 }
 
-func (m *BlobMetadataManager) updateFileStateToDeleting(filePath string) error {
+func (m *BlobMetadataManager) updateFileStateToDeleting(filePath string, fileMetadata []byte, fileSize int64) error {
+	path := filepath.Join(m.mdRoot, "Objects", filePath)
+	log.Debug("DeleteFile:: Updated State of the metadata blob to deleting path: %s in storage", path)
 	common.Assert(len(filePath) > 0)
 
-	path := filepath.Join(m.mdRoot, "Objects", filePath)
-
-	data, fileSize, fileState, err := m.getFile(filePath)
-	if err != nil {
-		log.Err("deleteFile:: Delete file failed for path: %s, err: %v", filePath, err)
-		return err
+	openCount := "0"
+	sizeStr := strconv.FormatInt(fileSize, 10)
+	state := string(dcache.Deleting)
+	metadata := map[string]*string{
+		"opencount":           &openCount,
+		"cache_object_length": &sizeStr,
+		"state":               &state,
 	}
 
-	// TODO: handle deletion for the files which have the state writing/ opencnt > 0
-	if fileState == dcache.Writing {
-		return syscall.ENOTSUP
-	} else if fileState == dcache.Ready {
-		// TODO: Change the state of the file atomically to deleting.
-		// TODO: GC must delete all the chunks of the files in all the MVS and then it is responsible for deleteing the
-		// metadata file.
-		openCount := "0"
-		sizeStr := strconv.FormatInt(fileSize, 10)
-		state := string(dcache.Deleting)
-		metadata := map[string]*string{
-			"opencount":           &openCount,
-			"cache_object_length": &sizeStr,
-			"state":               &state,
-		}
-
-		err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
-			Name:                   path,
-			Data:                   data,
-			Metadata:               metadata,
-			IsNoneMatchEtagEnabled: false,
-			EtagMatchConditions:    "",
-		})
-
-		if err != nil {
-			log.Err("deleteFile:: Failed to put blob %s in storage: %v", path, err)
-			common.Assert(false, err)
-			return err
-		}
-	} else if fileState == dcache.Deleting {
-		// This should not happen in a single node, as the file attr would always be checked before doing a unlink call.
-		// but it might be possilble to be in this situation if attributes are cached by fuse and file was deleted by another node.
-		err := errors.New("deleteFile:: Deleting the file which was already deleted")
-		log.Err("%v", err)
+	err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
+		Name:                   path,
+		Data:                   fileMetadata,
+		Metadata:               metadata,
+		IsNoneMatchEtagEnabled: false,
+		EtagMatchConditions:    "",
+	})
+	if err != nil {
+		log.Err("deleteFile:: Failed to put blob %s in storage: %v", path, err)
 		common.Assert(false, err)
 		return err
 	}
 
-	log.Debug("DeleteFile:: Updated State of the metadata blob to deleting path: %s in storage", path)
 	return nil
 }
 

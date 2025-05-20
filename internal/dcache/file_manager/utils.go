@@ -216,7 +216,36 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 }
 
 func DeleteDcacheFile(fileName string) error {
-	return mm.UpdateFileStateToDeleting(fileName)
+	fileMetadataBytes, fileSize, fileState, err := mm.GetFile(fileName)
+	if err != nil {
+		log.Err("deleteFile:: Delete file failed for path: %s, err: %v", fileName, err)
+		return err
+	}
+
+	common.Assert(fileState == dcache.Ready || fileState == dcache.Writing, fileName, fileState)
+
+	// TODO: handle deletion for the files which have the state writing/ opencnt > 0
+	if fileState == dcache.Ready {
+		// TODO: Change the state of the file atomically to deleting.
+		// TODO: GC must delete all the chunks of the files in all the MVS and then it is responsible for deleteing the
+		// metadata file.
+		err := mm.UpdateFileStateToDeleting(fileName, fileMetadataBytes, fileSize)
+		if err != nil {
+			log.Err("DistributedCache::DeleteDcacheFile: err: %v", err)
+			common.Assert(false, err)
+			return err
+		}
+	} else if fileState == dcache.Writing {
+		return syscall.ENOTSUP
+	} else if fileState == dcache.Deleting {
+		// This should not happen in a single node, as the file attr would always be checked before doing a unlink call.
+		// but it might be possilble to be in this situation if attributes are cached by fuse and file was deleted by another node.
+		err := fmt.Errorf("Deleting the file: %s which was already deleted", fileName)
+		log.Err("DistributedCache::DeleteDcacheFile: err: %v", err)
+		common.Assert(false, err)
+		return err
+	}
+	return nil
 }
 
 // Creates the chunk and allocates the chunk buf

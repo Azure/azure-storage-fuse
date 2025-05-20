@@ -64,7 +64,7 @@ type MetadataManager interface {
 	getFile(filePath string) (*dcache.FileMetadata, error)
 
 	// Updates the state of the file to deleting.
-	updateFileStateToDeleting(filePath string) error
+	updateFileStateToDeleting(filePath string, fileMetadata []byte, fileSize int64) error
 
 	// DeleteFile removes metadata for a file.
 	deleteFile(filePath string) error
