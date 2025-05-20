@@ -36,6 +36,7 @@ package rpc_client
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -104,6 +105,7 @@ func (cp *clientPool) getRPCClientNoLock(nodeID string) (*rpcClient, error) {
 	case client := <-ncPool.clientChan:
 		ncPool.lastUsed = time.Now()
 		common.Assert(client.nodeID == nodeID, client.nodeID, nodeID)
+		ncPool.numActive.Add(1)
 		return client, nil
 	default:
 		log.Err("clientPool::getRPCClient: No available RPC client in the pool for node %s", nodeID)
@@ -128,12 +130,19 @@ func (cp *clientPool) releaseRPCClient(client *rpcClient) error {
 	ncPool, exists := cp.clients[client.nodeID]
 	if !exists {
 		log.Err("clientPool::releaseRPCClient: No client pool found for node %s", client.nodeID)
+		// We don't delete a nodeClientPool with active connections, so it cannot go away.
+		common.Assert(false)
 		return fmt.Errorf("no client pool found for node %s", client.nodeID)
 	}
 
 	log.Debug("clientPool::releaseRPCClient: node = %s, current node client pool size = %v, max connections per node = %v ", client.nodeID, len(ncPool.clientChan), cp.maxPerNode)
 	common.Assert(len(ncPool.clientChan) < int(cp.maxPerNode), fmt.Sprintf("node client pool is full, cannot release client: node = %s, current node client pool size = %v, max connections per node = %v ", client.nodeID, len(ncPool.clientChan), cp.maxPerNode))
+
 	ncPool.clientChan <- client
+
+	// Must be releasing an active client.
+	common.Assert(ncPool.numActive.Load() > 0)
+	ncPool.numActive.Add(-1)
 	return nil
 }
 
@@ -192,11 +201,31 @@ func (cp *clientPool) resetRPCClientInternal(client *rpcClient, needLock bool) e
 	common.Assert(len(ncPool.clientChan) < int(cp.maxPerNode),
 		len(ncPool.clientChan), cp.maxPerNode)
 
+	//
+	// Must only reset an active client.
+	// Also, clients which are reset are not released, so we drop the numActive here, after
+	// closing the connection successfully above.
+	//
+	common.Assert(ncPool.numActive.Load() > 0)
+	ncPool.numActive.Add(-1)
+
 	newClient, err := newRPCClient(client.nodeID, rpc.GetNodeAddressFromID(client.nodeID))
 	if err != nil {
 		log.Err("clientPool::resetRPCClientInternal: Failed to create RPC client to %s node %s: %v",
 			client.nodeAddress, client.nodeID, err)
-		common.Assert(false, err)
+		//
+		// Connection refused is the only viable error. Assert to know if anything else happens.
+		// This will happen when the target node is not running the blob service (but the node
+		// itself is up). When the node is no up we should get a connection timeout error here.
+		//
+		// TODO: Connection timeout has to be tested.
+		//
+		// In any case when we come here that means we are not able to replenish connections to
+		// the target, in the connection pool. When we have no active connections and no more left
+		// in the pool, we can delete the nodeClientPool itself.
+		//
+		common.Assert(rpc.IsConnectionRefused(err) || rpc.IsTimedOut(err))
+		cp.deleteNodeClientPoolIfInactive(client.nodeID)
 		return err
 	}
 
@@ -235,16 +264,16 @@ func (cp *clientPool) resetAllRPCClients(client *rpcClient) error {
 
 	//
 	// Reset this client. This closes this client, creates a new one and adds it to the pool.
-	// It can only fail if thrift fails to create a new connection. Though it can happen, but
-	// it's unlikely as we are called only when we get a "connection reset by peer" error which
-	// means the target node exists (was restarted), so new connection must not fail.
+	// It can only fail if thrift fails to create a new connection. This can happen when a node
+	// (rather the blobfuse service in the node) has gone down.
 	//
 	err := cp.resetRPCClientInternal(client, false /* needLock */)
 	if err != nil {
 		err = fmt.Errorf("Failed to reset RPC client to %s node %s: %v",
 			client.nodeAddress, client.nodeID, err)
 		log.Err("clientPool::resetAllRPCClients: %v", err)
-		common.Assert(false, err)
+		// Connection refused is the only viable error. Assert to know if anything else happens.
+		common.Assert(rpc.IsConnectionRefused(err))
 		return err
 	}
 
@@ -323,6 +352,11 @@ func (cp *clientPool) closeLRUCNodeClientPool() error {
 		log.Err("clientPool::closeLRUCNodeClientPool: Failed to close LRU node client pool for node %s [%v]", lruNodeID, err.Error())
 		return err
 	}
+
+	// Never delete a nodeClientPool with active connections or non-empty connection pool.
+	common.Assert(lruNcPool.numActive.Load() == 0 && len(lruNcPool.clientChan) == 0,
+		lruNcPool.numActive.Load(), len(lruNcPool.clientChan))
+
 	delete(cp.clients, lruNodeID)
 
 	return nil
@@ -346,11 +380,45 @@ func (cp *clientPool) closeAllNodeClientPools() error {
 			log.Err("clientPool::closeAllNodeClientPools: Failed to close node client pool for node %s [%v]", key, err.Error())
 			return err
 		}
+
+		// Never delete a nodeClientPool with active connections or non-empty connection pool.
+		common.Assert(ncPool.numActive.Load() == 0 && len(ncPool.clientChan) == 0,
+			ncPool.numActive.Load(), len(ncPool.clientChan))
+
 		delete(cp.clients, key)
 	}
 
 	common.Assert(len(cp.clients) == 0, "client pool is not empty after closing all node client pools")
 	return nil
+}
+
+// Delete nodeClientPool for the given node, if no active connections and no connections in the pool.
+// Caller must hold the clientPool lock.
+func (cp *clientPool) deleteNodeClientPoolIfInactive(nodeID string) bool {
+	ncPool, exists := cp.clients[nodeID]
+
+	// Caller must not call us for a non-existent pool.
+	common.Assert(exists)
+
+	//
+	// Can't delete if we have any active client (issued by getRPCClient()) or any client(s) in the
+	// pool. This means only the last user will be able to delete the pool.
+	//
+	if ncPool.numActive.Load() != 0 || len(ncPool.clientChan) != 0 {
+		log.Debug("clientPool::deleteNodeClientPoolIfInactive: Not deleting client pool for %s (%d, %d)",
+			ncPool.nodeID, ncPool.numActive.Load(), len(ncPool.clientChan))
+		return false
+	}
+
+	log.Debug("clientPool::deleteNodeClientPoolIfInactive: Deleting client pool for %s", nodeID)
+
+	// Never delete a nodeClientPool with active connections or non-empty connection pool.
+	common.Assert(ncPool.numActive.Load() == 0 && len(ncPool.clientChan) == 0,
+		ncPool.numActive.Load(), len(ncPool.clientChan))
+
+	delete(cp.clients, nodeID)
+
+	return true
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -361,6 +429,7 @@ type nodeClientPool struct {
 	nodeID     string          // Node ID of the node this client pool is for
 	clientChan chan *rpcClient // channel to hold the RPC clients to a node
 	lastUsed   time.Time       // used for evicting inactive RPC clients based on LRU
+	numActive  atomic.Int64    // number of clients currently created using getRPCClient() call.
 }
 
 // createRPCClients creates a channel of RPC clients of size numClients for the specified node ID

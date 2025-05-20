@@ -116,9 +116,9 @@ func Hello(ctx context.Context, targetNodeID string, req *models.HelloRequest) (
 
 	//
 	// We come here when we could not succeed even after resetting stale connections and retrying.
-	// This is unexpected, but can happen if the client restarts more than once in quick succession.
+	// This is unexpected, but can happen if the target node goes offline or restarts more than once in
+	// quick succession.
 	//
-	common.Assert(false)
 	return nil, fmt.Errorf("rpc_client::Hello: Could not find a valid RPC client for node %s %v",
 		targetNodeID, reqStr)
 }
@@ -154,8 +154,6 @@ func GetChunk(ctx context.Context, targetNodeID string, req *models.GetChunkRequ
 				if err1 != nil {
 					log.Err("rpc_client::GetChunk: resetAllRPCClients failed for node %s: %v",
 						targetNodeID, err1)
-					// resetAllRPCClients() may fail but unlikely, so assert.
-					common.Assert(false, err1)
 					return nil, err
 				}
 
@@ -180,9 +178,9 @@ func GetChunk(ctx context.Context, targetNodeID string, req *models.GetChunkRequ
 
 	//
 	// We come here when we could not succeed even after resetting stale connections and retrying.
-	// This is unexpected, but can happen if the client restarts more than once in quick succession.
+	// This is unexpected, but can happen if the target node goes offline or restarts more than once in
+	// quick succession.
 	//
-	common.Assert(false)
 	return nil, fmt.Errorf("rpc_client::GetChunk: Could not find a valid RPC client for node %s %v",
 		targetNodeID, reqStr)
 }
@@ -244,9 +242,9 @@ func PutChunk(ctx context.Context, targetNodeID string, req *models.PutChunkRequ
 
 	//
 	// We come here when we could not succeed even after resetting stale connections and retrying.
-	// This is unexpected, but can happen if the client restarts more than once in quick succession.
+	// This is unexpected, but can happen if the target node goes offline or restarts more than once in
+	// quick succession.
 	//
-	common.Assert(false)
 	return nil, fmt.Errorf("rpc_client::PutChunk: Could not find a valid RPC client for node %s %v",
 		targetNodeID, reqStr)
 }
@@ -308,9 +306,9 @@ func RemoveChunk(ctx context.Context, targetNodeID string, req *models.RemoveChu
 
 	//
 	// We come here when we could not succeed even after resetting stale connections and retrying.
-	// This is unexpected, but can happen if the client restarts more than once in quick succession.
+	// This is unexpected, but can happen if the target node goes offline or restarts more than once in
+	// quick succession.
 	//
-	common.Assert(false)
 	return nil, fmt.Errorf("rpc_client::RemoveChunk: Could not find a valid RPC client for node %s %v",
 		targetNodeID, reqStr)
 }
@@ -372,9 +370,9 @@ func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest)
 
 	//
 	// We come here when we could not succeed even after resetting stale connections and retrying.
-	// This is unexpected, but can happen if the client restarts more than once in quick succession.
+	// This is unexpected, but can happen if the target node goes offline or restarts more than once in
+	// quick succession.
 	//
-	common.Assert(false)
 	return nil, fmt.Errorf("rpc_client::JoinMV: Could not find a valid RPC client for node %s %v",
 		targetNodeID, reqStr)
 }
@@ -436,9 +434,9 @@ func UpdateMV(ctx context.Context, targetNodeID string, req *models.UpdateMVRequ
 
 	//
 	// We come here when we could not succeed even after resetting stale connections and retrying.
-	// This is unexpected, but can happen if the client restarts more than once in quick succession.
+	// This is unexpected, but can happen if the target node goes offline or restarts more than once in
+	// quick succession.
 	//
-	common.Assert(false)
 	return nil, fmt.Errorf("rpc_client::UpdateMV: Could not find a valid RPC client for node %s %v",
 		targetNodeID, reqStr)
 }
@@ -500,9 +498,9 @@ func LeaveMV(ctx context.Context, targetNodeID string, req *models.LeaveMVReques
 
 	//
 	// We come here when we could not succeed even after resetting stale connections and retrying.
-	// This is unexpected, but can happen if the client restarts more than once in quick succession.
+	// This is unexpected, but can happen if the target node goes offline or restarts more than once in
+	// quick succession.
 	//
-	common.Assert(false)
 	return nil, fmt.Errorf("rpc_client::LeaveMV: Could not find a valid RPC client for node %s %v",
 		targetNodeID, reqStr)
 }
@@ -564,9 +562,9 @@ func StartSync(ctx context.Context, targetNodeID string, req *models.StartSyncRe
 
 	//
 	// We come here when we could not succeed even after resetting stale connections and retrying.
-	// This is unexpected, but can happen if the client restarts more than once in quick succession.
+	// This is unexpected, but can happen if the target node goes offline or restarts more than once in
+	// quick succession.
 	//
-	common.Assert(false)
 	return nil, fmt.Errorf("rpc_client::StartSync: Could not find a valid RPC client for node %s %v",
 		targetNodeID, reqStr)
 }
@@ -628,9 +626,9 @@ func EndSync(ctx context.Context, targetNodeID string, req *models.EndSyncReques
 
 	//
 	// We come here when we could not succeed even after resetting stale connections and retrying.
-	// This is unexpected, but can happen if the client restarts more than once in quick succession.
+	// This is unexpected, but can happen if the target node goes offline or restarts more than once in
+	// quick succession.
 	//
-	common.Assert(false)
 	return nil, fmt.Errorf("rpc_client::EndSync: Could not find a valid RPC client for node %s %v",
 		targetNodeID, reqStr)
 }

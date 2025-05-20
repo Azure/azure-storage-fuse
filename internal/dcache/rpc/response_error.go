@@ -39,7 +39,7 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	"github.com/apache/thrift/lib/go/thrift"
+	//"github.com/apache/thrift/lib/go/thrift"
 )
 
 const (
@@ -106,6 +106,19 @@ func IsConnectionClosed(err error) bool {
 	return errors.Is(err, syscall.EPIPE)
 }
 
+// Check if the error returned by thrift indicates connection refused by server.
+func IsConnectionRefused(err error) bool {
+	common.Assert(err != nil)
+
+	// RPC error, cannot be a connection refused error.
+	if GetRPCResponseError(err) != nil {
+		log.Debug("IsConnectionRefused: is RPC error: %v", err)
+		return false
+	}
+
+	return errors.Is(err, syscall.ECONNREFUSED)
+}
+
 // Check if the error returned by thrift indicates timeout.
 func IsTimedOut(err error) bool {
 	common.Assert(err != nil)
@@ -116,7 +129,9 @@ func IsTimedOut(err error) bool {
 		return false
 	}
 
-	// TODO: This is untested, make sure it works!
-	te := thrift.NewTTransportExceptionFromError(err)
-	return te.TypeId() == thrift.TIMED_OUT
+	// TODO: This is untested, see whether this works or the ETIMEDOUT check works!
+	//te := thrift.NewTTransportExceptionFromError(err)
+	//return te.TypeId() == thrift.TIMED_OUT
+
+	return errors.Is(err, syscall.ETIMEDOUT)
 }
