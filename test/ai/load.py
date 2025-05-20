@@ -1,3 +1,7 @@
+# Script to load a model/checkpoint from a given path.
+# If local path is not given then it will try to load the model from HuggingFace
+# You can also save the model locally to a given destination path
+
 import os
 import time
 import argparse

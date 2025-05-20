@@ -1,3 +1,6 @@
+# Script to download a dataset to local disk
+# Downloads data from huggingface
+
 import os
 import json
 import sys

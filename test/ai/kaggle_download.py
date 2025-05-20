@@ -1,3 +1,4 @@
+# Script to download dataset from Kaggle to local disk
 import os
 import kaggle
 import torch

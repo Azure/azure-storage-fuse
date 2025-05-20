@@ -1,4 +1,9 @@
 
+# This script iterates over list of models and then 
+#  'model' as first argument will mean you wish to download the model to a local path or a mounted path
+#  nothing as argument then this iterates over the list of models and tries to load it using different caching strategies
+# It assumes there is a directory mounted already using master_mount.sh and from there it can get a model subdirectory to mount during the iteration.
+
 
 rm -rf stats.log
 touch stats.log

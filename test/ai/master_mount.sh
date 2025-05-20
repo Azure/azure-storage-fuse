@@ -1,3 +1,4 @@
+# Mast mount script that allows you to mount blobfuse in RW mode where all your models are stroed
 export AZURE_STORAGE_ACCOUNT=blobfuseaitest2
 #export AZURE_STORAGE_ACCESS_KEY=<key>
 export AZURE_STORAGE_AUTH_TYPE="msi"
