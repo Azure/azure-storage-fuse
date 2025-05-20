@@ -234,15 +234,6 @@ func (cp *clientPool) resetAllRPCClients(client *rpcClient) error {
 	common.Assert(ncPool.nodeID == client.nodeID, ncPool.nodeID, client.nodeID)
 
 	//
-	// Clients present in the pool If it's less than cp.maxPerNode, rest are currently allocated to other
-	// callers. We cannot replenish those. Those will be reset by their respective caller when their RPC
-	// requests fail with "connection reset by peer" error.
-	//
-	numClients := len(ncPool.clientChan)
-	// At least 'client' is allocated from the pool.
-	common.Assert(numClients < int(cp.maxPerNode), numClients, cp.maxPerNode)
-
-	//
 	// Reset this client. This closes this client, creates a new one and adds it to the pool.
 	// It can only fail if thrift fails to create a new connection. Though it can happen, but
 	// it's unlikely as we are called only when we get a "connection reset by peer" error which
@@ -260,12 +251,20 @@ func (cp *clientPool) resetAllRPCClients(client *rpcClient) error {
 	numConnReset++
 
 	//
+	// Clients present in the pool If it's less than cp.maxPerNode, rest are currently allocated to other
+	// callers. We cannot replenish those. Those will be reset by their respective caller when their RPC
+	// requests fail with "connection reset by peer" error.
+	//
+	numClients := len(ncPool.clientChan)
+	common.Assert(numClients <= int(cp.maxPerNode), numClients, cp.maxPerNode)
+
+	//
 	// And all remaining. We try to reset as many as we can.
 	//
 	for i := 0; i < numClients; i++ {
 		client, err = cp.getRPCClientNoLock(client.nodeID)
 		// getRPCClientNoLock should not fail, because we have the clientPool for this client.
-		common.Assert(false, err)
+		common.Assert(err == nil, err)
 
 		err = cp.resetRPCClientInternal(client, false /* needLock */)
 		if err != nil {

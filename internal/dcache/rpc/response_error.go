@@ -94,21 +94,17 @@ func GetRPCResponseError(err error) *ResponseError {
 func IsConnectionClosed(err error) bool {
 	common.Assert(err != nil)
 
-	log.Debug("IsConnectionClosed: err: %v, %T", err, err)
-	log.Debug("errors.Is(err, syscall.EPIPE) = %v", errors.Is(err, syscall.EPIPE))
-
 	// RPC error, cannot be a connection reset error.
 	if GetRPCResponseError(err) != nil {
 		log.Debug("IsConnectionClosed: is RPC error: %v", err)
 		return false
 	}
 
-	brokenPipeString := "broken pipe"
-	return strings.Contains(err.Error(), brokenPipeString)
-
-	// TODO: This doesn't work, try out more for a better check.
+	// Note: This doesn't work.
 	//te := thrift.NewTTransportExceptionFromError(err)
 	//return te.TypeId() == thrift.NOT_OPEN
+
+	return errors.Is(err, syscall.EPIPE)
 }
 
 // Check if the error returned by thrift indicates timeout.
@@ -117,9 +113,11 @@ func IsTimedOut(err error) bool {
 
 	// RPC error, cannot be a connection reset error.
 	if GetRPCResponseError(err) != nil {
+		log.Debug("IsTimedOut: is RPC error: %v", err)
 		return false
 	}
 
+	// TODO: This is untested, make sure it works!
 	te := thrift.NewTTransportExceptionFromError(err)
 	return te.TypeId() == thrift.TIMED_OUT
 }
