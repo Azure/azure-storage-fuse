@@ -874,7 +874,7 @@ func (dc *DistributedCache) DeleteFile(options internal.DeleteFileOptions) error
 		log.Debug("DistributedCache::DeleteFile: Delete for Dcache file: %s", options.Name)
 		err := fm.DeleteDcacheFile(rawPath)
 		if err != nil {
-			log.Err("DistributedCache::DeleteFile: Delete failed for Dcache file: %s", options.Name)
+			log.Err("DistributedCache::DeleteFile: Delete failed for Dcache file: %s:%v", options.Name, err)
 			return err
 		}
 	} else if isAzurePath {
@@ -882,7 +882,7 @@ func (dc *DistributedCache) DeleteFile(options internal.DeleteFileOptions) error
 		options.Name = rawPath
 		err := dc.NextComponent().DeleteFile(options)
 		if err != nil {
-			log.Err("DistributedCache::DeleteFile: Delete failed for Azure file: %s", options.Name)
+			log.Err("DistributedCache::DeleteFile: Delete failed for Azure file: %s:%v", options.Name, err)
 			return err
 		}
 	} else if isDebugPath {
@@ -898,7 +898,7 @@ func (dc *DistributedCache) DeleteFile(options internal.DeleteFileOptions) error
 		dcacheErr = fm.DeleteDcacheFile(rawPath)
 
 		if dcacheErr != nil {
-			log.Err("DistributedCache::DeleteFile: Delete failed for Unqualified Path Dcache file: %s", options.Name)
+			log.Err("DistributedCache::DeleteFile: Delete failed for Unqualified Path Dcache file: %s:%v", options.Name, dcacheErr)
 			// Continue only if the above dcacheError is valid, ex: blob not found. Else fail the delete.
 			if dcacheErr == syscall.ENOENT {
 				dcacheErr = nil
@@ -911,7 +911,7 @@ func (dc *DistributedCache) DeleteFile(options internal.DeleteFileOptions) error
 		log.Debug("DistributedCache::DeleteFile: Delete Azure file for Unqualified Path: %s", options.Name)
 		azureErr = dc.NextComponent().DeleteFile(options)
 		if azureErr != nil {
-			log.Err("DistributedCache::DeleteFile: Delete failed for Unqualified Path Azure file: %s", options.Name)
+			log.Err("DistributedCache::DeleteFile: Delete failed for Unqualified Path Azure file: %s:%v", options.Name, azureErr)
 		}
 
 		if azureErr == syscall.ENOENT {
