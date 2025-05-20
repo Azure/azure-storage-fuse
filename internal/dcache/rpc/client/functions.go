@@ -86,6 +86,10 @@ func Hello(ctx context.Context, targetNodeID string, req *models.HelloRequest) (
 			// and retry once more.
 			//
 			if rpc.IsConnectionClosed(err) {
+				//
+				// Note: In case of multiple contexts contesting, we may have those contexts
+				//	 reset "good" connections too. See if we need to worry about that.
+				//
 				err1 := cp.resetAllRPCClients(client)
 				if err1 != nil {
 					log.Err("rpc_client::Hello: resetAllRPCClients failed for node %s: %v",

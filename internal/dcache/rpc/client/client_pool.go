@@ -263,6 +263,14 @@ func (cp *clientPool) resetAllRPCClients(client *rpcClient) error {
 	common.Assert(ncPool.nodeID == client.nodeID, ncPool.nodeID, client.nodeID)
 
 	//
+	// Clients present in the pool If it's less than cp.maxPerNode, rest are currently allocated to other
+	// callers. We cannot replenish those. Those will be reset by their respective caller when their RPC
+	// requests fail with "connection reset by peer" error.
+	//
+	numClients := len(ncPool.clientChan)
+	common.Assert(numClients < int(cp.maxPerNode), numClients, cp.maxPerNode)
+
+	//
 	// Reset this client. This closes this client, creates a new one and adds it to the pool.
 	// It can only fail if thrift fails to create a new connection. This can happen when a node
 	// (rather the blobfuse service in the node) has gone down.
@@ -278,14 +286,6 @@ func (cp *clientPool) resetAllRPCClients(client *rpcClient) error {
 	}
 
 	numConnReset++
-
-	//
-	// Clients present in the pool If it's less than cp.maxPerNode, rest are currently allocated to other
-	// callers. We cannot replenish those. Those will be reset by their respective caller when their RPC
-	// requests fail with "connection reset by peer" error.
-	//
-	numClients := len(ncPool.clientChan)
-	common.Assert(numClients <= int(cp.maxPerNode), numClients, cp.maxPerNode)
 
 	//
 	// Reset all remaining clients in the pool. We try to reset as many as we can, and don't fail
@@ -311,6 +311,9 @@ func (cp *clientPool) resetAllRPCClients(client *rpcClient) error {
 			numConnReset++
 		}
 	}
+
+	// We must have reset at least the client we are called for (and maybe more).
+	common.Assert(numConnReset > 0)
 
 	log.Debug("clientPool::resetAllRPCClients: Reset %d RPC clients to %s node %s, now available (%d / %d)",
 		numConnReset, client.nodeAddress, client.nodeID, len(ncPool.clientChan), cp.maxPerNode)
