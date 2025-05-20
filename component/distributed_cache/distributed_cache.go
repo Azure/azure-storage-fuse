@@ -896,7 +896,6 @@ func (dc *DistributedCache) DeleteFile(options internal.DeleteFileOptions) error
 		log.Debug("DistributedCache::DeleteFile: Delete Dcache file for Unqualified Path: %s", options.Name)
 
 		dcacheErr = fm.DeleteDcacheFile(rawPath)
-
 		if dcacheErr != nil {
 			log.Err("DistributedCache::DeleteFile: Delete failed for Unqualified Path Dcache file %s: %v", options.Name, dcacheErr)
 			// Continue only if the above dcacheError is valid, ex: blob not found. Else fail the delete.
