@@ -889,10 +889,8 @@ func init() {
 	cacheID := config.AddStringFlag("cache-id", "", "Cache ID for the distributed cache")
 	config.BindPFlag(compName+".cache-id", cacheID)
 
-	//TODO{Akku} : Need to update cache-dirs to be a list of strings for command line run, may be use StringSlice
-	cachePath := config.AddStringFlag("cache-dirs", "", "Local path(s) of the cache (comma‑separated)")
-	config.BindPFlag(compName+".cache-dirs", cachePath)
-
+	cacheDirFlag := config.AddStringSliceFlag("cache-directory", []string{}, "Local cache directories for distributed cache (comma-separated), e.g. --cache-dirs=/mnt/tmp,/mnt/abc")
+	config.BindPFlag(compName+".cache-dirs", cacheDirFlag)
 	chunkSize := config.AddUint64Flag("chunk-size", defaultChunkSize, "Chunk size for the cache")
 	config.BindPFlag(compName+".chunk-size", chunkSize)
 
