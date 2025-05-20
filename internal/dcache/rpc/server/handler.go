@@ -1340,8 +1340,9 @@ func (h *ChunkServiceHandler) UpdateMV(ctx context.Context, req *models.UpdateMV
 
 	mvInfo := rvInfo.getMVInfo(req.MV)
 	if mvInfo == nil {
-		log.Err("ChunkServiceHandler::UpdateMV: RV %s is not part of the given MV %s", req.RVName, req.MV)
-		return nil, rpc.NewResponseError(rpc.InvalidRequest, fmt.Sprintf("RV %s is not part of the given MV %s", req.RVName, req.MV))
+		errStr := fmt.Sprintf("RV %s is not member of MV %s", req.RVName, req.MV)
+		log.Err("ChunkServiceHandler::UpdateMV: %s", errStr)
+		return nil, rpc.NewResponseError(rpc.InvalidRequest, errStr)
 	}
 
 	componentRVsInMV := mvInfo.getComponentRVs()
