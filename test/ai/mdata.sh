@@ -1,5 +1,5 @@
 
-# Script to download differnet type of datasets
+# Script to download different type of datasets
 rm -rf stats.log
 
 
