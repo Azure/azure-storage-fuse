@@ -35,8 +35,10 @@ package rpc
 
 import (
 	"errors"
+	"syscall"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/apache/thrift/lib/go/thrift"
 )
 
@@ -91,12 +93,17 @@ func GetRPCResponseError(err error) *ResponseError {
 func IsConnectionClosed(err error) bool {
 	common.Assert(err != nil)
 
+	log.Debug("IsConnectionClosed: err: %v, %T", err, err)
+	log.Debug("errors.Is(err, syscall.EPIPE) = %v", errors.Is(err, syscall.EPIPE))
+
 	// RPC error, cannot be a connection reset error.
 	if GetRPCResponseError(err) != nil {
+		log.Debug("IsConnectionClosed: is RPC error: %v", err)
 		return false
 	}
 
 	te := thrift.NewTTransportExceptionFromError(err)
+	log.Debug("IsConnectionClosed: te: %v, %+v, %T, te.TypeId=%v", te, te, te, te.TypeId())
 	return te.TypeId() == thrift.NOT_OPEN
 }
 
