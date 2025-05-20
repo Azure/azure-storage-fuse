@@ -512,7 +512,7 @@ func (m *BlobMetadataManager) updateFileStateToDeleting(filePath string) error {
 		return err
 	}
 
-	log.Debug("DeleteFile:: Deleted blob %s in storage", path)
+	log.Debug("DeleteFile:: Updated State of the metadata blob to deleting path: %s in storage", path)
 	return nil
 }
 
