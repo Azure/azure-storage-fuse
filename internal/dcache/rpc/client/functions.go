@@ -105,19 +105,20 @@ func Hello(ctx context.Context, targetNodeID string, req *models.HelloRequest) (
 				continue
 			}
 
-			return nil, err
+			// Fall through to release the RPC client.
+			resp = nil
 		}
 
 		// Release RPC client back to the pool.
-		err = cp.releaseRPCClient(client)
-		if err != nil {
+		err1 := cp.releaseRPCClient(client)
+		if err1 != nil {
 			log.Err("rpc_client::Hello: Failed to release RPC client for node %s %v: %v",
-				targetNodeID, reqStr, err)
+				targetNodeID, reqStr, err1)
 			// Assert, but not fail the Hello call.
-			common.Assert(false, err)
+			common.Assert(false, err1)
 		}
 
-		return resp, nil
+		return resp, err
 	}
 
 	//
@@ -169,19 +170,20 @@ func GetChunk(ctx context.Context, targetNodeID string, req *models.GetChunkRequ
 				continue
 			}
 
-			return nil, err
+			// Fall through to release the RPC client.
+			resp = nil
 		}
 
 		// Release RPC client back to the pool.
-		err = cp.releaseRPCClient(client)
-		if err != nil {
+		err1 := cp.releaseRPCClient(client)
+		if err1 != nil {
 			log.Err("rpc_client::GetChunk: Failed to release RPC client for node %s %v: %v",
-				targetNodeID, reqStr, err)
+				targetNodeID, reqStr, err1)
 			// Assert, but not fail the GetChunk call.
-			common.Assert(false, err)
+			common.Assert(false, err1)
 		}
 
-		return resp, nil
+		return resp, err
 	}
 
 	//
@@ -235,19 +237,20 @@ func PutChunk(ctx context.Context, targetNodeID string, req *models.PutChunkRequ
 				continue
 			}
 
-			return nil, err
+			// Fall through to release the RPC client.
+			resp = nil
 		}
 
 		// Release RPC client back to the pool.
-		err = cp.releaseRPCClient(client)
-		if err != nil {
+		err1 := cp.releaseRPCClient(client)
+		if err1 != nil {
 			log.Err("rpc_client::PutChunk: Failed to release RPC client for node %s %v: %v",
-				targetNodeID, reqStr, err)
+				targetNodeID, reqStr, err1)
 			// Assert, but not fail the PutChunk call.
-			common.Assert(false, err)
+			common.Assert(false, err1)
 		}
 
-		return resp, nil
+		return resp, err
 	}
 
 	//
@@ -301,19 +304,20 @@ func RemoveChunk(ctx context.Context, targetNodeID string, req *models.RemoveChu
 				continue
 			}
 
-			return nil, err
+			// Fall through to release the RPC client.
+			resp = nil
 		}
 
 		// Release RPC client back to the pool.
-		err = cp.releaseRPCClient(client)
-		if err != nil {
+		err1 := cp.releaseRPCClient(client)
+		if err1 != nil {
 			log.Err("rpc_client::RemoveChunk: Failed to release RPC client for node %s %v: %v",
-				targetNodeID, reqStr, err)
+				targetNodeID, reqStr, err1)
 			// Assert, but not fail the RemoveChunk call.
-			common.Assert(false, err)
+			common.Assert(false, err1)
 		}
 
-		return resp, nil
+		return resp, err
 	}
 
 	//
@@ -367,19 +371,20 @@ func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest)
 				continue
 			}
 
-			return nil, err
+			// Fall through to release the RPC client.
+			resp = nil
 		}
 
 		// Release RPC client back to the pool.
-		err = cp.releaseRPCClient(client)
-		if err != nil {
+		err1 := cp.releaseRPCClient(client)
+		if err1 != nil {
 			log.Err("rpc_client::JoinMV: Failed to release RPC client for node %s %v: %v",
-				targetNodeID, reqStr, err)
+				targetNodeID, reqStr, err1)
 			// Assert, but not fail the JoinMV call.
-			common.Assert(false, err)
+			common.Assert(false, err1)
 		}
 
-		return resp, nil
+		return resp, err
 	}
 
 	//
@@ -433,19 +438,20 @@ func UpdateMV(ctx context.Context, targetNodeID string, req *models.UpdateMVRequ
 				continue
 			}
 
-			return nil, err
+			// Fall through to release the RPC client.
+			resp = nil
 		}
 
 		// Release RPC client back to the pool.
-		err = cp.releaseRPCClient(client)
-		if err != nil {
+		err1 := cp.releaseRPCClient(client)
+		if err1 != nil {
 			log.Err("rpc_client::UpdateMV: Failed to release RPC client for node %s %v: %v",
-				targetNodeID, reqStr, err)
+				targetNodeID, reqStr, err1)
 			// Assert, but not fail the UpdateMV call.
-			common.Assert(false, err)
+			common.Assert(false, err1)
 		}
 
-		return resp, nil
+		return resp, err
 	}
 
 	//
@@ -499,19 +505,20 @@ func LeaveMV(ctx context.Context, targetNodeID string, req *models.LeaveMVReques
 				continue
 			}
 
-			return nil, err
+			// Fall through to release the RPC client.
+			resp = nil
 		}
 
 		// Release RPC client back to the pool.
-		err = cp.releaseRPCClient(client)
-		if err != nil {
+		err1 := cp.releaseRPCClient(client)
+		if err1 != nil {
 			log.Err("rpc_client::LeaveMV: Failed to release RPC client for node %s %v: %v",
-				targetNodeID, reqStr, err)
+				targetNodeID, reqStr, err1)
 			// Assert, but not fail the LeaveMV call.
-			common.Assert(false, err)
+			common.Assert(false, err1)
 		}
 
-		return resp, nil
+		return resp, err
 	}
 
 	//
@@ -565,19 +572,20 @@ func StartSync(ctx context.Context, targetNodeID string, req *models.StartSyncRe
 				continue
 			}
 
-			return nil, err
+			// Fall through to release the RPC client.
+			resp = nil
 		}
 
 		// Release RPC client back to the pool.
-		err = cp.releaseRPCClient(client)
-		if err != nil {
+		err1 := cp.releaseRPCClient(client)
+		if err1 != nil {
 			log.Err("rpc_client::StartSync: Failed to release RPC client for node %s %v: %v",
-				targetNodeID, reqStr, err)
+				targetNodeID, reqStr, err1)
 			// Assert, but not fail the StartSync call.
-			common.Assert(false, err)
+			common.Assert(false, err1)
 		}
 
-		return resp, nil
+		return resp, err
 	}
 
 	//
@@ -631,19 +639,20 @@ func EndSync(ctx context.Context, targetNodeID string, req *models.EndSyncReques
 				continue
 			}
 
-			return nil, err
+			// Fall through to release the RPC client.
+			resp = nil
 		}
 
 		// Release RPC client back to the pool.
-		err = cp.releaseRPCClient(client)
-		if err != nil {
+		err1 := cp.releaseRPCClient(client)
+		if err1 != nil {
 			log.Err("rpc_client::EndSync: Failed to release RPC client for node %s %v: %v",
-				targetNodeID, reqStr, err)
+				targetNodeID, reqStr, err1)
 			// Assert, but not fail the EndSync call.
-			common.Assert(false, err)
+			common.Assert(false, err1)
 		}
 
-		return resp, nil
+		return resp, err
 	}
 
 	//
