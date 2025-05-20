@@ -87,9 +87,9 @@ func sortComponentRVs(rvs []*models.RVNameAndState) {
 	})
 }
 
-// check if the component RVs are the same
-// the list is sorted before comparison
-// RV array can be like,
+// Check if the component RVs are the same. The list is sorted before comparison.
+// An example of RV array can be like,
+//
 // [
 //
 //	{"name":"rv0", "state": "online"},
@@ -97,7 +97,10 @@ func sortComponentRVs(rvs []*models.RVNameAndState) {
 //	{"name":"rv9", "state": "outofsync"}
 //
 // ]
-func isComponentRVsValid(rvInMV []*models.RVNameAndState, rvInReq []*models.RVNameAndState) error {
+//
+// checkState boolean flag indicates if the state of the component RVs in the request should be
+// matched against the state of the component RVs in the mvInfo data.
+func isComponentRVsValid(rvInMV []*models.RVNameAndState, rvInReq []*models.RVNameAndState, checkState bool) error {
 	if len(rvInMV) != len(rvInReq) {
 		return fmt.Errorf("request component RVs %s is not same as MV component RVs %s",
 			rpc.ComponentRVsToString(rvInReq), rpc.ComponentRVsToString(rvInMV))
@@ -110,7 +113,7 @@ func isComponentRVsValid(rvInMV []*models.RVNameAndState, rvInReq []*models.RVNa
 		common.Assert(rvInMV[i] != nil)
 		common.Assert(rvInReq[i] != nil)
 
-		if rvInMV[i].Name != rvInReq[i].Name || rvInMV[i].State != rvInReq[i].State {
+		if rvInMV[i].Name != rvInReq[i].Name || (checkState && rvInMV[i].State != rvInReq[i].State) {
 			isValid = false
 			break
 		}

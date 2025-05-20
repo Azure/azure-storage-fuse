@@ -596,6 +596,9 @@ func (mv *mvInfo) isSyncOpWriteLocked() bool {
 }
 
 // Check if the component RVs in the request is valid for the given MV replica.
+// checkState boolean flag indicates if the state of the component RVs in the request should be
+// matched against the state of the component RVs in the mvInfo data.
+//
 // If the the request's component RVs match with the node's mvInfo data, then it means that the
 // request is valid and the mvInfo data is up to date.
 //
@@ -607,7 +610,7 @@ func (mv *mvInfo) isSyncOpWriteLocked() bool {
 // if there still is a mismatch indicating client using stale clustermap, fail the call with
 // NeedToRefreshClusterMap asking the sender to refresh too.
 // This function helps to refresh the rvInfo component RV details.
-func (mv *mvInfo) isComponentRVsValid(componentRVsInReq []*models.RVNameAndState) error {
+func (mv *mvInfo) isComponentRVsValid(componentRVsInReq []*models.RVNameAndState, checkState bool) error {
 	var componentRVsInMV []*models.RVNameAndState
 	clustermapRefreshed := false
 
@@ -619,7 +622,7 @@ func (mv *mvInfo) isComponentRVsValid(componentRVsInReq []*models.RVNameAndState
 		// We may fail once due to out-of-date cluster membership info, refresh clustermap and try once
 		// more.
 		//
-		err := isComponentRVsValid(componentRVsInMV, componentRVsInReq)
+		err := isComponentRVsValid(componentRVsInMV, componentRVsInReq, checkState)
 		if err != nil {
 			if !clustermapRefreshed {
 				mv.refreshFromClustermap()
@@ -649,7 +652,9 @@ func (mv *mvInfo) isComponentRVsValid(componentRVsInReq []*models.RVNameAndState
 //	its clustermap copy is stale and it needs to refresh it.
 func (mv *mvInfo) validateComponentRVsInSync(componentRVsInReq []*models.RVNameAndState, sourceRVName string, targetRVName string) error {
 
-	err := mv.isComponentRVsValid(componentRVsInReq)
+	// validate the component RVs in request against the component RVs in mvInfo.
+	// The state of the component RVs in the request is not checked for StartSync/EndSync requests.
+	err := mv.isComponentRVsValid(componentRVsInReq, false /* checkState */)
 	if err != nil {
 		errStr := fmt.Sprintf("Component RVs are invalid for MV %s [%v]", mv.mvName, err)
 		log.Err("ChunkServiceHandler::validateComponentRVsInSync: %s", errStr)
@@ -1165,7 +1170,7 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 	mvInfo := rvInfo.getMVInfo(req.Address.MvName)
 
 	// validate the component RVs list
-	err = mvInfo.isComponentRVsValid(req.ComponentRV)
+	err = mvInfo.isComponentRVsValid(req.ComponentRV, true /* checkState */)
 	if err != nil {
 		errStr := fmt.Sprintf("Component RVs are invalid for MV %s [%v]", req.Address.MvName, err)
 		log.Err("ChunkServiceHandler::RemoveChunk: %s", errStr)
@@ -1384,7 +1389,8 @@ func (h *ChunkServiceHandler) LeaveMV(ctx context.Context, req *models.LeaveMVRe
 	}
 
 	// validate the component RVs list
-	if err := mvInfo.isComponentRVsValid(req.ComponentRV); err != nil {
+	err := mvInfo.isComponentRVsValid(req.ComponentRV, true /* checkState */)
+	if err != nil {
 		errStr := fmt.Sprintf("Component RVs are invalid for MV %s [%v]", req.MV, err)
 		log.Err("ChunkServiceHandler::RemoveChunk: %s", errStr)
 		return nil, err
@@ -1396,7 +1402,7 @@ func (h *ChunkServiceHandler) LeaveMV(ctx context.Context, req *models.LeaveMVRe
 	flock.Lock()
 	defer flock.Unlock()
 
-	err := os.RemoveAll(mvPath)
+	err = os.RemoveAll(mvPath)
 	if err != nil {
 		log.Err("ChunkServiceHandler::LeaveMV: Failed to remove MV directory %s [%v]", mvPath, err.Error())
 		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to remove MV directory %s [%v]", mvPath, err.Error()))
