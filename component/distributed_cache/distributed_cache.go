@@ -889,9 +889,9 @@ func (dc *DistributedCache) DeleteFile(options internal.DeleteFileOptions) error
 		return syscall.EROFS
 	} else {
 		//
-		// Semantics for Unqualified Path, Delete from both Azure and Dcache. If file is present in only  onequalified
+		// Semantics for Unqualified Path, Delete from both Azure and Dcache. If file is present in only one qualified
 		// path, then delete only from that path. If the call has come here it already means that the file is present in
-		// atleast one qualified path as stat would be checked before doing deletion.
+		// atleast one qualified path as stat would be checked before doing deletion of a file.
 		//
 		log.Debug("DistributedCache::DeleteFile: Delete Dcache file for Unqualified Path: %s", options.Name)
 

@@ -425,7 +425,8 @@ func (m *BlobMetadataManager) getFile(filePath string) ([]byte, int64, dcache.Fi
 
 	//if fileSize < 0 {
 	if fileSize < -1 {
-		err := fmt.Errorf("GetFile:: Size is negative for path %s: %d", path, fileSize)
+		err := fmt.Errorf("Size is negative for path %s: %d", path, fileSize)
+		log.Warn("GetFile:: %v", err)
 		common.Assert(false, err)
 		return nil, -1, "", err
 	}
@@ -496,8 +497,8 @@ func (m *BlobMetadataManager) deleteFile(filePath string) error {
 			return err
 		}
 	} else if fileState == dcache.Deleting {
-		// This should not happen, as the file stat would always be checked before doing a stat call. but it might be
-		// possilble	to be in this situation if attributes are cached by fuse and file was deleted by another node.
+		// This should not happen in a single node, as the file attr would always be checked before doing a unlink call.
+		// but it might be possilble to be in this situation if attributes are cached by fuse and file was deleted by another node.
 		err := errors.New("deleteFile:: Deleting the file which was already deleted")
 		log.Err("%v", err)
 		common.Assert(false, err)
