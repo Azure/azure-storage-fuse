@@ -171,7 +171,7 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 // Does all init process for opening the file.
 func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 	// Fetch file metadata from metadata store.
-	fileMetadataBytes, fileSize, err := mm.GetFile(fileName)
+	fileMetadataBytes, fileSize, fileState, err := mm.GetFile(fileName)
 	if err != nil {
 		//todo : See if we can have error other that ENOENT here.
 		return nil, err
@@ -185,6 +185,8 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 		common.Assert(false, err)
 		return nil, err
 	}
+
+	fileMetadata.State = fileState
 
 	//
 	// Filesize can be following under various file states:
@@ -211,6 +213,10 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 	return &DcacheFile{
 		FileMetadata: &fileMetadata,
 	}, nil
+}
+
+func DeleteDcacheFile(fileName string) error {
+	return mm.DeleteFile(fileName)
 }
 
 // Creates the chunk and allocates the chunk buf

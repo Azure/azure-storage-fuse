@@ -46,6 +46,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 )
 
 func getBlockDeviceUUId(path string) (string, error) {
@@ -229,11 +230,32 @@ func parseDcacheMetadata(attr *internal.ObjAttr) error {
 		} else {
 			log.Err("DistributedCache::GetAttr : strconv failed for size string: %s, file: %s, error: %s", *val, attr.Name, err.Error())
 			common.Assert(false, err)
+			return err
 		}
 	} else {
 		err = fmt.Errorf("Blob metadata for %s doesn't have cache_object_length property", attr.Name)
 		log.Err("DistributedCache::GetAttr: %v", err)
 		common.Assert(false, err)
+		return err
+	}
+
+	// parse file state.
+	if state, ok := attr.Metadata["state"]; ok {
+		if *state == string(dcache.Deleting) {
+			err = fmt.Errorf("File: %s, is Deleted", attr.Name)
+			log.Err("DistributedCache::GetAttr: %v", err)
+			return err
+		} else if !(*state == string(dcache.Writing) || *state == string(dcache.Ready)) {
+			err = fmt.Errorf("File: %s, has invalid state:  [%s] metadata property", attr.Name, *state)
+			log.Err("DistributedCache::GetAttr: %v", err)
+			common.Assert(false, err)
+			return err
+		}
+	} else {
+		err = fmt.Errorf("Blob metadata for %s doesn't have state property", attr.Name)
+		log.Err("DistributedCache::GetAttr: %v", err)
+		common.Assert(false, err)
+		return err
 	}
 
 	return err

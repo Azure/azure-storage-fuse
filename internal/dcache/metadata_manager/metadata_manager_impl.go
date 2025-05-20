@@ -34,6 +34,7 @@
 package metadata_manager
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -151,7 +152,7 @@ func CreateFileFinalize(filePath string, fileMetadata []byte, fileSize int64) er
 	return metadataManagerInstance.createFileFinalize(filePath, fileMetadata, fileSize)
 }
 
-func GetFile(filePath string) ([]byte, int64, error) {
+func GetFile(filePath string) ([]byte, int64, dcache.FileState, error) {
 	return metadataManagerInstance.getFile(filePath)
 }
 
@@ -294,8 +295,10 @@ func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byt
 
 	// The size of the file is set to -1 to represent the file is not finalized.
 	sizeStr := "-1"
+	state := string(dcache.Writing)
 	metadata := map[string]*string{
 		"cache_object_length": &sizeStr,
+		"state":               &state,
 	}
 
 	err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
@@ -361,9 +364,11 @@ func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata [
 	// Store the open-count and file size in the metadata blob property.
 	openCount := "0"
 	sizeStr := strconv.FormatInt(fileSize, 10)
+	state := string(dcache.Ready)
 	metadata := map[string]*string{
 		"opencount":           &openCount,
 		"cache_object_length": &sizeStr,
+		"state":               &state,
 	}
 
 	err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
@@ -386,7 +391,7 @@ func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata [
 
 // GetFile reads and returns the content of metadata for a file.
 // TODO: Replace the two REST API calls with a single call to DownloadStream.
-func (m *BlobMetadataManager) getFile(filePath string) ([]byte, int64, error) {
+func (m *BlobMetadataManager) getFile(filePath string) ([]byte, int64, dcache.FileState, error) {
 	common.Assert(len(filePath) > 0)
 
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
@@ -394,22 +399,24 @@ func (m *BlobMetadataManager) getFile(filePath string) ([]byte, int64, error) {
 	data, prop, err := m.getBlobSafe(path)
 	if err != nil {
 		log.Debug("GetFile:: Failed to get metadata file content for file %s: %v", path, err)
-		return nil, -1, err
+		return nil, -1, "", err
 	}
 
 	// Extract the size from the metadata properties.
 	size, ok := prop.Metadata["cache_object_length"]
 	if !ok {
-		log.Err("GetFile:: size not found in metadata for path %s", path)
-		common.Assert(false, fmt.Sprintf("size not found in metadata for path %s", path))
-		return nil, -1, err
+		err := fmt.Errorf("GetFile:: size not found in metadata for path %s", path)
+		log.Err("%v", err)
+		common.Assert(false, err)
+		return nil, -1, "", err
 	}
 
 	fileSize, err := strconv.ParseInt(*size, 10, 64)
 	if err != nil {
-		log.Err("GetFile:: Failed to parse size for path %s with value %s: %v", path, *size, err)
+		err := fmt.Errorf("GetFile:: Failed to parse size for path %s with value %s: %v", path, *size, err)
+		log.Err("%v", err)
 		common.Assert(false, err)
-		return nil, -1, err
+		return nil, -1, "", err
 	}
 
 	//
@@ -418,13 +425,33 @@ func (m *BlobMetadataManager) getFile(filePath string) ([]byte, int64, error) {
 
 	//if fileSize < 0 {
 	if fileSize < -1 {
-		log.Warn("GetFile:: Size is negative for path %s: %d", path, fileSize)
-		common.Assert(false, "size cannot be negative", fileSize)
-		return nil, -1, fmt.Errorf("size is negative for path %s: %d", path, fileSize)
+		err := fmt.Errorf("GetFile:: Size is negative for path %s: %d", path, fileSize)
+		common.Assert(false, err)
+		return nil, -1, "", err
 	}
 
 	log.Debug("GetFile:: Size for path %s: %d", path, fileSize)
-	return data, fileSize, nil
+
+	// Extract the state from the blob metadata prop.
+	state, ok := prop.Metadata["state"]
+	if !ok {
+		err := fmt.Errorf("GetFile:: File state  not found in metadata for path %s", path)
+		log.Err("%v", err)
+		common.Assert(false, err)
+		return nil, -1, "", err
+	}
+
+	var fileState dcache.FileState
+	if *state == string(dcache.Deleting) || *state == string(dcache.Ready) || *state == string(dcache.Writing) {
+		fileState = dcache.FileState(*state)
+	} else {
+		err := fmt.Errorf("GetFile:: Invalid File state: [%s] found in metadata for path: %s", *state, path)
+		log.Err("%v", err)
+		common.Assert(false, err)
+		return nil, -1, fileState, err
+	}
+
+	return data, fileSize, fileState, nil
 }
 
 // DeleteFile removes metadata for a file.
@@ -432,24 +459,53 @@ func (m *BlobMetadataManager) deleteFile(filePath string) error {
 	common.Assert(len(filePath) > 0)
 
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
-	err := m.storageCallback.DeleteBlobInStorage(internal.DeleteFileOptions{
-		Name: path,
-	})
+
+	data, fileSize, fileState, err := m.getFile(filePath)
 	if err != nil {
-		// Treat BlobNotFound as success.
-		if bloberror.HasCode(err, bloberror.BlobNotFound) {
-			log.Warn("DeleteFile:: DeleteBlobInStorage failed since blob %s is already deleted: %v",
-				path, err)
-			return nil
+		log.Err("deleteFile:: Delete file failed for path: %s, err: %v", filePath, err)
+		return err
+	}
+
+	// TODO: handle deletion for the files which have the state writing/ opencnt > 0
+	if fileState == dcache.Writing {
+		return syscall.ENOTSUP
+	} else if fileState == dcache.Ready {
+		// TODO: Change the state of the file atomically to deleting.
+		// TODO: GC must delete all the chunks of the files in all the MVS and then it is responsible for deleteing the
+		// metadata file.
+		openCount := "0"
+		sizeStr := strconv.FormatInt(fileSize, 10)
+		state := string(dcache.Deleting)
+		metadata := map[string]*string{
+			"opencount":           &openCount,
+			"cache_object_length": &sizeStr,
+			"state":               &state,
 		}
 
-		log.Err("DeleteFile:: Failed to delete blob %s in storage: %v", path, err)
+		err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
+			Name:                   path,
+			Data:                   data,
+			Metadata:               metadata,
+			IsNoneMatchEtagEnabled: false,
+			EtagMatchConditions:    "",
+		})
+
+		if err != nil {
+			log.Err("deleteFile:: Failed to put blob %s in storage: %v", path, err)
+			common.Assert(false, err)
+			return err
+		}
+	} else if fileState == dcache.Deleting {
+		// This should not happen, as the file stat would always be checked before doing a stat call. but it might be
+		// possilble	to be in this situation if attributes are cached by fuse and file was deleted by another node.
+		err := errors.New("deleteFile:: Deleting the file which was already deleted")
+		log.Err("%v", err)
 		common.Assert(false, err)
 		return err
 	}
 
 	log.Debug("DeleteFile:: Deleted blob %s in storage", path)
-	return err
+	return nil
 }
 
 // OpenFile increments the open count for a file and returns the updated count
