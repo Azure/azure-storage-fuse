@@ -35,7 +35,6 @@ package rpc
 
 import (
 	"errors"
-	"strings"
 	"syscall"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"

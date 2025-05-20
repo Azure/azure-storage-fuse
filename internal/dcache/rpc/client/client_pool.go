@@ -259,7 +259,8 @@ func (cp *clientPool) resetAllRPCClients(client *rpcClient) error {
 	common.Assert(numClients <= int(cp.maxPerNode), numClients, cp.maxPerNode)
 
 	//
-	// And all remaining. We try to reset as many as we can.
+	// Reset all remaining clients in the pool. We try to reset as many as we can, and don't fail
+	// on error, as we have reset at least one client.
 	//
 	for i := 0; i < numClients; i++ {
 		client, err = cp.getRPCClientNoLock(client.nodeID)
@@ -270,7 +271,8 @@ func (cp *clientPool) resetAllRPCClients(client *rpcClient) error {
 		if err != nil {
 			//
 			// We have reset at least one connection, so we don't fail the resetAllRPCClients()
-			// call, log an error and proceed.
+			// call, log an error and proceed. This way even if we are not able to create new
+			// good connections, we drain and close all stale connections.
 			//
 			log.Err("clientPool::resetAllRPCClients: Failed to reset RPC client to %s node %s: %v",
 				client.nodeAddress, client.nodeID, err)
