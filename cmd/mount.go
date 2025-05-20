@@ -484,6 +484,7 @@ var mountCmd = &cobra.Command{
 
 		log.Info("mount: Mounting blobfuse2 on %s", options.MountPath)
 		if !options.Foreground {
+			// pidFile := strings.Replace(options.MountPath, "/", "_", -1) + fmt.Sprintf("%d", os.Getpid()) + ".pid"
 			pidFile := strings.Replace(options.MountPath, "/", "_", -1) + ".pid"
 			pidFileName := filepath.Join(os.ExpandEnv(common.DefaultWorkDir), pidFile)
 
@@ -512,10 +513,18 @@ var mountCmd = &cobra.Command{
 				}()
 			}
 
+		retry:
+			// If the .pid file is locked and there no blobfuse process owning it then we need to try
+			// a cleanup of the .pid file. If cleanup goes through then retry the daemonization.
 			child, err := dmnCtx.Reborn()
 			if err != nil {
-				log.Err("mount : failed to daemonize application [%v]", err)
-				return Destroy(fmt.Sprintf("failed to daemonize application [%s]", err.Error()))
+				log.Err("mount : failed to daemonize application [%s], trying auto cleanup", err.Error())
+				rmErr := os.Remove(pidFileName)
+				if rmErr != nil {
+					log.Err("mount : auto cleanup failed [%v]", rmErr.Error())
+					return Destroy(fmt.Sprintf("failed to daemonize application [%s]", err.Error()))
+				}
+				goto retry
 			}
 
 			log.Debug("mount: foreground disabled, child = %v", daemon.WasReborn())
