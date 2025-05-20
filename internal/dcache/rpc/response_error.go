@@ -33,7 +33,15 @@
 
 package rpc
 
-import "errors"
+import (
+	"errors"
+	"strings"
+	"syscall"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	//"github.com/apache/thrift/lib/go/thrift"
+)
 
 const (
 	InvalidRequest      = iota + 1 // invalid rpc request
@@ -71,6 +79,8 @@ func (e *ResponseError) Error() string {
 
 // check if the error is of type ResponseError
 func GetRPCResponseError(err error) *ResponseError {
+	common.Assert(err != nil)
+
 	var respErr *ResponseError
 	ok := errors.As(err, &respErr)
 	if !ok {
@@ -78,4 +88,62 @@ func GetRPCResponseError(err error) *ResponseError {
 	}
 
 	return respErr
+}
+
+// Check if the error returned by thrift indicates connection closed by server.
+func IsConnectionClosed(err error) bool {
+	common.Assert(err != nil)
+
+	// RPC error, cannot be a connection reset error.
+	if GetRPCResponseError(err) != nil {
+		log.Debug("IsConnectionClosed: is RPC error: %v", err)
+		return false
+	}
+
+	// Note: This doesn't work.
+	//te := thrift.NewTTransportExceptionFromError(err)
+	//return te.TypeId() == thrift.NOT_OPEN
+
+	return errors.Is(err, syscall.EPIPE)
+}
+
+// Check if the error returned by thrift indicates connection refused by server.
+func IsConnectionRefused(err error) bool {
+	common.Assert(err != nil)
+
+	// RPC error, cannot be a connection refused error.
+	if GetRPCResponseError(err) != nil {
+		log.Debug("IsConnectionRefused: is RPC error: %v", err)
+		return false
+	}
+
+	log.Debug("IsConnectionRefused: err: %v, err: %T", err, err)
+
+	//
+	// TODO: This does not seem to match when we get the following error from thrift.
+	// [dial tcp 10.0.0.5:9090: connect: connection refused]
+	//
+	// Doing string match for now.
+	//
+	//return errors.Is(err, syscall.ECONNREFUSED)
+
+	connectionRefused := "connection refused"
+	return strings.Contains(err.Error(), connectionRefused)
+}
+
+// Check if the error returned by thrift indicates timeout.
+func IsTimedOut(err error) bool {
+	common.Assert(err != nil)
+
+	// RPC error, cannot be a connection reset error.
+	if GetRPCResponseError(err) != nil {
+		log.Debug("IsTimedOut: is RPC error: %v", err)
+		return false
+	}
+
+	// TODO: This is untested, see whether this works or the ETIMEDOUT check works!
+	//te := thrift.NewTTransportExceptionFromError(err)
+	//return te.TypeId() == thrift.TIMED_OUT
+
+	return errors.Is(err, syscall.ETIMEDOUT)
 }
