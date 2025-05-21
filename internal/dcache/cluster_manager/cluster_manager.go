@@ -53,6 +53,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 	rpc_server "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/server"
@@ -867,7 +868,11 @@ func (cmi *ClusterManager) updateStorageClusterMapWithMyRVs() error {
 			return fmt.Errorf("ClusterManager::updateStorageClusterMapWithMyRVs: Exceeded maxWait")
 		}
 
-		clusterMap, etag, err := cmi.fetchAndUpdateLocalClusterMap(false /* sync */)
+		//
+		// Set clustermap update sync to true as this would be the first update call and we want the first
+		// update call to be sync.
+		//
+		clusterMap, etag, err := cmi.fetchAndUpdateLocalClusterMap(true /* sync */)
 		if err != nil {
 			log.Err("ClusterManager::updateStorageClusterMapWithMyRVs: fetchAndUpdateLocalClusterMap() failed: %v",
 				err)
@@ -2092,7 +2097,12 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume, reser
 		if err != nil {
 			err = fmt.Errorf("Error %s MV %s with RV %s: %v", action, mvName, rv.Name, err)
 			log.Err("ClusterManagerImpl::joinMV: %v", err)
-			common.Assert(false, err)
+			//
+			// If the remote blobfuse process stops/restarts before it could respond to the RPC, we will
+			// get an EOF error. If the node shuts down we will get a timed out error, other than that
+			// we don't expect any other errors, assert to see if we get any other error.
+			//
+			common.Assert(rpc.IsConnectionClosed(err) || rpc.IsTimedOut(err), err)
 			return rv.Name, err
 		}
 	}
