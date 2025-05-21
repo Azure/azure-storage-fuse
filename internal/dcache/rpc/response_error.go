@@ -40,48 +40,24 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+
 	//"github.com/apache/thrift/lib/go/thrift"
+
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 )
 
-const (
-	InvalidRequest      = iota + 1 // invalid rpc request
-	InvalidRVID                    // RV does not have the rvID
-	InvalidRV                      // RV is invalid for the given node
-	InternalServerError            // Miscellaneous errors
-	ChunkNotFound                  // Chunk not found
-	ChunkAlreadyExists             // Chunk already exists
-	MaxMVsExceeded                 // Max number of MVs exceeded for the RV
-	// Component RVs are invalid for the MV.
-	// This indicates the client that its copy of clustermap is stale.
-	// So, it should fetch the latest clustermap copy and retry.
-	NeedToRefreshClusterMap
-)
-
-type ResponseError struct {
-	errCode int
-	errMsg  string
-}
-
-func NewResponseError(errorCode int, errorMessage string) *ResponseError {
-	return &ResponseError{
-		errCode: errorCode,
-		errMsg:  errorMessage,
+func NewResponseError(errorCode models.ErrorCode, errorMessage string) *models.ResponseError {
+	return &models.ResponseError{
+		Code:    errorCode,
+		Message: errorMessage,
 	}
 }
 
-func (e *ResponseError) Code() int {
-	return e.errCode
-}
-
-func (e *ResponseError) Error() string {
-	return e.errMsg
-}
-
-// check if the error is of type ResponseError
-func GetRPCResponseError(err error) *ResponseError {
+// check if the error is of type *models.ResponseError
+func GetRPCResponseError(err error) *models.ResponseError {
 	common.Assert(err != nil)
 
-	var respErr *ResponseError
+	var respErr *models.ResponseError
 	ok := errors.As(err, &respErr)
 	if !ok {
 		return nil

@@ -130,6 +130,11 @@ func (p *ChunkServiceClient) Hello(ctx context.Context, request *models.HelloReq
 	if _err != nil {
 		return
 	}
+	switch {
+	case _result2.Err != nil:
+		return _r, _result2.Err
+	}
+
 	if _ret3 := _result2.GetSuccess(); _ret3 != nil {
 		return _ret3, nil
 	}
@@ -148,6 +153,11 @@ func (p *ChunkServiceClient) GetChunk(ctx context.Context, request *models.GetCh
 	if _err != nil {
 		return
 	}
+	switch {
+	case _result6.Err != nil:
+		return _r, _result6.Err
+	}
+
 	if _ret7 := _result6.GetSuccess(); _ret7 != nil {
 		return _ret7, nil
 	}
@@ -166,6 +176,11 @@ func (p *ChunkServiceClient) PutChunk(ctx context.Context, request *models.PutCh
 	if _err != nil {
 		return
 	}
+	switch {
+	case _result10.Err != nil:
+		return _r, _result10.Err
+	}
+
 	if _ret11 := _result10.GetSuccess(); _ret11 != nil {
 		return _ret11, nil
 	}
@@ -184,6 +199,11 @@ func (p *ChunkServiceClient) RemoveChunk(ctx context.Context, request *models.Re
 	if _err != nil {
 		return
 	}
+	switch {
+	case _result14.Err != nil:
+		return _r, _result14.Err
+	}
+
 	if _ret15 := _result14.GetSuccess(); _ret15 != nil {
 		return _ret15, nil
 	}
@@ -202,6 +222,11 @@ func (p *ChunkServiceClient) JoinMV(ctx context.Context, request *models.JoinMVR
 	if _err != nil {
 		return
 	}
+	switch {
+	case _result18.Err != nil:
+		return _r, _result18.Err
+	}
+
 	if _ret19 := _result18.GetSuccess(); _ret19 != nil {
 		return _ret19, nil
 	}
@@ -220,6 +245,11 @@ func (p *ChunkServiceClient) UpdateMV(ctx context.Context, request *models.Updat
 	if _err != nil {
 		return
 	}
+	switch {
+	case _result22.Err != nil:
+		return _r, _result22.Err
+	}
+
 	if _ret23 := _result22.GetSuccess(); _ret23 != nil {
 		return _ret23, nil
 	}
@@ -238,6 +268,11 @@ func (p *ChunkServiceClient) LeaveMV(ctx context.Context, request *models.LeaveM
 	if _err != nil {
 		return
 	}
+	switch {
+	case _result26.Err != nil:
+		return _r, _result26.Err
+	}
+
 	if _ret27 := _result26.GetSuccess(); _ret27 != nil {
 		return _ret27, nil
 	}
@@ -256,6 +291,11 @@ func (p *ChunkServiceClient) StartSync(ctx context.Context, request *models.Star
 	if _err != nil {
 		return
 	}
+	switch {
+	case _result30.Err != nil:
+		return _r, _result30.Err
+	}
+
 	if _ret31 := _result30.GetSuccess(); _ret31 != nil {
 		return _ret31, nil
 	}
@@ -274,6 +314,11 @@ func (p *ChunkServiceClient) EndSync(ctx context.Context, request *models.EndSyn
 	if _err != nil {
 		return
 	}
+	switch {
+	case _result34.Err != nil:
+		return _r, _result34.Err
+	}
+
 	if _ret35 := _result34.GetSuccess(); _ret35 != nil {
 		return _ret35, nil
 	}
@@ -380,15 +425,20 @@ func (p *chunkServiceProcessorHello) Process(ctx context.Context, seqId int32, i
 	var retval *models.HelloResponse
 	if retval, err2 = p.handler.Hello(ctx, args.Request); err2 != nil {
 		tickerCancel()
-		if err2 == thrift.ErrAbandonRequest {
-			return false, thrift.WrapTException(err2)
+		switch v := err2.(type) {
+		case *models.ResponseError:
+			result.Err = v
+		default:
+			if err2 == thrift.ErrAbandonRequest {
+				return false, thrift.WrapTException(err2)
+			}
+			x := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing Hello: "+err2.Error())
+			oprot.WriteMessageBegin(ctx, "Hello", thrift.EXCEPTION, seqId)
+			x.Write(ctx, oprot)
+			oprot.WriteMessageEnd(ctx)
+			oprot.Flush(ctx)
+			return true, thrift.WrapTException(err2)
 		}
-		x := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing Hello: "+err2.Error())
-		oprot.WriteMessageBegin(ctx, "Hello", thrift.EXCEPTION, seqId)
-		x.Write(ctx, oprot)
-		oprot.WriteMessageEnd(ctx)
-		oprot.Flush(ctx)
-		return true, thrift.WrapTException(err2)
 	} else {
 		result.Success = retval
 	}
@@ -459,15 +509,20 @@ func (p *chunkServiceProcessorGetChunk) Process(ctx context.Context, seqId int32
 	var retval *models.GetChunkResponse
 	if retval, err2 = p.handler.GetChunk(ctx, args.Request); err2 != nil {
 		tickerCancel()
-		if err2 == thrift.ErrAbandonRequest {
-			return false, thrift.WrapTException(err2)
+		switch v := err2.(type) {
+		case *models.ResponseError:
+			result.Err = v
+		default:
+			if err2 == thrift.ErrAbandonRequest {
+				return false, thrift.WrapTException(err2)
+			}
+			x := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing GetChunk: "+err2.Error())
+			oprot.WriteMessageBegin(ctx, "GetChunk", thrift.EXCEPTION, seqId)
+			x.Write(ctx, oprot)
+			oprot.WriteMessageEnd(ctx)
+			oprot.Flush(ctx)
+			return true, thrift.WrapTException(err2)
 		}
-		x := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing GetChunk: "+err2.Error())
-		oprot.WriteMessageBegin(ctx, "GetChunk", thrift.EXCEPTION, seqId)
-		x.Write(ctx, oprot)
-		oprot.WriteMessageEnd(ctx)
-		oprot.Flush(ctx)
-		return true, thrift.WrapTException(err2)
 	} else {
 		result.Success = retval
 	}
@@ -538,15 +593,20 @@ func (p *chunkServiceProcessorPutChunk) Process(ctx context.Context, seqId int32
 	var retval *models.PutChunkResponse
 	if retval, err2 = p.handler.PutChunk(ctx, args.Request); err2 != nil {
 		tickerCancel()
-		if err2 == thrift.ErrAbandonRequest {
-			return false, thrift.WrapTException(err2)
+		switch v := err2.(type) {
+		case *models.ResponseError:
+			result.Err = v
+		default:
+			if err2 == thrift.ErrAbandonRequest {
+				return false, thrift.WrapTException(err2)
+			}
+			x := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing PutChunk: "+err2.Error())
+			oprot.WriteMessageBegin(ctx, "PutChunk", thrift.EXCEPTION, seqId)
+			x.Write(ctx, oprot)
+			oprot.WriteMessageEnd(ctx)
+			oprot.Flush(ctx)
+			return true, thrift.WrapTException(err2)
 		}
-		x := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing PutChunk: "+err2.Error())
-		oprot.WriteMessageBegin(ctx, "PutChunk", thrift.EXCEPTION, seqId)
-		x.Write(ctx, oprot)
-		oprot.WriteMessageEnd(ctx)
-		oprot.Flush(ctx)
-		return true, thrift.WrapTException(err2)
 	} else {
 		result.Success = retval
 	}
@@ -617,15 +677,20 @@ func (p *chunkServiceProcessorRemoveChunk) Process(ctx context.Context, seqId in
 	var retval *models.RemoveChunkResponse
 	if retval, err2 = p.handler.RemoveChunk(ctx, args.Request); err2 != nil {
 		tickerCancel()
-		if err2 == thrift.ErrAbandonRequest {
-			return false, thrift.WrapTException(err2)
+		switch v := err2.(type) {
+		case *models.ResponseError:
+			result.Err = v
+		default:
+			if err2 == thrift.ErrAbandonRequest {
+				return false, thrift.WrapTException(err2)
+			}
+			x := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing RemoveChunk: "+err2.Error())
+			oprot.WriteMessageBegin(ctx, "RemoveChunk", thrift.EXCEPTION, seqId)
+			x.Write(ctx, oprot)
+			oprot.WriteMessageEnd(ctx)
+			oprot.Flush(ctx)
+			return true, thrift.WrapTException(err2)
 		}
-		x := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing RemoveChunk: "+err2.Error())
-		oprot.WriteMessageBegin(ctx, "RemoveChunk", thrift.EXCEPTION, seqId)
-		x.Write(ctx, oprot)
-		oprot.WriteMessageEnd(ctx)
-		oprot.Flush(ctx)
-		return true, thrift.WrapTException(err2)
 	} else {
 		result.Success = retval
 	}
@@ -696,15 +761,20 @@ func (p *chunkServiceProcessorJoinMV) Process(ctx context.Context, seqId int32, 
 	var retval *models.JoinMVResponse
 	if retval, err2 = p.handler.JoinMV(ctx, args.Request); err2 != nil {
 		tickerCancel()
-		if err2 == thrift.ErrAbandonRequest {
-			return false, thrift.WrapTException(err2)
+		switch v := err2.(type) {
+		case *models.ResponseError:
+			result.Err = v
+		default:
+			if err2 == thrift.ErrAbandonRequest {
+				return false, thrift.WrapTException(err2)
+			}
+			x := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing JoinMV: "+err2.Error())
+			oprot.WriteMessageBegin(ctx, "JoinMV", thrift.EXCEPTION, seqId)
+			x.Write(ctx, oprot)
+			oprot.WriteMessageEnd(ctx)
+			oprot.Flush(ctx)
+			return true, thrift.WrapTException(err2)
 		}
-		x := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing JoinMV: "+err2.Error())
-		oprot.WriteMessageBegin(ctx, "JoinMV", thrift.EXCEPTION, seqId)
-		x.Write(ctx, oprot)
-		oprot.WriteMessageEnd(ctx)
-		oprot.Flush(ctx)
-		return true, thrift.WrapTException(err2)
 	} else {
 		result.Success = retval
 	}
@@ -775,15 +845,20 @@ func (p *chunkServiceProcessorUpdateMV) Process(ctx context.Context, seqId int32
 	var retval *models.UpdateMVResponse
 	if retval, err2 = p.handler.UpdateMV(ctx, args.Request); err2 != nil {
 		tickerCancel()
-		if err2 == thrift.ErrAbandonRequest {
-			return false, thrift.WrapTException(err2)
+		switch v := err2.(type) {
+		case *models.ResponseError:
+			result.Err = v
+		default:
+			if err2 == thrift.ErrAbandonRequest {
+				return false, thrift.WrapTException(err2)
+			}
+			x := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing UpdateMV: "+err2.Error())
+			oprot.WriteMessageBegin(ctx, "UpdateMV", thrift.EXCEPTION, seqId)
+			x.Write(ctx, oprot)
+			oprot.WriteMessageEnd(ctx)
+			oprot.Flush(ctx)
+			return true, thrift.WrapTException(err2)
 		}
-		x := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing UpdateMV: "+err2.Error())
-		oprot.WriteMessageBegin(ctx, "UpdateMV", thrift.EXCEPTION, seqId)
-		x.Write(ctx, oprot)
-		oprot.WriteMessageEnd(ctx)
-		oprot.Flush(ctx)
-		return true, thrift.WrapTException(err2)
 	} else {
 		result.Success = retval
 	}
@@ -854,15 +929,20 @@ func (p *chunkServiceProcessorLeaveMV) Process(ctx context.Context, seqId int32,
 	var retval *models.LeaveMVResponse
 	if retval, err2 = p.handler.LeaveMV(ctx, args.Request); err2 != nil {
 		tickerCancel()
-		if err2 == thrift.ErrAbandonRequest {
-			return false, thrift.WrapTException(err2)
+		switch v := err2.(type) {
+		case *models.ResponseError:
+			result.Err = v
+		default:
+			if err2 == thrift.ErrAbandonRequest {
+				return false, thrift.WrapTException(err2)
+			}
+			x := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing LeaveMV: "+err2.Error())
+			oprot.WriteMessageBegin(ctx, "LeaveMV", thrift.EXCEPTION, seqId)
+			x.Write(ctx, oprot)
+			oprot.WriteMessageEnd(ctx)
+			oprot.Flush(ctx)
+			return true, thrift.WrapTException(err2)
 		}
-		x := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing LeaveMV: "+err2.Error())
-		oprot.WriteMessageBegin(ctx, "LeaveMV", thrift.EXCEPTION, seqId)
-		x.Write(ctx, oprot)
-		oprot.WriteMessageEnd(ctx)
-		oprot.Flush(ctx)
-		return true, thrift.WrapTException(err2)
 	} else {
 		result.Success = retval
 	}
@@ -933,15 +1013,20 @@ func (p *chunkServiceProcessorStartSync) Process(ctx context.Context, seqId int3
 	var retval *models.StartSyncResponse
 	if retval, err2 = p.handler.StartSync(ctx, args.Request); err2 != nil {
 		tickerCancel()
-		if err2 == thrift.ErrAbandonRequest {
-			return false, thrift.WrapTException(err2)
+		switch v := err2.(type) {
+		case *models.ResponseError:
+			result.Err = v
+		default:
+			if err2 == thrift.ErrAbandonRequest {
+				return false, thrift.WrapTException(err2)
+			}
+			x := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing StartSync: "+err2.Error())
+			oprot.WriteMessageBegin(ctx, "StartSync", thrift.EXCEPTION, seqId)
+			x.Write(ctx, oprot)
+			oprot.WriteMessageEnd(ctx)
+			oprot.Flush(ctx)
+			return true, thrift.WrapTException(err2)
 		}
-		x := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing StartSync: "+err2.Error())
-		oprot.WriteMessageBegin(ctx, "StartSync", thrift.EXCEPTION, seqId)
-		x.Write(ctx, oprot)
-		oprot.WriteMessageEnd(ctx)
-		oprot.Flush(ctx)
-		return true, thrift.WrapTException(err2)
 	} else {
 		result.Success = retval
 	}
@@ -1012,15 +1097,20 @@ func (p *chunkServiceProcessorEndSync) Process(ctx context.Context, seqId int32,
 	var retval *models.EndSyncResponse
 	if retval, err2 = p.handler.EndSync(ctx, args.Request); err2 != nil {
 		tickerCancel()
-		if err2 == thrift.ErrAbandonRequest {
-			return false, thrift.WrapTException(err2)
+		switch v := err2.(type) {
+		case *models.ResponseError:
+			result.Err = v
+		default:
+			if err2 == thrift.ErrAbandonRequest {
+				return false, thrift.WrapTException(err2)
+			}
+			x := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing EndSync: "+err2.Error())
+			oprot.WriteMessageBegin(ctx, "EndSync", thrift.EXCEPTION, seqId)
+			x.Write(ctx, oprot)
+			oprot.WriteMessageEnd(ctx)
+			oprot.Flush(ctx)
+			return true, thrift.WrapTException(err2)
 		}
-		x := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "Internal error processing EndSync: "+err2.Error())
-		oprot.WriteMessageBegin(ctx, "EndSync", thrift.EXCEPTION, seqId)
-		x.Write(ctx, oprot)
-		oprot.WriteMessageEnd(ctx)
-		oprot.Flush(ctx)
-		return true, thrift.WrapTException(err2)
 	} else {
 		result.Success = retval
 	}
@@ -1154,8 +1244,10 @@ func (p *ChunkServiceHelloArgs) String() string {
 
 // Attributes:
 //   - Success
+//   - Err
 type ChunkServiceHelloResult struct {
 	Success *models.HelloResponse `thrift:"success,0" db:"success" json:"success,omitempty"`
+	Err     *models.ResponseError `thrift:"err,1" db:"err" json:"err,omitempty"`
 }
 
 func NewChunkServiceHelloResult() *ChunkServiceHelloResult {
@@ -1170,8 +1262,21 @@ func (p *ChunkServiceHelloResult) GetSuccess() *models.HelloResponse {
 	}
 	return p.Success
 }
+
+var ChunkServiceHelloResult_Err_DEFAULT *models.ResponseError
+
+func (p *ChunkServiceHelloResult) GetErr() *models.ResponseError {
+	if !p.IsSetErr() {
+		return ChunkServiceHelloResult_Err_DEFAULT
+	}
+	return p.Err
+}
 func (p *ChunkServiceHelloResult) IsSetSuccess() bool {
 	return p.Success != nil
+}
+
+func (p *ChunkServiceHelloResult) IsSetErr() bool {
+	return p.Err != nil
 }
 
 func (p *ChunkServiceHelloResult) Read(ctx context.Context, iprot thrift.TProtocol) error {
@@ -1191,6 +1296,16 @@ func (p *ChunkServiceHelloResult) Read(ctx context.Context, iprot thrift.TProtoc
 		case 0:
 			if fieldTypeId == thrift.STRUCT {
 				if err := p.ReadField0(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 1:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField1(ctx, iprot); err != nil {
 					return err
 				}
 			} else {
@@ -1221,12 +1336,23 @@ func (p *ChunkServiceHelloResult) ReadField0(ctx context.Context, iprot thrift.T
 	return nil
 }
 
+func (p *ChunkServiceHelloResult) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Err = &models.ResponseError{}
+	if err := p.Err.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Err), err)
+	}
+	return nil
+}
+
 func (p *ChunkServiceHelloResult) Write(ctx context.Context, oprot thrift.TProtocol) error {
 	if err := oprot.WriteStructBegin(ctx, "Hello_result"); err != nil {
 		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
 	}
 	if p != nil {
 		if err := p.writeField0(ctx, oprot); err != nil {
+			return err
+		}
+		if err := p.writeField1(ctx, oprot); err != nil {
 			return err
 		}
 	}
@@ -1249,6 +1375,21 @@ func (p *ChunkServiceHelloResult) writeField0(ctx context.Context, oprot thrift.
 		}
 		if err := oprot.WriteFieldEnd(ctx); err != nil {
 			return thrift.PrependError(fmt.Sprintf("%T write field end error 0:success: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *ChunkServiceHelloResult) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetErr() {
+		if err := oprot.WriteFieldBegin(ctx, "err", thrift.STRUCT, 1); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:err: ", p), err)
+		}
+		if err := p.Err.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Err), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 1:err: ", p), err)
 		}
 	}
 	return err
@@ -1370,8 +1511,10 @@ func (p *ChunkServiceGetChunkArgs) String() string {
 
 // Attributes:
 //   - Success
+//   - Err
 type ChunkServiceGetChunkResult struct {
 	Success *models.GetChunkResponse `thrift:"success,0" db:"success" json:"success,omitempty"`
+	Err     *models.ResponseError    `thrift:"err,1" db:"err" json:"err,omitempty"`
 }
 
 func NewChunkServiceGetChunkResult() *ChunkServiceGetChunkResult {
@@ -1386,8 +1529,21 @@ func (p *ChunkServiceGetChunkResult) GetSuccess() *models.GetChunkResponse {
 	}
 	return p.Success
 }
+
+var ChunkServiceGetChunkResult_Err_DEFAULT *models.ResponseError
+
+func (p *ChunkServiceGetChunkResult) GetErr() *models.ResponseError {
+	if !p.IsSetErr() {
+		return ChunkServiceGetChunkResult_Err_DEFAULT
+	}
+	return p.Err
+}
 func (p *ChunkServiceGetChunkResult) IsSetSuccess() bool {
 	return p.Success != nil
+}
+
+func (p *ChunkServiceGetChunkResult) IsSetErr() bool {
+	return p.Err != nil
 }
 
 func (p *ChunkServiceGetChunkResult) Read(ctx context.Context, iprot thrift.TProtocol) error {
@@ -1407,6 +1563,16 @@ func (p *ChunkServiceGetChunkResult) Read(ctx context.Context, iprot thrift.TPro
 		case 0:
 			if fieldTypeId == thrift.STRUCT {
 				if err := p.ReadField0(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 1:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField1(ctx, iprot); err != nil {
 					return err
 				}
 			} else {
@@ -1437,12 +1603,23 @@ func (p *ChunkServiceGetChunkResult) ReadField0(ctx context.Context, iprot thrif
 	return nil
 }
 
+func (p *ChunkServiceGetChunkResult) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Err = &models.ResponseError{}
+	if err := p.Err.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Err), err)
+	}
+	return nil
+}
+
 func (p *ChunkServiceGetChunkResult) Write(ctx context.Context, oprot thrift.TProtocol) error {
 	if err := oprot.WriteStructBegin(ctx, "GetChunk_result"); err != nil {
 		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
 	}
 	if p != nil {
 		if err := p.writeField0(ctx, oprot); err != nil {
+			return err
+		}
+		if err := p.writeField1(ctx, oprot); err != nil {
 			return err
 		}
 	}
@@ -1465,6 +1642,21 @@ func (p *ChunkServiceGetChunkResult) writeField0(ctx context.Context, oprot thri
 		}
 		if err := oprot.WriteFieldEnd(ctx); err != nil {
 			return thrift.PrependError(fmt.Sprintf("%T write field end error 0:success: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *ChunkServiceGetChunkResult) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetErr() {
+		if err := oprot.WriteFieldBegin(ctx, "err", thrift.STRUCT, 1); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:err: ", p), err)
+		}
+		if err := p.Err.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Err), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 1:err: ", p), err)
 		}
 	}
 	return err
@@ -1586,8 +1778,10 @@ func (p *ChunkServicePutChunkArgs) String() string {
 
 // Attributes:
 //   - Success
+//   - Err
 type ChunkServicePutChunkResult struct {
 	Success *models.PutChunkResponse `thrift:"success,0" db:"success" json:"success,omitempty"`
+	Err     *models.ResponseError    `thrift:"err,1" db:"err" json:"err,omitempty"`
 }
 
 func NewChunkServicePutChunkResult() *ChunkServicePutChunkResult {
@@ -1602,8 +1796,21 @@ func (p *ChunkServicePutChunkResult) GetSuccess() *models.PutChunkResponse {
 	}
 	return p.Success
 }
+
+var ChunkServicePutChunkResult_Err_DEFAULT *models.ResponseError
+
+func (p *ChunkServicePutChunkResult) GetErr() *models.ResponseError {
+	if !p.IsSetErr() {
+		return ChunkServicePutChunkResult_Err_DEFAULT
+	}
+	return p.Err
+}
 func (p *ChunkServicePutChunkResult) IsSetSuccess() bool {
 	return p.Success != nil
+}
+
+func (p *ChunkServicePutChunkResult) IsSetErr() bool {
+	return p.Err != nil
 }
 
 func (p *ChunkServicePutChunkResult) Read(ctx context.Context, iprot thrift.TProtocol) error {
@@ -1623,6 +1830,16 @@ func (p *ChunkServicePutChunkResult) Read(ctx context.Context, iprot thrift.TPro
 		case 0:
 			if fieldTypeId == thrift.STRUCT {
 				if err := p.ReadField0(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 1:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField1(ctx, iprot); err != nil {
 					return err
 				}
 			} else {
@@ -1653,12 +1870,23 @@ func (p *ChunkServicePutChunkResult) ReadField0(ctx context.Context, iprot thrif
 	return nil
 }
 
+func (p *ChunkServicePutChunkResult) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Err = &models.ResponseError{}
+	if err := p.Err.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Err), err)
+	}
+	return nil
+}
+
 func (p *ChunkServicePutChunkResult) Write(ctx context.Context, oprot thrift.TProtocol) error {
 	if err := oprot.WriteStructBegin(ctx, "PutChunk_result"); err != nil {
 		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
 	}
 	if p != nil {
 		if err := p.writeField0(ctx, oprot); err != nil {
+			return err
+		}
+		if err := p.writeField1(ctx, oprot); err != nil {
 			return err
 		}
 	}
@@ -1681,6 +1909,21 @@ func (p *ChunkServicePutChunkResult) writeField0(ctx context.Context, oprot thri
 		}
 		if err := oprot.WriteFieldEnd(ctx); err != nil {
 			return thrift.PrependError(fmt.Sprintf("%T write field end error 0:success: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *ChunkServicePutChunkResult) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetErr() {
+		if err := oprot.WriteFieldBegin(ctx, "err", thrift.STRUCT, 1); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:err: ", p), err)
+		}
+		if err := p.Err.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Err), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 1:err: ", p), err)
 		}
 	}
 	return err
@@ -1802,8 +2045,10 @@ func (p *ChunkServiceRemoveChunkArgs) String() string {
 
 // Attributes:
 //   - Success
+//   - Err
 type ChunkServiceRemoveChunkResult struct {
 	Success *models.RemoveChunkResponse `thrift:"success,0" db:"success" json:"success,omitempty"`
+	Err     *models.ResponseError       `thrift:"err,1" db:"err" json:"err,omitempty"`
 }
 
 func NewChunkServiceRemoveChunkResult() *ChunkServiceRemoveChunkResult {
@@ -1818,8 +2063,21 @@ func (p *ChunkServiceRemoveChunkResult) GetSuccess() *models.RemoveChunkResponse
 	}
 	return p.Success
 }
+
+var ChunkServiceRemoveChunkResult_Err_DEFAULT *models.ResponseError
+
+func (p *ChunkServiceRemoveChunkResult) GetErr() *models.ResponseError {
+	if !p.IsSetErr() {
+		return ChunkServiceRemoveChunkResult_Err_DEFAULT
+	}
+	return p.Err
+}
 func (p *ChunkServiceRemoveChunkResult) IsSetSuccess() bool {
 	return p.Success != nil
+}
+
+func (p *ChunkServiceRemoveChunkResult) IsSetErr() bool {
+	return p.Err != nil
 }
 
 func (p *ChunkServiceRemoveChunkResult) Read(ctx context.Context, iprot thrift.TProtocol) error {
@@ -1839,6 +2097,16 @@ func (p *ChunkServiceRemoveChunkResult) Read(ctx context.Context, iprot thrift.T
 		case 0:
 			if fieldTypeId == thrift.STRUCT {
 				if err := p.ReadField0(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 1:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField1(ctx, iprot); err != nil {
 					return err
 				}
 			} else {
@@ -1869,12 +2137,23 @@ func (p *ChunkServiceRemoveChunkResult) ReadField0(ctx context.Context, iprot th
 	return nil
 }
 
+func (p *ChunkServiceRemoveChunkResult) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Err = &models.ResponseError{}
+	if err := p.Err.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Err), err)
+	}
+	return nil
+}
+
 func (p *ChunkServiceRemoveChunkResult) Write(ctx context.Context, oprot thrift.TProtocol) error {
 	if err := oprot.WriteStructBegin(ctx, "RemoveChunk_result"); err != nil {
 		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
 	}
 	if p != nil {
 		if err := p.writeField0(ctx, oprot); err != nil {
+			return err
+		}
+		if err := p.writeField1(ctx, oprot); err != nil {
 			return err
 		}
 	}
@@ -1897,6 +2176,21 @@ func (p *ChunkServiceRemoveChunkResult) writeField0(ctx context.Context, oprot t
 		}
 		if err := oprot.WriteFieldEnd(ctx); err != nil {
 			return thrift.PrependError(fmt.Sprintf("%T write field end error 0:success: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *ChunkServiceRemoveChunkResult) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetErr() {
+		if err := oprot.WriteFieldBegin(ctx, "err", thrift.STRUCT, 1); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:err: ", p), err)
+		}
+		if err := p.Err.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Err), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 1:err: ", p), err)
 		}
 	}
 	return err
@@ -2018,8 +2312,10 @@ func (p *ChunkServiceJoinMVArgs) String() string {
 
 // Attributes:
 //   - Success
+//   - Err
 type ChunkServiceJoinMVResult struct {
 	Success *models.JoinMVResponse `thrift:"success,0" db:"success" json:"success,omitempty"`
+	Err     *models.ResponseError  `thrift:"err,1" db:"err" json:"err,omitempty"`
 }
 
 func NewChunkServiceJoinMVResult() *ChunkServiceJoinMVResult {
@@ -2034,8 +2330,21 @@ func (p *ChunkServiceJoinMVResult) GetSuccess() *models.JoinMVResponse {
 	}
 	return p.Success
 }
+
+var ChunkServiceJoinMVResult_Err_DEFAULT *models.ResponseError
+
+func (p *ChunkServiceJoinMVResult) GetErr() *models.ResponseError {
+	if !p.IsSetErr() {
+		return ChunkServiceJoinMVResult_Err_DEFAULT
+	}
+	return p.Err
+}
 func (p *ChunkServiceJoinMVResult) IsSetSuccess() bool {
 	return p.Success != nil
+}
+
+func (p *ChunkServiceJoinMVResult) IsSetErr() bool {
+	return p.Err != nil
 }
 
 func (p *ChunkServiceJoinMVResult) Read(ctx context.Context, iprot thrift.TProtocol) error {
@@ -2055,6 +2364,16 @@ func (p *ChunkServiceJoinMVResult) Read(ctx context.Context, iprot thrift.TProto
 		case 0:
 			if fieldTypeId == thrift.STRUCT {
 				if err := p.ReadField0(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 1:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField1(ctx, iprot); err != nil {
 					return err
 				}
 			} else {
@@ -2085,12 +2404,23 @@ func (p *ChunkServiceJoinMVResult) ReadField0(ctx context.Context, iprot thrift.
 	return nil
 }
 
+func (p *ChunkServiceJoinMVResult) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Err = &models.ResponseError{}
+	if err := p.Err.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Err), err)
+	}
+	return nil
+}
+
 func (p *ChunkServiceJoinMVResult) Write(ctx context.Context, oprot thrift.TProtocol) error {
 	if err := oprot.WriteStructBegin(ctx, "JoinMV_result"); err != nil {
 		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
 	}
 	if p != nil {
 		if err := p.writeField0(ctx, oprot); err != nil {
+			return err
+		}
+		if err := p.writeField1(ctx, oprot); err != nil {
 			return err
 		}
 	}
@@ -2113,6 +2443,21 @@ func (p *ChunkServiceJoinMVResult) writeField0(ctx context.Context, oprot thrift
 		}
 		if err := oprot.WriteFieldEnd(ctx); err != nil {
 			return thrift.PrependError(fmt.Sprintf("%T write field end error 0:success: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *ChunkServiceJoinMVResult) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetErr() {
+		if err := oprot.WriteFieldBegin(ctx, "err", thrift.STRUCT, 1); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:err: ", p), err)
+		}
+		if err := p.Err.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Err), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 1:err: ", p), err)
 		}
 	}
 	return err
@@ -2234,8 +2579,10 @@ func (p *ChunkServiceUpdateMVArgs) String() string {
 
 // Attributes:
 //   - Success
+//   - Err
 type ChunkServiceUpdateMVResult struct {
 	Success *models.UpdateMVResponse `thrift:"success,0" db:"success" json:"success,omitempty"`
+	Err     *models.ResponseError    `thrift:"err,1" db:"err" json:"err,omitempty"`
 }
 
 func NewChunkServiceUpdateMVResult() *ChunkServiceUpdateMVResult {
@@ -2250,8 +2597,21 @@ func (p *ChunkServiceUpdateMVResult) GetSuccess() *models.UpdateMVResponse {
 	}
 	return p.Success
 }
+
+var ChunkServiceUpdateMVResult_Err_DEFAULT *models.ResponseError
+
+func (p *ChunkServiceUpdateMVResult) GetErr() *models.ResponseError {
+	if !p.IsSetErr() {
+		return ChunkServiceUpdateMVResult_Err_DEFAULT
+	}
+	return p.Err
+}
 func (p *ChunkServiceUpdateMVResult) IsSetSuccess() bool {
 	return p.Success != nil
+}
+
+func (p *ChunkServiceUpdateMVResult) IsSetErr() bool {
+	return p.Err != nil
 }
 
 func (p *ChunkServiceUpdateMVResult) Read(ctx context.Context, iprot thrift.TProtocol) error {
@@ -2271,6 +2631,16 @@ func (p *ChunkServiceUpdateMVResult) Read(ctx context.Context, iprot thrift.TPro
 		case 0:
 			if fieldTypeId == thrift.STRUCT {
 				if err := p.ReadField0(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 1:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField1(ctx, iprot); err != nil {
 					return err
 				}
 			} else {
@@ -2301,12 +2671,23 @@ func (p *ChunkServiceUpdateMVResult) ReadField0(ctx context.Context, iprot thrif
 	return nil
 }
 
+func (p *ChunkServiceUpdateMVResult) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Err = &models.ResponseError{}
+	if err := p.Err.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Err), err)
+	}
+	return nil
+}
+
 func (p *ChunkServiceUpdateMVResult) Write(ctx context.Context, oprot thrift.TProtocol) error {
 	if err := oprot.WriteStructBegin(ctx, "UpdateMV_result"); err != nil {
 		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
 	}
 	if p != nil {
 		if err := p.writeField0(ctx, oprot); err != nil {
+			return err
+		}
+		if err := p.writeField1(ctx, oprot); err != nil {
 			return err
 		}
 	}
@@ -2329,6 +2710,21 @@ func (p *ChunkServiceUpdateMVResult) writeField0(ctx context.Context, oprot thri
 		}
 		if err := oprot.WriteFieldEnd(ctx); err != nil {
 			return thrift.PrependError(fmt.Sprintf("%T write field end error 0:success: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *ChunkServiceUpdateMVResult) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetErr() {
+		if err := oprot.WriteFieldBegin(ctx, "err", thrift.STRUCT, 1); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:err: ", p), err)
+		}
+		if err := p.Err.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Err), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 1:err: ", p), err)
 		}
 	}
 	return err
@@ -2450,8 +2846,10 @@ func (p *ChunkServiceLeaveMVArgs) String() string {
 
 // Attributes:
 //   - Success
+//   - Err
 type ChunkServiceLeaveMVResult struct {
 	Success *models.LeaveMVResponse `thrift:"success,0" db:"success" json:"success,omitempty"`
+	Err     *models.ResponseError   `thrift:"err,1" db:"err" json:"err,omitempty"`
 }
 
 func NewChunkServiceLeaveMVResult() *ChunkServiceLeaveMVResult {
@@ -2466,8 +2864,21 @@ func (p *ChunkServiceLeaveMVResult) GetSuccess() *models.LeaveMVResponse {
 	}
 	return p.Success
 }
+
+var ChunkServiceLeaveMVResult_Err_DEFAULT *models.ResponseError
+
+func (p *ChunkServiceLeaveMVResult) GetErr() *models.ResponseError {
+	if !p.IsSetErr() {
+		return ChunkServiceLeaveMVResult_Err_DEFAULT
+	}
+	return p.Err
+}
 func (p *ChunkServiceLeaveMVResult) IsSetSuccess() bool {
 	return p.Success != nil
+}
+
+func (p *ChunkServiceLeaveMVResult) IsSetErr() bool {
+	return p.Err != nil
 }
 
 func (p *ChunkServiceLeaveMVResult) Read(ctx context.Context, iprot thrift.TProtocol) error {
@@ -2487,6 +2898,16 @@ func (p *ChunkServiceLeaveMVResult) Read(ctx context.Context, iprot thrift.TProt
 		case 0:
 			if fieldTypeId == thrift.STRUCT {
 				if err := p.ReadField0(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 1:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField1(ctx, iprot); err != nil {
 					return err
 				}
 			} else {
@@ -2517,12 +2938,23 @@ func (p *ChunkServiceLeaveMVResult) ReadField0(ctx context.Context, iprot thrift
 	return nil
 }
 
+func (p *ChunkServiceLeaveMVResult) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Err = &models.ResponseError{}
+	if err := p.Err.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Err), err)
+	}
+	return nil
+}
+
 func (p *ChunkServiceLeaveMVResult) Write(ctx context.Context, oprot thrift.TProtocol) error {
 	if err := oprot.WriteStructBegin(ctx, "LeaveMV_result"); err != nil {
 		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
 	}
 	if p != nil {
 		if err := p.writeField0(ctx, oprot); err != nil {
+			return err
+		}
+		if err := p.writeField1(ctx, oprot); err != nil {
 			return err
 		}
 	}
@@ -2545,6 +2977,21 @@ func (p *ChunkServiceLeaveMVResult) writeField0(ctx context.Context, oprot thrif
 		}
 		if err := oprot.WriteFieldEnd(ctx); err != nil {
 			return thrift.PrependError(fmt.Sprintf("%T write field end error 0:success: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *ChunkServiceLeaveMVResult) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetErr() {
+		if err := oprot.WriteFieldBegin(ctx, "err", thrift.STRUCT, 1); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:err: ", p), err)
+		}
+		if err := p.Err.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Err), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 1:err: ", p), err)
 		}
 	}
 	return err
@@ -2666,8 +3113,10 @@ func (p *ChunkServiceStartSyncArgs) String() string {
 
 // Attributes:
 //   - Success
+//   - Err
 type ChunkServiceStartSyncResult struct {
 	Success *models.StartSyncResponse `thrift:"success,0" db:"success" json:"success,omitempty"`
+	Err     *models.ResponseError     `thrift:"err,1" db:"err" json:"err,omitempty"`
 }
 
 func NewChunkServiceStartSyncResult() *ChunkServiceStartSyncResult {
@@ -2682,8 +3131,21 @@ func (p *ChunkServiceStartSyncResult) GetSuccess() *models.StartSyncResponse {
 	}
 	return p.Success
 }
+
+var ChunkServiceStartSyncResult_Err_DEFAULT *models.ResponseError
+
+func (p *ChunkServiceStartSyncResult) GetErr() *models.ResponseError {
+	if !p.IsSetErr() {
+		return ChunkServiceStartSyncResult_Err_DEFAULT
+	}
+	return p.Err
+}
 func (p *ChunkServiceStartSyncResult) IsSetSuccess() bool {
 	return p.Success != nil
+}
+
+func (p *ChunkServiceStartSyncResult) IsSetErr() bool {
+	return p.Err != nil
 }
 
 func (p *ChunkServiceStartSyncResult) Read(ctx context.Context, iprot thrift.TProtocol) error {
@@ -2703,6 +3165,16 @@ func (p *ChunkServiceStartSyncResult) Read(ctx context.Context, iprot thrift.TPr
 		case 0:
 			if fieldTypeId == thrift.STRUCT {
 				if err := p.ReadField0(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 1:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField1(ctx, iprot); err != nil {
 					return err
 				}
 			} else {
@@ -2733,12 +3205,23 @@ func (p *ChunkServiceStartSyncResult) ReadField0(ctx context.Context, iprot thri
 	return nil
 }
 
+func (p *ChunkServiceStartSyncResult) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Err = &models.ResponseError{}
+	if err := p.Err.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Err), err)
+	}
+	return nil
+}
+
 func (p *ChunkServiceStartSyncResult) Write(ctx context.Context, oprot thrift.TProtocol) error {
 	if err := oprot.WriteStructBegin(ctx, "StartSync_result"); err != nil {
 		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
 	}
 	if p != nil {
 		if err := p.writeField0(ctx, oprot); err != nil {
+			return err
+		}
+		if err := p.writeField1(ctx, oprot); err != nil {
 			return err
 		}
 	}
@@ -2761,6 +3244,21 @@ func (p *ChunkServiceStartSyncResult) writeField0(ctx context.Context, oprot thr
 		}
 		if err := oprot.WriteFieldEnd(ctx); err != nil {
 			return thrift.PrependError(fmt.Sprintf("%T write field end error 0:success: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *ChunkServiceStartSyncResult) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetErr() {
+		if err := oprot.WriteFieldBegin(ctx, "err", thrift.STRUCT, 1); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:err: ", p), err)
+		}
+		if err := p.Err.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Err), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 1:err: ", p), err)
 		}
 	}
 	return err
@@ -2882,8 +3380,10 @@ func (p *ChunkServiceEndSyncArgs) String() string {
 
 // Attributes:
 //   - Success
+//   - Err
 type ChunkServiceEndSyncResult struct {
 	Success *models.EndSyncResponse `thrift:"success,0" db:"success" json:"success,omitempty"`
+	Err     *models.ResponseError   `thrift:"err,1" db:"err" json:"err,omitempty"`
 }
 
 func NewChunkServiceEndSyncResult() *ChunkServiceEndSyncResult {
@@ -2898,8 +3398,21 @@ func (p *ChunkServiceEndSyncResult) GetSuccess() *models.EndSyncResponse {
 	}
 	return p.Success
 }
+
+var ChunkServiceEndSyncResult_Err_DEFAULT *models.ResponseError
+
+func (p *ChunkServiceEndSyncResult) GetErr() *models.ResponseError {
+	if !p.IsSetErr() {
+		return ChunkServiceEndSyncResult_Err_DEFAULT
+	}
+	return p.Err
+}
 func (p *ChunkServiceEndSyncResult) IsSetSuccess() bool {
 	return p.Success != nil
+}
+
+func (p *ChunkServiceEndSyncResult) IsSetErr() bool {
+	return p.Err != nil
 }
 
 func (p *ChunkServiceEndSyncResult) Read(ctx context.Context, iprot thrift.TProtocol) error {
@@ -2919,6 +3432,16 @@ func (p *ChunkServiceEndSyncResult) Read(ctx context.Context, iprot thrift.TProt
 		case 0:
 			if fieldTypeId == thrift.STRUCT {
 				if err := p.ReadField0(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 1:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField1(ctx, iprot); err != nil {
 					return err
 				}
 			} else {
@@ -2949,12 +3472,23 @@ func (p *ChunkServiceEndSyncResult) ReadField0(ctx context.Context, iprot thrift
 	return nil
 }
 
+func (p *ChunkServiceEndSyncResult) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Err = &models.ResponseError{}
+	if err := p.Err.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Err), err)
+	}
+	return nil
+}
+
 func (p *ChunkServiceEndSyncResult) Write(ctx context.Context, oprot thrift.TProtocol) error {
 	if err := oprot.WriteStructBegin(ctx, "EndSync_result"); err != nil {
 		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
 	}
 	if p != nil {
 		if err := p.writeField0(ctx, oprot); err != nil {
+			return err
+		}
+		if err := p.writeField1(ctx, oprot); err != nil {
 			return err
 		}
 	}
@@ -2977,6 +3511,21 @@ func (p *ChunkServiceEndSyncResult) writeField0(ctx context.Context, oprot thrif
 		}
 		if err := oprot.WriteFieldEnd(ctx); err != nil {
 			return thrift.PrependError(fmt.Sprintf("%T write field end error 0:success: ", p), err)
+		}
+	}
+	return err
+}
+
+func (p *ChunkServiceEndSyncResult) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if p.IsSetErr() {
+		if err := oprot.WriteFieldBegin(ctx, "err", thrift.STRUCT, 1); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:err: ", p), err)
+		}
+		if err := p.Err.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Err), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 1:err: ", p), err)
 		}
 	}
 	return err

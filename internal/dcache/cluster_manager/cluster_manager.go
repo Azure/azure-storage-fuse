@@ -1521,8 +1521,33 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		// If we cannot fix anything, skip the joinMV().
 		//
 		fixedRVs := 0
+		alreadyOutOfSync := make(map[string]struct{})
 
 		for rvName := range mv.RVs {
+			//
+			// Usually we won't have outofsync component RVs when fixMV() is called, as they would have been
+			// picked by the resync workflow and changed to syncing/online by the time fixMV() is called next
+			// time, but it's possible that we are called with one or more outofsync component RVs.
+			//
+			// e.g., fixMV() was called for mv1 with the following component RVs.
+			// mv2:{degraded map[rv0:outofsync rv3:online rv4:offline]}
+			//
+			// Note tha rv0 was outofsync on entry and rv4 was replaced by rv1 and rv1 was newly marked outofsync,
+			// so the component RVs after the replacement looked like
+			// mv2:{degraded map[rv0:outofsync rv3:online rv1:outofsync]}
+			//
+			// After joinMV() below succeeds, we won't know if a component RV was already outofsync or it was
+			// just picked as a replacement for an offline RV and is hence newly marked outofsync. We will try to
+			// consume slot for both rv0 (already outofsync) and rv1 (newly made outofsync). Note that rv0 would
+			// have its slot already consumed as outofsync component RV do consume slots. This will cause "double
+			// consume". We need to avoid this, so we store RVs which are already outofsync in a map and then check
+			// before calling consumeRVSlot() after joinMV().
+			//
+			if mv.RVs[rvName] == dcache.StateOutOfSync {
+				log.Debug("ClusterManager::fixMV: %s/%s already outofsync", rvName, mvName)
+				alreadyOutOfSync[rvName] = struct{}{}
+			}
+
 			// Only offline component RVs need to be "fixed" (aka replaced).
 			if mv.RVs[rvName] != dcache.StateOffline {
 				continue
@@ -1638,8 +1663,15 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			log.Info("ClusterManager::fixMV: Successfully joined/updated all component RVs %+v to MV %s",
 				mv.RVs, mvName)
 			for rvName := range mv.RVs {
+				//
+				// Consume slot for the replacement RVs, just made outofsync, but skip RVs which were already
+				// outofsync on entry to fixMV().
+				//
 				if mv.RVs[rvName] == dcache.StateOutOfSync {
-					consumeRVSlot(mvName, rvName)
+					_, exists := alreadyOutOfSync[rvName]
+					if !exists {
+						consumeRVSlot(mvName, rvName)
+					}
 				}
 			}
 			existingMVMap[mvName] = mv
@@ -2143,7 +2175,16 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 				// HB expired, mark RV offline if not already offline.
 				//
 
+				//
+				// TODO
+				// Saw this assert fire when one node died keeping clusterMap in checking state.
+				// This caused updateStorageClusterMapWithMyRVs() to take a long time. It would have timed out,
+				// but some other node became the leader updating the clusterMap and hence clearing thec
+				// checking status, allowing updateStorageClusterMapWithMyRVs() to proceed, but by the time
+				// the node's heartbeat expired.
+				//
 				// We just came here after punching the heartbeat, which must not expired.
+				//
 				common.Assert(!onlyMyRVs)
 
 				if rvInClusterMap.State != dcache.StateOffline {
