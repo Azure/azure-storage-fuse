@@ -48,7 +48,7 @@ import (
 
 func NewResponseError(errorCode models.ErrorCode, errorMessage string) *models.ResponseError {
 	return &models.ResponseError{
-		Code:    models.ErrorCode(errorCode),
+		Code:    errorCode,
 		Message: errorMessage,
 	}
 }
