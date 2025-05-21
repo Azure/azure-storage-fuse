@@ -78,6 +78,8 @@ type ClusterManager struct {
 	localClusterMapPath string
 	// ETag of the most recent clustermap saved in localClusterMapPath.
 	localMapETag *string
+	// Mutex for synchronizing updates to localClusterMapPath, localMapETag and clustermap.
+	localMapLock sync.Mutex
 	// RPC server running on this node.
 	// It'll respond to RPC queries made from other nodes.
 	rpcServer *rpc_server.NodeServer
@@ -237,11 +239,11 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 				log.Err("ClusterManager::start: updateStorageClusterMapIfRequired failed: %v", err)
 			}
 
-			err = cmi.updateClusterMapLocalCopyIfRequired(false /* sync */)
+			_, _, err = cmi.fetchAndUpdateLocalClusterMap(false /* sync */)
 			if err == nil {
 				consecutiveFailures = 0
 			} else {
-				log.Err("ClusterManager::start: updateClusterMapLocalCopyIfRequired failed: %v",
+				log.Err("ClusterManager::start: fetchAndUpdateLocalClusterMap failed: %v",
 					err)
 				consecutiveFailures++
 				//
@@ -262,20 +264,34 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 	return nil
 }
 
-// Fetch the global clustermap from metadata store and save a local copy.
-// This local copy will be used by the clustermap package to answer various queries on clustermap.
+// Fetch the global clustermap from metadata store, save a local copy and let clustermap package know about
+// the update so that it can then refresh its in-memory copy used for responding to the queries on clustermap.
 //
 // 'sync' parameter decides if the update to the clustermap package is done synchronously. This is required when
 // called from ensureInitialClusterMap() as we want to make sure that before ensureInitialClusterMap() completes
 // the local copy of clustermap is updated in clustermap package, as callers start querying clustermap rightaway.
 //
+// If it's able to successfully fetch the global clustermap, it returns a pointer to the unmarshalled ClusterMap
+// and the Blob etag corresponding to that.
+//
+// Note: Use this instead of directly calling getClusterMap() as it ensures that once it returns we can safely
+//
+//	call various clustermap functions and they will return information as per the latest downloaded clustermap.
+//	This is important, f.e., updateMVList() may be working on the latest clustermap copy and in the process
+//	it may call some clustermap methods hoping to query the latest clustermap, if it calls getClusterMap() to
+//	fetch the latest clustermap, and then calls the clustermap methods, those will be querying not the latest
+//	clustermap downloaded by the last getClusterMap() call but the one that's currently updated with clustermap
+//	package.
+//
 // TODO: Add stats for measuring time taken to download the clustermap, how many times it's downloaded, etc.
-func (cmi *ClusterManager) updateClusterMapLocalCopyIfRequired(sync bool) error {
+func (cmi *ClusterManager) fetchAndUpdateLocalClusterMap(sync bool) (*dcache.ClusterMap, *string, error) {
+	//
 	// 1. Fetch the latest clustermap from metadata store.
+	//
 	storageBytes, etag, err := getClusterMap()
 	if err != nil {
 		err = fmt.Errorf("Failed to fetch clustermap on node %s: %v", cmi.myNodeId, err)
-		log.Err("ClusterManager::updateClusterMapLocalCopyIfRequired: %v", err)
+		log.Err("ClusterManager::fetchAndUpdateLocalClusterMap: %v", err)
 
 		common.Assert(len(storageBytes) == 0)
 		common.Assert(etag == nil)
@@ -284,57 +300,68 @@ func (cmi *ClusterManager) updateClusterMapLocalCopyIfRequired(sync bool) error 
 		// Post that, once cmi.config is set, it should never fail.
 		//
 		common.Assert(cmi.config == nil, err)
-		return err
+		return nil, nil, err
 	}
 
 	if len(storageBytes) == 0 {
 		err = fmt.Errorf("Received empty clustermap on node %s", cmi.myNodeId)
-		log.Err("ClusterManager::updateClusterMapLocalCopyIfRequired: %v", err)
+		log.Err("ClusterManager::fetchAndUpdateLocalClusterMap: %v", err)
 		common.Assert(false, err)
-		return err
+		return nil, nil, err
 	}
 
 	// Successful getClusterMap() must return a valid etag.
-	common.Assert(etag != nil, fmt.Sprintf("expected non-nil ETag on node %s", cmi.myNodeId))
+	common.Assert(etag != nil, cmi.myNodeId, len(storageBytes))
 
-	log.Debug("ClusterManager::updateClusterMapLocalCopyIfRequired: Fetched global clustermap (bytes: %d, etag: %v)",
+	log.Debug("ClusterManager::fetchAndUpdateLocalClusterMap: Fetched global clustermap (bytes: %d, etag: %v)",
 		len(storageBytes), *etag)
 
-	// 2. If we've already loaded this exact version, skip the update.
-	if etag != nil && cmi.localMapETag != nil && *etag == *cmi.localMapETag {
-		log.Debug("ClusterManager::updateClusterMapLocalCopyIfRequired: ETag (%s) unchanged, not updating local clustermap copy",
-			*etag)
-		return nil
-	}
-
-	// 3. Unmarshal the received clustermap.
+	//
+	// 2. Unmarshal the received clustermap.
+	//
 	var storageClusterMap dcache.ClusterMap
 	if err := json.Unmarshal(storageBytes, &storageClusterMap); err != nil {
 		err = fmt.Errorf("Failed to unmarshal clustermap json on node %s: %v", cmi.myNodeId, err)
-		log.Err("ClusterManager::updateClusterMapLocalCopyIfRequired: %v", err)
+		log.Err("ClusterManager::fetchAndUpdateLocalClusterMap: %v", err)
 		common.Assert(false, err)
-		return err
+		return nil, nil, err
 	}
 
 	common.Assert(cm.IsValidClusterMap(&storageClusterMap))
 
-	// 4. Atomically update the local clustermap copy.
+	//
+	// 3. If we've already loaded this exact version, skip the local update.
+	//
+	if etag != nil && cmi.localMapETag != nil && *etag == *cmi.localMapETag {
+		log.Debug("ClusterManager::fetchAndUpdateLocalClusterMap: ETag (%s) unchanged, not updating local clustermap",
+			*etag)
+		return &storageClusterMap, etag, nil
+	}
+
+	//
+	// 4. Atomically update the local clustermap copy, along with localMapETag.
+	//
+	cmi.localMapLock.Lock()
+	defer cmi.localMapLock.Unlock()
+
 	common.Assert(len(cmi.localClusterMapPath) > 0)
 	tmp := cmi.localClusterMapPath + ".tmp"
 	if err := os.WriteFile(tmp, storageBytes, 0644); err != nil {
 		err = fmt.Errorf("WriteFile(%s) failed: %v %+v", tmp, err, storageClusterMap)
-		log.Err("ClusterManager::updateClusterMapLocalCopyIfRequired: %v", err)
+		log.Err("ClusterManager::fetchAndUpdateLocalClusterMap: %v", err)
 		common.Assert(false, err)
-		return err
+		return nil, nil, err
 	} else if err := os.Rename(tmp, cmi.localClusterMapPath); err != nil {
 		err = fmt.Errorf("Rename(%s -> %s) failed: %v %+v",
 			tmp, cmi.localClusterMapPath, err, storageClusterMap)
-		log.Err("ClusterManager::updateClusterMapLocalCopyIfRequired: %v", err)
+		log.Err("ClusterManager::fetchAndUpdateLocalClusterMap: %v", err)
 		common.Assert(false, err)
-		return err
+		return nil, nil, err
 	}
 
+	//
 	// 5. Update in-memory tag.
+	//
 	cmi.localMapETag = etag
 
 	// Once saved, config should not change.
@@ -346,7 +373,7 @@ func (cmi *ClusterManager) updateClusterMapLocalCopyIfRequired(sync bool) error 
 
 	cmi.config = &storageClusterMap.Config
 
-	log.Info("ClusterManager::updateClusterMapLocalCopyIfRequired: Local clustermap updated (bytes: %d, etag: %s)",
+	log.Info("ClusterManager::fetchAndUpdateLocalClusterMap: Local clustermap updated (bytes: %d, etag: %s)",
 		len(storageBytes), *etag)
 
 	//
@@ -361,15 +388,15 @@ func (cmi *ClusterManager) updateClusterMapLocalCopyIfRequired(sync bool) error 
 	if sync {
 		cm.UpdateSync()
 	} else {
-		//TODO{Akku}: Notify only if there is a change in the MVs/RVs.
 		cm.Update()
 	}
 
-	return nil
+	return &storageClusterMap, etag, nil
 }
 
 func (cmi *ClusterManager) updateClusterMapLocalCopySync() error {
-	return cmi.updateClusterMapLocalCopyIfRequired(true /* sync */)
+	_, _, err := cmi.fetchAndUpdateLocalClusterMap(true /* sync */)
+	return err
 }
 
 // Stop ClusterManager.
@@ -582,7 +609,7 @@ func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, err
 			}
 
 			//
-			// This implies some other error in updateClusterMapLocalCopyIfRequired(), maybe clustermap
+			// This implies some other error in fetchAndUpdateLocalClusterMap(), maybe clustermap
 			// unmarshal failed, or some other error. In any case we cannot query clustermap and hence not
 			// safe to proceed.
 			//
@@ -811,7 +838,13 @@ UpdateLocalClusterMapAndPunchInitialHeartbeat:
 	// We ask for sync notification to clustermap package as we want to be sure that clustermap
 	// package is ready for responding to queries on clustermap, as soon as we return from here.
 	//
-	cmi.updateClusterMapLocalCopyIfRequired(true /* sync */)
+	_, _, err = cmi.fetchAndUpdateLocalClusterMap(true /* sync */)
+	if err != nil {
+		log.Err("ClusterManager::ensureInitialClusterMap: fetchAndUpdateLocalClusterMap() failed: %v",
+			err)
+		common.Assert(false, err)
+		return err
+	}
 
 	// TODO: Assert that clustermap has our local RVs.
 	common.Assert(cmi.config != nil)
@@ -834,32 +867,13 @@ func (cmi *ClusterManager) updateStorageClusterMapWithMyRVs() error {
 			return fmt.Errorf("ClusterManager::updateStorageClusterMapWithMyRVs: Exceeded maxWait")
 		}
 
-		clusterMapBytes, etag, err := getClusterMap()
+		clusterMap, etag, err := cmi.fetchAndUpdateLocalClusterMap(false /* sync */)
 		if err != nil {
-			log.Err("ClusterManager::updateStorageClusterMapWithMyRVs: getClusterMap() failed: %v", err)
+			log.Err("ClusterManager::updateStorageClusterMapWithMyRVs: fetchAndUpdateLocalClusterMap() failed: %v",
+				err)
 			common.Assert(false, err)
 			return err
 		}
-
-		common.Assert(len(clusterMapBytes) > 0)
-		common.Assert(etag != nil && len(*etag) > 0)
-
-		log.Debug("ClusterManager::updateStorageClusterMapWithMyRVs: Fetched clusterMap (bytes: %d, etag: %v)",
-			len(clusterMapBytes), *etag)
-
-		var clusterMap dcache.ClusterMap
-		if err := json.Unmarshal(clusterMapBytes, &clusterMap); err != nil {
-			log.Err("ClusterManager::updateStorageClusterMapWithMyRVs: Failed to unmarshal clusterMapBytes: %d, error: %v",
-				len(clusterMapBytes), err)
-			common.Assert(false, err)
-			return err
-		}
-
-		// Must be a valid clustermap.
-		common.Assert(cm.IsValidClusterMap(&clusterMap))
-
-		cmi.config = &clusterMap.Config
-		common.Assert(cm.IsValidDcacheConfig(cmi.config))
 
 		//
 		// Now we want to add our RVs to the clustermap RV list.
@@ -952,6 +966,8 @@ func (cmi *ClusterManager) checkIfClusterMapExists() (bool, error) {
 	return true, nil
 }
 
+// This should only be called from fetchAndUpdateLocalClusterMap(), all other users must call
+// fetchAndUpdateLocalClusterMap().
 var getClusterMap = func() ([]byte, *string, error) {
 	return mm.GetClusterMap()
 }
@@ -1005,35 +1021,17 @@ func (cmi *ClusterManager) punchHeartBeat(myRVs []dcache.RawVolume) error {
 // This is no doubt the most important task done by clustermanager.
 // It queries all the heartbeats present and updates clustermap's RV list and MV list accordingly.
 func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
-	clusterMapBytes, etag, err := getClusterMap()
+	//
+	// Fetch the latest clustermap with sync set to true as we may want to query clustermap from some of the
+	// functions we call later down.
+	//
+	clusterMap, etag, err := cmi.fetchAndUpdateLocalClusterMap(true /* sync */)
 	if err != nil {
-		log.Err("ClusterManager::updateStorageClusterMapIfRequired: getClusterMap() failed: %v", err)
+		log.Err("ClusterManager::updateStorageClusterMapIfRequired: fetchAndUpdateLocalClusterMap() failed: %v",
+			err)
 		common.Assert(false, err)
 		return err
 	}
-
-	if len(clusterMapBytes) == 0 {
-		err = fmt.Errorf("Received empty clustermap on node %s", cmi.myNodeId)
-		log.Err("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
-		common.Assert(false, err)
-		return err
-	}
-
-	// Successful getClusterMap() must return a valid etag.
-	common.Assert(etag != nil, cmi.myNodeId, len(clusterMapBytes))
-
-	log.Debug("ClusterManager::updateStorageClusterMapIfRequired: Fetched global clustermap (bytes: %d, etag: %v)",
-		len(clusterMapBytes), *etag)
-
-	var clusterMap dcache.ClusterMap
-	if err := json.Unmarshal(clusterMapBytes, &clusterMap); err != nil {
-		err = fmt.Errorf("Failed to unmarshal clusterMapBytes (%d): %v", len(clusterMapBytes), err)
-		log.Err("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
-		common.Assert(false, err)
-		return err
-	}
-
-	common.Assert(cm.IsValidClusterMap(&clusterMap))
 
 	//
 	// The node that updated the clusterMap last is preferred over others, for updating the clusterMap.
@@ -2360,26 +2358,13 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, rvName string, 
 		}
 
 		// Get most recent clustermap copy, then we will update the requested MV and publish it.
-		clusterMapBytes, etag, err := getClusterMap()
+		clusterMap, etag, err := cmi.fetchAndUpdateLocalClusterMap(false /* sync */)
 		if err != nil {
-			log.Err("ClusterManager::updateComponentRVState: getClusterMap() failed: %v", err)
+			log.Err("ClusterManager::updateComponentRVState: fetchAndUpdateLocalClusterMap() failed: %v",
+				err)
 			common.Assert(false, err)
 			return err
 		}
-
-		common.Assert(len(clusterMapBytes) > 0)
-		common.Assert(etag != nil && len(*etag) > 0)
-
-		var clusterMap dcache.ClusterMap
-		if err := json.Unmarshal(clusterMapBytes, &clusterMap); err != nil {
-			log.Err("ClusterManager::updateComponentRVState: Failed to unmarshal clusterMapBytes (%d): %v [%x]",
-				len(clusterMapBytes), err, clusterMapBytes)
-			common.Assert(false, err)
-			return err
-		}
-
-		// Must be a valid clustermap.
-		common.Assert(cm.IsValidClusterMap(&clusterMap))
 
 		// If clustermap is being updated by some other node, wait and restart.
 		if clusterMap.State == dcache.StateChecking {
@@ -2492,7 +2477,8 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, rvName string, 
 	}
 
 	// Update local copy.
-	return cmi.updateClusterMapLocalCopyIfRequired(false /* not sync */)
+	_, _, err := cmi.fetchAndUpdateLocalClusterMap(false /* not sync */)
+	return err
 }
 
 var (
