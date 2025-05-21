@@ -38,6 +38,8 @@ package models
 import (
 	"bytes"
 	"context"
+	"database/sql/driver"
+	"errors"
 	"fmt"
 	thrift "github.com/apache/thrift/lib/go/thrift"
 	"time"
@@ -49,6 +51,94 @@ var _ = fmt.Printf
 var _ = context.Background
 var _ = time.Now
 var _ = bytes.Equal
+
+type ErrorCode int64
+
+const (
+	ErrorCode_InvalidRequest          ErrorCode = 1
+	ErrorCode_InvalidRVID             ErrorCode = 2
+	ErrorCode_InvalidRV               ErrorCode = 3
+	ErrorCode_InternalServerError     ErrorCode = 4
+	ErrorCode_ChunkNotFound           ErrorCode = 5
+	ErrorCode_ChunkAlreadyExists      ErrorCode = 6
+	ErrorCode_MaxMVsExceeded          ErrorCode = 7
+	ErrorCode_NeedToRefreshClusterMap ErrorCode = 8
+)
+
+func (p ErrorCode) String() string {
+	switch p {
+	case ErrorCode_InvalidRequest:
+		return "InvalidRequest"
+	case ErrorCode_InvalidRVID:
+		return "InvalidRVID"
+	case ErrorCode_InvalidRV:
+		return "InvalidRV"
+	case ErrorCode_InternalServerError:
+		return "InternalServerError"
+	case ErrorCode_ChunkNotFound:
+		return "ChunkNotFound"
+	case ErrorCode_ChunkAlreadyExists:
+		return "ChunkAlreadyExists"
+	case ErrorCode_MaxMVsExceeded:
+		return "MaxMVsExceeded"
+	case ErrorCode_NeedToRefreshClusterMap:
+		return "NeedToRefreshClusterMap"
+	}
+	return "<UNSET>"
+}
+
+func ErrorCodeFromString(s string) (ErrorCode, error) {
+	switch s {
+	case "InvalidRequest":
+		return ErrorCode_InvalidRequest, nil
+	case "InvalidRVID":
+		return ErrorCode_InvalidRVID, nil
+	case "InvalidRV":
+		return ErrorCode_InvalidRV, nil
+	case "InternalServerError":
+		return ErrorCode_InternalServerError, nil
+	case "ChunkNotFound":
+		return ErrorCode_ChunkNotFound, nil
+	case "ChunkAlreadyExists":
+		return ErrorCode_ChunkAlreadyExists, nil
+	case "MaxMVsExceeded":
+		return ErrorCode_MaxMVsExceeded, nil
+	case "NeedToRefreshClusterMap":
+		return ErrorCode_NeedToRefreshClusterMap, nil
+	}
+	return ErrorCode(0), fmt.Errorf("not a valid ErrorCode string")
+}
+
+func ErrorCodePtr(v ErrorCode) *ErrorCode { return &v }
+
+func (p ErrorCode) MarshalText() ([]byte, error) {
+	return []byte(p.String()), nil
+}
+
+func (p *ErrorCode) UnmarshalText(text []byte) error {
+	q, err := ErrorCodeFromString(string(text))
+	if err != nil {
+		return err
+	}
+	*p = q
+	return nil
+}
+
+func (p *ErrorCode) Scan(value interface{}) error {
+	v, ok := value.(int64)
+	if !ok {
+		return errors.New("Scan value is not int64")
+	}
+	*p = ErrorCode(v)
+	return nil
+}
+
+func (p *ErrorCode) Value() (driver.Value, error) {
+	if p == nil {
+		return nil, nil
+	}
+	return int64(*p), nil
+}
 
 // Attributes:
 //   - SenderNodeID
@@ -4507,3 +4597,169 @@ func (p *EndSyncResponse) String() string {
 	}
 	return fmt.Sprintf("EndSyncResponse(%+v)", *p)
 }
+
+// Attributes:
+//   - Code
+//   - Message
+type ResponseError struct {
+	Code    ErrorCode `thrift:"code,1" db:"code" json:"code"`
+	Message string    `thrift:"message,2" db:"message" json:"message"`
+}
+
+func NewResponseError() *ResponseError {
+	return &ResponseError{}
+}
+
+func (p *ResponseError) GetCode() ErrorCode {
+	return p.Code
+}
+
+func (p *ResponseError) GetMessage() string {
+	return p.Message
+}
+func (p *ResponseError) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 1:
+			if fieldTypeId == thrift.I32 {
+				if err := p.ReadField1(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 2:
+			if fieldTypeId == thrift.STRING {
+				if err := p.ReadField2(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *ResponseError) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadI32(ctx); err != nil {
+		return thrift.PrependError("error reading field 1: ", err)
+	} else {
+		temp := ErrorCode(v)
+		p.Code = temp
+	}
+	return nil
+}
+
+func (p *ResponseError) ReadField2(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadString(ctx); err != nil {
+		return thrift.PrependError("error reading field 2: ", err)
+	} else {
+		p.Message = v
+	}
+	return nil
+}
+
+func (p *ResponseError) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "ResponseError"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField1(ctx, oprot); err != nil {
+			return err
+		}
+		if err := p.writeField2(ctx, oprot); err != nil {
+			return err
+		}
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *ResponseError) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "code", thrift.I32, 1); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:code: ", p), err)
+	}
+	if err := oprot.WriteI32(ctx, int32(p.Code)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.code (1) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:code: ", p), err)
+	}
+	return err
+}
+
+func (p *ResponseError) writeField2(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "message", thrift.STRING, 2); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 2:message: ", p), err)
+	}
+	if err := oprot.WriteString(ctx, string(p.Message)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.message (2) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 2:message: ", p), err)
+	}
+	return err
+}
+
+func (p *ResponseError) Equals(other *ResponseError) bool {
+	if p == other {
+		return true
+	} else if p == nil || other == nil {
+		return false
+	}
+	if p.Code != other.Code {
+		return false
+	}
+	if p.Message != other.Message {
+		return false
+	}
+	return true
+}
+
+func (p *ResponseError) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("ResponseError(%+v)", *p)
+}
+
+func (p *ResponseError) Error() string {
+	return p.String()
+}
+
+func (ResponseError) TExceptionType() thrift.TExceptionType {
+	return thrift.TExceptionTypeCompiled
+}
+
+var _ thrift.TException = (*ResponseError)(nil)

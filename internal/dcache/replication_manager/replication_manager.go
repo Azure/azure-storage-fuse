@@ -360,7 +360,7 @@ retry:
 				}
 
 				// The error is RPC error of type *rpc.ResponseError.
-				if rpcErr.Code() == rpc.NeedToRefreshClusterMap {
+				if rpcErr.GetCode() == models.ErrorCode_NeedToRefreshClusterMap {
 					// TODO: Should we allow more than one clustermap refresh?
 					if clusterMapRefreshed > 0 {
 						log.Err("ReplicationManager::WriteMV: Failed after refreshing clustermap")

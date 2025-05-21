@@ -69,7 +69,7 @@ func newClientPool(maxPerNode uint32, maxNodes uint32, timeout uint32) *clientPo
 	// TODO: start a goroutine to periodically close inactive RPC clients
 }
 
-// getRPCClient retrieves an RPC client from the pool for the specified node ID.
+// getRPCClientNoLock retrieves an RPC client from the pool for the specified node ID.
 // If the client pool for nodeID is not is not available (not created yet or was cleaned up due to pressure),
 // a new pool is created, replenished with cp.maxPerNode clients and a client returned.
 //
@@ -77,18 +77,18 @@ func newClientPool(maxPerNode uint32, maxNodes uint32, timeout uint32) *clientPo
 //
 //	You may want to use getRPCClient().
 func (cp *clientPool) getRPCClientNoLock(nodeID string) (*rpcClient, error) {
-	log.Debug("clientPool::getRPCClient: Retrieving rpc client for node %s", nodeID)
+	log.Debug("clientPool::getRPCClientNoLock: Retrieving rpc client for node %s", nodeID)
 
 	var ncPool *nodeClientPool
 	ncPool, exists := cp.clients[nodeID]
 	if !exists {
 		if len(cp.clients) >= int(cp.maxNodes) {
 			// TODO: remove this and rely on the closeInactiveRPCClients to close inactive clients
-			// GetRPCClient should be small and fast, refer https://github.com/Azure/azure-storage-fuse/pull/1684#discussion_r2047993390
-			log.Debug("clientPool::getRPCClient: Maximum number of nodes reached, evict LRU node client pool")
+			// getRPCClientNoLock should be small and fast, refer https://github.com/Azure/azure-storage-fuse/pull/1684#discussion_r2047993390
+			log.Debug("clientPool::getRPCClientNoLock: Maximum number of nodes reached, evict LRU node client pool")
 			err := cp.closeLRUCNodeClientPool()
 			if err != nil {
-				log.Err("clientPool::getRPCClient: Failed to close LRU node client pool: %v",
+				log.Err("clientPool::getRPCClientNoLock: Failed to close LRU node client pool: %v",
 					err)
 				return nil, err
 			}
@@ -108,7 +108,7 @@ func (cp *clientPool) getRPCClientNoLock(nodeID string) (*rpcClient, error) {
 		ncPool.numActive.Add(1)
 		return client, nil
 	default:
-		log.Err("clientPool::getRPCClient: No available RPC client in the pool for node %s", nodeID)
+		log.Err("clientPool::getRPCClientNoLock: No available RPC client in the pool for node %s", nodeID)
 		return nil, fmt.Errorf("no available RPC client in the pool for node %s", nodeID)
 	}
 }
@@ -154,7 +154,7 @@ func (cp *clientPool) closeRPCClient(client *rpcClient) error {
 
 	err := client.close()
 	if err != nil {
-		err = fmt.Errorf("Failed to close RPC client to %s node %s: %v",
+		err = fmt.Errorf("failed to close RPC client to %s node %s: %v",
 			client.nodeAddress, client.nodeID, err)
 		log.Err("nodeClientPool::closeRPCClient: %v", err)
 		common.Assert(false, err)
@@ -277,7 +277,7 @@ func (cp *clientPool) resetAllRPCClients(client *rpcClient) error {
 	//
 	err := cp.resetRPCClientInternal(client, false /* needLock */)
 	if err != nil {
-		err = fmt.Errorf("Failed to reset RPC client to %s node %s: %v",
+		err = fmt.Errorf("failed to reset RPC client to %s node %s: %v",
 			client.nodeAddress, client.nodeID, err)
 		log.Err("clientPool::resetAllRPCClients: %v", err)
 		// Connection refused is the only viable error. Assert to know if anything else happens.

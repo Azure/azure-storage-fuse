@@ -229,14 +229,14 @@ func GetDiskUsageOfMV(mvName string, rvName string) (int64, error) {
 	if rvInfo == nil {
 		log.Err("utils::GetDiskUsageOfMV: Invalid RV %s", rvName)
 		common.Assert(false, fmt.Sprintf("invalid RV %s", rvName))
-		return 0, rpc.NewResponseError(rpc.InvalidRV, fmt.Sprintf("invalid RV %s", rvName))
+		return 0, rpc.NewResponseError(models.ErrorCode_InvalidRV, fmt.Sprintf("invalid RV %s", rvName))
 	}
 
 	mvInfo := rvInfo.getMVInfo(mvName)
 	if mvInfo == nil {
 		log.Err("utils::GetDiskUsageOfMV: Invalid MV %s", mvName)
 		common.Assert(false, fmt.Sprintf("invalid MV %s", mvName))
-		return 0, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("invalid MV %s", mvName))
+		return 0, rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, fmt.Sprintf("invalid MV %s", mvName))
 	}
 
 	return mvInfo.totalChunkBytes.Load(), nil
