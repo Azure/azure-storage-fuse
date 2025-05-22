@@ -1550,7 +1550,7 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 		return nil, rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
 	}
 
-	err = mvInfo.validateComponentRVsInSync(req.ComponentRV, req.SourceRVName, req.TargetRVName, true)
+	err = mvInfo.validateComponentRVsInSync(req.ComponentRV, req.SourceRVName, req.TargetRVName, true /* isStartSync */)
 	if err != nil {
 		errStr := fmt.Sprintf("Failed to validate component RVs in sync [%v]", err)
 		log.Err("ChunkServiceHandler::StartSync: %s", errStr)
@@ -1655,7 +1655,7 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 		return nil, rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
 	}
 
-	err = mvInfo.validateComponentRVsInSync(req.ComponentRV, req.SourceRVName, req.TargetRVName, false)
+	err = mvInfo.validateComponentRVsInSync(req.ComponentRV, req.SourceRVName, req.TargetRVName, false /* isStartSync */)
 	if err != nil {
 		errStr := fmt.Sprintf("Failed to validate component RVs in sync [%v]", err)
 		log.Err("ChunkServiceHandler::EndSync: %s", errStr)
