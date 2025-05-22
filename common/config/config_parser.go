@@ -389,6 +389,10 @@ func AddDurationFlag(name string, value time.Duration, usage string) *pflag.Flag
 	return userOptions.flags.Lookup(name)
 }
 
+func GetFlag(name string) *pflag.Flag {
+	return userOptions.flags.Lookup(name)
+}
+
 func RegisterFlagCompletionFunc(flagName string, completionFunc func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective)) {
 	userOptions.completionFuncMap[flagName] = completionFunc
 }
