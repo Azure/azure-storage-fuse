@@ -498,7 +498,7 @@ func syncMV(mvName string, mvInfo dcache.MirroredVolume) {
 	// TODO: Make sure GetDiskUsageOfMV() correctly returns the to-be-synced data, i.e., data in the regular
 	//       MV folder.
 	//
-	syncSize, err := rpc_server.GetDiskUsageOfMV(mvName, lioRV)
+	syncSize, err := rpc_server.GetMyMVSize(mvName, lioRV)
 	if err != nil {
 		err = fmt.Errorf("failed to get disk usage of %s/%s [%v]", lioRV, mvName, err)
 		log.Err("ReplicationManager::syncMV: %v", err)
