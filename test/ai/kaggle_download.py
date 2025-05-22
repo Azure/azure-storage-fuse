@@ -14,6 +14,6 @@ api = kaggle.KaggleApi()
 api.authenticate()
 
 print("Downloading dataset.")
-kaggle.api.dataset_download_files("miguelcalado/resnet50rafa", path="/mnt/blobfuse/mnt/resnet50rafa", unzip=True)
+api.dataset_download_files("miguelcalado/resnet50rafa", path="/mnt/blobfuse/mnt/resnet50rafa", unzip=True)
 
 
