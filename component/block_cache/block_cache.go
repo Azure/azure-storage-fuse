@@ -2001,8 +2001,6 @@ func init() {
 	strongConsistency := config.AddBoolFlag("block-cache-strong-consistency", false, "Enable strong data consistency for block cache.")
 	config.BindPFlag(compName+".consistency", strongConsistency)
 
-	// Use BindPFlag for cleanup-on-start to match the configuration parameter name
-	// Add a new CLI flag specific for block_cache
-	cleanupOnStart := config.AddBoolFlag("cleanup-on-start", false, "Clear block cache directory on startup if not empty.")
-	config.BindPFlag(compName+".cleanup-on-start", cleanupOnStart)
+	// Bind the global cleanup-on-start flag to the component config
+	config.BindPFlag(compName+".cleanup-on-start", config.GetFlag("cleanup-on-start"))
 }

@@ -125,10 +125,14 @@ func (opt *mountOptions) validate(skipNonEmptyMount bool) error {
 			var fileCachePath string
 			_ = config.UnmarshalKey("file_cache.path", &fileCachePath)
 
+			// Check for global cleanup-on-start flag first, then component-specific setting
+			var cleanupOnStart bool
+			_ = config.UnmarshalKey("cleanup-on-start", &cleanupOnStart)
+
 			var fileCleanupOnStart bool
 			_ = config.UnmarshalKey("file_cache.cleanup-on-start", &fileCleanupOnStart)
 
-			if fileCachePath != "" && fileCleanupOnStart {
+			if fileCachePath != "" && (cleanupOnStart || fileCleanupOnStart) {
 				if err = common.TempCacheCleanup(fileCachePath); err != nil {
 					return fmt.Errorf("failed to cleanup file cache [%s]", err.Error())
 				}
@@ -141,7 +145,7 @@ func (opt *mountOptions) validate(skipNonEmptyMount bool) error {
 			var blockCleanupOnStart bool
 			_ = config.UnmarshalKey("block_cache.cleanup-on-start", &blockCleanupOnStart)
 
-			if blockCachePath != "" && blockCleanupOnStart {
+			if blockCachePath != "" && (cleanupOnStart || blockCleanupOnStart) {
 				if err = common.TempCacheCleanup(blockCachePath); err != nil {
 					return fmt.Errorf("failed to cleanup block cache [%s]", err.Error())
 				}
@@ -764,6 +768,10 @@ func init() {
 	_ = mountCmd.RegisterFlagCompletionFunc("log-type", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return []string{"silent", "base", "syslog"}, cobra.ShellCompDirectiveNoFileComp
 	})
+	
+	// Add a generic cleanup-on-start flag that applies to all cache components
+	mountCmd.PersistentFlags().Bool("cleanup-on-start", false, "Clear cache directory on startup if not empty for file_cache and block_cache components.")
+	config.BindPFlag("cleanup-on-start", mountCmd.PersistentFlags().Lookup("cleanup-on-start"))
 
 	mountCmd.PersistentFlags().String("log-level", "LOG_WARNING",
 		"Enables logs written to syslog. Set to LOG_WARNING by default. Allowed values are LOG_OFF|LOG_CRIT|LOG_ERR|LOG_WARNING|LOG_INFO|LOG_DEBUG")

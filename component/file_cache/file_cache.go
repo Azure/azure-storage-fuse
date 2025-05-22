@@ -1641,6 +1641,9 @@ func init() {
 	emptyDirCheck := config.AddBoolFlag("empty-dir-check", false, "Disallows remounting using a non-empty tmp-path.")
 	config.BindPFlag(compName+".empty-dir-check", emptyDirCheck)
 	emptyDirCheck.Hidden = true
+	
+	// Bind the global cleanup-on-start flag to the component config
+	config.BindPFlag(compName+".cleanup-on-start", config.GetFlag("cleanup-on-start"))
 
 	backgroundDownload := config.AddBoolFlag("background-download", false, "File download to run in the background on open call.")
 	config.BindPFlag(compName+".background-download", backgroundDownload)
