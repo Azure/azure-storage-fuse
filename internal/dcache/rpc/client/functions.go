@@ -98,7 +98,7 @@ func Hello(ctx context.Context, targetNodeID string, req *models.HelloRequest) (
 					// Connection refused and timeout are the only viable errors.
 					// Assert to know if anything else happens.
 					//
-					common.Assert(rpc.IsConnectionRefused(err) || rpc.IsTimedOut(err), err)
+					common.Assert(rpc.IsConnectionRefused(err1) || rpc.IsTimedOut(err1), err1)
 					return nil, err
 				}
 
@@ -175,7 +175,7 @@ func GetChunk(ctx context.Context, targetNodeID string, req *models.GetChunkRequ
 					// Connection refused and timeout are the only viable errors.
 					// Assert to know if anything else happens.
 					//
-					common.Assert(rpc.IsConnectionRefused(err) || rpc.IsTimedOut(err), err)
+					common.Assert(rpc.IsConnectionRefused(err1) || rpc.IsTimedOut(err1), err1)
 					return nil, err
 				}
 
@@ -252,7 +252,7 @@ func PutChunk(ctx context.Context, targetNodeID string, req *models.PutChunkRequ
 					// Connection refused and timeout are the only viable errors.
 					// Assert to know if anything else happens.
 					//
-					common.Assert(rpc.IsConnectionRefused(err) || rpc.IsTimedOut(err), err)
+					common.Assert(rpc.IsConnectionRefused(err1) || rpc.IsTimedOut(err1), err1)
 					return nil, err
 				}
 
@@ -329,7 +329,7 @@ func RemoveChunk(ctx context.Context, targetNodeID string, req *models.RemoveChu
 					// Connection refused and timeout are the only viable errors.
 					// Assert to know if anything else happens.
 					//
-					common.Assert(rpc.IsConnectionRefused(err) || rpc.IsTimedOut(err), err)
+					common.Assert(rpc.IsConnectionRefused(err1) || rpc.IsTimedOut(err1), err1)
 					return nil, err
 				}
 
@@ -406,7 +406,7 @@ func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest)
 					// Connection refused and timeout are the only viable errors.
 					// Assert to know if anything else happens.
 					//
-					common.Assert(rpc.IsConnectionRefused(err) || rpc.IsTimedOut(err), err)
+					common.Assert(rpc.IsConnectionRefused(err1) || rpc.IsTimedOut(err1), err1)
 					return nil, err
 				}
 
@@ -483,7 +483,7 @@ func UpdateMV(ctx context.Context, targetNodeID string, req *models.UpdateMVRequ
 					// Connection refused and timeout are the only viable errors.
 					// Assert to know if anything else happens.
 					//
-					common.Assert(rpc.IsConnectionRefused(err) || rpc.IsTimedOut(err), err)
+					common.Assert(rpc.IsConnectionRefused(err1) || rpc.IsTimedOut(err1), err1)
 					return nil, err
 				}
 
@@ -560,7 +560,7 @@ func LeaveMV(ctx context.Context, targetNodeID string, req *models.LeaveMVReques
 					// Connection refused and timeout are the only viable errors.
 					// Assert to know if anything else happens.
 					//
-					common.Assert(rpc.IsConnectionRefused(err) || rpc.IsTimedOut(err), err)
+					common.Assert(rpc.IsConnectionRefused(err1) || rpc.IsTimedOut(err1), err1)
 					return nil, err
 				}
 
@@ -637,7 +637,7 @@ func StartSync(ctx context.Context, targetNodeID string, req *models.StartSyncRe
 					// Connection refused and timeout are the only viable errors.
 					// Assert to know if anything else happens.
 					//
-					common.Assert(rpc.IsConnectionRefused(err) || rpc.IsTimedOut(err), err)
+					common.Assert(rpc.IsConnectionRefused(err1) || rpc.IsTimedOut(err1), err1)
 					return nil, err
 				}
 
@@ -714,7 +714,7 @@ func EndSync(ctx context.Context, targetNodeID string, req *models.EndSyncReques
 					// Connection refused and timeout are the only viable errors.
 					// Assert to know if anything else happens.
 					//
-					common.Assert(rpc.IsConnectionRefused(err) || rpc.IsTimedOut(err), err)
+					common.Assert(rpc.IsConnectionRefused(err1) || rpc.IsTimedOut(err1), err1)
 					return nil, err
 				}
 
