@@ -53,7 +53,6 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
-	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 	rpc_server "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/server"
@@ -79,7 +78,7 @@ type ClusterManager struct {
 	localClusterMapPath string
 	// ETag of the most recent clustermap saved in localClusterMapPath.
 	localMapETag *string
-	// Mutex for synchronizing updates to localClusterMapPath, localMapETag and clustermap.
+	// Mutex for synchronizing updates to localClusterMapPath, localMapETag and the cached copy in clustermap package.
 	localMapLock sync.Mutex
 	// RPC server running on this node.
 	// It'll respond to RPC queries made from other nodes.
@@ -267,10 +266,10 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 
 // Fetch the global clustermap from metadata store, save a local copy and let clustermap package know about
 // the update so that it can then refresh its in-memory copy used for responding to the queries on clustermap.
-//
 // 'sync' parameter decides if the update to the clustermap package is done synchronously. This is required when
-// called from ensureInitialClusterMap() as we want to make sure that before ensureInitialClusterMap() completes
-// the local copy of clustermap is updated in clustermap package, as callers start querying clustermap rightaway.
+// called from ensureInitialClusterMap() (and some other places) as we want to make sure that before
+// ensureInitialClusterMap() completes the local copy of clustermap is updated in clustermap package, as callers
+// start querying clustermap rightaway.
 //
 // If it's able to successfully fetch the global clustermap, it returns a pointer to the unmarshalled ClusterMap
 // and the Blob etag corresponding to that.
@@ -330,21 +329,24 @@ func (cmi *ClusterManager) fetchAndUpdateLocalClusterMap(sync bool) (*dcache.Clu
 
 	common.Assert(cm.IsValidClusterMap(&storageClusterMap))
 
+	cmi.localMapLock.Lock()
+	defer cmi.localMapLock.Unlock()
+
 	//
 	// 3. If we've already loaded this exact version, skip the local update.
 	//
 	if etag != nil && cmi.localMapETag != nil && *etag == *cmi.localMapETag {
 		log.Debug("ClusterManager::fetchAndUpdateLocalClusterMap: ETag (%s) unchanged, not updating local clustermap",
 			*etag)
+		// Cache config must have been saved when we saved the clustermap.
+		common.Assert(cmi.config != nil)
+		common.Assert(cm.IsValidDcacheConfig(cmi.config))
 		return &storageClusterMap, etag, nil
 	}
 
 	//
-	// 4. Atomically update the local clustermap copy, along with localMapETag.
+	// 4. Atomically update the local clustermap copy, along with corresponding localMapETag.
 	//
-	cmi.localMapLock.Lock()
-	defer cmi.localMapLock.Unlock()
-
 	common.Assert(len(cmi.localClusterMapPath) > 0)
 	tmp := cmi.localClusterMapPath + ".tmp"
 	if err := os.WriteFile(tmp, storageBytes, 0644); err != nil {
@@ -370,9 +372,10 @@ func (cmi *ClusterManager) fetchAndUpdateLocalClusterMap(sync bool) (*dcache.Clu
 		common.Assert(*cmi.config == storageClusterMap.Config,
 			fmt.Sprintf("Saved config does not match the one received in clustermap: %+v -> %+v",
 				*cmi.config, storageClusterMap.Config))
+	} else {
+		cmi.config = &storageClusterMap.Config
+		common.Assert(cm.IsValidDcacheConfig(cmi.config))
 	}
-
-	cmi.config = &storageClusterMap.Config
 
 	log.Info("ClusterManager::fetchAndUpdateLocalClusterMap: Local clustermap updated (bytes: %d, etag: %s)",
 		len(storageBytes), *etag)
@@ -837,7 +840,7 @@ UpdateLocalClusterMapAndPunchInitialHeartbeat:
 	//
 	// Save local copy of the clustermap.
 	// We ask for sync notification to clustermap package as we want to be sure that clustermap
-	// package is ready for responding to queries on clustermap, as soon as we return from here.
+	// package is ready for responding to queries on clustermap, as soon as we return from ensureInitialClusterMap().
 	//
 	_, _, err = cmi.fetchAndUpdateLocalClusterMap(true /* sync */)
 	if err != nil {
@@ -2097,12 +2100,6 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume, reser
 		if err != nil {
 			err = fmt.Errorf("Error %s MV %s with RV %s: %v", action, mvName, rv.Name, err)
 			log.Err("ClusterManagerImpl::joinMV: %v", err)
-			//
-			// If the remote blobfuse process stops/restarts before it could respond to the RPC, we will
-			// get an EOF error. If the node shuts down we will get a timed out error, other than that
-			// we don't expect any other errors, assert to see if we get any other error.
-			//
-			common.Assert(rpc.IsConnectionClosed(err) || rpc.IsTimedOut(err), err)
 			return rv.Name, err
 		}
 	}

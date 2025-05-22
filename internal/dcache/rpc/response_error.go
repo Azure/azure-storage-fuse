@@ -66,6 +66,12 @@ func GetRPCResponseError(err error) *models.ResponseError {
 	return respErr
 }
 
+// Check if the error returned by thrift is due to the RPC server returning some error, and not due to
+// some n/w condition.
+func IsRPCError(err error) bool {
+	return (GetRPCResponseError(err) != nil)
+}
+
 // Check if the error returned by thrift indicates connection terminated/reset by server.
 // This usually happens when we setup a connection (mostly the pool of connections) with a peer node and the
 // blobfuse process on that node stops/restarts. Later when we send a request over those connections, the
@@ -132,6 +138,7 @@ func IsConnectionRefused(err error) bool {
 }
 
 // Check if the error returned by thrift indicates timeout.
+// This can happen if say the node is down or unreachable over the n/w.
 func IsTimedOut(err error) bool {
 	common.Assert(err != nil)
 
