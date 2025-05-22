@@ -239,7 +239,8 @@ func DeleteDcacheFile(fileName string) error {
 		return syscall.ENOTSUP
 	} else if fileState == dcache.Deleting {
 		// This should not happen in a single node, as the file attr would always be checked before doing a unlink call.
-		// but it might be possilble to be in this situation if attributes are cached by fuse and file was deleted by another node.
+		// but it might be possilble to be in this situation if attributes are cached by fuse and file was deleted by
+		// another node.
 		err := fmt.Errorf("Deleting the file: %s which was already deleted", fileName)
 		log.Err("DistributedCache::DeleteDcacheFile: err: %v", err)
 		common.Assert(false, err)
