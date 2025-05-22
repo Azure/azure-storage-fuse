@@ -122,15 +122,28 @@ func (opt *mountOptions) validate(skipNonEmptyMount bool) error {
 			}
 
 			// Clean up the file-cache temp directory if any
-			var tempCachePath string
-			_ = config.UnmarshalKey("file_cache.path", &tempCachePath)
+			var fileCachePath string
+			_ = config.UnmarshalKey("file_cache.path", &fileCachePath)
 
-			var cleanupOnStart bool
-			_ = config.UnmarshalKey("file_cache.cleanup-on-start", &cleanupOnStart)
+			var fileCleanupOnStart bool
+			_ = config.UnmarshalKey("file_cache.cleanup-on-start", &fileCleanupOnStart)
 
-			if tempCachePath != "" && cleanupOnStart {
-				if err = common.TempCacheCleanup(tempCachePath); err != nil {
+			if fileCachePath != "" && fileCleanupOnStart {
+				if err = common.TempCacheCleanup(fileCachePath); err != nil {
 					return fmt.Errorf("failed to cleanup file cache [%s]", err.Error())
+				}
+			}
+			
+			// Clean up the block-cache temp directory if any
+			var blockCachePath string
+			_ = config.UnmarshalKey("block_cache.path", &blockCachePath)
+
+			var blockCleanupOnStart bool
+			_ = config.UnmarshalKey("block_cache.cleanup-on-start", &blockCleanupOnStart)
+
+			if blockCachePath != "" && blockCleanupOnStart {
+				if err = common.TempCacheCleanup(blockCachePath); err != nil {
+					return fmt.Errorf("failed to cleanup block cache [%s]", err.Error())
 				}
 			}
 		}

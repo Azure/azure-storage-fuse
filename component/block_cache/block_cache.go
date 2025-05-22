@@ -1998,4 +1998,8 @@ func init() {
 
 	strongConsistency := config.AddBoolFlag("block-cache-strong-consistency", false, "Enable strong data consistency for block cache.")
 	config.BindPFlag(compName+".consistency", strongConsistency)
+
+	cleanupOnStart := config.AddBoolFlag("empty-dir-check", false, "Disallows remounting using a non-empty tmp-path.")
+	config.BindPFlag(compName+".cleanup-on-start", cleanupOnStart)
+	cleanupOnStart.Hidden = true
 }
