@@ -317,8 +317,12 @@ func (cp *clientPool) resetAllRPCClients(client *rpcClient) error {
 			//
 			log.Err("clientPool::resetAllRPCClients: Failed to reset RPC client to %s node %s: %v",
 				client.nodeAddress, client.nodeID, err)
-			// Connection refused is the only viable error. Assert to know if anything else happens.
-			common.Assert(rpc.IsConnectionRefused(err))
+
+			//
+			// Connection refused and timeout are the only viable errors.
+			// Assert to know if anything else happens.
+			//
+			common.Assert(rpc.IsConnectionRefused(err) || rpc.IsTimedOut(err), err)
 		} else {
 			numConnReset++
 		}

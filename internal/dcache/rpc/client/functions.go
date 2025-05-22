@@ -110,10 +110,13 @@ func Hello(ctx context.Context, targetNodeID string, req *models.HelloRequest) (
 			// Only other possible errors:
 			// - Actual RPC error returned by the server.
 			// - Connection closed by the server (maybe it restarted before it could respond).
+			// - Connection refused (if the blobfuse process is not running on the peer node).
 			// - Time out (either node is down or cannot be reached over the n/w).
 			//
-			common.Assert(rpc.IsRPCError(err) || rpc.IsConnectionClosed(err) || rpc.IsTimedOut(err),
-				err)
+			common.Assert(rpc.IsRPCError(err) ||
+				rpc.IsConnectionClosed(err) ||
+				rpc.IsConnectionRefused(err) ||
+				rpc.IsTimedOut(err), err)
 
 			// Fall through to release the RPC client.
 			resp = nil
@@ -187,10 +190,13 @@ func GetChunk(ctx context.Context, targetNodeID string, req *models.GetChunkRequ
 			// Only other possible errors:
 			// - Actual RPC error returned by the server.
 			// - Connection closed by the server (maybe it restarted before it could respond).
+			// - Connection refused (if the blobfuse process is not running on the peer node).
 			// - Time out (either node is down or cannot be reached over the n/w).
 			//
-			common.Assert(rpc.IsRPCError(err) || rpc.IsConnectionClosed(err) || rpc.IsTimedOut(err),
-				err)
+			common.Assert(rpc.IsRPCError(err) ||
+				rpc.IsConnectionClosed(err) ||
+				rpc.IsConnectionRefused(err) ||
+				rpc.IsTimedOut(err), err)
 
 			// Fall through to release the RPC client.
 			resp = nil
@@ -264,10 +270,13 @@ func PutChunk(ctx context.Context, targetNodeID string, req *models.PutChunkRequ
 			// Only other possible errors:
 			// - Actual RPC error returned by the server.
 			// - Connection closed by the server (maybe it restarted before it could respond).
+			// - Connection refused (if the blobfuse process is not running on the peer node).
 			// - Time out (either node is down or cannot be reached over the n/w).
 			//
-			common.Assert(rpc.IsRPCError(err) || rpc.IsConnectionClosed(err) || rpc.IsTimedOut(err),
-				err)
+			common.Assert(rpc.IsRPCError(err) ||
+				rpc.IsConnectionClosed(err) ||
+				rpc.IsConnectionRefused(err) ||
+				rpc.IsTimedOut(err), err)
 
 			// Fall through to release the RPC client.
 			resp = nil
@@ -341,10 +350,13 @@ func RemoveChunk(ctx context.Context, targetNodeID string, req *models.RemoveChu
 			// Only other possible errors:
 			// - Actual RPC error returned by the server.
 			// - Connection closed by the server (maybe it restarted before it could respond).
+			// - Connection refused (if the blobfuse process is not running on the peer node).
 			// - Time out (either node is down or cannot be reached over the n/w).
 			//
-			common.Assert(rpc.IsRPCError(err) || rpc.IsConnectionClosed(err) || rpc.IsTimedOut(err),
-				err)
+			common.Assert(rpc.IsRPCError(err) ||
+				rpc.IsConnectionClosed(err) ||
+				rpc.IsConnectionRefused(err) ||
+				rpc.IsTimedOut(err), err)
 
 			// Fall through to release the RPC client.
 			resp = nil
@@ -418,10 +430,13 @@ func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest)
 			// Only other possible errors:
 			// - Actual RPC error returned by the server.
 			// - Connection closed by the server (maybe it restarted before it could respond).
+			// - Connection refused (if the blobfuse process is not running on the peer node).
 			// - Time out (either node is down or cannot be reached over the n/w).
 			//
-			common.Assert(rpc.IsRPCError(err) || rpc.IsConnectionClosed(err) || rpc.IsTimedOut(err),
-				err)
+			common.Assert(rpc.IsRPCError(err) ||
+				rpc.IsConnectionClosed(err) ||
+				rpc.IsConnectionRefused(err) ||
+				rpc.IsTimedOut(err), err)
 
 			// Fall through to release the RPC client.
 			resp = nil
@@ -495,10 +510,13 @@ func UpdateMV(ctx context.Context, targetNodeID string, req *models.UpdateMVRequ
 			// Only other possible errors:
 			// - Actual RPC error returned by the server.
 			// - Connection closed by the server (maybe it restarted before it could respond).
+			// - Connection refused (if the blobfuse process is not running on the peer node).
 			// - Time out (either node is down or cannot be reached over the n/w).
 			//
-			common.Assert(rpc.IsRPCError(err) || rpc.IsConnectionClosed(err) || rpc.IsTimedOut(err),
-				err)
+			common.Assert(rpc.IsRPCError(err) ||
+				rpc.IsConnectionClosed(err) ||
+				rpc.IsConnectionRefused(err) ||
+				rpc.IsTimedOut(err), err)
 
 			// Fall through to release the RPC client.
 			resp = nil
@@ -572,10 +590,13 @@ func LeaveMV(ctx context.Context, targetNodeID string, req *models.LeaveMVReques
 			// Only other possible errors:
 			// - Actual RPC error returned by the server.
 			// - Connection closed by the server (maybe it restarted before it could respond).
+			// - Connection refused (if the blobfuse process is not running on the peer node).
 			// - Time out (either node is down or cannot be reached over the n/w).
 			//
-			common.Assert(rpc.IsRPCError(err) || rpc.IsConnectionClosed(err) || rpc.IsTimedOut(err),
-				err)
+			common.Assert(rpc.IsRPCError(err) ||
+				rpc.IsConnectionClosed(err) ||
+				rpc.IsConnectionRefused(err) ||
+				rpc.IsTimedOut(err), err)
 
 			// Fall through to release the RPC client.
 			resp = nil
@@ -649,10 +670,13 @@ func StartSync(ctx context.Context, targetNodeID string, req *models.StartSyncRe
 			// Only other possible errors:
 			// - Actual RPC error returned by the server.
 			// - Connection closed by the server (maybe it restarted before it could respond).
+			// - Connection refused (if the blobfuse process is not running on the peer node).
 			// - Time out (either node is down or cannot be reached over the n/w).
 			//
-			common.Assert(rpc.IsRPCError(err) || rpc.IsConnectionClosed(err) || rpc.IsTimedOut(err),
-				err)
+			common.Assert(rpc.IsRPCError(err) ||
+				rpc.IsConnectionClosed(err) ||
+				rpc.IsConnectionRefused(err) ||
+				rpc.IsTimedOut(err), err)
 
 			// Fall through to release the RPC client.
 			resp = nil
@@ -726,10 +750,13 @@ func EndSync(ctx context.Context, targetNodeID string, req *models.EndSyncReques
 			// Only other possible errors:
 			// - Actual RPC error returned by the server.
 			// - Connection closed by the server (maybe it restarted before it could respond).
+			// - Connection refused (if the blobfuse process is not running on the peer node).
 			// - Time out (either node is down or cannot be reached over the n/w).
 			//
-			common.Assert(rpc.IsRPCError(err) || rpc.IsConnectionClosed(err) || rpc.IsTimedOut(err),
-				err)
+			common.Assert(rpc.IsRPCError(err) ||
+				rpc.IsConnectionClosed(err) ||
+				rpc.IsConnectionRefused(err) ||
+				rpc.IsTimedOut(err), err)
 
 			// Fall through to release the RPC client.
 			resp = nil
