@@ -239,16 +239,11 @@ func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
 // Stop : Stop the component functionality and kill all threads started
 func (dc *DistributedCache) Stop() error {
 	log.Trace("DistributedCache::Stop : Stopping component %s", dc.Name())
+
 	fm.EndFileIOManager()
 	rm.Stop()
 	clustermanager.Stop()
-
-	// close all the RPC node client pools
-	err := rpc_client.Cleanup()
-	if err != nil {
-		log.Err("DistributedCache::Stop : Failed to cleanup RPC client pools: %v", err)
-		return err
-	}
+	rpc_client.Cleanup()
 
 	return nil
 }

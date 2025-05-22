@@ -165,6 +165,7 @@ func getCachePathForRVName(rvName string) string {
 // Update the state of the RV in the given component RVs list.
 func updateLocalComponentRVState(rvs []*models.RVNameAndState, rvName string,
 	oldState dcache.StateEnum, newState dcache.StateEnum) {
+
 	common.Assert(len(rvs) == int(getNumReplicas()), len(rvs), getNumReplicas())
 	common.Assert(cm.IsValidRVName(rvName), rvName)
 	common.Assert(oldState != newState &&
@@ -172,11 +173,14 @@ func updateLocalComponentRVState(rvs []*models.RVNameAndState, rvName string,
 		cm.IsValidComponentRVState(newState), rvName, oldState, newState)
 
 	for _, rv := range rvs {
-		common.Assert(rv != nil, "Component RV is nil")
+		common.Assert(rv != nil)
 		if rv.Name == rvName {
 			common.Assert(rv.State == string(oldState), rvName, rv.State, oldState)
+			log.Debug("utils::updateLocalComponentRVState: %s (%s -> %s) %s",
+				rvName, rv.State, newState, rpc.ComponentRVsToString(rvs))
+
 			rv.State = string(newState)
-			break
+			return
 		}
 	}
 

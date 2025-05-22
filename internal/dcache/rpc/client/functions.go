@@ -43,7 +43,10 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 )
 
-var cp *clientPool
+var (
+	cp       *clientPool
+	myNodeId string
+)
 
 const (
 	// TODO: discuss with the team about these values
@@ -61,6 +64,10 @@ const (
 // TODO: templatize the code for all the RPC calls
 func Hello(ctx context.Context, targetNodeID string, req *models.HelloRequest) (*models.HelloResponse, error) {
 	common.Assert(req != nil)
+
+	// Caller must not set SenderNodeID, catch misbehaving callers.
+	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
+	req.SenderNodeID = myNodeId
 
 	reqStr := rpc.HelloRequestToString(req)
 	log.Debug("rpc_client::Hello: Sending Hello request to node %s: %v", targetNodeID, reqStr)
@@ -133,6 +140,10 @@ func Hello(ctx context.Context, targetNodeID string, req *models.HelloRequest) (
 func GetChunk(ctx context.Context, targetNodeID string, req *models.GetChunkRequest) (*models.GetChunkResponse, error) {
 	common.Assert(req != nil && req.Address != nil)
 
+	// Caller must not set SenderNodeID, catch misbehaving callers.
+	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
+	req.SenderNodeID = myNodeId
+
 	reqStr := rpc.GetChunkRequestToString(req)
 	log.Debug("rpc_client::GetChunk: Sending GetChunk request to node %s: %v", targetNodeID, reqStr)
 
@@ -197,6 +208,10 @@ func GetChunk(ctx context.Context, targetNodeID string, req *models.GetChunkRequ
 
 func PutChunk(ctx context.Context, targetNodeID string, req *models.PutChunkRequest) (*models.PutChunkResponse, error) {
 	common.Assert(req != nil && req.Chunk != nil && req.Chunk.Address != nil)
+
+	// Caller must not set SenderNodeID, catch misbehaving callers.
+	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
+	req.SenderNodeID = myNodeId
 
 	reqStr := rpc.PutChunkRequestToString(req)
 	log.Debug("rpc_client::PutChunk: Sending PutChunk request to node %s: %v", targetNodeID, reqStr)
@@ -265,6 +280,10 @@ func PutChunk(ctx context.Context, targetNodeID string, req *models.PutChunkRequ
 func RemoveChunk(ctx context.Context, targetNodeID string, req *models.RemoveChunkRequest) (*models.RemoveChunkResponse, error) {
 	common.Assert(req != nil && req.Address != nil)
 
+	// Caller must not set SenderNodeID, catch misbehaving callers.
+	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
+	req.SenderNodeID = myNodeId
+
 	reqStr := rpc.RemoveChunkRequestToString(req)
 	log.Debug("rpc_client::RemoveChunk: Sending RemoveChunk request to node %s: %v", targetNodeID, reqStr)
 
@@ -331,6 +350,10 @@ func RemoveChunk(ctx context.Context, targetNodeID string, req *models.RemoveChu
 
 func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest) (*models.JoinMVResponse, error) {
 	common.Assert(req != nil)
+
+	// Caller must not set SenderNodeID, catch misbehaving callers.
+	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
+	req.SenderNodeID = myNodeId
 
 	reqStr := rpc.JoinMVRequestToString(req)
 	log.Debug("rpc_client::JoinMV: Sending JoinMV request to node %s: %v", targetNodeID, reqStr)
@@ -399,6 +422,10 @@ func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest)
 func UpdateMV(ctx context.Context, targetNodeID string, req *models.UpdateMVRequest) (*models.UpdateMVResponse, error) {
 	common.Assert(req != nil)
 
+	// Caller must not set SenderNodeID, catch misbehaving callers.
+	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
+	req.SenderNodeID = myNodeId
+
 	reqStr := rpc.UpdateMVRequestToString(req)
 	log.Debug("rpc_client::UpdateMV: Sending UpdateMV request to node %s: %v", targetNodeID, reqStr)
 
@@ -465,6 +492,10 @@ func UpdateMV(ctx context.Context, targetNodeID string, req *models.UpdateMVRequ
 
 func LeaveMV(ctx context.Context, targetNodeID string, req *models.LeaveMVRequest) (*models.LeaveMVResponse, error) {
 	common.Assert(req != nil)
+
+	// Caller must not set SenderNodeID, catch misbehaving callers.
+	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
+	req.SenderNodeID = myNodeId
 
 	reqStr := rpc.LeaveMVRequestToString(req)
 	log.Debug("rpc_client::LeaveMV: Sending LeaveMV request to node %s: %v", targetNodeID, reqStr)
@@ -533,6 +564,10 @@ func LeaveMV(ctx context.Context, targetNodeID string, req *models.LeaveMVReques
 func StartSync(ctx context.Context, targetNodeID string, req *models.StartSyncRequest) (*models.StartSyncResponse, error) {
 	common.Assert(req != nil)
 
+	// Caller must not set SenderNodeID, catch misbehaving callers.
+	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
+	req.SenderNodeID = myNodeId
+
 	reqStr := rpc.StartSyncRequestToString(req)
 	log.Debug("rpc_client::StartSync: Sending StartSync request to node %s: %v", targetNodeID, reqStr)
 
@@ -599,6 +634,10 @@ func StartSync(ctx context.Context, targetNodeID string, req *models.StartSyncRe
 
 func EndSync(ctx context.Context, targetNodeID string, req *models.EndSyncRequest) (*models.EndSyncResponse, error) {
 	common.Assert(req != nil)
+
+	// Caller must not set SenderNodeID, catch misbehaving callers.
+	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
+	req.SenderNodeID = myNodeId
 
 	reqStr := rpc.EndSyncRequestToString(req)
 	log.Debug("rpc_client::EndSync: Sending EndSync request to node %s: %v", targetNodeID, reqStr)
@@ -676,6 +715,18 @@ func Cleanup() error {
 }
 
 func init() {
-	log.Info("rpc_client::init: package initialized, create client pool")
+	// Must be called only once.
+	common.Assert(len(myNodeId) == 0)
+
+	myNodeId, err := common.GetNodeUUID()
+	if err != nil {
+		// Cannot proceed w/o our node id.
+		log.GetLoggerObj().Panicf("rpc_client::init: PANIC: failed to get my node id [%v]", err)
+	}
+
 	cp = newClientPool(defaultMaxPerNode, defaultMaxNodes, defaultTimeout)
+	common.Assert(cp != nil)
+
+	log.Info("rpc_client::init: myNodeId: %s, maxNodes: %d, maxPerNode: %d, timeout: %d",
+		myNodeId, defaultMaxNodes, defaultMaxPerNode, defaultTimeout)
 }

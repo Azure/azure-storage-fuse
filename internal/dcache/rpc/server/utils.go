@@ -146,7 +146,7 @@ func getComponentRVState(rvs []*models.RVNameAndState, rvName string) *models.RV
 // Check if the RV is present in the component RVs of the MV.
 func isRVPresentInMV(rvs []*models.RVNameAndState, rvName string) bool {
 	for _, rv := range rvs {
-		common.Assert(rv != nil, "Component RV is nil")
+		common.Assert(rv != nil)
 		if rv.Name == rvName {
 			return true
 		}
@@ -158,10 +158,13 @@ func isRVPresentInMV(rvs []*models.RVNameAndState, rvName string) bool {
 // Update the state of the RV in the given component RVs list.
 func updateComponentRVState(rvs []*models.RVNameAndState, rvName string, rvState dcache.StateEnum) {
 	for _, rv := range rvs {
-		common.Assert(rv != nil, "Component RV is nil")
+		common.Assert(rv != nil)
 		if rv.Name == rvName {
+			log.Debug("utils::updateComponentRVState: %s (%s -> %s) %s",
+				rvName, rv.State, rvState, rpc.ComponentRVsToString(rvs))
+
 			rv.State = string(rvState)
-			break
+			return
 		}
 	}
 

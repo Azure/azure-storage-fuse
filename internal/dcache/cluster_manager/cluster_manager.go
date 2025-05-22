@@ -2054,12 +2054,7 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume, reser
 
 		log.Debug("ClusterManagerImpl::joinMV: Joining MV %s with RV %s", mvName, rv.Name)
 
-		myNodeID, err1 := common.GetNodeUUID()
-		common.Assert(err1 == nil, err1)
-		common.Assert(common.IsValidUUID(myNodeID), myNodeID)
-
 		joinMvReq := &models.JoinMVRequest{
-			SenderNodeID: myNodeID,
 			MV:           mvName,
 			RVName:       rv.Name,
 			ReserveSpace: reserveBytes,
@@ -2067,10 +2062,9 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume, reser
 		}
 
 		updateMvReq := &models.UpdateMVRequest{
-			SenderNodeID: myNodeID,
-			MV:           mvName,
-			RVName:       rv.Name,
-			ComponentRV:  componentRVs,
+			MV:          mvName,
+			RVName:      rv.Name,
+			ComponentRV: componentRVs,
 		}
 
 		// TODO: Use timeout from some global variable.
