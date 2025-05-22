@@ -121,34 +121,21 @@ func (opt *mountOptions) validate(skipNonEmptyMount bool) error {
 				return fmt.Errorf("directory is already mounted, unmount manually before remount [%v]", err.Error())
 			}
 
-			// Clean up the file-cache temp directory if any
-			var fileCachePath string
-			_ = config.UnmarshalKey("file_cache.path", &fileCachePath)
-
-			// Check for global cleanup-on-start flag first, then component-specific setting
+			// Check for global cleanup-on-start flag
 			var cleanupOnStart bool
 			_ = config.UnmarshalKey("cleanup-on-start", &cleanupOnStart)
-
-			var fileCleanupOnStart bool
-			_ = config.UnmarshalKey("file_cache.cleanup-on-start", &fileCleanupOnStart)
-
-			if fileCachePath != "" && (cleanupOnStart || fileCleanupOnStart) {
-				if err = common.TempCacheCleanup(fileCachePath); err != nil {
-					return fmt.Errorf("failed to cleanup file cache [%s]", err.Error())
-				}
+			
+			// Clean up any cache directory if cleanup-on-start is set
+			// Handle file_cache component
+			err = cleanupCachePath("file_cache", cleanupOnStart)
+			if err != nil {
+				return err
 			}
 			
-			// Clean up the block-cache temp directory if any
-			var blockCachePath string
-			_ = config.UnmarshalKey("block_cache.path", &blockCachePath)
-
-			var blockCleanupOnStart bool
-			_ = config.UnmarshalKey("block_cache.cleanup-on-start", &blockCleanupOnStart)
-
-			if blockCachePath != "" && (cleanupOnStart || blockCleanupOnStart) {
-				if err = common.TempCacheCleanup(blockCachePath); err != nil {
-					return fmt.Errorf("failed to cleanup block cache [%s]", err.Error())
-				}
+			// Handle block_cache component
+			err = cleanupCachePath("block_cache", cleanupOnStart)
+			if err != nil {
+				return err
 			}
 		}
 	} else if !skipNonEmptyMount && !common.IsDirectoryEmpty(opt.MountPath) {
@@ -686,6 +673,33 @@ func startMonitor(pid int) {
 			log.Err("Mount::startMonitor : [%s]", err.Error())
 		}
 	}
+}
+
+// cleanupCachePath is a helper function to clean up cache directories
+// componentName: the name of the component (e.g., "file_cache", "block_cache")
+// globalCleanupFlag: value of the global cleanup-on-start flag
+func cleanupCachePath(componentName string, globalCleanupFlag bool) error {
+	// Get the path for the component
+	var cachePath string
+	_ = config.UnmarshalKey(componentName+".path", &cachePath)
+	
+	if cachePath == "" {
+		// No path configured for this component
+		return nil
+	}
+	
+	// Check for component-specific cleanup flag
+	var componentCleanupFlag bool
+	_ = config.UnmarshalKey(componentName+".cleanup-on-start", &componentCleanupFlag)
+	
+	// Clean up if either global or component-specific flag is set
+	if globalCleanupFlag || componentCleanupFlag {
+		if err := common.TempCacheCleanup(cachePath); err != nil {
+			return fmt.Errorf("failed to cleanup %s [%s]", componentName, err.Error())
+		}
+	}
+	
+	return nil
 }
 
 func sigusrHandler(pipeline *internal.Pipeline, ctx context.Context) daemon.SignalHandlerFunc {
