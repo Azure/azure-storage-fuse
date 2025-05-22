@@ -1315,7 +1315,7 @@ func (h *ChunkServiceHandler) UpdateMV(ctx context.Context, req *models.UpdateMV
 	mvInfo := rvInfo.getMVInfo(req.MV)
 	if mvInfo == nil {
 		errStr := fmt.Sprintf("%s/%s not hosted by this node", req.RVName, req.MV)
-		log.Err("ChunkServiceHandler::LeaveMV: %s", errStr)
+		log.Err("ChunkServiceHandler::UpdateMV: %s", errStr)
 		return nil, rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
 	}
 
