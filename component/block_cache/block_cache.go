@@ -103,7 +103,6 @@ type BlockCacheOptions struct {
 	PrefetchOnOpen bool    `config:"prefetch-on-open" yaml:"prefetch-on-open,omitempty"`
 	Consistency    bool    `config:"consistency" yaml:"consistency,omitempty"`
 	CleanupOnStart bool    `config:"cleanup-on-start" yaml:"cleanup-on-start,omitempty"`
-	EmptyDirCheck  bool    `config:"empty-dir-check" yaml:"-"`
 }
 
 const (
@@ -291,11 +290,7 @@ func (bc *BlockCache) Configure(_ bool) error {
 	bc.tmpPath = common.ExpandPath(conf.TmpPath)
 	
 	// Handle cleanup-on-start configuration
-	if config.IsSet(compName + ".empty-dir-check") {
-		bc.cleanupOnStart = conf.EmptyDirCheck
-	} else {
-		bc.cleanupOnStart = conf.CleanupOnStart
-	}
+	bc.cleanupOnStart = conf.CleanupOnStart
 
 	if bc.tmpPath != "" {
 		//check mnt path is not same as temp path
@@ -2006,10 +2001,9 @@ func init() {
 	strongConsistency := config.AddBoolFlag("block-cache-strong-consistency", false, "Enable strong data consistency for block cache.")
 	config.BindPFlag(compName+".consistency", strongConsistency)
 
-	// Use BindPFlag for empty-dir-check which is defined in file_cache component
-	// This allows both components to share the same CLI flag
-	emptyDirCheck := config.GetFlag("empty-dir-check")
-	if emptyDirCheck != nil {
-		config.BindPFlag(compName+".empty-dir-check", emptyDirCheck)
-	}
+	// Use BindPFlag for cleanup-on-start to match the configuration parameter name
+	// Add a new CLI flag specific for block_cache
+	cleanupOnStart := config.AddBoolFlag("block-cache-cleanup-on-start", false, "Clear block cache directory on startup if not empty.")
+	config.BindPFlag(compName+".cleanup-on-start", cleanupOnStart)
+	cleanupOnStart.Hidden = true
 }
