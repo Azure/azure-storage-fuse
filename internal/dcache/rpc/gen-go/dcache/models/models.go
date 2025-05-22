@@ -4599,6 +4599,316 @@ func (p *EndSyncResponse) String() string {
 }
 
 // Attributes:
+//   - SenderNodeID
+//   - MV
+//   - RVName
+type GetMVSizeRequest struct {
+	SenderNodeID string `thrift:"senderNodeID,1" db:"senderNodeID" json:"senderNodeID"`
+	MV           string `thrift:"MV,2" db:"MV" json:"MV"`
+	RVName       string `thrift:"RVName,3" db:"RVName" json:"RVName"`
+}
+
+func NewGetMVSizeRequest() *GetMVSizeRequest {
+	return &GetMVSizeRequest{}
+}
+
+func (p *GetMVSizeRequest) GetSenderNodeID() string {
+	return p.SenderNodeID
+}
+
+func (p *GetMVSizeRequest) GetMV() string {
+	return p.MV
+}
+
+func (p *GetMVSizeRequest) GetRVName() string {
+	return p.RVName
+}
+func (p *GetMVSizeRequest) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 1:
+			if fieldTypeId == thrift.STRING {
+				if err := p.ReadField1(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 2:
+			if fieldTypeId == thrift.STRING {
+				if err := p.ReadField2(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 3:
+			if fieldTypeId == thrift.STRING {
+				if err := p.ReadField3(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *GetMVSizeRequest) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadString(ctx); err != nil {
+		return thrift.PrependError("error reading field 1: ", err)
+	} else {
+		p.SenderNodeID = v
+	}
+	return nil
+}
+
+func (p *GetMVSizeRequest) ReadField2(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadString(ctx); err != nil {
+		return thrift.PrependError("error reading field 2: ", err)
+	} else {
+		p.MV = v
+	}
+	return nil
+}
+
+func (p *GetMVSizeRequest) ReadField3(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadString(ctx); err != nil {
+		return thrift.PrependError("error reading field 3: ", err)
+	} else {
+		p.RVName = v
+	}
+	return nil
+}
+
+func (p *GetMVSizeRequest) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "GetMVSizeRequest"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField1(ctx, oprot); err != nil {
+			return err
+		}
+		if err := p.writeField2(ctx, oprot); err != nil {
+			return err
+		}
+		if err := p.writeField3(ctx, oprot); err != nil {
+			return err
+		}
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *GetMVSizeRequest) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "senderNodeID", thrift.STRING, 1); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:senderNodeID: ", p), err)
+	}
+	if err := oprot.WriteString(ctx, string(p.SenderNodeID)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.senderNodeID (1) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:senderNodeID: ", p), err)
+	}
+	return err
+}
+
+func (p *GetMVSizeRequest) writeField2(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "MV", thrift.STRING, 2); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 2:MV: ", p), err)
+	}
+	if err := oprot.WriteString(ctx, string(p.MV)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.MV (2) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 2:MV: ", p), err)
+	}
+	return err
+}
+
+func (p *GetMVSizeRequest) writeField3(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "RVName", thrift.STRING, 3); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 3:RVName: ", p), err)
+	}
+	if err := oprot.WriteString(ctx, string(p.RVName)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.RVName (3) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 3:RVName: ", p), err)
+	}
+	return err
+}
+
+func (p *GetMVSizeRequest) Equals(other *GetMVSizeRequest) bool {
+	if p == other {
+		return true
+	} else if p == nil || other == nil {
+		return false
+	}
+	if p.SenderNodeID != other.SenderNodeID {
+		return false
+	}
+	if p.MV != other.MV {
+		return false
+	}
+	if p.RVName != other.RVName {
+		return false
+	}
+	return true
+}
+
+func (p *GetMVSizeRequest) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("GetMVSizeRequest(%+v)", *p)
+}
+
+// Attributes:
+//   - MvSize
+type GetMVSizeResponse struct {
+	MvSize int64 `thrift:"mvSize,1" db:"mvSize" json:"mvSize"`
+}
+
+func NewGetMVSizeResponse() *GetMVSizeResponse {
+	return &GetMVSizeResponse{}
+}
+
+func (p *GetMVSizeResponse) GetMvSize() int64 {
+	return p.MvSize
+}
+func (p *GetMVSizeResponse) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 1:
+			if fieldTypeId == thrift.I64 {
+				if err := p.ReadField1(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *GetMVSizeResponse) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadI64(ctx); err != nil {
+		return thrift.PrependError("error reading field 1: ", err)
+	} else {
+		p.MvSize = v
+	}
+	return nil
+}
+
+func (p *GetMVSizeResponse) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "GetMVSizeResponse"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField1(ctx, oprot); err != nil {
+			return err
+		}
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *GetMVSizeResponse) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "mvSize", thrift.I64, 1); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:mvSize: ", p), err)
+	}
+	if err := oprot.WriteI64(ctx, int64(p.MvSize)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.mvSize (1) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:mvSize: ", p), err)
+	}
+	return err
+}
+
+func (p *GetMVSizeResponse) Equals(other *GetMVSizeResponse) bool {
+	if p == other {
+		return true
+	} else if p == nil || other == nil {
+		return false
+	}
+	if p.MvSize != other.MvSize {
+		return false
+	}
+	return true
+}
+
+func (p *GetMVSizeResponse) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("GetMVSizeResponse(%+v)", *p)
+}
+
+// Attributes:
 //   - Code
 //   - Message
 type ResponseError struct {

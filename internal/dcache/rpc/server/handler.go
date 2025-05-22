@@ -1314,8 +1314,9 @@ func (h *ChunkServiceHandler) UpdateMV(ctx context.Context, req *models.UpdateMV
 
 	mvInfo := rvInfo.getMVInfo(req.MV)
 	if mvInfo == nil {
-		log.Err("ChunkServiceHandler::UpdateMV: RV %s is not part of the given MV %s", req.RVName, req.MV)
-		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, fmt.Sprintf("RV %s is not part of the given MV %s", req.RVName, req.MV))
+		errStr := fmt.Sprintf("%s/%s not hosted by this node", req.RVName, req.MV)
+		log.Err("ChunkServiceHandler::LeaveMV: %s", errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
 	}
 
 	componentRVsInMV := mvInfo.getComponentRVs()
@@ -1352,8 +1353,9 @@ func (h *ChunkServiceHandler) LeaveMV(ctx context.Context, req *models.LeaveMVRe
 	// check if RV is part of the given MV
 	mvInfo := rvInfo.getMVInfo(req.MV)
 	if mvInfo == nil {
-		log.Err("ChunkServiceHandler::LeaveMV: RV %s is not part of the given MV %s", req.RVName, req.MV)
-		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, fmt.Sprintf("RV %s is not part of the given MV %s", req.RVName, req.MV))
+		errStr := fmt.Sprintf("%s/%s not hosted by this node", req.RVName, req.MV)
+		log.Err("ChunkServiceHandler::LeaveMV: %s", errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
 	}
 
 	// validate the component RVs list
@@ -1603,4 +1605,35 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 	common.Assert(err == nil, fmt.Sprintf("failed to remove sync directory %s [%v]", syncMvPath, err))
 
 	return &models.EndSyncResponse{}, nil
+}
+
+func (h *ChunkServiceHandler) GetMVSize(ctx context.Context, req *models.GetMVSizeRequest) (*models.GetMVSizeResponse, error) {
+	// Thrift should not be calling us with nil req.
+	common.Assert(req != nil)
+
+	log.Debug("ChunkServiceHandler::GetMVSize: Received GetMVSize request: %v", rpc.GetMVSizeRequestToString(req))
+
+	if !cm.IsValidMVName(req.MV) || !cm.IsValidRVName(req.RVName) {
+		errStr := fmt.Sprintf("MV (%s) or RV (%s) invalid", req.MV, req.RVName)
+		log.Err("ChunkServiceHandler::GetMVSize: %s", errStr)
+		common.Assert(false, errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
+	}
+
+	rvInfo := h.getRVInfoFromRVName(req.RVName)
+	if rvInfo == nil {
+		log.Err("ChunkServiceHandler::GetMVSize: Invalid RV %s", req.RVName)
+		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRV, fmt.Sprintf("invalid RV %s", req.RVName))
+	}
+
+	mvInfo := rvInfo.getMVInfo(req.MV)
+	if mvInfo == nil {
+		errStr := fmt.Sprintf("%s/%s not hosted by this node", rvInfo.rvName, req.MV)
+		log.Err("ChunkServiceHandler::GetMVSize: %s", errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
+	}
+
+	return &models.GetMVSizeResponse{
+		MvSize: mvInfo.totalChunkBytes.Load(),
+	}, nil
 }

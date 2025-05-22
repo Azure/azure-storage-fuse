@@ -34,6 +34,7 @@
 package rpc_server
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -42,7 +43,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
-	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
+	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 )
@@ -209,35 +210,32 @@ func getRvIDMap(rvs map[string]dcache.RawVolume) map[string]*rvInfo {
 
 // return mvs-per-rv from dcache config
 func getMVsPerRV() int64 {
-	return int64(clustermap.GetCacheConfig().MvsPerRv)
+	return int64(cm.GetCacheConfig().MvsPerRv)
 }
 
 // When an MV is in degraded state because one or more of its RV went offline,
 // the caller (lowest index online RV) can call this method to get the
-// disk usage of the MV. The caller will then send JoinMV RPC call to the
-// new RVs, passing the disk usage of the MV to them. On basis of this,
+// size of the MV. The caller will then send JoinMV RPC call to the
+// new RVs, passing the size of the MV to them. On basis of this,
 // the new RVs will decide if they can join the MV or not.
-func GetDiskUsageOfMV(mvName string, rvName string) (int64, error) {
+func GetMyMVSize(mvName string, rvName string) (int64, error) {
 	// TODO: should we block the IO operations on the MV while this is happening?
-	common.Assert(handler != nil, "chunk service handler is nil")
+	common.Assert(handler != nil)
 
 	// TODO: replace with IsValidMV and IsValidRV
-	common.Assert(rvName != "")
-	common.Assert(mvName != "")
+	common.Assert(cm.IsValidRVName(rvName), rvName)
+	common.Assert(cm.IsValidMVName(mvName), mvName)
 
-	rvInfo := handler.getRVInfoFromRVName(rvName)
-	if rvInfo == nil {
-		log.Err("utils::GetDiskUsageOfMV: Invalid RV %s", rvName)
-		common.Assert(false, fmt.Sprintf("invalid RV %s", rvName))
-		return 0, rpc.NewResponseError(models.ErrorCode_InvalidRV, fmt.Sprintf("invalid RV %s", rvName))
+	resp, err := handler.GetMVSize(context.Background(), &models.GetMVSizeRequest{
+		SenderNodeID: rpc.GetMyNodeUUID(),
+		MV:           mvName,
+		RVName:       rvName,
+	})
+
+	if err != nil {
+		log.Err("utils::GetMyMVSize: Failed to get MV size for %s/%s [%v]", rvName, mvName, err)
+		return 0, err
 	}
 
-	mvInfo := rvInfo.getMVInfo(mvName)
-	if mvInfo == nil {
-		log.Err("utils::GetDiskUsageOfMV: Invalid MV %s", mvName)
-		common.Assert(false, fmt.Sprintf("invalid MV %s", mvName))
-		return 0, rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, fmt.Sprintf("invalid MV %s", mvName))
-	}
-
-	return mvInfo.totalChunkBytes.Load(), nil
+	return resp.MvSize, nil
 }

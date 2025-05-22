@@ -152,3 +152,9 @@ func EndSyncRequestToString(req *models.EndSyncRequest) string {
 	return fmt.Sprintf("{SyncID %v, MV %v, SourceRVName %v, TargetRVName %v, ComponentRV %v, SyncSize %v}",
 		req.SyncID, req.MV, req.SourceRVName, req.TargetRVName, ComponentRVsToString(req.ComponentRV), req.SyncSize)
 }
+
+// convert *models.GetMVSizeRequest to string
+// used for logging
+func GetMVSizeRequestToString(req *models.GetMVSizeRequest) string {
+	return fmt.Sprintf("{MV %v, RVName %v}", req.MV, req.RVName)
+}

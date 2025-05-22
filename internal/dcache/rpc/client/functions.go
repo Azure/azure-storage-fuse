@@ -756,6 +756,97 @@ func EndSync(ctx context.Context, targetNodeID string, req *models.EndSyncReques
 		targetNodeID, reqStr)
 }
 
+func GetMVSize(ctx context.Context, targetNodeID string, req *models.GetMVSizeRequest) (*models.GetMVSizeResponse, error) {
+	common.Assert(req != nil)
+
+	// Caller must not set SenderNodeID, catch misbehaving callers.
+	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
+	// TODO: add this after the PR adding sender node id is merged
+	// req.SenderNodeID = myNodeId
+
+	reqStr := rpc.GetMVSizeRequestToString(req)
+	log.Debug("rpc_client::GetMVSize: Sending GetMVSize request to node %s: %v", targetNodeID, reqStr)
+
+	//
+	// We retry once after resetting bad connections.
+	//
+	for i := 0; i < 2; i++ {
+		// Get RPC client from the client pool.
+		client, err := cp.getRPCClient(targetNodeID)
+		if err != nil {
+			log.Err("rpc_client::GetMVSize: Failed to get RPC client for node %s %v: %v",
+				targetNodeID, reqStr, err)
+			return nil, err
+		}
+
+		// Call the rpc method.
+		resp, err := client.svcClient.GetMVSize(ctx, req)
+		if err != nil {
+			log.Err("rpc_client::GetMVSize: GetMVSize failed to node %s %v: %v",
+				targetNodeID, reqStr, err)
+
+			//
+			// If the failure is due to a stale connection to a node that has restarted, reset the connections
+			// and retry once more.
+			//
+			if rpc.IsConnectionTerminated(err) {
+				//
+				// Note: In case of multiple contexts contesting, we may have those contexts
+				//	 reset "good" connections too. See if we need to worry about that.
+				//
+				err1 := cp.resetAllRPCClients(client)
+				if err1 != nil {
+					log.Err("rpc_client::GetMVSize: resetAllRPCClients failed for node %s: %v",
+						targetNodeID, err1)
+					//
+					// Connection refused and timeout are the only viable errors.
+					// Assert to know if anything else happens.
+					//
+					common.Assert(rpc.IsConnectionRefused(err) || rpc.IsTimedOut(err), err)
+					return nil, err
+				}
+
+				// Retry GetMVSize once more with fresh connection.
+				continue
+			}
+
+			//
+			// Only other possible errors:
+			// - Actual RPC error returned by the server.
+			// - Connection closed by the server (maybe it restarted before it could respond).
+			// - Connection refused (if the blobfuse process is not running on the peer node).
+			// - Time out (either node is down or cannot be reached over the n/w).
+			//
+			common.Assert(rpc.IsRPCError(err) ||
+				rpc.IsConnectionClosed(err) ||
+				rpc.IsConnectionRefused(err) ||
+				rpc.IsTimedOut(err), err)
+
+			// Fall through to release the RPC client.
+			resp = nil
+		}
+
+		// Release RPC client back to the pool.
+		err1 := cp.releaseRPCClient(client)
+		if err1 != nil {
+			log.Err("rpc_client::GetMVSize: Failed to release RPC client for node %s %v: %v",
+				targetNodeID, reqStr, err1)
+			// Assert, but not fail the GetMVSize call.
+			common.Assert(false, err1)
+		}
+
+		return resp, err
+	}
+
+	//
+	// We come here when we could not succeed even after resetting stale connections and retrying.
+	// This is unexpected, but can happen if the target node goes offline or restarts more than once in
+	// quick succession.
+	//
+	return nil, fmt.Errorf("rpc_client::GetMVSize: Could not find a valid RPC client for node %s %v",
+		targetNodeID, reqStr)
+}
+
 // cleanup closes all the RPC node client pools
 func Cleanup() error {
 	log.Info("rpc_client::Cleanup: Closing all node client pools")
