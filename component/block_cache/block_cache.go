@@ -2003,7 +2003,6 @@ func init() {
 
 	// Use BindPFlag for cleanup-on-start to match the configuration parameter name
 	// Add a new CLI flag specific for block_cache
-	cleanupOnStart := config.AddBoolFlag("block-cache-cleanup-on-start", false, "Clear block cache directory on startup if not empty.")
+	cleanupOnStart := config.AddBoolFlag("cleanup-on-start", false, "Clear block cache directory on startup if not empty.")
 	config.BindPFlag(compName+".cleanup-on-start", cleanupOnStart)
-	cleanupOnStart.Hidden = true
 }
