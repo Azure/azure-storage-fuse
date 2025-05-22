@@ -385,6 +385,7 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 
 	isAzurePath, isDcachePath, isDebugPath, rawPath := getFS(options.Name)
 
+startListingWithNewToken:
 	if isDcachePath {
 		log.Debug("DistributedCache::StreamDir : Path is having Dcache subcomponent, path : %s", options.Name)
 		rawPath = filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
@@ -408,7 +409,6 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 		log.Debug("DistributedCache::StreamDir : Path is having Debug subcomponent, path : %s", options.Name)
 		return debug.StreamDir(options)
 	} else {
-	listUnqualifiedPath:
 		// When enumerating a fresh directory, options.IsFsDcache must be true.
 		common.Assert(options.Token != "" || *options.IsFsDcache == true)
 
@@ -464,6 +464,7 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 					modifiedDirList = append(modifiedDirList, attr)
 				}
 			}
+
 			dirList = modifiedDirList
 
 			// While iterating the entries of the root of the container skip the cache folder.
@@ -471,16 +472,12 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 				dirList = hideCacheMetadata(dirList)
 			}
 		}
-		//
-		// Cond1: When dcache has no entries, then we don't get the following StreamDir call from FUSE for Azure FS if we
-		// return no entries here. So here we start the listing again for azure FS.
-		// Cond2: After server has returned <= 5000 entries for dcache fs, we filter some entries. Now if the resultant len
-		// of dirents is zero, then retry to get the next list by updating the token.
-		//
-		if (len(dirList) == 0) && token != "" {
-			options.Token = token
-			goto listUnqualifiedPath
-		}
+	}
+
+	// Start listing again, If the dirList becomes empty after hiding cachedir.
+	if (len(dirList) == 0) && token != "" {
+		options.Token = token
+		goto startListingWithNewToken
 	}
 
 	return dirList, token, nil

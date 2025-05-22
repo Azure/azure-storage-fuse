@@ -95,7 +95,16 @@ func (cp *clientPool) getRPCClientNoLock(nodeID string) (*rpcClient, error) {
 		}
 
 		ncPool = &nodeClientPool{nodeID: nodeID}
-		ncPool.createRPCClients(cp.maxPerNode)
+		//
+		// Note that createRPCClients() can fail to create any client if the remote blobfuse process
+		// is not running or the node is down.
+		//
+		err := ncPool.createRPCClients(cp.maxPerNode)
+		if err != nil {
+			log.Err("clientPool::getRPCClientNoLock: createRPCClients(%s) failed: %v", nodeID, err)
+			return nil, err
+		}
+
 		cp.clients[nodeID] = ncPool
 	}
 
@@ -280,8 +289,11 @@ func (cp *clientPool) resetAllRPCClients(client *rpcClient) error {
 		err = fmt.Errorf("failed to reset RPC client to %s node %s: %v",
 			client.nodeAddress, client.nodeID, err)
 		log.Err("clientPool::resetAllRPCClients: %v", err)
-		// Connection refused is the only viable error. Assert to know if anything else happens.
-		common.Assert(rpc.IsConnectionRefused(err))
+		//
+		// Connection refused and timeout are the only viable errors.
+		// Assert to know if anything else happens.
+		//
+		common.Assert(rpc.IsConnectionRefused(err) || rpc.IsTimedOut(err), err)
 		return err
 	}
 
@@ -437,31 +449,81 @@ type nodeClientPool struct {
 }
 
 // createRPCClients creates a channel of RPC clients of size numClients for the specified node ID
-func (ncPool *nodeClientPool) createRPCClients(numClients uint32) {
-	log.Debug("nodeClientPool::createRPCClients: Creating %d RPC clients for node %s", numClients, ncPool.nodeID)
+func (ncPool *nodeClientPool) createRPCClients(numClients uint32) error {
+	log.Debug("nodeClientPool::createRPCClients: Creating %d RPC clients for node %s",
+		numClients, ncPool.nodeID)
+
+	common.Assert(ncPool.clientChan == nil)
+	common.Assert(ncPool.numActive.Load() == 0, ncPool.numActive.Load())
+	common.Assert(common.IsValidUUID(ncPool.nodeID))
 
 	ncPool.clientChan = make(chan *rpcClient, numClients)
 	ncPool.lastUsed = time.Now()
 
-	// Create RPC clients and add them to the channel
+	var err error
+
+	// Create RPC clients and add them to the channel.
 	for i := 0; i < int(numClients); i++ {
 		client, err := newRPCClient(ncPool.nodeID, rpc.GetNodeAddressFromID(ncPool.nodeID))
 		if err != nil {
-			log.Err("nodeClientPool::createRPCClients: Failed to create RPC client for node %s [%v]", ncPool.nodeID, err.Error())
-			continue // skip this client
+			log.Err("nodeClientPool::createRPCClients: Failed to create RPC client for node %s [%v]",
+				ncPool.nodeID, err)
+			//
+			// Only valid reason could be connection refused as the blobfuse process is not running
+			// on the remote node or a timeout if the node is down.
+			// There is no point in retrying in that case.
+			//
+			common.Assert(rpc.IsConnectionRefused(err) || rpc.IsTimedOut(err), err)
+			break
 		}
 		ncPool.clientChan <- client
 	}
 
-	common.Assert(len(ncPool.clientChan) == int(numClients), "client channel is not full after creating RPC clients", len(ncPool.clientChan), numClients)
+	//
+	// If we are not able to create all requested connections there's something seriously wrong
+	// so clean up and fail. One possibility is that the remote node went down after creating
+	// first few connections.
+	// What is more likely is that we could not create any connection. This can happen f.e., when
+	// clustermap has a component RV for an MV but the RV just went down, if user attempts reading
+	// a file that has data on that MV and ReadMV() picks that RV. If there are no existing connections
+	// to that node, createRPCClients() will be called which will fail to create any connection.
+	//
+	if len(ncPool.clientChan) == 0 {
+		return fmt.Errorf("could not create any client for node %s: %v", ncPool.nodeID, err)
+	} else if len(ncPool.clientChan) != int(numClients) {
+		log.Err("nodeClientPool::createRPCClients: Created %d of %d clients for node %s, cleaning up",
+			len(ncPool.clientChan), numClients, ncPool.nodeID)
+
+		for client := range ncPool.clientChan {
+			err1 := client.close()
+			// close() should not fail, even if it does there's nothing left to do.
+			common.Assert(err1 == nil, err1)
+		}
+		// All error paths must ensure this.
+		common.Assert(len(ncPool.clientChan) == 0, len(ncPool.clientChan))
+		return fmt.Errorf("could not create all requested clients for node %s: %v", ncPool.nodeID, err)
+	}
+
+	// We just got started, cannot have active clients.
+	common.Assert(ncPool.numActive.Load() == 0, ncPool.numActive.Load())
+	return nil
 }
 
 // closeRPCClients closes all RPC clients in the channel for the specified node ID
 func (ncPool *nodeClientPool) closeRPCClients() error {
-	log.Debug("nodeClientPool::closeRPCClients: Closing RPC clients for node %s", ncPool.nodeID)
+	log.Debug("nodeClientPool::closeRPCClients: Closing %d RPC clients for node %s",
+		len(ncPool.clientChan), ncPool.nodeID)
 
-	// check that the length of the channel is maxPerNode, so that all clients are released back
-	common.Assert(len(ncPool.clientChan) == int(cp.maxPerNode), "client channel is not full before closing RPC clients", len(ncPool.clientChan), cp.maxPerNode)
+	// We should not be closing all clients when there are active clients.
+	common.Assert(ncPool.numActive.Load() == 0,
+		ncPool.numActive.Load(), len(ncPool.clientChan), cp.maxPerNode)
+
+	//
+	// We never have a partially allocated client pool and we only clean up a client pool when all
+	// previously allocated clients have been released back to the pool
+	//
+	common.Assert(len(ncPool.clientChan) == int(cp.maxPerNode), len(ncPool.clientChan), cp.maxPerNode)
+
 	close(ncPool.clientChan)
 
 	for client := range ncPool.clientChan {
@@ -472,6 +534,8 @@ func (ncPool *nodeClientPool) closeRPCClients() error {
 		}
 	}
 
-	common.Assert(len(ncPool.clientChan) == 0, "client channel is not empty after closing all RPC clients")
+	// All clients must have been closed.
+	common.Assert(len(ncPool.clientChan) == 0, len(ncPool.clientChan))
+
 	return nil
 }

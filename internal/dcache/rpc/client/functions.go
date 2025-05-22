@@ -94,7 +94,7 @@ func Hello(ctx context.Context, targetNodeID string, req *models.HelloRequest) (
 			// If the failure is due to a stale connection to a node that has restarted, reset the connections
 			// and retry once more.
 			//
-			if rpc.IsConnectionClosed(err) {
+			if rpc.IsConnectionTerminated(err) {
 				//
 				// Note: In case of multiple contexts contesting, we may have those contexts
 				//	 reset "good" connections too. See if we need to worry about that.
@@ -103,14 +103,26 @@ func Hello(ctx context.Context, targetNodeID string, req *models.HelloRequest) (
 				if err1 != nil {
 					log.Err("rpc_client::Hello: resetAllRPCClients failed for node %s: %v",
 						targetNodeID, err1)
-					// resetAllRPCClients() may fail but unlikely, so assert.
-					common.Assert(false, err1)
+					//
+					// Connection refused and timeout are the only viable errors.
+					// Assert to know if anything else happens.
+					//
+					common.Assert(rpc.IsConnectionRefused(err) || rpc.IsTimedOut(err), err)
 					return nil, err
 				}
 
 				// Retry Hello once more with fresh connection.
 				continue
 			}
+
+			//
+			// Only other possible errors:
+			// - Actual RPC error returned by the server.
+			// - Connection closed by the server (maybe it restarted before it could respond).
+			// - Time out (either node is down or cannot be reached over the n/w).
+			//
+			common.Assert(rpc.IsRPCError(err) || rpc.IsConnectionClosed(err) || rpc.IsTimedOut(err),
+				err)
 
 			// Fall through to release the RPC client.
 			resp = nil
@@ -169,17 +181,31 @@ func GetChunk(ctx context.Context, targetNodeID string, req *models.GetChunkRequ
 			// If the failure is due to a stale connection to a node that has restarted, reset the connections
 			// and retry once more.
 			//
-			if rpc.IsConnectionClosed(err) {
+			if rpc.IsConnectionTerminated(err) {
 				err1 := cp.resetAllRPCClients(client)
 				if err1 != nil {
 					log.Err("rpc_client::GetChunk: resetAllRPCClients failed for node %s: %v",
 						targetNodeID, err1)
+					//
+					// Connection refused and timeout are the only viable errors.
+					// Assert to know if anything else happens.
+					//
+					common.Assert(rpc.IsConnectionRefused(err) || rpc.IsTimedOut(err), err)
 					return nil, err
 				}
 
 				// Retry GetChunk once more with fresh connection.
 				continue
 			}
+
+			//
+			// Only other possible errors:
+			// - Actual RPC error returned by the server.
+			// - Connection closed by the server (maybe it restarted before it could respond).
+			// - Time out (either node is down or cannot be reached over the n/w).
+			//
+			common.Assert(rpc.IsRPCError(err) || rpc.IsConnectionClosed(err) || rpc.IsTimedOut(err),
+				err)
 
 			// Fall through to release the RPC client.
 			resp = nil
@@ -238,19 +264,31 @@ func PutChunk(ctx context.Context, targetNodeID string, req *models.PutChunkRequ
 			// If the failure is due to a stale connection to a node that has restarted, reset the connections
 			// and retry once more.
 			//
-			if rpc.IsConnectionClosed(err) {
+			if rpc.IsConnectionTerminated(err) {
 				err1 := cp.resetAllRPCClients(client)
 				if err1 != nil {
 					log.Err("rpc_client::PutChunk: resetAllRPCClients failed for node %s: %v",
 						targetNodeID, err1)
-					// resetAllRPCClients() may fail but unlikely, so assert.
-					common.Assert(false, err1)
+					//
+					// Connection refused and timeout are the only viable errors.
+					// Assert to know if anything else happens.
+					//
+					common.Assert(rpc.IsConnectionRefused(err) || rpc.IsTimedOut(err), err)
 					return nil, err
 				}
 
 				// Retry PutChunk once more with fresh connection.
 				continue
 			}
+
+			//
+			// Only other possible errors:
+			// - Actual RPC error returned by the server.
+			// - Connection closed by the server (maybe it restarted before it could respond).
+			// - Time out (either node is down or cannot be reached over the n/w).
+			//
+			common.Assert(rpc.IsRPCError(err) || rpc.IsConnectionClosed(err) || rpc.IsTimedOut(err),
+				err)
 
 			// Fall through to release the RPC client.
 			resp = nil
@@ -309,19 +347,31 @@ func RemoveChunk(ctx context.Context, targetNodeID string, req *models.RemoveChu
 			// If the failure is due to a stale connection to a node that has restarted, reset the connections
 			// and retry once more.
 			//
-			if rpc.IsConnectionClosed(err) {
+			if rpc.IsConnectionTerminated(err) {
 				err1 := cp.resetAllRPCClients(client)
 				if err1 != nil {
 					log.Err("rpc_client::RemoveChunk: resetAllRPCClients failed for node %s: %v",
 						targetNodeID, err1)
-					// resetAllRPCClients() may fail but unlikely, so assert.
-					common.Assert(false, err1)
+					//
+					// Connection refused and timeout are the only viable errors.
+					// Assert to know if anything else happens.
+					//
+					common.Assert(rpc.IsConnectionRefused(err) || rpc.IsTimedOut(err), err)
 					return nil, err
 				}
 
 				// Retry RemoveChunk once more with fresh connection.
 				continue
 			}
+
+			//
+			// Only other possible errors:
+			// - Actual RPC error returned by the server.
+			// - Connection closed by the server (maybe it restarted before it could respond).
+			// - Time out (either node is down or cannot be reached over the n/w).
+			//
+			common.Assert(rpc.IsRPCError(err) || rpc.IsConnectionClosed(err) || rpc.IsTimedOut(err),
+				err)
 
 			// Fall through to release the RPC client.
 			resp = nil
@@ -380,19 +430,31 @@ func JoinMV(ctx context.Context, targetNodeID string, req *models.JoinMVRequest)
 			// If the failure is due to a stale connection to a node that has restarted, reset the connections
 			// and retry once more.
 			//
-			if rpc.IsConnectionClosed(err) {
+			if rpc.IsConnectionTerminated(err) {
 				err1 := cp.resetAllRPCClients(client)
 				if err1 != nil {
 					log.Err("rpc_client::JoinMV: resetAllRPCClients failed for node %s: %v",
 						targetNodeID, err1)
-					// resetAllRPCClients() may fail but unlikely, so assert.
-					common.Assert(false, err1)
+					//
+					// Connection refused and timeout are the only viable errors.
+					// Assert to know if anything else happens.
+					//
+					common.Assert(rpc.IsConnectionRefused(err) || rpc.IsTimedOut(err), err)
 					return nil, err
 				}
 
 				// Retry JoinMV once more with fresh connection.
 				continue
 			}
+
+			//
+			// Only other possible errors:
+			// - Actual RPC error returned by the server.
+			// - Connection closed by the server (maybe it restarted before it could respond).
+			// - Time out (either node is down or cannot be reached over the n/w).
+			//
+			common.Assert(rpc.IsRPCError(err) || rpc.IsConnectionClosed(err) || rpc.IsTimedOut(err),
+				err)
 
 			// Fall through to release the RPC client.
 			resp = nil
@@ -451,19 +513,31 @@ func UpdateMV(ctx context.Context, targetNodeID string, req *models.UpdateMVRequ
 			// If the failure is due to a stale connection to a node that has restarted, reset the connections
 			// and retry once more.
 			//
-			if rpc.IsConnectionClosed(err) {
+			if rpc.IsConnectionTerminated(err) {
 				err1 := cp.resetAllRPCClients(client)
 				if err1 != nil {
 					log.Err("rpc_client::UpdateMV: resetAllRPCClients failed for node %s: %v",
 						targetNodeID, err1)
-					// resetAllRPCClients() may fail but unlikely, so assert.
-					common.Assert(false, err1)
+					//
+					// Connection refused and timeout are the only viable errors.
+					// Assert to know if anything else happens.
+					//
+					common.Assert(rpc.IsConnectionRefused(err) || rpc.IsTimedOut(err), err)
 					return nil, err
 				}
 
 				// Retry UpdateMV once more with fresh connection.
 				continue
 			}
+
+			//
+			// Only other possible errors:
+			// - Actual RPC error returned by the server.
+			// - Connection closed by the server (maybe it restarted before it could respond).
+			// - Time out (either node is down or cannot be reached over the n/w).
+			//
+			common.Assert(rpc.IsRPCError(err) || rpc.IsConnectionClosed(err) || rpc.IsTimedOut(err),
+				err)
 
 			// Fall through to release the RPC client.
 			resp = nil
@@ -522,19 +596,31 @@ func LeaveMV(ctx context.Context, targetNodeID string, req *models.LeaveMVReques
 			// If the failure is due to a stale connection to a node that has restarted, reset the connections
 			// and retry once more.
 			//
-			if rpc.IsConnectionClosed(err) {
+			if rpc.IsConnectionTerminated(err) {
 				err1 := cp.resetAllRPCClients(client)
 				if err1 != nil {
 					log.Err("rpc_client::LeaveMV: resetAllRPCClients failed for node %s: %v",
 						targetNodeID, err1)
-					// resetAllRPCClients() may fail but unlikely, so assert.
-					common.Assert(false, err1)
+					//
+					// Connection refused and timeout are the only viable errors.
+					// Assert to know if anything else happens.
+					//
+					common.Assert(rpc.IsConnectionRefused(err) || rpc.IsTimedOut(err), err)
 					return nil, err
 				}
 
 				// Retry LeaveMV once more with fresh connection.
 				continue
 			}
+
+			//
+			// Only other possible errors:
+			// - Actual RPC error returned by the server.
+			// - Connection closed by the server (maybe it restarted before it could respond).
+			// - Time out (either node is down or cannot be reached over the n/w).
+			//
+			common.Assert(rpc.IsRPCError(err) || rpc.IsConnectionClosed(err) || rpc.IsTimedOut(err),
+				err)
 
 			// Fall through to release the RPC client.
 			resp = nil
@@ -593,19 +679,31 @@ func StartSync(ctx context.Context, targetNodeID string, req *models.StartSyncRe
 			// If the failure is due to a stale connection to a node that has restarted, reset the connections
 			// and retry once more.
 			//
-			if rpc.IsConnectionClosed(err) {
+			if rpc.IsConnectionTerminated(err) {
 				err1 := cp.resetAllRPCClients(client)
 				if err1 != nil {
 					log.Err("rpc_client::StartSync: resetAllRPCClients failed for node %s: %v",
 						targetNodeID, err1)
-					// resetAllRPCClients() may fail but unlikely, so assert.
-					common.Assert(false, err1)
+					//
+					// Connection refused and timeout are the only viable errors.
+					// Assert to know if anything else happens.
+					//
+					common.Assert(rpc.IsConnectionRefused(err) || rpc.IsTimedOut(err), err)
 					return nil, err
 				}
 
 				// Retry StartSync once more with fresh connection.
 				continue
 			}
+
+			//
+			// Only other possible errors:
+			// - Actual RPC error returned by the server.
+			// - Connection closed by the server (maybe it restarted before it could respond).
+			// - Time out (either node is down or cannot be reached over the n/w).
+			//
+			common.Assert(rpc.IsRPCError(err) || rpc.IsConnectionClosed(err) || rpc.IsTimedOut(err),
+				err)
 
 			// Fall through to release the RPC client.
 			resp = nil
@@ -664,19 +762,31 @@ func EndSync(ctx context.Context, targetNodeID string, req *models.EndSyncReques
 			// If the failure is due to a stale connection to a node that has restarted, reset the connections
 			// and retry once more.
 			//
-			if rpc.IsConnectionClosed(err) {
+			if rpc.IsConnectionTerminated(err) {
 				err1 := cp.resetAllRPCClients(client)
 				if err1 != nil {
 					log.Err("rpc_client::EndSync: resetAllRPCClients failed for node %s: %v",
 						targetNodeID, err1)
-					// resetAllRPCClients() may fail but unlikely, so assert.
-					common.Assert(false, err1)
+					//
+					// Connection refused and timeout are the only viable errors.
+					// Assert to know if anything else happens.
+					//
+					common.Assert(rpc.IsConnectionRefused(err) || rpc.IsTimedOut(err), err)
 					return nil, err
 				}
 
 				// Retry EndSync once more with fresh connection.
 				continue
 			}
+
+			//
+			// Only other possible errors:
+			// - Actual RPC error returned by the server.
+			// - Connection closed by the server (maybe it restarted before it could respond).
+			// - Time out (either node is down or cannot be reached over the n/w).
+			//
+			common.Assert(rpc.IsRPCError(err) || rpc.IsConnectionClosed(err) || rpc.IsTimedOut(err),
+				err)
 
 			// Fall through to release the RPC client.
 			resp = nil
