@@ -390,6 +390,7 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 		}
 		dirList = parseDcacheMetadataForDirEntries(dirList)
 	} else if isAzurePath {
+	listAzurePath:
 		log.Debug("DistributedCache::StreamDir : Path is having Azure subcomponent, path : %s", options.Name)
 		options.Name = rawPath
 		if dirList, token, err = dc.NextComponent().StreamDir(options); err != nil {
@@ -399,6 +400,12 @@ func (dc *DistributedCache) StreamDir(options internal.StreamDirOptions) ([]*int
 		// While iterating the entries of the root of the container skip the cache folder.
 		if isMountPointRoot(rawPath) {
 			dirList = hideCacheMetadata(dirList)
+		}
+
+		// Retry listing when the list has no dirents after hiding the root cache dir.
+		if (len(dirList) == 0) && token != "" {
+			options.Token = token
+			goto listAzurePath
 		}
 	} else if isDebugPath {
 		log.Debug("DistributedCache::StreamDir : Path is having Debug subcomponent, path : %s", options.Name)
