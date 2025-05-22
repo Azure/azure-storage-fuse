@@ -88,7 +88,7 @@ type BlockCache struct {
 	stream          *Stream
 	lazyWrite       bool           // Flag to indicate if lazy write is enabled
 	fileCloseOpt    sync.WaitGroup // Wait group to wait for all async close operations to complete
-	cleanupOnStart  bool           // Clear temp directory on startup
+	// cleanupOnStart has been removed in favor of the global cleanup-on-start flag in mount.go
 }
 
 // Structure defining your config parameters
@@ -102,7 +102,7 @@ type BlockCacheOptions struct {
 	Workers        uint32  `config:"parallelism" yaml:"parallelism,omitempty"`
 	PrefetchOnOpen bool    `config:"prefetch-on-open" yaml:"prefetch-on-open,omitempty"`
 	Consistency    bool    `config:"consistency" yaml:"consistency,omitempty"`
-	CleanupOnStart bool    `config:"cleanup-on-start" yaml:"cleanup-on-start,omitempty"`
+	// CleanupOnStart has been removed in favor of the global cleanup-on-start flag in mount.go
 }
 
 const (
@@ -290,7 +290,7 @@ func (bc *BlockCache) Configure(_ bool) error {
 	bc.tmpPath = common.ExpandPath(conf.TmpPath)
 	
 	// Handle cleanup-on-start configuration
-	bc.cleanupOnStart = conf.CleanupOnStart
+	// bc.cleanupOnStart has been removed in favor of the global cleanup-on-start flag in mount.go
 
 	if bc.tmpPath != "" {
 		//check mnt path is not same as temp path
@@ -315,12 +315,7 @@ func (bc *BlockCache) Configure(_ bool) error {
 				return fmt.Errorf("config error in %s [%s]", bc.Name(), err.Error())
 			}
 		} else {
-			if bc.cleanupOnStart {
-				err := common.TempCacheCleanup(bc.tmpPath)
-				if err != nil {
-					return fmt.Errorf("error in %s error [fail to cleanup temp cache]", bc.Name())
-				}
-			}
+			// The temporary directory cleanup is now handled in mount.go with the global cleanup-on-start flag
 		}
 
 		if !common.IsDirectoryEmpty(bc.tmpPath) {
@@ -2001,6 +1996,6 @@ func init() {
 	strongConsistency := config.AddBoolFlag("block-cache-strong-consistency", false, "Enable strong data consistency for block cache.")
 	config.BindPFlag(compName+".consistency", strongConsistency)
 
-	// Bind the global cleanup-on-start flag to the component config
-	config.BindPFlag(compName+".cleanup-on-start", config.GetFlag("cleanup-on-start"))
+	// The component-specific cleanup-on-start flag has been removed in favor of the global flag in mount.go
+	// config.BindPFlag(compName+".cleanup-on-start", config.GetFlag("cleanup-on-start"))
 }
