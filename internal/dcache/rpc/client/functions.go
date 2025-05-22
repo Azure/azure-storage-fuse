@@ -756,6 +756,8 @@ func EndSync(ctx context.Context, targetNodeID string, req *models.EndSyncReques
 		targetNodeID, reqStr)
 }
 
+// TODO:: integration : use this API in the fix-mv workflow to get the size of the MV
+// while making JoinMV calls to new online RVs
 func GetMVSize(ctx context.Context, targetNodeID string, req *models.GetMVSizeRequest) (*models.GetMVSizeResponse, error) {
 	common.Assert(req != nil)
 
