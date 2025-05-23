@@ -39,6 +39,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -206,6 +207,7 @@ type ClusterMap struct {
 	updatesChan         chan dcache.ClusterMapEvent
 	localMap            *dcache.ClusterMap
 	localClusterMapPath string
+	wg                  sync.WaitGroup // wait group for the processEvents() goroutine
 }
 
 func (c *ClusterMap) stop() {
@@ -213,9 +215,13 @@ func (c *ClusterMap) stop() {
 	if c.updatesChan != nil {
 		close(c.updatesChan)
 	}
+
+	c.wg.Wait()
 }
 
 func (c *ClusterMap) processEvents() {
+	defer c.wg.Done()
+
 	log.Info("ClusterMap::processEvents: Event processor thread started")
 
 	for evt := range c.updatesChan {
@@ -473,5 +479,6 @@ func (c *ClusterMap) rVNameToIp(rvName string) string {
 // Start a go routine for processing events posted by clusterManager.
 // These are mostly to notify when there's a change in the local clustermap/
 func init() {
+	clusterMap.wg.Add(1)
 	go clusterMap.processEvents()
 }
