@@ -67,7 +67,6 @@ type FileCache struct {
 	createEmptyFile bool
 	allowNonEmpty   bool
 	cacheTimeout    float64
-	cleanupOnStart  bool
 	policyTrace     bool
 	missedChmodList sync.Map
 	mountPath       string
@@ -153,13 +152,6 @@ func (c *FileCache) Priority() internal.ComponentPriority {
 //	this shall not block the call otherwise pipeline will not start
 func (c *FileCache) Start(ctx context.Context) error {
 	log.Trace("Starting component : %s", c.Name())
-
-	if c.cleanupOnStart {
-		err := common.TempCacheCleanup(c.tmpPath)
-		if err != nil {
-			return fmt.Errorf("error in %s error [fail to cleanup temp cache]", c.Name())
-		}
-	}
 
 	if c.policy == nil {
 		return fmt.Errorf("config error in %s error [cache policy missing]", c.Name())
@@ -253,7 +245,6 @@ func (c *FileCache) Configure(_ bool) error {
 	} else {
 		c.allowNonEmpty = conf.AllowNonEmpty
 	}
-	c.cleanupOnStart = conf.CleanupOnStart
 	c.policyTrace = conf.EnablePolicyTrace
 	c.offloadIO = conf.OffloadIO
 	c.syncToFlush = conf.SyncToFlush
@@ -351,7 +342,7 @@ func (c *FileCache) Configure(_ bool) error {
 	}
 
 	log.Crit("FileCache::Configure : create-empty %t, cache-timeout %d, tmp-path %s, max-size-mb %d, high-mark %d, low-mark %d, refresh-sec %v, max-eviction %v, hard-limit %v, policy %s, allow-non-empty-temp %t, cleanup-on-start %t, policy-trace %t, offload-io %t, sync-to-flush %t, ignore-sync %t, defaultPermission %v, diskHighWaterMark %v, maxCacheSize %v, mountPath %v",
-		c.createEmptyFile, int(c.cacheTimeout), c.tmpPath, int(cacheConfig.maxSizeMB), int(cacheConfig.highThreshold), int(cacheConfig.lowThreshold), c.refreshSec, cacheConfig.maxEviction, c.hardLimit, conf.Policy, c.allowNonEmpty, c.cleanupOnStart, c.policyTrace, c.offloadIO, c.syncToFlush, c.syncToDelete, c.defaultPermission, c.diskHighWaterMark, c.maxCacheSize, c.mountPath)
+		c.createEmptyFile, int(c.cacheTimeout), c.tmpPath, int(cacheConfig.maxSizeMB), int(cacheConfig.highThreshold), int(cacheConfig.lowThreshold), c.refreshSec, cacheConfig.maxEviction, c.hardLimit, conf.Policy, c.allowNonEmpty, conf.CleanupOnStart, c.policyTrace, c.offloadIO, c.syncToFlush, c.syncToDelete, c.defaultPermission, c.diskHighWaterMark, c.maxCacheSize, c.mountPath)
 
 	return nil
 }

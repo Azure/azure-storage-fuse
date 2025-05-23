@@ -120,19 +120,6 @@ func (opt *mountOptions) validate(skipNonEmptyMount bool) error {
 			if err = unmountBlobfuse2(opt.MountPath, true); err != nil {
 				return fmt.Errorf("directory is already mounted, unmount manually before remount [%v]", err.Error())
 			}
-
-			// Clean up the file-cache temp directory if any
-			var tempCachePath string
-			_ = config.UnmarshalKey("file_cache.path", &tempCachePath)
-
-			var cleanupOnStart bool
-			_ = config.UnmarshalKey("file_cache.cleanup-on-start", &cleanupOnStart)
-
-			if tempCachePath != "" && cleanupOnStart {
-				if err = common.TempCacheCleanup(tempCachePath); err != nil {
-					return fmt.Errorf("failed to cleanup file cache [%s]", err.Error())
-				}
-			}
 		}
 	} else if !skipNonEmptyMount && !common.IsDirectoryEmpty(opt.MountPath) {
 		return fmt.Errorf("mount directory is not empty")
@@ -181,6 +168,16 @@ func (opt *mountOptions) validate(skipNonEmptyMount bool) error {
 
 	if opt.Logging.LogFileCount == 0 {
 		opt.Logging.LogFileCount = common.DefaultLogFileCount
+	}
+
+	// Check for global cleanup-on-start flag
+	var cleanupOnStart bool
+	_ = config.UnmarshalKey("cleanup-on-start", &cleanupOnStart)
+
+	// Clean up any cache directory if cleanup-on-start is set
+	err = tempCacheCleanup(cleanupOnStart)
+	if err != nil {
+		return err
 	}
 
 	return nil
@@ -679,6 +676,56 @@ func startMonitor(pid int) {
 	}
 }
 
+// cleanupCachePath is a helper function to clean up cache directories
+// componentName: the name of the component (e.g., "file_cache", "block_cache")
+// globalCleanupFlag: value of the global cleanup-on-start flag
+
+func tempCacheCleanup(globalCleanupFlag bool) error {
+	// Handle file_cache component
+	err := cleanupCachePath("file_cache", globalCleanupFlag)
+	if err != nil {
+		return fmt.Errorf("failed to clean up  cache for file_cache: %w", err)
+	}
+
+	// Handle block_cache component
+	err = cleanupCachePath("block_cache", globalCleanupFlag)
+	if err != nil {
+		return fmt.Errorf("failed to clean up cache for block_cache: %w", err)
+	}
+
+	// Handle xload component
+	err = cleanupCachePath("xload", globalCleanupFlag)
+	if err != nil {
+		return fmt.Errorf("failed to clean up cache for block_cache: %w", err)
+	}
+
+	return nil
+}
+
+func cleanupCachePath(componentName string, globalCleanupFlag bool) error {
+	// Get the path for the component
+	var cachePath string
+	_ = config.UnmarshalKey(componentName+".path", &cachePath)
+
+	if cachePath == "" {
+		// No path configured for this component
+		return nil
+	}
+
+	// Check for component-specific cleanup flag
+	var componentCleanupFlag bool
+	_ = config.UnmarshalKey(componentName+".cleanup-on-start", &componentCleanupFlag)
+
+	// Clean up if either global or component-specific flag is set
+	if globalCleanupFlag || componentCleanupFlag {
+		if err := common.TempCacheCleanup(cachePath); err != nil {
+			return fmt.Errorf("failed to cleanup %s [%s]", componentName, err.Error())
+		}
+	}
+
+	return nil
+}
+
 func sigusrHandler(pipeline *internal.Pipeline, ctx context.Context) daemon.SignalHandlerFunc {
 	return func(sig os.Signal) error {
 		log.Crit("Mount::sigusrHandler : Signal %d received", sig)
@@ -759,6 +806,10 @@ func init() {
 	_ = mountCmd.RegisterFlagCompletionFunc("log-type", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return []string{"silent", "base", "syslog"}, cobra.ShellCompDirectiveNoFileComp
 	})
+
+	// Add a generic cleanup-on-start flag that applies to all cache components
+	mountCmd.PersistentFlags().Bool("cleanup-on-start", false, "Clear cache directory on startup if not empty for file_cache and block_cache components.")
+	config.BindPFlag("cleanup-on-start", mountCmd.PersistentFlags().Lookup("cleanup-on-start"))
 
 	mountCmd.PersistentFlags().String("log-level", "LOG_WARNING",
 		"Enables logs written to syslog. Set to LOG_WARNING by default. Allowed values are LOG_OFF|LOG_CRIT|LOG_ERR|LOG_WARNING|LOG_INFO|LOG_DEBUG")

@@ -88,7 +88,6 @@ type BlockCache struct {
 	stream          *Stream
 	lazyWrite       bool           // Flag to indicate if lazy write is enabled
 	fileCloseOpt    sync.WaitGroup // Wait group to wait for all async close operations to complete
-	cleanupOnStart  bool           // Clear temp directory on startup
 }
 
 // Structure defining your config parameters
@@ -288,7 +287,6 @@ func (bc *BlockCache) Configure(_ bool) error {
 	}
 
 	bc.tmpPath = common.ExpandPath(conf.TmpPath)
-	bc.cleanupOnStart = conf.CleanupOnStart
 
 	if bc.tmpPath != "" {
 		//check mnt path is not same as temp path
@@ -311,13 +309,6 @@ func (bc *BlockCache) Configure(_ bool) error {
 			if err != nil {
 				log.Err("BlockCache: config error creating directory of temp path after clean [%s]", err.Error())
 				return fmt.Errorf("config error in %s [%s]", bc.Name(), err.Error())
-			}
-		} else {
-			if bc.cleanupOnStart {
-				err := common.TempCacheCleanup(bc.tmpPath)
-				if err != nil {
-					return fmt.Errorf("error in %s error [fail to cleanup temp cache]", bc.Name())
-				}
 			}
 		}
 
@@ -345,8 +336,8 @@ func (bc *BlockCache) Configure(_ bool) error {
 		}
 	}
 
-	log.Crit("BlockCache::Configure : block size %v, mem size %v, worker %v, prefetch %v, disk path %v, max size %v, disk timeout %v, prefetch-on-open %t, maxDiskUsageHit %v, noPrefetch %v, consistency %v",
-		bc.blockSize, bc.memSize, bc.workers, bc.prefetch, bc.tmpPath, bc.diskSize, bc.diskTimeout, bc.prefetchOnOpen, bc.maxDiskUsageHit, bc.noPrefetch, bc.consistency)
+	log.Crit("BlockCache::Configure : block size %v, mem size %v, worker %v, prefetch %v, disk path %v, max size %v, disk timeout %v, prefetch-on-open %t, maxDiskUsageHit %v, noPrefetch %v, consistency %v, cleanup-on-start %t",
+		bc.blockSize, bc.memSize, bc.workers, bc.prefetch, bc.tmpPath, bc.diskSize, bc.diskTimeout, bc.prefetchOnOpen, bc.maxDiskUsageHit, bc.noPrefetch, bc.consistency, conf.CleanupOnStart)
 
 	return nil
 }
