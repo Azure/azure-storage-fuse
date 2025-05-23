@@ -44,8 +44,11 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-// Use the exported function for testing
-var CleanupCachePath = cleanupCachePath
+// CleanupTestSuite is a test suite for the cleanup functionality
+type CleanupTestSuite struct {
+	suite.Suite
+	testDir string
+}
 
 func (suite *CleanupTestSuite) SetupTest() {
 	// Create a test directory
@@ -71,9 +74,9 @@ func (suite *CleanupTestSuite) TestCleanupCachePath() {
 	// Set up test component
 	testComponent := "test_component"
 	config.Set(testComponent+".path", testPath)
-
+	
 	// Test case 1: Global flag true, component flag false
-	err = CleanupCachePath(testComponent, true)
+	err = cleanupCachePath(testComponent, true)
 	assert.NoError(suite.T(), err)
 	assert.True(suite.T(), common.IsDirectoryEmpty(testPath))
 
@@ -83,7 +86,7 @@ func (suite *CleanupTestSuite) TestCleanupCachePath() {
 
 	// Test case 2: Global flag false, component flag true
 	config.Set(testComponent+".cleanup-on-start", "true")
-	err = CleanupCachePath(testComponent, false)
+	err = cleanupCachePath(testComponent, false)
 	assert.NoError(suite.T(), err)
 	assert.True(suite.T(), common.IsDirectoryEmpty(testPath))
 
@@ -93,7 +96,7 @@ func (suite *CleanupTestSuite) TestCleanupCachePath() {
 
 	// Test case 3: Both flags false
 	config.Set(testComponent+".cleanup-on-start", "false")
-	err = CleanupCachePath(testComponent, false)
+	err = cleanupCachePath(testComponent, false)
 	assert.NoError(suite.T(), err)
 	assert.False(suite.T(), common.IsDirectoryEmpty(testPath))
 }
