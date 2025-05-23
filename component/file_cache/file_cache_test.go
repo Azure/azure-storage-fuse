@@ -159,7 +159,6 @@ func (suite *fileCacheTestSuite) TestEmpty() {
 	suite.assert.Equal(suite.fileCache.createEmptyFile, false)
 	suite.assert.Equal(suite.fileCache.allowNonEmpty, false)
 	suite.assert.EqualValues(suite.fileCache.cacheTimeout, 120)
-	// Removed assertion for cleanupOnStart as it's now handled in mount.go
 }
 
 // Tests configuration of file cache
@@ -191,7 +190,6 @@ func (suite *fileCacheTestSuite) TestConfig() {
 	suite.assert.Equal(suite.fileCache.createEmptyFile, createEmptyFile)
 	suite.assert.Equal(suite.fileCache.allowNonEmpty, allowNonEmptyTemp)
 	suite.assert.EqualValues(suite.fileCache.cacheTimeout, cacheTimeout)
-	// Removed assertion for cleanupOnStart as it's now handled in mount.go
 }
 
 func (suite *fileCacheTestSuite) TestDefaultCacheSize() {
@@ -243,7 +241,6 @@ func (suite *fileCacheTestSuite) TestConfigPolicyTimeout() {
 	suite.assert.Equal(suite.fileCache.createEmptyFile, createEmptyFile)
 	suite.assert.Equal(suite.fileCache.allowNonEmpty, allowNonEmptyTemp)
 	suite.assert.EqualValues(suite.fileCache.cacheTimeout, cacheTimeout)
-	// Removed assertion for cleanupOnStart as it's now handled in mount.go
 }
 
 func (suite *fileCacheTestSuite) TestConfigPolicyDefaultTimeout() {
@@ -275,7 +272,6 @@ func (suite *fileCacheTestSuite) TestConfigPolicyDefaultTimeout() {
 	suite.assert.Equal(suite.fileCache.createEmptyFile, createEmptyFile)
 	suite.assert.Equal(suite.fileCache.allowNonEmpty, allowNonEmptyTemp)
 	suite.assert.EqualValues(suite.fileCache.cacheTimeout, cacheTimeout)
-	// Removed assertion for cleanupOnStart as it's now handled in mount.go
 }
 
 func (suite *fileCacheTestSuite) TestConfigZero() {
@@ -306,9 +302,7 @@ func (suite *fileCacheTestSuite) TestConfigZero() {
 	suite.assert.Equal(suite.fileCache.createEmptyFile, createEmptyFile)
 	suite.assert.Equal(suite.fileCache.allowNonEmpty, allowNonEmptyTemp)
 	suite.assert.EqualValues(suite.fileCache.cacheTimeout, cacheTimeout)
-	// Removed assertion for cleanupOnStart as it's now handled in mount.go
 }
-
 // Tests CreateDir
 func (suite *fileCacheTestSuite) TestCreateDir() {
 	defer suite.cleanupTest()
