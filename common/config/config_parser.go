@@ -389,6 +389,12 @@ func AddDurationFlag(name string, value time.Duration, usage string) *pflag.Flag
 	return userOptions.flags.Lookup(name)
 }
 
+// Register command-line flag that accepts a comma-separated list of strings.
+func AddStringSliceFlag(name string, value []string, usage string) *pflag.Flag {
+	userOptions.flags.StringSlice(name, value, usage)
+	return userOptions.flags.Lookup(name)
+}
+
 func RegisterFlagCompletionFunc(flagName string, completionFunc func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective)) {
 	userOptions.completionFuncMap[flagName] = completionFunc
 }
