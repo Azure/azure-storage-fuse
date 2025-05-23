@@ -804,7 +804,7 @@ func GetMVSize(ctx context.Context, targetNodeID string, req *models.GetMVSizeRe
 					// Connection refused and timeout are the only viable errors.
 					// Assert to know if anything else happens.
 					//
-					common.Assert(rpc.IsConnectionRefused(err) || rpc.IsTimedOut(err), err)
+					common.Assert(rpc.IsConnectionRefused(err1) || rpc.IsTimedOut(err1), err1)
 					return nil, err
 				}
 
@@ -816,13 +816,10 @@ func GetMVSize(ctx context.Context, targetNodeID string, req *models.GetMVSizeRe
 			// Only other possible errors:
 			// - Actual RPC error returned by the server.
 			// - Connection closed by the server (maybe it restarted before it could respond).
-			// - Connection refused (if the blobfuse process is not running on the peer node).
 			// - Time out (either node is down or cannot be reached over the n/w).
 			//
-			common.Assert(rpc.IsRPCError(err) ||
-				rpc.IsConnectionClosed(err) ||
-				rpc.IsConnectionRefused(err) ||
-				rpc.IsTimedOut(err), err)
+			common.Assert(rpc.IsRPCError(err) || rpc.IsConnectionClosed(err) || rpc.IsTimedOut(err),
+				err)
 
 			// Fall through to release the RPC client.
 			resp = nil
