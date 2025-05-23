@@ -126,16 +126,9 @@ func (opt *mountOptions) validate(skipNonEmptyMount bool) error {
 			_ = config.UnmarshalKey("cleanup-on-start", &cleanupOnStart)
 
 			// Clean up any cache directory if cleanup-on-start is set
-			// Handle file_cache component
-			err = cleanupCachePath("file_cache", cleanupOnStart)
+			err = tempCacheCleanup(cleanupOnStart)
 			if err != nil {
-				return fmt.Errorf("failed to clean up  cache for file_cache: %w", err)
-			}
-
-			// Handle block_cache component
-			err = cleanupCachePath("block_cache", cleanupOnStart)
-			if err != nil {
-				return fmt.Errorf("failed to clean up cache for block_cache: %w", err)
+				return err
 			}
 		}
 	} else if !skipNonEmptyMount && !common.IsDirectoryEmpty(opt.MountPath) {
@@ -686,6 +679,29 @@ func startMonitor(pid int) {
 // cleanupCachePath is a helper function to clean up cache directories
 // componentName: the name of the component (e.g., "file_cache", "block_cache")
 // globalCleanupFlag: value of the global cleanup-on-start flag
+
+func tempCacheCleanup(globalCleanupFlag bool) error {
+	// Handle file_cache component
+	err := cleanupCachePath("file_cache", globalCleanupFlag)
+	if err != nil {
+		return fmt.Errorf("failed to clean up  cache for file_cache: %w", err)
+	}
+
+	// Handle block_cache component
+	err = cleanupCachePath("block_cache", globalCleanupFlag)
+	if err != nil {
+		return fmt.Errorf("failed to clean up cache for block_cache: %w", err)
+	}
+
+	// Handle xload component
+	err = cleanupCachePath("xload", globalCleanupFlag)
+	if err != nil {
+		return fmt.Errorf("failed to clean up cache for block_cache: %w", err)
+	}
+
+	return nil
+}
+
 func cleanupCachePath(componentName string, globalCleanupFlag bool) error {
 	// Get the path for the component
 	var cachePath string

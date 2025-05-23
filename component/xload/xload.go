@@ -72,7 +72,7 @@ type XloadOptions struct {
 	Path           string  `config:"path" yaml:"path,omitempty"`
 	ExportProgress bool    `config:"export-progress" yaml:"path,omitempty"`
 	ValidateMD5    bool    `config:"validate-md5" yaml:"validate-md5,omitempty"`
-	// TODO:: xload : add parallelism parameter
+	CleanupOnStart bool    `config:"cleanup-on-start" yaml:"cleanup-on-start,omitempty"`
 }
 
 const (
@@ -210,8 +210,8 @@ func (xl *Xload) Configure(_ bool) error {
 		xl.defaultPermission = common.DefaultFilePermissionBits
 	}
 
-	log.Crit("Xload::Configure : block size %v, mode %v, path %v, default permission %v, export progress %v, validate md5 %v", xl.blockSize,
-		xl.mode.String(), xl.path, xl.defaultPermission, xl.exportProgress, xl.validateMD5)
+	log.Crit("Xload::Configure : block size %v, mode %v, path %v, default permission %v, export progress %v, validate md5 %v, cleanup-on-start %t",
+		xl.blockSize, xl.mode.String(), xl.path, xl.defaultPermission, xl.exportProgress, xl.validateMD5, conf.CleanupOnStart)
 
 	return nil
 }
