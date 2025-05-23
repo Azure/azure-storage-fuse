@@ -866,7 +866,60 @@ func (dc *DistributedCache) CloseFile(options internal.CloseFileOptions) error {
 }
 
 func (dc *DistributedCache) DeleteFile(options internal.DeleteFileOptions) error {
-	return syscall.ENOTSUP
+	log.Debug("DistributedCache::DeleteFile: Delete file: %s", options.Name)
+	var dcacheErr, azureErr error
+
+	isAzurePath, isDcachePath, isDebugPath, rawPath := getFS(options.Name)
+
+	if isDcachePath {
+		log.Debug("DistributedCache::DeleteFile: Delete for Dcache file: %s", options.Name)
+		err := fm.DeleteDcacheFile(rawPath)
+		if err != nil {
+			log.Err("DistributedCache::DeleteFile: Delete failed for Dcache file %s: %v", options.Name, err)
+			return err
+		}
+	} else if isAzurePath {
+		log.Debug("DistributedCache::DeleteFile: Delete Azure file: %s", options.Name)
+		options.Name = rawPath
+		err := dc.NextComponent().DeleteFile(options)
+		if err != nil {
+			log.Err("DistributedCache::DeleteFile: Delete failed for Azure file %s: %v", options.Name, err)
+			return err
+		}
+	} else if isDebugPath {
+		return syscall.EROFS
+	} else {
+		//
+		// Semantics for Unqualified Path, Delete from both Azure and Dcache. If file is present in only one qualified
+		// path, then delete only from that path. If the call has come here it already means that the file is present in
+		// atleast one qualified path as stat would be checked before doing deletion of a file.
+		//
+		log.Debug("DistributedCache::DeleteFile: Delete Dcache file for Unqualified Path: %s", options.Name)
+
+		dcacheErr = fm.DeleteDcacheFile(rawPath)
+		if dcacheErr != nil {
+			log.Err("DistributedCache::DeleteFile: Delete failed for Unqualified Path Dcache file %s: %v", options.Name, dcacheErr)
+			// Continue only if the above dcacheError is valid, ex: blob not found. Else fail the delete.
+			if dcacheErr == syscall.ENOENT {
+				dcacheErr = nil
+			} else {
+				return dcacheErr
+			}
+		}
+
+		options.Name = rawPath
+		log.Debug("DistributedCache::DeleteFile: Delete Azure file for Unqualified Path: %s", options.Name)
+		azureErr = dc.NextComponent().DeleteFile(options)
+		if azureErr != nil {
+			log.Err("DistributedCache::DeleteFile: Delete failed for Unqualified Path Azure file %s: %v", options.Name, azureErr)
+		}
+
+		if azureErr == syscall.ENOENT {
+			azureErr = nil
+		}
+	}
+
+	return errors.Join(dcacheErr, azureErr)
 }
 
 func (dc *DistributedCache) RenameFile(options internal.RenameFileOptions) error {

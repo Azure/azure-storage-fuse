@@ -116,17 +116,17 @@ type DCacheConfig struct {
 	CacheAccess            string `json:"cache-access"`
 }
 
-type fileState string
+type FileState string
 
 const (
-	Ready    fileState = "ready"
-	Writing  fileState = "writing"
-	Deleting fileState = "deleting"
+	Ready    FileState = "ready"
+	Writing  FileState = "writing"
+	Deleting FileState = "deleting"
 )
 
 type FileMetadata struct {
 	Filename        string     `json:"filename"`
-	State           fileState  `json:"state"`
+	State           FileState  `json:"-"`
 	FileID          string     `json:"file_id"`
 	Size            int64      `json:"-"`
 	ClusterMapEpoch int64      `json:"cluster_map_epoch"`
