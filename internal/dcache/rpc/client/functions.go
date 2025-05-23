@@ -828,11 +828,14 @@ func init() {
 	// Must be called only once.
 	common.Assert(len(myNodeId) == 0)
 
-	myNodeId, err := common.GetNodeUUID()
+	var err error
+	myNodeId, err = common.GetNodeUUID()
 	if err != nil {
 		// Cannot proceed w/o our node id.
 		log.GetLoggerObj().Panicf("rpc_client::init: PANIC: failed to get my node id [%v]", err)
 	}
+
+	common.Assert(common.IsValidUUID(myNodeId), myNodeId)
 
 	cp = newClientPool(defaultMaxPerNode, defaultMaxNodes, defaultTimeout)
 	common.Assert(cp != nil)
