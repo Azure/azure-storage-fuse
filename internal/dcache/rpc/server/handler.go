@@ -475,8 +475,8 @@ func (mv *mvInfo) updateComponentRVState(rvName string, oldState, newState dcach
 		common.Assert(rv != nil)
 		if rv.Name == rvName {
 			common.Assert(rv.State == string(oldState), rvName, rv.State, oldState)
-			log.Debug("mvInfo::updateComponentRVState: %s (%s -> %s) %s",
-				rvName, rv.State, newState, rpc.ComponentRVsToString(mv.componentRVs))
+			log.Debug("mvInfo::updateComponentRVState: %s/%s (%s -> %s) %s",
+				rvName, mv.mvName, rv.State, newState, rpc.ComponentRVsToString(mv.componentRVs))
 
 			rv.State = string(newState)
 			return
