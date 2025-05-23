@@ -1318,7 +1318,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		// Decrease the slot count for the RV in nodeToRvs
 		for i := range nodeToRvs[nodeId].rvs {
 			if nodeToRvs[nodeId].rvs[i].rvName == rvName {
-				common.Assert(nodeToRvs[nodeId].rvs[i].slots > 0)
+				common.Assert(nodeToRvs[nodeId].rvs[i].slots > 0, nodeId, rvName, mvName)
 				nodeToRvs[nodeId].rvs[i].slots--
 				found = true
 				break
@@ -1681,6 +1681,12 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 				}
 			}
 			existingMVMap[mvName] = mv
+
+			//
+			// After the consumeRVSlot() above we need to trim the nodeToRvs map as it may have fully consumed
+			// some RV(s). We don't want to use those RVs in the next fixMV() iteration(s).
+			//
+			trimNodeToRvs()
 		} else {
 			//
 			// If we fail to fix the MV we simply return leaving the broken MV in existingMVMap.
@@ -1707,10 +1713,10 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			// If the node already exists, append the RV to its list.
 			// This will be the case when node has more than one RV and we are encountering the second
 			// or subsequent RVs.
-			common.Assert(rvInfo.NodeId == nodeInfo.nodeId)
+			common.Assert(rvInfo.NodeId == nodeInfo.nodeId, rvInfo.NodeId, nodeInfo.nodeId)
 			common.Assert(len(nodeInfo.rvs) > 0)
-			common.Assert(nodeInfo.rvs[0].slots == MvsPerRv)
-			common.Assert(nodeInfo.rvs[0].rvName != rvName)
+			common.Assert(nodeInfo.rvs[0].slots == MvsPerRv, nodeInfo.rvs[0].slots, MvsPerRv)
+			common.Assert(nodeInfo.rvs[0].rvName != rvName, rvName)
 
 			nodeInfo.rvs = append(nodeInfo.rvs, rv{
 				rvName: rvName,
