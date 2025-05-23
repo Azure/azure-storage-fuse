@@ -885,19 +885,22 @@ func (cmi *ClusterManager) updateStorageClusterMapWithMyRVs() error {
 
 		//
 		// Now we want to add our RVs to the clustermap RV list.
-		// If some other node is currently updating the clustermap, we need to wait and retry.
-		//
-		// TODO: Add support for checking if the node that set the state to StateChecking dies
-		//       and hence it doesn't come out of that state.
+		// If some other node is currently updating the clustermap,
+		// 	1. we need to wait and retry if updates are not stale.
+		// 	2. if clutermap updates are stale, we will override the clustermap ownership.
 		//
 		if clusterMap.State == dcache.StateChecking {
-			log.Info("ClusterManager::updateStorageClusterMapWithMyRVs: clustermap being updated by node %s, waiting a bit before retry",
-				clusterMap.LastUpdatedBy)
-			// We cannot be updating.
-			common.Assert(clusterMap.LastUpdatedBy != cmi.myNodeId)
-			// TODO: Add some backoff and randomness?
-			time.Sleep(10 * time.Millisecond)
-			continue
+			if didOverride, err := cmi.overrideClusterMapIfStale(clusterMap); err != nil {
+				return err
+			} else if !didOverride {
+				log.Info("ClusterManager::updateStorageClusterMapWithMyRVs: clustermap is being updated by node %s. Waiting a bit before retry",
+					clusterMap.LastUpdatedBy)
+				// We cannot be updating.
+				common.Assert(clusterMap.LastUpdatedBy != cmi.myNodeId)
+				// TODO: Add some backoff and randomness?
+				time.Sleep(10 * time.Millisecond)
+				continue
+			}
 		}
 		common.Assert(clusterMap.State == dcache.StateReady)
 
@@ -959,6 +962,98 @@ func (cmi *ClusterManager) updateStorageClusterMapWithMyRVs() error {
 	}
 
 	return nil
+}
+
+const thresholdClusterMapEpochTime = 60
+
+// This method checks if the cluster map update is stuck due to a crashed node, and if so, safely resets the ownership to allow this node to proceed.
+//
+// A cluster map update may get stuck in StateChecking if the node that started the update crashes.
+// This method determines staleness in two ways:
+// 1. Ownership is taken by this node only in another thread.
+// 2. Time-based: The last updated timestamp exceeds a configured threshold.
+// 3. Liveness check: The node that initiated the update is no longer alive (based on heartbeat).
+//
+// There are three possible recovery strategies:
+// 1. Retry the UpdateClusterMapStart using the latest ETag.
+// 2. Forcefully take ownership by setting LastUpdatedBy to this node with existing state checking.
+// 3. Safely reset the cluster map state to StateReady, allowing a clean update to begin.
+//
+// This method uses the third (and most robust) approach: ending the previous update cleanly
+// so the cluster map can be safely updated by this node.
+func (cmi *ClusterManager) overrideClusterMapIfStale(clusterMap *dcache.ClusterMap) (bool, error) {
+
+	// Check if ownership is taken by this node only in another thread.
+	if clusterMap.LastUpdatedBy == cmi.myNodeId {
+		return false, nil
+	}
+
+	//  Check if the last updated timestamp exceeds a configured threshold.
+	staleThreshold := time.Duration(int(cmi.config.ClustermapEpoch)+thresholdClusterMapEpochTime) * time.Second
+	age := time.Since(time.Unix(clusterMap.LastUpdatedAt, 0))
+	if age < staleThreshold {
+		return false, nil
+	}
+
+	log.Warn("ClusterMap last updated at %d (%s ago) exceeds stale threshold %s",
+		clusterMap.LastUpdatedAt, age.Truncate(time.Second), staleThreshold)
+
+	// Optional: check heartbeat of the node that set StateChecking
+	bytes, err := getHeartbeat(clusterMap.LastUpdatedBy)
+	if err != nil {
+		log.Warn("Failed to get heartbeat for node %s: %v", clusterMap.LastUpdatedBy, err)
+		return false, nil
+	}
+
+	var hbData dcache.HeartbeatData
+	if err := json.Unmarshal(bytes, &hbData); err != nil {
+		common.Assert(false, err)
+		log.Warn("Failed to parse heartbeat bytes (%d) for node %s: %v",
+			len(bytes), clusterMap.LastUpdatedBy, err)
+		return false, nil
+
+	}
+
+	// if this node's last heartbeat is too old, consider it dead
+	if !cmi.isHeartBeatStale(hbData) {
+		return false, nil
+	}
+	log.Warn("ClusterManager::overrideClusterMapIfStale: clustermap is stuck in StateChecking by node %s. Overriding Ownership by node %s",
+		clusterMap.LastUpdatedBy, cmi.myNodeId)
+	clusterMap.State = dcache.StateReady
+	clusterMap.LastUpdatedBy = cmi.myNodeId
+	clusterMap.LastUpdatedAt = time.Now().Unix()
+	updatedClusterMapBytes, err := json.Marshal(clusterMap)
+	if err != nil {
+		log.Err("ClusterManager::overrideClusterMapIfStale: Marshal failed for clustermap: %v %+v",
+			err, clusterMap)
+		common.Assert(false, err)
+		return false, err
+	}
+
+	if err = mm.UpdateClusterMapEnd(updatedClusterMapBytes); err != nil {
+		log.Err("ClusterManager::overrideClusterMapIfStale: UpdateClusterMapEnd() failed: %v %+v",
+			err, clusterMap)
+		common.Assert(false, err)
+		return false, err
+	}
+	return true, nil
+
+}
+
+// Current Time is - 21:11:05
+// Last Heartbeat to say node is down should be less then 21:10:50
+func (cmi *ClusterManager) isHeartBeatStale(hbData dcache.HeartbeatData) bool {
+	// Calculate expiry time as: now - (heartbeat window [heartbeatDuration* missHeartbeatCount])
+	maxAllowedAge := time.Duration(int64(cmi.config.HeartbeatsTillNodeDown)*int64(cmi.config.HeartbeatSeconds)) * time.Second
+	lastHbTime := time.Unix(int64(hbData.LastHeartbeat), 0)
+	age := time.Since(lastHbTime)
+	if age > maxAllowedAge {
+		log.Warn("ClusterManager::isHeartBeatStale: Node %s lastHeartbeat (%v) is expired (age: %v, max: %v)",
+			hbData.NodeID, lastHbTime, age.Truncate(time.Second), maxAllowedAge)
+		return true
+	}
+	return false
 }
 
 func (cmi *ClusterManager) checkIfClusterMapExists() (bool, error) {
@@ -1098,14 +1193,21 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	leader := (clusterMap.LastUpdatedBy == cmi.myNodeId)
 
 	// stale for checking state can be different than the stale for ready state
-	// TODO{Akku}: update stale calculation for checking state
-	// Skip if clustermap already in checking state
-	if clusterMap.State == dcache.StateChecking && !stale {
-		log.Debug("ClusterManager::updateStorageClusterMapIfRequired: skipping, clustermap is being updated by (leader %s), current node (%s)", clusterMap.LastUpdatedBy, cmi.myNodeId)
+	// If some other node is currently updating the clustermap,
+	// 	1. we need to wait and retry if updates are not stale.
+	// 	2. if clutermap updates are stale, we will override the clustermap ownership.
+	//
+	if clusterMap.State == dcache.StateChecking {
+		if didOverride, err := cmi.overrideClusterMapIfStale(clusterMap); err != nil {
+			return err
+		} else if !didOverride {
+			log.Debug("ClusterManager::updateStorageClusterMapIfRequired: skipping, clustermap is being updated by (leader %s), current node (%s)", clusterMap.LastUpdatedBy, cmi.myNodeId)
 
-		// Leader node should have updated the state to checking and it should not find the state to checking.
-		common.Assert(!leader, "We don't expect leader to see the clustermap in checking state")
-		return nil
+			// Leader node should have updated the state to checking and it should not find the state to checking.
+			common.Assert(!leader, "We don't expect leader to see the clustermap in checking state")
+			return nil
+		}
+
 	}
 
 	// Skip if we're neither leader nor the clustermap is stale
@@ -2379,14 +2481,22 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, rvName string, 
 			return err
 		}
 
-		// If clustermap is being updated by some other node, wait and restart.
+		//
+		// If some other node is currently updating the clustermap,
+		// 	1. we need to wait and retry if updates are not stale.
+		// 	2. if clutermap updates are stale, we will override the clustermap ownership.
+		//
 		if clusterMap.State == dcache.StateChecking {
-			log.Info("ClusterManager::updateComponentRVState: Clustermap being updated by node %s, waiting a bit before retry",
-				clusterMap.LastUpdatedBy)
+			if didOverride, err := cmi.overrideClusterMapIfStale(clusterMap); err != nil {
+				return err
+			} else if !didOverride {
+				log.Info("ClusterManager::updateComponentRVState: Clustermap being updated by node %s, waiting a bit before retry",
+					clusterMap.LastUpdatedBy)
 
-			// TODO: Add some backoff and randomness?
-			time.Sleep(10 * time.Millisecond)
-			continue
+				// TODO: Add some backoff and randomness?
+				time.Sleep(10 * time.Millisecond)
+				continue
+			}
 		}
 
 		// Requested MV must be valid.
