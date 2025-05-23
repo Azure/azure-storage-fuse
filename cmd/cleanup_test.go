@@ -74,7 +74,7 @@ func (suite *CleanupTestSuite) TestCleanupCachePath() {
 	// Set up test component
 	testComponent := "test_component"
 	config.Set(testComponent+".path", testPath)
-	
+
 	// Test case 1: Global flag true, component flag false
 	err = cleanupCachePath(testComponent, true)
 	assert.NoError(suite.T(), err)
@@ -99,6 +99,30 @@ func (suite *CleanupTestSuite) TestCleanupCachePath() {
 	err = cleanupCachePath(testComponent, false)
 	assert.NoError(suite.T(), err)
 	assert.False(suite.T(), common.IsDirectoryEmpty(testPath))
+
+	testPathFC := filepath.Join(testPath, "file_cache")
+	os.MkdirAll(testPathFC, 0755)
+	testPathBC := filepath.Join(testPath, "block_cache")
+	os.MkdirAll(testPathFC, 0755)
+	testPathX := filepath.Join(testPath, "xload")
+	os.MkdirAll(testPathFC, 0755)
+	os.MkdirAll(testPathBC, 0755)
+	os.MkdirAll(testPathX, 0755)
+
+	err = os.WriteFile(testPathFC+"/fc.txt", []byte("test"), 0644)
+	err = os.WriteFile(testPathBC+"/bc.txt", []byte("test"), 0644)
+	err = os.WriteFile(testPathX+"/x.txt", []byte("test"), 0644)
+
+	config.Set("file_cache.path", testPathFC)
+	config.Set("file_cache.cleanup-on-start", "true")
+	config.Set("block_cache.path", testPathBC)
+	config.Set("block_cache.cleanup-on-start", "true")
+	config.Set("xload.path", testPathX)
+	config.Set("xload.cleanup-on-start", "true")
+	tempCacheCleanup(false)
+	assert.True(suite.T(), common.IsDirectoryEmpty(testPathFC))
+	assert.True(suite.T(), common.IsDirectoryEmpty(testPathBC))
+	assert.True(suite.T(), common.IsDirectoryEmpty(testPathX))
 }
 
 func TestCleanupTestSuite(t *testing.T) {
