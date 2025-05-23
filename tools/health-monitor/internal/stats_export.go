@@ -34,13 +34,20 @@
 package internal
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"sync/atomic"
+	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
+	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
@@ -68,6 +75,8 @@ type Output struct {
 	Mem       string                  `json:"MemoryUsage,omitempty"`
 	Net       string                  `json:"NetworkUsage,omitempty"`
 }
+
+const monitorURL = "https://centralus.monitoring.azure.com/subscriptions/ba45b233-e2ef-4169-8808-49eb0d8eba0d/resourceGroups/sanjsingh-rg/providers/Microsoft.Compute/virtualMachines/sanjana/metrics"
 
 var expLock sync.Mutex
 var se *StatsExporter
@@ -157,6 +166,7 @@ func (se *StatsExporter) StatsExporter() {
 		} else {
 			// keep max 3 timestamps in memory
 			if len(se.outputList) >= 3 {
+				_ = se.sendToAzureMonitor(se.outputList[0])
 				err := se.addToOutputFile(se.outputList[0])
 				if err != nil {
 					log.Err("stats_exporter::StatsExporter : [%v]", err)
@@ -169,6 +179,7 @@ func (se *StatsExporter) StatsExporter() {
 			})
 
 			se.addToList(&st, len(se.outputList)-1)
+			_ = se.sendToAzureMonitor(se.outputList[len(se.outputList)-1])
 		}
 	}
 }
@@ -305,5 +316,100 @@ func CloseExporter() error {
 	}
 
 	se.Destroy()
+	return nil
+}
+
+func (se *StatsExporter) sendToAzureMonitor(out *Output) error {
+	timestamp, err := time.Parse(time.RFC3339, out.Timestamp)
+	if err != nil {
+		log.Err("stats_exporter::sendToAzureMonitor : Unable to parse timestamp [%v]", err)
+		return err
+	}
+
+	metrics := map[string]string{
+		"CPUUsage":     out.Cpu,
+		"MemoryUsage":  out.Mem,
+		"NetworkUsage": out.Net,
+	}
+	log.Info("stats_exporter::sendToAzureMonitor : Creating managed identity credentials")
+	cred, err := azidentity.NewManagedIdentityCredential(nil)
+	if err != nil {
+		log.Err("stats_exporter::sendToAzureMonitor : Unable to create managed identity credential [%v]", err)
+		return err
+	}
+
+	log.Debug("stats_exporter::sendToAzureMonitor : Requesting token for Azure Monitor")
+	token, err := cred.GetToken(context.Background(), policy.TokenRequestOptions{
+		Scopes: []string{"https://monitor.azure.com/.default"},
+	})
+	if err != nil {
+		log.Err("stats_exporter::sendToAzureMonitor : Unable to get token [%v]", err)
+		return err
+	}
+	log.Debug("stats_exporter::sendToAzureMonitor : Token successfully retrieved")
+
+	for metricName, valueStr := range metrics {
+		value, err := strconv.ParseFloat(valueStr, 64)
+		if err != nil {
+			log.Err("stats_exporter::sendToAzureMonitor : Unable to parse value [%v] for metric [%s]", err, metricName)
+			continue
+		}
+		log.Debug("stats_exporter::sendToAzureMonitor : Preparing to send metric [%s] with value [%f]", metricName, value)
+
+		payload := map[string]interface{}{
+			"time": timestamp,
+			"data": map[string]interface{}{
+				"baseData": map[string]interface{}{
+					"metric":    metricName,
+					"namespace": "CustomMetrics",
+					"dimNames":  []string{"host"},
+					"series": []map[string]interface{}{
+						{
+							"dimValues": []string{"host1"}, // Replace with dynamic host if needed
+							"min":       value,
+							"max":       value,
+							"sum":       value,
+							"count":     1,
+						},
+					},
+				},
+			},
+		}
+
+		jsonPayload, err := json.Marshal(payload)
+		if err != nil {
+			log.Err("stats_exporter::sendToAzureMonitor : Unable to marshal payload [%v]", err)
+			continue
+		}
+
+		log.Debug("stats_exporter::sendToAzureMonitor : Payload: %s", string(jsonPayload))
+
+		req, err := http.NewRequest("POST", monitorURL, bytes.NewBuffer(jsonPayload))
+		if err != nil {
+			log.Err("stats_exporter::sendToAzureMonitor : Unable to create request [%v]", err)
+			continue
+		}
+		req.Header.Set("Authorization", "Bearer "+token.Token)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("x-ms-monitor-metrics-format", "body")
+
+		log.Debug("stats_exporter::sendToAzureMonitor : Sending request for metric [%s]", metricName)
+
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Err("stats_exporter::sendToAzureMonitor : Request failed [%v]", err)
+			continue
+		}
+		defer resp.Body.Close()
+		log.Debug("stats_exporter::sendToAzureMonitor : Received response status [%s]", resp.Status)
+
+		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
+			log.Err("stats_exporter::sendToAzureMonitor : Failed to post metric [%s], status code [%d]", metricName, resp.StatusCode)
+		} else {
+			log.Info("stats_exporter::sendToAzureMonitor : Successfully posted metric [%s]", metricName)
+		}
+	}
+
 	return nil
 }
