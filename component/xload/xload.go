@@ -52,17 +52,20 @@ import (
 // Common structure for Component
 type Xload struct {
 	internal.BaseComponent
-	blockSize         uint64          // Size of each block to be cached
-	mode              Mode            // Mode of the Xload component
-	exportProgress    bool            // Export the progress of xload operation to json file
-	validateMD5       bool            // validate md5sum on download, if md5sum is set on blob
-	workerCount       uint32          // Number of workers running
-	blockPool         *BlockPool      // Pool of blocks
-	path              string          // Path on local disk where Xload will operate
-	defaultPermission os.FileMode     // Default permissions of files and directories in the xload path
-	comps             []XComponent    // list of components in xload
-	statsMgr          *StatsManager   // stats manager
-	fileLocks         *common.LockMap // lock to take on a file if one thread is processing it
+	blockSize         uint64             // Size of each block to be cached
+	mode              Mode               // Mode of the Xload component
+	exportProgress    bool               // Export the progress of xload operation to json file
+	validateMD5       bool               // validate md5sum on download, if md5sum is set on blob
+	workerCount       uint32             // Number of workers running
+	blockPool         *BlockPool         // Pool of blocks
+	path              string             // Path on local disk where Xload will operate
+	defaultPermission os.FileMode        // Default permissions of files and directories in the xload path
+	comps             []XComponent       // list of components in xload
+	statsMgr          *StatsManager      // stats manager
+	fileLocks         *common.LockMap    // lock to take on a file if one thread is processing it
+	poolSize          uint32             // Number of blocks in the pool
+	poolctx           context.Context    // context for the thread pool
+	poolCancelFunc    context.CancelFunc // cancel function for the thread pool
 }
 
 // Structure defining your config parameters
@@ -72,6 +75,8 @@ type XloadOptions struct {
 	Path           string  `config:"path" yaml:"path,omitempty"`
 	ExportProgress bool    `config:"export-progress" yaml:"path,omitempty"`
 	ValidateMD5    bool    `config:"validate-md5" yaml:"validate-md5,omitempty"`
+	Workers        int32   `config:"workers" yaml:"workers,omitempty"`
+	PoolSize       uint32  `config:"pool-size" yaml:"pool-size,omitempty"`
 	// TODO:: xload : add parallelism parameter
 }
 
@@ -132,8 +137,6 @@ func (xl *Xload) Configure(_ bool) error {
 			log.Err("Xload::Configure : Failed to unmarshal block-size-mb [%s]", err.Error())
 		}
 	}
-
-	xl.blockSize = uint64(blockSize * float64(MB))
 
 	localPath := strings.TrimSpace(conf.Path)
 	if localPath == "" {
@@ -210,6 +213,19 @@ func (xl *Xload) Configure(_ bool) error {
 		xl.defaultPermission = common.DefaultFilePermissionBits
 	}
 
+	xl.workerCount = uint32(math.Min(float64(runtime.NumCPU()*3), float64(MAX_WORKER_COUNT)))
+	if config.IsSet(compName+".workers") && conf.Workers > 0 {
+		xl.workerCount = uint32(math.Min(float64(conf.Workers), float64(MAX_WORKER_COUNT)))
+	}
+
+	xl.blockSize = uint64(blockSize * float64(MB))
+	xl.poolSize = xl.workerCount * 3
+	if config.IsSet(compName + ".pool-size") {
+		xl.poolSize = conf.PoolSize
+	}
+
+	xl.poolctx, xl.poolCancelFunc = context.WithCancel(context.Background())
+
 	log.Crit("Xload::Configure : block size %v, mode %v, path %v, default permission %v, export progress %v, validate md5 %v", xl.blockSize,
 		xl.mode.String(), xl.path, xl.defaultPermission, xl.exportProgress, xl.validateMD5)
 
@@ -220,8 +236,7 @@ func (xl *Xload) Configure(_ bool) error {
 func (xl *Xload) Start(ctx context.Context) error {
 	log.Trace("Xload::Start : Starting component %s", xl.Name())
 
-	xl.workerCount = uint32(math.Min(float64(runtime.NumCPU()*3), float64(MAX_WORKER_COUNT)))
-	xl.blockPool = NewBlockPool(xl.blockSize, xl.workerCount*3)
+	xl.blockPool = NewBlockPool(xl.blockSize, xl.poolSize)
 	if xl.blockPool == nil {
 		log.Err("Xload::Start : Failed to create block pool")
 		return fmt.Errorf("failed to create block pool")
@@ -230,7 +245,7 @@ func (xl *Xload) Start(ctx context.Context) error {
 	var err error
 
 	// create stats manager
-	xl.statsMgr, err = NewStatsManager(xl.workerCount*2, xl.exportProgress)
+	xl.statsMgr, err = NewStatsManager(xl.workerCount*2, xl.exportProgress, xl.blockPool)
 	if err != nil {
 		log.Err("Xload::Start : Failed to create stats manager [%s]", err.Error())
 		return err
@@ -264,7 +279,12 @@ func (xl *Xload) Start(ctx context.Context) error {
 func (xl *Xload) Stop() error {
 	log.Trace("Xload::Stop : Stopping component %s", xl.Name())
 
-	xl.comps[0].Stop()
+	xl.poolCancelFunc()
+
+	for i := 0; i < len(xl.comps); i++ {
+		xl.comps[i].Stop()
+	}
+
 	xl.statsMgr.Stop()
 	xl.blockPool.Terminate()
 
@@ -347,7 +367,7 @@ func (xl *Xload) startComponents() error {
 	}
 
 	for i := len(xl.comps) - 1; i >= 0; i-- {
-		xl.comps[i].Start()
+		xl.comps[i].Start(xl.poolctx)
 	}
 
 	return nil
@@ -480,4 +500,10 @@ func NewXloadComponent() internal.Component {
 // On init register this component to pipeline and supply your constructor
 func init() {
 	internal.AddComponent(compName, NewXloadComponent)
+
+	workers := config.AddInt32Flag("workers", 100, "number of workers to execute parallel download during preload")
+	config.BindPFlag(compName+".workers", workers)
+
+	poolSize := config.AddInt32Flag("pool-size", 300, "number of blocks in the blockpool for preload")
+	config.BindPFlag(compName+".pool-size", poolSize)
 }
