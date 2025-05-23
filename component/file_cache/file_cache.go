@@ -67,7 +67,7 @@ type FileCache struct {
 	createEmptyFile bool
 	allowNonEmpty   bool
 	cacheTimeout    float64
-	// cleanupOnStart has been removed in favor of the global cleanup-on-start flag in mount.go
+	cleanupOnStart  bool
 	policyTrace     bool
 	missedChmodList sync.Map
 	mountPath       string
@@ -102,7 +102,7 @@ type FileCacheOptions struct {
 
 	CreateEmptyFile bool `config:"create-empty-file" yaml:"create-empty-file,omitempty"`
 	AllowNonEmpty   bool `config:"allow-non-empty-temp" yaml:"allow-non-empty-temp,omitempty"`
-	// CleanupOnStart has been removed in favor of the global cleanup-on-start flag in mount.go
+	CleanupOnStart  bool `config:"cleanup-on-start" yaml:"cleanup-on-start,omitempty"`
 
 	EnablePolicyTrace bool `config:"policy-trace" yaml:"policy-trace,omitempty"`
 	OffloadIO         bool `config:"offload-io" yaml:"offload-io,omitempty"`
@@ -248,7 +248,7 @@ func (c *FileCache) Configure(_ bool) error {
 	} else {
 		c.allowNonEmpty = conf.AllowNonEmpty
 	}
-	// c.cleanupOnStart has been removed in favor of the global cleanup-on-start flag in mount.go
+	c.cleanupOnStart = conf.CleanupOnStart
 	c.policyTrace = conf.EnablePolicyTrace
 	c.offloadIO = conf.OffloadIO
 	c.syncToFlush = conf.SyncToFlush
@@ -346,7 +346,7 @@ func (c *FileCache) Configure(_ bool) error {
 	}
 
 	log.Crit("FileCache::Configure : create-empty %t, cache-timeout %d, tmp-path %s, max-size-mb %d, high-mark %d, low-mark %d, refresh-sec %v, max-eviction %v, hard-limit %v, policy %s, allow-non-empty-temp %t, cleanup-on-start %t, policy-trace %t, offload-io %t, sync-to-flush %t, ignore-sync %t, defaultPermission %v, diskHighWaterMark %v, maxCacheSize %v, mountPath %v",
-		c.createEmptyFile, int(c.cacheTimeout), c.tmpPath, int(cacheConfig.maxSizeMB), int(cacheConfig.highThreshold), int(cacheConfig.lowThreshold), c.refreshSec, cacheConfig.maxEviction, c.hardLimit, conf.Policy, c.allowNonEmpty, /* cleanupOnStart removed */ false, c.policyTrace, c.offloadIO, c.syncToFlush, c.syncToDelete, c.defaultPermission, c.diskHighWaterMark, c.maxCacheSize, c.mountPath)
+		c.createEmptyFile, int(c.cacheTimeout), c.tmpPath, int(cacheConfig.maxSizeMB), int(cacheConfig.highThreshold), int(cacheConfig.lowThreshold), c.refreshSec, cacheConfig.maxEviction, c.hardLimit, conf.Policy, c.allowNonEmpty, c.cleanupOnStart, c.policyTrace, c.offloadIO, c.syncToFlush, c.syncToDelete, c.defaultPermission, c.diskHighWaterMark, c.maxCacheSize, c.mountPath)
 
 	return nil
 }
@@ -1637,8 +1637,8 @@ func init() {
 	config.BindPFlag(compName+".empty-dir-check", emptyDirCheck)
 	emptyDirCheck.Hidden = true
 	
-	// The component-specific cleanup-on-start flag has been removed in favor of the global flag in mount.go
-	// config.BindPFlag(compName+".cleanup-on-start", config.GetFlag("cleanup-on-start"))
+	// Bind the global cleanup-on-start flag to the component config
+	config.BindPFlag(compName+".cleanup-on-start", config.GetFlag("cleanup-on-start"))
 
 	backgroundDownload := config.AddBoolFlag("background-download", false, "File download to run in the background on open call.")
 	config.BindPFlag(compName+".background-download", backgroundDownload)
