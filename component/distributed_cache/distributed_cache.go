@@ -53,6 +53,7 @@ import (
 	fm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/file_manager"
 	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
 	rm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/replication_manager"
+	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
 
@@ -238,9 +239,12 @@ func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
 // Stop : Stop the component functionality and kill all threads started
 func (dc *DistributedCache) Stop() error {
 	log.Trace("DistributedCache::Stop : Stopping component %s", dc.Name())
+
 	fm.EndFileIOManager()
 	rm.Stop()
 	clustermanager.Stop()
+	rpc_client.Cleanup()
+
 	return nil
 }
 
@@ -886,10 +890,8 @@ func init() {
 	cacheID := config.AddStringFlag("cache-id", "", "Cache ID for the distributed cache")
 	config.BindPFlag(compName+".cache-id", cacheID)
 
-	//TODO{Akku} : Need to update cache-dirs to be a list of strings for command line run, may be use StringSlice
-	cachePath := config.AddStringFlag("cache-dirs", "", "Local path(s) of the cache (comma‑separated)")
-	config.BindPFlag(compName+".cache-dirs", cachePath)
-
+	cacheDirFlag := config.AddStringSliceFlag("cache-dirs", []string{}, "One or more local cache directories for distributed cache (comma-separated), e.g. --cache-dirs=/mnt/tmp,/mnt/abc")
+	config.BindPFlag(compName+".cache-dirs", cacheDirFlag)
 	chunkSize := config.AddUint64Flag("chunk-size", defaultChunkSize, "Chunk size for the cache")
 	config.BindPFlag(compName+".chunk-size", chunkSize)
 
