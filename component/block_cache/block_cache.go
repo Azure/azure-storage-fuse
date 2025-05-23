@@ -88,7 +88,6 @@ type BlockCache struct {
 	stream          *Stream
 	lazyWrite       bool           // Flag to indicate if lazy write is enabled
 	fileCloseOpt    sync.WaitGroup // Wait group to wait for all async close operations to complete
-	// cleanupOnStart has been removed in favor of the global cleanup-on-start flag in mount.go
 }
 
 // Structure defining your config parameters
@@ -102,7 +101,6 @@ type BlockCacheOptions struct {
 	Workers        uint32  `config:"parallelism" yaml:"parallelism,omitempty"`
 	PrefetchOnOpen bool    `config:"prefetch-on-open" yaml:"prefetch-on-open,omitempty"`
 	Consistency    bool    `config:"consistency" yaml:"consistency,omitempty"`
-	// CleanupOnStart has been removed in favor of the global cleanup-on-start flag in mount.go
 }
 
 const (
@@ -288,9 +286,6 @@ func (bc *BlockCache) Configure(_ bool) error {
 	}
 
 	bc.tmpPath = common.ExpandPath(conf.TmpPath)
-	
-	// Handle cleanup-on-start configuration
-	// bc.cleanupOnStart has been removed in favor of the global cleanup-on-start flag in mount.go
 
 	if bc.tmpPath != "" {
 		//check mnt path is not same as temp path
@@ -314,8 +309,6 @@ func (bc *BlockCache) Configure(_ bool) error {
 				log.Err("BlockCache: config error creating directory of temp path after clean [%s]", err.Error())
 				return fmt.Errorf("config error in %s [%s]", bc.Name(), err.Error())
 			}
-		} else {
-			// The temporary directory cleanup is now handled in mount.go with the global cleanup-on-start flag
 		}
 
 		if !common.IsDirectoryEmpty(bc.tmpPath) {
@@ -1995,7 +1988,4 @@ func init() {
 
 	strongConsistency := config.AddBoolFlag("block-cache-strong-consistency", false, "Enable strong data consistency for block cache.")
 	config.BindPFlag(compName+".consistency", strongConsistency)
-
-	// The component-specific cleanup-on-start flag has been removed in favor of the global flag in mount.go
-	// config.BindPFlag(compName+".cleanup-on-start", config.GetFlag("cleanup-on-start"))
 }
