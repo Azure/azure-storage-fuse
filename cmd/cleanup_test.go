@@ -71,7 +71,7 @@ func (suite *CleanupTestSuite) TestCleanupCachePath() {
 	// Set up test component
 	testComponent := "test_component"
 	config.Set(testComponent+".path", testPath)
-	
+
 	// Test case 1: Global flag true, component flag false
 	err = CleanupCachePath(testComponent, true)
 	assert.NoError(suite.T(), err)
@@ -86,11 +86,11 @@ func (suite *CleanupTestSuite) TestCleanupCachePath() {
 	err = CleanupCachePath(testComponent, false)
 	assert.NoError(suite.T(), err)
 	assert.True(suite.T(), common.IsDirectoryEmpty(testPath))
-	
+
 	// Reset and create test files again
 	err = os.WriteFile(testFile, []byte("test"), 0644)
 	assert.NoError(suite.T(), err)
-	
+
 	// Test case 3: Both flags false
 	config.Set(testComponent+".cleanup-on-start", "false")
 	err = CleanupCachePath(testComponent, false)

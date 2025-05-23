@@ -124,20 +124,18 @@ func (opt *mountOptions) validate(skipNonEmptyMount bool) error {
 			// Check for global cleanup-on-start flag
 			var cleanupOnStart bool
 			_ = config.UnmarshalKey("cleanup-on-start", &cleanupOnStart)
-			
+
 			// Clean up any cache directory if cleanup-on-start is set
 			// Handle file_cache component
 			err = cleanupCachePath("file_cache", cleanupOnStart)
 			if err != nil {
-				log.Errorf("Mount::validate : Failed to clean up file_cache: %v", err)
-				return fmt.Errorf("failed to clean up file_cache: %w", err)
+				return fmt.Errorf("failed to clean up  cache for file_cache: %w", err)
 			}
-			
+
 			// Handle block_cache component
 			err = cleanupCachePath("block_cache", cleanupOnStart)
 			if err != nil {
-				log.Errorf("Mount::validate : Failed to clean up block_cache: %v", err)
-				return fmt.Errorf("failed to clean up block_cache: %w", err)
+				return fmt.Errorf("failed to clean up cache for block_cache: %w", err)
 			}
 		}
 	} else if !skipNonEmptyMount && !common.IsDirectoryEmpty(opt.MountPath) {
@@ -692,23 +690,23 @@ func cleanupCachePath(componentName string, globalCleanupFlag bool) error {
 	// Get the path for the component
 	var cachePath string
 	_ = config.UnmarshalKey(componentName+".path", &cachePath)
-	
+
 	if cachePath == "" {
 		// No path configured for this component
 		return nil
 	}
-	
+
 	// Check for component-specific cleanup flag
 	var componentCleanupFlag bool
 	_ = config.UnmarshalKey(componentName+".cleanup-on-start", &componentCleanupFlag)
-	
+
 	// Clean up if either global or component-specific flag is set
 	if globalCleanupFlag || componentCleanupFlag {
 		if err := common.TempCacheCleanup(cachePath); err != nil {
 			return fmt.Errorf("failed to cleanup %s [%s]", componentName, err.Error())
 		}
 	}
-	
+
 	return nil
 }
 
@@ -792,7 +790,7 @@ func init() {
 	_ = mountCmd.RegisterFlagCompletionFunc("log-type", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return []string{"silent", "base", "syslog"}, cobra.ShellCompDirectiveNoFileComp
 	})
-	
+
 	// Add a generic cleanup-on-start flag that applies to all cache components
 	mountCmd.PersistentFlags().Bool("cleanup-on-start", false, "Clear cache directory on startup if not empty for file_cache and block_cache components.")
 	config.BindPFlag("cleanup-on-start", mountCmd.PersistentFlags().Lookup("cleanup-on-start"))
