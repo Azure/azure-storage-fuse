@@ -70,6 +70,16 @@ func GetActiveMVs() map[string]dcache.MirroredVolume {
 	return clusterMap.getActiveMVs()
 }
 
+// It will return degraded MVs Map <mvName, MV> as per local cache copy of cluster map.
+func GetDegradedMVs() map[string]dcache.MirroredVolume {
+	return clusterMap.getDegradedMVs()
+}
+
+// It will return offline MVs Map <mvName, MV> as per local cache copy of cluster map.
+func GetOfflineMVs() map[string]dcache.MirroredVolume {
+	return clusterMap.getOfflineMVs()
+}
+
 // It will return the cache config as per local cache copy of cluster map.
 func GetCacheConfig() *dcache.DCacheConfig {
 	return clusterMap.getCacheConfig()
@@ -78,11 +88,6 @@ func GetCacheConfig() *dcache.DCacheConfig {
 // It will return the clustermap per local cache copy of it.
 func GetClusterMap() dcache.ClusterMap {
 	return clusterMap.getClusterMap()
-}
-
-// It will return degraded MVs Map <mvName, MV> as per local cache copy of cluster map.
-func GetDegradedMVs() map[string]dcache.MirroredVolume {
-	return clusterMap.getDegradedMVs()
 }
 
 // It will return all the RVs Map <rvName, RV> for this particular node as per local cache copy of cluster map.
@@ -282,6 +287,30 @@ func (c *ClusterMap) getActiveMVNames() []string {
 	return activeMVNames[:i]
 }
 
+func (c *ClusterMap) getDegradedMVs() map[string]dcache.MirroredVolume {
+	common.Assert(c.localMap != nil)
+
+	degradedMVs := make(map[string]dcache.MirroredVolume)
+	for mvName, mv := range c.localMap.MVMap {
+		if mv.State == dcache.StateDegraded {
+			degradedMVs[mvName] = mv
+		}
+	}
+	return degradedMVs
+}
+
+func (c *ClusterMap) getOfflineMVs() map[string]dcache.MirroredVolume {
+	common.Assert(c.localMap != nil)
+
+	offlineMVs := make(map[string]dcache.MirroredVolume)
+	for mvName, mv := range c.localMap.MVMap {
+		if mv.State == dcache.StateOffline {
+			offlineMVs[mvName] = mv
+		}
+	}
+	return offlineMVs
+}
+
 // Scan through the RV list and return the set of all nodes which have contributed at least one RV.
 func (c *ClusterMap) getAllNodes() map[string]struct{} {
 	common.Assert(c.localMap != nil)
@@ -310,18 +339,6 @@ func (c *ClusterMap) getCacheConfig() *dcache.DCacheConfig {
 func (c *ClusterMap) getClusterMap() dcache.ClusterMap {
 	common.Assert(c.localMap != nil)
 	return *c.localMap
-}
-
-func (c *ClusterMap) getDegradedMVs() map[string]dcache.MirroredVolume {
-	common.Assert(c.localMap != nil)
-
-	degradedMVs := make(map[string]dcache.MirroredVolume)
-	for mvName, mv := range c.localMap.MVMap {
-		if mv.State == dcache.StateDegraded {
-			degradedMVs[mvName] = mv
-		}
-	}
-	return degradedMVs
 }
 
 // Get RVs belonging to this node.
