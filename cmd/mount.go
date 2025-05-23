@@ -129,13 +129,15 @@ func (opt *mountOptions) validate(skipNonEmptyMount bool) error {
 			// Handle file_cache component
 			err = cleanupCachePath("file_cache", cleanupOnStart)
 			if err != nil {
-				return err
+				log.Errorf("Mount::validate : Failed to clean up file_cache: %v", err)
+				return fmt.Errorf("failed to clean up file_cache: %w", err)
 			}
 			
 			// Handle block_cache component
 			err = cleanupCachePath("block_cache", cleanupOnStart)
 			if err != nil {
-				return err
+				log.Errorf("Mount::validate : Failed to clean up block_cache: %v", err)
+				return fmt.Errorf("failed to clean up block_cache: %w", err)
 			}
 		}
 	} else if !skipNonEmptyMount && !common.IsDirectoryEmpty(opt.MountPath) {
