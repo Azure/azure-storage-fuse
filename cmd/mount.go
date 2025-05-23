@@ -120,16 +120,6 @@ func (opt *mountOptions) validate(skipNonEmptyMount bool) error {
 			if err = unmountBlobfuse2(opt.MountPath, true); err != nil {
 				return fmt.Errorf("directory is already mounted, unmount manually before remount [%v]", err.Error())
 			}
-
-			// Check for global cleanup-on-start flag
-			var cleanupOnStart bool
-			_ = config.UnmarshalKey("cleanup-on-start", &cleanupOnStart)
-
-			// Clean up any cache directory if cleanup-on-start is set
-			err = tempCacheCleanup(cleanupOnStart)
-			if err != nil {
-				return err
-			}
 		}
 	} else if !skipNonEmptyMount && !common.IsDirectoryEmpty(opt.MountPath) {
 		return fmt.Errorf("mount directory is not empty")
@@ -178,6 +168,16 @@ func (opt *mountOptions) validate(skipNonEmptyMount bool) error {
 
 	if opt.Logging.LogFileCount == 0 {
 		opt.Logging.LogFileCount = common.DefaultLogFileCount
+	}
+
+	// Check for global cleanup-on-start flag
+	var cleanupOnStart bool
+	_ = config.UnmarshalKey("cleanup-on-start", &cleanupOnStart)
+
+	// Clean up any cache directory if cleanup-on-start is set
+	err = tempCacheCleanup(cleanupOnStart)
+	if err != nil {
+		return err
 	}
 
 	return nil
