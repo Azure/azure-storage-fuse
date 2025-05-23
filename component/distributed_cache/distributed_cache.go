@@ -889,7 +889,7 @@ func init() {
 	cacheID := config.AddStringFlag("cache-id", "", "Cache ID for the distributed cache")
 	config.BindPFlag(compName+".cache-id", cacheID)
 
-	cacheDirFlag := config.AddStringSliceFlag("cache-dirs", []string{}, "One or more local cache directories for distributed cache (comma-separated), e.g. --cache-dirs=/mnt/tmp,/mnt/abc ")
+	cacheDirFlag := config.AddStringSliceFlag("cache-dirs", []string{}, "One or more local cache directories for distributed cache (comma-separated), e.g. --cache-dirs=/mnt/tmp,/mnt/abc")
 	config.BindPFlag(compName+".cache-dirs", cacheDirFlag)
 	chunkSize := config.AddUint64Flag("chunk-size", defaultChunkSize, "Chunk size for the cache")
 	config.BindPFlag(compName+".chunk-size", chunkSize)

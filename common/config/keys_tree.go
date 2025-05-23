@@ -121,7 +121,6 @@ func (tree *Tree) GetSubTree(key string) *TreeNode {
 // Apart from primitve types it also handles the slice type where value is a comma separated string
 func parseValue(val string, toType reflect.Type) interface{} {
 	switch toType.Kind() {
-
 	case reflect.Slice:
 		if toType.Elem().Kind() != reflect.String {
 			return nil // only support []string for now
