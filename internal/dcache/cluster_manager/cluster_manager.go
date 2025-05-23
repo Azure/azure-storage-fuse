@@ -1847,7 +1847,12 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	// TODO: See if we need delete-mv workflow to clean those up.
 	//
 
+	numUsableMVs := 0
 	for mvName, mv := range existingMVMap {
+		if mv.State != dcache.StateOffline {
+			numUsableMVs++
+		}
+
 		if mv.State != dcache.StateDegraded {
 			continue
 		}
@@ -1881,14 +1886,30 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 
 		// New MV will need at least NumReplicas distinct nodes.
 		if len(nodeToRvs) < NumReplicas {
+			log.Debug("ClusterManager::updateMVList: len(nodeToRvs) [%d] < NumReplicas [%d]",
+				len(nodeToRvs), NumReplicas)
 			break
 		}
 
-		// With rvMap and MvsPerRv and NumReplicas, we cannot have more than maxMVsPossible MVs.
+		//
+		// With rvMap and MvsPerRv and NumReplicas, we cannot have more than maxMVsPossible usable MVs.
+		// Note that we are talking of online or degraded/syncing MVs. Offline MVs have all component RVs
+		// offline and they don't consume any RV slot, so they should be omitted from usable MVs.
+		//
+		// Q: Why do we need to limit numUsableMVs to maxMVsPossible?
+		//    IOW, why is the the above check "len(nodeToRvs) < NumReplicas" not suffcient.
+		// A: "len(nodeToRvs) < NumReplicas" check will try to create as many MVs as we can with the available
+		//    RVs, but it might create more than maxMVsPossible if some of the MVs have offline RVs (fixMV() would
+		//    have attempted to replace offline RVs for all degraded MVs but if joinMV() fails or any other error
+		//    we can have some component RVs as offline). We don't want to create more MVs leaving some MVs with
+		//    no replacement RVs available.
+		//
 		maxMVsPossible := (len(rvMap) * MvsPerRv) / NumReplicas
-		common.Assert(len(existingMVMap) <= maxMVsPossible, len(existingMVMap), maxMVsPossible)
+		common.Assert(numUsableMVs <= maxMVsPossible, numUsableMVs, maxMVsPossible)
 
-		if len(existingMVMap) == maxMVsPossible {
+		if numUsableMVs == maxMVsPossible {
+			log.Debug("ClusterManager::updateMVList: numUsableMVs [%d] == maxMVsPossible [%d]",
+				numUsableMVs, maxMVsPossible)
 			break
 		}
 
@@ -1954,6 +1975,9 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			}
 		}
 
+		common.Assert(len(existingMVMap[mvName].RVs) == NumReplicas,
+			mvName, len(existingMVMap[mvName].RVs), NumReplicas)
+
 		//
 		// Call joinMV() and check if all component RVs are able to join successfully.
 		// reserveBytes is 0 for a new-mv workflow.
@@ -1966,9 +1990,17 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		if err == nil {
 			log.Info("ClusterManager::updateMVList: Successfully joined all component RVs %+v to MV %s",
 				existingMVMap[mvName].RVs, mvName)
+
 			for rvName := range existingMVMap[mvName].RVs {
+				// All component RVs added by the new-mv workflow must be online.
+				common.Assert(existingMVMap[mvName].RVs[rvName] == dcache.StateOnline,
+					rvName, mvName, existingMVMap[mvName].RVs[rvName])
 				consumeRVSlot(mvName, rvName)
 			}
+
+			// One more usable MV added to existingMVMap.
+			numUsableMVs++
+			common.Assert(numUsableMVs <= len(existingMVMap), numUsableMVs, len(existingMVMap))
 		} else {
 			// TODO: Give up reallocating RVs after a few failed attempts.
 			log.Err("ClusterManager::updateMVList: Error joining RV %s with MV %s: %v",
