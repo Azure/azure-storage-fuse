@@ -61,6 +61,8 @@ type replicationMgr struct {
 	// This is used to stop the thread doing the periodic resync of degraded MVs.
 	done chan bool
 
+	wg sync.WaitGroup // wait group for the periodicResyncMVs() goroutine
+
 	// Set of currently running sync jobs, indexed by target replica ("rvX/mvY") and the value
 	// stored is the source replica in "rvX/mvY" format.
 	// Note that there can only be a single sync job for a given target replica.
@@ -82,6 +84,8 @@ func Start() error {
 		done:   make(chan bool),
 	}
 
+	rm.wg.Add(1)
+
 	// run the periodic resync of degraded MVs in a separate goroutine
 	go periodicResyncMVs()
 
@@ -97,6 +101,7 @@ func Stop() {
 
 	rm.ticker.Stop()
 	rm.done <- true
+	rm.wg.Wait()
 }
 
 func ReadMV(req *ReadMvRequest) (*ReadMvResponse, error) {
@@ -408,6 +413,8 @@ retry:
 }
 
 func periodicResyncMVs() {
+	defer rm.wg.Done()
+
 	for {
 		select {
 		case <-rm.done:
