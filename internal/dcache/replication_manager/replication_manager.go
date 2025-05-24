@@ -342,8 +342,8 @@ retry:
 
 					errRV := cm.UpdateComponentRVState(req.MvName, rv.Name, dcache.StateOffline)
 					if errRV != nil {
-						errStr := fmt.Sprintf("Failed to update %s/%s state to offline [%v]",
-							rv.Name, req.MvName, req.MvName, errRV)
+						errStr := fmt.Sprintf("failed to update %s/%s state to offline [%v]",
+							rv.Name, req.MvName, errRV)
 						log.Err("ReplicationManager::WriteMV: %s", errStr)
 						return nil, err
 					}
@@ -360,7 +360,7 @@ retry:
 				}
 
 				// The error is RPC error of type *rpc.ResponseError.
-				if rpcErr.Code() == rpc.NeedToRefreshClusterMap {
+				if rpcErr.GetCode() == models.ErrorCode_NeedToRefreshClusterMap {
 					// TODO: Should we allow more than one clustermap refresh?
 					if clusterMapRefreshed > 0 {
 						log.Err("ReplicationManager::WriteMV: Failed after refreshing clustermap")
@@ -603,6 +603,12 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 		log.Err("ReplicationManager::syncComponentRV: %s", errStr)
 		return
 	}
+
+	//
+	// Update the state of target RV from outofsync to syncing in local component RVs list.
+	// The updated component RVs list will be later used in the PutChunk(sync) RPC calls to the target RV.
+	//
+	updateLocalComponentRVState(componentRVs, targetRVName, dcache.StateOutOfSync, dcache.StateSyncing)
 
 	syncJob := &syncJob{
 		mvName:       mvName,

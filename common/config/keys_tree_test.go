@@ -56,28 +56,30 @@ func TestKeysTree(t *testing.T) {
 
 type parseVal struct {
 	val    string
-	toType reflect.Kind
+	toType reflect.Type
 	result interface{}
 }
 
 func (suite *keysTreeTestSuite) TestParseValue() {
 	var inputs = []parseVal{
-		{val: "true", toType: reflect.Bool, result: true},
-		{val: "87", toType: reflect.Int, result: 87},
-		{val: "127", toType: reflect.Int8, result: 127},
-		{val: "32767", toType: reflect.Int16, result: 32767},
-		{val: "2147483647", toType: reflect.Int32, result: 2147483647},
-		{val: "9223372036854775807", toType: reflect.Int64, result: 9223372036854775807},
-		{val: "1374", toType: reflect.Uint, result: 1374},
-		{val: "255", toType: reflect.Uint8, result: 255},
-		{val: "65535", toType: reflect.Uint16, result: 65535},
-		{val: "4294967295", toType: reflect.Uint32, result: 4294967295},
-		{val: "18446744073709551615", toType: reflect.Uint64, result: uint64(18446744073709551615)},
-		{val: "6.24321908234", toType: reflect.Float32, result: (float32)(6.24321908234)},
-		{val: "31247921747687123.123871293791263", toType: reflect.Float64, result: 31247921747687123.123871293791263},
-		{val: "6-8i", toType: reflect.Complex64, result: 6 - 8i},
-		{val: "2341241-910284i", toType: reflect.Complex128, result: 2341241 - 910284i},
-		{val: "Hello World", toType: reflect.String, result: "Hello World"},
+		{val: "true", toType: reflect.TypeOf(true), result: true},
+		{val: "87", toType: reflect.TypeOf(int(0)), result: 87},
+		{val: "127", toType: reflect.TypeOf(int8(0)), result: 127},
+		{val: "32767", toType: reflect.TypeOf(int16(0)), result: 32767},
+		{val: "2147483647", toType: reflect.TypeOf(int32(0)), result: 2147483647},
+		{val: "9223372036854775807", toType: reflect.TypeOf(int64(0)), result: 9223372036854775807},
+		{val: "1374", toType: reflect.TypeOf(uint(0)), result: 1374},
+		{val: "255", toType: reflect.TypeOf(uint8(0)), result: 255},
+		{val: "65535", toType: reflect.TypeOf(uint16(0)), result: 65535},
+		{val: "4294967295", toType: reflect.TypeOf(uint32(0)), result: 4294967295},
+		{val: "18446744073709551615", toType: reflect.TypeOf(uint64(0)), result: uint64(18446744073709551615)},
+		{val: "6.24321908234", toType: reflect.TypeOf(float32(0)), result: (float32)(6.24321908234)},
+		{val: "31247921747687123.123871293791263", toType: reflect.TypeOf(float64(0)), result: 31247921747687123.123871293791263},
+		{val: "6-8i", toType: reflect.TypeOf(complex64(0)), result: 6 - 8i},
+		{val: "2341241-910284i", toType: reflect.TypeOf(complex128(0)), result: 2341241 - 910284i},
+		{val: "Hello World", toType: reflect.TypeOf(""), result: "Hello World"},
+		{val: "Hello World,random path", toType: reflect.TypeOf([]string{}), result: []string{"Hello World", "random path"}},
+		{val: "23,45", toType: reflect.TypeOf([]int{}), result: nil},
 	}
 	for _, i := range inputs {
 		suite.Run(i.val, func() {
@@ -89,21 +91,21 @@ func (suite *keysTreeTestSuite) TestParseValue() {
 
 func (suite *keysTreeTestSuite) TestParseValueErr() {
 	var inputs = []parseVal{
-		{val: "Hello World", toType: reflect.Bool},
-		{val: "Hello World", toType: reflect.Int},
-		{val: "Hello World", toType: reflect.Int8},
-		{val: "Hello World", toType: reflect.Int16},
-		{val: "Hello World", toType: reflect.Int32},
-		{val: "Hello World", toType: reflect.Int64},
-		{val: "Hello World", toType: reflect.Uint},
-		{val: "Hello World", toType: reflect.Uint8},
-		{val: "Hello World", toType: reflect.Uint16},
-		{val: "Hello World", toType: reflect.Uint32},
-		{val: "Hello World", toType: reflect.Uint64},
-		{val: "Hello World", toType: reflect.Float32},
-		{val: "Hello World", toType: reflect.Float64},
-		{val: "Hello World", toType: reflect.Complex64},
-		{val: "Hello World", toType: reflect.Complex128},
+		{val: "Hello World", toType: reflect.TypeOf(true)},
+		{val: "Hello World", toType: reflect.TypeOf(int(0))},
+		{val: "Hello World", toType: reflect.TypeOf(int8(0))},
+		{val: "Hello World", toType: reflect.TypeOf(int16(0))},
+		{val: "Hello World", toType: reflect.TypeOf(int32(0))},
+		{val: "Hello World", toType: reflect.TypeOf(int64(0))},
+		{val: "Hello World", toType: reflect.TypeOf(uint(0))},
+		{val: "Hello World", toType: reflect.TypeOf(uint8(0))},
+		{val: "Hello World", toType: reflect.TypeOf(uint16(0))},
+		{val: "Hello World", toType: reflect.TypeOf(uint32(0))},
+		{val: "Hello World", toType: reflect.TypeOf(uint64(0))},
+		{val: "Hello World", toType: reflect.TypeOf(float32(0))},
+		{val: "Hello World", toType: reflect.TypeOf(float64(0))},
+		{val: "Hello World", toType: reflect.TypeOf(complex64(0))},
+		{val: "Hello World", toType: reflect.TypeOf(complex128(0))},
 	}
 	for _, i := range inputs {
 		suite.Run(i.val, func() {

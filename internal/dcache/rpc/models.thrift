@@ -25,7 +25,7 @@ struct Address {
 struct Chunk {
     1: Address address,
     2: binary data,
-    3: string hash,
+    3: string hash
 }
 
 struct RVNameAndState {
@@ -34,10 +34,11 @@ struct RVNameAndState {
 }
 
 struct GetChunkRequest {
-    1: Address address,
-    2: i64 offsetInChunk,
-    3: i64 length,
-    4: list<RVNameAndState> componentRV // used to validate the component RV for the MV
+    1: string senderNodeID,
+    2: Address address,
+    3: i64 offsetInChunk,
+    4: i64 length,
+    5: list<RVNameAndState> componentRV // used to validate the component RV for the MV
 }
 
 struct GetChunkResponse {
@@ -48,10 +49,11 @@ struct GetChunkResponse {
 }
 
 struct PutChunkRequest {
-    1: Chunk chunk
-    2: i64 length,
-    3: string syncID
-    4: list<RVNameAndState> componentRV // used to validate the component RV for the MV
+    1: string senderNodeID,
+    2: Chunk chunk,
+    3: i64 length,
+    4: string syncID,
+    5: list<RVNameAndState> componentRV // used to validate the component RV for the MV
 }
 
 struct PutChunkResponse {
@@ -62,8 +64,9 @@ struct PutChunkResponse {
 }
 
 struct RemoveChunkRequest {
-    1: Address address,
-    2: list<RVNameAndState> componentRV // used to validate the component RV for the MV
+    1: string senderNodeID,
+    2: Address address,
+    3: list<RVNameAndState> componentRV // used to validate the component RV for the MV
 }
 
 struct RemoveChunkResponse {
@@ -74,10 +77,11 @@ struct RemoveChunkResponse {
 }
 
 struct JoinMVRequest {
-    1: string MV,
-    2: string RVName,
-    3: i64 reserveSpace,
-    4: list<RVNameAndState> componentRV
+    1: string senderNodeID,
+    2: string MV,
+    3: string RVName,
+    4: i64 reserveSpace,
+    5: list<RVNameAndState> componentRV
 }
 
 struct JoinMVResponse {
@@ -85,9 +89,10 @@ struct JoinMVResponse {
 }
 
 struct UpdateMVRequest {
-    1: string MV,
-    2: string RVName,
-    3: list<RVNameAndState> componentRV
+    1: string senderNodeID,
+    2: string MV,
+    3: string RVName,
+    4: list<RVNameAndState> componentRV
 }
 
 struct UpdateMVResponse {
@@ -95,9 +100,10 @@ struct UpdateMVResponse {
 }
 
 struct LeaveMVRequest {
-    1: string MV,
-    2: string RVName,
-    3: list<RVNameAndState> componentRV
+    1: string senderNodeID,
+    2: string MV,
+    3: string RVName,
+    4: list<RVNameAndState> componentRV
 }
 
 struct LeaveMVResponse {
@@ -105,11 +111,12 @@ struct LeaveMVResponse {
 }
 
 struct StartSyncRequest {
-    1: string MV,
-    2: string sourceRVName, // source RV is the lowest index online RV. The node hosting this RV will send the start sync call to the component RVs
-    3: string targetRVName // target RV is the target of the start sync request
-    4: list<RVNameAndState> componentRV,
-    5: i64 syncSize
+    1: string senderNodeID,
+    2: string MV,
+    3: string sourceRVName, // source RV is the lowest index online RV. The node hosting this RV will send the start sync call to the component RVs
+    4: string targetRVName, // target RV is the target of the start sync request
+    5: list<RVNameAndState> componentRV,
+    6: i64 syncSize
 }
 
 struct StartSyncResponse {
@@ -118,14 +125,33 @@ struct StartSyncResponse {
 }
 
 struct EndSyncRequest {
-    1: string syncID,
-    2: string MV,
-    3: string sourceRVName, // source RV is the lowest index online RV. The node hosting this RV will send the end sync call to the component RVs
-    4: string targetRVName, // target RV is the RV which has to stop the sync marking it as completed
-    5: list<RVNameAndState> componentRV,
-    6: i64 syncSize
+    1: string senderNodeID,
+    2: string syncID,
+    3: string MV,
+    4: string sourceRVName, // source RV is the lowest index online RV. The node hosting this RV will send the end sync call to the component RVs
+    5: string targetRVName, // target RV is the RV which has to stop the sync marking it as completed
+    6: list<RVNameAndState> componentRV,
+    7: i64 syncSize
 }
 
 struct EndSyncResponse {
     // status will be returned in the error
+}
+
+// Custom error codes returned by the ChunkServiceHandler
+enum ErrorCode {
+    InvalidRequest = 1,
+    InvalidRVID = 2,
+    InvalidRV = 3,
+    InternalServerError = 4,
+    ChunkNotFound = 5,
+    ChunkAlreadyExists = 6,
+    MaxMVsExceeded = 7,
+    NeedToRefreshClusterMap = 8
+}
+
+// Custom error returned by the RPC APIs
+exception ResponseError {
+    1: ErrorCode code,
+    2: string message
 }

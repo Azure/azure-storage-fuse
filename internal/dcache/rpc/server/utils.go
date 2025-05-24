@@ -87,9 +87,9 @@ func sortComponentRVs(rvs []*models.RVNameAndState) {
 	})
 }
 
-// check if the component RVs are the same
-// the list is sorted before comparison
-// RV array can be like,
+// Check if the component RVs are the same. The list is sorted before comparison.
+// An example of RV array can be like,
+//
 // [
 //
 //	{"name":"rv0", "state": "online"},
@@ -97,7 +97,10 @@ func sortComponentRVs(rvs []*models.RVNameAndState) {
 //	{"name":"rv9", "state": "outofsync"}
 //
 // ]
-func isComponentRVsValid(rvInMV []*models.RVNameAndState, rvInReq []*models.RVNameAndState) error {
+//
+// checkState boolean flag indicates if the state of the component RVs in the request should be
+// matched against the state of the component RVs in the mvInfo data.
+func isComponentRVsValid(rvInMV []*models.RVNameAndState, rvInReq []*models.RVNameAndState, checkState bool) error {
 	if len(rvInMV) != len(rvInReq) {
 		return fmt.Errorf("request component RVs %s is not same as MV component RVs %s",
 			rpc.ComponentRVsToString(rvInReq), rpc.ComponentRVsToString(rvInMV))
@@ -110,7 +113,7 @@ func isComponentRVsValid(rvInMV []*models.RVNameAndState, rvInReq []*models.RVNa
 		common.Assert(rvInMV[i] != nil)
 		common.Assert(rvInReq[i] != nil)
 
-		if rvInMV[i].Name != rvInReq[i].Name || rvInMV[i].State != rvInReq[i].State {
+		if rvInMV[i].Name != rvInReq[i].Name || (checkState && rvInMV[i].State != rvInReq[i].State) {
 			isValid = false
 			break
 		}
@@ -128,22 +131,10 @@ func isComponentRVsValid(rvInMV []*models.RVNameAndState, rvInReq []*models.RVNa
 	return nil
 }
 
-// From the list of component RVs return RVNameAndState for the requested RV, if not found returns nil.
-func getComponentRVState(rvs []*models.RVNameAndState, rvName string) *models.RVNameAndState {
-	for _, rv := range rvs {
-		common.Assert(rv != nil, "Component RV is nil")
-		if rv.Name == rvName {
-			return rv
-		}
-	}
-
-	return nil
-}
-
-// check if the RV is present in the component RVs of the MV
+// Check if the RV is present in the component RVs of the MV.
 func isRVPresentInMV(rvs []*models.RVNameAndState, rvName string) bool {
 	for _, rv := range rvs {
-		common.Assert(rv != nil, "Component RV is nil")
+		common.Assert(rv != nil)
 		if rv.Name == rvName {
 			return true
 		}
@@ -229,14 +220,14 @@ func GetDiskUsageOfMV(mvName string, rvName string) (int64, error) {
 	if rvInfo == nil {
 		log.Err("utils::GetDiskUsageOfMV: Invalid RV %s", rvName)
 		common.Assert(false, fmt.Sprintf("invalid RV %s", rvName))
-		return 0, rpc.NewResponseError(rpc.InvalidRV, fmt.Sprintf("invalid RV %s", rvName))
+		return 0, rpc.NewResponseError(models.ErrorCode_InvalidRV, fmt.Sprintf("invalid RV %s", rvName))
 	}
 
 	mvInfo := rvInfo.getMVInfo(mvName)
 	if mvInfo == nil {
 		log.Err("utils::GetDiskUsageOfMV: Invalid MV %s", mvName)
 		common.Assert(false, fmt.Sprintf("invalid MV %s", mvName))
-		return 0, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("invalid MV %s", mvName))
+		return 0, rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, fmt.Sprintf("invalid MV %s", mvName))
 	}
 
 	return mvInfo.totalChunkBytes.Load(), nil

@@ -462,6 +462,46 @@ func (mv *mvInfo) updateComponentRVs(componentRVs []*models.RVNameAndState) {
 	mv.componentRVs = componentRVs
 }
 
+// Update the state of the given component RV in this MV.
+func (mv *mvInfo) updateComponentRVState(rvName string, oldState, newState dcache.StateEnum) {
+	common.Assert(oldState != newState &&
+		cm.IsValidComponentRVState(oldState) &&
+		cm.IsValidComponentRVState(newState), rvName, oldState, newState)
+
+	mv.rwMutex.Lock()
+	defer mv.rwMutex.Unlock()
+
+	for _, rv := range mv.componentRVs {
+		common.Assert(rv != nil)
+		if rv.Name == rvName {
+			common.Assert(rv.State == string(oldState), rvName, rv.State, oldState)
+			log.Debug("mvInfo::updateComponentRVState: %s/%s (%s -> %s) %s",
+				rvName, mv.mvName, rv.State, newState, rpc.ComponentRVsToString(mv.componentRVs))
+
+			rv.State = string(newState)
+			return
+		}
+	}
+
+	common.Assert(false, rpc.ComponentRVsToString(mv.componentRVs), rvName, newState)
+}
+
+// From the list of component RVs for this MV return RVNameAndState for the requested RV, if not found returns nil.
+func (mv *mvInfo) getComponentRVNameAndState(rvName string) *models.RVNameAndState {
+	mv.rwMutex.RLock()
+	defer mv.rwMutex.RUnlock()
+
+	for _, rv := range mv.componentRVs {
+		common.Assert(rv != nil)
+
+		if rv.Name == rvName {
+			return rv
+		}
+	}
+
+	return nil
+}
+
 // Refresh componentRVs for the MV.
 //
 // Description:
@@ -595,17 +635,25 @@ func (mv *mvInfo) isSyncOpWriteLocked() bool {
 	return mv.opMutexDbgCntr.Load() == -12345
 }
 
-// Given component RVs and source and target RV names received in a StartSync/EndSync request, check their validity.
-// It checks the following:
-//   - Component RVs received in req are exactly same (name and state) as component RVs list for this MV replica.
-//   - Source and target RVs are indeed present in the component RVs list for this MV replica.
+// Check if the component RVs in the request is valid for the given MV replica.
+// checkState boolean flag indicates if the state of the component RVs in the request should also
+// be matched against the state of the component RVs in the mvInfo data, o/w only the component RV
+// names are matched.
 //
-// Note: This is a very critical correctness check used by dcache. Since client may be using a stale clustermap,
+// If the request's component RVs match with the node's mvInfo data, then it means that the request
+// is valid and the mvInfo data is up to date.
 //
-//	it's important for server (which always has the latest cluster membership info) to let client know if
-//	its clustermap copy is stale and it needs to refresh it.
-func (mv *mvInfo) validateComponentRVsInSync(componentRVsInReq []*models.RVNameAndState, sourceRVName string, targetRVName string) error {
-
+// If the request's component RVs do not match with the mvInfo data, it means that either,
+//   - The sender has a stale clustermap.
+//   - mvInfo has inconsistent info due to the partially applied change.
+//
+// In this case, mvInfo membership details need to be refreshed from the clustermap and if there still
+// is a mismatch indicating client using stale clustermap, then we need to fail the client call with
+// NeedToRefreshClusterMap asking the sender to refresh and retry.
+// This function helps to refresh the mvInfo component RV details and returns the NeedToRefreshClusterMap
+// if the component RV details don't match. Caller should then pass on the error eventually failing the
+// RPC server method with NeedToRefreshClusterMap.
+func (mv *mvInfo) isComponentRVsValid(componentRVsInReq []*models.RVNameAndState, checkState bool) error {
 	var componentRVsInMV []*models.RVNameAndState
 	clustermapRefreshed := false
 
@@ -617,7 +665,7 @@ func (mv *mvInfo) validateComponentRVsInSync(componentRVsInReq []*models.RVNameA
 		// We may fail once due to out-of-date cluster membership info, refresh clustermap and try once
 		// more.
 		//
-		err := isComponentRVsValid(componentRVsInMV, componentRVsInReq)
+		err := isComponentRVsValid(componentRVsInMV, componentRVsInReq, checkState)
 		if err != nil {
 			if !clustermapRefreshed {
 				mv.refreshFromClustermap()
@@ -626,29 +674,100 @@ func (mv *mvInfo) validateComponentRVsInSync(componentRVsInReq []*models.RVNameA
 			}
 
 			errStr := fmt.Sprintf("Request component RVs are invalid for MV %s [%v]", mv.mvName, err)
-			log.Err("ChunkServiceHandler::validateComponentRVsInSync: %s", errStr)
-			return rpc.NewResponseError(rpc.NeedToRefreshClusterMap, errStr)
+			log.Err("ChunkServiceHandler::isComponentRVsValid: %s", errStr)
+			return rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
 		}
 
 		break
 	}
 
+	return nil
+}
+
+// Given component RVs and source and target RV names received in a StartSync/EndSync request, check their validity.
+// It checks the following:
+//   - Component RVs received in req are the same as component RVs list for this MV replica.
+//     Only the component RV names are matched and not their state.
+//     This is because multiple syncjobs could be simultaneously syncing different replicas of the same MV,
+//     so the state of each will be changing from outofsync->syncing->online and we don't want to consider
+//     that as a mismatch, else multiple sync jobs for the same MV cannot seamlessely proceed.
+//   - Source and target RVs are indeed present in the component RVs list for this MV replica.
+//   - Target RV is in the correct state based on the StartSync/EndSync request.
+//     For StartSync() call, target RV must be in outofsync state. Whereas for EndSync() call,
+//     target RV must be in syncing state.
+//
+// Note: This is a very critical correctness check used by dcache. Since client may be using a stale clustermap,
+//
+//	it's important for server (which always has the latest cluster membership info) to let client know if
+//	its clustermap copy is stale and it needs to refresh it.
+func (mv *mvInfo) validateComponentRVsInSync(componentRVsInReq []*models.RVNameAndState,
+	sourceRVName string, targetRVName string, isStartSync bool) error {
+
+	common.Assert(cm.IsValidRVName(sourceRVName) &&
+		cm.IsValidRVName(targetRVName) &&
+		sourceRVName != targetRVName, sourceRVName, targetRVName)
+
+	//
+	// validate the component RVs in request against the component RVs in mvInfo.
+	// The state of the component RVs in the request is not checked for StartSync/EndSync requests.
+	//
+	err := mv.isComponentRVsValid(componentRVsInReq, false /* checkState */)
+	if err != nil {
+		log.Err("ChunkServiceHandler::validateComponentRVsInSync: %v", err)
+		return err
+	}
+
+	componentRVsInMV := mv.getComponentRVs()
+
 	// Source RV must be present in the component RVs list for this MV replica.
 	if !isRVPresentInMV(componentRVsInMV, sourceRVName) {
 		rvsInMvStr := rpc.ComponentRVsToString(componentRVsInMV)
-		errStr := fmt.Sprintf("Source RV %s is not a valid component RV for MV %s %s",
+		errStr := fmt.Sprintf("Source RV %s is not part of MV %s %s",
 			sourceRVName, mv.mvName, rvsInMvStr)
 		log.Err("ChunkServiceHandler::validateComponentRVsInSync: %s", errStr)
-		return rpc.NewResponseError(rpc.InvalidRV, errStr)
+		return rpc.NewResponseError(models.ErrorCode_InvalidRV, errStr)
 	}
 
 	// Target RV must be present in the component RVs list for this MV replica.
 	if !isRVPresentInMV(componentRVsInMV, targetRVName) {
 		rvsInMvStr := rpc.ComponentRVsToString(componentRVsInMV)
-		errStr := fmt.Sprintf("Target RV %s is not a valid component RV for MV %s %s",
+		errStr := fmt.Sprintf("Target RV %s is not part of MV %s %s",
 			targetRVName, mv.mvName, rvsInMvStr)
 		log.Err("ChunkServiceHandler::validateComponentRVsInSync: %s", errStr)
-		return rpc.NewResponseError(rpc.InvalidRV, errStr)
+		return rpc.NewResponseError(models.ErrorCode_InvalidRV, errStr)
+	}
+
+	//
+	// Now that the target RV is present in the component RVs list for this MV replica,
+	// validate its state based on the StartSync/EndSync request.
+	//
+	// StartSync() call is made after the fix-mv workflow has replaced the offline
+	// RVs and marked the new/target RVs state as outofsync.
+	//
+	// EndSync() RPC call is made only after the StartSync() call, which marks the
+	// target RV state to syncing.
+	//
+	// If the isStartSync flag is true, it means that the target RV should be in outofsync state for
+	// StartSync() call.
+	// Else, check if the target RV is in syncing state for EndSync() call.
+	//
+	targetRVNameAndState := mv.getComponentRVNameAndState(targetRVName)
+	var validState string
+
+	if isStartSync {
+		validState = string(dcache.StateOutOfSync)
+	} else {
+		validState = string(dcache.StateSyncing)
+	}
+
+	if targetRVNameAndState.State != validState {
+		errStr := fmt.Sprintf("Target RV %s is not in %s state (%s/%s -> %s/%s): %s",
+			targetRVName, validState,
+			sourceRVName, mv.mvName,
+			targetRVName, mv.mvName,
+			rpc.ComponentRVsToString(mv.getComponentRVs()))
+		common.Assert(false, errStr)
+		return rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
 	}
 
 	return nil
@@ -670,7 +789,7 @@ func (h *ChunkServiceHandler) checkValidChunkAddress(address *models.Address) er
 	if !ok {
 		errStr := fmt.Sprintf("Invalid rvID %s", address.RvID)
 		log.Err("ChunkServiceHandler::checkValidChunkAddress: %s", errStr)
-		return rpc.NewResponseError(rpc.InvalidRVID, errStr)
+		return rpc.NewResponseError(models.ErrorCode_InvalidRVID, errStr)
 	}
 
 	cacheDir := rvInfo.cacheDir
@@ -682,7 +801,7 @@ func (h *ChunkServiceHandler) checkValidChunkAddress(address *models.Address) er
 	if !rvInfo.isMvPathValid(mvPath) {
 		errStr := fmt.Sprintf("MV %s is not hosted by RV %s", address.MvName, rvInfo.rvName)
 		log.Err("ChunkServiceHandler::checkValidChunkAddress: %s", errStr)
-		return rpc.NewResponseError(rpc.NeedToRefreshClusterMap, errStr)
+		return rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
 	}
 
 	return nil
@@ -726,7 +845,7 @@ func (h *ChunkServiceHandler) getSrcAndDestRVInfoForSync(sourceRVName string, ta
 			sourceRVName, targetRVName)
 		log.Err("ChunkServiceHandler::getSrcAndDestRVInfoForSync: %s", errStr)
 		common.Assert(false, errStr)
-		return nil, nil, rpc.NewResponseError(rpc.InvalidRV, errStr)
+		return nil, nil, rpc.NewResponseError(models.ErrorCode_InvalidRV, errStr)
 	}
 
 	if srcRVInfo != nil && targetRVInfo != nil {
@@ -734,7 +853,7 @@ func (h *ChunkServiceHandler) getSrcAndDestRVInfoForSync(sourceRVName string, ta
 			sourceRVName, targetRVName)
 		log.Err("ChunkServiceHandler::getSrcAndDestRVInfoForSync: %s", errStr)
 		common.Assert(false, errStr)
-		return nil, nil, rpc.NewResponseError(rpc.InvalidRV, errStr)
+		return nil, nil, rpc.NewResponseError(models.ErrorCode_InvalidRV, errStr)
 	}
 
 	return srcRVInfo, targetRVInfo, nil
@@ -806,10 +925,7 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	// checkValidChunkAddress() has already done the membership check, so we just need to do the state
 	// check.
 	//
-	componentRVsInMV := mvInfo.getComponentRVs()
-	common.Assert(len(componentRVsInMV) == len(req.ComponentRV))
-
-	rvNameAndState := getComponentRVState(componentRVsInMV, rvInfo.rvName)
+	rvNameAndState := mvInfo.getComponentRVNameAndState(rvInfo.rvName)
 
 	// checkValidChunkAddress() had succeeded above, so RV must exist.
 	common.Assert(rvNameAndState != nil)
@@ -825,7 +941,7 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 		errStr := fmt.Sprintf("GetChunk request for %s cannot be satisfied by component RV %s in state %s",
 			req.Address.MvName, rvInfo.rvName, rvNameAndState.State)
 		log.Err("ChunkServiceHandler::GetChunk: %s", errStr)
-		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
 	}
 
 	// acquire read lock on the opMutex for this MV
@@ -848,7 +964,7 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	fh, err := os.Open(chunkPath)
 	if err != nil {
 		log.Err("ChunkServiceHandler::GetChunk: Failed to open chunk file %s [%v]", chunkPath, err.Error())
-		return nil, rpc.NewResponseError(rpc.ChunkNotFound, fmt.Sprintf("failed to open chunk file %s [%v]", chunkPath, err.Error()))
+		return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, fmt.Sprintf("failed to open chunk file %s [%v]", chunkPath, err.Error()))
 	}
 	defer fh.Close()
 
@@ -856,7 +972,7 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	if err != nil {
 		log.Err("ChunkServiceHandler::GetChunk: Failed to stat chunk file %s [%v]", chunkPath, err.Error())
 		common.Assert(false, fmt.Sprintf("failed to stat chunk file %s [%v]", chunkPath, err.Error()))
-		return nil, rpc.NewResponseError(rpc.ChunkNotFound, fmt.Sprintf("failed to stat chunk file %s [%v]", chunkPath, err.Error()))
+		return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, fmt.Sprintf("failed to stat chunk file %s [%v]", chunkPath, err.Error()))
 	}
 
 	chunkSize := fInfo.Size()
@@ -870,7 +986,7 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	common.Assert(n == len(data), fmt.Sprintf("bytes read %v is less than expected buffer size %v", n, len(data)))
 	if err != nil {
 		log.Err("ChunkServiceHandler::GetChunk: Failed to read chunk file %s [%v]", chunkPath, err.Error())
-		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to read chunk file %s [%v]", chunkPath, err.Error()))
+		return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, fmt.Sprintf("failed to read chunk file %s [%v]", chunkPath, err.Error()))
 	}
 
 	// TODO: hash validation will be done later
@@ -880,7 +996,7 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	//      hashData, err := os.ReadFile(hashPath)
 	//      if err != nil {
 	//              log.Err("ChunkServiceHandler::GetChunk: Failed to read hash file %s [%v]", hashPath, err.Error())
-	//              return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to read hash file %s [%v]", hashPath, err.Error()))
+	//              return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, fmt.Sprintf("failed to read hash file %s [%v]", hashPath, err.Error()))
 	//      }
 	//      hash = string(hashData)
 	// }
@@ -893,7 +1009,7 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 		},
 		ChunkWriteTime: lmt,
 		TimeTaken:      time.Since(startTime).Microseconds(),
-		ComponentRV:    componentRVsInMV,
+		ComponentRV:    mvInfo.getComponentRVs(),
 	}
 
 	return resp, nil
@@ -962,7 +1078,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 
 		for _, rv := range req.ComponentRV {
 			common.Assert(rv != nil, "Component RV is nil")
-			rvNameAndState := getComponentRVState(componentRVsInMV, rv.Name)
+			rvNameAndState := mvInfo.getComponentRVNameAndState(rv.Name)
 
 			// Sender's clustermap has a component RV which is not part of this MV.
 			if rvNameAndState == nil {
@@ -970,7 +1086,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 					rv.Name, req.Chunk.Address.MvName)
 				log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
 				common.Assert(false, errStr)
-				return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, errStr)
+				return nil, rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
 			}
 
 			// Sender would skip component RVs which are either offline or outofsync.
@@ -984,7 +1100,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 					rv.Name, req.Chunk.Address.MvName, rvNameAndState.State)
 				log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
 				common.Assert(false, errStr)
-				return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, errStr)
+				return nil, rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
 			}
 		}
 	} else {
@@ -997,7 +1113,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 				req.SyncID, rvInfo.rvName, req.Chunk.Address.MvName)
 			log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
 			common.Assert(false, errStr)
-			return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, errStr)
+			return nil, rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
 		}
 
 		common.Assert(syncJob.targetRVName == "")
@@ -1031,7 +1147,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 
 			log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
 			common.Assert(false, errStr)
-			return nil, rpc.NewResponseError(rpc.InvalidRequest, errStr)
+			return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
 		}
 
 		chunkPath, hashPath = getRegularMVPath(cacheDir, req.Chunk.Address.MvName,
@@ -1058,7 +1174,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	if err == nil {
 		errStr := fmt.Sprintf("Chunk file %s already exists", chunkPath)
 		log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
-		return nil, rpc.NewResponseError(rpc.ChunkAlreadyExists, errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_ChunkAlreadyExists, errStr)
 	}
 
 	// Write to .tmp file first and rename it to the final file.
@@ -1067,14 +1183,14 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	if err != nil {
 		errStr := fmt.Sprintf("Failed to write chunk file %s [%v]", chunkPath, err)
 		log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
-		return nil, rpc.NewResponseError(rpc.InternalServerError, errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
 	}
 
 	// TODO: hash validation will be done later
 	// err = os.WriteFile(hashPath, []byte(req.Chunk.Hash), 0400)
 	// if err != nil {
 	//      log.Err("ChunkServiceHandler::PutChunk: Failed to write hash file %s [%v]", hashPath, err.Error())
-	//      return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to write hash file %s [%v]", hashPath, err.Error()))
+	//      return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, fmt.Sprintf("failed to write hash file %s [%v]", hashPath, err.Error()))
 	// }
 
 	availableSpace, err := rvInfo.getAvailableSpace()
@@ -1091,7 +1207,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 			tmpChunkPath, chunkPath, err)
 		log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
 		common.Assert(false, errStr)
-		return nil, rpc.NewResponseError(rpc.InternalServerError, errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
 	}
 
 	// TODO: should we also consider the hash file size in the total chunk bytes
@@ -1113,7 +1229,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	resp := &models.PutChunkResponse{
 		TimeTaken:      time.Since(startTime).Microseconds(),
 		AvailableSpace: availableSpace,
-		ComponentRV:    componentRVsInMV,
+		ComponentRV:    mvInfo.getComponentRVs(),
 	}
 
 	return resp, nil
@@ -1140,10 +1256,11 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 	mvInfo := rvInfo.getMVInfo(req.Address.MvName)
 
 	// validate the component RVs list
-	componentRVsInMV := mvInfo.getComponentRVs()
-	if err := isComponentRVsValid(componentRVsInMV, req.ComponentRV); err != nil {
-		log.Err("ChunkServiceHandler::RemoveChunk: Request component RVs are invalid for MV %s [%v]", req.Address.MvName, err.Error())
-		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("request component RVs are invalid for MV %s [%v]", req.Address.MvName, err.Error()))
+	err = mvInfo.isComponentRVsValid(req.ComponentRV, true /* checkState */)
+	if err != nil {
+		errStr := fmt.Sprintf("Component RVs are invalid for MV %s [%v]", req.Address.MvName, err)
+		log.Err("ChunkServiceHandler::RemoveChunk: %s", errStr)
+		return nil, err
 	}
 
 	// acquire read lock on the opMutex for this MV
@@ -1169,20 +1286,20 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 	if err != nil {
 		log.Err("ChunkServiceHandler::RemoveChunk: Failed to stat chunk file %s [%v]", chunkPath, err.Error())
 		common.Assert(false, fmt.Sprintf("failed to stat chunk file %s [%v]", chunkPath, err.Error()))
-		return nil, rpc.NewResponseError(rpc.ChunkNotFound, fmt.Sprintf("failed to stat chunk file %s [%v]", chunkPath, err.Error()))
+		return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, fmt.Sprintf("failed to stat chunk file %s [%v]", chunkPath, err.Error()))
 	}
 
 	err = os.Remove(chunkPath)
 	if err != nil {
 		log.Err("ChunkServiceHandler::RemoveChunk: Failed to remove chunk file %s [%v]", chunkPath, err.Error())
-		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to remove chunk file %s [%v]", chunkPath, err.Error()))
+		return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, fmt.Sprintf("failed to remove chunk file %s [%v]", chunkPath, err.Error()))
 	}
 
 	// TODO: hash validation will be done later
 	// err = os.Remove(hashPath)
 	// if err != nil {
 	//      log.Err("ChunkServiceHandler::RemoveChunk: Failed to remove hash file %s [%v]", hashPath, err.Error())
-	//      return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to remove hash file %s [%v]", hashPath, err.Error()))
+	//      return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, fmt.Sprintf("failed to remove hash file %s [%v]", hashPath, err.Error()))
 	// }
 
 	availableSpace, err := rvInfo.getAvailableSpace()
@@ -1201,7 +1318,7 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 	resp := &models.RemoveChunkResponse{
 		TimeTaken:      time.Since(startTime).Microseconds(),
 		AvailableSpace: availableSpace,
-		ComponentRV:    componentRVsInMV,
+		ComponentRV:    mvInfo.getComponentRVs(),
 	}
 
 	return resp, nil
@@ -1215,15 +1332,16 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 	// requires to call componentRVsToString method as it is of type []*models.RVNameAndState
 	log.Debug("ChunkServiceHandler::JoinMV: Received JoinMV request: %v", rpc.JoinMVRequestToString(req))
 
-	if req.MV == "" || req.RVName == "" || len(req.ComponentRV) == 0 {
-		log.Err("ChunkServiceHandler::JoinMV: MV, RV or ComponentRV is empty")
-		return nil, rpc.NewResponseError(rpc.InvalidRequest, "MV, RV or ComponentRV is empty")
+	if !cm.IsValidMVName(req.MV) || !cm.IsValidRVName(req.RVName) || len(req.ComponentRV) == 0 {
+		errStr := fmt.Sprintf("Invalid MV, RV or ComponentRV: %v", rpc.JoinMVRequestToString(req))
+		log.Err("ChunkServiceHandler::JoinMV: %s", errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
 	}
 
 	rvInfo := h.getRVInfoFromRVName(req.RVName)
 	if rvInfo == nil {
 		log.Err("ChunkServiceHandler::JoinMV: Invalid RV %s", req.RVName)
-		return nil, rpc.NewResponseError(rpc.InvalidRV, fmt.Sprintf("invalid RV %s", req.RVName))
+		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRV, fmt.Sprintf("invalid RV %s", req.RVName))
 	}
 
 	cacheDir := rvInfo.cacheDir
@@ -1250,14 +1368,12 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 		log.Warn("ChunkServiceHandler::JoinMV: RV %s is already part of the given MV %s, ignoring",
 			req.RVName, req.MV)
 		return &models.JoinMVResponse{}, nil
-		//log.Err("ChunkServiceHandler::JoinMV: RV %s is already part of the given MV %s", req.RVName, req.MV)
-		//return nil, rpc.NewResponseError(rpc.InvalidRequest, fmt.Sprintf("RV %s is already part of the given MV %s", req.RVName, req.MV))
 	}
 
 	mvLimit := getMVsPerRV()
 	if rvInfo.mvCount.Load() >= mvLimit {
 		log.Err("ChunkServiceHandler::JoinMV: RV %s has reached the maximum number of MVs %d", req.RVName, mvLimit)
-		return nil, rpc.NewResponseError(rpc.MaxMVsExceeded, fmt.Sprintf("RV %s has reached the maximum number of MVs %d", req.RVName, mvLimit))
+		return nil, rpc.NewResponseError(models.ErrorCode_MaxMVsExceeded, fmt.Sprintf("RV %s has reached the maximum number of MVs %d", req.RVName, mvLimit))
 	}
 
 	// RV is being added to an already existing MV
@@ -1266,14 +1382,14 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 		availableSpace, err := rvInfo.getAvailableSpace()
 		if err != nil {
 			log.Err("ChunkServiceHandler::JoinMV: Failed to get available disk space for RV %v [%v]", req.RVName, err.Error())
-			return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to get available disk space for RV %v [%v]", req.RVName, err.Error()))
+			return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, fmt.Sprintf("failed to get available disk space for RV %v [%v]", req.RVName, err.Error()))
 		}
 
 		// TODO: should we keep some buffer space for the MV,
 		// like reserve space should be 20% less than available space
 		if availableSpace < req.ReserveSpace {
 			log.Err("ChunkServiceHandler::JoinMV: Not enough space to reserve %v bytes for joining MV %v", req.ReserveSpace, req.MV)
-			return nil, rpc.NewResponseError(rpc.InvalidRequest, fmt.Sprintf("not enough space to reserve %v bytes for joining MV %v", req.ReserveSpace, req.MV))
+			return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, fmt.Sprintf("not enough space to reserve %v bytes for joining MV %v", req.ReserveSpace, req.MV))
 		}
 	}
 
@@ -1282,7 +1398,7 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 	err := h.createMVDirectory(mvPath)
 	if err != nil {
 		log.Err("ChunkServiceHandler::JoinMV: Failed to create MV directory %s [%v]", mvPath, err.Error())
-		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to create MV directory %s [%v]", mvPath, err.Error()))
+		return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, fmt.Sprintf("failed to create MV directory %s [%v]", mvPath, err.Error()))
 	}
 
 	// add in sync map
@@ -1301,21 +1417,23 @@ func (h *ChunkServiceHandler) UpdateMV(ctx context.Context, req *models.UpdateMV
 
 	log.Debug("ChunkServiceHandler::UpdateMV: Received UpdateMV request: %v", rpc.UpdateMVRequestToString(req))
 
-	if req.MV == "" || req.RVName == "" || len(req.ComponentRV) == 0 {
-		log.Err("ChunkServiceHandler::UpdateMV: MV, RV or ComponentRV is empty")
-		return nil, rpc.NewResponseError(rpc.InvalidRequest, "MV, RV or ComponentRV is empty")
+	if !cm.IsValidMVName(req.MV) || !cm.IsValidRVName(req.RVName) || len(req.ComponentRV) == 0 {
+		errStr := fmt.Sprintf("Invalid MV, RV or ComponentRV: %v", rpc.UpdateMVRequestToString(req))
+		log.Err("ChunkServiceHandler::UpdateMV: %s", errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
 	}
 
 	rvInfo := h.getRVInfoFromRVName(req.RVName)
 	if rvInfo == nil {
 		log.Err("ChunkServiceHandler::UpdateMV: Invalid RV %s", req.RVName)
-		return nil, rpc.NewResponseError(rpc.InvalidRV, fmt.Sprintf("invalid RV %s", req.RVName))
+		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRV, fmt.Sprintf("invalid RV %s", req.RVName))
 	}
 
 	mvInfo := rvInfo.getMVInfo(req.MV)
 	if mvInfo == nil {
-		log.Err("ChunkServiceHandler::UpdateMV: RV %s is not part of the given MV %s", req.RVName, req.MV)
-		return nil, rpc.NewResponseError(rpc.InvalidRequest, fmt.Sprintf("RV %s is not part of the given MV %s", req.RVName, req.MV))
+		errStr := fmt.Sprintf("RV %s is not member of MV %s", req.RVName, req.MV)
+		log.Err("ChunkServiceHandler::UpdateMV: %s", errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
 	}
 
 	componentRVsInMV := mvInfo.getComponentRVs()
@@ -1336,15 +1454,15 @@ func (h *ChunkServiceHandler) LeaveMV(ctx context.Context, req *models.LeaveMVRe
 
 	log.Debug("ChunkServiceHandler::LeaveMV: Received LeaveMV request: %v", rpc.LeaveMVRequestToString(req))
 
-	if req.MV == "" || req.RVName == "" || len(req.ComponentRV) == 0 {
+	if !cm.IsValidMVName(req.MV) || !cm.IsValidRVName(req.RVName) || len(req.ComponentRV) == 0 {
 		log.Err("ChunkServiceHandler::LeaveMV: MV, RV or ComponentRV is empty")
-		return nil, rpc.NewResponseError(rpc.InvalidRequest, "MV, RV or ComponentRV is empty")
+		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, "MV, RV or ComponentRV is empty")
 	}
 
 	rvInfo := h.getRVInfoFromRVName(req.RVName)
 	if rvInfo == nil {
 		log.Err("ChunkServiceHandler::LeaveMV: Invalid RV %s", req.RVName)
-		return nil, rpc.NewResponseError(rpc.InvalidRV, fmt.Sprintf("invalid RV %s", req.RVName))
+		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRV, fmt.Sprintf("invalid RV %s", req.RVName))
 	}
 
 	cacheDir := rvInfo.cacheDir
@@ -1353,13 +1471,14 @@ func (h *ChunkServiceHandler) LeaveMV(ctx context.Context, req *models.LeaveMVRe
 	mvInfo := rvInfo.getMVInfo(req.MV)
 	if mvInfo == nil {
 		log.Err("ChunkServiceHandler::LeaveMV: RV %s is not part of the given MV %s", req.RVName, req.MV)
-		return nil, rpc.NewResponseError(rpc.InvalidRequest, fmt.Sprintf("RV %s is not part of the given MV %s", req.RVName, req.MV))
+		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, fmt.Sprintf("RV %s is not part of the given MV %s", req.RVName, req.MV))
 	}
 
 	// validate the component RVs list
-	if err := isComponentRVsValid(mvInfo.getComponentRVs(), req.ComponentRV); err != nil {
-		log.Err("ChunkServiceHandler::LeaveMV: Request component RVs are invalid for MV %s [%v]", req.MV, err.Error())
-		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, fmt.Sprintf("request component RVs are invalid for MV %s [%v]", req.MV, err.Error()))
+	err := mvInfo.isComponentRVsValid(req.ComponentRV, true /* checkState */)
+	if err != nil {
+		log.Err("ChunkServiceHandler::RemoveChunk: %v", err)
+		return nil, err
 	}
 
 	// delete the MV directory
@@ -1368,10 +1487,10 @@ func (h *ChunkServiceHandler) LeaveMV(ctx context.Context, req *models.LeaveMVRe
 	flock.Lock()
 	defer flock.Unlock()
 
-	err := os.RemoveAll(mvPath)
+	err = os.RemoveAll(mvPath)
 	if err != nil {
 		log.Err("ChunkServiceHandler::LeaveMV: Failed to remove MV directory %s [%v]", mvPath, err.Error())
-		return nil, rpc.NewResponseError(rpc.InternalServerError, fmt.Sprintf("failed to remove MV directory %s [%v]", mvPath, err.Error()))
+		return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, fmt.Sprintf("failed to remove MV directory %s [%v]", mvPath, err.Error()))
 	}
 
 	// add in sync map
@@ -1390,12 +1509,13 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 	if !cm.IsValidMVName(req.MV) ||
 		!cm.IsValidRVName(req.SourceRVName) ||
 		!cm.IsValidRVName(req.TargetRVName) ||
+		req.SourceRVName == req.TargetRVName ||
 		len(req.ComponentRV) == 0 {
 		errStr := fmt.Sprintf("MV (%s), SourceRV (%s), TargetRV (%s) or ComponentRVs (%d) invalid",
 			req.MV, req.SourceRVName, req.TargetRVName, len(req.ComponentRV))
 		log.Err("ChunkServiceHandler::StartSync: %s", errStr)
 		common.Assert(false, errStr)
-		return nil, rpc.NewResponseError(rpc.InvalidRequest, errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
 	}
 
 	//
@@ -1427,10 +1547,10 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 	if mvInfo == nil {
 		errStr := fmt.Sprintf("%s/%s not hosted by this node", rvInfo.rvName, req.MV)
 		log.Err("ChunkServiceHandler::StartSync: %s", errStr)
-		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
 	}
 
-	err = mvInfo.validateComponentRVsInSync(req.ComponentRV, req.SourceRVName, req.TargetRVName)
+	err = mvInfo.validateComponentRVsInSync(req.ComponentRV, req.SourceRVName, req.TargetRVName, true /* isStartSync */)
 	if err != nil {
 		errStr := fmt.Sprintf("Failed to validate component RVs in sync [%v]", err)
 		log.Err("ChunkServiceHandler::StartSync: %s", errStr)
@@ -1458,7 +1578,7 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 			errStr := fmt.Sprintf("Failed to create sync directory %s [%v]", syncDir, err)
 			log.Err("ChunkServiceHandler::StartSync: %s", errStr)
 			common.Assert(false, errStr)
-			return nil, rpc.NewResponseError(rpc.InternalServerError, errStr)
+			return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
 		}
 	}
 
@@ -1477,6 +1597,9 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 	// Add this sync job to the syncJobs map.
 	syncID := mvInfo.addSyncJob(sourceRVName, targetRVName)
 
+	// Update the state of target RV in this MV replica from outofsync to syncing.
+	mvInfo.updateComponentRVState(req.TargetRVName, dcache.StateOutOfSync, dcache.StateSyncing)
+
 	return &models.StartSyncResponse{
 		SyncID: syncID,
 	}, nil
@@ -1492,12 +1615,13 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 		!cm.IsValidMVName(req.MV) ||
 		!cm.IsValidRVName(req.SourceRVName) ||
 		!cm.IsValidRVName(req.TargetRVName) ||
+		req.SourceRVName == req.TargetRVName ||
 		len(req.ComponentRV) == 0 {
 		errStr := fmt.Sprintf("SyncID (%s) MV (%s), SourceRV (%s), TargetRV (%s) or ComponentRVs (%d) invalid",
 			req.SyncID, req.MV, req.SourceRVName, req.TargetRVName, len(req.ComponentRV))
 		log.Err("ChunkServiceHandler::EndSync: %s", errStr)
 		common.Assert(false, errStr)
-		return nil, rpc.NewResponseError(rpc.InvalidRequest, errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
 	}
 
 	//
@@ -1528,10 +1652,10 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 	if mvInfo == nil {
 		errStr := fmt.Sprintf("%s/%s not hosted by this node", rvInfo.rvName, req.MV)
 		log.Err("ChunkServiceHandler::EndSync: %s", errStr)
-		return nil, rpc.NewResponseError(rpc.NeedToRefreshClusterMap, errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
 	}
 
-	err = mvInfo.validateComponentRVsInSync(req.ComponentRV, req.SourceRVName, req.TargetRVName)
+	err = mvInfo.validateComponentRVsInSync(req.ComponentRV, req.SourceRVName, req.TargetRVName, false /* isStartSync */)
 	if err != nil {
 		errStr := fmt.Sprintf("Failed to validate component RVs in sync [%v]", err)
 		log.Err("ChunkServiceHandler::EndSync: %s", errStr)
@@ -1539,8 +1663,8 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 	}
 
 	//
-	// Ok, it's a valid StartSync request for one of our MV replicas.
-	// We synchronize chunk IO requests (GetChunk/PutChunk/RemoveChunk) with StartSync requests.
+	// Ok, it's a valid EndSync request for one of our MV replicas.
+	// We synchronize chunk IO requests (GetChunk/PutChunk/RemoveChunk) with EndSync requests.
 	// Acquire write lock on the opMutex for this MV. Now GetChunk, PutChunk and RemoveChunk will not allow
 	// any new IO. It will also wait for any ongoing IOs to complete.
 	//
@@ -1553,11 +1677,14 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 	if !mvInfo.isSyncIDValid(req.SyncID) {
 		errStr := fmt.Sprintf("SyncID %s is invalid for %s/%s", req.SyncID, rvInfo.rvName, req.MV)
 		log.Err("ChunkServiceHandler::EndSync: %s", errStr)
-		return nil, rpc.NewResponseError(rpc.InvalidRequest, errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
 	}
 
 	// Delete the sync job from the syncJobs map.
 	mvInfo.deleteSyncJob(req.SyncID)
+
+	// Update the state of target RV in this MV replica from syncing to online.
+	mvInfo.updateComponentRVState(req.TargetRVName, dcache.StateSyncing, dcache.StateOnline)
 
 	//
 	// If we were the target of this sync job, then nothing else to do, else if it's the last sync
@@ -1595,7 +1722,7 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 			syncMvPath, regMVPath, err)
 		log.Err("ChunkServiceHandler::EndSync: %s", errStr)
 		common.Assert(false, errStr)
-		return nil, rpc.NewResponseError(rpc.InternalServerError, errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
 	}
 
 	// Delete the sync directory. It must be empty now.
