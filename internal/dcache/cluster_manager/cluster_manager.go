@@ -2497,6 +2497,29 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, rvName string, 
 		clusterMapMV.RVs[rvName] = rvNewState
 		clusterMap.MVMap[mvName] = clusterMapMV
 
+		//
+		// TODO: For now we treat component RV being flagged as offline no different from the RV being flagged
+		//       offline by cm.ReportRVOffline(). Note that there could be some differences, f.e., component
+		//       RV may be flagged offline on just one inband failure, while when we report an RV as offline
+		//       we have to be really sure. In some error cases, like connection getting reset or read returning
+		//       eof, one failure might be sufficient to correctly claim RV as offline but for error like
+		//       timeout we cannot be really sure and we might want to play safe.
+		//
+		//       If we don't do this we will have unwanted side effects, f.e., if a component RV is marked
+		//       offline but the RV is online in the RV list, then updateMVList()->fixMV() might pick the same
+		//       RV as a replacement RV, which would be wrong as RV, for all purposes, is offline.
+		//
+		if rvNewState == dcache.StateOffline {
+			rv := clusterMap.RVMap[rvName]
+			if rv.State != dcache.StateOffline {
+				log.Warn("ClusterManager::updateComponentRVState: Marking RV %s state (%s -> %s)",
+					rvName, rv.State, dcache.StateOffline)
+
+				rv.State = dcache.StateOffline
+				clusterMap.RVMap[rvName] = rv
+			}
+		}
+
 		// Call updateMVList() to update MV state and run the various mv workflows.
 		cmi.updateMVList(clusterMap.RVMap, clusterMap.MVMap)
 

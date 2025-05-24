@@ -175,9 +175,12 @@ func RegisterClusterMapSyncRefresher(fn func() error) {
 	clusterMapSyncRefresher = fn
 }
 
-// Mark component RV in an MV, offline.
-// The call blocks till the MV is updated in the global (and local) clustermap.
-func MarkComponentRVOffline(mvName, rvName string) error {
+// This function must be called by any code that, through some other means (other than heartbeats) detects
+// that an RV has gone offline.
+// The RV state will be set to offline in the RV list in clustermap, along with all other side effects on
+// MVs that have that RV as a component RV.
+// The call blocks till the RV (and all affected MVs) is updated in the global (and local) clustermap.
+func ReportRVOffline(rvName string) error {
 	// TODO: Implement it.
 	common.Assert(false, "Not implemented")
 	return nil
