@@ -1533,6 +1533,16 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		fixedRVs := 0
 		alreadyOutOfSync := make(map[string]struct{})
 
+		//
+		// We make a deep copy of mv.RVs before we start fixing.
+		// We fix directly in mv.RVs as it's convenient, but if we need to undo later we set mv.RVs to
+		// savedRVs.
+		//
+		savedRVs := make(map[string]dcache.StateEnum)
+		for rvName, rvState := range mv.RVs {
+			savedRVs[rvName] = rvState
+		}
+
 		for rvName := range mv.RVs {
 			//
 			// Usually we won't have outofsync component RVs when fixMV() is called, as they would have been
@@ -1670,8 +1680,8 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		//
 		failedRV, err := cmi.joinMV(mvName, mv, 0 /* reserveBytes */)
 		if err == nil {
-			log.Info("ClusterManager::fixMV: Successfully joined/updated all component RVs %+v to MV %s",
-				mv.RVs, mvName)
+			log.Info("ClusterManager::fixMV: Successfully joined/updated all component RVs %+v to MV %s, original [%+v]",
+				mv.RVs, mvName, savedRVs)
 			for rvName := range mv.RVs {
 				//
 				// Consume slot for the replacement RVs, just made outofsync, but skip RVs which were already
@@ -1696,8 +1706,11 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			// If we fail to fix the MV we simply return leaving the broken MV in existingMVMap.
 			// TODO: We should add retries here.
 			//
-			log.Err("ClusterManager::fixMV: Error joining RV %s with MV %s: %v",
-				failedRV, mvName, err)
+			log.Err("ClusterManager::fixMV: Error joining RV %s with MV %s: %v, reverting [%+v -> %+v]",
+				failedRV, mvName, err, mv.RVs, savedRVs)
+
+			mv.RVs = savedRVs
+			existingMVMap[mvName] = mv
 		}
 	}
 
