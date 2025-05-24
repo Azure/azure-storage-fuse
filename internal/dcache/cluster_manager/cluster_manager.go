@@ -2454,6 +2454,21 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, rvName string, 
 				rvName, mvName, currentState, rvNewState)
 
 		} else {
+			//
+			// Following transitions are reported when an inband PutChunk failure suggests an RV as offline.
+			// StateOnline  -> StateOffline
+			// StateSyncing -> StateOffline
+			//
+			// Since we can have multiple PutChunk requests outstanding, all but the first one will find the
+			// currentState as StateOffline, we need to ignore such updateComponentRVState() requests.
+			//
+			if currentState == rvNewState {
+				common.Assert(currentState == dcache.StateOffline, currentState)
+				log.Debug("ClusterManager::updateComponentRVState: %s/%s ignoring state change (%s -> %s)",
+					rvName, mvName, currentState, rvNewState)
+				return nil
+			}
+
 			common.Assert(false, rvName, mvName, currentState, rvNewState)
 			return fmt.Errorf("ClusterManager::updateComponentRVState: %s/%s invalid state change request (%s -> %s)",
 				rvName, mvName, currentState, rvNewState)
