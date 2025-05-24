@@ -79,11 +79,23 @@ type ChunkServiceHandler struct {
 // This holds information on one of our local RV.
 // ChunkServiceHandler.rvIDMap contains one such struct for each RV that this node contributes to the cluster.
 type rvInfo struct {
-	rvID     string       // id for this RV [readonly]
-	rvName   string       // rv0, rv1, etc. [readonly]
-	cacheDir string       // cache dir path for this RV [readonly]
-	mvMap    sync.Map     // all MV replicas hosted by this RV, indexed by MV name (e.g., "mv0"), updated by JoinMV, UpdateMV and LeaveMV.
-	mvCount  atomic.Int64 // count of MV replicas hosted by this RV, this should be updated whenever an MV is added or removed from the mvMap.
+	rvID     string // id for this RV [readonly]
+	rvName   string // rv0, rv1, etc. [readonly]
+	cacheDir string // cache dir path for this RV [readonly]
+	//
+	// all MV replicas hosted by this RV, indexed by MV name (e.g., "mv0"), updated by JoinMV/UpdateMV/LeaveMV.
+	//
+	// TODO: Currently we don't call LeaveMV, so once added to mvMap, mvInfo won't be removed.
+	//       If an RV is removed from an MV only when it goes offline, then it's not such a big problem, as
+	//       an offline RV when it joins the cluster again must start afresh, with brand new rvInfo, but if
+	//       an RV is removed due to rebalancing we must use LeaveMV to update the membership.
+	//
+	mvMap sync.Map
+	//
+	// count of MV replicas hosted by this RV, this should be updated whenever an MV is added or removed from
+	// the mvMap.
+	//
+	mvCount atomic.Int64
 
 	// reserved space for the RV is the space reserved for chunks which will be synced
 	// to the RV after the StartSync() call. This is used to calculate the available space
@@ -760,8 +772,14 @@ func (mv *mvInfo) validateComponentRVsInSync(componentRVsInReq []*models.RVNameA
 		validState = string(dcache.StateSyncing)
 	}
 
+	//
+	// Q: Why refreshFromClustermap() cannot help?
+	// A: This validState change must have been approved by us (prior JoinMV or StartSync) and only after
+	//    that the sender could have committed the state change in clustermap. If we do not have the
+	//    validState in our rvInfo then it cannot be in the clustermap.
+	//
 	if targetRVNameAndState.State != validState {
-		errStr := fmt.Sprintf("Target RV %s is not in %s state (%s/%s -> %s/%s): %s",
+		errStr := fmt.Sprintf("Target RV %s is not in %s state (%s/%s -> %s/%s): %s [NeedToRefreshClusterMap]",
 			targetRVName, validState,
 			sourceRVName, mv.mvName,
 			targetRVName, mv.mvName,
@@ -796,10 +814,21 @@ func (h *ChunkServiceHandler) checkValidChunkAddress(address *models.Address) er
 	common.Assert(cacheDir != "", rvInfo.rvName)
 	common.Assert(common.DirectoryExists(cacheDir), cacheDir, rvInfo.rvName)
 
+	//
 	// MV replica must exist.
+	//
+	// Q: Why refreshFromClustermap() cannot help?
+	// A: An RV can be added as a component RV to an MV only after approval from the node hosting the RV,
+	//    through a JoinMV call. Only after a successful JoinMV response would the caller update the MV
+	//    component RV list. If we do not have this MV added to our RV, that means we would not have
+	//    responded to the JoinMV RPC, which would mean the clustermap cannot have it.
+	//    For rebalancing, a component RV would be removed from an MV only after the rebalancing has
+	//    completed and there's no undoing it.
+	//
 	mvPath := filepath.Join(cacheDir, address.MvName)
 	if !rvInfo.isMvPathValid(mvPath) {
-		errStr := fmt.Sprintf("MV %s is not hosted by RV %s", address.MvName, rvInfo.rvName)
+		errStr := fmt.Sprintf("MV %s is not hosted by RV %s [NeedToRefreshClusterMap]",
+			address.MvName, rvInfo.rvName)
 		log.Err("ChunkServiceHandler::checkValidChunkAddress: %s", errStr)
 		return rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
 	}
@@ -930,16 +959,32 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	// checkValidChunkAddress() had succeeded above, so RV must exist.
 	common.Assert(rvNameAndState != nil)
 
+	// See below why offline is not a possible state in rvInfo.
+	common.Assert(rvNameAndState.State != string(dcache.StateOffline))
+
 	//
 	// We allow reading only from "online" component RVs.
 	// Note: Though we may be able to serve the chunk from a component RV in "syncing" or even "offline"
-	//       state, it usually indicates client using an older clustermap so we rather ask the client to
-	//	 refresh.
+	//       state, it usually indicates client using an older clustermap so we rather ask the client to refresh.
 	// TODO: See if going ahead and checking the chunk anyways is better.
 	//
+	// Q: Why refreshFromClustermap() cannot help this?
+	// A: Let's consder all possible RV states other than online:
+	//    - offline
+	//      rvInfo should never store offline as the RV state. There's no workflow that can achieve that.
+	//    - outofsync
+	//      outofsync state can be set through the fix-mv workflow when it replaces an offline component RV
+	//		with a new RV. The new RVs state will be set to outofsync through the JoinMV RPC call, but before
+	//		this component RV is considered for reading it must have been updated to syncing->online, both
+	//      of which need to be approved by us. So if we are in outofsync, sender cannot legitimately be
+	//      reading from us.
+	//    - syncing
+	//      Same as above. Data can be read from an mv replica only after it goes from syncing->online
+	//      through an EndSync call, which must be approved by us.
+	//
 	if rvNameAndState.State != string(dcache.StateOnline) {
-		errStr := fmt.Sprintf("GetChunk request for %s cannot be satisfied by component RV %s in state %s",
-			req.Address.MvName, rvInfo.rvName, rvNameAndState.State)
+		errStr := fmt.Sprintf("GetChunk request for %s/%s cannot be satisfied in state %s [NeedToRefreshClusterMap]",
+			rvInfo.rvName, req.Address.MvName, rvNameAndState.State)
 		log.Err("ChunkServiceHandler::GetChunk: %s", errStr)
 		return nil, rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
 	}
@@ -1059,8 +1104,6 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	// sync job and this MV replica is indeed the target of that sync job.
 	//
 
-	componentRVsInMV := mvInfo.getComponentRVs()
-
 	//
 	// Acquire read lock on the opMutex for this MV to block any StartSync request from updating rvInfo while
 	// we are accessing it. Note that depending on the sync state of an MV replica, the client PutChunk requests
@@ -1068,6 +1111,11 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	//
 	mvInfo.acquireSyncOpReadLock()
 	defer mvInfo.releaseSyncOpReadLock()
+
+	clustermapRefreshed := false
+
+refreshFromClustermapAndRetry:
+	componentRVsInMV := mvInfo.getComponentRVs()
 
 	if len(req.SyncID) == 0 {
 		//
@@ -1077,10 +1125,20 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 			len(req.ComponentRV), len(componentRVsInMV))
 
 		for _, rv := range req.ComponentRV {
-			common.Assert(rv != nil, "Component RV is nil")
+			common.Assert(rv != nil)
+
+			// Component RV details from mvInfo.
 			rvNameAndState := mvInfo.getComponentRVNameAndState(rv.Name)
 
+			//
 			// Sender's clustermap has a component RV which is not part of this MV.
+			//
+			// Q: Why refreshFromClustermap() cannot help this?
+			// A: An RV can be added to an MV in the clustermap only after successful JoinMV+UpdateMV calls
+			//    to all the component RVs. If we don't have the MV added to the rvInfo we must not have
+			//    responded positively to JoinMV/UpdateMV, so sender must not have updated the clustermap.
+			//    Hence we also assert for this.
+			//
 			if rvNameAndState == nil {
 				errStr := fmt.Sprintf("PutChunk(client) sender has a non-existent RV %s/%s",
 					rv.Name, req.Chunk.Address.MvName)
@@ -1090,16 +1148,29 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 			}
 
 			// Sender would skip component RVs which are either offline or outofsync.
-			senderSkippedRV := (rv.State == string(dcache.StateOffline) || rv.State == string(dcache.StateOutOfSync))
+			senderSkippedRV := (rv.State == string(dcache.StateOffline) ||
+				rv.State == string(dcache.StateOutOfSync))
 			// If RV info has the RV as offline or outofsync it'll be properly sync'ed later.
 			isRVSafeToSkip := (rvNameAndState.State == string(dcache.StateOffline) ||
 				rvNameAndState.State == string(dcache.StateOutOfSync))
 
 			if senderSkippedRV && !isRVSafeToSkip {
-				errStr := fmt.Sprintf("PutChunk(client) sender skipped RV %s/%s in invalid state %s",
+				//
+				// This can happen when sender comes to know about an RV being offline, through clustermap,
+				// obviously since RV state has not changed as a result of some workflow, hence rvInfo is
+				// not updated and it doesn't know about the RV going offline.
+				// We must refresh our rvInfo from the clustermap and retry the check.
+				//
+				errStr := fmt.Sprintf("PutChunk(client) sender skipped RV %s/%s in invalid state %s [NeedToRefreshClusterMap]",
 					rv.Name, req.Chunk.Address.MvName, rvNameAndState.State)
 				log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
-				common.Assert(false, errStr)
+
+				if !clustermapRefreshed {
+					mvInfo.refreshFromClustermap()
+					clustermapRefreshed = true
+					goto refreshFromClustermapAndRetry
+				}
+
 				return nil, rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
 			}
 		}
@@ -1107,9 +1178,13 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 		//
 		// PutChunk(sync) - Make sure the target MV replica is indeed target of this sync job.
 		//
+		// Q: Why refreshFromClustermap() cannot help this?
+		// A: PutChunk(sync) requests can only be sent after a successful StartSync response from
+		//    us and when we would have responded we would have added the syncJob.
+		//
 		syncJob, ok := mvInfo.syncJobs[req.SyncID]
 		if !ok {
-			errStr := fmt.Sprintf("PutChunk(sync) syncId %s not valid for %s/%s",
+			errStr := fmt.Sprintf("PutChunk(sync) syncId %s not valid for %s/%s [NeedToRefreshClusterMap]",
 				req.SyncID, rvInfo.rvName, req.Chunk.Address.MvName)
 			log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
 			common.Assert(false, errStr)

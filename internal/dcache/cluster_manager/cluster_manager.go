@@ -746,6 +746,10 @@ func (cmi *ClusterManager) ensureInitialClusterMap(dCacheConfig *dcache.DCacheCo
 	// safeCleanupMyRVs() cleans up all of my RVs, after performing the safe checks described above.
 	// Once it returns we are guaranteed that it's safe to join the cluster.
 	//
+	// TODO: We need to run this same workflow when an RV goes offline not due to VM/blobfuse restarting
+	//       but because of n/w connectivity. Later when it comes back up online, the RV has to go through
+	//       the same join-cluster workflow.
+	//
 	isClusterMapExists, err := cmi.safeCleanupMyRVs(rvs)
 	if err != nil {
 		log.Err("ClusterManager::ensureInitialClusterMap: Failed to check clustermap: %v", err)
