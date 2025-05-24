@@ -155,8 +155,8 @@ func GetFile(filePath string) ([]byte, int64, dcache.FileState, error) {
 	return metadataManagerInstance.getFile(filePath)
 }
 
-func UpdateFileStateToDeleting(filePath string, fileMetaData []byte, fileSize int64) error {
-	return metadataManagerInstance.updateFileStateToDeleting(filePath, fileMetaData, fileSize)
+func RenameFileToDeleting(filePath string) error {
+	return metadataManagerInstance.renameFileToDeleting(filePath)
 }
 
 func DeleteFile(filePath string) error {
@@ -450,7 +450,7 @@ func (m *BlobMetadataManager) getFile(filePath string) ([]byte, int64, dcache.Fi
 	}
 
 	var fileState dcache.FileState
-	if *state == string(dcache.Deleting) || *state == string(dcache.Ready) || *state == string(dcache.Writing) {
+	if *state == string(dcache.Ready) || *state == string(dcache.Writing) {
 		fileState = dcache.FileState(*state)
 	} else {
 		err := fmt.Errorf("GetFile:: Invalid File state: [%s] found in metadata for path: %s", *state, path)
@@ -462,30 +462,21 @@ func (m *BlobMetadataManager) getFile(filePath string) ([]byte, int64, dcache.Fi
 	return data, fileSize, fileState, nil
 }
 
-func (m *BlobMetadataManager) updateFileStateToDeleting(filePath string, fileMetadata []byte, fileSize int64) error {
+func (m *BlobMetadataManager) renameFileToDeleting(filePath string) error {
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
 	log.Debug("DeleteFile:: Updated State of the metadata blob to deleting path: %s in storage", path)
 	common.Assert(len(filePath) > 0)
 
-	openCount := "0"
-	sizeStr := strconv.FormatInt(fileSize, 10)
-	state := string(dcache.Deleting)
-	metadata := map[string]*string{
-		"opencount":           &openCount,
-		"cache_object_length": &sizeStr,
-		"state":               &state,
-	}
+	renamedPath := path + dcache.DcacheDeletingFileNameSuffix
 
-	err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
-		Name:                   path,
-		Data:                   fileMetadata,
-		Metadata:               metadata,
-		IsNoneMatchEtagEnabled: false,
-		EtagMatchConditions:    "",
+	err := m.storageCallback.RenameFileInStorage(internal.RenameFileOptions{
+		Src: path,
+		Dst: renamedPath,
 	})
+
 	if err != nil {
-		log.Err("deleteFile:: Failed to put blob %s in storage: %v", path, err)
-		common.Assert(false, err)
+		log.Err("renameFileToDeleting:: Failed to rename the file: %s:%v", filePath, err)
+		common.Assert(false, path, err)
 		return err
 	}
 

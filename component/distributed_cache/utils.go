@@ -41,7 +41,6 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -242,11 +241,7 @@ func parseDcacheMetadata(attr *internal.ObjAttr) error {
 
 	// parse file state.
 	if state, ok := attr.Metadata["state"]; ok {
-		if *state == string(dcache.Deleting) {
-			err = fmt.Errorf("File: %s, is Deleted", attr.Name)
-			log.Err("DistributedCache::GetAttr: %v", err)
-			return syscall.ENOENT
-		} else if !(*state == string(dcache.Writing) || *state == string(dcache.Ready)) {
+		if !(*state == string(dcache.Writing) || *state == string(dcache.Ready)) {
 			err = fmt.Errorf("File: %s, has invalid state:  [%s] metadata property", attr.Name, *state)
 			log.Err("DistributedCache::GetAttr: %v", err)
 			common.Assert(false, err)
@@ -262,18 +257,30 @@ func parseDcacheMetadata(attr *internal.ObjAttr) error {
 	return err
 }
 
+// Hide the files which are set to deleting. Such files are named with suffix ".dcache.deleting"
 func parseDcacheMetadataForDirEntries(dirList []*internal.ObjAttr) []*internal.ObjAttr {
 	newDirList := make([]*internal.ObjAttr, len(dirList))
 	i := 0
+
 	for _, attr := range dirList {
-		err := parseDcacheMetadata(attr)
-		if err == nil {
-			newDirList[i] = attr
-			i++
+		if isValidDcacheFile(attr.Name) {
+			err := parseDcacheMetadata(attr)
+			if err == nil {
+				newDirList[i] = attr
+				i++
+			} else {
+				log.Err("DistributedCache::parseDcacheMetadataForDirEntries: skipping the dir entry, failed to parse metadata file: %s: %v",
+					attr.Name, err)
+			}
 		} else {
-			log.Err("DistributedCache::parseDcacheMetadataForDirEntries: skipping the dir entry , file: %s, err: %s", attr.Name, err.Error())
+			log.Info("DistributedCache::parseDcacheMetadataForDirEntries: skipping the dir entry for deleted file: %s", attr.Name)
 		}
 	}
-	return newDirList[:i]
 
+	return newDirList[:i]
+}
+
+// Checks the dcache filePath is valid/not
+func isValidDcacheFile(rawPath string) bool {
+	return !strings.HasSuffix(rawPath, dcache.DcacheDeletingFileNameSuffix)
 }

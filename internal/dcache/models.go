@@ -119,9 +119,12 @@ type DCacheConfig struct {
 type FileState string
 
 const (
-	Ready    FileState = "ready"
-	Writing  FileState = "writing"
-	Deleting FileState = "deleting"
+	Ready   FileState = "ready"
+	Writing FileState = "writing"
+)
+
+const (
+	DcacheDeletingFileNameSuffix = ".dcache.deleting"
 )
 
 type FileMetadata struct {

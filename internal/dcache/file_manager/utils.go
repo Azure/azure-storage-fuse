@@ -195,8 +195,7 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 	// - A file can be deleted from ready or writing state, so in deleting state fileSize can be anything.
 	//
 	common.Assert((fileMetadata.State == dcache.Writing && fileSize == -1) ||
-		(fileMetadata.State == dcache.Ready && fileSize >= 0) ||
-		(fileMetadata.State == dcache.Deleting),
+		(fileMetadata.State == dcache.Ready && fileSize >= 0),
 		fmt.Sprintf("file: %s, file metadata: %+v, fileSize: %d", fileName, fileMetadata, fileSize))
 
 	// Return ENOENT if the file is not in ready state.
@@ -216,37 +215,14 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 }
 
 func DeleteDcacheFile(fileName string) error {
-	fileMetadataBytes, fileSize, fileState, err := mm.GetFile(fileName)
-	if err != nil {
-		log.Err("deleteFile:: Delete file failed for path: %s, err: %v", fileName, err)
-		return err
+	log.Debug("DistributedCache[FM]::DeleteDcacheFile : file: %s", fileName)
+
+	err := mm.RenameFileToDeleting(fileName)
+	if err == nil {
+		// TODO: pass this path to GC to later evict this file from dcache.
 	}
 
-	common.Assert(fileState == dcache.Ready || fileState == dcache.Writing, fileName, fileState)
-
-	// TODO: handle deletion for the files which have the state writing/ opencnt > 0
-	if fileState == dcache.Ready {
-		// TODO: Change the state of the file atomically to deleting.
-		// TODO: GC must delete all the chunks of the files in all the MVS and then it is responsible for deleteing the
-		// metadata file.
-		err := mm.UpdateFileStateToDeleting(fileName, fileMetadataBytes, fileSize)
-		if err != nil {
-			log.Err("DistributedCache::DeleteDcacheFile: err: %v", err)
-			common.Assert(false, err)
-			return err
-		}
-	} else if fileState == dcache.Writing {
-		return syscall.ENOTSUP
-	} else if fileState == dcache.Deleting {
-		// This should not happen in a single node, as the file attr would always be checked before doing a unlink call.
-		// but it might be possilble to be in this situation if attributes are cached by fuse and file was deleted by
-		// another node.
-		err := fmt.Errorf("Deleting the file: %s which was already deleted", fileName)
-		log.Err("DistributedCache::DeleteDcacheFile: err: %v", err)
-		common.Assert(false, err)
-		return err
-	}
-	return nil
+	return err
 }
 
 // Creates the chunk and allocates the chunk buf
