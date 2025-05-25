@@ -41,7 +41,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -347,9 +349,18 @@ func (se *StatsExporter) sendToAzureMonitor(out *Output) error {
 		return err
 	}
 	log.Debug("stats_exporter::sendToAzureMonitor : Token successfully retrieved")
+	var numericSuffixRegex = regexp.MustCompile(`[^0-9.\-]+$`)
 
 	for metricName, valueStr := range metrics {
-		value, err := strconv.ParseFloat(valueStr, 64)
+		cleanStr := numericSuffixRegex.ReplaceAllString(valueStr, "")
+		cleanStr = strings.TrimSpace(cleanStr)
+
+		if cleanStr == "" {
+			log.Warn("stats_exporter::sendToAzureMonitor : Empty value after cleaning for metric [%s]", metricName)
+			continue
+		}
+
+		value, err := strconv.ParseFloat(cleanStr, 64)
 		if err != nil {
 			log.Err("stats_exporter::sendToAzureMonitor : Unable to parse value [%v] for metric [%s]", err, metricName)
 			continue
