@@ -449,8 +449,29 @@ func (mv *mvInfo) getComponentRVs() []*models.RVNameAndState {
 	return mv.componentRVs
 }
 
-// Update the component RVs for the MV.
-func (mv *mvInfo) updateComponentRVs(componentRVs []*models.RVNameAndState) {
+// Update the component RVs for the MV. Called by UpdateMV() handler.
+// UpdateMV RPC can only replace one or more component RVs and must not change the state of the unchanged
+// RVs, also for the RVs which are changed the state should change from offline (for the old RV) to outofsync
+// (for the replacement RV).
+// Also note that since UpdateMV (like all ther RPCs) is not transactional, sender will send multiple of these
+// RPCs in order to run one high level workflow (like fix-mv, new-mv, start-sync, end-sync, etc) and each of them
+// can fail independently. The workflow will complete, causing a change to be committed to clustermap, only
+// if all these RPCs complete successfully. When a workflow fails due to one or more RPCs failing, the sender
+// simply omits committing the change in clustermap, and doesn't bother undoing the mvInfo changes that the
+// successful RPCs would have caused (this is the non-transactional nature). This means that when an UpdateMV
+// RPC is received at an RV, it doesn't necessarily see offline->outofsync as the only state change (as some
+// RVs might have a stale state, different from the clustermap). In that case we need to refresh our mvInfo
+// from the clustermap (by calling mvInfo.refreshFromClustermap()) and then try again.
+//
+// This means that following must be true for UpdateMV RPC:
+//   - It can only replace one or more RVs and never change the state of existing/unchanged RVs.
+//   - The new RVs added by UpdateMV, must be in outofsync state.
+//   - Since we can replace a component RV with itself (if it comes back up online, after going offline
+//     for some time) such an RV will appear to undergo a state change, but this must be offline->outofsync.
+//
+// These checks must be performed to ensure consistent updates to mvInfo.
+// When called from refreshFromClustermap() we don't need to do these checks and forceUpdate must be true.
+func (mv *mvInfo) updateComponentRVs(componentRVs []*models.RVNameAndState, forceUpdate bool) error {
 	common.Assert(len(componentRVs) == int(cm.GetCacheConfig().NumReplicas),
 		len(componentRVs), cm.GetCacheConfig().NumReplicas)
 
@@ -471,7 +492,43 @@ func (mv *mvInfo) updateComponentRVs(componentRVs []*models.RVNameAndState) {
 	log.Debug("mvInfo::updateComponentRVs: %s -> %s",
 		rpc.ComponentRVsToString(mv.componentRVs), rpc.ComponentRVsToString(componentRVs))
 
+	//
+	// Catch invalid membership changes.
+	//
+	if !forceUpdate {
+		for i := 0; i < len(componentRVs); i++ {
+			oldName := mv.componentRVs[i].Name
+			oldState := mv.componentRVs[i].State
+			newName := componentRVs[i].Name
+			newState := componentRVs[i].State
+
+			if oldName == newName {
+				if oldState == newState {
+					// No change in RV.
+					continue
+				}
+
+				if oldState == string(dcache.StateOffline) && newState == string(dcache.StateOutOfSync) {
+					// Same RV (now online) being reused by fix-mv.
+					continue
+				}
+			} else {
+				if oldState == string(dcache.StateOffline) && newState == string(dcache.StateOutOfSync) {
+					// New RV replaced by fix-mv.
+					continue
+				}
+			}
+
+			errStr := fmt.Sprintf("Invalid change attempted to %s (%s=%s -> %s=%s)",
+				mv.mvName, oldName, oldState, newName, newState)
+			log.Info("mvInfo::updateComponentRVs: %s", errStr)
+			return rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
+		}
+	}
+
+	// Valid membership changes, update the saved componentRVs.
 	mv.componentRVs = componentRVs
+	return nil
 }
 
 // Update the state of the given component RV in this MV.
@@ -560,6 +617,8 @@ func (mv *mvInfo) refreshFromClustermap() error {
 	// Convert newRVs from RV Name->State map, to RVNameAndState slice.
 	var newComponentRVs []*models.RVNameAndState
 	for rvName, rvState := range newRVs {
+		common.Assert(cm.IsValidComponentRVState(rvState), rvName, mv.mvName, rvState)
+
 		newComponentRVs = append(newComponentRVs, &models.RVNameAndState{
 			Name:  rvName,
 			State: string(rvState),
@@ -567,12 +626,15 @@ func (mv *mvInfo) refreshFromClustermap() error {
 
 		//
 		// TODO: If an RV is being added in "outofsync" or "syncing" state (and it was in a different
-		// 	 state earlier) we must also update rvInfo.reservedSpace.
+		// 	     state earlier) we must also update rvInfo.reservedSpace.
 		//
 	}
 
+	//
 	// Update unconditionally, even if it may not have changed, doesn't matter.
-	mv.updateComponentRVs(newComponentRVs)
+	// We force the update as this is the membership info that we got from clustermap.
+	//
+	mv.updateComponentRVs(newComponentRVs, true /* forceUpdate */)
 
 	//
 	// TODO: Remove any syncJobs which are no longer running.
@@ -778,10 +840,13 @@ func (mv *mvInfo) validateComponentRVsInSync(componentRVsInReq []*models.RVNameA
 
 		//
 		// Q: Why refreshFromClustermap() is needed?
-		// A: This validState change must have been approved by us (prior JoinMV or StartSync) and only after
-		//    that the sender could have committed the state change in clustermap. If we do not have the
-		//    validState in our rvInfo then it cannot be in the clustermap and if it's not in the clustermap
-		//    sender won't have sent the StartSync/EndSync RPC.
+		// A: If we are hosting the target RV, then this validState change must have been approved by us
+		//    (prior JoinMV or StartSync) and only after that the sender could have committed the state
+		//    change in clustermap. If we do not have the validState in our rvInfo then it cannot be in the
+		//    clustermap and if it's not in the clustermap sender won't have sent the StartSync/EndSync RPC.
+		//    Note that even if we are not hosting the target RV, we would have been informed through a
+		//	  StartSync request and we must have acknowledged it.
+		//
 		//    There is one possibility though. A prior StartSync succeeded and the mvInfo state was changed to
 		//    syncing, but the sender couldn' persist that change in the clustermap (some node that was updating
 		//    the clustermap took really long, due to some other node being down and JoinMV taking long time).
@@ -860,7 +925,7 @@ func (h *ChunkServiceHandler) checkValidChunkAddress(address *models.Address) er
 	return nil
 }
 
-// get the RVInfo from the RV name
+// Get rvInfo for a given RV name that corresponds to one of our local RVs.
 func (h *ChunkServiceHandler) getRVInfoFromRVName(rvName string) *rvInfo {
 	var rvInfo *rvInfo
 	for rvID, info := range h.rvIDMap {
@@ -1434,77 +1499,99 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 	if !cm.IsValidMVName(req.MV) || !cm.IsValidRVName(req.RVName) || len(req.ComponentRV) == 0 {
 		errStr := fmt.Sprintf("Invalid MV, RV or ComponentRV: %v", rpc.JoinMVRequestToString(req))
 		log.Err("ChunkServiceHandler::JoinMV: %s", errStr)
+		common.Assert(false, errStr)
 		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
 	}
 
 	rvInfo := h.getRVInfoFromRVName(req.RVName)
 	if rvInfo == nil {
-		log.Err("ChunkServiceHandler::JoinMV: Invalid RV %s", req.RVName)
-		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRV, fmt.Sprintf("invalid RV %s", req.RVName))
+		errStr := fmt.Sprintf("node %s does not host %s", rpc.GetMyNodeUUID(), req.RVName)
+		log.Err("ChunkServiceHandler::JoinMV: %s", errStr)
+		common.Assert(false, errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRV, errStr)
 	}
 
 	cacheDir := rvInfo.cacheDir
 
-	// acquire lock for the RV to prevent concurrent JoinMV calls for different MVs
+	// Acquire lock for the RV to prevent concurrent JoinMV calls for different MVs.
 	flock := h.locks.Get(rvInfo.rvID)
 	flock.Lock()
 	defer flock.Unlock()
 
-	// check if RV is already part of the given MV
-	mvi := rvInfo.getMVInfo(req.MV)
-	if mvi != nil {
+	// Check if RV is already part of the given MV.
+	mvInfo := rvInfo.getMVInfo(req.MV)
+	if mvInfo != nil {
 		//
 		// TODO: Till Sourav formally implements idempotent handling of JoinMV and UpdateMV RPCs,
 		//	 we have the following to not treat "double join" as failure.
 		//	 Double join can happen when let's say we have two or more outofsync component RVs
 		//	 for an MV and fixMV() sends JoinMV request to each of the outofsync RVs. If one or
-		//	 more of these fail, the joinMV() will treat it has failure and not update clustermap.
+		//	 more of these fail, the joinMV() will treat it as a failure and not update clustermap.
 		//	 Next time when fixMV() is called it'll again attempt fixing and again send JoinMV.
 		//	 Note that for proper handling we need to ensure that the reservedSpace remains
 		//	 same across both calls. Also if an RV is joined but never used later (maybe joinMV()
 		//	 picked a new RV in the next iteration), we should time out and undo the reservedSpace.
 		//
-		log.Warn("ChunkServiceHandler::JoinMV: RV %s is already part of the given MV %s, ignoring",
-			req.RVName, req.MV)
+		log.Warn("ChunkServiceHandler::JoinMV: %s is already part of %s, ignoring", req.RVName, req.MV)
 		return &models.JoinMVResponse{}, nil
 	}
 
 	mvLimit := getMVsPerRV()
 	if rvInfo.mvCount.Load() >= mvLimit {
-		log.Err("ChunkServiceHandler::JoinMV: RV %s has reached the maximum number of MVs %d", req.RVName, mvLimit)
-		return nil, rpc.NewResponseError(models.ErrorCode_MaxMVsExceeded, fmt.Sprintf("RV %s has reached the maximum number of MVs %d", req.RVName, mvLimit))
+		//
+		// TODO: This might happen due to incomplete JoinMV requests taking up space, so it will help
+		//		 to refresh rvInfo details from the clustermap and remove any unused MVs, and try again.
+		//
+		errStr := fmt.Sprintf("%s cannot host any more MVs (MVsPerRv: %d)", req.RVName, mvLimit)
+		log.Err("ChunkServiceHandler::JoinMV: %s", errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_MaxMVsExceeded, errStr)
 	}
 
-	// RV is being added to an already existing MV
-	// check if the RV has enough space to store the new MV data
+	//
+	// JoinMV is used both for new-mv and fix-mv workflows.
+	// For new-mv, req.ReserveSpace will be 0 as there's no specific space requirement, but in the fix-mv
+	// case this RV will have to store one copy of MVs data, so it must have that much free space.
+	//
 	if req.ReserveSpace != 0 {
 		availableSpace, err := rvInfo.getAvailableSpace()
 		if err != nil {
-			log.Err("ChunkServiceHandler::JoinMV: Failed to get available disk space for RV %v [%v]", req.RVName, err.Error())
-			return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, fmt.Sprintf("failed to get available disk space for RV %v [%v]", req.RVName, err.Error()))
+			errStr := fmt.Sprintf("failed to get available disk space for %v [%v]", req.RVName, err)
+			log.Err("ChunkServiceHandler::JoinMV: %s", errStr)
+			return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
 		}
 
 		// TODO: should we keep some buffer space for the MV,
 		// like reserve space should be 20% less than available space
 		if availableSpace < req.ReserveSpace {
-			log.Err("ChunkServiceHandler::JoinMV: Not enough space to reserve %v bytes for joining MV %v", req.ReserveSpace, req.MV)
-			return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, fmt.Sprintf("not enough space to reserve %v bytes for joining MV %v", req.ReserveSpace, req.MV))
+			errStr := fmt.Sprintf("not enough space in %s to reserve %d bytes for %s, has only %d bytes",
+				req.RVName, req.ReserveSpace, req.MV, availableSpace)
+			log.Err("ChunkServiceHandler::JoinMV: %s", errStr)
+			return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
 		}
 	}
 
-	// create the MV directory
+	// Create the MV directory.
 	mvPath := filepath.Join(cacheDir, req.MV)
 	err := h.createMVDirectory(mvPath)
 	if err != nil {
-		log.Err("ChunkServiceHandler::JoinMV: Failed to create MV directory %s [%v]", mvPath, err.Error())
-		return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, fmt.Sprintf("failed to create MV directory %s [%v]", mvPath, err.Error()))
+		errStr := fmt.Sprintf("failed to create MV directory %s [%v]", mvPath, err)
+		log.Err("ChunkServiceHandler::JoinMV: %s", errStr)
+		common.Assert(false, errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
 	}
 
-	// add in sync map
+	//
+	// Add the newly created MV replica to the MV map for the RV.
+	// JoinMV is not transactional, so if one or more JoinMVs fail, the caller won't rollback but simply
+	// leave the debris. Note that in case of failure the clustermap won't be updated so we can find out
+	// from the clustermap, and we use that to resolve conflicts when they arise, not proactively.
+	// But, the space reservation needs to be undone, else we may run out of space due to these incomplete
+	// JoinMV calls.
+	//
 	sortComponentRVs(req.ComponentRV)
 	rvInfo.addToMVMap(req.MV, newMVInfo(rvInfo.rvName, req.MV, req.ComponentRV))
 
-	// increment the reserved space for this RV
+	// Increment the reserved space for this RV.
 	rvInfo.incReservedSpace(req.ReserveSpace)
 
 	return &models.JoinMVResponse{}, nil
@@ -1522,27 +1609,60 @@ func (h *ChunkServiceHandler) UpdateMV(ctx context.Context, req *models.UpdateMV
 		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
 	}
 
-	rvInfo := h.getRVInfoFromRVName(req.RVName)
-	if rvInfo == nil {
-		log.Err("ChunkServiceHandler::UpdateMV: Invalid RV %s", req.RVName)
-		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRV, fmt.Sprintf("invalid RV %s", req.RVName))
+	clustermapRefreshed := false
+	for {
+		rvInfo := h.getRVInfoFromRVName(req.RVName)
+		if rvInfo == nil {
+			errStr := fmt.Sprintf("node %s does not host %s", rpc.GetMyNodeUUID(), req.RVName)
+			log.Err("ChunkServiceHandler::UpdateMV: %s", errStr)
+			common.Assert(false, errStr)
+			return nil, rpc.NewResponseError(models.ErrorCode_InvalidRV, errStr)
+		}
+
+		//
+		// A membership update RPC is only sent to RVs which are already members of the MV, and it is sent
+		// when the membership changes (an existing RV is replaced by another RV by the fix-mv workflow).
+		// Since the sender is referring to the global clustermap and this RV is part of the given MV as
+		// per the global clustermap, since an RV is added to an MV only after a successful JoinMV response
+		// from all component RVs, we *must* have the MV replica in our rvInfo.
+		//
+		mvInfo := rvInfo.getMVInfo(req.MV)
+		if mvInfo == nil {
+			errStr := fmt.Sprintf("%s is not part of %s", req.RVName, req.MV)
+			log.Err("ChunkServiceHandler::UpdateMV: %s", errStr)
+			common.Assert(false, errStr)
+			return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
+		}
+
+		componentRVsInMV := mvInfo.getComponentRVs()
+
+		log.Debug("ChunkServiceHandler::UpdateMV: Updating from (%s -> %s)",
+			rpc.ComponentRVsToString(componentRVsInMV), rpc.ComponentRVsToString(req.ComponentRV))
+
+		//
+		// update the component RVs list for this MV
+		// mvInfo.updateComponentRVs() only allows valid changes to cluster membership.
+		//
+		// Note: Updating this unconditionally could be risky.
+		//       A node with an outdated clustermap can reverse a later change.
+		//       f.e. some node is syncing and has changed state of an rv to syncing
+		//       meanwhile some other node with an older clustermap wants to join an MV to this rv.
+		//       it fetched clustermap but then due to n/w down, by the time it reached fixMV, rv was
+		//		 already marked syncing, but now it has rv as outofsync and it forces it as that
+		//
+		err := mvInfo.updateComponentRVs(req.ComponentRV, false /* forceUpdate */)
+		if err != nil {
+			if !clustermapRefreshed {
+				mvInfo.refreshFromClustermap()
+				clustermapRefreshed = true
+				continue
+			}
+
+			return nil, err
+		}
+
+		break
 	}
-
-	mvInfo := rvInfo.getMVInfo(req.MV)
-	if mvInfo == nil {
-		errStr := fmt.Sprintf("RV %s is not member of MV %s", req.RVName, req.MV)
-		log.Err("ChunkServiceHandler::UpdateMV: %s", errStr)
-		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
-	}
-
-	componentRVsInMV := mvInfo.getComponentRVs()
-	log.Debug("ChunkServiceHandler::UpdateMV: Current component RVs %v, updated component RVs %v", rpc.ComponentRVsToString(componentRVsInMV), rpc.ComponentRVsToString(req.ComponentRV))
-
-	// update the component RVs list for this MV
-	mvInfo.updateComponentRVs(req.ComponentRV)
-
-	// TODO: check if this is needed as mvInfo is a pointer
-	// rvInfo.addToMVMap(req.MV, mvInfo)
 
 	return &models.UpdateMVResponse{}, nil
 }
@@ -1707,6 +1827,9 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 
 	// Update the state of target RV in this MV replica from outofsync to syncing.
 	mvInfo.updateComponentRVState(req.TargetRVName, dcache.StateOutOfSync, dcache.StateSyncing)
+
+	log.Debug("ChunkServiceHandler::StartSync: Responding to StartSync request: %s, with syncID: %s",
+		rpc.StartSyncRequestToString(req), syncID)
 
 	return &models.StartSyncResponse{
 		SyncID: syncID,

@@ -1073,7 +1073,9 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	// the clusterMap will be updated after two consecutive ClustermapEpoch.
 	//
 
-	now := time.Now().Unix()
+	startTime := time.Now()
+	now := startTime.Unix()
+
 	if clusterMap.LastUpdatedAt > now {
 		err = fmt.Errorf("LastUpdatedAt(%d) in future, now(%d), skipping update", clusterMap.LastUpdatedAt, now)
 		log.Warn("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
@@ -1155,12 +1157,23 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	//
 	// Note: We still have the Assert() here as it's highly unlikely and it helps to catch any other bug.
 	//
+	// Note: updateRVList() and updateMVList() are the only functions that can change clustermap.
+	//       Covering them between UpdateClusterMapStart() and UpdateClusterMapEnd() ensure that only one
+	//       node would be updating cluster membership details at any point.
+	//
 	if err = mm.UpdateClusterMapStart(updatedClusterMapBytes, etag); err != nil {
 		err = fmt.Errorf("Start Clustermap update failed for nodeId %s: %v", cmi.myNodeId, err)
 		log.Err("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
 		common.Assert(false, err)
 		return err
 	}
+
+	//
+	// UpdateClusterMapStart() must not take long. Assert to check that.
+	//
+	maxTime := 5 * time.Second
+	elapsed := time.Since(startTime)
+	common.Assert(elapsed < maxTime, elapsed, maxTime)
 
 	log.Info("ClusterManager::updateStorageClusterMapIfRequired: UpdateClusterMapStart succeeded for nodeId %s",
 		cmi.myNodeId)
@@ -1172,6 +1185,9 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 		err = fmt.Errorf("Failed to reconcile RV mapping: %v", err)
 		log.Err("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
 		common.Assert(false, err)
+		//
+		// TODO: We must reset the clusterMap state to ready.
+		//
 		return err
 	}
 
@@ -1204,6 +1220,27 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 			nodeCount, cmi.config.MinNodes)
 
 		clusterMap.Readonly = false
+	}
+
+	//
+	// Check if the time elapsed since we read the global clusterMap and till we could run all the updates,
+	// has exceeded ClustermapEpoch. If so, we can be at risk of having our clusterMap updates race with some
+	// other node (that might have claimed ownership due to timeout). In that case we give up all the updates
+	// we made to the clusterMap and do not commit them.
+	// This can happen if one or more nodes are not reachable, and updateMVList() had to send some JoinMV/UpdateMV
+	// RPCs.
+	//
+	elapsed = time.Since(startTime)
+	maxTime = time.Duration(clusterMap.Config.ClustermapEpoch) * time.Second
+	if elapsed > maxTime {
+		//
+		// TODO: We must reset the clusterMap state to ready.
+		//
+		err = fmt.Errorf("Clustermap update (%s) took longer than ClustermapEpoch (%s), bailing out",
+			elapsed, maxTime)
+		log.Err("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
+		common.Assert(false, err)
+		return err
 	}
 
 	clusterMap.LastUpdatedAt = time.Now().Unix()
@@ -1259,6 +1296,11 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 // treated as an offline component RV, basically any component RV which does not have valid data.
 //
 // existingMVMap is updated in-place, the caller will then publish it in the updated clustermap.
+//
+// Note: updateMVList() MUST be called after successfully claiming ownership of clusterMap update, by a successful
+//
+//	call to UpdateClusterMapStart(). This is IMPORTANT to ensure only one node attempts to update clusterMap
+//	at any point.
 func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	existingMVMap map[string]dcache.MirroredVolume) {
 	// We should not be called for an empty rvMap.
@@ -2183,6 +2225,10 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume, reser
 // If onlyMyRVs is true then the only RV(s) added/updated are the ones exported by the current node, else it queries
 // the heartbeats from all nodes and adds all new RVs available and updates all RVs.
 // existingRVMap is updated in-place.
+//
+// Note: updateRVList() MUST be called after successfully claiming ownership of clusterMap update, by a successful
+//
+//	call to UpdateClusterMapStart().
 func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolume, onlyMyRVs bool) (bool, error) {
 	hbTillNodeDown := int64(cmi.config.HeartbeatsTillNodeDown)
 	hbSeconds := int64(cmi.config.HeartbeatSeconds)
