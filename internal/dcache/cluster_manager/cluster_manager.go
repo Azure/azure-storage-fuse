@@ -228,6 +228,13 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 		var err error
 		var consecutiveFailures int
 
+		//
+		// TODO: Test it and make sure it doesn't call updateStorageClusterMapIfRequired() back2back
+		//       in case the prev call to updateStorageClusterMapIfRequired() took long time, causing
+		//       ticks to accumulate. There's no point in call updateStorageClusterMapIfRequired()
+		//       b2b. The doc says that ticker will adjust and drop ticks for slow receivers, but we
+		//       need to verify and if required drop ticks which are long back in the past.
+		//
 		for range cmi.clusterMapticker.C {
 			log.Debug("ClusterManager::start: Scheduled task \"Update ClusterMap\" triggered")
 			err = cmi.updateStorageClusterMapIfRequired()
@@ -1107,7 +1114,17 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	if clusterMap.State == dcache.StateChecking && !stale {
 		log.Debug("ClusterManager::updateStorageClusterMapIfRequired: skipping, clustermap is being updated by (leader %s), current node (%s)", clusterMap.LastUpdatedBy, cmi.myNodeId)
 
+		//
 		// Leader node should have updated the state to checking and it should not find the state to checking.
+		//
+		// TODO: This has been seen to fail when due to remote node being dow updateStorageClusterMapIfRequired()
+		//       took long time and the next iteration was called immediately. While it was running, some other
+		//       context(s) (updateComponentRVState()) were waiting to update the clusterMap, they immediately
+		//       started updating as soon as last iteration of updateStorageClusterMapIfRequired() completed, and
+		//       hence when the next iteration of updateStorageClusterMapIfRequired() started immediately, it
+		//       finds the clusterMap state as checking.
+		//       Still leaving the assert as it's useful to see if it occurrs in any other way.
+		//
 		common.Assert(!leader, "We don't expect leader to see the clustermap in checking state")
 		return nil
 	}

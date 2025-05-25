@@ -92,11 +92,19 @@ func IsBrokenPipe(err error) bool {
 		return false
 	}
 
+	te := thrift.NewTTransportExceptionFromError(err)
 	// Note: This doesn't work.
-	//te := thrift.NewTTransportExceptionFromError(err)
 	//return te.TypeId() == thrift.NOT_OPEN
 
-	return errors.Is(err, syscall.EPIPE)
+	log.Debug("IsBrokenPipe: err: %v, err: %T, te.TypeId(): %d, Is syscall.EPIPE: %v",
+		err, err, te.TypeId(), errors.Is(err, syscall.EPIPE))
+
+	//
+	// In this case I've seen syscall.EPIPE check to work, but since it's not documented
+	// we do the string match also, just in case.
+	//
+	brokenPipe := "roken pipe"
+	return errors.Is(err, syscall.EPIPE) || strings.Contains(err.Error(), brokenPipe)
 }
 
 // This is the standard "connection reset by peer" error when peer TCP sends RST over a connection.
@@ -128,7 +136,11 @@ func IsConnectionReset(err error) bool {
 	log.Debug("IsConnectionReset: err: %v, err: %T, te.TypeId(): %d, Is syscall.ECONNRESET: %v",
 		err, err, te.TypeId(), errors.Is(err, syscall.ECONNRESET))
 
-	connectionResetByPeer := "connection reset by peer"
+	//
+	// In this case I've seen syscall.ECONNRESET check to work, but since it's not documented
+	// we do the string match also, just in case.
+	//
+	connectionResetByPeer := "onnection reset by peer"
 	return errors.Is(err, syscall.ECONNRESET) || strings.Contains(err.Error(), connectionResetByPeer)
 }
 
@@ -171,7 +183,7 @@ func IsConnectionRefused(err error) bool {
 	//
 	//return errors.Is(err, syscall.ECONNREFUSED)
 
-	connectionRefused := "connection refused"
+	connectionRefused := "onnection refused"
 	return strings.Contains(err.Error(), connectionRefused)
 }
 
@@ -187,9 +199,17 @@ func IsTimedOut(err error) bool {
 	}
 
 	te := thrift.NewTTransportExceptionFromError(err)
-	log.Debug("IsTimedOut: err: %v, err: %T, te.TypeId(): %d, Is syscall.ETIMEDOUT: %v",
-		err, err, te.TypeId(), errors.Is(err, syscall.ETIMEDOUT))
+	log.Debug("IsTimedOut: err: %v, err: %T, te.TypeId(): %d, Is syscall.ETIMEDOUT: %v, Is syscall.EAGAIN: %v",
+		err, err, te.TypeId(), errors.Is(err, syscall.ETIMEDOUT), errors.Is(err, syscall.EAGAIN))
 
-	// TODO: See which one of these works.
-	return te.TypeId() == thrift.TIMED_OUT || errors.Is(err, syscall.ETIMEDOUT)
+	//
+	// Timeout can happen at various points.
+	// connect()/write()/read() may time out.
+	// Try various errors for completeness.
+	//
+	connectionTimedOut := "onnection timed out"
+	return te.TypeId() == thrift.TIMED_OUT ||
+		errors.Is(err, syscall.ETIMEDOUT) ||
+		errors.Is(err, syscall.EAGAIN) ||
+		strings.Contains(err.Error(), connectionTimedOut)
 }
