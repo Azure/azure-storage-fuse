@@ -239,6 +239,8 @@ func storeBlobErrToErr(err error) uint16 {
 			return ErrFileAlreadyExists
 		case bloberror.BlobNotFound:
 			return ErrFileNotFound
+		case bloberror.CannotVerifyCopySource:
+			return ErrFileNotFound
 		case bloberror.InvalidRange:
 			return InvalidRange
 		case bloberror.LeaseIDMissing:

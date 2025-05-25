@@ -371,10 +371,9 @@ func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.
 				options.Name = rawPath
 				log.Debug("DistributedCache::GetAttr :  Unquailified Path, Failed to get attr from dcache, getting attr from Azure, path : %s",
 					options.Name)
+				return dc.NextComponent().GetAttr(options)
 			}
 		}
-
-		return dc.NextComponent().GetAttr(options)
 	}
 
 	// Parse the metadata info for dcache specific files.

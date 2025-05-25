@@ -476,7 +476,7 @@ func (m *BlobMetadataManager) renameFileToDeleting(filePath string) error {
 
 	if err != nil {
 		log.Err("renameFileToDeleting:: Failed to rename the file: %s:%v", filePath, err)
-		common.Assert(false, path, err)
+		common.Assert(err == syscall.ENOENT, path, err)
 		return err
 	}
 
