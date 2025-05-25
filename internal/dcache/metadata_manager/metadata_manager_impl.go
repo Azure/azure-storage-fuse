@@ -34,6 +34,7 @@
 package metadata_manager
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -406,6 +407,11 @@ func (m *BlobMetadataManager) getFile(filePath string) ([]byte, int64, dcache.Fi
 	data, prop, err := m.getBlobSafe(path)
 	if err != nil {
 		log.Debug("GetFile:: Failed to get metadata file content for file %s: %v", path, err)
+		//
+		// getBlobSafe() should only fail when blob is non-existent.
+		// Assert to catch any other error.
+		//
+		common.Assert(errors.Is(err, syscall.ENOENT), err)
 		return nil, -1, "", err
 	}
 
