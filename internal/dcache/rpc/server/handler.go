@@ -763,7 +763,6 @@ func (mv *mvInfo) validateComponentRVsInSync(componentRVsInReq []*models.RVNameA
 	// StartSync() call.
 	// Else, check if the target RV is in syncing state for EndSync() call.
 	//
-	targetRVNameAndState := mv.getComponentRVNameAndState(targetRVName)
 	var validState string
 
 	if isStartSync {
@@ -772,20 +771,45 @@ func (mv *mvInfo) validateComponentRVsInSync(componentRVsInReq []*models.RVNameA
 		validState = string(dcache.StateSyncing)
 	}
 
-	//
-	// Q: Why refreshFromClustermap() cannot help?
-	// A: This validState change must have been approved by us (prior JoinMV or StartSync) and only after
-	//    that the sender could have committed the state change in clustermap. If we do not have the
-	//    validState in our rvInfo then it cannot be in the clustermap.
-	//
-	if targetRVNameAndState.State != validState {
-		errStr := fmt.Sprintf("Target RV %s is not in %s state (%s/%s -> %s/%s): %s [NeedToRefreshClusterMap]",
-			targetRVName, validState,
-			sourceRVName, mv.mvName,
-			targetRVName, mv.mvName,
-			rpc.ComponentRVsToString(mv.getComponentRVs()))
-		common.Assert(false, errStr)
-		return rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
+	clustermapRefreshed := false
+
+	for {
+		targetRVNameAndState := mv.getComponentRVNameAndState(targetRVName)
+
+		//
+		// Q: Why refreshFromClustermap() is needed?
+		// A: This validState change must have been approved by us (prior JoinMV or StartSync) and only after
+		//    that the sender could have committed the state change in clustermap. If we do not have the
+		//    validState in our rvInfo then it cannot be in the clustermap and if it's not in the clustermap
+		//    sender won't have sent the StartSync/EndSync RPC.
+		//    There is one possibility though. A prior StartSync succeeded and the mvInfo state was changed to
+		//    syncing, but the sender couldn' persist that change in the clustermap (some node that was updating
+		//    the clustermap took really long, due to some other node being down and JoinMV taking long time).
+		//    Meanwhile the lowest online RV on the node attempting the sync is marked offline in clustermap,
+		//	  so some other node now has the lowest online RV, and that node now attempts the sync. It sends a
+		//	  StartSync RPC to this RV which is already marked syncing by the previous StartSync.
+		//
+		if targetRVNameAndState.State != validState {
+			errStr := fmt.Sprintf("Target RV %s is not in %s state (%s/%s -> %s/%s): %s [NeedToRefreshClusterMap]",
+				targetRVName, validState,
+				sourceRVName, mv.mvName,
+				targetRVName, mv.mvName,
+				rpc.ComponentRVsToString(mv.getComponentRVs()))
+
+			log.Err("ChunkServiceHandler::validateComponentRVsInSync: %s, clustermapRefreshed: %v",
+				errStr, clustermapRefreshed)
+
+			if !clustermapRefreshed {
+				mv.refreshFromClustermap()
+				clustermapRefreshed = true
+				continue
+			}
+
+			common.Assert(false, errStr)
+			return rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
+		}
+
+		break
 	}
 
 	return nil
@@ -1617,11 +1641,20 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 		rvInfo = targetRVInfo
 	}
 
+	//
 	// Check if we are hosting the requested MV replica.
+	//
+	// Q: Why refreshFromClustermap() cannot help this?
+	// A: An MV replica can be added to rvInfo only via a JoinMV RPC, and only when we respond successfully
+	//    to the JoinMV call will the sender persist it in the clustermap, so if the clustermap has it we
+	//    must have sent it and if we don't have it, refreshing from clustermap cannot add it.
+	//    This cannot happen unless sender is doing something wrong, hence assert.
+	//
 	mvInfo := rvInfo.getMVInfo(req.MV)
 	if mvInfo == nil {
 		errStr := fmt.Sprintf("%s/%s not hosted by this node", rvInfo.rvName, req.MV)
 		log.Err("ChunkServiceHandler::StartSync: %s", errStr)
+		common.Assert(false, errStr)
 		return nil, rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
 	}
 
@@ -1722,11 +1755,20 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 		rvInfo = targetRVInfo
 	}
 
+	//
 	// Check if we are hosting the requested MV replica.
+	//
+	// Q: Why refreshFromClustermap() cannot help this?
+	// A: An MV replica can be added to rvInfo only via a JoinMV RPC, and only when we respond successfully
+	//    to the JoinMV call will the sender persist it in the clustermap, so if the clustermap has it we
+	//    must have sent it and if we don't have it, refreshing from clustermap cannot add it.
+	//    This cannot happen unless sender is doing something wrong, hence assert.
+	//
 	mvInfo := rvInfo.getMVInfo(req.MV)
 	if mvInfo == nil {
 		errStr := fmt.Sprintf("%s/%s not hosted by this node", rvInfo.rvName, req.MV)
 		log.Err("ChunkServiceHandler::EndSync: %s", errStr)
+		common.Assert(false, errStr)
 		return nil, rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
 	}
 
