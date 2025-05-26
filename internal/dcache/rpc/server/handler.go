@@ -498,6 +498,12 @@ func (mv *mvInfo) updateComponentRVs(componentRVs []*models.RVNameAndState, forc
 	//
 	// Catch invalid membership changes.
 	//
+	// Note: Cluster manager doesn't commit clustermap after the degrade-mv workflow that marks component
+	// 		 RVs as offline, so we won't get updated offline state even after a refresh.
+	//       We either let JoinMV fail in this iteration and the next time around when clustermap would have
+	//		 the offline state, it succeeds or we change updateMvReq() to commit clustermap after marking
+	//		 component RVs offline.
+	//
 	if !forceUpdate {
 		for i := 0; i < len(componentRVs); i++ {
 			oldName := mv.componentRVs[i].Name
@@ -621,14 +627,6 @@ func (mv *mvInfo) refreshFromClustermap() error {
 	var newComponentRVs []*models.RVNameAndState
 	for rvName, rvState := range newRVs {
 		common.Assert(cm.IsValidComponentRVState(rvState), rvName, mv.mvName, rvState)
-
-		//
-		// Cluster manager doesn't commit clustermap after the degrade-mv workflow that marks component
-		// RVs as offline, so we do it here to avoid UpdateMV() to fail once more.
-		//
-		if cm.GetRVState(rvName) == dcache.StateOffline {
-			rvState = dcache.StateOffline
-		}
 
 		newComponentRVs = append(newComponentRVs, &models.RVNameAndState{
 			Name:  rvName,
