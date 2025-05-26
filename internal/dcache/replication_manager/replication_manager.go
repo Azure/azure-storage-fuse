@@ -645,6 +645,12 @@ func sendStartSyncRequest(rvName string, targetNodeID string, req *models.StartS
 	ctx, cancel := context.WithTimeout(context.Background(), RPCClientTimeout*time.Second)
 	defer cancel()
 
+	//
+	// Caller passes the same StartSyncRequest for both source and target RVs.
+	// Clear it here to keep the assert in StartSync() happy.
+	//
+	req.SenderNodeID = ""
+
 	resp, err := rpc_client.StartSync(ctx, targetNodeID, req)
 	if err != nil {
 		log.Err("ReplicationManager::sendStartSyncRequest: StartSync failed for %s/%s %v: %v",
@@ -954,6 +960,12 @@ func sendEndSyncRequest(rvName string, targetNodeID string, req *models.EndSyncR
 
 	ctx, cancel := context.WithTimeout(context.Background(), RPCClientTimeout*time.Second)
 	defer cancel()
+
+	//
+	// Caller passes the same StartSyncRequest for both source and target RVs.
+	// Clear it here to keep the assert in StartSync() happy.
+	//
+	req.SenderNodeID = ""
 
 	resp, err := rpc_client.EndSync(ctx, targetNodeID, req)
 	if err != nil {

@@ -105,6 +105,11 @@ func GetRVs(mvName string) map[string]dcache.StateEnum {
 	return clusterMap.getRVs(mvName)
 }
 
+// Return the state of the given RV from the local cache copy of cluster map.
+func GetRVState(rvName string) dcache.StateEnum {
+	return clusterMap.getRVState(rvName)
+}
+
 // It will check if the given nodeId is online as per local cache copy of cluster map.
 func IsOnline(nodeId string) bool {
 	return clusterMap.isOnline(nodeId)
@@ -175,9 +180,12 @@ func RegisterClusterMapSyncRefresher(fn func() error) {
 	clusterMapSyncRefresher = fn
 }
 
-// Mark component RV in an MV, offline.
-// The call blocks till the MV is updated in the global (and local) clustermap.
-func MarkComponentRVOffline(mvName, rvName string) error {
+// This function must be called by any code that, through some other means (other than heartbeats) detects
+// that an RV has gone offline.
+// The RV state will be set to offline in the RV list in clustermap, along with all other side effects on
+// MVs that have that RV as a component RV.
+// The call blocks till the RV (and all affected MVs) is updated in the global (and local) clustermap.
+func ReportRVOffline(rvName string) error {
 	// TODO: Implement it.
 	common.Assert(false, "Not implemented")
 	return nil
@@ -368,10 +376,23 @@ func (c *ClusterMap) isMyRV(rvName string) bool {
 func (c *ClusterMap) getRVs(mvName string) map[string]dcache.StateEnum {
 	mv, ok := c.localMap.MVMap[mvName]
 	if !ok {
-		log.Debug("ClusterMap::getRVs: no mirrored volume named %s", mvName)
+		log.Err("ClusterMap::getRVs: no mirrored volume named %s", mvName)
 		return nil
 	}
 	return mv.RVs
+}
+
+func (c *ClusterMap) getRVState(rvName string) dcache.StateEnum {
+	rv, ok := c.localMap.RVMap[rvName]
+	if !ok {
+		log.Err("ClusterMap::getRVState: no raw volume named %s", rvName)
+		common.Assert(false, rvName)
+		return dcache.StateInvalid
+	}
+
+	// online and offline are the only valid states for an RV.
+	common.Assert(rv.State == dcache.StateOnline || rv.State == dcache.StateOffline, rvName, rv.State)
+	return rv.State
 }
 
 func (c *ClusterMap) isOnline(nodeId string) bool {
