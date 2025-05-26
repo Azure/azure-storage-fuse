@@ -342,6 +342,10 @@ var mountCmd = &cobra.Command{
 			config.Set("read-only", "true") // preload is only supported in read-only mode
 		}
 
+		if options.DistributedCache || common.ComponentInPipeline(options.Components, "distributed_cache") {
+			common.IsDistributedCacheEnabled = true
+		}
+
 		if config.IsSet("libfuse-options") {
 			for _, v := range options.LibfuseOptions {
 				parameter := strings.Split(v, "=")

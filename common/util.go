@@ -61,6 +61,7 @@ import (
 
 var RootMount bool
 var ForegroundMount bool
+var IsDistributedCacheEnabled bool
 var IsStream bool
 
 // IsDirectoryMounted is a utility function that returns true if the directory is already mounted using fuse
@@ -675,4 +676,12 @@ func IsValidBlkDevice(device string) error {
 		return fmt.Errorf("not a block device: %s having mode bits 0%4o", device, mode)
 	}
 	return nil
+}
+
+// This can be used to detect the files for which openFD count greater than zero and are unlinked.
+// hard_remove option is not enabled default from the fuse, there is no option to modify it in the newer versions
+// of libfuse. Hence the only way to detect the unlink of such files is by using dst path of rename callback.
+func IsSrcFilePathDeleted(filePath string) bool {
+	fileName := filepath.Base(filePath)
+	return strings.HasPrefix(fileName, ".fuse_hidden")
 }

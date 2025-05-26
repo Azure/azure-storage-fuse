@@ -880,11 +880,14 @@ func (dc *DistributedCache) DeleteFile(options internal.DeleteFileOptions) error
 	isAzurePath, isDcachePath, isDebugPath, rawPath := getFS(options.Name)
 
 	if isDcachePath {
-		log.Debug("DistributedCache::DeleteFile: Delete for Dcache file: %s", options.Name)
-		err := fm.DeleteDcacheFile(rawPath)
-		if err != nil {
-			log.Err("DistributedCache::DeleteFile: Delete failed for Dcache file %s: %v", options.Name, err)
-			return err
+		// If the path is unlinked when there are some open file descriptors, then GC will take care of such deleted files.
+		if !common.IsSrcFilePathDeleted(rawPath) {
+			log.Debug("DistributedCache::DeleteFile: Delete for Dcache file: %s", options.Name)
+			err := fm.DeleteDcacheFile(rawPath)
+			if err != nil {
+				log.Err("DistributedCache::DeleteFile: Delete failed for Dcache file %s: %v", options.Name, err)
+				return err
+			}
 		}
 	} else if isAzurePath {
 		log.Debug("DistributedCache::DeleteFile: Delete Azure file: %s", options.Name)
@@ -902,16 +905,20 @@ func (dc *DistributedCache) DeleteFile(options internal.DeleteFileOptions) error
 		// path, then delete only from that path. If the call has come here it already means that the file is present in
 		// atleast one qualified path as stat would be checked before doing deletion of a file.
 		//
-		log.Debug("DistributedCache::DeleteFile: Delete Dcache file for Unqualified Path: %s", options.Name)
 
-		dcacheErr = fm.DeleteDcacheFile(rawPath)
-		if dcacheErr != nil {
-			log.Err("DistributedCache::DeleteFile: Delete failed for Unqualified Path Dcache file %s: %v", options.Name, dcacheErr)
-			// Continue only if the above dcacheError is valid, ex: blob not found. Else fail the delete.
-			if dcacheErr == syscall.ENOENT {
-				dcacheErr = nil
-			} else {
-				return dcacheErr
+		// If the path is unlinked when there are some open file descriptors, then GC will take care of such files.
+		if !common.IsSrcFilePathDeleted(rawPath) {
+			log.Debug("DistributedCache::DeleteFile: Delete Dcache file for Unqualified Path: %s", options.Name)
+
+			dcacheErr = fm.DeleteDcacheFile(rawPath)
+			if dcacheErr != nil {
+				log.Err("DistributedCache::DeleteFile: Delete failed for Unqualified Path Dcache file %s: %v", options.Name, dcacheErr)
+				// Continue only if the above dcacheError is valid, ex: blob not found. Else fail the delete.
+				if dcacheErr == syscall.ENOENT {
+					dcacheErr = nil
+				} else {
+					return dcacheErr
+				}
 			}
 		}
 
@@ -931,6 +938,15 @@ func (dc *DistributedCache) DeleteFile(options internal.DeleteFileOptions) error
 }
 
 func (dc *DistributedCache) RenameFile(options internal.RenameFileOptions) error {
+	log.Debug("DistributedCache::RenameFile: Rename Src File: %s, Dst File: %s", options.Src, options.Dst)
+
+	// Detect if the file is being renamed because of unlink.
+	if common.IsSrcFilePathDeleted(options.Dst) {
+		return dc.DeleteFile(internal.DeleteFileOptions{
+			Name: options.Src,
+		})
+	}
+
 	return syscall.ENOTSUP
 }
 
