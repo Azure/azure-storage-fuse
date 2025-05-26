@@ -231,9 +231,9 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 		//
 		// TODO: Test it and make sure it doesn't call updateStorageClusterMapIfRequired() back2back
 		//       in case the prev call to updateStorageClusterMapIfRequired() took long time, causing
-		//       ticks to accumulate. There's no point in call updateStorageClusterMapIfRequired()
+		//       ticks to accumulate. There's no point in calling updateStorageClusterMapIfRequired()
 		//       b2b. The doc says that ticker will adjust and drop ticks for slow receivers, but we
-		//       need to verify and if required drop ticks which are long back in the past.
+		//       need to verify and if required, drop ticks which are long back in the past.
 		//
 		for range cmi.clusterMapticker.C {
 			log.Debug("ClusterManager::start: Scheduled task \"Update ClusterMap\" triggered")
@@ -756,6 +756,9 @@ func (cmi *ClusterManager) ensureInitialClusterMap(dCacheConfig *dcache.DCacheCo
 	// TODO: We need to run this same workflow when an RV goes offline not due to VM/blobfuse restarting
 	//       but because of n/w connectivity. Later when it comes back up online, the RV has to go through
 	//       the same join-cluster workflow.
+	//       Basically any RV that is marked offline in clustermap cannot be simply marked online.
+	//       It must go through the proper re-induction workflow where it must wait for it to be removed
+	//       from all MVs, clean up the RV directory and then add back.
 	//
 	isClusterMapExists, err := cmi.safeCleanupMyRVs(rvs)
 	if err != nil {
@@ -1158,8 +1161,8 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	// Note: We still have the Assert() here as it's highly unlikely and it helps to catch any other bug.
 	//
 	// Note: updateRVList() and updateMVList() are the only functions that can change clustermap.
-	//       Covering them between UpdateClusterMapStart() and UpdateClusterMapEnd() ensure that only one
-	//       node would be updating cluster membership details at any point.
+	//       Enclosing them between UpdateClusterMapStart() and UpdateClusterMapEnd() ensure that only one
+	//       node would be updating cluster membership details at any point. This is IMPORTANT.
 	//
 	if err = mm.UpdateClusterMapStart(updatedClusterMapBytes, etag); err != nil {
 		err = fmt.Errorf("Start Clustermap update failed for nodeId %s: %v", cmi.myNodeId, err)
@@ -1225,10 +1228,10 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	//
 	// Check if the time elapsed since we read the global clusterMap and till we could run all the updates,
 	// has exceeded ClustermapEpoch. If so, we can be at risk of having our clusterMap updates race with some
-	// other node (that might have claimed ownership due to timeout). In that case we give up all the updates
-	// we made to the clusterMap and do not commit them.
+	// other node (that might have claimed ownership due to timeout). In that case we drop all the updates we
+	// made to the clusterMap and do not commit them.
 	// This can happen if one or more nodes are not reachable, and updateMVList() had to send some JoinMV/UpdateMV
-	// RPCs.
+	// RPCs, which had to timeout.
 	//
 	elapsed = time.Since(startTime)
 	maxTime = time.Duration(clusterMap.Config.ClustermapEpoch) * time.Second
@@ -1908,6 +1911,12 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	//
 	trimNodeToRvs()
 
+	//
+	// TODO: Shall we commit the clustermap changes (marking offline component RVs as offline in MV)?
+	//       Note that fixMV() will call UpdateMV RPC which only allows legitimate component RVs update.
+	//       For that it'll refresh the clustermap and if it gets the old clustermap (with RV as online),
+	//       UpdateMV will ll fail.
+	//
 	log.Debug("ClusterManager::updateMVList: existingMVMap after phase#1: %v", existingMVMap)
 
 	//

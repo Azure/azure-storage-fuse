@@ -499,10 +499,10 @@ func (mv *mvInfo) updateComponentRVs(componentRVs []*models.RVNameAndState, forc
 	// Catch invalid membership changes.
 	//
 	// Note: Cluster manager doesn't commit clustermap after the degrade-mv workflow that marks component
-	// 		 RVs as offline, so we won't get updated offline state even after a refresh.
+	//       RVs as offline, so we won't get updated offline state even after a refresh.
 	//       We either let JoinMV fail in this iteration and the next time around when clustermap would have
-	//		 the offline state, it succeeds or we change updateMvReq() to commit clustermap after marking
-	//		 component RVs offline.
+	//       the offline state, it succeeds or we change updateMvReq() to commit clustermap after marking
+	//       component RVs offline.
 	//
 	if !forceUpdate {
 		for i := 0; i < len(componentRVs); i++ {
@@ -1057,9 +1057,6 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	// checkValidChunkAddress() had succeeded above, so RV must exist.
 	common.Assert(rvNameAndState != nil)
 
-	// See below why offline is not a possible state in rvInfo.
-	common.Assert(rvNameAndState.State != string(dcache.StateOffline))
-
 	//
 	// We allow reading only from "online" component RVs.
 	// Note: Though we may be able to serve the chunk from a component RV in "syncing" or even "offline"
@@ -1069,7 +1066,9 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	// Q: Why refreshFromClustermap() cannot help this?
 	// A: Let's consder all possible RV states other than online:
 	//    - offline
-	//      rvInfo should never store offline as the RV state. There's no workflow that can achieve that.
+	//      There's no workflow to set rvInfo state as offline, but due to mvInfo.refreshFromClustermap()
+	//		we can have a component RV state as offline. If the state were to change from offline, it must
+	//      be through JoinMV/UpdateMV RPC, so we must be in the loop.
 	//    - outofsync
 	//      outofsync state can be set through the fix-mv workflow when it replaces an offline component RV
 	//		with a new RV. The new RVs state will be set to outofsync through the JoinMV RPC call, but before
