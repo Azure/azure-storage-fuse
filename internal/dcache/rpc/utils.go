@@ -96,7 +96,7 @@ func ComponentRVsMapToList(m map[string]string) []*models.RVNameAndState {
 	for name, state := range m {
 		l = append(l, &models.RVNameAndState{
 			Name:  name,
-			State: string(state),
+			State: state,
 		})
 	}
 

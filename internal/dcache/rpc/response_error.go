@@ -73,7 +73,7 @@ func IsRPCError(err error) bool {
 }
 
 // Check if the error returned by thrift indicates connection terminated/reset by server when trying to
-// write over a connection whose peer has closed connecion (mostly blobfuse process restarted).
+// write over a connection whose peer has closed connection (mostly blobfuse process restarted).
 // This usually happens when we setup a connection (mostly the pool of connections) with a peer node and the
 // blobfuse process on that node stops/restarts. Later when we send a request over those connections, the
 // peer TCP will respond with a TCP RST and thrift call will fail with EPIPE.
@@ -96,7 +96,7 @@ func IsBrokenPipe(err error) bool {
 	// Note: This doesn't work.
 	//return te.TypeId() == thrift.NOT_OPEN
 
-	log.Debug("IsBrokenPipe: err: %v, err: %T, te.TypeId(): %d, Is syscall.EPIPE: %v",
+	log.Debug("IsBrokenPipe: err: %v, type: %T, te.TypeId(): %d, Is syscall.EPIPE: %v",
 		err, err, te.TypeId(), errors.Is(err, syscall.EPIPE))
 
 	//
@@ -133,7 +133,7 @@ func IsConnectionReset(err error) bool {
 	te := thrift.NewTTransportExceptionFromError(err)
 	// Note: This doesn't work.
 	//return te.TypeId() == thrift.NOT_OPEN
-	log.Debug("IsConnectionReset: err: %v, err: %T, te.TypeId(): %d, Is syscall.ECONNRESET: %v",
+	log.Debug("IsConnectionReset: err: %v, type: %T, te.TypeId(): %d, Is syscall.ECONNRESET: %v",
 		err, err, te.TypeId(), errors.Is(err, syscall.ECONNRESET))
 
 	//
@@ -156,7 +156,7 @@ func IsConnectionClosed(err error) bool {
 	}
 
 	te := thrift.NewTTransportExceptionFromError(err)
-	log.Debug("IsConnectionClosed: err: %v, err: %T, te.TypeId(): %d", err, err, te.TypeId())
+	log.Debug("IsConnectionClosed: err: %v, type: %T, te.TypeId(): %d", err, err, te.TypeId())
 
 	// TODO: See which one of these works.
 	return te.TypeId() == thrift.END_OF_FILE || err.Error() == "EOF"
@@ -173,7 +173,7 @@ func IsConnectionRefused(err error) bool {
 		return false
 	}
 
-	log.Debug("IsConnectionRefused: err: %v, err: %T", err, err)
+	log.Debug("IsConnectionRefused: err: %v, type: %T", err, err)
 
 	//
 	// TODO: This does not seem to match when we get the following error from thrift.
@@ -199,7 +199,7 @@ func IsTimedOut(err error) bool {
 	}
 
 	te := thrift.NewTTransportExceptionFromError(err)
-	log.Debug("IsTimedOut: err: %v, err: %T, te.TypeId(): %d, Is syscall.ETIMEDOUT: %v, Is syscall.EAGAIN: %v",
+	log.Debug("IsTimedOut: err: %v, type: %T, te.TypeId(): %d, Is syscall.ETIMEDOUT: %v, Is syscall.EAGAIN: %v",
 		err, err, te.TypeId(), errors.Is(err, syscall.ETIMEDOUT), errors.Is(err, syscall.EAGAIN))
 
 	//

@@ -1636,7 +1636,7 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 	// leave the debris. Note that in case of failure the clustermap won't be updated so we can find out
 	// from the clustermap, and we use that to resolve conflicts when they arise, not proactively.
 	// But, the space reservation needs to be undone, else we may run out of space due to these incomplete
-	// JoinMV calls.
+	// JoinMV calls [TODO].
 	//
 	sortComponentRVs(req.ComponentRV)
 	rvInfo.addToMVMap(req.MV, newMVInfo(rvInfo.rvName, req.MV, req.ComponentRV))
