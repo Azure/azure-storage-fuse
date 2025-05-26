@@ -505,13 +505,30 @@ func (mv *mvInfo) updateComponentRVs(componentRVs []*models.RVNameAndState, forc
 	//       component RVs offline.
 	//
 	if !forceUpdate {
-		for i := 0; i < len(componentRVs); i++ {
-			oldName := mv.componentRVs[i].Name
-			oldState := mv.componentRVs[i].State
-			newName := componentRVs[i].Name
-			newState := componentRVs[i].State
+		//
+		// To compare the old and new RVs we use the following approach:
+		// - First find common RVs.
+		//   These are the RVs which are not changed by this update. The old and new states must match.
+		//   Additionally we need to handle the case where the same RV is used as a replacement RV, in which
+		//   case the only valid state transition is offline->outofsync.
+		// - RVs which are not common, add them to oldList and newList.
+		//   These represent RVs which are being replaced.
+		//   They should all move from offline->outofsync. Note that it doesn't matter if we get the correct
+		//   list of replacements, since all of them have to move from offline->outofsync.
+		//
+		oldMap := rpc.ComponentRVsListToMap(mv.componentRVs)
+		newMap := rpc.ComponentRVsListToMap(componentRVs)
 
-			if oldName == newName {
+		//
+		// Find common RVs, remove them from the map, so what's left in each map are the distinct RVs,
+		// those which are changed.
+		//
+		for oldName, oldState := range oldMap {
+			newState, exists := newMap[oldName]
+			if exists {
+				delete(oldMap, oldName)
+				delete(newMap, oldName)
+
 				if oldState == newState {
 					// No change in RV.
 					continue
@@ -521,17 +538,42 @@ func (mv *mvInfo) updateComponentRVs(componentRVs []*models.RVNameAndState, forc
 					// Same RV (now online) being reused by fix-mv.
 					continue
 				}
-			} else {
+
+				errStr := fmt.Sprintf("Invalid change attempted to %s (%s=%s -> %s=%s)",
+					mv.mvName, oldName, oldState, oldName, newState)
+				log.Info("mvInfo::updateComponentRVs: %s", errStr)
+				return rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
+			}
+		}
+
+		//
+		// What is left in oldMap (and newMap) are the RVs which have undergone replacement.
+		// They can only transition from offline->outofsync.
+		//
+		if len(oldMap) > 0 {
+			common.Assert(len(oldMap) == len(newMap), len(oldMap), len(newMap))
+
+			oldList := rpc.ComponentRVsMapToList(oldMap)
+			newList := rpc.ComponentRVsMapToList(newMap)
+
+			for i := 0; i < len(oldList); i++ {
+				oldName := oldList[i].Name
+				oldState := oldList[i].State
+				newName := newList[i].Name
+				newState := newList[i].State
+
+				common.Assert(oldName != newName, oldName, newName)
+
 				if oldState == string(dcache.StateOffline) && newState == string(dcache.StateOutOfSync) {
 					// New RV replaced by fix-mv.
 					continue
 				}
-			}
 
-			errStr := fmt.Sprintf("Invalid change attempted to %s (%s=%s -> %s=%s)",
-				mv.mvName, oldName, oldState, newName, newState)
-			log.Info("mvInfo::updateComponentRVs: %s", errStr)
-			return rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
+				errStr := fmt.Sprintf("Invalid change attempted to %s (%s=%s -> %s=%s)",
+					mv.mvName, oldName, oldState, newName, newState)
+				log.Info("mvInfo::updateComponentRVs: %s", errStr)
+				return rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
+			}
 		}
 	}
 
