@@ -489,8 +489,11 @@ func (mv *mvInfo) updateComponentRVs(componentRVs []*models.RVNameAndState, forc
 	// mvInfo.componentRVs is a sorted list.
 	sortComponentRVs(componentRVs)
 
-	log.Debug("mvInfo::updateComponentRVs: %s -> %s",
-		rpc.ComponentRVsToString(mv.componentRVs), rpc.ComponentRVsToString(componentRVs))
+	log.Debug("mvInfo::updateComponentRVs: %s from %s -> %s [forceUpdate: %v]",
+		mv.mvName,
+		rpc.ComponentRVsToString(mv.componentRVs),
+		rpc.ComponentRVsToString(componentRVs),
+		forceUpdate)
 
 	//
 	// Catch invalid membership changes.
@@ -618,6 +621,14 @@ func (mv *mvInfo) refreshFromClustermap() error {
 	var newComponentRVs []*models.RVNameAndState
 	for rvName, rvState := range newRVs {
 		common.Assert(cm.IsValidComponentRVState(rvState), rvName, mv.mvName, rvState)
+
+		//
+		// Cluster manager doesn't commit clustermap after the degrade-mv workflow that marks component
+		// RVs as offline, so we do it here to avoid UpdateMV() to fail once more.
+		//
+		if cm.GetRVState(rvName) == dcache.StateOffline {
+			rvState = dcache.StateOffline
+		}
 
 		newComponentRVs = append(newComponentRVs, &models.RVNameAndState{
 			Name:  rvName,
@@ -1636,8 +1647,8 @@ func (h *ChunkServiceHandler) UpdateMV(ctx context.Context, req *models.UpdateMV
 
 		componentRVsInMV := mvInfo.getComponentRVs()
 
-		log.Debug("ChunkServiceHandler::UpdateMV: Updating from (%s -> %s)",
-			rpc.ComponentRVsToString(componentRVsInMV), rpc.ComponentRVsToString(req.ComponentRV))
+		log.Debug("ChunkServiceHandler::UpdateMV: Updating %s from (%s -> %s)",
+			req.MV, rpc.ComponentRVsToString(componentRVsInMV), rpc.ComponentRVsToString(req.ComponentRV))
 
 		//
 		// update the component RVs list for this MV
