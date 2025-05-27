@@ -207,7 +207,7 @@ func parseDcacheMetadata(attr *internal.ObjAttr) error {
 	if attr.IsDir() {
 		return nil
 	}
-	log.Debug("DistributedCache::parseDcacheMetadata: file: %s", attr.Name)
+	log.Debug("utils::parseDcacheMetadata: file: %s", attr.Name)
 
 	var fileSize int64
 	var err error
@@ -228,13 +228,13 @@ func parseDcacheMetadata(attr *internal.ObjAttr) error {
 				attr.Size = math.MaxInt64
 			}
 		} else {
-			log.Err("DistributedCache::GetAttr : strconv failed for size string: %s, file: %s, error: %s", *val, attr.Name, err.Error())
+			log.Err("utils::parseDcacheMetadata : strconv failed for size string: %s, file: %s, error: %s", *val, attr.Name, err.Error())
 			common.Assert(false, err)
 			return err
 		}
 	} else {
 		err = fmt.Errorf("Blob metadata for %s doesn't have cache_object_length property", attr.Name)
-		log.Err("DistributedCache::GetAttr: %v", err)
+		log.Err("utils::parseDcacheMetadata: %v", err)
 		common.Assert(false, err)
 		return err
 	}
@@ -243,13 +243,13 @@ func parseDcacheMetadata(attr *internal.ObjAttr) error {
 	if state, ok := attr.Metadata["state"]; ok {
 		if !(*state == string(dcache.Writing) || *state == string(dcache.Ready)) {
 			err = fmt.Errorf("File: %s, has invalid state:  [%s] metadata property", attr.Name, *state)
-			log.Err("DistributedCache::GetAttr: %v", err)
+			log.Err("utils::parseDcacheMetadata: %v", err)
 			common.Assert(false, err)
 			return err
 		}
 	} else {
 		err = fmt.Errorf("Blob metadata for %s doesn't have state property", attr.Name)
-		log.Err("DistributedCache::GetAttr: %v", err)
+		log.Err("utils::parseDcacheMetadata: %v", err)
 		common.Assert(false, err)
 		return err
 	}
@@ -269,11 +269,11 @@ func parseDcacheMetadataForDirEntries(dirList []*internal.ObjAttr) []*internal.O
 				newDirList[i] = attr
 				i++
 			} else {
-				log.Err("DistributedCache::parseDcacheMetadataForDirEntries: skipping the dir entry, failed to parse metadata file: %s: %v",
+				log.Err("utils::parseDcacheMetadataForDirEntries: skipping the dir entry, failed to parse metadata file: %s: %v",
 					attr.Name, err)
 			}
 		} else {
-			log.Info("DistributedCache::parseDcacheMetadataForDirEntries: skipping the dir entry for deleted file: %s", attr.Name)
+			log.Info("utils::parseDcacheMetadataForDirEntries: skipping the dir entry for deleted file: %s", attr.Name)
 		}
 	}
 
