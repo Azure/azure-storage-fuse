@@ -52,6 +52,8 @@ type RawVolume struct {
 type StateEnum string
 
 const (
+	// "invalid" can be used to indicate an illegal state.
+	StateInvalid   StateEnum = "invalid"
 	StateOnline    StateEnum = "online"
 	StateOffline   StateEnum = "offline"
 	StateDegraded  StateEnum = "degraded"

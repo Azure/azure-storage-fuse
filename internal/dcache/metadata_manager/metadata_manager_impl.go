@@ -256,7 +256,7 @@ func (m *BlobMetadataManager) getBlobSafe(blobPath string) ([]byte, *internal.Ob
 		common.Assert(attr1.Size > 0)
 
 		if attr.ETag != attr1.ETag {
-			log.Warn("getBlobSafe:: Blob %s ETag changed (%s -> %s), size changed (%s -> %s), retrying!",
+			log.Warn("getBlobSafe:: Blob %s ETag changed (%s -> %s), size changed (%d -> %d), retrying!",
 				blobPath, attr.ETag, attr1.ETag, attr.Size, attr1.Size)
 			continue
 		}
@@ -801,10 +801,11 @@ func (m *BlobMetadataManager) updateClusterMapStart(clustermap []byte, etag *str
 			log.Err("UpdateClusterMapStart:: Failed to update clustermap %s: %v", clustermapPath, err)
 			common.Assert(false, err)
 		}
+	} else {
+		log.Debug("UpdateClusterMapStart:: Updated clustermap %s (bytes: %d, etag: %s)",
+			clustermapPath, len(clustermap), *etag)
 	}
 
-	log.Debug("UpdateClusterMapStart:: Updated clustermap %s (bytes: %d, etag: %s)",
-		clustermapPath, len(clustermap), *etag)
 	return err
 }
 
