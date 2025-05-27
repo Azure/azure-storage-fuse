@@ -555,20 +555,16 @@ func ComponentInPipeline(pipeline []string, component string) bool {
 }
 
 func ValidatePipeline(pipeline []string) error {
-	// file-cache, block-cache and xload are mutually exclusive
-	if ComponentInPipeline(pipeline, "file_cache") &&
-		ComponentInPipeline(pipeline, "block_cache") {
-		return fmt.Errorf("mount: file-cache and block-cache cannot be used together")
-	}
+	// If distributed_cache is present then don't allow file_cache/xload.
+	isFileCachePresent := ComponentInPipeline(pipeline, "file_cache")
+	isXloadPresent := ComponentInPipeline(pipeline, "xload")
 
-	if ComponentInPipeline(pipeline, "file_cache") &&
-		ComponentInPipeline(pipeline, "xload") {
-		return fmt.Errorf("mount: file-cache and xload cannot be used together")
-	}
-
-	if ComponentInPipeline(pipeline, "block_cache") &&
-		ComponentInPipeline(pipeline, "xload") {
-		return fmt.Errorf("mount: block-cache and xload cannot be used together")
+	if ComponentInPipeline(pipeline, "distributed_cache") {
+		if isFileCachePresent {
+			return fmt.Errorf("mount: distributed_cache cannot be used with file_cache")
+		} else if isXloadPresent {
+			return fmt.Errorf("mount: distributed_cache cannot be used with xload")
+		}
 	}
 
 	return nil

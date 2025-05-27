@@ -64,12 +64,23 @@ func GetComponent(name string) Component {
 // NewPipeline : Using a list of strings holding name of components, create and configure the component objects
 func NewPipeline(components []string, isParent bool) (*Pipeline, error) {
 	comps := make([]Component, 0)
-	lastPriority := EComponentPriority.Producer()
+	lastPriority := ComponentPriority(1e9)
+
+	// Initialize block_cache when distributed_cache is enabled. block_cache will be used for fs operations that were
+	// not on Dcache.
+	for i := 0; i < len(components)-1; i++ {
+		if components[i] == "distributed_cache" && components[i+1] != "block_cache" {
+			// insert block_cache into components string if it is not present as its next element
+			components = append(components[:i+1], append([]string{"block_cache"}, components[i+1:]...)...)
+		}
+	}
+
 	for _, name := range components {
 		if name == "stream" {
 			common.IsStream = true
 			name = "block_cache"
 		}
+
 		//  Search component exists in our registered map or not
 		compInit, ok := registeredComponents[name]
 		if ok {
@@ -83,7 +94,7 @@ func NewPipeline(components []string, isParent bool) (*Pipeline, error) {
 				return nil, err
 			}
 
-			if !(comp.Priority() <= lastPriority) {
+			if comp.Priority() >= lastPriority {
 				log.Err("Pipeline::NewPipeline : Invalid Component order [priority of %s higher than above components]", comp.Name())
 				return nil, fmt.Errorf("config error in Pipeline [component %s is out of order]", name)
 			} else {
@@ -96,7 +107,6 @@ func NewPipeline(components []string, isParent bool) (*Pipeline, error) {
 			log.Err("Pipeline: error [component %s not registered]", name)
 			return nil, fmt.Errorf("config error in Pipeline [component %s not registered]", name)
 		}
-
 	}
 
 	// Create pipeline structure holding list of all component objects requested by config file
