@@ -267,6 +267,35 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 		return fmt.Errorf("config error in %s: [cache-dirs not set]", distributedCache.Name())
 	}
 
+	// Check if the cache directories exist
+	for _, dir := range distributedCache.cfg.CacheDirs {
+		info, err := os.Stat(dir)
+		if os.IsNotExist(err) {
+			return fmt.Errorf("config error in %s: [cache-dirs %s does not exist]", distributedCache.Name(), dir)
+		}
+		if err != nil {
+			return fmt.Errorf("config error in %s: [error accessing cache-dirs %s: %v]", distributedCache.Name(), dir, err)
+		}
+		if !info.IsDir() {
+			return fmt.Errorf("config error in %s: [cache-dirs %s is not a directory]", distributedCache.Name(), dir)
+		}
+		// Check read and write permissions
+		testFile := filepath.Join(dir, ".perm_test")
+		f, err := os.Create(testFile)
+		if err != nil {
+			return fmt.Errorf("config error in %s: [cache-dirs %s is not writable]", distributedCache.Name(), dir)
+		}
+		defer f.Close()
+		if err := os.Remove(testFile); err != nil {
+			return fmt.Errorf("config error in %s: [cache-dirs %s is not writable (cannot remove test file)]", distributedCache.Name(), dir)
+		}
+		f, err = os.Open(dir)
+		if err != nil {
+			return fmt.Errorf("config error in %s: [cache-dirs %s is not readable]", distributedCache.Name(), dir)
+		}
+		defer f.Close()
+	}
+
 	if !config.IsSet(compName + ".replicas") {
 		distributedCache.cfg.Replicas = defaultReplicas
 	}
