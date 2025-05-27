@@ -211,7 +211,7 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 		for {
 			select {
 			case <-cmi.hbTickerDone:
-				log.Info("ClusterManager::start: Scheduled task \"Heartbeat Punch\" stopped")
+				log.Info("ClusterManager::start: Scheduled task \"Punch Heartbeat\" stopped")
 			case <-cmi.hbTicker.C:
 				log.Debug("ClusterManager::start: Scheduled task \"Punch Heartbeat\" triggered")
 
