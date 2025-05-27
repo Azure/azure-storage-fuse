@@ -192,7 +192,6 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 	// Filesize can be following under various file states:
 	// - When file is being written, it must be -1.
 	// - When file is ready, it must be >= 0.
-	// - A file can be deleted from ready or writing state, so in deleting state fileSize can be anything.
 	//
 	common.Assert((fileMetadata.State == dcache.Writing && fileSize == -1) ||
 		(fileMetadata.State == dcache.Ready && fileSize >= 0),
@@ -218,11 +217,13 @@ func DeleteDcacheFile(fileName string) error {
 	log.Debug("DistributedCache[FM]::DeleteDcacheFile : file: %s", fileName)
 
 	err := mm.RenameFileToDeleting(fileName)
-	if err == nil {
-		// TODO: pass this path to GC to later evict this file from dcache.
+	if err != nil {
+		return err
 	}
 
-	return err
+	// TODO: pass this path to GC to later evict this file from dcache.
+
+	return nil
 }
 
 // Creates the chunk and allocates the chunk buf

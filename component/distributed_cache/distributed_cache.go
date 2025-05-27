@@ -511,8 +511,13 @@ func (dc *DistributedCache) CreateDir(options internal.CreateDirOptions) error {
 
 	//
 	// Don't allow creating the special deleted file and avoid confusion.
+	// Same for the fuse hidden file.
 	//
 	if isDeletedDcacheFile(rawPath) {
+		return syscall.EINVAL
+	}
+
+	if common.IsFuseHiddenFile(rawPath) {
 		return syscall.EINVAL
 	}
 
@@ -565,8 +570,13 @@ func (dc *DistributedCache) CreateFile(options internal.CreateFileOptions) (*han
 
 	//
 	// Don't allow creating the special deleted file and avoid confusion.
+	// Same for the fuse hidden file.
 	//
 	if isDeletedDcacheFile(rawPath) {
+		return nil, syscall.EINVAL
+	}
+
+	if common.IsFuseHiddenFile(rawPath) {
 		return nil, syscall.EINVAL
 	}
 
@@ -648,8 +658,14 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 
 	//
 	// Since we hide the special delete file from fuse we should not be called to open that.
+	// Same for the fuse hidden file, it's never created.
 	//
 	if isDeletedDcacheFile(rawPath) {
+		common.Assert(false, options.Name, rawPath)
+		return nil, syscall.EINVAL
+	}
+
+	if common.IsFuseHiddenFile(rawPath) {
 		common.Assert(false, options.Name, rawPath)
 		return nil, syscall.EINVAL
 	}
@@ -920,11 +936,18 @@ func (dc *DistributedCache) DeleteFile(options internal.DeleteFileOptions) error
 	//
 	// We fool fuse into believing that we created the special hidden file (while what we created
 	// was our special ".dcache.deleting" file). Now the last open handle on the file has been closed
-	// and fuse wants to delete the hidden file it created. We continue the illusion and tell fuse
+	// and fuse wants to delete the hidden file it created, we continue the illusion and tell fuse
 	// that we deleted it :-)
 	//
 	if common.IsFuseHiddenFile(rawPath) {
 		return nil
+	}
+
+	//
+	// This is an internal file that we hide from fuse.
+	//
+	if isDeletedDcacheFile(rawPath) {
+		return syscall.ENOENT
 	}
 
 	if isDcachePath {
@@ -956,6 +979,7 @@ func (dc *DistributedCache) DeleteFile(options internal.DeleteFileOptions) error
 		if dcacheErr != nil {
 			log.Err("DistributedCache::DeleteFile: Delete failed for Unqualified Path Dcache file %s: %v",
 				rawPath, dcacheErr)
+
 			//
 			// If the file is not present in dcache, we need to delete from Azure, else on any other error, bail
 			// out.
@@ -963,16 +987,30 @@ func (dc *DistributedCache) DeleteFile(options internal.DeleteFileOptions) error
 			if dcacheErr != syscall.ENOENT {
 				return dcacheErr
 			}
-
-			dcacheErr = nil
 		}
 
 		options.Name = rawPath
 		log.Debug("DistributedCache::DeleteFile: Delete Azure file for Unqualified Path: %s", options.Name)
+
 		azureErr = dc.NextComponent().DeleteFile(options)
 		if azureErr != nil {
 			log.Err("DistributedCache::DeleteFile: Delete failed for Unqualified Path Azure file %s: %v",
 				options.Name, azureErr)
+
+			if azureErr != syscall.ENOENT {
+				return azureErr
+			}
+		}
+
+		//
+		// If only one of the errors is ENOENT, nil the other one.
+		//
+		if !(dcacheErr == syscall.ENOENT && azureErr == syscall.ENOENT) {
+			azureErr = nil
+			dcacheErr = nil
+		} else {
+			// Both cannot be ENOENT, why did fuse call us in the first place?
+			common.Assert(false, options.Name)
 		}
 	}
 
@@ -989,7 +1027,7 @@ func (dc *DistributedCache) RenameFile(options internal.RenameFileOptions) error
 	// TODO: Need to handle the case where user deletes a dcache file causing us to create the special
 	//		 deleted file, then user create a new file with the same name and before we could GC the previous
 	//		 deleted file, he deletes this new file.
-	//		 We will need to maintain multiple of these files using soe seq number.
+	//		 We will need to maintain multiple of these files using some seq number.
 	//
 	if common.IsFuseHiddenFile(options.Dst) {
 		return dc.DeleteFile(internal.DeleteFileOptions{

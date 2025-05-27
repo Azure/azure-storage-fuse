@@ -242,7 +242,7 @@ func parseDcacheMetadata(attr *internal.ObjAttr) error {
 	// parse file state.
 	if state, ok := attr.Metadata["state"]; ok {
 		if !(*state == string(dcache.Writing) || *state == string(dcache.Ready)) {
-			err = fmt.Errorf("File: %s, has invalid state:  [%s] metadata property", attr.Name, *state)
+			err = fmt.Errorf("File: %s, has invalid state: [%s]", attr.Name, *state)
 			log.Err("utils::parseDcacheMetadata: %v", err)
 			common.Assert(false, err)
 			return err
@@ -263,8 +263,10 @@ func parseDcacheMetadataForDirEntries(dirList []*internal.ObjAttr) []*internal.O
 	i := 0
 
 	for _, attr := range dirList {
+		// Hide deleted files from fuse.
 		if isDeletedDcacheFile(attr.Name) {
-			log.Info("DistributedCache::parseDcacheMetadataForDirEntries: skipping the dir entry for deleted file: %s", attr.Name)
+			log.Info("DistributedCache::parseDcacheMetadataForDirEntries: skipping deleted file: %s",
+				attr.Name)
 			continue
 		}
 
@@ -273,7 +275,7 @@ func parseDcacheMetadataForDirEntries(dirList []*internal.ObjAttr) []*internal.O
 			newDirList[i] = attr
 			i++
 		} else {
-			log.Err("DistributedCache::parseDcacheMetadataForDirEntries: skipping the dir entry, failed to parse metadata file: %s: %v",
+			log.Err("DistributedCache::parseDcacheMetadataForDirEntries: skipping dir entry, failed to parse metadata file: %s: %v",
 				attr.Name, err)
 		}
 	}

@@ -473,7 +473,29 @@ func (m *BlobMetadataManager) renameFileToDeleting(filePath string) error {
 
 	renamedPath := path + dcache.DcacheDeletingFileNameSuffix
 
-	err := m.storageCallback.RenameFileInStorage(internal.RenameFileOptions{
+	//
+	// TODO: If RenameFileInStorage() fails when renamedPath already exists, then remove this explicit
+	//		 check. In that case we cannot assert that err will be ENOENT.
+	//
+	_, err := m.storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{
+		Name: path,
+	})
+
+	if err == nil {
+		_, err := m.storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{
+			Name: renamedPath,
+		})
+
+		if err == nil {
+			//
+			// Renaming will result in the target file to be overwritten, avoid that.
+			//
+			log.Err("renameFileToDeleting:: target file %s already exists", renamedPath)
+			return syscall.EINVAL
+		}
+	}
+
+	err = m.storageCallback.RenameFileInStorage(internal.RenameFileOptions{
 		Src: path,
 		Dst: renamedPath,
 	})
