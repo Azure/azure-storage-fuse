@@ -76,6 +76,34 @@ func ComponentRVsToString(rvs []*models.RVNameAndState) string {
 	return str.String()
 }
 
+// Given a list of component RVs where each component RV is expressed as models.RVNameAndState, convert
+// it to a map with RV name as the key and RV state as the string.
+func ComponentRVsListToMap(l []*models.RVNameAndState) map[string]string {
+	m := make(map[string]string)
+
+	for _, rv := range l {
+		m[rv.Name] = rv.State
+	}
+
+	common.Assert(len(l) == len(m), len(l), len(m))
+	return m
+}
+
+// This is the inverse of ComponentRVsListToMap().
+func ComponentRVsMapToList(m map[string]string) []*models.RVNameAndState {
+	l := make([]*models.RVNameAndState, 0)
+
+	for name, state := range m {
+		l = append(l, &models.RVNameAndState{
+			Name:  name,
+			State: state,
+		})
+	}
+
+	common.Assert(len(l) == len(m), len(l), len(m))
+	return l
+}
+
 // convert *models.HelloRequest to string
 // used for logging
 func HelloRequestToString(req *models.HelloRequest) string {
