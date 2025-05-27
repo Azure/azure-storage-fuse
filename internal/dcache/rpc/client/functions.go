@@ -856,8 +856,7 @@ func GetMVSize(ctx context.Context, targetNodeID string, req *models.GetMVSizeRe
 
 	// Caller must not set SenderNodeID, catch misbehaving callers.
 	common.Assert(len(req.SenderNodeID) == 0, req.SenderNodeID)
-	// TODO: add this after the PR adding sender node id is merged
-	// req.SenderNodeID = myNodeId
+	req.SenderNodeID = myNodeId
 
 	reqStr := rpc.GetMVSizeRequestToString(req)
 	log.Debug("rpc_client::GetMVSize: Sending GetMVSize request to node %s: %v", targetNodeID, reqStr)
@@ -884,7 +883,7 @@ func GetMVSize(ctx context.Context, targetNodeID string, req *models.GetMVSizeRe
 			// If the failure is due to a stale connection to a node that has restarted, reset the connections
 			// and retry once more.
 			//
-			if rpc.IsConnectionTerminated(err) {
+			if rpc.IsBrokenPipe(err) {
 				//
 				// Note: In case of multiple contexts contesting, we may have those contexts
 				//	 reset "good" connections too. See if we need to worry about that.
@@ -909,10 +908,14 @@ func GetMVSize(ctx context.Context, targetNodeID string, req *models.GetMVSizeRe
 			// Only other possible errors:
 			// - Actual RPC error returned by the server.
 			// - Connection closed by the server (maybe it restarted before it could respond).
+			// - Connection reset by the server (same as above, but peer send a TCP RST instead of FIN).
+			//   Only read()/recv() can fail with this, write()/send() will fail with broken pipe.
 			// - Time out (either node is down or cannot be reached over the n/w).
 			//
-			common.Assert(rpc.IsRPCError(err) || rpc.IsConnectionClosed(err) || rpc.IsTimedOut(err),
-				err)
+			common.Assert(rpc.IsRPCError(err) ||
+				rpc.IsConnectionClosed(err) ||
+				rpc.IsConnectionReset(err) ||
+				rpc.IsTimedOut(err), err)
 
 			// Fall through to release the RPC client.
 			resp = nil
