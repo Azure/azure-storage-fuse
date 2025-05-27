@@ -540,7 +540,13 @@ func syncMV(mvName string, mvInfo dcache.MirroredVolume) {
 		// Store it in the map to avoid multiple sync jobs for the same target.
 		rm.runningJobs.Store(tgtReplica, srcReplica)
 
+		// Increment the wait group for the goroutine that will run the syncComponentRV() function.
+		rm.wg.Add(1)
+
 		go func() {
+			// Decrement the wait group when the syncComponentRV() function completes.
+			defer rm.wg.Done()
+
 			// Remove from the map, once the syncjob completes (success or failure).
 			defer rm.runningJobs.Delete(tgtReplica)
 

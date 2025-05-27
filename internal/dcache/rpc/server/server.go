@@ -35,6 +35,7 @@ package rpc_server
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -114,7 +115,11 @@ func NewNodeServer() (*NodeServer, error) {
 func (ns *NodeServer) Start() error {
 	log.Debug("NodeServer::Start: Starting NodeServer on address: %s", ns.address)
 
+	var wg sync.WaitGroup
+	wg.Add(1)
+
 	go func() {
+		defer wg.Done()
 		err := ns.server.Serve()
 		if err != nil {
 			log.Err("NodeServer::Start: PANIC: failed to start server [%v]", err.Error())
@@ -122,6 +127,7 @@ func (ns *NodeServer) Start() error {
 		}
 	}()
 
+	wg.Wait()
 	return nil
 }
 
