@@ -263,24 +263,25 @@ func parseDcacheMetadataForDirEntries(dirList []*internal.ObjAttr) []*internal.O
 	i := 0
 
 	for _, attr := range dirList {
-		if isValidDcacheFile(attr.Name) {
-			err := parseDcacheMetadata(attr)
-			if err == nil {
-				newDirList[i] = attr
-				i++
-			} else {
-				log.Err("utils::parseDcacheMetadataForDirEntries: skipping the dir entry, failed to parse metadata file: %s: %v",
-					attr.Name, err)
-			}
+		if isDeletedDcacheFile(attr.Name) {
+			log.Info("DistributedCache::parseDcacheMetadataForDirEntries: skipping the dir entry for deleted file: %s", attr.Name)
+			continue
+		}
+
+		err := parseDcacheMetadata(attr)
+		if err == nil {
+			newDirList[i] = attr
+			i++
 		} else {
-			log.Info("utils::parseDcacheMetadataForDirEntries: skipping the dir entry for deleted file: %s", attr.Name)
+			log.Err("DistributedCache::parseDcacheMetadataForDirEntries: skipping the dir entry, failed to parse metadata file: %s: %v",
+				attr.Name, err)
 		}
 	}
 
 	return newDirList[:i]
 }
 
-// Checks the dcache filePath is valid/not
-func isValidDcacheFile(rawPath string) bool {
-	return !strings.HasSuffix(rawPath, dcache.DcacheDeletingFileNameSuffix)
+// Check if the file name refers to a deleted dcache file (waiting to be GC'ed).
+func isDeletedDcacheFile(rawPath string) bool {
+	return strings.HasSuffix(rawPath, dcache.DcacheDeletingFileNameSuffix)
 }

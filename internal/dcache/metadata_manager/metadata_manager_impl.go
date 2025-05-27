@@ -360,11 +360,11 @@ func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata [
 			internal.GetAttrOptions{Name: path})
 		common.Assert(err == nil, err)
 
-		// Extract the size from the metadata properties.
+		// Extract the size from the metadata properties, it must be "-1" as set by createFileInit().
 		size, ok := prop.Metadata["cache_object_length"]
 		common.Assert(ok && *size == "-1", ok, *size)
 
-		// Extract the state form the metadata properties.
+		// Extract the state form the metadata properties, it must be "writing" as set by createFileInit().
 		state, ok := prop.Metadata["state"]
 		common.Assert(ok && *state == string(dcache.Writing))
 	}
@@ -435,8 +435,6 @@ func (m *BlobMetadataManager) getFile(filePath string) ([]byte, int64, dcache.Fi
 	//
 	// Size can be -1 for files which are not in Ready state.
 	//
-
-	//if fileSize < 0 {
 	if fileSize < -1 {
 		err := fmt.Errorf("Size is negative for path %s: %d", path, fileSize)
 		log.Warn("GetFile:: %v", err)
@@ -449,7 +447,7 @@ func (m *BlobMetadataManager) getFile(filePath string) ([]byte, int64, dcache.Fi
 	// Extract the state from the blob metadata prop.
 	state, ok := prop.Metadata["state"]
 	if !ok {
-		err := fmt.Errorf("GetFile:: File state  not found in metadata for path %s", path)
+		err := fmt.Errorf("GetFile:: File state not found in metadata for path %s", path)
 		log.Err("%v", err)
 		common.Assert(false, err)
 		return nil, -1, "", err
@@ -469,9 +467,9 @@ func (m *BlobMetadataManager) getFile(filePath string) ([]byte, int64, dcache.Fi
 }
 
 func (m *BlobMetadataManager) renameFileToDeleting(filePath string) error {
-	path := filepath.Join(m.mdRoot, "Objects", filePath)
-	log.Debug("DeleteFile:: Updated State of the metadata blob to deleting path: %s in storage", path)
 	common.Assert(len(filePath) > 0)
+	path := filepath.Join(m.mdRoot, "Objects", filePath)
+	log.Debug("renameFileToDeleting:: %s", path)
 
 	renamedPath := path + dcache.DcacheDeletingFileNameSuffix
 

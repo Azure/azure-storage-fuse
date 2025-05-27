@@ -342,6 +342,9 @@ var mountCmd = &cobra.Command{
 			config.Set("read-only", "true") // preload is only supported in read-only mode
 		}
 
+		// Must be called only once.
+		common.Assert(!common.IsDistributedCacheEnabled)
+
 		if options.DistributedCache || common.ComponentInPipeline(options.Components, "distributed_cache") {
 			common.IsDistributedCacheEnabled = true
 		}

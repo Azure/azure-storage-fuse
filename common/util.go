@@ -678,10 +678,15 @@ func IsValidBlkDevice(device string) error {
 	return nil
 }
 
-// This can be used to detect the files for which openFD count greater than zero and are unlinked.
-// hard_remove option is not enabled default from the fuse, there is no option to modify it in the newer versions
-// of libfuse. Hence the only way to detect the unlink of such files is by using dst path of rename callback.
-func IsSrcFilePathDeleted(filePath string) bool {
+// If a file has open handle(s) at the time when unlink() is called to delete the file, fuse renames the file to
+// a special name of the form .fuse_hiddenXXX. This enables fuse to provide POSIX semantics of allowing file to be
+// accessed through existing open fds after the file is deleted. This only provides protection against processes
+// deleting the file on the same node where they were opened. For distributed cache this is not sufficient as we
+// want this protection across nodes (process having a file open and the process deleting it running on two
+// different nodes).
+// We have our own renaming scheme which works across nodes, so we don't want to depend on fuse's renaming scheme.
+// This function helps us check if a file was renamed like this by fuse, so that we can do the necessary things.
+func IsFuseHiddenFile(filePath string) bool {
 	fileName := filepath.Base(filePath)
 	return strings.HasPrefix(fileName, ".fuse_hidden")
 }
