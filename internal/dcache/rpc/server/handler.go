@@ -2077,20 +2077,17 @@ func (h *ChunkServiceHandler) GetMVSize(ctx context.Context, req *models.GetMVSi
 	}
 
 	//
-	// Check if we are hosting the requested MV replica.
-	//
-	// Q: Why refreshFromClustermap() cannot help this?
-	// A: An MV replica can be added to rvInfo only via a JoinMV RPC, and only when we respond successfully
-	//    to the JoinMV call will the sender persist it in the clustermap, so if the clustermap has it we
-	//    must have sent it and if we don't have it, refreshing from clustermap cannot add it.
-	//    This cannot happen unless sender is doing something wrong, hence assert.
+	// An MV replica can be added to rvInfo only via a JoinMV RPC, and only when we respond successfully
+	// to the JoinMV call will the sender persist it in the clustermap, so if the clustermap has it we
+	// must have sent it and if we don't have it, refreshing from clustermap cannot add it.
+	// This cannot happen unless sender is doing something wrong, hence assert.
 	//
 	mvInfo := rvInfo.getMVInfo(req.MV)
 	if mvInfo == nil {
 		errStr := fmt.Sprintf("%s is not part of %s", rvInfo.rvName, req.MV)
 		log.Err("ChunkServiceHandler::GetMVSize: %s", errStr)
 		common.Assert(false, errStr)
-		return nil, rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
 	}
 
 	return &models.GetMVSizeResponse{

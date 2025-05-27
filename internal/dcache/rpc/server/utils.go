@@ -34,7 +34,6 @@
 package rpc_server
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -202,31 +201,4 @@ func getRvIDMap(rvs map[string]dcache.RawVolume) map[string]*rvInfo {
 // return mvs-per-rv from dcache config
 func getMVsPerRV() int64 {
 	return int64(cm.GetCacheConfig().MvsPerRv)
-}
-
-// When an MV is in degraded state because one or more of its RV went offline,
-// the caller (lowest index online RV) can call this method to get the
-// size of the MV. The caller will then send JoinMV RPC call to the
-// new RVs, passing the size of the MV to them. On basis of this,
-// the new RVs will decide if they can join the MV or not.
-func GetMyMVSize(mvName string, rvName string) (int64, error) {
-	// TODO: should we block the IO operations on the MV while this is happening?
-	common.Assert(handler != nil)
-
-	// TODO: replace with IsValidMV and IsValidRV
-	common.Assert(cm.IsValidRVName(rvName), rvName)
-	common.Assert(cm.IsValidMVName(mvName), mvName)
-
-	resp, err := handler.GetMVSize(context.Background(), &models.GetMVSizeRequest{
-		SenderNodeID: rpc.GetMyNodeUUID(),
-		MV:           mvName,
-		RVName:       rvName,
-	})
-
-	if err != nil {
-		log.Err("utils::GetMyMVSize: Failed to get MV size for %s/%s [%v]", rvName, mvName, err)
-		return 0, err
-	}
-
-	return resp.MvSize, nil
 }
