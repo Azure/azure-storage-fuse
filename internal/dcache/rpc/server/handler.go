@@ -122,7 +122,7 @@ type mvInfo struct {
 
 	componentRVs []*models.RVNameAndState // sorted list of component RVs for this MV
 
-	// Total amount of space used up inside the MV directory (both MV and .sync directory),
+	// Total amount of space used up inside the MV directory,
 	// by all the chunks stored in it. Any RV that has to replace one of the existing component
 	// RVs needs to have at least this much space.
 	// JoinMV() requests this much space to be reserved in the new-to-be-inducted RV.
@@ -133,9 +133,6 @@ type mvInfo struct {
 	// resync Writes, and client Writes if any will be replicated to all the RVs, each of them storing the chunks
 	// in their respective mv folders. This is the normal case.
 	// A syncing MV is interesting. In this case there are resync writes going and possibly client writes too.
-	// Client chunks are saved in a special mv.sync folder while sync writes are saved in the regular mv folder.
-	// During EndSync, the client writes are moved from mv.sync to the regular mv folder and then we have the MV
-	// back in online state.
 	// The short period when an MV moves in and out of syncing state is important. We need to quiesce any IOs
 	// to make sure we don't miss resyncing any chunk.
 	// Both StartSync and EndSync will quiesce IOs just before they move the mv into and out of syncing state, and
@@ -177,12 +174,17 @@ type mvInfo struct {
 //   - An MV Replica can be source to multiple sync jobs while it can be target to one and only one sync job.
 //   - Every sync job has an id, called the SyncId. This is returned by a successful StartSync call and must be provided
 //     in the EndSync call to end that sync job.
-//   - When an MV Replica is acting as the source of a sync job any client writes targeted to that MV Replica will be
-//     stored in the ".sync" folder.
 type syncJob struct {
 	// sync ID for this sync job.
 	// This is returned in the StartSync response and EndSync should carry this.
 	syncID string
+
+	// Time in microseconds(UnixMicro) when the StartSync call came. This is used in component RV resync workflow, when deciding
+	// the chunks that must be copied to the target RV of the sync. The source RV (lio RV) enumerates
+	// its RV/MV directory and only sends sync PutChunk requests for chunks that were created
+	// before the this time. The chunks that were created after this, are written to
+	// both the source and target RVs, so they are ignored in the sync PutChunk calls.
+	syncStartTime int64
 
 	// Source and target RVs for this sync job.
 	// An MV Replica can either act as source or target in a sync job, so one and only one of these will be set.
@@ -357,9 +359,10 @@ func (mv *mvInfo) addSyncJob(sourceRVName string, targetRVName string) string {
 	common.Assert(!ok, fmt.Sprintf("%s already has syncJob with syncID %s: %+v", mv.mvName, syncID, mv.syncJobs))
 
 	mv.syncJobs[syncID] = syncJob{
-		syncID:       syncID,
-		sourceRVName: sourceRVName,
-		targetRVName: targetRVName,
+		syncID:        syncID,
+		syncStartTime: time.Now().UnixMicro(),
+		sourceRVName:  sourceRVName,
+		targetRVName:  targetRVName,
 	}
 
 	return syncID
@@ -368,8 +371,6 @@ func (mv *mvInfo) addSyncJob(sourceRVName string, targetRVName string) string {
 // Check if the syncID is valid for this MV replica, i.e., there is currently a syncJob running with this syncID.
 //
 // Caller must hold opMutex write lock.
-//
-// TODO: Later when we add syncIds to PutChunk request then we will need to call this with opMutex read lock too.
 func (mv *mvInfo) isSyncIDValid(syncID string) bool {
 	common.Assert(mv.isSyncOpWriteLocked(), mv.opMutexDbgCntr.Load())
 	common.Assert(common.IsValidUUID(syncID))
@@ -397,9 +398,7 @@ func (mv *mvInfo) deleteSyncJob(syncID string) {
 // name of the RV on which the target MV replica resides, similarly for MV replicas acting as target, the source
 // MV replica will be outside this node and sourceRVName contains the name of the RV on which the source MV replica
 // resides.
-// Source MV replicas MUST have a <mv>.sync folder and all client PutChunk requests must write chunks to this folder
-// while resync PutChunk requests must be written to the regular mv folder.
-// Target MV replicas MUST write both client and resync PutChunk chunks to the regular mv folder.
+// In both source and target MV replicas, both client and resync PutChunk chunks are written to the rv/mv folder.
 //
 // Caller must hold opMutex read lock.
 func (mv *mvInfo) isSourceOrTargetOfSync() (isSource bool, isTarget bool) {
@@ -1245,8 +1244,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 
 	//
 	// Acquire read lock on the opMutex for this MV to block any StartSync request from updating rvInfo while
-	// we are accessing it. Note that depending on the sync state of an MV replica, the client PutChunk requests
-	// may need to be saved in regular or the sync mv folder. This read lock prevents any races in that.
+	// we are accessing it.
 	//
 	mvInfo.acquireSyncOpReadLock()
 	defer mvInfo.releaseSyncOpReadLock()
@@ -1342,7 +1340,7 @@ refreshFromClustermapAndRetry:
 	// defer flock.Unlock()
 
 	cacheDir := rvInfo.cacheDir
-	isSrcOfSync, isTgtOfSync := mvInfo.isSourceOrTargetOfSync()
+	_, isTgtOfSync := mvInfo.isSourceOrTargetOfSync()
 
 	var chunkPath, hashPath string
 	if len(req.SyncID) > 0 {
@@ -1350,7 +1348,6 @@ refreshFromClustermapAndRetry:
 		// Sync PutChunk call (as opposed to a client write PutChunk call).
 		// This is called after the StartSync RPC to synchronize an OutOfSyc MV replica from a healthy MV
 		// replica.
-		// In this case the chunks must be written to the regular mv directory, i.e. rv0/mv0
 		//
 		// Sync PutChunk call will be made in the ResyncMV() workflow, and should only be sent to RVs which
 		// are target of a sync job.
@@ -1363,23 +1360,14 @@ refreshFromClustermapAndRetry:
 			common.Assert(false, errStr)
 			return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
 		}
-
-		chunkPath, hashPath = getRegularMVPath(cacheDir, req.Chunk.Address.MvName,
-			req.Chunk.Address.FileID, req.Chunk.Address.OffsetInMiB)
-	} else {
-		//
-		// Client write PutChunk call. If this MV replica is currently acting as the source for any sync job,
-		// the chunks must be written to the sync directory, i.e. rv0/mv0.sync, else they must be written
-		// to the regular mv directory, i.e. rv0/mv0.
-		//
-		if isSrcOfSync {
-			chunkPath, hashPath = getSyncMVPath(cacheDir, req.Chunk.Address.MvName,
-				req.Chunk.Address.FileID, req.Chunk.Address.OffsetInMiB)
-		} else {
-			chunkPath, hashPath = getRegularMVPath(cacheDir, req.Chunk.Address.MvName,
-				req.Chunk.Address.FileID, req.Chunk.Address.OffsetInMiB)
-		}
 	}
+
+	//
+	// In both client as well as sync write PutChunk calls,
+	// the chunks must be written to the mv directory, i.e. rv0/mv0.
+	//
+	chunkPath, hashPath = getChunkAndHashPath(cacheDir, req.Chunk.Address.MvName,
+		req.Chunk.Address.FileID, req.Chunk.Address.OffsetInMiB)
 
 	log.Debug("ChunkServiceHandler::PutChunk: chunk path %s, hash path %s", chunkPath, hashPath)
 
@@ -1845,22 +1833,6 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 	defer mvInfo.releaseSyncOpWriteLock()
 
 	//
-	// If this MV replica is the source of this sync job, we will need the .sync directory,
-	// create if it doesn't exist.
-	//
-	if isSrcOfSync {
-		// Create MV sync directory if it doesn't exist.
-		syncDir := filepath.Join(rvInfo.cacheDir, req.MV+".sync")
-		err := h.createMVDirectory(syncDir)
-		if err != nil {
-			errStr := fmt.Sprintf("Failed to create sync directory %s [%v]", syncDir, err)
-			log.Err("ChunkServiceHandler::StartSync: %s", errStr)
-			common.Assert(false, errStr)
-			return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
-		}
-	}
-
-	//
 	// If sourceRVName is set that means this MV Replica is the target of this sync job, while if
 	// targetRVName is set it means this MV Replica is the source of this sync job.
 	//
@@ -1977,8 +1949,8 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 	mvInfo.updateComponentRVState(req.TargetRVName, dcache.StateSyncing, dcache.StateOnline)
 
 	//
-	// If we were the target of this sync job, then nothing else to do, else if it's the last sync
-	// job, then we will need to move chunks from .sync folder and delete it.
+	// If we were the target of this sync job, then nothing else to do.
+	// Assert if that the MV replica can be the target of only one sync job at a time.
 	//
 	if !isSrcOfSync {
 		// An MV replica can be the target of only one sync job at a time.
@@ -1989,35 +1961,12 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 	//
 	// After deleting this sync job, check if there are any other sync jobs in progress for this MV replica.
 	// If yes, then return success for this EndSync call.
-	// Else, this EndSync call is for the last running syncJob for this MV replica. So, move the chunks from
-	// the sync folder to the regular MV folder and delete the sync folder.
-	// This is done to avoid moving chunks from the sync folder to the regular MV folder if there are other
-	// sync jobs in progress for this MV replica.
+	// Else, this EndSync call is for the last running syncJob for this MV replica.
 	//
 	if mvInfo.isSyncing() {
 		log.Debug("ChunkServiceHandler::EndSync: %s/%s is source replica for %d running sync job(s): %+v",
 			rvInfo.rvName, req.MV, len(mvInfo.syncJobs), mvInfo.syncJobs)
-		return &models.EndSyncResponse{}, nil
 	}
-
-	// Move all chunks from sync folder to the regular MV folder and then resume processing.
-	regMVPath := filepath.Join(rvInfo.cacheDir, req.MV)
-	syncMvPath := filepath.Join(rvInfo.cacheDir, req.MV+".sync")
-
-	log.Debug("ChunkServiceHandler::EndSync: Moving chunks from %s -> %s", syncMvPath, regMVPath)
-
-	err = moveChunksToRegularMVPath(syncMvPath, regMVPath)
-	if err != nil {
-		errStr := fmt.Sprintf("Failed to move chunks from %s -> %s [%v]",
-			syncMvPath, regMVPath, err)
-		log.Err("ChunkServiceHandler::EndSync: %s", errStr)
-		common.Assert(false, errStr)
-		return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
-	}
-
-	// Delete the sync directory. It must be empty now.
-	err = os.Remove(syncMvPath)
-	common.Assert(err == nil, fmt.Sprintf("failed to remove sync directory %s [%v]", syncMvPath, err))
 
 	return &models.EndSyncResponse{}, nil
 }
