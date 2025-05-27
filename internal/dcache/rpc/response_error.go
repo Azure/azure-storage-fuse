@@ -72,26 +72,76 @@ func IsRPCError(err error) bool {
 	return (GetRPCResponseError(err) != nil)
 }
 
-// Check if the error returned by thrift indicates connection terminated/reset by server.
+// Check if the error returned by thrift indicates connection terminated/reset by server when trying to
+// write over a connection whose peer has closed connection (mostly blobfuse process restarted).
 // This usually happens when we setup a connection (mostly the pool of connections) with a peer node and the
 // blobfuse process on that node stops/restarts. Later when we send a request over those connections, the
 // peer TCP will respond with a TCP RST and thrift call will fail with EPIPE.
 // If the blobfuse process has stopped (and not restared), a reconnect attempt will fail with
 // IsConnectionRefused() error, else it'll succeed and the new connection can be used to send the RPC requests.
-func IsConnectionTerminated(err error) bool {
+//
+// Note: This can only be received when we are sending the RPC, i.e. only write()/send() can fail with this.
+//
+//	See IsConnectionReset() for similar error that read/recv can fail with.
+func IsBrokenPipe(err error) bool {
+	common.Assert(err != nil)
+
+	// RPC error, cannot be a broken pipe error.
+	if GetRPCResponseError(err) != nil {
+		log.Debug("IsBrokenPipe: is RPC error: %v", err)
+		return false
+	}
+
+	te := thrift.NewTTransportExceptionFromError(err)
+	// Note: This doesn't work.
+	//return te.TypeId() == thrift.NOT_OPEN
+
+	log.Debug("IsBrokenPipe: err: %v, type: %T, te.TypeId(): %d, Is syscall.EPIPE: %v",
+		err, err, te.TypeId(), errors.Is(err, syscall.EPIPE))
+
+	//
+	// In this case I've seen syscall.EPIPE check to work, but since it's not documented
+	// we do the string match also, just in case.
+	//
+	brokenPipe := "roken pipe"
+	return errors.Is(err, syscall.EPIPE) || strings.Contains(err.Error(), brokenPipe)
+}
+
+// This is the standard "connection reset by peer" error when peer TCP sends RST over a connection.
+// If peer chooses to send a FIN then we get the IsConnectionClosed() error else this.
+// Thrift fails with an error like:
+// [read tcp 10.0.0.7:33842->10.0.0.6:9090: read: connection reset by peer]
+//
+// Note: read()/recv() fails with this, i.e., only when the blobfuse process goes down after we successfully
+//
+//	      send the RPC request but before it could respond, the sender read/recv call fails with this error.
+//	      If the blobfuse process goes down before the send()/write() can send the RPC request, it fails
+//	      with IsBrokenPipe().
+//	      Another important thing to note is that IsBrokenPipe() can come when the target blobfuse process
+//		 might have restarted at some point in the past and may be running now, so it may make sense to
+//		 retry connection attempt on getting IsBrokenPipe(), whereas IsConnectionReset() means the process
+//		 just stopped/restarted, so trying connection attempt immediately may not help.
+func IsConnectionReset(err error) bool {
 	common.Assert(err != nil)
 
 	// RPC error, cannot be a connection reset error.
 	if GetRPCResponseError(err) != nil {
-		log.Debug("IsConnectionTerminated: is RPC error: %v", err)
+		log.Debug("IsConnectionReset: is RPC error: %v", err)
 		return false
 	}
 
+	te := thrift.NewTTransportExceptionFromError(err)
 	// Note: This doesn't work.
-	//te := thrift.NewTTransportExceptionFromError(err)
 	//return te.TypeId() == thrift.NOT_OPEN
+	log.Debug("IsConnectionReset: err: %v, type: %T, te.TypeId(): %d, Is syscall.ECONNRESET: %v",
+		err, err, te.TypeId(), errors.Is(err, syscall.ECONNRESET))
 
-	return errors.Is(err, syscall.EPIPE)
+	//
+	// In this case I've seen syscall.ECONNRESET check to work, but since it's not documented
+	// we do the string match also, just in case.
+	//
+	connectionResetByPeer := "onnection reset by peer"
+	return errors.Is(err, syscall.ECONNRESET) || strings.Contains(err.Error(), connectionResetByPeer)
 }
 
 // When client sends a thrift RPC over a connection and before the server could send the response, the process
@@ -106,7 +156,7 @@ func IsConnectionClosed(err error) bool {
 	}
 
 	te := thrift.NewTTransportExceptionFromError(err)
-	log.Debug("IsConnectionClosed: err: %v, err: %T, te.TypeId(): %d", err, err, te.TypeId())
+	log.Debug("IsConnectionClosed: err: %v, type: %T, te.TypeId(): %d", err, err, te.TypeId())
 
 	// TODO: See which one of these works.
 	return te.TypeId() == thrift.END_OF_FILE || err.Error() == "EOF"
@@ -123,7 +173,7 @@ func IsConnectionRefused(err error) bool {
 		return false
 	}
 
-	log.Debug("IsConnectionRefused: err: %v, err: %T", err, err)
+	log.Debug("IsConnectionRefused: err: %v, type: %T", err, err)
 
 	//
 	// TODO: This does not seem to match when we get the following error from thrift.
@@ -133,7 +183,7 @@ func IsConnectionRefused(err error) bool {
 	//
 	//return errors.Is(err, syscall.ECONNREFUSED)
 
-	connectionRefused := "connection refused"
+	connectionRefused := "onnection refused"
 	return strings.Contains(err.Error(), connectionRefused)
 }
 
@@ -149,9 +199,17 @@ func IsTimedOut(err error) bool {
 	}
 
 	te := thrift.NewTTransportExceptionFromError(err)
-	log.Debug("IsTimedOut: err: %v, err: %T, te.TypeId(): %d, Is syscall.ETIMEDOUT: %v",
-		err, err, te.TypeId(), errors.Is(err, syscall.ETIMEDOUT))
+	log.Debug("IsTimedOut: err: %v, type: %T, te.TypeId(): %d, Is syscall.ETIMEDOUT: %v, Is syscall.EAGAIN: %v",
+		err, err, te.TypeId(), errors.Is(err, syscall.ETIMEDOUT), errors.Is(err, syscall.EAGAIN))
 
-	// TODO: See which one of these works.
-	return te.TypeId() == thrift.TIMED_OUT || errors.Is(err, syscall.ETIMEDOUT)
+	//
+	// Timeout can happen at various points.
+	// connect()/write()/read() may time out.
+	// Try various errors for completeness.
+	//
+	connectionTimedOut := "onnection timed out"
+	return te.TypeId() == thrift.TIMED_OUT ||
+		errors.Is(err, syscall.ETIMEDOUT) ||
+		errors.Is(err, syscall.EAGAIN) ||
+		strings.Contains(err.Error(), connectionTimedOut)
 }

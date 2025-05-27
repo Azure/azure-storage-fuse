@@ -219,11 +219,12 @@ func NewStagedChunk(idx int64, file *DcacheFile) (*StagedChunk, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return &StagedChunk{
 		Idx:           idx,
 		Len:           0,
 		Buf:           buf,
-		Err:           make(chan error),
+		Err:           make(chan error, 1),
 		Dirty:         atomic.Bool{},
 		Uptodate:      atomic.Bool{},
 		XferScheduled: atomic.Bool{},
