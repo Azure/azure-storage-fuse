@@ -61,7 +61,8 @@ type replicationMgr struct {
 	// This is used to stop the thread doing the periodic resync of degraded MVs.
 	done chan bool
 
-	wg sync.WaitGroup // wait group for the periodicResyncMVs() goroutine
+	// Wait group to wait for the goroutines spawned, before stopping the replication manager.
+	wg sync.WaitGroup
 
 	// Set of currently running sync jobs, indexed by target replica ("rvX/mvY") and the value
 	// stored is the source replica in "rvX/mvY" format.
