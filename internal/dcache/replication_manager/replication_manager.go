@@ -604,6 +604,9 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 		return
 	}
 
+	// TODO:: discuss: if some other node is writing to this MV, its WriteMV() workflow will not have the updated
+	// component RVs list with the target RV in syncing state. So, it might skip writing the chunk to
+	// the target RV, thinking that it is still outofsync.
 	//
 	// Now that the target RV state is updated to syncing from outofsync, the WriteMV() workflow will
 	// consider the target RV as valid candidate for client PutChunk() calls.
