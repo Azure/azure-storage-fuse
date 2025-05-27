@@ -141,60 +141,6 @@ func getMVsPerRV() int64 {
 	return int64(cm.GetCacheConfig().MvsPerRv)
 }
 
-// Source RV or lio RV can call this method to get the sync start time for the given syncID.
-// This is useful when the source RV wants to know when the sync started for a given syncID.
-// This helps in finding which chunks need to be synced to the target RV.
-// The chunks created before this time are copied to the target RV via the sync PutChunk RPC call.
-// The chunks created after this time are not copied to the target RV, as these would have
-// already been written to the target RV by the client PutChunk RPC calls.
-func GetSyncStartTime(rvName string, mvName string, syncID string) (int64, error) {
-	common.Assert(handler != nil)
-
-	common.Assert(cm.IsValidRVName(rvName), rvName)
-	common.Assert(cm.IsValidMVName(mvName), mvName)
-	common.Assert(common.IsValidUUID(syncID), syncID)
-
-	rvInfo := handler.getRVInfoFromRVName(rvName)
-	if rvInfo == nil {
-		errStr := fmt.Sprintf("node %s does not host %s", rpc.GetMyNodeUUID(), rvName)
-		log.Err("utils::GetSyncStartTime: %s", errStr)
-		common.Assert(false, errStr)
-		return 0, rpc.NewResponseError(models.ErrorCode_InvalidRV, errStr)
-	}
-
-	mvInfo := rvInfo.getMVInfo(mvName)
-	if mvInfo == nil {
-		errStr := fmt.Sprintf("%s is not part of %s", rvName, mvName)
-		log.Err("utils::GetSyncStartTime: %s", errStr)
-		common.Assert(false, errStr)
-		return 0, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
-	}
-
-	// TODO: discuss should we take opMutex lock here to access syncJobs map?
-
-	//
-	// Q: Why refreshFromClustermap() cannot help this?
-	// A: GetSyncStartTime() call can only be sent after a successful StartSync response from
-	//    us and when we would have responded we would have added the syncJob. This call is
-	//    made when the source RV (or lio RV) is syncing chunks to the outofsync target RV.
-	//
-	syncJob, ok := mvInfo.syncJobs[syncID]
-	if !ok {
-		errStr := fmt.Sprintf("syncID %s not valid for %s/%s [NeedToRefreshClusterMap]",
-			syncID, rvName, mvName)
-		log.Err("utils::GetSyncStartTime: %s", errStr)
-		common.Assert(false, errStr)
-		return 0, rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
-	}
-
-	// This call can only be made by the source RV (or lio RV) which is syncing chunks to the target RV.
-	// Check if this call is indeed made by the source RV.
-	common.Assert(syncJob.sourceRVName == "")
-	common.Assert(syncJob.targetRVName != "")
-
-	return syncJob.syncStartTime, nil
-}
-
 // When an MV is in degraded state because one or more of its RV went offline,
 // the caller (lowest index online RV) can call this method to get the
 // disk usage of the MV. The caller will then send JoinMV RPC call to the

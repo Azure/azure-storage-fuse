@@ -179,13 +179,6 @@ type syncJob struct {
 	// This is returned in the StartSync response and EndSync should carry this.
 	syncID string
 
-	// Time in microseconds(UnixMicro) when the StartSync call came. This is used in component RV resync workflow, when deciding
-	// the chunks that must be copied to the target RV of the sync. The source RV (lio RV) enumerates
-	// its RV/MV directory and only sends sync PutChunk requests for chunks that were created
-	// before the this time. The chunks that were created after this, are written to
-	// both the source and target RVs, so they are ignored in the sync PutChunk calls.
-	syncStartTime int64
-
 	// Source and target RVs for this sync job.
 	// An MV Replica can either act as source or target in a sync job, so one and only one of these will be set.
 	// If sourceRVName is set that means this MV Replica is the target of this sync job, while if
@@ -359,10 +352,9 @@ func (mv *mvInfo) addSyncJob(sourceRVName string, targetRVName string) string {
 	common.Assert(!ok, fmt.Sprintf("%s already has syncJob with syncID %s: %+v", mv.mvName, syncID, mv.syncJobs))
 
 	mv.syncJobs[syncID] = syncJob{
-		syncID:        syncID,
-		syncStartTime: time.Now().UnixMicro(),
-		sourceRVName:  sourceRVName,
-		targetRVName:  targetRVName,
+		syncID:       syncID,
+		sourceRVName: sourceRVName,
+		targetRVName: targetRVName,
 	}
 
 	return syncID
