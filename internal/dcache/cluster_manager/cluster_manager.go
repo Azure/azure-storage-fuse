@@ -323,7 +323,7 @@ func (cmi *ClusterManager) fetchAndUpdateLocalClusterMap(sync bool) (*dcache.Clu
 	//
 	storageBytes, etag, err := getClusterMap()
 	if err != nil {
-		err = fmt.Errorf("Failed to fetch clustermap on node %s: %v", cmi.myNodeId, err)
+		err = fmt.Errorf("failed to fetch clustermap on node %s: %v", cmi.myNodeId, err)
 		log.Err("ClusterManager::fetchAndUpdateLocalClusterMap: %v", err)
 
 		common.Assert(len(storageBytes) == 0)
@@ -337,7 +337,7 @@ func (cmi *ClusterManager) fetchAndUpdateLocalClusterMap(sync bool) (*dcache.Clu
 	}
 
 	if len(storageBytes) == 0 {
-		err = fmt.Errorf("Received empty clustermap on node %s", cmi.myNodeId)
+		err = fmt.Errorf("received empty clustermap on node %s", cmi.myNodeId)
 		log.Err("ClusterManager::fetchAndUpdateLocalClusterMap: %v", err)
 		common.Assert(false, err)
 		return nil, nil, err
@@ -354,7 +354,7 @@ func (cmi *ClusterManager) fetchAndUpdateLocalClusterMap(sync bool) (*dcache.Clu
 	//
 	var storageClusterMap dcache.ClusterMap
 	if err := json.Unmarshal(storageBytes, &storageClusterMap); err != nil {
-		err = fmt.Errorf("Failed to unmarshal clustermap json on node %s: %v", cmi.myNodeId, err)
+		err = fmt.Errorf("failed to unmarshal clustermap json on node %s: %v", cmi.myNodeId, err)
 		log.Err("ClusterManager::fetchAndUpdateLocalClusterMap: %v", err)
 		common.Assert(false, err)
 		return nil, nil, err
@@ -630,7 +630,7 @@ func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, err
 			// for a long time, but play safe and bail out and let the user delete the clustermap by hand before
 			// retrying.
 			//
-			err := fmt.Errorf("ClusterManager::safeCleanupMyRVs: Exceeded maxWait %s. If you are reviving a dead cluster, delete clustermap manually and then try again.", maxWait)
+			err := fmt.Errorf("ClusterManager::safeCleanupMyRVs: Exceeded maxWait %s. If you are reviving a dead cluster, delete clustermap manually and then try again", maxWait)
 			log.Err("%v", err)
 			common.Assert(false, elapsed, maxWait)
 			return true, err
@@ -1054,7 +1054,7 @@ func (cmi *ClusterManager) punchHeartBeat(myRVs []dcache.RawVolume) error {
 	// Marshal the data into JSON
 	data, err := json.Marshal(hbData)
 	if err != nil {
-		err = fmt.Errorf("Failed to marshal heartbeat for node %s: %v %+v", cmi.myNodeId, err, hbData)
+		err = fmt.Errorf("failed to marshal heartbeat for node %s: %v %+v", cmi.myNodeId, err, hbData)
 		log.Err("ClusterManager::punchHeartBeat: %v", err)
 		common.Assert(false, err)
 		return err
@@ -1180,7 +1180,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	clusterMap.State = dcache.StateChecking
 	updatedClusterMapBytes, err := json.Marshal(clusterMap)
 	if err != nil {
-		err = fmt.Errorf("Marshal failed for clustermap: %v %+v", err, clusterMap)
+		err = fmt.Errorf("marshal failed for clustermap: %v %+v", err, clusterMap)
 		log.Err("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
 		common.Assert(false, err)
 		return err
@@ -1218,7 +1218,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 
 	_, err = cmi.updateRVList(clusterMap.RVMap, false /* onlyMyRVs */)
 	if err != nil {
-		err = fmt.Errorf("Failed to reconcile RV mapping: %v", err)
+		err = fmt.Errorf("failed to reconcile RV mapping: %v", err)
 		log.Err("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
 		common.Assert(false, err)
 		//
@@ -1272,7 +1272,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 		//
 		// TODO: We must reset the clusterMap state to ready.
 		//
-		err = fmt.Errorf("Clustermap update (%s) took longer than ClustermapEpoch (%s), bailing out",
+		err = fmt.Errorf("clustermap update (%s) took longer than ClustermapEpoch (%s), bailing out",
 			elapsed, maxTime)
 		log.Err("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
 		common.Assert(false, err)
@@ -1284,7 +1284,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 
 	updatedClusterMapBytes, err = json.Marshal(clusterMap)
 	if err != nil {
-		err = fmt.Errorf("Marshal failed for clustermap: %v %+v", err, clusterMap)
+		err = fmt.Errorf("marshal failed for clustermap: %v %+v", err, clusterMap)
 		log.Err("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
 		common.Assert(false, err)
 		return err
@@ -2254,7 +2254,7 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume, reser
 		}
 
 		if err != nil {
-			err = fmt.Errorf("Error %s MV %s with RV %s: %v", action, mvName, rv.Name, err)
+			err = fmt.Errorf("error %s MV %s with RV %s: %v", action, mvName, rv.Name, err)
 			log.Err("ClusterManagerImpl::joinMV: %v", err)
 			return rv.Name, err
 		}
