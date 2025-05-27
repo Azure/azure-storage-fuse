@@ -34,6 +34,7 @@
 package metadata_manager
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -151,8 +152,12 @@ func CreateFileFinalize(filePath string, fileMetadata []byte, fileSize int64) er
 	return metadataManagerInstance.createFileFinalize(filePath, fileMetadata, fileSize)
 }
 
-func GetFile(filePath string) ([]byte, int64, error) {
+func GetFile(filePath string) ([]byte, int64, dcache.FileState, error) {
 	return metadataManagerInstance.getFile(filePath)
+}
+
+func RenameFileToDeleting(filePath string) error {
+	return metadataManagerInstance.renameFileToDeleting(filePath)
 }
 
 func DeleteFile(filePath string) error {
@@ -294,8 +299,10 @@ func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byt
 
 	// The size of the file is set to -1 to represent the file is not finalized.
 	sizeStr := "-1"
+	state := string(dcache.Writing)
 	metadata := map[string]*string{
 		"cache_object_length": &sizeStr,
+		"state":               &state,
 	}
 
 	err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
@@ -353,17 +360,23 @@ func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata [
 			internal.GetAttrOptions{Name: path})
 		common.Assert(err == nil, err)
 
-		// Extract the size from the metadata properties.
+		// Extract the size from the metadata properties, it must be "-1" as set by createFileInit().
 		size, ok := prop.Metadata["cache_object_length"]
 		common.Assert(ok && *size == "-1", ok, *size)
+
+		// Extract the state form the metadata properties, it must be "writing" as set by createFileInit().
+		state, ok := prop.Metadata["state"]
+		common.Assert(ok && *state == string(dcache.Writing))
 	}
 
 	// Store the open-count and file size in the metadata blob property.
 	openCount := "0"
 	sizeStr := strconv.FormatInt(fileSize, 10)
+	state := string(dcache.Ready)
 	metadata := map[string]*string{
 		"opencount":           &openCount,
 		"cache_object_length": &sizeStr,
+		"state":               &state,
 	}
 
 	err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
@@ -386,7 +399,7 @@ func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata [
 
 // GetFile reads and returns the content of metadata for a file.
 // TODO: Replace the two REST API calls with a single call to DownloadStream.
-func (m *BlobMetadataManager) getFile(filePath string) ([]byte, int64, error) {
+func (m *BlobMetadataManager) getFile(filePath string) ([]byte, int64, dcache.FileState, error) {
 	common.Assert(len(filePath) > 0)
 
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
@@ -394,37 +407,106 @@ func (m *BlobMetadataManager) getFile(filePath string) ([]byte, int64, error) {
 	data, prop, err := m.getBlobSafe(path)
 	if err != nil {
 		log.Debug("GetFile:: Failed to get metadata file content for file %s: %v", path, err)
-		return nil, -1, err
+		//
+		// getBlobSafe() should only fail when blob is non-existent.
+		// Assert to catch any other error.
+		//
+		common.Assert(errors.Is(err, syscall.ENOENT), err)
+		return nil, -1, "", err
 	}
 
 	// Extract the size from the metadata properties.
 	size, ok := prop.Metadata["cache_object_length"]
 	if !ok {
-		log.Err("GetFile:: size not found in metadata for path %s", path)
-		common.Assert(false, fmt.Sprintf("size not found in metadata for path %s", path))
-		return nil, -1, err
+		err := fmt.Errorf("GetFile:: size not found in metadata for path %s", path)
+		log.Err("%v", err)
+		common.Assert(false, err)
+		return nil, -1, "", err
 	}
 
 	fileSize, err := strconv.ParseInt(*size, 10, 64)
 	if err != nil {
-		log.Err("GetFile:: Failed to parse size for path %s with value %s: %v", path, *size, err)
+		err := fmt.Errorf("GetFile:: Failed to parse size for path %s with value %s: %v", path, *size, err)
+		log.Err("%v", err)
 		common.Assert(false, err)
-		return nil, -1, err
+		return nil, -1, "", err
 	}
 
 	//
 	// Size can be -1 for files which are not in Ready state.
 	//
-
-	//if fileSize < 0 {
 	if fileSize < -1 {
-		log.Warn("GetFile:: Size is negative for path %s: %d", path, fileSize)
-		common.Assert(false, "size cannot be negative", fileSize)
-		return nil, -1, fmt.Errorf("size is negative for path %s: %d", path, fileSize)
+		err := fmt.Errorf("Size is negative for path %s: %d", path, fileSize)
+		log.Warn("GetFile:: %v", err)
+		common.Assert(false, err)
+		return nil, -1, "", err
 	}
 
 	log.Debug("GetFile:: Size for path %s: %d", path, fileSize)
-	return data, fileSize, nil
+
+	// Extract the state from the blob metadata prop.
+	state, ok := prop.Metadata["state"]
+	if !ok {
+		err := fmt.Errorf("GetFile:: File state not found in metadata for path %s", path)
+		log.Err("%v", err)
+		common.Assert(false, err)
+		return nil, -1, "", err
+	}
+
+	var fileState dcache.FileState
+	if *state == string(dcache.Ready) || *state == string(dcache.Writing) {
+		fileState = dcache.FileState(*state)
+	} else {
+		err := fmt.Errorf("GetFile:: Invalid File state: [%s] found in metadata for path: %s", *state, path)
+		log.Err("%v", err)
+		common.Assert(false, err)
+		return nil, -1, fileState, err
+	}
+
+	return data, fileSize, fileState, nil
+}
+
+func (m *BlobMetadataManager) renameFileToDeleting(filePath string) error {
+	common.Assert(len(filePath) > 0)
+	path := filepath.Join(m.mdRoot, "Objects", filePath)
+	log.Debug("renameFileToDeleting:: %s", path)
+
+	renamedPath := path + dcache.DcacheDeletingFileNameSuffix
+
+	//
+	// TODO: If RenameFileInStorage() fails when renamedPath already exists, then remove this explicit
+	//		 check. In that case we cannot assert that err will be ENOENT.
+	//
+	_, err := m.storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{
+		Name: path,
+	})
+
+	if err == nil {
+		_, err := m.storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{
+			Name: renamedPath,
+		})
+
+		if err == nil {
+			//
+			// Renaming will result in the target file to be overwritten, avoid that.
+			//
+			log.Err("renameFileToDeleting:: target file %s already exists", renamedPath)
+			return syscall.EINVAL
+		}
+	}
+
+	err = m.storageCallback.RenameFileInStorage(internal.RenameFileOptions{
+		Src: path,
+		Dst: renamedPath,
+	})
+
+	if err != nil {
+		log.Err("renameFileToDeleting:: Failed to rename the file: %s:%v", filePath, err)
+		common.Assert(err == syscall.ENOENT, path, err)
+		return err
+	}
+
+	return nil
 }
 
 // DeleteFile removes metadata for a file.

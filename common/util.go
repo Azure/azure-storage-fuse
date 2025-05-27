@@ -61,6 +61,7 @@ import (
 
 var RootMount bool
 var ForegroundMount bool
+var IsDistributedCacheEnabled bool
 var IsStream bool
 
 // IsDirectoryMounted is a utility function that returns true if the directory is already mounted using fuse
@@ -675,4 +676,17 @@ func IsValidBlkDevice(device string) error {
 		return fmt.Errorf("not a block device: %s having mode bits 0%4o", device, mode)
 	}
 	return nil
+}
+
+// If a file has open handle(s) at the time when unlink() is called to delete the file, fuse renames the file to
+// a special name of the form .fuse_hiddenXXX. This enables fuse to provide POSIX semantics of allowing file to be
+// accessed through existing open fds after the file is deleted. This only provides protection against processes
+// deleting the file on the same node where they were opened. For distributed cache this is not sufficient as we
+// want this protection across nodes (process having a file open and the process deleting it running on two
+// different nodes).
+// We have our own renaming scheme which works across nodes, so we don't want to depend on fuse's renaming scheme.
+// This function helps us check if a file was renamed like this by fuse, so that we can do the necessary things.
+func IsFuseHiddenFile(filePath string) bool {
+	fileName := filepath.Base(filePath)
+	return strings.HasPrefix(fileName, ".fuse_hidden")
 }

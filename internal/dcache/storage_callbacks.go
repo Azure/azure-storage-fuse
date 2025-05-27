@@ -79,4 +79,7 @@ type StorageCallbacks interface {
 
 	//It will Create the directory in storage
 	CreateDirInStorage(options internal.CreateDirOptions) error
+
+	//It will Rename the File in the storage
+	RenameFileInStorage(options internal.RenameFileOptions) error
 }

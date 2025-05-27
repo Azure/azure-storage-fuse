@@ -46,6 +46,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 )
 
 func getBlockDeviceUUId(path string) (string, error) {
@@ -206,7 +207,7 @@ func parseDcacheMetadata(attr *internal.ObjAttr) error {
 	if attr.IsDir() {
 		return nil
 	}
-	log.Debug("DistributedCache::parseDcacheMetadata: file: %s", attr.Name)
+	log.Debug("utils::parseDcacheMetadata: file: %s", attr.Name)
 
 	var fileSize int64
 	var err error
@@ -227,30 +228,62 @@ func parseDcacheMetadata(attr *internal.ObjAttr) error {
 				attr.Size = math.MaxInt64
 			}
 		} else {
-			log.Err("DistributedCache::GetAttr : strconv failed for size string: %s, file: %s, error: %s", *val, attr.Name, err.Error())
+			log.Err("utils::parseDcacheMetadata : strconv failed for size string: %s, file: %s, error: %s", *val, attr.Name, err.Error())
 			common.Assert(false, err)
+			return err
 		}
 	} else {
 		err = fmt.Errorf("Blob metadata for %s doesn't have cache_object_length property", attr.Name)
-		log.Err("DistributedCache::GetAttr: %v", err)
+		log.Err("utils::parseDcacheMetadata: %v", err)
 		common.Assert(false, err)
+		return err
+	}
+
+	// parse file state.
+	if state, ok := attr.Metadata["state"]; ok {
+		if !(*state == string(dcache.Writing) || *state == string(dcache.Ready)) {
+			err = fmt.Errorf("File: %s, has invalid state: [%s]", attr.Name, *state)
+			log.Err("utils::parseDcacheMetadata: %v", err)
+			common.Assert(false, err)
+			return err
+		}
+	} else {
+		err = fmt.Errorf("Blob metadata for %s doesn't have state property", attr.Name)
+		log.Err("utils::parseDcacheMetadata: %v", err)
+		common.Assert(false, err)
+		return err
 	}
 
 	return err
 }
 
+// Hide the files which are set to deleting. Such files are named with suffix ".dcache.deleting"
 func parseDcacheMetadataForDirEntries(dirList []*internal.ObjAttr) []*internal.ObjAttr {
 	newDirList := make([]*internal.ObjAttr, len(dirList))
 	i := 0
+
 	for _, attr := range dirList {
+		// Hide deleted files from fuse.
+		if isDeletedDcacheFile(attr.Name) {
+			log.Info("DistributedCache::parseDcacheMetadataForDirEntries: skipping deleted file: %s",
+				attr.Name)
+			continue
+		}
+
 		err := parseDcacheMetadata(attr)
 		if err == nil {
 			newDirList[i] = attr
 			i++
 		} else {
-			log.Err("DistributedCache::parseDcacheMetadataForDirEntries: skipping the dir entry , file: %s, err: %s", attr.Name, err.Error())
+			log.Err("DistributedCache::parseDcacheMetadataForDirEntries: skipping dir entry, failed to parse metadata file: %s: %v",
+				attr.Name, err)
 		}
 	}
-	return newDirList[:i]
 
+	return newDirList[:i]
+}
+
+// Check if the file name refers to a deleted dcache file (waiting to be GC'ed).
+func isDeletedDcacheFile(rawPath string) bool {
+	return strings.HasSuffix(rawPath, dcache.DcacheDeletingFileNameSuffix)
 }
