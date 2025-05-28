@@ -64,6 +64,16 @@ import (
    - To read any new setting from config file follow the Configure method default comments
 */
 
+// Components Flow Diagram For DistributedCache.
+
+// libfuse
+//   |
+//   +--> DistributedCache
+//   |       |
+//   |       +--> dcacheFS --> azStorage
+//   |       |
+//   |       +--> azureFS --> block_cache --> azStorage
+
 // Common structure for Component
 type DistributedCache struct {
 	internal.BaseComponent
@@ -127,6 +137,10 @@ func (dc *DistributedCache) SetName(name string) {
 
 func (dc *DistributedCache) SetNextComponent(nextComponent internal.Component) {
 	dc.BaseComponent.SetNextComponent(nextComponent)
+}
+
+func (dc *DistributedCache) Priority() internal.ComponentPriority {
+	return internal.EComponentPriority.LevelOne()
 }
 
 // Start : Pipeline calls this method to start the component functionality
@@ -332,11 +346,22 @@ func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.
 		}
 	}
 
+	//
+	// Files deleted on dcache are renamed with a special extension. These special files are for internal
+	// bookkeeping and we don't want to expose those to the user.
+	// Even for azure we don't allow these files.
+	//
+	if isDeletedDcacheFile(rawPath) {
+		log.Debug("DistributedCache::GetAttr : isDeletedDcacheFile(%s), hiding", rawPath)
+		return nil, syscall.ENOENT
+	}
+
 	if isDcachePath {
 		// properties should be fetched from Dcache
 		log.Debug("DistributedCache::GetAttr : Path is having Dcache subcomponent, path : %s", options.Name)
 		rawPath = filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
 		options.Name = rawPath
+
 		if attr, err = dc.NextComponent().GetAttr(options); err != nil {
 			return nil, err
 		}
@@ -358,12 +383,24 @@ func (dc *DistributedCache) GetAttr(options internal.GetAttrOptions) (*internal.
 		//
 		dcachePath := filepath.Join(mm.GetMdRoot(), "Objects", rawPath)
 		options.Name = dcachePath
-		log.Debug("DistributedCache::GetAttr : Unquailified Path getting attr from dcache, path : %s", options.Name)
+		log.Debug("DistributedCache::GetAttr : Unqualified Path getting attr from dcache, path : %s", options.Name)
 
 		if attr, err = dc.NextComponent().GetAttr(options); err != nil {
+			//
+			// If it fails with any other error other than ENOENT, we fail the call, else if the file is not
+			// present in dcache, we should try Azure.
+			//
+			if err != syscall.ENOENT {
+				log.Err("DistributedCache::GetAttr :  Unqualified Path (%s), failed to get attr from dcache: %v",
+					options.Name, err)
+				return nil, err
+			}
+
+			// GetAttr from Azure.
 			options.Name = rawPath
-			log.Debug("DistributedCache::GetAttr :  Unquailified Path, Failed to get attr from dcache, getting attr from Azure, path : %s",
+			log.Debug("DistributedCache::GetAttr :  Unqualified Path, not present in dcache, trying Azure, path : %s",
 				options.Name)
+
 			return dc.NextComponent().GetAttr(options)
 		}
 	}
@@ -486,6 +523,18 @@ startListingWithNewToken:
 func (dc *DistributedCache) CreateDir(options internal.CreateDirOptions) error {
 	isAzurePath, isDcachePath, isDebugPath, rawPath := getFS(options.Name)
 
+	//
+	// Don't allow creating the special deleted file and avoid confusion.
+	// Same for the fuse hidden file.
+	//
+	if isDeletedDcacheFile(rawPath) {
+		return syscall.EINVAL
+	}
+
+	if common.IsFuseHiddenFile(rawPath) {
+		return syscall.EINVAL
+	}
+
 	if isDcachePath {
 		// Create Directory inside Dcache
 		log.Debug("DistributedCache::CreateDir: Path is having Dcache subcomponent, path: %s", options.Name)
@@ -532,6 +581,18 @@ func (dc *DistributedCache) CreateFile(options internal.CreateFileOptions) (*han
 	var handle *handlemap.Handle
 	var err error
 	isAzurePath, isDcachePath, isDebugPath, rawPath := getFS(options.Name)
+
+	//
+	// Don't allow creating the special deleted file and avoid confusion.
+	// Same for the fuse hidden file.
+	//
+	if isDeletedDcacheFile(rawPath) {
+		return nil, syscall.EINVAL
+	}
+
+	if common.IsFuseHiddenFile(rawPath) {
+		return nil, syscall.EINVAL
+	}
 
 	if isDcachePath {
 		log.Debug("DistributedCache::CreateFile : Path is having Dcache subcomponent, path : %s", options.Name)
@@ -608,6 +669,20 @@ func (dc *DistributedCache) OpenFile(options internal.OpenFileOptions) (*handlem
 	var err error
 
 	isAzurePath, isDcachePath, isDebugPath, rawPath := getFS(options.Name)
+
+	//
+	// Since we hide the special delete file from fuse we should not be called to open that.
+	// Same for the fuse hidden file, it's never created.
+	//
+	if isDeletedDcacheFile(rawPath) {
+		common.Assert(false, options.Name, rawPath)
+		return nil, syscall.EINVAL
+	}
+
+	if common.IsFuseHiddenFile(rawPath) {
+		common.Assert(false, options.Name, rawPath)
+		return nil, syscall.EINVAL
+	}
 
 	// todo: We should only support write if the file is only in Azure.
 	if options.Flags&os.O_WRONLY != 0 || options.Flags&os.O_RDWR != 0 {
@@ -866,10 +941,114 @@ func (dc *DistributedCache) CloseFile(options internal.CloseFileOptions) error {
 }
 
 func (dc *DistributedCache) DeleteFile(options internal.DeleteFileOptions) error {
-	return syscall.ENOTSUP
+	log.Debug("DistributedCache::DeleteFile: Delete file: %s", options.Name)
+
+	var dcacheErr, azureErr error
+
+	isAzurePath, isDcachePath, isDebugPath, rawPath := getFS(options.Name)
+
+	//
+	// We fool fuse into believing that we created the special hidden file (while what we created
+	// was our special ".dcache.deleting" file). Now the last open handle on the file has been closed
+	// and fuse wants to delete the hidden file it created, we continue the illusion and tell fuse
+	// that we deleted it :-)
+	//
+	if common.IsFuseHiddenFile(rawPath) {
+		return nil
+	}
+
+	//
+	// This is an internal file that we hide from fuse.
+	//
+	if isDeletedDcacheFile(rawPath) {
+		return syscall.ENOENT
+	}
+
+	if isDcachePath {
+		log.Debug("DistributedCache::DeleteFile: Delete for Dcache file: %s", rawPath)
+		err := fm.DeleteDcacheFile(rawPath)
+		if err != nil {
+			log.Err("DistributedCache::DeleteFile: Delete failed for Dcache file %s: %v", options.Name, err)
+			return err
+		}
+	} else if isAzurePath {
+		log.Debug("DistributedCache::DeleteFile: Delete Azure file: %s", rawPath)
+		options.Name = rawPath
+		err := dc.NextComponent().DeleteFile(options)
+		if err != nil {
+			log.Err("DistributedCache::DeleteFile: Delete failed for Azure file %s: %v", options.Name, err)
+			return err
+		}
+	} else if isDebugPath {
+		return syscall.EROFS
+	} else {
+		//
+		// Semantics for Unqualified Path, Delete from both Azure and Dcache. If file is present in only one qualified
+		// path, then delete only from that path. If the call has come here it already means that the file is present
+		// in atleast one qualified path as stat would be checked before doing deletion of a file.
+		//
+		log.Debug("DistributedCache::DeleteFile: Delete Dcache file for Unqualified Path: %s", options.Name)
+
+		dcacheErr = fm.DeleteDcacheFile(rawPath)
+		if dcacheErr != nil {
+			log.Err("DistributedCache::DeleteFile: Delete failed for Unqualified Path Dcache file %s: %v",
+				rawPath, dcacheErr)
+
+			//
+			// If the file is not present in dcache, we need to delete from Azure, else on any other error, bail
+			// out.
+			//
+			if dcacheErr != syscall.ENOENT {
+				return dcacheErr
+			}
+		}
+
+		options.Name = rawPath
+		log.Debug("DistributedCache::DeleteFile: Delete Azure file for Unqualified Path: %s", options.Name)
+
+		azureErr = dc.NextComponent().DeleteFile(options)
+		if azureErr != nil {
+			log.Err("DistributedCache::DeleteFile: Delete failed for Unqualified Path Azure file %s: %v",
+				options.Name, azureErr)
+
+			if azureErr != syscall.ENOENT {
+				return azureErr
+			}
+		}
+
+		//
+		// If only one of the errors is ENOENT, nil the other one.
+		//
+		if !(dcacheErr == syscall.ENOENT && azureErr == syscall.ENOENT) {
+			azureErr = nil
+			dcacheErr = nil
+		} else {
+			// Both cannot be ENOENT, why did fuse call us in the first place?
+			common.Assert(false, options.Name)
+		}
+	}
+
+	return errors.Join(dcacheErr, azureErr)
 }
 
 func (dc *DistributedCache) RenameFile(options internal.RenameFileOptions) error {
+	log.Debug("DistributedCache::RenameFile: %s -> %s", options.Src, options.Dst)
+
+	//
+	// The only rename that we support is the rename done by fuse to the special hidden file if an open file
+	// is deleted. In that case we should create our own special file, and not the fuse hidden file.
+	//
+	// TODO: Need to handle the case where user deletes a dcache file causing us to create the special
+	//		 deleted file, then user create a new file with the same name and before we could GC the previous
+	//		 deleted file, he deletes this new file.
+	//		 We will need to maintain multiple of these files using some seq number.
+	//
+	if common.IsFuseHiddenFile(options.Dst) {
+		return dc.DeleteFile(internal.DeleteFileOptions{
+			Name: options.Src,
+		})
+	}
+
 	return syscall.ENOTSUP
 }
 
