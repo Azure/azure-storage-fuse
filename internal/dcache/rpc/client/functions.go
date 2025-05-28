@@ -828,16 +828,18 @@ func Cleanup() error {
 func init() {
 	// Must be called only once.
 	common.Assert(len(myNodeId) == 0)
-	DefaultWorkDir := "$HOME/.blobfuse2"
+
 	// Check if the default work directory exists.
-	_, err := os.Stat(DefaultWorkDir)
+	_, err := os.Stat(common.DefaultWorkDir)
 	if os.IsNotExist(err) {
 		// Create the directory if it does not exist.
-		if err := os.MkdirAll(DefaultWorkDir, 0777); err != nil {
-			log.GetLoggerObj().Panicf("rpc_client::init: PANIC: failed to create default work directory at %s : %v", DefaultWorkDir, err)
+		// Init function is called before mount.go where this directory is created
+		// so we need to create it here.
+		if err := os.MkdirAll(common.DefaultWorkDir, 0777); err != nil {
+			log.GetLoggerObj().Panicf("rpc_client::init: PANIC: failed to create default work directory at %s : %v", common.DefaultWorkDir, err)
 		}
 	} else if err != nil {
-		log.GetLoggerObj().Panicf("rpc_client::init: PANIC: failed to stat default directory at %s with error %s", DefaultWorkDir, err)
+		log.GetLoggerObj().Panicf("rpc_client::init: PANIC: failed to stat default directory at %s with error %s", common.DefaultWorkDir, err)
 	}
 
 	myNodeId, err = common.GetNodeUUID()
