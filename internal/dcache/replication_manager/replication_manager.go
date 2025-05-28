@@ -367,6 +367,13 @@ retry:
 						return nil, err
 					}
 
+					// TODO: retry till the next epoch, till the clustermap is refreshed.
+					// Case: StartSync() RPC calls are successful, but before the state of the target RV
+					// is updated to "syncing" in clustermap, some other node calls WriteMV() with the outdated
+					// clustermap, which results in the component RVs rejecting the request with
+					// NeedToRefreshClusterMap error. Even after the clustermap is refreshed, it may get the same
+					// state of the target RV as "outofsync" as the clustermap update by the source (or lio) RV
+					// may not have completed yet, so the target RV may not be in "syncing" state.
 					err = cm.RefreshClusterMapSync()
 					if err != nil {
 						err = fmt.Errorf("RefreshClusterMapSync() failed, failing write %s",

@@ -1404,6 +1404,11 @@ refreshFromClustermapAndRetry:
 		return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
 	}
 
+	// TODO: see if this is needed -> store max mtime of chunk written by client write.
+	// Needed for start sync time optimization in the sync component RV workflow. ON basis of this time,
+	// we can decide chunks which need to be synced to the target RV. The chunks having mtime less than this,
+	// should be synced to the target RV.
+
 	// TODO: should we also consider the hash file size in the total chunk bytes
 	//       For accurate accounting we can, but we should not do an extra stat() call for the hash file
 	//       but instead use a hardcoded value which will be true for a given hash algo.
