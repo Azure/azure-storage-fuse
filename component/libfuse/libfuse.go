@@ -232,6 +232,11 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 		lf.negativeTimeout = defaultNegativeEntryExpiration
 	}
 
+	// Distributed Cache always runs in the directIO mode.
+	if common.IsDistributedCacheEnabled {
+		lf.directIO = true
+	}
+
 	if lf.directIO {
 		lf.negativeTimeout = 0
 		lf.attributeExpiration = 0
