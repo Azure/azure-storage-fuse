@@ -64,6 +64,16 @@ import (
    - To read any new setting from config file follow the Configure method default comments
 */
 
+// Components Flow Diagram For DistributedCache.
+
+// libfuse
+//   |
+//   +--> DistributedCache
+//   |       |
+//   |       +--> dcacheFS --> azStorage
+//   |       |
+//   |       +--> azureFS --> block_cache --> azStorage
+
 // Common structure for Component
 type DistributedCache struct {
 	internal.BaseComponent
@@ -127,6 +137,10 @@ func (dc *DistributedCache) SetName(name string) {
 
 func (dc *DistributedCache) SetNextComponent(nextComponent internal.Component) {
 	dc.BaseComponent.SetNextComponent(nextComponent)
+}
+
+func (dc *DistributedCache) Priority() internal.ComponentPriority {
+	return internal.EComponentPriority.LevelOne()
 }
 
 // Start : Pipeline calls this method to start the component functionality
