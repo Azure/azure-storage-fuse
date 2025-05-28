@@ -115,7 +115,7 @@ func (ns *NodeServer) Start() error {
 	log.Debug("NodeServer::Start: Starting NodeServer on address: %s", ns.address)
 
 	go func() {
-		err := ns.server.Serve()
+		err := ns.server.Serve() // this is a blocking call
 		if err != nil {
 			log.Err("NodeServer::Start: PANIC: failed to start server [%v]", err.Error())
 			log.GetLoggerObj().Panicf("PANIC: failed to start server [%v]", err.Error())
