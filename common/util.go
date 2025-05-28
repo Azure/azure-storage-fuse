@@ -606,7 +606,7 @@ func GetNodeUUID() (string, error) {
 	// Check if the default work directory exists.
 	_, err := os.Stat(DefaultWorkDir)
 	if os.IsNotExist(err) {
-		// Create the directory if it does not exist
+		// Create the directory if it does not exist.
 		if err := os.MkdirAll(DefaultWorkDir, 0777); err != nil {
 			return "", fmt.Errorf("failed to create default work directory at %s with error %s", DefaultWorkDir, err)
 		}
