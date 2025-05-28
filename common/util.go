@@ -615,13 +615,10 @@ func UpdatePipeline(pipeline []string, component string) []string {
 
 func GetNodeUUID() (string, error) {
 	uuidFilePath := filepath.Join(DefaultWorkDir, "blobfuse_node_uuid")
-	_, err := os.Stat(uuidFilePath)
+
+	// Read the UUID file.
+	data, err := os.ReadFile(uuidFilePath)
 	if err == nil {
-		// File exists, read its content
-		data, err := os.ReadFile(uuidFilePath)
-		if err != nil {
-			return "", fmt.Errorf("fail to read UUID File at :%s with error %s", uuidFilePath, err)
-		}
 		stringData := string(data)
 		isValidUUID := IsValidUUID(stringData)
 		if !isValidUUID {
@@ -629,16 +626,17 @@ func GetNodeUUID() (string, error) {
 		}
 		return stringData, nil
 	}
+
 	if os.IsNotExist(err) {
-		// File doesn't exist, generate a new UUID
+		// File doesn't exist, generate a new UUID.
 		newUuid := gouuid.New().String()
 		Assert(IsValidUUID(newUuid), fmt.Sprintf("Generated UUID %s is not valid", newUuid))
 		if err := os.WriteFile(uuidFilePath, []byte(newUuid), 0400); err != nil {
 			return "", err
 		}
-
 		return newUuid, nil
 	}
+
 	return "", fmt.Errorf("failed to read node UUID from file at %s with error %s", uuidFilePath, err)
 }
 

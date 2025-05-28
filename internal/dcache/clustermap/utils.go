@@ -35,7 +35,6 @@ package clustermap
 
 import (
 	"fmt"
-	"os"
 	"regexp"
 	"sort"
 
@@ -275,6 +274,7 @@ func IsValidMV(mv *dcache.MirroredVolume, expectedReplicasCount int) (bool, erro
 	return true, nil
 }
 
+// The existence and permissions of the cachedir are validated during configuration before the blobfuse2 daemon starts.
 func IsValidRV(rv *dcache.RawVolume) (bool, error) {
 	if !common.IsValidUUID(rv.NodeId) {
 		return false, fmt.Errorf("RawVolume: Invalid NodeId: %s: %+v", rv.NodeId, *rv)
@@ -306,17 +306,6 @@ func IsValidRV(rv *dcache.RawVolume) (bool, error) {
 	}
 
 	// TODO: Check for some minimum amount of total/free space.
-
-	stat, err := os.Stat(rv.LocalCachePath)
-	if os.IsNotExist(err) {
-		return false, fmt.Errorf("RawVolume: Non-existent LocalCachePath: %s: %+v",
-			rv.LocalCachePath, *rv)
-	}
-
-	if !stat.IsDir() {
-		return false, fmt.Errorf("RawVolume: LocalCachePath (%s) is not a directory: %+v",
-			rv.LocalCachePath, stat)
-	}
 
 	return true, nil
 }
