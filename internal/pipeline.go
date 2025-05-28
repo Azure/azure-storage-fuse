@@ -66,12 +66,16 @@ func NewPipeline(components []string, isParent bool) (*Pipeline, error) {
 	comps := make([]Component, 0)
 	lastPriority := ComponentPriority(1e9)
 
+	// distributed_cache cannot be the last component
+	common.Assert(components[len(components)-1] != "distributed_cache")
+
 	// Initialize block_cache when distributed_cache is enabled. block_cache will be used for fs operations that were
 	// not on Dcache.
 	for i := 0; i < len(components)-1; i++ {
 		if components[i] == "distributed_cache" && components[i+1] != "block_cache" {
 			// insert block_cache into components string if it is not present as its next element
 			components = append(components[:i+1], append([]string{"block_cache"}, components[i+1:]...)...)
+			break
 		}
 	}
 
