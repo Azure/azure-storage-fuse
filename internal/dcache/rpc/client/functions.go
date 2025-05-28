@@ -831,7 +831,7 @@ func init() {
 
 	// Init function is called before mount.go where this directory is created
 	// so we need to create it here.
-	if err := os.MkdirAll(common.DefaultWorkDir, 0777); !os.IsExist(err) {
+	if err := os.MkdirAll(common.DefaultWorkDir, 0777); err != nil && !os.IsExist(err) {
 		log.GetLoggerObj().Panicf("rpc_client::init: PANIC: failed to create default work directory at %s : %v", common.DefaultWorkDir, err)
 	}
 
