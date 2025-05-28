@@ -878,24 +878,22 @@ func (cmi *ClusterManager) updateStorageClusterMapWithMyRVs() error {
 
 		//
 		// Now we want to add our RVs to the clustermap RV list.
-		// If some other node is currently updating the clustermap,
-		// 	1. we need to wait and retry if updates are not stale.
-		// 	2. if clutermap updates are stale, we will override the clustermap ownership.
 		//
-		if clusterMap.State == dcache.StateChecking {
-			isOwnershipOverriden, err := cmi.overrideClusterMapIfStale(clusterMap, etag)
-			if err != nil {
-				return err
-			} else if !isOwnershipOverriden {
-				log.Info("ClusterManager::updateStorageClusterMapWithMyRVs: clustermap is being updated by node %s. Waiting a bit before retry",
-					clusterMap.LastUpdatedBy)
-				// We cannot be updating.
-				common.Assert(clusterMap.LastUpdatedBy != cmi.myNodeId)
-				// TODO: Add some backoff and randomness?
-				time.Sleep(10 * time.Millisecond)
-				continue
-			}
+		// If some other updates are ongoing over clustermap, we need to wait and retry.
+		//
+		isClusterMapUpdateBlocked, err := cmi.clusterMapBeingUpdatedByAnotherNode(clusterMap, etag)
+		if err != nil {
+			return err
+		} else if isClusterMapUpdateBlocked {
+			log.Info("ClusterManager::updateStorageClusterMapWithMyRVs: clustermap is being updated by node %s. Waiting a bit before retry",
+				clusterMap.LastUpdatedBy)
+			// We cannot be updating.
+			common.Assert(clusterMap.LastUpdatedBy != cmi.myNodeId)
+			// TODO: Add some backoff and randomness?
+			time.Sleep(10 * time.Millisecond)
+			continue
 		}
+
 		common.Assert(clusterMap.State == dcache.StateReady)
 
 		//
@@ -941,47 +939,59 @@ func (cmi *ClusterManager) updateStorageClusterMapWithMyRVs() error {
 
 const thresholdClusterMapEpochTime = 60
 
-// This method checks if the cluster map update is stuck due to a crashed node or any other means, and if so, safely resets the ownership to allow this node to proceed.
+// This method checks if the cluster map is currently locked in an update (StateChecking) by another node and handles stale or stuck updates.
 //
-// A cluster map update may get stuck in StateChecking if the node that started the update crashes or stuck.
-// This method determines the staleness by determining the last updated timestamp exceeds a configured threshold.
+// How it works:
+// - If the cluster map is not in StateChecking, no update is happening → returns false.
+// - If this node (myNodeId) is the one updating it (possibly from another thread) → returns true, do nothing or retry after sometime.
+// - If another node started the update but the update is still within the allowed time threshold → returns true, do nothing or retry after sometime.
+// - If another node started the update but it has exceeded the allowed time threshold → the update is considered stuck. In the stale/stuck case, this method:
+// 1. Logs a warning about the stale ownership.
+// 2. Cleanly ends the previous update using UpdateClusterMapStart and UpdateClusterMapEnd with the latest ETag.
+// 3. Resets the cluster map state to StateReady, so this node can safely take over updates.
 //
-// There are three possible recovery strategies:
-// 1. Perform the UpdateClusterMapStart and UpdateClusterMapEnd using the latest ETag.
-// 2. Forcefully take ownership by setting LastUpdatedBy to this node with existing state checking.
-// 3. Safely reset the cluster map state to StateReady, allowing a clean update to begin.
-//
-// This method uses the first (and most robust) approach: ending the previous update cleanly
-// so the cluster map can be safely updated by this node.
-func (cmi *ClusterManager) overrideClusterMapIfStale(clusterMap *dcache.ClusterMap, etag *string) (bool, error) {
+// Returns:
+// - (true, nil): an update is still ongoing (by this or another node).
+// - (false, nil): no active update, safe to proceed.
+// - (true, error): something failed while recovering from a stale update.
+func (cmi *ClusterManager) clusterMapBeingUpdatedByAnotherNode(clusterMap *dcache.ClusterMap, etag *string) (bool, error) {
+
+	if clusterMap.State != dcache.StateChecking {
+		// If the cluster map is not in StateChecking, it means it's not being updated by another node.
+		log.Debug("ClusterManager::clusterMapBeingUpdatedByAnotherNode: ClusterMap is not in StateChecking state.")
+		return false, nil
+	}
+
 	// Check if ownership is taken by this node only in another thread.
 	if clusterMap.LastUpdatedBy == cmi.myNodeId {
-		return false, nil
+		log.Debug("ClusterManager::clusterMapBeingUpdatedByAnotherNode: ClusterMap is getting updated by this node only in another thread.")
+		return true, nil
 	}
 
 	//  Check if the last updated timestamp exceeds a configured threshold.
 	staleThreshold := time.Duration(int(cmi.config.ClustermapEpoch)+thresholdClusterMapEpochTime) * time.Second
 	age := time.Since(time.Unix(clusterMap.LastUpdatedAt, 0))
 	if age < staleThreshold {
-		return false, nil
+		log.Debug("ClusterManager::clusterMapBeingUpdatedByAnotherNode: ClusterMap is getting updated by another node.")
+		return true, nil
 	}
 
-	log.Warn("ClusterManager::overrideClusterMapIfStale: Clustermap update has been stuck in StateChecking by node %s at %d (%s ago),"+
+	log.Warn("ClusterManager::clusterMapBeingUpdatedByAnotherNode: Clustermap update has been stuck in StateChecking by node %s at %d (%s ago),"+
 		" exceeding stale threshold %s. Overriding ownership by node %s",
 		clusterMap.LastUpdatedBy, clusterMap.LastUpdatedAt, age.Truncate(time.Second), staleThreshold, cmi.myNodeId)
 
 	err := cmi.startClusterMapUpdate(clusterMap, etag)
 	if err != nil {
-		return false, fmt.Errorf("ClusterManager::overrideClusterMapIfStale: startClusterMapUpdate() failed: %v", err)
+		return true, fmt.Errorf("ClusterManager::clusterMapBeingUpdatedByAnotherNode: startClusterMapUpdate() failed: %v", err)
 	}
 
 	err = cmi.endClusterMapUpdate(clusterMap)
 	if err != nil {
 		common.Assert(false, err)
-		return false, fmt.Errorf("ClusterManager::overrideClusterMapIfStale: endClusterMapUpdate() failed: %v", err)
+		return true, fmt.Errorf("ClusterManager::clusterMapBeingUpdatedByAnotherNode: endClusterMapUpdate() failed: %v", err)
 	}
-
-	return true, nil
+	common.Assert(clusterMap.State == dcache.StateReady)
+	return false, nil
 }
 
 func (cmi *ClusterManager) startClusterMapUpdate(clusterMap *dcache.ClusterMap, etag *string) error {
@@ -1163,33 +1173,31 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	// Are we the leader node? Leader gets to update the clustermap bypassing the staleness check.
 	leader := (clusterMap.LastUpdatedBy == cmi.myNodeId)
 
-	// stale for checking state can be different than the stale for ready state
-	// If some other node is currently updating the clustermap,
-	// 	1. we need to wait and retry if updates are not stale.
-	// 	2. if clutermap updates are stale, we will override the clustermap ownership.
 	//
-	if clusterMap.State == dcache.StateChecking {
-		isOwnershipOverriden, err := cmi.overrideClusterMapIfStale(clusterMap, etag)
-		if err != nil {
-			return err
-		} else if !isOwnershipOverriden {
-			log.Debug("ClusterManager::updateStorageClusterMapIfRequired:skipping, clustermap is being updated by (leader %s), current node (%s)",
-				clusterMap.LastUpdatedBy, cmi.myNodeId)
+	// stale for checking state can be different than the stale for ready state
+	//
+	// If some other updates are ongoing over clustermap, we need to cancel this update.
+	//
+	isClusterMapUpdateBlocked, err := cmi.clusterMapBeingUpdatedByAnotherNode(clusterMap, etag)
+	if err != nil {
+		return err
+	} else if isClusterMapUpdateBlocked {
+		log.Debug("ClusterManager::updateStorageClusterMapIfRequired:skipping, clustermap is being updated by (leader %s), current node (%s)",
+			clusterMap.LastUpdatedBy, cmi.myNodeId)
 
-			//
-			// Leader node should have updated the state to checking and it should not find the state to checking.
-			//
-			// TODO: This has been seen to fail when due to remote node being dow updateStorageClusterMapIfRequired()
-			//       took long time and the next iteration was called immediately. While it was running, some other
-			//       context(s) (updateComponentRVState()) were waiting to update the clusterMap, they immediately
-			//       started updating as soon as last iteration of updateStorageClusterMapIfRequired() completed, and
-			//       hence when the next iteration of updateStorageClusterMapIfRequired() started immediately, it
-			//       finds the clusterMap state as checking.
-			//       Still leaving the assert as it's useful to see if it occurrs in any other way.
-			//
-			common.Assert(!leader, "We don't expect leader to see the clustermap in checking state")
-			return nil
-		}
+		//
+		// Leader node should have updated the state to checking and it should not find the state to checking.
+		//
+		// TODO: This has been seen to fail when due to remote node being dow updateStorageClusterMapIfRequired()
+		//       took long time and the next iteration was called immediately. While it was running, some other
+		//       context(s) (updateComponentRVState()) were waiting to update the clusterMap, they immediately
+		//       started updating as soon as last iteration of updateStorageClusterMapIfRequired() completed, and
+		//       hence when the next iteration of updateStorageClusterMapIfRequired() started immediately, it
+		//       finds the clusterMap state as checking.
+		//       Still leaving the assert as it's useful to see if it occurrs in any other way.
+		//
+		common.Assert(!leader, "We don't expect leader to see the clustermap in checking state")
+		return nil
 	}
 
 	// Skip if we're neither leader nor the clustermap is stale
@@ -2536,22 +2544,18 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, rvName string, 
 		}
 
 		//
-		// If some other node is currently updating the clustermap,
-		// 	1. we need to wait and retry if updates are not stale.
-		// 	2. if clutermap updates are stale, we will override the clustermap ownership.
+		// If some other updates are ongoing over clustermap, we need to wait and retry.
 		//
-		if clusterMap.State == dcache.StateChecking {
-			isOwnershipOverriden, err := cmi.overrideClusterMapIfStale(clusterMap, etag)
-			if err != nil {
-				return err
-			} else if !isOwnershipOverriden {
-				log.Info("ClusterManager::updateComponentRVState: Clustermap being updated by node %s, waiting a bit before retry",
-					clusterMap.LastUpdatedBy)
+		isClusterMapUpdateBlocked, err := cmi.clusterMapBeingUpdatedByAnotherNode(clusterMap, etag)
+		if err != nil {
+			return err
+		} else if isClusterMapUpdateBlocked {
+			log.Info("ClusterManager::updateComponentRVState: Clustermap being updated by node %s, waiting a bit before retry",
+				clusterMap.LastUpdatedBy)
 
-				// TODO: Add some backoff and randomness?
-				time.Sleep(10 * time.Millisecond)
-				continue
-			}
+			// TODO: Add some backoff and randomness?
+			time.Sleep(10 * time.Millisecond)
+			continue
 		}
 
 		// Requested MV must be valid.
