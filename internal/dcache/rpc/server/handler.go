@@ -1697,7 +1697,7 @@ func (h *ChunkServiceHandler) UpdateMV(ctx context.Context, req *models.UpdateMV
 		//
 		mvInfo := rvInfo.getMVInfo(req.MV)
 		if mvInfo == nil {
-			errStr := fmt.Sprintf("%s is not part of %s", req.RVName, req.MV)
+			errStr := fmt.Sprintf("%s/%s not hosted by this node", req.RVName, req.MV)
 			log.Err("ChunkServiceHandler::UpdateMV: %s", errStr)
 			common.Assert(false, errStr)
 			return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
@@ -1768,7 +1768,7 @@ func (h *ChunkServiceHandler) LeaveMV(ctx context.Context, req *models.LeaveMVRe
 	//
 	mvInfo := rvInfo.getMVInfo(req.MV)
 	if mvInfo == nil {
-		errStr := fmt.Sprintf("%s is not part of %s", req.RVName, req.MV)
+		errStr := fmt.Sprintf("%s/%s not hosted by this node", req.RVName, req.MV)
 		log.Err("ChunkServiceHandler::LeaveMV: %s", errStr)
 		common.Assert(false, errStr)
 		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
@@ -1812,8 +1812,7 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 		!cm.IsValidRVName(req.TargetRVName) ||
 		req.SourceRVName == req.TargetRVName ||
 		len(req.ComponentRV) == 0 {
-		errStr := fmt.Sprintf("SenderNodeID (%s), MV (%s), SourceRV (%s), TargetRV (%s) or ComponentRVs (%d) invalid",
-			req.SenderNodeID, req.MV, req.SourceRVName, req.TargetRVName, len(req.ComponentRV))
+		errStr := fmt.Sprintf("Invalid StartSync request: %s", rpc.StartSyncRequestToString(req))
 		log.Err("ChunkServiceHandler::StartSync: %s", errStr)
 		common.Assert(false, errStr)
 		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
@@ -1854,7 +1853,7 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 	//
 	mvInfo := rvInfo.getMVInfo(req.MV)
 	if mvInfo == nil {
-		errStr := fmt.Sprintf("%s is not part of %s", rvInfo.rvName, req.MV)
+		errStr := fmt.Sprintf("%s/%s not hosted by this node", rvInfo.rvName, req.MV)
 		log.Err("ChunkServiceHandler::StartSync: %s", errStr)
 		common.Assert(false, errStr)
 		return nil, rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
@@ -1931,8 +1930,7 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 		!cm.IsValidRVName(req.TargetRVName) ||
 		req.SourceRVName == req.TargetRVName ||
 		len(req.ComponentRV) == 0 {
-		errStr := fmt.Sprintf("SenderNodeID (%s), SyncID (%s) MV (%s), SourceRV (%s), TargetRV (%s) or ComponentRVs (%d) invalid",
-			req.SenderNodeID, req.SyncID, req.MV, req.SourceRVName, req.TargetRVName, len(req.ComponentRV))
+		errStr := fmt.Sprintf("Invalid EndSync request: %s", rpc.EndSyncRequestToString(req))
 		log.Err("ChunkServiceHandler::EndSync: %s", errStr)
 		common.Assert(false, errStr)
 		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
@@ -1972,7 +1970,7 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 	//
 	mvInfo := rvInfo.getMVInfo(req.MV)
 	if mvInfo == nil {
-		errStr := fmt.Sprintf("%s is not part of %s", rvInfo.rvName, req.MV)
+		errStr := fmt.Sprintf("%s/%s not hosted by this node", rvInfo.rvName, req.MV)
 		log.Err("ChunkServiceHandler::EndSync: %s", errStr)
 		common.Assert(false, errStr)
 		return nil, rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
@@ -2062,7 +2060,7 @@ func (h *ChunkServiceHandler) GetMVSize(ctx context.Context, req *models.GetMVSi
 	log.Debug("ChunkServiceHandler::GetMVSize: Received GetMVSize request: %v", rpc.GetMVSizeRequestToString(req))
 
 	if !common.IsValidUUID(req.SenderNodeID) || !cm.IsValidMVName(req.MV) || !cm.IsValidRVName(req.RVName) {
-		errStr := fmt.Sprintf("Invalid SenderNodeID, MV or RV: %v", rpc.GetMVSizeRequestToString(req))
+		errStr := fmt.Sprintf("Invalid GetMVSize request: %v", rpc.GetMVSizeRequestToString(req))
 		log.Err("ChunkServiceHandler::GetMVSize: %s", errStr)
 		common.Assert(false, errStr)
 		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
@@ -2084,7 +2082,7 @@ func (h *ChunkServiceHandler) GetMVSize(ctx context.Context, req *models.GetMVSi
 	//
 	mvInfo := rvInfo.getMVInfo(req.MV)
 	if mvInfo == nil {
-		errStr := fmt.Sprintf("%s is not part of %s", rvInfo.rvName, req.MV)
+		errStr := fmt.Sprintf("%s/%s not hosted by this node", rvInfo.rvName, req.MV)
 		log.Err("ChunkServiceHandler::GetMVSize: %s", errStr)
 		common.Assert(false, errStr)
 		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
