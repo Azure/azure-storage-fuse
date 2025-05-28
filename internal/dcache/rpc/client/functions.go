@@ -835,7 +835,8 @@ func init() {
 		log.GetLoggerObj().Panicf("rpc_client::init: PANIC: failed to create default work directory at %s : %v", common.DefaultWorkDir, err)
 	}
 
-	myNodeId, err := common.GetNodeUUID()
+	var err error
+	myNodeId, err = common.GetNodeUUID()
 	if err != nil {
 		// Cannot proceed w/o our node id.
 		log.GetLoggerObj().Panicf("rpc_client::init: PANIC: failed to get my node id [%v]", err)
