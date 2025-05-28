@@ -288,7 +288,7 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 			return fmt.Errorf("config error in %s: [cache-dirs %s is not a directory]", distributedCache.Name(), dir)
 		}
 
-		// Test write permission by creating a temporary file
+		// Test write permission by creating a temporary file.
 		testFile := filepath.Join(dir, fmt.Sprintf(".perm_test_%d_%d", time.Now().UnixNano(), rand.Uint64()))
 		log.Info("DistributedCache::Configure : Testing write permission in %s", dir)
 		f, err := os.Create(testFile)
@@ -298,14 +298,14 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 		}
 		defer f.Close()
 
-		// Clean up test file
+		// Clean up test file.
 		log.Info("DistributedCache::Configure : Cleaning up temp file %s created", testFile)
 		if err := os.Remove(testFile); err != nil {
 			log.Err("DistributedCache::Configure : cleanup of temp file %s failed: %v", testFile, err)
 			return fmt.Errorf("config error in %s: cache directory %s cleanup of temp file %s failed: %v", distributedCache.Name(), dir, testFile, err)
 		}
 
-		// Test read permission by opening the directory
+		// Test read permission by opening the directory.
 		log.Info("DistributedCache::Configure : Testing read permission in %s", dir)
 		dirFile, err := os.Open(dir)
 		if err != nil {
