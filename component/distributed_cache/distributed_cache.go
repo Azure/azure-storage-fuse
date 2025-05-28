@@ -38,10 +38,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
@@ -207,7 +209,8 @@ func (dc *DistributedCache) startClusterManager() string {
 	if err != nil {
 		return fmt.Sprintf("DistributedCache::Start error [Failed to create RV List for cluster manager : %v]", err)
 	}
-	if clustermanager.Start(dCacheConfig, rvList) != nil {
+	err = clustermanager.Start(dCacheConfig, rvList)
+	if err != nil {
 		return fmt.Sprintf("DistributedCache::Start error [Failed to start cluster manager : %v]", err)
 	}
 	return ""
@@ -279,6 +282,51 @@ func (distributedCache *DistributedCache) Configure(_ bool) error {
 	}
 	if len(distributedCache.cfg.CacheDirs) == 0 {
 		return fmt.Errorf("config error in %s: [cache-dirs not set]", distributedCache.Name())
+	}
+
+	// Check if the cache directories exist.
+	for _, dir := range distributedCache.cfg.CacheDirs {
+		log.Info("DistributedCache::Configure : Checking if cache dir exists: %s", dir)
+		info, err := os.Stat(dir)
+		if os.IsNotExist(err) {
+			log.Err("DistributedCache::Configure : cache-dirs %s does not exist", dir)
+			return fmt.Errorf("config error in %s: [cache-dirs %s does not exist]", distributedCache.Name(), dir)
+		} else if err != nil {
+			log.Err("DistributedCache::Configure : error accessing cache-dirs %s: %v", dir, err)
+			return fmt.Errorf("config error in %s: [error accessing cache-dirs %s: %v]", distributedCache.Name(), dir, err)
+		}
+
+		// Check if it is a directory.
+		if !info.IsDir() {
+			log.Err("DistributedCache::Configure : cache-dirs %s is not a directory", dir)
+			return fmt.Errorf("config error in %s: [cache-dirs %s is not a directory]", distributedCache.Name(), dir)
+		}
+
+		// Test write permission by creating a temporary file.
+		testFile := filepath.Join(dir, fmt.Sprintf(".perm_test_%d_%d", time.Now().UnixNano(), rand.Uint64()))
+		log.Info("DistributedCache::Configure : Testing write permission in %s", dir)
+		f, err := os.Create(testFile)
+		if err != nil {
+			log.Err("DistributedCache::Configure : cache directory %s is not writable: %v", dir, err)
+			return fmt.Errorf("config error in %s: cache directory %s is not writable: %v", distributedCache.Name(), dir, err)
+		}
+		defer f.Close()
+
+		// Clean up test file.
+		log.Info("DistributedCache::Configure : Cleaning up temp file %s created", testFile)
+		if err := os.Remove(testFile); err != nil {
+			log.Err("DistributedCache::Configure : cleanup of temp file %s failed: %v", testFile, err)
+			return fmt.Errorf("config error in %s: cache directory %s cleanup of temp file %s failed: %v", distributedCache.Name(), dir, testFile, err)
+		}
+
+		// Test read permission by opening the directory.
+		log.Info("DistributedCache::Configure : Testing read permission in %s", dir)
+		dirFile, err := os.Open(dir)
+		if err != nil {
+			log.Err("DistributedCache::Configure : cache directory %s is not readable: %v", dir, err)
+			return fmt.Errorf("config error in %s: cache directory %s is not readable: %v", distributedCache.Name(), dir, err)
+		}
+		defer dirFile.Close()
 	}
 
 	if !config.IsSet(compName + ".replicas") {

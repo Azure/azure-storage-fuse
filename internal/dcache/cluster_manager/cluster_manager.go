@@ -87,6 +87,7 @@ type ClusterManager struct {
 
 // Error return from here would cause clustermanager startup to fail which will prevent this node from
 // joining the cluster.
+// The caller has checked the validity(their existence and correct rw permissions) of the localCachePath directories corresponding to the RVs.
 func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache.RawVolume) error {
 
 	valid, err := cm.IsValidDcacheConfig(dCacheConfig)
