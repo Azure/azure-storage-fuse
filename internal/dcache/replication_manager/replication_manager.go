@@ -615,7 +615,7 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 	// The chunks written to the MV after this point will be written to the target RV as well,
 	// since the target RV is now in syncing state.
 	//
-	syncStartTime := time.Now().UnixMicro()
+	syncStartTime := time.Now().UnixMicro() + NTPClockSkewMargin
 
 	//
 	// Update the state of target RV from outofsync to syncing in local component RVs list.
@@ -849,13 +849,13 @@ func copyOutOfSyncChunks(job *syncJob) error {
 		if info.ModTime().UnixMicro() > job.syncStartTime {
 			// This chunk is created after the sync start time, so it will be written to both source and target
 			// RVs by the client PutChunk() RPC calls, so we can skip it here.
-			log.Debug("ReplicationManager::copyOutOfSyncChunks: Skipping chunk %s/%s, created after sync start time %d",
-				sourceMVPath, entry.Name(), job.syncStartTime)
+			log.Debug("ReplicationManager::copyOutOfSyncChunks: Skipping chunk %s/%s, Mtime (%d) > syncStartTime (%d)",
+				sourceMVPath, entry.Name(), info.ModTime().UnixMicro(), job.syncStartTime)
 			continue
 		}
 
-		log.Debug("ReplicationManager::copyOutOfSyncChunks: Copying chunk %s/%s, created before sync start time %d",
-			sourceMVPath, entry.Name(), job.syncStartTime)
+		log.Debug("ReplicationManager::copyOutOfSyncChunks: Copying chunk %s/%s, Mtime (%d) <= syncStartTime (%d)",
+			sourceMVPath, entry.Name(), info.ModTime().UnixMicro(), job.syncStartTime)
 
 		//
 		// chunks are stored in MV as,
