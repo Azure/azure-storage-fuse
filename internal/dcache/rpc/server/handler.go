@@ -1366,9 +1366,30 @@ refreshFromClustermapAndRetry:
 	// Chunk file must not be present.
 	_, err = os.Stat(chunkPath)
 	if err == nil {
-		errStr := fmt.Sprintf("Chunk file %s already exists", chunkPath)
-		log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
-		return nil, rpc.NewResponseError(models.ErrorCode_ChunkAlreadyExists, errStr)
+		if req.SyncID != "" {
+			// In case of sync PutChunk calls, we can get sync write for chunks already present in
+			// the target RV because of the NTPClockSkewMargin added to the sync write time. These
+			// chunks are written by the client write PutChunk calls to the target RV.
+			// So, ignore this and return success.
+			log.Debug("ChunkServiceHandler::PutChunk: Chunk file %s already exists, ignoring sync write(%s)",
+				chunkPath, req.SyncID)
+
+			availableSpace, err := rvInfo.getAvailableSpace()
+			if err != nil {
+				log.Err("ChunkServiceHandler::PutChunk: Failed to get available disk space [%v]", err)
+			}
+
+			return &models.PutChunkResponse{
+				TimeTaken:      time.Since(startTime).Microseconds(),
+				AvailableSpace: availableSpace,
+				ComponentRV:    mvInfo.getComponentRVs(),
+			}, nil
+
+		} else {
+			errStr := fmt.Sprintf("Chunk file %s already exists", chunkPath)
+			log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
+			return nil, rpc.NewResponseError(models.ErrorCode_ChunkAlreadyExists, errStr)
+		}
 	}
 
 	// Write to .tmp file first and rename it to the final file.
