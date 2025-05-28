@@ -602,7 +602,20 @@ func UpdatePipeline(pipeline []string, component string) []string {
 
 func GetNodeUUID() (string, error) {
 	uuidFilePath := filepath.Join(DefaultWorkDir, "blobfuse_node_uuid")
-	_, err := os.Stat(uuidFilePath)
+
+	// Check if the default work directory exists.
+	_, err := os.Stat(DefaultWorkDir)
+	if os.IsNotExist(err) {
+		// Create the directory if it does not exist
+		if err := os.MkdirAll(DefaultWorkDir, 0777); err != nil {
+			return "", fmt.Errorf("failed to create default work directory at %s with error %s", DefaultWorkDir, err)
+		}
+	} else if err != nil {
+		return "", fmt.Errorf("failed to stat default directory at %s with error %s", DefaultWorkDir, err)
+	}
+
+	// Check if the UUID file exists.
+	_, err = os.Stat(uuidFilePath)
 	if err == nil {
 		// File exists, read its content
 		data, err := os.ReadFile(uuidFilePath)
@@ -623,7 +636,6 @@ func GetNodeUUID() (string, error) {
 		if err := os.WriteFile(uuidFilePath, []byte(newUuid), 0400); err != nil {
 			return "", err
 		}
-
 		return newUuid, nil
 	}
 	return "", fmt.Errorf("failed to read node UUID from file at %s with error %s", uuidFilePath, err)
