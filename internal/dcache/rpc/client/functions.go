@@ -36,6 +36,7 @@ package rpc_client
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -827,8 +828,18 @@ func Cleanup() error {
 func init() {
 	// Must be called only once.
 	common.Assert(len(myNodeId) == 0)
+	DefaultWorkDir := "$HOME/.blobfuse2"
+	// Check if the default work directory exists.
+	_, err := os.Stat(DefaultWorkDir)
+	if os.IsNotExist(err) {
+		// Create the directory if it does not exist.
+		if err := os.MkdirAll(DefaultWorkDir, 0777); err != nil {
+			log.GetLoggerObj().Panicf("rpc_client::init: PANIC: failed to create default work directory at %s : %v", DefaultWorkDir, err)
+		}
+	} else if err != nil {
+		log.GetLoggerObj().Panicf("rpc_client::init: PANIC: failed to stat default directory at %s with error %s", DefaultWorkDir, err)
+	}
 
-	var err error
 	myNodeId, err = common.GetNodeUUID()
 	if err != nil {
 		// Cannot proceed w/o our node id.
