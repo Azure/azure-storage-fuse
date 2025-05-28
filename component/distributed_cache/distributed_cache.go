@@ -193,7 +193,8 @@ func (dc *DistributedCache) startClusterManager() string {
 	if err != nil {
 		return fmt.Sprintf("DistributedCache::Start error [Failed to create RV List for cluster manager : %v]", err)
 	}
-	if clustermanager.Start(dCacheConfig, rvList) != nil {
+	err = clustermanager.Start(dCacheConfig, rvList)
+	if err != nil {
 		return fmt.Sprintf("DistributedCache::Start error [Failed to start cluster manager : %v]", err)
 	}
 	return ""
