@@ -829,20 +829,13 @@ func init() {
 	// Must be called only once.
 	common.Assert(len(myNodeId) == 0)
 
-	// Check if the default work directory exists.
-	_, err := os.Stat(common.DefaultWorkDir)
-	if os.IsNotExist(err) {
-		// Create the directory if it does not exist.
-		// Init function is called before mount.go where this directory is created
-		// so we need to create it here.
-		if err := os.MkdirAll(common.DefaultWorkDir, 0777); err != nil {
-			log.GetLoggerObj().Panicf("rpc_client::init: PANIC: failed to create default work directory at %s : %v", common.DefaultWorkDir, err)
-		}
-	} else if err != nil {
-		log.GetLoggerObj().Panicf("rpc_client::init: PANIC: failed to stat default directory at %s with error %s", common.DefaultWorkDir, err)
+	// Init function is called before mount.go where this directory is created
+	// so we need to create it here.
+	if err := os.MkdirAll(common.DefaultWorkDir, 0777); !os.IsExist(err) {
+		log.GetLoggerObj().Panicf("rpc_client::init: PANIC: failed to create default work directory at %s : %v", common.DefaultWorkDir, err)
 	}
 
-	myNodeId, err = common.GetNodeUUID()
+	myNodeId, err := common.GetNodeUUID()
 	if err != nil {
 		// Cannot proceed w/o our node id.
 		log.GetLoggerObj().Panicf("rpc_client::init: PANIC: failed to get my node id [%v]", err)
