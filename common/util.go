@@ -61,6 +61,7 @@ import (
 
 var RootMount bool
 var ForegroundMount bool
+var IsDistributedCacheEnabled bool
 var IsStream bool
 
 // IsDirectoryMounted is a utility function that returns true if the directory is already mounted using fuse
@@ -555,20 +556,32 @@ func ComponentInPipeline(pipeline []string, component string) bool {
 }
 
 func ValidatePipeline(pipeline []string) error {
+
+	isBlockCachePresent := ComponentInPipeline(pipeline, "block_cache")
+	isFileCachePresent := ComponentInPipeline(pipeline, "file_cache")
+	isXloadPresent := ComponentInPipeline(pipeline, "xload")
+	isDCachePresent := ComponentInPipeline(pipeline, "distributed_cache")
+
 	// file-cache, block-cache and xload are mutually exclusive
-	if ComponentInPipeline(pipeline, "file_cache") &&
-		ComponentInPipeline(pipeline, "block_cache") {
+	if isFileCachePresent && isBlockCachePresent {
 		return fmt.Errorf("mount: file-cache and block-cache cannot be used together")
 	}
 
-	if ComponentInPipeline(pipeline, "file_cache") &&
-		ComponentInPipeline(pipeline, "xload") {
+	if isFileCachePresent && isXloadPresent {
 		return fmt.Errorf("mount: file-cache and xload cannot be used together")
 	}
 
-	if ComponentInPipeline(pipeline, "block_cache") &&
-		ComponentInPipeline(pipeline, "xload") {
+	if isBlockCachePresent && isXloadPresent {
 		return fmt.Errorf("mount: block-cache and xload cannot be used together")
+	}
+
+	// If distributed_cache is present then don't allow file_cache/xload.
+	if isDCachePresent && isFileCachePresent {
+		return fmt.Errorf("mount: distributed-cache and file-cache cannot be used together")
+	}
+
+	if isDCachePresent && isXloadPresent {
+		return fmt.Errorf("mount: distributed_cache and xload cannot be used together")
 	}
 
 	return nil
@@ -602,13 +615,10 @@ func UpdatePipeline(pipeline []string, component string) []string {
 
 func GetNodeUUID() (string, error) {
 	uuidFilePath := filepath.Join(DefaultWorkDir, "blobfuse_node_uuid")
-	_, err := os.Stat(uuidFilePath)
+
+	// Read the UUID file.
+	data, err := os.ReadFile(uuidFilePath)
 	if err == nil {
-		// File exists, read its content
-		data, err := os.ReadFile(uuidFilePath)
-		if err != nil {
-			return "", fmt.Errorf("fail to read UUID File at :%s with error %s", uuidFilePath, err)
-		}
 		stringData := string(data)
 		isValidUUID := IsValidUUID(stringData)
 		if !isValidUUID {
@@ -616,16 +626,17 @@ func GetNodeUUID() (string, error) {
 		}
 		return stringData, nil
 	}
+
 	if os.IsNotExist(err) {
-		// File doesn't exist, generate a new UUID
+		// File doesn't exist, generate a new UUID.
 		newUuid := gouuid.New().String()
 		Assert(IsValidUUID(newUuid), fmt.Sprintf("Generated UUID %s is not valid", newUuid))
 		if err := os.WriteFile(uuidFilePath, []byte(newUuid), 0400); err != nil {
 			return "", err
 		}
-
 		return newUuid, nil
 	}
+
 	return "", fmt.Errorf("failed to read node UUID from file at %s with error %s", uuidFilePath, err)
 }
 
@@ -675,4 +686,17 @@ func IsValidBlkDevice(device string) error {
 		return fmt.Errorf("not a block device: %s having mode bits 0%4o", device, mode)
 	}
 	return nil
+}
+
+// If a file has open handle(s) at the time when unlink() is called to delete the file, fuse renames the file to
+// a special name of the form .fuse_hiddenXXX. This enables fuse to provide POSIX semantics of allowing file to be
+// accessed through existing open fds after the file is deleted. This only provides protection against processes
+// deleting the file on the same node where they were opened. For distributed cache this is not sufficient as we
+// want this protection across nodes (process having a file open and the process deleting it running on two
+// different nodes).
+// We have our own renaming scheme which works across nodes, so we don't want to depend on fuse's renaming scheme.
+// This function helps us check if a file was renamed like this by fuse, so that we can do the necessary things.
+func IsFuseHiddenFile(filePath string) bool {
+	fileName := filepath.Base(filePath)
+	return strings.HasPrefix(fileName, ".fuse_hidden")
 }

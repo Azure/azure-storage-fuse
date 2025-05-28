@@ -109,6 +109,10 @@ func (sci *StorageCallbackImpl) CreateDirInStorage(options internal.CreateDirOpt
 	return sci.storage.CreateDir(options)
 }
 
+func (sci *StorageCallbackImpl) RenameFileInStorage(options internal.RenameFileOptions) error {
+	return sci.storage.RenameFile(options)
+}
+
 // Factory function to create a new instance of StorageCallbacks
 func initStorageCallback(nextComp internal.Component, azstorage internal.Component) dcache.StorageCallbacks {
 

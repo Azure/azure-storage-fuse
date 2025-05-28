@@ -171,7 +171,7 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 // Does all init process for opening the file.
 func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 	// Fetch file metadata from metadata store.
-	fileMetadataBytes, fileSize, err := mm.GetFile(fileName)
+	fileMetadataBytes, fileSize, fileState, err := mm.GetFile(fileName)
 	if err != nil {
 		//todo : See if we can have error other that ENOENT here.
 		return nil, err
@@ -186,15 +186,15 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 		return nil, err
 	}
 
+	fileMetadata.State = fileState
+
 	//
 	// Filesize can be following under various file states:
 	// - When file is being written, it must be -1.
 	// - When file is ready, it must be >= 0.
-	// - A file can be deleted from ready or writing state, so in deleting state fileSize can be anything.
 	//
 	common.Assert((fileMetadata.State == dcache.Writing && fileSize == -1) ||
-		(fileMetadata.State == dcache.Ready && fileSize >= 0) ||
-		(fileMetadata.State == dcache.Deleting),
+		(fileMetadata.State == dcache.Ready && fileSize >= 0),
 		fmt.Sprintf("file: %s, file metadata: %+v, fileSize: %d", fileName, fileMetadata, fileSize))
 
 	// Return ENOENT if the file is not in ready state.
@@ -211,6 +211,19 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 	return &DcacheFile{
 		FileMetadata: &fileMetadata,
 	}, nil
+}
+
+func DeleteDcacheFile(fileName string) error {
+	log.Debug("DistributedCache[FM]::DeleteDcacheFile : file: %s", fileName)
+
+	err := mm.RenameFileToDeleting(fileName)
+	if err != nil {
+		return err
+	}
+
+	// TODO: pass this path to GC to later evict this file from dcache.
+
+	return nil
 }
 
 // Creates the chunk and allocates the chunk buf

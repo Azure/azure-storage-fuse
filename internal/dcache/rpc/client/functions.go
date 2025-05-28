@@ -36,6 +36,7 @@ package rpc_client
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -956,6 +957,12 @@ func Cleanup() error {
 func init() {
 	// Must be called only once.
 	common.Assert(len(myNodeId) == 0)
+
+	// Init function is called before mount.go where this directory is created
+	// so we need to create it here.
+	if err := os.MkdirAll(common.DefaultWorkDir, 0777); err != nil && !os.IsExist(err) {
+		log.GetLoggerObj().Panicf("rpc_client::init: PANIC: failed to create default work directory at %s : %v", common.DefaultWorkDir, err)
+	}
 
 	var err error
 	myNodeId, err = common.GetNodeUUID()

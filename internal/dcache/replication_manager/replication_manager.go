@@ -60,6 +60,9 @@ type replicationMgr struct {
 	// This is used to stop the thread doing the periodic resync of degraded MVs.
 	done chan bool
 
+	// Wait group to wait for the goroutines spawned, before stopping the replication manager.
+	wg sync.WaitGroup
+
 	// Set of currently running sync jobs, indexed by target replica ("rvX/mvY") and the value
 	// stored is the source replica in "rvX/mvY" format.
 	// Note that there can only be a single sync job for a given target replica.
@@ -81,6 +84,8 @@ func Start() error {
 		done:   make(chan bool),
 	}
 
+	rm.wg.Add(1)
+
 	// run the periodic resync of degraded MVs in a separate goroutine
 	go periodicResyncMVs()
 
@@ -96,6 +101,7 @@ func Stop() {
 
 	rm.ticker.Stop()
 	rm.done <- true
+	rm.wg.Wait()
 }
 
 func ReadMV(req *ReadMvRequest) (*ReadMvResponse, error) {
@@ -407,10 +413,13 @@ retry:
 }
 
 func periodicResyncMVs() {
+	defer rm.wg.Done()
+
 	for {
 		select {
 		case <-rm.done:
 			log.Info("ReplicationManager::periodicResyncMVs: stopping periodic resync of degraded MVs")
+			return
 		case <-rm.ticker.C:
 			log.Debug("ReplicationManager::periodicResyncMVs: Resync of degraded MVs triggered")
 			resyncDegradedMVs()
@@ -532,7 +541,13 @@ func syncMV(mvName string, mvInfo dcache.MirroredVolume) {
 		// Store it in the map to avoid multiple sync jobs for the same target.
 		rm.runningJobs.Store(tgtReplica, srcReplica)
 
+		// Increment the wait group for the goroutine that will run the syncComponentRV() function.
+		rm.wg.Add(1)
+
 		go func() {
+			// Decrement the wait group when the syncComponentRV() function completes.
+			defer rm.wg.Done()
+
 			// Remove from the map, once the syncjob completes (success or failure).
 			defer rm.runningJobs.Delete(tgtReplica)
 
