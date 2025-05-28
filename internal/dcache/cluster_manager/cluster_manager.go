@@ -213,6 +213,7 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 			select {
 			case <-cmi.hbTickerDone:
 				log.Info("ClusterManager::start: Scheduled task \"Punch Heartbeat\" stopped")
+				return
 			case <-cmi.hbTicker.C:
 				log.Debug("ClusterManager::start: Scheduled task \"Punch Heartbeat\" triggered")
 
@@ -262,6 +263,7 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 			select {
 			case <-cmi.clusterMapTickerDone:
 				log.Info("ClusterManager::start: Scheduled task \"Update ClusterMap\" stopped")
+				return
 			case <-cmi.clusterMapticker.C:
 				log.Debug("ClusterManager::start: Scheduled task \"Update ClusterMap\" triggered")
 				err = cmi.updateStorageClusterMapIfRequired()

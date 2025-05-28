@@ -420,6 +420,7 @@ func periodicResyncMVs() {
 		select {
 		case <-rm.done:
 			log.Info("ReplicationManager::periodicResyncMVs: stopping periodic resync of degraded MVs")
+			return
 		case <-rm.ticker.C:
 			log.Debug("ReplicationManager::periodicResyncMVs: Resync of degraded MVs triggered")
 			resyncDegradedMVs()
