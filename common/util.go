@@ -603,26 +603,25 @@ func UpdatePipeline(pipeline []string, component string) []string {
 func GetNodeUUID() (string, error) {
 	uuidFilePath := filepath.Join(DefaultWorkDir, "blobfuse_node_uuid")
 
-	// Read the UUID file
+	// Read the UUID file.
 	data, err := os.ReadFile(uuidFilePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			// File doesn't exist, generate a new UUID
-			newUuid := gouuid.New().String()
-			Assert(IsValidUUID(newUuid), fmt.Sprintf("Generated UUID %s is not valid", newUuid))
-			if err := os.WriteFile(uuidFilePath, []byte(newUuid), 0400); err != nil {
-				return "", err
-			}
-			return newUuid, nil
-		}
-		return "", fmt.Errorf("fail to read UUID File at :%s with error %s", uuidFilePath, err)
-	} else {
+	if err == nil {
 		stringData := string(data)
 		isValidUUID := IsValidUUID(stringData)
 		if !isValidUUID {
 			return "", fmt.Errorf("not a valid UUID in UUID File at :%s UUID - %s", uuidFilePath, string(data))
 		}
 		return stringData, nil
+	}
+
+	if os.IsNotExist(err) {
+		// File doesn't exist, generate a new UUID.
+		newUuid := gouuid.New().String()
+		Assert(IsValidUUID(newUuid), fmt.Sprintf("Generated UUID %s is not valid", newUuid))
+		if err := os.WriteFile(uuidFilePath, []byte(newUuid), 0400); err != nil {
+			return "", err
+		}
+		return newUuid, nil
 	}
 
 	return "", fmt.Errorf("failed to read node UUID from file at %s with error %s", uuidFilePath, err)
