@@ -247,7 +247,7 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 				log.Err("ClusterManager::start: updateStorageClusterMapIfRequired failed: %v", err)
 			}
 
-			_, _, err = cmi.fetchAndUpdateLocalClusterMap(false /* sync */)
+			_, _, err = cmi.fetchAndUpdateLocalClusterMap()
 			if err == nil {
 				consecutiveFailures = 0
 			} else {
@@ -274,25 +274,20 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 
 // Fetch the global clustermap from metadata store, save a local copy and let clustermap package know about
 // the update so that it can then refresh its in-memory copy used for responding to the queries on clustermap.
-// 'sync' parameter decides if the update to the clustermap package is done synchronously. This is required when
-// called from ensureInitialClusterMap() (and some other places) as we want to make sure that before
-// ensureInitialClusterMap() completes the local copy of clustermap is updated in clustermap package, as callers
-// start querying clustermap rightaway.
 //
 // If it's able to successfully fetch the global clustermap, it returns a pointer to the unmarshalled ClusterMap
 // and the Blob etag corresponding to that.
 //
 // Note: Use this instead of directly calling getClusterMap() as it ensures that once it returns we can safely
-//
-//	call various clustermap functions and they will return information as per the latest downloaded clustermap.
-//	This is important, f.e., updateMVList() may be working on the latest clustermap copy and in the process
-//	it may call some clustermap methods hoping to query the latest clustermap, if it calls getClusterMap() to
-//	fetch the latest clustermap, and then calls the clustermap methods, those will be querying not the latest
-//	clustermap downloaded by the last getClusterMap() call but the one that's currently updated with clustermap
-//	package.
+// call various clustermap functions and they will return information as per the latest downloaded clustermap.
+// This is important, f.e., updateMVList() may be working on the latest clustermap copy and in the process
+// it may call some clustermap methods hoping to query the latest clustermap, if it calls getClusterMap() to
+// fetch the latest clustermap, and then calls the clustermap methods, those will be querying not the latest
+// clustermap downloaded by the last getClusterMap() call but the one that's currently updated with clustermap
+// package.
 //
 // TODO: Add stats for measuring time taken to download the clustermap, how many times it's downloaded, etc.
-func (cmi *ClusterManager) fetchAndUpdateLocalClusterMap(sync bool) (*dcache.ClusterMap, *string, error) {
+func (cmi *ClusterManager) fetchAndUpdateLocalClusterMap() (*dcache.ClusterMap, *string, error) {
 	//
 	// 1. Fetch the latest clustermap from metadata store.
 	//
@@ -390,24 +385,13 @@ func (cmi *ClusterManager) fetchAndUpdateLocalClusterMap(sync bool) (*dcache.Clu
 
 	//
 	// 6. Notify clustermap package. It'll refresh its in-memory copy for serving its users.
-	//    Caller can ask us to notify clustermap synchronously or asynchronously.
-	//    ensureInitialClusterMap() calls us with sync==true as it wants clustermap package's
-	//    local clustermap copy to be updated before it returns as callers will start querying
-	//    clustermap as soon as ensureInitialClusterMap() returns.
-	//    Later when called after periodic clustermap update, async notification is fine as we
-	//    are ok if clustermap package reads the local clustermap after a few usecs.
-	//
-	if sync {
-		cm.UpdateSync()
-	} else {
-		cm.Update()
-	}
+	cm.Update()
 
 	return &storageClusterMap, etag, nil
 }
 
-func (cmi *ClusterManager) updateClusterMapLocalCopySync() error {
-	_, _, err := cmi.fetchAndUpdateLocalClusterMap(true /* sync */)
+func (cmi *ClusterManager) updateClusterMapLocalCopy() error {
+	_, _, err := cmi.fetchAndUpdateLocalClusterMap()
 	return err
 }
 
@@ -608,7 +592,7 @@ func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, err
 		// Fetch clustermap and update the local copy.
 		// Once this succeeds, clustermap APIs can be used for querying clustermap.
 		//
-		err := cmi.updateClusterMapLocalCopySync()
+		_, _, err := cmi.fetchAndUpdateLocalClusterMap()
 		if err != nil {
 			isClusterMapExists, err1 := cmi.checkIfClusterMapExists()
 			if err1 != nil {
@@ -854,10 +838,8 @@ UpdateLocalClusterMapAndPunchInitialHeartbeat:
 
 	//
 	// Save local copy of the clustermap.
-	// We ask for sync notification to clustermap package as we want to be sure that clustermap
-	// package is ready for responding to queries on clustermap, as soon as we return from ensureInitialClusterMap().
 	//
-	_, _, err = cmi.fetchAndUpdateLocalClusterMap(true /* sync */)
+	_, _, err = cmi.fetchAndUpdateLocalClusterMap()
 	if err != nil {
 		log.Err("ClusterManager::ensureInitialClusterMap: fetchAndUpdateLocalClusterMap() failed: %v",
 			err)
@@ -886,11 +868,7 @@ func (cmi *ClusterManager) updateStorageClusterMapWithMyRVs() error {
 			return fmt.Errorf("ClusterManager::updateStorageClusterMapWithMyRVs: Exceeded maxWait")
 		}
 
-		//
-		// Set clustermap update sync to true as this would be the first update call and we want the first
-		// update call to be sync.
-		//
-		clusterMap, etag, err := cmi.fetchAndUpdateLocalClusterMap(true /* sync */)
+		clusterMap, etag, err := cmi.fetchAndUpdateLocalClusterMap()
 		if err != nil {
 			log.Err("ClusterManager::updateStorageClusterMapWithMyRVs: fetchAndUpdateLocalClusterMap() failed: %v",
 				err)
@@ -905,9 +883,10 @@ func (cmi *ClusterManager) updateStorageClusterMapWithMyRVs() error {
 		// 	2. if clutermap updates are stale, we will override the clustermap ownership.
 		//
 		if clusterMap.State == dcache.StateChecking {
-			if didOverride, err := cmi.overrideClusterMapIfStale(clusterMap); err != nil {
+			isOwnershipOverriden, err := cmi.overrideClusterMapIfStale(clusterMap, etag)
+			if err != nil {
 				return err
-			} else if !didOverride {
+			} else if !isOwnershipOverriden {
 				log.Info("ClusterManager::updateStorageClusterMapWithMyRVs: clustermap is being updated by node %s. Waiting a bit before retry",
 					clusterMap.LastUpdatedBy)
 				// We cannot be updating.
@@ -919,16 +898,6 @@ func (cmi *ClusterManager) updateStorageClusterMapWithMyRVs() error {
 		}
 		common.Assert(clusterMap.State == dcache.StateReady)
 
-		clusterMap.LastUpdatedBy = cmi.myNodeId
-		clusterMap.State = dcache.StateChecking
-		updatedClusterMapBytes, err := json.Marshal(clusterMap)
-		if err != nil {
-			log.Err("ClusterManager::updateStorageClusterMapWithMyRVs: Marshal failed for clustermap: %v %+v",
-				err, clusterMap)
-			common.Assert(false, err)
-			return err
-		}
-
 		//
 		// Claim ownership of clustermap and add our RVs.
 		// If some other node gets there before us, we retry. Note that we don't add a wait before
@@ -936,7 +905,8 @@ func (cmi *ClusterManager) updateStorageClusterMapWithMyRVs() error {
 		//
 		// TODO: Check err to see if the failure is due to etag mismatch, if not retrying may not help.
 		//
-		if err = mm.UpdateClusterMapStart(updatedClusterMapBytes, etag); err != nil {
+		err = cmi.startClusterMapUpdate(clusterMap, etag)
+		if err != nil {
 			log.Warn("ClusterManager::updateStorageClusterMapWithMyRVs: Start Clustermap update failed for nodeId %s: %v, retrying",
 				cmi.myNodeId, err)
 			continue
@@ -951,19 +921,9 @@ func (cmi *ClusterManager) updateStorageClusterMapWithMyRVs() error {
 			return err
 		}
 
-		clusterMap.LastUpdatedAt = time.Now().Unix()
-		clusterMap.State = dcache.StateReady
-		updatedClusterMapBytes, err = json.Marshal(clusterMap)
+		err = cmi.endClusterMapUpdate(clusterMap)
 		if err != nil {
-			log.Err("ClusterManager::updateStorageClusterMapWithMyRVs: Marshal failed for clustermap: %v %+v",
-				err, clusterMap)
-			common.Assert(false, err)
-			return err
-		}
-
-		//TODO{Akku}: Make sure end update is happening with the same node as of start update
-		if err = mm.UpdateClusterMapEnd(updatedClusterMapBytes); err != nil {
-			log.Err("ClusterManager::updateStorageClusterMapWithMyRVs: UpdateClusterMapEnd() failed: %v %+v",
+			log.Err("ClusterManager::updateStorageClusterMapWithMyRVs: endClusterMapUpdate() failed: %v %+v",
 				err, clusterMap)
 			common.Assert(false, err)
 			return err
@@ -981,23 +941,19 @@ func (cmi *ClusterManager) updateStorageClusterMapWithMyRVs() error {
 
 const thresholdClusterMapEpochTime = 60
 
-// This method checks if the cluster map update is stuck due to a crashed node, and if so, safely resets the ownership to allow this node to proceed.
+// This method checks if the cluster map update is stuck due to a crashed node or any other means, and if so, safely resets the ownership to allow this node to proceed.
 //
-// A cluster map update may get stuck in StateChecking if the node that started the update crashes.
-// This method determines staleness in two ways:
-// 1. Ownership is taken by this node only in another thread.
-// 2. Time-based: The last updated timestamp exceeds a configured threshold.
-// 3. Liveness check: The node that initiated the update is no longer alive (based on heartbeat).
+// A cluster map update may get stuck in StateChecking if the node that started the update crashes or stuck.
+// This method determines the staleness by determining the last updated timestamp exceeds a configured threshold.
 //
 // There are three possible recovery strategies:
-// 1. Retry the UpdateClusterMapStart using the latest ETag.
+// 1. Perform the UpdateClusterMapStart and UpdateClusterMapEnd using the latest ETag.
 // 2. Forcefully take ownership by setting LastUpdatedBy to this node with existing state checking.
 // 3. Safely reset the cluster map state to StateReady, allowing a clean update to begin.
 //
-// This method uses the third (and most robust) approach: ending the previous update cleanly
+// This method uses the first (and most robust) approach: ending the previous update cleanly
 // so the cluster map can be safely updated by this node.
-func (cmi *ClusterManager) overrideClusterMapIfStale(clusterMap *dcache.ClusterMap) (bool, error) {
-
+func (cmi *ClusterManager) overrideClusterMapIfStale(clusterMap *dcache.ClusterMap, etag *string) (bool, error) {
 	// Check if ownership is taken by this node only in another thread.
 	if clusterMap.LastUpdatedBy == cmi.myNodeId {
 		return false, nil
@@ -1010,65 +966,68 @@ func (cmi *ClusterManager) overrideClusterMapIfStale(clusterMap *dcache.ClusterM
 		return false, nil
 	}
 
-	log.Warn("ClusterMap last updated at %d (%s ago) exceeds stale threshold %s",
-		clusterMap.LastUpdatedAt, age.Truncate(time.Second), staleThreshold)
+	log.Warn("ClusterManager::overrideClusterMapIfStale: Clustermap update has been stuck in StateChecking by node %s at %d (%s ago),"+
+		" exceeding stale threshold %s. Overriding ownership by node %s",
+		clusterMap.LastUpdatedBy, clusterMap.LastUpdatedAt, age.Truncate(time.Second), staleThreshold, cmi.myNodeId)
 
-	// Optional: check heartbeat of the node that set StateChecking
-	bytes, err := getHeartbeat(clusterMap.LastUpdatedBy)
+	err := cmi.startClusterMapUpdate(clusterMap, etag)
 	if err != nil {
-		log.Warn("Failed to get heartbeat for node %s: %v", clusterMap.LastUpdatedBy, err)
-		return false, nil
+		return false, fmt.Errorf("ClusterManager::overrideClusterMapIfStale: startClusterMapUpdate() failed: %v", err)
 	}
 
-	var hbData dcache.HeartbeatData
-	if err := json.Unmarshal(bytes, &hbData); err != nil {
-		common.Assert(false, err)
-		log.Warn("Failed to parse heartbeat bytes (%d) for node %s: %v",
-			len(bytes), clusterMap.LastUpdatedBy, err)
-		return false, nil
-
-	}
-
-	// if this node's last heartbeat is too old, consider it dead
-	if !cmi.isHeartBeatStale(hbData) {
-		return false, nil
-	}
-	log.Warn("ClusterManager::overrideClusterMapIfStale: clustermap is stuck in StateChecking by node %s. Overriding Ownership by node %s",
-		clusterMap.LastUpdatedBy, cmi.myNodeId)
-	clusterMap.State = dcache.StateReady
-	clusterMap.LastUpdatedBy = cmi.myNodeId
-	clusterMap.LastUpdatedAt = time.Now().Unix()
-	updatedClusterMapBytes, err := json.Marshal(clusterMap)
+	err = cmi.endClusterMapUpdate(clusterMap)
 	if err != nil {
-		log.Err("ClusterManager::overrideClusterMapIfStale: Marshal failed for clustermap: %v %+v",
-			err, clusterMap)
 		common.Assert(false, err)
-		return false, err
+		return false, fmt.Errorf("ClusterManager::overrideClusterMapIfStale: endClusterMapUpdate() failed: %v", err)
 	}
 
-	if err = mm.UpdateClusterMapEnd(updatedClusterMapBytes); err != nil {
-		log.Err("ClusterManager::overrideClusterMapIfStale: UpdateClusterMapEnd() failed: %v %+v",
-			err, clusterMap)
-		common.Assert(false, err)
-		return false, err
-	}
 	return true, nil
-
 }
 
-// Current Time is - 21:11:05
-// Last Heartbeat to say node is down should be less then 21:10:50
-func (cmi *ClusterManager) isHeartBeatStale(hbData dcache.HeartbeatData) bool {
-	// Calculate expiry time as: now - (heartbeat window [heartbeatDuration* missHeartbeatCount])
-	maxAllowedAge := time.Duration(int64(cmi.config.HeartbeatsTillNodeDown)*int64(cmi.config.HeartbeatSeconds)) * time.Second
-	lastHbTime := time.Unix(int64(hbData.LastHeartbeat), 0)
-	age := time.Since(lastHbTime)
-	if age > maxAllowedAge {
-		log.Warn("ClusterManager::isHeartBeatStale: Node %s lastHeartbeat (%v) is expired (age: %v, max: %v)",
-			hbData.NodeID, lastHbTime, age.Truncate(time.Second), maxAllowedAge)
-		return true
+func (cmi *ClusterManager) startClusterMapUpdate(clusterMap *dcache.ClusterMap, etag *string) error {
+	clusterMap.LastUpdatedBy = cmi.myNodeId
+	clusterMap.State = dcache.StateChecking
+
+	clusterMapByte, err := json.Marshal(clusterMap)
+	if err != nil {
+		log.Err("ClusterManager::startClusterMapUpdate: Marshal failed for clustermap: %v %+v",
+			err, clusterMap)
+		common.Assert(false, err)
+		return err
 	}
-	return false
+
+	//
+	// Claim ownership of clustermap.
+	//
+	err = mm.UpdateClusterMapStart(clusterMapByte, etag)
+	if err != nil {
+		log.Warn("ClusterManager::startClusterMapUpdate: Start Clustermap update failed for nodeId %s: %v.",
+			cmi.myNodeId, err)
+		return err
+	}
+	return nil
+}
+
+func (cmi *ClusterManager) endClusterMapUpdate(clusterMap *dcache.ClusterMap) error {
+	clusterMap.LastUpdatedAt = time.Now().Unix()
+	clusterMap.State = dcache.StateReady
+
+	clusterMapBytes, err := json.Marshal(clusterMap)
+	if err != nil {
+		err = fmt.Errorf("marshal failed for clustermap: %v %+v", err, clusterMap)
+		log.Err("ClusterManager::endClusterMapUpdate: %v", err)
+		common.Assert(false, err)
+		return err
+	}
+
+	//TODO{Akku}: Make sure end update is happening with the same node as of start update
+	if err = mm.UpdateClusterMapEnd(clusterMapBytes); err != nil {
+		err = fmt.Errorf("updateClusterMapEnd() failed: %v %+v", err, clusterMap)
+		log.Err("ClusterManager::endClusterMapUpdate: %v", err)
+		common.Assert(false, err)
+		return err
+	}
+	return nil
 }
 
 func (cmi *ClusterManager) checkIfClusterMapExists() (bool, error) {
@@ -1096,10 +1055,6 @@ var getHeartbeat = func(nodeId string) ([]byte, error) {
 
 var getAllNodes = func() ([]string, error) {
 	return mm.GetAllNodes()
-}
-
-func evaluateReadOnlyState() bool {
-	return false
 }
 
 func (cmi *ClusterManager) punchHeartBeat(myRVs []dcache.RawVolume) error {
@@ -1140,10 +1095,9 @@ func (cmi *ClusterManager) punchHeartBeat(myRVs []dcache.RawVolume) error {
 // It queries all the heartbeats present and updates clustermap's RV list and MV list accordingly.
 func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	//
-	// Fetch the latest clustermap with sync set to true as we may want to query clustermap from some of the
-	// functions we call later down.
+	// Fetch the latest clustermap to query clustermap from some of the functions we call later down.
 	//
-	clusterMap, etag, err := cmi.fetchAndUpdateLocalClusterMap(true /* sync */)
+	clusterMap, etag, err := cmi.fetchAndUpdateLocalClusterMap()
 	if err != nil {
 		log.Err("ClusterManager::updateStorageClusterMapIfRequired: fetchAndUpdateLocalClusterMap() failed: %v",
 			err)
@@ -1215,29 +1169,27 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	// 	2. if clutermap updates are stale, we will override the clustermap ownership.
 	//
 	if clusterMap.State == dcache.StateChecking {
-		if didOverride, err := cmi.overrideClusterMapIfStale(clusterMap); err != nil {
+		isOwnershipOverriden, err := cmi.overrideClusterMapIfStale(clusterMap, etag)
+		if err != nil {
 			return err
-		} else if !didOverride {
-			log.Debug("ClusterManager::updateStorageClusterMapIfRequired: skipping, clustermap is being updated by (leader %s), current node (%s)", clusterMap.LastUpdatedBy, cmi.myNodeId)
+		} else if !isOwnershipOverriden {
+			log.Debug("ClusterManager::updateStorageClusterMapIfRequired:skipping, clustermap is being updated by (leader %s), current node (%s)",
+				clusterMap.LastUpdatedBy, cmi.myNodeId)
 
+			//
 			// Leader node should have updated the state to checking and it should not find the state to checking.
+			//
+			// TODO: This has been seen to fail when due to remote node being dow updateStorageClusterMapIfRequired()
+			//       took long time and the next iteration was called immediately. While it was running, some other
+			//       context(s) (updateComponentRVState()) were waiting to update the clusterMap, they immediately
+			//       started updating as soon as last iteration of updateStorageClusterMapIfRequired() completed, and
+			//       hence when the next iteration of updateStorageClusterMapIfRequired() started immediately, it
+			//       finds the clusterMap state as checking.
+			//       Still leaving the assert as it's useful to see if it occurrs in any other way.
+			//
 			common.Assert(!leader, "We don't expect leader to see the clustermap in checking state")
 			return nil
 		}
-
-		//
-		// Leader node should have updated the state to checking and it should not find the state to checking.
-		//
-		// TODO: This has been seen to fail when due to remote node being dow updateStorageClusterMapIfRequired()
-		//       took long time and the next iteration was called immediately. While it was running, some other
-		//       context(s) (updateComponentRVState()) were waiting to update the clusterMap, they immediately
-		//       started updating as soon as last iteration of updateStorageClusterMapIfRequired() completed, and
-		//       hence when the next iteration of updateStorageClusterMapIfRequired() started immediately, it
-		//       finds the clusterMap state as checking.
-		//       Still leaving the assert as it's useful to see if it occurrs in any other way.
-		//
-		common.Assert(!leader, "We don't expect leader to see the clustermap in checking state")
-		return nil
 	}
 
 	// Skip if we're neither leader nor the clustermap is stale
@@ -1248,16 +1200,6 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	}
 
 	// TODO: We need to update clusterMap.Epoch to contain the next higher number.
-
-	clusterMap.LastUpdatedBy = cmi.myNodeId
-	clusterMap.State = dcache.StateChecking
-	updatedClusterMapBytes, err := json.Marshal(clusterMap)
-	if err != nil {
-		err = fmt.Errorf("Marshal failed for clustermap: %v %+v", err, clusterMap)
-		log.Err("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
-		common.Assert(false, err)
-		return err
-	}
 
 	//
 	// Start the clustermap update process by first claiming ownership of the clustermap update.
@@ -1270,13 +1212,13 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	//       Enclosing them between UpdateClusterMapStart() and UpdateClusterMapEnd() ensure that only one
 	//       node would be updating cluster membership details at any point. This is IMPORTANT.
 	//
-	if err = mm.UpdateClusterMapStart(updatedClusterMapBytes, etag); err != nil {
+	err = cmi.startClusterMapUpdate(clusterMap, etag)
+	if err != nil {
 		err = fmt.Errorf("Start Clustermap update failed for nodeId %s: %v", cmi.myNodeId, err)
 		log.Err("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
 		common.Assert(false, err)
 		return err
 	}
-
 	//
 	// UpdateClusterMapStart() must not take long. Assert to check that.
 	//
@@ -1345,27 +1287,14 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 		//
 		// TODO: We must reset the clusterMap state to ready.
 		//
-		err = fmt.Errorf("Clustermap update (%s) took longer than ClustermapEpoch (%s), bailing out",
+		err = fmt.Errorf("clustermap update (%s) took longer than ClustermapEpoch (%s), bailing out",
 			elapsed, maxTime)
 		log.Err("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
 		common.Assert(false, err)
 		return err
 	}
-
-	clusterMap.LastUpdatedAt = time.Now().Unix()
-	clusterMap.State = dcache.StateReady
-
-	updatedClusterMapBytes, err = json.Marshal(clusterMap)
+	err = cmi.endClusterMapUpdate(clusterMap)
 	if err != nil {
-		err = fmt.Errorf("Marshal failed for clustermap: %v %+v", err, clusterMap)
-		log.Err("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
-		common.Assert(false, err)
-		return err
-	}
-
-	//TODO{Akku}: Make sure end update is happening with the same node as of start update
-	if err = mm.UpdateClusterMapEnd(updatedClusterMapBytes); err != nil {
-		err = fmt.Errorf("UpdateClusterMapEnd() failed: %v %+v", err, clusterMap)
 		log.Err("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
 		common.Assert(false, err)
 		return err
@@ -2598,7 +2527,7 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, rvName string, 
 		}
 
 		// Get most recent clustermap copy, then we will update the requested MV and publish it.
-		clusterMap, etag, err := cmi.fetchAndUpdateLocalClusterMap(false /* sync */)
+		clusterMap, etag, err := cmi.fetchAndUpdateLocalClusterMap()
 		if err != nil {
 			log.Err("ClusterManager::updateComponentRVState: fetchAndUpdateLocalClusterMap() failed: %v",
 				err)
@@ -2612,9 +2541,10 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, rvName string, 
 		// 	2. if clutermap updates are stale, we will override the clustermap ownership.
 		//
 		if clusterMap.State == dcache.StateChecking {
-			if didOverride, err := cmi.overrideClusterMapIfStale(clusterMap); err != nil {
+			isOwnershipOverriden, err := cmi.overrideClusterMapIfStale(clusterMap, etag)
+			if err != nil {
 				return err
-			} else if !didOverride {
+			} else if !isOwnershipOverriden {
 				log.Info("ClusterManager::updateComponentRVState: Clustermap being updated by node %s, waiting a bit before retry",
 					clusterMap.LastUpdatedBy)
 
@@ -2678,17 +2608,6 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, rvName string, 
 		// are valid. Update component RVs and call updateMVList() which will set the MV state correctly, and
 		// run various mv workflows as needed after the current RV state change.
 		//
-		clusterMap.LastUpdatedBy = cmi.myNodeId
-		clusterMap.State = dcache.StateChecking
-
-		clusterMapByte, err := json.Marshal(clusterMap)
-		if err != nil {
-			log.Err("ClusterManager::updateComponentRVState: Marshal failed for clustermap: %v %+v",
-				err, clusterMap)
-			common.Assert(false, err)
-			return err
-		}
-
 		//
 		// Claim ownership of clustermap.
 		// If some other node gets there before us, we retry. Note that we don't add a wait before
@@ -2696,7 +2615,8 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, rvName string, 
 		//
 		// TODO: Check err to see if the failure is due to etag mismatch, if not retrying may not help.
 		//
-		if err := mm.UpdateClusterMapStart(clusterMapByte, etag); err != nil {
+		err = cmi.startClusterMapUpdate(clusterMap, etag)
+		if err != nil {
 			log.Warn("ClusterManager::updateComponentRVState: Start Clustermap update failed for nodeId %s: %v, retrying",
 				cmi.myNodeId, err)
 			continue
@@ -2737,19 +2657,9 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, rvName string, 
 		// Call updateMVList() to update MV state and run the various mv workflows.
 		cmi.updateMVList(clusterMap.RVMap, clusterMap.MVMap)
 
-		clusterMap.State = dcache.StateReady
-		clusterMap.LastUpdatedAt = time.Now().Unix()
-
-		clusterMapByte, err = json.Marshal(clusterMap)
+		err = cmi.endClusterMapUpdate(clusterMap)
 		if err != nil {
-			log.Err("ClusterManager::updateComponentRVState: Marshal failed for clustermap: %v %+v",
-				err, clusterMap)
-			common.Assert(false, err)
-			return err
-		}
-
-		if err := mm.UpdateClusterMapEnd(clusterMapByte); err != nil {
-			log.Err("ClusterManager::updateComponentRVState: UpdateClusterMapEnd() failed: %v %+v",
+			log.Err("ClusterManager::updateComponentRVState: endClusterMapUpdate() failed: %v %+v",
 				err, clusterMap)
 			common.Assert(false, err)
 			return err
@@ -2763,7 +2673,7 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, rvName string, 
 	}
 
 	// Update local copy.
-	_, _, err := cmi.fetchAndUpdateLocalClusterMap(false /* not sync */)
+	_, _, err := cmi.fetchAndUpdateLocalClusterMap()
 	return err
 }
 
@@ -2784,8 +2694,8 @@ func Start(dCacheConfig *dcache.DCacheConfig, rvs []dcache.RawVolume) error {
 	// Register hook for updating the component RV state for an MV, through clustermap package.
 	cm.RegisterComponentRVStateUpdater(clusterManager.updateComponentRVState)
 
-	// Register hook for synchronously refreshing the clustermap from the metadata store, through clustermap package.
-	cm.RegisterClusterMapSyncRefresher(clusterManager.updateClusterMapLocalCopySync)
+	// Register hook for refreshing the clustermap from the metadata store, through clustermap package.
+	cm.RegisterClusterMapRefresher(clusterManager.updateClusterMapLocalCopy)
 
 	return clusterManager.start(dCacheConfig, rvs)
 }
