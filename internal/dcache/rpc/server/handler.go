@@ -1766,6 +1766,10 @@ func (h *ChunkServiceHandler) LeaveMV(ctx context.Context, req *models.LeaveMVRe
 	// per the global clustermap, since an RV is added to an MV only after a successful JoinMV response
 	// from all component RVs, we *must* have the MV replica in our rvInfo.
 	//
+	// TODO: There is one scenario in which this is possible, if a node responds to LeaveMV() successfully
+	// but the sender cannot commit it to clustermap for some reason, then when LeaveMV() is retried
+	// it'll not find the MV.
+	//
 	mvInfo := rvInfo.getMVInfo(req.MV)
 	if mvInfo == nil {
 		errStr := fmt.Sprintf("%s/%s not hosted by this node", req.RVName, req.MV)
