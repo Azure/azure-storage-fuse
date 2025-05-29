@@ -871,13 +871,19 @@ func copyOutOfSyncChunks(job *syncJob) error {
 		if info.ModTime().UnixMicro() > job.syncStartTime {
 			// This chunk is created after the sync start time, so it will be written to both source and target
 			// RVs by the client PutChunk() RPC calls, so we can skip it here.
-			log.Debug("ReplicationManager::copyOutOfSyncChunks: Skipping chunk %s/%s, Mtime (%d) > syncStartTime (%d)",
-				sourceMVPath, entry.Name(), info.ModTime().UnixMicro(), job.syncStartTime)
+			log.Debug("ReplicationManager::copyOutOfSyncChunks: Skipping chunk %s/%s, "+
+				"Mtime (%d) > syncStartTime (%d) [%d usecs after sync start]",
+				sourceMVPath, entry.Name(), info.ModTime().UnixMicro(), job.syncStartTime,
+				info.ModTime().UnixMicro()-job.syncStartTime)
 			continue
 		}
 
 		log.Debug("ReplicationManager::copyOutOfSyncChunks: Copying chunk %s/%s, Mtime (%d) <= syncStartTime (%d)",
 			sourceMVPath, entry.Name(), info.ModTime().UnixMicro(), job.syncStartTime)
+		log.Debug("ReplicationManager::copyOutOfSyncChunks: Copying chunk %s/%s, "+
+			"Mtime (%d) <= syncStartTime (%d) [%d usecs before sync start]",
+			sourceMVPath, entry.Name(), info.ModTime().UnixMicro(), job.syncStartTime,
+			job.syncStartTime-info.ModTime().UnixMicro())
 
 		//
 		// chunks are stored in MV as,

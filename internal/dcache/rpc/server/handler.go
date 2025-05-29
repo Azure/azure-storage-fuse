@@ -1204,8 +1204,8 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	// Check if the chunk address is valid.
 	err := h.checkValidChunkAddress(req.Chunk.Address)
 	if err != nil {
-		log.Err("ChunkServiceHandler::PutChunk: Invalid chunk address %v [%v]",
-			req.Chunk.Address.String(), err)
+		log.Err("ChunkServiceHandler::PutChunk: Invalid chunk address %v, request = %v [%v]",
+			req.Chunk.Address.String(), rpc.PutChunkRequestToString(req), err)
 		return nil, err
 	}
 
@@ -1313,7 +1313,7 @@ refreshFromClustermapAndRetry:
 		//
 		syncJob, ok := mvInfo.syncJobs[req.SyncID]
 		if !ok {
-			errStr := fmt.Sprintf("PutChunk(sync) syncId %s not valid for %s/%s [NeedToRefreshClusterMap]",
+			errStr := fmt.Sprintf("PutChunk(sync) syncID %s not valid for %s/%s [NeedToRefreshClusterMap]",
 				req.SyncID, rvInfo.rvName, req.Chunk.Address.MvName)
 			log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
 			common.Assert(false, errStr)
@@ -1345,8 +1345,8 @@ refreshFromClustermapAndRetry:
 		// are target of a sync job.
 		//
 		if !isTgtOfSync {
-			errStr := fmt.Sprintf("Sync PutChunk call received for %s/%s, which is currently not the target of any sync job",
-				rvInfo.rvName, req.Chunk.Address.MvName)
+			errStr := fmt.Sprintf("PutChunk(sync) syncID = %s, call received for %s/%s, which is currently not the target of any sync job",
+				req.SyncID, rvInfo.rvName, req.Chunk.Address.MvName)
 
 			log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
 			common.Assert(false, errStr)
@@ -1369,14 +1369,15 @@ refreshFromClustermapAndRetry:
 		if req.SyncID != "" {
 			// In case of sync PutChunk calls, we can get sync write for chunks already present in
 			// the target RV because of the NTPClockSkewMargin added to the sync write time. These
-			// chunks are written by the client write PutChunk calls to the target RV.
+			// chunks were written by the client write PutChunk calls to the target RV.
 			// So, ignore this and return success.
-			log.Debug("ChunkServiceHandler::PutChunk: Chunk file %s already exists, ignoring sync write(%s)",
-				chunkPath, req.SyncID)
+			log.Debug("ChunkServiceHandler::PutChunk: syncID = %s, chunk file %s already exists, ignoring sync write",
+				req.SyncID, chunkPath)
 
 			availableSpace, err := rvInfo.getAvailableSpace()
 			if err != nil {
-				log.Err("ChunkServiceHandler::PutChunk: Failed to get available disk space [%v]", err)
+				log.Err("ChunkServiceHandler::PutChunk: syncID = %s, Failed to get available disk space [%v]",
+					req.SyncID, err)
 			}
 
 			return &models.PutChunkResponse{
