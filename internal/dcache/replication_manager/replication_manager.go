@@ -51,7 +51,6 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
-	rpc_server "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/server"
 )
 
 type replicationMgr struct {
@@ -504,10 +503,10 @@ func syncMV(mvName string, mvInfo dcache.MirroredVolume) {
 	// %age progress. Note that JoinMV carries the reservedSpace parameter which is the more critical one
 	// to decide if an RV can host a new MV replica or not.
 	//
-	// TODO: Make sure GetDiskUsageOfMV() correctly returns the to-be-synced data, i.e., data in the regular
-	//       MV folder.
+	// TODO: Make sure GetMVSize() correctly returns the to-be-synced data, i.e., data in the regular
+	//       MV folder. Remove .sync folder dependency, all chunks will be written to the regular MV folder.
 	//
-	syncSize, err := rpc_server.GetDiskUsageOfMV(mvName, lioRV)
+	syncSize, err := GetMVSize(mvName)
 	if err != nil {
 		err = fmt.Errorf("failed to get disk usage of %s/%s [%v]", lioRV, mvName, err)
 		log.Err("ReplicationManager::syncMV: %v", err)
@@ -995,4 +994,77 @@ func sendEndSyncRequest(rvName string, targetNodeID string, req *models.EndSyncR
 		rvName, req.MV, *resp)
 
 	return nil
+}
+
+func GetMVSize(mvName string) (int64, error) {
+	common.Assert(cm.IsValidMVName(mvName), mvName)
+
+	log.Debug("ReplicationManager::GetMVSize: MV = %s", mvName)
+
+	var mvSize int64
+	var err error
+
+	componentRVs := getComponentRVsForMV(mvName)
+
+	log.Debug("ReplicationManager::GetMVSize: Component RVs for %s are: %v",
+		mvName, rpc.ComponentRVsToString(componentRVs))
+
+	//
+	// Get the most suitable RV from the list of component RVs,
+	// from which we should get the size of the MV. Selecting most
+	// suitable RV is mostly a heuristical process which might
+	// pick the most suitable RV based on one or more of the
+	// following criteria:
+	// - Local RV must be preferred.
+	// - Prefer a node that has recently responded successfully to any of our RPCs.
+	// - Pick a random one.
+	//
+	// excludeRVs is the list of component RVs to omit, used when retrying after prev attempts to read from
+	// certain RV(s) failed. Those RVs are added to excludeRVs list.
+	//
+	var excludeRVs []string
+
+	for {
+		readerRV := getReaderRV(componentRVs, excludeRVs)
+		if readerRV == nil {
+			err = fmt.Errorf("no suitable RV found for MV %s", mvName)
+			log.Err("ReplicationManager::GetMVSize: %v", err)
+			return 0, err
+		}
+
+		common.Assert(!slices.Contains(excludeRVs, readerRV.Name), readerRV.Name, excludeRVs)
+
+		targetNodeID := getNodeIDFromRVName(readerRV.Name)
+		common.Assert(common.IsValidUUID(targetNodeID))
+
+		log.Debug("ReplicationManager::GetMVSize: Selected %s for %s, hosted by node %s",
+			readerRV.Name, mvName, targetNodeID)
+
+		req := &models.GetMVSizeRequest{
+			MV:     mvName,
+			RVName: readerRV.Name,
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), RPCClientTimeout*time.Second)
+		defer cancel()
+
+		resp, err := rpc_client.GetMVSize(ctx, targetNodeID, req)
+
+		// Exclude this RV from further iterations (if any).
+		excludeRVs = append(excludeRVs, readerRV.Name)
+
+		if err == nil {
+			// Success.
+			common.Assert(resp != nil, rpc.GetMVSizeRequestToString(req))
+			mvSize = resp.MvSize
+			log.Debug("ReplicationManager::GetMVSize: GetMVSize successful for %s, RPC response: MV size = %d",
+				rpc.GetMVSizeRequestToString(req), resp.MvSize)
+			break
+		}
+
+		log.Err("ReplicationManager::GetMVSize: Failed to get MV size from node %s for request %v [%v]",
+			targetNodeID, rpc.GetMVSizeRequestToString(req), err)
+	}
+
+	return mvSize, nil
 }
