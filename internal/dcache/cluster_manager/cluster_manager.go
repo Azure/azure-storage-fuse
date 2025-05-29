@@ -1212,6 +1212,23 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 		return err
 	}
 
+	clusterMapAge := now - clusterMap.LastUpdatedAt
+	//
+	// Assert if clusterMap is not updated for 3 consecutive epochs, it might indicate some bug.
+	// For very small ClustermapEpoch values, 3 times the value will not be sufficient as the
+	// thresholdClusterMapEpochTime is set to 60, so limit it to 180.
+	// The max time till which the clusterMap may not be updated in the event of leader going down is
+	// 2*ClustermapEpoch + thresholdClusterMapEpochTime, so for values of ClustermapEpoch above 60 seconds, 3 times
+	// ClustermapEpoch is suffcient but for smaller ClustermapEpoch values we have to cap to 180, with a margin
+	// of 20 seconds.
+	//
+	common.Assert(clusterMapAge < int64(max(clusterMap.Config.ClustermapEpoch*3, 200)),
+		fmt.Sprintf("clusterMapAge (%d) >= %d",
+			clusterMapAge, int64(max(clusterMap.Config.ClustermapEpoch*3, 200))))
+
+	// Staleness check for non-leader.
+	stale := clusterMapAge > int64(clusterMap.Config.ClustermapEpoch+thresholdClusterMapEpochTime)
+
 	//
 	// If some other node/context is currently updating the clustermap, skip updating in this iteration, as
 	// long as the staleness threshold is not met.
@@ -1244,23 +1261,6 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 		common.Assert(!(clusterMap.LastUpdatedBy == cmi.myNodeId), "We don't expect leader to see the clustermap in checking state")
 		return nil
 	}
-
-	clusterMapAge := now - clusterMap.LastUpdatedAt
-	//
-	// Assert if clusterMap is not updated for 3 consecutive epochs, it might indicate some bug.
-	// For very small ClustermapEpoch values, 3 times the value will not be sufficient as the
-	// thresholdClusterMapEpochTime is set to 60, so limit it to 180.
-	// The max time till which the clusterMap may not be updated in the event of leader going down is
-	// 2*ClustermapEpoch + thresholdClusterMapEpochTime, so for values of ClustermapEpoch above 60 seconds, 3 times
-	// ClustermapEpoch is suffcient but for smaller ClustermapEpoch values we have to cap to 180, with a margin
-	// of 20 seconds.
-	//
-	common.Assert(clusterMapAge < int64(max(clusterMap.Config.ClustermapEpoch*3, 200)),
-		fmt.Sprintf("clusterMapAge (%d) >= %d",
-			clusterMapAge, int64(max(clusterMap.Config.ClustermapEpoch*3, 200))))
-
-	// Staleness check for non-leader.
-	stale := clusterMapAge > int64(clusterMap.Config.ClustermapEpoch+thresholdClusterMapEpochTime)
 
 	// Are we the leader node? Leader gets to update the clustermap bypassing the staleness check.
 	// Since clusterMapBeingUpdatedByAnotherNode may override LastUpdatedBy, re-evaluate leaderNode afterward
