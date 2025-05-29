@@ -275,20 +275,20 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 					log.Err("ClusterManager::start: updateStorageClusterMapIfRequired failed: %v", err)
 				}
 
-			_, _, err = cmi.fetchAndUpdateLocalClusterMap()
-			if err == nil {
-				consecutiveFailures = 0
-			} else {
-				log.Err("ClusterManager::start: fetchAndUpdateLocalClusterMap failed: %v",
-					err)
-				consecutiveFailures++
-				//
-				// Otoh, failing to update the local cluster copy is a serious issue, since this
-				// node cannot use valid clustermap, take ourselves down to reduce any confusion
-				// we may create in the cluster.
-				//
-				if consecutiveFailures > maxConsecutiveFailures {
-					log.GetLoggerObj().Panicf("[PANIC] Failed to refresh local clustermap %d times in a row",
+				_, _, err = cmi.fetchAndUpdateLocalClusterMap()
+				if err == nil {
+					consecutiveFailures = 0
+				} else {
+					log.Err("ClusterManager::start: fetchAndUpdateLocalClusterMap failed: %v",
+						err)
+					consecutiveFailures++
+					//
+					// Otoh, failing to update the local cluster copy is a serious issue, since this
+					// node cannot use valid clustermap, take ourselves down to reduce any confusion
+					// we may create in the cluster.
+					//
+					if consecutiveFailures > maxConsecutiveFailures {
+						log.GetLoggerObj().Panicf("[PANIC] Failed to refresh local clustermap %d times in a row",
 
 							consecutiveFailures)
 					}
@@ -1623,10 +1623,12 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			// If the node has no RVs left, remove it from the map.
 			if len(node.rvs) == 0 {
 				delete(nodeToRvs, nodeId)
+				log.Debug("ClusterManager::trimNodeToRvs: Removed node %s from nodeToRvs as it has no RVs left", nodeId)
 			} else {
 				nodeToRvs[nodeId] = node
 			}
 		}
+		log.Debug("ClusterManager::trimNodeToRvs: After trimming nodeToRvs %+v ", nodeToRvs)
 	}
 
 	//
@@ -1805,6 +1807,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 
 			foundReplacement := false
 			// Iterate over the shuffled nodes list and pick the first suitable RV.
+			log.Debug("ClusterManager::fixMV: Fixing RV %s/%s", rvName, mvName)
 			for _, node := range availableNodes {
 				_, ok := excludeNodes[node.nodeId]
 				if ok {
@@ -1836,6 +1839,8 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 					if newRvName != rvName {
 						_, ok := mv.RVs[newRvName]
 						if ok {
+							log.Debug("ClusterManager::fixMV: Skipping %s RV for replacement This can result in less number of replica RVs %s/%s",
+								newRvName, mvName)
 							continue
 						}
 					}
