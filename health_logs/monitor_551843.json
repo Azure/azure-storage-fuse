@@ -1,0 +1,3405 @@
+[{
+	"Timestamp": "2025-05-29T09:18:13Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:18:13Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:18:19Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:18:19Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:18:24Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:18:24Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:18:29Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:18:29Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:18:34Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:18:34Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:18:34Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:18:34Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 6
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:18:38Z",
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2357596k"
+},
+{
+	"Timestamp": "2025-05-29T09:18:39Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:18:39Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:18:44Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:18:44Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:18:45Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:18:45Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:18:49Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:18:49Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:18:55Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:18:55Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 11
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:19:00Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:19:00Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:19:05Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:19:05Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:19:05Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 13
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:19:08Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:19:08Z",
+			"componentName": "file_cache",
+			"value": {
+				"Cache Usage": "8357113856.000000 MB",
+				"Usage Percent": "27.778502%"
+			}
+		}
+	],
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2357596k"
+},
+{
+	"Timestamp": "2025-05-29T09:19:10Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:19:10Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:19:15Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:19:15Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:19:15Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 15
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:19:20Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:19:20Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:19:25Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:19:25Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:19:30Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:19:30Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:19:36Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:19:36Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:19:36Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 19
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:19:38Z",
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2357596k"
+},
+{
+	"Timestamp": "2025-05-29T09:19:41Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:19:41Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:19:41Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 20
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:19:46Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:19:46Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:19:51Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:19:51Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:19:51Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 22
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:19:56Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:19:56Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:20:01Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:20:01Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:20:07Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:20:07Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:20:07Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 25
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:20:08Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:20:08Z",
+			"componentName": "file_cache",
+			"value": {
+				"Cache Usage": "8357208064.000000 MB",
+				"Usage Percent": "27.778816%"
+			}
+		}
+	],
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2357852k"
+},
+{
+	"Timestamp": "2025-05-29T09:20:12Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:20:12Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:20:17Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:20:17Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:20:17Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 27
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:20:22Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:20:22Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:20:27Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:20:27Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:20:32Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:20:32Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:20:38Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:20:38Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:20:38Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 31
+			}
+		}
+	],
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2357852k"
+},
+{
+	"Timestamp": "2025-05-29T09:20:43Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:20:43Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:20:48Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:20:48Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:20:53Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:20:53Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:20:58Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:20:58Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:21:03Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:21:03Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:21:03Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 36
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:21:08Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:21:08Z",
+			"componentName": "file_cache",
+			"value": {
+				"Cache Usage": "8357294080.000000 MB",
+				"Usage Percent": "27.779101%"
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:21:08Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	],
+	"CPUUsage": "9.1%",
+	"MemoryUsage": "2357852k"
+},
+{
+	"Timestamp": "2025-05-29T09:21:13Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:21:13Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:21:19Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:21:19Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:21:24Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:21:24Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:21:29Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:21:29Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:21:34Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:21:34Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:21:34Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 42
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:21:38Z",
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2357852k"
+},
+{
+	"Timestamp": "2025-05-29T09:21:39Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:21:39Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:21:44Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:21:44Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:21:49Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:21:49Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:21:49Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 45
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:22:08Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:22:08Z",
+			"componentName": "file_cache",
+			"value": {
+				"Cache Usage": "8357359616.000000 MB",
+				"Usage Percent": "27.779319%"
+			}
+		}
+	],
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2357852k"
+},
+{
+	"Timestamp": "2025-05-29T09:22:38Z",
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2357852k"
+},
+{
+	"Timestamp": "2025-05-29T09:22:46Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:22:46Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:22:46Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 46
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:23:08Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:23:08Z",
+			"componentName": "file_cache",
+			"value": {
+				"Cache Usage": "8357408768.000000 MB",
+				"Usage Percent": "27.779483%"
+			}
+		}
+	],
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2357852k"
+},
+{
+	"Timestamp": "2025-05-29T09:23:38Z",
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2357852k"
+},
+{
+	"Timestamp": "2025-05-29T09:24:08Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:24:08Z",
+			"componentName": "file_cache",
+			"value": {
+				"Cache Usage": "8357400576.000000 MB",
+				"Usage Percent": "27.779455%"
+			}
+		}
+	],
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2357852k"
+},
+{
+	"Timestamp": "2025-05-29T09:24:38Z",
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2357852k"
+},
+{
+	"Timestamp": "2025-05-29T09:25:08Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:25:08Z",
+			"componentName": "file_cache",
+			"value": {
+				"Cache Usage": "8357421056.000000 MB",
+				"Usage Percent": "27.779524%"
+			}
+		}
+	],
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2357852k"
+},
+{
+	"Timestamp": "2025-05-29T09:25:19Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:25:19Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:25:24Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:25:24Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:25:29Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:25:29Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:25:35Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:25:35Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:25:35Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 50
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:25:38Z",
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:25:40Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:25:40Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:25:52Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:25:52Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:25:52Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 52
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:26:08Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:26:08Z",
+			"componentName": "file_cache",
+			"value": {
+				"Cache Usage": "8357474304.000000 MB",
+				"Usage Percent": "27.779700%"
+			}
+		}
+	],
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:26:38Z",
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:26:41Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:26:41Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:26:46Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:26:46Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:26:51Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:26:51Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:26:56Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:26:56Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:27:01Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:27:01Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:27:01Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 57
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:27:08Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:27:08Z",
+			"componentName": "file_cache",
+			"value": {
+				"Cache Usage": "8357527552.000000 MB",
+				"Usage Percent": "27.779877%"
+			}
+		}
+	],
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:27:15Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:27:15Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:27:15Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 58
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:27:38Z",
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:28:08Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:28:08Z",
+			"componentName": "file_cache",
+			"value": {
+				"Cache Usage": "8357568512.000000 MB",
+				"Usage Percent": "27.780014%"
+			}
+		}
+	],
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:28:38Z",
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:29:08Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:29:08Z",
+			"componentName": "file_cache",
+			"value": {
+				"Cache Usage": "8357568512.000000 MB",
+				"Usage Percent": "27.780014%"
+			}
+		}
+	],
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:29:38Z",
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:30:08Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:30:08Z",
+			"componentName": "file_cache",
+			"value": {
+				"Cache Usage": "8357777408.000000 MB",
+				"Usage Percent": "27.780708%"
+			}
+		}
+	],
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:30:22Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:30:22Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:30:27Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:30:27Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:30:32Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:30:32Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:30:37Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:30:37Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:30:37Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 62
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:30:38Z",
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:30:42Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:30:42Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:30:47Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:30:47Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:30:53Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:30:53Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:30:58Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:30:58Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:31:03Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:31:03Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:31:08Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:31:08Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:31:08Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 68
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:31:08Z",
+			"componentName": "file_cache",
+			"value": {
+				"Cache Usage": "8358158336.000000 MB",
+				"Usage Percent": "27.781974%"
+			}
+		}
+	],
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:31:13Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:31:13Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:31:18Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:31:18Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:31:23Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:31:23Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:31:28Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:31:28Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:31:34Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:31:34Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:31:34Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 73
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:31:38Z",
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:31:39Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:31:39Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:31:44Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:31:44Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:31:49Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:31:49Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:31:54Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:31:54Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:31:59Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:31:59Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:32:04Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:32:04Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:32:04Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 79
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:32:08Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:32:08Z",
+			"componentName": "file_cache",
+			"value": {
+				"Cache Usage": "8357953536.000000 MB",
+				"Usage Percent": "27.781293%"
+			}
+		}
+	],
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:32:10Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:32:10Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:32:15Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:32:15Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:32:20Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:32:20Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:32:25Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:32:25Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:32:30Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:32:30Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:32:35Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:32:35Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:32:35Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 85
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:32:38Z",
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:32:41Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:32:41Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:32:46Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:32:46Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:32:46Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 87
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:32:51Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:32:51Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:32:56Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:32:56Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:33:01Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:33:01Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:33:06Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:33:06Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:33:06Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 91
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:33:08Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:33:08Z",
+			"componentName": "file_cache",
+			"value": {
+				"Cache Usage": "8358060032.000000 MB",
+				"Usage Percent": "27.781647%"
+			}
+		}
+	],
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:33:11Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:33:11Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:33:16Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:33:16Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:33:22Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:33:22Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:33:27Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:33:27Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:33:32Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:33:32Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:33:37Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:33:37Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:33:37Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 97
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:33:38Z",
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:33:42Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:33:42Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:33:47Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:33:47Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:33:52Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:33:52Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:33:58Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:33:58Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:34:03Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:34:03Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:34:08Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:34:08Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:34:08Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 103
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:34:08Z",
+			"componentName": "file_cache",
+			"value": {
+				"Cache Usage": "8358182912.000000 MB",
+				"Usage Percent": "27.782056%"
+			}
+		}
+	],
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:34:13Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:34:13Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:34:18Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:34:18Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:34:23Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:34:23Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:34:28Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:34:28Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:34:34Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:34:34Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:34:34Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 108
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:34:38Z",
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:34:39Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:34:39Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:34:44Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:34:44Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:34:49Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:34:49Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:34:54Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:34:54Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:34:59Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:34:59Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:35:04Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:35:04Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:35:04Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 114
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:35:08Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:35:08Z",
+			"componentName": "file_cache",
+			"value": {
+				"Cache Usage": "8358039552.000000 MB",
+				"Usage Percent": "27.781579%"
+			}
+		}
+	],
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:35:10Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:35:10Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:35:25Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:35:25Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:35:25Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 116
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:35:38Z",
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:36:08Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:36:08Z",
+			"componentName": "file_cache",
+			"value": {
+				"Cache Usage": "8358105088.000000 MB",
+				"Usage Percent": "27.781797%"
+			}
+		}
+	],
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:36:38Z",
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:37:08Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:37:08Z",
+			"componentName": "file_cache",
+			"value": {
+				"Cache Usage": "8358084608.000000 MB",
+				"Usage Percent": "27.781729%"
+			}
+		}
+	],
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:37:38Z",
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:38:08Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:38:08Z",
+			"componentName": "file_cache",
+			"value": {
+				"Cache Usage": "8358117376.000000 MB",
+				"Usage Percent": "27.781838%"
+			}
+		}
+	],
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:38:38Z",
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:39:08Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:39:08Z",
+			"componentName": "file_cache",
+			"value": {
+				"Cache Usage": "8358117376.000000 MB",
+				"Usage Percent": "27.781838%"
+			}
+		}
+	],
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:39:38Z",
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:40:08Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:40:08Z",
+			"componentName": "file_cache",
+			"value": {
+				"Cache Usage": "8358133760.000000 MB",
+				"Usage Percent": "27.781892%"
+			}
+		}
+	],
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:40:38Z",
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:41:08Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:41:08Z",
+			"componentName": "file_cache",
+			"value": {
+				"Cache Usage": "8358150144.000000 MB",
+				"Usage Percent": "27.781947%"
+			}
+		}
+	],
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:41:38Z",
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:42:06Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:42:06Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:42:06Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 117
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:42:08Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:42:08Z",
+			"componentName": "file_cache",
+			"value": {
+				"Cache Usage": "8358174720.000000 MB",
+				"Usage Percent": "27.782029%"
+			}
+		}
+	],
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:42:11Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:42:11Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:42:16Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:42:16Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:42:21Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:42:21Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:42:26Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:42:26Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:42:31Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:42:31Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:42:36Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:42:36Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:42:36Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 123
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:42:38Z",
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:42:42Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:42:42Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:42:42Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 124
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:43:08Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:43:08Z",
+			"componentName": "file_cache",
+			"value": {
+				"Cache Usage": "8358256640.000000 MB",
+				"Usage Percent": "27.782301%"
+			}
+		}
+	],
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:43:33Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:43:33Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:43:33Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 125
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:43:38Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:43:38Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	],
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:43:43Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:43:43Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:43:49Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:43:49Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:43:54Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:43:54Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:43:59Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:43:59Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:44:04Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:44:04Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:44:04Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 131
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:44:08Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:44:08Z",
+			"componentName": "file_cache",
+			"value": {
+				"Cache Usage": "8358309888.000000 MB",
+				"Usage Percent": "27.782478%"
+			}
+		}
+	],
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:44:09Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:44:09Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:44:14Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:44:14Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:44:19Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:44:19Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:44:25Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:44:25Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:44:30Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:44:30Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:44:35Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:44:35Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:44:35Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 137
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:44:38Z",
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:44:40Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:44:40Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:44:45Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:44:45Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:44:56Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:44:56Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:45:01Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:45:01Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:45:06Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:45:06Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:45:06Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 142
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:45:08Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:45:08Z",
+			"componentName": "file_cache",
+			"value": {
+				"Cache Usage": "8358391808.000000 MB",
+				"Usage Percent": "27.782750%"
+			}
+		}
+	],
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:45:11Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:45:11Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:45:16Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:45:16Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:45:21Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:45:21Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:45:26Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:45:26Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:45:32Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:45:32Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:45:37Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:45:37Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:45:37Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 148
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:45:38Z",
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:45:42Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:45:42Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:45:47Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:45:47Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:45:52Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:45:52Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:45:57Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:45:57Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:46:02Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:46:02Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:46:07Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:46:07Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:46:07Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 154
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:46:08Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:46:08Z",
+			"componentName": "file_cache",
+			"value": {
+				"Cache Usage": "8358481920.000000 MB",
+				"Usage Percent": "27.783050%"
+			}
+		}
+	],
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:46:13Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:46:13Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:46:18Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:46:18Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:46:23Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:46:23Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:46:23Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 157
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:46:38Z",
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:47:08Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:47:08Z",
+			"componentName": "file_cache",
+			"value": {
+				"Cache Usage": "8344231936.000000 MB",
+				"Usage Percent": "27.735684%"
+			}
+		}
+	],
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:47:14Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:47:14Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:47:19Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:47:19Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:47:24Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:47:24Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:47:29Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:47:29Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:47:34Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:47:34Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:47:34Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 162
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:47:38Z",
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:47:39Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:47:39Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:47:44Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:47:44Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:47:50Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:47:50Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:47:55Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:47:55Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:47:56Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:47:56Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:47:56Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:48:00Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:48:00Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:48:05Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:48:05Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:48:05Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 170
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:48:08Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:48:08Z",
+			"componentName": "file_cache",
+			"value": {
+				"Cache Usage": "8344784896.000000 MB",
+				"Usage Percent": "27.737522%"
+			}
+		}
+	],
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:48:10Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:48:10Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:48:15Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:48:15Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:48:19Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:48:19Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:48:19Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:48:20Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:48:20Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:48:26Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:48:26Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:48:31Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:48:31Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:48:36Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:48:36Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:48:36Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 178
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:48:38Z",
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2366184k"
+},
+{
+	"Timestamp": "2025-05-29T09:48:41Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:48:41Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T09:48:41Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:48:46Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:48:46Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T09:48:47Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T09:48:47Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+}
+]

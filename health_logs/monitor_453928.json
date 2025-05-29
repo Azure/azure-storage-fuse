@@ -1,0 +1,139 @@
+[{
+	"Timestamp": "2025-05-29T03:27:17Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T03:27:17Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T03:27:22Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T03:27:22Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T03:27:27Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T03:27:27Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T03:27:32Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T03:27:32Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T03:27:37Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T03:27:37Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T03:27:42Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T03:27:42Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		},
+		{
+			"timestamp": "2025-05-29T03:27:42Z",
+			"componentName": "azstorage",
+			"value": {
+				"StreamDir": 6
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T03:27:45Z",
+	"CPUUsage": "0.0%",
+	"MemoryUsage": "2357456k"
+},
+{
+	"Timestamp": "2025-05-29T03:27:47Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T03:27:47Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T03:27:52Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T03:27:52Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T03:27:58Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T03:27:58Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+}
+]

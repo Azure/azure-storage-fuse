@@ -78,7 +78,7 @@ type Output struct {
 	Net       string                  `json:"NetworkUsage,omitempty"`
 }
 
-const monitorURL = "https://centralus.monitoring.azure.com/subscriptions/ba45b233-e2ef-4169-8808-49eb0d8eba0d/resourceGroups/sanjsingh-rg/providers/Microsoft.Compute/virtualMachines/sanjana/metrics"
+const monitorURL = "https://westus2.monitoring.azure.com/subscriptions/ba45b233-e2ef-4169-8808-49eb0d8eba0d/resourceGroups/sanjsingh-rg/providers/Microsoft.Compute/virtualMachines/sanjanavm2"
 
 var expLock sync.Mutex
 var se *StatsExporter
@@ -168,7 +168,14 @@ func (se *StatsExporter) StatsExporter() {
 		} else {
 			// keep max 3 timestamps in memory
 			if len(se.outputList) >= 3 {
-				_ = se.sendToAzureMonitor(se.outputList[0])
+				if !isMetricsEmptyOrInvalid(se.outputList[0]) {
+					err := se.sendToAzureMonitor(se.outputList[0])
+					if err != nil {
+						log.Err("stats_exporter::StatsExporter : Failed to send metrics to Azure Monitor [%v]", err)
+					}
+				} else {
+					log.Info("stats_exporter::StatsExporter : No valid metrics to send for timestamp %s", se.outputList[0].Timestamp)
+				}
 				err := se.addToOutputFile(se.outputList[0])
 				if err != nil {
 					log.Err("stats_exporter::StatsExporter : [%v]", err)
@@ -181,7 +188,16 @@ func (se *StatsExporter) StatsExporter() {
 			})
 
 			se.addToList(&st, len(se.outputList)-1)
-			_ = se.sendToAzureMonitor(se.outputList[len(se.outputList)-1])
+			if !isMetricsEmptyOrInvalid(se.outputList[len(se.outputList)-1]) {
+				err := se.sendToAzureMonitor(se.outputList[len(se.outputList)-1])
+				if err != nil {
+					log.Err("stats_exporter::StatsExporter : Failed to send metrics to Azure Monitor [%v]", err)
+				}
+			} else {
+				log.Info("stats_exporter::StatsExporter : No valid metrics to send for timestamp %s", se.outputList[len(se.outputList)-1].Timestamp)
+			}
+
+			//_ = se.sendToAzureMonitor(se.outputList[len(se.outputList)-1])
 		}
 	}
 }
@@ -321,6 +337,22 @@ func CloseExporter() error {
 	return nil
 }
 
+func isMetricsEmptyOrInvalid(out *Output) bool {
+	numericSuffixRegex := regexp.MustCompile(`[^0-9.\-]+$`)
+
+	isInvalid := func(s string) bool {
+		cleaned := numericSuffixRegex.ReplaceAllString(s, "")
+		cleaned = strings.TrimSpace(cleaned)
+		if cleaned == "" {
+			return true
+		}
+		_, err := strconv.ParseFloat(cleaned, 64)
+		return err != nil
+	}
+
+	return isInvalid(out.Cpu) && isInvalid(out.Mem) && isInvalid(out.Net)
+}
+
 func (se *StatsExporter) sendToAzureMonitor(out *Output) error {
 	timestamp, err := time.Parse(time.RFC3339, out.Timestamp)
 	if err != nil {
@@ -328,11 +360,38 @@ func (se *StatsExporter) sendToAzureMonitor(out *Output) error {
 		return err
 	}
 
+	numericSuffixRegex := regexp.MustCompile(`[^0-9.\-]+$`)
 	metrics := map[string]string{
 		"CPUUsage":     out.Cpu,
 		"MemoryUsage":  out.Mem,
 		"NetworkUsage": out.Net,
 	}
+
+	validMetrics := make(map[string]float64)
+
+	for metricName, valueStr := range metrics {
+		cleanStr := numericSuffixRegex.ReplaceAllString(valueStr, "")
+		cleanStr = strings.TrimSpace(cleanStr)
+
+		if cleanStr == "" {
+			log.Warn("stats_exporter::sendToAzureMonitor : Empty value after cleaning for metric [%s]", metricName)
+			continue
+		}
+
+		value, err := strconv.ParseFloat(cleanStr, 64)
+		if err != nil {
+			log.Err("stats_exporter::sendToAzureMonitor : Unable to parse value [%v] for metric [%s]", err, metricName)
+			continue
+		}
+
+		validMetrics[metricName] = value
+	}
+
+	if len(validMetrics) == 0 {
+		log.Info("stats_exporter::sendToAzureMonitor : No valid metrics to send")
+		return nil
+	}
+
 	log.Info("stats_exporter::sendToAzureMonitor : Creating managed identity credentials")
 	cred, err := azidentity.NewManagedIdentityCredential(nil)
 	if err != nil {
@@ -349,22 +408,8 @@ func (se *StatsExporter) sendToAzureMonitor(out *Output) error {
 		return err
 	}
 	log.Debug("stats_exporter::sendToAzureMonitor : Token successfully retrieved")
-	var numericSuffixRegex = regexp.MustCompile(`[^0-9.\-]+$`)
 
-	for metricName, valueStr := range metrics {
-		cleanStr := numericSuffixRegex.ReplaceAllString(valueStr, "")
-		cleanStr = strings.TrimSpace(cleanStr)
-
-		if cleanStr == "" {
-			log.Warn("stats_exporter::sendToAzureMonitor : Empty value after cleaning for metric [%s]", metricName)
-			continue
-		}
-
-		value, err := strconv.ParseFloat(cleanStr, 64)
-		if err != nil {
-			log.Err("stats_exporter::sendToAzureMonitor : Unable to parse value [%v] for metric [%s]", err, metricName)
-			continue
-		}
+	for metricName, value := range validMetrics {
 		log.Debug("stats_exporter::sendToAzureMonitor : Preparing to send metric [%s] with value [%f]", metricName, value)
 
 		payload := map[string]interface{}{
@@ -376,7 +421,7 @@ func (se *StatsExporter) sendToAzureMonitor(out *Output) error {
 					"dimNames":  []string{"host"},
 					"series": []map[string]interface{}{
 						{
-							"dimValues": []string{"host1"}, // Replace with dynamic host if needed
+							"dimValues": []string{"host1"},
 							"min":       value,
 							"max":       value,
 							"sum":       value,

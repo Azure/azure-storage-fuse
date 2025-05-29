@@ -1,0 +1,57 @@
+[{
+	"Timestamp": "2025-05-29T03:41:01Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T03:41:01Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T03:41:06Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T03:41:06Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T03:41:11Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T03:41:11Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+},
+{
+	"Timestamp": "2025-05-29T03:41:16Z",
+	"BlobfuseStats": [
+		{
+			"timestamp": "2025-05-29T03:41:16Z",
+			"componentName": "azstorage",
+			"operation": "StreamDir",
+			"path": "/",
+			"value": {
+				"Count": 1
+			}
+		}
+	]
+}
+]
