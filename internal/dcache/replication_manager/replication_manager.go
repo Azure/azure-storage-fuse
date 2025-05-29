@@ -510,9 +510,6 @@ func syncMV(mvName string, mvInfo dcache.MirroredVolume) {
 	// %age progress. Note that JoinMV carries the reservedSpace parameter which is the more critical one
 	// to decide if an RV can host a new MV replica or not.
 	//
-	// TODO: Make sure GetMVSize() correctly returns the to-be-synced data, i.e., data in the regular
-	//       MV folder. Remove .sync folder dependency, all chunks will be written to the regular MV folder.
-	//
 	syncSize, err := GetMVSize(mvName)
 	if err != nil {
 		err = fmt.Errorf("failed to get disk usage of %s/%s [%v]", lioRV, mvName, err)
