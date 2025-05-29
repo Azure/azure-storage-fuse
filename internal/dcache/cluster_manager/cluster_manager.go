@@ -1013,6 +1013,18 @@ func (cmi *ClusterManager) clusterMapBeingUpdatedByAnotherNode(clusterMap *dcach
 		return true, fmt.Errorf("ClusterManager::clusterMapBeingUpdatedByAnotherNode: endClusterMapUpdate() failed: %v", err)
 	}
 
+	// Update the latest clustermap content and etag after successfully overriding the ownership.
+	latestClusterMap, latestEtag, err := clusterManager.fetchAndUpdateLocalClusterMap()
+	if err != nil {
+		common.Assert(false, err)
+		return true, fmt.Errorf("ClusterManager::clusterMapBeingUpdatedByAnotherNode: fetchAndUpdateLocalClusterMap() failed: %v", err)
+	}
+	log.Debug("ClusterManager::clusterMapBeingUpdatedByAnotherNode: Successfully overrided stale update, prev etag %v, new etag: %v", *etag, *latestEtag)
+
+	// Update the etag and clusterMap references to the latest values.
+	*etag = *latestEtag
+	*clusterMap = *latestClusterMap
+
 	// This is our promise to the caller.
 	common.Assert(clusterMap.State == dcache.StateReady)
 	common.Assert(clusterMap.LastUpdatedBy == cmi.myNodeId)
@@ -1228,6 +1240,10 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 
 	// Staleness check for non-leader.
 	stale := clusterMapAge > int64(clusterMap.Config.ClustermapEpoch+thresholdClusterMapEpochTime)
+	// Are we the leader node? Leader gets to update the clustermap bypassing the staleness check.
+	// Since clusterMapBeingUpdatedByAnotherNode may override LastUpdatedBy, re-evaluate leaderNode afterward
+	leaderNode := clusterMap.LastUpdatedBy
+	leader := (leaderNode == cmi.myNodeId)
 
 	//
 	// If some other node/context is currently updating the clustermap, skip updating in this iteration, as
@@ -1245,7 +1261,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 
 	if isClusterMapUpdateBlocked {
 		log.Debug("ClusterManager::updateStorageClusterMapIfRequired:skipping, clustermap is being updated by (leader %s), current node (%s)",
-			clusterMap.LastUpdatedBy, cmi.myNodeId)
+			leaderNode, cmi.myNodeId)
 
 		//
 		// Leader node should have updated the state to checking and it should not find the state to checking.
@@ -1258,14 +1274,9 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 		//       finds the clusterMap state as checking.
 		//       Still leaving the assert as it's useful to see if it occurrs in any other way.
 		//
-		common.Assert(!(clusterMap.LastUpdatedBy == cmi.myNodeId), "We don't expect leader to see the clustermap in checking state")
+		common.Assert(!leader, "We don't expect leader to see the clustermap in checking state")
 		return nil
 	}
-
-	// Are we the leader node? Leader gets to update the clustermap bypassing the staleness check.
-	// Since clusterMapBeingUpdatedByAnotherNode may override LastUpdatedBy, re-evaluate leaderNode afterward
-	leaderNode := clusterMap.LastUpdatedBy
-	leader := (leaderNode == cmi.myNodeId)
 
 	//
 	// Ok, clustermap can be possibly updated (can't be sure until startClusterMapUpdate() returns success).
@@ -1306,6 +1317,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 		common.Assert(false, err)
 		return err
 	}
+
 	//
 	// UpdateClusterMapStart() must not take long. Assert to check that.
 	//
