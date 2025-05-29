@@ -372,6 +372,13 @@ retry:
 						return nil, err
 					}
 
+					// TODO: retry till the next epoch, till the clustermap is refreshed.
+					// Case: StartSync() RPC calls are successful, but before the state of the target RV
+					// is updated to "syncing" in clustermap, some other node calls WriteMV() with the outdated
+					// clustermap, which results in the component RVs rejecting the request with
+					// NeedToRefreshClusterMap error. Even after the clustermap is refreshed, it may get the same
+					// state of the target RV as "outofsync" as the clustermap update by the source (or lio) RV
+					// may not have completed yet, so the target RV may not be in "syncing" state.
 					err = cm.RefreshClusterMapSync()
 					if err != nil {
 						err = fmt.Errorf("RefreshClusterMapSync() failed, failing write %s",
@@ -503,9 +510,6 @@ func syncMV(mvName string, mvInfo dcache.MirroredVolume) {
 	// %age progress. Note that JoinMV carries the reservedSpace parameter which is the more critical one
 	// to decide if an RV can host a new MV replica or not.
 	//
-	// TODO: Make sure GetMVSize() correctly returns the to-be-synced data, i.e., data in the regular
-	//       MV folder. Remove .sync folder dependency, all chunks will be written to the regular MV folder.
-	//
 	syncSize, err := GetMVSize(mvName)
 	if err != nil {
 		err = fmt.Errorf("failed to get disk usage of %s/%s [%v]", lioRV, mvName, err)
@@ -619,19 +623,30 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 	}
 
 	//
+	// Now that the target RV state is updated to syncing from outofsync, the WriteMV() workflow will
+	// consider the target RV as valid candidate for client PutChunk() calls.
+	// This means that all the chunks written in this MV before now, will need to be synced or copied
+	// to the target RV by the sync PutChunk() RPC calls.
+	// The chunks written to the MV after this point will be written to the target RV as well,
+	// since the target RV is now in syncing state.
+	//
+	syncStartTime := time.Now().UnixMicro() + NTPClockSkewMargin
+
+	//
 	// Update the state of target RV from outofsync to syncing in local component RVs list.
 	// The updated component RVs list will be later used in the PutChunk(sync) RPC calls to the target RV.
 	//
 	updateLocalComponentRVState(componentRVs, targetRVName, dcache.StateOutOfSync, dcache.StateSyncing)
 
 	syncJob := &syncJob{
-		mvName:       mvName,
-		srcRVName:    lioRV,
-		srcSyncID:    srcSyncId,
-		destRVName:   targetRVName,
-		destSyncID:   dstSyncId,
-		syncSize:     syncSize,
-		componentRVs: componentRVs,
+		mvName:        mvName,
+		srcRVName:     lioRV,
+		srcSyncID:     srcSyncId,
+		destRVName:    targetRVName,
+		destSyncID:    dstSyncId,
+		syncSize:      syncSize,
+		componentRVs:  componentRVs,
+		syncStartTime: syncStartTime,
 	}
 
 	log.Debug("ReplicationManager::syncComponentRV: Sync job created: %s", syncJob.toString())
@@ -804,8 +819,11 @@ func runSyncJob(job *syncJob) error {
 }
 
 // copyOutOfSyncChunks copies the out of sync chunks from the source to target MV replica.
-// It enumerates the chunks in the source MV path and copies them to the target RV.
-// The chunks are copied using the sync PutChunk() RPC call to the target RV.
+// The out of sync chunks are determined on the basis of the sync start time.
+// The chunks that are created before this time are considered out of sync and
+// need to be copied to the target RV by the sync PutChunk() RPC call.
+// Whereas the chunks created after this time are written to both source and target RVs by the
+// client PutChunk() RPC calls, and hence ignored here.
 func copyOutOfSyncChunks(job *syncJob) error {
 	log.Debug("ReplicationManager::copyOutOfSyncChunks: Sync job: %s", job.toString())
 
@@ -839,6 +857,26 @@ func copyOutOfSyncChunks(job *syncJob) error {
 			common.Assert(false, entry.Name(), sourceMVPath)
 			continue
 		}
+
+		info, err := entry.Info()
+		common.Assert(err == nil, err)
+
+		if info.ModTime().UnixMicro() > job.syncStartTime {
+			// This chunk is created after the sync start time, so it will be written to both source and target
+			// RVs by the client PutChunk() RPC calls, so we can skip it here.
+			log.Debug("ReplicationManager::copyOutOfSyncChunks: Skipping chunk %s/%s, "+
+				"Mtime (%d) > syncStartTime (%d) [%d usecs after sync start]",
+				sourceMVPath, entry.Name(), info.ModTime().UnixMicro(), job.syncStartTime,
+				info.ModTime().UnixMicro()-job.syncStartTime)
+			continue
+		}
+
+		log.Debug("ReplicationManager::copyOutOfSyncChunks: Copying chunk %s/%s, Mtime (%d) <= syncStartTime (%d)",
+			sourceMVPath, entry.Name(), info.ModTime().UnixMicro(), job.syncStartTime)
+		log.Debug("ReplicationManager::copyOutOfSyncChunks: Copying chunk %s/%s, "+
+			"Mtime (%d) <= syncStartTime (%d) [%d usecs before sync start]",
+			sourceMVPath, entry.Name(), info.ModTime().UnixMicro(), job.syncStartTime,
+			job.syncStartTime-info.ModTime().UnixMicro())
 
 		//
 		// chunks are stored in MV as,

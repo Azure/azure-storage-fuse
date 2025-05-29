@@ -35,7 +35,6 @@ package rpc_server
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"sort"
 
@@ -47,36 +46,13 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 )
 
-// returns the chunk path and hash path for the given fileID and offsetInMB from the regular MV directory
-// If not present, return the path of the sync MV directory
+// returns the chunk and hash path for the given fileID and offsetInMB from RV/MV directory as,
+// <cache dir>/<mvName>/<fileID>.<offsetInMB>.data and
+// <cache dir>/<mvName>/<fileID>.<offsetInMB>.hash
 func getChunkAndHashPath(cacheDir string, mvName string, fileID string, offsetInMB int64) (string, string) {
-	chunkPath, hashPath := getRegularMVPath(cacheDir, mvName, fileID, offsetInMB)
-	_, err := os.Stat(chunkPath)
-	if err != nil {
-		log.Debug("utils::getChunkAndHashPath: chunk file %s does not exist, returning .sync directory path", chunkPath)
-		return getSyncMVPath(cacheDir, mvName, fileID, offsetInMB)
-	}
-
-	return chunkPath, hashPath
-}
-
-// returns the chunk path and hash path for the given fileID and offsetInMB from regular MV directory
-func getRegularMVPath(cacheDir string, mvName string, fileID string, offsetInMB int64) (string, string) {
 	chunkPath := filepath.Join(cacheDir, mvName, fmt.Sprintf("%v.%v.data", fileID, offsetInMB))
 	hashPath := filepath.Join(cacheDir, mvName, fmt.Sprintf("%v.%v.hash", fileID, offsetInMB))
 	return chunkPath, hashPath
-}
-
-// returns the chunk path and hash path for the given fileID and offsetInMB from MV.sync directory
-func getSyncMVPath(cacheDir string, mvName string, fileID string, offsetInMB int64) (string, string) {
-	chunkPath := filepath.Join(cacheDir, mvName+".sync", fmt.Sprintf("%v.%v.data", fileID, offsetInMB))
-	hashPath := filepath.Join(cacheDir, mvName+".sync", fmt.Sprintf("%v.%v.hash", fileID, offsetInMB))
-	return chunkPath, hashPath
-}
-
-// return the chunk address in the format <fileID>-<rvID>-<mvName>-<offsetInMB>
-func getChunkAddress(fileID string, rvID string, mvName string, offsetInMB int64) string {
-	return fmt.Sprintf("%v-%v-%v-%v", fileID, rvID, mvName, offsetInMB)
 }
 
 // sort the component RVs in the MV
@@ -142,44 +118,6 @@ func isRVPresentInMV(rvs []*models.RVNameAndState, rvName string) bool {
 
 	return false
 }
-
-// end sync operation will call this method to move all the chunks from the sync MV path to the regular MV path
-func moveChunksToRegularMVPath(syncMvPath string, regMvPath string) error {
-	entries, err := os.ReadDir(syncMvPath)
-	if err != nil {
-		log.Err("utils::moveChunksToRegularMVPath: Failed to read directory %s [%v]", syncMvPath, err)
-		return err
-	}
-
-	for _, entry := range entries {
-		if entry.IsDir() {
-			log.Warn("utils::moveChunksToRegularMVPath: Skipping directory %s", entry.Name())
-			// We only save chunks in the .sync folder.
-			common.Assert(false)
-			continue
-		}
-
-		// TODO: Check and assert that all entries are valid chunk names.
-
-		src := filepath.Join(syncMvPath, entry.Name())
-		dest := filepath.Join(regMvPath, entry.Name())
-
-		err = os.Rename(src, dest)
-		if err != nil {
-			log.Err("utils::moveChunksToRegularMVPath: Failed to move chunk %s -> %s [%v]",
-				src, dest, err.Error())
-			return err
-		}
-
-		log.Debug("utils::moveChunksToRegularMVPath: Moved chunk %s -> %s", src, dest)
-	}
-
-	return nil
-}
-
-// TODO: apart from just populating the rv related info, it should also update the mvinfo.
-// For that it'll need to find the mv folders inside the rv, enumerate and stat all chunks
-// to find the totalChunkBytes, etc. This is needed when a node with data, restarts
 
 // create the rvID map from RVs present in the current node
 func getRvIDMap(rvs map[string]dcache.RawVolume) map[string]*rvInfo {
