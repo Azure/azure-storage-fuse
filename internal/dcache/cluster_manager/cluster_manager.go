@@ -1071,6 +1071,15 @@ func (cmi *ClusterManager) endClusterMapUpdate(clusterMap *dcache.ClusterMap) er
 	clusterMap.State = dcache.StateReady
 	clusterMap.LastUpdatedAt = time.Now().Unix()
 
+	//
+	// Every time clusterMap is updated, Epoch is incremented.
+	// This is good for usecases which want to find out if after refresh they got a "new" clusterMap copy, not
+	// necessarily "updated" clusterMap copy. Most usecases should be fine with this.
+	//
+	// TODO: See if it's useful to update Epoch only on clusterMap content change.
+	//
+	clusterMap.Epoch++
+
 	clusterMapBytes, err := json.Marshal(clusterMap)
 	if err != nil {
 		err = fmt.Errorf("marshal failed for clustermap: %v %+v", err, clusterMap)
@@ -1276,8 +1285,6 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 		log.Warn("ClusterManager::updateStorageClusterMapIfRequired: clusterMap not updated by current leader (%s) for %s, ownership being claimed by new leader %s",
 			leaderNode, clusterMapAge, cmi.myNodeId)
 	}
-
-	// TODO: We need to update clusterMap.Epoch to contain the next higher number.
 
 	//
 	// Start the clustermap update process by first claiming ownership of the clustermap update.
