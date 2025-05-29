@@ -1241,7 +1241,6 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	// Staleness check for non-leader.
 	stale := clusterMapAge > int64(clusterMap.Config.ClustermapEpoch+thresholdClusterMapEpochTime)
 	// Are we the leader node? Leader gets to update the clustermap bypassing the staleness check.
-	// Since clusterMapBeingUpdatedByAnotherNode may override LastUpdatedBy, re-evaluate leaderNode afterward
 	leaderNode := clusterMap.LastUpdatedBy
 	leader := (leaderNode == cmi.myNodeId)
 
