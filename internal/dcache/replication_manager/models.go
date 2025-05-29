@@ -222,6 +222,13 @@ type syncJob struct {
 	destSyncID   string                   // sync ID of the StartSync() RPC call made to the node hosting the destination RV
 	syncSize     int64                    // total number of bytes to be synced
 	componentRVs []*models.RVNameAndState // list of component RVs for the MV
+
+	// Time when the target RV's state is updated to syncing state from outofsync.
+	// This is used to determine which chunks need to be synced/copied to the target RV.
+	// The chunks created before this time are copied to the target RV via the sync PutChunk RPC calls.
+	// Whereas the chunks created after this time are not copied to the target RV, as these would have
+	// already been written to the target RV by the client PutChunk RPC calls.
+	syncStartTime int64
 }
 
 // Helper method which can be used for logging the syncJob.

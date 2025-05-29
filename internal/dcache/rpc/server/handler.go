@@ -122,7 +122,7 @@ type mvInfo struct {
 
 	componentRVs []*models.RVNameAndState // sorted list of component RVs for this MV
 
-	// Total amount of space used up inside the MV directory (both MV and .sync directory),
+	// Total amount of space used up inside the MV directory,
 	// by all the chunks stored in it. Any RV that has to replace one of the existing component
 	// RVs needs to have at least this much space.
 	// JoinMV() requests this much space to be reserved in the new-to-be-inducted RV.
@@ -133,9 +133,6 @@ type mvInfo struct {
 	// resync Writes, and client Writes if any will be replicated to all the RVs, each of them storing the chunks
 	// in their respective mv folders. This is the normal case.
 	// A syncing MV is interesting. In this case there are resync writes going and possibly client writes too.
-	// Client chunks are saved in a special mv.sync folder while sync writes are saved in the regular mv folder.
-	// During EndSync, the client writes are moved from mv.sync to the regular mv folder and then we have the MV
-	// back in online state.
 	// The short period when an MV moves in and out of syncing state is important. We need to quiesce any IOs
 	// to make sure we don't miss resyncing any chunk.
 	// Both StartSync and EndSync will quiesce IOs just before they move the mv into and out of syncing state, and
@@ -177,8 +174,6 @@ type mvInfo struct {
 //   - An MV Replica can be source to multiple sync jobs while it can be target to one and only one sync job.
 //   - Every sync job has an id, called the SyncId. This is returned by a successful StartSync call and must be provided
 //     in the EndSync call to end that sync job.
-//   - When an MV Replica is acting as the source of a sync job any client writes targeted to that MV Replica will be
-//     stored in the ".sync" folder.
 type syncJob struct {
 	// sync ID for this sync job.
 	// This is returned in the StartSync response and EndSync should carry this.
@@ -368,8 +363,6 @@ func (mv *mvInfo) addSyncJob(sourceRVName string, targetRVName string) string {
 // Check if the syncID is valid for this MV replica, i.e., there is currently a syncJob running with this syncID.
 //
 // Caller must hold opMutex write lock.
-//
-// TODO: Later when we add syncIds to PutChunk request then we will need to call this with opMutex read lock too.
 func (mv *mvInfo) isSyncIDValid(syncID string) bool {
 	common.Assert(mv.isSyncOpWriteLocked(), mv.opMutexDbgCntr.Load())
 	common.Assert(common.IsValidUUID(syncID))
@@ -397,9 +390,7 @@ func (mv *mvInfo) deleteSyncJob(syncID string) {
 // name of the RV on which the target MV replica resides, similarly for MV replicas acting as target, the source
 // MV replica will be outside this node and sourceRVName contains the name of the RV on which the source MV replica
 // resides.
-// Source MV replicas MUST have a <mv>.sync folder and all client PutChunk requests must write chunks to this folder
-// while resync PutChunk requests must be written to the regular mv folder.
-// Target MV replicas MUST write both client and resync PutChunk chunks to the regular mv folder.
+// In both source and target MV replicas, both client and resync PutChunk chunks are written to the rv/mv folder.
 //
 // Caller must hold opMutex read lock.
 func (mv *mvInfo) isSourceOrTargetOfSync() (isSource bool, isTarget bool) {
@@ -1034,6 +1025,10 @@ func (h *ChunkServiceHandler) Hello(ctx context.Context, req *models.HelloReques
 
 	log.Debug("ChunkServiceHandler::Hello: Received Hello request: %v", req.String())
 
+	// Sender and receiver node IDs must be valid.
+	common.Assert(common.IsValidUUID(req.SenderNodeID), req.SenderNodeID)
+	common.Assert(common.IsValidUUID(req.ReceiverNodeID), req.ReceiverNodeID)
+
 	// TODO: send more information in response on Hello RPC
 
 	myNodeID := rpc.GetMyNodeUUID()
@@ -1065,6 +1060,9 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	startTime := time.Now()
 
 	log.Debug("ChunkServiceHandler::GetChunk: Received GetChunk request: %v", rpc.GetChunkRequestToString(req))
+
+	// Sender node id must be valid.
+	common.Assert(common.IsValidUUID(req.SenderNodeID), req.SenderNodeID)
 
 	//
 	// Check if the chunk address is valid. We basically check for the following:
@@ -1210,11 +1208,14 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 
 	log.Debug("ChunkServiceHandler::PutChunk: Received PutChunk request: %v", rpc.PutChunkRequestToString(req))
 
+	// Sender node id must be valid.
+	common.Assert(common.IsValidUUID(req.SenderNodeID), req.SenderNodeID)
+
 	// Check if the chunk address is valid.
 	err := h.checkValidChunkAddress(req.Chunk.Address)
 	if err != nil {
-		log.Err("ChunkServiceHandler::PutChunk: Invalid chunk address %v [%v]",
-			req.Chunk.Address.String(), err)
+		log.Err("ChunkServiceHandler::PutChunk: Invalid chunk address %v, request = %v [%v]",
+			req.Chunk.Address.String(), rpc.PutChunkRequestToString(req), err)
 		return nil, err
 	}
 
@@ -1245,8 +1246,7 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 
 	//
 	// Acquire read lock on the opMutex for this MV to block any StartSync request from updating rvInfo while
-	// we are accessing it. Note that depending on the sync state of an MV replica, the client PutChunk requests
-	// may need to be saved in regular or the sync mv folder. This read lock prevents any races in that.
+	// we are accessing it.
 	//
 	mvInfo.acquireSyncOpReadLock()
 	defer mvInfo.releaseSyncOpReadLock()
@@ -1323,7 +1323,7 @@ refreshFromClustermapAndRetry:
 		//
 		syncJob, ok := mvInfo.syncJobs[req.SyncID]
 		if !ok {
-			errStr := fmt.Sprintf("PutChunk(sync) syncId %s not valid for %s/%s [NeedToRefreshClusterMap]",
+			errStr := fmt.Sprintf("PutChunk(sync) syncID %s not valid for %s/%s [NeedToRefreshClusterMap]",
 				req.SyncID, rvInfo.rvName, req.Chunk.Address.MvName)
 			log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
 			common.Assert(false, errStr)
@@ -1342,7 +1342,7 @@ refreshFromClustermapAndRetry:
 	// defer flock.Unlock()
 
 	cacheDir := rvInfo.cacheDir
-	isSrcOfSync, isTgtOfSync := mvInfo.isSourceOrTargetOfSync()
+	_, isTgtOfSync := mvInfo.isSourceOrTargetOfSync()
 
 	var chunkPath, hashPath string
 	if len(req.SyncID) > 0 {
@@ -1350,45 +1350,57 @@ refreshFromClustermapAndRetry:
 		// Sync PutChunk call (as opposed to a client write PutChunk call).
 		// This is called after the StartSync RPC to synchronize an OutOfSyc MV replica from a healthy MV
 		// replica.
-		// In this case the chunks must be written to the regular mv directory, i.e. rv0/mv0
 		//
 		// Sync PutChunk call will be made in the ResyncMV() workflow, and should only be sent to RVs which
 		// are target of a sync job.
 		//
 		if !isTgtOfSync {
-			errStr := fmt.Sprintf("Sync PutChunk call received for %s/%s, which is currently not the target of any sync job",
-				rvInfo.rvName, req.Chunk.Address.MvName)
+			errStr := fmt.Sprintf("PutChunk(sync) syncID = %s, call received for %s/%s, which is currently not the target of any sync job",
+				req.SyncID, rvInfo.rvName, req.Chunk.Address.MvName)
 
 			log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
 			common.Assert(false, errStr)
 			return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
 		}
-
-		chunkPath, hashPath = getRegularMVPath(cacheDir, req.Chunk.Address.MvName,
-			req.Chunk.Address.FileID, req.Chunk.Address.OffsetInMiB)
-	} else {
-		//
-		// Client write PutChunk call. If this MV replica is currently acting as the source for any sync job,
-		// the chunks must be written to the sync directory, i.e. rv0/mv0.sync, else they must be written
-		// to the regular mv directory, i.e. rv0/mv0.
-		//
-		if isSrcOfSync {
-			chunkPath, hashPath = getSyncMVPath(cacheDir, req.Chunk.Address.MvName,
-				req.Chunk.Address.FileID, req.Chunk.Address.OffsetInMiB)
-		} else {
-			chunkPath, hashPath = getRegularMVPath(cacheDir, req.Chunk.Address.MvName,
-				req.Chunk.Address.FileID, req.Chunk.Address.OffsetInMiB)
-		}
 	}
+
+	//
+	// In both client as well as sync write PutChunk calls,
+	// the chunks must be written to the mv directory, i.e. rv0/mv0.
+	//
+	chunkPath, hashPath = getChunkAndHashPath(cacheDir, req.Chunk.Address.MvName,
+		req.Chunk.Address.FileID, req.Chunk.Address.OffsetInMiB)
 
 	log.Debug("ChunkServiceHandler::PutChunk: chunk path %s, hash path %s", chunkPath, hashPath)
 
 	// Chunk file must not be present.
 	_, err = os.Stat(chunkPath)
 	if err == nil {
-		errStr := fmt.Sprintf("Chunk file %s already exists", chunkPath)
-		log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
-		return nil, rpc.NewResponseError(models.ErrorCode_ChunkAlreadyExists, errStr)
+		if req.SyncID != "" {
+			// In case of sync PutChunk calls, we can get sync write for chunks already present in
+			// the target RV because of the NTPClockSkewMargin added to the sync write time. These
+			// chunks were written by the client write PutChunk calls to the target RV.
+			// So, ignore this and return success.
+			log.Debug("ChunkServiceHandler::PutChunk: syncID = %s, chunk file %s already exists, ignoring sync write",
+				req.SyncID, chunkPath)
+
+			availableSpace, err := rvInfo.getAvailableSpace()
+			if err != nil {
+				log.Err("ChunkServiceHandler::PutChunk: syncID = %s, Failed to get available disk space [%v]",
+					req.SyncID, err)
+			}
+
+			return &models.PutChunkResponse{
+				TimeTaken:      time.Since(startTime).Microseconds(),
+				AvailableSpace: availableSpace,
+				ComponentRV:    mvInfo.getComponentRVs(),
+			}, nil
+
+		} else {
+			errStr := fmt.Sprintf("Chunk file %s already exists", chunkPath)
+			log.Err("ChunkServiceHandler::PutChunk: %s", errStr)
+			return nil, rpc.NewResponseError(models.ErrorCode_ChunkAlreadyExists, errStr)
+		}
 	}
 
 	// Write to .tmp file first and rename it to the final file.
@@ -1424,6 +1436,11 @@ refreshFromClustermapAndRetry:
 		return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
 	}
 
+	// TODO: see if this is needed -> store max mtime of chunk written by client write.
+	// Needed for start sync time optimization in the sync component RV workflow. ON basis of this time,
+	// we can decide chunks which need to be synced to the target RV. The chunks having mtime less than this,
+	// should be synced to the target RV.
+
 	// TODO: should we also consider the hash file size in the total chunk bytes
 	//       For accurate accounting we can, but we should not do an extra stat() call for the hash file
 	//       but instead use a hardcoded value which will be true for a given hash algo.
@@ -1458,6 +1475,9 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 	startTime := time.Now()
 
 	log.Debug("ChunkServiceHandler::RemoveChunk: Received RemoveChunk request %v", rpc.RemoveChunkRequestToString(req))
+
+	// Sender node id must be valid.
+	common.Assert(common.IsValidUUID(req.SenderNodeID), req.SenderNodeID)
 
 	// check if the chunk address is valid
 	err := h.checkValidChunkAddress(req.Address)
@@ -1546,8 +1566,11 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 	// requires to call componentRVsToString method as it is of type []*models.RVNameAndState
 	log.Debug("ChunkServiceHandler::JoinMV: Received JoinMV request: %v", rpc.JoinMVRequestToString(req))
 
-	if !cm.IsValidMVName(req.MV) || !cm.IsValidRVName(req.RVName) || len(req.ComponentRV) == 0 {
-		errStr := fmt.Sprintf("Invalid MV, RV or ComponentRV: %v", rpc.JoinMVRequestToString(req))
+	if !common.IsValidUUID(req.SenderNodeID) ||
+		!cm.IsValidMVName(req.MV) ||
+		!cm.IsValidRVName(req.RVName) ||
+		len(req.ComponentRV) == 0 {
+		errStr := fmt.Sprintf("Invalid SenderNodeID, MV, RV or ComponentRV: %v", rpc.JoinMVRequestToString(req))
 		log.Err("ChunkServiceHandler::JoinMV: %s", errStr)
 		common.Assert(false, errStr)
 		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
@@ -1653,8 +1676,11 @@ func (h *ChunkServiceHandler) UpdateMV(ctx context.Context, req *models.UpdateMV
 
 	log.Debug("ChunkServiceHandler::UpdateMV: Received UpdateMV request: %v", rpc.UpdateMVRequestToString(req))
 
-	if !cm.IsValidMVName(req.MV) || !cm.IsValidRVName(req.RVName) || len(req.ComponentRV) == 0 {
-		errStr := fmt.Sprintf("Invalid MV, RV or ComponentRV: %v", rpc.UpdateMVRequestToString(req))
+	if !common.IsValidUUID(req.SenderNodeID) ||
+		!cm.IsValidMVName(req.MV) ||
+		!cm.IsValidRVName(req.RVName) ||
+		len(req.ComponentRV) == 0 {
+		errStr := fmt.Sprintf("Invalid SenderNodeID, MV, RV or ComponentRV: %v", rpc.UpdateMVRequestToString(req))
 		log.Err("ChunkServiceHandler::UpdateMV: %s", errStr)
 		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
 	}
@@ -1678,7 +1704,7 @@ func (h *ChunkServiceHandler) UpdateMV(ctx context.Context, req *models.UpdateMV
 		//
 		mvInfo := rvInfo.getMVInfo(req.MV)
 		if mvInfo == nil {
-			errStr := fmt.Sprintf("%s is not part of %s", req.RVName, req.MV)
+			errStr := fmt.Sprintf("%s/%s not hosted by this node", req.RVName, req.MV)
 			log.Err("ChunkServiceHandler::UpdateMV: %s", errStr)
 			common.Assert(false, errStr)
 			return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
@@ -1723,9 +1749,13 @@ func (h *ChunkServiceHandler) LeaveMV(ctx context.Context, req *models.LeaveMVRe
 
 	log.Debug("ChunkServiceHandler::LeaveMV: Received LeaveMV request: %v", rpc.LeaveMVRequestToString(req))
 
-	if !cm.IsValidMVName(req.MV) || !cm.IsValidRVName(req.RVName) || len(req.ComponentRV) == 0 {
-		log.Err("ChunkServiceHandler::LeaveMV: MV, RV or ComponentRV is empty")
-		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, "MV, RV or ComponentRV is empty")
+	if !common.IsValidUUID(req.SenderNodeID) ||
+		!cm.IsValidMVName(req.MV) ||
+		!cm.IsValidRVName(req.RVName) ||
+		len(req.ComponentRV) == 0 {
+		errStr := fmt.Sprintf("Invalid SenderNodeID, MV, RV or ComponentRV: %v", rpc.LeaveMVRequestToString(req))
+		log.Err("ChunkServiceHandler::LeaveMV: %s", errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
 	}
 
 	rvInfo := h.getRVInfoFromRVName(req.RVName)
@@ -1736,11 +1766,23 @@ func (h *ChunkServiceHandler) LeaveMV(ctx context.Context, req *models.LeaveMVRe
 
 	cacheDir := rvInfo.cacheDir
 
-	// check if RV is part of the given MV
+	//
+	// LeaveMV() RPC is only sent to RVs which are already members of the MV, and it is sent
+	// when the membership changes (due to rebalancing workflow).
+	// Since the sender is referring to the global clustermap and this RV is part of the given MV as
+	// per the global clustermap, since an RV is added to an MV only after a successful JoinMV response
+	// from all component RVs, we *must* have the MV replica in our rvInfo.
+	//
+	// TODO: There is one scenario in which this is possible, if a node responds to LeaveMV() successfully
+	// but the sender cannot commit it to clustermap for some reason, then when LeaveMV() is retried
+	// it'll not find the MV.
+	//
 	mvInfo := rvInfo.getMVInfo(req.MV)
 	if mvInfo == nil {
-		log.Err("ChunkServiceHandler::LeaveMV: RV %s is not part of the given MV %s", req.RVName, req.MV)
-		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, fmt.Sprintf("RV %s is not part of the given MV %s", req.RVName, req.MV))
+		errStr := fmt.Sprintf("%s/%s not hosted by this node", req.RVName, req.MV)
+		log.Err("ChunkServiceHandler::LeaveMV: %s", errStr)
+		common.Assert(false, errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
 	}
 
 	// validate the component RVs list
@@ -1775,13 +1817,13 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 	log.Debug("ChunkServiceHandler::StartSync: Received StartSync request: %s",
 		rpc.StartSyncRequestToString(req))
 
-	if !cm.IsValidMVName(req.MV) ||
+	if !common.IsValidUUID(req.SenderNodeID) ||
+		!cm.IsValidMVName(req.MV) ||
 		!cm.IsValidRVName(req.SourceRVName) ||
 		!cm.IsValidRVName(req.TargetRVName) ||
 		req.SourceRVName == req.TargetRVName ||
 		len(req.ComponentRV) == 0 {
-		errStr := fmt.Sprintf("MV (%s), SourceRV (%s), TargetRV (%s) or ComponentRVs (%d) invalid",
-			req.MV, req.SourceRVName, req.TargetRVName, len(req.ComponentRV))
+		errStr := fmt.Sprintf("Invalid StartSync request: %s", rpc.StartSyncRequestToString(req))
 		log.Err("ChunkServiceHandler::StartSync: %s", errStr)
 		common.Assert(false, errStr)
 		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
@@ -1845,22 +1887,6 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 	defer mvInfo.releaseSyncOpWriteLock()
 
 	//
-	// If this MV replica is the source of this sync job, we will need the .sync directory,
-	// create if it doesn't exist.
-	//
-	if isSrcOfSync {
-		// Create MV sync directory if it doesn't exist.
-		syncDir := filepath.Join(rvInfo.cacheDir, req.MV+".sync")
-		err := h.createMVDirectory(syncDir)
-		if err != nil {
-			errStr := fmt.Sprintf("Failed to create sync directory %s [%v]", syncDir, err)
-			log.Err("ChunkServiceHandler::StartSync: %s", errStr)
-			common.Assert(false, errStr)
-			return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
-		}
-	}
-
-	//
 	// If sourceRVName is set that means this MV Replica is the target of this sync job, while if
 	// targetRVName is set it means this MV Replica is the source of this sync job.
 	//
@@ -1892,14 +1918,14 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 
 	log.Debug("ChunkServiceHandler::EndSync: Received EndSync request: %v", rpc.EndSyncRequestToString(req))
 
-	if !common.IsValidUUID(req.SyncID) ||
+	if !common.IsValidUUID(req.SenderNodeID) ||
+		!common.IsValidUUID(req.SyncID) ||
 		!cm.IsValidMVName(req.MV) ||
 		!cm.IsValidRVName(req.SourceRVName) ||
 		!cm.IsValidRVName(req.TargetRVName) ||
 		req.SourceRVName == req.TargetRVName ||
 		len(req.ComponentRV) == 0 {
-		errStr := fmt.Sprintf("SyncID (%s) MV (%s), SourceRV (%s), TargetRV (%s) or ComponentRVs (%d) invalid",
-			req.SyncID, req.MV, req.SourceRVName, req.TargetRVName, len(req.ComponentRV))
+		errStr := fmt.Sprintf("Invalid EndSync request: %s", rpc.EndSyncRequestToString(req))
 		log.Err("ChunkServiceHandler::EndSync: %s", errStr)
 		common.Assert(false, errStr)
 		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
@@ -1977,8 +2003,8 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 	mvInfo.updateComponentRVState(req.TargetRVName, dcache.StateSyncing, dcache.StateOnline)
 
 	//
-	// If we were the target of this sync job, then nothing else to do, else if it's the last sync
-	// job, then we will need to move chunks from .sync folder and delete it.
+	// If we were the target of this sync job, then nothing else to do.
+	// Assert if that the MV replica can be the target of only one sync job at a time.
 	//
 	if !isSrcOfSync {
 		// An MV replica can be the target of only one sync job at a time.
@@ -1989,35 +2015,52 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 	//
 	// After deleting this sync job, check if there are any other sync jobs in progress for this MV replica.
 	// If yes, then return success for this EndSync call.
-	// Else, this EndSync call is for the last running syncJob for this MV replica. So, move the chunks from
-	// the sync folder to the regular MV folder and delete the sync folder.
-	// This is done to avoid moving chunks from the sync folder to the regular MV folder if there are other
-	// sync jobs in progress for this MV replica.
+	// Else, this EndSync call is for the last running syncJob for this MV replica.
 	//
 	if mvInfo.isSyncing() {
 		log.Debug("ChunkServiceHandler::EndSync: %s/%s is source replica for %d running sync job(s): %+v",
 			rvInfo.rvName, req.MV, len(mvInfo.syncJobs), mvInfo.syncJobs)
-		return &models.EndSyncResponse{}, nil
 	}
-
-	// Move all chunks from sync folder to the regular MV folder and then resume processing.
-	regMVPath := filepath.Join(rvInfo.cacheDir, req.MV)
-	syncMvPath := filepath.Join(rvInfo.cacheDir, req.MV+".sync")
-
-	log.Debug("ChunkServiceHandler::EndSync: Moving chunks from %s -> %s", syncMvPath, regMVPath)
-
-	err = moveChunksToRegularMVPath(syncMvPath, regMVPath)
-	if err != nil {
-		errStr := fmt.Sprintf("Failed to move chunks from %s -> %s [%v]",
-			syncMvPath, regMVPath, err)
-		log.Err("ChunkServiceHandler::EndSync: %s", errStr)
-		common.Assert(false, errStr)
-		return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
-	}
-
-	// Delete the sync directory. It must be empty now.
-	err = os.Remove(syncMvPath)
-	common.Assert(err == nil, fmt.Sprintf("failed to remove sync directory %s [%v]", syncMvPath, err))
 
 	return &models.EndSyncResponse{}, nil
+}
+
+func (h *ChunkServiceHandler) GetMVSize(ctx context.Context, req *models.GetMVSizeRequest) (*models.GetMVSizeResponse, error) {
+	// Thrift should not be calling us with nil req.
+	common.Assert(req != nil)
+
+	log.Debug("ChunkServiceHandler::GetMVSize: Received GetMVSize request: %v", rpc.GetMVSizeRequestToString(req))
+
+	if !common.IsValidUUID(req.SenderNodeID) || !cm.IsValidMVName(req.MV) || !cm.IsValidRVName(req.RVName) {
+		errStr := fmt.Sprintf("Invalid GetMVSize request: %v", rpc.GetMVSizeRequestToString(req))
+		log.Err("ChunkServiceHandler::GetMVSize: %s", errStr)
+		common.Assert(false, errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
+	}
+
+	rvInfo := h.getRVInfoFromRVName(req.RVName)
+	if rvInfo == nil {
+		errStr := fmt.Sprintf("node %s does not host %s", rpc.GetMyNodeUUID(), req.RVName)
+		log.Err("ChunkServiceHandler::GetMVSize: %s", errStr)
+		common.Assert(false, errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRV, errStr)
+	}
+
+	//
+	// An MV replica can be added to rvInfo only via a JoinMV RPC, and only when we respond successfully
+	// to the JoinMV call will the sender persist it in the clustermap, so if the clustermap has it we
+	// must have sent it and if we don't have it, refreshing from clustermap cannot add it.
+	// This cannot happen unless sender is doing something wrong, hence assert.
+	//
+	mvInfo := rvInfo.getMVInfo(req.MV)
+	if mvInfo == nil {
+		errStr := fmt.Sprintf("%s/%s not hosted by this node", rvInfo.rvName, req.MV)
+		log.Err("ChunkServiceHandler::GetMVSize: %s", errStr)
+		common.Assert(false, errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
+	}
+
+	return &models.GetMVSizeResponse{
+		MvSize: mvInfo.totalChunkBytes.Load(),
+	}, nil
 }

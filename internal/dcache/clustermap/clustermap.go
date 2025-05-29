@@ -39,6 +39,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -204,6 +205,7 @@ var (
 type ClusterMap struct {
 	localMap            *dcache.ClusterMap
 	localClusterMapPath string
+	wg                  sync.WaitGroup // wait group for the processEvents() goroutine
 }
 
 func (c *ClusterMap) stop() {
