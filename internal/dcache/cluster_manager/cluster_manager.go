@@ -1048,19 +1048,45 @@ func (cmi *ClusterManager) clusterMapBeingUpdatedByAnotherNode(clusterMap *dcach
 		return true, fmt.Errorf("ClusterManager::clusterMapBeingUpdatedByAnotherNode: endClusterMapUpdate() failed: %v", err)
 	}
 
+	//
 	// Update the latest clustermap content and etag after successfully overriding the ownership.
+	// We do this to let the caller know about the updated etag. Note that the above update to clustermap
+	// would have changed the etag, if we don't update caller's etag when he tries the startClusterMapUpdate()
+	// after we return, it'll fail with etag mismatch.
+	//
 	latestClusterMap, latestEtag, err := clusterManager.fetchAndUpdateLocalClusterMap()
 	if err != nil {
 		common.Assert(false, err)
 		return true, fmt.Errorf("ClusterManager::clusterMapBeingUpdatedByAnotherNode: fetchAndUpdateLocalClusterMap() failed: %v", err)
 	}
-	log.Debug("ClusterManager::clusterMapBeingUpdatedByAnotherNode: Successfully overrided stale update, prev etag %v, new etag: %v", *etag, *latestEtag)
 
+	log.Info("ClusterManager::clusterMapBeingUpdatedByAnotherNode: Successfully overrode stuck/stale clustermap, prev etag: %v, new etag: %v", *etag, *latestEtag)
+
+	//
 	// Update the etag and clusterMap references to the latest values.
+	// etag must have changed (since we wrote the clusterMap above).
+	//
+	common.Assert(*etag != *latestEtag, *etag)
 	*etag = *latestEtag
 	*clusterMap = *latestClusterMap
 
+	//
+	// Between the endClusterMapUpdate() and fetchAndUpdateLocalClusterMap(), the clusterMap is in ready state,
+	// so some other node can start updating it. Our callers will call startClusterMapUpdate() with this etag
+	// that we return, hoping it corresponds to a StateReady clusterMap, we don't want them to be overwriting
+	// a clusterMap being updated by some other node.
+	// This is a very small window, hence emit an info log.
+	//
+	if clusterMap.State == dcache.StateChecking {
+		age = time.Since(time.Unix(clusterMap.LastUpdatedAt, 0))
+		log.Info("ClusterManager::clusterMapBeingUpdatedByAnotherNode: Node (%s), started updating clusterMap (%s ago)",
+			clusterMap.LastUpdatedBy, age)
+		return true, nil
+	}
+
+	//
 	// This is our promise to the caller.
+	//
 	common.Assert(clusterMap.State == dcache.StateReady)
 	common.Assert(clusterMap.LastUpdatedBy == cmi.myNodeId)
 
@@ -1628,7 +1654,8 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 				nodeToRvs[nodeId] = node
 			}
 		}
-		log.Debug("ClusterManager::trimNodeToRvs: After trimming nodeToRvs %+v ", nodeToRvs)
+
+		log.Debug("ClusterManager::trimNodeToRvs: After trimming nodeToRvs %+v", nodeToRvs)
 	}
 
 	//
@@ -1806,8 +1833,9 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			}
 
 			foundReplacement := false
+			log.Debug("ClusterManager::fixMV: Fixing component RV %s/%s", rvName, mvName)
+
 			// Iterate over the shuffled nodes list and pick the first suitable RV.
-			log.Debug("ClusterManager::fixMV: Fixing RV %s/%s", rvName, mvName)
 			for _, node := range availableNodes {
 				_, ok := excludeNodes[node.nodeId]
 				if ok {
@@ -1839,8 +1867,8 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 					if newRvName != rvName {
 						_, ok := mv.RVs[newRvName]
 						if ok {
-							log.Debug("ClusterManager::fixMV: Skipping %s RV for replacement This can result in less number of replica RVs %s/%s",
-								newRvName, mvName)
+							log.Debug("ClusterManager::fixMV: Not replacing %s/%s with sibling %s/%s",
+								rvName, mvName, newRvName, mvName)
 							continue
 						}
 					}
