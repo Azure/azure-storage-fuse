@@ -1025,6 +1025,10 @@ func (h *ChunkServiceHandler) Hello(ctx context.Context, req *models.HelloReques
 
 	log.Debug("ChunkServiceHandler::Hello: Received Hello request: %v", req.String())
 
+	// Sender and receiver node IDs must be valid.
+	common.Assert(common.IsValidUUID(req.SenderNodeID), req.SenderNodeID)
+	common.Assert(common.IsValidUUID(req.ReceiverNodeID), req.ReceiverNodeID)
+
 	// TODO: send more information in response on Hello RPC
 
 	myNodeID := rpc.GetMyNodeUUID()
@@ -1056,6 +1060,9 @@ func (h *ChunkServiceHandler) GetChunk(ctx context.Context, req *models.GetChunk
 	startTime := time.Now()
 
 	log.Debug("ChunkServiceHandler::GetChunk: Received GetChunk request: %v", rpc.GetChunkRequestToString(req))
+
+	// Sender node id must be valid.
+	common.Assert(common.IsValidUUID(req.SenderNodeID), req.SenderNodeID)
 
 	//
 	// Check if the chunk address is valid. We basically check for the following:
@@ -1200,6 +1207,9 @@ func (h *ChunkServiceHandler) PutChunk(ctx context.Context, req *models.PutChunk
 	startTime := time.Now()
 
 	log.Debug("ChunkServiceHandler::PutChunk: Received PutChunk request: %v", rpc.PutChunkRequestToString(req))
+
+	// Sender node id must be valid.
+	common.Assert(common.IsValidUUID(req.SenderNodeID), req.SenderNodeID)
 
 	// Check if the chunk address is valid.
 	err := h.checkValidChunkAddress(req.Chunk.Address)
@@ -1466,6 +1476,9 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 
 	log.Debug("ChunkServiceHandler::RemoveChunk: Received RemoveChunk request %v", rpc.RemoveChunkRequestToString(req))
 
+	// Sender node id must be valid.
+	common.Assert(common.IsValidUUID(req.SenderNodeID), req.SenderNodeID)
+
 	// check if the chunk address is valid
 	err := h.checkValidChunkAddress(req.Address)
 	if err != nil {
@@ -1553,8 +1566,11 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 	// requires to call componentRVsToString method as it is of type []*models.RVNameAndState
 	log.Debug("ChunkServiceHandler::JoinMV: Received JoinMV request: %v", rpc.JoinMVRequestToString(req))
 
-	if !cm.IsValidMVName(req.MV) || !cm.IsValidRVName(req.RVName) || len(req.ComponentRV) == 0 {
-		errStr := fmt.Sprintf("Invalid MV, RV or ComponentRV: %v", rpc.JoinMVRequestToString(req))
+	if !common.IsValidUUID(req.SenderNodeID) ||
+		!cm.IsValidMVName(req.MV) ||
+		!cm.IsValidRVName(req.RVName) ||
+		len(req.ComponentRV) == 0 {
+		errStr := fmt.Sprintf("Invalid SenderNodeID, MV, RV or ComponentRV: %v", rpc.JoinMVRequestToString(req))
 		log.Err("ChunkServiceHandler::JoinMV: %s", errStr)
 		common.Assert(false, errStr)
 		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
@@ -1660,8 +1676,11 @@ func (h *ChunkServiceHandler) UpdateMV(ctx context.Context, req *models.UpdateMV
 
 	log.Debug("ChunkServiceHandler::UpdateMV: Received UpdateMV request: %v", rpc.UpdateMVRequestToString(req))
 
-	if !cm.IsValidMVName(req.MV) || !cm.IsValidRVName(req.RVName) || len(req.ComponentRV) == 0 {
-		errStr := fmt.Sprintf("Invalid MV, RV or ComponentRV: %v", rpc.UpdateMVRequestToString(req))
+	if !common.IsValidUUID(req.SenderNodeID) ||
+		!cm.IsValidMVName(req.MV) ||
+		!cm.IsValidRVName(req.RVName) ||
+		len(req.ComponentRV) == 0 {
+		errStr := fmt.Sprintf("Invalid SenderNodeID, MV, RV or ComponentRV: %v", rpc.UpdateMVRequestToString(req))
 		log.Err("ChunkServiceHandler::UpdateMV: %s", errStr)
 		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
 	}
@@ -1685,7 +1704,7 @@ func (h *ChunkServiceHandler) UpdateMV(ctx context.Context, req *models.UpdateMV
 		//
 		mvInfo := rvInfo.getMVInfo(req.MV)
 		if mvInfo == nil {
-			errStr := fmt.Sprintf("%s is not part of %s", req.RVName, req.MV)
+			errStr := fmt.Sprintf("%s/%s not hosted by this node", req.RVName, req.MV)
 			log.Err("ChunkServiceHandler::UpdateMV: %s", errStr)
 			common.Assert(false, errStr)
 			return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
@@ -1730,9 +1749,13 @@ func (h *ChunkServiceHandler) LeaveMV(ctx context.Context, req *models.LeaveMVRe
 
 	log.Debug("ChunkServiceHandler::LeaveMV: Received LeaveMV request: %v", rpc.LeaveMVRequestToString(req))
 
-	if !cm.IsValidMVName(req.MV) || !cm.IsValidRVName(req.RVName) || len(req.ComponentRV) == 0 {
-		log.Err("ChunkServiceHandler::LeaveMV: MV, RV or ComponentRV is empty")
-		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, "MV, RV or ComponentRV is empty")
+	if !common.IsValidUUID(req.SenderNodeID) ||
+		!cm.IsValidMVName(req.MV) ||
+		!cm.IsValidRVName(req.RVName) ||
+		len(req.ComponentRV) == 0 {
+		errStr := fmt.Sprintf("Invalid SenderNodeID, MV, RV or ComponentRV: %v", rpc.LeaveMVRequestToString(req))
+		log.Err("ChunkServiceHandler::LeaveMV: %s", errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
 	}
 
 	rvInfo := h.getRVInfoFromRVName(req.RVName)
@@ -1743,11 +1766,23 @@ func (h *ChunkServiceHandler) LeaveMV(ctx context.Context, req *models.LeaveMVRe
 
 	cacheDir := rvInfo.cacheDir
 
-	// check if RV is part of the given MV
+	//
+	// LeaveMV() RPC is only sent to RVs which are already members of the MV, and it is sent
+	// when the membership changes (due to rebalancing workflow).
+	// Since the sender is referring to the global clustermap and this RV is part of the given MV as
+	// per the global clustermap, since an RV is added to an MV only after a successful JoinMV response
+	// from all component RVs, we *must* have the MV replica in our rvInfo.
+	//
+	// TODO: There is one scenario in which this is possible, if a node responds to LeaveMV() successfully
+	// but the sender cannot commit it to clustermap for some reason, then when LeaveMV() is retried
+	// it'll not find the MV.
+	//
 	mvInfo := rvInfo.getMVInfo(req.MV)
 	if mvInfo == nil {
-		log.Err("ChunkServiceHandler::LeaveMV: RV %s is not part of the given MV %s", req.RVName, req.MV)
-		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, fmt.Sprintf("RV %s is not part of the given MV %s", req.RVName, req.MV))
+		errStr := fmt.Sprintf("%s/%s not hosted by this node", req.RVName, req.MV)
+		log.Err("ChunkServiceHandler::LeaveMV: %s", errStr)
+		common.Assert(false, errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
 	}
 
 	// validate the component RVs list
@@ -1782,13 +1817,13 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 	log.Debug("ChunkServiceHandler::StartSync: Received StartSync request: %s",
 		rpc.StartSyncRequestToString(req))
 
-	if !cm.IsValidMVName(req.MV) ||
+	if !common.IsValidUUID(req.SenderNodeID) ||
+		!cm.IsValidMVName(req.MV) ||
 		!cm.IsValidRVName(req.SourceRVName) ||
 		!cm.IsValidRVName(req.TargetRVName) ||
 		req.SourceRVName == req.TargetRVName ||
 		len(req.ComponentRV) == 0 {
-		errStr := fmt.Sprintf("MV (%s), SourceRV (%s), TargetRV (%s) or ComponentRVs (%d) invalid",
-			req.MV, req.SourceRVName, req.TargetRVName, len(req.ComponentRV))
+		errStr := fmt.Sprintf("Invalid StartSync request: %s", rpc.StartSyncRequestToString(req))
 		log.Err("ChunkServiceHandler::StartSync: %s", errStr)
 		common.Assert(false, errStr)
 		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
@@ -1883,14 +1918,14 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 
 	log.Debug("ChunkServiceHandler::EndSync: Received EndSync request: %v", rpc.EndSyncRequestToString(req))
 
-	if !common.IsValidUUID(req.SyncID) ||
+	if !common.IsValidUUID(req.SenderNodeID) ||
+		!common.IsValidUUID(req.SyncID) ||
 		!cm.IsValidMVName(req.MV) ||
 		!cm.IsValidRVName(req.SourceRVName) ||
 		!cm.IsValidRVName(req.TargetRVName) ||
 		req.SourceRVName == req.TargetRVName ||
 		len(req.ComponentRV) == 0 {
-		errStr := fmt.Sprintf("SyncID (%s) MV (%s), SourceRV (%s), TargetRV (%s) or ComponentRVs (%d) invalid",
-			req.SyncID, req.MV, req.SourceRVName, req.TargetRVName, len(req.ComponentRV))
+		errStr := fmt.Sprintf("Invalid EndSync request: %s", rpc.EndSyncRequestToString(req))
 		log.Err("ChunkServiceHandler::EndSync: %s", errStr)
 		common.Assert(false, errStr)
 		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
@@ -1988,4 +2023,44 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 	}
 
 	return &models.EndSyncResponse{}, nil
+}
+
+func (h *ChunkServiceHandler) GetMVSize(ctx context.Context, req *models.GetMVSizeRequest) (*models.GetMVSizeResponse, error) {
+	// Thrift should not be calling us with nil req.
+	common.Assert(req != nil)
+
+	log.Debug("ChunkServiceHandler::GetMVSize: Received GetMVSize request: %v", rpc.GetMVSizeRequestToString(req))
+
+	if !common.IsValidUUID(req.SenderNodeID) || !cm.IsValidMVName(req.MV) || !cm.IsValidRVName(req.RVName) {
+		errStr := fmt.Sprintf("Invalid GetMVSize request: %v", rpc.GetMVSizeRequestToString(req))
+		log.Err("ChunkServiceHandler::GetMVSize: %s", errStr)
+		common.Assert(false, errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
+	}
+
+	rvInfo := h.getRVInfoFromRVName(req.RVName)
+	if rvInfo == nil {
+		errStr := fmt.Sprintf("node %s does not host %s", rpc.GetMyNodeUUID(), req.RVName)
+		log.Err("ChunkServiceHandler::GetMVSize: %s", errStr)
+		common.Assert(false, errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRV, errStr)
+	}
+
+	//
+	// An MV replica can be added to rvInfo only via a JoinMV RPC, and only when we respond successfully
+	// to the JoinMV call will the sender persist it in the clustermap, so if the clustermap has it we
+	// must have sent it and if we don't have it, refreshing from clustermap cannot add it.
+	// This cannot happen unless sender is doing something wrong, hence assert.
+	//
+	mvInfo := rvInfo.getMVInfo(req.MV)
+	if mvInfo == nil {
+		errStr := fmt.Sprintf("%s/%s not hosted by this node", rvInfo.rvName, req.MV)
+		log.Err("ChunkServiceHandler::GetMVSize: %s", errStr)
+		common.Assert(false, errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
+	}
+
+	return &models.GetMVSizeResponse{
+		MvSize: mvInfo.totalChunkBytes.Load(),
+	}, nil
 }

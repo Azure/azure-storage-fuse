@@ -138,6 +138,16 @@ struct EndSyncResponse {
     // status will be returned in the error
 }
 
+struct GetMVSizeRequest {
+    1: string senderNodeID,
+    2: string MV,
+    3: string RVName
+}
+
+struct GetMVSizeResponse {
+    1: i64 mvSize
+}
+
 // Custom error codes returned by the ChunkServiceHandler
 enum ErrorCode {
     InvalidRequest = 1,
