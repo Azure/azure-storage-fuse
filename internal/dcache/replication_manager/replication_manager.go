@@ -160,7 +160,7 @@ retry:
 			// clustermap where all/most of the component RVs have been replaced.
 			//
 
-			err = cm.RefreshClusterMapSync()
+			err = cm.RefreshClusterMap()
 			if err != nil {
 				err = fmt.Errorf("RefreshClusterMapSync() failed, failing read %s",
 					req.toString())
@@ -379,7 +379,7 @@ retry:
 					// NeedToRefreshClusterMap error. Even after the clustermap is refreshed, it may get the same
 					// state of the target RV as "outofsync" as the clustermap update by the source (or lio) RV
 					// may not have completed yet, so the target RV may not be in "syncing" state.
-					err = cm.RefreshClusterMapSync()
+					err = cm.RefreshClusterMap()
 					if err != nil {
 						err = fmt.Errorf("RefreshClusterMapSync() failed, failing write %s",
 							req.toString())
@@ -691,7 +691,7 @@ func sendStartSyncRequest(rvName string, targetNodeID string, req *models.StartS
 		// in the next periodic call to syncMV().
 		// TODO: Check for NeedToRefreshClusterMap and only on that error, refresh the clustermap.
 		//
-		err1 := cm.RefreshClusterMapSync()
+		err1 := cm.RefreshClusterMap()
 		if err1 != nil {
 			log.Err("ReplicationManager::sendStartSyncRequest: RefreshClusterMapSync failed: %v", err1)
 		}

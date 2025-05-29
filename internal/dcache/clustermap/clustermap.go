@@ -50,19 +50,8 @@ func Stop() {
 	clusterMap.stop()
 }
 
-// Update is used by ClusterManager to notify clustermap whenever there's an updated local clustermap.
+// Update will load the local clustermap.
 func Update() {
-	//
-	// You don't want to call the async update in the beginning when setting localMap for the first time.
-	// That time you call the sync update function UpdateSync(), catch inadvertent bad callers.
-	//
-	common.Assert(clusterMap.localMap != nil)
-
-	clusterMap.update()
-}
-
-// UpdateSync will load the local clustermap synchronously.
-func UpdateSync() {
 	clusterMap.loadLocalMap()
 }
 
@@ -158,27 +147,25 @@ func IsClusterReadonly() bool {
 	return clusterMap.isClusterReadonly()
 }
 
-// Refresh clustermap local copy from the metadata store synchronously.
-// The call blocks till the clustermap is refreshed.
-// Once RefreshClusterMapSync() completes successfully, any clustermap call made would return results from the
+// Refresh clustermap local copy from the metadata store.
+// Once RefreshClusterMap() completes successfully, any clustermap call made would return results from the
 // updated clustermap.
-//
 // Note: Usually you will not need to work on the most uptodate clustermap, the last periodically refreshed copy
 //
 //	of clustermap should be fine for most users. This API must be used by callers which cannot safely proceed
 //	w/o knowing the latest clustermap. This should not be a common requirement and codepaths calling it should
 //	be very infrequently executed.
-func RefreshClusterMapSync() error {
+func RefreshClusterMap() error {
 	// Clustermanager must call RegisterClusterMapSyncRefresher() in startup, so we don't expect this to be nil.
-	common.Assert(clusterMapSyncRefresher != nil)
-	log.Debug("RefreshClusterMapSync: Fetching latest clustermap from metadata store")
+	common.Assert(clusterMapRefresher != nil)
+	log.Debug("RefreshClusterMap: Fetching latest clustermap from metadata store")
 
-	return clusterMapSyncRefresher()
+	return clusterMapRefresher()
 }
 
-// RegisterClusterMapSyncRefresher is how the cluster_manager registers its real implementation.
-func RegisterClusterMapSyncRefresher(fn func() error) {
-	clusterMapSyncRefresher = fn
+// RegisterClusterMapRefresher is how the cluster_manager registers its real implementation.
+func RegisterClusterMapRefresher(fn func() error) {
+	clusterMapRefresher = fn
 }
 
 // This function must be called by any code that, through some other means (other than heartbeats) detects
@@ -206,9 +193,8 @@ func RegisterComponentRVStateUpdater(fn func(mvName string, rvName string, rvNew
 
 var (
 	componentRVStateUpdater func(mvName string, rvName string, rvNewState dcache.StateEnum) error
-	clusterMapSyncRefresher func() error
+	clusterMapRefresher     func() error
 	clusterMap              = &ClusterMap{
-		updatesChan: make(chan dcache.ClusterMapEvent, 8),
 		// This MUST match localClusterMapPath in clustermanager.
 		localClusterMapPath: filepath.Join(common.DefaultWorkDir, "clustermap.json"),
 	}
@@ -217,37 +203,12 @@ var (
 // clustermap package provides client methods to interact with the clusterManager, most importantly it provides
 // methods for querying clustermap.
 type ClusterMap struct {
-	updatesChan         chan dcache.ClusterMapEvent
 	localMap            *dcache.ClusterMap
 	localClusterMapPath string
 	wg                  sync.WaitGroup // wait group for the processEvents() goroutine
 }
 
 func (c *ClusterMap) stop() {
-	// Close the notification channel.
-	if c.updatesChan != nil {
-		close(c.updatesChan)
-	}
-
-	c.wg.Wait()
-}
-
-func (c *ClusterMap) processEvents() {
-	defer c.wg.Done()
-
-	log.Info("ClusterMap::processEvents: Event processor thread started")
-
-	for evt := range c.updatesChan {
-		log.Debug("ClusterMap::processEvents: Received dcache.ClusterManagerEvent")
-
-		// On every cluster‐map update event, reload localMap from the JSON file.
-		c.loadLocalMap()
-		// evt can carry metadata if needed
-		_ = evt
-	}
-
-	// once CloseNotificationChannel() is called, the loop exits cleanly
-	log.Info("ClusterMap::processEvents: Event processor thread exited")
 }
 
 func (c *ClusterMap) loadLocalMap() {
@@ -266,13 +227,6 @@ func (c *ClusterMap) loadLocalMap() {
 	}
 
 	c.localMap = &newClusterMap
-}
-
-func (c *ClusterMap) update() {
-	select {
-	case c.updatesChan <- dcache.ClusterMapEvent{}:
-	default:
-	}
 }
 
 func (c *ClusterMap) getActiveMVs() map[string]dcache.MirroredVolume {
@@ -512,11 +466,4 @@ func (c *ClusterMap) rVNameToIp(rvName string) string {
 		return ""
 	}
 	return rv.IPAddress
-}
-
-// Start a go routine for processing events posted by clusterManager.
-// These are mostly to notify when there's a change in the local clustermap/
-func init() {
-	clusterMap.wg.Add(1)
-	go clusterMap.processEvents()
 }
