@@ -149,10 +149,11 @@ func IsClusterReadonly() bool {
 // Refresh clustermap local copy from the metadata store.
 // Once RefreshClusterMap() completes successfully, any clustermap call made would return results from the
 // updated clustermap.
+// Note: Usually you will not need to work on the most uptodate clustermap, the last periodically refreshed copy
 //
-//	 This API must be used by callers which cannot safely proceed
-//		w/o knowing the latest clustermap. This should not be a common requirement and codepaths calling it should
-//		be very infrequently executed.
+//	of clustermap should be fine for most users. This API must be used by callers which cannot safely proceed
+//	w/o knowing the latest clustermap. This should not be a common requirement and codepaths calling it should
+//	be very infrequently executed.
 func RefreshClusterMap() error {
 	// Clustermanager must call RegisterClusterMapSyncRefresher() in startup, so we don't expect this to be nil.
 	common.Assert(clusterMapRefresher != nil)
