@@ -331,25 +331,37 @@ func (dl *Datalake) DeleteDirectory(name string) (err error) {
 // RenameFile : Rename the file
 // While renaming the file, Creation time is preserved but LMT is changed for the destination blob.
 // and also Etag of the destination blob changes
-func (dl *Datalake) RenameFile(source string, target string, srcAttr *internal.ObjAttr) error {
-	log.Trace("Datalake::RenameFile : %s -> %s", source, target)
+func (dl *Datalake) RenameFile(options internal.RenameFileOptions) error {
+	log.Trace("Datalake::RenameFile : %s -> %s", options.Src, options.Dst)
 
-	fileClient := dl.Filesystem.NewFileClient(url.PathEscape(filepath.Join(dl.Config.prefixPath, source)))
-
-	renameResponse, err := fileClient.Rename(context.Background(), filepath.Join(dl.Config.prefixPath, target), &file.RenameOptions{
+	fileClient := dl.Filesystem.NewFileClient(url.PathEscape(filepath.Join(dl.Config.prefixPath, options.Src)))
+	renameOptions := &file.RenameOptions{
 		CPKInfo: dl.datalakeCPKOpt,
-	})
+	}
+	//	if options.NoReplace {
+	renameOptions.AccessConditions = &file.AccessConditions{
+		ModifiedAccessConditions: &file.ModifiedAccessConditions{
+			IfNoneMatch: to.Ptr(azcore.ETagAny),
+		},
+	}
+	//	}
+
+	renameResponse, err := fileClient.Rename(context.Background(), filepath.Join(dl.Config.prefixPath, options.Dst), renameOptions)
 	if err != nil {
 		serr := storeDatalakeErrToErr(err)
 		if serr == ErrFileNotFound {
-			log.Err("Datalake::RenameFile : %s does not exist", source)
+			log.Err("Datalake::RenameFile : %s does not exist", options.Src)
 			return syscall.ENOENT
+		} else if serr == ErrFileAlreadyExists {
+			common.Assert(options.NoReplace)
+			log.Err("BlockBlob::RenameFile : Dst Blob Exists %s [%s]", options.Dst, err.Error())
+			return syscall.EEXIST
 		} else {
-			log.Err("Datalake::RenameFile : Failed to rename file %s to %s [%s]", source, target, err.Error())
+			log.Err("Datalake::RenameFile : Failed to rename file %s to %s [%s]", options.Src, options.Dst, err.Error())
 			return err
 		}
 	}
-	modifyLMTandEtag(srcAttr, renameResponse.LastModified, sanitizeEtag(renameResponse.ETag))
+	modifyLMTandEtag(options.SrcAttr, renameResponse.LastModified, sanitizeEtag(renameResponse.ETag))
 	return nil
 }
 
@@ -511,7 +523,7 @@ func (dl *Datalake) WriteFromFile(name string, metadata map[string]*string, fi *
 }
 
 // WriteFromBuffer : Upload from a buffer to a file
-func (dl *Datalake) WriteFromBuffer(options internal.WriteFromBufferOptions) error {
+func (dl *Datalake) WriteFromBuffer(options internal.WriteFromBufferOptions) (string, error) {
 	return dl.BlockBlob.WriteFromBuffer(options)
 }
 

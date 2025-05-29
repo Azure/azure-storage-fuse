@@ -34,7 +34,7 @@
 package metadata_manager
 
 import (
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 )
 
@@ -52,30 +52,31 @@ type MetadataManager interface {
 	// Succeeds only when the file metadata is not already present.
 	// This will be called by the File Manager to create a non-existing file in response to a create call from fuse.
 	// TODO :: Handle the case where the node fails before CreateFileFinalize is called.
-	createFileInit(filePath string, fileMetadata *dcache.FileMetadata) error
+	createFileInit(filePath string, fileMetadata []byte) (string, error)
 
 	// CreateFileFinalize finalizes the metadata for a file updating size, sha256, and other properties.
 	// For properties which were not available at the time of CreateFileInit.
 	// Called by the File Manager in response to a close call from fuse.
 	// TODO :: Ensure that CreateFileInit and CreateFileFinalize are called by the same node.
-	createFileFinalize(filePath string, fileMetadata *dcache.FileMetadata) error
+	createFileFinalize(filePath string, fileMetadata []byte, fileSize int64, eTag string) error
 
 	// GetFile reads and returns the content of metadata for a file.
-	getFile(filePath string) (*dcache.FileMetadata, error)
+	getFile(filePath string) ([]byte, int64, dcache.FileState, *internal.ObjAttr, error)
 
-	// Renames the metadata file to <fileName>.dcache.deleting
-	renameFileToDeleting(filePath string) error
+	// Renames the metadata file to <fileName>.<fileId>.dcache.deleting
+	renameFileToDeleting(filePath string, fileId string) error
 
 	// DeleteFile removes metadata for a file.
 	deleteFile(filePath string) error
 
 	// OpenFile must be called when a file is opened by the application.
 	// This will increment the open count for the file and return the updated open count.
-	openFile(filePath string) (int64, error)
+	// Also updates the Etag in attr to new Etag on success.
+	openFile(filePath string, attr *internal.ObjAttr) (int64, error)
 
 	// CloseFile must be called when a file is closed by the application.
 	// This will decrement the open count for the file and return the updated open count.
-	closeFile(filePath string) (int64, error)
+	closeFile(filePath string, attr *internal.ObjAttr) (int64, error)
 
 	// GetFileOpenCount returns the current open count for a file.
 	getFileOpenCount(filePath string) (int64, error)
@@ -104,10 +105,10 @@ type MetadataManager interface {
 	// 2. Call UpdateClusterMapStart() passing the etag returned by GetClusterMap()
 	//    to claim update ownership of the clustermap.
 	// 3. Call UpdateClusterMapEnd() with the finalized clustermap.
-	updateClusterMapStart(clustermap []byte, etag *azcore.ETag) error
+	updateClusterMapStart(clustermap []byte, etag *string) error
 	updateClusterMapEnd(clustermap []byte) error
 
 	// GetClusterMap reads and returns the content of the clustermap.
 	// The clustermap returned could be in ready or syncing state and the caller should appropriately handle it.
-	getClusterMap() ([]byte, *azcore.ETag, error)
+	getClusterMap() ([]byte, *string, error)
 }

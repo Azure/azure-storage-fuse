@@ -112,7 +112,7 @@ type AzConnection interface {
 	DeleteFile(name string) error
 	DeleteDirectory(name string) error
 
-	RenameFile(string, string, *internal.ObjAttr) error
+	RenameFile(options internal.RenameFileOptions) error
 	RenameDirectory(string, string) error
 
 	GetAttr(name string) (attr *internal.ObjAttr, err error)
@@ -125,7 +125,7 @@ type AzConnection interface {
 	ReadInBuffer(name string, offset int64, len int64, data []byte, etag *string) error
 
 	WriteFromFile(name string, metadata map[string]*string, fi *os.File) error
-	WriteFromBuffer(options internal.WriteFromBufferOptions) error
+	WriteFromBuffer(options internal.WriteFromBufferOptions) (string, error)
 	Write(options internal.WriteFileOptions) error
 	GetFileBlockOffsets(name string) (*common.BlockOffsetList, error)
 

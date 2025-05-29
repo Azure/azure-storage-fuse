@@ -57,6 +57,8 @@ var (
 	metadataManagerInstance *BlobMetadataManager
 )
 
+var _ MetadataManager = &BlobMetadataManager{}
+
 // BlobMetadataManager is the implementation of MetadataManager interface.
 // It stores metadata as Blobs in a top level folder with prefix __CACHE__ inside the same container where
 // Blobfuse stores the data.
@@ -144,32 +146,32 @@ func GetMdRoot() string {
 	return metadataManagerInstance.mdRoot
 }
 
-func CreateFileInit(filePath string, fileMetadata []byte) error {
+func CreateFileInit(filePath string, fileMetadata []byte) (string, error) {
 	return metadataManagerInstance.createFileInit(filePath, fileMetadata)
 }
 
-func CreateFileFinalize(filePath string, fileMetadata []byte, fileSize int64) error {
-	return metadataManagerInstance.createFileFinalize(filePath, fileMetadata, fileSize)
+func CreateFileFinalize(filePath string, fileMetadata []byte, fileSize int64, eTag string) error {
+	return metadataManagerInstance.createFileFinalize(filePath, fileMetadata, fileSize, eTag)
 }
 
-func GetFile(filePath string) ([]byte, int64, dcache.FileState, error) {
+func GetFile(filePath string) ([]byte, int64, dcache.FileState, *internal.ObjAttr, error) {
 	return metadataManagerInstance.getFile(filePath)
 }
 
-func RenameFileToDeleting(filePath string) error {
-	return metadataManagerInstance.renameFileToDeleting(filePath)
+func RenameFileToDeleting(filePath string, deletedFilePath string) error {
+	return metadataManagerInstance.renameFileToDeleting(filePath, deletedFilePath)
 }
 
 func DeleteFile(filePath string) error {
 	return metadataManagerInstance.deleteFile(filePath)
 }
 
-func OpenFile(filePath string) (int64, error) {
-	return metadataManagerInstance.openFile(filePath)
+func OpenFile(filePath string, attr *internal.ObjAttr) (int64, error) {
+	return metadataManagerInstance.openFile(filePath, attr)
 }
 
-func CloseFile(filePath string) (int64, error) {
-	return metadataManagerInstance.closeFile(filePath)
+func CloseFile(filePath string, attr *internal.ObjAttr) (int64, error) {
+	return metadataManagerInstance.closeFile(filePath, attr)
 }
 
 func GetFileOpenCount(filePath string) (int64, error) {
@@ -291,7 +293,7 @@ func (m *BlobMetadataManager) getBlobSafe(blobPath string) ([]byte, *internal.Ob
 //
 //	that started file creation, does the finalize. This can help prevent cases where the initial node
 //	went down before finalizing and tries to finalize later
-func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byte) error {
+func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byte) (string, error) {
 	common.Assert(len(filePath) > 0)
 	common.Assert(len(fileMetadata) > 0)
 
@@ -299,13 +301,15 @@ func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byt
 
 	// The size of the file is set to -1 to represent the file is not finalized.
 	sizeStr := "-1"
+	readFdCnt := "0"
 	state := string(dcache.Writing)
 	metadata := map[string]*string{
 		"cache_object_length": &sizeStr,
 		"state":               &state,
+		"opencount":           &readFdCnt,
 	}
 
-	err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
+	eTag, err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
 		Name:                   path,
 		Data:                   fileMetadata,
 		Metadata:               metadata,
@@ -326,34 +330,32 @@ func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byt
 		if bloberror.HasCode(err, bloberror.ConditionNotMet) {
 			log.Err("CreateFileInit:: PutBlobInStorage for %s failed as blob was already present: %v",
 				path, err)
-			return err
+			return "", err
 		}
 
 		log.Err("CreateFileInit:: Failed to put blob %s in storage: %v", path, err)
 		common.Assert(false, err)
-		return err
+		return "", err
 	}
 
 	log.Debug("CreateFileInit:: Created file %s in storage", path)
-	return nil
+	return eTag, nil
 }
 
 // CreateFileFinalize() finalizes the metadata for a file.
 // Must be called only after prior call to CreateFileInit() suceeded.
-func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata []byte, fileSize int64) error {
+func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata []byte, fileSize int64, eTag string) error {
 	common.Assert(len(filePath) > 0)
 	common.Assert(len(fileMetadata) > 0)
 	common.Assert(fileSize >= 0)
 	common.Assert(fileSize < (1000 * 1000 * 1000 * common.GbToBytes)) // Sanity check.
+	common.Assert(eTag != "")
 
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
 
 	//
 	// In debug env, make sure the metadata file is present, it must have been created by a prior call
 	// to CreateFileInit().
-	//
-	// TODO: See if can do the PutBlobInStorage condtionally with an If-Match condition to fail for cases
-	//       where CreateFileFinalize() is incorrectly called without a prior successful CreateFileInit() call.
 	//
 	if common.IsDebugBuild() {
 		prop, err := m.storageCallback.GetPropertiesFromStorage(
@@ -378,18 +380,28 @@ func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata [
 		"cache_object_length": &sizeStr,
 		"state":               &state,
 	}
-
-	err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
+	//
+	// When finalizing the file we must keep in mind that there is a chance that this file may already got deleted by
+	// some other/same node. Now we should not put this finalize blob, as the file already got renamed to some temp file.
+	// To get this behaiour we use the eTag which was present when the fileInit happened, the same would be used here.
+	// When this scneario happens the metablob can be present if some new node creates the same file again/ not exist at
+	// all.
+	//
+	_, err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
 		Name:                   path,
 		Data:                   fileMetadata,
 		Metadata:               metadata,
 		IsNoneMatchEtagEnabled: false,
-		EtagMatchConditions:    "",
+		EtagMatchConditions:    eTag,
 	})
 
 	if err != nil {
-		log.Err("CreateFileFinalize:: Failed to put blob %s in storage: %v", path, err)
-		common.Assert(false, err)
+		if bloberror.HasCode(err, bloberror.ConditionNotMet) {
+			log.Warn("CreateFileFinalize:: Failed to put blob %s in storage: %v", path, err)
+		} else {
+			log.Err("CreateFileFinalize:: Failed to put blob %s in storage: %v", path, err)
+			common.Assert(false, err)
+		}
 		return err
 	}
 
@@ -399,7 +411,7 @@ func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata [
 
 // GetFile reads and returns the content of metadata for a file.
 // TODO: Replace the two REST API calls with a single call to DownloadStream.
-func (m *BlobMetadataManager) getFile(filePath string) ([]byte, int64, dcache.FileState, error) {
+func (m *BlobMetadataManager) getFile(filePath string) ([]byte, int64, dcache.FileState, *internal.ObjAttr, error) {
 	common.Assert(len(filePath) > 0)
 
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
@@ -412,7 +424,7 @@ func (m *BlobMetadataManager) getFile(filePath string) ([]byte, int64, dcache.Fi
 		// Assert to catch any other error.
 		//
 		common.Assert(errors.Is(err, syscall.ENOENT), err)
-		return nil, -1, "", err
+		return nil, -1, "", nil, err
 	}
 
 	// Extract the size from the metadata properties.
@@ -421,7 +433,7 @@ func (m *BlobMetadataManager) getFile(filePath string) ([]byte, int64, dcache.Fi
 		err := fmt.Errorf("GetFile:: size not found in metadata for path %s", path)
 		log.Err("%v", err)
 		common.Assert(false, err)
-		return nil, -1, "", err
+		return nil, -1, "", nil, err
 	}
 
 	fileSize, err := strconv.ParseInt(*size, 10, 64)
@@ -429,9 +441,8 @@ func (m *BlobMetadataManager) getFile(filePath string) ([]byte, int64, dcache.Fi
 		err := fmt.Errorf("GetFile:: Failed to parse size for path %s with value %s: %v", path, *size, err)
 		log.Err("%v", err)
 		common.Assert(false, err)
-		return nil, -1, "", err
+		return nil, -1, "", nil, err
 	}
-
 	//
 	// Size can be -1 for files which are not in Ready state.
 	//
@@ -439,7 +450,7 @@ func (m *BlobMetadataManager) getFile(filePath string) ([]byte, int64, dcache.Fi
 		err := fmt.Errorf("Size is negative for path %s: %d", path, fileSize)
 		log.Warn("GetFile:: %v", err)
 		common.Assert(false, err)
-		return nil, -1, "", err
+		return nil, -1, "", nil, err
 	}
 
 	log.Debug("GetFile:: Size for path %s: %d", path, fileSize)
@@ -450,7 +461,7 @@ func (m *BlobMetadataManager) getFile(filePath string) ([]byte, int64, dcache.Fi
 		err := fmt.Errorf("GetFile:: File state not found in metadata for path %s", path)
 		log.Err("%v", err)
 		common.Assert(false, err)
-		return nil, -1, "", err
+		return nil, -1, "", nil, err
 	}
 
 	var fileState dcache.FileState
@@ -460,49 +471,34 @@ func (m *BlobMetadataManager) getFile(filePath string) ([]byte, int64, dcache.Fi
 		err := fmt.Errorf("GetFile:: Invalid File state: [%s] found in metadata for path: %s", *state, path)
 		log.Err("%v", err)
 		common.Assert(false, err)
-		return nil, -1, fileState, err
+		return nil, -1, "", nil, err
 	}
 
-	return data, fileSize, fileState, nil
+	return data, fileSize, fileState, prop, nil
 }
 
-func (m *BlobMetadataManager) renameFileToDeleting(filePath string) error {
+func (m *BlobMetadataManager) renameFileToDeleting(filePath string, deletedFilePath string) error {
 	common.Assert(len(filePath) > 0)
+	common.Assert(len(deletedFilePath) > 0)
+
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
-	log.Debug("renameFileToDeleting:: %s", path)
+	deletedFilePath = filepath.Join(m.mdRoot, "Objects", deletedFilePath)
+	log.Debug("renameFileToDeleting::  %s-> %s", path, deletedFilePath)
 
-	renamedPath := path + dcache.DcacheDeletingFileNameSuffix
-
-	//
-	// TODO: If RenameFileInStorage() fails when renamedPath already exists, then remove this explicit
-	//		 check. In that case we cannot assert that err will be ENOENT.
-	//
-	_, err := m.storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{
-		Name: path,
+	err := m.storageCallback.RenameFileInStorage(internal.RenameFileOptions{
+		Src:       path,
+		Dst:       deletedFilePath,
+		NoReplace: true,
 	})
-
-	if err == nil {
-		_, err := m.storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{
-			Name: renamedPath,
-		})
-
-		if err == nil {
-			//
-			// Renaming will result in the target file to be overwritten, avoid that.
-			//
-			log.Err("renameFileToDeleting:: target file %s already exists", renamedPath)
-			return syscall.EINVAL
-		}
-	}
-
-	err = m.storageCallback.RenameFileInStorage(internal.RenameFileOptions{
-		Src: path,
-		Dst: renamedPath,
-	})
-
+	//
+	// If the same file is deleted by the same node at the same time. we get the error of EEXIST/ENOENT.
+	// This is because in FNS accounts there is no atomic deletion of the blob hence it is simulated by us using
+	// copyblob API followed by deleteBlob API on src. So now as we are doing renaming using NoReplace the one of the
+	// rename would succeeds and others gets EEXIST, if src also got deleted then it might also get ENOENT.
+	//
 	if err != nil {
 		log.Err("renameFileToDeleting:: Failed to rename the file: %s:%v", filePath, err)
-		common.Assert(err == syscall.ENOENT, path, err)
+		common.Assert(err == syscall.EEXIST || err == syscall.ENOENT, path, err)
 		return err
 	}
 
@@ -534,12 +530,12 @@ func (m *BlobMetadataManager) deleteFile(filePath string) error {
 	return err
 }
 
-// OpenFile increments the open count for a file and returns the updated count
-func (m *BlobMetadataManager) openFile(filePath string) (int64, error) {
+// OpenFile increments the open count for a file and returns the updated count, also updates the Etag in attr on success
+func (m *BlobMetadataManager) openFile(filePath string, attr *internal.ObjAttr) (int64, error) {
 	common.Assert(len(filePath) > 0)
 
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
-	count, err := m.updateHandleCount(path, true /* increment */)
+	count, err := m.updateHandleCount(path, attr, true /* increment */)
 	if err != nil {
 		log.Err("OpenFile:: Failed to update file open count for path %s: %v", path, err)
 		common.Assert(false, err)
@@ -554,11 +550,11 @@ func (m *BlobMetadataManager) openFile(filePath string) (int64, error) {
 }
 
 // CloseFile decrements the open count for a file and returns the updated count
-func (m *BlobMetadataManager) closeFile(filePath string) (int64, error) {
+func (m *BlobMetadataManager) closeFile(filePath string, attr *internal.ObjAttr) (int64, error) {
 	common.Assert(len(filePath) > 0)
 
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
-	count, err := m.updateHandleCount(path, false /* increment */)
+	count, err := m.updateHandleCount(path, attr, false /* increment */)
 	if err != nil {
 		log.Err("CloseFile:: Failed to update file open count for path %s: %v", path, err)
 		return -1, err
@@ -572,37 +568,44 @@ func (m *BlobMetadataManager) closeFile(filePath string) (int64, error) {
 
 // Helper function used by openFile() and closeFile() to atomically update the value of the "opencount"
 // metadata variable.
-func (m *BlobMetadataManager) updateHandleCount(path string, increment bool) (int64, error) {
+func (m *BlobMetadataManager) updateHandleCount(path string, attr *internal.ObjAttr, increment bool) (int64, error) {
 	common.Assert(len(path) > 0)
+	common.Assert(attr != nil)
 
 	const maxRetryTime = 1 * time.Minute // Maximum Retry time in minutes
 	const maxBackoff = 1 * time.Second   // Maximum backoff time in seconds
 	backoff := 1 * time.Millisecond      // Initial backoff time in milliseconds
 	var openCount int
 	startTime := time.Now()
+	i := 0
+	var err error
+	newAttr := attr
 
 	for {
-		// Get the current open count.
-		attr, err := m.storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{
-			Name: path,
-		})
-		if err != nil {
-			log.Err("updateHandleCount:: Failed to get open count for %s: %v", path, err)
-			return -1, err
+		i++
+		if i > 1 {
+			// Get the current open count.
+			newAttr, err = m.storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{
+				Name: path,
+			})
+			if err != nil {
+				log.Err("updateHandleCount:: Failed to get open count for %s: %v", path, err)
+				return -1, err
+			}
 		}
 
 		// We never create file metadata blob w/o opencount property set.
-		if attr.Metadata["opencount"] == nil {
+		if newAttr.Metadata["opencount"] == nil {
 			log.Err("updateHandleCount:: File metadata blob found w/o opencount property: %s", path)
 			common.Assert(false)
 			return -1, fmt.Errorf("[BUG] opencount property not found in metadata for path %s", path)
 		}
 
-		openCount, err = strconv.Atoi(*attr.Metadata["opencount"])
+		openCount, err = strconv.Atoi(*newAttr.Metadata["opencount"])
 		if err != nil {
 			// This is unexpected as we always set opencount to an integer value.
 			log.Err("GetFileOpenCount:: Failed to parse open count for path %s with value %s: %v",
-				path, *attr.Metadata["opencount"], err)
+				path, *newAttr.Metadata["opencount"], err)
 			common.Assert(false, err)
 			return -1, err
 		}
@@ -620,13 +623,13 @@ func (m *BlobMetadataManager) updateHandleCount(path string, increment bool) (in
 		}
 
 		openCountStr := strconv.Itoa(openCount)
-		attr.Metadata["opencount"] = &openCountStr
+		newAttr.Metadata["opencount"] = &openCountStr
 
 		// Set the new metadata in storage with etag conditional.
 		err = m.storageCallback.SetMetaPropertiesInStorage(internal.SetMetadataOptions{
 			Path:      path,
-			Metadata:  attr.Metadata,
-			Etag:      to.Ptr(azcore.ETag(attr.ETag)),
+			Metadata:  newAttr.Metadata,
+			Etag:      to.Ptr(azcore.ETag(newAttr.ETag)),
 			Overwrite: true,
 		})
 		if err != nil {
@@ -666,6 +669,9 @@ func (m *BlobMetadataManager) updateHandleCount(path string, increment bool) (in
 			break
 		}
 	}
+
+	// Update the Etag of the original attr
+	attr.ETag = newAttr.ETag
 
 	return int64(openCount), nil
 }
@@ -711,7 +717,7 @@ func (m *BlobMetadataManager) updateHeartbeat(nodeId string, data []byte) error 
 
 	// Create the heartbeat file path.
 	heartbeatFilePath := filepath.Join(m.mdRoot, "Nodes", nodeId+".hb")
-	err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
+	_, err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
 		Name:                   heartbeatFilePath,
 		Data:                   data,
 		IsNoneMatchEtagEnabled: false,
@@ -817,7 +823,7 @@ func (m *BlobMetadataManager) createInitialClusterMap(clustermap []byte) error {
 
 	// Create the clustermap file path.
 	clustermapPath := filepath.Join(m.mdRoot, "clustermap.json")
-	err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
+	_, err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
 		Name:                   clustermapPath,
 		Data:                   clustermap,
 		IsNoneMatchEtagEnabled: true,
@@ -863,7 +869,7 @@ func (m *BlobMetadataManager) updateClusterMapStart(clustermap []byte, etag *str
 		common.Assert(err == nil, err)
 	}
 
-	err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
+	_, err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
 		Name:                   clustermapPath,
 		Data:                   clustermap,
 		IsNoneMatchEtagEnabled: false,
@@ -906,7 +912,7 @@ func (m *BlobMetadataManager) updateClusterMapEnd(clustermap []byte) error {
 		common.Assert(err == nil, err)
 	}
 
-	err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
+	_, err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
 		Name:                   clustermapPath,
 		Data:                   clustermap,
 		IsNoneMatchEtagEnabled: false,

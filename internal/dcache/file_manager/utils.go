@@ -42,6 +42,7 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
@@ -156,25 +157,27 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 		return nil, err
 	}
 
-	err = mm.CreateFileInit(fileName, fileMetadataBytes)
+	eTag, err := mm.CreateFileInit(fileName, fileMetadataBytes)
 	if err != nil {
 		log.Err("DistributedCache::NewDcacheFile: CreateFileInit failed for file %s: %v",
 			fileName, err)
 		return nil, err
 	}
-
+	//
+	// The Etag is used while finalizing the file.
 	return &DcacheFile{
 		FileMetadata: fileMetadata,
+		Etag:         eTag,
 	}, nil
 }
 
-// Does all init process for opening the file.
-func OpenDcacheFile(fileName string) (*DcacheFile, error) {
+// Gets the metadata of the file from the store.
+func GetDcacheFile(fileName string) (*dcache.FileMetadata, *internal.ObjAttr, error) {
 	// Fetch file metadata from metadata store.
-	fileMetadataBytes, fileSize, fileState, err := mm.GetFile(fileName)
+	fileMetadataBytes, fileSize, fileState, prop, err := mm.GetFile(fileName)
 	if err != nil {
 		//todo : See if we can have error other that ENOENT here.
-		return nil, err
+		return nil, nil, err
 	}
 
 	var fileMetadata dcache.FileMetadata
@@ -183,7 +186,7 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 		err = fmt.Errorf("DistributedCache[FM]::OpenDcacheFile: File metadata unmarshal failed for file %s: %v",
 			fileName, err)
 		common.Assert(false, err)
-		return nil, err
+		return nil, nil, err
 	}
 
 	fileMetadata.State = fileState
@@ -197,6 +200,22 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 		(fileMetadata.State == dcache.Ready && fileSize >= 0),
 		fmt.Sprintf("file: %s, file metadata: %+v, fileSize: %d", fileName, fileMetadata, fileSize))
 
+	fileMetadata.Size = fileSize
+	common.Assert(fileMetadata.Size >= -1)
+
+	return &fileMetadata, prop, nil
+}
+
+// Does all init process for opening the file.
+func OpenDcacheFile(fileName string) (*DcacheFile, error) {
+
+	fileMetadata, prop, err := GetDcacheFile(fileName)
+	if err != nil {
+		return nil, err
+	}
+
+	common.Assert(prop != nil, fileName)
+
 	// Return ENOENT if the file is not in ready state.
 	if fileMetadata.State != dcache.Ready {
 		log.Info("DistributedCache[FM]::OpenDcacheFile: File %s is not in ready state, metadata: %+v",
@@ -205,18 +224,41 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 	}
 
 	// Finalized files must have size >= 0.
-	common.Assert(fileSize >= 0, fileSize)
-	fileMetadata.Size = fileSize
+	common.Assert(fileMetadata.Size >= 0, fileMetadata.Size)
+
+	// Increment the FD count, If safe deletes is enabled.
+	if fileIOMgr.dCacheConfig.SafeDeletes {
+		curOpenCnt, err := mm.OpenFile(fileName, prop)
+		common.Assert(curOpenCnt > 0, curOpenCnt, fileName)
+		if err != nil {
+			log.Err("DistributedCache[FM]::OpenDcacheFile: failed to increment openFD count file %s: %v", fileName, err)
+			common.Assert(false, fileName, err)
+		}
+	}
 
 	return &DcacheFile{
-		FileMetadata: &fileMetadata,
+		FileMetadata: fileMetadata,
+		Etag:         prop.ETag,
+		attr:         prop,
 	}, nil
 }
 
 func DeleteDcacheFile(fileName string) error {
 	log.Debug("DistributedCache[FM]::DeleteDcacheFile : file: %s", fileName)
 
-	err := mm.RenameFileToDeleting(fileName)
+	fileMetadata, _, err := GetDcacheFile(fileName)
+	if err != nil {
+		log.Err("DistributedCache[FM]::DeleteDcacheFile : failed to delete file %s: %v", fileName, err)
+		// If err is ENOENT, then Maybe source gets deleted by the other node before it.
+		if err != syscall.ENOENT {
+			common.Assert(false, fileName)
+		}
+		return err
+	}
+
+	deletedFileName := getDeletedFileName(fileName, fileMetadata.FileID)
+
+	err = mm.RenameFileToDeleting(fileName, deletedFileName)
 	if err != nil {
 		return err
 	}
@@ -242,4 +284,9 @@ func NewStagedChunk(idx int64, file *DcacheFile) (*StagedChunk, error) {
 		Uptodate:      atomic.Bool{},
 		XferScheduled: atomic.Bool{},
 	}, nil
+}
+
+// Get the deleted file name.
+func getDeletedFileName(fileName string, fileId string) string {
+	return fileName + "." + fileId + dcache.DcacheDeletingFileNameSuffix
 }

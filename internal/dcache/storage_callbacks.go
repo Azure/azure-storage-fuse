@@ -48,7 +48,7 @@ type StorageCallbacks interface {
 	GetPropertiesFromStorage(opt internal.GetAttrOptions) (*internal.ObjAttr, error)
 
 	//It will Put the blob in storage
-	PutBlobInStorage(opt internal.WriteFromBufferOptions) error
+	PutBlobInStorage(opt internal.WriteFromBufferOptions) (string, error)
 
 	//It will Read the directory from storage
 	ReadDirFromStorage(options internal.ReadDirOptions) ([]*internal.ObjAttr, error)
@@ -66,7 +66,7 @@ type StorageCallbacks interface {
 	GetProperties(opt internal.GetAttrOptions) (*internal.ObjAttr, error)
 
 	//It will Put the blob through next Component whichever is in pipeline
-	PutBlob(opt internal.WriteFromBufferOptions) error
+	PutBlob(opt internal.WriteFromBufferOptions) (string, error)
 
 	//It will Read the directory through next Component whichever is in pipeline
 	ReadDir(options internal.ReadDirOptions) ([]*internal.ObjAttr, error)

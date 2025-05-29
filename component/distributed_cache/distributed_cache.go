@@ -164,31 +164,6 @@ func (dc *DistributedCache) Start(ctx context.Context) error {
 		dc.NextComponent(),
 		dc.azstorage)
 
-	err := mm.Init(dc.storageCallback, dc.cfg.CacheID)
-	if err != nil {
-		return log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to start metadata manager : %v]", err))
-	}
-
-	errString := dc.startClusterManager()
-	if errString != "" {
-		return log.LogAndReturnError(errString)
-	}
-
-	err = rm.Start()
-	if err != nil {
-		return log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to start replication manager : %v]", err))
-	}
-
-	log.Info("DistributedCache::Start : component started successfully")
-
-	// todo : Replace the hardcoded values with user config values.
-	// todo:  Add Init function to fileIOmanager to initialize the defaults.
-	fm.NewFileIOManager(10, 4, 4, 4*1024*1024, 100)
-	return nil
-}
-
-func (dc *DistributedCache) startClusterManager() string {
-
 	dCacheConfig := &dcache.DCacheConfig{
 		CacheId:                dc.cfg.CacheID,
 		MinNodes:               dc.cfg.MinNodes,
@@ -205,6 +180,32 @@ func (dc *DistributedCache) startClusterManager() string {
 		RvFullThreshold:        dc.cfg.RVFullThreshold,
 		RvNearfullThreshold:    dc.cfg.RVNearfullThreshold,
 	}
+
+	err := mm.Init(dc.storageCallback, dc.cfg.CacheID)
+	if err != nil {
+		return log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to start metadata manager : %v]", err))
+	}
+
+	errString := dc.startClusterManager(dCacheConfig)
+	if errString != "" {
+		return log.LogAndReturnError(errString)
+	}
+
+	err = rm.Start()
+	if err != nil {
+		return log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to start replication manager : %v]", err))
+	}
+
+	log.Info("DistributedCache::Start : component started successfully")
+
+	// todo : Replace the hardcoded values with user config values.
+	// todo:  Add Init function to fileIOmanager to initialize the defaults.
+	fm.NewFileIOManager(dCacheConfig, 10, 4, 4, 4*1024*1024, 100)
+	return nil
+}
+
+func (dc *DistributedCache) startClusterManager(dCacheConfig *dcache.DCacheConfig) string {
+
 	rvList, err := dc.createRVList()
 	if err != nil {
 		return fmt.Sprintf("DistributedCache::Start error [Failed to create RV List for cluster manager : %v]", err)
@@ -956,8 +957,11 @@ func (dc *DistributedCache) CloseFile(options internal.CloseFileOptions) error {
 	common.Assert(!options.Handle.IsFsDebug() || (!options.Handle.IsFsDcache() && !options.Handle.IsFsAzure()))
 
 	var dcacheErr, azureErr error
+
 	if options.Handle.IsFsDcache() {
 		common.Assert(options.Handle.IFObj != nil)
+		common.Assert(!options.Handle.IsDcacheAllowReads() || !options.Handle.IsDcacheAllowReads())
+
 		dcFile := options.Handle.IFObj.(*fm.DcacheFile)
 		// While creating the file and closing the file immediately, we don't get the flush call, as libfuse component only
 		// send it when there is some write on the handle. Hence here we should take care of such cases as we should always
@@ -968,7 +972,14 @@ func (dc *DistributedCache) CloseFile(options internal.CloseFileOptions) error {
 			})
 			common.Assert(dcacheErr == nil, dcacheErr)
 		}
-		dcacheErr = dcFile.ReleaseFile()
+
+		// decrement the FD count if needed.
+		isReadOnlyHandle := false
+		if options.Handle.IsDcacheAllowReads() {
+			isReadOnlyHandle = true
+		}
+
+		dcacheErr = dcFile.ReleaseFile(isReadOnlyHandle)
 		if dcacheErr != nil {
 			log.Err("DistributedCache::CloseFile : Failed to ReleaseFile for Dcache file : %s", options.Handle.Path)
 		}

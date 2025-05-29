@@ -104,10 +104,12 @@ type CloseFileOptions struct {
 }
 
 type RenameFileOptions struct {
-	Src     string
-	Dst     string
-	SrcAttr *ObjAttr
-	DstAttr *ObjAttr
+	Src       string
+	Dst       string
+	SrcAttr   *ObjAttr
+	DstAttr   *ObjAttr
+	NoReplace bool // Don't  overwrite newpath of the rename.  Return an error if new‐path already exists.
+	// This option is similar to the RENAME_NOREPLACE flag supported by renameat2() functin by the system.
 }
 
 type ReadFileOptions struct {
