@@ -1057,8 +1057,8 @@ func GetMVSize(mvName string) (int64, error) {
 			// Success.
 			common.Assert(resp != nil, rpc.GetMVSizeRequestToString(req))
 			mvSize = resp.MvSize
-			log.Debug("ReplicationManager::GetMVSize: GetMVSize successful RPC response: MV size = %d",
-				resp.MvSize)
+			log.Debug("ReplicationManager::GetMVSize: GetMVSize successful for %s, RPC response: MV size = %d",
+				rpc.GetMVSizeRequestToString(req), resp.MvSize)
 			break
 		}
 
