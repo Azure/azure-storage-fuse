@@ -59,7 +59,7 @@ import (
 )
 
 // Cluster manager's job is twofold:
-//  1. Keep the global clustermap uptodate. One of the nodes takes up the role of the leader who periodically
+//  1. Keep the global clustermap up-to-date. One of the nodes takes up the role of the leader who periodically
 //     gather information about all nodes/RVs from the heartbeats and updates the clustermap according to that.
 //     It then publishes this clustermap which others download (see point #2 below).
 //  2. Maintain a local clustermap copy which is used by clustermap package to respond to various queries
@@ -67,12 +67,17 @@ import (
 //
 // This is the singleton cluster manager struct that holds the state of the cluster manager.
 type ClusterManager struct {
-	myNodeId         string
-	myHostName       string
-	myIPAddress      string
-	config           *dcache.DCacheConfig
-	hbTicker         *time.Ticker
-	clusterMapticker *time.Ticker
+	myNodeId    string
+	myHostName  string
+	myIPAddress string
+	config      *dcache.DCacheConfig
+
+	hbTicker     *time.Ticker
+	hbTickerDone chan bool
+
+	clusterMapticker     *time.Ticker
+	clusterMapTickerDone chan bool
+
 	// Clustermap is refreshed periodically from metadata store and saved in this local path.
 	// clustermap package reads this and provides accessor functions for querying specific parts of clustermap.
 	localClusterMapPath string
@@ -83,6 +88,9 @@ type ClusterManager struct {
 	// RPC server running on this node.
 	// It'll respond to RPC queries made from other nodes.
 	rpcServer *rpc_server.NodeServer
+
+	// Wait group to wait for the goroutines spawned, before stopping the cluster manager.
+	wg sync.WaitGroup
 }
 
 // Error return from here would cause clustermanager startup to fail which will prevent this node from
@@ -189,33 +197,43 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 		dCacheConfig.HeartbeatSeconds, cmi.config.HeartbeatSeconds)
 
 	cmi.hbTicker = time.NewTicker(time.Duration(cmi.config.HeartbeatSeconds) * time.Second)
+	cmi.hbTickerDone = make(chan bool)
 
 	const maxConsecutiveFailures = 3
 
+	cmi.wg.Add(1)
+
 	go func() {
+		defer cmi.wg.Done()
+
 		var err error
 		var consecutiveFailures int
 
-		for range cmi.hbTicker.C {
-			log.Debug("ClusterManager::start: Scheduled task \"Punch Heartbeat\" triggered")
+		for {
+			select {
+			case <-cmi.hbTickerDone:
+				log.Info("ClusterManager::start: Scheduled task \"Punch Heartbeat\" stopped")
+				return
+			case <-cmi.hbTicker.C:
+				log.Debug("ClusterManager::start: Scheduled task \"Punch Heartbeat\" triggered")
 
-			err = cmi.punchHeartBeat(rvs)
-			if err == nil {
-				consecutiveFailures = 0
-			} else {
-				log.Err("ClusterManager::start: Failed to punch heartbeat: %v", err)
-				consecutiveFailures++
-				//
-				// Failing to update multiple heartbeats signifies some serious issue, take
-				// ourselves down to reduce any confusion we may create in the cluster.
-				//
-				if consecutiveFailures > maxConsecutiveFailures {
-					log.GetLoggerObj().Panicf("[PANIC] Failed to update hearbeat %d times in a row",
-						consecutiveFailures)
+				err = cmi.punchHeartBeat(rvs)
+				if err == nil {
+					consecutiveFailures = 0
+				} else {
+					log.Err("ClusterManager::start: Failed to punch heartbeat: %v", err)
+					consecutiveFailures++
+					//
+					// Failing to update multiple heartbeats signifies some serious issue, take
+					// ourselves down to reduce any confusion we may create in the cluster.
+					//
+					if consecutiveFailures > maxConsecutiveFailures {
+						log.GetLoggerObj().Panicf("[PANIC] Failed to update heartbeat %d times in a row",
+							consecutiveFailures)
+					}
 				}
 			}
 		}
-		log.Info("ClusterManager::start: Scheduled task \"Heartbeat Punch\" stopped")
 	}()
 
 	// We don't intend to have different configs in different nodes, so assert.
@@ -224,8 +242,13 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 		dCacheConfig.ClustermapEpoch, cmi.config.ClustermapEpoch)
 
 	cmi.clusterMapticker = time.NewTicker(time.Duration(cmi.config.ClustermapEpoch) * time.Second)
+	cmi.clusterMapTickerDone = make(chan bool)
+
+	cmi.wg.Add(1)
 
 	go func() {
+		defer cmi.wg.Done()
+
 		var err error
 		var consecutiveFailures int
 
@@ -236,37 +259,42 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 		//       b2b. The doc says that ticker will adjust and drop ticks for slow receivers, but we
 		//       need to verify and if required, drop ticks which are long back in the past.
 		//
-		for range cmi.clusterMapticker.C {
-			log.Debug("ClusterManager::start: Scheduled task \"Update ClusterMap\" triggered")
-			err = cmi.updateStorageClusterMapIfRequired()
-			if err != nil {
-				//
-				// We don't treat updateStorageClusterMapIfRequired() failure as fatal, since
-				// we have mechanism to handle that. Some other node will detect this and step up.
-				//
-				log.Err("ClusterManager::start: updateStorageClusterMapIfRequired failed: %v", err)
-			}
+		for {
+			select {
+			case <-cmi.clusterMapTickerDone:
+				log.Info("ClusterManager::start: Scheduled task \"Update ClusterMap\" stopped")
+				return
+			case <-cmi.clusterMapticker.C:
+				log.Debug("ClusterManager::start: Scheduled task \"Update ClusterMap\" triggered")
+				err = cmi.updateStorageClusterMapIfRequired()
+				if err != nil {
+					//
+					// We don't treat updateStorageClusterMapIfRequired() failure as fatal, since
+					// we have mechanism to handle that. Some other node will detect this and step up.
+					//
+					log.Err("ClusterManager::start: updateStorageClusterMapIfRequired failed: %v", err)
+				}
 
-			_, _, err = cmi.fetchAndUpdateLocalClusterMap(false /* sync */)
-			if err == nil {
-				consecutiveFailures = 0
-			} else {
-				log.Err("ClusterManager::start: fetchAndUpdateLocalClusterMap failed: %v",
-					err)
-				consecutiveFailures++
-				//
-				// Otoh, failing to update the local cluster copy is a serious issue, since this
-				// node cannot use valid clustermap, take ourselves down to reduce any confusion
-				// we may create in the cluster.
-				//
-				if consecutiveFailures > maxConsecutiveFailures {
-					log.GetLoggerObj().Panicf("[PANIC] Failed to refresh local clustermap %d times in a row",
+				_, _, err = cmi.fetchAndUpdateLocalClusterMap(false /* sync */)
+				if err == nil {
+					consecutiveFailures = 0
+				} else {
+					log.Err("ClusterManager::start: fetchAndUpdateLocalClusterMap failed: %v",
+						err)
+					consecutiveFailures++
+					//
+					// Otoh, failing to update the local cluster copy is a serious issue, since this
+					// node cannot use valid clustermap, take ourselves down to reduce any confusion
+					// we may create in the cluster.
+					//
+					if consecutiveFailures > maxConsecutiveFailures {
+						log.GetLoggerObj().Panicf("[PANIC] Failed to refresh local clustermap %d times in a row",
 
-						consecutiveFailures)
+							consecutiveFailures)
+					}
 				}
 			}
 		}
-		log.Info("ClusterManager::start: Scheduled task \"Update ClusterMap\" stopped")
 	}()
 
 	return nil
@@ -298,7 +326,7 @@ func (cmi *ClusterManager) fetchAndUpdateLocalClusterMap(sync bool) (*dcache.Clu
 	//
 	storageBytes, etag, err := getClusterMap()
 	if err != nil {
-		err = fmt.Errorf("Failed to fetch clustermap on node %s: %v", cmi.myNodeId, err)
+		err = fmt.Errorf("failed to fetch clustermap on node %s: %v", cmi.myNodeId, err)
 		log.Err("ClusterManager::fetchAndUpdateLocalClusterMap: %v", err)
 
 		common.Assert(len(storageBytes) == 0)
@@ -312,7 +340,7 @@ func (cmi *ClusterManager) fetchAndUpdateLocalClusterMap(sync bool) (*dcache.Clu
 	}
 
 	if len(storageBytes) == 0 {
-		err = fmt.Errorf("Received empty clustermap on node %s", cmi.myNodeId)
+		err = fmt.Errorf("received empty clustermap on node %s", cmi.myNodeId)
 		log.Err("ClusterManager::fetchAndUpdateLocalClusterMap: %v", err)
 		common.Assert(false, err)
 		return nil, nil, err
@@ -329,7 +357,7 @@ func (cmi *ClusterManager) fetchAndUpdateLocalClusterMap(sync bool) (*dcache.Clu
 	//
 	var storageClusterMap dcache.ClusterMap
 	if err := json.Unmarshal(storageBytes, &storageClusterMap); err != nil {
-		err = fmt.Errorf("Failed to unmarshal clustermap json on node %s: %v", cmi.myNodeId, err)
+		err = fmt.Errorf("failed to unmarshal clustermap json on node %s: %v", cmi.myNodeId, err)
 		log.Err("ClusterManager::fetchAndUpdateLocalClusterMap: %v", err)
 		common.Assert(false, err)
 		return nil, nil, err
@@ -414,15 +442,22 @@ func (cmi *ClusterManager) updateClusterMapLocalCopySync() error {
 // Stop ClusterManager.
 func (cmi *ClusterManager) stop() error {
 	log.Info("ClusterManager::stop: stopping tickers and closing channel")
+
 	if cmi.hbTicker != nil {
 		cmi.hbTicker.Stop()
+		cmi.hbTickerDone <- true
 	}
+
 	// TODO{Akku}: Delete the heartbeat file
 	// mm.DeleteHeartbeat(cmi.myNodeId)
 	if cmi.clusterMapticker != nil {
 		cmi.clusterMapticker.Stop()
+		cmi.clusterMapTickerDone <- true
 	}
+
 	cm.Stop()
+	cmi.wg.Wait()
+
 	return nil
 }
 
@@ -598,7 +633,7 @@ func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, err
 			// for a long time, but play safe and bail out and let the user delete the clustermap by hand before
 			// retrying.
 			//
-			err := fmt.Errorf("ClusterManager::safeCleanupMyRVs: Exceeded maxWait %s. If you are reviving a dead cluster, delete clustermap manually and then try again.", maxWait)
+			err := fmt.Errorf("ClusterManager::safeCleanupMyRVs: Exceeded maxWait %s. If you are reviving a dead cluster, delete clustermap manually and then try again", maxWait)
 			log.Err("%v", err)
 			common.Assert(false, elapsed, maxWait)
 			return true, err
@@ -640,7 +675,7 @@ func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, err
 		//
 		// Ok, clustermap is present, we need to wait for our RVs to be marked offline in the RV list,
 		// before we can safely clean them up. To be safe we wait for 3 times the clustermap epoch.
-		// This is suffcient to be safe even in the event of clusterManager leader going down.
+		// This is sufficient to be safe even in the event of clusterManager leader going down.
 		// For very small clustermap epoch, we wait for 5 mins minimum.
 		//
 		maxWait = max(maxWait, time.Duration(cm.GetCacheConfig().ClustermapEpoch*3)*time.Second)
@@ -1022,7 +1057,7 @@ func (cmi *ClusterManager) punchHeartBeat(myRVs []dcache.RawVolume) error {
 	// Marshal the data into JSON
 	data, err := json.Marshal(hbData)
 	if err != nil {
-		err = fmt.Errorf("Failed to marshal heartbeat for node %s: %v %+v", cmi.myNodeId, err, hbData)
+		err = fmt.Errorf("failed to marshal heartbeat for node %s: %v %+v", cmi.myNodeId, err, hbData)
 		log.Err("ClusterManager::punchHeartBeat: %v", err)
 		common.Assert(false, err)
 		return err
@@ -1101,7 +1136,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	// is set to 60, so limit it to 180.
 	// The max time till which the clusterMap may not be updated in the event of leader going down is
 	// 2*ClustermapEpoch + thresholdEpochTime, so for values of ClustermapEpoch above 60 seconds, 3 times
-	// ClustermapEpoch is suffcient but for smaller ClustermapEpoch values we have to cap to 180, with a margin
+	// ClustermapEpoch is sufficient but for smaller ClustermapEpoch values we have to cap to 180, with a margin
 	// of 20 seconds.
 	//
 	common.Assert(clusterMapAge < int64(max(clusterMap.Config.ClustermapEpoch*3, 200)),
@@ -1129,7 +1164,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 		//       started updating as soon as last iteration of updateStorageClusterMapIfRequired() completed, and
 		//       hence when the next iteration of updateStorageClusterMapIfRequired() started immediately, it
 		//       finds the clusterMap state as checking.
-		//       Still leaving the assert as it's useful to see if it occurrs in any other way.
+		//       Still leaving the assert as it's useful to see if it occurs in any other way.
 		//
 		common.Assert(!leader, "We don't expect leader to see the clustermap in checking state")
 		return nil
@@ -1148,7 +1183,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	clusterMap.State = dcache.StateChecking
 	updatedClusterMapBytes, err := json.Marshal(clusterMap)
 	if err != nil {
-		err = fmt.Errorf("Marshal failed for clustermap: %v %+v", err, clusterMap)
+		err = fmt.Errorf("marshal failed for clustermap: %v %+v", err, clusterMap)
 		log.Err("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
 		common.Assert(false, err)
 		return err
@@ -1186,7 +1221,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 
 	_, err = cmi.updateRVList(clusterMap.RVMap, false /* onlyMyRVs */)
 	if err != nil {
-		err = fmt.Errorf("Failed to reconcile RV mapping: %v", err)
+		err = fmt.Errorf("failed to reconcile RV mapping: %v", err)
 		log.Err("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
 		common.Assert(false, err)
 		//
@@ -1240,7 +1275,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 		//
 		// TODO: We must reset the clusterMap state to ready.
 		//
-		err = fmt.Errorf("Clustermap update (%s) took longer than ClustermapEpoch (%s), bailing out",
+		err = fmt.Errorf("clustermap update (%s) took longer than ClustermapEpoch (%s), bailing out",
 			elapsed, maxTime)
 		log.Err("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
 		common.Assert(false, err)
@@ -1252,7 +1287,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 
 	updatedClusterMapBytes, err = json.Marshal(clusterMap)
 	if err != nil {
-		err = fmt.Errorf("Marshal failed for clustermap: %v %+v", err, clusterMap)
+		err = fmt.Errorf("marshal failed for clustermap: %v %+v", err, clusterMap)
 		log.Err("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
 		common.Assert(false, err)
 		return err
@@ -1271,7 +1306,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	return nil
 }
 
-// Given an rvMap which holds most uptodate status of all known RVs, whether they are "online" or "offline" (this
+// Given an rvMap which holds most up-to-date status of all known RVs, whether they are "online" or "offline" (this
 // information is mostly derived from the heartbeats, by a prior call to updateRVList(), but it can be known through
 // some other mechanism, f.e., inband detection of RV offline status by RPC calls made to nodes), and existingMVMap
 // which is the set of MVs present in the clustermap, indexed by MV name and contains complete info about the MV,
@@ -1282,7 +1317,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 //  2. From updateComponentRVState(), when some other workflow wants to explicitly update component RV state for some
 //     MV, f.e., resync workflow may want to change an "outofsync" component RV to "syncing" or a failed PutChunk call
 //     may indicate an RV as down and hence we would want to change the component RV state to "offline". There could
-//     be more such examles of inband RV state detection resulting in MV list update.
+//     be more such examples of inband RV state detection resulting in MV list update.
 //
 // It runs the following workflows:
 //  1. degrade-mv: It goes over all the MVs in existingMVMap to see if any (but not all) of their component RVs which
@@ -1348,7 +1383,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	// Represents an RV.
 	// An RV has a name and slots to indicate how many times the RV has been used up in various MVs.
 	// One MV can use an RV at most once. slots is initialized with MvsPerRv and then decremented by
-	// one everytime an RV is found/selected as component RV to an MV.
+	// one every time an RV is found/selected as component RV to an MV.
 	//
 	type rv struct {
 		rvName string
@@ -1615,7 +1650,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			// e.g., fixMV() was called for mv1 with the following component RVs.
 			// mv2:{degraded map[rv0:outofsync rv3:online rv4:offline]}
 			//
-			// Note tha rv0 was outofsync on entry and rv4 was replaced by rv1 and rv1 was newly marked outofsync,
+			// Note that rv0 was outofsync on entry and rv4 was replaced by rv1 and rv1 was newly marked outofsync,
 			// so the component RVs after the replacement looked like
 			// mv2:{degraded map[rv0:outofsync rv3:online rv1:outofsync]}
 			//
@@ -2222,7 +2257,7 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume, reser
 		}
 
 		if err != nil {
-			err = fmt.Errorf("Error %s MV %s with RV %s: %v", action, mvName, rv.Name, err)
+			err = fmt.Errorf("error %s MV %s with RV %s: %v", action, mvName, rv.Name, err)
 			log.Err("ClusterManagerImpl::joinMV: %v", err)
 			return rv.Name, err
 		}

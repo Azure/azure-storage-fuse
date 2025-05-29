@@ -51,7 +51,6 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
-	rpc_server "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/server"
 )
 
 type replicationMgr struct {
@@ -60,6 +59,9 @@ type replicationMgr struct {
 	// Channel to signal when the replication manager is done.
 	// This is used to stop the thread doing the periodic resync of degraded MVs.
 	done chan bool
+
+	// Wait group to wait for the goroutines spawned, before stopping the replication manager.
+	wg sync.WaitGroup
 
 	// Set of currently running sync jobs, indexed by target replica ("rvX/mvY") and the value
 	// stored is the source replica in "rvX/mvY" format.
@@ -82,6 +84,8 @@ func Start() error {
 		done:   make(chan bool),
 	}
 
+	rm.wg.Add(1)
+
 	// run the periodic resync of degraded MVs in a separate goroutine
 	go periodicResyncMVs()
 
@@ -97,6 +101,7 @@ func Stop() {
 
 	rm.ticker.Stop()
 	rm.done <- true
+	rm.wg.Wait()
 }
 
 func ReadMV(req *ReadMvRequest) (*ReadMvResponse, error) {
@@ -367,6 +372,13 @@ retry:
 						return nil, err
 					}
 
+					// TODO: retry till the next epoch, till the clustermap is refreshed.
+					// Case: StartSync() RPC calls are successful, but before the state of the target RV
+					// is updated to "syncing" in clustermap, some other node calls WriteMV() with the outdated
+					// clustermap, which results in the component RVs rejecting the request with
+					// NeedToRefreshClusterMap error. Even after the clustermap is refreshed, it may get the same
+					// state of the target RV as "outofsync" as the clustermap update by the source (or lio) RV
+					// may not have completed yet, so the target RV may not be in "syncing" state.
 					err = cm.RefreshClusterMapSync()
 					if err != nil {
 						err = fmt.Errorf("RefreshClusterMapSync() failed, failing write %s",
@@ -408,10 +420,13 @@ retry:
 }
 
 func periodicResyncMVs() {
+	defer rm.wg.Done()
+
 	for {
 		select {
 		case <-rm.done:
 			log.Info("ReplicationManager::periodicResyncMVs: stopping periodic resync of degraded MVs")
+			return
 		case <-rm.ticker.C:
 			log.Debug("ReplicationManager::periodicResyncMVs: Resync of degraded MVs triggered")
 			resyncDegradedMVs()
@@ -495,10 +510,7 @@ func syncMV(mvName string, mvInfo dcache.MirroredVolume) {
 	// %age progress. Note that JoinMV carries the reservedSpace parameter which is the more critical one
 	// to decide if an RV can host a new MV replica or not.
 	//
-	// TODO: Make sure GetDiskUsageOfMV() correctly returns the to-be-synced data, i.e., data in the regular
-	//       MV folder.
-	//
-	syncSize, err := rpc_server.GetDiskUsageOfMV(mvName, lioRV)
+	syncSize, err := GetMVSize(mvName)
 	if err != nil {
 		err = fmt.Errorf("failed to get disk usage of %s/%s [%v]", lioRV, mvName, err)
 		log.Err("ReplicationManager::syncMV: %v", err)
@@ -533,7 +545,13 @@ func syncMV(mvName string, mvInfo dcache.MirroredVolume) {
 		// Store it in the map to avoid multiple sync jobs for the same target.
 		rm.runningJobs.Store(tgtReplica, srcReplica)
 
+		// Increment the wait group for the goroutine that will run the syncComponentRV() function.
+		rm.wg.Add(1)
+
 		go func() {
+			// Decrement the wait group when the syncComponentRV() function completes.
+			defer rm.wg.Done()
+
 			// Remove from the map, once the syncjob completes (success or failure).
 			defer rm.runningJobs.Delete(tgtReplica)
 
@@ -605,19 +623,30 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 	}
 
 	//
+	// Now that the target RV state is updated to syncing from outofsync, the WriteMV() workflow will
+	// consider the target RV as valid candidate for client PutChunk() calls.
+	// This means that all the chunks written in this MV before now, will need to be synced or copied
+	// to the target RV by the sync PutChunk() RPC calls.
+	// The chunks written to the MV after this point will be written to the target RV as well,
+	// since the target RV is now in syncing state.
+	//
+	syncStartTime := time.Now().UnixMicro() + NTPClockSkewMargin
+
+	//
 	// Update the state of target RV from outofsync to syncing in local component RVs list.
 	// The updated component RVs list will be later used in the PutChunk(sync) RPC calls to the target RV.
 	//
 	updateLocalComponentRVState(componentRVs, targetRVName, dcache.StateOutOfSync, dcache.StateSyncing)
 
 	syncJob := &syncJob{
-		mvName:       mvName,
-		srcRVName:    lioRV,
-		srcSyncID:    srcSyncId,
-		destRVName:   targetRVName,
-		destSyncID:   dstSyncId,
-		syncSize:     syncSize,
-		componentRVs: componentRVs,
+		mvName:        mvName,
+		srcRVName:     lioRV,
+		srcSyncID:     srcSyncId,
+		destRVName:    targetRVName,
+		destSyncID:    dstSyncId,
+		syncSize:      syncSize,
+		componentRVs:  componentRVs,
+		syncStartTime: syncStartTime,
 	}
 
 	log.Debug("ReplicationManager::syncComponentRV: Sync job created: %s", syncJob.toString())
@@ -790,8 +819,11 @@ func runSyncJob(job *syncJob) error {
 }
 
 // copyOutOfSyncChunks copies the out of sync chunks from the source to target MV replica.
-// It enumerates the chunks in the source MV path and copies them to the target RV.
-// The chunks are copied using the sync PutChunk() RPC call to the target RV.
+// The out of sync chunks are determined on the basis of the sync start time.
+// The chunks that are created before this time are considered out of sync and
+// need to be copied to the target RV by the sync PutChunk() RPC call.
+// Whereas the chunks created after this time are written to both source and target RVs by the
+// client PutChunk() RPC calls, and hence ignored here.
 func copyOutOfSyncChunks(job *syncJob) error {
 	log.Debug("ReplicationManager::copyOutOfSyncChunks: Sync job: %s", job.toString())
 
@@ -825,6 +857,26 @@ func copyOutOfSyncChunks(job *syncJob) error {
 			common.Assert(false, entry.Name(), sourceMVPath)
 			continue
 		}
+
+		info, err := entry.Info()
+		common.Assert(err == nil, err)
+
+		if info.ModTime().UnixMicro() > job.syncStartTime {
+			// This chunk is created after the sync start time, so it will be written to both source and target
+			// RVs by the client PutChunk() RPC calls, so we can skip it here.
+			log.Debug("ReplicationManager::copyOutOfSyncChunks: Skipping chunk %s/%s, "+
+				"Mtime (%d) > syncStartTime (%d) [%d usecs after sync start]",
+				sourceMVPath, entry.Name(), info.ModTime().UnixMicro(), job.syncStartTime,
+				info.ModTime().UnixMicro()-job.syncStartTime)
+			continue
+		}
+
+		log.Debug("ReplicationManager::copyOutOfSyncChunks: Copying chunk %s/%s, Mtime (%d) <= syncStartTime (%d)",
+			sourceMVPath, entry.Name(), info.ModTime().UnixMicro(), job.syncStartTime)
+		log.Debug("ReplicationManager::copyOutOfSyncChunks: Copying chunk %s/%s, "+
+			"Mtime (%d) <= syncStartTime (%d) [%d usecs before sync start]",
+			sourceMVPath, entry.Name(), info.ModTime().UnixMicro(), job.syncStartTime,
+			job.syncStartTime-info.ModTime().UnixMicro())
 
 		//
 		// chunks are stored in MV as,
@@ -980,4 +1032,77 @@ func sendEndSyncRequest(rvName string, targetNodeID string, req *models.EndSyncR
 		rvName, req.MV, *resp)
 
 	return nil
+}
+
+func GetMVSize(mvName string) (int64, error) {
+	common.Assert(cm.IsValidMVName(mvName), mvName)
+
+	log.Debug("ReplicationManager::GetMVSize: MV = %s", mvName)
+
+	var mvSize int64
+	var err error
+
+	componentRVs := getComponentRVsForMV(mvName)
+
+	log.Debug("ReplicationManager::GetMVSize: Component RVs for %s are: %v",
+		mvName, rpc.ComponentRVsToString(componentRVs))
+
+	//
+	// Get the most suitable RV from the list of component RVs,
+	// from which we should get the size of the MV. Selecting most
+	// suitable RV is mostly a heuristical process which might
+	// pick the most suitable RV based on one or more of the
+	// following criteria:
+	// - Local RV must be preferred.
+	// - Prefer a node that has recently responded successfully to any of our RPCs.
+	// - Pick a random one.
+	//
+	// excludeRVs is the list of component RVs to omit, used when retrying after prev attempts to read from
+	// certain RV(s) failed. Those RVs are added to excludeRVs list.
+	//
+	var excludeRVs []string
+
+	for {
+		readerRV := getReaderRV(componentRVs, excludeRVs)
+		if readerRV == nil {
+			err = fmt.Errorf("no suitable RV found for MV %s", mvName)
+			log.Err("ReplicationManager::GetMVSize: %v", err)
+			return 0, err
+		}
+
+		common.Assert(!slices.Contains(excludeRVs, readerRV.Name), readerRV.Name, excludeRVs)
+
+		targetNodeID := getNodeIDFromRVName(readerRV.Name)
+		common.Assert(common.IsValidUUID(targetNodeID))
+
+		log.Debug("ReplicationManager::GetMVSize: Selected %s for %s, hosted by node %s",
+			readerRV.Name, mvName, targetNodeID)
+
+		req := &models.GetMVSizeRequest{
+			MV:     mvName,
+			RVName: readerRV.Name,
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), RPCClientTimeout*time.Second)
+		defer cancel()
+
+		resp, err := rpc_client.GetMVSize(ctx, targetNodeID, req)
+
+		// Exclude this RV from further iterations (if any).
+		excludeRVs = append(excludeRVs, readerRV.Name)
+
+		if err == nil {
+			// Success.
+			common.Assert(resp != nil, rpc.GetMVSizeRequestToString(req))
+			mvSize = resp.MvSize
+			log.Debug("ReplicationManager::GetMVSize: GetMVSize successful for %s, RPC response: MV size = %d",
+				rpc.GetMVSizeRequestToString(req), resp.MvSize)
+			break
+		}
+
+		log.Err("ReplicationManager::GetMVSize: Failed to get MV size from node %s for request %v [%v]",
+			targetNodeID, rpc.GetMVSizeRequestToString(req), err)
+	}
+
+	return mvSize, nil
 }

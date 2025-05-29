@@ -56,6 +56,9 @@ const (
 
 	// Time interval in seconds for resyncing degraded MVs.
 	ResyncInterval = 10
+
+	// Time in microseconds to add to the sync start time to account for clock skew
+	NTPClockSkewMargin = 5 * 1e6
 )
 
 func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *models.RVNameAndState {
