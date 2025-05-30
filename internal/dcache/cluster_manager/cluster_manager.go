@@ -553,6 +553,11 @@ func cleanupRV(rv dcache.RawVolume) error {
 // An RV that's offline in the RV list is guaranteed to be offline in the MV list also, i.e., no MV will contact
 // this RV for for chunk IO (read or write).
 //
+// Before proceeding, ensure no duplicate RV IDs (filesystem GUIDs) exist across different cache paths —
+//
+//	i.e., if an RV ID appears in both the input list and clustermap, it must refer to the *same* path.
+//	Any mismatch indicates a RVId collision, in that case, the startup will be aborted.
+//
 // In case of success the boolean return value indicates the following:
 // true  -> Found a clustermap and RV(s) were either not present in the RV list or waited for RV(s) to be marked
 //
@@ -676,6 +681,17 @@ func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, err
 				len(myRVsFromClustermap), myRVsFromClustermap)
 		} else {
 			log.Info("ClusterManager::safeCleanupMyRVs: No my RV(s) in clustermap")
+		}
+
+		// Ensure no two different cache-dir report the same rvId(filesystem GUID)
+		for _, inputRV := range myRVs {
+			for _, cmRV := range myRVsFromClustermap {
+				if inputRV.RvId == cmRV.RvId && inputRV.LocalCachePath != cmRV.LocalCachePath {
+					return false, fmt.Errorf(
+						"ClusterManager::safeCleanupMyRVs: duplicate RVid (filesystem GUID) %s reported for paths %s and %s",
+						inputRV.RvId, cmRV.LocalCachePath, inputRV.LocalCachePath)
+				}
+			}
 		}
 
 		rvStillOnline := false

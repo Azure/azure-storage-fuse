@@ -226,13 +226,25 @@ func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
 	if err != nil {
 		return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to retrieve UUID, error: %v]", err))
 	}
+
 	rvList := make([]dcache.RawVolume, len(dc.cfg.CacheDirs))
+
+	// ensure each cacheDir yields a unique rvId(filesystem GUID as reported by blkid)
+	rvIDToPath := make(map[string]string, len(dc.cfg.CacheDirs))
+
 	for index, path := range dc.cfg.CacheDirs {
-		// TODO{Akku} : More than 1 cache dir with same rvId for rv, must fail distributed cache startup
 		rvId, err := getBlockDeviceUUId(path)
 		if err != nil {
 			return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to get raw volume UUID: %v]", err))
 		}
+
+		if existingPath, exists := rvIDToPath[rvId]; exists {
+			return nil, log.LogAndReturnError(fmt.Sprintf(
+				"DistributedCache::Start error [duplicate rvId %s: %s path rvId conflicts with path %s rvId]",
+				rvId, path, existingPath))
+		}
+
+		rvIDToPath[rvId] = path
 
 		totalSpace, availableSpace, err := common.GetDiskSpaceMetricsFromStatfs(path)
 		if err != nil {
