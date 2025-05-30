@@ -35,6 +35,7 @@ package debug
 
 import (
 	"encoding/json"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -47,9 +48,9 @@ import (
 // proc file: clustermap
 func readClusterMapCallback(pFile *procFile) error {
 	var err error
-	localCMap := cm.GetClusterMap()
-	exportedCMap := cm.ExportClusterMap(&localCMap)
-	pFile.buf, err = json.MarshalIndent(exportedCMap, "", "    ")
+	clusterMap := cm.GetClusterMap()
+	exportedClusterMap := cm.ExportClusterMap(&clusterMap)
+	pFile.buf, err = json.MarshalIndent(exportedClusterMap, "", "    ")
 
 	if err != nil {
 		log.Err("DebugFS::readclusterMapCallback, err: %v", err)
@@ -57,4 +58,13 @@ func readClusterMapCallback(pFile *procFile) error {
 	}
 
 	return nil
+}
+
+func getAttrClusterMapCallback(pFile *procFile) {
+	clusterMap := cm.GetClusterMap()
+	lmt := clusterMap.LastUpdatedAt
+	common.Assert(lmt > 0)
+	pFile.attr.Mtime = time.Unix(lmt, 0)
+	pFile.attr.Ctime = pFile.attr.Mtime
+	pFile.attr.Atime = pFile.attr.Mtime
 }
