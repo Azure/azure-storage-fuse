@@ -169,7 +169,7 @@ retry:
 
 			err = cm.RefreshClusterMap()
 			if err != nil {
-				err = fmt.Errorf("RefreshClusterMapSync() failed, failing read %s",
+				err = fmt.Errorf("RefreshClusterMap() failed, failing read %s",
 					req.toString())
 				log.Warn("ReplicationManager::ReadMV: %v", err)
 				return nil, err
@@ -452,7 +452,7 @@ retry:
 				// may not have completed yet, so the target RV may not be in "syncing" state.
 				errCM := cm.RefreshClusterMap()
 				if errCM != nil {
-					err1 := fmt.Errorf("RefreshClusterMapSync() failed, failing write %s [%v]",
+					err1 := fmt.Errorf("RefreshClusterMap() failed, failing write %s [%v]",
 						req.toString(), errCM)
 					log.Warn("ReplicationManager::WriteMV: %v", err1)
 					errWriteMV = err1
@@ -483,7 +483,7 @@ retry:
 	//   - If the node is unreachable and updating clustermap state to "offline"
 	// 	   for the component RV failed.
 	//   - If the clustermap was refreshed and retry failed with NeedToRefreshClusterMap error.
-	//   - If clustermap refresh via RefreshClusterMapSync() failed.
+	//   - If clustermap refresh via RefreshClusterMap() failed.
 	//   - If PutChunk failed with non-retriable error.
 	//
 	if errWriteMV != nil {
@@ -784,7 +784,7 @@ func sendStartSyncRequest(rvName string, targetNodeID string, req *models.StartS
 		//
 		err1 := cm.RefreshClusterMap()
 		if err1 != nil {
-			log.Err("ReplicationManager::sendStartSyncRequest: RefreshClusterMapSync failed: %v", err1)
+			log.Err("ReplicationManager::sendStartSyncRequest: RefreshClusterMap failed: %v", err1)
 		}
 
 		return "", err
