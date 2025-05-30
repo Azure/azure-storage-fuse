@@ -123,12 +123,15 @@ func (wp *workerPool) readChunk(task *task) {
 	if err == nil {
 		// ReadMV() must read all that we asked for.
 		common.Assert(readMVresp.BytesRead == task.chunk.Len)
+		common.Assert(readMVresp.Data != nil)
 
 		//
 		// ReadMV completed successfully, staged chunk is now uptodate.
 		// We should copy data to user buffer only from uptodate staged chunks.
 		//
 		common.Assert(!task.chunk.Uptodate.Load())
+
+		task.chunk.Buf = readMVresp.Data
 		task.chunk.Uptodate.Store(true)
 
 		// Close the Err channel to indicate "no error".
