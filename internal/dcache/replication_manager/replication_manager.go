@@ -268,7 +268,16 @@ func WriteMV(req *WriteMvRequest) (*WriteMvResponse, error) {
 		return nil, err
 	}
 
+	retryCnt := 0
 	clusterMapRefreshed := 0
+
+	//
+	// List of RVs to which the chunk was written successfully.
+	// This list is maintained to ensure that we don't send PutChunk call again to the RV where
+	// chunk was written successfully in the previous try, if we need to retry the WriteMV operation
+	// after refreshing the clustermap.
+	//
+	var rvsWritten []string
 
 	// TODO: TODO: hash validation will be done later
 	// get hash of the data in the request
@@ -278,12 +287,12 @@ retry:
 	// Get component RVs for MV, from clustermap.
 	componentRVs := getComponentRVsForMV(req.MvName)
 
-	numReplicaWrites := 0
-
 	log.Debug("ReplicationManager::WriteMV: Component RVs for %s are: %v",
 		req.MvName, rpc.ComponentRVsToString(componentRVs))
 
-	// TODO: put chunk to each component RV should be done in parallel
+	// response channel to receive response for the PutChunk RPCs sent to each component RV.
+	responseChannel := make(chan *responseItem, len(componentRVs))
+
 	for _, rv := range componentRVs {
 		//
 		// Omit writing to RVs in “offline” or “outofsync” state. It’s ok to omit them as the chunks not
@@ -297,7 +306,29 @@ retry:
 		if rv.State == string(dcache.StateOffline) || rv.State == string(dcache.StateOutOfSync) {
 			log.Debug("ReplicationManager::WriteMV: Skipping RV %s (state %s) for %s",
 				rv.Name, rv.State, req.MvName)
-			continue
+
+			//
+			// Skip writing to this RV, as it is in offline or outofsync state.
+			// So, send nil response to the response channel to indicate that
+			// we are not writing to this RV.
+			//
+			responseChannel <- nil
+
+		} else if slices.Contains(rvsWritten, rv.Name) {
+			log.Debug("ReplicationManager::WriteMV: Skipping RV %s/%s (state %s) as it was already written to: %v",
+				rv.Name, req.MvName, rv.State, rvsWritten)
+
+			common.Assert(retryCnt > 0)
+			common.Assert(rv.State == string(dcache.StateOnline) ||
+				rv.State == string(dcache.StateSyncing), rv.Name, rv.State, rvsWritten)
+
+			//
+			// Skip writing to this RV, as it is previously written to.
+			// So, send nil response to the response channel to indicate that
+			// we are not writing to this RV.
+			//
+			responseChannel <- nil
+
 		} else if rv.State == string(dcache.StateOnline) || rv.State == string(dcache.StateSyncing) {
 			rvID := getRvIDFromRvName(rv.Name)
 			common.Assert(common.IsValidUUID(rvID))
@@ -324,93 +355,150 @@ retry:
 				ComponentRV: componentRVs,
 			}
 
-			// TODO: how to handle timeouts in case when node is unreachable
-			ctx, cancel := context.WithTimeout(context.Background(), RPCClientTimeout*time.Second)
-			defer cancel()
+			log.Debug("ReplicationManager::WriteMV: Sending PutChunk request for %s/%s to node %s: %s",
+				rv.Name, req.MvName, targetNodeID, rpc.PutChunkRequestToString(rpcReq))
 
-			rpcResp, err := rpc_client.PutChunk(ctx, targetNodeID, rpcReq)
-			if err != nil {
-				log.Err("ReplicationManager::WriteMV: PutChunk to node %s failed [%v]",
-					targetNodeID, err)
+			//
+			// Schedule PutChunk RPC call to the target node.
+			//
+			rm.tp.schedule(&workitem{
+				targetNodeID: targetNodeID,
+				rvName:       rv.Name,
+				putChunkReq:  rpcReq,
+				respChannel:  responseChannel,
+			})
 
-				rpcErr := rpc.GetRPCResponseError(err)
-				if rpcErr == nil {
-					//
-					// This error means that the node is not reachable.
-					//
-					// We should now run the inband RV offline detection workflow, basically we
-					// call the clustermap's UpdateComponentRVState() API to mark this
-					// component RV as offline and force the fix-mv workflow which will eventually
-					// trigger the resync-mv workflow.
-					//
-					log.Err("ReplicationManager::WriteMV: Failed to reach node %s [%v]",
-						targetNodeID, err)
-
-					errRV := cm.UpdateComponentRVState(req.MvName, rv.Name, dcache.StateOffline)
-					if errRV != nil {
-						errStr := fmt.Sprintf("failed to update %s/%s state to offline [%v]",
-							rv.Name, req.MvName, errRV)
-						log.Err("ReplicationManager::WriteMV: %s", errStr)
-						return nil, err
-					}
-
-					//
-					// If UpdateComponentRVState() succeeds, marking this component RV as offline,
-					// we can safely carry on with the write since we are guaranteed that these
-					// chunks which we could not write to this component RV will be later sync'ed
-					// from one of the good component RVs.
-					//
-					log.Warn("ReplicationManager::WriteMV: Writing to %s/%s (RV id %s) on node %s failed, marked RV offline",
-						rv.Name, req.MvName, rvID, targetNodeID)
-					continue
-				}
-
-				// The error is RPC error of type *rpc.ResponseError.
-				if rpcErr.GetCode() == models.ErrorCode_NeedToRefreshClusterMap {
-					// TODO: Should we allow more than one clustermap refresh?
-					if clusterMapRefreshed > 0 {
-						log.Err("ReplicationManager::WriteMV: Failed after refreshing clustermap")
-						return nil, err
-					}
-
-					// TODO: retry till the next epoch, till the clustermap is refreshed.
-					// Case: StartSync() RPC calls are successful, but before the state of the target RV
-					// is updated to "syncing" in clustermap, some other node calls WriteMV() with the outdated
-					// clustermap, which results in the component RVs rejecting the request with
-					// NeedToRefreshClusterMap error. Even after the clustermap is refreshed, it may get the same
-					// state of the target RV as "outofsync" as the clustermap update by the source (or lio) RV
-					// may not have completed yet, so the target RV may not be in "syncing" state.
-					err = cm.RefreshClusterMapSync()
-					if err != nil {
-						err = fmt.Errorf("RefreshClusterMapSync() failed, failing write %s",
-							req.toString())
-						log.Warn("ReplicationManager::WriteMV: %v", err)
-						return nil, err
-					}
-
-					clusterMapRefreshed++
-					goto retry
-				} else {
-					// TODO: check if this is non-retriable error.
-					log.Err("ReplicationManager::WriteMV: Got non-retriable error for put chunk to node %s [%v]",
-						targetNodeID, err)
-					return nil, err
-				}
-			}
-
-			common.Assert(rpcResp != nil)
-
-			log.Debug("ReplicationManager::WriteMV: PutChunk successful RPC response: %v",
-				rpc.PutChunkResponseToString(rpcResp))
-
-			numReplicaWrites++
 		} else {
 			common.Assert(false, "Unexpected RV state", rv.State, rv.Name)
 		}
 	}
 
+	var errWriteMV error
+
+	//
+	// Wait for all the PutChunk RPC calls to complete.
+	//
+	for i := 0; i < len(componentRVs); i++ {
+		respItem := <-responseChannel
+		if respItem == nil {
+			//
+			// This means that we skipped writing to this RV, as it was either
+			//   - In offline or outofsync state, or
+			//   - It was successfully written to in the previous try.
+			//
+			continue
+		}
+
+		if respItem.err != nil {
+			log.Err("ReplicationManager::WriteMV: PutChunk to node %s failed [%v]",
+				respItem.targetNodeID, respItem.err)
+
+			rpcErr := rpc.GetRPCResponseError(respItem.err)
+			if rpcErr == nil {
+				//
+				// This error means that the node is not reachable.
+				//
+				// We should now run the inband RV offline detection workflow, basically we
+				// call the clustermap's UpdateComponentRVState() API to mark this
+				// component RV as offline and force the fix-mv workflow which will eventually
+				// trigger the resync-mv workflow.
+				//
+				log.Err("ReplicationManager::WriteMV: Failed to reach node %s [%v]",
+					respItem.targetNodeID, respItem.err)
+
+				errRV := cm.UpdateComponentRVState(req.MvName, respItem.rvName, dcache.StateOffline)
+				if errRV != nil {
+					errStr := fmt.Sprintf("failed to update %s/%s state to offline [%v]",
+						respItem.rvName, req.MvName, errRV)
+					log.Err("ReplicationManager::WriteMV: %s", errStr)
+					errWriteMV = errRV
+					continue
+				}
+
+				//
+				// If UpdateComponentRVState() succeeds, marking this component RV as offline,
+				// we can safely carry on with the write since we are guaranteed that these
+				// chunks which we could not write to this component RV will be later sync'ed
+				// from one of the good component RVs.
+				//
+				log.Warn("ReplicationManager::WriteMV: Writing to %s/%s on node %s failed, marked RV offline",
+					respItem.rvName, req.MvName, respItem.targetNodeID)
+				continue
+			}
+
+			// The error is RPC error of type *rpc.ResponseError.
+			if rpcErr.GetCode() == models.ErrorCode_NeedToRefreshClusterMap {
+				// TODO: Should we allow more than one clustermap refresh?
+				if retryCnt > 0 {
+					log.Err("ReplicationManager::WriteMV: Failed after refreshing clustermap")
+					errWriteMV = fmt.Errorf("failed to write to %s/%s after refreshing clustermap [%v]",
+						respItem.rvName, req.MvName, respItem.err)
+					continue
+				}
+
+				if clusterMapRefreshed > 0 {
+					// Clustermap has already been refreshed once in this try, so skip it.
+					continue
+				}
+
+				// TODO: retry till the next epoch, till the clustermap is refreshed.
+				// Case: StartSync() RPC calls are successful, but before the state of the target RV
+				// is updated to "syncing" in clustermap, some other node calls WriteMV() with the outdated
+				// clustermap, which results in the component RVs rejecting the request with
+				// NeedToRefreshClusterMap error. Even after the clustermap is refreshed, it may get the same
+				// state of the target RV as "outofsync" as the clustermap update by the source (or lio) RV
+				// may not have completed yet, so the target RV may not be in "syncing" state.
+				errCM := cm.RefreshClusterMapSync()
+				if errCM != nil {
+					err1 := fmt.Errorf("RefreshClusterMapSync() failed, failing write %s [%v]",
+						req.toString(), errCM)
+					log.Warn("ReplicationManager::WriteMV: %v", err1)
+					errWriteMV = err1
+					continue
+				}
+
+				clusterMapRefreshed++
+			} else {
+				// TODO: check if this is non-retriable error.
+				log.Err("ReplicationManager::WriteMV: Got non-retriable error for put chunk to node %s [%v]",
+					respItem.targetNodeID, respItem.err)
+				errWriteMV = respItem.err
+				continue
+			}
+		}
+
+		common.Assert(respItem.putChunkResp != nil)
+
+		log.Debug("ReplicationManager::WriteMV: PutChunk successful for %s/%s, RPC response: %v",
+			respItem.rvName, req.MvName, rpc.PutChunkResponseToString(respItem.putChunkResp))
+
+		// write to this RV was successful, so we can add it to the list of RVs written to.
+		rvsWritten = append(rvsWritten, respItem.rvName)
+	}
+
+	//
+	// If any of the PutChunk call fails with these errors, we fail the WriteMV operation.
+	//   - If the node is unreachable and updating clustermap state to "offline"
+	// 	   for the component RV failed.
+	//   - If the clustermap was refreshed and retry failed with NeedToRefreshClusterMap error.
+	//   - If clustermap refresh via RefreshClusterMapSync() failed.
+	//   - If PutChunk failed with non-retriable error.
+	//
+	if errWriteMV != nil {
+		log.Err("ReplicationManager::WriteMV: Failed to write MV %s [%v]",
+			req.MvName, errWriteMV)
+		return nil, errWriteMV
+	}
+
+	if clusterMapRefreshed > 0 {
+		// If we refreshed the clustermap, we need to retry the write with the updated clustermap.
+		retryCnt++
+		clusterMapRefreshed = 0
+		goto retry
+	}
+
 	// For a non-offline MV, at least one replica write should succeed.
-	if numReplicaWrites == 0 {
+	if len(rvsWritten) == 0 {
 		err := fmt.Errorf("WriteMV could not write to any replica: %v", req.toString())
 		log.Err("ReplicationManager::WriteMV: %v", err)
 		common.Assert(false, err)

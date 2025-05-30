@@ -35,11 +35,13 @@ package replication_manager
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
@@ -60,6 +62,9 @@ type workitem struct {
 	// Node ID of the target node to which the request is sent.
 	targetNodeID string
 
+	// RV name of the target node.
+	rvName string
+
 	// Put Chunk RPC request.
 	putChunkReq *models.PutChunkRequest
 
@@ -72,6 +77,14 @@ type workitem struct {
 }
 
 type responseItem struct {
+	// Node ID of the target node that processed the request.
+	// Used for logging purpose.
+	targetNodeID string
+
+	// RV name of the target node that processed the request.
+	// Used for logging purpose.
+	rvName string
+
 	// Put Chunk RPC response.
 	putChunkResp *models.PutChunkResponse
 
@@ -110,12 +123,7 @@ func (tp *threadpool) stop() {
 }
 
 func (tp *threadpool) schedule(item *workitem) {
-	common.Assert(item != nil)
-	common.Assert(common.IsValidUUID(item.targetNodeID), item.targetNodeID)
-	common.Assert(cap(item.respChannel) > 0)
-
-	// TODO: extend this assert to check that only one RPC request is set.
-	common.Assert(item.putChunkReq != nil)
+	common.Assert(item.isValid(), item.toString())
 
 	// Send the work item to the channel for processing.
 	tp.items <- item
@@ -125,10 +133,14 @@ func (tp *threadpool) do() {
 	defer tp.wg.Done()
 
 	for item := range tp.items {
+		common.Assert(item.isValid(), item.toString())
+
 		if item.putChunkReq != nil {
 			resp, err := processPutChunk(item.targetNodeID, item.putChunkReq)
 
 			item.respChannel <- &responseItem{
+				targetNodeID: item.targetNodeID,
+				rvName:       item.rvName,
 				putChunkResp: resp,
 				err:          err,
 			}
@@ -139,6 +151,33 @@ func (tp *threadpool) do() {
 			common.Assert(false)
 		}
 	}
+}
+
+func (item *workitem) toString() string {
+	if item == nil {
+		return "<nil>"
+	}
+
+	return fmt.Sprintf("{targetNodeID: %s, rvName: %s, putChunkReq: %s, respChannel size: %d}",
+		item.targetNodeID, item.rvName,
+		rpc.PutChunkRequestToString(item.putChunkReq), cap(item.respChannel))
+}
+
+func (item *workitem) isValid() bool {
+	if item == nil ||
+		!common.IsValidUUID(item.targetNodeID) ||
+		!cm.IsValidRVName(item.rvName) ||
+		cap(item.respChannel) == 0 {
+		return false
+	}
+
+	//TODO: when other RPC requests are added,
+	// extend this check to check that only one RPC request is set.
+	if item.putChunkReq == nil {
+		return false
+	}
+
+	return true
 }
 
 func processPutChunk(targetNodeID string, req *models.PutChunkRequest) (*models.PutChunkResponse, error) {
