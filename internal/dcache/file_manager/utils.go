@@ -227,10 +227,15 @@ func DeleteDcacheFile(fileName string) error {
 }
 
 // Creates the chunk and allocates the chunk buf
-func NewStagedChunk(idx int64, file *DcacheFile) (*StagedChunk, error) {
-	buf, err := fileIOMgr.bp.getBuffer()
-	if err != nil {
-		return nil, err
+func NewStagedChunk(idx int64, file *DcacheFile, allocateBuf bool) (*StagedChunk, error) {
+	var buf []byte
+	var err error
+
+	if allocateBuf {
+		buf, err = fileIOMgr.bp.getBuffer()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &StagedChunk{

@@ -414,7 +414,7 @@ func (file *DcacheFile) finalizeFile() error {
 }
 
 // Return the requested chunk from the staged chunks, if present, else create a new one and add to the staged chunks.
-func (file *DcacheFile) getChunk(chunkIdx int64) (*StagedChunk, bool, error) {
+func (file *DcacheFile) getChunk(chunkIdx int64, allocateBuf bool) (*StagedChunk, bool, error) {
 	log.Debug("DistributedCache::getChunk: file: %s, chunkIdx: %d", file.FileMetadata.Filename, chunkIdx)
 
 	if chunkIdx < 0 {
@@ -428,7 +428,7 @@ func (file *DcacheFile) getChunk(chunkIdx int64) (*StagedChunk, bool, error) {
 	}
 
 	// Else, allocate a new staged chunk.
-	chunk, err := NewStagedChunk(chunkIdx, file)
+	chunk, err := NewStagedChunk(chunkIdx, file, allocateBuf)
 	if err != nil {
 		return nil, false, err
 	}
@@ -443,8 +443,11 @@ func (file *DcacheFile) getChunkForRead(chunkIdx int64) (*StagedChunk, error) {
 	log.Debug("DistributedCache::getChunkForRead: file: %s, chunkIdx: %d", file.FileMetadata.Filename, chunkIdx)
 
 	common.Assert(chunkIdx >= 0)
-
-	chunk, loaded, err := file.getChunk(chunkIdx)
+	//
+	// We don't allocate the buffers for the read Chunk to save copy that will be done by RPC call. Hence we use the
+	// the same buffer that is returned from the Replication manager. We track that buffer inside our buffer pool.
+	//
+	chunk, loaded, err := file.getChunk(chunkIdx, false /* allocateBuf */)
 	if err == nil {
 		if !loaded {
 			// Brand new staged chunk, could not have been scheduled for read already.
@@ -465,7 +468,7 @@ func (file *DcacheFile) getChunkForWrite(chunkIdx int64) (*StagedChunk, error) {
 
 	common.Assert(chunkIdx >= 0)
 
-	chunk, loaded, err := file.getChunk(chunkIdx)
+	chunk, loaded, err := file.getChunk(chunkIdx, true /* allcoate buf */)
 	// TODO: Assert that number of staged chunks is less than fileIOManager.numStagingChunks.
 	//
 	// For write chunks chunk.Len is the amount of valid data in the chunk. It starts at 0 and updated as user

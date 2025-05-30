@@ -116,7 +116,6 @@ func (wp *workerPool) readChunk(task *task) {
 		OffsetInChunk:  0,
 		Length:         task.chunk.Len,
 		ChunkSizeInMiB: task.file.FileMetadata.FileLayout.ChunkSize / common.MbToBytes,
-		Data:           task.chunk.Buf,
 	}
 
 	readMVresp, err := rm.ReadMV(readMVReq)
@@ -134,6 +133,15 @@ func (wp *workerPool) readChunk(task *task) {
 
 		// Close the Err channel to indicate "no error".
 		close(task.chunk.Err)
+
+		// Track this buffer inside the buffer pool.
+		err := fileIOMgr.bp.getOutsideBufferIntoPool(readMVresp.Data)
+		if err != nil {
+			log.Warn("DistributedCache[FM]::readChunk: Failed to put Buffer into buffer Pool, chunk idx: %d, file: %s: %v",
+				task.chunk.Idx, task.file.FileMetadata.Filename, err)
+			common.Assert(false, task.chunk.Idx, task.file.FileMetadata.Filename, err)
+		}
+
 		return
 	}
 

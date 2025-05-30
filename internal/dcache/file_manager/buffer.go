@@ -73,7 +73,24 @@ func (bp *bufferPool) getBuffer() ([]byte, error) {
 }
 
 func (bp *bufferPool) putBuffer(buf []byte) {
-	bp.pool.Put(buf)
-	common.Assert(bp.curBuffers.Load() > 0, fmt.Sprintf("Number of buffers are less than zero:  %d", bp.curBuffers.Load()))
-	bp.curBuffers.Add(-1)
+	if len(buf) == bp.bufSize {
+		bp.pool.Put(buf)
+		common.Assert(bp.curBuffers.Load() > 0, fmt.Sprintf("Number of buffers are less than zero:  %d", bp.curBuffers.Load()))
+		bp.curBuffers.Add(-1)
+	}
+}
+
+// When the buffer is allocated outside the pool, and we want the pool to track that buffer for us.
+// This should only be called if we have intension to return such buffer back to the pool after use usin putBuffer API.
+// Buffer pool will track only if it matches its specification, else this and future putBuffer on this buf will be no op.
+func (bp *bufferPool) getOutsideBufferIntoPool(buf []byte) error {
+	if bp.curBuffers.Load() > bp.maxBuffers {
+		return errors.New("Buffers Exhausted from the user configured limit")
+	}
+
+	if len(buf) == bp.bufSize {
+		bp.curBuffers.Add(1)
+	}
+
+	return nil
 }
