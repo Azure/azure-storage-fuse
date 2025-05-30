@@ -290,7 +290,9 @@ retry:
 	log.Debug("ReplicationManager::WriteMV: Component RVs for %s are: %v",
 		req.MvName, rpc.ComponentRVsToString(componentRVs))
 
-	// response channel to receive response for the PutChunk RPCs sent to each component RV.
+	//
+	// Response channel to receive response for the PutChunk RPCs sent to each component RV.
+	//
 	responseChannel := make(chan *responseItem, len(componentRVs))
 
 	for _, rv := range componentRVs {
