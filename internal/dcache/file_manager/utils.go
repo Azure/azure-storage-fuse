@@ -243,6 +243,7 @@ func NewStagedChunk(idx int64, file *DcacheFile, allocateBuf bool) (*StagedChunk
 		Len:           0,
 		Buf:           buf,
 		Err:           make(chan error, 1),
+		IsBufExternal: !allocateBuf,
 		Dirty:         atomic.Bool{},
 		Uptodate:      atomic.Bool{},
 		XferScheduled: atomic.Bool{},

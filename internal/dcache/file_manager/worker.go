@@ -108,6 +108,10 @@ func (wp *workerPool) readChunk(task *task) {
 	log.Debug("DistributedCache::readChunk: Reading chunk idx: %d, chunk Len: %d, file: %s",
 		task.chunk.Idx, task.chunk.Len, task.file.FileMetadata.Filename)
 
+	// For read chunk, buffer must not be pre-allocated, ReadMV() returns the buffer.
+	common.Assert(task.chunk.IsBufExternal)
+	common.Assert(task.chunk.Buf == nil, len(task.chunk.Buf))
+
 	// Read From the Dcache.
 	readMVReq := &rm.ReadMvRequest{
 		FileID:         task.file.FileMetadata.FileID,
@@ -122,8 +126,8 @@ func (wp *workerPool) readChunk(task *task) {
 
 	if err == nil {
 		// ReadMV() must read all that we asked for.
-		common.Assert(readMVresp.BytesRead == task.chunk.Len)
 		common.Assert(readMVresp.Data != nil)
+		common.Assert(len(readMVresp.Data) == int(task.chunk.Len))
 
 		//
 		// ReadMV completed successfully, staged chunk is now uptodate.
@@ -131,19 +135,11 @@ func (wp *workerPool) readChunk(task *task) {
 		//
 		common.Assert(!task.chunk.Uptodate.Load())
 
-		task.chunk.Buf = readMVresp.Data
 		task.chunk.Uptodate.Store(true)
+		task.chunk.Buf = readMVresp.Data
 
 		// Close the Err channel to indicate "no error".
 		close(task.chunk.Err)
-
-		// Track this buffer inside the buffer pool.
-		err := fileIOMgr.bp.getOutsideBufferIntoPool(readMVresp.Data)
-		if err != nil {
-			log.Warn("DistributedCache[FM]::readChunk: Failed to put Buffer into buffer Pool, chunk idx: %d, file: %s: %v",
-				task.chunk.Idx, task.file.FileMetadata.Filename, err)
-			common.Assert(false, task.chunk.Idx, task.file.FileMetadata.Filename, err)
-		}
 
 		return
 	}

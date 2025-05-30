@@ -69,7 +69,6 @@ type ReadMvRequest struct {
 	OffsetInChunk  int64 // read offset within the chunk. This should not be greater than ChunkSizeInMiB
 	Length         int64 // Length in bytes of data to be read
 	ChunkSizeInMiB int64 // Chunk size in MiB
-
 }
 
 // helper method which can be used for logging the request contents except the data buffer
@@ -126,17 +125,14 @@ func (req *ReadMvRequest) isValid() error {
 }
 
 type ReadMvResponse struct {
-	Data      []byte // buffer to store the data read from the chunk. Must be at least Length bytes
-	BytesRead int64  // Number of bytes read
+	Data []byte // buffer containing data read from the chunk.
 }
 
 func (resp *ReadMvResponse) isValid(req *ReadMvRequest) error {
-	common.Assert(len(resp.Data) == int(resp.BytesRead))
-
-	// check if the requested data size is greater than the buffer provided
-	if len(resp.Data) < int(req.Length) {
+	// Must read all the data that was requested.
+	if len(resp.Data) != int(req.Length) {
 		reqStr := req.toString()
-		err := fmt.Errorf("data buffer size is less than requested data size in request: %s", reqStr)
+		err := fmt.Errorf("ReadMV returned less data (%d) than requested: %s", len(resp.Data), reqStr)
 		log.Err("ReadMvResponse::isValid: %v", err)
 		return err
 	}

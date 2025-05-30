@@ -211,6 +211,9 @@ retry:
 				rpcResp.Chunk != nil &&
 				rpcResp.Chunk.Address != nil),
 				rpc.GetChunkRequestToString(rpcReq))
+			// Must read all the requested data.
+			common.Assert(len(rpcResp.Chunk.Data) == int(req.Length), len(rpcResp.Chunk.Data), req.Length)
+
 			// TODO: Validate other rpcResp fields.
 			break
 		}
@@ -244,8 +247,6 @@ retry:
 
 	resp := &ReadMvResponse{
 		Data: rpcResp.Chunk.Data,
-		// TODO: update this field after bytes read in response.
-		BytesRead: int64(len(rpcResp.Chunk.Data)),
 	}
 
 	if err := resp.isValid(req); err != nil {

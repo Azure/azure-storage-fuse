@@ -35,7 +35,6 @@ package filemanager
 
 import (
 	"errors"
-	"fmt"
 	"sync"
 	"sync/atomic"
 
@@ -67,30 +66,20 @@ func (bp *bufferPool) getBuffer() ([]byte, error) {
 	}
 
 	buf := bp.pool.Get().([]byte)
-	common.Assert(len(buf) == bp.bufSize, fmt.Sprintf("Allocated Buf Size %d != Required Buf Size %d", len(buf), bp.bufSize))
+
+	// All buffers allocated must be of size bp.bufSize.
+	common.Assert(len(buf) == bp.bufSize, len(buf), bp.bufSize)
+
 	bp.curBuffers.Add(1)
 	return buf, nil
 }
 
 func (bp *bufferPool) putBuffer(buf []byte) {
-	if len(buf) == bp.bufSize {
-		bp.pool.Put(buf)
-		common.Assert(bp.curBuffers.Load() > 0, fmt.Sprintf("Number of buffers are less than zero:  %d", bp.curBuffers.Load()))
-		bp.curBuffers.Add(-1)
-	}
-}
+	// All buffers allocated from the pool must be of the same size.
+	common.Assert(len(buf) == bp.bufSize, len(buf), bp.bufSize)
+	// Caller must free a buffer that's allocated using getBuffer().
+	common.Assert(bp.curBuffers.Load() > 0, bp.curBuffers.Load())
 
-// When the buffer is allocated outside the pool, and we want the pool to track that buffer for us.
-// This should only be called if we have intension to return such buffer back to the pool after use usin putBuffer API.
-// Buffer pool will track only if it matches its specification, else this and future putBuffer on this buf will be no op.
-func (bp *bufferPool) getOutsideBufferIntoPool(buf []byte) error {
-	if bp.curBuffers.Load() > bp.maxBuffers {
-		return errors.New("Buffers Exhausted from the user configured limit")
-	}
-
-	if len(buf) == bp.bufSize {
-		bp.curBuffers.Add(1)
-	}
-
-	return nil
+	bp.pool.Put(buf)
+	bp.curBuffers.Add(-1)
 }
