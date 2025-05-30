@@ -39,6 +39,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
@@ -54,10 +55,11 @@ var procFiles map[string]*procFile
 // Mutex, openCnt is used for correctness of the filesystem if more that one handles for these procFiles are opened.
 // without which also one can implement given that always there would one handle open for the file.
 type procFile struct {
-	mu            sync.Mutex            // lock for updating the openCnt and refreshing the buffer.
-	buf           []byte                // Contents of the file.
-	openCnt       int32                 // Open handles for this file.
-	refreshBuffer func(*procFile) error // Refresh the contents of the file.
+	mu            sync.Mutex                         // lock for updating the openCnt and refreshing the buffer.
+	buf           []byte                             // Contents of the file.
+	openCnt       int32                              // Open handles for this file.
+	refreshBuffer func(*procFile) error              // Refresh the contents of the file.
+	getAttr       func(*procFile, *internal.ObjAttr) // Modify any fields of attributes if needed.
 }
 
 // Directory entries in "fs=debug" directory. This list don't change as the files we support were already known.
@@ -70,6 +72,7 @@ func init() {
 			buf:           make([]byte, 0, 4096),
 			openCnt:       0,
 			refreshBuffer: readClusterMapCallback,
+			getAttr:       getAttrClusterMapCallback,
 		}, // Show clusterInfo about dcache.
 	}
 
@@ -86,13 +89,20 @@ func init() {
 
 // Return the size of the file as zero, as we don't know the size at this point.
 func GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr, error) {
-	if _, ok := procFiles[options.Name]; ok {
-		attr := internal.ObjAttr{
-			Name: options.Name,
-			Path: options.Name,
-			Size: 0,
+	if pFile, ok := procFiles[options.Name]; ok {
+		attr := &internal.ObjAttr{
+			Name:  options.Name,
+			Path:  options.Name,
+			Mode:  0444,
+			Mtime: time.Now(),
+			Atime: time.Now(),
+			Ctime: time.Now(),
+			Size:  0,
 		}
-		return &attr, nil
+
+		pFile.getAttr(pFile, attr)
+
+		return attr, nil
 	}
 	return nil, syscall.ENOENT
 }

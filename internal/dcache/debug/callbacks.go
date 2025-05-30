@@ -35,9 +35,11 @@ package debug
 
 import (
 	"encoding/json"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 )
 
@@ -57,4 +59,13 @@ func readClusterMapCallback(pFile *procFile) error {
 	}
 
 	return nil
+}
+
+func getAttrClusterMapCallback(pFile *procFile, attr *internal.ObjAttr) {
+	localCMap := cm.GetClusterMap()
+	lmt := localCMap.LastUpdatedAt
+	common.Assert(lmt > 0)
+	attr.Mtime = time.Unix(lmt, 0)
+	attr.Ctime = attr.Mtime
+	attr.Atime = attr.Mtime
 }
