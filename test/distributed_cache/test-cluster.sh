@@ -200,13 +200,45 @@ stop_blobfuse_on_node()
     local vm=$1
     local logfile=$(vmlog $vm)
 
-    (
-        echo "Stopping blobfuse @ $(date)" >> $logfile
-        ssh $vm ~/stop-blobfuse.sh >> $logfile 2>&1
-    )&
+    echo "Stopping blobfuse @ $(date)" >> $logfile
+    ssh $vm ~/stop-blobfuse.sh >> $logfile 2>&1
+}
 
-    # Give some time to unmount.
-    sleep 1
+kill_blobfuse_on_node()
+{
+    local vm=$1
+    local logfile=$(vmlog $vm)
+
+    echo "Killing blobfuse @ $(date)" >> $logfile
+    ssh $vm pkill blobfuse2 >> $logfile 2>&1
+}
+
+#
+# Simulate node up by unblocking RPC port 9090 and starting blobfuse2.
+#
+node_up()
+{
+    local vm=$1
+    local logfile=$(vmlog $vm)
+
+    echo "Starting $vm @ $(date)" >> $logfile
+    ssh $vm ~/block-rpc.sh unblock >> $logfile 2>&1
+
+    start_blobfuse_on_node $vm
+}
+
+#
+# Simulate node down by killing blobfuse2 and blocking RPC port 9090
+#
+node_down()
+{
+    local vm=$1
+    local logfile=$(vmlog $vm)
+
+    kill_blobfuse_on_node $vm
+
+    echo "Stopping $vm @ $(date)" >> $logfile
+    ssh $vm ~/block-rpc.sh block >> $logfile 2>&1
 }
 
 read_clustermap_from_node()
