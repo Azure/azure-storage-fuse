@@ -55,11 +55,12 @@ var procFiles map[string]*procFile
 // Mutex, openCnt is used for correctness of the filesystem if more that one handles for these procFiles are opened.
 // without which also one can implement given that always there would one handle open for the file.
 type procFile struct {
-	mu            sync.Mutex                         // lock for updating the openCnt and refreshing the buffer.
-	buf           []byte                             // Contents of the file.
-	openCnt       int32                              // Open handles for this file.
-	refreshBuffer func(*procFile) error              // Refresh the contents of the file.
-	getAttr       func(*procFile, *internal.ObjAttr) // Modify any fields of attributes if needed.
+	mu            sync.Mutex            // lock for updating the openCnt and refreshing the buffer.
+	buf           []byte                // Contents of the file.
+	openCnt       int32                 // Open handles for this file.
+	refreshBuffer func(*procFile) error // Refresh the contents of the file.
+	attr          *internal.ObjAttr     // attr of the file.
+	getAttr       func(*procFile)       // Modify any fields of attributes if needed.
 }
 
 // Directory entries in "fs=debug" directory. This list don't change as the files we support were already known.
@@ -77,37 +78,42 @@ func init() {
 	}
 
 	procDirList = make([]*internal.ObjAttr, 0, len(procFiles))
-	for path, _ := range procFiles {
-		attr := &internal.ObjAttr{
-			Name: path,
-			Path: path,
-			Size: 0,
-		}
-		procDirList = append(procDirList, attr)
-	}
-}
-
-// Return the size of the file as zero, as we don't know the size at this point.
-func GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr, error) {
-	if pFile, ok := procFiles[options.Name]; ok {
-		attr := &internal.ObjAttr{
-			Name:  options.Name,
-			Path:  options.Name,
+	for path, pFile := range procFiles {
+		pFile.attr = &internal.ObjAttr{
+			Name:  path,
+			Path:  path,
 			Mode:  0444,
 			Mtime: time.Now(),
 			Atime: time.Now(),
 			Ctime: time.Now(),
 			Size:  0,
 		}
+		procDirList = append(procDirList, pFile.attr)
+	}
+}
 
-		pFile.getAttr(pFile, attr)
+// Return the size of the file as zero, as we don't know the size at this point.
+func GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr, error) {
+	if pFile, ok := procFiles[options.Name]; ok {
+		if pFile.getAttr != nil {
+			pFile.getAttr(pFile)
+		}
 
-		return attr, nil
+		return pFile.attr, nil
 	}
 	return nil, syscall.ENOENT
 }
 
 func StreamDir(options internal.StreamDirOptions) ([]*internal.ObjAttr, string, error) {
+	for _, pFile := range procFiles {
+		if pFile.getAttr != nil {
+			pFile.getAttr(pFile)
+		} else {
+			pFile.attr.Mtime = time.Now()
+			pFile.attr.Atime = time.Now()
+			pFile.attr.Ctime = time.Now()
+		}
+	}
 	return procDirList, "", nil
 }
 
