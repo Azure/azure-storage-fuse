@@ -59,6 +59,9 @@ const (
 
 	// Time in microseconds to add to the sync start time to account for clock skew
 	NTPClockSkewMargin = 5 * 1e6
+
+	// Number of workers in the thread pool for sending the RPC requests.
+	MAX_WORKER_COUNT = 64
 )
 
 func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *models.RVNameAndState {

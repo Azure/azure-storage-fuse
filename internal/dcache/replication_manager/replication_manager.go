@@ -68,7 +68,8 @@ type replicationMgr struct {
 	// Note that there can only be a single sync job for a given target replica.
 	runningJobs sync.Map
 
-	// TODO: add fields like channel for sync jobs, etc.
+	// Thread pool for sending RPC requests.
+	tp *threadpool
 }
 
 var rm *replicationMgr
@@ -82,12 +83,16 @@ func Start() error {
 	rm = &replicationMgr{
 		ticker: time.NewTicker(ResyncInterval * time.Second),
 		done:   make(chan bool),
+		tp:     newThreadPool(MAX_WORKER_COUNT),
 	}
 
 	rm.wg.Add(1)
 
 	// run the periodic resync of degraded MVs in a separate goroutine
 	go periodicResyncMVs()
+
+	// Start the thread pool for sending RPC requests.
+	rm.tp.start()
 
 	return nil
 }
@@ -102,6 +107,8 @@ func Stop() {
 	rm.ticker.Stop()
 	rm.done <- true
 	rm.wg.Wait()
+
+	rm.tp.stop()
 }
 
 func ReadMV(req *ReadMvRequest) (*ReadMvResponse, error) {
@@ -183,7 +190,6 @@ retry:
 		log.Debug("ReplicationManager::ReadMV: Selected %s for %s RV id %s hosted by node %s",
 			readerRV.Name, req.MvName, selectedRvID, targetNodeID)
 
-		// TODO: optimization, should we send buffer also in the GetChunk request?
 		rpcReq := &models.GetChunkRequest{
 			Address: &models.Address{
 				FileID:      req.FileID,
@@ -211,7 +217,6 @@ retry:
 				rpcResp.Chunk != nil &&
 				rpcResp.Chunk.Address != nil),
 				rpc.GetChunkRequestToString(rpcReq))
-			// TODO: Validate other rpcResp fields.
 			break
 		}
 
@@ -235,9 +240,6 @@ retry:
 	// req.Data must be large enough to copy entire rpcResp.Chunk.Data.
 	common.Assert(n == len(rpcResp.Chunk.Data), n, len(rpcResp.Chunk.Data))
 
-	// TODO: in GetChunk RPC request add data buffer to the request
-	// TODO: in GetChunk RPC response return bytes read
-
 	// TODO: hash validation will be done later
 	// TODO: should we validate the hash of the chunk here?
 	// hash := getMD5Sum(rpcResp.Chunk.Data)
@@ -248,7 +250,6 @@ retry:
 	// }
 
 	resp := &ReadMvResponse{
-		// TODO: update this field after bytes read in response.
 		BytesRead: int64(len(rpcResp.Chunk.Data)),
 	}
 
