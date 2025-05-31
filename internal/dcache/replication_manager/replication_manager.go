@@ -130,7 +130,7 @@ func ReadMV(req *ReadMvRequest) (*ReadMvResponse, error) {
 
 retry:
 	// Get component RVs for MV, from clustermap.
-	componentRVs := getComponentRVsForMV(req.MvName)
+	componentRVs, lastClusterMapEpoch := getComponentRVsForMV(req.MvName)
 
 	log.Debug("ReplicationManager::ReadMV: Component RVs for %s are: %v",
 		req.MvName, rpc.ComponentRVsToString(componentRVs))
@@ -167,7 +167,7 @@ retry:
 			// clustermap where all/most of the component RVs have been replaced.
 			//
 
-			err = cm.RefreshClusterMap()
+			err = cm.RefreshClusterMap(lastClusterMapEpoch)
 			if err != nil {
 				err = fmt.Errorf("RefreshClusterMap() failed, failing read %s",
 					req.toString())
@@ -288,8 +288,12 @@ retry:
 			retryCnt, req.toString(), rvsWritten)
 	}
 
-	// Get component RVs for MV, from clustermap.
-	componentRVs := getComponentRVsForMV(req.MvName)
+	//
+	// Get component RVs for MV, from clustermap and also the corresponding clustermap epoch.
+	// If server returns NeedToRefreshClusterMap, we will ask cm.RefreshClusterMap() to update
+	// the clustermap to a value higher than this epoch.
+	//
+	componentRVs, lastClusterMapEpoch := getComponentRVsForMV(req.MvName)
 
 	log.Debug("ReplicationManager::WriteMV: Component RVs for %s are: %v",
 		req.MvName, rpc.ComponentRVsToString(componentRVs))
@@ -465,8 +469,12 @@ retry:
 
 		// The error is RPC error of type *rpc.ResponseError.
 		if rpcErr.GetCode() == models.ErrorCode_NeedToRefreshClusterMap {
-			// TODO: Should we allow more than one clustermap refresh?
-			if retryCnt > 0 {
+			//
+			// We allow 5 refreshes of the clustermap for resiliency, before we fail the write.
+			// This is to allow multiple changes to the MV during the course of a single write.
+			// It's unlikely but we need to be resilient.
+			//
+			if retryCnt > 5 {
 				errWriteMV = fmt.Errorf("failed to write to %s/%s after refreshing clustermap [%v]",
 					respItem.rvName, req.MvName, respItem.err)
 				log.Err("ReplicationManager::WriteMV: %v", errWriteMV)
@@ -478,14 +486,18 @@ retry:
 				continue
 			}
 
-			// TODO: retry till the next epoch, till the clustermap is refreshed.
+			//
+			// Retry till the next epoch, ensuring that the clustermap is refreshed from what we
+			// have cached right now.
 			// Case: StartSync() RPC calls are successful, but before the state of the target RV
-			// is updated to "syncing" in clustermap, some other node calls WriteMV() with the outdated
-			// clustermap, which results in the component RVs rejecting the request with
-			// NeedToRefreshClusterMap error. Even after the clustermap is refreshed, it may get the same
-			// state of the target RV as "outofsync" as the clustermap update by the source (or lio) RV
-			// may not have completed yet, so the target RV may not be in "syncing" state.
-			errCM := cm.RefreshClusterMap()
+			//       is updated to "syncing" in clustermap, this node calls WriteMV() with the
+			//       outdated clustermap, which results in the component RVs rejecting the request with
+			//       NeedToRefreshClusterMap error. Even after the clustermap is refreshed, it may get
+			//       the state of the target RV as "outofsync" as the clustermap update by the source
+			//       (or lio) RV may not have completed yet, so the target RV may not be in "syncing"
+			//       state.
+			//
+			errCM := cm.RefreshClusterMap(lastClusterMapEpoch)
 			if errCM != nil {
 				errWriteMV = fmt.Errorf("RefreshClusterMap() failed, failing write %s [%v]",
 					req.toString(), errCM)
@@ -496,9 +508,9 @@ retry:
 			clusterMapRefreshed = true
 		} else {
 			// TODO: check if this is non-retriable error.
-			log.Err("ReplicationManager::WriteMV: PutChunk to %s/%s node %s, failed with non-retriable error [%v]",
+			errWriteMV = fmt.Errorf("PutChunk to %s/%s node %s, failed with non-retriable error [%v]",
 				respItem.rvName, req.MvName, respItem.targetNodeID, respItem.err)
-			errWriteMV = respItem.err
+			log.Err("ReplicationManager::WriteMV: %v", errWriteMV)
 			continue
 		}
 	}
@@ -807,9 +819,12 @@ func sendStartSyncRequest(rvName string, targetNodeID string, req *models.StartS
 		// Right now we treat all StartSync failures as being caused by stale clustermap.
 		// Refresh the clustermap and fail the job. This target replica will be picked up
 		// in the next periodic call to syncMV().
+		// Note that we pass 0 for higherThanEpoch as we don't have any specific epoch to refresh
+		// to, it's a best effort refresh.
+		//
 		// TODO: Check for NeedToRefreshClusterMap and only on that error, refresh the clustermap.
 		//
-		err1 := cm.RefreshClusterMap()
+		err1 := cm.RefreshClusterMap(0 /* higherThanEpoch */)
 		if err1 != nil {
 			log.Err("ReplicationManager::sendStartSyncRequest: RefreshClusterMap failed: %v", err1)
 		}
@@ -1160,7 +1175,7 @@ func GetMVSize(mvName string) (int64, error) {
 	var mvSize int64
 	var err error
 
-	componentRVs := getComponentRVsForMV(mvName)
+	componentRVs, _ := getComponentRVsForMV(mvName)
 
 	log.Debug("ReplicationManager::GetMVSize: Component RVs for %s are: %v",
 		mvName, rpc.ComponentRVsToString(componentRVs))

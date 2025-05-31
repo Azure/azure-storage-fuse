@@ -639,7 +639,7 @@ func (mv *mvInfo) refreshFromClustermap() error {
 	// Refresh the clustermap synchronously. Once this returns, clustermap package has the updated
 	// clustermap.
 	//
-	err := cm.RefreshClusterMap()
+	err := cm.RefreshClusterMap(0 /* higherThanEpoch */)
 	if err != nil {
 		err := fmt.Errorf("mvInfo::refreshFromClustermap: %s/%s, failed: %v", mv.rvName, mv.mvName, err)
 		log.Err("%v", err)
