@@ -59,7 +59,7 @@ type threadpool struct {
 }
 
 type workitem struct {
-	// Node ID of the target node to which the request is sent.
+	// Node ID of the target node to which the request should be sent.
 	targetNodeID string
 
 	// RV name of the target node.
@@ -100,6 +100,11 @@ func newThreadPool(count uint32) *threadpool {
 
 	common.Assert(count > 0, count)
 
+	//
+	// Create the workitem channel to hold twice as many workitems as the number of workers.
+	// Big enough to let enough workitems to be queued so that workers do not need to wait
+	// for workitems.
+	//
 	return &threadpool{
 		worker: count,
 		items:  make(chan *workitem, count*2),
@@ -125,13 +130,19 @@ func (tp *threadpool) stop() {
 func (tp *threadpool) schedule(item *workitem) {
 	common.Assert(item.isValid(), item.toString())
 
-	// Send the work item to the channel for processing.
+	//
+	// Add the work item to the channel for processing.
+	// Any of the free workers will dequeue and process this.
+	//
 	tp.items <- item
 }
 
 func (tp *threadpool) do() {
 	defer tp.wg.Done()
 
+	//
+	// As long as the workitem channel is not closed, keep dequeueing workitems and process them.
+	//
 	for item := range tp.items {
 		common.Assert(item.isValid(), item.toString())
 
