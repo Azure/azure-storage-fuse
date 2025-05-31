@@ -217,6 +217,10 @@ retry:
 				rpcResp.Chunk != nil &&
 				rpcResp.Chunk.Address != nil),
 				rpc.GetChunkRequestToString(rpcReq))
+
+			// Must read all the requested data.
+			common.Assert(len(rpcResp.Chunk.Data) == int(req.Length), len(rpcResp.Chunk.Data), req.Length)
+
 			break
 		}
 
@@ -236,10 +240,6 @@ retry:
 
 	log.Debug("ReplicationManager::ReadMV: GetChunk RPC response: %v", rpc.GetChunkResponseToString(rpcResp))
 
-	n := copy(req.Data, rpcResp.Chunk.Data)
-	// req.Data must be large enough to copy entire rpcResp.Chunk.Data.
-	common.Assert(n == len(rpcResp.Chunk.Data), n, len(rpcResp.Chunk.Data))
-
 	// TODO: hash validation will be done later
 	// TODO: should we validate the hash of the chunk here?
 	// hash := getMD5Sum(rpcResp.Chunk.Data)
@@ -250,7 +250,14 @@ retry:
 	// }
 
 	resp := &ReadMvResponse{
-		BytesRead: int64(len(rpcResp.Chunk.Data)),
+		Data: rpcResp.Chunk.Data,
+	}
+
+	if err := resp.isValid(req); err != nil {
+		err = fmt.Errorf("invalid ReadMV response [%v]", err)
+		log.Err("ReplicationManager::ReadMV: %v", err)
+		common.Assert(false, err)
+		return nil, err
 	}
 
 	return resp, nil

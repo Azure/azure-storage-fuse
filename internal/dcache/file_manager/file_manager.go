@@ -414,7 +414,10 @@ func (file *DcacheFile) finalizeFile() error {
 }
 
 // Return the requested chunk from the staged chunks, if present, else create a new one and add to the staged chunks.
-func (file *DcacheFile) getChunk(chunkIdx int64) (*StagedChunk, bool, error) {
+// 'allocateBuf' controls if the StagedChunk returned has its buffer allocated by us. Note that ReadMV()
+// returns the buffer where the data is read by the GetChunk() RPC, so we don't want a pre-allocated buffer
+// in that case.
+func (file *DcacheFile) getChunk(chunkIdx int64, allocateBuf bool) (*StagedChunk, bool, error) {
 	log.Debug("DistributedCache::getChunk: file: %s, chunkIdx: %d", file.FileMetadata.Filename, chunkIdx)
 
 	if chunkIdx < 0 {
@@ -428,10 +431,13 @@ func (file *DcacheFile) getChunk(chunkIdx int64) (*StagedChunk, bool, error) {
 	}
 
 	// Else, allocate a new staged chunk.
-	chunk, err := NewStagedChunk(chunkIdx, file)
+	chunk, err := NewStagedChunk(chunkIdx, file, allocateBuf)
 	if err != nil {
 		return nil, false, err
 	}
+
+	common.Assert(chunk.IsBufExternal == !allocateBuf, chunk.IsBufExternal)
+	common.Assert(chunk.IsBufExternal == (chunk.Buf == nil), chunk.IsBufExternal, len(chunk.Buf))
 
 	// Add it to the StagedChunks, and return.
 	file.StagedChunks.Store(chunkIdx, chunk)
@@ -443,8 +449,10 @@ func (file *DcacheFile) getChunkForRead(chunkIdx int64) (*StagedChunk, error) {
 	log.Debug("DistributedCache::getChunkForRead: file: %s, chunkIdx: %d", file.FileMetadata.Filename, chunkIdx)
 
 	common.Assert(chunkIdx >= 0)
-
-	chunk, loaded, err := file.getChunk(chunkIdx)
+	//
+	// For read chunk, we use the buffer returned by the GetChunk() RPC, that saves an extra copy.
+	//
+	chunk, loaded, err := file.getChunk(chunkIdx, false /* allocateBuf */)
 	if err == nil {
 		if !loaded {
 			// Brand new staged chunk, could not have been scheduled for read already.
@@ -465,7 +473,7 @@ func (file *DcacheFile) getChunkForWrite(chunkIdx int64) (*StagedChunk, error) {
 
 	common.Assert(chunkIdx >= 0)
 
-	chunk, loaded, err := file.getChunk(chunkIdx)
+	chunk, loaded, err := file.getChunk(chunkIdx, true /* allocateBuf */)
 	// TODO: Assert that number of staged chunks is less than fileIOManager.numStagingChunks.
 	//
 	// For write chunks chunk.Len is the amount of valid data in the chunk. It starts at 0 and updated as user
@@ -501,16 +509,24 @@ func (file *DcacheFile) removeChunk(chunkIdx int64) {
 	Ichunk, loaded := file.StagedChunks.LoadAndDelete(chunkIdx)
 	if loaded {
 		chunk := Ichunk.(*StagedChunk)
-		fileIOMgr.bp.putBuffer(chunk.Buf)
+		file.releaseChunk(chunk)
 	}
 }
 
 // Release buffer for the staged chunk.
 func (file *DcacheFile) releaseChunk(chunk *StagedChunk) {
-	log.Debug("DistributedCache::releaseChunk: releasing buffer for staged chunk, file: %s, chunk idx: %d",
-		file.FileMetadata.Filename, chunk.Idx)
+	log.Debug("DistributedCache::releaseChunk: releasing buffer for staged chunk, file: %s, chunk idx: %d, external: %v",
+		file.FileMetadata.Filename, chunk.Idx, chunk.IsBufExternal)
 
-	fileIOMgr.bp.putBuffer(chunk.Buf)
+	//
+	// If buffer is allocated by NewStagedChunk(), free it to the pool, else it's an external buffer
+	// returned by ReadMV(), just drop our reference and let GC free it.
+	//
+	if chunk.IsBufExternal {
+		chunk.Buf = nil
+	} else {
+		fileIOMgr.bp.putBuffer(chunk.Buf)
+	}
 }
 
 // Read Chunk data from the file.
