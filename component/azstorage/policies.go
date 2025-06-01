@@ -36,6 +36,8 @@ package azstorage
 import (
 	"fmt"
 	"net/http"
+	"sync"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -78,4 +80,57 @@ func newServiceVersionPolicy(version string) policy.Policy {
 func (r *serviceVersionPolicy) Do(req *policy.Request) (*http.Response, error) {
 	req.Raw().Header["x-ms-version"] = []string{r.serviceApiVersion}
 	return req.Next()
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------
+// Policy to track all http requests and responses
+
+type metricsPolicy struct {
+	namespace    string
+	requestCount int64
+	failureCount int64
+	mu           sync.Mutex
+	exporter     *StatsExporter // Must be injected/initialized externally
+}
+
+type PolicyMetric struct {
+	RequestCount int64  `json:"request_count"`
+	FailureCount int64  `json:"failure_count"`
+	DurationMs   int64  `json:"duration_ms"`
+	Timestamp    string `json:"timestamp"`
+}
+
+func newmetricsPolicy(namespace string) policy.Policy {
+	return &metricsPolicy{
+		namespace: namespace,
+		//monitorPusher: PushMetricsToAzureMonitor, // Function from stats_exports.go
+	}
+}
+
+func (p *metricsPolicy) Do(req *policy.Request) (*http.Response, error) {
+	start := time.Now()
+	resp, err := req.Next()
+	duration := time.Since(start)
+
+	p.mu.Lock()
+	p.requestCount++
+	if err != nil || (resp != nil && resp.StatusCode >= 400) {
+		p.failureCount++
+	}
+
+	// Define metric struct
+	metric := PolicyMetric{
+		RequestCount: p.requestCount,
+		FailureCount: p.failureCount,
+		DurationMs:   duration.Milliseconds(),
+		Timestamp:    time.Now().UTC().Format(time.RFC3339),
+	}
+	p.mu.Unlock()
+
+	// Use the defined metric
+	if p.exporter != nil {
+		p.exporter.AddMonitorStats("AzureMonitorPolicy", metric.Timestamp, metric)
+	}
+
+	return resp, err
 }

@@ -52,21 +52,26 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/component/azstorage"
 	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
 	hmcommon "github.com/Azure/azure-storage-fuse/v2/tools/health-monitor/common"
+	"github.com/Azure/azure-storage-fuse/v2/tools/health-monitor/metrics"
 )
 
-type ExportedStat struct {
+/*type ExportedStat struct {
 	Timestamp   string
 	MonitorName string
 	Stat        interface{}
-}
+}*/
 
 type StatsExporter struct {
-	channel    chan ExportedStat
-	wg         sync.WaitGroup
-	opFile     *os.File
-	outputList []*Output
+	channel             chan metrics.ExportedStat
+	wg                  sync.WaitGroup
+	opFile              *os.File
+	outputList          []*Output
+	lastBytesUploaded   float64
+	lastBytesDownloaded float64
+	hasPrev             bool
 }
 
 type Output struct {
@@ -78,13 +83,25 @@ type Output struct {
 	Net       string                  `json:"NetworkUsage,omitempty"`
 }
 
-const monitorURL = "https://westus2.monitoring.azure.com/subscriptions/ba45b233-e2ef-4169-8808-49eb0d8eba0d/resourceGroups/sanjsingh-rg/providers/Microsoft.Compute/virtualMachines/sanjanavm2"
+const monitorURL = "https://westus2.monitoring.azure.com/subscriptions/ba45b233-e2ef-4169-8808-49eb0d8eba0d/resourceGroups/sanjsingh-rg/providers/Microsoft.Compute/virtualMachines/sanjanavm2/metrics"
 
 var expLock sync.Mutex
 var se *StatsExporter
 
+func (se *StatsExporter) Init() {
+	metrics.InitChannel(se.channel)
+}
+
+//var lastBytesUploaded float64 = -1
+//var lastBytesDownloaded float64 = -1
+
 // atomic variable to prevent writing to channel after it has been closed
 var pidStatus int32 = 0
+
+// InitStatsExporter registers your exporter implementation with azstorage
+func InitStatsExporter(se *StatsExporter) {
+	azstorage.RegisterExporter(se)
+}
 
 // create single instance of StatsExporter
 func NewStatsExporter() (*StatsExporter, error) {
@@ -142,7 +159,7 @@ func (se *StatsExporter) Destroy() {
 	se.wg.Wait()
 }
 
-func (se *StatsExporter) AddMonitorStats(monName string, timestamp string, st interface{}) {
+/*func (se *StatsExporter) AddMonitorStats(monName string, timestamp string, st interface{}) {
 	// check if the channel is full
 	if len(se.channel) == cap(se.channel) {
 		// remove the first element from the channel
@@ -156,7 +173,7 @@ func (se *StatsExporter) AddMonitorStats(monName string, timestamp string, st in
 			Stat:        st,
 		}
 	}
-}
+}*/
 
 func (se *StatsExporter) StatsExporter() {
 	defer se.wg.Done()
@@ -166,38 +183,68 @@ func (se *StatsExporter) StatsExporter() {
 		if idx != -1 {
 			se.addToList(&st, idx)
 		} else {
-			// keep max 3 timestamps in memory
+			// Keep max 3 timestamps in memory
 			if len(se.outputList) >= 3 {
-				if !isMetricsEmptyOrInvalid(se.outputList[0]) {
-					err := se.sendToAzureMonitor(se.outputList[0])
+				log.Info("✅ New version of bfusemon has started")
+
+				metrics := se.parseAndValidateMetrics(se.outputList[0])
+				if len(metrics) > 0 {
+					token, err := getAzureMonitorToken()
 					if err != nil {
-						log.Err("stats_exporter::StatsExporter : Failed to send metrics to Azure Monitor [%v]", err)
+						log.Err("Token fetch failed [%v]", err)
+					} else {
+						for name, value := range metrics {
+							payload := buildAzureMonitorPayload(name, value, se.outputList[0].Timestamp)
+							if payload == nil {
+								log.Err("Failed to build payload for metric %s", name)
+								continue
+							}
+							err := sendToAzureMonitorAPI(payload, token)
+							if err != nil {
+								log.Err("Failed to send metric %s to Azure Monitor [%v]", name, err)
+							}
+						}
 					}
 				} else {
-					log.Info("stats_exporter::StatsExporter : No valid metrics to send for timestamp %s", se.outputList[0].Timestamp)
+					log.Info("No valid metrics to send for timestamp %s", se.outputList[0].Timestamp)
 				}
+
 				err := se.addToOutputFile(se.outputList[0])
 				if err != nil {
-					log.Err("stats_exporter::StatsExporter : [%v]", err)
+					log.Err("addToOutputFile error: [%v]", err)
 				}
 
 				se.outputList = se.outputList[1:]
 			}
+
 			se.outputList = append(se.outputList, &Output{
 				Timestamp: st.Timestamp,
 			})
-
 			se.addToList(&st, len(se.outputList)-1)
-			if !isMetricsEmptyOrInvalid(se.outputList[len(se.outputList)-1]) {
-				err := se.sendToAzureMonitor(se.outputList[len(se.outputList)-1])
+			log.Info("✅ New version of bfusemon has started")
+
+			metrics := se.parseAndValidateMetrics(se.outputList[len(se.outputList)-1])
+			if len(metrics) > 0 {
+				token, err := getAzureMonitorToken()
 				if err != nil {
-					log.Err("stats_exporter::StatsExporter : Failed to send metrics to Azure Monitor [%v]", err)
+					log.Err("Token fetch failed [%v]", err)
+					continue
+				}
+
+				for name, value := range metrics {
+					payload := buildAzureMonitorPayload(name, value, se.outputList[len(se.outputList)-1].Timestamp)
+					if payload == nil {
+						log.Err("Failed to build payload for metric %s", name)
+						continue
+					}
+					err := sendToAzureMonitorAPI(payload, token)
+					if err != nil {
+						log.Err("Failed to send metric %s to Azure Monitor [%v]", name, err)
+					}
 				}
 			} else {
-				log.Info("stats_exporter::StatsExporter : No valid metrics to send for timestamp %s", se.outputList[len(se.outputList)-1].Timestamp)
+				log.Info("No valid metrics to send for timestamp %s", se.outputList[len(se.outputList)-1].Timestamp)
 			}
-
-			//_ = se.sendToAzureMonitor(se.outputList[len(se.outputList)-1])
 		}
 	}
 }
@@ -337,7 +384,7 @@ func CloseExporter() error {
 	return nil
 }
 
-func isMetricsEmptyOrInvalid(out *Output) bool {
+/*func isMetricsEmptyOrInvalid(out *Output) bool {
 	numericSuffixRegex := regexp.MustCompile(`[^0-9.\-]+$`)
 
 	isInvalid := func(s string) bool {
@@ -351,9 +398,184 @@ func isMetricsEmptyOrInvalid(out *Output) bool {
 	}
 
 	return isInvalid(out.Cpu) && isInvalid(out.Mem) && isInvalid(out.Net)
+}*/
+
+// parse and validate metrics from Output struct
+func (se *StatsExporter) parseAndValidateMetrics(out *Output) map[string]float64 {
+	numericSuffixRegex := regexp.MustCompile(`[^0-9.\-]+$`)
+	metrics := map[string]string{
+		"CPUUsage":     out.Cpu,
+		"MemoryUsage":  out.Mem,
+		"NetworkUsage": out.Net,
+	}
+	validMetrics := make(map[string]float64)
+
+	for metricName, valueStr := range metrics {
+		cleanStr := numericSuffixRegex.ReplaceAllString(valueStr, "")
+		cleanStr = strings.TrimSpace(cleanStr)
+
+		if cleanStr == "" {
+			log.Warn("Empty value after cleaning for metric [%s]", metricName)
+			continue
+		}
+
+		value, err := strconv.ParseFloat(cleanStr, 64)
+		if err != nil {
+			log.Err("Unable to parse value [%v] for metric [%s]", err, metricName)
+			continue
+		}
+		validMetrics[metricName] = value
+	}
+
+	blobfuseMetrics := computeBlobfuseByteDeltas(out.Bfs)
+	for k, v := range blobfuseMetrics {
+		validMetrics[k] = v
+	}
+
+	return validMetrics
 }
 
-func (se *StatsExporter) sendToAzureMonitor(out *Output) error {
+// buildAzureMonitorPayload constructs the payload for Azure Monitor API
+func buildAzureMonitorPayload(metricName string, value float64, timestampStr string) []byte {
+	timestamp, err := time.Parse(time.RFC3339, timestampStr)
+	if err != nil {
+		log.Err("buildAzureMonitorPayload: Invalid timestamp format [%v]", err)
+		return nil
+	}
+
+	payload := map[string]interface{}{
+		"time": timestamp,
+		"data": map[string]interface{}{
+			"baseData": map[string]interface{}{
+				"metric":    metricName,
+				"namespace": "CustomMetrics",
+				"dimNames":  []string{"host"},
+				"series": []map[string]interface{}{
+					{
+						"dimValues": []string{"host1"},
+						"min":       value,
+						"max":       value,
+						"sum":       value,
+						"count":     1,
+					},
+				},
+			},
+		},
+	}
+
+	jsonPayload, err := json.Marshal(payload)
+	if err != nil {
+		log.Err("buildAzureMonitorPayload: Unable to marshal payload [%v]", err)
+		return nil
+	}
+	return jsonPayload
+}
+
+//get token for Azure Monitor using managed identity
+
+func getAzureMonitorToken() (string, error) {
+	log.Info("Creating managed identity credentials")
+	cred, err := azidentity.NewManagedIdentityCredential(nil)
+	if err != nil {
+		log.Err("Unable to create managed identity credential [%v]", err)
+		return "", err
+	}
+
+	log.Debug("Requesting token for Azure Monitor")
+	token, err := cred.GetToken(context.Background(), policy.TokenRequestOptions{
+		Scopes: []string{"https://monitor.azure.com/.default"},
+	})
+	if err != nil {
+		log.Err("Unable to get token [%v]", err)
+		return "", err
+	}
+
+	log.Debug("Token successfully retrieved")
+	return token.Token, nil
+}
+
+// sendToAzureMonitorAPI sends the payload to Azure Monitor API
+
+func sendToAzureMonitorAPI(payload []byte, token string) error {
+
+	/*token, err := getAzureMonitorToken()
+	if err != nil {
+		return err
+	}*/
+
+	/*if payload == nil {
+		return errors.New("nil payload")
+	}*/
+
+	req, err := http.NewRequest("POST", monitorURL, bytes.NewBuffer(payload))
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-ms-monitor-metrics-format", "body")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
+		return fmt.Errorf("HTTP status %d", resp.StatusCode)
+	}
+
+	log.Info("sendToAzureMonitorAPI: Successfully posted metric")
+	return nil
+}
+
+var lastBytesTransferred float64 = -1
+var lastBytesDownloaded float64 = -1
+
+func computeBlobfuseByteDeltas(bfsList []stats_manager.PipeMsg) map[string]float64 {
+	metrics := make(map[string]float64)
+	var transferred, downloaded float64
+	var foundTransferred, foundDownloaded bool
+
+	for _, bfs := range bfsList {
+		// Handle "Bytes Transferred"
+		if btRaw, ok := bfs.Value["Bytes Transferred"]; ok {
+			if bt, ok := btRaw.(float64); ok {
+				transferred += bt
+				foundTransferred = true
+			}
+		}
+		// Handle "BytesDownloaded"
+		if bdRaw, ok := bfs.Value["BytesDownloaded"]; ok {
+			if bd, ok := bdRaw.(float64); ok {
+				downloaded += bd
+				foundDownloaded = true
+			}
+		}
+	}
+
+	// Compute deltas
+	if foundTransferred && lastBytesTransferred >= 0 {
+		metrics["BytesTransferredDelta"] = transferred - lastBytesTransferred
+	}
+	if foundDownloaded && lastBytesDownloaded >= 0 {
+		metrics["BytesDownloadedDelta"] = downloaded - lastBytesDownloaded
+	}
+
+	// Update last values
+	if foundTransferred {
+		lastBytesTransferred = transferred
+	}
+	if foundDownloaded {
+		lastBytesDownloaded = downloaded
+	}
+
+	return metrics
+}
+
+/*func (se *StatsExporter) sendToAzureMonitor(out *Output) error {
 	timestamp, err := time.Parse(time.RFC3339, out.Timestamp)
 	if err != nil {
 		log.Err("stats_exporter::sendToAzureMonitor : Unable to parse timestamp [%v]", err)
@@ -468,4 +690,4 @@ func (se *StatsExporter) sendToAzureMonitor(out *Output) error {
 	}
 
 	return nil
-}
+}*/
