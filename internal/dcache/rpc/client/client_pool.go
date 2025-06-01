@@ -77,7 +77,7 @@ func newClientPool(maxPerNode uint32, maxNodes uint32, timeout uint32) *clientPo
 //
 //	You may want to use getRPCClient().
 func (cp *clientPool) getRPCClientNoLock(nodeID string) (*rpcClient, error) {
-	log.Debug("clientPool::getRPCClientNoLock: Retrieving rpc client for node %s", nodeID)
+	log.Debug("clientPool::getRPCClientNoLock: Retrieving RPC client for node %s", nodeID)
 
 	var ncPool *nodeClientPool
 	ncPool, exists := cp.clients[nodeID]
