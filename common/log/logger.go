@@ -88,16 +88,11 @@ func NewLogger(name string, config common.LogConfig) (Logger, error) {
 		silentLogger := &SilentLogger{}
 		return silentLogger, nil
 	} else if name == "" || name == "default" || name == "syslog" {
-		sysLogger, err := newSysLogger(config.Level, config.Tag)
-		if err != nil {
-			if err == NoSyslogService {
-				// Syslog service does not exists on this system
-				// fallback to file based logging.
-				return NewLogger("base", config)
-			}
-			return nil, err
-		}
-		return sysLogger, nil
+		// Try platform-specific system logger first
+		return newSystemLogger(config)
+	} else if name == "winevent" {
+		// Windows Event Log logger (Windows only)
+		return newPlatformEventLogger(config)
 	}
 	return nil, errors.New("invalid logger type")
 }

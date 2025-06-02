@@ -1,5 +1,5 @@
-//go:build fuse2
-// +build fuse2
+//go:build fuse2 && !windows
+// +build fuse2,!windows
 
 /*
     _____           _____   _____   ____          ______  _____  ------
