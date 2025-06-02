@@ -181,9 +181,11 @@ func (dc *DistributedCache) Start(ctx context.Context) error {
 
 	log.Info("DistributedCache::Start : component started successfully")
 
-	// todo : Replace the hardcoded values with user config values.
-	// todo:  Add Init function to fileIOmanager to initialize the defaults.
-	fm.NewFileIOManager(10, 4, 4, 4*1024*1024, 100)
+	err = fm.NewFileIOManager()
+	if err != nil {
+		return log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to start fileio manager : %v]", err))
+	}
+
 	return nil
 }
 

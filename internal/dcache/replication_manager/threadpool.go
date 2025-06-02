@@ -127,14 +127,40 @@ func (tp *threadpool) stop() {
 	tp.wg.Wait()
 }
 
-func (tp *threadpool) schedule(item *workitem) {
+func (tp *threadpool) schedule(item *workitem, runInline bool) {
 	common.Assert(item.isValid(), item.toString())
 
 	//
-	// Add the work item to the channel for processing.
-	// Any of the free workers will dequeue and process this.
+	// If caller wants us to run the item in its context do that, else
+	// add the work item to the channel for processing where it will be
+	// dequeued and processed by one of the free workes.
 	//
-	tp.items <- item
+	if runInline {
+		tp.runItem(item)
+	} else {
+		tp.items <- item
+	}
+}
+
+// Run one threadpool item.
+func (tp *threadpool) runItem(item *workitem) {
+	common.Assert(item.isValid(), item.toString())
+
+	if item.putChunkReq != nil {
+		resp, err := processPutChunk(item.targetNodeID, item.putChunkReq)
+
+		item.respChannel <- &responseItem{
+			targetNodeID: item.targetNodeID,
+			rvName:       item.rvName,
+			putChunkResp: resp,
+			err:          err,
+		}
+	} else {
+		// TODO: Handle other RPC request types as needed.
+
+		// Unsupported request type, should not happen.
+		common.Assert(false)
+	}
 }
 
 func (tp *threadpool) do() {
@@ -144,23 +170,7 @@ func (tp *threadpool) do() {
 	// As long as the workitem channel is not closed, keep dequeueing workitems and process them.
 	//
 	for item := range tp.items {
-		common.Assert(item.isValid(), item.toString())
-
-		if item.putChunkReq != nil {
-			resp, err := processPutChunk(item.targetNodeID, item.putChunkReq)
-
-			item.respChannel <- &responseItem{
-				targetNodeID: item.targetNodeID,
-				rvName:       item.rvName,
-				putChunkResp: resp,
-				err:          err,
-			}
-		} else {
-			// TODO: Handle other RPC request types as needed.
-
-			// Unsupported request type, should not happen.
-			common.Assert(false)
-		}
+		tp.runItem(item)
 	}
 }
 
