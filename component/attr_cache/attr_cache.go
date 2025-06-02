@@ -59,6 +59,9 @@ type AttrCache struct {
 	maxFiles     int
 	cacheMap     map[string]*attrCacheItem
 	cacheLock    sync.RWMutex
+	cleanupDone  chan bool
+	cleanupCtx   context.Context
+	cleanupStop  context.CancelFunc
 }
 
 // Structure defining your config parameters
@@ -107,6 +110,11 @@ func (ac *AttrCache) Start(ctx context.Context) error {
 
 	// AttrCache : start code goes here
 	ac.cacheMap = make(map[string]*attrCacheItem)
+	
+	// Start background cleanup goroutine
+	ac.cleanupCtx, ac.cleanupStop = context.WithCancel(ctx)
+	ac.cleanupDone = make(chan bool)
+	go ac.backgroundCleanup()
 
 	return nil
 }
@@ -114,6 +122,12 @@ func (ac *AttrCache) Start(ctx context.Context) error {
 // Stop : Stop the component functionality and kill all threads started
 func (ac *AttrCache) Stop() error {
 	log.Trace("AttrCache::Stop : Stopping component %s", ac.Name())
+
+	// Stop the background cleanup goroutine
+	if ac.cleanupStop != nil {
+		ac.cleanupStop()
+		<-ac.cleanupDone // Wait for cleanup goroutine to finish
+	}
 
 	return nil
 }
@@ -247,9 +261,37 @@ func (ac *AttrCache) invalidatePath(path string) {
 	}
 }
 
+// backgroundCleanup: runs in a separate goroutine to periodically clean up expired entries
+func (ac *AttrCache) backgroundCleanup() {
+	defer close(ac.cleanupDone)
+	
+	// Ensure minimum interval to prevent panic with NewTicker
+	interval := time.Duration(ac.cacheTimeout) * time.Second
+	if interval <= 0 {
+		interval = time.Second // Use 1 second as minimum interval
+	}
+	
+	// Create ticker based on cache timeout interval
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	
+	for {
+		select {
+		case <-ac.cleanupCtx.Done():
+			log.Trace("AttrCache::backgroundCleanup : Stopping background cleanup")
+			return
+		case <-ticker.C:
+			ac.cleanupExpiredEntries()
+		}
+	}
+}
+
 // cleanupExpiredEntries: removes expired entries from the cache map
-// This is called opportunistically during cache operations to prevent memory leaks
+// This runs in a background goroutine to prevent memory leaks
 func (ac *AttrCache) cleanupExpiredEntries() {
+	ac.cacheLock.Lock()
+	defer ac.cacheLock.Unlock()
+	
 	for path, item := range ac.cacheMap {
 		// Remove entries that have exceeded the cache timeout
 		if time.Since(item.cachedAt).Seconds() >= float64(ac.cacheTimeout) {
@@ -320,20 +362,17 @@ func (ac *AttrCache) cacheAttributes(pathList []*internal.ObjAttr) {
 		// If there are millions of blobs then cost of this is very high.
 		currTime := time.Now()
 
-		ac.cacheLock.Lock()
-		defer ac.cacheLock.Unlock()
-
-		// Opportunistically clean up expired entries during bulk caching operations
-		ac.cleanupExpiredEntries()
-
 		for _, attr := range pathList {
 			if len(ac.cacheMap) > ac.maxFiles {
 				log.Debug("AttrCache::cacheAttributes : %s skipping adding path to attribute cache because it is full", pathList)
 				break
 			}
 
+			ac.cacheLock.Lock()
 			ac.cacheMap[internal.TruncateDirName(attr.Path)] = newAttrCacheItem(attr, true, currTime)
+			ac.cacheLock.Unlock()
 		}
+
 	}
 }
 
@@ -528,9 +567,6 @@ func (ac *AttrCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr
 
 	ac.cacheLock.Lock()
 	defer ac.cacheLock.Unlock()
-
-	// Opportunistically clean up expired entries to prevent memory leaks
-	ac.cleanupExpiredEntries()
 
 	if err == nil {
 		// Retrieved attributes so cache them

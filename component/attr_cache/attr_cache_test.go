@@ -1073,7 +1073,7 @@ func (suite *attrCacheTestSuite) TestCacheTimeout() {
 func (suite *attrCacheTestSuite) TestCacheCleanupExpiredEntries() {
 	defer suite.cleanupTest()
 	suite.cleanupTest() // clean up the default attr cache generated
-	cacheTimeout := 1
+	cacheTimeout := 2
 	config := fmt.Sprintf("attr_cache:\n  timeout-sec: %d", cacheTimeout)
 	suite.setupTestHelper(config) // setup a new attr cache with a custom config
 	suite.assert.EqualValues(suite.attrCache.cacheTimeout, cacheTimeout)
@@ -1098,31 +1098,42 @@ func (suite *attrCacheTestSuite) TestCacheCleanupExpiredEntries() {
 	assertUntouched(suite, path1)
 	assertUntouched(suite, path2)
 
-	// Wait for cache timeout to expire
+	// Wait for cache timeout to expire, plus additional time for background cleanup to run
 	time.Sleep(time.Second * time.Duration(cacheTimeout+1))
 
-	// Access one of the files to trigger cleanup
-	suite.mock.EXPECT().GetAttr(options1).Return(getPathAttr(path1, defaultSize, fs.FileMode(defaultMode), true), nil)
-	_, err = suite.attrCache.GetAttr(options1)
-	suite.assert.Nil(err)
+	// Verify that the cache has been cleaned up by background cleanup
+	// Wait a bit more if cleanup is still in progress
+	maxWait := 3 * time.Second
+	waitInterval := 100 * time.Millisecond
+	waited := time.Duration(0)
+	
+	for waited < maxWait {
+		suite.attrCache.cacheLock.RLock()
+		cacheSize := len(suite.attrCache.cacheMap)
+		suite.attrCache.cacheLock.RUnlock()
+		
+		if cacheSize == 0 {
+			break
+		}
+		
+		time.Sleep(waitInterval)
+		waited += waitInterval
+	}
 
-	// Verify that the cache has been cleaned up - expired entries should be removed
-	// The cache should now contain only the newly fetched item
-	suite.assert.Len(suite.attrCache.cacheMap, 1)
-	suite.assert.Contains(suite.attrCache.cacheMap, path1)
-	suite.assert.NotContains(suite.attrCache.cacheMap, path2)
+	// Verify that expired entries have been cleaned up
+	suite.assert.Len(suite.attrCache.cacheMap, 0)
 }
 
 // Tests Cache Cleanup during bulk caching operations
 func (suite *attrCacheTestSuite) TestCacheCleanupDuringBulkCaching() {
 	defer suite.cleanupTest()
 	suite.cleanupTest() // clean up the default attr cache generated
-	cacheTimeout := 1
+	cacheTimeout := 3 // Use a longer timeout for this test
 	config := fmt.Sprintf("attr_cache:\n  timeout-sec: %d", cacheTimeout)
 	suite.setupTestHelper(config) // setup a new attr cache with a custom config
 	suite.assert.EqualValues(suite.attrCache.cacheTimeout, cacheTimeout)
 
-	// Add some items to cache manually
+	// Add some items to cache manually with old timestamps
 	path1 := "oldfile1"
 	path2 := "oldfile2"
 	oldTime := time.Now().Add(-time.Second * time.Duration(cacheTimeout+1))
@@ -1132,17 +1143,29 @@ func (suite *attrCacheTestSuite) TestCacheCleanupDuringBulkCaching() {
 	// Verify both old items are in cache
 	suite.assert.Len(suite.attrCache.cacheMap, 2)
 
-	// Trigger bulk caching operation with ReadDir which should clean up expired entries
-	newPath := "newfile"
-	newPaths := []*internal.ObjAttr{getPathAttr(newPath, defaultSize, fs.FileMode(defaultMode), true)}
-	suite.mock.EXPECT().ReadDir(gomock.Any()).Return(newPaths, nil)
-	
-	_, err := suite.attrCache.ReadDir(internal.ReadDirOptions{Name: "/"})
-	suite.assert.Nil(err)
+	// Wait a bit for background cleanup to run and remove expired items
+	time.Sleep(time.Second * time.Duration(cacheTimeout+1))
 
-	// Verify that expired entries have been cleaned up and new item has been added
-	suite.assert.Len(suite.attrCache.cacheMap, 1)
-	suite.assert.Contains(suite.attrCache.cacheMap, newPath)
+	// Wait for cleanup to complete
+	maxWait := 2 * time.Second
+	waitInterval := 100 * time.Millisecond
+	waited := time.Duration(0)
+	
+	for waited < maxWait {
+		suite.attrCache.cacheLock.RLock()
+		cacheSize := len(suite.attrCache.cacheMap)
+		suite.attrCache.cacheLock.RUnlock()
+		
+		if cacheSize == 0 {
+			break
+		}
+		
+		time.Sleep(waitInterval)
+		waited += waitInterval
+	}
+
+	// Verify that expired entries have been cleaned up
+	suite.assert.Len(suite.attrCache.cacheMap, 0)
 	suite.assert.NotContains(suite.attrCache.cacheMap, path1)
 	suite.assert.NotContains(suite.attrCache.cacheMap, path2)
 }
