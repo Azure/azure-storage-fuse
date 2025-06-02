@@ -51,7 +51,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 
 	"gopkg.in/ini.v1"
 )
@@ -347,20 +346,7 @@ func ExpandPath(path string) string {
 }
 
 // NotifyMountToParent : Send a signal to parent process about successful mount
-func NotifyMountToParent() error {
-	if !ForegroundMount {
-		ppid := syscall.Getppid()
-		if ppid > 1 {
-			if err := syscall.Kill(ppid, syscall.SIGUSR2); err != nil {
-				return err
-			}
-		} else {
-			return fmt.Errorf("failed to get parent pid, received : %v", ppid)
-		}
-	}
-
-	return nil
-}
+// Platform-specific implementation in util_unix.go and util_windows.go
 
 var duPath []string = []string{"/usr/bin/du", "/usr/local/bin/du", "/usr/sbin/du", "/usr/local/sbin/du", "/sbin/du", "/bin/du"}
 var selectedDuPath string = ""
@@ -434,7 +420,7 @@ func GetDiskUsageFromStatfs(path string) (float64, float64, error) {
 	}
 
 	if currentUID == -1 {
-		currentUID = os.Getuid()
+		currentUID = GetCurrentUID()
 	}
 
 	var availableSpace uint64

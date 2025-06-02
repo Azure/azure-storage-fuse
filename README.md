@@ -1,6 +1,8 @@
 # Blobfuse2 - A Microsoft supported Azure Storage FUSE driver
+
 ## About
-Blobfuse2 is an open source project developed to provide a virtual filesystem backed by the Azure Storage. It uses the libfuse open source library (fuse3) to communicate with the Linux FUSE kernel module, and implements the filesystem operations using the Azure Storage REST APIs.
+Blobfuse2 is an open source project developed to provide a virtual filesystem backed by the Azure Storage. It uses the libfuse open source library (fuse3) to communicate with the Linux FUSE kernel module, and implements the filesystem operations using the Azure Storage REST APIs. **Windows support** is available through WinFsp integration.
+
 This is the next generation [blobfuse](https://github.com/Azure/azure-storage-fuse).
 
 ## About Data Consistency and Concurrency
@@ -33,14 +35,17 @@ Please submit an issue [here](https://github.com/azure/azure-storage-fuse/issues
 ## Supported Platforms
 Visit [this](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2-Supported-Platforms) page to see list of supported linux distros.
 
+**Windows support** is available through WinFsp integration. See [Windows Support Documentation](./doc/windows-support.md) for details.
+
 ## Features
-- Mount an Azure storage blob container or datalake file system on Linux.
+- Mount an Azure storage blob container or datalake file system on Linux and Windows.
 - Basic file system operations such as mkdir, opendir, readdir, rmdir, open, 
    read, create, write, close, unlink, truncate, stat, rename
 - Local caching to improve subsequent access times
 - Block-Cache to support reading AND writing large files 
 - Parallel downloads and uploads to improve access time for large files
 - Multiple mounts to the same container for read-only workloads
+- Cross-platform support: Linux (via libfuse) and Windows (via WinFsp)
 
 ## _New BlobFuse2 Health Monitor_
 One of the biggest BlobFuse2 features is our brand new health monitor. It allows customers gain more insight into how their BlobFuse2 instance is behaving with the rest of their machine. Visit [here](https://github.com/Azure/azure-storage-fuse/blob/main/tools/health-monitor/README.md) to set it up.

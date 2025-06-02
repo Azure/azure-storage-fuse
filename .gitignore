@@ -18,6 +18,12 @@ build/
 test/manual_scripts/create1000.go
 test/manual_scripts/cachetest.go
 lint.log
+
+# Windows binaries
+*.exe
+
+# Log files
+common/log/logfile.txt*
 azure-storage-fuse
 bfusemon
 test/scripts/dirIterate.go
