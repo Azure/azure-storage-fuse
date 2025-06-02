@@ -141,7 +141,7 @@ func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
 
 	select {
 	case client := <-ncPool.clientChan:
-		ncPool.lastUsed = time.Now()
+		ncPool.lastUsed.Store(time.Now().Unix())
 		common.Assert(client.nodeID == nodeID, client.nodeID, nodeID)
 		ncPool.numActive.Add(1)
 		return client, nil
@@ -168,7 +168,7 @@ func (cp *clientPool) getRPCClientNoWait(nodeID string) (*rpcClient, error) {
 
 	select {
 	case client := <-ncPool.clientChan:
-		ncPool.lastUsed = time.Now()
+		ncPool.lastUsed.Store(time.Now().Unix())
 		common.Assert(client.nodeID == nodeID, client.nodeID, nodeID)
 		ncPool.numActive.Add(1)
 		return client, nil
@@ -410,7 +410,7 @@ func (cp *clientPool) closeLRUCNodeClientPool() error {
 			continue
 		}
 
-		if lruNcPool == nil || ncPool.lastUsed.Before(lruNcPool.lastUsed) {
+		if lruNcPool == nil || (ncPool.lastUsed.Load() < lruNcPool.lastUsed.Load()) {
 			lruNcPool = ncPool
 			lruNodeID = nodeID
 		}
@@ -501,7 +501,7 @@ func (cp *clientPool) deleteNodeClientPoolIfInactive(nodeID string) bool {
 type nodeClientPool struct {
 	nodeID     string          // Node ID of the node this client pool is for
 	clientChan chan *rpcClient // channel to hold the RPC clients to a node
-	lastUsed   time.Time       // used for evicting inactive RPC clients based on LRU
+	lastUsed   atomic.Int64    // used for evicting inactive RPC clients based on LRU (seconds since epoch)
 	numActive  atomic.Int64    // number of clients currently created using getRPCClient() call.
 }
 
@@ -515,7 +515,7 @@ func (ncPool *nodeClientPool) createRPCClients(numClients uint32) error {
 	common.Assert(common.IsValidUUID(ncPool.nodeID))
 
 	ncPool.clientChan = make(chan *rpcClient, numClients)
-	ncPool.lastUsed = time.Now()
+	ncPool.lastUsed.Store(time.Now().Unix())
 
 	var err error
 
