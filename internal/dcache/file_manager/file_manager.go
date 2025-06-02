@@ -70,8 +70,8 @@ func NewFileIOManager() error {
 	// A worker runs either readChunk() or writeChunk(), so this is the number of chunks we can be
 	// reading/writing in parallel. fileIOManager is one for the entire blobfuse process so these
 	// chunks can be spread across multiple files and served from multiple nodes/RVs.
-	// Note that fir writeChunk one worker is used up regardless of the NumReplicas setting. Each
-	// replica write uses us one ReplicationManager worker but only one fileIOManager worker per
+	// Note that for writeChunk one worker is used up regardless of the NumReplicas setting. Each
+	// replica write uses just one ReplicationManager worker but only one fileIOManager worker per
 	// MV write (not replica write).
 	// Since all these reads/writes may be served from different nodes/RVs, the limiting factor would
 	// be the n/w b/w of this node. We need enough parallel readChunk/writeChunk for maxing out the
