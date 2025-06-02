@@ -247,6 +247,17 @@ func (ac *AttrCache) invalidatePath(path string) {
 	}
 }
 
+// cleanupExpiredEntries: removes expired entries from the cache map
+// This is called opportunistically during cache operations to prevent memory leaks
+func (ac *AttrCache) cleanupExpiredEntries() {
+	for path, item := range ac.cacheMap {
+		// Remove entries that have exceeded the cache timeout
+		if time.Since(item.cachedAt).Seconds() >= float64(ac.cacheTimeout) {
+			delete(ac.cacheMap, path)
+		}
+	}
+}
+
 // ------------------------- Methods implemented by this component -------------------------------------------
 // CreateDir: Mark the directory invalid
 func (ac *AttrCache) CreateDir(options internal.CreateDirOptions) error {
@@ -309,17 +320,20 @@ func (ac *AttrCache) cacheAttributes(pathList []*internal.ObjAttr) {
 		// If there are millions of blobs then cost of this is very high.
 		currTime := time.Now()
 
+		ac.cacheLock.Lock()
+		defer ac.cacheLock.Unlock()
+
+		// Opportunistically clean up expired entries during bulk caching operations
+		ac.cleanupExpiredEntries()
+
 		for _, attr := range pathList {
 			if len(ac.cacheMap) > ac.maxFiles {
 				log.Debug("AttrCache::cacheAttributes : %s skipping adding path to attribute cache because it is full", pathList)
 				break
 			}
 
-			ac.cacheLock.Lock()
 			ac.cacheMap[internal.TruncateDirName(attr.Path)] = newAttrCacheItem(attr, true, currTime)
-			ac.cacheLock.Unlock()
 		}
-
 	}
 }
 
@@ -514,6 +528,9 @@ func (ac *AttrCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr
 
 	ac.cacheLock.Lock()
 	defer ac.cacheLock.Unlock()
+
+	// Opportunistically clean up expired entries to prevent memory leaks
+	ac.cleanupExpiredEntries()
 
 	if err == nil {
 		// Retrieved attributes so cache them
