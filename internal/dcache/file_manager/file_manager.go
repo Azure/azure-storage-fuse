@@ -65,24 +65,85 @@ type fileIOManager struct {
 
 var fileIOMgr fileIOManager
 
-func NewFileIOManager(workers int, numReadAheadChunks int, numStagingChunks int, bufSize int, maxBuffers int) {
+func NewFileIOManager() error {
+	//
+	// A worker runs either readChunk() or writeChunk(), so this is the number of chunks we can be
+	// reading/writing in parallel. fileIOManager is one for the entire blobfuse process so these
+	// chunks can be spread across multiple files and served from multiple nodes/RVs.
+	// Note that fir writeChunk one worker is used up regardless of the NumReplicas setting. Each
+	// replica write uses us one ReplicationManager worker but only one fileIOManager worker per
+	// MV write (not replica write).
+	// Since all these reads/writes may be served from different nodes/RVs, the limiting factor would
+	// be the n/w b/w of this node. We need enough parallel readChunk/writeChunk for maxing out the
+	// n/w b/w of the node. Keeping small files in mind, and given that go routines are not very
+	// expensive, we keep 1000 workers.
+	//
+	workers := 1000
+
+	//
+	// How many chunks will we readahead per file.
+	// To achieve high sequential read throughput, this number should be kept reasonably high.
+	// With 4MiB chunk size, 64 readahead chunks will use up 256MiB of memory per file.
+	//
+	numReadAheadChunks := 64
+
+	//
+	// How many writeback chunks per file.
+	// These many chunks we will store per file before we put back pressure on the writer application.
+	// Obviously we start upload of chunks as soon as we have a full chunk, so only those chunks will
+	// eat up the writeback space which are not completely written to the target node.
+	// Hopefully we won't be writing too many large files simultaneously, so we can keep this number
+	// high enough to give 1GiB writeback space per file.
+	//
+	numStagingChunks := 256
+
+	//
+	// Size of buffers managed by bufferPool.
+	// This should be equal to the chunk size we support, since each buffer can hold upto one chunk
+	// worth of data.
+	//
+	bufSize := uint64(cm.GetCacheConfig().ChunkSize)
+
+	//
+	// Maximum numbers of 'bufSize' buffers can be allocated from the bufferPool.
+	// We should allow sufficiently many buffers to support at least few files being read/written
+	// simultaneously.
+	// Note that only writeChunk uses buffers from this pool while readChunk uses buffers allocated by
+	// thrift and those are not accounted in this.
+	//
+	// TODO: Find out how/if thrift controls those buffers, or does it result in OOM killing of the
+	//       process.
+	//
+	maxBuffers := uint64(1024)
+
+	//
+	// How much percent of the system RAM (available memory to be precise) are we allowed to use?
+	//
+	// TODO: This can be config value.
+	//
+	usablePercentSystemRAM := 50
+
 	common.Assert(workers > 0)
 	common.Assert(numReadAheadChunks > 0)
 	common.Assert(numStagingChunks > 0)
-	//
-	// Buffer less than chunk size is not useful.
-	// Currently we have single buffer size for the entire fileIOManager. This means we cannot support
-	// different chunk sizes for different files.
-	//
-	// TODO: Need different sized buffer pools for supporting variable chunk sized files.
-	// TODO: Remove bufSize param and compute it here from the config chunk size.
-	//
-	common.Assert(bufSize >= int(cm.GetCacheConfig().ChunkSize))
+
 	common.Assert(maxBuffers > 0)
 
 	// NewFileIOManager() must be called only once, during startup.
 	common.Assert(fileIOMgr.wp == nil)
 	common.Assert(fileIOMgr.bp == nil)
+
+	//
+	// Allow higher number of maxBuffers if system can afford.
+	//
+	ramMB, err := common.GetAvailableMemoryInMB()
+	if err != nil {
+		return fmt.Errorf("NewFileIOManager: %v", err)
+	}
+
+	// usableMemory in bytes capped by usablePercentSystemRAM.
+	usableMemory := (ramMB * 1024 * 1024 * uint64(usablePercentSystemRAM)) / 100
+	maxBuffers = max(maxBuffers, usableMemory/bufSize)
 
 	fileIOMgr = fileIOManager{
 		numReadAheadChunks: numReadAheadChunks,
@@ -90,10 +151,16 @@ func NewFileIOManager(workers int, numReadAheadChunks int, numStagingChunks int,
 	}
 
 	fileIOMgr.wp = NewWorkerPool(workers)
-	fileIOMgr.bp = NewBufferPool(bufSize, maxBuffers)
+
+	//
+	// We use single chunk size, setup the buffer pool to allocate ChunkSize sized buffers.
+	//
+	fileIOMgr.bp = NewBufferPool(int(bufSize), int(maxBuffers))
 
 	common.Assert(fileIOMgr.wp != nil)
 	common.Assert(fileIOMgr.bp != nil)
+
+	return nil
 }
 
 func EndFileIOManager() {

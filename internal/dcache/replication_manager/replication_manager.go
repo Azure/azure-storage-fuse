@@ -314,7 +314,7 @@ retry:
 	//
 	rvsWritten = nil
 
-	for _, rv := range componentRVs {
+	for componentRVIdx, rv := range componentRVs {
 		//
 		// Omit writing to RVs in “offline” or “outofsync” state. It’s ok to omit them as the chunks not
 		// written to them will be copied to them when the mv is (soon) resynced.
@@ -345,6 +345,12 @@ retry:
 			log.Debug("ReplicationManager::WriteMV: Writing to %s/%s (rvID: %s, state: %s) on node %s",
 				rv.Name, req.MvName, rvID, rv.State, targetNodeID)
 
+			//
+			// TODO: Add a boolean MaybeOverwrite to PutChunkRequest to let the server know that this
+			//       could potentially be an overwrite of a chunk that we previously wrote, so that
+			//       it relaxes it's overwrite checks.
+			//       To be safe we can set MaybeOverwrite to true when retryCnt > 0.
+			//
 			rpcReq := &models.PutChunkRequest{
 				Chunk: &models.Chunk{
 					Address: &models.Address{
@@ -367,13 +373,17 @@ retry:
 			//
 			// Schedule PutChunk RPC call to the target node.
 			// One of the threadpool threads will pick this request and call PutChunk.
+			// Since we have to wait for all the replica writes to complete before we
+			// can start processing the individual responses we send the last replica
+			// inline and save one threadpool thread.
 			//
+			isLastComponentRV := componentRVIdx == (len(componentRVs) - 1)
 			rm.tp.schedule(&workitem{
 				targetNodeID: targetNodeID,
 				rvName:       rv.Name,
 				putChunkReq:  rpcReq,
 				respChannel:  responseChannel,
-			})
+			}, isLastComponentRV /* runInline */)
 		} else {
 			common.Assert(false, "Unexpected RV state", rv.State, rv.Name, req.MvName)
 		}

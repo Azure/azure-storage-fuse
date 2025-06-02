@@ -57,8 +57,10 @@ type clientPool struct {
 // maxPerNode: Maximum number of RPC clients opened per node
 // maxNodes: Maximum number of nodes for which RPC clients are open
 // timeout: Duration in seconds after which a RPC client is closed
+//
+// TODO: Implement timeout support.
 func newClientPool(maxPerNode uint32, maxNodes uint32, timeout uint32) *clientPool {
-	log.Debug("clientPool::newClientPool: Creating new client pool with maxPerNode: %d, maxNodes: %d, timeout: %d", maxPerNode, maxNodes, timeout)
+	log.Debug("clientPool::newClientPool: Creating new RPC client pool with maxPerNode: %d, maxNodes: %d, timeout: %d", maxPerNode, maxNodes, timeout)
 	return &clientPool{
 		clients:    make(map[string]*nodeClientPool),
 		maxPerNode: maxPerNode,
@@ -69,26 +71,19 @@ func newClientPool(maxPerNode uint32, maxNodes uint32, timeout uint32) *clientPo
 	// TODO: start a goroutine to periodically close inactive RPC clients
 }
 
-// getRPCClientNoLock retrieves an RPC client from the pool for the specified node ID.
-// If the client pool for nodeID is not is not available (not created yet or was cleaned up due to pressure),
-// a new pool is created, replenished with cp.maxPerNode clients and a client returned.
-//
-// Note: This is an internal functional that expects the caller to hold the clientPool lock.
-//
-//	You may want to use getRPCClient().
-func (cp *clientPool) getRPCClientNoLock(nodeID string) (*rpcClient, error) {
-	log.Debug("clientPool::getRPCClientNoLock: Retrieving RPC client for node %s", nodeID)
-
+// Give a nodeID return the corresponding nodeClientPool.
+// Caller MUST hold the clientPool lock.
+func (cp *clientPool) getNodeClientPool(nodeID string) (*nodeClientPool, error) {
 	var ncPool *nodeClientPool
 	ncPool, exists := cp.clients[nodeID]
 	if !exists {
 		if len(cp.clients) >= int(cp.maxNodes) {
 			// TODO: remove this and rely on the closeInactiveRPCClients to close inactive clients
-			// getRPCClientNoLock should be small and fast, refer https://github.com/Azure/azure-storage-fuse/pull/1684#discussion_r2047993390
-			log.Debug("clientPool::getRPCClientNoLock: Maximum number of nodes reached, evict LRU node client pool")
+			// getNodeClientPool should be small and fast, refer https://github.com/Azure/azure-storage-fuse/pull/1684#discussion_r2047993390
+			log.Debug("clientPool::getNodeClientPool: Maximum number of nodes reached, evicting LRU node client pool")
 			err := cp.closeLRUCNodeClientPool()
 			if err != nil {
-				log.Err("clientPool::getRPCClientNoLock: Failed to close LRU node client pool: %v",
+				log.Err("clientPool::getNodeClientPool: Failed to close LRU node client pool: %v",
 					err)
 				return nil, err
 			}
@@ -101,15 +96,76 @@ func (cp *clientPool) getRPCClientNoLock(nodeID string) (*rpcClient, error) {
 		//
 		err := ncPool.createRPCClients(cp.maxPerNode)
 		if err != nil {
-			log.Err("clientPool::getRPCClientNoLock: createRPCClients(%s) failed: %v", nodeID, err)
+			log.Err("clientPool::getNodeClientPool: createRPCClients(%s) failed: %v", nodeID, err)
 			return nil, err
 		}
 
 		cp.clients[nodeID] = ncPool
 	}
 
-	// TODO: this should be a blocking call, if a caller does not get the client for a node,
-	// it should wait for a client to be released back to the pool
+	common.Assert(ncPool.clientChan != nil)
+	return ncPool, nil
+}
+
+// getRPCClient retrieves an RPC client that can be used for calling RPC functions to the given target node.
+// If the client pool for nodeID is not available (not created yet or was cleaned up due to pressure),
+// a new pool is created, replenished with cp.maxPerNode clients and a client returned from that.
+// If the pool doesn't have any free client, it waits for 60secs for a client to become available and returns as
+// soon as an RPC client is released and added to the pool. If no client becomes available for 60secs, it
+// indicates some bug and it panics the program.
+//
+// Caller MUST NOT hold the clientPool lock.
+func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
+	log.Debug("clientPool::getRPCClient: Retrieving RPC client for node %s", nodeID)
+
+	//
+	// Get the nodeClientPool for this node.
+	// This needs to be performed with the clientPool lock.
+	//
+	cp.mu.Lock()
+	ncPool, err := cp.getNodeClientPool(nodeID)
+	cp.mu.Unlock()
+
+	if err != nil {
+		return nil, fmt.Errorf("clientPool::getRPCClient: getNodeClientPool(%s) failed: %v",
+			nodeID, err)
+	}
+
+	//
+	// Get a free client from the pool if available, else wait for a client to be released.
+	// In order to catch misbehaving/stuck clients, we cap this wait. This indicates some bug
+	// so we crash the program with a trace.
+	// Note that accessing clientChan is thread safe, so we don't need the clientPool lock.
+	//
+	maxWait := time.Duration(60 * time.Second)
+
+	select {
+	case client := <-ncPool.clientChan:
+		ncPool.lastUsed = time.Now()
+		common.Assert(client.nodeID == nodeID, client.nodeID, nodeID)
+		ncPool.numActive.Add(1)
+		return client, nil
+	case <-time.After(maxWait):
+		err := fmt.Errorf("no free RPC client for node %s, even after waiting for %s",
+			nodeID, maxWait)
+		log.GetLoggerObj().Panicf("clientPool::getRPCClient: %v", err)
+		return nil, err
+	}
+}
+
+// Gets an RPC client that can be used for calling RPC functions to the given target node.
+// Like getRPCClient() but in case there's no client currently available in the pool, it doesn't wait but
+// instead returns error rightaway.
+//
+// Note: Caller MUST hold the clientPool lock.
+func (cp *clientPool) getRPCClientNoWait(nodeID string) (*rpcClient, error) {
+	log.Debug("clientPool::getRPCClientNoWait: Retrieving RPC client for node %s", nodeID)
+
+	ncPool, err := cp.getNodeClientPool(nodeID)
+	if err != nil {
+		return nil, err
+	}
+
 	select {
 	case client := <-ncPool.clientChan:
 		ncPool.lastUsed = time.Now()
@@ -117,16 +173,10 @@ func (cp *clientPool) getRPCClientNoLock(nodeID string) (*rpcClient, error) {
 		ncPool.numActive.Add(1)
 		return client, nil
 	default:
-		log.Err("clientPool::getRPCClientNoLock: No available RPC client in the pool for node %s", nodeID)
-		return nil, fmt.Errorf("no available RPC client in the pool for node %s", nodeID)
+		err := fmt.Errorf("no free RPC client for node %s", nodeID)
+		log.Err("clientPool::getRPCClientNoWait: %v", err)
+		return nil, err
 	}
-}
-
-func (cp *clientPool) getRPCClient(nodeID string) (*rpcClient, error) {
-	cp.mu.Lock()
-	defer cp.mu.Unlock()
-
-	return cp.getRPCClientNoLock(nodeID)
 }
 
 // releaseRPCClient releases a RPC client back to the pool
@@ -304,8 +354,12 @@ func (cp *clientPool) resetAllRPCClients(client *rpcClient) error {
 	// on error, as we have reset at least one client.
 	//
 	for i := 0; i < numClients; i++ {
-		client, err = cp.getRPCClientNoLock(client.nodeID)
-		// getRPCClientNoLock should not fail, because we have the clientPool for this client.
+		client, err = cp.getRPCClientNoWait(client.nodeID)
+		//
+		// getRPCClientNoWait should not fail, because we have the clientPool for this client,
+		// also numClients was the clientChan length before we reset the above client, and we
+		// have the clientPool lock.
+		//
 		common.Assert(err == nil, err)
 
 		err = cp.resetRPCClientInternal(client, false /* needLock */)
