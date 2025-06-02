@@ -1380,13 +1380,25 @@ refreshFromClustermapAndRetry:
 	// Chunk file must not be present.
 	_, err = os.Stat(chunkPath)
 	if err == nil {
-		if req.SyncID != "" {
-			// In case of sync PutChunk calls, we can get sync write for chunks already present in
-			// the target RV because of the NTPClockSkewMargin added to the sync write time. These
-			// chunks were written by the client write PutChunk calls to the target RV.
-			// So, ignore this and return success.
-			log.Debug("ChunkServiceHandler::PutChunk: syncID = %s, chunk file %s already exists, ignoring sync write",
-				req.SyncID, chunkPath)
+		if req.SyncID != "" || req.MaybeOverwrite {
+			if req.SyncID != "" {
+				//
+				// In case of sync PutChunk calls, we can get sync write for chunks already present in
+				// the target RV because of the NTPClockSkewMargin added to the sync write time. These
+				// chunks were written by the client write PutChunk calls to the target RV.
+				// So, ignore this and return success.
+				//
+				log.Debug("ChunkServiceHandler::PutChunk: syncID = %s, chunk file %s already exists, ignoring sync write",
+					req.SyncID, chunkPath)
+			} else {
+				//
+				// Client can set the "MaybeOverwrite" flag to true in PutChunkRequest to let the server
+				// know that this could potentially be an overwrite of a chunk that we previously wrote,
+				// due to client retrying the WriteMV workflow after refreshing the clustermap.
+				//
+				log.Debug("ChunkServiceHandler::PutChunk: MaybeOverwrite = true, chunk file %s already exists, ignoring write",
+					chunkPath)
+			}
 
 			availableSpace, err := rvInfo.getAvailableSpace()
 			if err != nil {

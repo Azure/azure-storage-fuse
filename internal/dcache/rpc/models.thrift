@@ -53,7 +53,8 @@ struct PutChunkRequest {
     2: Chunk chunk,
     3: i64 length,
     4: string syncID,
-    5: list<RVNameAndState> componentRV // used to validate the component RV for the MV
+    5: list<RVNameAndState> componentRV, // used to validate the component RV for the MV
+    6: bool maybeOverwrite
 }
 
 struct PutChunkResponse {

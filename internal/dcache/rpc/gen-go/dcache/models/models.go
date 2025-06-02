@@ -1985,12 +1985,14 @@ func (p *GetChunkResponse) String() string {
 //   - Length
 //   - SyncID
 //   - ComponentRV
+//   - MaybeOverwrite
 type PutChunkRequest struct {
-	SenderNodeID string            `thrift:"senderNodeID,1" db:"senderNodeID" json:"senderNodeID"`
-	Chunk        *Chunk            `thrift:"chunk,2" db:"chunk" json:"chunk"`
-	Length       int64             `thrift:"length,3" db:"length" json:"length"`
-	SyncID       string            `thrift:"syncID,4" db:"syncID" json:"syncID"`
-	ComponentRV  []*RVNameAndState `thrift:"componentRV,5" db:"componentRV" json:"componentRV"`
+	SenderNodeID   string            `thrift:"senderNodeID,1" db:"senderNodeID" json:"senderNodeID"`
+	Chunk          *Chunk            `thrift:"chunk,2" db:"chunk" json:"chunk"`
+	Length         int64             `thrift:"length,3" db:"length" json:"length"`
+	SyncID         string            `thrift:"syncID,4" db:"syncID" json:"syncID"`
+	ComponentRV    []*RVNameAndState `thrift:"componentRV,5" db:"componentRV" json:"componentRV"`
+	MaybeOverwrite bool              `thrift:"maybeOverwrite,6" db:"maybeOverwrite" json:"maybeOverwrite"`
 }
 
 func NewPutChunkRequest() *PutChunkRequest {
@@ -2020,6 +2022,10 @@ func (p *PutChunkRequest) GetSyncID() string {
 
 func (p *PutChunkRequest) GetComponentRV() []*RVNameAndState {
 	return p.ComponentRV
+}
+
+func (p *PutChunkRequest) GetMaybeOverwrite() bool {
+	return p.MaybeOverwrite
 }
 func (p *PutChunkRequest) IsSetChunk() bool {
 	return p.Chunk != nil
@@ -2082,6 +2088,16 @@ func (p *PutChunkRequest) Read(ctx context.Context, iprot thrift.TProtocol) erro
 		case 5:
 			if fieldTypeId == thrift.LIST {
 				if err := p.ReadField5(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 6:
+			if fieldTypeId == thrift.BOOL {
+				if err := p.ReadField6(ctx, iprot); err != nil {
 					return err
 				}
 			} else {
@@ -2159,6 +2175,15 @@ func (p *PutChunkRequest) ReadField5(ctx context.Context, iprot thrift.TProtocol
 	return nil
 }
 
+func (p *PutChunkRequest) ReadField6(ctx context.Context, iprot thrift.TProtocol) error {
+	if v, err := iprot.ReadBool(ctx); err != nil {
+		return thrift.PrependError("error reading field 6: ", err)
+	} else {
+		p.MaybeOverwrite = v
+	}
+	return nil
+}
+
 func (p *PutChunkRequest) Write(ctx context.Context, oprot thrift.TProtocol) error {
 	if err := oprot.WriteStructBegin(ctx, "PutChunkRequest"); err != nil {
 		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
@@ -2177,6 +2202,9 @@ func (p *PutChunkRequest) Write(ctx context.Context, oprot thrift.TProtocol) err
 			return err
 		}
 		if err := p.writeField5(ctx, oprot); err != nil {
+			return err
+		}
+		if err := p.writeField6(ctx, oprot); err != nil {
 			return err
 		}
 	}
@@ -2262,6 +2290,19 @@ func (p *PutChunkRequest) writeField5(ctx context.Context, oprot thrift.TProtoco
 	return err
 }
 
+func (p *PutChunkRequest) writeField6(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "maybeOverwrite", thrift.BOOL, 6); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 6:maybeOverwrite: ", p), err)
+	}
+	if err := oprot.WriteBool(ctx, bool(p.MaybeOverwrite)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.maybeOverwrite (6) field write error: ", p), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 6:maybeOverwrite: ", p), err)
+	}
+	return err
+}
+
 func (p *PutChunkRequest) Equals(other *PutChunkRequest) bool {
 	if p == other {
 		return true
@@ -2288,6 +2329,9 @@ func (p *PutChunkRequest) Equals(other *PutChunkRequest) bool {
 		if !_tgt.Equals(_src13) {
 			return false
 		}
+	}
+	if p.MaybeOverwrite != other.MaybeOverwrite {
+		return false
 	}
 	return true
 }
