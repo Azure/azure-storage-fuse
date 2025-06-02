@@ -53,6 +53,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
+	rm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/replication_manager"
 	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 	rpc_server "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/server"
@@ -1941,9 +1942,17 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		//
 		// Iff joinMV() is successful, consume one slot for each component RV and update existingMVMap.
 		//
-		// TODO: Set reserveBytes correctly, querying it from our in-core RV info maintained by RPC server.
+		// Get the reserveBytes correctly, querying it from our in-core RV info maintained by RPC server.
 		//
-		failedRV, err := cmi.joinMV(mvName, mv, 0 /* reserveBytes */)
+		reserveBytes, err := rm.GetMVSize(mvName)
+		if err != nil {
+			err = fmt.Errorf("failed to get disk usage of %s [%v]", mvName, err)
+			log.Err("ClusterManager::fixMV: %v", err)
+			common.Assert(false, err)
+			return
+		}
+
+		failedRV, err := cmi.joinMV(mvName, mv, reserveBytes)
 		if err == nil {
 			log.Info("ClusterManager::fixMV: Successfully joined/updated all component RVs %+v to MV %s, original [%+v]",
 				mv.RVs, mvName, savedRVs)
