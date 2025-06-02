@@ -38,9 +38,11 @@ type FilesystemStat struct {
 	Blocks  uint64 // Total blocks
 	Bfree   uint64 // Free blocks
 	Bavail  uint64 // Available blocks for non-root users
+	Bsize   uint64 // Block size
 	Frsize  uint64 // Fragment size
 	Files   uint64 // Total inodes
 	Ffree   uint64 // Free inodes
+	Flags   uint64 // Mount flags
 }
 
 // GetFilesystemStat gets filesystem statistics for the given path

@@ -294,8 +294,7 @@ func (c *FileCache) Configure(_ bool) error {
 		}
 	}
 
-	var stat syscall.Statfs_t
-	err = syscall.Statfs(c.tmpPath, &stat)
+	stat, err := common.GetFilesystemStat(c.tmpPath)
 	if err != nil {
 		log.Err("FileCache::Configure : config error %s [%s]. Assigning a default value of 4GB or if any value is assigned to .disk-size-mb in config.", c.Name(), err.Error())
 		c.maxCacheSize = 4192
@@ -376,7 +375,7 @@ func (c *FileCache) OnConfigChange() {
 	_ = c.policy.UpdateConfig(c.GetPolicyConfig(conf))
 }
 
-func (c *FileCache) StatFs() (*syscall.Statfs_t, bool, error) {
+func (c *FileCache) StatFs() (*common.FilesystemStat, bool, error) {
 	// cache_size = f_blocks * f_frsize/1024
 	// cache_size - used = f_frsize * f_bavail/1024
 	// cache_size - used = vfs.f_bfree * vfs.f_frsize / 1024
@@ -390,14 +389,13 @@ func (c *FileCache) StatFs() (*syscall.Statfs_t, bool, error) {
 	usage = usage * MB
 
 	available := maxCacheSize - usage
-	statfs := &syscall.Statfs_t{}
-	err := syscall.Statfs("/", statfs)
+	statfs, err := common.GetFilesystemStat("/")
 	if err != nil {
 		log.Debug("FileCache::StatFs : statfs err [%s].", err.Error())
 		return nil, false, err
 	}
-	statfs.Blocks = uint64(maxCacheSize) / uint64(statfs.Frsize)
-	statfs.Bavail = uint64(math.Max(0, available)) / uint64(statfs.Frsize)
+	statfs.Blocks = uint64(maxCacheSize) / statfs.Frsize
+	statfs.Bavail = uint64(math.Max(0, available)) / statfs.Frsize
 	statfs.Bfree = statfs.Bavail
 
 	return statfs, true, nil

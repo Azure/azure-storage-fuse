@@ -42,7 +42,6 @@ import (
 	common "github.com/Azure/azure-storage-fuse/v2/common"
 	handlemap "github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 	reflect "reflect"
-	"syscall"
 	"time"
 
 	gomock "github.com/golang/mock/gomock"
@@ -361,10 +360,10 @@ func (mr *MockComponentMockRecorder) NextComponent() *gomock.Call {
 }
 
 // Get stats of blobfuse mount.
-func (m *MockComponent) StatFs() (*syscall.Statfs_t, bool, error) {
+func (m *MockComponent) StatFs() (*common.FilesystemStat, bool, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "StatFs")
-	ret0, _ := ret[0].(*syscall.Statfs_t)
+	ret0, _ := ret[0].(*common.FilesystemStat)
 	ret1, _ := ret[1].(bool)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2

@@ -72,8 +72,10 @@ func getFilesystemStat(path string) (*FilesystemStat, error) {
 		Blocks: totalBytes / blockSize,
 		Bfree:  totalFreeBytes / blockSize,
 		Bavail: freeBytesAvailable / blockSize,
+		Bsize:  blockSize,
 		Frsize: blockSize,
 		Files:  0, // Windows doesn't expose inode count easily
 		Ffree:  0, // Windows doesn't expose free inode count easily
+		Flags:  0, // No specific flags for Windows
 	}, nil
 }

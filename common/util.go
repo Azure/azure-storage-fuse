@@ -428,8 +428,7 @@ var currentUID int = -1
 // GetDiskUsageFromStatfs: Current disk usage of temp path
 func GetDiskUsageFromStatfs(path string) (float64, float64, error) {
 	// We need to compute the disk usage percentage for the temp path
-	var stat syscall.Statfs_t
-	err := syscall.Statfs(path, &stat)
+	stat, err := GetFilesystemStat(path)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -441,13 +440,13 @@ func GetDiskUsageFromStatfs(path string) (float64, float64, error) {
 	var availableSpace uint64
 	if currentUID == 0 {
 		// Sudo  has mounted
-		availableSpace = stat.Bfree * uint64(stat.Frsize)
+		availableSpace = stat.Bfree * stat.Frsize
 	} else {
 		// non Sudo has mounted
-		availableSpace = stat.Bavail * uint64(stat.Frsize)
+		availableSpace = stat.Bavail * stat.Frsize
 	}
 
-	totalSpace := stat.Blocks * uint64(stat.Frsize)
+	totalSpace := stat.Blocks * stat.Frsize
 	usedSpace := float64(totalSpace - availableSpace)
 	return usedSpace, float64(usedSpace) / float64(totalSpace) * 100, nil
 }

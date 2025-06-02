@@ -35,7 +35,6 @@ package internal
 
 import (
 	"context"
-	"syscall"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
@@ -137,7 +136,7 @@ type Component interface {
 	GetFileBlockOffsets(options GetFileBlockOffsetsOptions) (*common.BlockOffsetList, error)
 
 	FileUsed(name string) error
-	StatFs() (*syscall.Statfs_t, bool, error)
+	StatFs() (*common.FilesystemStat, bool, error)
 
 	GetCommittedBlockList(string) (*CommittedBlockList, error)
 	StageData(StageDataOptions) error

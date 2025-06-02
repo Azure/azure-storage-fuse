@@ -50,8 +50,10 @@ func getFilesystemStat(path string) (*FilesystemStat, error) {
 		Blocks: stat.Blocks,
 		Bfree:  stat.Bfree,
 		Bavail: stat.Bavail,
+		Bsize:  uint64(stat.Bsize),
 		Frsize: uint64(stat.Frsize),
 		Files:  stat.Files,
 		Ffree:  stat.Ffree,
+		Flags:  uint64(stat.Flags),
 	}, nil
 }
