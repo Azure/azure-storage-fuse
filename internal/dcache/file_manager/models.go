@@ -38,10 +38,17 @@ import (
 )
 
 type StagedChunk struct {
-	Idx           int64       // chunk index
-	Buf           []byte      // buf size == chunkSize
-	Len           int64       // valid bytes in Buf
-	Err           chan error  // Download/upload status, available after download/upload completes, nil means success.
+	Idx int64      // chunk index
+	Buf []byte     // buf size == chunkSize
+	Len int64      // valid bytes in Buf
+	Err chan error // Download/upload status, available after download/upload completes, nil means success.
+	//
+	// For ReadMV(), buffer is returned by GetChunk() RPC, so we don't allocate it in
+	// NewStagedChunk() while for WriteMV() we need to provide data to be sent using PutChunk().
+	// If allocated using getBuffer() it must be freed using putBuffer(), IsBufExternal helps
+	// track that.
+	//
+	IsBufExternal bool
 	Dirty         atomic.Bool // Chunk has application data that must be written to the dcache.
 	Uptodate      atomic.Bool // Chunk has been read from the cache and data matches dcache data.
 	XferScheduled atomic.Bool // Is read/write from/to dcache already scheduled for this staged chunk?

@@ -1380,17 +1380,19 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	// Only one node will succeed in UpdateClusterMapStart(), and that node proceeds with the clustermap
 	// update.
 	//
-	// Note: We still have the Assert() here as it's highly unlikely and it helps to catch any other bug.
-	//
 	// Note: updateRVList() and updateMVList() are the only functions that can change clustermap.
 	//       Enclosing them between UpdateClusterMapStart() and UpdateClusterMapEnd() ensure that only one
 	//       node would be updating cluster membership details at any point. This is IMPORTANT.
+	//
+	// Note: The following startClusterMapUpdate() is unlikely to fail because of some other node
+	//       updating the clustermap from updateStorageClusterMapIfRequired(), as only leader will
+	//       proceed, but it can fail when some other asynchronous event like updateComponentRVState()
+	//       updates the clustermap, from the same node or another node.
 	//
 	err = cmi.startClusterMapUpdate(clusterMap, etag)
 	if err != nil {
 		err = fmt.Errorf("Start Clustermap update failed for nodeId %s: %v", cmi.myNodeId, err)
 		log.Err("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
-		common.Assert(false, err)
 		return err
 	}
 

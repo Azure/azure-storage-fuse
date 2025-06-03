@@ -56,6 +56,7 @@ import (
 	"syscall"
 
 	gouuid "github.com/google/uuid"
+	"github.com/prometheus/procfs"
 	"gopkg.in/ini.v1"
 )
 
@@ -463,6 +464,43 @@ func GetDiskSpaceMetricsFromStatfs(path string) (uint64, uint64, error) {
 
 	totalSpace := stat.Blocks * uint64(stat.Frsize)
 	return totalSpace, availableSpace, nil
+}
+
+// GetTotalMemoryInMB returns the total RAM of the host running blobfuse.
+func GetTotalMemoryInMB() (uint64, error) {
+	fs, err := procfs.NewDefaultFS()
+	if err != nil {
+		return 0, fmt.Errorf("GetTotalMemoryInMB: procfs.NewDefaultFS() failed: %v", err)
+	}
+
+	// Get memory info.
+	memInfo, err := fs.Meminfo()
+	if err != nil {
+		return 0, fmt.Errorf("GetTotalMemoryInMB: fs.Meminfo() failed: %v", err)
+	}
+
+	// Convert default memory unit (KB) to MB and return.
+	return *(memInfo.MemTotal) / 1024, nil
+}
+
+// GetAvailableMemoryInMB returns the available RAM of the host running blobfuse.
+// Note that available memory includes free memory and reclaimable memory, so it's a good estimate for how
+// much memory blobfuse can practically use. Obviously if other processes or the kernel use up more memory
+// the available memory will change, caller should be mindful of that.
+func GetAvailableMemoryInMB() (uint64, error) {
+	fs, err := procfs.NewDefaultFS()
+	if err != nil {
+		return 0, fmt.Errorf("GetAvailableMemoryInMB: procfs.NewDefaultFS() failed: %v", err)
+	}
+
+	// Get memory info.
+	memInfo, err := fs.Meminfo()
+	if err != nil {
+		return 0, fmt.Errorf("GetAvailableMemoryInMB: fs.Meminfo() failed: %v", err)
+	}
+
+	// Convert default memory unit (KB) to MB and return.
+	return *(memInfo.MemAvailable) / 1024, nil
 }
 
 func GetFuseMinorVersion() int {

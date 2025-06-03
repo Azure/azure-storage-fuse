@@ -357,6 +357,8 @@ func (mv *mvInfo) addSyncJob(sourceRVName string, targetRVName string) string {
 		targetRVName: targetRVName,
 	}
 
+	log.Debug("Added syncJob with syncID %s to %s: %+v", syncID, mv.mvName, mv.syncJobs)
+
 	return syncID
 }
 
@@ -381,6 +383,8 @@ func (mv *mvInfo) deleteSyncJob(syncID string) {
 	common.Assert(ok, fmt.Sprintf("%s does not have syncJob with syncID %s: %+v", mv.mvName, syncID, mv.syncJobs))
 
 	delete(mv.syncJobs, syncID)
+
+	log.Debug("Deleted syncJob with syncID %s from %s: %+v", syncID, mv.mvName, mv.syncJobs)
 }
 
 // Return if this MV replica is the source or target of a sync job.
@@ -639,7 +643,7 @@ func (mv *mvInfo) refreshFromClustermap() error {
 	// Refresh the clustermap synchronously. Once this returns, clustermap package has the updated
 	// clustermap.
 	//
-	err := cm.RefreshClusterMap()
+	err := cm.RefreshClusterMap(0 /* higherThanEpoch */)
 	if err != nil {
 		err := fmt.Errorf("mvInfo::refreshFromClustermap: %s/%s, failed: %v", mv.rvName, mv.mvName, err)
 		log.Err("%v", err)
@@ -1904,8 +1908,8 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 	// Update the state of target RV in this MV replica from outofsync to syncing.
 	mvInfo.updateComponentRVState(req.TargetRVName, dcache.StateOutOfSync, dcache.StateSyncing)
 
-	log.Debug("ChunkServiceHandler::StartSync: Responding to StartSync request: %s, with syncID: %s",
-		rpc.StartSyncRequestToString(req), syncID)
+	log.Debug("ChunkServiceHandler::StartSync: %s/%s responding to StartSync request: %s, with syncID: %s",
+		rvInfo.rvName, req.MV, rpc.StartSyncRequestToString(req), syncID)
 
 	return &models.StartSyncResponse{
 		SyncID: syncID,
@@ -2001,6 +2005,9 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 
 	// Update the state of target RV in this MV replica from syncing to online.
 	mvInfo.updateComponentRVState(req.TargetRVName, dcache.StateSyncing, dcache.StateOnline)
+
+	log.Debug("ChunkServiceHandler::EndSync: %s/%s responding to EndSync request: %s",
+		rvInfo.rvName, req.MV, rpc.EndSyncRequestToString(req))
 
 	//
 	// If we were the target of this sync job, then nothing else to do.

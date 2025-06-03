@@ -50,12 +50,43 @@ var (
 )
 
 const (
-	// TODO: discuss with the team about these values
-	// defaultMaxPerNode is the default maximum number of RPC clients created per node
-	defaultMaxPerNode = 20
+	//
+	// defaultMaxPerNode is the default maximum number of RPC clients created per target node
+	// Every RPC client creates a TCP connection to the target node RPC server port, so these
+	// many TCP connections can be active at any time to one node.
+	// Once RPC client remains used for the duration of sending the RPC request and till the
+	// response is returned, so these many active RPC requests can be outstanding to one target
+	// node at any time.
+	// The heaviest and longest use of an RPC connection would be IO calls like GetChunk and
+	// PutChunk. Multiple of these calls can be outstanding against a target node for:
+	// - Reading multiple chunks of same/different files hosted by one or more RV(s) on that node.
+	//   This could be due to readahead or writeback cache or resync writes.
+	// - Other RPC requests to that node. These won't be too many and are not so time critical.
+	//
+	// Since these many simultaneous chunk IOs (read/write) can be running on the target node,
+	// this value actually depends on number of RVs exported by a node. Since we don't know it
+	// at init time, we assume a fair value of say 4 and for each of those RVs, keeping anything
+	// more than 8 chunk sized IOs won't be useful. So we set the default to 32.
+	//
+	defaultMaxPerNode = 32
+
+	//
 	// defaultMaxNodes is the default maximum number of nodes for which RPC clients are created
-	defaultMaxNodes = 100
-	// defaultTimeout is the default duration in seconds after which a RPC client is closed
+	// and stored. If we are sending simultaneous RPC requests to more than these many nodes, we
+	// will need to evict RPC clients for the node that we sent an RPC longest time back.
+	// We want this number to be more than the possible number of nodes to which we will be sending
+	// RPCs under most conditions, else we will spend too much time creating connections.
+	// How many nodes will we typically interact with?
+	// Since GetChunk and PutChunk are the most common RPCs, we need to see how many nodes will
+	// host RVs of files that we will be reading and writing. Depending on the number of files
+	// being simultaneously read/written, this number will vary but we can pick a number that's
+	// a decent fraction of the max nodes expected.
+	//
+	defaultMaxNodes = 1000
+
+	//
+	// defaultTimeout is the default duration in seconds after which an idle RPC client is closed.
+	//
 	defaultTimeout = 60
 )
 
