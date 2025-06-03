@@ -41,6 +41,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
 )
 
 // blobfuseTelemetryPolicy is a custom pipeline policy to prepend the blobfuse user agent string to the one coming from SDK.
@@ -85,25 +86,29 @@ func (r *serviceVersionPolicy) Do(req *policy.Request) (*http.Response, error) {
 // ---------------------------------------------------------------------------------------------------------------------------------------------------
 // Policy to track all http requests and responses
 
+// In your metricsPolicy struct constructor or initializer, create the StatsCollector:
+// var policystatscollector *stats_manager.StatsCollector
 type metricsPolicy struct {
-	namespace    string
-	requestCount int64
-	failureCount int64
-	mu           sync.Mutex
-	exporter     *StatsExporter // Must be injected/initialized externally
+	mu                 sync.Mutex
+	totalRequests      int
+	informationalCount int
+	successCount       int
+	redirectCount      int
+	clientErrorCount   int
+	serverErrorCount   int
+	failureCount       int64
+	statsCollector     *stats_manager.StatsCollector
 }
 
-type PolicyMetric struct {
-	RequestCount int64  `json:"request_count"`
-	FailureCount int64  `json:"failure_count"`
-	DurationMs   int64  `json:"duration_ms"`
-	Timestamp    string `json:"timestamp"`
-}
+func NewMetricsPolicy() policy.Policy {
+	if !common.EnableMonitoring {
+		common.EnableMonitoring = true
+	}
 
-func newmetricsPolicy(namespace string) policy.Policy {
+	// Create and return a metrics policy with its own stats collector
+	statsCollector := stats_manager.NewStatsCollector("http-policy")
 	return &metricsPolicy{
-		namespace: namespace,
-		//monitorPusher: PushMetricsToAzureMonitor, // Function from stats_exports.go
+		statsCollector: statsCollector,
 	}
 }
 
@@ -113,24 +118,43 @@ func (p *metricsPolicy) Do(req *policy.Request) (*http.Response, error) {
 	duration := time.Since(start)
 
 	p.mu.Lock()
-	p.requestCount++
-	if err != nil || (resp != nil && resp.StatusCode >= 400) {
+	defer p.mu.Unlock()
+
+	p.totalRequests++
+
+	var statusCode int
+	if resp != nil {
+		statusCode = resp.StatusCode
+	}
+
+	switch {
+	case statusCode >= 100 && statusCode < 200:
+		p.informationalCount++
+	case statusCode >= 200 && statusCode < 300:
+		p.successCount++
+	case statusCode >= 300 && statusCode < 400:
+		p.redirectCount++
+	case statusCode >= 400 && statusCode < 500:
+		p.clientErrorCount++
 		p.failureCount++
+	case statusCode >= 500 && statusCode < 600:
+		p.serverErrorCount++
+		p.failureCount++
+	default:
+		if err != nil {
+			p.failureCount++
+		}
 	}
 
-	// Define metric struct
-	metric := PolicyMetric{
-		RequestCount: p.requestCount,
-		FailureCount: p.failureCount,
-		DurationMs:   duration.Milliseconds(),
-		Timestamp:    time.Now().UTC().Format(time.RFC3339),
-	}
-	p.mu.Unlock()
-
-	// Use the defined metric
-	if p.exporter != nil {
-		p.exporter.AddMonitorStats("AzureMonitorPolicy", metric.Timestamp, metric)
-	}
+	// Push updated metrics to the collector
+	p.statsCollector.UpdateStats(stats_manager.Replace, "totalRequests", int64(p.totalRequests))
+	p.statsCollector.UpdateStats(stats_manager.Replace, "informationalCount", int64(p.informationalCount))
+	p.statsCollector.UpdateStats(stats_manager.Replace, "successCount", int64(p.successCount))
+	p.statsCollector.UpdateStats(stats_manager.Replace, "redirectCount", int64(p.redirectCount))
+	p.statsCollector.UpdateStats(stats_manager.Replace, "clientErrorCount", int64(p.clientErrorCount))
+	p.statsCollector.UpdateStats(stats_manager.Replace, "serverErrorCount", int64(p.serverErrorCount))
+	p.statsCollector.UpdateStats(stats_manager.Replace, "failureCount", p.failureCount)
+	p.statsCollector.UpdateStats(stats_manager.Replace, "durationMs", duration.Milliseconds())
 
 	return resp, err
 }

@@ -112,7 +112,7 @@ func getAzStorageClientOptions(conf *AzStorageConfig) (azcore.ClientOptions, err
 		perCallPolicies = append(perCallPolicies, newServiceVersionPolicy(serviceApiVersion))
 	}
 
-	perCallPolicies = append(perCallPolicies, newMetricsPolicy("BlobFuseNamespace"))
+	perCallPolicies = append(perCallPolicies, NewMetricsPolicy())
 
 	return azcore.ClientOptions{
 		Retry:           retryOptions,

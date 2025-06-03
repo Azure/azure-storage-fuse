@@ -93,6 +93,8 @@ var EnableMonitoring = false
 var BfsDisabled = false
 var TransferPipe = "/tmp/transferPipe"
 var PollingPipe = "/tmp/pollPipe"
+var PolicyPipe = "/tmp/policy_stats_pipe"
+var PolicyPollPipe = "/tmp/policy_poll_pipe"
 
 var MountPath string
 
