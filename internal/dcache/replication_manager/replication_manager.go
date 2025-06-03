@@ -348,7 +348,7 @@ retry:
 			//
 			// Set the "MaybeOverwrite" flag to true in PutChunkRequest to let the server know that this
 			// could potentially be an overwrite of a chunk that we previously wrote, so that
-			// it relaxes it's overwrite checks.
+			// it relaxes its overwrite checks.
 			// To be safe we can set MaybeOverwrite to true when retryCnt > 0.
 			//
 			rpcReq := &models.PutChunkRequest{

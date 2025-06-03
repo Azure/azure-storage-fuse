@@ -1942,17 +1942,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		//
 		// Iff joinMV() is successful, consume one slot for each component RV and update existingMVMap.
 		//
-		// Get the reserveBytes correctly, querying it from our in-core RV info maintained by RPC server.
-		//
-		reserveBytes, err := rm.GetMVSize(mvName)
-		if err != nil {
-			err = fmt.Errorf("failed to get disk usage of %s [%v]", mvName, err)
-			log.Err("ClusterManager::fixMV: %v", err)
-			common.Assert(false, err)
-			return
-		}
-
-		failedRV, err := cmi.joinMV(mvName, mv, reserveBytes)
+		failedRV, err := cmi.joinMV(mvName, mv)
 		if err == nil {
 			log.Info("ClusterManager::fixMV: Successfully joined/updated all component RVs %+v to MV %s, original [%+v]",
 				mv.RVs, mvName, savedRVs)
@@ -2283,7 +2273,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		// delete the failed RV fom nodeToRvs to prevent this RV from being picked again and failing.
 		// Also we need to remove mv frome existingMVMap.
 		//
-		failedRV, err := cmi.joinMV(mvName, existingMVMap[mvName], 0 /* reserveBytes */)
+		failedRV, err := cmi.joinMV(mvName, existingMVMap[mvName])
 		if err == nil {
 			log.Info("ClusterManager::updateMVList: Successfully joined all component RVs %+v to MV %s",
 				existingMVMap[mvName].RVs, mvName)
@@ -2318,9 +2308,6 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 // It calls JoinMV for RVs joining the MV newly and UpdateMV for existing component RVs which need to be informed of
 // the updated membership details. For JoinMV RPC requests it sets the ReserveSpace to reserveBytes.
 // The caller must have updated 'mv' with the correct component RVs and their state before calling this.
-// 'reserveBytes' is the amount of space to reserve in the RV. This will be 0 when joinMV() is called from the
-// new-mv workflow, but can be non-zero when called from the fix-mv workflow for replacing an offline RV with
-// a new good RV. The new RV must need enough space to store the chunks for this MV.
 //
 // It sends JoinMV/UpdateMV based on following:
 //   - It sends JoinMV RPC to all RVs of a new MV. A new MV is one which has state of online, because we will not be
@@ -2330,8 +2317,8 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 //   - For existing MVs, it sends UpdateMV for online component RVs.
 //
 // TODO: joinMV() should technically return more than one failed RVs.
-func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume, reserveBytes int64) (string, error) {
-	log.Debug("ClusterManagerImpl::joinMV: JoinMV(%s, %+v, reserveBytes: %d)", mvName, mv, reserveBytes)
+func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) (string, error) {
+	log.Debug("ClusterManagerImpl::joinMV: JoinMV(%s, %+v)", mvName, mv)
 
 	var componentRVs []*models.RVNameAndState
 	var numRVsOnline int
@@ -2348,6 +2335,27 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume, reser
 
 	// Caller must call us only with all component RVs set.
 	common.Assert(len(mv.RVs) == int(cmi.config.NumReplicas), len(mv.RVs), cmi.config.NumReplicas)
+
+	//
+	// 'reserveBytes' is the amount of space to reserve in the RV. This will be 0 when joinMV()
+	// is called from the new-mv workflow, but can be non-zero when called from the fix-mv workflow
+	// for replacing an offline RV with a new good RV. The new RV must need enough space to store
+	// the chunks for this MV.
+	//
+	var reserveBytes int64
+	var err error
+
+	if !newMV {
+		//
+		// Get the reserveBytes correctly, querying it from our in-core RV info maintained by RPC server.
+		//
+		reserveBytes, err = rm.GetMVSize(mvName)
+		if err != nil {
+			err = fmt.Errorf("failed to get disk usage of %s [%v]", mvName, err)
+			log.Err("ClusterManager::fixMV: %v", err)
+			common.Assert(false, err)
+		}
+	}
 
 	// reserveBytes must be non-zero only for degraded MV, for new-mv it'll be 0.
 	common.Assert(reserveBytes == 0 || mv.State == dcache.StateDegraded, reserveBytes, mv.State)

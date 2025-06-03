@@ -1387,6 +1387,8 @@ refreshFromClustermapAndRetry:
 				//
 				log.Debug("ChunkServiceHandler::PutChunk: syncID = %s, chunk file %s already exists, ignoring sync write",
 					req.SyncID, chunkPath)
+				common.Assert(!req.MaybeOverwrite,
+					"Only PutChunk(client) can have MaybeOverwrite set", rpc.PutChunkRequestToString(req))
 			} else {
 				//
 				// Client can set the "MaybeOverwrite" flag to true in PutChunkRequest to let the server
