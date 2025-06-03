@@ -2352,8 +2352,12 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) (stri
 		reserveBytes, err = rm.GetMVSize(mvName)
 		if err != nil {
 			err = fmt.Errorf("failed to get disk usage of %s [%v]", mvName, err)
-			log.Err("ClusterManager::fixMV: %v", err)
+			log.Err("ClusterManager::joinMV: %v", err)
 			common.Assert(false, err)
+			// TODO: return error. Skipping it now because the caller of joinMV() expects failed RVs
+			// along with the error. So, the error handling part of the caller must be updated to handle
+			// the error returned in this case as below.
+			// return "", err
 		}
 	}
 
