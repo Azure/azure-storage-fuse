@@ -1117,6 +1117,29 @@ func (s *blockBlobTestSuite) TestRenameFileError() {
 	s.assert.NotNil(err)
 }
 
+func (s *blockBlobTestSuite) TestRenameFileNoReplace() {
+	defer s.cleanupTest()
+	// Setup
+	src := generateFileName()
+	s.az.CreateFile(internal.CreateFileOptions{Name: src})
+	dst := generateFileName()
+	s.az.CreateFile(internal.CreateFileOptions{Name: dst})
+
+	// Attempt to rename src to dst, which already exists
+	err := s.az.RenameFile(internal.RenameFileOptions{Src: src, Dst: dst, NoReplace: true})
+	s.assert.NotNil(err)
+	s.assert.EqualValues(syscall.EEXIST, err)
+
+	// Src should be in the account
+	source := s.containerClient.NewBlobClient(src)
+	_, err = source.GetProperties(ctx, nil)
+	s.assert.Nil(err)
+	// Dst should  be in the account
+	destination := s.containerClient.NewBlobClient(dst)
+	_, err = destination.GetProperties(ctx, nil)
+	s.assert.Nil(err)
+}
+
 func (s *blockBlobTestSuite) TestReadFile() {
 	defer s.cleanupTest()
 	// Setup
