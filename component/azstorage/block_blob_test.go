@@ -3405,9 +3405,10 @@ func (s *blockBlobTestSuite) TestUploadBlobWithCPKEnabled() {
 	s.assert.NotNil(resp.RequestID)
 
 	name2 := generateFileName()
-	_, err = s.az.storage.WriteFromBuffer(internal.WriteFromBufferOptions{Name: name2,
+	eTag, err := s.az.storage.WriteFromBuffer(internal.WriteFromBufferOptions{Name: name2,
 		Data: data})
 	s.assert.Nil(err)
+	s.assert.NotEqual(eTag, "")
 
 	file = s.containerClient.NewBlobClient(name2)
 	resp, err = file.DownloadStream(ctx, &blob.DownloadStreamOptions{
