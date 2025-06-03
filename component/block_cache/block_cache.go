@@ -352,8 +352,7 @@ func (bc *BlockCache) Configure(_ bool) error {
 }
 
 func (bc *BlockCache) getDefaultDiskSize(path string) uint64 {
-	var stat syscall.Statfs_t
-	err := syscall.Statfs(path, &stat)
+	stat, err := common.GetFilesystemStat(path)
 	if err != nil {
 		log.Info("BlockCache::getDefaultDiskSize : config error %s [%s]. Assigning a default value of 4GB or if any value is assigned to .disk-size-mb in config.", bc.Name(), err.Error())
 		return uint64(4192) * _1MB
@@ -1927,7 +1926,7 @@ func (bc *BlockCache) SyncFile(options internal.SyncFileOptions) error {
 	return nil
 }
 
-func (bc *BlockCache) StatFs() (*syscall.Statfs_t, bool, error) {
+func (bc *BlockCache) StatFs() (*common.FilesystemStat, bool, error) {
 	var maxCacheSize uint64
 	if bc.diskSize > 0 {
 		maxCacheSize = bc.diskSize
@@ -1943,13 +1942,12 @@ func (bc *BlockCache) StatFs() (*syscall.Statfs_t, bool, error) {
 	usage = usage * float64(_1MB)
 
 	available := (float64)(maxCacheSize) - usage
-	statfs := &syscall.Statfs_t{}
-	err := syscall.Statfs("/", statfs)
+	statfs, err := common.GetFilesystemStat("/")
 	if err != nil {
 		log.Debug("BlockCache::StatFs : statfs err [%s].", err.Error())
 		return nil, false, err
 	}
-	statfs.Frsize = int64(bc.blockSize)
+	statfs.Frsize = uint64(bc.blockSize)
 	statfs.Blocks = uint64(maxCacheSize) / uint64(bc.blockSize)
 	statfs.Bavail = uint64(math.Max(0, available)) / uint64(bc.blockSize)
 	statfs.Bfree = statfs.Bavail

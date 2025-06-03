@@ -255,7 +255,7 @@ func (suite *blockCacheTestSuite) TestStatfsMemory() {
 	stat, ret, err := tobj.blockCache.StatFs()
 	suite.assert.Equal(ret, true)
 	suite.assert.Equal(err, nil)
-	suite.assert.NotEqual(stat, &syscall.Statfs_t{})
+	suite.assert.NotEqual(stat, &common.FilesystemStat{})
 	actual := tobj.blockCache.memSize
 	difference := math.Abs(float64(actual) - float64(expected))
 	tolerance := 0.10 * float64(math.Max(float64(actual), float64(expected)))
@@ -282,7 +282,7 @@ func (suite *blockCacheTestSuite) TestStatfsDisk() {
 	stat, ret, err := tobj.blockCache.StatFs()
 	suite.assert.Equal(ret, true)
 	suite.assert.Equal(err, nil)
-	suite.assert.NotEqual(stat, &syscall.Statfs_t{})
+	suite.assert.NotEqual(stat, &common.FilesystemStat{})
 	actual := tobj.blockCache.diskSize
 	difference := math.Abs(float64(actual) - float64(expected))
 	tolerance := 0.10 * float64(math.Max(float64(actual), float64(expected)))

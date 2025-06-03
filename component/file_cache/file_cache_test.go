@@ -1796,7 +1796,7 @@ func (suite *fileCacheTestSuite) TestStatFS() {
 	stat, ret, err := suite.fileCache.StatFs()
 	suite.assert.Equal(ret, true)
 	suite.assert.Equal(err, nil)
-	suite.assert.NotEqual(stat, &syscall.Statfs_t{})
+	suite.assert.NotEqual(stat, &common.FilesystemStat{})
 }
 
 func (suite *fileCacheTestSuite) TestReadFileWithRefresh() {
