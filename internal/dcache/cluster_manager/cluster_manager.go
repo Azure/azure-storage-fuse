@@ -2318,7 +2318,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 //
 // TODO: joinMV() should technically return more than one failed RVs.
 func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) (string, error) {
-	log.Debug("ClusterManagerImpl::joinMV: JoinMV(%s, %+v)", mvName, mv)
+	log.Debug("ClusterManager::joinMV: JoinMV(%s, %+v)", mvName, mv)
 
 	var componentRVs []*models.RVNameAndState
 	var numRVsOnline int
@@ -2357,11 +2357,14 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) (stri
 		}
 	}
 
+	log.Debug("ClusterManager::joinMV: %s, state: %s, new-mv: %v, reserve bytes: %d",
+		mvName, string(mv.State), newMV, reserveBytes)
+
 	// reserveBytes must be non-zero only for degraded MV, for new-mv it'll be 0.
 	common.Assert(reserveBytes == 0 || mv.State == dcache.StateDegraded, reserveBytes, mv.State)
 
 	for rvName, rvState := range mv.RVs {
-		log.Debug("ClusterManagerImpl::joinMV: Populating componentRVs list MV %s with RV %s", mvName, rvName)
+		log.Debug("ClusterManager::joinMV: Populating componentRVs list MV %s with RV %s", mvName, rvName)
 
 		//
 		// For new-mv all component RVs must be online, for fix-mv we can have the following component RV states:
@@ -2401,7 +2404,7 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) (stri
 			continue
 		}
 
-		log.Debug("ClusterManagerImpl::joinMV: Joining MV %s with RV %s", mvName, rv.Name)
+		log.Debug("ClusterManager::joinMV: Joining MV %s with RV %s", mvName, rv.Name)
 
 		joinMvReq := &models.JoinMVRequest{
 			MV:           mvName,
@@ -2442,7 +2445,7 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) (stri
 
 		if err != nil {
 			err = fmt.Errorf("error %s MV %s with RV %s: %v", action, mvName, rv.Name, err)
-			log.Err("ClusterManagerImpl::joinMV: %v", err)
+			log.Err("ClusterManager::joinMV: %v", err)
 			return rv.Name, err
 		}
 	}
