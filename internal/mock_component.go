@@ -710,11 +710,12 @@ func (mr *MockComponentMockRecorder) CommitData(arg0 interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CommitData", reflect.TypeOf((*MockComponent)(nil).TruncateFile), arg0)
 }
 
-func (m *MockComponent) WriteFromBuffer(arg0 WriteFromBufferOptions) error {
+func (m *MockComponent) WriteFromBuffer(arg0 WriteFromBufferOptions) (string, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "WriteFromBuffer", arg0)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 func (mr *MockComponentMockRecorder) WriteFromBuffer(arg0 interface{}) *gomock.Call {

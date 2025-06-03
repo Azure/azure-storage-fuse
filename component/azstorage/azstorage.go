@@ -433,7 +433,7 @@ func (az *AzStorage) DeleteFile(options internal.DeleteFileOptions) error {
 func (az *AzStorage) RenameFile(options internal.RenameFileOptions) error {
 	log.Trace("AzStorage::RenameFile : %s to %s", options.Src, options.Dst)
 
-	err := az.storage.RenameFile(options.Src, options.Dst, options.SrcAttr)
+	err := az.storage.RenameFile(options)
 
 	if err == nil {
 		azStatsCollector.PushEvents(renameFile, options.Src, map[string]interface{}{src: options.Src, dest: options.Dst})
@@ -587,7 +587,7 @@ func (az *AzStorage) CommitData(opt internal.CommitDataOptions) error {
 	return az.storage.CommitBlocks(opt.Name, opt.List, opt.NewETag)
 }
 
-func (az *AzStorage) WriteFromBuffer(opt internal.WriteFromBufferOptions) error {
+func (az *AzStorage) WriteFromBuffer(opt internal.WriteFromBufferOptions) (string, error) {
 	return az.storage.WriteFromBuffer(opt)
 }
 

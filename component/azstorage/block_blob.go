@@ -276,8 +276,12 @@ func (bb *BlockBlob) SetPrefixPath(path string) error {
 func (bb *BlockBlob) CreateFile(name string, mode os.FileMode) error {
 	log.Trace("BlockBlob::CreateFile : name %s", name)
 	var data []byte
-	return bb.WriteFromBuffer(internal.WriteFromBufferOptions{Name: name,
-		Data: data})
+
+	_, err := bb.WriteFromBuffer(internal.WriteFromBufferOptions{
+		Name: name,
+		Data: data,
+	})
+	return err
 }
 
 // CreateDirectory : Create a new directory in the container/virtual directory
@@ -288,10 +292,14 @@ func (bb *BlockBlob) CreateDirectory(name string, forceDirCreationDisabled bool)
 	metadata := make(map[string]*string)
 	metadata[folderKey] = to.Ptr("true")
 
-	return bb.WriteFromBuffer(internal.WriteFromBufferOptions{Name: name,
+	_, err := bb.WriteFromBuffer(internal.WriteFromBufferOptions{
+		Name:                   name,
 		Metadata:               metadata,
 		Data:                   data,
-		IsNoneMatchEtagEnabled: forceDirCreationDisabled})
+		IsNoneMatchEtagEnabled: forceDirCreationDisabled,
+	})
+
+	return err
 }
 
 // CreateLink : Create a symlink in the container/virtual directory
@@ -300,9 +308,12 @@ func (bb *BlockBlob) CreateLink(source string, target string) error {
 	data := []byte(target)
 	metadata := make(map[string]*string)
 	metadata[symlinkKey] = to.Ptr("true")
-	return bb.WriteFromBuffer(internal.WriteFromBufferOptions{Name: source,
+
+	_, err := bb.WriteFromBuffer(internal.WriteFromBufferOptions{Name: source,
 		Metadata: metadata,
 		Data:     data})
+
+	return err
 }
 
 // DeleteFile : Delete a blob in the container/virtual directory
@@ -349,27 +360,39 @@ func (bb *BlockBlob) DeleteDirectory(name string) (err error) {
 // Etag of the destination blob changes.
 // Copy the LMT to the src attr if the copy is success.
 // https://learn.microsoft.com/en-us/rest/api/storageservices/copy-blob?tabs=microsoft-entra-id
-func (bb *BlockBlob) RenameFile(source string, target string, srcAttr *internal.ObjAttr) error {
-	log.Trace("BlockBlob::RenameFile : %s -> %s", source, target)
+func (bb *BlockBlob) RenameFile(options internal.RenameFileOptions) error {
+	log.Trace("BlockBlob::RenameFile : %s -> %s", options.Src, options.Dst)
 
-	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, source))
-	newBlobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, target))
+	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, options.Src))
+	newBlobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, options.Dst))
 
 	// not specifying source blob metadata, since passing empty metadata headers copies
 	// the source blob metadata to destination blob
-	copyResponse, err := newBlobClient.StartCopyFromURL(context.Background(), blobClient.URL(), &blob.StartCopyFromURLOptions{
+	copyFromURLOptions := &blob.StartCopyFromURLOptions{
 		Tier: bb.Config.defaultTier,
-	})
+	}
+	if options.NoReplace {
+		copyFromURLOptions.AccessConditions = &blob.AccessConditions{
+			ModifiedAccessConditions: &blob.ModifiedAccessConditions{
+				IfNoneMatch: to.Ptr(azcore.ETagAny),
+			},
+		}
+	}
 
+	copyResponse, err := newBlobClient.StartCopyFromURL(context.Background(), blobClient.URL(), copyFromURLOptions)
 	if err != nil {
 		serr := storeBlobErrToErr(err)
 		if serr == ErrFileNotFound {
 			//Ideally this case doesn't hit as we are checking for the existence of src
 			//before making the call for RenameFile
-			log.Err("BlockBlob::RenameFile : Src Blob doesn't Exist %s [%s]", source, err.Error())
+			log.Err("BlockBlob::RenameFile : Src Blob doesn't Exist %s [%s]", options.Src, err.Error())
 			return syscall.ENOENT
+		} else if serr == ErrFileAlreadyExists {
+			common.Assert(options.NoReplace)
+			log.Err("BlockBlob::RenameFile : Dst Blob Exists %s [%s]", options.Dst, err.Error())
+			return syscall.EEXIST
 		}
-		log.Err("BlockBlob::RenameFile : Failed to start copy of file %s [%s]", source, err.Error())
+		log.Err("BlockBlob::RenameFile : Failed to start copy of file %s [%s]", options.Src, err.Error())
 		return err
 	}
 
@@ -386,7 +409,7 @@ func (bb *BlockBlob) RenameFile(source string, target string, srcAttr *internal.
 			CPKInfo: bb.blobCPKOpt,
 		})
 		if err != nil {
-			log.Err("BlockBlob::RenameFile : CopyStats : Failed to get blob properties for %s [%s]", source, err.Error())
+			log.Err("BlockBlob::RenameFile : CopyStats : Failed to get blob properties for %s [%s]", options.Src, err.Error())
 		}
 		copyStatus = prop.CopyStatus
 	}
@@ -397,20 +420,20 @@ func (bb *BlockBlob) RenameFile(source string, target string, srcAttr *internal.
 	}
 
 	if copyStatus != nil && *copyStatus == blob.CopyStatusTypeSuccess {
-		modifyLMTandEtag(srcAttr, dstLMT, dstETag)
+		modifyLMTandEtag(options.SrcAttr, dstLMT, dstETag)
 	}
 
-	log.Trace("BlockBlob::RenameFile : %s -> %s done", source, target)
+	log.Trace("BlockBlob::RenameFile : %s -> %s done", options.Src, options.Dst)
 
 	// Copy of the file is done so now delete the older file
-	err = bb.DeleteFile(source)
+	err = bb.DeleteFile(options.Src)
 	for retry := 0; retry < 3 && err == syscall.ENOENT; retry++ {
 		// Sometimes backend is able to copy source file to destination but when we try to delete the
 		// source files it returns back with ENOENT. If file was just created on backend it might happen
 		// that it has not been synced yet at all layers and hence delete is not able to find the source file
-		log.Trace("BlockBlob::RenameFile : %s -> %s, unable to find source. Retrying %d", source, target, retry)
+		log.Trace("BlockBlob::RenameFile : %s -> %s, unable to find source. Retrying %d", options.Src, options.Dst, retry)
 		time.Sleep(1 * time.Second)
-		err = bb.DeleteFile(source)
+		err = bb.DeleteFile(options.Src)
 	}
 
 	if err == syscall.ENOENT {
@@ -441,7 +464,10 @@ func (bb *BlockBlob) RenameDirectory(source string, target string) error {
 		for _, blobInfo := range listBlobResp.Segment.BlobItems {
 			srcDirPresent = true
 			srcPath := removePrefixPath(bb.Config.prefixPath, *blobInfo.Name)
-			err = bb.RenameFile(srcPath, strings.Replace(srcPath, source, target, 1), nil)
+			err = bb.RenameFile(internal.RenameFileOptions{
+				Src: srcPath,
+				Dst: strings.Replace(srcPath, source, target, 1),
+			})
 			if err != nil {
 				log.Err("BlockBlob::RenameDirectory : Failed to rename file %s [%s]", srcPath, err.Error)
 			}
@@ -467,7 +493,10 @@ func (bb *BlockBlob) RenameDirectory(source string, target string) error {
 		}
 	}
 
-	return bb.RenameFile(source, target, nil)
+	return bb.RenameFile(internal.RenameFileOptions{
+		Src: source,
+		Dst: target,
+	})
 }
 
 func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err error) {
@@ -1130,7 +1159,7 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]*string, fi 
 }
 
 // WriteFromBuffer : Upload from a buffer to a blob
-func (bb *BlockBlob) WriteFromBuffer(options internal.WriteFromBufferOptions) error {
+func (bb *BlockBlob) WriteFromBuffer(options internal.WriteFromBufferOptions) (string, error) {
 	log.Trace("BlockBlob::WriteFromBuffer : name %s", options.Name)
 	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, options.Name))
 
@@ -1162,14 +1191,14 @@ func (bb *BlockBlob) WriteFromBuffer(options internal.WriteFromBufferOptions) er
 		}
 	}
 
-	_, err := blobClient.UploadBuffer(context.Background(), options.Data, uploadOptions)
+	resp, err := blobClient.UploadBuffer(context.Background(), options.Data, uploadOptions)
 
 	if err != nil {
 		log.Err("BlockBlob::WriteFromBuffer : Failed to upload blob %s [%s]", options.Name, err.Error())
-		return err
+		return "", err
 	}
 
-	return nil
+	return sanitizeEtag(resp.ETag), nil
 }
 
 // GetFileBlockOffsets: store blocks ids and corresponding offsets
@@ -1322,7 +1351,7 @@ func (bb *BlockBlob) TruncateFile(name string, size int64) error {
 				return err
 			}
 		} else {
-			err := bb.WriteFromBuffer(internal.WriteFromBufferOptions{
+			_, err := bb.WriteFromBuffer(internal.WriteFromBufferOptions{
 				Name: name,
 				Data: make([]byte, size),
 			})
@@ -1340,7 +1369,7 @@ func (bb *BlockBlob) TruncateFile(name string, size int64) error {
 			log.Err("BlockBlob::TruncateFile : Failed to read small file %s", name, err.Error())
 			return err
 		}
-		err = bb.WriteFromBuffer(internal.WriteFromBufferOptions{Name: name,
+		_, err = bb.WriteFromBuffer(internal.WriteFromBufferOptions{Name: name,
 			Data: data})
 		if err != nil {
 			log.Err("BlockBlob::TruncateFile : Failed to write from buffer file %s", name, err.Error())
@@ -1358,7 +1387,7 @@ func (bb *BlockBlob) TruncateFile(name string, size int64) error {
 				log.Err("BlockBlob::TruncateFile : Failed to read small file %s", name, err.Error())
 				return err
 			}
-			err = bb.WriteFromBuffer(internal.WriteFromBufferOptions{Name: name,
+			_, err = bb.WriteFromBuffer(internal.WriteFromBufferOptions{Name: name,
 				Data: data})
 			if err != nil {
 				log.Err("BlockBlob::TruncateFile : Failed to write from buffer file %s", name, err.Error())
@@ -1446,7 +1475,7 @@ func (bb *BlockBlob) Write(options internal.WriteFileOptions) error {
 			}
 		}
 		// WriteFromBuffer should be able to handle the case where now the block is too big and gets split into multiple blocks
-		err := bb.WriteFromBuffer(internal.WriteFromBufferOptions{Name: name,
+		_, err := bb.WriteFromBuffer(internal.WriteFromBufferOptions{Name: name,
 			Metadata: options.Metadata,
 			Data:     *dataBuffer})
 		if err != nil {
