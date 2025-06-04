@@ -59,7 +59,7 @@ type azAuthBlobCLI struct {
 }
 
 // getServiceClient : returns service client for blob using azcli as authentication mode
-func (azcli *azAuthBlobCLI) getServiceClient(stConfig *AzStorageConfig) (interface{}, error) {
+func (azcli *azAuthBlobCLI) getServiceClient(stConfig *AzStorageConfig) (any, error) {
 	cred, err := azcli.getTokenCredential()
 	if err != nil {
 		log.Err("azAuthBlobCLI::getServiceClient : Failed to get token credential from azcli [%s]", err.Error())
@@ -85,7 +85,7 @@ type azAuthDatalakeCLI struct {
 }
 
 // getServiceClient : returns service client for datalake using azcli as authentication mode
-func (azcli *azAuthDatalakeCLI) getServiceClient(stConfig *AzStorageConfig) (interface{}, error) {
+func (azcli *azAuthDatalakeCLI) getServiceClient(stConfig *AzStorageConfig) (any, error) {
 	cred, err := azcli.getTokenCredential()
 	if err != nil {
 		log.Err("azAuthDatalakeCLI::getServiceClient : Failed to get token credential from azcli [%s]", err.Error())

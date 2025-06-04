@@ -114,7 +114,7 @@ type azAuthBlobWorkloadIdentity struct {
 }
 
 // getServiceClient : returns SPN based service client for blob
-func (azWorkloadIdentity *azAuthBlobWorkloadIdentity) getServiceClient(stConfig *AzStorageConfig) (interface{}, error) {
+func (azWorkloadIdentity *azAuthBlobWorkloadIdentity) getServiceClient(stConfig *AzStorageConfig) (any, error) {
 	cred, err := azWorkloadIdentity.getTokenCredential()
 	if err != nil {
 		log.Err("azAuthBlobWorkloadIdentity::getServiceClient : Failed to get token credential from client assertion [%s]", err.Error())
@@ -140,7 +140,7 @@ type azAuthDatalakeWorkloadIdentity struct {
 }
 
 // getServiceClient : returns SPN based service client for blob
-func (azWorkloadIdentity *azAuthDatalakeWorkloadIdentity) getServiceClient(stConfig *AzStorageConfig) (interface{}, error) {
+func (azWorkloadIdentity *azAuthDatalakeWorkloadIdentity) getServiceClient(stConfig *AzStorageConfig) (any, error) {
 	cred, err := azWorkloadIdentity.getTokenCredential()
 	if err != nil {
 		log.Err("azAuthDatalakeWorkloadIdentity::getServiceClient : Failed to get token credential from client assertion [%s]", err.Error())

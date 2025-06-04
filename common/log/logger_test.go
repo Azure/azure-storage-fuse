@@ -48,20 +48,20 @@ type LoggerTestSuite struct {
 }
 
 func fastTestDebug(lts *LoggerTestSuite) {
-	for i := 0; i < lts.log_rotate_test_count; i++ {
+	for i := range lts.log_rotate_test_count {
 		Debug("hello %d", i)
 	}
 }
 
 func fastTestCrit(lts *LoggerTestSuite) {
-	for i := 0; i < lts.log_rotate_test_count; i++ {
+	for i := range lts.log_rotate_test_count {
 		Crit("hello %d", i)
 	}
 }
 
 func simpleTest(lts *LoggerTestSuite) {
 	Crit("Running Simple Test")
-	for l := 0; l < 3; l++ {
+	for l := range 3 {
 		switch l {
 		case 0:
 			SetLogLevel(common.ELogLevel.LOG_DEBUG())

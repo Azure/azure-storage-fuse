@@ -75,7 +75,7 @@ func (suite *benchmarkSuite) TestCreateSingleFiles() {
 	for _, size := range sizes {
 		suite.T().Logf("\nCreating %.2fGB files: \n", size)
 		durs := make([]float64, 0)
-		for i := 0; i < n; i++ {
+		for i := range n {
 			suite.T().Logf("Round %d\n", i)
 			fileName := filepath.Join(mntPath, "testfile"+strconv.Itoa(i))
 			completionTime, err := createSingleFile(size, fileName)

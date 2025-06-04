@@ -56,7 +56,7 @@ type azAuthBlobKey struct {
 }
 
 // getServiceClient : returns shared key based service client for blob
-func (azkey *azAuthBlobKey) getServiceClient(stConfig *AzStorageConfig) (interface{}, error) {
+func (azkey *azAuthBlobKey) getServiceClient(stConfig *AzStorageConfig) (any, error) {
 	if azkey.config.AccountKey == "" {
 		log.Err("azAuthBlobKey::getServiceClient : Shared key for account is empty, cannot authenticate user")
 		return nil, errors.New("shared key for account is empty, cannot authenticate user")
@@ -87,7 +87,7 @@ type azAuthDatalakeKey struct {
 }
 
 // getServiceClient : returns shared key based service client for datalake
-func (azkey *azAuthDatalakeKey) getServiceClient(stConfig *AzStorageConfig) (interface{}, error) {
+func (azkey *azAuthDatalakeKey) getServiceClient(stConfig *AzStorageConfig) (any, error) {
 	if azkey.config.AccountKey == "" {
 		log.Err("azAuthDatalakeKey::getServiceClient : Shared key for account is empty, cannot authenticate user")
 		return nil, errors.New("shared key for account is empty, cannot authenticate user")
