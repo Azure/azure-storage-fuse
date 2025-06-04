@@ -235,11 +235,20 @@ func (m *BlobMetadataManager) getBlobSafe(blobPath string) ([]byte, *internal.Ob
 	//
 	var i int
 	for i = 0; i < 50; i++ {
-		attr, err := m.storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{
-			Name: blobPath,
+		attr, err := common.Retry(0, 0, 0, func() (*internal.ObjAttr, error) {
+			// Simulate error injection for testing/debugging.
+			injectErr := common.InjectError(common.PROB_VERY_HIGH, "getBlobSafe:: Simulating error in GetProperties for", blobPath)
+			if injectErr != nil {
+				return nil, injectErr
+			}
+
+			return m.storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{
+				Name: blobPath,
+			})
 		})
+
 		if err != nil {
-			log.Err("getBlobSafe:: Failed to get Blob properties for %s: %v", blobPath, err)
+			log.Err("getBlobSafe:: Failed to get Blob properties for %s after retries: %v", blobPath, err)
 			return nil, nil, err
 		}
 
@@ -247,18 +256,36 @@ func (m *BlobMetadataManager) getBlobSafe(blobPath string) ([]byte, *internal.Ob
 		common.Assert(len(attr.ETag) > 0)
 		common.Assert(attr.Size > 0)
 
-		data, err := m.storageCallback.GetBlobFromStorage(internal.ReadFileWithNameOptions{
-			Path: blobPath,
+		data, err := common.Retry(0, 0, 0, func() ([]byte, error) {
+			// Simulate error injection for testing/debugging.
+			injectErr := common.InjectError(common.PROB_VERY_HIGH, "getBlobSafe:: Simulating error in GetBlob for", blobPath)
+			if injectErr != nil {
+				return nil, injectErr
+			}
+
+			return m.storageCallback.GetBlobFromStorage(internal.ReadFileWithNameOptions{
+				Path: blobPath,
+			})
 		})
+
 		if err != nil {
 			log.Err("getBlobSafe:: Failed to get Blob content for %s: %v", blobPath, err)
 			common.Assert(false, err)
 			return nil, nil, err
 		}
 
-		attr1, err := m.storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{
-			Name: blobPath,
+		attr1, err := common.Retry(0, 0, 0, func() (*internal.ObjAttr, error) {
+			// Simulate error injection for testing/debugging.
+			injectErr := common.InjectError(common.PROB_VERY_HIGH, "getBlobSafe:: Simulating error in GetProperties for", blobPath)
+			if injectErr != nil {
+				return nil, injectErr
+			}
+
+			return m.storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{
+				Name: blobPath,
+			})
 		})
+
 		if err != nil {
 			log.Err("getBlobSafe:: Failed to get Blob properties for %s: %v", blobPath, err)
 			return nil, nil, err
