@@ -330,7 +330,7 @@ func (rv *rvInfo) incReservedSpace(bytes int64) {
 
 // Decrement the reserved space for this RV.
 func (rv *rvInfo) decReservedSpace(bytes int64) {
-	common.Assert(bytes > 0)
+	common.Assert(bytes >= 0, bytes)
 	rv.reservedSpace.Add(-bytes)
 	common.Assert(rv.reservedSpace.Load() >= 0, rv.rvName, rv.reservedSpace.Load())
 	log.Debug("rvInfo::decReservedSpace: reserved space for RV %s is %d", rv.rvName, rv.reservedSpace.Load())
