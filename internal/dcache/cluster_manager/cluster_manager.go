@@ -524,7 +524,7 @@ func cleanupRV(rv dcache.RawVolume) error {
 				log.Err("ClusterManager::cleanupRV: os.RemoveAll (%s) failed: %v", dir, err)
 				deleteFailures.Add(1)
 			} else {
-				log.Info("ClusterManager::cleanupRV: Deleted MV dir %s/%s", rv.LocalCachePath, dir)
+				log.Info("ClusterManager::cleanupRV: Deleted MV dir %s", dir)
 				deleteSuccess.Add(1)
 			}
 		}(filepath.Join(rv.LocalCachePath, entry.Name()))
@@ -1347,7 +1347,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	// Skip if we're neither leader nor the clustermap is stale
 	//
 	if !leader && !stale {
-		log.Info("ClusterManager::updateStorageClusterMapIfRequired: skipping, node (%s) is not leader (leader is %s) and clusterMap is fresh (last updated at epoch %d, now %d, age %s)",
+		log.Info("ClusterManager::updateStorageClusterMapIfRequired: skipping, node (%s) is not leader (leader is %s) and clusterMap is fresh (last updated at epoch %d, now %d, age %d secs)",
 			cmi.myNodeId, leaderNode, clusterMap.LastUpdatedAt, now, clusterMapAge)
 		return nil
 	}
@@ -1356,7 +1356,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	// This is an uncommon event, so log.
 	//
 	if !leader {
-		log.Warn("ClusterManager::updateStorageClusterMapIfRequired: clusterMap not updated by current leader (%s) for %s, ownership being claimed by new leader %s",
+		log.Warn("ClusterManager::updateStorageClusterMapIfRequired: clusterMap not updated by current leader (%s) for %d secs, ownership being claimed by new leader %s",
 			leaderNode, clusterMapAge, cmi.myNodeId)
 	}
 
@@ -2440,9 +2440,10 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) (stri
 			action = "joining"
 		} else {
 			//
-			// Else, fix-mv and online RV, send UpdateMV.
+			// Else, fix-mv and online/syncing RV, send UpdateMV.
 			//
-			common.Assert(mv.RVs[rv.Name] == dcache.StateOnline)
+			common.Assert(mv.RVs[rv.Name] == dcache.StateOnline ||
+				mv.RVs[rv.Name] == dcache.StateSyncing, rv.Name, mv.RVs[rv.Name])
 			_, err = rpc_client.UpdateMV(ctx, cm.RVNameToNodeId(rv.Name), updateMvReq)
 			action = "updating"
 		}
@@ -2715,7 +2716,8 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, rvName string, 
 		elapsed := time.Since(startTime)
 		if elapsed > maxWait {
 			common.Assert(false)
-			return fmt.Errorf("ClusterManager::updateComponentRVState: Exceeded maxWait")
+			return fmt.Errorf("ClusterManager::updateComponentRVState: %s/%s to %s, exceeded maxWait",
+				rvName, mvName, rvNewState)
 		}
 
 		// Get most recent clustermap copy, then we will update the requested MV and publish it.
@@ -2856,8 +2858,8 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, rvName string, 
 		}
 
 		// The clustermap must now have update RV states in MV.
-		log.Info("ClusterManager::updateComponentRVState: clustermap MV is updated by %s at %d %+v",
-			cmi.myNodeId, clusterMap.LastUpdatedAt, clusterMapMV)
+		log.Info("ClusterManager::updateComponentRVState: clustermap MV (%s/%s, state change (%s -> %s)) is updated by %s at %d %+v",
+			rvName, mvName, currentState, rvNewState, cmi.myNodeId, clusterMap.LastUpdatedAt, clusterMapMV)
 
 		break
 	}

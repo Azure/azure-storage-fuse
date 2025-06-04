@@ -240,6 +240,22 @@ func ReportRVOffline(rvName string) error {
 func UpdateComponentRVState(mvName string, rvName string, rvNewState dcache.StateEnum) error {
 	// Clustermanager must call RegisterComponentRVStateUpdater() in startup, so we don't expect this to be nil.
 	common.Assert(componentRVStateUpdater != nil)
+
+	//
+	// When multiple threads call UpdateComponentRVState() it's not useful to let all of them proceed
+	// and fight it out using optimistic concurrency. That results in far more retries than if we coordinate
+	// and only allow one thread to update the global clustermap at one time. This happens when one or more
+	// RVs go down and we start one sync job for each replica, with 100s of MVs, there are 100s of sync jobs
+	// which run syncComponentRV() and call UpdateComponentRVState() multiple times.
+	//
+	// TODO: This still results in as many GetBlob/PutBlob calls as the number of threads calling this
+	//       function. We should try to batch the updates that come in close time proximity.
+	//       We can have a channel where we add the required updates and one go routine can then update the
+	//       global clustermap once every few seconds.
+	//
+	updateLock.Lock()
+	defer updateLock.Unlock()
+
 	return componentRVStateUpdater(mvName, rvName, rvNewState)
 }
 
@@ -250,6 +266,7 @@ func RegisterComponentRVStateUpdater(fn func(mvName string, rvName string, rvNew
 
 var (
 	componentRVStateUpdater func(mvName string, rvName string, rvNewState dcache.StateEnum) error
+	updateLock              sync.Mutex // Synchronizes calls to componentRVStateUpdater()
 	clusterMapRefresher     func() error
 	clusterMap              = &ClusterMap{
 		// This MUST match localClusterMapPath in clustermanager.
