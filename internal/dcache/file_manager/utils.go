@@ -164,7 +164,8 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 		return nil, err
 	}
 	//
-	// The Etag is used while finalizing the file.
+	// This Etag is used while finalizing the file.
+	//
 	return &DcacheFile{
 		FileMetadata: fileMetadata,
 		Etag:         eTag,
@@ -250,9 +251,7 @@ func DeleteDcacheFile(fileName string) error {
 	if err != nil {
 		log.Err("DistributedCache[FM]::DeleteDcacheFile : failed to delete file %s: %v", fileName, err)
 		// If err is ENOENT, then Maybe source gets deleted by the other node before it.
-		if err != syscall.ENOENT {
-			common.Assert(false, fileName)
-		}
+		common.Assert(err == syscall.ENOENT, fileName)
 		return err
 	}
 

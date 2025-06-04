@@ -962,7 +962,7 @@ func (dc *DistributedCache) CloseFile(options internal.CloseFileOptions) error {
 
 	if options.Handle.IsFsDcache() {
 		common.Assert(options.Handle.IFObj != nil)
-		common.Assert(!options.Handle.IsDcacheAllowReads() || !options.Handle.IsDcacheAllowReads())
+		common.Assert(!options.Handle.IsDcacheAllowReads() || !options.Handle.IsDcacheAllowWrites())
 
 		dcFile := options.Handle.IFObj.(*fm.DcacheFile)
 		// While creating the file and closing the file immediately, we don't get the flush call, as libfuse component only

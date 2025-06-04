@@ -158,6 +158,7 @@ func GetFile(filePath string) ([]byte, int64, dcache.FileState, *internal.ObjAtt
 	return metadataManagerInstance.getFile(filePath)
 }
 
+// Renames file only when dst dont exist, else returns error EEXIST.
 func RenameFileToDeleting(filePath string, deletedFilePath string) error {
 	return metadataManagerInstance.renameFileToDeleting(filePath, deletedFilePath)
 }
@@ -357,27 +358,8 @@ func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata [
 	common.Assert(len(fileMetadata) > 0)
 	common.Assert(fileSize >= 0)
 	common.Assert(fileSize < (1000 * 1000 * 1000 * common.GbToBytes)) // Sanity check.
-	common.Assert(eTag != "")
 
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
-
-	//
-	// In debug env, make sure the metadata file is present, it must have been created by a prior call
-	// to CreateFileInit().
-	//
-	if common.IsDebugBuild() {
-		prop, err := m.storageCallback.GetPropertiesFromStorage(
-			internal.GetAttrOptions{Name: path})
-		common.Assert(err == nil, err)
-
-		// Extract the size from the metadata properties, it must be "-1" as set by createFileInit().
-		size, ok := prop.Metadata["cache_object_length"]
-		common.Assert(ok && *size == "-1", ok, *size)
-
-		// Extract the state form the metadata properties, it must be "writing" as set by createFileInit().
-		state, ok := prop.Metadata["state"]
-		common.Assert(ok && *state == string(dcache.Writing))
-	}
 
 	// Store the open-count and file size in the metadata blob property.
 	openCount := "0"
@@ -391,7 +373,7 @@ func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata [
 	//
 	// When finalizing the file we must keep in mind that there is a chance that this file may already got deleted by
 	// some other/same node. Now we should not put this finalize blob, as the file already got renamed to some temp file.
-	// To get this behaiour we use the eTag which was present when the fileInit happened, the same would be used here.
+	// To get this behaviour we use the eTag which was present when the fileInit happened, the same would be used here.
 	// When this scneario happens the metablob can be present if some new node creates the same file again/ not exist at
 	// all.
 	//
@@ -405,9 +387,9 @@ func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata [
 
 	if err != nil {
 		if bloberror.HasCode(err, bloberror.ConditionNotMet) {
-			log.Warn("CreateFileFinalize:: Failed to put blob %s in storage: %v", path, err)
+			log.Warn("CreateFileFinalize:: Failed to put metadata blob %s in storage: %v", path, err)
 		} else {
-			log.Err("CreateFileFinalize:: Failed to put blob %s in storage: %v", path, err)
+			log.Err("CreateFileFinalize:: Failed to put metadata blob %s in storage: %v", path, err)
 			common.Assert(false, err)
 		}
 		return err
@@ -575,7 +557,7 @@ func (m *BlobMetadataManager) closeFile(filePath string, attr *internal.ObjAttr)
 }
 
 // Helper function used by openFile() and closeFile() to atomically update the value of the "opencount"
-// metadata variable.
+// metadata variable. Updates the Etag in the attr struct on successful updation of the "opencount".
 func (m *BlobMetadataManager) updateHandleCount(path string, attr *internal.ObjAttr, increment bool) (int64, error) {
 	common.Assert(len(path) > 0)
 	common.Assert(attr != nil)
@@ -584,15 +566,16 @@ func (m *BlobMetadataManager) updateHandleCount(path string, attr *internal.ObjA
 	const maxBackoff = 1 * time.Second   // Maximum backoff time in seconds
 	backoff := 1 * time.Millisecond      // Initial backoff time in milliseconds
 	var openCount int
-	startTime := time.Now()
-	i := 0
 	var err error
-	newAttr := attr
+	var startTime time.Time = time.Now()
+	var i int = 0
+	var newAttr *internal.ObjAttr = attr
 
 	for {
 		i++
 		if i > 1 {
-			// Get the current open count.
+			// Get the current open count from the second iteration. First we use the existing attr info that is already
+			// present with us to reduce an extra REST API call.
 			newAttr, err = m.storageCallback.GetPropertiesFromStorage(internal.GetAttrOptions{
 				Name: path,
 			})
@@ -678,8 +661,9 @@ func (m *BlobMetadataManager) updateHandleCount(path string, attr *internal.ObjA
 		}
 	}
 
-	// Update the Etag of the original attr
-	attr.ETag = newAttr.ETag
+	// TODO: return Etag in setMetadata API in azstorage component.
+	// Update the Etag in the original attr by the eTag returned by the set-metadata call.
+	// attr.ETag = newEtag
 
 	return int64(openCount), nil
 }

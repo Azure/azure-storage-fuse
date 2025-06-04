@@ -64,6 +64,7 @@ type MetadataManager interface {
 	getFile(filePath string) ([]byte, int64, dcache.FileState, *internal.ObjAttr, error)
 
 	// Renames the metadata file to <fileName>.<fileId>.dcache.deleting
+	// Renames only when dst file don't exist.
 	renameFileToDeleting(filePath string, fileId string) error
 
 	// DeleteFile removes metadata for a file.

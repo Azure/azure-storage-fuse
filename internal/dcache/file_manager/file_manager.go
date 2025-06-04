@@ -192,8 +192,9 @@ type DcacheFile struct {
 	Etag string
 	// Etag in this attr can be used to conditionally upgrade the blob while finalizing the file.
 	attr *internal.ObjAttr
-	// This attr is used for optimizing the REST calls.
-	// attr info is also used for decrementing read FD count while closing the files when safe deletes is enabled.
+	// This attr is used for optimizing the REST API calls.
+	// for example, this attr info is used for incrementing/decrementing read FD count while opening/closing the files
+	// when safe deletes is enabled.
 }
 
 // Reads the file data from the given offset and length to buf[].
@@ -464,10 +465,10 @@ func (file *DcacheFile) ReleaseFile(isReadOnlyHandle bool) error {
 		if err != nil {
 			log.Err("DistributedCache[FM]::ReleaseFile: Failed to decrement the FD count for file %s: %v",
 				file.FileMetadata.Filename, err)
+		} else {
+			log.Debug("DistributedCache[FM]::ReleaseFile: Decrement FD count success, current FD count: %d, file: %s",
+				curFDcnt, file.FileMetadata.Filename)
 		}
-
-		log.Debug("DistributedCache[FM]::ReleaseFile: Decrement FD count success, current FD count: %d, file: %s",
-			curFDcnt, file.FileMetadata.Filename)
 	}
 
 	return nil
