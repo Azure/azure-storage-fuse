@@ -1888,7 +1888,7 @@ func (h *ChunkServiceHandler) UpdateMV(ctx context.Context, req *models.UpdateMV
 		//       f.e. some node is syncing and has changed state of an rv to syncing
 		//       meanwhile some other node with an older clustermap wants to join an MV to this rv.
 		//       it fetched clustermap but then due to n/w down, by the time it reached fixMV, rv was
-		//		 already marked syncing, but now it has rv as outofsync and it forces it as that
+		//       already marked syncing, but now it has rv as outofsync and it forces it as that
 		//
 		err := mvInfo.updateComponentRVs(req.ComponentRV, false /* forceUpdate */)
 		if err != nil {
