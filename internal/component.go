@@ -143,5 +143,5 @@ type Component interface {
 	GetCommittedBlockList(string) (*CommittedBlockList, error)
 	StageData(StageDataOptions) error
 	CommitData(CommitDataOptions) error
-	WriteFromBuffer(WriteFromBufferOptions) error
+	WriteFromBuffer(WriteFromBufferOptions) (string, error)
 }
