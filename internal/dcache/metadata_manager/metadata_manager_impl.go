@@ -210,6 +210,14 @@ func GetClusterMap() ([]byte, *string, error) {
 	return metadataManagerInstance.getClusterMap()
 }
 
+// Some of the metadata_manager functions return an error possibly due to a condition failure (etag mismatch or
+// blob already exists, etc), or some other error.
+// Caller can sometimes act differently based on the exact error. It can cal this to find out if a returned
+// error is due to a condition failure.
+func IsErrConditionNotMet(err error) bool {
+	return bloberror.HasCode(err, bloberror.ConditionNotMet)
+}
+
 // Helper function to read and return the content of the blob identifed by blobPath, safe from simultaneous
 // read/write, as a byte array and the attributes corresponding to the returned blob, returns error on failure.
 // It's resilient against changes to the Blob between GetProperties and GetBlob.

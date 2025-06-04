@@ -68,20 +68,68 @@ type fileIOManager struct {
 
 var fileIOMgr fileIOManager
 
-func NewFileIOManager(dCacheConfig *dcache.DCacheConfig, workers int, numReadAheadChunks int, numStagingChunks int, bufSize int, maxBuffers int) {
+func NewFileIOManager(dCacheConfig *dcache.DCacheConfig) error {
+	//
+	// A worker runs either readChunk() or writeChunk(), so this is the number of chunks we can be
+	// reading/writing in parallel. fileIOManager is one for the entire blobfuse process so these
+	// chunks can be spread across multiple files and served from multiple nodes/RVs.
+	// Note that for writeChunk one worker is used up regardless of the NumReplicas setting. Each
+	// replica write uses just one ReplicationManager worker but only one fileIOManager worker per
+	// MV write (not replica write).
+	// Since all these reads/writes may be served from different nodes/RVs, the limiting factor would
+	// be the n/w b/w of this node. We need enough parallel readChunk/writeChunk for maxing out the
+	// n/w b/w of the node. Keeping small files in mind, and given that go routines are not very
+	// expensive, we keep 1000 workers.
+	//
+	workers := 1000
+
+	//
+	// How many chunks will we readahead per file.
+	// To achieve high sequential read throughput, this number should be kept reasonably high.
+	// With 4MiB chunk size, 64 readahead chunks will use up 256MiB of memory per file.
+	//
+	numReadAheadChunks := 64
+
+	//
+	// How many writeback chunks per file.
+	// These many chunks we will store per file before we put back pressure on the writer application.
+	// Obviously we start upload of chunks as soon as we have a full chunk, so only those chunks will
+	// eat up the writeback space which are not completely written to the target node.
+	// Hopefully we won't be writing too many large files simultaneously, so we can keep this number
+	// high enough to give 1GiB writeback space per file.
+	//
+	numStagingChunks := 256
+
+	//
+	// Size of buffers managed by bufferPool.
+	// This should be equal to the chunk size we support, since each buffer can hold upto one chunk
+	// worth of data.
+	//
+	bufSize := uint64(cm.GetCacheConfig().ChunkSize)
+
+	//
+	// Maximum numbers of 'bufSize' buffers can be allocated from the bufferPool.
+	// We should allow sufficiently many buffers to support at least few files being read/written
+	// simultaneously.
+	// Note that only writeChunk uses buffers from this pool while readChunk uses buffers allocated by
+	// thrift and those are not accounted in this.
+	//
+	// TODO: Find out how/if thrift controls those buffers, or does it result in OOM killing of the
+	//       process.
+	//
+	maxBuffers := uint64(1024)
+
+	//
+	// How much percent of the system RAM (available memory to be precise) are we allowed to use?
+	//
+	// TODO: This can be config value.
+	//
+	usablePercentSystemRAM := 50
+
 	common.Assert(workers > 0)
 	common.Assert(numReadAheadChunks > 0)
 	common.Assert(numStagingChunks > 0)
-	common.Assert(dCacheConfig != nil)
-	//
-	// Buffer less than chunk size is not useful.
-	// Currently we have single buffer size for the entire fileIOManager. This means we cannot support
-	// different chunk sizes for different files.
-	//
-	// TODO: Need different sized buffer pools for supporting variable chunk sized files.
-	// TODO: Remove bufSize param and compute it here from the config chunk size.
-	//
-	common.Assert(bufSize >= int(cm.GetCacheConfig().ChunkSize))
+
 	common.Assert(maxBuffers > 0)
 
 	// NewFileIOManager() must be called only once, during startup.
@@ -89,7 +137,18 @@ func NewFileIOManager(dCacheConfig *dcache.DCacheConfig, workers int, numReadAhe
 	common.Assert(fileIOMgr.bp == nil)
 	common.Assert(fileIOMgr.dCacheConfig == nil)
 
-	// TODO: Get the global cache config instead of the local one.
+	//
+	// Allow higher number of maxBuffers if system can afford.
+	//
+	ramMB, err := common.GetAvailableMemoryInMB()
+	if err != nil {
+		return fmt.Errorf("NewFileIOManager: %v", err)
+	}
+
+	// usableMemory in bytes capped by usablePercentSystemRAM.
+	usableMemory := (ramMB * 1024 * 1024 * uint64(usablePercentSystemRAM)) / 100
+	maxBuffers = max(maxBuffers, usableMemory/bufSize)
+
 	fileIOMgr = fileIOManager{
 		dCacheConfig:       dCacheConfig,
 		numReadAheadChunks: numReadAheadChunks,
@@ -97,10 +156,16 @@ func NewFileIOManager(dCacheConfig *dcache.DCacheConfig, workers int, numReadAhe
 	}
 
 	fileIOMgr.wp = NewWorkerPool(workers)
-	fileIOMgr.bp = NewBufferPool(bufSize, maxBuffers)
+
+	//
+	// We use single chunk size, setup the buffer pool to allocate ChunkSize sized buffers.
+	//
+	fileIOMgr.bp = NewBufferPool(int(bufSize), int(maxBuffers))
 
 	common.Assert(fileIOMgr.wp != nil)
 	common.Assert(fileIOMgr.bp != nil)
+
+	return nil
 }
 
 func EndFileIOManager() {
@@ -465,7 +530,10 @@ func (file *DcacheFile) finalizeFile() error {
 }
 
 // Return the requested chunk from the staged chunks, if present, else create a new one and add to the staged chunks.
-func (file *DcacheFile) getChunk(chunkIdx int64) (*StagedChunk, bool, error) {
+// 'allocateBuf' controls if the StagedChunk returned has its buffer allocated by us. Note that ReadMV()
+// returns the buffer where the data is read by the GetChunk() RPC, so we don't want a pre-allocated buffer
+// in that case.
+func (file *DcacheFile) getChunk(chunkIdx int64, allocateBuf bool) (*StagedChunk, bool, error) {
 	log.Debug("DistributedCache::getChunk: file: %s, chunkIdx: %d", file.FileMetadata.Filename, chunkIdx)
 
 	if chunkIdx < 0 {
@@ -479,10 +547,13 @@ func (file *DcacheFile) getChunk(chunkIdx int64) (*StagedChunk, bool, error) {
 	}
 
 	// Else, allocate a new staged chunk.
-	chunk, err := NewStagedChunk(chunkIdx, file)
+	chunk, err := NewStagedChunk(chunkIdx, file, allocateBuf)
 	if err != nil {
 		return nil, false, err
 	}
+
+	common.Assert(chunk.IsBufExternal == !allocateBuf, chunk.IsBufExternal)
+	common.Assert(chunk.IsBufExternal == (chunk.Buf == nil), chunk.IsBufExternal, len(chunk.Buf))
 
 	// Add it to the StagedChunks, and return.
 	file.StagedChunks.Store(chunkIdx, chunk)
@@ -494,8 +565,10 @@ func (file *DcacheFile) getChunkForRead(chunkIdx int64) (*StagedChunk, error) {
 	log.Debug("DistributedCache::getChunkForRead: file: %s, chunkIdx: %d", file.FileMetadata.Filename, chunkIdx)
 
 	common.Assert(chunkIdx >= 0)
-
-	chunk, loaded, err := file.getChunk(chunkIdx)
+	//
+	// For read chunk, we use the buffer returned by the GetChunk() RPC, that saves an extra copy.
+	//
+	chunk, loaded, err := file.getChunk(chunkIdx, false /* allocateBuf */)
 	if err == nil {
 		if !loaded {
 			// Brand new staged chunk, could not have been scheduled for read already.
@@ -516,7 +589,7 @@ func (file *DcacheFile) getChunkForWrite(chunkIdx int64) (*StagedChunk, error) {
 
 	common.Assert(chunkIdx >= 0)
 
-	chunk, loaded, err := file.getChunk(chunkIdx)
+	chunk, loaded, err := file.getChunk(chunkIdx, true /* allocateBuf */)
 	// TODO: Assert that number of staged chunks is less than fileIOManager.numStagingChunks.
 	//
 	// For write chunks chunk.Len is the amount of valid data in the chunk. It starts at 0 and updated as user
@@ -552,16 +625,24 @@ func (file *DcacheFile) removeChunk(chunkIdx int64) {
 	Ichunk, loaded := file.StagedChunks.LoadAndDelete(chunkIdx)
 	if loaded {
 		chunk := Ichunk.(*StagedChunk)
-		fileIOMgr.bp.putBuffer(chunk.Buf)
+		file.releaseChunk(chunk)
 	}
 }
 
 // Release buffer for the staged chunk.
 func (file *DcacheFile) releaseChunk(chunk *StagedChunk) {
-	log.Debug("DistributedCache::releaseChunk: releasing buffer for staged chunk, file: %s, chunk idx: %d",
-		file.FileMetadata.Filename, chunk.Idx)
+	log.Debug("DistributedCache::releaseChunk: releasing buffer for staged chunk, file: %s, chunk idx: %d, external: %v",
+		file.FileMetadata.Filename, chunk.Idx, chunk.IsBufExternal)
 
-	fileIOMgr.bp.putBuffer(chunk.Buf)
+	//
+	// If buffer is allocated by NewStagedChunk(), free it to the pool, else it's an external buffer
+	// returned by ReadMV(), just drop our reference and let GC free it.
+	//
+	if chunk.IsBufExternal {
+		chunk.Buf = nil
+	} else {
+		fileIOMgr.bp.putBuffer(chunk.Buf)
+	}
 }
 
 // Read Chunk data from the file.
