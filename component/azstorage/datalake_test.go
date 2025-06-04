@@ -1384,6 +1384,27 @@ func (s *datalakeTestSuite) TestRenameFileError() {
 	s.assert.NotNil(err)
 }
 
+func (s *datalakeTestSuite) TestRenameFileNoReplace() {
+	defer s.cleanupTest()
+	// Setup
+	src := generateFileName()
+	s.az.CreateFile(internal.CreateFileOptions{Name: src})
+	dst := generateFileName()
+	s.az.CreateFile(internal.CreateFileOptions{Name: dst})
+
+	err := s.az.RenameFile(internal.RenameFileOptions{Src: src, Dst: dst, NoReplace: true})
+	s.assert.NotNil(err)
+	s.assert.EqualValues(syscall.EEXIST, err)
+
+	// Src and destination should be in the account
+	source := s.containerClient.NewDirectoryClient(src)
+	_, err = source.GetProperties(ctx, nil)
+	s.assert.Nil(err)
+	destination := s.containerClient.NewDirectoryClient(dst)
+	_, err = destination.GetProperties(ctx, nil)
+	s.assert.Nil(err)
+}
+
 func (s *datalakeTestSuite) TestReadFile() {
 	defer s.cleanupTest()
 	// Setup
@@ -2626,9 +2647,10 @@ func (s *datalakeTestSuite) TestUploadWithCPKEnabled() {
 	s.assert.NotNil(resp.RequestID)
 
 	name2 := generateFileName()
-	_, err = s.az.storage.WriteFromBuffer(internal.WriteFromBufferOptions{Name: name2,
+	eTag, err := s.az.storage.WriteFromBuffer(internal.WriteFromBufferOptions{Name: name2,
 		Data: data})
 	s.assert.Nil(err)
+	s.assert.NotEqual(eTag, "")
 
 	fileClient = s.containerClient.NewFileClient(name2)
 	resp, err = fileClient.DownloadStream(ctx, &file.DownloadStreamOptions{

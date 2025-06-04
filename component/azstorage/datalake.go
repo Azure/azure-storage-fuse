@@ -335,16 +335,18 @@ func (dl *Datalake) RenameFile(options internal.RenameFileOptions) error {
 	log.Trace("Datalake::RenameFile : %s -> %s", options.Src, options.Dst)
 
 	fileClient := dl.Filesystem.NewFileClient(url.PathEscape(filepath.Join(dl.Config.prefixPath, options.Src)))
+
 	renameOptions := &file.RenameOptions{
 		CPKInfo: dl.datalakeCPKOpt,
 	}
-	//	if options.NoReplace {
-	renameOptions.AccessConditions = &file.AccessConditions{
-		ModifiedAccessConditions: &file.ModifiedAccessConditions{
-			IfNoneMatch: to.Ptr(azcore.ETagAny),
-		},
+
+	if options.NoReplace {
+		renameOptions.AccessConditions = &file.AccessConditions{
+			ModifiedAccessConditions: &file.ModifiedAccessConditions{
+				IfNoneMatch: to.Ptr(azcore.ETagAny),
+			},
+		}
 	}
-	//	}
 
 	renameResponse, err := fileClient.Rename(context.Background(), filepath.Join(dl.Config.prefixPath, options.Dst), renameOptions)
 	if err != nil {
