@@ -361,7 +361,7 @@ func (bb *BlockBlob) DeleteDirectory(name string) (err error) {
 // Copy the LMT to the src attr if the copy is success.
 // https://learn.microsoft.com/en-us/rest/api/storageservices/copy-blob?tabs=microsoft-entra-id
 func (bb *BlockBlob) RenameFile(options internal.RenameFileOptions) error {
-	log.Trace("BlockBlob::RenameFile : %s -> %s", options.Src, options.Dst)
+	log.Trace("BlockBlob::RenameFile : %s -> %s, NoReplace: %v", options.Src, options.Dst, options.NoReplace)
 
 	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, options.Src))
 	newBlobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, options.Dst))
@@ -371,6 +371,7 @@ func (bb *BlockBlob) RenameFile(options internal.RenameFileOptions) error {
 	copyFromURLOptions := &blob.StartCopyFromURLOptions{
 		Tier: bb.Config.defaultTier,
 	}
+
 	if options.NoReplace {
 		copyFromURLOptions.AccessConditions = &blob.AccessConditions{
 			ModifiedAccessConditions: &blob.ModifiedAccessConditions{
@@ -388,7 +389,7 @@ func (bb *BlockBlob) RenameFile(options internal.RenameFileOptions) error {
 			log.Err("BlockBlob::RenameFile : Src Blob doesn't Exist %s [%s]", options.Src, err.Error())
 			return syscall.ENOENT
 		} else if serr == ErrFileAlreadyExists {
-			common.Assert(options.NoReplace)
+			common.Assert(options.NoReplace, options)
 			log.Err("BlockBlob::RenameFile : Dst Blob Exists %s [%s]", options.Dst, err.Error())
 			return syscall.EEXIST
 		}
