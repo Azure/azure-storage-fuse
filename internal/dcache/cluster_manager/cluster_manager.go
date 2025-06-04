@@ -53,6 +53,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
+	rm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/replication_manager"
 	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 	rpc_server "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/server"
@@ -1941,9 +1942,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		//
 		// Iff joinMV() is successful, consume one slot for each component RV and update existingMVMap.
 		//
-		// TODO: Set reserveBytes correctly, querying it from our in-core RV info maintained by RPC server.
-		//
-		failedRV, err := cmi.joinMV(mvName, mv, 0 /* reserveBytes */)
+		failedRV, err := cmi.joinMV(mvName, mv)
 		if err == nil {
 			log.Info("ClusterManager::fixMV: Successfully joined/updated all component RVs %+v to MV %s, original [%+v]",
 				mv.RVs, mvName, savedRVs)
@@ -2274,7 +2273,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		// delete the failed RV fom nodeToRvs to prevent this RV from being picked again and failing.
 		// Also we need to remove mv frome existingMVMap.
 		//
-		failedRV, err := cmi.joinMV(mvName, existingMVMap[mvName], 0 /* reserveBytes */)
+		failedRV, err := cmi.joinMV(mvName, existingMVMap[mvName])
 		if err == nil {
 			log.Info("ClusterManager::updateMVList: Successfully joined all component RVs %+v to MV %s",
 				existingMVMap[mvName].RVs, mvName)
@@ -2309,9 +2308,6 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 // It calls JoinMV for RVs joining the MV newly and UpdateMV for existing component RVs which need to be informed of
 // the updated membership details. For JoinMV RPC requests it sets the ReserveSpace to reserveBytes.
 // The caller must have updated 'mv' with the correct component RVs and their state before calling this.
-// 'reserveBytes' is the amount of space to reserve in the RV. This will be 0 when joinMV() is called from the
-// new-mv workflow, but can be non-zero when called from the fix-mv workflow for replacing an offline RV with
-// a new good RV. The new RV must need enough space to store the chunks for this MV.
 //
 // It sends JoinMV/UpdateMV based on following:
 //   - It sends JoinMV RPC to all RVs of a new MV. A new MV is one which has state of online, because we will not be
@@ -2321,8 +2317,8 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 //   - For existing MVs, it sends UpdateMV for online component RVs.
 //
 // TODO: joinMV() should technically return more than one failed RVs.
-func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume, reserveBytes int64) (string, error) {
-	log.Debug("ClusterManagerImpl::joinMV: JoinMV(%s, %+v, reserveBytes: %d)", mvName, mv, reserveBytes)
+func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) (string, error) {
+	log.Debug("ClusterManager::joinMV: JoinMV(%s, %+v)", mvName, mv)
 
 	var componentRVs []*models.RVNameAndState
 	var numRVsOnline int
@@ -2340,11 +2336,39 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume, reser
 	// Caller must call us only with all component RVs set.
 	common.Assert(len(mv.RVs) == int(cmi.config.NumReplicas), len(mv.RVs), cmi.config.NumReplicas)
 
+	//
+	// 'reserveBytes' is the amount of space to reserve in the RV. This will be 0 when joinMV()
+	// is called from the new-mv workflow, but can be non-zero when called from the fix-mv workflow
+	// for replacing an offline RV with a new good RV. The new RV must need enough space to store
+	// the chunks for this MV.
+	//
+	var reserveBytes int64
+	var err error
+
+	if !newMV {
+		//
+		// Get the reserveBytes correctly, querying it from our in-core RV info maintained by RPC server.
+		//
+		reserveBytes, err = rm.GetMVSize(mvName)
+		if err != nil {
+			err = fmt.Errorf("failed to get disk usage of %s [%v]", mvName, err)
+			log.Err("ClusterManager::joinMV: %v", err)
+			common.Assert(false, err)
+			// TODO: return error. Skipping it now because the caller of joinMV() expects failed RVs
+			// along with the error. So, the error handling part of the caller must be updated to handle
+			// the error returned in this case as below.
+			// return "", err
+		}
+	}
+
+	log.Debug("ClusterManager::joinMV: %s, state: %s, new-mv: %v, reserve bytes: %d",
+		mvName, string(mv.State), newMV, reserveBytes)
+
 	// reserveBytes must be non-zero only for degraded MV, for new-mv it'll be 0.
 	common.Assert(reserveBytes == 0 || mv.State == dcache.StateDegraded, reserveBytes, mv.State)
 
 	for rvName, rvState := range mv.RVs {
-		log.Debug("ClusterManagerImpl::joinMV: Populating componentRVs list MV %s with RV %s", mvName, rvName)
+		log.Debug("ClusterManager::joinMV: Populating componentRVs list MV %s with RV %s", mvName, rvName)
 
 		//
 		// For new-mv all component RVs must be online, for fix-mv we can have the following component RV states:
@@ -2384,7 +2408,7 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume, reser
 			continue
 		}
 
-		log.Debug("ClusterManagerImpl::joinMV: Joining MV %s with RV %s", mvName, rv.Name)
+		log.Debug("ClusterManager::joinMV: Joining MV %s with RV %s", mvName, rv.Name)
 
 		joinMvReq := &models.JoinMVRequest{
 			MV:           mvName,
@@ -2426,7 +2450,7 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume, reser
 
 		if err != nil {
 			err = fmt.Errorf("error %s MV %s with RV %s: %v", action, mvName, rv.Name, err)
-			log.Err("ClusterManagerImpl::joinMV: %v", err)
+			log.Err("ClusterManager::joinMV: %v", err)
 			return rv.Name, err
 		}
 	}
