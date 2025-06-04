@@ -245,7 +245,7 @@ func (m *BlobMetadataManager) getBlobSafe(blobPath string) ([]byte, *internal.Ob
 		}
 
 		if err != nil {
-			log.Err("getBlobSafe:: Failed to get Blob properties for %s after retries: %v", blobPath, err)
+			log.Err("getBlobSafe:: Failed to get Blob properties for %s: %v", blobPath, err)
 			return nil, nil, err
 		}
 
