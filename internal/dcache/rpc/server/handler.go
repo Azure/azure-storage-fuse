@@ -135,7 +135,7 @@ type mvInfo struct {
 	// added by new-mv workflow. Put another way, this will be non-zero only for MV replicas which are in
 	// outofsync or syncing state. On an EndSync request, that converts syncing state to online state
 	// mvInfo.reservedSpace is cleared and its value is added to mvInfo.totalChunkBytes, also this is
-	// reduced from rvInfo.reservedSpace as this space is no longer reseved but rather actual space is now
+	// reduced from rvInfo.reservedSpace as this space is no longer reserved but rather actual space is now
 	// used by chunks stored in the RV.
 	// If an MV replica cannot complete resync, this must be reduced from rvInfo.reservedSpace.
 	// This means while an MV replica is being sync'ed the space used on the RV may be overcompensated, this
@@ -301,7 +301,7 @@ func (rv *rvInfo) addToMVMap(mvName string, mv *mvInfo, reservedSpace int64) {
 	// Note that the actual space reservation is done in rvInfo.reservedSpace, while mvInfo.reservedSpace
 	// is used for undoing rvInfo.reservedSpace in case the sync does not complete.
 	//
-	common.Assert(mv.reservedSpace.Load() == 0, mv.reservedSpace, rv.rvName, mvName)
+	common.Assert(mv.reservedSpace.Load() == 0, mv.reservedSpace.Load(), rv.rvName, mvName)
 	mv.reservedSpace.Store(reservedSpace)
 	rv.incReservedSpace(reservedSpace)
 
@@ -331,11 +331,8 @@ func (rv *rvInfo) incReservedSpace(bytes int64) {
 // Decrement the reserved space for this RV.
 func (rv *rvInfo) decReservedSpace(bytes int64) {
 	common.Assert(bytes > 0)
-	//
-	// TODO: Uncomment this only after clustermanager joinMV() correctly reserves space for MV replica.
-	//
-	// rv.reservedSpace.Add(-bytes)
-	// common.Assert(rv.reservedSpace.Load() >= 0, rv.rvName, rv.reservedSpace.Load())
+	rv.reservedSpace.Add(-bytes)
+	common.Assert(rv.reservedSpace.Load() >= 0, rv.rvName, rv.reservedSpace.Load())
 	log.Debug("rvInfo::decReservedSpace: reserved space for RV %s is %d", rv.rvName, rv.reservedSpace.Load())
 }
 
@@ -524,10 +521,7 @@ func (mv *mvInfo) isSourceOrTargetOfSync() (isSource bool, isTarget bool) {
 		}
 	})
 
-	// Unreachable code.
-	common.Assert(false)
-
-	return false, false
+	return isSource, isTarget
 }
 
 // Get component RVs for this MV.
@@ -797,7 +791,7 @@ func (mv *mvInfo) refreshFromClustermap() error {
 		if oldRvNameAndState.State == string(dcache.StateOutOfSync) && rvState == dcache.StateOffline {
 			common.Assert(mv.rv.reservedSpace.Load() >= mv.reservedSpace.Load(),
 				mv.rv.reservedSpace.Load(), mv.reservedSpace.Load())
-			mv.rv.reservedSpace.Add(-mv.reservedSpace.Load())
+			mv.rv.decReservedSpace(mv.reservedSpace.Load())
 			mv.reservedSpace.Store(0)
 		}
 
@@ -1613,15 +1607,18 @@ refreshFromClustermapAndRetry:
 	//       but instead use a hardcoded value which will be true for a given hash algo.
 	//       Also we need to be sure that hash is calculated uniformly (either always or never)
 
-	// Increment the total chunk bytes for this MV.
-	mvInfo.incTotalChunkBytes(req.Length)
-
 	//
-	// For successful sync PutChunk calls, decrement the reserved space for this RV.
-	// JoinMV would have reserved this space before starting sync.
+	// Increment the total chunk bytes for this MV for PutChunk(client) calls.
+	// For PutChunk(sync) calls, the MV's totalChunkBytes will be updated in the EndSync call,
+	// once the sync completes.
 	//
-	if len(req.SyncID) > 0 {
+	if len(req.SyncID) == 0 {
+		mvInfo.incTotalChunkBytes(req.Length)
+	} else {
+		// JoinMV would have reserved this space before starting sync.
 		common.Assert(rvInfo.reservedSpace.Load() >= req.Length, rvInfo.reservedSpace.Load(), req.Length)
+		common.Assert(rvInfo.reservedSpace.Load() >= mvInfo.reservedSpace.Load(),
+			rvInfo.reservedSpace.Load(), mvInfo.reservedSpace.Load())
 	}
 
 	resp := &models.PutChunkResponse{
@@ -2181,7 +2178,7 @@ func (h *ChunkServiceHandler) EndSync(ctx context.Context, req *models.EndSyncRe
 	common.Assert(rvInfo.reservedSpace.Load() >= mvInfo.reservedSpace.Load(),
 		rvInfo.reservedSpace.Load(), mvInfo.reservedSpace.Load(), rvInfo.rvName,
 		req.MV, rpc.EndSyncRequestToString(req))
-	rvInfo.reservedSpace.Add(-mvInfo.reservedSpace.Load())
+	rvInfo.decReservedSpace(mvInfo.reservedSpace.Load())
 	mvInfo.reservedSpace.Store(0)
 
 	log.Debug("ChunkServiceHandler::EndSync: %s/%s responding to EndSync request: %s",

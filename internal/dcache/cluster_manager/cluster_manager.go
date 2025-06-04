@@ -523,7 +523,7 @@ func cleanupRV(rv dcache.RawVolume) error {
 				log.Err("ClusterManager::cleanupRV: os.RemoveAll (%s) failed: %v", dir, err)
 				deleteFailures.Add(1)
 			} else {
-				log.Info("ClusterManager::cleanupRV: Deleted MV dir %s/%s", rv.LocalCachePath, dir)
+				log.Info("ClusterManager::cleanupRV: Deleted MV dir %s", dir)
 				deleteSuccess.Add(1)
 			}
 		}(filepath.Join(rv.LocalCachePath, entry.Name()))
