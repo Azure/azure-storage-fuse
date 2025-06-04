@@ -2242,6 +2242,11 @@ func (h *ChunkServiceHandler) GetMVSize(ctx context.Context, req *models.GetMVSi
 		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRequest, errStr)
 	}
 
+	//
+	// GetMVSize is only called for online MV replicas, for which reservedSpace should be 0.
+	//
+	common.Assert(mvInfo.reservedSpace.Load() == 0, rvInfo.rvName, req.MV, mvInfo.reservedSpace.Load())
+
 	return &models.GetMVSizeResponse{
 		MvSize: mvInfo.totalChunkBytes.Load(),
 	}, nil
