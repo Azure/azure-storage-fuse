@@ -79,6 +79,9 @@ func (pw *parallelWriter) destroyParallelWriter() {
 }
 
 func (pw *parallelWriter) azureWriter() {
+	pw.wg.Add(1)
+	defer pw.wg.Done()
+
 	for az := range pw.azureWriterQueue {
 		err := az.writer()
 		az.err <- err
@@ -86,6 +89,9 @@ func (pw *parallelWriter) azureWriter() {
 }
 
 func (pw *parallelWriter) dcacheWriter() {
+	pw.wg.Add(1)
+	defer pw.wg.Done()
+
 	for dc := range pw.dcacheWriterQueue {
 		err := dc.writer()
 		dc.err <- err
