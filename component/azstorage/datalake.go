@@ -332,7 +332,7 @@ func (dl *Datalake) DeleteDirectory(name string) (err error) {
 // While renaming the file, Creation time is preserved but LMT is changed for the destination blob.
 // and also Etag of the destination blob changes
 func (dl *Datalake) RenameFile(options internal.RenameFileOptions) error {
-	log.Trace("Datalake::RenameFile : %s -> %s", options.Src, options.Dst)
+	log.Trace("Datalake::RenameFile : %s -> %s, NoReplace: %v", options.Src, options.Dst, options.NoReplace)
 
 	fileClient := dl.Filesystem.NewFileClient(url.PathEscape(filepath.Join(dl.Config.prefixPath, options.Src)))
 
@@ -355,7 +355,7 @@ func (dl *Datalake) RenameFile(options internal.RenameFileOptions) error {
 			log.Err("Datalake::RenameFile : %s does not exist", options.Src)
 			return syscall.ENOENT
 		} else if serr == ErrFileAlreadyExists {
-			common.Assert(options.NoReplace)
+			common.Assert(options.NoReplace, options)
 			log.Err("BlockBlob::RenameFile : Dst Blob Exists %s [%s]", options.Dst, err.Error())
 			return syscall.EEXIST
 		} else {
