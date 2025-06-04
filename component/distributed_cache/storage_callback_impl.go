@@ -93,11 +93,13 @@ func (sci *StorageCallbackImpl) SetMetaPropertiesInStorage(options internal.SetM
 	return sci.storage.SetMetadata(options)
 }
 
-func (sci *StorageCallbackImpl) PutBlobInStorage(options internal.WriteFromBufferOptions) error {
+// Returns Etag of the blob incase of success
+func (sci *StorageCallbackImpl) PutBlobInStorage(options internal.WriteFromBufferOptions) (string, error) {
 	return sci.storage.WriteFromBuffer(options)
 }
 
-func (sci *StorageCallbackImpl) PutBlob(options internal.WriteFromBufferOptions) error {
+// Returns Etag of the blob incase of success
+func (sci *StorageCallbackImpl) PutBlob(options internal.WriteFromBufferOptions) (string, error) {
 	return sci.nextComp.WriteFromBuffer(options)
 }
 

@@ -313,7 +313,7 @@ func (m *BlobMetadataManager) createFileInit(filePath string, fileMetadata []byt
 		"state":               &state,
 	}
 
-	err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
+	_, err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
 		Name:                   path,
 		Data:                   fileMetadata,
 		Metadata:               metadata,
@@ -387,7 +387,7 @@ func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata [
 		"state":               &state,
 	}
 
-	err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
+	_, err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
 		Name:                   path,
 		Data:                   fileMetadata,
 		Metadata:               metadata,
@@ -719,7 +719,7 @@ func (m *BlobMetadataManager) updateHeartbeat(nodeId string, data []byte) error 
 
 	// Create the heartbeat file path.
 	heartbeatFilePath := filepath.Join(m.mdRoot, "Nodes", nodeId+".hb")
-	err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
+	_, err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
 		Name:                   heartbeatFilePath,
 		Data:                   data,
 		IsNoneMatchEtagEnabled: false,
@@ -825,7 +825,7 @@ func (m *BlobMetadataManager) createInitialClusterMap(clustermap []byte) error {
 
 	// Create the clustermap file path.
 	clustermapPath := filepath.Join(m.mdRoot, "clustermap.json")
-	err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
+	_, err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
 		Name:                   clustermapPath,
 		Data:                   clustermap,
 		IsNoneMatchEtagEnabled: true,
@@ -871,7 +871,7 @@ func (m *BlobMetadataManager) updateClusterMapStart(clustermap []byte, etag *str
 		common.Assert(err == nil, err)
 	}
 
-	err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
+	_, err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
 		Name:                   clustermapPath,
 		Data:                   clustermap,
 		IsNoneMatchEtagEnabled: false,
@@ -914,7 +914,7 @@ func (m *BlobMetadataManager) updateClusterMapEnd(clustermap []byte) error {
 		common.Assert(err == nil, err)
 	}
 
-	err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
+	_, err := m.storageCallback.PutBlobInStorage(internal.WriteFromBufferOptions{
 		Name:                   clustermapPath,
 		Data:                   clustermap,
 		IsNoneMatchEtagEnabled: false,
