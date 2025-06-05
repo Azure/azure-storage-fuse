@@ -2746,6 +2746,40 @@ func (cmi *ClusterManager) batchUpdateComponentRVState(batchUpdates []dcache.Com
 	ignoredCount := 0
 	log.Info("ClusterManager::batchUpdateComponentRVState: Received batch of %d component RV updates", len(batchUpdates))
 
+	// Merge  multiple updates for the same MV/RV by priority ---
+	// priority: OutOfSync(1) < Syncing(2) < Online(3) < Offline(4)
+	priority := map[dcache.StateEnum]int{
+		dcache.StateOutOfSync: 1,
+		dcache.StateSyncing:   2,
+		dcache.StateOnline:    3,
+		dcache.StateOffline:   4,
+	}
+	aggregateUpdates := make(map[string]map[string]dcache.StateEnum)
+	for _, update := range batchUpdates {
+		mvName, rvName, rvNewState := update.MvName, update.RvName, update.RvNewState
+		if aggregateUpdates[mvName] == nil {
+			aggregateUpdates[mvName] = make(map[string]dcache.StateEnum)
+			aggregateUpdates[mvName][rvName] = rvNewState
+		} else {
+			prevRVState := aggregateUpdates[mvName][rvName]
+			if priority[rvNewState] > priority[prevRVState] {
+				log.Debug("ClusterManager::batchUpdateComponentRVState: %s/%s: updating state from %s to %s",
+					rvName, mvName, prevRVState, rvNewState)
+				aggregateUpdates[mvName][rvName] = rvNewState
+			}
+		}
+	}
+
+	batchUpdates = batchUpdates[:0]
+	for mvName, rvMap := range aggregateUpdates {
+		for rvName, rvNewState := range rvMap {
+			batchUpdates = append(batchUpdates, dcache.ComponentRVUpdateMessage{
+				MvName:     mvName,
+				RvName:     rvName,
+				RvNewState: rvNewState,
+			})
+		}
+	}
 	for _, updateComponentRVStateMessage := range batchUpdates {
 		mvName := updateComponentRVStateMessage.MvName
 		rvName := updateComponentRVStateMessage.RvName
@@ -2825,6 +2859,7 @@ func (cmi *ClusterManager) batchUpdateComponentRVState(batchUpdates []dcache.Com
 			// Note that we support only few distinct state transitions.
 			//
 			if currentState == dcache.StateOutOfSync && rvNewState == dcache.StateSyncing ||
+				currentState == dcache.StateOutOfSync && rvNewState == dcache.StateOnline ||
 				currentState == dcache.StateSyncing && rvNewState == dcache.StateOnline ||
 				currentState == dcache.StateSyncing && rvNewState == dcache.StateOutOfSync ||
 				currentState == dcache.StateSyncing && rvNewState == dcache.StateOffline ||
