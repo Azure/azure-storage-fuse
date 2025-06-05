@@ -989,8 +989,10 @@ func (dc *DistributedCache) CloseFile(options internal.CloseFileOptions) error {
 	common.Assert(!options.Handle.IsFsDebug() || (!options.Handle.IsFsDcache() && !options.Handle.IsFsAzure()))
 
 	var dcacheErr, azureErr error
+
 	if options.Handle.IsFsDcache() {
 		common.Assert(options.Handle.IFObj != nil)
+		common.Assert(!options.Handle.IsDcacheAllowReads() || !options.Handle.IsDcacheAllowWrites())
 		dcFile := options.Handle.IFObj.(*fm.DcacheFile)
 		// While creating the file and closing the file immediately, we don't get the flush call, as libfuse component only
 		// send it when there is some write on the handle. Hence here we should take care of such cases as we should always
@@ -1001,7 +1003,14 @@ func (dc *DistributedCache) CloseFile(options internal.CloseFileOptions) error {
 			})
 			common.Assert(dcacheErr == nil, dcacheErr)
 		}
-		dcacheErr = dcFile.ReleaseFile()
+
+		// decrement the FD count if needed.
+		isReadOnlyHandle := false
+		if options.Handle.IsDcacheAllowReads() {
+			isReadOnlyHandle = true
+		}
+
+		dcacheErr = dcFile.ReleaseFile(isReadOnlyHandle)
 		if dcacheErr != nil {
 			log.Err("DistributedCache::CloseFile : Failed to ReleaseFile for Dcache file : %s", options.Handle.Path)
 		}
