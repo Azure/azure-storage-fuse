@@ -2763,7 +2763,7 @@ func (cmi *ClusterManager) batchUpdateComponentRVState(batchUpdates []dcache.Com
 		} else {
 			prevRVState := aggregateUpdates[mvName][rvName]
 			if priority[rvNewState] > priority[prevRVState] {
-				log.Debug("ClusterManager::batchUpdateComponentRVState: %s/%s: updating state from %s to %s",
+				log.Debug("ClusterManager::batchUpdateComponentRVState: %s/%s: overriding duplicate updates for rv state from %s to %s",
 					rvName, mvName, prevRVState, rvNewState)
 				aggregateUpdates[mvName][rvName] = rvNewState
 			}
