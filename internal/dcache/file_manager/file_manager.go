@@ -46,6 +46,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
 )
@@ -68,7 +69,7 @@ type fileIOManager struct {
 
 var fileIOMgr fileIOManager
 
-func NewFileIOManager(dCacheConfig *dcache.DCacheConfig) error {
+func NewFileIOManager() error {
 	//
 	// A worker runs either readChunk() or writeChunk(), so this is the number of chunks we can be
 	// reading/writing in parallel. fileIOManager is one for the entire blobfuse process so these
@@ -150,7 +151,7 @@ func NewFileIOManager(dCacheConfig *dcache.DCacheConfig) error {
 	maxBuffers = max(maxBuffers, usableMemory/bufSize)
 
 	fileIOMgr = fileIOManager{
-		dCacheConfig:       dCacheConfig,
+		dCacheConfig:       clustermap.GetCacheConfig(),
 		numReadAheadChunks: numReadAheadChunks,
 		numStagingChunks:   numStagingChunks,
 	}
