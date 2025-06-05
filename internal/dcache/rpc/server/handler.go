@@ -1803,9 +1803,27 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 	// Thrift should not be calling us with nil req.
 	common.Assert(req != nil)
 
+	//
+	// See if it's a new-mv request (and not a fix-mv request)
+	//
+	newMV := false
+	found := false
+	for _, rv := range req.ComponentRV {
+		if rv.Name == req.RVName {
+			// Must be either online for new-mv and outofsync for fix-mv.
+			common.Assert(rv.State == string(dcache.StateOnline) ||
+				rv.State == string(dcache.StateOutOfSync), rv.Name, req.MV, rv.State)
+
+			newMV = (rv.State == string(dcache.StateOnline))
+			found = true
+		}
+	}
+	common.Assert(found, req.RVName, req.MV, rpc.JoinMVRequestToString(req))
+
 	// TODO:: discuss: changing type of component RV from string to RVNameAndState
 	// requires to call componentRVsToString method as it is of type []*models.RVNameAndState
-	log.Debug("ChunkServiceHandler::JoinMV: Received JoinMV request: %v", rpc.JoinMVRequestToString(req))
+	log.Debug("ChunkServiceHandler::JoinMV: Received JoinMV request (newMV: %v): %v",
+		newMV, rpc.JoinMVRequestToString(req))
 
 	if !common.IsValidUUID(req.SenderNodeID) ||
 		!cm.IsValidMVName(req.MV) ||
@@ -1853,19 +1871,23 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 
 		//
 		// Refresh our mvInfo state as per the latest clustermap.
-		// This will undo the changes made by the prev incomplete JoinMV, making mvInfo as if the
+		// This will undo the changes made by the prev incomplete JoinMV, updating mvInfo as if the
 		// previous JoinMV never happened. If refreshFromClustermap() fails, we cannot safely proceed.
+		// For newMV, we won't have the MV in clustermap yet, so no need to refresh.
 		//
-		err := mvInfo.refreshFromClustermap()
-		if err != nil {
-			errStr = fmt.Sprintf("%s, refreshFromClustermap() failed, aborting JoinMV", errStr)
-			log.Err("ChunkServiceHandler::JoinMV: %s", errStr)
-			common.Assert(false, errStr)
-			return nil, rpc.NewResponseError(models.ErrorCode_InvalidRV, errStr)
+		if !newMV {
+			err := mvInfo.refreshFromClustermap()
+			if err != nil {
+				errStr = fmt.Sprintf("%s, refreshFromClustermap() failed, aborting JoinMV", errStr)
+				log.Err("ChunkServiceHandler::JoinMV: %s", errStr)
+				common.Assert(false, errStr)
+				return nil, rpc.NewResponseError(models.ErrorCode_InvalidRV, errStr)
+			}
 		}
 
 		// Remove the MV replica, we will add a fresh one later down.
 		rvInfo.deleteFromMVMap(req.MV)
+		mvInfo = nil
 	}
 
 	mvLimit := getMVsPerRV()
