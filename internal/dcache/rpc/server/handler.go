@@ -744,7 +744,7 @@ func (mv *mvInfo) getComponentRVNameAndState(rvName string) *models.RVNameAndSta
 		//
 		// Only online and syncing local MV replicas can have non-zero totalChunkBytes.
 		//
-		common.Assert((mv.rv.rvName != rvName) || (mv.totalChunkBytes.Load() == 0) ||
+		common.Assert((mv.rv.rvName != rv.Name) || (mv.totalChunkBytes.Load() == 0) ||
 			(rv.State == string(dcache.StateOnline) || rv.State == string(dcache.StateSyncing)),
 			rv.Name, mv.mvName, rv.State, mv.totalChunkBytes.Load())
 
