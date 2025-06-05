@@ -163,9 +163,8 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 			fileName, err)
 		return nil, err
 	}
-	//
+
 	// This Etag is used while finalizing the file.
-	//
 	return &DcacheFile{
 		FileMetadata: fileMetadata,
 		Etag:         eTag,
