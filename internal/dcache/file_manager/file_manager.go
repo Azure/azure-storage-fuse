@@ -46,7 +46,6 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
-	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
 )
@@ -154,7 +153,7 @@ func NewFileIOManager() error {
 	maxBuffers = max(maxBuffers, usableMemory/bufSize)
 
 	fileIOMgr = fileIOManager{
-		safeDeletes:        clustermap.GetCacheConfig().SafeDeletes,
+		safeDeletes:        cm.GetCacheConfig().SafeDeletes,
 		numReadAheadChunks: numReadAheadChunks,
 		numStagingChunks:   numStagingChunks,
 	}
