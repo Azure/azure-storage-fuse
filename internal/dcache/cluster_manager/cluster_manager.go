@@ -1109,6 +1109,12 @@ func (cmi *ClusterManager) clusterMapBeingUpdatedByAnotherNode(clusterMap *dcach
 // endClusterMapUpdate() implements step#4.
 func (cmi *ClusterManager) startClusterMapUpdate(clusterMap *dcache.ClusterMap, etag *string) error {
 	clusterMap.LastUpdatedBy = cmi.myNodeId
+	//
+	// Set the LastUpdatedAt. This is useful as clusterMapBeingUpdatedByAnotherNode() uses that to log
+	// how long has the clusterMap been in "checking" state.
+	// Later endClusterMapUpdate() will punch the final time when the clusterMap update finished.
+	//
+	clusterMap.LastUpdatedAt = time.Now().Unix()
 	clusterMap.State = dcache.StateChecking
 
 	clusterMapByte, err := json.Marshal(clusterMap)
@@ -1323,19 +1329,22 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	if isClusterMapUpdateBlocked {
 		log.Debug("ClusterManager::updateStorageClusterMapIfRequired:skipping, clustermap is being updated by (leader %s), current node (%s)",
 			leaderNode, cmi.myNodeId)
-
 		//
-		// Leader node should have updated the state to checking and it should not find the state to checking.
+		// Leader node should not find the clusterMap in "checking" state as no other node should try
+		// to preempt the leader while it's still alive, but...
+		// Note that updateStorageClusterMapIfRequired() when run by the leader can find the clusterMap
+		// in "checking" state if some other thread, mostly updateComponentRVState(), is running and
+		// updating the clusterMap, just before the periodic updateStorageClusterMapIfRequired() ticker
+		// fires. This is a legitimate case and we should just skip the current iteration of
+		// updateStorageClusterMapIfRequired().
 		//
-		// TODO: This has been seen to fail when due to remote node being dow updateStorageClusterMapIfRequired()
-		//       took long time and the next iteration was called immediately. While it was running, some other
-		//       context(s) (updateComponentRVState()) were waiting to update the clusterMap, they immediately
-		//       started updating as soon as last iteration of updateStorageClusterMapIfRequired() completed, and
-		//       hence when the next iteration of updateStorageClusterMapIfRequired() started immediately, it
-		//       finds the clusterMap state as checking.
-		//       Still leaving the assert as it's useful to see if it occurs in any other way.
+		// We relax the assert to allow such legitimate updates from updateComponentRVState() to catch
+		// if a leader finds the state as "checking" it should be transient and not remain in that state
+		// for a long time.
 		//
-		common.Assert(!leader, "We don't expect leader to see the clustermap in checking state")
+		common.Assert(!leader || !stale,
+			"We don't expect leader to see the clustermap in checking state",
+			leader, stale, leaderNode, clusterMapAge)
 		return nil
 	}
 
