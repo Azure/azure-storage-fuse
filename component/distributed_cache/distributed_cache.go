@@ -83,6 +83,7 @@ type DistributedCache struct {
 
 	azstorage       internal.Component
 	storageCallback dcache.StorageCallbacks
+	pw              *parallelWriter
 }
 
 // Structure defining your config parameters
@@ -179,12 +180,14 @@ func (dc *DistributedCache) Start(ctx context.Context) error {
 		return log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to start replication manager : %v]", err))
 	}
 
-	log.Info("DistributedCache::Start : component started successfully")
+	dc.pw = newParallelWriter()
 
 	err = fm.NewFileIOManager()
 	if err != nil {
 		return log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to start fileio manager : %v]", err))
 	}
+
+	log.Info("DistributedCache::Start : component started successfully")
 
 	return nil
 }
@@ -259,6 +262,7 @@ func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
 func (dc *DistributedCache) Stop() error {
 	log.Trace("DistributedCache::Stop : Stopping component %s", dc.Name())
 
+	dc.pw.destroyParallelWriter()
 	fm.EndFileIOManager()
 	rm.Stop()
 	clustermanager.Stop()
@@ -866,12 +870,16 @@ func (dc *DistributedCache) WriteFile(options internal.WriteFileOptions) (int, e
 	// Set the handle is dirty to get the flush call.
 	options.Handle.Flags.Set(handlemap.HandleFlagDirty)
 	var dcacheErr, azureErr error
-	if options.Handle.IsFsDcache() {
+
+	dcacheWrite := func() error {
+		log.Debug("DistributedCache::WriteFile : Dcache write, offset : %d, buf size : %d, file : %s",
+			options.Offset, len(options.Data), options.Handle.Path)
 		common.Assert(options.Handle.IFObj != nil)
 		common.Assert(options.Handle.IsDcacheAllowWrites())
+
 		// The following is used when writes come even after closing the file. ignore for now.
 		if !options.Handle.IsDcacheAllowWrites() {
-			return 0, syscall.EIO
+			return syscall.EIO
 		}
 		dcFile := options.Handle.IFObj.(*fm.DcacheFile)
 		dcacheErr = dcFile.WriteFile(options.Offset, options.Data)
@@ -879,18 +887,41 @@ func (dc *DistributedCache) WriteFile(options internal.WriteFileOptions) (int, e
 			// If write on one media fails, then return err instantly
 			log.Err("DistributedCache::WriteFile : Dcache File write Failed, offset : %d, file : %s",
 				options.Offset, options.Handle.Path)
-			return 0, dcacheErr
+			return dcacheErr
 		}
+		return nil
 	}
-	if options.Handle.IsFsAzure() {
+
+	azureWrite := func() error {
+		log.Debug("DistributedCache::WriteFile : Azure write, offset : %d, buf size : %d, file : %s",
+			options.Offset, len(options.Data), options.Handle.Path)
+
 		_, azureErr = dc.NextComponent().WriteFile(options)
 		if azureErr != nil {
 			log.Err("DistributedCache::WriteFile : Azure File write Failed, offset : %d, file : %s",
 				options.Offset, options.Handle.Path)
-			return 0, azureErr
+			return azureErr
 		}
+		return nil
 	}
-	return len(options.Data), nil
+
+	if options.Handle.IsFsDcache() && options.Handle.IsFsAzure() {
+
+		// Parallely write to azure and dcache.
+		// Enqueue the work of azure to the parallel writers and continue writing to the dcache from here.
+		azureErrChan := dc.pw.EnqueuAzureWrite(azureWrite)
+		dcacheErr = dcacheWrite()
+
+		// Wait for the azure write response.
+		azureErr = <-azureErrChan
+
+	} else if options.Handle.IsFsDcache() {
+		dcacheErr = dcacheWrite()
+	} else if options.Handle.IsFsAzure() {
+		azureErr = azureWrite()
+	}
+
+	return len(options.Data), errors.Join(dcacheErr, azureErr)
 }
 
 func (dc *DistributedCache) SyncFile(options internal.SyncFileOptions) error {
