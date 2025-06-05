@@ -181,7 +181,6 @@ func (dc *DistributedCache) Start(ctx context.Context) error {
 	}
 
 	dc.pw = newParallelWriter()
-	dc.pw.initParallelWriter()
 
 	err = fm.NewFileIOManager()
 	if err != nil {

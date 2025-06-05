@@ -55,17 +55,18 @@ type parallelWriter struct {
 
 // Spawns 64 go-routines for Dcache for writing.
 func newParallelWriter() *parallelWriter {
-	return &parallelWriter{
+	pw := &parallelWriter{
 		maxWriters:       64,
 		azureWriterQueue: make(chan *writeReq, 64),
 	}
-}
 
-func (pw *parallelWriter) initParallelWriter() {
 	for range pw.maxWriters {
 		go pw.azureWriter()
 	}
+
 	log.Info("parallelWriter:: %d writers started for dcache, Used when writing to Unqualified path")
+
+	return pw
 }
 
 func (pw *parallelWriter) destroyParallelWriter() {
@@ -77,22 +78,22 @@ func (pw *parallelWriter) azureWriter() {
 	pw.wg.Add(1)
 	defer pw.wg.Done()
 
-	for dc := range pw.azureWriterQueue {
-		err := dc.writer()
-		dc.err <- err
+	for az := range pw.azureWriterQueue {
+		err := az.writer()
+		az.err <- err
 	}
 }
 
 // caller should wait on the returned error for the status of the call.
-func (pw *parallelWriter) EnqueuAzureWrite(dcacheWrite func() error) <-chan error {
-	common.Assert(dcacheWrite != nil)
+func (pw *parallelWriter) EnqueuAzureWrite(azureWrite func() error) <-chan error {
+	common.Assert(azureWrite != nil)
 
-	dcacheWriteWorkItem := &writeReq{
-		writer: dcacheWrite,
+	azureWriteWorkItem := &writeReq{
+		writer: azureWrite,
 		err:    make(chan error),
 	}
 	// Queue the work Item.
-	pw.azureWriterQueue <- dcacheWriteWorkItem
+	pw.azureWriterQueue <- azureWriteWorkItem
 
-	return dcacheWriteWorkItem.err
+	return azureWriteWorkItem.err
 }
