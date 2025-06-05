@@ -228,7 +228,7 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 	common.Assert(fileMetadata.Size >= 0, fileMetadata.Size)
 
 	// Increment the FD count, If safe deletes is enabled.
-	if fileIOMgr.dCacheConfig.SafeDeletes {
+	if fileIOMgr.safeDeletes {
 		curOpenCnt, err := mm.OpenFile(fileName, prop)
 		common.Assert(curOpenCnt > 0, curOpenCnt, fileName)
 		if err != nil {

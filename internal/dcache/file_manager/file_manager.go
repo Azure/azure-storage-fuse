@@ -52,7 +52,11 @@ import (
 )
 
 type fileIOManager struct {
-	dCacheConfig *dcache.DCacheConfig
+	// If SafeDeletes is enabled we always increment and decrement the file descriptor count while reading the file.
+	// Default value is false unless specified in the config. This option ensures the delete/unlink of a file to work
+	// as per the POSIX semantics (i.e., delete of the file would be deferred until the file descriptor count reaches
+	// to zero.)
+	safeDeletes bool
 	// Number of chunks to readahead after the current chunk.
 	// This controls our readahead size.
 	numReadAheadChunks int
@@ -136,7 +140,6 @@ func NewFileIOManager() error {
 	// NewFileIOManager() must be called only once, during startup.
 	common.Assert(fileIOMgr.wp == nil)
 	common.Assert(fileIOMgr.bp == nil)
-	common.Assert(fileIOMgr.dCacheConfig == nil)
 
 	//
 	// Allow higher number of maxBuffers if system can afford.
@@ -151,7 +154,7 @@ func NewFileIOManager() error {
 	maxBuffers = max(maxBuffers, usableMemory/bufSize)
 
 	fileIOMgr = fileIOManager{
-		dCacheConfig:       clustermap.GetCacheConfig(),
+		safeDeletes:        clustermap.GetCacheConfig().SafeDeletes,
 		numReadAheadChunks: numReadAheadChunks,
 		numStagingChunks:   numStagingChunks,
 	}
@@ -459,7 +462,7 @@ func (file *DcacheFile) ReleaseFile(isReadOnlyHandle bool) error {
 	})
 
 	// Decrement the FD count if needed.
-	if isReadOnlyHandle && fileIOMgr.dCacheConfig.SafeDeletes {
+	if isReadOnlyHandle && fileIOMgr.safeDeletes {
 		common.Assert(file.attr != nil, file.FileMetadata)
 
 		curFDcnt, err := mm.CloseFile(file.FileMetadata.Filename, file.attr)

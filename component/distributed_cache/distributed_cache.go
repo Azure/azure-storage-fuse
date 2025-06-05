@@ -1005,10 +1005,7 @@ func (dc *DistributedCache) CloseFile(options internal.CloseFileOptions) error {
 		}
 
 		// decrement the FD count if needed.
-		isReadOnlyHandle := false
-		if options.Handle.IsDcacheAllowReads() {
-			isReadOnlyHandle = true
-		}
+		isReadOnlyHandle := options.Handle.IsDcacheAllowReads()
 
 		dcacheErr = dcFile.ReleaseFile(isReadOnlyHandle)
 		if dcacheErr != nil {
