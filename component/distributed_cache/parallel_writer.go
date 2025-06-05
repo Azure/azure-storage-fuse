@@ -48,44 +48,43 @@ type writeReq struct {
 }
 
 type parallelWriter struct {
-	writers           int
-	dcacheWriterQueue chan *writeReq
-	wg                sync.WaitGroup
+	maxWriters       int
+	azureWriterQueue chan *writeReq
+	wg               sync.WaitGroup
 }
 
-// Spawns 15 go-routines for Dcache for writing. This number is directly proportional to  the number of
-// libfuse threads used by the library, the number of threads used by the library in default is 10.
+// Spawns 64 go-routines for Dcache for writing.
 func newParallelWriter() *parallelWriter {
 	return &parallelWriter{
-		writers:           15,
-		dcacheWriterQueue: make(chan *writeReq, 15),
+		maxWriters:       64,
+		azureWriterQueue: make(chan *writeReq, 64),
 	}
 }
 
 func (pw *parallelWriter) initParallelWriter() {
-	for range pw.writers {
-		go pw.dcacheWriter()
+	for range pw.maxWriters {
+		go pw.azureWriter()
 	}
 	log.Info("parallelWriter:: %d writers started for dcache, Used when writing to Unqualified path")
 }
 
 func (pw *parallelWriter) destroyParallelWriter() {
-	close(pw.dcacheWriterQueue)
+	close(pw.azureWriterQueue)
 	pw.wg.Wait()
 }
 
-func (pw *parallelWriter) dcacheWriter() {
+func (pw *parallelWriter) azureWriter() {
 	pw.wg.Add(1)
 	defer pw.wg.Done()
 
-	for dc := range pw.dcacheWriterQueue {
+	for dc := range pw.azureWriterQueue {
 		err := dc.writer()
 		dc.err <- err
 	}
 }
 
 // caller should wait on the returned error for the status of the call.
-func (pw *parallelWriter) EnqueuDcacheWrite(dcacheWrite func() error) <-chan error {
+func (pw *parallelWriter) EnqueuAzureWrite(dcacheWrite func() error) <-chan error {
 	common.Assert(dcacheWrite != nil)
 
 	dcacheWriteWorkItem := &writeReq{
@@ -93,7 +92,7 @@ func (pw *parallelWriter) EnqueuDcacheWrite(dcacheWrite func() error) <-chan err
 		err:    make(chan error),
 	}
 	// Queue the work Item.
-	pw.dcacheWriterQueue <- dcacheWriteWorkItem
+	pw.azureWriterQueue <- dcacheWriteWorkItem
 
 	return dcacheWriteWorkItem.err
 }
