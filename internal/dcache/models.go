@@ -145,5 +145,8 @@ type FileLayout struct {
 	MVList     []string `json:"mv_list"`
 }
 
-type ClusterMapEvent struct {
+type ComponentRVUpdateMessage struct {
+	MvName     string
+	RvName     string
+	RvNewState StateEnum
 }
