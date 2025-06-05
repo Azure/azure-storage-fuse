@@ -346,10 +346,10 @@ retry:
 				rv.Name, req.MvName, rvID, rv.State, targetNodeID)
 
 			//
-			// TODO: Add a boolean MaybeOverwrite to PutChunkRequest to let the server know that this
-			//       could potentially be an overwrite of a chunk that we previously wrote, so that
-			//       it relaxes it's overwrite checks.
-			//       To be safe we can set MaybeOverwrite to true when retryCnt > 0.
+			// Set the "MaybeOverwrite" flag to true in PutChunkRequest to let the server know that this
+			// could potentially be an overwrite of a chunk that we previously wrote, so that
+			// it relaxes its overwrite checks.
+			// To be safe we can set MaybeOverwrite to true when retryCnt > 0.
 			//
 			rpcReq := &models.PutChunkRequest{
 				Chunk: &models.Chunk{
@@ -362,9 +362,10 @@ retry:
 					Data: req.Data,
 					Hash: "", // TODO: hash validation will be done later
 				},
-				Length:      int64(len(req.Data)),
-				SyncID:      "", // this is regular client write
-				ComponentRV: componentRVs,
+				Length:         int64(len(req.Data)),
+				SyncID:         "", // this is regular client write
+				ComponentRV:    componentRVs,
+				MaybeOverwrite: retryCnt > 0,
 			}
 
 			log.Debug("ReplicationManager::WriteMV: Sending PutChunk request for %s/%s to node %s: %s",
