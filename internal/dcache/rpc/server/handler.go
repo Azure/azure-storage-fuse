@@ -1878,10 +1878,11 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 		if !newMV {
 			err := mvInfo.refreshFromClustermap()
 			if err != nil {
-				errStr = fmt.Sprintf("%s, refreshFromClustermap() failed, aborting JoinMV", errStr)
+				errStr = fmt.Sprintf("%s, refreshFromClustermap() failed, aborting JoinMV: %v",
+					errStr, err)
 				log.Err("ChunkServiceHandler::JoinMV: %s", errStr)
 				common.Assert(false, errStr)
-				return nil, rpc.NewResponseError(models.ErrorCode_InvalidRV, errStr)
+				return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
 			}
 		}
 
