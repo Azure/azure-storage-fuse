@@ -1330,7 +1330,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 		log.Debug("ClusterManager::updateStorageClusterMapIfRequired:skipping, clustermap is being updated by (leader %s), current node (%s)",
 			leaderNode, cmi.myNodeId)
 		//
-		// Leader now should not find the clusterMap in "checking" state as no other node should try
+		// Leader node should not find the clusterMap in "checking" state as no other node should try
 		// to preempt the leader while it's still alive, but...
 		// Note that updateStorageClusterMapIfRequired() when run by the leader can find the clusterMap
 		// in "checking" state if some other thread, mostly updateComponentRVState(), is running and

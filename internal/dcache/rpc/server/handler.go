@@ -146,7 +146,7 @@ type mvInfo struct {
 	// updated for each request but once the sync completes, in the EndSync handler, we add
 	// mvInfo.reservedSpace to totalChunkBytes thus accounting all the chunks that were copied
 	// to this MV as a result of the sync operations. This means that totalChunkBytes will be
-	// 0 for outofsync MV replicas while it can non-zero for online and even syncing replicas.
+	// 0 for outofsync MV replicas while it can be non-zero for online and even syncing replicas.
 	// syncing MV replicas will have non-zero totalChunkBytes only if there are client writes
 	// during the sync. This will happen if an MV replica went offline during a file write and
 	// a new one had to be picked.
