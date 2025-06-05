@@ -181,23 +181,25 @@ func EndFileIOManager() {
 }
 
 type DcacheFile struct {
-	FileMetadata *dcache.FileMetadata
 	// Next write offset we expect in case of sequential writes.
 	// Every new write offset should be >= nextWriteOffset, else it's the case of overwriting existing
 	// data and we don't support that.
+	FileMetadata    *dcache.FileMetadata
 	nextWriteOffset int64
-	StagedChunks    sync.Map // Chunk Idx -> *chunk
+	//
+	// Chunk Idx -> *chunk
 	// The above chunks are the outstanding chunks for the file.
 	// Those chunks can be readahead chunks for read or
 	// current staging chunks for write.
 	//
 	// TODO: Chunks should be tracked globally rather than per file.
+	StagedChunks sync.Map
+	// This Etag is used to conditionally upgrade the blob while finalizing the file.
 	Etag string
-	// Etag in this attr can be used to conditionally upgrade the blob while finalizing the file.
-	attr *internal.ObjAttr
 	// This attr is used for optimizing the REST API calls.
 	// for example, this attr info is used for incrementing/decrementing read FD count while opening/closing the files
 	// when safe deletes is enabled.
+	attr *internal.ObjAttr
 }
 
 // Reads the file data from the given offset and length to buf[].
