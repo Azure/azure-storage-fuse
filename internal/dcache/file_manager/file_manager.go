@@ -181,10 +181,10 @@ func EndFileIOManager() {
 }
 
 type DcacheFile struct {
+	FileMetadata *dcache.FileMetadata
 	// Next write offset we expect in case of sequential writes.
 	// Every new write offset should be >= nextWriteOffset, else it's the case of overwriting existing
 	// data and we don't support that.
-	FileMetadata    *dcache.FileMetadata
 	nextWriteOffset int64
 	//
 	// Chunk Idx -> *chunk
@@ -194,8 +194,8 @@ type DcacheFile struct {
 	//
 	// TODO: Chunks should be tracked globally rather than per file.
 	StagedChunks sync.Map
-	// This Etag is used to conditionally upgrade the blob while finalizing the file.
-	Etag string
+	// This finalizedEtag is set by createFileInit and that is used to while finalizing the file.
+	finalizedEtag string
 	// This attr is used for optimizing the REST API calls.
 	// for example, this attr info is used for incrementing/decrementing read FD count while opening/closing the files
 	// when safe deletes is enabled.
@@ -498,7 +498,7 @@ func (file *DcacheFile) finalizeFile() error {
 		return err
 	}
 
-	err = mm.CreateFileFinalize(file.FileMetadata.Filename, fileMetadataBytes, file.FileMetadata.Size, file.Etag)
+	err = mm.CreateFileFinalize(file.FileMetadata.Filename, fileMetadataBytes, file.FileMetadata.Size, file.finalizedEtag)
 	if err != nil {
 		if bloberror.HasCode(err, bloberror.ConditionNotMet) {
 			log.Info("DistributedCache[FM]::finalizeFile: File Finalize failed, retrying finalizing the for deleted file %s %+v: %v",

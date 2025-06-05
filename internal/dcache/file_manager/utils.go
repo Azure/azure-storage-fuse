@@ -166,8 +166,8 @@ func NewDcacheFile(fileName string) (*DcacheFile, error) {
 
 	// This Etag is used while finalizing the file.
 	return &DcacheFile{
-		FileMetadata: fileMetadata,
-		Etag:         eTag,
+		FileMetadata:  fileMetadata,
+		finalizedEtag: eTag,
 	}, nil
 }
 
@@ -237,9 +237,9 @@ func OpenDcacheFile(fileName string) (*DcacheFile, error) {
 	}
 
 	return &DcacheFile{
-		FileMetadata: fileMetadata,
-		Etag:         prop.ETag,
-		attr:         prop,
+		FileMetadata:  fileMetadata,
+		finalizedEtag: prop.ETag,
+		attr:          prop,
 	}, nil
 }
 
