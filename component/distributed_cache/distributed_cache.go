@@ -909,12 +909,12 @@ func (dc *DistributedCache) WriteFile(options internal.WriteFileOptions) (int, e
 	if options.Handle.IsFsDcache() && options.Handle.IsFsAzure() {
 
 		// Parallely write to azure and dcache.
+		// Enqueue the work of dcache to the parallel writers and continue writing to the azure from here.
 		dcacheErrChan := dc.pw.EnqueuDcacheWrite(dcacheWrite)
-		azureErrChan := dc.pw.EnqueueAzureWrite(azureWrite)
+		azureErr = azureWrite()
 
-		// Wait for the errors.
+		// Wait for the dcache write response.
 		dcacheErr = <-dcacheErrChan
-		azureErr = <-azureErrChan
 
 	} else if options.Handle.IsFsDcache() {
 		dcacheErr = dcacheWrite()
