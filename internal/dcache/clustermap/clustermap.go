@@ -71,6 +71,14 @@ func GetDegradedMVs() map[string]dcache.MirroredVolume {
 	return clusterMap.getDegradedMVs()
 }
 
+// It will return syncable MVs Map <mvName, MV> as per local cache copy of cluster map.
+// syncable MVs are those degraded MVs which have at least one component RV in outofsync state.
+// Degraded MVs with no outofsync (only offline) RVs need to be first fixed by fix-mv before they
+// can be sync'ed.
+func GetSyncableMVs() map[string]dcache.MirroredVolume {
+	return clusterMap.getSyncableMVs()
+}
+
 // It will return offline MVs Map <mvName, MV> as per local cache copy of cluster map.
 func GetOfflineMVs() map[string]dcache.MirroredVolume {
 	return clusterMap.getOfflineMVs()
@@ -356,6 +364,25 @@ func (c *ClusterMap) getDegradedMVs() map[string]dcache.MirroredVolume {
 		}
 	}
 	return degradedMVs
+}
+
+func (c *ClusterMap) getSyncableMVs() map[string]dcache.MirroredVolume {
+	syncableMVs := make(map[string]dcache.MirroredVolume)
+	for mvName, mv := range c.getLocalMap().MVMap {
+		if mv.State == dcache.StateDegraded {
+			rvs := c.getRVs(mvName)
+			// We got mvName from MVMap.
+			common.Assert(rvs != nil, mvName)
+
+			for _, rvState := range rvs {
+				if rvState == dcache.StateOutOfSync {
+					syncableMVs[mvName] = mv
+					break
+				}
+			}
+		}
+	}
+	return syncableMVs
 }
 
 func (c *ClusterMap) getOfflineMVs() map[string]dcache.MirroredVolume {
