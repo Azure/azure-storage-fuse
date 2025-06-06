@@ -1212,8 +1212,8 @@ retry:
 	// - Prefer a node that has recently responded successfully to any of our RPCs.
 	// - Pick a random one.
 	//
-	// excludeRVs is the list of component RVs to omit, used when retrying after prev attempts to read from
-	// certain RV(s) failed. Those RVs are added to excludeRVs list.
+	// excludeRVs is the list of component RVs to omit, used when retrying after prev attempts to query
+	// MV size from certain RV(s) failed. Those RVs are added to excludeRVs list.
 	//
 	var excludeRVs []string
 

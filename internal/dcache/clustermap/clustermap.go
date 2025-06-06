@@ -371,7 +371,7 @@ func (c *ClusterMap) getSyncableMVs() map[string]dcache.MirroredVolume {
 	for mvName, mv := range c.getLocalMap().MVMap {
 		if mv.State == dcache.StateDegraded {
 			rvs := c.getRVs(mvName)
-			// We got mvName from MVMap.
+			// We got mvName from MVMap, so getRVs() should succeed.
 			common.Assert(rvs != nil, mvName)
 
 			for _, rvState := range rvs {
