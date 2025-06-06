@@ -42,6 +42,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -70,6 +71,17 @@ type replicationMgr struct {
 
 	// Thread pool for sending RPC requests.
 	tp *threadpool
+
+	//
+	// Maximum number of syncJobs (running syncComponentRV()) that can be running simultaneously.
+	// After this we do not start any more syncJobs till some of the existing ones complete.
+	// TODO: We should distinguish between "short" and "long" sync jobs (based on the sync size) and
+	//       have separate limits for both.
+	//
+	maxSimulSyncJobs int64
+
+	// Number of sync jobs currently running.
+	numSyncJobs atomic.Int64
 }
 
 var rm *replicationMgr
@@ -81,9 +93,10 @@ func Start() error {
 	log.Debug("ReplicationManager::Start: Starting replication manager")
 
 	rm = &replicationMgr{
-		ticker: time.NewTicker(ResyncInterval * time.Second),
-		done:   make(chan bool),
-		tp:     newThreadPool(MAX_WORKER_COUNT),
+		ticker:           time.NewTicker(ResyncInterval * time.Second),
+		done:             make(chan bool),
+		tp:               newThreadPool(MAX_WORKER_COUNT),
+		maxSimulSyncJobs: MAX_SIMUL_SYNC_JOBS,
 	}
 
 	rm.wg.Add(1)
@@ -605,6 +618,18 @@ func resyncSyncableMVs() {
 	for mvName, mvInfo := range syncableMVs {
 		common.Assert(mvInfo.State == dcache.StateDegraded, mvInfo.State)
 
+		//
+		// If we have more than maxSimulSyncJobs sync jobs currently running, don't start any more.
+		// Any syncable MVs left out in this iteration will be synced next time resyncSyncableMVs is
+		// called.
+		// We can go a little over maxSimulSyncJobs, but that's ok.
+		//
+		if rm.numSyncJobs.Load() >= rm.maxSimulSyncJobs {
+			log.Info("ReplicationManager::ResyncSyncableMVs: numSyncJobs (%d) >= maxSimulSyncJobs (%d), not syncing more MVs till some sync jobs complete",
+				rm.numSyncJobs.Load(), rm.maxSimulSyncJobs)
+			break
+		}
+
 		syncMV(mvName, mvInfo)
 	}
 }
@@ -693,14 +718,21 @@ func syncMV(mvName string, mvInfo dcache.MirroredVolume) {
 		// Increment the wait group for the goroutine that will run the syncComponentRV() function.
 		rm.wg.Add(1)
 
+		// Increment syncJobs count.
+		rm.numSyncJobs.Add(1)
+
 		go func() {
 			// Decrement the wait group when the syncComponentRV() function completes.
 			defer rm.wg.Done()
+
+			// Decrement syncJobs count once the syncjob completes.
+			defer rm.numSyncJobs.Add(-1)
 
 			// Remove from the map, once the syncjob completes (success or failure).
 			defer rm.runningJobs.Delete(tgtReplica)
 
 			syncComponentRV(mvName, lioRV, rv.Name, syncSize, componentRVs)
+			common.Assert(rm.numSyncJobs.Load() > 0, rm.numSyncJobs.Load())
 		}()
 	}
 }
@@ -713,6 +745,13 @@ func syncMV(mvName string, mvInfo dcache.MirroredVolume) {
 // to the target RV, and also sending the EndSync() RPC call to both source and target nodes.
 func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize int64,
 	componentRVs []*models.RVNameAndState) {
+	//
+	// Wallclock time when this sync job is started.
+	// This will be later set in syncJob once we create it, and used for finding the running duration
+	// of the sync job.
+	//
+	startTime := time.Now()
+
 	log.Debug("ReplicationManager::syncComponentRV: %s/%s -> %s/%s, sync size %d bytes, component RVs %v",
 		lioRV, mvName, targetRVName, mvName, syncSize, rpc.ComponentRVsToString(componentRVs))
 
@@ -792,6 +831,7 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 		syncSize:      syncSize,
 		componentRVs:  componentRVs,
 		syncStartTime: syncStartTime,
+		startedAt:     startTime,
 	}
 
 	log.Debug("ReplicationManager::syncComponentRV: Sync job created: %s", syncJob.toString())
@@ -869,6 +909,9 @@ func runSyncJob(job *syncJob) error {
 		common.IsValidUUID(job.srcSyncID) &&
 		common.IsValidUUID(job.destSyncID)),
 		job.srcSyncID, job.destSyncID)
+
+	// Tag the time when copy started.
+	job.copyStartedAt = time.Now()
 
 	err := copyOutOfSyncChunks(job)
 	if err != nil {

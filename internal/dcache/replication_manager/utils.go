@@ -66,6 +66,9 @@ const (
 	// higher than the fileIOManager workers setting.
 	//
 	MAX_WORKER_COUNT = 2000
+
+	// Maximum number of sync jobs (running syncComponentRV()) that can be running at any time.
+	MAX_SIMUL_SYNC_JOBS = 1000
 )
 
 func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *models.RVNameAndState {
