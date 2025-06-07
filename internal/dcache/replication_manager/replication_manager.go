@@ -143,10 +143,10 @@ func ReadMV(req *ReadMvRequest) (*ReadMvResponse, error) {
 
 retry:
 	// Get component RVs for MV, from clustermap.
-	componentRVs, lastClusterMapEpoch := getComponentRVsForMV(req.MvName)
+	mvState, componentRVs, lastClusterMapEpoch := getComponentRVsForMV(req.MvName)
 
-	log.Debug("ReplicationManager::ReadMV: Component RVs for %s are: %v",
-		req.MvName, rpc.ComponentRVsToString(componentRVs))
+	log.Debug("ReplicationManager::ReadMV: Component RVs for %s (%s) are: %v",
+		req.MvName, mvState, rpc.ComponentRVsToString(componentRVs))
 
 	//
 	// Get the most suitable RV from the list of component RVs,
@@ -165,6 +165,15 @@ retry:
 	for {
 		readerRV := getReaderRV(componentRVs, excludeRVs)
 		if readerRV == nil {
+			//
+			// An MV once marked offline can never become online, so save the trip to clustermap.
+			//
+			if mvState == dcache.StateOffline {
+				err = fmt.Errorf("%s is offline", req.MvName)
+				log.Err("ReplicationManager::ReadMV: %v", err)
+				return nil, err
+			}
+
 			//
 			// Even after refreshing clustermap if we cannot get a valid MV replica to read from,
 			// alas we need to fail the read.
@@ -307,10 +316,10 @@ retry:
 	// If server returns NeedToRefreshClusterMap, we will ask cm.RefreshClusterMap() to update
 	// the clustermap to a value higher than this epoch.
 	//
-	componentRVs, lastClusterMapEpoch := getComponentRVsForMV(req.MvName)
+	mvState, componentRVs, lastClusterMapEpoch := getComponentRVsForMV(req.MvName)
 
-	log.Debug("ReplicationManager::WriteMV: Component RVs for %s are: %v",
-		req.MvName, rpc.ComponentRVsToString(componentRVs))
+	log.Debug("ReplicationManager::WriteMV: Component RVs for %s (%s) are: %v",
+		req.MvName, mvState, rpc.ComponentRVsToString(componentRVs))
 
 	//
 	// Response channel to receive response for the PutChunk RPCs sent to each component RV.
@@ -338,8 +347,11 @@ retry:
 		// copied to them.
 		//
 		if rv.State == string(dcache.StateOffline) || rv.State == string(dcache.StateOutOfSync) {
-			log.Debug("ReplicationManager::WriteMV: Skipping %s/%s (state %s)",
-				rv.Name, req.MvName, rv.State)
+			log.Debug("ReplicationManager::WriteMV: Skipping %s/%s (RV state: %s, MV state: %s)",
+				rv.Name, req.MvName, rv.State, mvState)
+
+			// Online MV must have all replicas online.
+			common.Assert(mvState != dcache.StateOnline, req.MvName)
 
 			//
 			// Skip writing to this RV, as it is in offline or outofsync state.
@@ -350,6 +362,9 @@ retry:
 				len(responseChannel), len(componentRVs))
 			responseChannel <- nil
 		} else if rv.State == string(dcache.StateOnline) || rv.State == string(dcache.StateSyncing) {
+			// Offline MV has all replicas offline.
+			common.Assert(mvState != dcache.StateOffline, req.MvName)
+
 			rvID := getRvIDFromRvName(rv.Name)
 			common.Assert(common.IsValidUUID(rvID))
 
@@ -555,12 +570,22 @@ retry:
 	}
 
 	if clusterMapRefreshed {
+		// Offline MV has all replicas offline, so we cannot get a NeedToRefreshClusterMap error.
+		common.Assert(mvState != dcache.StateOffline, req.MvName)
+
 		//
 		// If we refreshed the clustermap, we need to retry the entire write MV with the updated clustermap.
 		// This might mean re-writing some of the replicas which were successfully written in this iteration.
 		//
 		retryCnt++
 		goto retry
+	}
+
+	// Fail write with a meaningful error.
+	if mvState == dcache.StateOffline {
+		err := fmt.Errorf("%s is offline", req.MvName)
+		log.Err("ReplicationManager::WriteMV: %v", err)
+		return nil, err
 	}
 
 	// For a non-offline MV, at least one replica write should succeed.
@@ -1240,10 +1265,11 @@ func GetMVSize(mvName string) (int64, error) {
 	clusterMapRefreshed := false
 
 retry:
-	componentRVs, lastClusterMapEpoch := getComponentRVsForMV(mvName)
 
-	log.Debug("ReplicationManager::GetMVSize: Component RVs for %s are: %v",
-		mvName, rpc.ComponentRVsToString(componentRVs))
+	mvState, componentRVs, lastClusterMapEpoch := getComponentRVsForMV(mvName)
+
+	log.Debug("ReplicationManager::GetMVSize: Component RVs for %s (%s) are: %v",
+		mvName, mvState, rpc.ComponentRVsToString(componentRVs))
 
 	//
 	// Get the most suitable RV from the list of component RVs,
@@ -1264,6 +1290,15 @@ retry:
 		readerRV := getReaderRV(componentRVs, excludeRVs)
 
 		if readerRV == nil {
+			//
+			// An MV once marked offline can never become online, so save the trip to clustermap.
+			//
+			if mvState == dcache.StateOffline {
+				err = fmt.Errorf("%s is offline", mvName)
+				log.Err("ReplicationManager::GetMVSize: %v", err)
+				return 0, err
+			}
+
 			//
 			// Even after refreshing clustermap if we cannot get a valid MV replica to query MV size,
 			// alas we need to fail the GetMVSize().

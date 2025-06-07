@@ -1895,7 +1895,7 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 	if rvInfo.mvCount.Load() >= mvLimit {
 		//
 		// TODO: This might happen due to incomplete JoinMV requests taking up space, so it will help
-		//		 to refresh rvInfo details from the clustermap and remove any unused MVs, and try again.
+		//       to refresh rvInfo details from the clustermap and remove any unused MVs, and try again.
 		//
 		errStr := fmt.Sprintf("%s cannot host any more MVs (MVsPerRv: %d)", req.RVName, mvLimit)
 		log.Err("ChunkServiceHandler::JoinMV: %s", errStr)

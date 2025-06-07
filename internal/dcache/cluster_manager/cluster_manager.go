@@ -1490,7 +1490,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 //     may indicate an RV as down and hence we would want to change the component RV state to "offline". There could
 //     be more such examples of inband RV state detection resulting in MV list update.
 //     In this case runFixMvNewMv parameter is passed as false, as we do not want to overwhelm the receivers with
-//     too many RPCs.
+//     too many RPCs as a result of potentially many parallel sync jobs running.
 //
 // It runs the following workflows:
 //  1. degrade-mv: It goes over all the MVs in existingMVMap to see if any (but not all) of their component RVs which
@@ -2874,6 +2874,8 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, rvName string, 
 		// We don't want to run the fix-mv and new-mv workflows as updateComponentRVState() can be called by
 		// huge number of simultaneous sync jobs. That may result in lot of RPC calls overwhelming the receiver
 		// nodes, potentially resulting in failures.
+		// We can pass runFixMvNewMv as true for the inband rv offlining case as those will be fewer, but it's
+		// ok to wait for fix-mv till the next clusterMap epoch.
 		//
 		cmi.updateMVList(clusterMap.RVMap, clusterMap.MVMap, false /* runFixMvNewMv */)
 

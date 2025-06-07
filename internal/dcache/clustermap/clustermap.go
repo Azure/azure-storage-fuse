@@ -109,11 +109,11 @@ func GetRVs(mvName string) map[string]dcache.StateEnum {
 	return clusterMap.getRVs(mvName)
 }
 
-// Same as GetRVs() but also returns the clusterMap epoch that corresponds to the component RVs returned.
+// Same as GetRVs() but also returns the MV state and clusterMap epoch that corresponds to the component RVs returned.
 // Useful for callers who might want to refresh the clusterMap on receiving the NeedToRefreshClusterMap error
 // from the server. They can refresh the clusterMap till they get a higher epoch value than the one corresponding
 // to the component RVs which were dismissed by the server.
-func GetRVsEx(mvName string) (map[string]dcache.StateEnum, int64) {
+func GetRVsEx(mvName string) (dcache.StateEnum, map[string]dcache.StateEnum, int64) {
 	return clusterMap.getRVsEx(mvName)
 }
 
@@ -200,7 +200,11 @@ func RefreshClusterMap(higherThanEpoch int64) error {
 		// Time check.
 		elapsed := time.Since(startTime)
 		if elapsed > maxWait {
-			common.Assert(false)
+			//
+			// This can happen since callers sometimes do a best-effort clusterMap refresh,
+			// as they are not sure that clusterMap has indeed changed.
+			// Let the caller know and handle it as they see fit.
+			//
 			return fmt.Errorf("RefreshClusterMap: timed out waiting for epoch %d, got %d",
 				higherThanEpoch+1, GetEpoch())
 		}
@@ -449,8 +453,8 @@ func (c *ClusterMap) getRVs(mvName string) map[string]dcache.StateEnum {
 	return mv.RVs
 }
 
-// Get component RVs for the given MV, along with the clustermap epoch.
-func (c *ClusterMap) getRVsEx(mvName string) (map[string]dcache.StateEnum, int64) {
+// Get component RVs for the given MV, along with MV state and the clustermap epoch.
+func (c *ClusterMap) getRVsEx(mvName string) (dcache.StateEnum, map[string]dcache.StateEnum, int64) {
 	//
 	// Save a copy of the clusterMap pointer to use for accessing MVMap and Epoch, so that both
 	// correspond to the same instance of clusterMap.
@@ -459,9 +463,9 @@ func (c *ClusterMap) getRVsEx(mvName string) (map[string]dcache.StateEnum, int64
 	mv, ok := localMap.MVMap[mvName]
 	if !ok {
 		log.Err("ClusterMap::getRVs: no mirrored volume named %s", mvName)
-		return nil, -1
+		return dcache.StateInvalid, nil, -1
 	}
-	return mv.RVs, localMap.Epoch
+	return mv.State, mv.RVs, localMap.Epoch
 }
 
 func (c *ClusterMap) getRVState(rvName string) dcache.StateEnum {
