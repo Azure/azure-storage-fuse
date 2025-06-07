@@ -262,7 +262,7 @@ func parseDcacheMetadata(attr *internal.ObjAttr) error {
 		return err
 	}
 
-	// parse open count.
+	// parse open count and validate that it's not -ve.
 	if val, ok := attr.Metadata["opencount"]; ok {
 		openCount, err := strconv.ParseInt(*val, 10, 64)
 		if err == nil {

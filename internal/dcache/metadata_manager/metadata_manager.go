@@ -50,6 +50,7 @@ type MetadataManager interface {
 
 	// CreateFileInit creates the initial metadata for a file.
 	// Succeeds only when the file metadata is not already present.
+	// Returns an etag value that must be passed to the corresponding createFileFinalize().
 	// This will be called by the File Manager to create a non-existing file in response to a create call from fuse.
 	// TODO :: Handle the case where the node fails before CreateFileFinalize is called.
 	createFileInit(filePath string, fileMetadata []byte) (string, error)
@@ -57,9 +58,11 @@ type MetadataManager interface {
 	// CreateFileFinalize finalizes the metadata for a file updating size, sha256, and other properties.
 	// For properties which were not available at the time of CreateFileInit.
 	// Called by the File Manager in response to a close call from fuse.
+	// The eTag parameter must be passed the etag returned by the corresponding createFileInit() call.
 	createFileFinalize(filePath string, fileMetadata []byte, fileSize int64, eTag string) error
 
 	// GetFile reads and returns the content of metadata for a file.
+	// Also returns, file size, file state, opencount and attributes.
 	getFile(filePath string) ([]byte, int64, dcache.FileState, int, *internal.ObjAttr, error)
 
 	// Renames the metadata file to <fileName>.<fileId>.dcache.deleting

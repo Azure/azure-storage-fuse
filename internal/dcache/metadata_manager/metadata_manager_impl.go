@@ -57,8 +57,6 @@ var (
 	metadataManagerInstance *BlobMetadataManager
 )
 
-var _ MetadataManager = &BlobMetadataManager{}
-
 // BlobMetadataManager is the implementation of MetadataManager interface.
 // It stores metadata as Blobs in a top level folder with prefix __CACHE__ inside the same container where
 // Blobfuse stores the data.
@@ -385,7 +383,7 @@ func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata [
 		state, ok := prop.Metadata["state"]
 		common.Assert(ok && *state == string(dcache.Writing))
 
-		// openCountopenCount be 0 as a file not yet finalized cannot be opened.
+		// opencount must be 0 as a file not yet finalized cannot be opened.
 		openCount, ok := prop.Metadata["opencount"]
 		common.Assert(ok && *openCount == "0", ok, *openCount)
 	}
@@ -409,12 +407,14 @@ func (m *BlobMetadataManager) createFileFinalize(filePath string, fileMetadata [
 	})
 
 	if err != nil {
-		if bloberror.HasCode(err, bloberror.ConditionNotMet) {
-			log.Warn("CreateFileFinalize:: Failed to put metadata blob %s in storage: %v", path, err)
-		} else {
-			log.Err("CreateFileFinalize:: Failed to put metadata blob %s in storage: %v", path, err)
-			common.Assert(false, err)
-		}
+		//
+		// Any error here is unexpected.
+		// Note that we don't even expect ConditionNotMet error as the metadata blob should not
+		// change after createFileInit().
+		//
+		log.Err("CreateFileFinalize:: Failed to put metadata blob %s in storage: %v", path, err)
+		common.Assert(false, err)
+
 		return err
 	}
 
@@ -487,7 +487,9 @@ func (m *BlobMetadataManager) getFile(filePath string) ([]byte, int64, dcache.Fi
 		return nil, -1, "", -1, nil, err
 	}
 
-	// Extract the opencount from the blob metadata prop.
+	//
+	// Extract the opencount from the blob metadata prop and verify it's not -ve.
+	//
 	openCountStr, ok := prop.Metadata["opencount"]
 	if !ok {
 		err := fmt.Errorf("GetFile:: File opencount not found in metadata for path %s", path)
@@ -522,12 +524,13 @@ func (m *BlobMetadataManager) renameFileToDeleting(filePath string, deletedFileP
 
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
 	deletedFilePath = filepath.Join(m.mdRoot, "Objects", deletedFilePath)
+
 	log.Debug("renameFileToDeleting::  %s -> %s", path, deletedFilePath)
 
 	err := m.storageCallback.RenameFileInStorage(internal.RenameFileOptions{
 		Src:       path,
 		Dst:       deletedFilePath,
-		NoReplace: true,
+		NoReplace: true, // Fail if the target file is present.
 	})
 
 	//
@@ -538,7 +541,7 @@ func (m *BlobMetadataManager) renameFileToDeleting(filePath string, deletedFileP
 	// also get ENOENT.
 	//
 	if err != nil {
-		log.Err("renameFileToDeleting:: Failed to rename the file: %s -> %s: %v",
+		log.Err("renameFileToDeleting:: Failed to rename file: %s -> %s: %v",
 			path, deletedFilePath, err)
 		common.Assert(err == syscall.EEXIST || err == syscall.ENOENT, path, deletedFilePath, err)
 		return err
@@ -572,7 +575,11 @@ func (m *BlobMetadataManager) deleteFile(filePath string) error {
 	return err
 }
 
-// OpenFile increments the open count for a file and returns the updated count, also updates the Etag in attr on success
+// OpenFile increments the open count for a file and returns the updated count,
+// also updates the Etag in attr on success
+//
+// Note: This must be called only with safe-deletes config set.
+
 func (m *BlobMetadataManager) openFile(filePath string, attr *internal.ObjAttr) (int64, error) {
 	common.Assert(len(filePath) > 0)
 	common.Assert(attr != nil)
@@ -585,7 +592,7 @@ func (m *BlobMetadataManager) openFile(filePath string, attr *internal.ObjAttr) 
 		return -1, err
 	}
 
-	log.Debug("OpenFile:: Updated file open count for path %s: %d", path, count)
+	log.Debug("OpenFile:: Updated file open count for path %s to %d", path, count)
 	common.Assert(count > 0, "Open file cannot have count <= 0", count)
 	common.Assert(count < 1000000) // Sanity check.
 
@@ -595,6 +602,7 @@ func (m *BlobMetadataManager) openFile(filePath string, attr *internal.ObjAttr) 
 // CloseFile decrements the open count for a file and returns the updated count
 func (m *BlobMetadataManager) closeFile(filePath string, attr *internal.ObjAttr) (int64, error) {
 	common.Assert(len(filePath) > 0)
+	common.Assert(attr != nil)
 
 	path := filepath.Join(m.mdRoot, "Objects", filePath)
 	count, err := m.updateHandleCount(path, attr, false /* increment */)
@@ -603,8 +611,9 @@ func (m *BlobMetadataManager) closeFile(filePath string, attr *internal.ObjAttr)
 		return -1, err
 	}
 
-	log.Debug("CloseFile:: Updated file open count for path %s: %d", path, count)
+	log.Debug("CloseFile:: Updated file open count for path %s to %d", path, count)
 	common.Assert(count >= 0, "File cannot have -ve opencount", count)
+	common.Assert(count < 1000000) // Sanity check.
 
 	return count, nil
 }
@@ -626,7 +635,7 @@ func (m *BlobMetadataManager) updateHandleCount(path string, attr *internal.ObjA
 	var newAttr *internal.ObjAttr = attr
 
 	for {
-		if newAttr != nil {
+		if newAttr == nil {
 			//
 			// First attempt to increment the openCount uses the passed in attribute.
 			// This works for most common case saving a REST call, unless the file was opened by
@@ -685,7 +694,7 @@ func (m *BlobMetadataManager) updateHandleCount(path string, attr *internal.ObjA
 				log.Warn("updateHandleCount:: SetPropertiesInStorage failed for path %s due to ETag mismatch, retrying...", path)
 
 				// Apply exponential backoff.
-				log.Debug("updateHandleCount:: Retrying in %d milliseconds...", backoff)
+				log.Debug("updateHandleCount:: Retrying in %s...", backoff)
 				time.Sleep(backoff)
 
 				// Double the backoff time, but cap it at maxBackoff.
@@ -718,7 +727,7 @@ func (m *BlobMetadataManager) updateHandleCount(path string, attr *internal.ObjA
 				return -1, err
 			}
 		} else {
-			log.Debug("updateHandleCount:: Updated metadata property for path %s: %d", path, openCount)
+			log.Debug("updateHandleCount:: Updated opencount property for path %s to %d", path, openCount)
 			break
 		}
 	}
