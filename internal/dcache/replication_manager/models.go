@@ -35,6 +35,7 @@ package replication_manager
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -230,11 +231,22 @@ type syncJob struct {
 	// Whereas the chunks created after this time are not copied to the target RV, as these would have
 	// already been written to the target RV by the client PutChunk RPC calls.
 	syncStartTime int64
+
+	startedAt     time.Time // Time when this sync job was started.
+	copyStartedAt time.Time // Time when the actual chunk copy was started.
 }
 
 // Helper method which can be used for logging the syncJob.
 func (job *syncJob) toString() string {
-	return fmt.Sprintf("{%s/%s -> %s/%s, srcSyncID: %s, destSyncID: %s, syncSize: %d bytes, componentRVs: %v}",
+	var copyRunningFor time.Duration
+
+	// copyStartedAt is set when chunk copy starts, any syncJob loggged before that must log 0s.
+	if !job.copyStartedAt.IsZero() {
+		copyRunningFor = time.Since(job.copyStartedAt)
+	}
+
+	return fmt.Sprintf("{%s/%s -> %s/%s, srcSyncID: %s, destSyncID: %s, syncSize: %d bytes, componentRVs: %v, running for: %v, chunk copy running for: %v}",
 		job.srcRVName, job.mvName, job.destRVName, job.mvName, job.srcSyncID, job.destSyncID,
-		job.syncSize, rpc.ComponentRVsToString(job.componentRVs))
+		job.syncSize, rpc.ComponentRVsToString(job.componentRVs),
+		time.Since(job.startedAt), copyRunningFor)
 }

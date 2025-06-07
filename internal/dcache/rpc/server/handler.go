@@ -120,12 +120,36 @@ type mvInfo struct {
 	// and do not have the rvInfo.
 	rv *rvInfo
 
-	componentRVs []*models.RVNameAndState // sorted list of component RVs for this MV
+	// sorted list of component RVs for this MV
+	componentRVs []*models.RVNameAndState
+
+	// When was this MV replica joined to the RV.
+	// This can be used for logging and for timing out "incomplete joins".
+	// An incomplete join is one for which the JoinMV was sent as a result of fix-mv workflow, but it
+	// was not followed by StartSync. This can happen if the fix-mv couldn't complete due to one or more
+	// RVs failing their JoinMV/UpdateMV calls.
+	// joinedBy is the node id of the node that sent the previous JoinMV RPC.
+	//
+	// TODO: Use joinedWhen to garbage collect MV replicas that never completed JoinMV.
+	//       If an MV replica stays in outofsync state for more than a given time period, we can conclude
+	//       that the JoinMV must have failed, else we should have seen a StartSync, changing the state
+	//       to syncing.
+	//
+	joinedWhen time.Time
+	joinedBy   string
 
 	// Total amount of space used up inside the MV directory,
 	// by all the chunks stored in it. Any RV that has to replace one of the existing component
 	// RVs needs to have at least this much space.
 	// JoinMV() requests this much space to be reserved in the new-to-be-inducted RV.
+	// This is updated only by PutChunk(client) requests. For PutChunk(sync) requests it's not
+	// updated for each request but once the sync completes, in the EndSync handler, we add
+	// mvInfo.reservedSpace to totalChunkBytes thus accounting all the chunks that were copied
+	// to this MV as a result of the sync operations. This means that totalChunkBytes will be
+	// 0 for outofsync MV replicas while it can be non-zero for online and even syncing replicas.
+	// syncing MV replicas will have non-zero totalChunkBytes only if there are client writes
+	// during the sync. This will happen if an MV replica went offline during a file write and
+	// a new one had to be picked.
 	totalChunkBytes atomic.Int64
 
 	// Amount of space reserved for this MV replica, on the hosting RV.
@@ -225,11 +249,15 @@ func NewChunkServiceHandler(rvs map[string]dcache.RawVolume) {
 }
 
 // Create new mvInfo instance. This is used by the JoinMV() RPC call to create a new mvInfo.
-func newMVInfo(rv *rvInfo, mvName string, componentRVs []*models.RVNameAndState) *mvInfo {
+func newMVInfo(rv *rvInfo, mvName string, componentRVs []*models.RVNameAndState, joinedBy string) *mvInfo {
+	common.Assert(common.IsValidUUID(joinedBy), rv.rvName, mvName, joinedBy)
+
 	return &mvInfo{
 		rv:           rv,
 		mvName:       mvName,
 		componentRVs: componentRVs,
+		joinedWhen:   time.Now(),
+		joinedBy:     joinedBy,
 	}
 }
 
@@ -259,6 +287,11 @@ func (rv *rvInfo) getMVInfo(mvName string) *mvInfo {
 		common.Assert(mvInfo != nil, mvName, rv.rvName)
 		common.Assert(mvName == mvInfo.mvName, mvName, mvInfo.mvName, rv.rvName)
 		common.Assert(rv.rvName == mvInfo.rv.rvName, rv.rvName, mvInfo.rv.rvName, mvName)
+		common.Assert(rv.mvCount.Load() > 0, rv.rvName, mvInfo.mvName, rv.mvCount.Load())
+		common.Assert(common.IsValidUUID(mvInfo.joinedBy), rv.rvName, mvInfo.mvName, mvInfo.joinedBy,
+			mvInfo.joinedWhen)
+		common.Assert(!mvInfo.joinedWhen.IsZero(), rv.rvName, mvInfo.mvName, mvInfo.joinedBy,
+			mvInfo.joinedWhen)
 
 		return mvInfo
 	}
@@ -278,6 +311,11 @@ func (rv *rvInfo) getMVs() []string {
 			common.Assert(mvInfo != nil, fmt.Sprintf("mvMap[%s] has nil value", mvName))
 			common.Assert(mvName == mvInfo.mvName, "MV name mismatch in mv", mvName, mvInfo.mvName)
 			common.Assert(rv.rvName == mvInfo.rv.rvName, rv.rvName, mvInfo.rv.rvName, mvInfo.mvName)
+			common.Assert(rv.mvCount.Load() > 0, rv.rvName, mvInfo.mvName, rv.mvCount.Load())
+			common.Assert(common.IsValidUUID(mvInfo.joinedBy), rv.rvName, mvInfo.mvName, mvInfo.joinedBy,
+				mvInfo.joinedWhen)
+			common.Assert(!mvInfo.joinedWhen.IsZero(), rv.rvName, mvInfo.mvName, mvInfo.joinedBy,
+				mvInfo.joinedWhen)
 		} else {
 			common.Assert(false, fmt.Sprintf("mvMap[%s] has value which is not of type *mvInfo", mvName))
 		}
@@ -325,15 +363,17 @@ func (rv *rvInfo) deleteFromMVMap(mvName string) {
 func (rv *rvInfo) incReservedSpace(bytes int64) {
 	common.Assert(bytes >= 0)
 	rv.reservedSpace.Add(bytes)
-	log.Debug("rvInfo::incReservedSpace: reserved space for RV %s is %d", rv.rvName, rv.reservedSpace.Load())
+	log.Debug("rvInfo::incReservedSpace: reserved space for RV %s is %d, mvCount: %d",
+		rv.rvName, rv.reservedSpace.Load(), rv.mvCount.Load())
 }
 
 // Decrement the reserved space for this RV.
 func (rv *rvInfo) decReservedSpace(bytes int64) {
 	common.Assert(bytes >= 0, bytes)
+	common.Assert(rv.reservedSpace.Load() >= bytes, rv.rvName, rv.reservedSpace.Load(), bytes, rv.mvCount.Load())
 	rv.reservedSpace.Add(-bytes)
-	common.Assert(rv.reservedSpace.Load() >= 0, rv.rvName, rv.reservedSpace.Load())
-	log.Debug("rvInfo::decReservedSpace: reserved space for RV %s is %d", rv.rvName, rv.reservedSpace.Load())
+	log.Debug("rvInfo::decReservedSpace: reserved space for RV %s is %d, mvCount: %d",
+		rv.rvName, rv.reservedSpace.Load(), rv.mvCount.Load())
 }
 
 // Return available space for the given RV.
@@ -699,6 +739,14 @@ func (mv *mvInfo) getComponentRVNameAndState(rvName string) *models.RVNameAndSta
 
 	for _, rv := range mv.componentRVs {
 		common.Assert(rv != nil)
+		common.Assert(cm.IsValidComponentRVState(dcache.StateEnum(rv.State)), rv.Name, mv.mvName, rv.State)
+
+		//
+		// Only online and syncing local MV replicas can have non-zero totalChunkBytes.
+		//
+		common.Assert((mv.rv.rvName != rv.Name) || (mv.totalChunkBytes.Load() == 0) ||
+			(rv.State == string(dcache.StateOnline) || rv.State == string(dcache.StateSyncing)),
+			rv.Name, mv.mvName, rv.State, mv.totalChunkBytes.Load())
 
 		if rv.Name == rvName {
 			return rv
@@ -756,6 +804,20 @@ func (mv *mvInfo) refreshFromClustermap() error {
 	for rvName, rvState := range newRVs {
 		common.Assert(cm.IsValidComponentRVState(rvState), rvName, mv.mvName, rvState)
 
+		//
+		// degrade-mv workflow marks component RVs as offline, for the RVs which are marked offline,
+		// but it doesn't commit the changes to clustermap before it runs the fix-mv workflow, the
+		// following achieves that w/o a clustermap update being forced after degrade-mv.
+		// Note that this is one of those "safe deductions" that we can do while taking the risk of
+		// deviating away from the actual clustermap, but note that clustermap will soon be updated
+		// to reflect it.
+		//
+		if cm.GetRVState(rvName) == dcache.StateOffline && rvState != dcache.StateOffline {
+			log.Warn("mvInfo::refreshFromClustermap: %s/%s state is %s while RV state is offline, marking component RV state as offline",
+				rvName, mv.mvName, rvState)
+			rvState = dcache.StateOffline
+		}
+
 		newComponentRVs = append(newComponentRVs, &models.RVNameAndState{
 			Name:  rvName,
 			State: string(rvState),
@@ -789,8 +851,9 @@ func (mv *mvInfo) refreshFromClustermap() error {
 		// space changes.
 		//
 		if oldRvNameAndState.State == string(dcache.StateOutOfSync) && rvState == dcache.StateOffline {
-			common.Assert(mv.rv.reservedSpace.Load() >= mv.reservedSpace.Load(),
-				mv.rv.reservedSpace.Load(), mv.reservedSpace.Load())
+			log.Warn("mvInfo::refreshFromClustermap: %s/%s (%s -> %s), clearing reservedSpace (%d bytes) left from previous incomplete join attempt",
+				rvName, mv.mvName, oldRvNameAndState.State, rvState, mv.reservedSpace.Load())
+
 			mv.rv.decReservedSpace(mv.reservedSpace.Load())
 			mv.reservedSpace.Store(0)
 		}
@@ -821,8 +884,8 @@ func (mv *mvInfo) refreshFromClustermap() error {
 			common.Assert(mv.syncJobsCount.Load() == 1, rvName, mv.mvName, mv.syncJobsCount.Load(),
 				mv.getSyncJobs(), rpc.ComponentRVsToString(mv.componentRVs))
 
-			log.Warn("mvInfo::refreshFromClustermap: %s/%s, clearing old syncJob left from previous incomplete sync attempt, syncJobs: %+v",
-				rvName, mv.mvName, mv.getSyncJobs())
+			log.Warn("mvInfo::refreshFromClustermap: %s/%s (%s -> %s), clearing old syncJob left from previous incomplete sync attempt, syncJobs: %+v",
+				rvName, mv.mvName, oldRvNameAndState.State, rvState, mv.getSyncJobs())
 
 			mv.deleteAllSyncJobs()
 		}
@@ -1740,9 +1803,27 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 	// Thrift should not be calling us with nil req.
 	common.Assert(req != nil)
 
+	//
+	// See if it's a new-mv request (and not a fix-mv request)
+	//
+	newMV := false
+	found := false
+	for _, rv := range req.ComponentRV {
+		if rv.Name == req.RVName {
+			// Must be either online for new-mv and outofsync for fix-mv.
+			common.Assert(rv.State == string(dcache.StateOnline) ||
+				rv.State == string(dcache.StateOutOfSync), rv.Name, req.MV, rv.State)
+
+			newMV = (rv.State == string(dcache.StateOnline))
+			found = true
+		}
+	}
+	common.Assert(found, req.RVName, req.MV, rpc.JoinMVRequestToString(req))
+
 	// TODO:: discuss: changing type of component RV from string to RVNameAndState
 	// requires to call componentRVsToString method as it is of type []*models.RVNameAndState
-	log.Debug("ChunkServiceHandler::JoinMV: Received JoinMV request: %v", rpc.JoinMVRequestToString(req))
+	log.Debug("ChunkServiceHandler::JoinMV: Received JoinMV request (newMV: %v): %v",
+		newMV, rpc.JoinMVRequestToString(req))
 
 	if !common.IsValidUUID(req.SenderNodeID) ||
 		!cm.IsValidMVName(req.MV) ||
@@ -1773,25 +1854,48 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 	mvInfo := rvInfo.getMVInfo(req.MV)
 	if mvInfo != nil {
 		//
-		// TODO: Till Sourav formally implements idempotent handling of JoinMV and UpdateMV RPCs,
-		//	 we have the following to not treat "double join" as failure.
-		//	 Double join can happen when let's say we have two or more outofsync component RVs
-		//	 for an MV and fixMV() sends JoinMV request to each of the outofsync RVs. If one or
-		//	 more of these fail, the joinMV() will treat it as a failure and not update clustermap.
-		//	 Next time when fixMV() is called it'll again attempt fixing and again send JoinMV.
-		//	 Note that for proper handling we need to ensure that the reservedSpace remains
-		//	 same across both calls. Also if an RV is joined but never used later (maybe joinMV()
-		//	 picked a new RV in the next iteration), we should time out and undo the reservedSpace.
+		// JoinMV and UpdateMV need to be idempotent to not treat "double join" as failure.
+		// Double join can happen when let's say we have two or more outofsync component RVs
+		// for an MV and fixMV() sends JoinMV request to each of the outofsync RVs. If one or
+		// more of these fail, the joinMV() will treat it as a failure and not update clustermap.
+		// Next time when fixMV() is called it'll again attempt fixing and again send JoinMV.
+		// Note that for proper handling we need to ensure that the reservedSpace remains
+		// same across both calls. Also if an RV is joined but never used later (maybe joinMV()
+		// picked a new RV in the next iteration), we should time out and undo the reservedSpace.
+		// This one is a TODO.
 		//
-		log.Warn("ChunkServiceHandler::JoinMV: %s is already part of %s, ignoring", req.RVName, req.MV)
-		return &models.JoinMVResponse{}, nil
+		errStr := fmt.Sprintf("Double join for %s/%s, prev join at: %s, by: %s",
+			req.RVName, req.MV, mvInfo.joinedWhen, mvInfo.joinedBy)
+
+		log.Warn("ChunkServiceHandler::JoinMV: %s", errStr)
+
+		//
+		// Refresh our mvInfo state as per the latest clustermap.
+		// This will undo the changes made by the prev incomplete JoinMV, updating mvInfo as if the
+		// previous JoinMV never happened. If refreshFromClustermap() fails, we cannot safely proceed.
+		// For newMV, we won't have the MV in clustermap yet, so no need to refresh.
+		//
+		if !newMV {
+			err := mvInfo.refreshFromClustermap()
+			if err != nil {
+				errStr = fmt.Sprintf("%s, refreshFromClustermap() failed, aborting JoinMV: %v",
+					errStr, err)
+				log.Err("ChunkServiceHandler::JoinMV: %s", errStr)
+				common.Assert(false, errStr)
+				return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, errStr)
+			}
+		}
+
+		// Remove the MV replica, we will add a fresh one later down.
+		rvInfo.deleteFromMVMap(req.MV)
+		mvInfo = nil
 	}
 
 	mvLimit := getMVsPerRV()
 	if rvInfo.mvCount.Load() >= mvLimit {
 		//
 		// TODO: This might happen due to incomplete JoinMV requests taking up space, so it will help
-		//		 to refresh rvInfo details from the clustermap and remove any unused MVs, and try again.
+		//       to refresh rvInfo details from the clustermap and remove any unused MVs, and try again.
 		//
 		errStr := fmt.Sprintf("%s cannot host any more MVs (MVsPerRv: %d)", req.RVName, mvLimit)
 		log.Err("ChunkServiceHandler::JoinMV: %s", errStr)
@@ -1840,7 +1944,7 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 	// JoinMV calls [TODO].
 	//
 	sortComponentRVs(req.ComponentRV)
-	rvInfo.addToMVMap(req.MV, newMVInfo(rvInfo, req.MV, req.ComponentRV), req.ReserveSpace)
+	rvInfo.addToMVMap(req.MV, newMVInfo(rvInfo, req.MV, req.ComponentRV, req.SenderNodeID), req.ReserveSpace)
 
 	return &models.JoinMVResponse{}, nil
 }
