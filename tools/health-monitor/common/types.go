@@ -51,7 +51,7 @@ const (
 	OutputFileExtension = "json"
 	OutputFileCount     = 10
 	OutputFileSizeinMB  = 10
-	PolicyStats         = "policy-stats"
+	PolicyStats         = "policy_stats"
 	PolicyPollInterval  = 30
 )
 

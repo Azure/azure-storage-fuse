@@ -37,10 +37,10 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
-	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
 )
 
@@ -89,72 +89,48 @@ func (r *serviceVersionPolicy) Do(req *policy.Request) (*http.Response, error) {
 // In your metricsPolicy struct constructor or initializer, create the StatsCollector:
 // var policystatscollector *stats_manager.StatsCollector
 type metricsPolicy struct {
-	mu                 sync.Mutex
-	totalRequests      int
-	informationalCount int
-	successCount       int
-	redirectCount      int
-	clientErrorCount   int
-	serverErrorCount   int
-	failureCount       int64
-	statsCollector     *stats_manager.StatsCollector
+	mu sync.Mutex
 }
 
 func NewMetricsPolicy() policy.Policy {
-	if !common.EnableMonitoring {
-		common.EnableMonitoring = true
-	}
-
-	// Create and return a metrics policy with its own stats collector
-	statsCollector := stats_manager.NewStatsCollector("http-policy")
-	return &metricsPolicy{
-		statsCollector: statsCollector,
-	}
+	return &metricsPolicy{}
 }
 
 func (p *metricsPolicy) Do(req *policy.Request) (*http.Response, error) {
-	start := time.Now()
 	resp, err := req.Next()
-	duration := time.Since(start)
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	p.totalRequests++
+	if azStatsCollector != nil {
+		azStatsCollector.UpdateStats(stats_manager.Increment, TotalRequests, (int64)(1))
 
-	var statusCode int
-	if resp != nil {
-		statusCode = resp.StatusCode
-	}
-
-	switch {
-	case statusCode >= 100 && statusCode < 200:
-		p.informationalCount++
-	case statusCode >= 200 && statusCode < 300:
-		p.successCount++
-	case statusCode >= 300 && statusCode < 400:
-		p.redirectCount++
-	case statusCode >= 400 && statusCode < 500:
-		p.clientErrorCount++
-		p.failureCount++
-	case statusCode >= 500 && statusCode < 600:
-		p.serverErrorCount++
-		p.failureCount++
-	default:
-		if err != nil {
-			p.failureCount++
+		var statusCode int
+		if resp != nil {
+			statusCode = resp.StatusCode
 		}
-	}
 
-	// Push updated metrics to the collector
-	p.statsCollector.UpdateStats(stats_manager.Replace, "totalRequests", int64(p.totalRequests))
-	p.statsCollector.UpdateStats(stats_manager.Replace, "informationalCount", int64(p.informationalCount))
-	p.statsCollector.UpdateStats(stats_manager.Replace, "successCount", int64(p.successCount))
-	p.statsCollector.UpdateStats(stats_manager.Replace, "redirectCount", int64(p.redirectCount))
-	p.statsCollector.UpdateStats(stats_manager.Replace, "clientErrorCount", int64(p.clientErrorCount))
-	p.statsCollector.UpdateStats(stats_manager.Replace, "serverErrorCount", int64(p.serverErrorCount))
-	p.statsCollector.UpdateStats(stats_manager.Replace, "failureCount", p.failureCount)
-	p.statsCollector.UpdateStats(stats_manager.Replace, "durationMs", duration.Milliseconds())
+		switch {
+		case statusCode >= 100 && statusCode < 200:
+			azStatsCollector.UpdateStats(stats_manager.Increment, InformationalCount, (int64)(1))
+		case statusCode >= 200 && statusCode < 300:
+			azStatsCollector.UpdateStats(stats_manager.Increment, SuccessCount, (int64)(1))
+		case statusCode >= 300 && statusCode < 400:
+			azStatsCollector.UpdateStats(stats_manager.Increment, RedirectCount, (int64)(1))
+		case statusCode >= 400 && statusCode < 500:
+			azStatsCollector.UpdateStats(stats_manager.Increment, ClientErrorCount, (int64)(1))
+			azStatsCollector.UpdateStats(stats_manager.Increment, FailureCount, (int64)(1))
+		case statusCode >= 500 && statusCode < 600:
+			azStatsCollector.UpdateStats(stats_manager.Increment, ServerErrorCount, (int64)(1))
+			azStatsCollector.UpdateStats(stats_manager.Increment, FailureCount, (int64)(1))
+		default:
+			if err != nil {
+				azStatsCollector.UpdateStats(stats_manager.Increment, FailureCount, (int64)(1))
+			}
+		}
+	} else {
+		log.Warn("azStatsCollector is nil in metricsPolicy.Do - skipping stats update")
+	}
 
 	return resp, err
 }

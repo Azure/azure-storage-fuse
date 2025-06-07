@@ -59,6 +59,14 @@ const (
 	dest        = "Dest"
 	size        = "Size"
 	target      = "Target"
+
+	InformationalCount = "icount"
+	SuccessCount       = "scount"
+	RedirectCount      = "rcount"
+	ClientErrorCount   = "cecount"
+	ServerErrorCount   = "secount"
+	FailureCount       = "fcount"
+	TotalRequests      = "totalRequests"
 )
 
 // headers which should be logged and not redacted
