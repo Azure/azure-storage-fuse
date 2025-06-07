@@ -41,7 +41,6 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/bloberror"
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
@@ -51,14 +50,18 @@ import (
 )
 
 type fileIOManager struct {
-	// If SafeDeletes is enabled we always increment and decrement the file descriptor count while reading the file.
-	// Default value is false unless specified in the config. This option ensures the delete/unlink of a file to work
-	// as per the POSIX semantics (i.e., delete of the file would be deferred until the file descriptor count reaches
-	// to zero.)
+	// If SafeDeletes is enabled we always increment and decrement the file descriptor count while opening
+	// and closing the file. This ensures the delete/unlink of a file works as per the POSIX semantics
+	// (i.e., delete of the file would be deferred until the last open file descriptor is closed).
+	// It defaults to false unless specified in the config.
+	// Multiple readers opening the same file will contend to atomically update the open count, so this will
+	// increase the file open/close latency, and must be used only if POSIX semantics is desired.
 	safeDeletes bool
+
 	// Number of chunks to readahead after the current chunk.
 	// This controls our readahead size.
 	numReadAheadChunks int
+
 	// Max Number of chunks per file that can be in staging area at any time.
 	// This is our writeback buffer. If it's too small, application writes will need to wait while
 	// we write the current staged chunks to dcache. Note that though we schedule write of staged
@@ -182,10 +185,12 @@ func EndFileIOManager() {
 
 type DcacheFile struct {
 	FileMetadata *dcache.FileMetadata
+
 	// Next write offset we expect in case of sequential writes.
 	// Every new write offset should be >= nextWriteOffset, else it's the case of overwriting existing
 	// data and we don't support that.
 	nextWriteOffset int64
+
 	//
 	// Chunk Idx -> *chunk
 	// The above chunks are the outstanding chunks for the file.
@@ -194,11 +199,14 @@ type DcacheFile struct {
 	//
 	// TODO: Chunks should be tracked globally rather than per file.
 	StagedChunks sync.Map
-	// This finalizedEtag is set by createFileInit and that is used to while finalizing the file.
-	finalizedEtag string
-	// This attr is used for optimizing the REST API calls.
-	// for example, this attr info is used for incrementing/decrementing read FD count while opening/closing the files
-	// when safe deletes is enabled.
+
+	// Etag returned by createFileInit(), later used by createFileFinalize() to catch unexpected
+	// out-of-band changes to the metadata file between init and finalize.
+	finalizeEtag string
+
+	// This cached attr is used for optimizing the REST API calls, when safeDeletes is enabled.
+	// It is saved when the file is opened, if there are no more file opens done on that file, the same etag
+	// can be used to update the file open count on close.
 	attr *internal.ObjAttr
 }
 
@@ -462,17 +470,31 @@ func (file *DcacheFile) ReleaseFile(isReadOnlyHandle bool) error {
 		return true
 	})
 
-	// Decrement the FD count if needed.
-	if isReadOnlyHandle && fileIOMgr.safeDeletes {
+	//
+	// Decrement the file open count if safeDeletes is enabled and handle corresponds to a file opened for
+	// reading.
+	//
+	if fileIOMgr.safeDeletes && isReadOnlyHandle {
+		// attr must have been saved when file was opened for read.
 		common.Assert(file.attr != nil, file.FileMetadata)
 
-		curFDcnt, err := mm.CloseFile(file.FileMetadata.Filename, file.attr)
+		openCount, err := mm.CloseFile(file.FileMetadata.Filename, file.attr)
 		if err != nil {
-			log.Err("DistributedCache[FM]::ReleaseFile: Failed to decrement the FD count for file %s: %v",
+			err = fmt.Errorf("Failed to decrement open count for file %s: %v",
 				file.FileMetadata.Filename, err)
+			log.Err("DistributedCache[FM]::ReleaseFile: %v", err)
+			common.Assert(false, err)
+			//
+			// TODO: Should we fail or silently succeed?
+			//       Failing may not be an option as we may have released critical data structures
+			//       corresponding to the file, but if we silently succeed this file data chunks
+			//       can never be released and will be leaked.
+			//       One way of handling could be to force remove chunks for the file if file opencount
+			//       stays non-zero for a long time.
+			//
 		} else {
-			log.Debug("DistributedCache[FM]::ReleaseFile: Decrement FD count success, current FD count: %d, file: %s",
-				curFDcnt, file.FileMetadata.Filename)
+			log.Debug("DistributedCache[FM]::ReleaseFile: Decremented open count, now: %d, file: %s",
+				openCount, file.FileMetadata.Filename)
 		}
 	}
 
@@ -498,40 +520,21 @@ func (file *DcacheFile) finalizeFile() error {
 		return err
 	}
 
-	err = mm.CreateFileFinalize(file.FileMetadata.Filename, fileMetadataBytes, file.FileMetadata.Size, file.finalizedEtag)
+	err = mm.CreateFileFinalize(file.FileMetadata.Filename, fileMetadataBytes, file.FileMetadata.Size,
+		file.finalizeEtag)
 	if err != nil {
-		if bloberror.HasCode(err, bloberror.ConditionNotMet) {
-			log.Info("DistributedCache[FM]::finalizeFile: File Finalize failed, retrying finalizing the for deleted file %s %+v: %v",
-				file.FileMetadata.Filename, file.FileMetadata, err)
-			//
-			// Retry finalizing the deleted metadata file.
-			// This time there is no need for Etag as this node would only finalize that file.
-			//
-			deletedFileName := getDeletedFileName(file.FileMetadata.Filename, file.FileMetadata.FileID)
-
-			err = mm.CreateFileFinalize(deletedFileName, fileMetadataBytes, file.FileMetadata.Size, "")
-			if err != nil {
-				log.Err("DistributedCache[FM]::finalizeFile: failed to finalize the delete file %s: %v",
-					deletedFileName, err)
-				common.Assert(false, file.FileMetadata.Filename, deletedFileName, file.FileMetadata)
-				return err
-			}
-
-			log.Info("DistributedCache[FM]::finalizeFile: File Finalize Success for deleted file %s %+v: %v",
-				deletedFileName, file.FileMetadata, err)
-
-			return nil
-		}
 		//
-		// This call should only fail when the file got deleted where the etag will mismatch, all the other errors are
-		// not valid.
+		// Finalize file  should not fail unless the metadata file is deleted/modified out-of-band.
+		// That's an unexpected error.
 		//
-		common.Assert(false, file.FileMetadata.Filename, file.FileMetadata)
+		err = fmt.Errorf("mm.CreateFileFinalize failed %+v: %v", file.FileMetadata, err)
+		common.Assert(false, err)
 		return err
 	}
 
 	log.Debug("DistributedCache[FM]::finalizeFile: Final metadata for %s %+v",
 		file.FileMetadata.Filename, file.FileMetadata)
+
 	return nil
 }
 

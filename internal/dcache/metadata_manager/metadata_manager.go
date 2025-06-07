@@ -57,14 +57,13 @@ type MetadataManager interface {
 	// CreateFileFinalize finalizes the metadata for a file updating size, sha256, and other properties.
 	// For properties which were not available at the time of CreateFileInit.
 	// Called by the File Manager in response to a close call from fuse.
-	// TODO :: Ensure that CreateFileInit and CreateFileFinalize are called by the same node.
 	createFileFinalize(filePath string, fileMetadata []byte, fileSize int64, eTag string) error
 
 	// GetFile reads and returns the content of metadata for a file.
-	getFile(filePath string) ([]byte, int64, dcache.FileState, *internal.ObjAttr, error)
+	getFile(filePath string) ([]byte, int64, dcache.FileState, int, *internal.ObjAttr, error)
 
 	// Renames the metadata file to <fileName>.<fileId>.dcache.deleting
-	// Renames only when dst file don't exist.
+	// This would fail if the dest file already exists, which is unlikely due to the fileid in the name.
 	renameFileToDeleting(filePath string, fileId string) error
 
 	// DeleteFile removes metadata for a file.
