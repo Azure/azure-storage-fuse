@@ -1425,7 +1425,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	//
 	//TODO: Fix this call to trigger only if the RV list has changed.
 	// if changed {
-	cmi.updateMVList(clusterMap.RVMap, clusterMap.MVMap)
+	cmi.updateMVList(clusterMap.RVMap, clusterMap.MVMap, true /* runFixMvNewMv */)
 	// } else {
 	// log.Debug("ClusterManager::updateStorageClusterMapIfRequired: No changes in RV mapping")
 	// }
@@ -1484,10 +1484,13 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 // It can be called from two workflows:
 //  1. From updateStorageClusterMapIfRequired() (periodic clustermap update thread) after it infers some change in
 //     rvMap as per the latest heartbeats received.
+//     In this case runFixMvNewMv parameter is passed as true.
 //  2. From updateComponentRVState(), when some other workflow wants to explicitly update component RV state for some
 //     MV, f.e., resync workflow may want to change an "outofsync" component RV to "syncing" or a failed PutChunk call
 //     may indicate an RV as down and hence we would want to change the component RV state to "offline". There could
 //     be more such examples of inband RV state detection resulting in MV list update.
+//     In this case runFixMvNewMv parameter is passed as false, as we do not want to overwhelm the receivers with
+//     too many RPCs as a result of potentially many parallel sync jobs running.
 //
 // It runs the following workflows:
 //  1. degrade-mv: It goes over all the MVs in existingMVMap to see if any (but not all) of their component RVs which
@@ -1498,8 +1501,10 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 //  3. fix-mv:     For all the degraded MVs it replaces all the offline component RVs with good RVs, and sets the
 //     state for those RVs as outofsync. These MVs will be later picked by Replication Manager to run
 //     the resync-mv workflow.
+//     Only run if runFixMvNewMv parameter is true.
 //  4. new-mv:     This adds new MVs to the MV list, made from unused RVs. The component RVs are added in such a way
 //     that more than one component RVs for an MV do not come from the same node and the same fault domain.
+//     Only run if runFixMvNewMv parameter is true.
 //
 // Note that when setting MV state based on component RV state, a component RV in "outofsync" or "syncing" state is
 // treated as an offline component RV, basically any component RV which does not have valid data.
@@ -1507,11 +1512,11 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 // existingMVMap is updated in-place, the caller will then publish it in the updated clustermap.
 //
 // Note: updateMVList() MUST be called after successfully claiming ownership of clusterMap update, by a successful
-//
-//	call to UpdateClusterMapStart(). This is IMPORTANT to ensure only one node attempts to update clusterMap
-//	at any point.
+//       call to UpdateClusterMapStart(). This is IMPORTANT to ensure only one node attempts to update clusterMap
+//       at any point.
+
 func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
-	existingMVMap map[string]dcache.MirroredVolume) {
+	existingMVMap map[string]dcache.MirroredVolume, runFixMvNewMv bool) {
 	// We should not be called for an empty rvMap.
 	common.Assert(len(rvMap) > 0)
 
@@ -2029,8 +2034,9 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	// Phase 1:
 	//
 	// Go over all MVs in existingMVMap and correctly set MV's state based on the state of all the
-	// component RVs and consume RV slots for all used component RVs. If a component RV is found to be offline as per rvMap, then the component RV
-	// is force marked offline. Then it sets the MV state based on the cumulative state of all of it's component RVs as follows:
+	// component RVs and consume RV slots for all used component RVs. If a component RV is found to be offline as
+	// per rvMap, then the component RV is force marked offline. Then it sets the MV state based on the cumulative
+	// state of all of it's component RVs as follows:
 	// - If all component RVs of an MV are online, the MV is marked as online, else
 	// - If no component RV of an MV is online (they are either offline, outofsync or syncing), the MV
 	//   is marked as offline, else
@@ -2117,18 +2123,27 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	}
 
 	//
+	// TODO: Shall we commit the clustermap changes (marking offline component RVs as offline in MV)?
+	//       Note that fixMV() will call UpdateMV RPC which only allows legitimate component RVs update.
+	//       For that it'll refresh the clustermap and if it gets the old clustermap (with RV as online),
+	//       UpdateMV will fail.
+	//
+	log.Debug("ClusterManager::updateMVList: existingMVMap after phase#1, runFixMvNewMv: %v: %v",
+		existingMVMap, runFixMvNewMv)
+
+	//
+	// fix-mv and new-mv workflows can cause lot of RPC calls (JoinMV/UpdateMV) to be gnerated, so we run
+	// those only when updateMVList() is called from the periodic updateStorageClusterMapIfRequired().
+	//
+	if !runFixMvNewMv {
+		return
+	}
+
+	//
 	// Check if any node has exhausted all its RV's, remove such nodes from the nodeToRvs map.
 	// Also remove RVs which are fully consumed (no free slots left).
 	//
 	trimNodeToRvs()
-
-	//
-	// TODO: Shall we commit the clustermap changes (marking offline component RVs as offline in MV)?
-	//       Note that fixMV() will call UpdateMV RPC which only allows legitimate component RVs update.
-	//       For that it'll refresh the clustermap and if it gets the old clustermap (with RV as online),
-	//       UpdateMV will ll fail.
-	//
-	log.Debug("ClusterManager::updateMVList: existingMVMap after phase#1: %v", existingMVMap)
 
 	//
 	// Phase 2:
@@ -2309,7 +2324,6 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	}
 
 	log.Debug("ClusterManager::updateMVList: existing MV map after phase#3: %v", existingMVMap)
-
 }
 
 // Given an MV, send JoinMV or UpdateMV RPC to all its component RVs. It fails if any of the RV fails the call.
@@ -2855,8 +2869,15 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, rvName string, 
 			}
 		}
 
-		// Call updateMVList() to update MV state and run the various mv workflows.
-		cmi.updateMVList(clusterMap.RVMap, clusterMap.MVMap)
+		//
+		// Call updateMVList() to update MV state.
+		// We don't want to run the fix-mv and new-mv workflows as updateComponentRVState() can be called by
+		// huge number of simultaneous sync jobs. That may result in lot of RPC calls overwhelming the receiver
+		// nodes, potentially resulting in failures.
+		// We can pass runFixMvNewMv as true for the inband rv offlining case as those will be fewer, but it's
+		// ok to wait for fix-mv till the next clusterMap epoch.
+		//
+		cmi.updateMVList(clusterMap.RVMap, clusterMap.MVMap, false /* runFixMvNewMv */)
 
 		err = cmi.endClusterMapUpdate(clusterMap)
 		if err != nil {

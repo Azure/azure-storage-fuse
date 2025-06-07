@@ -66,6 +66,9 @@ const (
 	// higher than the fileIOManager workers setting.
 	//
 	MAX_WORKER_COUNT = 2000
+
+	// Maximum number of sync jobs (running syncComponentRV()) that can be running at any time.
+	MAX_SIMUL_SYNC_JOBS = 1000
 )
 
 func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *models.RVNameAndState {
@@ -117,12 +120,12 @@ func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *mo
 // 	return hex.EncodeToString(hash[:])
 // }
 
-// Return list of component RVs (name and state) for the given MV, and also the clustermap Epoch.
+// Return list of component RVs (name and state) for the given MV, and its state, and also the clustermap Epoch.
 // The epoch should be used by the caller to correctly refresh the clustermap on receiving a NeedToRefreshClusterMap
 // error.
-func getComponentRVsForMV(mvName string) ([]*models.RVNameAndState, int64) {
-	rvMap, epoch := cm.GetRVsEx(mvName)
-	return convertRVMapToList(mvName, rvMap), epoch
+func getComponentRVsForMV(mvName string) (dcache.StateEnum, []*models.RVNameAndState, int64) {
+	mvState, rvMap, epoch := cm.GetRVsEx(mvName)
+	return mvState, convertRVMapToList(mvName, rvMap), epoch
 }
 
 func convertRVMapToList(mvName string, rvMap map[string]dcache.StateEnum) []*models.RVNameAndState {

@@ -71,6 +71,14 @@ func GetDegradedMVs() map[string]dcache.MirroredVolume {
 	return clusterMap.getDegradedMVs()
 }
 
+// It will return syncable MVs Map <mvName, MV> as per local cache copy of cluster map.
+// syncable MVs are those degraded MVs which have at least one component RV in outofsync state.
+// Degraded MVs with no outofsync (only offline) RVs need to be first fixed by fix-mv before they
+// can be sync'ed.
+func GetSyncableMVs() map[string]dcache.MirroredVolume {
+	return clusterMap.getSyncableMVs()
+}
+
 // It will return offline MVs Map <mvName, MV> as per local cache copy of cluster map.
 func GetOfflineMVs() map[string]dcache.MirroredVolume {
 	return clusterMap.getOfflineMVs()
@@ -101,11 +109,11 @@ func GetRVs(mvName string) map[string]dcache.StateEnum {
 	return clusterMap.getRVs(mvName)
 }
 
-// Same as GetRVs() but also returns the clusterMap epoch that corresponds to the component RVs returned.
+// Same as GetRVs() but also returns the MV state and clusterMap epoch that corresponds to the component RVs returned.
 // Useful for callers who might want to refresh the clusterMap on receiving the NeedToRefreshClusterMap error
 // from the server. They can refresh the clusterMap till they get a higher epoch value than the one corresponding
 // to the component RVs which were dismissed by the server.
-func GetRVsEx(mvName string) (map[string]dcache.StateEnum, int64) {
+func GetRVsEx(mvName string) (dcache.StateEnum, map[string]dcache.StateEnum, int64) {
 	return clusterMap.getRVsEx(mvName)
 }
 
@@ -192,7 +200,11 @@ func RefreshClusterMap(higherThanEpoch int64) error {
 		// Time check.
 		elapsed := time.Since(startTime)
 		if elapsed > maxWait {
-			common.Assert(false)
+			//
+			// This can happen since callers sometimes do a best-effort clusterMap refresh,
+			// as they are not sure that clusterMap has indeed changed.
+			// Let the caller know and handle it as they see fit.
+			//
 			return fmt.Errorf("RefreshClusterMap: timed out waiting for epoch %d, got %d",
 				higherThanEpoch+1, GetEpoch())
 		}
@@ -358,6 +370,25 @@ func (c *ClusterMap) getDegradedMVs() map[string]dcache.MirroredVolume {
 	return degradedMVs
 }
 
+func (c *ClusterMap) getSyncableMVs() map[string]dcache.MirroredVolume {
+	syncableMVs := make(map[string]dcache.MirroredVolume)
+	for mvName, mv := range c.getLocalMap().MVMap {
+		if mv.State == dcache.StateDegraded {
+			rvs := c.getRVs(mvName)
+			// We got mvName from MVMap, so getRVs() should succeed.
+			common.Assert(rvs != nil, mvName)
+
+			for _, rvState := range rvs {
+				if rvState == dcache.StateOutOfSync {
+					syncableMVs[mvName] = mv
+					break
+				}
+			}
+		}
+	}
+	return syncableMVs
+}
+
 func (c *ClusterMap) getOfflineMVs() map[string]dcache.MirroredVolume {
 	offlineMVs := make(map[string]dcache.MirroredVolume)
 	for mvName, mv := range c.getLocalMap().MVMap {
@@ -422,8 +453,8 @@ func (c *ClusterMap) getRVs(mvName string) map[string]dcache.StateEnum {
 	return mv.RVs
 }
 
-// Get component RVs for the given MV, along with the clustermap epoch.
-func (c *ClusterMap) getRVsEx(mvName string) (map[string]dcache.StateEnum, int64) {
+// Get component RVs for the given MV, along with MV state and the clustermap epoch.
+func (c *ClusterMap) getRVsEx(mvName string) (dcache.StateEnum, map[string]dcache.StateEnum, int64) {
 	//
 	// Save a copy of the clusterMap pointer to use for accessing MVMap and Epoch, so that both
 	// correspond to the same instance of clusterMap.
@@ -432,9 +463,9 @@ func (c *ClusterMap) getRVsEx(mvName string) (map[string]dcache.StateEnum, int64
 	mv, ok := localMap.MVMap[mvName]
 	if !ok {
 		log.Err("ClusterMap::getRVs: no mirrored volume named %s", mvName)
-		return nil, -1
+		return dcache.StateInvalid, nil, -1
 	}
-	return mv.RVs, localMap.Epoch
+	return mv.State, mv.RVs, localMap.Epoch
 }
 
 func (c *ClusterMap) getRVState(rvName string) dcache.StateEnum {
