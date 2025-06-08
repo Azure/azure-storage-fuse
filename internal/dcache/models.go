@@ -150,4 +150,5 @@ type ComponentRVUpdateMessage struct {
 	MvName     string
 	RvName     string
 	RvNewState StateEnum
+	Err        chan error
 }

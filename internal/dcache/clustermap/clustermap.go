@@ -248,14 +248,46 @@ func ReportRVOffline(rvName string) error {
 	return nil
 }
 
+// This function must be called by any caller that wants to change and persist the state of a component RV
+// belonging to an MV. It blocks till the change is committed to the global clustermap.
+// To avoid too many updates to the global clustermap, each of which will have to wait for the optimistic
+// concurrent update, it batches updates received till the next update window and then makes a single update
+// to the clustermap. The success or failure of this batched update will decide the success/failure of each
+// of the individual updates.
 func UpdateComponentRVState(mvName string, rvName string, rvNewState dcache.StateEnum) error {
-	updateComponentRVStateChannel <- dcache.ComponentRVUpdateMessage{MvName: mvName, RvName: rvName, RvNewState: rvNewState}
-	return nil
+	updateRVMessage := dcache.ComponentRVUpdateMessage{
+		MvName:     mvName,
+		RvName:     rvName,
+		RvNewState: rvNewState,
+		Err:        make(chan error),
+	}
+	common.Assert(updateComponentRVStateChannel != nil)
+
+	//
+	// Queue the update request to the channel.
+	// It'll be picked by the periodic updater in the next update window along with all the other update requests
+	// queued. Those updates are then applied to the clustermap and the updated clustermap committed at once.
+	// The batch updater will push the return status on the error channel and close the channel.
+	//
+	updateComponentRVStateChannel <- updateRVMessage
+
+	common.Assert(updateRVMessage.Err != nil)
+
+	return <-updateRVMessage.Err
 }
 
-func ReadComponentRVStateChannel() chan dcache.ComponentRVUpdateMessage {
+func GetComponentRVStateChannel() chan dcache.ComponentRVUpdateMessage {
 	return updateComponentRVStateChannel
 }
+
+const (
+	//
+	// This is the size of the channel where RV updates are queued.
+	// These many max updates can be batched. This must be greater than rm.MAX_SIMUL_SYNC_JOBS as each
+	// sync job can generate one outstanding updae.
+	//
+	MAX_SIMUL_RV_STATE_UPDATES = 10000
+)
 
 var (
 	clusterMapRefresher func() error
@@ -263,7 +295,14 @@ var (
 		// This MUST match localClusterMapPath in clustermanager.
 		localClusterMapPath: filepath.Join(common.DefaultWorkDir, "clustermap.json"),
 	}
-	updateComponentRVStateChannel = make(chan dcache.ComponentRVUpdateMessage, 1000)
+
+	//
+	// All go routines calling UpdateComponentRVState() around the same time will end up adding a corresponding
+	// update message to this channel. Typically various sync jobs will call this to update the state of component
+	// RVs from outofsync->syncing or syncing->online, so the size of this channel should be of the order of
+	// simultaneous sync jobs, ref MAX_SIMUL_SYNC_JOBS.
+	//
+	updateComponentRVStateChannel = make(chan dcache.ComponentRVUpdateMessage, MAX_SIMUL_RV_STATE_UPDATES)
 )
 
 // clustermap package provides client methods to interact with the clusterManager, most importantly it provides
@@ -275,6 +314,8 @@ type ClusterMap struct {
 }
 
 func (c *ClusterMap) stop() {
+	close(updateComponentRVStateChannel)
+	updateComponentRVStateChannel = nil
 }
 
 // Use this to get the local clustermap pointer safe from update by loadLocalMap().
