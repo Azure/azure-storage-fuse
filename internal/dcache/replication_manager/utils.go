@@ -68,6 +68,7 @@ const (
 	MAX_WORKER_COUNT = 2000
 
 	// Maximum number of sync jobs (running syncComponentRV()) that can be running at any time.
+	// This should be smaller than cm.MAX_SIMUL_RV_STATE_UPDATES.
 	MAX_SIMUL_SYNC_JOBS = 1000
 )
 
@@ -201,4 +202,9 @@ func updateLocalComponentRVState(rvs []*models.RVNameAndState, rvName string,
 
 	// RV is not present in the list.
 	common.Assert(false, rpc.ComponentRVsToString(rvs), rvName)
+}
+
+func init() {
+	common.Assert(MAX_SIMUL_SYNC_JOBS < cm.MAX_SIMUL_RV_STATE_UPDATES,
+		MAX_SIMUL_SYNC_JOBS, cm.MAX_SIMUL_RV_STATE_UPDATES)
 }
