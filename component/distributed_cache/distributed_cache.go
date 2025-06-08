@@ -989,19 +989,38 @@ func (dc *DistributedCache) CloseFile(options internal.CloseFileOptions) error {
 	common.Assert(!options.Handle.IsFsDebug() || (!options.Handle.IsFsDcache() && !options.Handle.IsFsAzure()))
 
 	var dcacheErr, azureErr error
+
 	if options.Handle.IsFsDcache() {
 		common.Assert(options.Handle.IFObj != nil)
+		//
+		// A dcache file handle can be either opened for read or write.
+		// Distributed cache doesn't support handles opened for readwrite.
+		//
+		common.Assert(!options.Handle.IsDcacheAllowReads() || !options.Handle.IsDcacheAllowWrites())
+
 		dcFile := options.Handle.IFObj.(*fm.DcacheFile)
-		// While creating the file and closing the file immediately, we don't get the flush call, as libfuse component only
-		// send it when there is some write on the handle. Hence here we should take care of such cases as we should always
-		// finalize the file. The following flag is unset when there is flush file on the handle.
+
+		//
+		// While creating the file and closing the file immediately w/o any intervening writes, we don't get
+		// the flush call, as libfuse component only sends it when there is some write on the handle.
+		// For such files, we force DistributedCache.FlushFile() which in turn calls DcacheFile.CloseFile()
+		// which finalizes the file. If there were writes on the file before close, the allow-write flag is
+		// unset by DistributedCache.FlushFile() and we skip the finalize in that case.
+		//
 		if options.Handle.IsDcacheAllowWrites() {
 			dcacheErr = dc.FlushFile(internal.FlushFileOptions{
 				Handle: options.Handle,
 			})
 			common.Assert(dcacheErr == nil, dcacheErr)
 		}
-		dcacheErr = dcFile.ReleaseFile()
+
+		//
+		// When readonly dcache file handles are closed with safeDeletes config enabled, the file's
+		// open count must be reduced, let ReleaseFile() know that.
+		//
+		isReadOnlyHandle := options.Handle.IsDcacheAllowReads()
+
+		dcacheErr = dcFile.ReleaseFile(isReadOnlyHandle)
 		if dcacheErr != nil {
 			log.Err("DistributedCache::CloseFile : Failed to ReleaseFile for Dcache file : %s", options.Handle.Path)
 		}

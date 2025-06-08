@@ -42,6 +42,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -70,6 +71,17 @@ type replicationMgr struct {
 
 	// Thread pool for sending RPC requests.
 	tp *threadpool
+
+	//
+	// Maximum number of syncJobs (running syncComponentRV()) that can be running simultaneously.
+	// After this we do not start any more syncJobs till some of the existing ones complete.
+	// TODO: We should distinguish between "short" and "long" sync jobs (based on the sync size) and
+	//       have separate limits for both.
+	//
+	maxSimulSyncJobs int64
+
+	// Number of sync jobs currently running.
+	numSyncJobs atomic.Int64
 }
 
 var rm *replicationMgr
@@ -81,9 +93,10 @@ func Start() error {
 	log.Debug("ReplicationManager::Start: Starting replication manager")
 
 	rm = &replicationMgr{
-		ticker: time.NewTicker(ResyncInterval * time.Second),
-		done:   make(chan bool),
-		tp:     newThreadPool(MAX_WORKER_COUNT),
+		ticker:           time.NewTicker(ResyncInterval * time.Second),
+		done:             make(chan bool),
+		tp:               newThreadPool(MAX_WORKER_COUNT),
+		maxSimulSyncJobs: MAX_SIMUL_SYNC_JOBS,
 	}
 
 	rm.wg.Add(1)
@@ -130,10 +143,10 @@ func ReadMV(req *ReadMvRequest) (*ReadMvResponse, error) {
 
 retry:
 	// Get component RVs for MV, from clustermap.
-	componentRVs, lastClusterMapEpoch := getComponentRVsForMV(req.MvName)
+	mvState, componentRVs, lastClusterMapEpoch := getComponentRVsForMV(req.MvName)
 
-	log.Debug("ReplicationManager::ReadMV: Component RVs for %s are: %v",
-		req.MvName, rpc.ComponentRVsToString(componentRVs))
+	log.Debug("ReplicationManager::ReadMV: Component RVs for %s (%s) are: %v",
+		req.MvName, mvState, rpc.ComponentRVsToString(componentRVs))
 
 	//
 	// Get the most suitable RV from the list of component RVs,
@@ -153,6 +166,15 @@ retry:
 		readerRV := getReaderRV(componentRVs, excludeRVs)
 		if readerRV == nil {
 			//
+			// An MV once marked offline can never become online, so save the trip to clustermap.
+			//
+			if mvState == dcache.StateOffline {
+				err = fmt.Errorf("%s is offline", req.MvName)
+				log.Err("ReplicationManager::ReadMV: %v", err)
+				return nil, err
+			}
+
+			//
 			// Even after refreshing clustermap if we cannot get a valid MV replica to read from,
 			// alas we need to fail the read.
 			//
@@ -164,7 +186,8 @@ retry:
 
 			//
 			// This is very unlikely and it would most likely indicate that we have a “very stale”
-			// clustermap where all/most of the component RVs have been replaced.
+			// clustermap where all/most of the component RVs have been replaced, or most of them
+			// are down. Try refreshing clustermap once before giving up.
 			//
 
 			err = cm.RefreshClusterMap(lastClusterMapEpoch)
@@ -293,10 +316,10 @@ retry:
 	// If server returns NeedToRefreshClusterMap, we will ask cm.RefreshClusterMap() to update
 	// the clustermap to a value higher than this epoch.
 	//
-	componentRVs, lastClusterMapEpoch := getComponentRVsForMV(req.MvName)
+	mvState, componentRVs, lastClusterMapEpoch := getComponentRVsForMV(req.MvName)
 
-	log.Debug("ReplicationManager::WriteMV: Component RVs for %s are: %v",
-		req.MvName, rpc.ComponentRVsToString(componentRVs))
+	log.Debug("ReplicationManager::WriteMV: Component RVs for %s (%s) are: %v",
+		req.MvName, mvState, rpc.ComponentRVsToString(componentRVs))
 
 	//
 	// Response channel to receive response for the PutChunk RPCs sent to each component RV.
@@ -324,8 +347,11 @@ retry:
 		// copied to them.
 		//
 		if rv.State == string(dcache.StateOffline) || rv.State == string(dcache.StateOutOfSync) {
-			log.Debug("ReplicationManager::WriteMV: Skipping %s/%s (state %s)",
-				rv.Name, req.MvName, rv.State)
+			log.Debug("ReplicationManager::WriteMV: Skipping %s/%s (RV state: %s, MV state: %s)",
+				rv.Name, req.MvName, rv.State, mvState)
+
+			// Online MV must have all replicas online.
+			common.Assert(mvState != dcache.StateOnline, req.MvName)
 
 			//
 			// Skip writing to this RV, as it is in offline or outofsync state.
@@ -336,6 +362,9 @@ retry:
 				len(responseChannel), len(componentRVs))
 			responseChannel <- nil
 		} else if rv.State == string(dcache.StateOnline) || rv.State == string(dcache.StateSyncing) {
+			// Offline MV has all replicas offline.
+			common.Assert(mvState != dcache.StateOffline, req.MvName)
+
 			rvID := getRvIDFromRvName(rv.Name)
 			common.Assert(common.IsValidUUID(rvID))
 
@@ -541,12 +570,22 @@ retry:
 	}
 
 	if clusterMapRefreshed {
+		// Offline MV has all replicas offline, so we cannot get a NeedToRefreshClusterMap error.
+		common.Assert(mvState != dcache.StateOffline, req.MvName)
+
 		//
 		// If we refreshed the clustermap, we need to retry the entire write MV with the updated clustermap.
 		// This might mean re-writing some of the replicas which were successfully written in this iteration.
 		//
 		retryCnt++
 		goto retry
+	}
+
+	// Fail write with a meaningful error.
+	if mvState == dcache.StateOffline {
+		err := fmt.Errorf("%s is offline", req.MvName)
+		log.Err("ReplicationManager::WriteMV: %v", err)
+		return nil, err
 	}
 
 	// For a non-offline MV, at least one replica write should succeed.
@@ -569,28 +608,31 @@ func periodicResyncMVs() {
 			log.Info("ReplicationManager::periodicResyncMVs: stopping periodic resync of degraded MVs")
 			return
 		case <-rm.ticker.C:
-			log.Debug("ReplicationManager::periodicResyncMVs: Resync of degraded MVs triggered")
-			resyncDegradedMVs()
+			log.Debug("ReplicationManager::periodicResyncMVs: Resync of syncable MVs triggered")
+			resyncSyncableMVs()
 		}
 	}
 }
 
-// This is run at regular intervals for checking and resync'ing any degraded MVs as per the clustermap.
+// This is run at regular intervals for checking and resync'ing any syncable MVs as per the clustermap.
+// syncable MVs are those degraded MVs for which there's at least one component RV in outofsync state, which
+// needs to be sync'ed.
 // Note that the clustermap can have 0 or more degraded MVs that need to be synchronized. These degraded MVs
 // must already have been fixed (replacement RVs selected for each offline component RV) by the fix-mv workflow
 // run by the ClusterManager. Fix-mv would have replaced all offline component RVs with good RVs and marked those
-// RV state as "outofsync", so resyncDegradedMVs() should synchronize each of those "outofsync" RVs from a good RV.
+// RV state as "outofsync", so resyncSyncableMVs() should synchronize each of those "outofsync" RVs from a good RV.
 // It'll update the state of the RVs to "syncing" and the MV state to "syncing" (if all outofsync RVs are set to
 // syncing), in the global clustermap and start a synchronization go routine for each outofsync RV.
-func resyncDegradedMVs() {
-	degradedMVs := cm.GetDegradedMVs()
-	if len(degradedMVs) == 0 {
-		log.Debug("ReplicationManager::ResyncDegradedMVs: No degraded MVs found")
+func resyncSyncableMVs() {
+	syncableMVs := cm.GetSyncableMVs()
+	if len(syncableMVs) == 0 {
+		log.Debug("ReplicationManager::ResyncSyncableMVs: No syncable MVs found (%d degraded MVs)",
+			len(cm.GetDegradedMVs()))
 		return
 	}
 
-	log.Info("ReplicationManager::ResyncDegradedMVs: %d degraded MV(s) found: %+v",
-		len(degradedMVs), degradedMVs)
+	log.Info("ReplicationManager::ResyncSyncableMVs: %d syncable MV(s) found (%d degraded): %+v",
+		len(syncableMVs), len(cm.GetDegradedMVs()), syncableMVs)
 
 	//
 	// For each degraded MV, call syncMV() to synchronize all the outofsync RVs for that MV.
@@ -598,8 +640,20 @@ func resyncDegradedMVs() {
 	// of other sync jobs. Hence we don't have a status for the syncMV(). If it fails, all we can do is
 	// retry the resync next time around (if one or more RVs are still outofsync).
 	//
-	for mvName, mvInfo := range degradedMVs {
+	for mvName, mvInfo := range syncableMVs {
 		common.Assert(mvInfo.State == dcache.StateDegraded, mvInfo.State)
+
+		//
+		// If we have more than maxSimulSyncJobs sync jobs currently running, don't start any more.
+		// Any syncable MVs left out in this iteration will be synced next time resyncSyncableMVs is
+		// called.
+		// We can go a little over maxSimulSyncJobs, but that's ok.
+		//
+		if rm.numSyncJobs.Load() >= rm.maxSimulSyncJobs {
+			log.Info("ReplicationManager::ResyncSyncableMVs: numSyncJobs (%d) >= maxSimulSyncJobs (%d), not syncing more MVs till some sync jobs complete",
+				rm.numSyncJobs.Load(), rm.maxSimulSyncJobs)
+			break
+		}
 
 		syncMV(mvName, mvInfo)
 	}
@@ -670,7 +724,7 @@ func syncMV(mvName string, mvInfo dcache.MirroredVolume) {
 
 		//
 		// Don't run more than one sync job for the same target replica.
-		// This is to prevent periodic calls to resyncDegradedMVs() from starting replication
+		// This is to prevent periodic calls to resyncSyncableMVs() from starting replication
 		// for a target replica, that's already running.
 		//
 		val, ok := rm.runningJobs.Load(tgtReplica)
@@ -689,14 +743,21 @@ func syncMV(mvName string, mvInfo dcache.MirroredVolume) {
 		// Increment the wait group for the goroutine that will run the syncComponentRV() function.
 		rm.wg.Add(1)
 
+		// Increment syncJobs count.
+		rm.numSyncJobs.Add(1)
+
 		go func() {
 			// Decrement the wait group when the syncComponentRV() function completes.
 			defer rm.wg.Done()
+
+			// Decrement syncJobs count once the syncjob completes.
+			defer rm.numSyncJobs.Add(-1)
 
 			// Remove from the map, once the syncjob completes (success or failure).
 			defer rm.runningJobs.Delete(tgtReplica)
 
 			syncComponentRV(mvName, lioRV, rv.Name, syncSize, componentRVs)
+			common.Assert(rm.numSyncJobs.Load() > 0, rm.numSyncJobs.Load())
 		}()
 	}
 }
@@ -709,6 +770,13 @@ func syncMV(mvName string, mvInfo dcache.MirroredVolume) {
 // to the target RV, and also sending the EndSync() RPC call to both source and target nodes.
 func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize int64,
 	componentRVs []*models.RVNameAndState) {
+	//
+	// Wallclock time when this sync job is started.
+	// This will be later set in syncJob once we create it, and used for finding the running duration
+	// of the sync job.
+	//
+	startTime := time.Now()
+
 	log.Debug("ReplicationManager::syncComponentRV: %s/%s -> %s/%s, sync size %d bytes, component RVs %v",
 		lioRV, mvName, targetRVName, mvName, syncSize, rpc.ComponentRVsToString(componentRVs))
 
@@ -788,6 +856,7 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 		syncSize:      syncSize,
 		componentRVs:  componentRVs,
 		syncStartTime: syncStartTime,
+		startedAt:     startTime,
 	}
 
 	log.Debug("ReplicationManager::syncComponentRV: Sync job created: %s", syncJob.toString())
@@ -866,6 +935,9 @@ func runSyncJob(job *syncJob) error {
 		common.IsValidUUID(job.destSyncID)),
 		job.srcSyncID, job.destSyncID)
 
+	// Tag the time when copy started.
+	job.copyStartedAt = time.Now()
+
 	err := copyOutOfSyncChunks(job)
 	if err != nil {
 		err = fmt.Errorf("failed to copy out of sync chunks for job %s [%v]", job.toString(), err)
@@ -894,6 +966,7 @@ func runSyncJob(job *syncJob) error {
 	err = sendEndSyncRequest(job.srcRVName, srcNodeID, endSyncReq)
 	if err != nil {
 		// TODO: We need to check the error extensively as we do for the dest RV below.
+		err = fmt.Errorf("sendEndSyncRequest failed for job %s [%v]", job.toString(), err)
 		log.Err("ReplicationManager::runSyncJob: %v", err)
 		return err
 	}
@@ -905,6 +978,7 @@ func runSyncJob(job *syncJob) error {
 	endSyncReq.SyncID = job.destSyncID
 	err = sendEndSyncRequest(job.destRVName, destNodeID, endSyncReq)
 	if err != nil {
+		err = fmt.Errorf("sendEndSyncRequest failed for job %s [%v]", job.toString(), err)
 		log.Err("ReplicationManager::runSyncJob: %v", err)
 
 		rpcErr := rpc.GetRPCResponseError(err)
@@ -917,13 +991,13 @@ func runSyncJob(job *syncJob) error {
 			// component RV as offline and force the fix-mv workflow which will finally
 			// trigger the resync-mv workflow.
 			//
-			log.Err("ReplicationManager::runSyncJob: Failed to reach node %s [%v]",
-				destNodeID, err)
+			log.Err("ReplicationManager::runSyncJob: Failed to reach node %s for job %s [%v]",
+				destNodeID, job.toString(), err)
 
 			errRV := cm.UpdateComponentRVState(job.mvName, job.destRVName, dcache.StateOffline)
 			if errRV != nil {
-				errStr := fmt.Sprintf("Failed to mark %s/%s as offline [%v]",
-					job.destRVName, job.mvName, errRV)
+				errStr := fmt.Sprintf("Failed to mark %s/%s as offline for job %s [%v]",
+					job.destRVName, job.mvName, job.toString(), errRV)
 				log.Err("ReplicationManager::runSyncJob: %s", errStr)
 			}
 		} else {
@@ -934,8 +1008,8 @@ func runSyncJob(job *syncJob) error {
 			//
 			errRV := cm.UpdateComponentRVState(job.mvName, job.destRVName, dcache.StateOutOfSync)
 			if errRV != nil {
-				errStr := fmt.Sprintf("Failed to mark %s/%s as outofsync [%v]",
-					job.destRVName, job.mvName, errRV)
+				errStr := fmt.Sprintf("Failed to mark %s/%s as outofsync for job %s [%v]",
+					job.destRVName, job.mvName, job.toString(), errRV)
 				log.Err("ReplicationManager::copyOutOfSyncChunks: %s", errStr)
 			}
 		}
@@ -950,11 +1024,13 @@ func runSyncJob(job *syncJob) error {
 	//
 	err = cm.UpdateComponentRVState(job.mvName, job.destRVName, dcache.StateOnline)
 	if err != nil {
-		errStr := fmt.Sprintf("Failed to mark %s/%s as online [%v]",
-			job.destRVName, job.mvName, err)
+		errStr := fmt.Sprintf("Failed to mark %s/%s as online for job %s [%v]",
+			job.destRVName, job.mvName, job.toString(), err)
 		log.Err("ReplicationManager::runSyncJob: %s", errStr)
 		return err
 	}
+
+	log.Debug("ReplicationManager::runSyncJob: Sync job completed successfully: %s", job.toString())
 
 	// Log this only if this was the last sync job for the MV
 	//log.Debug("ReplicationManager::ResyncMV: Successfully resynced MV %s", mvName)
@@ -1186,10 +1262,14 @@ func GetMVSize(mvName string) (int64, error) {
 	var mvSize int64
 	var err error
 
-	componentRVs, _ := getComponentRVsForMV(mvName)
+	clusterMapRefreshed := false
 
-	log.Debug("ReplicationManager::GetMVSize: Component RVs for %s are: %v",
-		mvName, rpc.ComponentRVsToString(componentRVs))
+retry:
+
+	mvState, componentRVs, lastClusterMapEpoch := getComponentRVsForMV(mvName)
+
+	log.Debug("ReplicationManager::GetMVSize: Component RVs for %s (%s) are: %v",
+		mvName, mvState, rpc.ComponentRVsToString(componentRVs))
 
 	//
 	// Get the most suitable RV from the list of component RVs,
@@ -1201,17 +1281,49 @@ func GetMVSize(mvName string) (int64, error) {
 	// - Prefer a node that has recently responded successfully to any of our RPCs.
 	// - Pick a random one.
 	//
-	// excludeRVs is the list of component RVs to omit, used when retrying after prev attempts to read from
-	// certain RV(s) failed. Those RVs are added to excludeRVs list.
+	// excludeRVs is the list of component RVs to omit, used when retrying after prev attempts to query
+	// MV size from certain RV(s) failed. Those RVs are added to excludeRVs list.
 	//
 	var excludeRVs []string
 
 	for {
 		readerRV := getReaderRV(componentRVs, excludeRVs)
+
 		if readerRV == nil {
-			err = fmt.Errorf("no suitable RV found for MV %s", mvName)
-			log.Err("ReplicationManager::GetMVSize: %v", err)
-			return 0, err
+			//
+			// An MV once marked offline can never become online, so save the trip to clustermap.
+			//
+			if mvState == dcache.StateOffline {
+				err = fmt.Errorf("%s is offline", mvName)
+				log.Err("ReplicationManager::GetMVSize: %v", err)
+				return 0, err
+			}
+
+			//
+			// Even after refreshing clustermap if we cannot get a valid MV replica to query MV size,
+			// alas we need to fail the GetMVSize().
+			//
+			if clusterMapRefreshed {
+				err = fmt.Errorf("no suitable RV found for MV %s", mvName)
+				log.Err("ReplicationManager::GetMVSize: %v", err)
+				return 0, err
+			}
+
+			//
+			// This is very unlikely and it would most likely indicate that we have a “very stale”
+			// clustermap where all/most of the component RVs have been replaced, or most of them
+			// are down. Try refreshing clustermap once before giving up.
+			//
+			err = cm.RefreshClusterMap(lastClusterMapEpoch)
+			if err != nil {
+				err = fmt.Errorf("RefreshClusterMap() failed, failing GetMVSize(%s)",
+					mvName)
+				log.Warn("ReplicationManager::GetMVSize: %v", err)
+				return 0, err
+			}
+
+			clusterMapRefreshed = true
+			goto retry
 		}
 
 		common.Assert(!slices.Contains(excludeRVs, readerRV.Name), readerRV.Name, excludeRVs)
