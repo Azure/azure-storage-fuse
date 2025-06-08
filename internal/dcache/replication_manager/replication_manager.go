@@ -624,11 +624,35 @@ func periodicResyncMVs() {
 // It'll update the state of the RVs to "syncing" and the MV state to "syncing" (if all outofsync RVs are set to
 // syncing), in the global clustermap and start a synchronization go routine for each outofsync RV.
 func resyncSyncableMVs() {
-	syncableMVs := cm.GetSyncableMVs()
-	if len(syncableMVs) == 0 {
-		log.Debug("ReplicationManager::ResyncSyncableMVs: No syncable MVs found (%d degraded MVs)",
-			len(cm.GetDegradedMVs()))
-		return
+	var syncableMVs map[string]dcache.MirroredVolume
+	clusterMapRefreshed := false
+
+	for {
+		syncableMVs = cm.GetSyncableMVs()
+		if len(syncableMVs) == 0 {
+			log.Debug("ReplicationManager::ResyncSyncableMVs: No syncable MVs found (%d degraded MVs)",
+				len(cm.GetDegradedMVs()))
+			return
+		}
+
+		//
+		// If the cached clustermap suggests that there could be one or more syncable MVs, we refresh
+		// the clustermap once before we start the sync, to make sure we perform the sync based on the
+		// latest clustermap.
+		// This extra clustermap refresh will help us avoid attempting any invalid sync.
+		// Note that we save this clustermap refresh in the common case of no sync needed.
+		//
+		if clusterMapRefreshed {
+			break
+		}
+
+		err := cm.RefreshClusterMap(0)
+		if err != nil {
+			log.Warn("ReplicationManager::ResyncSyncableMVs: could not refresh clustermap, skipping: %v",
+				err)
+			return
+		}
+		clusterMapRefreshed = true
 	}
 
 	log.Info("ReplicationManager::ResyncSyncableMVs: %d syncable MV(s) found (%d degraded): %+v",

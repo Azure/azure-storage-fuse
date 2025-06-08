@@ -850,6 +850,16 @@ func (mv *mvInfo) refreshFromClustermap() error {
 		// this means the fix-mv workflow didn't complete successfully so we need to rollback the reserved
 		// space changes.
 		//
+		// TODO: It's possible that after we responded to JoinMV and before the caller could mark the
+		//       component RV state as outofsync in the clustermap, some other node contacted us forcing the
+		//       refreshFromClustermap(). We should not revert the state change in such case. This means
+		//       we should have some timeout after which we can revert the state change hoping that the
+		//       caller has given up.
+		//       Same applies to the following StateSyncing->StateOutOfSync transition. It could be that
+		//       the node sending StartSync is still syncing but before it could send EndSync, some other
+		//       node (or some other thread on the same node) sends some other request forcing us to refresh
+		//       the cluster map. We should not revert a legitimate ongoing state change.
+		//
 		if oldRvNameAndState.State == string(dcache.StateOutOfSync) && rvState == dcache.StateOffline {
 			log.Warn("mvInfo::refreshFromClustermap: %s/%s (%s -> %s), clearing reservedSpace (%d bytes) left from previous incomplete join attempt",
 				rvName, mv.mvName, oldRvNameAndState.State, rvState, mv.reservedSpace.Load())
@@ -1106,19 +1116,20 @@ func (mv *mvInfo) validateComponentRVsInSync(componentRVsInReq []*models.RVNameA
 
 		//
 		// Q: Why refreshFromClustermap() is needed?
-		// A: If we are hosting the target RV, then this validState change must have been approved by us
-		//    (prior JoinMV or StartSync) and only after that the sender could have committed the state
+		// A: If we are hosting the source or target RV, then this validState change must have been approved by
+		//    us (prior JoinMV or StartSync) and only after that the sender could have committed the state
 		//    change in clustermap. If we do not have the validState in our rvInfo then it cannot be in the
 		//    clustermap and if it's not in the clustermap sender won't have sent the StartSync/EndSync RPC.
 		//    Note that even if we are not hosting the target RV, we would have been informed through a
-		//	  StartSync request and we must have acknowledged it.
+		//    StartSync request and we must have acknowledged it.
 		//
 		//    There is one possibility though. A prior StartSync succeeded and the mvInfo state was changed to
 		//    syncing, but the sender couldn' persist that change in the clustermap (some node that was updating
 		//    the clustermap took really long, due to some other node being down and JoinMV taking long time).
 		//    Meanwhile the lowest online RV on the node attempting the sync is marked offline in clustermap,
-		//	  so some other node now has the lowest online RV, and that node now attempts the sync. It sends a
-		//	  StartSync RPC to this RV which is already marked syncing by the previous StartSync.
+		//    so some other node now has the lowest online RV, and that node now attempts the sync. It sends a
+		//    StartSync RPC to this RV which is already marked syncing by the previous StartSync. In clustermap
+		//    it's outofsync so a refresh will get the desired state.
 		//
 		if targetRVNameAndState.State != validState {
 			errStr := fmt.Sprintf("Target RV %s is not in %s state (%s/%s -> %s/%s): %s [NeedToRefreshClusterMap]",
@@ -1136,7 +1147,14 @@ func (mv *mvInfo) validateComponentRVsInSync(componentRVsInReq []*models.RVNameA
 				continue
 			}
 
-			common.Assert(false, errStr)
+			//
+			// Offline is one state which is outside our control so a component RV can go to offline state
+			// at any point, w/o we knowing about it. This will happen when the node hosting the component
+			// RV goes offline.
+			//
+			common.Assert(targetRVNameAndState.State == string(dcache.StateOffline),
+				targetRVNameAndState.State, validState, sourceRVName, targetRVName, mv.mvName, errStr)
+
 			return rpc.NewResponseError(models.ErrorCode_NeedToRefreshClusterMap, errStr)
 		}
 
@@ -2110,7 +2128,7 @@ func (h *ChunkServiceHandler) StartSync(ctx context.Context, req *models.StartSy
 
 	//
 	// Source RV is the lowest index online RV. The node hosting this RV will send the start sync call
-	// to the outofsync component RVs.
+	// to the outofsync component RVs which become the target of the sync.
 	//
 	srcRVInfo, targetRVInfo, err := h.getSrcAndDestRVInfoForSync(req.SourceRVName, req.TargetRVName)
 	if err != nil {
