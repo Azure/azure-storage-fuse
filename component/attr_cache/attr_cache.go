@@ -265,7 +265,8 @@ func (ac *AttrCache) invalidatePath(path string) {
 func (ac *AttrCache) backgroundCleanup() {
 	defer close(ac.cleanupDone)
 	
-	// Ensure minimum interval to prevent panic with NewTicker
+	// Ensure minimum interval to prevent panic with NewTicker.
+	// Note: `cacheTimeout` is immutable post-start and should not be modified during runtime.
 	interval := time.Duration(ac.cacheTimeout) * time.Second
 	if interval <= 0 {
 		interval = time.Second // Use 1 second as minimum interval
