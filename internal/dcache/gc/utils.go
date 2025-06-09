@@ -105,3 +105,7 @@ func getMyNodeId() string {
 func getNumChunksForFile(file *dcache.FileMetadata) int64 {
 	return (file.Size + file.FileLayout.ChunkSize - 1) / file.FileLayout.ChunkSize
 }
+
+func getNextChunkIdxInMV(curChunkIdx int64, numMvs int64) int64 {
+	return curChunkIdx + numMvs
+}
