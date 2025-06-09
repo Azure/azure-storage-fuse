@@ -612,19 +612,18 @@ func cleanupRV(rv dcache.RawVolume) error {
 //
 // Before proceeding, ensure no duplicate RV IDs (filesystem GUIDs) exist across different cache paths —
 //
-//	i.e., if an RV ID appears in both the input list and clustermap, it must refer to the *same* path.
-//	Any mismatch indicates a RVId collision, in that case, the startup will be aborted.
+// i.e., if an RV ID appears in both the input list and clustermap, it must refer to the *same* path.
+// Any mismatch indicates a RVId collision, in that case, the startup will be aborted.
 //
 // In case of success the boolean return value indicates the following:
 // true  -> Found a clustermap and RV(s) were either not present in the RV list or waited for RV(s) to be marked
-//
-//	offline and then cleaned up the RVs if any.
-//
+//          offline and then cleaned up the RVs if any.
 // false -> Did not find clustermap, cleaned up the RVs if any.
 //
 // In case of success it'll return only after all RV directories are fully cleaned up.
 // If it finds any unexpected file/dir in the RV it complains and bails out. Note that this is the only place where
 // we check if RV contains any unexpected file/dir.
+
 func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, error) {
 	log.Info("ClusterManager::safeCleanupMyRVs: Cleaning up %d RV(s) %v", len(myRVs), myRVs)
 

@@ -234,7 +234,7 @@ func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
 
 	rvList := make([]dcache.RawVolume, len(dc.cfg.CacheDirs))
 
-	// ensure each cacheDir yields a unique rvId(filesystem GUID as reported by blkid)
+	// ensure each cacheDir yields a unique rvId (filesystem GUID as reported by blkid).
 	rvIDToPath := make(map[string]string, len(dc.cfg.CacheDirs))
 
 	for index, path := range dc.cfg.CacheDirs {
@@ -245,7 +245,7 @@ func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
 
 		if existingPath, exists := rvIDToPath[rvId]; exists {
 			return nil, log.LogAndReturnError(fmt.Sprintf(
-				"DistributedCache::Start error [duplicate rvId %s: %s path rvId conflicts with path %s rvId]",
+				"DistributedCache::Start error [duplicate rvId %s for path %s, conflicts with path %s]",
 				rvId, path, existingPath))
 		}
 
