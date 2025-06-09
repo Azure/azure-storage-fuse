@@ -293,11 +293,18 @@ func (ac *AttrCache) cleanupExpiredEntries() {
 	ac.cacheLock.Lock()
 	defer ac.cacheLock.Unlock()
 	
+	// Collect keys to delete to avoid modifying map while iterating
+	var keysToDelete []string
 	for path, item := range ac.cacheMap {
-		// Remove entries that have exceeded the cache timeout
+		// Check if entry has exceeded the cache timeout
 		if time.Since(item.cachedAt).Seconds() >= float64(ac.cacheTimeout) {
-			delete(ac.cacheMap, path)
+			keysToDelete = append(keysToDelete, path)
 		}
+	}
+	
+	// Delete expired entries
+	for _, path := range keysToDelete {
+		delete(ac.cacheMap, path)
 	}
 }
 
