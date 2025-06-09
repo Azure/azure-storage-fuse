@@ -89,7 +89,7 @@ func (gc *GcInfo) removeAllChunksForFile(file *dcache.FileMetadata) {
 
 	mvs := file.FileLayout.MVList
 	numMvs := int64(len(mvs))
-	numChunks := (file.Size + file.FileLayout.ChunkSize - 1) / file.FileLayout.ChunkSize
+	numChunks := getNumChunksForFile(file)
 
 	for i, mv := range mvs {
 		mvState, rvs, _ := getComponentRVsForMV(mv)
@@ -154,7 +154,7 @@ func (gc *GcInfo) removeAllChunksForFile(file *dcache.FileMetadata) {
 						}
 
 						common.Assert(rpcErr.GetCode() == models.ErrorCode_ChunkNotFound &&
-							rv.State == string(dcache.StateSyncing), file, rvs, rpcResp)
+							rv.State == string(dcache.StateSyncing), file.Filename, rv, rvs, rpcResp)
 
 					}
 				}

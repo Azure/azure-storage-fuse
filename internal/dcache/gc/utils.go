@@ -101,3 +101,7 @@ func getMyNodeId() string {
 	nodeId, _ := common.GetNodeUUID()
 	return nodeId
 }
+
+func getNumChunksForFile(file *dcache.FileMetadata) int64 {
+	return (file.Size + file.FileLayout.ChunkSize - 1) / file.FileLayout.ChunkSize
+}
