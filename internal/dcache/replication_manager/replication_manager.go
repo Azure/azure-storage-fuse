@@ -52,6 +52,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
+	rpc_server "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/server"
 )
 
 type replicationMgr struct {
@@ -844,6 +845,19 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 	}
 
 	//
+	// StartSync causes mvInfo state to be changed to "syncing" but it can be safely assumed to not be
+	// purged only till GetMvInfoTimeout(). If we have spent more than that, we have to abort the
+	// sync.
+	//
+	if time.Since(startTime) > rpc_server.GetMvInfoTimeout() {
+		errStr := fmt.Sprintf("StartSync for %s/%s (%s, %s) took longer than %s, aborting sync",
+			targetRVName, mvName, srcSyncId, dstSyncId, rpc_server.GetMvInfoTimeout())
+		log.Err("ReplicationManager::syncComponentRV: %s", errStr)
+		common.Assert(false, errStr)
+		return
+	}
+
+	//
 	// Update the destination RV from outofsync to syncing state. The cluster manager will take care of
 	// updating the MV state to syncing if all component RVs have either online or syncing state.
 	//
@@ -854,6 +868,10 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 		log.Err("ReplicationManager::syncComponentRV: %s", errStr)
 		return
 	}
+
+	common.Assert(time.Since(startTime) < rpc_server.GetMvInfoTimeout(),
+		time.Since(startTime), rpc_server.GetMvInfoTimeout(),
+		lioRV, targetRVName, mvName, srcSyncId, dstSyncId)
 
 	//
 	// Now that the target RV state is updated to syncing from outofsync, the WriteMV() workflow will

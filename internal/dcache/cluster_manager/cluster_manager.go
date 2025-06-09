@@ -2474,10 +2474,10 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) (stri
 
 	//
 	// TODO: Call JoinMV/UpdateMV on all RVs in parallel.
-	// TODO: If JoinMV() fails to any RV, need to send LeaveMV() to the RVs which succeeded for undoing the
-	//       reserveBytes. We can also achieve the same result in a better way by the target RV automatically
-	//       undoing the reserveBytes (and the JoinMV) if it doesn't get a SyncMV within certain timeout period.
+	// Note: If JoinMV() fails to any RV, we do not send LeaveMV() to the RVs which succeeded for undoing the
+	//       reserveBytes, instead server is supposed to correctly undo that after timeout.
 	//
+	startTime := time.Now()
 	for _, rv := range componentRVs {
 		//
 		// Offline component RVs need not be sent JoinMV/UpdateMV RPC.
@@ -2530,6 +2530,22 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) (stri
 		if err != nil {
 			err = fmt.Errorf("error %s MV %s with RV %s: %v", action, mvName, rv.Name, err)
 			log.Err("ClusterManager::joinMV: %v", err)
+			return rv.Name, err
+		}
+
+		//
+		// A fix-mv/new-mv can only succeed when all the RVs correctly update the component RVs state in their
+		// respective mvInfo and the state change is committed in the clustermap. Since our state change is
+		// not transactional, each RV holds an mvInfo state change till some timeout period and if the clustermap
+		// state change is not observed, it assumes that the sender failed to commit and rolls back the mvInfo
+		// state change. We need to make sure the first RV (and all other RVs) to which we sent JoinMV has not
+		// timed out it's mvInfo state change. We will have some margin for caller to update the clustermap.
+		//
+		if time.Since(startTime) > rpc_server.GetMvInfoTimeout() {
+			errStr := fmt.Sprintf("JoinMV(%s) for %s/%s took longer than %s, aborting joinMV",
+				action, rv.Name, mvName, rpc_server.GetMvInfoTimeout())
+			log.Err("ClusterManager::joinMV: %s", errStr)
+			common.Assert(false, errStr)
 			return rv.Name, err
 		}
 	}
