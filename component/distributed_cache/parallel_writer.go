@@ -31,40 +31,70 @@
    SOFTWARE
 */
 
-package debug
+package distributed_cache
 
 import (
-	"encoding/json"
-	"time"
+	"sync"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 )
 
-// The functions that were implemented inside this file should have Callback as the suffix for their functionName.
-// The function should have this decl func(*procFile) error.
+// The following go-routines are used when writing the file to Unqualified Path(i.e., Dcache, Azure) at the same time.
 
-// proc file: clustermap
-func readClusterMapCallback(pFile *procFile) error {
-	var err error
-	clusterMap := cm.GetClusterMap()
-	exportedClusterMap := cm.ExportClusterMap(&clusterMap)
-	pFile.buf, err = json.MarshalIndent(exportedClusterMap, "", "    ")
-
-	if err != nil {
-		log.Err("DebugFS::readclusterMapCallback, err: %v", err)
-		common.Assert(false, err)
-	}
-
-	return nil
+type writeReq struct {
+	writer func() error // Function for writing to the file.
+	err    chan error   // writer returns the error on this channel.
 }
 
-func getAttrClusterMapCallback(pFile *procFile) {
-	clusterMap := cm.GetClusterMap()
-	lmt := clusterMap.LastUpdatedAt
-	common.Assert(lmt > 0)
-	pFile.attr.Mtime = time.Unix(lmt, 0)
-	pFile.attr.Ctime = pFile.attr.Mtime
-	pFile.attr.Atime = pFile.attr.Mtime
+type parallelWriter struct {
+	maxWriters       int
+	azureWriterQueue chan *writeReq
+	wg               sync.WaitGroup
+}
+
+// Spawns 64 go-routines for Dcache for writing.
+func newParallelWriter() *parallelWriter {
+	pw := &parallelWriter{
+		maxWriters:       64,
+		azureWriterQueue: make(chan *writeReq, 64),
+	}
+
+	for range pw.maxWriters {
+		go pw.azureWriter()
+	}
+
+	log.Info("parallelWriter:: %d writers started for dcache, Used when writing to Unqualified path")
+
+	return pw
+}
+
+func (pw *parallelWriter) destroyParallelWriter() {
+	close(pw.azureWriterQueue)
+	pw.wg.Wait()
+	log.Info("parallelWriter:: %d writers destroyed for dcache, Used when writing to Unqualified path")
+}
+
+func (pw *parallelWriter) azureWriter() {
+	pw.wg.Add(1)
+	defer pw.wg.Done()
+
+	for az := range pw.azureWriterQueue {
+		err := az.writer()
+		az.err <- err
+	}
+}
+
+// caller should wait on the returned error for the status of the call.
+func (pw *parallelWriter) EnqueuAzureWrite(azureWrite func() error) <-chan error {
+	common.Assert(azureWrite != nil)
+
+	azureWriteWorkItem := &writeReq{
+		writer: azureWrite,
+		err:    make(chan error),
+	}
+	// Queue the work Item.
+	pw.azureWriterQueue <- azureWriteWorkItem
+
+	return azureWriteWorkItem.err
 }

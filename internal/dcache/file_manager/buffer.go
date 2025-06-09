@@ -35,7 +35,6 @@ package filemanager
 
 import (
 	"errors"
-	"fmt"
 	"sync"
 	"sync/atomic"
 
@@ -67,13 +66,20 @@ func (bp *bufferPool) getBuffer() ([]byte, error) {
 	}
 
 	buf := bp.pool.Get().([]byte)
-	common.Assert(len(buf) == bp.bufSize, fmt.Sprintf("Allocated Buf Size %d != Required Buf Size %d", len(buf), bp.bufSize))
+
+	// All buffers allocated must be of size bp.bufSize.
+	common.Assert(len(buf) == bp.bufSize, len(buf), bp.bufSize)
+
 	bp.curBuffers.Add(1)
 	return buf, nil
 }
 
 func (bp *bufferPool) putBuffer(buf []byte) {
+	// All buffers allocated from the pool must be of the same size.
+	common.Assert(len(buf) == bp.bufSize, len(buf), bp.bufSize)
+	// Caller must free a buffer that's allocated using getBuffer().
+	common.Assert(bp.curBuffers.Load() > 0, bp.curBuffers.Load())
+
 	bp.pool.Put(buf)
-	common.Assert(bp.curBuffers.Load() > 0, fmt.Sprintf("Number of buffers are less than zero:  %d", bp.curBuffers.Load()))
 	bp.curBuffers.Add(-1)
 }

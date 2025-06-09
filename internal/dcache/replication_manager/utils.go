@@ -59,6 +59,17 @@ const (
 
 	// Time in microseconds to add to the sync start time to account for clock skew
 	NTPClockSkewMargin = 5 * 1e6
+
+	//
+	// Number of workers in the thread pool for sending the RPC requests.
+	// Note that one worker is used for one replica IO (read or write), so we need these to be accordingly
+	// higher than the fileIOManager workers setting.
+	//
+	MAX_WORKER_COUNT = 2000
+
+	// Maximum number of sync jobs (running syncComponentRV()) that can be running at any time.
+	// This should be smaller than cm.MAX_SIMUL_RV_STATE_UPDATES.
+	MAX_SIMUL_SYNC_JOBS = 1000
 )
 
 func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *models.RVNameAndState {
@@ -110,10 +121,12 @@ func getReaderRV(componentRVs []*models.RVNameAndState, excludeRVs []string) *mo
 // 	return hex.EncodeToString(hash[:])
 // }
 
-// Return list of component RVs (name and state) for the given MV.
-func getComponentRVsForMV(mvName string) []*models.RVNameAndState {
-	rvMap := cm.GetRVs(mvName)
-	return convertRVMapToList(mvName, rvMap)
+// Return list of component RVs (name and state) for the given MV, and its state, and also the clustermap Epoch.
+// The epoch should be used by the caller to correctly refresh the clustermap on receiving a NeedToRefreshClusterMap
+// error.
+func getComponentRVsForMV(mvName string) (dcache.StateEnum, []*models.RVNameAndState, int64) {
+	mvState, rvMap, epoch := cm.GetRVsEx(mvName)
+	return mvState, convertRVMapToList(mvName, rvMap), epoch
 }
 
 func convertRVMapToList(mvName string, rvMap map[string]dcache.StateEnum) []*models.RVNameAndState {
@@ -189,4 +202,9 @@ func updateLocalComponentRVState(rvs []*models.RVNameAndState, rvName string,
 
 	// RV is not present in the list.
 	common.Assert(false, rpc.ComponentRVsToString(rvs), rvName)
+}
+
+func init() {
+	common.Assert(MAX_SIMUL_SYNC_JOBS < cm.MAX_SIMUL_RV_STATE_UPDATES,
+		MAX_SIMUL_SYNC_JOBS, cm.MAX_SIMUL_RV_STATE_UPDATES)
 }

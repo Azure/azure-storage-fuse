@@ -53,6 +53,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
+	rm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/replication_manager"
 	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 	rpc_server "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/server"
@@ -75,8 +76,11 @@ type ClusterManager struct {
 	hbTicker     *time.Ticker
 	hbTickerDone chan bool
 
-	clusterMapticker     *time.Ticker
+	clusterMapTicker     *time.Ticker
 	clusterMapTickerDone chan bool
+
+	componentRVStateBatchUpdateTicker     *time.Ticker
+	componentRVStateBatchUpdateTickerDone chan bool
 
 	// Clustermap is refreshed periodically from metadata store and saved in this local path.
 	// clustermap package reads this and provides accessor functions for querying specific parts of clustermap.
@@ -241,7 +245,7 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 		"Local config ClustermapEpoch different from global config",
 		dCacheConfig.ClustermapEpoch, cmi.config.ClustermapEpoch)
 
-	cmi.clusterMapticker = time.NewTicker(time.Duration(cmi.config.ClustermapEpoch) * time.Second)
+	cmi.clusterMapTicker = time.NewTicker(time.Duration(cmi.config.ClustermapEpoch) * time.Second)
 	cmi.clusterMapTickerDone = make(chan bool)
 
 	cmi.wg.Add(1)
@@ -264,7 +268,7 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 			case <-cmi.clusterMapTickerDone:
 				log.Info("ClusterManager::start: Scheduled task \"Update ClusterMap\" stopped")
 				return
-			case <-cmi.clusterMapticker.C:
+			case <-cmi.clusterMapTicker.C:
 				log.Debug("ClusterManager::start: Scheduled task \"Update ClusterMap\" triggered")
 				err = cmi.updateStorageClusterMapIfRequired()
 				if err != nil {
@@ -291,6 +295,54 @@ func (cmi *ClusterManager) start(dCacheConfig *dcache.DCacheConfig, rvs []dcache
 						log.GetLoggerObj().Panicf("[PANIC] Failed to refresh local clustermap %d times in a row",
 
 							consecutiveFailures)
+					}
+				}
+			}
+		}
+	}()
+
+	//
+	// Start the batch component RV update ticker.
+	// It batches component RV updates every 2 secs.
+	//
+	cmi.componentRVStateBatchUpdateTicker = time.NewTicker(2 * time.Second)
+	cmi.componentRVStateBatchUpdateTickerDone = make(chan bool)
+
+	cmi.wg.Add(1)
+
+	go func() {
+		defer cmi.wg.Done()
+
+		for {
+			select {
+			case <-cmi.componentRVStateBatchUpdateTickerDone:
+				log.Info("ClusterManager::start: Scheduled task \"ComponentRV Batch Update\" stopped")
+				return
+			case <-cmi.componentRVStateBatchUpdateTicker.C:
+				log.Info("ClusterManager::start: Scheduled task \"ComponentRV Batch Update\" triggered")
+
+				//
+				// Get the next batch of component RV state updates.
+				// Two updates to the same mv/rv will not be in the same batch.
+				//
+				msgBatch := cmi.getNextComponentRVUpdateBatch()
+				if len(msgBatch) > 0 {
+					err := cmi.batchUpdateComponentRVState(msgBatch)
+					if err != nil {
+						log.Err("ClusterManager::start: batchUpdateComponentRVState failed: %v", err)
+					}
+
+					//
+					// Status of the combined update is the status of each individual update.
+					// Note that it's only for the updates which were actually included in the global update.
+					// Some of the individual updates which were not included in the global update, would
+					// be already completed individually, skip those.
+					//
+					for _, msg := range msgBatch {
+						if msg.Err != nil {
+							msg.Err <- err
+							close(msg.Err)
+						}
 					}
 				}
 			}
@@ -436,9 +488,14 @@ func (cmi *ClusterManager) stop() error {
 
 	// TODO{Akku}: Delete the heartbeat file
 	// mm.DeleteHeartbeat(cmi.myNodeId)
-	if cmi.clusterMapticker != nil {
-		cmi.clusterMapticker.Stop()
+	if cmi.clusterMapTicker != nil {
+		cmi.clusterMapTicker.Stop()
 		cmi.clusterMapTickerDone <- true
+	}
+
+	if cmi.componentRVStateBatchUpdateTicker != nil {
+		cmi.componentRVStateBatchUpdateTicker.Stop()
+		cmi.componentRVStateBatchUpdateTickerDone <- true
 	}
 
 	cm.Stop()
@@ -523,7 +580,7 @@ func cleanupRV(rv dcache.RawVolume) error {
 				log.Err("ClusterManager::cleanupRV: os.RemoveAll (%s) failed: %v", dir, err)
 				deleteFailures.Add(1)
 			} else {
-				log.Info("ClusterManager::cleanupRV: Deleted MV dir %s/%s", rv.LocalCachePath, dir)
+				log.Info("ClusterManager::cleanupRV: Deleted MV dir %s", dir)
 				deleteSuccess.Add(1)
 			}
 		}(filepath.Join(rv.LocalCachePath, entry.Name()))
@@ -1108,6 +1165,12 @@ func (cmi *ClusterManager) clusterMapBeingUpdatedByAnotherNode(clusterMap *dcach
 // endClusterMapUpdate() implements step#4.
 func (cmi *ClusterManager) startClusterMapUpdate(clusterMap *dcache.ClusterMap, etag *string) error {
 	clusterMap.LastUpdatedBy = cmi.myNodeId
+	//
+	// Set the LastUpdatedAt. This is useful as clusterMapBeingUpdatedByAnotherNode() uses that to log
+	// how long has the clusterMap been in "checking" state.
+	// Later endClusterMapUpdate() will punch the final time when the clusterMap update finished.
+	//
+	clusterMap.LastUpdatedAt = time.Now().Unix()
 	clusterMap.State = dcache.StateChecking
 
 	clusterMapByte, err := json.Marshal(clusterMap)
@@ -1322,19 +1385,22 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	if isClusterMapUpdateBlocked {
 		log.Debug("ClusterManager::updateStorageClusterMapIfRequired:skipping, clustermap is being updated by (leader %s), current node (%s)",
 			leaderNode, cmi.myNodeId)
-
 		//
-		// Leader node should have updated the state to checking and it should not find the state to checking.
+		// Leader node should not find the clusterMap in "checking" state as no other node should try
+		// to preempt the leader while it's still alive, but...
+		// Note that updateStorageClusterMapIfRequired() when run by the leader can find the clusterMap
+		// in "checking" state if some other thread, mostly batchUpdateComponentRVState(), is running and
+		// updating the clusterMap, just before the periodic updateStorageClusterMapIfRequired() ticker
+		// fires. This is a legitimate case and we should just skip the current iteration of
+		// updateStorageClusterMapIfRequired().
 		//
-		// TODO: This has been seen to fail when due to remote node being dow updateStorageClusterMapIfRequired()
-		//       took long time and the next iteration was called immediately. While it was running, some other
-		//       context(s) (updateComponentRVState()) were waiting to update the clusterMap, they immediately
-		//       started updating as soon as last iteration of updateStorageClusterMapIfRequired() completed, and
-		//       hence when the next iteration of updateStorageClusterMapIfRequired() started immediately, it
-		//       finds the clusterMap state as checking.
-		//       Still leaving the assert as it's useful to see if it occurs in any other way.
+		// We relax the assert to allow such legitimate updates from batchUpdateComponentRVState() to catch
+		// if a leader finds the state as "checking" it should be transient and not remain in that state
+		// for a long time.
 		//
-		common.Assert(!leader, "We don't expect leader to see the clustermap in checking state")
+		common.Assert(!leader || !stale,
+			"We don't expect leader to see the clustermap in checking state",
+			leader, stale, leaderNode, clusterMapAge)
 		return nil
 	}
 
@@ -1346,7 +1412,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	// Skip if we're neither leader nor the clustermap is stale
 	//
 	if !leader && !stale {
-		log.Info("ClusterManager::updateStorageClusterMapIfRequired: skipping, node (%s) is not leader (leader is %s) and clusterMap is fresh (last updated at epoch %d, now %d, age %s)",
+		log.Info("ClusterManager::updateStorageClusterMapIfRequired: skipping, node (%s) is not leader (leader is %s) and clusterMap is fresh (last updated at epoch %d, now %d, age %d secs)",
 			cmi.myNodeId, leaderNode, clusterMap.LastUpdatedAt, now, clusterMapAge)
 		return nil
 	}
@@ -1355,7 +1421,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	// This is an uncommon event, so log.
 	//
 	if !leader {
-		log.Warn("ClusterManager::updateStorageClusterMapIfRequired: clusterMap not updated by current leader (%s) for %s, ownership being claimed by new leader %s",
+		log.Warn("ClusterManager::updateStorageClusterMapIfRequired: clusterMap not updated by current leader (%s) for %d secs, ownership being claimed by new leader %s",
 			leaderNode, clusterMapAge, cmi.myNodeId)
 	}
 
@@ -1364,17 +1430,19 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	// Only one node will succeed in UpdateClusterMapStart(), and that node proceeds with the clustermap
 	// update.
 	//
-	// Note: We still have the Assert() here as it's highly unlikely and it helps to catch any other bug.
-	//
 	// Note: updateRVList() and updateMVList() are the only functions that can change clustermap.
 	//       Enclosing them between UpdateClusterMapStart() and UpdateClusterMapEnd() ensure that only one
 	//       node would be updating cluster membership details at any point. This is IMPORTANT.
+	//
+	// Note: The following startClusterMapUpdate() is unlikely to fail because of some other node
+	//       updating the clustermap from updateStorageClusterMapIfRequired(), as only leader will
+	//       proceed, but it can fail when some other asynchronous event like batchUpdateComponentRVState()
+	//       updates the clustermap, from the same node or another node.
 	//
 	err = cmi.startClusterMapUpdate(clusterMap, etag)
 	if err != nil {
 		err = fmt.Errorf("Start Clustermap update failed for nodeId %s: %v", cmi.myNodeId, err)
 		log.Err("ClusterManager::updateStorageClusterMapIfRequired: %v", err)
-		common.Assert(false, err)
 		return err
 	}
 
@@ -1413,7 +1481,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	//
 	//TODO: Fix this call to trigger only if the RV list has changed.
 	// if changed {
-	cmi.updateMVList(clusterMap.RVMap, clusterMap.MVMap)
+	cmi.updateMVList(clusterMap.RVMap, clusterMap.MVMap, true /* runFixMvNewMv */)
 	// } else {
 	// log.Debug("ClusterManager::updateStorageClusterMapIfRequired: No changes in RV mapping")
 	// }
@@ -1472,10 +1540,13 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 // It can be called from two workflows:
 //  1. From updateStorageClusterMapIfRequired() (periodic clustermap update thread) after it infers some change in
 //     rvMap as per the latest heartbeats received.
-//  2. From updateComponentRVState(), when some other workflow wants to explicitly update component RV state for some
-//     MV, f.e., resync workflow may want to change an "outofsync" component RV to "syncing" or a failed PutChunk call
-//     may indicate an RV as down and hence we would want to change the component RV state to "offline". There could
-//     be more such examples of inband RV state detection resulting in MV list update.
+//     In this case runFixMvNewMv parameter is passed as true.
+//  2. From batchUpdateComponentRVState(), when some other workflow wants to explicitly update component RV state for
+//     some MV, f.e., resync workflow may want to change an "outofsync" component RV to "syncing" or a failed PutChunk
+//     call may indicate an RV as down and hence we would want to change the component RV state to "offline". There
+//     could be more such examples of inband RV state detection resulting in MV list update.
+//     In this case runFixMvNewMv parameter is passed as false, as we do not want to overwhelm the receivers with
+//     too many RPCs as a result of potentially many parallel sync jobs running.
 //
 // It runs the following workflows:
 //  1. degrade-mv: It goes over all the MVs in existingMVMap to see if any (but not all) of their component RVs which
@@ -1486,8 +1557,10 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 //  3. fix-mv:     For all the degraded MVs it replaces all the offline component RVs with good RVs, and sets the
 //     state for those RVs as outofsync. These MVs will be later picked by Replication Manager to run
 //     the resync-mv workflow.
+//     Only run if runFixMvNewMv parameter is true.
 //  4. new-mv:     This adds new MVs to the MV list, made from unused RVs. The component RVs are added in such a way
 //     that more than one component RVs for an MV do not come from the same node and the same fault domain.
+//     Only run if runFixMvNewMv parameter is true.
 //
 // Note that when setting MV state based on component RV state, a component RV in "outofsync" or "syncing" state is
 // treated as an offline component RV, basically any component RV which does not have valid data.
@@ -1495,11 +1568,11 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 // existingMVMap is updated in-place, the caller will then publish it in the updated clustermap.
 //
 // Note: updateMVList() MUST be called after successfully claiming ownership of clusterMap update, by a successful
-//
-//	call to UpdateClusterMapStart(). This is IMPORTANT to ensure only one node attempts to update clusterMap
-//	at any point.
+//       call to UpdateClusterMapStart(). This is IMPORTANT to ensure only one node attempts to update clusterMap
+//       at any point.
+
 func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
-	existingMVMap map[string]dcache.MirroredVolume) {
+	existingMVMap map[string]dcache.MirroredVolume, runFixMvNewMv bool) {
 	// We should not be called for an empty rvMap.
 	common.Assert(len(rvMap) > 0)
 
@@ -1718,7 +1791,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 			//   ResyncMV didn't get a chance to run. This is unlikely but possible.
 			// - ResyncMV did run, but since ResyncMV fixes one degraded MV and in one degraded MV one outofsync
 			//   RV, at a time, if there are more than one degraded MVs and/or more than one outofsync RVs for an
-			//   MV, when updateMVList()->fixMV() is called from updateComponentRVState(), we can have component
+			//   MV, when updateMVList()->fixMV() is called from batchUpdateComponentRVState(), we can have component
 			//   RVs still in outofsync state.
 			//
 			// Leave this assert commented to highlight the above.
@@ -1939,9 +2012,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		//
 		// Iff joinMV() is successful, consume one slot for each component RV and update existingMVMap.
 		//
-		// TODO: Set reserveBytes correctly, querying it from our in-core RV info maintained by RPC server.
-		//
-		failedRV, err := cmi.joinMV(mvName, mv, 0 /* reserveBytes */)
+		failedRV, err := cmi.joinMV(mvName, mv)
 		if err == nil {
 			log.Info("ClusterManager::fixMV: Successfully joined/updated all component RVs %+v to MV %s, original [%+v]",
 				mv.RVs, mvName, savedRVs)
@@ -2019,8 +2090,9 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	// Phase 1:
 	//
 	// Go over all MVs in existingMVMap and correctly set MV's state based on the state of all the
-	// component RVs and consume RV slots for all used component RVs. If a component RV is found to be offline as per rvMap, then the component RV
-	// is force marked offline. Then it sets the MV state based on the cumulative state of all of it's component RVs as follows:
+	// component RVs and consume RV slots for all used component RVs. If a component RV is found to be offline as
+	// per rvMap, then the component RV is force marked offline. Then it sets the MV state based on the cumulative
+	// state of all of it's component RVs as follows:
 	// - If all component RVs of an MV are online, the MV is marked as online, else
 	// - If no component RV of an MV is online (they are either offline, outofsync or syncing), the MV
 	//   is marked as offline, else
@@ -2107,18 +2179,27 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	}
 
 	//
+	// TODO: Shall we commit the clustermap changes (marking offline component RVs as offline in MV)?
+	//       Note that fixMV() will call UpdateMV RPC which only allows legitimate component RVs update.
+	//       For that it'll refresh the clustermap and if it gets the old clustermap (with RV as online),
+	//       UpdateMV will fail.
+	//
+	log.Debug("ClusterManager::updateMVList: existingMVMap after phase#1, runFixMvNewMv: %v: %v",
+		existingMVMap, runFixMvNewMv)
+
+	//
+	// fix-mv and new-mv workflows can cause lot of RPC calls (JoinMV/UpdateMV) to be gnerated, so we run
+	// those only when updateMVList() is called from the periodic updateStorageClusterMapIfRequired().
+	//
+	if !runFixMvNewMv {
+		return
+	}
+
+	//
 	// Check if any node has exhausted all its RV's, remove such nodes from the nodeToRvs map.
 	// Also remove RVs which are fully consumed (no free slots left).
 	//
 	trimNodeToRvs()
-
-	//
-	// TODO: Shall we commit the clustermap changes (marking offline component RVs as offline in MV)?
-	//       Note that fixMV() will call UpdateMV RPC which only allows legitimate component RVs update.
-	//       For that it'll refresh the clustermap and if it gets the old clustermap (with RV as online),
-	//       UpdateMV will ll fail.
-	//
-	log.Debug("ClusterManager::updateMVList: existingMVMap after phase#1: %v", existingMVMap)
 
 	//
 	// Phase 2:
@@ -2272,7 +2353,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		// delete the failed RV fom nodeToRvs to prevent this RV from being picked again and failing.
 		// Also we need to remove mv frome existingMVMap.
 		//
-		failedRV, err := cmi.joinMV(mvName, existingMVMap[mvName], 0 /* reserveBytes */)
+		failedRV, err := cmi.joinMV(mvName, existingMVMap[mvName])
 		if err == nil {
 			log.Info("ClusterManager::updateMVList: Successfully joined all component RVs %+v to MV %s",
 				existingMVMap[mvName].RVs, mvName)
@@ -2299,7 +2380,6 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	}
 
 	log.Debug("ClusterManager::updateMVList: existing MV map after phase#3: %v", existingMVMap)
-
 }
 
 // Given an MV, send JoinMV or UpdateMV RPC to all its component RVs. It fails if any of the RV fails the call.
@@ -2307,9 +2387,6 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 // It calls JoinMV for RVs joining the MV newly and UpdateMV for existing component RVs which need to be informed of
 // the updated membership details. For JoinMV RPC requests it sets the ReserveSpace to reserveBytes.
 // The caller must have updated 'mv' with the correct component RVs and their state before calling this.
-// 'reserveBytes' is the amount of space to reserve in the RV. This will be 0 when joinMV() is called from the
-// new-mv workflow, but can be non-zero when called from the fix-mv workflow for replacing an offline RV with
-// a new good RV. The new RV must need enough space to store the chunks for this MV.
 //
 // It sends JoinMV/UpdateMV based on following:
 //   - It sends JoinMV RPC to all RVs of a new MV. A new MV is one which has state of online, because we will not be
@@ -2319,8 +2396,8 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 //   - For existing MVs, it sends UpdateMV for online component RVs.
 //
 // TODO: joinMV() should technically return more than one failed RVs.
-func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume, reserveBytes int64) (string, error) {
-	log.Debug("ClusterManagerImpl::joinMV: JoinMV(%s, %+v, reserveBytes: %d)", mvName, mv, reserveBytes)
+func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) (string, error) {
+	log.Debug("ClusterManager::joinMV: JoinMV(%s, %+v)", mvName, mv)
 
 	var componentRVs []*models.RVNameAndState
 	var numRVsOnline int
@@ -2338,11 +2415,39 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume, reser
 	// Caller must call us only with all component RVs set.
 	common.Assert(len(mv.RVs) == int(cmi.config.NumReplicas), len(mv.RVs), cmi.config.NumReplicas)
 
+	//
+	// 'reserveBytes' is the amount of space to reserve in the RV. This will be 0 when joinMV()
+	// is called from the new-mv workflow, but can be non-zero when called from the fix-mv workflow
+	// for replacing an offline RV with a new good RV. The new RV must need enough space to store
+	// the chunks for this MV.
+	//
+	var reserveBytes int64
+	var err error
+
+	if !newMV {
+		//
+		// Get the reserveBytes correctly, querying it from our in-core RV info maintained by RPC server.
+		//
+		reserveBytes, err = rm.GetMVSize(mvName)
+		if err != nil {
+			err = fmt.Errorf("failed to get disk usage of %s [%v]", mvName, err)
+			log.Err("ClusterManager::joinMV: %v", err)
+			common.Assert(false, err)
+			// TODO: return error. Skipping it now because the caller of joinMV() expects failed RVs
+			// along with the error. So, the error handling part of the caller must be updated to handle
+			// the error returned in this case as below.
+			// return "", err
+		}
+	}
+
+	log.Debug("ClusterManager::joinMV: %s, state: %s, new-mv: %v, reserve bytes: %d",
+		mvName, string(mv.State), newMV, reserveBytes)
+
 	// reserveBytes must be non-zero only for degraded MV, for new-mv it'll be 0.
 	common.Assert(reserveBytes == 0 || mv.State == dcache.StateDegraded, reserveBytes, mv.State)
 
 	for rvName, rvState := range mv.RVs {
-		log.Debug("ClusterManagerImpl::joinMV: Populating componentRVs list MV %s with RV %s", mvName, rvName)
+		log.Debug("ClusterManager::joinMV: Populating componentRVs list MV %s with RV %s", mvName, rvName)
 
 		//
 		// For new-mv all component RVs must be online, for fix-mv we can have the following component RV states:
@@ -2382,7 +2487,7 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume, reser
 			continue
 		}
 
-		log.Debug("ClusterManagerImpl::joinMV: Joining MV %s with RV %s", mvName, rv.Name)
+		log.Debug("ClusterManager::joinMV: Joining MV %s with RV %s", mvName, rv.Name)
 
 		joinMvReq := &models.JoinMVRequest{
 			MV:           mvName,
@@ -2414,16 +2519,17 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume, reser
 			action = "joining"
 		} else {
 			//
-			// Else, fix-mv and online RV, send UpdateMV.
+			// Else, fix-mv and online/syncing RV, send UpdateMV.
 			//
-			common.Assert(mv.RVs[rv.Name] == dcache.StateOnline)
+			common.Assert(mv.RVs[rv.Name] == dcache.StateOnline ||
+				mv.RVs[rv.Name] == dcache.StateSyncing, rv.Name, mv.RVs[rv.Name])
 			_, err = rpc_client.UpdateMV(ctx, cm.RVNameToNodeId(rv.Name), updateMvReq)
 			action = "updating"
 		}
 
 		if err != nil {
 			err = fmt.Errorf("error %s MV %s with RV %s: %v", action, mvName, rv.Name, err)
-			log.Err("ClusterManagerImpl::joinMV: %v", err)
+			log.Err("ClusterManager::joinMV: %v", err)
 			return rv.Name, err
 		}
 	}
@@ -2656,12 +2762,68 @@ func refreshMyRVs(myRVs []dcache.RawVolume) {
 	}
 }
 
-// This function can be used to update the state of the given component RV for an MV in the global clustermap.
-// The function atomically makes the requested change to the specified MV (retrying if some other node is updating
-// the clustermap simultaneously) and returns only after it's able to successfully make the requested change, or
-// there's some error.
+// Get the next batch of component RV state updates.
+// This tries to get as many as it can from the channel with one condition - multiple updates to the same mv/rv
+// must not be in the same batch.
+func (cmi *ClusterManager) getNextComponentRVUpdateBatch() []*dcache.ComponentRVUpdateMessage {
+	msgBatch := []*dcache.ComponentRVUpdateMessage{}
+	existing := make(map[string]struct{})
+
+	for {
+		select {
+		case msg, ok := <-cm.GetComponentRVStateChannel():
+			if !ok {
+				log.Info("ClusterManager::getNextComponentRVUpdateBatch: breaking due to channel closed")
+				goto done
+			}
+
+			common.Assert(cm.IsValidMVName(msg.MvName), msg.MvName)
+			common.Assert(cm.IsValidRVName(msg.RvName), msg.RvName)
+			common.Assert(cm.IsValidComponentRVState(msg.RvNewState), msg.RvNewState)
+			common.Assert(msg.Err != nil)
+			common.Assert(len(msg.Err) == 0, len(msg.Err))
+
+			if _, ok := existing[msg.MvName+msg.RvName]; ok {
+				//
+				// This is not commonly expected, so make it info log.
+				// The only dup update we can possibly get is an update to offline state while some other update
+				// is pending.
+				//
+				log.Info("ClusterManager::getNextComponentRVUpdateBatch: breaking due to dup update for %s/%s",
+					msg.MvName, msg.RvName)
+				//
+				// Queue this message back to the channel.
+				// I'd have loved to queue it to the head, but we cannot do that.
+				// Queueing to the tail should also work as all the messages in the channel are added by
+				// go routines running simultaneously, so order should not matter.
+				//
+				cm.GetComponentRVStateChannel() <- msg
+				goto done
+			}
+
+			msgBatch = append(msgBatch, &msg)
+			existing[msg.MvName+msg.RvName] = struct{}{}
+		default:
+			log.Debug("ClusterManager::getNextComponentRVUpdateBatch: breaking due to no more queued messages")
+			goto done
+		}
+	}
+
+done:
+	log.Debug("ClusterManager::getNextComponentRVUpdateBatch: added %d update(s) in the batch (%d more queued)",
+		len(msgBatch), len(cm.GetComponentRVStateChannel()))
+
+	return msgBatch
+}
+
+// This function can be used to update component RV state for multiple MVs at a time. Caller must ensure that the
+// changes are non-overlapping, i.e., no two changes refer to the same mv/rv, though changes can refer to different
+// RVs of the same MV.
+// The function atomically applies the requested updates to the global clustermap (retrying if some other node is
+// updating the clustermap simultaneously) and returns only after it's able to successfully make the requested changes,
+// or there's some error.
 //
-// Only following RV state transitions are valid, for anything else it errors out.
+// Only following RV state transitions are valid, any other state transitions are failed with an error.
 // StateOutOfSync   -> StateSyncing     [Resync start]
 // StateSyncing     -> StateOnline      [Resync end]
 // StateSyncing     -> StateOutOfSync   [Resync revert]
@@ -2670,16 +2832,17 @@ func refreshMyRVs(myRVs []dcache.RawVolume) {
 // StateOnline      -> StateOffline     [Inband detection of offline RV during PutChunk(client)]
 // StateSyncing     -> StateOffline     [Inband detection of offline RV during PutChunk(sync)]
 //
-// After setting the component RV state correctly in the clustermap, it calls updateMVList() which will set the
+// After setting the component RV states correctly in the clustermap, it calls updateMVList() which will set the
 // MV state appropriately. See updateMVList() for how MV state is set based on component RVs state.
 //
 // Note: If this fails the caller should typically retry after sometime with the refreshed clustermap.
-func (cmi *ClusterManager) updateComponentRVState(mvName string, rvName string, rvNewState dcache.StateEnum) error {
-	log.Info("ClusterManager::updateComponentRVState: Set %s/%s to %s", rvName, mvName, rvNewState)
+func (cmi *ClusterManager) batchUpdateComponentRVState(msgBatch []*dcache.ComponentRVUpdateMessage) error {
+	common.Assert(len(msgBatch) > 0)
+	log.Info("ClusterManager::batchUpdateComponentRVState: Received batch of %d component RV updates", len(msgBatch))
 
-	common.Assert(cm.IsValidMVName(mvName))
-	common.Assert(cm.IsValidRVName(rvName))
-	common.Assert(cm.IsValidComponentRVState(rvNewState))
+	successCount := 0 // How many updates were successfully performed?
+	failureCount := 0 // How many failed as the message had some anomaly?
+	ignoredCount := 0 // How many were ignored as the requested update was already present?
 
 	startTime := time.Now()
 	maxWait := 120 * time.Second
@@ -2688,14 +2851,15 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, rvName string, 
 		// Time check.
 		elapsed := time.Since(startTime)
 		if elapsed > maxWait {
-			common.Assert(false)
-			return fmt.Errorf("ClusterManager::updateComponentRVState: Exceeded maxWait")
+			common.Assert(false, elapsed, maxWait, len(msgBatch))
+			return fmt.Errorf("ClusterManager::batchUpdateComponentRVState: exceeded maxWait for %d updates",
+				len(msgBatch))
 		}
 
-		// Get most recent clustermap copy, then we will update the requested MV and publish it.
+		// Get most recent clustermap copy, we will make the requested changes and publish it.
 		clusterMap, etag, err := cmi.fetchAndUpdateLocalClusterMap()
 		if err != nil {
-			log.Err("ClusterManager::updateComponentRVState: fetchAndUpdateLocalClusterMap() failed: %v",
+			log.Err("ClusterManager::batchUpdateComponentRVState: fetchAndUpdateLocalClusterMap() failed: %v",
 				err)
 			common.Assert(false, err)
 			return err
@@ -2710,7 +2874,7 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, rvName string, 
 		}
 
 		if isClusterMapUpdateBlocked {
-			log.Info("ClusterManager::updateComponentRVState: Clustermap being updated by node %s, waiting a bit before retry",
+			log.Info("ClusterManager::batchUpdateComponentRVState: Clustermap being updated by node %s, waiting a bit before retry",
 				clusterMap.LastUpdatedBy)
 
 			// TODO: Add some backoff and randomness?
@@ -2718,127 +2882,175 @@ func (cmi *ClusterManager) updateComponentRVState(mvName string, rvName string, 
 			continue
 		}
 
-		// Requested MV must be valid.
-		clusterMapMV, found := clusterMap.MVMap[mvName]
-		if !found {
-			common.Assert(false)
-			return fmt.Errorf("ClusterManager::updateComponentRVState: MV %s not found in clusterMap, mvList %+v",
-				mvName, clusterMap.MVMap)
-		}
-
-		// and the RV passed must be a valid component RV for that MV.
-		currentState, found := clusterMapMV.RVs[rvName]
-		if !found {
-			return fmt.Errorf("ClusterManager::updateComponentRVState: RV %s/%s is not present in clustermap MV %v",
-				rvName, mvName, clusterMapMV)
-		}
-
-		//
-		// and the new state requested must be valid.
-		// Note that we support only few distinct state transitions.
-		//
-		if currentState == dcache.StateOutOfSync && rvNewState == dcache.StateSyncing ||
-			currentState == dcache.StateSyncing && rvNewState == dcache.StateOnline ||
-			currentState == dcache.StateSyncing && rvNewState == dcache.StateOutOfSync ||
-			currentState == dcache.StateSyncing && rvNewState == dcache.StateOffline ||
-			currentState == dcache.StateOnline && rvNewState == dcache.StateOffline {
-
-			log.Debug("ClusterManager::updateComponentRVState:  %s/%s, state change (%s -> %s)",
-				rvName, mvName, currentState, rvNewState)
-
-		} else {
-			//
-			// Following transitions are reported when an inband PutChunk failure suggests an RV as offline.
-			// StateOnline  -> StateOffline
-			// StateSyncing -> StateOffline
-			//
-			// Since we can have multiple PutChunk requests outstanding, all but the first one will find the
-			// currentState as StateOffline, we need to ignore such updateComponentRVState() requests.
-			//
-			if currentState == rvNewState {
-				common.Assert(currentState == dcache.StateOffline, currentState)
-				log.Debug("ClusterManager::updateComponentRVState: %s/%s ignoring state change (%s -> %s)",
-					rvName, mvName, currentState, rvNewState)
-				return nil
-			}
-
-			common.Assert(false, rvName, mvName, currentState, rvNewState)
-			return fmt.Errorf("ClusterManager::updateComponentRVState: %s/%s invalid state change request (%s -> %s)",
-				rvName, mvName, currentState, rvNewState)
-		}
-
-		//
-		// Ok, component RVs passed by caller match those in the clustermap and all RV state change requested
-		// are valid. Update component RVs and call updateMVList() which will set the MV state correctly, and
-		// run various mv workflows as needed after the current RV state change.
-		//
 		//
 		// Claim ownership of clustermap.
 		// If some other node gets there before us, we retry. Note that we don't add a wait before
 		// the retry as that other node is not updating the clustermap, it's done updating.
+		// Once we get the ownership, we iterate over all requested changes, validate them, fail the invalid
+		// state transitions and apply the valid ones. After making all the changes to the in-core clustermap
+		// we then call updateMVList() which will set the MV state correctly, and finally publish the clustermap
+		// with a single call.
 		//
 		// TODO: Check err to see if the failure is due to etag mismatch, if not retrying may not help.
 		//
 		err = cmi.startClusterMapUpdate(clusterMap, etag)
 		if err != nil {
-			log.Warn("ClusterManager::updateComponentRVState: Start Clustermap update failed for nodeId %s: %v, retrying",
+			log.Warn("ClusterManager::batchUpdateComponentRVState: Start Clustermap update failed for nodeId %s: %v, retrying",
 				cmi.myNodeId, err)
 			continue
 		}
 
 		//
-		// Update requested Mv in the cluster Map.
-		// MV state is not important as it'll be correctly set by updateMVList().
-		// We force it to a StateOffline to catch any bug in setting the MV state correctly.
+		// Now that we have the global clusterMap lock, apply all updates in sequence, taking the clusterMap to
+		// a state with all the requested changes.
+		// Note that the caller has ensured that no two updates will target the same rv/mv.
 		//
-		clusterMapMV.State = dcache.StateOffline
-		clusterMapMV.RVs[rvName] = rvNewState
-		clusterMap.MVMap[mvName] = clusterMapMV
+		for _, msg := range msgBatch {
+			common.Assert(msg != nil)
 
-		//
-		// TODO: For now we treat component RV being flagged as offline no different from the RV being flagged
-		//       offline by cm.ReportRVOffline(). Note that there could be some differences, f.e., component
-		//       RV may be flagged offline on just one inband failure, while when we report an RV as offline
-		//       we have to be really sure. In some error cases, like connection getting reset or read returning
-		//       eof, one failure might be sufficient to correctly claim RV as offline but for error like
-		//       timeout we cannot be really sure and we might want to play safe.
-		//
-		//       If we don't do this we will have unwanted side effects, f.e., if a component RV is marked
-		//       offline but the RV is online in the RV list, then updateMVList()->fixMV() might pick the same
-		//       RV as a replacement RV, which would be wrong as RV, for all purposes, is offline.
-		//
-		if rvNewState == dcache.StateOffline {
-			rv := clusterMap.RVMap[rvName]
-			if rv.State != dcache.StateOffline {
-				log.Warn("ClusterManager::updateComponentRVState: Marking RV %s state (%s -> %s)",
-					rvName, rv.State, dcache.StateOffline)
+			mvName := msg.MvName
+			rvName := msg.RvName
+			rvNewState := msg.RvNewState
 
-				rv.State = dcache.StateOffline
-				clusterMap.RVMap[rvName] = rv
+			common.Assert(cm.IsValidMVName(mvName), mvName)
+			common.Assert(cm.IsValidRVName(rvName), rvName)
+			common.Assert(cm.IsValidComponentRVState(rvNewState), rvNewState)
+			common.Assert(msg.Err != nil)
+			common.Assert(len(msg.Err) == 0, len(msg.Err))
+
+			// Requested MV must be valid.
+			clusterMapMV, found := clusterMap.MVMap[mvName]
+			if !found {
+				common.Assert(false, *msg)
+				msg.Err <- fmt.Errorf("MV %s not found in clusterMap, mvList %+v", mvName, clusterMap.MVMap)
+				close(msg.Err)
+				msg.Err = nil
+				failureCount++
+				continue
+			}
+
+			// and the RV passed must be a valid component RV for that MV.
+			currentState, found := clusterMapMV.RVs[rvName]
+			if !found {
+				common.Assert(false, *msg)
+				msg.Err <- fmt.Errorf("RV %s/%s not present in clustermap MV %+v", rvName, mvName, clusterMapMV)
+				close(msg.Err)
+				msg.Err = nil
+				failureCount++
+				continue
+			}
+
+			//
+			// and the new state requested must be valid.
+			// Note that we support only few distinct state transitions.
+			//
+			if currentState == dcache.StateOutOfSync && rvNewState == dcache.StateSyncing ||
+				currentState == dcache.StateSyncing && rvNewState == dcache.StateOnline ||
+				currentState == dcache.StateSyncing && rvNewState == dcache.StateOutOfSync ||
+				currentState == dcache.StateSyncing && rvNewState == dcache.StateOffline ||
+				currentState == dcache.StateOnline && rvNewState == dcache.StateOffline {
+
+				log.Debug("ClusterManager::batchUpdateComponentRVState: %s/%s, state change (%s -> %s)",
+					rvName, mvName, currentState, rvNewState)
+				successCount++
+			} else {
+				//
+				// Following transitions are reported when an inband PutChunk failure suggests an RV as offline.
+				// StateOnline  -> StateOffline
+				// StateSyncing -> StateOffline
+				//
+				// Since we can have multiple PutChunk requests outstanding, all but the first one will find the
+				// currentState as StateOffline, we need to ignore such update requests.
+				//
+				if currentState == rvNewState {
+					common.Assert(currentState == dcache.StateOffline, currentState)
+					log.Debug("ClusterManager::batchUpdateComponentRVState: %s/%s ignoring state change (%s -> %s)",
+						rvName, mvName, currentState, rvNewState)
+
+					msg.Err <- nil
+					close(msg.Err)
+					msg.Err = nil
+					ignoredCount++
+					continue
+				}
+
+				common.Assert(false, rvName, mvName, currentState, rvNewState)
+
+				msg.Err <- fmt.Errorf("%s/%s invalid state change request (%s -> %s)",
+					rvName, mvName, currentState, rvNewState)
+				close(msg.Err)
+				msg.Err = nil
+				failureCount++
+				continue
+			}
+
+			//
+			// Update requested Mv in the cluster Map.
+			// MV state is not important as it'll be correctly set by updateMVList().
+			// We force it to a StateOffline to catch any bug in setting the MV state correctly.
+			//
+			clusterMapMV.State = dcache.StateOffline
+			clusterMapMV.RVs[rvName] = rvNewState
+			clusterMap.MVMap[mvName] = clusterMapMV
+
+			//
+			// TODO: For now we treat component RV being flagged as offline no different from the RV being flagged
+			//       offline by cm.ReportRVOffline(). Note that there could be some differences, f.e., component
+			//       RV may be flagged offline on just one inband failure, while when we report an RV as offline
+			//       we have to be really sure. In some error cases, like connection getting reset or read returning
+			//       eof, one failure might be sufficient to correctly claim RV as offline but for error like
+			//       timeout we cannot be really sure and we might want to play safe.
+			//
+			//       If we don't do this we will have unwanted side effects, f.e., if a component RV is marked
+			//       offline but the RV is online in the RV list, then updateMVList()->fixMV() might pick the same
+			//       RV as a replacement RV, which would be wrong as RV, for all purposes, is offline.
+			//
+			if rvNewState == dcache.StateOffline {
+				rv := clusterMap.RVMap[rvName]
+				if rv.State != dcache.StateOffline {
+					log.Warn("ClusterManager::batchUpdateComponentRVState: Marking RV %s state (%s -> %s)",
+						rvName, rv.State, dcache.StateOffline)
+
+					rv.State = dcache.StateOffline
+					clusterMap.RVMap[rvName] = rv
+				}
 			}
 		}
 
-		// Call updateMVList() to update MV state and run the various mv workflows.
-		cmi.updateMVList(clusterMap.RVMap, clusterMap.MVMap)
+		//
+		// Call updateMVList() to update MV state.
+		// We don't want to run the fix-mv and new-mv workflows from batchUpdateComponentRVState(), even though
+		// it's batched and hence the calls are controlled, but it's ok to wait for the next clusterMap epoch.
+		// We can pass runFixMvNewMv as true for the inband rv offlining case as those will be fewer, but it's
+		// ok to wait for fix-mv till the next clusterMap epoch.
+		//
+		// TODO: See if we want to pass runFixMvNewMv as true.
+		//
+		cmi.updateMVList(clusterMap.RVMap, clusterMap.MVMap, false /* runFixMvNewMv */)
 
 		err = cmi.endClusterMapUpdate(clusterMap)
 		if err != nil {
-			log.Err("ClusterManager::updateComponentRVState: endClusterMapUpdate() failed: %v %+v",
+			log.Err("ClusterManager::batchUpdateComponentRVState: endClusterMapUpdate() failed: %v %+v",
 				err, clusterMap)
 			common.Assert(false, err)
 			return err
 		}
 
-		// The clustermap must now have update RV states in MV.
-		log.Info("ClusterManager::updateComponentRVState: clustermap MV is updated by %s at %d %+v",
-			cmi.myNodeId, clusterMap.LastUpdatedAt, clusterMapMV)
-
 		break
 	}
 
 	// Update local copy.
-	_, _, err := cmi.fetchAndUpdateLocalClusterMap()
-	return err
+	if _, _, err := cmi.fetchAndUpdateLocalClusterMap(); err != nil {
+		log.Err("ClusterManager::batchUpdateComponentRVState: fetchAndUpdateLocalClusterMap() failed: %v", err)
+		common.Assert(false, err)
+	}
+
+	log.Info("ClusterManager::batchUpdateComponentRVState: total: %d, succeeded: %d, failed: %d, ignored: %d",
+		len(msgBatch), successCount, failureCount, ignoredCount)
+
+	common.Assert(len(msgBatch) == (successCount+failureCount+ignoredCount),
+		len(msgBatch), successCount, failureCount, ignoredCount)
+	return nil
 }
 
 var (
@@ -2854,9 +3066,6 @@ func Start(dCacheConfig *dcache.DCacheConfig, rvs []dcache.RawVolume) error {
 	common.Assert(len(rvs) > 0)
 
 	clusterManager = &ClusterManager{}
-
-	// Register hook for updating the component RV state for an MV, through clustermap package.
-	cm.RegisterComponentRVStateUpdater(clusterManager.updateComponentRVState)
 
 	// Register hook for refreshing the clustermap from the metadata store, through clustermap package.
 	cm.RegisterClusterMapRefresher(clusterManager.updateClusterMapLocalCopy)

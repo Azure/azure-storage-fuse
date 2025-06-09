@@ -219,16 +219,24 @@ func parseDcacheMetadata(attr *internal.ObjAttr) error {
 				attr.Size = fileSize
 				common.Assert(attr.Size != math.MaxInt64)
 			} else if fileSize == -1 {
+				//
 				// FileSize can be negative in two cases:
-				// case1 : file is in writing state by the current node/ some other node in dcache. in which case we don't know
-				// the final size hence we return size to be zero.
-				// case2 : file got created and before the closing the fd of create, blobfuse got crashed. In that case we'll be
-				// having a stale entry which takes up the path and disallows the further file creations on that path.
-				// These files are distinguished from the rest of the files by their size. While getting the attr/listing the dir.
+				// Case1: File is currently being created by this or some other node in dcache.
+				// Case2: Blobfuse crashed between createFileInit() and createFileFinalize().
+				//        In that case we'll be having a stale entry which takes up the path and
+				//        disallows further file creations on that path.
+				//
+				// These files are distinguished from the rest of the files by their size, while
+				// getting the attr/listing the dir.
+				// Though we do not hide these files from listing or lookup, we do not allow
+				// these files to be read or deleted.
+				//
 				attr.Size = math.MaxInt64
 			}
 		} else {
-			log.Err("utils::parseDcacheMetadata : strconv failed for size string: %s, file: %s, error: %s", *val, attr.Name, err.Error())
+			err = fmt.Errorf("strconv failed for cache_object_length: %s, file: %s, error: %v",
+				*val, attr.Name, err)
+			log.Err("utils::parseDcacheMetadata: %v", err)
 			common.Assert(false, err)
 			return err
 		}
@@ -254,7 +262,31 @@ func parseDcacheMetadata(attr *internal.ObjAttr) error {
 		return err
 	}
 
-	return err
+	// parse open count and validate that it's not -ve.
+	if val, ok := attr.Metadata["opencount"]; ok {
+		openCount, err := strconv.ParseInt(*val, 10, 64)
+		if err == nil {
+			if openCount < 0 {
+				err = fmt.Errorf("File: %s, has invalid openCount: [%s]", attr.Name, *val)
+				log.Err("utils::parseDcacheMetadata: %v", err)
+				common.Assert(false, err)
+				return err
+			}
+		} else {
+			err = fmt.Errorf("strconv failed for opencount: %s, file: %s, error: %v",
+				*val, attr.Name, err)
+			log.Err("utils::parseDcacheMetadata: %v", err)
+			common.Assert(false, err)
+			return err
+		}
+	} else {
+		err = fmt.Errorf("Blob metadata for %s doesn't have opencount property", attr.Name)
+		log.Err("utils::parseDcacheMetadata: %v", err)
+		common.Assert(false, err)
+		return err
+	}
+
+	return nil
 }
 
 // Hide the files which are set to deleting. Such files are named with suffix ".dcache.deleting"
