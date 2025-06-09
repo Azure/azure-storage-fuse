@@ -286,7 +286,7 @@ func DeleteDcacheFile(fileName string) error {
 	}
 
 	// Unique name for the deleted file.
-	deletedFileName := getDeletedFileName(fileName, fileMetadata.FileID)
+	deletedFileName := dcache.GetDeletedFileName(fileName, fileMetadata.FileID)
 
 	err = mm.RenameFileToDeleting(fileName, deletedFileName)
 	if err != nil {
@@ -323,10 +323,4 @@ func NewStagedChunk(idx int64, file *DcacheFile, allocateBuf bool) (*StagedChunk
 		Uptodate:      atomic.Bool{},
 		XferScheduled: atomic.Bool{},
 	}, nil
-}
-
-// Get the deleted file name.
-func getDeletedFileName(fileName string, fileId string) string {
-	common.Assert(common.IsValidUUID(fileId), fileName, fileId)
-	return fileName + "." + fileId + dcache.DcacheDeletingFileNameSuffix
 }

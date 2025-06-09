@@ -41,6 +41,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
@@ -159,8 +160,19 @@ func (gc *GcInfo) removeAllChunksForFile(file *dcache.FileMetadata) {
 				}
 			}
 		}
-
 	}
+
+	// After removing all the chunks from all the rvs, we can remove the file layout.
+	deletedFile := dcache.GetDeletedFileName(file.Filename, file.FileID)
+	log.Debug("GC::removeAllChunksForFile: removing file layout for file: %s", deletedFile)
+
+	err := metadata_manager.DeleteFile(deletedFile)
+	if err != nil {
+		log.Err("GC::removeAllChunksForFile: failed to remove file layout for file: %s: %v", deletedFile, err)
+		common.Assert(false, file, err)
+		return
+	}
+
 }
 
 func AsyncFileChunkGarbageCollector(file *dcache.FileMetadata) {
