@@ -222,10 +222,10 @@ func (gc *GcInfo) removeAllChunksForFile(file *dcache.FileMetadata) {
 									rv.Name, file.Filename, errCM)
 								common.Assert(false, file, errCM)
 								return
-							} else {
-								retryCnt++
-								goto retry
 							}
+
+							retryCnt++
+							goto retry
 						}
 
 						common.Assert(rpcErr.GetCode() == models.ErrorCode_ChunkNotFound &&
