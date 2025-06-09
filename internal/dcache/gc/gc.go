@@ -154,7 +154,7 @@ func (gc *GcInfo) removeAllChunksForFile(file *dcache.FileMetadata) {
 						}
 
 						common.Assert(rpcErr.GetCode() == models.ErrorCode_ChunkNotFound &&
-							rv.State == string(dcache.StateSyncing), file.Filename, rv, rvs, rpcResp)
+							rv.State == string(dcache.StateSyncing), file.Filename, rv, rvs, rpcErr)
 
 					}
 				}
