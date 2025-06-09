@@ -45,6 +45,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/gc"
 	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
 	gouuid "github.com/google/uuid"
 )
@@ -289,10 +290,13 @@ func DeleteDcacheFile(fileName string) error {
 
 	err = mm.RenameFileToDeleting(fileName, deletedFileName)
 	if err != nil {
+		log.Err("DistributedCache[FM]::DeleteDcacheFile: Failed to rename the file to deleting, file: %s: %v",
+			fileName, err)
 		return err
 	}
 
-	// TODO: pass this path to GC to later evict this file from dcache.
+	// Pass the file to Gabage collector, so that the chunks for this file would be deleted in the background.
+	gc.AsyncFileChunkGarbageCollector(fileMetadata)
 
 	return nil
 }

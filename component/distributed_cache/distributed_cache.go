@@ -53,6 +53,7 @@ import (
 	clustermanager "github.com/Azure/azure-storage-fuse/v2/internal/dcache/cluster_manager"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/debug"
 	fm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/file_manager"
+	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/gc"
 	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
 	rm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/replication_manager"
 	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
@@ -187,6 +188,8 @@ func (dc *DistributedCache) Start(ctx context.Context) error {
 		return log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [Failed to start fileio manager : %v]", err))
 	}
 
+	gc.NewGC()
+
 	log.Info("DistributedCache::Start : component started successfully")
 
 	return nil
@@ -264,6 +267,7 @@ func (dc *DistributedCache) Stop() error {
 
 	dc.pw.destroyParallelWriter()
 	fm.EndFileIOManager()
+	gc.EndGC()
 	rm.Stop()
 	clustermanager.Stop()
 	rpc_client.Cleanup()
