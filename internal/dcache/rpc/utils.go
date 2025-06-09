@@ -133,9 +133,9 @@ func GetChunkResponseToString(resp *models.GetChunkResponse) string {
 // convert *models.PutChunkRequest to string
 // exculde data and hash from the string to prevent it from being logged
 func PutChunkRequestToString(req *models.PutChunkRequest) string {
-	return fmt.Sprintf("{SenderNodeID %v, Address %+v, Length %v, SyncID %v, ComponentRV %v}",
+	return fmt.Sprintf("{SenderNodeID %v, Address %+v, Length %v, SyncID %v, ComponentRV %v, MaybeOverwrite %v}",
 		req.SenderNodeID, *req.Chunk.Address, req.Length, req.SyncID,
-		ComponentRVsToString(req.ComponentRV))
+		ComponentRVsToString(req.ComponentRV), req.MaybeOverwrite)
 }
 
 func PutChunkResponseToString(resp *models.PutChunkResponse) string {

@@ -71,6 +71,14 @@ func GetDegradedMVs() map[string]dcache.MirroredVolume {
 	return clusterMap.getDegradedMVs()
 }
 
+// It will return syncable MVs Map <mvName, MV> as per local cache copy of cluster map.
+// syncable MVs are those degraded MVs which have at least one component RV in outofsync state.
+// Degraded MVs with no outofsync (only offline) RVs need to be first fixed by fix-mv before they
+// can be sync'ed.
+func GetSyncableMVs() map[string]dcache.MirroredVolume {
+	return clusterMap.getSyncableMVs()
+}
+
 // It will return offline MVs Map <mvName, MV> as per local cache copy of cluster map.
 func GetOfflineMVs() map[string]dcache.MirroredVolume {
 	return clusterMap.getOfflineMVs()
@@ -101,11 +109,11 @@ func GetRVs(mvName string) map[string]dcache.StateEnum {
 	return clusterMap.getRVs(mvName)
 }
 
-// Same as GetRVs() but also returns the clusterMap epoch that corresponds to the component RVs returned.
+// Same as GetRVs() but also returns the MV state and clusterMap epoch that corresponds to the component RVs returned.
 // Useful for callers who might want to refresh the clusterMap on receiving the NeedToRefreshClusterMap error
 // from the server. They can refresh the clusterMap till they get a higher epoch value than the one corresponding
 // to the component RVs which were dismissed by the server.
-func GetRVsEx(mvName string) (map[string]dcache.StateEnum, int64) {
+func GetRVsEx(mvName string) (dcache.StateEnum, map[string]dcache.StateEnum, int64) {
 	return clusterMap.getRVsEx(mvName)
 }
 
@@ -192,7 +200,11 @@ func RefreshClusterMap(higherThanEpoch int64) error {
 		// Time check.
 		elapsed := time.Since(startTime)
 		if elapsed > maxWait {
-			common.Assert(false)
+			//
+			// This can happen since callers sometimes do a best-effort clusterMap refresh,
+			// as they are not sure that clusterMap has indeed changed.
+			// Let the caller know and handle it as they see fit.
+			//
 			return fmt.Errorf("RefreshClusterMap: timed out waiting for epoch %d, got %d",
 				higherThanEpoch+1, GetEpoch())
 		}
@@ -236,25 +248,61 @@ func ReportRVOffline(rvName string) error {
 	return nil
 }
 
-// Tell clustermanager to update the state of a component RV for an MV.
+// This function must be called by any caller that wants to change and persist the state of a component RV
+// belonging to an MV. It blocks till the change is committed to the global clustermap.
+// To avoid too many updates to the global clustermap, each of which will have to wait for the optimistic
+// concurrent update, it batches updates received till the next update window and then makes a single update
+// to the clustermap. The success or failure of this batched update will decide the success/failure of each
+// of the individual updates.
 func UpdateComponentRVState(mvName string, rvName string, rvNewState dcache.StateEnum) error {
-	// Clustermanager must call RegisterComponentRVStateUpdater() in startup, so we don't expect this to be nil.
-	common.Assert(componentRVStateUpdater != nil)
-	return componentRVStateUpdater(mvName, rvName, rvNewState)
+	updateRVMessage := dcache.ComponentRVUpdateMessage{
+		MvName:     mvName,
+		RvName:     rvName,
+		RvNewState: rvNewState,
+		Err:        make(chan error),
+	}
+	common.Assert(updateComponentRVStateChannel != nil)
+
+	//
+	// Queue the update request to the channel.
+	// It'll be picked by the periodic updater in the next update window along with all the other update requests
+	// queued. Those updates are then applied to the clustermap and the updated clustermap committed at once.
+	// The batch updater will push the return status on the error channel and close the channel.
+	//
+	updateComponentRVStateChannel <- updateRVMessage
+
+	common.Assert(updateRVMessage.Err != nil)
+
+	return <-updateRVMessage.Err
 }
 
-// RegisterComponentRVStateUpdater is how the cluster_manager registers its real implementation.
-func RegisterComponentRVStateUpdater(fn func(mvName string, rvName string, rvNewState dcache.StateEnum) error) {
-	componentRVStateUpdater = fn
+func GetComponentRVStateChannel() chan dcache.ComponentRVUpdateMessage {
+	return updateComponentRVStateChannel
 }
+
+const (
+	//
+	// This is the size of the channel where RV updates are queued.
+	// These many max updates can be batched. This must be greater than rm.MAX_SIMUL_SYNC_JOBS as each
+	// sync job can generate one outstanding updae.
+	//
+	MAX_SIMUL_RV_STATE_UPDATES = 10000
+)
 
 var (
-	componentRVStateUpdater func(mvName string, rvName string, rvNewState dcache.StateEnum) error
-	clusterMapRefresher     func() error
-	clusterMap              = &ClusterMap{
+	clusterMapRefresher func() error
+	clusterMap          = &ClusterMap{
 		// This MUST match localClusterMapPath in clustermanager.
 		localClusterMapPath: filepath.Join(common.DefaultWorkDir, "clustermap.json"),
 	}
+
+	//
+	// All go routines calling UpdateComponentRVState() around the same time will end up adding a corresponding
+	// update message to this channel. Typically various sync jobs will call this to update the state of component
+	// RVs from outofsync->syncing or syncing->online, so the size of this channel should be of the order of
+	// simultaneous sync jobs, ref MAX_SIMUL_SYNC_JOBS.
+	//
+	updateComponentRVStateChannel = make(chan dcache.ComponentRVUpdateMessage, MAX_SIMUL_RV_STATE_UPDATES)
 )
 
 // clustermap package provides client methods to interact with the clusterManager, most importantly it provides
@@ -266,6 +314,8 @@ type ClusterMap struct {
 }
 
 func (c *ClusterMap) stop() {
+	close(updateComponentRVStateChannel)
+	updateComponentRVStateChannel = nil
 }
 
 // Use this to get the local clustermap pointer safe from update by loadLocalMap().
@@ -341,6 +391,25 @@ func (c *ClusterMap) getDegradedMVs() map[string]dcache.MirroredVolume {
 	return degradedMVs
 }
 
+func (c *ClusterMap) getSyncableMVs() map[string]dcache.MirroredVolume {
+	syncableMVs := make(map[string]dcache.MirroredVolume)
+	for mvName, mv := range c.getLocalMap().MVMap {
+		if mv.State == dcache.StateDegraded {
+			rvs := c.getRVs(mvName)
+			// We got mvName from MVMap, so getRVs() should succeed.
+			common.Assert(rvs != nil, mvName)
+
+			for _, rvState := range rvs {
+				if rvState == dcache.StateOutOfSync {
+					syncableMVs[mvName] = mv
+					break
+				}
+			}
+		}
+	}
+	return syncableMVs
+}
+
 func (c *ClusterMap) getOfflineMVs() map[string]dcache.MirroredVolume {
 	offlineMVs := make(map[string]dcache.MirroredVolume)
 	for mvName, mv := range c.getLocalMap().MVMap {
@@ -405,8 +474,8 @@ func (c *ClusterMap) getRVs(mvName string) map[string]dcache.StateEnum {
 	return mv.RVs
 }
 
-// Get component RVs for the given MV, along with the clustermap epoch.
-func (c *ClusterMap) getRVsEx(mvName string) (map[string]dcache.StateEnum, int64) {
+// Get component RVs for the given MV, along with MV state and the clustermap epoch.
+func (c *ClusterMap) getRVsEx(mvName string) (dcache.StateEnum, map[string]dcache.StateEnum, int64) {
 	//
 	// Save a copy of the clusterMap pointer to use for accessing MVMap and Epoch, so that both
 	// correspond to the same instance of clusterMap.
@@ -415,9 +484,9 @@ func (c *ClusterMap) getRVsEx(mvName string) (map[string]dcache.StateEnum, int64
 	mv, ok := localMap.MVMap[mvName]
 	if !ok {
 		log.Err("ClusterMap::getRVs: no mirrored volume named %s", mvName)
-		return nil, -1
+		return dcache.StateInvalid, nil, -1
 	}
-	return mv.RVs, localMap.Epoch
+	return mv.State, mv.RVs, localMap.Epoch
 }
 
 func (c *ClusterMap) getRVState(rvName string) dcache.StateEnum {

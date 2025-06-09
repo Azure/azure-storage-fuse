@@ -43,15 +43,25 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	mm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/metadata_manager"
 )
 
 type fileIOManager struct {
+	// If SafeDeletes is enabled we always increment and decrement the file descriptor count while opening
+	// and closing the file. This ensures the delete/unlink of a file works as per the POSIX semantics
+	// (i.e., delete of the file would be deferred until the last open file descriptor is closed).
+	// It defaults to false unless specified in the config.
+	// Multiple readers opening the same file will contend to atomically update the open count, so this will
+	// increase the file open/close latency, and must be used only if POSIX semantics is desired.
+	safeDeletes bool
+
 	// Number of chunks to readahead after the current chunk.
 	// This controls our readahead size.
 	numReadAheadChunks int
+
 	// Max Number of chunks per file that can be in staging area at any time.
 	// This is our writeback buffer. If it's too small, application writes will need to wait while
 	// we write the current staged chunks to dcache. Note that though we schedule write of staged
@@ -146,6 +156,7 @@ func NewFileIOManager() error {
 	maxBuffers = max(maxBuffers, usableMemory/bufSize)
 
 	fileIOMgr = fileIOManager{
+		safeDeletes:        cm.GetCacheConfig().SafeDeletes,
 		numReadAheadChunks: numReadAheadChunks,
 		numStagingChunks:   numStagingChunks,
 	}
@@ -174,16 +185,29 @@ func EndFileIOManager() {
 
 type DcacheFile struct {
 	FileMetadata *dcache.FileMetadata
+
 	// Next write offset we expect in case of sequential writes.
 	// Every new write offset should be >= nextWriteOffset, else it's the case of overwriting existing
 	// data and we don't support that.
 	nextWriteOffset int64
-	StagedChunks    sync.Map // Chunk Idx -> *chunk
+
+	//
+	// Chunk Idx -> *chunk
 	// The above chunks are the outstanding chunks for the file.
 	// Those chunks can be readahead chunks for read or
 	// current staging chunks for write.
 	//
 	// TODO: Chunks should be tracked globally rather than per file.
+	StagedChunks sync.Map
+
+	// Etag returned by createFileInit(), later used by createFileFinalize() to catch unexpected
+	// out-of-band changes to the metadata file between init and finalize.
+	finalizeEtag string
+
+	// This cached attr is used for optimizing the REST API calls, when safeDeletes is enabled.
+	// It is saved when the file is opened, if there are no more file opens done on that file, the same etag
+	// can be used to update the file open count on close.
+	attr *internal.ObjAttr
 }
 
 // Reads the file data from the given offset and length to buf[].
@@ -434,7 +458,7 @@ func (file *DcacheFile) CloseFile() error {
 }
 
 // Release all allocated buffers for the file.
-func (file *DcacheFile) ReleaseFile() error {
+func (file *DcacheFile) ReleaseFile(isReadOnlyHandle bool) error {
 	log.Debug("DistributedCache[FM]::ReleaseFile: Releasing all staged chunk for file %s",
 		file.FileMetadata.Filename)
 
@@ -445,6 +469,34 @@ func (file *DcacheFile) ReleaseFile() error {
 		file.releaseChunk(chunk)
 		return true
 	})
+
+	//
+	// Decrement the file open count if safeDeletes is enabled and handle corresponds to a file opened for
+	// reading.
+	//
+	if fileIOMgr.safeDeletes && isReadOnlyHandle {
+		// attr must have been saved when file was opened for read.
+		common.Assert(file.attr != nil, file.FileMetadata)
+
+		openCount, err := mm.CloseFile(file.FileMetadata.Filename, file.attr)
+		if err != nil {
+			err = fmt.Errorf("Failed to decrement open count for file %s: %v",
+				file.FileMetadata.Filename, err)
+			log.Err("DistributedCache[FM]::ReleaseFile: %v", err)
+			common.Assert(false, err)
+			//
+			// TODO: Should we fail or silently succeed?
+			//       Failing may not be an option as we may have released critical data structures
+			//       corresponding to the file, but if we silently succeed this file data chunks
+			//       can never be released and will be leaked.
+			//       One way of handling could be to force remove chunks for the file if file opencount
+			//       stays non-zero for a long time.
+			//
+		} else {
+			log.Debug("DistributedCache[FM]::ReleaseFile: Decremented open count, now: %d, file: %s",
+				openCount, file.FileMetadata.Filename)
+		}
+	}
 
 	return nil
 }
@@ -468,15 +520,21 @@ func (file *DcacheFile) finalizeFile() error {
 		return err
 	}
 
-	err = mm.CreateFileFinalize(file.FileMetadata.Filename, fileMetadataBytes, file.FileMetadata.Size)
+	err = mm.CreateFileFinalize(file.FileMetadata.Filename, fileMetadataBytes, file.FileMetadata.Size,
+		file.finalizeEtag)
 	if err != nil {
-		log.Err("DistributedCache[FM]::finalizeFile: File Finalize failed for %s %+v: %v",
-			file.FileMetadata.Filename, file.FileMetadata, err)
+		//
+		// Finalize file  should not fail unless the metadata file is deleted/modified out-of-band.
+		// That's an unexpected error.
+		//
+		err = fmt.Errorf("mm.CreateFileFinalize failed %+v: %v", file.FileMetadata, err)
+		common.Assert(false, err)
 		return err
 	}
 
 	log.Debug("DistributedCache[FM]::finalizeFile: Final metadata for %s %+v",
 		file.FileMetadata.Filename, file.FileMetadata)
+
 	return nil
 }
 

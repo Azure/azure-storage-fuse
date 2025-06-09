@@ -134,6 +134,7 @@ type FileMetadata struct {
 	State           FileState  `json:"-"`
 	FileID          string     `json:"file_id"`
 	Size            int64      `json:"-"`
+	OpenCount       int        `json:"-"`
 	ClusterMapEpoch int64      `json:"cluster_map_epoch"`
 	FileLayout      FileLayout `json:"file_layout"`
 	Sha1hash        []byte     `json:"sha256"`
@@ -145,5 +146,9 @@ type FileLayout struct {
 	MVList     []string `json:"mv_list"`
 }
 
-type ClusterMapEvent struct {
+type ComponentRVUpdateMessage struct {
+	MvName     string
+	RvName     string
+	RvNewState StateEnum
+	Err        chan error
 }
