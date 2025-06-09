@@ -186,9 +186,8 @@ func (ac *AttrCache) OnConfigChange() {
 }
 
 // Helper Methods
-// deleteDirectory: recursively marks a directory deleted
-// The deleteDir method marks deleted instead of invalidating so that if a request came in for a non-existent previously cached
-// file/dir we can directly serve that it is non-existent
+// deleteDirectory: recursively removes a directory and its children from cache
+// Previously marked entries as deleted to serve ENOENT responses, but now removes them to save memory
 func (ac *AttrCache) deleteDirectory(path string, time time.Time) {
 	// Recursively delete the children of the path, then delete the path
 	// For example, filesystem: a/, a/b, a/c, aa/, ab.
@@ -198,23 +197,28 @@ func (ac *AttrCache) deleteDirectory(path string, time time.Time) {
 	// Add a trailing / so that we only delete child paths under the directory and not paths that have the same prefix
 	prefix := internal.ExtendDirName(path)
 
-	for key, value := range ac.cacheMap {
+	// Collect keys to delete to avoid modifying map while iterating
+	var keysToDelete []string
+	for key := range ac.cacheMap {
 		if strings.HasPrefix(key, prefix) {
-			value.markDeleted(time)
+			keysToDelete = append(keysToDelete, key)
 		}
+	}
+
+	// Remove the entries from the cache map
+	for _, key := range keysToDelete {
+		delete(ac.cacheMap, key)
 	}
 
 	// We need to delete the path itself since we only handle children above.
 	ac.deletePath(path, time)
 }
 
-// deletePath: deletes a path
+// deletePath: removes a path from cache
 func (ac *AttrCache) deletePath(path string, time time.Time) {
 	// Keys in the cache map do not contain trailing /, truncate the path before referencing a key in the map.
-	value, found := ac.cacheMap[internal.TruncateDirName(path)]
-	if found {
-		value.markDeleted(time)
-	}
+	truncatedPath := internal.TruncateDirName(path)
+	delete(ac.cacheMap, truncatedPath)
 }
 
 // invalidateDirectory: recursively marks a directory invalid

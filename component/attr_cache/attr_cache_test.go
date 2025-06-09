@@ -101,10 +101,8 @@ func addPathToCache(assert *assert.Assertions, attrCache *AttrCache, path string
 }
 
 func assertDeleted(suite *attrCacheTestSuite, path string) {
-	suite.assert.Contains(suite.attrCache.cacheMap, path)
-	suite.assert.EqualValues(suite.attrCache.cacheMap[path].attr, &internal.ObjAttr{})
-	suite.assert.True(suite.attrCache.cacheMap[path].valid())
-	suite.assert.False(suite.attrCache.cacheMap[path].exists())
+	// With the new implementation, deleted entries are removed from the cache map
+	suite.assert.NotContains(suite.attrCache.cacheMap, path)
 }
 
 func assertInvalid(suite *attrCacheTestSuite, path string) {
@@ -887,7 +885,9 @@ func (suite *attrCacheTestSuite) TestGetAttrExistsDeleted() {
 			_ = suite.attrCache.DeleteFile(internal.DeleteFileOptions{Name: "ac"})
 
 			options := internal.GetAttrOptions{Name: path}
-			// no call to mock component since attributes are accessible
+			// With the new implementation, deleted entries are removed from cache
+			// so we need to mock the call to the next component
+			suite.mock.EXPECT().GetAttr(options).Return(&internal.ObjAttr{}, syscall.ENOENT)
 
 			result, err := suite.attrCache.GetAttr(options)
 			suite.assert.Equal(err, syscall.ENOENT)
