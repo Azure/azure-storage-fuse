@@ -200,8 +200,9 @@ stop_blobfuse_on_node()
     local vm=$1
     local logfile=$(vmlog $vm)
 
-    echo "Stopping blobfuse @ $(date)" >> $logfile
-    ssh $vm ~/stop-blobfuse.sh >> $logfile 2>&1
+    (
+        echo "Stopping blobfuse @ $(date)" >> $logfile
+        ssh $vm ~/stop-blobfuse.sh >> $logfile 2>&1
 }
 
 kill_blobfuse_on_node()
@@ -334,11 +335,6 @@ now=$(date +%s)
 [ $(expr $now - $LAST_UPDATED_AT) -lt 5 ]
 log_status $? "now is $now and last_updated_at is $LAST_UPDATED_AT"
 
-becho -n "Cluster must be readonly"
-readonly_status=$(echo "$cm" | jq '."readonly"')
-[ "$readonly_status" == "true" ]
-log_status $? "is $readonly_status"
-
 becho -n "Cluster state must be ready"
 cluster_state=$(echo "$cm" | jq '."state"' | tr -d '"')
 [ "$cluster_state" == "ready" ]
@@ -359,6 +355,15 @@ becho -n "RV count must be 1"
 rv_count=$(get_rv_count "$cm")
 [ "$rv_count" == "1" ]
 log_status $? "is $rv_count"
+
+becho -n "Cluster must be readonly"
+readonly_status=$(echo "$cm" | jq '."readonly"')
+if [ "$rv_count" -ge "$MIN_NODES" ]; then
+    [ "$readonly_status" == "false" ]
+else
+    [ "$readonly_status" == "true" ]
+fi
+log_status $? "rv_count is $rv_count, min_nodes is $MIN_NODES, readonly is $readonly_status"
 
 ############################################################################
 ##                             Start node2                                ##
@@ -399,11 +404,6 @@ now=$(date +%s)
 [ $(expr $now - $last_updated_at) -lt 5 ]
 log_status $? "now is $now and last_updated_at is $last_updated_at"
 
-becho -n "Cluster must be readonly"
-readonly_status=$(echo "$cm" | jq '."readonly"')
-[ "$readonly_status" == "true" ]
-log_status $? "is $readonly_status"
-
 becho -n "Cluster state must be ready"
 cluster_state=$(echo "$cm" | jq '."state"' | tr -d '"')
 [ "$cluster_state" == "ready" ]
@@ -429,6 +429,15 @@ becho -n "RV count must be 2"
 rv_count=$(get_rv_count "$cm")
 [ "$rv_count" == "2" ]
 log_status $? "is $rv_count"
+
+becho -n "Cluster must be readonly"
+readonly_status=$(echo "$cm" | jq '."readonly"')
+if [ "$rv_count" -ge "$MIN_NODES" ]; then
+    [ "$readonly_status" == "false" ]
+else
+    [ "$readonly_status" == "true" ]
+fi
+log_status $? "rv_count is $rv_count, min_nodes is $MIN_NODES, readonly is $readonly_status"
 
 #
 # Wait for clustermap update on vm1.
@@ -500,12 +509,15 @@ log_status $? "now is $now and last_updated_at is $last_updated_at"
 #
 # Cluster will still be readonly, it'll be marked read-write when the next leader node
 # updates the clustermap including creating new MVs
-# TODO: Make this dependent on min-nodes.
 #
 becho -n "Cluster must be readonly"
 readonly_status=$(echo "$cm" | jq '."readonly"')
-[ "$readonly_status" == "true" ]
-log_status $? "is $readonly_status"
+if [ "$rv_count" -ge "$MIN_NODES" ]; then
+    [ "$readonly_status" == "false" ]
+else
+    [ "$readonly_status" == "true" ]
+fi
+log_status $? "rv_count is $rv_count, min_nodes is $MIN_NODES, readonly is $readonly_status"
 
 becho -n "Cluster state must be ready"
 cluster_state=$(echo "$cm" | jq '."state"' | tr -d '"')
@@ -537,6 +549,15 @@ becho -n "RV count must be 3"
 rv_count=$(get_rv_count "$cm")
 [ "$rv_count" == "2" ]
 log_status $? "is $rv_count"
+
+becho -n "Cluster must be read-write ready"
+readonly_status=$(echo "$cm" | jq '."readonly"')
+if [ "$rv_count" -ge "$MIN_NODES" ]; then
+    [ "$readonly_status" == "false" ]
+else
+    [ "$readonly_status" == "true" ]
+fi
+log_status $? "rv_count is $rv_count, min_nodes is $MIN_NODES, readonly is $readonly_status"
 
 #
 # Wait for clustermap update on vm1.
