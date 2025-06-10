@@ -381,6 +381,9 @@ func (rv *rvInfo) getMVs() []string {
 // Add a new MV replica to the given RV.
 // Caller must ensure that the RV is not already hosting the MV replica.
 func (rv *rvInfo) addToMVMap(mvName string, mv *mvInfo, reservedSpace int64) {
+	rv.rwMutex.Lock()
+	defer rv.rwMutex.Unlock()
+
 	mvPath := filepath.Join(rv.cacheDir, mvName)
 	common.Assert(common.DirectoryExists(mvPath), mvPath)
 	common.Assert(mv.rv == rv, mv.rv.rvName, rv.rvName)
