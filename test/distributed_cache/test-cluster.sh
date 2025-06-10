@@ -203,6 +203,10 @@ stop_blobfuse_on_node()
     (
         echo "Stopping blobfuse @ $(date)" >> $logfile
         ssh $vm ~/stop-blobfuse.sh >> $logfile 2>&1
+    )&
+
+    # Give some time for blobfuse process to stop.
+    sleep 1
 }
 
 kill_blobfuse_on_node()
@@ -454,6 +458,11 @@ rv_count=$(get_rv_count "$cm")
 [ "$rv_count" == "2" ]
 log_status $? "is $rv_count"
 
+becho -n "Epoch must be 3"
+epoch=$(echo "$cm" | jq '."epoch"')
+[ "$epoch" == "3" ]
+log_status $? "is $epoch"
+
 LAST_UPDATED_AT=$(echo "$cm" | jq '."last_updated_at"')
 LAST_EPOCH=$(echo "$cm" | jq '."epoch"')
 
@@ -480,6 +489,11 @@ rv_count=$(get_rv_count "$cm")
 [ "$rv_count" == "2" ]
 log_status $? "is $rv_count"
 
+becho -n "Epoch must be 3"
+epoch=$(echo "$cm" | jq '."epoch"')
+[ "$epoch" == "3" ]
+log_status $? "is $epoch"
+
 becho -n "Reading clustermap on vm2"
 cm=$(read_clustermap_from_node vm2)
 log_status $?
@@ -489,6 +503,11 @@ rv_count=$(get_rv_count "$cm")
 [ "$rv_count" == "2" ]
 log_status $? "is $rv_count"
 
+#we have waiting for 1 epoch in vm2 to be triggered
+becho -n "Epoch must be 4"
+epoch=$(echo "$cm" | jq '."epoch"')
+[ "$epoch" == "4" ]
+log_status $? "is $epoch"
 
 becho -n "Reading clustermap on vm3"
 cm=$(read_clustermap_from_node vm3)
@@ -525,9 +544,9 @@ cluster_state=$(echo "$cm" | jq '."state"' | tr -d '"')
 log_status $? "is $cluster_state"
 
 # vm3 nust have updated it once.
-becho -n "Epoch must be 4"
+becho -n "Epoch must be 5"
 epoch=$(echo "$cm" | jq '."epoch"')
-[ "$epoch" == "4" ]
+[ "$epoch" == "5" ]
 log_status $? "is $epoch"
 
 becho -n "rv0 must be online"
@@ -547,17 +566,8 @@ log_status $? "is $rv2_state"
 
 becho -n "RV count must be 3"
 rv_count=$(get_rv_count "$cm")
-[ "$rv_count" == "2" ]
+[ "$rv_count" == "3" ]
 log_status $? "is $rv_count"
-
-becho -n "Cluster must be read-write ready"
-readonly_status=$(echo "$cm" | jq '."readonly"')
-if [ "$rv_count" -ge "$MIN_NODES" ]; then
-    [ "$readonly_status" == "false" ]
-else
-    [ "$readonly_status" == "true" ]
-fi
-log_status $? "rv_count is $rv_count, min_nodes is $MIN_NODES, readonly is $readonly_status"
 
 #
 # Wait for clustermap update on vm1.
@@ -573,6 +583,20 @@ becho -n "RV count must be 3"
 rv_count=$(get_rv_count "$cm")
 [ "$rv_count" == "3" ]
 log_status $? "is $rv_count"
+
+becho -n "Epoch must be 6"
+epoch=$(echo "$cm" | jq '."epoch"')
+[ "$epoch" == "6" ]
+log_status $? "is $epoch"
+
+becho -n "Cluster must be read-write ready"
+readonly_status=$(echo "$cm" | jq '."readonly"')
+if [ "$rv_count" -ge "$MIN_NODES" ]; then
+    [ "$readonly_status" == "false" ]
+else
+    [ "$readonly_status" == "true" ]
+fi
+log_status $? "rv_count is $rv_count, min_nodes is $MIN_NODES, readonly is $readonly_status"
 
 LAST_UPDATED_AT=$(echo "$cm" | jq '."last_updated_at"')
 LAST_EPOCH=$(echo "$cm" | jq '."epoch"')
