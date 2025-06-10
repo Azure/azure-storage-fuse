@@ -2474,7 +2474,7 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) (stri
 
 	//
 	// TODO: Call JoinMV/UpdateMV on all RVs in parallel.
-	// Note: If JoinMV() fails to any RV, we do not send LeaveMV() to the RVs which succeeded for undoing the
+	// Note: If JoinMV RPC fails to any RV, we do not send LeaveMV() to the RVs which succeeded, for undoing the
 	//       reserveBytes, instead server is supposed to correctly undo that after timeout.
 	//
 	startTime := time.Now()
@@ -2537,15 +2537,17 @@ func (cmi *ClusterManager) joinMV(mvName string, mv dcache.MirroredVolume) (stri
 		// A fix-mv/new-mv can only succeed when all the RVs correctly update the component RVs state in their
 		// respective mvInfo and the state change is committed in the clustermap. Since our state change is
 		// not transactional, each RV holds an mvInfo state change till some timeout period and if the clustermap
-		// state change is not observed, it assumes that the sender failed to commit and rolls back the mvInfo
-		// state change. We need to make sure the first RV (and all other RVs) to which we sent JoinMV has not
-		// timed out it's mvInfo state change. We will have some margin for caller to update the clustermap.
+		// state change is not observed till the timeout, it assumes that the sender failed to commit and rolls
+		// back the mvInfo state change. We need to make sure the first RV and all other RVs to which we sent
+		// JoinMV have not timed out it's mvInfo state change. We will have some margin for caller to update the
+		// clustermap.
 		//
 		if time.Since(startTime) > rpc_server.GetMvInfoTimeout() {
-			errStr := fmt.Sprintf("JoinMV(%s) for %s/%s took longer than %s, aborting joinMV",
-				action, rv.Name, mvName, rpc_server.GetMvInfoTimeout())
+			errStr := fmt.Sprintf("JoinMV (action: %s, new-mv: %v) for %s/%s took longer than %s, aborting joinMV",
+				action, newMV, rv.Name, mvName, rpc_server.GetMvInfoTimeout())
 			log.Err("ClusterManager::joinMV: %s", errStr)
 			common.Assert(false, errStr)
+			// TODO: This RV is not necessarily the real culprit.
 			return rv.Name, err
 		}
 	}

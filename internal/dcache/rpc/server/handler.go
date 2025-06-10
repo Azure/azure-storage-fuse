@@ -233,13 +233,13 @@ type mvInfo struct {
 // play safe in case the communication from RVs is hampered due to n/w connectivity. Note that it's ok if we
 // don't prune an mvMap entry for some time, that RV may not be able to host a new MV for some time, so the
 // corresponding sync will get delayed, but if we remove some valid MV that's part of a legit state change
-// transaction, it can cause confusion.
+// transaction, it can cause real confusion.
 var mvInfoTimeout time.Duration = 60 * time.Second
 
 // Users performing transactional changes like JoinMV/UpdateMV/StartSync/EndSync, which send RPCs to one or
 // more component RVs and on getting success responses from all, commit state change in clustermap, can assume
 // state change caused by RPC to be valid only for this much time. After this, if the clustermap state change
-// is not committed, mvInfo state change can be reverted.
+// is not committed, mvInfo state change can be reverted by the server.
 func GetMvInfoTimeout() time.Duration {
 	//
 	// Caller usually performs this check before clustermap commit, and clustermap commit may take some more
@@ -920,13 +920,13 @@ func (mv *mvInfo) refreshFromClustermap() error {
 		// of an ongoing transaction.
 		//
 		if time.Since(mv.lmt) < mvInfoTimeout {
-			log.Debug("mvInfo::refreshFromClustermap: %s/%s ongoing state change (clustermap:%s -> rvInfo: %s), not timed out yet (%s < %s)",
-				rvName, mv.mvName, rvState, oldRvNameAndState.State, rvState, time.Since(mv.lmt), mvInfoTimeout)
+			log.Debug("mvInfo::refreshFromClustermap: %s/%s ongoing state change (clustermap:%s -> rvInfo:%s), not timed out yet (%s < %s)",
+				rvName, mv.mvName, rvState, oldRvNameAndState.State, time.Since(mv.lmt), mvInfoTimeout)
 			continue
 		}
 
 		log.Info("mvInfo::refreshFromClustermap: %s/%s state change (clustermap:%s -> rvInfo:%s), timed out (%s >= %s)",
-			rvName, mv.mvName, rvState, oldRvNameAndState.State, rvState, time.Since(mv.lmt), mvInfoTimeout)
+			rvName, mv.mvName, rvState, oldRvNameAndState.State, time.Since(mv.lmt), mvInfoTimeout)
 
 		//
 		// StateOutOfSync -> StateOffline
@@ -967,7 +967,10 @@ func (mv *mvInfo) refreshFromClustermap() error {
 		// Hence whenever we have refreshFromClustermap() see a state transition from StateSyncing to
 		// StateOutOfSync, it means that it's this case and we must clear the old syncJob.
 		//
-		if oldRvNameAndState.State == string(dcache.StateSyncing) && rvState == dcache.StateOutOfSync {
+		// Note: We also must consider "offline" RVs, as an "outofsync" RV in clustermap can also go offline.
+		//
+		if oldRvNameAndState.State == string(dcache.StateSyncing) &&
+			(rvState == dcache.StateOutOfSync || rvState == dcache.StateOffline) {
 			//
 			// Only a target replica can be in StateSyncing and a target replica MUST have one and
 			// only one syncJob, clear that.
@@ -1036,8 +1039,8 @@ func (rv *rvInfo) pruneStaleEntriesFromMvMap() error {
 		// from all RVs and/or might be in the process of committing the changes to clustermap.
 		//
 		if time.Since(mv.lmt) < mvInfoTimeout {
-			log.Debug("mvInfo::pruneStaleEntriesFromMvMap: %s with %d MVs, time since lmt (%s) < %s, skipping...",
-				rv.rvName, rv.mvCount.Load(), time.Since(mv.lmt), mvInfoTimeout)
+			log.Debug("mvInfo::pruneStaleEntriesFromMvMap: %s/%s (%d MVs), time since lmt (%s) < %s, skipping...",
+				rv.rvName, mvName, rv.mvCount.Load(), time.Since(mv.lmt), mvInfoTimeout)
 			continue
 		}
 
@@ -2065,11 +2068,12 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 	for {
 		if rvInfo.mvCount.Load() >= mvLimit {
 			//
-			// TODO: This might happen due to incomplete JoinMV requests taking up space, so it will help
-			//       to refresh rvInfo details from the clustermap and remove any unused MVs, and try again.
+			// This might happen due to incomplete JoinMV requests taking up space, so it will help
+			// to refresh rvInfo details from the clustermap and remove any unused MVs, and try again.
 			//
 			errStr := fmt.Sprintf("%s cannot host any more MVs (MVsPerRv: %d)", req.RVName, mvLimit)
 			log.Err("ChunkServiceHandler::JoinMV: %s", errStr)
+
 			if !pruned {
 				rvInfo.pruneStaleEntriesFromMvMap()
 				pruned = true

@@ -845,9 +845,9 @@ func syncComponentRV(mvName string, lioRV string, targetRVName string, syncSize 
 	}
 
 	//
-	// StartSync causes mvInfo state to be changed to "syncing" but it can be safely assumed to not be
-	// purged only till GetMvInfoTimeout(). If we have spent more than that, we have to abort the
-	// sync.
+	// StartSync causes mvInfo state to be changed to "syncing" but server can purge it after GetMvInfoTimeout()
+	// time if the state change is not committed in the clustermap. If we have spent more than that, we have to
+	// abort the sync.
 	//
 	if time.Since(startTime) > rpc_server.GetMvInfoTimeout() {
 		errStr := fmt.Sprintf("StartSync for %s/%s (%s, %s) took longer than %s, aborting sync",
