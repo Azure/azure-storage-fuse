@@ -728,24 +728,24 @@ func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, err
 		maxWait = max(maxWait, time.Duration(cm.GetCacheConfig().ClustermapEpoch*3)*time.Second)
 
 		//
-		// Check status of all our RVs in the clustermap.
+		// Check status of all the RVs in the clustermap.
 		//
-		myRVsFromClustermap := cm.GetMyRVs()
+		rvsFromClustermap := cm.GetAllRVs()
 
-		if len(myRVsFromClustermap) > 0 {
-			log.Info("ClusterManager::safeCleanupMyRVs: Got %d of my RV(s) from clustermap %+v",
-				len(myRVsFromClustermap), myRVsFromClustermap)
+		if len(rvsFromClustermap) > 0 {
+			log.Info("ClusterManager::safeCleanupMyRVs: Got %d of RV(s) from clustermap %+v",
+				len(rvsFromClustermap), rvsFromClustermap)
 		} else {
-			log.Info("ClusterManager::safeCleanupMyRVs: No my RV(s) in clustermap")
+			log.Info("ClusterManager::safeCleanupMyRVs: No RV(s) in clustermap")
 		}
 
 		// Ensure no two different cache-dir report the same rvId(filesystem GUID)
 		for _, inputRV := range myRVs {
-			for _, cmRV := range myRVsFromClustermap {
-				if inputRV.RvId == cmRV.RvId && inputRV.LocalCachePath != cmRV.LocalCachePath {
+			for _, cmRV := range rvsFromClustermap {
+				if inputRV.RvId == cmRV.RvId && (inputRV.LocalCachePath != cmRV.LocalCachePath || cmRV.NodeId != cmi.myNodeId) {
 					return false, fmt.Errorf(
-						"ClusterManager::safeCleanupMyRVs: duplicate RVid (filesystem GUID) %s reported for paths %s and %s",
-						inputRV.RvId, cmRV.LocalCachePath, inputRV.LocalCachePath)
+						"ClusterManager::safeCleanupMyRVs: Duplicate RVid (filesystem GUID) %s detected. Input path/node %s/%s conflicts with existing path/node %s/%s",
+						inputRV.RvId, inputRV.LocalCachePath, cmi.myNodeId, cmRV.LocalCachePath, cmRV.NodeId)
 				}
 			}
 		}
@@ -755,7 +755,7 @@ func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, err
 			log.Info("ClusterManager::safeCleanupMyRVs: Checking my RV %+v", rv)
 
 			// Check online status for this RV.
-			for rvName, rvInfo := range myRVsFromClustermap {
+			for rvName, rvInfo := range rvsFromClustermap {
 				log.Info("ClusterManager::safeCleanupMyRVs: My RV %s has id %s in clustermap",
 					rvName, rvInfo.RvId)
 
@@ -2203,7 +2203,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		existingMVMap, runFixMvNewMv)
 
 	//
-	// fix-mv and new-mv workflows can cause lot of RPC calls (JoinMV/UpdateMV) to be gnerated, so we run
+	// fix-mv and new-mv workflows can cause lot of RPC calls (JoinMV/UpdateMV) to be generated, so we run
 	// those only when updateMVList() is called from the periodic updateStorageClusterMapIfRequired().
 	//
 	if !runFixMvNewMv {
@@ -3057,7 +3057,7 @@ func (cmi *ClusterManager) batchUpdateComponentRVState(msgBatch []*dcache.Compon
 		// We can pass runFixMvNewMv as true for the inband rv offlining case as those will be fewer, but it's
 		// ok to wait for fix-mv till the next clusterMap epoch.
 		//
-		// TODO: See if we want to pass runFixMvNewMv as true.
+		// TODO: See if we want to pass runFixMvNewMv as true for the inband rv offlining case.
 		//
 		cmi.updateMVList(clusterMap.RVMap, clusterMap.MVMap, false /* runFixMvNewMv */)
 
