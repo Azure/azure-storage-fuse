@@ -47,6 +47,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache"
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
+	rpc_client "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/client"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/service"
 	gouuid "github.com/google/uuid"
@@ -1899,13 +1900,19 @@ func (h *ChunkServiceHandler) PutChunkEx(ctx context.Context, req *models.PutChu
 		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRVID, errStr)
 	}
 
-	responses := make(map[string]*models.PutChunkResponseOrError)
+	var rpcResp *models.PutChunkExResponse
+	var err error
 
 	var wg sync.WaitGroup
 	wg.Add(1)
 
 	go func() {
 		defer wg.Done()
+
+		rpcResp, err = h.forwardPutChunk(ctx, req.Request, req.NextRVs)
+		common.Assert(err == nil, err)
+		common.Assert(rpcResp != nil)
+		common.Assert(rpcResp.Responses != nil) // rpcResp.Responses should not be nil
 	}()
 
 	//
@@ -1927,14 +1934,125 @@ func (h *ChunkServiceHandler) PutChunkEx(ctx context.Context, req *models.PutChu
 
 	wg.Wait()
 
-	responses[rvInfo.rvName] = &models.PutChunkResponseOrError{
+	rpcResp.Responses[rvInfo.rvName] = &models.PutChunkResponseOrError{
 		Response: resp,
 		Error:    errStr,
 	}
 
-	return &models.PutChunkExResponse{
-		Responses: responses,
-	}, nil
+	log.Debug("ChunkServiceHandler::PutChunkEx: Received response for %s/%s: %v",
+		rvInfo.rvName, req.Request.Chunk.Address.MvName, rpc.PutChunkExResponseToString(rpcResp))
+
+	return rpcResp, nil
+}
+
+func (h *ChunkServiceHandler) forwardPutChunk(ctx context.Context, req *models.PutChunkRequest, rvs []*models.RVNameAndState) (*models.PutChunkExResponse, error) {
+	common.Assert(req != nil)
+	common.Assert(req.Chunk != nil)
+	common.Assert(req.Chunk.Address != nil)
+
+	log.Debug("ChunkServiceHandler::forwardPutChunk: Forwarding PutChunk request: %v, to RVs: %v",
+		rpc.PutChunkRequestToString(req), rpc.ComponentRVsToString(rvs))
+
+	//
+	// No more RVs to forward the PutChunk request to, so return empty response.
+	//
+	if len(rvs) == 0 {
+		return &models.PutChunkExResponse{
+			Responses: make(map[string]*models.PutChunkResponseOrError),
+		}, nil
+	}
+
+	currRV := rvs[0]
+	common.Assert(currRV != nil)
+	common.Assert(cm.IsValidRVName(currRV.Name), currRV.Name)
+	common.Assert(cm.IsValidComponentRVState(dcache.StateEnum(currRV.State)), currRV.State)
+
+	var nextRVs []*models.RVNameAndState
+	if len(rvs) > 1 {
+		nextRVs = rvs[1:]
+	}
+
+	var rpcResp *models.PutChunkExResponse
+	var err error
+
+	//
+	// Omit writing to RVs in “offline” or “outofsync” state. It’s ok to omit them as the chunks not
+	// written to them will be copied to them when the mv is (soon) resynced.
+	// Otoh if an RV is in “syncing” state then any new chunk written to it may not be copied by the
+	// ongoing resync operation as the source RV may have been already gone past the enumeration stage
+	// and hence won’t consider this chunk for resync, and hence those MUST have the chunks mandatorily
+	// copied to them.
+	//
+	// For outofsync or offline RVs, add nil response and error to the responses map so that
+	// the client can know that the chunk was not written to those RVs.
+	//
+	if currRV.State == string(dcache.StateOffline) ||
+		currRV.State == string(dcache.StateOutOfSync) {
+		log.Debug("ChunkServiceHandler::forwardPutChunk: Skipping %s/%s (RV state: %s, MV state: %s)",
+			currRV.Name, req.Chunk.Address.MvName, currRV.State)
+
+		rpcResp, err = h.forwardPutChunk(ctx, req, nextRVs)
+		common.Assert(err == nil, err)
+		common.Assert(rpcResp != nil)
+		common.Assert(rpcResp.Responses != nil) // rpcResp.Responses should not be nil
+
+		rpcResp.Responses[currRV.Name] = &models.PutChunkResponseOrError{
+			Response: nil,
+			Error:    "",
+		}
+
+	} else if currRV.State == string(dcache.StateOnline) || currRV.State == string(dcache.StateSyncing) {
+
+		rvID := cm.RvNameToId(currRV.Name)
+		common.Assert(common.IsValidUUID(rvID))
+
+		targetNodeID := cm.RVNameToNodeId(currRV.Name)
+		common.Assert(common.IsValidUUID(targetNodeID))
+
+		log.Debug("ChunkServiceHandler::forwardPutChunk: Writing to %s/%s (rvID: %s, state: %s) on node %s",
+			currRV.Name, req.Chunk.Address.MvName, rvID, currRV.State, targetNodeID)
+
+		//
+		// Create PutChunkRequest for the target RV.
+		// The ony updated fields in the request are SenderNodeID and RvID.
+		//
+		putChunkReq := &models.PutChunkRequest{
+			Chunk: &models.Chunk{
+				Address: &models.Address{
+					FileID:      req.Chunk.Address.FileID,
+					RvID:        rvID,
+					MvName:      req.Chunk.Address.MvName,
+					OffsetInMiB: req.Chunk.Address.OffsetInMiB,
+				},
+				Data: req.Chunk.Data,
+				Hash: req.Chunk.Hash,
+			},
+			Length:         req.Length,
+			SyncID:         req.SyncID,
+			ComponentRV:    req.ComponentRV,
+			MaybeOverwrite: req.MaybeOverwrite,
+		}
+
+		putChunkExRequest := &models.PutChunkExRequest{
+			Request: putChunkReq,
+			NextRVs: nextRVs,
+		}
+
+		log.Debug("ChunkServiceHandler::forwardPutChunk: Forwarding PutChunkEx request for %s/%s to node %s: %v",
+			currRV.Name, req.Chunk.Address.MvName, targetNodeID, rpc.PutChunkExRequestToString(putChunkExRequest))
+
+		rpcResp, err = rpc_client.PutChunkEx(ctx, targetNodeID, putChunkExRequest)
+		common.Assert(err == nil, err)
+		common.Assert(rpcResp != nil)
+		common.Assert(rpcResp.Responses != nil) // rpcResp.Responses should not be nil
+	} else {
+		common.Assert(false, "Unexpected RV state", currRV.State, currRV.Name, req.Chunk.Address.MvName)
+	}
+
+	log.Debug("ChunkServiceHandler::forwardPutChunk: Received response for %s/%s: %v",
+		currRV.Name, req.Chunk.Address.MvName, rpc.PutChunkExResponseToString(rpcResp))
+
+	return rpcResp, err
 }
 
 func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.RemoveChunkRequest) (*models.RemoveChunkResponse, error) {

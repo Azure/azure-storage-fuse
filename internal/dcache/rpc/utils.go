@@ -150,6 +150,22 @@ func PutChunkExRequestToString(req *models.PutChunkExRequest) string {
 		PutChunkRequestToString(req.Request), ComponentRVsToString(req.NextRVs))
 }
 
+// convert *models.PutChunkExRequest to string
+// used for logging
+func PutChunkExResponseToString(response *models.PutChunkExResponse) string {
+	str := strings.Builder{}
+	str.WriteString("[\n")
+
+	for rvName, resp := range response.Responses {
+		common.Assert(resp != nil)
+		str.WriteString(fmt.Sprintf("{%s : {PutChunkResponse %s, Error %s}}\n",
+			rvName, PutChunkResponseToString(resp.Response), resp.Error))
+	}
+
+	str.WriteString("]")
+	return str.String()
+}
+
 // convert *models.RemoveChunkRequest to string
 // used for logging
 func RemoveChunkRequestToString(req *models.RemoveChunkRequest) string {
