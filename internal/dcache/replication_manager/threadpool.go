@@ -133,7 +133,7 @@ func (tp *threadpool) schedule(item *workitem, runInline bool) {
 	//
 	// If caller wants us to run the item in its context do that, else
 	// add the work item to the channel for processing where it will be
-	// dequeued and processed by one of the free workes.
+	// dequeued and processed by one of the free workers.
 	//
 	if runInline {
 		tp.runItem(item)

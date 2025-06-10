@@ -179,7 +179,7 @@ func IsClusterReadonly() bool {
 // If you do not care about any specific clusterMap epoch but just want it to be refreshed once, pass 0 for
 // higherThanEpoch.
 //
-// Note: Usually you will not need to work on the most uptodate clustermap, the last periodically refreshed copy
+// Note: Usually you will not need to work on the most up-to-date clustermap, the last periodically refreshed copy
 //       of clustermap should be fine for most users. This API must be used by callers which cannot safely proceed
 //       w/o knowing the latest clustermap. This should not be a common requirement and codepaths calling it should
 //       be very infrequently executed.
@@ -284,7 +284,7 @@ const (
 	//
 	// This is the size of the channel where RV updates are queued.
 	// These many max updates can be batched. This must be greater than rm.MAX_SIMUL_SYNC_JOBS as each
-	// sync job can generate one outstanding updae.
+	// sync job can generate one outstanding update.
 	//
 	MAX_SIMUL_RV_STATE_UPDATES = 10000
 )

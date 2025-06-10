@@ -1355,7 +1355,7 @@ func (cmi *ClusterManager) updateStorageClusterMapIfRequired() error {
 	// thresholdClusterMapEpochTime is set to 60, so limit it to 180.
 	// The max time till which the clusterMap may not be updated in the event of leader going down is
 	// 2*ClustermapEpoch + thresholdClusterMapEpochTime, so for values of ClustermapEpoch above 60 seconds, 3 times
-	// ClustermapEpoch is suffcient but for smaller ClustermapEpoch values we have to cap to 180, with a margin
+	// ClustermapEpoch is sufficient but for smaller ClustermapEpoch values we have to cap to 180, with a margin
 	// of 20 seconds.
 	//
 	common.Assert(clusterMapAge < int64(max(clusterMap.Config.ClustermapEpoch*3, 200)),
@@ -2188,7 +2188,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		existingMVMap, runFixMvNewMv)
 
 	//
-	// fix-mv and new-mv workflows can cause lot of RPC calls (JoinMV/UpdateMV) to be gnerated, so we run
+	// fix-mv and new-mv workflows can cause lot of RPC calls (JoinMV/UpdateMV) to be generated, so we run
 	// those only when updateMVList() is called from the periodic updateStorageClusterMapIfRequired().
 	//
 	if !runFixMvNewMv {
@@ -2209,7 +2209,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 	//
 	// Note that we can/must only fix degraded MVs, offline MVs cannot be fixed as there's no good component
 	// RV to copy chunks from. Once an MV is offline it won't be used by File Manager to put any file's data.
-	// Offline MVs will just be lying around like satelite debris in space.
+	// Offline MVs will just be lying around like satellite debris in space.
 	//
 	// TODO: See if we need delete-mv workflow to clean those up.
 	//
@@ -2264,7 +2264,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		// offline and they don't consume any RV slot, so they should be omitted from usable MVs.
 		//
 		// Q: Why do we need to limit numUsableMVs to maxMVsPossible?
-		//    IOW, why is the the above check "len(nodeToRvs) < NumReplicas" not suffcient.
+		//    IOW, why is the the above check "len(nodeToRvs) < NumReplicas" not sufficient.
 		// A: "len(nodeToRvs) < NumReplicas" check will try to create as many MVs as we can with the available
 		//    RVs, but it might create more than maxMVsPossible if some of the MVs have offline RVs (fixMV() would
 		//    have attempted to replace offline RVs for all degraded MVs but if joinMV() fails or any other error
@@ -2297,7 +2297,7 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		//
 		// Take the first NumReplicas nodes.
 		// Since only those nodes are present in nodeToRvs/availableNodes which have at least one RV
-		// slot available, we are guaranted to get NumReplicas component RVs from selectedNodes.
+		// slot available, we are guaranteed to get NumReplicas component RVs from selectedNodes.
 		// Simply go over the selectedNodes and pick the first available RV from each selected node.
 		//
 		selectedNodes := availableNodes[:NumReplicas]
@@ -2350,8 +2350,8 @@ func (cmi *ClusterManager) updateMVList(rvMap map[string]dcache.RawVolume,
 		// reserveBytes is 0 for a new-mv workflow.
 		//
 		// Iff joinMV() is successful, consume one slot for each component RV, else if joinMV() fails
-		// delete the failed RV fom nodeToRvs to prevent this RV from being picked again and failing.
-		// Also we need to remove mv frome existingMVMap.
+		// delete the failed RV from nodeToRvs to prevent this RV from being picked again and failing.
+		// Also we need to remove mv from existingMVMap.
 		//
 		failedRV, err := cmi.joinMV(mvName, existingMVMap[mvName])
 		if err == nil {
@@ -2668,7 +2668,7 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 			// RV present in existingRVMap, but missing from rVsByRvIdFromHB.
 			// This is not a common occurrence, emit a warning log.
 			//
-			// For onlyMyRV==true, case we cannot perfrom this operation as we don't have the exhaustive list of  HBs.
+			// For onlyMyRV==true, case we cannot perform this operation as we don't have the exhaustive list of  HBs.
 			if rvInClusterMap.State != dcache.StateOffline {
 				log.Warn("ClusterManager::updateRVList: Online Rv %s missing in new heartbeats", rvName)
 				rvInClusterMap.State = dcache.StateOffline

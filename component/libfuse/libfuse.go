@@ -88,7 +88,7 @@ type dirChildCache struct {
 	// else we enumerate from Azure FS. This is used when user enumerates through an unqualified path.
 	isFsDcache bool
 	// This is used when reading the directory for unqualified path. Initially all the entries from the dcache are put
-	// into the map to later compare them with the Azure entries to avoid double occurance of the same entry.
+	// into the map to later compare them with the Azure entries to avoid double occurrence of the same entry.
 	dcacheEntries map[string]struct{}
 }
 

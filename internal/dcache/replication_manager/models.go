@@ -240,7 +240,7 @@ type syncJob struct {
 func (job *syncJob) toString() string {
 	var copyRunningFor time.Duration
 
-	// copyStartedAt is set when chunk copy starts, any syncJob loggged before that must log 0s.
+	// copyStartedAt is set when chunk copy starts, any syncJob logged before that must log 0s.
 	if !job.copyStartedAt.IsZero() {
 		copyRunningFor = time.Since(job.copyStartedAt)
 	}
