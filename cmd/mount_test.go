@@ -505,77 +505,79 @@ func (suite *mountTestSuite) TestCleanUpOnStartFlag() {
 
 	defer func() {
 		os.RemoveAll(testDir)
-		config.ResetConfig()
 	}()
 
-	testPath := filepath.Join(testDir, "filecache")
-	testPath2 := filepath.Join(testDir, "blockcache")
-	testPath3 := filepath.Join(testDir, "xload")
+	testPath := filepath.Join(testDir, "dir1")
+	testPath2 := filepath.Join(testDir, "dir2")
+	testPath3 := filepath.Join(testDir, "dir3")
 	os.MkdirAll(testPath, 0755)
 	os.MkdirAll(testPath2, 0755)
 	os.MkdirAll(testPath3, 0755)
 
-	// Create some test files
-	testFile := filepath.Join(testPath, "testfile")
-	err := os.WriteFile(testFile, []byte("test"), 0644)
-	suite.assert.Nil(err)
+	createFilesInCacheDirs := func() {
+		// Create some test files
+		testFile := filepath.Join(testPath, "testfile")
+		err := os.WriteFile(testFile, []byte("test"), 0644)
+		suite.assert.Nil(err)
 
-	testFile2 := filepath.Join(testPath2, "testfile")
-	err = os.WriteFile(testFile2, []byte("test"), 0644)
-	suite.assert.Nil(err)
+		testFile2 := filepath.Join(testPath2, "testfile")
+		err = os.WriteFile(testFile2, []byte("test"), 0644)
+		suite.assert.Nil(err)
 
-	testFile3 := filepath.Join(testPath3, "testfile")
-	err = os.WriteFile(testFile3, []byte("test"), 0644)
-	suite.assert.Nil(err)
+		testFile3 := filepath.Join(testPath3, "testfile")
+		err = os.WriteFile(testFile3, []byte("test"), 0644)
+		suite.assert.Nil(err)
+	}
 
-	// Set up test component
-	testComponent := "file_cache"
-	options.Components = append(options.Components, testComponent)
+	comps := []string{"file_cache", "block_cache", "xload"}
+	var cachedirs []string
+	cachedirs = append(cachedirs, testPath, testPath2, testPath3)
 
 	// Set the path for the cache directory.
-	config.Set(testComponent+".path", testPath)
-	config.Set("block_cache"+".path", testPath2)
-	config.Set("xload"+".path", testPath3)
+	config.Set(comps[0]+".path", testPath)
+	config.Set(comps[1]+".path", testPath2)
+	config.Set(comps[2]+".path", testPath3)
 
-	// Set the global cli parameter
-	config.Set("cleanup-on-start", "true")
+	for i, comp := range comps {
+		// Set up test component
+		testComponent := comp
+		options.Components = []string{testComponent}
 
-	// Test case 1: Global flag true, component flag false
-	err = options.tempCacheCleanup()
-	suite.assert.Nil(err)
-	suite.assert.True(common.IsDirectoryEmpty(testPath))
-	// This should not delete the other cache dirs of other components.
-	suite.assert.False(common.IsDirectoryEmpty(testPath2))
-	suite.assert.False(common.IsDirectoryEmpty(testPath3))
+		// Test case 1: Global flag true, component flag false
+		createFilesInCacheDirs()
+		config.Set("cleanup-on-start", "true")
+		config.Set(testComponent+".cleanup-on-start", "false")
 
-	// Reset and create test files again
-	err = os.WriteFile(testFile, []byte("test"), 0644)
-	suite.assert.Nil(err)
+		err := options.tempCacheCleanup()
+		suite.assert.Nil(err)
+		suite.assert.True(common.IsDirectoryEmpty(cachedirs[i]))
+		// This should not delete the other cache dirs of other components.
+		suite.assert.False(common.IsDirectoryEmpty(cachedirs[(i+1)%3]))
+		suite.assert.False(common.IsDirectoryEmpty(cachedirs[(i+2)%3]))
 
-	// Test case 2: Global flag false, component flag true
-	config.Set(testComponent+".cleanup-on-start", "true")
-	config.Set("cleanup-on-start", "false")
+		// Test case 2: Global flag false, component flag true
+		createFilesInCacheDirs()
+		config.Set(testComponent+".cleanup-on-start", "true")
+		config.Set("cleanup-on-start", "false")
 
-	err = options.tempCacheCleanup()
-	suite.assert.Nil(err)
-	suite.assert.True(common.IsDirectoryEmpty(testPath))
-	// This should not delete the other cache dirs of other components.
-	suite.assert.False(common.IsDirectoryEmpty(testPath2))
-	suite.assert.False(common.IsDirectoryEmpty(testPath3))
+		err = options.tempCacheCleanup()
+		suite.assert.Nil(err)
+		suite.assert.True(common.IsDirectoryEmpty(cachedirs[i]))
+		// This should not delete the other cache dirs of other components.
+		suite.assert.False(common.IsDirectoryEmpty(cachedirs[(i+1)%3]))
+		suite.assert.False(common.IsDirectoryEmpty(cachedirs[(i+2)%3]))
 
-	// Reset and create test files again
-	err = os.WriteFile(testFile, []byte("test"), 0644)
-	suite.assert.Nil(err)
-
-	// Test case 3: Both flags false
-	config.Set(testComponent+".cleanup-on-start", "false")
-	config.Set("cleanup-on-start", "false")
-	err = options.tempCacheCleanup()
-	suite.assert.Nil(err)
-	suite.assert.False(common.IsDirectoryEmpty(testPath))
-	// This should not delete the other cache dirs of other components.
-	suite.assert.False(common.IsDirectoryEmpty(testPath2))
-	suite.assert.False(common.IsDirectoryEmpty(testPath3))
+		// Test case 3: Both flags false
+		createFilesInCacheDirs()
+		config.Set(testComponent+".cleanup-on-start", "false")
+		config.Set("cleanup-on-start", "false")
+		err = options.tempCacheCleanup()
+		suite.assert.Nil(err)
+		suite.assert.False(common.IsDirectoryEmpty(cachedirs[i]))
+		// This should not delete the other cache dirs of other components.
+		suite.assert.False(common.IsDirectoryEmpty(cachedirs[(i+1)%3]))
+		suite.assert.False(common.IsDirectoryEmpty(cachedirs[(i+2)%3]))
+	}
 }
 
 func TestMountCommand(t *testing.T) {

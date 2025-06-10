@@ -303,6 +303,7 @@ func (suite *fileCacheTestSuite) TestConfigZero() {
 	suite.assert.Equal(suite.fileCache.allowNonEmpty, allowNonEmptyTemp)
 	suite.assert.EqualValues(suite.fileCache.cacheTimeout, cacheTimeout)
 }
+
 // Tests CreateDir
 func (suite *fileCacheTestSuite) TestCreateDir() {
 	defer suite.cleanupTest()
