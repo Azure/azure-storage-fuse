@@ -64,6 +64,16 @@ struct PutChunkResponse {
     3: list<RVNameAndState> componentRV
 }
 
+struct PutChunkExRequest {
+    1: PutChunkRequest req,
+    2: string localRVName,
+    3: list<string> nextRVs
+}
+
+struct PutChunkExResponse {
+    1: map<string, PutChunkResponse> responses // map of RV name to the PutChunk response to that RV
+}
+
 struct RemoveChunkRequest {
     1: string senderNodeID,
     2: Address address,

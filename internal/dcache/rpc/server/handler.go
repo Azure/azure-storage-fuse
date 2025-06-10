@@ -1878,6 +1878,10 @@ refreshFromClustermapAndRetry:
 	return resp, nil
 }
 
+func (h *ChunkServiceHandler) PutChunkEx(ctx context.Context, req *models.PutChunkExRequest) (*models.PutChunkExResponse, error) {
+	return nil, nil
+}
+
 func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.RemoveChunkRequest) (*models.RemoveChunkResponse, error) {
 	// Thrift should not be calling us with nil req.
 	common.Assert(req != nil)
