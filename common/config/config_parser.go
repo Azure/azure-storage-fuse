@@ -393,11 +393,6 @@ func RegisterFlagCompletionFunc(flagName string, completionFunc func(cmd *cobra.
 	userOptions.completionFuncMap[flagName] = completionFunc
 }
 
-// GetFlag returns a flag from the global flag set by name
-func GetFlag(name string) *pflag.Flag {
-	return userOptions.flags.Lookup(name)
-}
-
 func ResetConfig() {
 	viper.Reset()
 	userOptions = options{
