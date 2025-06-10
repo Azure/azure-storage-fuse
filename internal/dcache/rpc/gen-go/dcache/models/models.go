@@ -2568,40 +2568,222 @@ func (p *PutChunkResponse) String() string {
 }
 
 // Attributes:
-//   - Req
-//   - LocalRVName
+//   - Request
 //   - NextRVs
 type PutChunkExRequest struct {
-	Req         *PutChunkRequest `thrift:"req,1" db:"req" json:"req"`
-	LocalRVName string           `thrift:"localRVName,2" db:"localRVName" json:"localRVName"`
-	NextRVs     []string         `thrift:"nextRVs,3" db:"nextRVs" json:"nextRVs"`
+	Request *PutChunkRequest  `thrift:"request,1" db:"request" json:"request"`
+	NextRVs []*RVNameAndState `thrift:"nextRVs,2" db:"nextRVs" json:"nextRVs"`
 }
 
 func NewPutChunkExRequest() *PutChunkExRequest {
 	return &PutChunkExRequest{}
 }
 
-var PutChunkExRequest_Req_DEFAULT *PutChunkRequest
+var PutChunkExRequest_Request_DEFAULT *PutChunkRequest
 
-func (p *PutChunkExRequest) GetReq() *PutChunkRequest {
-	if !p.IsSetReq() {
-		return PutChunkExRequest_Req_DEFAULT
+func (p *PutChunkExRequest) GetRequest() *PutChunkRequest {
+	if !p.IsSetRequest() {
+		return PutChunkExRequest_Request_DEFAULT
 	}
-	return p.Req
+	return p.Request
 }
 
-func (p *PutChunkExRequest) GetLocalRVName() string {
-	return p.LocalRVName
-}
-
-func (p *PutChunkExRequest) GetNextRVs() []string {
+func (p *PutChunkExRequest) GetNextRVs() []*RVNameAndState {
 	return p.NextRVs
 }
-func (p *PutChunkExRequest) IsSetReq() bool {
-	return p.Req != nil
+func (p *PutChunkExRequest) IsSetRequest() bool {
+	return p.Request != nil
 }
 
 func (p *PutChunkExRequest) Read(ctx context.Context, iprot thrift.TProtocol) error {
+	if _, err := iprot.ReadStructBegin(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
+	}
+
+	for {
+		_, fieldTypeId, fieldId, err := iprot.ReadFieldBegin(ctx)
+		if err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T field %d read error: ", p, fieldId), err)
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 1:
+			if fieldTypeId == thrift.STRUCT {
+				if err := p.ReadField1(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		case 2:
+			if fieldTypeId == thrift.LIST {
+				if err := p.ReadField2(ctx, iprot); err != nil {
+					return err
+				}
+			} else {
+				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
+				return err
+			}
+		}
+		if err := iprot.ReadFieldEnd(ctx); err != nil {
+			return err
+		}
+	}
+	if err := iprot.ReadStructEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+	}
+	return nil
+}
+
+func (p *PutChunkExRequest) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Request = &PutChunkRequest{}
+	if err := p.Request.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Request), err)
+	}
+	return nil
+}
+
+func (p *PutChunkExRequest) ReadField2(ctx context.Context, iprot thrift.TProtocol) error {
+	_, size, err := iprot.ReadListBegin(ctx)
+	if err != nil {
+		return thrift.PrependError("error reading list begin: ", err)
+	}
+	tSlice := make([]*RVNameAndState, 0, size)
+	p.NextRVs = tSlice
+	for i := 0; i < size; i++ {
+		_elem16 := &RVNameAndState{}
+		if err := _elem16.Read(ctx, iprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", _elem16), err)
+		}
+		p.NextRVs = append(p.NextRVs, _elem16)
+	}
+	if err := iprot.ReadListEnd(ctx); err != nil {
+		return thrift.PrependError("error reading list end: ", err)
+	}
+	return nil
+}
+
+func (p *PutChunkExRequest) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "PutChunkExRequest"); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+	}
+	if p != nil {
+		if err := p.writeField1(ctx, oprot); err != nil {
+			return err
+		}
+		if err := p.writeField2(ctx, oprot); err != nil {
+			return err
+		}
+	}
+	if err := oprot.WriteFieldStop(ctx); err != nil {
+		return thrift.PrependError("write field stop error: ", err)
+	}
+	if err := oprot.WriteStructEnd(ctx); err != nil {
+		return thrift.PrependError("write struct stop error: ", err)
+	}
+	return nil
+}
+
+func (p *PutChunkExRequest) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "request", thrift.STRUCT, 1); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:request: ", p), err)
+	}
+	if err := p.Request.Write(ctx, oprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Request), err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:request: ", p), err)
+	}
+	return err
+}
+
+func (p *PutChunkExRequest) writeField2(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "nextRVs", thrift.LIST, 2); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 2:nextRVs: ", p), err)
+	}
+	if err := oprot.WriteListBegin(ctx, thrift.STRUCT, len(p.NextRVs)); err != nil {
+		return thrift.PrependError("error writing list begin: ", err)
+	}
+	for _, v := range p.NextRVs {
+		if err := v.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", v), err)
+		}
+	}
+	if err := oprot.WriteListEnd(ctx); err != nil {
+		return thrift.PrependError("error writing list end: ", err)
+	}
+	if err := oprot.WriteFieldEnd(ctx); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 2:nextRVs: ", p), err)
+	}
+	return err
+}
+
+func (p *PutChunkExRequest) Equals(other *PutChunkExRequest) bool {
+	if p == other {
+		return true
+	} else if p == nil || other == nil {
+		return false
+	}
+	if !p.Request.Equals(other.Request) {
+		return false
+	}
+	if len(p.NextRVs) != len(other.NextRVs) {
+		return false
+	}
+	for i, _tgt := range p.NextRVs {
+		_src17 := other.NextRVs[i]
+		if !_tgt.Equals(_src17) {
+			return false
+		}
+	}
+	return true
+}
+
+func (p *PutChunkExRequest) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("PutChunkExRequest(%+v)", *p)
+}
+
+// Attributes:
+//   - Response
+//   - Error
+type PutChunkResponseOrError struct {
+	Response *PutChunkResponse `thrift:"response,1" db:"response" json:"response"`
+	Error    string            `thrift:"error,2" db:"error" json:"error"`
+}
+
+func NewPutChunkResponseOrError() *PutChunkResponseOrError {
+	return &PutChunkResponseOrError{}
+}
+
+var PutChunkResponseOrError_Response_DEFAULT *PutChunkResponse
+
+func (p *PutChunkResponseOrError) GetResponse() *PutChunkResponse {
+	if !p.IsSetResponse() {
+		return PutChunkResponseOrError_Response_DEFAULT
+	}
+	return p.Response
+}
+
+func (p *PutChunkResponseOrError) GetError() string {
+	return p.Error
+}
+func (p *PutChunkResponseOrError) IsSetResponse() bool {
+	return p.Response != nil
+}
+
+func (p *PutChunkResponseOrError) Read(ctx context.Context, iprot thrift.TProtocol) error {
 	if _, err := iprot.ReadStructBegin(ctx); err != nil {
 		return thrift.PrependError(fmt.Sprintf("%T read error: ", p), err)
 	}
@@ -2635,16 +2817,6 @@ func (p *PutChunkExRequest) Read(ctx context.Context, iprot thrift.TProtocol) er
 					return err
 				}
 			}
-		case 3:
-			if fieldTypeId == thrift.LIST {
-				if err := p.ReadField3(ctx, iprot); err != nil {
-					return err
-				}
-			} else {
-				if err := iprot.Skip(ctx, fieldTypeId); err != nil {
-					return err
-				}
-			}
 		default:
 			if err := iprot.Skip(ctx, fieldTypeId); err != nil {
 				return err
@@ -2660,47 +2832,25 @@ func (p *PutChunkExRequest) Read(ctx context.Context, iprot thrift.TProtocol) er
 	return nil
 }
 
-func (p *PutChunkExRequest) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
-	p.Req = &PutChunkRequest{}
-	if err := p.Req.Read(ctx, iprot); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Req), err)
+func (p *PutChunkResponseOrError) ReadField1(ctx context.Context, iprot thrift.TProtocol) error {
+	p.Response = &PutChunkResponse{}
+	if err := p.Response.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Response), err)
 	}
 	return nil
 }
 
-func (p *PutChunkExRequest) ReadField2(ctx context.Context, iprot thrift.TProtocol) error {
+func (p *PutChunkResponseOrError) ReadField2(ctx context.Context, iprot thrift.TProtocol) error {
 	if v, err := iprot.ReadString(ctx); err != nil {
 		return thrift.PrependError("error reading field 2: ", err)
 	} else {
-		p.LocalRVName = v
+		p.Error = v
 	}
 	return nil
 }
 
-func (p *PutChunkExRequest) ReadField3(ctx context.Context, iprot thrift.TProtocol) error {
-	_, size, err := iprot.ReadListBegin(ctx)
-	if err != nil {
-		return thrift.PrependError("error reading list begin: ", err)
-	}
-	tSlice := make([]string, 0, size)
-	p.NextRVs = tSlice
-	for i := 0; i < size; i++ {
-		var _elem16 string
-		if v, err := iprot.ReadString(ctx); err != nil {
-			return thrift.PrependError("error reading field 0: ", err)
-		} else {
-			_elem16 = v
-		}
-		p.NextRVs = append(p.NextRVs, _elem16)
-	}
-	if err := iprot.ReadListEnd(ctx); err != nil {
-		return thrift.PrependError("error reading list end: ", err)
-	}
-	return nil
-}
-
-func (p *PutChunkExRequest) Write(ctx context.Context, oprot thrift.TProtocol) error {
-	if err := oprot.WriteStructBegin(ctx, "PutChunkExRequest"); err != nil {
+func (p *PutChunkResponseOrError) Write(ctx context.Context, oprot thrift.TProtocol) error {
+	if err := oprot.WriteStructBegin(ctx, "PutChunkResponseOrError"); err != nil {
 		return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
 	}
 	if p != nil {
@@ -2708,9 +2858,6 @@ func (p *PutChunkExRequest) Write(ctx context.Context, oprot thrift.TProtocol) e
 			return err
 		}
 		if err := p.writeField2(ctx, oprot); err != nil {
-			return err
-		}
-		if err := p.writeField3(ctx, oprot); err != nil {
 			return err
 		}
 	}
@@ -2723,95 +2870,65 @@ func (p *PutChunkExRequest) Write(ctx context.Context, oprot thrift.TProtocol) e
 	return nil
 }
 
-func (p *PutChunkExRequest) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "req", thrift.STRUCT, 1); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:req: ", p), err)
+func (p *PutChunkResponseOrError) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "response", thrift.STRUCT, 1); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:response: ", p), err)
 	}
-	if err := p.Req.Write(ctx, oprot); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Req), err)
+	if err := p.Response.Write(ctx, oprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Response), err)
 	}
 	if err := oprot.WriteFieldEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:req: ", p), err)
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:response: ", p), err)
 	}
 	return err
 }
 
-func (p *PutChunkExRequest) writeField2(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "localRVName", thrift.STRING, 2); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field begin error 2:localRVName: ", p), err)
+func (p *PutChunkResponseOrError) writeField2(ctx context.Context, oprot thrift.TProtocol) (err error) {
+	if err := oprot.WriteFieldBegin(ctx, "error", thrift.STRING, 2); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T write field begin error 2:error: ", p), err)
 	}
-	if err := oprot.WriteString(ctx, string(p.LocalRVName)); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T.localRVName (2) field write error: ", p), err)
+	if err := oprot.WriteString(ctx, string(p.Error)); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T.error (2) field write error: ", p), err)
 	}
 	if err := oprot.WriteFieldEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field end error 2:localRVName: ", p), err)
+		return thrift.PrependError(fmt.Sprintf("%T write field end error 2:error: ", p), err)
 	}
 	return err
 }
 
-func (p *PutChunkExRequest) writeField3(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "nextRVs", thrift.LIST, 3); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field begin error 3:nextRVs: ", p), err)
-	}
-	if err := oprot.WriteListBegin(ctx, thrift.STRING, len(p.NextRVs)); err != nil {
-		return thrift.PrependError("error writing list begin: ", err)
-	}
-	for _, v := range p.NextRVs {
-		if err := oprot.WriteString(ctx, string(v)); err != nil {
-			return thrift.PrependError(fmt.Sprintf("%T. (0) field write error: ", p), err)
-		}
-	}
-	if err := oprot.WriteListEnd(ctx); err != nil {
-		return thrift.PrependError("error writing list end: ", err)
-	}
-	if err := oprot.WriteFieldEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field end error 3:nextRVs: ", p), err)
-	}
-	return err
-}
-
-func (p *PutChunkExRequest) Equals(other *PutChunkExRequest) bool {
+func (p *PutChunkResponseOrError) Equals(other *PutChunkResponseOrError) bool {
 	if p == other {
 		return true
 	} else if p == nil || other == nil {
 		return false
 	}
-	if !p.Req.Equals(other.Req) {
+	if !p.Response.Equals(other.Response) {
 		return false
 	}
-	if p.LocalRVName != other.LocalRVName {
+	if p.Error != other.Error {
 		return false
-	}
-	if len(p.NextRVs) != len(other.NextRVs) {
-		return false
-	}
-	for i, _tgt := range p.NextRVs {
-		_src17 := other.NextRVs[i]
-		if _tgt != _src17 {
-			return false
-		}
 	}
 	return true
 }
 
-func (p *PutChunkExRequest) String() string {
+func (p *PutChunkResponseOrError) String() string {
 	if p == nil {
 		return "<nil>"
 	}
-	return fmt.Sprintf("PutChunkExRequest(%+v)", *p)
+	return fmt.Sprintf("PutChunkResponseOrError(%+v)", *p)
 }
 
 // Attributes:
 //   - Responses
 type PutChunkExResponse struct {
-	Responses map[string]*PutChunkResponse `thrift:"responses,1" db:"responses" json:"responses"`
+	Responses map[string]*PutChunkResponseOrError `thrift:"responses,1" db:"responses" json:"responses"`
 }
 
 func NewPutChunkExResponse() *PutChunkExResponse {
 	return &PutChunkExResponse{}
 }
 
-func (p *PutChunkExResponse) GetResponses() map[string]*PutChunkResponse {
+func (p *PutChunkExResponse) GetResponses() map[string]*PutChunkResponseOrError {
 	return p.Responses
 }
 func (p *PutChunkExResponse) Read(ctx context.Context, iprot thrift.TProtocol) error {
@@ -2858,7 +2975,7 @@ func (p *PutChunkExResponse) ReadField1(ctx context.Context, iprot thrift.TProto
 	if err != nil {
 		return thrift.PrependError("error reading map begin: ", err)
 	}
-	tMap := make(map[string]*PutChunkResponse, size)
+	tMap := make(map[string]*PutChunkResponseOrError, size)
 	p.Responses = tMap
 	for i := 0; i < size; i++ {
 		var _key18 string
@@ -2867,7 +2984,7 @@ func (p *PutChunkExResponse) ReadField1(ctx context.Context, iprot thrift.TProto
 		} else {
 			_key18 = v
 		}
-		_val19 := &PutChunkResponse{}
+		_val19 := &PutChunkResponseOrError{}
 		if err := _val19.Read(ctx, iprot); err != nil {
 			return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", _val19), err)
 		}

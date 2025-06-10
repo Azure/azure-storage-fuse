@@ -65,13 +65,18 @@ struct PutChunkResponse {
 }
 
 struct PutChunkExRequest {
-    1: PutChunkRequest req,
-    2: string localRVName,
-    3: list<string> nextRVs
+    1: PutChunkRequest request,
+    2: list<RVNameAndState> nextRVs
+}
+
+// Type for the individual PutChunkResponse or error.
+struct PutChunkResponseOrError {
+    1: PutChunkResponse response,
+    2: string error
 }
 
 struct PutChunkExResponse {
-    1: map<string, PutChunkResponse> responses // map of RV name to the PutChunk response to that RV
+    1: map<string, PutChunkResponseOrError> responses // map of RV name to the PutChunk response or error to that RV
 }
 
 struct RemoveChunkRequest {

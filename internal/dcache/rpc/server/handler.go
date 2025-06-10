@@ -1879,7 +1879,62 @@ refreshFromClustermapAndRetry:
 }
 
 func (h *ChunkServiceHandler) PutChunkEx(ctx context.Context, req *models.PutChunkExRequest) (*models.PutChunkExResponse, error) {
-	return nil, nil
+	// Thrift should not be calling us with nil req.
+	common.Assert(req != nil)
+
+	// Thrift should not be calling us with nil Request, Chunk or Address.
+	common.Assert(req.Request != nil)
+	common.Assert(req.Request.Chunk != nil)
+	common.Assert(req.Request.Chunk.Address != nil)
+
+	log.Debug("ChunkServiceHandler::PutChunkEx: Received PutChunkEx request: %v",
+		rpc.PutChunkExRequestToString(req))
+
+	// rvID must refer to one of of out local RVs.
+	rvInfo, ok := h.rvIDMap[req.Request.Chunk.Address.RvID]
+	if !ok || rvInfo == nil {
+		errStr := fmt.Sprintf("Invalid rvID %s", req.Request.Chunk.Address.RvID)
+		log.Err("ChunkServiceHandler::PutChunkEx: %s", errStr)
+		common.Assert(false, errStr)
+		return nil, rpc.NewResponseError(models.ErrorCode_InvalidRVID, errStr)
+	}
+
+	responses := make(map[string]*models.PutChunkResponseOrError)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	go func() {
+		defer wg.Done()
+	}()
+
+	//
+	// The PutChunkRequest in the PutChunkExRequest corresponds to the PutChunk call to the local RV.
+	// So, call the PutChunk handler directly.
+	//
+	resp, err := h.PutChunk(ctx, req.Request)
+	var errStr string
+
+	if err != nil {
+		log.Err("ChunkServiceHandler::PutChunkEx: PutChunk failed for local RV %v/%v, request: %v [%v]",
+			rvInfo.rvName, req.Request.Chunk.Address.MvName, rpc.PutChunkRequestToString(req.Request), err)
+		errStr = err.Error()
+	} else {
+		log.Debug("ChunkServiceHandler::PutChunkEx: PutChunk succeeded for local RV %v/%v, request: %v, response: %v",
+			rvInfo.rvName, req.Request.Chunk.Address.MvName,
+			rpc.PutChunkRequestToString(req.Request), rpc.PutChunkResponseToString(resp))
+	}
+
+	wg.Wait()
+
+	responses[rvInfo.rvName] = &models.PutChunkResponseOrError{
+		Response: resp,
+		Error:    errStr,
+	}
+
+	return &models.PutChunkExResponse{
+		Responses: responses,
+	}, nil
 }
 
 func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.RemoveChunkRequest) (*models.RemoveChunkResponse, error) {
