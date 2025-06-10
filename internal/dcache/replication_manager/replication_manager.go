@@ -480,6 +480,20 @@ retry:
 			// component RV as offline and force the fix-mv workflow which will eventually
 			// trigger the resync-mv workflow.
 			//
+			// <IMPORTANT>
+			// TODO: We should not mark an RV offline using inband detection.
+			//       This has a very serious risk of a bad node (that's not able to communicate with other nodes)
+			//       marking most RVs offline which might eventually cause some or all MVs to be marked offline,
+			//       even though the RVs might be reachable perfectly fine from other nodes, just this node might
+			//       have some problem.
+			//       We should mark and RV offline only when enough heartbeats are missed.
+			//       For handling this inband RV communication failure, we should convey this to WriteMV()
+			//       caller with a failure status an a list of RVs to which the WriteMV() could not write,
+			//       due to inband PutChunk errors. The caller (file manager) should then pick new set of MVs
+			//       which do not use those RVs.
+			//       Disallow StateOffline as a valid state change in UpdateComponentRVState().
+			// </IMPORTANT>
+			//
 			log.Err("ReplicationManager::WriteMV: PutChunk %s/%s, failed to reach node %s [%v]",
 				respItem.rvName, req.MvName, respItem.targetNodeID, respItem.err)
 
@@ -1226,8 +1240,7 @@ func copyOutOfSyncChunks(job *syncJob) error {
 				log.Err("ReplicationManager::copyOutOfSyncChunks: Failed to reach node %s [%v]",
 					destNodeID, err)
 
-				errRV := cm.UpdateComponentRVState(job.mvName, job.destRVName,
-					dcache.StateOffline)
+				errRV := cm.UpdateComponentRVState(job.mvName, job.destRVName, dcache.StateOffline)
 				if errRV != nil {
 					errStr := fmt.Sprintf("Failed to mark %s/%s as offline [%v]",
 						job.destRVName, job.mvName, errRV)
