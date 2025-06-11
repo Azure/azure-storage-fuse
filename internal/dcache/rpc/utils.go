@@ -146,8 +146,8 @@ func PutChunkResponseToString(resp *models.PutChunkResponse) string {
 // convert *models.RemoveChunkRequest to string
 // used for logging
 func RemoveChunkRequestToString(req *models.RemoveChunkRequest) string {
-	return fmt.Sprintf("{SenderNodeID %v, Address %+v, ComponentRV %v}",
-		req.SenderNodeID, *req.Address, ComponentRVsToString(req.ComponentRV))
+	return fmt.Sprintf("{SenderNodeID %v, Address %+v, ComponentRV %v, removeAllChunks %v}",
+		req.SenderNodeID, *req.Address, ComponentRVsToString(req.ComponentRV), req.RemoveAllChunks)
 }
 
 // convert *models.JoinMVRequest to string

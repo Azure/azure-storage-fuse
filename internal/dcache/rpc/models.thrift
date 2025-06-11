@@ -67,14 +67,16 @@ struct PutChunkResponse {
 struct RemoveChunkRequest {
     1: string senderNodeID,
     2: Address address,
-    3: list<RVNameAndState> componentRV // used to validate the component RV for the MV
+    3: list<RVNameAndState> componentRV, // used to validate the component RV for the MV
+    4: bool removeAllChunks
 }
 
 struct RemoveChunkResponse {
     // status will be returned in the error
     1: i64 timeTaken,
     2: i64 availableSpace,
-    3: list<RVNameAndState> componentRV
+    3: list<RVNameAndState> componentRV,
+    4: i64 numChunksDeleted // This may be greater than 1 if removeAllChunks is set in the request.
 }
 
 struct JoinMVRequest {
