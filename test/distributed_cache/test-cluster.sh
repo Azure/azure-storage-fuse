@@ -306,6 +306,26 @@ get_mv_count()
 }
 
 #
+# Given a clustermap, return the count of online MVs in mv-list.
+#
+get_online_mv_count()
+{
+    local cm="$1"
+
+    echo "$cm" | jq '[."mv-list"[] | to_entries[] | select(.value.state == "online")] | length'
+}
+
+#
+# Given a clustermap, return the count of degraded MVs in mv-list.
+#
+get_degraded_mv_count()
+{
+    local cm="$1"
+
+    echo "$cm" | jq '[."mv-list"[] | to_entries[] | select(.value.state == "degraded")] | length'
+}
+
+#
 # Action starts here
 #
 mkdir -p $LOGDIR
@@ -641,5 +661,37 @@ mv_count=$(get_mv_count "$cm")
 [ "$mv_count" -eq "$MVS_PER_RV" ]
 log_status $? "is $mv_count"
 
+becho -n "All MVs must be online (mv_count == online_mv_count)"
+online_mv_count=$(get_online_mv_count "$cm")
+[ "$online_mv_count" -eq "$mv_count" ]
+log_status $? "online MVs: $online_mv_count, total MVs: $mv_count"
+
+############################################################################
+##              Stop node2 And Verify Degraded Workflow                  ##
+############################################################################
+
+echo
+wbecho ">> Stoping blobfuse on vm2"
+echo
+stop_blobfuse_on_node vm2
+
+becho -n "Reading clustermap on vm3"
+cm=$(read_clustermap_from_node vm3)
+log_status $?
+
 LAST_UPDATED_AT=$(echo "$cm" | jq '."last_updated_at"')
-LAST_EPOCH=$(echo "$cm" | jq '."epoch"')
+
+#
+# Wait for next epoch on vm3.
+# After that it'll get the degraded clustermap updated by vm3.
+#
+wait_till_next_scheduled_epoch
+
+becho -n "Reading clustermap on vm3"
+cm=$(read_clustermap_from_node vm3)
+log_status $?
+
+becho -n "All MVs must be degraded (mv_count == degraded_mv_count)"
+degraded_mv_count=$(get_degraded_mv_count "$cm")
+[ "$degraded_mv_count" -eq "$mv_count" ]
+log_status $? "degraded MVs: $degraded_mv_count, total MVs: $mv_count"
