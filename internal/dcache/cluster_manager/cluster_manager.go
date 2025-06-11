@@ -865,7 +865,7 @@ func (cmi *ClusterManager) ensureInitialClusterMap(dCacheConfig *dcache.DCacheCo
 	clusterMap = dcache.ClusterMap{
 		Readonly:      true,
 		State:         dcache.StateReady,
-		Epoch:         1,
+		Epoch:         0,
 		CreatedAt:     currentTime,
 		LastUpdatedAt: currentTime,
 		LastUpdatedBy: cmi.myNodeId,

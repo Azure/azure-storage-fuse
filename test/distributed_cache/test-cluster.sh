@@ -180,6 +180,16 @@ wait_till_next_epoch()
     sleep $secs_to_next_epoch
     echo "Done"
 }
+cleanup()
+{
+    wbecho "Stopping blobfuse on started nodes..."
+
+    stop_blobfuse_on_node vm1
+    stop_blobfuse_on_node vm2
+    stop_blobfuse_on_node vm3
+
+    wbecho "Stop completed."
+}
 
 start_blobfuse_on_node()
 {
@@ -200,13 +210,8 @@ stop_blobfuse_on_node()
     local vm=$1
     local logfile=$(vmlog $vm)
 
-    (
         echo "Stopping blobfuse @ $(date)" >> $logfile
         ssh $vm ~/stop-blobfuse.sh >> $logfile 2>&1
-    )&
-
-    # Give some time for blobfuse process to stop.
-    sleep 1
 }
 
 kill_blobfuse_on_node()
@@ -294,6 +299,8 @@ get_mv_count()
 # Action starts here
 #
 mkdir -p $LOGDIR
+
+trap cleanup EXIT
 
 ############################################################################
 ##                             Start node1                                ##
