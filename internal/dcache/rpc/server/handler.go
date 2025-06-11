@@ -2049,15 +2049,15 @@ func (h *ChunkServiceHandler) forwardPutChunk(ctx context.Context, req *models.P
 			MaybeOverwrite: req.MaybeOverwrite,
 		}
 
-		putChunkExRequest := &models.PutChunkExRequest{
+		putChunkExReq := &models.PutChunkExRequest{
 			Request: putChunkReq,
 			NextRVs: nextRVs,
 		}
 
 		log.Debug("ChunkServiceHandler::forwardPutChunk: Forwarding PutChunkEx request for %s/%s to node %s: %v",
-			currRV.Name, req.Chunk.Address.MvName, targetNodeID, rpc.PutChunkExRequestToString(putChunkExRequest))
+			currRV.Name, req.Chunk.Address.MvName, targetNodeID, rpc.PutChunkExRequestToString(putChunkExReq))
 
-		rpcResp, err = rpc_client.PutChunkEx(ctx, targetNodeID, putChunkExRequest)
+		rpcResp, err = rpc_client.PutChunkEx(ctx, targetNodeID, putChunkExReq)
 
 		//
 		// If the PutChunkEx RPC call fails, the error returned can be,
@@ -2075,7 +2075,7 @@ func (h *ChunkServiceHandler) forwardPutChunk(ctx context.Context, req *models.P
 			if rpcErr == nil {
 				//
 				// This error indicates some Thrift error like connection error, timeout, etc. or,
-				// it could be an RPC client side error like failed to get RPC client for node.
+				// it could be an RPC client side error like failed to get RPC client for target node.
 				// We wrap this error in *models.ResponseError with code ThriftError.
 				// This is to ensure that the client can take appropriate action based on this error code.
 				//
@@ -2096,7 +2096,7 @@ func (h *ChunkServiceHandler) forwardPutChunk(ctx context.Context, req *models.P
 			common.Assert(rpcResp1.Responses != nil) // rpcResp1.Responses should not be nil
 
 			rpcResp1.Responses[currRV.Name] = &models.PutChunkResponseOrError{
-				Response: nil,    // PutChunk failed for the current RV
+				Response: nil,    // PutChunkEx failed for the current RV
 				Error:    rpcErr, // Error for the current RV
 			}
 

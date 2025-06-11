@@ -614,6 +614,368 @@ retry:
 	return &WriteMvResponse{}, nil
 }
 
+func WriteMVEx(req *WriteMvExRequest) (*WriteMvExResponse, error) {
+	common.Assert(req != nil)
+
+	log.Debug("ReplicationManager::WriteMVEx: Received WriteMVEx request: %v", req.toString())
+
+	if err := req.isValid(); err != nil {
+		err = fmt.Errorf("invalid WriteMVEx request %s [%v]", req.toString(), err)
+		log.Err("ReplicationManager::WriteMVEx: %v", err)
+		common.Assert(false, err)
+		return nil, err
+	}
+
+	var rvsWritten []string
+	retryCnt := 0
+
+	// TODO: TODO: hash validation will be done later
+	// get hash of the data in the request
+	// hash := getMD5Sum(req.Data)
+
+retry:
+	if retryCnt > 0 {
+		log.Info("ReplicationManager::WriteMVEx: [%d] Retrying WriteMVEx %v after clustermap refresh, RVs written in prev attempt: %v",
+			retryCnt, req.toString(), rvsWritten)
+	}
+
+	// Get component RVs for MV, from clustermap and also the corresponding clustermap epoch.
+	// If server returns NeedToRefreshClusterMap, we will ask cm.RefreshClusterMap() to update
+	// the clustermap to a value higher than this epoch.
+	mvState, componentRVs, lastClusterMapEpoch := getComponentRVsForMV(req.MvName)
+
+	log.Debug("ReplicationManager::WriteMVEx: Component RVs for %s (%s) are: %v",
+		req.MvName, mvState, rpc.ComponentRVsToString(componentRVs))
+
+	//
+	// List of RVs to which the chunk was written successfully in this WriteMVEx attempt, used for logging.
+	// Note that everytime we refresh clustermap we need to write all the replicas according to the
+	// latest component RVs. An MV write should be considered a transaction that is applied to the cluster
+	// in a given state. Once a transaction is applied successfully, then we are guaranteed that any change
+	// to the MV composition will ensure that any chunk written will be correctly synchronized.
+	// Note that rvInfo/mvInfo and the NeedToRefreshClusterMap error returned by the target RV(s), helps
+	// check if the transaction can be safely applied.
+	//
+	rvsWritten = nil
+
+	var rpcResp *models.PutChunkExResponse
+
+	//
+	// When we send the PutChunkEx RPC request to the target node, it sends the PutChunk call to its
+	// local RV and parallelly forwards the call to the next RVs in the list. This is the ideal case where
+	// error returned by the PutChunkEx RPC is nil. The errors of the individual PutChunk calls to the
+	// component RVs are returned in the PutChunkExResponse where the response or error of each RV is
+	// mapped to the RV name.
+	// If the PutChunkEx RPC call to the first RV is successful, then the WriteMVEx doesn't need to worry
+	// about the PutChunk going to next RVs.
+	//
+	// However the PutChunkEx RPC to the first RV can fail due to,
+	//     - Thrift errors like connection closed, connection reset, timeout, etc.
+	//     - RPC client side error where we failed to get the RPC client for the target node.
+	//     - InvalidRVID RPC error, where the RV for which the PutChunk request was sent is not local
+	//       to the node. This error is very unlikely because we send the PutChunk request to the
+	//       target node we get from the clustermap for the given RV name.
+	//
+	// If we get the above errors for the first RV, it means that the PutChunk call to the next RVs
+	// were not forwarded. So, we will need to send the PutChunkEx RPC request to the next RV in the
+	// componentRVs list till we get a nil error or we reach the end of the list.
+	// The errors got for the previous RVs are stored in the thriftErrors map, which later is added
+	// to the PutChunkExResponse.
+	//
+	thriftErrors := make(map[string]error)
+
+	for idx, rv := range componentRVs {
+		rvID := getRvIDFromRvName(rv.Name)
+		common.Assert(common.IsValidUUID(rvID))
+
+		targetNodeID := getNodeIDFromRVName(rv.Name)
+		common.Assert(common.IsValidUUID(targetNodeID))
+
+		log.Debug("ReplicationManager::WriteMVEx: Writing to %s/%s (rvID: %s, state: %s) on node %s",
+			rv.Name, req.MvName, rvID, rv.State, targetNodeID)
+
+		//
+		// Set the "MaybeOverwrite" flag to true in PutChunkRequest to let the server know that this
+		// could potentially be an overwrite of a chunk that we previously wrote, so that
+		// it relaxes its overwrite checks.
+		// To be safe we can set MaybeOverwrite to true when retryCnt > 0.
+		//
+		putChunkReq := &models.PutChunkRequest{
+			Chunk: &models.Chunk{
+				Address: &models.Address{
+					FileID:      req.FileID,
+					RvID:        rvID,
+					MvName:      req.MvName,
+					OffsetInMiB: req.ChunkIndex * req.ChunkSizeInMiB,
+				},
+				Data: req.Data,
+				Hash: "", // TODO: hash validation will be done later
+			},
+			Length:         int64(len(req.Data)),
+			SyncID:         "", // this is regular client write
+			ComponentRV:    componentRVs,
+			MaybeOverwrite: retryCnt > 0,
+		}
+
+		var nextRVs []*models.RVNameAndState
+		if idx < len(componentRVs)-1 {
+			// If this is not the last RV, we will send the next RVs to the target node.
+			nextRVs = componentRVs[idx+1:]
+		}
+
+		putChunkExReq := &models.PutChunkExRequest{
+			Request: putChunkReq,
+			NextRVs: nextRVs,
+		}
+
+		log.Debug("ReplicationManager::WriteMVEx: Sending PutChunkEx request for %s/%s to node %s: %s",
+			rv.Name, req.MvName, targetNodeID, rpc.PutChunkExRequestToString(putChunkExReq))
+
+		ctx, cancel := context.WithTimeout(context.Background(), RPCClientTimeout*time.Second)
+		defer cancel()
+
+		rpcResp1, err := rpc_client.PutChunkEx(ctx, targetNodeID, putChunkExReq)
+
+		if err != nil {
+			log.Err("ReplicationManager::WriteMVEx: Failed to send PutChunkEx request for %s/%s to node %s: %v",
+				rv.Name, req.MvName, targetNodeID, err)
+			common.Assert(rpcResp1 == nil)
+			thriftErrors[rv.Name] = err
+		} else {
+			log.Debug("ReplicationManager::WriteMVEx: Received PutChunkEx response for %s/%s from node %s: %s",
+				rv.Name, req.MvName, targetNodeID, rpc.PutChunkExResponseToString(rpcResp1))
+			common.Assert(rpcResp1 != nil)
+			rpcResp = rpcResp1
+			break
+		}
+	}
+
+	//
+	// Add the errors received for the RVs in the thriftErrors map to the PutChunkExResponse.
+	//
+	if rpcResp == nil {
+		// This means that the PutChunkEx RPC call to all the RVs failed.
+		rpcResp = &models.PutChunkExResponse{
+			Responses: make(map[string]*models.PutChunkResponseOrError),
+		}
+	}
+
+	for rvName, err := range thriftErrors {
+		common.Assert(err != nil)
+
+		_, ok := rpcResp.Responses[rvName]
+		common.Assert(!ok, rvName, rpc.PutChunkExResponseToString(rpcResp))
+
+		rpcErr := rpc.GetRPCResponseError(err)
+		if rpcErr == nil {
+			//
+			// This error indicates some Thrift error like connection error, timeout, etc. or,
+			// it could be an RPC client side error like failed to get RPC client for target node.
+			// We wrap this error in *models.ResponseError with code ThriftError.
+			//
+			rpcErr = rpc.NewResponseError(models.ErrorCode_ThriftError, err.Error())
+		}
+
+		rpcResp.Responses[rvName] = &models.PutChunkResponseOrError{
+			Response: nil, // PutChunkEx failed for this RV
+			Error:    rpcErr,
+		}
+	}
+
+	log.Debug("ReplicationManager::WriteMVEx: PutChunkEx response for %s: %s",
+		req.MvName, rpc.PutChunkExResponseToString(rpcResp))
+
+	//
+	// Non-retriable error that we should fail the WriteMVEx() with.
+	// It could be non-retriable error returned by any of the replica PutChunks.
+	// Note that WriteMVEx is considered successful only if all the replica writes are successful.
+	//
+	var errWriteMVEx error
+
+	//
+	// Flag to track if any of the RVs failed with NeedToRefreshClusterMap.
+	// We refresh the clustermap once per iteration (labelled "retry") even if multiple replica
+	// PutChunks failed with NeedToRefreshClusterMap.
+	//
+	clusterMapRefreshed := false
+
+	for rvName, resp := range rpcResp.Responses {
+		common.Assert(cm.IsValidRVName(rvName), rvName)
+
+		if resp == nil {
+			//
+			// This means that we skipped writing to this RV, as it was in offline/outofsync state.
+			//
+			continue
+		}
+
+		if resp.Error == nil {
+			common.Assert(resp.Response != nil)
+
+			log.Debug("ReplicationManager::WriteMVEx: PutChunk successful for %s/%s, RPC response: %v",
+				rvName, req.MvName, rpc.PutChunkResponseToString(resp.Response))
+
+			//
+			// Write to this component RV was successful, add it to the list of RVs successfully written
+			// in this attempt.
+			//
+			rvsWritten = append(rvsWritten, rvName)
+			common.Assert(len(rvsWritten) <= len(componentRVs), len(rvsWritten), len(componentRVs))
+
+			continue
+		}
+
+		log.Err("ReplicationManager::WriteMVEx: PutChunk to %s/%s failed [%v]",
+			rvName, req.MvName, resp.Error.String())
+
+		rpcErr := resp.Error
+
+		if rpcErr.Code == models.ErrorCode_ThriftError {
+			//
+			// ThriftError code indicates error returned by Thrift.
+			// This error indicates some transport error, i.e., RPC request couldn't make it to the
+			// server and hence didn't solicit a response. It could be some n/w issue, blobfuse
+			// process down or node down.
+			//
+			// We should now run the inband RV offline detection workflow, basically we
+			// call the clustermap's UpdateComponentRVState() API to mark this
+			// component RV as offline and force the fix-mv workflow which will eventually
+			// trigger the resync-mv workflow.
+			//
+			// <IMPORTANT>
+			// TODO: We should not mark an RV offline using inband detection.
+			//       This has a very serious risk of a bad node (that's not able to communicate with other nodes)
+			//       marking most RVs offline which might eventually cause some or all MVs to be marked offline,
+			//       even though the RVs might be reachable perfectly fine from other nodes, just this node might
+			//       have some problem.
+			//       We should mark and RV offline only when enough heartbeats are missed.
+			//       For handling this inband RV communication failure, we should convey this to WriteMVEx()
+			//       caller with a failure status an a list of RVs to which the WriteMVEx() could not write,
+			//       due to inband PutChunk errors. The caller (file manager) should then pick new set of MVs
+			//       which do not use those RVs.
+			//       Disallow StateOffline as a valid state change in UpdateComponentRVState().
+			// </IMPORTANT>
+			//
+			log.Err("ReplicationManager::WriteMVEx: PutChunk %s/%s, failed to reach node [%v]",
+				rvName, req.MvName, rpcErr.Message)
+
+			errRV := cm.UpdateComponentRVState(req.MvName, rvName, dcache.StateOffline)
+			if errRV != nil {
+				//
+				// If we fail to update the component RV as offline, we cannot safely complete
+				// the chunk write or else the failed replica may not be resynced causing data
+				// consistency issues.
+				//
+				errStr := fmt.Sprintf("failed to update %s/%s state to offline [%v]",
+					rvName, req.MvName, errRV)
+				log.Err("ReplicationManager::WriteMVEx: %s", errStr)
+				errWriteMVEx = errRV
+				continue
+			}
+
+			//
+			// If UpdateComponentRVState() succeeds, marking this component RV as offline,
+			// we can safely carry on with the write since we are guaranteed that these
+			// chunks which we could not write to this component RV will be later sync'ed
+			// from one of the good component RVs.
+			//
+			log.Warn("ReplicationManager::WriteMVEx: Writing to %s/%s failed, marked RV offline",
+				rvName, req.MvName)
+			continue
+		}
+
+		// The error is not Thrift error, so it is a valid RPC error returned by the server.
+		if rpcErr.GetCode() == models.ErrorCode_NeedToRefreshClusterMap {
+			//
+			// We allow 5 refreshes of the clustermap for resiliency, before we fail the write.
+			// This is to allow multiple changes to the MV during the course of a single write.
+			// It's unlikely but we need to be resilient.
+			//
+			if retryCnt > 5 {
+				errWriteMVEx = fmt.Errorf("failed to write to %s/%s after refreshing clustermap [%v]",
+					rvName, req.MvName, rpcErr.String())
+				log.Err("ReplicationManager::WriteMVEx: %v", errWriteMVEx)
+				continue
+			}
+
+			if clusterMapRefreshed {
+				// Clustermap has already been refreshed once in this try, so skip it.
+				continue
+			}
+
+			//
+			// Retry till the next epoch, ensuring that the clustermap is refreshed from what we
+			// have cached right now.
+			// Case: StartSync() RPC calls are successful, but before the state of the target RV
+			//       is updated to "syncing" in clustermap, this node calls WriteMVEx() with the
+			//       outdated clustermap, which results in the component RVs rejecting the request with
+			//       NeedToRefreshClusterMap error. Even after the clustermap is refreshed, it may get
+			//       the state of the target RV as "outofsync" as the clustermap update by the source
+			//       (or lio) RV may not have completed yet, so the target RV may not be in "syncing"
+			//       state.
+			//
+			errCM := cm.RefreshClusterMap(lastClusterMapEpoch)
+			if errCM != nil {
+				errWriteMVEx = fmt.Errorf("RefreshClusterMap() failed, failing write %s [%v]",
+					req.toString(), errCM)
+				log.Warn("ReplicationManager::WriteMVEx: %v", errWriteMVEx)
+				continue
+			}
+
+			clusterMapRefreshed = true
+		} else {
+			// TODO: check if this is non-retriable error.
+			errWriteMVEx = fmt.Errorf("PutChunk to %s/%s failed with non-retriable error [%v]",
+				rvName, req.MvName, rpcErr.String())
+			log.Err("ReplicationManager::WriteMVEx: %v", errWriteMVEx)
+			continue
+		}
+	}
+
+	//
+	// If any of the PutChunk call fails with these errors, we fail the WriteMVEx operation.
+	//   - If the node is unreachable and updating clustermap state to "offline"
+	//     for the component RV failed.
+	//   - If the clustermap was refreshed and retry failed with NeedToRefreshClusterMap error.
+	//   - If clustermap refresh via RefreshClusterMap() failed.
+	//   - If PutChunk failed with non-retriable error.
+	//
+	if errWriteMVEx != nil {
+		log.Err("ReplicationManager::WriteMVEx: Failed to write to MV %s, %s [%v]",
+			req.MvName, req.toString(), errWriteMVEx)
+		return nil, errWriteMVEx
+	}
+
+	if clusterMapRefreshed {
+		// Offline MV has all replicas offline, so we cannot get a NeedToRefreshClusterMap error.
+		common.Assert(mvState != dcache.StateOffline, req.MvName)
+
+		//
+		// If we refreshed the clustermap, we need to retry the entire write MV with the updated clustermap.
+		// This might mean re-writing some of the replicas which were successfully written in this iteration.
+		//
+		retryCnt++
+		goto retry
+	}
+
+	// Fail write with a meaningful error.
+	if mvState == dcache.StateOffline {
+		err := fmt.Errorf("%s is offline", req.MvName)
+		log.Err("ReplicationManager::WriteMVEx: %v", err)
+		return nil, err
+	}
+
+	// For a non-offline MV, at least one replica write should succeed.
+	if len(rvsWritten) == 0 {
+		err := fmt.Errorf("WriteMVEx could not write to any replica: %v", req.toString())
+		log.Err("ReplicationManager::WriteMVEx: %v", err)
+		common.Assert(false, err)
+		return nil, err
+	}
+
+	return &WriteMvExResponse{}, nil
+}
+
 func periodicResyncMVs() {
 	defer rm.wg.Done()
 

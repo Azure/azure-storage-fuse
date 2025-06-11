@@ -215,6 +215,80 @@ func (req *WriteMvRequest) isValid() error {
 type WriteMvResponse struct {
 }
 
+type WriteMvExRequest struct {
+	FileID string // unique guid of the file, as stored in metadata blob
+	MvName string // name of the MV where this chunk will be written, e.g., "mv0", "mv1", etc.
+
+	// An MV can hold multiple chunks of the file (one from each stripe).
+	// ChunkIndex identifies the exact chunk to be read. It is the index of the chunk
+	// within the file and is 0 based.
+	// e.g., for stripe size of 16MiB and ChunkSizeInMiB == 4,
+	// file offset of 1MiB would translate to the following:
+	//  MvName: "mv0"   (assuming first MV in the file's mv list is "mv0")
+	//  ChunkIndex: 0
+	//  OffsetInChunk: 1048576 (1MiB)
+	// while a file offset of 17MiB would translate to the following:
+	//  MvName: "mv0"
+	//  ChunkIndex: 4
+	//  OffsetInChunk: 1048576 (1MiB)
+	//
+	// The chunks are stored in RV as,
+	//  <MvName>/<FileID>.<ChunkIndex * ChunkSizeInMiB>.data and
+	//  <MvName>/<FileID>.<ChunkIndex * ChunkSizeInMiB>.hash
+	//
+	ChunkIndex     int64
+	Data           []byte // Data to be written
+	ChunkSizeInMiB int64  // Chunk size in MiB
+	IsLastChunk    bool   // boolean flag to indicate if this is the last chunk
+}
+
+// helper method which can be used for logging the request contents except the data buffer
+// Use this instead of %+v to avoid printing the data buffer
+func (req *WriteMvExRequest) toString() string {
+	return fmt.Sprintf("{FileID: %s, MvName: %s, ChunkIndex: %d, ChunkSizeInMiB: %d, IsLastChunk: %v, Data buffer size: %d}",
+		req.FileID, req.MvName, req.ChunkIndex, req.ChunkSizeInMiB, req.IsLastChunk, len(req.Data))
+}
+
+// check if the request is valid
+func (req *WriteMvExRequest) isValid() error {
+	common.Assert(common.IsValidUUID(req.FileID))
+	common.Assert(cm.IsValidMVName(req.MvName))
+
+	if (req.ChunkSizeInMiB*common.MbToBytes) < cm.MinChunkSize ||
+		(req.ChunkSizeInMiB*common.MbToBytes) > cm.MaxChunkSize {
+		reqStr := req.toString()
+		err := fmt.Errorf("ChunkSizeInMiB is invalid in request: %s", reqStr)
+		log.Err("WriteMvExRequest::isValid: %v", err)
+		return err
+	}
+
+	if req.ChunkIndex < 0 || req.ChunkIndex > ChunkIndexUpperBound {
+		reqStr := req.toString()
+		err := fmt.Errorf("ChunkIndex is invalid in request: %s", reqStr)
+		log.Err("WriteMvExRequest::isValid: %v", err)
+		return err
+	}
+
+	if len(req.Data) == 0 || len(req.Data) > int(req.ChunkSizeInMiB*common.MbToBytes) {
+		reqStr := req.toString()
+		err := fmt.Errorf("data buffer is invalid in request: %s", reqStr)
+		log.Err("WriteMvExRequest::isValid: %v", err)
+		return err
+	}
+
+	if !req.IsLastChunk && len(req.Data) != int(req.ChunkSizeInMiB*common.MbToBytes) {
+		reqStr := req.toString()
+		err := fmt.Errorf("data buffer length is not equal to chunk size in request: %s", reqStr)
+		log.Err("WriteMvExRequest::isValid: %v", err)
+		return err
+	}
+
+	return nil
+}
+
+type WriteMvExResponse struct {
+}
+
 // syncJob tracks resync of one MV replica, srcRVName/mvName -> destRVName/mvName.
 type syncJob struct {
 	mvName       string                   // name of the MV to be synced
