@@ -40,7 +40,6 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -610,8 +609,7 @@ func cleanupRV(rv dcache.RawVolume) error {
 // An RV that's offline in the RV list is guaranteed to be offline in the MV list also, i.e., no MV will contact
 // this RV for for chunk IO (read or write).
 //
-// Before proceeding, ensure no duplicate RV IDs (filesystem GUIDs) exist across different cache paths —
-//
+// Before proceeding, ensure no duplicate RV IDs (filesystem GUIDs) exist across different cache paths,
 // i.e., if an RV ID appears in both the input list and clustermap, it must refer to the *same* path.
 // Any mismatch indicates a RVId collision, in that case, the startup will be aborted.
 //
@@ -720,6 +718,37 @@ func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, err
 		}
 
 		//
+		// For all of our RVs that we will be adding to the cluster, ensure:
+		// - No other node has an RV with the same RVid.
+		// - There isn't a new RV being added which has RVid matching one of our existing RVs but a different
+		//   cache path. If cache path and RVid are same for an existing and new RV, it's the same RV being
+		//   added, this is the common case of a node rejoining the cluster w/o any change in RVs. updateRVList()
+		//   will let this RV continue to be used as the existing RV name.
+		// The bottomline is that we don't want two RVs with same RVid.
+		//
+		allRVsFromClustermap := cm.GetAllRVs()
+		for _, myRV := range myRVs {
+			common.Assert(myRV.NodeId == cmi.myNodeId, cmi.myNodeId, myRV)
+
+			for _, cmRV := range allRVsFromClustermap {
+				if myRV.RvId != cmRV.RvId {
+					continue
+				}
+
+				//
+				// The 2nd check prevents re-adding an existing RV with a different cache-dir.
+				// If the user needs to do this, they will need to re-format the drive or change the
+				// filesystem GUID.
+				//
+				if myRV.NodeId != cmRV.NodeId || myRV.LocalCachePath != cmRV.LocalCachePath {
+					return false, fmt.Errorf(
+						"ClusterManager::safeCleanupMyRVs: Duplicate RVid %s detected, cache-dir %s being added by this node %s has the same RVid as existing cache-dir %s from node %s",
+						myRV.RvId, myRV.LocalCachePath, myRV.NodeId, cmRV.LocalCachePath, cmRV.NodeId)
+				}
+			}
+		}
+
+		//
 		// Ok, clustermap is present, we need to wait for our RVs to be marked offline in the RV list,
 		// before we can safely clean them up. To be safe we wait for 3 times the clustermap epoch.
 		// This is sufficient to be safe even in the event of clusterManager leader going down.
@@ -728,39 +757,24 @@ func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, err
 		maxWait = max(maxWait, time.Duration(cm.GetCacheConfig().ClustermapEpoch*3)*time.Second)
 
 		//
-		// Check status of all the RVs in the clustermap.
-		//
-		rvsFromClustermap := cm.GetAllRVs()
-
-		if len(rvsFromClustermap) > 0 {
-			log.Info("ClusterManager::safeCleanupMyRVs: Got %d of RV(s) from clustermap %+v",
-				len(rvsFromClustermap), rvsFromClustermap)
-		} else {
-			log.Info("ClusterManager::safeCleanupMyRVs: No RV(s) in clustermap")
-		}
-
-		// Ensure no two different cache-dir report the same rvId(filesystem GUID)
-		for _, inputRV := range myRVs {
-			for _, cmRV := range rvsFromClustermap {
-				if inputRV.RvId == cmRV.RvId && (inputRV.LocalCachePath != cmRV.LocalCachePath || cmRV.NodeId != cmi.myNodeId) {
-					return false, fmt.Errorf(
-						"ClusterManager::safeCleanupMyRVs: Duplicate RVid (filesystem GUID) %s detected. Input path/node %s/%s conflicts with existing path/node %s/%s",
-						inputRV.RvId, inputRV.LocalCachePath, cmi.myNodeId, cmRV.LocalCachePath, cmRV.NodeId)
-				}
-			}
-		}
-
-		//
-		// Fetch all the RVs of this node from the clustermap.
+		// Check status of all our RVs in the clustermap.
 		//
 		myRVsFromClustermap := cm.GetMyRVs()
+
+		if len(myRVsFromClustermap) > 0 {
+			log.Info("ClusterManager::safeCleanupMyRVs: Got %d of my RV(s) from clustermap %+v",
+				len(myRVsFromClustermap), myRVsFromClustermap)
+		} else {
+			log.Info("ClusterManager::safeCleanupMyRVs: No my RV(s) in clustermap")
+		}
+
 		rvStillOnline := false
 		for _, rv := range myRVs {
 			log.Info("ClusterManager::safeCleanupMyRVs: Checking my RV %+v", rv)
 
 			// Check online status for this RV.
 			for rvName, rvInfo := range myRVsFromClustermap {
-				log.Info("ClusterManager::safeCleanupMyRVs: RV %s has id %s in clustermap",
+				log.Info("ClusterManager::safeCleanupMyRVs: My RV %s has id %s in clustermap",
 					rvName, rvInfo.RvId)
 
 				if rv.RvId != rvInfo.RvId {
@@ -928,20 +942,12 @@ func (cmi *ClusterManager) ensureInitialClusterMap(dCacheConfig *dcache.DCacheCo
 	//
 UpdateLocalClusterMapAndPunchInitialHeartbeat:
 
-	// Punch the first heartbeat. updateStorageClusterMapWithMyRVs() fetches this heartbeat to get info on local RVs.
-	err = cmi.punchHeartBeat(rvs)
-	if err != nil {
-		log.Err("ClusterManager::ensureInitialClusterMap: Initial punchHeartBeat failed: %v", err)
-		common.Assert(false, err)
-		return err
-	}
-	log.Info("ClusterManager::ensureInitialClusterMap: Initial Heartbeat punched")
-
 	//
 	// Ensure our RVs are added to the clustermap. If already present in the clustermap, this will be a no-op,
 	// else it updates the clustermap with our local RVs added to the RV list.
-	///
-	err = cmi.updateStorageClusterMapWithMyRVs()
+	// This also punches the initial heartbeat.
+	//
+	err = cmi.updateStorageClusterMapWithMyRVs(rvs)
 	if err != nil {
 		log.Err("ClusterManager::ensureInitialClusterMap: updateStorageClusterMapWithMyRVs failed: %v %+v",
 			err, clusterMap)
@@ -969,7 +975,7 @@ UpdateLocalClusterMapAndPunchInitialHeartbeat:
 
 // Add my RVs to clustermap, if not already added.
 // This helps get a unique RV name for each of our RVs, which is needed by the RPC server.
-func (cmi *ClusterManager) updateStorageClusterMapWithMyRVs() error {
+func (cmi *ClusterManager) updateStorageClusterMapWithMyRVs(myRVs []dcache.RawVolume) error {
 	startTime := time.Now()
 	maxWait := 120 * time.Second
 
@@ -1028,7 +1034,19 @@ func (cmi *ClusterManager) updateStorageClusterMapWithMyRVs() error {
 			continue
 		}
 
-		log.Info("ClusterManager::updateStorageClusterMapWithMyRVs: Updating RV list")
+		//
+		// Punch the first heartbeat. updateRVList() below fetches this heartbeat to get info on local RVs.
+		// We punch the heartbeat after claiming ownership of clusterMap to make sure no other node starts
+		// processing these RVs and the heartbeat doesn't expire if there's a delay in getting clusterMap ownership.
+		//
+		err = cmi.punchHeartBeat(myRVs)
+		if err != nil {
+			log.Err("ClusterManager::updateStorageClusterMapWithMyRVs: Initial punchHeartBeat failed: %v", err)
+			common.Assert(false, err)
+			return err
+		}
+
+		log.Info("ClusterManager::updateStorageClusterMapWithMyRVs: Initial Heartbeat punched, now updating RV list")
 
 		_, err = cmi.updateRVList(clusterMap.RVMap, true /* onlyMyRVs */)
 		if err != nil {
@@ -2614,12 +2632,14 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 	//
 	// Ok, now we have all the RVs from heartbeats in rVsByRvIdFromHB[].
 	// We need to do two things:
-	// 1. For existing RVs (in existingRVMap), update RV State and AvailableSpace in existingRVMap if it's different
-	//    from the RV State and AvailableSpace as seen in the HB, or if HB has expired set RV state to offline if not
-	//    already offline.
-	//    If any of the existing RVs is not found in the latest HBs, for such RVs too the state in existingRVMap is
-	//    set to offline. Note that for onlyMyRVs==true case we cannot do this as we don't have the exhaustive list of
-	//    HBs.
+	// 1. For existing RVs (in existingRVMap), update RV State and AvailableSpace in existingRVMap if it's
+	//    different from the RV State and AvailableSpace as seen in the HB, or if HB has expired set RV state
+	//    to offline if not already offline. If the expired HB belongs to an old RV from our node, delete it
+	//    from RV map.
+	//    If any of the existing RVs is not found in the latest HBs, for such RVs too the state in existingRVMap
+	//    is set to offline. This will only happen when a HB blob is deleted out-of-band, which is an unsupported
+	//    operation. Note that for onlyMyRVs==true case we cannot do this as we don't have the exhaustive
+	//    list of HBs.
 	// 2. All RVs in rVsByRvIdFromHB[] which are not present in existingRVMap, i.e., those RVs are newly seen,
 	//    add those to existingRVMap.
 	//
@@ -2630,36 +2650,30 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 
 	// (1.b) Update RVs present in existingRVMap and which have changed State or AvailableSpace.
 	for rvName, rvInClusterMap := range existingRVMap {
-
 		if rvHb, found := rVsByRvIdFromHB[rvInClusterMap.RvId]; found {
 			lastHB, found := rvLastHB[rvHb.RvId]
 
 			// If an RV is present in rVsByRvIdFromHB, it MUST have a valid HB in rvLastHB.
 			common.Assert(found)
 
-			// We just came here after punching the heartbeat, which indicates this is online RV.
-			common.Assert(!onlyMyRVs || rvHb.State == dcache.StateOnline)
-
 			if lastHB < hbExpiry {
 				//
-				// HB expired, mark RV offline if not already offline.
+				// HB expired, if onlyMyRVs is true then we are called from
+				// updateStorageClusterMapWithMyRVs() i.e., a newly started node wants to join the
+				// cluster. It must have punched its initial heartbeat just before calling updateRVList(),
+				// so if we see hb as expired for a particular RV that RV was present in the prev
+				// incarnation of this node and not present now, we must remove that RV from the RV
+				// map, else if onlyMyRVs is false, then we want to check RVs from all the nodes and
+				// if any RV's HB has expired mark the RV offline if not already offline.
 				//
-
-				//
-				// TODO
-				// Saw this assert fire when one node died keeping clusterMap in checking state.
-				// This caused updateStorageClusterMapWithMyRVs() to take a long time. It would have timed out,
-				// but some other node became the leader updating the clusterMap and hence clearing thec
-				// checking status, allowing updateStorageClusterMapWithMyRVs() to proceed, but by the time
-				// the node's heartbeat expired.
-				//
-				// We just came here after punching the heartbeat, which must not expired.
-				//
-				common.Assert(!onlyMyRVs)
-
-				if rvInClusterMap.State != dcache.StateOffline {
-					log.Warn("ClusterManager::updateRVList: Online RV %s lastHeartbeat (%d) is expired, hbExpiry (%d), marking RV offline",
-						rvName, lastHB, hbExpiry)
+				if onlyMyRVs {
+					log.Warn("ClusterManager::updateRVList: Removing RV %s %+v present from prev incarnation of this node (lastHeartbeat (%d) < hbExpiry (%d))",
+						rvName, rvInClusterMap, lastHB, hbExpiry)
+					delete(existingRVMap, rvName)
+					changed = true
+				} else if rvInClusterMap.State != dcache.StateOffline {
+					log.Warn("ClusterManager::updateRVList: Online RV %s %+v lastHeartbeat (%d) has expired, hbExpiry (%d), marking RV offline",
+						rvName, rvInClusterMap, lastHB, hbExpiry)
 					rvInClusterMap.State = dcache.StateOffline
 					existingRVMap[rvName] = rvInClusterMap
 					changed = true
@@ -2683,13 +2697,16 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 			// rVsByRvIdFromHB must only contain new RVs, delete this as it is in existingRVMap.
 			delete(rVsByRvIdFromHB, rvHb.RvId)
 		} else if !onlyMyRVs {
+			// This can only happen when an HB file is deleted out-of-band.
+			common.Assert(false, "HB missing for RV in clustermap", rvInClusterMap)
+
 			//
 			// RV present in existingRVMap, but missing from rVsByRvIdFromHB.
 			// This is not a common occurrence, emit a warning log.
 			//
 			// For onlyMyRV==true, case we cannot perfrom this operation as we don't have the exhaustive list of  HBs.
 			if rvInClusterMap.State != dcache.StateOffline {
-				log.Warn("ClusterManager::updateRVList: Online Rv %s missing in new heartbeats", rvName)
+				log.Warn("ClusterManager::updateRVList: Online Rv %s %+v missing in heartbeats, did you delete the hb file out-of-band?", rvName, rvInClusterMap)
 				rvInClusterMap.State = dcache.StateOffline
 				existingRVMap[rvName] = rvInClusterMap
 				changed = true
@@ -2705,20 +2722,30 @@ func (cmi *ClusterManager) updateRVList(existingRVMap map[string]dcache.RawVolum
 		log.Info("ClusterManager::updateRVList: %d new RV(s) to add to clusterMap: %v",
 			len(rVsByRvIdFromHB), rVsByRvIdFromHB)
 
-		// Find max index RV.
-		maxIdx := -1
-		for name := range existingRVMap {
-			if i, err := strconv.Atoi(strings.TrimPrefix(name, "rv")); err == nil && i > maxIdx {
-				maxIdx = i
+		//
+		// Return next free RV index after (not including) lastIdx.
+		//
+		getNextFreeRVIdx := func(lastIdx int64) int64 {
+			idx := lastIdx + 1
+			for {
+				rvName := fmt.Sprintf("rv%d", idx)
+				if _, exists := existingRVMap[rvName]; !exists {
+					return idx
+				}
+				idx++
 			}
 		}
 
+		//
 		// Add new RV(s) into clusterMap, starting from the next available index.
-		idx := maxIdx + 1
+		// Since we may remove old RVs not being exported this time by the node, we may have some
+		// gaps in the RV index space. We pick the first available RV index.
+		//
+		nextFreeIdx := int64(-1)
 		for _, rv := range rVsByRvIdFromHB {
-			rvName := fmt.Sprintf("rv%d", idx)
+			nextFreeIdx = getNextFreeRVIdx(nextFreeIdx)
+			rvName := fmt.Sprintf("rv%d", nextFreeIdx)
 			existingRVMap[rvName] = rv
-			idx++
 			changed = true
 			log.Info("ClusterManager::updateRVList: Adding new RV %s to cluster map: %+v", rvName, rv)
 		}

@@ -233,8 +233,6 @@ func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
 	}
 
 	rvList := make([]dcache.RawVolume, len(dc.cfg.CacheDirs))
-
-	// ensure each cacheDir yields a unique rvId (filesystem GUID as reported by blkid).
 	rvIDToPath := make(map[string]string, len(dc.cfg.CacheDirs))
 
 	for index, path := range dc.cfg.CacheDirs {
@@ -243,12 +241,17 @@ func (dc *DistributedCache) createRVList() ([]dcache.RawVolume, error) {
 			return nil, log.LogAndReturnError(fmt.Sprintf("DistributedCache::Start error [failed to get raw volume UUID: %v]", err))
 		}
 
+		//
+		// No two RVs exported by us must have the same RVid.
+		// This will catch the following two cases:
+		// - Two distinct cache-dir elements have the same filesystem GUID.
+		// - User accidentally provided a duplicate cache-dir element.
+		//
 		if existingPath, exists := rvIDToPath[rvId]; exists {
 			return nil, log.LogAndReturnError(fmt.Sprintf(
 				"DistributedCache::Start error [duplicate rvId %s for path %s, conflicts with path %s]",
 				rvId, path, existingPath))
 		}
-
 		rvIDToPath[rvId] = path
 
 		totalSpace, availableSpace, err := common.GetDiskSpaceMetricsFromStatfs(path)
