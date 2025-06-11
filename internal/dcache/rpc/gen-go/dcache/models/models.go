@@ -63,6 +63,7 @@ const (
 	ErrorCode_ChunkAlreadyExists      ErrorCode = 6
 	ErrorCode_MaxMVsExceeded          ErrorCode = 7
 	ErrorCode_NeedToRefreshClusterMap ErrorCode = 8
+	ErrorCode_ThriftError             ErrorCode = 9
 )
 
 func (p ErrorCode) String() string {
@@ -83,6 +84,8 @@ func (p ErrorCode) String() string {
 		return "MaxMVsExceeded"
 	case ErrorCode_NeedToRefreshClusterMap:
 		return "NeedToRefreshClusterMap"
+	case ErrorCode_ThriftError:
+		return "ThriftError"
 	}
 	return "<UNSET>"
 }
@@ -105,6 +108,8 @@ func ErrorCodeFromString(s string) (ErrorCode, error) {
 		return ErrorCode_MaxMVsExceeded, nil
 	case "NeedToRefreshClusterMap":
 		return ErrorCode_NeedToRefreshClusterMap, nil
+	case "ThriftError":
+		return ErrorCode_ThriftError, nil
 	}
 	return ErrorCode(0), fmt.Errorf("not a valid ErrorCode string")
 }
@@ -2760,7 +2765,7 @@ func (p *PutChunkExRequest) String() string {
 //   - Error
 type PutChunkResponseOrError struct {
 	Response *PutChunkResponse `thrift:"response,1" db:"response" json:"response"`
-	Error    string            `thrift:"error,2" db:"error" json:"error"`
+	Error    *ResponseError    `thrift:"error,2" db:"error" json:"error"`
 }
 
 func NewPutChunkResponseOrError() *PutChunkResponseOrError {
@@ -2776,11 +2781,20 @@ func (p *PutChunkResponseOrError) GetResponse() *PutChunkResponse {
 	return p.Response
 }
 
-func (p *PutChunkResponseOrError) GetError() string {
+var PutChunkResponseOrError_Error_DEFAULT *ResponseError
+
+func (p *PutChunkResponseOrError) GetError() *ResponseError {
+	if !p.IsSetError() {
+		return PutChunkResponseOrError_Error_DEFAULT
+	}
 	return p.Error
 }
 func (p *PutChunkResponseOrError) IsSetResponse() bool {
 	return p.Response != nil
+}
+
+func (p *PutChunkResponseOrError) IsSetError() bool {
+	return p.Error != nil
 }
 
 func (p *PutChunkResponseOrError) Read(ctx context.Context, iprot thrift.TProtocol) error {
@@ -2808,7 +2822,7 @@ func (p *PutChunkResponseOrError) Read(ctx context.Context, iprot thrift.TProtoc
 				}
 			}
 		case 2:
-			if fieldTypeId == thrift.STRING {
+			if fieldTypeId == thrift.STRUCT {
 				if err := p.ReadField2(ctx, iprot); err != nil {
 					return err
 				}
@@ -2841,10 +2855,9 @@ func (p *PutChunkResponseOrError) ReadField1(ctx context.Context, iprot thrift.T
 }
 
 func (p *PutChunkResponseOrError) ReadField2(ctx context.Context, iprot thrift.TProtocol) error {
-	if v, err := iprot.ReadString(ctx); err != nil {
-		return thrift.PrependError("error reading field 2: ", err)
-	} else {
-		p.Error = v
+	p.Error = &ResponseError{}
+	if err := p.Error.Read(ctx, iprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error reading struct: ", p.Error), err)
 	}
 	return nil
 }
@@ -2884,11 +2897,11 @@ func (p *PutChunkResponseOrError) writeField1(ctx context.Context, oprot thrift.
 }
 
 func (p *PutChunkResponseOrError) writeField2(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "error", thrift.STRING, 2); err != nil {
+	if err := oprot.WriteFieldBegin(ctx, "error", thrift.STRUCT, 2); err != nil {
 		return thrift.PrependError(fmt.Sprintf("%T write field begin error 2:error: ", p), err)
 	}
-	if err := oprot.WriteString(ctx, string(p.Error)); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T.error (2) field write error: ", p), err)
+	if err := p.Error.Write(ctx, oprot); err != nil {
+		return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Error), err)
 	}
 	if err := oprot.WriteFieldEnd(ctx); err != nil {
 		return thrift.PrependError(fmt.Sprintf("%T write field end error 2:error: ", p), err)
@@ -2905,7 +2918,7 @@ func (p *PutChunkResponseOrError) Equals(other *PutChunkResponseOrError) bool {
 	if !p.Response.Equals(other.Response) {
 		return false
 	}
-	if p.Error != other.Error {
+	if !p.Error.Equals(other.Error) {
 		return false
 	}
 	return true

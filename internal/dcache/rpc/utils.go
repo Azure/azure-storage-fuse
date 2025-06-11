@@ -159,7 +159,7 @@ func PutChunkExResponseToString(response *models.PutChunkExResponse) string {
 	for rvName, resp := range response.Responses {
 		common.Assert(resp != nil)
 		str.WriteString(fmt.Sprintf("{%s : {PutChunkResponse %s, Error %s}}\n",
-			rvName, PutChunkResponseToString(resp.Response), resp.Error))
+			rvName, PutChunkResponseToString(resp.Response), resp.Error.String()))
 	}
 
 	str.WriteString("]")

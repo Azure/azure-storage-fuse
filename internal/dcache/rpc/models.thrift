@@ -72,7 +72,7 @@ struct PutChunkExRequest {
 // Type for the individual PutChunkResponse or error.
 struct PutChunkResponseOrError {
     1: PutChunkResponse response,
-    2: string error
+    2: ResponseError error
 }
 
 struct PutChunkExResponse {
@@ -173,7 +173,8 @@ enum ErrorCode {
     ChunkNotFound = 5,
     ChunkAlreadyExists = 6,
     MaxMVsExceeded = 7,
-    NeedToRefreshClusterMap = 8
+    NeedToRefreshClusterMap = 8,
+    ThriftError = 9
 }
 
 // Custom error returned by the RPC APIs
