@@ -800,7 +800,7 @@ func init() {
 	})
 
 	// Add a generic cleanup-on-start flag that applies to all cache components
-	mountCmd.PersistentFlags().Bool("cleanup-on-start", false, "Clear cache directory on startup if not empty for file_cache and block_cache components.")
+	mountCmd.PersistentFlags().Bool("cleanup-on-start", false, "Clear cache directory on startup if not empty for file_cache, block_cache, xload components.")
 	config.BindPFlag("cleanup-on-start", mountCmd.PersistentFlags().Lookup("cleanup-on-start"))
 
 	mountCmd.PersistentFlags().String("log-level", "LOG_WARNING",
