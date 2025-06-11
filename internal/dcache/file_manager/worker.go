@@ -157,7 +157,7 @@ func (wp *workerPool) writeChunk(task *task) {
 	// Only dirty StagedChunk must be written.
 	common.Assert(task.chunk.Dirty.Load())
 
-	writeMVReq := &rm.WriteMvRequest{
+	writeMVExReq := &rm.WriteMvExRequest{
 		FileID:         task.file.FileMetadata.FileID,
 		MvName:         getMVForChunk(task.chunk, task.file.FileMetadata),
 		ChunkIndex:     task.chunk.Idx,
@@ -166,10 +166,10 @@ func (wp *workerPool) writeChunk(task *task) {
 		IsLastChunk:    task.chunk.Len != int64(len(task.chunk.Buf)),
 	}
 
-	// Call MvWrite method for writing the chunk.
-	_, err := rm.WriteMV(writeMVReq)
+	// Call WriteMVEx method for writing the chunk.
+	_, err := rm.WriteMVEx(writeMVExReq)
 	if err == nil {
-		// WriteMV completed successfully, staged chunk is now no more dirty.
+		// WriteMVEx completed successfully, staged chunk is now no more dirty.
 		common.Assert(task.chunk.Dirty.Load())
 		task.chunk.Dirty.Store(false)
 		close(task.chunk.Err)
