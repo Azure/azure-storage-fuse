@@ -2764,8 +2764,8 @@ func (p *PutChunkExRequest) String() string {
 //   - Response
 //   - Error
 type PutChunkResponseOrError struct {
-	Response *PutChunkResponse `thrift:"response,1" db:"response" json:"response"`
-	Error    *ResponseError    `thrift:"error,2" db:"error" json:"error"`
+	Response *PutChunkResponse `thrift:"response,1" db:"response" json:"response,omitempty"`
+	Error    *ResponseError    `thrift:"error,2" db:"error" json:"error,omitempty"`
 }
 
 func NewPutChunkResponseOrError() *PutChunkResponseOrError {
@@ -2884,27 +2884,31 @@ func (p *PutChunkResponseOrError) Write(ctx context.Context, oprot thrift.TProto
 }
 
 func (p *PutChunkResponseOrError) writeField1(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "response", thrift.STRUCT, 1); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:response: ", p), err)
-	}
-	if err := p.Response.Write(ctx, oprot); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Response), err)
-	}
-	if err := oprot.WriteFieldEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field end error 1:response: ", p), err)
+	if p.IsSetResponse() {
+		if err := oprot.WriteFieldBegin(ctx, "response", thrift.STRUCT, 1); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 1:response: ", p), err)
+		}
+		if err := p.Response.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Response), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 1:response: ", p), err)
+		}
 	}
 	return err
 }
 
 func (p *PutChunkResponseOrError) writeField2(ctx context.Context, oprot thrift.TProtocol) (err error) {
-	if err := oprot.WriteFieldBegin(ctx, "error", thrift.STRUCT, 2); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field begin error 2:error: ", p), err)
-	}
-	if err := p.Error.Write(ctx, oprot); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Error), err)
-	}
-	if err := oprot.WriteFieldEnd(ctx); err != nil {
-		return thrift.PrependError(fmt.Sprintf("%T write field end error 2:error: ", p), err)
+	if p.IsSetError() {
+		if err := oprot.WriteFieldBegin(ctx, "error", thrift.STRUCT, 2); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field begin error 2:error: ", p), err)
+		}
+		if err := p.Error.Write(ctx, oprot); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T error writing struct: ", p.Error), err)
+		}
+		if err := oprot.WriteFieldEnd(ctx); err != nil {
+			return thrift.PrependError(fmt.Sprintf("%T write field end error 2:error: ", p), err)
+		}
 	}
 	return err
 }
