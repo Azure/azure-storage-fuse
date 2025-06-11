@@ -750,13 +750,17 @@ func (cmi *ClusterManager) safeCleanupMyRVs(myRVs []dcache.RawVolume) (bool, err
 			}
 		}
 
+		//
+		// Fetch all the RVs of this node from the clustermap.
+		//
+		myRVsFromClustermap := cm.GetMyRVs()
 		rvStillOnline := false
 		for _, rv := range myRVs {
 			log.Info("ClusterManager::safeCleanupMyRVs: Checking my RV %+v", rv)
 
 			// Check online status for this RV.
-			for rvName, rvInfo := range rvsFromClustermap {
-				log.Info("ClusterManager::safeCleanupMyRVs: My RV %s has id %s in clustermap",
+			for rvName, rvInfo := range myRVsFromClustermap {
+				log.Info("ClusterManager::safeCleanupMyRVs: RV %s has id %s in clustermap",
 					rvName, rvInfo.RvId)
 
 				if rv.RvId != rvInfo.RvId {
