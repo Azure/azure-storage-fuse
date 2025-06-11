@@ -71,8 +71,8 @@ struct PutChunkExRequest {
 
 // Type for the individual PutChunkResponse or error.
 struct PutChunkResponseOrError {
-    1: PutChunkResponse response,
-    2: ResponseError error
+    1: optional PutChunkResponse response,
+    2: optional ResponseError error
 }
 
 struct PutChunkExResponse {

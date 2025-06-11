@@ -1957,8 +1957,9 @@ func (h *ChunkServiceHandler) PutChunkEx(ctx context.Context, req *models.PutChu
 		Error:    rpcErr,
 	}
 
-	log.Debug("ChunkServiceHandler::PutChunkEx: Received response for %s/%s: %v",
-		rvInfo.rvName, req.Request.Chunk.Address.MvName, rpc.PutChunkExResponseToString(rpcResp))
+	log.Debug("ChunkServiceHandler::PutChunkEx: Received response for %s/%s (file id %s, offset in MiB %v): %v",
+		rvInfo.rvName, req.Request.Chunk.Address.MvName, req.Request.Chunk.Address.FileID,
+		req.Request.Chunk.Address.OffsetInMiB, rpc.PutChunkExResponseToString(rpcResp))
 
 	return rpcResp, nil
 }
@@ -1970,8 +1971,8 @@ func (h *ChunkServiceHandler) forwardPutChunk(ctx context.Context, req *models.P
 	common.Assert(req.Chunk != nil)
 	common.Assert(req.Chunk.Address != nil)
 
-	log.Debug("ChunkServiceHandler::forwardPutChunk: Forwarding PutChunk request: %v, to RVs: %v",
-		rpc.PutChunkRequestToString(req), rpc.ComponentRVsToString(rvs))
+	log.Debug("ChunkServiceHandler::forwardPutChunk: Forwarding PutChunk to RVs: %v, request: %v",
+		rpc.ComponentRVsToString(rvs), rpc.PutChunkRequestToString(req))
 
 	//
 	// No more RVs to forward the PutChunk request to, so return empty response.
@@ -2106,8 +2107,9 @@ func (h *ChunkServiceHandler) forwardPutChunk(ctx context.Context, req *models.P
 		common.Assert(false, "Unexpected RV state", currRV.State, currRV.Name, req.Chunk.Address.MvName)
 	}
 
-	log.Debug("ChunkServiceHandler::forwardPutChunk: Received response for %s/%s: %v",
-		currRV.Name, req.Chunk.Address.MvName, rpc.PutChunkExResponseToString(rpcResp))
+	log.Debug("ChunkServiceHandler::forwardPutChunk: Received response for %s/%s (file id %s, offset in MiB %v): %s",
+		currRV.Name, req.Chunk.Address.MvName, req.Chunk.Address.FileID, req.Chunk.Address.OffsetInMiB,
+		rpc.PutChunkExResponseToString(rpcResp))
 
 	return rpcResp
 }

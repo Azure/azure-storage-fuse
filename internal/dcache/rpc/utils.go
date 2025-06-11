@@ -158,8 +158,13 @@ func PutChunkExResponseToString(response *models.PutChunkExResponse) string {
 
 	for rvName, resp := range response.Responses {
 		common.Assert(resp != nil)
-		str.WriteString(fmt.Sprintf("{%s : {PutChunkResponse %s, Error %s}}\n",
-			rvName, PutChunkResponseToString(resp.Response), resp.Error.String()))
+		if resp == nil {
+			// PutChunkResponseOrError can be nil if the state of the RV is outofsync or offline.
+			str.WriteString(fmt.Sprintf("{%s : <nil>}\n", rvName))
+		} else {
+			str.WriteString(fmt.Sprintf("{%s : {PutChunkResponse %s, Error %s}}\n",
+				rvName, PutChunkResponseToString(resp.Response), resp.Error.String()))
+		}
 	}
 
 	str.WriteString("]")
