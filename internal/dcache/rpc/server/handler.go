@@ -1950,7 +1950,9 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 					return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, err.Error())
 				}
 
-				err = os.Remove(dirent.Name())
+				chunkPath := filepath.Join(mvDir, dirent.Name())
+
+				err = os.Remove(chunkPath)
 				if err != nil {
 					err = fmt.Errorf("Failed to remove chunk file: %s [%v]", dirent.Name(), err)
 					log.Err("ChunkServiceHandler::RemoveChunk: %v", err)
