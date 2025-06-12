@@ -644,6 +644,14 @@ retry:
 	// the clustermap to a value higher than this epoch.
 	mvState, componentRVs, lastClusterMapEpoch := getComponentRVsForMV(req.MvName)
 
+	//
+	// Sort and move the local RV to the front of the componentRVs list, if present.
+	// This is to ensure that we send the PutChunkEx RPC to the local RV, which writes the
+	// chunk to its local cache and then forwards the request to the next RVs in the list.
+	// This saves us one network hop if the local RV is not present at the front of the list.
+	//
+	componentRVs = updateComponentRVs(componentRVs)
+
 	log.Debug("ReplicationManager::WriteMVEx: Component RVs for %s (%s) are: %v",
 		req.MvName, mvState, rpc.ComponentRVsToString(componentRVs))
 

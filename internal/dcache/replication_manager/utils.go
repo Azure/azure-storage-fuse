@@ -44,6 +44,7 @@ import (
 	cm "github.com/Azure/azure-storage-fuse/v2/internal/dcache/clustermap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc"
 	"github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/gen-go/dcache/models"
+	rpc_server "github.com/Azure/azure-storage-fuse/v2/internal/dcache/rpc/server"
 )
 
 const (
@@ -202,6 +203,40 @@ func updateLocalComponentRVState(rvs []*models.RVNameAndState, rvName string,
 
 	// RV is not present in the list.
 	common.Assert(false, rpc.ComponentRVsToString(rvs), rvName)
+}
+
+// Sort the component RVs and update the local RV to be the first in the list.
+func updateComponentRVs(rvs []*models.RVNameAndState) []*models.RVNameAndState {
+	common.Assert(len(rvs) == int(getNumReplicas()), len(rvs), getNumReplicas())
+
+	// Sort the RVs by name to ensure consistent ordering.
+	rpc_server.SortComponentRVs(rvs)
+
+	localRVIdx := -1
+	for i, rv := range rvs {
+		common.Assert(rv != nil)
+		common.Assert(cm.IsValidRVName(rv.Name), rv.Name)
+		common.Assert(cm.IsValidComponentRVState(dcache.StateEnum(rv.State)),
+			rv.Name, rv.State)
+
+		if cm.IsMyRV(rv.Name) {
+			localRVIdx = i
+			break
+		}
+	}
+
+	// If local RV is not found, return the RVs as is in sorted order.
+	if localRVIdx == -1 {
+		return rvs
+	}
+
+	// Move the local RV to the first position keeping the rest of the RVs in sorted order.
+	localRV := rvs[localRVIdx]
+	updatedRVs := slices.Delete(rvs, localRVIdx, localRVIdx+1)
+	common.Assert(len(updatedRVs) == int(getNumReplicas())-1, len(updatedRVs), getNumReplicas()-1)
+	updatedRVs = append([]*models.RVNameAndState{localRV}, updatedRVs...)
+
+	return updatedRVs
 }
 
 func init() {

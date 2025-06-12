@@ -671,7 +671,7 @@ func (mv *mvInfo) updateComponentRVs(componentRVs []*models.RVNameAndState, forc
 	// or should we do a deep copy of the list.
 
 	// mvInfo.componentRVs is a sorted list.
-	sortComponentRVs(componentRVs)
+	SortComponentRVs(componentRVs)
 
 	log.Debug("mvInfo::updateComponentRVs: %s from %s -> %s [forceUpdate: %v]",
 		mv.mvName,
@@ -2363,7 +2363,7 @@ func (h *ChunkServiceHandler) JoinMV(ctx context.Context, req *models.JoinMVRequ
 	// But, the space reservation needs to be undone, else we may run out of space due to these incomplete
 	// JoinMV calls [TODO].
 	//
-	sortComponentRVs(req.ComponentRV)
+	SortComponentRVs(req.ComponentRV)
 	rvInfo.addToMVMap(req.MV, newMVInfo(rvInfo, req.MV, req.ComponentRV, req.SenderNodeID), req.ReserveSpace)
 
 	return &models.JoinMVResponse{}, nil
