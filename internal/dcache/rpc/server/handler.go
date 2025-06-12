@@ -1327,6 +1327,11 @@ func (h *ChunkServiceHandler) checkValidChunkAddress(address *models.Address) er
 	common.Assert(common.IsValidUUID(address.FileID), address.FileID)
 	common.Assert(common.IsValidUUID(address.RvID), address.RvID)
 	common.Assert(cm.IsValidMVName(address.MvName), address.MvName)
+	//
+	// OffsetInMiB will be -1 when address identifies not one chunk but all chunks belonging to a file.
+	// This is used by RemoveChunk to remove all chunks for a file from the given mv.
+	//
+	common.Assert(address.OffsetInMiB >= -1, address.OffsetInMiB)
 
 	// rvID must refer to one of of out local RVs.
 	rvInfo, ok := h.rvIDMap[address.RvID]
@@ -1892,17 +1897,20 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 	// Sender node id must be valid.
 	common.Assert(common.IsValidUUID(req.SenderNodeID), req.SenderNodeID)
 
-	// check if the chunk address is valid
+	// Check if the chunk address is valid.
 	err := h.checkValidChunkAddress(req.Address)
 	if err != nil {
 		log.Err("ChunkServiceHandler::RemoveChunk: Invalid chunk address %v [%s]", req.Address.String(), err.Error())
 		return nil, err
 	}
 
+	// RemoveChunk must not address a specific chunk but all chunks of a file.
+	common.Assert(req.Address.OffsetInMiB == -1, req.Address.OffsetInMiB)
+
 	rvInfo := h.rvIDMap[req.Address.RvID]
 	mvInfo := rvInfo.getMVInfo(req.Address.MvName)
 
-	// validate the component RVs list
+	// Validate the component RVs list.
 	err = mvInfo.isComponentRVsValid(req.ComponentRV, true /* checkState */)
 	if err != nil {
 		errStr := fmt.Sprintf("Component RVs are invalid for MV %s [%v]", req.Address.MvName, err)
@@ -1910,105 +1918,83 @@ func (h *ChunkServiceHandler) RemoveChunk(ctx context.Context, req *models.Remov
 		return nil, err
 	}
 
-	// acquire read lock on the opMutex for this MV
+	//
+	// Acquire read lock on the opMutex for this MV to prevent sync from starting for this MV while
+	// we are deleting file chunks to avoid situations where a chunk is read by the sync thread but before
+	// it can read and copy, it's deleted.
+	//
 	mvInfo.acquireSyncOpReadLock()
-
-	// release the read lock on the opMutex for this MV when the function returns
 	defer mvInfo.releaseSyncOpReadLock()
-
-	// TODO: check if lock is needed for RemoveChunk
-	// acquire lock for the chunk address to prevent concurrent delete operations
-	// chunkAddress := getChunkAddress(req.Address.FileID, req.Address.RvID, req.Address.MvName, req.Address.OffsetInMiB)
-	// flock := h.locks.Get(chunkAddress)
-	// flock.Lock()
-	// defer flock.Unlock()
 
 	cacheDir := rvInfo.cacheDir
 	numChunksDeleted := int64(0)
 
-	if req.RemoveAllChunks {
-		// Get the list of files in the given MV directory
-		mvDir := filepath.Join(cacheDir, req.Address.MvName)
-		log.Debug("ChunkServiceHandler::RemoveChunk: Starting listing MV directory: %s", mvDir)
+	// MV directory containing the requested chunks.
+	mvDir := filepath.Join(cacheDir, req.Address.MvName)
 
-		dirEntries, err := os.ReadDir(mvDir)
+	//
+	// Enumerate all chunks and hashes in the MV directory, filter out the ones belonging to the
+	// requested file and delete them.
+	//
+	// TODO: Replace this with chunked readdir to support huge number of chunks.
+	//
+	log.Debug("ChunkServiceHandler::RemoveChunk: Starting listing MV directory: %s", mvDir)
+
+	dirEntries, err := os.ReadDir(mvDir)
+	if err != nil {
+		err = fmt.Errorf("Failed to read mv directory: %s [%v]", mvDir, err)
+		log.Err("ChunkServiceHandler::RemoveChunk: %v", err)
+		common.Assert(false, err)
+		return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, err.Error())
+	}
+
+	// Iterate and remove chunks and hashes belonging to the requested file.
+	for _, dirent := range dirEntries {
+		if !strings.HasPrefix(dirent.Name(), req.Address.FileID) {
+			continue
+		}
+
+		fileInfo, err := dirent.Info()
 		if err != nil {
-			err = fmt.Errorf("Failed to read mv directory: %s [%v]", mvDir, err)
+			err = fmt.Errorf("Failed to stat chunk file: %s [%v]", dirent.Name(), err)
 			log.Err("ChunkServiceHandler::RemoveChunk: %v", err)
 			common.Assert(false, err)
+			//
+			// If we are able to delete at least one chunk, respond with success.
+			// Caller should assume all chunks of file deleted only when a RemoveChunk call succeeds with
+			// NumChunksDeleted == 0.
+			//
+			if numChunksDeleted > 0 {
+				break
+			}
 			return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, err.Error())
 		}
 
-		// Iterate through the files and remove those with the specified prefix
-		for _, dirent := range dirEntries {
-			if strings.HasPrefix(dirent.Name(), req.Address.FileID) {
-				fileInfo, err := dirent.Info()
-				if err != nil {
-					err = fmt.Errorf("Failed to stat chunk file: %s [%v]", dirent.Name(), err)
-					log.Err("ChunkServiceHandler::RemoveChunk: %v", err)
-					common.Assert(false, err)
-					return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, err.Error())
-				}
-
-				chunkPath := filepath.Join(mvDir, dirent.Name())
-
-				err = os.Remove(chunkPath)
-				if err != nil {
-					err = fmt.Errorf("Failed to remove chunk file: %s [%v]", dirent.Name(), err)
-					log.Err("ChunkServiceHandler::RemoveChunk: %v", err)
-					common.Assert(false, err)
-					return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, err.Error())
-				}
-
-				// decrement the total chunk bytes for this MV
-				mvInfo.decTotalChunkBytes(fileInfo.Size())
-
-				numChunksDeleted++
-			}
-		}
-
-	} else {
-
-		chunkPath, hashPath := getChunkAndHashPath(cacheDir, req.Address.MvName, req.Address.FileID, req.Address.OffsetInMiB)
-		log.Debug("ChunkServiceHandler::RemoveChunk: chunk path %s, hash path %s", chunkPath, hashPath)
-
-		// check if the chunk is present
-		fInfo, err := os.Stat(chunkPath)
-		if err != nil {
-			log.Err("ChunkServiceHandler::RemoveChunk: Failed to stat chunk file %s [%v]", chunkPath, err.Error())
-			common.Assert(false, fmt.Sprintf("failed to stat chunk file %s [%v]", chunkPath, err.Error()))
-			return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, fmt.Sprintf("failed to stat chunk file %s [%v]", chunkPath, err.Error()))
-		}
+		chunkPath := filepath.Join(mvDir, dirent.Name())
 
 		err = os.Remove(chunkPath)
 		if err != nil {
-			log.Err("ChunkServiceHandler::RemoveChunk: Failed to remove chunk file %s [%v]", chunkPath, err.Error())
-			return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, fmt.Sprintf("failed to remove chunk file %s [%v]", chunkPath, err.Error()))
+			err = fmt.Errorf("Failed to remove chunk file: %s [%v]", dirent.Name(), err)
+			log.Err("ChunkServiceHandler::RemoveChunk: %v", err)
+			common.Assert(false, err)
+			if numChunksDeleted > 0 {
+				break
+			}
+			return nil, rpc.NewResponseError(models.ErrorCode_ChunkNotFound, err.Error())
 		}
 
-		// TODO: hash validation will be done later
-		// err = os.Remove(hashPath)
-		// if err != nil {
-		//      log.Err("ChunkServiceHandler::RemoveChunk: Failed to remove hash file %s [%v]", hashPath, err.Error())
-		//      return nil, rpc.NewResponseError(models.ErrorCode_InternalServerError, fmt.Sprintf("failed to remove hash file %s [%v]", hashPath, err.Error()))
-		// }
-
-		// TODO: should we also consider the hash file size in the total chunk bytes
-		//       For accurate accounting we can, but we should not do an extra stat() call for the hash file
-		//       but instead use a hardcoded value which will be true for a given hash algo.
-		//       Also we need to be sure that hash is calculated uniformly (either always or never)
-
-		// decrement the total chunk bytes for this MV
-		mvInfo.decTotalChunkBytes(fInfo.Size())
+		// Decrement the total chunk bytes for this MV.
+		mvInfo.decTotalChunkBytes(fileInfo.Size())
 
 		numChunksDeleted++
 	}
 
-	common.Assert(numChunksDeleted > 0)
+	common.Assert(numChunksDeleted >= 0)
 
 	availableSpace, err := rvInfo.getAvailableSpace()
 	if err != nil {
 		log.Err("ChunkServiceHandler::RemoveChunk: Failed to get available disk space [%v]", err.Error())
+		availableSpace = 0
 	}
 
 	resp := &models.RemoveChunkResponse{

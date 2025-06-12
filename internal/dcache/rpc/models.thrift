@@ -64,11 +64,11 @@ struct PutChunkResponse {
     3: list<RVNameAndState> componentRV
 }
 
+// Remove chunks belonging to a file.
 struct RemoveChunkRequest {
     1: string senderNodeID,
     2: Address address,
-    3: list<RVNameAndState> componentRV, // used to validate the component RV for the MV
-    4: bool removeAllChunks
+    3: list<RVNameAndState> componentRV // used to validate the component RV for the MV
 }
 
 struct RemoveChunkResponse {
@@ -76,7 +76,12 @@ struct RemoveChunkResponse {
     1: i64 timeTaken,
     2: i64 availableSpace,
     3: list<RVNameAndState> componentRV,
-    4: i64 numChunksDeleted // This may be greater than 1 if removeAllChunks is set in the request.
+    //
+    // Total number of chunks deleted by this request.
+    // When a RemoveChunkResponse carries a status of success and numChunksDeleted==0, it would indicate
+    // to the caller that all chunks of the file are deleted from the specified rv/mv directory.
+    //
+    4: i64 numChunksDeleted
 }
 
 struct JoinMVRequest {
