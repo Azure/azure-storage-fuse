@@ -614,7 +614,7 @@ retry:
 	return &WriteMvResponse{}, nil
 }
 
-func WriteMVEx(req *WriteMvExRequest) (*WriteMvExResponse, error) {
+func WriteMVEx(req *WriteMvRequest) (*WriteMvResponse, error) {
 	common.Assert(req != nil)
 
 	log.Debug("ReplicationManager::WriteMVEx: Received WriteMVEx request: %v", req.toString())
@@ -981,7 +981,7 @@ retry:
 		return nil, err
 	}
 
-	return &WriteMvExResponse{}, nil
+	return &WriteMvResponse{}, nil
 }
 
 func periodicResyncMVs() {
