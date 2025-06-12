@@ -316,6 +316,16 @@ get_online_mv_count()
 }
 
 #
+# Given a clustermap, return the count of syncing MVs in mv-list.
+#
+get_syncing_mv_count()
+{
+    local cm="$1"
+
+    echo "$cm" | jq '[."mv-list"[] | to_entries[] | select(.value.state == "syncing")] | length'
+}
+
+#
 # Given a clustermap, return the count of degraded MVs in mv-list.
 #
 get_degraded_mv_count()
@@ -695,3 +705,42 @@ becho -n "All MVs must be degraded (mv_count == degraded_mv_count)"
 degraded_mv_count=$(get_degraded_mv_count "$cm")
 [ "$degraded_mv_count" -eq "$mv_count" ]
 log_status $? "degraded MVs: $degraded_mv_count, total MVs: $mv_count"
+
+becho -n "All component RV for vm2 will be offline"
+degraded_mv_count=$(get_degraded_mv_count "$cm")
+[ "$degraded_mv_count" -eq "$mv_count" ]
+log_status $? "degraded MVs: $degraded_mv_count, total MVs: $mv_count"
+
+
+# ############################################################################
+# ##              Start node2 And Verify Fix Workflow                      ##
+# ############################################################################
+
+# echo
+# wbecho ">> Starting blobfuse on vm2"
+# echo
+# start_blobfuse_on_node vm2
+
+# becho -n "Reading clustermap on vm2"
+# cm=$(read_clustermap_from_node vm2)
+# log_status $?
+
+# LAST_UPDATED_AT=$(echo "$cm" | jq '."last_updated_at"')
+
+# #
+# # Wait for next epoch on vm3.
+# # After that it'll get the degraded clustermap updated by vm3.
+# #
+# wait_till_next_scheduled_epoch
+
+# becho -n "Reading clustermap on vm2"
+# cm=$(read_clustermap_from_node vm2)
+# log_status $?
+
+# becho -n "All MVs must be degraded and rvs state is outofsync"
+# syncing_mv_count=$(get_syncing_mv_count "$cm")
+# online_mv_count=$(get_online_mv_count "$cm")
+# mv_count=$(get_mv_count "$cm")
+# total_online_syncing=$((syncing_mv_count + online_mv_count))
+# [ "$total_online_syncing" -eq "$mv_count" ]
+# log_status $? "Syncing MVs: $syncing_mv_count, Online MVs: $online_mv_count, total MVs: $mv_count"
